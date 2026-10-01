@@ -343,7 +343,7 @@ pub fn make_eval_context_with_runtime_options(
 /// function that way; that variant is deleted and the one honest arm now covers it.
 pub fn run_claim_failure_receipt(ctx: &v1_interpreter::InterpContext, function: &str) -> String {
     match v1_interpreter::run_in_context(ctx, function, false) {
-        Ok(Value::Str(s)) => s.to_string(),
+        Ok(Value::Str(ref s)) => s.to_string(),
         Ok(other) => format!(
             "failure_receipt_refused: {function} returned {}, expected String",
             ctx.format_value(&other)
@@ -2284,7 +2284,7 @@ impl UnimportedBareProviderRosterReading {
             (Some("name".to_string()), str_value(name)),
         ];
         match Self::call(&self.ctx, "unimported_bare_provider_identity", &args)? {
-            v1_interpreter::Value::Str(s) => Ok(s.to_string()),
+            v1_interpreter::Value::Str(ref s) => Ok(s.to_string()),
             other => Err(format!(
                 "unimported_bare_provider_identity: expected a String, got {}",
                 floor_value_shape(Some(&other))
@@ -5903,7 +5903,7 @@ pub(crate) fn floor_required_string(
 ) -> Result<String, String> {
     let qualified = format!("v2.workflow.required_floor.{func}");
     match v1_interpreter::run_in_context(ctx, &qualified, false) {
-        Ok(v1_interpreter::Value::Str(s)) if !s.is_empty() => Ok(s.to_string()),
+        Ok(v1_interpreter::Value::Str(ref s)) if !s.is_empty() => Ok(s.to_string()),
         Ok(other) => Err(format!(
             "{qualified}: expected a non-empty String, got {}",
             floor_value_shape(Some(&other))
