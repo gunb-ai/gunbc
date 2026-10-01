@@ -2615,8 +2615,8 @@ type ReachDifferentialStanding
   = DifferentialBlocking { base_arm_wall_budget: Milliseconds }
   | DifferentialReportOnly { pending: String }
 
-data reach_differential_standing: ReachDifferentialStanding = DifferentialReportOnly {
-  pending: "the operator cost ruling on the base arm, measured by neat-boar-16 on srv1 (2026-10-01)"
+data reach_differential_standing: ReachDifferentialStanding = DifferentialBlocking {
+  base_arm_wall_budget: 600000
 }
 
 // The host wire: 0 means report-only, and a positive value is the blocking arm's wall budget. Typed
