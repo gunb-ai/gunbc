@@ -9541,15 +9541,15 @@ fn body_lower_operation_requires(shell: Node) -> Outcome<Node> {
 // refuses at the member.
 fn body_lower_operation_requires_member_label_optional(member: Node, type_node: Node) -> Optional<Symbol> {
   match node_atom_identity_optional(node: type_node) {
-    Present { value: id } => Present { value: id }
+    Present { value: id } => optional_present(value: id)
     Absent =>
       if qualified_name_spine_shape_present(root: type_node) {
         match qualified_name_from_node(root: type_node) {
-          Accepted { value: qn, diagnostics: _ } => Present { value: symbol_intern_lexeme(lexeme: qualified_name_to_dotted_string(qn: qn)) }
-          Rejected { diagnostics: _ } => Absent
+          Accepted { value: qn, diagnostics: _ } => optional_present(value: symbol_intern_lexeme(lexeme: qualified_name_to_dotted_string(qn: qn)))
+          Rejected { diagnostics: _ } => optional_absent()
         }
       } else {
-        Absent
+        optional_absent()
       }
   }
 }
