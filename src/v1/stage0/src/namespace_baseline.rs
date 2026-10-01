@@ -1335,7 +1335,9 @@ pub(crate) fn reconstruct_base_index(
     // "same grammar?" in a few `rev-parse` calls, so the ordinary pull request -- which changes no
     // grammar -- pays nothing, and only a real grammar change pays to materialize and evaluate the
     // base corpus.
-    let agreement = match environment_agreement(&workspace, &base, &head) {
+    // ONE LIVE-TREE INDEX FOR BOTH CLOSURES BELOW, built on first demand and carried to both.
+    let live = LiveDagIndex::new();
+    let agreement = match environment_agreement(&workspace, &base, &head, &live) {
         Ok(a) => a,
         // A REFUSAL HERE IS NOT A LICENCE TO USE THE HEAD'S. Not knowing which grammar the base
         // speaks makes every base-side declaration unreadable, which is ignorance, and ignorance is
@@ -1352,7 +1354,7 @@ pub(crate) fn reconstruct_base_index(
     // THE KERNEL HALF. `declaring_candidates` consults this binary's own `kernel_type_set`, a head
     // fact, so one map serves exactly when the base declares the same kernel NAMES. That is decided
     // at the grain of the name set, not the declaring file's bytes; distinct sets refuse.
-    match kernel_set_serves_both(&workspace, &base, &head) {
+    match kernel_set_serves_both(&workspace, &base, &head, &live) {
         Ok(true) => {}
         Ok(false) => {
             return Ok(BaselineReconstruction::NotEvaluated {
@@ -1996,26 +1998,55 @@ fn revision_scratch_root(purpose: &str) -> std::path::PathBuf {
 /// go stale, silently, the first time `std.syntax` gained an import -- a stale roster still resolves.
 /// The resolved graph's own span files ARE the closure.
 pub fn environment_closure_paths() -> Result<BTreeSet<String>, EnvironmentLoadRefusal> {
-    closure_paths_of(ENVIRONMENT_MODULE_PATH)
+    closure_paths_of(ENVIRONMENT_MODULE_PATH, &LiveDagIndex::new())
+}
+
+/// The live `dag` tree's index, built on FIRST DEMAND and carried by its owner to every closure it
+/// answers. The parse-environment closure and the kernel-types closure are two demands on one name
+/// set; building a fresh index per demand parsed every live-tree file once per closure, which
+/// `MultiEntryIndexBuiltTwiceForOneNameSet` refuses. Carried, not placed in the thread's shared
+/// slot: that slot holds the floor's own `dag` + `src/v2` index, and a `dag`-only demand there
+/// evicts it (`SharedIndexRebuiltAfterEviction`).
+pub struct LiveDagIndex {
+    cell: std::cell::OnceCell<super::MultiEntryIndex>,
+}
+
+impl LiveDagIndex {
+    pub fn new() -> Self {
+        LiveDagIndex {
+            cell: std::cell::OnceCell::new(),
+        }
+    }
+
+    fn get(&self) -> &super::MultiEntryIndex {
+        self.cell.get_or_init(|| {
+            let dag_root = super::workspace_root().join(DAG_SOURCE_ROOT);
+            super::build_multi_entry_index(&[dag_root.display().to_string()])
+        })
+    }
+}
+
+impl Default for LiveDagIndex {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// The repository-relative files of the live tree's resolved closure rooted at `entry_rel`.
-///
-/// The live tree's index is the PROCESS-SHARED one (`process_shared_index`): the parse environment's
-/// closure and the kernel-types closure are two demands on one name set, and building a fresh index
-/// per demand parsed every live-tree file once per closure. A floor whose diff touches
-/// `std/types.dag` asks both and was refused `MultiEntryIndexBuiltTwiceForOneNameSet`.
-fn closure_paths_of(entry_rel: &str) -> Result<BTreeSet<String>, EnvironmentLoadRefusal> {
+fn closure_paths_of(
+    entry_rel: &str,
+    live: &LiveDagIndex,
+) -> Result<BTreeSet<String>, EnvironmentLoadRefusal> {
     let root = super::workspace_root();
     let entry = root.join(entry_rel);
-    let dag_root = root.join(DAG_SOURCE_ROOT);
-    let index = super::process_shared_index(&[dag_root.display().to_string()]);
-    let (graph, _indices) =
-        super::resolve_entry_with_index_for_discovery_corpus(&index, &entry.display().to_string())
-            .map_err(|e| EnvironmentLoadRefusal::ClosureNotEvaluable {
-                revision: "live-tree".to_string(),
-                cause: e,
-            })?;
+    let (graph, _indices) = super::resolve_entry_with_index_for_discovery_corpus(
+        live.get(),
+        &entry.display().to_string(),
+    )
+    .map_err(|e| EnvironmentLoadRefusal::ClosureNotEvaluable {
+        revision: "live-tree".to_string(),
+        cause: e,
+    })?;
     let mut paths = BTreeSet::new();
     for module in graph.modules.iter() {
         for item in module.items.iter() {
@@ -2060,8 +2091,9 @@ pub fn environment_agreement(
     repo: &std::path::Path,
     base: &str,
     head: &str,
+    live: &LiveDagIndex,
 ) -> Result<EnvironmentAgreement, EnvironmentLoadRefusal> {
-    let closure = environment_closure_paths()?;
+    let closure = closure_paths_of(ENVIRONMENT_MODULE_PATH, live)?;
     let mut differing = Vec::new();
     for path in &closure {
         if blob_id_at(repo, base, path)? != blob_id_at(repo, head, path)? {
@@ -2100,6 +2132,7 @@ pub fn kernel_set_serves_both(
     repo: &std::path::Path,
     base: &str,
     head: &str,
+    live: &LiveDagIndex,
 ) -> Result<bool, EnvironmentLoadRefusal> {
     let base_blob =
         blob_id_at(repo, base, KERNEL_TYPES_PATH).map_err(|e| as_kernel_set_refusal(base, e))?;
@@ -2121,7 +2154,7 @@ pub fn kernel_set_serves_both(
         .keys()
         .cloned()
         .collect();
-    Ok(kernel_names_at(repo, base)? == head_names)
+    Ok(kernel_names_at(repo, base, live)? == head_names)
 }
 
 /// The kernel names `std.types` declares at `revision`, read from that revision's own tree.
@@ -2131,8 +2164,9 @@ pub fn kernel_set_serves_both(
 pub fn kernel_names_at(
     repo: &std::path::Path,
     revision: &str,
+    live: &LiveDagIndex,
 ) -> Result<BTreeSet<String>, EnvironmentLoadRefusal> {
-    let closure = closure_paths_of(KERNEL_TYPES_PATH)?;
+    let closure = closure_paths_of(KERNEL_TYPES_PATH, live)?;
     let dest = revision_scratch_root("kernel-set");
     let outcome = materialize_revision_paths(
         repo,
