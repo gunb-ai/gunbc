@@ -10,7 +10,7 @@ import extdeps.vllm.engine_args {
   VllmPrefixCachingRequest, PrefixCachingOmitted, PrefixCachingExplicit,
   VllmKvCacheDtypeRequest, KvAuto, KvFp8, KvFp16, KvBf16, KvFp8DsMla, vllm_kv_cache_dtype_wire,
   VllmEngramConfigRequest, EngramConfigOmitted, EngramConfigExplicit,
-  VllmModalityRequest, ModalityOmitted, LanguageModelOnly, VllmHfOverride,
+  VllmModalityRequest, ModalityOmitted, LanguageModelOnly, vllm_hf_override,
 }
 import extdeps.zhipu.glm_5_3_flash {
   glm_5_3_flash_native_manifest, glm_5_3_flash_vllm_integration_commit, glm_5_3_flash_mla_pe_dim,
@@ -1206,7 +1206,7 @@ fn deepseek_v41_measurement_profile(
     served_alias: served_alias,
     prefix_caching: prefix_caching,
     engram: EngramConfigExplicit { cpu_offload: true, dp_shared_memory: false },
-    modality: LanguageModelOnly { hf_overrides: [VllmHfOverride { key: "vision_n_layers" as NonEmptyStr, json_value: "0" as NonEmptyStr }] },
+    modality: LanguageModelOnly { hf_overrides: [vllm_hf_override(key: "vision_n_layers" as NonEmptyStr, json_value: "0" as NonEmptyStr)] },
   }
 }
 

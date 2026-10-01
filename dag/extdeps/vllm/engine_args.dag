@@ -209,6 +209,10 @@ type VllmHfOverride sole_constructor {
   json_value: NonEmptyStr
 }
 
+fn vllm_hf_override(key: NonEmptyStr, json_value: NonEmptyStr) -> VllmHfOverride {
+  VllmHfOverride { key: key, json_value: json_value }
+}
+
 type VllmModalityRequest
   = ModalityOmitted
   | LanguageModelOnly { hf_overrides: List<VllmHfOverride> }
