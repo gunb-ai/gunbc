@@ -1,6 +1,8 @@
-module test.claim.long.newline_dual_role_operator_mutation_witness_test
+module v2.test.parse.newline_dual_role_operator_mutation
 
-import v2.compiler.parse { parse_module }
+import v2.compiler.parse { PreparedGrammar, parse_module_prepared, prepare_grammar }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.std.diagnostic { Outcome }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_grammar, dag_lex }
 import v2.std.algebra { fold_list }
@@ -50,8 +52,13 @@ import v2.test.parse.newline_dual_role_operator_parse {
 // is a helper inlined into each operand position of the comparison and equality rows; it is one
 // authored row. Under the mutant the
 // next-line sources parse again (the silent merge into one subtraction is back); under the live
-// grammar they refuse. The same-line control parses under both. Long lane: preparing the mutant
-// grammar is past the floor's per-claim budget.
+// grammar they refuse. The same-line control parses under both.
+//
+// THE GRAMMARS ARE SUPPLIED, NOT RE-PREPARED PER CLAIM (DESIGN section 3, a witness discriminates at
+// one interface). The live grammar is the floor-shared dag_prepared_grammar; the mutant is prepared
+// once by the nullary producer nlm_mutant_prepared and the refusal-arm counts are taken once by
+// nlm_refusal_arm_census, both enrolled WARM in v2.workflow.floor_pure_producer_share. Each claim pays
+// one tokenize and one parse of a one-line declaration.
 
 fn strip_refusals(expr: GrammarExpr) -> GrammarExpr {
   fold_grammar_expr(
@@ -134,44 +141,58 @@ fn mutant_grammar() -> ParseGrammar {
   }
 }
 
-fn live_refusal_arm_count() -> Int {
+type RefusalArmCensus {
+  total: Int
+  other: Int
+}
+
+// WARM PRODUCER: the refusal arms of the live dag grammar, counted once.
+fn nlm_refusal_arm_census() -> RefusalArmCensus {
   match dag_grammar() {
-    ModeledGrammar { root: r } => fold_list(xs: r.productions, empty: 0, cons: fn(acc, prod) { acc + refusal_arm_count(expr: prod.expression) })
-    VoidGrammar => 0
+    ModeledGrammar { root: r } =>
+      RefusalArmCensus {
+        total: fold_list(xs: r.productions, empty: 0, cons: fn(acc, prod) { acc + refusal_arm_count(expr: prod.expression) }),
+        other: fold_list(xs: r.productions, empty: 0, cons: fn(acc, prod) { acc + other_refusal_arm_count(expr: prod.expression) })
+      }
+    VoidGrammar => RefusalArmCensus { total: 0, other: 0 }
   }
 }
 
-fn live_other_refusal_arm_count() -> Int {
-  match dag_grammar() {
-    ModeledGrammar { root: r } => fold_list(xs: r.productions, empty: 0, cons: fn(acc, prod) { acc + other_refusal_arm_count(expr: prod.expression) })
-    VoidGrammar => 0
-  }
+// WARM PRODUCER: the mutant grammar, prepared once.
+fn nlm_mutant_prepared() -> Outcome<PreparedGrammar> {
+  prepare_grammar(grammar: mutant_grammar())
 }
 
-fn accepts_with(text: String, file: Symbol, grammar: ParseGrammar) -> Bool {
-  match tokenize(text: text, file: file, rules: dag_lex()) {
+fn accepts_prepared(text: String, file: Symbol, prepared: Outcome<PreparedGrammar>) -> Bool {
+  match prepared {
     Rejected { diagnostics: _ } => false
-    Accepted { value: stream, diagnostics: _ } =>
-      match parse_module(tokens: stream, grammar: grammar) {
-        Accepted { value: _, diagnostics: _ } => true
+    Accepted { value: p, diagnostics: residue } =>
+      match tokenize(text: text, file: file, rules: dag_lex()) {
         Rejected { diagnostics: _ } => false
+        Accepted { value: stream, diagnostics: _ } =>
+          match parse_module_prepared(tokens: stream, prepared: p, validation_residue: residue) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
       }
   }
 }
 
 test fn witness_every_live_refusal_arm_is_the_newline_refusal() -> Bool {
-  (live_refusal_arm_count() > 0) && (live_other_refusal_arm_count() == 0)
+  let census = nlm_refusal_arm_census()
+  (census.total > 0) && (census.other == 0)
 }
 
 test fn witness_the_live_grammar_refuses_both_next_line_forms() -> Bool {
-  (accepts_with(text: newline_minus_after_operand_source, file: ^nlm_plain, grammar: dag_grammar()) == false)
-    && (accepts_with(text: newline_minus_after_block_source, file: ^nlm_block, grammar: dag_grammar()) == false)
-    && accepts_with(text: same_line_minus_source, file: ^nlm_same, grammar: dag_grammar())
+  let live = dag_prepared_grammar()
+  (accepts_prepared(text: newline_minus_after_operand_source, file: ^nlm_plain, prepared: live) == false)
+    && (accepts_prepared(text: newline_minus_after_block_source, file: ^nlm_block, prepared: live) == false)
+    && accepts_prepared(text: same_line_minus_source, file: ^nlm_same, prepared: live)
 }
 
 test fn witness_without_the_refusal_both_next_line_forms_merge_RED() -> Bool {
-  let mutant = mutant_grammar()
-  accepts_with(text: newline_minus_after_operand_source, file: ^nlm_plain, grammar: mutant)
-    && accepts_with(text: newline_minus_after_block_source, file: ^nlm_block, grammar: mutant)
-    && accepts_with(text: same_line_minus_source, file: ^nlm_same, grammar: mutant)
+  let mutant = nlm_mutant_prepared()
+  accepts_prepared(text: newline_minus_after_operand_source, file: ^nlm_plain, prepared: mutant)
+    && accepts_prepared(text: newline_minus_after_block_source, file: ^nlm_block, prepared: mutant)
+    && accepts_prepared(text: same_line_minus_source, file: ^nlm_same, prepared: mutant)
 }
