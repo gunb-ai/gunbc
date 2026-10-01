@@ -16254,6 +16254,7 @@ fn target_project_realized_closure(
                   DirectAtomBody => target_project_realized_closure_body(closure: closure, body: body, scope: scope, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
                   RecordConstructBody => target_project_realized_closure_body(closure: closure, body: body, scope: scope, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
                   DeclarationReferenceBody => target_project_realized_closure_body(closure: closure, body: body, scope: scope, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
+                  ParameterReferenceBody => target_project_realized_closure_body(closure: closure, body: body, scope: scope, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
                   ComputationBody { behavior: _ } => target_project_realized_closure_body(closure: closure, body: body, scope: scope, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
                   UnsupportedArrowBody => target_project_realized_closure_body(closure: closure, body: body, scope: scope, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
                 },
