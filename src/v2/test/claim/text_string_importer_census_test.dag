@@ -494,7 +494,7 @@ data literal_callee_source: String = "module fixture.tsil.lit_callee\ntype Box {
 data literal_string_type_source: String = "module fixture.tsil.string_type_importer\nimport std.string_type { String }\ndata s: String = \"x\"\n"
 
 fn literal_rows_for(source: String, path: String, r: Rosters, callees: FreeMonoid<CalleeModule>) -> FreeMonoid<String> {
-  literal_lines(path: path, standing: raw_tree_of_text(text: source), r: r, callees: callees)
+  literal_lines(path: path, standing: raw_tree_of_text(text: source), r: r, callees: callees, declined: Empty)
 }
 
 fn tsil_literal_rows_outcome() -> FreeMonoid<String> {
@@ -596,6 +596,18 @@ test fn tsil_aliases_are_chased_to_their_declaring_module() -> Bool {
   let rows = tsil_alias_rows_outcome()
   has_row(rows: rows, row: "L\tlit_alias.dag\ta\t9:16\targument\ttake_name.n\tSTRUCTURAL:String")
     && has_row(rows: rows, row: "C\tlit_alias.dag\t1\t0\t3\t0")
+}
+
+// A module the caller DECLINES to load is a counted, named gap: every site that needed it is
+// UNRESOLVED as callee_module_declined, never read as host or as not-in-pool.
+fn tsil_declined_rows_outcome() -> FreeMonoid<String> {
+  literal_lines(path: "lit_module.dag", standing: raw_tree_of_text(text: literal_module_source), r: rosters_supplied, callees: Empty, declined: Cons { head: "fixture.tsil.lit_callee", tail: Empty })
+}
+
+test fn tsil_a_declined_module_is_a_named_unresolved_gap() -> Bool {
+  let rows = tsil_declined_rows_outcome()
+  has_row(rows: rows, row: "L\tlit_module.dag\targ2\t29:13\targument\ttake_s.t\tUNRESOLVED:callee_module_declined:fixture.tsil.lit_callee")
+    && has_row(rows: rows, row: "L\tlit_module.dag\tboxed\t23:16\tfield\tBox.label\tUNRESOLVED:callee_module_declined:fixture.tsil.lit_callee")
 }
 
 test fn tsil_population_module_decides_the_bare_string() -> Bool {

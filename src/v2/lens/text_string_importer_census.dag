@@ -1851,6 +1851,7 @@ type UnresolvedLiteralCause
   | AliasChaseExhausted { spelling: String }
   | QualifiedSpellingNotChased { spelling: String }
   | SpellingDeclarerNotLoaded { spelling: String, module: String }
+  | CalleeModuleDeclined { module: String }
 
 fn is_population_string(spelling: String, population_module: String, declarer_imports: Bool) -> Bool {
   (spelling == concat(population_module, ".String")) || ((spelling == "String") && declarer_imports) || (spelling == "FreeMonoid") || (spelling == "std.algebra.FreeMonoid")
@@ -1860,10 +1861,19 @@ fn is_population_string(spelling: String, population_module: String, declarer_im
 // the batch loaded (callees, field owners, and std.types). A second wave loading the declarer of
 // every spelled type was measured too costly to finish (every batch timed out at 7000 s), so a
 // chase that needs a module outside this set stays UNRESOLVED with the spelling named.
+// `declined` names modules the CALLER declined to load (a module whose read is known to end in
+// process death, gunbc.recurring_failure_mode sweep_terminated_by_process_death_rather_than_a_typed_refusal):
+// every resolution that needed one is listed UNRESOLVED as CalleeModuleDeclined, so the gap is
+// counted and named, never read as a judgement.
 type LiteralContext {
   population_module: String
   kernel: FreeMonoid<String>
   modules: FreeMonoid<CalleeModule>
+  declined: FreeMonoid<String>
+}
+
+fn unloaded(cx: LiteralContext, module: String, otherwise: UnresolvedLiteralCause) -> LiteralPosition {
+  if member(xs: cx.declined, x: module) { UnresolvedPosition { cause: CalleeModuleDeclined { module: module } } } else { UnresolvedPosition { cause: otherwise } }
 }
 
 data kernel_types_module: String = "std.types"
@@ -1905,7 +1915,7 @@ fn spelling_position(cx: LiteralContext, spelling: String, declarer: Walk, fuel:
       let m = imported_module_of(imported: declarer.imported, name: spelling)
       let source = if m == "" { kernel_types_module } else { m }
       match loaded_walk(cx: cx, module: source) {
-        Empty => UnresolvedPosition { cause: SpellingDeclarerNotLoaded { spelling: spelling, module: source } }
+        Empty => unloaded(cx: cx, module: source, otherwise: SpellingDeclarerNotLoaded { spelling: spelling, module: source })
         Cons { head: dw, tail: _ } => {
           let target = alias_target(walk: dw, name: spelling)
           if target == "" { UnresolvedPosition { cause: SpelledOtherThanText { spelling: spelling } } } else { spelling_position(cx: cx, spelling: target, declarer: dw, fuel: fuel - 1) }
@@ -1945,7 +1955,7 @@ fn literal_position(own: Walk, cx: LiteralContext, kind: SiteKind) -> FreeMonoid
       } else {
         let m = imported_module_of(imported: own.imported, name: o)
         match callee_standing(callees: cx.modules, module: m) {
-          Empty => one(p: UnresolvedPosition { cause: FieldOwnerNotRead { owner: o } })
+          Empty => one(p: unloaded(cx: cx, module: m, otherwise: FieldOwnerNotRead { owner: o }))
           Cons { head: standing, tail: _ } => match standing {
             WalkNotEstablished { cause: c } => one(p: UnresolvedPosition { cause: LiteralCalleeModuleNotParsed { module: m, cause: c } })
             WalkEstablished { walk: cw } => {
@@ -1965,7 +1975,7 @@ fn literal_position(own: Walk, cx: LiteralContext, kind: SiteKind) -> FreeMonoid
         one(p: if s == "" { UnresolvedPosition { cause: LiteralCalleeNotImportedByName { callee: c } } } else { position_of_spelling_in(cx: cx, spelling: s, declarer: own) })
       } else {
         match callee_standing(callees: cx.modules, module: m) {
-          Empty => one(p: UnresolvedPosition { cause: LiteralCalleeModuleNotInPool { module: m } })
+          Empty => one(p: unloaded(cx: cx, module: m, otherwise: LiteralCalleeModuleNotInPool { module: m }))
           Cons { head: standing, tail: _ } => match standing {
             WalkNotEstablished { cause: k } => one(p: UnresolvedPosition { cause: LiteralCalleeModuleNotParsed { module: m, cause: k } })
             WalkEstablished { walk: cw } => {
@@ -2112,6 +2122,7 @@ fn unresolved_cause_token(c: UnresolvedLiteralCause) -> String {
     AliasChaseExhausted { spelling: s } => concat("alias_chase_exhausted:", s)
     QualifiedSpellingNotChased { spelling: s } => concat("qualified_spelling_not_chased:", s)
     SpellingDeclarerNotLoaded { spelling: s, module: m } => concat(concat(concat("spelling_declarer_not_loaded:", s), ":"), m)
+    CalleeModuleDeclined { module: m } => concat("callee_module_declined:", m)
   }
 }
 
@@ -2152,8 +2163,8 @@ fn position_is_unresolved(p: LiteralPosition) -> Bool {
 // decided remainder, so the three partition the module's literal positions -- then how many LISTED
 // sites carry no position, which a pairing by position cannot use), then one `L` row per
 // STRUCTURAL or UNRESOLVED site: path, declaration, line:col, kind (and its operand), position.
-fn literal_lines(path: String, standing: RawTreeStanding, r: Rosters, callees: FreeMonoid<CalleeModule>) -> FreeMonoid<String> {
-  let cx = LiteralContext { population_module: r.population_module, kernel: r.kernel, modules: callees }
+fn literal_lines(path: String, standing: RawTreeStanding, r: Rosters, callees: FreeMonoid<CalleeModule>, declined: FreeMonoid<String>) -> FreeMonoid<String> {
+  let cx = LiteralContext { population_module: r.population_module, kernel: r.kernel, modules: callees, declined: declined }
   match standing {
     RawTreeNotEstablished { cause: c } => Cons { head: concat(concat(concat("C\t", path), "\tNOT_ESTABLISHED:"), concat(cause_token(cause: c), "\n")), tail: Empty }
     RawTreeEstablished { root: root, spans: spans, text: text } => {
@@ -2180,7 +2191,10 @@ type PathTree {
 // THE ENTRY neat-ibex-696 cites on #12760: literal-at-structural sites for one batch of the
 // population of `population_module`, callee modules read from `roots_csv`. Only STRUCTURAL and
 // UNRESOLVED positions are listed; host positions are counted in each module's `C` row.
-fn text_string_importer_literal_sites(paths_csv: String, out: String, roots_csv: String, population_module: String) -> ProcessExit {
+// `declined_csv` names modules (comma-separated, may be empty) the caller declines to load; see
+// LiteralContext.
+fn text_string_importer_literal_sites(paths_csv: String, out: String, roots_csv: String, population_module: String, declined_csv: String) -> ProcessExit {
+  let declined = fold_list(xs: split(s: declined_csv, delimiter: ","), empty: empty_strings, cons: fn(acc, m) { if m == "" { acc } else { Cons { head: m, tail: acc } } })
   let roots = split(s: roots_csv, delimiter: ",")
   match rosters(population_module: population_module, roots: roots) {
     RostersRefused { reason: reason } => exit_failure(reason: reason)
@@ -2195,10 +2209,10 @@ fn text_string_importer_literal_sites(paths_csv: String, out: String, roots_csv:
       }))
       let walks = fold_list(xs: list_reverse(xs: trees), empty: Empty, cons: fn(acc, pt) { Cons { head: PathWalk { path: pt.path, standing: pt.walk }, tail: acc } })
       let wave1_names = Cons { head: kernel_types_module, tail: literal_modules(walks: walks) }
-      let wave1 = callee_modules(modules: wave1_names, r: r, roots: roots)
+      let wave1 = callee_modules(modules: fold_list(xs: wave1_names, empty: empty_strings, cons: fn(acc, m) { if member(xs: declined, x: m) { acc } else { Cons { head: m, tail: acc } } }), r: r, roots: roots)
       let callees = wave1
       let lines = fold_list(xs: trees, empty: Empty, cons: fn(acc, pt) {
-        fold_list(xs: literal_lines(path: pt.path, standing: pt.standing, r: r, callees: callees), empty: acc, cons: fn(inner, l) { Cons { head: l, tail: inner } })
+        fold_list(xs: literal_lines(path: pt.path, standing: pt.standing, r: r, callees: callees, declined: declined), empty: acc, cons: fn(inner, l) { Cons { head: l, tail: inner } })
       })
       let written = Filesystem.Write(path: out, content: lines_text(lines: list_reverse(xs: lines)))
       if written.success { ExitSuccess } else { exit_failure(reason: concat("literal-site write refused: ", written.error)) }
