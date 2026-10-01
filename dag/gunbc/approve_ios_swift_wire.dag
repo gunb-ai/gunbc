@@ -645,12 +645,12 @@ fn aw_info(key: String) -> SwiftExpr { sw_sub(b: sw_id(n: "info"), a: [sw_pos(v:
 
 fn aw_server_config() -> SwiftDecl {
   sw_cmt(c: ["── Transport ────────────────────────────────────────────────────────────────────────────────"], d: sw_struct(n: "ServerConfig", i: [], m: [
-    sw_doc(c: ["APPROVE_SERVER_HOST from Config/Team.xcconfig via Info.plist. Plain URLSession over the", "tailnet: no new network path."], d: sw_stored(k: SwiftLet, n: "host", t: aw_s())),
+    sw_doc(c: ["ApproveServerHost from Info.plist, projected from gunbc.auth.approval_broker_endpoint. Plain", "URLSession over the tailnet: no new network path."], d: sw_stored(k: SwiftLet, n: "host", t: aw_s())),
     sw_doc(c: ["apns_environment_wire: \"development\" | \"production\"."], d: sw_stored(k: SwiftLet, n: "apnsEnvironment", t: aw_s())),
     sw_doc(c: ["extdeps.apple.apns ApnsTopic: the bundle identifier, read from the bundle and never defaulted."], d: sw_stored(k: SwiftLet, n: "apnsTopic", t: aw_s())),
     aw_static_func(n: "fromBundle", p: [], th: true, r: sw_t(n: "ServerConfig"), b: [
       sw_let(n: "info", e: sw_op(l: sw_mem(b: sw_path(b: "Bundle", m: "main"), m: "infoDictionary"), o: SwiftNilCoalescingOperator, r: sw_dict(e: []))),
-      sw_guard(c: aw_nonempty_cast(n: "host", v: aw_info(key: "ApproveServerHost"), t: "String"), e: [aw_config_missing(message: sw_str(s: "APPROVE_SERVER_HOST is empty in Config/Team.xcconfig"))]),
+      sw_guard(c: aw_nonempty_cast(n: "host", v: aw_info(key: "ApproveServerHost"), t: "String"), e: [aw_config_missing(message: sw_str(s: "ApproveServerHost is empty in Info.plist; regenerate the project from project.yml"))]),
       sw_guard(
         c: [sw_bind(n: "env", e: sw_asq(e: aw_info(key: "ApproveApnsEnvironment"), t: aw_s())), sw_cond(e: sw_op(l: sw_eq(l: sw_id(n: "env"), r: sw_str(s: "development")), o: SwiftLogicalOrOperator, r: sw_eq(l: sw_id(n: "env"), r: sw_str(s: "production"))))],
         e: [aw_config_missing(message: sw_str(s: "APNS_ENVIRONMENT must be development or production in Config/Team.xcconfig"))]
@@ -667,7 +667,7 @@ fn aw_server_config() -> SwiftDecl {
           sw_cond(e: sw_not(e: sw_call(f: sw_path(b: "host", m: "contains"), a: [sw_pos(v: sw_str(s: "?"))]))),
           sw_cond(e: sw_not(e: sw_call(f: sw_path(b: "host", m: "contains"), a: [sw_pos(v: sw_str(s: "#"))]))),
         ],
-        e: [aw_config_missing(message: sw_interp(p: [sw_st(s: "APPROVE_SERVER_HOST is not a bare host: "), sw_si(e: sw_id(n: "host"))]))]
+        e: [aw_config_missing(message: sw_interp(p: [sw_st(s: "ApproveServerHost is not a bare host: "), sw_si(e: sw_id(n: "host"))]))]
       ),
       sw_ret(e: sw_calln(f: "ServerConfig", a: [sw_arg(l: "host", v: sw_id(n: "host")), sw_arg(l: "apnsEnvironment", v: sw_id(n: "env")), sw_arg(l: "apnsTopic", v: sw_id(n: "topic"))])),
     ]),
