@@ -3,7 +3,6 @@ module test.claim.bmc_virtual_media
 import std.logic { Bool }
 import std.types { list_length, Int }
 import std.algebra { list_append }
-import gunbc.rust_item_scan { ends_with }
 import extdeps.linux.usb_gadget {
   ConfigfsOp,
   ConfigfsMkdir,
