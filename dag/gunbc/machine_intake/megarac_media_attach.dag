@@ -1958,12 +1958,12 @@ fn megarac_observe_with_token(
   }
 }
 
-// FOUR ANSWERS, BECAUSE THEY ARE FOUR DIFFERENT FACTS (side-chat review 5331738657). Affirmed:
+// DIFFERENT ANSWERS, BECAUSE THEY ARE DIFFERENT FACTS (side-chat review 5331738657). Affirmed:
 // the look was taken and the medium is not being served (a withdrawn or non-Started row, a share
-// mismatch). Unobserved: the look itself failed (session, transport, an unread member), which says
-// nothing about the medium. Unestablished: the look was taken and the medium looked healthy, but the
-// general settings carry a nonzero cd_error_code whose meaning is unresolved, so this attempt cannot
-// establish the media state (operator decision, option A: a knowledge refusal, not a BMC verdict).
+// mismatch). Unobserved: the look itself failed (session, transport, an unread member, including an
+// unread cd_error_code), which says nothing about the medium. A Started row with a READ cd_error_code
+// is served whatever the code (the vendor UI reads it only when stopped; see readiness_wait_outcome),
+// so there is no separate unestablished answer.
 // And the look's own session must be released: a ready medium observed through a session the
 // controller still holds is a cleanup obligation unmet, exactly as at the initial gate. Only
 // PresentationStillReady admits a handoff; each other answer withholds and says which it was.
@@ -1971,7 +1971,6 @@ type PresentationStillServed
   = PresentationStillReady
   | PresentationReadyButSessionHeld { held: SessionRelease }
   | PresentationNoLongerReady { reason: NonEmptyStr }
-  | PresentationStateUnestablished { cd_error: CdErrorReading }
   | PresentationUnobserved { reason: NonEmptyStr }
 
 fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillServed {

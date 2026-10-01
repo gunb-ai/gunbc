@@ -91,7 +91,6 @@ import gunbc.machine_intake_megarac_media_attach {
   ReadinessMalformed,
   PresentationUnobserved,
   PresentationReadyButSessionHeld,
-  PresentationStateUnestablished,
   CdErrorUncatalogued,
   share_binding_standing,
   ShareBound,

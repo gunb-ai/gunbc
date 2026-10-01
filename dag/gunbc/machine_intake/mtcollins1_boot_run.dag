@@ -2224,7 +2224,6 @@ fn mtcollins1_boot_handoff_when_media_ready(
         }
         PresentationReadyButSessionHeld { held: _ } => handoff_withheld_at_recheck(before: before, live_at: last_live_at)
         PresentationNoLongerReady { reason: _ } => handoff_withheld_at_recheck(before: before, live_at: last_live_at)
-        PresentationStateUnestablished { cd_error: _ } => handoff_withheld_at_recheck(before: before, live_at: last_live_at)
         PresentationUnobserved { reason: _ } => handoff_withheld_at_recheck(before: before, live_at: last_live_at)
       }
     }
