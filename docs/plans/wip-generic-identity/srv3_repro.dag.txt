@@ -1,0 +1,18 @@
+module scratch.joinarg
+
+import std.types { Bool, String, List }
+import v2.std.algebra { fold_list }
+
+fn one(n: String) -> List<String> {
+  [n, "readback"]
+}
+
+fn literal_list_of_calls() -> Bool {
+  fold_list(
+    xs: [one(n: "a"), one(n: "b")],
+    empty: true,
+    cons: fn(acc, labels) {
+      acc && (join(labels, ",") == "")
+    },
+  )
+}

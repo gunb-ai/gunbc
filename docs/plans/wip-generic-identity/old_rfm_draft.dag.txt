@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.generic_binding_from_a_list_literal_silently_dropped
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data generic_binding_from_a_list_literal_silently_dropped: RecurringFailureMode = RecurringFailureMode {
+  identity: "generic_binding_from_a_list_literal_silently_dropped" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: at a direct call to a generic function, the binding a list literal argument supplies for a type parameter is discarded, so the parameter stays unbound. `take_s(s: head_of(xs: [1], d: 2))` with `head_of<T>(xs: List<T>, d: T) -> T` and `take_s(s: String)` compiled clean; the same call with `xs: ints()` (a call returning List<Int>) refused Int at String. Every element shape was affected: literals, variables and call results inside the brackets.",
+
+    "HARM: silent wrongness below the DESIGN section 4b floor -- a wrong-typed call is admitted. Downstream of an unbound T, anything reading T has no method surface, so valid code also refuses with a misleading cause: SPECIMEN test.claim.srv3_websocat_sequence_witness the_readback_never_runs_after_a_failed_step, `fold_list(xs: [..], .., cons: fn(acc, labels) { .. join(labels, \",\") .. })`, refused `function 'join' not found in scope` and did not resolve from 2026-09-04 with no lane reporting it (a rostered module that fails to resolve leaves the judged set).",
+
+    "BISECT (executed, 2026-10-01, the real witness file at each sha): resolves and returns true from #8747 (where the line was authored) through 75e1cf68b3; `join not found` from #10146 (ccc874c840, 'Carry declaration-bound direct-call formal authority') onward. #12791 and #12566, the suspects first named, fail identically at their merges and their parents.",
+
+    "CHAIN (DESIGN section 6b), traced by printing `unify_generics`'s operands in a locally instrumented seed: unify sees the formal's T (TypeVariable-marked, from `declaration_substitution_basis`) against a list-literal element type that is a node SPELLED T and resolved to Int, and binds T to it. `substitute_generics_apply` then discarded the binding as a self-binding, because its guard compared the bound node's LABEL with the variable's id. Label equality was standing in for identity (the class this row shares with the facts-key and roster-membership defects of the same week): a node spelled T and resolved to Int is not the type variable T. That guard is the earliest unjustified link for the regression: keying it on identity alone -- `node_is_type_variable_named`, true only for a node inferred as the TypeVariable with that id -- restores the srv3 witness (returns true) and the srv3 shape compiles clean, measured on a seed regenerated with only that change.",
+
+    "WHAT THE REPAIR DOES NOT CLOSE, MEASURED RATHER THAN ASSUMED: with T now bound, it is bound to the node spelled T, and a declared-type judgment that reads the spelling still does not see Int there -- `take_s(s: head_of(xs: [1], d: 2))` stays Accepted, while `xs: ints()` refuses Int at String. THAT ADMISSION PREDATES #10146: the same probe is silent on a seed built at 75e1cf68b3, #10146's parent. So the regression (valid code refused) is repaired here; the older silent admission (a wrong-typed call accepted when its only generic binding comes from a list literal) stands, at rung outside the ladder. Three further changes were tried against it and each regenerated and converged with the probe still silent -- building the argument's expectation from the substitution basis, withholding an unresolved element expectation from a list literal's members, and asking that of the raw element child -- so none is in this change. Its next step is to find where the literal's element is minted as a node spelled T: the instrumented backtrace places the unify inside `infer_call_arguments_generic_pass` reading the literal's own inferred type.",
+
+    "RUNG FOUND AT: outside the ladder (silent) for both facets. RUNG NOW: the regression is held at 2, mechanically preventable -- `test.claim.generic_call_expectation_witness_test` keeps the srv3 shape as a red that must compile clean, with a control that a bound element type is still judged (Int elements refuse `join`). The older admission is unchanged: outside the ladder.",
+
+    "ATTAINABLE CEILING: 3 for both. NEXT-RUNG TRIGGER, named as the capability: a list literal's element type at a generic call is the type its members have, never a node spelled after the formal -- after which `head_of(xs: [1], d: 2)` at a String parameter refuses, and that probe joins the witness as its red. Structurally, one carrier for a call formal: `ResolvedFormal` carries the authored declared type and the substitution basis side by side, and #10146 read one for the expectation and the other for unification."
+  ],
+
+  evidence: [],
+}

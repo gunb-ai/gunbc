@@ -1,0 +1,72 @@
+diff --git a/src/v1/04_infer.dag b/src/v1/04_infer.dag
+index c3140abb39..cabf9d314f 100644
+--- a/src/v1/04_infer.dag
++++ b/src/v1/04_infer.dag
+@@ -13002,12 +13002,36 @@ fn param_is_generic_decl(p: Node, source_indices: Map<String, NewlineIndex>) ->
+     && (pname == tname || (type_expr_is_var && pname == pt.name))
+ }
+ 
+-fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
+-  let bind_name = type_node_label(n: formal, source_indices: source_indices)
+-  let f_bare = formal.children |> count == 0 && formal.connective == NoConnective
+-  if (f_bare || match formal.inferred { Present { value: TypeVariable { id: _ } } => true  _ => false })
+-    && (generic_names |> any(g => g == bind_name)) {
++// GENERIC IDENTITY IS THE TYPE-VARIABLE MARK, NEVER THE SPELLING. Resolution already binds each
++// declared type parameter to a node inferred TypeVariable (v1.compiler.infer_env
++// env_with_type_variable_bindings), so a reference to T in a generic signature is that variable either
++// directly or one Resolved hop away. A node that merely SPELLS a parameter's name is not it: the
++// kernel container type names its element child after its own template parameter, so every List<M>
++// carries a child spelled T and resolved to M. Three sites used to decide identity by spelling --
++// unify_generics bound a bare formal leaf by its label, substitute_generics_apply replaced any bare
++// node by its label, and its self-binding guard compared labels -- and each confused List's T with a
++// call's T: a binding from a list literal was discarded (valid code refused, srv3's `join`), or kept
++// and rewritten into the wrong place. All three now read this one predicate
++// (gunbc.recurring_failure_mode generic_binding_from_a_list_literal_silently_dropped).
++fn type_variable_identity(n: Node) -> String? {
++  match n.inferred {
++    Present { value: TypeVariable { id: id } } => Present { value: id }
++    Present { value: Resolved { node: r } } =>
++      match r.inferred {
++        Present { value: TypeVariable { id: id } } => Present { value: id }
++        _ => none
++      }
++    _ => none
++  }
++}
+ 
++fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
++  let formal_variable = match type_variable_identity(n: formal) {
++    Present { value: id } => if generic_names |> any(g => g == id) { Present { value: id } } else { none }
++    Absent => none
++  }
++  if formal_variable != none {
++    let bind_name = formal_variable.value
+     match map_get(acc, bind_name) {
+       Absent => map_insert(acc, bind_name, actual)
+       Present { value: _ } => acc
+@@ -13105,20 +13129,16 @@ fn substitute_generics(n: Node, subst: Map<String, Node>, source_indices: Map<St
+ }
+ 
+ fn substitute_generics_apply(n: Node, subst: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> Node {
+-  match n.inferred {
+-    Present { value: TypeVariable { id: tv_id } } =>
++  match type_variable_identity(n: n) {
++    Present { value: tv_id } =>
+       match map_get(subst, tv_id) {
+-        Present { value: c } => if type_node_label(n: c, source_indices: source_indices) == tv_id { n } else { preserve_outer_optional_cardinality(outer: n, inner: c) }
++        Present { value: c } => if type_variable_identity(n: c) == Present { value: tv_id } { n } else { preserve_outer_optional_cardinality(outer: n, inner: c) }
+         Absent => n
+       }
+-    _ =>
+-  let nm = type_node_label(n: n, source_indices: source_indices)
++    Absent =>
+   let is_bare = n.children |> count == 0 && n.connective == NoConnective && n.params |> count == 0
+   if is_bare {
+-    match map_get(subst, nm) {
+-      Present { value: c } => preserve_outer_optional_cardinality(outer: n, inner: c)
+-      Absent => n
+-    }
++    n
+   } else {
+ 
+     let new_children = n.children |> map(c => substitute_generics_apply(n: c, subst: subst, source_indices: source_indices))

@@ -1,0 +1,79 @@
+diff --git a/src/v1/04_infer.dag b/src/v1/04_infer.dag
+index c3140abb39..8fe9065223 100644
+--- a/src/v1/04_infer.dag
++++ b/src/v1/04_infer.dag
+@@ -7162,6 +7162,45 @@ fn expression_is_uppercase_constructor_reference(n: Node, source_indices: Map<St
+   }
+ }
+ 
++// AN ELEMENT EXPECTATION IS A FACT ONLY WHEN IT IS FULLY RESOLVED. A list literal hands its expected
++// element type to every member, and a member that adopts its expectation (a literal, a call whose
++// result is read through it) takes that type as its own; the literal's type is then its first
++// member's. Under `xs: List<T>` with T not yet bound, the element expectation is the generic leaf
++// itself, so the literal typed as List<T> and unify_generics bound nothing from it -- the lambda that
++// later read T saw no type (gunbc.recurring_failure_mode
++// generic_binding_from_a_list_literal_silently_dropped). An unresolved element expectation is
++// therefore not passed down: the members infer their own types and the call's unification binds T
++// from them. The question is asked of the RAW element child as well as of its resolved type:
++// child_type_node reads a TypeVariable-marked leaf through resolved_type, which answers error_type,
++// and an error node reads as resolved -- so asking only the derived node erased the very mark the
++// substitution basis exists to carry. The lambda arm keeps the same discipline for its parameters
++// and declared return.
++fn list_literal_element_expectation(expected: Node?, scope: InferScope) -> Node? {
++  match expected {
++    Present { value: exp } =>
++      if node_is_element_collection(n: exp, source_indices: scope.type_env.source_indices) {
++        match exp.children |> first {
++          Present { value: elem } =>
++            let elem_type = child_type_node(ch: elem)
++            if is_fully_resolved(n: elem, source_indices: scope.type_env.source_indices)
++              && is_fully_resolved(n: elem_type, source_indices: scope.type_env.source_indices) {
++              Present { value: elem_type }
++            } else { none }
++          Absent => none
++        }
++      } else { none }
++    Absent => none
++  }
++}
++
++// THE EXPECTATION IS BUILT FROM THE SUBSTITUTION BASIS, NOT THE AUTHORED PARAMETER TYPE. The basis
++// (v1.compiler.infer_env declaration_substitution_basis) is the same declared type with each
++// generic leaf marked TypeVariable; the authored type expression carries no such mark, so a
++// generic leaf not yet bound reads as a concrete Primitive(T). Handed that as its expectation, a
++// list literal at `xs: List<T>` adopted Primitive(T) as its element type, unify_generics bound
++// T := Primitive(T), and a later lambda parameter typed T had no method surface -- `join(labels,
++// ",")` inside fold_list's cons refused as not found in scope (gunbc.recurring_failure_mode
++// generic_binding_from_a_list_literal_silently_dropped; introduced by #10146).
+ fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<Node>, formals: List<ResolvedFormal>, generic_names: List<String>, init_subst: Map<String, Node>, scope: InferScope) -> ArgGenericFoldState {
+   fold(call_args |> enumerate, init: ArgGenericFoldState { results: [], subst: init_subst }, f: (st, pair) =>
+     let a = pair.second
+@@ -7173,12 +7212,8 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<N
+       }
+       CallArgumentFormalUnavailable => type_variable_node(id: "callable_param")
+     }
+-    let formal_declared_context = match formal_selection {
+-      CallArgumentFormalSelected { formal_index: _, formal: p } => param_node_type_expr(n: p)
+-      CallArgumentFormalUnavailable => type_variable_node(id: "callable_param")
+-    }
+     let has_formal = match formal_selection { CallArgumentFormalSelected { formal_index: _, formal: _ } => true  CallArgumentFormalUnavailable => false }
+-    let formal_param_type = substitute_generics(n: formal_declared_context, subst: st.subst, source_indices: scope.type_env.source_indices)
++    let formal_param_type = substitute_generics(n: formal_raw, subst: st.subst, source_indices: scope.type_env.source_indices)
+     let formal_conformance_type = match formal_selection {
+       CallArgumentFormalSelected { formal_index: formal_index, formal: _ } => match formals |> skip(formal_index) |> first {
+         Present { value: carried } => substitute_generics(n: carried.declaration_bound_conformance, subst: st.subst, source_indices: scope.type_env.source_indices)
+@@ -8826,13 +8861,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
+     ExprListLit =>
+       let span = texpr.span
+       let elements = texpr.children
+-      let elem_expected = match expected {
+-        Present { value: exp } =>
+-          if node_is_element_collection(n: exp, source_indices: scope.type_env.source_indices) {
+-            match exp.children |> first { Present { value: elem } => Present { value: child_type_node(ch: elem) }  Absent => none }
+-          } else { none }
+-        Absent => none
+-      }
++      let elem_expected = list_literal_element_expectation(expected: expected, scope: scope)
+       let elem_results = elements |> map(e => infer_list_literal_element(element: e, expected: elem_expected, scope: scope))
+       let typed_elements = elem_results |> map(r => r.typed)
+       let elem_inhabitance_diags = match elem_expected {
