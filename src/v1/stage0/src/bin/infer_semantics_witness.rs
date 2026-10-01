@@ -1307,6 +1307,7 @@ fn resolve_node_uses_node_name_for_lookup() {
         name: "User".to_string(),
         resolved: leaf_node("User".to_string()),
         provenance: Rc::new(SubValueRelation::SubValueUnknown),
+        alias_rhs: None,
     });
     let env = Rc::new(TypeEnv {
         module_path: "".to_string(),
@@ -2047,6 +2048,7 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
         name: "Box".to_string(),
         resolved: box_decl.clone(),
         provenance: Rc::new(SubValueRelation::SubValueUnknown),
+        alias_rhs: None,
     });
     let env = Rc::new(TypeEnv {
         module_path: "".to_string(),
@@ -2143,6 +2145,7 @@ fn call_target_agreeing_scope_maps_are_locally_bound() {
             name: "real_callee".to_string(),
             resolved: leaf_node("Int".to_string()),
             provenance: Rc::new(v1_compiler::std_induction::SubValueRelation::PreservedValue),
+            alias_rhs: None,
         }),
     );
     let scope = Rc::new(InferScope {
