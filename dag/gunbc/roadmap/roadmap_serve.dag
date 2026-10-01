@@ -180,6 +180,7 @@ import gunbc.roadmap_site_surface_render {
 import gunbc.roadmap_served_observation {
   DailyPage, AttemptsJson, WorkflowJson, SessionsJson,
   served_observation_surface_response_for_instance,
+  served_attempt_revision_observations, served_current_revision_hex,
   served_observation_standing_response_for_instance,
 }
 import gunbc.roadmap.roadmap_event_carrier {
@@ -200,10 +201,13 @@ import gunbc.roadmap.roadmap_event_log {
 import extdeps.google.issue_tracker {
   issue_assignee_input_is_email, issue_assign_fabric_display,
 }
+import gunbc.roadmap_presentation { stale_attempt_nodes }
 import gunbc.roadmap_belt_actuate {
   BeltSpawnOutcome, Spawned, SupervisorConvened, SpawnFailed, SpawnNotAdmitted,
   belt_spawn_outcome_json, belt_launch_host_standing_for_page_over,
   belt_dispatch_node, belt_dispatch_node_for_instance_over,
+  belt_workflow_attempts_observe_scoped, WorkflowAttemptsOneNode,
+  WorkflowAttemptsObserved, WorkflowAttemptsRefused,
   belt_dispatch_result_for_label,
   belt_dispatch_all_status_labels,
   BeltStopResult, belt_stop_node, belt_stop_node_for_instance,
@@ -708,6 +712,9 @@ fn roadmap_serve_approval_cutover_route_specs() -> List<ServedRouteSpec<RoadmapS
 // or client fill), every other standing renders the empty field the write law refuses honestly,
 // and the response is NO-STORE because the page now carries a session secret (session-dependent
 // HTML is never reused for a different viewer — the allocation page's law, extended here).
+// THE WORK TAB READS THE SAME OBSERVATION THE DAILY PAGE DOES, scoped to this node: the
+// dispatch-ref census and current-attempt selection, then this node's progress. A census that
+// refuses stays a refusal on the page -- never an empty attempt list.
 fn serve_issue_detail_response_over(
   instance: HostDashboardInstance,
   plan: RoadmapAuthorityProjection,
@@ -732,10 +739,24 @@ fn serve_issue_detail_response_over(
           _ => IssueFormContext { operation: "", csrf: "" }
         }
         let recents = match roadmap_events_read_all(layout: layout) { AllEventsRead { envelopes: all_events } => roadmap_recent_claimed_assignees(envs: all_events) _ => [] }
-        let page = issue_detail_page_for(proj: plan, node_id: node_id, attempts: [],
-          attempts_refused: Present { value: "The per-issue attempt observation is not connected; no claim of zero attempts is made." },
+        let launch = belt_launch_host_standing_for_page_over(instance: instance, plan: plan)
+        let observed = belt_workflow_attempts_observe_scoped(instance: instance, scope: WorkflowAttemptsOneNode { node_id: node_id })
+        let attempts = match observed {
+          WorkflowAttemptsObserved { attempts: a } => a
+          WorkflowAttemptsRefused { reason: _ } => []
+        }
+        let attempts_refused = match observed {
+          WorkflowAttemptsObserved { attempts: _ } => none
+          WorkflowAttemptsRefused { reason: r } => Present { value: r }
+        }
+        let page = issue_detail_page_for(proj: plan, node_id: node_id, attempts: attempts,
+          attempts_refused: attempts_refused,
           standings: StandingsObserved { rows: [NodeStandingRow { node_id: node_id, standing: standing, assignment: state.assignment }] },
-          launch: belt_launch_host_standing_for_page_over(instance: instance, plan: plan), stale_nodes: [], events: envelopes,
+          launch: launch,
+          stale_nodes: stale_attempt_nodes(
+            observations: served_attempt_revision_observations(instance: instance, attempts: attempts),
+            current_revision_hex: served_current_revision_hex(launch: launch)),
+          events: envelopes,
           viewer: authenticated_viewer_label(evidence: request.security.authentication), recents: recents, command_context: context,
           profiles: serve_profiles_for_instance(instance: instance))
         let response = serve_page_response_with_status(page: page, status: 200)
@@ -1106,16 +1127,26 @@ fn serve_issue_comment_response_over(
 // THE COMMENT RESPONSE, factored pure over the recorded comments so the witness drives it without
 // a carrier: the deep link /issue/<id>#comment-N is the answer a retry and a first write share —
 // the client re-anchors instead of re-posting.
+// POST/REDIRECT/GET: the composer is a native form, so a 200 body strands the browser on a text
+// page. A recorded comment -- first write or an idempotent retry -- answers 303 to its own numbered
+// anchor, which is the one canonical location for it; the retry reaches the same address. A
+// readback that does not carry the committed comment names no anchor at all: it refuses, loudly,
+// rather than linking #comment-0.
 fn serve_comment_recorded_response(node_id: String, comments: List<IssueComment>, comment: String, event_id: String, already_present: Bool) -> ServeHttpResponse {
-  let ordinal = match (filter(comments, c => (c.comment as String) == comment)).first() {
-    Present { value: c } => c.ordinal
-    Absent => 0
-  }
-  let link = join(["/issue/", node_id, "#comment-", to_string(value: ordinal)], "")
-  if already_present {
-    serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["comment recorded (already present): ", link, "\n"], ""))
-  } else {
-    serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["comment recorded: ", link, " (event ", event_id, ")\n"], ""))
+  match (filter(comments, c => (c.comment as String) == comment)).first() {
+    Absent =>
+      serve_text_response(status: 502, content_type: text_plain_utf8, body: join(["comment ", comment, " was committed (event ", event_id, ") but the issue's readback does not carry it; reload /issue/", node_id, "\n"], ""))
+    Present { value: c } => {
+      let link = join(["/issue/", node_id, "#comment-", to_string(value: c.ordinal)], "")
+      let body = if already_present {
+        join(["comment recorded (already present): ", link, "\n"], "")
+      } else {
+        join(["comment recorded: ", link, " (event ", event_id, ")\n"], "")
+      }
+      serve_text_response_with_headers(status: 303, content_type: text_plain_utf8, body: body, headers: [
+        ServeResponseHeaderLocation { location: link as NonEmptyStr },
+      ])
+    }
   }
 }
 

@@ -1,5 +1,6 @@
 module gunbc.roadmap_page
 
+import gunbc.site.robot_mark { robot_mark_svg }
 import gunbc.roadmap_nesting { RoadmapMembership, declared_roadmap_memberships }
 import gunbc.roadmap.roadmap_project { project_root_for_node }
 
@@ -7,7 +8,7 @@ import gunbc.roadmap_issue_command { IssueFormContext }
 
 import gunbc.roadmap_allocation_location { allocation_page_path }
 
-import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, RoadmapStandings, StandingsObserved, StandingsUnobserved, standing_for_node, assignment_for_node, roadmap_issue_history_newest_first, roadmap_node_standing_key, roadmap_node_standing_text, NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeForked, NodeHistoryIncomplete, RoadmapEventEnvelope, roadmap_event_kind_word }
+import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, RoadmapStandings, StandingsObserved, StandingsUnobserved, standing_for_node, assignment_for_node, roadmap_issue_history_newest_first, roadmap_node_standing_key, roadmap_node_standing_text_naming, NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeForked, NodeHistoryIncomplete, RoadmapEventEnvelope, roadmap_event_kind_word }
 import gunbc.roadmap.roadmap_event_log {
   EventPrincipal, EventPrincipalAuthenticated, LegacyEmailPrincipal, event_principal_label,
   IssueComment, IssueAssignmentProjection, roadmap_issue_comments, roadmap_issue_assignment, issue_comment_anchor,
@@ -843,13 +844,29 @@ fn issue_avatar_chip_node(display: EventPrincipalDisplay, workflow: Bool) -> Fra
       if workflow { " issue-avatar-workflow" } else { "" },
     ], "") ),
     attr(name: "data-avatar", value: issue_avatar_standing_wire(a: display.avatar) ),
-  ], concat(
-    [ txt(display.initials) ],
-    if workflow {
-      [ el_class("span", "issue-avatar-badge", [ txt("workflow") ]) ]
-    } else {
-      []
-    }))
+    attr(name: "title", value: issue_avatar_title(display: display, workflow: workflow) ),
+  ], issue_avatar_face(display: display, workflow: workflow))
+}
+
+// THE CIRCLE'S FACE: a person shows their initial; the Fabric workflow shows the gunb robot mark
+// (gunbc.site.robot_mark, copied from the frontend's #stoic-robot symbol), in the chip's own color.
+fn issue_avatar_face(display: EventPrincipalDisplay, workflow: Bool) -> List<Fragment> {
+  if workflow {
+    [ robot_mark_svg(class_name: "issue-avatar-mark", label: display.name) ]
+  } else {
+    [ txt(display.initials) ]
+  }
+}
+
+// THE CIRCLE HOLDS ONLY THE INITIAL. It is a fixed 24px chip with overflow hidden, so prose placed
+// inside it is clipped ("workfl…"); the workflow kind is carried by the chip's class (its own
+// fill) and named in full in the hover title, never as text inside the circle.
+fn issue_avatar_title(display: EventPrincipalDisplay, workflow: Bool) -> String {
+  if workflow {
+    join([display.name, " — workflow · ", display.detail], "")
+  } else {
+    join([display.name, " — ", display.detail], "")
+  }
 }
 
 // THE RESULTS TABLE'S ASSIGNEE CHIP (owner ruling 2026-09-25, "make assignee always be the pfp (or
@@ -863,20 +880,7 @@ fn issue_avatar_chip_node(display: EventPrincipalDisplay, workflow: Bool) -> Fra
 // the badge alone (its identity is the workflow endpoint, not a person).
 fn issue_assignee_chip_node(holder: EventPrincipal, profiles: List<PrincipalProfile>) -> List<Fragment> {
   let display = event_principal_display_with_profile(p: holder, profiles: profiles)
-  let chip = el_attrs("span", [
-    attr(name: "class", value: join([
-      "issue-avatar",
-      if event_principal_is_fabric(p: holder) { " issue-avatar-workflow" } else { "" },
-    ], "") ),
-    attr(name: "data-avatar", value: issue_avatar_standing_wire(a: display.avatar) ),
-    attr(name: "title", value: join([display.name, " — ", display.detail], "") ),
-  ], concat(
-    [ txt(display.initials) ],
-    if event_principal_is_fabric(p: holder) {
-      [ el_class("span", "issue-avatar-badge", [ txt("workflow") ]) ]
-    } else {
-      []
-    }))
+  let chip = issue_avatar_chip_node(display: display, workflow: event_principal_is_fabric(p: holder))
   match issue_assignee_chip_text(holder: holder, profiles: profiles) {
     Absent => [ chip ]
     Present { value: text } => concat([ chip ], [ el_class("span", "issue-assignee-text", [ txt(text) ]) ])
@@ -1319,8 +1323,8 @@ fn standing_chip_nodes(view: WorkRowView) -> List<Fragment> {
     Present { value: s } =>
       [ el_attrs("span", [
           attr(name: "class", value: join([standing_chip_class, " ", standing_chip_class, "-", roadmap_node_standing_key(s: s)], "")),
-          attr(name: "title", value: roadmap_node_standing_text(s: s)),
-        ], [ txt(roadmap_node_standing_text(s: s)) ]) ]
+          attr(name: "title", value: issue_standing_text(s: s, profiles: view.profiles)),
+        ], [ txt(issue_standing_text(s: s, profiles: view.profiles)) ]) ]
   }
 }
 
@@ -2465,11 +2469,11 @@ fn issue_metadata_rail_node(view: WorkRowView, panel: IssueLinkPanel, attempts: 
   el_class("aside", "issue-rail", [
     issue_field_text_row(label: "status", value: issue_rail_status_text(view: view, events: events)),
     issue_rail_assignee_row(view: view, attempts: attempts, assignment: assignment, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context),
-    issue_field_text_row(label: "reporter", value: issue_owner_value(view: view)),
+    issue_field_text_row(label: "reporter", value: issue_reporter_value(events: events)),
     issue_field_text_row(label: "component", value: issue_component_value(view: view)),
     issue_field_row(label: "parent", value: issue_parent_value(panel: panel)),
-    issue_rail_optional_row(label: "blocked by", value: issue_links_text(panel: panel, blocked: true)),
-    issue_rail_optional_row(label: "blocking", value: issue_links_text(panel: panel, blocked: false)),
+    issue_rail_optional_nodes_row(label: "blocked by", value: issue_link_count_nodes(links: panel.blocked_by)),
+    issue_rail_optional_nodes_row(label: "blocking", value: issue_link_count_nodes(links: panel.blocking)),
     issue_rail_optional_row(label: "delivery", value: issue_delivery_value(attempts: attempts)),
     issue_rail_return_to_row(view: view, assignment: assignment),
     issue_rail_optional_row(label: "modified", value: issue_modified_value(events: events)),
@@ -2486,8 +2490,15 @@ fn issue_rail_status_text(view: WorkRowView, events: List<RoadmapEventEnvelope>)
   match roadmap_node_standing(envs: events) {
     NodeOpen => issue_explanation(view: view)
     s =>
-      join([issue_explanation(view: view), " · ", roadmap_node_standing_text(s: s)], "")
+      join([issue_explanation(view: view), " · ", issue_standing_text(s: s, profiles: view.profiles)], "")
   }
+}
+
+// THE STANDING SENTENCE AS A PAGE SHOWS IT: the ledger's one sentence, with each principal named
+// by the same profile-bound display the avatar chips use ("Fabric", "Brian Searls") rather than
+// its canonical label.
+fn issue_standing_text(s: RoadmapNodeStanding, profiles: List<PrincipalProfile>) -> String {
+  roadmap_node_standing_text_naming(s: s, name: fn(p) { event_principal_display_with_profile(p: p, profiles: profiles).name })
 }
 
 // THE ASSIGNEE ROW: the current holder's chip (or the unassigned placeholder) beside the durable
@@ -2523,11 +2534,37 @@ fn issue_rail_optional_row(label: String, value: String) -> Fragment {
   }
 }
 
-// THE LINK ROWS' PLAIN-TEXT SPELLING for the rail (a compact comma-join of the link headlines;
-// the dimensional link lists live on the Dependencies tab).
-fn issue_links_text(panel: IssueLinkPanel, blocked: Bool) -> String {
-  let links = if blocked { panel.blocked_by } else { panel.blocking }
-  join(map(links, l => l.headline), ", ")
+fn issue_rail_optional_nodes_row(label: String, value: List<Fragment>) -> Fragment {
+  if count(value) == 0 {
+    el_class("div", "issue-field", [])
+  } else {
+    issue_field_row(label: label, value: value)
+  }
+}
+
+// THE RAIL CARRIES A RELATION'S SIZE, NOT ITS POPULATION. The rail is a 34ch column: every blocker's
+// headline comma-joined into it wrapped ten titles down the page. The rail names how many, and the
+// count opens the Dependencies tab (the same data-tab-chip the tab strip uses), where each target
+// is its own link. No relation, no row.
+fn issue_link_count_nodes(links: List<IssueLinkView>) -> List<Fragment> {
+  let n = count(links)
+  if n == 0 {
+    []
+  } else {
+    [ el_attrs("button", [
+        attr(name: "class", value: "issue-rail-link" ),
+        attr(name: "type", value: "button" ),
+        attr(name: "data-tab-chip", value: "dependencies" ),
+      ], [ txt(join([to_string(value: n), if n == 1 { " issue" } else { " issues" }], "")) ]) ]
+  }
+}
+
+// THE REPORTER IS WHO OPENED THE ISSUE, and the event vocabulary has no creation event: every
+// issue on this surface is an authored roadmap row, opened by nobody the ledger can name. The row
+// says so rather than promoting the owner lane (a component, e.g. @shell) to a person. When an
+// IssueCreated kind lands, its author is this value.
+fn issue_reporter_value(events: List<RoadmapEventEnvelope>) -> String {
+  "not recorded (authored roadmap row)"
 }
 
 // DELIVERY: the latest attempt's short key names the delivery vehicle until issue→PR links land
@@ -2633,7 +2670,7 @@ fn issue_detail_page_for(
               launch: ctx,
               attempt_stale: any(stale_nodes, s => s == node_id),
               profiles: profiles),
-            panel: gunbc.roadmap_presentation.issue_link_panel(rn: rn, nodes: nodes, edges: edges),
+            panel: gunbc.roadmap_presentation.issue_link_panel(rn: rn, nodes: nodes, edges: edges, member_titles: declared_roadmap_nodes()),
             observation: observation,
             attempts: attempts,
             events: events,

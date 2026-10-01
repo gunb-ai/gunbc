@@ -42,6 +42,20 @@ import gunbc.roadmap.roadmap_alignment {
 }
 import gunbc.roadmap.roadmap_attempt_continuation { FreshFromBase, ContinueFromAttempt }
 import gunbc.git_diff_change_window { git_diff_window_absent_identity }
+import gunbc.roadmap_belt_actuate {
+  belt_integration_capture_gate, IntegrationCaptureAdvances, IntegrationCaptureStops,
+  belt_verify_capture_gate, VerifyCaptureAdvances, VerifyCaptureStops,
+  belt_candidate_subject_reading, CandidateSubjectSettled, CandidateSubjectBound,
+  VerificationPassedConfirmed, VerificationNotPassed, VerificationUnreadable,
+  belt_publish_pass_outcome_from,
+}
+import gunbc.roadmap.roadmap_submission {
+  SubmissionReadiness, SubmissionReady, SubmissionNeedsContext,
+  submission_candidacy, SubmissionIsCandidate, SubmissionNotCandidate,
+}
+import gunbc.roadmap_verification_receipt {
+  SelectionUnaddressable, SelectionUnreadable, SelectionMalformed, CurrentVerificationSelectionObservation,
+}
 import gunbc.roadmap_execution_contract {
   ExecutionContractUnspecified,
   gunbc_claim_execution_contract,
@@ -74,7 +88,8 @@ import gunbc.roadmap_dispatch_actuator {
 import extdeps.tmux { classify_tmux_session_list, TmuxSessionsListed }
 import gunbc.roadmap_belt { DispatchMember, DesiredMember, ObservedMember }
 import std.upsert_decision { ObservationVerdict, Converged }
-import gunbc.roadmap_belt_actuate { belt_tick_receipt_schema, belt_path_parent_dir, belt_worker_process_terminal, belt_attempt_worker_terminal }
+import gunbc.roadmap_dispatch_actuator { DispatchAttemptRef }
+import gunbc.roadmap_belt_actuate { workflow_attempt_scope_admits, WorkflowAttemptsAllNodes, WorkflowAttemptsOneNode, belt_tick_receipt_schema, belt_path_parent_dir, belt_worker_process_terminal, belt_attempt_worker_terminal }
 import gunbc.roadmap_provider_events { ProviderRunning, ProviderEventsRefused }
 import gunbc.roadmap_belt_actuate {
   BeltAlignmentBinding, BeltAlignmentBindingOk, BeltAlignmentBindingRefused,
@@ -3112,4 +3127,149 @@ test fn the_worker_process_terminal_read_settles_only_a_recorded_exit() -> Bool 
     && belt_attempt_worker_terminal(provider: ProviderRunning { activity: "x" }, evidence: WorkerProcessExited { exit_code: 1, last_command: "x" })
     && !belt_attempt_worker_terminal(provider: ProviderEventsRefused { activity: "x", detail: "y" }, evidence: WorkerProcessRunning { command: "x" as NonEmptyStr })
     && !belt_attempt_worker_terminal(provider: ProviderRunning { activity: "x" }, evidence: WorkerProcessAbsent)
+}
+
+// THE ISSUE PAGE'S WORK TAB OBSERVES ONE NODE through the same observation the daily page runs
+// over every node: the one-node scope admits exactly that node's attempt and nothing else, and the
+// all-nodes scope admits every attempt -- so narrowing never changes which attempt a node shows.
+test fn the_one_node_attempt_scope_admits_only_its_node() -> Bool {
+  let mine = DispatchAttemptRef { node_id: "shell-dag-cron-entry-line-builder" as NonEmptyStr, branch: "dispatch/shell-dag-cron-entry-line-builder-a1" as NonEmptyStr, attempt_key: "a1" }
+  let other = DispatchAttemptRef { node_id: "shell-dag-ci-fmt-gate-line" as NonEmptyStr, branch: "dispatch/shell-dag-ci-fmt-gate-line-a2" as NonEmptyStr, attempt_key: "a2" }
+  let prefix = DispatchAttemptRef { node_id: "shell-dag-cron-entry-line-builder-extra" as NonEmptyStr, branch: "dispatch/shell-dag-cron-entry-line-builder-extra-a3" as NonEmptyStr, attempt_key: "a3" }
+  let one = WorkflowAttemptsOneNode { node_id: "shell-dag-cron-entry-line-builder" }
+  workflow_attempt_scope_admits(scope: one, attempt: mine)
+    && !workflow_attempt_scope_admits(scope: one, attempt: other)
+    && !workflow_attempt_scope_admits(scope: one, attempt: prefix)
+    && workflow_attempt_scope_admits(scope: WorkflowAttemptsAllNodes, attempt: mine)
+    && workflow_attempt_scope_admits(scope: WorkflowAttemptsAllNodes, attempt: other)
+}
+
+// ------------------------------------------------------------------------------------------------
+// The publication-pass regression of 2026-09-29: an attempt whose captured submission declared
+// blocked reached the integrate step's verification read, found no selection (the verify pass never
+// selects a window for a non-candidate, by design), read the absence as unreadable, and failed the
+// publish pass on every tick with a sentence that named no attempt. Three facts, one claim each.
+// ------------------------------------------------------------------------------------------------
+
+fn candidacy_capture(readiness: SubmissionReadiness) -> SubmissionCaptureObservation {
+  let submission = WorkerSubmission {
+    readiness: readiness,
+    explanation: "fixture declaration",
+    limitations: "none",
+  }
+  CaptureForHead { capture: SubmissionCapture {
+    head_sha: "b04485cffb000000000000000000000000000000",
+    scm_repository: "/instance/attempt-state/projects/n1.gunbc-repository.json",
+    scm_commit_ordinal: 3,
+    scm_root_locator: SubmissionCaptureRootBound { locator: "0123456789abcdef" },
+    digest: submission_digest(submission: submission),
+    submission: submission,
+  } }
+}
+
+fn integration_gate_advances(capture: SubmissionCaptureObservation) -> Bool {
+  match belt_integration_capture_gate(capture: capture) {
+    IntegrationCaptureAdvances { capture: _ } => true
+    IntegrationCaptureStops { step: _ } => false
+  }
+}
+
+fn verify_gate_advances(capture: SubmissionCaptureObservation) -> Bool {
+  match belt_verify_capture_gate(node_id: "n1", capture: capture) {
+    VerifyCaptureAdvances { capture: _ } => true
+    VerifyCaptureStops { outcome: _ } => false
+  }
+}
+
+fn classifier_admits(readiness: SubmissionReadiness) -> Bool {
+  match submission_candidacy(submission: WorkerSubmission {
+    readiness: readiness,
+    explanation: "fixture declaration",
+    limitations: "none",
+  }) {
+    SubmissionIsCandidate => true
+    SubmissionNotCandidate { reason: _ } => false
+  }
+}
+
+// A BLOCKED CAPTURE INTEGRATES AS DEFERRED, NOT UNREADABLE -- and a ready one still advances, so the
+// claim cannot pass by the gate simply stopping everything.
+test fn a_blocked_capture_defers_the_integrate_step_rather_than_reading_as_unreadable() -> Bool {
+  let blocked_defers = match belt_integration_capture_gate(capture: candidacy_capture(readiness: SubmissionBlocked)) {
+    IntegrationCaptureStops { step: IntegrationCoreDeferred { reason } } =>
+      string_contains(s: reason, pattern: "declares blocked")
+    IntegrationCaptureStops { step: IntegrationCoreUnreadable { detail: _ } } => false
+    IntegrationCaptureStops { step: IntegrationCoreBlocked { detail: _ } } => false
+    IntegrationCaptureStops { step: IntegrationCoreIntegrated { project_key: _ } } => false
+    IntegrationCaptureAdvances { capture: _ } => false
+  }
+  let needs_context_defers = match belt_integration_capture_gate(capture: candidacy_capture(readiness: SubmissionNeedsContext)) {
+    IntegrationCaptureStops { step: IntegrationCoreDeferred { reason } } =>
+      string_contains(s: reason, pattern: "declares needs-context")
+    IntegrationCaptureStops { step: IntegrationCoreUnreadable { detail: _ } } => false
+    IntegrationCaptureStops { step: IntegrationCoreBlocked { detail: _ } } => false
+    IntegrationCaptureStops { step: IntegrationCoreIntegrated { project_key: _ } } => false
+    IntegrationCaptureAdvances { capture: _ } => false
+  }
+  blocked_defers
+    && needs_context_defers
+    && integration_gate_advances(capture: candidacy_capture(readiness: SubmissionReady))
+}
+
+// THE TWO PASSES CANNOT DISAGREE: for every readiness arm the verify pass's gate and the integrate
+// step's gate give the classifier's verdict, and the classifier admits exactly `ready`.
+test fn the_verify_pass_and_the_integrate_step_agree_on_candidacy_for_every_readiness() -> Bool {
+  all([SubmissionReady, SubmissionBlocked, SubmissionNeedsContext], r =>
+    integration_gate_advances(capture: candidacy_capture(readiness: r)) == classifier_admits(readiness: r)
+      && verify_gate_advances(capture: candidacy_capture(readiness: r)) == classifier_admits(readiness: r))
+    && classifier_admits(readiness: SubmissionReady)
+    && !classifier_admits(readiness: SubmissionBlocked)
+    && !classifier_admits(readiness: SubmissionNeedsContext)
+}
+
+fn candidate_reading_key(selection: CurrentVerificationSelectionObservation) -> String {
+  match belt_candidate_subject_reading(
+    node: ready_node(id: "n1"),
+    attempt_key: "feedfacefeedface",
+    branch: "dispatch/n1-afeedfacefeedface",
+    head: fixture_verification_head,
+    selection: selection,
+  ) {
+    CandidateSubjectSettled { verdict: VerificationNotPassed { reason: _ } } => "not-passed"
+    CandidateSubjectSettled { verdict: VerificationUnreadable { reason: _ } } => "unreadable"
+    CandidateSubjectSettled { verdict: VerificationPassedConfirmed } => "passed"
+    CandidateSubjectBound { subject: _ } => "bound"
+  }
+}
+
+// AN ABSENT SELECTION IS AN ABSENCE; A BROKEN ONE IS A FAULT. The discriminator runs both ways: the
+// absence reads not-passed, while every fault arm -- and a selection naming another head -- stays
+// unreadable, so the fix cannot be a blanket softening of the selection read.
+test fn an_absent_selection_is_not_passed_while_a_broken_selection_stays_unreadable() -> Bool {
+  candidate_reading_key(selection: SelectionAbsent) == "not-passed"
+    && candidate_reading_key(selection: SelectionUnreadable { cause: "io" }) == "unreadable"
+    && candidate_reading_key(selection: SelectionMalformed { cause: "bad json" }) == "unreadable"
+    && candidate_reading_key(selection: SelectionUnaddressable { cause: "no key" }) == "unreadable"
+    && candidate_reading_key(selection: SelectionObserved {
+      head: "dddddddddddddddddddddddddddddddddddddddd" as CommitSha,
+      window_identity: git_diff_window_absent_identity(),
+    }) == "unreadable"
+}
+
+// A FAILED PUBLISH PASS NAMES THE FAILING ATTEMPT, ITS ARM AND ITS DETAIL, and names no attempt that
+// did not fail.
+test fn the_publish_pass_failure_names_the_failing_attempt_and_its_detail() -> Bool {
+  match belt_publish_pass_outcome_from(outcomes: [
+    PublishDeferred { node_id: "quiet-node", reason: "nothing to publish yet" },
+    PublishEvidenceUnreadable { node_id: "shell-dag-live-deploy-install-owned", detail: "the selection file is malformed" },
+  ]) {
+    BeltPassFailed { reason } =>
+      string_contains(s: reason, pattern: "shell-dag-live-deploy-install-owned")
+        && string_contains(s: reason, pattern: "evidence-unreadable")
+        && string_contains(s: reason, pattern: "the selection file is malformed")
+        && !string_contains(s: reason, pattern: "quiet-node")
+    BeltPassRecorded => false
+    BeltPassDeferred { reason: _ } => false
+    BeltPassRefused { reason: _ } => false
+  }
 }

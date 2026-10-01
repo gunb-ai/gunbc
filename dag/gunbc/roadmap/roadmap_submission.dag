@@ -82,6 +82,38 @@ type WorkerSubmission {
   limitations: String
 }
 
+// WHETHER A SUBMISSION IS A VERIFICATION CANDIDATE, decided once. `ready` is the only declaration
+// that produces a candidate; `blocked` and `needs-context` end the task without one. Every pass that
+// asks "does this captured head advance to verification?" -- the verify pass, the integrate step,
+// the handoff projection -- consumes this classifier rather than re-matching readiness, so the passes
+// cannot disagree about one capture (the 2026-09-29 fork: verify deferred a blocked capture while
+// the integrate step read it as a candidate and failed the publish pass on every tick).
+type SubmissionCandidacy
+  = SubmissionIsCandidate
+  | SubmissionNotCandidate { reason: String }
+
+fn submission_candidacy(submission: WorkerSubmission) -> SubmissionCandidacy {
+  match submission.readiness {
+    SubmissionReady => SubmissionIsCandidate
+    SubmissionBlocked =>
+      SubmissionNotCandidate {
+        reason: join([
+          "the captured submission declares blocked, not ready: ",
+          submission.explanation,
+          " -- no candidate advances to verification",
+        ], ""),
+      }
+    SubmissionNeedsContext =>
+      SubmissionNotCandidate {
+        reason: join([
+          "the captured submission declares needs-context, not ready: ",
+          submission.explanation,
+          " -- no candidate advances to verification",
+        ], ""),
+      }
+  }
+}
+
 fn submission_readiness_key(r: SubmissionReadiness) -> String {
   match r {
     SubmissionReady => "ready"
@@ -534,20 +566,14 @@ fn candidate_handoff_state_for_terminal(
         reason: join(["the submission capture for this head cannot be established: ", reason], ""),
       }
     CaptureForHead { capture: c } =>
-      match c.submission.readiness {
-        SubmissionBlocked =>
+      match submission_candidacy(submission: c.submission) {
+        SubmissionNotCandidate { reason: _ } =>
           HandoffDeclaredBlocked {
             head_sha: c.head_sha,
             readiness: c.submission.readiness,
             explanation: c.submission.explanation,
           }
-        SubmissionNeedsContext =>
-          HandoffDeclaredBlocked {
-            head_sha: c.head_sha,
-            readiness: c.submission.readiness,
-            explanation: c.submission.explanation,
-          }
-        SubmissionReady =>
+        SubmissionIsCandidate =>
       match verification {
         VerificationStandingRefused { reason } =>
           HandoffEvidenceRefused { reason: reason }

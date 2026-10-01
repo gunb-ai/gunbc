@@ -878,10 +878,25 @@ test fn witness_comment_recorded_response_names_the_deep_link() -> Bool {
   ]
   let first = serve_comment_recorded_response(node_id: "demo-node", comments: comments, comment: "k2", event_id: "evt-9", already_present: false)
   let retry = serve_comment_recorded_response(node_id: "demo-node", comments: comments, comment: "k2", event_id: "", already_present: true)
-  first.status == 200
+  let missing = serve_comment_recorded_response(node_id: "demo-node", comments: comments, comment: "k9", event_id: "evt-10", already_present: false)
+  first.status == 303
+    && response_location_of(response: first) == "/issue/demo-node#comment-2"
     && string_contains(s: first.body, pattern: "comment recorded: /issue/demo-node#comment-2 (event evt-9)")
-    && retry.status == 200
-    && string_contains(s: retry.body, pattern: "comment recorded (already present): /issue/demo-node#comment-2")
+    && retry.status == 303
+    && response_location_of(response: retry) == "/issue/demo-node#comment-2"
+    && missing.status == 502
+    && response_location_of(response: missing) == ""
+    && !string_contains(s: missing.body, pattern: "#comment-")
+}
+
+fn response_location_of(response: ServeHttpResponse) -> String {
+  fold(response.headers, init: "", f: fn(acc, h) {
+    match h {
+      ServeResponseHeaderLocation { location: l } => l as String
+      ServeResponseHeaderSetCookie { set_cookie: _ } => acc
+      ServeResponseHeaderNoStore => acc
+    }
+  })
 }
 
 // ── The auth routes (lane A3 frontier 3) ───────────────────────────────────────────────────────

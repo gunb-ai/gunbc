@@ -1907,3 +1907,23 @@ test fn witness_project_suite_topological_layering_orders_prereq_first() -> Bool
 fn fixture_nesting_relation(edges: List<gunbc.roadmap_model.RoadmapEdge>) -> List<gunbc.roadmap_nesting.RoadmapMembership> {
   map(edges, e => gunbc.roadmap_nesting.RoadmapMembership { member: e.parent as String, project: e.child as String, contribution: "fixture contribution" })
 }
+
+// A MEMBERSHIP WHOSE PROJECT IS NOT AMONG THE PLAN ROWS STILL NAMES ITS PARENT. The live issue page
+// rendered "top-level" for shell-typed-invocation, a member of gunbc-project-root, because the root
+// program is not one of the plan rows and the lookup read Absent as "no parent" while the
+// breadcrumb (over every declared node) showed the root. The declared membership decides the
+// relation: the parent is titled from member_titles when the plan omits it, spelled by its id when
+// no title exists anywhere, and absent only for a node that is a member of nothing.
+test fn witness_issue_link_panel_parent_follows_membership_not_the_plan_rows() -> Bool {
+  let member = fx_sized(id: "pm-member", content: "the member")
+  let root = fx_sized(id: "pm-root", content: "the root program")
+  let nesting = [gunbc.roadmap_nesting.RoadmapMembership { member: "pm-member", project: "pm-root", contribution: "fixture contribution" }]
+  let titled = issue_link_panel(rn: member, nodes: [member], edges: [], memberships: nesting, member_titles: [member, root])
+  let untitled = issue_link_panel(rn: member, nodes: [member], edges: [], memberships: nesting)
+  let standalone = issue_link_panel(rn: root, nodes: [member], edges: [], memberships: nesting, member_titles: [member, root])
+  (match titled.parent { Present { value: p } => p.node_id == "pm-root" && p.headline == "the root program"  Absent => false })
+    && (match untitled.parent { Present { value: p } => p.node_id == "pm-root" && p.headline == "pm-root"  Absent => false })
+    && (match standalone.parent { Present { value: _ } => false  Absent => true })
+    && map(standalone.children, c => c.node_id) == ["pm-member"]
+}
+

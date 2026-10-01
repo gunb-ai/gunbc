@@ -31,9 +31,7 @@ import extdeps.languages.json.parse {
   JsonDocumentUnreadable, FieldAbsent, FieldRead, FieldMalformed,
 }
 import extdeps.auth.oidc { OidcLoginTransaction, OidcPkceCodeVerifier, RelativeReturnPath }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
-
-data login_transaction_store_dir_segment: String = "auth-login-transactions"
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_auth_store_root, DashboardAuthLoginTransactions }
 
 data login_transaction_file_suffix: String = ".json"
 
@@ -45,7 +43,7 @@ type LoginTransactionStoreLayout {
 
 fn login_transaction_store_layout_for_instance(instance: HostDashboardInstance) -> LoginTransactionStoreLayout {
   LoginTransactionStoreLayout {
-    root: join([instance.instance_root as String, "/", login_transaction_store_dir_segment], "") as FilePath,
+    root: dashboard_instance_auth_store_root(instance: instance, store: DashboardAuthLoginTransactions),
   }
 }
 

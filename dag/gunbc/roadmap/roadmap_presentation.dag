@@ -1997,13 +1997,29 @@ fn child_nodes_of(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, parent: Ro
     any(roadmap_parent_ids(edges: edges, node: n.node), p => p == parent))
 }
 
-fn issue_link_panel(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, memberships: List<RoadmapMembership> = declared_roadmap_memberships()) -> IssueLinkPanel {
+// MEMBERSHIP IS THE FACT; A TITLE IS ONLY ITS SPELLING. The plan rows the page renders omit
+// authored program rows such as the project root, so a parent looked up only among them read
+// Absent and rendered "top-level" for an issue the breadcrumb (over every declared node) shows
+// under the root -- a membership erased by a missing title. The declared membership decides the
+// relation; the title is looked up among the plan rows, then among `member_titles` (the page passes
+// every declared node), and a target with no title anywhere shows its id -- never absence.
+fn issue_member_link_view(id: String, nodes: List<RoadmapNode>, member_titles: List<RoadmapNode>) -> IssueLinkView {
+  match find_node(nodes: nodes, node_id: id) {
+    Present { value: p } => issue_link_view_of(rn: p)
+    Absent => match find_node(nodes: member_titles, node_id: id) {
+      Present { value: p } => issue_link_view_of(rn: p)
+      Absent => IssueLinkView { node_id: id, headline: id }
+    }
+  }
+}
+
+fn issue_link_panel(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, memberships: List<RoadmapMembership> = declared_roadmap_memberships(), member_titles: List<RoadmapNode> = []) -> IssueLinkPanel {
   IssueLinkPanel {
     parent: match node_project_membership(node_id: rn.node as String, memberships: memberships) {
-      MembershipMember { arc } => match find_node(nodes: nodes, node_id: arc) { Present { value: p } => Present { value: issue_link_view_of(rn: p) } Absent => none }
+      MembershipMember { arc } => Present { value: issue_member_link_view(id: arc, nodes: nodes, member_titles: member_titles) }
       _ => none
     },
-    children: flat_map(project_member_ids(arc: rn.node as String, memberships: memberships), id => match find_node(nodes: nodes, node_id: id) { Present { value: child } => [issue_link_view_of(rn: child)] Absent => [] }),
+    children: map(project_member_ids(arc: rn.node as String, memberships: memberships), id => issue_member_link_view(id: id, nodes: nodes, member_titles: member_titles)),
     blocking: map(child_nodes_of(nodes: nodes, edges: edges, parent: rn.node), issue_link_view_of),
     blocked_by: flat_map(scheduling_blockers(rn: rn, nodes: nodes, edges: edges), pid =>
       match find_node(nodes: nodes, node_id: pid) {

@@ -17,6 +17,7 @@ import gunbc.roadmap_launch_admission { LaunchHostStanding, LaunchAdmitted, Laun
 import test.claim.roadmap.roadmap_launch_admission_fixture { launch_fixture_standing_clear, launch_fixture_with_contract, launch_fixture_doc, launch_fixture_identity }
 import gunbc.roadmap_issue_command { IssueFormContext }
 import gunbc.roadmap_page {
+  issue_standing_text,
   roadmap_page_launch, roadmap_page_launch_with_stylesheet, roadmap_daily_workspace_page_launch,
   roadmap_page_for_authority,
   roadmap_page_for_doc,
@@ -1733,7 +1734,8 @@ test fn witness_issue_detail_page_renders_header_fields_and_tabs() -> Bool {
         && string_contains(s: h, pattern: "<span class=\"issue-field-label\">status</span>")
         && string_contains(s: h, pattern: "<span class=\"issue-field-value\">Agent working</span>")
         && string_contains(s: h, pattern: "<span class=\"issue-field-label\">reporter</span>")
-        && string_contains(s: h, pattern: "<span class=\"issue-field-value\">agent-35</span>")
+        && string_contains(s: h, pattern: "<span class=\"issue-field-label\">reporter</span><span class=\"issue-field-value\">not recorded (authored roadmap row)</span>")
+        && !string_contains(s: h, pattern: "<span class=\"issue-field-label\">reporter</span><span class=\"issue-field-value\">agent-35</span>")
         && string_contains(s: h, pattern: "<span class=\"issue-field-label\">component</span>")
         && string_contains(s: h, pattern: "<span class=\"issue-field-label\">parent</span>")
         && string_contains(s: h, pattern: "href=\"/issue/issue-detail-parent\"")
@@ -2100,7 +2102,8 @@ test fn witness_issue_detail_renders_enabled_modeled_action_and_attempt_assignee
         && !string_contains(s: body, pattern: "<option value=\"principal:")
         && occurrence_count(s: body, pattern: "class=\"issue-assign-suggestion\"") == 3
         && string_contains(s: body, pattern: "data-principal=\"principal:gunbc/workflows/fabric\" data-kind=\"workflow\"")
-        && string_contains(s: body, pattern: "class=\"issue-avatar issue-avatar-workflow\" data-avatar=\"absent\">F<span class=\"issue-avatar-badge\">workflow</span>")
+        && string_contains(s: body, pattern: "class=\"issue-avatar issue-avatar-workflow\" data-avatar=\"absent\" title=\"Fabric — workflow · fabric@gunb.ai\"><svg class=\"issue-avatar-mark\" viewBox=\"0 0 120 120\" role=\"img\" aria-label=\"Fabric\">")
+        && !string_contains(s: body, pattern: "issue-avatar-badge")
         && string_contains(s: body, pattern: "name=\"expected_revision\" type=\"hidden\"")
         && occurrence_count(s: body, pattern: "class=\"issue-action\"") == 0
         && string_contains(s: body, pattern: "data-action=\"Assign\" data-idiom=\"text\" data-action-route=\"assign\" data-action-state=\"enabled\"")
@@ -2127,6 +2130,8 @@ test fn witness_issue_detail_parent_and_blocking_render_separately() -> Bool {
         && occurrence_count(s: h, pattern: "<h3 class=\"issue-deps-heading\">supersedes</h3>") == 1
         && occurrence_count(s: h, pattern: "href=\"/issue/issue-detail-parent\"") == 3
         && occurrence_count(s: h, pattern: "href=\"/issue/issue-detail-child\"") == 2
+        && string_contains(s: h, pattern: "<span class=\"issue-field-label\">blocked by</span><span class=\"issue-field-value\"><button class=\"issue-rail-link\" type=\"button\" data-tab-chip=\"dependencies\">1 issue</button></span>")
+        && string_contains(s: h, pattern: "<span class=\"issue-field-label\">blocking</span><span class=\"issue-field-value\"><button class=\"issue-rail-link\" type=\"button\" data-tab-chip=\"dependencies\">1 issue</button></span>")
   }
 }
 
@@ -2343,7 +2348,7 @@ test fn witness_issue_publication_handoff_renders_the_compact_automated_entry() 
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       occurrence_count(s: h, pattern: "data-event-kind=\"publication_observed\"") == 2
-        && string_contains(s: h, pattern: "<span class=\"issue-avatar issue-avatar-workflow\" data-avatar=\"absent\">F<span class=\"issue-avatar-badge\">workflow</span></span>")
+        && string_contains(s: h, pattern: "<span class=\"issue-avatar issue-avatar-workflow\" data-avatar=\"absent\" title=\"Fabric — workflow · fabric@gunb.ai\"><svg class=\"issue-avatar-mark\" viewBox=\"0 0 120 120\" role=\"img\" aria-label=\"Fabric\">")
         && string_contains(s: h, pattern: "published gunb-ai/gunbc#12210 at 52c56a8 — reassigned for merge to principal:google-oidc/accounts/sub-viewer")
         && string_contains(s: h, pattern: "ready for review — published gunb-ai/gunbc#12210 at 52c56a8; reassigned for merge to principal:google-oidc/accounts/sub-viewer")
         && string_contains(s: h, pattern: "issue-comment issue-publication")
@@ -2675,5 +2680,19 @@ test fn renamed_field_label_keeps_its_typed_section_and_brief_renders_once() -> 
       && marker_before(s: html, first: "Acceptance criteria", second: "Independent display label")
       && string_contains(s: html, pattern: "<span class=\"ticket-field-label\">Independent display label</span>")
   }
+}
+
+// THE RAIL'S STANDING SENTENCE NAMES PRINCIPALS THE WAY THE CHIPS DO. The live rail printed
+// "claimed by principal:gunbc/workflows/fabric", an unbreakable token that ran past the 34ch rail;
+// the one ledger sentence now takes the page's display naming, so Fabric reads "Fabric" and a
+// human with a stored profile reads their name, while a principal nobody knows keeps its label.
+test fn witness_issue_standing_text_names_principals_by_their_display() -> Bool {
+  let fabric = issue_standing_text(s: NodeClaimed { by: fixture_fabric_principal(), since: "2026-09-30T15:15:48Z" }, profiles: [])
+  let known = issue_standing_text(s: NodeClaimed { by: fixture_human_principal(), since: "" }, profiles: [fixture_human_profile()])
+  let unknown = issue_standing_text(s: NodeClaimed { by: fixture_human_principal(), since: "" }, profiles: [])
+  fabric == "claimed by Fabric since 2026-09-30T15:15:48Z"
+    && !string_contains(s: fabric, pattern: "principal:")
+    && known == "claimed by Fixture Viewer"
+    && unknown == "claimed by principal:google-oidc/accounts/sub-viewer"
 }
 

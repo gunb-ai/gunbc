@@ -59,7 +59,7 @@ import extdeps.filesystem.filesystem_io {
 import extdeps.gunbc
 import gunbc.output_policy { OutcomeIsData }
 import gunbc.principal_projection { google_oidc_issuer }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_auth_store_root, DashboardAuthJwksCache }
 
 // ── The Google endpoints and cache policy ──────────────────────────────────────────────────────
 // THE GOOGLE REALIZATION FACTS as data rows: the JWKS endpoint this module fetches and the
@@ -787,8 +787,6 @@ fn rsa_public_key_pem(spki: List<UInt8>) -> String {
 // cache write proceeds on the freshly fetched bytes. The other direction refuses: a fetch that
 // fails with no fresh cache NEVER falls through to a stale entry.
 
-data jwks_cache_dir_segment: String = "auth-jwks"
-
 data jwks_cache_file_name: String = "cache.json"
 
 data jwks_cache_schema: String = "gunbc-jwks-cache/v1"
@@ -800,8 +798,8 @@ type JwksCacheLayout {
 
 fn jwks_cache_layout_for_instance(instance: HostDashboardInstance) -> JwksCacheLayout {
   JwksCacheLayout {
-    dir: join([instance.instance_root as String, "/", jwks_cache_dir_segment], "") as FilePath,
-    file: join([instance.instance_root as String, "/", jwks_cache_dir_segment, "/", jwks_cache_file_name], ""),
+    dir: dashboard_instance_auth_store_root(instance: instance, store: DashboardAuthJwksCache),
+    file: join([(dashboard_instance_auth_store_root(instance: instance, store: DashboardAuthJwksCache) as String), "/", jwks_cache_file_name], ""),
   }
 }
 
