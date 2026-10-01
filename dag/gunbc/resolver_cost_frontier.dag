@@ -13,6 +13,16 @@ data resolver_cost_frontier_rows: List<FrontierRow> = [
     reason: "bare-fill signature upgrade is eager over every bare name of the tree, while a closure's typecheck reads only the names it looks up (gunbc#12716)",
     dissolution: unbound_dissolution(description: "demand identity for 'this bare lookup, in this closure' exists as a carrier (docs/plans/demand-engine-program.md M1), so a global_bare key can be upgraded on demand without a lazy cell or a new refusal arm in frozen v1"),
   ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "v1.compiler.infer", decl_name: "symbol_index_with_bare_fill"),
+    reason: "every closure's typecheck composes its root's whole-tree bare census (tree_bare_census_for_root) and that census's variant base before any lookup, while the closure reads only the names it looks up; a closure whose names all resolve through imports pays the whole tree. Measured by the gunbc run pre-entry rows reconcile_root_bare_underlay and reconcile_root_variant_base (gunbc#12864)",
+    dissolution: unbound_dissolution(description: "demand identity for 'this bare lookup, in this closure' exists as a carrier (docs/plans/demand-engine-program.md M1), so the tree layer is produced per demanded name with its full candidate list, without a restricted-domain refusal arm in frozen v1"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "v1.compiler.infer", decl_name: "symbol_index_with_qualified_fill"),
+    reason: "every closure's typecheck composes the whole-pool qualified fill (pool_qualified_fill) before any lookup, while the closure reads only the qualified names it looks up. Measured by the gunbc run pre-entry row reconcile_pool_qualified_fill (gunbc#12864)",
+    dissolution: unbound_dissolution(description: "demand identity for 'this qualified lookup, in this closure' exists as a carrier (docs/plans/demand-engine-program.md M1), so a pool entry is produced on demand without a restricted-domain refusal arm in frozen v1"),
+  ),
   frontier_row_path(
     path: "src/v1/stage0/src/cli_run/pool_acquire.rs",
     reason: "HeadsReading.module is retained for the process: every MultiEntryIndex whose pool contains the file projects it, and a run builds its indexes on demand by phase routing, so no release point is known when the first census projects it (gunbc#12768)",
