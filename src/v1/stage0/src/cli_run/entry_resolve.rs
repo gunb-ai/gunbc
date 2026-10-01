@@ -671,8 +671,8 @@ thread_local! {
     // policy + group syntax, plus the floor runner) resolves against this single
     // MultiEntryIndex, so its parse/typed caches share the union of all those closures:
     // the shared std/spec prefix typechecks ONCE, not once per prelude entry. Keyed by
-    // source_roots — a run's roots are fixed, so this is a get-or-build, rebuilt only on
-    // the rare roots change. Thread-local by the same Rc-not-Send reason as the store:
+    // source_roots — a run's roots are fixed, so this is a get-or-build over exactly one pool
+    // per slot (below). Thread-local by the same Rc-not-Send reason as the store:
     // each shard keeps its own index rather than smuggling Rc across threads.
     //
     // TWO SLOTS, ONE PER POOL SEMANTICS, and the pair is what makes the memo safe rather than
@@ -681,15 +681,16 @@ thread_local! {
     // for is a silently divergent resolution, which is the §5 fail-open this cache would
     // otherwise introduce. So precedence is part of the identity of the slot, not a build flag
     // applied to a shared one -- a roots-keyed single slot cannot express the distinction and
-    // would answer whichever mode ran first. Each slot keeps the original single-entry,
-    // rebuild-on-roots-change shape, so an index is never held for a pool nobody is asking about.
+    // would answer whichever mode ran first.
     #[allow(clippy::type_complexity)]
     //
-    // ONE INDEX PER ROOTS KEY WITHIN A SLOT, never one index per slot. A process may legitimately
-    // demand several pools on one thread (the regen round indexes [src/v1, dag] and [dag, src/v2]);
-    // a single entry per slot made each such demand evict the other, and the next demand for the
-    // evicted roots rebuilt it from scratch -- every file re-parsed, typed caches lost, the evicted
-    // index often still held. Distinct roots are distinct demands and are kept side by side.
+    // ONE RESIDENT POOL PER SLOT, REFUSED AT BUILD. The map is keyed by canonical roots so a
+    // second demand for the resident roots is a hit, never an eviction and rebuild; a demand for
+    // DIFFERENT roots is refused by `try_process_shared_index_for_pool`
+    // (`SharedIndexSecondResidentPool`) before anything is walked, so a slot never holds more
+    // than one entry. A one-shot reader of another pool (a fixture, the regen round's emitted
+    // tree) owns its index instead. `shared_index_residency_control` reads the bound back at
+    // the end of the floor and of a regen round as the positive control.
     pub(crate) static PROCESS_RESOLVE_INDEX: RefCell<[BTreeMap<String, Rc<MultiEntryIndex>>; 2]> =
         const { RefCell::new([BTreeMap::new(), BTreeMap::new()]) };
 
@@ -897,10 +898,10 @@ fn release_per_entry_graphs_on_live_pool_thread() {
     });
 }
 
-/// AT MOST ONE RESIDENT POOL PER SLOT, ASSERTED. The memo keeps every pool a thread demands, so a
-/// run's retention is the number of distinct root sets that entered it; the floor and the regen
-/// round each demand one per precedence, and a one-shot reader owns its own index instead. A second
-/// resident pool is a demand that should have been released, so it refuses rather than printing.
+/// AT MOST ONE RESIDENT POOL PER SLOT, the positive control of the build-site refusal in
+/// `try_process_shared_index_for_pool`. That refusal makes a second pool unbuildable through the
+/// memo; this reads the memo back at the end of the floor and of a regen round, so a route that
+/// ever installed one another way would still refuse rather than print.
 pub(crate) fn shared_index_residency_control() -> Result<usize, String> {
     PROCESS_RESOLVE_INDEX.with(|s| {
         let slots = s.borrow();
@@ -928,6 +929,32 @@ pub(crate) fn memoized_process_shared_index(
 ) -> Option<Rc<MultiEntryIndex>> {
     let roots_key = canonical_shared_index_roots(source_roots).join("\u{1f}");
     PROCESS_RESOLVE_INDEX.with(|s| s.borrow()[0].get(&roots_key).cloned())
+}
+
+/// THE STRICT INDEX FOR A READER WHOSE ROOTS ARE A BUILTIN'S ARGUMENT. Over the layer roots
+/// (`witness_layer_roots`) it is the run's pool and is read from the shared memo; over any other
+/// roots -- a fixture a witness names -- it is a one-shot read of a pool nothing else reads, so
+/// the reader owns the index and drops it with the read. The same split
+/// `emit_host::resolve_roots_for_call_edge_pool` makes; it keeps a fixture out of the shared
+/// memo, where `try_process_shared_index_for_pool` refuses a second pool.
+#[track_caller]
+pub(crate) fn try_index_for_run_or_owned_pool(
+    source_roots: &[String],
+) -> Result<Rc<MultiEntryIndex>, String> {
+    let layers = super::witness_layer_roots();
+    if !source_roots.is_empty()
+        && source_roots
+            .iter()
+            .all(|root| layers.iter().any(|layer| layer == root))
+    {
+        return try_process_shared_index(source_roots);
+    }
+    let roots = canonical_shared_index_roots(source_roots);
+    Ok(Rc::new(new_multi_entry_index_shell(
+        try_build_module_index(&roots)?,
+        &roots,
+        None,
+    )))
 }
 
 /// Fallible twin of `process_shared_index`. The MEMO IS ONLY WRITTEN ON SUCCESS -- a failed
@@ -973,6 +1000,24 @@ pub fn try_process_shared_index_for_pool(
     let existing = PROCESS_RESOLVE_INDEX.with(|s| s.borrow()[slot].get(&roots_key).cloned());
     if let Some(idx) = existing {
         return Ok(idx);
+    }
+    // A SECOND POOL IS REFUSED WHERE IT WOULD BE BUILT, before it is walked, parsed and held
+    // beside the first. Every production caller passes the run's own roots or owns a private
+    // index for a pool nothing else reads (the audit that retired
+    // `gunbc.rung_drop.shared_index_residency_asserted_after_the_run`), so a different key here
+    // is a new demand for a second resident pool: carry it to its own index
+    // (`build_multi_entry_index`), never into the shared memo.
+    let resident = PROCESS_RESOLVE_INDEX.with(|s| s.borrow()[slot].keys().next().cloned());
+    if let Some(resident) = resident {
+        let site = std::panic::Location::caller();
+        return Err(format!(
+            "SharedIndexSecondResidentPool: slot {slot} already holds roots {:?}; roots {roots:?} \
+             demanded at {}:{} would be a second resident pool on this thread -- a reader of \
+             another pool owns its index (build_multi_entry_index), not a slot in the shared memo",
+            resident.split('\u{1f}').collect::<Vec<_>>(),
+            site.file(),
+            site.line()
+        ));
     }
     #[cfg(test)]
     yield_live_pool_before_building_another();
@@ -1123,6 +1168,7 @@ pub(crate) fn new_multi_entry_index_shell(
         schedule_retention: RefCell::new(None),
         source_roots: source_roots.to_vec(),
         pool_parse: RefCell::new(None),
+        reference_pool_names: RefCell::new(None),
         pool_qualified_fill: RefCell::new(None),
         tree_bare_census: RefCell::new(std::collections::HashMap::new()),
         #[cfg(any(test, feature = "interp_test_witness"))]
@@ -2118,6 +2164,15 @@ pub(crate) fn resolved_graph_from_sources(
                 diagnostic_to_message(d.diagnostic.clone())
             ));
         }
+        if typecheck_gate == ResolveTypecheckGate::Strict {
+            // The refused graph is discarded here either way; attributing it takes the only
+            // owner, so an `Rc` another holder keeps reports itself as unattributable.
+            if let Ok(owned) = Rc::try_unwrap(result) {
+                if let Some(graph) = owned.graph {
+                    typed_graph_byte_attribution("strict-refused", graph);
+                }
+            }
+        }
         return Err(format!(
             "blocking_diagnostics={}\n{}",
             msgs.len(),
@@ -2237,170 +2292,224 @@ pub fn whole_tree_resolved_ctx(
     })
 }
 
-/// M0 ancestry-retention probe (v1-run-stability-throughline M0): per-module vs
-/// distinct-spine entry counts for the typecheck-env maps — the quadratic witness the
-/// deleted `cache_walk` (#5888, dissolved #5899) never measured (it counted payload-Rc
-/// sharing, which is healthy; the byte carrier is the per-module materialized map SPINES).
-/// Pure reader over one strict whole-tree resolve; prints `[ancestry]` lines and the peak
-/// RSS; no behavior change anywhere else. `retained` sums every module's map sizes (what
-/// the typed cache holds resident); `distinct` sums each unique Rc spine once (what is
-/// actually allocated). `dup_factor = retained/distinct` — a factor ≫1 on the ancestry
-/// maps is the located §2 duplication; flat ≈1 means spines are shared and M1 is done.
-pub fn whole_tree_ancestry_retention_probe(
-    source_roots: &[String],
-    exclude_substrings: &[String],
-) -> Result<(), String> {
-    let picked = whole_tree_strict_sources(source_roots, exclude_substrings)?;
-    let modules_resolved = picked.modules_resolved;
-    let modules_excluded = picked.modules_excluded;
-    let (graph, source_indices) =
-        resolved_graph_from_sources(picked.sources, ResolveTypecheckGate::Strict)?;
-
+/// THE RETAINED SET BY STRUCTURE, AT A FLOOR SEAM. The seam beats (`floor_seam`) say how many
+/// bytes a phase left resident; they cannot say WHICH structure holds them. This census can, at
+/// entry grain: for every typed module held by the named graphs it sums each typecheck-env map's
+/// size (`retained`, what is resident if each module's spine were its own allocation) and each
+/// distinct `Rc` spine once (`distinct`, what is actually allocated). `dup = retained/distinct`
+/// is the per-module materialization factor; a factor well above 1 on the ancestry maps is the
+/// quadratic retention the M0 probe (v1-run-stability-throughline) was written to locate, and
+/// this is that probe moved onto the graphs the floor really holds instead of a second whole-tree
+/// resolve nobody called.
+///
+/// ENTRIES, NOT BYTES. These maps are `im::HashMap` -- persistent HAMTs -- and a module's map is
+/// built by merging its parents', which shares internal nodes. `distinct` dedupes the map ROOT,
+/// not the nodes under it, so it counts shared structure once per root and overstates bytes by
+/// an amount it cannot itself report.
+///
+/// It also answers the overlap question across graphs at identity grain: `module_paths` counts
+/// distinct module identities, `typed_modules` distinct `TypedModule` allocations. More
+/// allocations than identities means one module was typechecked into two resident copies, which
+/// is authored duplication (DESIGN §2) rather than sharing. A pure reader: O(modules), no clone.
+pub(crate) fn floor_retention_census(
+    seam: &str,
+    graphs: &[(&str, &v1_compiler_compile::ResolvedGraph)],
+) {
     struct FieldTally {
         name: &'static str,
-        retained_entries: usize,
-        distinct_entries: usize,
-        distinct_spines: std::collections::HashSet<usize>,
+        retained: usize,
+        distinct: usize,
+        spines: HashSet<usize>,
     }
     impl FieldTally {
-        fn new(name: &'static str) -> Self {
-            FieldTally {
-                name,
-                retained_entries: 0,
-                distinct_entries: 0,
-                distinct_spines: std::collections::HashSet::new(),
-            }
-        }
-        fn add(&mut self, spine_ptr: usize, entries: usize) {
-            self.retained_entries += entries;
-            if self.distinct_spines.insert(spine_ptr) {
-                self.distinct_entries += entries;
+        fn add<T>(&mut self, spine: &Rc<T>, entries: usize) {
+            self.retained += entries;
+            if self.spines.insert(Rc::as_ptr(spine) as *const () as usize) {
+                self.distinct += entries;
             }
         }
     }
-
-    let mut tallies = [
-        FieldTally::new("tec.str_bindings"),
-        FieldTally::new("tec.deps_map"),
-        FieldTally::new("tec.cycle_set_str"),
-        FieldTally::new("tec.variant_locals"),
-        FieldTally::new("te.str_bindings"),
-        FieldTally::new("te.ancestry_str_bindings"),
-        FieldTally::new("te.bindings"),
-        FieldTally::new("te.source_visible_names"),
-        FieldTally::new("te.inductive_fields.keys"),
-        FieldTally::new("te.recursive_type_set"),
-    ];
-    // Inductive-field LIST mass (Σ list lengths) tracked separately from key count —
-    // the concat-on-collision duplication class shows up in list length, not key count.
-    let mut ind_lists_retained: usize = 0;
-    let mut ind_lists_distinct: usize = 0;
-    let mut ind_list_spines: std::collections::HashSet<usize> = std::collections::HashSet::new();
-
-    let mut per_module: Vec<(String, usize, usize, usize)> = Vec::new();
-
-    for m in graph.modules.iter() {
-        let te = &m.type_env;
-        let tec = &m.type_env_cache;
-        tallies[0].add(
-            Rc::as_ptr(&tec.str_bindings) as usize,
-            tec.str_bindings.len(),
-        );
-        tallies[1].add(Rc::as_ptr(&tec.deps_map) as usize, tec.deps_map.len());
-        tallies[2].add(
-            Rc::as_ptr(&tec.cycle_set_str) as usize,
-            tec.cycle_set_str.len(),
-        );
-        tallies[3].add(
-            Rc::as_ptr(&tec.variant_locals) as usize,
-            tec.variant_locals.len(),
-        );
-        tallies[4].add(Rc::as_ptr(&te.str_bindings) as usize, te.str_bindings.len());
-        tallies[5].add(
-            Rc::as_ptr(&te.ancestry_str_bindings) as usize,
-            te.ancestry_str_bindings.len(),
-        );
-        tallies[6].add(Rc::as_ptr(&te.bindings) as usize, te.bindings.len());
-        tallies[7].add(
-            Rc::as_ptr(&te.source_visible_names) as usize,
-            te.source_visible_names.len(),
-        );
-        tallies[8].add(
-            Rc::as_ptr(&te.inductive_fields) as usize,
-            te.inductive_fields.len(),
-        );
-        tallies[9].add(
-            Rc::as_ptr(&te.recursive_type_set) as usize,
-            te.recursive_type_set.len(),
-        );
-
-        let module_ind_mass: usize = te.inductive_fields.iter().map(|(_, v)| v.len()).sum();
-        ind_lists_retained += module_ind_mass;
-        if ind_list_spines.insert(Rc::as_ptr(&te.inductive_fields) as usize) {
-            ind_lists_distinct += module_ind_mass;
+    let mut tallies: Vec<FieldTally> = [
+        "tec.str_bindings",
+        "tec.deps_map",
+        "tec.variant_locals",
+        "te.str_bindings",
+        "te.ancestry_str_bindings",
+        "te.bindings",
+        "te.source_visible_names",
+        "te.inductive_fields",
+        "module_item_registry",
+        "module_items",
+    ]
+    .iter()
+    .map(|name| FieldTally {
+        name,
+        retained: 0,
+        distinct: 0,
+        spines: HashSet::new(),
+    })
+    .collect();
+    let mut typed_modules: HashSet<usize> = HashSet::new();
+    let mut module_paths: HashSet<String> = HashSet::new();
+    let mut held = 0usize;
+    for (_, graph) in graphs {
+        for m in graph.modules.iter() {
+            held += 1;
+            if !typed_modules.insert(Rc::as_ptr(m) as usize) {
+                continue;
+            }
+            module_paths.insert(m.type_env.module_path.clone());
+            let (te, tec) = (&m.type_env, &m.type_env_cache);
+            tallies[0].add(&tec.str_bindings, tec.str_bindings.len());
+            tallies[1].add(&tec.deps_map, tec.deps_map.len());
+            tallies[2].add(&tec.variant_locals, tec.variant_locals.len());
+            tallies[3].add(&te.str_bindings, te.str_bindings.len());
+            tallies[4].add(&te.ancestry_str_bindings, te.ancestry_str_bindings.len());
+            tallies[5].add(&te.bindings, te.bindings.len());
+            tallies[6].add(&te.source_visible_names, te.source_visible_names.len());
+            tallies[7].add(&te.inductive_fields, te.inductive_fields.len());
+            tallies[8].add(&m.item_registry, m.item_registry.len());
+            tallies[9].add(&m.items, m.items.len());
         }
-
-        per_module.push((
-            authored_name_at(source_indices.clone(), m.module.clone()),
-            tec.str_bindings.len(),
-            te.ancestry_str_bindings.len(),
-            module_ind_mass,
-        ));
     }
-
+    // THE ENTRY-INDEPENDENCE DIFFERENTIAL, over every module path held by more than one
+    // allocation. Each graph's assembly rewires its own copy (`finish_resolved_graph_assembly`);
+    // sharing one wired copy per module at the pool's index is lawful only if every copy is the
+    // same wiring. Compared at IDENTITY grain -- which node each binding resolves to, by `Rc`
+    // pointer, and which module each parent link names -- not by content, so an equal-looking
+    // copy that binds a different declaration reads as differing. A derived `==` would recurse
+    // through every parent environment without a pointer short-cut.
+    let mut copies: BTreeMap<String, Vec<&Rc<crate::v1_compiler_infer_items::TypedModule>>> =
+        BTreeMap::new();
+    let mut seen: HashSet<usize> = HashSet::new();
+    for (_, graph) in graphs {
+        for m in graph.modules.iter() {
+            if seen.insert(Rc::as_ptr(m) as usize) {
+                // KEYED BY SOURCE, NOT ONLY BY MODULE PATH: the planning row reads the diff base's
+                // version of a changed module from a separate checkout, and two SOURCES under one
+                // module path are two modules, which legitimately wire differently.
+                copies
+                    .entry(format!("{}@{}", m.type_env.module_path, m.module.span.file))
+                    .or_default()
+                    .push(m);
+            }
+        }
+    }
+    let mut identical = 0usize;
+    let mut differing: Vec<String> = Vec::new();
+    for (path, ms) in copies.iter().filter(|(_, ms)| ms.len() > 1) {
+        let prints: Vec<[u64; 6]> = ms.iter().map(|m| wiring_identity(m)).collect();
+        let parts = [
+            "module",
+            "type_bindings",
+            "ancestry",
+            "type_parents",
+            "func_local",
+            "func_parents",
+        ];
+        let diff: Vec<&str> = (0..6)
+            .filter(|i| prints.iter().any(|p| p[*i] != prints[0][*i]))
+            .map(|i| parts[i])
+            .collect();
+        if diff.is_empty() {
+            identical += 1;
+        } else {
+            differing.push(format!("{path}:{}", diff.join("+")));
+        }
+    }
     eprintln!(
-        "[ancestry] modules={modules_resolved} excluded={modules_excluded} (strict whole-tree resolve)"
+        "[floor-heap] retained seam={seam} duplicated_paths={} identical_wiring={identical} \
+         differing_wiring={} [{}]",
+        identical + differing.len(),
+        differing.len(),
+        differing.join(","),
     );
-    let mut retained_total = 0usize;
-    let mut distinct_total = 0usize;
+    let names: Vec<String> = graphs
+        .iter()
+        .map(|(name, g)| format!("{name}:{}", g.modules.len()))
+        .collect();
+    eprintln!(
+        "[floor-heap] retained seam={seam} graphs=[{}] held_modules={held} typed_modules={} \
+         module_paths={}",
+        names.join(","),
+        typed_modules.len(),
+        module_paths.len(),
+    );
     for t in &tallies {
-        let dup = if t.distinct_entries > 0 {
-            t.retained_entries as f64 / t.distinct_entries as f64
-        } else {
-            1.0
-        };
         eprintln!(
-            "[ancestry] field={} retained_entries={} distinct_spines={} distinct_entries={} dup_factor={:.2}",
+            "[floor-heap] retained seam={seam} field={} retained={} distinct={} spines={}",
             t.name,
-            t.retained_entries,
-            t.distinct_spines.len(),
-            t.distinct_entries,
-            dup
-        );
-        retained_total += t.retained_entries;
-        distinct_total += t.distinct_entries;
-    }
-    let ind_dup = if ind_lists_distinct > 0 {
-        ind_lists_retained as f64 / ind_lists_distinct as f64
-    } else {
-        1.0
-    };
-    eprintln!(
-        "[ancestry] field=te.inductive_fields.list_mass retained={ind_lists_retained} distinct={ind_lists_distinct} dup_factor={ind_dup:.2}"
-    );
-    eprintln!(
-        "[ancestry] TOTAL retained_entries={retained_total} distinct_entries={distinct_total} dup_factor={:.2}",
-        if distinct_total > 0 {
-            retained_total as f64 / distinct_total as f64
-        } else {
-            1.0
-        }
-    );
-
-    per_module.sort_by(|a, b| (b.1 + b.2).cmp(&(a.1 + a.2)));
-    for (name, tec_str, anc_str, ind_mass) in per_module.iter().take(10) {
-        eprintln!(
-            "[ancestry] top module={name} tec.str_bindings={tec_str} te.ancestry_str_bindings={anc_str} inductive_list_mass={ind_mass}"
+            t.retained,
+            t.distinct,
+            t.spines.len(),
         );
     }
+}
 
-    match peak_rss_vhwm_bytes() {
-        Some(bytes) => {
-            eprintln!("[ancestry] peak RSS: {bytes} bytes (VmHWM) modules={modules_resolved}")
-        }
-        None => eprintln!("[ancestry] peak RSS: unavailable (no /proc/self/status)"),
+/// One copy's wiring at identity grain: the module node, each type binding's resolved node, each
+/// parent environment's module, each function signature, and each parent function environment's
+/// name -- the facts a rewire decides -- each folded to one hash so copies compare component-wise.
+fn wiring_identity(m: &crate::v1_compiler_infer_items::TypedModule) -> [u64; 6] {
+    use std::hash::{Hash, Hasher};
+    fn fold<I: IntoIterator<Item = (String, usize)>>(items: I) -> u64 {
+        let mut rows: Vec<(String, usize)> = items.into_iter().collect();
+        rows.sort();
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        rows.hash(&mut h);
+        h.finish()
     }
-    Ok(())
+    let te = &m.type_env;
+    let fe = &m.func_env;
+    [
+        fold([(String::new(), Rc::as_ptr(&m.module) as usize)]),
+        fold(
+            te.str_bindings
+                .iter()
+                .map(|(k, b)| (k.clone(), Rc::as_ptr(&b.resolved) as usize))
+                .chain(
+                    te.bindings
+                        .iter()
+                        .map(|(k, b)| (k.to_string(), Rc::as_ptr(&b.resolved) as usize)),
+                ),
+        ),
+        fold(
+            te.ancestry_str_bindings
+                .iter()
+                .map(|(k, b)| (k.clone(), Rc::as_ptr(&b.resolved) as usize)),
+        ),
+        fold(
+            te.parents
+                .iter()
+                .enumerate()
+                .map(|(i, p)| (p.module_path.clone(), i)),
+        ),
+        fold(
+            fe.local
+                .iter()
+                .map(|(k, sig)| (k.clone(), Rc::as_ptr(sig) as usize)),
+        ),
+        fold(
+            fe.parents
+                .iter()
+                .enumerate()
+                .map(|(i, p)| (p.name.clone(), i)),
+        ),
+    ]
+}
+
+/// Every graph the thread's process resolve store holds, by entry — the planning and prelude
+/// authorities resolved through `resolve_entry_graph_shared`, which live until the thread ends.
+pub(crate) fn process_resolve_store_graphs() -> Vec<(String, Rc<v1_compiler_compile::ResolvedGraph>)>
+{
+    PROCESS_RESOLVE_STORE.with(|s| {
+        let mut graphs: Vec<_> = s
+            .borrow()
+            .iter()
+            .map(|((_, entry), (graph, _))| (entry.clone(), graph.clone()))
+            .collect();
+        graphs.sort_by(|a, b| a.0.cmp(&b.0));
+        graphs
+    })
 }
 
 /// Companion to a Bool witness: `emit_on_demand_family_crate_pr_native_agreement_holds`
@@ -2796,9 +2905,18 @@ impl ReferencePoolNames {
 /// The name index from the POOL CENSUS'S OWN heads reading (`pool_parse`), which every resolve
 /// through this index already forces for its qualified fill and bare census. A resolve therefore
 /// reads the pool's heads once, not once for the census and again for reference edges.
+///
+/// ONE DERIVATION PER INDEX. The index is a function of `pool_parse`, which this index holds for
+/// its life, and it is demanded once per out-of-tree bare name (`pool_census_for_name`) -- so its
+/// least common ancestor is the index, and it is derived there once rather than rebuilt from the
+/// whole pool's heads on every demand (measured: ~230ms per rebuild, 3,852 demands in one
+/// whole-pool admission).
 pub(crate) fn reference_pool_names_for_index(
     index: &MultiEntryIndex,
 ) -> Result<Rc<ReferencePoolNames>, String> {
+    if let Some(names) = index.reference_pool_names.borrow().clone() {
+        return Ok(names);
+    }
     let pool = pool_parse(index)?;
     let started = std::time::Instant::now();
     let names = Rc::new(ReferencePoolNames::from_heads_modules(
@@ -2811,6 +2929,7 @@ pub(crate) fn reference_pool_names_for_index(
         super::pre_entry_phase::PhaseScale::Tree,
         started.elapsed(),
     );
+    *index.reference_pool_names.borrow_mut() = Some(names.clone());
     Ok(names)
 }
 
@@ -3696,6 +3815,194 @@ mod tree_census_from_raw_differential {
     }
 }
 
+thread_local! {
+    /// Set by the required floor only, so the byte attribution below reads the floor's own graphs
+    /// and no other caller of `resolved_graph_from_sources` pays for it or prints it.
+    static FLOOR_BYTE_ATTRIBUTION_ARMED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+pub(crate) fn arm_floor_byte_attribution() {
+    FLOOR_BYTE_ATTRIBUTION_ARMED.with(|a| a.set(true));
+}
+
+fn floor_heap_in_use() -> Option<u64> {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    {
+        // SAFETY: mallinfo2 reads allocator bookkeeping and changes nothing.
+        let mi = unsafe { libc::mallinfo2() };
+        Some((mi.uordblks + mi.hblkhd) as u64)
+    }
+    #[cfg(not(all(target_os = "linux", target_env = "gnu")))]
+    {
+        None
+    }
+}
+
+/// THE TYPED GRAPH'S BYTES BY COMPONENT CLASS, read by FREEING it one class at a time at the point
+/// the floor frees it anyway: the strict resolve's refusal path, where the graph is discarded, and
+/// the prepared repository's teardown. `floor_retention_census` counts entries, which persistent
+/// maps share, so it cannot say what a structure COSTS; the allocator can, as the live bytes a
+/// drop returns. Nothing is read after a class is dropped, so no answer the floor gives changes.
+///
+/// ORDER-DEPENDENT BY CONSTRUCTION, and reported as such. Sequential drops telescope -- the parts
+/// sum to the total freed -- but a node two classes share is freed by whichever drops LAST, so a
+/// class dropped early reports only its EXCLUSIVE bytes. The type environment is split into its
+/// maps and dropped first, so each map's figure is a lower bound on what it alone costs; `shells`
+/// is the environments themselves once their maps are held elsewhere.
+///
+/// A graph, module list or module another owner still holds is not attributable -- dropping it
+/// would free nothing -- and is reported as that, never as a zero.
+pub(crate) fn typed_graph_byte_attribution(
+    label: &str,
+    graph: Rc<v1_compiler_compile::ResolvedGraph>,
+) {
+    if !FLOOR_BYTE_ATTRIBUTION_ARMED.with(|a| a.get()) {
+        return;
+    }
+    let Some(start) = floor_heap_in_use() else {
+        eprintln!(
+            "[floor-heap] bytes label={label} unattributable: no allocator reading on this target"
+        );
+        return;
+    };
+    let graph = match Rc::try_unwrap(graph) {
+        Ok(g) => g,
+        Err(g) => {
+            eprintln!(
+                "[floor-heap] bytes label={label} unattributable: the graph has {} other owner(s)",
+                Rc::strong_count(&g) - 1
+            );
+            return;
+        }
+    };
+    let v1_compiler_compile::ResolvedGraph {
+        modules,
+        item_registry,
+        item_leaf_owner_modules,
+        diagnostics,
+    } = graph;
+    let modules: im::Vector<Rc<crate::v1_compiler_infer_items::TypedModule>> = match Rc::try_unwrap(
+        modules,
+    ) {
+        Ok(m) => m,
+        Err(m) => {
+            eprintln!(
+                    "[floor-heap] bytes label={label} unattributable: the module list has {} other owner(s)",
+                    Rc::strong_count(&m) - 1
+                );
+            return;
+        }
+    };
+    let module_count = modules.len();
+    let mut shared_modules = Vec::new();
+    let (
+        mut te_str,
+        mut te_anc,
+        mut te_bind,
+        mut te_vis,
+        mut te_ind,
+        mut te_sym,
+        mut te_intern,
+        mut te_unit,
+    ) = (
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+    );
+    let (mut shells, mut tec, mut fe, mut iface, mut reg, mut items, mut nodes, mut occ) = (
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+    );
+    for m in modules {
+        match Rc::try_unwrap(m) {
+            Ok(m) => {
+                te_str.push(m.type_env.str_bindings.clone());
+                te_anc.push(m.type_env.ancestry_str_bindings.clone());
+                te_bind.push(m.type_env.bindings.clone());
+                te_vis.push(m.type_env.source_visible_names.clone());
+                te_ind.push(m.type_env.inductive_fields.clone());
+                te_sym.push(m.type_env.symbol_index.clone());
+                te_intern.push(m.type_env.intern_table.clone());
+                te_unit.push(m.type_env.unit_variant_index.clone());
+                shells.push(m.type_env);
+                tec.push(m.type_env_cache);
+                fe.push(m.func_env);
+                iface.push(m.interface);
+                reg.push(m.item_registry);
+                items.push(m.items);
+                nodes.push(m.module);
+                occ.push(m.occurrence_transport);
+            }
+            Err(shared) => shared_modules.push(shared),
+        }
+    }
+    let mut last = floor_heap_in_use().unwrap_or(start);
+    let mut parts: Vec<(&str, u64)> = Vec::new();
+    macro_rules! drop_class {
+        ($name:expr, $class:expr) => {{
+            drop($class);
+            let now = floor_heap_in_use().unwrap_or(last);
+            parts.push(($name, last.saturating_sub(now)));
+            last = now;
+        }};
+    }
+    drop_class!("type_env_shells", shells);
+    drop_class!("te.ancestry_str_bindings", te_anc);
+    drop_class!("te.str_bindings", te_str);
+    drop_class!("te.bindings", te_bind);
+    drop_class!("te.source_visible_names", te_vis);
+    drop_class!("te.inductive_fields", te_ind);
+    drop_class!("te.unit_variant_index", te_unit);
+    drop_class!("te.symbol_index", te_sym);
+    drop_class!("te.intern_table", te_intern);
+    drop_class!("type_env_cache", tec);
+    drop_class!("func_env", fe);
+    drop_class!("interface", iface);
+    drop_class!("module_item_registry", reg);
+    drop_class!("items", items);
+    drop_class!("module_nodes", nodes);
+    drop_class!("occurrence_transport", occ);
+    drop_class!("shared_modules", shared_modules.clone());
+    drop_class!("graph_item_registry", item_registry);
+    drop_class!("item_leaf_owner_modules", item_leaf_owner_modules);
+    drop_class!("diagnostics", diagnostics);
+    let sum: u64 = parts.iter().map(|(_, b)| *b).sum();
+    eprintln!(
+        "[floor-heap] bytes label={label} modules={module_count} shared_modules={} start_in_use={start} \
+         end_in_use={last} total_freed={} sum_of_parts={sum} (sequential: early classes are exclusive bytes)",
+        shared_modules.len(),
+        start.saturating_sub(last),
+    );
+    // EVERY LINE SAYS WHAT KIND OF READING IT IS, because the figure alone invites the wrong one:
+    // a class dropped after others is also credited every node it SHARED with them, so its
+    // `freed` is what its last reference kept alive, not what removing it would save. Read as a
+    // saving, this probe's `emit_graph_info` figure predicted a peak cut that the floor-memory
+    // qualification A/B on gunbc#12832 did not find. Only the first class dropped
+    // reads exclusive bytes; the TypeEnv maps split before it are exclusive only after the
+    // environment shells went. A removal's saving is a leave-one-out reading, not this one.
+    for (order, (name, bytes)) in parts.into_iter().enumerate() {
+        let reading = match order {
+            0 => "exclusive",
+            1..=8 => "exclusive_lower_bound_after_shells",
+            _ => "includes_shared_residue",
+        };
+        eprintln!(
+            "[floor-heap] bytes label={label} order={order} class={name} freed={bytes} reading={reading}"
+        );
+    }
+}
+
 /// ONE HEADS PARSE PER (SPELLING, BYTES), asserted: over the live `[dag, src/v2]` pool, building
 /// the module path index (`parse_module_binding`) and the pool census (`pool_parse`) -- the two
 /// consumers of `pool_acquire::heads_reading_for` -- parses each acquisition key's heads exactly
@@ -3731,6 +4038,496 @@ mod heads_parse_count {
         assert!(keys > 5000, "the live pool was read ({keys} keys)");
         assert!(over.is_empty(), "heads parsed more than once: {over:?}");
     }
+}
+
+/// THE CROSS-TREE CENSUS, over the whole live `[dag, src/v2]` pool: every import-less file's bare
+/// references resolved against its own tree census, with no whole-pool census. A name the tree
+/// does not provide but another tree does refuses (`CrossTreeBareReference`) exactly where the
+/// deleted fallback silently pulled a provider; this lists every such refusal, so the pool's
+/// dependence on the deleted fallback is counted, by identity, rather than argued. Before the
+/// change the fallback census found 13 pool-provided rows in 5 files: 12 the import migration in
+/// this change qualifies, and the builtin `get` the builtin arm now keeps from being pulled.
+#[cfg(test)]
+mod cross_tree_bare_census {
+    use super::*;
+    #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    fn no_import_less_file_reaches_across_trees_on_the_live_pool() {
+        let root = process_workspace_root();
+        let roots: Vec<String> = ["dag", "src/v2"]
+            .iter()
+            .map(|r| root.join(r).to_string_lossy().into_owned())
+            .collect();
+        let index = process_shared_index(&roots);
+        let mut sources: Vec<_> = index.source_files.values().cloned().collect();
+        sources.sort_by(|a, b| a.path.cmp(&b.path));
+        let mut scanned = 0usize;
+        let mut refusals: Vec<String> = Vec::new();
+        for sf in &sources {
+            if super::super::source_declares_import_lines(&sf.content) {
+                continue;
+            }
+            scanned += 1;
+            let r = super::super::visit_bare_reference_providers(
+                sf,
+                &index,
+                |root| super::super::closure_name_census(&index, root),
+                |_, _, _| Ok(()),
+            );
+            if let Err(e) = r {
+                refusals.push(e);
+            }
+        }
+        let pool_census_built = index.closure_name_censuses.borrow().contains_key(&None);
+        eprintln!(
+            "CROSSTREE scanned={scanned} refusals={} pool_census_built={pool_census_built}",
+            refusals.len()
+        );
+        for r in &refusals {
+            eprintln!("CROSSTREE refusal {r}");
+        }
+        assert!(scanned > 100, "the live pool was read ({scanned} files)");
+        assert!(
+            !pool_census_built,
+            "a bare resolution still built the whole-pool census"
+        );
+        assert!(
+            refusals.is_empty(),
+            "{} files reach across trees",
+            refusals.len()
+        );
+    }
+}
+
+#[cfg(test)]
+mod cross_tree_bare_reference_tests {
+    use super::*;
+
+    fn write(root: &Path, rel: &str, content: &str) {
+        let p = root.join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).expect("mkdir");
+        std::fs::write(&p, content).expect("write dag");
+    }
+
+    /// Two source trees. `a/user.dag` references `helper`, declared only in tree `b`, and a builtin
+    /// `get`, which tree `b` also declares as an ordinary function. Returns the admission verdict
+    /// of `a/user.dag`.
+    fn admit_user(tag: &str, user_imports: &str, call_helper: bool) -> Result<(), String> {
+        let base = process_workspace_root()
+            .join("target")
+            .join(format!("gunbc-crosstree-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (a, b) = (base.join("a"), base.join("b"));
+        let main_body = if call_helper { "helper()" } else { "1" };
+        write(
+            &b,
+            "helper.dag",
+            "module tb.helper\n\nfn helper() -> Int {\n  1\n}\n\nfn get(x: Int) -> Int {\n  x\n}\n",
+        );
+        write(
+            &a,
+            "user.dag",
+            &format!(
+                "module ta.user\n{user_imports}\nfn main() -> Int {{\n  {main_body}\n}}\n\nfn first() -> Bool {{\n  match get(xs: [1, 2], index: 0) {{\n    Present {{ value: _ }} => true\n    Absent => false\n  }}\n}}\n"
+            ),
+        );
+        let roots = vec![
+            a.to_string_lossy().into_owned(),
+            b.to_string_lossy().into_owned(),
+        ];
+        let index = build_multi_entry_index(&roots);
+        let user = index
+            .source_files
+            .values()
+            .find(|sf| sf.path.ends_with("a/user.dag"))
+            .cloned()
+            .expect("user source indexed");
+        let verdict = super::super::admit_bare_references_of_file(&index, &user);
+        let _ = std::fs::remove_dir_all(&base);
+        verdict
+    }
+
+    fn admit_user_qualified(tag: &str) -> Result<(), String> {
+        let base = process_workspace_root()
+            .join("target")
+            .join(format!("gunbc-crosstree-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (a, b) = (base.join("a"), base.join("b"));
+        write(
+            &b,
+            "helper.dag",
+            "module tb.helper\n\nfn helper() -> Int {\n  1\n}\n",
+        );
+        write(
+            &a,
+            "user.dag",
+            "module ta.user\n\nfn main() -> Int {\n  tb.helper.helper()\n}\n",
+        );
+        let roots = vec![
+            a.to_string_lossy().into_owned(),
+            b.to_string_lossy().into_owned(),
+        ];
+        let index = build_multi_entry_index(&roots);
+        let user = index
+            .source_files
+            .values()
+            .find(|sf| sf.path.ends_with("a/user.dag"))
+            .cloned()
+            .expect("user source indexed");
+        let verdict = super::super::admit_bare_references_of_file(&index, &user);
+        let _ = std::fs::remove_dir_all(&base);
+        verdict
+    }
+
+    /// THE RED: an unimported bare reference to a name only another source tree declares refuses,
+    /// typed and located, where the deleted pool fallback silently resolved it.
+    #[test]
+    fn an_unimported_cross_tree_bare_name_refuses() {
+        let err = admit_user("red", "", true).expect_err("a cross-tree bare reference must refuse");
+        assert!(err.contains("CrossTreeBareReference"), "{err}");
+        assert!(err.contains("'helper'"), "{err}");
+        assert!(err.contains("`tb.helper.helper`"), "{err}");
+    }
+
+    /// A BUILTIN IS NOT A CROSS-TREE REFERENCE: `get` is the builtin even though tree `b` declares
+    /// an ordinary `fn get`. The deleted fallback pulled that function in; the rule neither pulls
+    /// it nor refuses.
+    #[test]
+    fn a_builtin_named_like_another_trees_function_admits() {
+        admit_user("builtin", "", false).expect("the builtin get admits without a provider");
+    }
+
+    /// The positive control: the same reference written qualified (`tb.helper.helper()`) admits,
+    /// and the file stays import-less, so its other bare references are still followed.
+    #[test]
+    fn the_same_reference_written_qualified_admits() {
+        admit_user_qualified("green").expect("a qualified cross-tree reference admits");
+    }
+}
+
+/// The five files the cross-tree census enumerated resolve as entries over the live pool after
+/// the migration: the four that now reference across trees qualified, and the builtin `get` claim that no
+/// longer pulls another tree's `fn get`.
+#[cfg(test)]
+mod cross_tree_migrated_entries_resolve {
+    use super::*;
+    #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    fn migrated_entries_resolve_on_the_live_pool() {
+        let root = process_workspace_root();
+        let roots: Vec<String> = ["dag", "src/v2"]
+            .iter()
+            .map(|r| root.join(r).to_string_lossy().into_owned())
+            .collect();
+        let index = process_shared_index(&roots);
+        for e in [
+            "src/v2/test/claim/auth_declared_but_unwired_witness_test.dag",
+            "src/v2/test/claim/bootstrap_test.dag",
+            "src/v2/test/claim/infer_semantics_witness_test.dag",
+            "src/v2/test/claim/manual/path_y_fidelity_successor_test.dag",
+            "dag/test/claim/builtin_get_resolver_test.dag",
+        ] {
+            let entry = root.join(e);
+            let r = resolve_entry_with_index_for_discovery_corpus(&index, &entry.to_string_lossy());
+            eprintln!("MIGRATED {e} ok={}", r.is_ok());
+            if let Err(err) = &r {
+                eprintln!("MIGRATED   {}", err.chars().take(600).collect::<String>());
+            }
+            assert!(r.is_ok(), "{e} resolves");
+        }
+    }
+}
+
+/// THE PER-NAME CLAIM, for every name of the live pool: the whole-pool name census's entry for a
+/// name (bare lookup state with candidates, and service entry) equals the entry
+/// `pool_census_for_name` builds over the name's declaring modules alone. This is what licenses
+/// answering the loader's out-of-tree question without building the pool census.
+#[cfg(test)]
+mod pool_census_for_name_differential {
+    use super::*;
+    #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    fn per_name_census_equals_the_pool_census_for_every_name_on_the_live_pool() {
+        let root = process_workspace_root();
+        let roots: Vec<String> = ["dag", "src/v2"]
+            .iter()
+            .map(|r| root.join(r).to_string_lossy().into_owned())
+            .collect();
+        let index = process_shared_index(&roots);
+        let pool = super::super::closure_name_census(&index, None).expect("pool census");
+        let decl = reference_pool_names_for_index(&index).expect("names");
+        let mut names: BTreeSet<String> = BTreeSet::new();
+        names.extend(v1_rt::sorted_map_keys(&pool.global_bare));
+        names.extend(v1_rt::sorted_map_keys(&pool.services));
+        names.extend(decl.decl_index.keys().cloned());
+        let mut divergent: Vec<String> = Vec::new();
+        {
+            for name in &names {
+                let local =
+                    super::super::pool_census_for_name(&index, name).expect("per-name census");
+                if v1_rt::map_get(&pool.global_bare, name.clone())
+                    != v1_rt::map_get(&local.global_bare, name.clone())
+                {
+                    divergent.push(format!("{name} (bare)"));
+                }
+                if v1_rt::map_get(&pool.services, name.clone())
+                    != v1_rt::map_get(&local.services, name.clone())
+                {
+                    divergent.push(format!("{name} (service)"));
+                }
+            }
+        }
+        eprintln!(
+            "PERNAME names={} divergent={}",
+            names.len(),
+            divergent.len()
+        );
+        for d in divergent.iter().take(30) {
+            eprintln!("PERNAME divergent {d}");
+        }
+        assert!(names.len() > 1000, "the live pool was read");
+        assert!(divergent.is_empty(), "{} names diverge", divergent.len());
+    }
+}
+
+/// THE SPECIMEN of `gunbc.recurring_failure_mode.an_import_turns_an_ambiguous_bare_name_into_a_transitive_pick`,
+/// a v1 semantic defect owned by the resolver lane (routed by neat-boar-16), not by this change.
+/// One source tree declares `bar` in `ta.dep` and `ta.other`. With no imports a bare `bar()`
+/// refuses as ambiguous; with one unrelated import whose module imports `ta.dep`, the same call
+/// RESOLVES -- silently binding `bar` to the transitively reached `ta.dep.bar`. This test pins
+/// that behaviour as observed. WHEN THE DEFECT IS FIXED IT MUST FAIL: flip its second assertion
+/// to expect the ambiguity refusal and keep it as the regression control (DESIGN §4b(4)).
+#[cfg(test)]
+mod import_transitive_bare_pick_specimen {
+    use super::*;
+
+    fn w(root: &Path, rel: &str, c: &str) {
+        let p = root.join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).expect("mkdir");
+        std::fs::write(p, c).expect("write dag");
+    }
+
+    #[test]
+    fn an_unrelated_import_turns_an_ambiguous_bare_name_into_a_transitive_pick() {
+        let base = process_workspace_root()
+            .join("target")
+            .join(format!("gunbc-import-pick-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let a = base.join("a");
+        w(
+            &a,
+            "dep.dag",
+            "module ta.dep\n\nfn bar() -> Int {\n  1\n}\n\nfn z() -> Int {\n  0\n}\n",
+        );
+        w(
+            &a,
+            "other.dag",
+            "module ta.other\n\nfn bar() -> Int {\n  2\n}\n",
+        );
+        w(
+            &a,
+            "lib.dag",
+            "module ta.lib\n\nimport ta.dep { z }\n\nfn y() -> Int {\n  z()\n}\n",
+        );
+        w(
+            &a,
+            "bare_user.dag",
+            "module ta.bare_user\n\nfn main() -> Int {\n  bar()\n}\n",
+        );
+        w(
+            &a,
+            "import_user.dag",
+            "module ta.import_user\n\nimport ta.lib { y }\n\nfn main() -> Int {\n  bar()\n}\n",
+        );
+        let index = build_multi_entry_index(&[a.to_string_lossy().into_owned()]);
+        let bare = resolve_entry_with_index(&index, &a.join("bare_user.dag").to_string_lossy());
+        let imported =
+            resolve_entry_with_index(&index, &a.join("import_user.dag").to_string_lossy());
+        let _ = std::fs::remove_dir_all(&base);
+        let err = bare.expect_err("with no imports, an ambiguous bare name refuses");
+        assert!(err.contains("ambiguous reference 'bar'"), "{err}");
+        // THE DEFECT, pinned as observed: flip to expect_err when it is fixed.
+        imported.expect("observed: one unrelated import makes the same bare name resolve");
+    }
+}
+
+/// THE INSTRUMENT for the floor's whole-pool bare admission (`admit_pool_bare_references`) on the
+/// live `[dag, src/v2]` pool, with what both routes share -- the pool heads parse, both tree name
+/// censuses and the heads name index -- warmed first, so the timed term is the admission alone.
+/// It prints the admission time, the per-name census calls and time (`ResolveStageNanos`) and the
+/// distinct names asked; calls against distinct names is the repetition a shared answer would
+/// remove. It reports; it asserts only that the admission completes.
+#[cfg(test)]
+mod live_pool_bare_admission_attribution {
+    use super::*;
+    #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    fn live_pool_bare_admission_attribution() {
+        let root = process_workspace_root();
+        let roots: Vec<String> = ["dag", "src/v2"]
+            .iter()
+            .map(|r| root.join(r).to_string_lossy().into_owned())
+            .collect();
+        let index = process_shared_index(&roots);
+        let _ = super::super::pool_parse(&index).expect("pool parse");
+        for r in index.source_roots.iter() {
+            let _ = super::super::closure_name_census(&index, Some(r)).expect("tree census");
+        }
+        let _ = reference_pool_names_for_index(&index).expect("names");
+        let before = resolve_stage_totals();
+        let t = std::time::Instant::now();
+        let verdict = super::super::admit_pool_bare_references(&index);
+        let elapsed = t.elapsed();
+        let after = resolve_stage_totals();
+        let distinct = super::super::PER_NAME_CENSUS_DISTINCT.with(|d| d.borrow().len());
+        eprintln!(
+            "ADMIT whole_pool_admission={elapsed:?} ok={} per_name_calls={} per_name_ms={} \
+             per_name_distinct={distinct} pool_census_built={}",
+            verdict.is_ok(),
+            after.bare_per_name_census_calls - before.bare_per_name_census_calls,
+            (after.bare_per_name_census - before.bare_per_name_census) / 1_000_000,
+            index.closure_name_censuses.borrow().contains_key(&None),
+        );
+        verdict.expect("the live pool admits");
+    }
+}
+
+/// THE MODULE-LEVEL CLASSES A LEAVE-ONE-OUT READING CAN REMOVE WHOLE. Each is one field of every
+/// `TypedModule`, dropped for ALL modules at once, so a structure one module links from another
+/// (a TypeEnv parent, an interface import) goes with its class rather than surviving through the
+/// link. A field INSIDE one of these (a TypeEnv map) cannot be removed this way: every environment
+/// holds its own copy and other environments reach it through their parent links, so its exclusive
+/// bytes are not observable by dropping, and its enclosing class's figure is their upper bound.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TypedModuleClass {
+    TypeEnv,
+    TypeEnvCache,
+    FuncEnv,
+    Interface,
+    ModuleItemRegistry,
+    Items,
+    ModuleNodes,
+    OccurrenceTransport,
+}
+
+impl TypedModuleClass {
+    pub(crate) const ALL: [TypedModuleClass; 8] = [
+        TypedModuleClass::TypeEnv,
+        TypedModuleClass::TypeEnvCache,
+        TypedModuleClass::FuncEnv,
+        TypedModuleClass::Interface,
+        TypedModuleClass::ModuleItemRegistry,
+        TypedModuleClass::Items,
+        TypedModuleClass::ModuleNodes,
+        TypedModuleClass::OccurrenceTransport,
+    ];
+
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            TypedModuleClass::TypeEnv => "type_env",
+            TypedModuleClass::TypeEnvCache => "type_env_cache",
+            TypedModuleClass::FuncEnv => "func_env",
+            TypedModuleClass::Interface => "interface",
+            TypedModuleClass::ModuleItemRegistry => "module_item_registry",
+            TypedModuleClass::Items => "items",
+            TypedModuleClass::ModuleNodes => "module_nodes",
+            TypedModuleClass::OccurrenceTransport => "occurrence_transport",
+        }
+    }
+}
+
+/// One leave-one-out drop, as raw readings: the allocator's live bytes with every class held,
+/// after dropping ONE class first, and after dropping the rest. What they mean -- the class's
+/// exclusive bytes, the graph's total, what the classes share -- is decided by
+/// `gunbc.typed_graph_exclusive_bytes` `typed_graph_exclusive_report`; this reader only reads. A
+/// graph or module list another owner keeps refuses, because dropping it would free nothing.
+pub(crate) struct ExclusiveBytesReading {
+    pub modules: usize,
+    pub in_use_all: u64,
+    pub in_use_after_class: u64,
+    pub in_use_end: u64,
+    pub ancestry_entries: u64,
+    pub own_entries: u64,
+}
+
+/// Drops every class in `classes` first, together, while every other class is held: one class gives
+/// that class's exclusive bytes; a set gives the bytes the set holds JOINTLY -- what removing all of it
+/// would save, including nodes its members share with each other and with nothing else.
+pub(crate) fn typed_module_class_exclusive_bytes(
+    graph: Rc<v1_compiler_compile::ResolvedGraph>,
+    classes: &[TypedModuleClass],
+) -> Result<ExclusiveBytesReading, String> {
+    let graph = Rc::try_unwrap(graph)
+        .map_err(|g| format!("the graph has {} other owner(s)", Rc::strong_count(&g) - 1))?;
+    let modules = Rc::try_unwrap(graph.modules).map_err(|m| {
+        format!(
+            "the module list has {} other owner(s)",
+            Rc::strong_count(&m) - 1
+        )
+    })?;
+    let module_count = modules.len();
+    let ancestry_entries: u64 = modules
+        .iter()
+        .map(|m| m.type_env.ancestry_str_bindings.len() as u64)
+        .sum();
+    let own_entries: u64 = modules
+        .iter()
+        .map(|m| m.type_env.str_bindings.len() as u64)
+        .sum();
+    let mut owned = Vec::with_capacity(module_count);
+    for m in modules {
+        owned.push(Rc::try_unwrap(m).map_err(|m| {
+            format!(
+                "module {} has {} other owner(s)",
+                m.type_env.module_path,
+                Rc::strong_count(&m) - 1
+            )
+        })?);
+    }
+    // Every class of every module is moved into its own column, so the chosen column is the only
+    // thing dropped and the rest -- including the graph-level registry and diagnostics -- stays held.
+    let mut chosen: Vec<Box<dyn std::any::Any>> = Vec::with_capacity(module_count);
+    let mut kept: Vec<Box<dyn std::any::Any>> = Vec::with_capacity(module_count * 8);
+    for m in owned {
+        let fields: [(TypedModuleClass, Box<dyn std::any::Any>); 8] = [
+            (TypedModuleClass::TypeEnv, Box::new(m.type_env)),
+            (TypedModuleClass::TypeEnvCache, Box::new(m.type_env_cache)),
+            (TypedModuleClass::FuncEnv, Box::new(m.func_env)),
+            (TypedModuleClass::Interface, Box::new(m.interface)),
+            (
+                TypedModuleClass::ModuleItemRegistry,
+                Box::new(m.item_registry),
+            ),
+            (TypedModuleClass::Items, Box::new(m.items)),
+            (TypedModuleClass::ModuleNodes, Box::new(m.module)),
+            (
+                TypedModuleClass::OccurrenceTransport,
+                Box::new(m.occurrence_transport),
+            ),
+        ];
+        for (k, v) in fields {
+            if classes.contains(&k) {
+                chosen.push(v);
+            } else {
+                kept.push(v);
+            }
+        }
+    }
+    let in_use_all = floor_heap_in_use().ok_or("no allocator reading on this target")?;
+    drop(chosen);
+    let after = floor_heap_in_use().ok_or("no allocator reading on this target")?;
+    drop(kept);
+    drop(graph.item_registry);
+    drop(graph.diagnostics);
+    let end = floor_heap_in_use().ok_or("no allocator reading on this target")?;
+    Ok(ExclusiveBytesReading {
+        modules: module_count,
+        in_use_all,
+        in_use_after_class: after,
+        in_use_end: end,
+        ancestry_entries,
+        own_entries,
+    })
 }
 
 /// THE STRICT REFUSAL COUNTS ONLY WHAT BLOCKS, AND NAMES THE MODULE. One fixture carries exactly one

@@ -148,7 +148,13 @@ data known_frontier_causes: List<CauseOwnership> = [
     cause: ^body_lowering_reason_service_realization_unreachable,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "a service declaration lowers at declaration grade (v2.compiler.body_lowering_fold body_lower_service_decl) and its realization and unmodeled interface members are set aside; full normalize refuses a closure member carrying any, because resolution, eval and emission would have to assume them. Flips when a realization binding carrier (a transport handler bound to the interface shape) and a typed operation-modifier carrier exist, so that no set-aside reason has a producer (gunbc.recurring_failure_mode service_interface_member_has_no_carrier)"
+    flip_trigger: "a service declaration lowers at declaration grade (v2.compiler.body_lowering_fold body_lower_service_decl) and its realization and unmodeled interface members are set aside; full normalize refuses a closure member carrying any, because resolution, eval and emission would have to assume them. Flips only when ALL of these exist: the realization binding (a sibling keyed by OperationRef carrying transport, config, exit, response, mock_response and the io `from` wire key); the Arrow effect-claims edge (readonly, idempotent); the separate Arrow execution-mode edge (hermetic); and the one binder representation carrying an optional default. Only then does no set-aside reason have a producer (gunbc.recurring_failure_mode service_interface_member_has_no_carrier)"
+  },
+  CauseOwnership {
+    cause: ^body_lowering_reason_unrecognised_lowered_shape,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "a reader in v2.compiler.body_lowering_fold meets a node that is lowered output (no grammar projection edge) but that body_lower_is_core_substrate does not name, and refuses at it instead of re-reading it as raw parse and answering a part of it (body_lower_is_unrecognised_lowered_shape). The MQ-5 census found no producer that reaches this today. Flips when every producer declares the shape it emits (LoweredShape carried in a BodyTerm through the reducers, neat-boar-16 ruling 2026-09-30), so a reader never classifies a node by shape and the reason has no producer (gunbc.recurring_failure_mode lowered_output_reread_as_raw_parse_at_v2_body_lowering)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_pattern_form_not_admitted,
@@ -157,10 +163,22 @@ data known_frontier_causes: List<CauseOwnership> = [
     flip_trigger: "a `pattern` declaration shares the one fn_decl production but v1 admits it only without generic params and with a block body (dag syntax dag_item_forms: has_type_params false, body_kind BlockBody); a pattern-headed declaration writing generic params or an `= expr` body refuses located at what it wrote (v2.compiler.body_lowering_fold body_lower_pattern_form_refusal_optional). This is a fidelity wall, not a frontier: it retires only if the grammar can express the narrower pattern form without changing the fn_decl spine depth the positional readers walk, so the form becomes unwritable rather than refused"
   },
   CauseOwnership {
+    cause: ^body_lowering_reason_default_value_unmodeled,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "a default value (`= expr`) on a fn or pattern parameter or on a record field parses as the one default_value production and refuses located at it (v2.compiler.body_lowering_fold body_lower_param_default_refusal_optional, body_lower_field_decl_block_payload), because nothing on a lowered parameter or field can carry it. Flips when the one binder representation carrying an optional default, shared by fn params, service io fields and record fields, lowers every default onto its binder, so the reason has no producer (gunbc.recurring_failure_mode default_value_has_no_carrier)"
+  },
+  CauseOwnership {
+    cause: ^body_lowering_reason_parameter_refinement_unmodeled,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "a fn parameter whose type is refined by a where clause parses and refuses at the clause on both lowering arms (v2.compiler.body_lowering_fold body_lower_param_refinement_refusal_optional), because the only where-clause reader serves a type variant and a parameter's type reader would drop the refinement. Flips when a parameter's lowered type carries its refinement -- the parameter type read through the one where-clause reader that type variants use -- so the reason has no producer (gunbc.recurring_failure_mode parameter_refinement_has_no_carrier)"
+  },
+  CauseOwnership {
     cause: ^body_lowering_reason_uses_clause_unmodeled,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "a fn declaring a `uses` clause parses and refuses at the clause on both lowering arms (v2.compiler.body_lowering_fold body_lower_fn_uses_refusal_optional), because v2 has no carrier for a fn's resource requirement and lowering the fn would drop it. Flips when a lowered fn signature carries every `uses` entry's resource requirement -- a v2 effect-requirement carrier that body lowering reads each entry onto (name, resource type, config) -- so the reason has no producer (gunbc.recurring_failure_mode uses_clause_has_no_carrier)"
+    flip_trigger: "a fn declaring a `uses` clause parses and refuses at the clause on both lowering arms (v2.compiler.body_lowering_fold body_lower_fn_uses_refusal_optional), because v2 has no carrier for a fn's resource requirement and lowering the fn would drop it. Flips when D13's DependencyDemand carrier derives each resource requirement keyed on the resource declaration (so derived demand names Network: the restoration trigger of gunbc.rung_drop network_requirement_unrepresented_after_uses_cut) AND the restatement rows are then retired under operator D13 (no carrier is built for the authored row: it would be a second authority for DependencyDemand, docs/plans/service-interface-and-uses-carriers.md), so the reason has no producer on a fn reaching normalize (gunbc.recurring_failure_mode uses_clause_has_no_carrier)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_field_decl_unlowered,
