@@ -1,0 +1,73 @@
+module v2.test.claim.zz_probe.stp_p2
+
+import v2.test.name_resolve.test_code_reference_wall { inhabitance_normalized, inhabitance_module }
+import v2.test.emit.rust_variant_construct_emit { rust_variant_construct_emit_inferred_tree }
+import v2.extdeps.languages.rust_test { rust_variant_construct_target_model_staging, rust_variant_construct_source_text }
+import v2.compiler.emit { emit }
+import v2.std.node { Node, Edge, TypeNode, ComputationNode, Atom, Positional, Named, symbol_lexeme }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.algebra { length }
+import v2.std.collection { list_at_optional }
+import v2.std.optional { Absent, Present }
+import v2.std.text { String }
+import std.process { ProcessExit, exit_failure }
+
+fn sp_int(n: Int) -> String {
+  if n < 10 { (if n == 0 { "0" } else if n == 1 { "1" } else if n == 2 { "2" } else if n == 3 { "3" } else if n == 4 { "4" } else if n == 5 { "5" } else if n == 6 { "6" } else if n == 7 { "7" } else if n == 8 { "8" } else if n == 9 { "9" } else { "-" }) } else { sp_int(n: n / 10) + sp_int(n: n - (n / 10) * 10) }
+}
+
+fn sp_kind(n: Node) -> String {
+  match n.kind {
+    TypeNode { connective: Atom { identity: s } } => "Atom(" + symbol_lexeme(sym: s) + ")"
+    TypeNode { connective: c } => "Type"
+    ComputationNode { behavior: b } => "Comp"
+    _ => "other"
+  }
+}
+
+fn sp_label(e: Edge) -> String {
+  match e.label { Positional => "P"  Named { name: n } => "N(" + symbol_lexeme(sym: n) + ")"  _ => "?" }
+}
+
+fn sp_desc(n: Node) -> String {
+  sp_kind(n: n) + "#" + sp_int(n: length(xs: n.children))
+}
+
+// First structural divergence, as a path of child indices.
+fn sp_diff(a: Node, b: Node, path: String) -> String {
+  if a == b { "" } else if (sp_kind(n: a) != sp_kind(n: b)) || (length(xs: a.children) != length(xs: b.children)) || (a.kind != b.kind) {
+    path + ": emitted=" + sp_desc(n: a) + " supplied=" + sp_desc(n: b) + (if a.kind == b.kind && length(xs: a.children) == length(xs: b.children) { " (occurrence differs)" } else { "" })
+  } else {
+    sp_kids(a: a, b: b, path: path, i: 0)
+  }
+}
+
+fn sp_kids(a: Node, b: Node, path: String, i: Int) -> String {
+  match list_at_optional(xs: a.children, index: i) {
+    Absent => path + ": children equal; node differs (occurrence id?)"
+    Present { value: ea } =>
+      match list_at_optional(xs: b.children, index: i) {
+        Absent => path + ": ?"
+        Present { value: eb } =>
+          if ea == eb { sp_kids(a: a, b: b, path: path, i: i + 1) }
+          else if ea.label != eb.label { path + "/" + sp_int(n: i) + ": label emitted=" + sp_label(e: ea) + " supplied=" + sp_label(e: eb) }
+          else { sp_diff(a: ea.target, b: eb.target, path: path + "/" + sp_int(n: i) + sp_label(e: ea)) }
+      }
+  }
+}
+
+fn sp_report() -> ProcessExit {
+  let wall = match inhabitance_normalized() {
+    Rejected { diagnostics: d } => "emitted REJECTED " + symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+    Accepted { value: e, diagnostics: _ } =>
+      match inhabitance_module() {
+        Rejected { diagnostics: _ } => "supplied rejected"
+        Accepted { value: s, diagnostics: _ } => sp_diff(a: e.root, b: s.root, path: "root")
+      }
+  }
+  let em = match emit(tree: rust_variant_construct_emit_inferred_tree, target: rust_variant_construct_target_model_staging()) {
+    Rejected { diagnostics: d } => "REJECTED " + symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+    Accepted { value: src, diagnostics: d } => "TEXT[" + src.carried + "] want[" + rust_variant_construct_source_text + "]"
+  }
+  exit_failure(reason: "SP2 WALL " + wall + " || EMIT " + em)
+}

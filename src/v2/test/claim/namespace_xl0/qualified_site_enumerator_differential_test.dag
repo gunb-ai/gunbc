@@ -31,16 +31,20 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // because v2.compiler.namespace_graft never rehomes a type declaration into the containment
 // tree (the declaration-grafting loss, v2.test.claim.namespace_xl0.field_type_tree_presence).
 //
-// The lens's dissolution row (reference_deps_dissolve_on) therefore stays PENDING: the collector
+// The lens's dissolution row (reference_deps_dissolve_on) stayed PENDING: the collector
 // is the single authority for the classes it covers, and the deletion of the parse walker waits on
 // an identity-grain site-set comparison being EMPTY across every reference position. This file is
 // the first cell of that comparison, and the disagreement row below reds -- and is re-stated --
 // when the graft lands and the collector sees the field type.
-data qsd_source: String = "module v2.test.qsd_subject\n\nimport v2.std.logic { Bool }\n\ntype QsdWrapper { fld: v2.test.qsd_provider.QsdFieldType }\n\nfn qsd_param(p: v2.test.qsd_provider.QsdParamType) -> Bool { true }\n"
+data qsd_source: String = "module v2.test.qsd_subject\n\nimport v2.std.logic { Bool }\n\ntype QsdWrapper { fld: v2.test.qsd_provider.QsdFieldType }\n\nfn qsd_param(p: v2.test.qsd_provider.QsdParamType) -> Bool { true }\n\nfn qsd_call() -> Bool { v2.test.qsd_provider.qsd_callee(x: v2.test.qsd_provider.qsd_argument) }\n"
 
 data qsd_field_spelling: String = "v2.test.qsd_provider.QsdFieldType"
 
 data qsd_param_spelling: String = "v2.test.qsd_provider.QsdParamType"
+
+data qsd_callee_spelling: String = "v2.test.qsd_provider.qsd_callee"
+
+data qsd_argument_spelling: String = "v2.test.qsd_provider.qsd_argument"
 
 fn qsd_read() -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -96,9 +100,29 @@ test fn both_enumerators_see_a_qualified_parameter_type_holds() -> Bool {
   parse_walker_sees(spelling: qsd_param_spelling) && collector_sees(spelling: qsd_param_spelling)
 }
 
-// DISAGREEMENT CELL, MEASURED: the parse walker sees the qualified field type; the collector does
-// not, because the record declaration never reaches the normalized tree. This is the row that
-// keeps the parse walker alive, and it reds when declaration grafting lands.
-test fn only_the_parse_walker_sees_a_qualified_field_type_today() -> Bool {
-  parse_walker_sees(spelling: qsd_field_spelling) && !collector_sees(spelling: qsd_field_spelling)
+// FLIPPED 2026-10-01 (DESIGN 4b(4)): enrolled as the disagreement cell "only the parse walker sees
+// a qualified field type", it went red once declaration grafting (gunbc#11574) brought the record
+// declaration into the normalized tree. Permanent agreement control: BOTH enumerators see it, so a
+// collector regression or a parse-walker loss each reds it.
+test fn both_enumerators_see_a_qualified_field_type_holds() -> Bool {
+  parse_walker_sees(spelling: qsd_field_spelling) && collector_sees(spelling: qsd_field_spelling)
+}
+
+// THE CALL CELLS, the two positions reference_deps_dissolve_on still names as outstanding: a
+// qualified callee and a qualified call argument. Each is read from both enumerators; the claims
+// state what is measured, so either one reds when the other enumerator's coverage moves.
+test fn the_collector_sees_a_qualified_callee_holds() -> Bool {
+  collector_sees(spelling: qsd_callee_spelling)
+}
+
+test fn the_collector_sees_a_qualified_call_argument_holds() -> Bool {
+  collector_sees(spelling: qsd_argument_spelling)
+}
+
+test fn the_parse_walker_sees_a_qualified_callee_holds() -> Bool {
+  parse_walker_sees(spelling: qsd_callee_spelling)
+}
+
+test fn the_parse_walker_sees_a_qualified_call_argument_holds() -> Bool {
+  parse_walker_sees(spelling: qsd_argument_spelling)
 }

@@ -4547,14 +4547,16 @@ fn dag_binary_body_node(operator: Node, left_binding: Symbol, right_binding: Sym
   }
 }
 
+// THE SIGNATURE dag_add_arrow_with_body_node CARRIES, WITHOUT ITS BODY: the same declared-signature
+// domain and order edge (v2.std.arrow_signature declared_signature, gunbc#12361), so attaching the
+// add body (v2.compiler.body_producer attach_arrow_body) yields that fixture exactly.
 fn dag_add_arrow_signature_node() -> Node {
+  let domain = dag_arrow_domain_conj_node()
+  let signature = declared_signature(params: domain.children, source: domain)
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge {
-        label: Positional,
-        target: dag_arrow_domain_conj_node()
-      },
+      signature.domain,
       Edge {
         label: Positional,
         target: dag_type_atom_node(identity: ^dag_binding_type_int)
@@ -4562,7 +4564,8 @@ fn dag_add_arrow_signature_node() -> Node {
       Edge {
         label: Positional,
         target: dag_type_atom_node(identity: ^dag_binding_type_int)
-      }
+      },
+      signature.order
     ],
     occurrence_id: OccurrenceSynthetic
   }
