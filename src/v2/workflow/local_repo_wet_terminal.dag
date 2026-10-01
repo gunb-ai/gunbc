@@ -2019,6 +2019,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_tag_dispatch_entry_is_present" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_tag_dispatch_entry_is_present",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_other_tag_entry_is_absence" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_other_tag_entry_is_absence",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_lookup_count_without_rows_refuses" },
       entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
       function: "release_bins_RED_lookup_count_without_rows_refuses",
@@ -2220,6 +2232,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", function: "a_held_observer_is_admitted_and_its_triggered_still_is_hash_bound" },
       entry: "dag/test/claim/machine_intake/mtcollins1_kvm_observer_protocol_wet_witness_test.dag",
       function: "a_held_observer_is_admitted_and_its_triggered_still_is_hash_bound",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", function: "a_root_page_that_navigates_cannot_destroy_the_login" },
+      entry: "dag/test/claim/machine_intake/mtcollins1_kvm_observer_protocol_wet_witness_test.dag",
+      function: "a_root_page_that_navigates_cannot_destroy_the_login",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
