@@ -45,10 +45,7 @@ fn p4_emit(src: String) -> String {
 
 fn p4_report() -> ProcessExit {
   exit_failure(reason: "P4"
-    + "\n1 " + p4_emit(src: "module v2.test.member_emission\n\nfn f(x: Int) -> Int {\n  let y = x\n  y + y\n}\n")
-    + "\n3a " + p4_res(src: "module p\n\ntype Box = Holds { value: Int }\n\nfn f(b: Box) -> Int = match b {\n  Holds { value: v } => v\n}\n")
-    + "\n3b " + p4_res(src: "module p\n\nfn f(x: Int) -> Int {\n  let g = fn(a: Int) { a }\n  g(x)\n}\n")
-    + "\n4 " + p4_res(src: "module p\n\nfn id<T>(x: T) -> T { x }\n")
-    + "\n5 " + p4_emit(src: "module v2.test.member_emission\n\nfn k(x: Int) -> fn(Int) -> Int {\n  fn(y: Int) { x }\n}\n")
-    + "\n6 " + p4_res(src: "module p\n\nfn f(x: Int) -> Int {\n  let g = fn(a: Int) { a + 1 }\n  g(x)\n}\n"))
+    + "\n5 " + p4_emit(src: "module v2.test.member_emission\n\nfn k(x: Int) -> fn(Int) -> Int {\n  fn(y) { x }\n}\n")
+    + "\n5b " + p4_emit(src: "module v2.test.member_emission\n\nimport v2.std.integer { Int }\n\nfn fvb_direct(p: Int) -> fn(Int) -> Int { fn(q) { p } }\n")
+    + "\n6 " + p4_res(src: "module p\n\nfn f(x: Int) -> Int {\n  let g = fn(a) { a + x }\n  g(x)\n}\n"))
 }
