@@ -98,6 +98,7 @@ import gunbc.machine_intake_mtcollins1_kvm_still {
   KvmObserverStart, KvmObserverStarted, KvmObserverNotStarted, KvmObserverRecord, KvmJournalEvent,
   KvmHandoffAdmitted, KvmHandoffRefused, kvm_handoff_admission, kvm_observer_standing_now, kvm_standing_text,
   KvmObserverStanding, KvmObserverProcessNotRunning, KvmObserverJournalUnread, KvmObserverStopped,
+  KvmObserverEstablished, KvmObserverLost, KvmObserverMismatch, KvmObserverRefused, KvmObserverFailed, KvmObserverPending,
   mtcollins1_kvm_observer_start, mtcollins1_kvm_observer_finish, kvm_observer_trigger, kvm_observer_record_not_started,
   kvm_boundary_events, kvm_journal_events_at, kvm_event_text, kvm_observer_receipt_line,
   mtcollins1_bmc_firmware, mtcollins1_kvm_still_allowance,
@@ -1824,7 +1825,12 @@ fn mtcollins1_boot_screen_liveness_lines(standing: KvmObserverStanding) -> List<
     KvmObserverProcessNotRunning { process: _ } => [kvm_standing_text(s: standing)]
     KvmObserverJournalUnread { cause: _ } => [kvm_standing_text(s: standing)]
     KvmObserverStopped { at: _ } => [kvm_standing_text(s: standing)]
-    _ => []
+    KvmObserverEstablished { at: _, host: _, session: _, attempt: _ } => []
+    KvmObserverLost { at: _, established_at: _ } => []
+    KvmObserverMismatch { at: _, detail: _ } => []
+    KvmObserverRefused { at: _, refusal: _ } => []
+    KvmObserverFailed { at: _, detail: _ } => []
+    KvmObserverPending => []
   }
 }
 
