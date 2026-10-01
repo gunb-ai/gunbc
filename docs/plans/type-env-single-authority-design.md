@@ -432,3 +432,154 @@ The union reaches PR-2 in FIVE representations, not two. All five live on every 
 produced on a session host or on the remote runner (HostBudgetUnreadable); it has so far run only on srv1.
 So PR-2 is authored in `.dag` with the emitted Rust mirrored by hand for compile-and-test iteration, and the
 srv1 regen is the adjudicator: its output replaces the hand mirror wherever they differ.
+
+## PR-2 representation: exporter index plus closure reachability (B), with its equality argument
+
+The ruling names one representation with the unions deleted. A MEMOIZED walk has no realization in v1:
+the typechecker is pure `.dag` emitted into stage0, and no fold there consumes a materialization
+provider. A walk without a memo revisits shared ancestors across diamonds, so each miss costs
+O(closure). This section therefore replaces the memo with structure that makes most lookups O(1) and
+bounds the rest. It is a representation change within the ruling's intent (one representation, the
+unions deleted), decided by the lane manager and neat-boar-16, 2026-10-01.
+
+### The fold being replaced, stated exactly (`04_env.dag`, `04_infer.dag` at main)
+Write `own(P)` for module P's own `str_bindings` at interface build, BEFORE the rewire pass. Write
+`surf(P)` for `P.interface.cache.str_bindings` = `map_merge(anc(P), own(P))`, so own wins. For a
+module M with resolved imports I_1..I_k in import order:
+- **U(M)**, the import union `union_parent_type_env_caches`: a left fold over surf(I_1..I_k) through
+  `guarded_union_str_bindings`.
+  - If the authorities DIFFER (`binding_same_authority` is false, i.e. different declaration span and
+    structurally unequal), the overlay (later import) wins and a fork row is recorded.
+  - If the authority is the SAME, the retained side's copy is kept. Which side is retained depends on
+    the size-based orientation, but the declaration is the same.
+- **K(M)**: `merge_type_env_cache(U, kernel)`. The kernel wins every key it carries.
+- **anc(M)**: `overlay_direct_import_exports(K.str_bindings, ...)`.
+  - For each import J in order, the selected names are: if `is_all`, J's export-surface names minus
+    type variables (and, for std.types, the type-variable filter of `type_env_for_import`); otherwise
+    `specific_names`.
+  - Each selected name is inserted from J's EXPORT SURFACE `str_bindings`, which is own(J).
+  - Names in `overlay_skips_kernel_name` are skipped.
+  - Later J wins.
+- **Lookup at M** (`lookup_binding_on_chain`): rewired own(M) first, then anc(M) with the rewire's
+  `rewrites` merged over it.
+
+### The new representation
+- **E**: the pool's EXPORTER INDEX, name -> the set of modules whose own(P) carries the name. Its
+  size is the sum of OWN entries.
+- **The kernel** is a distinguished exporter.
+- **R(M)**: per-module CLOSURE REACHABILITY, the set of modules in M's import closure, as module
+  indices. It is built in topological order as R(M) = U over j of ({I_j} plus R(I_j)). This is a set of
+  module ids, not names.
+- **A surface node per module**: own(M) (pre-rewire), its ordered imports with their selection data
+  (`is_all`, `specific_names`, the std.types flag), R(M), and the rewire overlay. These are shared by
+  reference, never copied.
+- **Lemma (presence).** n is in keys(surf(P)) iff n is a kernel name, or some E in E[n] lies in
+  {P} plus R(P).
+  - Proof: by induction on the topological order. surf(P) = own(P) plus anc(P); keys(anc(P)) =
+    keys(U) plus kernel plus the selected direct names; and every selected direct name comes from
+    own(J) with J in R(P). So keys(surf(P)) = own(P), plus kernel, plus the union over j of
+    keys(surf(I_j)). The induction hypothesis on each I_j gives the claim.
+  - The std.types filter only removes names from the DIRECT overlay. The union still carries them,
+    so presence is unaffected.
+
+### The winner, and the proof sketch per case
+`win(M, n)` is the binding anc(M) carries for n, computed as follows:
+1. If n is in `overlay_skips_kernel_name` and n is a kernel name: the kernel binding. (K wins, and the
+   direct overlay skips it.)
+2. Else, if some direct import selects n and own(J)[n] exists (after the std.types filter for J =
+   std.types): own(J)[n] for the LAST such J in import order.
+3. Else, if n is a kernel name: the kernel binding.
+4. Else, the union winner. Take the LAST import I_j (scanning k down to 1) with n in keys(surf(I_j)),
+   tested by the presence lemma, and return sv(I_j, n) = own(I_j)[n] if present, else win(I_j, n).
+- **Fast path:** if n is not a kernel name and E[n] = {E} is a single exporter, then win(M, n) =
+  own(E)[n] whenever E is in R(M). Every surface containing n carries own(E)[n], or a same-authority
+  copy of it, since there is no other source. So the descent can only end there.
+
+Cases:
+- **Diamond** (I_a and I_b both reach a common ancestor C that exports n). U's fold takes the later
+  import's surface value. Step 4 takes the LAST I_j by presence and descends into it. Both arrive at
+  C's binding or at the same-authority copy, so the authority is equal. The VALUE copy can differ only
+  when the fold retained the earlier side for a same-authority key (orientation). That is the existing
+  orientation case below.
+- **A re-export of a re-export** (n is declared at depth d and reaches M only through intermediate
+  surfaces). surf(I_j) carries n by the lemma. sv descends I_j -> ... and at each level selects that
+  module's own winner by the same rule, which is exactly how surf(I_j) was folded. So, by induction on
+  depth, sv(I_j, n) = surf(I_j)[n].
+- **A name exported at several depths** (two exporters E1 and E2 both in R(M)). The fold's winner is
+  the value carried by the last import whose surface has n; inside that import, recursively, the same
+  rule. Step 4 is that rule. No 'nearest exporter' heuristic is used: depth never decides, only import
+  order at each level, as in the fold.
+- **Kernel shadowing.** K = U overlaid by the kernel, so for a kernel name the union is irrelevant
+  unless the direct overlay applies. That is steps 1 and 3. A kernel name in `overlay_skips_kernel_name`
+  ignores even the direct overlay (step 1). Other kernel names take the direct overlay first (step 2).
+  Both match `build_ancestry_precedence`.
+- **Local shadowing.** Lookup at M reads rewired own(M) first and anc(M) second, unchanged. surf(P)
+  for importers reads pre-rewire own(P) first. That is `map_merge(anc, own)`: own wins.
+- **is_all parents.** The selection in step 2 is J's export-surface names minus type variables, read
+  from own(J) and filtered. specific imports use `specific_names`. Both are carried on the surface
+  node. The union in step 4 ignores selections because U uses whole surfaces, which the lemma reflects.
+- **The rewire overlay.** `rewrites` are consulted at M's lookup only, before win(M, n), and are
+  never visible to importers. The current code also builds importers' surfaces from the pre-rewire
+  interface.
+- **Orientation (the only value-level freedom).** When two same-authority copies exist, the current
+  fold keeps the retained side's copy, chosen by map SIZE. The walk returns the copy on its descent
+  path. These are equal at identity grain (same declaration span) by `binding_same_authority`'s
+  definition. The differential therefore compares at identity grain AND reports every
+  structurally-unequal same-span pair as its own row, so a case where the copies would typecheck
+  differently is surfaced rather than equated.
+
+### Fork rows
+A row arises at M when U's fold meets n in surf(I_k) with a different authority than the
+accumulated winner from imports before k. By the fast path, a name with one non-kernel exporter has
+one authority everywhere, so it produces no row.
+- Rows therefore come only from MULTI-EXPORTER names: |E[n]| > 1, or the kernel plus at least one
+  module.
+- PR-2 computes them eagerly per module: for each such name present in two or more of M's imports
+  (presence lemma), fold over imports in order with the current winner, and emit
+  (name, import_path, existing site, incoming site, span, same_tree) exactly where the guarded union
+  would.
+- The rows are identical as a MULTISET. Row ORDER today follows `map_keys` over a hash map, which is
+  host-ordered and already not deterministic across processes (see #12895's RFM row). The ledger's
+  consumers are count- and partition-grain (`union_base_choice_note`). So the differential compares
+  the multiset, and sorted order is the canonical presentation.
+
+### The other three representations
+- **deps_map union.** The same winner rule (overlay wins when different, no rows), over a deps
+  exporter index keyed like E. It is demanded inside `build_type_env` only (cycle detection,
+  `resolve_env_bindings`) and never retained on the module.
+- **cycle_set_str union.** A presence predicate: n is a cycle name at M iff n is in the compiler
+  recursive set, or some E with n in newcycles(E) lies in {M} plus R(M). The derived `recursive_types`,
+  `recursive_type_set` and inductive set have union-grain consumers. Each consumer is converted to the
+  predicate where it only tests membership. Where one enumerates, the enumeration is computed
+  transiently from the cycle exporter index restricted to R(M). Cycle names are few, so this is small.
+- **source_visible_names.** A membership predicate built from the same lemma: n is visible iff it is
+  local, a kernel name, selected by a specific import, or present in an is_all parent's surface. Its
+  readers (`map_has` and `map_is_empty` in the visibility wall) are membership tests.
+- **interface.env and interface.cache** carry the same union again (the 2026-10-01 CI attribution on
+  #12900 frees about 2.2 GB at `interface`, after `te.ancestry_str_bindings`). Both are replaced by the
+  surface node: importers read the node, not a copied map.
+
+### The differential that checks it
+On the real pool, for both representations:
+- every (module, name) that the strict typecheck AND evaluation actually look up, recorded at
+  `lookup_binding_on_chain`, compared at identity grain (declaration span plus module path), with
+  structurally-unequal same-span pairs reported;
+- every module's fork rows as a multiset;
+- the deps winners and cycle membership for every name the cycle detection demands;
+- every claim verdict, and the producer-grain warm digests, which are deterministic after #12895.
+The lookup set is recorded by an armed probe in the BEFORE arm, then replayed against the AFTER
+representation, so the comparison covers exactly what the program reads, not a sample.
+
+### Cost bound per lookup
+- An own(M) hit is unchanged: one map get.
+- A single-exporter name (the common case): one E[n] get plus one R(M) membership test.
+- A multi-exporter or kernel name: O(D x k x X) membership tests in the worst case, where D is the
+  import-chain depth descended, k the imports scanned per level, and X = |E[n]|. It stops at the first
+  level whose own map carries n.
+- These are map operations in emitted Rust (the typecheck) and evaluation steps in the interpreter
+  (`resolve_coproduct_type_node`). The A/B reports both against the BEFORE arm's single map get, as
+  the lane manager's gate (3) requires.
+- FALSIFIER: if multi-exporter lookups dominate and push the strict resolve's or the floor's step
+  total beyond noise, the representation fails the gate as stated. The remedy is then a per-module
+  table for MULTI-EXPORTER names only (homonyms plus kernel names, a fraction of the union), named as
+  its own decision, never added silently.
