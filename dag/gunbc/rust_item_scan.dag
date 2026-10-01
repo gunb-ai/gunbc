@@ -91,6 +91,16 @@ import v2.std.algebra { any, filter, fold_list, length, list_map }
 // line; none of them is an item, so none records one. Measured on the seed's hand-maintained Rust
 // before they existed, wrapped `use` lists alone refused 58 files -- a recognizer safe enough to be
 // useless, which is the failure mode a fail-closed reader has to be watched for.
+// THE RAW LITERAL AN ITEM HAS OPEN, WITH WHERE IT OPENED, OR NONE. One variant rather than a
+// terminator string beside a flag, so "opened on the header with no terminator" has no constructor.
+type RawLiteral
+  = NoRawLiteral
+  | OpenRawLiteral { terminator: String, opened_on_header: Bool }
+
+fn raw_literal_of(terminator: String, opened_on_header: Bool) -> RawLiteral {
+  if terminator == "" { NoRawLiteral } else { OpenRawLiteral { terminator: terminator, opened_on_header: opened_on_header } }
+}
+
 type RustScanScope
   = ModuleScope { module_name: String, start_line: Int }
   | UseScope { start_line: Int }
@@ -103,8 +113,7 @@ type RustScanScope
       impl_subject: String,
       enclosing_module: String,
       start_line: Int,
-      raw_terminator: String,
-      raw_opened_on_header: Bool,
+      raw_literal: RawLiteral,
       initializer_continued: Bool
     }
 
@@ -480,10 +489,13 @@ fn scan_top_raw_terminator(scopes: List<RustScanScope>) -> String {
           impl_subject: _,
           enclosing_module: _,
           start_line: _,
-          raw_terminator: raw,
-          raw_opened_on_header: _,
+          raw_literal: literal,
           initializer_continued: _
-        } => raw
+        } =>
+          match literal {
+            NoRawLiteral => ""
+            OpenRawLiteral { terminator: t, opened_on_header: _ } => t
+          }
         ModuleScope { module_name: _, start_line: _ } => ""
         ImplScope { impl_subject: _, start_line: _ } => ""
         UseScope { start_line: _ } => ""
@@ -510,10 +522,13 @@ fn scan_top_raw_opened_on_header(scopes: List<RustScanScope>) -> Bool {
           impl_subject: _,
           enclosing_module: _,
           start_line: _,
-          raw_terminator: _,
-          raw_opened_on_header: on_header,
+          raw_literal: literal,
           initializer_continued: _
-        } => on_header
+        } =>
+          match literal {
+            NoRawLiteral => false
+            OpenRawLiteral { terminator: _, opened_on_header: on_header } => on_header
+          }
         ModuleScope { module_name: _, start_line: _ } => false
         ImplScope { impl_subject: _, start_line: _ } => false
         UseScope { start_line: _ } => false
@@ -544,8 +559,7 @@ fn scan_top_initializer_continued(scopes: List<RustScanScope>) -> Bool {
           impl_subject: _,
           enclosing_module: _,
           start_line: _,
-          raw_terminator: _,
-          raw_opened_on_header: _,
+          raw_literal: _,
           initializer_continued: continued
         } => continued
         ModuleScope { module_name: _, start_line: _ } => false
@@ -580,8 +594,7 @@ fn scan_state_with_raw(state: RustScanState, raw: String) -> RustScanState {
           impl_subject: subject,
           enclosing_module: enclosing,
           start_line: start,
-          raw_terminator: _,
-          raw_opened_on_header: _,
+          raw_literal: _,
           initializer_continued: continued
         } =>
           scan_state_of(
@@ -595,8 +608,7 @@ fn scan_state_with_raw(state: RustScanState, raw: String) -> RustScanState {
                 impl_subject: subject,
                 enclosing_module: enclosing,
                 start_line: start,
-                raw_terminator: raw,
-                raw_opened_on_header: false,
+                raw_literal: raw_literal_of(terminator: raw, opened_on_header: false),
                 initializer_continued: continued
               }
             ),
@@ -638,8 +650,7 @@ fn scope_start_line(scope: RustScanScope) -> Int {
       impl_subject: _,
       enclosing_module: _,
       start_line: n,
-      raw_terminator: _,
-      raw_opened_on_header: _,
+      raw_literal: _,
       initializer_continued: _
     } => n
   }
@@ -684,8 +695,7 @@ fn scan_enclosing_module_path(scopes: List<RustScanScope>) -> String {
           impl_subject: _,
           enclosing_module: _,
           start_line: _,
-          raw_terminator: _,
-          raw_opened_on_header: _,
+          raw_literal: _,
           initializer_continued: _
         } => acc
       }
@@ -710,8 +720,7 @@ fn scan_enclosing_impl_subject(scopes: List<RustScanScope>) -> String {
           impl_subject: _,
           enclosing_module: _,
           start_line: _,
-          raw_terminator: _,
-          raw_opened_on_header: _,
+          raw_literal: _,
           initializer_continued: _
         } => acc
       }
@@ -818,8 +827,7 @@ fn scan_item_of_scope(
       impl_subject: subject,
       enclosing_module: enclosing,
       start_line: start,
-      raw_terminator: _,
-      raw_opened_on_header: _,
+      raw_literal: _,
       initializer_continued: _
     } =>
       list_snoc_item(
@@ -869,8 +877,7 @@ fn scan_state_with_macro_region(state: RustScanState, scope: RustScanScope) -> R
       impl_subject: _,
       enclosing_module: _,
       start_line: _,
-      raw_terminator: _,
-      raw_opened_on_header: _,
+      raw_literal: _,
       initializer_continued: _
     } => state
   }
@@ -954,8 +961,7 @@ fn scan_open_header(state: RustScanState, text: String) -> RustScanState {
         impl_subject: if kind == RustImplMethod { impl_subject } else { "" },
         enclosing_module: enclosing,
         start_line: start,
-        raw_terminator: header_raw,
-        raw_opened_on_header: header_raw != "",
+        raw_literal: raw_literal_of(terminator: header_raw, opened_on_header: true),
         initializer_continued: !self_closing && ends_with(s: trim(s: text), suffix: "=")
       }
       if self_closing {
@@ -989,8 +995,7 @@ fn scan_scope_is_item(scopes: List<RustScanScope>) -> Bool {
           impl_subject: _,
           enclosing_module: _,
           start_line: _,
-          raw_terminator: _,
-          raw_opened_on_header: _,
+          raw_literal: _,
           initializer_continued: _
         } => true
         ModuleScope { module_name: _, start_line: _ } => false
@@ -1047,8 +1052,7 @@ fn scan_top_scope_kind(scopes: List<RustScanScope>) -> String {
           impl_subject: _,
           enclosing_module: _,
           start_line: _,
-          raw_terminator: _,
-          raw_opened_on_header: _,
+          raw_literal: _,
           initializer_continued: _
         } => "item"
       }
@@ -1106,8 +1110,7 @@ fn scan_top_item_is_expression_bodied(scopes: List<RustScanScope>) -> Bool {
           impl_subject: _,
           enclosing_module: _,
           start_line: _,
-          raw_terminator: _,
-          raw_opened_on_header: _,
+          raw_literal: _,
           initializer_continued: _
         } =>
           any(
