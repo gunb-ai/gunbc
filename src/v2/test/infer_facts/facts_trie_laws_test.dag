@@ -1,0 +1,95 @@
+module v2.test.infer_facts.facts_trie_laws
+
+import v2.compiler.inferred_tree {
+  InferredFacts, GroundingNotDerived, InferFactsTrie, InferSite, InferSiteStep, InferSitedFacts,
+  infer_sited_facts_at
+}
+import v2.std.collection { optional_absent_unwrap_diagnostic }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Positional, TypeNode, Atom, Conj, content_hash, node_synthetic }
+import v2.std.optional { Optional, Absent, Present }
+import v2.std.witness { witness_violates }
+
+// The laws of v2.compiler.inferred_tree InferFactsTrie, over SUPPLIED tries (DESIGN 3 witness rule:
+// the subject is the site lookup, not infer). The inhabitance claim that infer's real gather emits
+// this shape is carried by the infer claims of the same change.
+
+fn ftl_atom(sym: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: sym } }, children: [])
+}
+
+fn ftl_facts(sym: Symbol) -> InferredFacts {
+  InferredFacts {
+    grounding: GroundingNotDerived { node: ftl_atom(sym: sym) },
+    descent: witness_violates(diagnostic: optional_absent_unwrap_diagnostic())
+  }
+}
+
+fn ftl_leaf(sym: Symbol) -> InferFactsTrie {
+  InferFactsTrie { facts: Present { value: ftl_facts(sym: sym) }, children: [] }
+}
+
+// Two STRUCTURALLY EQUAL childless Conj siblings under one Conj root: under a structural key they are
+// one key; as sites they are (Positional, 0) and (Positional, 1).
+fn ftl_root_node() -> Node {
+  let c = node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+  node_synthetic(kind: TypeNode { connective: Conj }, children: [
+    v2.std.node.Edge { label: Positional, target: c },
+    v2.std.node.Edge { label: Positional, target: c }
+  ])
+}
+
+fn ftl_sited() -> InferSitedFacts {
+  InferSitedFacts {
+    root: content_hash(n: ftl_root_node()),
+    trie: InferFactsTrie {
+      facts: Present { value: ftl_facts(sym: ^ftl_root) },
+      children: [ftl_leaf(sym: ^ftl_first), ftl_leaf(sym: ^ftl_second)]
+    }
+  }
+}
+
+fn ftl_site(steps: List<InferSiteStep>) -> InferSite {
+  InferSite { root: content_hash(n: ftl_root_node()), steps: steps }
+}
+
+fn ftl_names(opt: Optional<InferredFacts>, sym: Symbol) -> Bool {
+  match opt {
+    Present { value: f } => f == ftl_facts(sym: sym)
+    Absent => false
+  }
+}
+
+test fn facts_trie_empty_path_names_the_root_holds() -> Bool {
+  ftl_names(opt: infer_sited_facts_at(sited: ftl_sited(), site: ftl_site(steps: [])), sym: ^ftl_root)
+}
+
+// INJECTIVE: equal siblings are two sites carrying two different facts, and neither answers for the other.
+test fn facts_trie_equal_siblings_are_two_sites_holds() -> Bool {
+  ftl_names(
+    opt: infer_sited_facts_at(sited: ftl_sited(), site: ftl_site(steps: [InferSiteStep { label: Positional, ordinal: 0 }])),
+    sym: ^ftl_first
+  ) && ftl_names(
+    opt: infer_sited_facts_at(sited: ftl_sited(), site: ftl_site(steps: [InferSiteStep { label: Positional, ordinal: 1 }])),
+    sym: ^ftl_second
+  )
+}
+
+// SCOPE: a site taken in another root resolves to nothing, even when its path exists in this trie.
+test fn facts_trie_site_from_another_root_resolves_to_nothing_holds() -> Bool {
+  match infer_sited_facts_at(
+    sited: ftl_sited(),
+    site: InferSite { root: content_hash(n: ftl_atom(sym: ^ftl_other_root)), steps: [] }
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// An ordinal past the children names no site.
+test fn facts_trie_ordinal_past_the_children_resolves_to_nothing_holds() -> Bool {
+  match infer_sited_facts_at(sited: ftl_sited(), site: ftl_site(steps: [InferSiteStep { label: Positional, ordinal: 2 }])) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}

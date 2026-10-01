@@ -1,10 +1,11 @@
 module v2.compiler.inferred_tree
 
 import v2.std.cardinality { TerminationProof }
-import v2.std.collection { List, Map }
+import v2.std.collection { List, Map, list_at_optional }
 import v2.std.constraints { CanonicalGrounding }
-import v2.std.node { Node }
+import v2.std.node { Node, EdgeLabel, Hash }
 import v2.std.witness { Witness }
+import v2.std.optional { Optional }
 import std.algebra { PartialFunction }
 
 // InferredFacts/InferredTree/InferredFactsEntry are the SHAPE infer's pass
@@ -65,4 +66,65 @@ type ObligatedInferredTree {
   root: Node
   facts: PartialFunction<Node, InferredFacts>
   obligations: List<RefinementObligation>
+}
+
+// INFER'S FACTS ARE KEYED BY SITE, NOT BY STRUCTURAL NODE EQUALITY (DESIGN 3b keys row; the relation
+// is docs/plans/keying-relation-design.md 3e, ruling 2026-10-01). Structural equality keyed two
+// different sites whose nodes merely look alike under one key, and the first entry answered for both.
+//
+// A SITE is the path from the root of ONE tree, one step per edge: the edge's label and its ordinal
+// among its parent's children. The ordinal makes the path injective: equal labels and equal subtrees
+// at two positions are two sites. The site also carries the content hash of the root it was taken
+// in, and a site is never read against any other root.
+type InferSiteStep {
+  label: EdgeLabel
+  ordinal: Int
+}
+
+type InferSite {
+  root: Hash
+  steps: List<InferSiteStep>
+}
+
+// THE FACTS TRIE mirrors the tree it was inferred over: the facts at this node, and one child trie per
+// child edge, in edge order. A step's ordinal therefore indexes `children` directly, so a site
+// resolves by walking the trie and no key is ever compared.
+//
+// Laws, exercised by v2.test.infer_facts.facts_trie_laws:
+//   - SHAPE: for the node it was built over, length(children) == length(node.children), and child
+//     i is the trie of edge i's target;
+//   - ROOT: the empty path names the root's facts;
+//   - INJECTIVE: two different paths name two different trie positions, so equal facts at two sites
+//     are two entries and never a collision;
+//   - ONE SITE, ONE FACT: a position holds at most one InferredFacts. A gather row that would enter a
+//     DIFFERENT fact at an occupied position refuses infer_facts_key_conflict, located at that site; the
+//     same fact entered again merges.
+//   - SCOPE: a site whose root hash is not this trie's root resolves to nothing.
+type InferFactsTrie {
+  facts: Optional<InferredFacts>
+  children: List<InferFactsTrie>
+}
+
+type InferSitedFacts {
+  root: Hash
+  trie: InferFactsTrie
+}
+
+fn infer_facts_trie_at_steps(trie: InferFactsTrie, steps: List<InferSiteStep>) -> Optional<InferredFacts> {
+  match steps {
+    Empty => trie.facts
+    Cons { head: step, tail: rest } =>
+      match list_at_optional(xs: trie.children, index: step.ordinal) {
+        Present { value: child } => infer_facts_trie_at_steps(trie: child, steps: rest)
+        Absent => Absent
+      }
+  }
+}
+
+fn infer_sited_facts_at(sited: InferSitedFacts, site: InferSite) -> Optional<InferredFacts> {
+  if site.root == sited.root {
+    infer_facts_trie_at_steps(trie: sited.trie, steps: site.steps)
+  } else {
+    Absent
+  }
 }
