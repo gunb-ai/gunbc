@@ -6863,23 +6863,33 @@ fn qualified_name_from_module_node(root: Node) -> Outcome<QualifiedName> {
 // or the inverse of the decode that parse ran on its class: the int magnitude, the float lexeme, and
 // the string value re-encoded over the same escape rows. A value-carrying class with no inverse here
 // refuses, located at the terminal. It never falls back to an atom's spelling.
-fn dag_emit_untransformable(captured: Node) -> Outcome<String> {
+fn dag_emit_refusal(reason: Symbol, captured: Node) -> Outcome<String> {
   outcome_rejected(
     d: Diagnostic {
-      reason: ^dag_emit_token_class_untransformable,
+      reason: reason,
       at: node_locus(node: captured),
       correction: Unavailable { reason: CorrectionNotModeled }
     }
   )
 }
 
-fn dag_emit_payload_atom_lexeme(captured: Node, field: Symbol) -> Outcome<String> {
+// Each literal's payload is read by its own field, and a literal without it refuses by a reason that
+// names WHICH payload was missing, at the literal.
+fn dag_emit_payload(captured: Node, field: Symbol, missing: Symbol) -> Outcome<Node> {
+  match named_child_lookup(root: captured, name: field) {
+    NamedChildFound { target: t } => outcome_accepted(value: t)
+    NamedChildMissing => outcome_rejected(d: Diagnostic { reason: missing, at: node_locus(node: captured), correction: Unavailable { reason: CorrectionNotModeled } })
+    NamedChildAmbiguous => outcome_rejected(d: Diagnostic { reason: missing, at: node_locus(node: captured), correction: Unavailable { reason: CorrectionNotModeled } })
+  }
+}
+
+fn dag_emit_payload_atom_lexeme(captured: Node, field: Symbol, missing: Symbol) -> Outcome<String> {
   bind_outcome(
-    o: find_named_child(root: captured, name: field),
+    o: dag_emit_payload(captured: captured, field: field, missing: missing),
     f: fn(payload) {
       match node_atom_identity_optional(node: payload) {
         Present { value: id } => outcome_accepted(value: symbol_lexeme(sym: id))
-        Absent => dag_emit_untransformable(captured: captured)
+        Absent => dag_emit_refusal(reason: missing, captured: captured)
       }
     }
   )
@@ -6888,7 +6898,7 @@ fn dag_emit_payload_atom_lexeme(captured: Node, field: Symbol) -> Outcome<String
 fn dag_emit_class_terminal_spelling(token_class: Symbol, captured: Node) -> Outcome<String> {
   if token_class == ^dag_token_int_literal {
     bind_outcome(
-      o: find_named_child(root: captured, name: ^integer_literal_magnitude_field),
+      o: dag_emit_payload(captured: captured, field: ^integer_literal_magnitude_field, missing: ^dag_emit_int_literal_magnitude_missing),
       f: fn(magnitude) {
         bind_outcome(
           o: integer_decimal_magnitude_node_to_int(node: magnitude),
@@ -6898,15 +6908,15 @@ fn dag_emit_class_terminal_spelling(token_class: Symbol, captured: Node) -> Outc
     )
   } else if token_class == ^dag_token_string_literal {
     bind_outcome(
-      o: dag_emit_payload_atom_lexeme(captured: captured, field: ^string_literal_value_field),
+      o: dag_emit_payload_atom_lexeme(captured: captured, field: ^string_literal_value_field, missing: ^dag_emit_string_literal_value_missing),
       f: fn(value) { outcome_accepted(value: dag_string_literal_encoded(value: value)) }
     )
   } else if token_class == ^dag_token_float_literal {
-    dag_emit_payload_atom_lexeme(captured: captured, field: ^float_literal_lexeme_field)
+    dag_emit_payload_atom_lexeme(captured: captured, field: ^float_literal_lexeme_field, missing: ^dag_emit_float_literal_lexeme_missing)
   } else {
     match lex_rules_literal_for_class(rules: dag_lex(), token_class: token_class) {
       Accepted { value: spelling, diagnostics: d } => Accepted { value: spelling, diagnostics: d }
-      Rejected { diagnostics: _ } => dag_emit_untransformable(captured: captured)
+      Rejected { diagnostics: _ } => dag_emit_refusal(reason: ^dag_emit_token_class_untransformable, captured: captured)
     }
   }
 }

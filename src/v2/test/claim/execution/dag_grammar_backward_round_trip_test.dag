@@ -8,10 +8,10 @@ import std.algebra { list_snoc_item }
 import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected, bind_outcome, node_locus, outcome_accepted }
 import v2.std.fn_index { non_empty_diagnostics_list }
-import v2.std.grammar { GrammarRoot, node_atom_identity_optional }
+import v2.std.grammar { GrammarEmitClassTerminal, GrammarEmitLexemeTerminal, GrammarRoot, grammar_emit_parse_tree, node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol, content_hash, symbol_lexeme }
+import v2.std.node { Named, Node, Positional, Symbol, content_hash, symbol_lexeme }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
@@ -208,3 +208,36 @@ fn rt_why_escaped_key() -> String { rt_why(text: rt_escaped_key_source) }
 fn rt_why_quoted_key() -> String { rt_why(text: rt_quoted_key_source) }
 fn rt_why_string_escapes() -> String { rt_why(text: rt_string_escapes_source) }
 fn rt_why_bare_key() -> String { rt_why(text: rt_bare_key_source) }
+
+// EVERY TERMINAL THE WALK YIELDS, with its class and, for a class terminal, the edge labels its
+// captured node carries: `class{label,label}` or `class=lexeme`.
+fn rt_edge_labels(n: Node) -> String {
+  fold(n.children, init: "", f: fn(acc, e) {
+    match e.label {
+      Named { name: l } => concat(acc, concat(",", symbol_lexeme(sym: l)))
+      Positional => concat(acc, ",_")
+    }
+  })
+}
+
+fn rt_terminals(text: String) -> String {
+  match rt_parse(text: text) {
+    Rejected { diagnostics: d } => concat("parse refused:", rt_reasons(ds: non_empty_diagnostics_list(d: d)))
+    Accepted { value: tree, diagnostics: _ } =>
+      match grammar_emit_parse_tree(root: dag_grammar_root(), tree: tree) {
+        Rejected { diagnostics: d } => concat("walk refused:", rt_reasons(ds: non_empty_diagnostics_list(d: d)))
+        Accepted { value: ts, diagnostics: _ } =>
+          fold(ts, init: "", f: fn(acc, t) {
+            match t {
+              GrammarEmitClassTerminal { token_class: c, captured: n } =>
+                concat(acc, concat(" ", concat(symbol_lexeme(sym: c), concat("{", concat(rt_edge_labels(n: n), "}")))))
+              GrammarEmitLexemeTerminal { token_class: c, lexeme: l } =>
+                concat(acc, concat(" ", concat(symbol_lexeme(sym: c), concat("=", symbol_lexeme(sym: l)))))
+            }
+          })
+      }
+  }
+}
+
+fn rt_terminals_data_decl() -> String { rt_terminals(text: rt_data_decl_source) }
+fn rt_terminals_quoted_key() -> String { rt_terminals(text: rt_quoted_key_source) }
