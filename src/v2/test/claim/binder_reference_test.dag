@@ -1,0 +1,164 @@
+module v2.test.claim.binder_reference
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer { InferredTree, infer }
+import v2.compiler.inferred_tree { DerivedGrounding, GroundingNotDerived }
+import v2.test.claim.type_param_binder_frame { tpb_assemble }
+import v2.test.claim.emit.module_member_emission { MemberClosureRefused, MemberEmitted, MemberEmissionVerdict, MemberRefused, member_emission_verdict_of }
+import v2.extdeps.languages.dag { dag_int_type_binding }
+import v2.std.algebra { fold }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Node, Symbol, TypeNode, node_subtree_nodes }
+import v2.std.node_query { node_atom_identity_optional }
+import v2.std.optional { Absent, Optional, Present }
+import v2.std.qualified_name { binder_reference_symbol_optional, declaration_reference_path_optional, qualified_name_last_segment }
+import v2.std.text { String }
+import std.algebra { list_snoc_item }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: the binder reference (v2.std.qualified_name binder_reference_node), the carrier
+// v2.compiler.resolve resolve_frame_bound_reference mints for every name it finds in a LexicalFrame --
+// a let, a match-arm pattern binder, a closure parameter -- and which every later stage reads by its
+// kind. BOUNDARY: source text in, through the production route (tpb_assemble is
+// assemble_program_from_ingest; member_emission_verdict_of is the closure-emission door), so the
+// lowering, the resolve rewrite and each consumer run for real.
+//
+// RED BEFORE: resolve returned a bare canonical atom for a lexical binder, which the emitter could not
+// tell from any other atom and checked only against the arrow's parameters, so a let-bound name used
+// inside an expression refused target_value_expr_reason_body_scope_binding_invalid (row 1), and a
+// closure whose body is its enclosing fn's parameter had no arm in target_project_realized_closure
+// (row 5). Rows 2-4 and 6 pin the scope of the change: it is the VALUE binders that are marked, a
+// binder wins over a same-named declaration, type parameters are untouched, and a closure parameter
+// is typed exactly as it was.
+
+fn br_binder_references_named(o: Outcome<ResolvedTree>, name: Symbol) -> Int {
+  match o {
+    Rejected { diagnostics: _ } => 0 - 1
+    Accepted { value: t, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: t.root), init: 0, f: fn(acc, n) {
+        match binder_reference_symbol_optional(node: n) {
+          Present { value: b } => if b == name { acc + 1 } else { acc }
+          Absent => acc
+        }
+      })
+  }
+}
+
+fn br_declaration_references_ending(o: Outcome<ResolvedTree>, name: Symbol) -> Int {
+  match o {
+    Rejected { diagnostics: _ } => 0 - 1
+    Accepted { value: t, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: t.root), init: 0, f: fn(acc, n) {
+        match declaration_reference_path_optional(node: n) {
+          Present { value: path } =>
+            match qualified_name_last_segment(qn: path) {
+              Present { value: leaf } => if leaf == name { acc + 1 } else { acc }
+              Absent => acc
+            }
+          Absent => acc
+        }
+      })
+  }
+}
+
+fn br_atoms_named(o: Outcome<ResolvedTree>, name: Symbol) -> Int {
+  match o {
+    Rejected { diagnostics: _ } => 0 - 1
+    Accepted { value: t, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: t.root), init: 0, f: fn(acc, n) {
+        match node_atom_identity_optional(node: n) {
+          Present { value: id } => if id == name { acc + 1 } else { acc }
+          Absent => acc
+        }
+      })
+  }
+}
+
+// (1) A LET-BOUND NAME USED INSIDE AN EXPRESSION EMITS. Before the carrier the emitter met `y` as a
+// bare atom inside `y + y`, found it among no parameter of `f`, and refused body_scope_binding_invalid.
+test fn a_let_bound_name_inside_an_expression_emits_holds() -> Bool {
+  match member_emission_verdict_of(source: "module v2.test.member_emission\n\nfn f(x: Int) -> Int {\n  let y = x\n  y + y\n}\n") {
+    MemberEmitted { text: t } => string_contains(s: t, pattern: "let y = x;") && string_contains(s: t, pattern: "y + y")
+    MemberRefused { reason: _ } => false
+    MemberClosureRefused { reason: _ } => false
+  }
+}
+
+// (2) A BINDER SHADOWS A SAME-NAMED TOP-LEVEL FN: the let's `y` resolves to the binder, never to the
+// module's `y`. The declaration count pins that the module's fn is not what the tail names.
+fn br_shadowing() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\nfn y() -> Int = 1\n\nfn f(x: Int) -> Int {\n  let y = x\n  y\n}\n")
+}
+
+test fn a_binder_shadowing_a_top_level_fn_resolves_to_the_binder_holds() -> Bool {
+  (br_binder_references_named(o: br_shadowing(), name: ^y) == 1) && (br_declaration_references_ending(o: br_shadowing(), name: ^y) == 0)
+}
+
+// (3) A MATCH-ARM BINDER IS A BINDER REFERENCE IN ITS ARM BODY, and a closure parameter in its body.
+test fn an_arm_binder_and_a_closure_parameter_are_binder_references_holds() -> Bool {
+  (br_binder_references_named(o: tpb_assemble(src: "module p\n\ntype Box = Holds { value: Int }\n\nfn f(b: Box) -> Int = match b {\n  Holds { value: v } => v\n}\n"), name: ^v) == 1)
+    && (br_binder_references_named(o: tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let g = fn(a: Int) { a }\n  g(x)\n}\n"), name: ^a) == 1)
+}
+
+// (4) TYPE PARAMETERS ARE UNCHANGED: a type position resolves in the type-role frame, which this
+// change does not touch, so `T` stays a bare atom and is never a binder reference.
+fn br_generic() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\nfn id<T>(x: T) -> T { x }\n")
+}
+
+test fn a_type_parameter_is_never_a_binder_reference_holds() -> Bool {
+  (br_binder_references_named(o: br_generic(), name: ^T) == 0) && (br_atoms_named(o: br_generic(), name: ^T) > 0)
+}
+
+// (5) A CLOSURE WHOSE BODY IS ITS ENCLOSING FN'S PARAMETER EMITS. Its body classifies
+// ParameterReferenceBody, which target_project_realized_closure had no arm for before this change --
+// a defect found while placing the binder arm beside it, fixed in the same cut.
+test fn a_closure_returning_an_enclosing_parameter_emits_holds() -> Bool {
+  match member_emission_verdict_of(source: "module v2.test.member_emission\n\nfn k(x: Int) -> fn(Int) -> Int {\n  fn(y: Int) { x }\n}\n") {
+    MemberEmitted { text: t } => string_contains(s: t, pattern: "| x")
+    MemberRefused { reason: _ } => false
+    MemberClosureRefused { reason: _ } => false
+  }
+}
+
+// (6) A CLOSURE PARAMETER IS TYPED EXACTLY AS BEFORE. infer reads the binder reference's symbol and
+// hands it to the existing frozen scope search (v2.compiler.infer infer_parameter_scope_search,
+// unchanged: no new caller, no new rule), which grounds `a` in `a + 1` at the closure's domain, Int.
+fn br_lambda_inferred() -> Optional<InferredTree> {
+  match tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let g = fn(a: Int) { a + 1 }\n  g(x)\n}\n") {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: t, diagnostics: _ } => Present { value: t }
+        Rejected { diagnostics: _ } => Absent
+      }
+  }
+}
+
+fn br_typed_int(t: InferredTree, n: Node) -> Bool {
+  match t.facts.lookup(n) {
+    Absent => false
+    Present { value: facts } =>
+      match facts.grounding {
+        GroundingNotDerived { node: _ } => false
+        DerivedGrounding { grounding: g } => node_atom_identity_optional(node: g.witness.structural.evidence) == Present { value: dag_int_type_binding() }
+      }
+  }
+}
+
+test fn a_closure_parameter_reference_is_typed_at_its_domain_holds() -> Bool {
+  match br_lambda_inferred() {
+    Absent => false
+    Present { value: t } =>
+      let refs = fold(node_subtree_nodes(root: t.root), init: [], f: fn(acc, n) {
+        match binder_reference_symbol_optional(node: n) {
+          Present { value: b } => if b == ^a { list_snoc_item(xs: acc, item: n) } else { acc }
+          Absent => acc
+        }
+      })
+      (count(refs) == 1) && fold(refs, init: true, f: fn(acc, n) { acc && br_typed_int(t: t, n: n) })
+  }
+}
