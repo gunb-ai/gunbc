@@ -23,6 +23,7 @@ import v2.compiler.fold_lowering {
   fold_call_lowering_piped,
   fold_family_realization
 }
+import v2.compiler.parse { parse_tree_projection_edge }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
 import v2.compiler.body_producer_forward {
   body_producer_forward_is_registered_surface_identity,
@@ -606,9 +607,10 @@ fn body_lower_is_core_substrate(node: Node) -> Bool {
 // silent part-for-whole truncation behind the #12145 class (gunbc.recurring_failure_mode
 // lowered_output_reread_as_raw_parse_at_v2_body_lowering); #12269's field projection was one
 // instance, closed by growing the allowlist. The raw parse tree is recognisable by construction: every
-// non-atom node the parser emits carries at least one grammar projection edge (a production's
-// identity or capture, a sequence's sides, an optional or repeat element, a terminal's parts), while
-// a producer's output carries none. So a non-atom node with children that the allowlist rejects and
+// non-atom node the parser emits carries at least one parse projection edge, and the roster of those
+// edges is v2.compiler.parse parse_tree_projection_edge (a production's identity or capture, a
+// sequence's sides -- what the parse stage's grammar_named_edge sites mint), while a producer's
+// output carries none. So a non-atom node with children that the allowlist rejects and
 // that carries no grammar projection edge is lowered output that no reader recognises, and it refuses
 // here, located at that node, instead of being re-read. The MQ-5 census (wise-ant-748, 2026-09-30:
 // the same test at these sites over the native population, positive control verified, baseline
@@ -617,23 +619,10 @@ fn body_lower_is_core_substrate(node: Node) -> Bool {
 // nothing on a Node says which lowering built it. The producer-declared shape (LoweredShape carried
 // in a BodyTerm through the reducers, neat-boar-16 ruling 2026-09-30) is the next rung, and it
 // deletes both this test and the allowlist.
-fn body_lower_is_grammar_projection_label(name: Symbol) -> Bool {
-  (name == ^grammar_production_identity_node_projection)
-    || (name == ^grammar_production_captured_node_projection)
-    || (name == ^grammar_sequence_left_node_projection)
-    || (name == ^grammar_sequence_right_node_projection)
-    || (name == ^grammar_optional_element_node_projection)
-    || (name == ^grammar_repeat_element_node_projection)
-    || (name == ^grammar_terminal_token_class_node_projection)
-    || (name == ^grammar_terminal_stamp_lexeme_node_projection)
-    || (name == ^grammar_terminal_literal_lexeme_node_projection)
-    || (name == ^grammar_terminal_binding_node_projection)
-}
-
 fn body_lower_has_grammar_projection_edge(node: Node) -> Bool {
   fold(node.children, init: false, f: fn(acc, e) {
     acc || (match e.label {
-      Named { name: n } => body_lower_is_grammar_projection_label(name: n)
+      Named { name: n } => parse_tree_projection_edge(name: n)
       Positional => false
     })
   })
