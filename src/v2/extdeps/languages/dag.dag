@@ -54,7 +54,6 @@ import v2.std.grammar {
   Terminal,
   VoidGrammar,
   grammar_carries_symbol,
-  grammar_carried_symbol_map,
   grammar_symbol_list_put,
   formal_production_to_node,
   formal_productions_catalog_to_node,
@@ -124,7 +123,7 @@ import v2.std.node {
   node_lowered_from,
   symbol_intern_lexeme,
 }
-import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, find_named_child, named_child_lookup }
+import v2.std.node_query { binder_edge, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, find_named_child, named_child_lookup }
 import v2.std.compilers.target_model {
   lex_rules_literal_for_class,
   char_kernel_type_node,
@@ -1273,10 +1272,14 @@ fn dag_grammar_let_sugar_expr() -> GrammarExpr {
 // tokens are disjoint from `match`/`if`/`loop`, so moving those three below changes nothing
 // between them.
 //
-// WHAT IS NOT ESTABLISHED: whether the trailing `match_expr`/`if_expr`/`loop_expr` alternatives are
-// now unreachable, which they are exactly if `binary_expr` never fails where they would succeed.
-// That argument is not made here, so they are retained rather than deleted; establishing it is
-// what would license removing them.
+// THE TRAILING `match_expr`/`if_expr`/`loop_expr` ALTERNATIVES WERE UNREACHABLE, AND ARE REMOVED.
+// They are reachable exactly where `binary_expr` fails and they succeed. But `binary_expr` derives
+// each of them as a complete operand -- pipe -> or -> and -> equality -> comparison -> additive ->
+// multiplicative -> unary -> postfix -> primary -> primary_expr_core -> match_expr / if_expr /
+// loop_expr, with every operator tail a `Repeat` or `Optional` that admits zero -- so wherever one
+// of them matches at a position, `binary_expr` has already matched at least that much there and the
+// ordered choice never tries them. Kept, they read as a second route to block forms that no input
+// can take, and as a second row emit could select backward.
 //
 // Evidence: `v2.test.parse.block_expr_as_binary_operand_parse` -- two arms red before this reorder
 // (a `match` and an `if` heading a binary chain), three controls green on both sides (each block
@@ -1288,16 +1291,7 @@ fn dag_grammar_expr_expr() -> GrammarExpr {
       left: dag_grammar_nonterminal(production: ^dag_production_block_expr),
       right: dag_grammar_choice(
         left: dag_grammar_nonterminal(production: ^dag_production_arrow_lambda),
-        right: dag_grammar_choice(
-          left: dag_grammar_nonterminal(production: ^dag_production_binary_expr),
-          right: dag_grammar_choice(
-            left: dag_grammar_nonterminal(production: ^dag_production_match_expr),
-            right: dag_grammar_choice(
-              left: dag_grammar_nonterminal(production: ^dag_production_if_expr),
-              right: dag_grammar_nonterminal(production: ^dag_production_loop_expr)
-            )
-          )
-        )
+        right: dag_grammar_nonterminal(production: ^dag_production_binary_expr)
       )
     )
   )
@@ -3411,12 +3405,20 @@ fn dag_language_model_binding_canonical_map(m: Map<Symbol, Bool>) -> Map<Symbol,
 // Portable share point for the dag canonical set (v2.workflow.floor_pure_producer_share
 // floor_cross_claim_pure_producers_warm). dag_canonical_symbols wraps this Map in a
 // PointwisePower closure at the consumer; that closure is not the stored value.
+//
+// WHAT THE SET HOLDS: the names the language model mints as atoms a resolved body may carry --
+// the lex token classes (a keyword constant reaches a body as its class atom) and the kernel
+// bindings -- and NOT every atom the grammar's node encoding carries. That encoding is production
+// names plus contextual-keyword terminals (`node`, `rest`, `input`, `output`, ...), which parse
+// consumes in their grammar positions; none reaches resolution as a reference. Its consumers read
+// membership as "resolves to the kernel atom" (v2.compiler.resolve resolve_atom_unbound,
+// resolved_reference_identity, resolve_pattern_atom_is_keyword_constant), so carrying the grammar
+// atoms made an unbound `node` in a body resolve, Accepted and silent, to a grammar atom, and a
+// declaration spelled `output` resolve to the kernel symbol rather than to its path. Same cut as
+// the sugar spellings before it (v2.test.claim.normalize.authored_marker_spelling).
 fn dag_canonical_symbol_map() -> Map<Symbol, Bool> {
   dag_language_model_binding_canonical_map(
-    m: lex_rule_set_insert_token_classes(
-      m: grammar_carried_symbol_map(grammar: dag_grammar()),
-      rules: dag_lex_rules()
-    )
+    m: lex_rule_set_insert_token_classes(m: empty_map(), rules: dag_lex_rules())
   )
 }
 
@@ -4844,10 +4846,7 @@ fn dag_arrow_domain_conj_node() -> Node {
     cons: fn(acc, binding_id) {
       list_snoc_item(
         xs: acc,
-        item: Edge {
-          label: Named { name: binding_id },
-          target: dag_type_atom_node(identity: dag_int_type_binding())
-        }
+        item: binder_edge(name: binding_id, type_node: dag_type_atom_node(identity: dag_int_type_binding()))
       )
     }
   )
@@ -4877,13 +4876,11 @@ fn dag_binary_body_node(operator: Node, left_binding: Symbol, right_binding: Sym
 }
 
 fn dag_add_arrow_signature_node() -> Node {
+  let signature = declared_signature(params: dag_arrow_domain_conj_node().children, source: dag_arrow_domain_conj_node())
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge {
-        label: Positional,
-        target: dag_arrow_domain_conj_node()
-      },
+      signature.domain,
       Edge {
         label: Positional,
         target: dag_type_atom_node(identity: ^dag_binding_type_int)
@@ -4891,7 +4888,8 @@ fn dag_add_arrow_signature_node() -> Node {
       Edge {
         label: Positional,
         target: dag_type_atom_node(identity: ^dag_binding_type_int)
-      }
+      },
+      signature.order
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -5254,10 +5252,7 @@ fn dag_complement_arrow_domain_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^dag_binding_param_a },
-        target: dag_type_atom_node(identity: ^bool_node_symbol)
-      }
+      binder_edge(name: ^dag_binding_param_a, type_node: dag_type_atom_node(identity: ^bool_node_symbol))
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -5312,14 +5307,8 @@ fn dag_bool_binop_arrow_domain_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^dag_binding_param_a },
-        target: dag_type_atom_node(identity: ^bool_node_symbol)
-      },
-      Edge {
-        label: Named { name: ^dag_binding_param_b },
-        target: dag_type_atom_node(identity: ^bool_node_symbol)
-      }
+      binder_edge(name: ^dag_binding_param_a, type_node: dag_type_atom_node(identity: ^bool_node_symbol)),
+      binder_edge(name: ^dag_binding_param_b, type_node: dag_type_atom_node(identity: ^bool_node_symbol))
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -5413,10 +5402,7 @@ fn dag_field_access_arrow_domain_conj_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^dag_binding_param_r },
-        target: dag_type_atom_node(identity: ^dag_binding_type_rec)
-      }
+      binder_edge(name: ^dag_binding_param_r, type_node: dag_type_atom_node(identity: ^dag_binding_type_rec))
     ],
     occurrence_id: OccurrenceSynthetic
   }

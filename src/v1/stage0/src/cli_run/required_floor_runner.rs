@@ -2765,7 +2765,17 @@ pub(crate) fn enrolment_margin_standing_for(
     match enrolment_gate_execution_disposition(identity, dispositions) {
         Some(crate::cli_run::RequiredFloorDisposition::Planned)
         | Some(crate::cli_run::RequiredFloorDisposition::PlannedAsChangedWitness) => {}
-        Some(other) => {
+        // Named, not caught: a new arm must state whether the margin gate runs for it.
+        Some(
+            other @ (crate::cli_run::RequiredFloorDisposition::DeclinedLongModule { .. }
+            | crate::cli_run::RequiredFloorDisposition::DeclinedFixtureMember { .. }
+            | crate::cli_run::RequiredFloorDisposition::DeclinedOutsideRequiredGate
+            | crate::cli_run::RequiredFloorDisposition::DeclinedCostDebt
+            | crate::cli_run::RequiredFloorDisposition::DeclinedOutsideGateClosure
+            | crate::cli_run::RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. }
+            | crate::cli_run::RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery { .. }
+            | crate::cli_run::RequiredFloorDisposition::DeclinedNoCiWetLane { .. }),
+        ) => {
             return EnrolmentMarginStanding::OutsideThisRunsExecution {
                 disposition: required_floor_disposition_label(other).to_string(),
             };
@@ -3342,7 +3352,17 @@ pub(crate) fn changed_witness_projection_rows(
             // population it belongs to. It is discharged by making the identity reachable or by
             // declaring it unreachable — never by a rerun, which is the only affordance one
             // undifferentiated cause can offer.
-            Some(declined) => ChangedWitnessProjectionRow {
+            Some(
+                declined @ (RequiredFloorDisposition::DeclinedLongModule { .. }
+                | RequiredFloorDisposition::DeclinedFixtureMember { .. }
+                | RequiredFloorDisposition::DeclinedOutsideRequiredGate
+                | RequiredFloorDisposition::DeclinedCostDebt
+                | RequiredFloorDisposition::DeclinedOutsideGateClosure
+                | RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. }
+                | RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery {
+                    ..
+                }),
+            ) => ChangedWitnessProjectionRow {
                 identity: identity.clone(),
                 cost: None,
                 standing: "declined",
@@ -9499,34 +9519,74 @@ pub fn run_required_floor(
     // projection actually marked for changed execution. A missing, foreign, or duplicated row
     // cannot be repaired by the aggregate counts coincidentally agreeing.
     changed_witness_sublane_join(&changed_witness_expected, &disposition_rows)?;
-    // ONE PRODUCER FOR THE COUNTS: the joined row population, folded once per arm.
-    let disposition_count = |select: fn(&RequiredFloorDisposition) -> bool| {
-        disposition_rows
-            .iter()
-            .filter(|row| select(&row.disposition))
-            .count()
-    };
+    // A DECLINED CHANGED WITNESS DOES NOT EXECUTE, so the reverse roster joins must not expect it
+    // to. `suppress_withheld` keeps every changed witness in the expected-red, route-gap and
+    // non-verdict rosters on the premise that the changed sublane runs it; a `DeclinedNoCiWetLane`
+    // decline falsifies that premise for its identity, and left in a roster it reads as "renamed,
+    // deleted, or declined -- delete the row" against a row that is only dormant for this run. It
+    // is removed with its own suppression ground, so the expected-red report still names it.
+    let declined_no_ci_wet_lane: HashSet<String> = disposition_rows
+        .iter()
+        .filter(|row| suppresses_a_changed_witness_enrollment(&row.disposition))
+        .map(|row| row.identity.clone())
+        .collect();
+    let suppress_declined_no_ci_wet_lane =
+        |roster: &mut HashSet<String>, name: &str| -> Vec<(String, SuppressionGround)> {
+            let mut removed: Vec<String> = roster
+                .iter()
+                .filter(|identity| declined_no_ci_wet_lane.contains(*identity))
+                .cloned()
+                .collect();
+            removed.sort();
+            roster.retain(|identity| !declined_no_ci_wet_lane.contains(identity));
+            if !removed.is_empty() {
+                eprintln!(
+                    "[floor-changed-witness] {name}: {} enrolled identity(ies) suppressed because \
+                     the changed-witness sublane declined them as declared BinWitnessWet rows; \
+                     their enrollment is dormant, not deleted",
+                    removed.len()
+                );
+            }
+            removed
+                .into_iter()
+                .map(|identity| (identity, SuppressionGround::DeclinedNoCiWetLane))
+                .collect()
+        };
+    // ONE PRODUCER FOR THE COUNTS: the joined row population, folded once, every arm NAMED so a
+    // new disposition does not compile here until it states which count it joins
+    // (`gunbc.recurring_failure_mode.a_new_decision_arm_the_downstream_join_does_not_admit`).
     let declared_identities = declared_identity_set.len();
-    let long_declined =
-        disposition_count(|d| matches!(d, RequiredFloorDisposition::DeclinedLongModule { .. }));
-    let fixture_declined =
-        disposition_count(|d| matches!(d, RequiredFloorDisposition::DeclinedFixtureMember { .. }));
-    let outside_gate_declined =
-        disposition_count(|d| matches!(d, RequiredFloorDisposition::DeclinedOutsideRequiredGate));
-    let cost_debt_declined =
-        disposition_count(|d| matches!(d, RequiredFloorDisposition::DeclinedCostDebt));
-    let gate_closure_declined =
-        disposition_count(|d| matches!(d, RequiredFloorDisposition::DeclinedOutsideGateClosure));
-    let discovery_excluded_declined = disposition_count(|d| {
-        matches!(
-            d,
-            RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. }
-        )
-    });
+    let mut long_declined = 0usize;
+    let mut fixture_declined = 0usize;
+    let mut outside_gate_declined = 0usize;
+    let mut cost_debt_declined = 0usize;
+    let mut gate_closure_declined = 0usize;
+    let mut discovery_excluded_declined = 0usize;
+    let mut no_ci_wet_lane_declined = 0usize;
+    let mut changed_outside_discovery_declined = 0usize;
+    for row in &disposition_rows {
+        match &row.disposition {
+            RequiredFloorDisposition::Planned
+            | RequiredFloorDisposition::PlannedAsChangedWitness => {}
+            RequiredFloorDisposition::DeclinedLongModule { .. } => long_declined += 1,
+            RequiredFloorDisposition::DeclinedFixtureMember { .. } => fixture_declined += 1,
+            RequiredFloorDisposition::DeclinedOutsideRequiredGate => outside_gate_declined += 1,
+            RequiredFloorDisposition::DeclinedCostDebt => cost_debt_declined += 1,
+            RequiredFloorDisposition::DeclinedOutsideGateClosure => gate_closure_declined += 1,
+            RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. } => {
+                discovery_excluded_declined += 1
+            }
+            RequiredFloorDisposition::DeclinedNoCiWetLane { .. } => no_ci_wet_lane_declined += 1,
+            RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery { .. } => {
+                changed_outside_discovery_declined += 1
+            }
+        }
+    }
     eprintln!(
         "[floor-phase] phase=site-projection state=completed wall_ms={} declared={} sites={} \
          files={} claims={} declined_long={} declined_fixture={} declined_outside_gate={} \
-         declined_gate_closure={} declined_discovery_excluded={} declined_cost_debt={}",
+         declined_gate_closure={} declined_discovery_excluded={} declined_cost_debt={} \
+         declined_no_ci_wet_lane={} declined_changed_outside_discovery={}",
         projection_started.elapsed().as_millis(),
         declared_identities,
         sites_offered,
@@ -9537,7 +9597,9 @@ pub fn run_required_floor(
         outside_gate_declined,
         gate_closure_declined,
         discovery_excluded_declined,
-        cost_debt_declined
+        cost_debt_declined,
+        no_ci_wet_lane_declined,
+        changed_outside_discovery_declined
     );
 
     // THE COST-DEBT ROSTER'S STANDING, JOINED AGAINST THE DECLARED UNIVERSE RATHER THAN AGAINST
@@ -9714,7 +9776,12 @@ pub fn run_required_floor(
         out
     };
     let mut expected_red_roster = expected_red_roster;
-    let expected_red_suppressed = suppress_withheld(&mut expected_red_roster, "floor_expected_red");
+    let mut expected_red_suppressed =
+        suppress_withheld(&mut expected_red_roster, "floor_expected_red");
+    expected_red_suppressed.extend(suppress_declined_no_ci_wet_lane(
+        &mut expected_red_roster,
+        "floor_expected_red",
+    ));
     eprintln!(
         "[floor-known-red] roster carries {} enrolled identity(ies)",
         expected_red_roster.len()
@@ -9769,6 +9836,7 @@ pub fn run_required_floor(
     };
     let mut route_gap_roster = route_gap_roster;
     let _ = suppress_withheld(&mut route_gap_roster, "floor_route_gap");
+    let _ = suppress_declined_no_ci_wet_lane(&mut route_gap_roster, "floor_route_gap");
     eprintln!(
         "[floor-route-gap] roster carries {} enrolled identity(ies)",
         route_gap_roster.len()
@@ -9966,6 +10034,7 @@ pub fn run_required_floor(
     };
     let mut non_verdict_roster = non_verdict_roster;
     let _ = suppress_withheld(&mut non_verdict_roster, "floor_non_verdict");
+    let _ = suppress_declined_no_ci_wet_lane(&mut non_verdict_roster, "floor_non_verdict");
     eprintln!(
         "[floor-non-verdict] roster carries {} enrolled identity(ies)",
         non_verdict_roster.len()
@@ -17651,6 +17720,27 @@ fn decides_a_changed_selection(disposition: &RequiredFloorDisposition) -> bool {
         | RequiredFloorDisposition::DeclinedNoCiWetLane { .. } => true,
         RequiredFloorDisposition::Planned
         | RequiredFloorDisposition::PlannedAsReachConsumer
+        | RequiredFloorDisposition::DeclinedLongModule { .. }
+        | RequiredFloorDisposition::DeclinedFixtureMember { .. }
+        | RequiredFloorDisposition::DeclinedOutsideRequiredGate
+        | RequiredFloorDisposition::DeclinedCostDebt
+        | RequiredFloorDisposition::DeclinedOutsideGateClosure
+        | RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. }
+        | RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery { .. } => false,
+    }
+}
+
+/// WHICH DISPOSITIONS SUPPRESS A CHANGED WITNESS'S ROSTER ENROLLMENT for this run, as an EXHAUSTIVE
+/// match for the same reason as `decides_a_changed_selection`: a new arm states whether the reverse
+/// roster joins may still expect its identity to execute. `DeclinedNoCiWetLane` is the one decline of
+/// a discovered, selected identity; `DeclinedChangedWitnessOutsideDiscovery` names an identity no
+/// site discovered, which no roster enrollment can reach through the fold, and every other arm
+/// either executes or is suppressed earlier by `suppress_withheld`.
+fn suppresses_a_changed_witness_enrollment(disposition: &RequiredFloorDisposition) -> bool {
+    match disposition {
+        RequiredFloorDisposition::DeclinedNoCiWetLane { .. } => true,
+        RequiredFloorDisposition::Planned
+        | RequiredFloorDisposition::PlannedAsChangedWitness
         | RequiredFloorDisposition::DeclinedLongModule { .. }
         | RequiredFloorDisposition::DeclinedFixtureMember { .. }
         | RequiredFloorDisposition::DeclinedOutsideRequiredGate
