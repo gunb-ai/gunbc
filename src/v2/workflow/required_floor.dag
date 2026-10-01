@@ -1,6 +1,7 @@
 module v2.workflow.required_floor
 
-import v2.std.algebra { Cons, Empty, contains }
+import v2.std.algebra { Cons, Empty, contains, any }
+import gunbc.explicit_witness_admission { explicit_witness_admissions, explicit_witness_admission_is_known_red }
 import v2.std.collection { List }
 import v2.std.logic { Bool, True, False }
 import v2.std.integer { Int, int_gt, int_add, int_mul }
@@ -2548,22 +2549,55 @@ type ReachClaimVerdict
 // would turn a head failure into still_red and hide the regression. The other reached claims keep
 // their verdicts (srv1, 2026-10-01: one BudgetInterrupted claim of 60 used to void all 60).
 //
-// WHETHER IT BLOCKS IS DERIVED, NOT BLANKET (deep-ferret-305, 2026-10-01). A claim on the DECLARED
-// main-red roster (floor_expected_red_roster, joined by identity) is main's debt, already declared
-// and owned, so it is a counted base_not_measured_rostered finding and does not block. A claim on
-// no roster BLOCKS as base_not_measured_unrostered (BaseNotMeasuredUnrostered): the floor cannot
-// show it is not a regression, and nothing declared says it was already red.
-fn base_not_measured_verdict(identity: String) -> ReachClaimVerdict {
-  if contains(xs: floor_expected_red_roster(), item: identity, eq: fn(a, b) { a == b }) {
+// WHETHER IT BLOCKS IS DERIVED, NOT BLANKET (deep-ferret-305, 2026-10-01). A claim on a DECLARED
+// main-red roster is main's debt, already declared and owned, so it is a counted
+// base_not_measured_rostered finding and does not block. A claim on no roster BLOCKS as
+// base_not_measured_unrostered (BaseNotMeasuredUnrostered): the floor cannot show it is not a
+// regression, and nothing declared says it was already red.
+//
+// THE DECLARED MAIN-RED ROSTERS, BOTH, each joined at its own grain: v2.workflow.floor_expected_red
+// by qualified identity, and gunbc.explicit_witness_admission's known-red rows by (entry, function)
+// through that roster's own explicit_witness_admission_is_known_red. The first cut joined only the
+// first, so three known_red_probe rows of map_literal_test blocked as unrostered on the srv1
+// control rerun (neat-boar-16, 2026-10-01).
+// NAMED RESIDUAL, stated so the unrostered rule is not over-read. The base arm runs each claim under
+// the same per-claim limit the head arm does: no eval-budget deadline, and the 8000 ms wall of
+// required_floor_claim_wall_safety_limit_ms. That wall is a HANG GUARD, not the budget (the
+// floor's budget verdict is deterministic eval steps, claim_eval_step_budget_for_identity), and it
+// is reported as BudgetInterrupted. POPULATION: unrostered reached claims whose base run lands
+// within host-load noise of 8 s (the srv1 control: three map_literal claims at 8010 to 8054 ms).
+// EFFECT: their dequeue is load-dependent, though loud and named (base_not_measured_unrostered),
+// never silent. TRIGGER, NAMING THE CAPABILITY: the hang guard gets its own typed refusal and a
+// declared, much larger value through one plumbing for both arms (jolly-boar-500's cost lane,
+// after gunbc#12861), sufficient that no claim within its eval-step budget is interrupted by it.
+fn claim_on_declared_main_red_roster(identity: String, entry: String, function: String) -> Bool {
+  contains(xs: floor_expected_red_roster(), item: identity, eq: fn(a, b) { a == b })
+    || any(xs: explicit_witness_admissions, predicate: fn(r) {
+      (r.witness.entry as String) == entry
+        && r.witness.function == function
+        && explicit_witness_admission_is_known_red(row: r)
+    })
+}
+
+fn base_not_measured_verdict(identity: String, entry: String, function: String) -> ReachClaimVerdict {
+  if claim_on_declared_main_red_roster(identity: identity, entry: entry, function: function) {
     ReachVerdict { differential: "base_not_measured_rostered", blocks: false }
   } else {
     ReachVerdict { differential: "base_not_measured_unrostered", blocks: true }
   }
 }
 
-fn reach_claim_verdict(identity: String, base: String, head: String) -> ReachClaimVerdict {
-  if base == "not_measured" {
-    base_not_measured_verdict(identity: identity)
+fn reach_claim_verdict(
+  identity: String,
+  entry: String,
+  function: String,
+  base: String,
+  head: String,
+) -> ReachClaimVerdict {
+  if head == "not_measured" {
+    ReachVerdict { differential: "head_not_measured", blocks: false }
+  } else if base == "not_measured" {
+    base_not_measured_verdict(identity: identity, entry: entry, function: function)
   } else {
   match claim_standing_named(name: base) {
     StandingNotParsed { name: b } => ReachVerdictRefused { reason: concat("unknown base standing ", b) }
@@ -2593,10 +2627,17 @@ fn head_cannot_block(head: ClaimStanding) -> Bool {
     && !claim_differential_blocks(d: claim_differential(base: StandingNotDeclared, head: head))
 }
 
+// A HEAD THAT WAS NOT MEASURED (a non-verdict at head: a wall interruption under host load) needs
+// no base, because no base standing can make it a regression; the floor's own interruption rule
+// already refuses the run for it. So it is exempt here and named head_not_measured below.
 fn reach_head_cannot_block(head: String) -> Bool {
+  if head == "not_measured" {
+    true
+  } else {
   match claim_standing_named(name: head) {
     StandingParsed { standing: h } => head_cannot_block(head: h)
     StandingNotParsed { name: _ } => false
+  }
   }
 }
 

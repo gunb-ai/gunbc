@@ -2,7 +2,9 @@ module v2.test.floor_claim_differential
 
 import v2.std.logic { Bool }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
-import v2.std.algebra { Cons, Empty }
+import v2.std.algebra { Cons, Empty, filter }
+import v2.std.collection { List }
+import gunbc.explicit_witness_admission { ExplicitWitnessAdmission, explicit_witness_admissions, explicit_witness_admission_is_known_red }
 import v2.workflow.required_floor {
   ClaimStanding,
   StandingPassed,
@@ -53,11 +55,11 @@ test fn a_new_failing_reach_claim_blocks_through_the_host_wire() -> Bool {
       ReachVerdictRefused { reason: _ } => true
     }
   }
-  blocks(reach_claim_verdict(identity: "t.unrostered.claim", base: "not_declared", head: "failed"))
-    && blocks(reach_claim_verdict(identity: "t.unrostered.claim", base: "passed", head: "failed"))
-    && !blocks(reach_claim_verdict(identity: "t.unrostered.claim", base: "failed", head: "failed"))
-    && !blocks(reach_claim_verdict(identity: "t.unrostered.claim", base: "not_declared", head: "passed"))
-    && refused(reach_claim_verdict(identity: "t.unrostered.claim", base: "interrupted", head: "failed"))
+  blocks(reach_claim_verdict(identity: "t.unrostered.claim", entry: "t/unrostered.dag", function: "claim", base: "not_declared", head: "failed"))
+    && blocks(reach_claim_verdict(identity: "t.unrostered.claim", entry: "t/unrostered.dag", function: "claim", base: "passed", head: "failed"))
+    && !blocks(reach_claim_verdict(identity: "t.unrostered.claim", entry: "t/unrostered.dag", function: "claim", base: "failed", head: "failed"))
+    && !blocks(reach_claim_verdict(identity: "t.unrostered.claim", entry: "t/unrostered.dag", function: "claim", base: "not_declared", head: "passed"))
+    && refused(reach_claim_verdict(identity: "t.unrostered.claim", entry: "t/unrostered.dag", function: "claim", base: "interrupted", head: "failed"))
 }
 
 test fn the_baseline_line_names_the_merge_base_arm() -> Bool {
@@ -92,12 +94,34 @@ fn verdict_named(v: ReachClaimVerdict) -> String {
 }
 
 test fn an_unmeasured_base_blocks_only_when_no_roster_declares_the_claim_red() -> Bool {
-  verdict_named(v: reach_claim_verdict(identity: first_expected_red(), base: "not_measured", head: "failed"))
+  verdict_named(v: reach_claim_verdict(identity: first_expected_red(), entry: "", function: "", base: "not_measured", head: "failed"))
     == "base_not_measured_rostered:reports"
-    && verdict_named(v: reach_claim_verdict(identity: "t.unrostered.claim", base: "not_measured", head: "failed"))
+    && verdict_named(v: reach_claim_verdict(identity: "t.unrostered.claim", entry: "t/unrostered.dag", function: "claim", base: "not_measured", head: "failed"))
       == "base_not_measured_unrostered:blocks"
-    && verdict_named(v: reach_claim_verdict(identity: first_expected_red(), base: "passed", head: "failed"))
+    && verdict_named(v: reach_claim_verdict(identity: first_expected_red(), entry: "", function: "", base: "passed", head: "failed"))
       == "regressed:blocks"
+    && verdict_named(v: reach_claim_verdict(identity: "unqualified.by.this.roster", entry: first_known_red_probe_entry(), function: first_known_red_probe_function(), base: "not_measured", head: "failed"))
+      == "base_not_measured_rostered:reports"
+}
+
+// The explicit-witness-admission roster's own first known-red row, so the control follows the
+// roster and never hard-codes a member that may dissolve.
+fn first_known_red_probe() -> List<ExplicitWitnessAdmission> {
+  filter(xs: explicit_witness_admissions, predicate: fn(r) { explicit_witness_admission_is_known_red(row: r) })
+}
+
+fn first_known_red_probe_entry() -> String {
+  match first_known_red_probe() {
+    Cons { head: r, tail: _ } => r.witness.entry as String
+    Empty => ""
+  }
+}
+
+fn first_known_red_probe_function() -> String {
+  match first_known_red_probe() {
+    Cons { head: r, tail: _ } => r.witness.function
+    Empty => ""
+  }
 }
 
 fn first_expected_red() -> String {
@@ -105,4 +129,13 @@ fn first_expected_red() -> String {
     Cons { head: h, tail: _ } => h
     Empty => ""
   }
+}
+
+// A HEAD THAT WAS NOT MEASURED IS NEVER A REGRESSION: a wall interruption at head under host load,
+// beside a passing base, is head_not_measured (the floor's interruption rule refuses the run for
+// it), not regressed; and it needs no base.
+test fn an_unmeasured_head_is_not_a_regression() -> Bool {
+  verdict_named(v: reach_claim_verdict(identity: "t.unrostered.claim", entry: "t/unrostered.dag", function: "claim", base: "passed", head: "not_measured"))
+    == "head_not_measured:reports"
+    && reach_head_cannot_block(head: "not_measured")
 }

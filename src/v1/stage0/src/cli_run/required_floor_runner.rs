@@ -9789,7 +9789,7 @@ pub fn run_required_floor(
     // `Some(identity)` exactly when a claim's evaluation unwound and stopped the fold.
     let mut halted_by: Option<String> = None;
     let mut known_red_held: usize = 0;
-    let mut reach_head_standings: Vec<(String, bool)> = Vec::new();
+    let mut reach_head_standings: Vec<(String, String)> = Vec::new();
     let mut known_red_now_passing: usize = 0;
     let mut known_red_budget_refused: usize = 0;
     let mut known_red_passed_over_budget: usize = 0;
@@ -10237,7 +10237,15 @@ pub fn run_required_floor(
         // against the base standing. It leaves the fold here, after its terminal row, so no
         // arm below can count it as a failure, a route gap or a budget refusal.
         if reach_consumer_planned.contains(&claim.qualified) {
-            reach_head_standings.push((claim.qualified.clone(), passed));
+            // THE HEAD STANDING USES THE BASE ARM'S OWN CLASSIFIER, so one function decides what
+            // is a verdict on both sides: a non-verdict at head (a wall interruption under host
+            // load, say) is not_measured, never failed. Read as failed it would make a passing
+            // base a regression and block on load (neat-boar-16, srv1 rerun, 2026-10-01).
+            let head_name = match crate::cli_run::reach_base_standings::base_standing_of(&result) {
+                Ok(standing) => standing.name().to_string(),
+                Err(_) => "not_measured".to_string(),
+            };
+            reach_head_standings.push((claim.qualified.clone(), head_name));
             continue;
         }
         if expected_red {
@@ -11095,6 +11103,16 @@ pub fn run_required_floor(
         // and never blocks. That is 60 of 1481 for a one-line v2.std.node edit (srv1, 2026-10-01).
         let (identities, head_cannot_block) =
             reach_base_identities(&verdict_frame, &reach_head_standings)?;
+        // A claim's entry FILE, which the explicit-witness-admission roster keys on, from the
+        // corpus index this floor already read; an unindexed module answers "" and so matches no
+        // roster row rather than a guessed one.
+        let reach_claim_entry = |identity: &str| -> String {
+            identity
+                .rsplit_once('.')
+                .and_then(|(module, _)| floor_corpus.index.get(module))
+                .map(|source| source.path.clone())
+                .unwrap_or_default()
+        };
         // REPORT-ONLY DOES NOT PAY FOR THE BASE ARM. The standing exists because the base arm's
         // cost is under ruling, and running it without blocking would charge every PR that cost
         // ahead of the ruling while deciding nothing. So the run names what it did not do.
@@ -11131,13 +11149,12 @@ pub fn run_required_floor(
                 // (the gunbc#12582 shape: five reached claims failing with nothing printed).
                 let head_failed: Vec<&String> = reach_head_standings
                     .iter()
-                    .filter(|(_, passed)| !*passed)
+                    .filter(|(_, head)| head == "failed")
                     .map(|(identity, _)| identity)
                     .collect();
-                for (identity, passed) in &reach_head_standings {
+                for (identity, head) in &reach_head_standings {
                     eprintln!(
-                        "[floor-reach-differential] identity={identity} head={} base=not-measured",
-                        if *passed { "passed" } else { "failed" }
+                        "[floor-reach-differential] identity={identity} head={head} base=not-measured"
                     );
                 }
                 for identity in &head_failed {
@@ -11168,17 +11185,16 @@ pub fn run_required_floor(
             Ok(base) => {
                 let mut blocking: Vec<(String, String)> = Vec::new();
                 let mut counts: BTreeMap<String, usize> = BTreeMap::new();
-                for (identity, head_passed) in &reach_head_standings {
+                for (identity, head_name) in &reach_head_standings {
                     if head_cannot_block.contains(identity) {
                         *counts.entry("head_cannot_block".to_string()).or_default() += 1;
                         eprintln!(
                             "[floor-reach-differential] identity={identity} base=not-run \
-                             head=passed differential=head_cannot_block blocks=false"
+                             head={head_name} differential=head_cannot_block blocks=false"
                         );
                         continue;
                     }
                     let base_name = base.get(identity).map(String::as_str).unwrap_or("missing");
-                    let head_name = if *head_passed { "passed" } else { "failed" };
                     let verdict = v1_interpreter::run_in_context_with_args(
                         &verdict_frame,
                         "v2.workflow.required_floor.reach_claim_verdict",
@@ -11186,6 +11202,16 @@ pub fn run_required_floor(
                             (
                                 Some("identity".to_string()),
                                 v1_interpreter::str_value(identity),
+                            ),
+                            (
+                                Some("entry".to_string()),
+                                v1_interpreter::str_value(reach_claim_entry(identity)),
+                            ),
+                            (
+                                Some("function".to_string()),
+                                v1_interpreter::str_value(
+                                    identity.rsplit_once('.').map(|(_, f)| f).unwrap_or(""),
+                                ),
                             ),
                             (
                                 Some("base".to_string()),
@@ -16913,12 +16939,11 @@ fn declared_no_ci_wet_lane_population() -> &'static std::collections::HashSet<St
 /// exempt claim is never run at base and never blocks.
 pub(crate) fn reach_base_identities(
     frame: &v1_interpreter::InterpContext,
-    head_standings: &[(String, bool)],
+    head_standings: &[(String, String)],
 ) -> Result<(Vec<String>, HashSet<String>), String> {
     let mut exempt: HashSet<String> = HashSet::new();
     let mut needs_base: Vec<String> = Vec::new();
-    for (identity, head_passed) in head_standings {
-        let head_name = if *head_passed { "passed" } else { "failed" };
+    for (identity, head_name) in head_standings {
         match v1_interpreter::run_in_context_with_args(
             frame,
             "v2.workflow.required_floor.reach_head_cannot_block",

@@ -269,6 +269,36 @@ impl Ord for BaseStanding {
 mod tests {
     use super::*;
 
+    /// ONE POOL FOR THE WHOLE MODULE. The process-global shared index holds a single resident
+    /// pool (SharedIndexSecondResidentPool refuses a second), so every test here resolves against
+    /// the same roots: the base fixture plus the absolute dag and src/v2 roots. Built once; the
+    /// fixture module is inert to every other test.
+    fn test_roots() -> Vec<String> {
+        static ROOTS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+        ROOTS
+            .get_or_init(|| {
+                let root = process_workspace_root();
+                let fx = root.join(format!("target/reach_base_fixture_{}", std::process::id()));
+                let _ = std::fs::remove_dir_all(&fx);
+                std::fs::create_dir_all(&fx).expect("fixture dir");
+                std::fs::write(
+                    fx.join("m.dag"),
+                    "module rbase.m\n\nimport v2.std.logic { Bool }\n\n\
+                     test fn holds() -> Bool {\n  true\n}\n\n\
+                     test fn fails() -> Bool {\n  false\n}\n",
+                )
+                .expect("fixture source");
+                std::iter::once(fx.to_string_lossy().into_owned())
+                    .chain(
+                        default_source_roots()
+                            .iter()
+                            .map(|r| root.join(r).to_string_lossy().into_owned()),
+                    )
+                    .collect()
+            })
+            .clone()
+    }
+
     // A NON-VERDICT AT BASE REFUSES THE ARM. Reading any of these as `failed` would make a head
     // failure `still_red` and hide the regression, so each must be an Err, and only verdicts map.
     #[test]
@@ -296,10 +326,7 @@ mod tests {
     /// One reached claim's verdict through the REAL model, as the floor decides it.
     fn verdict(base: &str, head: &str) -> (String, bool) {
         let root = process_workspace_root();
-        let roots: Vec<String> = default_source_roots()
-            .iter()
-            .map(|r| root.join(r).to_string_lossy().into_owned())
-            .collect();
+        let roots = test_roots();
         let entry = root.join("src/v2/workflow/required_floor.dag");
         let (graph, indices) =
             resolve_entry_graph_shared(&roots, &entry.to_string_lossy()).expect("authority");
@@ -311,6 +338,14 @@ mod tests {
                 (
                     Some("identity".to_string()),
                     v1_interpreter::str_value("t.unrostered.claim"),
+                ),
+                (
+                    Some("entry".to_string()),
+                    v1_interpreter::str_value("t/unrostered.dag"),
+                ),
+                (
+                    Some("function".to_string()),
+                    v1_interpreter::str_value("claim"),
                 ),
                 (Some("base".to_string()), v1_interpreter::str_value(base)),
                 (Some("head".to_string()), v1_interpreter::str_value(head)),
@@ -338,10 +373,7 @@ mod tests {
     #[test]
     fn a_head_passed_claim_is_never_run_at_base_and_never_blocks() {
         let root = process_workspace_root();
-        let roots: Vec<String> = default_source_roots()
-            .iter()
-            .map(|r| root.join(r).to_string_lossy().into_owned())
-            .collect();
+        let roots = test_roots();
         let entry = root.join("src/v2/workflow/required_floor.dag");
         let (graph, indices) =
             resolve_entry_graph_shared(&roots, &entry.to_string_lossy()).expect("authority");
@@ -349,13 +381,16 @@ mod tests {
         let (needs_base, exempt) = super::super::required_floor_runner::reach_base_identities(
             &ctx,
             &[
-                ("m.passes".to_string(), true),
-                ("m.fails".to_string(), false),
+                ("m.passes".to_string(), "passed".to_string()),
+                ("m.fails".to_string(), "failed".to_string()),
+                ("m.interrupted".to_string(), "not_measured".to_string()),
             ],
         )
         .expect("partition");
         assert_eq!(needs_base, vec!["m.fails".to_string()]);
         assert!(exempt.contains("m.passes") && !exempt.contains("m.fails"));
+        // A head that was not measured is never sent to base: no base can make it a regression.
+        assert!(exempt.contains("m.interrupted"));
         for base in ["passed", "failed", "not_declared"] {
             assert!(
                 !verdict(base, "passed").1,
@@ -368,7 +403,7 @@ mod tests {
     // with the count it would have reached; a merge group plans it. Through the real rule.
     #[test]
     fn a_pull_request_defers_the_reach_differential_and_a_merge_group_plans_it() {
-        let roots = default_source_roots();
+        let roots = test_roots();
         assert!(!reach_planned_for_event(&roots, "pull_request").expect("rule"));
         assert!(reach_planned_for_event(&roots, "merge_group").expect("rule"));
         let line = reach_deferred_line("pull_request", 493);
@@ -385,10 +420,7 @@ mod tests {
     #[test]
     fn report_only_output_never_says_the_base_ran() {
         let root = process_workspace_root();
-        let roots: Vec<String> = default_source_roots()
-            .iter()
-            .map(|r| root.join(r).to_string_lossy().into_owned())
-            .collect();
+        let roots = test_roots();
         let entry = root.join("src/v2/workflow/required_floor.dag");
         let (graph, indices) =
             resolve_entry_graph_shared(&roots, &entry.to_string_lossy()).expect("authority");
@@ -415,24 +447,7 @@ mod tests {
     // ones the floor's own fold would observe.
     #[test]
     fn a_new_failing_reach_claim_blocks_through_the_base_producer_and_the_model() {
-        let root = process_workspace_root();
-        let fx = root.join(format!("target/reach_base_fixture_{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&fx);
-        std::fs::create_dir_all(&fx).expect("fixture dir");
-        std::fs::write(
-            fx.join("m.dag"),
-            "module rbase.m\n\nimport v2.std.logic { Bool }\n\n\
-             test fn holds() -> Bool {\n  true\n}\n\n\
-             test fn fails() -> Bool {\n  false\n}\n",
-        )
-        .expect("fixture source");
-        let roots: Vec<String> = std::iter::once(fx.to_string_lossy().into_owned())
-            .chain(
-                default_source_roots()
-                    .iter()
-                    .map(|r| root.join(r).to_string_lossy().into_owned()),
-            )
-            .collect();
+        let roots = test_roots();
         let identities: Vec<String> = [
             "rbase.m.holds",
             "rbase.m.fails",
@@ -443,7 +458,6 @@ mod tests {
         .map(|s| s.to_string())
         .collect();
         let arm = reach_base_standings(&roots, &identities, 60_000);
-        let _ = std::fs::remove_dir_all(&fx);
         let standings = match arm.expect("base arm runs") {
             ReachBaseArm::Completed(s) => s,
             ReachBaseArm::Refused { identity, cause } => panic!("refused {identity}: {cause}"),
