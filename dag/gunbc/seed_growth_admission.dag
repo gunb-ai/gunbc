@@ -46,6 +46,11 @@ import gunbc.namespace_baseline_seed_growth { namespace_baseline_seed_growth_jus
 import gunbc.parsed_import_statement_bridge_seed_growth { parsed_import_statement_bridge_seed_growth_justification }
 import gunbc.parse_refusal_location_seed_growth { parse_refusal_location_seed_growth_justification }
 import gunbc.red_lib_population_seed_growth { red_lib_population_seed_growth_justification }
+import gunbc.interpreter_eval_correctness_seed_growth {
+  match_arm_guard_seed_growth_justification,
+  value_depth_seed_growth_justification,
+  value_drop_binding_adaptation_seed_growth_justification
+}
 import gunbc.interpreter_error_location_seed_growth { interpreter_error_location_seed_growth_justification }
 import gunbc.kernel_grounding_interpreter_seed_growth { kernel_grounding_interpreter_seed_growth_justification }
 import gunbc.regen_digest_spelling_seed_growth { regen_digest_spelling_seed_growth_justification }
@@ -336,7 +341,10 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     enrolment_dead_band_seed_growth_justification,
     modeled_operation_realization_seed_growth_justification,
     observation_file_effect_seed_growth_justification,
-    floor_checker_input_seed_growth_justification
+    floor_checker_input_seed_growth_justification,
+    match_arm_guard_seed_growth_justification,
+    value_depth_seed_growth_justification,
+    value_drop_binding_adaptation_seed_growth_justification
   ]
 }
 
