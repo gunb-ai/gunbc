@@ -5747,7 +5747,17 @@ fn body_lower_postfix_projection_step(repeat_elem: Node) -> Optional<Node> {
 // idiom the existing arms still erase (the receipt is on the class row; see DottedChainTailRead).
 // A brace record suffix (`a.b.C { f: v }`) is a construction, lowered by the chain fold's
 // PostfixRecord step, and an `as` suffix is a cast step; neither is read by this head reader.
+// A HEAD A PRODUCER PASSED THROUGH IS STILL A NAME. The primary producer returns a bare identifier
+// sealed as its output; whether `a.b` is one qualified name is decided by what the head IS, so a
+// Lowered head is read as the node it holds, exactly as this reader saw it before the seal.
 fn body_lower_dotted_head_atom_optional(node: Node) -> Optional<Node> {
+  match body_term_of(node: node) {
+    Accepted { value: Lowered { node: inner, shape: _ }, diagnostics: _ } => body_lower_dotted_head_raw_atom_optional(node: inner)
+    _ => body_lower_dotted_head_raw_atom_optional(node: node)
+  }
+}
+
+fn body_lower_dotted_head_raw_atom_optional(node: Node) -> Optional<Node> {
   match node_atom_identity_optional(node: node) {
     Present { value: sym } =>
       if dag_lex_token_symbol(sym: sym) {
