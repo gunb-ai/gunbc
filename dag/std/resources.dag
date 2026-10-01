@@ -5,6 +5,19 @@ import std.types { Timestamp, FilePath, TextFilePath }
 import std.integer { UInt8 }
 import std.measure { ByteSize }
 
+// WHAT A RESOURCE DECLARATION STATES ABOUT ITSELF: the closed values of its `kind:` and `mode:`
+// entries. These are the homes the v2 lowering reads a declaration's entries against
+// (v2.compiler.body_lowering_fold body_lower_resource_decl), so an unknown value refuses at its entry
+// instead of riding as an unclassified name. A Capability is held and used; an Observation is read
+// from the world without being held (Clock, Entropy).
+type ResourceKind
+  = Capability
+  | Observation
+
+type ResourceMode
+  = Read
+  | ReadWrite
+
 type ResourceHandle {
   type: String
   resource_id: String
