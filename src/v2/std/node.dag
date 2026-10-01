@@ -553,11 +553,11 @@ data arrow_effect_claims_label: EdgeLabel = Named { name: ^arrow_effect_claims_e
 data arrow_execution_mode_claim_label: EdgeLabel = Named { name: ^arrow_execution_mode_claim_edge }
 
 fn arrow_effect_claim_is_admitted(claim: Symbol) -> Bool {
-  (claim == ^readonly) || (claim == ^idempotent)
+  (claim == symbol_intern_lexeme(lexeme: "readonly")) || (claim == symbol_intern_lexeme(lexeme: "idempotent"))
 }
 
 fn arrow_execution_mode_claim_is_admitted(claim: Symbol) -> Bool {
-  claim == ^hermetic
+  claim == symbol_intern_lexeme(lexeme: "hermetic")
 }
 
 // The Arrow named edges that are contract edges rather than binders.
@@ -614,14 +614,16 @@ fn arrow_effect_claims_conform(children: List<Edge>) -> Bool {
       match claims.kind {
         TypeNode { connective: Conj } =>
           all_names_distinct(children: claims.children)
-            && fold(claims.children, init: true, f: fn(acc, c) {
-              acc && match c.label {
-                Positional => false
-                Named { name: sym } => arrow_effect_claim_is_admitted(claim: sym) && arrow_contract_atom_conforms(label: sym, target: c.target)
-              }
-            })
+            && fold(claims.children, init: true, f: fn(acc, c) { acc && arrow_effect_claim_edge_conforms(e: c) })
         _ => false
       }
+  }
+}
+
+fn arrow_effect_claim_edge_conforms(e: Edge) -> Bool {
+  match e.label {
+    Positional => false
+    Named { name: sym } => arrow_effect_claim_is_admitted(claim: sym) && arrow_contract_atom_conforms(label: sym, target: e.target)
   }
 }
 

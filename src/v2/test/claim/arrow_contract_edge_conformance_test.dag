@@ -15,7 +15,8 @@ import v2.std.node {
   TypeNode,
   arrow_signature_edges_conform,
   content_hash,
-  node_synthetic
+  node_synthetic,
+  symbol_intern_lexeme
 }
 
 // THE CONFORMANCE WALL FOR AN ARROW'S CONTRACT EDGES (v2.std.node arrow_signature_edges_conform):
@@ -66,34 +67,34 @@ test fn a_claim_free_operation_arrow_conforms() -> Bool {
 }
 
 test fn admitted_contract_edges_conform_and_are_not_counted_as_a_binder() -> Bool {
-  ace_conforms(extra: [ace_claims(names: [^readonly, ^idempotent])])
-    && ace_conforms(extra: [ace_mode(mode: ^hermetic)])
-    && ace_conforms(extra: [ace_claims(names: [^idempotent]), ace_mode(mode: ^hermetic)])
+  ace_conforms(extra: [ace_claims(names: [symbol_intern_lexeme(lexeme: "readonly"), symbol_intern_lexeme(lexeme: "idempotent")])])
+    && ace_conforms(extra: [ace_mode(mode: symbol_intern_lexeme(lexeme: "hermetic"))])
+    && ace_conforms(extra: [ace_claims(names: [symbol_intern_lexeme(lexeme: "idempotent")]), ace_mode(mode: symbol_intern_lexeme(lexeme: "hermetic"))])
 }
 
 // Reds, in order: a repeated claim; two claims edges; an unknown claim; hermetic folded into the
 // effect claims; a claim Atom that is not its own label.
 test fn a_malformed_effect_claim_refuses() -> Bool {
-  !ace_conforms(extra: [ace_claims(names: [^readonly, ^readonly])])
-    && !ace_conforms(extra: [ace_claims(names: [^readonly]), ace_claims(names: [^idempotent])])
+  !ace_conforms(extra: [ace_claims(names: [symbol_intern_lexeme(lexeme: "readonly"), symbol_intern_lexeme(lexeme: "readonly")])])
+    && !ace_conforms(extra: [ace_claims(names: [symbol_intern_lexeme(lexeme: "readonly")]), ace_claims(names: [symbol_intern_lexeme(lexeme: "idempotent")])])
     && !ace_conforms(extra: [ace_claims(names: [^pure])])
-    && !ace_conforms(extra: [ace_claims(names: [^hermetic])])
-    && !ace_conforms(extra: [ace_named(name: ^arrow_effect_claims_edge, target: ace_conj(children: [ace_named(name: ^readonly, target: ace_atom(identity: ^idempotent))]))])
+    && !ace_conforms(extra: [ace_claims(names: [symbol_intern_lexeme(lexeme: "hermetic")])])
+    && !ace_conforms(extra: [ace_named(name: ^arrow_effect_claims_edge, target: ace_conj(children: [ace_named(name: symbol_intern_lexeme(lexeme: "readonly"), target: ace_atom(identity: symbol_intern_lexeme(lexeme: "idempotent")))]))])
 }
 
 // Reds, in order: an unknown mode; an effect claim on the mode edge; two mode edges; a mode that is
 // a Conj rather than one Atom.
 test fn a_malformed_execution_mode_claim_refuses() -> Bool {
   !ace_conforms(extra: [ace_mode(mode: ^wet)])
-    && !ace_conforms(extra: [ace_mode(mode: ^readonly)])
-    && !ace_conforms(extra: [ace_mode(mode: ^hermetic), ace_mode(mode: ^hermetic)])
-    && !ace_conforms(extra: [ace_named(name: ^arrow_execution_mode_claim_edge, target: ace_conj(children: [ace_named(name: ^hermetic, target: ace_atom(identity: ^hermetic))]))])
+    && !ace_conforms(extra: [ace_mode(mode: symbol_intern_lexeme(lexeme: "readonly"))])
+    && !ace_conforms(extra: [ace_mode(mode: symbol_intern_lexeme(lexeme: "hermetic")), ace_mode(mode: symbol_intern_lexeme(lexeme: "hermetic"))])
+    && !ace_conforms(extra: [ace_named(name: ^arrow_execution_mode_claim_edge, target: ace_conj(children: [ace_named(name: symbol_intern_lexeme(lexeme: "hermetic"), target: ace_atom(identity: symbol_intern_lexeme(lexeme: "hermetic")))]))])
 }
 
 // Canonical identity does not depend on the authored order of the claims or of the contract edges,
 // and a claim is part of identity (the claimed Arrow is not the claim-free one).
 test fn contract_edge_identity_is_order_independent() -> Bool {
-  (content_hash(n: ace_arrow(extra: [ace_claims(names: [^readonly, ^idempotent])])) == content_hash(n: ace_arrow(extra: [ace_claims(names: [^idempotent, ^readonly])])))
-    && (content_hash(n: ace_arrow(extra: [ace_claims(names: [^readonly]), ace_mode(mode: ^hermetic)])) == content_hash(n: ace_arrow(extra: [ace_mode(mode: ^hermetic), ace_claims(names: [^readonly])])))
-    && (content_hash(n: ace_arrow(extra: [ace_claims(names: [^readonly])])) != content_hash(n: ace_arrow(extra: [])))
+  (content_hash(n: ace_arrow(extra: [ace_claims(names: [symbol_intern_lexeme(lexeme: "readonly"), symbol_intern_lexeme(lexeme: "idempotent")])])) == content_hash(n: ace_arrow(extra: [ace_claims(names: [symbol_intern_lexeme(lexeme: "idempotent"), symbol_intern_lexeme(lexeme: "readonly")])])))
+    && (content_hash(n: ace_arrow(extra: [ace_claims(names: [symbol_intern_lexeme(lexeme: "readonly")]), ace_mode(mode: symbol_intern_lexeme(lexeme: "hermetic"))])) == content_hash(n: ace_arrow(extra: [ace_mode(mode: symbol_intern_lexeme(lexeme: "hermetic")), ace_claims(names: [symbol_intern_lexeme(lexeme: "readonly")])])))
+    && (content_hash(n: ace_arrow(extra: [ace_claims(names: [symbol_intern_lexeme(lexeme: "readonly")])])) != content_hash(n: ace_arrow(extra: [])))
 }
