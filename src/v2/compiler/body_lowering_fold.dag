@@ -141,6 +141,10 @@ import v2.std.node {
   ArrowEffectClaimsEdge,
   ArrowExecutionModeClaimEdge,
   ArrowResourceRequirementsEdge,
+  BodyTermLoweredEdge,
+  BodyTermLoweredSeal,
+  CoreMarker,
+  body_term_lowered_seal,
   MapLiteralEntryEdge,
   MapLiteralEntriesEdge,
   core_edge,
@@ -687,34 +691,40 @@ type BodyTermWrapper {
 // of the declared arms. Anything else is not a wrapper.
 fn body_term_edge_named(e: Edge, name: Symbol) -> Bool {
   match e.label {
-    Named { name: n } => n == name
+    Authored { name: n } => n == name
+    StructuralLabel { label: _ } => false
     Positional => false
   }
 }
 
+fn body_term_seal_shape(seal: BodyTermLoweredSeal) -> Symbol {
+  seal.shape
+}
+
+// The wrapper read back: one child, under the sealed core marker body_term_seal writes. The arm is
+// matched, never a spelling, and its seal names the producer's arm.
 fn body_term_wrapper_optional(n: Node) -> Optional<BodyTermWrapper> {
   match n.kind {
     TypeNode { connective: Conj } =>
-      if length(xs: n.children) == 2 {
+      if length(xs: n.children) == 1 {
         match list_at_optional(xs: n.children, index: 0) {
           Absent => optional_absent()
-          Present { value: shape_edge } =>
-            match list_at_optional(xs: n.children, index: 1) {
-              Absent => optional_absent()
-              Present { value: node_edge } =>
-                if body_term_edge_named(e: shape_edge, name: ^body_term_lowered_shape_edge)
-                  && body_term_edge_named(e: node_edge, name: ^body_term_lowered_node_edge) {
-                  match node_atom_identity_optional(node: shape_edge.target) {
-                    Absent => optional_absent()
-                    Present { value: id } =>
-                      match body_term_lowered_shape_of(id: id) {
-                        Absent => optional_absent()
-                        Present { value: shape } => optional_present(value: BodyTermWrapper { node: node_edge.target, shape: shape })
-                      }
-                  }
-                } else {
-                  optional_absent()
+          Present { value: e } =>
+            match e.label {
+              StructuralLabel { label: structural } =>
+                match structural {
+                  CoreMarker { marker: marker } =>
+                    match marker {
+                      BodyTermLoweredEdge { seal: seal } =>
+                        match body_term_lowered_shape_of(id: body_term_seal_shape(seal: seal)) {
+                          Absent => optional_absent()
+                          Present { value: shape } => optional_present(value: BodyTermWrapper { node: e.target, shape: shape })
+                        }
+                      _ => optional_absent()
+                    }
+                  _ => optional_absent()
                 }
+              _ => optional_absent()
             }
         }
       } else {
@@ -748,8 +758,7 @@ fn body_term_seal(node: Node, shape: LoweredShape) -> Node
         node_lowered_from(
           kind: TypeNode { connective: Conj },
           children: [
-            Edge { label: Named { name: ^body_term_lowered_shape_edge }, target: node_synthetic(kind: TypeNode { connective: Atom { identity: body_term_lowered_shape_symbol(shape: shape) } }, children: []) },
-            Edge { label: Named { name: ^body_term_lowered_node_edge }, target: node }
+            core_edge(marker: BodyTermLoweredEdge { seal: body_term_lowered_seal(shape: body_term_lowered_shape_symbol(shape: shape)) }, target: node)
           ],
           source: node
         )
