@@ -508,7 +508,7 @@ fn same_generation_settle(
 }
 
 // Release advances only an already sanitized cell and remains idempotent after a crash.
-test fn a_released_reservation_advances_readiness_without_inventing_an_attempt() -> Bool {
+fn a_released_reservation_advances_readiness_without_inventing_an_attempt_control() -> Bool {
   let cell = "workspace-release-test" as CellId
   let write = WriteReservationReleased { receipt: CellReservationRelease { cell: cell, held_generation: 1, freed_generation: 2 } }
   match apply_cell_readiness_write(records: [CellSettled { cell: cell, generation: 1, readiness: CellReady { cell: cell } }], write: write) {
@@ -524,7 +524,7 @@ test fn a_released_reservation_advances_readiness_without_inventing_an_attempt()
 }
 
 // A release receipt cannot clear uncertainty or skip a CAS generation.
-test fn release_generation_advance_refuses_quarantine_and_skips() -> Bool {
+fn release_generation_advance_refuses_quarantine_and_skips_control() -> Bool {
   let cell = "workspace-release-test" as CellId
   let held = CellSettled { cell: cell, generation: 1, readiness: CellReady { cell: cell } }
   let skips = WriteReservationReleased { receipt: CellReservationRelease { cell: cell, held_generation: 1, freed_generation: 3 } }

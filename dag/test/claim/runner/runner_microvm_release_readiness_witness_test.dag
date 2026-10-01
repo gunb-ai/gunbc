@@ -1,0 +1,15 @@
+module test.claim.runner.runner_microvm_release_readiness_witness
+
+import gunbc.runner_microvm_cell_readiness {
+  a_released_reservation_advances_readiness_without_inventing_an_attempt_control,
+  release_generation_advance_refuses_quarantine_and_skips_control
+}
+
+// Controls stay beside the sealed release constructor; discovery lives in the test entry.
+test fn a_released_reservation_advances_readiness_without_inventing_an_attempt() -> Bool {
+  a_released_reservation_advances_readiness_without_inventing_an_attempt_control()
+}
+
+test fn release_generation_advance_refuses_quarantine_and_skips() -> Bool {
+  release_generation_advance_refuses_quarantine_and_skips_control()
+}
