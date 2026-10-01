@@ -470,13 +470,17 @@ fn loop_positional_child_count(children: List<Edge>) -> Int {
 // The positional children are the iterated body. ^loop_domain_edge targets the value iterated, which
 // is evaluated ONCE and outside the iteration. ^loop_bound_edge targets the termination measure.
 // ^loop_carrier_edge targets the loop-carried state's BINDER, never a value; the carried state's
-// initial value lives on an enclosing Bind. Any other named label is LoopEdgeUnrecognized, which no
+// initial value lives on an enclosing Bind. ^loop_realized_declaration_edge targets an AUTHORED
+// reference -- the callee occurrence of a desugared recurrence such as `fold(..)` -- which resolve must
+// bind to the declaration whose recurrence the Loop realizes; it is a reference, never work. A Loop
+// whose meaning the language fixes (`for`, `while`, `loop`) names no declaration and carries none. Any other named label is LoopEdgeUnrecognized, which no
 // conforming Loop holds, so a consumer that matches every role is exhaustive over a conforming Loop.
 type LoopEdgeRole
   = LoopIteratedBody
   | LoopDomainValue
   | LoopBoundMeasure
   | LoopCarrierBinder
+  | LoopRealizedDeclaration
   | LoopEdgeUnrecognized
 
 fn loop_edge_role(e: Edge) -> LoopEdgeRole {
@@ -489,6 +493,8 @@ fn loop_edge_role(e: Edge) -> LoopEdgeRole {
         LoopBoundMeasure
       } else if sym == ^loop_carrier_edge {
         LoopCarrierBinder
+      } else if sym == ^loop_realized_declaration_edge {
+        LoopRealizedDeclaration
       } else {
         LoopEdgeUnrecognized
       }
@@ -502,6 +508,7 @@ fn loop_body_edges_conform(children: List<Edge>) -> Bool {
       LoopDomainValue => acc
       LoopBoundMeasure => acc
       LoopCarrierBinder => acc
+      LoopRealizedDeclaration => acc
       LoopEdgeUnrecognized => false
     }
   })
@@ -511,9 +518,11 @@ fn loop_behavior_edges_conform(children: List<Edge>) -> Bool {
   let bound_edges = name_occurrences(name: ^loop_bound_edge, children: children)
   let carrier_edges = name_occurrences(name: ^loop_carrier_edge, children: children)
   let domain_edges = name_occurrences(name: ^loop_domain_edge, children: children)
+  let realized_edges = name_occurrences(name: ^loop_realized_declaration_edge, children: children)
   (bound_edges == 1)
   && (carrier_edges <= 1)
   && (domain_edges <= 1)
+  && (realized_edges <= 1)
   && loop_body_edges_conform(children: children)
   && (loop_positional_child_count(children: children) >= 1)
 }
@@ -1014,8 +1023,17 @@ fn loop_carrier_binder_target(children: List<Edge>) -> NamedEdgeTargetLookup {
   named_edge_target_lookup(children: children, name: ^loop_carrier_edge)
 }
 
+fn loop_domain_value_target(children: List<Edge>) -> NamedEdgeTargetLookup {
+  named_edge_target_lookup(children: children, name: ^loop_domain_edge)
+}
+
+fn loop_realized_declaration_target(children: List<Edge>) -> NamedEdgeTargetLookup {
+  named_edge_target_lookup(children: children, name: ^loop_realized_declaration_edge)
+}
+
 // Of a Loop's edges only the iterated body repeats: the domain is evaluated once, the bound is a
-// measure and the carrier is a binder. Each consumer matches loop_edge_role itself.
+// measure, the carrier is a binder and the realized declaration is a reference. Each consumer
+// matches loop_edge_role itself.
 fn loop_edge_contributes_to_iteration_fold(parent: Node, e: Edge) -> Bool {
   match parent.kind {
     ComputationNode { behavior: Loop } =>
@@ -1024,6 +1042,7 @@ fn loop_edge_contributes_to_iteration_fold(parent: Node, e: Edge) -> Bool {
         LoopDomainValue => false
         LoopBoundMeasure => false
         LoopCarrierBinder => false
+        LoopRealizedDeclaration => false
         LoopEdgeUnrecognized => false
       }
     _ =>
@@ -1054,6 +1073,7 @@ fn cost_edge_role(parent: Node, e: Edge) -> CostEdgeRole {
         LoopDomainValue => CostEdgePricedOnce
         LoopBoundMeasure => CostEdgeNotPriced
         LoopCarrierBinder => CostEdgeNotPriced
+        LoopRealizedDeclaration => CostEdgeNotPriced
         LoopEdgeUnrecognized => CostEdgeNotPriced
       }
     TypeNode { connective: Arrow } =>

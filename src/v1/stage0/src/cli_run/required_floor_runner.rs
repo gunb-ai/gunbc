@@ -2566,6 +2566,9 @@ pub(crate) fn floor_index_controls(
     let builds = super::multi_entry_index_builds();
     let name_sets = super::multi_entry_index_sharing_control(&builds)
         .map_err(|e| format!("REQUIRED-FLOOR REFUSAL at={at} cause={e}"))?;
+    let resident = super::entry_resolve::shared_index_residency_control()
+        .map_err(|e| format!("REQUIRED-FLOOR REFUSAL at={at} cause={e}"))?;
+    eprintln!("[floor-phase] phase=shared-index-residency at={at} resident_pools={resident}");
     eprintln!(
         "[floor-phase] phase=multi-entry-index-builds at={at} builds={} name_sets={name_sets} \
          sites={:?}",
