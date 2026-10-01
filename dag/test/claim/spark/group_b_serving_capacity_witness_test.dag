@@ -98,7 +98,8 @@ test fn w_the_executable_profile_is_the_intents_exact_derivation() -> Bool {
               serve_port: profile.serve_port,
               served_alias: profile.served_alias,
               prefix_caching: profile.prefix_caching,
-              engram: profile.engram)))
+              engram: profile.engram,
+              modality: profile.modality)))
       }
   }
 }
