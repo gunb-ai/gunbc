@@ -20,7 +20,8 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Hash, Node, Symbol, TypeNode, combine_hash, symbol_identity_digest }
+import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, combine_hash, symbol_identity_digest }
+import std.content_hash { Fnv1a64Structural }
 import v2.std.integer { integer_int_content_digest }
 import v2.std.node_shape { stamp_node_shape_synthetic, type_shape }
 import v2.std.text { Char, String }
@@ -169,7 +170,7 @@ type Token {
 // recorded (start, then line), so the parse memo key can cover layout without a lookup per token.
 type StreamLayout {
   line_break_before: Map<Int, Int>
-  digest: Hash
+  digest: Fnv1a64Structural
 }
 
 type TokenStream {
@@ -213,7 +214,7 @@ type StreamLayoutWalk {
   last_end: Int
   seen: Bool
   answers: Map<Int, Int>
-  digest: Hash
+  digest: Fnv1a64Structural
 }
 
 fn stream_layout_of(tokens: List<Token>, source: v2.std.text.String) -> StreamLayout {
