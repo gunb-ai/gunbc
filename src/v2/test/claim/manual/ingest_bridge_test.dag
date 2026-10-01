@@ -271,6 +271,31 @@ test fn ingest_identity_coercion_refuses_source_absent_from_authored_roster() ->
   }
 }
 
+// THE DISCRIMINATING RED BESIDE THE ACCEPTING CONTROL ABOVE: a source that is NOT a roster member --
+// an atom no authority declares -- derives no grounding, so identity coercion still refuses at the
+// demand for one. Admitting a kind as grounded (v2.compiler.infer algebra_ref_is_grounded, after
+// gunbc#12290) must not admit this.
+test fn ingest_identity_coercion_refuses_an_unrostered_atom_source() -> Bool {
+  let source = Node {
+    kind: TypeNode { connective: Atom { identity: ^no_authority_declares_this_symbol } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+  match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: source)) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: inferred, diagnostics: _ } =>
+      match coerce_grounded_node(
+        source: source,
+        tree: inferred,
+        target: ingest_fixture_model(emitted: dag_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok)
+      ) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } =>
+          diagnostics_fatal_reason(d: d) == ^infer_grounding_demanded_not_derived
+      }
+  }
+}
+
 fn check_ingest_fails_closed_off_frontier() -> Bool {
   match ingest_parse() {
     Accepted { value: tree, diagnostics: _ } =>
