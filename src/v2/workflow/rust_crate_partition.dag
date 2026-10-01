@@ -896,7 +896,7 @@ fn assignment_first_stranger(
   let known = module_dag.modules |> fold(init: empty_map(), f: fn(acc, module_id) {
     map_insert(acc, module_id, true)
   })
-  map_keys(assignment) |> fold(init: Absent, f: fn(acc, module_id) {
+  sorted_map_keys(assignment) |> fold(init: Absent, f: fn(acc, module_id) {
     match acc {
       Present { value: _ } => acc
       Absent =>
