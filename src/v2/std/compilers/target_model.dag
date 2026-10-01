@@ -4386,10 +4386,12 @@ fn concrete_syntax_token_node_targets_into(node: Node, acc: List<Node>) -> Outco
             }
         }
       }
-    _ =>
-      outcome_rejected(
-        target_bodied_arrow_scaffold_bundle_malformed_diagnostic(bundle: node)
-      )
+    TypeNode { connective: Atom { identity: _ } } => outcome_rejected(target_bodied_arrow_scaffold_bundle_malformed_diagnostic(bundle: node))
+    TypeNode { connective: Disj } => outcome_rejected(target_bodied_arrow_scaffold_bundle_malformed_diagnostic(bundle: node))
+    TypeNode { connective: Arrow } => outcome_rejected(target_bodied_arrow_scaffold_bundle_malformed_diagnostic(bundle: node))
+    TypeNode { connective: Cardinality } => outcome_rejected(target_bodied_arrow_scaffold_bundle_malformed_diagnostic(bundle: node))
+    TypeNode { connective: Instantiation } => outcome_rejected(target_bodied_arrow_scaffold_bundle_malformed_diagnostic(bundle: node))
+    ComputationNode { behavior: _ } => outcome_rejected(target_bodied_arrow_scaffold_bundle_malformed_diagnostic(bundle: node))
   }
 }
 
