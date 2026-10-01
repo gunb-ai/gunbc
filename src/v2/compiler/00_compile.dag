@@ -3250,7 +3250,7 @@ fn native_module_resolve_verdict(
               NativeModuleResolveImportTargetFileRefused { target: target, first: f, rest: r, observation: o }
             Absent => NativeModuleResolveRefused { first: f, rest: r, observation: o }
           }
-        ResolveWalkAccepted { value: resolved, diagnostics: _ } =>
+        ResolveWalkAccepted { value: resolved, diagnostics: _, binder_counts: _ } =>
           match context.resolution {
             Accepted { value: shared, diagnostics: _ } =>
               NativeModuleResolveAccepted { resolved: resolved_tree_of(root: resolved, symbol_index: shared.symbol_index) }

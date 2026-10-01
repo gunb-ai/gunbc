@@ -278,6 +278,7 @@ type ResolveContext {
   lm: LanguageModel
   under_module_root: Bool
   declaring: DeclaringPosition
+  binder_counts: Map<Symbol, Int>
 }
 
 // WHERE THE WALK STANDS IN THE CONTAINMENT TREE, IN THE PATH v2.compiler.symbol_index_fill KEYS
@@ -483,7 +484,26 @@ fn resolve_ctx_init(
     position: namespace.module_qn,
     lm: lm,
     under_module_root: false,
-    declaring: resolve_declaring_root(namespace: namespace)
+    declaring: resolve_declaring_root(namespace: namespace),
+    binder_counts: empty_map()
+  }
+}
+
+// THE BINDER COUNTS GO DOWN WITH THE CONTEXT AND COME BACK WITH THE WALK: each key is a value binder's
+// authored name and its count is how many binders of that name precede this point, in pre-order,
+// within the enclosing named declaration -- the next binder of that name takes it as its ordinal
+// (v2.std.node BinderSite).
+fn resolve_ctx_with_binder_counts(ctx: ResolveContext, counts: Map<Symbol, Int>) -> ResolveContext {
+  ResolveContext {
+    scope: ctx.scope,
+    type_scope: ctx.type_scope,
+    namespace: ctx.namespace,
+    policy: ctx.policy,
+    position: ctx.position,
+    lm: ctx.lm,
+    under_module_root: ctx.under_module_root,
+    declaring: ctx.declaring,
+    binder_counts: counts
   }
 }
 
@@ -496,7 +516,8 @@ fn resolve_ctx_with_scope(ctx: ResolveContext, scope: Scope) -> ResolveContext {
     position: ctx.position,
     lm: ctx.lm,
     under_module_root: ctx.under_module_root,
-    declaring: ctx.declaring
+    declaring: ctx.declaring,
+    binder_counts: ctx.binder_counts
   }
 }
 
@@ -509,7 +530,8 @@ fn resolve_ctx_with_type_scope(ctx: ResolveContext, type_scope: Scope) -> Resolv
     position: ctx.position,
     lm: ctx.lm,
     under_module_root: ctx.under_module_root,
-    declaring: ctx.declaring
+    declaring: ctx.declaring,
+    binder_counts: ctx.binder_counts
   }
 }
 
@@ -530,7 +552,8 @@ fn resolve_ctx_snoc_position(ctx: ResolveContext, segment: Symbol) -> ResolveCon
     position: qualified_name_snoc(qn: ctx.position, segment: segment),
     lm: ctx.lm,
     under_module_root: ctx.under_module_root,
-    declaring: ctx.declaring
+    declaring: ctx.declaring,
+    binder_counts: ctx.binder_counts
   }
 }
 
@@ -543,7 +566,8 @@ fn resolve_ctx_leaving_containment(ctx: ResolveContext) -> ResolveContext {
     position: ctx.position,
     lm: ctx.lm,
     under_module_root: ctx.under_module_root,
-    declaring: NotDeclaring
+    declaring: NotDeclaring,
+    binder_counts: ctx.binder_counts
   }
 }
 
@@ -568,7 +592,8 @@ fn resolve_ctx_with_declaring(ctx: ResolveContext, declaring: DeclaringPosition)
     position: ctx.position,
     lm: ctx.lm,
     under_module_root: ctx.under_module_root,
-    declaring: declaring
+    declaring: declaring,
+    binder_counts: ctx.binder_counts
   }
 }
 
@@ -626,7 +651,8 @@ fn resolve_ctx_with_under_module_root(ctx: ResolveContext, under_module_root: Bo
     position: ctx.position,
     lm: ctx.lm,
     under_module_root: under_module_root,
-    declaring: ctx.declaring
+    declaring: ctx.declaring,
+    binder_counts: ctx.binder_counts
   }
 }
 
@@ -1488,7 +1514,7 @@ fn observation_meet(a: ObservationCompleteness, b: ObservationCompleteness) -> O
 // changes nothing else. `first` is therefore the one the old short-circuiting walk would have
 // stopped at, which is what makes the legacy projection below answer exactly what it answered.
 type ResolveNodeWalk
-  = ResolveWalkAccepted { value: Node, diagnostics: Diagnostics }
+  = ResolveWalkAccepted { value: Node, diagnostics: Diagnostics, binder_counts: Map<Symbol, Int> }
   | ResolveWalkRefused {
       first: NonEmptyDiagnostics
       rest: List<NonEmptyDiagnostics>
@@ -1499,9 +1525,9 @@ fn resolve_walk_refused_one(chain: NonEmptyDiagnostics) -> ResolveNodeWalk {
   ResolveWalkRefused { first: chain, rest: [], observation: ObservationComplete }
 }
 
-fn resolve_walk_of_outcome(o: Outcome<Node>) -> ResolveNodeWalk {
+fn resolve_walk_of_outcome(o: Outcome<Node>, counts: Map<Symbol, Int>) -> ResolveNodeWalk {
   match o {
-    Accepted { value: v, diagnostics: d } => ResolveWalkAccepted { value: v, diagnostics: d }
+    Accepted { value: v, diagnostics: d } => ResolveWalkAccepted { value: v, diagnostics: d, binder_counts: counts }
     Rejected { diagnostics: r } => resolve_walk_refused_one(chain: r)
   }
 }
@@ -1512,7 +1538,7 @@ fn resolve_walk_of_outcome(o: Outcome<Node>) -> ResolveNodeWalk {
 // itself through resolve_walk_with_admission_context_policy.
 fn resolve_walk_outcome(w: ResolveNodeWalk) -> Outcome<Node> {
   match w {
-    ResolveWalkAccepted { value: v, diagnostics: d } => Accepted { value: v, diagnostics: d }
+    ResolveWalkAccepted { value: v, diagnostics: d, binder_counts: _ } => Accepted { value: v, diagnostics: d }
     ResolveWalkRefused { first: f, rest: _, observation: _ } => Rejected { diagnostics: f }
   }
 }
@@ -1520,7 +1546,7 @@ fn resolve_walk_outcome(w: ResolveNodeWalk) -> Outcome<Node> {
 // The stage exit: the same projection, with the index resolution consulted minted beside the root.
 fn resolved_tree_outcome(w: ResolveNodeWalk, symbol_index: SymbolIndex) -> Outcome<ResolvedTree> {
   match w {
-    ResolveWalkAccepted { value: v, diagnostics: d } =>
+    ResolveWalkAccepted { value: v, diagnostics: d, binder_counts: _ } =>
       Accepted { value: resolved_tree_of(root: v, symbol_index: symbol_index), diagnostics: d }
     ResolveWalkRefused { first: f, rest: _, observation: _ } => Rejected { diagnostics: f }
   }
@@ -1533,8 +1559,8 @@ fn resolved_tree_outcome(w: ResolveNodeWalk, symbol_index: SymbolIndex) -> Outco
 // Advisories raised after the last refusal are dropped with the rejected tree, as they were.
 fn resolve_walk_prefix_pending(pending: Diagnostics, w: ResolveNodeWalk) -> ResolveNodeWalk {
   match w {
-    ResolveWalkAccepted { value: v, diagnostics: d } =>
-      ResolveWalkAccepted { value: v, diagnostics: diagnostics_merge(outer: pending, inner: d) }
+    ResolveWalkAccepted { value: v, diagnostics: d, binder_counts: c } =>
+      ResolveWalkAccepted { value: v, diagnostics: diagnostics_merge(outer: pending, inner: d), binder_counts: c }
     ResolveWalkRefused { first: f, rest: r, observation: o } =>
       ResolveWalkRefused {
         first: rejected_with_pending(pending: pending, rejected: f),
@@ -1551,16 +1577,18 @@ type ChildWalk {
   failures: List<NonEmptyDiagnostics>
   observation: ObservationCompleteness
   scope_prerequisite_refused: Bool
+  binder_counts: Map<Symbol, Int>
 }
 
-fn child_walk_init() -> ChildWalk {
+fn child_walk_init(counts: Map<Symbol, Int>) -> ChildWalk {
   ChildWalk {
     ordinal: 0,
     edges: empty_edge_list(),
     pending: None,
     failures: [],
     observation: ObservationComplete,
-    scope_prerequisite_refused: false
+    scope_prerequisite_refused: false,
+    binder_counts: counts
   }
 }
 
@@ -1583,18 +1611,20 @@ fn child_walk_refused(
       right: rest
     ),
     observation: observation_meet(a: w.observation, b: observation),
-    scope_prerequisite_refused: w.scope_prerequisite_refused
+    scope_prerequisite_refused: w.scope_prerequisite_refused,
+    binder_counts: w.binder_counts
   }
 }
 
-fn child_walk_accepted(w: ChildWalk, edge: Edge, d: Diagnostics) -> ChildWalk {
+fn child_walk_accepted(w: ChildWalk, edge: Edge, d: Diagnostics, counts: Map<Symbol, Int>) -> ChildWalk {
   ChildWalk {
     ordinal: w.ordinal + 1,
     edges: list_snoc_item(xs: w.edges, item: edge),
     pending: diagnostics_merge(outer: w.pending, inner: d),
     failures: w.failures,
     observation: w.observation,
-    scope_prerequisite_refused: w.scope_prerequisite_refused
+    scope_prerequisite_refused: w.scope_prerequisite_refused,
+    binder_counts: counts
   }
 }
 
@@ -1608,7 +1638,8 @@ fn child_walk_unobservable(w: ChildWalk, reason: Symbol) -> ChildWalk {
     pending: w.pending,
     failures: w.failures,
     observation: ObservationIncomplete { reason: reason },
-    scope_prerequisite_refused: w.scope_prerequisite_refused
+    scope_prerequisite_refused: w.scope_prerequisite_refused,
+    binder_counts: w.binder_counts
   }
 }
 
@@ -1616,8 +1647,8 @@ fn child_walk_step(w: ChildWalk, e: Edge, r: ResolveNodeWalk) -> ChildWalk {
   match r {
     ResolveWalkRefused { first: f, rest: rs, observation: o } =>
       child_walk_refused(w: w, first: f, rest: rs, observation: o)
-    ResolveWalkAccepted { value: t, diagnostics: ed } =>
-      child_walk_accepted(w: w, edge: Edge { label: e.label, target: t }, d: ed)
+    ResolveWalkAccepted { value: t, diagnostics: ed, binder_counts: c } =>
+      child_walk_accepted(w: w, edge: Edge { label: e.label, target: t }, d: ed, counts: c)
   }
 }
 
@@ -1633,8 +1664,9 @@ fn child_walk_step_prerequisite(w: ChildWalk, e: Edge, r: ResolveNodeWalk) -> Ch
     observation: stepped.observation,
     scope_prerequisite_refused: match r {
       ResolveWalkRefused { first: _, rest: _, observation: _ } => true
-      ResolveWalkAccepted { value: _, diagnostics: _ } => false
-    }
+      ResolveWalkAccepted { value: _, diagnostics: _, binder_counts: _ } => false
+    },
+    binder_counts: stepped.binder_counts
   }
 }
 
@@ -1650,7 +1682,8 @@ fn child_walk_node(w: ChildWalk, n: Node) -> ResolveNodeWalk {
         ObservationComplete =>
           ResolveWalkAccepted {
             value: node_with_occurrence_id(kind: n.kind, children: w.edges, occurrence_id: n.occurrence_id),
-            diagnostics: w.pending
+            diagnostics: w.pending,
+            binder_counts: w.binder_counts
           }
         ObservationIncomplete { reason: _ } =>
           resolve_walk_refused_one(chain: diagnostics_singleton(d: Diagnostic {
@@ -1670,7 +1703,7 @@ fn resolve_transform_operator_child(
 ) -> ResolveNodeWalk {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      resolve_walk_of_outcome(o: resolve_surface_operator_atom(ctx: ctx, n: n, identity: id))
+      resolve_walk_of_outcome(o: resolve_surface_operator_atom(ctx: ctx, n: n, identity: id), counts: ctx.binder_counts)
     _ => resolve_node_walk(ctx: ctx, n: n)
   }
 }
@@ -1679,7 +1712,8 @@ fn resolve_transform_children(
   ctx: ResolveContext,
   n: Node
 ) -> ResolveNodeWalk {
-  child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
+  child_walk_node(n: n, w: fold(n.children, init: child_walk_init(counts: ctx.binder_counts), f: fn(acc, e) {
+    let ctx = resolve_ctx_with_binder_counts(ctx: ctx, counts: acc.binder_counts)
     child_walk_step(
       w: acc,
       e: e,
@@ -1852,7 +1886,7 @@ fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: Map<Symbol, Symb
 // comparing an atom's spelling to `_`.
 fn resolve_pattern_node_walk(ctx: ResolveContext, pat: Node) -> ResolveNodeWalk {
   if is_wildcard_pattern(pattern: pat) {
-    ResolveWalkAccepted { value: pat, diagnostics: None }
+    ResolveWalkAccepted { value: pat, diagnostics: None, binder_counts: ctx.binder_counts }
   } else {
     match construct_tag_optional(n: pat) {
       Absent => resolve_node_walk(ctx: ctx, n: pat)
@@ -1893,10 +1927,11 @@ fn resolve_construct_walk_with_tag(
   field: fn(Edge, Optional<QualifiedName>) -> ResolveNodeWalk
 ) -> ResolveNodeWalk {
   let tag_path = match tag {
-    ResolveWalkAccepted { value: resolved, diagnostics: _ } => declaration_reference_path_optional(node: resolved)
+    ResolveWalkAccepted { value: resolved, diagnostics: _, binder_counts: _ } => declaration_reference_path_optional(node: resolved)
     ResolveWalkRefused { first: _, rest: _, observation: _ } => Absent
   }
-  child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
+  child_walk_node(n: n, w: fold(n.children, init: child_walk_init(counts: ctx.binder_counts), f: fn(acc, e) {
+    let ctx = resolve_ctx_with_binder_counts(ctx: ctx, counts: acc.binder_counts)
     if edge_is_core(e: e, marker: ConstructTagEdge) {
       child_walk_step(w: acc, e: e, r: tag)
     } else {
@@ -2061,7 +2096,8 @@ fn resolve_elided_construct_walk(ctx: ResolveContext, n: Node, x: ResolveExpecta
                 n: n,
                 tag: ResolveWalkAccepted {
                   value: declaration_reference_node(qn: path, occurrence_id: elided.occurrence_id),
-                  diagnostics: None
+                  diagnostics: None,
+                  binder_counts: ctx.binder_counts
                 },
                 field: fn(e, record) { resolve_record_field_edge(ctx: ctx, e: e, record: record) }
               )
@@ -2245,17 +2281,18 @@ fn resolve_map_literal_entries(ctx: ResolveContext, n: Node, entries: List<MapIn
             Absent => resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_map_duplicate_key)
           }
         MapIntroductionKeysDistinct =>
-          let walked = fold(entries, init: child_walk_init(), f: fn(acc, e) {
+          let walked = fold(entries, init: child_walk_init(counts: ctx.binder_counts), f: fn(acc, e) {
+    let ctx = resolve_ctx_with_binder_counts(ctx: ctx, counts: acc.binder_counts)
             child_walk_step(w: acc, e: Edge { label: Positional, target: e.source }, r: resolve_map_entry_walk(ctx: ctx, entry: e.source, value_x: value_x))
           })
           let carrier = node_with_occurrence_id(kind: ComputationNode { behavior: Transform }, children: [], occurrence_id: n.occurrence_id)
           match child_walk_node(w: walked, n: carrier) {
             ResolveWalkRefused { first: f, rest: r, observation: o } => ResolveWalkRefused { first: f, rest: r, observation: o }
-            ResolveWalkAccepted { value: resolved, diagnostics: d } =>
+            ResolveWalkAccepted { value: resolved, diagnostics: d, binder_counts: _ } =>
               match resolve_map_pairs(pairs: resolve_map_pair_targets(items: resolved.children)) {
                 ResolveMapPairMalformed { at: p } => resolve_anonymous_record_refused(n: p, reason: ^resolve_anonymous_map_entry_malformed)
                 ResolveMapPairsRead { entries: resolved_entries } =>
-                  ResolveWalkAccepted { value: lower_map_introduction(entries: resolved_entries, source: n), diagnostics: d }
+                  ResolveWalkAccepted { value: lower_map_introduction(entries: resolved_entries, source: n), diagnostics: d, binder_counts: ctx.binder_counts }
               }
           }
       }
@@ -2265,9 +2302,10 @@ fn resolve_map_literal_entries(ctx: ResolveContext, n: Node, entries: List<MapIn
 // One entry: its key walked as an ordinary child, its value under V. The pair keeps its elided tag
 // edge untouched; it never leaves this arm.
 fn resolve_map_entry_walk(ctx: ResolveContext, entry: Node, value_x: ResolveExpectation) -> ResolveNodeWalk {
-  child_walk_node(n: entry, w: fold(entry.children, init: child_walk_init(), f: fn(acc, e) {
+  child_walk_node(n: entry, w: fold(entry.children, init: child_walk_init(counts: ctx.binder_counts), f: fn(acc, e) {
+    let ctx = resolve_ctx_with_binder_counts(ctx: ctx, counts: acc.binder_counts)
     if acc.ordinal == 0 {
-      child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None })
+      child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None, binder_counts: acc.binder_counts })
     } else {
       match e.label {
         Authored { name: nm } =>
@@ -2361,7 +2399,8 @@ fn resolve_list_elements_expected(ctx: ResolveContext, n: Node, x: ResolveExpect
   match element_type {
     Absent => resolve_node_walk(ctx: ctx, n: n)
     Present { value: et } =>
-      child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
+      child_walk_node(n: n, w: fold(n.children, init: child_walk_init(counts: ctx.binder_counts), f: fn(acc, e) {
+    let ctx = resolve_ctx_with_binder_counts(ctx: ctx, counts: acc.binder_counts)
         if acc.ordinal == 0 {
           child_walk_step(w: acc, e: e, r: resolve_child_edge(ctx: ctx, e: e))
         } else {
@@ -2389,12 +2428,12 @@ fn resolve_list_elements_expected(ctx: ResolveContext, n: Node, x: ResolveExpect
 // scope, and nowhere here) -- is not a constructor and refuses the same way.
 fn resolve_construct_tag_walk(ctx: ResolveContext, reference: Node) -> ResolveNodeWalk {
   match qualified_name_from_node(root: reference) {
-    Rejected { diagnostics: r } => resolve_walk_of_outcome(o: Rejected { diagnostics: r })
+    Rejected { diagnostics: r } => resolve_walk_of_outcome(o: Rejected { diagnostics: r }, counts: ctx.binder_counts)
     Accepted { value: path, diagnostics: _ } =>
       resolve_walk_of_outcome(o: bind_outcome(
         o: resolve_construct_tag_reference(ctx: ctx, reference: reference, path: path),
         f: fn(resolved) { resolve_construct_tag_names_constructor(ctx: ctx, reference: reference, resolved: resolved) }
-      ))
+      ), counts: ctx.binder_counts)
   }
 }
 
@@ -2449,7 +2488,9 @@ fn resolve_match_arm_walk(ctx: ResolveContext, arm: Node) -> ResolveNodeWalk {
           kind: LexicalFrame
         }
       )
-      child_walk_node(n: arm, w: fold(arm.children, init: child_walk_init(), f: fn(acc, e) {
+      child_walk_node(n: arm, w: fold(arm.children, init: child_walk_init(counts: ctx.binder_counts), f: fn(acc, e) {
+    let ctx = resolve_ctx_with_binder_counts(ctx: ctx, counts: acc.binder_counts)
+    let arm_ctx = resolve_ctx_with_binder_counts(ctx: arm_ctx, counts: acc.binder_counts)
         child_walk_step(
           w: acc,
           e: e,
@@ -2466,7 +2507,8 @@ fn resolve_match_arm_walk(ctx: ResolveContext, arm: Node) -> ResolveNodeWalk {
 // children[0] is the scrutinee (outer scope); every later child is an arm. The ordinal advances on
 // every child, refused or not, so a refused scrutinee never promotes the first arm into its place.
 fn resolve_match_node_walk(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
-  child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
+  child_walk_node(n: n, w: fold(n.children, init: child_walk_init(counts: ctx.binder_counts), f: fn(acc, e) {
+    let ctx = resolve_ctx_with_binder_counts(ctx: ctx, counts: acc.binder_counts)
     child_walk_step(
       w: acc,
       e: e,
@@ -2504,7 +2546,7 @@ fn resolve_node_walk_entered(
 ) -> ResolveNodeWalk {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      resolve_walk_of_outcome(o: resolve_atom(ctx: ctx, n: n, identity: id))
+      resolve_walk_of_outcome(o: resolve_atom(ctx: ctx, n: n, identity: id), counts: ctx.binder_counts)
     TypeNode { connective: Arrow } =>
       resolve_arrow_node(ctx: ctx, n: n)
     ComputationNode { behavior: Bind } =>
@@ -2529,7 +2571,7 @@ fn resolve_node_walk_entered(
           })
         NotAConstruct =>
           match try_resolve_qualified_name_node(ctx: ctx, n: n) {
-            Present { value: outcome } => resolve_walk_of_outcome(o: outcome)
+            Present { value: outcome } => resolve_walk_of_outcome(o: outcome, counts: ctx.binder_counts)
             Absent => resolve_children_homogeneous_scope(ctx: ctx, n: n)
           }
       }
@@ -2546,9 +2588,10 @@ fn resolve_node_walk_entered(
 // (v2.std.node LoopRealizedDeclaration) is a CLAIM made by a desugaring about which declaration the
 // author's head names. Resolve checks that claim; it does not take it on trust.
 fn resolve_loop_node(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
-  child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
+  child_walk_node(n: n, w: fold(n.children, init: child_walk_init(counts: ctx.binder_counts), f: fn(acc, e) {
+    let ctx = resolve_ctx_with_binder_counts(ctx: ctx, counts: acc.binder_counts)
     match loop_edge_role(e: e) {
-      LoopRealizedDeclaration => child_walk_step(w: acc, e: e, r: resolve_walk_of_outcome(o: resolve_realized_declaration(ctx: ctx, head: e.target)))
+      LoopRealizedDeclaration => child_walk_step(w: acc, e: e, r: resolve_walk_of_outcome(o: resolve_realized_declaration(ctx: ctx, head: e.target), counts: ctx.binder_counts))
       _ => child_walk_step(w: acc, e: e, r: resolve_child_edge(ctx: ctx, e: e))
     }
   }))
@@ -2675,7 +2718,7 @@ fn resolve_child_edge(
     Positional =>
       if ctx.under_module_root
         && dag_resolve_preserve_module_metadata_subtree(node: e.target) {
-        ResolveWalkAccepted { value: e.target, diagnostics: None }
+        ResolveWalkAccepted { value: e.target, diagnostics: None, binder_counts: ctx.binder_counts }
       } else {
         resolve_node_walk(ctx: ctx, n: e.target)
       }
@@ -2686,7 +2729,7 @@ fn resolve_child_edge(
 // (label_sort_key), except a preserved metadata edge, which is accepted as its own target.
 fn resolve_labeled_child_edge(ctx: ResolveContext, e: Edge) -> ResolveNodeWalk {
   if ctx.under_module_root && resolve_preserve_module_root_named_edge(e: e) {
-    ResolveWalkAccepted { value: e.target, diagnostics: None }
+    ResolveWalkAccepted { value: e.target, diagnostics: None, binder_counts: ctx.binder_counts }
   } else {
     let child_ctx = if ctx.under_module_root && !dag_surface_module_header_metadata_edge(e: e) {
       resolve_ctx_snoc_position(ctx: ctx, segment: label_sort_key(label: e.label))
@@ -2750,7 +2793,9 @@ fn resolve_children_homogeneous_scope(
     ctx: resolve_ctx_with_under_module_root(ctx: ctx, under_module_root: at_module_root),
     scope: scope_here
   )
-  child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
+  child_walk_node(n: n, w: fold(n.children, init: child_walk_init(counts: ctx.binder_counts), f: fn(acc, e) {
+    let ctx = resolve_ctx_with_binder_counts(ctx: ctx, counts: acc.binder_counts)
+    let child_ctx = resolve_ctx_with_binder_counts(ctx: child_ctx, counts: acc.binder_counts)
     if edge_is_type_params(e: e) {
       child_walk_step(w: acc, e: e, r: resolve_type_params_conj(ctx: ctx, conj: e.target))
     } else {
@@ -2821,7 +2866,7 @@ fn resolve_type_param_binder(ctx: ResolveContext, binder: Node) -> ResolveNodeWa
       match resolve_atom(ctx: ctx, n: binder, identity: id) {
         Rejected { diagnostics: d } =>
           if diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol {
-            ResolveWalkAccepted { value: canonical_atom(identity: id, occurrence_id: binder.occurrence_id), diagnostics: None }
+            ResolveWalkAccepted { value: canonical_atom(identity: id, occurrence_id: binder.occurrence_id), diagnostics: None, binder_counts: ctx.binder_counts }
           } else {
             resolve_walk_refused_one(chain: diagnostics_singleton(d: type_param_shadows_visible_name_diagnostic(binder: binder)))
           }
@@ -2833,7 +2878,8 @@ fn resolve_type_param_binder(ctx: ResolveContext, binder: Node) -> ResolveNodeWa
 }
 
 fn resolve_type_params_conj(ctx: ResolveContext, conj: Node) -> ResolveNodeWalk {
-  child_walk_node(n: conj, w: fold(conj.children, init: child_walk_init(), f: fn(acc, e) {
+  child_walk_node(n: conj, w: fold(conj.children, init: child_walk_init(counts: ctx.binder_counts), f: fn(acc, e) {
+    let ctx = resolve_ctx_with_binder_counts(ctx: ctx, counts: acc.binder_counts)
     child_walk_step(w: acc, e: e, r: resolve_type_param_binder(ctx: ctx, binder: e.target))
   }))
 }
@@ -2913,13 +2959,16 @@ fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node
   let scope_codomain = ScopeFrame { locals: value_params, outer: scope_type, kind: frame_kind }
   let scope_body = ScopeFrame { locals: value_params, outer: ctx.scope, kind: frame_kind }
   let inner_ctx = resolve_ctx_leaving_containment(ctx: ctx)
-  child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
+  child_walk_node(n: n, w: fold(n.children, init: child_walk_init(counts: ctx.binder_counts), f: fn(acc, e) {
+    let ctx = resolve_ctx_with_binder_counts(ctx: ctx, counts: acc.binder_counts)
+    let inner_ctx = resolve_ctx_with_binder_counts(ctx: inner_ctx, counts: acc.binder_counts)
+    let outer_ctx = resolve_ctx_with_binder_counts(ctx: outer_ctx, counts: acc.binder_counts)
     match e.label {
       StructuralLabel { label: _ } =>
         if edge_is_type_params(e: e) {
           child_walk_step(w: acc, e: e, r: resolve_type_params_conj(ctx: outer_ctx, conj: e.target))
         } else if edge_is_core(e: e, marker: ArrowSignatureOrderEdge) {
-          child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None })
+          child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None, binder_counts: acc.binder_counts })
         } else {
           child_walk_step(
             w: acc,
@@ -2953,10 +3002,10 @@ fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node
   }))
 }
 
-fn resolve_bind_binder_target(t: Node) -> ResolveNodeWalk {
+fn resolve_bind_binder_target(t: Node, counts: Map<Symbol, Int>) -> ResolveNodeWalk {
   match t.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      ResolveWalkAccepted { value: canonical_atom(identity: id, occurrence_id: t.occurrence_id), diagnostics: None }
+      ResolveWalkAccepted { value: canonical_atom(identity: id, occurrence_id: t.occurrence_id), diagnostics: None, binder_counts: counts }
     _ =>
       resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)))
   }
@@ -2973,9 +3022,10 @@ fn resolve_bind_positional_edges(
   scope_outer: Scope,
   scope_inner: Scope
 ) -> ChildWalk {
-  fold(edges, init: child_walk_init(), f: fn(acc, e) {
+  fold(edges, init: child_walk_init(counts: ctx.binder_counts), f: fn(acc, e) {
+    let ctx = resolve_ctx_with_binder_counts(ctx: ctx, counts: acc.binder_counts)
     if acc.ordinal == 0 {
-      child_walk_step_prerequisite(w: acc, e: e, r: resolve_bind_binder_target(t: e.target))
+      child_walk_step_prerequisite(w: acc, e: e, r: resolve_bind_binder_target(t: e.target, counts: acc.binder_counts))
     } else if acc.ordinal == 1 {
       child_walk_step(
         w: acc,
