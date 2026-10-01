@@ -979,7 +979,7 @@ fn body_lower_positional_payload(payload_shell: Node) -> Outcome<Node> {
                 Present { value: type_node } =>
                   outcome_accepted(
                     value: body_lower_payload_node(
-                      edges: [Edge { label: Named { name: positional_payload_field_name() }, target: type_node }],
+                      edges: [binder_edge(name: positional_payload_field_name(), type_node: type_node)],
                       source: payload_shell
                     )
                   )
@@ -4514,7 +4514,7 @@ fn body_lower_function_value_signature(binders: List<FunctionValueBinder>) -> Fu
       Named { name: label } =>
         let tv = fresh_type_variable(path: body_lower_unpositioned_path(), label: label)
         FunctionValueSignature {
-          domain: list_snoc_item(xs: acc.domain, item: Edge { label: Named { name: label }, target: body_lower_function_value_type_var_atom(tv: tv) }),
+          domain: list_snoc_item(xs: acc.domain, item: binder_edge(name: label, type_node: body_lower_function_value_type_var_atom(tv: tv))),
           type_params: list_snoc_item(xs: acc.type_params, item: Edge { label: Named { name: tv }, target: body_lower_function_value_type_var_atom(tv: tv) }),
           order: acc.order
         }

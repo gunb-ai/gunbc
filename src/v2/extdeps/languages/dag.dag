@@ -117,7 +117,7 @@ import v2.std.node {
   node_lowered_from,
   symbol_intern_lexeme,
 }
-import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, find_named_child, named_child_lookup }
+import v2.std.node_query { binder_edge, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, find_named_child, named_child_lookup }
 import v2.std.compilers.target_model {
   char_kernel_type_node,
   symbol_kernel_type_node,
@@ -4648,10 +4648,7 @@ fn dag_arrow_domain_conj_node() -> Node {
     cons: fn(acc, binding_id) {
       list_snoc_item(
         xs: acc,
-        item: Edge {
-          label: Named { name: binding_id },
-          target: dag_type_atom_node(identity: dag_int_type_binding())
-        }
+        item: binder_edge(name: binding_id, type_node: dag_type_atom_node(identity: dag_int_type_binding()))
       )
     }
   )
@@ -5058,10 +5055,7 @@ fn dag_complement_arrow_domain_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^dag_binding_param_a },
-        target: dag_type_atom_node(identity: ^bool_node_symbol)
-      }
+      binder_edge(name: ^dag_binding_param_a, type_node: dag_type_atom_node(identity: ^bool_node_symbol))
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -5116,14 +5110,8 @@ fn dag_bool_binop_arrow_domain_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^dag_binding_param_a },
-        target: dag_type_atom_node(identity: ^bool_node_symbol)
-      },
-      Edge {
-        label: Named { name: ^dag_binding_param_b },
-        target: dag_type_atom_node(identity: ^bool_node_symbol)
-      }
+      binder_edge(name: ^dag_binding_param_a, type_node: dag_type_atom_node(identity: ^bool_node_symbol)),
+      binder_edge(name: ^dag_binding_param_b, type_node: dag_type_atom_node(identity: ^bool_node_symbol))
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -5217,10 +5205,7 @@ fn dag_field_access_arrow_domain_conj_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^dag_binding_param_r },
-        target: dag_type_atom_node(identity: ^dag_binding_type_rec)
-      }
+      binder_edge(name: ^dag_binding_param_r, type_node: dag_type_atom_node(identity: ^dag_binding_type_rec))
     ],
     occurrence_id: OccurrenceSynthetic
   }
