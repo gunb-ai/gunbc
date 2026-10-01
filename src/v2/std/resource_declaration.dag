@@ -24,7 +24,7 @@ type DeclaredResourceContract {
 }
 
 // THE SURFACE SPELLING OF EACH HOME VARIANT, once, as an exhaustive match: a variant added to
-// std.resources must be spelled here before a declaration can state it.
+// std.resource_contract must be spelled here before a declaration can state it.
 fn resource_kind_label(kind: ResourceKind) -> Symbol {
   match kind {
     Capability => symbol_intern_lexeme(lexeme: "Capability")
