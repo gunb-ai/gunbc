@@ -319,7 +319,9 @@ fn app_attest_undecodable(cause: String) -> AttestationRefusal {
 fn app_attest_member(v: CborValue, key: String) -> CborValue? {
   match cbor_map_unique_text_member(v: v, key: key) {
     CborMemberFound { value: m } => Present { value: m }
-    _ => none
+    CborMemberAbsent { key: _ } => none
+    CborMemberDuplicated { key: _ } => none
+    CborMemberNotAMap => none
   }
 }
 
@@ -415,7 +417,8 @@ fn credential_certificate_nonce(leaf: X509Certificate) -> List<Int>? {
               }
           }
       }
-    _ => none
+    X509ExtensionAbsent { oid: _ } => none
+    X509ExtensionDuplicated { oid: _ } => none
   }
 }
 
@@ -474,7 +477,8 @@ fn issuer_curve(named_curve: String) -> PrimeCurve? {
 fn ecdsa_verifies_on(c: PrimeCurve, key: List<Int>, signature_octets: List<Int>, digest: List<Int>) -> Bool? {
   match ecdsa_sig_value(octets: signature_octets, width: c.coordinate_octets) {
     EcdsaSigValueRead { r_s_fixed: rs } => curve_ecdsa_verify_octets(c: c, key: key, signature: rs, digest: digest)
-    _ => none
+    EcdsaSigValueRefused { cause: _ } => none
+    EcdsaSigValueTooWide { component_octets: _, width: _ } => none
   }
 }
 

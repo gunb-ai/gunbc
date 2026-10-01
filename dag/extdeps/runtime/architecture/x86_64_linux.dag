@@ -82,6 +82,6 @@ fn witness_stack_grows_down() -> Bool {
 fn witness_deployment_invocation_matches_linux_abi() -> Bool {
   match x86_64_linux_deployment_target.invocation {
     SyscallAbiSurface { abi: a } => a == linux_x86_64_syscall_abi
-    _ => false
+    LibraryApiBoundarySurface { boundary: _ } => false
   }
 }
