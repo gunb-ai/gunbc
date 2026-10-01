@@ -1,5 +1,7 @@
 module test.claim.variant_election_by_expected_coproduct_witness_test
 
+import test.fixture.variant_election_v { v_label }
+import test.fixture.variant_election_w { w_label }
 import gunbc.compile_diagnostic_census {
   CensusObserved,
   CensusNotRunnable,
@@ -16,8 +18,9 @@ import gunbc.compile_diagnostic_census {
 // arms where nothing in that scope declares it; a spelling two owners claim within one tier refuses
 // (VariantCollision at the declared tier, AmbiguousReference at the kernel tier).
 //
-// THE DEFECT THIS CLOSES: `Absent` passed to a ConvergeVerdict parameter, in a module that sees
-// ConvergeVerdict and ObservationVerdict (both declare Absent) without importing either type, was
+// THE DEFECT THIS CLOSES (shape of gunbc.host.host_converge ConvergeVerdict beside std.upsert_decision
+// ObservationVerdict, reproduced on two test.fixture providers): `Absent` passed to a VerdictV parameter,
+// in a module that sees VerdictV and VerdictW (both declare Absent) without importing either type, was
 // elected to the kernel Optional's Absent -- the closure-wide spelling tier dropped the ambiguous
 // name and the kernel filled it -- and the wall gunbc#12791 added then refused it as an Optional at a
 // Required position. #12791 shipped a predicate exclusion for those sites; this change reverts it,
@@ -38,16 +41,16 @@ fn blocking_count(source: String, class: String) -> Int {
 }
 
 fn expected_decides_source() -> String {
-  "module vex.expected\n\nimport std.types { String }\nimport gunbc.host.host_converge { converge_verdict_label }\nimport std.upsert_decision { observation_verdict_label }\n\nfn probe() -> String {\n  converge_verdict_label(v: Absent)\n}\n"
+  "module vex.expected\n\nimport std.types { String }\nimport test.fixture.variant_election_v { v_label }\nimport test.fixture.variant_election_w { w_label }\n\nfn probe() -> String {\n  v_label(v: Absent)\n}\n"
 }
 
-// (1) THE EXPECTED COPRODUCT DECIDES: Absent at a ConvergeVerdict parameter is ConvergeVerdict's arm.
+// (1) THE EXPECTED COPRODUCT DECIDES: Absent at a VerdictV parameter is VerdictV's arm.
 test fn a_bare_variant_at_a_declared_coproduct_parameter_is_that_coproducts_arm() -> Bool {
   blocking_count(source: expected_decides_source(), class: "DeclaredTypeNotInhabited") == 0
     && compile_dag_rust_emit_check(
       expected_decides_source(),
       "src/vex_expected.rs",
-      ["ConvergeVerdict::Absent"],
+      ["VerdictV::Absent"],
       ["None"]
     )
 }
@@ -55,7 +58,7 @@ test fn a_bare_variant_at_a_declared_coproduct_parameter_is_that_coproducts_arm(
 // (2) WITHIN THE DECLARED TIER, TWO OWNERS OF ONE SPELLING REFUSE: importing both verdict coproducts
 // into one module is a VariantCollision, located -- no first-wins.
 fn within_tier_source() -> String {
-  "module vex.collide\n\nimport std.types { String }\nimport gunbc.host.host_converge { ConvergeVerdict }\nimport std.upsert_decision { ObservationVerdict }\n\nfn probe(v: ConvergeVerdict) -> String {\n  \"x\"\n}\n"
+  "module vex.collide\n\nimport std.types { String }\nimport test.fixture.variant_election_v { VerdictV }\nimport test.fixture.variant_election_w { VerdictW }\n\nfn probe(v: VerdictV) -> String {\n  \"x\"\n}\n"
 }
 
 test fn two_owners_of_one_spelling_in_the_declared_scope_refuse() -> Bool {
@@ -73,6 +76,14 @@ test fn the_kernel_arm_applies_where_no_declared_owner_exists() -> Bool {
     kernel_arm_source(),
     "src/vex_kernel.rs",
     ["None"],
-    ["ConvergeVerdict"]
+    ["VerdictV"]
   )
+}
+
+// (4) THE REAL ROUTE, BY EXECUTION: this module imports only the two labelling functions, so each bare
+// Absent below is decided by its parameter's coproduct. Elected to the kernel Optional instead, this
+// module refuses to compile (an Optional at a Required parameter); elected to the wrong provider, the
+// interpreter answers the other label.
+test fn each_bare_absent_is_its_parameters_arm_by_execution() -> Bool {
+  v_label(v: Absent) == "v-absent" && w_label(v: Absent) == "w-absent"
 }
