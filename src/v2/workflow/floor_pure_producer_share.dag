@@ -1085,6 +1085,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.parse.pattern_and_let_sugar.node_eq_tree",
   "v2.test.claim.parse.pattern_and_let_sugar.bare_assign_tree",
   "v2.test.claim.parse.pattern_and_let_sugar.pattern_uses_refused_as_unmodeled",
+  "v2.test.claim.parse.pattern_and_let_sugar.pattern_generic_refused_at_generics",
+  "v2.test.claim.parse.pattern_and_let_sugar.pattern_eq_body_refused",
   "v2.test.claim.parse.admit_callers_trailing_comma.trailing_comma_parsed",
   "v2.test.claim.parse.admit_callers_trailing_comma.no_trailing_comma_parsed",
   "v2.test.claim.parse.admit_callers_trailing_comma.only_a_comma_parsed",

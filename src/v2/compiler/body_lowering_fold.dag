@@ -3518,6 +3518,50 @@ fn body_lower_fn_decl_exit_refusal_optional(captured: Node) -> Optional<Outcome<
 // (gunbc.recurring_failure_mode uses_clause_has_no_carrier), so lowering the fn would drop the
 // requirement. Both arms -- the full arrow and the census arrow -- ask this first, because the
 // requirement is part of the signature both of them read.
+// A `pattern` IS A FN WITH v1's NARROWER FORM (dag syntax dag_item_forms: has_type_params false,
+// body_kind BlockBody), sharing the one fn_decl production. The grammar cannot express the narrowing
+// without changing the spine depth the positional readers walk, so it is held here, on both arms: a
+// pattern-headed declaration that writes generic params, or an `= expr` body, refuses located at
+// what it wrote (body_lowering_reason_pattern_form_not_admitted) and never lowers as a fn. The head
+// is told apart by its token: `fn` is the keyword token, `pattern` a literal identifier.
+fn body_lower_pattern_form_refusal_optional(captured: Node) -> Optional<Outcome<Node>> {
+  match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: captured)) {
+    Absent => optional_absent()
+    Present { value: head_rest } =>
+      if body_lower_token_is(node: head_rest.left, token: ^dag_token_kw_fn) {
+        optional_absent()
+      } else {
+        match body_lower_pattern_generics_optional(captured: captured) {
+          Present { value: generics } =>
+            optional_present(value: outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_pattern_form_not_admitted, n: generics)))
+          Absent =>
+            match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_fn_body) {
+              Present { value: _ } => optional_absent()
+              Absent =>
+                optional_present(value: outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_pattern_form_not_admitted, n: captured)))
+            }
+        }
+      }
+  }
+}
+
+// The generic_params production in the declaration's own `<T>` slot, if the source wrote one.
+fn body_lower_pattern_generics_optional(captured: Node) -> Optional<Node> {
+  match body_lower_decl_generic_params_slot_optional(captured: captured) {
+    Absent => optional_absent()
+    Present { value: slot } => body_lower_find_production_shell_optional(root: slot, emitted: ^dag_surface_generic_params)
+  }
+}
+
+// The signature refusals both arms ask before reading anything: a pattern head written in a form v1
+// does not admit, then a `uses` clause v2 has no carrier for.
+fn body_lower_first_signature_refusal_optional(captured: Node) -> Optional<Outcome<Node>> {
+  match body_lower_pattern_form_refusal_optional(captured: captured) {
+    Present { value: refused } => optional_present(value: refused)
+    Absent => body_lower_fn_uses_refusal_optional(captured: captured)
+  }
+}
+
 fn body_lower_fn_uses_refusal_optional(captured: Node) -> Optional<Outcome<Node>> {
   match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_uses_clause) {
     Absent => optional_absent()
@@ -3530,7 +3574,7 @@ fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<BodyLowering> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent => body_lower_wrapper_retained_shell(shell: shell)
     Present { value: captured } =>
-      match body_lower_fn_uses_refusal_optional(captured: captured) {
+      match body_lower_first_signature_refusal_optional(captured: captured) {
         Present { value: refused } => body_lowering_lowered(o: refused)
         Absent =>
           match body_lower_fn_decl_exit_refusal_optional(captured: captured) {
@@ -3786,7 +3830,7 @@ fn body_lower_fn_decl_to_census_arrow(shell: Node) -> Outcome<BodyLowering> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent => body_lower_wrapper_retained_shell(shell: shell)
     Present { value: captured } =>
-      match body_lower_fn_uses_refusal_optional(captured: captured) {
+      match body_lower_first_signature_refusal_optional(captured: captured) {
         Present { value: refused } => body_lowering_lowered(o: refused)
         Absent =>
           match body_lower_fn_signature_optional(captured: captured) {
