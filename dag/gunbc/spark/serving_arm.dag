@@ -32,7 +32,7 @@ import extdeps.docker.images.gitcommit90_glm_53_one_spark {
 import gunbc.spark.runtime_architecture_registry_reading {
   ArchitectureRegistryReading, registry_reading_contains, reading_applies_to,
   sparkrun_vllm_ds4_gb10_registry_reading, gitcommit90_glm_53_one_spark_registry_reading,
-  glm53_nope_derived_registry_reading, glm53_derived_registry_reading,
+  glm53_nope_derived_registry_reading, glm53_derived_registry_reading, glm53_derived_kvplan_v2_registry_reading,
 }
 import gunbc.spark.model_snapshot_acquisition {
   SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement, spark_hub_cache_root, spark_models_root,
@@ -1413,8 +1413,8 @@ data glm53_derived_kvplan_v2_row: ServingRuntimeRow = ServingRuntimeRow {
   ),
   hub_cli_path: none,
   vllm_version: Present { value: glm53_nope_derived_vllm_version },
-  registry_reading: none,
+  registry_reading: Present { value: glm53_derived_kvplan_v2_registry_reading },
   reasoning_projection: none,
-  provenance: "the engine inside this tag self-reported vllm 0.1.dev1+g8d09804c8 and printed its v2 KV allocation plan at the 2026-09-26 bounded experiment on the four Group B ranks. NOT read inside this tag: the architecture registry (so serving_arm_admits refuses until one is), the hub CLI path, and the reasoning projection" as NonEmptyStr,
+  provenance: "the engine inside this tag self-reported vllm 0.1.dev1+g8d09804c8 and printed its v2 KV allocation plan at the 2026-09-26 bounded experiment on the four Group B ranks; its architecture registry was read inside the tag on 2026-10-01 (glm53_derived_kvplan_v2_registry_reading). NOT read inside this tag: the hub CLI path and the reasoning projection" as NonEmptyStr,
   claimed_defaults_revision: Present { value: Vllm8d09804 },
 }

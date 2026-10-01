@@ -157,9 +157,11 @@ test fn w_the_drifted_fields_reach_the_rendered_unit() -> Bool {
 // `repo@sha256:` reference resolves on none of these hosts (nothing was pushed), so the absence of an
 // `@` is asserted rather than assumed.
 //
-// THIS ROW IS RED UNTIL A REGISTRY READING EXISTS INSIDE THE TAG, and that is the wall working: the
-// plan refuses (gunbc.spark.serving_arm serving_arm_admits, "no registry reading exists") and no
-// launch line renders, rather than rendering the base image the fleet stopped running.
+// THE ROW ADMITS BECAUSE A REGISTRY READING EXISTS INSIDE THE TAG
+// (gunbc.spark.runtime_architecture_registry_reading glm53_derived_kvplan_v2_registry_reading,
+// 2026-10-01). Without it the plan refuses (gunbc.spark.serving_arm serving_arm_admits, "no registry
+// reading exists") and no launch line renders, rather than rendering the base image the fleet stopped
+// running -- so removing that reading turns this red.
 test fn w_every_rank_launches_one_image() -> Bool {
   let lines = glm_native_launch_lines()
   count(lines) == 4
