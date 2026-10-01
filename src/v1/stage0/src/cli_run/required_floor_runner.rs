@@ -8554,6 +8554,7 @@ pub fn run_required_floor(
     floor_seam("discovery-authority");
     let discovery_started = std::time::Instant::now();
     let producer_frame = floor_authority_frame(&prepared, FLOOR_DISCOVERY_AUTHORITY_MODULE)?;
+    floor_heap_beat("discovery-authority-frame-built");
     let discovery_source_count = full_inventory.len();
     let mut discovery_outcomes: Vec<v1_interpreter::Value> =
         Vec::with_capacity(full_inventory.len());
@@ -8583,6 +8584,22 @@ pub fn run_required_floor(
         })?;
         discovery_outcomes.push(outcome);
     }
+    // WHAT THE PER-SOURCE LOOP LEAVES BEHIND, attributed: the frame's retained runtime state (its
+    // data cache and pure-call memo, `InterpContext::account_retained_memory`) and the outcome
+    // values it accumulated, read before finalize consumes them.
+    floor_heap_beat("discovery-authority-sources-evaluated");
+    {
+        let outcome_refs: Vec<&v1_interpreter::Value> = discovery_outcomes.iter().collect();
+        let frame_state = producer_frame.account_retained_memory(&[]);
+        let with_outcomes = producer_frame.account_retained_memory(&outcome_refs);
+        eprintln!(
+            "[floor-phase] phase=discovery-authority-retention frame_state_bytes={} \
+             frame_state_and_outcomes_bytes={} outcomes={}",
+            frame_state.total_heap_bytes,
+            with_outcomes.total_heap_bytes,
+            discovery_outcomes.len()
+        );
+    }
     let finalized = v1_interpreter::run_in_context_with_args(
         &producer_frame,
         "v2.workflow.floor_discovery_source_authority.floor_discovery_finalize_source_outcomes",
@@ -8602,6 +8619,13 @@ pub fn run_required_floor(
         .map_err(|reason| {
             format!("REQUIRED-FLOOR REFUSAL cause=FloorDiscoveryRefused — {reason}")
         })?;
+    // THE DISCOVERY FRAME AND ITS ANSWER END HERE. The rows are parsed into owned data; nothing
+    // later reads the frame or the finalized value, which otherwise lived until the floor returned,
+    // through the claim fold.
+    floor_heap_beat("discovery-authority-finalized");
+    drop(finalized);
+    drop(producer_frame);
+    floor_heap_beat("discovery-authority-frame-dropped");
     // Rows are (entry, function); the disposition loop below needs the entry's AUTHORED module
     // name, which preparation read off the `module` line and holds beside the same path.
     let module_for_path: std::collections::HashMap<String, &str> = full_inventory
