@@ -42,7 +42,7 @@ import gunbc.codex_app_server_press {
   AccountStandingIncomplete,
   AccountStandingInitializeUnusable,
 }
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
 import gunbc.provider_standing_probe_bridge {
   provider_standing_bundle_from_codex_press_receipt,
@@ -382,7 +382,9 @@ fn prepare_codex_supervised_turn_binding(
       let prior_generation = match generation_read {
         GenerationAbsent => 0
         GenerationRead { generation: g } => g
-        _ => 0
+        GenerationStoreUnreadable { reason: _ } => 0
+        GenerationStoreMalformed { content: _ } => 0
+        GenerationStoreNegative { value: _ } => 0
       }
       CodexSupervisedTurnBindingPrepared {
         binding: codex_supervised_turn_binding(
@@ -546,11 +548,20 @@ fn native_id_from_entity_result(result: JsonValue, entity_key: String) -> NonEmp
               } else {
                 Present { value: id as NonEmptyStr }
               }
-            _ => none
+            JsonMemberFound { value: _ } => none
+            JsonMemberAbsent => none
+            JsonMemberDuplicated { count: _ } => none
+            JsonMemberNotAnObject => none
           }
-        _ => none
+        JsonNull => none
+        JsonBool { value: _ } => none
+        JsonNumber { lexeme: _ } => none
+        JsonString { value: _ } => none
+        JsonArray { elements: _ } => none
       }
-    _ => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -630,7 +641,10 @@ fn supervised_turn_terminal_from_notification(parsed: JsonValue) -> SupervisedTu
       } else {
         SupervisedTurnTerminalAbsent
       }
-    _ => SupervisedTurnTerminalAbsent
+    JsonMemberFound { value: _ } => SupervisedTurnTerminalAbsent
+    JsonMemberAbsent => SupervisedTurnTerminalAbsent
+    JsonMemberDuplicated { count: _ } => SupervisedTurnTerminalAbsent
+    JsonMemberNotAnObject => SupervisedTurnTerminalAbsent
   }
 }
 
@@ -700,31 +714,27 @@ fn absorb_supervised_turn_line(
                 } else {
                   acc
                 }
-              Absent =>
-                match supervised_turn_terminal_from_notification(parsed: parsed) {
-                  SupervisedTurnTerminalAbsent => acc
-                  signal =>
-                    SupervisedTurnParseAcc {
-                      thread_start: acc.thread_start,
-                      turn_start: acc.turn_start,
-                      turn_terminal: signal,
-                      unreadable_lines: acc.unreadable_lines,
-                    }
-                }
+              Absent => absorb_supervised_turn_notification(acc: acc, parsed: parsed)
             }
-          _ =>
-            match supervised_turn_terminal_from_notification(parsed: parsed) {
-              SupervisedTurnTerminalAbsent => acc
-              signal =>
-                SupervisedTurnParseAcc {
-                  thread_start: acc.thread_start,
-                  turn_start: acc.turn_start,
-                  turn_terminal: signal,
-                  unreadable_lines: acc.unreadable_lines,
-                }
-            }
+          JsonMemberAbsent => absorb_supervised_turn_notification(acc: acc, parsed: parsed)
+          JsonMemberDuplicated { count: _ } => absorb_supervised_turn_notification(acc: acc, parsed: parsed)
+          JsonMemberNotAnObject => absorb_supervised_turn_notification(acc: acc, parsed: parsed)
         }
     }
+  }
+}
+
+// A frame that is not an integer-id response: absorb it as a turn-terminal notification when it is one.
+fn absorb_supervised_turn_notification(acc: SupervisedTurnParseAcc, parsed: JsonValue) -> SupervisedTurnParseAcc {
+  match supervised_turn_terminal_from_notification(parsed: parsed) {
+    SupervisedTurnTerminalAbsent => acc
+    signal =>
+      SupervisedTurnParseAcc {
+        thread_start: acc.thread_start,
+        turn_start: acc.turn_start,
+        turn_terminal: signal,
+        unreadable_lines: acc.unreadable_lines,
+      }
   }
 }
 
@@ -811,11 +821,15 @@ fn codex_runner_turn_terminal_receipt(
     binding: binding,
     native_thread_id: match parse.thread_start {
       SupervisedRpcOk { native_id: id } => Present { value: id }
-      _ => none
+      SupervisedRpcAbsent => none
+      SupervisedRpcError { reason: _ } => none
+      SupervisedRpcDuplicate { count: _ } => none
     },
     native_turn_id: match parse.turn_start {
       SupervisedRpcOk { native_id: id } => Present { value: id }
-      _ => none
+      SupervisedRpcAbsent => none
+      SupervisedRpcError { reason: _ } => none
+      SupervisedRpcDuplicate { count: _ } => none
     },
     client_command_id: codex_supervised_turn_client_command_id(turn: binding.turn),
     disposition: disposition,

@@ -4,6 +4,7 @@
 use self::AliasKind::*;
 use self::KindInhabitance::*;
 pub use crate::std_decl_ref::DeclarationRef;
+pub use crate::std_decl_ref::{decl_ref, decl_type_parameter_ref};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
@@ -714,7 +715,10 @@ pub fn substitute_type_slots_scoped(
             std::option::Option::None
         };
         if (tv_slot.clone() != std::option::Option::None) {
-            return tv_slot.clone().unwrap();
+            return crate::v1_std_core::preserve_outer_optional_cardinality(
+                n.clone(),
+                tv_slot.clone().unwrap(),
+            );
         }
         let is_slot = (((((n.children.clone().len() as i64) == 0)
             && (n.connective.clone() == Connective::NoConnective))
@@ -725,7 +729,10 @@ pub fn substitute_type_slots_scoped(
                 &slot_bindings,
                 crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()),
             ) {
-                Some(concrete) => concrete.clone(),
+                Some(concrete) => crate::v1_std_core::preserve_outer_optional_cardinality(
+                    n.clone(),
+                    concrete.clone(),
+                ),
                 std::option::Option::None => n.clone(),
             }
         } else {
@@ -2043,7 +2050,10 @@ Rc::new(NodeResolveResult {
                                             || n_target_is_coproduct_container.clone())
                                         {
                                             Rc::new(NodeResolveResult {
-                                                resolved: n.clone(),
+                                                resolved: reference_with_declaration(
+                                                    n.clone(),
+                                                    env.clone(),
+                                                ),
                                                 diagnostics: Rc::new(vec![]),
                                             })
                                         } else {
@@ -3710,51 +3720,57 @@ pub fn fn_type_param_names(
     })
 }
 
-pub fn has_duplicate_type_param_name(names: Rc<Vec<String>>) -> bool {
-    {
-        let mut __found = false;
-        for pair in Rc::new(
-            names
-                .clone()
-                .iter()
-                .cloned()
-                .enumerate()
-                .map(|(i, v)| (i as i64, v))
-                .collect::<Vec<_>>(),
-        )
-        .iter()
-        .cloned()
-        {
-            if {
-                let idx = pair.0.clone();
-                let s = pair.1.clone();
-                {
+pub fn first_duplicate_type_param_name(names: Rc<Vec<String>>) -> Option<String> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for pair in Rc::new({
+            let mut __result = Vec::new();
+            for pair in Rc::new(
+                names
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .enumerate()
+                    .map(|(i, v)| (i as i64, v))
+                    .collect::<Vec<_>>(),
+            )
+            .iter()
+            .cloned()
+            {
+                if {
                     let mut __found = false;
                     for other in Rc::new(
                         names
                             .clone()
                             .iter()
                             .cloned()
-                            .skip(v1_rt::int_add(idx.clone(), 1) as usize)
+                            .skip(v1_rt::int_add(pair.0.clone(), 1) as usize)
                             .collect::<Vec<_>>(),
                     )
                     .iter()
                     .cloned()
                     {
-                        if (other.clone() == s.clone()) {
+                        if (other.clone() == pair.1.clone()) {
                             __found = true;
                             break;
                         }
                     }
                     __found
+                } {
+                    __result.push(pair);
                 }
-            } {
-                __found = true;
-                break;
             }
+            __result
+        })
+        .iter()
+        .cloned()
+        {
+            __result.push(pair.1.clone());
         }
-        __found
-    }
+        __result
+    })
+    .first()
+    .cloned()
 }
 
 pub fn field_inferred_with_declaration(
@@ -3763,32 +3779,34 @@ pub fn field_inferred_with_declaration(
 ) -> Option<Rc<InferredNode>> {
     match field.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: authored, .. }) => {
-            if ((authored.declaration.clone() != std::option::Option::None)
-                || crate::std_types::is_kernel_type(crate::v1_compiler_infer_env::authored_name(
-                    env.clone(),
-                    authored.clone(),
-                )))
-            {
-                field.inferred.clone()
-            } else {
-                match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), authored.clone()) {
-                    Some(bound) => {
-                        match crate::v1_compiler_infer_env::declaration_ref_of_declaration_node(
-                            bound.clone(),
-                            env.source_indices.clone(),
-                            env.clone(),
-                        ) {
-                            Some(d) => Some(Rc::new(InferredNode::Resolved {
-                                node: node_with_declaration(authored.clone(), d.clone()),
-                            })),
-                            std::option::Option::None => field.inferred.clone(),
-                        }
-                    }
-                    std::option::Option::None => field.inferred.clone(),
-                }
-            }
+            Some(Rc::new(InferredNode::Resolved {
+                node: reference_with_declaration(authored.clone(), env.clone()),
+            }))
         }
         _ => field.inferred.clone(),
+    }
+}
+
+pub fn reference_with_declaration(n: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {
+    if ((n.declaration.clone() != std::option::Option::None)
+        || crate::std_types::is_kernel_type(crate::v1_compiler_infer_env::authored_name(
+            env.clone(),
+            n.clone(),
+        )))
+    {
+        n.clone()
+    } else {
+        match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), n.clone()) {
+            Some(bound) => match crate::v1_compiler_infer_env::declaration_ref_of_declaration_node(
+                bound.clone(),
+                env.source_indices.clone(),
+                env.clone(),
+            ) {
+                Some(d) => node_with_declaration(n.clone(), d.clone()),
+                std::option::Option::None => n.clone(),
+            },
+            std::option::Option::None => n.clone(),
+        }
     }
 }
 
@@ -3819,6 +3837,211 @@ pub fn node_with_declaration(n: Rc<Node>, declaration: Rc<DeclarationRef>) -> Rc
     })
 }
 
+pub fn binder_marked_type(
+    n: Rc<Node>,
+    owner: Rc<DeclarationRef>,
+    binders: Rc<Vec<String>>,
+    env: Rc<TypeEnv>,
+) -> Rc<Node> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let name = crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone());
+        let is_binder_reference = ((((n.declaration.clone() == std::option::Option::None)
+            && ((n.children.clone().len() as i64) == 0))
+            && ((n.params.clone().len() as i64) == 0))
+            && {
+                let mut __found = false;
+                for b in binders.iter().cloned() {
+                    if (b.clone() == name.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            });
+        if is_binder_reference.clone() {
+            node_with_declaration(
+                n.clone(),
+                crate::std_decl_ref::decl_type_parameter_ref(
+                    owner.module_path.clone(),
+                    owner.decl_name.clone(),
+                    name.clone(),
+                ),
+            )
+        } else {
+            {
+                let is_arrow = match n.connective.clone() {
+                    Connective::Arrow => true,
+                    _ => false,
+                };
+                let children = Rc::new({
+                    let mut __result = Vec::new();
+                    for c in n.children.clone().iter().cloned() {
+                        __result.push(binder_marked_type(
+                            c.clone(),
+                            owner.clone(),
+                            binders.clone(),
+                            env.clone(),
+                        ));
+                    }
+                    __result
+                });
+                let params = if is_arrow.clone() {
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for p in n.params.clone().iter().cloned() {
+                            __result.push(binder_marked_param(
+                                p.clone(),
+                                owner.clone(),
+                                binders.clone(),
+                                env.clone(),
+                            ));
+                        }
+                        __result
+                    })
+                } else {
+                    n.params.clone()
+                };
+                let inferred = if is_arrow.clone() {
+                    binder_marked_inferred(
+                        n.inferred.clone(),
+                        owner.clone(),
+                        binders.clone(),
+                        env.clone(),
+                    )
+                } else {
+                    n.inferred.clone()
+                };
+                node_with_children_params_inferred(
+                    n.clone(),
+                    children.clone(),
+                    params.clone(),
+                    inferred.clone(),
+                )
+            }
+        }
+    })
+}
+
+pub fn binder_marked_inferred(
+    inferred: Option<Rc<InferredNode>>,
+    owner: Rc<DeclarationRef>,
+    binders: Rc<Vec<String>>,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<InferredNode>> {
+    match inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: t, .. }) => Some(Rc::new(InferredNode::Resolved {
+            node: binder_marked_type(t.clone(), owner.clone(), binders.clone(), env.clone()),
+        })),
+        _ => inferred.clone(),
+    }
+}
+
+pub fn binder_marked_param(
+    param: Rc<Node>,
+    owner: Rc<DeclarationRef>,
+    binders: Rc<Vec<String>>,
+    env: Rc<TypeEnv>,
+) -> Rc<Node> {
+    match param.children.clone().first().cloned() {
+        Some(te) => node_with_children_params_inferred(
+            param.clone(),
+            v1_rt::concat(
+                Rc::new(vec![binder_marked_type(
+                    te.clone(),
+                    owner.clone(),
+                    binders.clone(),
+                    env.clone(),
+                )]),
+                Rc::new(
+                    param
+                        .children
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(1 as usize)
+                        .collect::<Vec<_>>(),
+                ),
+            ),
+            param.params.clone(),
+            param.inferred.clone(),
+        ),
+        std::option::Option::None => param.clone(),
+    }
+}
+
+pub fn binder_marked_member(
+    member: Rc<Node>,
+    owner: Rc<DeclarationRef>,
+    binders: Rc<Vec<String>>,
+    env: Rc<TypeEnv>,
+) -> Rc<Node> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if (member.inferred.clone() != std::option::Option::None) {
+            node_with_children_params_inferred(
+                member.clone(),
+                member.children.clone(),
+                member.params.clone(),
+                binder_marked_inferred(
+                    member.inferred.clone(),
+                    owner.clone(),
+                    binders.clone(),
+                    env.clone(),
+                ),
+            )
+        } else {
+            node_with_children_params_inferred(
+                member.clone(),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for f in member.children.clone().iter().cloned() {
+                        __result.push(binder_marked_member(
+                            f.clone(),
+                            owner.clone(),
+                            binders.clone(),
+                            env.clone(),
+                        ));
+                    }
+                    __result
+                }),
+                member.params.clone(),
+                member.inferred.clone(),
+            )
+        }
+    })
+}
+
+pub fn node_with_children_params_inferred(
+    n: Rc<Node>,
+    children: Rc<Vec<Rc<Node>>>,
+    params: Rc<Vec<Rc<Node>>>,
+    inferred: Option<Rc<InferredNode>>,
+) -> Rc<Node> {
+    Rc::new(Node {
+        occurrence_identity: n.occurrence_identity.clone(),
+        name: n.name.clone(),
+        span: n.span.clone(),
+        ident_span: n.ident_span.clone(),
+        children: children.clone(),
+        connective: n.connective.clone(),
+        params: params.clone(),
+        inferred: inferred.clone(),
+        return_cardinality: n.return_cardinality.clone(),
+        uses: n.uses.clone(),
+        body: n.body.clone(),
+        transport: n.transport.clone(),
+        properties: n.properties.clone(),
+        type_annotation: n.type_annotation.clone(),
+        is_self_recursive: n.is_self_recursive.clone(),
+        has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+        match_pattern: n.match_pattern.clone(),
+        module_item_kind: n.module_item_kind.clone(),
+        declaration_marker: n.declaration_marker.clone(),
+        declaration: n.declaration.clone(),
+        expr_data: n.expr_data.clone(),
+        ident: None,
+    })
+}
+
 pub fn resolve_item_types(
     item: Rc<Node>,
     env: Rc<TypeEnv>,
@@ -3841,14 +4064,13 @@ pub fn resolve_item_types(
         } else {
             fn_type_param_names(item.clone(), env.source_indices.clone())
         };
-        let collision_diags = if has_duplicate_type_param_name(tp_names.clone()) {
-            Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::InternalError {
-    message: v1_rt::concat(v1_rt::concat("type param name collides with a value param in fn '".to_string(), crate::v1_std_core::authored_name_at(env.source_indices.clone(), item.clone())), "' — a value param shares its name with a declared type param (e.g., `fn f<T>(T: T)`). Rename the value param, or dissolve via ParamKind / params-slot partition.".to_string()),
+        let collision_diags = match first_duplicate_type_param_name(tp_names.clone()) {
+    Some(dup) => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::InternalError {
+    message: v1_rt::concat(v1_rt::concat(v1_rt::concat("the name '".to_string(), dup.clone()), v1_rt::concat("' is bound twice in the header of '".to_string(), crate::v1_std_core::authored_name_at(env.source_indices.clone(), item.clone()))), "': either a type parameter is repeated (`type Pair<T, T>`), or a value parameter shares a type parameter's name (`fn f<T>(T: T)`). A type parameter's identity is (owner, name), so one header may bind a name once. Rename one of them.".to_string()),
     span: item.span.clone(),
-}), module_name.clone())])
-        } else {
-            Rc::new(vec![])
-        };
+}), module_name.clone())]),
+    std::option::Option::None => Rc::new(vec![]),
+};
         let env = crate::v1_compiler_infer_env::env_with_type_variable_bindings(
             env.clone(),
             tp_names.clone(),
@@ -4192,13 +4414,6 @@ pub fn resolve_item_types(
                 })
             }
         };
-        let resolved_children = Rc::new({
-            let mut __result = Vec::new();
-            for cr in child_results.iter().cloned() {
-                __result.push(cr.item.clone());
-            }
-            __result
-        });
         let child_diags = Rc::new({
             let mut __result = Vec::new();
             for cr in child_results.iter().cloned() {
@@ -4206,6 +4421,53 @@ pub fn resolve_item_types(
             }
             __result
         });
+        let owner = crate::std_decl_ref::decl_ref(
+            module_name.clone(),
+            crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone()),
+        );
+        let resolved_children = if (((item.connective.clone() == Connective::Conj)
+            || (item.connective.clone() == Connective::Disj))
+            && (item.transport.clone() == std::option::Option::None))
+        {
+            Rc::new({
+                let mut __result = Vec::new();
+                for cr in child_results.iter().cloned() {
+                    __result.push(binder_marked_member(
+                        cr.item.clone(),
+                        owner.clone(),
+                        tp_names.clone(),
+                        env.clone(),
+                    ));
+                }
+                __result
+            })
+        } else {
+            Rc::new({
+                let mut __result = Vec::new();
+                for cr in child_results.iter().cloned() {
+                    __result.push(cr.item.clone());
+                }
+                __result
+            })
+        };
+        let marked_params = Rc::new({
+            let mut __result = Vec::new();
+            for p in resolved_params.iter().cloned() {
+                __result.push(binder_marked_param(
+                    p.clone(),
+                    owner.clone(),
+                    tp_names.clone(),
+                    env.clone(),
+                ));
+            }
+            __result
+        });
+        let marked_ret = binder_marked_inferred(
+            resolved_ret.clone(),
+            owner.clone(),
+            tp_names.clone(),
+            env.clone(),
+        );
         Rc::new(ItemResolveResult {
             item: Rc::new(Node {
                 occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
@@ -4213,8 +4475,8 @@ pub fn resolve_item_types(
                 span: item.span.clone(),
                 ident_span: item.ident_span.clone(),
                 children: resolved_children.clone(),
-                params: resolved_params.clone(),
-                inferred: resolved_ret.clone(),
+                params: marked_params.clone(),
+                inferred: marked_ret.clone(),
                 return_cardinality: item.return_cardinality.clone(),
                 uses: resolved_uses.clone(),
                 body: resolved_body.clone(),

@@ -396,16 +396,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolution: nfr_dissolve_owning_fold,
   },
   FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/host/host_converge_slice1.dag::host_converge_slice1_host_result_all_valid" },
-    reason: nfr_reason_legacy_slice1_bridge,
-    dissolution: nfr_dissolve_legacy_slice1,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/host/host_converge_slice1.dag::host_converge_slice1_host_result_applied_count" },
-    reason: nfr_reason_legacy_slice1_bridge,
-    dissolution: nfr_dissolve_legacy_slice1,
-  },
-  FrontierRow {
     subject: PathSubject { path: "dag/gunbc/host/host_hygiene_reaper.dag::action_kills_build_cache_server" },
     reason: nfr_reason_reaper_oracle,
     dissolution: nfr_dissolve_derived_equality,

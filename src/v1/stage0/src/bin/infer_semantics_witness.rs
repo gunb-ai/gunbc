@@ -741,6 +741,7 @@ fn pattern_lookup_blocks_on_infer_error_without_cascade_diagnostic() {
     let lookup = v1_compiler_infer_patterns::lookup_variant_in_type(
         subject,
         "Some".to_string(),
+        zero_span(),
         "test".to_string(),
         empty_type_env(),
         0,
@@ -762,6 +763,7 @@ fn pattern_lookup_reports_error_scrutinee_structurally() {
     let lookup = v1_compiler_infer_patterns::lookup_variant_in_type(
         subject,
         "Some".to_string(),
+        zero_span(),
         "test".to_string(),
         empty_type_env(),
         0,
@@ -780,6 +782,7 @@ fn optional_pattern_lookup_rejects_some_variant() {
     let lookup = v1_compiler_infer_patterns::lookup_variant_in_type(
         subject,
         "Some".to_string(),
+        zero_span(),
         "test".to_string(),
         empty_type_env(),
         0,
@@ -799,6 +802,7 @@ fn optional_pattern_lookup_resolves_present_variant() {
     let lookup = v1_compiler_infer_patterns::lookup_variant_in_type(
         subject,
         "Present".to_string(),
+        zero_span(),
         "test".to_string(),
         empty_type_env(),
         0,
@@ -899,6 +903,7 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
     let lookup = v1_compiler_infer_patterns::lookup_variant_in_type(
         subject,
         "Present".to_string(),
+        zero_span(),
         "test".to_string(),
         empty_type_env(),
         1,
@@ -929,6 +934,7 @@ fn optional_present_absent_patterns_keep_canonical_names() {
             field_bindings: Rc::new(vec![]),
         }),
         subject.clone(),
+        zero_span(),
         scope.clone(),
     );
     let absent = v1_compiler::v1_compiler_infer::annotate_pattern_parent_enums(
@@ -938,6 +944,7 @@ fn optional_present_absent_patterns_keep_canonical_names() {
             field_bindings: Rc::new(vec![]),
         }),
         subject,
+        zero_span(),
         scope,
     );
 
@@ -988,6 +995,7 @@ fn optional_applied_generic_lookup_resolves_present_absent_without_disj_children
     let present_lookup = v1_compiler_infer_patterns::lookup_variant_in_type(
         subject.clone(),
         "Present".to_string(),
+        zero_span(),
         "test".to_string(),
         empty_type_env(),
         1,
@@ -1002,6 +1010,7 @@ fn optional_applied_generic_lookup_resolves_present_absent_without_disj_children
     let absent_lookup = v1_compiler_infer_patterns::lookup_variant_in_type(
         subject,
         "Absent".to_string(),
+        zero_span(),
         "test".to_string(),
         empty_type_env(),
         0,
@@ -1024,6 +1033,7 @@ fn optional_applied_generic_lookup_rejects_wrong_variant_name() {
     let lookup = v1_compiler_infer_patterns::lookup_variant_in_type(
         subject,
         "Some".to_string(),
+        zero_span(),
         "test".to_string(),
         empty_type_env(),
         0,
@@ -1047,6 +1057,7 @@ fn non_optional_applied_generic_missing_variant_still_fails() {
     let lookup = v1_compiler_infer_patterns::lookup_variant_in_type(
         subject,
         "Present".to_string(),
+        zero_span(),
         "test".to_string(),
         empty_type_env(),
         0,
@@ -1081,6 +1092,7 @@ fn real_optional_coproduct_preserves_present_absent_pattern_names() {
             field_bindings: Rc::new(vec![]),
         }),
         subject,
+        zero_span(),
         scope,
     );
 
@@ -1435,7 +1447,7 @@ fn structural_method_first_on_list_returns_optional_element() {
     );
 }
 
-fn structural_method_count_on_list_returns_int() {
+fn structural_method_count_on_list_returns_nat() {
     let list_string = container_node("List".to_string(), leaf_node("String".to_string()));
     let result = v1_compiler_infer_lookup::lookup_structural_method(
         list_string,
@@ -1446,7 +1458,12 @@ fn structural_method_count_on_list_returns_int() {
     .as_ref()
     .expect("count must resolve on List<String>")
     .clone();
-    assert_eq!(result.result_type.name, "Int", "count should return Int");
+    // A count is never negative, so it returns std.nat.Nat by its declarer (#12227); an Int
+    // here would mean the refinement regressed to the unrefined carrier.
+    assert_eq!(
+        result.result_type.name, "std.nat.Nat",
+        "count should return std.nat.Nat"
+    );
 }
 
 fn structural_method_lookup_resolves_all_int_ring_methods() {
@@ -2286,8 +2303,8 @@ fn main() -> ExitCode {
             structural_method_first_on_list_returns_optional_element,
         ),
         (
-            "structural_method_count_on_list_returns_int",
-            structural_method_count_on_list_returns_int,
+            "structural_method_count_on_list_returns_nat",
+            structural_method_count_on_list_returns_nat,
         ),
         (
             "structural_method_lookup_resolves_all_int_ring_methods",

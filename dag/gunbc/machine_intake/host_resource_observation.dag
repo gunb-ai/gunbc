@@ -82,7 +82,7 @@ fn non_blank(out: List<String>) -> List<String> {
 fn nat_token(t: String) -> Nat? {
   match parse_int(s: t) {
     Present { value: n } => checked_int_to_nat(n: n)
-    _ => none
+    Absent => none
   }
 }
 
@@ -99,7 +99,7 @@ fn observe_threads(nproc: List<String>?) -> ObservationAttempt<HardwareThreadCou
         let line = join(lines, "")
         match nat_token(t: line) {
           Present { value: k } => ObservationEstablished { observed: hardware_thread_count(count: k) }
-          _ => ObservationRefused { cause: SectionUnparsed { section: "nproc", detail: concat("not a count: ", line) } }
+          Absent => ObservationRefused { cause: SectionUnparsed { section: "nproc", detail: concat("not a count: ", line) } }
         }
       }
     }
@@ -126,11 +126,11 @@ fn numa_node_line(line: String) -> NumaNode? {
   if count(halves) != 2 { none } else {
     let head = filter(split(s: trim(join(halves.take(n: 1), "")), delimiter: " "), t => t != "")
     let tail = filter(split(s: trim(join(halves.skip(n: 1), "")), delimiter: " "), t => t != "")
-    let ids = flat_map(tail, t => match nat_token(t: t) { Present { value: k } => [k]  _ => [] })
+    let ids = flat_map(tail, t => match nat_token(t: t) { Present { value: k } => [k]  Absent => [] })
     if count(head) != 2 || count(ids) != count(tail) { none } else {
       match nat_token(t: join(head.skip(n: 1), "")) {
         Present { value: n } => Present { value: NumaNode { node: n, cpus: ids } }
-        _ => none
+        Absent => none
       }
     }
   }
@@ -143,7 +143,7 @@ fn has_duplicate(xs: List<Nat>) -> Bool {
   fold(xs.sort_by(x => x), init: DuplicateSweep { previous: none, found: false }, f: (acc, x) =>
     DuplicateSweep {
       previous: Present { value: x },
-      found: acc.found || (match acc.previous { Present { value: p } => p == x  _ => false }),
+      found: acc.found || (match acc.previous { Present { value: p } => p == x  Absent => false }),
     }
   ).found
 }
@@ -162,7 +162,7 @@ fn observe_numa(numa: List<String>?) -> ObservationAttempt<List<NumaNode>, Resou
       } else {
         match first(malformed) {
           Present { value: c } => ObservationRefused { cause: c }
-          _ => numa_identities(nodes: flat_map(attempts, a => numa_record_node(a: a)))
+          Absent => numa_identities(nodes: flat_map(attempts, a => numa_record_node(a: a)))
         }
       }
     }
@@ -172,7 +172,7 @@ fn observe_numa(numa: List<String>?) -> ObservationAttempt<List<NumaNode>, Resou
 fn numa_record_attempt(line: String) -> ObservationAttempt<NumaNode, ResourceUnread> {
   match numa_node_line(line: line) {
     Present { value: n } => ObservationEstablished { observed: n }
-    _ => ObservationRefused { cause: SectionUnparsed { section: "numa", detail: concat("not a `node N cpus: ids` record: ", line) } }
+    Absent => ObservationRefused { cause: SectionUnparsed { section: "numa", detail: concat("not a `node N cpus: ids` record: ", line) } }
   }
 }
 
@@ -209,7 +209,7 @@ fn memory_field(metrics: List<MemoryMetric>, field: NonEmptyStr) -> ObservationA
   } else {
     match first(hits) {
       Present { value: m } => ObservationEstablished { observed: m.value }
-      _ => ObservationRefused { cause: SectionUnparsed { section: "meminfo", detail: concat("no ", field as String, " line") } }
+      Absent => ObservationRefused { cause: SectionUnparsed { section: "meminfo", detail: concat("no ", field as String, " line") } }
     }
   }
 }
@@ -221,7 +221,7 @@ fn observe_memory(meminfo: List<String>?) -> ObservationAttempt<HostMemoryReadin
     Absent => ObservationRefused { cause: SectionAbsent { section: "meminfo" } }
     Present { value: out } => {
       let lines = non_blank(out: out)
-      let metrics = flat_map(lines, l => match meminfo_line_metric(line: l) { Present { value: m } => [m]  _ => [] })
+      let metrics = flat_map(lines, l => match meminfo_line_metric(line: l) { Present { value: m } => [m]  Absent => [] })
       if count(metrics) != count(lines) {
         ObservationRefused { cause: SectionUnparsed { section: "meminfo", detail: "a line is not a `Name: N kB` metric" } }
       } else {
@@ -305,14 +305,14 @@ fn host_topology_assessment(goal: HostTopologyGoal, observed: HostResourceObserv
     ObservationRefused { cause: _ } => none
   }
   let unknowns = concat(
-    match observed.threads { ObservationRefused { cause: c } => [TopologyFieldUnread { cause: c }]  _ => [] },
-    match observed.numa { ObservationRefused { cause: c } => [TopologyFieldUnread { cause: c }]  _ => [] },
+    match observed.threads { ObservationRefused { cause: c } => [TopologyFieldUnread { cause: c }]  ObservationEstablished { observed: _ } => [] },
+    match observed.numa { ObservationRefused { cause: c } => [TopologyFieldUnread { cause: c }]  ObservationEstablished { observed: _ } => [] },
   )
   let deviations = concat(
-    match threads { Present { value: t } => thread_deviations(goal: goal, t: t)  _ => [] },
+    match threads { Present { value: t } => thread_deviations(goal: goal, t: t)  Absent => [] },
     match nodes {
       Present { value: n } => if n < goal.intended_nodes { [PopulatedNodesBelowIntent { intended: goal.intended_nodes, observed: n }] } else { [] }
-      _ => []
+      Absent => []
     },
   )
   assess_by_deviations_and_unknowns(

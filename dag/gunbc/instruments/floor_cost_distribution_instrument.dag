@@ -1149,13 +1149,13 @@ fn specimen_row_grounding(rows: List<FloorCostRow>, run: NonEmptyStr) -> Calibra
   if count(all_matched) == 0 {
     SpecimenAbsentFromRun { identity: wanted, run: run }
   } else if count(matched) == 0 {
-    SpecimenStepsRightCensored {
-      identity: wanted,
-      lower_bound: first(reverse(
-        all_matched
-          |> map(r => eval_step_count_value(s: eval_steps_at_least(reading: r.cost)))
-          |> sort_by(n => n)
-      )),
+    match first(reverse(
+      all_matched
+        |> map(r => eval_step_count_value(s: eval_steps_at_least(reading: r.cost)))
+        |> sort_by(n => n)
+    )) {
+      Absent => SpecimenAbsentFromRun { identity: wanted, run: run }
+      Present { value: bound } => SpecimenStepsRightCensored { identity: wanted, lower_bound: bound }
     }
   } else {
     let steps = matched |> sort_by(n => n)
