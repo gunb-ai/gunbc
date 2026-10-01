@@ -2134,7 +2134,7 @@ fn infer_judge_declared_position(
   position: DeclaredTypePosition,
   application: Node,
   entries: List<InferredFactsEntry>,
-  declarations: SymbolIndex,
+  resolved: ResolvedTree,
   formal: InhabitanceFormal,
   produced_at: Node,
   type_params: List<Symbol>
@@ -2148,16 +2148,24 @@ fn infer_judge_declared_position(
     Absent =>
   match lookup_inferred_facts_in_entries(entries: entries, key: produced_at) {
     Absent =>
-      infer_inhabitance_undecidable_accepted(
+      infer_judge_unformed_construct_at_expected_type(
+        position: position,
         application: application,
-        reason: undecidable_argument_type_not_derived()
+        entries: entries,
+        resolved: resolved,
+        formal: formal,
+        produced_at: produced_at
       )
     Present { value: facts } =>
       match inferred_facts_resolved_type(facts: facts) {
         Violates { diagnostic: _ } =>
-          infer_inhabitance_undecidable_accepted(
+          infer_judge_unformed_construct_at_expected_type(
+            position: position,
             application: application,
-            reason: undecidable_argument_type_not_derived()
+            entries: entries,
+            resolved: resolved,
+            formal: formal,
+            produced_at: produced_at
           )
         Holds { value: produced } =>
           let obligation = DeclaredTypeObligation {
@@ -2165,7 +2173,7 @@ fn infer_judge_declared_position(
             parameter_identity: formal.parameter_identity,
             declared: infer_declared_type_denotation(declared: formal.declared),
             produced: produced,
-            produced_declared_carrier: refinement_declared_carrier(index: declarations, source_type: produced),
+            produced_declared_carrier: refinement_declared_carrier(index: resolved.resolved_declarations, source_type: produced),
             application: application,
             type_variables: type_params
           }
@@ -2189,6 +2197,134 @@ fn infer_judge_declared_position(
   }
 }
 
+// A GENERIC RECORD CONSTRUCT WHOSE TYPE DID NOT FORM IS INSTANTIATED FROM THE TYPE ITS POSITION
+// DECLARES. infer is a bottom-up fold, so a construct is typed from its field values alone, and a
+// binder no field value fixes -- a phantom parameter, or one that occurs only inside a field whose
+// own value could not be typed -- leaves the construct on the counted frontier. The position that
+// consumes the construct does know the type it expects: a declared return, a formal, a record field.
+// When that declared type is an Instantiation of the construct's own record with every argument
+// present, the arguments ARE the instantiation, in binder order, and the construct's fields are
+// judged again on the one instantiating walk (infer_judge_formal_args) with those instances as its
+// starting point. A field value that disagrees with an instance the context fixed is refused at the
+// value, by the same relation and reason as any field; a field that still cannot be judged stays
+// counted. Nothing is inferred twice and no type is guessed: when the declared type is not an
+// Instantiation of the same record, has the wrong arity, or the record is not declared in the
+// subject module, the position keeps the counted UndecidableArgumentTypeNotDerived it had.
+//
+// What this changes is the judgment at the consuming position. The construct's own facts entry is
+// left as the fold recorded it: a bottom-up fold does not revise a child once its parent knows more.
+fn infer_judge_unformed_construct_at_expected_type(
+  position: DeclaredTypePosition,
+  application: Node,
+  entries: List<InferredFactsEntry>,
+  resolved: ResolvedTree,
+  formal: InhabitanceFormal,
+  produced_at: Node
+) -> Outcome<Bool> {
+  match infer_record_construct_read(node: produced_at, resolved: resolved) {
+    ConstructNotARecord =>
+      infer_inhabitance_undecidable_accepted(application: application, reason: undecidable_argument_type_not_derived())
+    ConstructIsRecord { construct: construct } =>
+      match infer_expected_record_instances(construct: construct, declared: formal.declared) {
+        Absent =>
+          infer_inhabitance_undecidable_accepted(application: application, reason: undecidable_argument_type_not_derived())
+        Present { value: seed } =>
+          match construct.formals {
+            RecordFormalsAuthored { payload: _ } =>
+              infer_inhabitance_undecidable_accepted(application: application, reason: undecidable_argument_type_not_derived())
+            RecordFormalsResolved { payload: _ } =>
+              match infer_record_field_binding(node: produced_at, construct: construct) {
+                RecordFieldsRefused { diagnostic: d } => outcome_rejected(d)
+                RecordPayloadUnread =>
+                  infer_inhabitance_undecidable_accepted(application: application, reason: undecidable_argument_type_not_derived())
+                RecordFieldsBound { pairs: pairs } =>
+                  match infer_judge_formal_args(
+                    position: position_record_field(record: construct.record),
+                    site: JudgedAtEachActual,
+                    entries: entries,
+                    resolved: resolved,
+                    pairs: pairs,
+                    type_params: construct.type_params,
+                    seed: seed
+                  ) {
+                    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                    Accepted { value: _, diagnostics: d } => Accepted { value: true, diagnostics: d }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE INSTANCES A DECLARED TYPE FIXES FOR A CONSTRUCT OF ONE RECORD: the declared type is an
+// Instantiation whose head is a declaration reference to the construct's own record and whose
+// arguments match its binders one for one; each argument is read at its denotation, the value type
+// a field value's type is compared with. Anything else fixes nothing.
+fn infer_expected_record_instances(construct: InferRecordConstruct, declared: Node) -> Optional<List<TypeVariableInstance>> {
+  match declared.kind {
+    TypeNode { connective: Instantiation } =>
+      let targets = node_positional_child_targets(node: declared)
+      match list_at_optional(xs: targets, index: 0) {
+        Absent => optional_absent()
+        Present { value: head } =>
+          match declaration_reference_path_optional(node: head) {
+            Absent => optional_absent()
+            Present { value: path } =>
+              match list_tail(xs: targets) {
+                TailAbsent => optional_absent()
+                TailFound { tail: args } =>
+                  if (path == construct.path)
+                    && (length(xs: args) == length(xs: construct.type_params))
+                    && (length(xs: args) > 0) {
+                    optional_present(
+                      value: zip_map(a: construct.type_params, b: args, f: infer_expected_record_instance)
+                    )
+                  } else {
+                    optional_absent()
+                  }
+              }
+          }
+      }
+    _ => optional_absent()
+  }
+}
+
+fn infer_expected_record_instance(binder: Symbol, arg: Node) -> TypeVariableInstance {
+  TypeVariableInstance { binder: binder, instance: infer_declared_type_denotation(declared: arg) }
+}
+
+// A FORMAL THAT MENTIONS A TYPE VARIABLE THIS WALK HAS ALREADY INSTANTIATED IS JUDGED AT THAT
+// INSTANCE. `inner: Ph<T>` with T fixed reads as `inner: Ph<Bool>`; a type variable with no instance
+// yet is left as written, so the formal keeps the counted generic-formal verdict it had.
+fn infer_substitute_type_variables(declared: Node, instances: List<TypeVariableInstance>) -> Node {
+  fold_node(
+    n: declared,
+    algebra: NodeFold {
+      init: fn(self) {
+        match self.kind {
+          TypeNode { connective: Atom { identity: id } } =>
+            if length(xs: self.children) == 0 {
+              match type_variable_instance_lookup(instances: instances, binder: id) {
+                Present { value: instance } => instance
+                Absent => Node { kind: self.kind, children: [], occurrence_id: self.occurrence_id }
+              }
+            } else {
+              Node { kind: self.kind, children: [], occurrence_id: self.occurrence_id }
+            }
+          _ => Node { kind: self.kind, children: [], occurrence_id: self.occurrence_id }
+        }
+      },
+      step: fn(acc, edge, sub) {
+        Node {
+          kind: acc.kind,
+          children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: sub }),
+          occurrence_id: acc.occurrence_id
+        }
+      }
+    }
+  )
+}
+
 fn infer_no_type_variable_instances() -> List<TypeVariableInstance> {
   Empty
 }
@@ -2204,7 +2340,7 @@ fn infer_judge_application_argument_instantiating(
   position: DeclaredTypePosition,
   application: Node,
   entries: List<InferredFactsEntry>,
-  declarations: SymbolIndex,
+  resolved: ResolvedTree,
   formal: InhabitanceFormal,
   arg: Node,
   type_params: List<Symbol>,
@@ -2212,7 +2348,18 @@ fn infer_judge_application_argument_instantiating(
 ) -> Outcome<List<TypeVariableInstance>> {
   match inhabitance_formal_declaration(declared: formal.declared, type_params: type_params) {
     DeclaredType { declared: _ } =>
-      match infer_judge_declared_position(position: position, application: application, entries: entries, declarations: declarations, formal: formal, produced_at: arg, type_params: type_params) {
+      match infer_judge_declared_position(
+        position: position,
+        application: application,
+        entries: entries,
+        resolved: resolved,
+        formal: InhabitanceFormal {
+          parameter_identity: formal.parameter_identity,
+          declared: infer_substitute_type_variables(declared: formal.declared, instances: instances)
+        },
+        produced_at: arg,
+        type_params: type_params
+      ) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
       }
@@ -2223,7 +2370,7 @@ fn infer_judge_application_argument_instantiating(
             position: position,
             application: application,
             entries: entries,
-            declarations: declarations,
+            resolved: resolved,
             formal: InhabitanceFormal { parameter_identity: formal.parameter_identity, declared: instance },
             produced_at: arg,
             type_params: type_params
@@ -2259,7 +2406,7 @@ fn infer_judge_application_argument_instantiating(
 fn infer_application_argument_inhabitance(
   node: Node,
   entries: List<InferredFactsEntry>,
-  declarations: SymbolIndex
+  resolved: ResolvedTree
 ) -> Outcome<Bool> {
   match infer_application_formals(node: node) {
     FormalsUnresolved =>
@@ -2277,9 +2424,10 @@ fn infer_application_argument_inhabitance(
             position: position_direct_call_argument(),
             site: JudgedAtApplication { application: node },
             entries: entries,
-            declarations: declarations,
+            resolved: resolved,
             pairs: pairs,
-            type_params: infer_application_type_params(node: node)
+            type_params: infer_application_type_params(node: node),
+            seed: infer_no_type_variable_instances()
           ) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: _, diagnostics: d } => Accepted { value: true, diagnostics: d }
@@ -2310,13 +2458,14 @@ fn infer_judge_formal_args(
   position: DeclaredTypePosition,
   site: InferJudgedSite,
   entries: List<InferredFactsEntry>,
-  declarations: SymbolIndex,
+  resolved: ResolvedTree,
   pairs: List<InhabitanceFormalArg>,
-  type_params: List<Symbol>
+  type_params: List<Symbol>,
+  seed: List<TypeVariableInstance>
 ) -> Outcome<List<TypeVariableInstance>> {
   fold(
     pairs,
-    init: Accepted { value: infer_no_type_variable_instances(), diagnostics: None },
+    init: Accepted { value: seed, diagnostics: None },
     f: fn(acc, pair) {
       match acc {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -2325,7 +2474,7 @@ fn infer_judge_formal_args(
             position: position,
             application: infer_judged_site_node(site: site, actual: pair.arg),
             entries: entries,
-            declarations: declarations,
+            resolved: resolved,
             formal: pair.formal,
             arg: pair.arg,
             type_params: type_params,
@@ -2914,7 +3063,7 @@ fn infer_gather_application_row_on_entries(
   kinds: List<RosterKindIndex>,
   resolved: ResolvedTree,
 ) -> InferGatherFoldAcc {
-  match infer_application_argument_inhabitance(node: node, entries: entries, declarations: resolved.resolved_declarations) {
+  match infer_application_argument_inhabitance(node: node, entries: entries, resolved: resolved) {
     Rejected { diagnostics: r } =>
       infer_gather_fold_acc_failed(
         node: node,
@@ -3008,7 +3157,7 @@ fn infer_bind_annotation_check(node: Node, entries: List<InferredFactsEntry>, re
             position: position_let_annotation(bound: bound),
             application: annotation,
             entries: entries,
-            declarations: resolved.resolved_declarations,
+            resolved: resolved,
             formal: InhabitanceFormal { parameter_identity: ^let_annotation, declared: annotation },
             produced_at: bound,
             type_params: []
@@ -4094,7 +4243,7 @@ fn infer_record_construct_facts(
   node: Node,
   construct: InferRecordConstruct,
   entries: List<InferredFactsEntry>,
-  declarations: SymbolIndex,
+  resolved: ResolvedTree,
   partials: List<Node>,
 ) -> Outcome<InferredFacts> {
   match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
@@ -4120,9 +4269,10 @@ fn infer_record_construct_facts(
                     position: position_record_field(record: construct.record),
                     site: JudgedAtEachActual,
                     entries: entries,
-                    declarations: declarations,
+                    resolved: resolved,
                     pairs: pairs,
-                    type_params: construct.type_params
+                    type_params: construct.type_params,
+                    seed: infer_no_type_variable_instances()
                   ) {
                     Rejected { diagnostics: r } => Rejected { diagnostics: r }
                     Accepted { value: instances, diagnostics: jd } =>
@@ -4169,13 +4319,13 @@ fn infer_gather_record_construct_row_on_entries(
   node: Node,
   construct: InferRecordConstruct,
   entries: List<InferredFactsEntry>,
-  declarations: SymbolIndex,
+  resolved: ResolvedTree,
   pending: Diagnostics,
   partials: List<Node>,
 ) -> InferGatherFoldAcc {
   infer_gather_formed_facts_row(
     node: node,
-    formed: infer_record_construct_facts(node: node, construct: construct, entries: entries, declarations: declarations, partials: partials),
+    formed: infer_record_construct_facts(node: node, construct: construct, entries: entries, resolved: resolved, partials: partials),
     entries: entries,
     pending: pending
   )
@@ -4203,7 +4353,7 @@ fn infer_gather_settled_row(
         resolved: resolved
       )
     Absent =>
-      match infer_arrow_declared_return_check(node: acc.node, entries: merged_entries, declarations: resolved.resolved_declarations) {
+      match infer_arrow_declared_return_check(node: acc.node, entries: merged_entries, resolved: resolved) {
         Rejected { diagnostics: r } =>
           infer_gather_fold_acc_failed(
             node: acc.node,
@@ -4235,7 +4385,7 @@ fn infer_gather_settled_row(
 // UndecidableGenericFormal, counted. An Arrow with no body is a signature (a fn type, a census-grade
 // declaration) and owes nothing here; one with two bodies, or a body but no declared return, is a
 // malformed Arrow and refuses.
-fn infer_arrow_declared_return_check(node: Node, entries: List<InferredFactsEntry>, declarations: SymbolIndex) -> Outcome<Bool> {
+fn infer_arrow_declared_return_check(node: Node, entries: List<InferredFactsEntry>, resolved: ResolvedTree) -> Outcome<Bool> {
   match node.kind {
     TypeNode { connective: Arrow } =>
       match arrow_body_target_lookup(children: node.children) {
@@ -4248,7 +4398,7 @@ fn infer_arrow_declared_return_check(node: Node, entries: List<InferredFactsEntr
                 position: position_declared_return(),
                 application: body,
                 entries: entries,
-                declarations: declarations,
+                resolved: resolved,
                 formal: InhabitanceFormal { parameter_identity: ^declared_return, declared: declared },
                 produced_at: body,
                 type_params: type_param_names(n: node)
@@ -4282,7 +4432,7 @@ fn infer_gather_settled_unannotated_row(
               node: acc.node,
               construct: construct,
               entries: merged_entries,
-              declarations: resolved.resolved_declarations,
+              resolved: resolved,
               pending: merged_pending,
               partials: partials
             )

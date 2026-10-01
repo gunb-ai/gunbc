@@ -1,0 +1,101 @@
+module v2.test.claim.compiler.infer_expected_type_record_instantiation_witness_test
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.name_resolve {
+  Admission,
+  ResolutionSubject,
+  resolution_context,
+  resolve_with_admission_context_policy
+}
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.resolution_policy { default_name_resolution_policy }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.source_authority { SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.diagnostic { Outcome, Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.std.text { String }
+import std.algebra { Empty, FreeMonoid }
+import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test {
+  rcf_member_accepted_and_decided,
+  rcf_read,
+  rcf_refuses_with
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A GENERIC RECORD CONSTRUCT IS INSTANTIATED FROM THE TYPE ITS POSITION DECLARES WHEN ITS FIELD
+// VALUES CANNOT FIX A BINDER.
+//
+// The subject is v2.compiler.infer infer_judge_unformed_construct_at_expected_type: when a construct's
+// type did not form bottom-up, the declared Instantiation of the same record supplies the binders'
+// instances and the fields are judged again on the one instantiating walk, seeded with them.
+//
+// THE RED IS ISOLATED FROM THE STRING-LITERAL GAP. No field value here is a String literal, so the
+// only thing that leaves a binder unfixed is the shape itself: `Ph<T>` uses T in no field (a phantom
+// parameter), and in `Two<T>` the field `a: Ph<T>` holds a construct only the context can type. Before
+// the change both programs were accepted with a counted obligation; after it the context's T reaches
+// the fields. The map-literal case (a key that is a String literal) is NOT claimed here: its key
+// stays counted until a String literal is typed through the declared unfold (work item
+// adhoc-3e4eee5a-d66).
+//
+// THE ROUTE IS REAL: source text through the production front end into infer, on the harness
+// v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test declares.
+data etr_phantom_source: String = "module v2.test.etr_phantom\n\nimport v2.std.logic { Bool }\n\ntype Ph<T> {\n  n: Int\n}\n\ndata p: Ph<Bool> = Ph { n: 1 }\n"
+
+data etr_two_bad_source: String = "module v2.test.etr_two_bad\n\nimport v2.std.logic { Bool }\n\ntype Ph<T> {\n  n: Int\n}\n\ntype Two<T> {\n  a: Ph<T>\n  b: T\n}\n\ndata t: Two<Bool> = Two { a: Ph { n: 1 }, b: 3 }\n"
+
+data etr_two_good_source: String = "module v2.test.etr_two_good\n\nimport v2.std.logic { Bool }\n\ntype Ph<T> {\n  n: Int\n}\n\ntype Two<T> {\n  a: Ph<T>\n  b: T\n}\n\ndata t: Two<Bool> = Two { a: Ph { n: 1 }, b: true }\n"
+
+data etr_ingest: SourceRootIngest = [
+  rcf_read(source: etr_phantom_source, id: ^etr_phantom_read, unit: ^etr_phantom_cu, path: "src/v2/test/fixture/expected_type_record/phantom.dag"),
+  rcf_read(source: etr_two_bad_source, id: ^etr_two_bad_read, unit: ^etr_two_bad_cu, path: "src/v2/test/fixture/expected_type_record/two_bad.dag"),
+  rcf_read(source: etr_two_good_source, id: ^etr_two_good_read, unit: ^etr_two_good_cu, path: "src/v2/test/fixture/expected_type_record/two_good.dag")
+]
+
+fn etr_fixture_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
+  module_roots_from_source_root_ingest(ingest: etr_ingest, lm: dag_language_model())
+}
+
+fn etr_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
+  match etr_fixture_normalized() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: roots, diagnostics: _ } =>
+      resolve_with_admission_context_policy(
+        context: resolution_context(lm: dag_language_model(), roots: roots),
+        admission: Admission {
+          subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: subject) },
+          imports: Empty
+        },
+        index: source_root_index_empty(),
+        active_roots: Empty,
+        policy: default_name_resolution_policy()
+      )
+  }
+}
+
+fn etr_resolved_phantom() -> Outcome<ResolvedTree> { etr_resolve_subject(subject: "v2.test.etr_phantom") }
+fn etr_resolved_two_bad() -> Outcome<ResolvedTree> { etr_resolve_subject(subject: "v2.test.etr_two_bad") }
+fn etr_resolved_two_good() -> Outcome<ResolvedTree> { etr_resolve_subject(subject: "v2.test.etr_two_good") }
+
+// A PHANTOM BINDER IS FIXED BY THE DECLARED TYPE: `data p: Ph<Bool> = Ph { n: 1 }` is decided at
+// Ph<Bool> -- accepted with no counted obligation. Before the change it was accepted with one.
+test fn etr_a_phantom_binder_is_fixed_by_the_declared_type_holds() -> Bool {
+  rcf_member_accepted_and_decided(resolved: etr_resolved_phantom(), member: ^p)
+}
+
+// THE DISCRIMINATING RED: the declared Two<Bool> fixes T, so `b: 3` is refused at its value. Before
+// the change T was fixed by no decided field (`a` holds a construct only the context types), so the
+// program was accepted with a counted obligation.
+test fn etr_a_field_value_disagreeing_with_the_contexts_instance_refuses_holds() -> Bool {
+  rcf_refuses_with(resolved: etr_resolved_two_bad(), reason: ^record_field_value_does_not_inhabit)
+}
+
+// THE CONTROL, one term away: `b: true` agrees with the context's T, and the nested Ph construct is
+// typed at Ph<Bool> through the same seeded walk, so the whole initializer is decided.
+test fn etr_a_nested_construct_typed_only_by_its_context_is_decided_holds() -> Bool {
+  rcf_member_accepted_and_decided(resolved: etr_resolved_two_good(), member: ^t)
+}
