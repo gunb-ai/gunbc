@@ -740,6 +740,32 @@ fn variant_reference_inferred_node(expected: Node?, name: String, owner_name: St
   }
 }
 
+// THE EXPECTED COPRODUCT ELECTS A BARE VARIANT SPELLING FIRST (neat-boar-16 ruling, 2026-10-01). A
+// value-position spelling S checked against a Required expected type whose expansion is a coproduct
+// declaring an arm S is THAT coproduct's arm: the expected type's declaration decides, over every
+// table the module builds by spelling. Before this, election read scope.locals first, so `Absent`
+// at a position declared ConvergeVerdict elected whichever owner the spelling table held -- the
+// kernel Optional when the closure saw two user coproducts declaring Absent -- and the declared
+// type could only confirm that choice, never correct it (variant_reference_inferred_node). A lexical
+// value binding of the same spelling (a let or parameter) still binds lexically: only a name the
+// scope does not bind as a value is elected here. An Optional-cardinality expected type does not
+// decide: its own level is Optional, whose arms are Absent and Present.
+fn expected_deciding_variant_owner(expected: Node?, name: String, scope: InferScope) -> Node? {
+  let lexical_value = match map_get(scope.locals, name) {
+    Present { value: _ } => lookup_variant_parent_enum(scope: scope, name: name) == none
+    Absent => false
+  }
+  if lexical_value { none } else {
+    match expected {
+      Present { value: exp } =>
+        if exp.return_cardinality == Required {
+          expected_variant_owner_instantiation(expected: expected, name: name, scope: scope)
+        } else { none }
+      Absent => none
+    }
+  }
+}
+
 fn variant_owner_node(scope: InferScope, name: String) -> Node? {
   if contains(name, ".") {
     match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: name) {
@@ -772,8 +798,8 @@ fn variant_owner_node(scope: InferScope, name: String) -> Node? {
 // rather than left to the type path. `resolve_node_bounded`'s masked-leaf check reports
 // UnlistedImportUse for a TYPE named without an import; the identical situation one channel over --
 // a coproduct ARM named without an import -- reported nothing at all, because the arm binds through
-// the constructor channel (`merge_global_bare_variant_locals` merges a whole-closure base under the
-// checked own+direct-imports fold) and never reaches that leaf. Measured on a discriminating pair in
+// the constructor channel (a whole-closure base, since removed, was merged under the checked
+// own+direct-imports fold) and never reaches that leaf. Measured on a discriminating pair in
 // `gunbc.constructor_binding_channel`: same fixture, same absent import, advisory for the type
 // reference and silence for the arm.
 //
@@ -4078,21 +4104,6 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
 // Required and non-generic: a type variable may be instantiated at an Optional, and an unresolved
 // or erased declared identity is not a Required fact, so those stay with their own arms.
 //
-// A PRODUCED TYPE THAT IS OPTIONAL BY NAME ONLY IS NOT EVIDENCE WHEN THE DECLARED COPRODUCT OWNS THE
-// ARM NAME. std.upsert_decision ObservationVerdict and gunbc.host.host_converge ConvergeVerdict each
-// declare their own `Absent` arm, and a bare `Absent` at a position declared as one of them is typed
-// as the kernel Optional coproduct: the reference is elected to the kernel owner without consulting
-// the declared one. The value is the declared coproduct's arm and the program is correct, so
-// refusing it here is a fabricated refusal. Measured by the whole-root compile differential on the
-// change that wired the record-field and declared-return producers: sixteen such sites newly
-// refused (gunbc.fleet.fleet_converge_cli, gunbc.file_access), and six more already stood refused
-// on main at the direct-call argument (test.claim.fleet.fleet_converge_cli_witness_test). The
-// exclusion is keyed on the two facts that make the evidence unsound and nothing wider: the
-// produced side carries NO CardOptional (so optionality is asserted by the name alone), and the
-// declared coproduct declares `Absent` or `Present` at its own level. A CardOptional produced value
-// at such a coproduct is still refused. The defect it stands in for is upstream and is not repaired
-// here: variant-reference election should consult the declared coproduct before the kernel one, at
-// which point the produced type is the declared type and this exclusion has no subject.
 fn optional_produced_at_required_declared(declared: Node, produced: Node, scope: InferScope) -> Bool {
   let source_indices = scope.type_env.source_indices
   let declared_name = authored_name_at(source_indices: source_indices, node: declared)
@@ -4108,17 +4119,7 @@ fn optional_produced_at_required_declared(declared: Node, produced: Node, scope:
     || declared_peeled.return_cardinality == CardOptional
     || qualified_last_segment(name: declared_name) == "Optional"
     || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: declared_peeled)) == "Optional"
-  let declared_required = match lookup_type_for(env: scope.type_env, node: with_required_cardinality(n: declared)) {
-    Present { value: resolved } => resolved
-    Absent => with_required_cardinality(n: declared)
-  }
-  let declared_expanded = expand_scrut_type_for_variant_lookup(scrut_node: declared_required, env: scope.type_env)
-  let declared_owns_an_optional_arm_name = declared_expanded.connective == Disj
-    && (has_child_named(n: declared_expanded, name: "Absent", source_indices: source_indices)
-      || has_child_named(n: declared_expanded, name: "Present", source_indices: source_indices))
-  let produced_optional_by_name_only = produced.return_cardinality != CardOptional
   produced_carries_optional
-    && !(produced_optional_by_name_only && declared_owns_an_optional_arm_name)
     && !declared_carries_optional
     && !declared_is_generic
     && declared_name != ""
@@ -7617,6 +7618,22 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       match constructor_reference_admission_unshadowed(callee_name: name, span: span, scope: scope) {
         Present { value: refusal } => refusal
         Absent =>
+      match expected_deciding_variant_owner(expected: expected, name: name, scope: scope) {
+        Present { value: decided } =>
+          let decided_name = authored_name_at(source_indices: scope.type_env.source_indices, node: decided)
+          InferResult {
+            typed: make_named_expr_node(
+              occurrence_identity: texpr.occurrence_identity,
+              name: name,
+              expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: decided_name } } },
+              children: [],
+              inferred: Present { value: Resolved { node: variant_reference_inferred_node(expected: expected, name: name, owner_name: decided_name, scope: scope, fallback: decided) } },
+              span: span,
+              name_span: span
+            ),
+            diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: span, owner: Present { value: decided })
+          }
+        Absent =>
       match map_get(scope.locals, name) {
         Present { value: binding } =>
           let scope_parent = lookup_variant_parent_enum(scope: scope, name: name)
@@ -7787,6 +7804,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   }
               }
           }
+      }
       }
       }
 
@@ -10283,7 +10301,11 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     let type_lookup = lookup_type_by_name(env: scope.type_env, name: type_name.value)
     let owner_from_locals = local_coproduct_owner_from_locals(scope: scope, name: type_name.value)
     let owner_from_variant_node = variant_owner_node(scope: scope, name: type_name.value)
-    let local_variant_parent = match lookup_variant_parent_enum(scope: scope, name: type_name.value) {
+    let expected_decided_owner = expected_deciding_variant_owner(expected: expected, name: type_name.value, scope: scope)
+    let local_variant_parent = match expected_decided_owner {
+      Present { value: decided } => Present { value: authored_name_at(source_indices: scope.type_env.source_indices, node: decided) }
+      Absent =>
+    match lookup_variant_parent_enum(scope: scope, name: type_name.value) {
       Present { value: p } => Present { value: p }
       Absent =>
         match owner_from_variant_node {
@@ -10291,7 +10313,11 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
           Absent => record_lit_parent_enum_from_expected(type_name: type_name.value, expected: expected, scope: scope)
         }
     }
-    let effective_lookup = match type_lookup {
+    }
+    let effective_lookup = match expected_decided_owner {
+      Present { value: decided } => Present { value: decided }
+      Absent =>
+    match type_lookup {
       Present { value: _ } => type_lookup
       Absent =>
         let local_lookup = lookup_in_scope(locals: scope.locals, name: type_name.value)
@@ -10304,6 +10330,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
               Absent => Absent
             }
         }
+    }
     }
     let variant_lookup_resolved = match effective_lookup {
       Present { value: tn } => tn
@@ -14960,53 +14987,10 @@ fn build_local_variants(items: List<Node>, source_indices: Map<String, NewlineIn
   )
 }
 
-// Cost shape (bare-minimum-cost, DESIGN 6): the census-eligible variant-owner pairs depend only on
-// global_bare and the name-census si — whole-closure facts identical for every module — so
-// build_global_bare_variant_locals computes them ONCE per closure in typecheck_with_census_extra
-// and the base map threads down realize_module -> typecheck_module -> build_module_context. The
-// former per-module shape rescanned the whole census and re-inserted every eligible pair into every
-// module's locals: 464 modules x 12,554 census keys = 5.8M iterations and 1.29M persistent-map
-// inserts = 31s of the host_effect_realize entry compile (typecheck-perf investigation, 2026-07-31;
-// PR 7398 landed build_global_bare_variant_locals beside the per-module fold but never wired it).
-// map_merge(base, state.locals) is value-identical to the old fold: overlay wins on collision
-// exactly as the old skip-if-present arm kept state's binding, and the old checked-insert collision
-// arm was unreachable (presence was checked before insert), so the global merge contributed zero
-// collision errors then and now. Fidelity of the hoisted si: authored_name_at reads names
-// identically under the raw closure source_indices and the kernel-augmented env.source_indices
-// (kernel spans compute the same name in both arms; non-kernel misses fall back to node.name in
-// both), and the census owners all live in closure files, so eligibility is unchanged.
-
-fn merge_global_bare_variant_locals(
-  state: VariantFoldState,
-  global_variant_base: Map<String, TypeBinding>
-) -> VariantFoldState {
-  VariantFoldState {
-    locals: map_merge(global_variant_base, state.locals),
-    collision_errors: state.collision_errors
-  }
-}
-
 fn build_global_bare_census(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> Map<String, GlobalBareLookupState> {
   build_symbol_index_census(modules: modules, source_indices: source_indices).global_bare
 }
 
-fn build_global_bare_variant_locals(
-  global_bare: Map<String, GlobalBareLookupState>,
-  source_indices: Map<String, NewlineIndex>
-) -> Map<String, TypeBinding> {
-  fold(global_bare |> map_keys, init: empty_map(), f: (acc, name) =>
-    match map_get(global_bare, name) {
-      Present { value: GlobalBareUniqueBinding { module_path: _, binding: binding } } =>
-        let owner = binding.resolved
-        if owner.connective == Disj && has_child_named(n: owner, name: name, source_indices: source_indices) {
-          map_insert(acc, name, TypeBinding { name: name, resolved: owner, provenance: SubValueUnknown })
-        } else {
-          acc
-        }
-      _ => acc
-    }
-  )
-}
 
 // A module re-exports its specific-name imports (get_exported_names in v1.compiler.resolve), so
 // `import proxy { B }` where proxy itself imports B is an EXPLICIT import under the §1c ruling —
@@ -15245,8 +15229,7 @@ fn build_module_context(contributions: List<ItemContribution>,
     variant_surfaces: Map<String, VariantExportSurface>,
     resolved_imports: List<ResolvedImport>,
     env: TypeEnv,
-    module_name: String,
-    global_variant_base: Map<String, TypeBinding>) -> ModuleContext {
+    module_name: String) -> ModuleContext {
   let local = fold_module_contributions(
     remaining: contributions,
     resolved_items: [],
@@ -15263,16 +15246,21 @@ fn build_module_context(contributions: List<ItemContribution>,
     module_name: module_name,
     init: VariantFoldState { locals: empty_map(), collision_errors: [] }
   )
-  let variant_fold = merge_global_bare_variant_locals(
-    state: build_imported_variants(
-      resolved_imports: resolved_imports,
-      parent_index: parent_index,
-      variant_surfaces: variant_surfaces,
-      source_indices: env.source_indices,
-      module_name: module_name,
-      init: local_variant_fold
-    ),
-    global_variant_base: global_variant_base
+  // A MODULE ELECTS A BARE VARIANT FROM ITS DECLARED SCOPE ONLY: its own coproducts and its direct
+  // imports, then the kernel arms where nothing in that scope declares the spelling
+  // (merge_kernel_variant_locals_low_priority). The closure-wide unique-spelling tier this replaced
+  // (build_global_bare_variant_locals) let a module bind an arm it never imported, and dropped a
+  // spelling two coproducts declare closure-wide -- so `Absent` fell through to the kernel
+  // Optional. "Declared scope" here is build_local_variants plus build_imported_variants (direct
+  // imports, no transitive walk); it moves onto v1.compiler.infer build_ancestry_precedence when the
+  // declaration-identity cut lands, which names this election as a consumer of that definition.
+  let variant_fold = build_imported_variants(
+    resolved_imports: resolved_imports,
+    parent_index: parent_index,
+    variant_surfaces: variant_surfaces,
+    source_indices: env.source_indices,
+    module_name: module_name,
+    init: local_variant_fold
   )
   let variant_collision_errors = variant_fold.collision_errors
   let env_variant_locals = merge_kernel_variant_locals_low_priority(env: env, locals: variant_fold.locals)
@@ -15340,7 +15328,7 @@ type TypecheckModuleResult {
   binding_forks: List<TypeEnvCacheMergeConflict>
 }
 
-fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex, global_variant_base: Map<String, TypeBinding>) -> TypecheckModuleResult {
+fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex) -> TypecheckModuleResult {
   let env_result = build_type_env(module: resolved, parent_index: parent_index, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index)
   let env = env_result.env
   let env_cache = env_result.cache
@@ -15382,8 +15370,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     variant_surfaces: variant_surfaces,
     resolved_imports: resolved.resolved_imports,
     env: env,
-    module_name: resolved_module_name,
-    global_variant_base: global_variant_base
+    module_name: resolved_module_name
   )
 
   let data_locals = fold(ctx.resolved_items, init: ctx.locals, f: (acc, item) =>
@@ -15470,7 +15457,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
 }
 
 fn typecheck_module_isolated(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypecheckModuleResult {
-  typecheck_module(resolved: resolved, parent_index: parent_index, variant_surfaces: empty_map(), source_indices: source_indices, intern_table: intern_table, symbol_index: empty_symbol_index(), global_variant_base: empty_map())
+  typecheck_module(resolved: resolved, parent_index: parent_index, variant_surfaces: empty_map(), source_indices: source_indices, intern_table: intern_table, symbol_index: empty_symbol_index())
 }
 
 type EnvResolveResult {
@@ -15757,7 +15744,6 @@ fn typecheck_with_census_extra(graph: ModuleGraph, source_indices: Map<String, N
     closure: build_symbol_index_census(modules: graph.modules, source_indices: census_si),
     fill: build_symbol_index_qualified_fill(modules: census_fill_modules, source_indices: census_si)
   )
-  let global_variant_base = build_global_bare_variant_locals(global_bare: symbol_index.global_bare, source_indices: source_indices)
   let state = graph.modules |> fold(init: RealizeState {
     module_index: empty_map(),
     variant_surfaces: empty_map(),
@@ -15770,8 +15756,7 @@ fn typecheck_with_census_extra(graph: ModuleGraph, source_indices: Map<String, N
       state: st,
       source_indices: source_indices,
       intern_table: intern_table,
-      symbol_index: symbol_index,
-      global_variant_base: global_variant_base
+      symbol_index: symbol_index
     )
   )
   let modules = graph.modules |> flat_map(rm =>
@@ -15809,8 +15794,7 @@ fn realize_module(
   state: RealizeState,
   source_indices: Map<String, NewlineIndex>,
   intern_table: InternTable,
-  symbol_index: SymbolIndex,
-  global_variant_base: Map<String, TypeBinding>
+  symbol_index: SymbolIndex
 ) -> RealizeState {
   match map_get(state.module_index, name) {
     Present { value: _ } => state
@@ -15825,12 +15809,11 @@ fn realize_module(
               state: st,
               source_indices: source_indices,
               intern_table: intern_table,
-              symbol_index: symbol_index,
-              global_variant_base: global_variant_base
+              symbol_index: symbol_index
             )
           )
           let parent_result = collect_parent_envs(resolved: resolved, module_index: dep_state.module_index, source_indices: source_indices)
-          let tc_result = typecheck_module(resolved: resolved, parent_index: dep_state.module_index, variant_surfaces: dep_state.variant_surfaces, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index, global_variant_base: global_variant_base)
+          let tc_result = typecheck_module(resolved: resolved, parent_index: dep_state.module_index, variant_surfaces: dep_state.variant_surfaces, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index)
           let typed = tc_result.typed
           let typed_path = authored_name_at(source_indices: source_indices, node: typed.module)
           RealizeState {
