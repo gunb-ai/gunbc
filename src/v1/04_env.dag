@@ -5,13 +5,14 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import v1.std.core { Unmarked, Node, NewlineIndex, InternTable, Resolved, qualified_last_segment, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, ExprData, InferredNode, kernel_span, declaration_provenance_of, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
 import v1.compiler.type_head_exposure { TypeHeadExposure }
 
-import std.types { SourceSpan, is_kernel_type }
+import std.types { SourceSpan, is_kernel_type, is_container_type }
 import std.coercion { TypeDeclarationProvenance, DeclarationIdentityAbsent }
 import std.decl_ref { decl_ref, DeclarationRef }
 import std.operator_realization { OperandDeclaration }
 
 import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
 import std.algebra { FreeMonoid, Empty, Cons }
+import std.bitwise { bitwise_pow2, word32_or }
 
 import v1.compiler.infer_occurrence_binding {
   module_path_owner_binding_decide,
@@ -24,7 +25,7 @@ import v1.compiler.infer_occurrence_binding {
 type TypeEnv {
   bindings: Map<Int, TypeBinding>
   str_bindings: Map<String, TypeBinding>
-  ancestry_str_bindings: Map<String, TypeBinding>
+  ancestry: AncestryView
   parents: List<TypeEnv>
   recursive_types: List<Int>
   recursive_type_set: Map<Int, Bool>
@@ -37,6 +38,324 @@ type TypeEnv {
   module_path: String
   unit_variant_index: Map<String, Map<String, UnitVariantContribution>>
   unit_variant_index_observed: Bool
+}
+
+// THE IMPORT UNION'S ONE REPRESENTATION (docs/plans/type-env-single-authority-design.md, "PR-2
+// representation"). A module no longer materializes the union of every name its imports make
+// visible. It carries a VIEW: its own import list, a reachability bitset over the pool's module
+// ordinals, its rewire overlay and its kernel bindings, plus a reference to the pool, which holds
+// every module's own bindings once and the one exporter index. A name's ancestry binding is DERIVED
+// by ancestry_lookup, which applies the same precedence the materialized fold applied
+// (union by import order -> kernel overlay -> direct-selected overlay -> rewire overlay).
+type SurfaceImport {
+  module_path: String
+  is_all: Bool
+  specific_names: List<String>
+}
+
+type ModuleSurface {
+  module_path: String
+  ordinal: Int
+  own: Map<String, TypeBinding>
+  imports: List<SurfaceImport>
+  reach: List<Int>
+}
+
+// THE ONE AUTHORITY FOR "WHO EXPORTS n": exporters is derived from own entries by
+// surface_pool_admit and by nothing else, and grows only as the pool admits a module.
+type SurfacePool {
+  surfaces: Map<String, ModuleSurface>
+  exporters: Map<String, List<String>>
+  multi_exporters: Map<String, Bool>
+  by_ordinal: Map<Int, String>
+  next_ordinal: Int
+}
+
+type AncestryView {
+  module_path: String
+  imports: List<SurfaceImport>
+  reach: List<Int>
+  kernel: Map<String, TypeBinding>
+  rewrites: Map<String, TypeBinding>
+  pool: SurfacePool
+}
+
+fn empty_surface_pool() -> SurfacePool {
+  SurfacePool { surfaces: empty_map(), exporters: empty_map(), multi_exporters: empty_map(), by_ordinal: empty_map(), next_ordinal: 0 }
+}
+
+fn empty_ancestry_view() -> AncestryView {
+  AncestryView { module_path: "", imports: [], reach: [], kernel: empty_map(), rewrites: empty_map(), pool: empty_surface_pool() }
+}
+
+// The names the direct-selected overlay never takes from an import: kernel and container types and
+// the kernel's own Unit/Optional constructors. Shared by build_ancestry_precedence's fold and the
+// surface lookup, so the precedence cannot fork.
+fn overlay_skips_kernel_name(name: String) -> Bool {
+  is_kernel_type(name: name)
+    || is_container_type(name: name)
+    || name == "Unit"
+    || name == "Optional"
+    || name == "Present"
+    || name == "Absent"
+}
+
+fn is_type_variable_name(name: String) -> Bool {
+  name == "T" || name == "K" || name == "V" || name == "MappedElement" || name == "FoldAccumulator"
+}
+
+// Reachability is a dense bitset of 32-bit words held in Int: bit (o % 32) of word (o / 32) is set
+// when the module with ordinal o is in the closure. Membership is arithmetic; union is word32_or.
+fn reach_has(reach: List<Int>, ordinal: Int) -> Bool {
+  match get(reach, ordinal / 32) {
+    Present { value: word } => (word / bitwise_pow2(n: ordinal % 32)) % 2 == 1
+    Absent => false
+  }
+}
+
+fn reach_union(a: List<Int>, b: List<Int>) -> List<Int> {
+  let longer = if count(a) >= count(b) { a } else { b }
+  let shorter = if count(a) >= count(b) { b } else { a }
+  fold(enumerate(longer), init: [], f: (acc, pair) =>
+    match get(shorter, pair.first) {
+      Present { value: w } => acc |> list_push(word32_or(a: pair.second, b: w))
+      Absent => acc |> list_push(pair.second)
+    }
+  )
+}
+
+fn reach_with(reach: List<Int>, ordinal: Int) -> List<Int> {
+  if reach_has(reach: reach, ordinal: ordinal) {
+    reach
+  } else {
+    let index = ordinal / 32
+    let padded = fold(repeat_zero_words(n: index + 1 - count(reach)), init: reach, f: (acc, w) => acc |> list_push(w))
+    fold(enumerate(padded), init: [], f: (acc, pair) =>
+      if pair.first == index { acc |> list_push(pair.second + bitwise_pow2(n: ordinal % 32)) } else { acc |> list_push(pair.second) }
+    )
+  }
+}
+
+fn repeat_zero_words(n: Int) -> List<Int> {
+  if n <= 0 { [] } else { concat([0], repeat_zero_words(n: n - 1)) }
+}
+
+// A module's closure: the union, over its imports, of each import's own ordinal and closure.
+fn surface_reach_of(imports: List<SurfaceImport>, pool: SurfacePool) -> List<Int> {
+  fold(imports, init: [], f: (acc, imp) =>
+    match map_get(pool.surfaces, imp.module_path) {
+      Present { value: parent } => reach_union(a: reach_with(reach: acc, ordinal: parent.ordinal), b: parent.reach)
+      Absent => acc
+    }
+  )
+}
+
+// ADMITS ONE MODULE INTO THE POOL: its surface (own bindings, imports, closure) and its own names
+// into the exporter index. This is the only writer of `exporters`.
+fn surface_pool_admit(pool: SurfacePool, module_path: String, own: Map<String, TypeBinding>, imports: List<SurfaceImport>) -> SurfacePool {
+  let surface = ModuleSurface {
+    module_path: module_path,
+    ordinal: pool.next_ordinal,
+    own: own,
+    imports: imports,
+    reach: surface_reach_of(imports: imports, pool: pool)
+  }
+  let exporters = fold(own |> map_keys, init: pool.exporters, f: (acc, name) =>
+    match map_get(acc, name) {
+      Present { value: paths } => map_insert(acc, name, paths |> list_push(module_path))
+      Absent => map_insert(acc, name, [module_path])
+    }
+  )
+  let multi_exporters = fold(own |> map_keys, init: pool.multi_exporters, f: (acc, name) =>
+    match map_get(pool.exporters, name) {
+      Present { value: _ } => map_insert(acc, name, true)
+      Absent => acc
+    }
+  )
+  SurfacePool {
+    surfaces: map_insert(pool.surfaces, module_path, surface),
+    exporters: exporters,
+    multi_exporters: multi_exporters,
+    by_ordinal: map_insert(pool.by_ordinal, pool.next_ordinal, module_path),
+    next_ordinal: pool.next_ordinal + 1
+  }
+}
+
+// PRESENCE (the lemma): n is in a module's surface iff it is a kernel name or some exporter of n
+// lies in the module itself or its closure.
+fn surface_has(pool: SurfacePool, kernel: Map<String, TypeBinding>, module_path: String, reach: List<Int>, name: String) -> Bool {
+  match map_get(kernel, name) {
+    Present { value: _ } => true
+    Absent =>
+      match map_get(pool.exporters, name) {
+        Absent => false
+        Present { value: paths } =>
+          paths |> any(p => p == module_path || match map_get(pool.surfaces, p) {
+            Present { value: e } => reach_has(reach: reach, ordinal: e.ordinal)
+            Absent => false
+          })
+      }
+  }
+}
+
+// THE DIRECT-SELECTED OVERLAY'S SELECTION RULE, shared by the materialized fold's replacement and the
+// lookup: which names an import selects from its export surface (own bindings), with the std.types
+// type-variable filter applied to std.types alone.
+fn surface_import_selects(imp: SurfaceImport, own: Map<String, TypeBinding>, name: String) -> Bool {
+  if is_type_variable_name(name: name) && (imp.is_all || imp.module_path == "std.types") {
+    false
+  } else if imp.is_all {
+    match map_get(own, name) { Present { value: _ } => true  Absent => false }
+  } else {
+    imp.specific_names |> any(n => n == name)
+  }
+}
+
+// THE WINNER for `name` at a module with these imports, closure and kernel: the binding the
+// materialized ancestry map carried. Steps, in the fold's own precedence:
+//   1. unless the direct overlay skips the name (overlay_skips_kernel_name), the LAST direct import
+//      selecting it from its own surface -> that binding;
+//   2. a kernel name -> the kernel binding (the kernel overlays the whole union);
+//   3. the LAST import whose surface holds the name (presence lemma) -> that import's surface value,
+//      which is its own binding or, recursively, its ancestry winner.
+fn ancestry_winner(pool: SurfacePool, kernel: Map<String, TypeBinding>, imports: List<SurfaceImport>, name: String) -> TypeBinding? {
+  let direct = if overlay_skips_kernel_name(name: name) {
+    none
+  } else {
+    fold(imports, init: none, f: (acc, imp) =>
+      match map_get(pool.surfaces, imp.module_path) {
+        Present { value: parent } =>
+          if surface_import_selects(imp: imp, own: parent.own, name: name) {
+            match map_get(parent.own, name) {
+              Present { value: b } => Present { value: b }
+              Absent => acc
+            }
+          } else { acc }
+        Absent => acc
+      }
+    )
+  }
+  match direct {
+    Present { value: b } => Present { value: b }
+    Absent =>
+      match map_get(kernel, name) {
+        Present { value: b } => Present { value: b }
+        Absent => surface_union_winner(pool: pool, kernel: kernel, imports: imports, name: name)
+      }
+  }
+}
+
+fn surface_union_winner(pool: SurfacePool, kernel: Map<String, TypeBinding>, imports: List<SurfaceImport>, name: String) -> TypeBinding? {
+  fold(imports, init: none, f: (acc, imp) =>
+    match map_get(pool.surfaces, imp.module_path) {
+      Present { value: parent } =>
+        if surface_has(pool: pool, kernel: kernel, module_path: parent.module_path, reach: parent.reach, name: name) {
+          match surface_value(pool: pool, kernel: kernel, surface: parent, name: name) {
+            Present { value: b } => Present { value: b }
+            Absent => acc
+          }
+        } else { acc }
+      Absent => acc
+    }
+  )
+}
+
+// What an importer reads from `surface` for `name`: own first (map_merge(ancestry, own)), then the
+// surface's own ancestry winner. Importers never see a module's rewire overlay.
+fn surface_value(pool: SurfacePool, kernel: Map<String, TypeBinding>, surface: ModuleSurface, name: String) -> TypeBinding? {
+  match map_get(surface.own, name) {
+    Present { value: b } => Present { value: b }
+    Absent => ancestry_winner(pool: pool, kernel: kernel, imports: surface.imports, name: name)
+  }
+}
+
+// THE FORK LEDGER, derived from the same rule. The materialized union recorded a row wherever a
+// later import's surface carried a name with a DIFFERENT authority (binding_same_authority) than the
+// winner accumulated from the imports before it. A name with one non-kernel exporter has one authority
+// in every surface, so only names the pool has seen exported twice, or exported over a kernel name,
+// can fork. Rows are returned in the one canonical order: their content fields, byte-lexicographic
+// (name, import_path, existing_site, incoming_site), the order a portable record of them takes.
+fn surface_fork_rows(pool: SurfacePool, kernel: Map<String, TypeBinding>, imports: List<SurfaceImport>) -> List<TypeEnvCacheMergeConflict> {
+  let candidates = fold(kernel |> map_keys, init: pool.multi_exporters, f: (acc, n) =>
+    match map_get(pool.exporters, n) {
+      Present { value: _ } => map_insert(acc, n, true)
+      Absent => acc
+    }
+  )
+  let rows = flat_map(sorted_map_keys(candidates), name =>
+    let walked = fold(imports, init: SurfaceForkWalk { winner: none, rows: [] }, f: (state, imp) =>
+      match map_get(pool.surfaces, imp.module_path) {
+        Absent => state
+        Present { value: parent } =>
+          if surface_has(pool: pool, kernel: kernel, module_path: parent.module_path, reach: parent.reach, name: name) {
+            match surface_value(pool: pool, kernel: kernel, surface: parent, name: name) {
+              Absent => state
+              Present { value: incoming } =>
+                match state.winner {
+                  Absent => SurfaceForkWalk { winner: Present { value: incoming }, rows: state.rows }
+                  Present { value: existing } =>
+                    if binding_same_authority(a: existing, b: incoming) {
+                      state
+                    } else {
+                      SurfaceForkWalk {
+                        winner: Present { value: incoming },
+                        rows: state.rows |> list_push(TypeEnvCacheMergeConflict { name: name, import_path: imp.module_path, existing_site: existing.resolved.span.file, incoming_site: incoming.resolved.span.file, span: incoming.resolved.span, same_tree: source_tree_of(file: existing.resolved.span.file) == source_tree_of(file: incoming.resolved.span.file) })
+                      }
+                    }
+                }
+            }
+          } else { state }
+      }
+    )
+    walked.rows
+  )
+  rows |> sort_by(r => concat(r.name, " | ", r.import_path, " | ", r.existing_site, " | ", r.incoming_site))
+}
+
+type SurfaceForkWalk {
+  winner: TypeBinding?
+  rows: List<TypeEnvCacheMergeConflict>
+}
+
+// EVERY NAME A MODULE'S ANCESTRY HOLDS, enumerated rather than stored: the kernel's names, every own
+// name of every module in the closure, and the rewire overlay's names. Computed where a consumer
+// enumerates (the rewire pass, source_visible_names) and dropped; never retained on the module.
+fn ancestry_names(view: AncestryView) -> List<String> {
+  let with_kernel = fold(view.kernel |> map_keys, init: empty_map(), f: (acc, n) => map_insert(acc, n, true))
+  let with_closure = fold(enumerate(view.reach), init: with_kernel, f: (acc, pair) =>
+    fold(reach_word_ordinals(word: pair.second, base: pair.first * 32), init: acc, f: (acc2, ordinal) =>
+      match map_get(view.pool.by_ordinal, ordinal) {
+        Absent => acc2
+        Present { value: path } =>
+          match map_get(view.pool.surfaces, path) {
+            Absent => acc2
+            Present { value: surface } => fold(surface.own |> map_keys, init: acc2, f: (acc3, n) => map_insert(acc3, n, true))
+          }
+      }
+    )
+  )
+  let with_rewrites = fold(view.rewrites |> map_keys, init: with_closure, f: (acc, n) => map_insert(acc, n, true))
+  sorted_map_keys(with_rewrites)
+}
+
+fn reach_word_ordinals(word: Int, base: Int) -> List<Int> {
+  if word == 0 {
+    []
+  } else {
+    fold([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31],
+      init: [], f: (acc, bit) => if (word / bitwise_pow2(n: bit)) % 2 == 1 { acc |> list_push(base + bit) } else { acc })
+  }
+}
+
+// A module's ancestry lookup: its rewire overlay first, then the winner.
+fn ancestry_lookup(view: AncestryView, name: String) -> TypeBinding? {
+  match map_get(view.rewrites, name) {
+    Present { value: b } => Present { value: b }
+    Absent =>
+      if surface_has(pool: view.pool, kernel: view.kernel, module_path: view.module_path, reach: view.reach, name: name) {
+        ancestry_winner(pool: view.pool, kernel: view.kernel, imports: view.imports, name: name)
+      } else { none }
+  }
 }
 
 type TypeBinding {
@@ -173,7 +492,7 @@ fn build_unit_variant_index(str_bindings: Map<String, TypeBinding>, parents: Lis
   )
 }
 
-data global_bare_fallback_invariant: String = "Corpus-wide bare-name census, resolved by ONE uniform containment walk (operator ruling 2026-07-18: global uniqueness is NOT a special tier — it is the shallowest level of the same walk; filepaths are irrelevant, the declared module path is the containment tree). SymbolIndex.global_bare is keyed on the bare declared name and built once by build_symbol_index_census over graph.modules before any module typechecks (order-independent). Tracking is decl-only via symbol_index_insert_decl / local_binding_for_item (type/fn/data names) plus corpus-globally-unique Disj variant aliases (unique across the WHOLE bare-name space: a variant whose name any type/fn/data decl claims stays qualified-only, never a global_bare candidate — else a type-vs-variant tie, e.g. actions.Job vs ExpressionContext.Job, refuses every far use of the TYPE); every homonym keeps its FULL candidate list (module_path + binding), never a candidate-free Ambiguous tombstone. Resolution (global_bare_lookup): a single candidate resolves from anywhere (the one-candidate degenerate case of the walk); multiple candidates resolve by nearest-ancestor containment under ImportScoped, while NamespaceOnlyY filters to the referencing module's containment chain and routes 0/1/many through module_path_owner_binding_decide. The production flip that removes the corpus fallback is downstream of reference-derived closure. lookup_binding_by_name consults global_bare only after str_bindings/ancestry_str_bindings/intern+bindings all miss. Variant arms additionally merge into per-module variant_locals via merge_global_bare_variant_locals (constructor_binding_authority — owner is the coproduct node)."
+data global_bare_fallback_invariant: String = "Corpus-wide bare-name census, resolved by ONE uniform containment walk (operator ruling 2026-07-18: global uniqueness is NOT a special tier — it is the shallowest level of the same walk; filepaths are irrelevant, the declared module path is the containment tree). SymbolIndex.global_bare is keyed on the bare declared name and built once by build_symbol_index_census over graph.modules before any module typechecks (order-independent). Tracking is decl-only via symbol_index_insert_decl / local_binding_for_item (type/fn/data names) plus corpus-globally-unique Disj variant aliases (unique across the WHOLE bare-name space: a variant whose name any type/fn/data decl claims stays qualified-only, never a global_bare candidate — else a type-vs-variant tie, e.g. actions.Job vs ExpressionContext.Job, refuses every far use of the TYPE); every homonym keeps its FULL candidate list (module_path + binding), never a candidate-free Ambiguous tombstone. Resolution (global_bare_lookup): a single candidate resolves from anywhere (the one-candidate degenerate case of the walk); multiple candidates resolve by nearest-ancestor containment under ImportScoped, while NamespaceOnlyY filters to the referencing module's containment chain and routes 0/1/many through module_path_owner_binding_decide. The production flip that removes the corpus fallback is downstream of reference-derived closure. lookup_binding_by_name consults global_bare only after str_bindings/the ancestry view/intern+bindings all miss. Variant arms additionally merge into per-module variant_locals via merge_global_bare_variant_locals (constructor_binding_authority — owner is the coproduct node)."
 
 // Grammar lane G1/G1b: container.member module projection in value/type/pattern and fn/data/let
 // type-annotation positions resolves via symbol_index_lookup on the full qualified path (module
@@ -236,7 +555,7 @@ fn empty_type_env() -> TypeEnv {
     module_path: "",
     bindings: empty_map(),
     str_bindings: empty_map(),
-    ancestry_str_bindings: empty_map(),
+    ancestry: empty_ancestry_view(),
     parents: [],
     recursive_types: [],
     recursive_type_set: empty_map(),
@@ -331,24 +650,22 @@ fn scope_push(scope: Scope, binding: ScopeBinding) -> Scope {
 
 type TypeEnvCache {
   deps_map: Map<String, List<String>>
-  str_bindings: Map<String, TypeBinding>
   cycle_set_str: Map<String, Bool>
   variant_locals: Map<String, TypeBinding>
 }
 
-// B1 build_type_env populates ancestry_str_bindings for import chains; lookup_binding_by_name is
-// fail-closed on miss (str_bindings then ancestry_str_bindings then intern+bindings only; 6de571f3
-// reverted in 80ab63a). flatten_visible_bindings and merge_envs are DELETED (2026-07-06 operator
-// ruling: the parent-recurse counter was a parallel representation guarding a fallback; the
-// fallback is now unwritable by construction — no whole-env flatten exists to call). Visibility
-// reads are one-level: local str_bindings/ancestry_str_bindings, or a fold over parent.str_bindings
-// only (see collect_unit_variant_phantom_matches). Dissolve-on: namespace-as-sole-authority ruling
-// — env maps become a derived projection of namespace reachability.
+// The ancestry a module sees is DERIVED, not stored: lookup_binding_on_chain reads str_bindings, then
+// ancestry_lookup over the module's AncestryView (the surface pool, exporter index and closure
+// bitset), then intern+bindings, fail-closed on miss. The 2026-07-06 one-level-read invariant is
+// superseded by the operator's 2026-10-01 re-ruling: a read may walk the import surfaces, because the
+// alternative was materializing every module's whole import union twice (as this map and as the
+// cache's flattened str_bindings), which the leave-one-out reading measured at most of the typed
+// graph. flatten_visible_bindings and merge_envs stay deleted. Design and its equality argument:
+// docs/plans/type-env-single-authority-design.md, "PR-2 representation".
 
 fn empty_type_env_cache() -> TypeEnvCache {
   TypeEnvCache {
     deps_map: empty_map(),
-    str_bindings: empty_map(),
     cycle_set_str: empty_map(),
     variant_locals: empty_map()
   }
@@ -383,10 +700,6 @@ fn conflict_is_cross_tree(c: TypeEnvCacheMergeConflict) -> Bool {
   source_tree_of(file: c.existing_site) != source_tree_of(file: c.incoming_site)
 }
 
-type GuardedTypeEnvCacheMerge {
-  cache: TypeEnvCache
-  conflicts: List<TypeEnvCacheMergeConflict>
-}
 
 // Cross-parent cache union (S2a move 2 increment B; lane ruling REVISED 2026-07-11: NOVELTY, not
 // TREE, is the refusal axis). A name reachable from two PEER imports with different bindings is a
@@ -412,82 +725,6 @@ fn binding_same_authority(a: TypeBinding, b: TypeBinding) -> Bool {
 }
 
 data union_base_choice_note: String = "M1a base-choice (v1-run-stability-throughline §2.1, M0 receipt dup_factor=1.00): each union walks the SMALLER side's keys into the LARGER side's HAMT, so the result Rc-shares the large spine instead of freshly path-copying it key-by-key (the pre-cut accumulator was always the first parent - typically a small leaf - so every module materialized ~its whole closure's name surface fresh, across four maps). The winner is ORIENTATION-INDEPENDENT: each public union dispatches on count (O(1) on the persistent map) between an into-acc body (the pre-cut walk) and an into-overlay mirror whose conflict winner is identical (overlay-wins for str_bindings/deps_map/variant_locals, acc-wins for cycle_set_str); same-authority keys keep the retained side's copy - the span fast path declares the copies the same binding, and the whole-corpus fingerprint oracle is the drift check. Fold order stays import-order; conflict rows keep semantic roles (existing = accumulated side, incoming = overlay side) regardless of walk direction - the ledger's consumers are count/partition-grain, row order is not load-bearing."
-
-fn guarded_union_str_bindings_into_acc(
-  acc: Map<String, TypeBinding>,
-  overlay: Map<String, TypeBinding>,
-  import_path: String,
-  conflicts: List<TypeEnvCacheMergeConflict>
-) -> GuardedStrBindingsUnion {
-  fold(overlay |> map_keys, init: GuardedStrBindingsUnion { bindings: acc, conflicts: conflicts }, f: (state, name) =>
-    match map_get(overlay, name) {
-      Absent => state
-      Present { value: incoming } =>
-        match map_get(state.bindings, name) {
-          Absent => GuardedStrBindingsUnion {
-            bindings: map_insert(state.bindings, name, incoming),
-            conflicts: state.conflicts
-          }
-          Present { value: existing } =>
-            if binding_same_authority(a: existing, b: incoming) {
-              state
-            } else {
-              GuardedStrBindingsUnion {
-                bindings: map_insert(state.bindings, name, incoming),
-                conflicts: concat(state.conflicts, [TypeEnvCacheMergeConflict { name: name, import_path: import_path, existing_site: existing.resolved.span.file, incoming_site: incoming.resolved.span.file, span: incoming.resolved.span, same_tree: source_tree_of(file: existing.resolved.span.file) == source_tree_of(file: incoming.resolved.span.file) }])
-              }
-            }
-        }
-    }
-  )
-}
-
-fn guarded_union_str_bindings_into_overlay(
-  acc: Map<String, TypeBinding>,
-  overlay: Map<String, TypeBinding>,
-  import_path: String,
-  conflicts: List<TypeEnvCacheMergeConflict>
-) -> GuardedStrBindingsUnion {
-  fold(acc |> map_keys, init: GuardedStrBindingsUnion { bindings: overlay, conflicts: conflicts }, f: (state, name) =>
-    match map_get(acc, name) {
-      Absent => state
-      Present { value: accumulated } =>
-        match map_get(state.bindings, name) {
-          Absent => GuardedStrBindingsUnion {
-            bindings: map_insert(state.bindings, name, accumulated),
-            conflicts: state.conflicts
-          }
-          Present { value: incoming } =>
-            if binding_same_authority(a: accumulated, b: incoming) {
-              state
-            } else {
-              GuardedStrBindingsUnion {
-                bindings: state.bindings,
-                conflicts: concat(state.conflicts, [TypeEnvCacheMergeConflict { name: name, import_path: import_path, existing_site: accumulated.resolved.span.file, incoming_site: incoming.resolved.span.file, span: incoming.resolved.span, same_tree: source_tree_of(file: accumulated.resolved.span.file) == source_tree_of(file: incoming.resolved.span.file) }])
-              }
-            }
-        }
-    }
-  )
-}
-
-fn guarded_union_str_bindings(
-  acc: Map<String, TypeBinding>,
-  overlay: Map<String, TypeBinding>,
-  import_path: String,
-  conflicts: List<TypeEnvCacheMergeConflict>
-) -> GuardedStrBindingsUnion {
-  if (acc |> count) >= (overlay |> count) {
-    guarded_union_str_bindings_into_acc(acc: acc, overlay: overlay, import_path: import_path, conflicts: conflicts)
-  } else {
-    guarded_union_str_bindings_into_overlay(acc: acc, overlay: overlay, import_path: import_path, conflicts: conflicts)
-  }
-}
-
-type GuardedStrBindingsUnion {
-  bindings: Map<String, TypeBinding>
-  conflicts: List<TypeEnvCacheMergeConflict>
-}
 
 fn union_deps_map_into_acc(acc: Map<String, List<String>>, overlay: Map<String, List<String>>) -> Map<String, List<String>> {
   fold(overlay |> map_keys, init: acc, f: (m, name) =>
@@ -593,26 +830,18 @@ fn union_variant_locals_skip_equal(acc: Map<String, TypeBinding>, overlay: Map<S
 
 fn merge_type_env_cache_guarded(
   base: TypeEnvCache,
-  overlay: TypeEnvCache,
-  import_path: String,
-  conflicts: List<TypeEnvCacheMergeConflict>
-) -> GuardedTypeEnvCacheMerge {
-  let str_union = guarded_union_str_bindings(acc: base.str_bindings, overlay: overlay.str_bindings, import_path: import_path, conflicts: conflicts)
-  GuardedTypeEnvCacheMerge {
-    cache: TypeEnvCache {
-      deps_map: union_deps_map_skip_equal(acc: base.deps_map, overlay: overlay.deps_map),
-      str_bindings: str_union.bindings,
-      cycle_set_str: union_bool_set_skip_equal(acc: base.cycle_set_str, overlay: overlay.cycle_set_str),
-      variant_locals: union_variant_locals_skip_equal(acc: base.variant_locals, overlay: overlay.variant_locals)
-    },
-    conflicts: str_union.conflicts
+  overlay: TypeEnvCache
+) -> TypeEnvCache {
+  TypeEnvCache {
+    deps_map: union_deps_map_skip_equal(acc: base.deps_map, overlay: overlay.deps_map),
+    cycle_set_str: union_bool_set_skip_equal(acc: base.cycle_set_str, overlay: overlay.cycle_set_str),
+    variant_locals: union_variant_locals_skip_equal(acc: base.variant_locals, overlay: overlay.variant_locals)
   }
 }
 
 fn merge_type_env_cache(base: TypeEnvCache, overlay: TypeEnvCache) -> TypeEnvCache {
   TypeEnvCache {
     deps_map: map_merge(base.deps_map, overlay.deps_map),
-    str_bindings: map_merge(base.str_bindings, overlay.str_bindings),
     cycle_set_str: map_merge(base.cycle_set_str, overlay.cycle_set_str),
     variant_locals: map_merge(base.variant_locals, overlay.variant_locals)
   }
@@ -638,7 +867,7 @@ fn str_bindings_from_bindings(bindings: Map<Int, TypeBinding>) -> Map<String, Ty
 fn lookup_binding_on_chain(env: TypeEnv, name: String) -> TypeBinding? {
   match map_get(env.str_bindings, name) {
     Present { value: binding } => Present { value: binding }
-    Absent => map_get(env.ancestry_str_bindings, name)
+    Absent => ancestry_lookup(view: env.ancestry, name: name)
   }
 }
 
@@ -1318,7 +1547,7 @@ fn put_inductive_field_cross(fields: Map<String, List<InductiveField>>, type_nam
 // lists SKIP (the sharing fast path - absent keys insert the incoming list Rc directly, never
 // concat-with-empty), and every list is duplicate-free by induction (local collection is
 // duplicate-free; merges never append a present fact). Genuinely new fields still append in the
-// pre-cut encounter order. Same treatment class as guarded_union_str_bindings' skip-if-equal (#6487
+// pre-cut encounter order. Same treatment class as the cache unions' skip-if-equal (#6487
 // cut 2); receipts on the throughline doc.
 
 fn recursion_shape_key(shape: RecursionShape) -> String {
@@ -1381,7 +1610,7 @@ fn env_with_type_variable_bindings(env: TypeEnv, tp_names: List<String>) -> Type
     TypeEnv { module_path: e.module_path,
       bindings: map_insert(e.bindings, intern(table: e.intern_table, s: tp_name).id, tp_binding),
       str_bindings: map_insert(e.str_bindings, tp_name, tp_binding),
-      ancestry_str_bindings: e.ancestry_str_bindings,
+      ancestry: e.ancestry,
       parents: e.parents,
       recursive_types: e.recursive_types,
       recursive_type_set: e.recursive_type_set,
@@ -1406,7 +1635,7 @@ fn census_declaration_type_env(census: SymbolIndex, module_path: String, tp_name
     module_path: module_path,
     bindings: empty_map(),
     str_bindings: empty_map(),
-    ancestry_str_bindings: empty_map(),
+    ancestry: empty_ancestry_view(),
     parents: [],
     recursive_types: [],
     recursive_type_set: empty_map(),
