@@ -2468,3 +2468,94 @@ fn claim_differential_blocks(d: ClaimDifferential) -> Bool {
 type BaselineStanding
   = BaselineRead { main_sha: String }
   | BaselineMissingRanAtMergeBase { main_sha: String, cause: String }
+
+// THE BASELINE'S READER. Its only producer today is the merge base: no per-landing baseline store
+// exists yet, so every run reaches the BaselineMissingRanAtMergeBase arm and says so by name. The
+// rendered line is what the floor prints, so a reader of the run sees which arm the base came from
+// and, when it was run, why. `BaselineRead` gains its producer with the store; until then it is
+// the declared frontier this note names, and its trigger is a baseline written per landing on the
+// merge group's composed revision, keyed (main sha, claim identity).
+fn baseline_standing_line(b: BaselineStanding) -> String {
+  match b {
+    BaselineRead { main_sha: s } => concat("baseline=read main_sha=", s)
+    BaselineMissingRanAtMergeBase { main_sha: s, cause: c } =>
+      concat(concat(concat("baseline=missing-ran-at-merge-base main_sha=", s), " cause="), c)
+  }
+}
+
+fn reach_baseline_ran_at_merge_base_line(main_sha: String, cause: String) -> String {
+  baseline_standing_line(b: BaselineMissingRanAtMergeBase { main_sha: main_sha, cause: cause })
+}
+
+// THE HOST WIRE FOR ONE REACHED CLAIM. The host holds two standing NAMES it observed, never a
+// verdict: the verdict and whether it blocks are claim_differential and claim_differential_blocks,
+// here and nowhere else. A name this module does not know refuses through StandingNotParsed rather
+// than defaulting to a standing that could hide a regression.
+type ParsedClaimStanding
+  = StandingParsed { standing: ClaimStanding }
+  | StandingNotParsed { name: String }
+
+fn claim_standing_named(name: String) -> ParsedClaimStanding {
+  if name == "passed" {
+    StandingParsed { standing: StandingPassed }
+  } else if name == "failed" {
+    StandingParsed { standing: StandingFailed }
+  } else if name == "not_declared" {
+    StandingParsed { standing: StandingNotDeclared }
+  } else {
+    StandingNotParsed { name: name }
+  }
+}
+
+fn claim_differential_name(d: ClaimDifferential) -> String {
+  match d {
+    DifferentialHeld => "held"
+    DifferentialRegressed { head: _ } => "regressed"
+    DifferentialStillRed => "still_red"
+    DifferentialRepaired => "repaired"
+    DifferentialNewClaim { head: _ } => "new_claim"
+    DifferentialRemoved => "removed"
+  }
+}
+
+type ReachClaimVerdict
+  = ReachVerdict { differential: String, blocks: Bool }
+  | ReachVerdictRefused { reason: String }
+
+fn reach_claim_verdict(base: String, head: String) -> ReachClaimVerdict {
+  match claim_standing_named(name: base) {
+    StandingNotParsed { name: b } => ReachVerdictRefused { reason: concat("unknown base standing ", b) }
+    StandingParsed { standing: bs } =>
+      match claim_standing_named(name: head) {
+        StandingNotParsed { name: h } => ReachVerdictRefused { reason: concat("unknown head standing ", h) }
+        StandingParsed { standing: hs } =>
+          ReachVerdict {
+            differential: claim_differential_name(d: claim_differential(base: bs, head: hs)),
+            blocks: claim_differential_blocks(d: claim_differential(base: bs, head: hs))
+          }
+      }
+  }
+}
+
+// WHETHER A BLOCKING VERDICT STOPS THE REQUIRED RUN. The verdicts above are decided and printed on
+// every run. Making them merge-blocking is gated on the cost of running the base arm, which is
+// being measured (neat-boar-16, srv1, 2026-10-01, a typical subject and the gunbc#12582 reach of
+// 5132 witness declarations). Until that ruling, a blocking verdict is reported by name as
+// would_block and does not fail the run. When it is ruled, this becomes DifferentialBlocking with
+// the base arm's budget, and an arm over that budget refuses with a typed cause and never
+// truncates. There is no flag that changes this.
+type ReachDifferentialStanding
+  = DifferentialBlocking { base_arm_wall_budget_ms: Int }
+  | DifferentialReportOnly { pending: String }
+
+data reach_differential_standing: ReachDifferentialStanding = DifferentialReportOnly {
+  pending: "the operator cost ruling on the base arm, measured by neat-boar-16 on srv1 (2026-10-01)"
+}
+
+// The host wire: 0 means report-only, and a positive value is the blocking arm's wall budget.
+fn reach_differential_blocking_budget_ms() -> Int {
+  match reach_differential_standing {
+    DifferentialBlocking { base_arm_wall_budget_ms: b } => b
+    DifferentialReportOnly { pending: _ } => 0
+  }
+}

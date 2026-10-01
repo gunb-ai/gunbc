@@ -92,6 +92,7 @@ pub mod declaration_index;
 pub mod derived_row_roster;
 mod emitted_crate_workspace_host;
 mod native_lane_runner;
+pub mod reach_base_standings;
 pub mod required_ci_measurement;
 mod required_floor_runner;
 mod required_lane_roster;

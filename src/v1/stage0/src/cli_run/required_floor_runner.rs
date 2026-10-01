@@ -9498,6 +9498,22 @@ pub fn run_required_floor(
     // over a folded manifest plausibly does. Whether that is what this recovers is exactly what
     // the next run says, and if the step survives then the cost is elsewhere and this was still
     // correct — an unread value held across the longest phase of the program has no defence.
+    // THE REACH DIFFERENTIAL'S STANDING is read here, while the policy frame is alive, because
+    // the frame is released on the next line and the differential is decided after the fold.
+    let reach_blocking_budget_ms = match v1_interpreter::run_in_context(
+        &hermetic,
+        "v2.workflow.required_floor.reach_differential_blocking_budget_ms",
+        false,
+    ) {
+        Ok(v1_interpreter::Value::Int(n)) if n >= 0 => n as u64,
+        other => {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=ReachDifferentialStandingUnreadable \
+                 reach_differential_blocking_budget_ms returned {}",
+                floor_value_shape(other.as_ref().ok())
+            ))
+        }
+    };
     drop(hermetic);
     drop(policy_scope);
 
@@ -10901,19 +10917,190 @@ pub fn run_required_floor(
     // THE HEAD SIDE OF THE PER-PR v2 DIFFERENTIAL. Observed and published; the base side and
     // the blocking join arrive with the main-sha baseline (adhoc-be476b8f-943 follow-up).
     reach_head_standings.sort();
-    for (identity, passed) in &reach_head_standings {
-        eprintln!(
-            "[floor-reach-differential] identity={identity} head={} base=unread",
-            if *passed { "passed" } else { "failed" }
-        );
+    // THE BASE SIDE AND THE VERDICT. Head standings were observed above. The base standing for
+    // exactly these identities comes from a separate process at the diff base
+    // (`reach_base_standings`), and each verdict, and whether it blocks, is
+    // `v2.workflow.required_floor` `reach_claim_verdict`, which delegates to `claim_differential`
+    // and `claim_differential_blocks`. This function decides neither (review 72143).
+    if !reach_head_standings.is_empty() {
+        let diff_base: Option<String> = compile_subject.as_ref().and_then(|subject| match &subject
+            .interface_consumers
+        {
+            InterfaceConsumerPlanning::Selected { base, .. } => Some(base.clone()),
+            _ => None,
+        });
+        let blocking_budget_ms = reach_blocking_budget_ms;
+        // A FRAME OVER THE DIFFERENTIAL'S OWN AUTHORITY, built only when there are reached
+        // claims: the policy frame was released before the fold (see the drop above).
+        let verdict_frame = {
+            let entry = process_workspace_root().join("src/v2/workflow/required_floor.dag");
+            let (graph, indices) =
+                resolve_entry_graph_shared(source_roots, &entry.to_string_lossy())
+                    .map_err(|e| format!("reach differential authority resolve: {e}"))?;
+            make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic)
+        };
+        let identities: Vec<String> = reach_head_standings
+            .iter()
+            .map(|(i, _)| i.clone())
+            .collect();
+        // REPORT-ONLY DOES NOT PAY FOR THE BASE ARM. The standing exists because the base arm's
+        // cost is under ruling, and running it without blocking would charge every PR that cost
+        // ahead of the ruling while deciding nothing. So the run names what it did not do.
+        let base_arm = if blocking_budget_ms == 0 {
+            Err(
+                "BaseArmNotRun reach_differential_standing is DifferentialReportOnly, pending the \
+                 operator cost ruling"
+                    .to_string(),
+            )
+        } else {
+            match &diff_base {
+                Some(base) => run_reach_base_arm(
+                    source_roots,
+                    base,
+                    &identities,
+                    claim_wall_safety_limit_ms,
+                    blocking_budget_ms,
+                ),
+                None => {
+                    Err("no diff base: the interface-consumer planning did not select".to_string())
+                }
+            }
+        };
+        let base_sha = diff_base.clone().unwrap_or_default();
+        let baseline_line = match v1_interpreter::run_in_context_with_args(
+            &verdict_frame,
+            "v2.workflow.required_floor.reach_baseline_ran_at_merge_base_line",
+            &[
+                (
+                    Some("main_sha".to_string()),
+                    v1_interpreter::str_value(&base_sha),
+                ),
+                (
+                    Some("cause".to_string()),
+                    v1_interpreter::str_value("no per-landing baseline store exists yet"),
+                ),
+            ],
+            false,
+        ) {
+            Ok(v1_interpreter::Value::Str(line)) => line.to_string(),
+            other => format!(
+                "baseline=unrendered ({})",
+                floor_value_shape(other.as_ref().ok())
+            ),
+        };
+        match base_arm {
+            Err(cause) => {
+                let failure = format!(
+                    "REACH-DIFFERENTIAL REFUSAL cause=BaseArmRefused {cause} -- the base side of \
+                     {} reached claims was not measured, so no verdict is read and none is \
+                     assumed",
+                    identities.len()
+                );
+                eprintln!("[floor-phase] phase=reach-differential {baseline_line} {failure}");
+                if blocking_budget_ms > 0 {
+                    outcome.failures.push(failure);
+                }
+            }
+            Ok(base) => {
+                let mut blocking: Vec<String> = Vec::new();
+                let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+                for (identity, head_passed) in &reach_head_standings {
+                    let base_name = base.get(identity).map(String::as_str).unwrap_or("missing");
+                    let head_name = if *head_passed { "passed" } else { "failed" };
+                    let verdict = v1_interpreter::run_in_context_with_args(
+                        &verdict_frame,
+                        "v2.workflow.required_floor.reach_claim_verdict",
+                        &[
+                            (
+                                Some("base".to_string()),
+                                v1_interpreter::str_value(base_name),
+                            ),
+                            (
+                                Some("head".to_string()),
+                                v1_interpreter::str_value(head_name),
+                            ),
+                        ],
+                        false,
+                    )
+                    .map_err(|e| format!("reach_claim_verdict({identity}): {e}"))?;
+                    let (differential, blocks) = match &verdict {
+                        v1_interpreter::Value::Variant {
+                            variant_name,
+                            fields,
+                            ..
+                        } if verdict_frame.sym_eq(*variant_name, "ReachVerdict") => {
+                            match (
+                                verdict_frame.field(fields, "differential"),
+                                verdict_frame.field(fields, "blocks"),
+                            ) {
+                                (
+                                    Some(v1_interpreter::Value::Str(d)),
+                                    Some(v1_interpreter::Value::Bool(b)),
+                                ) => (d.to_string(), *b),
+                                _ => {
+                                    return Err(format!(
+                                        "reach_claim_verdict({identity}): malformed ReachVerdict"
+                                    ))
+                                }
+                            }
+                        }
+                        v1_interpreter::Value::Variant {
+                            variant_name,
+                            fields,
+                            ..
+                        } if verdict_frame.sym_eq(*variant_name, "ReachVerdictRefused") => {
+                            let reason = match verdict_frame.field(fields, "reason") {
+                                Some(v1_interpreter::Value::Str(r)) => r.to_string(),
+                                _ => String::new(),
+                            };
+                            ("refused".to_string(), {
+                                blocking.push(format!("{identity} refused: {reason}"));
+                                true
+                            })
+                        }
+                        other => {
+                            return Err(format!(
+                                "reach_claim_verdict({identity}) returned an arm this host does \
+                                 not know: {}",
+                                verdict_frame.format_value(other)
+                            ))
+                        }
+                    };
+                    *counts.entry(differential.clone()).or_default() += 1;
+                    eprintln!(
+                        "[floor-reach-differential] identity={identity} base={base_name} \
+                         head={head_name} differential={differential} blocks={blocks}"
+                    );
+                    if blocks && differential != "refused" {
+                        blocking.push(format!("{identity} {differential} (base={base_name})"));
+                    }
+                }
+                let mode = if blocking_budget_ms > 0 {
+                    "blocking"
+                } else {
+                    "report_only"
+                };
+                eprintln!(
+                    "[floor-phase] phase=reach-differential {baseline_line} mode={mode} \
+                     planned={} verdicts={counts:?} {}={}",
+                    reach_head_standings.len(),
+                    if blocking_budget_ms > 0 {
+                        "blocking"
+                    } else {
+                        "would_block"
+                    },
+                    blocking.len()
+                );
+                if blocking_budget_ms > 0 {
+                    for b in blocking {
+                        outcome.failures.push(format!("reach-differential: {b}"));
+                    }
+                }
+            }
+        }
+    } else {
+        eprintln!("[floor-phase] phase=reach-differential planned=0");
     }
-    eprintln!(
-        "[floor-phase] phase=reach-differential planned={} head_passed={} head_failed={} \
-         blocking=none (base side not yet read)",
-        reach_head_standings.len(),
-        reach_head_standings.iter().filter(|(_, p)| *p).count(),
-        reach_head_standings.iter().filter(|(_, p)| !*p).count()
-    );
     outcome.route_gap_held = route_gap_held;
     outcome.known_red_now_passing = known_red_now_passing;
     outcome.known_red_budget_refused = known_red_budget_refused;
@@ -16501,4 +16688,132 @@ fn declared_no_ci_wet_lane_population() -> &'static std::collections::HashSet<St
         .into_iter()
         .collect()
     })
+}
+
+/// Run the base side of the reach differential: a detached worktree at `base`, this binary in
+/// `--reach-base-standings` mode with its working directory there, and the standings it prints.
+/// Every failure to produce a COMPLETE set of standings is an `Err` the caller reports by name;
+/// no identity gets a default standing. With a positive `budget_ms` the whole arm is bounded by
+/// it and an arm over it refuses (`BaseArmOverBudget`), never truncating to the claims that
+/// finished.
+fn run_reach_base_arm(
+    source_roots: &[String],
+    base: &str,
+    identities: &[String],
+    claim_wall_limit_ms: u64,
+    budget_ms: u64,
+) -> Result<HashMap<String, String>, String> {
+    let root = process_workspace_root();
+    let scratch = root.join(format!("target/reach_base_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&scratch);
+    let worktree = scratch.join("tree");
+    std::fs::create_dir_all(&scratch).map_err(|e| format!("reach base scratch: {e}"))?;
+    let identities_file = scratch.join("identities.txt");
+    std::fs::write(&identities_file, identities.join("\n"))
+        .map_err(|e| format!("reach base identities: {e}"))?;
+    let added = std::process::Command::new("git")
+        .current_dir(&root)
+        .args(["worktree", "add", "--detach", "--quiet"])
+        .arg(&worktree)
+        .arg(base)
+        .status()
+        .map_err(|e| format!("git worktree add: {e}"))?;
+    if !added.success() {
+        return Err(format!("git worktree add at {base} exited {added}"));
+    }
+    let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
+    let mut command = std::process::Command::new(exe);
+    command.current_dir(&worktree);
+    for r in source_roots {
+        let rel = std::path::Path::new(r)
+            .strip_prefix(&root)
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|_| r.clone());
+        command.arg("--source-root").arg(rel);
+    }
+    command
+        .arg("--reach-base-standings")
+        .arg(&identities_file)
+        .arg("--claim-wall-limit-ms")
+        .arg(claim_wall_limit_ms.to_string())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::inherit());
+    let started = std::time::Instant::now();
+    let mut child = command
+        .spawn()
+        .map_err(|e| format!("spawn base arm: {e}"))?;
+    let status = loop {
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|e| format!("base arm wait: {e}"))?
+        {
+            break status;
+        }
+        if budget_ms > 0 && started.elapsed().as_millis() as u64 > budget_ms {
+            let _ = child.kill();
+            let _ = child.wait();
+            remove_reach_base_worktree(&root, &worktree, &scratch);
+            return Err(format!(
+                "BaseArmOverBudget wall_ms>{budget_ms} identities={}",
+                identities.len()
+            ));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    };
+    let mut stdout = String::new();
+    if let Some(mut out) = child.stdout.take() {
+        use std::io::Read;
+        let _ = out.read_to_string(&mut stdout);
+    }
+    let wall_ms = started.elapsed().as_millis();
+    remove_reach_base_worktree(&root, &worktree, &scratch);
+    eprintln!(
+        "[floor-phase] phase=reach-base-arm base={base} identities={} wall_ms={wall_ms} exit={status}",
+        identities.len()
+    );
+    if let Some(line) = stdout
+        .lines()
+        .find(|l| l.starts_with("reach-base-refused "))
+    {
+        return Err(format!("BaseArmNotAVerdict {line}"));
+    }
+    if !status.success() {
+        return Err(format!("BaseArmFailed exit={status}"));
+    }
+    let mut standings: HashMap<String, String> = HashMap::new();
+    for line in stdout.lines() {
+        let Some(rest) = line.strip_prefix("reach-base identity=") else {
+            continue;
+        };
+        let Some((identity, standing)) = rest.split_once(" standing=") else {
+            return Err(format!("BaseArmUnparseable {line:?}"));
+        };
+        standings.insert(identity.to_string(), standing.to_string());
+    }
+    let missing: Vec<&String> = identities
+        .iter()
+        .filter(|i| !standings.contains_key(*i))
+        .collect();
+    if !missing.is_empty() {
+        return Err(format!(
+            "BaseArmIncomplete {} of {} identities have no standing, first {:?}",
+            missing.len(),
+            identities.len(),
+            missing.first()
+        ));
+    }
+    Ok(standings)
+}
+
+fn remove_reach_base_worktree(
+    root: &std::path::Path,
+    worktree: &std::path::Path,
+    scratch: &std::path::Path,
+) {
+    let _ = std::process::Command::new("git")
+        .current_dir(root)
+        .args(["worktree", "remove", "--force"])
+        .arg(worktree)
+        .status();
+    let _ = std::fs::remove_dir_all(scratch);
 }
