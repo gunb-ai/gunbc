@@ -25,3 +25,9 @@ Ordinary eager workflow regeneration exceeded 12 GiB while evaluating unrelated 
 No production install, commissioning, initial readiness, allocation, VM boot, SSH, release or reuse is claimed by these controls. The next gate is complete source qualification, followed by the reviewed installation/commissioning and live acceptance sequence.
 
 Workflow generation and its provenance-header producer both completed with exit 0. Their outputs were concatenated exactly as `generated_artifact_emit` does. The parsed final YAML has one commissioning plan step, both admission environment bindings, the shared artifact upload, and the canonical 15-minute planning bound. `workflow-projection.json` records its content hash. No YAML body was hand-authored.
+
+## First remote qualification and upstream reconciliation
+
+Run 36812719719 at `67f9dc5196a` reached the floor gate, which refused one retirement regression relative to current main: `cargo_build_run_argv_witness_test.dag#SubstrateInputsOnly` was still active debt on this branch after main retired it. The exact source/import and retirement-row changes from upstream `96744f2f8be` (#12860) were backported together; no gate was relaxed. The Cargo argument witness passes (1/1, exit 0) under 6 GiB/no swap. Other changes in that upstream commit concern unrelated gate policy and were not imported.
+
+Read-only commissioning plan run 36812837783 built successfully, but its srv1 job was cancelled before runner assignment. GitHub's annotation says: `Canceling since a higher priority waiting request for gunbc-host-mutation-srv1 exists`. No host observation or apply occurred. The shared fleet lane must be available before retrying; no runner service or competing run was changed.
