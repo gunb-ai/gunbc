@@ -1427,7 +1427,7 @@ fn vllm_image_deliver_to_host(
   let ctx = vllm_image_target_ctx(source_ctx: source_ctx, host: host)
   let want = render_oci_content_digest_wire(d: image.config)
   let blob = fabric_blob_path(hex: tar_hex)
-  match vllm_image_target_disk_refusal(ctx: ctx, size: size) {
+  match vllm_image_target_disk_refusal_after_root(ctx: ctx, size: size) {
     Present { value: why } => VllmImageHostDeliveryRefused { host: host, step: "deliver-disk" as NonEmptyStr, cause: why }
     Absent =>
       match vllm_image_pull_outcome(outcome: acquire_artifact(
@@ -1456,6 +1456,21 @@ fn vllm_image_deliver_to_host(
               }
           }
       }
+  }
+}
+
+// THE BLOB ROOT EXISTS BEFORE ITS FREE SPACE IS READ. df answers for an existing path, and a host
+// that has never held a blob has no root yet -- so the first wet run (fleet-converge 36908917446)
+// refused at the disk read with `df: /var/lib/gunbc/blobs: No such file or directory` before a byte
+// moved. Creating the directories is idempotent and is what every later leg needs anyway.
+fn vllm_image_blob_directories_command() -> ArgvCommand {
+  mkdir_parents_command_at(mkdir_binary: mkdir_path_resolved_program, path: fabric_blob_staging_directory as String)
+}
+
+fn vllm_image_target_disk_refusal_after_root(ctx: SparkMaterializeContext, size: ByteSize) -> String? {
+  match vllm_docker_leg(ctx: ctx, step: "deliver-staging" as NonEmptyStr, command: vllm_image_blob_directories_command()) {
+    ImageLegFailed { step: st, cause: why } => Present { value: join([st as String, ": ", why], "") }
+    ImageLegRan { stdout: _ } => vllm_image_target_disk_refusal(ctx: ctx, size: size)
   }
 }
 
@@ -1566,12 +1581,12 @@ fn vllm_image_move(
 ) -> VllmImageDistribution
 {
   let tar = vllm_image_transfer_tar_path(config: image.config)
-  match vllm_image_remote_disk_refusal(ctx: source_ctx, step: "distribute-disk-source" as NonEmptyStr, path: fabric_blob_root, required: vllm_image_copies(size: size, copies: 1)) {
-    Present { value: why } => VllmImageDistributionRefused { step: "distribute-disk" as NonEmptyStr, cause: why }
-    Absent =>
-      match vllm_docker_leg(ctx: source_ctx, step: "distribute-staging" as NonEmptyStr, command: mkdir_parents_command_at(mkdir_binary: mkdir_path_resolved_program, path: fabric_blob_staging_directory as String)) {
-        ImageLegFailed { step: st, cause: why } => VllmImageDistributionRefused { step: st, cause: why }
-        ImageLegRan { stdout: _ } =>
+  match vllm_docker_leg(ctx: source_ctx, step: "distribute-staging" as NonEmptyStr, command: vllm_image_blob_directories_command()) {
+    ImageLegFailed { step: st, cause: why } => VllmImageDistributionRefused { step: st, cause: why }
+    ImageLegRan { stdout: _ } =>
+      match vllm_image_remote_disk_refusal(ctx: source_ctx, step: "distribute-disk-source" as NonEmptyStr, path: fabric_blob_root, required: vllm_image_copies(size: size, copies: 1)) {
+        Present { value: why } => VllmImageDistributionRefused { step: "distribute-disk" as NonEmptyStr, cause: why }
+        Absent =>
           match vllm_docker_leg(ctx: source_ctx, step: "distribute-save" as NonEmptyStr, command: docker_image_save_command(image: image.tag, output_path: tar)) {
             ImageLegFailed { step: st, cause: why } => VllmImageDistributionRefused { step: st, cause: why }
             ImageLegRan { stdout: _ } =>
