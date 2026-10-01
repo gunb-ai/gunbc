@@ -888,12 +888,14 @@ type DeclarationOwners
   = DeclarationOwnersRead { modules: FreeMonoid<QualifiedName>, seen: Map<QualifiedName, Bool> }
   | DeclarationOwnerOutsideIngest { at: Node }
 
-fn declaration_closure(shared: ResolutionContext, validate_diag: Diagnostics, root: Node) -> DeclarationClosureDemand {
+// The subject's own module is always in its snapshot, first: a module's declarations are its own
+// readers' first need, whether or not its tree references one of them.
+fn declaration_closure(shared: ResolutionContext, validate_diag: Diagnostics, subject: QualifiedName, root: Node) -> DeclarationClosureDemand {
   match declaration_owners(by_name: shared.roots.by_name, n: root, acc: DeclarationOwnersRead { modules: Empty, seen: empty_map() }) {
     DeclarationOwnerOutsideIngest { at: at } =>
       DeclarationClosureDemand { snapshot: Rejected { diagnostics: declaration_outside_ingest_diagnostic(at: at) }, context: shared }
     DeclarationOwnersRead { modules: modules, seen: _ } =>
-      declaration_closure_walk(shared: shared, validate_diag: validate_diag, queue: modules, snapshot: resolved_declarations_empty())
+      declaration_closure_walk(shared: shared, validate_diag: validate_diag, queue: Cons { head: subject, tail: modules }, snapshot: resolved_declarations_empty())
   }
 }
 
@@ -1110,7 +1112,7 @@ fn resolve_in_context(context: Outcome<ResolutionContext>, admission: Admission)
         ResolveWalkRefused { first: f, rest: _, observation: _ } =>
           ContextResolved { resolved: Rejected { diagnostics: f }, context: walked.context }
         ResolveWalkAccepted { value: root, diagnostics: d } =>
-          resolved_tree_in_context(shared: shared, validate_diag: validate_diag, root: root, diagnostics: d)
+          resolved_tree_in_context(shared: shared, validate_diag: validate_diag, subject: admission.subject.name, root: root, diagnostics: d)
       }
   }
 }
@@ -1121,10 +1123,11 @@ fn resolve_in_context(context: Outcome<ResolutionContext>, admission: Admission)
 fn resolved_tree_in_context(
   shared: ResolutionContext,
   validate_diag: Diagnostics,
+  subject: QualifiedName,
   root: Node,
   diagnostics: Diagnostics
 ) -> ContextResolved {
-  let closure = declaration_closure(shared: shared, validate_diag: validate_diag, root: root)
+  let closure = declaration_closure(shared: shared, validate_diag: validate_diag, subject: subject, root: root)
   ContextResolved {
     resolved: match closure.snapshot {
       Rejected { diagnostics: r } => Rejected { diagnostics: rejected_with_pending(pending: diagnostics, rejected: r) }

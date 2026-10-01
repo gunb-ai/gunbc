@@ -4,6 +4,7 @@ import v2.compiler.resolve { ResolvedTree, resolve_declaration_targets, resolved
 import v2.compiler.name_resolve {
   Admission,
   ContextResolved,
+  DeclarationBodies,
   ResolutionContext,
   ResolutionSubject,
   resolution_context,
@@ -20,7 +21,7 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.logic { Bool }
-import v2.std.optional { Absent, Optional, Present }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.node { Node, Symbol, node_subtree_nodes }
 import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, qualified_name_from_dotted_string }
 import v2.std.algebra { any }
@@ -174,31 +175,62 @@ test fn dbp_each_module_is_produced_once_per_context_holds() -> Bool {
 // own snapshot as the identical node dbp_c's snapshot holds, and dbp_b's own resolved root carries,
 // at DbpMid, exactly the provider's stored declaration: the module grafted it rather than resolving
 // it again.
-test fn dbp_snapshot_and_graft_are_the_provider_entry_holds() -> Bool {
-  let after_c = dbp_c_resolved()
-  let after_b = dbp_resolve(context: after_c.context, dotted: "v2.test.dbp_b")
-  match after_c.resolved {
+fn dbp_b_after_c() -> ContextResolved {
+  dbp_resolve(context: dbp_c_resolved().context, dotted: "v2.test.dbp_b")
+}
+
+fn dbp_snapshot_entries_agree() -> Bool {
+  match dbp_c_resolved().resolved {
     Rejected { diagnostics: _ } => false
     Accepted { value: c_tree, diagnostics: _ } =>
-      match after_b.resolved {
+      match dbp_b_after_c().resolved {
         Rejected { diagnostics: _ } => false
         Accepted { value: b_tree, diagnostics: _ } =>
-          match after_b.context {
-            Rejected { diagnostics: _ } => false
-            Accepted { value: shared, diagnostics: _ } =>
-              match map_lookup(m: shared.declaration_bodies, key: dbp_qn(dotted: "v2.test.dbp_b")) {
-                Absent => false
-                Present { value: stored } =>
-                  match stored {
-                    Rejected { diagnostics: _ } => false
-                    Accepted { value: bodies, diagnostics: _ } =>
-                      let mid = dbp_qn(dotted: "v2.test.dbp_b.DbpMid")
-                      dbp_mid_leaf(tree: b_tree) == dbp_mid_leaf(tree: c_tree)
-                        && map_lookup(m: resolve_declaration_targets(root: b_tree.root, module_qn: dbp_qn(dotted: "v2.test.dbp_b")), key: mid)
-                          == map_lookup(m: bodies.declarations, key: mid)
-                  }
-              }
+          match dbp_mid_leaf(tree: b_tree) {
+            Absent => false
+            Present { value: from_b } => dbp_mid_leaf(tree: c_tree) == optional_present(value: from_b)
           }
       }
   }
 }
+
+// The provider's stored value, read through its own door: a hit returns what is stored and builds
+// nothing, so the count it returns with is the count it was handed.
+fn dbp_stored_mid() -> Optional<Node> {
+  match dbp_b_after_c().context {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: shared, diagnostics: _ } =>
+      let demand = resolution_context_declaration_bodies(shared: shared, validate_diag: None, owner: dbp_qn(dotted: "v2.test.dbp_b"))
+      if demand.context.declaration_bodies_built == shared.declaration_bodies_built {
+        dbp_stored_declaration(bodies: demand.bodies, path: dbp_qn(dotted: "v2.test.dbp_b.DbpMid"))
+      } else {
+        optional_absent()
+      }
+  }
+}
+
+fn dbp_stored_declaration(bodies: Outcome<DeclarationBodies>, path: QualifiedName) -> Optional<Node> {
+  match bodies {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: b, diagnostics: _ } => map_lookup(m: b.declarations, key: path)
+  }
+}
+
+fn dbp_grafted_mid() -> Optional<Node> {
+  match dbp_b_after_c().resolved {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: b_tree, diagnostics: _ } =>
+      map_lookup(m: resolve_declaration_targets(root: b_tree.root, module_qn: dbp_qn(dotted: "v2.test.dbp_b")), key: dbp_qn(dotted: "v2.test.dbp_b.DbpMid"))
+  }
+}
+
+test fn dbp_snapshot_and_graft_are_the_provider_entry_holds() -> Bool {
+  let stored = dbp_stored_mid()
+  let grafted = dbp_grafted_mid()
+  let stored_present = match stored {
+    Present { value: _ } => true
+    Absent => false
+  }
+  dbp_snapshot_entries_agree() && stored_present && grafted == stored
+}
+

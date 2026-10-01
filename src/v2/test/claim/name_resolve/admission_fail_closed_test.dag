@@ -33,6 +33,7 @@ import v2.std.collection { empty_map }
 import v2.std.diagnostic {
   Accepted,
   None,
+  diagnostics_fatal_reason,
   Outcome,
   Rejected,
   bind_outcome,
@@ -73,6 +74,10 @@ fn fc_qn_node(seg: Symbol) -> Node {
   )
 }
 
+// THE EXPORT IS A RESOLVABLE DECLARATION: an empty product. A subject that references it reaches its
+// declaration through the declaration snapshot (v2.compiler.name_resolve declaration_closure), which
+// resolves the exporting module's declarations, so an export spelled as a bare atom nothing binds
+// would refuse every importer -- correctly, and beside these claims' subject.
 fn fc_module_root_export(seg: Symbol, export_sym: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -88,9 +93,7 @@ fn fc_module_root_export(seg: Symbol, export_sym: Symbol) -> Node {
       Edge {
         label: Named { name: export_sym },
         target: Node {
-          kind: TypeNode {
-            connective: Atom { identity: ^dag_token_ident }
-          },
+          kind: TypeNode { connective: Conj },
           children: [],
           occurrence_id: OccurrenceSynthetic
 }
@@ -668,3 +671,4 @@ test fn keyed_validation_malformed_precedes_duplicate() -> Bool {
     }
   })
 }
+

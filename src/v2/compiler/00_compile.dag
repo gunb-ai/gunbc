@@ -3290,7 +3290,7 @@ fn native_module_resolve_verdict(
         ResolveWalkAccepted { value: root, diagnostics: d } =>
           match step.context.resolution {
             Accepted { value: shared, diagnostics: validate_diag } =>
-              let resolved = resolved_tree_in_context(shared: shared, validate_diag: validate_diag, root: root, diagnostics: d)
+              let resolved = resolved_tree_in_context(shared: shared, validate_diag: validate_diag, subject: qualified_name_from_dotted_string(dotted: module), root: root, diagnostics: d)
               NativeModuleResolveStep {
                 verdict: match resolved.resolved {
                   Accepted { value: tree, diagnostics: _ } => NativeModuleResolveAccepted { resolved: tree }
