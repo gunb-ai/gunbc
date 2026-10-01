@@ -286,7 +286,7 @@ fn decode_stripe_event(raw_body: String) -> StripeEventDecode {
           } else {
             match stripe_member(v: doc, key: "data") {
               Absent => StripeEventUndecodable { reason: "event has no data" }
-              Present { value: data } => match stripe_member(v: data, key: "object") {
+              Present { value: event_data } => match stripe_member(v: event_data, key: "object") {
                 Absent => StripeEventUndecodable { reason: "event data has no object" }
                 Present { value: obj } => match decode_checkout_session(session: obj) {
                   Absent => StripeEventUndecodable { reason: "checkout session lacks a field this repository reads" }
