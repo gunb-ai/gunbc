@@ -1168,6 +1168,7 @@ pub(crate) fn new_multi_entry_index_shell(
         schedule_retention: RefCell::new(None),
         source_roots: source_roots.to_vec(),
         pool_parse: RefCell::new(None),
+        reference_pool_names: RefCell::new(None),
         pool_qualified_fill: RefCell::new(None),
         tree_bare_census: RefCell::new(std::collections::HashMap::new()),
         #[cfg(any(test, feature = "interp_test_witness"))]
@@ -2904,9 +2905,18 @@ impl ReferencePoolNames {
 /// The name index from the POOL CENSUS'S OWN heads reading (`pool_parse`), which every resolve
 /// through this index already forces for its qualified fill and bare census. A resolve therefore
 /// reads the pool's heads once, not once for the census and again for reference edges.
+///
+/// ONE DERIVATION PER INDEX. The index is a function of `pool_parse`, which this index holds for
+/// its life, and it is demanded once per out-of-tree bare name (`pool_census_for_name`) -- so its
+/// least common ancestor is the index, and it is derived there once rather than rebuilt from the
+/// whole pool's heads on every demand (measured: ~230ms per rebuild, 3,852 demands in one
+/// whole-pool admission).
 pub(crate) fn reference_pool_names_for_index(
     index: &MultiEntryIndex,
 ) -> Result<Rc<ReferencePoolNames>, String> {
+    if let Some(names) = index.reference_pool_names.borrow().clone() {
+        return Ok(names);
+    }
     let pool = pool_parse(index)?;
     let started = std::time::Instant::now();
     let names = Rc::new(ReferencePoolNames::from_heads_modules(
@@ -2919,6 +2929,7 @@ pub(crate) fn reference_pool_names_for_index(
         super::pre_entry_phase::PhaseScale::Tree,
         started.elapsed(),
     );
+    *index.reference_pool_names.borrow_mut() = Some(names.clone());
     Ok(names)
 }
 
@@ -4026,6 +4037,358 @@ mod heads_parse_count {
         eprintln!("HEADS keys={keys} max_parses_per_key={max}");
         assert!(keys > 5000, "the live pool was read ({keys} keys)");
         assert!(over.is_empty(), "heads parsed more than once: {over:?}");
+    }
+}
+
+/// THE CROSS-TREE CENSUS, over the whole live `[dag, src/v2]` pool: every import-less file's bare
+/// references resolved against its own tree census, with no whole-pool census. A name the tree
+/// does not provide but another tree does refuses (`CrossTreeBareReference`) exactly where the
+/// deleted fallback silently pulled a provider; this lists every such refusal, so the pool's
+/// dependence on the deleted fallback is counted, by identity, rather than argued. Before the
+/// change the fallback census found 13 pool-provided rows in 5 files: 12 the import migration in
+/// this change qualifies, and the builtin `get` the builtin arm now keeps from being pulled.
+#[cfg(test)]
+mod cross_tree_bare_census {
+    use super::*;
+    #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    fn no_import_less_file_reaches_across_trees_on_the_live_pool() {
+        let root = process_workspace_root();
+        let roots: Vec<String> = ["dag", "src/v2"]
+            .iter()
+            .map(|r| root.join(r).to_string_lossy().into_owned())
+            .collect();
+        let index = process_shared_index(&roots);
+        let mut sources: Vec<_> = index.source_files.values().cloned().collect();
+        sources.sort_by(|a, b| a.path.cmp(&b.path));
+        let mut scanned = 0usize;
+        let mut refusals: Vec<String> = Vec::new();
+        for sf in &sources {
+            if super::super::source_declares_import_lines(&sf.content) {
+                continue;
+            }
+            scanned += 1;
+            let r = super::super::visit_bare_reference_providers(
+                sf,
+                &index,
+                |root| super::super::closure_name_census(&index, root),
+                |_, _, _| Ok(()),
+            );
+            if let Err(e) = r {
+                refusals.push(e);
+            }
+        }
+        let pool_census_built = index.closure_name_censuses.borrow().contains_key(&None);
+        eprintln!(
+            "CROSSTREE scanned={scanned} refusals={} pool_census_built={pool_census_built}",
+            refusals.len()
+        );
+        for r in &refusals {
+            eprintln!("CROSSTREE refusal {r}");
+        }
+        assert!(scanned > 100, "the live pool was read ({scanned} files)");
+        assert!(
+            !pool_census_built,
+            "a bare resolution still built the whole-pool census"
+        );
+        assert!(
+            refusals.is_empty(),
+            "{} files reach across trees",
+            refusals.len()
+        );
+    }
+}
+
+#[cfg(test)]
+mod cross_tree_bare_reference_tests {
+    use super::*;
+
+    fn write(root: &Path, rel: &str, content: &str) {
+        let p = root.join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).expect("mkdir");
+        std::fs::write(&p, content).expect("write dag");
+    }
+
+    /// Two source trees. `a/user.dag` references `helper`, declared only in tree `b`, and a builtin
+    /// `get`, which tree `b` also declares as an ordinary function. Returns the admission verdict
+    /// of `a/user.dag`.
+    fn admit_user(tag: &str, user_imports: &str, call_helper: bool) -> Result<(), String> {
+        let base = process_workspace_root()
+            .join("target")
+            .join(format!("gunbc-crosstree-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (a, b) = (base.join("a"), base.join("b"));
+        let main_body = if call_helper { "helper()" } else { "1" };
+        write(
+            &b,
+            "helper.dag",
+            "module tb.helper\n\nfn helper() -> Int {\n  1\n}\n\nfn get(x: Int) -> Int {\n  x\n}\n",
+        );
+        write(
+            &a,
+            "user.dag",
+            &format!(
+                "module ta.user\n{user_imports}\nfn main() -> Int {{\n  {main_body}\n}}\n\nfn first() -> Bool {{\n  match get(xs: [1, 2], index: 0) {{\n    Present {{ value: _ }} => true\n    Absent => false\n  }}\n}}\n"
+            ),
+        );
+        let roots = vec![
+            a.to_string_lossy().into_owned(),
+            b.to_string_lossy().into_owned(),
+        ];
+        let index = build_multi_entry_index(&roots);
+        let user = index
+            .source_files
+            .values()
+            .find(|sf| sf.path.ends_with("a/user.dag"))
+            .cloned()
+            .expect("user source indexed");
+        let verdict = super::super::admit_bare_references_of_file(&index, &user);
+        let _ = std::fs::remove_dir_all(&base);
+        verdict
+    }
+
+    fn admit_user_qualified(tag: &str) -> Result<(), String> {
+        let base = process_workspace_root()
+            .join("target")
+            .join(format!("gunbc-crosstree-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (a, b) = (base.join("a"), base.join("b"));
+        write(
+            &b,
+            "helper.dag",
+            "module tb.helper\n\nfn helper() -> Int {\n  1\n}\n",
+        );
+        write(
+            &a,
+            "user.dag",
+            "module ta.user\n\nfn main() -> Int {\n  tb.helper.helper()\n}\n",
+        );
+        let roots = vec![
+            a.to_string_lossy().into_owned(),
+            b.to_string_lossy().into_owned(),
+        ];
+        let index = build_multi_entry_index(&roots);
+        let user = index
+            .source_files
+            .values()
+            .find(|sf| sf.path.ends_with("a/user.dag"))
+            .cloned()
+            .expect("user source indexed");
+        let verdict = super::super::admit_bare_references_of_file(&index, &user);
+        let _ = std::fs::remove_dir_all(&base);
+        verdict
+    }
+
+    /// THE RED: an unimported bare reference to a name only another source tree declares refuses,
+    /// typed and located, where the deleted pool fallback silently resolved it.
+    #[test]
+    fn an_unimported_cross_tree_bare_name_refuses() {
+        let err = admit_user("red", "", true).expect_err("a cross-tree bare reference must refuse");
+        assert!(err.contains("CrossTreeBareReference"), "{err}");
+        assert!(err.contains("'helper'"), "{err}");
+        assert!(err.contains("`tb.helper.helper`"), "{err}");
+    }
+
+    /// A BUILTIN IS NOT A CROSS-TREE REFERENCE: `get` is the builtin even though tree `b` declares
+    /// an ordinary `fn get`. The deleted fallback pulled that function in; the rule neither pulls
+    /// it nor refuses.
+    #[test]
+    fn a_builtin_named_like_another_trees_function_admits() {
+        admit_user("builtin", "", false).expect("the builtin get admits without a provider");
+    }
+
+    /// The positive control: the same reference written qualified (`tb.helper.helper()`) admits,
+    /// and the file stays import-less, so its other bare references are still followed.
+    #[test]
+    fn the_same_reference_written_qualified_admits() {
+        admit_user_qualified("green").expect("a qualified cross-tree reference admits");
+    }
+}
+
+/// The five files the cross-tree census enumerated resolve as entries over the live pool after
+/// the migration: the four that now reference across trees qualified, and the builtin `get` claim that no
+/// longer pulls another tree's `fn get`.
+#[cfg(test)]
+mod cross_tree_migrated_entries_resolve {
+    use super::*;
+    #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    fn migrated_entries_resolve_on_the_live_pool() {
+        let root = process_workspace_root();
+        let roots: Vec<String> = ["dag", "src/v2"]
+            .iter()
+            .map(|r| root.join(r).to_string_lossy().into_owned())
+            .collect();
+        let index = process_shared_index(&roots);
+        for e in [
+            "src/v2/test/claim/auth_declared_but_unwired_witness_test.dag",
+            "src/v2/test/claim/bootstrap_test.dag",
+            "src/v2/test/claim/infer_semantics_witness_test.dag",
+            "src/v2/test/claim/manual/path_y_fidelity_successor_test.dag",
+            "dag/test/claim/builtin_get_resolver_test.dag",
+        ] {
+            let entry = root.join(e);
+            let r = resolve_entry_with_index_for_discovery_corpus(&index, &entry.to_string_lossy());
+            eprintln!("MIGRATED {e} ok={}", r.is_ok());
+            if let Err(err) = &r {
+                eprintln!("MIGRATED   {}", err.chars().take(600).collect::<String>());
+            }
+            assert!(r.is_ok(), "{e} resolves");
+        }
+    }
+}
+
+/// THE PER-NAME CLAIM, for every name of the live pool: the whole-pool name census's entry for a
+/// name (bare lookup state with candidates, and service entry) equals the entry
+/// `pool_census_for_name` builds over the name's declaring modules alone. This is what licenses
+/// answering the loader's out-of-tree question without building the pool census.
+#[cfg(test)]
+mod pool_census_for_name_differential {
+    use super::*;
+    #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    fn per_name_census_equals_the_pool_census_for_every_name_on_the_live_pool() {
+        let root = process_workspace_root();
+        let roots: Vec<String> = ["dag", "src/v2"]
+            .iter()
+            .map(|r| root.join(r).to_string_lossy().into_owned())
+            .collect();
+        let index = process_shared_index(&roots);
+        let pool = super::super::closure_name_census(&index, None).expect("pool census");
+        let decl = reference_pool_names_for_index(&index).expect("names");
+        let mut names: BTreeSet<String> = BTreeSet::new();
+        names.extend(v1_rt::sorted_map_keys(&pool.global_bare));
+        names.extend(v1_rt::sorted_map_keys(&pool.services));
+        names.extend(decl.decl_index.keys().cloned());
+        let mut divergent: Vec<String> = Vec::new();
+        {
+            for name in &names {
+                let local =
+                    super::super::pool_census_for_name(&index, name).expect("per-name census");
+                if v1_rt::map_get(&pool.global_bare, name.clone())
+                    != v1_rt::map_get(&local.global_bare, name.clone())
+                {
+                    divergent.push(format!("{name} (bare)"));
+                }
+                if v1_rt::map_get(&pool.services, name.clone())
+                    != v1_rt::map_get(&local.services, name.clone())
+                {
+                    divergent.push(format!("{name} (service)"));
+                }
+            }
+        }
+        eprintln!(
+            "PERNAME names={} divergent={}",
+            names.len(),
+            divergent.len()
+        );
+        for d in divergent.iter().take(30) {
+            eprintln!("PERNAME divergent {d}");
+        }
+        assert!(names.len() > 1000, "the live pool was read");
+        assert!(divergent.is_empty(), "{} names diverge", divergent.len());
+    }
+}
+
+/// THE SPECIMEN of `gunbc.recurring_failure_mode.an_import_turns_an_ambiguous_bare_name_into_a_transitive_pick`,
+/// a v1 semantic defect owned by the resolver lane (routed by neat-boar-16), not by this change.
+/// One source tree declares `bar` in `ta.dep` and `ta.other`. With no imports a bare `bar()`
+/// refuses as ambiguous; with one unrelated import whose module imports `ta.dep`, the same call
+/// RESOLVES -- silently binding `bar` to the transitively reached `ta.dep.bar`. This test pins
+/// that behaviour as observed. WHEN THE DEFECT IS FIXED IT MUST FAIL: flip its second assertion
+/// to expect the ambiguity refusal and keep it as the regression control (DESIGN §4b(4)).
+#[cfg(test)]
+mod import_transitive_bare_pick_specimen {
+    use super::*;
+
+    fn w(root: &Path, rel: &str, c: &str) {
+        let p = root.join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).expect("mkdir");
+        std::fs::write(p, c).expect("write dag");
+    }
+
+    #[test]
+    fn an_unrelated_import_turns_an_ambiguous_bare_name_into_a_transitive_pick() {
+        let base = process_workspace_root()
+            .join("target")
+            .join(format!("gunbc-import-pick-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let a = base.join("a");
+        w(
+            &a,
+            "dep.dag",
+            "module ta.dep\n\nfn bar() -> Int {\n  1\n}\n\nfn z() -> Int {\n  0\n}\n",
+        );
+        w(
+            &a,
+            "other.dag",
+            "module ta.other\n\nfn bar() -> Int {\n  2\n}\n",
+        );
+        w(
+            &a,
+            "lib.dag",
+            "module ta.lib\n\nimport ta.dep { z }\n\nfn y() -> Int {\n  z()\n}\n",
+        );
+        w(
+            &a,
+            "bare_user.dag",
+            "module ta.bare_user\n\nfn main() -> Int {\n  bar()\n}\n",
+        );
+        w(
+            &a,
+            "import_user.dag",
+            "module ta.import_user\n\nimport ta.lib { y }\n\nfn main() -> Int {\n  bar()\n}\n",
+        );
+        let index = build_multi_entry_index(&[a.to_string_lossy().into_owned()]);
+        let bare = resolve_entry_with_index(&index, &a.join("bare_user.dag").to_string_lossy());
+        let imported =
+            resolve_entry_with_index(&index, &a.join("import_user.dag").to_string_lossy());
+        let _ = std::fs::remove_dir_all(&base);
+        let err = bare.expect_err("with no imports, an ambiguous bare name refuses");
+        assert!(err.contains("ambiguous reference 'bar'"), "{err}");
+        // THE DEFECT, pinned as observed: flip to expect_err when it is fixed.
+        imported.expect("observed: one unrelated import makes the same bare name resolve");
+    }
+}
+
+/// THE INSTRUMENT for the floor's whole-pool bare admission (`admit_pool_bare_references`) on the
+/// live `[dag, src/v2]` pool, with what both routes share -- the pool heads parse, both tree name
+/// censuses and the heads name index -- warmed first, so the timed term is the admission alone.
+/// It prints the admission time, the per-name census calls and time (`ResolveStageNanos`) and the
+/// distinct names asked; calls against distinct names is the repetition a shared answer would
+/// remove. It reports; it asserts only that the admission completes.
+#[cfg(test)]
+mod live_pool_bare_admission_attribution {
+    use super::*;
+    #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    fn live_pool_bare_admission_attribution() {
+        let root = process_workspace_root();
+        let roots: Vec<String> = ["dag", "src/v2"]
+            .iter()
+            .map(|r| root.join(r).to_string_lossy().into_owned())
+            .collect();
+        let index = process_shared_index(&roots);
+        let _ = super::super::pool_parse(&index).expect("pool parse");
+        for r in index.source_roots.iter() {
+            let _ = super::super::closure_name_census(&index, Some(r)).expect("tree census");
+        }
+        let _ = reference_pool_names_for_index(&index).expect("names");
+        let before = resolve_stage_totals();
+        let t = std::time::Instant::now();
+        let verdict = super::super::admit_pool_bare_references(&index);
+        let elapsed = t.elapsed();
+        let after = resolve_stage_totals();
+        let distinct = super::super::PER_NAME_CENSUS_DISTINCT.with(|d| d.borrow().len());
+        eprintln!(
+            "ADMIT whole_pool_admission={elapsed:?} ok={} per_name_calls={} per_name_ms={} \
+             per_name_distinct={distinct} pool_census_built={}",
+            verdict.is_ok(),
+            after.bare_per_name_census_calls - before.bare_per_name_census_calls,
+            (after.bare_per_name_census - before.bare_per_name_census) / 1_000_000,
+            index.closure_name_censuses.borrow().contains_key(&None),
+        );
+        verdict.expect("the live pool admits");
     }
 }
 
