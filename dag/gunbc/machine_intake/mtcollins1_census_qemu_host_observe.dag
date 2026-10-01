@@ -5,7 +5,7 @@ import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import v2.std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.posix.test_utility { test_exists_command, test_writable_command }
+import extdeps.posix.test_utility { test_exists_command, test_writable_command, test_executable_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
 import extdeps.virtualization.qemu {
@@ -66,19 +66,66 @@ fn qemu_banner_first_line(output: String) -> String {
   match first(split(trim(s: output), "\n")) { Present { value: l } => trim(s: l)  Absent => "" }
 }
 
+// WHAT HAS BEEN READ OF THE BINARY, IN ORDER, AND WHAT MAY BE ASKED NEXT. The binary is executed
+// only once it is known to be an executable file whose bytes were hashed: spawning a path that does
+// not exist is not an observation, it is a process-spawn refusal that ends the run before the
+// receipt is written (fleet-converge run 36806730263 on srv1, 2026-10-01: sha256sum found no
+// /usr/bin/qemu-system-aarch64, the banner was spawned anyway, and no receipt was uploaded). So an
+// absent binary is QemuAbsent with NO banner read, and the receipt is written in that arm too.
+type QemuBannerReading
+  = QemuBannerNotRead
+  | QemuBannerRead { banner: String }
+
+type QemuPresence
+  = QemuNotExecutable
+  | QemuExecutable { digest: Sha256FileDigest }
+
+// The one decision the wet sequencer consults before spawning the banner command.
+fn qemu_banner_may_be_read(presence: QemuPresence) -> Bool {
+  match presence {
+    QemuNotExecutable => false
+    QemuExecutable { digest: d } => match d { Sha256FileDigest { digest: _ } => true  Sha256FileDigestUnavailable { path: _, reason: _ } => false }
+  }
+}
+
 // THE PINNED ARM NEEDS BOTH FACTS: the file's digest is the installed identity, and the exact banner
 // is the reading that the file executed as that build. Either one alone is a different standing.
-fn qemu_binary_standing_of(build: QemuDistributionBuild, digest: Sha256FileDigest, banner: String) -> QemuBinaryStanding {
+fn qemu_binary_standing_of(build: QemuDistributionBuild, presence: QemuPresence, banner: QemuBannerReading) -> QemuBinaryStanding {
   let binary = build.installed_binary as String
-  match digest {
-    Sha256FileDigestUnavailable { path: _, reason: r } => QemuAbsent { binary: binary, detail: r }
-    Sha256FileDigest { digest: d } =>
-      if (d.hex as String) == (build.installed_binary_sha256 as String) && qemu_banner_is_pinned(build: build, banner: banner) {
-        QemuPinnedBuild { binary: binary, banner: banner }
-      } else {
-        QemuOtherBuild { binary: binary, observed_sha256: d.hex as String, banner: banner, banner_is_pinned: qemu_banner_is_pinned(build: build, banner: banner) }
+  match presence {
+    QemuNotExecutable => QemuAbsent { binary: binary, detail: "no executable file at this path; the binary was not run" }
+    QemuExecutable { digest: digest } =>
+      match digest {
+        Sha256FileDigestUnavailable { path: _, reason: r } => QemuAbsent { binary: binary, detail: concat(r, "; the binary was not run") }
+        Sha256FileDigest { digest: d } => {
+          let text = match banner { QemuBannerNotRead => ""  QemuBannerRead { banner: t } => t }
+          if (d.hex as String) == (build.installed_binary_sha256 as String) && qemu_banner_is_pinned(build: build, banner: text) {
+            QemuPinnedBuild { binary: binary, banner: text }
+          } else {
+            QemuOtherBuild { binary: binary, observed_sha256: d.hex as String, banner: text, banner_is_pinned: qemu_banner_is_pinned(build: build, banner: text) }
+          }
+        }
       }
   }
+}
+
+fn observe_qemu_binary_standing_wet(build: QemuDistributionBuild) -> QemuBinaryStanding {
+  let path = build.installed_binary as String
+  let presence = if process_outcome_admitted(outcome: run_shell_command_capture(command: test_executable_command(path: path), transport: LocalExec)) {
+    QemuExecutable { digest: sha256sum_file_digest_via_shell(path: path as NonEmptyStr) }
+  } else {
+    QemuNotExecutable
+  }
+  let banner = if qemu_banner_may_be_read(presence: presence) {
+    match run_shell_command_capture(command: qemu_version_command(binary: build.installed_binary), transport: LocalExec) {
+      ProcessOutputPresent { text: t } => QemuBannerRead { banner: qemu_banner_first_line(output: t) }
+      ProcessOutputAbsent => QemuBannerRead { banner: "" }
+      ProcessRefused { exit_code: x, stderr: e } => QemuBannerRead { banner: join(["(--version exit ", to_string(x), ": ", trim(s: e), ")"], "") }
+    }
+  } else {
+    QemuBannerNotRead
+  }
+  qemu_binary_standing_of(build: build, presence: presence, banner: banner)
 }
 
 fn firmware_file_standing_of(file: AavmfFirmwareFile, reading: Sha256FileDigest) -> FirmwareFileStanding {
@@ -150,15 +197,7 @@ fn observe_census_qemu_host_standing_wet() -> CensusQemuHostStanding {
       HostnameShortCaptureRefused { reason: r } => join(["unread (", r, ")"], "")
     },
     kvm: kvm_standing_of(exists: exists, writable: writable),
-    qemu: qemu_binary_standing_of(
-      build: build,
-      digest: sha256sum_file_digest_via_shell(path: build.installed_binary as NonEmptyStr),
-      banner: match run_shell_command_capture(command: qemu_version_command(binary: build.installed_binary), transport: LocalExec) {
-        ProcessOutputPresent { text: t } => qemu_banner_first_line(output: t)
-        ProcessOutputAbsent => ""
-        ProcessRefused { exit_code: x, stderr: e } => join(["(--version exit ", to_string(x), ": ", trim(s: e), ")"], "")
-      },
-    ),
+    qemu: observe_qemu_binary_standing_wet(build: build),
     aavmf_code: firmware_file_standing_of(file: firmware.code, reading: sha256sum_file_digest_via_shell(path: firmware.code.path as NonEmptyStr)),
     aavmf_vars_template: firmware_file_standing_of(file: firmware.vars_template, reading: sha256sum_file_digest_via_shell(path: firmware.vars_template.path as NonEmptyStr)),
   }
