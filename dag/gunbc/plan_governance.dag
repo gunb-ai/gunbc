@@ -1,0 +1,108 @@
+module gunbc.plan_governance
+
+import std.types { String, Bool, List }
+
+// THE ONE AUTHORED FACT OF THE PLAN DOCUMENT GRAPH: which design authority governs a plan, and in
+// what role. Everything a reader sees about that relation -- the banner on the child, the children
+// list on the parent, reachability from the compiler root -- is DERIVED from these rows by
+// gunbc.plan plan_to_blocks and the governance witness. A plan author writes one row here and
+// nothing in any markdown body; a hand-written 'governed by' or 'see also' paragraph beside a row
+// is the second authority DESIGN section 3 forbids, at the documentation layer. The rows key on the
+// plan SLUG because the slug is the identity the generated-artifact registry already deduplicates
+// plans by; a Plan value does not know its own declaration name.
+//
+// A plan with no row is not a compiler plan: the registry still inventories it, this relation says
+// nothing about it. The compiler root has no row and no governor; every other row must reach it.
+
+type CompilerPlanRole
+  = CompilerStageAuthority
+  | CompilerStageSpecialization
+  | CrossCuttingLensAuthority
+  | ImplementationProgram
+
+type PlanGovernance {
+  plan_slug: String,
+  governed_by_slug: String,
+  role: CompilerPlanRole,
+  stage: String,
+}
+
+data compiler_architecture_root_slug: String = "v2-compiler-architecture"
+
+data plan_governance_rows: List<PlanGovernance> = [
+  PlanGovernance {
+    plan_slug: "demand-engine-program",
+    governed_by_slug: "v2-compiler-architecture",
+    role: CompilerStageAuthority,
+    stage: "demand minimization and the demand engine; materialization, realization and placement",
+  },
+  PlanGovernance {
+    plan_slug: "ensure-closure-design",
+    governed_by_slug: "v2-compiler-architecture",
+    role: CompilerStageSpecialization,
+    stage: "completion, residual and closure -- environmental completion at a concrete placement",
+  },
+]
+
+fn plan_governance_role_label(role: CompilerPlanRole) -> String {
+  match role {
+    CompilerStageAuthority => "compiler-stage authority"
+    CompilerStageSpecialization => "compiler-stage specialization"
+    CrossCuttingLensAuthority => "cross-cutting lens authority"
+    ImplementationProgram => "implementation program"
+  }
+}
+
+fn governance_row_in(rows: List<PlanGovernance>, slug: String) -> PlanGovernance? {
+  fold(rows, init: none, f: (acc, r) =>
+    match acc {
+      Present { value: found } => Present { value: found }
+      none => if r.plan_slug == slug { Present { value: r } } else { none }
+    })
+}
+
+fn plan_governance_of(slug: String) -> PlanGovernance? {
+  governance_row_in(rows: plan_governance_rows, slug: slug)
+}
+
+fn plans_governed_by(slug: String) -> List<PlanGovernance> {
+  filter(plan_governance_rows, r => r.governed_by_slug == slug)
+}
+
+// THE WALK TO THE ROOT, BOUNDED BY THE ROW POPULATION. One edge per step, and a chain through n
+// rows has at most n edges, so folding once over the rows is enough fuel for any acyclic chain; a
+// cycle never reaches the root within that fuel and reads as not reaching it, which is the verdict
+// the witness wants -- a cycle and an orphan are both 'not rooted', and neither is admitted.
+type GovernanceWalk {
+  current: String,
+  reached: Bool,
+}
+
+fn governance_walk_step(rows: List<PlanGovernance>, w: GovernanceWalk) -> GovernanceWalk {
+  if w.reached {
+    w
+  } else {
+    match governance_row_in(rows: rows, slug: w.current) {
+      none => w
+      Present { value: r } =>
+        GovernanceWalk {
+          current: r.governed_by_slug,
+          reached: r.governed_by_slug == compiler_architecture_root_slug,
+        }
+    }
+  }
+}
+
+fn governance_reaches_root_from(rows: List<PlanGovernance>, slug: String) -> Bool {
+  let start = GovernanceWalk { current: slug, reached: slug == compiler_architecture_root_slug }
+  let end = fold(rows, init: start, f: (acc, r) => governance_walk_step(rows: rows, w: acc))
+  end.reached
+}
+
+fn governance_reaches_root(slug: String) -> Bool {
+  governance_reaches_root_from(rows: plan_governance_rows, slug: slug)
+}
+
+fn governance_rows_all_reach_root(rows: List<PlanGovernance>) -> Bool {
+  all(rows, r => governance_reaches_root_from(rows: rows, slug: r.plan_slug))
+}

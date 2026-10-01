@@ -1,0 +1,72 @@
+module test.claim.plan_governance_witness
+
+import std.types { Bool, String }
+import gunbc.plan { Plan }
+import gunbc.plan_registry { all_plans }
+import gunbc.plan_governance {
+  PlanGovernance, CompilerStageAuthority, CompilerStageSpecialization,
+  plan_governance_rows, compiler_architecture_root_slug,
+  plan_governance_of, governance_reaches_root_from, governance_rows_all_reach_root,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn plan_slug_is_registered(slug: String) -> Bool {
+  fold(all_plans, init: false, f: (acc, p) => acc || p.slug == slug)
+}
+
+// THE LENS CLAIMS OF THE PLAN DOCUMENT GRAPH, over the live registry and the live governance rows.
+
+test fn the_compiler_root_is_a_registered_plan_with_no_governor() -> Bool {
+  plan_slug_is_registered(slug: compiler_architecture_root_slug)
+    && (match plan_governance_of(slug: compiler_architecture_root_slug) {
+      none => true
+      Present { value: _ } => false
+    })
+}
+
+test fn every_governance_row_names_two_registered_plans() -> Bool {
+  all(plan_governance_rows, r =>
+    plan_slug_is_registered(slug: r.plan_slug) && plan_slug_is_registered(slug: r.governed_by_slug))
+}
+
+test fn every_governed_plan_reaches_the_compiler_root() -> Bool {
+  governance_rows_all_reach_root(rows: plan_governance_rows)
+}
+
+// DISCRIMINATING CONTROLS over synthetic row sets: a cycle and an orphan each fail to reach the
+// root, so the live claim above cannot be green by construction.
+
+fn cyclic_rows() -> List<PlanGovernance> {
+  [
+    PlanGovernance { plan_slug: "a", governed_by_slug: "b", role: CompilerStageAuthority, stage: "x" },
+    PlanGovernance { plan_slug: "b", governed_by_slug: "a", role: CompilerStageSpecialization, stage: "x" },
+  ]
+}
+
+fn orphan_rows() -> List<PlanGovernance> {
+  [
+    PlanGovernance { plan_slug: "a", governed_by_slug: "nowhere", role: CompilerStageSpecialization, stage: "x" },
+  ]
+}
+
+fn rooted_chain_rows() -> List<PlanGovernance> {
+  [
+    PlanGovernance { plan_slug: "leaf", governed_by_slug: "mid", role: CompilerStageSpecialization, stage: "x" },
+    PlanGovernance { plan_slug: "mid", governed_by_slug: compiler_architecture_root_slug, role: CompilerStageAuthority, stage: "x" },
+  ]
+}
+
+test fn a_cycle_does_not_reach_the_root() -> Bool {
+  governance_rows_all_reach_root(rows: cyclic_rows()) == false
+}
+
+test fn an_orphan_does_not_reach_the_root() -> Bool {
+  governance_rows_all_reach_root(rows: orphan_rows()) == false
+}
+
+test fn a_two_step_chain_reaches_the_root() -> Bool {
+  governance_reaches_root_from(rows: rooted_chain_rows(), slug: "leaf")
+    && governance_rows_all_reach_root(rows: rooted_chain_rows())
+}
