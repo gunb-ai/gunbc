@@ -10833,6 +10833,32 @@ pub fn parse_op_requires_members(
     }
 }
 
+pub fn operation_requires_members(
+    op: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<Node>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for p in Rc::new({
+            let mut __result = Vec::new();
+            for p in op.properties.clone().iter().cloned() {
+                if (crate::v1_std_core::field_init_node_name_at(p.clone(), source_indices.clone())
+                    == "requires".to_string())
+                {
+                    __result.push(p);
+                }
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        {
+            __result.extend((*p.children.clone()).iter().cloned());
+        }
+        __result
+    })
+}
+
 pub fn parse_operation_modifiers(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ModsResult> {
     parse_operation_modifiers_acc(tokens.clone(), ctx.clone(), Rc::new(vec![]))
 }
