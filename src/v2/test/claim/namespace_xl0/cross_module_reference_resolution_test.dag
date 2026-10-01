@@ -5,7 +5,7 @@ import v2.compiler.name_resolve {
   Admission,
   ResolutionSubject,
   resolution_context,
-  resolve_with_admission_context_policy
+  resolve_in_context
 }
 import v2.std.cross_tree.resolution { source_root_index_empty }
 import v2.std.resolution_policy { default_name_resolution_policy }
@@ -72,7 +72,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // is the discriminating red: it fails against a resolver that mints the leaf and holds against one
 // that carries the declaring path.
 //
-// WHAT RESOLVES HERE IS THE SUBJECT ROOT ALONE. v2.compiler.name_resolve resolve_with_admission_context_policy
+// WHAT RESOLVES HERE IS THE SUBJECT ROOT ALONE. v2.compiler.name_resolve resolve_in_context
 // resolves the module the Admission names and consults the other ingested roots only through the
 // symbol index, so three consumer modules can share ONE ingest and each claim selects its subject.
 // That is what lets one warm producer serve every row: the parse-and-normalize of twelve inline
@@ -270,13 +270,10 @@ fn xl0r_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
   match xl0r_fixture_normalized() {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: roots, diagnostics: _ } =>
-      resolve_with_admission_context_policy(
-        context: resolution_context(lm: dag_language_model(), roots: roots),
-        admission: xl0r_admission(subject: subject),
-        index: source_root_index_empty(),
-        active_roots: Empty,
-        policy: default_name_resolution_policy()
-      )
+      resolve_in_context(
+        context: resolution_context(lm: dag_language_model(), roots: roots, index: source_root_index_empty(), active_roots: Empty, policy: default_name_resolution_policy()),
+        admission: xl0r_admission(subject: subject)
+      ).resolved
   }
 }
 

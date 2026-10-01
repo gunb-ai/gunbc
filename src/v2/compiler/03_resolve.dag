@@ -137,6 +137,7 @@ import v2.std.node {
   symbol_lexeme,
   match_arm_body,
   match_arm_pattern,
+  arrow_domain_binds_a_name,
   arrow_first_positional_target,
   arrow_signature_order_label,
   FirstPositionalAbsent,
@@ -422,7 +423,8 @@ fn lexical_frame(fb: FrameBinders, outer: Scope) -> Scope {
 }
 
 // An Arrow's domain binders: each Named domain edge, sited at the Arrow (the label is not a node),
-// with its declared type; and a domain that is itself one atom, sited at that atom.
+// with its declared type. Only a Named binder binds (v2.std.node A4: a domain is a Conj of Named
+// binders with its declared order).
 fn arrow_domain_frame_binders(n: Node) -> FrameBinders {
   match n.kind {
     TypeNode { connective: Arrow } =>
@@ -439,11 +441,6 @@ fn arrow_domain_frame_binders(n: Node) -> FrameBinders {
                     })
                   Absent => fb
                 }
-              })
-            TypeNode { connective: Atom { identity: sym } } =>
-              frame_binders_add(fb: frame_binders_empty(), name: sym, binding: LexicalBinding {
-                binder_site: domain.occurrence_id,
-                declared: optional_absent()
               })
             _ => frame_binders_empty()
           }
@@ -1576,7 +1573,7 @@ fn resolve_surface_operator_atom(
 // each refused child and the rest are gone before the module root. So every recursive step returns
 // ResolveNodeWalk, the refused arm carries the whole population upward, and the ONE projection to
 // Outcome sits at the legacy entries (resolve_node, resolve_with_namespace_policy,
-// resolve_with_admission_context_policy), which keep answering what they answered.
+// resolve_in_context), which keep answering what they answered.
 //
 // WHY ORDINAL IS CARRIED SEPARATELY, and it is load-bearing rather than tidy: resolve_transform_children
 // used `length(done) == 0` to mean "this is the operator child" -- the accumulated EDGE LIST
@@ -1636,7 +1633,7 @@ fn resolve_walk_of_outcome(o: Outcome<Node>) -> ResolveNodeWalk {
 // THE LEGACY PROJECTION. resolve's Outcome carries ONE chain, and the population's FIRST chain is
 // projected -- the chain the previous walk produced, because it stopped at that same child with the
 // same advisories before it. The remaining chains are not discarded: census-resolve reads the walk
-// itself through resolve_walk_with_admission_context_policy.
+// itself through resolve_walk_in_context.
 fn resolve_walk_outcome(w: ResolveNodeWalk) -> Outcome<Node> {
   match w {
     ResolveWalkAccepted { value: v, diagnostics: d, lexical: _ } => Accepted { value: v, diagnostics: d }
@@ -2860,31 +2857,12 @@ fn resolve_child_edge(
 
 data arrow_domain_param_scoping_note: String = "Wave 1 Gate 1 A1: param scoping is arrow_domain_frame_binders over lowered Arrow domain Named edges (general-body-producer-design Stage A). dag_fn_decl_param_binding_atoms and scope_with_fn_decl_params dissolved. fn_decl ident now routes through StampLexeme and SymbolIndex fill carries module_qn.fn.param (parity proven by execution); domain construction remains interim param-list-walk (body_lower_domain_from_param_list) until domain is built from SymbolIndex lookup rather than walked from the param list."
 
-fn domain_root_has_named_bindings(root: Node) -> Bool {
-  match root.kind {
-    TypeNode { connective: Conj } =>
-      fold(root.children, init: false, f: fn(acc, e) {
-        if acc {
-          acc
-        } else {
-          match try_edge_declared_binding(e: e) {
-            Present { value: _ } => true
-            Absent => false
-          }
-        }
-      })
-    TypeNode { connective: Atom { identity: _ } } => true
-    _ => false
-  }
-}
-
+// Whether an Arrow scopes its domain's binders is v2.std.node arrow_domain_binds_a_name, the same
+// answer Node admission reads (A4). The retired Atom-domain arm is gone: under the one Arrow encoding
+// (gunbc#12625) a domain is a Conj of binders, and an Atom in domain position is a type, never a local.
 fn arrow_domain_has_named_bindings(n: Node) -> Bool {
   match n.kind {
-    TypeNode { connective: Arrow } =>
-      match arrow_first_positional_target(children: n.children) {
-        FirstPositionalFound { target: domain } => domain_root_has_named_bindings(root: domain)
-        FirstPositionalAbsent => false
-      }
+    TypeNode { connective: Arrow } => arrow_domain_binds_a_name(children: n.children)
     _ => false
   }
 }

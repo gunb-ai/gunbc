@@ -6,7 +6,7 @@ import v2.compiler.name_resolve {
   Admission,
   ResolutionSubject,
   resolution_context,
-  resolve_with_admission_context_policy
+  resolve_in_context
 }
 import v2.std.cross_tree.resolution { source_root_index_empty }
 import v2.std.resolution_policy { default_name_resolution_policy }
@@ -85,16 +85,13 @@ fn kvr_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
   match kvr_fixture_normalized() {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: roots, diagnostics: _ } =>
-      resolve_with_admission_context_policy(
-        context: resolution_context(lm: dag_language_model(), roots: roots),
+      resolve_in_context(
+        context: resolution_context(lm: dag_language_model(), roots: roots, index: source_root_index_empty(), active_roots: Empty, policy: default_name_resolution_policy()),
         admission: Admission {
           subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: subject) },
           imports: Empty
-        },
-        index: source_root_index_empty(),
-        active_roots: Empty,
-        policy: default_name_resolution_policy()
-      )
+        }
+      ).resolved
   }
 }
 

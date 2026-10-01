@@ -23,6 +23,7 @@ import v2.compiler.fold_lowering {
   fold_call_lowering_piped,
   fold_family_realization
 }
+import v2.compiler.parse { parse_tree_projection_edge }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
 import v2.compiler.body_producer_forward {
   body_producer_forward_is_registered_surface_identity,
@@ -143,6 +144,7 @@ import v2.std.node {
 }
 import v2.std.type_binder { cast_target_edge, type_alias_wrapper, type_decl_wrapper, type_opaque_wrapper, type_param_names, type_params_edge }
 import v2.std.node_query {
+  binder_edge,
   node_positional_child_targets,
   construct_node,
   construct_node_elided,
@@ -603,6 +605,84 @@ fn body_lower_is_core_substrate(node: Node) -> Bool {
   }
 }
 
+// A LOWERED SHAPE THE ALLOWLIST DOES NOT NAME REFUSES; IT IS NEVER RE-READ AS RAW PARSE. Every reader
+// that consults body_lower_is_core_substrate used to treat a node it did not recognise as unlowered
+// and walk it again with the parse readers, whose first-match descents answered a PART of it -- the
+// silent part-for-whole truncation behind the #12145 class (gunbc.recurring_failure_mode
+// lowered_output_reread_as_raw_parse_at_v2_body_lowering); #12269's field projection was one
+// instance, closed by growing the allowlist. The raw parse tree is recognisable by construction: every
+// non-atom node the parser emits carries at least one parse projection edge, and the roster of those
+// edges is v2.compiler.parse parse_tree_projection_edge (a production's identity or capture, a
+// sequence's sides -- what the parse stage's grammar_named_edge sites mint), while a producer's
+// output carries none. So a non-atom node with children that the allowlist rejects and
+// that carries no grammar projection edge is lowered output that no reader recognises, and it refuses
+// here, located at that node, instead of being re-read. The MQ-5 census (wise-ant-748, 2026-09-30:
+// the same test at these sites over the native population, positive control verified, baseline
+// identical) found no site taking the re-read today, so this refusal changes no verdict; it makes the
+// NEXT unrecognised shape loud. RUNG, HONESTLY: the diagnostic names the node, not its producer --
+// nothing on a Node says which lowering built it. The producer-declared shape (LoweredShape carried
+// in a BodyTerm through the reducers, neat-boar-16 ruling 2026-09-30) is the next rung, and it
+// deletes both this test and the allowlist.
+fn body_lower_has_grammar_projection_edge(node: Node) -> Bool {
+  fold(node.children, init: false, f: fn(acc, e) {
+    acc || (match e.label {
+      Named { name: n } => parse_tree_projection_edge(name: n)
+      Positional => false
+    })
+  })
+}
+
+fn body_lower_is_unrecognised_lowered_shape(node: Node) -> Bool {
+  if body_lower_is_core_substrate(node: node) {
+    false
+  } else {
+    match node.kind {
+      TypeNode { connective: Atom { identity: _ } } => false
+      _ => (length(xs: node.children) > 0) && !body_lower_has_grammar_projection_edge(node: node)
+    }
+  }
+}
+
+fn body_lower_unrecognised_lowered_shape_diagnostics(node: Node) -> NonEmptyDiagnostics {
+  diagnostics_singleton(
+    d: body_lower_diagnostic(reason: ^body_lowering_reason_unrecognised_lowered_shape, n: node)
+  )
+}
+
+// The node body_lower_find_core_substrate_optional would step PAST on its own first-match path --
+// an unrecognised lowered node -- to answer a recognised DESCENDANT of it: a part for the whole.
+fn body_lower_find_core_substrate_passes_unrecognised(root: Node) -> Optional<Node> {
+  if body_lower_is_core_substrate(node: root) {
+    optional_absent()
+  } else {
+    match body_lower_find_core_substrate_optional(root: root) {
+      Absent => optional_absent()
+      Present { value: _ } =>
+        if body_lower_is_unrecognised_lowered_shape(node: root) {
+          optional_present(value: root)
+        } else {
+          match body_lower_find_core_substrate_first_hit_child(root: root) {
+            Absent => optional_absent()
+            Present { value: child } => body_lower_find_core_substrate_passes_unrecognised(root: child)
+          }
+        }
+    }
+  }
+}
+
+fn body_lower_find_core_substrate_first_hit_child(root: Node) -> Optional<Node> {
+  fold(root.children, init: Absent, f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match body_lower_find_core_substrate_optional(root: e.target) {
+          Present { value: _ } => optional_present(value: e.target)
+          Absent => optional_absent()
+        }
+    }
+  })
+}
+
 fn body_lower_is_pass_through_emitted(emitted: Symbol) -> Bool {
   (emitted == ^dag_surface_expr)
     || (emitted == ^dag_surface_binary_expr)
@@ -988,7 +1068,7 @@ fn body_lower_positional_payload(payload_shell: Node) -> Outcome<Node> {
                 Present { value: type_node } =>
                   outcome_accepted(
                     value: body_lower_payload_node(
-                      edges: [Edge { label: Named { name: positional_payload_field_name() }, target: type_node }],
+                      edges: [binder_edge(name: positional_payload_field_name(), type_node: type_node)],
                       source: payload_shell
                     )
                   )
@@ -1288,6 +1368,9 @@ fn body_lower_operand_read_outcome(read: OperandRefRead, diagnostics: Diagnostic
 // happened to every literal argument (`f(1)` carried a bare dag_token_int_literal) until that
 // arm was ordered first.
 fn body_lower_operand_ref_read(node: Node) -> OperandRefRead {
+  if body_lower_is_unrecognised_lowered_shape(node: node) {
+    OperandRefRefused { diagnostics: body_lower_unrecognised_lowered_shape_diagnostics(node: node) }
+  } else {
   match body_lower_is_core_substrate(node: node) {
     true => OperandRefLowered { lowered: node }
     false =>
@@ -1350,6 +1433,7 @@ fn body_lower_operand_ref_read(node: Node) -> OperandRefRead {
               }
           }
       }
+  }
   }
   }
   }
@@ -1583,6 +1667,8 @@ fn body_lower_operator_operand(node: Node) -> Outcome<Node> {
     OperatorExpressionAbsent =>
       if body_lower_is_core_substrate(node: operand) {
         outcome_accepted(value: operand)
+      } else if body_lower_is_unrecognised_lowered_shape(node: operand) {
+        Rejected { diagnostics: body_lower_unrecognised_lowered_shape_diagnostics(node: operand) }
       } else {
         match body_lower_try_body_lowered(node: operand) {
           Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -1987,7 +2073,7 @@ type BodyLowerTypedParam {
 }
 
 fn body_lower_typed_param_edge_of(param: BodyLowerTypedParam) -> Edge {
-  Edge { label: Named { name: param.name }, target: param.type_node }
+  binder_edge(name: param.name, type_node: param.type_node)
 }
 
 fn body_lower_collect_param_edges(sequence_capture: Node) -> Outcome<List<Edge>> {
@@ -2795,6 +2881,8 @@ fn body_lower_try_fold_behavior_optional(node: Node) -> Outcome<Optional<Node>> 
 fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
   if body_lower_is_core_substrate(node: node) {
     outcome_accepted(value: optional_present(value: node))
+  } else if body_lower_is_unrecognised_lowered_shape(node: node) {
+    Rejected { diagnostics: body_lower_unrecognised_lowered_shape_diagnostics(node: node) }
   } else if body_lower_sequence_left_is_lbrace(captured: node) {
     outcome_accepted(value: optional_absent())
   } else {
@@ -2916,6 +3004,8 @@ fn body_lower_reduce(folded: Node) -> Outcome<Node> {
     outcome_accepted(value: folded)
   } else if dag_resolve_preserve_module_metadata_subtree(node: folded) {
     outcome_accepted(value: folded)
+  } else if body_lower_is_unrecognised_lowered_shape(node: folded) {
+    Rejected { diagnostics: body_lower_unrecognised_lowered_shape_diagnostics(node: folded) }
   } else {
     match parse_production_emitted_identity_optional(node: folded) {
       Absent => outcome_accepted(value: folded)
@@ -2973,6 +3063,8 @@ fn body_lower_fold_identity_absent(node: Node) -> Outcome<Node> {
 fn body_lower_fold(node: Node) -> Outcome<Node> {
   if body_lower_is_core_substrate(node: node) {
     outcome_accepted(value: node)
+  } else if body_lower_is_unrecognised_lowered_shape(node: node) {
+    Rejected { diagnostics: body_lower_unrecognised_lowered_shape_diagnostics(node: node) }
   } else if body_lower_is_pipe_tower_root(node: node) && body_lower_tower_pipes_into_fold(node: node) {
     match body_lower_read_operator_expression(node: node) {
       OperatorExpressionRead { lowered: lowered } => outcome_accepted(value: lowered)
@@ -3121,13 +3213,18 @@ fn body_lower_body_subtree_lower_from_primary(captured: Node) -> Outcome<Optiona
         ParseSubtreeFound { captured: stmt } =>
           body_lower_body_subtree_lower(captured: stmt)
         ParseSubtreeAbsent =>
-          match body_lower_find_core_substrate_optional(root: captured) {
-            Present { value: lowered } =>
-              outcome_accepted(value: optional_present(value: lowered))
+          match body_lower_find_core_substrate_passes_unrecognised(root: captured) {
+            Present { value: passed } =>
+              Rejected { diagnostics: body_lower_unrecognised_lowered_shape_diagnostics(node: passed) }
             Absent =>
-              body_lower_try_body_lowered(
-                node: body_lower_unwrap_surface_shell(node: captured)
-              )
+            match body_lower_find_core_substrate_optional(root: captured) {
+              Present { value: lowered } =>
+                outcome_accepted(value: optional_present(value: lowered))
+              Absent =>
+                body_lower_try_body_lowered(
+                  node: body_lower_unwrap_surface_shell(node: captured)
+                )
+            }
           }
       }
   }
@@ -3794,6 +3891,8 @@ fn body_lower_repeated_param_binding_diagnostic(edge: Edge) -> Diagnostic {
 fn body_lower_data_initializer_body(expr: Node) -> Outcome<Optional<Node>> {
   if body_lower_is_core_substrate(node: expr) {
     outcome_accepted(value: optional_present(value: expr))
+  } else if body_lower_is_unrecognised_lowered_shape(node: expr) {
+    Rejected { diagnostics: body_lower_unrecognised_lowered_shape_diagnostics(node: expr) }
   } else {
     body_lower_eq_expr_to_body(expr: expr)
   }
@@ -4281,6 +4380,8 @@ fn body_lower_lowered_behind_shells_read(node: Node) -> OperandRefRead {
   let stripped = body_lower_deep_unwrap_optional(node: node)
   if body_lower_is_core_substrate(node: stripped) {
     OperandRefLowered { lowered: stripped }
+  } else if body_lower_is_unrecognised_lowered_shape(node: stripped) {
+    OperandRefRefused { diagnostics: body_lower_unrecognised_lowered_shape_diagnostics(node: stripped) }
   } else if body_lower_node_is_lowered_atom(node: stripped) {
     body_lower_operand_ref_read(node: stripped)
   } else {
@@ -4536,7 +4637,7 @@ fn body_lower_function_value_type_var_atom(tv: Symbol) -> Node {
 fn body_lower_function_value_signature(binders: List<FunctionValueBinder>) -> FunctionValueSignature {
   let no_edges: List<Edge> = []
   let authored = fold(binders, init: no_edges, f: fn(acc, b) {
-    list_snoc_item(xs: acc, item: Edge { label: Named { name: b.name }, target: b.at })
+    list_snoc_item(xs: acc, item: binder_edge(name: b.name, type_node: b.at))
   })
   let minted: DeclaredParameterList = anonymous_binder_mint_parameter_list(edges: authored)
   fold(minted.edges, init: FunctionValueSignature { domain: no_edges, type_params: no_edges, order: minted.order }, f: fn(acc, e) {
@@ -4544,7 +4645,7 @@ fn body_lower_function_value_signature(binders: List<FunctionValueBinder>) -> Fu
       Named { name: label } =>
         let tv = fresh_type_variable(path: body_lower_unpositioned_path(), label: label)
         FunctionValueSignature {
-          domain: list_snoc_item(xs: acc.domain, item: Edge { label: Named { name: label }, target: body_lower_function_value_type_var_atom(tv: tv) }),
+          domain: list_snoc_item(xs: acc.domain, item: binder_edge(name: label, type_node: body_lower_function_value_type_var_atom(tv: tv))),
           type_params: list_snoc_item(xs: acc.type_params, item: Edge { label: Named { name: tv }, target: body_lower_function_value_type_var_atom(tv: tv) }),
           order: acc.order
         }
@@ -8764,6 +8865,8 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
   }
   if body_lower_is_core_substrate(node: captured) {
     outcome_accepted(value: captured)
+  } else if body_lower_is_unrecognised_lowered_shape(node: captured) {
+    Rejected { diagnostics: body_lower_unrecognised_lowered_shape_diagnostics(node: captured) }
   } else {
   match body_lower_int_literal_with_magnitude_optional(node: captured) {
         Present { value: lit } => outcome_accepted(value: lit)
@@ -9503,14 +9606,14 @@ fn body_lower_service_member_unread<T>(member: Node) -> Outcome<T> {
 // AN OPERATION TAKES ONE INPUT, OF A RECORD TYPE: its domain is a parameter list with the one binder
 // ^operation_input whose target is the input payload, never the payload's fields standing in the
 // domain's place. A payload Conj at domain position reads, to every domain reader (v2.std.node
-// arrow_domain_binder_labels, v2.compiler.resolve add_arrow_domain_named_params), as one parameter
+// arrow_domain_binder_labels, v2.compiler.resolve arrow_domain_frame_binders), as one parameter
 // per field -- bound by name, with no declared order, and scoped as locals of an Arrow that has no
 // body. Built through v2.std.arrow_signature declared_signature like every other signature,
 // so the operation's domain and its order come from one mint. An operation with no input block has
 // an empty parameter list, not an empty payload argument.
 fn body_lower_operation_params(input: Optional<Node>) -> List<Edge> {
   match input {
-    Present { value: payload } => [Edge { label: Named { name: ^operation_input }, target: payload }]
+    Present { value: payload } => [binder_edge(name: ^operation_input, type_node: payload)]
     Absent => []
   }
 }
@@ -10291,6 +10394,8 @@ fn body_lower_after_children(folded: Node, fn_body_pass_through: Bool) -> Outcom
     body_lowering_lowered(o: outcome_accepted(value: folded))
   } else if dag_resolve_preserve_module_metadata_subtree(node: folded) {
     body_lowering_lowered(o: outcome_accepted(value: folded))
+  } else if body_lower_is_unrecognised_lowered_shape(node: folded) {
+    body_lowering_lowered(o: Rejected { diagnostics: body_lower_unrecognised_lowered_shape_diagnostics(node: folded) })
   } else {
     match parse_production_emitted_identity_optional(node: folded) {
       Absent => body_lowering_lowered(o: outcome_accepted(value: folded))

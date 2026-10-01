@@ -71,6 +71,7 @@ pub enum WitnessEvalVerdict {
 pub enum ExpectedRedSuppressionGround {
     OutsideRequiredGate,
     WithheldCostDebt,
+    DeclinedNoCiWetLane,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -157,6 +158,9 @@ pub fn suppression_ground_label(ground: ExpectedRedSuppressionGround) -> String 
         ExpectedRedSuppressionGround::WithheldCostDebt => {
             "suppressed_withheld_cost_debt".to_string()
         }
+        ExpectedRedSuppressionGround::DeclinedNoCiWetLane => {
+            "suppressed_declined_no_ci_wet_lane".to_string()
+        }
     }
 }
 
@@ -164,6 +168,7 @@ pub fn suppression_ground_detail(ground: ExpectedRedSuppressionGround) -> String
     match ground.clone() {
     ExpectedRedSuppressionGround::OutsideRequiredGate => "enrolled, but its module is outside the required gate and was never loaded, so this run could not attempt it -- dormant, not deleted".to_string(),
     ExpectedRedSuppressionGround::WithheldCostDebt => "enrolled, but the cost-debt roster withholds it from execution in this run -- dormant, not deleted".to_string(),
+    ExpectedRedSuppressionGround::DeclinedNoCiWetLane => "enrolled and changed by this run, but its file is a declared BinWitnessWet row no CI lane executes (gunbc.rung_drop edited_bin_witness_wet_rows_not_executed_by_ci), so the changed-witness sublane declined it -- dormant, not deleted".to_string(),
 }
 }
 
@@ -534,3 +539,5 @@ pub struct FilesystemRemoval;
 pub struct OutsideRequiredGate;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct WithheldCostDebt;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DeclinedNoCiWetLane;
