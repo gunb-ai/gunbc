@@ -20,7 +20,8 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Conj, Hash, Node, Symbol, TypeNode, combine_hash, symbol_identity_digest }
+import v2.std.integer { integer_int_content_digest }
 import v2.std.node_shape { stamp_node_shape_synthetic, type_shape }
 import v2.std.text { Char, String }
 import std.unicode.types { unicode_char_code_point, unicode_scalar_utf8_octet_count }
@@ -164,8 +165,11 @@ type Token {
 // 1-based line it begins -- ONE representation of the set, with a value that is a fact about the token
 // rather than a placeholder. A stream built from tokens alone (fixtures) carries no layout, and a
 // layout question on it answers `LineBreakUnknownWithoutSource` -- never an assumed single line.
+// `digest` summarizes exactly the entries of `line_break_before`, folded in the walk as each one is
+// recorded (start, then line), so the parse memo key can cover layout without a lookup per token.
 type StreamLayout {
   line_break_before: Map<Int, Int>
+  digest: Hash
 }
 
 type TokenStream {
@@ -209,15 +213,16 @@ type StreamLayoutWalk {
   last_end: Int
   seen: Bool
   answers: Map<Int, Int>
+  digest: Hash
 }
 
 fn stream_layout_of(tokens: List<Token>, source: v2.std.text.String) -> StreamLayout {
   let walked = fold_list(
     xs: source,
-    empty: StreamLayoutWalk { octet: 0, line: 1, ahead: tokens, last_end: 0, seen: false, answers: empty_map() },
+    empty: StreamLayoutWalk { octet: 0, line: 1, ahead: tokens, last_end: 0, seen: false, answers: empty_map(), digest: symbol_identity_digest(sym: ^stream_layout_digest_nil) },
     cons: fn(acc, c) { stream_layout_step(acc: acc, c: c) }
   )
-  StreamLayout { line_break_before: walked.answers }
+  StreamLayout { line_break_before: walked.answers, digest: walked.digest }
 }
 
 fn stream_layout_step(acc: StreamLayoutWalk, c: Char) -> StreamLayoutWalk {
@@ -229,7 +234,8 @@ fn stream_layout_step(acc: StreamLayoutWalk, c: Char) -> StreamLayoutWalk {
     ahead: at_token.ahead,
     last_end: at_token.last_end,
     seen: at_token.seen || ((code == 10) && (at_token.octet >= at_token.last_end)),
-    answers: at_token.answers
+    answers: at_token.answers,
+    digest: at_token.digest
   }
 }
 
@@ -245,7 +251,12 @@ fn stream_layout_record_token(acc: StreamLayoutWalk) -> StreamLayoutWalk {
           ahead: skip(xs: acc.ahead, n: 1),
           last_end: tok.end,
           seen: false,
-          answers: if acc.seen { map_insert(m: acc.answers, key: tok.start, value: acc.line) } else { acc.answers }
+          answers: if acc.seen { map_insert(m: acc.answers, key: tok.start, value: acc.line) } else { acc.answers },
+          digest: if acc.seen {
+            combine_hash(a: acc.digest, b: combine_hash(a: integer_int_content_digest(value: tok.start), b: integer_int_content_digest(value: acc.line)))
+          } else {
+            acc.digest
+          }
         }
       } else {
         acc
