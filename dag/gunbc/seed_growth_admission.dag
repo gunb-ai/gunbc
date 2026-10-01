@@ -2,6 +2,7 @@ module gunbc.seed_growth_admission
 
 import gunbc.evaluation_store_address_census_seed_growth { evaluation_store_address_census_seed_growth_justification }
 import gunbc.primitive_egress_census_seed_growth { primitive_egress_census_seed_growth_justification }
+import gunbc.operation_requires_query_seed_growth { operation_requires_query_seed_growth_justification }
 import gunbc.required_lane_resolution_census_seed_growth { required_lane_resolution_census_seed_growth_justification }
 import gunbc.bare_reference_channel_outcome_seed_growth { bare_reference_channel_outcome_seed_growth_justification }
 import gunbc.unimported_bare_provider_gate_seed_growth { unimported_bare_provider_gate_seed_growth_justification }
@@ -331,6 +332,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     scope_rank_view_seed_growth_justification,
     floor_teardown_attribution_seed_growth_justification,
     primitive_egress_census_seed_growth_justification,
+    operation_requires_query_seed_growth_justification,
     required_lane_resolution_census_seed_growth_justification,
     bare_reference_channel_outcome_seed_growth_justification,
     floor_corpus_census_allowance_seed_growth_justification,
