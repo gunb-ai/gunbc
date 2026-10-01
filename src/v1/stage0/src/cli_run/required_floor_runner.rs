@@ -5721,9 +5721,12 @@ pub(crate) fn floor_authority_frame(
 /// keeps on purpose: producer nodes (Rc into the prepared graph) and portable stored values.
 /// `builds` counts frame constructions, so the CPU side of re-framing on a module change is
 /// reported beside the memory it saves.
-/// ONE ROW PER WARMED PRODUCER at identity grain, (producer, portable-value digest), so two
-/// runs of the floor are comparable at the producer and not only at the claim verdicts a
-/// warmed value happens to decide. A value that stored nothing to digest prints `none`.
+/// ONE ROW PER WARMED PRODUCER at identity grain, (producer, portable-value digest), for a
+/// producer-grain differential between two runs. THE DIGEST IS ONLY RUN-COMPARABLE OVER A
+/// CANONICAL PORTABLE ENCODING: until gunbc#12895 puts map entries in content order, a
+/// map-bearing value digests in its process's hash order, so two runs can print different
+/// digests for one value (recurring_failure_mode portable_value_map_order_is_process_random).
+/// A value that stored nothing to digest prints `none`.
 fn floor_warm_row_identity(qualified: &str) {
     let bare = qualified.rsplit('.').next().unwrap_or(qualified);
     let digest =
@@ -5736,31 +5739,12 @@ struct WarmFrameSlot {
     module: Option<String>,
     frame: Option<v1_interpreter::InterpContext>,
     builds: usize,
-    pass: &'static str,
-    seen_in_pass: std::collections::HashSet<String>,
-    pass_builds: Vec<(&'static str, usize, usize)>,
+    framed: std::collections::HashSet<String>,
     build_ms: u128,
     drop_ms: u128,
 }
 
 impl WarmFrameSlot {
-    /// A pass's rows are processed grouped by module, so each module is framed at most ONCE per pass;
-    /// the closing count (builds, distinct modules) is the receipt that no row re-framed one.
-    fn begin_pass(&mut self, pass: &'static str) {
-        self.close_pass();
-        self.frame = None;
-        self.module = None;
-        self.pass = pass;
-    }
-
-    fn close_pass(&mut self) {
-        if !self.pass.is_empty() {
-            let builds = self.seen_in_pass.len();
-            self.pass_builds.push((self.pass, builds, builds));
-        }
-        self.seen_in_pass.clear();
-    }
-
     fn frame(
         &mut self,
         prepared: &PreparedRepository,
@@ -5776,14 +5760,14 @@ impl WarmFrameSlot {
         if outside_subject.contains(module) {
             return Ok(None);
         }
-        // A MODULE ALREADY FRAMED IN THIS PASS IS NOT FRAMED AGAIN: rows are grouped by module, so a
-        // second build means a row arrived out of its group -- memory traded for repeated work.
-        if self.seen_in_pass.contains(module) {
+        // A MODULE ALREADY FRAMED IS NOT FRAMED AGAIN: the warm's rows are grouped by module, so a
+        // second build means a row arrived out of its group -- memory traded for repeated work. This
+        // refusal is the wall; the closing counts only report.
+        if self.framed.contains(module) {
             return Err(format!(
-                "REQUIRED-FLOOR REFUSAL cause=PureProducerShareFrameRebuilt pass={} module={module} \
-                 {row_kind}={row} -- this pass's rows are not grouped by module, so one-frame-at-a-time \
-                 would rebuild a frame it already built",
-                self.pass
+                "REQUIRED-FLOOR REFUSAL cause=PureProducerShareFrameRebuilt module={module} \
+                 {row_kind}={row} -- the warm's rows are not grouped by module, so one-frame-at-a-time \
+                 would rebuild a frame it already built"
             ));
         }
         // The held frame goes BEFORE the next is built, so two are never resident together.
@@ -5797,7 +5781,7 @@ impl WarmFrameSlot {
         match built {
             Ok(frame) => {
                 self.builds += 1;
-                self.seen_in_pass.insert(module.to_string());
+                self.framed.insert(module.to_string());
                 self.module = Some(module.to_string());
                 self.frame = Some(frame);
                 Ok(self.frame.as_ref())
@@ -6026,7 +6010,6 @@ pub(crate) fn install_pure_producer_share(
         .into_iter()
         .collect();
     ordered_modules.sort_by_key(|m| (rank_of(m), m.clone()));
-    frames.begin_pass("warm");
     for group in &ordered_modules {
         for input in prepared_inputs
             .iter()
@@ -6348,15 +6331,19 @@ pub(crate) fn install_pure_producer_share(
             .collect::<Vec<_>>()
             .join(",")
     );
-    frames.close_pass();
-    let pass_builds = frames.pass_builds.clone();
+    // REPORTED, NOT A CHECK: the rebuild refusal above enforces one frame per module. The two counts
+    // come from different sources -- builds from the slot, roster modules from the rows -- so a module
+    // whose rows never reached a frame shows as a shortfall rather than vanishing.
+    let roster_modules_in_subject = ordered_modules
+        .iter()
+        .filter(|m| !outside_subject.contains(m.as_str()))
+        .count();
     eprintln!(
         "[floor-phase] phase=pure-producer-share-frames state=completed frame_builds={} \
-         per_pass={:?} (one frame resident at a time; rows grouped by module, so each pass frames \
-         each module once: builds == distinct modules per pass, a rebuild refuses) \
+         roster_modules_in_subject={} (one frame resident at a time, rows grouped by module) \
          frame_build_ms={} frame_drop_ms={} last_frame_drop_ms={}",
         frames.builds,
-        pass_builds,
+        roster_modules_in_subject,
         frames.build_ms,
         frames.drop_ms,
         {
