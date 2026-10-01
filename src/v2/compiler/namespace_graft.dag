@@ -769,13 +769,19 @@ fn namespace_graft_resolve_group(name: Symbol, first: Edge, rest: List<Edge>) ->
           }
         )
       } else {
-        outcome_rejected(Diagnostic {
-          reason: ^namespace_graft_declaration_name_repeated,
-          at: node_locus(node: second.target),
-          correction: Unavailable { reason: UserInputBoundary }
-        })
+        namespace_graft_repeated_name_refusal(second: second)
       }
   }
+}
+
+// A repeated name that does not merge refuses at its second occurrence. Taking the edge as a declared
+// Edge keeps its field read typed wherever it was bound from (a list pattern binds its element generic).
+fn namespace_graft_repeated_name_refusal(second: Edge) -> Outcome<Edge> {
+  outcome_rejected(Diagnostic {
+    reason: ^namespace_graft_declaration_name_repeated,
+    at: node_locus(node: second.target),
+    correction: Unavailable { reason: UserInputBoundary }
+  })
 }
 
 fn namespace_graft_all_namespace_bodies(group: List<Edge>) -> Bool {
