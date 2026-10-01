@@ -3341,7 +3341,14 @@ pub(crate) struct LocalRepoWetScheduledRow {
     pub entry: String,
     pub entry_module: String,
     pub function: String,
+    /// THE DECLARED HOST PREMISE, if any, by its `v2.workflow.wet_evidence` `WetHostPremise` arm
+    /// name, joined from `local_repo_wet_premise_roster`. The executor reads it BEFORE invoking
+    /// the claim; the readback and its verdict are `.dag` (`gunbc.wet_host_premise_readback`).
+    pub premise: Option<String>,
 }
+
+/// The module whose `local_repo_wet_premise_readings_wet` answers every declared premise once.
+pub(crate) const LOCAL_REPO_WET_PREMISE_READBACK_MODULE: &str = "gunbc.wet_host_premise_readback";
 
 /// WHAT ONE MEMBER ACTUALLY REACHED, at the width of the `.dag` authority's observed side.
 ///
@@ -3356,6 +3363,13 @@ pub(crate) enum LocalRepoWetObserved {
     Refused(String),
     Nonterminal(String),
     CompletedOverBudget(String),
+    /// THE CLAIM WAS NEVER INVOKED: its declared host premise read back unmet. Host realization of
+    /// `WetPremiseUnmetBeforeAttempt`; the join refuses it as `WetTerminalHostPremiseUnmet`, which
+    /// sends the reader to the RUNNER rather than the subject. Still a refusal, never a pass.
+    HostPremiseUnmet {
+        premise: String,
+        words: String,
+    },
 }
 
 impl LocalRepoWetObserved {
@@ -3366,6 +3380,7 @@ impl LocalRepoWetObserved {
             LocalRepoWetObserved::Refused(_) => "refused",
             LocalRepoWetObserved::Nonterminal(_) => "nonterminal",
             LocalRepoWetObserved::CompletedOverBudget(_) => "completed-over-budget",
+            LocalRepoWetObserved::HostPremiseUnmet { .. } => "host-premise-unmet",
         }
     }
 
@@ -3375,6 +3390,7 @@ impl LocalRepoWetObserved {
             LocalRepoWetObserved::Refused(d)
             | LocalRepoWetObserved::Nonterminal(d)
             | LocalRepoWetObserved::CompletedOverBudget(d) => d.as_str(),
+            LocalRepoWetObserved::HostPremiseUnmet { words, .. } => words.as_str(),
         }
     }
 
@@ -3648,6 +3664,15 @@ pub(crate) fn finalize_local_repo_wet_lane(
                          scheduled {}",
                         row.identity, t.function, row.function
                     ));
+                } else if let LocalRepoWetObserved::HostPremiseUnmet { premise, words } =
+                    &t.observed
+                {
+                    refusals.push(format!(
+                        "{}: WetTerminalHostPremiseUnmet — not invoked: the runner does not hold \
+                         the declared host premise {premise}; remedy the RUNNER, not the subject \
+                         — {words}",
+                        row.identity
+                    ));
                 } else if !t.observed.meets_pass_expectation() {
                     let detail = t.observed.detail();
                     let suffix = if detail.is_empty() {
@@ -3842,7 +3867,145 @@ fn local_repo_wet_schedule(
             entry,
             entry_module,
             function,
+            premise: None,
         });
+    }
+    local_repo_wet_join_premises(hermetic, &mut out)?;
+    Ok(out)
+}
+
+/// JOIN `v2.workflow.local_repo_wet_terminal.local_repo_wet_premise_roster` onto the schedule at
+/// identity grain. A premise row naming an identity nobody scheduled, or naming one twice, REFUSES:
+/// a premise that gates nothing is a roster defect, and two premises for one claim have no order.
+fn local_repo_wet_join_premises(
+    hermetic: &v1_interpreter::InterpContext,
+    schedule: &mut [LocalRepoWetScheduledRow],
+) -> Result<(), String> {
+    let value = v1_interpreter::run_in_context(
+        hermetic,
+        "v2.workflow.local_repo_wet_terminal.local_repo_wet_premise_roster",
+        false,
+    )
+    .map_err(|e| format!("local_repo_wet_premise_roster: {e}"))?;
+    let items = floor_decode_list(hermetic, Some(&value))
+        .map_err(|e| format!("local_repo_wet_premise_roster: {e}"))?;
+    for item in items {
+        let v1_interpreter::Value::Record { fields, .. } = item else {
+            return Err(format!(
+                "local_repo_wet_premise_roster: expected WetPremisedClaim, got {}",
+                floor_value_shape(Some(item))
+            ));
+        };
+        let identity = match hermetic.field(fields, "identity") {
+            Some(v1_interpreter::Value::Record {
+                fields: id_fields, ..
+            }) => {
+                let id_str = |name: &str| -> Result<String, String> {
+                    match hermetic.field(id_fields, name) {
+                        Some(v1_interpreter::Value::Str(s)) => Ok(s.to_string()),
+                        other => Err(format!(
+                            "local_repo_wet_premise_roster: identity.{name} must be String, got {}",
+                            floor_value_shape(other)
+                        )),
+                    }
+                };
+                format!("{}.{}", id_str("module_path")?, id_str("function")?)
+            }
+            other => {
+                return Err(format!(
+                    "local_repo_wet_premise_roster: identity must be a WitnessIdentity record, \
+                     got {}",
+                    floor_value_shape(other)
+                ));
+            }
+        };
+        let premise = match hermetic.field(fields, "premise") {
+            Some(v1_interpreter::Value::Variant { variant_name, .. }) => {
+                hermetic.resolve(*variant_name).to_string()
+            }
+            other => {
+                return Err(format!(
+                    "local_repo_wet_premise_roster: premise must be a WetHostPremise variant, \
+                     got {}",
+                    floor_value_shape(other)
+                ));
+            }
+        };
+        let Some(row) = schedule.iter_mut().find(|r| r.identity == identity) else {
+            return Err(format!(
+                "local_repo_wet_premise_roster: {identity} declares premise {premise} but is not \
+                 scheduled"
+            ));
+        };
+        if let Some(prior) = &row.premise {
+            return Err(format!(
+                "local_repo_wet_premise_roster: {identity} declares two premises ({prior}, \
+                 {premise})"
+            ));
+        }
+        row.premise = Some(premise);
+    }
+    Ok(())
+}
+
+/// READ EVERY DECLARED PREMISE ONCE, wet, through `gunbc.wet_host_premise_readback`. Returns the
+/// readings by premise arm name: `None` met, `Some(words)` unmet. The seed decides nothing here:
+/// readiness and its words are the toolchain authority's.
+fn local_repo_wet_premise_readings(
+    prepared: &PreparedRepository,
+    published: Option<Rc<HashSet<String>>>,
+) -> Result<HashMap<String, Option<String>>, String> {
+    let scope = claim_scope_for(prepared, LOCAL_REPO_WET_PREMISE_READBACK_MODULE)?;
+    let ctx = crate::cli_run::evaluation_frame(
+        &scope,
+        v1_interpreter::ExecutionMode::Wet,
+        None,
+        published,
+    );
+    let value = v1_interpreter::run_in_context(
+        &ctx,
+        &format!("{LOCAL_REPO_WET_PREMISE_READBACK_MODULE}.local_repo_wet_premise_readings_wet"),
+        false,
+    )
+    .map_err(|e| format!("{e}"))?;
+    let mut out = HashMap::new();
+    for item in floor_decode_list(&ctx, Some(&value))? {
+        let v1_interpreter::Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } = item
+        else {
+            return Err(format!(
+                "expected WetHostPremiseReading, got {}",
+                floor_value_shape(Some(item))
+            ));
+        };
+        let premise = match ctx.field(fields, "premise") {
+            Some(v1_interpreter::Value::Variant { variant_name, .. }) => {
+                ctx.resolve(*variant_name).to_string()
+            }
+            other => {
+                return Err(format!(
+                    "reading premise must be a WetHostPremise variant, got {}",
+                    floor_value_shape(other)
+                ))
+            }
+        };
+        let reading = match ctx.resolve(*variant_name).as_str() {
+            "WetHostPremiseMet" => None,
+            "WetHostPremiseUnmet" => match ctx.field(fields, "words") {
+                Some(v1_interpreter::Value::Str(w)) => Some(w.to_string()),
+                other => {
+                    return Err(format!(
+                        "WetHostPremiseUnmet.words must be String, got {}",
+                        floor_value_shape(other)
+                    ))
+                }
+            },
+            other => return Err(format!("unknown WetHostPremiseReading arm {other}")),
+        };
+        out.insert(premise, reading);
     }
     Ok(out)
 }
@@ -3865,6 +4028,7 @@ pub(crate) fn run_local_repo_wet_lane(
     published: Option<Rc<HashSet<String>>>,
 ) -> LocalRepoWetExecution {
     let mut terminals: Vec<LocalRepoWetTerminalRow> = Vec::new();
+    let mut premise_readings: Option<Result<HashMap<String, Option<String>>, String>> = None;
     // Group by module so one scope is prepared per entry rather than per witness.
     let mut by_module: Vec<(String, Vec<&LocalRepoWetScheduledRow>)> = Vec::new();
     for row in schedule {
@@ -3908,8 +4072,31 @@ pub(crate) fn run_local_repo_wet_lane(
             published.clone(),
         );
         for row in rows {
-            let observed =
-                local_repo_wet_observed_from(&crate::cli_run::run_claim(&ctx, &row.function));
+            // THE PREMISE IS READ BEFORE THE CLAIM IS INVOKED, never after it failed: a premise
+            // consulted to explain a red would be an excuse authored by the verdict. A readback
+            // that itself refuses is a typed refusal of the member, not an unmet premise -- it
+            // says nothing about the runner -- and never a skip.
+            let premise_reading = row.premise.as_ref().map(|premise| {
+                let readings = premise_readings.get_or_insert_with(|| {
+                    local_repo_wet_premise_readings(prepared, published.clone())
+                });
+                match readings {
+                    Ok(r) => match r.get(premise) {
+                        Some(reading) => Ok((premise.clone(), reading.clone())),
+                        None => Err(format!("host premise {premise} was not read back")),
+                    },
+                    Err(e) => Err(format!("host premise readback refused: {e}")),
+                }
+            });
+            let observed = match premise_reading {
+                Some(Err(e)) => LocalRepoWetObserved::Refused(e),
+                Some(Ok((premise, Some(words)))) => {
+                    LocalRepoWetObserved::HostPremiseUnmet { premise, words }
+                }
+                Some(Ok((_, None))) | None => {
+                    local_repo_wet_observed_from(&crate::cli_run::run_claim(&ctx, &row.function))
+                }
+            };
             eprintln!(
                 "[local-repo-wet] identity={} expected=passed observed={}",
                 row.identity,
@@ -5041,6 +5228,12 @@ pub(crate) fn required_floor_nominal_closure_module_seeds(
             local_repo_wet_schedule_rows
                 .iter()
                 .map(|row| row.entry_module.clone()),
+        )
+        .chain(
+            local_repo_wet_schedule_rows
+                .iter()
+                .any(|row| row.premise.is_some())
+                .then(|| LOCAL_REPO_WET_PREMISE_READBACK_MODULE.to_string()),
         )
         .collect()
 }
@@ -13014,6 +13207,7 @@ mod changed_witness_projection_tests {
             entry: "dag/test/claim/x_test.dag".to_string(),
             entry_module: "test.claim.x".to_string(),
             function: "w_holds".to_string(),
+            premise: None,
         }
     }
 
@@ -13155,6 +13349,30 @@ mod changed_witness_projection_tests {
         assert!(
             refused.contains("WetTerminalVerdictNotExpected")
                 && refused.contains("observed failed"),
+            "got: {refused}"
+        );
+    }
+
+    /// THE HOST-PREMISE CELL, discriminated from the verdict cell above. A member whose declared
+    /// premise read back unmet was never invoked: it refuses as the RUNNER
+    /// (`WetTerminalHostPremiseUnmet`, carrying the premise and the authority's words) and never as
+    /// `WetTerminalVerdictNotExpected` -- while it still refuses, so the lane does not pass.
+    #[test]
+    fn an_unmet_host_premise_refuses_as_the_runner_not_as_a_verdict() {
+        let schedule = [scheduled_row("test.claim.x.w_holds")];
+        let mut terminal = terminal_row("test.claim.x.w_holds", TEST_CANDIDATE);
+        terminal.observed = LocalRepoWetObserved::HostPremiseUnmet {
+            premise: "RunnerBrowserToolchainReadyForJobUser".to_string(),
+            words: "tree /home/ghrunner/.local/share/gunbc-browser-toolchain/abc absent"
+                .to_string(),
+        };
+        let refused = finalize(&schedule, vec![terminal])
+            .expect_err("an unmet premise must still refuse the lane");
+        assert!(
+            refused.contains("WetTerminalHostPremiseUnmet")
+                && refused.contains("RunnerBrowserToolchainReadyForJobUser")
+                && refused.contains("/home/ghrunner/.local/share/gunbc-browser-toolchain/abc")
+                && !refused.contains("WetTerminalVerdictNotExpected"),
             "got: {refused}"
         );
     }

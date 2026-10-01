@@ -20,9 +20,9 @@ import std.algebra { Cons, Empty, FreeMonoid }
 // members and its unmodeled interface members aside under two counted reasons. Census grade admits a
 // service module; the full normalize route, whose product reaches resolution, eval and emission,
 // refuses it, so no consumer can act on a set-aside realization. The fixture is the smallest service
-// carrying one member of each kind in dag/extdeps/access/posix_effective_principal_read_op.dag, the
-// first gen-two census wall (its transport kind is one of the closed literal terminals rest | shell |
-// file | local since gunbc#12757, so the fixture names `shell`): that file itself is admitted by the census run over the real tree, not
+// carrying one member of each kind (its transport kind one of the closed four, v2.extdeps.languages.dag
+// dag_grammar_transport_kind_expr) in dag/extdeps/access/posix_effective_principal_read_op.dag, the
+// first gen-two census wall: that file itself is admitted by the census run over the real tree, not
 // here, where parsing all of it would cost the claim its enrolment budget (DESIGN section 3).
 
 data posix_service_source: String = "module m\nservice a.P {\n  operation R {\n    output { o: Int = 1 }\n    readonly\n    transport shell {}\n  }\n}\n"

@@ -25,17 +25,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // v2.lens.reference_deps reference_sites_from_parsed_module walks the PARSE tree and keys on the
 // ^dag_surface_qualified_name production, so it sees a qualified name wherever that production
-// survives -- including a record FIELD type. v2.compiler.reference_site_collector walks the
-// NORMALIZED tree the resolver consumes, and since the dotted-reference lowering it sees a
-// qualified body reference and a qualified PARAMETER type -- but not a qualified FIELD type,
-// because v2.compiler.namespace_graft never rehomes a type declaration into the containment
-// tree (the declaration-grafting loss, v2.test.claim.namespace_xl0.field_type_tree_presence).
+// survives. v2.compiler.reference_site_collector walks the NORMALIZED tree the resolver consumes; since
+// the dotted-reference lowering it sees a qualified body reference and a qualified PARAMETER type, and
+// since declaration grafting (gunbc#11574) a qualified record FIELD type as well. Both cells below are
+// agreement cells.
 //
-// The lens's dissolution row (reference_deps_dissolve_on) stayed PENDING: the collector
-// is the single authority for the classes it covers, and the deletion of the parse walker waits on
-// an identity-grain site-set comparison being EMPTY across every reference position. This file is
-// the first cell of that comparison, and the disagreement row below reds -- and is re-stated --
-// when the graft lands and the collector sees the field type.
+// The lens's dissolution row (reference_deps_dissolve_on) stays PENDING: the deletion of the parse
+// walker waits on an identity-grain site-set comparison being EMPTY across every reference position,
+// and this file holds four cells of it: the two agreement cells, and the dotted-callee and
+// call-argument positions, where only the collector sees the site today.
 data qsd_source: String = "module v2.test.qsd_subject\n\nimport v2.std.logic { Bool }\n\ntype QsdWrapper { fld: v2.test.qsd_provider.QsdFieldType }\n\nfn qsd_param(p: v2.test.qsd_provider.QsdParamType) -> Bool { true }\n\nfn qsd_call() -> Bool { v2.test.qsd_provider.qsd_callee(x: v2.test.qsd_provider.qsd_argument) }\n"
 
 data qsd_field_spelling: String = "v2.test.qsd_provider.QsdFieldType"
@@ -100,19 +98,18 @@ test fn both_enumerators_see_a_qualified_parameter_type_holds() -> Bool {
   parse_walker_sees(spelling: qsd_param_spelling) && collector_sees(spelling: qsd_param_spelling)
 }
 
-// FLIPPED 2026-10-01 (DESIGN 4b(4)): enrolled as the disagreement cell "only the parse walker sees
-// a qualified field type", it went red once declaration grafting (gunbc#11574) brought the record
-// declaration into the normalized tree. Permanent agreement control: BOTH enumerators see it, so a
-// collector regression or a parse-walker loss each reds it.
+// AGREEMENT CELL: a qualified field type is seen by both enumerators. It stood as a measured
+// disagreement until declaration grafting (gunbc#11574) carried the record declaration into the
+// normalized tree; it is now a regression control, and it reds if the collector loses the field.
 test fn both_enumerators_see_a_qualified_field_type_holds() -> Bool {
   parse_walker_sees(spelling: qsd_field_spelling) && collector_sees(spelling: qsd_field_spelling)
 }
 
-// THE CALL CELLS, MEASURED 2026-10-01: the two positions reference_deps_dissolve_on still names as
-// outstanding -- a qualified callee and a qualified call argument -- are seen by the collector and NOT
-// by the parse walker. So at these positions the collector is the strictly wider enumerator: the
-// parse walker's survival does not rest on them. Each cell reds if the collector loses the position
-// or the parse walker gains it, and is re-stated as an agreement control when that happens.
+// THE CALL CELLS, MEASURED 2026-10-01: a qualified callee and a qualified call argument are seen
+// by the collector and NOT by the parse walker, so at these positions the collector is the strictly
+// wider enumerator and the parse walker's survival does not rest on them. Each cell reds if the
+// collector loses the position or the parse walker gains it, and is then re-stated as an agreement
+// control.
 test fn only_the_collector_sees_a_qualified_callee_today() -> Bool {
   collector_sees(spelling: qsd_callee_spelling) && !parse_walker_sees(spelling: qsd_callee_spelling)
 }
