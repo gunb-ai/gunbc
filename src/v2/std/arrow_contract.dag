@@ -4,7 +4,7 @@ import std.effects { EffectClaim, ReadonlyClaim, IdempotentClaim }
 import std.execution_mode { ExecutionMode, Hermetic, Wet, Record }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
-import v2.std.optional { Optional, Present, Absent, optional_present, optional_absent }
+import v2.std.optional { Optional, Present, Absent, optional_present, optional_absent, optional_is_present }
 import v2.std.node {
   Atom,
   Conj,
@@ -56,7 +56,7 @@ fn arrow_contract_label_is(label: Symbol, projected: Optional<Symbol>) -> Bool {
 // THE INVERSE OF EACH PROJECTION, and the one place a home's variants are listed by hand: the language
 // has no fold over a closed coproduct's constructors, so a label is read back by comparing it to each
 // variant's projection. A variant missing here is refused, never admitted, so the residue fails closed.
-// BOUNDED: two effect claims, three modes (only Hermetic projects to a label). OWNER: XL-2. TRIGGER: a language capability to enumerate a
+// BOUNDED: two effect claims and one claimable mode -- execution_mode_claim_label's exhaustive match already decides that Wet and Record project to no label, so the inverse lists only Hermetic. OWNER: XL-2. TRIGGER: a language capability to enumerate a
 // closed coproduct's constructors; this inverse is then derived from the projection and deleted.
 fn effect_claim_of_label(label: Symbol) -> Optional<EffectClaim> {
   if label == effect_claim_label(claim: ReadonlyClaim) {
@@ -71,26 +71,8 @@ fn effect_claim_of_label(label: Symbol) -> Optional<EffectClaim> {
 fn execution_mode_of_claim_label(label: Symbol) -> Optional<ExecutionMode> {
   if arrow_contract_label_is(label: label, projected: execution_mode_claim_label(mode: Hermetic)) {
     optional_present(value: Hermetic)
-  } else if arrow_contract_label_is(label: label, projected: execution_mode_claim_label(mode: Wet)) {
-    optional_present(value: Wet)
-  } else if arrow_contract_label_is(label: label, projected: execution_mode_claim_label(mode: Record)) {
-    optional_present(value: Record)
   } else {
     optional_absent()
-  }
-}
-
-fn arrow_contract_label_reads(read: Optional<EffectClaim>) -> Bool {
-  match read {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
-fn arrow_contract_mode_reads(read: Optional<ExecutionMode>) -> Bool {
-  match read {
-    Present { value: _ } => true
-    Absent => false
   }
 }
 
@@ -105,7 +87,7 @@ fn arrow_contract_atom_is_self_named(label: Symbol, target: Node) -> Bool {
 fn arrow_effect_claim_edge_conforms(e: Edge) -> Bool {
   match e.label {
     Positional => false
-    Named { name: sym } => arrow_contract_label_reads(read: effect_claim_of_label(label: sym)) && arrow_contract_atom_is_self_named(label: sym, target: e.target)
+    Named { name: sym } => optional_is_present(o: effect_claim_of_label(label: sym)) && arrow_contract_atom_is_self_named(label: sym, target: e.target)
   }
 }
 
@@ -125,7 +107,7 @@ fn arrow_effect_claims_target_conforms(claims: Node) -> Bool {
 // The execution-mode target: one childless Atom whose identity is an ExecutionMode's label.
 fn arrow_execution_mode_claim_target_conforms(mode: Node) -> Bool {
   match mode.kind {
-    TypeNode { connective: Atom { identity: id } } => arrow_contract_mode_reads(read: execution_mode_of_claim_label(label: id)) && (count(mode.children) == 0)
+    TypeNode { connective: Atom { identity: id } } => optional_is_present(o: execution_mode_of_claim_label(label: id)) && (count(mode.children) == 0)
     _ => false
   }
 }
