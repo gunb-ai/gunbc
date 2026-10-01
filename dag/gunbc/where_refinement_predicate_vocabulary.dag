@@ -71,13 +71,14 @@ fn where_predicate_decl(module_path: String, decl_name: String) -> WherePredicat
 // maps "brand" onto "Brand" so the two spellings meet. The authored form is the key here because
 // this roster's population is what an author can write, not what the parser rewrites it into.
 
-// THE STRING NON-EMPTINESS PREDICATE IS SPELLED string_non_empty, NOT non_empty. `non_empty` is
-// v2.std.algebra non_empty<T>(xs: FreeMonoid<T>) -> Bool, a different predicate over a different
-// domain, and a builtin collection-method name; String inhabits no FreeMonoid carrier in v2.std, so
-// the String predicate is a distinct concept and owns a distinct name (DESIGN section 3: one name,
-// one meaning). The concept once had three carriers -- that algebra name borrowed by spelling, the
-// v1 table, and v2.lens.enforcement.gate non_empty_string; std.types string_non_empty is now the one
-// declaration and the gate calls it.
+// THE HOST-TEXT NON-EMPTINESS PREDICATE IS SPELLED string_non_empty, NOT non_empty. `non_empty` is
+// v2.std.algebra non_empty<T>(xs: FreeMonoid<T>) -> Bool, over the STRUCTURAL carrier: v2.std.text
+// String is FreeMonoid<Char>, so non_empty already answers for it. std.types String is HOST text, a
+// different representation (DESIGN section 4: the two meet only through the declared unfold), so
+// its predicate is a distinct declaration with a distinct name (DESIGN section 3: one name, one
+// meaning). Each representation keeps its own one check: v2.lens.enforcement.gate, whose fields are
+// v2.std.text String, calls v2.std.algebra non_empty and no longer carries a private
+// non_empty_string; a where clause over host text names std.types string_non_empty.
 
 data where_refinement_predicate_vocabulary: List<WherePredicateRow> = [
   WherePredicateRow {

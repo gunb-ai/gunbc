@@ -2,29 +2,9 @@ module std.unicode.char_class
 
 import std.types { Char }
 
-// CHARACTER CLASSES over Char. They lived in std.unicode.types, which imported Char from std.types
-// while std.types' `Char = Int where unicode_scalar` names std.unicode.types unicode_scalar -- a
-// module cycle once v2 resolve binds the where atom as a reference. This module sits above both.
-
-type CharClass = Whitespace | Digit | IdentStart | IdentContinue
-
-fn char_in_class(c: Char, class: CharClass) -> Bool =
-  match class {
-
-    Whitespace =>
-      unicode_char_code_point(c: c) == 9 || unicode_char_code_point(c: c) == 10 || unicode_char_code_point(c: c) == 12
-      || unicode_char_code_point(c: c) == 13 || unicode_char_code_point(c: c) == 32
-    Digit => unicode_char_code_point(c: c) >= 48 && unicode_char_code_point(c: c) <= 57
-    IdentStart =>
-      unicode_char_code_point(c: c) >= 65 && unicode_char_code_point(c: c) <= 90
-      || unicode_char_code_point(c: c) >= 97 && unicode_char_code_point(c: c) <= 122
-      || unicode_char_code_point(c: c) == 95
-
-    IdentContinue =>
-      unicode_char_code_point(c: c) >= 48 && unicode_char_code_point(c: c) <= 57
-      || unicode_char_code_point(c: c) >= 65 && unicode_char_code_point(c: c) <= 90
-      || unicode_char_code_point(c: c) >= 97 && unicode_char_code_point(c: c) <= 122
-      || unicode_char_code_point(c: c) == 95
-  }
+// THE CODE POINT OF A Char. It lived in std.unicode.types, which imported Char from std.types while
+// std.types' `Char = Int where unicode_scalar` names std.unicode.types unicode_scalar -- a module
+// cycle once v2 resolve binds the where atom as a reference. This module sits above both. Its
+// consumers are v2.compiler.tokenize and v2.std.compilers.lexing.
 
 fn unicode_char_code_point(c: Char) -> Int = c + 0
