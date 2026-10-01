@@ -1294,7 +1294,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/test/claim/hand_lens_host_bridge_scaffold_watchdog_test.dag", name: "transport_script_position_scaffold_row", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/test/claim/hetzner_cost_quote_witness_test.dag", name: "SubstrateInputsOnly", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/test/claim/hetzner_listing_witness_test.dag", name: "obligation", standing: Retired { cause: NotAReference } },
-  UnimportedBareProviderDisposition { file: "dag/test/claim/host/host_allocation_conservation_test.dag", name: "SubstrateInputsOnly", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/test/claim/host/host_allocation_conservation_test.dag", name: "SubstrateInputsOnly", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/host/host_hygiene_liveness_test.dag", name: "SubstrateInputsOnly", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/host/host_phase_status_witness_test.dag", name: "CiRunnerParticipation", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/test/claim/host/host_phase_status_witness_test.dag", name: "DeclaredGap", standing: ActiveDebt },
