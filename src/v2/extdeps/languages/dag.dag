@@ -1469,13 +1469,21 @@ fn dag_grammar_primary_expr_expr() -> GrammarExpr {
 // `module` names a value in expression position (std.cross_tree.resolution
 // `SourceRootBinding { module: module, root: root }`): it is already a binding name for
 // parameters, labels and members (dag_binding_name_keyword_tokens), and v1 reads it as an ordinary
-// identifier here. Only `module` is admitted -- it heads a module header, which is module-level
-// only, so nothing else can begin an expression with it; `if`, `match` and `let` head expressions
-// of their own and stay out.
+// identifier here. `data` is admitted for the same reason (extdeps.google.sheets writes
+// `data: data` in a transport body, naming its io field `data`): it heads a data declaration, which
+// is module-level only, so nothing else can begin an expression with it. v1 reads EVERY keyword as a
+// name here except the literal keywords and the six that head expressions of their own
+// (02_parse parse_primary, dag_non_name_keywords); v2 admits only the declaration-heading keywords a
+// source has needed, because a clause keyword (`else`, `then`, `in`, `as`) admitted as a value
+// could begin a new statement where the grammar expects the clause. `if`, `match` and `let` head
+// expressions of their own and stay out.
 fn dag_grammar_primary_name_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_ident_or_type_decl_modifier_name(),
-    right: dag_grammar_terminal_lexeme(token_class: ^dag_token_kw_module)
+    right: dag_grammar_choice(
+      left: dag_grammar_terminal_lexeme(token_class: ^dag_token_kw_module),
+      right: dag_grammar_terminal_lexeme(token_class: ^dag_token_kw_data)
+    )
   )
 }
 
