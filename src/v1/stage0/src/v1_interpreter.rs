@@ -2421,6 +2421,11 @@ fn store_cross_claim_pure_memo(
             return CrossClaimStoreOutcome::RefusedValueNotPortable(refusal);
         }
     };
+    // The evaluated value's content identity, recorded for the caller BEFORE the presence
+    // check, so an `AlreadyPresent` warm still reports what THIS evaluation produced.
+    CROSS_CLAIM_LAST_STORE_DIGEST.with(|d| {
+        *d.borrow_mut() = Some((func_name.to_string(), portable_value_digest(&portable)))
+    });
     let outcome = CROSS_CLAIM_PURE_MEMO.with(|m| {
         let mut m = m.borrow_mut();
         if let Some(bucket) = m.map.get(&memo_key) {
@@ -2465,6 +2470,20 @@ fn store_cross_claim_pure_memo(
         }
     }
     outcome
+}
+
+thread_local! {
+    static CROSS_CLAIM_LAST_STORE_DIGEST: RefCell<Option<(String, String)>> = const { RefCell::new(None) };
+}
+
+/// The portable-form digest of the value the most recent cross-claim store evaluated for
+/// `func_name`, taken (and cleared) so a later caller can never read an earlier producer's
+/// identity. `None` when that store refused before the value was reified.
+pub fn take_cross_claim_store_digest(func_name: &str) -> Option<String> {
+    CROSS_CLAIM_LAST_STORE_DIGEST.with(|d| match d.borrow_mut().take() {
+        Some((name, digest)) if name == func_name => Some(digest),
+        _ => None,
+    })
 }
 
 /// Why a plain nullary warm stored nothing. Typed apart so the floor names the cause: a
@@ -20279,15 +20298,116 @@ fn eval_emit_host_run_transport_builtin(
 /// moves. SINGLE authority for every host op on the native-cache namespace: the cached run
 /// transport AND emit_host_native_cache_evict share this mapping, so eviction targets the
 /// workspace the transport warms (a fork here silently un-evicts).
-fn native_cache_rebase_workspace_dir(workspace_dir: String) -> String {
-    match std::env::var("GUNBC_NATIVE_CACHE_ROOT") {
-        Ok(root) if !root.trim().is_empty() => match workspace_dir.strip_prefix("/tmp/") {
-            Some(rest) if rest.starts_with("gunbc_") => {
-                format!("{}/{}", root.trim_end_matches('/'), rest)
-            }
-            _ => workspace_dir,
-        },
-        _ => workspace_dir,
+///
+/// NO HOST-GLOBAL DEFAULT. With GUNBC_NATIVE_CACHE_ROOT unset the namespace used to land at its
+/// literal /tmp/gunbc_ spelling: one directory shared by every user and every runner instance on
+/// the host, written in place with no owner. On srv1 a directory left by one runner user refused
+/// the next user's write (Permission denied), and concurrent instances raced on the same content-
+/// keyed path -- a wet-witness host premise of the runner-keyed class #12467 fixed for its own
+/// fixed paths. Unset now roots the namespace in the running user's cache directory
+/// (`$XDG_CACHE_HOME/gunbc_native_cache`, else `$HOME/.cache/gunbc_native_cache`), which that user
+/// owns; on the floor runners `$HOME` is the instance's own job temp, so no other instance writes it.
+/// Not under the checkout: a crate inside the repository's Cargo workspace is refused by cargo
+/// ("current package believes it's in a workspace when it's not"), measured. The content-hash
+/// components are untouched, so this moves WHERE and never WHAT. With neither variable set the
+/// namespace refuses rather than falling back to /tmp.
+fn native_cache_rebase_workspace_dir(workspace_dir: String) -> InterpResult<String> {
+    let configured = std::env::var("GUNBC_NATIVE_CACHE_ROOT")
+        .ok()
+        .filter(|root| !root.trim().is_empty());
+    let root = match configured {
+        Some(root) => root,
+        None if native_cache_namespace_rest(&workspace_dir).is_none() => return Ok(workspace_dir),
+        None => native_cache_user_root(
+            std::env::var("XDG_CACHE_HOME").ok().as_deref(),
+            std::env::var("HOME").ok().as_deref(),
+        )
+        .ok_or_else(|| InterpError::TypeError {
+            msg: "native cache: neither XDG_CACHE_HOME nor HOME names a user cache directory, and \
+                  the native cache has no host-global fallback; set GUNBC_NATIVE_CACHE_ROOT"
+                .to_string(),
+        })?,
+    };
+    Ok(native_cache_rebased(&workspace_dir, &root))
+}
+
+/// The part of a native-cache path after its declared `/tmp/` prefix, or None for a path outside
+/// the namespace (which is never moved).
+fn native_cache_namespace_rest(workspace_dir: &str) -> Option<&str> {
+    workspace_dir
+        .strip_prefix("/tmp/")
+        .filter(|rest| rest.starts_with("gunbc_"))
+}
+
+fn native_cache_user_root(xdg_cache_home: Option<&str>, home: Option<&str>) -> Option<String> {
+    let absolute = |v: &str| !v.trim().is_empty() && v.starts_with('/');
+    match (
+        xdg_cache_home.filter(|v| absolute(v)),
+        home.filter(|v| absolute(v)),
+    ) {
+        (Some(xdg), _) => Some(format!("{}/gunbc_native_cache", xdg.trim_end_matches('/'))),
+        (None, Some(home)) => Some(format!(
+            "{}/.cache/gunbc_native_cache",
+            home.trim_end_matches('/')
+        )),
+        (None, None) => None,
+    }
+}
+
+fn native_cache_rebased(workspace_dir: &str, root: &str) -> String {
+    match native_cache_namespace_rest(workspace_dir) {
+        Some(rest) => format!("{}/{}", root.trim_end_matches('/'), rest),
+        None => workspace_dir.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod native_cache_root_tests {
+    use super::*;
+
+    // The srv1 refusal: an unset root must not leave a namespace path at its host-global /tmp
+    // spelling, which another runner user may own.
+    #[test]
+    fn unset_root_moves_the_namespace_to_the_user_cache_never_to_tmp() {
+        let root = native_cache_user_root(None, Some("/runner/_temp")).unwrap();
+        let moved =
+            native_cache_rebased("/tmp/gunbc_emit_on_demand_identity_cast_native/ab12", &root);
+        assert_eq!(
+            moved,
+            "/runner/_temp/.cache/gunbc_native_cache/gunbc_emit_on_demand_identity_cast_native/ab12"
+        );
+        assert!(!moved.starts_with("/tmp/"));
+        assert_eq!(
+            native_cache_user_root(Some("/x/cache"), Some("/home/u")).as_deref(),
+            Some("/x/cache/gunbc_native_cache")
+        );
+    }
+
+    // No user cache directory refuses; it never falls back to the host-global spelling.
+    #[test]
+    fn no_user_cache_directory_has_no_root() {
+        assert_eq!(native_cache_user_root(None, None), None);
+        assert_eq!(native_cache_user_root(Some(""), Some("relative")), None);
+    }
+
+    // WHERE, never WHAT: the content-keyed components survive the move byte for byte.
+    #[test]
+    fn a_configured_root_keeps_the_content_keyed_components() {
+        assert_eq!(
+            native_cache_rebased("/tmp/gunbc_emit_on_demand_kernel/k1/k2", "/cache/"),
+            "/cache/gunbc_emit_on_demand_kernel/k1/k2"
+        );
+    }
+
+    // Outside the namespace nothing moves, under either root.
+    #[test]
+    fn a_path_outside_the_namespace_is_never_moved() {
+        assert_eq!(native_cache_namespace_rest("/tmp/other/x"), None);
+        assert_eq!(native_cache_namespace_rest("/var/gunbc_x"), None);
+        assert_eq!(
+            native_cache_rebased("/tmp/other/x", "/cache"),
+            "/tmp/other/x"
+        );
     }
 }
 
@@ -20315,7 +20435,7 @@ fn eval_emit_host_native_cache_evict_builtin(
         .ok_or_else(|| InterpError::TypeError {
             msg: "emit_host_native_cache_evict: workspace_dir must be String".to_string(),
         })?;
-    let workspace_dir = native_cache_rebase_workspace_dir(workspace_dir);
+    let workspace_dir = native_cache_rebase_workspace_dir(workspace_dir)?;
     match std::fs::remove_dir_all(&workspace_dir) {
         Ok(()) => Ok(Value::Bool(true)),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Value::Bool(true)),
@@ -20510,10 +20630,29 @@ fn run_cached_process_spec(
     require_transition_timing: bool,
     admitted_names: &[String],
 ) -> InterpResult<Value> {
-    let workspace_dir = native_cache_rebase_workspace_dir(workspace_dir);
+    let workspace_dir = native_cache_rebase_workspace_dir(workspace_dir)?;
     let realization_workspace = std::path::PathBuf::from(&workspace_dir);
     std::fs::create_dir_all(&realization_workspace).map_err(|e| InterpError::TypeError {
         msg: format!("emit_host_run_transport_cached: workspace create failed: {e}"),
+    })?;
+    // ONE WRITER PER CONTENT-KEYED WORKSPACE. Two runs that share a cache root (two same-user runs
+    // outside CI share ~/.cache) would otherwise materialize, build and mark one directory at once:
+    // a reader can see a file another writer has just truncated. Every step from materialization to
+    // the ready marker happens under an exclusive lock on the realization workspace, so a second run
+    // waits, then finds the first run's `.native_ready` and runs warm, or rebuilds a partial
+    // directory (no marker) in place. A lock rather than build-elsewhere-then-rename: cargo records
+    // absolute paths, and a renamed build recompiles the crate on its first warm run while reporting
+    // compile_skipped (measured), so the publish would not be what the receipt says it is.
+    let publish_lock = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(realization_workspace.join(".native_publish.lock"))
+        .map_err(|e| InterpError::TypeError {
+            msg: format!("emit_host_run_transport_cached: publish lock open failed: {e}"),
+        })?;
+    publish_lock.lock().map_err(|e| InterpError::TypeError {
+        msg: format!("emit_host_run_transport_cached: publish lock failed: {e}"),
     })?;
     emit_host_materialize_workspace_files(&realization_workspace, &workspace_files)?;
     let build_environment = emit_host_constructed_build_environment(admitted_names);
