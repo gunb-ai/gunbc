@@ -141,6 +141,7 @@ import v2.std.node {
 }
 import v2.std.type_binder { cast_target_edge, type_alias_wrapper, type_decl_wrapper, type_opaque_wrapper, type_param_names, type_params_edge }
 import v2.std.node_query {
+  binder_edge,
   node_positional_child_targets,
   construct_node,
   construct_node_elided,
@@ -1975,7 +1976,7 @@ type BodyLowerTypedParam {
 }
 
 fn body_lower_typed_param_edge_of(param: BodyLowerTypedParam) -> Edge {
-  Edge { label: Named { name: param.name }, target: param.type_node }
+  binder_edge(name: param.name, type_node: param.type_node)
 }
 
 fn body_lower_collect_param_edges(sequence_capture: Node) -> Outcome<List<Edge>> {
@@ -9460,7 +9461,7 @@ fn body_lower_service_member_unread<T>(member: Node) -> Outcome<T> {
 // an empty parameter list, not an empty payload argument.
 fn body_lower_operation_params(input: Optional<Node>) -> List<Edge> {
   match input {
-    Present { value: payload } => [Edge { label: Named { name: ^operation_input }, target: payload }]
+    Present { value: payload } => [binder_edge(name: ^operation_input, type_node: payload)]
     Absent => []
   }
 }

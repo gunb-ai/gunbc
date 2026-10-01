@@ -246,6 +246,14 @@ fn declared_field_cardinality_of_target(target: Node) -> Cardinality {
   }
 }
 
+// THE ONE BUILDER OF A BINDER: the named member of an Arrow domain, an io payload or a record payload,
+// declaring `name` of type `type_node`. Every producer that makes a binder from a name and a type
+// builds it here, so the binder's representation is constructed in one place, as
+// declared_field_from_edge reads it in one place.
+fn binder_edge(name: Symbol, type_node: Node) -> Edge {
+  Edge { label: Named { name: name }, target: type_node }
+}
+
 fn declared_field_from_edge(e: Edge) -> Optional<DeclaredField> {
   match e.label {
     Named { name: field_name } =>
