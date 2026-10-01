@@ -87,7 +87,7 @@ type SymbolIndex {
   declared_payloads: Map<QualifiedName, DeclaredPayloadKind>
   renaming_aliases: Map<QualifiedName, Symbol>
   declared_type_params: Map<QualifiedName, List<Symbol>>
-  declared_resources: Map<QualifiedName, ResourceDeclarationMark>
+  declared_resources: Map<QualifiedName, ResourceDeclared>
 }
 
 // WHICH KIND OF DECLARED PAYLOAD A PATH DENOTES, stored as the map's value so the map cannot hold a
@@ -102,13 +102,13 @@ type DeclaredPayloadKind
 
 // A PATH THAT DECLARES A `resource`, stored as the map's value for the reason DeclaredPayloadKind is:
 // a Map<QualifiedName, Bool> could record false and a presence read would still answer resource, so
-// every value this type has IS a resource declaration. It is not a DeclaredPayloadKind arm, because
+// every value this type has IS a resource declaration. It is an empty record, not a one-variant
+// coproduct: `type T = V` spells an alias to a type named V. It is not a DeclaredPayloadKind arm, because
 // that map answers "is this path a constructor payload" (v2.compiler.resolve
 // resolve_path_is_declared_payload) and a resource is not one. Written by v2.compiler.symbol_index_fill
 // from the captured resource names (ModuleBindingSource resource_declarations); read through
 // symbol_index_declares_resource_at.
-type ResourceDeclarationMark
-  = ResourceDeclared
+type ResourceDeclared {}
 
 fn empty_symbol_index() -> SymbolIndex {
   SymbolIndex {
@@ -319,7 +319,7 @@ fn symbol_index_mark_declared_resource(index: SymbolIndex, qualified_path: Quali
     declared_payloads: index.declared_payloads,
     renaming_aliases: index.renaming_aliases,
     declared_type_params: index.declared_type_params,
-    declared_resources: map_insert(m: index.declared_resources, key: qualified_path, value: ResourceDeclared)
+    declared_resources: map_insert(m: index.declared_resources, key: qualified_path, value: ResourceDeclared {})
   }
 }
 
