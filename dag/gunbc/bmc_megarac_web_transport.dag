@@ -28,8 +28,8 @@ import gunbc.owned_process {
 // The stand-in viewer page is narrower than the vendor's: a canvas#kvm painted from the /kvm stream
 // once a frame arrives, drawn from a cross-origin image when the world's canvas_readable flag is false.
 // The stand-in viewer reads sessionStorage.features.indexOf(...) UNGUARDED before it opens /kvm, as the
-// served viewer.min.js does: a viewer opened without the feature list throws and never connects, which
-// is what KVM probe run 36788605665 did on the hardware.
+// served viewer.min.js does (crawl run 36787375313): a viewer opened without the feature list throws and
+// never connects, which is what KVM probe run 36788605665 did on the hardware.
 // The stand-in root page replaces itself on DOMContentLoaded and the transport logs that it was served:
 // the shape that destroyed the observer's in-page login on fleet-converge run 36721915217. An observer
 // that loads "/" and then evaluates in it fails here exactly as it did there.
