@@ -403,32 +403,31 @@ fn witness_fixture_wire() -> String {
 }
 
 fn witness_fixture_spki_octets() -> List<UInt8> {
-  [48, 130, 1, 34, 48, 13, 6, 9, 42, 134, 72, 134, 247, 13, 1, 1, 1, 5, 0, 3, 130, 1, 15, 0, 48, 130, 1,
-   10, 2, 130, 1, 1, 0, 140, 247, 221, 54, 72, 250, 150, 42, 207, 137, 227, 47, 93, 46, 231, 130, 82,
-   130, 86, 236, 214, 129, 229, 92, 255, 75, 53, 44, 67, 64, 5, 140, 135, 13, 111, 52, 173, 109, 0, 252,
-   211, 248, 203, 33, 247, 205, 178, 135, 136, 126, 207, 79, 168, 132, 108, 18, 231, 55, 147, 159, 27,
-   109, 199, 59, 123, 203, 176, 175, 170, 112, 1, 210, 6, 214, 97, 235, 202, 55, 75, 223, 65, 134, 22,
-   46, 253, 158, 148, 124, 225, 34, 18, 220, 28, 171, 252, 11, 172, 46, 198, 153, 20, 112, 141, 114,
-   225, 112, 78, 152, 156, 207, 8, 13, 138, 39, 202, 136, 167, 52, 7, 55, 90, 172, 11, 217, 135, 200,
-   226, 41, 46, 169, 224, 6, 129, 149, 78, 44, 165, 227, 20, 123, 202, 37, 150, 82, 14, 15, 205, 188,
-   247, 166, 93, 48, 52, 192, 81, 240, 19, 204, 200, 135, 141, 44, 204, 22, 164, 188, 243, 197, 4, 204,
-   255, 60, 66, 196, 42, 195, 123, 75, 154, 150, 162, 146, 226, 225, 151, 112, 15, 158, 41, 46, 193, 87,
-   220, 85, 122, 112, 113, 205, 173, 177, 136, 125, 31, 234, 43, 147, 116, 196, 167, 166, 220, 127, 8,
-   229, 81, 138, 194, 81, 93, 31, 43, 169, 184, 190, 128, 47, 194, 251, 131, 129, 10, 161, 185, 225, 95,
-   208, 44, 204, 190, 39, 166, 71, 34, 219, 120, 65, 49, 250, 96, 101, 29, 141, 83, 93, 222, 165, 2, 3,
-   1, 0, 1]
+  [48, 60, 48, 13, 6, 9, 42, 134, 72, 134, 247, 13, 1, 1, 1, 5, 0, 3, 43, 0, 48, 40, 2, 33, 0, 169,
+   210, 127, 242, 61, 113, 165, 56, 27, 211, 38, 103, 79, 52, 0, 63, 63, 191, 180, 239, 235, 104,
+   144, 210, 88, 56, 180, 75, 67, 74, 239, 7, 2, 3, 1, 0, 1]
 }
 
 // ── The JWKS realization (frontier 2) ──────────────────────────────────────────────────────────
 // These controls drive the REALIZATION's pure folds — the wire decode, the JWKS vocabulary and
-// selection, the SPKI assembly — against fixtures computed independently on the host (a real
-// openssl-generated RSA key; the fixture bytes below are its published SPKI). The IO arms
+// selection, the SPKI assembly — against fixtures computed independently on the host. The IO arms
 // (fetch, cache, the openssl invocation itself) are substrate: the refusal ARMS below never
 // reach an effect, which is what makes never-fail-open witnessed rather than asserted.
+// THE FIXTURE KEY IS A 256-BIT RSA MODULUS, because the SPKI assembly costs ~1k eval steps per
+// modulus character and a 2048-bit key put the claim at 320k against the 72,300 new-witness budget
+// (at 256 bits: ~48k). The assembler has no key-size floor; key strength is not the subject, the
+// DER encoding is. OpenSSL 3 refuses to GENERATE below 512 bits, so the modulus is the product of
+// two 128-bit primes (Python Miller-Rabin, random.seed(12787), e=65537 coprime to p-1 and q-1) and
+// the SPKI document is OPENSSL'S OWN ENCODING of that key:
+//   openssl asn1parse -genconf k256.genconf -out k256.spki.der -noout
+//   with k256.genconf: asn1=SEQUENCE:spki / [spki] alg=SEQUENCE:alg, key=BITWRAP,SEQUENCE:rsakey /
+//   [alg] oid=OID:rsaEncryption, null=NULL / [rsakey] n=INTEGER:0x<modulus>, e=INTEGER:65537
+//   openssl pkey -pubin -inform DER -in k256.spki.der -text -noout  -> "Public-Key: (256 bit)"
+// (OpenSSL 3.0.13), and n below is that output's modulus octets, sign byte included, base64url.
 
 data witness_fixture_key_id: NonEmptyStr = "fixture-key-1" as NonEmptyStr
 
-data witness_fixture_key_n: NonEmptyStr = "AIz33TZI-pYqz4njL10u54JSglbs1oHlXP9LNSxDQAWMhw1vNK1tAPzT-Msh982yh4h-z0-ohGwS5zeTnxttxzt7y7CvqnAB0gbWYevKN0vfQYYWLv2elHzhIhLcHKv8C6wuxpkUcI1y4XBOmJzPCA2KJ8qIpzQHN1qsC9mHyOIpLqngBoGVTiyl4xR7yiWWUg4Pzbz3pl0wNMBR8BPMyIeNLMwWpLzzxQTM_zxCxCrDe0ualqKS4uGXcA-eKS7BV9xVenBxza2xiH0f6iuTdMSnptx_COVRisJRXR8rqbi-gC_C-4OBCqG54V_QLMy-J6ZHItt4QTH6YGUdjVNd3qU" as NonEmptyStr
+data witness_fixture_key_n: NonEmptyStr = "AKnSf_I9caU4G9MmZ080AD8_v7Tv62iQ0lg4tEtDSu8H" as NonEmptyStr
 
 data witness_fixture_key_e: NonEmptyStr = "AQAB" as NonEmptyStr
 
