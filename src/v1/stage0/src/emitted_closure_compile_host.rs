@@ -907,7 +907,19 @@ fn read_cargo_json(stdout: &str, stderr: &str, crate_dir: &Path) -> CargoJsonRea
             .and_then(|m| m.get("level"))
             .and_then(|l| l.as_str());
         let emitted = match record.get("manifest_path").and_then(|m| m.as_str()) {
-            Some(manifest) => Path::new(manifest).starts_with(crate_dir),
+            // Either spelling joins: the literal one, or both sides canonicalized, so a crate
+            // directory reached through a symlink cannot make the emitted crate's warnings miss
+            // the join and go uncounted (review 73526).
+            Some(manifest) => {
+                Path::new(manifest).starts_with(crate_dir)
+                    || match (
+                        std::fs::canonicalize(manifest),
+                        std::fs::canonicalize(crate_dir),
+                    ) {
+                        (Ok(m), Ok(c)) => m.starts_with(c),
+                        _ => false,
+                    }
+            }
             None => true,
         };
         if level == Some("warning") && emitted {
@@ -2699,6 +2711,32 @@ mod tests {
             "an emitted build.rs's rustc warning counts; its cargo:warning= output does not"
         );
         let reading = read_cargo_json("not json\n", "", crate_dir);
+        assert_eq!(
+            reading.emitted_warning_headers.len(),
+            1,
+            "unreadable refuses"
+        );
+        #[cfg(unix)]
+        {
+            let root = std::env::temp_dir().join(format!("gunbc-json-join-{}", std::process::id()));
+            let real = root.join("real");
+            std::fs::create_dir_all(&real).unwrap();
+            std::fs::write(real.join("Cargo.toml"), "").unwrap();
+            let link = root.join("link");
+            let _ = std::fs::remove_file(&link);
+            std::os::unix::fs::symlink(&real, &link).unwrap();
+            let record = format!(
+                r#"{{"reason":"compiler-message","manifest_path":"{}","message":{{"level":"warning","rendered":"warning: via symlink\n"}}}}"#,
+                real.join("Cargo.toml").display()
+            );
+            let reading = read_cargo_json(&format!("{record}\n"), "", &link);
+            let _ = std::fs::remove_dir_all(&root);
+            assert_eq!(
+                reading.emitted_warning_headers.len(),
+                1,
+                "a symlinked crate dir still joins its own manifest"
+            );
+        }
         assert_eq!(
             reading.emitted_warning_headers.len(),
             1,
