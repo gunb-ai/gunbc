@@ -7176,7 +7176,26 @@ pub fn run_required_floor(
     }
     // THE PER-PR v2 DIFFERENTIAL'S POPULATION: reached witness declarations homed under the v2
     // claim root. Which of them are claims is the discovery loop's answer, not this one's.
-    let reach_consumer_candidates: HashSet<String> = compile_subject
+    // PLANNED ON THE MERGE GROUP ONLY (operator ruling, 2026-10-01; `v2.workflow.floor_subject_seed`
+    // `reach_planned_for_event`). The event is read through the authority that chose this run's
+    // diff window. On any other event no reach consumer is planned, and the floor says so with the
+    // count it would have reached, so the deferral is announced and never silent.
+    // AN UNREADABLE EVENT REFUSES ON CI: read as "not a merge group" it would silently defer the
+    // differential on the one event that must run it. A local run has no CI event and is a
+    // pull-request-shaped run for this purpose.
+    let reach_event = match floor_diff_baseline_readout() {
+        Ok((_, event)) => event,
+        Err(e) if commit != "local" && !commit.is_empty() => {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=ReachEventUnreadable {e} -- whether this run is the \
+                 merge group's, and so whether it judges the reach differential, is unknown"
+            ))
+        }
+        Err(_) => String::new(),
+    };
+    let reach_planned =
+        crate::cli_run::reach_base_standings::reach_planned_for_event(source_roots, &reach_event)?;
+    let reached_v2_witness_declarations = compile_subject
         .iter()
         .filter_map(|subject| match &subject.interface_consumers {
             InterfaceConsumerPlanning::Selected { body_reach, .. } => Some(body_reach),
@@ -7184,6 +7203,24 @@ pub fn run_required_floor(
         })
         .flat_map(|reach| reach.reached.iter())
         .filter(|r| r.witness_carrier && r.rel_path.starts_with("src/v2/"))
+        .count();
+    if !reach_planned {
+        eprintln!(
+            "{}",
+            crate::cli_run::reach_base_standings::reach_deferred_line(
+                &reach_event,
+                reached_v2_witness_declarations
+            )
+        );
+    }
+    let reach_consumer_candidates: HashSet<String> = compile_subject
+        .iter()
+        .filter_map(|subject| match &subject.interface_consumers {
+            InterfaceConsumerPlanning::Selected { body_reach, .. } => Some(body_reach),
+            _ => None,
+        })
+        .flat_map(|reach| reach.reached.iter())
+        .filter(|r| reach_planned && r.witness_carrier && r.rel_path.starts_with("src/v2/"))
         .map(|r| format!("{}.{}", r.module_path, r.declaration))
         .collect();
     let reach_consumer_module_seeds: BTreeSet<String> = reach_consumer_candidates
@@ -11092,6 +11129,14 @@ pub fn run_required_floor(
                     );
                     if blocks && differential != "refused" {
                         blocking.push(format!("{identity} {differential} (base={base_name})"));
+                        // THE DEQUEUED AUTHOR'S RECEIPT: each identity this change newly broke, by
+                        // name, so nobody has to rerun the queue to learn what failed.
+                        if differential == "regressed" || differential == "new_claim" {
+                            eprintln!(
+                                "[floor-reach-finding] NewlyFailedAtHead identity={identity} \
+                                 base={base_name} head={head_name} differential={differential}"
+                            );
+                        }
                     }
                 }
                 let mode = if blocking_budget_ms > 0 {

@@ -25,6 +25,55 @@
 use super::*;
 use std::collections::BTreeMap;
 
+/// Whether this CI event plans the reach differential, as `v2.workflow.floor_subject_seed`
+/// `reach_planned_for_event` decides. The host supplies the event and decides nothing.
+pub fn reach_planned_for_event(source_roots: &[String], event_name: &str) -> Result<bool, String> {
+    let root = process_workspace_root();
+    let roots: Vec<String> = source_roots
+        .iter()
+        .map(|r| {
+            let p = std::path::Path::new(r);
+            if p.is_absolute() {
+                r.clone()
+            } else {
+                root.join(p).to_string_lossy().into_owned()
+            }
+        })
+        .collect();
+    let entry = root.join("src/v2/workflow/floor_subject_seed.dag");
+    let (graph, indices) = resolve_entry_graph_shared(&roots, &entry.to_string_lossy())
+        .map_err(|e| format!("reach event scope authority resolve: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
+    match v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "reach_planned_for_event",
+        &[(
+            Some("event_name".to_string()),
+            v1_interpreter::str_value(event_name),
+        )],
+        false,
+    ) {
+        Ok(v1_interpreter::Value::Bool(b)) => Ok(b),
+        other => Err(format!(
+            "reach_planned_for_event returned {}",
+            match other {
+                Ok(v) => ctx.format_value(&v),
+                Err(e) => e.to_string(),
+            }
+        )),
+    }
+}
+
+/// The line a run that does not plan the reach differential prints, so its absence is announced.
+pub fn reach_deferred_line(event_name: &str, reached_declarations: usize) -> String {
+    format!(
+        "[floor-phase] phase=reach-differential state=deferred_to_merge_group event={event_name:?} \
+         reached_declarations={reached_declarations} -- the claims this change's body edits reach \
+         are judged, head against base, by the merge group's run of the composed revision; this \
+         run plans none of them"
+    )
+}
+
 /// One reached identity's base standing, by the names `claim_standing_named` parses.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BaseStanding {
@@ -313,6 +362,21 @@ mod tests {
                 "a passing head blocked under base {base}"
             );
         }
+    }
+
+    // THE PR-EVENT CONTROL (operator ruling, 2026-10-01): a pull request plans no reach and says so
+    // with the count it would have reached; a merge group plans it. Through the real rule.
+    #[test]
+    fn a_pull_request_defers_the_reach_differential_and_a_merge_group_plans_it() {
+        let roots = default_source_roots();
+        assert!(!reach_planned_for_event(&roots, "pull_request").expect("rule"));
+        assert!(reach_planned_for_event(&roots, "merge_group").expect("rule"));
+        let line = reach_deferred_line("pull_request", 493);
+        assert!(
+            line.contains("phase=reach-differential state=deferred_to_merge_group"),
+            "{line}"
+        );
+        assert!(line.contains("reached_declarations=493"), "{line}");
     }
 
     // REPORT-ONLY NEVER CLAIMS A BASE IT DID NOT RUN (review 73484). The line the floor prints
