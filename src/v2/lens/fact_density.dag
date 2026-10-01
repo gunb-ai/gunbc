@@ -1,6 +1,6 @@
 module v2.lens.fact_density
 
-import std.nat { Succ, Zero }
+import std.nat { Nat, Succ, Zero }
 import v2.lens.common.construction_justification { ConstructionJustification }
 import v2.std.witness { Holds }
 import v2.std.diagnostic { outcome_accepted, outcome_rejected, node_locus }
@@ -20,7 +20,7 @@ type SourceSpecReadFact
   | NoFact
   | NotATypeCarrier
 
-fn named_fact_count(children: List<Edge>) -> std.nat.Nat {
+fn named_fact_count(children: List<Edge>) -> Nat {
   fold(children, init: Zero, f: fn(acc, e) {
     match e.label {
       Named { name: _ } => Succ { prev: acc }
@@ -29,7 +29,7 @@ fn named_fact_count(children: List<Edge>) -> std.nat.Nat {
   })
 }
 
-fn density_fact(named_facts: std.nat.Nat) -> SourceSpecReadFact {
+fn density_fact(named_facts: Nat) -> SourceSpecReadFact {
   match named_facts {
     Zero => NoFact
     Succ { prev: p } => NamedFieldFacts { density: NonZeroNat { prev: p } }
@@ -43,7 +43,7 @@ fn connective_is_kernel_ambient_atom(c: Connective) -> Bool {
   }
 }
 
-fn connective_spec_fact(c: Connective, named_facts: std.nat.Nat) -> SourceSpecReadFact {
+fn connective_spec_fact(c: Connective, named_facts: Nat) -> SourceSpecReadFact {
   if connective_is_kernel_ambient_atom(c: c) {
     KernelAmbientAtom
   } else {
