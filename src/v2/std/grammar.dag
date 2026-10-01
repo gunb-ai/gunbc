@@ -281,22 +281,6 @@ fn grammar_expr_not_predicate(element: GrammarExpr) -> GrammarExpr {
   NotPredicate { element: element }
 }
 
-fn grammar_expr_is_not_predicate(expr: GrammarExpr) -> Bool {
-  match expr {
-    NotPredicate { element: _ } => true
-    Terminal { token_class: _, stamp: _ } => false
-    LiteralTerminal { token_class: _, lexeme: _ } => false
-    Nonterminal { production: _ } => false
-    Sequence { left: _, right: _ } => false
-    Choice { left: _, right: _ } => false
-    Optional { element: _ } => false
-    Repeat { element: _ } => false
-    Expect { element: _, reason: _ } => false
-    RefuseOnMatch { element: _, reason: _ } => false
-    AfterLineBreak { element: _ } => false
-  }
-}
-
 fn grammar_expr_expect(element: GrammarExpr, reason: ParseRefusalReason) -> GrammarExpr {
   Expect { element: element, reason: reason }
 }
@@ -3332,12 +3316,13 @@ fn grammar_emit_literal_terminal(token_class: Symbol, lexeme: Symbol, node: Node
 // A predicate side of a sequence captured nothing (grammar_expr_not_predicate), so the whole node is
 // the other side's capture.
 fn grammar_emit_sequence(index: GrammarEmitIndex, left: GrammarExpr, right: GrammarExpr, node: Node) -> GrammarEmitWalk {
-  if grammar_expr_is_not_predicate(expr: left) {
-    grammar_emit_expr(index: index, expr: right, node: node)
-  } else if grammar_expr_is_not_predicate(expr: right) {
-    grammar_emit_expr(index: index, expr: left, node: node)
-  } else {
-    grammar_emit_sequence_pair(index: index, left: left, right: right, node: node)
+  match left {
+    NotPredicate { element: _ } => grammar_emit_expr(index: index, expr: right, node: node)
+    _ =>
+      match right {
+        NotPredicate { element: _ } => grammar_emit_expr(index: index, expr: left, node: node)
+        _ => grammar_emit_sequence_pair(index: index, left: left, right: right, node: node)
+      }
   }
 }
 

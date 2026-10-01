@@ -24,10 +24,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //     reports identical text, but the match has ONE arm: `B => v` was read as one more statement
 //     of the first arm's body (an arrow lambda). The round trip cannot see that, so the arm count
 //     is the discriminator for the predicate.
-// The round trip of the same source is the `match_statement_body_arm` case of
-// gunbc.instruments.dag_emit_real_grammar_round_trips.
+// The source is the smallest module that holds a statement-body arm followed by another arm (one
+// data initializer), so the claim pays one small real-route parse. The round trip of a statement-body
+// arm is the `match_statement_body_arm` case of gunbc.instruments.dag_emit_real_grammar_round_trips.
 
-data match_arm_statement_body_source: String = "module rt.match_stmt_body\n\ntype T = A | B\n\nfn f(t: T, v: Int) -> Int {\n  match t {\n    A =>\n      let w = v\n      w + 1\n    B => v\n  }\n}\n"
+data match_arm_statement_body_source: String = "module m\ndata d: Int = match t {\n  A =>\n    let w = v\n    w\n  B => v\n}\n"
 
 fn masb_stamp_count(node: Node, emitted: Symbol) -> Int {
   let here = match rt_stamp_of(node: node) {

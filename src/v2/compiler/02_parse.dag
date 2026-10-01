@@ -1870,7 +1870,7 @@ type PreparedGrammarExpr
   | PreparedExpect { element: PreparedGrammarExpr, reason: ParseRefusalReason }
   | PreparedRefuseOnMatch { element: PreparedGrammarExpr, reason: ParseRefusalReason }
   | PreparedAfterLineBreak { element: PreparedGrammarExpr }
-  | PreparedNotPredicate { element: PreparedGrammarExpr }
+  | PreparedNotPredicate { element: PreparedGrammarExpr, first: GrammarExprFirstFold }
 
 type PreparedExprFold {
   tree: PreparedGrammarExpr
@@ -1958,7 +1958,7 @@ fn prepared_prefix_atom_eq(left: PreparedGrammarExpr, right: PreparedGrammarExpr
         PreparedExpect { element: _, reason: _ } => false
         PreparedRefuseOnMatch { element: _, reason: _ } => false
         PreparedAfterLineBreak { element: _ } => false
-        PreparedNotPredicate { element: _ } => false
+        PreparedNotPredicate { element: _, first: _ } => false
       }
     PreparedLiteralTerminal { token_class: lc, lexeme: lw } =>
       match right {
@@ -1975,7 +1975,7 @@ fn prepared_prefix_atom_eq(left: PreparedGrammarExpr, right: PreparedGrammarExpr
         PreparedExpect { element: _, reason: _ } => false
         PreparedRefuseOnMatch { element: _, reason: _ } => false
         PreparedAfterLineBreak { element: _ } => false
-        PreparedNotPredicate { element: _ } => false
+        PreparedNotPredicate { element: _, first: _ } => false
       }
     PreparedNonterminal { production: lp } =>
       match right {
@@ -1989,7 +1989,7 @@ fn prepared_prefix_atom_eq(left: PreparedGrammarExpr, right: PreparedGrammarExpr
         PreparedExpect { element: _, reason: _ } => false
         PreparedRefuseOnMatch { element: _, reason: _ } => false
         PreparedAfterLineBreak { element: _ } => false
-        PreparedNotPredicate { element: _ } => false
+        PreparedNotPredicate { element: _, first: _ } => false
       }
     PreparedSequence { left: _, right: _ } => false
     PreparedChoice { plan: _, first: _ } => false
@@ -1998,7 +1998,7 @@ fn prepared_prefix_atom_eq(left: PreparedGrammarExpr, right: PreparedGrammarExpr
     PreparedExpect { element: _, reason: _ } => false
     PreparedRefuseOnMatch { element: _, reason: _ } => false
     PreparedAfterLineBreak { element: _ } => false
-    PreparedNotPredicate { element: _ } => false
+    PreparedNotPredicate { element: _, first: _ } => false
   }
 }
 
@@ -2016,7 +2016,7 @@ fn prepared_sequence_left_atom(expr: PreparedGrammarExpr) -> Optional<PreparedGr
         PreparedExpect { element: _, reason: _ } => optional_absent()
         PreparedRefuseOnMatch { element: _, reason: _ } => optional_absent()
         PreparedAfterLineBreak { element: _ } => optional_absent()
-        PreparedNotPredicate { element: _ } => optional_absent()
+        PreparedNotPredicate { element: _, first: _ } => optional_absent()
       }
     PreparedTerminal { token_class: _, stamp: _ } => optional_absent()
     PreparedLiteralTerminal { token_class: _, lexeme: _ } => optional_absent()
@@ -2027,7 +2027,7 @@ fn prepared_sequence_left_atom(expr: PreparedGrammarExpr) -> Optional<PreparedGr
     PreparedExpect { element: _, reason: _ } => optional_absent()
     PreparedRefuseOnMatch { element: _, reason: _ } => optional_absent()
     PreparedAfterLineBreak { element: _ } => optional_absent()
-    PreparedNotPredicate { element: _ } => optional_absent()
+    PreparedNotPredicate { element: _, first: _ } => optional_absent()
   }
 }
 
@@ -2159,7 +2159,7 @@ fn prepared_terminal_prefix(expr: PreparedGrammarExpr, need: Int) -> Optional<Li
           PreparedExpect { element: _, reason: _ } => optional_absent()
           PreparedRefuseOnMatch { element: _, reason: _ } => optional_absent()
           PreparedAfterLineBreak { element: _ } => optional_absent()
-          PreparedNotPredicate { element: _ } => optional_absent()
+          PreparedNotPredicate { element: _, first: _ } => optional_absent()
         }
       PreparedNonterminal { production: _ } => optional_absent()
       PreparedChoice { plan: _, first: _ } => optional_absent()
@@ -2168,7 +2168,7 @@ fn prepared_terminal_prefix(expr: PreparedGrammarExpr, need: Int) -> Optional<Li
       PreparedExpect { element: _, reason: _ } => optional_absent()
       PreparedRefuseOnMatch { element: _, reason: _ } => optional_absent()
       PreparedAfterLineBreak { element: _ } => optional_absent()
-      PreparedNotPredicate { element: _ } => optional_absent()
+      PreparedNotPredicate { element: _, first: _ } => optional_absent()
     }
   }
 }
@@ -2290,7 +2290,7 @@ fn choice_shared_prefix_suffixes_from(
         PreparedExpect { element: _, reason: _ } => optional_absent()
         PreparedRefuseOnMatch { element: _, reason: _ } => optional_absent()
         PreparedAfterLineBreak { element: _ } => optional_absent()
-        PreparedNotPredicate { element: _ } => optional_absent()
+        PreparedNotPredicate { element: _, first: _ } => optional_absent()
       }
   }
 }
@@ -2327,7 +2327,7 @@ fn expr_first_fold_from_prepared(
       expr_first_fold_from_prepared(expr: element, nullable_set: nullable_set, first_rows: first_rows)
     PreparedAfterLineBreak { element: element } =>
       expr_first_fold_from_prepared(expr: element, nullable_set: nullable_set, first_rows: first_rows)
-    PreparedNotPredicate { element: _ } => expr_first_fold_predicate()
+    PreparedNotPredicate { element: _, first: _ } => expr_first_fold_predicate()
   }
 }
 
@@ -2643,7 +2643,7 @@ fn prepare_grammar_expr(
     NotPredicate { element: element } =>
       let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows, production: production, token_dispatch: token_dispatch)
       PreparedExprFold {
-        tree: PreparedNotPredicate { element: element_prepared.tree },
+        tree: PreparedNotPredicate { element: element_prepared.tree, first: element_prepared.first },
         first: expr_first_fold_predicate(),
         residue: element_prepared.residue
       }
@@ -3454,28 +3454,13 @@ fn parse_sequence_capture(
   cap2: Node,
   prov: ParseProvenanceState
 ) -> ParseStampResult {
-  if prepared_is_not_predicate(expr: left) {
-    ParseStampResult { node: cap2, prov: prov }
-  } else if prepared_is_not_predicate(expr: right) {
-    ParseStampResult { node: cap1, prov: prov }
-  } else {
-    parse_stamp_derived_conj(cap1: cap1, cap2: cap2, prov: prov)
-  }
-}
-
-fn prepared_is_not_predicate(expr: PreparedGrammarExpr) -> Bool {
-  match expr {
-    PreparedNotPredicate { element: _ } => true
-    PreparedTerminal { token_class: _, stamp: _ } => false
-    PreparedLiteralTerminal { token_class: _, lexeme: _ } => false
-    PreparedNonterminal { production: _ } => false
-    PreparedSequence { left: _, right: _ } => false
-    PreparedChoice { plan: _, first: _ } => false
-    PreparedOptional { element: _ } => false
-    PreparedRepeat { element: _ } => false
-    PreparedExpect { element: _, reason: _ } => false
-    PreparedRefuseOnMatch { element: _, reason: _ } => false
-    PreparedAfterLineBreak { element: _ } => false
+  match left {
+    PreparedNotPredicate { element: _, first: _ } => ParseStampResult { node: cap2, prov: prov }
+    _ =>
+      match right {
+        PreparedNotPredicate { element: _, first: _ } => ParseStampResult { node: cap1, prov: prov }
+        _ => parse_stamp_derived_conj(cap1: cap1, cap2: cap2, prov: prov)
+      }
   }
 }
 
@@ -3859,6 +3844,33 @@ fn parse_expr_refuse_on_match(
 // attempt filled is kept, and a refusal it raised is kept, since a refusal stops the parse.
 fn parse_expr_not_predicate(
   element: PreparedGrammarExpr,
+  first: GrammarExprFirstFold,
+  tokens: List<Token>,
+  all_tokens: List<Token>,
+  root: GrammarRoot,
+  table: ParseTable,
+  prov: ParseProvenanceState
+) -> ParseExprResult {
+  if parse_first_admits_next(first: first, tokens: tokens) {
+    parse_expr_not_predicate_attempt(element: element, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov)
+  } else {
+    ParseExprAccepted { remaining: tokens, captured: grammar_empty_node(), diagnostics: [], prov: prov, table: table }
+  }
+}
+
+// AN ELEMENT THAT CANNOT START HERE CANNOT MATCH HERE. Where the next token is outside the element's
+// FIRST set and the element is not nullable, the element fails without being attempted, so the
+// predicate succeeds at once -- the same FIRST reading the prepared choice plans dispatch on.
+fn parse_first_admits_next(first: GrammarExprFirstFold, tokens: List<Token>) -> Bool {
+  first.nullable || match parse_token_first(tokens: tokens) {
+    Absent => false
+    Present { value: tok } =>
+      any(xs: first.terminals, predicate: fn(k) { first_key_admits_word(key: k, token_class: tok.class, word: tok.lexeme) })
+  }
+}
+
+fn parse_expr_not_predicate_attempt(
+  element: PreparedGrammarExpr,
   tokens: List<Token>,
   all_tokens: List<Token>,
   root: GrammarRoot,
@@ -4080,9 +4092,10 @@ fn parse_expr_dispatch(
         table: table,
         prov: prov
       )
-    PreparedNotPredicate { element: element } =>
+    PreparedNotPredicate { element: element, first: first } =>
       parse_expr_not_predicate(
         element: element,
+        first: first,
         tokens: tokens,
         all_tokens: all_tokens,
         root: root,
