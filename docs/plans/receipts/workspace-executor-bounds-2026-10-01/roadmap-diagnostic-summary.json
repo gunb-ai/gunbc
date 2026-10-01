@@ -1,0 +1,9 @@
+{
+  "html_serialization": "succeeded",
+  "node_head_present": false,
+  "taskbar_present": true,
+  "item_detail_present": false,
+  "requires_all_sentence_present": false,
+  "roadmap_single_selector_rule": ".roadmap { padding: var(--space-16) var(--space-24) }",
+  "header_single_selector_rule": ".header-inner { display: flex; align-items: center; gap: var(--space-12) }"
+}
