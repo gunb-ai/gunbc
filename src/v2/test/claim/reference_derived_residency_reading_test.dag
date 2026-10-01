@@ -49,6 +49,7 @@ import v2.std.node {
   TypeNode,
 }
 import v2.std.text { String }
+import v2.std.node_query { binder_edge }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -85,7 +86,7 @@ fn positional_to(target: Node) -> Edge {
 }
 
 fn named_to(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  binder_edge(name: name, type_node: target)
 }
 
 // `Map<K, V>` as the tree spells it: an instantiation whose children are the constructor and its
@@ -343,10 +344,13 @@ test fn a_function_declaration_resolves_from_a_live_module_root() -> Bool {
   live_fixture_lookup(segment: ^uses)
 }
 
-// THE FRONTIER CLAIM. A type declaration in the SAME module, through the SAME index, does not. This
-// is why this branch carries no reading of the live producer.
-test fn a_type_declaration_does_not_resolve_from_a_live_module_root_pending_11574() -> Bool {
-  !live_fixture_lookup(segment: ^LocalWrapper)
+// THE FRONTIER CLAIM, FLIPPED 2026-10-01 (DESIGN 4b(4)) on its named trigger. It asserted that a type
+// declaration in the SAME module, through the SAME index, does not resolve, pending gunbc#11574; that
+// PR landed and the claim went red exactly as predicted above (measured at c2ab4458d2 and abcb48293f:
+// LocalWrapper resolves). It stays enrolled as the type-declaration half of the control. Wiring the
+// derivation to the producer's own declaration is the follow-on the trigger names; it is not done here.
+test fn a_type_declaration_resolves_from_a_live_module_root() -> Bool {
+  live_fixture_lookup(segment: ^LocalWrapper)
 }
 
 fn live_fixture_lookup(segment: Symbol) -> Bool {

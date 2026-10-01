@@ -368,19 +368,25 @@ fn superseded(identity: String,
 // green unconditionally was indistinguishable from a working one, because nothing it ran could
 // return anything else.
 //
-// It now names a validation that FAILS TODAY. usb_gadget_setup_script prefixes "set -e" and joins
-// rendered shell lines, so the witness asserting no shell control word is red, and the red is this
-// node's own acceptance condition rather than a planted fixture: the node asks for a described
-// operation instead of written shell text, and the witness asserts exactly that no shell text is
-// produced. The transition red -> green IS the work being finished.
+// This contract names a validation that WAS red until the node's work landed: the specimen's setup
+// was then usb_gadget_setup_script (deleted by the change that described the transport), which
+// prefixed "set -e" and joined rendered shell lines, so the witness asserting no shell control word
+// was red, and the red was this node's own acceptance condition rather than a planted fixture: the
+// node asks for a described operation instead of written shell text, and the witness asserts exactly
+// that no shell text is produced. The transition red -> green WAS the work being finished, and it
+// completed on 2026-09-29 -- the witness stays as the permanent regression control, so the red it
+// would go now is exactly the regression it guards against.
 //
-// THE WITNESS IS ENROLLED IN floor_expected_red, NOT QuarantineProbeExpectRed, and the difference
-// is executional rather than stylistic. The sibling note above recommends the quarantine cadence,
+// WHILE THE TEST WAS RED, the witness was enrolled in floor_expected_red, NOT
+// QuarantineProbeExpectRed, and the difference was executional rather than stylistic. The sibling
+// note above recommends the quarantine cadence,
 // and that recommendation is STALE: std.witness_admission records that falsifier.yml -- the
 // workflow scheduling QuarantineProbeExpectRed -- was deleted at 611fd02770 (#8283), so every row
 // classified into that cadence "has read as covered ever since despite executing nowhere".
 // Enrolling here would have put a deliberately-red acceptance test somewhere it never runs, which
-// is the failure that note itself documents. The floor executes.
+// is the failure that note itself documents. The floor executes. When the test greened, the
+// floor_expected_red row left by the roster's own removal path -- the counted un-quarantine, not a
+// silent pass -- which is why nothing points there now.
 fn shell_typed_invocation_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
     entry: "dag/test/claim/shell/shell_typed_invocation_witness_test.dag" as FilePath,
