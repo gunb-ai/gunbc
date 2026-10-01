@@ -191,6 +191,43 @@ this representation.
   frontier for `v2.compiler.compile`, with no scheduled date. Until then every floor at #12799 size
   pays it.
 
+**The re-export walk is a materialization, so its identity is stated** (DESIGN §2,
+`std.materialization_ladder`). This is what tells it apart from a cache placed at a symptom.
+- **Value.** The binding a name resolves to through ONE module's export surface: its own bindings,
+  then its imports' surfaces in import order, under the declared precedence.
+- **Key.** (pool identity, module identity, name).
+  - Pool identity is the one strict resolve (one `compile_to_resolved` over one source set, one
+    kernel cache).
+  - Module identity is its module path AND its source file. The census lesson of gunbc#12774 applies:
+    the diff base's checkout is a different module under the same path.
+- **Why the key is complete.** Within one pool, a module's export surface is a function of exactly:
+  its source (own declarations and its import list, with each import's order, `is_all` and
+  `specific_names`), its imports' surfaces (inductively, the same key one level down), and the
+  pool's kernel cache. The pool identity fixes the source set and the kernel cache, and the module
+  identity fixes the source. No other input reaches it. The exporter-count non-hermeticity
+  (gunbc#12815) lives in the rewire's pass 2, which runs after assembly and is not an input here.
+- **Scope.** The resolve that typechecks the pool: the least common ancestor of every module's
+  typecheck, so every demand for a module's surface joins one provider. It is never shared across
+  resolves or graphs until gunbc#12815's declared-scope fix makes surfaces graph-independent.
+- **Retention.** For the resolve, not the process. It drops with the resolve's working state,
+  exactly as the typecheck caches do after gunbc#12774, so it cannot become a process-lifetime
+  memo standing where the per-module copies stood.
+
+**The union winner and the fork ledger stay identical, and the differential checks both.**
+`union_parent_type_env_caches` folds a module's imports IN IMPORT ORDER through
+`merge_type_env_cache_guarded`. The later import wins, the kernel overlay is skipped for kernel
+names, and the direct-selected overlay applies last.
+- **The walk must use the same order and the same overlay rule**, so the winner for every
+  (module, name) is the materialized map's winner.
+- **The `binding_forks` ledger stays EAGER.** Forks are recorded while the union is folded, so a lazy
+  walk that resolves only the names actually looked up would record FEWER forks and silently thin
+  the ledger. PR-2 therefore keeps a per-module conflict pass over the imports' surfaces, in import
+  order, that records the same rows in the same order without retaining the union map. The memory
+  is saved; that pass's time is not, and the note does not claim it.
+- **The floor differential compares the `binding_forks` rows (contents and order) for every module**,
+  as well as the subject digest and every claim outcome. Equal claim outcomes alone would not catch a
+  thinned ledger.
+
 **Predicted floor peak after PR-2 at ~2.7k modules (deep-ferret-305's retirement trigger for the 41G
 floor slot class), stated before any build so the A/B can falsify it.**
 - **BEFORE is censored.** Every ~2.7k-module floor so far was pinned at the 25 GiB `memory.high` line
@@ -211,6 +248,25 @@ floor slot class), stated before any build so the A/B can falsify it.**
     removes, meaning the memo holds more than assumed.
 - **What would clear the line:** the shared remainder of the typed graph (the leave-one-out readings'
   `shared_or_unlisted`), whose breakdown is not yet done.
+
+**What PR-2 does NOT do, and what is left.** By the prediction above, PR-2 alone probably does NOT
+retire the 41G floor slot class. So the stopgap's trigger is not met by the planned work alone.
+Closing the remaining ~1-3 GB at ~2.7k modules has these candidates, each needing its own chain read
+before it is proposed:
+- **`occurrence_transport`** is the next class by exclusive bytes that may be typecheck-time only.
+  Its readers outside inference are the resolve input (`v1_compiler_resolve`) and
+  `v1_compiler_frontend_observation`. If nothing on the floor's route reads it after the strict
+  resolve, it is a lifetime cut of the same shape as gunbc#12774's `TypeEnvCache` drop. Unverified.
+- **`module_nodes` and `func_env`** are read by evaluation, so they are not lifetime cuts.
+- **The shared remainder** (the leave-one-out `shared_or_unlisted`) is not yet broken down, so it is
+  not yet a candidate.
+If those do not close the gap, the 41G floor class becomes a STANDING cost of v1's remaining lifetime
+as the floor's typechecker. A stopgap with no reachable trigger is no longer a stopgap, so that
+re-classification is the operator's decision, not this lane's.
+
+**Order of work:** the uncensored BEFORE (floor-memory-qualification under MemoryMax=96G at the
+#12799 subject) runs FIRST, because it may move the whole estimate. Then this sign-off chain, then
+PR-2.
 
 **Sign-off chain** (a load-bearing v1 typecheck representation): jolly-boar-500 → neat-boar-16 → the
 operator, who also re-rules the one-level-read invariant above. deep-ferret-305 reviews the floor-side
