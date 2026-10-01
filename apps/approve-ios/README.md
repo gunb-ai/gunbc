@@ -16,7 +16,7 @@ held to the `.dag` folds by `dag/test/fixture/approval_device_redemption/vectors
 | file | what it is |
 |---|---|
 | `project.yml` | XcodeGen spec, GENERATED from `gunbc.approve_ios_project` (drift-gated; never hand-edit); no `.xcodeproj` is committed |
-| `Config/Team.xcconfig` | operator-filled: `DEVELOPMENT_TEAM`, `APPROVE_SERVER_HOST` (srv1 tailnet host), `APNS_ENVIRONMENT`, `APP_ATTEST_ENVIRONMENT` |
+| `Config/Team.xcconfig` | operator-filled: `DEVELOPMENT_TEAM`, `APNS_ENVIRONMENT`, `APP_ATTEST_ENVIRONMENT`. The server host is not here: `project.yml` carries it, projected from `gunbc.auth.approval_broker_endpoint` |
 | `Approve/Protocol.swift` | GENERATED (`gunbc.approve_ios_swift_protocol`). `framed` (the injective `<n>:<field>,` rendering), `enrolment_transcript`, `device_redemption_signing_input`, `device_read_client_data`, the protocol records |
 | `Approve/Wire.swift` | GENERATED (`gunbc.approve_ios_swift_wire`). Mirror of the modeled HTTP wire: emitter, strict readers, routes, headers; `URLSession` over the tailnet |
 | `Approve/DeviceKeys.swift` | enclave decision key (`[.privateKeyUsage, .biometryCurrentSet]` at creation), App Attest, and the one keychain item shape |
@@ -33,7 +33,7 @@ This repository's containers have no Xcode; nothing here has been compiled. Expe
 fixes on first build.
 
 1. `brew install xcodegen`
-2. Fill `Config/Team.xcconfig` (team id, `APPROVE_SERVER_HOST`). Keep the team id out of commits.
+2. Fill `Config/Team.xcconfig` (team id). Keep the team id out of commits.
 3. `cd apps/approve-ios && xcodegen generate && open Approve.xcodeproj`
 4. In Signing & Capabilities confirm Push Notifications and App Attest are on the App ID (the
    entitlements file declares `aps-environment` and `com.apple.developer.devicecheck.appattest-environment`).
