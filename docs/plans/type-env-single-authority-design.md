@@ -676,3 +676,11 @@ The script, in order:
 6. Emit `git diff -- src/v1/stage0/src` as gzip+base64, to apply locally.
 Bootstrap rule: hand Rust that calls newly emitted functions is withheld for one round, and a
 hand-mirrored generated change is dev-only (the regen replaces it).
+**Late result (neat-boar-16, srv1, whole tree): read before resuming.** The whole-tree differential was
+VOID. Both arms stopped on the same 9 blocking diagnostics already present on main, before any digest,
+so declaration-grain equality is established at 634 modules only. The probe must digest every module
+that resolved and report the blocked ones as a counted, named set rather than panic. The AFTER arm also
+took about 6.3x the BEFORE arm's wall to reach the same point, with no memory gain visible there. That
+is a cost red flag for representation B at whole-tree scale, and possibly this note's own falsifier
+(membership tests going superlinear). PR-2 is not opened until it is attributed by thread CPU per
+phase and fixed or ruled.
