@@ -5063,6 +5063,13 @@ pub fn floor_prepared_subject_exclusions() -> Vec<String> {
         // vanished seed), and `ExclusionOrphansImporter` refuses the day anything imports one.
         "test/probe/".to_string(),
         "test/fixture/meta_exec_confinement_scan/".to_string(),
+        // THE FLEET HEALTH FORBIDDEN PROGRAM. test.fixture.health_read_only.mutation_probe is the
+        // program the no-mutation witness derives its findings from, consumed PARSE-ONLY: its
+        // callees are undeclared spellings by design, so it must never resolve. Nothing imports it,
+        // so it stayed out of preparation by that accident alone until gunbc#12761's widened
+        // subject prepared it and it refused. Its designed refusal is asserted by class and subject
+        // in test.claim.fleet.health_read_only_fixture_refusal_witness.
+        "test/fixture/health_read_only/".to_string(),
         "test/manual/ownership_movable_test.dag".to_string(),
         // WET RECEIPT, AND IT HAS NO CI CONSUMER TODAY — stated plainly rather than dressed up
         // as an enrollment. case4_expansion_carrier_splices dispatches a real jq through
