@@ -21,7 +21,7 @@ import v2.std.diagnostic { Accepted, NodeLocus, Outcome, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { ComputationNode, Edge, Named, Node, Positional, Symbol, Transform, node_subtree_nodes, symbol_intern_lexeme, symbol_lexeme }
+import v2.std.node { ComputationNode, Authored, Edge, Node, Positional, Symbol, Transform, node_subtree_nodes, symbol_intern_lexeme, symbol_lexeme }
 import v2.std.node_query { node_positional_child_targets }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, qualified_name_from_node }
 import v2.std.collection { List, list_at_optional }
@@ -170,7 +170,7 @@ fn llv_call_named_arg(n: Node, callee: Symbol, label: Symbol) -> Optional<Node> 
 fn llv_named_arg_of(head: Edge, arg: Edge, callee: Symbol, label: Symbol) -> Optional<Node> {
   if (head.label == Positional) && llv_is_atom(n: head.target, id: callee) {
     match arg.label {
-      Named { name: l } => if l == label { optional_present(value: arg.target) } else { optional_absent() }
+      Authored { name: l } => if l == label { optional_present(value: arg.target) } else { optional_absent() }
       _ => optional_absent()
     }
   } else {
