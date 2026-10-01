@@ -14446,7 +14446,16 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
                       rust_shared_wrap_ctor(inner_expr: struct_lit)
                     } else { struct_lit }
                   } else { fval0 }
-                Absent => fval0
+                Absent =>
+                  // TWO OR MORE structs share this one field name: the literal names no type, so
+                  // any struct chosen here -- or the bare field value, which is what this arm used
+                  // to emit -- is a guess. Refuse exactly as the multi-field arm below does; the
+                  // remedy is a nominal type on the literal. (Found when std.algebra TotalOrder
+                  // gained the same single `compare` field as extdeps.version VersionScheme and
+                  // `{ compare: f }` silently emitted `f`.)
+                  if struct_candidates_by_field_names(field_names: single_field_names, type_summaries: emit_info.type_summaries) |> count > 1 {
+                    "compile_error!(\"ambiguous anonymous record literal shape; add a nominal type\")"
+                  } else { fval0 }
               }
             Absent => "compile_error!(\"empty anonymous record literal\")"
           }

@@ -241,9 +241,11 @@ pub fn semver_identity_compare(a: NonEmptyStr, b: NonEmptyStr) -> Ordering {
 
 pub fn semver_scheme() -> Rc<VersionScheme> {
     thread_local! {
-        static CACHED: Rc<VersionScheme> = {
-            semver_identity_compare
-        };
-    }
+            static CACHED: Rc<VersionScheme> = {
+                Rc::new(VersionScheme {
+        compare: Rc::new(semver_identity_compare),
+    })
+            };
+        }
     CACHED.with(|c: &Rc<VersionScheme>| c.clone())
 }

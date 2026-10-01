@@ -25741,30 +25741,21 @@ pub fn emit_typed_call(
                     scope.clone(),
                 );
                 let ts_result = match to_string_args.clone().first().cloned() {
-                    Some(value_arg) => {
-                        if is_map_typed_expr(
-                            crate::v1_std_core::arg_value(value_arg.clone()),
-                            scope.type_env.clone().source_indices.clone(),
-                        ) {
-                            emitted_map_rendering_refusal("to_string".to_string())
-                        } else {
-                            emit_rust_host_to_dag_string_via_seam(v1_rt::concat(
-                                v1_rt::concat(
-                                    "(".to_string(),
-                                    emit_typed_expr(
-                                        crate::v1_std_core::arg_value(value_arg.clone()),
-                                        registry.clone(),
-                                        scope.clone(),
-                                        depth.clone(),
-                                        shared_types.clone(),
-                                        emit_info.clone(),
-                                        1024,
-                                    ),
-                                ),
-                                ").to_string()".to_string(),
-                            ))
-                        }
-                    }
+                    Some(value_arg) => emit_rust_host_to_dag_string_via_seam(v1_rt::concat(
+                        v1_rt::concat(
+                            "(".to_string(),
+                            emit_typed_expr(
+                                crate::v1_std_core::arg_value(value_arg.clone()),
+                                registry.clone(),
+                                scope.clone(),
+                                depth.clone(),
+                                shared_types.clone(),
+                                emit_info.clone(),
+                                1024,
+                            ),
+                        ),
+                        ").to_string()".to_string(),
+                    )),
                     std::option::Option::None => {
                         "compile_error!(\"to_string call missing value argument\")".to_string()
                     }
@@ -34011,32 +34002,19 @@ pub fn typed_interp_format_part(
                 arg_expr: "".to_string(),
             })
         }
-        StringPart::Interpolation { expr: e, .. } => {
-            if is_map_typed_expr(e.clone(), scope.type_env.clone().source_indices.clone()) {
-                Rc::new(InterpPart {
-                    format_segment: "{}".to_string(),
-                    arg_expr: emitted_map_rendering_refusal("string interpolation".to_string()),
-                })
-            } else {
-                Rc::new(InterpPart {
-                    format_segment: "{}".to_string(),
-                    arg_expr: emit_typed_expr(
-                        e.clone(),
-                        registry.clone(),
-                        scope.clone(),
-                        depth.clone(),
-                        shared_types.clone(),
-                        emit_info.clone(),
-                        1024,
-                    ),
-                })
-            }
-        }
+        StringPart::Interpolation { expr: e, .. } => Rc::new(InterpPart {
+            format_segment: "{}".to_string(),
+            arg_expr: emit_typed_expr(
+                e.clone(),
+                registry.clone(),
+                scope.clone(),
+                depth.clone(),
+                shared_types.clone(),
+                emit_info.clone(),
+                1024,
+            ),
+        }),
     }
-}
-
-pub fn emitted_map_rendering_refusal(site: String) -> String {
-    emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat("EMIT REFUSED: ".to_string(), site.clone()), " renders a Map; the emitted realization has no canonical map rendering (declared frontier: emitted compound rendering, trigger: a v2 source renders a compound value)".to_string()))
 }
 
 pub fn emit_typed_block(
