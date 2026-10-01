@@ -1,0 +1,5 @@
+dag/extdeps/os/ubuntu_ports_archive.dag
+dag/extdeps/tools/dpkg_deb.dag
+dag/extdeps/tools/gzip.dag
+dag/gunbc/machine_intake/mtcollins1_census_qemu_toolchain.dag
+dag/gunbc/machine_intake/mtcollins1_kvm_observer_observe.dag

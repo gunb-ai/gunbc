@@ -1,0 +1,12 @@
+dag/test/claim/required_lane_claim_agreement_witness_test.dag
+dag/test/claim/run_disposition_witness_test.dag
+dag/test/claim/runner/runner_host_file_converge_witness_test.dag
+dag/test/claim/runner/runner_microvm_attempt_witness_test.dag
+dag/test/claim/runner/runner_microvm_cell_readiness_store_witness_test.dag
+dag/test/claim/runner/runner_microvm_host_ready_witness_test.dag
+dag/test/claim/toolchain_home_standing_witness_test.dag
+dag/test/manual/runner_microvm_lifecycle_wet_receipt_test.dag
+src/v2/test/claim/affected_set_universe_test.dag
+src/v2/test/claim/build_artifact_verification_witness_test.dag
+src/v2/workflow/ci_materialization_emit_test.dag
+src/v2/workflow/orchestration_retry_emit_test.dag

@@ -1,0 +1,12 @@
+dag/test/claim/compiler_gate_emit_build_lane_witness_test.dag
+dag/test/claim/contract_identity/required_ci_epoch_real_execution_witness_test.dag
+dag/test/claim/credential_argv_exposure_witness_test.dag
+dag/test/claim/fabric/fabric_floor_dispatch_witness_test.dag
+dag/test/claim/fabric/fabric_isolation_witness_test.dag
+dag/test/claim/fabric/fabric_required_build_work_witness_test.dag
+dag/test/claim/fleet/fabric_allocation_store_substrate_witness_test.dag
+dag/test/claim/fleet/fleet_converge_plan_manifest_witness_test.dag
+dag/test/claim/fleet/organization_runner_roster_read_witness_test.dag
+dag/test/claim/github_effect_perform_witness_test.dag
+dag/test/claim/live_deploy/fleet_request_witness_test.dag
+dag/test/claim/printed_chassis_artifact_registration_witness_test.dag

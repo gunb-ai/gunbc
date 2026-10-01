@@ -1,0 +1,2 @@
+dag/test/claim/machine_intake/mtcollins1_kvm_observer_protocol_wet_witness_test.dag
+dag/test/claim/machine_intake/mtcollins1_kvm_still_witness_test.dag
