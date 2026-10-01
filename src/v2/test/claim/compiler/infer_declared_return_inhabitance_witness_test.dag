@@ -23,6 +23,7 @@ import v2.std.diagnostic { Accepted, Rejected, Some, diagnostics_has_reason }
 import v2.std.logic { Bool }
 import v2.std.type_binder { type_params_edge }
 import std.algebra { list_snoc_item }
+import v2.std.node_query { binder_edge }
 import v2.std.node {
   Arrow,
   Conj,
@@ -71,7 +72,7 @@ fn dr_domain() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^dr_param_x }, target: dag_type_atom_node(identity: ^dag_binding_type_int) }
+      binder_edge(name: ^dr_param_x, type_node: dag_type_atom_node(identity: ^dag_binding_type_int))
     ]
   )
 }
@@ -236,6 +237,7 @@ fn dr_return_obligation(declared: Node, produced: Node, type_variables: List<Sym
     parameter_identity: ^declared_return,
     declared: declared,
     produced: produced,
+    produced_declared_carrier: Absent,
     application: dr_empty_domain(),
     type_variables: type_variables
   }

@@ -552,7 +552,7 @@ fn witness() -> String {
         ExecutionMode::Hermetic,
     );
     match v1_interpreter::run_in_context(&ctx, "witness", false) {
-        Ok(Value::Str(s)) => {
+        Ok(Value::Str(ref s)) => {
             ensure!(
                 s.as_ref() == "dry-run-mock",
                 "expected dry-run-mock, got {s:?}"

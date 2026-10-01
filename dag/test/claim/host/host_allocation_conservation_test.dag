@@ -6,6 +6,7 @@ module test.claim.host_allocation_conservation
 // the only way to execute a row was a whole-tree floor run. The imports below are what it was
 // already using; making them explicit costs nothing and buys a witness you can execute while you
 // are writing it, which is the difference between finding a defect now and finding it in CI.
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, Bool, Int, List }
 import std.measure { ByteSize, byte_size, hardware_thread_count_value }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
