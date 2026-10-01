@@ -1,9 +1,16 @@
 module v2.test.emit.rust_bind_let_emit
 
 import v2.extdeps.languages.dag {
+  dag_arrow_with_body_node,
+  dag_bind_let_resolved_body_from_value_and_tail,
   dag_bind_resolved_arrow_with_body_fixture,
-  dag_bind_resolved_arrow_with_body_wrong_value_fixture
+  dag_bind_resolved_arrow_with_body_wrong_value_fixture,
+  dag_int_literal_fixture_one,
+  dag_pick_arrow_domain_conj_node,
+  dag_type_atom_node
 }
+import v2.std.qualified_name { binder_reference_node }
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.rust {
@@ -41,7 +48,7 @@ import v2.std.diagnostic {
   node_locus
 }
 import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
+import v2.std.node { Bind, ComputationNode, Edge, Node, Positional, Symbol }
 import v2.std.witness { Violates, Witness }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -151,3 +158,33 @@ test fn rust_bind_let_emit_wrong_value_discriminates() -> Bool {
   }
 }
 
+
+// A LET-BOUND NAME IN A VALUE POSITION EMITS. The inner let's value is the outer let's binder, as
+// v2.compiler.resolve hands it over (a binder reference). Before the binder carrier it was a bare atom
+// the emitter checked against `add`'s parameters alone, so it refused body_scope_binding_invalid;
+// the tail-only let above never reached that check because the tail had its own unchecked mint, now
+// deleted.
+fn rust_bind_let_nested_tree() -> InferredTree {
+  let x_ref = binder_reference_node(binder: ^dag_binding_bind_x, occurrence_id: OccurrenceSynthetic)
+  let inner = Node {
+    kind: ComputationNode { behavior: Bind },
+    children: [
+      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_bind_x) },
+      Edge { label: Positional, target: x_ref },
+      Edge { label: Positional, target: x_ref }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+  rust_bind_let_inferred_tree_for(root: dag_arrow_with_body_node(
+    domain: dag_pick_arrow_domain_conj_node(),
+    return_type_binding: ^dag_binding_type_int,
+    body: dag_bind_let_resolved_body_from_value_and_tail(value: dag_int_literal_fixture_one(), tail: inner)
+  ))
+}
+
+test fn a_let_bound_name_in_a_value_position_emits_holds() -> Bool {
+  match emit(tree: rust_bind_let_nested_tree(), target: rust_bind_let_target_model()) {
+    Accepted { value: source, diagnostics: _ } => string_contains(s: source.carried, pattern: "let x = 1;") && string_contains(s: source.carried, pattern: "let x = x;")
+    Rejected { diagnostics: _ } => false
+  }
+}

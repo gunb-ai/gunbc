@@ -261,6 +261,7 @@ type Scope
 type FrameKind
   = ParameterFrame { arrow_path: QualifiedName }
   | LexicalFrame
+  | TypeParameterFrame
 
 // type_scope IS THE TYPE-ROLE FRAME: the scope a name in a TYPE position resolves in. It is the
 // enclosing Arrows' type-parameter frames over the namespace root, and it never carries a value
@@ -1288,6 +1289,8 @@ fn resolve_atom_unbound(ctx: ResolveContext, n: Node, identity: Symbol, pending:
 }
 
 // A FRAME-BOUND REFERENCE IS MINTED BY ITS FRAME'S KIND, WHICH WAS FIXED WHEN THE FRAME WAS BUILT.
+// A TypeParameterFrame's binder (a fn's or a type's `<T>`) stays the bare canonical atom: it names a
+// type, which every reader of a type position already reads by its atom, and is not a value binder.
 // A Lexical frame's binder (a let, a match-arm pattern binder, a closure parameter) is minted as a
 // binder reference over its canonical symbol (v2.std.qualified_name binder_reference_node), so every
 // later stage reads it by its kind instead of re-deriving a local scope. A ParameterFrame's binder is the parameter
@@ -1307,6 +1310,11 @@ fn resolve_frame_bound_reference(
     LexicalFrame =>
       Accepted {
         value: binder_reference_node(binder: canonical, occurrence_id: n.occurrence_id),
+        diagnostics: pending
+      }
+    TypeParameterFrame =>
+      Accepted {
+        value: canonical_atom(identity: canonical, occurrence_id: n.occurrence_id),
         diagnostics: pending
       }
     ParameterFrame { arrow_path: arrow_path } =>
@@ -2792,7 +2800,7 @@ fn resolve_type_param_frame(n: Node, outer: Scope) -> Scope {
           map_insert(acc, name, name)
         }),
         outer: outer,
-        kind: LexicalFrame
+        kind: TypeParameterFrame
       }
   }
 }

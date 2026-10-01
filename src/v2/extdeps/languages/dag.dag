@@ -4968,6 +4968,10 @@ data dag_rec_arrow_with_body_fixture: Node = dag_rec_arrow_with_body_node()
 data dag_fixture_emitted_rec_fn: Node = dag_rec_arrow_with_body_fixture
 
 fn dag_variant_holds_construct_node(value_lit: Symbol) -> Node {
+  dag_variant_holds_construct_of(value: dag_type_atom_node(identity: value_lit))
+}
+
+fn dag_variant_holds_construct_of(value: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -4976,15 +4980,17 @@ fn dag_variant_holds_construct_node(value_lit: Symbol) -> Node {
       ),
       dag_named_edge(
         name: ^dag_binding_field_variant_value,
-        target: dag_type_atom_node(identity: value_lit)
+        target: value
       )
     ],
     occurrence_id: OccurrenceSynthetic
   }
 }
 
+// The pattern's field binder after resolution: v2.compiler.resolve resolves a pattern binder in the
+// arm's frame, so it is the same binder reference the arm body reads.
 fn dag_variant_holds_pattern_node() -> Node {
-  dag_variant_holds_construct_node(value_lit: ^dag_binding_rec_v)
+  dag_variant_holds_construct_of(value: binder_reference_node(binder: ^dag_binding_rec_v, occurrence_id: OccurrenceSynthetic))
 }
 
 fn dag_variant_match_arm_node(pattern_target: Node, body: Node) -> Node {
@@ -5296,12 +5302,16 @@ fn dag_bind_let_body_wrong_value_node() -> Node {
 // into a binder reference (v2.std.qualified_name binder_reference_node). A consumer downstream of
 // resolution -- emission, evaluation -- is supplied this form.
 fn dag_bind_let_resolved_body_from_value(value: Node) -> Node {
+  dag_bind_let_resolved_body_from_value_and_tail(value: value, tail: binder_reference_node(binder: ^dag_binding_bind_x, occurrence_id: OccurrenceSynthetic))
+}
+
+fn dag_bind_let_resolved_body_from_value_and_tail(value: Node, tail: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Bind },
     children: [
       Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_bind_x) },
       Edge { label: Positional, target: value },
-      Edge { label: Positional, target: binder_reference_node(binder: ^dag_binding_bind_x, occurrence_id: OccurrenceSynthetic) }
+      Edge { label: Positional, target: tail }
     ],
     occurrence_id: OccurrenceSynthetic
   }
