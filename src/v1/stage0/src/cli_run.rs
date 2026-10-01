@@ -100,9 +100,9 @@ pub mod scope_rank_view;
 mod serve_budget_refusal;
 pub use emitted_crate_workspace_host::{run_emitted_crate_workspace, EmittedCrateWorkspaceHeld};
 pub use native_lane_runner::{
-    run_native_claim_program, run_required_v2_native, run_self_host, run_v2_native_cli,
-    run_v2_native_frontier, NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination,
-    NativeRouteOutcome, SelfHostHeld, V2NativeCliHeld,
+    emitted_build_not_clean_cause, run_native_claim_program, run_required_v2_native, run_self_host,
+    run_v2_native_cli, run_v2_native_frontier, NativeClaimProgramRun, NativeFrontierRun,
+    NativeMemberTermination, NativeRouteOutcome, SelfHostHeld, V2NativeCliHeld,
 };
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
@@ -787,7 +787,7 @@ fn project_roadmap_acceptance_event_history_from_authority_text_inner(
     let result = v1_interpreter::run_in_context(&ctx, "roadmap_acceptance_event_history", true);
 
     match result {
-        Ok(v1_interpreter::Value::List(events)) => {
+        Ok(v1_interpreter::Value::List(ref events)) => {
             let mut events: Vec<v1_interpreter::Value> = events.iter().cloned().collect();
             if let Some(witness_ctx) = remap_ctx {
                 match roadmap_acceptance_history_carrier::serialize_roadmap_acceptance_events_to_jsonl(
@@ -1412,7 +1412,6 @@ mod roadmap_acceptance_history_projection_tests {
         },
         RoadmapAcceptanceHistoryProjection,
     };
-    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_interpreter;
     use crate::v1_interpreter::{ExecutionMode, InterpContext};
@@ -1423,8 +1422,8 @@ mod roadmap_acceptance_history_projection_tests {
         let graph = ResolvedGraph {
             modules: Rc::new(im::Vector::new()),
             item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
             diagnostics: Rc::new(im::Vector::new()),
-            emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
     }
@@ -4720,7 +4719,9 @@ pub fn source_path_for_module_path(module_path: String) -> String {
 }
 
 pub fn free_monoid_symbol_value_to_dotted_string(value: &v1_interpreter::Value) -> String {
-    v1_interpreter::free_monoid_symbol_value_to_dotted_string(value)
+    crate::v1_interpreter::value_depth_guarded(|| {
+        v1_interpreter::free_monoid_symbol_value_to_dotted_string(value)
+    })
 }
 
 pub fn free_monoid_symbol_value_from_dotted_string(
@@ -5885,7 +5886,7 @@ fn import_module_paths_for_typed_module(tm: &Rc<TypedModule>) -> HashSet<String>
 /// IT DOES NOT SCAN. The first repair collected the distinct owning modules by walking
 /// `item_registry.values()`, which answered correctly and re-derived, per call, an index this
 /// compiler already builds: `leaf_owner_modules_from_registry` (v1.compiler.infer_items), carried
-/// on `ResolvedGraph.emit_graph_info.item_leaf_owner_modules`. That is DESIGN section 2
+/// on `ResolvedGraph.item_leaf_owner_modules`. That is DESIGN section 2
 /// re-invention -- net concepts must not grow by re-invention -- and a section 6 cost-shape defect
 /// besides, since `classify_unlisted_import_binding_source` and its callers put roughly four full
 /// registry passes behind every census row and the census is thousands of rows. Both are fixed by
@@ -5914,7 +5915,7 @@ fn definer_lookup_for_name(graph: &ResolvedGraph, name: &str) -> DefinerLookup {
     // the unresolved bucket instead of refusing, and a census that reports a resolvable symbol as
     // unresolved is the conflation this function's own name exists to keep apart.
     let leaf = name.rsplit('.').next().unwrap_or(name);
-    match graph.emit_graph_info.item_leaf_owner_modules.get(leaf) {
+    match graph.item_leaf_owner_modules.get(leaf) {
         None => DefinerLookup::Unresolved,
         Some(owner) => match &**owner {
             LeafOwner::LeafAmbiguous => DefinerLookup::AmbiguousLeaf,
@@ -7275,7 +7276,7 @@ mod live_read_carrier_home_roster_drift_gate_tests {
         })
         .unwrap_or_else(|e| panic!("eval live_read_carrier_homes_v0: {e}"))
         .unwrap_or_else(|| panic!("live_read_carrier_homes_v0 not found as a data item"));
-        let Value::List(items) = val else {
+        let Value::List(ref items) = val else {
             panic!("live_read_carrier_homes_v0 is not a List: {val:?}");
         };
         items
@@ -8559,6 +8560,20 @@ pub fn compile_entry_emission(
 /// the returned files, renders diagnostics and picks an exit code -- those are boundary
 /// concerns, not a second pipeline.
 pub fn compile_emission(request: &CompileRequest) -> CompileRun {
+    compile_emission_over(request, IndexResidency::SharedProcessPool)
+}
+
+/// WHO HOLDS THE INDEX A COMPILE RESOLVES OVER. The run's own pool lives in the thread's shared
+/// memo, one per precedence slot (`try_process_shared_index_for_pool`, which refuses a second).
+/// A compile over a different pool whose index nothing after it reads -- a fixture root compiled
+/// once by a control -- owns its index for the length of the compile instead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndexResidency {
+    SharedProcessPool,
+    OwnedByThisCompile,
+}
+
+pub fn compile_emission_over(request: &CompileRequest, residency: IndexResidency) -> CompileRun {
     let source_roots: &[String] = &request.source_roots;
     let primary_precedence = request.primary_precedence;
     let subject_label = request.subject.label();
@@ -8747,7 +8762,23 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
     // compiling N entries reconciled the shared prefix N times over closures that overlap almost
     // entirely. See `try_process_shared_index_for_pool` for why that is a §2 cost-shape defect
     // rather than a budget fact, and for what is NOT changed by the routing.
-    let index: Rc<MultiEntryIndex> = if primary_precedence {
+    let index: Rc<MultiEntryIndex> = if residency == IndexResidency::OwnedByThisCompile {
+        let built = if primary_precedence {
+            try_build_module_index_primary_precedence(source_roots)
+        } else {
+            try_build_module_index(source_roots)
+        };
+        match built {
+            Ok(module_index) => Rc::new(new_multi_entry_index_shell(
+                module_index,
+                source_roots,
+                None,
+            )),
+            Err(cause) => {
+                return compile_not_executed(&request.subject, started, "source-discovery", cause)
+            }
+        }
+    } else if primary_precedence {
         match try_process_shared_index_for_pool(source_roots, true) {
             Ok(idx) => idx,
             Err(cause) => {
@@ -10564,27 +10595,56 @@ mod closure_edge_demand_tests {
         );
     }
 
-    /// AN EVICTED SHARED INDEX IS NOT REBUILT. Roots A, then roots B (which evicts A from the
-    /// thread's slot), then A again: the third demand refuses where it happens, naming both root
-    /// sets, instead of indexing A a second time. The positive control: asking for A twice with
-    /// nothing in between returns the same index.
+    /// The floor's index controls run over a shared index the caller already built, and pass when
+    /// each file's reading was parsed once and no name set was indexed twice.
     #[test]
-    fn a_shared_index_evicted_by_other_roots_refuses_to_rebuild() {
-        let a = Fixture::new(&[("m.dag", "module evict_a\nfn f() -> Int { 1 }\n")]);
-        let b = Fixture::new(&[("m.dag", "module evict_b\nfn f() -> Int { 1 }\n")]);
+    fn floor_index_controls_hold_over_a_shared_index_the_closure_already_read() {
+        let fixture = Fixture::new(&[
+            (
+                "entry.dag",
+                "module ctl_entry\nfn main() -> Int { ctl.provider.one() }\n",
+            ),
+            (
+                "provider.dag",
+                "module ctl.provider\nfn one() -> Int { 1 }\n",
+            ),
+        ]);
+        let roots = vec![fixture.0.to_string_lossy().into_owned()];
+        let index = try_process_shared_index(&roots).unwrap();
+        load_sources_for_entry_with_pool(&index, &fixture.0.join("entry.dag").to_string_lossy())
+            .unwrap();
+        required_floor_runner::floor_index_controls("fixture", &[("fixture-roots", roots)])
+            .unwrap();
+    }
+
+    /// A SECOND POOL REFUSES AT BUILD, naming both root sets and the demanding site, and the
+    /// resident pool survives it: the residency control still reads one pool and the first
+    /// roots are still served from the memo. Red before the build-site refusal (the second
+    /// demand built and returned a second index); green with it.
+    #[test]
+    fn a_second_pool_in_one_slot_refuses_at_build() {
+        let a = Fixture::new(&[("m.dag", "module res_a\nfn f() -> Int { 1 }\n")]);
+        let b = Fixture::new(&[("m.dag", "module res_b\nfn f() -> Int { 1 }\n")]);
         let roots_a = vec![a.0.to_string_lossy().into_owned()];
         let roots_b = vec![b.0.to_string_lossy().into_owned()];
-        let first = try_process_shared_index(&roots_a).unwrap();
-        let again = try_process_shared_index(&roots_a).unwrap();
-        assert!(
-            Rc::ptr_eq(&first, &again),
-            "same roots, nothing between: one index"
-        );
-        try_process_shared_index(&roots_b).unwrap();
-        let Err(err) = try_process_shared_index(&roots_a) else {
-            panic!("rebuilding evicted roots must refuse");
+        let first_a = try_process_shared_index(&roots_a).unwrap();
+        assert_eq!(entry_resolve::shared_index_residency_control(), Ok(1));
+        let err = match try_process_shared_index(&roots_b) {
+            Ok(_) => panic!("a second pool in slot 0 was built"),
+            Err(err) => err,
         };
-        assert!(err.contains("SharedIndexRebuiltAfterEviction"), "{err}");
+        assert!(err.contains("SharedIndexSecondResidentPool"), "{err}");
+        for roots in [&roots_a, &roots_b] {
+            let canonical = entry_resolve::canonical_shared_index_roots(roots);
+            assert!(
+                err.contains(&format!("{canonical:?}")),
+                "names {canonical:?}: {err}"
+            );
+        }
+        assert!(err.contains(file!()), "names the demanding site: {err}");
+        assert_eq!(entry_resolve::shared_index_residency_control(), Ok(1));
+        let again_a = try_process_shared_index(&roots_a).unwrap();
+        assert!(Rc::ptr_eq(&first_a, &again_a), "the resident pool is kept");
     }
 
     /// THE VALID TWIN: the same shape with the homonym removed is admitted by the entry and by
@@ -11574,6 +11634,9 @@ impl WitnessRuntimeCause {
             E::StringRealizationStraddle { .. } => WitnessRuntimeCause::StringRealizationStraddle,
             E::PoolRootContributesNothing { .. } => WitnessRuntimeCause::PoolRootContributesNothing,
             E::PatternMatchFailure { .. } => WitnessRuntimeCause::PatternMatchFailure,
+            // A non-Bool guard is a type error at a located site; the variant carries the location,
+            // the cause token classifies it with its kind.
+            E::MatchGuardNotBool { .. } => WitnessRuntimeCause::TypeError,
             E::RestResponseUndecodable { .. } => WitnessRuntimeCause::RestResponseUndecodable,
             E::DivisionByZero => WitnessRuntimeCause::DivisionByZero,
             E::IntegerOverflow { .. } => WitnessRuntimeCause::IntegerOverflow,
@@ -12452,7 +12515,7 @@ where
 #[cfg(test)]
 pub(crate) fn reset_process_shared_index_for_test() {
     PROCESS_RESOLVE_INDEX.with(|s| {
-        *s.borrow_mut() = [None, None];
+        *s.borrow_mut() = Default::default();
     });
     PROCESS_RESOLVE_STORE.with(|s| s.borrow_mut().clear());
 }
@@ -17147,16 +17210,17 @@ fn finish_resolved_graph_assembly(
         v1_compiler_infer::rewire_func_env_parent_links(modules.clone(), source_indices.clone());
     resolve_stage_slot_add(|s| s.assembly_rewire_func_env += rewire3_started.elapsed().as_nanos());
     resolve_stage_slot_add(|s| s.assembly_rewire += rewire_started.elapsed().as_nanos());
-    let emit_info_started = std::time::Instant::now();
-    let emit_graph_info =
-        v1_compiler_infer::build_emit_graph_info(modules.clone(), expanded_registry.clone());
-    resolve_stage_slot_add(|s| s.assembly_emit_info += emit_info_started.elapsed().as_nanos());
+    // NO EmitGraphInfo IS BUILT HERE (v1.compiler.infer_items ResolvedGraph): emission builds its
+    // own, and the resolve carries only the registry's leaf-owner projection. `assembly_emit_info`
+    // therefore reads zero from this change on -- the before/after of the cut, not a lost slot.
     let graph_started = std::time::Instant::now();
     let graph = Rc::new(ResolvedGraph {
         modules,
+        item_leaf_owner_modules: crate::v1_compiler_infer_items::leaf_owner_modules_from_registry(
+            expanded_registry.clone(),
+        ),
         item_registry: expanded_registry,
         diagnostics,
-        emit_graph_info,
     });
     resolve_stage_slot_add(|s| s.assembly_graph += graph_started.elapsed().as_nanos());
     Ok(graph)
@@ -18360,7 +18424,7 @@ fn render_batch_summary_line(
     )
     .ok()?;
     match out {
-        Value::Str(s) => Some(s.to_string()),
+        Value::Str(ref s) => Some(s.to_string()),
         _ => None,
     }
 }
@@ -19526,7 +19590,13 @@ pub fn whole_corpus_semantic_oracle_snapshot(
         .collect();
     diag_lines.sort();
     let diagnostic_fingerprint = v1_rt::bytes_identity_hash(diag_lines.join("\n").as_bytes());
-    let emit_graph_fingerprint = canonical_json_identity_hash(graph.emit_graph_info.as_ref())?;
+    // The oracle fingerprints the whole emit representation, so it builds it here -- through the
+    // one builder emission uses -- rather than reading a copy every resolve used to carry.
+    let emit_graph_info = v1_compiler_infer::build_emit_graph_info(
+        graph.modules.clone(),
+        graph.item_registry.clone(),
+    );
+    let emit_graph_fingerprint = canonical_json_identity_hash(emit_graph_info.as_ref())?;
 
     let mut modules: Vec<Rc<TypedModule>> = graph.modules.iter().cloned().collect();
     modules.sort_by(|left, right| {
@@ -19549,7 +19619,7 @@ pub fn whole_corpus_semantic_oracle_snapshot(
             v1_rt::bytes_identity_hash(module_diag_lines.join("\n").as_bytes());
         let module_emit_fingerprint = module_emit_repr_fingerprint(
             module.as_ref(),
-            graph.emit_graph_info.as_ref(),
+            emit_graph_info.as_ref(),
             source_indices.clone(),
         )?;
         per_module_lines.push(format!(
@@ -19656,7 +19726,7 @@ pub fn run_witness_verdict_diagnostic(
     function: &str,
 ) -> String {
     match v1_interpreter::run_in_context(ctx, function, false) {
-        Ok(Value::Str(s)) => s.to_string(),
+        Ok(Value::Str(ref s)) => s.to_string(),
         Ok(other) => format!(
             "witness_verdict_diagnostic_refused: {function} returned {}, expected String",
             ctx.format_value(&other)
@@ -19762,7 +19832,7 @@ fn eval_census_string_fn(
 ) -> Result<String, String> {
     let args = [(Some("entry".to_string()), str_value(entry.to_string()))];
     match v1_interpreter::run_in_context_with_args(ctx, fn_name, &args, false) {
-        Ok(Value::Str(s)) => Ok(s.to_string()),
+        Ok(Value::Str(ref s)) => Ok(s.to_string()),
         Ok(other) => Err(format!(
             "{fn_name}({entry:?}) returned {}, expected String",
             ctx.format_value(&other)
@@ -21275,7 +21345,7 @@ impl ScopedRunObservation {
             false,
         )
         .map_err(|e| format!("scoped run timing receipt failed: {e}"))?;
-        let Value::Variant { fields, .. } = receipt else {
+        let Value::Variant { ref fields, .. } = receipt else {
             return Err("scoped run timing receipt returned non-typed value".to_string());
         };
         let decode = |name: &str| -> Result<u128, String> {
@@ -22684,7 +22754,6 @@ mod cli_wire_classify_tests {
 
     use im::{vector as im_vec, HashMap};
 
-    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_interpreter::{str_value, ExecutionMode, InterpContext, Value};
 
@@ -22694,8 +22763,8 @@ mod cli_wire_classify_tests {
         let graph = ResolvedGraph {
             modules: Rc::new(im_vec![]),
             item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
             diagnostics: Rc::new(im_vec![]),
-            emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
     }
@@ -23313,6 +23382,7 @@ fn extract_bool_witness_transport(
 fn defining_module_for_resolved_type(
     graph: &ResolvedGraph,
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    variant_to_enum: &im::HashMap<String, String>,
     type_name: &str,
 ) -> Option<String> {
     let si = Rc::new(source_indices.clone());
@@ -23322,11 +23392,7 @@ fn defining_module_for_resolved_type(
             return Some(mod_name);
         }
     }
-    let parent_enum = graph
-        .emit_graph_info
-        .variant_to_enum
-        .get(type_name)
-        .cloned()?;
+    let parent_enum = variant_to_enum.get(type_name).cloned()?;
     for tm in graph.modules.iter() {
         let mod_name = authored_name_at(si.clone(), tm.module.clone());
         if lookup_type_by_name(tm.type_env.clone(), parent_enum.clone()).is_some() {
@@ -23361,9 +23427,10 @@ fn declared_type_name_from_annotation(
 fn resolved_decl_ref_from_type_name(
     graph: &ResolvedGraph,
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    variant_to_enum: &im::HashMap<String, String>,
     name: &str,
 ) -> Result<ResolvedDeclRef, String> {
-    let module = defining_module_for_resolved_type(graph, source_indices, name)
+    let module = defining_module_for_resolved_type(graph, source_indices, variant_to_enum, name)
         .ok_or_else(|| format!("no defining module for resolved type '{}'", name))?;
     Ok(ResolvedDeclRef {
         module,
@@ -23374,6 +23441,7 @@ fn resolved_decl_ref_from_type_name(
 fn resolved_initializer_decl_ref(
     graph: &ResolvedGraph,
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    variant_to_enum: &im::HashMap<String, String>,
     body: &Rc<Node>,
     type_annotation: Option<&Rc<Node>>,
 ) -> Result<ResolvedDeclRef, String> {
@@ -23406,13 +23474,18 @@ fn resolved_initializer_decl_ref(
                     variant_name, parent_name
                 ));
             }
-            let module = defining_module_for_resolved_type(graph, source_indices, parent_name)
-                .ok_or_else(|| {
-                    format!(
-                        "no defining module for resolved coproduct '{}'",
-                        parent_name
-                    )
-                })?;
+            let module = defining_module_for_resolved_type(
+                graph,
+                source_indices,
+                variant_to_enum,
+                parent_name,
+            )
+            .ok_or_else(|| {
+                format!(
+                    "no defining module for resolved coproduct '{}'",
+                    parent_name
+                )
+            })?;
             return Ok(ResolvedDeclRef {
                 module,
                 name: variant_name,
@@ -23441,11 +23514,11 @@ fn resolved_initializer_decl_ref(
         None => None,
     };
     if let Some(name) = inferred_name {
-        return resolved_decl_ref_from_type_name(graph, source_indices, &name);
+        return resolved_decl_ref_from_type_name(graph, source_indices, variant_to_enum, &name);
     }
     if let Some(ann) = type_annotation {
         if let Some(name) = declared_type_name_from_annotation(source_indices, ann) {
-            return resolved_decl_ref_from_type_name(graph, source_indices, &name);
+            return resolved_decl_ref_from_type_name(graph, source_indices, variant_to_enum, &name);
         }
     }
     Err(
@@ -23663,8 +23736,18 @@ pub fn discover_owned_data_decls(
             .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
+        // THE ONE READER OF variant_to_enum BUILDS IT, once per group graph, through the builder
+        // emission uses: the resolve no longer carries EmitGraphInfo (v1.compiler.infer_items
+        // ResolvedGraph), and owned-data discovery is the consumer that demands this projection.
+        let variant_to_enum = v1_compiler_infer::build_emit_graph_info(
+            graph.modules.clone(),
+            graph.item_registry.clone(),
+        )
+        .variant_to_enum
+        .clone();
         for (entry, entry_module, marker_count) in group.entries {
-            let records = owned_data_decls_for_entry(&graph, &si, &entry, &entry_module)?;
+            let records =
+                owned_data_decls_for_entry(&graph, &si, &variant_to_enum, &entry, &entry_module)?;
             if records.len() != marker_count {
                 return Err(format!(
                     "{}: merged-resolve discovery found {} owned unified_claim record(s) but the entry declares {} top-level `data unified_claim_` marker(s)",
@@ -24371,7 +24454,7 @@ pub fn project_witness_cost_receipt(
         .map_err(|e| format!("[witness-row-cost] REFUSED: authored projector failed: {e}"))?;
         let Value::Variant {
             variant_name,
-            fields,
+            ref fields,
             ..
         } = projection
         else {
@@ -26733,23 +26816,25 @@ fn collect_node_values(
     ctx: &v1_interpreter::InterpContext,
     out: &mut Vec<v1_interpreter::Value>,
 ) {
-    if value_is_node(val, ctx) {
-        out.push(val.clone());
-    }
-    match val {
-        v1_interpreter::Value::Record { fields, .. }
-        | v1_interpreter::Value::Variant { fields, .. } => {
-            for (_, v) in fields.iter() {
-                collect_node_values(v, ctx, out);
-            }
+    crate::v1_interpreter::value_depth_guarded(|| {
+        if value_is_node(val, ctx) {
+            out.push(val.clone());
         }
-        v1_interpreter::Value::List(items) => {
-            for v in items.iter() {
-                collect_node_values(v, ctx, out);
+        match val {
+            v1_interpreter::Value::Record { fields, .. }
+            | v1_interpreter::Value::Variant { fields, .. } => {
+                for (_, v) in fields.iter() {
+                    collect_node_values(v, ctx, out);
+                }
             }
+            v1_interpreter::Value::List(items) => {
+                for v in items.iter() {
+                    collect_node_values(v, ctx, out);
+                }
+            }
+            _ => {}
         }
-        _ => {}
-    }
+    })
 }
 
 fn call_test_claim_fn_bool(
@@ -27547,7 +27632,7 @@ mod effect_reach_host_sink_markers_drift_gate_tests {
         .unwrap_or_else(|| {
             panic!("effect_reach_host_sink_callee_symbols_v0 not found as a data item")
         });
-        let Value::List(items) = val else {
+        let Value::List(ref items) = val else {
             panic!("effect_reach_host_sink_callee_symbols_v0 is not a List: {val:?}");
         };
         items
@@ -28047,7 +28132,7 @@ pub fn emit_realize_advisory_for_rows(source_roots: &[String], rows: &[Discovery
                 &args,
                 false,
             ) {
-                Ok(Value::Record { fields, .. }) => {
+                Ok(Value::Record { ref fields, .. }) => {
                     let width = match realize_ctx.field(&fields, "width") {
                         Some(Value::Int(w)) => *w,
                         _ => -1,
@@ -33562,7 +33647,7 @@ pub fn dependency_resolution_facts(
 /// `reference_edges_as_import_facts` and unioned by `union_dedup_import_facts_reference_first`.
 /// Any row returned is the row the population read carries for that path, in the same order.
 ///
-/// WHAT IT DOES NOT DEMAND is the corpus. The declared-module set is the process-cached
+/// WHAT IT DOES NOT DEMAND is the corpus. The declared-module index is the process-cached
 /// `build_module_path_index` the population read also consults; the reference half's pool name
 /// index is built only when the importer carries no `import` line, which is the one case whose
 /// edges depend on other files' names. An importer the population would not walk -- outside every
@@ -33587,11 +33672,9 @@ pub fn dependency_resolution_facts_at(
     let Ok(content) = std::fs::read_to_string(&file) else {
         return Vec::new();
     };
-    let declared: HashSet<String> = build_module_path_index(&abs_pool_roots)
-        .into_iter()
-        .map(|(k, _)| k)
-        .collect();
-    let import_edges = entry_resolve::import_facts_for_file(importer_path, &content, &declared);
+    let import_edges = with_module_path_index(&abs_pool_roots, |index| {
+        entry_resolve::import_facts_for_file(importer_path, &content, |m| index.contains_key(m))
+    });
     let reference_edges = match entry_resolve::reference_edges_for_file_on_demand(
         importer_path,
         Some(&content),
@@ -40326,103 +40409,123 @@ pub fn value_to_wire_json(
     val: &v1_interpreter::Value,
     ctx: &v1_interpreter::InterpContext,
 ) -> WireSerializeResult<serde_json::Value> {
-    match val {
-        // `T?` is std Optional, whose wire shape is the payload itself: Present encodes its
-        // `value`, Absent encodes as null, which a record field omits (proto3 JSON / serde's
-        // `Option`). Routing it through the coproduct policy emitted `{"_variant":"Present",
-        // "value":...}`, which Google's IAM setIamPolicy refuses at policy.bindings[].condition.
-        v1_interpreter::Value::Variant {
-            type_name,
-            variant_name,
-            fields,
-        } if wire_resolve_sym(ctx, *type_name) == "Optional" => {
-            match wire_resolve_sym(ctx, *variant_name).as_str() {
-                "Absent" => Ok(serde_json::Value::Null),
-                "Present" => match fields
-                    .iter()
-                    .find(|(k, _)| wire_resolve_sym(ctx, *k) == "value")
-                {
-                    Some((_, v)) => value_to_wire_json(v, ctx),
-                    None => Err("Optional.Present carries no `value` field".to_string()),
-                },
-                other => Err(format!("Optional has no variant `{other}`")),
-            }
-        }
-        v1_interpreter::Value::Variant {
-            type_name,
-            variant_name,
-            fields,
-        } => serialize_variant_to_wire_json(
-            &wire_resolve_sym(ctx, *type_name),
-            &wire_resolve_sym(ctx, *variant_name),
-            fields,
-            ctx,
-        ),
-        v1_interpreter::Value::Null => Ok(serde_json::Value::Null),
-        v1_interpreter::Value::Bool(b) => Ok(serde_json::Value::Bool(*b)),
-        v1_interpreter::Value::Int(n) => Ok(serde_json::json!(*n)),
-        v1_interpreter::Value::Float(f) => Ok(serde_json::json!(*f)),
-        Value::Str(s) => {
-            if s.starts_with('[') || s.starts_with('{') {
-                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(s) {
-                    return Ok(parsed);
+    crate::v1_interpreter::value_depth_guarded(|| {
+        match val {
+            // `T?` is std Optional, whose wire shape is the payload itself: Present encodes its
+            // `value`, Absent encodes as null, which a record field omits (proto3 JSON / serde's
+            // `Option`). Routing it through the coproduct policy emitted `{"_variant":"Present",
+            // "value":...}`, which Google's IAM setIamPolicy refuses at policy.bindings[].condition.
+            v1_interpreter::Value::Variant {
+                type_name,
+                variant_name,
+                fields,
+            } if wire_resolve_sym(ctx, *type_name) == "Optional" => {
+                match wire_resolve_sym(ctx, *variant_name).as_str() {
+                    "Absent" => Ok(serde_json::Value::Null),
+                    "Present" => match fields
+                        .iter()
+                        .find(|(k, _)| wire_resolve_sym(ctx, *k) == "value")
+                    {
+                        Some((_, v)) => value_to_wire_json(v, ctx),
+                        None => Err("Optional.Present carries no `value` field".to_string()),
+                    },
+                    other => Err(format!("Optional has no variant `{other}`")),
                 }
             }
-            Ok(serde_json::Value::String(s.to_string()))
-        }
-        v1_interpreter::Value::List(items) => {
-            let mut arr = Vec::with_capacity(items.len());
-            for item in items.iter() {
-                arr.push(value_to_wire_json(item, ctx)?);
+            v1_interpreter::Value::Variant {
+                type_name,
+                variant_name,
+                fields,
+            } => serialize_variant_to_wire_json(
+                &wire_resolve_sym(ctx, *type_name),
+                &wire_resolve_sym(ctx, *variant_name),
+                fields,
+                ctx,
+            ),
+            v1_interpreter::Value::Null => Ok(serde_json::Value::Null),
+            v1_interpreter::Value::Bool(b) => Ok(serde_json::Value::Bool(*b)),
+            v1_interpreter::Value::Int(n) => Ok(serde_json::json!(*n)),
+            v1_interpreter::Value::Float(f) => Ok(serde_json::json!(*f)),
+            Value::Str(s) => {
+                if s.starts_with('[') || s.starts_with('{') {
+                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(s) {
+                        // An inlined JSON string counts at its own depth, and refuses here rather
+                        // than handing the reader a document deeper than it reads.
+                        let _inlined = crate::v1_interpreter::claim_json_nesting(
+                            crate::v1_interpreter::json_container_depth(&parsed),
+                            "",
+                        )?;
+                        return Ok(parsed);
+                    }
+                }
+                Ok(serde_json::Value::String(s.to_string()))
             }
-            Ok(serde_json::Value::Array(arr))
-        }
-        v1_interpreter::Value::Set(members) => Ok(serde_json::Value::Array(
-            members
-                .iter()
-                .map(|s| serde_json::Value::String(s.clone()))
-                .collect(),
-        )),
-        v1_interpreter::Value::Map(m) => {
-            let mut obj = serde_json::Map::new();
-            for (k, v) in m.iter() {
-                let key = match k.value_ref() {
-                    Value::Str(s) => s.to_string(),
-                    other => {
-                        return Err(format!(
+            v1_interpreter::Value::List(items) => {
+                let _array = crate::v1_interpreter::claim_json_nesting(1, "")?;
+                let mut arr = Vec::with_capacity(items.len());
+                for (i, item) in items.iter().enumerate() {
+                    let _at = crate::v1_interpreter::claim_json_nesting(0, &format!("[{i}]"))?;
+                    arr.push(value_to_wire_json(item, ctx)?);
+                }
+                Ok(serde_json::Value::Array(arr))
+            }
+            v1_interpreter::Value::Set(members) => {
+                let _array = crate::v1_interpreter::claim_json_nesting(1, "[]")?;
+                Ok(serde_json::Value::Array(
+                    members
+                        .iter()
+                        .map(|s| serde_json::Value::String(s.clone()))
+                        .collect(),
+                ))
+            }
+            v1_interpreter::Value::Map(m) => {
+                let _object = crate::v1_interpreter::claim_json_nesting(1, "")?;
+                let mut obj = serde_json::Map::new();
+                for (k, v) in m.iter() {
+                    let key = match k.value_ref() {
+                        Value::Str(s) => s.to_string(),
+                        other => {
+                            return Err(format!(
                             "cannot serialize map with non-string key to JSON (got {other:?} key)"
                         ))
-                    }
-                };
-                obj.insert(key, value_to_wire_json(v, ctx)?);
-            }
-            Ok(serde_json::Value::Object(obj))
-        }
-        v1_interpreter::Value::Record { type_name, fields } => {
-            let record_type = wire_resolve_sym(ctx, *type_name);
-            let mut obj = serde_json::Map::new();
-            for (k, v) in fields.iter() {
-                let encoded = value_to_wire_json(v, ctx)?;
-                if encoded.is_null() {
-                    continue;
+                        }
+                    };
+                    let _at = crate::v1_interpreter::claim_json_nesting(0, &format!(".{key}"))?;
+                    obj.insert(key, value_to_wire_json(v, ctx)?);
                 }
-                let key = v1_interpreter::record_field_wire_key(
-                    ctx,
-                    &record_type,
-                    &wire_resolve_sym(ctx, *k),
-                );
-                obj.insert(key, encoded);
+                Ok(serde_json::Value::Object(obj))
             }
-            Ok(serde_json::Value::Object(obj))
+            v1_interpreter::Value::Record { type_name, fields } => {
+                let record_type = wire_resolve_sym(ctx, *type_name);
+                let _object = crate::v1_interpreter::claim_json_nesting(1, "")?;
+                let mut obj = serde_json::Map::new();
+                for (k, v) in fields.iter() {
+                    let _at = crate::v1_interpreter::claim_json_nesting(
+                        0,
+                        &format!(".{}", wire_resolve_sym(ctx, *k)),
+                    )?;
+                    let encoded = value_to_wire_json(v, ctx)?;
+                    if encoded.is_null() {
+                        continue;
+                    }
+                    let key = v1_interpreter::record_field_wire_key(
+                        ctx,
+                        &record_type,
+                        &wire_resolve_sym(ctx, *k),
+                    );
+                    obj.insert(key, encoded);
+                }
+                Ok(serde_json::Value::Object(obj))
+            }
+            v1_interpreter::Value::Unit => Ok(serde_json::Value::Null),
+            v1_interpreter::Value::Closure { .. } => {
+                Ok(serde_json::Value::String("<closure>".to_string()))
+            }
+            v1_interpreter::Value::Fn { node } => {
+                Ok(serde_json::Value::String(format!("<fn {}>", node.name)))
+            }
         }
-        v1_interpreter::Value::Unit => Ok(serde_json::Value::Null),
-        v1_interpreter::Value::Closure { .. } => {
-            Ok(serde_json::Value::String("<closure>".to_string()))
-        }
-        v1_interpreter::Value::Fn { node } => {
-            Ok(serde_json::Value::String(format!("<fn {}>", node.name)))
-        }
-    }
+    })
 }
 
 fn serialize_variant_to_wire_json(
@@ -40464,13 +40567,16 @@ fn serialize_variant_to_wire_json(
             .ok_or_else(|| {
                 format!("no wire tag for internally-tagged variant {type_name}::{variant_name}")
             })?;
+        let _object = crate::v1_interpreter::claim_json_nesting(1, "")?;
         let mut obj = serde_json::Map::new();
         obj.insert(tag_field, serde_json::Value::String(wire_tag));
         for (k, v) in fields.iter() {
             if matches!(v, v1_interpreter::Value::Null) {
                 continue;
             }
-            obj.insert(wire_resolve_sym(ctx, *k), value_to_wire_json(v, ctx)?);
+            let name = wire_resolve_sym(ctx, *k);
+            let _at = crate::v1_interpreter::claim_json_nesting(0, &format!(".{name}"))?;
+            obj.insert(name, value_to_wire_json(v, ctx)?);
         }
         return Ok(serde_json::Value::Object(obj));
     }
@@ -40478,13 +40584,16 @@ fn serialize_variant_to_wire_json(
     let tag_key = policy_serde_tag_field(policy.clone()).unwrap_or_else(|| "_variant".to_string());
     let default_tag = data_path_wire_variant_tag(variant_name.to_string(), policy.clone())
         .ok_or_else(|| format!("no wire tag for variant {type_name}::{variant_name}"))?;
+    let _object = crate::v1_interpreter::claim_json_nesting(1, "")?;
     let mut obj = serde_json::Map::new();
     obj.insert(tag_key, serde_json::Value::String(default_tag));
     for (k, v) in fields.iter() {
         if matches!(v, v1_interpreter::Value::Null) {
             continue;
         }
-        obj.insert(wire_resolve_sym(ctx, *k), value_to_wire_json(v, ctx)?);
+        let name = wire_resolve_sym(ctx, *k);
+        let _at = crate::v1_interpreter::claim_json_nesting(0, &format!(".{name}"))?;
+        obj.insert(name, value_to_wire_json(v, ctx)?);
     }
     Ok(serde_json::Value::Object(obj))
 }
@@ -40503,12 +40612,15 @@ fn serialize_untagged_variant(
         0 => Ok(serde_json::Value::Null),
         1 => Ok(values.remove(0)),
         _ => {
+            let _object = crate::v1_interpreter::claim_json_nesting(1, "")?;
             let mut obj = serde_json::Map::new();
             for (k, v) in fields.iter() {
                 if matches!(v, v1_interpreter::Value::Null) {
                     continue;
                 }
-                obj.insert(wire_resolve_sym(ctx, *k), value_to_wire_json(v, ctx)?);
+                let name = wire_resolve_sym(ctx, *k);
+                let _at = crate::v1_interpreter::claim_json_nesting(0, &format!(".{name}"))?;
+                obj.insert(name, value_to_wire_json(v, ctx)?);
             }
             Ok(serde_json::Value::Object(obj))
         }
@@ -42893,6 +43005,7 @@ pub fn prepare_repository_from_corpus(
     } = subject;
     let resolved = resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict);
     let (graph, source_indices) = resolved.map_err(|e| format!("{subject_statement}\n{e}"))?;
+    let graph = prepared_graph_without_typecheck_caches(&graph);
     Ok((
         PreparedRepository {
             graph,
@@ -42905,6 +43018,46 @@ pub fn prepare_repository_from_corpus(
         },
         inventory,
     ))
+}
+
+/// THE PREPARED GRAPH KEEPS WHAT EVALUATION READS, NOT WHAT TYPECHECKING NEEDED ON THE WAY.
+///
+/// `TypedModule.type_env_cache` is a typecheck-time carrier: `union_parent_type_env_caches` builds
+/// each module's cache as the union of its imports' caches, so its one consumer is the typecheck
+/// of a LATER importer, and every module materializes the union of its ancestry -- size grows as
+/// modules x visible names. The strict resolve that produced this graph has typechecked every
+/// importer it will ever have (the prepared subject is closed and never re-resolved), and no
+/// reader of a `PreparedRepository` touches the cache: the claim scopes, the interpreter, the
+/// declarer index and discovery read `module`, `items`, `item_registry`, `type_env` and
+/// `func_env`. So every module's cache is kept past its demanded lifetime (DESIGN §2). Its SIZE is
+/// small, because the maps are persistent HAMTs whose merge shares nodes; the leave-one-out reading
+/// (//gunbc/instruments:typed-graph-exclusive-bytes, `type_env_cache`) re-derives what it holds. It
+/// is fixed because it is a lifetime defect (DESIGN §6, bare minimum), not because it is the floor's
+/// dominant term.
+///
+/// So the repository holds a projection with the cache emptied. The resolve is a fresh compile
+/// with no process-level memo, so the original modules drop here and their caches with them.
+/// Every other field is the same `Rc`, so no evaluated value changes.
+fn prepared_graph_without_typecheck_caches(
+    graph: &Rc<v1_compiler_compile::ResolvedGraph>,
+) -> Rc<v1_compiler_compile::ResolvedGraph> {
+    let empty = crate::v1_compiler_infer_env::empty_type_env_cache();
+    let modules: Vec<Rc<crate::v1_compiler_infer_items::TypedModule>> = graph
+        .modules
+        .iter()
+        .map(|m| {
+            Rc::new(crate::v1_compiler_infer_items::TypedModule {
+                type_env_cache: empty.clone(),
+                ..(**m).clone()
+            })
+        })
+        .collect();
+    Rc::new(v1_compiler_compile::ResolvedGraph {
+        modules: Rc::new(modules.into()),
+        item_registry: graph.item_registry.clone(),
+        diagnostics: graph.diagnostics.clone(),
+        item_leaf_owner_modules: graph.item_leaf_owner_modules.clone(),
+    })
 }
 
 /// THE EXACT SCOPE ONE CLAIM EVALUATES IN — a projection of the one preparation, never a
@@ -43824,11 +43977,14 @@ fn claim_scope_for_with_memos(
         |acc, module| v1_rt::hash_combine(acc, v1_rt::atom_identity_hash(module.clone())),
     );
     let module_count = modules.len();
+    let item_registry = Rc::new(item_registry);
     let scoped_graph = v1_compiler_compile::ResolvedGraph {
         modules: Rc::new(modules.into_iter().collect()),
-        item_registry: Rc::new(item_registry),
+        item_leaf_owner_modules: crate::v1_compiler_infer_items::leaf_owner_modules_from_registry(
+            item_registry.clone(),
+        ),
+        item_registry,
         diagnostics: prepared.graph.diagnostics.clone(),
-        emit_graph_info: prepared.graph.emit_graph_info.clone(),
     };
     let registry_nanos = registry_started.elapsed().as_nanos();
     let indexes_started = std::time::Instant::now();
@@ -45073,7 +45229,7 @@ mod heartbeat_tests {
         )
         .ok()?;
         match out {
-            Value::Str(s) => Some(s.to_string()),
+            Value::Str(ref s) => Some(s.to_string()),
             _ => None,
         }
     }
@@ -46306,12 +46462,15 @@ pub fn run_regen_round_cost(
     source_roots: &[String],
     affected_scope: bool,
 ) -> Result<RegenRoundCostOutcome, String> {
-    required_regen_host::run_regen_round_cost(
+    let outcome = required_regen_host::run_regen_round_cost(
         candidate_dir_rel,
         receipt_rel,
         source_roots,
         affected_scope,
-    )
+    )?;
+    entry_resolve::shared_index_residency_control()
+        .map_err(|e| format!("regen-round-cost refused: {e}"))?;
+    Ok(outcome)
 }
 
 /// The emitted generated surface, keyed by basename, off the SAME `measure_generated_surface`
@@ -47128,5 +47287,48 @@ mod multi_entry_index_sharing_control_tests {
             err.contains("a:1") && err.contains("c:3") && !err.contains("b:2"),
             "{err}"
         );
+    }
+}
+
+#[cfg(test)]
+mod collect_node_values_depth_tests {
+    //! cli_run's private recursive Value walker, driven at the depth of
+    //! v1_interpreter value_depth_walker_tests (which carries the reasoning).
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_interpreter::{ExecutionMode, InterpContext, Value};
+
+    #[test]
+    fn a_deep_chain_is_walked_for_node_values() {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+        };
+        let ctx = InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic);
+        let (chain, link, end, next) = (
+            ctx.sym("Chain"),
+            ctx.sym("Link"),
+            ctx.sym("End"),
+            ctx.sym("next"),
+        );
+        let mut value = Value::Variant {
+            type_name: chain,
+            variant_name: end,
+            fields: Rc::new(vec![]),
+        };
+        for _ in 0..262_144 {
+            value = Value::Variant {
+                type_name: chain,
+                variant_name: link,
+                fields: Rc::new(vec![(next, value)]),
+            };
+        }
+        let mut out = Vec::new();
+        super::collect_node_values(&value, &ctx, &mut out);
     }
 }
