@@ -2,8 +2,8 @@ module v2.compiler.namespace_graft
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
-import v2.std.algebra { fold_list, fold_list_right }
-import v2.std.collection { Absent, List, Optional, Present, optional_absent, optional_present }
+import v2.std.algebra { fold_list, fold_list_right, list_reverse }
+import v2.std.collection { Absent, List, Map, Optional, Present, empty_map, map_insert, map_lookup, optional_absent, optional_present }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -706,67 +706,84 @@ fn namespace_graft_dual_position_refused(root: Node) -> Bool {
 // unmarked declaration, are a repeated name and refuse at the second, exactly as before; and a member
 // repeated inside a merged body (two `shell.Find`) refuses the same way. Merging grants no scope: a body
 // is a path segment, not a lexical frame (v2.compiler.resolve never opens one).
+// ONE KEYED PASS (DESIGN 6, bare minimum cost; review on #12949): edges are grouped by name in a Map
+// with their first-seen order, both accumulated by prepending and reversed once, so the pass is linear
+// in the body's edges and nothing re-scans or rebuilds an accumulator per edge. Each group is then
+// resolved once: a single edge is kept; a group whose edges are all marked namespace bodies merges into
+// one body over their members (recursively, for a deeper shared prefix); any other repeat refuses at its
+// second edge.
+type NamespaceGraftGroups {
+  order: List<Symbol>,
+  groups: Map<Symbol, List<Edge>>,
+  positional: List<Edge>,
+}
+
 fn namespace_graft_merge_namespace_bodies(edges: List<Edge>) -> Outcome<List<Edge>> {
-  fold(edges, init: outcome_accepted(value: Empty), f: fn(acc, e) {
-    bind_outcome(o: acc, f: fn(merged) { namespace_graft_merge_one(merged: merged, e: e) })
+  let grouped = fold(edges, init: NamespaceGraftGroups { order: Empty, groups: empty_map(), positional: Empty }, f: fn(acc, e) {
+    namespace_graft_group_step(acc: acc, e: e)
   })
-}
-
-fn namespace_graft_merge_one(merged: List<Edge>, e: Edge) -> Outcome<List<Edge>> {
-  match e.label {
-    Positional => outcome_accepted(value: list_snoc_item(xs: merged, item: e))
-    Named { name: sym } =>
-      match namespace_graft_named_edge_in(edges: merged, name: sym) {
-        Absent => outcome_accepted(value: list_snoc_item(xs: merged, item: e))
-        Present { value: earlier } => namespace_graft_merge_pair(merged: merged, name: sym, earlier: earlier, e: e)
-      }
-  }
-}
-
-// Two same-named edges: merged when both are marked namespace bodies, refused at the second otherwise.
-fn namespace_graft_merge_pair(merged: List<Edge>, name: Symbol, earlier: Edge, e: Edge) -> Outcome<List<Edge>> {
-  if namespace_graft_node_is_module_body(node: earlier.target) && namespace_graft_node_is_module_body(node: e.target) {
-    bind_outcome(
-      o: namespace_graft_merge_namespace_bodies(
-        edges: concat(namespace_graft_namespace_body_members(body: earlier.target), namespace_graft_namespace_body_members(body: e.target))
-      ),
-      f: fn(members) {
-        outcome_accepted(value: namespace_graft_replace_named_edge(
-          edges: merged,
-          name: name,
-          with: Edge { label: Named { name: name }, target: namespace_graft_namespace_body_node(edges: members, source: earlier.target) }
-        ))
-      }
-    )
-  } else {
-    outcome_rejected(Diagnostic {
-      reason: ^namespace_graft_declaration_name_repeated,
-      at: node_locus(node: e.target),
-      correction: Unavailable { reason: UserInputBoundary }
-    })
-  }
-}
-
-fn namespace_graft_named_edge_in(edges: List<Edge>, name: Symbol) -> Optional<Edge> {
-  fold(edges, init: optional_absent(), f: fn(acc, e) {
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        match e.label {
-          Named { name: sym } => if sym == name { optional_present(value: e) } else { optional_absent() }
-          Positional => optional_absent()
+  bind_outcome(
+    o: fold(list_reverse(xs: grouped.order), init: outcome_accepted(value: Empty), f: fn(acc, name) {
+      bind_outcome(o: acc, f: fn(resolved) {
+        match namespace_graft_group_of(groups: grouped.groups, name: name) {
+          Empty => outcome_accepted(value: resolved)
+          Cons { head: first, tail: rest } =>
+            bind_outcome(o: namespace_graft_resolve_group(name: name, first: first, rest: rest), f: fn(edge) {
+              outcome_accepted(value: Cons { head: edge, tail: resolved })
+            })
         }
-    }
-  })
+      })
+    }),
+    f: fn(resolved) { outcome_accepted(value: list_append(left: list_reverse(xs: resolved), right: list_reverse(xs: grouped.positional))) }
+  )
 }
 
-fn namespace_graft_replace_named_edge(edges: List<Edge>, name: Symbol, with: Edge) -> List<Edge> {
-  fold(edges, init: Empty, f: fn(acc, e) {
-    match e.label {
-      Named { name: sym } => if sym == name { list_snoc_item(xs: acc, item: with) } else { list_snoc_item(xs: acc, item: e) }
-      Positional => list_snoc_item(xs: acc, item: e)
-    }
-  })
+fn namespace_graft_group_step(acc: NamespaceGraftGroups, e: Edge) -> NamespaceGraftGroups {
+  match e.label {
+    Positional => NamespaceGraftGroups { order: acc.order, groups: acc.groups, positional: Cons { head: e, tail: acc.positional } }
+    Named { name: sym } =>
+      match map_lookup(acc.groups, sym) {
+        Absent => NamespaceGraftGroups { order: Cons { head: sym, tail: acc.order }, groups: map_insert(acc.groups, sym, Cons { head: e, tail: Empty }), positional: acc.positional }
+        Present { value: seen } => NamespaceGraftGroups { order: acc.order, groups: map_insert(acc.groups, sym, Cons { head: e, tail: seen }), positional: acc.positional }
+      }
+  }
+}
+
+// A group's edges in authored order.
+fn namespace_graft_group_of(groups: Map<Symbol, List<Edge>>, name: Symbol) -> List<Edge> {
+  match map_lookup(groups, name) {
+    Present { value: reversed } => list_reverse(xs: reversed)
+    Absent => Empty
+  }
+}
+
+fn namespace_graft_resolve_group(name: Symbol, first: Edge, rest: List<Edge>) -> Outcome<Edge> {
+  match rest {
+    Empty => outcome_accepted(value: first)
+    Cons { head: second, tail: _ } =>
+      if namespace_graft_node_is_module_body(node: first.target) && namespace_graft_all_namespace_bodies(group: rest) {
+        bind_outcome(
+          o: namespace_graft_merge_namespace_bodies(edges: namespace_graft_group_members(group: Cons { head: first, tail: rest })),
+          f: fn(members) {
+            outcome_accepted(value: Edge { label: Named { name: name }, target: namespace_graft_namespace_body_node(edges: members, source: first.target) })
+          }
+        )
+      } else {
+        outcome_rejected(Diagnostic {
+          reason: ^namespace_graft_declaration_name_repeated,
+          at: node_locus(node: second.target),
+          correction: Unavailable { reason: UserInputBoundary }
+        })
+      }
+  }
+}
+
+fn namespace_graft_all_namespace_bodies(group: List<Edge>) -> Bool {
+  fold(group, init: true, f: fn(acc, e) { acc && namespace_graft_node_is_module_body(node: e.target) })
+}
+
+fn namespace_graft_group_members(group: List<Edge>) -> List<Edge> {
+  fold(group, init: Empty, f: fn(acc, e) { list_append(left: acc, right: namespace_graft_namespace_body_members(body: e.target)) })
 }
 
 fn module_header_containment_graft(root: Node) -> Outcome<Node> {
