@@ -241,6 +241,13 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "body-lowering-lowered-shape-carrier",
+    primary_work: DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_is_core_substrate", field: WholeDeclaration },
+    additional_works: [],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the cut PR moves the last body-lowering reducer onto BodyTerm and deletes body_lower_is_core_substrate; this document's subject is that deletion, so the row deletes with the document once every producer declares its LoweredShape and no reader classifies a node by shape.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "fabric-ci-replacement",
     primary_work: DeclarationRef { module_path: "gunbc.witness_floor_workflow", decl_name: "witness_floor_job", field: WholeDeclaration },
     additional_works: [
