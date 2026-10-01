@@ -4,8 +4,7 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import std.effects { ReadonlyClaim, IdempotentClaim }
 import std.execution_mode { Hermetic }
-import v2.std.arrow_contract { effect_claim_label, execution_mode_claim_label }
-import v2.std.optional { Present, Absent }
+import v2.std.arrow_contract { effect_claim_label, execution_mode_claims_label }
 import v2.std.type_binder { type_binder_node_conforms }
 import v2.std.arrow_signature { DeclaredSignatureEdges, declared_signature }
 import v2.std.node {
@@ -71,13 +70,11 @@ fn ace_idempotent() -> Symbol {
   effect_claim_label(claim: IdempotentClaim)
 }
 
-// Hermetic's claim label, read from its projection. If Hermetic stopped projecting, the fallback is a
-// label no mode claims, so every positive control that carries a mode claim turns red.
+// The surface spelling of the one claimable mode. That std.execution_mode Hermetic claims exactly this
+// label is asserted by the positive control below, through v2.std.arrow_contract
+// execution_mode_claims_label, so the spelling here cannot drift from the projection silently.
 fn ace_hermetic() -> Symbol {
-  match execution_mode_claim_label(mode: Hermetic) {
-    Present { value: label } => label
-    Absent => symbol_intern_lexeme(lexeme: "<hermetic-projects-no-label>")
-  }
+  symbol_intern_lexeme(lexeme: "hermetic")
 }
 
 // Both walls an Arrow meets: the structural one (v2.std.node arrow_signature_edges_conform) and the
@@ -93,7 +90,8 @@ test fn a_claim_free_operation_arrow_conforms() -> Bool {
 }
 
 test fn admitted_contract_edges_conform_and_are_not_counted_as_a_binder() -> Bool {
-  ace_conforms(extra: [ace_claims(names: [ace_readonly(), ace_idempotent()])])
+  execution_mode_claims_label(mode: Hermetic, label: ace_hermetic())
+    && ace_conforms(extra: [ace_claims(names: [ace_readonly(), ace_idempotent()])])
     && ace_conforms(extra: [ace_mode(mode: ace_hermetic())])
     && ace_conforms(extra: [ace_claims(names: [ace_idempotent()]), ace_mode(mode: ace_hermetic())])
 }
