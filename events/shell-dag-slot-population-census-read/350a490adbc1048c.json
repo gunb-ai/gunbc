@@ -1,0 +1,1 @@
+{"id": "350a490adbc1048c", "event": {"schema": "roadmap-event/v3", "node": "shell-dag-slot-population-census-read", "author": "principal:google-oidc/accounts/116084671989231734979", "parent": "", "kind": "claimed", "recorded_at": "2026-10-01T00:33:43Z", "assignee": "principal:gunbc/workflows/fabric", "return_to": "principal:google-oidc/accounts/116084671989231734979"}}
