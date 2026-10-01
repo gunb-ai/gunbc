@@ -554,66 +554,110 @@ fn removed_call_is_test_fn(call: RemovedCall, resolution: BaseResolution, test_f
   }
 }
 
-type DeclReading =
-    DeclSourceUntokenizable
-  | DeclNotFound
-  | DeclFound { tokens: List<Token>, file_tokens: List<Token> }
+// ONE LEX PER SOURCE, SHARED BY EVERY FUNCTION JUDGED IN IT (operator ruling 2026-10-01, a proven
+// cost-shape defect, DESIGN section 6). The decision used to lex the whole base file and the whole
+// head file once PER IDENTITY, so a file with k changed cost-debt witnesses paid 2k lexes for two
+// sources: on a 125 KB witness file each lex is minutes in the seed interpreter, and two changed
+// witnesses held the floor's site projection past its 90-minute cap (run 36856989404). A source is
+// lexed once into a FileReading, the base resolution is read from it once, and each function's
+// declaration is selected from that single token stream.
+type FileReading =
+    FileUntokenizable
+  | FileTokens { tokens: List<Token> }
 
-fn cost_debt_edit_decl_of(source: String, function: String, rules: LexRules) -> DeclReading {
+fn cost_debt_edit_file_reading(source: String, rules: LexRules) -> FileReading {
   match cost_debt_edit_source_tokens(source: source, rules: rules) {
-    Absent => DeclSourceUntokenizable {}
-    Present { value: tokens } =>
-      match cost_debt_edit_decl_tokens(tokens: tokens, function: function) {
-        Absent => DeclNotFound {}
-        Present { value: decl } => DeclFound { tokens: decl, file_tokens: tokens }
+    Absent => FileUntokenizable {}
+    Present { value: tokens } => FileTokens { tokens: tokens }
+  }
+}
+
+// The decision for one function over two already-lexed files. `resolution` is the base file's,
+// read once by the caller.
+fn cost_debt_edit_from_readings(
+  base: FileReading,
+  head: FileReading,
+  resolution: BaseResolution,
+  function: String,
+  test_fn_identities: List<String>
+) -> CostDebtWitnessEdit {
+  match base {
+    FileUntokenizable => ReJudgedAsNewWitness { cause: WitnessSourceDidNotTokenize {} }
+    FileTokens { tokens: base_file } =>
+      match cost_debt_edit_decl_tokens(tokens: base_file, function: function) {
+        Absent => ReJudgedAsNewWitness { cause: WitnessNotDeclaredAtBase {} }
+        Present { value: base_decl } =>
+          match head {
+            FileUntokenizable => ReJudgedAsNewWitness { cause: WitnessSourceDidNotTokenize {} }
+            FileTokens { tokens: head_file } =>
+              match cost_debt_edit_decl_tokens(tokens: head_file, function: function) {
+                Absent => ReJudgedAsNewWitness { cause: WitnessNotDeclaredAtHead {} }
+                Present { value: head_decl } =>
+                  cost_debt_edit_from_decl_tokens(
+                    base: base_decl,
+                    head: head_decl,
+                    resolution: resolution,
+                    test_fn_identities: test_fn_identities
+                  )
+              }
+          }
       }
   }
 }
 
-// THE DECISION OVER TWO FILE SOURCES, which is what the witnesses exercise and what the wet entry
-// below calls once the base is read.
-// The language model is built ONCE per decision and lent to both sides.
+fn cost_debt_edit_reading_resolution(reading: FileReading) -> BaseResolution {
+  match reading {
+    FileUntokenizable => BaseResolution { module_path: "", imports: [] }
+    FileTokens { tokens: t } => cost_debt_edit_base_resolution(tokens: t)
+  }
+}
+
+// THE DECISION FOR EVERY CHANGED FUNCTION OF ONE FILE: two lexes in all, whatever the count. The
+// language model is built once and lent to both sides.
+fn cost_debt_edits_from_sources(
+  base_source: String,
+  head_source: String,
+  functions: List<String>,
+  test_fn_identities: List<String>
+) -> List<CostDebtWitnessEdit> {
+  let rules = dag_language_model().lex
+  let base = cost_debt_edit_file_reading(source: base_source, rules: rules)
+  let head = cost_debt_edit_file_reading(source: head_source, rules: rules)
+  let resolution = cost_debt_edit_reading_resolution(reading: base)
+  map(functions, f => cost_debt_edit_from_readings(base: base, head: head, resolution: resolution, function: f, test_fn_identities: test_fn_identities))
+}
+
+// The one-function form the witnesses exercise: the same decision, over a one-element list.
 fn cost_debt_edit_from_sources(
   base_source: String,
   head_source: String,
   function: String,
   test_fn_identities: List<String>
 ) -> CostDebtWitnessEdit {
-  let rules = dag_language_model().lex
-  match cost_debt_edit_decl_of(source: base_source, function: function, rules: rules) {
-    DeclSourceUntokenizable => ReJudgedAsNewWitness { cause: WitnessSourceDidNotTokenize {} }
-    DeclNotFound => ReJudgedAsNewWitness { cause: WitnessNotDeclaredAtBase {} }
-    DeclFound { tokens: base_decl, file_tokens: base_file } =>
-      match cost_debt_edit_decl_of(source: head_source, function: function, rules: rules) {
-        DeclSourceUntokenizable => ReJudgedAsNewWitness { cause: WitnessSourceDidNotTokenize {} }
-        DeclNotFound => ReJudgedAsNewWitness { cause: WitnessNotDeclaredAtHead {} }
-        DeclFound { tokens: head_decl, file_tokens: _ } =>
-          cost_debt_edit_from_decl_tokens(
-            base: base_decl,
-            head: head_decl,
-            resolution: cost_debt_edit_base_resolution(tokens: base_file),
-            test_fn_identities: test_fn_identities
-          )
-      }
+  match list_head(xs: cost_debt_edits_from_sources(base_source: base_source, head_source: head_source, functions: [function], test_fn_identities: test_fn_identities)) {
+    HeadFound { value: e } => e
+    HeadAbsent => ReJudgedAsNewWitness { cause: WitnessSourceDidNotTokenize {} }
   }
 }
 
-// THE WET ENTRY THE HOST CALLS for a changed cost-debt witness. A base that cannot be shown -- the
-// path absent at the base, a rename, a failed read -- is not a pure removal, so it re-judges; it
-// never keeps the tier by default.
-fn cost_debt_changed_witness_ceiling_at_base(
+// THE WET ENTRY THE HOST CALLS, ONCE PER CHANGED FILE, with every changed cost-debt function in it;
+// the result is aligned with `functions`. A base that cannot be shown -- the path absent at the
+// base, a rename, a failed read -- is not a pure removal, so every function in it re-judges; none
+// keeps the tier by default.
+fn cost_debt_changed_witness_ceilings_at_base(
   base: String,
   path: String,
-  function: String,
+  functions: List<String>,
   head_source: String,
   test_fn_identities: List<String>
-) -> CostDebtChangedWitnessCeiling {
+) -> List<CostDebtChangedWitnessCeiling> {
   let shown = git.Core.Show(ref: base as GitRef, path: path as FilePath)
   if !shown.success {
-    cost_debt_changed_witness_ceiling(edit: ReJudgedAsNewWitness { cause: WitnessNotDeclaredAtBase {} })
+    map(functions, _ => cost_debt_changed_witness_ceiling(edit: ReJudgedAsNewWitness { cause: WitnessNotDeclaredAtBase {} }))
   } else {
-    cost_debt_changed_witness_ceiling(
-      edit: cost_debt_edit_from_sources(base_source: shown.content, head_source: head_source, function: function, test_fn_identities: test_fn_identities)
+    map(
+      cost_debt_edits_from_sources(base_source: shown.content, head_source: head_source, functions: functions, test_fn_identities: test_fn_identities),
+      e => cost_debt_changed_witness_ceiling(edit: e)
     )
   }
 }

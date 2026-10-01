@@ -7,6 +7,7 @@ import v2.workflow.floor_cost_debt_edit {
   cost_debt_edit_cause_label,
   CostDebtChangedWitnessCeiling,
   cost_debt_edit_from_sources,
+  cost_debt_edits_from_sources,
   cost_debt_changed_witness_ceiling,
 }
 import v2.workflow.required_floor {
@@ -15,6 +16,7 @@ import v2.workflow.required_floor {
   ClaimEvalStepStanding, EvalStepsWithinBudget, EvalStepsOverBudget, EvalStepsOverBudgetUnderDeclaredDrop,
   claim_eval_step_standing,
 }
+import v2.std.algebra { list_head, HeadFound, HeadAbsent, list_tail, TailFound, TailAbsent, length }
 import v2.std.logic { Bool }
 import v2.std.integer { Int }
 import v2.std.text { String }
@@ -221,4 +223,44 @@ test fn cost_debt_edit_untokenizable_base_is_rejudged() -> Bool {
 test fn cost_debt_edit_witness_absent_at_base_is_rejudged() -> Bool {
   let edit = decide(base: src_other_witness_only(), head: src_one_conjunct(), function: "w")
   edit_rejudged_for(edit: edit, cause: WitnessNotDeclaredAtBase {}) && rejudged_and_refused(edit: edit)
+}
+
+// ONE LEX PAIR, MANY FUNCTIONS, ANSWERS ALIGNED (operator ruling 2026-10-01). The floor judges every
+// changed cost-debt witness of a file in one call so the file is lexed twice in all, not twice per
+// witness; the per-file form must still answer each function as its own decision, in input order.
+// Three functions, three different arms: a pure removal, a rejudged edit, and a name absent at base.
+fn src_two_witnesses_base() -> String { src(body: "test fn w() -> Bool { a() && t() } test fn v() -> Bool { a(x: 1) }") }
+fn src_two_witnesses_head() -> String { src(body: "test fn w() -> Bool { a() } test fn v() -> Bool { a(x: 2) }") }
+
+test fn one_lex_pair_judges_each_function_of_the_file_in_order() -> Bool {
+  let edits = cost_debt_edits_from_sources(
+    base_source: src_two_witnesses_base(),
+    head_source: src_two_witnesses_head(),
+    functions: ["w", "v", "z"],
+    test_fn_identities: fixture_test_fns()
+  )
+  match list_head(xs: edits) {
+    HeadAbsent => false
+    HeadFound { value: first } =>
+      edit_is_pure_removal_of(edit: first, expected: 1)
+        && match list_tail(xs: edits) {
+          TailAbsent => false
+          TailFound { tail: rest } =>
+            match list_head(xs: rest) {
+              HeadAbsent => false
+              HeadFound { value: second } =>
+                edit_rejudged_for(edit: second, cause: EditIsNotAConjunctRemoval {})
+                  && match list_tail(xs: rest) {
+                    TailAbsent => false
+                    TailFound { tail: last } =>
+                      match list_head(xs: last) {
+                        HeadAbsent => false
+                        HeadFound { value: third } =>
+                          edit_rejudged_for(edit: third, cause: WitnessNotDeclaredAtBase {})
+                            && length(last) == 1
+                      }
+                  }
+            }
+        }
+  }
 }
