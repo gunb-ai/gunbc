@@ -787,7 +787,7 @@ fn project_roadmap_acceptance_event_history_from_authority_text_inner(
     let result = v1_interpreter::run_in_context(&ctx, "roadmap_acceptance_event_history", true);
 
     match result {
-        Ok(v1_interpreter::Value::List(events)) => {
+        Ok(v1_interpreter::Value::List(ref events)) => {
             let mut events: Vec<v1_interpreter::Value> = events.iter().cloned().collect();
             if let Some(witness_ctx) = remap_ctx {
                 match roadmap_acceptance_history_carrier::serialize_roadmap_acceptance_events_to_jsonl(
@@ -4719,7 +4719,9 @@ pub fn source_path_for_module_path(module_path: String) -> String {
 }
 
 pub fn free_monoid_symbol_value_to_dotted_string(value: &v1_interpreter::Value) -> String {
-    v1_interpreter::free_monoid_symbol_value_to_dotted_string(value)
+    crate::v1_interpreter::value_depth_guarded(|| {
+        v1_interpreter::free_monoid_symbol_value_to_dotted_string(value)
+    })
 }
 
 pub fn free_monoid_symbol_value_from_dotted_string(
@@ -7274,7 +7276,7 @@ mod live_read_carrier_home_roster_drift_gate_tests {
         })
         .unwrap_or_else(|e| panic!("eval live_read_carrier_homes_v0: {e}"))
         .unwrap_or_else(|| panic!("live_read_carrier_homes_v0 not found as a data item"));
-        let Value::List(items) = val else {
+        let Value::List(ref items) = val else {
             panic!("live_read_carrier_homes_v0 is not a List: {val:?}");
         };
         items
@@ -11520,6 +11522,9 @@ impl WitnessRuntimeCause {
             E::StringRealizationStraddle { .. } => WitnessRuntimeCause::StringRealizationStraddle,
             E::PoolRootContributesNothing { .. } => WitnessRuntimeCause::PoolRootContributesNothing,
             E::PatternMatchFailure { .. } => WitnessRuntimeCause::PatternMatchFailure,
+            // A non-Bool guard is a type error at a located site; the variant carries the location,
+            // the cause token classifies it with its kind.
+            E::MatchGuardNotBool { .. } => WitnessRuntimeCause::TypeError,
             E::RestResponseUndecodable { .. } => WitnessRuntimeCause::RestResponseUndecodable,
             E::DivisionByZero => WitnessRuntimeCause::DivisionByZero,
             E::IntegerOverflow { .. } => WitnessRuntimeCause::IntegerOverflow,
@@ -18286,7 +18291,7 @@ fn render_batch_summary_line(
     )
     .ok()?;
     match out {
-        Value::Str(s) => Some(s.to_string()),
+        Value::Str(ref s) => Some(s.to_string()),
         _ => None,
     }
 }
@@ -19588,7 +19593,7 @@ pub fn run_witness_verdict_diagnostic(
     function: &str,
 ) -> String {
     match v1_interpreter::run_in_context(ctx, function, false) {
-        Ok(Value::Str(s)) => s.to_string(),
+        Ok(Value::Str(ref s)) => s.to_string(),
         Ok(other) => format!(
             "witness_verdict_diagnostic_refused: {function} returned {}, expected String",
             ctx.format_value(&other)
@@ -19694,7 +19699,7 @@ fn eval_census_string_fn(
 ) -> Result<String, String> {
     let args = [(Some("entry".to_string()), str_value(entry.to_string()))];
     match v1_interpreter::run_in_context_with_args(ctx, fn_name, &args, false) {
-        Ok(Value::Str(s)) => Ok(s.to_string()),
+        Ok(Value::Str(ref s)) => Ok(s.to_string()),
         Ok(other) => Err(format!(
             "{fn_name}({entry:?}) returned {}, expected String",
             ctx.format_value(&other)
@@ -21207,7 +21212,7 @@ impl ScopedRunObservation {
             false,
         )
         .map_err(|e| format!("scoped run timing receipt failed: {e}"))?;
-        let Value::Variant { fields, .. } = receipt else {
+        let Value::Variant { ref fields, .. } = receipt else {
             return Err("scoped run timing receipt returned non-typed value".to_string());
         };
         let decode = |name: &str| -> Result<u128, String> {
@@ -24316,7 +24321,7 @@ pub fn project_witness_cost_receipt(
         .map_err(|e| format!("[witness-row-cost] REFUSED: authored projector failed: {e}"))?;
         let Value::Variant {
             variant_name,
-            fields,
+            ref fields,
             ..
         } = projection
         else {
@@ -26678,23 +26683,25 @@ fn collect_node_values(
     ctx: &v1_interpreter::InterpContext,
     out: &mut Vec<v1_interpreter::Value>,
 ) {
-    if value_is_node(val, ctx) {
-        out.push(val.clone());
-    }
-    match val {
-        v1_interpreter::Value::Record { fields, .. }
-        | v1_interpreter::Value::Variant { fields, .. } => {
-            for (_, v) in fields.iter() {
-                collect_node_values(v, ctx, out);
-            }
+    crate::v1_interpreter::value_depth_guarded(|| {
+        if value_is_node(val, ctx) {
+            out.push(val.clone());
         }
-        v1_interpreter::Value::List(items) => {
-            for v in items.iter() {
-                collect_node_values(v, ctx, out);
+        match val {
+            v1_interpreter::Value::Record { fields, .. }
+            | v1_interpreter::Value::Variant { fields, .. } => {
+                for (_, v) in fields.iter() {
+                    collect_node_values(v, ctx, out);
+                }
             }
+            v1_interpreter::Value::List(items) => {
+                for v in items.iter() {
+                    collect_node_values(v, ctx, out);
+                }
+            }
+            _ => {}
         }
-        _ => {}
-    }
+    })
 }
 
 fn call_test_claim_fn_bool(
@@ -27492,7 +27499,7 @@ mod effect_reach_host_sink_markers_drift_gate_tests {
         .unwrap_or_else(|| {
             panic!("effect_reach_host_sink_callee_symbols_v0 not found as a data item")
         });
-        let Value::List(items) = val else {
+        let Value::List(ref items) = val else {
             panic!("effect_reach_host_sink_callee_symbols_v0 is not a List: {val:?}");
         };
         items
@@ -27992,7 +27999,7 @@ pub fn emit_realize_advisory_for_rows(source_roots: &[String], rows: &[Discovery
                 &args,
                 false,
             ) {
-                Ok(Value::Record { fields, .. }) => {
+                Ok(Value::Record { ref fields, .. }) => {
                     let width = match realize_ctx.field(&fields, "width") {
                         Some(Value::Int(w)) => *w,
                         _ => -1,
@@ -40269,103 +40276,123 @@ pub fn value_to_wire_json(
     val: &v1_interpreter::Value,
     ctx: &v1_interpreter::InterpContext,
 ) -> WireSerializeResult<serde_json::Value> {
-    match val {
-        // `T?` is std Optional, whose wire shape is the payload itself: Present encodes its
-        // `value`, Absent encodes as null, which a record field omits (proto3 JSON / serde's
-        // `Option`). Routing it through the coproduct policy emitted `{"_variant":"Present",
-        // "value":...}`, which Google's IAM setIamPolicy refuses at policy.bindings[].condition.
-        v1_interpreter::Value::Variant {
-            type_name,
-            variant_name,
-            fields,
-        } if wire_resolve_sym(ctx, *type_name) == "Optional" => {
-            match wire_resolve_sym(ctx, *variant_name).as_str() {
-                "Absent" => Ok(serde_json::Value::Null),
-                "Present" => match fields
-                    .iter()
-                    .find(|(k, _)| wire_resolve_sym(ctx, *k) == "value")
-                {
-                    Some((_, v)) => value_to_wire_json(v, ctx),
-                    None => Err("Optional.Present carries no `value` field".to_string()),
-                },
-                other => Err(format!("Optional has no variant `{other}`")),
-            }
-        }
-        v1_interpreter::Value::Variant {
-            type_name,
-            variant_name,
-            fields,
-        } => serialize_variant_to_wire_json(
-            &wire_resolve_sym(ctx, *type_name),
-            &wire_resolve_sym(ctx, *variant_name),
-            fields,
-            ctx,
-        ),
-        v1_interpreter::Value::Null => Ok(serde_json::Value::Null),
-        v1_interpreter::Value::Bool(b) => Ok(serde_json::Value::Bool(*b)),
-        v1_interpreter::Value::Int(n) => Ok(serde_json::json!(*n)),
-        v1_interpreter::Value::Float(f) => Ok(serde_json::json!(*f)),
-        Value::Str(s) => {
-            if s.starts_with('[') || s.starts_with('{') {
-                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(s) {
-                    return Ok(parsed);
+    crate::v1_interpreter::value_depth_guarded(|| {
+        match val {
+            // `T?` is std Optional, whose wire shape is the payload itself: Present encodes its
+            // `value`, Absent encodes as null, which a record field omits (proto3 JSON / serde's
+            // `Option`). Routing it through the coproduct policy emitted `{"_variant":"Present",
+            // "value":...}`, which Google's IAM setIamPolicy refuses at policy.bindings[].condition.
+            v1_interpreter::Value::Variant {
+                type_name,
+                variant_name,
+                fields,
+            } if wire_resolve_sym(ctx, *type_name) == "Optional" => {
+                match wire_resolve_sym(ctx, *variant_name).as_str() {
+                    "Absent" => Ok(serde_json::Value::Null),
+                    "Present" => match fields
+                        .iter()
+                        .find(|(k, _)| wire_resolve_sym(ctx, *k) == "value")
+                    {
+                        Some((_, v)) => value_to_wire_json(v, ctx),
+                        None => Err("Optional.Present carries no `value` field".to_string()),
+                    },
+                    other => Err(format!("Optional has no variant `{other}`")),
                 }
             }
-            Ok(serde_json::Value::String(s.to_string()))
-        }
-        v1_interpreter::Value::List(items) => {
-            let mut arr = Vec::with_capacity(items.len());
-            for item in items.iter() {
-                arr.push(value_to_wire_json(item, ctx)?);
+            v1_interpreter::Value::Variant {
+                type_name,
+                variant_name,
+                fields,
+            } => serialize_variant_to_wire_json(
+                &wire_resolve_sym(ctx, *type_name),
+                &wire_resolve_sym(ctx, *variant_name),
+                fields,
+                ctx,
+            ),
+            v1_interpreter::Value::Null => Ok(serde_json::Value::Null),
+            v1_interpreter::Value::Bool(b) => Ok(serde_json::Value::Bool(*b)),
+            v1_interpreter::Value::Int(n) => Ok(serde_json::json!(*n)),
+            v1_interpreter::Value::Float(f) => Ok(serde_json::json!(*f)),
+            Value::Str(s) => {
+                if s.starts_with('[') || s.starts_with('{') {
+                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(s) {
+                        // An inlined JSON string counts at its own depth, and refuses here rather
+                        // than handing the reader a document deeper than it reads.
+                        let _inlined = crate::v1_interpreter::claim_json_nesting(
+                            crate::v1_interpreter::json_container_depth(&parsed),
+                            "",
+                        )?;
+                        return Ok(parsed);
+                    }
+                }
+                Ok(serde_json::Value::String(s.to_string()))
             }
-            Ok(serde_json::Value::Array(arr))
-        }
-        v1_interpreter::Value::Set(members) => Ok(serde_json::Value::Array(
-            members
-                .iter()
-                .map(|s| serde_json::Value::String(s.clone()))
-                .collect(),
-        )),
-        v1_interpreter::Value::Map(m) => {
-            let mut obj = serde_json::Map::new();
-            for (k, v) in m.iter() {
-                let key = match k.value_ref() {
-                    Value::Str(s) => s.to_string(),
-                    other => {
-                        return Err(format!(
+            v1_interpreter::Value::List(items) => {
+                let _array = crate::v1_interpreter::claim_json_nesting(1, "")?;
+                let mut arr = Vec::with_capacity(items.len());
+                for (i, item) in items.iter().enumerate() {
+                    let _at = crate::v1_interpreter::claim_json_nesting(0, &format!("[{i}]"))?;
+                    arr.push(value_to_wire_json(item, ctx)?);
+                }
+                Ok(serde_json::Value::Array(arr))
+            }
+            v1_interpreter::Value::Set(members) => {
+                let _array = crate::v1_interpreter::claim_json_nesting(1, "[]")?;
+                Ok(serde_json::Value::Array(
+                    members
+                        .iter()
+                        .map(|s| serde_json::Value::String(s.clone()))
+                        .collect(),
+                ))
+            }
+            v1_interpreter::Value::Map(m) => {
+                let _object = crate::v1_interpreter::claim_json_nesting(1, "")?;
+                let mut obj = serde_json::Map::new();
+                for (k, v) in m.iter() {
+                    let key = match k.value_ref() {
+                        Value::Str(s) => s.to_string(),
+                        other => {
+                            return Err(format!(
                             "cannot serialize map with non-string key to JSON (got {other:?} key)"
                         ))
-                    }
-                };
-                obj.insert(key, value_to_wire_json(v, ctx)?);
-            }
-            Ok(serde_json::Value::Object(obj))
-        }
-        v1_interpreter::Value::Record { type_name, fields } => {
-            let record_type = wire_resolve_sym(ctx, *type_name);
-            let mut obj = serde_json::Map::new();
-            for (k, v) in fields.iter() {
-                let encoded = value_to_wire_json(v, ctx)?;
-                if encoded.is_null() {
-                    continue;
+                        }
+                    };
+                    let _at = crate::v1_interpreter::claim_json_nesting(0, &format!(".{key}"))?;
+                    obj.insert(key, value_to_wire_json(v, ctx)?);
                 }
-                let key = v1_interpreter::record_field_wire_key(
-                    ctx,
-                    &record_type,
-                    &wire_resolve_sym(ctx, *k),
-                );
-                obj.insert(key, encoded);
+                Ok(serde_json::Value::Object(obj))
             }
-            Ok(serde_json::Value::Object(obj))
+            v1_interpreter::Value::Record { type_name, fields } => {
+                let record_type = wire_resolve_sym(ctx, *type_name);
+                let _object = crate::v1_interpreter::claim_json_nesting(1, "")?;
+                let mut obj = serde_json::Map::new();
+                for (k, v) in fields.iter() {
+                    let _at = crate::v1_interpreter::claim_json_nesting(
+                        0,
+                        &format!(".{}", wire_resolve_sym(ctx, *k)),
+                    )?;
+                    let encoded = value_to_wire_json(v, ctx)?;
+                    if encoded.is_null() {
+                        continue;
+                    }
+                    let key = v1_interpreter::record_field_wire_key(
+                        ctx,
+                        &record_type,
+                        &wire_resolve_sym(ctx, *k),
+                    );
+                    obj.insert(key, encoded);
+                }
+                Ok(serde_json::Value::Object(obj))
+            }
+            v1_interpreter::Value::Unit => Ok(serde_json::Value::Null),
+            v1_interpreter::Value::Closure { .. } => {
+                Ok(serde_json::Value::String("<closure>".to_string()))
+            }
+            v1_interpreter::Value::Fn { node } => {
+                Ok(serde_json::Value::String(format!("<fn {}>", node.name)))
+            }
         }
-        v1_interpreter::Value::Unit => Ok(serde_json::Value::Null),
-        v1_interpreter::Value::Closure { .. } => {
-            Ok(serde_json::Value::String("<closure>".to_string()))
-        }
-        v1_interpreter::Value::Fn { node } => {
-            Ok(serde_json::Value::String(format!("<fn {}>", node.name)))
-        }
-    }
+    })
 }
 
 fn serialize_variant_to_wire_json(
@@ -40407,13 +40434,16 @@ fn serialize_variant_to_wire_json(
             .ok_or_else(|| {
                 format!("no wire tag for internally-tagged variant {type_name}::{variant_name}")
             })?;
+        let _object = crate::v1_interpreter::claim_json_nesting(1, "")?;
         let mut obj = serde_json::Map::new();
         obj.insert(tag_field, serde_json::Value::String(wire_tag));
         for (k, v) in fields.iter() {
             if matches!(v, v1_interpreter::Value::Null) {
                 continue;
             }
-            obj.insert(wire_resolve_sym(ctx, *k), value_to_wire_json(v, ctx)?);
+            let name = wire_resolve_sym(ctx, *k);
+            let _at = crate::v1_interpreter::claim_json_nesting(0, &format!(".{name}"))?;
+            obj.insert(name, value_to_wire_json(v, ctx)?);
         }
         return Ok(serde_json::Value::Object(obj));
     }
@@ -40421,13 +40451,16 @@ fn serialize_variant_to_wire_json(
     let tag_key = policy_serde_tag_field(policy.clone()).unwrap_or_else(|| "_variant".to_string());
     let default_tag = data_path_wire_variant_tag(variant_name.to_string(), policy.clone())
         .ok_or_else(|| format!("no wire tag for variant {type_name}::{variant_name}"))?;
+    let _object = crate::v1_interpreter::claim_json_nesting(1, "")?;
     let mut obj = serde_json::Map::new();
     obj.insert(tag_key, serde_json::Value::String(default_tag));
     for (k, v) in fields.iter() {
         if matches!(v, v1_interpreter::Value::Null) {
             continue;
         }
-        obj.insert(wire_resolve_sym(ctx, *k), value_to_wire_json(v, ctx)?);
+        let name = wire_resolve_sym(ctx, *k);
+        let _at = crate::v1_interpreter::claim_json_nesting(0, &format!(".{name}"))?;
+        obj.insert(name, value_to_wire_json(v, ctx)?);
     }
     Ok(serde_json::Value::Object(obj))
 }
@@ -40446,12 +40479,15 @@ fn serialize_untagged_variant(
         0 => Ok(serde_json::Value::Null),
         1 => Ok(values.remove(0)),
         _ => {
+            let _object = crate::v1_interpreter::claim_json_nesting(1, "")?;
             let mut obj = serde_json::Map::new();
             for (k, v) in fields.iter() {
                 if matches!(v, v1_interpreter::Value::Null) {
                     continue;
                 }
-                obj.insert(wire_resolve_sym(ctx, *k), value_to_wire_json(v, ctx)?);
+                let name = wire_resolve_sym(ctx, *k);
+                let _at = crate::v1_interpreter::claim_json_nesting(0, &format!(".{name}"))?;
+                obj.insert(name, value_to_wire_json(v, ctx)?);
             }
             Ok(serde_json::Value::Object(obj))
         }
@@ -45060,7 +45096,7 @@ mod heartbeat_tests {
         )
         .ok()?;
         match out {
-            Value::Str(s) => Some(s.to_string()),
+            Value::Str(ref s) => Some(s.to_string()),
             _ => None,
         }
     }
@@ -47118,5 +47154,48 @@ mod multi_entry_index_sharing_control_tests {
             err.contains("a:1") && err.contains("c:3") && !err.contains("b:2"),
             "{err}"
         );
+    }
+}
+
+#[cfg(test)]
+mod collect_node_values_depth_tests {
+    //! cli_run's private recursive Value walker, driven at the depth of
+    //! v1_interpreter value_depth_walker_tests (which carries the reasoning).
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_interpreter::{ExecutionMode, InterpContext, Value};
+
+    #[test]
+    fn a_deep_chain_is_walked_for_node_values() {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+        };
+        let ctx = InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic);
+        let (chain, link, end, next) = (
+            ctx.sym("Chain"),
+            ctx.sym("Link"),
+            ctx.sym("End"),
+            ctx.sym("next"),
+        );
+        let mut value = Value::Variant {
+            type_name: chain,
+            variant_name: end,
+            fields: Rc::new(vec![]),
+        };
+        for _ in 0..262_144 {
+            value = Value::Variant {
+                type_name: chain,
+                variant_name: link,
+                fields: Rc::new(vec![(next, value)]),
+            };
+        }
+        let mut out = Vec::new();
+        super::collect_node_values(&value, &ctx, &mut out);
     }
 }

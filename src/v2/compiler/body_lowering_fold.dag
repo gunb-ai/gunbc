@@ -1483,7 +1483,9 @@ fn body_lower_grammar_terminals(expr: GrammarExpr) -> List<Symbol> {
       choice: fn(l, r) { list_append(left: l, right: r) },
       optional: fn(e) { e },
       repeat: fn(e) { e },
-      expect: fn(e, _reason) { e }
+      expect: fn(e, _reason) { e },
+      refuse_on_match: fn(e, _reason) { e },
+      after_line_break: fn(e) { e }
     }
   )
 }
