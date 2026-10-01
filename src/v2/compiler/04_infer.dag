@@ -937,14 +937,28 @@ fn lookup_inferred_facts_in_entries(
   )
 }
 
-// THE FACTS MAP IS A NODE-KEYED MAP, BUILT ONCE PER RUN (DESIGN section 6, bare minimum cost): a
-// lookup against the admitted entries list was a scan, so every lookup was linear in the tree and
-// a consumer walking the tree paid quadratic. Entry order still decides a repeated node: the FIRST
-// admitted entry answers, exactly as the scan it replaces did, so a later entry never displaces it.
-fn inferred_facts_map_enter(facts: Map<Node, InferredFacts>, entry: InferredFactsEntry) -> Map<Node, InferredFacts> {
+// ONE KEY, ONE FACT. The facts map is a node-keyed Map built once per run (DESIGN section 6, bare
+// minimum cost: a scan per entry made admission quadratic), and it is admitted here and nowhere else,
+// so this is where a key carrying two DIFFERENT facts refuses. The first-entry-wins rule it replaces
+// dropped a second, differing fact silently, and every consumer read whichever gather produced first.
+// Equal facts under one key are one fact and merge.
+fn infer_facts_key_conflict_diagnostic(key: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_facts_key_conflict,
+    at: node_locus(node: key),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn inferred_facts_map_enter(facts: Map<Node, InferredFacts>, entry: InferredFactsEntry) -> Outcome<Map<Node, InferredFacts>> {
   match map_lookup(m: facts, key: entry.node) {
-    Present { value: _ } => facts
-    Absent => map_insert(m: facts, key: entry.node, value: entry.facts)
+    Absent => Accepted { value: map_insert(m: facts, key: entry.node, value: entry.facts), diagnostics: None }
+    Present { value: held } =>
+      if held == entry.facts {
+        Accepted { value: facts, diagnostics: None }
+      } else {
+        Rejected { diagnostics: diagnostics_singleton(d: infer_facts_key_conflict_diagnostic(key: entry.node)) }
+      }
   }
 }
 
@@ -954,7 +968,10 @@ fn facts_map_from_entries(entries: List<InferredFactsEntry>) -> Outcome<PartialF
       Rejected { diagnostics: r } => Rejected { diagnostics: r }
       Accepted { value: admitted, diagnostics: d } =>
         if inferred_facts_cover_node(facts: entry.facts, node: entry.node) {
-          Accepted { value: inferred_facts_map_enter(facts: admitted, entry: entry), diagnostics: d }
+          match inferred_facts_map_enter(facts: admitted, entry: entry) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: entered, diagnostics: _ } => Accepted { value: entered, diagnostics: d }
+          }
         } else {
           Rejected {
             diagnostics: diagnostics_singleton(
