@@ -1711,6 +1711,16 @@ pub(crate) enum EnrolmentMarginStanding {
     RosterGroundStale {
         observed_cpu_ms: u64,
         line_ms: u64,
+        envelope_floor_ms: u64,
+    },
+    /// Mirror of `EnrolmentRosterGroundWithinRunnerEnvelope`: a typed cost-debt row whose live
+    /// reading is at or under the per-subject line but above the line applied once more to the same
+    /// measured runner envelope. A fast runner's reading of a member a p90-slow runner reads over the
+    /// line: reported with both bounds, and it does not block.
+    RosterGroundWithinRunnerEnvelope {
+        observed_cpu_ms: u64,
+        line_ms: u64,
+        envelope_floor_ms: u64,
     },
     /// Mirror of `EnrolmentDeadBandStale`: a dead-band row (v2.workflow.floor_enrolment_dead_band)
     /// whose live reading is at or under the margin. The claim no longer needs the row; it blocks
@@ -1778,6 +1788,7 @@ impl EnrolmentMarginStanding {
             EnrolmentMarginStanding::OutsideThisRunsExecution { .. } => false,
             EnrolmentMarginStanding::ExpensivenessDeclared { .. } => false,
             EnrolmentMarginStanding::RosterGroundStale { .. } => true,
+            EnrolmentMarginStanding::RosterGroundWithinRunnerEnvelope { .. } => false,
             EnrolmentMarginStanding::DeadBandStale { .. } => true,
             EnrolmentMarginStanding::DeadBandWrongGround { .. } => true,
             EnrolmentMarginStanding::DeadBandWithinRunnerEnvelope { .. } => false,
@@ -1801,7 +1812,8 @@ impl EnrolmentMarginStanding {
                 EnrolmentPairingHole::OutsideExecution
             }
             EnrolmentMarginStanding::ExpensivenessDeclared { .. }
-            | EnrolmentMarginStanding::DeadBandWithinRunnerEnvelope { .. } => {
+            | EnrolmentMarginStanding::DeadBandWithinRunnerEnvelope { .. }
+            | EnrolmentMarginStanding::RosterGroundWithinRunnerEnvelope { .. } => {
                 EnrolmentPairingHole::Declared
             }
         }
@@ -1822,6 +1834,7 @@ impl EnrolmentMarginStanding {
             EnrolmentMarginStanding::OutsideThisRunsExecution { .. } => "",
             EnrolmentMarginStanding::ExpensivenessDeclared { .. } => "",
             EnrolmentMarginStanding::RosterGroundStale { .. } => "enrolment_roster_ground_stale",
+            EnrolmentMarginStanding::RosterGroundWithinRunnerEnvelope { .. } => "",
             EnrolmentMarginStanding::DeadBandStale { .. } => "enrolment_dead_band_stale",
             EnrolmentMarginStanding::DeadBandWrongGround { .. } => {
                 "enrolment_dead_band_wrong_ground"
@@ -1846,6 +1859,9 @@ impl EnrolmentMarginStanding {
             }
             EnrolmentMarginStanding::ExpensivenessDeclared { .. } => "expensiveness_declared",
             EnrolmentMarginStanding::RosterGroundStale { .. } => "roster_ground_stale",
+            EnrolmentMarginStanding::RosterGroundWithinRunnerEnvelope { .. } => {
+                "roster_ground_within_runner_envelope"
+            }
             EnrolmentMarginStanding::DeadBandStale { .. } => "dead_band_stale",
             EnrolmentMarginStanding::DeadBandWrongGround { .. } => "dead_band_wrong_ground",
             EnrolmentMarginStanding::DeadBandWithinRunnerEnvelope { .. } => {
@@ -1924,10 +1940,21 @@ impl EnrolmentMarginStanding {
             EnrolmentMarginStanding::RosterGroundStale {
                 observed_cpu_ms,
                 line_ms,
+                envelope_floor_ms,
             } => format!(
-                "roster ground stale: observed_cpu_ms={observed_cpu_ms} is not above the \
-                 per-subject line line_ms={line_ms}; the typed cost-debt row for this identity \
-                 must delete"
+                "roster ground stale: observed_cpu_ms={observed_cpu_ms} is not above the envelope \
+                 floor envelope_floor_ms={envelope_floor_ms} (per-subject line line_ms={line_ms}); \
+                 the typed cost-debt row for this identity must delete"
+            ),
+            EnrolmentMarginStanding::RosterGroundWithinRunnerEnvelope {
+                observed_cpu_ms,
+                line_ms,
+                envelope_floor_ms,
+            } => format!(
+                "roster ground within runner envelope: observed_cpu_ms={observed_cpu_ms} is at or \
+                 under the per-subject line line_ms={line_ms} and above the envelope floor \
+                 envelope_floor_ms={envelope_floor_ms} (a fast runner's reading of a member over the \
+                 line)"
             ),
             EnrolmentMarginStanding::DeadBandStale {
                 observed_cpu_ms,
@@ -2034,6 +2061,33 @@ pub(crate) fn floor_enrolment_dead_band_envelope_floor_ms(
             "REQUIRED-FLOOR REFUSAL cause=EnrolmentDeadBandFloorUngrounded {qualified} returned \
              {n}ms against a {budget_ms}ms margin -- the envelope floor must be strictly positive \
              and strictly below the margin it sits under"
+        )),
+        Ok(other) => Err(format!(
+            "{qualified}: expected a positive Int, got {}",
+            floor_value_shape(Some(&other))
+        )),
+        Err(e) => Err(format!("{qualified}: {e}")),
+    }
+}
+
+/// THE TYPED COST-DEBT ROW'S ENVELOPE FLOOR, READ OUT OF THE MODEL like the dead band's:
+/// `v2.workflow.floor_enrolment_margin` `floor_enrolment_roster_envelope_floor_ms_count` derives it by
+/// applying the same measured p90 runner envelope to the per-subject line. Strictly positive and
+/// strictly below the line, or it would stale every row (at zero) or admit none under the line (at it).
+pub(crate) fn floor_enrolment_roster_envelope_floor_ms(
+    prepared: &crate::cli_run::PreparedRepository,
+    line_ms: u64,
+) -> Result<u64, String> {
+    const MODULE: &str = "v2.workflow.floor_enrolment_margin";
+    let scope = claim_scope_for(prepared, MODULE)?;
+    let ctx = evaluation_frame(&scope, v1_interpreter::ExecutionMode::Hermetic, None, None);
+    let qualified = format!("{MODULE}.floor_enrolment_roster_envelope_floor_ms_count");
+    match v1_interpreter::run_in_context(&ctx, &qualified, false) {
+        Ok(v1_interpreter::Value::Int(n)) if n > 0 && (n as u64) < line_ms => Ok(n as u64),
+        Ok(v1_interpreter::Value::Int(n)) => Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=EnrolmentRosterFloorUngrounded {qualified} returned \
+             {n}ms against a {line_ms}ms per-subject line -- the envelope floor must be strictly \
+             positive and strictly below the line it sits under"
         )),
         Ok(other) => Err(format!(
             "{qualified}: expected a positive Int, got {}",
@@ -2566,6 +2620,9 @@ pub(crate) fn floor_index_controls(
     let builds = super::multi_entry_index_builds();
     let name_sets = super::multi_entry_index_sharing_control(&builds)
         .map_err(|e| format!("REQUIRED-FLOOR REFUSAL at={at} cause={e}"))?;
+    let resident = super::entry_resolve::shared_index_residency_control()
+        .map_err(|e| format!("REQUIRED-FLOOR REFUSAL at={at} cause={e}"))?;
+    eprintln!("[floor-phase] phase=shared-index-residency at={at} resident_pools={resident}");
     eprintln!(
         "[floor-phase] phase=multi-entry-index-builds at={at} builds={} name_sets={name_sets} \
          sites={:?}",
@@ -2671,15 +2728,31 @@ pub(crate) fn enrolment_expensiveness_declaration(
     }
 }
 
+/// THE FOUR THRESHOLDS THE ENROLMENT GATE DECIDES AGAINST, read out of
+/// `v2.workflow.floor_enrolment_margin` together and passed together: the margin, the dead band's
+/// envelope floor under it, the per-subject line, and the typed cost-debt row's envelope floor under
+/// that. Each floor is its bound applied once more to the same measured runner envelope.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct EnrolmentThresholds {
+    pub(crate) budget_ms: u64,
+    pub(crate) dead_band_envelope_floor_ms: u64,
+    pub(crate) per_subject_line_ms: u64,
+    pub(crate) roster_envelope_floor_ms: u64,
+}
+
 pub(crate) fn enrolment_margin_standing_for(
     identity: &str,
     claim_cost: &HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence>,
     dispositions: &HashMap<&str, &crate::cli_run::RequiredFloorDisposition>,
-    budget_ms: u64,
-    dead_band_envelope_floor_ms: u64,
-    per_subject_line_ms: u64,
+    thresholds: &EnrolmentThresholds,
     declared_expensiveness: Option<EnrolmentExpensivenessGround>,
 ) -> EnrolmentMarginStanding {
+    let EnrolmentThresholds {
+        budget_ms,
+        dead_band_envelope_floor_ms,
+        per_subject_line_ms,
+        roster_envelope_floor_ms,
+    } = *thresholds;
     // THE EXECUTION JOIN COMES FIRST, AND SKIPPING IT IS THE DEFECT review 64022 FOUND.
     //
     // The enrolled population is derived from the DIFF and is root-agnostic; the executed
@@ -2774,9 +2847,17 @@ pub(crate) fn enrolment_margin_standing_for(
                 EnrolmentDeclaredCostReading::Observed { observed_cpu_ms }
                     if observed_cpu_ms <= per_subject_line_ms =>
                 {
+                    if observed_cpu_ms > roster_envelope_floor_ms {
+                        return EnrolmentMarginStanding::RosterGroundWithinRunnerEnvelope {
+                            observed_cpu_ms,
+                            line_ms: per_subject_line_ms,
+                            envelope_floor_ms: roster_envelope_floor_ms,
+                        };
+                    }
                     return EnrolmentMarginStanding::RosterGroundStale {
                         observed_cpu_ms,
                         line_ms: per_subject_line_ms,
+                        envelope_floor_ms: roster_envelope_floor_ms,
                     };
                 }
                 EnrolmentDeclaredCostReading::BoundWithoutCeiling { cpu_lower_bound_ms }
@@ -11586,6 +11667,14 @@ pub fn run_required_floor(
         let dead_band_envelope_floor_ms =
             floor_enrolment_dead_band_envelope_floor_ms(&prepared, budget_ms)?;
         let per_subject_line_ms = floor_per_subject_cpu_line_ms(&prepared)?;
+        let roster_envelope_floor_ms =
+            floor_enrolment_roster_envelope_floor_ms(&prepared, per_subject_line_ms)?;
+        let thresholds = EnrolmentThresholds {
+            budget_ms,
+            dead_band_envelope_floor_ms,
+            per_subject_line_ms,
+            roster_envelope_floor_ms,
+        };
         enrolment_budget_ms = Some(budget_ms);
         let cost_by_identity = claim_cost_by_identity(&outcome.claim_cost);
         let dispositions: HashMap<&str, &RequiredFloorDisposition> = outcome
@@ -11606,9 +11695,7 @@ pub fn run_required_floor(
                 identity,
                 &cost_by_identity,
                 &dispositions,
-                budget_ms,
-                dead_band_envelope_floor_ms,
-                per_subject_line_ms,
+                &thresholds,
                 declared_expensiveness,
             );
             eprintln!(
@@ -12854,6 +12941,16 @@ mod scope_fragment_memo_equivalence {
 #[cfg(test)]
 mod changed_witness_projection_tests {
     use super::*;
+
+    /// The enrolment thresholds these tests decide against: the 302 ms margin, its 182 ms dead-band
+    /// floor, the 500 ms per-subject line, and its 302 ms typed cost-debt floor -- the values the model
+    /// derives today, fixed here so each test pins a boundary rather than re-deriving one.
+    const TEST_ENROLMENT_THRESHOLDS: EnrolmentThresholds = EnrolmentThresholds {
+        budget_ms: 302,
+        dead_band_envelope_floor_ms: 182,
+        per_subject_line_ms: 500,
+        roster_envelope_floor_ms: 302,
+    };
 
     /// THE STATE EVERY CHANGED IDENTITY OUTSIDE THE LOCAL-REPO WET LANE IS IN: the lane ran, held,
     /// and admitted nobody. Named once so the wet witnesses below differ from the others by
@@ -15303,9 +15400,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             identity,
             &cost_owned,
             &dispositions,
-            302,
-            182,
-            500,
+            &TEST_ENROLMENT_THRESHOLDS,
             Some(declared),
         );
         let terminals: Vec<ClaimTerminalRow> = terminal_row.into_iter().collect();
@@ -15570,7 +15665,13 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             let mut cost: HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence> =
                 HashMap::new();
             cost.insert(identity, &row);
-            enrolment_margin_standing_for(identity, &cost, &dispositions, 302, 182, 500, dead_band)
+            enrolment_margin_standing_for(
+                identity,
+                &cost,
+                &dispositions,
+                &TEST_ENROLMENT_THRESHOLDS,
+                dead_band,
+            )
         };
         for inside in [303, 420, 500] {
             let s = standing_at(inside);
@@ -15595,9 +15696,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             identity,
             &HashMap::new(),
             &dispositions,
-            302,
-            182,
-            500,
+            &TEST_ENROLMENT_THRESHOLDS,
             dead_band,
         );
         assert_eq!(absent.name(), "not_measured");
@@ -15642,31 +15741,59 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             identity,
             &over_cost,
             &dispositions,
-            302,
-            182,
-            500,
+            &TEST_ENROLMENT_THRESHOLDS,
             roster,
         );
         assert_eq!(admitted.name(), "expensiveness_declared");
         assert!(!admitted.blocks());
 
-        let at_line = occurrence_at(500);
-        let mut at_cost: HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence> =
-            HashMap::new();
-        at_cost.insert(identity, &at_line);
-        let stale =
-            enrolment_margin_standing_for(identity, &at_cost, &dispositions, 302, 182, 500, roster);
-        assert_eq!(stale.name(), "roster_ground_stale");
-        assert_eq!(stale.cause(), "enrolment_roster_ground_stale");
-        assert!(stale.blocks());
+        // THE LINE STRADDLE (gunbc#12800): at or under the line but above the roster envelope floor
+        // (500 / p90 = 302) a declared row is a fast runner's reading of a member over the line --
+        // 466 is the merge-group reading that dequeued gunbc#12800 -- named and not blocking; at or
+        // under the floor it is stale and blocks.
+        let standing_at = |cpu: u64, ground: Option<EnrolmentExpensivenessGround>| {
+            let row = occurrence_at(cpu);
+            let mut cost: HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence> =
+                HashMap::new();
+            cost.insert(identity, &row);
+            enrolment_margin_standing_for(
+                identity,
+                &cost,
+                &dispositions,
+                &TEST_ENROLMENT_THRESHOLDS,
+                ground,
+            )
+        };
+        for within in [500, 466, 303] {
+            let s = standing_at(within, roster);
+            assert_eq!(
+                s.name(),
+                "roster_ground_within_runner_envelope",
+                "cpu={within}"
+            );
+            assert_eq!(s.cause(), "", "cpu={within}");
+            assert!(!s.blocks(), "cpu={within}");
+        }
+        for stale_at in [302, 200] {
+            let stale = standing_at(stale_at, roster);
+            assert_eq!(stale.name(), "roster_ground_stale", "cpu={stale_at}");
+            assert_eq!(
+                stale.cause(),
+                "enrolment_roster_ground_stale",
+                "cpu={stale_at}"
+            );
+            assert!(stale.blocks(), "cpu={stale_at}");
+        }
+        // THE DISCRIMINATING RED: the same 466 with no declaration is decided by the margin.
+        let undeclared = standing_at(466, None);
+        assert_eq!(undeclared.name(), "measured_over_margin");
+        assert!(undeclared.blocks());
 
         let absent = enrolment_margin_standing_for(
             identity,
             &HashMap::new(),
             &dispositions,
-            302,
-            182,
-            500,
+            &TEST_ENROLMENT_THRESHOLDS,
             roster,
         );
         assert_eq!(absent.name(), "not_measured");
@@ -15697,9 +15824,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             identity,
             &bound_over_cost,
             &dispositions,
-            302,
-            182,
-            500,
+            &TEST_ENROLMENT_THRESHOLDS,
             roster,
         );
         assert_eq!(bound_admitted.name(), "expensiveness_declared");
@@ -15711,9 +15836,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             identity,
             &bound_under_cost,
             &dispositions,
-            302,
-            182,
-            500,
+            &TEST_ENROLMENT_THRESHOLDS,
             roster,
         );
         assert_eq!(bound_refused.name(), "bound_without_ceiling");
@@ -15723,9 +15846,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             identity,
             &HashMap::new(),
             &dispositions,
-            302,
-            182,
-            500,
+            &TEST_ENROLMENT_THRESHOLDS,
             Some(EnrolmentExpensivenessGround::LongHome),
         );
         assert_eq!(long_home_absent.name(), "expensiveness_declared");
@@ -15748,9 +15869,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             identity,
             &cost_owned,
             &dispositions,
-            302,
-            182,
-            500,
+            &TEST_ENROLMENT_THRESHOLDS,
             Some(EnrolmentExpensivenessGround::LongHome),
         );
         assert_eq!(standing.name(), "expensiveness_declared");
@@ -15780,9 +15899,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             identity,
             &cost_owned,
             &dispositions,
-            302,
-            182,
-            500,
+            &TEST_ENROLMENT_THRESHOLDS,
             None,
         );
         assert_eq!(standing.name(), "outside_this_runs_execution");
@@ -15880,18 +15997,14 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             identity,
             &cost_owned,
             &dispositions,
-            302,
-            182,
-            500,
+            &TEST_ENROLMENT_THRESHOLDS,
             Some(EnrolmentExpensivenessGround::LongHome),
         );
         let absent = enrolment_margin_standing_for(
             identity,
             &HashMap::new(),
             &dispositions,
-            302,
-            182,
-            500,
+            &TEST_ENROLMENT_THRESHOLDS,
             Some(EnrolmentExpensivenessGround::LongHome),
         );
         assert!(
