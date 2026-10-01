@@ -2572,7 +2572,7 @@ fn claim_differential_blocks(d: ClaimDifferential) -> Bool {
 // the baseline and are not selected for the differential. A missing baseline is not an empty one:
 // it is counted and, where the base side runs, it runs at the merge base, loudly, and is never
 // widened into running every claim. Where it does NOT run (reach_differential_standing is
-// DifferentialReportOnly, pending the cost ruling), the run says BaselineNotMeasured and decides
+// DifferentialReportOnly), the run says BaselineNotMeasured and decides
 // no verdict. It never prints a base that was not measured (review 73484).
 type BaselineStanding
   = BaselineRead { main_sha: String }
@@ -2738,19 +2738,22 @@ fn reach_head_cannot_block(head: String) -> Bool {
 // DifferentialBlocking the base side runs and every reached claim gets a verdict. Under
 // DifferentialReportOnly the base side is SKIPPED, no verdict is decided, and the run prints each
 // reached claim's head standing with every head failure as a counted ReachedClaimFailedAtHead
-// finding (review 73484: an earlier note said verdicts were decided on every run, which report-only
-// does not do). Making them merge-blocking is gated on the cost of running the base arm, which is
-// being measured (neat-boar-16, srv1, 2026-10-01, a typical subject and the gunbc#12582 reach of
-// 5132 witness declarations). Until that ruling, a blocking verdict is reported by name as
-// would_block and does not fail the run. When it is ruled, this becomes DifferentialBlocking with
-// the base arm's budget, and an arm over that budget refuses with a typed cause and never
-// truncates. There is no flag that changes this.
+// finding (review 73484). THE COST RULING IS MADE (operator, 2026-10-01, option B): the
+// differential runs in the merge group only and BLOCKS there; a pull request adds nothing and
+// reports deferred_to_merge_group. So the standing is DifferentialBlocking. An arm over its budget
+// refuses with a typed cause (BaseArmOverBudget) and never truncates. There is no flag that
+// changes this.
 type ReachDifferentialStanding
   = DifferentialBlocking { base_arm_wall_budget: Milliseconds }
   | DifferentialReportOnly { pending: String }
 
-data reach_differential_standing: ReachDifferentialStanding = DifferentialReportOnly {
-  pending: "the operator cost ruling on the base arm, measured by neat-boar-16 on srv1 (2026-10-01)"
+// THE BUDGET IS A DECLARED POLICY VALUE, GROUNDED IN ITS RECEIPT: neat-boar-16's base-arm runs on
+// srv1 (2026-10-01, merge_group event, a loaded host) took 226 s for 60 identities, 260.5 s for 18
+// and 312.6 s for 22. The arm's cost follows per-claim eval more than identity count, so the
+// budget is the largest observed arm (312.6 s) times 2 for host-load variance: 625200 ms. A run
+// over it is a typed refusal that names the budget, which is the signal to re-measure, not to widen.
+data reach_differential_standing: ReachDifferentialStanding = DifferentialBlocking {
+  base_arm_wall_budget: 625200
 }
 
 // The host wire: 0 means report-only, and a positive value is the blocking arm's wall budget. Typed

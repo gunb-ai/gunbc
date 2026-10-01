@@ -11596,15 +11596,10 @@ pub fn run_required_floor(
                 .map(|source| source.path.clone())
                 .unwrap_or_default()
         };
-        // REPORT-ONLY DOES NOT PAY FOR THE BASE ARM. The standing exists because the base arm's
-        // cost is under ruling, and running it without blocking would charge every PR that cost
-        // ahead of the ruling while deciding nothing. So the run names what it did not do.
+        // REPORT-ONLY DOES NOT PAY FOR THE BASE ARM: running it without blocking would charge
+        // the run that cost while deciding nothing. So the run names what it did not do.
         let base_arm = if blocking_budget_ms == 0 {
-            Err(
-                "BaseArmNotRun reach_differential_standing is DifferentialReportOnly, pending the \
-                 operator cost ruling"
-                    .to_string(),
-            )
+            Err("BaseArmNotRun reach_differential_standing is DifferentialReportOnly".to_string())
         } else {
             match &diff_base {
                 Some(_) if identities.is_empty() => Ok(HashMap::new()),
