@@ -32,7 +32,7 @@ The inventory covered every Arrow, domain and payload reader outside `src/v2/tes
 
 | Walker | Now |
 | --- | --- |
-| `v2.compiler.infer` formation (`infer_formation_facts_from_entries`) | A binder node has its own arm, `infer_binder_node_facts_from_entries`. Its derived type is a binder node over the type's derived type with **no default**, so defaults are not type identity, and derived types and source types share one binder shape. A binder that carries a default refuses as `^infer_binder_default_unjudged` until a default judgment exists (2c). |
+| `v2.compiler.infer` formation (`infer_formation_facts_from_entries`) | A binder node has its own arm, `infer_binder_node_facts_from_entries`. Its derived type is a binder node over the type's derived type with **no default**, so defaults are not type identity, and derived types and source types share one binder shape. A binder's default is judged at the binder's declared type (`infer_binder_default_check`, position `PositionBinderDefault`; XL-2 PR2c-ii). |
 | `v2.compiler.symbol_index_fill` `symbol_index_fill_containment_edge` | Indexes a binder at its **type** (`symbol_index_binder_type_or_target`), so a parameter or field path resolves to its declared type. `<binder-type>`/`<binder-default>` never become path segments. |
 | `v2.compiler.translate` `translate_algebra` | A binder node translates **as its type** (`TypeExprTranslateBinder`, `translate_binder_node_step`). The default's fold result is discarded. A non-binder record member refuses (`translate_binder_member_type`). Arrow type expressions read parameter types through `find_binder_type`. |
 | `v2.compiler.resolve` declaring path | Does not extend across `binder_node_label`s. |
