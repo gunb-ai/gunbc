@@ -1,6 +1,6 @@
 module extdeps.posix.clock_gettime
 
-import std.types { NonEmptyStr, Int, Bool }
+import std.types { NonEmptyStr }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -40,28 +40,11 @@ fn clock_id_label(c: ClockId) -> NonEmptyStr {
   }
 }
 
-// Whether the clock advances while the calling thread is descheduled. This is the property the
-// choice between them turns on, stated as a fact of the clock rather than of any consumer.
-fn clock_advances_while_descheduled(c: ClockId) -> Bool {
-  match c {
-    ClockMonotonic => true
-    ClockThreadCputimeId => false
-  }
-}
-
-// struct timespec as the call returns it: seconds plus nanoseconds within the second.
-type Timespec {
-  tv_sec: Int
-  tv_nsec: Int
-}
-
-fn timespec_nanos(t: Timespec) -> Int {
-  t.tv_sec * 1000000000 + t.tv_nsec
-}
-
-type ClockGettimeOutcome
-  = ClockGettimeRead { clock: ClockId, value: Timespec }
-  | ClockGettimeUnsupported { clock: ClockId, errno: Int }
+// ONLY THE CLOCK IDENTITY IS MODELED HERE, because only it has a consumer: v1.compiler.runtime_rust
+// renders the emitted clock read through clock_id_label, so the constant the emitted Rust passes to
+// libc is this declaration's spelling and not a second literal beside it. The call's timespec result
+// and its error arm are realized in that emitted body (a refusal of the process); modeling them here
+// with no .dag reader would be a declaration nothing consumes.
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {

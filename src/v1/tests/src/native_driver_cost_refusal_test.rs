@@ -41,6 +41,7 @@ fn planted_over_attribution_is_over_attributed_not_clamped() {
             NativeDriverExclusiveRowKey::ExclusiveModuleRelease => nanosecond(0),
             NativeDriverExclusiveRowKey::ExclusiveRelayEmit => nanosecond(0),
             NativeDriverExclusiveRowKey::ExclusiveDemandScheduling => nanosecond(0),
+            NativeDriverExclusiveRowKey::ExclusiveDriverCollection => nanosecond(0),
         }),
         native_driver_cost_remainder_tolerance_nanos(),
     );
@@ -71,6 +72,7 @@ fn reconciled_parent_passes() {
             NativeDriverExclusiveRowKey::ExclusiveModuleRelease => nanosecond(0),
             NativeDriverExclusiveRowKey::ExclusiveRelayEmit => nanosecond(0),
             NativeDriverExclusiveRowKey::ExclusiveDemandScheduling => nanosecond(0),
+            NativeDriverExclusiveRowKey::ExclusiveDriverCollection => nanosecond(0),
         }),
         native_driver_cost_remainder_tolerance_nanos(),
     );
@@ -324,4 +326,45 @@ fn the_emitted_driver_judges_the_partition_on_thread_cpu_and_only_observes_the_w
     );
     assert!(body.contains("\"basis\": \"native_driver_thread_cpu\""));
     assert!(main_rs.contains("observed_thread_cpu_nanos(String::new())"));
+}
+
+/// The scheduling row is the engine CALL's measured span minus the demand time the engine
+/// attributed, and the driver's collection after the call is its own row. The bookkeeping-only
+/// realization -- summing the engine's internal spans -- is what left the work between them timed by
+/// no row, so its spelling is refused here; and an over-attribution inside the call refuses rather
+/// than clamping scheduling to zero.
+#[test]
+fn scheduling_is_the_engine_call_span_and_collection_is_its_own_row() {
+    let main_rs = driver_main();
+    let call = main_rs
+        .find("let schedule_started = cpu_mark();")
+        .expect("the engine call is spanned");
+    let run = main_rs
+        .find("let run = native_demand_schedule_universe(")
+        .expect("engine call");
+    let close = main_rs
+        .find("let schedule_span_nanos = cpu_span_nanos(schedule_started);")
+        .expect("engine call span closes");
+    assert!(call < run && run < close, "the span must bracket the call");
+    assert!(
+        main_rs.contains("let demand_scheduling_nanos = schedule_span_nanos - attributed_in_call;")
+    );
+    assert!(
+        !main_rs.contains("let demand_scheduling_nanos = native_demand_scheduling_nanos("),
+        "the bookkeeping-only sum must not be the scheduling row"
+    );
+    assert!(main_rs.contains("REFUSED: native driver cost OverAttributed inside the engine call"));
+    let collect = main_rs
+        .find("let collection_started = cpu_mark();")
+        .expect("collection span");
+    let push = main_rs
+        .find("population.push(row.clone());")
+        .expect("population collection");
+    let collect_close = main_rs
+        .find("let driver_collection_nanos = cpu_span_nanos(collection_started);")
+        .expect("collection span closes");
+    assert!(close < collect && collect < push && push < collect_close);
+    assert!(main_rs.contains(
+        "NativeDriverExclusiveRowKey::ExclusiveDriverCollection => nanosecond(native_cost_i64(driver_collection_nanos))"
+    ));
 }
