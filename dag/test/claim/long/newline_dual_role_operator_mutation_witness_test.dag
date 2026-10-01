@@ -26,6 +26,12 @@ import v2.std.grammar {
   fold_grammar_expr
 }
 import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.parse_refusal_reason {
+  DataValueMissingAfterEq,
+  FnExpressionBodyMissingAfterEq,
+  LayoutUnknownWithoutSource,
+  NewlineBeforeDualRoleOperator
+}
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
@@ -38,8 +44,11 @@ import v2.test.parse.newline_dual_role_operator_parse {
 
 // THE MUTATION THAT REDS THE NEWLINE-`-` REFUSAL (v2.test.parse.newline_dual_role_operator_parse).
 // It rebuilds the live dag grammar with every RefuseOnMatch arm replaced by a terminal no token
-// carries -- an alternative that can never match -- and asserts there is exactly ONE such arm, so the
-// mutant differs from the live grammar in that refusal and nothing else. Under the mutant the
+// carries -- an alternative that can never match -- and asserts that such arms exist and that EVERY
+// one of them is the newline refusal (NewlineBeforeDualRoleOperator), so the mutant differs from the
+// live grammar in that refusal and nothing else. There is more than one arm because the additive row
+// is a helper inlined into each operand position of the comparison and equality rows; it is one
+// authored row. Under the mutant the
 // next-line sources parse again (the silent merge into one subtraction is back); under the live
 // grammar they refuse. The same-line control parses under both. Long lane: preparing the mutant
 // grammar is past the floor's per-claim budget.
@@ -80,6 +89,31 @@ fn refusal_arm_count(expr: GrammarExpr) -> Int {
   )
 }
 
+fn other_refusal_arm_count(expr: GrammarExpr) -> Int {
+  fold_grammar_expr(
+    expr: expr,
+    algebra: GrammarExprFold {
+      terminal: fn(_, _) { 0 },
+      literal_terminal: fn(_, _) { 0 },
+      nonterminal: fn(_) { 0 },
+      sequence: fn(l, r) { l + r },
+      choice: fn(l, r) { l + r },
+      optional: fn(e) { e },
+      repeat: fn(e) { e },
+      expect: fn(e, _reason) { e },
+      refuse_on_match: fn(e, reason) {
+        match reason {
+          NewlineBeforeDualRoleOperator => e
+          FnExpressionBodyMissingAfterEq => e + 1
+          DataValueMissingAfterEq => e + 1
+          LayoutUnknownWithoutSource => e + 1
+        }
+      },
+      after_line_break: fn(e) { e }
+    }
+  )
+}
+
 fn no_productions() -> List<GrammarProduction> {
   []
 }
@@ -107,6 +141,13 @@ fn live_refusal_arm_count() -> Int {
   }
 }
 
+fn live_other_refusal_arm_count() -> Int {
+  match dag_grammar() {
+    ModeledGrammar { root: r } => fold_list(xs: r.productions, empty: 0, cons: fn(acc, prod) { acc + other_refusal_arm_count(expr: prod.expression) })
+    VoidGrammar => 0
+  }
+}
+
 fn accepts_with(text: String, file: Symbol, grammar: ParseGrammar) -> Bool {
   match tokenize(text: text, file: file, rules: dag_lex()) {
     Rejected { diagnostics: _ } => false
@@ -118,8 +159,8 @@ fn accepts_with(text: String, file: Symbol, grammar: ParseGrammar) -> Bool {
   }
 }
 
-test fn witness_the_live_grammar_carries_exactly_one_refusal_arm() -> Bool {
-  live_refusal_arm_count() == 1
+test fn witness_every_live_refusal_arm_is_the_newline_refusal() -> Bool {
+  (live_refusal_arm_count() > 0) && (live_other_refusal_arm_count() == 0)
 }
 
 test fn witness_the_live_grammar_refuses_both_next_line_forms() -> Bool {
