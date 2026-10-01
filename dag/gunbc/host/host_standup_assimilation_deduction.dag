@@ -1,5 +1,8 @@
 module gunbc.host_standup_assimilation_deduction
 
+import std.upsert_decision { ObservationVerdict, Converged, Drifted, Conflict, Inaccessible, UnknownRefused, UpsertDecision, Noop, Apply, Refuse, UpsertClassification }
+import std.temporal_effect { EffectStallBudget, StallBudgetVerdict, StallWithinBudget, StallBudgetExceeded, stall_budget_verdict }
+
 import gunbc.os_install_deduction { KvmObservedScreen }
 import gunbc.network_identity_subsumption {
   srv3_pre_install_lease_table, srv3_post_install_lease_table_fixture, lease_table_has_os_up_subsumption,

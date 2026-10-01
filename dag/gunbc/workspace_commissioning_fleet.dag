@@ -209,7 +209,7 @@ fn workspace_commissioning_basis_from_privileged(text: String, host: NonEmptyStr
         Present { value: prestate } => {
           let installed = approval_broker_release_dir(root: microvm_controller_root, revision: RevisionBoundAtEmission { revision: revision }) as NonEmptyStr
           let basis = WorkspaceCommissioningFleetBasis { provenance: provenance, release_dir: installed, prestate: prestate as NonEmptyStr,
-            already_committed: ends_with(s: text, suffix: "commissioning-already-committed:true") }
+            already_committed: text.ends_with(suffix: "commissioning-already-committed:true") }
           if provenance.slot.host != host || (provenance.source_revision as String) != (revision as String)
             || workspace_commissioning_basis_rows(basis: basis) != text {
             WorkspaceCommissioningFleetRefused { reason: "privileged commissioning response changed subject or is noncanonical" }

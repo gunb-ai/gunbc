@@ -1,0 +1,38 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-commissioning-reconcile
+✓ typecheck v2.std.compilers.target_model done in 28 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+✓ typecheck v2.compiler.body_lowering_fold done in 2 seconds
+✓ typecheck v2.compiler.source_authority done in 2 seconds
+✓ typecheck v2.compiler.translate done in 4 seconds
+✓ typecheck gunbc.roadmap_belt_actuate done in 3 seconds
+✓ typecheck gunbc.roadmap_component done in 3 seconds
+✓ typecheck gunbc.roadmap_page done in 2 seconds
+✓ typecheck gunbc.live_deploy.emit done in 3 seconds
+✓ typecheck gunbc.host_effect_realize done in 23 seconds
+✓ typecheck gunbc.runner_microvm_slot_controller done in 5 seconds
+✓ typecheck gunbc.live_deploy.apply done in 3 seconds
+✓ typecheck gunbc.fleet_converge_plan done in 2 seconds
+✓ typecheck gunbc.fleet_converge_plan_cli done in 2 seconds
+[pre-entry] phase=workspace_discovery ms=13 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=31 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=8004 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=1 scale=tree
+[pre-entry] phase=pool_census_parse ms=1103 scale=tree
+[pre-entry] phase=closure_name_census_build ms=3288 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=41 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=68 scale=closure
+[pre-entry] phase=closure_load ms=13725 scale=closure
+[pre-entry] phase=closure_parse ms=8709 scale=closure
+[pre-entry] phase=closure_resolve ms=532 scale=closure
+[pre-entry] phase=closure_normalize ms=1769 scale=closure
+[pre-entry] phase=closure_typecheck ms=201727 scale=closure
+[pre-entry] phase=closure_parent_envs ms=16 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=274 scale=closure
+[pre-entry] phase=closure_ownership ms=2205 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=293340 scale=closure
+[pre-entry] population pool_modules=1167 closure_files=1158
+[pre-entry] process_cpu user_ms=288354 sys_ms=3943 max_rss_kib=8285124
+PASS commissioning_scope_roundtrips_through_fleet_authority
+PASS installed_grants_name_only_exact_argument_free_entries
+PASS commissioning_input_and_installer_boundaries_hold_together
+PASS dispatch_uses_fleet_lock_owner_without_reopening_artifacts
