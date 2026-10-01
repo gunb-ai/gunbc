@@ -196,7 +196,7 @@ index 0000000..ed3e6e0
 +            # The mmap is read-only; the table is only ever read through index.
 +            warnings.simplefilter("ignore", UserWarning)
 +            self._table = torch.frombuffer(self._mmap, dtype=torch.uint8)
-+        self._span = torch.arange(expected.record_bytes, dtype=torch.int64)
++        self._span = torch.arange(expected.record_bytes, dtype=torch.int64, device="cpu")
 +        self._header_ok = True
 +        self._page_bytes = os.sysconf("SC_PAGE_SIZE")
 +        self._page_count = (self._mmap.size() + self._page_bytes - 1) // self._page_bytes
@@ -266,7 +266,7 @@ index 0000000..ed3e6e0
 +                raise EngramRowOffsetMisaligned(
 +                    f"offset {off} is not magic + k * {record} inside a {size}-byte store"
 +                )
-+        return (torch.as_tensor(offsets, dtype=torch.int64).unsqueeze(1) + self._span).view(-1)
++        return (torch.as_tensor(offsets, dtype=torch.int64, device="cpu").unsqueeze(1) + self._span).view(-1)
 +
 +    def fetch_rows(self, offsets: list[int], nbytes: int, dest: torch.Tensor) -> None:
 +        """Copy selected rows, in request order, into an already-allocated
