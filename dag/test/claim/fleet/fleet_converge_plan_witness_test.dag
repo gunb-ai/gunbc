@@ -1,5 +1,7 @@
 module test.claim.fleet_converge_plan_witness
 
+import gunbc.fleet_converge_scope { FleetConvergeScope, FullHost, LaunchEnvironment, FabricExecutionCellsOnly, FabricAllocationStoreOnly, WorkspaceAllocationOnly, WorkspaceSlotCommissioningOnly, LiveDeploy }
+
 import std.types { Bool, String, NonEmptyStr, Int, List, list_length }
 import gunbc.fleet_posix_accounts {
   ci_runner_sudo_binary_path, ci_runner_sudo_binary_probe, ci_runner_sudo_binaries,
@@ -111,12 +113,6 @@ import gunbc.fleet_converge_plan {
   fleet_converge_member_set_fingerprint_matches,
   fleet_converge_member_set_fingerprint,
   FleetConvergeRequest,
-  FleetConvergeScope,
-  FullHost,
-  LaunchEnvironment,
-  FabricExecutionCellsOnly,
-  FabricAllocationStoreOnly, WorkspaceAllocationOnly, WorkspaceSlotCommissioningOnly,
-  LiveDeploy,
   FullHostConverge,
   FabricExecutionCellsConverge,
   fleet_converge_request_scope,
@@ -147,7 +143,7 @@ import gunbc.fleet_converge_plan {
   fleet_converge_plan_bundle_digest_hex,
   fleet_converge_plan_bundle_matches,
   fleet_converge_slot_lines,
-  fleet_converge_slot_refusal_count,
+  fleet_converge_slot_refusal_count
 }
 import gunbc.fabric_cell_effect {
   fabric_cell_realization, CellPlanRealizable, CellPlanRefused, fabric_cell_slice_desired_directives_for_slot,

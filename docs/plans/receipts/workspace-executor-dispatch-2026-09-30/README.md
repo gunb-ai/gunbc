@@ -23,3 +23,7 @@ Four combined integration controls passed on the final 1,992-module pool (1,154 
 ## Qualification blocker
 
 The full fleet regression entry typechecked after adding the new scope to two exhaustive test helpers. It passed 70 of its 87 controls before the approved 12 GiB/no-swap scope was OOM-killed (exit 137; systemd `Result=oom-kill`). No failing assertion was reported. The demanded closure contained 1,985 modules; pre-entry reported peak RSS 12,192,168 KiB. This is incomplete qualification, not a green full suite. No ceiling was increased and no live commissioning was attempted. The remaining controls and exact-head CI remain outstanding; reducing test/closure memory is required before calling this local gate complete.
+
+## Compact historical manifest
+
+`fleet-sources.json` uses `source-manifest-delta/v1` over `sources.json`: verify the base SHA-256, replace the declared prefix in each row’s `copy` field, then replace rows by `module` from `replace_rows`, preserving array order. Serialize as compact JSON plus one newline and verify `reconstructed_sha256`. The reconstruction was checked byte-for-byte against the original 543,601-byte manifest before compaction. Only one source hash differs; all 1,992 module identities and the original scratch locations remain recoverable. This keeps the judged diff below its existing 8 MiB bound.

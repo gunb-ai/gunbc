@@ -1,5 +1,7 @@
 module test.claim.live_deploy.fleet_request_witness_test
 
+import gunbc.fleet_converge_scope { LiveDeploy }
+
 import gunbc.fleet_converge_terminal { FullyApplied, AwaitingCapability }
 
 import std.types { Bool, String, List, NonEmptyStr, CommitSha }
@@ -54,7 +56,22 @@ import gunbc.live_deploy.fleet_request {
   LiveDeployMemberBasis,
 }
 import gunbc.fleet_converge_plan {
-  fleet_converge_scope_of_wire, fleet_converge_scope_wire, fleet_converge_request_scope, fleet_converge_plan_subject, observed_baseline_text, fleet_converge_apply_artifact_admits, fleet_converge_apply_shell, fleet_converge_apply_shell_axis_lines, fleet_converge_apply_terminal, fleet_converge_plan_artifact_of_request, live_deploy_converge_request, LiveDeploy, ApplyAdmitted, ApplyMemberSetMismatch, ApplyAwaitingCapability, ScopeDecoded, ScopeUndecodable,
+  fleet_converge_scope_of_wire,
+  fleet_converge_scope_wire,
+  fleet_converge_request_scope,
+  fleet_converge_plan_subject,
+  observed_baseline_text,
+  fleet_converge_apply_artifact_admits,
+  fleet_converge_apply_shell,
+  fleet_converge_apply_shell_axis_lines,
+  fleet_converge_apply_terminal,
+  fleet_converge_plan_artifact_of_request,
+  live_deploy_converge_request,
+  ApplyAdmitted,
+  ApplyMemberSetMismatch,
+  ApplyAwaitingCapability,
+  ScopeDecoded,
+  ScopeUndecodable
 }
 
 fn rev_a() -> CommitSha { "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as CommitSha }

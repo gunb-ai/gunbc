@@ -1,7 +1,13 @@
 module test.claim.workspace_dispatch_fleet_witness
 
+import gunbc.fleet_converge_scope { WorkspaceSlotCommissioningOnly }
+
 import std.types { Bool, String }
-import gunbc.fleet_converge_plan { WorkspaceSlotCommissioningOnly, ScopeDecoded, fleet_converge_scope_of_wire, fleet_converge_scope_wire }
+import gunbc.fleet_converge_plan {
+  ScopeDecoded,
+  fleet_converge_scope_of_wire,
+  fleet_converge_scope_wire
+}
 import gunbc.fleet_converge_plan_cli { fleet_converge_apply_bound_wet, fleet_converge_workspace_commissioning_plan_wet }
 import gunbc.workspace_commissioning_executor_plan { workspace_executor_scope_wire }
 import gunbc.workspace_commissioning_dispatch_operations { workspace_dispatch_grant_content }

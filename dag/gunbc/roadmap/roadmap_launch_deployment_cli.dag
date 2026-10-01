@@ -36,7 +36,7 @@ import gunbc.fleet_converge_plan_cli { observe_host_short_wet }
 import gunbc.live_deploy.apply_receipt {
   live_deploy_apply_receipt_artifact_path_for,
   read_live_deploy_apply_receipt_at, LiveDeployApplyReceiptDecoded, LiveDeployApplyReceiptUnreadable,
-  rlm_plan_run_id_env_name, rlm_apply_run_id_env_name,
+  rlm_plan_run_id_env_name, rlm_apply_run_id_env_name, rlm_dashboard_run_id_env_name,
   observe_candidate_root_tree_oid, CandidateTreeOidObserved, CandidateTreeOidUnobservable,
 }
 import gunbc.fleet_desired_observe {
@@ -146,7 +146,6 @@ fn rlm_workflow_file_path() -> String {
 // rather than skipped.
 data rlm1_merge_commit: String = "0beef8a2c1a035f4f1f0507e77075bdeaba74cba"
 data rlm1_contract_digest_frozen: String = "20ca8a8cde2f7e84"
-data rlm_dashboard_run_id_env_name: String = "RLM_DASHBOARD_RUN_ID"
 data rlm_receipt_host: String = "srv1"
 data rlm_receipt_vantage: String = "."
 data rlm_receipt_ssh_attempt_raw: String = "rlm-launch-deployment-receipt"

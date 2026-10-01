@@ -1,5 +1,8 @@
 module gunbc.fleet_converge_plan_cli
 
+import gunbc.fleet_converge_scope { WorkspaceAllocationOnly, WorkspaceSlotCommissioningOnly, FleetConvergeScope, FullHost, FabricExecutionCellsOnly, FabricAllocationStoreOnly, LiveDeploy, LaunchEnvironment }
+import gunbc.fleet_plan_artifact_location { fleet_converge_plan_artifact_dir }
+
 import gunbc.workspace_commissioning_fleet { WorkspaceCommissioningFleetObserved }
 import gunbc.workspace_commissioning_dispatch_transport { workspace_dispatch_captured_command, workspace_dispatch_observe }
 import gunbc.workspace_commissioning_executor_plan { workspace_executor_scope_wire, workspace_executor_plan_credential, workspace_executor_plan_bytes, WorkspaceExecutorPlanBytesVerified }
@@ -150,7 +153,6 @@ import gunbc.fleet_converge_plan {
   fleet_converge_plan_generation_path,
   fleet_converge_plan_prior_generation_path,
   fleet_converge_plan_member_set_fp_path,
-  fleet_converge_plan_artifact_dir,
   fleet_converge_plan_content_hash,
   fleet_converge_observed_baseline_matches,
   fleet_converge_member_set_fingerprint_matches,
@@ -171,15 +173,11 @@ import gunbc.fleet_converge_plan {
   FullHostConverge,
   LaunchEnvironmentConverge,
   FabricExecutionCellsConverge,
-  FabricAllocationStoreConverge, WorkspaceAllocationConverge, WorkspaceAllocationOnly, WorkspaceSlotCommissioningOnly, WorkspaceSlotCommissioningConverge,
-  FleetConvergeScope,
-  FullHost,
-  FabricExecutionCellsOnly,
-  FabricAllocationStoreOnly,
-  LiveDeploy,
+  FabricAllocationStoreConverge,
+  WorkspaceAllocationConverge,
+  WorkspaceSlotCommissioningConverge,
   fleet_converge_scope_of_wire,
   fleet_converge_scope_matches,
-  LaunchEnvironment,
   fleet_converge_plan_artifact_of_request,
   ScopeDecoded,
   ScopeUndecodable,
@@ -195,7 +193,7 @@ import gunbc.fleet_converge_plan {
   GenerationAdmissionRefused,
   fleet_converge_plan_bundle_digest_hex,
   fleet_converge_plan_bundle_matches,
-  fleet_converge_plan_content_hash_path,
+  fleet_converge_plan_content_hash_path
 }
 import extdeps.git
 import gunbc.live_deploy.apply { live_deploy_apply_srv1_operator_local_wet }
@@ -380,7 +378,7 @@ type FleetConvergeRequestObservation
 //
 // AN EARLIER CUT SAID THE ARM "HAS NO FIELD TO PUT AN ANSWER IN", which reads as a claim about what
 // the compiler permits. It does not: a payload-carrying variant literal accepts any excess field
-// (see the excess-field measurement in gunbc.fleet_converge_plan above FleetConvergeScope, and the
+// (see the excess-field measurement in gunbc.fleet_converge_plan above FleetConvergeRequest, and the
 // compiler-floor lane adhoc-0f99c6bc-193). What holds is the narrower production fact above, and it
 // is what the site census and the non-interference matrix actually execute.
 fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> FleetConvergeRequestObservation

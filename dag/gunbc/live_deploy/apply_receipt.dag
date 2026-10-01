@@ -63,6 +63,7 @@ fn live_deploy_apply_receipt_artifact_path_for(instance_id: String) -> String {
 
 data rlm_plan_run_id_env_name: String = "RLM_PLAN_RUN_ID"
 data rlm_apply_run_id_env_name: String = "RLM_APPLY_RUN_ID"
+data rlm_dashboard_run_id_env_name: String = "RLM_DASHBOARD_RUN_ID"
 data rlm_plan_artifact_hash_env_name: String = "RLM_PLAN_ARTIFACT_HASH"
 
 type LiveDeployFleetProvenance {

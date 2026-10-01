@@ -1,0 +1,22 @@
+[
+  {
+    "snapshot": "roadmap-qualification",
+    "modules": 720,
+    "source_identity_sha256": "779b342748bfc8585a1265ba44d5fcebb2df553d2a048b11cd1c1edb5cca494e"
+  },
+  {
+    "snapshot": "scope-integration",
+    "modules": 1160,
+    "source_identity_sha256": "75e6d6f6b2273ca7f66bfc506d2583e6f98fa5d72559014efa4ca505b158e307"
+  },
+  {
+    "snapshot": "readiness-qualification",
+    "modules": 197,
+    "source_identity_sha256": "e8509fc9407a59c4e84d49b23583963bff31d2a927ebb749605189350b94c1c5"
+  },
+  {
+    "snapshot": "workflow-final-bound",
+    "modules": 1323,
+    "source_identity_sha256": "6335094884c066aa3abc28fe7b8b76cf58cd5da18b523a0f5b75680e7d95fad4"
+  }
+]

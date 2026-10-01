@@ -1,5 +1,8 @@
 module gunbc.fleet_converge_plan
 
+import gunbc.fleet_converge_scope { FabricAllocationStoreOnly, FabricExecutionCellsOnly, FleetConvergeScope, FullHost, LaunchEnvironment, LiveDeploy, WorkspaceAllocationOnly, WorkspaceSlotCommissioningOnly }
+import gunbc.fleet_plan_artifact_location { fleet_converge_plan_artifact_dir }
+
 import gunbc.workspace_commissioning_fleet { WorkspaceCommissioningFleetBasis, workspace_commissioning_basis_rows }
 import gunbc.workspace_commissioning_executor_plan { workspace_executor_scope_wire }
 import gunbc.workspace_commissioning_dispatch_transport { workspace_dispatch_apply_script }
@@ -379,15 +382,6 @@ type TimerRetirementMemberAt = NonEmptyStr
 // from the substrate today. NEXT-RUNG TRIGGER, named as the capability: either the variant-local
 // excess-field compiler wall lands, or reflection exposes substrate-readable per-field record-literal
 // labels SUFFICIENT FOR a witness to assert the exact field-name set of a named construction site.
-type FleetConvergeScope
-  = FullHost
-  | LaunchEnvironment
-  | FabricExecutionCellsOnly
-  | FabricAllocationStoreOnly
-  | WorkspaceAllocationOnly
-  | WorkspaceSlotCommissioningOnly
-  | LiveDeploy
-
 type FleetConvergeRequest
   = FullHostConverge {
       host: NonEmptyStr
@@ -2912,7 +2906,6 @@ fn fleet_converge_allocation_store_plan_artifact(
   }
 }
 
-data fleet_converge_plan_artifact_dir: String = "/tmp/fleet-converge-plan"
 
 data fleet_converge_plan_body_path: String = fleet_reviewed_plan_path
 
