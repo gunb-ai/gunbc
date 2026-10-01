@@ -3126,6 +3126,32 @@ fn identity_home_is_declared_non_executing(module_path: &str) -> bool {
         })
 }
 
+/// The host mirror of `v2.workflow.required_floor` `changed_selections_outside_discovery`: every
+/// changed selection the run's discovered index did not declare, as a
+/// `DeclinedChangedWitnessOutsideDiscovery` row carrying the module before the identity's LAST `.`
+/// (the whole identity when it has none). Sorted by identity, so the receipt order is stable.
+/// `changed_selections_outside_discovery_mirror_tests` joins it with the .dag authority over the
+/// shared fixture `v2.test.fixture.changed_selection_outside_discovery`.
+pub(crate) fn changed_selections_outside_discovery(
+    changed: &HashSet<String>,
+    declared: &HashSet<String>,
+) -> Vec<RequiredFloorDispositionRow> {
+    let mut undeclarable: Vec<&String> = changed.difference(declared).collect();
+    undeclarable.sort();
+    undeclarable
+        .into_iter()
+        .map(|identity| RequiredFloorDispositionRow {
+            identity: identity.clone(),
+            disposition: RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery {
+                module_path: identity
+                    .rsplit_once('.')
+                    .map(|(module, _)| module.to_string())
+                    .unwrap_or_else(|| identity.clone()),
+            },
+        })
+        .collect()
+}
+
 /// The host realization of `v2.workflow.floor_changed_witness`
 /// `changed_witness_execution_standing`, one row per changed identity, joined against the two
 /// receipt populations the run already holds: the disposition rows (the admission authority)
@@ -9075,26 +9101,13 @@ pub fn run_required_floor(
     // THIS HANDLES THE MISMATCH AND DOES NOT RETIRE IT. NEXT-RUNG TRIGGER, named as the
     // capability: SELECTION AND DISPOSITION CONSUME ONE RANGE. A green floor over these rows
     // means the mismatch is represented, never that the two denominators have been reconciled.
-    let undeclarable_changed: Vec<String> = {
-        let mut v: Vec<String> = changed_witness_set
-            .difference(&declared_identity_set)
-            .cloned()
-            .collect();
-        v.sort();
-        v
-    };
-    for identity in &undeclarable_changed {
-        let module_path = identity
-            .rsplit_once('.')
-            .map(|(module, _)| module.to_string())
-            .unwrap_or_else(|| identity.clone());
-        disposition_rows.push(RequiredFloorDispositionRow {
-            identity: identity.clone(),
-            disposition: RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery {
-                module_path,
-            },
-        });
-    }
+    let outside_discovery_rows =
+        changed_selections_outside_discovery(&changed_witness_set, &declared_identity_set);
+    let undeclarable_changed: Vec<String> = outside_discovery_rows
+        .iter()
+        .map(|row| row.identity.clone())
+        .collect();
+    disposition_rows.extend(outside_discovery_rows);
     // A selection in a declared no-CI-wet-lane file was DECLINED at its site, not planned
     // (gunbc.rung_drop.edited_bin_witness_wet_rows_not_executed_by_ci): it carries its own
     // DeclinedNoCiWetLane row, so the sublane is not entitled to execute it.
@@ -16830,4 +16843,149 @@ fn declared_no_ci_wet_lane_population() -> &'static std::collections::HashSet<St
         .into_iter()
         .collect()
     })
+}
+
+/// THE HOST DECIDER AND ITS .dag AUTHORITY CLASSIFY ONE SHARED FIXTURE IDENTICALLY.
+///
+/// The rows are `v2.test.fixture.changed_selection_outside_discovery`, which
+/// `test.claim.discovery_census_witness` also asserts on the floor. This test evaluates them through
+/// `v2.workflow.required_floor` `changed_selections_outside_discovery` and through the host's
+/// `changed_selections_outside_discovery`, and joins the two at identity grain: same identities,
+/// each with the same `DeclinedChangedWitnessOutsideDiscovery` module. The .dag side is enforced
+/// on the floor today; this cross-side join is enforced only once the Rust unit tests are a
+/// blocking lane (`gunbc.rung_drop` `rust_unit_tests_off_the_merge_path`).
+#[cfg(test)]
+mod changed_selections_outside_discovery_mirror_tests {
+    use super::*;
+    use crate::v1_interpreter::{self, ExecutionMode, Value};
+    use std::collections::BTreeMap;
+    use std::rc::Rc;
+
+    const FIXTURE: &str = "v2.test.fixture.changed_selection_outside_discovery";
+
+    fn string_list(value: &Value, what: &str) -> Vec<String> {
+        let Value::List(items) = value else {
+            panic!("{what} is not a List");
+        };
+        items
+            .iter()
+            .map(|item| match item {
+                Value::Str(s) => s.to_string(),
+                _ => panic!("{what} holds a non-String element"),
+            })
+            .collect()
+    }
+
+    fn dag_rows(ctx: &v1_interpreter::InterpContext, value: &Value) -> BTreeMap<String, String> {
+        let Value::List(rows) = value else {
+            panic!("the .dag decider did not return a List");
+        };
+        let mut out = BTreeMap::new();
+        for row in rows.iter() {
+            let Value::Record { fields, .. } = row else {
+                panic!("a .dag decider row is not a record");
+            };
+            let Some(Value::Str(identity)) = ctx.field(fields, "identity") else {
+                panic!("a .dag decider row has no String identity");
+            };
+            let Some(Value::Variant {
+                variant_name,
+                fields: arm,
+                ..
+            }) = ctx.field(fields, "disposition")
+            else {
+                panic!("a .dag decider row has no disposition variant");
+            };
+            assert!(
+                ctx.sym_eq(*variant_name, "DeclinedChangedWitnessOutsideDiscovery"),
+                "the .dag decider produced {} for {identity}",
+                ctx.resolve(*variant_name)
+            );
+            let Some(Value::Str(module_path)) = ctx.field(arm, "module_path") else {
+                panic!("the .dag arm for {identity} has no String module_path");
+            };
+            assert!(
+                out.insert(identity.to_string(), module_path.to_string())
+                    .is_none(),
+                "the .dag decider produced {identity} twice"
+            );
+        }
+        out
+    }
+
+    fn host_rows(changed: &[String], declared: &[String]) -> BTreeMap<String, String> {
+        let changed: HashSet<String> = changed.iter().cloned().collect();
+        let declared: HashSet<String> = declared.iter().cloned().collect();
+        changed_selections_outside_discovery(&changed, &declared)
+            .into_iter()
+            .map(|row| match row.disposition {
+                RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery {
+                    module_path,
+                } => (row.identity, module_path),
+                other => panic!(
+                    "the host decider produced {} for {}",
+                    required_floor_disposition_label(&other),
+                    row.identity
+                ),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn host_and_dag_deciders_agree_on_the_shared_fixture() {
+        crate::cli_run::on_live_pool_thread(|| {
+            let root = process_workspace_root();
+            let roots: Vec<String> = ["dag", "src/v2"]
+                .iter()
+                .map(|r| root.join(r).to_string_lossy().to_string())
+                .collect();
+            let entry = root
+                .join("src/v2/test/fixture/changed_selection_outside_discovery.dag")
+                .to_string_lossy()
+                .to_string();
+            let index = crate::cli_run::process_shared_index(&roots);
+            let (graph, indices) =
+                crate::cli_run::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
+                    .expect("the shared fixture resolves");
+            let ctx = crate::cli_run::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+            let read = |name: &str| {
+                v1_interpreter::with_active_context(&ctx, || {
+                    v1_interpreter::run_in_context(&ctx, &format!("{FIXTURE}.{name}"), false)
+                })
+                .unwrap_or_else(|e| panic!("{name} does not evaluate: {e}"))
+            };
+            let changed = string_list(&read("changed_selection_fixture_changed"), "changed");
+            let declared = string_list(&read("changed_selection_fixture_declared"), "declared");
+            let as_list = |xs: &[String]| {
+                Value::List(Rc::new(
+                    xs.iter()
+                        .map(v1_interpreter::str_value)
+                        .collect::<Vec<Value>>()
+                        .into(),
+                ))
+            };
+            let decided = v1_interpreter::with_active_context(&ctx, || {
+                v1_interpreter::run_in_context_with_args(
+                    &ctx,
+                    "v2.workflow.required_floor.changed_selections_outside_discovery",
+                    &[
+                        (Some("changed".to_string()), as_list(&changed)),
+                        (Some("declared".to_string()), as_list(&declared)),
+                    ],
+                    false,
+                )
+            })
+            .expect("the .dag decider evaluates over the fixture");
+            let dag = dag_rows(&ctx, &decided);
+            let host = host_rows(&changed, &declared);
+            assert!(
+                !dag.is_empty(),
+                "the fixture produced no undeclarable selection"
+            );
+            assert_eq!(
+                host, dag,
+                "host and .dag deciders disagree on the shared fixture"
+            );
+        });
+    }
 }
