@@ -151,6 +151,12 @@ data known_frontier_causes: List<CauseOwnership> = [
     flip_trigger: "a service declaration lowers at declaration grade (v2.compiler.body_lowering_fold body_lower_service_decl) and its realization and unmodeled interface members are set aside; full normalize refuses a closure member carrying any, because resolution, eval and emission would have to assume them. Flips when a realization binding carrier (a transport handler bound to the interface shape) and a typed operation-modifier carrier exist, so that no set-aside reason has a producer (gunbc.recurring_failure_mode service_interface_member_has_no_carrier)"
   },
   CauseOwnership {
+    cause: ^body_lowering_reason_unrecognised_lowered_shape,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "a reader in v2.compiler.body_lowering_fold meets a node that is lowered output (no grammar projection edge) but that body_lower_is_core_substrate does not name, and refuses at it instead of re-reading it as raw parse and answering a part of it (body_lower_is_unrecognised_lowered_shape). The MQ-5 census found no producer that reaches this today. Flips when every producer declares the shape it emits (LoweredShape carried in a BodyTerm through the reducers, neat-boar-16 ruling 2026-09-30), so a reader never classifies a node by shape and the reason has no producer (gunbc.recurring_failure_mode lowered_output_reread_as_raw_parse_at_v2_body_lowering)"
+  },
+  CauseOwnership {
     cause: ^body_lowering_reason_uses_clause_unmodeled,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
