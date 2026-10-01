@@ -98,12 +98,12 @@ pub fn realize_pack_width_from_scalars(
         v1_interpreter::run_in_context_with_args(&realize_ctx, "realize_advisory", &args, false)
             .map_err(|e| format!("realize_advisory: {e}"))?;
     match result {
-        Value::Record { fields, .. } => {
-            let width = match realize_ctx.field(&fields, "width") {
+        Value::Record { ref fields, .. } => {
+            let width = match realize_ctx.field(fields, "width") {
                 Some(Value::Int(w)) => *w,
                 _ => -1,
             };
-            let verdict = match realize_ctx.field(&fields, "verdict") {
+            let verdict = match realize_ctx.field(fields, "verdict") {
                 Some(Value::Str(s)) => s.rc(),
                 _ => Rc::from("unknown"),
             };

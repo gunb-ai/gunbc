@@ -180,7 +180,7 @@ fn healthy_media() -> MegaRacMediaWorld {
     withdraw_at: none,
     withdraw_after_ready: none,
     error_after_ready: none,
-    error_clears_on_stop: false,
+    error_clears_on_stop: false, stop_at_ready: none,
   }
 }
 
@@ -410,7 +410,7 @@ fn media_varied(media: MegaRacMediaWorld) -> MtCollins1BootWorld {
 fn media_with(images: List<MegaRacImage>, share: MegaRacShare, cd: MegaRacCdRow, ready_after: Int, withdraw_after_ready: Second?) -> MegaRacMediaWorld {
   MegaRacMediaWorld {
     sessions: [], next_session: 1, share: share, mount_cd: 1, cd_error_code: 0, images: images, cd: cd,
-    ready_after: second(count: ready_after), withdraw_at: none, withdraw_after_ready: withdraw_after_ready, error_after_ready: none, error_clears_on_stop: false,
+    ready_after: second(count: ready_after), withdraw_at: none, withdraw_after_ready: withdraw_after_ready, error_after_ready: none, error_clears_on_stop: false, stop_at_ready: none,
   }
 }
 
@@ -756,14 +756,27 @@ test fn a_wall_clock_jumping_forward_during_readiness_closes_the_window() -> Boo
 // ─── CD ERROR CODE ────────────────────────────────────────────────────────────────────────────────
 // cd_error_code on the general route: 16 is the value the Mt. Collins MegaRAC answered on 2026-09-27
 // with nothing presented (test.claim.machine_intake.megarac_media_convergence_witness_test
-// mtcollins1_media_general_2026_09_27). Its meaning is not catalogued. Whether a stop clears it is
-// not observed, so the stale-image cases run both arms of the model's parameter.
+// mtcollins1_media_general_2026_09_27). Its meaning is the vendor's: extdeps.bmc.megarac
+// megarac_rmedia_status_0_32 names it "Device Ejected", and the vendor UI reads the code only while the
+// row is stopped, so beside a Started row it is a latched last-stop reason, recorded and never
+// withheld on. Whether a stop clears it is not observed, so the stale-image cases run both arms of the
+// model's parameter.
 fn media_errored(code: Int, clears: Bool, after_ready: Int?, cd: MegaRacCdRow) -> MegaRacMediaWorld {
   MegaRacMediaWorld {
     sessions: [], next_session: 1, share: real_share, mount_cd: 1, cd_error_code: code,
     images: [MegaRacImage { image_name: desired_image(), image_index: 5 }], cd: cd,
     ready_after: second(count: 12), withdraw_at: none, withdraw_after_ready: none,
-    error_after_ready: after_ready, error_clears_on_stop: clears,
+    error_after_ready: after_ready, error_clears_on_stop: clears, stop_at_ready: none,
+  }
+}
+
+// THE START IS ACCEPTED AND THE ROW FALLS BACK TO STOPPED WITH `code` where it would have read Started.
+fn media_stopping(code: Int) -> MegaRacMediaWorld {
+  let w = media_errored(code: 0, clears: true, after_ready: no_error_after_ready(), cd: megarac_cleared_cd())
+  MegaRacMediaWorld {
+    sessions: w.sessions, next_session: w.next_session, share: w.share, mount_cd: w.mount_cd, cd_error_code: w.cd_error_code,
+    images: w.images, cd: w.cd, ready_after: w.ready_after, withdraw_at: w.withdraw_at, withdraw_after_ready: w.withdraw_after_ready,
+    error_after_ready: w.error_after_ready, error_clears_on_stop: w.error_clears_on_stop, stop_at_ready: Present { value: code },
   }
 }
 
@@ -778,24 +791,26 @@ fn presenting(image_name: String) -> MegaRacCdRow {
   MegaRacCdRow { image_name: image_name, redirection_status: 1, media_index: 0, session_index: 0, ready_at: none }
 }
 
-// CODE 16 WITH NOTHING PRESENTED AND THE HOST OFF -- the 2026-09-27 state. The attach proceeds, the
-// presentation reaches Started, and the code 16 still read at readiness is the vendor's latched last-stop
-// reason ("Device Ejected"; the UI consults it only when the row is stopped), so it is recorded and the
+// CODE 16 WITH NOTHING PRESENTED AND THE HOST OFF -- the 2026-09-27 state, and boot run 36721915217's.
+// 16 is a named stop reason, so the attach proceeds with no stop; the presentation reaches Started with
+// 16 still read, which the vendor does not consult beside a Started row, so it is recorded and the
 // attempt proceeds to the boot.
 test fn cd_error_16_with_nothing_presented_attaches_and_boots_with_the_code_recorded() -> Bool {
   match run_attempt(world: media_varied(media: media_errored(code: 16, clears: true, after_ready: no_error_after_ready(), cd: megarac_cleared_cd()))) {
     WitnessReturned { value, route } =>
       string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")
+        && count_named(route: route, name: "megarac.Media.StopMedia") == 0
         && first_ordinal(route: route, name: "megarac.Media.StartMedia") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl")
         && controller_writes_are_under_the_hold(route: route)
     _ => false
   }
 }
 
-// CODE 16 WITH THE HOST ALREADY ON. Stopping the medium could withdraw what the host is running from,
-// so the fresh-presentation experiment is not admitted and nothing is written at all.
-test fn cd_error_16_with_the_host_on_writes_nothing() -> Bool {
-  let w = media_varied(media: media_errored(code: 16, clears: true, after_ready: no_error_after_ready(), cd: megarac_cleared_cd()))
+// A CODE OUTSIDE THE VENDOR'S TABLE WITH THE HOST ALREADY ON. 99 names nothing in rmedia:status_1..17, so
+// it is a knowledge refusal; the fresh-presentation experiment that could settle it would stop the
+// medium the host may be running from, so it is not admitted and nothing is written at all.
+test fn an_uncatalogued_cd_error_with_the_host_on_writes_nothing() -> Bool {
+  let w = media_varied(media: media_errored(code: 99, clears: true, after_ready: no_error_after_ready(), cd: megarac_cleared_cd()))
   match run_attempt(world: with_bmc(w: w, bmc: bmc_with_power(world: w.bmc, power: BmcPowerOn))) {
     WitnessReturned { value, route } =>
       string_contains(s: outcome_reason(a: value), pattern: "the host is powered on; stopping the medium would withdraw what it may be running from")
@@ -817,6 +832,30 @@ test fn cd_error_appearing_with_readiness_is_recorded_and_booted() -> Bool {
   }
 }
 
+// THE START IS ACCEPTED AND THE ROW FALLS BACK TO "Stopped - Mount Error". The attempt refuses by the
+// vendor's name, as a presentation failure, with no handoff.
+test fn a_start_that_stops_with_mount_error_refuses_by_name() -> Bool {
+  match run_attempt(world: media_varied(media: media_stopping(code: 11))) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "is Stopped - Mount Error (cd_error_code 11; a presentation failure")
+        && count_named(route: route, name: "megarac.Media.StartMedia") == 1
+        && reached_no_power_action(route: route)
+    _ => false
+  }
+}
+
+// THE START IS ACCEPTED AND THE ROW FALLS BACK TO "Stopped - Device Ejected". 16 is a no-fault stop --
+// the consumer let the medium go -- but nothing is presented, so there is nothing to boot from: the
+// attempt refuses by name, classed no-fault, with no handoff.
+test fn a_start_that_stops_with_device_ejected_refuses_by_name_as_no_fault() -> Bool {
+  match run_attempt(world: media_varied(media: media_stopping(code: 16))) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "is Stopped - Device Ejected (cd_error_code 16; no fault")
+        && reached_no_power_action(route: route)
+    _ => false
+  }
+}
+
 // A STALE IMAGE OF THIS LANE IS PRESENTED WITH CODE 16 AND THE HOST OFF, AND THE STOP CLEARS THE CODE.
 // The attempt stops the stale image, attaches the desired one, and proceeds to the boot: stop, then
 // start, then the override, then power.
@@ -832,7 +871,7 @@ test fn a_stale_lane_image_with_a_code_the_stop_clears_is_replaced_and_booted() 
 }
 
 // THE SAME STALE IMAGE, BUT THE STOP DOES NOT CLEAR THE CODE. The replacement reaches Started with the
-// code still 16, and the attempt refuses before the handoff.
+// code still 16, a latched reason beside a Started row, and the attempt proceeds to the boot.
 test fn a_stale_lane_image_with_a_code_the_stop_does_not_clear_is_replaced_and_booted() -> Bool {
   match run_attempt(world: media_varied(media: media_errored(code: 16, clears: false, after_ready: no_error_after_ready(), cd: presenting(image_name: stale_lane_image)))) {
     WitnessReturned { value, route } =>
