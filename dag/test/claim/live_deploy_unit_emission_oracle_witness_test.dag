@@ -291,7 +291,7 @@ test fn the_slice_unit_matches_the_deployed_bytes() -> Bool {
 // that into an immediate kill at a declared bound.
 test fn the_approval_broker_slice_unit_matches_the_deployed_bytes() -> Bool {
   let emitted = render(doc: emit_approval_broker_slice_unit_doc(), proto: live_deploy_protocol)
-  emitted == "[Unit]\nDescription=gunbc approval broker cgroup bound (separate from the roadmap deployment slice)\n\n[Slice]\nMemoryMax=10737418240\nMemoryHigh=9663676416\nMemorySwapMax=0\n"
+  emitted == "[Unit]\nDescription=gunbc approval broker cgroup bound (separate from the roadmap deployment slice)\n\n[Slice]\nMemoryMax=17179869184\nMemoryHigh=15032385536\nMemorySwapMax=0\n"
 }
 
 // THE BROKER UNIT. Every difference from the roadmap unit above is the split: a different

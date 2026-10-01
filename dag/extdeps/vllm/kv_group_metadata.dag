@@ -13,6 +13,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_1967a5627 }
 import extdeps.vllm.kv_layout { KvGroupLayout, KvGroupKind, FullAttention, SlidingWindowAttention, MambaState }
+import v2.std.algebra { length }
 
 // ── THE ENGINE'S PER-GROUP METADATA EMISSION, READ AT ONE REVISION ───────────────────────────────
 //

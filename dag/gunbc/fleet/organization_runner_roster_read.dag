@@ -1,7 +1,7 @@
 module gunbc.fleet.organization_runner_roster_read
 
 import std.types { String, NonEmptyStr, Bool, Int, List, Map }
-import std.algebra { trim }
+import std.algebra { Cons, Empty, trim }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
 import std.process { ProcessExit, ExitSuccess, exit_failure }

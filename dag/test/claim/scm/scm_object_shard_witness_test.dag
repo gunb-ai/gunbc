@@ -331,6 +331,7 @@ test fn shard_blocks_flatten_preserves_block_and_member_order() -> Bool {
 // every sealed shard's identity is unchanged, so the writer's skip-by-name rewrites nothing but
 // the tail and the index. This is the property "a save after one candidate's change rewrites only
 // its shard" stands on.
+// Second case: 3 objects, batch 512: one shard either way, and its identity moves
 test fn extending_the_store_moves_only_the_open_tail_shard() -> Bool {
   match store_of_texts(texts: ["a", "b"]) {
     Absent => false
@@ -340,7 +341,6 @@ test fn extending_the_store_moves_only_the_open_tail_shard() -> Bool {
         Present { value: grown } => {
           let before = shard_roster_of(objects: store.objects)
           let after = shard_roster_of(objects: grown.objects)
-          // 3 objects, batch 512: one shard either way, and its identity moves
           count(before) == 1
             && count(after) == 1
             && before != after

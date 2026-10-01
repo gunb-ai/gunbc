@@ -1,6 +1,6 @@
 module gunbc.auth.session
 
-import std.types { NonEmptyStr, String, Bool, Timestamp, Email }
+import std.types { NonEmptyStr, String, Bool, Timestamp, Email, List }
 import std.nat { Nat }
 import std.algebra { trim }
 import std.decl_ref { decl_ref }
@@ -12,6 +12,7 @@ import extdeps.auth.oidc {
 import gunbc.principal_projection {
   PrincipalRef, HumanPrincipalMinted, HumanPrincipalRefused, mint_human_principal_from_verdict,
 }
+import v2.std.algebra { filter }
 
 // THE APPLICATION SESSION (ruling authority placement: gunbc.auth.session). An
 // AuthenticatedSession is what a completed Google login mints: the verdict-sealed human
@@ -247,7 +248,7 @@ type SessionCookieIdParse
 
 fn session_cookie_id_of_header(cookie_header: String) -> SessionCookieIdParse {
   let pairs = split(s: cookie_header, delimiter: ";")
-  let matches = filter(
+  let matches: List<String> = filter(
     pairs,
     pair => starts_with(s: trim(pair), prefix: concat(session_cookie_name as String, "=")),
   )

@@ -12,6 +12,7 @@ import gunbc.scm.json_member {
 }
 import gunbc.scm.object_store { ScmObject, ObjectId, scm_object_identity, store_admission_store }
 import gunbc.scm.object_table_json { encode_object, EncodePositions, decode_object_table, DecodeAcc }
+import gunbc.rust_item_scan { ends_with }
 
 // THE OBJECT SHARD, RE-GRAINED AT FIRST SAVE (2026-09-23): one shard per object put 7,050 host
 // reads on the cold load path, and every Filesystem.Read rides the wrapped host call (~0.6s

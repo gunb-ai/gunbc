@@ -1653,6 +1653,8 @@ test fn witness_issue_link_panel_blocks_children_and_unmet_parents() -> Bool {
 // THE WORK TAB'S HISTORY ORDER (owner ruling 2026-09-22: execution history as taskbar rows,
 // newest first): the ledger's clocked rounds reverse so the freshest turn heads the list; a
 // refused ledger renders no rows at all — absence earns no furniture.
+// The first round has no predecessor epoch, so the clocked segments carry steps 2..4; newest first
+// reads 4,3,2 — the strip's own segment authority, reversed.
 test fn witness_issue_work_history_is_newest_first() -> Bool {
   let ledger = RoundsObserved { rounds: [
     RoundObservation { step: 1, input_tokens: 0, output_tokens: 10, epoch_ms: 0, files_changed: none, tool_calls: none },
@@ -1660,8 +1662,6 @@ test fn witness_issue_work_history_is_newest_first() -> Bool {
     RoundObservation { step: 3, input_tokens: 0, output_tokens: 30, epoch_ms: 9000, files_changed: none, tool_calls: none },
     RoundObservation { step: 4, input_tokens: 0, output_tokens: 40, epoch_ms: 12000, files_changed: Present { value: 2 }, tool_calls: Present { value: 1 } },
   ] }
-  // The first round has no predecessor epoch, so the clocked segments carry steps 2..4; newest
-  // first reads 4,3,2 — the strip's own segment authority, reversed.
   let segs = issue_work_history_rounds(ledger: ledger)
   map(segs, s => s.step) == [4, 3, 2]
     && count(issue_work_history_rounds(ledger: RoundsUnobserved { reason: "refused" as NonEmptyStr })) == 0

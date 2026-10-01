@@ -52,6 +52,7 @@ import gunbc.spark.arm_memory_fit {
   arm_memory_fit_experiment_plan,
   CacheCapacityCandidate, cache_capacity_candidate,
 }
+import v2.std.algebra { length }
 
 // ── THE WET RECEIPT BUNDLE OF 2026-09-25 ─────────────────────────────────────────────────────────
 //

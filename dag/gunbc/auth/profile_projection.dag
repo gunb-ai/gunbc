@@ -23,6 +23,7 @@ import extdeps.tools.sha256sum { sha256sum_stdin_digest_via_shell, Sha256FileDig
 import gunbc.principal_projection { PrincipalRef, principal_ref_label, principal_ref_parse_label }
 import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_auth_store_root, DashboardAuthProfiles }
 import gunbc.auth.session { AuthenticatedSession }
+import gunbc.rust_item_scan { ends_with }
 
 // THE PROFILE PROJECTION (Cut 4 plan, docs/plans/google-workspace-identity-convergence.md
 // C4.2): a durable, revisioned per-principal profile record — name, email, picture — with one

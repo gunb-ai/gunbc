@@ -26,6 +26,7 @@ import v2.std.node {
   LabeledChildHash,
   content_hash_of_children,
 }
+import v2.std.collection { map_lookup }
 
 // WHY A NODE IS STORED DECOMPOSED RATHER THAN WHOLE, which is the whole point of the slice and not
 // an implementation preference. Storing each node as (kind, [(label, child identity)]) is what makes
@@ -495,7 +496,7 @@ type OrderAcc {
 }
 
 fn emitted_holds(acc: OrderAcc, identity: ObjectId) -> Bool {
-  match map_get(acc.held, key: identity.digest as String) {
+  match map_lookup(m: acc.held, key: identity.digest as String) {
     Present { value: _ } => true
     Absent => false
   }
@@ -590,7 +591,7 @@ fn store_object_index(store: ObjectStore) -> Map<String, ScmObject> {
 }
 
 fn find_object_via(index: Map<String, ScmObject>, identity: ObjectId) -> ScmObject? {
-  map_get(index, key: identity.digest as String)
+  map_lookup(m: index, key: identity.digest as String)
 }
 
 // THE KIND MATCH IS ONE AUTHORITY, PARAMETERIZED BY THE LOOKUP RATHER THAN THE STORE WALK. The
@@ -1135,7 +1136,7 @@ fn store_authored_sources_batch(store: ObjectStore, texts: List<String>) -> Sour
             locator: authored_source_identity(content: content),
           }
           let key = reference.locator.digest as String
-          match map_get(acc.seen, key: key) {
+          match map_lookup(m: acc.seen, key: key) {
             Present { value: _ } =>
               SourceStoreBatchAcc {
                 seen: acc.seen,

@@ -38,6 +38,7 @@ import extdeps.vllm.kv_layout {
   plan_admission_blocks_at_length,
   resolved_kv_layout_from_plan,
 }
+import v2.std.algebra { length }
 
 // The group A head's own two startup lines, 2026-09-05T20:43:56Z. A refused admission is a red
 // fixture, not a second guess: the nested token_count(0) substitute and the unguarded self-call

@@ -5,6 +5,7 @@ import std.nat { Nat, nat_range_inclusive }
 import std.measure { TokenCount, token_count, token_count_value, BasisPoint }
 import extdeps.vllm.engine_args { VllmPrefixCachingRequest, VllmKvCacheDtypeRequest, VllmEngramConfigRequest }
 import gunbc.spark.serving_arm { ServingLaunchProfile, serving_launch_profile }
+import v2.std.algebra { length }
 
 // ── THE SERVICE OBLIGATION IS A SEAT POPULATION, NOT A POOL SIZE ────────────────────────────────
 //

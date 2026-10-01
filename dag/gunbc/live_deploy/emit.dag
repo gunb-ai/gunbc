@@ -124,7 +124,7 @@ import gunbc.live_deploy.slice_bounds {
 import gunbc.fabric_storage_placement { fabric_storage_door_socket }
 import gunbc.live_deploy.spec {
   deployment_slice_unit_name, deployment_slice_unit_path,
-  deployment_fabric_storage_unit_name, deployment_fabric_storage_serve_endpoint,
+  deployment_fabric_storage_unit_name, deployment_fabric_storage_serve_endpoint, deployment_approval_broker_front_door_endpoints,
   gunbc_approval_broker_unit_name, gunbc_approval_broker_unit_path,
   deployment_owns_the_host_approval_broker,
   gunbc_approval_broker_slice_unit_name, gunbc_approval_broker_slice_unit_path,
@@ -135,7 +135,7 @@ import gunbc.live_deploy.spec {
   EnsuredSubject, EnsuredPackage, EnsuredHostDirectory, EnsuredManagedHostDirectory, ensured_subject_identity,
   deployment_provider_state_step,
   DeploymentArtifactStep,
-  ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot, SystemdUnit, BeltTimerUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperTimerUnit, FabricStorageServeUnit, FabricStorageServeMapping,
+  ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot, SystemdUnit, BeltTimerUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperTimerUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor,
   deployment_belt_service_unit_name,
   deployment_tree_remote_unit_name,
   deployment_belt_timer_unit_name,
@@ -1696,9 +1696,21 @@ fn deploy_memory_cap_apply_steps(
 // apply overwrote the host's broker unit to point at the lab tree and restarted it, killing
 // production's broker. The steps are now CONSTRUCTED from the ownership predicate rather than
 // guarded after the fact: a non-owner produces an empty list, so there is no write to skip.
+//
+// THE UNIT AND ITS RELEASE ARE ONE FACT, SO THEY ARE ONE STEP LIST. The unit's ExecStart names the
+// per-candidate release locus (gunbc.live_deploy.release_locus approval_broker_release_binary_path),
+// and only approval_broker_dark_install_release_steps populates it. When the ordinary apply wrote
+// the unit without them, a dashboard_deploy at a revision the dark install never ran (the 2026-09-29
+// rollback to 361db90) pointed the broker at a directory that did not exist: status=203/EXEC on
+// every restart, and the device routes unreachable with nothing but a crashed unit to say so. So
+// the release install is constructed INTO the unit write rather than left for a second pipeline to
+// remember.
 fn apply_approval_broker_unit_write_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
   if deployment_owns_the_host_approval_broker(spec: spec) {
-    approval_broker_unit_write_steps_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port)
+    concat(
+      approval_broker_dark_install_release_steps(spec: spec, revision: revision),
+      approval_broker_unit_write_steps_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port),
+    )
   } else {
     []
   }
@@ -2798,6 +2810,10 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
         argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: deployment_fabric_storage_serve_endpoint())),
       )),
     ]
+    ApprovalBrokerFrontDoor => map(
+      deployment_approval_broker_front_door_endpoints(),
+      e => deploy_raw(command: shell_privileged_command_text_of_argv(argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: e)))),
+    )
     DeployedTreeRemoteUnit => [
       apply_tree_remote_unit_write_step(spec: spec),
       deploy_raw(command: deploy_stage_install_command(
@@ -2846,6 +2862,10 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
         argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: deployment_fabric_storage_serve_endpoint())),
       )),
     ]
+    ApprovalBrokerFrontDoor => map(
+      deployment_approval_broker_front_door_endpoints(),
+      e => deploy_raw(command: shell_privileged_command_text_of_argv(argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: e)))),
+    )
     FabricStorageServeUnit => concat(
       systemctl_disable_now_if_present_steps(unit: deployment_fabric_storage_unit_name(names: spec.names), privileged: true),
       [
@@ -3218,10 +3238,7 @@ fn approval_broker_dark_install_intent(
     steps: concat(
       concat(
         [deploy_raw(command: deploy_shell_strict_options_command), deploy_stage_directory_let_step()],
-        concat(
-          approval_broker_dark_install_release_steps(spec: spec, revision: revision),
-          apply_approval_broker_unit_write_steps(spec: spec, revision: revision),
-        ),
+        apply_approval_broker_unit_write_steps(spec: spec, revision: revision),
       ),
       concat([deploy_effect(inv: systemctl_daemon_reload_effect())], approval_broker_lifecycle_steps(spec: spec)),
     ),

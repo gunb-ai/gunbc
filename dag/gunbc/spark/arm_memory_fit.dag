@@ -1,6 +1,7 @@
 module gunbc.spark.arm_memory_fit
 
 import std.types { Bool, Int, String, NonEmptyStr, List }
+import std.algebra { FreeMonoid }
 import std.nat { Nat, nat_range_inclusive }
 import v2.std.optional { Present, Absent }
 import std.measure {
@@ -50,6 +51,7 @@ import gunbc.spark.serving_capacity_intent {
   intent_max_active_sequences, intent_max_single_sequence_tokens,
   ServingCapacityIntentAdmitted, ServingCapacityIntentRefused,
 }
+import v2.std.algebra { any, filter, length }
 
 // ── WHAT THIS MODULE IS ─────────────────────────────────────────────────────────────────────────
 //
@@ -1576,7 +1578,7 @@ fn receipt_text_names_identity(class: ArmMeasurementClass, ckpt: ServingCheckpoi
     && string_contains(s: m.receipt as String, pattern: serving_topology_wire(t: tp) as String)
 }
 
-fn receipt_pair_count(receipts: List<ArmComponentReceipt>, rank: Nat, component: ArmMemoryComponent) -> Nat {
+fn receipt_pair_count(receipts: FreeMonoid<ArmComponentReceipt>, rank: Nat, component: ArmMemoryComponent) -> Nat {
   count(filter(receipts, r => r.rank == rank && r.component == component))
 }
 
@@ -1606,7 +1608,7 @@ fn arm_memory_fit_subject_with_receipts(
   requested_profile: ServingLaunchProfile,
   pool: ArmPoolBound,
   deductions: ArmSupplyDeductions,
-  receipts: List<ArmComponentReceipt>,
+  receipts: FreeMonoid<ArmComponentReceipt>,
 ) -> ArmMemorySubjectMint {
   let rank_count = serving_topology_rank_count(t: topology)
   let open_ranks = map(nat_range_inclusive(lo: 1, hi: rank_count), i => open_rank_demand(rank: i - 1))
