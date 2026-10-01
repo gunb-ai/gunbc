@@ -3,6 +3,8 @@ module gunbc.typed_graph_exclusive_bytes
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { ByteSize, byte_size, byte_size_count, MeasureSubtraction, MeasureDifference, MeasureSubtrahendExceedsMinuend, measure_sub, Memory, One }
 import std.checked_arithmetic { nat_magnitude }
+import std.dissolution { DissolutionCondition }
+import gunbc.floor_demand { floor_beat_reading_primitive_boundary }
 
 // WHAT A REMOVAL SAVES, DECIDED HERE; THE HOST ONLY READS THE ALLOCATOR. The leave-one-out reading
 // (//gunbc/instruments:typed-graph-exclusive-bytes and its -floor-subject row) resolves a fresh
@@ -13,8 +15,16 @@ import std.checked_arithmetic { nat_magnitude }
 // gunbc.floor_demand floor_phase_attribution decides what the heartbeat's counters mean.
 //
 // Why EXCLUSIVE and not the sequential split: a class freed after others is credited every node it
-// shared with them. Read as savings, that credited emit_graph_info 4.06 GB at #12381 against a
-// measured -0.07 GB (gunbc#12832) and interface 5.24 GB against 0.12 GB exclusive.
+// shared with them, so gunbc#12774's sequential `typed_graph_byte_attribution` over-credits late
+// classes. //gunbc/instruments:typed-graph-exclusive-bytes re-derives each class's exclusive bytes;
+// gunbc#12832's floor-memory-qualification A/B is the case where the sequential figure misled.
+//
+// THE THREE ALLOCATOR READINGS ARE BYTE COUNTS ON BARE Int FOR THE SAME REASON AS THE HEARTBEAT'S:
+// the host cannot construct a std.measure value as an argument. The debt and its trigger are ONE
+// fact, so this module consumes gunbc.floor_demand's row rather than restating it; the lift to
+// ByteSize happens once, in class_exclusive_of, after negative readings refuse.
+data typed_graph_class_reading_primitive_boundary: DissolutionCondition = floor_beat_reading_primitive_boundary
+
 type TypedGraphClassReading {
   class: NonEmptyStr
   modules: Int
