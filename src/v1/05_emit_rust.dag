@@ -650,6 +650,25 @@ fn rust_opaque_kernel_alias_carrier(name: String) -> String? {
   }
 }
 
+// AN OPAQUE DECLARATION WITH AN EXACT REALIZATION ROW IS REALIZED BY THAT ROW, not by a phantom
+// struct. gunbc.rust_source_type_bindings keys its rows by declaration, and the phantom struct
+// ignored them: v2.std.node String (the kernel host text, gunbc#12760) was emitted as
+// `pub struct String(PhantomData)`, so the kernel's bare `String` render inside that module meant
+// the struct (E0308 at symbol_lexeme). The rule is general and declaration-keyed. Any opaque
+// declaration with a row takes the kernel-alias route: `pub type X = <row spelling>`.
+// rust_exact_binding_spelling renders an ambiguous row, or a row with no realization, as a located
+// compile_error!, so there is no silent choice. The phantom struct stays only where no row exists.
+// Ruled by deep-bee-18 (2026-09-30); admitted under gunbc.v1_maintenance_standing v1_seed_standing
+// because it serves the v2 self-host (the emitted compiler closure must build).
+fn rust_opaque_declaration_has_exact_row(module_path: String, name: String) -> Bool {
+  match rust_lookup_exact_binding(source: Present { value: decl_ref(module_path: module_path, decl_name: name) }) {
+    ExactBindingAbsent => false
+    ExactSourceIdentityUnavailable { cause: _ } => false
+    ResolvedExactBinding { binding: _ } => true
+    ExactBindingAmbiguous { candidate_count: _ } => true
+  }
+}
+
 fn rust_opaque_kernel_alias_type_decl(name: String, module_path: String) -> String {
   let carrier = match rust_exact_binding_spelling(source: Present { value: decl_ref(module_path: module_path, decl_name: name) }, grounding: true) {
     Present { value: exact } => exact
@@ -6362,7 +6381,7 @@ fn type_item_has_rust_nominal_shell_authority(item: Node, item_text: String, mod
   } else if is_type_alias_item(item: item, source_indices: source_indices) {
     true
   } else if is_type_decl_item(item: item, source_indices: source_indices) {
-    if (item.params |> count) == 0 && rust_opaque_kernel_alias_type_eligible(name: item_text) {
+    if (item.params |> count) == 0 && (rust_opaque_kernel_alias_type_eligible(name: item_text) || rust_opaque_declaration_has_exact_row(module_path: module_name, name: item_text)) {
       true
     } else if (item.params |> count) > 0 {
       if is_parametric_opaque_type_decl_item(item: item, source_indices: source_indices) {
@@ -7404,7 +7423,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
         emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: data_items, module_items: module_items, imports: imports)
       } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
 
-        if (item.params |> count) == 0 && rust_opaque_kernel_alias_type_eligible(name: item_text) {
+        if (item.params |> count) == 0 && (rust_opaque_kernel_alias_type_eligible(name: item_text) || rust_opaque_declaration_has_exact_row(module_path: module_name, name: item_text)) {
           rust_opaque_kernel_alias_type_decl(name: item_text, module_path: module_name)
         } else if is_zero_param_self_referential_opaque_decl(item: item, source_indices: env.source_indices) {
           emit_zero_param_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, item_text), source_indices: env.source_indices)
@@ -7429,7 +7448,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
           }
         }
       } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
-        if (item.params |> count) == 0 && rust_opaque_kernel_alias_type_eligible(name: item_text) {
+        if (item.params |> count) == 0 && (rust_opaque_kernel_alias_type_eligible(name: item_text) || rust_opaque_declaration_has_exact_row(module_path: module_name, name: item_text)) {
           rust_opaque_kernel_alias_type_decl(name: item_text, module_path: module_name)
         } else {
 
