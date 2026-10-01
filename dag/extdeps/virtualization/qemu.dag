@@ -6,6 +6,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+import extdeps.os.ubuntu_ports_archive { UbuntuArchiveBinaryPackage }
 
 // QEMU IS AN INDEPENDENTLY VERSIONED UPSTREAM (qemu.org), so it owns its own extdeps module beside
 // extdeps.virtualization.firecracker rather than sharing a generic "vmm" hub (DESIGN 3, external
@@ -46,17 +47,15 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [qemu_noble_packages_authority],
 }
 
+// The installed_binary is the path INSIDE the package (its data member), not a claim about where a
+// host carries it: a consumer that extracts the archive under a root reads it at <root><path>.
 // THE INSTALLED IDENTITY IS A DIGEST, NOT A BANNER. A banner establishes what a binary REPORTS; the
 // sha256 of the file the package installs establishes WHICH bytes are there. Both were read
 // 2026-09-30 from the archive below after it matched the Packages index SHA256: dpkg-deb -x, then
 // sha256sum of usr/bin/qemu-system-aarch64, and the exact banner string the binary carries.
 type QemuDistributionBuild {
   upstream_version: NonEmptyStr
-  package: NonEmptyStr
-  package_version: NonEmptyStr
-  archive_arch: NonEmptyStr
-  archive_filename: NonEmptyStr
-  archive_sha256: NonEmptyStr
+  archive: UbuntuArchiveBinaryPackage
   installed_binary: FilePath
   installed_binary_sha256: NonEmptyStr
   version_banner: NonEmptyStr
@@ -64,11 +63,13 @@ type QemuDistributionBuild {
 
 data qemu_8_2_2_ubuntu_noble_arm64: QemuDistributionBuild = QemuDistributionBuild {
   upstream_version: "8.2.2",
-  package: "qemu-system-arm",
-  package_version: "1:8.2.2+ds-0ubuntu1.18",
-  archive_arch: "arm64",
-  archive_filename: "pool/main/q/qemu/qemu-system-arm_8.2.2+ds-0ubuntu1.18_arm64.deb",
-  archive_sha256: "3f7024459848a11bd171045da5d3c8f2e0a93e67e5651ab6b164f45bad954200",
+  archive: UbuntuArchiveBinaryPackage {
+    package: "qemu-system-arm",
+    version: "1:8.2.2+ds-0ubuntu1.18",
+    architecture: "arm64",
+    filename: "pool/main/q/qemu/qemu-system-arm_8.2.2+ds-0ubuntu1.18_arm64.deb",
+    sha256: "3f7024459848a11bd171045da5d3c8f2e0a93e67e5651ab6b164f45bad954200",
+  },
   installed_binary: "/usr/bin/qemu-system-aarch64",
   installed_binary_sha256: "e19e11bd054ccf0f3cfcea8e0acdcc4288de6abd2ed6c30f743092c362eb2673",
   version_banner: "QEMU emulator version 8.2.2 (Debian 1:8.2.2+ds-0ubuntu1.18)",

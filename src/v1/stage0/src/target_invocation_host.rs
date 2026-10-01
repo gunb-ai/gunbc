@@ -352,6 +352,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("dag-emit-real-grammar-round-trips"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/dag_emit_real_grammar_round_trips.dag",
+            },
+        ),
+        (
             instrument_label("evaluation-store-address-exact-head"),
             TargetProducer::EvaluationStoreAddressExactHead,
         ),
