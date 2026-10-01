@@ -1491,8 +1491,7 @@ fn resolve_atom_not_string_literal(ctx: ResolveContext, n: Node, identity: Symbo
       Accepted { value: found, diagnostics: pending } => match found {
         BoundInFrame { canonical: canonical, kind: kind } =>
           resolve_frame_bound_reference(ctx: ctx, n: n, canonical: canonical, kind: kind, pending: pending)
-        BoundAtRoot { canonical: _ } => resolved_atom_plain(o:
-          resolve_atom_declared(
+        BoundAtRoot { canonical: _ } => resolved_atom_plain(o: resolve_atom_declared(
             ctx: ctx,
             n: n,
             identity: identity,
