@@ -10967,27 +10967,9 @@ pub fn run_required_floor(
             }
         };
         let base_sha = diff_base.clone().unwrap_or_default();
-        let baseline_line = match v1_interpreter::run_in_context_with_args(
-            &verdict_frame,
-            "v2.workflow.required_floor.reach_baseline_ran_at_merge_base_line",
-            &[
-                (
-                    Some("main_sha".to_string()),
-                    v1_interpreter::str_value(&base_sha),
-                ),
-                (
-                    Some("cause".to_string()),
-                    v1_interpreter::str_value("no per-landing baseline store exists yet"),
-                ),
-            ],
-            false,
-        ) {
-            Ok(v1_interpreter::Value::Str(line)) => line.to_string(),
-            other => format!(
-                "baseline=unrendered ({})",
-                floor_value_shape(other.as_ref().ok())
-            ),
-        };
+        // THE BASELINE ARM THE RUN REPORTS IS THE ONE THAT HAPPENED: not-measured when the base
+        // side was not run, ran-at-merge-base when it was (review 73484).
+        let baseline_line = reach_baseline_line(&verdict_frame, blocking_budget_ms, &base_sha)?;
         match base_arm {
             Err(cause) => {
                 // THE HEAD SIDE IS STILL REPORTED, CLAIM BY CLAIM. These claims were executed at
@@ -16711,6 +16693,46 @@ fn declared_no_ci_wet_lane_population() -> &'static std::collections::HashSet<St
         .into_iter()
         .collect()
     })
+}
+
+/// THE BASELINE ARM THE RUN REPORTS IS THE ONE THAT HAPPENED (review 73484): `not-measured`
+/// when the base side is not run (report-only), `ran-at-merge-base` when it is. Rendered by
+/// `v2.workflow.required_floor` `baseline_standing_line`; this only chooses which arm happened.
+pub(crate) fn reach_baseline_line(
+    frame: &v1_interpreter::InterpContext,
+    blocking_budget_ms: u64,
+    base_sha: &str,
+) -> Result<String, String> {
+    let (function, args) = if blocking_budget_ms == 0 {
+        (
+            "v2.workflow.required_floor.reach_baseline_not_measured_line",
+            vec![(
+                Some("cause".to_string()),
+                v1_interpreter::str_value("reach_differential_standing is DifferentialReportOnly"),
+            )],
+        )
+    } else {
+        (
+            "v2.workflow.required_floor.reach_baseline_ran_at_merge_base_line",
+            vec![
+                (
+                    Some("main_sha".to_string()),
+                    v1_interpreter::str_value(base_sha),
+                ),
+                (
+                    Some("cause".to_string()),
+                    v1_interpreter::str_value("no per-landing baseline store exists yet"),
+                ),
+            ],
+        )
+    };
+    match v1_interpreter::run_in_context_with_args(frame, function, &args, false) {
+        Ok(v1_interpreter::Value::Str(line)) => Ok(line.to_string()),
+        other => Err(format!(
+            "{function} returned {}",
+            floor_value_shape(other.as_ref().ok())
+        )),
+    }
 }
 
 /// Run the base side of the reach differential: a detached worktree at `base`, this binary in

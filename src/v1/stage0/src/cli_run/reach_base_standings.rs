@@ -268,6 +268,36 @@ mod tests {
         }
     }
 
+    // REPORT-ONLY NEVER CLAIMS A BASE IT DID NOT RUN (review 73484). The line the floor prints
+    // under a zero blocking budget is the not-measured arm and never says ran-at-merge-base; under
+    // a positive budget it is the ran-at-merge-base arm. Both through the real model.
+    #[test]
+    fn report_only_output_never_says_the_base_ran() {
+        let root = process_workspace_root();
+        let roots: Vec<String> = default_source_roots()
+            .iter()
+            .map(|r| root.join(r).to_string_lossy().into_owned())
+            .collect();
+        let entry = root.join("src/v2/workflow/required_floor.dag");
+        let (graph, indices) =
+            resolve_entry_graph_shared(&roots, &entry.to_string_lossy()).expect("authority");
+        let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
+        let report_only =
+            super::super::required_floor_runner::reach_baseline_line(&ctx, 0, "abc").expect("line");
+        assert!(
+            report_only.starts_with("baseline=not-measured"),
+            "{report_only}"
+        );
+        assert!(!report_only.contains("ran-at-merge-base"), "{report_only}");
+        let blocking =
+            super::super::required_floor_runner::reach_baseline_line(&ctx, 60_000, "abc")
+                .expect("line");
+        assert!(
+            blocking.starts_with("baseline=missing-ran-at-merge-base main_sha=abc"),
+            "{blocking}"
+        );
+    }
+
     // THE CONTROL REVIEW 72143 ASKED FOR, through the real base producer and the real model: a
     // reached claim NEW at base that fails at head BLOCKS, a pass-to-fail regression BLOCKS, and a
     // claim red on both sides does not. The base side is a fixture tree; the head standings are the

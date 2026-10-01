@@ -13,6 +13,7 @@ import v2.workflow.required_floor {
   ReachVerdictRefused,
   reach_claim_verdict,
   reach_baseline_ran_at_merge_base_line,
+  reach_baseline_not_measured_line,
 }
 
 // ONLY A VERDICT THE CHANGE MOVED BLOCKS. Passed -> failed is the one regression (gunbc#12361's
@@ -59,4 +60,10 @@ test fn a_new_failing_reach_claim_blocks_through_the_host_wire() -> Bool {
 test fn the_baseline_line_names_the_merge_base_arm() -> Bool {
   reach_baseline_ran_at_merge_base_line(main_sha: "abc", cause: "no baseline store")
     == "baseline=missing-ran-at-merge-base main_sha=abc cause=no baseline store"
+}
+
+// A BASE THAT WAS NOT RUN IS NEVER RENDERED AS ONE THAT WAS (review 73484).
+test fn an_unmeasured_base_says_not_measured() -> Bool {
+  reach_baseline_not_measured_line(cause: "report-only")
+    == "baseline=not-measured cause=report-only"
 }
