@@ -124,7 +124,10 @@ carries a payload edge, and `v2.std.node_query` `named_child_lookup` searches on
 it cannot be used to read one.
 
 **Token separation.** Emit writes one space between adjacent tokens. This is **not** source-faithful
-layout: `module rt.x` comes back as `module rt . x`. Whitespace is a
+layout: `module rt.x` comes back as `module rt . x`. The one exception is layout the grammar
+itself requires. An `AfterLineBreak` row (gunbc#12773) matches only after a line break, so the walk
+yields `GrammarEmitLineBreak` before its element, and the dag spelling writes a newline there.
+A `RefuseOnMatch` row derives no tree, so backward it is an arm that never fits. Whitespace is a
 `TriviaRule`, so this cannot change the Node. Annotations (DESIGN §4c) are erased from the parse
 tree and are not emitted. A target that needs layout is a separate projection.
 

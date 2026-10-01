@@ -3162,9 +3162,15 @@ fn grammar_relation_row_forward_production_selection(
 //
 // The walk yields terminals, never text. Spelling them is the language's fact (its lex rules and its
 // value-carrying literal rows), so this fold stays generic over every grammar in the corpus.
+//
+// A LINE BREAK IS LAYOUT THE GRAMMAR REQUIRES, not a token: `AfterLineBreak` matches only where the
+// source breaks the line before its element, so emit must break the line there or re-ingest would
+// read a different tree. It is the one layout fact the walk yields; every other separator is the
+// language's choice.
 type GrammarEmitTerminal
   = GrammarEmitClassTerminal { token_class: Symbol, captured: Node }
   | GrammarEmitLexemeTerminal { token_class: Symbol, lexeme: Symbol }
+  | GrammarEmitLineBreak
 
 // Ordered choice backtracks only over an ARM THAT DOES NOT FIT. A stamp naming no production at all
 // fits no arm, so it is refused outright rather than retried, and the refusal keeps its own locus
@@ -3341,6 +3347,24 @@ fn grammar_emit_expr(index: GrammarEmitIndex, expr: GrammarExpr, node: Node) -> 
     Optional { element: e } => grammar_emit_optional(index: index, element: e, node: node)
     Repeat { element: e } => grammar_emit_repeat(index: index, element: e, node: node)
     Expect { element: e, reason: _ } => grammar_emit_expr(index: index, expr: e, node: node)
+    RefuseOnMatch { element: _, reason: _ } => grammar_emit_mismatch(reason: ^grammar_emit_refuse_on_match_derives_no_tree, at: node)
+    AfterLineBreak { element: e } => grammar_emit_after_line_break(index: index, element: e, node: node)
+  }
+}
+
+// A REFUSAL ROW DERIVES NO TREE (`RefuseOnMatch`), so backward it is an arm that never fits. A
+// line-break row yields the break before its element's tokens; an element that matched no token
+// needs no break.
+fn grammar_emit_after_line_break(index: GrammarEmitIndex, element: GrammarExpr, node: Node) -> GrammarEmitWalk {
+  match grammar_emit_expr(index: index, expr: element, node: node) {
+    GrammarEmitWalked { terminals: ts } =>
+      if is_empty(xs: ts) {
+        GrammarEmitWalked { terminals: ts }
+      } else {
+        GrammarEmitWalked { terminals: list_append(left: [GrammarEmitLineBreak], right: ts) }
+      }
+    GrammarEmitArmMismatch { diagnostic: d } => GrammarEmitArmMismatch { diagnostic: d }
+    GrammarEmitRefused { diagnostic: d } => GrammarEmitRefused { diagnostic: d }
   }
 }
 

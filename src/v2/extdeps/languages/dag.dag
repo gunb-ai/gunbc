@@ -24,6 +24,7 @@ import v2.std.parse_refusal_reason { DataValueMissingAfterEq, FnExpressionBodyMi
 import v2.std.grammar {
   GrammarEmitClassTerminal,
   GrammarEmitLexemeTerminal,
+  GrammarEmitLineBreak,
   GrammarEmitTerminal,
   grammar_emit_parse_tree,
   grammar_formal_terminal,
@@ -6986,33 +6987,46 @@ fn dag_emit_class_terminal_spelling(lex: LexRules, token_class: Symbol, captured
   }
 }
 
-fn dag_emit_terminal_spelling(lex: LexRules, terminal: GrammarEmitTerminal) -> Outcome<String> {
+fn dag_emit_token_spelling(lex: LexRules, terminal: GrammarEmitTerminal) -> Outcome<String> {
   match terminal {
     GrammarEmitClassTerminal { token_class: c, captured: n } => dag_emit_class_terminal_spelling(lex: lex, token_class: c, captured: n)
     GrammarEmitLexemeTerminal { token_class: _, lexeme: l } => outcome_accepted(value: symbol_lexeme(sym: l))
+    GrammarEmitLineBreak => outcome_accepted(value: "")
   }
 }
 
+// THE TEXT BUILT SO FAR, and whether the next token is to follow a line break the grammar requires.
+type DagEmitText {
+  text: String
+  break_pending: Bool
+}
+
 // Whitespace is trivia in dag_lex_rules, so one space between tokens cannot change the tree that is
-// read back. Layout is a projection over this text, not a fact of the emit.
-// The lexer is built once per emit and read by every terminal, never rebuilt per token.
-fn dag_emit_terminals_text(lex: LexRules, terminals: List<GrammarEmitTerminal>) -> Outcome<String> {
-  fold(
-    terminals,
-    init: outcome_accepted(value: ""),
-    f: fn(acc, t) {
+// read back. A line break is written only where the grammar requires one (GrammarEmitLineBreak).
+// Layout is otherwise a projection over this text, not a fact of the emit.
+fn dag_emit_text_step(lex: LexRules, acc: DagEmitText, t: GrammarEmitTerminal) -> Outcome<DagEmitText> {
+  match t {
+    GrammarEmitLineBreak => outcome_accepted(value: DagEmitText { text: acc.text, break_pending: true })
+    _ =>
       bind_outcome(
-        o: acc,
-        f: fn(text) {
-          bind_outcome(
-            o: dag_emit_terminal_spelling(lex: lex, terminal: t),
-            f: fn(spelled) {
-              if text == "" { outcome_accepted(value: spelled) } else { outcome_accepted(value: concat(text, concat(" ", spelled))) }
-            }
-          )
+        o: dag_emit_token_spelling(lex: lex, terminal: t),
+        f: fn(spelled) {
+          let separator = if acc.text == "" { "" } else if acc.break_pending { "\n" } else { " " }
+          outcome_accepted(value: DagEmitText { text: concat(acc.text, concat(separator, spelled)), break_pending: false })
         }
       )
-    }
+  }
+}
+
+// The lexer is built once per emit and read by every terminal, never rebuilt per token.
+fn dag_emit_terminals_text(lex: LexRules, terminals: List<GrammarEmitTerminal>) -> Outcome<String> {
+  bind_outcome(
+    o: fold(
+      terminals,
+      init: outcome_accepted(value: DagEmitText { text: "", break_pending: false }),
+      f: fn(acc, t) { bind_outcome(o: acc, f: fn(state) { dag_emit_text_step(lex: lex, acc: state, t: t) }) }
+    ),
+    f: fn(state) { outcome_accepted(value: state.text) }
   )
 }
 

@@ -13,7 +13,8 @@ import v2.extdeps.languages.dag {
 }
 import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
-import v2.std.grammar { Choice, GrammarProduction, GrammarRoot, Nonterminal, grammar_atom, grammar_expr_terminal, grammar_expr_terminal_lexeme }
+import v2.std.grammar { AfterLineBreak, GrammarExpr, Choice, GrammarProduction, GrammarRoot, Nonterminal, RefuseOnMatch, Sequence, grammar_atom, grammar_expr_terminal, grammar_expr_terminal_lexeme }
+import v2.std.parse_refusal_reason { DataValueMissingAfterEq }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, symbol_intern_lexeme }
@@ -139,5 +140,43 @@ test fn an_escaped_quoted_key_emits_escaped_holds() -> Bool {
   ei_key_emits(
     tree: ei_wrap(emitted: ^ei_key_emitted, captured: ei_wrap(emitted: ^ei_quoted_key_emitted, captured: dag_string_literal_node(value: "a\"b", occurrence_id: OccurrenceSynthetic))),
     expected: "\"a\\\"b\""
+  )
+}
+
+// LAYOUT THE GRAMMAR REQUIRES IS EMITTED, AND A REFUSAL ROW IS NEVER SELECTED. A one-production
+// grammar reads `a` then, after a line break, `b`; its tree must emit with the break, or re-ingest
+// would refuse the second token. A choice whose first arm is a `RefuseOnMatch` row emits through the
+// second arm, because a refusal row derives no tree.
+fn ei_single_production_root(expression: GrammarExpr) -> GrammarRoot {
+  GrammarRoot {
+    start: ^ei_layout,
+    productions: [GrammarProduction { name: ^ei_layout, expression: expression, emitted: grammar_atom(identity: ^ei_layout_emitted) }],
+    sync_tokens: []
+  }
+}
+
+fn ei_emits_under(root: GrammarRoot, captured: Node, expected: String) -> Bool {
+  match dag_emit_parse_tree_with_root(root: root, tree: ei_wrap(emitted: ^ei_layout_emitted, captured: captured)) {
+    Accepted { value: text, diagnostics: _ } => text == expected
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn a_required_line_break_is_emitted_as_one_holds() -> Bool {
+  ei_emits_under(
+    root: ei_single_production_root(expression: Sequence { left: grammar_expr_terminal_lexeme(token_class: ^dag_token_ident), right: AfterLineBreak { element: grammar_expr_terminal_lexeme(token_class: ^dag_token_ident) } }),
+    captured: ei_conj(children: [
+      ei_edge(name: ^grammar_sequence_left_node_projection, target: grammar_atom(identity: symbol_intern_lexeme(lexeme: "a"))),
+      ei_edge(name: ^grammar_sequence_right_node_projection, target: grammar_atom(identity: symbol_intern_lexeme(lexeme: "b")))
+    ]),
+    expected: "a\nb"
+  )
+}
+
+test fn a_refusal_row_is_never_selected_backward_holds() -> Bool {
+  ei_emits_under(
+    root: ei_single_production_root(expression: Choice { left: RefuseOnMatch { element: grammar_expr_terminal_lexeme(token_class: ^dag_token_ident), reason: DataValueMissingAfterEq }, right: grammar_expr_terminal_lexeme(token_class: ^dag_token_ident) }),
+    captured: grammar_atom(identity: symbol_intern_lexeme(lexeme: "x")),
+    expected: "x"
   )
 }
