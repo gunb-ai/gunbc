@@ -919,6 +919,16 @@ pub(crate) fn value_depth_guarded<R>(walk: impl FnOnce() -> R) -> R {
     stacker::maybe_grow(64 * 1024, 2 * 1024 * 1024, walk)
 }
 
+struct DebugEntries<'a>(Vec<(&'a Value, &'a Value)>);
+
+impl fmt::Debug for DebugEntries<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_map()
+            .entries(self.0.iter().map(|(k, v)| (*k, *v)))
+            .finish()
+    }
+}
+
 impl fmt::Debug for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         value_depth_guarded(|| match self {
@@ -928,7 +938,13 @@ impl fmt::Debug for Value {
             Value::Float(n) => f.debug_tuple("Float").field(n).finish(),
             Value::Str(s) => f.debug_tuple("Str").field(s).finish(),
             Value::List(items) => f.debug_tuple("List").field(items).finish(),
-            Value::Map(entries) => f.debug_tuple("Map").field(entries).finish(),
+            Value::Map(entries) => {
+                // Debug renders in the same canonical order as Display: a debug dump that
+                // differs per process is a host-order path too.
+                let ordered = canonical_entries(entries.iter().map(|(k, v)| (&k.key, v)).collect())
+                    .map_err(|_| fmt::Error)?;
+                f.debug_tuple("Map").field(&DebugEntries(ordered)).finish()
+            }
             Value::Set(members) => f.debug_tuple("Set").field(members).finish(),
             Value::Record { type_name, fields } => f
                 .debug_struct("Record")
@@ -976,12 +992,17 @@ impl fmt::Display for Value {
                 write!(f, "]")
             }
             Value::Map(entries) => {
+                // Canonical content order, never `HamtMap` iteration order (which is
+                // per-process RandomState). Keys are reflexive, so no key holds a closure and
+                // the order is total over every renderable map.
+                let ordered = canonical_entries(entries.iter().map(|(k, v)| (&k.key, v)).collect())
+                    .map_err(|_| fmt::Error)?;
                 write!(f, "{{")?;
-                for (i, (k, v)) in entries.iter().enumerate() {
+                for (i, (k, v)) in ordered.into_iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}: {}", k.key, v)?;
+                    write!(f, "{}: {}", k, v)?;
                 }
                 write!(f, "}}")
             }
@@ -1670,83 +1691,304 @@ enum PortableValue {
     },
 }
 
-/// A TOTAL ORDER over portable values that depends only on their content: variant rank, then
-/// payload; symbols by spelling, floats by IEEE 754-2019 §5.10 totalOrder (`f64::total_cmp`),
-/// sequences lexicographically. Used to put map
-/// entries in one order in every process.
-fn portable_value_cmp(a: &PortableValue, b: &PortableValue) -> std::cmp::Ordering {
-    use std::cmp::Ordering;
-    fn rank(v: &PortableValue) -> u8 {
-        match v {
-            PortableValue::Null => 0,
-            PortableValue::Unit => 1,
-            PortableValue::Bool(_) => 2,
-            PortableValue::Int(_) => 3,
-            PortableValue::Float(_) => 4,
-            PortableValue::Str(_) => 5,
-            PortableValue::List(_) => 6,
-            PortableValue::Map(_) => 7,
-            PortableValue::Set(_) => 8,
-            PortableValue::Record { .. } => 9,
-            PortableValue::Variant { .. } => 10,
+/// THE CANONICAL CONTENT ORDER -- the interpreter's realization of `std.algebra`
+/// `TotalOrder` over value content (docs/plans/canonical-content-order-draft.md). ONE
+/// comparator serves every caller: map rendering (`Display`/`Debug` of `Value::Map`), the
+/// portable encoding's map-entry order (`portable_value_from_ctx_at`), and the emitted-agreeing
+/// sorts (`sorted_map_keys`, `sort_by`, through `admit_emitted_ord_keys`). A
+/// second comparator beside it would be a second order (DESIGN section 3), so both carriers
+/// (`Value`, `PortableValue`) expose a borrowed `ContentView` and nothing else.
+///
+/// * Kind rank is `ContentKind`'s DECLARATION order (derived `Ord`), which is
+///   `PortableValue`'s variant order -- never a hand list beside it.
+/// * Within a kind: Bool false<true; Int numeric; Float by IEEE 754-2019 section 5.10
+///   totalOrder (`f64::total_cmp`); Str byte-lexicographic; List lexicographic then length;
+///   Map lexicographic over its entries in canonical key order, comparing (key, value); Set
+///   lexicographic over its (already ordered) member strings; Record by type spelling then
+///   fields in spelling order as (name, value); Variant by type spelling, arm spelling, then
+///   full payload as a record. A function value ranks last, by name.
+/// * SPELLING IS AN ORDERING STAND-IN, NEVER IDENTITY: `Value::Variant` carries no owner
+///   identity (gunbc.guarantee_stall.variant_owner_identity_stall, NS-0B). Because the
+///   payload is compared after the spelling, two keys tie only when they render to identical
+///   bytes, so tie order is unobservable in output. Declared drop:
+///   gunbc.rung_drop canonical_order_variant_spelling_stand_in.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub(crate) enum ContentKind {
+    Null,
+    Unit,
+    Bool,
+    Int,
+    Float,
+    Str,
+    List,
+    Map,
+    Set,
+    Record,
+    Variant,
+    Function,
+}
+
+pub(crate) enum ContentView<'a, T> {
+    Null,
+    Unit,
+    Bool(bool),
+    Int(i64),
+    Float(f64),
+    Str(&'a str),
+    List(Vec<&'a T>),
+    Map(Vec<(&'a T, &'a T)>),
+    Set(Vec<&'a str>),
+    Record {
+        type_name: &'static str,
+        fields: Vec<(&'static str, &'a T)>,
+    },
+    Variant {
+        type_name: &'static str,
+        variant_name: &'static str,
+        fields: Vec<(&'static str, &'a T)>,
+    },
+    Function(&'a str),
+}
+
+impl<T> ContentView<'_, T> {
+    fn kind(&self) -> ContentKind {
+        match self {
+            ContentView::Null => ContentKind::Null,
+            ContentView::Unit => ContentKind::Unit,
+            ContentView::Bool(_) => ContentKind::Bool,
+            ContentView::Int(_) => ContentKind::Int,
+            ContentView::Float(_) => ContentKind::Float,
+            ContentView::Str(_) => ContentKind::Str,
+            ContentView::List(_) => ContentKind::List,
+            ContentView::Map(_) => ContentKind::Map,
+            ContentView::Set(_) => ContentKind::Set,
+            ContentView::Record { .. } => ContentKind::Record,
+            ContentView::Variant { .. } => ContentKind::Variant,
+            ContentView::Function(_) => ContentKind::Function,
         }
     }
-    fn seq<T>(
-        xs: &[T],
-        ys: &[T],
-        cmp: impl Fn(&T, &T) -> std::cmp::Ordering,
-    ) -> std::cmp::Ordering {
-        for (x, y) in xs.iter().zip(ys) {
-            let o = cmp(x, y);
-            if o != std::cmp::Ordering::Equal {
-                return o;
+}
+
+/// A carrier whose content the canonical order reads. `None` = the value has no content
+/// order (a closure), which every caller REFUSES rather than placing.
+pub(crate) trait CanonicalContent: Sized {
+    fn content_view(&self) -> Option<ContentView<'_, Self>>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct NoContentOrder {
+    pub(crate) kind_label: &'static str,
+}
+
+fn seq_cmp<T>(
+    xs: &[T],
+    ys: &[T],
+    cmp: impl Fn(&T, &T) -> Result<std::cmp::Ordering, NoContentOrder>,
+) -> Result<std::cmp::Ordering, NoContentOrder> {
+    for (x, y) in xs.iter().zip(ys) {
+        let o = cmp(x, y)?;
+        if o != std::cmp::Ordering::Equal {
+            return Ok(o);
+        }
+    }
+    Ok(xs.len().cmp(&ys.len()))
+}
+
+/// Map entries in canonical key order (then value): the one entry order rendering and
+/// encoding both use.
+pub(crate) fn canonical_entries<'a, T: CanonicalContent>(
+    mut entries: Vec<(&'a T, &'a T)>,
+) -> Result<Vec<(&'a T, &'a T)>, NoContentOrder> {
+    let mut err = None;
+    entries.sort_by(|(k, v), (l, w)| {
+        match canonical_content_cmp(*k, *l).and_then(|o| {
+            if o == std::cmp::Ordering::Equal {
+                canonical_content_cmp(*v, *w)
+            } else {
+                Ok(o)
+            }
+        }) {
+            Ok(o) => o,
+            Err(e) => {
+                err.get_or_insert(e);
+                std::cmp::Ordering::Equal
             }
         }
-        xs.len().cmp(&ys.len())
+    });
+    match err {
+        Some(e) => Err(e),
+        None => Ok(entries),
     }
-    let fields = |x: &[(Symbol, PortableValue)], y: &[(Symbol, PortableValue)]| {
-        seq(x, y, |(n, v), (m, w)| {
-            n.0.cmp(m.0).then_with(|| portable_value_cmp(v, w))
-        })
-    };
-    match (a, b) {
-        (PortableValue::Bool(x), PortableValue::Bool(y)) => x.cmp(y),
-        (PortableValue::Int(x), PortableValue::Int(y)) => x.cmp(y),
-        (PortableValue::Float(x), PortableValue::Float(y)) => x.total_cmp(y),
-        (PortableValue::Str(x), PortableValue::Str(y)) => x.as_ref().cmp(y.as_ref()),
-        (PortableValue::List(x), PortableValue::List(y)) => seq(x, y, portable_value_cmp),
-        (PortableValue::Map(x), PortableValue::Map(y)) => seq(x, y, |(k, v), (l, w)| {
-            portable_value_cmp(k, l).then_with(|| portable_value_cmp(v, w))
-        }),
-        (PortableValue::Set(x), PortableValue::Set(y)) => x.iter().cmp(y.iter()),
-        (
-            PortableValue::Record {
-                type_name: t,
-                fields: f,
-            },
-            PortableValue::Record {
-                type_name: u,
-                fields: g,
-            },
-        ) => t.0.cmp(u.0).then_with(|| fields(f, g)),
-        (
-            PortableValue::Variant {
-                type_name: t,
-                variant_name: v,
-                fields: f,
-            },
-            PortableValue::Variant {
-                type_name: u,
-                variant_name: w,
-                fields: g,
-            },
-        ) => {
-            t.0.cmp(u.0)
-                .then_with(|| v.0.cmp(w.0))
-                .then_with(|| fields(f, g))
+}
+
+fn canonical_field_order<'a, T>(
+    mut fields: Vec<(&'static str, &'a T)>,
+) -> Vec<(&'static str, &'a T)> {
+    fields.sort_by(|a, b| a.0.cmp(b.0));
+    fields
+}
+
+pub(crate) fn canonical_content_cmp<T: CanonicalContent>(
+    a: &T,
+    b: &T,
+) -> Result<std::cmp::Ordering, NoContentOrder> {
+    use std::cmp::Ordering;
+    value_depth_guarded(|| {
+        let (x, y) = match (a.content_view(), b.content_view()) {
+            (Some(x), Some(y)) => (x, y),
+            _ => {
+                return Err(NoContentOrder {
+                    kind_label: "closure",
+                })
+            }
+        };
+        let fields = |f: Vec<(&'static str, &T)>, g: Vec<(&'static str, &T)>| {
+            seq_cmp(
+                &canonical_field_order(f),
+                &canonical_field_order(g),
+                |(n, v), (m, w)| {
+                    Ok(n.cmp(m)).and_then(|o| {
+                        if o == Ordering::Equal {
+                            canonical_content_cmp(*v, *w)
+                        } else {
+                            Ok(o)
+                        }
+                    })
+                },
+            )
+        };
+        let kx = x.kind();
+        let ky = y.kind();
+        if kx != ky {
+            return Ok(kx.cmp(&ky));
         }
-        _ => rank(a).cmp(&rank(b)).then(Ordering::Equal),
+        match (x, y) {
+            (ContentView::Null, ContentView::Null) | (ContentView::Unit, ContentView::Unit) => {
+                Ok(Ordering::Equal)
+            }
+            (ContentView::Bool(p), ContentView::Bool(q)) => Ok(p.cmp(&q)),
+            (ContentView::Int(p), ContentView::Int(q)) => Ok(p.cmp(&q)),
+            (ContentView::Float(p), ContentView::Float(q)) => Ok(p.total_cmp(&q)),
+            (ContentView::Str(p), ContentView::Str(q)) => Ok(p.cmp(q)),
+            (ContentView::List(p), ContentView::List(q)) => {
+                seq_cmp(&p, &q, |v, w| canonical_content_cmp(*v, *w))
+            }
+            (ContentView::Map(p), ContentView::Map(q)) => {
+                let p = canonical_entries(p)?;
+                let q = canonical_entries(q)?;
+                seq_cmp(&p, &q, |(k, v), (l, w)| {
+                    canonical_content_cmp(*k, *l).and_then(|o| {
+                        if o == Ordering::Equal {
+                            canonical_content_cmp(*v, *w)
+                        } else {
+                            Ok(o)
+                        }
+                    })
+                })
+            }
+            (ContentView::Set(p), ContentView::Set(q)) => Ok(p.cmp(&q)),
+            (
+                ContentView::Record {
+                    type_name: t,
+                    fields: f,
+                },
+                ContentView::Record {
+                    type_name: u,
+                    fields: g,
+                },
+            ) => match t.cmp(u) {
+                Ordering::Equal => fields(f, g),
+                o => Ok(o),
+            },
+            (
+                ContentView::Variant {
+                    type_name: t,
+                    variant_name: v,
+                    fields: f,
+                },
+                ContentView::Variant {
+                    type_name: u,
+                    variant_name: w,
+                    fields: g,
+                },
+            ) => match t.cmp(u).then_with(|| v.cmp(w)) {
+                Ordering::Equal => fields(f, g),
+                o => Ok(o),
+            },
+            (ContentView::Function(p), ContentView::Function(q)) => Ok(p.cmp(q)),
+            _ => unreachable!("kinds were compared equal above"),
+        }
+    })
+}
+
+impl CanonicalContent for PortableValue {
+    fn content_view(&self) -> Option<ContentView<'_, Self>> {
+        Some(match self {
+            PortableValue::Null => ContentView::Null,
+            PortableValue::Unit => ContentView::Unit,
+            PortableValue::Bool(b) => ContentView::Bool(*b),
+            PortableValue::Int(n) => ContentView::Int(*n),
+            PortableValue::Float(f) => ContentView::Float(*f),
+            PortableValue::Str(s) => ContentView::Str(s),
+            PortableValue::List(items) => ContentView::List(items.iter().collect()),
+            PortableValue::Map(entries) => {
+                ContentView::Map(entries.iter().map(|(k, v)| (k, v)).collect())
+            }
+            PortableValue::Set(members) => {
+                ContentView::Set(members.iter().map(|m| m.as_str()).collect())
+            }
+            PortableValue::Record { type_name, fields } => ContentView::Record {
+                type_name: type_name.0,
+                fields: fields.iter().map(|(n, v)| (n.0, v)).collect(),
+            },
+            PortableValue::Variant {
+                type_name,
+                variant_name,
+                fields,
+            } => ContentView::Variant {
+                type_name: type_name.0,
+                variant_name: variant_name.0,
+                fields: fields.iter().map(|(n, v)| (n.0, v)).collect(),
+            },
+        })
     }
+}
+
+impl CanonicalContent for Value {
+    fn content_view(&self) -> Option<ContentView<'_, Self>> {
+        Some(match self {
+            Value::Null => ContentView::Null,
+            Value::Unit => ContentView::Unit,
+            Value::Bool(b) => ContentView::Bool(*b),
+            Value::Int(n) => ContentView::Int(*n),
+            Value::Float(f) => ContentView::Float(*f),
+            Value::Str(s) => ContentView::Str(s.as_ref()),
+            Value::List(items) => ContentView::List(items.iter().collect()),
+            Value::Map(m) => ContentView::Map(m.iter().map(|(k, v)| (&k.key, v)).collect()),
+            Value::Set(members) => ContentView::Set(members.iter().map(|m| m.as_str()).collect()),
+            Value::Record { type_name, fields } => ContentView::Record {
+                type_name: type_name.0,
+                fields: fields.iter().map(|(n, v)| (n.0, v)).collect(),
+            },
+            Value::Variant {
+                type_name,
+                variant_name,
+                fields,
+            } => ContentView::Variant {
+                type_name: type_name.0,
+                variant_name: variant_name.0,
+                fields: fields.iter().map(|(n, v)| (n.0, v)).collect(),
+            },
+            Value::Fn { node } => ContentView::Function(node.name.as_str()),
+            Value::Closure { .. } => return None,
+        })
+    }
+}
+
+/// The portable encoding's order: the canonical content order. Total over `PortableValue`
+/// (it has no closure inhabitant), so the refusal arm is unreachable here by construction.
+fn portable_value_cmp(a: &PortableValue, b: &PortableValue) -> std::cmp::Ordering {
+    canonical_content_cmp(a, b).expect("PortableValue has no inhabitant without a content order")
 }
 
 /// Structural equality over portable values — the cross-claim tier's verification relation.
@@ -12439,7 +12681,10 @@ macro_rules! v1_algebra_method_arms {
                             Ok((key, item.clone()))
                         })
                         .collect::<InterpResult<_>>()?;
-                    keyed.sort_by(|(ka, _), (kb, _)| cmp_values(ka, kb));
+                    admit_emitted_ord_keys(keyed.iter().map(|(k, _)| k), "sort_by")?;
+                    keyed.sort_by(|(ka, _), (kb, _)| {
+                        canonical_content_cmp(ka, kb).expect("admitted scalar keys are ordered")
+                    });
                     Ok(list_value(
                         keyed.into_iter().map(|(_, v)| v).collect::<Vec<_>>(),
                     ))
@@ -24798,17 +25043,31 @@ fn expect_int(val: Option<&Value>, context: &str) -> InterpResult<i64> {
 /// deterministic, so a silently-different permutation is a plausible, stable, WRONG artifact
 /// (DESIGN.md 5 -- no fabricated plausible output).
 ///
-/// SO `cmp_values` IS DELIBERATELY NOT REUSED HERE. It answers `Ordering::Equal` for every
-/// pair it does not recognise -- mismatched kinds, records, variants, lists -- exactly the
-/// silent permutation above: a never-refusing comparator produces *an* order for key sets
-/// the emitted realization cannot represent, and `sort_by` with a non-total-order comparator
-/// leaves those keys wherever map iteration put them, so the answer is not even stable across
-/// runs. Refusing is the only honest arm. (`sort_by`'s own use of `cmp_values` is a separate
-/// caller contract, untouched here.)
+/// `cmp_values` -- which answered `Ordering::Equal` for every pair it did not recognise, an
+/// absorbing fallback that let `sort_by` silently disagree with the emitted `derive(Ord)` --
+/// was deleted in favour of the canonical content order behind `admit_emitted_ord_keys`.
 fn sorted_map_keys_in_emitted_order(
     keys: Vec<Value>,
     what: &str,
 ) -> Result<Vec<Value>, InterpError> {
+    admit_emitted_ord_keys(keys.iter(), what)?;
+    let mut keys = keys;
+    // Admitted kinds are homogeneous Str/Int/Bool, on which the canonical content order IS
+    // the emitted `Ord` (byte-lexicographic, numeric, false<true) -- one order, not a copy.
+    keys.sort_by(|a, b| canonical_content_cmp(a, b).expect("admitted scalar keys are ordered"));
+    Ok(keys)
+}
+
+/// The ONE admission for an interpreter sort that must agree with an emitted `K: Ord` sort
+/// (`sorted_map_keys`, `sort_by`): homogeneous Str, Int or Bool keys, whose emitted `Ord` is
+/// proven identical to the canonical content order. Every other kind refuses, typed: the
+/// emitted order there is a `derive(Ord)` in DECLARATION order (or does not compile, for
+/// `f64`), which the canonical spelling order does not reproduce, so any order here would be
+/// a silent disagreement between the two realizations (DESIGN section 5).
+fn admit_emitted_ord_keys<'a>(
+    keys: impl IntoIterator<Item = &'a Value>,
+    what: &str,
+) -> Result<(), InterpError> {
     #[derive(PartialEq, Eq)]
     enum KeyKind {
         Str,
@@ -24825,11 +25084,11 @@ fn sorted_map_keys_in_emitted_order(
     }
 
     let mut kind: Option<KeyKind> = None;
-    for k in &keys {
+    for k in keys {
         let this = kind_of(k).ok_or_else(|| InterpError::TypeError {
             msg: format!(
-                "{what}: map key of type '{}' has no emitted-Rust ordering to agree with \
-                 (emitted `sorted_map_keys<K: Ord>` orders by K's own Ord; only Str, Int and \
+                "{what}: key of type '{}' has no emitted-Rust ordering to agree with \
+                 (the emitted sort orders by K's own Ord; only Str, Int and \
                  Bool keys are proven to order identically in both realizations)",
                 k.type_label()
             ),
@@ -24840,34 +25099,15 @@ fn sorted_map_keys_in_emitted_order(
             Some(_) => {
                 return Err(InterpError::TypeError {
                     msg: format!(
-                        "{what}: map has keys of more than one type, so there is no emitted \
-                         `HashMap<K, V>` key ordering to agree with"
+                        "{what}: keys of more than one type, so there is no single emitted \
+                         `K: Ord` ordering to agree with"
                     ),
                 })
             }
         }
     }
 
-    let mut keys = keys;
-    keys.sort_by(|a, b| match (a, b) {
-        // `str`'s Ord is byte-lexicographic, and so is `String`'s in the emitted realization.
-        (Value::Str(x), Value::Str(y)) => x.as_ref().cmp(y.as_ref()),
-        (Value::Int(x), Value::Int(y)) => x.cmp(y),
-        (Value::Bool(x), Value::Bool(y)) => x.cmp(y),
-        // Unreachable: the loop above refused every other kind and every mixed key set.
-        _ => std::cmp::Ordering::Equal,
-    });
-    Ok(keys)
-}
-
-fn cmp_values(a: &Value, b: &Value) -> std::cmp::Ordering {
-    match (a, b) {
-        (Value::Int(x), Value::Int(y)) => x.cmp(y),
-        (Value::Float(x), Value::Float(y)) => x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
-        (Value::Str(x), Value::Str(y)) => x.cmp(y),
-        (Value::Bool(x), Value::Bool(y)) => x.cmp(y),
-        _ => std::cmp::Ordering::Equal,
-    }
+    Ok(())
 }
 
 #[cfg(test)]
