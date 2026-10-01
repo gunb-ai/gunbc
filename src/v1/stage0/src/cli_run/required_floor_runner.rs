@@ -3421,7 +3421,7 @@ fn local_repo_wet_observed_from(outcome: &crate::cli_run::ClaimOutcome) -> Local
         // THE ROUTE OR THE PROGRAM REFUSED. Each is a located typed refusal in its own right; the
         // lane keeps the class and hands the reader that diagnostic.
         O::NotBool { got } => LocalRepoWetObserved::Refused(format!("not a Bool: {got}")),
-        O::RuntimeError { cause, message } => {
+        O::RuntimeError { cause, message, .. } => {
             LocalRepoWetObserved::Refused(format!("runtime error {cause:?}: {message}"))
         }
         O::HostToolUnresolved { name, probed } => LocalRepoWetObserved::Refused(format!(
@@ -4848,6 +4848,7 @@ pub(crate) fn run_discovery_rows(
             &execution_leg,
             wall_nanos,
             CiWitnessVerdict::from_outcome(&outcome, false),
+            &outcome,
         );
         match outcome {
             ClaimOutcome::Pass => summary.passed += 1,
@@ -10071,6 +10072,7 @@ pub fn run_required_floor(
                 &result,
                 expected_red_roster.contains(claim.qualified.as_str()),
             ),
+            &result,
         );
         // THE EXPECTED-RED JOIN. A quarantined identity is one this branch KNOWS fails; it is
         // enrolled by exact qualified name in `v2.workflow.floor_expected_red`, and the
@@ -10354,7 +10356,7 @@ pub fn run_required_floor(
                     // population. The comment it replaced described the key as normalizing away
                     // per-row identities; it did the opposite.
                     let detail = match &result {
-                        ClaimOutcome::RuntimeError { cause, message } => {
+                        ClaimOutcome::RuntimeError { cause, message, .. } => {
                             *known_red_runtime_error_causes
                                 .entry(cause.token())
                                 .or_insert(0) += 1;
