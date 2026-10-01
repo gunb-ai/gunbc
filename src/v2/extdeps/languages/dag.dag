@@ -54,7 +54,6 @@ import v2.std.grammar {
   Terminal,
   VoidGrammar,
   grammar_carries_symbol,
-  grammar_carried_symbol_map,
   grammar_symbol_list_put,
   formal_production_to_node,
   formal_productions_catalog_to_node,
@@ -3406,12 +3405,20 @@ fn dag_language_model_binding_canonical_map(m: Map<Symbol, Bool>) -> Map<Symbol,
 // Portable share point for the dag canonical set (v2.workflow.floor_pure_producer_share
 // floor_cross_claim_pure_producers_warm). dag_canonical_symbols wraps this Map in a
 // PointwisePower closure at the consumer; that closure is not the stored value.
+//
+// WHAT THE SET HOLDS: the names the language model mints as atoms a resolved body may carry --
+// the lex token classes (a keyword constant reaches a body as its class atom) and the kernel
+// bindings -- and NOT every atom the grammar's node encoding carries. That encoding is production
+// names plus contextual-keyword terminals (`node`, `rest`, `input`, `output`, ...), which parse
+// consumes in their grammar positions; none reaches resolution as a reference. Its consumers read
+// membership as "resolves to the kernel atom" (v2.compiler.resolve resolve_atom_unbound,
+// resolved_reference_identity, resolve_pattern_atom_is_keyword_constant), so carrying the grammar
+// atoms made an unbound `node` in a body resolve, Accepted and silent, to a grammar atom, and a
+// declaration spelled `output` resolve to the kernel symbol rather than to its path. Same cut as
+// the sugar spellings before it (v2.test.claim.normalize.authored_marker_spelling).
 fn dag_canonical_symbol_map() -> Map<Symbol, Bool> {
   dag_language_model_binding_canonical_map(
-    m: lex_rule_set_insert_token_classes(
-      m: grammar_carried_symbol_map(grammar: dag_grammar()),
-      rules: dag_lex_rules()
-    )
+    m: lex_rule_set_insert_token_classes(m: empty_map(), rules: dag_lex_rules())
   )
 }
 
@@ -3659,7 +3666,8 @@ fn dag_node_is_module_root_conj(n: Node) -> Bool {
               }
             }
           )
-        _ => false
+        TypeNode { connective: _ } => false
+        ComputationNode { behavior: _ } => false
       }
   }
 }
@@ -4129,7 +4137,8 @@ fn dag_binding_branded_atom_identity(node: Node) -> Optional<Symbol> {
         true => Absent
         false => Present { value: id }
       }
-    _ => Absent
+    TypeNode { connective: _ } => Absent
+    ComputationNode { behavior: _ } => Absent
   }
 }
 
@@ -6895,7 +6904,8 @@ fn namespace_graft_has_module_header(root: Node) -> Bool {
 fn namespace_graft_node_is_conj(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Conj } => true
-    _ => false
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
