@@ -3666,7 +3666,8 @@ fn dag_node_is_module_root_conj(n: Node) -> Bool {
               }
             }
           )
-        _ => false
+        TypeNode { connective: _ } => false
+        ComputationNode { behavior: _ } => false
       }
   }
 }
@@ -4136,7 +4137,8 @@ fn dag_binding_branded_atom_identity(node: Node) -> Optional<Symbol> {
         true => Absent
         false => Present { value: id }
       }
-    _ => Absent
+    TypeNode { connective: _ } => Absent
+    ComputationNode { behavior: _ } => Absent
   }
 }
 
@@ -6902,7 +6904,8 @@ fn namespace_graft_has_module_header(root: Node) -> Bool {
 fn namespace_graft_node_is_conj(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Conj } => true
-    _ => false
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
