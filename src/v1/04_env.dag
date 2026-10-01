@@ -39,10 +39,15 @@ type TypeEnv {
   unit_variant_index_observed: Bool
 }
 
+// `alias_rhs` is the alias's RIGHT-HAND-SIDE REFERENCE, retained when this binding is a transparent alias
+// (`type A = B` or `type A = B<C>`), so a reader asking what the alias names reads it from the reference
+// that names it, never by re-resolving the spelling (quiet-gull-780 ruling B). Its Node.declaration is
+// the head B's identity, resolved in the ALIAS's declaring scope. Absent for every non-alias binding.
 type TypeBinding {
   name: String
   resolved: Node
   provenance: SubValueRelation
+  alias_rhs: Node?
 }
 
 // Precomputed phantom-variant relation over the env's VISIBLE bindings (locals shadowing
@@ -708,7 +713,7 @@ fn lookup_qualified_module_projection(env: TypeEnv, name: String) -> TypeBinding
             value: TypeBinding {
               name: name,
               resolved: resolved,
-              provenance: SubValueUnknown
+              provenance: SubValueUnknown, alias_rhs: none
             }
           }
         Absent => Absent
@@ -1386,7 +1391,7 @@ fn env_with_type_variable_bindings(env: TypeEnv, tp_names: List<String>) -> Type
     let tp_binding = TypeBinding {
       name: tp_name,
       resolved: Node { occurrence_identity: OccurrenceSynthetic, name: tp_name, span: kernel_span(name: tp_name), ident_span: Present { value: kernel_span(name: tp_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
-      provenance: SubValueUnknown
+      provenance: SubValueUnknown, alias_rhs: none
     }
     let shadowed = effective_visible_binding(str_bindings: e.str_bindings, parents: e.parents, name: tp_name)
     let updated_index = unit_variant_index_shadow_insert(unit_variant_index: e.unit_variant_index, shadowed: shadowed, binding: tp_binding, source_indices: e.source_indices)

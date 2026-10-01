@@ -1,6 +1,6 @@
 module v2.lens.module_graph
 
-import v2.compiler.normalized_tree { normalized_tree_record_declarations }
+import v2.compiler.normalized_tree { normalized_tree_record_declarations, normalized_tree_resource_declarations }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
@@ -247,6 +247,7 @@ type LocatedModuleRoot {
   path: String
   root: Node
   record_declarations: FreeMonoid<Symbol>
+  resource_declarations: FreeMonoid<Symbol>
 }
 
 type ReferenceDerivedEdgeFold {
@@ -301,7 +302,8 @@ fn located_roots_from_source_root_ingest(
               item: LocatedModuleRoot {
                 path: item.path,
                 root: item.tree.root,
-                record_declarations: normalized_tree_record_declarations(t: item.tree)
+                record_declarations: normalized_tree_record_declarations(t: item.tree),
+                resource_declarations: normalized_tree_resource_declarations(t: item.tree)
               }
             )
           }
@@ -474,7 +476,8 @@ fn reference_derived_pool_from_located_roots(
             index: symbol_index_fill_module_root(
               index: pool.index,
               root: item.root,
-              record_declarations: item.record_declarations
+              record_declarations: item.record_declarations,
+              resource_declarations: item.resource_declarations
             ),
             trees: map_insert(m: pool.trees, key: item.path, value: item.root),
             roster: pool.roster,
@@ -485,7 +488,8 @@ fn reference_derived_pool_from_located_roots(
             index: symbol_index_fill_module_root(
               index: pool.index,
               root: item.root,
-              record_declarations: item.record_declarations
+              record_declarations: item.record_declarations,
+              resource_declarations: item.resource_declarations
             ),
             trees: map_insert(m: pool.trees, key: item.path, value: item.root),
             roster: list_snoc_item(xs: pool.roster, item: module_qn),

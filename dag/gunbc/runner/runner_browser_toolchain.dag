@@ -25,7 +25,7 @@ import extdeps.tools.node {
   node_release_binary_relative, node_version_command, node_eval_command,
 }
 import extdeps.tools.unzip { unzip_cli_tool, unzip_extract_command }
-import extdeps.tools.ldd { ldd_command }
+import extdeps.tools.ldd { ldd_command, ldd_reading_of, LddAllResolved, LddUnresolved, LddUnreadable }
 import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.tar { tar_extract_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
@@ -38,7 +38,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.languages.json.emit { serialize_json_object, json_kv, json_string }
 import std.markup { Fragment, Element, FragmentText, attr }
 import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
-import std.content_hash { content_hash_atom, content_hash_validate_lower_hex_syntax }
+import std.content_hash { content_hash_atom }
 import extdeps.tools { apt_package_of }
 import extdeps.apt { package_xz_utils }
 import gunbc.command_runner {
@@ -49,6 +49,9 @@ import gunbc.verified_archive_install {
   ArchiveDigestVerdict, ArchiveDigestMatches, ArchiveDigestMismatch, ArchiveDigestUnverifiable,
   verify_archive_digest, verified_archive_install, VerifiedArchiveInstallOutcome, ArchiveInstalled,
   verified_archive_install_text,
+  StagedArchive, ArchiveExtraction, ExtractTar, ExtractZip, archive_extraction_text,
+  ArchivePlacement, archive_placement_holds, archive_placements_text,
+  stage_archives_wet, archives_all_staged, publish_staged_tree_wet,
 }
 import gunbc.host_effect { HostEffectTransport, FleetSsh }
 import gunbc.host_effect_realize {
@@ -379,20 +382,8 @@ fn runner_browser_toolchain_host_admission(host: NonEmptyStr) -> BrowserToolchai
 // its pin through gunbc.verified_archive_install, and only then extracted to its destination. The
 // archive is KEPT after extraction because the readback re-verifies it: a digest read back is a
 // digest of bytes on the host now, not a memory of a check that once passed.
-type BrowserToolchainExtraction
-  = ExtractTar { strip_components: Int }
-  | ExtractZip
-
-type BrowserToolchainArchive {
-  file_name: NonEmptyStr
-  url: NonEmptyStr
-  pin: ArchiveDigestPin
-  destination_relative: NonEmptyStr
-  extraction: BrowserToolchainExtraction
-}
-
-fn npm_tarball_archive(t: PlaywrightNpmTarball) -> BrowserToolchainArchive {
-  BrowserToolchainArchive {
+fn npm_tarball_archive(t: PlaywrightNpmTarball) -> StagedArchive {
+  StagedArchive {
     file_name: join([t.package as String, "-", t.build.version as String, ".tgz"], "") as NonEmptyStr,
     url: t.tarball_url,
     pin: ArchiveNpmIntegrity { wire: t.integrity },
@@ -401,8 +392,8 @@ fn npm_tarball_archive(t: PlaywrightNpmTarball) -> BrowserToolchainArchive {
   }
 }
 
-fn browser_zip_archive(r: BrowserArchiveDigestReceipt) -> BrowserToolchainArchive {
-  BrowserToolchainArchive {
+fn browser_zip_archive(r: BrowserArchiveDigestReceipt) -> StagedArchive {
+  StagedArchive {
     file_name: join([r.download.install_directory as String, "-linux-arm64.zip"], "") as NonEmptyStr,
     url: r.download.url,
     pin: ArchiveSha256 { hex: r.sha256 },
@@ -411,8 +402,8 @@ fn browser_zip_archive(r: BrowserArchiveDigestReceipt) -> BrowserToolchainArchiv
   }
 }
 
-fn node_release_archive(n: NodeReleaseArchive) -> BrowserToolchainArchive {
-  BrowserToolchainArchive {
+fn node_release_archive(n: NodeReleaseArchive) -> StagedArchive {
+  StagedArchive {
     file_name: n.file_name,
     url: n.url,
     pin: ArchiveSha256 { hex: n.sha256 },
@@ -421,39 +412,13 @@ fn node_release_archive(n: NodeReleaseArchive) -> BrowserToolchainArchive {
   }
 }
 
-data runner_browser_toolchain_archives: List<BrowserToolchainArchive> = [
+data runner_browser_toolchain_archives: List<StagedArchive> = [
   node_release_archive(n: runner_browser_toolchain_node),
   npm_tarball_archive(t: playwright_core_1_62_1_npm_tarball),
   npm_tarball_archive(t: playwright_1_62_1_npm_tarball),
   browser_zip_archive(r: chromium_headless_shell_1234_linux_arm64_digest_receipt),
   browser_zip_archive(r: chromium_1234_linux_arm64_digest_receipt),
 ]
-
-fn archive_path(location: RunnerBrowserToolchainLocation, a: BrowserToolchainArchive) -> String {
-  join([location.archives as String, "/", a.file_name as String], "")
-}
-
-fn archive_destination_in(tree: String, a: BrowserToolchainArchive) -> String {
-  join([tree, "/", a.destination_relative as String], "")
-}
-
-fn archive_fetch_commands(location: RunnerBrowserToolchainLocation, a: BrowserToolchainArchive) -> List<ArgvCommand> {
-  [
-    mkdir_parents_command(path: location.archives as String),
-    curl_download_command(url: a.url as String, destination: archive_path(location: location, a: a)),
-  ]
-}
-
-fn archive_install_commands_into(location: RunnerBrowserToolchainLocation, tree: String, a: BrowserToolchainArchive) -> List<ArgvCommand> {
-  let dest = archive_destination_in(tree: tree, a: a)
-  [
-    mkdir_parents_command(path: dest),
-    match a.extraction {
-      ExtractTar { strip_components: n } => tar_extract_command(archive: archive_path(location: location, a: a), into_directory: dest, strip_components: n)
-      ExtractZip => unzip_extract_command(archive: archive_path(location: location, a: a), into_directory: dest)
-    },
-  ]
-}
 
 // THE RECIPE TEXT: one line per archive in placement order, then the pinned tree digest. Its
 // structural hash names the tree (runner_browser_toolchain_location).
@@ -464,13 +429,6 @@ fn archive_pin_text(pin: ArchiveDigestPin) -> String {
   }
 }
 
-fn archive_extraction_text(e: BrowserToolchainExtraction) -> String {
-  match e {
-    ExtractTar { strip_components: n } => concat("tar-strip-", to_string(n))
-    ExtractZip => "zip"
-  }
-}
-
 // THE LAUNCH POLICY IS PART OF THE RECIPE, because it decides whether the tree stays what was admitted:
 // a recipe whose launches may write into the tree names a different, unstable tree. Folding it in also
 // gives the repaired recipe its own name, so the tree srv1 carries from before the repair (e4ad7f3f559ad5a8,
@@ -478,14 +436,14 @@ fn archive_extraction_text(e: BrowserToolchainExtraction) -> String {
 // one beside it.
 data runner_browser_toolchain_launch_policy_text: String = "PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=1"
 
-fn runner_browser_toolchain_recipe_text(archives: List<BrowserToolchainArchive>, tree_sha256: NonEmptyStr) -> String {
+fn runner_browser_toolchain_recipe_text(archives: List<StagedArchive>, tree_sha256: NonEmptyStr) -> String {
   join(list_append(
     left: map(archives, a => join([a.file_name as String, a.url as String, archive_pin_text(pin: a.pin), a.destination_relative as String, archive_extraction_text(e: a.extraction)], " ")),
     right: [concat("tree:", tree_sha256 as String), concat("launch-policy:", runner_browser_toolchain_launch_policy_text)],
   ), "\n")
 }
 
-fn runner_browser_toolchain_recipe_identity(archives: List<BrowserToolchainArchive>, tree_sha256: NonEmptyStr) -> NonEmptyStr {
+fn runner_browser_toolchain_recipe_identity(archives: List<StagedArchive>, tree_sha256: NonEmptyStr) -> NonEmptyStr {
   ((content_hash_atom(value: runner_browser_toolchain_recipe_text(archives: archives, tree_sha256: tree_sha256) as NonEmptyStr).digest as String) as NonEmptyStr)
 }
 
@@ -731,64 +689,15 @@ type RunnerBrowserToolchainStanding {
   after: TreeAdmission
 }
 
-// LDD OUTPUT IS ACCEPTED LINE BY LINE AS RECOGNIZED EVIDENCE OR NOT AT ALL (finding 4). A line is
-// a resolved dependency (`<soname> => <path> (0x...)`), the vdso or the loader (`<path> (0x...)`),
-// or an unresolved one (`<soname> => not found`). Any other non-empty line -- "not a dynamic
-// executable", a loader error, truncation -- makes the whole reading unreadable rather than
-// resolved, and so does empty output: absence of a recognized failure is not a positive reading.
-type LddLine
-  = LddLineResolved
-  | LddLineMissing { soname: String }
-  | LddLineUnrecognized { line: String }
-
-// THE COMPLETE DECLARED SHAPES, WORD BY WORD (side-chat review 5334435195): `<soname> => not found`
-// (four words), `<soname> => <path> (0x<hex>)` (four words), or `<path> (0x<hex>)` (two words, the vdso
-// and the loader), where the address is "(0x", lower-case hex, ")" and nothing else. A line that
-// merely contains " (0x" -- truncation, garbage -- is unrecognized.
-fn ldd_words_of(line: String) -> List<String> {
-  fold(split(trim(s: line), " "), init: [], f: (acc, w) => if w == "" { acc } else { list_append(left: acc, right: [w]) })
-}
-
-fn ldd_address_word(w: String) -> Bool {
-  let inner = replace(s: replace(s: w, from: "(0x", to: ""), from: ")", to: "")
-  inner != "" && w == concat(concat("(0x", inner), ")") && content_hash_validate_lower_hex_syntax(text: inner)
-}
-
-fn ldd_line_of(line: String) -> LddLine {
-  match ldd_words_of(line: line) {
-    Cons { head: a, tail: Cons { head: b, tail: Cons { head: c, tail: Cons { head: d, tail: Empty } } } } =>
-      if b == "=>" && c == "not" && d == "found" {
-        LddLineMissing { soname: a }
-      } else if b == "=>" && ldd_address_word(w: d) {
-        LddLineResolved
-      } else {
-        LddLineUnrecognized { line: trim(s: line) }
-      }
-    Cons { head: _, tail: Cons { head: addr, tail: Empty } } =>
-      if ldd_address_word(w: addr) { LddLineResolved } else { LddLineUnrecognized { line: trim(s: line) } }
-    _ => LddLineUnrecognized { line: trim(s: line) }
-  }
-}
-
+// LDD OUTPUT IS READ BY ITS ONE PARSER (extdeps.tools.ldd ldd_reading_of): every line a recognized
+// shape or the whole reading is unreadable. What this module adds is the remedy's address: each
+// unresolved soname is named with the package Playwright's own table says provides it.
 fn host_library_readback_of(binary: NonEmptyStr, ldd_output: String) -> HostLibraryReadback {
-  let lines = fold(split(ldd_output, "\n"), init: [], f: (acc, l) => if trim(s: l) == "" { acc } else { list_append(left: acc, right: [l]) })
-  let classified = map(lines, l => ldd_line_of(line: l))
-  let unrecognized = fold(classified, init: [], f: (acc, c) => match c { LddLineUnrecognized { line: _ } => list_append(left: acc, right: [c])  _ => acc })
-  let missing = fold(classified, init: [], f: (acc, c) => match c {
-    LddLineMissing { soname: so } => list_append(left: acc, right: [MissingHostLibrary { soname: so as NonEmptyStr, package: playwright_package_for_soname(soname: so) }])
-    _ => acc
-  })
-  match lines {
-    Empty => HostLibrariesUnreadable { binary: binary, reason: "ldd printed nothing" }
-    Cons { head: _, tail: _ } =>
-      match unrecognized {
-        Cons { head: LddLineUnrecognized { line: l }, tail: _ } => HostLibrariesUnreadable { binary: binary, reason: concat("ldd printed a line that is neither a resolved nor an unresolved dependency: ", l) }
-        _ =>
-          match missing {
-            Empty => HostLibrariesResolved { binary: binary }
-            Cons { head: _, tail: _ } => HostLibrariesMissing { binary: binary, missing: missing }
-          }
-      }
+  match ldd_reading_of(output: ldd_output) {
+    LddAllResolved => HostLibrariesResolved { binary: binary }
+    LddUnreadable { reason: r } => HostLibrariesUnreadable { binary: binary, reason: r }
+    LddUnresolved { sonames: ss } =>
+      HostLibrariesMissing { binary: binary, missing: map(ss, so => MissingHostLibrary { soname: so as NonEmptyStr, package: playwright_package_for_soname(soname: so) }) }
   }
 }
 
@@ -1152,19 +1061,10 @@ fn runner_browser_toolchain_here_wet() -> RunnerBrowserToolchainResolution {
 // with no fetch leg), the STAGED tree must be admitted against the pin, and only then is it
 // published by one rename over the tree path. A staged tree that does not reproduce the pin is never
 // published, so a consumer can only ever find the admitted content or no tree.
-type ArchivePlacement {
-  archive: NonEmptyStr
-  outcome: VerifiedArchiveInstallOutcome
-}
-
 type ToolchainPlacement
   = ToolchainAlreadyAdmitted
   | ToolchainPublished { archives: List<ArchivePlacement> }
   | ToolchainPlacementRefused { archives: List<ArchivePlacement>, cause: String }
-
-fn archive_placement_holds(p: ArchivePlacement) -> Bool {
-  match p.outcome { ArchiveInstalled => true  _ => false }
-}
 
 fn toolchain_placement_holds(p: ToolchainPlacement) -> Bool {
   match p {
@@ -1172,10 +1072,6 @@ fn toolchain_placement_holds(p: ToolchainPlacement) -> Bool {
     ToolchainPublished { archives: _ } => true
     ToolchainPlacementRefused { archives: _, cause: _ } => false
   }
-}
-
-fn archive_placements_text(ps: List<ArchivePlacement>) -> String {
-  join(map(ps, a => join([a.archive as String, "=", verified_archive_install_text(outcome: a.outcome)], "")), " ")
 }
 
 fn toolchain_placement_text(p: ToolchainPlacement) -> String {
@@ -1190,36 +1086,6 @@ fn path_exists_wet(path: String) -> Bool {
   process_outcome_admitted(outcome: run_shell_command_capture(command: test_exists_command(path: path), transport: LocalExec))
 }
 
-fn stage_archive_wet(location: RunnerBrowserToolchainLocation, staging: String, a: BrowserToolchainArchive) -> ArchivePlacement {
-  let retained = match verify_archive_digest(archive: archive_path(location: location, a: a) as NonEmptyStr, pin: a.pin) {
-    ArchiveDigestMatches => true
-    _ => false
-  }
-  ArchivePlacement {
-    archive: a.file_name,
-    outcome: verified_archive_install(
-      fetch: if retained { [] } else { archive_fetch_commands(location: location, a: a) },
-      archive: archive_path(location: location, a: a) as NonEmptyStr,
-      pin: a.pin,
-      install: archive_install_commands_into(location: location, tree: staging, a: a),
-    ),
-  }
-}
-
-// IN ORDER, AND THE FIRST REFUSAL STOPS THE REST.
-fn stage_archives_wet(location: RunnerBrowserToolchainLocation, staging: String, archives: List<BrowserToolchainArchive>) -> List<ArchivePlacement> {
-  fold(archives, init: [], f: (acc, a) =>
-    if fold(acc, init: true, f: (ok, p) => ok && archive_placement_holds(p: p)) {
-      list_append(left: acc, right: [stage_archive_wet(location: location, staging: staging, a: a)])
-    } else {
-      acc
-    })
-}
-
-fn all_staged(ps: List<ArchivePlacement>, archives: List<BrowserToolchainArchive>) -> Bool {
-  list_length(ps) == list_length(archives) && fold(ps, init: true, f: (ok, p) => ok && archive_placement_holds(p: p))
-}
-
 fn run_ok(command: ArgvCommand) -> Bool {
   process_outcome_admitted(outcome: run_shell_command_capture(command: command, transport: LocalExec))
 }
@@ -1231,13 +1097,13 @@ fn run_ok(command: ArgvCommand) -> Bool {
 // step is `mv -T <stage> <root>`, which fails if anything occupies <root> by then -- a competing
 // converge that published first -- and the readback then judges that converge's tree.
 fn publish_staged_wet(location: RunnerBrowserToolchainLocation, staging: String) -> Bool {
-  run_ok(command: mv_exact_destination_command(source: staging, destination: location.root as String))
+  publish_staged_tree_wet(staging: staging, root: location.root as String)
 }
 
 // EVERY CONVERGE OWNS ITS SCRATCH AND ITS STAGING: manifests in a temporary directory of its own,
 // the stage in a mktemp directory under the base (the tree's own file system, so publication is one
 // rename), both removed on every path.
-fn place_toolchain_wet(location: RunnerBrowserToolchainLocation, archives: List<BrowserToolchainArchive>, pinned: NonEmptyStr) -> ToolchainPlacement {
+fn place_toolchain_wet(location: RunnerBrowserToolchainLocation, archives: List<StagedArchive>, pinned: NonEmptyStr) -> ToolchainPlacement {
   let scratch_dir = shell.Mktemp.Dir()
   if scratch_dir.success == false {
     ToolchainPlacementRefused { archives: [], cause: "no per-invocation scratch directory could be created" }
@@ -1248,9 +1114,9 @@ fn place_toolchain_wet(location: RunnerBrowserToolchainLocation, archives: List<
   }
 }
 
-fn stage_and_publish_wet(location: RunnerBrowserToolchainLocation, archives: List<BrowserToolchainArchive>, pinned: NonEmptyStr, scratch: String, staging: String) -> ToolchainPlacement {
-  let staged = stage_archives_wet(location: location, staging: staging, archives: archives)
-  if all_staged(ps: staged, archives: archives) == false {
+fn stage_and_publish_wet(location: RunnerBrowserToolchainLocation, archives: List<StagedArchive>, pinned: NonEmptyStr, scratch: String, staging: String) -> ToolchainPlacement {
+  let staged = stage_archives_wet(archives_dir: location.archives as String, staging: staging, archives: archives)
+  if archives_all_staged(ps: staged, archives: archives) == false {
     ToolchainPlacementRefused { archives: staged, cause: "an archive did not verify or extract into staging; nothing was published" }
   } else {
     match admit_tree_wet(tree: staging as NonEmptyStr, manifest_path: join([scratch, "/staging.manifest"], ""), pinned: pinned) {
@@ -1265,7 +1131,7 @@ fn stage_and_publish_wet(location: RunnerBrowserToolchainLocation, archives: Lis
   }
 }
 
-fn place_toolchain_in_wet(location: RunnerBrowserToolchainLocation, archives: List<BrowserToolchainArchive>, pinned: NonEmptyStr, scratch: String) -> ToolchainPlacement {
+fn place_toolchain_in_wet(location: RunnerBrowserToolchainLocation, archives: List<StagedArchive>, pinned: NonEmptyStr, scratch: String) -> ToolchainPlacement {
   match admit_tree_wet(tree: location.root, manifest_path: join([scratch, "/tree.manifest"], ""), pinned: pinned) {
     TreeAdmitted => ToolchainAlreadyAdmitted
     TreeUnobservable { tree: t, reason: r } =>
@@ -1276,7 +1142,7 @@ fn place_toolchain_in_wet(location: RunnerBrowserToolchainLocation, archives: Li
   }
 }
 
-fn stage_in_fresh_directory_wet(location: RunnerBrowserToolchainLocation, archives: List<BrowserToolchainArchive>, pinned: NonEmptyStr, scratch: String) -> ToolchainPlacement {
+fn stage_in_fresh_directory_wet(location: RunnerBrowserToolchainLocation, archives: List<StagedArchive>, pinned: NonEmptyStr, scratch: String) -> ToolchainPlacement {
   if run_ok(command: mkdir_parents_command(path: location.base as String)) == false {
     ToolchainPlacementRefused { archives: [], cause: concat("the toolchain base could not be created: ", location.base as String) }
   } else {

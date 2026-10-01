@@ -1041,6 +1041,8 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         MissingExport { name: s(), module_path: s(), importing_module: s(), span: no_span() },
         ImportShadowedByLocalDefinition { name: s(), module_path: s(), importing_module: s(), span: no_span() },
         UnresolvedType { name: s(), span: no_span() },
+        TypeArgumentKindMismatch { type_name: s(), param_name: s(), kind_name: s(), supplied: s(), span: no_span() },
+        TypeParameterInValuePosition { name: s(), span: no_span() },
         UnitVariantPhantomIdentityEvidenceUnavailable { name: s(), span: no_span() },
         TypeMismatch { expected: s(), got: s(), span: no_span() },
         ArityMismatch { name: s(), expected: 0, got: 0, span: no_span() },
