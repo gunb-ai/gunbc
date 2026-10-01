@@ -461,7 +461,27 @@ pub fn check_modifier_vs_derivation(
                             HttpMethod::HEAD => Rc::new(ModifierAgreement::Agrees),
                             HttpMethod::OPTIONS => Rc::new(ModifierAgreement::Agrees),
                             HttpMethod::TRACE => Rc::new(ModifierAgreement::Agrees),
-                            _ => Rc::new(ModifierAgreement::Disagrees {
+                            HttpMethod::POST => Rc::new(ModifierAgreement::Disagrees {
+                                reason:
+                                    "readonly declared but method is not GET/HEAD/OPTIONS/TRACE"
+                                        .to_string(),
+                            }),
+                            HttpMethod::PUT => Rc::new(ModifierAgreement::Disagrees {
+                                reason:
+                                    "readonly declared but method is not GET/HEAD/OPTIONS/TRACE"
+                                        .to_string(),
+                            }),
+                            HttpMethod::DELETE => Rc::new(ModifierAgreement::Disagrees {
+                                reason:
+                                    "readonly declared but method is not GET/HEAD/OPTIONS/TRACE"
+                                        .to_string(),
+                            }),
+                            HttpMethod::CONNECT => Rc::new(ModifierAgreement::Disagrees {
+                                reason:
+                                    "readonly declared but method is not GET/HEAD/OPTIONS/TRACE"
+                                        .to_string(),
+                            }),
+                            HttpMethod::PATCH => Rc::new(ModifierAgreement::Disagrees {
                                 reason:
                                     "readonly declared but method is not GET/HEAD/OPTIONS/TRACE"
                                         .to_string(),

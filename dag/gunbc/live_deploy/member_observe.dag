@@ -522,6 +522,7 @@ fn root_members_of_step(st: DeploymentStep) -> List<ConvergedMember> {
       PublicationHelperTimerUnit => []
       FabricStorageServeUnit => []
       FabricStorageServeMapping => []
+      ApprovalBrokerFrontDoor => []
     }
     Dependency { step: _ } => []
   }

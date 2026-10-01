@@ -1066,6 +1066,7 @@ fn identity_member_of_step(step: DeploymentStep) -> ConvergedMember? {
       PublicationHelperTimerUnit => none
       FabricStorageServeUnit => none
       FabricStorageServeMapping => none
+      ApprovalBrokerFrontDoor => none
     }
     Dependency { step: _ } => none
   }

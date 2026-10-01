@@ -560,6 +560,9 @@ fn kvm_pending_step(acc: KvmObserverStanding, e: KvmJournalEvent, subject: KvmOb
     KvmJournalStopped { at: _, session: _, browser: _ } => acc
     KvmJournalTriggerScanFailed { at: _, detail: _ } => acc
     KvmJournalUnparsed { line: _ } => acc
+    KvmJournalNavigated { at: _, seq: _, phase: _, url: _ } => acc
+    KvmJournalPageConsole { at: _, phase: _, level: _, detail: _ } => acc
+    KvmJournalPageError { at: _, phase: _, detail: _ } => acc
   }
 }
 
@@ -582,6 +585,9 @@ fn kvm_established_step(acc: KvmObserverStanding, e: KvmJournalEvent, establishe
     KvmJournalBrowserClose { at: _, result: _ } => acc
     KvmJournalTriggerScanFailed { at: _, detail: _ } => acc
     KvmJournalUnparsed { line: _ } => acc
+    KvmJournalNavigated { at: _, seq: _, phase: _, url: _ } => acc
+    KvmJournalPageConsole { at: _, phase: _, level: _, detail: _ } => acc
+    KvmJournalPageError { at: _, phase: _, detail: _ } => acc
   }
 }
 
@@ -650,6 +656,9 @@ fn kvm_gap_mark(e: KvmJournalEvent) -> List<KvmInstant> {
     KvmJournalStopped { at: _, session: _, browser: _ } => []
     KvmJournalTriggerScanFailed { at: _, detail: _ } => []
     KvmJournalUnparsed { line: _ } => []
+    KvmJournalNavigated { at: _, seq: _, phase: _, url: _ } => []
+    KvmJournalPageConsole { at: _, phase: _, level: _, detail: _ } => []
+    KvmJournalPageError { at: _, phase: _, detail: _ } => []
   }
 }
 
