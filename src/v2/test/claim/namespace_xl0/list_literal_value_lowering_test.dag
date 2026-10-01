@@ -21,7 +21,7 @@ import v2.std.diagnostic { Accepted, NodeLocus, Outcome, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { ComputationNode, Edge, Node, Positional, Symbol, Transform, node_subtree_nodes, symbol_intern_lexeme, symbol_lexeme }
+import v2.std.node { ComputationNode, Edge, Named, Node, Positional, Symbol, Transform, node_subtree_nodes, symbol_intern_lexeme, symbol_lexeme }
 import v2.std.node_query { node_positional_child_targets }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, qualified_name_from_node }
 import v2.std.collection { List, list_at_optional }
@@ -145,16 +145,44 @@ fn llv_is_atom(n: Node, id: Symbol) -> Bool {
   }
 }
 
-// callee(p: inner): a Transform whose head is the callee atom and whose sole operand is the atom.
-fn llv_is_call(n: Node, callee: Symbol, inner: Symbol) -> Bool {
+// callee(label: value): a Transform whose ONLY children are the callee atom on its Positional head
+// edge and the value on a Named edge carrying the authored label -- a named argument is conserved as
+// its Named edge (body_lowering_fold body_lower_call_arg_edge, #12382), never read by position.
+fn llv_call_named_arg(n: Node, callee: Symbol, label: Symbol) -> Optional<Node> {
   match n.kind {
     ComputationNode { behavior: Transform } =>
-      match node_positional_child_targets(node: n) {
-        Cons { head: head, tail: Cons { head: arg, tail: Empty } } =>
-          llv_is_atom(n: head, id: callee) && llv_is_atom(n: arg, id: inner)
-        _ => false
+      if length(xs: n.children) == 2 {
+        match list_at_optional(xs: n.children, index: 0) {
+          Present { value: h } =>
+            match list_at_optional(xs: n.children, index: 1) {
+              Present { value: a } => llv_named_arg_of(head: h, arg: a, callee: callee, label: label)
+              Absent => optional_absent()
+            }
+          Absent => optional_absent()
+        }
+      } else {
+        optional_absent()
       }
-    _ => false
+    _ => optional_absent()
+  }
+}
+
+fn llv_named_arg_of(head: Edge, arg: Edge, callee: Symbol, label: Symbol) -> Optional<Node> {
+  if (head.label == Positional) && llv_is_atom(n: head.target, id: callee) {
+    match arg.label {
+      Named { name: l } => if l == label { optional_present(value: arg.target) } else { optional_absent() }
+      _ => optional_absent()
+    }
+  } else {
+    optional_absent()
+  }
+}
+
+// callee(p: inner): the call's sole argument is the atom, on the `p` edge.
+fn llv_is_call(n: Node, callee: Symbol, inner: Symbol) -> Bool {
+  match llv_call_named_arg(n: n, callee: callee, label: ^p) {
+    Present { value: arg } => llv_is_atom(n: arg, id: inner)
+    Absent => false
   }
 }
 
@@ -189,16 +217,11 @@ fn llv_list_matches(n: Node, items: List<LlvElement>) -> Bool {
   }
 }
 
-// A call `callee(xs: <list>)` whose sole argument is exactly the list.
+// A call `callee(xs: <list>)` whose sole argument, on the `xs` edge, is exactly the list.
 fn llv_call_with_list_matches(n: Node, callee: Symbol, items: List<LlvElement>) -> Bool {
-  match n.kind {
-    ComputationNode { behavior: Transform } =>
-      match node_positional_child_targets(node: n) {
-        Cons { head: head, tail: Cons { head: arg, tail: Empty } } =>
-          llv_is_atom(n: head, id: callee) && llv_list_matches(n: arg, items: items)
-        _ => false
-      }
-    _ => false
+  match llv_call_named_arg(n: n, callee: callee, label: ^xs) {
+    Present { value: arg } => llv_list_matches(n: arg, items: items)
+    Absent => false
   }
 }
 
@@ -436,7 +459,7 @@ fn llv_application_class(n: Node) -> Symbol {
 
 fn llv_arg_list_class_is(n: Node, class: Symbol) -> Bool {
   llv_call_with_list_matches(n: n, callee: ^llv_take, items: [LlvAtom { id: ^llv_f }, LlvAtom { id: ^llv_g }, LlvAtom { id: ^llv_h }])
-    && (match list_at_optional(xs: node_positional_child_targets(node: n), index: 1) {
+    && (match llv_call_named_arg(n: n, callee: ^llv_take, label: ^xs) {
       Present { value: list } => llv_application_class(n: list) == class
       Absent => false
     })

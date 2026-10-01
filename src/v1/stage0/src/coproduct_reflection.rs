@@ -107,7 +107,7 @@ fn expect_pool_roots(
     let mut out = Vec::new();
     for item in items {
         match item {
-            Value::Str(s) => out.push(s.to_string()),
+            Value::Str(ref s) => out.push(s.to_string()),
             other => {
                 return Err(InterpError::TypeError {
                     msg: format!("{what} expects `{param}: List<String>`, got element {other:?}"),
@@ -1216,17 +1216,19 @@ fn hoist_call_arg_string_literal_edges(
     node: &Rc<Node>,
     edges: &mut Vec<Value>,
 ) {
-    if let Some(literal_edge) = marshal_string_literal_atom(ctx, node) {
-        edges.push(literal_edge);
-        return;
-    }
-    if let Some(child0) = node.children.first() {
-        if let Some(literal_edge) = marshal_string_literal_atom(ctx, child0) {
+    crate::v1_interpreter::value_depth_guarded(|| {
+        if let Some(literal_edge) = marshal_string_literal_atom(ctx, node) {
             edges.push(literal_edge);
-        } else {
-            hoist_call_arg_string_literal_edges(ctx, child0, edges);
+            return;
         }
-    }
+        if let Some(child0) = node.children.first() {
+            if let Some(literal_edge) = marshal_string_literal_atom(ctx, child0) {
+                edges.push(literal_edge);
+            } else {
+                hoist_call_arg_string_literal_edges(ctx, child0, edges);
+            }
+        }
+    })
 }
 
 fn should_emit_nullary_variant_value_atom(binding_kind: Option<&Rc<VarBindingKind>>) -> bool {
@@ -2461,7 +2463,6 @@ mod parse_only_uppercase_variant_regression_tests {
 
     use im::{vector as im_vec, HashMap};
 
-    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_interpreter::{ExecutionMode, InterpContext, Value};
     use crate::v1_std_core::{
@@ -2474,8 +2475,8 @@ mod parse_only_uppercase_variant_regression_tests {
         let graph = ResolvedGraph {
             modules: Rc::new(im_vec![]),
             item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
             diagnostics: Rc::new(im_vec![]),
-            emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
     }
@@ -2669,7 +2670,7 @@ mod parse_only_uppercase_variant_regression_tests {
 
     fn first_child_target(ctx: &InterpContext, skel: &Value) -> Option<Value> {
         match field(ctx, skel, "children") {
-            Some(Value::List(items)) => items
+            Some(Value::List(ref items)) => items
                 .iter()
                 .next()
                 .and_then(|edge| field(ctx, edge, "target")),

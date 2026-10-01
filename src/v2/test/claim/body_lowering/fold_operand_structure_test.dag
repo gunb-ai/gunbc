@@ -1,7 +1,7 @@
 module v2.test.claim.body_lowering.fold_operand_structure
 
 import v2.compiler.body_lowering_fold { body_lower_body_subtree_lower, body_lower_try_fold_loop, body_lower_value_read }
-import v2.compiler.fold_lowering { fold_call_head_symbol, fold_family_head }
+import v2.compiler.fold_lowering { fold_call_head_symbol, fold_family_realization, fold_recurrence_loop }
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model, parse_production_emitted_identity_optional }
@@ -9,7 +9,7 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { ComputationNode, Loop, Node, Symbol, Transform }
+import v2.std.node { ComputationNode, Node, Symbol, Transform }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 
@@ -27,7 +27,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // node that encloses a fold and asserts it is Absent; re-adding the descent answers Present there and
 // turns it red. It asserts the route too: such nodes exist in the parse, so it cannot pass on an empty
 // candidate set. The four shape claims are the positive controls: on both the value-reader and the
-// body-walker route the fold is still lowered to a Loop in its operand slot, under an enclosing node that
+// body-walker route the fold is still lowered to its encoding (Bind over a Loop) in its operand slot, under an enclosing node that
 // keeps every operand -- the fold twins of v2.test.claim.body_lowering.enclosing_expression_structure.
 
 data fos_and_fold_source: String = "module m\n\nfn fos(fos_t: Bool, fos_xs: List<Bool>) -> Bool {\n  fos_t && fold(fos_xs, init: fos_t, f: fn(acc, x) { acc })\n}\n"
@@ -109,12 +109,14 @@ fn fos_is_atom(n: Optional<Node>, spelling: Symbol) -> Bool {
   }
 }
 
+// The operand slot holds the fold ENCODING, Bind { acc := init, Loop {..} } (fold_lowering
+// fold_recurrence_encoding, #12550), read through its one reader; a bare Loop is not an encoding.
 fn fos_is_loop(n: Optional<Node>) -> Bool {
   match n {
     Present { value: x } =>
-      match x.kind {
-        ComputationNode { behavior: Loop } => true
-        _ => false
+      match fold_recurrence_loop(encoding: x) {
+        Present { value: _ } => true
+        Absent => false
       }
     Absent => false
   }
@@ -127,7 +129,7 @@ fn fos_is_transform(n: Node, arity: Int) -> Bool {
   }
 }
 
-// `fos_t && fold(..)` is Transform(&&, fos_t, Loop).
+// `fos_t && fold(..)` is Transform(&&, fos_t, Bind{Loop}).
 fn fos_and_over_loop(v: FosValue) -> Bool {
   match v {
     FosLowered { value: n } =>
@@ -139,7 +141,7 @@ fn fos_and_over_loop(v: FosValue) -> Bool {
   }
 }
 
-// `fos_h(a: fold(..), b: fos_s)` is Transform(fos_h, Loop, fos_s).
+// `fos_h(a: fold(..), b: fos_s)` is Transform(fos_h, Bind{Loop}, fos_s).
 fn fos_call_over_loop(v: FosValue) -> Bool {
   match v {
     FosLowered { value: n } =>
@@ -154,7 +156,11 @@ fn fos_call_over_loop(v: FosValue) -> Bool {
 
 fn fos_has_fold_head(node: Node) -> Bool {
   match fold_call_head_symbol(fold_call: node) {
-    Present { value: head } => fold_family_head(sym: head)
+    Present { value: head } =>
+      match fold_family_realization(head: head) {
+        Present { value: _ } => true
+        Absent => false
+      }
     Absent => false
   }
 }

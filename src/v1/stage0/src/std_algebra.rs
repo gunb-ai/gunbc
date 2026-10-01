@@ -305,6 +305,24 @@ pub struct FinitelySupportedFunction<K, V> {
     pub _phantom: std::marker::PhantomData<(K, V)>,
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct MapIntroductionEntry<K: Clone, V: Clone> {
+    pub key: K,
+    pub value: V,
+    pub _phantom: std::marker::PhantomData<(K, V)>,
+}
+
+pub fn map_from_entries<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
+    entries: Rc<FreeMonoid<Rc<MapIntroductionEntry<K, V>>>>,
+) -> Rc<HashMap<K, V>> {
+    entries.iter().cloned().fold(
+        v1_rt::rc_empty_map::<_, _>(),
+        |acc: _, entry: Rc<MapIntroductionEntry<K, V>>| {
+            v1_rt::rc_map_insert(acc, entry.key.clone(), entry.value.clone())
+        },
+    )
+}
+
 #[derive(Clone)]
 pub struct TotalMap<K, V> {
     pub lookup: Rc<dyn Fn(K) -> V>,
@@ -504,7 +522,10 @@ pub struct StepPositionScan {
     pub found: Option<i64>,
 }
 
-pub fn template_step_position(t: Rc<AlgebraFieldTemplate>) -> Option<i64> {
+pub fn template_param_position(
+    t: Rc<AlgebraFieldTemplate>,
+    admits: impl Fn(Rc<AlgebraTypeTemplate>) -> bool + Clone,
+) -> Option<i64> {
     {
         let scan = t.param_types.clone().iter().cloned().fold(
             StepPositionScan {
@@ -513,19 +534,63 @@ pub fn template_step_position(t: Rc<AlgebraFieldTemplate>) -> Option<i64> {
             },
             |acc: StepPositionScan, p: Rc<AlgebraTypeTemplate>| match acc.found.clone() {
                 Some(_) => acc.clone(),
-                std::option::Option::None => match (*p.clone()).clone() {
-                    AlgebraTypeTemplate::CallableOf { .. } => StepPositionScan {
-                        next: v1_rt::int_add(acc.next.clone(), 1),
-                        found: Some(acc.next.clone()),
-                    },
-                    _ => StepPositionScan {
-                        next: v1_rt::int_add(acc.next.clone(), 1),
-                        found: std::option::Option::None,
-                    },
-                },
+                std::option::Option::None => {
+                    if admits(p.clone()) {
+                        StepPositionScan {
+                            next: v1_rt::int_add(acc.next.clone(), 1),
+                            found: Some(acc.next.clone()),
+                        }
+                    } else {
+                        StepPositionScan {
+                            next: v1_rt::int_add(acc.next.clone(), 1),
+                            found: std::option::Option::None,
+                        }
+                    }
+                }
             },
         );
         scan.found.clone()
+    }
+}
+
+pub fn template_step_position(t: Rc<AlgebraFieldTemplate>) -> Option<i64> {
+    template_param_position(t.clone(), |p| match (*p.clone()).clone() {
+        AlgebraTypeTemplate::CallableOf { .. } => true,
+        _ => false,
+    })
+}
+
+pub fn template_receiver_position(t: Rc<AlgebraFieldTemplate>) -> Option<i64> {
+    template_param_position(t.clone(), |p| {
+        (p.clone() == Rc::new(AlgebraTypeTemplate::ReceiverSelf))
+    })
+}
+
+pub fn template_accumulator_position(t: Rc<AlgebraFieldTemplate>) -> Option<i64> {
+    {
+        let step_return = t.param_types.clone().iter().cloned().fold(
+            std::option::Option::None,
+            |acc: _, p: Rc<AlgebraTypeTemplate>| match acc.clone() {
+                Some(_) => acc.clone(),
+                std::option::Option::None => match (*p.clone()).clone() {
+                    AlgebraTypeTemplate::CallableOf { return_type: r, .. } => Some(r.clone()),
+                    _ => std::option::Option::None,
+                },
+            },
+        );
+        match step_return.clone() {
+            std::option::Option::None => std::option::Option::None,
+            Some(acc_type) => {
+                if (acc_type.clone() == Rc::new(AlgebraTypeTemplate::ReceiverSelf)) {
+                    std::option::Option::None
+                } else {
+                    template_param_position(t.clone(), |p| match (*p.clone()).clone() {
+                        AlgebraTypeTemplate::CallableOf { .. } => false,
+                        _ => (p.clone() == acc_type.clone()),
+                    })
+                }
+            }
+        }
     }
 }
 
