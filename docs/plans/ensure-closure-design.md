@@ -72,7 +72,7 @@ Targets are fine-grained capabilities, not giant account states: `ExecutorPrivil
 
 ### 3.2 Provider implementation
 
-An ordinary function that establishes its target and returns the domain's qualified result. Its typed parameters are its prerequisites; there is no authored dependency list and no declaration marks it as an ensure. What makes it a provider is three facts the structure already carries: its result type is a sole constructor it is admitted to call; the root registers it for a target family; and its body runs the `gunbc.ensure` lifecycle -- observe, assess, apply when decided, independent readback, mint. Completion fills its parameters exactly as it fills any other call's: `package` is completed by the provider registered for `PackageInstalled`, `who` by the provider registered for `PresentPrincipal`, and the operations its body calls induce their own holes (dpkg-query, apt-get, the install grant).
+An ordinary function that establishes its target and returns the domain's qualified result. Its typed parameters are its prerequisites; there is no authored dependency list and no declaration marks it as an ensure. What makes it a provider is three facts the structure already carries: its result type is a sole constructor it is admitted to call; the root registers it for a target family; and its body runs the `gunbc.ensure` lifecycle -- observe, assess, apply when decided, independent readback, mint. Completion fills its parameters exactly as it fills any other call's: `package` is completed by the provider registered for `PackageInstalled`, `who` by the provider registered for the `PrincipalPresent` target (the sealed result it yields is `PresentPrincipal`; roots register providers for TARGET families, never for result types, and keeping the two names distinct is what mint confinement rests on), and the operations its body calls induce their own holes (dpkg-query, apt-get, the install grant).
 
 ```
 fn package_installed_via_apt(target: PackageInstalled) -> InstalledPackage
@@ -183,7 +183,7 @@ Every chain ends in an observation. An image-entailed implementation does not as
 
 ## 6. The git vertical
 
-Git is the demonstration because it is the operator's example and because `gunbc.git_use_authority` treats git-as-CLI as a legacy realization being replaced by native SCM -- which is exactly why the requirement must hang off the REALIZATION: when native SCM lands, the git binary drops out of `git.branch`'s closure with no caller touched. Nothing below is git-specific, and `extdeps.git` does not change for it; that is a check on the design.
+Git is the demonstration because it is the operator's example and because `gunbc.git_use_authority` treats git-as-CLI as a legacy realization being replaced by native SCM -- which is exactly why the requirement must hang off the REALIZATION: when native SCM lands, the git binary drops out of `git.branch`'s closure with no caller touched. Nothing below is git-specific. The USE SITE does not change for it; `extdeps.git` changes exactly as landing step 1 says -- `git_program()` becomes cataloged and the effective-configuration contract (which operations spawn which children under which keys) is added as upstream facts -- and never learns about providers, placements or blueprints. That the upstream module gains only upstream facts is the check on the design.
 
 The use site, unchanged by everything below:
 
@@ -241,7 +241,13 @@ type FailureClass
 
 fn spawn_failure_class(kind: SpawnFailureKind, command: ExecutableCommand) -> FailureClass {
   match kind {
-    SpawnNoEntry | SpawnAccessDenied | SpawnExecFormat => StablePrecondition { targets: [command.runtime.target] }
+    SpawnNoEntry | SpawnExecFormat                     => StablePrecondition { targets: [command.runtime.target] }
+    SpawnAccessDenied                                  => FailureCauseUnclassified   -- EACCES covers mode and ancestor search, which the runtime
+                                                                                   -- readback establishes, AND a noexec mount or an LSM decision,
+                                                                                   -- which no modeled fact represents: until an execution-policy fact
+                                                                                   -- (ExecutionPermittedAt { mount, policy }) joins the target and its
+                                                                                   -- readback, mapping EACCES to the already-ensured target would
+                                                                                   -- certify a cause the audit never models
     SpawnTryAgain                                      => Contended
     SpawnArgListTooLong | SpawnUnrecognized { .. }     => FailureCauseUnclassified   -- ARG_MAX is a host fact nobody has modeled
   }
@@ -249,7 +255,7 @@ fn spawn_failure_class(kind: SpawnFailureKind, command: ExecutableCommand) -> Fa
 -- audit: every StablePrecondition target is a member of the operation's ensured inputs; a target outside them is a compile error.
 ```
 
-`FilesystemOtherFailure` and an unrecognized errno stay Unclassified rather than being mapped to Contended: an exhaustive match over a catch-all arm is syntactically exhaustive without being semantically exhaustive, and a read-only filesystem, a noexec mount or a path-length defect hiding inside Other would be certified complete. `extdeps.transports.shell` `ShellSpawnRefused` carries its cause as text today, so the derivation has nothing to start from at the most important operation; typing it is part of the cut.
+`FilesystemOtherFailure` and an unrecognized errno stay Unclassified rather than being mapped to Contended: an exhaustive match over a catch-all arm is syntactically exhaustive without being semantically exhaustive, and a read-only filesystem or a path-length defect hiding inside Other would be certified complete -- and the same discipline is why EACCES above stays Unclassified rather than being mapped to the runtime target: a noexec mount arrives as EACCES, not through Other, and the runtime readback does not model execution policy. `extdeps.transports.shell` `ShellSpawnRefused` carries its cause as text today, so the derivation has nothing to start from at the most important operation; typing it is part of the cut.
 
 The two standings are a product, never one combined variant, because 'forgot an environmental dependency is a compiler error' and 'we have classified every operating-system failure' are different guarantees:
 
