@@ -200,19 +200,36 @@ test fn tsic_import_without_string_member_is_outside_the_population() -> Bool {
 
 // CROSSINGS: one call shape, three callee declarations, so each row can only be green through the
 // declared-parameter read.
+// The crossing and roster rows each walk several streams; with the census's literal-site fields
+// that exceeded a floor row's budget, so warm pure producers (v2.workflow.floor_pure_producer_share)
+// compute them once and the claims read the results.
+type TsicCrossingOutcome {
+  kernel_parameter: ImporterVerdict
+  free_monoid_parameter: ImporterVerdict
+  imported_string_parameter: ImporterVerdict
+}
+
+fn tsic_crossing_outcome() -> TsicCrossingOutcome {
+  TsicCrossingOutcome {
+    kernel_parameter: crossing_verdict_of_atoms(atoms: atoms_crossing_host),
+    free_monoid_parameter: crossing_verdict_of_atoms(atoms: atoms_crossing_structural),
+    imported_string_parameter: crossing_verdict_of_atoms(atoms: atoms_crossing_ambiguous)
+  }
+}
+
 test fn tsic_crossing_into_a_kernel_string_parameter_is_host() -> Bool {
-  is_host(v: crossing_verdict_of_atoms(atoms: atoms_crossing_host))
+  is_host(v: tsic_crossing_outcome().kernel_parameter)
 }
 
 test fn tsic_crossing_into_a_free_monoid_parameter_is_structural() -> Bool {
-  match crossing_verdict_of_atoms(atoms: atoms_crossing_structural) {
+  match tsic_crossing_outcome().free_monoid_parameter {
     StructuralUsing => true
     _ => false
   }
 }
 
 test fn tsic_crossing_into_an_imported_string_parameter_stays_undecided() -> Bool {
-  match crossing_verdict_of_atoms(atoms: atoms_crossing_ambiguous) {
+  match tsic_crossing_outcome().imported_string_parameter {
     Unclassified { cause: UndecidedCrossings } => true
     _ => false
   }
@@ -220,7 +237,7 @@ test fn tsic_crossing_into_an_imported_string_parameter_stays_undecided() -> Boo
 
 // THE ROSTER DERIVATION over a v2.std.text-shaped walk: every declared fn is structural, only a
 // text-carrier return makes a text result, and a fn-typed FIELD inside a `type` names no return.
-test fn tsic_rosters_are_derived_from_the_text_module_walk() -> Bool {
+fn tsic_roster_outcome() -> Bool {
   match rosters_of_walk(w: walk_atoms(atoms: atoms_mini_text, r: empty_rosters()), population_module: "fixture.text_string_importer_census.mini_text") {
     RostersRefused { reason: _ } => false
     RostersEstablished { rosters: r } =>
@@ -231,6 +248,10 @@ test fn tsic_rosters_are_derived_from_the_text_module_walk() -> Bool {
         && !member(xs: r.structural_text_result, x: "text_is_empty")
         && member(xs: r.host, x: "string_length")
   }
+}
+
+test fn tsic_rosters_are_derived_from_the_text_module_walk() -> Bool {
+  tsic_roster_outcome()
 }
 
 // THE WIRE FORMAT: every verdict and every crossing cause decodes back to itself, so the fixpoint

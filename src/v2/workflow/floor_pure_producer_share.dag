@@ -769,6 +769,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.text_string_importer_census.tsil_population_outcome",
   "v2.test.claim.text_string_importer_census.tsil_alias_rows_outcome",
   "v2.test.claim.text_string_importer_census.tsil_declined_rows_outcome",
+  "v2.test.claim.text_string_importer_census.tsic_crossing_outcome",
+  "v2.test.claim.text_string_importer_census.tsic_roster_outcome",
   "test.claim.namespace_xl2_rehearsal_census.xl2_control_runs",
   "v2.test.claim.provenance.loaded_carrier_receipts.lcr_loaded_roots",
   "v2.test.claim.provenance.loaded_carrier_receipts.lcr_located_roots",
