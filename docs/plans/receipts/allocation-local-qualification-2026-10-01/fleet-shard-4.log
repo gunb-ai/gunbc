@@ -1,0 +1,81 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-executor-isolated
+✓ typecheck v2.std.compilers.target_model done in 27 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+✓ typecheck v2.compiler.body_lowering_fold done in 2 seconds
+✓ typecheck v2.compiler.source_authority done in 2 seconds
+✓ typecheck v2.compiler.translate done in 4 seconds
+✓ typecheck gunbc.roadmap_belt_actuate done in 2 seconds
+✓ typecheck gunbc.roadmap_component done in 2 seconds
+✓ typecheck gunbc.roadmap_page done in 2 seconds
+✓ typecheck gunbc.live_deploy.emit done in 3 seconds
+✓ typecheck gunbc.host_effect_realize done in 22 seconds
+✓ typecheck gunbc.runner_microvm_slot_controller done in 5 seconds
+✓ typecheck gunbc.live_deploy.apply done in 3 seconds
+✓ typecheck gunbc.fleet_converge_plan done in 2 seconds
+✓ typecheck gunbc.fleet_converge_plan_cli done in 2 seconds
+✓ typecheck test.claim.fleet_converge_plan_witness done in 2 seconds
+[pre-entry] phase=workspace_discovery ms=3 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=30 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=8225 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=1 scale=tree
+[pre-entry] phase=pool_census_parse ms=1169 scale=tree
+[pre-entry] phase=closure_name_census_build ms=1681 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=47 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=67 scale=closure
+[pre-entry] phase=closure_load ms=11795 scale=closure
+[pre-entry] phase=closure_parse ms=8633 scale=closure
+[pre-entry] phase=closure_resolve ms=530 scale=closure
+[pre-entry] phase=closure_normalize ms=1727 scale=closure
+[pre-entry] phase=closure_typecheck ms=194190 scale=closure
+[pre-entry] phase=closure_parent_envs ms=16 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=262 scale=closure
+[pre-entry] phase=closure_ownership ms=2181 scale=closure
+[pre-entry] phase=reconcile_pool_qualified_fill ms=1629 scale=tree
+[pre-entry] phase=reconcile_root_bare_underlay ms=1478 scale=tree
+[pre-entry] phase=reconcile_root_variant_base ms=203 scale=tree
+[pre-entry] phase=resolve_entry_graph_inclusive ms=281842 scale=closure
+[pre-entry] population pool_modules=1159 closure_files=1159
+[pre-entry] process_cpu user_ms=276975 sys_ms=3931 max_rss_kib=8224604
+PASS witness_an_undecodable_scope_wire_refuses_and_never_defaults_to_full_host
+PASS witness_apply_admission_distinguishes_its_three_refusals
+PASS witness_a_foreign_artifact_reports_its_host_before_its_scope
+PASS generation_store_is_keyed_by_subject_host
+PASS locked_apply_runs_the_guard_as_the_lease_owner_for_any_invoker
+PASS deploy_branch_policy_compares_and_never_admits_any_branch
+PASS the_first_pass_masks_the_surplus_slot_and_removes_no_tree
+PASS the_second_pass_removes_that_exact_tree_and_does_not_remask
+PASS a_populated_cgroup_removes_no_tree_at_the_renderer
+PASS another_slots_completion_removes_nothing_at_the_renderer
+PASS absent_evidence_neither_masks_nor_removes_at_the_renderer
+PASS a_width_zero_host_is_refused_before_any_membership_effect
+PASS retirement_drift_between_plan_and_apply_changes_the_subject
+PASS an_unchanged_retirement_subject_keeps_the_same_fingerprint
+PASS absent_evidence_and_observed_pending_are_different_subjects
+PASS a_refused_host_produces_no_cap_plan
+PASS an_admitted_host_still_produces_a_cap_plan
+PASS a_refused_hosts_existing_caps_are_not_proposed_for_removal
+PASS a_refused_host_emits_no_destructive_apply_step
+PASS a_refused_host_keeps_the_fleet_result_incomplete
+	Command being timed: "./target/release/gunbc run --source-root target/local-fleet-qualification --entry target/local-fleet-qualification/test.claim.fleet_converge_plan_witness.dag --claim-run --function witness_an_undecodable_scope_wire_refuses_and_never_defaults_to_full_host --function witness_apply_admission_distinguishes_its_three_refusals --function witness_a_foreign_artifact_reports_its_host_before_its_scope --function generation_store_is_keyed_by_subject_host --function locked_apply_runs_the_guard_as_the_lease_owner_for_any_invoker --function deploy_branch_policy_compares_and_never_admits_any_branch --function the_first_pass_masks_the_surplus_slot_and_removes_no_tree --function the_second_pass_removes_that_exact_tree_and_does_not_remask --function a_populated_cgroup_removes_no_tree_at_the_renderer --function another_slots_completion_removes_nothing_at_the_renderer --function absent_evidence_neither_masks_nor_removes_at_the_renderer --function a_width_zero_host_is_refused_before_any_membership_effect --function retirement_drift_between_plan_and_apply_changes_the_subject --function an_unchanged_retirement_subject_keeps_the_same_fingerprint --function absent_evidence_and_observed_pending_are_different_subjects --function a_refused_host_produces_no_cap_plan --function an_admitted_host_still_produces_a_cap_plan --function a_refused_hosts_existing_caps_are_not_proposed_for_removal --function a_refused_host_emits_no_destructive_apply_step --function a_refused_host_keeps_the_fleet_result_incomplete"
+	User time (seconds): 297.29
+	System time (seconds): 4.98
+	Percent of CPU this job got: 99%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 5:03.31
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 8433308
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 2119376
+	Voluntary context switches: 275
+	Involuntary context switches: 121951
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 128
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

@@ -1,0 +1,81 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-executor-isolated
+✓ typecheck v2.std.compilers.target_model done in 24 seconds
+✓ typecheck v2.compiler.body_lowering_fold done in 2 seconds
+✓ typecheck v2.compiler.source_authority done in 2 seconds
+✓ typecheck v2.compiler.translate done in 3 seconds
+✓ typecheck gunbc.roadmap_belt_actuate done in 2 seconds
+✓ typecheck gunbc.roadmap_component done in 2 seconds
+✓ typecheck gunbc.live_deploy.emit done in 3 seconds
+✓ typecheck gunbc.host_effect_realize done in 19 seconds
+✓ typecheck gunbc.runner_microvm_slot_controller done in 4 seconds
+✓ typecheck gunbc.live_deploy.apply done in 3 seconds
+✓ typecheck gunbc.fleet_converge_plan done in 2 seconds
+✓ typecheck gunbc.fleet_converge_plan_cli done in 2 seconds
+✓ typecheck test.claim.fleet_converge_plan_witness done in 2 seconds
+[pre-entry] phase=workspace_discovery ms=3 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=27 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=7690 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=1 scale=tree
+[pre-entry] phase=pool_census_parse ms=1050 scale=tree
+[pre-entry] phase=closure_name_census_build ms=1505 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=44 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=64 scale=closure
+[pre-entry] phase=closure_load ms=11073 scale=closure
+[pre-entry] phase=closure_parse ms=8354 scale=closure
+[pre-entry] phase=closure_resolve ms=493 scale=closure
+[pre-entry] phase=closure_normalize ms=1590 scale=closure
+[pre-entry] phase=closure_typecheck ms=175738 scale=closure
+[pre-entry] phase=closure_parent_envs ms=16 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=259 scale=closure
+[pre-entry] phase=closure_ownership ms=2032 scale=closure
+[pre-entry] phase=reconcile_pool_qualified_fill ms=1589 scale=tree
+[pre-entry] phase=reconcile_root_bare_underlay ms=1417 scale=tree
+[pre-entry] phase=reconcile_root_variant_base ms=189 scale=tree
+[pre-entry] phase=resolve_entry_graph_inclusive ms=256988 scale=closure
+[pre-entry] population pool_modules=1159 closure_files=1159
+[pre-entry] process_cpu user_ms=252106 sys_ms=4011 max_rss_kib=8248624
+PASS the_top_admission_gate_line_names_retirement_not_add_only
+PASS the_full_host_apply_script_carries_the_hosts_own_executor_grants
+PASS the_slot_family_header_names_every_disposition_the_fold_can_emit
+PASS locked_apply_stale_diagnostic_keeps_observed_value_in_one_word
+PASS an_unmodeled_host_refuses_in_the_slot_section
+PASS a_modeled_host_proposes_the_slots_it_is_missing
+PASS an_unowned_observed_slot_is_refused_removal_not_removed
+PASS a_slot_add_reaches_the_emitted_apply_script
+PASS slot_drift_breaks_the_member_set_fingerprint
+PASS lease_guard_sudoes_only_granted_binaries
+PASS slot_extract_sudoes_only_granted_binaries
+PASS ci_runner_grants_derive_from_the_closed_vocabulary
+PASS witness_fabric_cell_population_moves_the_member_set_fingerprint
+PASS witness_fabric_cell_fingerprint_is_stable_under_observation_order
+PASS witness_fabric_cell_unreadable_population_is_not_an_empty_one
+PASS witness_fabric_cell_refusal_is_rendered_and_counted_not_silent
+PASS witness_fabric_cell_plan_and_apply_project_the_same_effects
+PASS witness_fabric_cell_converged_population_plans_nothing
+PASS witness_fabric_cell_population_from_another_host_is_refused_not_reconciled
+PASS witness_fabric_cell_refusal_wording_is_not_the_member_set_identity
+PASS witness_fabric_cell_drifted_address_plans_change_and_never_add
+PASS witness_fabric_cell_absent_address_plans_add_and_never_change
+	Command being timed: "./target/release/gunbc run --source-root target/local-fleet-qualification --entry target/local-fleet-qualification/test.claim.fleet_converge_plan_witness.dag --claim-run --function the_top_admission_gate_line_names_retirement_not_add_only --function the_full_host_apply_script_carries_the_hosts_own_executor_grants --function the_slot_family_header_names_every_disposition_the_fold_can_emit --function locked_apply_stale_diagnostic_keeps_observed_value_in_one_word --function an_unmodeled_host_refuses_in_the_slot_section --function a_modeled_host_proposes_the_slots_it_is_missing --function an_unowned_observed_slot_is_refused_removal_not_removed --function a_slot_add_reaches_the_emitted_apply_script --function slot_drift_breaks_the_member_set_fingerprint --function lease_guard_sudoes_only_granted_binaries --function slot_extract_sudoes_only_granted_binaries --function ci_runner_grants_derive_from_the_closed_vocabulary --function witness_fabric_cell_population_moves_the_member_set_fingerprint --function witness_fabric_cell_fingerprint_is_stable_under_observation_order --function witness_fabric_cell_unreadable_population_is_not_an_empty_one --function witness_fabric_cell_refusal_is_rendered_and_counted_not_silent --function witness_fabric_cell_plan_and_apply_project_the_same_effects --function witness_fabric_cell_converged_population_plans_nothing --function witness_fabric_cell_population_from_another_host_is_refused_not_reconciled --function witness_fabric_cell_refusal_wording_is_not_the_member_set_identity --function witness_fabric_cell_drifted_address_plans_change_and_never_add --function witness_fabric_cell_absent_address_plans_add_and_never_change"
+	User time (seconds): 274.00
+	System time (seconds): 5.22
+	Percent of CPU this job got: 99%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 4:40.19
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 8582472
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 2158340
+	Voluntary context switches: 260
+	Involuntary context switches: 112669
+	Swaps: 0
+	File system inputs: 8
+	File system outputs: 104
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

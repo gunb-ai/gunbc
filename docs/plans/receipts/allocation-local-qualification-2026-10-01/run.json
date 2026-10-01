@@ -1,0 +1,10 @@
+{
+  "head": "0ae5218c819a2dc0731c394eb96b08b3390752e0",
+  "comparison_base": "392ad213533c91e48012c932d846d524a7f052b1",
+  "lane": "witnesses",
+  "memory_max_bytes": 12884901888,
+  "memory_swap_max_bytes": 0,
+  "timeout_seconds": 5400,
+  "executor_sha256": "f87084919e0099a4367cb2d732f7896bab7ee46d4b008add7eb999cb38c34ae8",
+  "compiler_sha256": "621b46ed699db2d4a90a11a688d2c030a04272fd76e37d463b5ae0ac9f6f5113"
+}
