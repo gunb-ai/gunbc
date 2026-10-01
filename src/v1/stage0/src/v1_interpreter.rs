@@ -2320,7 +2320,6 @@ fn store_cross_claim_pure_memo(
             portable_value_run_invariant_digest(&portable),
         ))
     });
-    dump_warm_row_value_if_armed(func_name, &portable);
     let outcome = CROSS_CLAIM_PURE_MEMO.with(|m| {
         let mut m = m.borrow_mut();
         if let Some(bucket) = m.map.get(&memo_key) {
@@ -2490,102 +2489,6 @@ impl PreparedEffectInputCarry {
 /// clone rather than rebuilt per frame.
 fn ctx_free_symbol_text(s: &Symbol) -> String {
     s.0.to_string()
-}
-
-/// THE DECODED VALUE, for checking a digest difference by hand. One line per leaf,
-/// `path<TAB>leaf`, emitted in the portable form's OWN order: list elements are `[i]`, fields
-/// `.name`, and a map entry is addressed by its key's run-invariant digest `{k:..}`. A raw diff
-/// of two runs' files therefore shows order differences, and `sort` then `diff` compares them
-/// modulo entry order only. List order stays in the path, so it is never erased.
-fn portable_value_leaf_lines(v: &PortableValue, path: &mut String, out: &mut String) {
-    use std::fmt::Write;
-    let at = path.len();
-    match v {
-        PortableValue::List(items) => {
-            let _ = writeln!(out, "{path}\tlist len={}", items.len());
-            for (i, item) in items.iter().enumerate() {
-                let _ = write!(path, "[{i}]");
-                portable_value_leaf_lines(item, path, out);
-                path.truncate(at);
-            }
-        }
-        PortableValue::Map(pairs) => {
-            let _ = writeln!(out, "{path}\tmap len={}", pairs.len());
-            for (k, val) in pairs {
-                let _ = write!(path, "{{k:{}}}", portable_value_run_invariant_digest(k));
-                portable_value_leaf_lines(val, path, out);
-                path.truncate(at);
-            }
-        }
-        PortableValue::Record { type_name, fields } => {
-            let _ = writeln!(out, "{path}\trecord {}", ctx_free_symbol_text(type_name));
-            for (name, field) in fields {
-                let _ = write!(path, ".{}", ctx_free_symbol_text(name));
-                portable_value_leaf_lines(field, path, out);
-                path.truncate(at);
-            }
-        }
-        PortableValue::Variant {
-            type_name,
-            variant_name,
-            fields,
-        } => {
-            let _ = writeln!(
-                out,
-                "{path}\tvariant {}::{}",
-                ctx_free_symbol_text(type_name),
-                ctx_free_symbol_text(variant_name)
-            );
-            for (name, field) in fields {
-                let _ = write!(path, ".{}", ctx_free_symbol_text(name));
-                portable_value_leaf_lines(field, path, out);
-                path.truncate(at);
-            }
-        }
-        PortableValue::Set(items) => {
-            let _ = writeln!(out, "{path}\tset {:?}", items.iter().collect::<Vec<_>>());
-        }
-        PortableValue::Null => {
-            let _ = writeln!(out, "{path}\tnull");
-        }
-        PortableValue::Unit => {
-            let _ = writeln!(out, "{path}\tunit");
-        }
-        PortableValue::Bool(b) => {
-            let _ = writeln!(out, "{path}\tbool {b}");
-        }
-        PortableValue::Int(i) => {
-            let _ = writeln!(out, "{path}\tint {i}");
-        }
-        PortableValue::Float(f) => {
-            let _ = writeln!(out, "{path}\tfloat {f:?}");
-        }
-        PortableValue::Str(t) => {
-            let _ = writeln!(out, "{path}\tstr {t:?}");
-        }
-    }
-}
-
-/// Writes `portable_value_leaf_lines` for a warmed producer to
-/// `$GUNBC_FLOOR_WARM_ROW_DUMP_DIR/<producer>.tsv` when the producer's bare name is listed in
-/// `$GUNBC_FLOOR_WARM_ROW_DUMP` (comma separated). Diagnostic only: it reads, never alters, the
-/// stored value, and a failed write is reported, never swallowed.
-fn dump_warm_row_value_if_armed(func_name: &str, portable: &PortableValue) {
-    let (Ok(list), Ok(dir)) = (
-        std::env::var("GUNBC_FLOOR_WARM_ROW_DUMP"),
-        std::env::var("GUNBC_FLOOR_WARM_ROW_DUMP_DIR"),
-    ) else {
-        return;
-    };
-    if !list.split(',').any(|n| n.trim() == func_name) {
-        return;
-    }
-    let mut out = String::new();
-    portable_value_leaf_lines(portable, &mut String::new(), &mut out);
-    let file = std::path::Path::new(&dir).join(format!("{func_name}.tsv"));
-    if let Err(why) = std::fs::write(&file, out) {
-        eprintln!("[floor-warm-row-dump] producer={func_name} refused={why}");
-    }
 }
 
 /// A digest INVARIANT UNDER FIELD AND ENTRY ORDER, for comparing two RUNS. The portable form's
@@ -27722,76 +27625,5 @@ mod push_hash_extension_tests {
             let h = eval_recompute_mix(EVAL_RECOMPUTE_MAP_FINAL_SEED, sum);
             assert_eq!(eval_recompute_map_sum_from_hash(h), sum);
         }
-    }
-}
-
-#[cfg(test)]
-mod warm_row_digest_tests {
-    use super::*;
-
-    fn rec(fields: Vec<(&'static str, PortableValue)>) -> PortableValue {
-        PortableValue::Record {
-            type_name: Symbol("R"),
-            fields: fields.into_iter().map(|(n, v)| (Symbol(n), v)).collect(),
-        }
-    }
-    fn s(t: &str) -> PortableValue {
-        PortableValue::Str(t.into())
-    }
-    fn map(pairs: Vec<(&str, i64)>) -> PortableValue {
-        PortableValue::Map(
-            pairs
-                .into_iter()
-                .map(|(k, v)| (s(k), PortableValue::Int(v)))
-                .collect(),
-        )
-    }
-
-    #[test]
-    fn run_invariant_digest_is_blind_to_map_entry_and_field_order_only() {
-        let a = rec(vec![
-            ("x", map(vec![("a", 1), ("b", 2)])),
-            ("y", PortableValue::Int(3)),
-        ]);
-        let reordered = rec(vec![
-            ("y", PortableValue::Int(3)),
-            ("x", map(vec![("b", 2), ("a", 1)])),
-        ]);
-        assert_eq!(
-            portable_value_run_invariant_digest(&a),
-            portable_value_run_invariant_digest(&reordered)
-        );
-        // The order-dependent digest is NOT blind to it: the confound the invariant one removes.
-        assert_ne!(portable_value_digest(&a), portable_value_digest(&reordered));
-    }
-
-    #[test]
-    fn run_invariant_digest_still_discriminates_real_changes() {
-        let a = rec(vec![("x", map(vec![("a", 1), ("b", 2)]))]);
-        let leaf = rec(vec![("x", map(vec![("a", 1), ("b", 9)]))]);
-        let key = rec(vec![("x", map(vec![("a", 1), ("c", 2)]))]);
-        let entry_moved = rec(vec![("x", map(vec![("a", 2), ("b", 1)]))]);
-        let field = rec(vec![("z", map(vec![("a", 1), ("b", 2)]))]);
-        let d = portable_value_run_invariant_digest;
-        for other in [&leaf, &key, &entry_moved, &field] {
-            assert_ne!(d(&a), d(other));
-        }
-        let list = PortableValue::List(vec![s("p"), s("q")]);
-        let list_swapped = PortableValue::List(vec![s("q"), s("p")]);
-        assert_ne!(d(&list), d(&list_swapped));
-    }
-
-    #[test]
-    fn leaf_lines_sort_equal_exactly_when_values_equal_modulo_entry_order() {
-        let lines = |v: &PortableValue| {
-            let mut out = String::new();
-            portable_value_leaf_lines(v, &mut String::new(), &mut out);
-            let mut l: Vec<String> = out.lines().map(str::to_string).collect();
-            l.sort();
-            l
-        };
-        let a = map(vec![("a", 1), ("b", 2)]);
-        assert_eq!(lines(&a), lines(&map(vec![("b", 2), ("a", 1)])));
-        assert_ne!(lines(&a), lines(&map(vec![("a", 1), ("b", 3)])));
     }
 }
