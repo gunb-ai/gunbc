@@ -1067,9 +1067,10 @@ test fn the_v2_frontier_reserve_policies_are_recomputed_for_this_inventory() -> 
 // bytes — under one percent, so the doctrine's RED sentence mints Refused naming the exact
 // block-equivalent spelling (738 x 13,602,816 = 10,038,878,208); the exact figure is Consistent;
 // a mere underprice (above 1% of the pool, below the block-equivalent figure) refuses without the
-// RED sentence; an overprice refuses; and the v1 plan still refuses every byte claim as
-// uncheckable. The RED is a property of the claim against the pool it claims to sit in — it does
-// not soften because the pool changed size.
+// RED sentence; and an overprice refuses. (That the v1 plan refuses the same claim as uncheckable is
+// the_conservation_red_pins_the_withdrawn_six_seat_figure's clause, not repeated here.) The RED is
+// a property of the claim against the pool it claims to sit in — it does not soften because the
+// pool changed size.
 test fn the_conservation_red_still_bites_on_the_withdrawn_figure_at_the_v2_pool() -> Bool {
   match w_minted_v2_real_plan() {
     Absent => false
@@ -1095,14 +1096,6 @@ test fn the_conservation_red_still_bites_on_the_withdrawn_figure_at_the_v2_pool(
         && (match shared_pool_byte_claim_red(plan: p, request_blocks: allocator_block_count(count: 738), claimed_block_equivalent_bytes: byte_size(count: 11000000000)) {
           SharedPoolByteClaimRefused { cause: c } => string_contains(s: c as String, pattern: "over the block-equivalent figure")
           SharedPoolByteClaimConsistent { request_blocks: _, block_equivalent_bytes: _ } => false
-        })
-        && (match w_minted_real_plan() {
-          Absent => false
-          Present { value: v1 } =>
-            match shared_pool_byte_claim_red(plan: v1, request_blocks: allocator_block_count(count: 738), claimed_block_equivalent_bytes: byte_size(count: 125010432)) {
-              SharedPoolByteClaimRefused { cause: c } => string_contains(s: c as String, pattern: "v1 emission vintage")
-              SharedPoolByteClaimConsistent { request_blocks: _, block_equivalent_bytes: _ } => false
-            }
         })
   }
 }

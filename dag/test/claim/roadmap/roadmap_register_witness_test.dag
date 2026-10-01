@@ -279,7 +279,11 @@ test fn witness_propagation_scoped_by_demand() -> Bool {
 // strip), which is exactly where the former inline-style contract failed: the client's painter
 // never carried it. The pin is the rule's shape, and the RED control is that a segment without
 // the share fails to match.
+// Read at the rule list roadmap_css composes (serialize_rules over roadmap_rules), not the whole
+// sheet: the stage-segment rule is a selector rule, and the root variable blocks the sheet adds
+// carry none.
 test fn witness_stage_segments_have_a_width_contract() -> Bool {
-  string_contains(s: roadmap_css(), pattern: ".stage-segment { min-width: var(--space-0); flex: 1 }")
-    && !string_contains(s: roadmap_css(), pattern: ".stage-segment { min-width: var(--space-0) }")
+  let rules = serialize_rules(rules: roadmap_rules())
+  string_contains(s: rules, pattern: ".stage-segment { min-width: var(--space-0); flex: 1 }")
+    && !string_contains(s: rules, pattern: ".stage-segment { min-width: var(--space-0) }")
 }

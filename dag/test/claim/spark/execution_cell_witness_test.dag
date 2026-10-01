@@ -1,7 +1,7 @@
 module test.claim.spark.execution_cell_witness_test
 
 import std.types { Bool, String, NonEmptyStr, List }
-import std.nat { Nat, nat_range_inclusive }
+import std.nat { Nat }
 import std.measure { token_count, token_count_value }
 import v2.std.optional { Present, Absent }
 import product.placement_supply { HostIdentity }
@@ -40,6 +40,7 @@ import gunbc.spark.systemd_execution_cell {
 import gunbc.spark.native_experiment_apply {
   ArmExperimentActuationAdmission, ArmExperimentActuationAdmitted, ArmExperimentActuationRefused,
   spark_native_experiment_default_actuation, spark_experiment_route, spark_native_experiment_actuation_dry,
+  spark_experiment_actuation_admit, spark_experiment_members,
   spark_native_experiment_profile_anchor, spark_native_experiment_rank_profile_anchor,
   spark_profile_readback_verdict,
   SparkProfileReadbacksConverged, SparkProfileReadbackHalted,
@@ -64,10 +65,14 @@ import gunbc.spark.pair_serving_apply {
   spark_pair_apply_all_applied,
 }
 import gunbc.spark.pair_serving_launch_receipt { serving_standing }
-import gunbc.spark.native_serving_realization { glm_native_head_unit_name, glm_native_rank_unit_name, glm_native_head_log_path, glm_native_rank_log_path }
+import gunbc.spark.native_serving_realization { glm_native_experiment_all_unit_renders, glm_native_ranked_hosts, glm_native_head_unit_name, glm_native_rank_unit_name, glm_native_head_log_path, glm_native_rank_log_path }
 import gunbc.spark.group_b_serving_capacity { group_b_restoration_executable }
-import gunbc.spark.serving_arm { serving_launch_profile_key, serving_launch_profile }
-import gunbc.spark.arm_memory_fit { arm_memory_experiment_runtime_seconds, ArmMemoryExperimentPlan, ArmMemoryExperimentAdmitted, ArmMemoryExperimentRefused }
+import gunbc.spark.serving_arm { serving_launch_profile_key, serving_launch_profile, Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4 }
+import gunbc.spark.arm_memory_fit {
+  arm_memory_experiment_runtime_seconds, ArmMemoryExperimentPlan, ArmMemoryExperimentAdmitted, ArmMemoryExperimentRefused,
+  arm_memory_fit_subject_for_launch, arm_memory_fit_verdict, arm_memory_fit_experiment_plan, arm_memory_subject_open_components,
+  ArmMemorySubjectReady, ArmMemorySubjectRefused, ArmMemoryFitUnestablished,
+}
 
 // ── WHAT THIS SUITE ESTABLISHES ──────────────────────────────────────────────────────────────────
 //
@@ -111,6 +116,59 @@ fn fx_applied(plan: SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome {
 
 fn fx_failed(plan: SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome {
   SparkPairHostApplyFailed { host: plan.host, cause: "planted leg failure" }
+}
+
+// ── THE ADMISSION'S INPUTS, SUPPLIED (DESIGN 3: a witness discriminates at one interface) ──────
+//
+// spark_experiment_actuation_admit is the interface every bracket, route, verdict and script claim
+// below is about, so they hand it its two inputs as values: a four-member cohort (one head, three
+// ranks) and the minted fragmentation-churn plan with a SHORT admitted duration. The duration is
+// supplied small on purpose: every bounded wait renders one poll word per five admitted seconds, so
+// the production figure (arm_memory_experiment_runtime_seconds) would make each claim re-render
+// thousands of words it never reads. Every relation these claims assert -- loops from the admitted
+// seconds, the churn window as its twelfth, the shared budget -- holds at any admitted figure.
+// The two producers of those inputs are each executed for real by an inhabitance claim below
+// (w_one_generation_identity_appears_on_every_member_unit, w_the_real_plan_targets_the_subjects_
+// open_obligations_at_the_one_admitted_runtime), and the dry entry's claims run the composed real
+// path end to end.
+data fx_admitted_seconds: Nat = 60
+
+fn fx_cohort() -> ExecutionCellCohort<SystemdExecutionMember> {
+  ExecutionCellCohort {
+    members: [
+      fx_member(host: "fx-head", unit: glm_native_head_unit_name),
+      fx_member(host: "fx-rank-1", unit: glm_native_rank_unit_name),
+      fx_member(host: "fx-rank-2", unit: glm_native_rank_unit_name),
+      fx_member(host: "fx-rank-3", unit: glm_native_rank_unit_name),
+    ],
+    generation: fx_generation(),
+  }
+}
+
+fn fx_plan() -> ArmMemoryExperimentPlan? {
+  match arm_experiment_kvplan_v2_2026_09_26_fragmentation_churn_plan() {
+    ArmMemoryExperimentRefused { cause: _ } => none
+    ArmMemoryExperimentAdmitted { plan: p } =>
+      Present { value: ArmMemoryExperimentPlan {
+        checkpoint: p.checkpoint,
+        runtime: p.runtime,
+        topology: p.topology,
+        workload: p.workload,
+        profile: p.profile,
+        targets: p.targets,
+        envelope_basis_points: p.envelope_basis_points,
+        max_runtime_seconds: fx_admitted_seconds,
+        expected_receipts: p.expected_receipts,
+        stop: p.stop,
+      } }
+  }
+}
+
+fn fx_actuation() -> ArmExperimentActuationAdmission {
+  match fx_plan() {
+    Absent => ArmExperimentActuationRefused { cause: "the minted fragmentation-churn plan refused" as NonEmptyStr }
+    Present { value: p } => spark_experiment_actuation_admit(cohort: fx_cohort(), plan: p)
+  }
 }
 
 // ── THE PHASE ORDER IS LAW ───────────────────────────────────────────────────────────────────────
@@ -392,24 +450,70 @@ fn w_workload_shape(admission: ArmExperimentActuationAdmission, head_member: Sys
 
 test fn w_the_admitted_bracket_is_phase_ordered_and_carries_reset_failed() -> Bool {
   w_admitted_shape(
-    admission: spark_native_experiment_default_actuation(),
+    admission: fx_actuation(),
     order_ok: fn(legs) { execution_cell_actuations_in_contract_order(legs: legs) })
 }
 
-// ONE EXACT GENERATION ACROSS ALL FOUR MEMBERS: the cohort's generation is the launch-profile
-// hash, and every member's rendered unit embeds that profile's served alias — the generation
-// identity is on each unit by construction, never "three ranks on G, one on G-1".
+// ONE EXACT GENERATION ACROSS ALL FOUR MEMBERS, ON THE REAL COHORT PATH -- the inhabitance claim
+// for the supplied cohort: the real ranked hosts and the real experiment renders mint four members,
+// the cohort admits them under the restoration profile's generation (the launch-profile hash), and
+// every member's rendered unit embeds that profile's served alias -- the generation identity is on
+// each unit by construction, never "three ranks on G, one on G-1".
 test fn w_one_generation_identity_appears_on_every_member_unit() -> Bool {
-  match spark_native_experiment_default_actuation() {
-    ArmExperimentActuationRefused { cause: _ } => false
-    ArmExperimentActuationAdmitted { cohort: cohort, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: _, rank_readbacks: _, workload_phase: _, stop_legs: _, admitted_seconds: _ } =>
-      match group_b_restoration_executable() {
+  match group_b_restoration_executable() {
+    Absent => false
+    Present { value: executable } =>
+      let expected = execution_generation_of_intent(intent_key: serving_launch_profile_key(p: executable.profile))
+      let alias = executable.profile.served_alias as String
+      match spark_experiment_members(hosts: glm_native_ranked_hosts(), renders: glm_native_experiment_all_unit_renders()) {
         Absent => false
-        Present { value: executable } =>
-          let expected = execution_generation_of_intent(intent_key: serving_launch_profile_key(p: executable.profile))
-          let alias = executable.profile.served_alias as String
-          execution_generation_eq(a: cohort.generation, b: expected)
-            && all(cohort.members, m => string_contains(s: m.unit_text, pattern: alias))
+        Present { value: members } =>
+          match execution_cell_cohort_admit(members: members, generation: expected, member_key: systemd_member_key) {
+            ExecutionCellCohortRefused { cause: _ } => false
+            ExecutionCellCohortAdmitted { cohort: cohort } =>
+              length(cohort.members) == 4
+                && length(filter(cohort.members, m => (m.unit_name as String) == (glm_native_head_unit_name as String))) == 1
+                && execution_generation_eq(a: cohort.generation, b: expected)
+                && all(cohort.members, m => string_contains(s: m.unit_text, pattern: alias))
+          }
+      }
+  }
+}
+
+// THE REAL PLAN TARGETS THE SUBJECT'S OPEN OBLIGATIONS AT THE ONE ADMITTED RUNTIME -- the
+// inhabitance claim for the supplied plan: the restoration profile's subject on the Group B tuple
+// is Unestablished, the plan the default actuation admits targets exactly its open components
+// (fragmentation among them, so the workload phase plans), runs the restoration profile, and admits
+// the one runtime authority every rank unit's RuntimeMaxSec carries.
+test fn w_the_real_plan_targets_the_subjects_open_obligations_at_the_one_admitted_runtime() -> Bool {
+  match group_b_restoration_executable() {
+    Absent => false
+    Present { value: executable } =>
+      match arm_memory_fit_subject_for_launch(checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4, profile: executable.profile) {
+        ArmMemorySubjectRefused { cause: _ } => false
+        ArmMemorySubjectReady { subject: subject } =>
+          match arm_memory_fit_verdict(subject: subject) {
+            ArmMemoryFitUnestablished { obligations: os } =>
+              let open = arm_memory_subject_open_components(subject: subject)
+              length(os) > 0
+                && (match arm_memory_fit_experiment_plan(
+                  checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
+                  workload: subject.intent, policy_profile: executable.profile, targets: open) {
+                  ArmMemoryExperimentRefused { cause: _ } => false
+                  ArmMemoryExperimentAdmitted { plan: p } =>
+                    p.max_runtime_seconds == arm_memory_experiment_runtime_seconds()
+                      && 3600 <= p.max_runtime_seconds
+                      && (match spark_workload_variant_named(name: "e-stall-captured-six-full-window" as NonEmptyStr) {
+                        Present { value: e } =>
+                          spark_churn_window_seconds(admitted_seconds: p.max_runtime_seconds) + e.request_timeout_seconds < arm_memory_experiment_runtime_seconds()
+                        Absent => false
+                      })
+                      && length(p.targets) == length(open)
+                      && spark_plan_targets_fragmentation(plan: p)
+                      && serving_launch_profile_key(p: p.profile) == serving_launch_profile_key(p: executable.profile)
+                })
+            _ => false
+          }
       }
   }
 }
@@ -417,7 +521,7 @@ test fn w_one_generation_identity_appears_on_every_member_unit() -> Bool {
 // ── THE ROUTE'S SEQUENCING, DRIVEN BY A SUPPLIED LEG RUNNER ──────────────────────────────────────
 
 fn fx_route_result(run_leg: fn(SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome) -> SparkExperimentRouteResult? {
-  match spark_native_experiment_default_actuation() {
+  match fx_actuation() {
     ArmExperimentActuationRefused { cause: _ } => none
     ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: prior, preparation_actuations: prep, activation_actuations: act, head_readback: head, rank_readbacks: ranks, workload_phase: workload, stop_legs: stop, admitted_seconds: _ } =>
       Present { value: spark_experiment_route(
@@ -557,41 +661,38 @@ test fn w_workload_phase_gate_follows_the_plans_targets() -> Bool {
 }
 
 // THE GATE PLANS THE PHASE OR NOTHING, on the same cohort: the loader-transient plan against the
-// default actuation's cohort plans Absent — the bracket for a memory-profile experiment is the
+// supplied cohort plans Absent — the bracket for a memory-profile experiment is the
 // bracket that has always run — and the fragmentation-churn plan plans four legs, every one on the
 // head host.
 test fn w_workload_phase_is_absent_for_memory_profile_plans() -> Bool {
-  match spark_native_experiment_default_actuation() {
-    ArmExperimentActuationRefused { cause: _ } => false
-    ArmExperimentActuationAdmitted { cohort: cohort, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: _, rank_readbacks: _, workload_phase: _, stop_legs: _, admitted_seconds: _ } =>
-      let loader_absent = match arm_experiment_kvplan_v2_2026_09_26_loader_transient_plan() {
-        ArmMemoryExperimentAdmitted { plan: p } =>
-          match spark_experiment_seat_window(plan: p, variant: spark_workload_variants_a()) {
-            SparkSeatWindowRefused { cause: _ } => false
-            SparkSeatWindowReady { seat_window: sw } =>
-              match spark_experiment_workload_phase(cohort: cohort, plan: p, variant: spark_workload_variants_a(), seat_window: sw) {
-                Absent => true
-                Present { value: _ } => false
-              }
+  let cohort = fx_cohort()
+  let loader_absent = match arm_experiment_kvplan_v2_2026_09_26_loader_transient_plan() {
+    ArmMemoryExperimentAdmitted { plan: p } =>
+      match spark_experiment_seat_window(plan: p, variant: spark_workload_variants_a()) {
+        SparkSeatWindowRefused { cause: _ } => false
+        SparkSeatWindowReady { seat_window: sw } =>
+          match spark_experiment_workload_phase(cohort: cohort, plan: p, variant: spark_workload_variants_a(), seat_window: sw) {
+            Absent => true
+            Present { value: _ } => false
           }
-        ArmMemoryExperimentRefused { cause: _ } => false
       }
-      let churn_present = match arm_experiment_kvplan_v2_2026_09_26_fragmentation_churn_plan() {
-        ArmMemoryExperimentAdmitted { plan: p } =>
-          match spark_experiment_seat_window(plan: p, variant: spark_workload_variants_a()) {
-            SparkSeatWindowRefused { cause: _ } => false
-            SparkSeatWindowReady { seat_window: sw } =>
-              match spark_experiment_workload_phase(cohort: cohort, plan: p, variant: spark_workload_variants_a(), seat_window: sw) {
-                Absent => false
-                Present { value: phase } =>
-                  (phase.prefill_seats.member.host as String) == (phase.churn.member.host as String)
-                    && (phase.churn.member.host as String) == (phase.sampling.member.host as String)
-              }
-          }
-        ArmMemoryExperimentRefused { cause: _ } => false
-      }
-      loader_absent && churn_present
+    ArmMemoryExperimentRefused { cause: _ } => false
   }
+  let churn_present = match fx_plan() {
+    Present { value: p } =>
+      match spark_experiment_seat_window(plan: p, variant: spark_workload_variants_a()) {
+        SparkSeatWindowRefused { cause: _ } => false
+        SparkSeatWindowReady { seat_window: sw } =>
+          match spark_experiment_workload_phase(cohort: cohort, plan: p, variant: spark_workload_variants_a(), seat_window: sw) {
+            Absent => false
+            Present { value: phase } =>
+              (phase.prefill_seats.member.host as String) == (phase.churn.member.host as String)
+                && (phase.churn.member.host as String) == (phase.sampling.member.host as String)
+          }
+      }
+    Absent => false
+  }
+  loader_absent && churn_present
 }
 
 // THE WORKLOAD SCRIPTS CARRY THE BOUNDS AND THE INSTRUMENTS, rendered where the review reads them.
@@ -606,7 +707,7 @@ test fn w_workload_phase_is_absent_for_memory_profile_plans() -> Bool {
 // block so the prefix cache cannot fold two seats, and the sampler reads the named instruments at
 // the runbook cadence and folds the peak line the receipt mints from.
 test fn w_workload_scripts_render_the_bounds_variation_and_instruments() -> Bool {
-  match spark_native_experiment_default_actuation() {
+  match fx_actuation() {
     ArmExperimentActuationRefused { cause: _ } => false
     ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: _, rank_readbacks: _, workload_phase: _, stop_legs: _, admitted_seconds: admitted } =>
       match fx_phase_for_variant(name: "a-repro-six-full-window" as NonEmptyStr) {
@@ -689,7 +790,7 @@ test fn w_workload_scripts_render_the_bounds_variation_and_instruments() -> Bool
 // halts located on THAT leg's member — discriminated by changing exactly one outcome of the
 // converged control, the located-refusal wall the route's rollback consumes.
 test fn w_profile_readback_verdict_locates_the_halt_by_host_and_phase() -> Bool {
-  match spark_native_experiment_default_actuation() {
+  match fx_actuation() {
     ArmExperimentActuationRefused { cause: _ } => false
     ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: head, rank_readbacks: ranks, workload_phase: workload, stop_legs: _, admitted_seconds: _ } =>
       let first_rank_host = match first(ranks) { Present { value: l } => l.member.host as String  Absent => "" }
@@ -729,6 +830,9 @@ test fn w_the_dry_readback_phase_is_per_rank_ordered_before_the_stops() -> Bool 
           ["STOP (deterministic end on every rank)"]))
       length(actual) == length(expected)
         && join(actual, "\n") == join(expected, "\n")
+        && string_contains(s: dry, pattern: "inventory")
+        && string_contains(s: dry, pattern: "settlement")
+        && string_contains(s: dry, pattern: "ACTIVATE COHORT concurrently")
   }
 }
 
@@ -740,15 +844,13 @@ test fn w_the_dry_readback_phase_is_per_rank_ordered_before_the_stops() -> Bool 
 // arithmetic, so the cohort is charged one duration in total, never one per leg: a bracket that
 // minted a fresh budget per leg would count a single run four times.
 test fn w_the_readback_phase_shares_the_plans_one_admitted_duration() -> Bool {
-  match spark_native_experiment_default_actuation() {
+  match fx_actuation() {
     ArmExperimentActuationRefused { cause: _ } => false
     ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: head, rank_readbacks: ranks, workload_phase: _, stop_legs: _, admitted_seconds: admitted } =>
-      let expected_loop = join(["for i in ", join(map(nat_range_inclusive(lo: 1, hi: (admitted + 4) / 5), n => to_string(n)), " "), "; do"], "")
-      admitted == arm_memory_experiment_runtime_seconds()
+      let expected_loop = join(["i=0; while [ \"$i\" -lt ", to_string((admitted + 4) / 5), " ]; do i=$((i+1)); "], "")
+      admitted == fx_admitted_seconds
         && string_contains(s: head.plan.script, pattern: expected_loop)
-        && string_contains(s: spark_native_experiment_actuation_dry(), pattern: join(["HEAD READBACK ", head.member.host as String, " ", head.plan.unit_name as String, " bounded_seconds=", to_string(admitted)], ""))
         && all(ranks, l => string_contains(s: l.plan.script, pattern: expected_loop))
-        && all(ranks, l => string_contains(s: spark_native_experiment_actuation_dry(), pattern: join(["RANK READBACK ", l.member.host as String, " ", l.plan.unit_name as String, " bounded_seconds=", to_string(admitted)], "")))
   }
 }
 
@@ -821,7 +923,7 @@ test fn w_the_seat_window_margin_refuses_an_overshooting_construction() -> Bool 
 // The bounds are pinned here as data: safety < margin, seat_window + margin == context window, and
 // the scripts carry the exact-marginal arithmetic and the safety-absorbing unit formula.
 test fn w_the_seat_construction_is_token_exact() -> Bool {
-  match spark_native_experiment_default_actuation() {
+  match fx_actuation() {
     ArmExperimentActuationRefused { cause: _ } => false
     ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: _, rank_readbacks: _, workload_phase: workload, stop_legs: _, admitted_seconds: _ } =>
       match workload {
@@ -883,17 +985,16 @@ test fn w_route_never_ready_endpoint_halts_the_workload_before_the_stops() -> Bo
 // readbacks, so the cohort is charged one experiment duration across every bounded wait in the
 // cell — the gate's bound is the budget shared, never a fresh duration minted at the phase edge.
 test fn w_the_readiness_gate_shares_the_plans_one_admitted_duration() -> Bool {
-  match spark_native_experiment_default_actuation() {
+  match fx_actuation() {
     ArmExperimentActuationRefused { cause: _ } => false
     ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: _, rank_readbacks: _, workload_phase: workload, stop_legs: _, admitted_seconds: admitted } =>
       match workload {
         Absent => false
         Present { value: phase } =>
-          let expected_loop = join(["for i in ", join(map(nat_range_inclusive(lo: 1, hi: (admitted + 4) / 5), n => to_string(n)), " "), "; do"], "")
+          let expected_loop = join(["i=0; while [ \"$i\" -lt ", to_string((admitted + 4) / 5), " ]; do i=$((i+1)); "], "")
           phase.readiness_bounded_seconds == admitted
             && string_contains(s: phase.readiness_gate.plan.script, pattern: expected_loop)
             && string_contains(s: phase.readiness_gate.plan.script, pattern: join(["endpoint-not-ready-after-", to_string(admitted), "s"], ""))
-            && string_contains(s: spark_native_experiment_actuation_dry(), pattern: join(["WORKLOAD ENDPOINT READINESS ", phase.readiness_gate.member.host as String, " ", phase.readiness_gate.plan.unit_name as String, " bounded_seconds=", to_string(admitted)], ""))
       }
   }
 }
@@ -987,24 +1088,21 @@ test fn w_the_dry_workload_phase_is_ordered_between_the_readbacks_and_the_stops(
   }
 }
 
-// THE WORKLOAD PHASE FOR ONE NAMED VARIANT, built from the default actuation's cohort and the
-// minted churn plan: the fixture every variant witness inhabits, so each variant's scripts are
-// read from the same planning path the wet entry runs.
+// THE WORKLOAD PHASE FOR ONE NAMED VARIANT, built from the supplied cohort and plan: the fixture
+// every variant witness inhabits, so each variant's scripts are read from the planning function
+// the admission itself calls (spark_experiment_workload_phase), for any registry variant -- not
+// only the active one the admission selects.
 fn fx_phase_for_variant(name: NonEmptyStr) -> SparkExperimentWorkloadPhase? {
-  match spark_native_experiment_default_actuation() {
-    ArmExperimentActuationRefused { cause: _ } => none
-    ArmExperimentActuationAdmitted { cohort: cohort, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: _, rank_readbacks: _, workload_phase: _, stop_legs: _, admitted_seconds: _ } =>
-      match spark_workload_variant_named(name: name) {
+  match spark_workload_variant_named(name: name) {
+    Absent => none
+    Present { value: variant } =>
+      match fx_plan() {
         Absent => none
-        Present { value: variant } =>
-          match arm_experiment_kvplan_v2_2026_09_26_fragmentation_churn_plan() {
-            ArmMemoryExperimentRefused { cause: _ } => none
-            ArmMemoryExperimentAdmitted { plan: p } =>
-              match spark_experiment_seat_window(plan: p, variant: variant) {
-                SparkSeatWindowRefused { cause: _ } => none
-                SparkSeatWindowReady { seat_window: sw } =>
-                  spark_experiment_workload_phase(cohort: cohort, plan: p, variant: variant, seat_window: sw)
-              }
+        Present { value: p } =>
+          match spark_experiment_seat_window(plan: p, variant: variant) {
+            SparkSeatWindowRefused { cause: _ } => none
+            SparkSeatWindowReady { seat_window: sw } =>
+              spark_experiment_workload_phase(cohort: fx_cohort(), plan: p, variant: variant, seat_window: sw)
           }
       }
   }
@@ -1144,7 +1242,6 @@ test fn w_variant_b_renders_five_seats_and_the_unchanged_budget() -> Bool {
       string_contains(s: phase.prefill_seats.plan.script, pattern: "while [ \"$seat\" -le 5 ]")
         && string_contains(s: phase.churn.plan.script, pattern: "while [ \"$client\" -le 5 ]")
         && string_contains(s: phase.churn.plan.script, pattern: join(["window_seconds=", to_string(phase.churn_window_seconds)], ""))
-        && string_contains(s: spark_native_experiment_actuation_dry(), pattern: "variant=b-five-concurrent-full-window") == false
         && phase.churn_window_seconds == spark_churn_window_seconds(admitted_seconds: phase.readiness_bounded_seconds)
   }
 }
@@ -1229,8 +1326,6 @@ test fn w_the_stall_watchdog_fires_on_a_simulated_stall_and_captures_before_tear
         && string_contains(s: sampling, pattern: "workload_phase_done")
         && string_contains(s: sampling, pattern: "stall_watchdog.pid")
         && string_contains(s: sampling, pattern: "stall-watchdog-reaped")
-        && 3600 <= phase.readiness_bounded_seconds
-        && phase.churn_window_seconds + phase.variant.request_timeout_seconds < arm_memory_experiment_runtime_seconds()
   }
 }
 
@@ -1240,13 +1335,12 @@ test fn w_the_stall_watchdog_fires_on_a_simulated_stall_and_captures_before_tear
 // watchdog was armed). The budget arithmetic is the plan's own, as every variant — this witness
 // holds for whichever variant the parent's per-run flip selects, a through e.
 test fn w_the_active_variant_renders_itself_and_the_watchdog_follows_the_variant() -> Bool {
-  match spark_native_experiment_default_actuation() {
+  match fx_actuation() {
     ArmExperimentActuationRefused { cause: _ } => false
     ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: _, rank_readbacks: _, workload_phase: workload, stop_legs: _, admitted_seconds: _ } =>
       match workload {
         Absent => false
         Present { value: phase } =>
-          let banner = join(["variant=", phase.variant.name as String, " seats=", to_string(phase.variant.seat_count), " window_tokens=", to_string(phase.variant.window_tokens), " mode=", spark_workload_mode_wire(mode: phase.variant.mode), " watchdog=", if phase.variant.watchdog { "armed" } else { "off" }], "")
           let watchdog_markers = if phase.variant.watchdog {
             string_contains(s: phase.prefill_seats.plan.script, pattern: "stall-watchdog-armed")
               && string_contains(s: phase.prefill_seats.plan.script, pattern: "workload_phase_done")
@@ -1255,7 +1349,6 @@ test fn w_the_active_variant_renders_itself_and_the_watchdog_follows_the_variant
           }
           (phase.variant.name as String) == (spark_active_workload_variant as String)
             && watchdog_markers
-            && string_contains(s: spark_native_experiment_actuation_dry(), pattern: banner)
             && string_contains(s: phase.sampling.plan.script, pattern: "workload_phase_done")
             && string_contains(s: phase.sampling.plan.script, pattern: "stall_watchdog.pid")
             && string_contains(s: phase.churn.plan.script, pattern: join(["window_seconds=", to_string(phase.churn_window_seconds)], ""))

@@ -1,7 +1,7 @@
 module gunbc.spark.systemd_execution_cell
 
 import std.types { Bool, String, NonEmptyStr, List, Port }
-import std.nat { Nat, nat_range_inclusive }
+import std.nat { Nat }
 import product.placement_supply { HostIdentity }
 import extdeps.exec.command { shell_quote }
 import gunbc.spark.execution_cell {
@@ -250,6 +250,13 @@ fn systemd_execution_realization() -> ExecutionCellRealization<SystemdExecutionM
   }
 }
 
+// ONE BOUNDED POLL HEAD for every admitted wait: a counter to `polls`, not the iterations written
+// out. The written-out list cost linear text and eval in the admitted seconds (2,556 words at the
+// 12,780 s runtime, in every rank's script) for a bound one number states.
+fn systemd_bounded_poll_head(polls: String) -> String {
+  join(["i=0; while [ \"$i\" -lt ", polls, " ]; do i=$((i+1)); "], "")
+}
+
 // ── THE PROFILE READBACK: ONE LEG PER HOST, EVERY LEG BOUNDED BY THE ONE ADMITTED DURATION ────────
 //
 // THE CONVERGENCE WITNESS, per rank — the Sep-25 repair of the run-3 collective wait. The head leg
@@ -282,11 +289,11 @@ fn systemd_execution_realization() -> ExecutionCellRealization<SystemdExecutionM
 // are parameters, so the head leg and the rank legs are one script inhabited twice, not two
 // spellings that can drift.
 fn systemd_profile_readback_script(member: SystemdExecutionMember, profile_anchor: String, admitted_seconds: Nat) -> String {
-  let iterations = nat_range_inclusive(lo: 1, hi: (admitted_seconds + 4) / 5)
+  let polls = to_string((admitted_seconds + 4) / 5)
   let unit = member.unit_name as String
   join([
     "set -e\n",
-    "for i in ", join(map(iterations, n => to_string(n)), " "), "; do if grep -q \"", profile_anchor, "\" ", member.log_path as String, " 2>/dev/null; then echo profile-line-seen; break; fi; if ! systemctl is-active ", unit, " >/dev/null 2>&1; then echo unit-inactive-before-profile; exit 1; fi; sleep 5; done\n",
+    systemd_bounded_poll_head(polls: polls), "if grep -q \"", profile_anchor, "\" ", member.log_path as String, " 2>/dev/null; then echo profile-line-seen; break; fi; if ! systemctl is-active ", unit, " >/dev/null 2>&1; then echo unit-inactive-before-profile; exit 1; fi; sleep 5; done\n",
     "grep \"", profile_anchor, "\" ", member.log_path as String, " | tail -1\n",
     "systemctl is-active ", unit, "\n",
   ], "")
@@ -804,13 +811,13 @@ fn systemd_workload_churn_launch_script(member: SystemdExecutionMember, serve_po
 // budget named. The gate is readiness, not a failure classifier — every later refusal arm is
 // unchanged.
 fn systemd_workload_readiness_script(member: SystemdExecutionMember, serve_port: Port, admitted_seconds: Nat) -> String {
-  let iterations = nat_range_inclusive(lo: 1, hi: (admitted_seconds + 4) / 5)
+  let polls = to_string((admitted_seconds + 4) / 5)
   let unit = member.unit_name as String
   join([
     "set -e\n",
     "base=http://127.0.0.1:", to_string(serve_port), "\n",
     "ready=0\n",
-    "for i in ", join(map(iterations, n => to_string(n)), " "), "; do if curl -fsS -m 10 \"$base/v1/models\" >/dev/null 2>&1; then ready=1; break; fi; if ! systemctl is-active ", unit, " >/dev/null 2>&1; then echo unit-inactive-before-endpoint-ready; exit 51; fi; sleep 5; done\n",
+    systemd_bounded_poll_head(polls: polls), "if curl -fsS -m 10 \"$base/v1/models\" >/dev/null 2>&1; then ready=1; break; fi; if ! systemctl is-active ", unit, " >/dev/null 2>&1; then echo unit-inactive-before-endpoint-ready; exit 51; fi; sleep 5; done\n",
     "if [ \"$ready\" != \"1\" ]; then echo \"endpoint-not-ready-after-", to_string(admitted_seconds), "s\"; exit 50; fi\n",
     "echo \"endpoint-ready bounded_seconds=", to_string(admitted_seconds), "\"\n",
   ], "")

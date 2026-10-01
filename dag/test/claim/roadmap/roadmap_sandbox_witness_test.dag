@@ -127,26 +127,13 @@ test fn witness_sandbox_gallery_and_live_render() -> Bool {
 // check, the member's full task headline occurs zero times — the RED control for family_subject_row
 // — and the A3 chip collapse holds: zero 'status status-open' and zero activity markup, routine
 // state earns no ink); (3) the PAGE contains all three width frames verbatim, so the frame-level
-// pins transfer to the page without scanning it. Occurrence counting walks an index over the ~2KB
-// frame (the std.encoding base64_collect_values shape), never the full page.
+// pins transfer to the page without scanning it. Occurrence counting splits the ~2KB frame, never
+// the full page.
 
-fn frame_occurrence_count_go(s: String, pattern: String, i: Int, len: Int, plen: Int, acc: Int) -> Int {
-  if i + plen > len {
-    acc
-  } else {
-    if substring(s: s, start: i, end: i + plen) == pattern {
-      frame_occurrence_count_go(s: s, pattern: pattern, i: i + plen, len: len, plen: plen, acc: acc + 1)
-    } else {
-      frame_occurrence_count_go(s: s, pattern: pattern, i: i + 1, len: len, plen: plen, acc: acc)
-    }
-  }
-}
-
+// Non-overlapping occurrences, counted by the native split rather than an interpreted
+// character-by-character scan (the scan cost ~100k steps per pattern on a frame).
 fn frame_occurrence_count(s: String, pattern: String) -> Int {
-  frame_occurrence_count_go(
-    s: s, pattern: pattern,
-    i: 0, len: string_length(s: s), plen: string_length(s: pattern),
-    acc: 0)
+  count(split(s: s, delimiter: pattern)) - 1
 }
 
 fn fixture_band_entry_signature(e: WorkBandEntry) -> String {

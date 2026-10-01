@@ -1,6 +1,7 @@
 module test.claim.roadmap_row_witness
 
-import gunbc.roadmap_style { roadmap_css }
+import gunbc.roadmap_style { roadmap_css, roadmap_rules }
+import gunbc.design.material { serialize_rules }
 import gunbc.roadmap_page { roadmap_page_for_authority }
 import gunbc.roadmap_component {
   dispatch_reserved_width, workflow_controls_class,
@@ -36,11 +37,15 @@ fn expected_row_actuator_block() -> String {
   ], "")
 }
 
+// Read at the rule list roadmap_css composes (serialize_rules over roadmap_rules): every selector
+// rule of the sheet, including the ones the reduced-motion block re-emits, originates there, and
+// the root variable blocks the sheet adds carry no selectors.
 test fn roadmap_row_grid_structure_holds() -> Bool {
-  return string_contains(s: roadmap_css(), pattern: expected_taskbar_block())
-    && string_contains(s: roadmap_css(), pattern: expected_taskbar_face_block())
-    && !string_contains(s: roadmap_css(), pattern: ".node-head")
-    && !string_contains(s: roadmap_css(), pattern: "grid-template-columns: auto 1fr auto")
+  let rules = serialize_rules(rules: roadmap_rules())
+  string_contains(s: rules, pattern: expected_taskbar_block())
+    && string_contains(s: rules, pattern: expected_taskbar_face_block())
+    && !string_contains(s: rules, pattern: ".node-head")
+    && !string_contains(s: rules, pattern: "grid-template-columns: auto 1fr auto")
 }
 
 test fn roadmap_row_page_carries_the_cells() -> Bool {

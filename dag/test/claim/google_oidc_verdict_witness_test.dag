@@ -14,7 +14,7 @@ import extdeps.auth.jwks {
   jwks_select_key,
 }
 import gunbc.auth.oidc_id_token_verification {
-  OidcIdTokenWire, OidcIdTokenWireDecoded, OidcIdTokenWireRefused,
+  OidcIdTokenWire, OidcIdTokenWireDecoded, OidcIdTokenWireRefused, OidcIdTokenHeader,
   oidc_id_token_wire_decode, rsa_spki_of_jwk, DerRefused, DerOctets,
   JwksResolve, JwksResolveRefused, JwksResolved, JwksServedFrom, JwksServedFromOrigin,
   Rs256Verification, Rs256SignatureValid, Rs256SignatureInvalid, Rs256VerificationUnrealizable,
@@ -530,9 +530,20 @@ test fn jwks_selection_answers_the_announced_kid_and_refuses_the_unknown() -> Bo
 // THE FETCH FAILURE IS TYPED AND NEVER FAILS OPEN: a refused JWKS resolve maps to
 // OidcIdTokenSignatureRefused naming the fetch step, and the parts fold is never reached past
 // it — the verified arm has no input to stand on, and none is fabricated.
+// The decoded wire is SUPPLIED: the claim is about the signature fold's refusal arms, and the
+// decode that produces this shape has its own claim over the real wire
+// (the_wire_decode_reads_header_claims_and_signing_input).
+fn supplied_decoded_wire() -> OidcIdTokenWire {
+  OidcIdTokenWireDecoded {
+    claims: control_claims(),
+    header: OidcIdTokenHeader { algorithm: JwksAlgRs256, key_id: witness_fixture_key_id },
+    signing_input: concat(concat(witness_fixture_header_segment(), "."), witness_fixture_payload_segment()),
+  }
+}
+
 test fn a_jwks_fetch_failure_refuses_the_signature_and_never_verifies() -> Bool {
   match oidc_id_token_signature_of_parts(
-    wire: oidc_id_token_wire_decode(token: witness_fixture_wire() as JwtCompactSerialization),
+    wire: supplied_decoded_wire(),
     resolved: JwksResolveRefused { step: "fetch", reason: "the origin did not answer" },
     signature_segment: "c2ln",
     scratch_dir: "witness-unused",
@@ -542,7 +553,7 @@ test fn a_jwks_fetch_failure_refuses_the_signature_and_never_verifies() -> Bool 
       string_contains(s: r, pattern: "fetch")
         && string_contains(s: r, pattern: "the origin did not answer")
         && match oidc_id_token_signature_of_parts(
-          wire: oidc_id_token_wire_decode(token: witness_fixture_wire() as JwtCompactSerialization),
+          wire: supplied_decoded_wire(),
           resolved: JwksResolved { body: "{\"keys\":[]}", served_from: JwksServedFromOrigin },
           signature_segment: "c2ln",
           scratch_dir: "witness-unused",
