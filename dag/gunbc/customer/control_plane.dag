@@ -1,6 +1,7 @@
 module gunbc.customer.control_plane
 
 import std.types { NonEmptyStr, String, Int, Bool, List }
+import v2.std.algebra { filter }
 import extdeps.crypto.mac {
   MacKey, MacSigning, MacSigned, MacKeyMaterialNotHex, mac_sign, mac_verify,
   MacVerified, MacTagMismatch, MacKeyUnknown, MacKeyRetired, MacSuiteMismatch, MacTagMalformed,
