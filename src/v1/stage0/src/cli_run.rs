@@ -47131,3 +47131,118 @@ mod multi_entry_index_sharing_control_tests {
         );
     }
 }
+
+/// PERMANENT CONTROLS FOR THE IMPORT UNION'S DERIVED VIEW (PR-2 of
+/// docs/plans/type-env-single-authority-design.md), one per defect the regen caught while it was
+/// built. Both drive the generated `v1.compiler.infer_env` and `v1.compiler.infer` functions
+/// directly over a pool built by `surface_pool_admit`, the one admission the compiler uses.
+#[cfg(test)]
+mod surface_view_controls {
+    use crate::v1_compiler_infer::view_over_pool;
+    use crate::v1_compiler_infer_env::{
+        ancestry_lookup, empty_surface_pool, surface_pool_admit, surface_reach_of, AncestryView,
+        SurfaceImport, SurfacePool, TypeBinding,
+    };
+    use im::Vector;
+    use std::rc::Rc;
+
+    fn binding(name: &str) -> Rc<TypeBinding> {
+        Rc::new(TypeBinding {
+            name: name.to_string(),
+            resolved: crate::v1_compiler_infer::kernel_bool_type_node(),
+            provenance: Rc::new(crate::std_induction::SubValueRelation::SubValueUnknown),
+        })
+    }
+
+    fn own(names: &[&str]) -> Rc<im::HashMap<String, Rc<TypeBinding>>> {
+        Rc::new(names.iter().map(|n| (n.to_string(), binding(n))).collect())
+    }
+
+    fn imports(paths: &[&str]) -> Rc<Vector<Rc<SurfaceImport>>> {
+        Rc::new(
+            paths
+                .iter()
+                .map(|p| {
+                    Rc::new(SurfaceImport {
+                        module_path: p.to_string(),
+                        is_all: false,
+                        specific_names: Rc::new(Vector::new()),
+                    })
+                })
+                .collect(),
+        )
+    }
+
+    fn view(module: &str, over: &[&str], pool: Rc<SurfacePool>) -> Rc<AncestryView> {
+        let imports = imports(over);
+        Rc::new(AncestryView {
+            module_path: module.to_string(),
+            reach: surface_reach_of(imports.clone(), pool.clone()),
+            imports,
+            kernel: Rc::new(im::HashMap::new()),
+            rewrites: Rc::new(im::HashMap::new()),
+            pool,
+        })
+    }
+
+    /// THE DESCENT IS ONE PATH. A diamond lattice 40 levels deep, two modules per level each
+    /// importing both of the level below, with the name exported at the bottom by two modules
+    /// (so it has two exporters and takes the union walk). A descent that branched into every
+    /// import holding the name would take about 2^40 steps; the one-path descent takes about
+    /// 2 x 40. The watchdog turns a hang into a red.
+    #[test]
+    fn a_diamond_lattice_lookup_is_linear_in_depth() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut pool = empty_surface_pool();
+            pool = surface_pool_admit(pool, "a0".into(), own(&["X"]), imports(&[]));
+            pool = surface_pool_admit(pool, "b0".into(), own(&["X"]), imports(&[]));
+            for level in 1..40 {
+                let below = [format!("a{}", level - 1), format!("b{}", level - 1)];
+                let below: Vec<&str> = below.iter().map(String::as_str).collect();
+                pool = surface_pool_admit(pool, format!("a{level}"), own(&[]), imports(&below));
+                pool = surface_pool_admit(pool, format!("b{level}"), own(&[]), imports(&below));
+            }
+            let found = ancestry_lookup(view("top", &["a39", "b39"], pool), "X".into()).is_some();
+            let _ = tx.send(found);
+        });
+        let found = rx.recv_timeout(std::time::Duration::from_secs(10)).expect(
+            "the lookup did not finish in 10s: the descent branches instead of following one path",
+        );
+        assert!(found);
+    }
+
+    /// RE-POINTING A VIEW RECOMPUTES ITS CLOSURE. Two pools admit the same modules in a different
+    /// order, so their ordinals differ. A view built over pool 1 and re-pointed at pool 2 through
+    /// `view_over_pool` must still find a name its closure exports; the same view carrying pool 1's
+    /// bitset over pool 2 must not (that is the stale-bitset defect, and this arm shows the control
+    /// discriminates it).
+    #[test]
+    fn a_view_repointed_across_pools_recomputes_its_closure() {
+        let admit = |order: &[&str]| {
+            let mut pool = empty_surface_pool();
+            for m in order {
+                let (own_names, over): (&[&str], &[&str]) = match *m {
+                    "a" => (&["FromA"], &[]),
+                    "b" => (&["FromB"], &[]),
+                    _ => (&[], &["a"]),
+                };
+                pool = surface_pool_admit(pool, m.to_string(), own(own_names), imports(over));
+            }
+            pool
+        };
+        let pool1 = admit(&["a", "b", "c"]);
+        let pool2 = admit(&["b", "a", "c"]);
+        let built = view("d", &["c"], pool1);
+        let repointed = view_over_pool(built.clone(), pool2.clone());
+        assert!(ancestry_lookup(repointed, "FromA".into()).is_some());
+        let stale = Rc::new(AncestryView {
+            pool: pool2,
+            ..(*built).clone()
+        });
+        assert!(
+            ancestry_lookup(stale, "FromA".into()).is_none(),
+            "a carried-over bitset happened to agree; the control would not discriminate"
+        );
+    }
+}
