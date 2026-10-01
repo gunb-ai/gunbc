@@ -40,6 +40,7 @@ import gunbc.emitted_closure_compile_seed_growth { emitted_closure_compile_seed_
 import gunbc.exit_failure_outcome_seed_growth { exit_failure_outcome_seed_growth_justification }
 import gunbc.evaluation_budget_falsifier_seed_growth { evaluation_budget_falsifier_seed_growth_justification }
 import gunbc.floor_memory_instrumentation_seed_growth { floor_memory_instrumentation_seed_growth_justification }
+import gunbc.portable_value_canonical_order_seed_growth { portable_value_canonical_order_seed_growth_justification }
 import gunbc.namespace_structural_observation_bridge_seed_growth { namespace_structural_observation_bridge_seed_growth_justification }
 import gunbc.emit_rust_reference_derived_rows_bridge_seed_growth { emit_rust_reference_derived_rows_bridge_seed_growth_justification }
 import gunbc.namespace_baseline_seed_growth { namespace_baseline_seed_growth_justification }
@@ -301,6 +302,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     exit_failure_outcome_seed_growth_justification,
     evaluation_budget_falsifier_seed_growth_justification,
     floor_memory_instrumentation_seed_growth_justification,
+    portable_value_canonical_order_seed_growth_justification,
     namespace_structural_observation_bridge_seed_growth_justification,
     emit_rust_reference_derived_rows_bridge_seed_growth_justification,
     namespace_baseline_seed_growth_justification,

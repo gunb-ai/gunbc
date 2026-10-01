@@ -12163,7 +12163,8 @@ fn emit_typed_call(func: String, args: List<Node>, inferred: InferredNode?, call
     let to_string_args = order_typed_call_args_from_semantics(args: args, func: func, call_semantics: call_semantics, scope: scope)
     let ts_result = match to_string_args |> first {
       Present { value: value_arg } =>
-        emit_rust_host_to_dag_string_via_seam(host_expr: concat("(", emit_typed_expr(texpr: arg_value(n: value_arg), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ").to_string()"))
+        if is_map_typed_expr(texpr: arg_value(n: value_arg), source_indices: scope.type_env.source_indices) { emitted_map_rendering_refusal(site: "to_string") } else {
+        emit_rust_host_to_dag_string_via_seam(host_expr: concat("(", emit_typed_expr(texpr: arg_value(n: value_arg), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ").to_string()")) }
       Absent => "compile_error!(\"to_string call missing value argument\")"
     }
     return ts_result
@@ -12826,7 +12827,7 @@ fn emit_rust_sort_by_method_call(receiver: Node, args: List<Node>, registry: Map
   } else {
     concat("|a: &", elem_type_str, ", b: &", elem_type_str, "|")
   }
-  rust_shared_wrap_ctor(inner_expr: concat("{ let mut __sorted: Vec<_> = ", iter_str, ".collect(); __sorted.sort_by(", closure_params, " { let __ka = (", sort_key_fn, ")(", a_clone, "); let __kb = (", sort_key_fn, ")(", b_clone, "); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted }"))
+  rust_shared_wrap_ctor(inner_expr: concat("{ let mut __sorted: Vec<_> = ", iter_str, ".collect(); __sorted.sort_by(", closure_params, " { let __ka = (", sort_key_fn, ")(", a_clone, "); let __kb = (", sort_key_fn, ")(", b_clone, "); v1_rt::canonical_key_cmp(&__ka, &__kb) }); __sorted }"))
 }
 
 // The element-type-unknown arm used to emit `sort_by(|a, b| a.partial_cmp(b))` -- it DROPPED the
@@ -14495,6 +14496,11 @@ fn find_unique_struct_name_by_fields(field_names: List<String>, type_summaries: 
   } else { none }
 }
 
+// A ONE-FIELD ANONYMOUS RECORD LITERAL MATCHING TWO OR MORE STRUCTS REFUSES. The literal names no
+// type, so any struct chosen -- or the bare field value, which the single-field arm used to emit --
+// is a guess. It refuses exactly as the multi-field arm does; the remedy is a nominal type on the
+// literal. Found when std.algebra TotalOrder gained the same single `compare` field as
+// extdeps.version VersionScheme and `{ compare: f }` silently emitted `f`.
 fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: String?, resolved_type: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let struct_name = explicit_record_struct_name(type_name: type_name, inferred_node: resolved_type, shared_types: shared_types, source_indices: scope.type_env.source_indices)
   let qualified_name = match struct_name {
@@ -14536,7 +14542,10 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
                       rust_shared_wrap_ctor(inner_expr: struct_lit)
                     } else { struct_lit }
                   } else { fval0 }
-                Absent => fval0
+                Absent =>
+                  if struct_candidates_by_field_names(field_names: single_field_names, type_summaries: emit_info.type_summaries) |> count > 1 {
+                    "compile_error!(\"ambiguous anonymous record literal shape; add a nominal type\")"
+                  } else { fval0 }
               }
             Absent => "compile_error!(\"empty anonymous record literal\")"
           }
@@ -15162,8 +15171,25 @@ fn typed_interp_format_part(part: StringPart, registry: Map<String, ItemInfo>, s
       let escaped = if has_interpolations { escape_rust_interp_text(s: v) } else { escape_string_literal_body(s: v) }
       InterpPart { format_segment: escaped, arg_expr: "" }
     Interpolation { expr: e } =>
-      InterpPart { format_segment: "{}", arg_expr: emit_typed_expr(texpr: e, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024) }
+      if is_map_typed_expr(texpr: e, source_indices: scope.type_env.source_indices) {
+        InterpPart { format_segment: "{}", arg_expr: emitted_map_rendering_refusal(site: "string interpolation") }
+      } else {
+        InterpPart { format_segment: "{}", arg_expr: emit_typed_expr(texpr: e, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024) }
+      }
   }
+}
+
+// RENDERING A MAP IN EMITTED RUST IS REFUSED, TYPED AND LOCATED, NOT LEFT TO rustc. The
+// interpreter renders a map in the canonical content order (std.algebra TotalOrder; the seed's
+// canonical_content_cmp). The emitted realization has no map rendering at all -- im::HashMap has
+// no Display -- so before this refusal the program died in rustc as an untyped E0277 and, had a
+// Display been added naively, it would have rendered in per-process RandomState order. Building
+// an emitted canonical rendering is a declared frontier, not done here: no v2 source renders a
+// map (none could compile), so it fails the v1 admission test (gunbc.v1_maintenance_standing).
+// Trigger: a v2 source renders a compound value. Ruling: deep-ferret-305, node
+// adhoc-77383faf-d07.
+fn emitted_map_rendering_refusal(site: String) -> String {
+  emit_rust_compile_error_expr(message: concat("EMIT REFUSED: ", site, " renders a Map; the emitted realization has no canonical map rendering (declared frontier: emitted compound rendering, trigger: a v2 source renders a compound value)"))
 }
 
 fn emit_typed_block(stmts: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {

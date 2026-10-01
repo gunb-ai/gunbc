@@ -12111,14 +12111,14 @@ fn target_derive_supplemental_generic_bound_requirement_nodes_for_contract(
   contract_authority: TargetDeriveSupplementalGenericBoundContractAuthority
 ) -> List<Node> {
   fold_list(
-    xs: map_keys(contract_authority.requirements),
+    xs: sorted_map_keys(contract_authority.requirements),
     empty: Empty,
     cons: fn(acc, representation_parameter) {
       match contract_authority.requirements.lookup(representation_parameter) {
         Absent => acc
         Present { value: requirements } =>
           fold_list(
-            xs: map_keys(requirements),
+            xs: sorted_map_keys(requirements),
             empty: acc,
             cons: fn(requirement_acc, required_key) {
               match requirements.lookup(required_key) {
@@ -12190,7 +12190,7 @@ fn target_representation_choice_parameters_bundle_node(
   choice: TargetRepresentationChoice
 ) -> Node {
   fold_list_node(
-    xs: map_keys(choice.representation_parameters),
+    xs: sorted_map_keys(choice.representation_parameters),
     item_node: target_model_type_atom_node
   )
 }
@@ -12200,7 +12200,7 @@ fn target_representation_choice_supplemental_generic_bound_contracts_bundle_node
 ) -> Node {
   fold_list_node(
     xs: fold_list(
-      xs: map_keys(choice.supplemental_generic_bound_contracts),
+      xs: sorted_map_keys(choice.supplemental_generic_bound_contracts),
       empty: Empty,
       cons: fn(acc, derive_key) {
         match choice.supplemental_generic_bound_contracts.lookup(derive_key) {
