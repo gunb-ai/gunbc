@@ -2764,7 +2764,17 @@ pub(crate) fn enrolment_margin_standing_for(
     match enrolment_gate_execution_disposition(identity, dispositions) {
         Some(crate::cli_run::RequiredFloorDisposition::Planned)
         | Some(crate::cli_run::RequiredFloorDisposition::PlannedAsChangedWitness) => {}
-        Some(other) => {
+        // Named, not caught: a new arm must state whether the margin gate runs for it.
+        Some(
+            other @ (crate::cli_run::RequiredFloorDisposition::DeclinedLongModule { .. }
+            | crate::cli_run::RequiredFloorDisposition::DeclinedFixtureMember { .. }
+            | crate::cli_run::RequiredFloorDisposition::DeclinedOutsideRequiredGate
+            | crate::cli_run::RequiredFloorDisposition::DeclinedCostDebt
+            | crate::cli_run::RequiredFloorDisposition::DeclinedOutsideGateClosure
+            | crate::cli_run::RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. }
+            | crate::cli_run::RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery { .. }
+            | crate::cli_run::RequiredFloorDisposition::DeclinedNoCiWetLane { .. }),
+        ) => {
             return EnrolmentMarginStanding::OutsideThisRunsExecution {
                 disposition: required_floor_disposition_label(other).to_string(),
             };
@@ -3341,7 +3351,17 @@ pub(crate) fn changed_witness_projection_rows(
             // population it belongs to. It is discharged by making the identity reachable or by
             // declaring it unreachable — never by a rerun, which is the only affordance one
             // undifferentiated cause can offer.
-            Some(declined) => ChangedWitnessProjectionRow {
+            Some(
+                declined @ (RequiredFloorDisposition::DeclinedLongModule { .. }
+                | RequiredFloorDisposition::DeclinedFixtureMember { .. }
+                | RequiredFloorDisposition::DeclinedOutsideRequiredGate
+                | RequiredFloorDisposition::DeclinedCostDebt
+                | RequiredFloorDisposition::DeclinedOutsideGateClosure
+                | RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. }
+                | RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery {
+                    ..
+                }),
+            ) => ChangedWitnessProjectionRow {
                 identity: identity.clone(),
                 cost: None,
                 standing: "declined",
@@ -9164,34 +9184,41 @@ pub fn run_required_floor(
                 .map(|identity| (identity, SuppressionGround::DeclinedNoCiWetLane))
                 .collect()
         };
-    // ONE PRODUCER FOR THE COUNTS: the joined row population, folded once per arm.
-    let disposition_count = |select: fn(&RequiredFloorDisposition) -> bool| {
-        disposition_rows
-            .iter()
-            .filter(|row| select(&row.disposition))
-            .count()
-    };
+    // ONE PRODUCER FOR THE COUNTS: the joined row population, folded once, every arm NAMED so a
+    // new disposition does not compile here until it states which count it joins
+    // (`gunbc.recurring_failure_mode.a_new_decision_arm_the_downstream_join_does_not_admit`).
     let declared_identities = declared_identity_set.len();
-    let long_declined =
-        disposition_count(|d| matches!(d, RequiredFloorDisposition::DeclinedLongModule { .. }));
-    let fixture_declined =
-        disposition_count(|d| matches!(d, RequiredFloorDisposition::DeclinedFixtureMember { .. }));
-    let outside_gate_declined =
-        disposition_count(|d| matches!(d, RequiredFloorDisposition::DeclinedOutsideRequiredGate));
-    let cost_debt_declined =
-        disposition_count(|d| matches!(d, RequiredFloorDisposition::DeclinedCostDebt));
-    let gate_closure_declined =
-        disposition_count(|d| matches!(d, RequiredFloorDisposition::DeclinedOutsideGateClosure));
-    let discovery_excluded_declined = disposition_count(|d| {
-        matches!(
-            d,
-            RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. }
-        )
-    });
+    let mut long_declined = 0usize;
+    let mut fixture_declined = 0usize;
+    let mut outside_gate_declined = 0usize;
+    let mut cost_debt_declined = 0usize;
+    let mut gate_closure_declined = 0usize;
+    let mut discovery_excluded_declined = 0usize;
+    let mut no_ci_wet_lane_declined = 0usize;
+    let mut changed_outside_discovery_declined = 0usize;
+    for row in &disposition_rows {
+        match &row.disposition {
+            RequiredFloorDisposition::Planned
+            | RequiredFloorDisposition::PlannedAsChangedWitness => {}
+            RequiredFloorDisposition::DeclinedLongModule { .. } => long_declined += 1,
+            RequiredFloorDisposition::DeclinedFixtureMember { .. } => fixture_declined += 1,
+            RequiredFloorDisposition::DeclinedOutsideRequiredGate => outside_gate_declined += 1,
+            RequiredFloorDisposition::DeclinedCostDebt => cost_debt_declined += 1,
+            RequiredFloorDisposition::DeclinedOutsideGateClosure => gate_closure_declined += 1,
+            RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. } => {
+                discovery_excluded_declined += 1
+            }
+            RequiredFloorDisposition::DeclinedNoCiWetLane { .. } => no_ci_wet_lane_declined += 1,
+            RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery { .. } => {
+                changed_outside_discovery_declined += 1
+            }
+        }
+    }
     eprintln!(
         "[floor-phase] phase=site-projection state=completed wall_ms={} declared={} sites={} \
          files={} claims={} declined_long={} declined_fixture={} declined_outside_gate={} \
-         declined_gate_closure={} declined_discovery_excluded={} declined_cost_debt={}",
+         declined_gate_closure={} declined_discovery_excluded={} declined_cost_debt={} \
+         declined_no_ci_wet_lane={} declined_changed_outside_discovery={}",
         projection_started.elapsed().as_millis(),
         declared_identities,
         sites_offered,
@@ -9202,7 +9229,9 @@ pub fn run_required_floor(
         outside_gate_declined,
         gate_closure_declined,
         discovery_excluded_declined,
-        cost_debt_declined
+        cost_debt_declined,
+        no_ci_wet_lane_declined,
+        changed_outside_discovery_declined
     );
 
     // THE COST-DEBT ROSTER'S STANDING, JOINED AGAINST THE DECLARED UNIVERSE RATHER THAN AGAINST

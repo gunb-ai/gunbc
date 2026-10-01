@@ -20281,16 +20281,41 @@ pub fn partition_cost_debt_roster<'a>(
                     CostDebtRosterStanding::WithholdOverriddenForChangedVerdict
                 }
                 Some(RequiredFloorDisposition::DeclinedOutsideGateClosure)
-                | Some(RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. }) => {
-                    CostDebtRosterStanding::OutsideThisRunsUniverse
+                | Some(RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. })
+                | Some(RequiredFloorDisposition::DeclinedNoCiWetLane { .. })
+                | Some(RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery {
+                    ..
+                }) => CostDebtRosterStanding::OutsideThisRunsUniverse,
+                Some(RequiredFloorDisposition::Planned)
+                | Some(RequiredFloorDisposition::DeclinedLongModule { .. })
+                | Some(RequiredFloorDisposition::DeclinedFixtureMember { .. })
+                | Some(RequiredFloorDisposition::DeclinedOutsideRequiredGate) => {
+                    CostDebtRosterStanding::DeclaredButNotWithheld
                 }
-                Some(_) => CostDebtRosterStanding::DeclaredButNotWithheld,
             };
             (q, standing)
         })
         .collect();
     rows.sort_unstable_by(|a, b| a.0.cmp(b.0));
     rows
+}
+
+/// WHETHER A DISPOSITION IS THE COST-DEBT WITHHOLD, as an exhaustive match: a new arm states
+/// whether it withholds rather than defaulting to "not cost debt"
+/// (`gunbc.recurring_failure_mode.a_new_decision_arm_the_downstream_join_does_not_admit`).
+fn disposition_is_a_cost_debt_withhold(disposition: &RequiredFloorDisposition) -> bool {
+    match disposition {
+        RequiredFloorDisposition::DeclinedCostDebt => true,
+        RequiredFloorDisposition::Planned
+        | RequiredFloorDisposition::PlannedAsChangedWitness
+        | RequiredFloorDisposition::DeclinedLongModule { .. }
+        | RequiredFloorDisposition::DeclinedFixtureMember { .. }
+        | RequiredFloorDisposition::DeclinedOutsideRequiredGate
+        | RequiredFloorDisposition::DeclinedOutsideGateClosure
+        | RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. }
+        | RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery { .. }
+        | RequiredFloorDisposition::DeclinedNoCiWetLane { .. } => false,
+    }
 }
 
 /// The execution-accounting set and the disposition projection must name the SAME identities.
@@ -20311,15 +20336,14 @@ pub fn reconcile_withheld_against_dispositions<'a>(
         .iter()
         .map(|q| q.as_str())
         .filter(|q| {
-            !matches!(
-                dispositions.get(*q),
-                Some(RequiredFloorDisposition::DeclinedCostDebt)
-            )
+            !dispositions
+                .get(*q)
+                .is_some_and(disposition_is_a_cost_debt_withhold)
         })
         .collect();
     let mut dispositioned_without_withhold: Vec<&str> = dispositions
         .iter()
-        .filter(|(_, d)| matches!(d, RequiredFloorDisposition::DeclinedCostDebt))
+        .filter(|(_, d)| disposition_is_a_cost_debt_withhold(d))
         .map(|(q, _)| q.as_str())
         .filter(|q| !withheld.contains(*q))
         .collect();
@@ -46075,6 +46099,40 @@ mod required_floor_disposition_and_storage_agreement_law {
             standing_of(&rows, "m.no_row"),
             Some(CostDebtRosterStanding::Undeclared),
             "no disposition means undeclared, even for an identity another structure calls withheld"
+        );
+    }
+
+    /// THE TWO CHANGED-SELECTION DECLINES ARE OUTSIDE THIS RUN'S UNIVERSE, as
+    /// `v2.workflow.required_floor` `cost_debt_roster_standing` maps them. The seed's former
+    /// `Some(_)` catch-all classed both as `DeclaredButNotWithheld` and refused a rostered identity
+    /// that the changed sublane declined; red on that arm, green on the named one.
+    #[test]
+    fn changed_selection_declines_are_outside_this_runs_universe() {
+        let roster = ident_set(&["m.wet", "m.outside"]);
+        let dispositions = disp_map(&[
+            (
+                "m.wet",
+                RequiredFloorDisposition::DeclinedNoCiWetLane {
+                    pattern: "wet_witness_test.dag".to_string(),
+                },
+            ),
+            (
+                "m.outside",
+                RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery {
+                    module_path: "m".to_string(),
+                },
+            ),
+        ]);
+
+        let rows = partition_cost_debt_roster(&roster, &dispositions);
+
+        assert_eq!(
+            standing_of(&rows, "m.wet"),
+            Some(CostDebtRosterStanding::OutsideThisRunsUniverse)
+        );
+        assert_eq!(
+            standing_of(&rows, "m.outside"),
+            Some(CostDebtRosterStanding::OutsideThisRunsUniverse)
         );
     }
 
