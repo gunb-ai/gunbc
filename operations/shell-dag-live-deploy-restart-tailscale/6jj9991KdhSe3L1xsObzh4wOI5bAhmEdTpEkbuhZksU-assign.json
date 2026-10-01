@@ -1,0 +1,1 @@
+{"id": "1e4019e8a2ea0296", "event": {"schema": "roadmap-event/v3", "node": "shell-dag-live-deploy-restart-tailscale", "author": "principal:google-oidc/accounts/116084671989231734979", "parent": "", "kind": "claimed", "recorded_at": "2026-10-01T00:42:21Z", "assignee": "principal:gunbc/workflows/fabric", "return_to": "principal:google-oidc/accounts/116084671989231734979"}}
