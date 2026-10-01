@@ -4026,6 +4026,11 @@ pub(crate) struct ExclusiveBytesReading {
     /// Every class and the graph-level registry and diagnostics dropped: the graph's whole live
     /// bytes, so `graph_total` less the sum of the classes' exclusives is what they SHARE.
     pub graph_total: u64,
+    /// Σ over modules of `type_env.ancestry_str_bindings` and `type_env.str_bindings` entries,
+    /// counted before anything is dropped: the structural quantity the ancestry-union model
+    /// predicts `type_env`'s bytes scale with, read beside the bytes so the model can be falsified.
+    pub ancestry_entries: u64,
+    pub own_entries: u64,
 }
 
 pub(crate) fn typed_module_class_exclusive_bytes(
@@ -4041,6 +4046,14 @@ pub(crate) fn typed_module_class_exclusive_bytes(
         )
     })?;
     let module_count = modules.len();
+    let ancestry_entries: u64 = modules
+        .iter()
+        .map(|m| m.type_env.ancestry_str_bindings.len() as u64)
+        .sum();
+    let own_entries: u64 = modules
+        .iter()
+        .map(|m| m.type_env.str_bindings.len() as u64)
+        .sum();
     let mut owned = Vec::with_capacity(module_count);
     for m in modules {
         owned.push(Rc::try_unwrap(m).map_err(|m| {
@@ -4092,5 +4105,7 @@ pub(crate) fn typed_module_class_exclusive_bytes(
         in_use_all,
         exclusive: in_use_all.saturating_sub(after),
         graph_total: in_use_all.saturating_sub(end),
+        ancestry_entries,
+        own_entries,
     })
 }

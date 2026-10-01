@@ -259,6 +259,7 @@ pub enum TargetProducer {
     EvaluationStoreAddressExactHead,
     FloorMemoryQualification,
     TypedGraphExclusiveBytes,
+    TypedGraphExclusiveBytesFloorSubject,
     PrimitiveEgressCensus,
     PrimitiveEgressCensusV2,
     PrimitiveEgressCensusDag,
@@ -361,6 +362,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("typed-graph-exclusive-bytes"),
             TargetProducer::TypedGraphExclusiveBytes,
+        ),
+        (
+            instrument_label("typed-graph-exclusive-bytes-floor-subject"),
+            TargetProducer::TypedGraphExclusiveBytesFloorSubject,
         ),
         (
             instrument_label("primitive-egress-census"),
@@ -778,6 +783,9 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         }
         TargetProducer::FloorMemoryQualification => run_floor_memory_qualification(),
         TargetProducer::TypedGraphExclusiveBytes => run_typed_graph_exclusive_bytes(),
+        TargetProducer::TypedGraphExclusiveBytesFloorSubject => {
+            run_typed_graph_exclusive_bytes_floor_subject()
+        }
         TargetProducer::PrimitiveEgressCensus => {
             run_primitive_egress_census("primitive-egress-census", "primitive_egress_census_exit")
         }
@@ -1873,17 +1881,64 @@ fn floor_phase_attribution_rendered(
 /// whether or not the typecheck refuses, since a refused graph is the same allocation a refusing
 /// floor holds. Six classes, the ones carrying the bytes; the rest are inside the shared residual.
 fn run_typed_graph_exclusive_bytes() -> InvocationOutcome {
+    let roots = vec!["dag".to_string(), "src/v2".to_string()];
+    let excludes = cli_run::floor_prepared_subject_exclusions();
+    typed_graph_exclusive_bytes_over("typed-graph-exclusive-bytes", || {
+        let picked = cli_run::whole_tree_strict_sources(&roots, &excludes)?;
+        let result = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(
+            picked.sources.into(),
+        ));
+        std::rc::Rc::try_unwrap(result)
+            .ok()
+            .and_then(|r| r.graph)
+            .ok_or_else(|| {
+                "the strict resolve produced no graph, or its result has another owner".to_string()
+            })
+    })
+}
+
+/// THE SAME READING OVER THE FLOOR'S OWN PREPARED SUBJECT AT THIS CHECKOUT: the nominal closure
+/// (gate prefixes, gate-authored modules, the local-repo wet schedule) the required floor prepares
+/// when no diff adds seeds, through the floor's own `prepare_repository_from_corpus`. A second
+/// SIZE of the same observation, so `type_env`'s exclusive bytes are read at two closure sizes and
+/// the scaling the floor's peak shows is measured on the class rather than inferred from the phase.
+fn run_typed_graph_exclusive_bytes_floor_subject() -> InvocationOutcome {
+    let roots = vec!["dag".to_string(), "src/v2".to_string()];
+    typed_graph_exclusive_bytes_over("typed-graph-exclusive-bytes-floor-subject", || {
+        let corpus = cli_run::read_source_corpus_once(&roots);
+        let gate_entry_index = cli_run::build_multi_entry_index(&roots);
+        let seeds =
+            cli_run::required_floor_nominal_subject_seeds_from_corpus(&corpus, &gate_entry_index)?;
+        let module_seeds = cli_run::required_floor_nominal_closure_module_seeds(
+            &seeds.required_gate_authored_modules,
+            &seeds.local_repo_wet_schedule_rows,
+        );
+        let (prepared, _sources) = cli_run::prepare_repository_from_corpus(
+            &corpus,
+            &cli_run::floor_prepared_subject_exclusions(),
+            Some((
+                &gate_entry_index,
+                &seeds.required_gate_prefixes,
+                &module_seeds,
+            )),
+        )?;
+        Ok(prepared.graph)
+    })
+}
+
+/// The leave-one-out loop, over whichever subject `subject` resolves -- once per class, from a
+/// fresh graph each time, since a dropped class cannot be restored.
+fn typed_graph_exclusive_bytes_over(
+    label: &str,
+    subject: impl Fn() -> Result<std::rc::Rc<crate::v1_compiler_compile::ResolvedGraph>, String>,
+) -> InvocationOutcome {
     use cli_run::TypedModuleClass as C;
     if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
         return InvocationOutcome {
             termination: Termination::Refused,
-            message: format!(
-                "typed-graph-exclusive-bytes: refused: could not anchor at the workspace root: {e}"
-            ),
+            message: format!("{label}: refused: could not anchor at the workspace root: {e}"),
         };
     }
-    let roots = vec!["dag".to_string(), "src/v2".to_string()];
-    let excludes = cli_run::floor_prepared_subject_exclusions();
     let classes = [
         C::TypeEnv,
         C::Interface,
@@ -1896,24 +1951,12 @@ fn run_typed_graph_exclusive_bytes() -> InvocationOutcome {
     let mut sum_exclusive: u64 = 0;
     let mut graph_total: Option<u64> = None;
     for class in classes {
-        let picked = match cli_run::whole_tree_strict_sources(&roots, &excludes) {
-            Ok(p) => p,
+        let graph = match subject() {
+            Ok(g) => g,
             Err(e) => {
                 return InvocationOutcome {
                     termination: Termination::SubjectUnreached,
-                    message: format!("typed-graph-exclusive-bytes: subject unreached: {e}"),
-                }
-            }
-        };
-        let result = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(
-            picked.sources.into(),
-        ));
-        let graph = match std::rc::Rc::try_unwrap(result).ok().and_then(|r| r.graph) {
-            Some(g) => g,
-            None => {
-                return InvocationOutcome {
-                    termination: Termination::SubjectUnreached,
-                    message: "typed-graph-exclusive-bytes: the strict resolve produced no graph, or its result has another owner".to_string(),
+                    message: format!("{label}: subject unreached: {e}"),
                 }
             }
         };
@@ -1922,24 +1965,21 @@ fn run_typed_graph_exclusive_bytes() -> InvocationOutcome {
                 sum_exclusive += r.exclusive;
                 graph_total.get_or_insert(r.graph_total);
                 lines.push(format!(
-                    "typed-graph-exclusive-bytes class={} exclusive={} graph_total={} in_use_all={} modules={}",
-                    class.name(), r.exclusive, r.graph_total, r.in_use_all, r.modules
+                    "{label} class={} exclusive={} graph_total={} in_use_all={} modules={} ancestry_entries={} own_entries={}",
+                    class.name(), r.exclusive, r.graph_total, r.in_use_all, r.modules, r.ancestry_entries, r.own_entries
                 ));
             }
             Err(cause) => {
                 return InvocationOutcome {
                     termination: Termination::Refused,
-                    message: format!(
-                        "typed-graph-exclusive-bytes: class {} unattributable: {cause}",
-                        class.name()
-                    ),
+                    message: format!("{label}: class {} unattributable: {cause}", class.name()),
                 }
             }
         }
     }
     let total = graph_total.unwrap_or(0);
     lines.push(format!(
-        "typed-graph-exclusive-bytes graph_total={total} sum_of_exclusives={sum_exclusive} shared_or_unlisted={} (graph_total from the first run; every class read from its own fresh resolve)",
+        "{label} graph_total={total} sum_of_exclusives={sum_exclusive} shared_or_unlisted={} (graph_total from the first run; every class read from its own fresh resolve)",
         total.saturating_sub(sum_exclusive)
     ));
     InvocationOutcome {
