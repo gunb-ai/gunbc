@@ -418,7 +418,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     ]
   },
   FrozenPathDeferral { entry: "dag/test/claim/long/commit_witness_claim_roster_witness_test.dag", functions: ["commit_witness_claim_roster_holds"] },
-  FrozenPathDeferral { entry: "dag/test/claim/long/import_closure_live_test.dag", functions: ["dag_import_closure_live_witness_bundle_holds"] },
   FrozenPathDeferral { entry: "dag/test/claim/long/reference_closure_equivalence_test.dag", functions: ["reference_closure_b2_safety_wall_holds"] },
   FrozenPathDeferral { entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_lean_bash_test.dag", functions: ["roster_lean_zero_suspects_within_ratchet", "roster_bash_zero_suspects_within_ratchet"] },
   FrozenPathDeferral {
