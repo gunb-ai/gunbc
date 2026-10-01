@@ -2,6 +2,7 @@ module test.claim.canonical_order_enrolled_witness
 
 import std.types { Bool, Int, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.collection { Map, empty_map, map_insert }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
