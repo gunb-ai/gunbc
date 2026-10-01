@@ -1,0 +1,145 @@
+diff --git a/vllm/models/deepseek_v4_1/nvidia/sm120_decode_shape_selftest.py b/vllm/models/deepseek_v4_1/nvidia/sm120_decode_shape_selftest.py
+new file mode 100644
+index 0000000..2e93dbf
+--- /dev/null
++++ b/vllm/models/deepseek_v4_1/nvidia/sm120_decode_shape_selftest.py
+@@ -0,0 +1,139 @@
++"""SM120 sparse-MLA decode-shape self-test for DeepSeek V4.1 (TP4, 16 local heads).
++
++Calls FlashInfer's DSv4 sparse-MLA entry point -- the exact one
++vllm.models.deepseek_v4_1.nvidia.flashinfer_sparse.DeepseekV4FlashInferSM120Attention
++calls -- at the shapes the V4.1 TP4 launch puts through it with <= 64 query tokens:
++
++  decode, SWA-only layer        : window segment only
++  decode, compressed layer      : window segment + index_topk extra segment
++  prefill chunk, SWA-only layer : prefill window segment only
++  prefill chunk, compressed     : prefill window segment + index_topk extra segment
++
++The two figures that decide whether FlashInfer has a kernel are READ FROM THE INSTALLED vLLM,
++not assumed:
++  * the SWA cache's tokens per page: DeepseekV4FlashInferSM120Attention.swa_block_size (the
++    gunbc overlay sm120_swa_page_block_size.patch); on the unpatched tree the class has no such
++    attribute and the constructor passes the literal block_size=32, which is read from its source.
++  * the prefill window width: sliding_window + vision_max_n_token when vision_n_layers > 0
++    (vllm/v1/attention/backends/mla/sparse_swa.py prefill_index_width), over the hf_config that
++    vLLM's own ModelConfig builds for the launch's arguments.
++
++The RED it exists for (attempt 13, 2026-10-01): "SM120 sparse-MLA has no decode kernel for this
++shape: num_tokens=8, num_heads=16, topk=1152, d_qk=512, page_block_size=32, model_type=1,
++extra_topk=0". On the unpatched image without --text-only it must exit 1.
++
++Usage (inside the image, GPU visible, checkpoint at /model):
++  python3 -m vllm.models.deepseek_v4_1.nvidia.sm120_decode_shape_selftest [--text-only]
++It is created by the gunbc overlay member sm120_decode_shape_selftest.patch, which applies alone to the
++unpatched tree, so the same module is the RED there and the control after sm120_swa_page_block_size.patch.
++--text-only applies the launch's text-only arguments (--language-model-only and
++--hf-overrides.vision_n_layers 0). Exit 0: every case ran. Exit 1: a case was refused.
++"""
++
++import argparse
++import inspect
++import sys
++
++import torch
++
++NUM_TOKENS = 8
++LOCAL_HEADS = 16
++D_QK = 512
++PACKED_BYTES_PER_TOKEN = 584
++COMPRESSED_PAGE_TOKENS = 32  # block 128 / compress ratio 4: the extra pool, not gated
++
++
++def swa_page_tokens() -> tuple[int, str]:
++    from vllm.models.deepseek_v4_1.attention import DeepseekV4Attention
++    from vllm.models.deepseek_v4_1.nvidia.flashinfer_sparse import (
++        DeepseekV4FlashInferSM120Attention,
++    )
++
++    value = getattr(DeepseekV4FlashInferSM120Attention, "swa_block_size", None)
++    if value is not None:
++        return int(value), "DeepseekV4FlashInferSM120Attention.swa_block_size"
++    source = inspect.getsource(DeepseekV4Attention.__init__)
++    if "block_size=32," not in source:
++        raise SystemExit("unrecognised vLLM tree: no swa_block_size and no block_size=32 literal")
++    return 32, "DeepseekV4Attention.__init__ literal block_size=32 (unpatched)"
++
++
++def launch_hf_config(text_only: bool):
++    from vllm.engine.arg_utils import EngineArgs
++
++    kwargs = dict(model="/model", tokenizer_mode="deepseek_v41", trust_remote_code=False)
++    if text_only:
++        kwargs["language_model_only"] = True
++        kwargs["hf_overrides"] = {"vision_n_layers": 0}
++    return EngineArgs(**kwargs).create_model_config().hf_config
++
++
++def run_case(name, page_tokens, width, extra_width, index_topk_pool_pages=64):
++    from flashinfer.decode import trtllm_batch_decode_sparse_mla_dsv4
++    from vllm.models.deepseek_v4_1.nvidia.flashinfer_sparse import (
++        _get_flashinfer_dsv4_workspace,
++    )
++
++    dev = torch.device("cuda")
++    pages = (width + page_tokens - 1) // page_tokens + 1
++    swa = torch.zeros(pages, page_tokens, 1, PACKED_BYTES_PER_TOKEN, dtype=torch.uint8, device=dev)
++    q = torch.randn(NUM_TOKENS, LOCAL_HEADS, D_QK, dtype=torch.bfloat16, device=dev)
++    idx = (torch.arange(width, dtype=torch.int32, device=dev) % (pages * page_tokens)).repeat(NUM_TOKENS, 1)
++    lens = torch.full((NUM_TOKENS,), width, dtype=torch.int32, device=dev)
++    extra = dict(compressed_kv_cache=None, extra_sparse_indices=None, extra_sparse_topk_lens=None)
++    if extra_width:
++        cpages = max(index_topk_pool_pages, (extra_width + COMPRESSED_PAGE_TOKENS - 1) // COMPRESSED_PAGE_TOKENS)
++        extra = dict(
++            compressed_kv_cache=torch.zeros(cpages, COMPRESSED_PAGE_TOKENS, 1, PACKED_BYTES_PER_TOKEN, dtype=torch.uint8, device=dev),
++            extra_sparse_indices=(torch.arange(extra_width, dtype=torch.int32, device=dev) % (cpages * COMPRESSED_PAGE_TOKENS)).repeat(NUM_TOKENS, 1).view(NUM_TOKENS, 1, -1),
++            extra_sparse_topk_lens=torch.full((NUM_TOKENS,), extra_width, dtype=torch.int32, device=dev),
++        )
++    shape = f"num_tokens={NUM_TOKENS} heads={LOCAL_HEADS} topk={width} page={page_tokens} extra_topk={extra_width}"
++    try:
++        out = trtllm_batch_decode_sparse_mla_dsv4(
++            query=q,
++            swa_kv_cache=swa,
++            workspace_buffer=_get_flashinfer_dsv4_workspace(dev),
++            sparse_indices=idx,
++            bmm1_scale=D_QK ** -0.5,
++            kv_layout="NHD",
++            swa_topk_lens=lens,
++            **extra,
++        )
++        torch.cuda.synchronize()
++    except Exception as e:  # the refusal under test is a ValueError; any other is reported too
++        print(f"REFUSED  {name}: {shape}: {type(e).__name__}: {e}")
++        return False
++    if not torch.isfinite(out.float()).all():
++        print(f"REFUSED  {name}: {shape}: non-finite output")
++        return False
++    print(f"RAN      {name}: {shape}")
++    return True
++
++
++def main() -> int:
++    ap = argparse.ArgumentParser()
++    ap.add_argument("--text-only", action="store_true")
++    a = ap.parse_args()
++
++    page, page_src = swa_page_tokens()
++    cfg = launch_hf_config(a.text_only)
++    window = int(cfg.sliding_window)
++    image = int(getattr(cfg, "vision_max_n_token", 0)) if int(getattr(cfg, "vision_n_layers", 0) or 0) > 0 else 0
++    index_topk = int(cfg.index_topk)
++    prefill_width = window + image
++    print(f"swa page tokens = {page} ({page_src})")
++    print(f"window = {window}, max_image_tokens = {image}, prefill width = {prefill_width}, index_topk = {index_topk}, text_only = {a.text_only}")
++
++    ok = [
++        run_case("decode swa-only", page, window, 0),
++        run_case("decode compressed", page, window, index_topk),
++        run_case("prefill-chunk swa-only", page, prefill_width, 0),
++        run_case("prefill-chunk compressed", page, prefill_width, index_topk),
++    ]
++    print("SELFTEST", "PASS" if all(ok) else "FAIL")
++    return 0 if all(ok) else 1
++
++
++if __name__ == "__main__":
++    sys.exit(main())

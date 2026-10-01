@@ -190,6 +190,40 @@ fn vllm_engram_config_argv(r: VllmEngramConfigRequest) -> List<String> {
   }
 }
 
+// ── THE MODALITY REQUEST: WHICH TOWERS THE ENGINE BUILDS AND WHAT THE CONFIG SAYS ABOUT THEM ─────
+//
+// Two upstream arguments at revision d2d649e674c75425d2d6975c87eb89fd4d55fff8, each modelled as the
+// shape upstream gives it and nothing more:
+//   - --language-model-only (vllm/config/multimodal.py MultiModalConfig.language_model_only): every
+//     modality's per-prompt limit becomes 0, so the multimodal wrapper stubs its towers
+//     (interfaces.py _mark_tower_model: StageMissingLayer, weights skipped) and no image is admitted.
+//   - --hf-overrides.<key> <json> (ModelConfig.hf_overrides): a field of the checkpoint's own
+//     config.json replaced before any model code reads it. The dotted spelling is upstream's
+//     (vllm/utils/argparse_utils.py nests `--a.b v` into {"a": {"b": json(v)}}), and it carries no
+//     quotes, which a systemd Exec line cannot hold unmodelled -- the same reason the Engram request
+//     above is dotted.
+// WHICH CONFIG KEY A LAUNCH OVERRIDES, AND TO WHAT, IS THE LAUNCH'S POLICY, NOT A FACT ABOUT vLLM: the
+// key and its value arrive as data from the layer that decides them. Omitted renders no flag at all.
+type VllmHfOverride sole_constructor {
+  key: NonEmptyStr
+  json_value: NonEmptyStr
+}
+
+type VllmModalityRequest
+  = ModalityOmitted
+  | LanguageModelOnly { hf_overrides: List<VllmHfOverride> }
+
+fn vllm_hf_override_argv(o: VllmHfOverride) -> List<String> {
+  [join(["--hf-overrides.", o.key as String], ""), o.json_value as String]
+}
+
+fn vllm_modality_argv(r: VllmModalityRequest) -> List<String> {
+  match r {
+    ModalityOmitted => []
+    LanguageModelOnly { hf_overrides: os } => concat(["--language-model-only"], flat_map(os, o => vllm_hf_override_argv(o: o)))
+  }
+}
+
 // THE KV CACHE DTYPE AS REQUESTED, WHICH IS NOT THE DTYPE AS RESOLVED. Passing `fp8` for a
 // DeepSeek MLA checkpoint resolves to `fp8_ds_mla`, and the engine says so on its own startup line.
 // A realization that records the REQUESTED spelling and calls it the served format has recorded the
