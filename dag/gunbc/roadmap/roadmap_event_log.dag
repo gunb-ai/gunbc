@@ -131,7 +131,10 @@ type RoadmapEventDecode
 fn event_member_string(doc: JsonValue, key: String) -> String? {
   match json_object_unique_member(v: doc, key: key) {
     JsonMemberFound { value: JsonString { value: s } } => Present { value: s }
-    _ => none
+    JsonMemberFound { value: _ } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -177,7 +180,9 @@ fn roadmap_event_decode(text: String) -> RoadmapEventDecode {
             Absent => RoadmapEventUndecodable { reason: "no id member" }
             Present { value: claimed_id } => roadmap_event_decode_body(ev: ev, claimed_id: claimed_id)
           }
-        _ => RoadmapEventUndecodable { reason: "no event member" }
+        JsonMemberAbsent => RoadmapEventUndecodable { reason: "no event member" }
+        JsonMemberDuplicated { count: _ } => RoadmapEventUndecodable { reason: "no event member" }
+        JsonMemberNotAnObject => RoadmapEventUndecodable { reason: "no event member" }
       }
   }
 }

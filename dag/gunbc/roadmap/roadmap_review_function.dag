@@ -215,7 +215,14 @@ fn review_report_refused(reason: String) -> ReviewReport {
 }
 
 fn review_report_approved(report: ReviewReport) -> Bool {
-  match report.reconciliation.state { WorkflowSegmentComplete => true  _ => false }
+  match report.reconciliation.state {
+    WorkflowSegmentComplete => true
+    WorkflowSegmentPending => false
+    WorkflowSegmentActive => false
+    WorkflowSegmentFailed => false
+    WorkflowSegmentRefused => false
+    WorkflowSegmentStopped => false
+  }
 }
 
 fn review_report_state_word(report: ReviewReport) -> String {

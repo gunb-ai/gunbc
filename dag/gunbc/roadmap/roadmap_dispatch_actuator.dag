@@ -2522,7 +2522,29 @@ fn dispatch_spawn_commands_for_inventory(
             step: "cursor-provider-spawn" as NonEmptyStr,
             detail: "cursor dispatch spawn is not yet wired on this actuator path",
           }
-        _ =>
+        ClaudeCodeProvider =>
+          dispatch_spawn_commands_for_resolved_instance(
+            instance: instance,
+            node: node,
+            session_uuid: session_uuid,
+            attempt_key: attempt_key,
+            provider: provider,
+            effort: effort,
+            model: model,
+            origin: FreshFromBase,
+          )
+        CodexDispatchProvider =>
+          dispatch_spawn_commands_for_resolved_instance(
+            instance: instance,
+            node: node,
+            session_uuid: session_uuid,
+            attempt_key: attempt_key,
+            provider: provider,
+            effort: effort,
+            model: model,
+            origin: FreshFromBase,
+          )
+        GunbcHarnessProvider =>
           dispatch_spawn_commands_for_resolved_instance(
             instance: instance,
             node: node,
@@ -3018,7 +3040,8 @@ fn dispatch_tmux_session_scope_for_live_session(sess: DispatchLiveSession) -> Tm
               },
             ),
           }
-        _ => none
+        WorkerProcessUnobserved { reason: _ } => none
+        WorkerProcessAbsent => none
       }
     ClaudeCliProvider =>
       Present {
@@ -3630,7 +3653,10 @@ fn dispatch_session_is_owned(session: DispatchLiveSession) -> Bool {
   match session.lease_verdict {
     Converged => true
     Drifted => true
-    _ => false
+    Absent => false
+    Conflict => false
+    Inaccessible => false
+    UnknownRefused => false
   }
 }
 
