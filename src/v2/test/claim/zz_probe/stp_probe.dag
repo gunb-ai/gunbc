@@ -2,7 +2,7 @@ module v2.test.claim.zz_probe.stp_probe
 
 import v2.test.claim.namespace_xl0.reference_conservation_accepted_drops { map_literal_value_subject, qualified_constructor_value_subject }
 import v2.test.claim.reference_derived_graph_call_arg_tree { ca_normalized_call_arg_edge_count }
-import v2.test.claim.execution.data_decl_lowering_grounding { ddl_hand_grounding, ddl_childless_conj, ddl_unauthorized_atom, ddl_arrow_with }
+import v2.test.execution.data_decl_lowering_grounding { ddl_hand_grounding, ddl_childless_conj, ddl_unauthorized_atom, ddl_arrow_with }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.node { symbol_lexeme }
