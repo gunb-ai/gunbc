@@ -106,7 +106,7 @@ import v2.std.diagnostic {
   rejected_with_pending
 }
 import v2.std.integer { Int, integer_string_to_decimal_digits_optional }
-import v2.std.qualified_name { QualifiedName, qualified_name_snoc, qualified_name_to_dotted_string, qualified_name_spine_of_atoms, qualified_name_spine_shape_present }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_node, qualified_name_snoc, qualified_name_to_dotted_string, qualified_name_spine_of_atoms, qualified_name_spine_shape_present }
 import v2.std.symbol_index {
   SymbolIndex,
   empty_symbol_index,
@@ -9534,12 +9534,23 @@ fn body_lower_operation_requires(shell: Node) -> Outcome<Node> {
   }
 }
 
-// A member's spelling as written: a single-segment name lowers to an Atom whose identity IS that
-// spelling; a dotted one is read as the dotted qualified name its type expression holds.
+// A member's spelling as written, read off the LOWERED type node rather than re-searched in the
+// parse: a single-segment name lowers to an Atom whose identity IS that spelling, and a dotted one to
+// the qualified-name spine (body_lower_qualified_name_spine_node), read back as its dotted string. A
+// member that is neither (a generic application, an anonymous record) has no requirement spelling and
+// refuses at the member.
 fn body_lower_operation_requires_member_label_optional(member: Node, type_node: Node) -> Optional<Symbol> {
   match node_atom_identity_optional(node: type_node) {
     Present { value: id } => Present { value: id }
-    Absent => body_lower_service_name_optional(captured: member)
+    Absent =>
+      if qualified_name_spine_shape_present(root: type_node) {
+        match qualified_name_from_node(root: type_node) {
+          Accepted { value: qn, diagnostics: _ } => Present { value: symbol_intern_lexeme(lexeme: qualified_name_to_dotted_string(qn: qn)) }
+          Rejected { diagnostics: _ } => Absent
+        }
+      } else {
+        Absent
+      }
   }
 }
 
