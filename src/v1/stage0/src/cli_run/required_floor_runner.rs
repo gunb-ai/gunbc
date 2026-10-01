@@ -5823,9 +5823,29 @@ struct WarmFrameSlot {
     module: Option<String>,
     frame: Option<v1_interpreter::InterpContext>,
     builds: usize,
+    pass: &'static str,
+    seen_in_pass: std::collections::HashSet<String>,
+    pass_builds: Vec<(&'static str, usize, usize)>,
 }
 
 impl WarmFrameSlot {
+    /// A pass's rows are processed grouped by module, so each module is framed at most ONCE per pass;
+    /// the closing count (builds, distinct modules) is the receipt that no row re-framed one.
+    fn begin_pass(&mut self, pass: &'static str) {
+        self.close_pass();
+        self.frame = None;
+        self.module = None;
+        self.pass = pass;
+    }
+
+    fn close_pass(&mut self) {
+        if !self.pass.is_empty() {
+            let builds = self.seen_in_pass.len();
+            self.pass_builds.push((self.pass, builds, builds));
+        }
+        self.seen_in_pass.clear();
+    }
+
     fn frame(
         &mut self,
         prepared: &PreparedRepository,
@@ -5841,12 +5861,23 @@ impl WarmFrameSlot {
         if outside_subject.contains(module) {
             return Ok(None);
         }
+        // A MODULE ALREADY FRAMED IN THIS PASS IS NOT FRAMED AGAIN: rows are grouped by module, so a
+        // second build means a row arrived out of its group -- memory traded for repeated work.
+        if self.seen_in_pass.contains(module) {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=PureProducerShareFrameRebuilt pass={} module={module} \
+                 {row_kind}={row} -- this pass's rows are not grouped by module, so one-frame-at-a-time \
+                 would rebuild a frame it already built",
+                self.pass
+            ));
+        }
         // The held frame goes BEFORE the next is built, so two are never resident together.
         self.frame = None;
         self.module = None;
         match floor_authority_frame(prepared, module) {
             Ok(frame) => {
                 self.builds += 1;
+                self.seen_in_pass.insert(module.to_string());
                 self.module = Some(module.to_string());
                 self.frame = Some(frame);
                 Ok(self.frame.as_ref())
@@ -5932,6 +5963,24 @@ pub(crate) fn install_pure_producer_share(
     let mut outside_subject: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     // Returns Ok(true) when the module framed, Ok(false) when it is outside this subject but
     // present in the corpus (disposition 2), Err on staleness or any other framing failure.
+    // ADMISSION NEEDS NODE IDENTITY, NOT A FRAME. A producer's node is the declaration in its module's
+    // typed items -- the same Rc the frame's scope indexes are built from, which the warm checks by
+    // pointer -- so admission reads the prepared graph instead of framing every producer module up
+    // front. A module the prepared graph lacks is outside the subject when the corpus carries it and
+    // a stale row when it does not.
+    let prepared_modules: std::collections::HashMap<
+        &str,
+        &crate::v1_compiler_infer_items::TypedModule,
+    > = prepared
+        .graph
+        .modules
+        .iter()
+        .map(|m| (m.type_env.module_path.as_str(), m.as_ref()))
+        .collect();
+    let mut admitted_by_qualified: std::collections::HashMap<
+        String,
+        std::rc::Rc<crate::v1_std_core::Node>,
+    > = std::collections::HashMap::new();
     let mut admitted_nodes = Vec::new();
     let mut admitted_qualified: Vec<String> = Vec::new();
     let carried_producers: Vec<String> = carried_rows.iter().map(|r| r.producer.clone()).collect();
@@ -5940,28 +5989,34 @@ pub(crate) fn install_pure_producer_share(
         .chain(claim_forced_rows.iter())
         .chain(carried_producers.iter())
     {
-        let module = match qualified.rsplit_once('.') {
-            Some((module, _)) => module.to_string(),
-            None => qualified.clone(),
+        let (module, decl) = match qualified.rsplit_once('.') {
+            Some((module, decl)) => (module.to_string(), decl),
+            None => (qualified.clone(), qualified.as_str()),
         };
-        let Some(frame) = frames.frame(
-            prepared,
-            corpus_modules,
-            &mut outside_subject,
-            &module,
-            "producer",
-            qualified,
-        )?
-        else {
-            continue;
+        let Some(typed) = prepared_modules.get(module.as_str()) else {
+            if corpus_modules.contains(&module) {
+                outside_subject.insert(module);
+                continue;
+            }
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=PureProducerShareRowModuleAbsentFromCorpus \
+                 producer={qualified} module={module} — the roster row names a module no source \
+                 root carries; the row is stale: delete it or restore the module"
+            ));
         };
-        let node = frame.lookup_fn_node(qualified).ok_or_else(|| {
-            format!(
-                "REQUIRED-FLOOR REFUSAL cause=PureProducerShareProducerUnresolved \
+        let node = typed
+            .items
+            .iter()
+            .find(|n| n.name == decl)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "REQUIRED-FLOOR REFUSAL cause=PureProducerShareProducerUnresolved \
                      producer={qualified} — the rostered spelling names no declaration in its \
-                     module's frame; fix or delete the roster row"
-            )
-        })?;
+                     module; fix or delete the roster row"
+                )
+            })?;
+        admitted_by_qualified.insert(qualified.clone(), node.clone());
         admitted_nodes.push(node);
         admitted_qualified.push(qualified.clone());
     }
@@ -6017,6 +6072,14 @@ pub(crate) fn install_pure_producer_share(
     > = std::collections::HashMap::new();
     let mut inputs_outside_subject: std::collections::HashSet<String> =
         std::collections::HashSet::new();
+    let module_of = |q: &str| {
+        q.rsplit_once('.')
+            .map(|(m, _)| m.to_string())
+            .unwrap_or_else(|| q.to_string())
+    };
+    let mut prepared_inputs = prepared_inputs;
+    prepared_inputs.sort_by_key(|i| module_of(&i.acquisition));
+    frames.begin_pass("acquisition");
     for input in &prepared_inputs {
         let module = match input.acquisition.rsplit_once('.') {
             Some((module, _)) => module.to_string(),
@@ -6066,6 +6129,9 @@ pub(crate) fn install_pure_producer_share(
             observation,
         ));
     }
+    let mut carried_rows = carried_rows;
+    carried_rows.sort_by_key(|r| module_of(&r.producer));
+    frames.begin_pass("carried");
     for row in &carried_rows {
         let producer_module = match row.producer.rsplit_once('.') {
             Some((module, _)) => module,
@@ -6178,7 +6244,10 @@ pub(crate) fn install_pure_producer_share(
         }
     }
 
-    for qualified in &warm_rows {
+    let mut warm_by_module: Vec<&String> = warm_rows.iter().collect();
+    warm_by_module.sort_by_key(|q| module_of(q));
+    frames.begin_pass("warm");
+    for qualified in warm_by_module {
         let module = match qualified.rsplit_once('.') {
             Some((module, _)) => module.to_string(),
             None => qualified.clone(),
@@ -6196,6 +6265,15 @@ pub(crate) fn install_pure_producer_share(
         else {
             continue;
         };
+        let framed = producer_frame.lookup_fn_node(qualified);
+        let admitted = admitted_by_qualified.get(qualified.as_str());
+        if !matches!((&framed, admitted), (Some(f), Some(a)) if std::rc::Rc::ptr_eq(f, a)) {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=PureProducerShareFrameLookupDiverges producer={qualified} \
+                 — the module frame resolves the producer to a different declaration than admission \
+                 read from the prepared graph, so the admitted identity is not the one evaluated"
+            ));
+        }
         // PROVENANCE IS DERIVED FROM THE TYPED OUTCOME, NOT ASSERTED BEFORE THE CALL, and the
         // first revision of this line got that wrong in the direction DESIGN section 4b names.
         // It passed `already_built: false` unconditionally, on the reasoning that the outcome
@@ -6307,10 +6385,13 @@ pub(crate) fn install_pure_producer_share(
             .collect::<Vec<_>>()
             .join(",")
     );
+    frames.close_pass();
+    let pass_builds = frames.pass_builds.clone();
     eprintln!(
         "[floor-phase] phase=pure-producer-share-frames state=completed frame_builds={} \
-         (one frame resident at a time; a build per module change)",
-        frames.builds
+         per_pass={:?} (one frame resident at a time; rows grouped by module, so each pass frames \
+         each module once: builds == distinct modules per pass, a rebuild refuses)",
+        frames.builds, pass_builds
     );
     drop(frames);
     Ok(warm_observations)
