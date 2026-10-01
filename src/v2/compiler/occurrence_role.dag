@@ -227,6 +227,10 @@ fn read_names(reader: NameReader, captured: Node) -> NameRead {
 
 // `operation name { .. }`: body lowering reads the name with the kw-then-ident decoder
 // (body_lower_operation), and lowers it to a callable edge of the service.
+// `resource Name { .. }` declares a type-position name (a fn's `uses fs: Filesystem` names it as a
+// type) and `capability name { .. }` declares a callable of that resource, read as an operation is.
+// A resource property's value (`kind: Capability`) is a marker word the lowering projects onto
+// std.resource_contract ResourceKind / ResourceMode, never a name resolution looks up.
 // `uses net: Network`: each entry binds the resource name the fn body refers to. Its shape is
 // `name: T [(cfg)]`, the `name: value` pair ReadFieldInitLabel's decoder reads, so it is read by that
 // decoder, and the binder is a declaration.
@@ -256,6 +260,10 @@ fn dag_name_production_rows() -> List<NameProductionRow> {
     name_row(production: ^dag_production_operation, disposition: NameRoleRead { role: DeclarationRole, category: CallableOccurrence, reader: ReadKwThenIdent }),
     name_row(production: ^dag_production_input_block, disposition: NameRoleRead { role: DeclarationRole, category: FieldOccurrence, reader: ReadIoFieldBinders }),
     name_row(production: ^dag_production_output_block, disposition: NameRoleRead { role: DeclarationRole, category: FieldOccurrence, reader: ReadIoFieldBinders }),
+    name_row(production: ^dag_production_resource_decl, disposition: NameRoleRead { role: DeclarationRole, category: TypeOccurrence, reader: ReadKwThenIdent }),
+    name_row(production: ^dag_production_resource_kind, disposition: NamesAreMarkers),
+    name_row(production: ^dag_production_resource_mode, disposition: NamesAreMarkers),
+    name_row(production: ^dag_production_capability, disposition: NameRoleRead { role: DeclarationRole, category: CallableOccurrence, reader: ReadKwThenIdent }),
     name_row(production: ^dag_production_uses_entry, disposition: NameRoleRead { role: DeclarationRole, category: LexicalValueOccurrence, reader: ReadFieldInitLabel })
   ]
 }

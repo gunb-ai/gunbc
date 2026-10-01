@@ -115,3 +115,18 @@ test fn a_not_predicate_derives_no_tree_holds() -> Bool {
       }
   }
 }
+
+// EMIT READS THE PREDICATE BACKWARD. The tree the guarded stop grammar parses from `a a a b` is
+// emitted against that same grammar: the walk passes each `(!(a b) a)` item through
+// v2.std.grammar grammar_emit_sequence's predicate rule and the predicate's own arm (no terminal), and
+// yields the four terminals the source had -- the predicate costs no token in either direction.
+test fn a_not_predicate_guarded_tree_emits_its_tokens_back_holds() -> Bool {
+  match np_parse(root: np_stop_grammar(guard: true), tokens: np_stop_tokens) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: parsed, diagnostics: _ } =>
+      match grammar_emit_parse_tree(root: np_stop_grammar(guard: true), tree: parsed.tree) {
+        Accepted { value: terminals, diagnostics: _ } => length(xs: terminals) == 4
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}

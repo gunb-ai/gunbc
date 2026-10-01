@@ -1,6 +1,6 @@
 module gunbc.machine_intake_mtcollins1_census_qemu_host_observe
 
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String, FilePath }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import v2.std.optional { Present, Absent }
@@ -20,6 +20,11 @@ import gunbc.command_runner {
 import gunbc.runner_microvm_host_ready { KvmDeviceStanding, KvmDeviceWritable, kvm_standing_of, kvm_standing_text }
 import gunbc.hostname_read { HostnameShortCaptured, HostnameShortCaptureRefused, hostname_short_read }
 import gunbc.host_effect { LocalShell }
+import extdeps.tools.ldd { ldd_command, ldd_reading_of, LddReading, LddAllResolved, LddUnresolved, LddUnreadable }
+import gunbc.runner_microvm_host_ready { executor_home_wet }
+import gunbc.machine_intake_mtcollins1_census_qemu_toolchain {
+  CensusQemuLocation, census_qemu_location, census_qemu_rooted, census_qemu_cleared_command,
+}
 
 // WHAT THE SELECTED HOST ALREADY CARRIES FOR AN OFF-MACHINE QEMU BOOT OF THE mtcollins1 CENSUS
 // IMAGE, READ AND NOTHING WRITTEN (the MtCollins1CensusQemuHostObserve mode of
@@ -40,6 +45,14 @@ import gunbc.host_effect { LocalShell }
 //             extdeps.firmware.tianocore_edk2.aavmf -- a present file with a different digest is a
 //             different firmware and is reported as such, never as present
 //
+// WHERE: UNDER THE JOB USER'S INSTALL ROOT (gunbc.machine_intake_mtcollins1_census_qemu_toolchain),
+// never the host's /usr. Every packaged path -- the binary and both AAVMF images -- is read at
+// <root><packaged path>, and the binary is run, and ldd is run over it, under the toolchain's one
+// declared environment (env -i, LD_LIBRARY_PATH at the root's library directories, a fixed PATH), so
+// what is read is what the boot will run. A FOURTH FACT follows from running it out of a root: the
+// binary's libraries, read by ldd under that environment -- an unresolved soname is named, and the
+// binary is not ready however its bytes hash.
+//
 // THE VERDICT IS READY ONLY WHEN ALL THREE HOLD, and a host that is not ready exits nonzero NAMING
 // what is missing, so a dispatcher cannot read a green run as "the probe can boot here". Nothing is
 // installed, and a missing piece is an answer, not a fault: the receipt is written in every arm.
@@ -54,10 +67,16 @@ type FirmwareFileStanding
   | FirmwareFileDiffers { path: String, observed: String, expected: NonEmptyStr }
   | FirmwareFileUnreadable { path: String, reason: String }
 
+type QemuLibraryStanding
+  = QemuLibrariesNotRead { reason: String }
+  | QemuLibrariesRead { reading: LddReading }
+
 type CensusQemuHostStanding {
   host: String
+  root: String
   kvm: KvmDeviceStanding
   qemu: QemuBinaryStanding
+  libraries: QemuLibraryStanding
   aavmf_code: FirmwareFileStanding
   aavmf_vars_template: FirmwareFileStanding
 }
@@ -90,8 +109,8 @@ fn qemu_banner_may_be_read(presence: QemuPresence) -> Bool {
 
 // THE PINNED ARM NEEDS BOTH FACTS: the file's digest is the installed identity, and the exact banner
 // is the reading that the file executed as that build. Either one alone is a different standing.
-fn qemu_binary_standing_of(build: QemuDistributionBuild, presence: QemuPresence, banner: QemuBannerReading) -> QemuBinaryStanding {
-  let binary = build.installed_binary as String
+fn qemu_binary_standing_of(root: String, build: QemuDistributionBuild, presence: QemuPresence, banner: QemuBannerReading) -> QemuBinaryStanding {
+  let binary = census_qemu_rooted(root: root, packaged: build.installed_binary)
   match presence {
     QemuNotExecutable => QemuAbsent { binary: binary, detail: "no executable file at this path; the binary was not run" }
     QemuExecutable { digest: digest } =>
@@ -109,15 +128,10 @@ fn qemu_binary_standing_of(build: QemuDistributionBuild, presence: QemuPresence,
   }
 }
 
-fn observe_qemu_binary_standing_wet(build: QemuDistributionBuild) -> QemuBinaryStanding {
-  let path = build.installed_binary as String
-  let presence = if process_outcome_admitted(outcome: run_shell_command_capture(command: test_executable_command(path: path), transport: LocalExec)) {
-    QemuExecutable { digest: sha256sum_file_digest_via_shell(path: path as NonEmptyStr) }
-  } else {
-    QemuNotExecutable
-  }
+fn observe_qemu_binary_standing_wet(root: String, build: QemuDistributionBuild, presence: QemuPresence) -> QemuBinaryStanding {
+  let path = census_qemu_rooted(root: root, packaged: build.installed_binary)
   let banner = if qemu_banner_may_be_read(presence: presence) {
-    match run_shell_command_capture(command: qemu_version_command(binary: build.installed_binary), transport: LocalExec) {
+    match run_shell_command_capture(command: census_qemu_cleared_command(root: root, command: qemu_version_command(binary: path as FilePath)), transport: LocalExec) {
       ProcessOutputPresent { text: t } => QemuBannerRead { banner: qemu_banner_first_line(output: t) }
       ProcessOutputAbsent => QemuBannerRead { banner: "" }
       ProcessRefused { exit_code: x, stderr: e } => QemuBannerRead { banner: join(["(--version exit ", to_string(x), ": ", trim(s: e), ")"], "") }
@@ -125,19 +139,47 @@ fn observe_qemu_binary_standing_wet(build: QemuDistributionBuild) -> QemuBinaryS
   } else {
     QemuBannerNotRead
   }
-  qemu_binary_standing_of(build: build, presence: presence, banner: banner)
+  qemu_binary_standing_of(root: root, build: build, presence: presence, banner: banner)
 }
 
-fn firmware_file_standing_of(file: AavmfFirmwareFile, reading: Sha256FileDigest) -> FirmwareFileStanding {
-  match reading {
-    Sha256FileDigestUnavailable { path: _, reason: r } => FirmwareFileUnreadable { path: file.path as String, reason: r }
-    Sha256FileDigest { digest: d } =>
-      if (d.hex as String) == (file.sha256 as String) {
-        FirmwareFileMatches { path: file.path as String }
-      } else {
-        FirmwareFileDiffers { path: file.path as String, observed: d.hex as String, expected: file.sha256 }
+fn observe_qemu_presence_wet(root: String, build: QemuDistributionBuild) -> QemuPresence {
+  let path = census_qemu_rooted(root: root, packaged: build.installed_binary)
+  if process_outcome_admitted(outcome: run_shell_command_capture(command: test_executable_command(path: path), transport: LocalExec)) {
+    QemuExecutable { digest: sha256sum_file_digest_via_shell(path: path as NonEmptyStr) }
+  } else {
+    QemuNotExecutable
+  }
+}
+
+// LDD RUNS ONLY OVER A FILE THAT IS THERE, under the same environment the binary runs under; its
+// output is read by ldd's one parser, and a refused run is a reading that could not be taken.
+fn observe_qemu_libraries_wet(root: String, build: QemuDistributionBuild, presence: QemuPresence) -> QemuLibraryStanding {
+  match presence {
+    QemuNotExecutable => QemuLibrariesNotRead { reason: "no executable at the rooted path" }
+    QemuExecutable { digest: _ } =>
+      match run_shell_command_capture(command: census_qemu_cleared_command(root: root, command: ldd_command(binary: census_qemu_rooted(root: root, packaged: build.installed_binary))), transport: LocalExec) {
+        ProcessOutputPresent { text: t } => QemuLibrariesRead { reading: ldd_reading_of(output: t) }
+        ProcessOutputAbsent => QemuLibrariesRead { reading: ldd_reading_of(output: "") }
+        ProcessRefused { exit_code: x, stderr: e } => QemuLibrariesNotRead { reason: join(["ldd exited ", to_string(x), ": ", trim(s: e)], "") }
       }
   }
+}
+
+fn firmware_file_standing_of(root: String, file: AavmfFirmwareFile, reading: Sha256FileDigest) -> FirmwareFileStanding {
+  let path = census_qemu_rooted(root: root, packaged: file.path)
+  match reading {
+    Sha256FileDigestUnavailable { path: _, reason: r } => FirmwareFileUnreadable { path: path, reason: r }
+    Sha256FileDigest { digest: d } =>
+      if (d.hex as String) == (file.sha256 as String) {
+        FirmwareFileMatches { path: path }
+      } else {
+        FirmwareFileDiffers { path: path, observed: d.hex as String, expected: file.sha256 }
+      }
+  }
+}
+
+fn observe_firmware_file_standing_wet(root: String, file: AavmfFirmwareFile) -> FirmwareFileStanding {
+  firmware_file_standing_of(root: root, file: file, reading: sha256sum_file_digest_via_shell(path: census_qemu_rooted(root: root, packaged: file.path) as NonEmptyStr))
 }
 
 fn qemu_standing_ready(s: QemuBinaryStanding) -> Bool {
@@ -152,8 +194,12 @@ fn kvm_standing_ready(k: KvmDeviceStanding) -> Bool {
   match k { KvmDeviceWritable => true  _ => false }
 }
 
+fn library_standing_ready(l: QemuLibraryStanding) -> Bool {
+  match l { QemuLibrariesRead { reading: LddAllResolved } => true  _ => false }
+}
+
 fn census_qemu_host_ready(s: CensusQemuHostStanding) -> Bool {
-  kvm_standing_ready(k: s.kvm) && qemu_standing_ready(s: s.qemu)
+  kvm_standing_ready(k: s.kvm) && qemu_standing_ready(s: s.qemu) && library_standing_ready(l: s.libraries)
     && firmware_standing_ready(s: s.aavmf_code) && firmware_standing_ready(s: s.aavmf_vars_template)
 }
 
@@ -163,6 +209,15 @@ fn qemu_standing_text(s: QemuBinaryStanding) -> String {
     QemuPinnedBuild { binary: b, banner: x } => join(["qemu=pinned (", b, ", ", x, ")"], "")
     QemuOtherBuild { binary: b, observed_sha256: h, banner: x, banner_is_pinned: p } =>
       join(["qemu=other-build (", b, " sha256 ", h, ", banner \"", x, "\"", if p { " -- the banner matches but the bytes do not" } else { "" }, ")"], "")
+  }
+}
+
+fn library_standing_text(l: QemuLibraryStanding) -> String {
+  match l {
+    QemuLibrariesNotRead { reason: r } => join(["libraries=not-read (", r, ")"], "")
+    QemuLibrariesRead { reading: LddAllResolved } => "libraries=resolved"
+    QemuLibrariesRead { reading: LddUnresolved { sonames: ss } } => join(["libraries=unresolved (", join(ss, ","), ")"], "")
+    QemuLibrariesRead { reading: LddUnreadable { reason: r } } => join(["libraries=unreadable (", r, ")"], "")
   }
 }
 
@@ -177,29 +232,38 @@ fn firmware_standing_text(role: String, s: FirmwareFileStanding) -> String {
 fn census_qemu_host_standing_text(s: CensusQemuHostStanding) -> String {
   join([
     "host=", s.host, "\n",
+    "root=", s.root, "\n",
     kvm_standing_text(k: s.kvm), "\n",
     qemu_standing_text(s: s.qemu), "\n",
+    library_standing_text(l: s.libraries), "\n",
     firmware_standing_text(role: "aavmf-code", s: s.aavmf_code), "\n",
     firmware_standing_text(role: "aavmf-vars-template", s: s.aavmf_vars_template), "\n",
     "ready=", if census_qemu_host_ready(s: s) { "yes" } else { "no" },
   ], "")
 }
 
-fn observe_census_qemu_host_standing_wet() -> CensusQemuHostStanding {
+fn census_qemu_host_name_wet() -> String {
+  match hostname_short_read(transport: LocalShell) {
+    HostnameShortCaptured { value: v } => v
+    HostnameShortCaptureRefused { reason: r } => join(["unread (", r, ")"], "")
+  }
+}
+
+fn observe_census_qemu_host_standing_wet(root: String) -> CensusQemuHostStanding {
   let kvm_path = qemu_kvm_accelerator_device as String
   let exists = process_outcome_admitted(outcome: run_shell_command_capture(command: test_exists_command(path: kvm_path), transport: LocalExec))
   let writable = process_outcome_admitted(outcome: run_shell_command_capture(command: test_writable_command(path: kvm_path), transport: LocalExec))
   let build = qemu_8_2_2_ubuntu_noble_arm64
   let firmware = aavmf_2024_02_ubuntu_noble
+  let presence = observe_qemu_presence_wet(root: root, build: build)
   CensusQemuHostStanding {
-    host: match hostname_short_read(transport: LocalShell) {
-      HostnameShortCaptured { value: v } => v
-      HostnameShortCaptureRefused { reason: r } => join(["unread (", r, ")"], "")
-    },
+    host: census_qemu_host_name_wet(),
+    root: root,
     kvm: kvm_standing_of(exists: exists, writable: writable),
-    qemu: observe_qemu_binary_standing_wet(build: build),
-    aavmf_code: firmware_file_standing_of(file: firmware.code, reading: sha256sum_file_digest_via_shell(path: firmware.code.path as NonEmptyStr)),
-    aavmf_vars_template: firmware_file_standing_of(file: firmware.vars_template, reading: sha256sum_file_digest_via_shell(path: firmware.vars_template.path as NonEmptyStr)),
+    qemu: observe_qemu_binary_standing_wet(root: root, build: build, presence: presence),
+    libraries: observe_qemu_libraries_wet(root: root, build: build, presence: presence),
+    aavmf_code: observe_firmware_file_standing_wet(root: root, file: firmware.code),
+    aavmf_vars_template: observe_firmware_file_standing_wet(root: root, file: firmware.vars_template),
   }
 }
 
@@ -207,16 +271,24 @@ data census_qemu_host_observe_receipt_dir: String = "target"
 
 data census_qemu_host_observe_receipt_path: String = "target/mtcollins1-census-qemu-host.txt"
 
+// THE OBSERVE READS THE ROOT THE CONVERGE WOULD PLACE for this job user, and places nothing.
 fn mtcollins1_census_qemu_host_observe_wet() -> ProcessExit {
-  let standing = observe_census_qemu_host_standing_wet()
-  let text = census_qemu_host_standing_text(s: standing)
+  match executor_home_wet() {
+    Absent => exit_failure(reason: "mtcollins1_census_qemu_host_observe: HOME is unset, so the job user's install root cannot be named")
+    Present { value: home } => census_qemu_host_verdict_wet(entry: "mtcollins1_census_qemu_host_observe", preamble: "", standing: observe_census_qemu_host_standing_wet(root: census_qemu_location(home: home).root as String))
+  }
+}
+
+// THE RECEIPT IS WRITTEN BEFORE THE VERDICT, in every arm, and a host that is not ready exits nonzero.
+fn census_qemu_host_verdict_wet(entry: String, preamble: String, standing: CensusQemuHostStanding) -> ProcessExit {
+  let text = concat(preamble, census_qemu_host_standing_text(s: standing))
   let _ = run_shell_commands(commands: [mkdir_parents_command(path: census_qemu_host_observe_receipt_dir)], transport: LocalExec)
   let w = Filesystem.Write(path: census_qemu_host_observe_receipt_path, content: concat(text, "\n"))
   if !w.success {
-    exit_failure(reason: join(["mtcollins1_census_qemu_host_observe: receipt write refused: ", w.error, "\n", text], ""))
+    exit_failure(reason: join([entry, ": receipt write refused: ", w.error, "\n", text], ""))
   } else if census_qemu_host_ready(s: standing) {
     ExitSuccess
   } else {
-    exit_failure(reason: join(["mtcollins1_census_qemu_host_observe: this host cannot yet boot the census image under QEMU --\n", text], ""))
+    exit_failure(reason: join([entry, ": this host cannot yet boot the census image under QEMU --\n", text], ""))
   }
 }
