@@ -2105,11 +2105,11 @@ fn body_lower_fn_type_lowered_optional(fn_type_shell: Node) -> Optional<Node> {
                                     Absent => Absent
                                     Present { value: codomain_type } =>
                                       optional_present(
-                                        value: anonymous_signature_arrow(
+                                        value: close_lowered_image(root: anonymous_signature_arrow(
                                           domain_types: domain_types,
                                           codomain: codomain_type,
                                           source: fn_type_shell
-                                        )
+                                        ))
                                       )
                                   }
                               }
