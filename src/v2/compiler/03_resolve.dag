@@ -1103,7 +1103,11 @@ fn resolve_bound_head_projection(
             )
           }
         Cons { head: head_segment, tail: field_segments } =>
-          match resolve_projection_base(ctx: ctx, head_segment: head_segment) {
+          match resolve_projection_base(
+            ctx: ctx,
+            head_segment: head_segment,
+            projects_fields: match field_segments { Empty => false  Cons { head: _, tail: _ } => true }
+          ) {
             Absent =>
               Rejected {
                 diagnostics: rejected_with_pending(
@@ -1127,7 +1131,32 @@ fn resolve_bound_head_projection(
   }
 }
 
-fn resolve_projection_base(ctx: ResolveContext, head_segment: Node) -> Optional<Node> {
+// A ROOT BINDING RESOLVES A NAME BUT MAY NOT BE PROJECTED THROUGH, AND THE TWO CASES ARE DISTINGUISHED BY
+// WHETHER THERE ARE FIELDS. This arm serves two shapes that look alike at the head: a single-segment name
+// bound at the module root (`Box` in `fn f(b: Box)`), where there is nothing to project and the head IS the
+// answer; and a dotted path whose head is a LOCAL binder (`b.tree` where `b` is a parameter), which is a
+// field projection and is why this arm exists -- it is what dissolved the earlier
+// AmbiguousQualifiedHeadShadowsAbsolute guard.
+//
+// It admitted BoundAtRoot in BOTH shapes, and that is the defect: a name bound at the module root is a
+// DECLARATION or a namespace segment, so a dotted path THROUGH it is a qualified name, not a projection.
+// MEASURED: the head segment of a module path (`v2` in v2.std.live_tree.LiveTreeDisposition) became a
+// projection base and the remaining segments became nested field projections, so infer asked a COPRODUCT
+// for its fields and all eight of v2.test.parse.expression_bodied_fn_decl_parse refused natively with
+// infer_reason_projection_receiver_declares_no_fields -- the chain walking "v2", "live_tree",
+// "LiveTreeDisposition". Removing BoundAtRoot outright was also wrong, and the controls said so
+// immediately: it is how a plain root-bound ANNOTATION resolves, so a module with a record type and no
+// projection at all stopped inferring.
+//
+// So the gate is projects_fields: with no field segments this resolves a name and admits either binding;
+// with field segments it is building a projection and the base must be a lexical binder. lookup_chain
+// already carries that distinction (ScopeBinding), and it is the same one the value-binder admission uses
+// to decide what hiding means.
+fn resolve_projection_base(
+  ctx: ResolveContext,
+  head_segment: Node,
+  projects_fields: Bool
+) -> Optional<Node> {
   match head_segment.kind {
     TypeNode { connective: Atom { identity: name } } =>
       match lookup_chain(s: ctx.scope, name: name) {
@@ -1139,9 +1168,13 @@ fn resolve_projection_base(ctx: ResolveContext, head_segment: Node) -> Optional<
                 value: canonical_atom(identity: canonical, occurrence_id: head_segment.occurrence_id)
               )
             BoundAtRoot { canonical: canonical } =>
-              optional_present(
-                value: canonical_atom(identity: canonical, occurrence_id: head_segment.occurrence_id)
-              )
+              if projects_fields {
+                optional_absent()
+              } else {
+                optional_present(
+                  value: canonical_atom(identity: canonical, occurrence_id: head_segment.occurrence_id)
+                )
+              }
             ScopeUnbound => optional_absent()
           }
       }
