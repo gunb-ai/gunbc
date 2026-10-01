@@ -1,0 +1,93 @@
+module v2.test.parse.block_headed_operand_class_parse
+
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A BLOCK-HEADED EXPRESSION IS AN OPERAND OF EVERY BINARY OPERATOR CLASS. `match`, `if` and `loop` are
+// primaries of binary_expr (v2.extdeps.languages.dag dag_grammar_primary_expr_core), so a block heads
+// a chain of any operator, as the seed reads it (v1.compiler.parse parse_expr_bp).
+// v2.test.parse.block_expr_as_binary_operand_parse holds `&&` with a `match` and with an `if`, the
+// bare forms and their lowered shape; these claims hold the remaining operator classes, one each, with
+// the block as the LEFT operand. They are what fails if a block-form alternative returns ahead of
+// binary_expr in dag_grammar_expr_expr, or if an operator class stops admitting a primary block. One
+// `data` declaration each, parsed against the floor-shared prepared grammar.
+
+fn bc_parses(text: String, file: Symbol) -> Bool {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: prepared, diagnostics: residue } =>
+      match tokenize(text: text, file: file, rules: dag_lex()) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: stream, diagnostics: _ } =>
+          match parse_module_prepared(tokens: stream, prepared: prepared, validation_residue: residue) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+      }
+  }
+}
+
+// multiplicative `*`
+data bc_mul_source: String = "module probe.bc_mul\n\ndata d: Int = match w {\n  _ => 1\n} * 2\n"
+
+// additive `+`
+data bc_add_source: String = "module probe.bc_add\n\ndata d: Int = match w {\n  _ => 1\n} + 2\n"
+
+// additive `-`, same line as the closing brace
+data bc_sub_source: String = "module probe.bc_sub\n\ndata d: Int = match w {\n  _ => 1\n} - 2\n"
+
+// comparison `<`
+data bc_cmp_source: String = "module probe.bc_cmp\n\ndata d: Int = match w {\n  _ => 1\n} < 2\n"
+
+// equality `==`
+data bc_eq_source: String = "module probe.bc_eq\n\ndata d: Int = match w {\n  _ => 1\n} == 2\n"
+
+// logical `||`
+data bc_or_source: String = "module probe.bc_or\n\ndata d: Int = match w {\n  _ => true\n} || t\n"
+
+// pipe `|>`
+data bc_pipe_source: String = "module probe.bc_pipe\n\ndata d: Int = match w {\n  _ => 1\n} |> g\n"
+
+// additive `+`, if-headed
+data bc_if_add_source: String = "module probe.bc_if_add\n\ndata d: Int = if w { 1 } else { 0 } + 2\n"
+
+test fn a_block_headed_left_operand_of_mul_parses_holds() -> Bool {
+  bc_parses(text: bc_mul_source, file: ^probe_bc_mul)
+}
+
+test fn a_block_headed_left_operand_of_add_parses_holds() -> Bool {
+  bc_parses(text: bc_add_source, file: ^probe_bc_add)
+}
+
+test fn a_block_headed_left_operand_of_sub_parses_holds() -> Bool {
+  bc_parses(text: bc_sub_source, file: ^probe_bc_sub)
+}
+
+test fn a_block_headed_left_operand_of_cmp_parses_holds() -> Bool {
+  bc_parses(text: bc_cmp_source, file: ^probe_bc_cmp)
+}
+
+test fn a_block_headed_left_operand_of_eq_parses_holds() -> Bool {
+  bc_parses(text: bc_eq_source, file: ^probe_bc_eq)
+}
+
+test fn a_block_headed_left_operand_of_or_parses_holds() -> Bool {
+  bc_parses(text: bc_or_source, file: ^probe_bc_or)
+}
+
+test fn a_block_headed_left_operand_of_pipe_parses_holds() -> Bool {
+  bc_parses(text: bc_pipe_source, file: ^probe_bc_pipe)
+}
+
+test fn a_block_headed_left_operand_of_if_add_parses_holds() -> Bool {
+  bc_parses(text: bc_if_add_source, file: ^probe_bc_if_add)
+}
