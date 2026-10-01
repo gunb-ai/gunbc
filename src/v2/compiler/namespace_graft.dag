@@ -703,7 +703,7 @@ fn namespace_graft_dual_position_refused(root: Node) -> Bool {
 // repeated inside a merged body (two `shell.Find`) refuses the same way. Merging grants no scope: a body
 // is a path segment, not a lexical frame (v2.compiler.resolve never opens one).
 fn namespace_graft_merge_namespace_bodies(edges: List<Edge>) -> Outcome<List<Edge>> {
-  fold(edges, init: outcome_accepted(value: []), f: fn(acc, e) {
+  fold(edges, init: outcome_accepted(value: Empty), f: fn(acc, e) {
     bind_outcome(o: acc, f: fn(merged) { namespace_graft_merge_one(merged: merged, e: e) })
   })
 }
@@ -753,7 +753,7 @@ fn namespace_graft_named_edge_in(edges: List<Edge>, name: Symbol) -> Optional<Ed
 }
 
 fn namespace_graft_replace_named_edge(edges: List<Edge>, name: Symbol, with: Edge) -> List<Edge> {
-  fold(edges, init: [], f: fn(acc, e) {
+  fold(edges, init: Empty, f: fn(acc, e) {
     match e.label {
       Named { name: sym } => if sym == name { list_snoc_item(xs: acc, item: with) } else { list_snoc_item(xs: acc, item: e) }
       Positional => list_snoc_item(xs: acc, item: e)
