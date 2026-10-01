@@ -889,6 +889,20 @@ fn assignee_lookup_refusal(raw: String) -> String {
   }
 }
 
+// A HUMAN WRITE READS THE CLOCK ONLY WHERE A READING IS CONSUMED. The write law
+// (gunbc.auth.request_authentication human_authentication_decision) reads observed_at only on the
+// GoogleOidcSession arm -- session expiry -- and only that arm can reach the append that records
+// it; absent, invalid and service evidence refuse at the authentication axis without it. So the
+// early refusals (404 unknown issue, 403 without a session) answer before any host read.
+fn human_write_observed_at(security: RequestSecurityContext<RequestAuthenticationEvidence>) -> String {
+  match security.authentication {
+    GoogleOidcSession { session: _ } => match clock_now_probed_at() { Present { value: t } => t as String Absent => "" }
+    FabricServiceEvidence { kind: _, authenticated_at: _ } => ""
+    SessionStandingInvalid { standing: _ } => ""
+    AuthAbsent => ""
+  }
+}
+
 // THE DURABLE ASSIGN ROUTE — the AssignIssue command (owner rulings 2026-09-24 and the 2026-09-25
 // issue-page mandate): POST /issue/<id>/assign records a Claimed event carrying the ASSIGNEE and
 // the RETURN_TO principal explicitly (default return_to = the requester — the authenticated
@@ -918,7 +932,7 @@ fn serve_issue_assign_response_over(
   params: List<PathParamBinding>,
 ) -> ServeHttpResponse {
   let node_id = path_param_value(params: params, name: "node_id")
-  let observed_at = match clock_now_probed_at() { Present { value: t } => t as String Absent => "" }
+  let observed_at = human_write_observed_at(security: request.security)
   if !issue_detail_node_exists(proj: plan, node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "issue not found") }
   else { match human_write_admission(route_path: concat("/issue/", concat(node_id, "/assign")) as NonEmptyStr,
     action: ServeActionAssignIssue, security: request.security, authorization_policy: tracker_write_authorization_policy,
@@ -1020,7 +1034,27 @@ fn serve_assignment_launch_follow_through(
   assignee: PrincipalRef,
   event_id: String,
 ) -> ServeHttpResponse {
-  let assignee_display = assignment_confirmation_display(assignee: assignee, profiles: serve_profiles_for_instance(instance: instance))
+  serve_assignment_launch_follow_through_over(
+    instance: instance,
+    plan: plan,
+    node_id: node_id,
+    assignee: assignee,
+    event_id: event_id,
+    profiles: serve_profiles_for_instance(instance: instance),
+  )
+}
+
+// The follow-through over a profile roster the caller read once: the display resolution is a pure
+// fold over it, so the human/Fabric decision is reachable without the profile-store read.
+fn serve_assignment_launch_follow_through_over(
+  instance: HostDashboardInstance,
+  plan: RoadmapAuthorityProjection,
+  node_id: String,
+  assignee: PrincipalRef,
+  event_id: String,
+  profiles: List<PrincipalProfile>,
+) -> ServeHttpResponse {
+  let assignee_display = assignment_confirmation_display(assignee: assignee, profiles: profiles)
   if principal_ref_eq(a: assignee, b: fabric_workflow_principal) {
     serve_fabric_assignment_response(
       node_id: node_id,
@@ -1091,7 +1125,7 @@ fn serve_issue_comment_response_over(
   params: List<PathParamBinding>,
 ) -> ServeHttpResponse {
   let node_id = path_param_value(params: params, name: "node_id")
-  let observed_at = match clock_now_probed_at() { Present { value: t } => t as String Absent => "" }
+  let observed_at = human_write_observed_at(security: request.security)
   if !issue_detail_node_exists(proj: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()), node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "issue not found") }
   else { match human_write_admission(route_path: concat("/issue/", concat(node_id, "/comment")) as NonEmptyStr,
     action: ServeActionCommentIssue, security: request.security, authorization_policy: tracker_write_authorization_policy,

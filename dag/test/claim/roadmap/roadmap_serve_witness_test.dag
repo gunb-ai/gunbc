@@ -27,7 +27,7 @@ import gunbc.roadmap_serve {
   ServedDailyBodyAuthority, DailyBodyRenderedUnderThisPlan, DailyBodyAuthorityUnknown,
   belt_dispatch_status,
   issue_form_field,
-  serve_assignment_launch_follow_through,
+  serve_assignment_launch_follow_through_over,
   serve_fabric_assignment_response,
   issue_comment_body_of,
   serve_comment_recorded_response,
@@ -401,9 +401,14 @@ test fn a_post_at_the_approval_url_refuses_rather_than_reporting_a_decision() ->
     && !string_contains(s: r.body, pattern: "does not decide anything")
 }
 
-// THE FILING ROUTE PARSES BEFORE IT READS ANYTHING OFF THE HOST: an unreadable envelope is a 400
-// with the store, the keys and the publisher untouched -- which is also why this witness can reach
-// the route in the hermetic frame, where those reads have no arm.
+// THE FILING ROUTE STILL MOUNTED HERE IS NOT THE WRITER: under the cutover posture
+// (gunbc.auth.approval_cutover_posture BrokerServesAndWrites) this process is refused at writer
+// admission -- a 503 naming both processes -- before the envelope parse and before the store, keys
+// or publisher are read, which is also why this witness reaches the route in the hermetic frame.
+// The writer's parse-first behaviour is the broker's own claim
+// (test.claim.approval_broker_serve_witness the_writer_reaches_the_submission_fold_rather_than_the_gate).
+// THE RED: drop the admission consult from approval_submit_response and this route parses the
+// body and answers 400 "submission unreadable".
 test fn an_unreadable_submission_is_refused_before_any_host_read() -> Bool {
   let r = roadmap_serve_respond(
     method_label: "POST",
@@ -412,8 +417,8 @@ test fn an_unreadable_submission_is_refused_before_any_host_read() -> Bool {
     tailscale_identity: "",
     release_revision: deploy_witness_release_revision,
   )
-  r.status == 400 && string_contains(s: r.body, pattern: "submission unreadable")
-    && !string_contains(s: r.body, pattern: "http")
+  r.status == 503 && string_contains(s: r.body, pattern: "writer authority is held by")
+    && !string_contains(s: r.body, pattern: "submission unreadable")
 }
 
 // THE TRANSPORT OBSERVATION DOES NOT REACH THE HANDLER AS IDENTITY. Under the 2026-09-25 ruling
@@ -733,12 +738,13 @@ fn fixture_human_ref() -> PrincipalRef {
 // CONTROL 3, at the response seam: a HUMAN assignee NEVER dispatches — the follow-through records
 // the fact and stops, with no launch vocabulary anywhere in the body.
 test fn witness_human_assignment_never_dispatches() -> Bool {
-  let r = serve_assignment_launch_follow_through(
+  let r = serve_assignment_launch_follow_through_over(
     instance: srv2_preview_dashboard_instance(),
     plan: caller_supplied_plan_fixture(),
     node_id: "some-node",
     assignee: fixture_human_ref(),
     event_id: "evt-1",
+    profiles: [],
   )
   r.status == 200
     && string_contains(s: r.body, pattern: "assigned: some-node → principal:google-oidc/accounts/sub-human (event evt-1)")

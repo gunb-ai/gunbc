@@ -6,6 +6,7 @@ import gunbc.host_effect { EmitArtifactThenThinRun, BootstrapFragment, ThinInvoc
 import gunbc.host_effect_realize { observe_slot_population_over_host_effect_transport }
 import gunbc.runner_slot_population_census { SlotCensus, CensusRefused, slot_census_from_command_outcome }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.fleet_intent_network { operator_host_srv1 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -72,10 +73,12 @@ test fn planted_command_failure_cause_keeps_its_exit_code() -> Bool {
   }
 }
 
-// POSITIVE CONTROL over a planted host fixture, green today and after: a successful planted
-// list-units outcome classifies as a census, not a refusal.
+// POSITIVE CONTROL over a planted list-units outcome, green today and after: a successful planted
+// list-units outcome classifies as a census, not a refusal. The host must have a derivable desired
+// slot population (gunbc.runner_slot_population_census slot_population_census refuses one without),
+// so the planted outcome is read for a fleet host rather than for census_fixture_host.
 test fn planted_list_units_success_classifies_as_a_census() -> Bool {
-  match slot_census_from_command_outcome(host: census_fixture_host, success: true, exit_code: 0, stdout: "", stderr: "") {
+  match slot_census_from_command_outcome(host: operator_host_srv1, success: true, exit_code: 0, stdout: "", stderr: "") {
     CensusRefused { cause: _ } => false
     _ => true
   }

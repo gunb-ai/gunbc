@@ -1167,8 +1167,9 @@ test fn witness_shell_arc_renders_as_project_with_ten_tasks() -> Bool {
     "shell-dag-live-deploy-restart-tailscale",
   ]
   let chain_ids = ["shell-gate-migration", "shell-effectplan-to-bash", "shell-typed-invocation"]
+  let shell_doc = fx_shell_subtree_doc()
   match try_serialize_html_source(node: roadmap_daily_workspace_page(
-      doc: gunbc.roadmap_authority.roadmap_authority_for(focus: NoFocus), merged: [], memberships: fixture_nesting_relation(edges: doc_all_edges(doc: gunbc.roadmap_authority.roadmap_authority_for(focus: NoFocus))))) {
+      doc: shell_doc, merged: [], memberships: fixture_nesting_relation(edges: doc_all_edges(doc: shell_doc)))) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       let arc_row = li_of_node(html: h, node_id: "shell-residue-zero")
@@ -1479,8 +1480,39 @@ test fn witness_client_paints_hero_face_verbatim() -> Bool {
 // line error-refusal (the retired forest used to roll the red flag up to the project bar; that
 // render survives on the kept project-tree component).
 
-fn fx_shell_live_rows(refused: Bool) -> List<gunbc.roadmap_presentation.WorkRowView> {
+// THE SHELL SUBTREE, SUPPLIED (DESIGN section 3, a witness discriminates at one interface): the
+// arc, its chain and its ten tasks exactly as the authority authors them, but only those rows and
+// the edges between them. Rendering the whole authority to inspect fourteen rows cost the page's
+// full fold per claim and could not finish inside the changed-witness ceiling; the authored rows
+// are still the real ones, so a re-parented or dropped shell task still reds here.
+fn fx_shell_subtree_ids() -> List<String> {
+  concat(["shell-residue-zero", "shell-gate-migration", "shell-effectplan-to-bash", "shell-typed-invocation"], fx_shell_task_ids())
+}
+
+fn fx_shell_id_in(id: String) -> Bool {
+  fold(fx_shell_subtree_ids(), init: false, f: (acc, i) => acc || i == id)
+}
+
+fn fx_shell_subtree_nodes(doc: RoadmapDocument) -> List<RoadmapNode> {
+  fold(gunbc.roadmap_spawner.doc_all_nodes(doc: doc), init: [], f: (acc, rn) =>
+    if fx_shell_id_in(id: rn.node as String) { concat(acc, [rn]) } else { acc })
+}
+
+fn fx_shell_subtree_edges(doc: RoadmapDocument) -> List<RoadmapEdge> {
+  fold(gunbc.roadmap_spawner.doc_all_edges(doc: doc), init: [], f: (acc, e) =>
+    if fx_shell_id_in(id: e.child as String) && fx_shell_id_in(id: e.parent as String) { concat(acc, [e]) } else { acc })
+}
+
+fn fx_shell_subtree_doc() -> RoadmapDocument {
   let doc = gunbc.roadmap_authority.roadmap_authority_for(focus: NoFocus)
+  RoadmapDocument { preamble: [], lead_lanes: [], sections: [ RoadmapSection {
+    title: "Shell",
+    elements: [ section_group(label: "", nodes: fx_shell_subtree_nodes(doc: doc), edges: fx_shell_subtree_edges(doc: doc)) ],
+  } ] }
+}
+
+fn fx_shell_live_rows(refused: Bool) -> List<gunbc.roadmap_presentation.WorkRowView> {
+  let doc = fx_shell_subtree_doc()
   let nodes = gunbc.roadmap_spawner.doc_all_nodes(doc: doc)
   let edges = gunbc.roadmap_spawner.doc_all_edges(doc: doc)
   let ctx = gunbc.roadmap_page.page_launch_context(doc: doc, merged: [], launch: dispatch_doc_standing())
@@ -1529,7 +1561,7 @@ fn fx_shell_live_rows(refused: Bool) -> List<gunbc.roadmap_presentation.WorkRowV
 }
 
 fn fx_shell_live_workspace_html(refused: Bool) -> HtmlEmitResult {
-  let doc = gunbc.roadmap_authority.roadmap_authority_for(focus: NoFocus)
+  let doc = fx_shell_subtree_doc()
   let edges = gunbc.roadmap_spawner.doc_all_edges(doc: doc)
   let rows = fx_shell_live_rows(refused: refused)
   let ws = gunbc.roadmap_presentation.daily_workspace_view(
