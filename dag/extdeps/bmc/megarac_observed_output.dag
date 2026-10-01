@@ -1,0 +1,73 @@
+module extdeps.bmc.megarac_observed_output
+
+import std.types { Int, NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, TranscribedUncited }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.ami.com/megarac/"
+  }
+}
+
+// WHAT THE Mt. Collins MegaRAC (firmware 0.32) ANSWERS ON ITS MEDIA REST ROUTES, as observed. Each
+// renderer reproduces a retained body's key order and spelling, with the fields a scenario varies
+// substituted; its source is cited beside it. A body no retained exchange carries says so in its
+// standing -- the production decoder reads only the members named there, and the rest of the body is
+// the firmware's form as far as it has been read.
+
+// GET /api/settings/media/general. Source: test.claim.machine_intake.megarac_media_convergence_witness_test
+// mtcollins1_media_general_2026_09_27, a read-only GET at 2026-09-27T18:37:18Z after boot run 36330382023,
+// verbatim, with the share, mount and CD error code as parameters. The firmware escapes `/` as `\/`.
+fn megarac_media_general_body(server: String, source_path: String, share_type: String, mount_cd: Int, cd_error_code: Int) -> String {
+  join([
+    "{ \"id\": 1, \"local_media_support\": 0, \"remote_media_support\": 1, \"same_settings\": 0, \"cd_remote_server_address\": \"", server,
+    "\", \"cd_remote_source_path\": \"", json_escaped_slashes(s: source_path),
+    "\", \"cd_remote_share_type\": \"", share_type,
+    "\", \"cd_remote_domain_name\": \"\", \"cd_remote_user_name\": \"\", \"mount_cd\": ", to_string(mount_cd),
+    ", \"cd_image_name\": \"\", \"cd_error_code\": ", to_string(cd_error_code),
+    ", \"mount_hd\": 0, \"hd_remote_server_address\": \"\", \"hd_remote_source_path\": \"\", \"hd_remote_share_type\": \"\", \"hd_remote_domain_name\": \"\", \"hd_remote_user_name\": \"\", \"hd_image_name\": \"\", \"hd_error_code\": 0, \"rmedia_retry_count\": 3, \"rmedia_retry_interval\": 15 }",
+  ], "")
+}
+
+fn json_escaped_slashes(s: String) -> String {
+  join(split(s: s, delimiter: "/"), "\\/")
+}
+
+// One row of GET /api/settings/media/remote/configurations. Source: the cleared row retained in
+// test.claim.machine_intake.megarac_media_convergence_witness_test
+// (`[{"media_type":1,"image_name":"","redirection_status":0,"media_index":0,"session_index":255}]`),
+// with the image, status and indices as parameters.
+fn megarac_configuration_row(image_name: String, redirection_status: Int, media_index: Int, session_index: Int) -> String {
+  join(["{\"media_type\":1,\"image_name\":\"", image_name, "\",\"redirection_status\":", to_string(redirection_status), ",\"media_index\":", to_string(media_index), ",\"session_index\":", to_string(session_index), "}"], "")
+}
+
+// One row of GET /api/settings/media/remote/images. Source: the listing row in the same witness,
+// `{"image_name":"<name>","image_index":5}`, with the index the real attach logs report.
+fn megarac_image_row(image_name: String, image_index: Int) -> String {
+  join(["{\"image_name\":\"", image_name, "\",\"image_index\":", to_string(image_index), "}"], "")
+}
+
+// The rejection a route gives a request without a valid session. Source:
+// test.claim.machine_intake.megarac_session_release_witness_test, `{"error":"invalid session"}` with 401.
+data megarac_invalid_session_body: String = "{\"error\":\"invalid session\"}"
+
+// POST /api/session. NO SESSION REPLY IS RETAINED VERBATIM. The member names are those the firmware's
+// own web UI reads (source.min.js, probed 2026-09-27 on branch session/eager-koi-811), and the production
+// decoder reads only CSRFToken.
+data megarac_session_body_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "a retained POST /api/session reply from the Mt. Collins MegaRAC, cited by digest" as NonEmptyStr
+}
+
+fn megarac_session_body(racsession_id: Int, csrf_token: String) -> String {
+  join(["{ \"ok\": 0, \"privilege\": 4, \"extendedpriv\": 259, \"racsession_id\": ", to_string(racsession_id), ", \"CSRFToken\": \"", csrf_token, "\" }"], "")
+}
+
+// The replies to start-media, stop-media and DELETE /api/session on success are not decoded by the
+// production code (readiness and re-observation decide), and none is retained verbatim.
+data megarac_write_ack_body_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "retained 200 bodies of start-media, stop-media and DELETE /api/session from the Mt. Collins MegaRAC, cited by digest" as NonEmptyStr
+}
+
+data megarac_write_ack_body: String = "{}"

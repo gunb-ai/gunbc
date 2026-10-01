@@ -1,0 +1,23 @@
+module gunbc.recurring_failure_mode.roster_membership_by_structural_equality
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data roster_membership_by_structural_equality: RecurringFailureMode = RecurringFailureMode {
+  identity: "roster_membership_by_structural_equality" as NonEmptyStr,
+
+  receipts: [
+    "**a node becomes a declared-inhabitant roster member because it is STRUCTURALLY EQUAL to some node inside a roster value, not because it denotes that roster entry.** (INVALID STATE: a bare synthetic childless Conj, which is parse residue or an empty product anywhere, is a TypeDenotationKind member of the dag roster. So `v2.compiler.infer` derives it a grounding by lookup, an ungrounded algebra ref, instead of GroundingNotDerived.) Consumers that demand grounding refuse at the wrong link (coercion at `infer_algebra_ref_ungrounded`, not `infer_grounding_demanded_not_derived`), and any frontier claim over such a node reads derived. `std.kind` `roster_kind_index` keys `Map<Node, Kind>` by the node value and entered every node reachable from the roster.",
+    "RECEIPT. gunbc#12625 (Program P, one Arrow encoding) rebuilt `v2.extdeps.languages.dag` `dag_fixture_emitted_add_fn` through `v2.std.arrow_signature` `anonymous_signature_arrow`. That added the declared-order edge, whose label list is a FreeMonoid ending in a synthetic childless Conj. Bisected on BuildBuddy (339be73493..c29acd041e, `product_introduction_leaves_childless_conj_on_the_frontier_holds`); first bad commit feadae7841. Five claims went silently red outside the required gate (gunbc#12860): infer_self_grounding_wall, translate_underived_refusal, type_param_binder_frame tpb_undeclared_t, infer_product_introduction childless_conj, and ingest_bridge refuses_source_absent. The cause was decided by execution, not by a facts-key collision: each claim's tree is one node, so infer's facts map holds one entry. A direct `infer_node_declared_in_language_inhabitants` probe answered Present for a bare childless Conj.",
+    "REPAIRED AT THE EARLIEST UNJUSTIFIED LINK: the roster index walked label metadata as if it were payload. `std.kind` `roster_member_nodes` skips an edge that `v2.std.node` `arrow_signature_order_edge` classifies as an Arrow's declared order. That is the same predicate infer's gather fold and product evidence ask, so there is one classification and no second label list. RESIDUAL, COUNTED: membership is STILL decided by structural equality with a node in the roster value, so any value-position node equal to a payload node of a roster member is still read as that member. RUNG: mechanically preventable, held by the claims below. CEILING: structurally guaranteed. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: roster membership is keyed by the DECLARED IDENTITY a node resolves to, not by its value. This is the namespace migration's end-state that `v2.compiler.infer` names, where the roster lookup is deleted in favour of consuming resolution output.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.test.execution.infer_product_introduction", decl_name: "a_bare_childless_conj_is_not_a_roster_member_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.execution.infer_product_introduction", decl_name: "the_declared_order_label_list_is_not_a_roster_member_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.execution.infer_product_introduction", decl_name: "the_roster_add_fn_is_still_a_roster_member_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.execution.infer_product_introduction", decl_name: "the_add_fn_domain_through_a_payload_edge_is_a_roster_member_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.execution.infer_product_introduction", decl_name: "product_introduction_leaves_childless_conj_on_the_frontier_holds", field: WholeDeclaration },
+  ],
+}
