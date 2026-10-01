@@ -13,13 +13,14 @@ import v2.lens.text_string_importer_census {
   CalleeNotImportedByName, CalleeModuleNotInPool, CalleeModuleNotParsed, NoSuchParameter, ParameterSpelledOther,
   DecodedAs, Undecodable,
   FixpointComputed, FixpointInputRefused, FixpointReached, FixpointBoundExceeded,
-  member, walk_atoms, tree_atoms, raw_tree, rosters_of_walk, empty_rosters,
+  member, walk_atoms, tree_atoms, raw_tree_of_text, rosters_of_walk, empty_rosters,
   crossings_of, verdict_with_crossings,
   verdict_token, verdict_of_token, crossing_tokens, crossing_of_tokens,
   fixpoint_over_lines, fixpoint_verdict
 }
 import v2.lens.common.source_analysis_standing { SourceParseRejected, SourceUnreadable }
 import v2.lens.module_graph { ModuleDeclarationFact }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.std.algebra { any, fold_list, list_reverse }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.collection { List }
@@ -345,10 +346,15 @@ test fn tsic_fixpoint_refuses_an_undecodable_verdict() -> Bool {
 }
 
 // THE REAL ROUTE: one small REAL importer (5 lines; the census classified it HOST through one
-// literal at a bare-`String` annotation) read and raw-parsed by the census's own route. The claim
+// literal at a bare-`String` annotation) raw-parsed by the census's own route. The claim
 // asserts the ROUTE, not only the verdict: the parse saw the `String` import, the host site is the
 // literal at that declaration, and the verdict follows. Deleting the parse integration reds it.
 data real_route_subject: String = "src/v2/compiler/self_host/direct_rust_door_ingest_fixture.dag"
+
+// The subject's bytes, supplied: a warm producer must be pure (the floor refuses one that reaches
+// the world), so it parses this value, and tsic_real_route_subject_is_the_committed_file pins the
+// value to the committed file so the claim cannot drift from the importer it names.
+data real_route_source: String = "module direct_rust_door_ingest_fixture\n\nimport v2.std.text { String }\n\ndata direct_rust_door_ingest_fixture_note: String = \"Lane B ingest anchor file for direct_rust_door_fixture DagSourceReadWitness provenance; the add_probe module source is carried inline in direct_rust_door_fixture.\"\n"
 
 type TsicRealRoute {
   established: Bool
@@ -358,7 +364,7 @@ type TsicRealRoute {
 }
 
 fn tsic_real_route_outcome() -> TsicRealRoute {
-  match raw_tree(path: real_route_subject) {
+  match raw_tree_of_text(text: real_route_source) {
     RawTreeNotEstablished { cause: _ } => TsicRealRoute { established: false, imports_text_string: false, host_site_at_the_note: false, verdict_is_host: false }
     RawTreeEstablished { root: root } => {
       let w = walk_atoms(atoms: tree_atoms(root: root), r: rosters_supplied)
@@ -376,6 +382,11 @@ fn tsic_real_route_outcome() -> TsicRealRoute {
       }
     }
   }
+}
+
+test fn tsic_real_route_subject_is_the_committed_file() -> Bool {
+  let read = Filesystem.Read(path: real_route_subject)
+  read.success && (read.content == real_route_source)
 }
 
 test fn tsic_real_raw_parse_route_reaches_the_classifier() -> Bool {
