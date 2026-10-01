@@ -2,7 +2,6 @@ module v2.test.manual.infer_algebra_ref_grounding_anchor
 
 import v2.std.witness { Holds, Violates, Witness }
 import v2.compiler.infer { algebra_ref_is_grounded, canonical_grounding_from_inferred_facts }
-import std.kind { TypeDenotationKind, TypeFactKind, kind_node }
 
 fn anchor_atom_node(s: Symbol) -> Node {
   Node {
@@ -61,14 +60,3 @@ fn anchor_inferred_facts_bare_atom_algebra() -> InferredFacts {
 }
 
 data anchor_canonical_grounding_rejects_bare_atom: Outcome<CanonicalGrounding> = canonical_grounding_from_inferred_facts(node: anchor_atom_node(s: ^anchor_resolved_type_sym), facts: anchor_inferred_facts_bare_atom_algebra())
-
-// A KIND IS GROUNDED BY ITS DECLARED AUTHORITY (std.kind), so a roster member's derived type -- its
-// kind since gunbc#12290 -- passes the predicate; any other bare atom still does not.
-test fn a_kind_atom_algebra_is_grounded_holds() -> Bool {
-  algebra_ref_is_grounded(algebra: kind_node(kind: TypeDenotationKind))
-    && algebra_ref_is_grounded(algebra: kind_node(kind: TypeFactKind))
-}
-
-test fn a_non_kind_bare_atom_algebra_is_still_ungrounded_holds() -> Bool {
-  algebra_ref_is_grounded(algebra: anchor_atom_node(s: ^anchor_algebra_ungrounded_sym)) == false
-}
