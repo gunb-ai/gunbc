@@ -47,18 +47,33 @@ fn ss_refused_as_repeated(text: String) -> Bool {
   }
 }
 
-test fn two_services_under_one_prefix_reach_distinct_operation_paths_holds() -> Bool {
+// Each fact is computed ONCE as a nullary value, enrolled WARM in v2.workflow.floor_pure_producer_share,
+// and each claim reads it: normalizing a module inside every claim put the claims over the new-witness
+// eval-step budget.
+fn ss_two_under_one_prefix_paths() -> Bool {
   ss_index_holds(text: two_under_one_prefix_source, path: ["s", "F", "Run"])
     && ss_index_holds(text: two_under_one_prefix_source, path: ["s", "E", "Get"])
     && !ss_index_holds(text: two_under_one_prefix_source, path: ["s", "F", "Get"])
 }
 
-test fn a_namespace_body_and_a_declaration_of_one_name_refuse_holds() -> Bool {
+fn ss_body_against_declaration_refused() -> Bool {
   ss_refused_as_repeated(text: body_against_declaration_source)
 }
 
-test fn a_service_declared_twice_refuses_holds() -> Bool {
+fn ss_repeated_service_refused() -> Bool {
   ss_refused_as_repeated(text: repeated_service_source)
+}
+
+test fn two_services_under_one_prefix_reach_distinct_operation_paths_holds() -> Bool {
+  ss_two_under_one_prefix_paths()
+}
+
+test fn a_namespace_body_and_a_declaration_of_one_name_refuse_holds() -> Bool {
+  ss_body_against_declaration_refused()
+}
+
+test fn a_service_declared_twice_refuses_holds() -> Bool {
+  ss_repeated_service_refused()
 }
 
 // NO SCOPE: s.F's input names `Get`, an operation of the sibling service s.E. The merged body is a path
@@ -67,7 +82,14 @@ test fn a_service_declared_twice_refuses_holds() -> Bool {
 data sibling_name_leak_source: String = "module p\n\nservice s.F {\n  operation Run {\n    input { x: Get }\n  }\n}\n\nservice s.E {\n  operation Get {}\n}\n"
 data sibling_name_control_source: String = "module p\n\nservice s.F {\n  operation Run {\n    input { x: Int }\n  }\n}\n\nservice s.E {\n  operation Get {}\n}\n"
 
-test fn a_merged_namespace_body_grants_no_scope_holds() -> Bool {
+fn ss_scope_control_admitted() -> Bool {
   tpb_accepts(o: tpb_assemble(src: sibling_name_control_source))
-    && !tpb_accepts(o: tpb_assemble(src: sibling_name_leak_source))
+}
+
+fn ss_scope_leak_refused() -> Bool {
+  !tpb_accepts(o: tpb_assemble(src: sibling_name_leak_source))
+}
+
+test fn a_merged_namespace_body_grants_no_scope_holds() -> Bool {
+  ss_scope_control_admitted() && ss_scope_leak_refused()
 }

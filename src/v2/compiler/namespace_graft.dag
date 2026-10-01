@@ -441,7 +441,9 @@ fn namespace_graft_partition_decl_units(units: List<Node>) -> NamespaceGraftDecl
 
 // Flatten keeps Named members that are not parse machinery: a lowered record
 // (`Conj { R: payload }`), a where-alias, an Atom -- the graft-shape fixture is
-// two Named atoms.
+// two Named atoms -- and a service prefix's marked NAMESPACE BODY, which carries the module-body
+// identity and so must be kept before the production-shell test, which reads any identity as parse
+// machinery and would drop it.
 fn namespace_graft_keep_flattened_member_edge(edge: Edge) -> Bool {
   match edge.label {
     Named { name: sym } =>
@@ -449,6 +451,8 @@ fn namespace_graft_keep_flattened_member_edge(edge: Edge) -> Bool {
         false
       } else if namespace_graft_is_metadata_edge(name: sym) {
         false
+      } else if namespace_graft_node_is_module_body(node: edge.target) {
+        true
       } else if namespace_graft_target_is_production_shell(edge: edge) {
         false
       } else {
