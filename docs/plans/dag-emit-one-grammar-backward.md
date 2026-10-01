@@ -1,6 +1,6 @@
 # The dag target emits by reading `dag_grammar_root` backward
 
-Status: **model, before code** (work item adhoc-da997c00-fa0). This page states how emit selects a
+Status: **model accepted, implementation in progress** (work item adhoc-da997c00-fa0). This page states how emit selects a
 production for a Node shape and how each terminal's token class is recovered. Nothing here is
 implemented yet. The implementing change follows only once this model is accepted.
 
@@ -171,18 +171,38 @@ This is one change, per DESIGN §3 on replacement migrations: delete first, then
 - string escapes (`\"`, `\\`, `\n`, `\u{e9}`, `\x41`)
 - a caret symbol
 
+Quoted keys add more controls (from gentle-koi-724, for #12740 and #12758):
+
+- **The key's kind follows production identity, not spelling.** `{"Node": true}` must emit quoted,
+  through `^dag_surface_field_init_string_key`, and `{Node: true}` must emit bare. Both are
+  fixtures.
+- **An escaped key round-trips.** `"a\"b"` and a key containing a `\u{..}` scalar re-escape to
+  an equivalent spelling and re-ingest to the identical node.
+- **Two mutants must go red:** emitting the raw lexeme, and emitting a quoted key in bare form.
+- **The tree covered is the surface tree.** This is the pre-elaboration map literal, not resolve's
+  elaborated `map_from_entries(..)`. Quoted keys in record literals still refuse at lowering
+  (#12740's frontier), so they are parse-tree fixtures only.
+
 There is also one red: a root with one production removed must refuse with
 `dag_emit_production_unknown` at the right locus. Both the reds and the positives run through the
 real `parse_module` route, not a supplied tree. This route is the inhabitance claim.
 
-## Open questions, for parent and peers before code
+## Rulings and declared frontier
 
-1. **The subject.** This model emits from the parse-tree Node. If the brief meant the core Node
-   (after body lowering), that would be inverting lowering, which is a separate authority. I
-   recommend the parse tree, and treating the core-to-surface direction as its own work item.
-2. **02_parse's prepared grammar.** I need its owner to confirm that the projection-edge shapes in
-   the table above (`parse_tree_projection_edge`'s roster) are a stable contract. If they are
-   prepared differently on the planned route (#11422's prepared choice plan), the backward walk
-   should read the same prepared form.
-3. **gentle-koi-724.** The quoted-key control here is what #12740 and #12758 wait on. The key's
-   emit is the string-literal row, so there is no separate key transform.
+**Subject (neat-boar-16's ruling).** Emit's subject is the **parse-tree Node**. The control is
+text -> parse tree -> text -> parse tree, and the two trees must be identical. The core Node is not
+the subject.
+
+**A missing stamp refuses.** A tree that lacks the production stamps emit needs is refused, typed
+and located, as `dag_emit_production_stamp_absent`. Emit never guesses a production from the
+shape.
+
+**Declared frontier: core -> surface.** This emitter is a parse-tree emitter. It is **not** full
+dag emission. To emit a program that was constructed or lowered rather than parsed, emit needs the
+inverse of body lowering: from a core Node back to a production-stamped surface tree, which this
+walk then reads. That inverse belongs to the lowering's own authority and is a separate work item.
+Its named consumer is gen-2 self-host emission: the built CLI emitting a closure (DESIGN §7). Until
+that item lands, nothing on that route may cite this walk as dag emission.
+
+**Open: 02_parse's prepared grammar.** I still need its owner to confirm that the projection-edge
+shapes in the table above are a stable contract.
