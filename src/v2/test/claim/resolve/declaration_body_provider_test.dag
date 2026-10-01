@@ -147,7 +147,7 @@ test fn dbp_module_outside_the_ingest_refuses_at_the_provider_holds() -> Bool {
   match dbp_context() {
     Rejected { diagnostics: _ } => false
     Accepted { value: shared, diagnostics: _ } =>
-      match resolution_context_declaration_bodies(shared: shared, validate_diag: None, module: dbp_qn(dotted: "v2.test.dbp_absent")).bodies {
+      match resolution_context_declaration_bodies(shared: shared, validate_diag: None, owner: dbp_qn(dotted: "v2.test.dbp_absent")).bodies {
         Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_module_not_found
         Accepted { value: _, diagnostics: _ } => false
       }

@@ -789,10 +789,10 @@ type DeclarationBodiesDemand {
 // (v2.compiler.compile native_test_module_admission; a member's imports are read off its own root).
 // So a module first reached through another module's declaration is admitted exactly as its own
 // resolve will admit it, and its namespace is not produced twice under two admissions.
-fn resolution_context_module_admission(shared: ResolutionContext, module: QualifiedName) -> Admission {
-  match map_lookup(m: shared.namespaces, key: module) {
+fn resolution_context_module_admission(shared: ResolutionContext, owner: QualifiedName) -> Admission {
+  match map_lookup(m: shared.namespaces, key: owner) {
     Present { value: entry } => entry.admission
-    Absent => Admission { subject: ResolutionSubject { name: module }, imports: Empty }
+    Absent => Admission { subject: ResolutionSubject { name: owner }, imports: Empty }
   }
 }
 
@@ -803,27 +803,27 @@ fn resolution_context_module_admission(shared: ResolutionContext, module: Qualif
 fn resolution_context_declaration_bodies(
   shared: ResolutionContext,
   validate_diag: Diagnostics,
-  module: QualifiedName
+  owner: QualifiedName
 ) -> DeclarationBodiesDemand {
-  match map_lookup(m: shared.declaration_bodies, key: module) {
+  match map_lookup(m: shared.declaration_bodies, key: owner) {
     Present { value: stored } => DeclarationBodiesDemand { bodies: stored, context: shared }
     Absent =>
       let demand = resolution_context_namespace(
         shared: shared,
         validate_diag: validate_diag,
-        admission: resolution_context_module_admission(shared: shared, module: module)
+        admission: resolution_context_module_admission(shared: shared, owner: owner)
       )
-      let produced = declaration_bodies_produced(context: demand.context, admitted: demand.admitted, module: module)
+      let produced = declaration_bodies_produced(context: demand.context, admitted: demand.admitted, owner: owner)
       DeclarationBodiesDemand {
         bodies: produced,
-        context: resolution_context_with_declaration_bodies(shared: demand.context, module: module, bodies: produced)
+        context: resolution_context_with_declaration_bodies(shared: demand.context, owner: owner, bodies: produced)
       }
   }
 }
 
 fn resolution_context_with_declaration_bodies(
   shared: ResolutionContext,
-  module: QualifiedName,
+  owner: QualifiedName,
   bodies: Outcome<DeclarationBodies>
 ) -> ResolutionContext {
   ResolutionContext {
@@ -835,7 +835,7 @@ fn resolution_context_with_declaration_bodies(
     policy: shared.policy,
     namespaces: shared.namespaces,
     namespaces_built: shared.namespaces_built,
-    declaration_bodies: map_insert(m: shared.declaration_bodies, key: module, value: bodies),
+    declaration_bodies: map_insert(m: shared.declaration_bodies, key: owner, value: bodies),
     declaration_bodies_built: shared.declaration_bodies_built + 1
   }
 }
@@ -844,7 +844,7 @@ fn resolution_context_with_declaration_bodies(
 fn declaration_bodies_produced(
   context: ResolutionContext,
   admitted: Outcome<AdmittedSubject>,
-  module: QualifiedName
+  owner: QualifiedName
 ) -> Outcome<DeclarationBodies> {
   match admitted {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -865,7 +865,7 @@ fn declaration_bodies_produced(
           Accepted {
             value: DeclarationBodies {
               root: root,
-              declarations: resolve_declaration_targets(root: root, module_qn: module),
+              declarations: resolve_declaration_targets(root: root, module_qn: owner),
               index: resolved_declaration_index_of(root: root)
             },
             diagnostics: d
@@ -907,11 +907,11 @@ fn declaration_closure_walk(
 ) -> DeclarationClosureDemand {
   match queue {
     Empty => DeclarationClosureDemand { snapshot: Accepted { value: snapshot, diagnostics: None }, context: shared }
-    Cons { head: module, tail: rest } =>
-      if resolved_declarations_has_module(d: snapshot, module: module) {
+    Cons { head: owner, tail: rest } =>
+      if resolved_declarations_has_module(d: snapshot, owner: owner) {
         declaration_closure_walk(shared: shared, validate_diag: validate_diag, queue: rest, snapshot: snapshot)
       } else {
-        let demand = resolution_context_declaration_bodies(shared: shared, validate_diag: validate_diag, module: module)
+        let demand = resolution_context_declaration_bodies(shared: shared, validate_diag: validate_diag, owner: owner)
         match demand.bodies {
           Rejected { diagnostics: r } => DeclarationClosureDemand { snapshot: Rejected { diagnostics: r }, context: demand.context }
           Accepted { value: bodies, diagnostics: _ } =>
@@ -923,7 +923,7 @@ fn declaration_closure_walk(
                   shared: demand.context,
                   validate_diag: validate_diag,
                   queue: list_append(left: rest, right: reached),
-                  snapshot: resolved_declarations_with_module(d: snapshot, module: module, index: bodies.index)
+                  snapshot: resolved_declarations_with_module(d: snapshot, owner: owner, index: bodies.index)
                 )
             }
         }
@@ -1160,7 +1160,7 @@ fn resolve_walk_in_context(context: Outcome<ResolutionContext>, admission: Admis
       let demand = resolution_context_namespace(shared: shared, validate_diag: validate_diag, admission: admission)
       match demand.admitted {
         Accepted { value: admitted, diagnostics: namespace_diag } =>
-          let own = resolution_context_declaration_bodies(shared: demand.context, validate_diag: validate_diag, module: admission.subject.name)
+          let own = resolution_context_declaration_bodies(shared: demand.context, validate_diag: validate_diag, owner: admission.subject.name)
           ContextWalk {
             walk: resolve_walk_prefix_pending(
               pending: namespace_diag,

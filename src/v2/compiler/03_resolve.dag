@@ -212,12 +212,12 @@ fn resolved_declarations_empty() -> ResolvedDeclarations {
   ResolvedDeclarations { by_module: empty_map() }
 }
 
-fn resolved_declarations_with_module(d: ResolvedDeclarations, module: QualifiedName, index: SymbolIndex) -> ResolvedDeclarations {
-  ResolvedDeclarations { by_module: map_insert(m: d.by_module, key: module, value: index) }
+fn resolved_declarations_with_module(d: ResolvedDeclarations, owner: QualifiedName, index: SymbolIndex) -> ResolvedDeclarations {
+  ResolvedDeclarations { by_module: map_insert(m: d.by_module, key: owner, value: index) }
 }
 
-fn resolved_declarations_has_module(d: ResolvedDeclarations, module: QualifiedName) -> Bool {
-  match map_lookup(m: d.by_module, key: module) {
+fn resolved_declarations_has_module(d: ResolvedDeclarations, owner: QualifiedName) -> Bool {
+  match map_lookup(m: d.by_module, key: owner) {
     Present { value: _ } => true
     Absent => false
   }
@@ -268,7 +268,7 @@ fn resolved_tree_of(root: Node, symbol_index: SymbolIndex) -> ResolvedTree {
     symbol_index: symbol_index,
     declarations: match qualified_name_from_module_node(root: root) {
       Accepted { value: module_qn, diagnostics: _ } =>
-        resolved_declarations_with_module(d: resolved_declarations_empty(), module: module_qn, index: resolved_declaration_index_of(root: root))
+        resolved_declarations_with_module(d: resolved_declarations_empty(), owner: module_qn, index: resolved_declaration_index_of(root: root))
       Rejected { diagnostics: _ } => resolved_declarations_empty()
     }
   }
