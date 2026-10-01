@@ -15451,7 +15451,12 @@ fn arrow_domain_binder_names(arrow: Node) -> List<Symbol> {
       match domain.kind {
         TypeNode { connective: Conj } =>
           arrow_domain_edge_names(edges: domain.children)
-        _ => Empty
+        TypeNode { connective: Atom { identity: _ } } => Empty
+        TypeNode { connective: Disj } => Empty
+        TypeNode { connective: Arrow } => Empty
+        TypeNode { connective: Cardinality } => Empty
+        TypeNode { connective: Instantiation } => Empty
+        ComputationNode { behavior: _ } => Empty
       }
     Absent => Empty
   }
