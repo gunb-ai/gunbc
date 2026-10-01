@@ -407,28 +407,11 @@ test fn a_modules_own_declaration_beats_a_same_named_test_fn_holds() -> Bool {
   ) == "ACCEPTED"
 }
 
-data default_reference_source: String = "module m\nfn f(x: T = g()) -> T = x\n"
-
-// A reference from a parameter DEFAULT cannot reach resolution in v2. Since gunbc#12876 the grammar
-// has a default-value production, so the source parses, and lowering refuses it with the one typed
-// reason both defaults share (body_lowering_reason_default_value_unmodeled), before resolution could
-// miss the reference. Re-stated 2026-10-01 from "refused at parse", which #12876 made false. If this
-// ever normalizes, the default has become a place a reference can hide, and it needs its own red.
-test fn a_parameter_default_is_refused_at_lowering_holds() -> Bool {
-  let lm = dag_language_model()
-  match tokenize(text: default_reference_source, file: ^wall_default_file, rules: lm.lex) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: ts, diagnostics: _ } =>
-      match parse_module(tokens: ts, grammar: lm.grammar) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: artifact, diagnostics: _ } =>
-          match normalize(parse_tree: artifact.tree) {
-            Rejected { diagnostics: d } => diagnostics_fatal(d: d).reason == ^body_lowering_reason_default_value_unmodeled
-            Accepted { value: _, diagnostics: _ } => false
-          }
-      }
-  }
-}
+// A REFERENCE FROM A PARAMETER DEFAULT CANNOT REACH RESOLUTION: since gunbc#12876 a default parses
+// and lowering refuses it with one typed reason, which v2.test.claim.parse.default_value
+// a_parameter_default_refuses_at_the_default_holds owns. The row that stood here asserted a parse
+// refusal #12876 made false; it is deleted rather than re-stated, because the re-statement was that
+// control a second time.
 
 // Resolves module wall.<subject_segment> under the IMPORT-SCOPED policy with `wall.peer` imported, so
 // the peer's names bind at the subject's root scope as admitted imports and the wall reads their
