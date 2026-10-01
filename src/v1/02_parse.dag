@@ -4183,15 +4183,18 @@ type OperationRequiresDeclaration
 
 fn operation_requires_declaration(op: Node, source_indices: Map<String, NewlineIndex>) -> OperationRequiresDeclaration {
   let names = op.properties |> map(p => field_init_node_name_at(n: p, source_indices: source_indices))
-  if (names |> filter(n => n == "requires_none") |> count) > 0 {
+  let none_marks = names |> filter(n => n == "requires_none") |> count
+  let opaque_marks = names |> filter(n => n == "requires_opaque") |> count
+  if none_marks > 0 {
     RequiresNone
-  } else if (names |> filter(n => n == "requires_opaque") |> count) > 0 {
+  } else if opaque_marks > 0 {
     RequiresOpaque
   } else {
     let members = op.properties
       |> filter(p => field_init_node_name_at(n: p, source_indices: source_indices) == "requires")
       |> flat_map(p => p.children)
-    if members |> count == 0 { RequiresUndeclared } else { RequiresResources { members: members } }
+    let member_count = members |> count
+    if member_count == 0 { RequiresUndeclared } else { RequiresResources { members: members } }
   }
 }
 
