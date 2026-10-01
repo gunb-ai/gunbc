@@ -1181,8 +1181,14 @@ data glm_native_concurrent_profile: ServingLaunchProfile = ServingLaunchProfile 
 //     vllm/models/deepseek_v4_1/attention.py max_image_tokens). FlashInfer's SM120 DSv4 kernel has no
 //     specialization at 1152, and every call with 64 or fewer query tokens must take one, so attempt
 //     13 died in CUDA-graph capture on all four ranks. --language-model-only stubs the tower and
-//     admits no image; overriding vision_n_layers to 0 is what returns the width to 128, because
-//     max_image_tokens is read off the config and not off the modality limit. A launch that wants
+//     admits no image; overriding vision_max_n_token to 0 is what returns the width to 128, because
+//     max_image_tokens is read off the config and not off the modality limit. It is NOT
+//     vision_n_layers: that key also gates the MoE gate's bias_vl parameter
+//     (vllm/models/deepseek_v4/nvidia/model.py, created only when vision_n_layers > 0), while the
+//     checkpoint ships gate.bias_vl on every MoE layer -- so overriding it to 0 made weight loading
+//     raise KeyError 'layers.0.ffn.gate.bias_vl' on every rank (fleet-converge run 36915893667).
+//     max_image_tokens is vision_max_n_token gated on vision_n_layers > 0 (attention.py,
+//     sparse_swa.py), so zeroing the token count alone zeroes the widening and keeps the parameter. A launch that wants
 //     images back needs an SM120 kernel at the widened width first; it is a different product, not
 //     this one with a flag flipped.
 // The route's port and served name are the caller's because they belong to the route this launch
@@ -1206,7 +1212,7 @@ fn deepseek_v41_measurement_profile(
     served_alias: served_alias,
     prefix_caching: prefix_caching,
     engram: EngramConfigExplicit { cpu_offload: true, dp_shared_memory: false },
-    modality: LanguageModelOnly { hf_overrides: [VllmHfOverride { key: "vision_n_layers" as NonEmptyStr, json_value: "0" as NonEmptyStr }] },
+    modality: LanguageModelOnly { hf_overrides: [VllmHfOverride { key: "vision_max_n_token" as NonEmptyStr, json_value: "0" as NonEmptyStr }] },
   }
 }
 
