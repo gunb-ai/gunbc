@@ -52,7 +52,6 @@ use crate::cli_run::value_to_wire_json;
 use crate::std_syntax::BinOp;
 use crate::std_syntax::LiteralValue;
 use crate::v1_compiler_emit::{extract_string_interp_parts, has_mock_prefix};
-use crate::v1_compiler_infer_emit_info::EmitGraphInfo;
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 use crate::v1_rt;
 use crate::v1_rt::RcStr;
@@ -2800,7 +2799,6 @@ mod cross_claim_demand_census_tests {
 
     use im::{vector as im_vec, HashMap};
 
-    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_std_core::{make_expr_node, ExprData, SourceSpan};
 
@@ -2814,8 +2812,8 @@ mod cross_claim_demand_census_tests {
         let graph = ResolvedGraph {
             modules: Rc::new(im_vec![]),
             item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
             diagnostics: Rc::new(im_vec![]),
-            emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
     }
@@ -3100,7 +3098,6 @@ mod typed_module_index_tests {
 
     use im::{vector as im_vec, HashMap};
 
-    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
 
     use super::{ExecutionMode, InterpContext};
@@ -3109,8 +3106,8 @@ mod typed_module_index_tests {
         let graph = ResolvedGraph {
             modules: Rc::new(im_vec![]),
             item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
             diagnostics: Rc::new(im_vec![]),
-            emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
     }
@@ -3144,7 +3141,6 @@ mod cross_claim_memo_tests {
 
     use im::{vector as im_vec, HashMap};
 
-    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_std_core::{make_expr_node, no_span, ExprData};
 
@@ -3157,8 +3153,8 @@ mod cross_claim_memo_tests {
         let graph = ResolvedGraph {
             modules: Rc::new(im_vec![]),
             item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
             diagnostics: Rc::new(im_vec![]),
-            emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
     }
@@ -4797,7 +4793,6 @@ pub struct PreparedScopeIndexes {
     pub modules: Rc<im::Vector<Rc<TypedModule>>>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    pub emit_graph_info: Rc<EmitGraphInfo>,
     fn_nodes: HashMap<String, Rc<Node>>,
     // Alias lookup uses the first authored declaration in graph order, independently of
     // function precedence. Derived from the same module fragments and shared with the scope;
@@ -5031,7 +5026,6 @@ pub struct InterpContext {
     pub modules: Rc<im::Vector<Rc<TypedModule>>>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    pub emit_graph_info: Rc<EmitGraphInfo>,
     pub execution_mode: ExecutionMode,
     pub fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
     data_cache: std::cell::RefCell<HashMap<usize, Value>>,
@@ -5468,7 +5462,6 @@ impl InterpContext {
             modules: graph.modules.clone(),
             item_registry: bare_item_registry,
             source_indices,
-            emit_graph_info: graph.emit_graph_info.clone(),
             fn_nodes,
             type_items,
             ambiguous_bare_function_names,
@@ -5495,7 +5488,6 @@ impl InterpContext {
             modules: indexes.modules.clone(),
             item_registry: indexes.item_registry.clone(),
             source_indices: indexes.source_indices.clone(),
-            emit_graph_info: indexes.emit_graph_info.clone(),
             indexes,
             execution_mode,
             fixture_store,
@@ -5811,8 +5803,11 @@ impl InterpContext {
         ResolvedGraph {
             modules: self.modules.clone(),
             item_registry: self.item_registry.clone(),
+            item_leaf_owner_modules:
+                crate::v1_compiler_infer_items::leaf_owner_modules_from_registry(
+                    self.item_registry.clone(),
+                ),
             diagnostics: Rc::new(im::Vector::new()),
-            emit_graph_info: self.emit_graph_info.clone(),
         }
     }
 
@@ -7377,7 +7372,6 @@ mod argv_representation_ambiguity_tests {
 
     use im::{vector as im_vec, HashMap};
 
-    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
 
     use super::{
@@ -7389,8 +7383,8 @@ mod argv_representation_ambiguity_tests {
         let graph = ResolvedGraph {
             modules: Rc::new(im_vec![]),
             item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
             diagnostics: Rc::new(im_vec![]),
-            emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
     }
@@ -7858,6 +7852,15 @@ fn current_witness_evaluation_frame() -> Option<Value> {
 struct ModeledRealizationSlot {
     envelope: Value,
     realization: Value,
+    /// The realization's bindings by operation identity (`operation_realization_index`), built
+    /// once at admission so no dispatch rescans the binding list.
+    index: Value,
+    /// Handler selections already decided in this frame, keyed by the COMPLETE input of
+    /// `operation_handler_selection` that varies: the operation's declaring file, service,
+    /// operation and whether it is readonly. The envelope, the realization and its index are fixed
+    /// for the frame's extent and the selection reads nothing else of the invocation, so a hit is
+    /// the same fact recomputed, never a different one.
+    selections: HashMap<String, Value>,
     identity: String,
     state: Value,
     /// The virtual clock, an opaque `std.measure` `Second`: the dispatcher never reads its
@@ -8084,9 +8087,17 @@ fn admit_modeled_realization(
     let advance = record_field(ctx, &realization, "advance")
         .ok_or_else(|| modeled_refused("(frame)", "the realization carries no advance function"))?;
     let state = apply_modeled_handler(&advance, &[initial, now.clone()], env, ctx)?;
+    let index = run_in_context_with_args(
+        ctx,
+        "operation_realization_index",
+        &[(Some("realization".to_string()), realization.clone())],
+        false,
+    )?;
     Ok(Some(ModeledRealizationSlot {
         envelope,
         realization,
+        index,
+        selections: HashMap::new(),
         identity,
         state,
         now,
@@ -8121,6 +8132,24 @@ fn bound_operation_invocation_value(
             continue;
         };
         let bound = match value {
+            // An argv expansion binds as the words a real spawn receives, expanded by the same
+            // seed realization of v2.std.compilers.cli_surface ProcessArgvExpansion the shell
+            // dispatcher uses, never as a rendering of the carrier.
+            Value::Record { type_name, fields }
+                if resolve_sym(*type_name).rsplit('.').next() == Some("ProcessArgvExpansion") =>
+            {
+                let mut words = Vec::new();
+                push_process_argv_expansion(&mut words, &fields)?;
+                variant_value(
+                    ctx,
+                    "OperationInputValue",
+                    "InputTextList",
+                    vec![(
+                        "items",
+                        list_value(words.into_iter().map(str_value).collect::<Vec<_>>()),
+                    )],
+                )
+            }
             Value::List(items) => {
                 let texts: Vec<Value> = items.iter().map(|v| str_value(render_input(v))).collect();
                 variant_value(
@@ -8177,6 +8206,7 @@ fn dispatch_modeled_operation(
                 (
                     s.envelope.clone(),
                     s.realization.clone(),
+                    s.index.clone(),
                     s.identity.clone(),
                     s.state.clone(),
                     s.now.clone(),
@@ -8185,7 +8215,7 @@ fn dispatch_modeled_operation(
             })
         })
     });
-    let Some((envelope, realization, identity, state, now, ordinal)) = snapshot else {
+    let Some((envelope, realization, index, identity, state, now, ordinal)) = snapshot else {
         return Ok(None);
     };
     let key = format!("{service_name}.{op_name}");
@@ -8219,20 +8249,41 @@ fn dispatch_modeled_operation(
             });
             record
         };
-    let selection = run_in_context_with_args(
-        ctx,
-        "operation_handler_selection",
-        &[
-            (Some("env".to_string()), envelope),
-            (Some("realization".to_string()), realization.clone()),
-            (Some("invocation".to_string()), invocation.clone()),
-            (
-                Some("readonly".to_string()),
-                Value::Bool(op_declared_readonly(op_node, ctx)),
-            ),
-        ],
-        false,
-    )?;
+    let readonly = op_declared_readonly(op_node, ctx);
+    let selection_key = format!(
+        "{}#{}.{}#{}",
+        op_node.span.file, service_name, op_name, readonly
+    );
+    let remembered = MODELED_REALIZATION_SLOTS.with(|slots| {
+        slots.borrow().last().and_then(|slot| {
+            slot.as_ref()
+                .and_then(|s| s.selections.get(&selection_key).cloned())
+        })
+    });
+    let selection = match remembered {
+        Some(v) => v,
+        None => {
+            let decided = run_in_context_with_args(
+                ctx,
+                "operation_handler_selection",
+                &[
+                    (Some("env".to_string()), envelope),
+                    (Some("realization".to_string()), realization.clone()),
+                    (Some("index".to_string()), index),
+                    (Some("invocation".to_string()), invocation.clone()),
+                    (Some("readonly".to_string()), Value::Bool(readonly)),
+                ],
+                false,
+            )?;
+            MODELED_REALIZATION_SLOTS.with(|slots| {
+                if let Some(Some(slot)) = slots.borrow_mut().last_mut() {
+                    slot.selections
+                        .insert(selection_key.clone(), decided.clone());
+                }
+            });
+            decided
+        }
+    };
     let (arm, fields) = variant_parts(ctx, &selection)
         .ok_or_else(|| modeled_refused(&key, "handler selection returned a malformed value"))?;
     let binding = match arm.as_str() {
@@ -8277,9 +8328,10 @@ fn dispatch_modeled_operation(
         );
         modeled_refused(&key, format!("harness fault: {reason}"))
     };
-    if !is_shell_transport(transport.clone()) {
+    let shell_operation = is_shell_transport(transport.clone());
+    if !shell_operation && !is_file_transport(transport.clone(), ctx.si()) {
         return Err(harness_fault(
-            "a modeled realization supplies shell transport observations only; this operation's transport is not shell".to_string(),
+            "a modeled realization supplies shell and file transport observations only; this operation's transport is neither".to_string(),
         ));
     }
     let handler = record_field(ctx, &binding, "handler")
@@ -8357,7 +8409,24 @@ fn dispatch_modeled_operation(
                     return Err(error);
                 }
             };
-            let shell = shell_result_of_observation(&observation, ctx).map_err(&harness_fault)?;
+            let projected = if shell_operation {
+                shell_result_of_observation(&observation, ctx)
+                    .map_err(&harness_fault)
+                    .map(|shell| shell_result_projection(shell, op_node, ctx))
+            } else {
+                // The path is the transport's own (file_transport_path), resolved exactly as the wet
+                // dispatch resolves it; one that is missing or empty refuses, never an empty path the
+                // projection would report as if the operation had named one.
+                match file_transport_path(transport, param_env, ctx) {
+                    Ok(p) => file_result_of_observation(&observation, &p, ctx),
+                    Err(e) => Err(format!(
+                        "a file operation's transport path did not resolve: {e}"
+                    )),
+                }
+                .map_err(&harness_fault)
+                .map(|file| map_file_outputs(&file, op_node, ctx))
+            };
+            let projected = projected?;
             log(
                 variant_value(
                     ctx,
@@ -8369,7 +8438,7 @@ fn dispatch_modeled_operation(
                 Some(advanced),
                 false,
             );
-            shell_result_projection(shell, op_node, ctx).map(Some)
+            projected.map(Some)
         }
         "OperationWorkerKilled" => {
             let committed = ctx
@@ -8401,6 +8470,80 @@ fn dispatch_modeled_operation(
             Err(harness_fault(reason))
         }
         other => Err(harness_fault(format!("unrecognized step {other}"))),
+    }
+}
+
+/// A modeled FileExchangeObservation as the file transport result the real dispatcher produces.
+/// The failure kind is named by its closed .dag authority (`filesystem_failure_kind_name`), the same
+/// channel a host `io::Error` is projected onto, so a consumer's kind admission reads it unchanged.
+fn file_result_of_observation(
+    observation: &Value,
+    path: &str,
+    ctx: &InterpContext,
+) -> Result<FileResult, String> {
+    let (arm, fields) = variant_parts(ctx, observation).ok_or("the observation is malformed")?;
+    if arm != "FileObserved" {
+        return Err(format!(
+            "a file operation was answered with a {arm} observation; a file operation needs FileObserved"
+        ));
+    }
+    let file = ctx
+        .field(&fields, "observation")
+        .ok_or("FileObserved carries no observation")?;
+    let (file_arm, file_fields) =
+        variant_parts(ctx, file).ok_or("the file observation is malformed")?;
+    let text = |name: &str| match ctx.field(&file_fields, name) {
+        Some(Value::Str(s)) => Ok(s.to_string()),
+        _ => Err(format!("the file observation carries no {name}")),
+    };
+    match file_arm.as_str() {
+        "FileOperationSucceeded" => {
+            let bytes = ctx
+                .field(&file_fields, "byte_count")
+                .cloned()
+                .ok_or("the file observation carries no byte_count")?;
+            let byte_count = match run_in_context_with_args(
+                ctx,
+                "file_observation_byte_count",
+                &[(Some("bytes".to_string()), bytes)],
+                false,
+            ) {
+                Ok(Value::Int(n)) => n,
+                _ => return Err("the file observation's byte_count is not a byte size".to_string()),
+            };
+            Ok(FileResult {
+                success: true,
+                byte_count,
+                path: path.to_string(),
+                error: String::new(),
+                error_kind: String::new(),
+                content: text("content")?,
+            })
+        }
+        "FileOperationFailed" => {
+            let kind = ctx
+                .field(&file_fields, "kind")
+                .cloned()
+                .ok_or("the file observation carries no kind")?;
+            let kind_name = match run_in_context_with_args(
+                ctx,
+                "filesystem_failure_kind_name",
+                &[(Some("kind".to_string()), kind)],
+                false,
+            ) {
+                Ok(Value::Str(s)) => s.to_string(),
+                _ => return Err("the file observation's kind has no name".to_string()),
+            };
+            Ok(FileResult {
+                success: false,
+                byte_count: 0,
+                path: path.to_string(),
+                error: text("error")?,
+                error_kind: kind_name,
+                content: String::new(),
+            })
+        }
+        other => Err(format!("unrecognized file observation {other}")),
     }
 }
 
@@ -11715,7 +11858,6 @@ mod cast_identity_empty_kernel_tests {
 
     use im::{vector as im_vec, HashMap};
 
-    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_std_core::{make_expr_error_node, no_span, ExprErrorKind};
 
@@ -11725,8 +11867,8 @@ mod cast_identity_empty_kernel_tests {
         let graph = ResolvedGraph {
             modules: Rc::new(im_vec![]),
             item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
             diagnostics: Rc::new(im_vec![]),
-            emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
     }
@@ -15614,6 +15756,91 @@ fn trace_emit(channel: OutputChannel, line: &str) {
 /// the observation_emit_census roster cannot go stale.
 pub const SHELL_CENSUS_MARKER: &str = "[shell]";
 
+/// Census hygiene marker for the `[file]` emit family — the mirror of SHELL_CENSUS_MARKER,
+/// kept for the same reason: the `[file]` raw shape is gone from the seed and
+/// `gunbc.observation_emit_census`'s `[file]` row must still find its MARKER, or the
+/// bidirectional roster check goes stale without reddening.
+///
+/// IT IS NOT THE ROW'S `producer`, and an earlier draft of this comment said it was. The
+/// census keeps those as separate obligations with separate fields: `marker` feeds
+/// census_marker_present, while `producer` is the DeclarationRef of the declaration that
+/// actually EMITS the line and feeds w_every_named_producer_symbol_is_present_in_the_seed.
+/// This constant emits nothing — it is the retired spelling kept as a presence anchor — so
+/// naming it as the producer would let all seven call sites in `dispatch_file` be deleted
+/// while the census still reported the family migrated. `file_trace_site` names
+/// `dispatch_file`; this constant anchors the marker.
+pub const FILE_CENSUS_MARKER: &str = "[file]";
+
+/// Mirror of `gunbc.observation_seed_render.seed_file_effect_begin_line`.
+///
+/// The `[file]` family's seven emit sites all fire BEFORE their effect, so the subject is the
+/// named intent from `extdeps.filesystem.filesystem_io`'s operation roster and the path is the
+/// operand — never the raw verb. Keeping the path on the line is load-bearing rather than
+/// decorative: the pre-attempt trace is what made twelve failed publication writes (srv1,
+/// 2026-08-19) log exactly like successes, so a projection that dropped the operand would
+/// re-create that defect.
+///
+/// `clause` is the ALREADY-RENDERED parenthetical body, the same argument
+/// `ci_file_effect_line` takes: "" for a path-only operation, "N bytes" or "N bytes, mode M" for a
+/// write. Passing the rendered clause rather than a count-plus-flag keeps the mirror from
+/// inventing a second representation of the payload sum the authority declares.
+///
+/// ORACLE RED, AT A STATED RUNG: the seed test `file_effect_begin_mirror_matches_seed_oracle`
+/// renders this fn's .dag counterpart through the interpreter on the same inputs and asserts
+/// byte-equality, so the format authority stays in `ci_file_effect_line` (the same pairing
+/// `render_shell_effect_*_line_mirror` and `render_heartbeat_line_mirror` carry). That test is a
+/// `--lib` test and the job running that population is `continue-on-error`, NOT read by the
+/// required aggregate -- see `gunbc.rung_drop` `rust_unit_tests_off_the_merge_path`, and review
+/// 72597 for why this comment states the rung rather than the stronger claim: a semantic drift
+/// between the two representations can land green. What the required path does buy is
+/// ATTRIBUTION: this module compiles under the required `generated` lane's clippy step, so
+/// deleting or renaming these declarations and their call sites still cannot land silently.
+pub fn render_file_effect_begin_line_mirror(
+    intent: &str,
+    path: &str,
+    clause: &str,
+    emoji: bool,
+) -> String {
+    let _ = FILE_CENSUS_MARKER;
+    let glyph = if emoji { "🔄" } else { "◐" };
+    let detail = if clause.is_empty() {
+        String::new()
+    } else {
+        format!(" ({clause})")
+    };
+    format!("{glyph} started {intent} {path}{detail}")
+}
+
+/// The payload clause a write carries: bytes, plus the mode's octal spelling when one is declared.
+/// The spelling is produced HERE for the seed mirror the same way `file_mode_octal` produces it for
+/// the authority — a write site that declared a mode passes it, and the two agree because the
+/// oracle test feeds both the same mode.
+pub fn file_payload_clause(bytes: u64, mode: Option<u32>) -> String {
+    match mode {
+        None => format!("{bytes} bytes"),
+        Some(m) => format!("{bytes} bytes, mode {}", file_mode_octal(m)),
+    }
+}
+
+/// The octal spelling of a mode, mirroring `extdeps.access.posix file_mode_octal` — four digits,
+/// most significant first (setuid/setgid/sticky, then owner, group, other).
+///
+/// THE CALLER ADMITS THE RANGE, AND `u32` IS NOT THE ADMISSION. `dispatch_file` refuses a mode
+/// outside 0..=0o7777 before dispatch ("needs an Int `mode` within 0..=0o7777"), so every value
+/// reaching here is already four octal digits wide; the mask makes that precondition explicit
+/// instead of relying on it. An earlier draft of this comment claimed the range was guaranteed by
+/// the TYPE, which is false — a u32 holds far more — and a fabricated claim beside a
+/// silently-masking body is the widening §5 forbids. The claim now names where the refusal lives,
+/// and `file_mode_octal_agrees_with_the_posix_authority_over_the_admitted_range` holds the two
+/// together by execution rather than by assertion.
+fn file_mode_octal(mode: u32) -> String {
+    let special = (mode >> 9) & 0o7;
+    let owner = (mode >> 6) & 0o7;
+    let group = (mode >> 3) & 0o7;
+    let other = mode & 0o7;
+    format!("{special}{owner}{group}{other}")
+}
+
 /// Collapse argv into one readable line — runs of whitespace become a single space —
 /// so a multiline `sh -c` script reads as one command. Used in Failed.error (uncapped:
 /// an anomaly expands fully). Ambient subjects are named intents, not argv.
@@ -17082,18 +17309,20 @@ fn io_error_kind_name(e: &std::io::Error) -> String {
     .to_string()
 }
 
-fn dispatch_file(
-    op_node: &Rc<Node>,
+/// THE ONE RESOLUTION OF A FILE OPERATION'S PATH: the transport's own `path` property, evaluated and
+/// template-substituted over the operation's inputs. The wet dispatch and the modeled realization both
+/// read it here, so a modeled answer is recorded against exactly the path the real transport would
+/// touch -- including an operation whose path is a literal in its transport and not an input
+/// (linux.Procfs ReadUptime). A missing or empty path refuses.
+fn file_transport_path(
     transport: &Rc<Node>,
     param_env: &Rc<Env>,
     ctx: &InterpContext,
-) -> InterpResult<FileResult> {
-    let si = ctx.si();
-
+) -> InterpResult<String> {
     let path = match find_property(
         transport.properties.clone(),
         "base_path".to_string(),
-        si.clone(),
+        ctx.si(),
     ) {
         Some(path_node) => {
             let path_val = eval_expr(&path_node, param_env, ctx)?;
@@ -17110,6 +17339,18 @@ fn dispatch_file(
             msg: "file transport resolved to an empty path".to_string(),
         });
     }
+    Ok(path)
+}
+
+fn dispatch_file(
+    op_node: &Rc<Node>,
+    transport: &Rc<Node>,
+    param_env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<FileResult> {
+    let si = ctx.si();
+
+    let path = file_transport_path(transport, param_env, ctx)?;
 
     // Optional explicit verb on the transport row (`transport file { path: ..., verb: "delete" }`).
     // Delete/List are structurally indistinguishable from Read (path-only inputs), so the
@@ -17124,7 +17365,12 @@ fn dispatch_file(
             "delete" => {
                 trace_emit(
                     OutputChannel::ShellTrace,
-                    &format!("[file] delete {}", path),
+                    &render_file_effect_begin_line_mirror(
+                        "Filesystem.Delete",
+                        &path,
+                        "",
+                        shell_obs_emoji(),
+                    ),
                 );
                 return match std::fs::remove_file(&path) {
                     Ok(()) => Ok(FileResult {
@@ -17148,7 +17394,12 @@ fn dispatch_file(
             "list" => {
                 trace_emit(
                     OutputChannel::Instrumentation,
-                    &format!("[file] list {}", path),
+                    &render_file_effect_begin_line_mirror(
+                        "Filesystem.List",
+                        &path,
+                        "",
+                        shell_obs_emoji(),
+                    ),
                 );
                 return match std::fs::read_dir(&path) {
                     Ok(entries) => match collect_listing_entry_names(entries) {
@@ -17198,7 +17449,12 @@ fn dispatch_file(
                 let byte_count = content.len() as i64;
                 trace_emit(
                     OutputChannel::ShellTrace,
-                    &format!("[file] write_owner_only {} ({} bytes)", path, byte_count),
+                    &render_file_effect_begin_line_mirror(
+                        "Filesystem.WriteOwnerOnly",
+                        &path,
+                        &file_payload_clause(byte_count as u64, None),
+                        shell_obs_emoji(),
+                    ),
                 );
                 return match write_file_owner_only(&path, content.as_bytes()) {
                     Ok(()) => Ok(FileResult {
@@ -17234,7 +17490,12 @@ fn dispatch_file(
                 let byte_count = content.len() as i64;
                 trace_emit(
                     OutputChannel::ShellTrace,
-                    &format!("[file] write_create_new {} ({} bytes)", path, byte_count),
+                    &render_file_effect_begin_line_mirror(
+                        "Filesystem.WriteCreateNew",
+                        &path,
+                        &file_payload_clause(byte_count as u64, None),
+                        shell_obs_emoji(),
+                    ),
                 );
                 return match write_file_create_new(&path, content.as_bytes(), None) {
                     Ok(()) => Ok(FileResult {
@@ -17291,9 +17552,11 @@ fn dispatch_file(
                 let byte_count = content.len() as i64;
                 trace_emit(
                     OutputChannel::ShellTrace,
-                    &format!(
-                        "[file] write_create_new_with_mode {} ({} bytes, mode {:o})",
-                        path, byte_count, mode
+                    &render_file_effect_begin_line_mirror(
+                        "Filesystem.WriteCreateNewWithMode",
+                        &path,
+                        &file_payload_clause(byte_count as u64, Some(mode)),
+                        shell_obs_emoji(),
                     ),
                 );
                 return match write_file_create_new(&path, content.as_bytes(), Some(mode)) {
@@ -17345,7 +17608,12 @@ fn dispatch_file(
         let byte_count = content.len() as i64;
         trace_emit(
             OutputChannel::ShellTrace,
-            &format!("[file] write {} ({} bytes)", path, byte_count),
+            &render_file_effect_begin_line_mirror(
+                "Filesystem.Write",
+                &path,
+                &file_payload_clause(byte_count as u64, None),
+                shell_obs_emoji(),
+            ),
         );
         match std::fs::write(&path, content.as_bytes()) {
             Ok(()) => Ok(FileResult {
@@ -17368,7 +17636,7 @@ fn dispatch_file(
     } else {
         trace_emit(
             OutputChannel::Instrumentation,
-            &format!("[file] read {}", path),
+            &render_file_effect_begin_line_mirror("Filesystem.Read", &path, "", shell_obs_emoji()),
         );
         match std::fs::read_to_string(&path) {
             Ok(s) => Ok(FileResult {
@@ -21108,6 +21376,14 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(Value::Bool(mac.verify_slice(&tag).is_ok())))
             },
 
+            // SHA-256 OF A TEXT: total, no refusal -- every text has a digest (std.primitives
+            // sha256_hex_of_text_contract).
+            arm "free_call.sha256_hex_of_text" { "sha256_hex_of_text" } => {
+                Ok(Some(str_value(sha256_hex_of_text_digest(
+                    expect_value_str($positional.first().copied(), "sha256_hex_of_text text")?.as_str(),
+                ))))
+            },
+
             // ISSUANCE, THE KEY HOLDER'S OWN OPERATION, and a second primitive rather than a
             // widening of verify: the verify arm above deliberately yields one bit, so a verifier
             // is never handed a computed tag to compare in variable time. Minting is the only
@@ -23513,7 +23789,6 @@ mod chars_receiver_tests {
 
     use im::{vector as im_vec, HashMap};
 
-    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
 
     use super::{
@@ -23525,8 +23800,8 @@ mod chars_receiver_tests {
         let graph = ResolvedGraph {
             modules: Rc::new(im_vec![]),
             item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
             diagnostics: Rc::new(im_vec![]),
-            emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
     }
@@ -23863,6 +24138,14 @@ fn expect_string(val: &Value, context: &str) -> InterpResult<String> {
             msg: format!("{} expects a string, got {}", context, val.type_label()),
         }),
     }
+}
+
+// SHA-256 of the text's UTF-8 bytes, lowercase hex: the host realization of the builtin
+// sha256_hex_of_text (std.primitives sha256_hex_of_text_contract), the same RustCrypto sha2 the HMAC
+// seam below uses. The pure fold extdeps.crypto.sha2 sha256_hex shares its known answers.
+fn sha256_hex_of_text_digest(text: &str) -> String {
+    use sha2::{Digest, Sha256};
+    hex::encode(Sha256::digest(text.as_bytes()))
 }
 
 /// The `hmac_sha256_hex` builtin's computation: the lowercase hex HMAC-SHA256 tag of `message`
@@ -24392,6 +24675,271 @@ mod dispatch_rest_decision_tests {
 }
 
 #[cfg(test)]
+mod file_effect_trace_tests {
+    use super::file_mode_octal;
+    use super::file_payload_clause;
+    use super::render_file_effect_begin_line_mirror;
+    use super::Value;
+
+    /// THE ORACLE RED for `render_file_effect_begin_line_mirror`: the mirror must be BYTE-EQUAL to
+    /// the .dag renderer on the same inputs, and the .dag renderer is EXECUTED here through the
+    /// interpreter rather than restated. Three specimens cover the three payload states the seed
+    /// can produce: a write with a mode, a write without one, and a path-only operation.
+    ///
+    /// THE EXPECTED STRINGS ARE ASSERTED TOO, so the three agree over one input: if the .dag
+    /// moves, this reds; if the mirror moves, this reds; and neither can pass by the other's
+    /// construction. The operand is asserted separately in every case, because that is the half
+    /// the retired raw line carried and the half whose loss gunbc.roadmap_dispatch_actuator
+    /// records as the srv1 2026-08-19 publication incident.
+    fn oracle_context() -> super::InterpContext {
+        let root = crate::cli_run::workspace_root();
+        let roots = vec![
+            root.join("dag").to_string_lossy().into_owned(),
+            root.join("src/v2").to_string_lossy().into_owned(),
+        ];
+        let entry = root
+            .join("dag/gunbc/observation_seed_render.dag")
+            .to_string_lossy()
+            .into_owned();
+        let (graph, indices) = crate::cli_run::resolve_entry_graph_shared(&roots, &entry)
+            .expect("observation_seed_render resolves");
+        crate::cli_run::make_eval_context(&graph, indices, super::ExecutionMode::Hermetic)
+    }
+
+    fn variant(
+        ctx: &super::InterpContext,
+        name: &str,
+        fields: Vec<(super::Symbol, Value)>,
+    ) -> Value {
+        Value::Variant {
+            type_name: ctx.sym("FileEffectPayload"),
+            variant_name: ctx.sym(name),
+            fields: std::rc::Rc::new(fields),
+        }
+    }
+
+    fn byte_size(ctx: &super::InterpContext, bytes: u64) -> Value {
+        super::run_in_context_with_args(
+            ctx,
+            "byte_size",
+            &[(Some("count".to_string()), Value::Int(bytes as i64))],
+            false,
+        )
+        .expect("std.measure byte_size constructs")
+    }
+
+    /// The mode field as `FileMode?`, built by the authority itself: `extdeps.access.posix
+    /// file_mode_of_octal_text` reads a chmod spelling back into a FileMode, so the fixture never
+    /// hand-builds a `Present { value: Int }` that the authority would not accept. An unreadable
+    /// spelling yields the Absent arm — the same call, the other direction.
+    fn mode_bound(ctx: &super::InterpContext, spelling: &str) -> Value {
+        super::run_in_context_with_args(
+            ctx,
+            "file_mode_of_octal_text",
+            &[(Some("text".to_string()), Value::Str(spelling.into()))],
+            false,
+        )
+        .expect("extdeps.access.posix file_mode_of_octal_text resolves")
+    }
+
+    fn written_payload(ctx: &super::InterpContext, bytes: u64, mode: Option<&str>) -> Value {
+        let bound = match mode {
+            Some(spelling) => mode_bound(ctx, spelling),
+            None => mode_bound(ctx, "not-a-mode"),
+        };
+        variant(
+            ctx,
+            "FileEffectPayloadWritten",
+            vec![
+                (ctx.sym("bytes"), byte_size(ctx, bytes)),
+                (ctx.sym("mode"), bound),
+            ],
+        )
+    }
+
+    fn render(
+        ctx: &super::InterpContext,
+        intent: &str,
+        path: &str,
+        payload: Value,
+        emoji: bool,
+    ) -> String {
+        let out = super::run_in_context_with_args(
+            ctx,
+            "seed_file_effect_begin_line",
+            &[
+                (Some("intent".to_string()), Value::Str(intent.into())),
+                (Some("path".to_string()), Value::Str(path.into())),
+                (Some("payload".to_string()), payload),
+                (Some("emoji".to_string()), Value::Bool(emoji)),
+            ],
+            false,
+        )
+        .expect("the .dag oracle must resolve and render");
+        match out {
+            Value::Str(s) => s.to_string(),
+            other => panic!("seed_file_effect_begin_line must return a String, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn file_effect_begin_mirror_matches_seed_oracle() {
+        let ctx = oracle_context();
+
+        // The mode spelling comes back from the authority's own file_mode_of_octal_text →
+        // file_mode_octal round trip, so the expected clause below is not this test's invention.
+        let oracle = render(
+            &ctx,
+            "Filesystem.WriteCreateNewWithMode",
+            "dag/x.dag",
+            written_payload(&ctx, 12, Some("0600")),
+            true,
+        );
+        let mirror = render_file_effect_begin_line_mirror(
+            "Filesystem.WriteCreateNewWithMode",
+            "dag/x.dag",
+            &file_payload_clause(12, Some(0o600)),
+            true,
+        );
+        assert_eq!(
+            mirror, oracle,
+            "mirror must be byte-equal to the seed oracle"
+        );
+        assert_eq!(
+            mirror,
+            "🔄 started Filesystem.WriteCreateNewWithMode dag/x.dag (12 bytes, mode 0600)"
+        );
+
+        // 2. A write with no declared mode.
+        let oracle = render(
+            &ctx,
+            "Filesystem.Write",
+            "dag/gunbc/observation_emit_census.dag",
+            written_payload(&ctx, 166, None),
+            false,
+        );
+        let mirror = render_file_effect_begin_line_mirror(
+            "Filesystem.Write",
+            "dag/gunbc/observation_emit_census.dag",
+            &file_payload_clause(166, None),
+            false,
+        );
+        assert_eq!(
+            mirror, oracle,
+            "mirror must be byte-equal to the seed oracle"
+        );
+        assert_eq!(
+            mirror,
+            "◐ started Filesystem.Write dag/gunbc/observation_emit_census.dag (166 bytes)"
+        );
+
+        // 3. A path-only operation: the size clause is ABSENT rather than zero, so the line cannot
+        //    be read as "wrote 0 bytes".
+        let oracle = render(
+            &ctx,
+            "Filesystem.Read",
+            "foo.dag",
+            variant(&ctx, "FileEffectNoPayload", vec![]),
+            true,
+        );
+        let mirror = render_file_effect_begin_line_mirror("Filesystem.Read", "foo.dag", "", true);
+        assert_eq!(
+            mirror, oracle,
+            "mirror must be byte-equal to the seed oracle"
+        );
+        assert_eq!(mirror, "🔄 started Filesystem.Read foo.dag");
+        assert!(!mirror.contains("0 bytes"));
+        assert!(!mirror.contains("unreadable"));
+    }
+
+    /// The mirror keeps the operand in every payload state — the property the raw line supplied
+    /// and the one a "started <intent>"-only projection would silently drop.
+    #[test]
+    fn file_effect_begin_mirror_keeps_the_operand() {
+        for clause in ["", "7 bytes", "7 bytes, mode 0600"] {
+            let line = render_file_effect_begin_line_mirror(
+                "Filesystem.Write",
+                "dag/target.dag",
+                clause,
+                true,
+            );
+            assert!(
+                line.contains("dag/target.dag"),
+                "the operand must survive in {line:?}"
+            );
+        }
+    }
+    /// The doc on `file_mode_octal` claims the range comes from the caller's admission, not from
+    /// the type. That claim is only worth making if it is checked, so this holds the mirror against
+    /// `extdeps.access.posix file_mode_octal` BY EXECUTION across the range that admission admits
+    /// (0..=0o7777) — including the special-bits digit, which is where a three-digit rendering and a
+    /// four-digit one disagree. It also pins the discriminating case the reviewer raised: a value
+    /// ABOVE the admitted range would be silently masked, which is why the admission arm exists
+    /// upstream rather than here.
+    #[test]
+    fn file_mode_octal_agrees_with_the_posix_authority_over_the_admitted_range() {
+        let ctx = oracle_context();
+        // The authority's own direction: text -> FileMode -> octal spelling. A mode admitted by
+        // dispatch_file is a four-digit octal spelling, so feeding one and reading it back
+        // exercises both halves of the posix module on the same value this mirror spells.
+        let authority_octal = |spelling: &str| -> String {
+            let mode = super::run_in_context_with_args(
+                &ctx,
+                "file_mode_of_octal_text",
+                &[(Some("text".to_string()), Value::Str(spelling.into()))],
+                false,
+            )
+            .expect("file_mode_of_octal_text resolves");
+            // The parse returns FileMode?, so unwrap through the same optional shape the authority
+            // publishes rather than assuming a bare record.
+            let peeled = match mode {
+                Value::Variant {
+                    variant_name,
+                    fields,
+                    ..
+                } if ctx.sym_eq(variant_name, "Present") => fields
+                    .iter()
+                    .find(|(name, _)| ctx.sym_eq(*name, "value"))
+                    .map(|(_, v)| v.clone())
+                    .expect("Present carries its value"),
+                other => panic!("file_mode_of_octal_text refused {spelling}: {other:?}"),
+            };
+            super::run_in_context_with_args(
+                &ctx,
+                "file_mode_octal",
+                &[(Some("mode".to_string()), peeled)],
+                false,
+            )
+            .and_then(|v| match v {
+                Value::Str(s) => Ok(s.to_string()),
+                _ => Err(super::InterpError::NoSuchFunction {
+                    name: "file_mode_octal returned a non-string".to_string(),
+                }),
+            })
+            .expect("file_mode_octal resolves")
+        };
+        for spelling in [
+            "0000", "0600", "0644", "0755", "1777", "2755", "4755", "7777",
+        ] {
+            let value = u32::from_str_radix(spelling, 8).expect("octal literal");
+            assert!(
+                value <= 0o7777,
+                "{spelling} must be inside the range dispatch_file admits"
+            );
+            assert_eq!(
+                file_mode_octal(value),
+                authority_octal(spelling),
+                "mirror must agree with extdeps.access.posix on {spelling}"
+            );
+        }
+        // The narrowing the comment names: the mask is what makes a four-digit rendering total
+        // over the admitted range, and a value above it is the caller's to refuse (dispatch_file
+        // does, before dispatch). Asserted so the claim cannot drift back into "the type says so".
+        assert_eq!(file_mode_octal(0o100600), "0600");
+    }
+}
+
+#[cfg(test)]
 mod shell_completion_trace_tests {
     use super::hermetic_checkout_input_disposition_under;
     use super::neutralize_workflow_commands;
@@ -24869,7 +25417,6 @@ mod map_shell_outputs_optional_stream_tests {
 
     use im::{vector as im_vec, HashMap};
 
-    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_std_core::{
         make_field_init_node, make_field_node, make_text_part_node, no_span, Cardinality,
@@ -24883,8 +25430,8 @@ mod map_shell_outputs_optional_stream_tests {
         let graph = ResolvedGraph {
             modules: Rc::new(im_vec![]),
             item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
             diagnostics: Rc::new(im_vec![]),
-            emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
     }
@@ -25075,7 +25622,6 @@ mod wall_deadline_kill_tests {
 
     use im::{vector as im_vec, HashMap};
 
-    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
 
     use super::{
@@ -25088,8 +25634,8 @@ mod wall_deadline_kill_tests {
         let graph = ResolvedGraph {
             modules: Rc::new(im_vec![]),
             item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
             diagnostics: Rc::new(im_vec![]),
-            emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Wet)
     }
@@ -25399,7 +25945,6 @@ mod emit_host_admission_flip_test {
 
     use im::{vector as im_vec, HashMap};
 
-    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
 
     use super::{require_permitted_transport, ExecutionMode, InterpContext, Value};
@@ -25408,8 +25953,8 @@ mod emit_host_admission_flip_test {
         let graph = ResolvedGraph {
             modules: Rc::new(im_vec![]),
             item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
             diagnostics: Rc::new(im_vec![]),
-            emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), mode)
     }
@@ -25478,7 +26023,6 @@ mod argv_arg_limit_test {
 
     use im::{vector as im_vec, HashMap};
 
-    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_std_core::{make_text_part_node, no_span, shell_transport_node, Node};
 
@@ -25491,8 +26035,8 @@ mod argv_arg_limit_test {
         let graph = ResolvedGraph {
             modules: Rc::new(im_vec![]),
             item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
             diagnostics: Rc::new(im_vec![]),
-            emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Wet)
     }
@@ -26900,15 +27444,14 @@ mod push_hash_extension_tests {
     use im::{vector as im_vec, HashMap};
 
     use super::*;
-    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
 
     fn test_ctx() -> InterpContext {
         let graph = ResolvedGraph {
             modules: Rc::new(im_vec![]),
             item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
             diagnostics: Rc::new(im_vec![]),
-            emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
     }

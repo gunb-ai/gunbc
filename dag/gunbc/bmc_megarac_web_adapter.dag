@@ -11,7 +11,7 @@ import extdeps.bmc.megarac {
   MegaRacLoginSession, megarac_login_session_json, megarac_services_kvm_json, megarac_kvm_websocket_path,
 }
 import gunbc.bmc_model {
-  BmcWorld, BmcEvent, BmcScheduledEvent, BmcAcPowerLost, BmcKvmStreamClosed, BmcPowerOn, BmcPowerOff, BmcKvmIdle, BmcKvmStreaming, BmcKvmClosedByController, BmcWebLoginAccepted, BmcWebLoginRefused,
+  BmcWorld, BmcEvent, BmcScheduledEvent, BmcAcPowerLost, BmcPowerRestored, BmcSolSessionDropped, BmcKvmStreamClosed, BootOverrideNone, BootOverrideCdromEfiNextBoot, BmcPowerOn, BmcPowerOff, BmcKvmIdle, BmcKvmStreaming, BmcKvmClosedByController, BmcWebLoginAccepted, BmcWebLoginRefused,
   bmc_web_login, bmc_kvm_viewer_count, bmc_kvm_connect, bmc_web_logout, bmc_advance,
 }
 
@@ -71,7 +71,8 @@ type MegaRacWebStep {
 fn megarac_stream_open(world: BmcWorld) -> Bool {
   match world.web.kvm {
     BmcKvmStreaming { session: _ } => true
-    _ => false
+    BmcKvmIdle {} => false
+    BmcKvmClosedByController { session: _ } => false
   }
 }
 
@@ -129,6 +130,8 @@ fn bmc_event_json(e: BmcEvent) -> JsonValue {
   match e {
     BmcAcPowerLost {} => json_string(s: "ac_power_lost")
     BmcKvmStreamClosed {} => json_string(s: "kvm_stream_closed")
+    BmcPowerRestored {} => json_string(s: "power_restored")
+    BmcSolSessionDropped {} => json_string(s: "sol_session_dropped")
   }
 }
 
@@ -154,6 +157,13 @@ fn megarac_web_world_json(world: BmcWorld) -> JsonValue {
       BmcKvmClosedByController { session: k } => json_array(elements: [json_string(s: "closed"), json_int(n: k)])
     }),
     json_kv(key: "canvas_readable", value: json_bool(b: world.web.canvas_readable)),
+    json_kv(key: "boot_override", value: json_string(s: match world.boot_override { BootOverrideNone => "none"  BootOverrideCdromEfiNextBoot => "cdrom_efi_next_boot" })),
+    json_kv(key: "sel", value: json_array(elements: map(world.sel, r => json_array(elements: [json_string(s: r.id_hex), json_string(s: r.date), json_string(s: r.time), json_string(s: r.sensor), json_string(s: r.event), json_string(s: r.state)])))),
+    json_kv(key: "sol_session_open", value: json_bool(b: world.sol_session_open)),
+    json_kv(key: "cycle_off_interval", value: json_int(n: second_count(s: world.cycle_off_interval) as Int)),
+    json_kv(key: "host_booted_at", value: match world.host_booted_at { Absent => json_null()  Present { value: t } => json_int(n: second_count(s: t) as Int) }),
+    json_kv(key: "booted_via_override", value: json_bool(b: world.booted_via_override)),
+    json_kv(key: "sol_drop_after_boot", value: match world.sol_drop_after_boot { Absent => json_null()  Present { value: t } => json_int(n: second_count(s: t) as Int) }),
   ])
 }
 

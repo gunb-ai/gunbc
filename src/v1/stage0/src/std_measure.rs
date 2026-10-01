@@ -1645,6 +1645,19 @@ pub fn second_count(s: Second) -> Nat {
     measure_count(s.clone())
 }
 
+pub type SecondDisplacement = Rc<Measure<Time, One, i64>>;
+
+pub fn second_displacement(count: i64) -> SecondDisplacement {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn second_displacement_count(d: SecondDisplacement) -> i64 {
+    measure_count(d.clone())
+}
+
 pub fn energy_from_power_and_time(power: Watt, time: Second) -> Joule {
     joule(v1_rt::int_mul(
         watt_count(power.clone()),
@@ -1693,6 +1706,13 @@ pub fn minute_to_second(m: Minute) -> Second {
 pub fn minute_to_millisecond(m: Minute) -> Millisecond {
     millisecond(v1_rt::int_mul(
         v1_rt::int_mul(minute_count(m.clone()), seconds_per_minute()),
+        milliseconds_per_second(),
+    ))
+}
+
+pub fn second_to_millisecond(s: Second) -> Millisecond {
+    millisecond(v1_rt::int_mul(
+        second_count(s.clone()),
         milliseconds_per_second(),
     ))
 }

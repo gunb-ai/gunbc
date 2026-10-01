@@ -2,6 +2,8 @@ module v2.compiler.normalized_tree
 
 import v2.compiler.body_lowering_fold {
   BodyLoweredTree,
+  DeclaredTypeKind,
+  declared_record_names,
   wrapper_retention_diagnostic
 }
 import v2.std.diagnostic {
@@ -40,14 +42,14 @@ import v2.std.namespace_alias { AliasBindingRow, ModuleBindingSource }
 // shape a where-alias rehome writes and the shape the graft builds for a module spine, so after
 // normalize a record is indistinguishable from either -- and the pattern-binder classifier must
 // tell a record (a constructor) from a module (not one). The fact is read where it is still held,
-// by the same predicate the rehome uses, and carried here as the leaf names this module declares
-// as records; the symbol-index fill qualifies each by this module's own name, so the key the index
+// by the same predicate the rehome uses, and carried here as the kind of each such declaration
+// (records among them); the symbol-index fill qualifies each by this module's own name, so the key the index
 // holds is a declaring path, never a bare spelling.
 type NormalizedTree sole_constructor {
   root: Node,
   test_markers: TestMarkerChannel,
   import_bindings: FreeMonoid<AliasBindingRow>,
-  record_declarations: FreeMonoid<Symbol>,
+  type_declaration_kinds: FreeMonoid<DeclaredTypeKind>,
 }
 
 // THE RETENTION DOOR (MQ-4). A shell the body lowering could not lower is a typed variant of its result
@@ -102,11 +104,22 @@ fn no_record_declarations() -> FreeMonoid<Symbol> {
   Empty
 }
 
+// A hand-built root carries no declaration kinds, for the same reason it carries no record names.
+fn no_type_declaration_kinds() -> FreeMonoid<DeclaredTypeKind> {
+  Empty
+}
+
+// THE KIND OF EACH PLAIN-CONJ TYPE THIS MODULE DECLARES, read at normalize by
+// v2.compiler.body_lowering_fold body_lower_type_decl_declared_kind_optional: after lowering, a record,
+// a where-refinement and a payload-bearing single variant share one shape. One list of one coproduct,
+// so a declaration has one kind or none; the symbol-index fill reads its record projection
+// (normalized_tree_record_declarations) and emission reads the whole (v2.compiler.emit_produced
+// emit_module_member). A caller holding no parse passes no_type_declaration_kinds().
 fn admit_normalized_tree(
   root: Node,
   test_markers: TestMarkerChannel,
   import_bindings: FreeMonoid<AliasBindingRow>,
-  record_declarations: FreeMonoid<Symbol>,
+  type_declaration_kinds: FreeMonoid<DeclaredTypeKind>,
   diagnostics: Diagnostics
 ) -> Outcome<NormalizedTree> {
   Accepted {
@@ -114,10 +127,14 @@ fn admit_normalized_tree(
       root: root,
       test_markers: test_markers,
       import_bindings: import_bindings,
-      record_declarations: record_declarations
+      type_declaration_kinds: type_declaration_kinds
     },
     diagnostics: diagnostics
   }
+}
+
+fn normalized_tree_record_declarations(t: NormalizedTree) -> FreeMonoid<Symbol> {
+  declared_record_names(kinds: t.type_declaration_kinds)
 }
 
 // A MODULE OUTSIDE THE COMPILED CLOSURE, AT CENSUS GRADE (v2.compiler.normalize normalize_census):
@@ -174,6 +191,13 @@ fn census_tree_binding_source(t: CensusTree) -> ModuleBindingSource {
   }
 }
 
+// Projection of ONE sealed tree's captured import rows, for a reader that must ask what a module
+// imports without unsealing the carrier: v2.compiler.compile native_import_target_file_refusal,
+// which attributes a resolve refusal to an import target the context refused at ingest.
+fn normalized_tree_import_bindings(tree: NormalizedTree) -> FreeMonoid<AliasBindingRow> {
+  tree.import_bindings
+}
+
 // Projection out of the sealed carrier for the symbol-index fill, which needs both halves of what a
 // module binds and can import neither this carrier nor the stages beneath it. Order-preserving for
 // the same reason the Node projection is.
@@ -189,7 +213,7 @@ fn normalized_tree_roots_to_binding_sources(
         item: ModuleBindingSource {
           root: tree.root,
           import_bindings: tree.import_bindings,
-          record_declarations: tree.record_declarations
+          record_declarations: normalized_tree_record_declarations(t: tree)
         }
       )
     }
@@ -231,7 +255,7 @@ fn admit_unmarked_normalized_roots(
             root: root,
             test_markers: test_marker_channel_empty(),
             import_bindings: no_import_bindings(),
-            record_declarations: no_record_declarations()
+            type_declaration_kinds: no_type_declaration_kinds()
           }
         )
       }
