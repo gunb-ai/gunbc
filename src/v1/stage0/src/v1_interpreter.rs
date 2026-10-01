@@ -27864,8 +27864,8 @@ mod value_depth_walker_tests {
     //! 262,144-deep chain -- measured on the seed, after the owning claim had already printed PASS.
     //! Each test drives one walker over that chain on the default 2 MiB test-thread stack; remove
     //! value_depth_guarded from a walker, or make Drop recursive again, and that test aborts.
-    //! `every_recursive_value_walker_is_guarded` is the census: a new self-recursive function over a
-    //! Value that does not run under value_depth_guarded reds it by name.
+    //! The census of unguarded recursive walkers is not here: v1-compiler's build.rs refuses the
+    //! build on one (`unguarded_recursive_value_walkers`), so it is enforced on every merge.
     //! Class: gunbc.recurring_failure_mode recursion_over_value_depth_uncounted_by_the_call_limit.
     use std::rc::Rc;
 
@@ -28085,19 +28085,5 @@ mod value_depth_walker_tests {
         );
         let deeper = list_value(vec![value]);
         assert!(crate::cli_run::value_to_wire_json(&deeper, &ctx).is_err());
-    }
-
-    include!("value_depth_census.rs");
-
-    /// THE CENSUS AS A CHECK, asserted as a test as well as enforced by build.rs: both run the one
-    /// function in value_depth_census.rs.
-    #[test]
-    fn every_recursive_value_walker_is_guarded() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-        let unguarded = unguarded_recursive_value_walkers(&root);
-        assert!(
-            unguarded.is_empty(),
-            "recursive Value walkers without value_depth_guarded: {unguarded:?}"
-        );
     }
 }
