@@ -24,6 +24,7 @@ import v2.std.compilers.target_model {
   target_project_arrow_body_to_value_expression,
   target_project_transform_primitive_apply_in_arrow_scope,
   target_project_transform_callable_apply_in_arrow_scope,
+  target_value_expr_local_reference_leaf,
   target_transform_operator_child,
   target_value_expr_arrow_has_value_expression_body,
   target_value_expr_diagnostic,
@@ -667,12 +668,25 @@ fn translate_project_transform_surface_or_callable_in_arrow_scope(
           )
       }
     _ =>
-      outcome_rejected(
-        d: target_value_expr_diagnostic(
-          reason: ^target_value_expr_reason_transform_shape_invalid,
-          node: operator_child
-        )
-      )
+      match target_value_expr_local_reference_leaf(node: operator_child) {
+        Present { value: _ } =>
+          target_project_transform_callable_apply_in_arrow_scope(
+            arrow: arrow,
+            body: body,
+            target: target,
+            source_bool_form: dag_value_expression_projection().bool_literal_form,
+            handle_transform: fn(a, b, t) {
+              translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t)
+            }
+          )
+        Absent =>
+          outcome_rejected(
+            d: target_value_expr_diagnostic(
+              reason: ^target_value_expr_reason_transform_shape_invalid,
+              node: operator_child
+            )
+          )
+      }
   }
 }
 
