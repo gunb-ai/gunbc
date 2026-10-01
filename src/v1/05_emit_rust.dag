@@ -212,7 +212,6 @@ import v1.compiler.infer_service {
 }
 import v1.compiler.infer {
   is_lambda_expr,
-  env_name_is_kernel_grounded_carrier,
   InferScope,
   build_params_scope, extend_scope,
   build_emit_graph_info,
@@ -14946,8 +14945,12 @@ fn emit_rust_host_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, left: Node
 // A KERNEL-GROUNDED CARRIER (std.nat Nat) is declared inductively, so its type reference has no
 // checkpoint of its own; it realizes as the Int checkpoint (rust_kernel_grounded_type_decl spells
 // its declaration from that row), and its operators are therefore that primitive's operators. The
-// carrier is identified by declaration (env_name_is_kernel_grounded_carrier), never by spelling,
-// so a user type spelled Nat that is not the bound declaration stays structural.
+// carrier is identified by declaration, never by spelling,
+// so a user type spelled Nat that is not the bound declaration stays structural. The key is the
+// DeclarationRef the type reference carries (Node.declaration), the same key
+// rust_kernel_grounded_type_decl uses. Measured on the Nat de-fork: a Nat operand's reference carries
+// decl std.nat::Nat and provenance dag/std/nat.dag, yet the spelling-keyed decision above returns no
+// checkpoint for it, so without this arm `k * k` emitted the wrapping infix token.
 fn expr_realizes_as_refusing_int(e: Node, env: TypeEnv) -> Bool {
   match e.inferred {
     Present { value: Resolved { node: rt } } =>
@@ -14959,13 +14962,18 @@ fn expr_realizes_as_refusing_int(e: Node, env: TypeEnv) -> Bool {
         match realized_checkpoint(decision: type_reference_realization(n: normed, dag_name: name, target: Rust)) {
           Present { value: cp } => cp.target_type == rust_refusing_int_target_type
           Absent =>
-            if env_name_is_kernel_grounded_carrier(name: name, env: env) {
-              match target_checkpoints(target: Rust) |> filter(cp => cp.dag_name == "Int") |> first {
-                Present { value: cp } => cp.grounding_type == rust_refusing_int_target_type
-                Absent => false
-              }
-            } else {
-              false
+            match normed.declaration {
+              Present { value: d } =>
+                match kernel_grounding_for(rows: kernel_grounding_rows, source_kind: KernelIntLiteral, carrier: d) {
+                  KernelGroundingFound { row: _ } =>
+                    match target_checkpoints(target: Rust) |> filter(cp => cp.dag_name == "Int") |> first {
+                      Present { value: cp } => cp.grounding_type == rust_refusing_int_target_type
+                      Absent => false
+                    }
+                  KernelGroundingAbsent => false
+                  KernelGroundingAmbiguous { row_count: _ } => false
+                }
+              Absent => false
             }
         }
       }
