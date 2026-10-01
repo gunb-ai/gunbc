@@ -13,8 +13,8 @@ import extdeps.languages.json.emit {
 }
 
 import v2.compiler.name_resolve {
-  ResolutionContext,
-  resolve_walk_with_admission_context_policy,
+  resolution_context_of_validated,
+  resolve_walk_in_context,
   validate_module_roots
 }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
@@ -27,7 +27,7 @@ import v2.compiler.normalized_tree {
 }
 import v2.compiler.parse { PreparedGrammar, parse_module_prepared_seeded, prepare_grammar }
 import v2.compiler.program_assembly { program_assembly_phase_tokenize }
-import v2.compiler.program_partition { emit_for_target }
+import v2.compiler.program_partition { emit_for_target_with_declarations }
 import v2.compiler.reference_closure {
   ReferenceClosureMember,
   ReferenceClosureNeighboursRead,
@@ -330,13 +330,17 @@ fn closure_resolve_member(
   bind_outcome(
     o: validate_module_roots(roots: Cons { head: tree, tail: Empty }),
     f: fn(validated) {
-      resolved_tree_outcome(w: resolve_walk_with_admission_context_policy(
-        context: outcome_accepted(value: ResolutionContext { lm: lm, roots: validated, symbol_index: symbol_index }),
-        admission: Admission { subject: ResolutionSubject { name: member_module }, imports: Empty },
-        index: index,
-        active_roots: active_roots,
-        policy: default_name_resolution_policy()
-      ), symbol_index: symbol_index)
+      resolved_tree_outcome(w: resolve_walk_in_context(
+        context: outcome_accepted(value: resolution_context_of_validated(
+          lm: lm,
+          roots: validated,
+          symbol_index: symbol_index,
+          index: index,
+          active_roots: active_roots,
+          policy: default_name_resolution_policy()
+        )),
+        admission: Admission { subject: ResolutionSubject { name: member_module }, imports: Empty }
+      ).walk, symbol_index: symbol_index)
     }
   )
 }
@@ -437,11 +441,12 @@ fn closure_member_emission(
             bind_outcome(
               o: infer_and_discharge(tree: resolved),
               f: fn(inferred) {
-                emit_for_target(
+                emit_for_target_with_declarations(
                   program: inferred,
                   segment: program_segment_whole_program(),
                   target: target,
-                  boundary: partition_boundary_fail_closed()
+                  boundary: partition_boundary_fail_closed(),
+                  kinds: visit.member.payload.type_declaration_kinds
                 )
               }
             )

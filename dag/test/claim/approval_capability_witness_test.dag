@@ -1,4 +1,5 @@
 module test.claim.approval_capability_witness_test
+import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 import gunbc.auth.approval_capability {
@@ -10,7 +11,7 @@ import gunbc.auth.approval_capability {
   CapabilityEvidenceForAnotherMessage, CapabilityKeyIdDisagrees,
   ProposeApprove, ProposeDeny,
   approval_capability_protocol, verify_capability, capability_refusal_reason,
-  utc_instant_is_canonical, approval_capability_signing_input,
+  utc_instant_is_canonical, approval_capability_signing_input, capability_tag_hex,
 }
 import extdeps.crypto.mac {
   MacVerification, MacVerified, MacTagMismatch, HmacSha256, MacKeyId,
@@ -560,4 +561,25 @@ test fn a_capability_whose_expiry_is_a_nonexistent_date_refuses() -> Bool {
       }
     CapabilityAuthentic { claims: _ } => false
   }
+}
+
+// ONE TAG SPELLING WITHOUT A SECOND ENCODING: the decoder refuses non-zero pad bits (std.encoding), and
+// capability_tag_hex refuses any padding but the encoder's. The canonical spelling of a 32-octet tag
+// ("…7MI=") decodes to its hex; the same octets unpadded, or with an extra "=", are refused.
+data ct_tag_canonical: NonEmptyStr = "GnaJuO1EqKIUGrpRdgDdvzA7ybJIJ14WoHcC5bzK7MI=" as NonEmptyStr
+
+fn ct_tag_hex(tag: String) -> NonEmptyStr? {
+  capability_tag_hex(capability: ApprovalCapability { claims: good_claims(), tag_b64url: tag as NonEmptyStr })
+}
+
+test fn the_canonical_tag_spelling_decodes_to_its_hex() -> Bool {
+  match ct_tag_hex(tag: ct_tag_canonical as String) {
+    Present { value: h } => (h as String) == "1a7689b8ed44a8a2141aba517600ddbf303bc9b248275e16a07702e5bccaecc2"
+    Absent => false
+  }
+}
+
+test fn a_tag_with_other_padding_is_refused() -> Bool {
+  (match ct_tag_hex(tag: "GnaJuO1EqKIUGrpRdgDdvzA7ybJIJ14WoHcC5bzK7MI") { Absent => true  Present { value: _ } => false })
+    && (match ct_tag_hex(tag: "GnaJuO1EqKIUGrpRdgDdvzA7ybJIJ14WoHcC5bzK7MI==") { Absent => true  Present { value: _ } => false })
 }

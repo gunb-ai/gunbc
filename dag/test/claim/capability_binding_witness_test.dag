@@ -58,6 +58,7 @@ import gunbc.capability_binding {
   coverage_targets_asserting_support, deferred_targets_all_name_a_trigger,
   probe_receipt_names_a_witness, every_probe_receipt_names_a_witness,
 }
+import std.nat { Nat }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

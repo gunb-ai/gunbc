@@ -1,11 +1,17 @@
 module v2.std.type_binder
 
-import std.algebra { Empty, list_snoc_item }
+import std.algebra { Cons, Empty, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.optional { Optional, Present, Absent, optional_present, optional_absent }
+import v2.std.arrow_contract { arrow_contract_conforms }
 import v2.std.node {
+  arrow_named_edge_is_non_binder,
+  NotMarkedReference,
+  resolved_reference_body_kind,
   Arrow,
+  Atom,
+  Instantiation,
   Behavior,
   Bind,
   ComputationNode,
@@ -17,6 +23,7 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
+  match_arm_pattern_edge,
   arrow_signature_order_label,
   node_subtree_nodes,
   node_synthetic,
@@ -200,17 +207,23 @@ fn declaration_binder_edge(parent: Node, edge: Edge) -> Bool {
 }
 
 // THE NODES INFER DERIVES FACTS FOR: every node of the subtree except those under an Arrow's declared
-// order edge (arrow_signature_order_label, parameter LABELS) and under a declaration's binder edge
-// (declaration_binder_edge, binder NAMES). v2.compiler.infer declines both subtrees and carries each as
+// order edge (arrow_signature_order_label, parameter LABELS), under a declaration's binder edge
+// (declaration_binder_edge, binder NAMES) and under a match arm's pattern edge
+// (v2.std.node match_arm_pattern_edge, a binding form). v2.compiler.infer declines both subtrees and carries each as
 // its parent's own evidence. Every stage that asks infer for a node's facts --
 // v2.compiler.program_partition's closure, a census over derived products -- walks THIS set, so none
 // demands facts infer was never asked to produce. It lives here, not in v2.std.node, because the binder
 // edge's marker is this module's fact (v2.std.node cannot intern it). Before the binder edge was
 // excluded, a module declaring an alias, a bodyless declaration or a generic declaration refused at the
 // partition closure as partition_facts_miss on its binder nodes.
+// A RESOLVED REFERENCE IS ONE TERM: the qualified-name cells under a <declaration-reference> or
+// <parameter-reference> marker (v2.std.qualified_name resolved_reference_node_of_kind) name where the
+// referent is declared, so they are not subterms. They are synthetic and alike across every reference
+// to one path, so entered as facts they collide as one key carrying different facts
+// (infer_facts_key_conflict). v2.compiler.infer's gather skips the same cells by the same accessor.
 fn node_inferred_subtree_nodes(root: Node) -> List<Node> {
   fold(root.children, init: [root], f: fn(acc, e) {
-    if (e.label == arrow_signature_order_label) || declaration_binder_edge(parent: root, edge: e) {
+    if (e.label == arrow_signature_order_label) || declaration_binder_edge(parent: root, edge: e) || match_arm_pattern_edge(parent: root, edge: e) || (resolved_reference_body_kind(target: root) != NotMarkedReference) {
       acc
     } else {
       concat(acc, node_inferred_subtree_nodes(root: e.target))
@@ -381,7 +394,7 @@ fn type_binder_node_conforms(n: Node) -> Bool {
   })
   let params_ok = (params == 0) || ((params == 1) && marker_targets_conform(n: n))
   match n.kind {
-    TypeNode { connective: Arrow } => params_ok && (bodies == 0) && arrow_named_labels_conform(n: n)
+    TypeNode { connective: Arrow } => params_ok && (bodies == 0) && arrow_named_labels_conform(n: n) && arrow_contract_conforms(children: n.children)
     ComputationNode { behavior: Transform } => (params == 0) && (bodies == 0) && transform_named_labels_conform(n: n)
     ComputationNode { behavior: Bind } => (params == 0) && (bodies == 0) && bind_named_labels_conform(n: n)
     _ =>
@@ -404,7 +417,7 @@ fn arrow_named_labels_conform(n: Node) -> Bool {
   fold(n.children, init: true, f: fn(acc, e) {
     match e.label {
       Positional => acc
-      Named { name: sym } => acc && ((sym == ^arrow_body_edge) || (sym == ^arrow_signature_order_edge) || (sym == type_params_marker()))
+      Named { name: sym } => acc && (arrow_named_edge_is_non_binder(e: e) || (sym == type_params_marker()))
     }
   })
 }
@@ -422,4 +435,72 @@ fn type_binder_first_mislabelled(root: Node) -> Optional<Node> {
       Absent => if type_binder_node_conforms(n: n) { acc } else { optional_present(value: n) }
     }
   })
+}
+
+// WHETHER AN ALIAS DECLARATION IS A PURE RENAMING, decided once, on the declaration
+// (docs/plans/anonymous-record-literal-design.md, section Pure-renaming aliases). `type A<p1..pn> = H<p1..pn>` -- the aliased expression is a head applied
+// to exactly the alias's own binders, in declared order, or `type A = H` with none -- denotes H with
+// the same arguments in the same positions, so a reader that follows it substitutes nothing. Every
+// other declaration is not a renaming: a reordering, constant or partially applied alias, a
+// generic record, a plain type. v2.std.symbol_index records the answer when it records the
+// declaration, and readers take it from there rather than re-deriving it at each use.
+type AliasRenaming
+  = PureRenamingOf { head: Symbol }
+  | NotARenaming
+
+fn type_alias_renaming(target: Node) -> AliasRenaming {
+  match type_decl_view(target: target) {
+    TypeAlias { binders: binders, aliased: aliased } =>
+      type_alias_renaming_of(binders: binder_conj_names(conj: binders), aliased: aliased)
+    _ => NotARenaming
+  }
+}
+
+fn type_alias_renaming_of(binders: List<Symbol>, aliased: Node) -> AliasRenaming {
+  match aliased.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if count(binders) == 0 { PureRenamingOf { head: id } } else { NotARenaming }
+    TypeNode { connective: Instantiation } =>
+      let scan = type_binder_instantiation_scan(n: aliased)
+      match scan.head {
+        Present { value: head } =>
+          if scan.args_are_atoms && (scan.arg_ids == binders) { PureRenamingOf { head: head } } else { NotARenaming }
+        Absent => NotARenaming
+      }
+    _ => NotARenaming
+  }
+}
+
+// An instantiation read once, positionally: its head atom (if the head is one), the identities of
+// its argument atoms in order, and whether every argument is an atom.
+type TypeBinderInstantiationScan {
+  seen: Int
+  head: Optional<Symbol>
+  arg_ids: List<Symbol>
+  args_are_atoms: Bool
+}
+
+fn type_binder_instantiation_scan(n: Node) -> TypeBinderInstantiationScan {
+  fold(n.children, init: TypeBinderInstantiationScan { seen: 0, head: optional_absent(), arg_ids: Empty, args_are_atoms: true }, f: fn(acc, e) {
+    match e.label {
+      Positional =>
+        let id = type_binder_atom_identity_optional(n: e.target)
+        if acc.seen == 0 {
+          TypeBinderInstantiationScan { seen: 1, head: id, arg_ids: acc.arg_ids, args_are_atoms: acc.args_are_atoms }
+        } else {
+          match id {
+            Present { value: a } => TypeBinderInstantiationScan { seen: acc.seen + 1, head: acc.head, arg_ids: list_snoc_item(xs: acc.arg_ids, item: a), args_are_atoms: acc.args_are_atoms }
+            Absent => TypeBinderInstantiationScan { seen: acc.seen + 1, head: acc.head, arg_ids: acc.arg_ids, args_are_atoms: false }
+          }
+        }
+      _ => acc
+    }
+  })
+}
+
+fn type_binder_atom_identity_optional(n: Node) -> Optional<Symbol> {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+    _ => optional_absent()
+  }
 }

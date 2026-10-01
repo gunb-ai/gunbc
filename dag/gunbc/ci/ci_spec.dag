@@ -1,5 +1,6 @@
 module gunbc.ci_spec
 
+import gunbc.machine_intake_mtcollins1_kvm_still { mtcollins1_kvm_observer_dir }
 import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
 import gunbc.runner_microvm_slot_unit { microvm_slot_start_receipt_path, microvm_slot_reserve_receipt_path }
 import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
@@ -13,6 +14,7 @@ import gunbc.spark.v41_row_store_readback_run { v41_readback_run_receipt_path }
 import gunbc.spark.v41_engram_differential_run { v41_differential_receipt_path }
 import gunbc.spark.v41_runtime_image_converge { v41_distribution_receipt_path }
 import gunbc.spark.v41_group_a_launch { v41_group_a_launch_receipt_path }
+import gunbc.spark.v41_serving_load { v41_serving_load_receipt_path }
 import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_access_url, secret_ref_version_resource }
 import gunbc.auth.ci_app_key_rotation {
@@ -74,6 +76,7 @@ import gunbc.machine_intake_mtcollins1_fan_observe { mtcollins1_fan_credential_p
 import gunbc.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
 import gunbc.machine_intake_mtcollins1_census_image_publish { mtcollins1_census_image_receipt_path }
 import gunbc.machine_intake_mtcollins1_census_member_readback { census_member_readback_receipt_path }
+import gunbc.machine_intake_mtcollins1_census_qemu_host_observe { census_qemu_host_observe_receipt_path }
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
@@ -171,6 +174,7 @@ import v2.std.collection { Absent, Present }
 import v2.std.diagnostic { EmitDirective, SeverityWarning, Accepted, Rejected }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.algebra { Cons, Empty }
 
 type FloorBatchStopPolicy = StopBeforeDependents | FullLedger
 
@@ -994,6 +998,21 @@ data gunbc_ci_mtcollins1_fan_observe_target: GunbcRunStepTarget = GunbcRunStepTa
   function: "mtcollins1_fan_observe_wet",
 }
 
+data gunbc_ci_mtcollins1_ui_bundle_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/machine_intake/mtcollins1_ui_bundle_observe.dag",
+  function: "mtcollins1_ui_bundle_observe_wet",
+}
+
+data gunbc_ci_mtcollins1_kvm_observer_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/machine_intake/mtcollins1_kvm_observer_observe.dag",
+  function: "mtcollins1_kvm_observer_observe_wet",
+}
+
+data gunbc_ci_mtcollins1_kvm_observer_release_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/machine_intake/mtcollins1_kvm_observer_observe.dag",
+  function: "mtcollins1_kvm_observer_release_wet",
+}
+
 data gunbc_ci_mtcollins1_census_image_publish_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/machine_intake/mtcollins1_census_image_publish.dag",
   function: "mtcollins1_census_image_publish_wet",
@@ -1002,6 +1021,16 @@ data gunbc_ci_mtcollins1_census_image_publish_target: GunbcRunStepTarget = Gunbc
 data gunbc_ci_mtcollins1_census_member_readback_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/machine_intake/mtcollins1_census_member_readback.dag",
   function: "mtcollins1_census_member_readback_wet",
+}
+
+data gunbc_ci_mtcollins1_census_qemu_host_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/machine_intake/mtcollins1_census_qemu_host_observe.dag",
+  function: "mtcollins1_census_qemu_host_observe_wet",
+}
+
+data gunbc_ci_mtcollins1_census_qemu_toolchain_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/machine_intake/mtcollins1_census_qemu_toolchain_converge.dag",
+  function: "mtcollins1_census_qemu_toolchain_converge_wet",
 }
 
 data gunbc_ci_spark_grant_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1057,6 +1086,14 @@ data gunbc_ci_spark_v41_runtime_image_distribute_target: GunbcRunStepTarget = Gu
 data gunbc_ci_spark_v41_group_a_launch_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/spark/v41_group_a_launch.dag",
   function: "v41_group_a_launch_ci_wet",
+}
+
+// THE V4.1 SERVING-LOAD STAIRCASE (gunbc.spark.v41_serving_load): the shared serving-load runner against
+// the V4.1 head, with rank pressure on every Group A host. The same prelude: the session host (the head)
+// is the dispatch's target.
+data gunbc_ci_spark_v41_serving_load_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/v41_serving_load.dag",
+  function: "v41_serving_load_ci_wet",
 }
 
 // THE PUBLISHED V4.1 CHECKPOINT ON ONE GROUP A SPARK (gunbc.spark.v41_checkpoint_materialize): the same
@@ -1280,8 +1317,13 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_host_reset_return_target,
     gunbc_ci_host_reset_dispatch_admission_target,
     gunbc_ci_mtcollins1_fan_observe_target,
+    gunbc_ci_mtcollins1_ui_bundle_observe_target,
+    gunbc_ci_mtcollins1_kvm_observer_observe_target,
+    gunbc_ci_mtcollins1_kvm_observer_release_target,
     gunbc_ci_mtcollins1_census_image_publish_target,
     gunbc_ci_mtcollins1_census_member_readback_target,
+    gunbc_ci_mtcollins1_census_qemu_host_observe_target,
+    gunbc_ci_mtcollins1_census_qemu_toolchain_converge_target,
     gunbc_ci_spark_grant_install_target,
     gunbc_ci_spark_bootstrap_target,
     gunbc_ci_spark_serving_apply_target,
@@ -1823,6 +1865,73 @@ fn gunbc_ci_mtcollins1_fan_observe_invoke() -> String {
       receipt_rel: mtcollins1_fan_observation_receipt_path
     )
   )
+}
+
+// THE READ-ONLY MT. COLLINS PROBES' STEPS ARE bash_build NODES RENDERED BY v2.workflow.bash_emit
+// bash_emit_stmts (review 73415): the modeled route the fan lane's marker names as available, so these
+// steps carry no hand-spelled shell and no scaffold marker. Each probe materializes the one pinned BMC
+// credential the fan series and the boot read -- the shared auth-header format, ONE bounded Secret
+// Manager read (gunbc_ci_sm_connect_timeout / gunbc_ci_sm_max_time) and the shared payload decode --
+// into its own 0600 file under RUNNER_TEMP, with the EXIT trap armed before the credential touches
+// disk; the run line is v2.workflow.gunbc_invoke_step_emit gunbc_run_command, the modeled invocation.
+fn gunbc_ci_mtcollins1_probe_rendered(stmts: List<Node>, set_e: Bool) -> String {
+  match bash_emit_stmts(statements: stmts, set_e: set_e) {
+    Accepted { value: text, diagnostics: _ } => text
+    Rejected { diagnostics: _ } => gunbc_invoke_step_orch_refused_poison
+  }
+}
+
+fn gunbc_ci_mtcollins1_probe_root_statement() -> Node {
+  bash_build_assign(name: "ROOT", value: bash_build_word_cmdsubst(body: bash_build_or_else(left: bquiet(stmt: bcmdl(lits: ["git", "rev-parse", "--show-toplevel"])), right: bcmdl(lits: ["pwd"]))))
+}
+
+fn gunbc_ci_mtcollins1_probe_credential_statements(stem: String) -> List<Node> {
+  let trap_body = gunbc_ci_mtcollins1_probe_rendered(stmts: [bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "HDR_FILE"), bv(name: "RESP_FILE"), bv(name: "DEST_FILE")])], set_e: false)
+  [
+    bcmdl(lits: ["set", "-euo", "pipefail"]),
+    bcmdl(lits: ["umask", "077"]),
+    bash_build_assign(name: "HDR_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: concat(concat("/", stem), "-auth-header"))])),
+    bash_build_assign(name: "RESP_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: concat(concat("/", stem), "-sm.json"))])),
+    bash_build_assign(name: "DEST_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: concat(concat("/", stem), "-bmc-credential"))])),
+    bcmd(words: [bl(text: "trap"), bl(text: trap_body), bl(text: "EXIT")]),
+    bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: gunbc_ci_auth_header_format), bv(name: "WIF_ACCESS_TOKEN")]), path: bv(name: "HDR_FILE")),
+    bash_build_and_then(
+      left: bcmd(words: [
+        bl(text: "curl"), bl(text: "-sSf"), bl(text: "--connect-timeout"), bl(text: to_string(second_count(s: gunbc_ci_sm_connect_timeout))),
+        bl(text: "--max-time"), bl(text: to_string(second_count(s: gunbc_ci_sm_max_time))), bl(text: "-o"), bv(name: "RESP_FILE"),
+        bl(text: "-H"), bcat(parts: [bl(text: "@"), bv(name: "HDR_FILE")]), bl(text: secret_ref_access_url(ref: mtcollins1_bmc_gunbc_secret_ref)),
+      ]),
+      right: bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "python3"), bl(text: "-c"), bl(text: gunbc_ci_sm_decode_payload_program), bv(name: "RESP_FILE")]), path: bv(name: "DEST_FILE")),
+    ),
+    bcmd(words: [bl(text: "chmod"), bl(text: "600"), bv(name: "DEST_FILE")]),
+    bcmd(words: [bl(text: "export"), bcat(parts: [bl(text: concat(mtcollins1_fan_credential_path_env as String, "=")), bv(name: "DEST_FILE")])]),
+    gunbc_ci_mtcollins1_probe_root_statement(),
+  ]
+}
+
+fn gunbc_ci_mtcollins1_probe_invoke(stem: String, target: GunbcRunStepTarget) -> String {
+  join([
+    gunbc_ci_mtcollins1_probe_rendered(stmts: gunbc_ci_mtcollins1_probe_credential_statements(stem: stem), set_e: false), "\n",
+    gunbc_run_command(source_roots: witness_layer_roots, entry: target.entry, function: target.function, claim_run: false), "\n",
+  ], "")
+}
+
+fn gunbc_ci_mtcollins1_ui_bundle_observe_invoke() -> String {
+  gunbc_ci_mtcollins1_probe_invoke(stem: "mtcollins1-ui-bundle", target: gunbc_ci_mtcollins1_ui_bundle_observe_target)
+}
+
+fn gunbc_ci_mtcollins1_kvm_observer_observe_invoke() -> String {
+  gunbc_ci_mtcollins1_probe_invoke(stem: "mtcollins1-kvm-observer", target: gunbc_ci_mtcollins1_kvm_observer_observe_target)
+}
+
+// THE PROBE'S always() RELEASE needs no credential: it releases the observer process it started and the
+// unit hold only if this run holds it (gunbc.machine_intake_mtcollins1_kvm_observer_observe
+// mtcollins1_kvm_observer_release_wet).
+fn gunbc_ci_mtcollins1_kvm_observer_release_invoke() -> String {
+  join([
+    gunbc_ci_mtcollins1_probe_rendered(stmts: [bcmdl(lits: ["set", "-euo", "pipefail"]), gunbc_ci_mtcollins1_probe_root_statement()], set_e: false), "\n",
+    gunbc_run_command(source_roots: witness_layer_roots, entry: gunbc_ci_mtcollins1_kvm_observer_release_target.entry, function: gunbc_ci_mtcollins1_kvm_observer_release_target.function, claim_run: false), "\n",
+  ], "")
 }
 
 // The in-run ssh-agent teardown — a FRESH per-job effect (each isolated job starts and must kill
@@ -2658,6 +2767,28 @@ fn gunbc_ci_mtcollins1_census_member_readback_invoke() -> String {
   )
 }
 
+// The QEMU host observe runs locally on the selected runner and reads only: no fleet key, no prelude.
+fn gunbc_ci_mtcollins1_census_qemu_host_observe_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_mtcollins1_census_qemu_host_observe_target.entry,
+    function: gunbc_ci_mtcollins1_census_qemu_host_observe_target.function,
+    claim_run: false,
+    receipt_rel: census_qemu_host_observe_receipt_path
+  )
+}
+
+// The toolchain converge runs locally on the selected runner as the job user: no fleet key, no prelude.
+fn gunbc_ci_mtcollins1_census_qemu_toolchain_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_mtcollins1_census_qemu_toolchain_converge_target.entry,
+    function: gunbc_ci_mtcollins1_census_qemu_toolchain_converge_target.function,
+    claim_run: false,
+    receipt_rel: census_qemu_host_observe_receipt_path
+  )
+}
+
 fn gunbc_ci_runner_guest_image_converge_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -2717,6 +2848,17 @@ fn gunbc_ci_spark_v41_group_a_launch_invoke() -> String {
     function: gunbc_ci_spark_v41_group_a_launch_target.function,
     claim_run: false,
     receipt_rel: v41_group_a_launch_receipt_path
+  )
+}
+
+fn gunbc_ci_spark_v41_serving_load_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_spark_v41_serving_load_target.entry,
+    function: gunbc_ci_spark_v41_serving_load_target.function,
+    claim_run: false,
+    receipt_rel: v41_serving_load_receipt_path
   )
 }
 
@@ -2932,9 +3074,14 @@ fn bhold(script_var: String, label: String, record: Node) -> Node {
 // release (mtcollins1_sol_hold_release_script), which signals nothing that is not that instance. Cleanup
 // runs as a checked condition, so a failed removal is reported beside the others instead of aborting
 // the trap under errexit before they are reported.
+//
+// The trap also releases the KVM observer this attempt started (gunbc.machine_intake_mtcollins1_kvm_still)
+// through the same identity-checked release, as its own checked result (kvm): released on exit 0 (gone,
+// not ours, or no record in this run's attempt directory), otherwise the release's exit code is kept --
+// 1 survived KILL, 2 unobservable -- and reported, never read as released.
 fn gunbc_ci_mtcollins1_boot_trap_body() -> List<Node> {
   let watcher_record = bsol(suffix: concat(mtcollins1_sol_notice_file_infix, "watcher"))
-  let failed = [bl(text: "(boot command exited "), bv(name: "rc"), bl(text: "; watcher result "), bv(name: "obs"), bl(text: "; watcher cleanup "), bv(name: "wclean"), bl(text: "; collector release "), bv(name: "col"), bl(text: "; credential cleanup "), bv(name: "clean"), bl(text: "; delivery ledger "), bv(name: "SOL_DELIVERY"), bl(text: ")")]
+  let failed = [bl(text: "(boot command exited "), bv(name: "rc"), bl(text: "; watcher result "), bv(name: "obs"), bl(text: "; watcher cleanup "), bv(name: "wclean"), bl(text: "; collector release "), bv(name: "col"), bl(text: "; KVM observer release "), bv(name: "kvm"), bl(text: "; credential cleanup "), bv(name: "clean"), bl(text: "; delivery ledger "), bv(name: "SOL_DELIVERY"), bl(text: ")")]
   [
     bash_build_assign(name: "rc", value: bv(name: "?")),
     bash_build_if_from_stmts(cond: btest(words: [bl(text: "-n"), bv(name: "SOL_WORKFLOW")]), then_stmts: [
@@ -2971,6 +3118,7 @@ fn gunbc_ci_mtcollins1_boot_trap_body() -> List<Node> {
         else_stmts: [bset(name: "col", value: "foreign-record-kept")],
       ),
     ]),
+    bif_else(cond: bhold(script_var: "SOL_RELEASE", label: "kvm-release", record: bcat(parts: [bv(name: "GITHUB_WORKSPACE"), bl(text: concat("/", mtcollins1_kvm_observer_dir(attempt: ""))), bv(name: "GITHUB_RUN_ID"), bl(text: "/observer.pid")])), then_stmts: [bset(name: "kvm", value: "released")], else_stmts: [bash_build_assign(name: "kvm", value: bcat(parts: [bl(text: "unresolved-release-exit-"), bv(name: "?")]))]),
     bset(name: "obs", value: "unstarted"),
     bset(name: "wclean", value: "none"),
     bash_build_if_from_stmts(cond: btest(words: [bl(text: "-n"), bv(name: "SOL_NOTICE_WATCH")]), then_stmts: [
@@ -2999,6 +3147,7 @@ fn gunbc_ci_mtcollins1_boot_trap_body() -> List<Node> {
     ),
     bash_build_if_from_stmts(cond: bash_build_and_then(left: btest(words: [bv(name: "col"), bl(text: "!="), bl(text: "absent")]), right: btest(words: [bv(name: "col"), bl(text: "!="), bl(text: "released")])), then_stmts: [becho(parts: [bl(text: "::error::mtcollins1 SOL collector not released at step exit ")].concat(failed)), bset(name: "fail", value: "1")]),
     bash_build_if_from_stmts(cond: bash_build_and_then(left: btest(words: [bv(name: "wclean"), bl(text: "!="), bl(text: "none")]), right: btest(words: [bv(name: "wclean"), bl(text: "!="), bl(text: "stopped")])), then_stmts: [becho(parts: [bl(text: "::error::mtcollins1 SOL notice watcher cleanup unresolved ")].concat(failed)), bset(name: "fail", value: "1")]),
+    bash_build_if_from_stmts(cond: btest(words: [bv(name: "kvm"), bl(text: "!="), bl(text: "released")]), then_stmts: [becho(parts: [bl(text: "::error::mtcollins1 KVM observer release did not resolve at step exit (release exit 1 = survived KILL, 2 = unobservable) ")].concat(failed)), bset(name: "fail", value: "1")]),
     bash_build_if_from_stmts(cond: btest(words: [bv(name: "clean"), bl(text: "!="), bl(text: "ok")]), then_stmts: [becho(parts: [bl(text: "::error::mtcollins1 boot credential cleanup failed ")].concat(failed)), bset(name: "fail", value: "1")]),
     bash_build_if_from_stmts(
       cond: bash_build_and_then(left: btest(words: [bv(name: "rc"), bl(text: "="), bl(text: "0")]), right: btest(words: [bv(name: "fail"), bl(text: "="), bl(text: "1")])),

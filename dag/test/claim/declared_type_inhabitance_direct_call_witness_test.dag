@@ -476,6 +476,24 @@ test fn w_a_branded_refinement_at_an_unrelated_product_formal_still_refuses() ->
     > violation_count(source: disjoint_partner_source, wanted: "DeclaredTypeNotInhabited")
 }
 
+// THE RESIDUAL OF THE DISJOINT-CHAIN HOLE, AFTER THE KERNEL-BASE SPECIMEN ABOVE CLOSED. gunbc#12695
+// peeled the PRODUCED side's where-refinement before the kernel-at-structured judgment, so
+// HostIdentity (a refinement whose chain bottoms out in kernel String) now refuses at Box and the
+// control above is a permanent regression control. That repair did NOT remove the accepting
+// residual at the final default, which is what the admission row's trigger names: a refinement
+// whose chain bottoms out in a PRODUCT reaches no arm. Measured at #12695's head: Tagged (Other
+// where brand) at Box -> 0 DeclaredTypeNotInhabited, while plain Other at Box -> 1. Same
+// one-token-differing closure pair as above, so a row appearing elsewhere in the closure cancels.
+// Class and trigger: gunbc.recurring_failure_mode.absence_classifier_default_bucket.
+data disjoint_product_refinement_at_product_source: String = "module probe_disjoint_product_refinement\nimport std.types { Int, String }\ntype Other { w: Int }\ntype Tagged = Other where brand(\"Tagged\")\ntype Box { v: String }\ndata probe_tagged_d: Tagged = Other { w: 1 } as Tagged\ndata probe_box_d: Box = Box { v: \"x\" }\nfn takes_box(b: Box) -> Int { 1 }\nfn probe() -> Int { takes_box(b: probe_tagged_d) }\n"
+
+data disjoint_product_refinement_partner_source: String = "module probe_disjoint_product_refinement\nimport std.types { Int, String }\ntype Other { w: Int }\ntype Tagged = Other where brand(\"Tagged\")\ntype Box { v: String }\ndata probe_tagged_d: Tagged = Other { w: 1 } as Tagged\ndata probe_box_d: Box = Box { v: \"x\" }\nfn takes_box(b: Box) -> Int { 1 }\nfn probe() -> Int { takes_box(b: probe_box_d) }\n"
+
+test fn w_a_branded_product_refinement_at_an_unrelated_product_formal_still_refuses() -> Bool {
+  violation_count(source: disjoint_product_refinement_at_product_source, wanted: "DeclaredTypeNotInhabited")
+    > violation_count(source: disjoint_product_refinement_partner_source, wanted: "DeclaredTypeNotInhabited")
+}
+
 // THE COLLECTION-VERSUS-NOMINAL-PRODUCT CELL, IN BOTH DIRECTIONS. Measured on main ff2110b7e24,
 // both arms below ADMITTED: the callee body ran and returned. Every arm of
 // declared_type_inhabitance keyed on the kind of ONE side -- `collection_at_scalar_declared_type`

@@ -23,7 +23,7 @@ import extdeps.virtualization.firecracker {
 import product.fabric.identity { FabricIdentity, WorkKey, DemandKey, OfferKey, fabric_identity_eq }
 import product.fabric.work { Work, TrustDomainRef }
 import product.fabric.sanitation { CellId }
-import gunbc.fabric_witness_run { gunbc_internal_fleet_trust_domain }
+import gunbc.floor_demand { gunbc_internal_fleet_trust_domain }
 import gunbc.fabric_required_build_cell { RequiredBuildCellSnapshot }
 import gunbc.fabric_cell_converge { fabric_cell_id_for_slot }
 import gunbc.runner_microvm_attempt_bounds { runner_attempt_vmm_deadline, runner_attempt_vmm_kill_grace }
@@ -329,7 +329,7 @@ fn jit_device_staging(jail_root: String, admitted: AdmittedJitCredential) -> Jit
 // the unproduced layer.
 //
 // THE ARM IS SELECTED BY THE WORK'S TRUST DOMAIN AS A TYPED FACT, NOT BY A FLAG: a Work whose
-// requirements.trust_domain is not gunbc.fabric_witness_run gunbc_internal_fleet_trust_domain
+// requirements.trust_domain is not gunbc.floor_demand gunbc_internal_fleet_trust_domain
 // refuses with ReservationArmRequiresInternalFleetTrust, so the untrusted-CI route -- which the
 // migration plan keeps grant disagreement for -- cannot reach this arm by construction. The
 // witness carries the control.
