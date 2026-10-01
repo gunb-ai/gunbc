@@ -538,35 +538,23 @@ fn loop_behavior_edges_conform(children: List<Edge>) -> Bool {
 data arrow_signature_order_label: EdgeLabel = Named { name: ^arrow_signature_order_edge }
 
 // AN ARROW'S CONTRACT EDGES (XL-2 PR2a; ruling 2026-10-01, docs/plans/arrow-contract-edges.md). Two
-// optional named edges, each at most once, each a CLOSED vocabulary this wall enumerates. They are
-// facts about what the Arrow promises, not binders, so neither counts toward the one type-binder
-// Conj, and the binder, order and body readers never consume them:
-//  - ^arrow_effect_claims_edge: the Arrow's declared EFFECT claims, a Conj of self-named childless
-//    Atoms drawn from { readonly, idempotent }, no claim twice. Whether a claim agrees with the
-//    derived effect shape is std.effects check_modifier_vs_derivation's question, not this wall's.
-//  - ^arrow_execution_mode_claim_edge: the Arrow's declared EXECUTION-MODE claim, one childless Atom
-//    drawn from { hermetic } (the std.execution_mode axis). Kept apart from the effect claims because
-//    it is a fact about where the Arrow may run, not about what its effect does.
-// An unknown label or a target outside these shapes refuses. A claim-free Arrow carries neither edge,
-// so its identity is what it was before the edges existed.
+// optional named edges that state what the Arrow promises: ^arrow_effect_claims_edge (its declared
+// effect claims) and ^arrow_execution_mode_claim_edge (its declared execution-mode claim). This module
+// owns only their STRUCTURE: each appears at most once, and neither is a binder, so neither counts
+// toward the one type-binder Conj and the binder, order and body readers never consume them. Their
+// VOCABULARY -- which claims and modes exist -- is not this module's fact: it lives in std.effects
+// EffectClaim and std.execution_mode ExecutionMode, and v2.std.arrow_contract checks a contract edge's
+// target against those homes (v2.std.type_binder type_binder_node_conforms runs it on every Arrow).
 data arrow_effect_claims_label: EdgeLabel = Named { name: ^arrow_effect_claims_edge }
 data arrow_execution_mode_claim_label: EdgeLabel = Named { name: ^arrow_execution_mode_claim_edge }
 
-fn arrow_effect_claim_is_admitted(claim: Symbol) -> Bool {
-  (claim == symbol_intern_lexeme(lexeme: "readonly")) || (claim == symbol_intern_lexeme(lexeme: "idempotent"))
-}
-
-fn arrow_execution_mode_claim_is_admitted(claim: Symbol) -> Bool {
-  claim == symbol_intern_lexeme(lexeme: "hermetic")
-}
-
-// The Arrow named edges that are contract edges rather than binders.
 fn arrow_named_edge_is_contract(e: Edge) -> Bool {
   (edge_label_of(e: e) == arrow_effect_claims_label) || (edge_label_of(e: e) == arrow_execution_mode_claim_label)
 }
 
 // The Arrow named edges that are not binders: its body, its declared order and its contract edges.
-// One predicate, so both counts below agree on what a binder is.
+// The one predicate every count of an Arrow's binders reads (here and v2.std.type_binder
+// arrow_named_labels_conform), so they agree on what a binder is.
 fn arrow_named_edge_is_non_binder(e: Edge) -> Bool {
   match e.label {
     Positional => false
@@ -586,8 +574,8 @@ fn arrow_signature_edges_conform(children: List<Edge>) -> Bool {
   })
   (binder_edges <= 1)
   && arrow_signature_order_conforms(children: children)
-  && arrow_effect_claims_conform(children: children)
-  && arrow_execution_mode_claim_conforms(children: children)
+  && (name_occurrences(name: ^arrow_effect_claims_edge, children: children) <= 1)
+  && (name_occurrences(name: ^arrow_execution_mode_claim_edge, children: children) <= 1)
   && fold(children, init: true, f: fn(acc, e) {
     match e.label {
       Positional => acc
@@ -596,49 +584,6 @@ fn arrow_signature_edges_conform(children: List<Edge>) -> Bool {
   })
 }
 
-// A self-named childless Atom: the Atom's identity is the label that reaches it.
-fn arrow_contract_atom_conforms(label: Symbol, target: Node) -> Bool {
-  match target.kind {
-    TypeNode { connective: Atom { identity: id } } => (id == label) && (count(target.children) == 0)
-    _ => false
-  }
-}
-
-// At most one effect-claims edge; its target is a Conj of distinct admitted claims, each a self-named
-// childless Atom.
-fn arrow_effect_claims_conform(children: List<Edge>) -> Bool {
-  match named_edge_target_lookup(children: children, name: ^arrow_effect_claims_edge) {
-    Absent => true
-    Ambiguous => false
-    Found { target: claims } =>
-      match claims.kind {
-        TypeNode { connective: Conj } =>
-          all_names_distinct(children: claims.children)
-            && fold(claims.children, init: true, f: fn(acc, c) { acc && arrow_effect_claim_edge_conforms(e: c) })
-        _ => false
-      }
-  }
-}
-
-fn arrow_effect_claim_edge_conforms(e: Edge) -> Bool {
-  match e.label {
-    Positional => false
-    Named { name: sym } => arrow_effect_claim_is_admitted(claim: sym) && arrow_contract_atom_conforms(label: sym, target: e.target)
-  }
-}
-
-// At most one execution-mode edge; its target is one admitted, childless mode Atom.
-fn arrow_execution_mode_claim_conforms(children: List<Edge>) -> Bool {
-  match named_edge_target_lookup(children: children, name: ^arrow_execution_mode_claim_edge) {
-    Absent => true
-    Ambiguous => false
-    Found { target: mode } =>
-      match mode.kind {
-        TypeNode { connective: Atom { identity: id } } => arrow_execution_mode_claim_is_admitted(claim: id) && (count(mode.children) == 0)
-        _ => false
-      }
-  }
-}
 
 
 // THE ONE PARSER OF AN ARROW'S DECLARED ORDER. An Arrow built from a declared signature carries one
