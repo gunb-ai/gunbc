@@ -691,8 +691,8 @@ type LoweredShape
   | LoweredDataDeclaration
   | LoweredFnBody
   | LoweredTypeDeclaration
-  | LoweredTypeVariant
   | LoweredServiceDeclaration
+  | LoweredResourceDeclaration
   | LoweredOperand
 
 // A NODE IN THE FOLD'S TREE IS ONE OF THREE THINGS, EACH IDENTIFIED POSITIVELY. Raw parse is a
