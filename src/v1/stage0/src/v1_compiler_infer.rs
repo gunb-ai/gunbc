@@ -29109,6 +29109,7 @@ pub fn typed_module_with_surface_pool(
         type_env: Rc::new(TypeEnv {
             ancestry: Rc::new(AncestryView {
                 pool: pool.clone(),
+                reach: crate::v1_compiler_infer_env::surface_reach_of(m.type_env.clone().ancestry.clone().imports.clone(), pool.clone()),
                 ..(*m.type_env.clone().ancestry.clone()).clone()
             }),
             ..(*m.type_env.clone()).clone()
@@ -29116,9 +29117,10 @@ pub fn typed_module_with_surface_pool(
         interface: Rc::new(ModuleInterface {
             env: Rc::new(TypeEnv {
                 ancestry: Rc::new(AncestryView {
-                    pool: pool.clone(),
-                    ..(*m.interface.clone().env.clone().ancestry.clone()).clone()
-                }),
+                pool: pool.clone(),
+                reach: crate::v1_compiler_infer_env::surface_reach_of(m.interface.clone().env.clone().ancestry.clone().imports.clone(), pool.clone()),
+                ..(*m.interface.clone().env.clone().ancestry.clone()).clone()
+            }),
                 ..(*m.interface.clone().env.clone()).clone()
             }),
             ..(*m.interface.clone()).clone()

@@ -16076,11 +16076,19 @@ fn modules_without_surface_pools(modules: List<TypedModule>) -> List<TypedModule
   map(modules, m => typed_module_with_surface_pool(m: m, pool: empty_surface_pool()))
 }
 
+// A view's closure bitset is keyed by the ordinals of the pool it reads, and two pools over the same
+// modules can number them differently (the realize loop admits in completion order; a rebuilt pool
+// admits in path order). So re-pointing a view at a pool RECOMPUTES its closure from that pool; a
+// bitset carried over from another pool would test the wrong modules' bits.
 fn typed_module_with_surface_pool(m: TypedModule, pool: SurfacePool) -> TypedModule {
   with(m, {
-    type_env: with(m.type_env, { ancestry: with(m.type_env.ancestry, { pool: pool }) }),
-    interface: with(m.interface, { env: with(m.interface.env, { ancestry: with(m.interface.env.ancestry, { pool: pool }) }) })
+    type_env: with(m.type_env, { ancestry: view_over_pool(view: m.type_env.ancestry, pool: pool) }),
+    interface: with(m.interface, { env: with(m.interface.env, { ancestry: view_over_pool(view: m.interface.env.ancestry, pool: pool) }) })
   })
+}
+
+fn view_over_pool(view: AncestryView, pool: SurfacePool) -> AncestryView {
+  with(view, { pool: pool, reach: surface_reach_of(imports: view.imports, pool: pool) })
 }
 
 fn rewire_type_env_import_str_binding_identity_unpooled(modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<TypedModule> {
