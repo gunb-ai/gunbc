@@ -29107,25 +29107,28 @@ pub fn typed_module_with_surface_pool(
 ) -> Rc<TypedModule> {
     Rc::new(TypedModule {
         type_env: Rc::new(TypeEnv {
-            ancestry: Rc::new(AncestryView {
-                pool: pool.clone(),
-                reach: crate::v1_compiler_infer_env::surface_reach_of(m.type_env.clone().ancestry.clone().imports.clone(), pool.clone()),
-                ..(*m.type_env.clone().ancestry.clone()).clone()
-            }),
+            ancestry: view_over_pool(m.type_env.clone().ancestry.clone(), pool.clone()),
             ..(*m.type_env.clone()).clone()
         }),
         interface: Rc::new(ModuleInterface {
             env: Rc::new(TypeEnv {
-                ancestry: Rc::new(AncestryView {
-                pool: pool.clone(),
-                reach: crate::v1_compiler_infer_env::surface_reach_of(m.interface.clone().env.clone().ancestry.clone().imports.clone(), pool.clone()),
-                ..(*m.interface.clone().env.clone().ancestry.clone()).clone()
-            }),
+                ancestry: view_over_pool(
+                    m.interface.clone().env.clone().ancestry.clone(),
+                    pool.clone(),
+                ),
                 ..(*m.interface.clone().env.clone()).clone()
             }),
             ..(*m.interface.clone()).clone()
         }),
         ..(*m.clone()).clone()
+    })
+}
+
+pub fn view_over_pool(view: Rc<AncestryView>, pool: Rc<SurfacePool>) -> Rc<AncestryView> {
+    Rc::new(AncestryView {
+        pool: pool.clone(),
+        reach: crate::v1_compiler_infer_env::surface_reach_of(view.imports.clone(), pool.clone()),
+        ..(*view.clone()).clone()
     })
 }
 
