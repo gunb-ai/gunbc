@@ -32,7 +32,11 @@ use im::Vector;
 /// longer replays `rewire_type_env_import_str_binding_identity` (v3 did). v1 and
 /// v3 artifacts cold-rebuild. Parent-link and func-env rewire remain decode-time
 /// — they repair Rc parent edges, not declaration identity.
-const FORMAT_VERSION: u32 = 4;
+///
+/// v5: the persisted `ResolvedGraph` carries `item_leaf_owner_modules` and no `emit_graph_info`
+/// (emission builds its own). A v4 artifact has the other shape, so it cold-rebuilds on the
+/// version check rather than reaching decode and failing there.
+const FORMAT_VERSION: u32 = 5;
 const MAGIC: &[u8; 8] = b"gunbgrpc";
 /// v3 header sentinel: union output not persisted in payload (semantically incomplete).
 pub const UNION_PART_ABSENT_DIGEST: &str = "ffffffffffffffff";
@@ -79,7 +83,7 @@ pub enum CacheRejectReason {
     PartDecodeFailure,
 }
 
-/// Per-output digests and byte sizes for a FORMAT_VERSION 4 artifact — derived
+/// Per-output digests and byte sizes for a current-FORMAT_VERSION artifact — derived
 /// from the bounded header without reading payload bytes on the probe path.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FaithfulResolvedGraphProbeParts {
@@ -788,8 +792,8 @@ fn decode_v3_payload_from_file(file: &mut File, header: V3Header) -> CacheLookup
     let graph = Rc::new(ResolvedGraph {
         modules,
         item_registry: decoded.item_registry.clone(),
+        item_leaf_owner_modules: decoded.item_leaf_owner_modules.clone(),
         diagnostics: decoded.diagnostics.clone(),
-        emit_graph_info: decoded.emit_graph_info.clone(),
     });
     record_decode();
     CacheLookupResult::Hit(CachedResolvedGraph {
@@ -1292,8 +1296,8 @@ pub fn deserialize_fixture_payload_for_test(bytes: &[u8]) -> Result<CachedResolv
         graph: Rc::new(ResolvedGraph {
             modules,
             item_registry: decoded.item_registry.clone(),
+            item_leaf_owner_modules: decoded.item_leaf_owner_modules.clone(),
             diagnostics: decoded.diagnostics.clone(),
-            emit_graph_info: decoded.emit_graph_info.clone(),
         }),
         source_indices,
         compile_clean_diags: Rc::new(Vector::new()),

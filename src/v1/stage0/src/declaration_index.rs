@@ -1704,7 +1704,7 @@ pub fn index_get<'a>(
 /// judgments distinct from content-addressed cross-process judgments. The broader parse-sweep
 /// index is deliberately not a denominator, and import edges are deliberately absent: neither
 /// establishes that the lane judged a module.
-pub fn modules_unresolved_by_lane(
+pub fn modules_outside_lane_subject(
     admitted_module_identities: Vec<String>,
     judged_module_identities: &[String],
 ) -> Vec<String> {

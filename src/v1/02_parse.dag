@@ -4120,10 +4120,9 @@ fn parse_exit_entries_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node
       _ => r3.tokens
     }
     let code_str = status_expr_to_str(expr: code, source_indices: ctx.source_indices)
-    let type_name = node_to_name_str(n: r3.type_expr, source_indices: ctx.source_indices)
     let prop_name = concat("exit_", code_str)
     let minted = mint_parsed_node_identity(ctx: r3.ctx)
-    let entry = make_field_init_node(occurrence_identity: minted.identity, name: prop_name, value: make_named_expr_node(occurrence_identity: r3.type_expr.occurrence_identity, name: type_name, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: r3.type_expr.span, name_span: r3.type_expr.span), span: r3.type_expr.span, name_span: no_span())
+    let entry = make_field_init_node(occurrence_identity: minted.identity, name: prop_name, value: r3.type_expr, span: r3.type_expr.span, name_span: no_span())
     let e = eat(tokens: desc_tokens, expected: ExpectComma)
     let tokens = skip_newlines(tokens: match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => desc_tokens })
     parse_exit_entries_acc(tokens: tokens, ctx: minted.ctx, acc: list_push(acc, entry))

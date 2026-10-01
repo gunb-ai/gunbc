@@ -258,14 +258,18 @@ fn slot_census_from_command_outcome(
 // classifier above. Every reader that runs the census words over a typed argv leg decodes through
 // this fn -- observe_slot_population_over_ssh over the fleet edge, and the host-effect realizer's
 // remote arms -- so there are not two places for one of them to render an unreadable host as an
-// empty population.
+// empty population. The refusal names WHERE the read failed, and the caller supplies that noun: the
+// fleet reader says "the fleet edge", the realizer's remote arms say "the transport" -- a census
+// refused over the ssh edge is not a fleet-edge fact. The refused reason that follows the noun
+// names the concrete endpoint either way.
 fn slot_census_from_typed_argv_outcome(
   host: HostIdentity,
   outcome: TypedArgvExecOutcome,
+  edge_noun: String,
 ) -> SlotCensus {
   match outcome {
     TypedArgvExecRefused { reason: why } =>
-      CensusRefused { cause: join(["runner slot population unreadable over the fleet edge: ", why], "") }
+      CensusRefused { cause: join(["runner slot population unreadable over ", edge_noun, ": ", why], "") }
     TypedArgvExecConverged { result: listed } =>
       slot_census_from_command_outcome(
         host: host,
@@ -292,5 +296,6 @@ fn observe_slot_population_over_ssh(
       context: context,
       argv: systemctl_list_all_service_units_argv(),
     ),
+    edge_noun: "the fleet edge",
   )
 }

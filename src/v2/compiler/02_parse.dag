@@ -3329,9 +3329,10 @@ fn parse_expr_terminal_stamped(
 
 // A STRING VALUE CARRIES ITS DECODED VALUE (v2.extdeps.languages.dag
 // dag_string_literal_node_from_lexeme), refusing located on an unframed lexeme or a malformed
-// escape, exactly as the int-literal arm of parse_expr_terminal decodes its magnitude. Only a
-// class-stamped string terminal is a value: a lexeme-stamped one is a quoted record key, whose
-// identity is its spelling, and parse_expr_terminal keeps it on parse_expr_terminal_stamped.
+// escape, exactly as the int-literal arm of parse_expr_terminal decodes its magnitude. Every string
+// terminal is decoded here, whatever its stamp: a quoted field-init key is the class-stamped terminal
+// of its own production (v2.extdeps.languages.dag dag_grammar_field_init_string_key_expr), so there is
+// no spelling-stamped string terminal left to keep apart.
 fn parse_expr_string_literal_value(
   tok: Token,
   remaining: List<Token>,
@@ -3414,13 +3415,7 @@ fn parse_expr_terminal(
                     }
                 }
               } else if token_class == ^dag_token_string_literal {
-                match stamp {
-                  StampClass =>
-                    parse_expr_string_literal_value(tok: tok, remaining: remaining, table: table, prov: prov)
-                  StampLexeme => parse_expr_terminal_stamped(tok: tok, stamp: stamp, remaining: remaining, table: table, prov: prov)
-                  StampBinding { binding: _ } =>
-                    parse_expr_terminal_stamped(tok: tok, stamp: stamp, remaining: remaining, table: table, prov: prov)
-                }
+                parse_expr_string_literal_value(tok: tok, remaining: remaining, table: table, prov: prov)
               } else if token_class == ^dag_token_float_literal {
                 let minted = parse_mint_from_source(
                   prov: prov,
