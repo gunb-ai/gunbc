@@ -899,6 +899,30 @@ fn gunbc_runner_slot_demand_sum_memory_max(slots: Int, per_slot: ByteSize) -> By
   byte_size(byte_size_count(b: per_slot) * slots)
 }
 
+// WHAT THE SLOTS OF A WIDTH DEMAND, ASKED PER IDENTITY. Each fleet index 1..slots is granted what
+// gunbc_runner_slot_desired_for answers for it -- the floor class row for the class indices, the
+// fleet row otherwise -- and the demand is their sum. This is deliberately NOT the slice cap's own
+// arithmetic (gunbc_runner_slice_cap_for_width charges a class block and a remainder): the two are
+// derived by different routes, so the conservation check between them can disagree, and its RED
+// (one more slot than the width) is authorable. A single per-slot figure times the width stopped
+// being the demand when the class arrived; checked that way the wall had slack and the RED went
+// silent.
+fn gunbc_runner_slot_identity_demand_sum(host: HostIdentity, slots: Int) -> ByteSize {
+  if slots < 1 {
+    byte_size(0)
+  } else {
+    byte_size(fold(
+      nat_range_inclusive(lo: 1, hi: slots),
+      init: 0,
+      f: (acc, i) => acc + byte_size_count(b: gunbc_runner_slot_desired_for(slot: RunnerSlotIdentity { host: host, slot_index: i }).memory_max)
+    ))
+  }
+}
+
+fn gunbc_runner_slot_identity_demand_within_slice(host: HostIdentity, slots: Int, slice_cap: ByteSize) -> Bool {
+  byte_size_count(b: gunbc_runner_slot_identity_demand_sum(host: host, slots: slots)) <= byte_size_count(b: slice_cap)
+}
+
 fn gunbc_runner_slot_oversubscription_within_slice(slots: Int, per_slot: ByteSize, slice_cap: ByteSize) -> Bool {
   byte_size_count(b: gunbc_runner_slot_demand_sum_memory_max(slots: slots, per_slot: per_slot)) <=
     byte_size_count(b: slice_cap)
@@ -1341,9 +1365,9 @@ fn gunbc_runner_slot_allocation_wall_holds() -> Bool {
       gunbc_admitted_runner_slot_allocations(),
       a =>
         a.slots_per_host > 0
-          && gunbc_runner_slot_oversubscription_within_slice(
+          && gunbc_runner_slot_identity_demand_within_slice(
+               host: a.host,
                slots: a.slots_per_host,
-               per_slot: a.per_slot.memory_max,
                slice_cap: a.runner_slice_cap
              )
     )
