@@ -27924,85 +27924,17 @@ mod value_depth_walker_tests {
         assert!(crate::cli_run::value_to_wire_json(&deeper, &ctx).is_err());
     }
 
+    include!("value_depth_census.rs");
+
+    /// THE CENSUS AS A CHECK, asserted as a test as well as enforced by build.rs: both run the one
+    /// function in value_depth_census.rs.
     #[test]
     fn every_recursive_value_walker_is_guarded() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-        let mut unguarded = Vec::new();
-        let mut pending = vec![root];
-        while let Some(dir) = pending.pop() {
-            for entry in std::fs::read_dir(&dir).expect("readable source dir") {
-                let path = entry.expect("dir entry").path();
-                if path.is_dir() {
-                    pending.push(path);
-                } else if path.extension().is_some_and(|e| e == "rs") {
-                    let text = std::fs::read_to_string(&path).expect("readable source");
-                    for (name, body) in self_recursive_value_fns(&text) {
-                        if !body.contains("value_depth_guarded") {
-                            unguarded.push(format!("{}::{name}", path.display()));
-                        }
-                    }
-                }
-            }
-        }
+        let unguarded = unguarded_recursive_value_walkers(&root);
         assert!(
             unguarded.is_empty(),
             "recursive Value walkers without value_depth_guarded: {unguarded:?}"
         );
-    }
-
-    /// (name, body) of each `fn` whose parameter list names `Value` (the interpreter's, not
-    /// serde_json's) and whose body calls it by name.
-    fn self_recursive_value_fns(text: &str) -> Vec<(String, String)> {
-        let mut out = Vec::new();
-        let mut rest = text;
-        while let Some(at) = rest.find("fn ") {
-            let after = &rest[at + 3..];
-            rest = after;
-            let name: String = after
-                .chars()
-                .take_while(|c| c.is_alphanumeric() || *c == '_')
-                .collect();
-            if name.is_empty() {
-                continue;
-            }
-            let Some(open) = after.find('(') else {
-                continue;
-            };
-            let Some(close) = after[open..].find(')') else {
-                continue;
-            };
-            let params = &after[open..open + close];
-            let names_value = params.split(&[',', '(', ' ', '&', '\n'][..]).any(|tok| {
-                tok == "Value" || (tok.ends_with("::Value") && !tok.contains("serde_json"))
-            });
-            if !names_value {
-                continue;
-            }
-            let Some(body_open) = after[open + close..].find('{') else {
-                continue;
-            };
-            let start = open + close + body_open;
-            let mut depth = 0usize;
-            let mut end = None;
-            for (i, c) in after[start..].char_indices() {
-                match c {
-                    '{' => depth += 1,
-                    '}' => {
-                        depth -= 1;
-                        if depth == 0 {
-                            end = Some(start + i);
-                            break;
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            let Some(end) = end else { continue };
-            let body = &after[start + 1..end];
-            if body.contains(&format!("{name}(")) {
-                out.push((name, body.to_string()));
-            }
-        }
-        out
     }
 }

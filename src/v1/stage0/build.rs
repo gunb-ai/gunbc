@@ -110,6 +110,8 @@ fn watch_linked_partition_crates(manifest_dir: &Path) {
     );
 }
 
+include!("src/value_depth_census.rs");
+
 fn main() {
     // Re-run when the binary's Rust inputs change so a clean build cannot keep its
     // identity after those inputs become dirty. Watching the repository root would
@@ -122,6 +124,13 @@ fn main() {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
         .expect("gunbc build: Cargo did not supply CARGO_MANIFEST_DIR to the build script");
     watch_linked_partition_crates(Path::new(&manifest_dir));
+    let unguarded = unguarded_recursive_value_walkers(&Path::new(&manifest_dir).join("src"));
+    assert!(
+        unguarded.is_empty(),
+        "gunbc build: recursive Value walkers that do not run under value_depth_guarded would abort \
+         the process on a deep value (gunbc.recurring_failure_mode \
+         recursion_over_value_depth_uncounted_by_the_call_limit): {unguarded:?}"
+    );
 
     // Ask Git for its real paths: a linked worktree's `.git` is a pointer file, and a branch's
     // HEAD file contains only a stable symbolic-ref name. Watch both the worktree HEAD and its
