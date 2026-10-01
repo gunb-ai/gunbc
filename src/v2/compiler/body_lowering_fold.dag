@@ -10036,13 +10036,19 @@ fn body_lower_resource_decl(shell: Node) -> Outcome<BodyLowering> {
   })
 }
 
-// The captured kind of a resource declaration, read by the same reader the lowering uses, so a
-// declaration is captured exactly when the lowering admits it. A declaration that refuses
-// carries no kind; its lowering refuses the module on its own.
+// The captured kind of a resource declaration is its NAME, read by the same kw-then-ident decoder the
+// lowering uses, and nothing else: re-running the entry reader here would validate every entry a
+// second time for a result the lowering already decided. The capture never needs that verdict, because
+// a declaration the lowering refuses refuses its whole module, so no captured name outlives a refused
+// declaration on any route that reads the capture.
 fn body_lower_resource_decl_declared_kind_optional(shell: Node) -> Optional<DeclaredTypeKind> {
-  match body_lower_resource_read(shell: shell) {
-    Rejected { diagnostics: _ } => Absent
-    Accepted { value: r, diagnostics: _ } => Present { value: DeclaredResource { name: r.name } }
+  match parse_production_captured_child_optional(node: shell) {
+    Absent => optional_absent()
+    Present { value: captured } =>
+      match dag_surface_kw_then_ident_from_captured(captured: captured) {
+        Absent => optional_absent()
+        Present { value: name } => optional_present(value: DeclaredResource { name: name })
+      }
   }
 }
 
