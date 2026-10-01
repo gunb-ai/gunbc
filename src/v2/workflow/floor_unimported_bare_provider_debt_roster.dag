@@ -884,7 +884,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/std/claim_evidence.dag", name: "append", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/std/claim_evidence.dag", name: "filter", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/std/computation.dag", name: "get", standing: Retired { cause: NotAReference } },
-  UnimportedBareProviderDisposition { file: "dag/std/content_hash.dag", name: "get", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/std/content_hash.dag", name: "get", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/std/decision.dag", name: "any", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/std/decision.dag", name: "filter", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/std/effects.dag", name: "filter", standing: Retired { cause: NotAReference } },
