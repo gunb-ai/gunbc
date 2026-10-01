@@ -810,12 +810,31 @@ fn dag_grammar_generic_params_expr() -> GrammarExpr {
   )
 }
 
+// A PARAMETER MAY REFINE ITS TYPE WITH A WHERE CLAUSE (`lifetime_seconds: Int where range(min: 1,
+// max: 3600)`), as v1 02_parse parse_param reads it. The refined form is the FIRST arm and requires
+// the clause, so it is taken only where one is written; an unrefined parameter falls to the second
+// arm, whose shape is exactly the one every parameter reader already reads. A refined parameter
+// does not lower yet: v2.compiler.body_lowering_fold refuses the fn at the clause
+// (body_lowering_reason_parameter_refinement_unmodeled) rather than reading the type and dropping
+// the refinement.
 fn dag_grammar_typed_param_expr() -> GrammarExpr {
-  dag_grammar_sequence(
-    left: dag_grammar_binding_name_terminal(),
+  dag_grammar_choice(
+    left: dag_grammar_sequence(
+      left: dag_grammar_binding_name_terminal(),
+      right: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: ^dag_token_colon),
+        right: dag_grammar_sequence(
+          left: dag_grammar_nonterminal(production: ^dag_production_type_expr),
+          right: dag_grammar_nonterminal(production: ^dag_production_where_refinement_clause)
+        )
+      )
+    ),
     right: dag_grammar_sequence(
-      left: dag_grammar_terminal(token_class: ^dag_token_colon),
-      right: dag_grammar_nonterminal(production: ^dag_production_type_expr)
+      left: dag_grammar_binding_name_terminal(),
+      right: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: ^dag_token_colon),
+        right: dag_grammar_nonterminal(production: ^dag_production_type_expr)
+      )
     )
   )
 }

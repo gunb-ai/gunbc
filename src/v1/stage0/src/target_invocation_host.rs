@@ -258,6 +258,8 @@ pub enum TargetProducer {
     CompileCleanDiagnosticCensus,
     EvaluationStoreAddressExactHead,
     FloorMemoryQualification,
+    TypedGraphExclusiveBytes,
+    TypedGraphExclusiveBytesFloorSubject,
     PrimitiveEgressCensus,
     PrimitiveEgressCensusV2,
     PrimitiveEgressCensusDag,
@@ -356,6 +358,14 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("floor-memory-qualification"),
             TargetProducer::FloorMemoryQualification,
+        ),
+        (
+            instrument_label("typed-graph-exclusive-bytes"),
+            TargetProducer::TypedGraphExclusiveBytes,
+        ),
+        (
+            instrument_label("typed-graph-exclusive-bytes-floor-subject"),
+            TargetProducer::TypedGraphExclusiveBytesFloorSubject,
         ),
         (
             instrument_label("primitive-egress-census"),
@@ -772,6 +782,10 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
             run_evaluation_store_address_exact_head()
         }
         TargetProducer::FloorMemoryQualification => run_floor_memory_qualification(),
+        TargetProducer::TypedGraphExclusiveBytes => run_typed_graph_exclusive_bytes(),
+        TargetProducer::TypedGraphExclusiveBytesFloorSubject => {
+            run_typed_graph_exclusive_bytes_floor_subject()
+        }
         TargetProducer::PrimitiveEgressCensus => {
             run_primitive_egress_census("primitive-egress-census", "primitive_egress_census_exit")
         }
@@ -1881,6 +1895,268 @@ fn floor_phase_attribution_rendered(
         ));
     }
     out.join("\n")
+}
+
+/// THE TYPED GRAPH'S BYTES BY CLASS, READ LEAVE-ONE-OUT. The floor's sequential byte attribution
+/// (`cli_run::typed_graph_byte_attribution`) credits a class dropped late with every node it shared
+/// with classes dropped before it, so its figures are an order-dependent upper bound -- read as a
+/// saving, its `emit_graph_info` share predicted a peak cut that measured -0.07 GB (gunbc#12832).
+/// What a removal SAVES is the bytes freed by dropping that class alone while every other class is
+/// still held, and that needs a fresh graph per class: a dropped class cannot be restored and a
+/// deep clone would double the heap under measurement.
+///
+/// THE SUBJECT IS THE WHOLE-TREE STRICT CLOSURE over `dag` and `src/v2`, the floor's own
+/// exclusions applied: at roughly five thousand modules it is the size at which the floor's
+/// superlinear growth is the question, and it needs no diff to reproduce. The graph is taken
+/// whether or not the typecheck refuses, since a refused graph is the same allocation a refusing
+/// floor holds. Six classes, the ones carrying the bytes; the rest are inside the shared residual.
+fn run_typed_graph_exclusive_bytes() -> InvocationOutcome {
+    let roots = vec!["dag".to_string(), "src/v2".to_string()];
+    let excludes = cli_run::floor_prepared_subject_exclusions();
+    typed_graph_exclusive_bytes_over("typed-graph-exclusive-bytes", || {
+        let picked = cli_run::whole_tree_strict_sources(&roots, &excludes)?;
+        let result = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(
+            picked.sources.into(),
+        ));
+        std::rc::Rc::try_unwrap(result)
+            .ok()
+            .and_then(|r| r.graph)
+            .ok_or_else(|| {
+                "the strict resolve produced no graph, or its result has another owner".to_string()
+            })
+    })
+}
+
+/// THE SAME READING OVER THE FLOOR'S OWN PREPARED SUBJECT AT THIS CHECKOUT: the nominal closure
+/// (gate prefixes, gate-authored modules, the local-repo wet schedule) the required floor prepares
+/// when no diff adds seeds, through the floor's own `prepare_repository_from_corpus`. A second
+/// SIZE of the same observation, so `type_env`'s exclusive bytes are read at two closure sizes and
+/// the scaling the floor's peak shows is measured on the class rather than inferred from the phase.
+fn run_typed_graph_exclusive_bytes_floor_subject() -> InvocationOutcome {
+    let roots = vec!["dag".to_string(), "src/v2".to_string()];
+    typed_graph_exclusive_bytes_over("typed-graph-exclusive-bytes-floor-subject", || {
+        let corpus = cli_run::read_source_corpus_once(&roots);
+        let gate_entry_index = cli_run::build_multi_entry_index(&roots);
+        let seeds =
+            cli_run::required_floor_nominal_subject_seeds_from_corpus(&corpus, &gate_entry_index)?;
+        let module_seeds = cli_run::required_floor_nominal_closure_module_seeds(
+            &seeds.required_gate_authored_modules,
+            &seeds.local_repo_wet_schedule_rows,
+        );
+        // THE FLOOR'S OWN SUBJECT, COMPILED AS ITS STRICT PREPARE COMPILES IT -- before the prepared
+        // repository drops the typecheck caches -- because the floor's peak is inside that compile,
+        // where the caches the import union rides on are still alive.
+        let subject = cli_run::assemble_prepared_subject_from_corpus(
+            &corpus,
+            &cli_run::floor_prepared_subject_exclusions(),
+            Some((
+                &gate_entry_index,
+                &seeds.required_gate_prefixes,
+                &module_seeds,
+            )),
+        )?;
+        drop(gate_entry_index);
+        let result = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(
+            subject.sources.into(),
+        ));
+        std::rc::Rc::try_unwrap(result)
+            .ok()
+            .and_then(|r| r.graph)
+            .ok_or_else(|| {
+                "the strict resolve produced no graph, or its result has another owner".to_string()
+            })
+    })
+}
+
+/// The leave-one-out loop, over whichever subject `subject` resolves -- once per class, from a
+/// fresh graph each time, since a dropped class cannot be restored.
+fn typed_graph_exclusive_bytes_over(
+    label: &str,
+    subject: impl Fn() -> Result<std::rc::Rc<crate::v1_compiler_compile::ResolvedGraph>, String>,
+) -> InvocationOutcome {
+    use cli_run::TypedModuleClass as C;
+    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label}: refused: could not anchor at the workspace root: {e}"),
+        };
+    }
+    // Every single class, then the union's carriers JOINTLY: the per-module import union is
+    // materialized both as TypeEnv.ancestry_str_bindings and as the TypeEnvCache the module's
+    // interface hands its importers, and those share spine, so neither alone reads what removing
+    // the union would save.
+    let sets: Vec<Vec<C>> = vec![
+        vec![C::TypeEnv],
+        vec![C::TypeEnvCache],
+        vec![C::Interface],
+        vec![C::Items],
+        vec![C::ModuleNodes],
+        vec![C::FuncEnv],
+        vec![C::OccurrenceTransport],
+        vec![C::TypeEnv, C::TypeEnvCache, C::Interface],
+    ];
+    let mut raw = Vec::new();
+    for set in &sets {
+        let class_name = set.iter().map(|c| c.name()).collect::<Vec<_>>().join("+");
+        let graph = match subject() {
+            Ok(g) => g,
+            Err(e) => {
+                return InvocationOutcome {
+                    termination: Termination::SubjectUnreached,
+                    message: format!("{label}: subject unreached: {e}"),
+                }
+            }
+        };
+        match cli_run::typed_module_class_exclusive_bytes(graph, set) {
+            Ok(r) => raw.push((class_name, r)),
+            Err(cause) => {
+                return InvocationOutcome {
+                    termination: Termination::Refused,
+                    message: format!("{label}: class {class_name} unattributable: {cause}"),
+                }
+            }
+        }
+    }
+    // THE HOST TRANSCRIBES, THE .dag FOLD DECIDES (gunbc.typed_graph_exclusive_bytes). Every
+    // reading crosses as primitives; a count past i64 refuses rather than clamping.
+    const ENTRY: &str = "dag/gunbc/floor/typed_graph_exclusive_bytes.dag";
+    let roots = vec!["dag".to_string(), "src/v2".to_string()];
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, ENTRY) {
+        Ok(resolved) => resolved,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("{label}: resolve failed for {ENTRY}: {cause}"),
+            }
+        }
+    };
+    let ctx = cli_run::make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        crate::v1_interpreter::ExecutionMode::Wet,
+    );
+    use crate::v1_interpreter::Value;
+    let int = |v: u64| i64::try_from(v).map(Value::Int);
+    let mut readings = Vec::new();
+    for (class, r) in &raw {
+        let counts = [
+            r.modules as u64,
+            r.in_use_all,
+            r.in_use_after_class,
+            r.in_use_end,
+            r.ancestry_entries,
+            r.own_entries,
+        ];
+        let Ok(vals) = counts
+            .iter()
+            .map(|v| int(*v))
+            .collect::<Result<Vec<_>, _>>()
+        else {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!(
+                    "{label}: class {} carries a count past the i64 the fold reads",
+                    class
+                ),
+            };
+        };
+        let names = [
+            "modules",
+            "in_use_all",
+            "in_use_after_class",
+            "in_use_end",
+            "ancestry_entries",
+            "own_entries",
+        ];
+        let mut fields = vec![(ctx.sym("class"), crate::v1_interpreter::str_value(class))];
+        for (n, v) in names.iter().zip(vals) {
+            fields.push((ctx.sym(n), v));
+        }
+        readings.push(Value::Record {
+            type_name: ctx.sym("TypedGraphClassReading"),
+            fields: std::rc::Rc::new(fields),
+        });
+    }
+    let args = vec![(
+        Some("readings".to_string()),
+        crate::v1_interpreter::list_value(readings),
+    )];
+    let report = match crate::v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "typed_graph_exclusive_report",
+        &args,
+        true,
+    ) {
+        Ok(v) => v,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("{label}: the report could not be reached: {cause}"),
+            }
+        }
+    };
+    let bytes = |v: Option<&Value>| -> String {
+        match v {
+            Some(Value::Record { fields, .. }) => match ctx.field(fields, "count") {
+                Some(Value::Int(n)) => n.to_string(),
+                other => format!("{other:?}"),
+            },
+            Some(other) => ctx.format_value(other),
+            None => "<absent>".to_string(),
+        }
+    };
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = &report
+    else {
+        return InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: format!("{label}: unrecognised report {}", ctx.format_value(&report)),
+        };
+    };
+    if !ctx.sym_eq(*variant_name, "ExclusiveBytesReported") {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label}: {}", ctx.format_value(&report)),
+        };
+    }
+    let mut lines = Vec::new();
+    if let Some(Value::List(cs)) = ctx.field(fields, "classes") {
+        for c in cs.iter() {
+            if let Value::Record { fields: cf, .. } = c {
+                let f = |n: &str| {
+                    ctx.field(cf, n)
+                        .map(|v| ctx.format_value(v))
+                        .unwrap_or_default()
+                };
+                lines.push(format!(
+                    "{label} class={} exclusive={} graph_total={} modules={} ancestry_entries={} own_entries={}",
+                    f("class"), bytes(ctx.field(cf, "exclusive")), bytes(ctx.field(cf, "graph_total")),
+                    f("modules"), f("ancestry_entries"), f("own_entries")
+                ));
+            }
+        }
+    }
+    let residual = match ctx.field(fields, "shared_or_unlisted") {
+        Some(Value::Variant {
+            variant_name,
+            fields: rf,
+            ..
+        }) if ctx.sym_eq(*variant_name, "MeasureDifference") => bytes(ctx.field(rf, "value")),
+        Some(other) => ctx.format_value(other),
+        None => "<absent>".to_string(),
+    };
+    lines.push(format!(
+        "{label} graph_total={} sum_of_exclusives={} shared_or_unlisted={residual} (gunbc.typed_graph_exclusive_bytes; graph_total from the first run, every class from its own fresh resolve)",
+        bytes(ctx.field(fields, "graph_total")),
+        bytes(ctx.field(fields, "sum_of_exclusives")),
+    ));
+    InvocationOutcome {
+        termination: Termination::ObservationHeld,
+        message: lines.join("\n"),
+    }
 }
 
 fn run_floor_memory_qualification() -> InvocationOutcome {
