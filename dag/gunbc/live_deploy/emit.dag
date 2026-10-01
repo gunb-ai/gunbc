@@ -1059,7 +1059,13 @@ fn identity_member_of_step(step: DeploymentStep) -> ConvergedMember? {
       DispatchWorktreeRoot => Present { value: DirectoryRoot { path: art.path } }
       AttemptStateRoot => Present { value: DirectoryRoot { path: art.path } }
       ComputeRoot => Present { value: DirectoryRoot { path: art.path } }
-      _ => none
+      BeltTimerUnit => none
+      FleetConvergeTimerUnit => none
+      TailscaleServeMapping => none
+      DeployedTreeRemoteUnit => none
+      PublicationHelperTimerUnit => none
+      FabricStorageServeUnit => none
+      FabricStorageServeMapping => none
     }
     Dependency { step: _ } => none
   }
@@ -1084,7 +1090,11 @@ fn step_renders_its_own_member_commands(step: DeploymentStep) -> Bool {
     Absent => false
     Present { value: member } => match member {
       DirectoryRoot { path: _ } => false
-      _ => true
+      TreePublication => true
+      Executable => true
+      UnitFile => true
+      UnitManager => true
+      ServiceProcess => true
     }
   }
 }
@@ -3002,7 +3012,11 @@ fn apply_step_effects(
           if mutation_is_keep(e: mutation) { [] }
           else { step_membership_effects(step: step, effects: effects, spec: spec, plan: plan) }
       }
-      _ => emit_release_member_effects(member: member, plan: plan, spec: spec)
+      TreePublication => emit_release_member_effects(member: member, plan: plan, spec: spec)
+      Executable => emit_release_member_effects(member: member, plan: plan, spec: spec)
+      UnitFile => emit_release_member_effects(member: member, plan: plan, spec: spec)
+      UnitManager => emit_release_member_effects(member: member, plan: plan, spec: spec)
+      ServiceProcess => emit_release_member_effects(member: member, plan: plan, spec: spec)
     }
     Absent => step_membership_effects(step: step, effects: effects, spec: spec, plan: plan)
   }
