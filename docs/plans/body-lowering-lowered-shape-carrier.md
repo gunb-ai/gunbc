@@ -3,6 +3,15 @@
 Model for MQ-5 condition (2). Ruling: neat-boar-16, 2026-09-30, option A. Reviewer: neat-boar-16.
 Failure-mode row: `gunbc.recurring_failure_mode` `lowered_output_reread_as_raw_parse_at_v2_body_lowering`.
 
+**Precondition: the MQ-5 flip, gunbc#12862, lands before stage 1 starts.** This plan's staging is fail-closed only because of that flip. It is the PR that defines the symbols cited below, which do not resolve until it lands:
+
+- `body_lowering_reason_unrecognised_lowered_shape`
+- `body_lower_is_unrecognised_lowered_shape` and `body_lower_unrecognised_lowered_shape_diagnostics`
+- `body_lower_find_core_substrate_passes_unrecognised`
+- the failure-mode row `lowered_output_reread_as_raw_parse_at_v2_body_lowering`
+
+Without the flip, a reducer that has not yet moved still re-reads an unrecognised shape as raw parse, silently. So no stage of this plan may land ahead of #12862.
+
 ## The gap
 
 `v2.compiler.body_lowering_fold` is a bottom-up fold over a tree that holds two kinds of node at once:
