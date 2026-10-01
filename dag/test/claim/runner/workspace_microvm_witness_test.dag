@@ -11,7 +11,8 @@ import gunbc.workspace_gateway { WorkspaceGateway }
 import gunbc.workspace_microvm_access { WorkspaceConnectionReady, WorkspaceConnectionUnavailable, workspace_connection_from_observations }
 import gunbc.runner_microvm_network { runner_slot_network }
 import extdeps.network.ipv4 { render_ipv4_address }
-import gunbc.workspace_microvm { workspace_public_key, WorkspacePublicKeyRefused, workspace_machine_config }
+import gunbc.workspace_microvm { workspace_public_key, WorkspacePublicKeyRefused, workspace_machine_config, workspace_public_key_catalog_path, workspace_resolve_public_key, workspace_fleet_operator_public_key, WorkspacePublicKeyAdmitted, WorkspacePublicKeyNotAdmitted }
+import gunbc.workspace_artifact_policy { workspace_fleet_operator_public_key_ref }
 import gunbc.workspace_guest_image { workspace_guest_bootstrap_script }
 import gunbc.workspace_allocation { SmallWorkspace, LargeWorkspace, workspace_memory_grant }
 import gunbc.fabric_memory_grant_policy { MemoryGrantIssued }
@@ -89,4 +90,31 @@ test fn workspace_production_machine_config_consumes_committed_grant() -> Bool {
     }
     _ => false
   }
+}
+
+// A customer-held key is named by a lowercase SHA-256 and lives in the root-owned catalog; any other
+// spelling, including a traversal, has no catalog path and so can never reach a file read.
+test fn workspace_public_key_catalog_admits_only_digest_names() -> Bool {
+  let digest = "97859b4f8e206e3398f02dc4070fad14cb5b7a7ec29e305a8895405750044305"
+  let named = match workspace_public_key_catalog_path(reference: digest as NonEmptyStr) {
+    Present { value: p } => p == join(["/etc/gunbc/workspace-public-keys/", digest, ".pub"], "")
+    Absent => false
+  }
+  let traversal = match workspace_public_key_catalog_path(reference: "../../root/.ssh/id_ed25519" as NonEmptyStr) { Absent => true Present { value: _ } => false }
+  let upper = match workspace_public_key_catalog_path(reference: "97859B4F8E206E3398F02DC4070FAD14CB5B7A7EC29E305A8895405750044305" as NonEmptyStr) { Absent => true Present { value: _ } => false }
+  named && traversal && upper
+}
+
+// The operator reference resolves to its principal key without a catalog read; a malformed
+// reference refuses rather than falling back to the operator key.
+test fn workspace_resolve_public_key_never_substitutes_the_operator_key() -> Bool {
+  let operator = match workspace_resolve_public_key(reference: workspace_fleet_operator_public_key_ref()) {
+    WorkspacePublicKeyAdmitted { key: k } => (k.line as String) == (workspace_fleet_operator_public_key().line as String)
+    WorkspacePublicKeyNotAdmitted { reason: _ } => false
+  }
+  let foreign = match workspace_resolve_public_key(reference: "customer-key" as NonEmptyStr) {
+    WorkspacePublicKeyNotAdmitted { reason: _ } => true
+    WorkspacePublicKeyAdmitted { key: _ } => false
+  }
+  operator && foreign
 }

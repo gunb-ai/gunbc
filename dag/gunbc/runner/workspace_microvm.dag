@@ -3,6 +3,7 @@ module gunbc.workspace_microvm
 import gunbc.workspace_artifact_policy { workspace_fleet_operator_public_key_ref }
 import std.types { String, NonEmptyStr, Int, Bool, FilePath }
 import std.algebra { trim }
+import extdeps.numeric.base16 { base16_is_lower_digit_code_point }
 import extdeps.ssh { ssh_public_key_line }
 import gunbc.fleet_ssh_access { operator_ssh_principal }
 import std.resources { Filesystem }
@@ -89,6 +90,27 @@ fn workspace_public_key_from_file(reference: NonEmptyStr, path: String) -> Works
       }
     } }
   }
+}
+
+// THE REQUEST NAMES ITS KEY; THE CONTROLLER RESOLVES THAT NAME AND NEVER SUBSTITUTES ANOTHER. The
+// operator reference keeps its existing principal authority. Any other reference is a customer-held
+// key enrolled by the administrator as one root-owned file in this catalog, named by the reference.
+// The reference is admitted only as a lowercase SHA-256, so it cannot name a path outside the catalog.
+data workspace_public_key_catalog_dir: String = "/etc/gunbc/workspace-public-keys"
+
+fn workspace_public_key_catalog_path(reference: NonEmptyStr) -> String? {
+  let r = reference as String
+  if r.length() != 64 || !all(r.chars(), cp => base16_is_lower_digit_code_point(cp: cp)) { none }
+  else { Present { value: join([workspace_public_key_catalog_dir, "/", r, ".pub"], "") } }
+}
+
+fn workspace_resolve_public_key(reference: NonEmptyStr) -> WorkspacePublicKeyAdmission {
+  if (reference as String) == (workspace_fleet_operator_public_key_ref() as String) {
+    WorkspacePublicKeyAdmitted { key: workspace_fleet_operator_public_key() }
+  } else { match workspace_public_key_catalog_path(reference: reference) {
+    Absent => WorkspacePublicKeyNotAdmitted { reason: "workspace public-key reference is neither the operator principal nor a lowercase SHA-256 catalog name" }
+    Present { value: path } => workspace_public_key_from_file(reference: reference, path: path)
+  } }
 }
 
 // The launch carrier joins the reread cell reservation to the stored request, grant, image,
