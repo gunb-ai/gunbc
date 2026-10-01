@@ -47,7 +47,7 @@ import std.measure {
 // (resolve + infer) once per unique module, and per universe member Eval the named declaration,
 // reporting one typed verdict row per member. This is the driver the required-v2-native CI lane
 // executes; its contract is that every universe member reaches exactly one terminal observation,
-// never a silent remainder. The process re-derives its own exclusive wall partition on stderr
+// never a silent remainder. The process re-derives its own exclusive thread-CPU partition on stderr
 // as `[native-cost-partition]` (same receipt shape as claim_batch `[cost-partition]`: the rows
 // NativeDriverExclusiveRows carries, over parent_span_nanos) plus one `[native-prepare-split]`
 // line per unique module that partitions prepare into resolve vs infer (the two halves
@@ -169,7 +169,8 @@ type CompilerEntryDriver
 // defect this partition exists to catch.
 // THE NATIVE DRIVER'S EXCLUSIVE CPU PARTITION. claim_batch prints `[cost-partition]` over
 // resolve-span work; SourceRootEvalDriver prints `[native-cost-partition]` over its own
-// single thread's CPU time (the wall is printed beside it as an observation, never judged). The grains are the driver's own, not a restatement of the resolve-split
+// single thread's CPU time (the wall is printed beside it as an observation, never judged).
+// The grains are the driver's own, not a restatement of the resolve-split
 // rows, and THIS TYPE IS WHERE THEY ARE NAMED: the row set below is the grain, so prose that
 // re-lists the field names would be a second spelling of it that rots the moment a driver gains
 // a phase. The law is the same exclusive-sum law: exclusive rows must not exceed parent_span,

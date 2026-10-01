@@ -922,6 +922,7 @@ name = "v1-stage0-runtime"
 version = "0.1.0"
 dependencies = [
  "im",
+ "libc",
  "serde",
  "serde_json",
  "stacker",
