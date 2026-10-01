@@ -1031,13 +1031,14 @@ fn dag_grammar_field_decl_expr() -> GrammarExpr {
   )
 }
 
-// A service io field: the general field plus v1 parse_field's `[from "key"] [= default]` tail.
-// SCOPED TO THE SERVICE io_block ON PURPOSE. v1 admits the tail on every field, but the only
-// executing evidence here is inside a service, which normalize refuses before resolve. Admitting
-// it on the shared field_decl_block would widen `type` / variant declarations
-// (`dag/extdeps/browser/browser.dag` `BrowserConfig` declares defaults) with no evidence of what
-// resolve does with the extra child. So general field defaults and `from` stay a loud parse
-// refusal: named remainder for the type-declaration lane, not a silent widening (review 68343).
+// A field: the general field plus v1 parse_field's `[from "key"] [= default]` tail, which v1 admits on
+// EVERY field. It was once scoped to the service io_block (review 68343), because a record type does
+// lower and nothing then read the tail, so a grammar-only admission would have lowered the type and
+// dropped the tail silently. Now the one field reader (v2.compiler.body_lowering_fold
+// body_lower_field_items_optional) reads the tail on every field: an io block sets it aside and a
+// record type refuses at it (body_lower_first_field_tail_optional, the
+// service_interface_member_has_no_carrier class), so admitting it here parses a legitimate v1 form
+// without dropping anything.
 fn dag_grammar_io_field_decl_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_field_decl_expr(),
@@ -1060,7 +1061,7 @@ fn dag_grammar_io_field_decl_expr() -> GrammarExpr {
 
 fn dag_grammar_field_decl_list_helper() -> GrammarExpr {
   dag_grammar_optional(
-    element: dag_grammar_comma_list_expr(item: dag_grammar_field_decl_expr())
+    element: dag_grammar_comma_list_expr(item: dag_grammar_io_field_decl_expr())
   )
 }
 
