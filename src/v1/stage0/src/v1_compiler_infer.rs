@@ -10469,6 +10469,12 @@ pub fn extend_scope_with_pattern_node(
     })
 }
 
+pub fn fold_accumulator_is_unapplied_generic(n: Rc<Node>) -> bool {
+    (((n.params.clone().len() as i64) > 0)
+        && ((n.connective.clone() == Connective::Disj)
+            || (n.connective.clone() == Connective::Conj)))
+}
+
 pub fn method_name_is(opt: Option<String>, expected: String) -> bool {
     if (opt.clone() == std::option::Option::None) {
         false
@@ -12443,10 +12449,12 @@ Rc::new(InferResult {
                                     ),
                                 };
                                 let call_acc_is_under_resolved =
-                                    !crate::v1_compiler_infer_types::is_fully_resolved(
+                                    (!crate::v1_compiler_infer_types::is_fully_resolved(
                                         call_fold_acc_type.clone(),
                                         scope.type_env.clone().source_indices.clone(),
-                                    );
+                                    ) || fold_accumulator_is_unapplied_generic(
+                                        call_fold_acc_type.clone(),
+                                    ));
                                 let refined_call_fold_acc_type = if ((call_fold_info.clone()
                                     != std::option::Option::None)
                                     && call_acc_is_under_resolved.clone())
