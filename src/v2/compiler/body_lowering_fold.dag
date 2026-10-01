@@ -715,6 +715,7 @@ fn body_lower_is_structure_preserved_emitted(emitted: Symbol) -> Bool {
     || (emitted == ^dag_surface_positional_variant_payload)
     || (emitted == ^dag_surface_admit_callers_clause)
     || (emitted == ^dag_surface_uses_clause)
+    || (emitted == ^dag_surface_default_value)
     || (emitted == ^dag_surface_uses_entry)
     || (emitted == ^dag_surface_fn_type)
     || (emitted == ^dag_surface_field_init)
@@ -949,7 +950,12 @@ fn body_lower_field_decl_block_payload(block_shell: Node) -> Outcome<Node> {
             Present { value: fields } =>
               match body_lower_first_field_tail_optional(fields: fields) {
                 Present { value: tail } =>
-                  outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_interface_member_unmodeled, n: tail))
+                  match body_lower_find_production_shell_optional(root: tail, emitted: ^dag_surface_default_value) {
+                    Present { value: default } =>
+                      outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_default_value_unmodeled, n: default))
+                    Absent =>
+                      outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_interface_member_unmodeled, n: tail))
+                  }
                 Absent =>
                   outcome_accepted(value: body_lower_payload_node(edges: list_map(xs: fields, f: fn(io) { body_lower_typed_param_edge_of(param: io.field) }), source: block_shell))
               }
@@ -3591,7 +3597,7 @@ fn body_lower_first_signature_refusal_optional(captured: Node) -> Optional<Outco
   match body_lower_pattern_form_refusal_optional(captured: captured) {
     Present { value: refused } => optional_present(value: refused)
     Absent =>
-      match body_lower_param_refinement_refusal_optional(captured: captured) {
+      match body_lower_param_list_refusal_optional(captured: captured) {
         Present { value: refused } => optional_present(value: refused)
         Absent => body_lower_fn_uses_refusal_optional(captured: captured)
       }
@@ -3604,15 +3610,34 @@ fn body_lower_first_signature_refusal_optional(captured: Node) -> Optional<Outco
 // refinement. So until a parameter's type can carry its refinement the fn refuses
 // (gunbc.recurring_failure_mode parameter_refinement_has_no_carrier). The clause is searched only
 // inside this declaration's own param_list.
-fn body_lower_param_refinement_refusal_optional(captured: Node) -> Optional<Outcome<Node>> {
+// A PARAMETER THAT CARRIES A DEFAULT REFUSES, LOCATED AT THE DEFAULT. Nothing on a lowered parameter
+// can hold it, so lowering the fn would drop it (gunbc.recurring_failure_mode
+// default_value_has_no_carrier); the same reason refuses a record field's default.
+// The declaration's param_list is found once and both parameter refusals read it.
+fn body_lower_param_list_refusal_optional(captured: Node) -> Optional<Outcome<Node>> {
   match body_lower_find_captured(root: captured, emitted: ^dag_surface_param_list) {
     ParseSubtreeAbsent => optional_absent()
     ParseSubtreeFound { captured: param_list } =>
-      match body_lower_find_production_shell_optional(root: param_list, emitted: ^dag_surface_where_refinement_clause) {
-        Absent => optional_absent()
-        Present { value: clause } =>
-          optional_present(value: outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_parameter_refinement_unmodeled, n: clause)))
+      match body_lower_param_refinement_refusal_optional(param_list: param_list) {
+        Present { value: refused } => optional_present(value: refused)
+        Absent => body_lower_param_default_refusal_optional(param_list: param_list)
       }
+  }
+}
+
+fn body_lower_param_default_refusal_optional(param_list: Node) -> Optional<Outcome<Node>> {
+  match body_lower_find_production_shell_optional(root: param_list, emitted: ^dag_surface_default_value) {
+    Absent => optional_absent()
+    Present { value: default } =>
+      optional_present(value: outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_default_value_unmodeled, n: default)))
+  }
+}
+
+fn body_lower_param_refinement_refusal_optional(param_list: Node) -> Optional<Outcome<Node>> {
+  match body_lower_find_production_shell_optional(root: param_list, emitted: ^dag_surface_where_refinement_clause) {
+    Absent => optional_absent()
+    Present { value: clause } =>
+      optional_present(value: outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_parameter_refinement_unmodeled, n: clause)))
   }
 }
 
