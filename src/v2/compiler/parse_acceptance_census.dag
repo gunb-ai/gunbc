@@ -20,7 +20,7 @@ import v2.std.diagnostic {
   diagnostics_fatal
 }
 import v2.std.integer { integer_int_to_decimal_string }
-import v2.std.node { symbol_lexeme }
+import v2.std.node { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.text { String }
 
 // WHETHER THE V2 PARSER ACCEPTS A FILE, AND IF NOT, WHY AND WHERE. One line per listed path: the path,
