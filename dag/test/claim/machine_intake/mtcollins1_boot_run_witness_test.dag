@@ -2,13 +2,13 @@ module test.claim.machine_intake.mtcollins1_boot_run_witness_test
 
 import gunbc.machine_intake_mtcollins1_kvm_still { mtcollins1_kvm_still_allowance }
 import gunbc.machine_intake_mtcollins1_sol_notice { SolNotice, SolNoticeCollectorExited, sol_loss_notice_of, sol_exit_notices_of, sol_notice_annotation, SolSourceRead, SolSourceAbsent, SolSourceUnreadable }
-import gunbc.machine_intake_mtcollins1_boot_run { sol_observer_refusal_of, ProcRead, ProcReadRefused }
+import gunbc.machine_intake_mtcollins1_boot_run { sol_observer_refusal_of, ProcRead, ProcReadRefused, sol_establishment_deadline, sol_establishment_gate, SolEstablishmentGate, GateEstablish, GateExpired, GateContinue, sol_establishment_pace, PaceAdvanced, PaceRefused, PaceClockStalled }
 import extdeps.github.log_annotations { log_annotation_message_line }
 import gunbc.machine_intake_megarac_media_attach { megarac_convergence_allowance, megarac_presentation_look_allowance }
 import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_stale_power_off_allowance }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.measure { byte_size_count, second_count, minute_count, hardware_thread_count, hardware_thread_count_value }
+import std.measure { byte_size_count, second_count, minute_count, hardware_thread_count, hardware_thread_count_value, millisecond, second }
 import v2.std.optional { Present }
 import gunbc.machine_intake_oob_boot_handoff { oob_power_readback_allowance }
 import gunbc.machine_intake_mtcollins1_boot_run {
@@ -49,7 +49,8 @@ import gunbc.machine_intake_mtcollins1_boot_milestone { mtcollins1_one_socket_mi
 import gunbc.machine_intake_host_capture_envelope { host_capture_workload_total_bytes }
 import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_nproc }
 import gunbc.machine_intake_mtcollins1_boot_admission { mtcollins1_boot_host_must_be_srv1, mtcollins1_boot_refuses_off_srv1 }
-import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_diagnostics_allowance, mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
+import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_diagnostics_allowance }
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
 import gunbc.machine_intake_mtcollins1_boot_phase_timing { mtcollins1_boot_phase_timing_not_taken }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
 import gunbc.fleet_converge_workflow { fleet_converge_mtcollins1_boot_runner, fleet_converge_mtcollins1_boot_steps_around, fleet_converge_mtcollins1_boot_step, fleet_converge_checkout_ref_expr, fleet_converge_event_sha_checkout_ref_expr, fleet_converge_mtcollins1_boot_job_if, fleet_converge_mtcollins1_boot_concurrency_group }
@@ -1001,4 +1002,45 @@ test fn the_boot_requires_the_recorded_live_watcher() -> Bool {
   let empty = sol_observer_refusal_of(record: ProcRead { content: "" }, stat: ProcRead { content: "" })
   (match ok { Present { value: _ } => false  _ => true })
     && [gone, reused, zombie, unread_stat, unread_record, empty].all(r => match r { Present { value: why } => string_contains(s: why, pattern: "the SOL notice watcher is required before a further BMC effect")  _ => false })
+}
+
+// THE ESTABLISHMENT GATE, over supplied uptime instants (the loop's own decision, sol_establishment_gate).
+// ELAPSED TIME, NOT A POLL COUNT: twenty fast polls 100 ms apart -- twice a ten-poll count -- all
+// continue inside a ten-second allowance; three slow polls four seconds apart expire at the third.
+// A LATE BANNER IS NOT ADMITTED: a banner seen before the deadline establishes, the same banner first
+// seen at or after it is expired.
+fn gate_name(g: SolEstablishmentGate) -> String {
+  match g {
+    GateEstablish => "establish"
+    GateExpired => "expired"
+    GateContinue => "continue"
+  }
+}
+
+fn gate_is(g: SolEstablishmentGate, want: String) -> Bool {
+  gate_name(g: g) == want
+}
+
+test fn the_establishment_gate_is_elapsed_time_and_refuses_a_late_banner() -> Bool {
+  let start = 350735470
+  let deadline = sol_establishment_deadline(start: millisecond(count: start), allowance: second(count: 10))
+  let fast = map([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20], i => gate_is(g: sol_establishment_gate(banner_seen: false, now: millisecond(count: start + i * 100), deadline: deadline), want: "continue"))
+  let slow = map([1, 2, 3], i => gate_name(g: sol_establishment_gate(banner_seen: false, now: millisecond(count: start + i * 4000), deadline: deadline)))
+  deadline == millisecond(count: start + 10000)
+    && fast.all(ok => ok)
+    && slow == ["continue", "continue", "expired"]
+    && gate_is(g: sol_establishment_gate(banner_seen: true, now: millisecond(count: start + 9999), deadline: deadline), want: "establish")
+    && gate_is(g: sol_establishment_gate(banner_seen: true, now: millisecond(count: start + 10000), deadline: deadline), want: "expired")
+    && gate_is(g: sol_establishment_gate(banner_seen: true, now: millisecond(count: start + 12000), deadline: deadline), want: "expired")
+}
+
+// THE LOOP TERMINATES WITHOUT TRUSTING THE CLOCK (sol_establishment_pace): a refused pace is PaceRefused;
+// an admitted pace followed by a reading no later than the previous one is PaceClockStalled; an
+// admitted pace with an advancing clock continues.
+test fn a_refused_pace_or_a_stalled_clock_ends_the_establishment_wait() -> Bool {
+  let before = millisecond(count: 1000)
+  (match sol_establishment_pace(paced: false, previous: before, now: millisecond(count: 2000)) { PaceRefused => true  _ => false })
+    && (match sol_establishment_pace(paced: true, previous: before, now: millisecond(count: 1000)) { PaceClockStalled => true  _ => false })
+    && (match sol_establishment_pace(paced: true, previous: before, now: millisecond(count: 900)) { PaceClockStalled => true  _ => false })
+    && (match sol_establishment_pace(paced: true, previous: before, now: millisecond(count: 2000)) { PaceAdvanced => true  _ => false })
 }
