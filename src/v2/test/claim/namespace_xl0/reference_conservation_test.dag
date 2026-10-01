@@ -99,6 +99,10 @@ fn clean_control_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "clean", source: clean_control_source)
 }
 
+// Nullary and pure, enrolled WARM in v2.workflow.floor_pure_producer_share beside its subject: five
+// claims read this one report, so it is computed once rather than once per claim (each paid it in
+// full and went over the new-witness budget, v2.workflow.required_floor
+// claim_eval_step_budget_for_identity, as the floor's required_floor_claim_cost rows recorded).
 fn clean_control_report() -> ReferenceConservationReport {
   conservation_report_of(subject: clean_control_subject())
 }
@@ -470,6 +474,24 @@ fn planted_param_list_unread_admission() -> NameProductionTableAdmission {
 
 fn normalization_refused_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "normalization_refused", source: normalization_refused_source)
+}
+
+// THE ROUTE, NOT ONLY THE ANSWER (DESIGN section 3, the pairing obligation). The two claims below
+// need normalization to REFUSE and read only the refusal's accounting, so a fixture that stopped
+// refusing, or refused for some other reason, would leave them red or green for the wrong cause.
+// This pins the modeled refusal the fixture exists to carry. It went silent once (#12812: #12713
+// lowered the earlier else-less-if fixture and both claims were red on main outside the gate), so
+// the module is admitted to the required gate at exact grain (v2.workflow.required_floor
+// required_gate_authored_modules). MUTATION: a fixture without the service (the plain fn alone)
+// normalizes Accepted and reds this.
+test fn the_refused_normalization_fixture_refuses_for_the_service_realization_reason_holds() -> Bool {
+  match normalization_refused_subject().normalized {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: ne } =>
+      fold_list(xs: ne.tail, empty: ne.head.reason == ^body_lowering_reason_service_realization_unreachable, cons: fn(found, d) {
+        found || d.reason == ^body_lowering_reason_service_realization_unreachable
+      })
+  }
 }
 
 fn refusal_accounts_for_population(r: ReferenceConservationReport) -> Bool {
