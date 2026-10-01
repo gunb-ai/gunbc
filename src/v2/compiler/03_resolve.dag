@@ -151,7 +151,9 @@ import v2.std.node {
 }
 import v2.std.type_binder { GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names }
 import v2.std.node_query {
+  binder_default_label,
   binder_node_label,
+  binder_node_parts,
   declared_field_from_edge,
   NamedChildAmbiguous,
   NamedChildFound,
@@ -2894,19 +2896,63 @@ fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node
           )
         }
       Positional =>
-        child_walk_step(
-          w: acc,
-          e: e,
-          r: resolve_node_walk(
-            ctx: resolve_ctx_with_scope(
-              ctx: inner_ctx,
-              scope: if acc.ordinal == 0 { scope_type } else { scope_codomain }
-            ),
-            n: e.target
+        if acc.ordinal == 0 {
+          child_walk_step(
+            w: acc,
+            e: e,
+            r: resolve_arrow_domain_walk(
+              type_ctx: resolve_ctx_with_scope(ctx: inner_ctx, scope: scope_type),
+              default_ctx: inner_ctx,
+              domain: e.target
+            )
           )
-        )
+        } else {
+          child_walk_step(
+            w: acc,
+            e: e,
+            r: resolve_node_walk(ctx: resolve_ctx_with_scope(ctx: inner_ctx, scope: scope_codomain), n: e.target)
+          )
+        }
     }
   }))
+}
+
+// AN ARROW'S DOMAIN: each binder's TYPE resolves in the Arrow's type-parameter frame (type_ctx), as the
+// whole domain did; each binder's DEFAULT (v2.std.node_query binder_node_parts) resolves in the
+// ENCLOSING value scope (default_ctx: the Arrow's own context, before its parameters), with the
+// type-parameter frame only as its type_scope. So a default sees an outer value, never a sibling
+// parameter, and a type parameter's spelling is not a value it can bind (XL-2 PR2c-ii, side-chat review
+// on #12948). A domain member that is not a binder node walks in type_ctx exactly as before.
+fn resolve_arrow_domain_walk(type_ctx: ResolveContext, default_ctx: ResolveContext, domain: Node) -> ResolveNodeWalk {
+  match domain.kind {
+    TypeNode { connective: Conj } =>
+      child_walk_node(n: domain, w: fold(domain.children, init: child_walk_init(), f: fn(acc, e) {
+        child_walk_step(w: acc, e: e, r: resolve_arrow_domain_member(type_ctx: type_ctx, default_ctx: default_ctx, member: e.target))
+      }))
+    _ => resolve_node_walk(ctx: type_ctx, n: domain)
+  }
+}
+
+fn resolve_arrow_domain_member(type_ctx: ResolveContext, default_ctx: ResolveContext, member: Node) -> ResolveNodeWalk {
+  match binder_node_parts(n: member) {
+    Absent => resolve_node_walk(ctx: type_ctx, n: member)
+    Present { value: _ } =>
+      child_walk_node(n: member, w: fold(member.children, init: child_walk_init(), f: fn(acc, be) {
+        child_walk_step(w: acc, e: be, r: resolve_binder_part(type_ctx: type_ctx, default_ctx: default_ctx, part: be))
+      }))
+  }
+}
+
+fn resolve_binder_part(type_ctx: ResolveContext, default_ctx: ResolveContext, part: Edge) -> ResolveNodeWalk {
+  match part.label {
+    Named { name: sym } =>
+      if sym == binder_default_label() {
+        resolve_node_walk(ctx: default_ctx, n: part.target)
+      } else {
+        resolve_node_walk(ctx: type_ctx, n: part.target)
+      }
+    Positional => resolve_node_walk(ctx: type_ctx, n: part.target)
+  }
 }
 
 fn resolve_bind_binder_target(t: Node) -> ResolveNodeWalk {
