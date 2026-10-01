@@ -15,7 +15,7 @@ import v2.std.node { Node, Symbol, node_subtree_nodes, symbol_intern_lexeme }
 import v2.std.text { String }
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import v2.std.collection { List }
-import std.resources { Capability, Read }
+import std.resource_contract { Capability, Read }
 import std.execution_mode { Hermetic }
 import v2.std.resource_declaration { DeclaredResourceContract }
 
@@ -30,7 +30,7 @@ import v2.std.resource_declaration { DeclaredResourceContract }
 // execution of the real path (DESIGN section 3 pairing obligation).
 // A resource carrying one entry of every kind the grammar admits, beside a record, the shape of dag/std/resources.dag Clock with AuthContext's expires.
 data valid_source: String = "module m\nresource N {\n  kind: Capability\n  mode: Read\n  expires: true\n  acquire { hermetic }\n  release {}\n  capability now {\n    output { t: Int }\n  }\n}\ntype T { f: Int }\n"
-// RED: a kind value no std.resources ResourceKind variant projects to refuses at the entry rather than riding as a name.
+// RED: a kind value no std.resource_contract ResourceKind variant projects to refuses at the entry rather than riding as a name.
 data unknown_kind_source: String = "module m\nresource N {\n  kind: Capabilty\n  mode: Read\n}\n"
 // RED: a declaration stating its kind twice has no single kind; it refuses at the second entry.
 data repeated_kind_source: String = "module m\nresource N {\n  kind: Capability\n  kind: Observation\n  mode: Read\n}\n"

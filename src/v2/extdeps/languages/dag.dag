@@ -2500,7 +2500,7 @@ fn dag_grammar_service_decl_expr() -> GrammarExpr {
 // release {..})* `}`, and SKIP the acquire and release bodies token by token (skip_until_rbrace), so
 // `acquire { hermetic }` reaches no carrier there. Here every entry is a closed production and
 // nothing is skipped: a property is one of the three v1 names over its closed values (the homes are
-// std.resources ResourceKind and ResourceMode, read against them at lowering because a literal
+// std.resource_contract ResourceKind and ResourceMode, read against them at lowering because a literal
 // terminal stamps its token CLASS and not its word, so the value is a lexeme-stamped ident whose
 // spelling the lowering projects; expires is a Bool literal), an acquire body admits only
 // the `hermetic` execution-mode claim (std.execution_mode Hermetic) or nothing, a release body admits

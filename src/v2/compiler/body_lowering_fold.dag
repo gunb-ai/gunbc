@@ -64,7 +64,7 @@ import v2.std.collection {
   map_lookup
 }
 import std.types { Map }
-import std.resources { ResourceKind, ResourceMode }
+import std.resource_contract { ResourceKind, ResourceMode }
 import std.execution_mode { ExecutionMode, Hermetic }
 import v2.std.resource_declaration { DeclaredResourceContract, resource_kind_of_label, resource_mode_of_label }
 import v2.std.optional {

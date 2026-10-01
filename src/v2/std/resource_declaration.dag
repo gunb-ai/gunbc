@@ -1,6 +1,6 @@
 module v2.std.resource_declaration
 
-import std.resources { ResourceKind, Capability, Observation, ResourceMode, Read, ReadWrite }
+import std.resource_contract { ResourceKind, Capability, Observation, ResourceMode, Read, ReadWrite }
 import std.execution_mode { ExecutionMode }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol, symbol_intern_lexeme }
@@ -13,7 +13,7 @@ import v2.std.optional { Optional, optional_absent, optional_present }
 // symbol_index_fill_containment_edge), and a contract edge there would be a name nobody declared.
 // They ride instead on the declaration's captured kind (v2.compiler.body_lowering_fold
 // DeclaredResource), captured at normalize like a record's, with each field typed by its home:
-// std.resources ResourceKind and ResourceMode, and std.execution_mode ExecutionMode for the mode an
+// std.resource_contract ResourceKind and ResourceMode, and std.execution_mode ExecutionMode for the mode an
 // `acquire { hermetic }` body claims (absent when the acquire body is empty or there is none).
 // `expires` is false exactly when the declaration has no `expires:` entry.
 type DeclaredResourceContract {

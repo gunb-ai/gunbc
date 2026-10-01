@@ -230,7 +230,7 @@ fn read_names(reader: NameReader, captured: Node) -> NameRead {
 // `resource Name { .. }` declares a type-position name (a fn's `uses fs: Filesystem` names it as a
 // type) and `capability name { .. }` declares a callable of that resource, read as an operation is.
 // A resource property's value (`kind: Capability`) is a marker word the lowering projects onto
-// std.resources ResourceKind / ResourceMode, never a name resolution looks up.
+// std.resource_contract ResourceKind / ResourceMode, never a name resolution looks up.
 // `uses net: Network`: each entry binds the resource name the fn body refers to. Its shape is
 // `name: T [(cfg)]`, the `name: value` pair ReadFieldInitLabel's decoder reads, so it is read by that
 // decoder, and the binder is a declaration.
