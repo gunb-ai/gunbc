@@ -1434,7 +1434,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/test/claim/long/host_identity_single_authoring_witness_test.dag", name: "length", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/test/claim/long/import_closure_live_test.dag", name: "ReadsLiveTree", standing: Retired { cause: FileDeleted } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/long/import_closure_live_test.dag", name: "witness_layer_roots", standing: Retired { cause: FileDeleted } },
-  UnimportedBareProviderDisposition { file: "dag/test/claim/long/reference_closure_equivalence_test.dag", name: "witness_layer_roots", standing: Retired { cause: ImportsFixed } },
+  UnimportedBareProviderDisposition { file: "dag/test/claim/long/reference_closure_equivalence_test.dag", name: "witness_layer_roots", standing: Retired { cause: FileDeleted } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/machine_intake/machine_intake_disposition_witness_test.dag", name: "any", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/machine_intake/mtcollins1_census_image_witness_test.dag", name: "append", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/machine_intake/mtcollins1_census_image_witness_test.dag", name: "ends_with", standing: ActiveDebt },

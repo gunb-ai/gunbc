@@ -1,23 +1,9 @@
 module v2.lens.reference_deps
 
 import v2.extdeps.languages.dag { dag_language_model, parse_production_emitted_identity_optional, qualified_name_from_module_node }
-import v2.lens.module_graph {
-  ImportResolutionFact,
-  ModuleDependencyEdge,
-  dependency_resolution_facts_at_live,
-  import_resolution_facts_live,
-  no_paths,
-  module_graph_exclude_substrings
-}
-import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
-import v2.compiler.source_authority { DagSourceReadWitness }
-import v2.std.algebra { any, fold_list, for_all, is_empty, list_reverse }
-import v2.std.artifact { Artifact, SourceFile }
-import v2.std.cross_tree.import_model { DagTree }
+import v2.std.algebra { fold_list, list_reverse }
 import std.algebra { Cons, Empty, FreeMonoid }
-import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.name_resolve { Admission, Import, ImportVisible, ResolutionSubject, resolve_diagnostics }
-import v2.std.text { string_eq }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 
 // THE PARSE-TREE REFERENCE WALKER IS RETIRED (replacement migration, DESIGN section 3).
@@ -28,15 +14,9 @@ import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 // reference_reader_without_postfix_handling_drops_call_sites). Its census and its closure walk were a
 // second edge producer beside v2.lens.module_graph dependency_resolution_facts_live, whose
 // reference half is the collector (reference_derived_resolution_facts over collect_module_reference_sites)
-// and whose import half is import_resolution_facts_live. What remains here reads that one producer.
-
-data reference_deps_file_anchor: Symbol = ^reference_deps_file_anchor
-
-data reference_deps_closure_entry_excluded: Symbol = ^reference_deps_closure_entry_excluded
-
-data reference_deps_ingest_refusal_probe_source: String = "module probe\nfn broken( -> Int { x }"
-
-data reference_deps_ingest_refusal_probe_path: String = "witness/ingest_refusal_probe.dag"
+// and whose import half is import_resolution_facts_live. Its closure functions went with
+// test.claim.long.reference_closure_equivalence, their only consumer (gunbc#12910); what remains here
+// is the module-ingest helper and the import-row reader admission_from_module_root consumes.
 
 fn reference_deps_ingest_source_text(source_text: String, file: Symbol) -> Outcome<Node> {
   let lm = dag_language_model()
@@ -51,87 +31,6 @@ fn reference_deps_ingest_source_text(source_text: String, file: Symbol) -> Outco
       )
     }
   )
-}
-
-fn reference_path_excluded(path: String, exclude_substrings: List<String>) -> Bool {
-  any(xs: exclude_substrings, predicate: fn(sub) { string_contains(s: path, pattern: sub) })
-}
-
-fn dependency_edge_targets_module(edges: List<ModuleDependencyEdge>, rel_path: String, module: String) -> Bool {
-  any(xs: edges, predicate: fn(e) { string_eq(a: e.path, b: rel_path) && string_eq(a: e.target_module, b: module) })
-}
-
-fn import_fact_targets_module(facts: List<ImportResolutionFact>, rel_path: String, module: String) -> Bool {
-  any(xs: facts, predicate: fn(f) { string_eq(a: f.path, b: rel_path) && string_eq(a: f.import_module, b: module) })
-}
-
-// The edges the one producer derives for rel_path (imports plus collector-derived references) name
-// exactly the modules rel_path imports, at (path, module) identity in both directions. On an entry
-// whose references are all imported this holds; a reference to an unimported module reds it.
-fn reference_dependency_facts_match_import_facts_at_path(
-  rel_path: String,
-  pool_roots: List<String>,
-  exclude_substrings: List<String>
-) -> Bool {
-  let dependency = dependency_resolution_facts_at_live(
-    pool_roots: pool_roots,
-    importer_path: rel_path,
-    exclude_substrings: exclude_substrings
-  )
-  let imports = import_resolution_facts_live(
-    pool_roots: pool_roots,
-    importer_roots: pool_roots,
-    exclude_substrings: exclude_substrings
-  ) |> filter(f => string_eq(a: f.path, b: rel_path))
-  !is_empty(xs: imports)
-    && for_all(xs: dependency, predicate: fn(e) { import_fact_targets_module(facts: imports, rel_path: rel_path, module: e.target_module) })
-    && for_all(xs: imports, predicate: fn(f) { dependency_edge_targets_module(edges: dependency, rel_path: rel_path, module: f.import_module) })
-}
-
-fn reference_closure_live_excluding(
-  entry_path: String,
-  pool_roots: List<String>,
-  exclude_substrings: List<String>
-) -> Outcome<FreeMonoid<String>> {
-  if reference_path_excluded(path: entry_path, exclude_substrings: exclude_substrings) {
-    outcome_rejected(d: Diagnostic {
-      reason: reference_deps_closure_entry_excluded,
-      at: invariant_port_locus(port: reference_deps_file_anchor, invariant: reference_deps_closure_entry_excluded),
-      correction: Unavailable { reason: ExternalContractUnknown }
-    })
-  } else {
-    outcome_accepted(value: import_closure_live_excluding(
-      entry_path: entry_path,
-      pool_roots: pool_roots,
-      exclude_substrings: exclude_substrings
-    ))
-  }
-}
-
-fn reference_closure_live(
-  entry_path: String,
-  pool_roots: List<String>
-) -> Outcome<FreeMonoid<String>> {
-  reference_closure_live_excluding(
-    entry_path: entry_path,
-    pool_roots: pool_roots,
-    exclude_substrings: module_graph_exclude_substrings
-  )
-}
-
-// An unparseable member refuses on the ingest route the collector consumes, with a typed cause,
-// rather than contributing an empty edge set.
-fn reference_closure_ingest_refusal_witness() -> Outcome<FreeMonoid<String>> {
-  let read = DagSourceReadWitness {
-    source: Medium { carried: reference_deps_ingest_refusal_probe_source, fidelity: Lossless },
-    artifact: Artifact { kind: SourceFile, id: reference_deps_file_anchor, file_path: reference_deps_ingest_refusal_probe_path },
-    compilation_unit: reference_deps_file_anchor,
-    source_root: DagTree
-  }
-  match module_roots_from_source_root_ingest(ingest: Cons { head: read, tail: Empty }, lm: dag_language_model()) {
-    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-    Accepted { value: _, diagnostics: _ } => outcome_accepted(value: no_paths)
-  }
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
