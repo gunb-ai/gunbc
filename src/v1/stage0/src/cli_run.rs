@@ -44574,6 +44574,12 @@ pub struct RequiredFloorOutcome {
     /// over this population, never an independently maintained tally.
     pub claim_cost: Vec<WitnessExecutionOccurrence>,
     pub failures: Vec<String>,
+    /// THE REACH DIFFERENTIAL'S BLOCKING VERDICTS, one (identity, differential) per claim the
+    /// model's `reach_claim_verdict` said blocks: a regression, a failing new claim, an unrostered
+    /// unmeasured base or a refused verdict. Its own field rather than free text in `failures`,
+    /// so the required context's adjudication names each identity and why it blocked
+    /// (neat-boar-16's srv1 control, 2026-10-01, found them unattributed).
+    pub reach_differential_blocking: Vec<(String, String)>,
     /// Per-identity `RequiredFloorDisposition`, one row per (module, function) site the
     /// site-projection loop considered. This is the sole admission authority for the site; see
     /// the type's doc comment.

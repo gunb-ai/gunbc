@@ -2328,6 +2328,7 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
 /// — it requires the fix to be complete, and the diagnostic names every row to delete.
 fn required_floor_outcome_is_clean(outcome: &v1_compiler::cli_run::RequiredFloorOutcome) -> bool {
     outcome.failures.is_empty()
+        && outcome.reach_differential_blocking.is_empty()
         && outcome.non_verdict_unenrolled.is_empty()
         && outcome.stale_non_verdict.is_empty()
         && outcome.stale_quarantine.is_empty()
@@ -2377,6 +2378,9 @@ fn required_floor_measurement_blockers(
     };
     for identity in &outcome.failures {
         add(identity, "claim_failed");
+    }
+    for (identity, differential) in &outcome.reach_differential_blocking {
+        add(identity, &format!("reach_differential_{differential}"));
     }
     for identity in &outcome.non_verdict_unenrolled {
         add(identity, "non_verdict_unenrolled");

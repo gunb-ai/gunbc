@@ -9678,6 +9678,7 @@ pub fn run_required_floor(
         modules_resolved: prepared.modules_resolved,
         modules_excluded: prepared.modules_excluded,
         sites_offered,
+        reach_differential_blocking: Vec::new(),
         declined_long_module: long_declined,
         declined_fixture_member: fixture_declined,
         declined_outside_required_gate: outside_gate_declined,
@@ -11155,11 +11156,17 @@ pub fn run_required_floor(
                 );
                 eprintln!("[floor-phase] phase=reach-differential {baseline_line} {failure}");
                 if blocking_budget_ms > 0 {
-                    outcome.failures.push(failure);
+                    // EVERY CLAIM THE REFUSED ARM LEFT UNJUDGED, BY NAME: the arm refused as a
+                    // whole, so each identity it would have judged blocks as base_arm_refused.
+                    outcome.reach_differential_blocking.extend(
+                        identities
+                            .iter()
+                            .map(|identity| (identity.clone(), "base_arm_refused".to_string())),
+                    );
                 }
             }
             Ok(base) => {
-                let mut blocking: Vec<String> = Vec::new();
+                let mut blocking: Vec<(String, String)> = Vec::new();
                 let mut counts: BTreeMap<String, usize> = BTreeMap::new();
                 for (identity, head_passed) in &reach_head_standings {
                     if head_cannot_block.contains(identity) {
@@ -11223,7 +11230,7 @@ pub fn run_required_floor(
                                 _ => String::new(),
                             };
                             ("refused".to_string(), {
-                                blocking.push(format!("{identity} refused: {reason}"));
+                                blocking.push((identity.clone(), format!("refused: {reason}")));
                                 true
                             })
                         }
@@ -11241,7 +11248,7 @@ pub fn run_required_floor(
                          head={head_name} differential={differential} blocks={blocks}"
                     );
                     if blocks && differential != "refused" {
-                        blocking.push(format!("{identity} {differential} (base={base_name})"));
+                        blocking.push((identity.clone(), differential.clone()));
                         // THE DEQUEUED AUTHOR'S RECEIPT: each identity this change newly broke, by
                         // name, so nobody has to rerun the queue to learn what failed.
                         if differential == "regressed" || differential == "new_claim" {
@@ -11269,9 +11276,7 @@ pub fn run_required_floor(
                     blocking.len()
                 );
                 if blocking_budget_ms > 0 {
-                    for b in blocking {
-                        outcome.failures.push(format!("reach-differential: {b}"));
-                    }
+                    outcome.reach_differential_blocking.extend(blocking);
                 }
             }
         }
