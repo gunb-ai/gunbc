@@ -103,7 +103,8 @@ data app_attest_interpreted_crypto_typed_admissions: List<FloorCostDebtTypedAdmi
   },
 ]
 
-// THE mtcollins1 BOOT MATRIX'S ONE CASE ABOVE THE PER-SUBJECT LINE (gunbc#12800). It runs the real
+// THE mtcollins1 BOOT MATRIX'S ONE CASE ABOVE THE PER-SUBJECT LINE (gunbc#12800), which straddles it
+// between runners (the third form gunbc#12853 repaired). It runs the real
 // boot entry TWICE -- the killed run up to StartMedia, then the next run over the world it left --
 // because recovering the dead run's hold is what it asserts, and each run pays the dry KVM observer
 // and gunbc#12434's SOL polling route faithfully. It left the dead band when it crossed the line, as
@@ -112,7 +113,7 @@ data app_attest_interpreted_crypto_typed_admissions: List<FloorCostDebtTypedAdmi
 data mtcollins1_boot_matrix_typed_admissions: List<FloorCostDebtTypedAdmission> = [
   FloorCostDebtTypedAdmission {
     identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.an_interrupted_attempts_dead_hold_is_recovered_by_the_next_one",
-    reason: "the real boot entry end to end over the dry realization twice (the killed run, then the next run recovering its hold), measured above the per-subject line by the enrolment-margin line of PR required floor run 36765162766 of gunbc#12800 at 6cac35eb1a6 (job floor, cancelled after adjudication); owner: the mtcollins1 boot lane, discharged by the matrix running as natively emitted witnesses" as NonEmptyStr,
+    reason: "the real boot entry end to end over the dry realization twice (the killed run, then the next run recovering its hold), measured above the per-subject line by the enrolment-margin lines of PR required floor runs 36765162766 (srv1, 523 ms), 36775473983 (srv3, 582 ms) and 36783312538 (srv3, 543 ms); merge-group run 36793281217 read it at 466 ms on srv4, under the line, which v2.workflow.floor_enrolment_margin now holds as EnrolmentRosterGroundWithinRunnerEnvelope (gunbc#12853) rather than staling the row; owner: the mtcollins1 boot lane, discharged by the matrix running as natively emitted witnesses" as NonEmptyStr,
   },
 ]
 

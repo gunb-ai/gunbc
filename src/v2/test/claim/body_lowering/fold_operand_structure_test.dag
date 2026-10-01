@@ -1,7 +1,7 @@
 module v2.test.claim.body_lowering.fold_operand_structure
 
 import v2.compiler.body_lowering_fold { body_lower_body_subtree_lower, body_lower_try_fold_loop, body_lower_value_read }
-import v2.compiler.fold_lowering { fold_call_head_symbol, fold_family_head }
+import v2.compiler.fold_lowering { fold_call_head_symbol, fold_family_realization }
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model, parse_production_emitted_identity_optional }
@@ -154,7 +154,11 @@ fn fos_call_over_loop(v: FosValue) -> Bool {
 
 fn fos_has_fold_head(node: Node) -> Bool {
   match fold_call_head_symbol(fold_call: node) {
-    Present { value: head } => fold_family_head(sym: head)
+    Present { value: head } =>
+      match fold_family_realization(head: head) {
+        Present { value: _ } => true
+        Absent => false
+      }
     Absent => false
   }
 }
