@@ -187,7 +187,7 @@ fn br_member_hash(o: Outcome<ResolvedTree>, name: Symbol) -> Hash? {
       fold(node_subtree_nodes(root: t.root), init: v2.std.optional.optional_absent(), f: fn(acc, m) {
         fold(m.children, init: acc, f: fn(a, e) {
           match e.label {
-            Authored { name: n } => if n == name { Present { value: content_hash(n: e.target) } } else { a }
+            Authored { name: n } => if n == name { v2.std.optional.optional_present(value: content_hash(n: e.target)) } else { a }
             StructuralLabel { label: _ } => a
             Positional => a
           }
