@@ -80,13 +80,15 @@ fn arrow_domain_param_nodes(arrow: Node) -> List<Node> {
                     Absent => a
                   }
                 })
-              _ => acc
+              ComputationNode { behavior: _ } => acc
+              TypeNode { connective: _ } => acc
             }
           Authored { name: _ } => acc
           StructuralLabel { label: _ } => acc
         }
       })
-    _ => Empty
+    ComputationNode { behavior: _ } => Empty
+    TypeNode { connective: _ } => Empty
   }
 }
 

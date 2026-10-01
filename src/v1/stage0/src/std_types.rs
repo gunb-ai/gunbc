@@ -182,6 +182,8 @@ impl From<Bool> for bool {
     }
 }
 
+pub type Unit = ();
+
 pub type Json = serde_json::Value;
 
 pub type Bytes = std::vec::Vec<u8>;
