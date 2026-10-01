@@ -1854,7 +1854,9 @@ fn is_population_string(spelling: String, population_module: String, declarer_im
 }
 
 // What a literal-site resolution can read: the population, the kernel callees, and every module
-// the batch loaded (callees, field owners, the declarers of spelled types, and std.types).
+// the batch loaded (callees, field owners, and std.types). A second wave loading the declarer of
+// every spelled type was measured too costly to finish (every batch timed out at 7000 s), so a
+// chase that needs a module outside this set stays UNRESOLVED with the spelling named.
 type LiteralContext {
   population_module: String
   kernel: FreeMonoid<String>
@@ -1985,22 +1987,6 @@ fn literal_sites_of(own: Walk, cx: LiteralContext) -> FreeMonoid<LiteralSite> {
       Cons { head: LiteralSite { decl: s.decl, kind: s.kind, at: s.at, position: pos }, tail: inner }
     })
   }))
-}
-
-// The names a walk SPELLS as types (annotations, returns, parameters, fields, alias targets): the
-// modules declaring them are the second wave a batch loads.
-fn spelled_type_modules(w: Walk, acc: FreeMonoid<String>) -> FreeMonoid<String> {
-  let spellings = fold_list(xs: w.param_types, empty: fold_list(xs: w.field_types, empty: fold_list(xs: w.aliases, empty: fold_list(xs: w.sites, empty: empty_strings, cons: fn(a, s) {
-    match s.kind {
-      LiteralAtAnnotation { spelling: sp } => Cons { head: sp, tail: a }
-      LiteralAtReturn { spelling: sp } => Cons { head: sp, tail: a }
-      _ => a
-    }
-  }), cons: fn(a, al) { Cons { head: al.spelling, tail: a } }), cons: fn(a, ft) { Cons { head: ft.spelling, tail: a } }), cons: fn(a, pt) { Cons { head: pt.spelling, tail: a } })
-  fold_list(xs: spellings, empty: acc, cons: fn(inner, sp) {
-    let m = imported_module_of(imported: w.imported, name: sp)
-    if (m == "") || member(xs: inner, x: m) { inner } else { Cons { head: m, tail: inner } }
-  })
 }
 
 // The modules a batch's literal sites need read: callee modules of literal arguments and the
@@ -2179,19 +2165,7 @@ fn text_string_importer_literal_sites(paths_csv: String, out: String, roots_csv:
       let walks = fold_list(xs: list_reverse(xs: trees), empty: Empty, cons: fn(acc, pt) { Cons { head: PathWalk { path: pt.path, standing: pt.walk }, tail: acc } })
       let wave1_names = Cons { head: kernel_types_module, tail: literal_modules(walks: walks) }
       let wave1 = callee_modules(modules: wave1_names, r: r, roots: roots)
-      let wave2_names = fold_list(xs: wave1, empty: fold_list(xs: walks, empty: empty_strings, cons: fn(acc, pw) {
-        match pw.standing {
-          WalkNotEstablished { cause: _ } => acc
-          WalkEstablished { walk: w } => spelled_type_modules(w: w, acc: acc)
-        }
-      }), cons: fn(acc, cm) {
-        match cm.standing {
-          WalkNotEstablished { cause: _ } => acc
-          WalkEstablished { walk: w } => spelled_type_modules(w: w, acc: acc)
-        }
-      })
-      let missing = fold_list(xs: wave2_names, empty: empty_strings, cons: fn(acc, m) { if member(xs: wave1_names, x: m) { acc } else { Cons { head: m, tail: acc } } })
-      let callees = fold_list(xs: callee_modules(modules: missing, r: r, roots: roots), empty: wave1, cons: fn(acc, cm) { Cons { head: cm, tail: acc } })
+      let callees = wave1
       let lines = fold_list(xs: trees, empty: Empty, cons: fn(acc, pt) {
         fold_list(xs: literal_lines(path: pt.path, standing: pt.standing, r: r, callees: callees), empty: acc, cons: fn(inner, l) { Cons { head: l, tail: inner } })
       })
