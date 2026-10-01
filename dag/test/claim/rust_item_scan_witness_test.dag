@@ -37,6 +37,10 @@ data fixture_raw_string_reaching_column_zero: String = "pub fn fixture_text() ->
 
 data fixture_ordinary_string_reaching_column_zero: String = "pub fn fixture_text() -> &'static str {\n    \"\nfn phantom_item() -> u32 {\n}\n\"\n}\n"
 
+data fixture_continued_initializer: String = "static SKIPS: std::sync::atomic::AtomicUsize =\n    std::sync::atomic::AtomicUsize::new(0);\n\nfn record_skip() {\n    SKIPS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);\n}\n"
+
+data fixture_continued_string_literal: String = "const SRC: &str =\n    \"module m\\n\\n\\\n}\\n\\\n     fn tail() {}\\n\";\n\nfn after_the_string() -> u32 {\n    1\n}\n"
+
 data fixture_extern_block: String = "extern \"C\" {\n    fn getrusage(who: i32) -> i32;\n}\n"
 
 data fixture_header_opened_raw_string: String = "pub const FIXTURE_SRC: &str = r#\"\nfn phantom_item() -> u32 {\n    1\n}\n\"#;\n\npub fn after_the_literal() -> u32 {\n    1\n}\n"
@@ -218,6 +222,57 @@ fn fixture_line_attributes_to(
     AttributedToFileLevel => false
     AttributedToUnnamedMacroBlock { macro_name: _, line: _ } => false
     AttributionOutOfRange { line: _, line_count: _ } => false
+  }
+}
+
+// AN EXPRESSION-BODIED ITEM ENDS AT ITS OWN SEMICOLON EVEN WHEN rustfmt CONTINUES IT A LINE DOWN.
+// `static NAME: T =` broken before its initializer puts the closing `;` at the continuation indent;
+// a reader that asked only the item's own indent kept the static open, and the fn after it was
+// swallowed until that fn's `}` -- never an item, and an edit to it attributed to the static. That
+// was cli_run.rs `static PROVIDER_BOOTSTRAP_STORE_SKIPS` over `fn record_provider_bootstrap_store_skip`,
+// a silent mis-attribution rather than a refusal. Line 5 is inside the fn and must say so.
+test fn a_continued_static_initializer_ends_at_its_semicolon_and_the_next_fn_is_an_item() -> Bool {
+  match scan_rust_source(repo_path: "src/v1/stage0/src/probe.rs", content: fixture_continued_initializer) {
+    RustFileScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => false
+    RustFileScanned { repo_path: _, items: items, macro_regions: macro_regions, line_count: line_count } =>
+      length(xs: items) == 2
+        && fixture_line_attributes_to(
+          items: items,
+          macro_regions: macro_regions,
+          line_count: line_count,
+          line: 2,
+          key: "src/v1/stage0/src/probe.rs::static::SKIPS"
+        )
+        && fixture_line_attributes_to(
+          items: items,
+          macro_regions: macro_regions,
+          line_count: line_count,
+          line: 5,
+          key: "src/v1/stage0/src/probe.rs::fn::record_skip"
+        )
+  }
+}
+
+// A LINE AFTER A BACKSLASH IS STRING TEXT AT WHATEVER INDENT ITS AUTHOR CHOSE. The fixture's const
+// carries an ordinary string continued with `\`: a continued line that is exactly `}` at column
+// zero (line 3), Rust-looking text at column five (line 4), and the `";` that ends the literal and the
+// declaration. None of it is structure, the const ends at that `;`, and the fn after it is found.
+test fn a_string_continued_with_a_backslash_is_text_and_the_const_ends_at_its_semicolon() -> Bool {
+  match scan_rust_source(repo_path: "src/v1/stage0/src/probe.rs", content: fixture_continued_string_literal) {
+    RustFileScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => false
+    RustFileScanned { repo_path: _, items: items, macro_regions: macro_regions, line_count: line_count } => {
+      let keys = scan_item_keys(items: items)
+      length(xs: items) == 2
+        && key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::fn::after_the_string")
+        && !key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::fn::tail")
+        && fixture_line_attributes_to(
+          items: items,
+          macro_regions: macro_regions,
+          line_count: line_count,
+          line: 3,
+          key: "src/v1/stage0/src/probe.rs::const::SRC"
+        )
+    }
   }
 }
 
