@@ -38,6 +38,9 @@ fn wall_conj(children: List<Edge>) -> Node {
 }
 
 // `name: () -> Bool = body`, in the shape normalize emits for an expression-bodied, zero-parameter fn.
+// A type position carries the SPELLING `Bool` (^Bool): normalize emits the authored spelling and
+// resolve binds it to the kernel row (v2.extdeps.languages.dag dag_kernel_type_binding_optional), so a
+// supplied NORMALIZED root carrying the bound symbol is resolve's output, not normalize's.
 fn wall_member(name: Symbol, body: Node) -> Edge {
   let signature = declared_signature(params: [], source: body)
   Edge {
@@ -46,8 +49,8 @@ fn wall_member(name: Symbol, body: Node) -> Edge {
       kind: TypeNode { connective: Arrow },
       children: [
         signature.domain,
-        Edge { label: Positional, target: wall_atom(identity: ^bool_node_symbol) },
-        Edge { label: Positional, target: wall_atom(identity: ^bool_node_symbol) },
+        Edge { label: Positional, target: wall_atom(identity: ^Bool) },
+        Edge { label: Positional, target: wall_atom(identity: ^Bool) },
         signature.order,
         Edge { label: Named { name: ^arrow_body_edge }, target: body }
       ],
@@ -59,7 +62,7 @@ fn wall_member(name: Symbol, body: Node) -> Edge {
 // `name: (param: Bool) -> Bool = param` -- a parameter that shares a module-level name.
 fn wall_member_returning_its_param(name: Symbol, param: Symbol) -> Edge {
   let signature = declared_signature(
-    params: [Edge { label: Named { name: param }, target: wall_atom(identity: ^bool_node_symbol) }],
+    params: [Edge { label: Named { name: param }, target: wall_atom(identity: ^Bool) }],
     source: wall_atom(identity: param)
   )
   Edge {
@@ -68,8 +71,8 @@ fn wall_member_returning_its_param(name: Symbol, param: Symbol) -> Edge {
       kind: TypeNode { connective: Arrow },
       children: [
         signature.domain,
-        Edge { label: Positional, target: wall_atom(identity: ^bool_node_symbol) },
-        Edge { label: Positional, target: wall_atom(identity: ^bool_node_symbol) },
+        Edge { label: Positional, target: wall_atom(identity: ^Bool) },
+        Edge { label: Positional, target: wall_atom(identity: ^Bool) },
         signature.order,
         Edge { label: Named { name: ^arrow_body_edge }, target: wall_atom(identity: param) }
       ],
