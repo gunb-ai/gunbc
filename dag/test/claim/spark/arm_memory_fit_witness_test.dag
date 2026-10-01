@@ -13,7 +13,7 @@ import std.measure {
 import std.interval { closed_interval, IntervalReady, IntervalRefused }
 import extdeps.vllm.server { vllm_source_revision_read }
 import extdeps.vllm.runtime_defaults { vllm_requested_envelope_bytes }
-import extdeps.vllm.engine_args { PrefixCachingExplicit, KvFp8, EngramConfigOmitted }
+import extdeps.vllm.engine_args { PrefixCachingExplicit, KvFp8, EngramConfigOmitted, ModalityOmitted }
 import extdeps.vllm.kv_layout {
   ResolvedKvLayout, resolved_kv_layout, KvGroupLayout, FullAttention,
   cold_admission_bytes, AdmissionByteCostBytes, AdmissionByteCostUnestablished,
@@ -247,7 +247,9 @@ fn fx_derived_profile() -> ServingLaunchProfile {
     serve_port: 30000,
     served_alias: "glm-5.3-flash" as NonEmptyStr,
     prefix_caching: PrefixCachingExplicit { enabled: true },
-    engram: EngramConfigOmitted)
+    engram: EngramConfigOmitted,
+    modality: ModalityOmitted,
+  )
 }
 
 // ONE MEASURED RANK ROW: per-rank checkpoint placement measured even (the ceiling is the split
@@ -1361,7 +1363,9 @@ fn fx_wet_profile() -> ServingLaunchProfile {
     serve_port: 30000,
     served_alias: "glm-5.3-flash" as NonEmptyStr,
     prefix_caching: PrefixCachingExplicit { enabled: true },
-    engram: EngramConfigOmitted)
+    engram: EngramConfigOmitted,
+    modality: ModalityOmitted,
+  )
 }
 
 fn fx_wet_join(receipts: List<ArmComponentReceipt>) -> ArmMemorySubjectMint {
@@ -2021,7 +2025,9 @@ fn fx_262k_subject() -> MemoryProofSubject? {
           serve_port: 30000,
           served_alias: "glm-5.3-flash" as NonEmptyStr,
           prefix_caching: PrefixCachingExplicit { enabled: true },
-          engram: EngramConfigOmitted),
+          engram: EngramConfigOmitted,
+          modality: ModalityOmitted,
+        ),
         launch_generation: "group-b/future-262k" as NonEmptyStr) {
         MemoryProofSubjectReady { subject: s } => Present { value: s }
         MemoryProofSubjectRefused { cause: _ } => none
@@ -2404,7 +2410,9 @@ fn fx_launch_wall_profile() -> ServingLaunchProfile {
     serve_port: 30000,
     served_alias: "glm-5.3-flash" as NonEmptyStr,
     prefix_caching: PrefixCachingExplicit { enabled: true },
-    engram: EngramConfigOmitted)
+    engram: EngramConfigOmitted,
+    modality: ModalityOmitted,
+  )
 }
 
 // THE SUBJECT MINT: the launch wall's own ranks and deductions, the rounded pool, the sealed

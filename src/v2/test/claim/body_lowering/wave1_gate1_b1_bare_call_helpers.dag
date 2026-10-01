@@ -66,7 +66,8 @@ fn wave1_gate1_b1_find_named_fn_arrow_body(root: Node, fn_lexeme: String) -> Opt
                   match edge.target.kind {
                     TypeNode { connective: Arrow } =>
                       wave1_gate1_b1_arrow_named_body_optional(arrow: edge.target)
-                    _ => Absent
+                    TypeNode { connective: _ } => Absent
+                    ComputationNode { behavior: _ } => Absent
                   }
                 } else {
                   wave1_gate1_b1_find_named_fn_arrow_body(root: edge.target, fn_lexeme: fn_lexeme)
@@ -76,14 +77,18 @@ fn wave1_gate1_b1_find_named_fn_arrow_body(root: Node, fn_lexeme: String) -> Opt
             }
         }
       })
-    _ =>
-      fold(root.children, init: Absent, f: fn(acc, edge) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => wave1_gate1_b1_find_named_fn_arrow_body(root: edge.target, fn_lexeme: fn_lexeme)
-        }
-      })
+    TypeNode { connective: _ } => wave1_gate1_b1_find_named_fn_arrow_body_children(root: root, fn_lexeme: fn_lexeme)
+    ComputationNode { behavior: _ } => wave1_gate1_b1_find_named_fn_arrow_body_children(root: root, fn_lexeme: fn_lexeme)
   }
+}
+
+fn wave1_gate1_b1_find_named_fn_arrow_body_children(root: Node, fn_lexeme: String) -> Optional<Node> {
+  fold(root.children, init: Absent, f: fn(acc, edge) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => wave1_gate1_b1_find_named_fn_arrow_body(root: edge.target, fn_lexeme: fn_lexeme)
+    }
+  })
 }
 
 fn wave1_gate1_b1_caller_body_has_transform(source: String) -> Bool {
@@ -94,7 +99,8 @@ fn wave1_gate1_b1_caller_body_has_transform(source: String) -> Bool {
         Present { value: body } =>
           match body.kind {
             ComputationNode { behavior: Transform } => true
-            _ => false
+            TypeNode { connective: _ } => false
+            ComputationNode { behavior: _ } => false
           }
         Absent => false
       }

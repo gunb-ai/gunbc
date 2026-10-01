@@ -3,7 +3,7 @@ module gunbc.spark.serving_capacity_intent
 import std.types { NonEmptyStr, List, Port }
 import std.nat { Nat, nat_range_inclusive }
 import std.measure { TokenCount, token_count, token_count_value, BasisPoint }
-import extdeps.vllm.engine_args { VllmPrefixCachingRequest, VllmKvCacheDtypeRequest, VllmEngramConfigRequest }
+import extdeps.vllm.engine_args { VllmPrefixCachingRequest, VllmKvCacheDtypeRequest, VllmEngramConfigRequest, VllmModalityRequest }
 import gunbc.spark.serving_arm { ServingLaunchProfile, serving_launch_profile }
 import v2.std.algebra { length }
 
@@ -121,6 +121,7 @@ fn profile_for_intent(
   served_alias: NonEmptyStr,
   prefix_caching: VllmPrefixCachingRequest,
   engram: VllmEngramConfigRequest,
+  modality: VllmModalityRequest,
 ) -> ServingLaunchProfile {
   serving_launch_profile(
     max_model_len: intent_max_single_sequence_tokens(i: intent),
@@ -131,7 +132,8 @@ fn profile_for_intent(
     serve_port: serve_port,
     served_alias: served_alias,
     prefix_caching: prefix_caching,
-    engram: engram)
+    engram: engram,
+    modality: modality)
 }
 
 // ── THE WORKLOAD A LAUNCH PROFILE ADMITS, DERIVED THE SAME WAY ──────────────────────────────────

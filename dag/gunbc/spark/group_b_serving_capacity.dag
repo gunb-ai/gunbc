@@ -7,6 +7,7 @@ import v2.std.optional { Present, Absent }
 import extdeps.vllm.engine_args {
   VllmPrefixCachingRequest, PrefixCachingExplicit, VllmKvCacheDtypeRequest, KvFp8,
   VllmEngramConfigRequest, EngramConfigOmitted,
+  ModalityOmitted,
 }
 import gunbc.spark.serving_arm { ServingLaunchProfile }
 import gunbc.spark.serving_capacity_intent {
@@ -140,7 +141,9 @@ fn group_b_restoration_executable() -> GroupBRestorationExecutable? {
         serve_port: group_b_restoration_serve_port,
         served_alias: group_b_restoration_served_alias,
         prefix_caching: group_b_restoration_prefix_caching,
-        engram: group_b_restoration_engram) } }
+        engram: group_b_restoration_engram,
+        modality: ModalityOmitted,
+      ) } }
   }
 }
 
