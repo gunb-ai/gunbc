@@ -48,7 +48,7 @@ import v2.std.diagnostic {
   node_locus
 }
 import v2.std.logic { Bool }
-import v2.std.node { Bind, ComputationNode, Edge, Node, Positional, Symbol }
+import v2.std.node { Bind, BinderSite, ComputationNode, Edge, Node, Positional, Symbol }
 import v2.std.witness { Violates, Witness }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -165,13 +165,14 @@ test fn rust_bind_let_emit_wrong_value_discriminates() -> Bool {
 // the tail-only let above never reached that check because the tail had its own unchecked mint, now
 // deleted.
 fn rust_bind_let_nested_tree() -> InferredTree {
-  let x_ref = binder_reference_node(binder: ^dag_binding_bind_x, occurrence_id: OccurrenceSynthetic)
+  let outer_x = binder_reference_node(site: BinderSite { name: ^dag_binding_bind_x, ordinal: 0 }, occurrence_id: OccurrenceSynthetic)
+  let inner_x = binder_reference_node(site: BinderSite { name: ^dag_binding_bind_x, ordinal: 1 }, occurrence_id: OccurrenceSynthetic)
   let inner = Node {
     kind: ComputationNode { behavior: Bind },
     children: [
       Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_bind_x) },
-      Edge { label: Positional, target: x_ref },
-      Edge { label: Positional, target: x_ref }
+      Edge { label: Positional, target: outer_x },
+      Edge { label: Positional, target: inner_x }
     ],
     occurrence_id: OccurrenceSynthetic
   }

@@ -2980,13 +2980,14 @@ fn resolve_node_consumes_expectation(n: Node) -> Bool {
 // parameters under -- so its value frame is a ParameterFrame over that path. Nothing below an Arrow
 // is containment: its body, codomain and domain walk NotDeclaring, so an Arrow met there (a lambda)
 // opens a LexicalFrame.
+//
+// A NAMED DECLARATION IS THE BINDER-SITE KEY'S SCOPE: its walk starts from no counts, and what it
+// counted does not leave it (resolve_walk_with_binder_counts), so sibling and enclosing declarations
+// number their binders independently. A lambda's parameters open a LexicalFrame inside the
+// declaration and are counted like any other binder there.
 fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
   let scope_type = resolve_type_param_frame(n: n, outer: ctx.scope)
   let value_params = add_arrow_domain_named_params(n: n, acc: frame_locals_empty())
-  // A NAMED DECLARATION IS THE BINDER-SITE KEY'S SCOPE: its walk starts from no counts, and what it
-  // counted does not leave it (resolve_walk_with_binder_counts below), so sibling and enclosing
-  // declarations number their binders independently. A lambda's parameters open a LexicalFrame
-  // inside the declaration and are counted like any other binder there.
   let declares = match ctx.declaring {
     DeclaringAt { path: _ } => true
     DeclaringInSpine { path: _, body: _ } => false
