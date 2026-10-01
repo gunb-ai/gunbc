@@ -747,7 +747,12 @@ fn qualify_concurrency(cohort: RunnerCohortEvidence, runs: List<ObservedRunnerQu
 fn concurrency_refusal(s: ConcurrencyStanding) -> List<ThroughputRefusal> {
   match s {
     ConcurrencyObservedAtWidth { population: _ } => []
-    _ => [ConcurrencyDidNotHold { standing: s }]
+    ConcurrencyUnobserved => [ConcurrencyDidNotHold { standing: s }]
+    ConcurrencyCohortRefused { cause: _ } => [ConcurrencyDidNotHold { standing: s }]
+    ConcurrencyPopulationIsNotTheWidth { population: _, width: _ } => [ConcurrencyDidNotHold { standing: s }]
+    ConcurrencySeatNotAnAssessedRun { seat: _ } => [ConcurrencyDidNotHold { standing: s }]
+    ConcurrencySeatFailed { seat: _, cause: _ } => [ConcurrencyDidNotHold { standing: s }]
+    ConcurrencyNotAssessed { because: _ } => [ConcurrencyDidNotHold { standing: s }]
   }
 }
 

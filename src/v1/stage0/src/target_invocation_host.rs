@@ -1028,13 +1028,21 @@ fn exact_head_standing_outcome(
 /// broken compiler.
 fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
     match cli_run::run_self_host(source_roots) {
-        Ok(held) => InvocationOutcome {
-            termination: if held.exit_status == 0 && held.warning_count == 0 {
+        Ok(held) => {
+            // THE TERMINATION IS DERIVED FROM THE CAUSE, so a did-not-hold cannot exit 1 without
+            // printing why: the cause IS the discriminator (DESIGN §5).
+            let not_clean = cli_run::emitted_build_not_clean_cause(
+                "SELF-HOST",
+                held.exit_status,
+                held.warning_count,
+                &held.warning_headers,
+            );
+            let termination = if not_clean.is_none() {
                 Termination::ObservationHeld
             } else {
                 Termination::ObservationDidNotHold
-            },
-            message: format!(
+            };
+            let counters = format!(
                 "self-host v1->v2: closure={} binary={} seed={} exit_status={} warning_count={} \
                  door_refusal_reason=\"{}\"",
                 held.closure_identity,
@@ -1043,8 +1051,15 @@ fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
                 held.exit_status,
                 held.warning_count,
                 held.door_refusal_reason,
-            ),
-        },
+            );
+            InvocationOutcome {
+                termination,
+                message: match not_clean {
+                    Some(cause) => format!("{cause}\n{counters}"),
+                    None => counters,
+                },
+            }
+        }
         Err(cause) => InvocationOutcome {
             termination: Termination::SubjectUnreached,
             message: cause,
@@ -1124,13 +1139,21 @@ fn run_v2_native_frontier(source_roots: &[String]) -> InvocationOutcome {
 /// never opened.
 fn run_v2_native_cli(source_roots: &[String]) -> InvocationOutcome {
     match cli_run::run_v2_native_cli(source_roots) {
-        Ok(held) => InvocationOutcome {
-            termination: if held.exit_status == 0 && held.warning_count == 0 {
+        Ok(held) => {
+            // THE TERMINATION IS DERIVED FROM THE CAUSE, so a did-not-hold cannot exit 1 without
+            // printing why: the cause IS the discriminator (DESIGN §5).
+            let not_clean = cli_run::emitted_build_not_clean_cause(
+                "V2-NATIVE-CLI",
+                held.exit_status,
+                held.warning_count,
+                &held.warning_headers,
+            );
+            let termination = if not_clean.is_none() {
                 Termination::ObservationHeld
             } else {
                 Termination::ObservationDidNotHold
-            },
-            message: format!(
+            };
+            let counters = format!(
                 "v2-native-cli: closure={} binary={} seed={} exit_status={} warning_count={} \
                  door_exit_status={} door_emitted_bytes={} door_refusal_exit_status={} \
                  generation_one_executable={}",
@@ -1143,8 +1166,15 @@ fn run_v2_native_cli(source_roots: &[String]) -> InvocationOutcome {
                 held.door_emitted_bytes,
                 held.door_refusal_exit_status,
                 held.generation_one_executable,
-            ),
-        },
+            );
+            InvocationOutcome {
+                termination,
+                message: match not_clean {
+                    Some(cause) => format!("{cause}\n{counters}"),
+                    None => counters,
+                },
+            }
+        }
         Err(cause) => InvocationOutcome {
             termination: Termination::SubjectUnreached,
             message: cause,
@@ -1693,6 +1723,166 @@ fn floor_memory_qualification_lane() -> String {
 /// number. An unbounded run and a bounded one are indistinguishable in everything the workload
 /// itself emits, which is the class
 /// `gunbc.recurring_failure_mode.suppressed_precondition_failure_runs_the_workload_unconstrained`.
+/// THE MEASURED RUN BY PHASE: the child's seam beats, transcribed by the supervisor and folded by
+/// `gunbc.floor_demand` `floor_phase_attribution`, one line per phase in the order the run entered
+/// them. `entry` is the held set the phase inherited, `peak` the largest over its own beats, and
+/// `left` what it left resident -- the next phase's entry, read from that row, so this renderer
+/// does no arithmetic of its own. A phase whose held set could not be represented prints the arm.
+///
+/// This is a reading beside the verdict, never a verdict: a run with no beats (a lane that owns no
+/// floor phase) or a transcription refusal says so here and leaves the qualification unchanged.
+fn floor_phase_attribution_rendered(
+    ctx: &crate::v1_interpreter::InterpContext,
+    beat_lines: &[String],
+) -> String {
+    use crate::v1_interpreter::Value;
+    use cli_run::floor_memory_supervisor as sup;
+    let beats = match sup::transcribe_floor_beats(beat_lines) {
+        Ok(beats) if beats.is_empty() => {
+            return "floor-phase-attribution: no seam beats were printed by the measured child"
+                .to_string();
+        }
+        Ok(beats) => beats,
+        Err(refusal) => return format!("floor-phase-attribution: refused: {refusal}"),
+    };
+    // A COUNTER PAST i64 REFUSES rather than clamping: a clamp would hand the fold a value nobody
+    // read. None of these can reach it on a real host, which is why a refusal costs nothing.
+    if let Some(b) = beats.iter().find(|b| {
+        std::iter::once(b.charge)
+            .chain(b.stall_per_min)
+            .chain(b.swap_bytes)
+            .chain(b.stat.iter().copied())
+            .any(|v| i64::try_from(v).is_err())
+    }) {
+        return format!(
+            "floor-phase-attribution: refused: beat {} carries a counter past the i64 the fold reads",
+            b.beat
+        );
+    }
+    let int = |v: u64| Value::Int(v as i64);
+    // AN UNREAD COUNTER CROSSES AS `Absent`, the fold's own optional, never as a zero beside a flag.
+    let optional = |v: Option<u64>| -> Value {
+        match v {
+            Some(n) => Value::Variant {
+                type_name: ctx.sym("Optional"),
+                variant_name: ctx.sym("Present"),
+                fields: std::rc::Rc::new(vec![(ctx.sym("value"), int(n))]),
+            },
+            None => Value::Variant {
+                type_name: ctx.sym("Optional"),
+                variant_name: ctx.sym("Absent"),
+                fields: std::rc::Rc::new(vec![]),
+            },
+        }
+    };
+    let readings: Vec<Value> = beats
+        .iter()
+        .map(|b| {
+            let mut fields = vec![
+                (ctx.sym("beat"), Value::Int(b.beat as i64)),
+                (ctx.sym("opens_phase"), Value::Bool(b.opens_phase)),
+                (
+                    ctx.sym("seam_before"),
+                    crate::v1_interpreter::str_value(&b.seam_before),
+                ),
+                (
+                    ctx.sym("seam_after"),
+                    crate::v1_interpreter::str_value(&b.seam_after),
+                ),
+                (ctx.sym("stall_per_min"), optional(b.stall_per_min)),
+                (ctx.sym("swap_bytes"), optional(b.swap_bytes)),
+                (ctx.sym("charge"), int(b.charge)),
+            ];
+            for (key, value) in sup::FLOOR_BEAT_STAT_KEYS.iter().zip(b.stat.iter()) {
+                fields.push((ctx.sym(key), int(*value)));
+            }
+            Value::Record {
+                type_name: ctx.sym("FloorBeatReading"),
+                fields: std::rc::Rc::new(fields),
+            }
+        })
+        .collect();
+    let args = vec![(
+        Some("readings".to_string()),
+        crate::v1_interpreter::list_value(readings),
+    )];
+    let attributed = match crate::v1_interpreter::run_in_context_with_args(
+        ctx,
+        "floor_phase_attribution_from_readings",
+        &args,
+        true,
+    ) {
+        Ok(v) => v,
+        Err(cause) => return format!("floor-phase-attribution: not reached: {cause}"),
+    };
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = &attributed
+    else {
+        return format!(
+            "floor-phase-attribution: unrecognised result {}",
+            ctx.format_value(&attributed)
+        );
+    };
+    if !ctx.sym_eq(*variant_name, "FloorPhasesAttributed") {
+        return format!("floor-phase-attribution: {}", ctx.format_value(&attributed));
+    }
+    let Some(Value::List(rows)) = ctx.field(fields, "phases") else {
+        return format!(
+            "floor-phase-attribution: unrecognised result {}",
+            ctx.format_value(&attributed)
+        );
+    };
+    let held = |v: Option<&Value>| -> String {
+        match v {
+            Some(Value::Variant {
+                variant_name,
+                fields,
+                ..
+            }) if ctx.sym_eq(*variant_name, "HeldSetPeakAt") => match ctx.field(fields, "bytes") {
+                Some(Value::Record { fields, .. }) => match ctx.field(fields, "count") {
+                    Some(Value::Int(n)) => n.to_string(),
+                    other => format!("{other:?}"),
+                },
+                other => format!("{other:?}"),
+            },
+            Some(other) => ctx.format_value(other),
+            None => "<absent>".to_string(),
+        }
+    };
+    let rows: Vec<&Value> = rows.iter().collect();
+    let mut out = vec![format!(
+        "floor-phase-attribution: phases={} beats={} (held set per gunbc.floor_demand beat_held_set, bytes)",
+        rows.len(),
+        beats.len()
+    )];
+    for (i, row) in rows.iter().enumerate() {
+        let Value::Record { fields, .. } = row else {
+            out.push(format!("  unrecognised row {}", ctx.format_value(row)));
+            continue;
+        };
+        let left = match rows.get(i + 1) {
+            Some(Value::Record { fields: next, .. }) => held(ctx.field(next, "entry")),
+            _ => "end-of-run".to_string(),
+        };
+        out.push(format!(
+            "  phase={} opened_at_beat={} entry={} peak={} left={}",
+            ctx.field(fields, "seam")
+                .map(|v| ctx.format_value(v))
+                .unwrap_or_default(),
+            ctx.field(fields, "opened_at")
+                .map(|v| ctx.format_value(v))
+                .unwrap_or_default(),
+            held(ctx.field(fields, "entry")),
+            held(ctx.field(fields, "peak")),
+            left,
+        ));
+    }
+    out.join("\n")
+}
+
 fn run_floor_memory_qualification() -> InvocationOutcome {
     use cli_run::floor_memory_supervisor as sup;
 
@@ -1799,15 +1989,16 @@ fn run_floor_memory_qualification() -> InvocationOutcome {
         args.push(root);
     }
 
-    let termination = match sup::run_child_in_own_cgroup(&exe.to_string_lossy(), &args) {
-        Ok(t) => t,
-        Err(refusal) => {
-            return InvocationOutcome {
-                termination: Termination::Refused,
-                message: format!("floor-memory-qualification: refused: {}", refusal.render()),
-            };
-        }
-    };
+    let (termination, beat_lines) =
+        match sup::run_child_in_own_cgroup(&exe.to_string_lossy(), &args) {
+            Ok(t) => t,
+            Err(refusal) => {
+                return InvocationOutcome {
+                    termination: Termination::Refused,
+                    message: format!("floor-memory-qualification: refused: {}", refusal.render()),
+                };
+            }
+        };
 
     let read = match sup::read_cgroup_memory(&cgroup) {
         Ok(r) => r,
@@ -1921,6 +2112,8 @@ fn run_floor_memory_qualification() -> InvocationOutcome {
         }
     };
 
+    let phases = floor_phase_attribution_rendered(&ctx, &beat_lines);
+
     // The supervisor shares the cgroup with the child, so its own few MiB are inside this peak.
     // Stated rather than netted out: subtracting an estimate would replace a measured number with
     // an adjusted one.
@@ -1928,7 +2121,7 @@ fn run_floor_memory_qualification() -> InvocationOutcome {
         "floor-memory-qualification: cgroup={} peak={} memory.max={} memory.high={} \
          events=[high {} / max {} / oom_kill {}] termination={} lane={} \
          (the supervisor shares this cgroup with the measured child, so its own footprint — a few \
-         MiB — is included in the peak rather than subtracted)",
+         MiB — is included in the peak rather than subtracted)\n{phases}",
         read.dir,
         read.peak,
         read.limit_max,

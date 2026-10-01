@@ -574,6 +574,7 @@ pub fn pattern_binding_type(subject: Rc<PatternSubject>) -> Rc<Node> {
 pub fn variant_not_found_result(
     scrut: Rc<Node>,
     variant_name: String,
+    site: Rc<SourceSpan>,
     module_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<NodeLookupResult> {
@@ -581,7 +582,7 @@ pub fn variant_not_found_result(
         Rc::new(CompilerDiagnostic::VariantNotFound {
             variant: variant_name.clone(),
             type_name: crate::v1_std_core::authored_name_at(source_indices.clone(), scrut.clone()),
-            span: scrut.span.clone(),
+            span: site.clone(),
         }),
         module_name.clone(),
     )]))
@@ -590,6 +591,7 @@ pub fn variant_not_found_result(
 pub fn lookup_variant_in_type(
     scrut: Rc<PatternSubject>,
     variant_name: String,
+    site: Rc<SourceSpan>,
     module_name: String,
     env: Rc<TypeEnv>,
     field_binding_count: i64,
@@ -638,6 +640,7 @@ pub fn lookup_variant_in_type(
                                 std::option::Option::None => variant_not_found_result(
                                     scrut_node.clone(),
                                     variant_name.clone(),
+                                    site.clone(),
                                     module_name.clone(),
                                     source_indices.clone(),
                                 ),
@@ -649,6 +652,7 @@ pub fn lookup_variant_in_type(
                     std::option::Option::None => variant_not_found_result(
                         scrut_node.clone(),
                         variant_name.clone(),
+                        site.clone(),
                         module_name.clone(),
                         source_indices.clone(),
                     ),
@@ -753,6 +757,7 @@ pub fn lookup_variant_in_type(
                                                             variant_not_found_result(
                                                                 scrut_node.clone(),
                                                                 variant_name.clone(),
+                                                                site.clone(),
                                                                 module_name.clone(),
                                                                 source_indices.clone(),
                                                             )
@@ -970,6 +975,7 @@ pub fn constructor_fields(
         let lookup = lookup_variant_in_type(
             subject.clone(),
             ctor.clone(),
+            type_node.span.clone(),
             module_name.clone(),
             env.clone(),
             0,
