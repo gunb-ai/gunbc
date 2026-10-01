@@ -475,6 +475,15 @@ fn snapshot_refusal_wire(cause: SnapshotMaterializeRefusal) -> String {
   }
 }
 
+// A materialize refusal whose cause is not the one the scenario plants is a failed control.
+fn materialize_refused_for_wrong_reason(scenario: String, cause: SnapshotMaterializeRefusal) -> SnapshotScenarioOutcome {
+  SnapshotScenarioFailed {
+    scenario: scenario,
+    step: "materialize",
+    detail: join(["refused for the wrong reason: ", snapshot_refusal_wire(cause: cause)], ""),
+  }
+}
+
 // THE OBJECT A CONTROL REACHES FOR IS DERIVED, NOT SEARCHED. Its ref is the content hash of the
 // bytes this module authored, so the path is computed by the same rule the store published it
 // under; a control that listed the objects directory and picked one would be asserting over
@@ -582,12 +591,15 @@ fn run_corrupted_bytes_scenario(workspace: SnapshotWorkspace, binary: ScmAccepta
                   scenario: "corrupted-bytes",
                   detail: join(["refused: ", f], ""),
                 }
-              _ =>
-                SnapshotScenarioFailed {
-                  scenario: "corrupted-bytes",
-                  step: "materialize",
-                  detail: join(["refused for the wrong reason: ", snapshot_refusal_wire(cause: c)], ""),
-                }
+              SnapshotEntryPathNotRelative { path: _, cause: _ } => materialize_refused_for_wrong_reason(scenario: "corrupted-bytes", cause: c)
+              SnapshotDuplicatePath { path: _ } => materialize_refused_for_wrong_reason(scenario: "corrupted-bytes", cause: c)
+              SnapshotDestinationNotCreated { parent: _ } => materialize_refused_for_wrong_reason(scenario: "corrupted-bytes", cause: c)
+              SnapshotManifestUnavailable { manifest: _, fault: _ } => materialize_refused_for_wrong_reason(scenario: "corrupted-bytes", cause: c)
+              SnapshotCompositionMismatch { expected: _, found: _ } => materialize_refused_for_wrong_reason(scenario: "corrupted-bytes", cause: c)
+              SnapshotEntryMalformed { detail: _ } => materialize_refused_for_wrong_reason(scenario: "corrupted-bytes", cause: c)
+              SnapshotEntryOutsideComposition { path: _, composition: _ } => materialize_refused_for_wrong_reason(scenario: "corrupted-bytes", cause: c)
+              SnapshotDirectoryNotCreated { directory: _ } => materialize_refused_for_wrong_reason(scenario: "corrupted-bytes", cause: c)
+              SnapshotFileNotWritten { path: _, detail: _ } => materialize_refused_for_wrong_reason(scenario: "corrupted-bytes", cause: c)
             }
         }
       }
@@ -623,12 +635,15 @@ fn run_missing_object_scenario(workspace: SnapshotWorkspace, binary: ScmAcceptan
             match c {
               SnapshotEntryUnavailable { object: _, fault: f } =>
                 SnapshotScenarioPassed { scenario: "missing-object", detail: join(["refused: ", f], "") }
-              _ =>
-                SnapshotScenarioFailed {
-                  scenario: "missing-object",
-                  step: "materialize",
-                  detail: join(["refused for the wrong reason: ", snapshot_refusal_wire(cause: c)], ""),
-                }
+              SnapshotEntryPathNotRelative { path: _, cause: _ } => materialize_refused_for_wrong_reason(scenario: "missing-object", cause: c)
+              SnapshotDuplicatePath { path: _ } => materialize_refused_for_wrong_reason(scenario: "missing-object", cause: c)
+              SnapshotDestinationNotCreated { parent: _ } => materialize_refused_for_wrong_reason(scenario: "missing-object", cause: c)
+              SnapshotManifestUnavailable { manifest: _, fault: _ } => materialize_refused_for_wrong_reason(scenario: "missing-object", cause: c)
+              SnapshotCompositionMismatch { expected: _, found: _ } => materialize_refused_for_wrong_reason(scenario: "missing-object", cause: c)
+              SnapshotEntryMalformed { detail: _ } => materialize_refused_for_wrong_reason(scenario: "missing-object", cause: c)
+              SnapshotEntryOutsideComposition { path: _, composition: _ } => materialize_refused_for_wrong_reason(scenario: "missing-object", cause: c)
+              SnapshotDirectoryNotCreated { directory: _ } => materialize_refused_for_wrong_reason(scenario: "missing-object", cause: c)
+              SnapshotFileNotWritten { path: _, detail: _ } => materialize_refused_for_wrong_reason(scenario: "missing-object", cause: c)
             }
         }
       }
@@ -674,12 +689,15 @@ fn run_composition_mismatch_scenario(workspace: SnapshotWorkspace, binary: ScmAc
                   detail: join(["refused expected=", e, " found=", f], ""),
                 }
               }
-            _ =>
-              SnapshotScenarioFailed {
-                scenario: "composition-mismatch",
-                step: "materialize",
-                detail: join(["refused for the wrong reason: ", snapshot_refusal_wire(cause: c)], ""),
-              }
+            SnapshotEntryPathNotRelative { path: _, cause: _ } => materialize_refused_for_wrong_reason(scenario: "composition-mismatch", cause: c)
+            SnapshotDuplicatePath { path: _ } => materialize_refused_for_wrong_reason(scenario: "composition-mismatch", cause: c)
+            SnapshotDestinationNotCreated { parent: _ } => materialize_refused_for_wrong_reason(scenario: "composition-mismatch", cause: c)
+            SnapshotManifestUnavailable { manifest: _, fault: _ } => materialize_refused_for_wrong_reason(scenario: "composition-mismatch", cause: c)
+            SnapshotEntryUnavailable { object: _, fault: _ } => materialize_refused_for_wrong_reason(scenario: "composition-mismatch", cause: c)
+            SnapshotEntryMalformed { detail: _ } => materialize_refused_for_wrong_reason(scenario: "composition-mismatch", cause: c)
+            SnapshotEntryOutsideComposition { path: _, composition: _ } => materialize_refused_for_wrong_reason(scenario: "composition-mismatch", cause: c)
+            SnapshotDirectoryNotCreated { directory: _ } => materialize_refused_for_wrong_reason(scenario: "composition-mismatch", cause: c)
+            SnapshotFileNotWritten { path: _, detail: _ } => materialize_refused_for_wrong_reason(scenario: "composition-mismatch", cause: c)
           }
       }
   }
@@ -770,12 +788,15 @@ fn run_escaping_path_scenario(workspace: SnapshotWorkspace) -> SnapshotScenarioO
                   detail: join(["refused ", p, ": ", why], ""),
                 }
               }
-            _ =>
-              SnapshotScenarioFailed {
-                scenario: "escaping-path",
-                step: "materialize",
-                detail: join(["refused for the wrong reason: ", snapshot_refusal_wire(cause: c)], ""),
-              }
+            SnapshotDuplicatePath { path: _ } => materialize_refused_for_wrong_reason(scenario: "escaping-path", cause: c)
+            SnapshotDestinationNotCreated { parent: _ } => materialize_refused_for_wrong_reason(scenario: "escaping-path", cause: c)
+            SnapshotManifestUnavailable { manifest: _, fault: _ } => materialize_refused_for_wrong_reason(scenario: "escaping-path", cause: c)
+            SnapshotCompositionMismatch { expected: _, found: _ } => materialize_refused_for_wrong_reason(scenario: "escaping-path", cause: c)
+            SnapshotEntryUnavailable { object: _, fault: _ } => materialize_refused_for_wrong_reason(scenario: "escaping-path", cause: c)
+            SnapshotEntryMalformed { detail: _ } => materialize_refused_for_wrong_reason(scenario: "escaping-path", cause: c)
+            SnapshotEntryOutsideComposition { path: _, composition: _ } => materialize_refused_for_wrong_reason(scenario: "escaping-path", cause: c)
+            SnapshotDirectoryNotCreated { directory: _ } => materialize_refused_for_wrong_reason(scenario: "escaping-path", cause: c)
+            SnapshotFileNotWritten { path: _, detail: _ } => materialize_refused_for_wrong_reason(scenario: "escaping-path", cause: c)
           }
       }
   }
@@ -849,12 +870,15 @@ fn run_duplicate_path_scenario(workspace: SnapshotWorkspace) -> SnapshotScenario
           match c {
             SnapshotDuplicatePath { path: p } =>
               SnapshotScenarioPassed { scenario: "duplicate-path", detail: join(["refused ", p], "") }
-            _ =>
-              SnapshotScenarioFailed {
-                scenario: "duplicate-path",
-                step: "materialize",
-                detail: join(["refused for the wrong reason: ", snapshot_refusal_wire(cause: c)], ""),
-              }
+            SnapshotEntryPathNotRelative { path: _, cause: _ } => materialize_refused_for_wrong_reason(scenario: "duplicate-path", cause: c)
+            SnapshotDestinationNotCreated { parent: _ } => materialize_refused_for_wrong_reason(scenario: "duplicate-path", cause: c)
+            SnapshotManifestUnavailable { manifest: _, fault: _ } => materialize_refused_for_wrong_reason(scenario: "duplicate-path", cause: c)
+            SnapshotCompositionMismatch { expected: _, found: _ } => materialize_refused_for_wrong_reason(scenario: "duplicate-path", cause: c)
+            SnapshotEntryUnavailable { object: _, fault: _ } => materialize_refused_for_wrong_reason(scenario: "duplicate-path", cause: c)
+            SnapshotEntryMalformed { detail: _ } => materialize_refused_for_wrong_reason(scenario: "duplicate-path", cause: c)
+            SnapshotEntryOutsideComposition { path: _, composition: _ } => materialize_refused_for_wrong_reason(scenario: "duplicate-path", cause: c)
+            SnapshotDirectoryNotCreated { directory: _ } => materialize_refused_for_wrong_reason(scenario: "duplicate-path", cause: c)
+            SnapshotFileNotWritten { path: _, detail: _ } => materialize_refused_for_wrong_reason(scenario: "duplicate-path", cause: c)
           }
       }
   }

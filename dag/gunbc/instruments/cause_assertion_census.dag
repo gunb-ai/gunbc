@@ -531,7 +531,12 @@ fn cause_acquisition_disposition_report(acquisition: CauseCorpusAcquisition) -> 
     join(["sources_refused", to_string(count(acquisition.refusals))], "\t"),
     join(["import_projection_unestablished_sources", to_string(count(filter(acquisition.refusals, r => match r {
       CauseSourceImportProjectionUnestablished { path: _, tokens: _ } => true
-      _ => false
+      CauseSourceObserved { tokens: _, imports: _, members: _ } => false
+      CauseSourceReadRefused { path: _, detail: _ } => false
+      CauseSourceImportParseRefused { path: _, cause: _ } => false
+      CauseSourceExcluded { path: _, cause: _ } => false
+      CauseSourceIndexRefused { path: _, module_path: _ } => false
+      CauseSourceLexicalRefused { path: _ } => false
     })))], "\t"),
     join(map(acquisition.excluded, r => cause_source_refusal_report(refusal: r)), "\n"),
     join(map(acquisition.refusals, r => cause_source_refusal_report(refusal: r)), "\n")
