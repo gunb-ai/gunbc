@@ -33,11 +33,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // The lens's dissolution row (reference_deps_dissolve_on) stays PENDING: the deletion of the parse
 // walker waits on an identity-grain site-set comparison being EMPTY across every reference position,
 // and this file holds two cells of it, not the dotted-callee and call-argument positions.
-data qsd_source: String = "module v2.test.qsd_subject\n\nimport v2.std.logic { Bool }\n\ntype QsdWrapper { fld: v2.test.qsd_provider.QsdFieldType }\n\nfn qsd_param(p: v2.test.qsd_provider.QsdParamType) -> Bool { true }\n"
+data qsd_source: String = "module v2.test.qsd_subject\n\nimport v2.std.logic { Bool }\n\ntype QsdWrapper { fld: v2.test.qsd_provider.QsdFieldType }\n\nfn qsd_param(p: v2.test.qsd_provider.QsdParamType) -> Bool { true }\n\nfn qsd_call() -> Bool { v2.test.qsd_provider.qsd_callee(x: v2.test.qsd_provider.qsd_argument) }\n"
 
 data qsd_field_spelling: String = "v2.test.qsd_provider.QsdFieldType"
 
 data qsd_param_spelling: String = "v2.test.qsd_provider.QsdParamType"
+
+data qsd_callee_spelling: String = "v2.test.qsd_provider.qsd_callee"
+
+data qsd_argument_spelling: String = "v2.test.qsd_provider.qsd_argument"
 
 fn qsd_read() -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -98,4 +102,14 @@ test fn both_enumerators_see_a_qualified_parameter_type_holds() -> Bool {
 // normalized tree; it is now a regression control, and it reds if the collector loses the field.
 test fn both_enumerators_see_a_qualified_field_type_holds() -> Bool {
   parse_walker_sees(spelling: qsd_field_spelling) && collector_sees(spelling: qsd_field_spelling)
+}
+
+// AGREEMENT CELL: a dotted callee is seen by both enumerators.
+test fn both_enumerators_see_a_dotted_callee_holds() -> Bool {
+  parse_walker_sees(spelling: qsd_callee_spelling) && collector_sees(spelling: qsd_callee_spelling)
+}
+
+// AGREEMENT CELL: a qualified call argument is seen by both enumerators.
+test fn both_enumerators_see_a_qualified_call_argument_holds() -> Bool {
+  parse_walker_sees(spelling: qsd_argument_spelling) && collector_sees(spelling: qsd_argument_spelling)
 }
