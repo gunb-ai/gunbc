@@ -643,6 +643,10 @@ fn fixture_home_prefixes() -> List<String> {
 // it scales with the closure, so the roster is cut to the compiler's own core semantics until the
 // fold reuses preparation across runs or scopes it to the diff -- at which point these rows come
 // back. `v2.test.` is the row that pulled the whole v2 corpus in and is the first to return.
+// THE WITHDRAWAL OF `v2.test.` IS INSIDE THE DECLARED DROP gunbc.rung_drop required_gate_bankruptcy,
+// whose amendment gunbc.rung_drop_amendment v2_test_family_reds_measured_outside_the_gate names the
+// measured population it left without a route, by identity and owner.
+// This annotation is its receipt, not its declaration: no `//` line can be read by anything.
 //
 // WITHDRAWN, AND NAMED SO THE WIDENING IS A DIFF RATHER THAN A MEMORY: "v2.test.",
 // "test.claim.self_host_", "test.claim.import_admission_closure_membership_witness_test",

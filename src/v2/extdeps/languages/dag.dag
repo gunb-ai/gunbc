@@ -119,6 +119,8 @@ import v2.std.node {
 }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, find_named_child, named_child_lookup }
 import v2.std.compilers.target_model {
+  char_kernel_type_node,
+  symbol_kernel_type_node,
   IntLiteralUnwired,
   ProducedDeclUnwired,
   CanonicalOperation,
@@ -918,11 +920,23 @@ fn dag_grammar_where_predicate_expr() -> GrammarExpr {
   )
 }
 
+// THE PREDICATES ARE SEPARATED BY A REQUIRED COMMA, as v1 02_parse parse_predicates_acc reads them:
+// it continues only while it eats a comma and otherwise stops. The general comma list
+// (dag_grammar_comma_list_expr) makes the separator optional, which let a clause run on into the
+// identifiers that follow it -- `type T = String where brand("T")` followed by `service a.B { .. }`
+// read `service` and `a` as two more predicates, since `service` is an exact-word identifier rather
+// than a keyword, and refused the module at `.B`. No trailing comma: v1 reads none here.
 fn dag_grammar_where_refinement_clause_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_where),
-    right: dag_grammar_comma_list_expr(
-      item: dag_grammar_nonterminal(production: ^dag_production_where_predicate)
+    right: dag_grammar_sequence(
+      left: dag_grammar_nonterminal(production: ^dag_production_where_predicate),
+      right: dag_grammar_repeat(
+        element: dag_grammar_sequence(
+          left: dag_grammar_terminal(token_class: ^dag_token_comma),
+          right: dag_grammar_nonterminal(production: ^dag_production_where_predicate)
+        )
+      )
     )
   )
 }
@@ -1019,13 +1033,14 @@ fn dag_grammar_field_decl_expr() -> GrammarExpr {
   )
 }
 
-// A service io field: the general field plus v1 parse_field's `[from "key"] [= default]` tail.
-// SCOPED TO THE SERVICE io_block ON PURPOSE. v1 admits the tail on every field, but the only
-// executing evidence here is inside a service, which normalize refuses before resolve. Admitting
-// it on the shared field_decl_block would widen `type` / variant declarations
-// (`dag/extdeps/browser/browser.dag` `BrowserConfig` declares defaults) with no evidence of what
-// resolve does with the extra child. So general field defaults and `from` stay a loud parse
-// refusal: named remainder for the type-declaration lane, not a silent widening (review 68343).
+// A field: the general field plus v1 parse_field's `[from "key"] [= default]` tail, which v1 admits on
+// EVERY field. It was once scoped to the service io_block (review 68343), because a record type does
+// lower and nothing then read the tail, so a grammar-only admission would have lowered the type and
+// dropped the tail silently. Now the one field reader (v2.compiler.body_lowering_fold
+// body_lower_field_items_optional) reads the tail on every field: an io block sets it aside and a
+// record type refuses at it (body_lower_first_field_tail_optional, the
+// service_interface_member_has_no_carrier class), so admitting it here parses a legitimate v1 form
+// without dropping anything.
 fn dag_grammar_io_field_decl_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_field_decl_expr(),
@@ -1048,7 +1063,7 @@ fn dag_grammar_io_field_decl_expr() -> GrammarExpr {
 
 fn dag_grammar_field_decl_list_helper() -> GrammarExpr {
   dag_grammar_optional(
-    element: dag_grammar_comma_list_expr(item: dag_grammar_field_decl_expr())
+    element: dag_grammar_comma_list_expr(item: dag_grammar_io_field_decl_expr())
   )
 }
 
@@ -3141,20 +3156,16 @@ fn dag_language_model_empty_canonical_symbol_set() -> PointwisePower<Symbol> {
 
 fn dag_language_model_binding_canonical_map(m: Map<Symbol, Bool>) -> Map<Symbol, Bool> {
   grammar_symbol_list_put(
-    m: m,
+    m: grammar_symbol_list_put(m: m, xs: dag_kernel_value_type_bindings()),
     xs: [
       ^dag_binding_fn_add,
       ^dag_binding_param_x,
       ^dag_binding_param_y,
-      ^dag_binding_type_int,
       ^dag_binding_fn_one_or_two,
       ^dag_binding_fn_one,
       ^dag_binding_bind_x,
       ^dag_binding_pick_lit_one,
       ^dag_binding_pick_lit_two,
-      ^dag_binding_type_bool,
-      ^bool_node_symbol,
-      ^symbol_node_symbol,
       ^dag_loop_measure_sym,
       ^dag_surface_fold_iteration_measure
     ]
@@ -3802,28 +3813,153 @@ fn dag_add_param_binding_ids() -> List<Symbol> {
   [^dag_binding_param_x, ^dag_binding_param_y]
 }
 
+// THE KERNEL VALUE TYPES, ONE ROSTER. A kernel type is a type whose values the kernel carries, and
+// what it DENOTES is a node its std authority owns: v2.std.integer integer_int_type_node,
+// v2.std.logic bool_node, v2.std.node symbol_type_node, v2.std.compilers.target_model symbol_kernel_type_node and
+// char_kernel_type_node. A row points at that node and mints none of its own.
+//
+// THE CANONICAL BINDING OF A KERNEL TYPE IS THE ATOM IDENTITY OF ITS VALUE-TYPE NODE, derived from
+// the row (dag_kernel_value_type_binding) and written nowhere else. So the three questions asked of
+// a kernel type are three folds over these rows and cannot disagree: which binding a spelling takes
+// (dag_kernel_type_binding_optional), which binding a declaration takes
+// (dag_kernel_type_declaration_binding_optional), and what a binding denotes
+// (dag_binding_denotation). Before this roster each was its own if-chain, and for Bool they did
+// disagree: v2.compiler.resolve bound a declared `Bool` to bool_node's identity while the join
+// denoted a second symbol only hand-built fixtures carried, so a declared Bool on the resolve route
+// reached every declared-type judgment as an atom the join answered Absent for.
+//
+// A SPELLING ROW IS A SEPARATE FACT FROM BEING A KERNEL ATOM. `spelling` and `declarations` say that
+// v2.compiler.resolve binds that authored name, where it resolves to one of those declarations or
+// to nothing, to the kernel type. Int and Bool carry them; two declarations of each stand until
+// their de-fork lanes consolidate them (docs/plans/dag-v2-defork-audit.md), and the rows follow
+// those lanes rather than choosing.
+//
+// SYMBOL IS A KERNEL TYPE BY ITS DECLARATION'S OWN NODE (gunbc#12549): the spelling `Symbol` and
+// the declaration v2.std.node Symbol bind to v2.std.node symbol_type_node's identity, which is what a
+// symbol literal is typed as. That row is an ordinary spelled row like Int's and Bool's.
+//
+// WHAT STAYS A FORK, RECORDED AND NOT RESOLVED HERE: v2.std.compilers.target_model carries its OWN
+// kernel atoms for Symbol and Char (symbol_kernel_type_node, char_kernel_type_node), a second
+// authority beside the declaration each spelling resolves to (v2.std.node Symbol, std.types Char).
+// The ruling for Int and Bool is one authority, the declaration visible in scope, so those two rows
+// carry NO spelling -- binding a spelling to them here would change what every reference resolves
+// to -- and name in `converges_on` the declaration each converges on once de-forked. Nothing binds
+// through `converges_on`; it is the de-fork lane's subject, read today only by the control that
+// holds the fork as it is (v2.test.claim.compiler.kernel_value_type_roster_witness_test).
+//
+// A kernel type with NO value-type node in a v2 std authority has no row: there is nothing for one
+// to point at. Float, Secret, Json, Unit and Bytes (std.types kernel_type_set) are in that state,
+// each rostered under gunbc.recurring_failure_mode with its node as the trigger. String is not a
+// kernel atom in v2 at all: v2.std.text String is FreeMonoid<Char> (DESIGN section 4, the text
+// ruling).
+type KernelValueType {
+  value_type: Node
+  spelling: Optional<String>
+  declarations: List<QualifiedName>
+  converges_on: Optional<QualifiedName>
+}
+
+data dag_kernel_value_type_roster: List<KernelValueType> = [
+  KernelValueType {
+    value_type: integer_int_type_node(),
+    spelling: optional_present(value: "Int"),
+    declarations: [
+      qualified_name_from_dotted_string(dotted: "v2.std.integer.Int"),
+      qualified_name_from_dotted_string(dotted: "std.integer.Int")
+    ],
+    converges_on: optional_absent()
+  },
+  KernelValueType {
+    value_type: bool_node(),
+    spelling: optional_present(value: "Bool"),
+    declarations: [
+      qualified_name_from_dotted_string(dotted: "v2.std.logic.Bool"),
+      qualified_name_from_dotted_string(dotted: "std.types.Bool")
+    ],
+    converges_on: optional_absent()
+  },
+  KernelValueType {
+    value_type: symbol_type_node(),
+    spelling: optional_present(value: "Symbol"),
+    declarations: [qualified_name_from_dotted_string(dotted: "v2.std.node.Symbol")],
+    converges_on: optional_absent()
+  },
+  KernelValueType {
+    value_type: symbol_kernel_type_node(),
+    spelling: optional_absent(),
+    declarations: [],
+    converges_on: optional_present(value: qualified_name_from_dotted_string(dotted: "v2.std.node.Symbol"))
+  },
+  KernelValueType {
+    value_type: char_kernel_type_node(),
+    spelling: optional_absent(),
+    declarations: [],
+    converges_on: optional_present(value: qualified_name_from_dotted_string(dotted: "std.types.Char"))
+  }
+]
+
+fn dag_kernel_value_type_binding(row: KernelValueType) -> Optional<Symbol> {
+  match row.value_type.kind {
+    TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+    _ => optional_absent()
+  }
+}
+
+fn dag_kernel_value_type_bindings() -> List<Symbol> {
+  fold(dag_kernel_value_type_roster, init: [], f: fn(acc, row) {
+    match dag_kernel_value_type_binding(row: row) {
+      Present { value: binding } => list_snoc_item(xs: acc, item: binding)
+      Absent => acc
+    }
+  })
+}
+
+fn dag_kernel_value_type_spelled(row: KernelValueType, sym: Symbol) -> Bool {
+  match row.spelling {
+    Present { value: spelling } => symbol_lexeme(sym: sym) == spelling
+    Absent => false
+  }
+}
+
+// The first row a predicate selects, with its binding. A row whose value-type node is not an atom
+// has no binding and selects nothing.
+fn dag_kernel_value_type_first(select: fn(KernelValueType, Symbol) -> Bool) -> Optional<KernelValueType> {
+  fold(dag_kernel_value_type_roster, init: optional_absent(), f: fn(acc, row) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match dag_kernel_value_type_binding(row: row) {
+          Absent => acc
+          Present { value: binding } => if select(row, binding) { optional_present(value: row) } else { acc }
+        }
+    }
+  })
+}
+
+fn dag_kernel_value_type_row_binding(found: Optional<KernelValueType>) -> Optional<Symbol> {
+  match found {
+    Present { value: row } => dag_kernel_value_type_binding(row: row)
+    Absent => optional_absent()
+  }
+}
+
 fn dag_int_type_binding() -> Symbol {
   ^dag_binding_type_int
 }
 
-// THE KERNEL TYPE SPELLINGS AND THEIR CANONICAL BINDINGS, declared at the language authority. The
-// table is keyed by spelling, so v2.compiler.resolve asks it only where no declaration answered the
-// name (unbound). It also gates the ambiguous case, whose candidates are read through
+// THE BINDING A KERNEL TYPE SPELLING TAKES. The roster is keyed here by spelling, so
+// v2.compiler.resolve asks it only where no declaration answered the name (unbound). It also gates
+// the ambiguous case, whose candidates are read through
 // dag_kernel_type_declaration_binding_optional. Where a declaration answered, resolve reads
 // dag_kernel_type_declaration_binding_optional instead
-// (gunbc.recurring_failure_mode kernel_type_spelling_captured_a_module_declaration).
+// (gunbc.recurring_failure_mode kernel_type_spelling_captured_a_module_declaration). A symbol that
+// already IS a kernel binding answers itself.
 fn dag_kernel_type_binding_optional(sym: Symbol) -> Optional<Symbol> {
-  if sym == dag_int_type_binding() {
-    optional_present(value: sym)
-  } else if symbol_lexeme(sym: sym) == "Int" {
-    optional_present(value: dag_int_type_binding())
-  } else if symbol_lexeme(sym: sym) == "Bool" {
-    optional_present(value: ^bool_node_symbol)
-  } else if symbol_lexeme(sym: sym) == "Symbol" {
-    optional_present(value: ^symbol_node_symbol)
-  } else {
-    optional_absent()
-  }
+  dag_kernel_value_type_row_binding(
+    found: dag_kernel_value_type_first(select: fn(row, binding) {
+      (sym == binding) || dag_kernel_value_type_spelled(row: row, sym: sym)
+    })
+  )
 }
 
 // THE KERNEL SPELLING OF THE TYPE A STRING LITERAL DENOTES: host text, the kernel `String`
@@ -3836,48 +3972,27 @@ fn dag_kernel_string_type_spelling(sym: Symbol) -> Bool {
 }
 
 // THE DECLARATIONS A KERNEL TYPE SPELLING DENOTES. A kernel spelling that resolves, through an
-// import or another module's declaration, to a declaration in this table takes its canonical
-// binding. Resolving to any other declaration is refused rather than captured
-// (v2.compiler.resolve resolve_kernel_type_reading). The table lists the declarations the corpus
-// carries today. Two Int and two Bool declarations stand until their de-fork lanes consolidate them
-// (docs/plans/dag-v2-defork-audit.md), and the table follows those lanes rather than choosing
-// between them.
+// import or another module's declaration, to a declaration a row lists takes that row's binding.
+// Resolving to any other declaration is refused rather than captured
+// (v2.compiler.resolve resolve_kernel_type_reading).
 fn dag_kernel_type_declaration_binding_optional(path: QualifiedName) -> Optional<Symbol> {
-  if path == qualified_name_from_dotted_string(dotted: "v2.std.integer.Int")
-    || path == qualified_name_from_dotted_string(dotted: "std.integer.Int") {
-    optional_present(value: dag_int_type_binding())
-  } else if path == qualified_name_from_dotted_string(dotted: "v2.std.logic.Bool")
-    || path == qualified_name_from_dotted_string(dotted: "std.types.Bool") {
-    optional_present(value: ^bool_node_symbol)
-  } else if path == qualified_name_from_dotted_string(dotted: "v2.std.node.Symbol") {
-    optional_present(value: ^symbol_node_symbol)
-  } else {
-    optional_absent()
-  }
+  dag_kernel_value_type_row_binding(
+    found: dag_kernel_value_type_first(select: fn(row, _binding) {
+      any(xs: row.declarations, predicate: fn(declared) { declared == path })
+    })
+  )
 }
 
-// THE BINDING→DENOTATION JOIN, declared once at the language authority. The resolver binds the
-// surface spelling "Int" to the canonical binding symbol (dag_binding_spellings); what that
-// binding DENOTES is the value type its std authority owns: v2.std.integer integer_int_type_node
-// for Int, v2.std.logic bool_node for Bool, v2.std.node symbol_type_node for Symbol. A row points
-// at the authority and never mints a node of its own. Until 2026-09-26 the Int row returned
-// dag_int_inhabitant_node -- the roster's RECORD about Int, not the Int type -- while every
-// value-type consumer used the atom; that fork is what this join now closes (docs/plans/arrow-elimination-model.md). Every
-// hand-rolled fixture facts lookup re-authors this join (dag_add_canonical_grounding_for,
-// record_construct_canonical_grounding_for); the authority declares it once and infer consumes it
-// (v2.compiler.infer infer_node_facts). Specimen-scope interim in the same frame as
+// THE BINDING->DENOTATION JOIN. What a kernel binding DENOTES is its row's value-type node, the
+// node its std authority owns; infer consumes it (v2.compiler.infer infer_node_facts) and the
+// declared-type judge compares at it. Specimen-scope interim in the same frame as
 // infer_node_declared_in_dag_inhabitants: deletes in favor of consuming resolution output when
 // the resolver hands infer declaration-resolved identities directly (the namespace migration's
 // completed state).
 fn dag_binding_denotation(sym: Symbol) -> Optional<Node> {
-  if sym == dag_int_type_binding() {
-    optional_present(value: integer_int_type_node())
-  } else if sym == ^dag_binding_type_bool {
-    optional_present(value: bool_node())
-  } else if sym == ^symbol_node_symbol {
-    optional_present(value: symbol_type_node())
-  } else {
-    optional_absent()
+  match dag_kernel_value_type_first(select: fn(_row, binding) { sym == binding }) {
+    Present { value: row } => optional_present(value: row.value_type)
+    Absent => optional_absent()
   }
 }
 
@@ -4926,7 +5041,7 @@ fn dag_complement_arrow_domain_node() -> Node {
     children: [
       Edge {
         label: Named { name: ^dag_binding_param_a },
-        target: dag_type_atom_node(identity: ^dag_binding_type_bool)
+        target: dag_type_atom_node(identity: ^bool_node_symbol)
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -4952,7 +5067,7 @@ fn dag_complement_body_swapped_arms_node() -> Node {
 fn dag_complement_arrow_with_body_node() -> Node {
   dag_arrow_with_body_node(
     domain: dag_complement_arrow_domain_node(),
-    return_type_binding: ^dag_binding_type_bool,
+    return_type_binding: ^bool_node_symbol,
     body: dag_complement_body_node()
   )
 }
@@ -4960,7 +5075,7 @@ fn dag_complement_arrow_with_body_node() -> Node {
 fn dag_complement_arrow_with_body_swapped_arms_node() -> Node {
   dag_arrow_with_body_node(
     domain: dag_complement_arrow_domain_node(),
-    return_type_binding: ^dag_binding_type_bool,
+    return_type_binding: ^bool_node_symbol,
     body: dag_complement_body_swapped_arms_node()
   )
 }
@@ -4984,11 +5099,11 @@ fn dag_bool_binop_arrow_domain_node() -> Node {
     children: [
       Edge {
         label: Named { name: ^dag_binding_param_a },
-        target: dag_type_atom_node(identity: ^dag_binding_type_bool)
+        target: dag_type_atom_node(identity: ^bool_node_symbol)
       },
       Edge {
         label: Named { name: ^dag_binding_param_b },
-        target: dag_type_atom_node(identity: ^dag_binding_type_bool)
+        target: dag_type_atom_node(identity: ^bool_node_symbol)
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -4998,7 +5113,7 @@ fn dag_bool_binop_arrow_domain_node() -> Node {
 fn dag_bool_binop_arrow_with_body_node(body: Node) -> Node {
   dag_arrow_with_body_node(
     domain: dag_bool_binop_arrow_domain_node(),
-    return_type_binding: ^dag_binding_type_bool,
+    return_type_binding: ^bool_node_symbol,
     body: body
   )
 }
