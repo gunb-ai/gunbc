@@ -386,10 +386,12 @@ fn removal_walk_step(w: RemovalWalk, b: Token) -> RemovalWalk {
 
 // THE DECISION OVER TWO TOKEN STREAMS. The claim-grain interface: witnesses supply the streams'
 // sources directly (DESIGN section 3, a witness discriminates at one interface).
+// Resolve removed calls only after the token walk establishes a nonempty conjunct removal.
+// Other edits already have a final refusal and need no whole-file import scan.
 fn cost_debt_edit_from_decl_tokens(
   base: List<Token>,
   head: List<Token>,
-  resolution: BaseResolution,
+  base_file: List<Token>,
   test_fn_identities: List<String>
 ) -> CostDebtWitnessEdit {
   let walk = fold(base, init: RemovalWalk { head: head, phase: WalkAligned {}, removed: 0, prev_kept: optional_absent(), follower_pending: false, call_path: "", call_dotted: false, removed_calls: [] }, f: fn(acc, b) {
@@ -412,12 +414,15 @@ fn cost_debt_edit_from_decl_tokens(
     ReJudgedAsNewWitness { cause: EditIsNotAConjunctRemoval {} }
   } else if walk.removed == 0 {
     ReJudgedAsNewWitness { cause: WitnessTokensUnchanged {} }
-  } else if any(xs: walk.removed_calls, predicate: fn(c) {
-    !removed_call_is_test_fn(call: c, resolution: resolution, test_fn_identities: test_fn_identities)
-  }) {
-    ReJudgedAsNewWitness { cause: RemovedCallIsNotATestFn {} }
   } else {
-    PureConjunctRemoval { removed_conjuncts: walk.removed }
+    let resolution = cost_debt_edit_base_resolution(tokens: base_file)
+    if any(xs: walk.removed_calls, predicate: fn(c) {
+      !removed_call_is_test_fn(call: c, resolution: resolution, test_fn_identities: test_fn_identities)
+    }) {
+      ReJudgedAsNewWitness { cause: RemovedCallIsNotATestFn {} }
+    } else {
+      PureConjunctRemoval { removed_conjuncts: walk.removed }
+    }
   }
 }
 
@@ -588,7 +593,7 @@ fn cost_debt_edit_from_file_tokens(
           Absent => ReJudgedAsNewWitness { cause: WitnessNotDeclaredAtHead {} }
           Present { value: head_decl } => cost_debt_edit_from_decl_tokens(
             base: base_decl, head: head_decl,
-            resolution: cost_debt_edit_base_resolution(tokens: base_file),
+            base_file: base_file,
             test_fn_identities: test_fn_identities)
         }
       }

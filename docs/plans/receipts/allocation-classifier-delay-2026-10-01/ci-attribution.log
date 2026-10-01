@@ -1,0 +1,5 @@
+2026-10-01T20:31:44.2012787Z [floor-cost-debt-file] begin path=dag/test/claim/fleet/fleet_converge_plan_witness_test.dag identities=6
+2026-10-01T21:27:44.2287584Z [floor-cost-debt-file] complete path=dag/test/claim/fleet/fleet_converge_plan_witness_test.dag identities=6 elapsed_ms=3360027
+2026-10-01T21:27:44.4456923Z [floor-cost-debt-file] begin path=dag/test/claim/roadmap/roadmap_row_witness_test.dag identities=1
+2026-10-01T21:27:54.9201998Z [floor-cost-debt-file] complete path=dag/test/claim/roadmap/roadmap_row_witness_test.dag identities=1 elapsed_ms=10474
+2026-10-01T21:27:54.9766176Z [floor-phase] phase=site-projection state=completed wall_ms=3453815 declared=26059 sites=2830 files=2726 claims=971 declined_long=53 declined_fixture=0 declined_outside_gate=1765 declined_gate_closure=23229 declined_discovery_excluded=0 declined_cost_debt=40 declined_no_ci_wet_lane=1 declined_changed_outside_discovery=0

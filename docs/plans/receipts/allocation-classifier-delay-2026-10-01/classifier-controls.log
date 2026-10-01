@@ -1,0 +1,41 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-executor-isolated
+✓ typecheck v2.std.compilers.target_model done in 27 seconds
+[pre-entry] phase=workspace_discovery ms=3 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=5 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=1368 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=0 scale=tree
+[pre-entry] phase=pool_census_parse ms=140 scale=tree
+[pre-entry] phase=closure_name_census_build ms=185 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=4 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=17 scale=closure
+[pre-entry] phase=closure_load ms=1894 scale=closure
+[pre-entry] phase=closure_parse ms=1627 scale=closure
+[pre-entry] phase=closure_resolve ms=54 scale=closure
+[pre-entry] phase=closure_normalize ms=308 scale=closure
+[pre-entry] phase=closure_typecheck ms=35599 scale=closure
+[pre-entry] phase=closure_parent_envs ms=1 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=25 scale=closure
+[pre-entry] phase=closure_ownership ms=259 scale=closure
+[pre-entry] phase=reconcile_pool_qualified_fill ms=197 scale=tree
+[pre-entry] phase=reconcile_root_bare_underlay ms=177 scale=tree
+[pre-entry] phase=reconcile_root_variant_base ms=20 scale=tree
+[pre-entry] phase=resolve_entry_graph_inclusive ms=43586 scale=closure
+[pre-entry] population pool_modules=117 closure_files=117
+[pre-entry] process_cpu user_ms=42981 sys_ms=477 max_rss_kib=867324
+PASS cost_debt_edit_trailing_conjunct_removal_keeps_the_grandfathered_budget
+PASS cost_debt_edit_leading_conjunct_removal_keeps_the_grandfathered_budget
+PASS cost_debt_edit_imported_test_fn_removal_keeps_the_grandfathered_budget
+PASS cost_debt_edit_the_11593_chain_status_removal_keeps_the_grandfathered_budget
+PASS cost_debt_edit_removed_conjunct_plus_added_call_is_rejudged_at_the_new_witness_budget
+PASS cost_debt_edit_changed_literal_is_rejudged_at_the_new_witness_budget
+PASS cost_debt_edit_removal_that_rebinds_precedence_is_rejudged
+PASS cost_debt_edit_removal_under_a_negation_is_rejudged
+PASS cost_debt_edit_signature_change_with_a_removal_is_rejudged
+PASS cost_debt_edit_with_no_token_change_is_not_a_removal
+PASS cost_debt_edit_renamed_witness_is_rejudged
+PASS cost_debt_edit_removing_a_non_test_fn_call_is_rejudged
+PASS cost_debt_edit_removing_a_call_through_an_alias_is_rejudged
+PASS cost_debt_edit_untokenizable_base_is_rejudged
+PASS cost_debt_edit_witness_absent_at_base_is_rejudged
+PASS a_file_batch_keeps_each_declarations_own_ceiling
+PASS a_file_batch_preserves_untokenizable_and_missing_head_refusals
