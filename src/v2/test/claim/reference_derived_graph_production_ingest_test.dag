@@ -192,8 +192,11 @@ test fn production_route_both_plain_value_yields_edge_holds() -> Bool {
   production_edge_count(path: consumer_both_path, target: provider_module) > 0
 }
 
-test fn production_route_call_contents_are_missing_today_holds() -> Bool {
-  production_edge_count(path: consumer_call_only_path, target: provider_module) == 0
+// FLIPPED 2026-10-01 (DESIGN 4b(4)): a call argument's value lowers whole and its named label is
+// conserved on the application (body_lowering_fold body_lower_call_arg_edge), so the qualified
+// mention inside `sink(x: ...)` reaches the production route's edge. Permanent control.
+test fn production_route_call_argument_reference_yields_edge_holds() -> Bool {
+  production_edge_count(path: consumer_call_only_path, target: provider_module) > 0
 }
 
 // FLIPPED 2026-09-18: enrolled as "site is missing today", it went red when v2 body lowering

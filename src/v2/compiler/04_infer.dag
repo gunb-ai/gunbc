@@ -61,7 +61,7 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, parameter_reference_path_optional }
-import v2.std.node_query { construct_field_edges, construct_tag_optional }
+import v2.std.node_query { construct_field_edges, construct_tag_optional, declared_field_from_edge }
 import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_lookup }
 import v2.std.node { Ambiguous, Found, NotMarkedReference, arrow_body_target_lookup, arrow_signature_order_label, edge_label_of, match_arm_pattern_edge, resolved_reference_body_kind }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
@@ -1120,14 +1120,14 @@ fn infer_atom_binding_sym(node: Node) -> Optional<Symbol> {
 }
 
 fn infer_conj_edge_named_type_for_binding(edge: Edge, binding: Symbol) -> Optional<Node> {
-  match edge.label {
-    Named { name: sym } =>
-      if sym == binding {
-        optional_present(value: edge.target)
+  match declared_field_from_edge(e: edge) {
+    Present { value: binder } =>
+      if binder.name == binding {
+        optional_present(value: binder.type_node)
       } else {
         optional_absent()
       }
-    Positional => optional_absent()
+    Absent => optional_absent()
   }
 }
 
@@ -1915,18 +1915,18 @@ fn infer_formals_from_domain(domain: Node) -> Optional<List<InhabitanceFormal>> 
         match acc {
           Absent => Absent
           Present { value: formals } =>
-            match e.label {
-              Named { name: nme } =>
+            match declared_field_from_edge(e: e) {
+              Present { value: binder } =>
                 Present {
                   value: list_snoc_item(
                     xs: formals,
                     item: InhabitanceFormal {
-                      parameter_identity: nme,
-                      declared: e.target
+                      parameter_identity: binder.name,
+                      declared: binder.type_node
                     }
                   )
                 }
-              Positional => Absent
+              Absent => Absent
             }
         }
       })

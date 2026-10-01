@@ -820,6 +820,15 @@ fn required_gate_prefixes() -> List<String> {
 // family, which would sweep the sibling census and admission modules in unmeasured. Every subject
 // its claims read is WARM in `v2.workflow.floor_pure_producer_share`, none is cost debt, and the
 // module declares SubstrateInputsOnly.
+//
+// THE FLOOR'S OWN MODEL WITNESSES (adhoc-3feba7c4-ac9, gunbc#12858; parent ruling from
+// deep-ferret-305). gunbc#11791 withdrew `v2.test.` and the discovery-census prefix for
+// preparation cost, and afterwards nothing executed the claims over the floor's own census and
+// effect-demand join. Their reds reached main and no lane saw them (repaired by gunbc#12857).
+// Priced on the required floor: admission adds only the two modules to the gate closure (their
+// imports were already in it), with preparation wall and runner peak inside run-to-run noise. The census module declares SubstrateInputsOnly; the join test declares no
+// disposition and supplies its nodes, edges and rows. The instrument is this floor's own
+// gate-closure and floor-cgroup lines.
 fn required_gate_authored_modules() -> List<String> {
   [
     "test.claim.runner_capacity_plan_witness",
@@ -834,6 +843,8 @@ fn required_gate_authored_modules() -> List<String> {
     "v2.test.execution.self_host_candidate_generation_stage_verdicts",
     "v2.test.manual.cross_language_add_python_to_typescript",
     "test.claim.deleted_lanes_countable_witness_test",
+    "test.claim.discovery_census_witness",
+    "v2.test.claim.effect_demand.effect_demand_floor_join_test",
   ]
 }
 
