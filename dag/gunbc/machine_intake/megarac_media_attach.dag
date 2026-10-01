@@ -140,6 +140,7 @@ type MegaRacAttachOutcome
   | MegaRacImageListingEmpty
   | MegaRacImageListingUnparseable { detail: String }
   | MegaRacImageNotEnumerated { image_name: NonEmptyStr }
+  | MegaRacImageOfferedAmbiguously { image_name: NonEmptyStr, image_indices: List<String> }
   | MegaRacForeignImagePresented { image_name: String, configurations: String }
   | MegaRacSeveralImagesPresented { configurations: String }
   | MegaRacStaleDetachNotAdmitted { stale_image: String, reason: NonEmptyStr }
@@ -147,6 +148,7 @@ type MegaRacAttachOutcome
   | MegaRacRedirectionUncatalogued { image_name: String, wire: Int, configurations: String }
   | MegaRacRefreshClockUnreadable { detail: String, detach: MegaRacDetachEvidence }
   | MegaRacListingUnparseableAfterDetach { detail: String, detach: MegaRacDetachEvidence }
+  | MegaRacOfferedAmbiguouslyAfterDetach { image_name: NonEmptyStr, image_indices: List<String>, detach: MegaRacDetachEvidence }
   | MegaRacNotEnumeratedAfterRefresh { image_name: NonEmptyStr, detach: MegaRacDetachEvidence, standing: RemoteMediaMountStanding }
 
 // THREE INDICES, THREE CONCEPTS, NEVER JOINED. image_list_index is the image's position in
@@ -404,11 +406,14 @@ fn json_number_member(doc: JsonValue, key: String) -> String? {
 // Only then is the name counted, and a count above one is ambiguous. Unrelated optional members are
 // not required. A listing that names the image twice is ambiguous
 // and refuses (side-chat review 5331991982): taking the first match would let the controller's
-// enumeration order choose which file is attached.
+// enumeration order choose which file is attached. The ambiguity carries every matching row's
+// image_index -- the identities the refusal is about -- so it is reported as what it is, a
+// well-formed listing offering one name twice, and never folded into an unreadable document; a
+// matching row with no numeric image_index is an unread member, exactly as on the unique arm.
 type ImageIndexLookup
   = ImageIndexUnique { image_index: String }
   | ImageIndexAbsent
-  | ImageIndexAmbiguous { count: Int }
+  | ImageIndexAmbiguous { image_indices: List<String> }
   | ImageIndexUnreadable
 
 fn image_index_named(elements: List<JsonValue>, image_name: String) -> ImageIndexLookup {
@@ -417,8 +422,11 @@ fn image_index_named(elements: List<JsonValue>, image_name: String) -> ImageInde
     ImageIndexUnreadable
   } else {
     let named = elements |> filter(e => match json_string_member(doc: e, key: "image_name") { Present { value: n } => n == image_name  Absent => false })
-    if (named |> count) > 1 {
-      ImageIndexAmbiguous { count: named |> count }
+    let indices = named |> flat_map(e => match json_number_member(doc: e, key: "image_index") { Present { value: idx } => [idx]  Absent => [] })
+    if (indices |> count) < (named |> count) {
+      ImageIndexUnreadable
+    } else if (named |> count) > 1 {
+      ImageIndexAmbiguous { image_indices: indices }
     } else {
       match named.first() {
         Absent => ImageIndexAbsent
@@ -916,6 +924,7 @@ fn megarac_attach_from_listing(
     ImagesListingUnparseable { detail: d } => MegaRacImageListingUnparseable { detail: d }
     ImagesListingEmpty => MegaRacImageListingEmpty
     ImagesListingLacks => MegaRacImageNotEnumerated { image_name: image_name }
+    ImagesListingOffersAmbiguously { image_indices: ids } => MegaRacImageOfferedAmbiguously { image_name: image_name, image_indices: ids }
     ImagesListingOffers { image_index: idx } =>
       megarac_start_then_readiness(
         bmc_host: bmc_host,
@@ -1066,6 +1075,7 @@ fn megarac_enumerate_then_attach(
       ) {
         EnumerationClockUnreadable { detail: d } => MegaRacRefreshClockUnreadable { detail: d, detach: detach }
         EnumerationUnparseable { detail: d } => MegaRacListingUnparseableAfterDetach { detail: d, detach: detach }
+        EnumerationAmbiguous { image_indices: ids } => MegaRacOfferedAmbiguouslyAfterDetach { image_name: image_name, image_indices: ids, detach: detach }
         NotEnumeratedAfterRefresh { standing: st } => MegaRacNotEnumeratedAfterRefresh { image_name: image_name, detach: detach, standing: st }
         EnumeratedAfterRefresh { image_index: idx } =>
           megarac_start_then_readiness(
@@ -1141,6 +1151,7 @@ type EnumerationAfterRefresh
   = EnumeratedAfterRefresh { image_index: String }
   | NotEnumeratedAfterRefresh { standing: RemoteMediaMountStanding }
   | EnumerationUnparseable { detail: String }
+  | EnumerationAmbiguous { image_indices: List<String> }
   | EnumerationClockUnreadable { detail: String }
 
 // A LISTING THAT REFUSES IS PENDING, A LISTING THAT PARSES AND LACKS THE NAME IS ABSENT, AND BOTH
@@ -1170,6 +1181,7 @@ fn megarac_await_enumeration(
     ClockUnixMillisObserved { millis: now } => {
       let step = match reading {
         ImagesListingUnparseable { detail: d } => ListedEnumerationDone { result: EnumerationUnparseable { detail: d } }
+        ImagesListingOffersAmbiguously { image_indices: ids } => ListedEnumerationDone { result: EnumerationAmbiguous { image_indices: ids } }
         ImagesListingEmpty => megarac_listed_enumeration_step(body: images.body, reading: reading, now: now, window: window, observations: observations, remaining: remaining)
         ImagesListingLacks => megarac_listed_enumeration_step(body: images.body, reading: reading, now: now, window: window, observations: observations, remaining: remaining)
         ImagesListingOffers { image_index: _ } => megarac_listed_enumeration_step(body: images.body, reading: reading, now: now, window: window, observations: observations, remaining: remaining)
@@ -1239,6 +1251,7 @@ fn enumeration_decision(standing: RemoteMediaMountStanding, reading: ImagesListi
         ImagesListingUnparseable { detail: _ } => EnumerationDecided { result: NotEnumeratedAfterRefresh { standing: standing } }
         ImagesListingEmpty => EnumerationDecided { result: NotEnumeratedAfterRefresh { standing: standing } }
         ImagesListingLacks => EnumerationDecided { result: NotEnumeratedAfterRefresh { standing: standing } }
+        ImagesListingOffersAmbiguously { image_indices: ids } => EnumerationDecided { result: EnumerationAmbiguous { image_indices: ids } }
       }
     MountRequested { window: _ } =>
       if remaining > 1 { EnumerationLookAgain } else { EnumerationDecided { result: NotEnumeratedAfterRefresh { standing: standing } } }
@@ -1256,6 +1269,7 @@ type ImagesListingReading
   | ImagesListingEmpty
   | ImagesListingLacks
   | ImagesListingOffers { image_index: String }
+  | ImagesListingOffersAmbiguously { image_indices: List<String> }
 
 fn images_listing_reading(body: String, image_name: NonEmptyStr) -> ImagesListingReading {
   match parse_json_document(s: body) {
@@ -1270,7 +1284,7 @@ fn images_listing_reading(body: String, image_name: NonEmptyStr) -> ImagesListin
             match image_index_named(elements: elements, image_name: image_name as String) {
               ImageIndexAbsent => ImagesListingLacks
               ImageIndexUnique { image_index: idx } => ImagesListingOffers { image_index: idx }
-              ImageIndexAmbiguous { count: _ } => ImagesListingUnparseable { detail: concat("the listing names the image more than once, so its index is ambiguous: ", body) }
+              ImageIndexAmbiguous { image_indices: ids } => ImagesListingOffersAmbiguously { image_indices: ids }
               ImageIndexUnreadable => ImagesListingUnparseable { detail: concat("the listing has a row without one readable string image_name, or names the image without a numeric image_index: ", body) }
             }
           }
@@ -1278,12 +1292,15 @@ fn images_listing_reading(body: String, image_name: NonEmptyStr) -> ImagesListin
   }
 }
 
+// A name offered twice IS listed; the await loop refuses on the ambiguity before any look reaches the
+// mount standing, so this arm states presence and decides nothing.
 fn images_listing_presence(reading: ImagesListingReading) -> RemoteMediaListing {
   match reading {
     ImagesListingOffers { image_index: _ } => MediaImageListed
     ImagesListingUnparseable { detail: _ } => MediaImageAbsentFromListing
     ImagesListingEmpty => MediaImageAbsentFromListing
     ImagesListingLacks => MediaImageAbsentFromListing
+    ImagesListingOffersAmbiguously { image_indices: _ } => MediaImageListed
   }
 }
 
@@ -1996,6 +2013,7 @@ fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillSe
     MegaRacImageListingEmpty => presentation_unobserved_before_presentation()
     MegaRacImageListingUnparseable { detail: _ } => presentation_unobserved_before_presentation()
     MegaRacImageNotEnumerated { image_name: _ } => presentation_unobserved_before_presentation()
+    MegaRacImageOfferedAmbiguously { image_name: _, image_indices: _ } => presentation_unobserved_before_presentation()
     MegaRacForeignImagePresented { image_name: _, configurations: _ } => presentation_unobserved_before_presentation()
     MegaRacSeveralImagesPresented { configurations: _ } => presentation_unobserved_before_presentation()
     MegaRacStaleDetachNotAdmitted { stale_image: _, reason: _ } => presentation_unobserved_before_presentation()
@@ -2003,6 +2021,7 @@ fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillSe
     MegaRacRedirectionUncatalogued { image_name: _, wire: _, configurations: _ } => presentation_unobserved_before_presentation()
     MegaRacRefreshClockUnreadable { detail: _, detach: _ } => presentation_unobserved_before_presentation()
     MegaRacListingUnparseableAfterDetach { detail: _, detach: _ } => presentation_unobserved_before_presentation()
+    MegaRacOfferedAmbiguouslyAfterDetach { image_name: _, image_indices: _, detach: _ } => presentation_unobserved_before_presentation()
     MegaRacNotEnumeratedAfterRefresh { image_name: _, detach: _, standing: _ } => presentation_unobserved_before_presentation()
   }
 }

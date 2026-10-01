@@ -1,0 +1,109 @@
+module test.claim.boot_world_models_witness_test
+
+import std.types { Bool, List, String }
+import std.measure { second }
+import gunbc.bmc_model { BmcWorld, BmcPowerOn, bmc_world, bmc_with_sol_session, bmc_with_sol_drop_after_boot, bmc_chassis_control, bmc_advance, bmc_power_is_on, bmc_sol_drop_fired }
+import extdeps.bmc.ipmi_chassis_control { IpmiChassisPowerCycle }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.transports.shell { ShellProcessExited }
+import extdeps.exec.command { argv_words }
+import extdeps.tools.gnu_coreutils { cat_command }
+import extdeps.crypto.hash { sha256sum_file_command }
+import gunbc.wall_clock_model { ModeledWallClock, wall_clock_unix }
+import extdeps.units.iso8601_calendar { iso8601_utc_text }
+import gunbc.remote_host_model { ModeledRemoteHost, ModeledRemoteFile, remote_request, remote_answer }
+import gunbc.filesystem_model { ModeledFilesystem, ModeledFile, fs_parent, fs_write, fs_list, fs_read }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE MODELS' OWN SEMANTICS, checked apart from any orchestrator run, so a matrix case cannot pass
+// against a model that is wrong in the same direction as the code under test. Reference values for the
+// calendar are independent: Python's datetime.fromtimestamp(t, timezone.utc) for each instant.
+test fn the_wall_clock_renders_utc_like_date() -> Bool {
+  iso8601_utc_text(unix: 0) == "1970-01-01T00:00:00Z"
+    && iso8601_utc_text(unix: 951782400) == "2000-02-29T00:00:00Z"
+    && iso8601_utc_text(unix: 1790000000) == "2026-09-21T14:13:20Z"
+    && iso8601_utc_text(unix: 4102444799) == "2099-12-31T23:59:59Z"
+    && iso8601_utc_text(unix: 0 - 1) == "1969-12-31T23:59:59Z"
+}
+
+// A NEGATIVE STEP IS A WALL CLOCK THAT WENT BACKWARDS while virtual time moved forward.
+test fn a_backward_step_reads_earlier_while_virtual_time_advances() -> Bool {
+  let clock = ModeledWallClock { unix_at_origin: 1790000000, step: std.measure.second_displacement(count: 0 - 120), jumps: [] }
+  wall_clock_unix(clock: clock, now: second(count: 60)) == 1789999940
+}
+
+// THE FAR SIDE OF AN SSH REQUEST is the word before the first `--` and everything after it, so a
+// remote command that itself carries `--` keeps it.
+test fn a_remote_request_splits_at_the_first_separator() -> Bool {
+  match remote_request(client_args: ["-o", "BatchMode=yes", "srv2", "--", "sha256sum", "--", "/srv/x"]) {
+    Present { value: r } => r.endpoint == "srv2" && r.words == ["sha256sum", "--", "/srv/x"]
+    Absent => false
+  }
+    && match remote_request(client_args: ["srv2", "cat", "/srv/x"]) { Present { value: _ } => false Absent => true }
+}
+
+// THE REMOTE HOST ANSWERS ONLY THE PRODUCTION BUILDERS' WORDS, in coreutils' formats.
+test fn the_remote_host_answers_production_commands_in_coreutils_format() -> Bool {
+  let host = ModeledRemoteHost { endpoint: "srv2", files: [
+    ModeledRemoteFile { path: "/srv/rec", content: Present { value: "abc\n" }, sha256: none },
+    ModeledRemoteFile { path: "/srv/img", content: Present { value: "bytes" }, sha256: Present { value: "ff00" } },
+    ModeledRemoteFile { path: "/srv/gone", content: none, sha256: none },
+  ] }
+  let cat_ok = match remote_answer(host: host, words: argv_words(command: cat_command(path: "/srv/rec"))) {
+    Present { value: ShellProcessExited { exit_code: 0, stdout: "abc\n", stderr: _ } } => true
+    _ => false
+  }
+  let sum_ok = match remote_answer(host: host, words: argv_words(command: sha256sum_file_command(path: "/srv/img"))) {
+    Present { value: ShellProcessExited { exit_code: 0, stdout: "ff00  /srv/img\n", stderr: _ } } => true
+    _ => false
+  }
+  let gone = match remote_answer(host: host, words: argv_words(command: cat_command(path: "/srv/gone"))) {
+    Present { value: ShellProcessExited { exit_code: 1, stdout: _, stderr: "cat: /srv/gone: No such file or directory\n" } } => true
+    _ => false
+  }
+  let unlisted = match remote_answer(host: host, words: ["rm", "-rf", "/srv"]) { Present { value: _ } => false Absent => true }
+  cat_ok && sum_ok && gone && unlisted
+}
+
+// THE FILESYSTEM'S PARENT RULE: a write under a directory the model does not hold is not_found.
+test fn a_write_needs_its_parent_directory() -> Bool {
+  let fs = ModeledFilesystem { directories: ["/", "/run"], files: [], refused_reads: [] }
+  fs_parent(path: "/run/sol.pid") == "/run" && fs_parent(path: "/x") == "/" && fs_parent(path: "target/a.pub") == "target"
+    && match fs_write(fs: fs, path: "/var/x", content: "1", create_new: false).observation {
+      extdeps.transports.file.FileOperationFailed { kind: extdeps.filesystem.filesystem_io.FilesystemNotFound, error: _ } => true
+      _ => false
+    }
+}
+
+// A POWER RESTORE KEEPS THE SOL DROP IT SCHEDULES (#12423 side-chat review 5342387382). An ON host with
+// an open SOL session and a 30-second after-boot drop is power-cycled at t=0: the controller drops power
+// and schedules the restore at t=5; the restore boots the host and schedules the drop at t=35. A quiet
+// advance to t=10 fires only the restore; ONE quiet advance to t=40, spanning both due times, fires both
+// -- the drop the restore scheduled is not discarded -- and leaves nothing pending.
+fn cycled_on_host() -> BmcWorld {
+  let on = bmc_with_sol_drop_after_boot(world: bmc_with_sol_session(world: bmc_world(power: BmcPowerOn), open: true), after: second(count: 30))
+  bmc_chassis_control(world: on, action: IpmiChassisPowerCycle, now: second(count: 0)).world
+}
+
+test fn a_power_restore_keeps_the_sol_drop_it_schedules() -> Bool {
+  let at_ten = bmc_advance(world: cycled_on_host(), now: second(count: 10))
+  let at_forty = bmc_advance(world: cycled_on_host(), now: second(count: 40))
+  bmc_power_is_on(world: at_ten) && at_ten.sol_session_open && count(at_ten.fired) == 1 && count(at_ten.pending) == 1
+    && bmc_power_is_on(world: at_forty) && !at_forty.sol_session_open && bmc_sol_drop_fired(world: at_forty)
+    && count(at_forty.fired) == 2 && count(at_forty.pending) == 0
+}
+
+// A READ REPORTS UTF-8 BYTES, NOT CODE POINTS (review 72309): the realization's own file read reports
+// content.len(), so the model must too. `é` is one code point and two bytes.
+fn read_byte_count(fs: ModeledFilesystem, path: String) -> Int {
+  match fs_read(fs: fs, path: path) {
+    extdeps.transports.file.FileOperationSucceeded { byte_count: b, content: _ } => extdeps.transports.file.file_observation_byte_count(bytes: b)
+    _ => 0 - 1
+  }
+}
+
+test fn a_modeled_read_counts_utf8_bytes() -> Bool {
+  let fs = ModeledFilesystem { directories: ["/", "/t"], files: [ModeledFile { path: "/t/a", content: "é" }, ModeledFile { path: "/t/b", content: "abc" }], refused_reads: [] }
+  read_byte_count(fs: fs, path: "/t/a") == 2 && read_byte_count(fs: fs, path: "/t/b") == 3
+}
