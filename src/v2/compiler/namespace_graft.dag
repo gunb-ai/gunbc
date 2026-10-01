@@ -714,28 +714,32 @@ fn namespace_graft_merge_one(merged: List<Edge>, e: Edge) -> Outcome<List<Edge>>
     Named { name: sym } =>
       match namespace_graft_named_edge_in(edges: merged, name: sym) {
         Absent => outcome_accepted(value: list_snoc_item(xs: merged, item: e))
-        Present { value: earlier } =>
-          if namespace_graft_node_is_module_body(node: earlier.target) && namespace_graft_node_is_module_body(node: e.target) {
-            bind_outcome(
-              o: namespace_graft_merge_namespace_bodies(
-                edges: concat(namespace_graft_namespace_body_members(body: earlier.target), namespace_graft_namespace_body_members(body: e.target))
-              ),
-              f: fn(members) {
-                outcome_accepted(value: namespace_graft_replace_named_edge(
-                  edges: merged,
-                  name: sym,
-                  with: Edge { label: Named { name: sym }, target: namespace_graft_namespace_body_node(edges: members, source: earlier.target) }
-                ))
-              }
-            )
-          } else {
-            outcome_rejected(Diagnostic {
-              reason: ^namespace_graft_declaration_name_repeated,
-              at: node_locus(node: e.target),
-              correction: Unavailable { reason: UserInputBoundary }
-            })
-          }
+        Present { value: earlier } => namespace_graft_merge_pair(merged: merged, name: sym, earlier: earlier, e: e)
       }
+  }
+}
+
+// Two same-named edges: merged when both are marked namespace bodies, refused at the second otherwise.
+fn namespace_graft_merge_pair(merged: List<Edge>, name: Symbol, earlier: Edge, e: Edge) -> Outcome<List<Edge>> {
+  if namespace_graft_node_is_module_body(node: earlier.target) && namespace_graft_node_is_module_body(node: e.target) {
+    bind_outcome(
+      o: namespace_graft_merge_namespace_bodies(
+        edges: concat(namespace_graft_namespace_body_members(body: earlier.target), namespace_graft_namespace_body_members(body: e.target))
+      ),
+      f: fn(members) {
+        outcome_accepted(value: namespace_graft_replace_named_edge(
+          edges: merged,
+          name: name,
+          with: Edge { label: Named { name: name }, target: namespace_graft_namespace_body_node(edges: members, source: earlier.target) }
+        ))
+      }
+    )
+  } else {
+    outcome_rejected(Diagnostic {
+      reason: ^namespace_graft_declaration_name_repeated,
+      at: node_locus(node: e.target),
+      correction: Unavailable { reason: UserInputBoundary }
+    })
   }
 }
 
