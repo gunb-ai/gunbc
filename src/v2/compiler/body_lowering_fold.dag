@@ -5387,8 +5387,14 @@ fn body_lower_postfix_chain_steps_read(
   }
 }
 
+// THE SPINE IS AN IMAGE OF ITS SOURCE, SO IT CLOSES (v2.std.node close_lowered_image). The root
+// keeps the whole mention's minted occurrence. A segment lowered from that same token -- the
+// one-segment reference body_lower_bare_tag_reference builds, where the tag token is both the
+// mention and its only segment -- is a structurally different member under that one occurrence,
+// so it becomes pending and is allocated an OccurrenceProjected caused by the root. Segments lowered
+// from their own tokens carry their own minted occurrences and are not members of this image.
 fn body_lower_qualified_name_spine_node(segments: List<Node>, source: Node) -> Node {
-  qualified_name_spine_of_atoms(atoms: segments, occurrence_id: source.occurrence_id)
+  close_lowered_image(root: qualified_name_spine_of_atoms(atoms: segments, occurrence_id: source.occurrence_id))
 }
 
 fn body_lower_postfix_chain_read(node: Node) -> PostfixChainRead {
@@ -6235,7 +6241,7 @@ fn body_lower_pattern_suffix_lowered(head: Node, suffix: Node, pattern_capture: 
                           ),
                           f: fn(edges) {
                             outcome_accepted(
-                              value: construct_node(reference: reference, field_edges: edges, source: pattern_capture)
+                              value: close_lowered_image(root: construct_node(reference: reference, field_edges: edges, source: pattern_capture))
                             )
                           }
                         )
@@ -8434,13 +8440,13 @@ fn body_lower_map_literal_entry_edge(key: Node, after_key: Node, item: Node, ref
           outcome_with_diagnostics(
             value: Edge {
               label: Named { name: map_literal_entry_label() },
-              target: construct_node_elided(
+              target: close_lowered_image(root: construct_node_elided(
                 field_edges: [
                   Edge { label: Named { name: ^key }, target: key },
                   Edge { label: Named { name: ^value }, target: value }
                 ],
                 source: item
-              )
+              ))
             },
             diagnostics: d
           )
@@ -8534,7 +8540,12 @@ fn body_lower_record_literal_field_items_optional(captured: Node) -> Optional<Li
   }
 }
 
-// THE ONE CONSTRUCT BUILDER. Every record construction reaches it with its constructor REFERENCE
+// THE ONE CONSTRUCT BUILDER, AND IT CLOSES ITS IMAGE (v2.std.node close_lowered_image): the Conj keeps
+// the source's minted occurrence, and a member built from that same source -- the elided tag
+// reference and its empty target (v2.std.node_query construct_tag_elided_reference) -- becomes
+// pending and is allocated an OccurrenceProjected. The close sits here and not in construct_node,
+// because resolve's map arm (v2.std.map_introduction lower_map_introduction) also builds constructs,
+// after normalize's allocator has run. Every record construction reaches it with its constructor REFERENCE
 // already built from the authored segments -- a one-segment spine for `R { .. }`, the whole path for
 // `a.b.R { .. }` -- so the tag is never trimmed to its last segment and never resolved here;
 // v2.compiler.resolve binds it by identity.
@@ -8553,7 +8564,7 @@ fn body_lower_record_construct(reference: Node, items: List<Node>, source: Node)
           outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_brace_key_kind_mismatch, n: offending.target))
         Absent =>
       Accepted {
-        value: construct_node(reference: reference, field_edges: body_lower_map_literal_entries_collapsed(edges: edges, source: source), source: source),
+        value: close_lowered_image(root: construct_node(reference: reference, field_edges: body_lower_map_literal_entries_collapsed(edges: edges, source: source), source: source)),
         diagnostics: d
       }
       }
