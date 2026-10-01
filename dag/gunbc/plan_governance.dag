@@ -151,9 +151,13 @@ fn governance_walk_step(rows: List<PlanGovernance>, w: GovernanceWalk) -> Govern
   }
 }
 
+// n rows give n steps, and a chain of n edges needs ONE MORE step to resolve its final node -- a
+// one-row orphan (a -> nowhere) takes its only step onto 'nowhere' and must still look 'nowhere' up
+// to learn it is missing. Without that extra step the orphan read as a cycle (witness red, cd1d335e85).
 fn governance_walk_from(rows: List<PlanGovernance>, child: String) -> GovernanceWalk {
   let start = GovernanceWalk { current: child, reached: child == compiler_architecture_root_slug, stop: GovernanceNotStopped }
-  fold(rows, init: start, f: (acc, r) => governance_walk_step(rows: rows, w: acc))
+  let walked = fold(rows, init: start, f: (acc, r) => governance_walk_step(rows: rows, w: acc))
+  governance_walk_step(rows: rows, w: walked)
 }
 
 fn governance_row_refusals(rows: List<PlanGovernance>, r: PlanGovernance) -> List<GovernanceRefusal> {
