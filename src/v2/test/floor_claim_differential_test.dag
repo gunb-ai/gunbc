@@ -1,6 +1,8 @@
 module v2.test.floor_claim_differential
 
 import v2.std.logic { Bool }
+import v2.workflow.floor_expected_red { floor_expected_red_roster }
+import v2.std.algebra { Cons, Empty }
 import v2.workflow.required_floor {
   ClaimStanding,
   StandingPassed,
@@ -51,11 +53,11 @@ test fn a_new_failing_reach_claim_blocks_through_the_host_wire() -> Bool {
       ReachVerdictRefused { reason: _ } => true
     }
   }
-  blocks(reach_claim_verdict(base: "not_declared", head: "failed"))
-    && blocks(reach_claim_verdict(base: "passed", head: "failed"))
-    && !blocks(reach_claim_verdict(base: "failed", head: "failed"))
-    && !blocks(reach_claim_verdict(base: "not_declared", head: "passed"))
-    && refused(reach_claim_verdict(base: "interrupted", head: "failed"))
+  blocks(reach_claim_verdict(identity: "t.unrostered.claim", base: "not_declared", head: "failed"))
+    && blocks(reach_claim_verdict(identity: "t.unrostered.claim", base: "passed", head: "failed"))
+    && !blocks(reach_claim_verdict(identity: "t.unrostered.claim", base: "failed", head: "failed"))
+    && !blocks(reach_claim_verdict(identity: "t.unrostered.claim", base: "not_declared", head: "passed"))
+    && refused(reach_claim_verdict(identity: "t.unrostered.claim", base: "interrupted", head: "failed"))
 }
 
 test fn the_baseline_line_names_the_merge_base_arm() -> Bool {
@@ -78,4 +80,29 @@ test fn only_a_failing_head_needs_the_base_arm() -> Bool {
     && reach_head_cannot_block(head: "not_declared")
     && !reach_head_cannot_block(head: "failed")
     && !reach_head_cannot_block(head: "interrupted")
+}
+
+// AN UNMEASURED BASE IS DECIDED BY THE DECLARED MAIN-RED ROSTER, by identity: a rostered claim is
+// a counted finding that does not block, an unrostered one blocks, and neither is read as failed.
+fn verdict_named(v: ReachClaimVerdict) -> String {
+  match v {
+    ReachVerdict { differential: d, blocks: b } => if b { concat(d, ":blocks") } else { concat(d, ":reports") }
+    ReachVerdictRefused { reason: r } => concat("refused:", r)
+  }
+}
+
+test fn an_unmeasured_base_blocks_only_when_no_roster_declares_the_claim_red() -> Bool {
+  verdict_named(v: reach_claim_verdict(identity: first_expected_red(), base: "not_measured", head: "failed"))
+    == "base_not_measured_rostered:reports"
+    && verdict_named(v: reach_claim_verdict(identity: "t.unrostered.claim", base: "not_measured", head: "failed"))
+      == "base_not_measured_unrostered:blocks"
+    && verdict_named(v: reach_claim_verdict(identity: first_expected_red(), base: "passed", head: "failed"))
+      == "regressed:blocks"
+}
+
+fn first_expected_red() -> String {
+  match floor_expected_red_roster() {
+    Cons { head: h, tail: _ } => h
+    Empty => ""
+  }
 }

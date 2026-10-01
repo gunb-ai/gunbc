@@ -11027,6 +11027,10 @@ pub fn run_required_floor(
                         "v2.workflow.required_floor.reach_claim_verdict",
                         &[
                             (
+                                Some("identity".to_string()),
+                                v1_interpreter::str_value(identity),
+                            ),
+                            (
                                 Some("base".to_string()),
                                 v1_interpreter::str_value(base_name),
                             ),

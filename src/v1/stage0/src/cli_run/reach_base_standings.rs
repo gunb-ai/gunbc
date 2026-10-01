@@ -31,6 +31,9 @@ pub enum BaseStanding {
     Passed,
     Failed,
     NotDeclared,
+    /// The base outcome was not a verdict. Reported for this identity alone; the model decides
+    /// what it means (`reach_claim_verdict`), and it is never read as `failed`.
+    NotMeasured,
 }
 
 impl BaseStanding {
@@ -39,6 +42,7 @@ impl BaseStanding {
             BaseStanding::Passed => "passed",
             BaseStanding::Failed => "failed",
             BaseStanding::NotDeclared => "not_declared",
+            BaseStanding::NotMeasured => "not_measured",
         }
     }
 }
@@ -159,15 +163,22 @@ pub fn reach_base_standings(
                 .unwrap_or(&identity);
             let (outcome, _receipt) = run_claim_measured(&ctx, &closure_subject, function);
             v1_interpreter::eval_call_memo_frame_exit(&ctx);
-            match base_standing_of(&outcome) {
-                Ok(standing) => {
-                    if standing != BaseStanding::Passed {
-                        eprintln!("[reach-base] identity={identity} outcome={outcome:?}");
-                    }
-                    standings.push((identity, standing))
+            // A NON-VERDICT IS PER IDENTITY: one budget interruption used to void every other
+            // claim's base (srv1, 2026-10-01). It is reported for this identity as not_measured,
+            // and the arm refuses only when the instrument itself fails.
+            let standing = match base_standing_of(&outcome) {
+                Ok(standing) => standing,
+                Err(cause) => {
+                    eprintln!(
+                        "[reach-base] identity={identity} standing=not_measured cause={cause}"
+                    );
+                    BaseStanding::NotMeasured
                 }
-                Err(cause) => return Ok(ReachBaseArm::Refused { identity, cause }),
+            };
+            if standing != BaseStanding::Passed {
+                eprintln!("[reach-base] identity={identity} outcome={outcome:?}");
             }
+            standings.push((identity, standing));
         }
     }
     standings.sort();
@@ -248,6 +259,10 @@ mod tests {
             &ctx,
             "v2.workflow.required_floor.reach_claim_verdict",
             &[
+                (
+                    Some("identity".to_string()),
+                    v1_interpreter::str_value("t.unrostered.claim"),
+                ),
                 (Some("base".to_string()), v1_interpreter::str_value(base)),
                 (Some("head".to_string()), v1_interpreter::str_value(head)),
             ],

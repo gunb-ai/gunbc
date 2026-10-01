@@ -2530,7 +2530,28 @@ type ReachClaimVerdict
   = ReachVerdict { differential: String, blocks: Bool }
   | ReachVerdictRefused { reason: String }
 
-fn reach_claim_verdict(base: String, head: String) -> ReachClaimVerdict {
+// A BASE OUTCOME THAT WAS NOT A VERDICT (a budget interruption, a panic, an unresolved host tool or
+// effect, a claim not attempted) is reported for THAT claim alone and never read as failed: failed
+// would turn a head failure into still_red and hide the regression. The other reached claims keep
+// their verdicts (srv1, 2026-10-01: one BudgetInterrupted claim of 60 used to void all 60).
+//
+// WHETHER IT BLOCKS IS DERIVED, NOT BLANKET (deep-ferret-305, 2026-10-01). A claim on the DECLARED
+// main-red roster (floor_expected_red_roster, joined by identity) is main's debt, already declared
+// and owned, so it is a counted base_not_measured_rostered finding and does not block. A claim on
+// no roster BLOCKS as base_not_measured_unrostered (BaseNotMeasuredUnrostered): the floor cannot
+// show it is not a regression, and nothing declared says it was already red.
+fn base_not_measured_verdict(identity: String) -> ReachClaimVerdict {
+  if contains(xs: floor_expected_red_roster(), item: identity, eq: fn(a, b) { a == b }) {
+    ReachVerdict { differential: "base_not_measured_rostered", blocks: false }
+  } else {
+    ReachVerdict { differential: "base_not_measured_unrostered", blocks: true }
+  }
+}
+
+fn reach_claim_verdict(identity: String, base: String, head: String) -> ReachClaimVerdict {
+  if base == "not_measured" {
+    base_not_measured_verdict(identity: identity)
+  } else {
   match claim_standing_named(name: base) {
     StandingNotParsed { name: b } => ReachVerdictRefused { reason: concat("unknown base standing ", b) }
     StandingParsed { standing: bs } =>
@@ -2542,6 +2563,7 @@ fn reach_claim_verdict(base: String, head: String) -> ReachClaimVerdict {
             blocks: claim_differential_blocks(d: claim_differential(base: bs, head: hs))
           }
       }
+  }
   }
 }
 
