@@ -1,0 +1,35 @@
+module v2.test.claim.zz_probe.p9
+
+import v2.test.claim.match_arm_binder_frame { mab_resolved_module_named_binder }
+import v2.test.emit.rust_variant_construct_emit { rust_variant_construct_emit_inferred_tree }
+import v2.extdeps.languages.rust_test { rust_variant_construct_target_model_staging, rust_variant_construct_source_text }
+import v2.compiler.emit { emit }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.node { Node, symbol_lexeme, node_subtree_nodes }
+import v2.std.qualified_name { binder_reference_symbol_optional, declaration_reference_path_optional }
+import v2.std.optional { Absent, Present }
+import std.process { ProcessExit, exit_failure }
+
+fn p9_kinds(n: Node) -> String {
+  fold(node_subtree_nodes(root: n), init: "", f: fn(acc, m) {
+    match binder_reference_symbol_optional(node: m) {
+      Present { value: b } => acc + " B:" + symbol_lexeme(sym: b)
+      Absent => match declaration_reference_path_optional(node: m) {
+        Present { value: _ } => acc + " D"
+        Absent => acc
+      }
+    }
+  })
+}
+
+fn p9_report() -> ProcessExit {
+  let a = match mab_resolved_module_named_binder() {
+    Rejected { diagnostics: d } => "REJ " + symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+    Accepted { value: t, diagnostics: _ } => "OK" + p9_kinds(n: t.root)
+  }
+  let em = match emit(tree: rust_variant_construct_emit_inferred_tree, target: rust_variant_construct_target_model_staging()) {
+    Rejected { diagnostics: d } => "REJECTED " + symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+    Accepted { value: src, diagnostics: _ } => "TEXT[" + src.carried + "] want[" + rust_variant_construct_source_text + "]"
+  }
+  exit_failure(reason: "P9 " + a + " || " + em)
+}
