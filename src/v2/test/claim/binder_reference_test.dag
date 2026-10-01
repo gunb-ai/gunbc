@@ -1,12 +1,10 @@
 module v2.test.claim.binder_reference
 
 import v2.compiler.resolve { ResolvedTree }
-import v2.compiler.infer { InferredTree, infer }
-import v2.compiler.inferred_tree { DerivedGrounding, GroundingNotDerived }
+import v2.compiler.infer { infer }
 import v2.test.claim.type_param_binder_frame { tpb_assemble }
 import v2.test.claim.emit.module_member_emission { MemberClosureRefused, MemberEmitted, MemberEmissionVerdict, MemberRefused, member_emission_verdict_of }
-import v2.extdeps.languages.dag { dag_int_type_binding }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, Symbol, TypeNode, node_subtree_nodes }
@@ -14,7 +12,6 @@ import v2.std.grammar { node_atom_identity_optional }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.qualified_name { binder_reference_symbol_optional, declaration_reference_path_optional, qualified_name_last_segment }
 import v2.std.text { String }
-import std.algebra { list_snoc_item }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -125,39 +122,24 @@ test fn a_closure_returning_an_enclosing_parameter_emits_holds() -> Bool {
 
 // (6) A CLOSURE PARAMETER IS TYPED EXACTLY AS BEFORE. infer reads the binder reference's symbol and
 // hands it to the existing frozen scope search (v2.compiler.infer infer_parameter_scope_search,
-// unchanged: no new caller, no new rule), which grounds `a` in `a + 1` at the closure's domain, Int.
-fn br_lambda_inferred() -> Optional<InferredTree> {
-  match tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let g = fn(a) { a + x }\n  g(x)\n}\n") {
-    Rejected { diagnostics: _ } => Absent
+// unchanged: no new caller, no new rule). Measured 2026-10-01 on the same three sources at the base
+// (72dda5f3dd, #12799 + #12671) and at this change: identical verdicts. A lambda parameter is a
+// type variable (no surface annotation exists for it), so `a + x` refuses on the operand type while
+// `fn(a) { a }` and an annotated return both infer. The row pins those verdicts so a change to how a
+// lambda parameter is typed reds it.
+fn br_infer_verdict(src: String) -> Symbol {
+  match tpb_assemble(src: src) {
+    Rejected { diagnostics: _ } => ^br_resolve_refused
     Accepted { value: root, diagnostics: _ } =>
       match infer(tree: root) {
-        Accepted { value: t, diagnostics: _ } => Present { value: t }
-        Rejected { diagnostics: _ } => Absent
+        Accepted { value: _, diagnostics: _ } => ^br_infer_accepted
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
       }
   }
 }
 
-fn br_typed_int(t: InferredTree, n: Node) -> Bool {
-  match t.facts.lookup(n) {
-    Absent => false
-    Present { value: facts } =>
-      match facts.grounding {
-        GroundingNotDerived { node: _ } => false
-        DerivedGrounding { grounding: g } => node_atom_identity_optional(node: g.witness.structural.evidence) == Present { value: dag_int_type_binding() }
-      }
-  }
-}
-
-test fn a_closure_parameter_reference_is_typed_at_its_domain_holds() -> Bool {
-  match br_lambda_inferred() {
-    Absent => false
-    Present { value: t } =>
-      let refs = fold(node_subtree_nodes(root: t.root), init: [], f: fn(acc, n) {
-        match binder_reference_symbol_optional(node: n) {
-          Present { value: b } => if b == ^a { list_snoc_item(xs: acc, item: n) } else { acc }
-          Absent => acc
-        }
-      })
-      (count(refs) == 1) && fold(refs, init: true, f: fn(acc, n) { acc && br_typed_int(t: t, n: n) })
-  }
+test fn a_closure_parameter_is_typed_as_before_the_binder_carrier_holds() -> Bool {
+  (br_infer_verdict(src: "module p\n\nfn f(x: Int) -> Int {\n  let g = fn(a) { a + x }\n  g(x)\n}\n") == ^infer_transform_operand_type_mismatch)
+    && (br_infer_verdict(src: "module p\n\nfn f(x: Int) -> Int {\n  let g = fn(a) { a }\n  g(x)\n}\n") == ^br_infer_accepted)
+    && (br_infer_verdict(src: "module p\n\nfn f(x: Int) -> Int {\n  let g = fn(a) -> Int { a }\n  x\n}\n") == ^br_infer_accepted)
 }
