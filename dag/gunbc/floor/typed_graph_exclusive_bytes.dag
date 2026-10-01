@@ -87,7 +87,7 @@ fn class_exclusive_of(r: TypedGraphClassReading) -> ClassFold {
               ancestry_entries: r.ancestry_entries, own_entries: r.own_entries,
             }],
             first_total: Present { value: total },
-            sum: if r.members == 1 { byte_size_count(b: exclusive) } else { 0 },
+            sum: byte_size_count(b: if r.members == 1 { exclusive } else { byte_size(count: nat_magnitude(a: 0)) }),
           }
         }
     }
