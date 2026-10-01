@@ -1,7 +1,7 @@
 module v2.test.claim.body_lowering_well_formed_wall
 
 import v2.std.arrow_signature { DeclaredSignatureEdges, declared_signature }
-import v2.std.node_query { pattern_wildcard_name }
+import v2.std.node_query { pattern_wildcard_name, binder_edge }
 import v2.std.node {
   Arrow,
   Atom,
@@ -33,7 +33,7 @@ fn well_formed_wall_atom(identity: Symbol) -> Node {
 // One declared signature for all three Arrows, so the body is the only thing that differs.
 fn well_formed_wall_signature() -> DeclaredSignatureEdges {
   declared_signature(
-    params: [Edge { label: Named { name: pattern_wildcard_name() }, target: well_formed_wall_atom(identity: ^well_formed_wall_domain) }],
+    params: [binder_edge(name: pattern_wildcard_name(), type_node: well_formed_wall_atom(identity: ^well_formed_wall_domain))],
     source: well_formed_wall_atom(identity: ^well_formed_wall_domain)
   )
 }
