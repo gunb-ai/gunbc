@@ -220,6 +220,14 @@ fn harness_submission_terminal_cause(reason: String) -> String {
 }
 
 
+// alignment_chain_fingerprint IS THE CHAIN FINGERPRINT THE ATTEMPT SPAWNED WITH, composed at dispatch
+// from the node's resolved alignment chain (gunbc.roadmap.roadmap_alignment alignment_resolve). Empty
+// means this turn has no chain -- reviewers, probes and ad-hoc runs -- and the step budget stays a
+// hard terminal, the pre-chain behavior. Non-empty turns the budget boundary into a durable
+// checkpoint-due announcement: the harness does NOT adjudicate (no provider call, no worker
+// self-report); it records the due event bound to this fingerprint and returns control to the
+// workflow, whose adjudication lane decides resume, steer, re-plan, route or stop (review
+// 5354823380).
 type HarnessTurnConfig {
   backend_url: String
   model: String
@@ -228,13 +236,6 @@ type HarnessTurnConfig {
   reasoning_mode: HarnessReasoningLevel
   wire_shape: HarnessWireShape
   system_prompt: String
-  // THE CHAIN FINGERPRINT THE ATTEMPT SPAWNED WITH, composed at dispatch from the node's resolved
-  // alignment chain (gunbc.roadmap.roadmap_alignment alignment_resolve). Empty means this turn has
-  // no chain -- reviewers, probes and ad-hoc runs -- and the step budget stays a hard terminal, the
-  // pre-chain behavior. Non-empty turns the budget boundary into a durable checkpoint-due
-  // announcement: the harness does NOT adjudicate (no provider call, no worker self-report); it
-  // records the due event bound to this fingerprint and returns control to the workflow, whose
-  // adjudication lane decides resume, steer, re-plan, route or stop (review 5354823380).
   alignment_chain_fingerprint: String
   request_scratch_path: FilePath
   events_path: FilePath
@@ -1317,6 +1318,9 @@ fn harness_turn_provider_stopped(
   }
 }
 
+// TRUNCATION WITH AN OPEN TOOL CALL IS JUDGED FIRST in the round below: when both arms could fire
+// on one max_tokens stop, the open call is the more specific cause and the one whose consequence (a
+// partial file write executed as a complete command) is the worse to bury in a format verdict.
 fn harness_turn_round(
   config: HarnessTurnConfig,
   messages: List<JsonValue>,
@@ -1340,10 +1344,6 @@ fn harness_turn_round(
           tool_calls: list_length(items: uses),
           files_changed: none,
         )
-        // TRUNCATION WITH AN OPEN TOOL CALL IS JUDGED FIRST: when both arms could fire on one
-        // max_tokens stop, the open call is the more specific cause and the one whose consequence
-        // (a partial file write executed as a complete command) is the worse to bury in a format
-        // verdict.
         if list_length(items: uses) > 0 && harness_stop_reason_truncated(reason: stop_reason) {
           let truncated = concat(events, [
             usage,
