@@ -23,9 +23,10 @@ import gunbc.spark.serving_rank_observe {
 }
 import gunbc.harness.harness_backend { harness_launch_from_body, harness_queue_from_body }
 import gunbc.spark.fabric_switch_observed { FabricGroup }
+import extdeps.vllm.kv_layout { AdmissionCost }
 import gunbc.spark.serving_performance_subject { ServingPerformanceSubjectStanding }
 import gunbc.spark.serving_load_probe {
-  SamePrincipal, ProbeWindowStanding, BenchServeExecution,
+  SamePrincipal, ProbeWindowStanding, BenchServeExecution, ClientRateQualificationFrontier,
   serving_load_observation, serving_load_observation_text,
   drain_from_queue, window_from_drain, counter_continuity,
   occupancy_trace_from_endpoint_scrapes,
@@ -53,6 +54,8 @@ type ServingLoadSubject {
   base_url: NonEmptyStr
   served_alias: NonEmptyStr
   standing: ServingPerformanceSubjectStanding
+  admission: AdmissionCost
+  qualification_frontier: ClientRateQualificationFrontier
   principal: NonEmptyStr
   receipt_heading: NonEmptyStr
   receipt_path: String
@@ -152,6 +155,8 @@ fn serving_load_step_text(
     before_incarnation: before_incarnation,
     after_incarnation: after_incarnation,
     bench: bench,
+    admission: subject.admission,
+    qualification_frontier: subject.qualification_frontier,
     provenance: SamePrincipal { principal: join([subject.principal as String, " ssh session on ", subject.host as String, " (bench by docker exec, metrics by 127.0.0.1 scrape, same context)"], "") as NonEmptyStr },
   )
   join([
