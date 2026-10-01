@@ -36,7 +36,10 @@ use im::Vector;
 /// v5: the persisted `ResolvedGraph` carries `item_leaf_owner_modules` and no `emit_graph_info`
 /// (emission builds its own). A v4 artifact has the other shape, so it cold-rebuilds on the
 /// version check rather than reaching decode and failing there.
-const FORMAT_VERSION: u32 = 5;
+///
+/// v6: a module's import union is an `AncestryView` (no `ancestry_str_bindings`, no binding union in
+/// `TypeEnvCache`), persisted without its surface pool, which decode rebuilds.
+const FORMAT_VERSION: u32 = 6;
 const MAGIC: &[u8; 8] = b"gunbgrpc";
 /// v3 header sentinel: union output not persisted in payload (semantically incomplete).
 pub const UNION_PART_ABSENT_DIGEST: &str = "ffffffffffffffff";
@@ -167,8 +170,17 @@ fn encode_cache_payload(payload: &CachePayload) -> Result<Vec<u8>, String> {
 }
 
 fn encode_graph_part(graph: &ResolvedGraph) -> Result<Vec<u8>, String> {
+    // The surface pool is graph-wide and shared by every module's view; serialized inside each module
+    // it would repeat the whole graph once per module. It is stripped here and rebuilt on decode
+    // (`modules_with_final_surface_pool`), as parent links are.
+    let stripped = ResolvedGraph {
+        modules: crate::v1_compiler_infer::modules_without_surface_pools(graph.modules.clone()),
+        item_registry: graph.item_registry.clone(),
+        item_leaf_owner_modules: graph.item_leaf_owner_modules.clone(),
+        diagnostics: graph.diagnostics.clone(),
+    };
     let value =
-        serde_json::to_value(graph).map_err(|e| format!("cache graph value encode: {e}"))?;
+        serde_json::to_value(&stripped).map_err(|e| format!("cache graph value encode: {e}"))?;
     serde_json::to_vec(&sort_json_value(value)).map_err(|e| format!("cache graph encode: {e}"))
 }
 
@@ -789,6 +801,8 @@ fn decode_v3_payload_from_file(file: &mut File, header: V3Header) -> CacheLookup
     let decoded = Rc::new(decoded_graph);
     let modules = rewire_type_env_parent_links(decoded.modules.clone(), source_indices.clone());
     let modules = rewire_func_env_parent_links(modules, source_indices.clone());
+    let modules =
+        crate::v1_compiler_infer::modules_with_final_surface_pool(modules, source_indices.clone());
     let graph = Rc::new(ResolvedGraph {
         modules,
         item_registry: decoded.item_registry.clone(),
@@ -1292,6 +1306,8 @@ pub fn deserialize_fixture_payload_for_test(bytes: &[u8]) -> Result<CachedResolv
     let decoded = Rc::new(payload.graph);
     let modules = rewire_type_env_parent_links(decoded.modules.clone(), source_indices.clone());
     let modules = rewire_func_env_parent_links(modules, source_indices.clone());
+    let modules =
+        crate::v1_compiler_infer::modules_with_final_surface_pool(modules, source_indices.clone());
     Ok(CachedResolvedGraph {
         graph: Rc::new(ResolvedGraph {
             modules,

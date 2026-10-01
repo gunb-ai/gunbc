@@ -63,7 +63,9 @@ use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling::{
 pub use crate::v1_compiler_infer_emit_info::{DataVariantWireSpelling, EmitGraphInfo, TypeSummary};
 use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 pub use crate::v1_compiler_infer_env::UnitVariantContribution;
-pub use crate::v1_compiler_infer_env::{authored_name, empty_symbol_index, lookup_type_for};
+pub use crate::v1_compiler_infer_env::{
+    authored_name, empty_ancestry_view, empty_symbol_index, lookup_type_for,
+};
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_items::{item_is_effectful_callee, item_resource_names};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
@@ -592,7 +594,7 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
             module_path: "".to_string(),
             bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
             str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-            ancestry_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+            ancestry: crate::v1_compiler_infer_env::empty_ancestry_view(),
             parents: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),

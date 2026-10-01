@@ -14535,7 +14535,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
         Present { value: parent_mod } =>
           let a1 = fold(map_keys(parent_mod.interface.env.str_bindings), init: acc, f: (x, n) => map_insert(x, n, true))
           let a2 = fold(map_keys(parent_mod.interface.env.str_bindings), init: a1, f: (x, n) => map_insert(x, concat(imp.module_path, concat(".", n)), true))
-          fold(ancestry_names(view: parent_mod.interface.env.ancestry), init: a2, f: (x, n) => map_insert(x, n, true))
+          fold(ancestry_names(view: with(parent_mod.interface.env.ancestry, { pool: pool })), init: a2, f: (x, n) => map_insert(x, n, true))
         Absent => acc
       }
     } else {
@@ -16054,7 +16054,36 @@ fn ancestry_binding_is_kernel_identity(view: AncestryView, name: String) -> Bool
   }
 }
 
+// THE GRAPH'S ONE SURFACE POOL. During typecheck each module's view holds the pool as it stood when
+// that module was checked (it contains the module's whole closure, which is all a lookup reads). Once
+// the graph is assembled -- and BEFORE the rewire, which enumerates ancestry -- every view is
+// re-pointed at ONE pool built over all modules, so per-module snapshots are not retained past the
+// resolve, and a module served from a persisted store (whose view was encoded without its pool) reads
+// the graph's pool. Every encoder strips the pool (modules_without_surface_pools,
+// typed_module_with_surface_pool with the empty pool): a pool serialized inside every module would
+// repeat the graph once per module. A decoded graph is re-pointed by modules_with_final_surface_pool.
 fn rewire_type_env_import_str_binding_identity(modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<TypedModule> {
+  rewire_type_env_import_str_binding_identity_unpooled(modules: modules_with_final_surface_pool(modules: modules, source_indices: source_indices), source_indices: source_indices)
+}
+
+fn modules_with_final_surface_pool(modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<TypedModule> {
+  let index = fold(modules, init: empty_map(), f: (acc, m) => map_insert(acc, m.type_env.module_path, m))
+  let pool = surface_pool_from_index(parent_index: index, source_indices: source_indices)
+  map(modules, m => typed_module_with_surface_pool(m: m, pool: pool))
+}
+
+fn modules_without_surface_pools(modules: List<TypedModule>) -> List<TypedModule> {
+  map(modules, m => typed_module_with_surface_pool(m: m, pool: empty_surface_pool()))
+}
+
+fn typed_module_with_surface_pool(m: TypedModule, pool: SurfacePool) -> TypedModule {
+  with(m, {
+    type_env: with(m.type_env, { ancestry: with(m.type_env.ancestry, { pool: pool }) }),
+    interface: with(m.interface, { env: with(m.interface.env, { ancestry: with(m.interface.env.ancestry, { pool: pool }) }) })
+  })
+}
+
+fn rewire_type_env_import_str_binding_identity_unpooled(modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<TypedModule> {
   let export_indexes = build_export_indexes(modules: modules, source_indices: source_indices)
   let type_name_index = export_indexes.by_name
   let export_name_index = export_indexes.by_module

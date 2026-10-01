@@ -17743,6 +17743,10 @@ fn reconcile_with_typed_cache(
     index: &MultiEntryIndex,
 ) -> Result<Rc<ResolvedGraph>, String> {
     let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
+    // The import-union surface pool, admitted module by module exactly as the modeled realize loop
+    // (`v1.compiler.infer` `realize_module`) admits it: a module is typechecked against the pool of
+    // the modules before it, then admitted.
+    let mut surface_pool = crate::v1_compiler_infer_env::empty_surface_pool();
     let mut diag_chunks: Vec<Rc<im::Vector<Rc<ErrorNode>>>> = Vec::new();
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
         v1_rt::rc_empty_map();
@@ -17978,6 +17982,7 @@ fn reconcile_with_typed_cache(
                                 let computed = v1_compiler_infer::typecheck_module(
                                     resolved.clone(),
                                     module_index.clone(),
+                                    surface_pool.clone(),
                                     variant_surfaces.clone(),
                                     source_indices.clone(),
                                     intern_table.clone(),
@@ -18036,6 +18041,12 @@ fn reconcile_with_typed_cache(
                 );
                 variant_surfaces =
                     v1_rt::rc_map_insert(variant_surfaces, typed_path.clone(), variant_surface);
+                surface_pool = crate::v1_compiler_infer_env::surface_pool_admit(
+                    surface_pool,
+                    typed_path.clone(),
+                    typed.interface.env.str_bindings.clone(),
+                    typed.interface.surface_imports.clone(),
+                );
                 module_index = v1_rt::rc_map_insert(module_index, typed_path, typed.clone());
                 dispatched[slot] = Some((parent_diags, tc_result));
                 resolve_stage_slot_add(|s| {
@@ -40995,7 +41006,7 @@ mod peel_alias_fixpoint_termination {
                 module_path: "".to_string(),
                 bindings: crate::v1_rt::rc_empty_map(),
                 str_bindings: crate::v1_rt::rc_empty_map(),
-                ancestry_str_bindings: crate::v1_rt::rc_empty_map(),
+                ancestry: crate::v1_compiler_infer_env::empty_ancestry_view(),
                 parents: std::rc::Rc::new(im::vector![]),
                 recursive_types: std::rc::Rc::new(im::vector![]),
                 recursive_type_set: crate::v1_rt::rc_empty_map(),
