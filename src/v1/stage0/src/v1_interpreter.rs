@@ -2313,6 +2313,11 @@ fn store_cross_claim_pure_memo(
             return CrossClaimStoreOutcome::RefusedValueNotPortable(refusal);
         }
     };
+    // The evaluated value's content identity, recorded for the caller BEFORE the presence
+    // check, so an `AlreadyPresent` warm still reports what THIS evaluation produced.
+    CROSS_CLAIM_LAST_STORE_DIGEST.with(|d| {
+        *d.borrow_mut() = Some((func_name.to_string(), portable_value_digest(&portable)))
+    });
     let outcome = CROSS_CLAIM_PURE_MEMO.with(|m| {
         let mut m = m.borrow_mut();
         if let Some(bucket) = m.map.get(&memo_key) {
@@ -2357,6 +2362,20 @@ fn store_cross_claim_pure_memo(
         }
     }
     outcome
+}
+
+thread_local! {
+    static CROSS_CLAIM_LAST_STORE_DIGEST: RefCell<Option<(String, String)>> = const { RefCell::new(None) };
+}
+
+/// The portable-form digest of the value the most recent cross-claim store evaluated for
+/// `func_name`, taken (and cleared) so a later caller can never read an earlier producer's
+/// identity. `None` when that store refused before the value was reified.
+pub fn take_cross_claim_store_digest(func_name: &str) -> Option<String> {
+    CROSS_CLAIM_LAST_STORE_DIGEST.with(|d| match d.borrow_mut().take() {
+        Some((name, digest)) if name == func_name => Some(digest),
+        _ => None,
+    })
 }
 
 /// Why a plain nullary warm stored nothing. Typed apart so the floor names the cause: a

@@ -5711,6 +5711,16 @@ pub(crate) fn floor_authority_frame(
 // vector this function never contributed to. Bounded by neither is not the same as billed to
 // preparation. One observation per warm row, measured on the same clock and RSS reads as every
 // other shared build, so all five phases go through ONE refusal.
+/// ONE ROW PER WARMED PRODUCER at identity grain, (producer, portable-value digest), so two
+/// runs of the floor are comparable at the producer and not only at the claim verdicts a
+/// warmed value happens to decide. A value that stored nothing to digest prints `none`.
+fn floor_warm_row_identity(qualified: &str) {
+    let bare = qualified.rsplit('.').next().unwrap_or(qualified);
+    let digest =
+        v1_interpreter::take_cross_claim_store_digest(bare).unwrap_or_else(|| "none".to_string());
+    eprintln!("[floor-warm-row] producer={qualified} digest={digest}");
+}
+
 pub(crate) fn install_pure_producer_share(
     prepared: &PreparedRepository,
     corpus_modules: &std::collections::HashSet<String>,
@@ -6011,6 +6021,7 @@ pub(crate) fn install_pure_producer_share(
                         row.producer
                     ));
                 }
+                floor_warm_row_identity(&row.producer);
                 eprintln!(
                     "[floor-phase] phase=prepared-effect-input-warm state=completed producer={} input={} disposition={} cpu_ms={} wall_ms={} rss_growth_bytes={}",
                     row.producer,
@@ -6111,6 +6122,7 @@ pub(crate) fn install_pure_producer_share(
                          was refused by the cross-claim store: {detail}"
                     ));
                 }
+                floor_warm_row_identity(qualified);
                 eprintln!(
                     "[floor-phase] phase=pure-producer-share-warm state=completed \
                      producer={qualified} disposition={} cpu_ms={} wall_ms={} \
