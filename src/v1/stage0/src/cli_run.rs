@@ -18579,29 +18579,35 @@ mod runtime_error_location_tests {
         );
     }
 
-    // A HOST WRITE FAILURE IS A TYPED IO REFUSAL CARRYING ITS PATH, never a TypeError. A regular
-    // file standing where the workspace directory should be makes the host refuse the write on
-    // every platform and as every user (a permission-denied control would pass vacuously as root).
+    // A HOST WRITE FAILURE IS A TYPED IO REFUSAL CARRYING ITS PATH, never a TypeError. A directory
+    // standing where `Cargo.toml` should be written makes the host refuse the write on every
+    // platform and as every user (a permission-denied control would pass vacuously as root).
     #[test]
     fn a_host_write_failure_renders_as_the_io_cause_with_its_path() {
         let dir =
             std::env::temp_dir().join(format!("gunbc-host-io-control-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let blocker = dir.join("blocker");
-        std::fs::write(&blocker, b"not a directory").unwrap();
+        std::fs::create_dir_all(dir.join("Cargo.toml")).unwrap();
         let err = crate::v1_interpreter::emit_host_materialize_workspace_files_for_test(
-            &blocker,
+            &dir,
             &[("Cargo.toml".to_string(), "[package]".to_string())],
         )
         .expect_err("the write must fail");
         let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            matches!(&err, crate::v1_interpreter::InterpError::HostIoFailed { operation, .. }
+                if operation.ends_with(": write")),
+            "{err}"
+        );
         let cause = WitnessRuntimeCause::of_interp_error(&err);
         assert_eq!(cause, WitnessRuntimeCause::HostIoFailed);
         assert_ne!(cause.token(), WitnessRuntimeCause::TypeError.token());
         assert_eq!(cause.token(), "host-io-failed");
         let message = format!("{err}");
-        assert!(message.contains("blocker/Cargo.toml"), "{message}");
+        assert!(
+            message.contains("gunbc-host-io-control-") && message.contains("/Cargo.toml"),
+            "{message}"
+        );
         let row = render_witness_claim_result_text_mirror(
             "test.claim.foo",
             "w_bar",
