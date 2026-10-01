@@ -5281,6 +5281,12 @@ pub fn floor_seam(name: &str) {
     // seams rather than to whichever phase the next tick happened to land in.
     floor_cgroup_stat_beat(&format!("seam-{name}"), None);
     floor_heap_beat(name);
+    // THREAD CPU AT THE BOUNDARY, so a phase's cost is read as the floor thread's own CPU between
+    // two seams rather than wall time, which on a shared host is mostly other jobs' load.
+    eprintln!(
+        "[floor-seam-cpu] seam={name} thread_cpu_ms={}",
+        v1_interpreter::thread_cpu_nanos() / 1_000_000
+    );
 }
 
 /// THE ALLOCATOR'S OWN SPLIT AT A SEAM: bytes live in allocations, and bytes the allocator holds
