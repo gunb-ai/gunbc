@@ -1867,6 +1867,12 @@ fn megarac_readiness_outcome(
 // PURE: the wait's answer as the attach outcome. Only a Started look reaches MegaRacPresentationReady,
 // and the evidence is read from that look's row, so the record a boot is gated on is the row that
 // satisfied the policy.
+// A STARTED ROW IS READY WHATEVER cd_error_code SAYS (operator decision 2026-10-01). The vendor's own
+// UI (source.min.js sha256 5029fae2, rmedia changeInSingleImages) consults error_code ONLY when
+// redirection_status is 0 (stopped) and renders it as the stop reason ("Stopped - Device Ejected"
+// for 16); at status 1/100 it never reads it. So a nonzero code beside a Started row is a latched
+// last-stop reason, recorded in the evidence (cd_before_any_write, cd_at_ready), not a live fault.
+// An UNREAD code still withholds: the look could not establish the general settings at all.
 fn readiness_wait_outcome(
   wait: ReadinessWait,
   image_name: NonEmptyStr,
@@ -1885,10 +1891,8 @@ fn readiness_wait_outcome(
       let not_ready = MegaRacReadinessRefused { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
       let state_unestablished = MegaRacMediaStateUnestablished { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_ready: cd_at_end, general_at_ready: general_at_end }
       match l.reading {
-        ReadinessStarted { row: r } =>
-          match cd_at_end {
-            CdErrorRead { code: CdErrorNone } =>
-          MegaRacPresentationReady {
+        ReadinessStarted { row: r } => {
+          let started_ready = MegaRacPresentationReady {
             route: route,
             evidence: MegaRacPresentationEvidence {
               firmware: firmware,
@@ -1903,9 +1907,12 @@ fn readiness_wait_outcome(
               general_at_ready: general_at_end,
             },
           }
-            CdErrorRead { code: CdErrorUncatalogued { wire: _ } } => state_unestablished
+          match cd_at_end {
+            CdErrorRead { code: CdErrorNone } => started_ready
+            CdErrorRead { code: CdErrorUncatalogued { wire: _ } } => started_ready
             CdErrorUnread { detail: _ } => state_unestablished
           }
+        }
         ReadinessConnecting { row: _ } => not_ready
         ReadinessStartedUnbound { row: _ } => not_ready
         ReadinessNotPresented { configurations: _ } => not_ready
@@ -1981,13 +1988,12 @@ fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillSe
             ReadinessUncatalogued { image_name: _, wire: _, configurations: _ } => PresentationUnobserved { reason: "a configurations row carries an uncatalogued status" }
             ReadinessStarted { row: _ } =>
               match cd {
-                CdErrorRead { code: CdErrorNone } =>
+                CdErrorUnread { detail: _ } => PresentationUnobserved { reason: "cd_error_code could not be read" }
+                CdErrorRead { code: _ } =>
                   match result.session_release {
                     SessionReleased => PresentationStillReady
                     other => PresentationReadyButSessionHeld { held: other }
                   }
-                CdErrorUnread { detail: _ } => PresentationUnobserved { reason: "cd_error_code could not be read" }
-                other => PresentationStateUnestablished { cd_error: other }
               }
             ReadinessConnecting { row: _ } => no_longer_ready
             ReadinessStartedUnbound { row: _ } => no_longer_ready

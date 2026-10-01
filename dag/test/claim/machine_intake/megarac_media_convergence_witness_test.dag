@@ -495,14 +495,17 @@ fn raw_at(body: String) -> MegaRacRawRead {
   MegaRacRawRead { answered: true, body: body, observed_at: Present { value: 13100 } }
 }
 
-// OPTION A (operator decision on #12425): a nonzero or unread code withholds as a knowledge refusal.
-test fn a_nonzero_code_beside_a_started_presentation_withholds_as_unestablished() -> Bool {
-  match readiness_wait_outcome(wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4 }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, cd_before: cd_16, general_at_end: raw_at(body: mtcollins1_media_general_2026_09_27)) {
-    MegaRacMediaStateUnestablished { image_name: _, route: _, look: _, looks: n, cd_before_any_write: _, cd_at_ready: CdErrorRead { code: CdErrorUncatalogued { wire: w } }, general_at_ready: _ } =>
-      n == 4 && w == 16
-        && (match mtcollins1_media_gate(record: attempted(result: MegaRacAttachResult { outcome: readiness_wait_outcome(wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4 }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, cd_before: cd_16, general_at_end: raw_at(body: mtcollins1_media_general_2026_09_27)), session_release: SessionReleased, baseline: none })) {
-          MediaGateWithheld { reason: r } => string_contains(s: r as String, pattern: "knowledge refusal")
-          MediaGateReady { evidence: _ } => false
+// A STARTED ROW IS READY WHATEVER cd_error_code SAYS (operator decision 2026-10-01, superseding the #12425
+// option-A knowledge refusal): the vendor UI consults error_code only for a stopped row. The code is
+// recorded in the evidence and the gate opens.
+test fn a_nonzero_code_beside_a_started_presentation_is_ready_and_recorded() -> Bool {
+  let outcome = readiness_wait_outcome(wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4 }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, cd_before: cd_16, general_at_end: raw_at(body: mtcollins1_media_general_2026_09_27))
+  match outcome {
+    MegaRacPresentationReady { route: _, evidence: e } =>
+      (match e.cd_at_ready { CdErrorRead { code: CdErrorUncatalogued { wire: w } } => w == 16 _ => false })
+        && (match mtcollins1_media_gate(record: attempted(result: MegaRacAttachResult { outcome: outcome, session_release: SessionReleased, baseline: none })) {
+          MediaGateReady { evidence: _ } => true
+          MediaGateWithheld { reason: _ } => false
         })
     _ => false
   }
@@ -623,9 +626,9 @@ test fn the_recheck_withholds_when_its_own_session_was_not_released() -> Bool {
     && (match presentation_still_served(result: served_look) { PresentationStillReady => true _ => false })
 }
 
-test fn a_started_look_with_code_16_is_unestablished_at_the_recheck() -> Bool {
+test fn a_started_look_with_code_16_is_still_served_at_the_recheck() -> Bool {
   match presentation_still_served(result: observed(general: mtcollins1_media_general_2026_09_27, configurations: presenting_in(name: desired_census as String, status: "1", session: "0"))) {
-    PresentationStateUnestablished { cd_error: CdErrorRead { code: CdErrorUncatalogued { wire: w } } } => w == 16
+    PresentationStillReady => true
     _ => false
   }
 }
