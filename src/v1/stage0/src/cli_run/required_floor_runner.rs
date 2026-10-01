@@ -10990,11 +10990,34 @@ pub fn run_required_floor(
         };
         match base_arm {
             Err(cause) => {
+                // THE HEAD SIDE IS STILL REPORTED, CLAIM BY CLAIM. These claims were executed at
+                // head by the fold above; without a base there is no verdict, but a reached claim
+                // that FAILS at head is a typed, counted finding the queue must see, never silence
+                // (the gunbc#12582 shape: five reached claims failing with nothing printed).
+                let head_failed: Vec<&String> = reach_head_standings
+                    .iter()
+                    .filter(|(_, passed)| !*passed)
+                    .map(|(identity, _)| identity)
+                    .collect();
+                for (identity, passed) in &reach_head_standings {
+                    eprintln!(
+                        "[floor-reach-differential] identity={identity} head={} base=not-measured",
+                        if *passed { "passed" } else { "failed" }
+                    );
+                }
+                for identity in &head_failed {
+                    eprintln!(
+                        "[floor-reach-finding] ReachedClaimFailedAtHead identity={identity} -- \
+                         reached by this change's body edits and failing at its head; whether it \
+                         passed at base was not measured"
+                    );
+                }
                 let failure = format!(
                     "REACH-DIFFERENTIAL REFUSAL cause=BaseArmRefused {cause} -- the base side of \
                      {} reached claims was not measured, so no verdict is read and none is \
-                     assumed",
-                    identities.len()
+                     assumed; head_failed={}",
+                    identities.len(),
+                    head_failed.len()
                 );
                 eprintln!("[floor-phase] phase=reach-differential {baseline_line} {failure}");
                 if blocking_budget_ms > 0 {
