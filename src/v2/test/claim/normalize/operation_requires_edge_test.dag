@@ -7,7 +7,6 @@ import v2.extdeps.languages.dag { dag_language_model_surface_empty_prelude }
 import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_parse }
 import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }
-import v2.std.algebra { fold_list }
 import v2.std.optional { Absent, Present }
 import v2.std.logic { Bool }
 import v2.std.node { Found, Node, named_edge_target_lookup, node_subtree_nodes }
@@ -49,13 +48,15 @@ fn census_of_stream(tokens: TokenStream) -> Outcome<CensusTree> {
   bind_outcome(o: supplied_stream_parse(tokens: tokens), f: fn(tree) { normalize_census(parse_tree: tree) })
 }
 
+fn node_carries_requirements_edge(n: Node) -> Bool {
+  match named_edge_target_lookup(children: n.children, name: ^arrow_resource_requirements_edge) {
+    Found { target: _ } => true
+    _ => false
+  }
+}
+
 fn carries_requirements_edge(root: Node) -> Bool {
-  fold_list(xs: node_subtree_nodes(root: root), empty: false, cons: fn(found, n) {
-    match named_edge_target_lookup(children: n.children, name: ^arrow_resource_requirements_edge) {
-      Found { target: _ } => true
-      _ => found
-    }
-  })
+  fold(node_subtree_nodes(root: root), init: false, f: fn(found, n) { found || node_carries_requirements_edge(n: n) })
 }
 
 test fn a_requirement_naming_a_declared_resource_resolves_holds() -> Bool {
