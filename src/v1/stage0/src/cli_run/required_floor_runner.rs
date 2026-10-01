@@ -17740,6 +17740,24 @@ mod changed_witness_sublane_join_tests {
             .expect("a declined wet selection is decided");
     }
 
+    /// A reach consumer is NOT a changed-witness selection: its row does not satisfy a selection
+    /// (selected_without_disposition) and, unselected, is not foreign (the join stays clean).
+    #[test]
+    fn a_planned_as_reach_consumer_row_is_not_a_changed_selection() {
+        assert!(!decides_a_changed_selection(
+            &RequiredFloorDisposition::PlannedAsReachConsumer
+        ));
+        let rows = vec![row("m.r", RequiredFloorDisposition::PlannedAsReachConsumer)];
+        changed_witness_sublane_join(&HashSet::new(), &rows)
+            .expect("an unselected reach consumer is not foreign to the join");
+        let expected: HashSet<String> = ["m.r"].iter().map(|s| s.to_string()).collect();
+        let missing = changed_witness_sublane_join(&expected, &rows).unwrap_err();
+        assert!(
+            missing.contains("selected_without_disposition=[m.r]"),
+            "{missing}"
+        );
+    }
+
     /// The join is still exact: a selection with no deciding row refuses, and a deciding row with no
     /// selection refuses, whichever arm decided it.
     #[test]
