@@ -16,8 +16,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // primaries of binary_expr (v2.extdeps.languages.dag dag_grammar_primary_expr_core), so a block heads
 // a chain of any operator, as the seed reads it (v1.compiler.parse parse_expr_bp).
 // v2.test.parse.block_expr_as_binary_operand_parse holds `&&` with a `match` and with an `if`, the
-// bare forms and their lowered shape; these claims hold the remaining operator classes, one each, with
-// the block as the LEFT operand. They are what fails if a block-form alternative returns ahead of
+// bare forms and their lowered shape (so an `if` heading a chain is held there); these claims hold the
+// remaining operator classes, one each, with a `match` as the LEFT operand. They are what fails if a block-form alternative returns ahead of
 // binary_expr in dag_grammar_expr_expr, or if an operator class stops admitting a primary block. One
 // `data` declaration each, parsed against the floor-shared prepared grammar.
 
@@ -57,9 +57,6 @@ data bc_or_source: String = "module probe.bc_or\n\ndata d: Int = match w {\n  _ 
 // pipe `|>`
 data bc_pipe_source: String = "module probe.bc_pipe\n\ndata d: Int = match w {\n  _ => 1\n} |> g\n"
 
-// additive `+`, if-headed
-data bc_if_add_source: String = "module probe.bc_if_add\n\ndata d: Int = if w { 1 } else { 0 } + 2\n"
-
 test fn a_block_headed_left_operand_of_mul_parses_holds() -> Bool {
   bc_parses(text: bc_mul_source, file: ^probe_bc_mul)
 }
@@ -88,6 +85,3 @@ test fn a_block_headed_left_operand_of_pipe_parses_holds() -> Bool {
   bc_parses(text: bc_pipe_source, file: ^probe_bc_pipe)
 }
 
-test fn a_block_headed_left_operand_of_if_add_parses_holds() -> Bool {
-  bc_parses(text: bc_if_add_source, file: ^probe_bc_if_add)
-}
