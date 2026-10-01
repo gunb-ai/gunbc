@@ -15209,6 +15209,9 @@ fn target_value_expr_project_atom_in_arrow_scope(
   target: TargetModel,
   source_bool_form: TargetBoolLiteralShape
 ) -> Outcome<TargetValueExpression> {
+  match target_value_expr_local_reference_leaf(node: node) {
+    Present { value: leaf } => outcome_accepted(target_value_expression_binding_ref(binding: leaf))
+    Absent =>
   bind_outcome(
     o: target_value_expression_projection_from_target(target: target),
     f: fn(projection) {
@@ -15247,6 +15250,7 @@ fn target_value_expr_project_atom_in_arrow_scope(
       }
     }
   )
+  }
 }
 
 fn target_value_expr_transform_shape_invalid(node: Node) -> Outcome<TargetValueExpression> {
