@@ -78,11 +78,11 @@ fn live_tree_site(module_path: String, function: String) -> DiscoveredSite {
 // balance whether or not the census could classify a withheld row at all.
 fn mixed_sites() -> List<DiscoveredSite> {
   [
-    hermetic_site(module_path: "test.claim.infer_alpha_witness", function: "w_alpha"),
-    hermetic_site(module_path: "test.claim.infer_alpha_witness", function: "w_beta"),
+    hermetic_site(module_path: "v2.test.claim.alpha_witness", function: "w_alpha"),
+    hermetic_site(module_path: "v2.test.claim.alpha_witness", function: "w_beta"),
     hermetic_site(module_path: "test.claim.long.slow_witness", function: "w_slow"),
     live_tree_site(module_path: "v2.test.fixture.walk_plan_stage.common", function: "w_member"),
-    live_tree_site(module_path: "test.claim.infer_reads_tree_witness", function: "w_reads"),
+    live_tree_site(module_path: "v2.test.claim.reads_tree_witness", function: "w_reads"),
     hermetic_site(module_path: "test.claim.live_deploy.some_product_witness", function: "w_product"),
     hermetic_site(
       module_path: "dag.test.claim.lifecycle_survivor_corpus_census",
@@ -143,8 +143,8 @@ fn refusal_is_empty_target_name(c: LabelRefusal) -> Bool {
 
 test fn w_site_label_is_the_module_path_as_package() -> Bool {
   let rendered = rendered_planned_labels(sites: mixed_sites())
-  list_holds(xs: rendered, wanted: "//test/claim/infer_alpha_witness:w_alpha")
-    && list_holds(xs: rendered, wanted: "//test/claim/infer_alpha_witness:w_beta")
+  list_holds(xs: rendered, wanted: "//test/claim/alpha_witness:w_alpha")
+    && list_holds(xs: rendered, wanted: "//test/claim/alpha_witness:w_beta")
 }
 
 // THE LEADING EMPTY SEGMENT IS THE CONTROL THE OBVIOUS JOIN FAILS. An accumulator that skips the
@@ -245,8 +245,8 @@ test fn w_long_home_module_declines_with_its_matched_prefix() -> Bool {
 // control beside the decline above: without it the decline could pass under a `contains` test.
 test fn w_long_home_is_a_prefix_not_a_substring() -> Bool {
   match required_floor_site_disposition(
-    module_path: "test.claim.infer_not.test.claim.long.witness",
-    identity: "test.claim.infer_not.test.claim.long.witness.a_claim"
+    module_path: "v2.test.claim.not_test_claim_long.witness",
+    identity: "v2.test.claim.not_test_claim_long.witness.a_claim"
   ) {
     Planned => true
     DeclinedLongModule { matched_prefix: _ } => false
@@ -262,8 +262,8 @@ test fn w_long_home_is_a_prefix_not_a_substring() -> Bool {
 
 test fn w_site_is_planned_when_no_home_matched() -> Bool {
   match required_floor_site_disposition(
-    module_path: "test.claim.infer_ordinary_witness",
-    identity: "test.claim.infer_ordinary_witness.a_claim"
+    module_path: "v2.test.claim.ordinary_witness",
+    identity: "v2.test.claim.ordinary_witness.a_claim"
   ) {
     Planned => true
     DeclinedLongModule { matched_prefix: _ } => false
@@ -453,7 +453,7 @@ test fn w_partition_returns_both_sides_and_loses_no_row() -> Bool {
 // from census_partition_step: the outside row then reaches runtime pattern-match failure.
 test fn w_planned_and_outside_gate_rows_partition_once_each() -> Bool {
   let rows = census_rows_of(sites: [
-    hermetic_site(module_path: "test.claim.infer_compiler_witness", function: "w_compiler"),
+    hermetic_site(module_path: "v2.test.claim.compiler_witness", function: "w_compiler"),
     hermetic_site(module_path: "test.claim.live_deploy.product_witness", function: "w_product")
   ])
   let split = census_partition(rows: rows)
@@ -518,8 +518,8 @@ test fn w_duplicate_identity_refuses_even_when_declined() -> Bool {
 // every module that appears twice.
 test fn w_two_functions_in_one_module_are_two_identities() -> Bool {
   match discovery_census(sites: [
-    hermetic_site(module_path: "test.claim.infer_alpha_witness", function: "w_alpha"),
-    hermetic_site(module_path: "test.claim.infer_alpha_witness", function: "w_beta")
+    hermetic_site(module_path: "v2.test.claim.alpha_witness", function: "w_alpha"),
+    hermetic_site(module_path: "v2.test.claim.alpha_witness", function: "w_beta")
   ]) {
     CensusAccepted { rows: rows } => (rows |> count) == 2
     CensusRefused { cause: _ } => false
@@ -540,11 +540,11 @@ test fn w_required_aggregate_dependencies_are_exactly_the_planned_subset() -> Bo
       is_required_aggregate(t: a)
         && (target_identity(t: a) == "//:required")
         && ((a.dependencies |> count) == 3)
-        && list_holds(xs: rendered, wanted: "//test/claim/infer_alpha_witness:w_alpha")
-        && list_holds(xs: rendered, wanted: "//test/claim/infer_alpha_witness:w_beta")
+        && list_holds(xs: rendered, wanted: "//test/claim/alpha_witness:w_alpha")
+        && list_holds(xs: rendered, wanted: "//test/claim/alpha_witness:w_beta")
         && !list_holds(xs: rendered, wanted: "//test/claim/long/slow_witness:w_slow")
         && !list_holds(xs: rendered, wanted: "//v2/test/fixture/walk_plan_stage/common:w_member")
-        && list_holds(xs: rendered, wanted: "//test/claim/infer_reads_tree_witness:w_reads")
+        && list_holds(xs: rendered, wanted: "//test/claim/reads_tree_witness:w_reads")
     }
   }
 }
