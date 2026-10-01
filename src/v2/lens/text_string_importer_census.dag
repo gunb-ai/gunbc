@@ -20,15 +20,18 @@ import v2.lens.common.source_analysis_standing {
 }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
-import v2.lens.module_graph { ImportResolutionFact, ModuleDeclarationFact, import_resolution_facts_live, module_declaration_facts_live }
+import v2.lens.module_graph { ImportResolutionFact, ModuleDeclarationFact, import_resolution_facts_live, reference_derived_import_resolution_facts_live, module_declaration_facts_live }
 import v2.std.node { Node, Atom, TypeNode, symbol_lexeme }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.provenance { SpanIndex, span_index_empty, node_occurrence_id_optional, span_index_textual_locus_optional }
+import v2.std.optional { Optional }
+import v2.std.diagnostic { Accepted, Rejected, Textual, ByteRange, WholeFile }
 import v2.std.algebra { contains, fold_list, length, list_reverse }
 import v2.std.integer { Int, integer_int_to_decimal_string }
 import v2.std.logic { Bool }
 import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
 import v2.std.optional { Absent, Present }
 import std.algebra { Cons, Empty, FreeMonoid }
+import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.types { NonEmptyStr }
@@ -134,8 +137,6 @@ data host_text_primitive_contracts: List<PrimitiveContract> = [
   scan_string_end_contract
 ]
 
-data text_module: String = "v2.std.text"
-data text_module_source: String = "src/v2/std/text.dag"
 data census_pool_roots: List<String> = ["dag", "src/v2"]
 data empty_strings: FreeMonoid<String> = Empty
 data no_exclusions: List<String> = []
@@ -161,10 +162,17 @@ type SiteKind
   | StructuralCall { name: String, result: StructuralResultPosition }
   | StructuralLiteralArgument { callee: String }
   | BinderArgument { callee: String, param: String, module: String }
+  | LiteralAtAnnotation { spelling: String }
+  | LiteralAtReturn { spelling: String }
+  | LiteralAtField { owner: String, field: String }
+  | LiteralArgument { callee: String, param: String, module: String }
 
+// `at` is the byte offset of the token that triggered the site, read from the parse's span index;
+// a stream supplied without positions (a witness row) carries Absent.
 type Site {
   decl: String
   kind: SiteKind
+  at: Optional<Int>
 }
 
 // WHAT A VERDICT IS WORTH, TYPED (DESIGN 4d, review 73517): the lens infers from spelling and
@@ -312,6 +320,31 @@ type Walk {
   pending_param: String
   pending_param_segments: FreeMonoid<String>
   param_types: FreeMonoid<ParamType>
+  at: Optional<Int>
+  pending_kind: TypeSpellingKind
+  annotation_spelling: String
+  arrow_spelling: String
+  return_spelling: String
+  braces: FreeMonoid<String>
+  in_field_block: Bool
+  field_owner: String
+  field_types: FreeMonoid<FieldType>
+}
+
+// What a pending type spelling belongs to: a parameter, a `let`/`data` annotation, the type after
+// an arrow (a return, or an arrow inside a fn type), or a record or variant field.
+type TypeSpellingKind
+  = SpellingOfParameter
+  | SpellingOfAnnotation
+  | SpellingOfArrow
+  | SpellingOfField { owner: String }
+
+// A record or variant field's declared type as SPELLED, keyed by its owner (the type name for a
+// record declaration, the variant name for a variant payload).
+type FieldType {
+  owner: String
+  field: String
+  spelling: String
 }
 
 type ImportedName {
@@ -332,7 +365,10 @@ type ReturnHead {
   head: String
 }
 
+// `population_module` is the module whose `String` the census is about (v2.std.text or
+// std.string_type): its import decides membership and its functions are the structural roster.
 type Rosters {
+  population_module: String
   host: FreeMonoid<String>
   structural: FreeMonoid<String>
   structural_text_result: FreeMonoid<String>
@@ -361,7 +397,16 @@ fn walk_start() -> Walk {
     imported: Empty,
     pending_param: "",
     pending_param_segments: Empty,
-    param_types: Empty
+    param_types: Empty,
+    at: Absent,
+    pending_kind: SpellingOfParameter,
+    annotation_spelling: "",
+    arrow_spelling: "",
+    return_spelling: "",
+    braces: Empty,
+    in_field_block: false,
+    field_owner: "",
+    field_types: Empty
   }
 }
 
@@ -480,6 +525,36 @@ fn method_name_of(callee: String) -> String {
   if starts_with(s: callee, prefix: ".") { substring(s: callee, start: 1, end: string_length(s: callee)) } else { "" }
 }
 
+fn value_is_statement_or_arm(w: Walk) -> Bool {
+  value_prefix(w: w) && (w.w4 == "dag_surface_binary_expr") && (w.w5 == "dag_surface_expr") && ((w.w6 == "dag_surface_stmt") || (w.w6 == "dag_token_fat_arrow"))
+}
+
+fn value_is_field_init(w: Walk) -> Bool {
+  value_prefix(w: w) && (w.w4 == "dag_surface_binary_expr") && (w.w5 == "dag_surface_expr") && (w.w6 == "dag_token_colon") && (w.w8 == "dag_surface_field_init")
+}
+
+fn value_initializes_annotation(w: Walk) -> Bool {
+  value_prefix(w: w) && (w.w4 == "dag_surface_binary_expr") && (w.w5 == "dag_surface_expr") && (w.w6 == "dag_token_eq") && !(w.annotation_spelling == "")
+}
+
+// Where a literal LANDS, recorded separately from the census's host/structural evidence below: a
+// literal can be both (a literal at a bare `String` annotation is host evidence AND a literal at an
+// annotation), so these sites are additional rows, never a reclassification.
+fn literal_position_kinds(w: Walk, r: Rosters) -> FreeMonoid<SiteKind> {
+  let enclosing = stack_top(stack: w.stack)
+  if value_initializes_annotation(w: w) {
+    Cons { head: LiteralAtAnnotation { spelling: w.annotation_spelling }, tail: Empty }
+  } else if value_is_field_init(w: w) {
+    Cons { head: LiteralAtField { owner: stack_top(stack: w.braces), field: w.w7 }, tail: Empty }
+  } else if value_is_argument(w: w) && !(enclosing == "") && !starts_with(s: enclosing, prefix: ".") && !member(xs: r.host, x: enclosing) && !member(xs: r.structural, x: enclosing) {
+    Cons { head: LiteralArgument { callee: enclosing, param: if w.w6 == "dag_token_colon" { w.w7 } else { "" }, module: imported_module_of(imported: w.imported, name: enclosing) }, tail: Empty }
+  } else if value_is_statement_or_arm(w: w) && !(w.return_spelling == "") {
+    Cons { head: LiteralAtReturn { spelling: w.return_spelling }, tail: Empty }
+  } else {
+    Empty
+  }
+}
+
 fn literal_site_kinds(w: Walk, r: Rosters) -> FreeMonoid<SiteKind> {
   let enclosing = stack_top(stack: w.stack)
   if value_initializes_bare_string_annotation(w: w) {
@@ -506,7 +581,7 @@ fn site_kinds_at(w: Walk, r: Rosters, x: String) -> FreeMonoid<SiteKind> {
   if x == "dag_token_lparen" {
     if w.chain_active { call_site_kind_optional(w: w, r: r, c: call_read(chain_reversed: w.chain)) } else { Empty }
   } else if x == "dag_token_string_literal" {
-    literal_site_kinds(w: w, r: r)
+    fold_list(xs: list_reverse(xs: literal_site_kinds(w: w, r: r)), empty: literal_position_kinds(w: w, r: r), cons: fn(acc, k) { Cons { head: k, tail: acc } })
   } else if x == "dag_token_plus" {
     if (w.w1 == "dag_token_string_literal") || ((w.w2 == "dag_surface_primary_expr") && member(xs: w.binders, x: w.w1)) { Cons { head: HostPlusConcatenation, tail: Empty } } else { Empty }
   } else if is_bare_string_spelling(w: w, x: x) {
@@ -520,9 +595,9 @@ fn site_kinds_at(w: Walk, r: Rosters, x: String) -> FreeMonoid<SiteKind> {
   }
 }
 
-fn next_sites(w: Walk, r: Rosters, x: String) -> FreeMonoid<Site> {
+fn next_sites(w: Walk, r: Rosters, x: String, at: Optional<Int>) -> FreeMonoid<Site> {
   fold_list(xs: site_kinds_at(w: w, r: r, x: x), empty: w.sites, cons: fn(acc, k) {
-    Cons { head: Site { decl: w.decl, kind: k }, tail: acc }
+    Cons { head: Site { decl: w.decl, kind: k, at: at }, tail: acc }
   })
 }
 
@@ -538,8 +613,8 @@ fn next_saw_text_import_module(w: Walk, x: String) -> Bool {
   if (x == "dag_surface_top_level_item") || (x == "dag_surface_import_decl") { false } else { w.saw_text_import_module || is_text_import_module_tail(w: w, x: x) }
 }
 
-fn next_in_text_import(w: Walk, x: String) -> Bool {
-  if (x == "dag_surface_top_level_item") || (x == "dag_surface_import_decl") { false } else if x == "dag_surface_import_block" { w.saw_text_import_module } else { w.in_text_import }
+fn next_in_text_import(w: Walk, r: Rosters, x: String) -> Bool {
+  if (x == "dag_surface_top_level_item") || (x == "dag_surface_import_decl") { false } else if x == "dag_surface_import_block" { dotted(segments_reversed: w.import_segments) == r.population_module } else { w.in_text_import }
 }
 
 fn next_chain(w: Walk, x: String) -> FreeMonoid<String> {
@@ -648,20 +723,49 @@ fn next_imported(w: Walk, x: String) -> FreeMonoid<ImportedName> {
   }
 }
 
+fn is_type_head(w: Walk, x: String) -> Bool {
+  is_identifier(x: x) && (w.w1 == "dag_surface_qualified_name") && (w.w2 == "dag_surface_type_expr")
+}
+
 fn is_param_type_head(w: Walk, x: String) -> Bool {
-  is_identifier(x: x) && (w.w1 == "dag_surface_qualified_name") && (w.w2 == "dag_surface_type_expr") && (w.w3 == "dag_token_colon") && ((w.w5 == "dag_token_lparen") || (w.w5 == "dag_token_comma") || (w.w5 == "dag_surface_param_list"))
+  is_type_head(w: w, x: x) && (w.w3 == "dag_token_colon") && ((w.w5 == "dag_token_lparen") || (w.w5 == "dag_token_comma") || (w.w5 == "dag_surface_param_list"))
+}
+
+fn is_annotation_type_head(w: Walk, x: String) -> Bool {
+  is_type_head(w: w, x: x) && (w.w3 == "dag_token_colon") && ((w.w5 == "dag_token_kw_let") || (w.w5 == "dag_token_kw_data"))
+}
+
+fn is_field_type_head(w: Walk, x: String) -> Bool {
+  w.in_field_block && is_type_head(w: w, x: x) && (w.w3 == "dag_token_colon")
+}
+
+fn is_arrow_type_head(w: Walk, x: String) -> Bool {
+  is_type_head(w: w, x: x) && (w.w3 == "dag_token_arrow")
+}
+
+fn starts_pending_spelling(w: Walk, x: String) -> Bool {
+  is_param_type_head(w: w, x: x) || is_annotation_type_head(w: w, x: x) || is_field_type_head(w: w, x: x) || is_arrow_type_head(w: w, x: x)
 }
 
 fn continues_pending_param(w: Walk, x: String) -> Bool {
   !(w.pending_param == "") && ((x == "dag_token_dot") || (is_identifier(x: x) && (w.w1 == "dag_token_dot")))
 }
 
+// The pending spelling's NAME: the parameter, binder or field it types; an arrow types nothing named.
 fn next_pending_param(w: Walk, x: String) -> String {
-  if is_param_type_head(w: w, x: x) { w.w4 } else if continues_pending_param(w: w, x: x) { w.pending_param } else { "" }
+  if is_arrow_type_head(w: w, x: x) { "->" } else if starts_pending_spelling(w: w, x: x) { w.w4 } else if continues_pending_param(w: w, x: x) { w.pending_param } else { "" }
+}
+
+fn next_pending_kind(w: Walk, x: String) -> TypeSpellingKind {
+  if is_param_type_head(w: w, x: x) { SpellingOfParameter }
+  else if is_annotation_type_head(w: w, x: x) { SpellingOfAnnotation }
+  else if is_field_type_head(w: w, x: x) { SpellingOfField { owner: w.field_owner } }
+  else if is_arrow_type_head(w: w, x: x) { SpellingOfArrow }
+  else { w.pending_kind }
 }
 
 fn next_pending_param_segments(w: Walk, x: String) -> FreeMonoid<String> {
-  if is_param_type_head(w: w, x: x) {
+  if starts_pending_spelling(w: w, x: x) {
     Cons { head: x, tail: Empty }
   } else if continues_pending_param(w: w, x: x) && is_identifier(x: x) {
     Cons { head: x, tail: w.pending_param_segments }
@@ -672,25 +776,84 @@ fn next_pending_param_segments(w: Walk, x: String) -> FreeMonoid<String> {
   }
 }
 
-// A pending parameter spelling is emitted at the first atom that does not continue it.
+fn flushes_pending(w: Walk, x: String) -> Bool {
+  !(w.pending_param == "") && !continues_pending_param(w: w, x: x)
+}
+
+fn flushed_spelling(w: Walk) -> String {
+  dotted(segments_reversed: w.pending_param_segments)
+}
+
+// A pending spelling is emitted at the first atom that does not continue it, into the store its
+// kind names.
 fn next_param_types(w: Walk, x: String) -> FreeMonoid<ParamType> {
-  if !(w.pending_param == "") && !continues_pending_param(w: w, x: x) {
-    Cons { head: ParamType { decl: w.decl, param: w.pending_param, spelling: dotted(segments_reversed: w.pending_param_segments) }, tail: w.param_types }
-  } else {
-    w.param_types
+  match w.pending_kind {
+    SpellingOfParameter =>
+      if flushes_pending(w: w, x: x) { Cons { head: ParamType { decl: w.decl, param: w.pending_param, spelling: flushed_spelling(w: w) }, tail: w.param_types } } else { w.param_types }
+    _ => w.param_types
   }
+}
+
+fn next_annotation_spelling(w: Walk, x: String) -> String {
+  if x == "dag_surface_top_level_item" { "" } else {
+    match w.pending_kind {
+      SpellingOfAnnotation => if flushes_pending(w: w, x: x) { flushed_spelling(w: w) } else { w.annotation_spelling }
+      _ => w.annotation_spelling
+    }
+  }
+}
+
+fn next_arrow_spelling(w: Walk, x: String) -> String {
+  if x == "dag_surface_top_level_item" { "" } else {
+    match w.pending_kind {
+      SpellingOfArrow => if flushes_pending(w: w, x: x) { flushed_spelling(w: w) } else { w.arrow_spelling }
+      _ => w.arrow_spelling
+    }
+  }
+}
+
+// The declared return of the function whose body is open: the last arrow spelling before its body,
+// read as of THIS atom, because the arrow's spelling flushes on the very atom that opens the body.
+fn next_return_spelling(w: Walk, x: String) -> String {
+  if x == "dag_surface_top_level_item" { "" } else if (x == "dag_surface_fn_body") && (w.return_spelling == "") { next_arrow_spelling(w: w, x: x) } else { w.return_spelling }
+}
+
+fn next_field_types(w: Walk, x: String) -> FreeMonoid<FieldType> {
+  match w.pending_kind {
+    SpellingOfField { owner: o } =>
+      if flushes_pending(w: w, x: x) { Cons { head: FieldType { owner: o, field: w.pending_param, spelling: flushed_spelling(w: w) }, tail: w.field_types } } else { w.field_types }
+    _ => w.field_types
+  }
+}
+
+// A field declaration block opens after its owner's name (the type for a record, the variant for
+// a payload) and closes at its brace.
+fn next_in_field_block(w: Walk, x: String) -> Bool {
+  if (x == "dag_surface_top_level_item") || (w.in_field_block && (x == "dag_token_rbrace")) { false } else if x == "dag_surface_field_decl_block" { true } else { w.in_field_block }
+}
+
+fn next_field_owner(w: Walk, x: String) -> String {
+  if x == "dag_surface_field_decl_block" { w.w1 } else { w.field_owner }
+}
+
+// The record or variant constructor whose braces are open; any other brace opens as "".
+fn next_braces(w: Walk, x: String) -> FreeMonoid<String> {
+  if x == "dag_surface_top_level_item" { empty_strings }
+  else if x == "dag_token_lbrace" { Cons { head: if w.chain_active { call_read(chain_reversed: w.chain).last } else { "" }, tail: w.braces } }
+  else if x == "dag_token_rbrace" { stack_pop(stack: w.braces) }
+  else { w.braces }
 }
 
 fn imported_module_of(imported: FreeMonoid<ImportedName>, name: String) -> String {
   fold_list(xs: imported, empty: "", cons: fn(acc, i) { if (acc == "") && (i.name == name) { i.module } else { acc } })
 }
 
-fn walk_step(w: Walk, r: Rosters, x: String) -> Walk {
+fn walk_step(w: Walk, r: Rosters, x: String, at: Optional<Int>) -> Walk {
   Walk {
     w1: x, w2: w.w1, w3: w.w2, w4: w.w3, w5: w.w4, w6: w.w5, w7: w.w6, w8: w.w7, w9: w.w8,
     decl: next_decl(w: w, x: x),
     pending_decl_name: next_pending_decl_name(w: w, x: x),
-    in_text_import: next_in_text_import(w: w, x: x),
+    in_text_import: next_in_text_import(w: w, r: r, x: x),
     saw_text_import_module: next_saw_text_import_module(w: w, x: x),
     chain: next_chain(w: w, x: x),
     chain_active: next_chain_active(w: w, x: x),
@@ -699,7 +862,7 @@ fn walk_step(w: Walk, r: Rosters, x: String) -> Walk {
     stack: next_stack(w: w, x: x),
     binders: next_binders(w: w, x: x),
     imports_text_string: next_imports_text_string(w: w, x: x),
-    sites: next_sites(w: w, r: r, x: x),
+    sites: next_sites(w: w, r: r, x: x, at: at),
     last_arrow_head: next_last_arrow_head(w: w, x: x),
     return_heads: next_return_heads(w: w, x: x),
     in_import_header: next_in_import_header(w: w, x: x),
@@ -708,37 +871,85 @@ fn walk_step(w: Walk, r: Rosters, x: String) -> Walk {
     imported: next_imported(w: w, x: x),
     pending_param: next_pending_param(w: w, x: x),
     pending_param_segments: next_pending_param_segments(w: w, x: x),
-    param_types: next_param_types(w: w, x: x)
+    param_types: next_param_types(w: w, x: x),
+    at: at,
+    pending_kind: next_pending_kind(w: w, x: x),
+    annotation_spelling: next_annotation_spelling(w: w, x: x),
+    arrow_spelling: next_arrow_spelling(w: w, x: x),
+    return_spelling: next_return_spelling(w: w, x: x),
+    braces: next_braces(w: w, x: x),
+    in_field_block: next_in_field_block(w: w, x: x),
+    field_owner: next_field_owner(w: w, x: x),
+    field_types: next_field_types(w: w, x: x)
+  }
+}
+
+// An atom of the raw parse's pre-order stream, with the byte offset of its token when it has one
+// (production markers have none).
+type PositionedAtom {
+  lexeme: String
+  at: Optional<Int>
+}
+
+fn atom_position(n: Node, spans: SpanIndex) -> Optional<Int> {
+  match node_occurrence_id_optional(node: n) {
+    Absent => Absent
+    Present { value: id } => match span_index_textual_locus_optional(index: spans, id: id) {
+      Absent => Absent
+      Present { value: locus } => match locus {
+        Textual { file: _, extent: e } => match e {
+          ByteRange { start: s, end: _ } => Present { value: s }
+          WholeFile => Absent
+        }
+        _ => Absent
+      }
+    }
   }
 }
 
 // The pre-order atom stream, built by prepending and reversed once (linear).
-fn atoms_reversed(n: Node, acc: FreeMonoid<String>) -> FreeMonoid<String> {
+fn atoms_reversed(n: Node, spans: SpanIndex, acc: FreeMonoid<PositionedAtom>) -> FreeMonoid<PositionedAtom> {
   let here = match n.kind {
     TypeNode { connective: c } => match c {
-      Atom { identity: i } => Cons { head: symbol_lexeme(sym: i), tail: acc }
+      Atom { identity: i } => Cons { head: PositionedAtom { lexeme: symbol_lexeme(sym: i), at: atom_position(n: n, spans: spans) }, tail: acc }
       _ => acc
     }
     _ => acc
   }
-  fold(n.children, init: here, f: fn(a, e) { atoms_reversed(n: e.target, acc: a) })
+  fold(n.children, init: here, f: fn(a, e) { atoms_reversed(n: e.target, spans: spans, acc: a) })
 }
 
-// The classifier's interface is the pre-order atom stream: the parse tree only supplies it.
+fn is_literal_token(x: String) -> Bool {
+  (x == "dag_token_string_literal") || (x == "dag_token_int_literal") || (x == "dag_token_float_literal")
+}
+
+// The classifier's interface is the pre-order atom stream: the parse tree only supplies it. The
+// atom after a literal token is the literal's CONTENT, never an identifier, so it is skipped here
+// rather than read as a name.
+fn walk_positioned(atoms: FreeMonoid<PositionedAtom>, r: Rosters) -> Walk {
+  fold_list(xs: atoms, empty: walk_start(), cons: fn(w, a) {
+    if is_literal_token(x: w.w1) && !starts_with(s: a.lexeme, prefix: "dag_") { w } else { walk_step(w: w, r: r, x: a.lexeme, at: a.at) }
+  })
+}
+
 fn walk_atoms(atoms: FreeMonoid<String>, r: Rosters) -> Walk {
-  fold_list(xs: atoms, empty: walk_start(), cons: fn(w, x) { walk_step(w: w, r: r, x: x) })
+  walk_positioned(atoms: fold_list(xs: list_reverse(xs: atoms), empty: Empty, cons: fn(acc, x) { Cons { head: PositionedAtom { lexeme: x, at: Absent }, tail: acc } }), r: r)
 }
 
 fn tree_atoms(root: Node) -> FreeMonoid<String> {
-  list_reverse(xs: atoms_reversed(n: root, acc: empty_strings))
+  fold_list(xs: atoms_reversed(n: root, spans: span_index_empty(), acc: Empty), empty: Empty, cons: fn(acc, a) { Cons { head: a.lexeme, tail: acc } })
 }
 
-fn walk_tree(root: Node, r: Rosters) -> Walk {
-  walk_atoms(atoms: tree_atoms(root: root), r: r)
+fn tree_positioned_atoms(root: Node, spans: SpanIndex) -> FreeMonoid<PositionedAtom> {
+  list_reverse(xs: atoms_reversed(n: root, spans: spans, acc: Empty))
+}
+
+fn walk_tree(root: Node, spans: SpanIndex, r: Rosters) -> Walk {
+  walk_positioned(atoms: tree_positioned_atoms(root: root, spans: spans), r: r)
 }
 
 type RawTreeStanding
-  = RawTreeEstablished { root: Node }
+  = RawTreeEstablished { root: Node, spans: SpanIndex, text: String }
   | RawTreeNotEstablished { cause: SourceAnalysisNotEstablishedCause }
 
 // The raw parse, without normalize: the same tokenize/validate/parse chain as
@@ -766,7 +977,7 @@ fn raw_tree_of_text(text: String) -> RawTreeStanding {
             Accepted { value: stream, diagnostics: _ } =>
               match parse_production(tokens: token_stream_remaining(stream: stream), validated: validated, production_name: validated.root.start) {
                 Rejected { diagnostics: _ } => RawTreeNotEstablished { cause: SourceParseRejected }
-                Accepted { value: artifact, diagnostics: _ } => RawTreeEstablished { root: artifact.tree }
+                Accepted { value: artifact, diagnostics: _ } => RawTreeEstablished { root: artifact.tree, spans: artifact.span_index, text: text }
               }
           }
       }
@@ -774,27 +985,33 @@ fn raw_tree_of_text(text: String) -> RawTreeStanding {
 }
 
 fn empty_rosters() -> Rosters {
-  Rosters { host: empty_strings, structural: empty_strings, structural_text_result: empty_strings }
+  Rosters { population_module: "", host: empty_strings, structural: empty_strings, structural_text_result: empty_strings }
 }
 
 type RostersStanding
   = RostersEstablished { rosters: Rosters }
   | RostersRefused { reason: String }
 
-// The structural roster is every function `v2.std.text` declares, read by this fold over that
-// module's own source; the host roster is the contract rows' names. The two must be disjoint: a
-// name in both would decide a site both ways, so the census refuses instead of picking one.
-fn rosters() -> RostersStanding {
-  match raw_tree(path: text_module_source) {
-    RawTreeNotEstablished { cause: c } =>
-      RostersRefused { reason: concat("v2.std.text itself did not parse, so the structural roster is unknown: ", cause_token(cause: c)) }
-    RawTreeEstablished { root: root } => rosters_of_walk(w: walk_tree(root: root, r: empty_rosters()))
+// The structural roster is every function the POPULATION module declares (v2.std.text or
+// std.string_type), read by this fold over that module's own source, found through the module
+// declaration index of `roots`; the host roster is the contract rows' names. The two must be
+// disjoint: a name in both would decide a site both ways, so the census refuses instead.
+fn rosters(population_module: String, roots: List<String>) -> RostersStanding {
+  let path = declared_path_of(decls: module_declaration_facts_live(pool_roots: roots), module: population_module)
+  if path == "" {
+    RostersRefused { reason: concat("no file under the pool roots declares the population module ", population_module) }
+  } else {
+    match raw_tree(path: path) {
+      RawTreeNotEstablished { cause: c } =>
+        RostersRefused { reason: concat(concat(population_module, " itself did not parse, so the structural roster is unknown: "), cause_token(cause: c)) }
+      RawTreeEstablished { root: root, spans: spans, text: _ } => rosters_of_walk(w: walk_tree(root: root, spans: spans, r: empty_rosters()), population_module: population_module)
+    }
   }
 }
 
 // The roster derivation over v2.std.text's walk, separated from the read so a supplied walk can
 // exercise it.
-fn rosters_of_walk(w: Walk) -> RostersStanding {
+fn rosters_of_walk(w: Walk, population_module: String) -> RostersStanding {
   let structural = fold_list(xs: w.return_heads, empty: empty_strings, cons: fn(acc, rh) {
     if member(xs: acc, x: rh.decl) { acc } else { Cons { head: rh.decl, tail: acc } }
   })
@@ -806,18 +1023,18 @@ fn rosters_of_walk(w: Walk) -> RostersStanding {
     if member(xs: structural, x: h) { Cons { head: h, tail: acc } } else { acc }
   })
   if length(xs: structural) == 0 {
-    RostersRefused { reason: "v2.std.text parsed but no fn declaration was read from it, so every STRUCTURAL verdict would be vacuous" }
+    RostersRefused { reason: concat(population_module, " parsed but no fn declaration was read from it, so every STRUCTURAL verdict would be vacuous") }
   } else if length(xs: overlap) > 0 {
-    RostersRefused { reason: concat("a name is both a host primitive and a v2.std.text function: ", fold_list(xs: overlap, empty: "", cons: fn(acc, h) { concat(concat(acc, h), " ") })) }
+    RostersRefused { reason: concat(concat(concat("a name is both a host primitive and a function of ", population_module), ": "), fold_list(xs: overlap, empty: "", cons: fn(acc, h) { concat(concat(acc, h), " ") })) }
   } else {
-    RostersEstablished { rosters: Rosters { host: host, structural: structural, structural_text_result: text_result } }
+    RostersEstablished { rosters: Rosters { population_module: population_module, host: host, structural: structural, structural_text_result: text_result } }
   }
 }
 
 fn module_walk(path: String, r: Rosters) -> WalkStanding {
   match raw_tree(path: path) {
     RawTreeNotEstablished { cause: c } => WalkNotEstablished { cause: c }
-    RawTreeEstablished { root: root } => WalkEstablished { walk: walk_tree(root: root, r: r) }
+    RawTreeEstablished { root: root, spans: spans, text: _ } => WalkEstablished { walk: walk_tree(root: root, spans: spans, r: r) }
   }
 }
 
@@ -907,8 +1124,8 @@ fn count_crossings(xs: FreeMonoid<Crossing>, pred: fn(Crossing) -> Bool) -> Int 
 fn module_standing(path: String, r: Rosters) -> ModuleStanding {
   match raw_tree(path: path) {
     RawTreeNotEstablished { cause: c } => ModuleNotEstablished { cause: c }
-    RawTreeEstablished { root: root } => {
-      let w = walk_tree(root: root, r: r)
+    RawTreeEstablished { root: root, spans: spans, text: _ } => {
+      let w = walk_tree(root: root, spans: spans, r: r)
       ModuleParsed { imports_text_string: w.imports_text_string, sites: list_reverse(xs: w.sites) }
     }
   }
@@ -1096,6 +1313,10 @@ fn site_tokens(k: SiteKind) -> String {
     StructuralCall { name: n, result: r } => concat(concat(concat("structural_call\t", n), "\t"), result_token(r: r))
     StructuralLiteralArgument { callee: c } => concat("structural_literal_argument\t", c)
     BinderArgument { callee: c, param: p, module: m } => concat(concat(concat(concat(concat("binder_argument\t", c), "\t"), p), "\t"), m)
+    LiteralAtAnnotation { spelling: s } => concat("literal_at_annotation\t", s)
+    LiteralAtReturn { spelling: s } => concat("literal_at_return\t", s)
+    LiteralAtField { owner: ow, field: f } => concat(concat(concat("literal_at_field\t", ow), "\t"), f)
+    LiteralArgument { callee: c, param: p, module: m } => concat(concat(concat(concat(concat("literal_argument\t", c), "\t"), p), "\t"), m)
   }
 }
 
@@ -1184,18 +1405,21 @@ fn lines_text(lines: FreeMonoid<String>) -> String {
 // THE POPULATION, discovered by the import-edge authority rather than by a text search: every
 // module under the pool roots with an import edge into v2.std.text. Whether `String` is a member of
 // that import is then read from each module's own parse (`N` rows are the non-members).
-fn text_importer_paths() -> FreeMonoid<String> {
-  let edges = import_resolution_facts_live(pool_roots: census_pool_roots, importer_roots: census_pool_roots, exclude_substrings: no_exclusions)
-  fold_list(xs: edges, empty: empty_strings, cons: fn(acc, e) {
-    if (e.import_module == text_module) && !member(xs: acc, x: e.path) { Cons { head: e.path, tail: acc } } else { acc }
-  })
+// Import edges into the population module, AND reference-derived edges: a module can spell the
+// population's `String` QUALIFIED without importing it, and that spelling is a structural position
+// too.
+fn population_paths(population_module: String) -> FreeMonoid<String> {
+  let imports = import_resolution_facts_live(pool_roots: census_pool_roots, importer_roots: census_pool_roots, exclude_substrings: no_exclusions)
+  let references = reference_derived_import_resolution_facts_live(pool_roots: census_pool_roots, importer_roots: census_pool_roots, exclude_substrings: no_exclusions)
+  let add = fn(acc, e) { if (e.import_module == population_module) && !member(xs: acc, x: e.path) { Cons { head: e.path, tail: acc } } else { acc } }
+  fold_list(xs: references, empty: fold_list(xs: imports, empty: empty_strings, cons: add), cons: add)
 }
 
 // Phase 1: write the discovered population, one path per line.
-fn text_string_importer_population(out: String) -> ProcessExit {
-  let paths = list_reverse(xs: text_importer_paths())
+fn text_string_importer_population(out: String, population_module: String) -> ProcessExit {
+  let paths = list_reverse(xs: population_paths(population_module: population_module))
   if length(xs: paths) == 0 {
-    exit_failure(reason: "the import-edge producer returned no importer of v2.std.text over dag and src/v2, so the census would be a join over an empty set")
+    exit_failure(reason: concat(concat("the edge producers returned no importer of ", population_module), " over dag and src/v2, so the census would be a join over an empty set"))
   } else {
     let written = Filesystem.Write(path: out, content: fold_list(xs: paths, empty: "", cons: fn(acc, p) { concat(concat(acc, p), "\n") }))
     if written.success { ExitSuccess } else { exit_failure(reason: concat("population write refused: ", written.error)) }
@@ -1207,8 +1431,8 @@ fn text_string_importer_population(out: String) -> ProcessExit {
 // `v2.compiler.reference_conservation_census` `reference_conservation_census_for_paths`.
 // `roots_csv` names the pool the crossing resolution reads callee modules from: the census names
 // `dag,src/v2`, a fixture run names its fixture root. The subject is the caller's, never ambient.
-fn text_string_importer_census(paths_csv: String, out: String, roots_csv: String) -> ProcessExit {
-  match rosters() {
+fn text_string_importer_census(paths_csv: String, out: String, roots_csv: String, population_module: String) -> ProcessExit {
+  match rosters(population_module: population_module, roots: split(s: roots_csv, delimiter: ",")) {
     RostersRefused { reason: reason } => exit_failure(reason: reason)
     RostersEstablished { rosters: r } => {
       let walks = list_reverse(xs: fold_list(xs: split(s: paths_csv, delimiter: ","), empty: Empty, cons: fn(acc, p) {
@@ -1525,6 +1749,297 @@ fn text_string_importer_fixpoint(rows_csv: String, out: String, roots_csv: Strin
           }
         }
       }
+    }
+  }
+}
+
+// THE LITERAL SITES (neat-boar-16's gate on #12760): every place a string LITERAL lands in a
+// structural String position of the population module -- the population's `String` reached
+// qualified, or bare in a module that imports it, or `FreeMonoid`. #12760 types a literal as host
+// text, so each such site refuses there; this entry lists them, keyed by module, declaration,
+// position and kind, for pairing with the floor's executed refusals at #12760's head. A site whose
+// position cannot be resolved is listed UNRESOLVED with its cause, never dropped.
+type LiteralPosition
+  = StructuralPosition { spelling: String }
+  | HostPosition
+  | UnresolvedPosition { cause: UnresolvedLiteralCause }
+
+type UnresolvedLiteralCause
+  = PositionalLiteralArgument { callee: String }
+  | LiteralCalleeNotImportedByName { callee: String }
+  | LiteralCalleeModuleNotInPool { module: String }
+  | LiteralCalleeModuleNotParsed { module: String, cause: SourceAnalysisNotEstablishedCause }
+  | LiteralParameterNotDeclared { at: String }
+  | FieldOwnerNotRead { owner: String }
+  | FieldNotDeclared { owner: String, field: String }
+  | SpelledOtherThanText { spelling: String }
+
+fn is_population_string(spelling: String, population_module: String, declarer_imports: Bool) -> Bool {
+  (spelling == concat(population_module, ".String")) || ((spelling == "String") && declarer_imports) || (spelling == "FreeMonoid") || (spelling == "std.algebra.FreeMonoid")
+}
+
+fn position_of_spelling(spelling: String, population_module: String, declarer_imports: Bool) -> LiteralPosition {
+  if is_population_string(spelling: spelling, population_module: population_module, declarer_imports: declarer_imports) {
+    StructuralPosition { spelling: spelling }
+  } else if spelling == "String" {
+    HostPosition
+  } else {
+    UnresolvedPosition { cause: SpelledOtherThanText { spelling: spelling } }
+  }
+}
+
+fn field_spelling(walk: Walk, owner: String, field: String) -> String {
+  fold_list(xs: walk.field_types, empty: "", cons: fn(acc, ft) {
+    if (acc == "") && (ft.owner == owner) && (ft.field == field) { ft.spelling } else { acc }
+  })
+}
+
+fn declares_field_owner(walk: Walk, owner: String) -> Bool {
+  fold_list(xs: walk.field_types, empty: false, cons: fn(acc, ft) { acc || (ft.owner == owner) })
+}
+
+fn callee_walk_of(callees: FreeMonoid<CalleeModule>, module: String) -> FreeMonoid<WalkStanding> {
+  callee_standing(callees: callees, module: module)
+}
+
+fn literal_position(own: Walk, callees: FreeMonoid<CalleeModule>, kind: SiteKind, population_module: String) -> FreeMonoid<LiteralPosition> {
+  match kind {
+    LiteralAtAnnotation { spelling: s } => Cons { head: position_of_spelling(spelling: s, population_module: population_module, declarer_imports: own.imports_text_string), tail: Empty }
+    LiteralAtReturn { spelling: s } => Cons { head: position_of_spelling(spelling: s, population_module: population_module, declarer_imports: own.imports_text_string), tail: Empty }
+    StructuralLiteralArgument { callee: c } => Cons { head: StructuralPosition { spelling: concat(concat(population_module, "."), c) }, tail: Empty }
+    LiteralAtField { owner: o, field: f } =>
+      if declares_field_owner(walk: own, owner: o) {
+        let s = field_spelling(walk: own, owner: o, field: f)
+        Cons { head: if s == "" { UnresolvedPosition { cause: FieldNotDeclared { owner: o, field: f } } } else { position_of_spelling(spelling: s, population_module: population_module, declarer_imports: own.imports_text_string) }, tail: Empty }
+      } else {
+        let m = imported_module_of(imported: own.imported, name: o)
+        match callee_walk_of(callees: callees, module: m) {
+          Empty => Cons { head: UnresolvedPosition { cause: FieldOwnerNotRead { owner: o } }, tail: Empty }
+          Cons { head: standing, tail: _ } => match standing {
+            WalkNotEstablished { cause: c } => Cons { head: UnresolvedPosition { cause: LiteralCalleeModuleNotParsed { module: m, cause: c } }, tail: Empty }
+            WalkEstablished { walk: cw } => {
+              let s = field_spelling(walk: cw, owner: o, field: f)
+              Cons { head: if s == "" { UnresolvedPosition { cause: FieldNotDeclared { owner: o, field: f } } } else { position_of_spelling(spelling: s, population_module: population_module, declarer_imports: cw.imports_text_string) }, tail: Empty }
+            }
+          }
+        }
+      }
+    LiteralArgument { callee: c, param: pa, module: m } =>
+      if pa == "" {
+        Cons { head: UnresolvedPosition { cause: PositionalLiteralArgument { callee: c } }, tail: Empty }
+      } else if m == "" {
+        let s = param_spelling(walk: own, callee: c, param: pa)
+        Cons { head: if s == "" { UnresolvedPosition { cause: LiteralCalleeNotImportedByName { callee: c } } } else { position_of_spelling(spelling: s, population_module: population_module, declarer_imports: own.imports_text_string) }, tail: Empty }
+      } else {
+        match callee_walk_of(callees: callees, module: m) {
+          Empty => Cons { head: UnresolvedPosition { cause: LiteralCalleeModuleNotInPool { module: m } }, tail: Empty }
+          Cons { head: standing, tail: _ } => match standing {
+            WalkNotEstablished { cause: k } => Cons { head: UnresolvedPosition { cause: LiteralCalleeModuleNotParsed { module: m, cause: k } }, tail: Empty }
+            WalkEstablished { walk: cw } => {
+              let s = param_spelling(walk: cw, callee: c, param: pa)
+              Cons { head: if s == "" { UnresolvedPosition { cause: LiteralParameterNotDeclared { at: concat(concat(c, "."), pa) } } } else { position_of_spelling(spelling: s, population_module: population_module, declarer_imports: cw.imports_text_string) }, tail: Empty }
+            }
+          }
+        }
+      }
+    _ => Empty
+  }
+}
+
+type LiteralSite {
+  decl: String
+  kind: SiteKind
+  at: Optional<Int>
+  position: LiteralPosition
+}
+
+fn literal_sites_of(own: Walk, callees: FreeMonoid<CalleeModule>, population_module: String) -> FreeMonoid<LiteralSite> {
+  list_reverse(xs: fold_list(xs: list_reverse(xs: own.sites), empty: Empty, cons: fn(acc, s) {
+    fold_list(xs: literal_position(own: own, callees: callees, kind: s.kind, population_module: population_module), empty: acc, cons: fn(inner, pos) {
+      Cons { head: LiteralSite { decl: s.decl, kind: s.kind, at: s.at, position: pos }, tail: inner }
+    })
+  }))
+}
+
+// The modules a batch's literal sites need read: callee modules of literal arguments and the
+// declaring modules of imported field owners.
+fn literal_modules(walks: FreeMonoid<PathWalk>) -> FreeMonoid<String> {
+  fold_list(xs: walks, empty: empty_strings, cons: fn(acc, pw) {
+    match pw.standing {
+      WalkNotEstablished { cause: _ } => acc
+      WalkEstablished { walk: w } =>
+        fold_list(xs: w.sites, empty: acc, cons: fn(inner, s) {
+          let m = match s.kind {
+            LiteralArgument { callee: _, param: _, module: mm } => mm
+            LiteralAtField { owner: o, field: _ } => if declares_field_owner(walk: w, owner: o) { "" } else { imported_module_of(imported: w.imported, name: o) }
+            _ => ""
+          }
+          if (m == "") || member(xs: inner, x: m) { inner } else { Cons { head: m, tail: inner } }
+        })
+    }
+  })
+}
+
+// LINE AND COLUMN from the byte offset: one sweep over the UTF-8 octets collects the newline
+// offsets, and one merge over those and the sites (both ascending: the walk visits atoms in source
+// order) assigns each site its line. Column is the 1-based BYTE column.
+fn newline_offsets(text: String) -> FreeMonoid<Int> {
+  list_reverse(xs: fold_list(xs: bytes_octets(b: utf8_encode_bytes(s: text)), empty: OctetScan { index: 0, found: Empty }, cons: fn(acc, o) {
+    OctetScan { index: acc.index + 1, found: if o == 10 { Cons { head: acc.index, tail: acc.found } } else { acc.found } }
+  }).found)
+}
+
+type OctetScan {
+  index: Int
+  found: FreeMonoid<Int>
+}
+
+type PlacedSite {
+  site: LiteralSite
+  place: String
+}
+
+// The sweep is a FOLD over the newline offsets; the only recursion places the pending sites that
+// fall before the current newline, so its depth is the number of literal sites on one line, never
+// the number of lines (a per-line recursion would reproduce the native stack exhaustion the census
+// hit on large modules).
+type PlacingSweep {
+  line: Int
+  line_start: Int
+  pending: FreeMonoid<LiteralSite>
+  placed: FreeMonoid<PlacedSite>
+}
+
+fn place_at(s: LiteralSite, line: Int, line_start: Int, off: Int) -> PlacedSite {
+  PlacedSite { site: s, place: concat(concat(int_text(n: line), ":"), int_text(n: off - line_start + 1)) }
+}
+
+fn place_before(sweep: PlacingSweep, limit: Int) -> PlacingSweep {
+  match sweep.pending {
+    Empty => sweep
+    Cons { head: s, tail: rest } => match s.at {
+      Absent => place_before(sweep: PlacingSweep { line: sweep.line, line_start: sweep.line_start, pending: rest, placed: Cons { head: PlacedSite { site: s, place: "unpositioned" }, tail: sweep.placed } }, limit: limit)
+      Present { value: off } =>
+        if (limit < 0) || (off < limit) {
+          place_before(sweep: PlacingSweep { line: sweep.line, line_start: sweep.line_start, pending: rest, placed: Cons { head: place_at(s: s, line: sweep.line, line_start: sweep.line_start, off: off), tail: sweep.placed } }, limit: limit)
+        } else { sweep }
+    }
+  }
+}
+
+fn placed_sites(sites: FreeMonoid<LiteralSite>, text: String) -> FreeMonoid<PlacedSite> {
+  let swept = fold_list(xs: newline_offsets(text: text), empty: PlacingSweep { line: 1, line_start: 0, pending: sites, placed: Empty }, cons: fn(acc, nl) {
+    let here = place_before(sweep: acc, limit: nl)
+    PlacingSweep { line: here.line + 1, line_start: nl + 1, pending: here.pending, placed: here.placed }
+  })
+  list_reverse(xs: place_before(sweep: swept, limit: -1).placed)
+}
+
+fn literal_kind_token(k: SiteKind) -> String {
+  match k {
+    LiteralAtAnnotation { spelling: _ } => "annotation"
+    LiteralAtReturn { spelling: _ } => "return"
+    LiteralAtField { owner: o, field: f } => concat(concat(concat("field\t", o), "."), f)
+    LiteralArgument { callee: c, param: pa, module: _ } => concat(concat(concat("argument\t", c), "."), pa)
+    StructuralLiteralArgument { callee: c } => concat("structural_argument\t", c)
+    _ => "other"
+  }
+}
+
+fn unresolved_cause_token(c: UnresolvedLiteralCause) -> String {
+  match c {
+    PositionalLiteralArgument { callee: x } => concat("positional_argument:", x)
+    LiteralCalleeNotImportedByName { callee: x } => concat("callee_not_imported_by_name:", x)
+    LiteralCalleeModuleNotInPool { module: m } => concat("callee_module_not_in_pool:", m)
+    LiteralCalleeModuleNotParsed { module: m, cause: k } => concat(concat(concat("callee_module_not_parsed:", m), ":"), cause_token(cause: k))
+    LiteralParameterNotDeclared { at: a } => concat("parameter_not_declared:", a)
+    FieldOwnerNotRead { owner: o } => concat("field_owner_not_read:", o)
+    FieldNotDeclared { owner: o, field: f } => concat(concat(concat("field_not_declared:", o), "."), f)
+    SpelledOtherThanText { spelling: s } => concat("spelled_other_than_text:", s)
+  }
+}
+
+fn position_token(p: LiteralPosition) -> String {
+  match p {
+    StructuralPosition { spelling: s } => concat("STRUCTURAL:", s)
+    HostPosition => "HOST"
+    UnresolvedPosition { cause: c } => concat("UNRESOLVED:", unresolved_cause_token(c: c))
+  }
+}
+
+fn is_listed_position(p: LiteralPosition) -> Bool {
+  match p {
+    HostPosition => false
+    _ => true
+  }
+}
+
+fn count_positions(sites: FreeMonoid<LiteralSite>, pred: fn(LiteralPosition) -> Bool) -> Int {
+  fold_list(xs: sites, empty: 0, cons: fn(acc, s) { if pred(s.position) { acc + 1 } else { acc } })
+}
+
+fn position_is_structural(p: LiteralPosition) -> Bool {
+  match p {
+    StructuralPosition { spelling: _ } => true
+    _ => false
+  }
+}
+
+fn position_is_unresolved(p: LiteralPosition) -> Bool {
+  match p {
+    UnresolvedPosition { cause: _ } => true
+    _ => false
+  }
+}
+
+// One module's rows: `C` with the counts (structural, unresolved, host -- the host count is the
+// decided remainder, so the three partition the module's literal positions), then one `L` row per
+// STRUCTURAL or UNRESOLVED site: path, declaration, line:col, kind (and its operand), position.
+fn literal_lines(path: String, standing: RawTreeStanding, r: Rosters, callees: FreeMonoid<CalleeModule>) -> FreeMonoid<String> {
+  match standing {
+    RawTreeNotEstablished { cause: c } => Cons { head: concat(concat(concat("C\t", path), "\tNOT_ESTABLISHED:"), concat(cause_token(cause: c), "\n")), tail: Empty }
+    RawTreeEstablished { root: root, spans: spans, text: text } => {
+      let w = walk_tree(root: root, spans: spans, r: r)
+      let sites = literal_sites_of(own: w, callees: callees, population_module: r.population_module)
+      let header = concat(concat("C\t", path), concat(concat(concat(concat(concat(concat("\t", int_text(n: count_positions(sites: sites, pred: position_is_structural))), "\t"), int_text(n: count_positions(sites: sites, pred: position_is_unresolved))), "\t"), int_text(n: length(xs: sites) - count_positions(sites: sites, pred: is_listed_position))), "\n"))
+      list_reverse(xs: fold_list(xs: placed_sites(sites: sites, text: text), empty: Cons { head: header, tail: Empty }, cons: fn(acc, ps) {
+        if !is_listed_position(p: ps.site.position) { acc } else {
+          Cons { head: concat(concat(concat(concat(concat(concat(concat(concat(concat("L\t", path), "\t"), ps.site.decl), "\t"), ps.place), "\t"), literal_kind_token(k: ps.site.kind)), "\t"), concat(position_token(p: ps.site.position), "\n")), tail: acc }
+        }
+      }))
+    }
+  }
+}
+
+type PathTree {
+  path: String
+  standing: RawTreeStanding
+  walk: WalkStanding
+}
+
+// THE ENTRY neat-ibex-696 cites on #12760: literal-at-structural sites for one batch of the
+// population of `population_module`, callee modules read from `roots_csv`. Only STRUCTURAL and
+// UNRESOLVED positions are listed; host positions are counted in each module's `C` row.
+fn text_string_importer_literal_sites(paths_csv: String, out: String, roots_csv: String, population_module: String) -> ProcessExit {
+  let roots = split(s: roots_csv, delimiter: ",")
+  match rosters(population_module: population_module, roots: roots) {
+    RostersRefused { reason: reason } => exit_failure(reason: reason)
+    RostersEstablished { rosters: r } => {
+      let trees = list_reverse(xs: fold_list(xs: split(s: paths_csv, delimiter: ","), empty: Empty, cons: fn(acc, p) {
+        let standing = raw_tree(path: p)
+        let walk = match standing {
+          RawTreeNotEstablished { cause: c } => WalkNotEstablished { cause: c }
+          RawTreeEstablished { root: root, spans: spans, text: _ } => WalkEstablished { walk: walk_tree(root: root, spans: spans, r: r) }
+        }
+        Cons { head: PathTree { path: p, standing: standing, walk: walk }, tail: acc }
+      }))
+      let walks = fold_list(xs: list_reverse(xs: trees), empty: Empty, cons: fn(acc, pt) { Cons { head: PathWalk { path: pt.path, standing: pt.walk }, tail: acc } })
+      let callees = callee_modules(modules: literal_modules(walks: walks), r: r, roots: roots)
+      let lines = fold_list(xs: trees, empty: Empty, cons: fn(acc, pt) {
+        fold_list(xs: literal_lines(path: pt.path, standing: pt.standing, r: r, callees: callees), empty: acc, cons: fn(inner, l) { Cons { head: l, tail: inner } })
+      })
+      let written = Filesystem.Write(path: out, content: lines_text(lines: list_reverse(xs: lines)))
+      if written.success { ExitSuccess } else { exit_failure(reason: concat("literal-site write refused: ", written.error)) }
     }
   }
 }

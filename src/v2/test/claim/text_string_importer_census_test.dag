@@ -18,7 +18,8 @@ import v2.lens.text_string_importer_census {
   member, walk_atoms, tree_atoms, raw_tree_of_text, rosters_of_walk, empty_rosters,
   crossings_of, verdict_with_crossings,
   verdict_token, verdict_of_token, crossing_tokens, crossing_of_tokens,
-  fixpoint_over_lines, fixpoint_verdict
+  fixpoint_over_lines, fixpoint_verdict,
+  literal_lines, walk_tree, CalleeModule, WalkEstablished, WalkNotEstablished
 }
 import v2.lens.common.source_analysis_standing { SourceParseRejected, SourceUnreadable }
 import v2.lens.module_graph { ModuleDeclarationFact }
@@ -47,6 +48,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // Each row asserts the EXACT arm its input exists for, never "not" another arm.
 
 data rosters_supplied: Rosters = Rosters {
+  population_module: "v2.std.text",
   host: Cons { head: "string_length", tail: Cons { head: "split", tail: Cons { head: "char_at", tail: Empty } } },
   structural: Cons { head: "string_is_empty", tail: Cons { head: "string_head", tail: Cons { head: "string_join", tail: Empty } } },
   structural_text_result: Cons { head: "string_join", tail: Empty }
@@ -218,7 +220,7 @@ test fn tsic_crossing_into_an_imported_string_parameter_stays_undecided() -> Boo
 // THE ROSTER DERIVATION over a v2.std.text-shaped walk: every declared fn is structural, only a
 // text-carrier return makes a text result, and a fn-typed FIELD inside a `type` names no return.
 test fn tsic_rosters_are_derived_from_the_text_module_walk() -> Bool {
-  match rosters_of_walk(w: walk_atoms(atoms: atoms_mini_text, r: empty_rosters())) {
+  match rosters_of_walk(w: walk_atoms(atoms: atoms_mini_text, r: empty_rosters()), population_module: "fixture.text_string_importer_census.mini_text") {
     RostersRefused { reason: _ } => false
     RostersEstablished { rosters: r } =>
       member(xs: r.structural, x: "text_join")
@@ -370,7 +372,7 @@ type TsicRealRoute {
 fn tsic_real_route_outcome() -> TsicRealRoute {
   match raw_tree_of_text(text: real_route_source) {
     RawTreeNotEstablished { cause: _ } => TsicRealRoute { established: false, imports_text_string: false, host_site_at_the_note: false, verdict_is_host: false }
-    RawTreeEstablished { root: root } => {
+    RawTreeEstablished { root: root, spans: _, text: _ } => {
       let w = walk_atoms(atoms: tree_atoms(root: root), r: rosters_supplied)
       let sites = list_reverse(xs: w.sites)
       TsicRealRoute {
@@ -449,7 +451,7 @@ type WindowCoverage {
 fn tsic_window_coverage_outcome() -> WindowCoverage {
   match raw_tree_of_text(text: window_coverage_source) {
     RawTreeNotEstablished { cause: _ } => WindowCoverage { established: false, text_import_read: false, literal_at_annotation: false, plus_concatenation: false, primitive_call: false, method_call: false, literal_argument: false, binder_argument: false, structural_other: false, structural_call_argument: false, structural_literal_argument: false }
-    RawTreeEstablished { root: root } => {
+    RawTreeEstablished { root: root, spans: _, text: _ } => {
       let w = walk_atoms(atoms: tree_atoms(root: root), r: rosters_supplied)
       let has = fn(pred) { any(xs: w.sites, predicate: pred) }
       WindowCoverage {
@@ -474,6 +476,103 @@ test fn tsic_every_window_predicate_matches_the_real_parse() -> Bool {
   c.established && c.text_import_read && c.literal_at_annotation && c.plus_concatenation
     && c.primitive_call && c.method_call && c.literal_argument && c.binder_argument
     && c.structural_other && c.structural_call_argument && c.structural_literal_argument
+}
+
+
+// THE LITERAL-AT-STRUCTURAL SITES (the gate on #12760), over the REAL route: each fixture source
+// (supplied as a value, pinned to its committed file below) is raw-parsed, walked with positions,
+// resolved against the callee module's own declarations, and rendered as the entry's rows. A
+// pure warm producer pays the parses once (v2.workflow.floor_pure_producer_share); the claims read
+// its rows. Every expected row is asserted with its line:col, so a position, kind or resolution
+// regression reds a claim.
+data literal_module_subject: String = "test/fixture_roots/text_string_importer_census_literals/lit_module.dag"
+data literal_callee_subject: String = "test/fixture_roots/text_string_importer_census_literals/lit_callee.dag"
+data literal_string_type_subject: String = "test/fixture_roots/text_string_importer_census_literals/string_type_importer.dag"
+data literal_module_source: String = "module fixture.tsil.lit_module\nimport v2.std.text { String, string_is_empty }\nimport fixture.tsil.lit_callee { take, take_s, Box }\ntype Rec {\n  name: String\n  n: Int\n}\ndata a: String = \"a\"\ndata q: v2.std.text.String = \"q\"\nfn ret() -> String {\n  \"r\"\n}\nfn arm(b: Bool) -> String {\n  match b {\n    true => \"t\"\n    false => \"f\"\n  }\n}\nfn rec() -> Rec {\n  Rec { name: \"n\", n: 1 }\n}\nfn boxed() -> Box {\n  Box { label: \"b\" }\n}\nfn arg() -> Int {\n  take(t: \"k\")\n}\nfn arg2() -> Int {\n  take_s(t: \"s\")\n}\nfn pos() -> Int {\n  take(\"p\")\n}\nfn str_op() -> Bool {\n  string_is_empty(s: \"e\")\n}\n"
+data literal_callee_source: String = "module fixture.tsil.lit_callee\ntype Box {\n  label: String\n}\nfn take(t: String) -> Int {\n  1\n}\nfn take_s(t: FreeMonoid<Char>) -> Int {\n  1\n}\n"
+data literal_string_type_source: String = "module fixture.tsil.string_type_importer\nimport std.string_type { String }\ndata s: String = \"x\"\n"
+
+fn literal_rows_for(source: String, path: String, r: Rosters, callees: FreeMonoid<CalleeModule>) -> FreeMonoid<String> {
+  literal_lines(path: path, standing: raw_tree_of_text(text: source), r: r, callees: callees)
+}
+
+fn tsil_literal_rows_outcome() -> FreeMonoid<String> {
+  let callee = match raw_tree_of_text(text: literal_callee_source) {
+    RawTreeNotEstablished { cause: c } => WalkNotEstablished { cause: c }
+    RawTreeEstablished { root: root, spans: spans, text: _ } => WalkEstablished { walk: walk_tree(root: root, spans: spans, r: rosters_supplied) }
+  }
+  literal_rows_for(source: literal_module_source, path: "lit_module.dag", r: rosters_supplied, callees: Cons { head: CalleeModule { module: "fixture.tsil.lit_callee", standing: callee }, tail: Empty })
+}
+
+fn has_row(rows: FreeMonoid<String>, row: String) -> Bool {
+  any(xs: rows, predicate: fn(x) { x == concat(row, "\n") })
+}
+
+test fn tsil_literal_subjects_are_the_committed_files() -> Bool {
+  let m = Filesystem.Read(path: literal_module_subject)
+  let c = Filesystem.Read(path: literal_callee_subject)
+  let s = Filesystem.Read(path: literal_string_type_subject)
+  m.success && c.success && s.success && (m.content == literal_module_source) && (c.content == literal_callee_source) && (s.content == literal_string_type_source)
+}
+
+// The module's count row partitions its literal positions: 8 structural, 1 unresolved, 2 host.
+test fn tsil_counts_partition_the_literal_positions() -> Bool {
+  has_row(rows: tsil_literal_rows_outcome(), row: "C\tlit_module.dag\t8\t1\t2")
+}
+
+test fn tsil_annotation_literals_bare_and_qualified_are_structural() -> Bool {
+  let rows = tsil_literal_rows_outcome()
+  has_row(rows: rows, row: "L\tlit_module.dag\ta\t8:18\tannotation\tSTRUCTURAL:String")
+    && has_row(rows: rows, row: "L\tlit_module.dag\tq\t9:30\tannotation\tSTRUCTURAL:v2.std.text.String")
+}
+
+test fn tsil_return_literals_at_tail_and_arms_are_structural() -> Bool {
+  let rows = tsil_literal_rows_outcome()
+  has_row(rows: rows, row: "L\tlit_module.dag\tret\t11:3\treturn\tSTRUCTURAL:String")
+    && has_row(rows: rows, row: "L\tlit_module.dag\tarm\t15:13\treturn\tSTRUCTURAL:String")
+    && has_row(rows: rows, row: "L\tlit_module.dag\tarm\t16:14\treturn\tSTRUCTURAL:String")
+}
+
+test fn tsil_field_literal_resolves_through_the_local_record() -> Bool {
+  has_row(rows: tsil_literal_rows_outcome(), row: "L\tlit_module.dag\trec\t20:15\tfield\tRec.name\tSTRUCTURAL:String")
+}
+
+// The callee's declared parameter decides: FreeMonoid is structural; kernel String (in a module
+// that does not import v2.std.text) is host and is counted, not listed.
+test fn tsil_argument_literal_resolves_through_the_callee_declaration() -> Bool {
+  let rows = tsil_literal_rows_outcome()
+  has_row(rows: rows, row: "L\tlit_module.dag\targ2\t29:13\targument\ttake_s.t\tSTRUCTURAL:FreeMonoid")
+    && !any(xs: rows, predicate: fn(x) { starts_with(s: x, prefix: "L\tlit_module.dag\targ\t") })
+    && !any(xs: rows, predicate: fn(x) { starts_with(s: x, prefix: "L\tlit_module.dag\tboxed\t") })
+}
+
+test fn tsil_positional_literal_is_listed_unresolved_never_dropped() -> Bool {
+  has_row(rows: tsil_literal_rows_outcome(), row: "L\tlit_module.dag\tpos\t32:8\targument\ttake.\tUNRESOLVED:positional_argument:take")
+}
+
+test fn tsil_literal_to_a_population_function_is_structural() -> Bool {
+  has_row(rows: tsil_literal_rows_outcome(), row: "L\tlit_module.dag\tstr_op\t35:22\tstructural_argument\tstring_is_empty\tSTRUCTURAL:v2.std.text.string_is_empty")
+}
+
+// THE POPULATION IS A PARAMETER: the same bare-String literal is structural under the population
+// its module imports (std.string_type) and host under another (v2.std.text).
+type TsilPopulationOutcome {
+  under_string_type: FreeMonoid<String>
+  under_text: FreeMonoid<String>
+}
+
+fn tsil_population_outcome() -> TsilPopulationOutcome {
+  let st = Rosters { population_module: "std.string_type", host: rosters_supplied.host, structural: Empty, structural_text_result: Empty }
+  TsilPopulationOutcome {
+    under_string_type: literal_rows_for(source: literal_string_type_source, path: "st.dag", r: st, callees: Empty),
+    under_text: literal_rows_for(source: literal_string_type_source, path: "st.dag", r: rosters_supplied, callees: Empty)
+  }
+}
+
+test fn tsil_population_module_decides_the_bare_string() -> Bool {
+  let o = tsil_population_outcome()
+  has_row(rows: o.under_string_type, row: "L\tst.dag\ts\t3:18\tannotation\tSTRUCTURAL:String")
+    && has_row(rows: o.under_text, row: "C\tst.dag\t0\t0\t1")
 }
 
 
