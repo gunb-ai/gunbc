@@ -1,0 +1,54 @@
+module v2.test.claim.zz_probe.p4
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer { infer }
+import v2.test.claim.type_param_binder_frame { tpb_assemble }
+import v2.test.claim.emit.module_member_emission { MemberClosureRefused, MemberEmitted, MemberRefused, member_emission_verdict_of }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.node { Node, symbol_lexeme, node_subtree_nodes }
+import v2.std.qualified_name { binder_reference_symbol_optional }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.optional { Absent, Present }
+import std.process { ProcessExit, exit_failure }
+
+fn p4_names(n: Node) -> String {
+  fold(node_subtree_nodes(root: n), init: "", f: fn(acc, m) {
+    match binder_reference_symbol_optional(node: m) {
+      Present { value: b } => acc + " B:" + symbol_lexeme(sym: b)
+      Absent => match node_atom_identity_optional(node: m) {
+        Present { value: a } => acc + " " + symbol_lexeme(sym: a)
+        Absent => acc
+      }
+    }
+  })
+}
+
+fn p4_res(src: String) -> String {
+  match tpb_assemble(src: src) {
+    Rejected { diagnostics: d } => "RESOLVE-REJ " + symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+    Accepted { value: t, diagnostics: _ } =>
+      let inf = match infer(tree: t) {
+        Rejected { diagnostics: d } => " INFER-REJ " + symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+        Accepted { value: _, diagnostics: _ } => " INFER-OK"
+      }
+      "OK [" + p4_names(n: t.root) + "]" + inf
+  }
+}
+
+fn p4_emit(src: String) -> String {
+  match member_emission_verdict_of(source: src) {
+    MemberEmitted { text: t } => "EMIT[" + t + "]"
+    MemberRefused { reason: r } => "MEMBER-REF " + symbol_lexeme(sym: r)
+    MemberClosureRefused { reason: r } => "CLOSURE-REF " + symbol_lexeme(sym: r)
+  }
+}
+
+fn p4_report() -> ProcessExit {
+  exit_failure(reason: "P4"
+    + "\n1 " + p4_emit(src: "module v2.test.member_emission\n\nfn f(x: Int) -> Int {\n  let y = x\n  y + y\n}\n")
+    + "\n3a " + p4_res(src: "module p\n\ntype Box = Holds { value: Int }\n\nfn f(b: Box) -> Int = match b {\n  Holds { value: v } => v\n}\n")
+    + "\n3b " + p4_res(src: "module p\n\nfn f(x: Int) -> Int {\n  let g = fn(a: Int) { a }\n  g(x)\n}\n")
+    + "\n4 " + p4_res(src: "module p\n\nfn id<T>(x: T) -> T { x }\n")
+    + "\n5 " + p4_emit(src: "module v2.test.member_emission\n\nfn k(x: Int) -> fn(Int) -> Int {\n  fn(y: Int) { x }\n}\n")
+    + "\n6 " + p4_res(src: "module p\n\nfn f(x: Int) -> Int {\n  let g = fn(a: Int) { a + 1 }\n  g(x)\n}\n"))
+}
