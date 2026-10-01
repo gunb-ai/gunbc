@@ -75,3 +75,17 @@ test fn map_keys_is_still_host_unspecified_by_the_same_route() -> Bool {
     Absent => false
   }
 }
+
+// THE EMITTED ORDERING ADMISSION IS ON THE ROUTE. Emitted sort_by compares keys through
+// v1_rt::canonical_key_cmp, whose bound CanonicalOrdKey is implemented only for String, i64 and bool,
+// so a derived-Ord record key or an f64 key fails to compile at the call with an EMIT REFUSED message
+// instead of sorting in an order the interpreter would not produce. The former comparison,
+// partial_cmp(..).unwrap_or(Equal), is the absorbing fallback this replaces and must not return.
+test fn emitted_sort_by_compares_through_the_canonical_key_admission() -> Bool {
+  compile_dag_rust_emit_check(
+    "module cmr_sortby\n\nfn order(xs: List<String>) -> List<String> {\n  xs |> sort_by(s => s)\n}\n",
+    "src/cmr_sortby.rs",
+    ["v1_rt::canonical_key_cmp(&__ka, &__kb)"],
+    ["partial_cmp(&__kb).unwrap_or"]
+  )
+}
