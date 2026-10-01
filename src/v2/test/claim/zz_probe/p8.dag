@@ -1,0 +1,25 @@
+module v2.test.claim.zz_probe.p8
+
+import v2.compiler.infer { infer }
+import v2.test.claim.type_param_binder_frame { tpb_assemble }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.node { symbol_lexeme }
+import std.process { ProcessExit, exit_failure }
+
+fn p8_one(src: String) -> String {
+  match tpb_assemble(src: src) {
+    Rejected { diagnostics: d } => "RESOLVE-REJ " + symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+    Accepted { value: t, diagnostics: _ } =>
+      match infer(tree: t) {
+        Rejected { diagnostics: d } => "INFER-REJ " + symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+        Accepted { value: _, diagnostics: _ } => "INFER-OK"
+      }
+  }
+}
+
+fn p8_report() -> ProcessExit {
+  exit_failure(reason: "P8"
+    + " A=" + p8_one(src: "module p\n\nfn f(x: Int) -> Int {\n  let g = fn(a) { a + x }\n  g(x)\n}\n")
+    + " B=" + p8_one(src: "module p\n\nfn f(x: Int) -> Int {\n  let g = fn(a) { a }\n  g(x)\n}\n")
+    + " C=" + p8_one(src: "module p\n\nfn f(x: Int) -> Int {\n  let g = fn(a) -> Int { a }\n  x\n}\n"))
+}

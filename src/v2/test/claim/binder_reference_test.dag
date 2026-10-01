@@ -117,7 +117,7 @@ test fn a_type_parameter_is_never_a_binder_reference_holds() -> Bool {
 // a defect found while placing the binder arm beside it, fixed in the same cut.
 test fn a_closure_returning_an_enclosing_parameter_emits_holds() -> Bool {
   match member_emission_verdict_of(source: "module v2.test.member_emission\n\nfn k(x: Int) -> fn(Int) -> Int {\n  fn(y) { x }\n}\n") {
-    MemberEmitted { text: t } => string_contains(s: t, pattern: "| x")
+    MemberEmitted { text: t } => string_contains(s: t, pattern: "move |y| { x }")
     MemberRefused { reason: _ } => false
     MemberClosureRefused { reason: _ } => false
   }
