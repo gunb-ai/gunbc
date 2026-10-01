@@ -1,0 +1,25 @@
+module v2.test.claim.zz_probe.p11
+
+import v2.test.claim.type_param_binder_frame { tpb_assemble }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.node { Node, binder_reference_site_optional, node_subtree_nodes, symbol_lexeme }
+import v2.std.optional { Absent, Present }
+import std.process { ProcessExit, exit_failure }
+
+fn p11_i(n: Int) -> String {
+  if n == 0 { "0" } else if n == 1 { "1" } else if n == 2 { "2" } else if n == 3 { "3" } else { "N" }
+}
+
+fn p11_report() -> ProcessExit {
+  let r = match tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y = x\n  let y = y\n  y\n}\n") {
+    Rejected { diagnostics: d } => "REJ " + symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+    Accepted { value: t, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: t.root), init: "", f: fn(acc, m) {
+        match binder_reference_site_optional(node: m) {
+          Present { value: s } => acc + " " + symbol_lexeme(sym: s.name) + "#" + p11_i(n: s.ordinal)
+          Absent => acc
+        }
+      })
+  }
+  exit_failure(reason: "P11" + r)
+}

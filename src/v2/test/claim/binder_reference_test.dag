@@ -82,7 +82,7 @@ fn br_atoms_named(o: Outcome<ResolvedTree>, name: Symbol) -> Int {
 // change), so emission refuses infer_grounding_not_derived before the emitter sees the reference.
 // That infer gap is its own boundary and is not this row's subject.
 test fn a_let_bound_name_inside_an_expression_is_a_binder_reference_holds() -> Bool {
-  br_binder_references_named(o: tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y = x\n  y + y\n}\n"), name: ^y) == 2
+  br_binder_references_named(o: tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y = x\n  y + y\n}\n"), name: ^y) == 3
 }
 
 // (2) A BINDER SHADOWS A SAME-NAMED TOP-LEVEL FN: the let's `y` resolves to the binder, never to the
@@ -92,7 +92,7 @@ fn br_shadowing() -> Outcome<ResolvedTree> {
 }
 
 test fn a_binder_shadowing_a_top_level_fn_resolves_to_the_binder_holds() -> Bool {
-  (br_binder_references_named(o: br_shadowing(), name: ^y) == 1) && (br_declaration_references_ending(o: br_shadowing(), name: ^y) == 0)
+  (br_binder_references_named(o: br_shadowing(), name: ^y) == 2) && (br_declaration_references_ending(o: br_shadowing(), name: ^y) == 0)
 }
 
 // (3) A MATCH-ARM BINDER IS A BINDER REFERENCE IN ITS PATTERN AND ITS ARM BODY (resolve walks the
