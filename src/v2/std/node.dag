@@ -548,9 +548,23 @@ data arrow_signature_order_label: EdgeLabel = Named { name: ^arrow_signature_ord
 data arrow_effect_claims_label: EdgeLabel = Named { name: ^arrow_effect_claims_edge }
 data arrow_execution_mode_claim_label: EdgeLabel = Named { name: ^arrow_execution_mode_claim_edge }
 
+// THE THIRD CONTRACT EDGE, an operation's declared RESOURCE REQUIREMENTS (D13 step a,
+// docs/plans/arrow-contract-edges.md): `requires Network` on an opaque operation, whose requirement
+// cannot be derived from a body because it has none. Its target is a nonempty Conj of references to
+// `resource` declarations. Unlike the claims and mode edges it names DECLARATIONS, an open set, so its
+// members are resolved: v2.compiler.resolve walks it in the Arrow's OUTER scope (a requirement may not
+// see the operation's parameters) and refuses a member that does not resolve to a declared resource
+// (v2.std.symbol_index symbol_index_declares_resource_at) or that repeats one. Like the other two it is
+// metadata to every value reader: v2.compiler.infer and v2.std.type_binder node_inferred_subtree_nodes
+// skip every arrow_named_edge_is_contract edge.
+data arrow_resource_requirements_label: EdgeLabel = Named { name: ^arrow_resource_requirements_edge }
+
 fn arrow_named_edge_is_contract(e: Edge) -> Bool {
-  (edge_label_of(e: e) == arrow_effect_claims_label) || (edge_label_of(e: e) == arrow_execution_mode_claim_label)
+  (edge_label_of(e: e) == arrow_effect_claims_label)
+    || (edge_label_of(e: e) == arrow_execution_mode_claim_label)
+    || (edge_label_of(e: e) == arrow_resource_requirements_label)
 }
+
 
 // The Arrow named edges that are not binders: its body, its declared order and its contract edges.
 // The one predicate every count of an Arrow's binders reads (here and v2.std.type_binder
@@ -565,6 +579,17 @@ fn arrow_named_edge_is_non_binder(e: Edge) -> Bool {
   }
 }
 
+// WHETHER AN EDGE IS AN ARROW'S DECLARED ORDER: label metadata (the domain's binder labels), not a value
+// the Arrow is built from. The one classification every reader that walks values through an Arrow asks
+// -- v2.compiler.infer (its gather fold and product evidence) and std.kind's roster-kind index -- so
+// no reader keeps its own list of metadata labels.
+fn arrow_signature_order_edge(parent: Node, edge: Edge) -> Bool {
+  match parent.kind {
+    TypeNode { connective: Arrow } => (edge_label_of(e: edge) == arrow_signature_order_label)
+    _ => false
+  }
+}
+
 fn arrow_signature_edges_conform(children: List<Edge>) -> Bool {
   let binder_edges = fold(children, init: 0, f: fn(acc, e) {
     match e.label {
@@ -576,6 +601,7 @@ fn arrow_signature_edges_conform(children: List<Edge>) -> Bool {
   && arrow_signature_order_conforms(children: children)
   && (name_occurrences(name: ^arrow_effect_claims_edge, children: children) <= 1)
   && (name_occurrences(name: ^arrow_execution_mode_claim_edge, children: children) <= 1)
+  && (name_occurrences(name: ^arrow_resource_requirements_edge, children: children) <= 1)
   && fold(children, init: true, f: fn(acc, e) {
     match e.label {
       Positional => acc
@@ -658,16 +684,38 @@ fn symbol_list_reverse(xs: List<Symbol>) -> List<Symbol> {
 // a disagreement has no producer there; this wall refuses one built anywhere else -- a missing, an
 // extra, or a repeated label. The comparison sorts both sides once and walks them together, so it is
 // O(n log n) rather than a scan per label. The stored domain is NOT assumed sorted: lowering keeps
-// its authored sequence, and only canonicalization sorts. An Arrow with no order edge is well formed;
-// positional binding refuses against it, and never falls back to label order.
+// its authored sequence, and only canonicalization sorts. An Arrow with no order edge is well formed
+// only when its domain binds no name (arrow_domain_binds_a_name); positional binding never falls back
+// to label order.
 fn arrow_signature_order_conforms(children: List<Edge>) -> Bool {
   match arrow_signature_order_read(children: children) {
-    OrderAbsent => true
+    OrderAbsent => !arrow_domain_binds_a_name(children: children)
     OrderUnreadable => false
     OrderLabels { labels: labels } =>
       match arrow_domain_binder_labels(children: children) {
         DomainBinderLabels { labels: binders } => symbols_are_one_distinct_set(a: labels, b: binders)
         DomainBinderLabelsUnreadable => false
+      }
+  }
+}
+
+// A DOMAIN THAT BINDS A NAME OWES ITS DECLARED ORDER (A4, reversing #12361's "an Arrow with no order
+// edge is well formed"). Since Program P (gunbc#12625) there is one Arrow encoding: a Named edge in the
+// domain -- the first POSITIONAL child, a Conj -- IS a parameter binder, and a binder's position is
+// carried only by ^arrow_signature_order_edge (content hashing sorts the Conj, so f(a, b) and f(b, a)
+// would otherwise be one identity). So an Arrow whose domain binds any name and carries no order edge
+// has no admitted meaning and is ill formed here, at Node admission, rather than refused later at
+// binding time. A domain that binds no name -- a positional type, an empty product -- owes no order.
+// THE ONE ANSWER to "does this Arrow's domain bind a name": v2.compiler.resolve scopes an Arrow's
+// parameters exactly when this holds (arrow_domain_has_named_bindings delegates here), so admission and
+// scoping cannot disagree. An Atom domain is a TYPE, not a binder, under the one encoding.
+fn arrow_domain_binds_a_name(children: List<Edge>) -> Bool {
+  match arrow_first_positional_target(children: children) {
+    FirstPositionalAbsent => false
+    FirstPositionalFound { target: domain } =>
+      match domain.kind {
+        TypeNode { connective: Conj } => fold(domain.children, init: false, f: fn(acc, e) { acc || is_named(e: e) })
+        _ => false
       }
   }
 }

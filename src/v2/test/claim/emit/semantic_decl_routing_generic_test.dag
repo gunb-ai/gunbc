@@ -12,6 +12,7 @@ import v2.std.node { Atom, Conj, Disj, Edge, Named, Node, Symbol, TypeNode }
 import extdeps.communication.medium { Medium }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node_query { binder_edge }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -28,7 +29,7 @@ fn sdrg_atom_type(name: Symbol) -> Node {
 }
 
 fn sdrg_field_edge(name: Symbol, type_name: Symbol) -> Edge {
-  Edge { label: Named { name: name }, target: sdrg_atom_type(name: type_name) }
+  binder_edge(name: name, type_node: sdrg_atom_type(name: type_name))
 }
 
 fn sdrg_record(edges: List<Edge>) -> Node {

@@ -6,8 +6,10 @@ import v2.workflow.required_floor {
   required_floor_disposition_name,
   Planned, PlannedAsChangedWitness, DeclinedLongModule, DeclinedFixtureMember, DeclinedCostDebt,
   DeclinedOutsideRequiredGate, DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded, DeclinedNoCiWetLane,
+  DeclinedChangedWitnessOutsideDiscovery, module_name_is_or_is_contained_by,
   ChangedWitnessCostPolicy, OrdinaryChangedWitnessCostPolicy, ChangedCostDebtVerdictOnly,
 }
+import gunbc.ci_layer_roots { non_executing_witness_module_prefixes }
 import v2.workflow.floor_terminal_ledger {
   ClaimDisposition,
   Passed, Failed, KnownRedHeld, KnownRedNowPassing, BudgetRefusedBeforeVerdict,
@@ -314,6 +316,7 @@ fn changed_witness_execution_standing(
         DeclinedOutsideGateClosure => Declined { disposition: d }
         DeclinedDiscoveryExcluded { matched_substring: _ } => Declined { disposition: d }
         DeclinedNoCiWetLane { pattern: _ } => Declined { disposition: d }
+        DeclinedChangedWitnessOutsideDiscovery { module_path: _ } => Declined { disposition: d }
         DeclinedCostDebt => Declined { disposition: d }
       }
   }
@@ -341,9 +344,18 @@ fn changed_witness_standing_blocks(standing: ChangedWitnessExecutionStanding) ->
 // WHICH DECLINES BLOCK A CHANGED WITNESS: every one, except the declared BinWitnessWet decline,
 // whose loss is `gunbc.rung_drop.edited_bin_witness_wet_rows_not_executed_by_ci` and which the PR
 // discharges with a real bin_wet receipt. Exhaustive, so a new disposition states its polarity.
+//
+// A SELECTION OUTSIDE DISCOVERY BLOCKS UNLESS ITS HOME IS DECLARED NON-EXECUTING, and the grant is
+// membership in `gunbc.ci_layer_roots` `non_executing_witness_module_prefixes` under the named-module
+// subtree rule, never the absence of a match elsewhere: an empty or unrostered home blocks. This is
+// the seed's `identity_home_is_declared_non_executing`, and the exemption goes away with the roster row.
 fn changed_witness_decline_blocks(disposition: RequiredFloorDisposition) -> Bool {
   match disposition {
     DeclinedNoCiWetLane { pattern: _ } => false
+    DeclinedChangedWitnessOutsideDiscovery { module_path: m } =>
+      !fold(non_executing_witness_module_prefixes, init: false, f: fn(acc, prefix) {
+        acc || ((prefix != "") && module_name_is_or_is_contained_by(module_path: m, name: prefix))
+      })
     Planned => true
     PlannedAsChangedWitness => true
     DeclinedLongModule { matched_prefix: _ } => true

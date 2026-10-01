@@ -50,6 +50,7 @@ import v2.std.node {
 import v2.std.optional { Absent, Present }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node_query { binder_edge }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -70,14 +71,14 @@ fn ts_produced_decl_domain() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ts_produced_decl_left },
-        target: dag_type_atom_node(identity: dag_int_type_binding())
-      },
-      Edge {
-        label: Named { name: ts_produced_decl_right },
-        target: dag_type_atom_node(identity: dag_int_type_binding())
-      }
+      binder_edge(
+        name: ts_produced_decl_left,
+        type_node: dag_type_atom_node(identity: dag_int_type_binding())
+      ),
+      binder_edge(
+        name: ts_produced_decl_right,
+        type_node: dag_type_atom_node(identity: dag_int_type_binding())
+      )
     ],
     occurrence_id: OccurrenceSynthetic
   }

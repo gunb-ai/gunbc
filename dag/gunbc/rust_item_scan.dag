@@ -1,6 +1,7 @@
 module gunbc.rust_item_scan
 
 import extdeps.languages.rust.syntax { rust_item_forms }
+import std.syntax { ExprBody }
 import std.decimal { decimal_digit_char }
 import gunbc.rust_item_identity {
   RustConst,
@@ -90,6 +91,16 @@ import v2.std.algebra { any, filter, fold_list, length, list_map }
 // line; none of them is an item, so none records one. Measured on the seed's hand-maintained Rust
 // before they existed, wrapped `use` lists alone refused 58 files -- a recognizer safe enough to be
 // useless, which is the failure mode a fail-closed reader has to be watched for.
+// THE RAW LITERAL AN ITEM HAS OPEN, WITH WHERE IT OPENED, OR NONE. One variant rather than a
+// terminator string beside a flag, so "opened on the header with no terminator" has no constructor.
+type RawLiteral
+  = NoRawLiteral
+  | OpenRawLiteral { terminator: String, opened_on_header: Bool }
+
+fn raw_literal_of(terminator: String, opened_on_header: Bool) -> RawLiteral {
+  if terminator == "" { NoRawLiteral } else { OpenRawLiteral { terminator: terminator, opened_on_header: opened_on_header } }
+}
+
 type RustScanScope
   = ModuleScope { module_name: String, start_line: Int }
   | UseScope { start_line: Int }
@@ -102,7 +113,8 @@ type RustScanScope
       impl_subject: String,
       enclosing_module: String,
       start_line: Int,
-      raw_terminator: String
+      raw_literal: RawLiteral,
+      initializer_continued: Bool
     }
 
 // A MACRO INVOCATION'S BLOCK IS AN EXTENT WITH NO ITEM, AND A CHANGE INSIDE IT IS UNATTRIBUTED.
@@ -151,6 +163,7 @@ type RustScanState {
   refusal_line: Int
   refusal_text: String
   refusal_detail: String
+  continues_string: Bool
 }
 
 fn rust_item_keywords() -> List<String> {
@@ -345,12 +358,43 @@ fn line_is_file_level_declaration(text: String) -> Bool {
   w == "use" || w == "crate"
 }
 
+// A TRAILING `//` COMMENT IS NOT PART OF THE DECLARATION IT FOLLOWS. `const LEN: usize = 8 + 16; //
+// offset, length` ends at its semicolon; reading the comment's last character as the line's end
+// left the const open, and it swallowed the const after it (resolved_graph_cache.rs
+// PART_DESCRIPTOR_LEN over V3_HEADER_LEN) -- silently. A `//` opens a comment when it is outside a
+// string literal, and on one line that is decided by the parity of the quotes before it. A `//`
+// with an odd count before it is inside a literal (a URL), and the search continues past it.
+fn code_before_line_comment_from(text: String, at: Int) -> String {
+  let found = find_from(s: text, at: at, pattern: "//")
+  if found < 0 {
+    text
+  } else if quote_count_from(s: substring(s: text, start: 0, end: found), at: 0, acc: 0) % 2 == 0 {
+    substring(s: text, start: 0, end: found)
+  } else {
+    code_before_line_comment_from(text: text, at: found + 2)
+  }
+}
+
+fn quote_count_from(s: String, at: Int, acc: Int) -> Int {
+  if at >= string_length(s: s) {
+    acc
+  } else if char_at(s: s, pos: at) == "\"" {
+    quote_count_from(s: s, at: at + 1, acc: acc + 1)
+  } else {
+    quote_count_from(s: s, at: at + 1, acc: acc)
+  }
+}
+
+fn code_before_line_comment(text: String) -> String {
+  code_before_line_comment_from(text: text, at: 0)
+}
+
 // A HEADER CLOSES ON ITS OWN LINE when it carries no block that outlives it: a `;`-terminated
 // declaration, or a whole item written on one line. Otherwise it opens a scope that closes at a
 // brace at its own indent. There is no third case, and a line matching neither at a scope boundary
 // is exactly the state this reader refuses on.
 fn head_closes_on_its_own_line(text: String) -> Bool {
-  let t = trim(s: text)
+  let t = trim(s: code_before_line_comment(text: text))
   let n = string_length(s: t)
   if n == 0 {
     true
@@ -358,12 +402,6 @@ fn head_closes_on_its_own_line(text: String) -> Bool {
     let last = substring(s: t, start: n - 1, end: n)
     last == ";" || (last == "}" && string_contains(s: t, pattern: "{"))
   }
-}
-
-fn ends_with(s: String, suffix: String) -> Bool {
-  let n = string_length(s: s)
-  let m = string_length(s: suffix)
-  n >= m && substring(s: s, start: n - m, end: n) == suffix
 }
 
 fn hash_run_from(s: String, at: Int, acc: Int) -> Int {
@@ -387,41 +425,81 @@ fn repeat_hashes(n: Int, acc: String) -> String {
 // literal self-describing and the recovery decidable rather than a guess -- and while it is open
 // every line is skipped, so no text inside a literal can be read as structure.
 //
-// WHAT THIS DOES NOT COVER, named rather than left to be found: a raw string opened INSIDE a body
-// rather than on the item's own header line. Its content is body text at a deeper indent and is
-// skipped like any body line; it only matters if that content reaches the item's own indent AND
-// matches the close test below. The close test is deliberately narrow for that reason, and a
-// premature close leaves the remaining literal text at a scope boundary, where it is not a
-// recognized structural line and the file REFUSES. So the residual failure mode is a refusal, not
-// a silent mis-attribution. The next rung is a modeled Rust lexer, at which point this whole
-// recognizer deletes in its favour.
-fn raw_string_open_terminator_from(s: String, at: Int) -> String {
+// A LITERAL OPENED IN A BODY IS THE SAME LEXICAL FACT AS ONE OPENED ON A HEADER, so it is tracked
+// the same way. An item's extent ends at its own closing brace, and a brace inside a string literal
+// is not a closing brace -- that is what an item IS, read lexically, and it holds wherever the
+// literal opens. Tracking only header-opened literals made the reader treat a body literal's own
+// column-zero `}` as the item's close: it closed the enclosing fn early and then refused the
+// literal's tail at the scope boundary, which put every witness binary that authors a .dag fixture
+// in a `let src = r#"...` out of reach (gunbc#12886's census stopped there, on
+// interp_recorded_fixture_witness.rs). Worse than the refusal, a literal whose text happened to
+// read as Rust items after the premature close would have minted phantom items -- the deleted
+// script's defect arriving by a second route. So every item line is read for an UNCLOSED raw
+// literal: the opener must begin a token (an `r` or `br` not continuing an identifier, which is
+// what keeps `"error"` from reading as `r"`), its terminator is recovered from its own hash count,
+// and a literal closed on the same line is skipped so a second opener after it is still seen.
+//
+// WHAT THIS STILL DOES NOT COVER, named rather than left to be found: an ordinary (non-raw) string
+// literal continued across lines, and a raw-string opener spelled inside an ordinary string or a
+// trailing comment. Neither has a self-describing terminator this reader can recover without a
+// lexer, so neither is tracked; if one carries a column-zero brace the premature close leaves text
+// at a scope boundary and the file REFUSES. A whole-line `//` comment is skipped, since its text
+// is never code. The next rung is a modeled Rust lexer, at which point this whole recognizer
+// deletes in its favour.
+fn find_from(s: String, at: Int, pattern: String) -> Int {
+  let n = string_length(s: s)
+  let m = string_length(s: pattern)
+  if at + m > n {
+    0 - 1
+  } else if substring(s: s, start: at, end: at + m) == pattern {
+    at
+  } else {
+    find_from(s: s, at: at + 1, pattern: pattern)
+  }
+}
+
+fn raw_string_opener_begins_token(s: String, at: Int) -> Bool {
+  if at == 0 {
+    true
+  } else if !char_is_ident(c: char_at(s: s, pos: at - 1)) {
+    true
+  } else {
+    char_at(s: s, pos: at - 1) == "b" && (at == 1 || !char_is_ident(c: char_at(s: s, pos: at - 2)))
+  }
+}
+
+fn raw_string_unclosed_from(s: String, at: Int) -> String {
   if at >= string_length(s: s) {
     ""
-  } else if char_at(s: s, pos: at) != "r" {
-    raw_string_open_terminator_from(s: s, at: at + 1)
+  } else if char_at(s: s, pos: at) != "r" || !raw_string_opener_begins_token(s: s, at: at) {
+    raw_string_unclosed_from(s: s, at: at + 1)
   } else {
     let hashes = hash_run_from(s: s, at: at + 1, acc: 0)
     if at + 1 + hashes < string_length(s: s)
       && char_at(s: s, pos: at + 1 + hashes) == "\"" {
-      concat("\"", repeat_hashes(n: hashes, acc: ""))
+      let terminator = concat("\"", repeat_hashes(n: hashes, acc: ""))
+      let close = find_from(s: s, at: at + 2 + hashes, pattern: terminator)
+      if close < 0 {
+        terminator
+      } else {
+        raw_string_unclosed_from(s: s, at: close + string_length(s: terminator))
+      }
     } else {
-      raw_string_open_terminator_from(s: s, at: at + 1)
+      raw_string_unclosed_from(s: s, at: at + 1)
     }
   }
 }
 
+// The terminator of the raw string literal this line leaves OPEN, or "" when it leaves none.
 fn raw_string_terminator(text: String) -> String {
-  let opened = raw_string_open_terminator_from(s: text, at: 0)
-  if opened == "" {
-    ""
-  } else {
-    let after_open = drop_prefix_length(
-      s: text,
-      n: scan_past_char_from(s: text, at: 0, target: "\"")
-    )
-    if string_contains(s: after_open, pattern: opened) { "" } else { opened }
-  }
+  if starts_with(s: trim(s: text), prefix: "//") { "" } else { raw_string_unclosed_from(s: text, at: 0) }
+}
+
+// The terminator still open after the line that closes `raw`: a literal closed on this line may be
+// followed by another opened on it.
+fn raw_string_terminator_after_close(text: String, raw: String) -> String {
+  let close = find_from(s: text, at: 0, pattern: raw)
+  if close < 0 { raw } else { raw_string_unclosed_from(s: text, at: close + string_length(s: raw)) }
 }
 
 fn scan_top_raw_terminator(scopes: List<RustScanScope>) -> String {
@@ -436,8 +514,13 @@ fn scan_top_raw_terminator(scopes: List<RustScanScope>) -> String {
           impl_subject: _,
           enclosing_module: _,
           start_line: _,
-          raw_terminator: raw
-        } => raw
+          raw_literal: literal,
+          initializer_continued: _
+        } =>
+          match literal {
+            NoRawLiteral => ""
+            OpenRawLiteral { terminator: t, opened_on_header: _ } => t
+          }
         ModuleScope { module_name: _, start_line: _ } => ""
         ImplScope { impl_subject: _, start_line: _ } => ""
         UseScope { start_line: _ } => ""
@@ -448,7 +531,83 @@ fn scan_top_raw_terminator(scopes: List<RustScanScope>) -> String {
   )
 }
 
-fn scan_state_clear_raw(state: RustScanState) -> RustScanState {
+// A LITERAL OPENED ON THE HEADER IS THE ITEM'S OWN VALUE, so the line that ends it may end the item
+// (`pub const SRC: &str = r#"` ... `"#;`). A literal opened in a body is an expression inside the
+// item, so the line that ends it is body: its `"#;` ends a statement, never the item, and reading it
+// as the close would end a fn at its first fixture.
+fn scan_top_raw_opened_on_header(scopes: List<RustScanScope>) -> Bool {
+  fold_list(
+    xs: list_last_scope(xs: scopes),
+    empty: false,
+    cons: fn(_acc, scope) {
+      match scope {
+        ItemScope {
+          kind: _,
+          item_name: _,
+          impl_subject: _,
+          enclosing_module: _,
+          start_line: _,
+          raw_literal: literal,
+          initializer_continued: _
+        } =>
+          match literal {
+            NoRawLiteral => false
+            OpenRawLiteral { terminator: _, opened_on_header: on_header } => on_header
+          }
+        ModuleScope { module_name: _, start_line: _ } => false
+        ImplScope { impl_subject: _, start_line: _ } => false
+        UseScope { start_line: _ } => false
+        AttributeScope { start_line: _ } => false
+        MacroScope { macro_name: _, start_line: _ } => false
+      }
+    }
+  )
+}
+
+// AN EXPRESSION-BODIED ITEM WHOSE HEADER ENDS AT `=` ENDS AT ITS OWN SEMICOLON, ONE INDENT DEEPER.
+// rustfmt breaks `static NAME: T =` before a long initializer and continues it at the next indent,
+// so the declaration's closing `;` is on a line at that continuation indent, not at the item's own.
+// Reading only the item's own indent left such an item open past its semicolon: a top-level
+// `static PROVIDER_BOOTSTRAP_STORE_SKIPS: AtomicUsize =` in cli_run.rs swallowed the fn after it
+// until that fn's `}`, so the fn was never an item and an edit to it was attributed to the static --
+// a silent mis-attribution, not a refusal. The continuation indent is the item's scope boundary, so
+// the test is the boundary line that ends the statement; a deeper line is the initializer's body.
+fn scan_top_initializer_continued(scopes: List<RustScanScope>) -> Bool {
+  fold_list(
+    xs: list_last_scope(xs: scopes),
+    empty: false,
+    cons: fn(_acc, scope) {
+      match scope {
+        ItemScope {
+          kind: _,
+          item_name: _,
+          impl_subject: _,
+          enclosing_module: _,
+          start_line: _,
+          raw_literal: _,
+          initializer_continued: continued
+        } => continued
+        ModuleScope { module_name: _, start_line: _ } => false
+        ImplScope { impl_subject: _, start_line: _ } => false
+        UseScope { start_line: _ } => false
+        AttributeScope { start_line: _ } => false
+        MacroScope { macro_name: _, start_line: _ } => false
+      }
+    }
+  )
+}
+
+fn scan_line_closes_top_item(state: RustScanState, text: String) -> Bool {
+  let indent = indent_width(s: text)
+  let expected = scan_expected_indent(state: state)
+  if scan_top_initializer_continued(scopes: state.scopes) {
+    indent == expected && ends_with(s: trim(s: text), suffix: ";")
+  } else {
+    indent == expected - 4 && line_closes_item(text: text)
+  }
+}
+
+fn scan_state_with_raw(state: RustScanState, raw: String) -> RustScanState {
   fold_list(
     xs: list_last_scope(xs: state.scopes),
     empty: state,
@@ -460,7 +619,8 @@ fn scan_state_clear_raw(state: RustScanState) -> RustScanState {
           impl_subject: subject,
           enclosing_module: enclosing,
           start_line: start,
-          raw_terminator: _
+          raw_literal: _,
+          initializer_continued: continued
         } =>
           scan_state_of(
             state: state,
@@ -473,7 +633,8 @@ fn scan_state_clear_raw(state: RustScanState) -> RustScanState {
                 impl_subject: subject,
                 enclosing_module: enclosing,
                 start_line: start,
-                raw_terminator: ""
+                raw_literal: raw_literal_of(terminator: raw, opened_on_header: false),
+                initializer_continued: continued
               }
             ),
             attach_start: state.attach_start
@@ -514,7 +675,8 @@ fn scope_start_line(scope: RustScanScope) -> Int {
       impl_subject: _,
       enclosing_module: _,
       start_line: n,
-      raw_terminator: _
+      raw_literal: _,
+      initializer_continued: _
     } => n
   }
 }
@@ -558,7 +720,8 @@ fn scan_enclosing_module_path(scopes: List<RustScanScope>) -> String {
           impl_subject: _,
           enclosing_module: _,
           start_line: _,
-          raw_terminator: _
+          raw_literal: _,
+          initializer_continued: _
         } => acc
       }
     }
@@ -582,7 +745,8 @@ fn scan_enclosing_impl_subject(scopes: List<RustScanScope>) -> String {
           impl_subject: _,
           enclosing_module: _,
           start_line: _,
-          raw_terminator: _
+          raw_literal: _,
+          initializer_continued: _
         } => acc
       }
     }
@@ -608,7 +772,8 @@ fn scan_state_of(
     attach_start: attach_start,
     refusal_line: 0,
     refusal_text: "",
-    refusal_detail: ""
+    refusal_detail: "",
+    continues_string: state.continues_string
   }
 }
 
@@ -622,7 +787,8 @@ fn scan_state_refuse(state: RustScanState, text: String, detail: String) -> Rust
     attach_start: state.attach_start,
     refusal_line: state.line_number,
     refusal_text: text,
-    refusal_detail: detail
+    refusal_detail: detail,
+    continues_string: state.continues_string
   }
 }
 
@@ -636,7 +802,8 @@ fn scan_state_advance(state: RustScanState) -> RustScanState {
     attach_start: state.attach_start,
     refusal_line: state.refusal_line,
     refusal_text: state.refusal_text,
-    refusal_detail: state.refusal_detail
+    refusal_detail: state.refusal_detail,
+    continues_string: state.continues_string
   }
 }
 
@@ -685,7 +852,8 @@ fn scan_item_of_scope(
       impl_subject: subject,
       enclosing_module: enclosing,
       start_line: start,
-      raw_terminator: _
+      raw_literal: _,
+      initializer_continued: _
     } =>
       list_snoc_item(
         xs: state.items,
@@ -721,7 +889,8 @@ fn scan_state_with_macro_region(state: RustScanState, scope: RustScanScope) -> R
         attach_start: state.attach_start,
         refusal_line: state.refusal_line,
         refusal_text: state.refusal_text,
-        refusal_detail: state.refusal_detail
+        refusal_detail: state.refusal_detail,
+        continues_string: state.continues_string
       }
     UseScope { start_line: _ } => state
     AttributeScope { start_line: _ } => state
@@ -733,7 +902,8 @@ fn scan_state_with_macro_region(state: RustScanState, scope: RustScanScope) -> R
       impl_subject: _,
       enclosing_module: _,
       start_line: _,
-      raw_terminator: _
+      raw_literal: _,
+      initializer_continued: _
     } => state
   }
 }
@@ -809,13 +979,15 @@ fn scan_open_header(state: RustScanState, text: String) -> RustScanState {
       let kind =
         if keyword == "fn" && impl_subject != "" { RustImplMethod }
         else { rust_item_kind_for_keyword(word: keyword) }
+      let header_raw = if self_closing { "" } else { raw_string_terminator(text: text) }
       let scope = ItemScope {
         kind: kind,
         item_name: name,
         impl_subject: if kind == RustImplMethod { impl_subject } else { "" },
         enclosing_module: enclosing,
         start_line: start,
-        raw_terminator: if self_closing { "" } else { raw_string_terminator(text: text) }
+        raw_literal: raw_literal_of(terminator: header_raw, opened_on_header: true),
+        initializer_continued: !self_closing && ends_with(s: trim(s: text), suffix: "=")
       }
       if self_closing {
         scan_state_of(
@@ -848,7 +1020,8 @@ fn scan_scope_is_item(scopes: List<RustScanScope>) -> Bool {
           impl_subject: _,
           enclosing_module: _,
           start_line: _,
-          raw_terminator: _
+          raw_literal: _,
+          initializer_continued: _
         } => true
         ModuleScope { module_name: _, start_line: _ } => false
         ImplScope { impl_subject: _, start_line: _ } => false
@@ -904,7 +1077,8 @@ fn scan_top_scope_kind(scopes: List<RustScanScope>) -> String {
           impl_subject: _,
           enclosing_module: _,
           start_line: _,
-          raw_terminator: _
+          raw_literal: _,
+          initializer_continued: _
         } => "item"
       }
     }
@@ -916,6 +1090,66 @@ fn line_opens_macro_invocation(text: String) -> Bool {
   let name = leading_ident(s: t)
   name != ""
     && starts_with(s: trim(s: drop_prefix_length(s: t, n: string_length(s: name))), prefix: "!")
+}
+
+// A LINE ENDING IN A BACKSLASH CONTINUES A STRING LITERAL, SO THE NEXT LINE IS LITERAL TEXT. In Rust
+// source a backslash-newline is an escape that exists only inside a string literal, so the line after
+// it is that literal's text at whatever indent its author chose -- column zero, or five -- and never
+// structure. rustfmt does not re-indent it, which is why indent alone misreads it: a continued line
+// beginning with `}` at an item's own indent read as that item's close, and the line that ends the
+// literal with `";` sat at no indent the close tests asked about. Inside a raw literal a backslash is
+// an ordinary character, and a comment's trailing backslash continues nothing.
+fn scan_state_mark_continuation(state: RustScanState, text: String) -> RustScanState {
+  let continues =
+    scan_top_raw_terminator(scopes: state.scopes) == ""
+      && !starts_with(s: trim(s: text), prefix: "//")
+      && ends_with(s: text, suffix: "\\")
+  RustScanState {
+    repo_path: state.repo_path,
+    line_number: state.line_number,
+    items: state.items,
+    macro_regions: state.macro_regions,
+    scopes: state.scopes,
+    attach_start: state.attach_start,
+    refusal_line: state.refusal_line,
+    refusal_text: state.refusal_text,
+    refusal_detail: state.refusal_detail,
+    continues_string: continues
+  }
+}
+
+// THE EXPRESSION-BODIED FORMS ARE THE GRAMMAR AUTHORITY'S, NOT A LIST KEPT HERE: an item of a kind
+// whose rust_item_forms row carries ExprBody (`const`, `static`) is a declaration ended by its own
+// semicolon, so the line that finishes a continued string literal with `;` ends it. A fn body ends at
+// its brace and is never ended that way, which is what keeps a `let s = "...\` inside a body from
+// closing the fn.
+fn scan_top_item_is_expression_bodied(scopes: List<RustScanScope>) -> Bool {
+  fold_list(
+    xs: list_last_scope(xs: scopes),
+    empty: false,
+    cons: fn(_acc, scope) {
+      match scope {
+        ItemScope {
+          kind: kind,
+          item_name: _,
+          impl_subject: _,
+          enclosing_module: _,
+          start_line: _,
+          raw_literal: _,
+          initializer_continued: _
+        } =>
+          any(
+            xs: rust_item_forms,
+            predicate: fn(form) { form.body_kind == ExprBody && rust_item_kind_for_keyword(word: form.keyword) == kind }
+          )
+        ModuleScope { module_name: _, start_line: _ } => false
+        ImplScope { impl_subject: _, start_line: _ } => false
+        UseScope { start_line: _ } => false
+        AttributeScope { start_line: _ } => false
+        MacroScope { macro_name: _, start_line: _ } => false
+      }
+    }
+  )
 }
 
 fn scan_step(state: RustScanState, text: String) -> RustScanState {
@@ -951,15 +1185,45 @@ fn scan_step(state: RustScanState, text: String) -> RustScanState {
       if raw != "" {
         if !string_contains(s: text, pattern: raw) {
           scan_state_advance(state: state)
-        } else if indent == expected - 4 && line_closes_item(text: text) {
+        } else if scan_top_raw_opened_on_header(scopes: state.scopes)
+          && indent == expected - 4
+          && line_closes_item(text: text) {
+          scan_state_advance(state: scan_close_scope(state: state))
+        } else if scan_top_initializer_continued(scopes: state.scopes)
+          && raw_string_terminator_after_close(text: text, raw: raw) == ""
+          && ends_with(s: trim(s: text), suffix: ";") {
           scan_state_advance(state: scan_close_scope(state: state))
         } else {
-          scan_state_advance(state: scan_state_clear_raw(state: state))
+          scan_state_advance(
+            state: scan_state_with_raw(state: state, raw: raw_string_terminator_after_close(text: text, raw: raw))
+          )
         }
-      } else if indent == expected - 4 && line_closes_item(text: text) {
+      } else if state.continues_string {
+        if scan_top_item_is_expression_bodied(scopes: state.scopes)
+          && !ends_with(s: text, suffix: "\\")
+          && ends_with(s: trim(s: text), suffix: ";") {
+          scan_state_advance(state: scan_close_scope(state: state))
+        } else {
+          scan_state_advance(state: state)
+        }
+      } else if scan_line_closes_top_item(state: state, text: text) {
         scan_state_advance(state: scan_close_scope(state: state))
+      } else if indent == expected - 4
+        && rust_keyword_is_item_form(word: leading_ident(s: peeled_item_head(text: text))) {
+        scan_state_advance(
+          state: scan_state_refuse(
+            state: state,
+            text: text,
+            detail: "an item header at the open item's own indent: the open item never closed, and reading on would swallow this item into its extent"
+          )
+        )
       } else {
-        scan_state_advance(state: state)
+        let opened = raw_string_terminator(text: text)
+        if opened == "" {
+          scan_state_advance(state: state)
+        } else {
+          scan_state_advance(state: scan_state_with_raw(state: state, raw: opened))
+        }
       }
     } else if indent > expected {
       scan_state_advance(
@@ -1062,9 +1326,10 @@ fn scan_rust_source(repo_path: String, content: String) -> RustFileScan {
       attach_start: 0,
       refusal_line: 0,
       refusal_text: "",
-      refusal_detail: ""
+      refusal_detail: "",
+      continues_string: false
     },
-    cons: fn(acc, line) { scan_step(state: acc, text: line) }
+    cons: fn(acc, line) { scan_state_mark_continuation(state: scan_step(state: acc, text: line), text: line) }
   )
   if scan_state_refused(state: final) {
     RustFileScanRefused {

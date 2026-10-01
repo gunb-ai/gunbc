@@ -426,7 +426,11 @@ fn gha_fold_job_bundle_witness(job: Job) -> Witness<GhaFoldJobBundle> {
           }
         Violates { diagnostic: d } => Violates { diagnostic: d }
       }
-    _ =>
+    HostedRunner { label: _ } =>
+      Violates {
+        diagnostic: gha_fold_unsupported_variant_diagnostic(variant: ^gha_fold_runner_not_self_hosted_pilot)
+      }
+    RunsOnExpression { expression: _ } =>
       Violates {
         diagnostic: gha_fold_unsupported_variant_diagnostic(variant: ^gha_fold_runner_not_self_hosted_pilot)
       }

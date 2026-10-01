@@ -4,7 +4,7 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.algebra { filter, fold_list, list_flat_map }
 import v2.std.collection { empty_map, map_insert, map_lookup }
 import std.types { Map, List }
-import v2.std.node { Atom, Node, Symbol, TypeNode, node_subtree_nodes }
+import v2.std.node { Atom, Node, Symbol, TypeNode, arrow_signature_order_edge }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup }
 import v2.std.optional { Optional }
 
@@ -72,11 +72,31 @@ type RosterKindIndex {
   kinds: Map<Node, Kind>
 }
 
+// A ROSTER'S MEMBERS ARE ITS VALUES, NOT ITS LABEL METADATA. An Arrow member built through
+// v2.std.arrow_signature carries a declared-order edge whose subtree is the domain's binder labels
+// (a FreeMonoid ending in a childless Conj), not a value the Arrow is built from; infer already
+// carries that edge as metadata and derives nothing from it. Walking it entered those label nodes
+// as TypeDenotationKind members, so every structurally equal node anywhere -- a bare childless
+// Conj -- derived a kind by lookup (gunbc#12625 rebuilt dag_fixture_emitted_add_fn with the edge).
+// The edge is classified by v2.std.node arrow_signature_order_edge, the one predicate infer asks.
+// Membership is still decided by STRUCTURAL equality with a node in the roster value; keying it by
+// declared identity is the namespace migration's end-state named in v2.compiler.infer
+// (gunbc.recurring_failure_mode roster_membership_by_structural_equality).
+fn roster_member_nodes(root: Node) -> List<Node> {
+  fold(root.children, init: [root], f: fn(acc, edge) {
+    if arrow_signature_order_edge(parent: root, edge: edge) {
+      acc
+    } else {
+      concat(acc, roster_member_nodes(root: edge.target))
+    }
+  })
+}
+
 fn kind_record_fact_nodes(record: Node, subject_field: Symbol) -> List<Node> {
   match named_child_lookup(root: record, name: subject_field) {
     NamedChildFound { target: subject } =>
       filter(
-        xs: node_subtree_nodes(root: record),
+        xs: roster_member_nodes(root: record),
         predicate: fn(member) { !(member == record) && !(member == subject) }
       )
     NamedChildMissing => []
@@ -97,7 +117,7 @@ fn roster_kind_enter_one(kinds: Map<Node, Kind>, n: Node, kind: Kind) -> Map<Nod
 }
 
 fn roster_kind_index(roster: Node, subject_field: Symbol) -> RosterKindIndex {
-  let members = node_subtree_nodes(root: roster)
+  let members = roster_member_nodes(root: roster)
   let denotations = roster_kind_enter(kinds: empty_map(), nodes: members, kind: TypeDenotationKind)
   RosterKindIndex {
     kinds: roster_kind_enter(

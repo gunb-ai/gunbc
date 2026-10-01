@@ -1,7 +1,7 @@
 module v2.compiler.resolve
 import v2.std.language_model { LanguageModel }
 
-import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_resource_declarations }
 import v2.compiler.namespace_graft { namespace_graft_module_body_optional }
 import v2.std.declaration_marker {
   ReachesNoTestCode,
@@ -102,6 +102,7 @@ import v2.std.symbol_index {
   RecordTypePayload,
   VariantArmPayload,
   symbol_index_declared_payload_at,
+  symbol_index_declares_resource_at,
   symbol_index_global_unique_lookup,
   symbol_index_declaring_path_of,
   symbol_index_lexical_lookup,
@@ -135,8 +136,11 @@ import v2.std.node {
   symbol_lexeme,
   match_arm_body,
   match_arm_pattern,
+  arrow_domain_binds_a_name,
   arrow_first_positional_target,
   arrow_signature_order_label,
+  arrow_resource_requirements_label,
+  arrow_named_edge_is_contract,
   FirstPositionalAbsent,
   FirstPositionalFound,
   edge_label_of,
@@ -150,6 +154,7 @@ import v2.std.node {
 }
 import v2.std.type_binder { GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names }
 import v2.std.node_query {
+  binder_node_label,
   declared_field_from_edge,
   NamedChildAmbiguous,
   NamedChildFound,
@@ -211,7 +216,7 @@ type ResolvedTree {
 // qualified name is read from the root's own header, so a declaration is keyed at its full path (p.Pos).
 // A root whose module name cannot be read yields the empty index -- every lookup through it refuses.
 fn resolved_declarations_of(root: Node) -> SymbolIndex {
-  symbol_index_fill_module_declarations(index: empty_symbol_index(), root: root, record_declarations: Empty)
+  symbol_index_fill_module_declarations(index: empty_symbol_index(), root: root, record_declarations: Empty, resource_declarations: Empty)
 }
 
 // THE ONE CONSTRUCTOR of an accepted resolution's carrier: the root, the index it was resolved
@@ -377,11 +382,7 @@ fn add_arrow_domain_named_params(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbo
   match n.kind {
     TypeNode { connective: Arrow } =>
       match arrow_first_positional_target(children: n.children) {
-        FirstPositionalFound { target: domain } =>
-          harvest_direct_atom_binding(
-            root: domain,
-            acc: harvest_conj_named_bindings(root: domain, acc: acc)
-          )
+        FirstPositionalFound { target: domain } => harvest_conj_named_bindings(root: domain, acc: acc)
         FirstPositionalAbsent => acc
       }
     _ => acc
@@ -429,7 +430,7 @@ fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace
   Namespace {
     bindings: bindings,
     canonical_symbols: lm.canonical_symbols,
-    symbol_index: symbol_index_fill_module_declarations(index: empty_symbol_index(), root: tree.root, record_declarations: Empty),
+    symbol_index: symbol_index_fill_module_declarations(index: empty_symbol_index(), root: tree.root, record_declarations: Empty, resource_declarations: normalized_tree_resource_declarations(t: tree)),
     module_qn: Empty,
     test_code: test_code_index_add_module(
       index: test_code_index_empty(),
@@ -570,7 +571,7 @@ fn resolve_ctx_with_declaring(ctx: ResolveContext, declaring: DeclaringPosition)
 fn resolve_declaring_across_named_edge(declaring: DeclaringPosition, name: Symbol) -> DeclaringPosition {
   match declaring {
     DeclaringAt { path: path } =>
-      if dag_surface_module_header_metadata_edge(name: name) || parse_tree_projection_edge(name: name) {
+      if dag_surface_module_header_metadata_edge(name: name) || parse_tree_projection_edge(name: name) || binder_node_label(name: name) {
         declaring
       } else {
         DeclaringAt { path: qualified_name_snoc(qn: path, segment: name) }
@@ -1422,7 +1423,7 @@ fn resolve_surface_operator_atom(
 // each refused child and the rest are gone before the module root. So every recursive step returns
 // ResolveNodeWalk, the refused arm carries the whole population upward, and the ONE projection to
 // Outcome sits at the legacy entries (resolve_node, resolve_with_namespace_policy,
-// resolve_with_admission_context_policy), which keep answering what they answered.
+// resolve_in_context), which keep answering what they answered.
 //
 // WHY ORDINAL IS CARRIED SEPARATELY, and it is load-bearing rather than tidy: resolve_transform_children
 // used `length(done) == 0` to mean "this is the operator child" -- the accumulated EDGE LIST
@@ -1482,7 +1483,7 @@ fn resolve_walk_of_outcome(o: Outcome<Node>) -> ResolveNodeWalk {
 // THE LEGACY PROJECTION. resolve's Outcome carries ONE chain, and the population's FIRST chain is
 // projected -- the chain the previous walk produced, because it stopped at that same child with the
 // same advisories before it. The remaining chains are not discarded: census-resolve reads the walk
-// itself through resolve_walk_with_admission_context_policy.
+// itself through resolve_walk_in_context.
 fn resolve_walk_outcome(w: ResolveNodeWalk) -> Outcome<Node> {
   match w {
     ResolveWalkAccepted { value: v, diagnostics: d } => Accepted { value: v, diagnostics: d }
@@ -2659,7 +2660,8 @@ fn resolve_child_edge(
         ResolveWalkAccepted { value: e.target, diagnostics: None }
       } else {
         let child_ctx = if ctx.under_module_root
-          && !dag_surface_module_header_metadata_edge(name: sym) {
+          && !dag_surface_module_header_metadata_edge(name: sym)
+          && !binder_node_label(name: sym) {
           resolve_ctx_snoc_position(ctx: ctx, segment: sym)
         } else {
           ctx
@@ -2681,31 +2683,12 @@ fn resolve_child_edge(
 
 data arrow_domain_param_scoping_note: String = "Wave 1 Gate 1 A1: param scoping is add_arrow_domain_named_params over lowered Arrow domain Named edges (general-body-producer-design Stage A). dag_fn_decl_param_binding_atoms and scope_with_fn_decl_params dissolved. fn_decl ident now routes through StampLexeme and SymbolIndex fill carries module_qn.fn.param (parity proven by execution); domain construction remains interim param-list-walk (body_lower_domain_from_param_list) until domain is built from SymbolIndex lookup rather than walked from the param list."
 
-fn domain_root_has_named_bindings(root: Node) -> Bool {
-  match root.kind {
-    TypeNode { connective: Conj } =>
-      fold(root.children, init: false, f: fn(acc, e) {
-        if acc {
-          acc
-        } else {
-          match try_edge_declared_binding(e: e) {
-            Present { value: _ } => true
-            Absent => false
-          }
-        }
-      })
-    TypeNode { connective: Atom { identity: _ } } => true
-    _ => false
-  }
-}
-
+// Whether an Arrow scopes its domain's binders is v2.std.node arrow_domain_binds_a_name, the same
+// answer Node admission reads (A4). The retired Atom-domain arm is gone: under the one Arrow encoding
+// (gunbc#12625) a domain is a Conj of binders, and an Atom in domain position is a type, never a local.
 fn arrow_domain_has_named_bindings(n: Node) -> Bool {
   match n.kind {
-    TypeNode { connective: Arrow } =>
-      match arrow_first_positional_target(children: n.children) {
-        FirstPositionalFound { target: domain } => domain_root_has_named_bindings(root: domain)
-        FirstPositionalAbsent => false
-      }
+    TypeNode { connective: Arrow } => arrow_domain_binds_a_name(children: n.children)
     _ => false
   }
 }
@@ -2902,6 +2885,10 @@ fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node
           child_walk_step(w: acc, e: e, r: resolve_type_params_conj(ctx: outer_ctx, conj: e.target))
         } else if (edge_label_of(e: e) == arrow_signature_order_label) {
           child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None })
+        } else if (edge_label_of(e: e) == arrow_resource_requirements_label) {
+          child_walk_step(w: acc, e: e, r: resolve_arrow_resource_requirements(ctx: resolve_ctx_with_scope(ctx: inner_ctx, scope: scope_type), requirements: e.target))
+        } else if arrow_named_edge_is_contract(e: e) {
+          child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None })
         } else {
           child_walk_step(
             w: acc,
@@ -2927,6 +2914,63 @@ fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node
         )
     }
   }))
+}
+
+// AN ARROW'S CONTRACT EDGES ARE NOT VALUES (v2.std.node arrow_named_edge_is_contract). The effect-claims
+// and execution-mode edges hold self-named atoms of a closed vocabulary that v2.std.arrow_contract has
+// already checked; they are carried unwalked, like the declared order. The resource-requirements edge
+// alone holds REFERENCES (`requires Network`), so it is walked -- in the Arrow's type scope, which sees
+// its type parameters and not its value parameters, because a requirement is a fact about the
+// operation, never about an argument -- and each member must then name a declared resource
+// (v2.std.symbol_index symbol_index_declares_resource_at, marked from the normalize-captured
+// resource declarations), at most once by resolved declaration. A member naming anything else, or a
+// declaration a second spelling already named, refuses at that member.
+fn resolve_arrow_resource_requirements(ctx: ResolveContext, requirements: Node) -> ResolveNodeWalk {
+  match resolve_node_walk(ctx: ctx, n: requirements) {
+    ResolveWalkRefused { first: f, rest: rs, observation: o } => ResolveWalkRefused { first: f, rest: rs, observation: o }
+    ResolveWalkAccepted { value: resolved, diagnostics: d } =>
+      match resolve_requirement_member_refusal_optional(index: ctx.namespace.symbol_index, members: resolved.children) {
+        Present { value: refusal } => resolve_walk_refused_one(chain: diagnostics_singleton(d: refusal))
+        Absent => ResolveWalkAccepted { value: resolved, diagnostics: d }
+      }
+  }
+}
+
+type ResolveRequirementScan {
+  seen: List<QualifiedName>
+  refusal: Optional<Diagnostic>
+}
+
+// THE REQUIREMENT DECISION, over the resolved members and the index alone: it reads nothing else of the
+// resolution context, so it takes nothing else, and its refusals can be exercised at this interface
+// with supplied members (v2.test.claim.normalize.operation_requires_edge) while the full route stays
+// exercised by that module's resolving claims.
+fn resolve_requirement_member_refusal_optional(index: SymbolIndex, members: List<Edge>) -> Optional<Diagnostic> {
+  fold(members, init: ResolveRequirementScan { seen: Empty, refusal: optional_absent() }, f: fn(acc, e) {
+    match acc.refusal {
+      Present { value: _ } => acc
+      Absent =>
+        match declaration_reference_path_optional(node: e.target) {
+          Absent => ResolveRequirementScan { seen: acc.seen, refusal: optional_present(value: resolve_requirement_diagnostic(reason: ^resolve_reason_requirement_not_a_resource, n: e.target)) }
+          Present { value: path } =>
+            if !symbol_index_declares_resource_at(index: index, qualified_path: path) {
+              ResolveRequirementScan { seen: acc.seen, refusal: optional_present(value: resolve_requirement_diagnostic(reason: ^resolve_reason_requirement_not_a_resource, n: e.target)) }
+            } else if fold(acc.seen, init: false, f: fn(found, p) { found || (p == path) }) {
+              ResolveRequirementScan { seen: acc.seen, refusal: optional_present(value: resolve_requirement_diagnostic(reason: ^resolve_reason_requirement_repeated, n: e.target)) }
+            } else {
+              ResolveRequirementScan { seen: list_snoc_item(xs: acc.seen, item: path), refusal: optional_absent() }
+            }
+        }
+    }
+  }).refusal
+}
+
+fn resolve_requirement_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
 }
 
 fn resolve_bind_binder_target(t: Node) -> ResolveNodeWalk {

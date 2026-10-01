@@ -479,7 +479,11 @@ fn impact_admission_pool_independence_trigger(
         ReferenceDerivedClosureUnavailable { capability, trigger } =>
           match capability {
             UnrelatedLoadedFileExcluded => optional_present(value: trigger)
-            _ => acc
+            SameFileEarlierNeighbourVisible => acc
+            SiblingDecisionBranchExcluded => acc
+            LaterDeclarationExcluded => acc
+            DistinctSameSpelledDeclarationsPreserved => acc
+            RepeatedMentionsCollapseDependency => acc
           }
         ReferenceDerivedClosureEstablished { receipt: _ } => acc
         ReferenceDerivedClosureRefused { capability: _, failure: _ } => acc
@@ -498,7 +502,11 @@ fn impact_admission_pool_independence_established(
         ReferenceDerivedClosureEstablished { receipt } =>
           match receipt.capability {
             UnrelatedLoadedFileExcluded => true
-            _ => false
+            SameFileEarlierNeighbourVisible => false
+            SiblingDecisionBranchExcluded => false
+            LaterDeclarationExcluded => false
+            DistinctSameSpelledDeclarationsPreserved => false
+            RepeatedMentionsCollapseDependency => false
           }
         ReferenceDerivedClosureUnavailable { capability: _, trigger: _ } => false
         ReferenceDerivedClosureRefused { capability: _, failure: _ } => false

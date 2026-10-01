@@ -14,6 +14,7 @@ import v2.std.node {
   TypeNode,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node_query { binder_edge }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -26,10 +27,10 @@ data bitwidth_carrier_target: Node = Node {
 data bitwidth_modeled_input: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Named { name: ^pointer_width },
-      target: bitwidth_carrier_target
-    }
+    binder_edge(
+      name: ^pointer_width,
+      type_node: bitwidth_carrier_target
+    )
   ],
   occurrence_id: OccurrenceSynthetic
 }
