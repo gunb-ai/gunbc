@@ -298,7 +298,7 @@ fn refused_probe() -> String {
 fn establishment(script: String) -> SolEstablishment {
   let dir = scratch_dir()
   let run = probe_launch(dir: dir, script: script, pid_path: concat(dir, "/collector.pid"))
-  let e = if run.launched { mtcollins1_sol_await_establishment(pid_path: run.pid_path, capture_path: run.capture_path, remaining: 10) } else { SolNotEstablished { failure: SolActivationUnconfirmed { collector: SolCollectorUnrecorded, allowance: second(count: 0) } } }
+  let e = if run.launched { mtcollins1_sol_await_establishment(pid_path: run.pid_path, capture_path: run.capture_path, allowance: second(count: 10)) } else { SolNotEstablished { failure: SolActivationUnconfirmed { collector: SolCollectorUnrecorded, allowance: second(count: 0) } } }
   let _stopped = gunbc.machine_intake.sol_hold.ReleaseHeld(pid_path: run.pid_path as NonEmptyStr).success
   let _removed = shell.Remove.RecursiveForce(path: dir)
   e

@@ -470,13 +470,17 @@ fn loop_positional_child_count(children: List<Edge>) -> Int {
 // The positional children are the iterated body. ^loop_domain_edge targets the value iterated, which
 // is evaluated ONCE and outside the iteration. ^loop_bound_edge targets the termination measure.
 // ^loop_carrier_edge targets the loop-carried state's BINDER, never a value; the carried state's
-// initial value lives on an enclosing Bind. Any other named label is LoopEdgeUnrecognized, which no
+// initial value lives on an enclosing Bind. ^loop_realized_declaration_edge targets an AUTHORED
+// reference -- the callee occurrence of a desugared recurrence such as `fold(..)` -- which resolve must
+// bind to the declaration whose recurrence the Loop realizes; it is a reference, never work. A Loop
+// whose meaning the language fixes (`for`, `while`, `loop`) names no declaration and carries none. Any other named label is LoopEdgeUnrecognized, which no
 // conforming Loop holds, so a consumer that matches every role is exhaustive over a conforming Loop.
 type LoopEdgeRole
   = LoopIteratedBody
   | LoopDomainValue
   | LoopBoundMeasure
   | LoopCarrierBinder
+  | LoopRealizedDeclaration
   | LoopEdgeUnrecognized
 
 fn loop_edge_role(e: Edge) -> LoopEdgeRole {
@@ -489,6 +493,8 @@ fn loop_edge_role(e: Edge) -> LoopEdgeRole {
         LoopBoundMeasure
       } else if sym == ^loop_carrier_edge {
         LoopCarrierBinder
+      } else if sym == ^loop_realized_declaration_edge {
+        LoopRealizedDeclaration
       } else {
         LoopEdgeUnrecognized
       }
@@ -502,6 +508,7 @@ fn loop_body_edges_conform(children: List<Edge>) -> Bool {
       LoopDomainValue => acc
       LoopBoundMeasure => acc
       LoopCarrierBinder => acc
+      LoopRealizedDeclaration => acc
       LoopEdgeUnrecognized => false
     }
   })
@@ -511,9 +518,11 @@ fn loop_behavior_edges_conform(children: List<Edge>) -> Bool {
   let bound_edges = name_occurrences(name: ^loop_bound_edge, children: children)
   let carrier_edges = name_occurrences(name: ^loop_carrier_edge, children: children)
   let domain_edges = name_occurrences(name: ^loop_domain_edge, children: children)
+  let realized_edges = name_occurrences(name: ^loop_realized_declaration_edge, children: children)
   (bound_edges == 1)
   && (carrier_edges <= 1)
   && (domain_edges <= 1)
+  && (realized_edges <= 1)
   && loop_body_edges_conform(children: children)
   && (loop_positional_child_count(children: children) >= 1)
 }
@@ -805,6 +814,7 @@ type ArrowBodyForm
   = DirectAtomBody
   | RecordConstructBody
   | DeclarationReferenceBody
+  | ParameterReferenceBody
   | ComputationBody { behavior: Behavior }
   | FunctionValueBody
   | UnsupportedArrowBody
@@ -850,6 +860,47 @@ fn declaration_reference_marker() -> Symbol {
   declaration_reference_marker_symbol
 }
 
+// A REFERENCE TO A NAMED FN'S PARAMETER IS THE SAME CARRIER UNDER ITS OWN MARKER. v2.compiler.resolve
+// mints it from a ParameterFrame (resolve_frame_bound_reference) over the parameter's declaring path
+// <fn path>.<label> -- the path v2.compiler.symbol_index_fill indexes the parameter at, and the one
+// identity std.decl_ref DeclarationRef names for it (module_path, decl_name = the fn, the parameter
+// as the component). It is a reference to a binder of the enclosing declaration, not to a
+// declaration a module owns: v2.compiler.reference_closure never reads it as a neighbour, and a
+// target spells its leaf as a local rather than a module-scoped name. A second lexeme no dag
+// identifier can spell keeps the two apart without a shape test.
+data parameter_reference_marker_symbol: Symbol = symbol_intern_lexeme(lexeme: "<parameter-reference>")
+
+fn parameter_reference_marker() -> Symbol {
+  parameter_reference_marker_symbol
+}
+
+// WHICH REFERENCE A MARKER DENOTES, AS A CLOSED VARIANT. Every reader of a resolved reference asks
+// this, never the marker symbol, so a third marker is a new arm every reader must place.
+type ResolvedReferenceKind
+  = DeclarationReferenceKind
+  | ParameterReferenceKind
+
+fn resolved_reference_kind_marker(kind: ResolvedReferenceKind) -> Symbol {
+  match kind {
+    DeclarationReferenceKind => declaration_reference_marker()
+    ParameterReferenceKind => parameter_reference_marker()
+  }
+}
+
+type ResolvedReferenceMarking
+  = MarkedReference { kind: ResolvedReferenceKind }
+  | NotMarkedReference
+
+fn resolved_reference_kind_of_label(label: Symbol) -> ResolvedReferenceMarking {
+  if symbol_eq(a: label, b: declaration_reference_marker()) {
+    MarkedReference { kind: DeclarationReferenceKind }
+  } else if symbol_eq(a: label, b: parameter_reference_marker()) {
+    MarkedReference { kind: ParameterReferenceKind }
+  } else {
+    NotMarkedReference
+  }
+}
+
 // A CONSTRUCT'S TAG IS MARKED BY ITS ROLE, NOT RECOGNISED BY SPELLING. A record construct and a
 // fielded constructor pattern are one Conj whose first edge carries this marker and targets the
 // constructor as an ordinary REFERENCE: the authored qualified-name spine before resolution (a bare
@@ -891,21 +942,32 @@ fn construct_tag_elided_marker() -> Symbol {
 // authored one-field record over a record -- stays a record construct and is refused by its gate
 // exactly as before.
 fn declaration_reference_body_marked(target: Node) -> Bool {
+  match resolved_reference_body_kind(target: target) {
+    MarkedReference { kind: DeclarationReferenceKind } => true
+    MarkedReference { kind: ParameterReferenceKind } => false
+    NotMarkedReference => false
+  }
+}
+
+fn resolved_reference_body_kind(target: Node) -> ResolvedReferenceMarking {
   match target.kind {
     TypeNode { connective: Conj } =>
-      (count(target.children) == 1)
-        && fold(target.children, init: true, f: fn(acc, e) {
-          acc && (match e.label {
-            Named { name: label } => symbol_eq(a: label, b: declaration_reference_marker())
-            Positional => false
-          })
+      if count(target.children) == 1 {
+        fold(target.children, init: NotMarkedReference, f: fn(acc, e) {
+          match e.label {
+            Named { name: label } => resolved_reference_kind_of_label(label: label)
+            Positional => acc
+          }
         })
-    TypeNode { connective: Atom { identity: _ } } => false
-    TypeNode { connective: Disj } => false
-    TypeNode { connective: Arrow } => false
-    TypeNode { connective: Cardinality } => false
-    TypeNode { connective: Instantiation } => false
-    ComputationNode { behavior: _ } => false
+      } else {
+        NotMarkedReference
+      }
+    TypeNode { connective: Atom { identity: _ } } => NotMarkedReference
+    TypeNode { connective: Disj } => NotMarkedReference
+    TypeNode { connective: Arrow } => NotMarkedReference
+    TypeNode { connective: Cardinality } => NotMarkedReference
+    TypeNode { connective: Instantiation } => NotMarkedReference
+    ComputationNode { behavior: _ } => NotMarkedReference
   }
 }
 
@@ -913,7 +975,11 @@ fn classify_arrow_body_form(target: Node) -> ArrowBodyForm {
   match target.kind {
     TypeNode { connective: Atom { identity: _ } } => DirectAtomBody
     TypeNode { connective: Conj } =>
-      if declaration_reference_body_marked(target: target) { DeclarationReferenceBody } else { RecordConstructBody }
+      match resolved_reference_body_kind(target: target) {
+        MarkedReference { kind: DeclarationReferenceKind } => DeclarationReferenceBody
+        MarkedReference { kind: ParameterReferenceKind } => ParameterReferenceBody
+        NotMarkedReference => RecordConstructBody
+      }
     TypeNode { connective: Arrow } => FunctionValueBody
     ComputationNode { behavior: b } => ComputationBody { behavior: b }
     TypeNode { connective: Disj } => UnsupportedArrowBody
@@ -928,6 +994,7 @@ fn arrow_body_admits_eval_entry(form: ArrowBodyForm) -> Bool {
     DirectAtomBody => true
     RecordConstructBody => false
     DeclarationReferenceBody => false
+    ParameterReferenceBody => false
     FunctionValueBody => false
     ComputationBody { behavior: Value } => false
     ComputationBody { behavior: Transform } => true
@@ -1022,6 +1089,7 @@ fn arrow_body_target_is_valid_realization(target: Node) -> Bool {
     UnsupportedArrowBody => false
     RecordConstructBody => arrow_body_record_construct_conforms(node: target)
     DeclarationReferenceBody => true
+    ParameterReferenceBody => true
     DirectAtomBody => true
     FunctionValueBody => true
     ComputationBody { behavior: _ } => true
@@ -1051,8 +1119,17 @@ fn loop_carrier_binder_target(children: List<Edge>) -> NamedEdgeTargetLookup {
   named_edge_target_lookup(children: children, name: ^loop_carrier_edge)
 }
 
+fn loop_domain_value_target(children: List<Edge>) -> NamedEdgeTargetLookup {
+  named_edge_target_lookup(children: children, name: ^loop_domain_edge)
+}
+
+fn loop_realized_declaration_target(children: List<Edge>) -> NamedEdgeTargetLookup {
+  named_edge_target_lookup(children: children, name: ^loop_realized_declaration_edge)
+}
+
 // Of a Loop's edges only the iterated body repeats: the domain is evaluated once, the bound is a
-// measure and the carrier is a binder. Each consumer matches loop_edge_role itself.
+// measure, the carrier is a binder and the realized declaration is a reference. Each consumer
+// matches loop_edge_role itself.
 fn loop_edge_contributes_to_iteration_fold(parent: Node, e: Edge) -> Bool {
   match parent.kind {
     ComputationNode { behavior: Loop } =>
@@ -1061,6 +1138,7 @@ fn loop_edge_contributes_to_iteration_fold(parent: Node, e: Edge) -> Bool {
         LoopDomainValue => false
         LoopBoundMeasure => false
         LoopCarrierBinder => false
+        LoopRealizedDeclaration => false
         LoopEdgeUnrecognized => false
       }
     TypeNode { connective: _ } => loop_edge_contributes_to_iteration_fold_otherwise(e: e)
@@ -1099,6 +1177,7 @@ fn cost_edge_role(parent: Node, e: Edge) -> CostEdgeRole {
         LoopDomainValue => CostEdgePricedOnce
         LoopBoundMeasure => CostEdgeNotPriced
         LoopCarrierBinder => CostEdgeNotPriced
+        LoopRealizedDeclaration => CostEdgeNotPriced
         LoopEdgeUnrecognized => CostEdgeNotPriced
       }
     TypeNode { connective: Arrow } =>
