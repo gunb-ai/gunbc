@@ -1128,12 +1128,20 @@ fn run() -> Result<ExitCode, ExitCode> {
                     "required-ci: admitted-module-identities {:?}",
                     admitted_module_identities
                 );
+                // ADMITTED MINUS JUDGED IS THE POPULATION OUTSIDE THIS RUN'S PREPARED SUBJECT,
+                // not a set of resolve failures: a module here was never handed to the checker,
+                // so nothing about it was refused. It was printed as
+                // `unresolved-module-identities`, a name for a failure it does not record (DESIGN
+                // section 3, a meaning fork), and a reader took it for silently dropped resolve
+                // errors. Which modules a run prepares, and under which seed ground, is printed by
+                // the floor's `[floor-phase]` lines; this is the count of the rest.
                 eprintln!(
-                    "required-ci: unresolved-module-identities {:?}",
-                    v1_compiler::cli_run::declaration_index::modules_unresolved_by_lane(
+                    "required-ci: outside-subject-module-count {}",
+                    v1_compiler::cli_run::declaration_index::modules_outside_lane_subject(
                         admitted_module_identities,
                         &judged_module_identities,
                     )
+                    .len()
                 );
             }
             Err(cause) => {
