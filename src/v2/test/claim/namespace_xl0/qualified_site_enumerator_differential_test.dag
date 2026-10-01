@@ -108,21 +108,15 @@ test fn both_enumerators_see_a_qualified_field_type_holds() -> Bool {
   parse_walker_sees(spelling: qsd_field_spelling) && collector_sees(spelling: qsd_field_spelling)
 }
 
-// THE CALL CELLS, the two positions reference_deps_dissolve_on still names as outstanding: a
-// qualified callee and a qualified call argument. Each is read from both enumerators; the claims
-// state what is measured, so either one reds when the other enumerator's coverage moves.
-test fn the_collector_sees_a_qualified_callee_holds() -> Bool {
-  collector_sees(spelling: qsd_callee_spelling)
+// THE CALL CELLS, MEASURED 2026-10-01: the two positions reference_deps_dissolve_on still names as
+// outstanding -- a qualified callee and a qualified call argument -- are seen by the collector and NOT
+// by the parse walker. So at these positions the collector is the strictly wider enumerator: the
+// parse walker's survival does not rest on them. Each cell reds if the collector loses the position
+// or the parse walker gains it, and is re-stated as an agreement control when that happens.
+test fn only_the_collector_sees_a_qualified_callee_today() -> Bool {
+  collector_sees(spelling: qsd_callee_spelling) && !parse_walker_sees(spelling: qsd_callee_spelling)
 }
 
-test fn the_collector_sees_a_qualified_call_argument_holds() -> Bool {
-  collector_sees(spelling: qsd_argument_spelling)
-}
-
-test fn the_parse_walker_sees_a_qualified_callee_holds() -> Bool {
-  parse_walker_sees(spelling: qsd_callee_spelling)
-}
-
-test fn the_parse_walker_sees_a_qualified_call_argument_holds() -> Bool {
-  parse_walker_sees(spelling: qsd_argument_spelling)
+test fn only_the_collector_sees_a_qualified_call_argument_today() -> Bool {
+  collector_sees(spelling: qsd_argument_spelling) && !parse_walker_sees(spelling: qsd_argument_spelling)
 }
