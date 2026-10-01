@@ -939,6 +939,7 @@ pub(crate) fn witness_execution_outcome_label(outcome: &ClaimOutcome) -> &'stati
         // SITE 4. "timed_out" over both arms is what put `outcome=timed_out` on the over-cost
         // line of a row the same ledger reported as having completed.
         ClaimOutcome::BudgetInterrupted { .. } => "budget_interrupted",
+        ClaimOutcome::HangGuardInterrupted { .. } => "hang_guard_interrupted",
         ClaimOutcome::CompletedOverBudget { .. } => "completed_over_budget",
         ClaimOutcome::HostToolUnresolved { .. } => "host_tool_unresolved",
         ClaimOutcome::HostEffectRefused { .. } => "host_effect_refused",

@@ -11740,6 +11740,8 @@ pub enum RequiredFloorCostBasis {
 pub enum SafetyInterruptTrigger {
     CpuDeadlineRaised,
     WallDeadlineRaised,
+    /// The required floor's liveness cap fired: the claim stopped returning. Not a budget.
+    HangGuardRaised,
 }
 
 impl From<BudgetKind> for SafetyInterruptTrigger {
@@ -11758,6 +11760,7 @@ impl SafetyInterruptTrigger {
         match self {
             SafetyInterruptTrigger::CpuDeadlineRaised => "cpu_deadline",
             SafetyInterruptTrigger::WallDeadlineRaised => "wall_deadline",
+            SafetyInterruptTrigger::HangGuardRaised => "hang_guard",
         }
     }
 }
@@ -12287,6 +12290,12 @@ pub fn claim_terminality(
     match outcome {
         ClaimOutcome::BudgetInterrupted { kind, .. } => ClaimTerminality::SafetyInterrupted {
             raised_by: SafetyInterruptTrigger::from(*kind),
+            elapsed_cpu_at_least_ms: (receipt.cpu_nanos / 1_000_000) as u64,
+            elapsed_wall_at_least_ms: (receipt.wall_nanos / 1_000_000) as u64,
+            wall_safety_limit_ms: policy.wall_ms,
+        },
+        ClaimOutcome::HangGuardInterrupted { .. } => ClaimTerminality::SafetyInterrupted {
+            raised_by: SafetyInterruptTrigger::HangGuardRaised,
             elapsed_cpu_at_least_ms: (receipt.cpu_nanos / 1_000_000) as u64,
             elapsed_wall_at_least_ms: (receipt.wall_nanos / 1_000_000) as u64,
             wall_safety_limit_ms: policy.wall_ms,
@@ -19965,6 +19974,9 @@ enum ExpectedRedArm {
     /// travelling separately on this arm would be a second authority over one field of it —
     /// consolidated later at someone else's cost (DESIGN §3). The caller reads the reading.
     BudgetRefused,
+    /// Enrolled and CUT OFF BY THE HANG GUARD. Not agreement, for the same reason as a budget
+    /// refusal -- no verdict was reached -- and not a budget refusal either.
+    HangGuardRefused,
     /// Enrolled and THREW. Not agreement, for the reason the arm above is not: the enrolled
     /// claim was never decided, so there is no expected failure for the enrollment to hold.
     RuntimeErrored,
@@ -20265,6 +20277,8 @@ pub enum ClaimDisposition {
     KnownRedHeld,
     KnownRedNowPassing,
     BudgetRefusedBeforeVerdict,
+    /// The hang guard cut the claim off: not measured, and not a budget verdict.
+    HangGuardRefusedBeforeVerdict,
     /// REACHED ITS VERDICT, then exceeded its budget. Deliberately NOT a `…BeforeVerdict` arm:
     /// the whole defect this split repairs was a name asserting the verdict was never produced.
     PassedOverBudget,
@@ -20310,6 +20324,9 @@ pub fn claim_disposition(row: &ClaimTerminalRow) -> ClaimDisposition {
         // completed-over-budget row was recorded as having produced no verdict when it demonstrably
         // had one. The other four produce a wrong label; this one produced a wrong FACT.
         (ClaimOutcome::BudgetInterrupted { .. }, _) => ClaimDisposition::BudgetRefusedBeforeVerdict,
+        (ClaimOutcome::HangGuardInterrupted { .. }, _) => {
+            ClaimDisposition::HangGuardRefusedBeforeVerdict
+        }
         (ClaimOutcome::CompletedOverBudget { .. }, false) => ClaimDisposition::PassedOverBudget,
         // ENROLLED AND PASSING IS STILL NOW-PASSING. The cost half is not lost by this choice:
         // it travels on the cost channel (`completed_over_cost_requirement`), which is where the
@@ -20356,6 +20373,7 @@ pub fn claim_terminal_tag(outcome: &ClaimOutcome) -> &'static str {
         ClaimOutcome::RuntimeError { .. } => "runtime-errored",
         // SITE 3.
         ClaimOutcome::BudgetInterrupted { .. } => "budget-refused",
+        ClaimOutcome::HangGuardInterrupted { .. } => "hang-guard-refused",
         ClaimOutcome::CompletedOverBudget { .. } => "passed-over-budget",
         ClaimOutcome::HostToolUnresolved { .. } => "host-tool-unresolved",
         // THE TAG DESCENDS INTO THE GROUND, mirroring `render_route_gap_ground_tag` in
@@ -20396,6 +20414,9 @@ pub fn claim_terminal_detail(outcome: &ClaimOutcome) -> String {
         ClaimOutcome::RuntimeError { message, .. } => message.clone(),
         ClaimOutcome::BudgetInterrupted { kind, .. }
         | ClaimOutcome::CompletedOverBudget { kind, .. } => kind.label().to_string(),
+        ClaimOutcome::HangGuardInterrupted { .. } => {
+            SafetyInterruptTrigger::HangGuardRaised.label().to_string()
+        }
         ClaimOutcome::HostToolUnresolved { name, .. } => name.clone(),
         ClaimOutcome::HostEffectRefused { operation, .. } => operation.clone(),
         ClaimOutcome::Panicked { payload } => payload.clone(),
@@ -20410,6 +20431,7 @@ pub fn claim_disposition_wire(disposition: ClaimDisposition) -> &'static str {
         ClaimDisposition::KnownRedHeld => "known-red-held",
         ClaimDisposition::KnownRedNowPassing => "known-red-now-passing",
         ClaimDisposition::BudgetRefusedBeforeVerdict => "budget-refused-before-verdict",
+        ClaimDisposition::HangGuardRefusedBeforeVerdict => "hang-guard-refused-before-verdict",
         ClaimDisposition::PassedOverBudget => "passed-over-budget",
         ClaimDisposition::HostToolUnresolvedBeforeVerdict => "host-tool-unresolved-before-verdict",
         ClaimDisposition::RouteGapBeforeVerdict => "route-gap-before-verdict",
@@ -20442,6 +20464,7 @@ fn expected_red_arm(outcome: &ClaimOutcome) -> ExpectedRedArm {
     match outcome {
         ClaimOutcome::Pass => ExpectedRedArm::NowPassing,
         ClaimOutcome::BudgetInterrupted { .. } => ExpectedRedArm::BudgetRefused,
+        ClaimOutcome::HangGuardInterrupted { .. } => ExpectedRedArm::HangGuardRefused,
         ClaimOutcome::CompletedOverBudget { .. } => ExpectedRedArm::PassedOverBudget,
         ClaimOutcome::Fail => ExpectedRedArm::Held,
         // SAME ARM AS `Fail`, for the same reason: the enrollment predicts a failing verdict,

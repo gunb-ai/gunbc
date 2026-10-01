@@ -3404,6 +3404,9 @@ fn local_repo_wet_observed_from(outcome: &crate::cli_run::ClaimOutcome) -> Local
         // NO VERDICT WAS REACHED. The claim was stopped or never started, which is not the same
         // as reaching a verdict this lane disagrees with.
         O::BudgetInterrupted { .. } => LocalRepoWetObserved::Nonterminal("budget".to_string()),
+        O::HangGuardInterrupted { .. } => {
+            LocalRepoWetObserved::Nonterminal("hang_guard".to_string())
+        }
         O::NotAttempted { halted_by } => {
             LocalRepoWetObserved::Nonterminal(format!("not attempted: {halted_by}"))
         }
@@ -4898,6 +4901,13 @@ pub(crate) fn run_discovery_rows(
             // {budget}ms budget`, which is the bound-in-the-cost-field defect that renderer
             // exists to remove; keeping a local format string here would let this transport
             // disagree with the floor's about one outcome, which has happened before.
+            ClaimOutcome::HangGuardInterrupted {
+                elapsed_at_least_ms,
+                guard_ms,
+            } => summary.failures.push(format!(
+                "{} ({}) stopped returning: hang guard fired after at least {}ms against a {}ms hang tolerance (not measured; not a budget verdict)",
+                row.function, row.entry, elapsed_at_least_ms, guard_ms
+            )),
             ClaimOutcome::BudgetInterrupted { .. } | ClaimOutcome::CompletedOverBudget { .. } => {
                 summary.failures.push(format!(
                     "{} ({}) {}",
