@@ -778,16 +778,16 @@ fn presenting(image_name: String) -> MegaRacCdRow {
   MegaRacCdRow { image_name: image_name, redirection_status: 1, media_index: 0, session_index: 0, ready_at: none }
 }
 
-// CODE 16 WITH NOTHING PRESENTED AND THE HOST OFF -- the 2026-09-27 state. The attach proceeds and the
-// presentation reaches Started, but the code is still 16 at readiness, so the attempt refuses as unable
-// to establish the media state, with no handoff.
-test fn cd_error_16_with_nothing_presented_refuses_before_the_handoff() -> Bool {
+// CODE 16 WITH NOTHING PRESENTED AND THE HOST OFF -- the 2026-09-27 state. The attach proceeds, the
+// presentation reaches Started, and the code 16 still read at readiness is the vendor's latched last-stop
+// reason ("Device Ejected"; the UI consults it only when the row is stopped), so it is recorded and the
+// attempt proceeds to the boot.
+test fn cd_error_16_with_nothing_presented_attaches_and_boots_with_the_code_recorded() -> Bool {
   match run_attempt(world: media_varied(media: media_errored(code: 16, clears: true, after_ready: no_error_after_ready(), cd: megarac_cleared_cd()))) {
     WitnessReturned { value, route } =>
-      string_contains(s: outcome_reason(a: value), pattern: "cannot establish the media state")
-        && string_contains(s: outcome_reason(a: value), pattern: "cd_error_code before any write was 16")
-        && count_named(route: route, name: "megarac.Media.StopMedia") == 0
-        && reached_no_power_action(route: route)
+      string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")
+        && first_ordinal(route: route, name: "megarac.Media.StartMedia") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl")
+        && controller_writes_are_under_the_hold(route: route)
     _ => false
   }
 }
@@ -806,12 +806,13 @@ test fn cd_error_16_with_the_host_on_writes_nothing() -> Bool {
 }
 
 // A CODE THAT APPEARS WITH READINESS. The presentation reads Started while the general route reports
-// 16 at readiness; the attempt refuses before the handoff.
-test fn cd_error_appearing_with_readiness_refuses_before_the_handoff() -> Bool {
+// 16 at readiness: a Started row is ready whatever the code says, so the attempt proceeds to the boot.
+test fn cd_error_appearing_with_readiness_is_recorded_and_booted() -> Bool {
   match run_attempt(world: media_varied(media: media_errored(code: 0, clears: true, after_ready: Present { value: 16 }, cd: megarac_cleared_cd()))) {
     WitnessReturned { value, route } =>
-      string_contains(s: outcome_reason(a: value), pattern: "cd_error_code before any write was 0 and at readiness 16")
-        && reached_no_power_action(route: route)
+      string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")
+        && first_ordinal(route: route, name: "megarac.Media.StartMedia") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl")
+        && controller_writes_are_under_the_hold(route: route)
     _ => false
   }
 }
@@ -832,12 +833,13 @@ test fn a_stale_lane_image_with_a_code_the_stop_clears_is_replaced_and_booted() 
 
 // THE SAME STALE IMAGE, BUT THE STOP DOES NOT CLEAR THE CODE. The replacement reaches Started with the
 // code still 16, and the attempt refuses before the handoff.
-test fn a_stale_lane_image_with_a_code_the_stop_does_not_clear_refuses_after_the_replace() -> Bool {
+test fn a_stale_lane_image_with_a_code_the_stop_does_not_clear_is_replaced_and_booted() -> Bool {
   match run_attempt(world: media_varied(media: media_errored(code: 16, clears: false, after_ready: no_error_after_ready(), cd: presenting(image_name: stale_lane_image)))) {
     WitnessReturned { value, route } =>
-      string_contains(s: outcome_reason(a: value), pattern: "cannot establish the media state")
-        && count_named(route: route, name: "megarac.Media.StopMedia") == 1
-        && reached_no_power_action(route: route)
+      string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")
+        && first_ordinal(route: route, name: "megarac.Media.StopMedia") < first_ordinal(route: route, name: "megarac.Media.StartMedia")
+        && first_ordinal(route: route, name: "megarac.Media.StartMedia") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl")
+        && controller_writes_are_under_the_hold(route: route)
     _ => false
   }
 }
