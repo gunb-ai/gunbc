@@ -42850,7 +42850,7 @@ fn prepared_graph_without_typecheck_caches(
         modules: Rc::new(modules.into()),
         item_registry: graph.item_registry.clone(),
         diagnostics: graph.diagnostics.clone(),
-        emit_graph_info: graph.emit_graph_info.clone(),
+        item_leaf_owner_modules: graph.item_leaf_owner_modules.clone(),
     })
 }
 

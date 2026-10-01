@@ -3846,8 +3846,8 @@ pub(crate) fn typed_graph_byte_attribution(
     let v1_compiler_compile::ResolvedGraph {
         modules,
         item_registry,
+        item_leaf_owner_modules,
         diagnostics,
-        emit_graph_info,
     } = graph;
     let modules: im::Vector<Rc<crate::v1_compiler_infer_items::TypedModule>> = match Rc::try_unwrap(
         modules,
@@ -3943,7 +3943,7 @@ pub(crate) fn typed_graph_byte_attribution(
     drop_class!("occurrence_transport", occ);
     drop_class!("shared_modules", shared_modules.clone());
     drop_class!("graph_item_registry", item_registry);
-    drop_class!("emit_graph_info", emit_graph_info);
+    drop_class!("item_leaf_owner_modules", item_leaf_owner_modules);
     drop_class!("diagnostics", diagnostics);
     let sum: u64 = parts.iter().map(|(_, b)| *b).sum();
     eprintln!(
