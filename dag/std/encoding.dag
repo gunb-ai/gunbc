@@ -674,7 +674,10 @@ fn utf8_admit_octet(d: Utf8DecodeState, b: Int) -> Utf8DecodeState {
 fn utf8_decode_octets(octets: List<Int>) -> List<Int>? {
   match fold(octets, init: Utf8Ready { out: [] }, f: (d, octet) => utf8_admit_octet(d: d, b: octet)) {
     Utf8Ready { out: out } => Present { value: out }
-    _ => none
+    Utf8NeedOne { out: _, length: _, acc: _ } => none
+    Utf8NeedTwo { out: _, length: _, acc: _ } => none
+    Utf8NeedThree { out: _, acc: _ } => none
+    Utf8Refused => none
   }
 }
 
