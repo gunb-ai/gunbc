@@ -4,6 +4,7 @@
 use self::AdvanceResult::*;
 use self::EatResult::*;
 use self::ExpectedToken::*;
+use self::OperationRequiresDeclaration::*;
 use self::ParsedOccurrenceRole::*;
 use self::ParserCallIdentity::*;
 use self::ParserHelperIdentity::*;
@@ -10299,11 +10300,10 @@ pub fn parse_op_body_entries(
                                 }
                             } else {
                                 if (id.clone() == "requires".to_string()) {
-                                    let r = parse_op_requires_members(
+                                    let r = parse_op_requires_clause(
                                         token_stream_advance(tokens.clone(), 1),
                                         ctx.clone(),
                                         span.clone(),
-                                        Rc::new(vec![]),
                                     );
                                     if has_err(r.err.clone()) {
                                         return Rc::new(OpBodyResult {
@@ -10777,6 +10777,56 @@ pub fn parse_exit_entries_acc(
     }
 }
 
+pub fn parse_op_requires_clause(
+    tokens: Rc<TokenStream>,
+    ctx: Rc<ParseContext>,
+    span: Rc<SourceSpan>,
+) -> Rc<ModsResult> {
+    {
+        let tok = token_stream_first(tokens.clone());
+        let word = match tok.clone() {
+            Some(t) => t.text.clone(),
+            std::option::Option::None => "".to_string(),
+        };
+        if ((word.clone() == "none".to_string()) || (word.clone() == "opaque".to_string())) {
+            {
+                let minted = mint_parsed_bool_property(
+                    ctx.clone(),
+                    v1_rt::concat("requires_".to_string(), word.clone()),
+                    span.clone(),
+                );
+                let rest = token_stream_advance(tokens.clone(), 1);
+                if tok_is_comma(token_stream_first(rest.clone())) {
+                    Rc::new(ModsResult {
+                        properties: Rc::new(vec![]),
+                        tokens: rest.clone(),
+                        ctx: minted.ctx.clone(),
+                        err: Some(parse_error(
+                            v1_rt::concat(
+                                "`requires ".to_string(),
+                                v1_rt::concat(
+                                    word.clone(),
+                                    "` is a whole clause and takes no member".to_string(),
+                                ),
+                            ),
+                            span.clone(),
+                        )),
+                    })
+                } else {
+                    Rc::new(ModsResult {
+                        properties: Rc::new(vec![minted.property.clone()]),
+                        tokens: rest.clone(),
+                        ctx: minted.ctx.clone(),
+                        err: std::option::Option::None,
+                    })
+                }
+            }
+        } else {
+            parse_op_requires_members(tokens.clone(), ctx.clone(), span.clone(), Rc::new(vec![]))
+        }
+    }
+}
+
 pub fn parse_op_requires_members(
     mut __tco_loop_tokens: Rc<TokenStream>,
     mut __tco_loop_ctx: Rc<ParseContext>,
@@ -10841,30 +10891,94 @@ pub enum OperationRequiresDeclaration {
     RequiresOpaque,
     RequiresResources { members: Rc<Vec<Rc<Node>>> },
 }
+impl OperationRequiresDeclaration {
+    pub fn members(&self) -> Rc<Vec<Rc<Node>>> {
+        match self {
+            OperationRequiresDeclaration::RequiresUndeclared => {
+                panic!("no members on unit variant")
+            }
+            OperationRequiresDeclaration::RequiresNone => panic!("no members on unit variant"),
+            OperationRequiresDeclaration::RequiresOpaque => panic!("no members on unit variant"),
+            OperationRequiresDeclaration::RequiresResources { members: __val, .. } => __val.clone(),
+        }
+    }
+}
 
 pub fn operation_requires_declaration(
     op: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<OperationRequiresDeclaration> {
-    let name_of = |p: &Rc<Node>| {
-        crate::v1_std_core::field_init_node_name_at(p.clone(), source_indices.clone()).to_string()
-    };
-    if op.properties.iter().any(|p| name_of(p) == "requires_none") {
-        return Rc::new(OperationRequiresDeclaration::RequiresNone);
-    }
-    if op.properties.iter().any(|p| name_of(p) == "requires_opaque") {
-        return Rc::new(OperationRequiresDeclaration::RequiresOpaque);
-    }
-    let members: Vec<Rc<Node>> = op
-        .properties
-        .iter()
-        .filter(|p| name_of(p) == "requires")
-        .flat_map(|p| p.children.iter().cloned().collect::<Vec<_>>())
-        .collect();
-    if members.is_empty() {
-        Rc::new(OperationRequiresDeclaration::RequiresUndeclared)
-    } else {
-        Rc::new(OperationRequiresDeclaration::RequiresResources { members: Rc::new(members) })
+    {
+        let names = Rc::new({
+            let mut __result = Vec::new();
+            for p in op.properties.clone().iter().cloned() {
+                __result.push(crate::v1_std_core::field_init_node_name_at(
+                    p.clone(),
+                    source_indices.clone(),
+                ));
+            }
+            __result
+        });
+        let none_marks = (Rc::new({
+            let mut __result = Vec::new();
+            for n in names.iter().cloned() {
+                if (n.clone() == "requires_none".to_string()) {
+                    __result.push(n);
+                }
+            }
+            __result
+        })
+        .len() as i64);
+        let opaque_marks = (Rc::new({
+            let mut __result = Vec::new();
+            for n in names.iter().cloned() {
+                if (n.clone() == "requires_opaque".to_string()) {
+                    __result.push(n);
+                }
+            }
+            __result
+        })
+        .len() as i64);
+        if (none_marks.clone() > 0) {
+            Rc::new(OperationRequiresDeclaration::RequiresNone)
+        } else {
+            if (opaque_marks.clone() > 0) {
+                Rc::new(OperationRequiresDeclaration::RequiresOpaque)
+            } else {
+                {
+                    let members = Rc::new({
+                        let mut __result = Vec::new();
+                        for p in Rc::new({
+                            let mut __result = Vec::new();
+                            for p in op.properties.clone().iter().cloned() {
+                                if (crate::v1_std_core::field_init_node_name_at(
+                                    p.clone(),
+                                    source_indices.clone(),
+                                ) == "requires".to_string())
+                                {
+                                    __result.push(p);
+                                }
+                            }
+                            __result
+                        })
+                        .iter()
+                        .cloned()
+                        {
+                            __result.extend((*p.children.clone()).iter().cloned());
+                        }
+                        __result
+                    });
+                    let member_count = (members.clone().len() as i64);
+                    if (member_count.clone() == 0) {
+                        Rc::new(OperationRequiresDeclaration::RequiresUndeclared)
+                    } else {
+                        Rc::new(OperationRequiresDeclaration::RequiresResources {
+                            members: members.clone(),
+                        })
+                    }
+                }
+            }
+        }
     }
 }
 
