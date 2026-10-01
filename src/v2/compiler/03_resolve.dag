@@ -1422,7 +1422,7 @@ fn resolve_surface_operator_atom(
 // each refused child and the rest are gone before the module root. So every recursive step returns
 // ResolveNodeWalk, the refused arm carries the whole population upward, and the ONE projection to
 // Outcome sits at the legacy entries (resolve_node, resolve_with_namespace_policy,
-// resolve_with_admission_context_policy), which keep answering what they answered.
+// resolve_in_context), which keep answering what they answered.
 //
 // WHY ORDINAL IS CARRIED SEPARATELY, and it is load-bearing rather than tidy: resolve_transform_children
 // used `length(done) == 0` to mean "this is the operator child" -- the accumulated EDGE LIST
@@ -1482,7 +1482,7 @@ fn resolve_walk_of_outcome(o: Outcome<Node>) -> ResolveNodeWalk {
 // THE LEGACY PROJECTION. resolve's Outcome carries ONE chain, and the population's FIRST chain is
 // projected -- the chain the previous walk produced, because it stopped at that same child with the
 // same advisories before it. The remaining chains are not discarded: census-resolve reads the walk
-// itself through resolve_walk_with_admission_context_policy.
+// itself through resolve_walk_in_context.
 fn resolve_walk_outcome(w: ResolveNodeWalk) -> Outcome<Node> {
   match w {
     ResolveWalkAccepted { value: v, diagnostics: d } => Accepted { value: v, diagnostics: d }
