@@ -44672,7 +44672,7 @@ const REQUIRED_FLOOR_POLICY_MODULE: &str = "v2.workflow.required_floor";
 /// its own call site. `v2.workflow.floor_naming_hygiene` is reached through the producer's
 /// import closure rather than asked directly: the barren-sidecar question the runner used to
 /// put to it is one arm of the producer's per-file fold.
-const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 6] = [
+const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 7] = [
     REQUIRED_FLOOR_POLICY_MODULE,
     "v2.workflow.floor_discovery_producer",
     "gunbc.output_policy",
@@ -44691,6 +44691,12 @@ const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 6] = [
     // policy module for it would require the import to run the other way -- a cycle, which DESIGN
     // section 4 makes the import graph's one structural prohibition.
     "v2.workflow.floor_enrolment_margin",
+    // The terminal ledger's wire grammar (`render_terminal_ledger`, via `publish_terminal_ledger`).
+    // Enrolled so the ledger renders in a frame of the ONE prepared subject rather than through a
+    // second strict typecheck of its closure beside it: the closure is the floor's own authorities,
+    // already prepared, and a fresh resolve at publication duplicated that production while the
+    // subject was still resident (a std-root edit widened it past the leaf, gunbc#12846).
+    "v2.workflow.floor_terminal_ledger_wire",
 ];
 
 /// THE REQUIRED FLOOR, AS ONE ATTEMPT.
