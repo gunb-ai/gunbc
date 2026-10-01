@@ -155,6 +155,7 @@ type CoreEdgeLabel
   | ArrowExecutionModeClaimEdge
   | BinderTypeEdge
   | BinderDefaultEdge
+  | ArrowResourceRequirementsEdge
   | MapLiteralEntryEdge
   | MapLiteralEntriesEdge
 
@@ -216,6 +217,7 @@ fn core_edge_labels() -> List<CoreEdgeLabel> {
     ArrowExecutionModeClaimEdge,
     BinderTypeEdge,
     BinderDefaultEdge,
+    ArrowResourceRequirementsEdge,
     MapLiteralEntryEdge,
     MapLiteralEntriesEdge,
   ]
@@ -248,6 +250,7 @@ fn core_edge_label_canonical_symbol(marker: CoreEdgeLabel) -> Symbol {
     ArrowExecutionModeClaimEdge => ^core_arrow_execution_mode_claim_edge
     BinderTypeEdge => ^core_binder_type_edge
     BinderDefaultEdge => ^core_binder_default_edge
+    ArrowResourceRequirementsEdge => ^core_arrow_resource_requirements_edge
     MapLiteralEntryEdge => ^core_map_literal_entry_edge
     MapLiteralEntriesEdge => ^core_map_literal_entries_edge
   }
@@ -686,9 +689,22 @@ data arrow_signature_order_label: EdgeLabel = StructuralLabel { label: CoreMarke
 // VOCABULARY -- which claims and modes exist -- is not this module's fact: it lives in std.effects
 // EffectClaim and std.execution_mode ExecutionMode, and v2.std.arrow_contract checks a contract edge's
 // target against those homes (v2.std.type_binder type_binder_node_conforms runs it on every Arrow).
+// THE THIRD CONTRACT EDGE, an operation's declared RESOURCE REQUIREMENTS (D13 step a,
+// docs/plans/arrow-contract-edges.md): `requires Network` on an opaque operation, whose requirement
+// cannot be derived from a body because it has none. It is the core marker ArrowResourceRequirementsEdge,
+// and its target is a nonempty Conj of references to `resource` declarations, one Authored member per
+// spelling. Unlike the claims and mode edges it names DECLARATIONS, an open set, so its members are
+// resolved: v2.compiler.resolve walks it in the Arrow's OUTER scope (a requirement may not see the
+// operation's parameters) and refuses a member that does not resolve to a declared resource
+// (v2.std.symbol_index symbol_index_declares_resource_at) or that repeats one. Like the other two it is
+// metadata to every value reader: v2.compiler.infer and v2.std.type_binder node_inferred_subtree_nodes
+// skip every arrow_named_edge_is_contract edge.
 fn arrow_named_edge_is_contract(e: Edge) -> Bool {
-  edge_is_core(e: e, marker: ArrowEffectClaimsEdge) || edge_is_core(e: e, marker: ArrowExecutionModeClaimEdge)
+  edge_is_core(e: e, marker: ArrowEffectClaimsEdge)
+    || edge_is_core(e: e, marker: ArrowExecutionModeClaimEdge)
+    || edge_is_core(e: e, marker: ArrowResourceRequirementsEdge)
 }
+
 
 // The Arrow named edges that are not binders: its body, its declared order and its contract edges.
 // The one predicate every count of an Arrow's binders reads (here and v2.std.type_binder
@@ -727,6 +743,7 @@ fn arrow_signature_edges_conform(children: List<Edge>) -> Bool {
   && arrow_signature_order_conforms(children: children)
   && (core_occurrences(marker: ArrowEffectClaimsEdge, children: children) <= 1)
   && (core_occurrences(marker: ArrowExecutionModeClaimEdge, children: children) <= 1)
+  && (core_occurrences(marker: ArrowResourceRequirementsEdge, children: children) <= 1)
   && fold(children, init: true, f: fn(acc, e) {
     match e.label {
       Positional => acc

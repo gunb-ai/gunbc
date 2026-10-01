@@ -69,7 +69,7 @@ fn unused_parameters_rollup_claim_holds() -> Bool {
   match unused_parameters_rollup_claim.actual {
     Holds { value: actual } =>
       unused_parameters_fact_eq(a: actual, b: unused_parameters_rollup_claim.expected)
-    _ => false
+    Violates { diagnostic: _ } => false
   }
 }
 

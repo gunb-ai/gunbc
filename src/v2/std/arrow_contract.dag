@@ -12,6 +12,7 @@ import v2.std.node {
   Authored,
   ArrowEffectClaimsEdge,
   ArrowExecutionModeClaimEdge,
+  ArrowResourceRequirementsEdge,
   Node,
   Positional,
   StructuralLabel,
@@ -22,7 +23,8 @@ import v2.std.node {
   symbol_intern_lexeme
 }
 
-// THE VOCABULARY OF AN ARROW'S CONTRACT EDGES (XL-2 PR2a; docs/plans/arrow-contract-edges.md).
+// THE VOCABULARY OF AN ARROW'S CONTRACT EDGES (the resource-requirements edge's vocabulary is the open
+// set of declared resources, checked at resolution; see arrow_resource_requirements_edge_target_reads) (XL-2 PR2a; docs/plans/arrow-contract-edges.md).
 // v2.std.node owns the edges' structure (at most one each, never a binder). This module checks their
 // TARGETS against the vocabularies' homes: std.effects EffectClaim for ArrowEffectClaimsEdge and
 // std.execution_mode ExecutionMode for ArrowExecutionModeClaimEdge. Each label is the PROJECTION
@@ -104,7 +106,24 @@ fn arrow_execution_mode_claim_target_conforms(mode: Node) -> Bool {
 // Every contract edge an Arrow carries reads in its home vocabulary. How many of each it may carry is
 // v2.std.node arrow_signature_edges_conform's fact; a second edge refuses there.
 fn arrow_contract_conforms(children: List<Edge>) -> Bool {
-  arrow_effect_claims_edge_target_reads(children: children) && arrow_execution_mode_edge_target_reads(children: children)
+  arrow_effect_claims_edge_target_reads(children: children)
+    && arrow_execution_mode_edge_target_reads(children: children)
+    && arrow_resource_requirements_edge_target_reads(children: children)
+}
+
+// The resource-requirements target before resolution: a NONEMPTY Conj (no requirements has one form,
+// the absent edge), whose members the Conj discipline already holds named and distinct. Whether each
+// member names a declared resource, and whether two spellings name one, are facts of resolution
+// (v2.compiler.resolve), not of this pre-resolve wall.
+fn arrow_resource_requirements_edge_target_reads(children: List<Edge>) -> Bool {
+  match core_edge_target_lookup(children: children, marker: ArrowResourceRequirementsEdge) {
+    Found { target: requirements } =>
+      match requirements.kind {
+        TypeNode { connective: Conj } => count(requirements.children) > 0
+        _ => false
+      }
+    _ => true
+  }
 }
 
 fn arrow_effect_claims_edge_target_reads(children: List<Edge>) -> Bool {

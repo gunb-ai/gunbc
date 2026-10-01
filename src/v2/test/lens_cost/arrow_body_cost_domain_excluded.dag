@@ -79,6 +79,6 @@ fn arrow_body_cost_domain_excluded_holds() -> Bool {
         lhs: unit_cost(),
         rhs: unit_cost()
       }
-    _ => false
+    Violates { diagnostic: _ } => false
   }
 }

@@ -80,7 +80,7 @@ fn ng_norm_grafted_tree_has_no_metadata_edges(node: Node) -> Bool {
         }
       })
     ComputationNode { behavior: _ } => true
-    _ => true
+    TypeNode { connective: _ } => true
   }
 }
 

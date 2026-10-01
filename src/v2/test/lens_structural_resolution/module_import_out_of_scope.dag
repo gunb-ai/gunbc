@@ -84,7 +84,7 @@ fn module_import_out_of_scope_claim_holds() -> Bool {
           fact: actual,
           expected: OutOfScopeDependencyKind
         )
-    _ => false
+    Violates { diagnostic: _ } => false
   }
 }
 
