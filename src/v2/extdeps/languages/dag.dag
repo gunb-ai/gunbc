@@ -2547,6 +2547,114 @@ fn dag_grammar_service_decl_expr() -> GrammarExpr {
   )
 }
 
+// RESOURCE FAMILY -- stated difference from v1.compiler.parse. v1 parse_resource_def /
+// parse_resource_entries admit `resource` Name `{` (prop `:` expr | capability | acquire {..} |
+// release {..})* `}`, and SKIP the acquire and release bodies token by token (skip_until_rbrace), so
+// `acquire { hermetic }` reaches no carrier there. Here every entry is a closed production and
+// nothing is skipped: a property is one of the three v1 names over its closed values (the homes are
+// std.resource_contract ResourceKind and ResourceMode, read against them at lowering because a literal
+// terminal stamps its token CLASS and not its word, so the value is a lexeme-stamped ident whose
+// spelling the lowering projects; expires is a Bool literal), an acquire body admits only
+// the `hermetic` execution-mode claim (std.execution_mode Hermetic) or nothing, a release body admits
+// nothing, and a capability is the braced input/output form. Anything else is a located parse
+// refusal. v1's bare `capability name` and parenthesized `capability name(..) -> T` forms are not
+// admitted: the live corpus (dag/std/resources.dag) authors neither. Parsing is not lowering:
+// dag_surface_resource_decl lowers in v2.compiler.body_lowering_fold body_lower_resource_decl.
+fn dag_grammar_resource_property_expr(keyword: String, value: GrammarExpr) -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: keyword)),
+    right: dag_grammar_sequence(left: dag_grammar_terminal(token_class: ^dag_token_colon), right: value)
+  )
+}
+
+fn dag_grammar_resource_bool_value_expr() -> GrammarExpr {
+  dag_grammar_choice(
+    left: dag_grammar_terminal(token_class: ^dag_token_kw_true),
+    right: dag_grammar_terminal(token_class: ^dag_token_kw_false)
+  )
+}
+
+fn dag_grammar_resource_acquire_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "acquire")),
+    right: dag_grammar_sequence(
+      left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
+      right: dag_grammar_sequence(
+        left: dag_grammar_optional(element: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "hermetic"))),
+        right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
+      )
+    )
+  )
+}
+
+fn dag_grammar_resource_release_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "release")),
+    right: dag_grammar_sequence(
+      left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
+      right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
+    )
+  )
+}
+
+fn dag_grammar_capability_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "capability")),
+    right: dag_grammar_sequence(
+      left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+      right: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
+        right: dag_grammar_sequence(
+          left: dag_grammar_repeat(
+            element: dag_grammar_choice(
+              left: dag_grammar_nonterminal(production: ^dag_production_input_block),
+              right: dag_grammar_nonterminal(production: ^dag_production_output_block)
+            )
+          ),
+          right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
+        )
+      )
+    )
+  )
+}
+
+fn dag_grammar_resource_body_entry_expr() -> GrammarExpr {
+  dag_grammar_choice(
+    left: dag_grammar_nonterminal(production: ^dag_production_resource_kind),
+    right: dag_grammar_choice(
+      left: dag_grammar_nonterminal(production: ^dag_production_resource_mode),
+      right: dag_grammar_choice(
+        left: dag_grammar_nonterminal(production: ^dag_production_resource_expires),
+        right: dag_grammar_choice(
+          left: dag_grammar_nonterminal(production: ^dag_production_capability),
+          right: dag_grammar_choice(
+            left: dag_grammar_nonterminal(production: ^dag_production_resource_acquire),
+            right: dag_grammar_nonterminal(production: ^dag_production_resource_release)
+          )
+        )
+      )
+    )
+  )
+}
+
+fn dag_grammar_resource_decl_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "resource")),
+    right: dag_grammar_sequence(
+      left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+      right: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
+        right: dag_grammar_sequence(
+          left: dag_grammar_repeat(
+            element: dag_grammar_nonterminal(production: ^dag_production_resource_body_entry)
+          ),
+          right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
+        )
+      )
+    )
+  )
+}
+
 fn dag_grammar_top_level_item_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_nonterminal(production: ^dag_production_import_decl),
@@ -2560,7 +2668,10 @@ fn dag_grammar_top_level_item_expr() -> GrammarExpr {
             left: dag_grammar_nonterminal(production: ^dag_production_fn_decl),
             right: dag_grammar_choice(
               left: dag_grammar_nonterminal(production: ^dag_production_test_fn_decl),
-              right: dag_grammar_nonterminal(production: ^dag_production_service_decl)
+              right: dag_grammar_choice(
+                left: dag_grammar_nonterminal(production: ^dag_production_service_decl),
+                right: dag_grammar_nonterminal(production: ^dag_production_resource_decl)
+              )
             )
           )
         )
@@ -2815,6 +2926,46 @@ fn dag_grammar_root() -> GrammarRoot {
     name: ^dag_production_service_decl,
     expression: dag_grammar_service_decl_expr(),
     emitted: ^dag_surface_service_decl
+  )
+  let resource_decl = dag_grammar_production(
+    name: ^dag_production_resource_decl,
+    expression: dag_grammar_resource_decl_expr(),
+    emitted: ^dag_surface_resource_decl
+  )
+  let resource_body_entry = dag_grammar_production(
+    name: ^dag_production_resource_body_entry,
+    expression: dag_grammar_resource_body_entry_expr(),
+    emitted: ^dag_surface_resource_body_entry
+  )
+  let resource_kind = dag_grammar_production(
+    name: ^dag_production_resource_kind,
+    expression: dag_grammar_resource_property_expr(keyword: "kind", value: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident)),
+    emitted: ^dag_surface_resource_kind
+  )
+  let resource_mode = dag_grammar_production(
+    name: ^dag_production_resource_mode,
+    expression: dag_grammar_resource_property_expr(keyword: "mode", value: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident)),
+    emitted: ^dag_surface_resource_mode
+  )
+  let resource_expires = dag_grammar_production(
+    name: ^dag_production_resource_expires,
+    expression: dag_grammar_resource_property_expr(keyword: "expires", value: dag_grammar_resource_bool_value_expr()),
+    emitted: ^dag_surface_resource_expires
+  )
+  let capability = dag_grammar_production(
+    name: ^dag_production_capability,
+    expression: dag_grammar_capability_expr(),
+    emitted: ^dag_surface_capability
+  )
+  let resource_acquire = dag_grammar_production(
+    name: ^dag_production_resource_acquire,
+    expression: dag_grammar_resource_acquire_expr(),
+    emitted: ^dag_surface_resource_acquire
+  )
+  let resource_release = dag_grammar_production(
+    name: ^dag_production_resource_release,
+    expression: dag_grammar_resource_release_expr(),
+    emitted: ^dag_surface_resource_release
   )
   let service_body_entry = dag_grammar_production(
     name: ^dag_production_service_body_entry,
@@ -3105,6 +3256,14 @@ fn dag_grammar_root() -> GrammarRoot {
       test_fn_decl,
       service_decl,
       service_body_entry,
+      resource_decl,
+      resource_body_entry,
+      resource_kind,
+      resource_mode,
+      resource_expires,
+      capability,
+      resource_acquire,
+      resource_release,
       service_config,
       service_config_field,
       operation,

@@ -66,6 +66,8 @@ import v2.std.collection {
   map_lookup
 }
 import std.types { Map }
+import std.resource_contract { ResourceKind, ResourceMode }
+import v2.std.resource_declaration { resource_kind_of_label, resource_mode_of_label }
 import v2.std.optional {
   Absent,
   Optional,
@@ -497,7 +499,8 @@ fn body_lower_frontend_symbol_index_from_module(
   symbol_index_fill_module_root(
     index: empty_symbol_index(),
     root: tree,
-    record_declarations: record_declarations
+    record_declarations: record_declarations,
+    resource_declarations: Empty
   )
 }
 
@@ -659,10 +662,11 @@ fn body_lower_is_deferred_lower_emitted(emitted: Symbol) -> Bool {
     || (emitted == ^dag_surface_fn_literal)
 }
 
-// A service declaration lowers from its UNFOLDED parse subtree (body_lower_service_decl): its members
-// are interface or set-aside facts, never bodies, so folding them first would retain each one.
+// A service or resource declaration lowers from its UNFOLDED parse subtree (body_lower_service_decl,
+// body_lower_resource_decl): its members are interface or set-aside facts, never bodies, so folding
+// them first would retain each one.
 fn body_lower_is_deferred_lower_at_normalize(emitted: Symbol, under_fn_decl: Bool) -> Bool {
-  if emitted == ^dag_surface_service_decl {
+  if (emitted == ^dag_surface_service_decl) || (emitted == ^dag_surface_resource_decl) {
     true
   } else if emitted == ^dag_surface_fn_body {
     under_fn_decl
@@ -1495,7 +1499,9 @@ fn body_lower_grammar_terminals(expr: GrammarExpr) -> List<Symbol> {
       choice: fn(l, r) { list_append(left: l, right: r) },
       optional: fn(e) { e },
       repeat: fn(e) { e },
-      expect: fn(e, _reason) { e }
+      expect: fn(e, _reason) { e },
+      refuse_on_match: fn(e, _reason) { e },
+      after_line_break: fn(e) { e }
     }
   )
 }
@@ -9171,6 +9177,7 @@ fn body_lower_type_decl_record_name_optional(shell: Node) -> Optional<Symbol> {
 type DeclaredTypeKind
   = DeclaredRecord { name: Symbol }
   | DeclaredRefinement { name: Symbol }
+  | DeclaredResource { name: Symbol }
 
 fn body_lower_type_decl_declared_kind_optional(shell: Node) -> Optional<DeclaredTypeKind> {
   match body_lower_type_decl_record_name_optional(shell: shell) {
@@ -9201,6 +9208,24 @@ fn declared_record_names(kinds: FreeMonoid<DeclaredTypeKind>) -> FreeMonoid<Symb
       match k {
         DeclaredRecord { name: n } => list_snoc_item(xs: acc, item: n)
         DeclaredRefinement { name: _ } => acc
+        DeclaredResource { name: _ } => acc
+      }
+    }
+  )
+}
+
+// The resource names among a module's declaration kinds: what v2.compiler.symbol_index_fill marks as
+// declared resources, so "is this path a resource" has one authority (the captured kind), exactly as
+// declared_record_names is for records.
+fn declared_resource_names(kinds: FreeMonoid<DeclaredTypeKind>) -> FreeMonoid<Symbol> {
+  fold_list(
+    xs: kinds,
+    empty: Empty,
+    cons: fn(acc, k) {
+      match k {
+        DeclaredRecord { name: _ } => acc
+        DeclaredRefinement { name: _ } => acc
+        DeclaredResource { name: n } => list_snoc_item(xs: acc, item: n)
       }
     }
   )
@@ -9294,8 +9319,8 @@ fn service_set_aside_diagnostics(xs: List<ServiceSetAside>) -> Diagnostics {
   })
 }
 
-// The production shells directly beneath a node, looking through the two choice wrappers
-// (service_body_entry, operation_body_entry) that carry no fact of their own.
+// The production shells directly beneath a node, looking through the choice wrappers
+// (service_body_entry, operation_body_entry, resource_body_entry) that carry no fact of their own.
 fn body_lower_service_member_shells(root: Node) -> List<Node> {
   fold(root.children, init: Empty, f: fn(acc, e) {
     list_append(left: acc, right: body_lower_service_member_shells_at(node: e.target))
@@ -9305,7 +9330,7 @@ fn body_lower_service_member_shells(root: Node) -> List<Node> {
 fn body_lower_service_member_shells_at(node: Node) -> List<Node> {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: id } =>
-      if (id == ^dag_surface_service_body_entry) || (id == ^dag_surface_operation_body_entry) {
+      if (id == ^dag_surface_service_body_entry) || (id == ^dag_surface_operation_body_entry) || (id == ^dag_surface_resource_body_entry) {
         match parse_production_captured_child_optional(node: node) {
           Present { value: inner } => body_lower_service_member_shells_at(node: inner)
           Absent => [node]
@@ -9700,9 +9725,253 @@ fn body_lower_service_node(shell: Node, service_name: Symbol, operations: List<E
   )
 }
 
+// A RESOURCE DECLARATION (v2.extdeps.languages.dag dag_grammar_resource_decl_expr). Its capabilities
+// are operations of the resource and lower through the one operation reader (body_lower_operation:
+// the same kw-then-ident name and input/output blocks), so a capability is an operation Arrow on the
+// payload exactly as a service's operation is, and the declaration node is the service's
+// Conj { Name: payload } shape. Its kind, mode, expires and acquire entries are read here against
+// their homes (v2.std.resource_declaration) and refuse at the entry when they do not inhabit them, but
+// they are NOT carried: no consumer reads them yet, so only the declaration's name rides on the
+// captured DeclaredResource. That gap is declared, with its trigger, as gunbc.recurring_failure_mode
+// resource_contract_validated_but_not_carried. Nothing is skipped: every entry is read or the
+// declaration refuses at the entry.
+// `kind` and `mode` are required because every live declaration authors both and no default for
+// either exists; a repeated entry refuses at its second occurrence.
+type BodyLowerResourceAcc {
+  capabilities: List<Edge>,
+  capability_shells: List<Node>,
+  kind: Optional<ResourceKind>,
+  mode: Optional<ResourceMode>,
+  expires: Optional<Bool>,
+  acquire_read: Bool,
+  release_read: Bool,
+}
+
+type BodyLowerResource {
+  name: Symbol,
+  capabilities: List<Edge>,
+}
+
+fn body_lower_resource_entry_refused<T>(reason: Symbol, entry: Node) -> Outcome<T> {
+  outcome_rejected(d: body_lower_diagnostic(reason: reason, n: entry))
+}
+
+// The value of `keyword: value`: the right of the right of the captured sequence spine.
+fn body_lower_resource_property_value_optional(entry: Node) -> Optional<Symbol> {
+  match parse_production_captured_child_optional(node: entry) {
+    Absent => Absent
+    Present { value: captured } =>
+      match sugar_sequence_pair_optional(node: captured) {
+        Absent => Absent
+        Present { value: kw } =>
+          match sugar_sequence_pair_optional(node: kw.right) {
+            Absent => Absent
+            Present { value: colon } => node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: colon.right))
+          }
+      }
+  }
+}
+
+// `acquire { [hermetic] }`: the optional between the braces is elided to the empty node when absent,
+// and a present one is the `hermetic` literal, the only word the grammar admits there. Answers whether
+// the body claims it; Absent when the entry's spine cannot be read, which refuses at the entry.
+fn body_lower_resource_acquire_claims_hermetic_optional(entry: Node) -> Optional<Bool> {
+  match parse_production_captured_child_optional(node: entry) {
+    Absent => Absent
+    Present { value: captured } =>
+      match sugar_sequence_pair_optional(node: captured) {
+        Absent => Absent
+        Present { value: kw } =>
+          match sugar_sequence_pair_optional(node: kw.right) {
+            Absent => Absent
+            Present { value: brace } =>
+              match sugar_sequence_pair_optional(node: brace.right) {
+                Absent => Absent
+                Present { value: inner } =>
+                  optional_present(value: !is_empty_conj_root(n: inner.left))
+              }
+          }
+      }
+  }
+}
+
+fn body_lower_resource_with_kind(a: BodyLowerResourceAcc, entry: Node) -> Outcome<BodyLowerResourceAcc> {
+  match a.kind {
+    Present { value: _ } => body_lower_resource_entry_refused(reason: ^body_lowering_reason_resource_entry_repeated, entry: entry)
+    Absent =>
+      match body_lower_resource_property_value_optional(entry: entry) {
+        Absent => body_lower_resource_entry_refused(reason: ^body_lowering_reason_resource_entry_unread, entry: entry)
+        Present { value: label } =>
+          match resource_kind_of_label(label: label) {
+            Absent => body_lower_resource_entry_refused(reason: ^body_lowering_reason_resource_value_unknown, entry: entry)
+            Present { value: k } =>
+              outcome_accepted(value: BodyLowerResourceAcc { capabilities: a.capabilities, capability_shells: a.capability_shells, kind: optional_present(value: k), mode: a.mode, expires: a.expires, acquire_read: a.acquire_read, release_read: a.release_read })
+          }
+      }
+  }
+}
+
+fn body_lower_resource_with_mode(a: BodyLowerResourceAcc, entry: Node) -> Outcome<BodyLowerResourceAcc> {
+  match a.mode {
+    Present { value: _ } => body_lower_resource_entry_refused(reason: ^body_lowering_reason_resource_entry_repeated, entry: entry)
+    Absent =>
+      match body_lower_resource_property_value_optional(entry: entry) {
+        Absent => body_lower_resource_entry_refused(reason: ^body_lowering_reason_resource_entry_unread, entry: entry)
+        Present { value: label } =>
+          match resource_mode_of_label(label: label) {
+            Absent => body_lower_resource_entry_refused(reason: ^body_lowering_reason_resource_value_unknown, entry: entry)
+            Present { value: m } =>
+              outcome_accepted(value: BodyLowerResourceAcc { capabilities: a.capabilities, capability_shells: a.capability_shells, kind: a.kind, mode: optional_present(value: m), expires: a.expires, acquire_read: a.acquire_read, release_read: a.release_read })
+          }
+      }
+  }
+}
+
+fn body_lower_resource_with_expires(a: BodyLowerResourceAcc, entry: Node) -> Outcome<BodyLowerResourceAcc> {
+  match a.expires {
+    Present { value: _ } => body_lower_resource_entry_refused(reason: ^body_lowering_reason_resource_entry_repeated, entry: entry)
+    Absent =>
+      match body_lower_resource_property_value_optional(entry: entry) {
+        Absent => body_lower_resource_entry_refused(reason: ^body_lowering_reason_resource_entry_unread, entry: entry)
+        Present { value: token } =>
+          if token == ^dag_token_kw_true {
+            outcome_accepted(value: BodyLowerResourceAcc { capabilities: a.capabilities, capability_shells: a.capability_shells, kind: a.kind, mode: a.mode, expires: optional_present(value: true), acquire_read: a.acquire_read, release_read: a.release_read })
+          } else if token == ^dag_token_kw_false {
+            outcome_accepted(value: BodyLowerResourceAcc { capabilities: a.capabilities, capability_shells: a.capability_shells, kind: a.kind, mode: a.mode, expires: optional_present(value: false), acquire_read: a.acquire_read, release_read: a.release_read })
+          } else {
+            body_lower_resource_entry_refused(reason: ^body_lowering_reason_resource_entry_unread, entry: entry)
+          }
+      }
+  }
+}
+
+fn body_lower_resource_with_acquire(a: BodyLowerResourceAcc, entry: Node) -> Outcome<BodyLowerResourceAcc> {
+  if a.acquire_read {
+    body_lower_resource_entry_refused(reason: ^body_lowering_reason_resource_entry_repeated, entry: entry)
+  } else {
+    match body_lower_resource_acquire_claims_hermetic_optional(entry: entry) {
+      Absent => body_lower_resource_entry_refused(reason: ^body_lowering_reason_resource_entry_unread, entry: entry)
+      Present { value: _ } =>
+        outcome_accepted(value: BodyLowerResourceAcc { capabilities: a.capabilities, capability_shells: a.capability_shells, kind: a.kind, mode: a.mode, expires: a.expires, acquire_read: true, release_read: a.release_read })
+    }
+  }
+}
+
+fn body_lower_resource_with_release(a: BodyLowerResourceAcc, entry: Node) -> Outcome<BodyLowerResourceAcc> {
+  if a.release_read {
+    body_lower_resource_entry_refused(reason: ^body_lowering_reason_resource_entry_repeated, entry: entry)
+  } else {
+    outcome_accepted(value: BodyLowerResourceAcc { capabilities: a.capabilities, capability_shells: a.capability_shells, kind: a.kind, mode: a.mode, expires: a.expires, acquire_read: a.acquire_read, release_read: true })
+  }
+}
+
+// A CAPABILITY'S io TAILS ARE THE SERVICE'S, AND REFUSE THE SERVICE'S WAY. A capability reads its
+// input/output blocks through the shared io field grammar, which admits a `from "key"` wire key and an
+// `= expr` default; body_lower_operation sets each aside as interface_member_unmodeled, located at the
+// io item. A resource then refuses exactly as a service with a set-aside member does on a route past
+// the census: the owned fatal cause service_realization_unreachable, at the capability, with each
+// member's own located diagnostic pending. So body_lowering_reason_resource_entry_unread is reached
+// only by a malformed entry, never by a well-formed tail.
+fn body_lower_resource_with_capability(a: BodyLowerResourceAcc, entry: Node) -> Outcome<BodyLowerResourceAcc> {
+  bind_outcome(o: body_lower_operation(shell: entry), f: fn(op) {
+    match op.set_aside {
+      Empty =>
+        outcome_accepted(value: BodyLowerResourceAcc { capabilities: list_snoc_item(xs: a.capabilities, item: op.edge), capability_shells: list_snoc_item(xs: a.capability_shells, item: entry), kind: a.kind, mode: a.mode, expires: a.expires, acquire_read: a.acquire_read, release_read: a.release_read })
+      Cons { head: _, tail: _ } =>
+        Rejected {
+          diagnostics: rejected_with_pending(
+            pending: service_set_aside_diagnostics(xs: op.set_aside),
+            rejected: diagnostics_singleton(d: body_lower_diagnostic(reason: ^body_lowering_reason_service_realization_unreachable, n: entry))
+          )
+        }
+    }
+  })
+}
+
+fn body_lower_resource_entry(acc: Outcome<BodyLowerResourceAcc>, entry: Node) -> Outcome<BodyLowerResourceAcc> {
+  bind_outcome(o: acc, f: fn(a) {
+    match parse_production_emitted_identity_optional(node: entry) {
+      Absent => body_lower_resource_entry_refused(reason: ^body_lowering_reason_resource_entry_unread, entry: entry)
+      Present { value: id } =>
+        if id == ^dag_surface_resource_kind {
+          body_lower_resource_with_kind(a: a, entry: entry)
+        } else if id == ^dag_surface_resource_mode {
+          body_lower_resource_with_mode(a: a, entry: entry)
+        } else if id == ^dag_surface_resource_expires {
+          body_lower_resource_with_expires(a: a, entry: entry)
+        } else if id == ^dag_surface_resource_acquire {
+          body_lower_resource_with_acquire(a: a, entry: entry)
+        } else if id == ^dag_surface_resource_release {
+          body_lower_resource_with_release(a: a, entry: entry)
+        } else if id == ^dag_surface_capability {
+          body_lower_resource_with_capability(a: a, entry: entry)
+        } else {
+          body_lower_resource_entry_refused(reason: ^body_lowering_reason_resource_entry_unread, entry: entry)
+        }
+    }
+  })
+}
+
+fn body_lower_resource_read(shell: Node) -> Outcome<BodyLowerResource> {
+  match parse_production_captured_child_optional(node: shell) {
+    Absent => body_lower_resource_entry_refused(reason: ^body_lowering_reason_resource_entry_unread, entry: shell)
+    Present { value: captured } =>
+      match dag_surface_kw_then_ident_from_captured(captured: captured) {
+        Absent => body_lower_resource_entry_refused(reason: ^body_lowering_reason_resource_entry_unread, entry: shell)
+        Present { value: name } =>
+          bind_outcome(
+            o: fold(
+              body_lower_service_member_shells(root: captured),
+              init: outcome_accepted(value: BodyLowerResourceAcc { capabilities: Empty, capability_shells: Empty, kind: Absent, mode: Absent, expires: Absent, acquire_read: false, release_read: false }),
+              f: fn(acc, entry) { body_lower_resource_entry(acc: acc, entry: entry) }
+            ),
+            f: fn(a) { body_lower_resource_finish(shell: shell, name: name, a: a) }
+          )
+      }
+  }
+}
+
+fn body_lower_resource_finish(shell: Node, name: Symbol, a: BodyLowerResourceAcc) -> Outcome<BodyLowerResource> {
+  match first(repeated_name_edges(children: a.capabilities)) {
+    Present { value: repeated } =>
+      body_lower_resource_entry_refused(
+        reason: ^body_lowering_reason_resource_entry_repeated,
+        entry: body_lower_service_second_operation_shell(operations: a.capabilities, shells: a.capability_shells, label: repeated.label, service: shell)
+      )
+    Absent =>
+      match a.kind {
+        Absent => body_lower_resource_entry_refused(reason: ^body_lowering_reason_resource_entry_missing, entry: shell)
+        Present { value: _ } =>
+          match a.mode {
+            Absent => body_lower_resource_entry_refused(reason: ^body_lowering_reason_resource_entry_missing, entry: shell)
+            Present { value: _ } =>
+              outcome_accepted(value: BodyLowerResource { name: name, capabilities: a.capabilities })
+          }
+      }
+  }
+}
+
+fn body_lower_resource_decl(shell: Node) -> Outcome<BodyLowering> {
+  bind_outcome(o: body_lower_resource_read(shell: shell), f: fn(r) {
+    body_lowering_lowered(o: outcome_accepted(value: body_lower_service_node(shell: shell, service_name: r.name, operations: r.capabilities)))
+  })
+}
+
+// The captured kind of a resource declaration, read by the same reader the lowering uses, so a
+// declaration is captured exactly when the lowering admits it. A declaration that refuses
+// carries no kind; its lowering refuses the module on its own.
+fn body_lower_resource_decl_declared_kind_optional(shell: Node) -> Optional<DeclaredTypeKind> {
+  match body_lower_resource_read(shell: shell) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: r, diagnostics: _ } => Present { value: DeclaredResource { name: r.name } }
+  }
+}
+
 fn body_lower_production_emitted(shell: Node, emitted: Symbol, fn_body_pass_through: Bool) -> Outcome<BodyLowering> {
   if emitted == ^dag_surface_service_decl {
     body_lower_service_decl(shell: shell, admit_set_aside: false)
+  } else if emitted == ^dag_surface_resource_decl {
+    body_lower_resource_decl(shell: shell)
   } else if emitted == ^dag_surface_type_decl {
     body_lowering_lowered(o: body_lower_type_decl(shell: shell))
   } else if body_lower_is_metadata_preserved_emitted(emitted: emitted) {
