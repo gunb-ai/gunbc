@@ -39,7 +39,7 @@ fn witness_unreachable_grant() -> OperatorGrant<Srv3BootOverrideSubject> {
       },
     ],
     purpose: "unreachable" as NonEmptyStr,
-    attempt: "no-attempt" as AttemptIdentity,
+    attempt: "no-attempt" as std.scoped_authorization.AttemptIdentity,
     intent_hash: content_hash_of_value(value: "no-intent" as NonEmptyStr),
     granted_by: "nobody" as NonEmptyStr,
     granted_at: "1970-01-01T00:00:00Z",
@@ -190,7 +190,7 @@ test fn srv3_grant_refuses_a_different_attempt() -> Bool {
     scopes: srv3_boot_once_cd_authorization_request.scopes,
     subject: srv3_boot_once_cd_subject,
     purpose: srv3_boot_once_cd_authorization_request.purpose,
-    attempt: "srv3-os-install-actuate-2" as AttemptIdentity,
+    attempt: "srv3-os-install-actuate-2" as std.scoped_authorization.AttemptIdentity,
     intent_hash: srv3_boot_once_cd_authorization_request.intent_hash,
     destructive: true,
   }
@@ -200,7 +200,7 @@ test fn srv3_grant_refuses_a_different_attempt() -> Bool {
     observed_at: witness_before_expiry,
   ) {
     AuthorizationRefused { cause: AuthorizationAttemptMismatch { requested: req, granted: got } } =>
-      req == "srv3-os-install-actuate-2" as AttemptIdentity && got == srv3_boot_once_cd_attempt
+      req == "srv3-os-install-actuate-2" as std.scoped_authorization.AttemptIdentity && got == srv3_boot_once_cd_attempt
     _ => false
   }
 }
@@ -285,7 +285,7 @@ test fn srv3_grant_is_single_use() -> Bool {
 test fn srv3_grant_excludes_a_concurrent_attempt() -> Bool {
   let held_by_other = witness_grant_claimed(
     claim: claim_transition_claimed(
-      attempt: "srv3-os-install-actuate-99" as AttemptIdentity,
+      attempt: "srv3-os-install-actuate-99" as std.scoped_authorization.AttemptIdentity,
       at: witness_before_expiry,
     ),
   )
@@ -301,7 +301,7 @@ test fn srv3_grant_excludes_a_concurrent_attempt() -> Bool {
     observed_at: witness_before_expiry,
   ) {
     AuthorizationRefused { cause: AuthorizationClaimedByOtherAttempt { requested: r, holder: h } } =>
-      r == srv3_boot_once_cd_attempt && h == "srv3-os-install-actuate-99" as AttemptIdentity
+      r == srv3_boot_once_cd_attempt && h == "srv3-os-install-actuate-99" as std.scoped_authorization.AttemptIdentity
     _ => false
   }
     && srv3_boot_once_cd_is_runnable_with_approval(
@@ -319,7 +319,7 @@ test fn srv3_claim_loser_learns_who_holds_it() -> Bool {
     at: witness_before_expiry,
   )
   let winner = claim_transition_claimed(
-    attempt: "srv3-os-install-actuate-99" as AttemptIdentity,
+    attempt: "srv3-os-install-actuate-99" as std.scoped_authorization.AttemptIdentity,
     at: witness_before_expiry,
   )
   let attempt = claim_authorization(
