@@ -64,7 +64,7 @@ import gunbc.cloudflare.r2_origin_object {
   OriginPutResolvedNotStored, OriginPutStillUnknown,
   delete_origin_probe_object, OriginDeleteOutcome, OriginDeleteAnswered, OriginDeleteRefused,
 }
-import extdeps.tools.curl { PayloadDigestComputedByTransport, PayloadDigestDeclared }
+import extdeps.tools.curl { PayloadContentMd5Declared }
 import gunbc.fabric_m0_origin_readback { read_origin_staged_file, OriginReadingTaken, OriginReadingUnavailable }
 
 // THE LIVE ORIGIN, EXERCISED END TO END -- AN INSTRUMENT, NOT A FLOOR WITNESS, for the same reason
@@ -196,9 +196,11 @@ fn roundtrip() -> ProcessExit {
 //      own presence answer and never by a second PUT; a stored, present or HEAD-resolved-present
 //      object is acknowledged, anything else stops the run naming the arm;
 //   3. GET through the self-staging read, digest checked against the oracle (identity verified);
-//   4. a PUT of the same bytes DECLARING another object's digest must be REFUSED by the store -- the
-//      store, not this process, checks bytes against claimed identity. If it is stored instead,
-//      that is reported as the finding, and the object is deleted anyway;
+//   4. a PUT of the same bytes DECLARING another object's Content-MD5 must be REFUSED by the store --
+//      the store, not this process, checks the bytes against a claimed digest. MD5 because it is
+//      the only body-integrity header R2 implements (see extdeps.tools.curl
+//      S3PayloadDigestDeclaration); the identity check of record stays the SHA-256 of step 3. If it
+//      is stored instead, that is reported as the finding, and the object is deleted anyway;
 //   5. DELETE, then HEAD must answer absent and GET must answer absent: removal is read back, not
 //      assumed from a 204.
 // Exit 0 is the receipt that every step held; any other exit names the first step that did not,
@@ -207,6 +209,11 @@ fn roundtrip() -> ProcessExit {
 data proof_key_prefix: String = "probe/sha256/"
 
 data bad_digest_key_prefix: String = "probe/bad-digest/"
+
+// base64(MD5) of dag/test/fixture/fabric_m0_origin_readback/staged_manifest.txt -- the OTHER fixture,
+// a controlled oracle like the SHA-256 ones above: the probe uploads other_object.txt while
+// declaring this, so the claim is false by construction of the committed files.
+data other_fixture_content_md5: NonEmptyStr = "24EgZGQsVvW4UKHUxdHCDA=="
 
 fn presence_word(p: OriginPresence) -> String {
   match p {
@@ -266,7 +273,7 @@ fn bad_digest_step(hex: String, source: AccessTokenSource) -> ProcessExit {
     local_path: probe_fixture_path as FilePath,
     key: bad_key,
     token_source: source,
-    payload_digest: PayloadDigestDeclared { sha256_hex: expected_manifest_digest().hex as NonEmptyStr },
+    payload_digest: PayloadContentMd5Declared { md5_base64: other_fixture_content_md5 },
   )
   if put_is_clean(put: put) == false {
     exit_failure(reason: concat("STEP 4 ", put_cause(put: put)))

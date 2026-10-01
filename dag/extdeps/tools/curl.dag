@@ -270,21 +270,20 @@ fn curl_sigv4_s3_upload_command(
   )
 }
 
-// WHO STATES THE PAYLOAD'S SHA-256 TO THE STORE. S3 SigV4 carries it in x-amz-content-sha256 (AWS
-// "Signature Calculations for the Authorization Header", single chunk): the store recomputes the
-// digest of the body it received and refuses the request when they disagree. Left to the transport,
-// curl --aws-sigv4 computes it from the bytes it sends; DECLARED, the caller's hex is sent and signed
-// instead, which is how a caller makes the store check a digest the caller claims. curl uses a
-// caller-supplied x-amz-content-sha256 header rather than computing its own (curl.se/docs/manpage.html,
-// --aws-sigv4).
+// WHO STATES THE PAYLOAD'S INTEGRITY TO THE STORE. Content-MD5 (RFC 1864, base64 of the body's MD5)
+// is the one body-integrity header Cloudflare R2's PutObject implements: its S3 compatibility table
+// (developers.cloudflare.com/r2/api/s3/api/, PutObject, read 2026-10-01) lists Content-MD5 as
+// implemented and the x-amz-checksum-* headers as not implemented, so a declared SHA-256 would be
+// ignored and could never be refused. The store recomputes the MD5 of the body it received and
+// refuses the PUT when they disagree. Left to the transport, no integrity header is sent.
 type S3PayloadDigestDeclaration
   = PayloadDigestComputedByTransport
-  | PayloadDigestDeclared { sha256_hex: NonEmptyStr }
+  | PayloadContentMd5Declared { md5_base64: NonEmptyStr }
 
 fn s3_payload_digest_header(digest: S3PayloadDigestDeclaration) -> List<String> {
   match digest {
     PayloadDigestComputedByTransport => []
-    PayloadDigestDeclared { sha256_hex: h } => ["-H", concat("x-amz-content-sha256: ", h as String)]
+    PayloadContentMd5Declared { md5_base64: h } => ["-H", concat("Content-MD5: ", h as String)]
   }
 }
 

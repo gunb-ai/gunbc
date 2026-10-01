@@ -27,7 +27,7 @@ import extdeps.tools.curl {
   curl_sigv4_s3_head_command,
   curl_sigv4_s3_delete_command,
   PayloadDigestComputedByTransport,
-  PayloadDigestDeclared,
+  PayloadContentMd5Declared,
   curl_aws_sigv4_s3_provider,
   curl_aws_sigv4_cli_tool,
   curl_aws_sigv4_min_version,
@@ -464,17 +464,17 @@ test fn r2_origin_object_frontier_rows_reflect_the_executed_evidence() -> Bool {
          row: row, ref: decl_ref(module_path: "gunbc.cloudflare.r2_permission_group_observe", decl_name: "cloudflare_r2_bucket_item_write_observed_permission_group_id")))
 }
 
-// THE DECLARED-DIGEST PUT SENDS AND SIGNS THE CALLER'S SHA-256; THE DEFAULT SENDS NONE. Without the
-// first, the bad-digest step of tools.fabric_m0_origin_object_probe full_proof would PUT bytes with a
-// digest curl computed from them, and the store could never refuse.
-test fn curl_sigv4_upload_sends_a_declared_payload_digest_only_when_declared() -> Bool {
+// THE DECLARED-INTEGRITY PUT SENDS THE CALLER'S Content-MD5; THE DEFAULT SENDS NONE. Without the
+// first, the bad-digest step of tools.fabric_m0_origin_object_probe full_proof would PUT bytes with
+// no claim for the store to check, and the store could never refuse.
+test fn curl_sigv4_upload_sends_a_declared_content_md5_only_when_declared() -> Bool {
   let declared = argv_words(command: curl_sigv4_s3_upload_command(
     url: "https://h/b/k", local_path: "/work/obj", netrc_path: "/private/netrc" as FilePath,
     sigv4_region: r2_s3_sigv4_region, create_only: true,
-    payload_digest: PayloadDigestDeclared { sha256_hex: "47e3f235ff09282e7d5f556dd41b39f95ea05f4f04f643ff65740b7f28cd55ba" },
+    payload_digest: PayloadContentMd5Declared { md5_base64: "24EgZGQsVvW4UKHUxdHCDA==" },
   ))
-  has_word(words: declared, word: "x-amz-content-sha256: 47e3f235ff09282e7d5f556dd41b39f95ea05f4f04f643ff65740b7f28cd55ba")
-    && !any(words_of_upload(create_only: true), w => starts_with(s: w, prefix: "x-amz-content-sha256"))
+  has_word(words: declared, word: "Content-MD5: 24EgZGQsVvW4UKHUxdHCDA==")
+    && !any(words_of_upload(create_only: true), w => starts_with(s: w, prefix: "Content-MD5"))
 }
 
 test fn curl_sigv4_head_and_delete_are_status_only_and_name_their_method() -> Bool {
