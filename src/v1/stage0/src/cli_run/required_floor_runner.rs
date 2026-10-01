@@ -5818,6 +5818,16 @@ pub(crate) fn floor_authority_frame(
 /// keeps on purpose: producer nodes (Rc into the prepared graph) and portable stored values.
 /// `builds` counts frame constructions, so the CPU side of re-framing on a module change is
 /// reported beside the memory it saves.
+/// ONE ROW PER WARMED PRODUCER at identity grain, (producer, portable-value digest), so two
+/// runs of the floor are comparable at the producer and not only at the claim verdicts a
+/// warmed value happens to decide. A value that stored nothing to digest prints `none`.
+fn floor_warm_row_identity(qualified: &str) {
+    let bare = qualified.rsplit('.').next().unwrap_or(qualified);
+    let digest =
+        v1_interpreter::take_cross_claim_store_digest(bare).unwrap_or_else(|| "none".to_string());
+    eprintln!("[floor-warm-row] producer={qualified} digest={digest}");
+}
+
 #[derive(Default)]
 struct WarmFrameSlot {
     module: Option<String>,
@@ -6221,6 +6231,7 @@ pub(crate) fn install_pure_producer_share(
                         row.producer
                     ));
                 }
+                floor_warm_row_identity(&row.producer);
                 eprintln!(
                     "[floor-phase] phase=prepared-effect-input-warm state=completed producer={} input={} disposition={} cpu_ms={} wall_ms={} rss_growth_bytes={}",
                     row.producer,
@@ -6341,6 +6352,7 @@ pub(crate) fn install_pure_producer_share(
                          was refused by the cross-claim store: {detail}"
                     ));
                 }
+                floor_warm_row_identity(qualified);
                 eprintln!(
                     "[floor-phase] phase=pure-producer-share-warm state=completed \
                      producer={qualified} disposition={} cpu_ms={} wall_ms={} \
