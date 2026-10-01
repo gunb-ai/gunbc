@@ -238,6 +238,27 @@ type GrammarExpr
   | Optional { element: GrammarExpr }
   | Repeat { element: GrammarExpr }
   | Expect { element: GrammarExpr, reason: ParseRefusalReason }
+  | RefuseOnMatch { element: GrammarExpr, reason: ParseRefusalReason }
+  | AfterLineBreak { element: GrammarExpr }
+
+// A PRODUCTION WHOSE MATCH IS A REFUSAL. `RefuseOnMatch { element, reason }` parses `element` and,
+// where it MATCHES, refuses the whole parse with `reason`, located at the first token of the match:
+// the refusal is not a failed alternative that ordered choice may backtrack past, it stops the
+// parse. Where `element` does not match, it fails like any alternative. It exists for source the
+// seed refuses although some other reading would succeed -- the success is the defect -- so a
+// relabel (`Expect`) cannot express it. Emit never selects it: it derives no tree.
+fn grammar_expr_refuse_on_match(element: GrammarExpr, reason: ParseRefusalReason) -> GrammarExpr {
+  RefuseOnMatch { element: element, reason: reason }
+}
+
+// A LAYOUT-CONDITIONED MATCH. `AfterLineBreak { element }` matches what `element` matches only when
+// the source holds a line break between the token before the match and its first token
+// (v2.std.compilers.lexing token_stream_line_break_before); otherwise it fails. On a stream that
+// carries no source the question has no answer, and the parse refuses with
+// LayoutUnknownWithoutSource rather than assuming one line.
+fn grammar_expr_after_line_break(element: GrammarExpr) -> GrammarExpr {
+  AfterLineBreak { element: element }
+}
 
 // AN EXPECTATION IS A LABEL, NEVER A CUT. `Expect { element, reason }` matches exactly what
 // `element` matches and captures exactly what it captures, in every direction: ingest, emit and
@@ -300,6 +321,8 @@ type GrammarExprFold<R> {
   optional: fn(R) -> R
   repeat: fn(R) -> R
   expect: fn(R, ParseRefusalReason) -> R
+  refuse_on_match: fn(R, ParseRefusalReason) -> R
+  after_line_break: fn(R) -> R
 }
 
 fn fold_grammar_expr<R>(expr: GrammarExpr, algebra: GrammarExprFold<R>) -> R {
@@ -325,6 +348,10 @@ fn fold_grammar_expr<R>(expr: GrammarExpr, algebra: GrammarExprFold<R>) -> R {
       algebra.repeat(fold_grammar_expr(expr: element, algebra: algebra))
     Expect { element: element, reason: reason } =>
       algebra.expect(fold_grammar_expr(expr: element, algebra: algebra), reason)
+    RefuseOnMatch { element: element, reason: reason } =>
+      algebra.refuse_on_match(fold_grammar_expr(expr: element, algebra: algebra), reason)
+    AfterLineBreak { element: element } =>
+      algebra.after_line_break(fold_grammar_expr(expr: element, algebra: algebra))
   }
 }
 
@@ -2282,6 +2309,17 @@ fn grammar_expr_to_node(expr: GrammarExpr) -> Node {
         grammar_expr_node(children: [
           grammar_named_edge(name: ^grammar_expect_element_node_projection, target: element_node),
           grammar_named_edge(name: ^grammar_expect_reason_node_projection, target: grammar_atom(identity: parse_refusal_reason_symbol(reason: reason)))
+        ])
+      },
+      refuse_on_match: fn(element_node, reason) {
+        grammar_expr_node(children: [
+          grammar_named_edge(name: ^grammar_refuse_on_match_element_node_projection, target: element_node),
+          grammar_named_edge(name: ^grammar_refuse_on_match_reason_node_projection, target: grammar_atom(identity: parse_refusal_reason_symbol(reason: reason)))
+        ])
+      },
+      after_line_break: fn(element_node) {
+        grammar_expr_node(children: [
+          grammar_named_edge(name: ^grammar_after_line_break_element_node_projection, target: element_node)
         ])
       }
     }
