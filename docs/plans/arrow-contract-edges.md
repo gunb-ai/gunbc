@@ -47,6 +47,13 @@ Audit of every Arrow reader outside `src/v2/test`. "Metadata" means: handled exa
 
 Readers that ignore a named edge safely: the domain, codomain and body readers in resolve, infer, eval, translate and `v2.std.compilers.target_model`; `v2.std.node_query`; `v2.std.decl_index`; `v2.compiler.symbol_index_fill`; `v2.compiler.emit_produced`; `v2.compiler.compile`; `v2.std.node` `cost_edge_role`; `v2.lens.cost.copied_port_derivation`.
 
+## Standing: a DESIGN §3c declared frontier
+
+- **Consumed by execution in this change:** the conformance wall (`v2.std.node` `arrow_signature_edges_conform`, reached by every `well_formed` check of an Arrow) and `v2.test.claim.arrow_contract_edge_conformance`.
+- **Production consumer, a named later change:** PR2c. The operation-modifier lowering (`v2.compiler.body_lowering_fold` `body_lower_operation`) emits both edges, and the pipeline readers above gain their metadata arms in the same change.
+- **Transition trigger:** PR2c lands. If PR2c is abandoned, these edges and their conformance are deleted, not left standing.
+- **Why ahead of the consumer:** the 2026-10-01 ruling asked for the substrate change to be reviewable on its own diff.
+
 **Why the pipeline readers move in PR2c rather than here.** Until PR2c, no producer emits a contract edge, so those readers have no input to be wrong about. Moving them here would give them branches that no test can reach. PR2c lands the producer and the reader arms together, with a discriminating red on the production route.
 
 ## Not in this change: input defaults
