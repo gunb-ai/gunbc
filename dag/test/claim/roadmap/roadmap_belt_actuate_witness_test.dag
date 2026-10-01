@@ -815,7 +815,7 @@ fn band_key_for_label(label: String) -> String {
 }
 
 test fn witness_band_fold_pins_operator_vocabulary() -> Bool {
-  belt_dispatch_label_band_rows().length() == 27
+  belt_dispatch_label_band_rows().length() == 18
     && band_key_for_label(label: "supervisor_convened") == "ok"
     && band_key_for_label(label: "stale_session") == "loud"
     && band_key_for_label(label: "no_capacity") == "fail"
