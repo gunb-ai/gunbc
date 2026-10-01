@@ -191,6 +191,20 @@ this representation.
   frontier for `v2.compiler.compile`, with no scheduled date. Until then every floor at #12799 size
   pays it.
 
+**PR-2's scope is ONE union with TWO holders, and both go.** The per-module import union is
+materialized as `TypeEnv.ancestry_str_bindings` AND as the module's `TypeEnvCache`.
+`build_type_env` sets `cache_str_bindings = map_merge(ancestry_str_bindings, str_bindings)`, and
+`union_parent_type_env_caches` builds every importer's union by folding its parents' `interface.cache`.
+So the cache is the vehicle of transitivity, across the four maps `union_base_choice_note` names:
+`str_bindings`, `deps_map`, `variant_locals` and `cycle_set_str`.
+- Deleting the ancestry map alone would leave its nodes alive through the merged cache, which shares
+  its spine. That is gunbc#12832's lesson: removing one holder of bytes another still holds saves
+  nothing.
+- So PR-2 dematerializes the ancestry map and all four flattened cache unions TOGETHER, behind the one
+  walk. This is the same union the operator's 2026-10-01 re-ruling covers, not a second change.
+- The saving to predict is therefore what that SET holds jointly. The two-size leave-one-out reading
+  of the joint class (gunbc#12850's prediction 2) re-bases the figures below before any PR-2 code.
+
 **The re-export walk is a materialization, so its identity is stated** (DESIGN §2,
 `std.materialization_ladder`). This is what tells it apart from a cache placed at a symptom.
 - **Value.** The binding a name resolves to through ONE module's export surface: its own bindings,
