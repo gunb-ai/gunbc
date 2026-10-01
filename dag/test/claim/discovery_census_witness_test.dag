@@ -36,7 +36,7 @@ import gunbc.discovery_census {
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
   Planned, PlannedAsChangedWitness, DeclinedLongModule, DeclinedFixtureMember, DeclinedOutsideRequiredGate, DeclinedCostDebt,
-  DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded,
+  DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded, DeclinedNoCiWetLane,
   required_floor_site_disposition,
 }
 import v2.workflow.floor_terminal_ledger { ClaimDisposition, Passed }
@@ -78,11 +78,11 @@ fn live_tree_site(module_path: String, function: String) -> DiscoveredSite {
 // balance whether or not the census could classify a withheld row at all.
 fn mixed_sites() -> List<DiscoveredSite> {
   [
-    hermetic_site(module_path: "v2.test.claim.alpha_witness", function: "w_alpha"),
-    hermetic_site(module_path: "v2.test.claim.alpha_witness", function: "w_beta"),
+    hermetic_site(module_path: "test.claim.infer_alpha_witness", function: "w_alpha"),
+    hermetic_site(module_path: "test.claim.infer_alpha_witness", function: "w_beta"),
     hermetic_site(module_path: "test.claim.long.slow_witness", function: "w_slow"),
     live_tree_site(module_path: "v2.test.fixture.walk_plan_stage.common", function: "w_member"),
-    live_tree_site(module_path: "v2.test.claim.reads_tree_witness", function: "w_reads"),
+    live_tree_site(module_path: "test.claim.infer_reads_tree_witness", function: "w_reads"),
     hermetic_site(module_path: "test.claim.live_deploy.some_product_witness", function: "w_product"),
     hermetic_site(
       module_path: "dag.test.claim.lifecycle_survivor_corpus_census",
@@ -143,8 +143,8 @@ fn refusal_is_empty_target_name(c: LabelRefusal) -> Bool {
 
 test fn w_site_label_is_the_module_path_as_package() -> Bool {
   let rendered = rendered_planned_labels(sites: mixed_sites())
-  list_holds(xs: rendered, wanted: "//test/claim/alpha_witness:w_alpha")
-    && list_holds(xs: rendered, wanted: "//test/claim/alpha_witness:w_beta")
+  list_holds(xs: rendered, wanted: "//test/claim/infer_alpha_witness:w_alpha")
+    && list_holds(xs: rendered, wanted: "//test/claim/infer_alpha_witness:w_beta")
 }
 
 // THE LEADING EMPTY SEGMENT IS THE CONTROL THE OBVIOUS JOIN FAILS. An accumulator that skips the
@@ -218,6 +218,7 @@ test fn w_fixture_home_declines_with_its_matched_prefix() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedNoCiWetLane { pattern: _ } => false
     PlannedAsChangedWitness => false
   }
 }
@@ -234,6 +235,7 @@ test fn w_long_home_module_declines_with_its_matched_prefix() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedNoCiWetLane { pattern: _ } => false
     PlannedAsChangedWitness => false
   }
 }
@@ -243,8 +245,8 @@ test fn w_long_home_module_declines_with_its_matched_prefix() -> Bool {
 // control beside the decline above: without it the decline could pass under a `contains` test.
 test fn w_long_home_is_a_prefix_not_a_substring() -> Bool {
   match required_floor_site_disposition(
-    module_path: "v2.test.claim.not_test_claim_long.witness",
-    identity: "v2.test.claim.not_test_claim_long.witness.a_claim"
+    module_path: "test.claim.infer_not_test_claim_long.witness",
+    identity: "test.claim.infer_not_test_claim_long.witness.a_claim"
   ) {
     Planned => true
     DeclinedLongModule { matched_prefix: _ } => false
@@ -253,14 +255,15 @@ test fn w_long_home_is_a_prefix_not_a_substring() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedNoCiWetLane { pattern: _ } => false
     PlannedAsChangedWitness => false
   }
 }
 
 test fn w_site_is_planned_when_no_home_matched() -> Bool {
   match required_floor_site_disposition(
-    module_path: "v2.test.claim.ordinary_witness",
-    identity: "v2.test.claim.ordinary_witness.a_claim"
+    module_path: "test.claim.infer_ordinary_witness",
+    identity: "test.claim.infer_ordinary_witness.a_claim"
   ) {
     Planned => true
     DeclinedLongModule { matched_prefix: _ } => false
@@ -269,6 +272,7 @@ test fn w_site_is_planned_when_no_home_matched() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedNoCiWetLane { pattern: _ } => false
     PlannedAsChangedWitness => false
   }
 }
@@ -279,8 +283,8 @@ test fn w_site_is_planned_when_no_home_matched() -> Bool {
 // row, rather than a synthetic neighbour, so removing its exact-module gate admission reds.
 test fn w_deleted_lane_countable_is_planned_by_the_required_gate() -> Bool {
   match required_floor_site_disposition(
-    module_path: "test.claim.witness_floor_workflow_consolidation_witness_test",
-    identity: "test.claim.witness_floor_workflow_consolidation_witness_test.w_RED_the_deleted_lanes_do_not_return"
+    module_path: "test.claim.deleted_lanes_countable_witness_test",
+    identity: "test.claim.deleted_lanes_countable_witness_test.w_RED_the_deleted_lanes_do_not_return"
   ) {
     Planned => true
     DeclinedLongModule { matched_prefix: _ } => false
@@ -289,6 +293,7 @@ test fn w_deleted_lane_countable_is_planned_by_the_required_gate() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedNoCiWetLane { pattern: _ } => false
     PlannedAsChangedWitness => false
   }
 }
@@ -308,6 +313,7 @@ test fn w_site_outside_the_required_gate_is_declined() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedNoCiWetLane { pattern: _ } => false
     PlannedAsChangedWitness => false
   }
 }
@@ -367,6 +373,7 @@ test fn w_rostered_identity_declines_for_cost_debt() -> Bool {
     DeclinedOutsideRequiredGate => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedNoCiWetLane { pattern: _ } => false
     Planned => false
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedFixtureMember { matched_prefix: _ } => false
@@ -389,6 +396,7 @@ test fn w_unrostered_sibling_in_the_same_module_reaches_the_gate_decline() -> Bo
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedNoCiWetLane { pattern: _ } => false
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedFixtureMember { matched_prefix: _ } => false
     PlannedAsChangedWitness => false
@@ -410,6 +418,7 @@ test fn w_home_decline_outranks_cost_debt() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedNoCiWetLane { pattern: _ } => false
     Planned => false
     DeclinedFixtureMember { matched_prefix: _ } => false
     PlannedAsChangedWitness => false
@@ -444,7 +453,7 @@ test fn w_partition_returns_both_sides_and_loses_no_row() -> Bool {
 // from census_partition_step: the outside row then reaches runtime pattern-match failure.
 test fn w_planned_and_outside_gate_rows_partition_once_each() -> Bool {
   let rows = census_rows_of(sites: [
-    hermetic_site(module_path: "v2.test.claim.compiler_witness", function: "w_compiler"),
+    hermetic_site(module_path: "test.claim.infer_compiler_witness", function: "w_compiler"),
     hermetic_site(module_path: "test.claim.live_deploy.product_witness", function: "w_product")
   ])
   let split = census_partition(rows: rows)
@@ -459,6 +468,7 @@ test fn w_planned_and_outside_gate_rows_partition_once_each() -> Bool {
       DeclinedCostDebt => false
       DeclinedOutsideGateClosure => false
       DeclinedDiscoveryExcluded { matched_substring: _ } => false
+      DeclinedNoCiWetLane { pattern: _ } => false
       PlannedAsChangedWitness => false
     })
     && all(split.declined, r => match r.disposition {
@@ -469,6 +479,7 @@ test fn w_planned_and_outside_gate_rows_partition_once_each() -> Bool {
       DeclinedCostDebt => false
       DeclinedOutsideGateClosure => false
       DeclinedDiscoveryExcluded { matched_substring: _ } => false
+      DeclinedNoCiWetLane { pattern: _ } => false
       PlannedAsChangedWitness => false
     })
 }
@@ -507,8 +518,8 @@ test fn w_duplicate_identity_refuses_even_when_declined() -> Bool {
 // every module that appears twice.
 test fn w_two_functions_in_one_module_are_two_identities() -> Bool {
   match discovery_census(sites: [
-    hermetic_site(module_path: "v2.test.claim.alpha_witness", function: "w_alpha"),
-    hermetic_site(module_path: "v2.test.claim.alpha_witness", function: "w_beta")
+    hermetic_site(module_path: "test.claim.infer_alpha_witness", function: "w_alpha"),
+    hermetic_site(module_path: "test.claim.infer_alpha_witness", function: "w_beta")
   ]) {
     CensusAccepted { rows: rows } => (rows |> count) == 2
     CensusRefused { cause: _ } => false
@@ -529,11 +540,11 @@ test fn w_required_aggregate_dependencies_are_exactly_the_planned_subset() -> Bo
       is_required_aggregate(t: a)
         && (target_identity(t: a) == "//:required")
         && ((a.dependencies |> count) == 3)
-        && list_holds(xs: rendered, wanted: "//test/claim/alpha_witness:w_alpha")
-        && list_holds(xs: rendered, wanted: "//test/claim/alpha_witness:w_beta")
+        && list_holds(xs: rendered, wanted: "//test/claim/infer_alpha_witness:w_alpha")
+        && list_holds(xs: rendered, wanted: "//test/claim/infer_alpha_witness:w_beta")
         && !list_holds(xs: rendered, wanted: "//test/claim/long/slow_witness:w_slow")
         && !list_holds(xs: rendered, wanted: "//v2/test/fixture/walk_plan_stage/common:w_member")
-        && list_holds(xs: rendered, wanted: "//test/claim/reads_tree_witness:w_reads")
+        && list_holds(xs: rendered, wanted: "//test/claim/infer_reads_tree_witness:w_reads")
     }
   }
 }
@@ -604,4 +615,24 @@ test fn w_derived_aggregate_is_satisfiable_against_standings() -> Bool {
       }
     }
   }
+}
+
+// THE MODELED CENSUS CLASSIFIES A DeclinedNoCiWetLane ROW (gunbc#12794's arm, now in the .dag
+// type): it is counted in its own bucket and partitioned as declined, never as planned.
+test fn the_census_counts_a_declined_no_ci_wet_lane_row_in_its_own_bucket() -> Bool {
+  let real = census_rows_of(sites: [
+    hermetic_site(module_path: "v2.test.claim.bootstrap", function: "bootstrap_witness_keystone_holds")
+  ])
+  let rows = map(real, r => CensusRow {
+    label: r.label,
+    disposition: DeclinedNoCiWetLane { pattern: "bootstrap_test.dag" }
+  })
+  let counts = census_counts(rows: rows)
+  let split = census_partition(rows: rows)
+  count(rows) == 1
+    && counts.declined_no_ci_wet_lane == 1
+    && counts.declined_discovery_excluded == 0
+    && counts.offered == 1
+    && count(split.declined) == 1
+    && count(split.planned) == 0
 }
