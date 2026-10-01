@@ -109,13 +109,13 @@ pub const ENROLLED_ROW_TYPES: [EnrolledRowType; 5] = [
         variant: "RecurringFailureModeRows",
         type_name: "RecurringFailureMode",
         roster_module: super::derived_row_roster::ROSTER_MODULE,
-        roster_declaration: "recurring_failure_mode_roster",
+        roster_declaration: super::derived_row_roster::RECURRING_FAILURE_MODE.roster_declaration,
     },
     EnrolledRowType {
         variant: "RungDropRows",
         type_name: "RungDrop",
-        roster_module: "gunbc.rung_drop.roster",
-        roster_declaration: "rung_drop_roster",
+        roster_module: super::derived_row_roster::RUNG_DROP.roster_module,
+        roster_declaration: super::derived_row_roster::RUNG_DROP.roster_declaration,
     },
     EnrolledRowType {
         variant: "CollisionRowControl",

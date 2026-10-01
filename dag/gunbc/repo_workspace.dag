@@ -45,6 +45,12 @@ fn own_tool_footprints() -> List<WorkspaceFootprint> {
       ]
     },
     WorkspaceFootprint {
+      provenance: RepoTool { display: "Derived rung-drop roster", owner_module: "gunbc.rung_drop" },
+      artifacts: [
+        WorkspaceArtifact { pattern: "/dag/gunbc/rung_drop/roster.dag", meaning: "membership list derived from sibling RungDrop row files before compile; not a second authored authority", reason: RegenerableFromSource }
+      ]
+    },
+    WorkspaceFootprint {
       provenance: RepoTool { display: "Generator stamp files", owner_module: "gunbc.generated_artifact" },
       artifacts: [
         WorkspaceArtifact { pattern: ".*-stamp", meaning: "producer-centric generator stamps", reason: RegenerableFromSource }

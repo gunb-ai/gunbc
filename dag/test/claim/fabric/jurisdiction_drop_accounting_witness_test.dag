@@ -3,7 +3,8 @@ module test.claim.fabric.jurisdiction_drop_accounting_witness
 import std.types { Bool, List, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
 import product.fabric.provider_route { JurisdictionDropEnrollment }
-import gunbc.rung_drop.roster { rung_drop_roster, standing_rung_drops }
+import gunbc.rung_drop.roster { rung_drop_roster }
+import gunbc.rung_drop.standing { standing_rung_drops }
 import gunbc.jurisdiction_drop_accounting {
   EnrollmentAccountingStanding, EnrollmentAccounted, EnrollmentDropUnrostered,
   enrollment_accounting, unaccounted_enrollments, posture_unaccounted_enrollments,
