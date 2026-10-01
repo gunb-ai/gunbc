@@ -18,9 +18,8 @@ import extdeps.vllm.metrics {
   VllmServingMetric, InterTokenLatencySeconds, IterationTokensTotal, NumPreemptionsTotal, GenerationTokensTotal, PromptTokensTotal, HistogramSum, HistogramCount, vllm_metric_type,
 }
 import extdeps.vllm.bench_serve {
-  VllmBenchServeRequest, PoissonProcess, SendAllImmediately, RandomDatasetSpec, OpenaiChat, vllm_bench_serve_request, vllm_bench_serve_source_standing, vllm_bench_backend_route,
+  VllmBenchServeRequest, PoissonProcess, SendAllImmediately, vllm_bench_serve_source_standing,
 }
-import extdeps.vllm.server { vllm_route_path }
 import gunbc.spark.model_snapshot_materialize { SparkRemoteRun, RemoteRan, RemoteUnreachable }
 import gunbc.harness.harness_backend {
   harness_gauge_value, harness_gauge_count, harness_histogram_statistic_value, harness_queue_from_body, text_labeled_count, text_labeled_head_count, text_field_last_word, text_without_sudo_prompt,
@@ -31,18 +30,12 @@ import gunbc.serving.turn_admission {
 import gunbc.spark.vllm_endpoint_process_launch {
   VllmEndpointProcessLaunchObservation, LaunchObserved, LaunchUnobserved,
 }
-import gunbc.spark.serving_arm {
-  Glm53NativeFp8, GunbcGlm53DerivedGb10, FourSparkTp4, glm_native_concurrent_profile, glm53_native_fp8_row, glm53_derived_row, runtime_artifact_wire,
-}
-import gunbc.spark.serving_arm_launch { glm_native_weights_container_dir }
-import gunbc.spark.model_snapshot_acquisition { snapshot_install_path, HubCachePlacement }
 import gunbc.spark.serving_performance_subject {
-  ServingPerformanceSubject, serving_performance_subject, serving_subject_standing, ServingPerformanceSubjectStanding, SubjectEstablished, SubjectPartial, serving_performance_subject_wire, serving_subject_axes_wire,
+  ServingPerformanceSubject, serving_performance_subject, ServingPerformanceSubjectStanding, SubjectEstablished, SubjectPartial, serving_performance_subject_wire, serving_subject_axes_wire,
 }
 import gunbc.spark.serving_rank_observe {
   ObservedRankIncarnation, observed_rank_incarnations_agree, observed_rank_incarnation_text,
 }
-import extdeps.vllm.engine_args { SpeculativeDecodingOff }
 import extdeps.vllm.kv_layout { AdmissionCost, AdmissionCostUnestablished, AdmissionCostBlocks }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, CitedToAuthority }
 
@@ -687,11 +680,18 @@ type ClientRateQualificationFrontier sole_constructor {
   serve_py_digest: NonEmptyStr
 }
 
-data glm_native_qualification_frontier: ClientRateQualificationFrontier = ClientRateQualificationFrontier {
-  request_start_events: "per-request start events so ArrivalSkewObserved can be minted; SendAllImmediately stays ArrivalSkewUnread until that producer exists" as NonEmptyStr,
-  reserved_window: "subject-bound LeaseGrant and ExclusionEstablished over ProtectedSubjectField; the follow-up PR needs the operator to grant an exclusive Group B window" as NonEmptyStr,
-  interval_occupancy: "occupancy as a time-series over the client interval; BoundaryOccupancyReceipt is two scrapes and cannot count positively" as NonEmptyStr,
-  serve_py_digest: "bind vllm_bench_serve_source_standing to the serve.py file or package digest inside the running image, or an explicit policy that admits TranscribedUncited" as NonEmptyStr,
+fn client_rate_qualification_frontier(
+  request_start_events: NonEmptyStr,
+  reserved_window: NonEmptyStr,
+  interval_occupancy: NonEmptyStr,
+  serve_py_digest: NonEmptyStr,
+) -> ClientRateQualificationFrontier {
+  ClientRateQualificationFrontier {
+    request_start_events: request_start_events,
+    reserved_window: reserved_window,
+    interval_occupancy: interval_occupancy,
+    serve_py_digest: serve_py_digest,
+  }
 }
 
 type DecodeCorroboration
@@ -950,6 +950,8 @@ fn serving_load_observation(
   after_incarnation: ObservedRankIncarnation?,
   bench: BenchServeExecution,
   provenance: ProbeProvenance,
+  admission: AdmissionCost,
+  qualification_frontier: ClientRateQualificationFrontier,
 ) -> ServingLoadObservation {
   let protocol = bench_execution_protocol(e: bench)
   let before_p = preemption_count(body: before_body)
@@ -986,13 +988,13 @@ fn serving_load_observation(
     itl_latency: itl_latency_delta(before_body: before_body, after_body: after_body),
     iteration_tokens_booked: iteration_tokens_booked_delta(before_body: before_body, after_body: after_body),
     ledger: ledger,
-    admission: glm_native_workload_admission,
+    admission: admission,
     corroboration: decode_corroboration_for_protocol(req: protocol),
     provenance: provenance,
     client_latency: bench_serve_latency(e: bench, window: window),
     foreign_work: foreign,
     rate: rate,
-    qualification_frontier: glm_native_qualification_frontier,
+    qualification_frontier: qualification_frontier,
     evidence: serving_load_evidence(before_body: before_body, after_body: after_body, bench: bench),
   }
 }
@@ -1234,59 +1236,6 @@ fn rate_text(r: DerivedRate) -> String {
   }
 }
 
-// ── ADMISSION FOR THE SESSIONS THIS FLEET ACTUALLY SERVES ─────────────────────────────────────
-//
-// Real sessions sit at ~100k-130k tokens of context after compacting a 262k window. They idle
-// between turns. Each turn is a separate request whose KV frees on completion while the prefix
-// stays in the prefix cache. A 100k-prefix load protocol is not modeled here: it is the heaviest
-// prefill this arm can construct, and it waits on the qualification window (exact lease and
-// exclusion, idle drain, protected subject).
-//
-// THAT IS NOT AN ADMISSION CAPACITY. vLLM's printed token pool is floor(max_concurrency ×
-// max_model_len) — the same fact twice — and GLM's hybrid KV (full / sliding-window / Mamba) does
-// not scale linearly with sequence length. Dividing the pool by 100k–130k overestimates concurrent
-// sessions. Live per-request cost is extdeps.vllm.kv_layout cold_admission_blocks; with an empty
-// group roster that fold is AdmissionCostUnestablished, which is the honest state today.
-
-data glm_native_workload_admission: AdmissionCost = AdmissionCostUnestablished {
-  cause: "the live cache-group roster is unobserved, so cold_admission_blocks cannot establish per-request cost; a token-pool divided by request length is not an admission capacity" as NonEmptyStr
-}
-
-data glm_native_engine_tokenizer_path: NonEmptyStr = snapshot_install_path(
-  placement: HubCachePlacement { cache_root: glm_native_weights_container_dir },
-  repo: glm53_native_fp8_row.repo,
-  revision: glm53_native_fp8_row.revision,
-)
-
-data glm_native_sweep_dataset: RandomDatasetSpec = RandomDatasetSpec {
-  input_len: token_count(count: 256),
-  output_len: token_count(count: 128),
-  prefix_len: token_count(count: 0),
-}
-
-data glm_native_bench_seed: Nat = 20260918
-
-// The loopback base URL both the bench client and the metrics scrape address, from the profile's port.
-fn glm_native_serve_base_url() -> NonEmptyStr {
-  join(["http://127.0.0.1:", to_string(glm_native_concurrent_profile.serve_port)], "") as NonEmptyStr
-}
-
-// The live probe's protocol: 256-in/128-out, SendAllImmediately, c=2. SendAllImmediately is wiring,
-// not a comparable rate protocol (arrival skew is unread). The derived rate counts completed output
-// tokens; bench-serve's total token throughput also counts prefill and answers a different question.
-data glm_native_smoke_protocol: VllmBenchServeRequest = vllm_bench_serve_request(
-  backend: OpenaiChat,
-  base_url: glm_native_serve_base_url(),
-  model: glm_native_concurrent_profile.served_alias,
-  tokenizer: glm_native_engine_tokenizer_path,
-  dataset: glm_native_sweep_dataset,
-  num_prompts: 4,
-  arrival: SendAllImmediately,
-  max_concurrency: Present { value: 2 },
-  ignore_eos: true,
-  seed: glm_native_bench_seed,
-)
-
 fn bench_labeled_nat(body: String, label: String) -> Nat? {
   text_labeled_count(body: text_without_sudo_prompt(body: body), label: label)
 }
@@ -1380,34 +1329,3 @@ fn client_latency_from_bench_stdout(body: String, window: ProbeWindowStanding) -
       }
   }
 }
-
-// max_num_seqs and the other launch figures are read from glm_native_concurrent_profile, the one row that owns them.
-// Runtime is glm53_derived_row (GunbcGlm53DerivedGb10); checkpoint revision is the native Flash row.
-data glm_native_live_subject: ServingPerformanceSubject = serving_performance_subject(
-  checkpoint: Glm53NativeFp8,
-  checkpoint_revision: Present { value: glm53_native_fp8_row.revision },
-  runtime: GunbcGlm53DerivedGb10,
-  runtime_image_reference: runtime_artifact_wire(a: glm53_derived_row.artifact),
-  topology: Present { value: FourSparkTp4 },
-  rank_population: Present { value: 4 },
-  context_ceiling: Present { value: glm_native_concurrent_profile.max_model_len },
-  max_num_batched_tokens: glm_native_concurrent_profile.max_num_batched_tokens,
-  max_num_seqs: Present { value: glm_native_concurrent_profile.max_num_seqs },
-  kv_cache_dtype: none,
-  speculative: Present { value: SpeculativeDecodingOff },
-  collective_transport: none,
-)
-
-fn glm_native_live_subject_standing() -> ServingPerformanceSubjectStanding {
-  serving_subject_standing(
-    subject: glm_native_live_subject,
-    believed: "collective transport was unread; the KV cache dtype is unread because glm_native_concurrent_profile declares kv_cache_dtype_wire auto while the running group B unit was launched from a different plan; the runtime is glm53_derived_row and the checkpoint revision is glm53_native_fp8_row.revision" as NonEmptyStr,
-    would_settle: "read the running launch's NCCL transport announcement and its --kv-cache-dtype on this incarnation" as NonEmptyStr,
-  )
-}
-
-data glm_native_protected_subject: ProtectedSubjectField = protected_subject_field(
-  subject: glm_native_live_subject,
-  served_alias: glm_native_concurrent_profile.served_alias,
-  route: vllm_route_path(r: vllm_bench_backend_route(b: glm_native_smoke_protocol.backend)),
-)

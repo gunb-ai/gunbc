@@ -7,6 +7,8 @@ import v2.std.optional { Optional, Present, Absent, optional_present, optional_a
 import v2.std.arrow_contract { arrow_contract_conforms }
 import v2.std.node {
   arrow_named_edge_is_non_binder,
+  NotMarkedReference,
+  resolved_reference_body_kind,
   Arrow,
   Atom,
   Instantiation,
@@ -214,9 +216,14 @@ fn declaration_binder_edge(parent: Node, edge: Edge) -> Bool {
 // edge's marker is this module's fact (v2.std.node cannot intern it). Before the binder edge was
 // excluded, a module declaring an alias, a bodyless declaration or a generic declaration refused at the
 // partition closure as partition_facts_miss on its binder nodes.
+// A RESOLVED REFERENCE IS ONE TERM: the qualified-name cells under a <declaration-reference> or
+// <parameter-reference> marker (v2.std.qualified_name resolved_reference_node_of_kind) name where the
+// referent is declared, so they are not subterms. They are synthetic and alike across every reference
+// to one path, so entered as facts they collide as one key carrying different facts
+// (infer_facts_key_conflict). v2.compiler.infer's gather skips the same cells by the same accessor.
 fn node_inferred_subtree_nodes(root: Node) -> List<Node> {
   fold(root.children, init: [root], f: fn(acc, e) {
-    if (e.label == arrow_signature_order_label) || declaration_binder_edge(parent: root, edge: e) || match_arm_pattern_edge(parent: root, edge: e) {
+    if (e.label == arrow_signature_order_label) || declaration_binder_edge(parent: root, edge: e) || match_arm_pattern_edge(parent: root, edge: e) || (resolved_reference_body_kind(target: root) != NotMarkedReference) {
       acc
     } else {
       concat(acc, node_inferred_subtree_nodes(root: e.target))
