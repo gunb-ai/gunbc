@@ -4447,6 +4447,27 @@ impl Default for EvalCallMemo {
 
 const EVAL_CALL_MEMO_ENTRY_CAP: usize = 1_000_000;
 
+// THE EVAL-FRAME MEMO'S PROCESS-WIDE HITS AND MISSES, for the required floor's receipt. The
+// per-context counters (eval_call_memo_counters) die with each context, and the floor runs many;
+// a process total is what a whole-floor before/after comparison reads. Maintained at the same two
+// points as the per-context counters, so the two cannot disagree about what a hit is.
+static EVAL_CALL_MEMO_PROCESS: (std::sync::atomic::AtomicU64, std::sync::atomic::AtomicU64) = (
+    std::sync::atomic::AtomicU64::new(0),
+    std::sync::atomic::AtomicU64::new(0),
+);
+
+/// Process-wide eval-frame memo (hits, misses) since start.
+pub fn eval_call_memo_process_counts() -> (u64, u64) {
+    (
+        EVAL_CALL_MEMO_PROCESS
+            .0
+            .load(std::sync::atomic::Ordering::Relaxed),
+        EVAL_CALL_MEMO_PROCESS
+            .1
+            .load(std::sync::atomic::Ordering::Relaxed),
+    )
+}
+
 fn eval_call_memo_env_default() -> bool {
     std::env::var("GUNBC_EVAL_MEMO")
         .map(|v| v != "0")
@@ -11247,6 +11268,9 @@ fn eval_call_memo_get(
         for (stored_args, value) in bucket {
             if eval_call_memo_args_match(stored_args, args) {
                 mm.hits += 1;
+                EVAL_CALL_MEMO_PROCESS
+                    .0
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 return Some(value.clone());
             }
         }
@@ -11266,6 +11290,9 @@ fn eval_call_memo_put(
     // store is still a miss — overflow ⊆ misses, and hits + misses == keyed Ok-resulting calls
     // through the memo path, including under overflow. `misses` is NOT "entries stored".
     m.misses += 1;
+    EVAL_CALL_MEMO_PROCESS
+        .1
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     if m.map.len() >= EVAL_CALL_MEMO_ENTRY_CAP && !m.map.contains_key(&key) {
         m.overflow += 1;
         return;
