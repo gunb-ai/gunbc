@@ -86,7 +86,7 @@ fn disk_preflight_refusal(host: HostIdentity, requested_width: Int) -> String? {
 fn disk_preflight_refusal_for_host_plan(host_plan: RunnerCapacityHostPlan) -> String? {
   match host_plan.admission {
     WidthAdmitted { width: w } => disk_preflight_refusal(host: host_plan.host, requested_width: w)
-    _ => none
+    WidthRefused { requested: _, cause: _ } => none
   }
 }
 
@@ -130,7 +130,9 @@ fn count_add_actions_in_host_plan(host_plan: RunnerCapacityHostPlan) -> Int {
     f: (n, a) =>
       match a {
         RunnerSlotAdd { to: _ } => n + 1
-        _ => n
+        RunnerSlotChange { from: _, to: _ } => n
+        RunnerSlotRemove { from: _ } => n
+        RunnerIncarnationReplace { slot: _, cause: _ } => n
       },
   )
 }
