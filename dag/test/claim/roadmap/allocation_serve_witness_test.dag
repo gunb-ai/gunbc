@@ -1,6 +1,7 @@
 module test.claim.allocation_serve_witness
 
-import std.types { GET, POST, Bool }
+import std.types { Bool }
+import extdeps.ietf.http_semantics { GET, POST }
 import extdeps.http.server { ServeResponseHeaderNoStore, serve_select_route, MethodNotAllowed }
 import gunbc.roadmap_serve { allocation_page_response, AllocationPageHandler, AllocationClientHandler }
 import test.claim.roadmap_serve_witness { fixture_request, selects, live_table_or_empty }

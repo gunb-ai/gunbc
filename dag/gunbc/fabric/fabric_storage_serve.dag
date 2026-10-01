@@ -47,7 +47,7 @@ import gunbc.fabric_storage_placement { fabric_storage_placement, FabricStorageP
 data fabric_storage_closure_bound_cap: Int = 65536
 
 fn text_response(status: Int, body: String) -> ServeWireResponse {
-  ServeWireResponse { status: status, content_type_label: "text/plain; charset=utf-8", body: body }
+  ServeWireResponse { status: status, content_type_label: "text/plain; charset=utf-8", body: body, headers: [] }
 }
 
 fn ok(body: String) -> ServeWireResponse {

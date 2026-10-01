@@ -47,7 +47,7 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   continuation_alignment_l0_pointer,
   continuation_alignment_ask,
 }
-import gunbc.roadmap_model {  RoadmapNode, RoadmapNodeId, RoadmapNodeIdentity, Pointer, Unsized }
+import gunbc.roadmap_model {  RoadmapNode, RoadmapNodeId, RoadmapNodeIdentity, Pointer, NotDispatchable }
 import gunbc.roadmap_status { TicketLine, TicketFields, Unsigned }
 import gunbc.roadmap_execution_contract { ExecutionContract, ExecutionContractUnspecified, NotAgentWork }
 
@@ -81,7 +81,7 @@ fn fixture_node(id: String, headline: String, brief: String) -> RoadmapNode {
     node: id as RoadmapNodeId,
     line: TicketLine { done: false, ticket: fixture_fields(headline: headline, brief: brief) },
     carriers: [] as List<Pointer>,
-    sizing: Unsized,
+    dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,
     owner: "alignment-fixture",
     signoff: Unsigned,
