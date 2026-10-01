@@ -5,7 +5,7 @@ import product.placement_supply { HostIdentity }
 import extdeps.github.actions { SelfHosted }
 import gunbc.ci_fleet { fleet_compute_offer_for }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
-import gunbc.runner_slot_allocation { runner_host_label, runner_label_set_union, gunbc_runner_slot_desired_for }
+import gunbc.runner_slot_allocation { runner_host_label, runner_label_set_union, runner_label_sets_equal, gunbc_runner_slot_desired_for, slot_is_floor_class }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 
@@ -66,3 +66,31 @@ fn runner_slot_registration_labels(slot: RunnerSlotIdentity) -> RunnerRegistrati
       }
   }
 }
+
+// WHETHER AN OBSERVED REGISTRATION CONFORMS TO ITS SLOT. An ordinary slot conforms to the host's
+// set exactly. A floor class slot conforms to EITHER the host's set (the toolchain converge has not
+// granted the class label yet, or revoked it) OR its class set (granted): those are the only two
+// states the writer can produce (gunbc.runner_browser_toolchain floor_class_labels_converge_wet), so
+// both are healthy and anything else -- another host's label, a missing class label on an ordinary
+// slot, a stray extra -- is a divergence. Treating the ungranted state as diverged would make the
+// recovery path churn every class slot on a host whose toolchain is not converged; the grant is
+// what the floor selects on, so withholding it is already the refusal.
+fn runner_slot_labels_conform(slot: RunnerSlotIdentity, observed: List<String>) -> RegistrationLabelsConformance {
+  match runner_registration_labels(host: slot.host) {
+    RegistrationLabelsRefused { host: h, cause: c } => RegistrationLabelsUnjudged { host: h, cause: c }
+    RegistrationLabelsResolved { labels: host_labels } =>
+      if runner_label_sets_equal(a: observed, b: host_labels) {
+        RegistrationLabelsConform
+      } else if slot_is_floor_class(slot: slot)
+        && runner_label_sets_equal(a: observed, b: runner_label_set_union(a: host_labels, b: gunbc_runner_slot_desired_for(slot: slot).labels.github_labels)) {
+        RegistrationLabelsConform
+      } else {
+        RegistrationLabelsDiverge
+      }
+  }
+}
+
+type RegistrationLabelsConformance
+  = RegistrationLabelsConform
+  | RegistrationLabelsDiverge
+  | RegistrationLabelsUnjudged { host: HostIdentity, cause: NonEmptyStr }
