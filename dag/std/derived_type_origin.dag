@@ -11,6 +11,14 @@ import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, T
 // (std.occurrence_identity answers which AUTHORED occurrence; a built node has none) and not a site
 // key (v2.compiler.inferred_tree InferSite answers which site of one tree a fact is about).
 //
+// CONSUMERS, stated per DESIGN section 3c. Today: test.claim.derived_type_origin_witness_test, which
+// executes laws L1-L4 over supplied origins. Production: v1.compiler.infer unify_generics and
+// substitute_generics_apply, together with that function's self-binding guard. They read
+// generic_identity_of and self_binding_of in place of the spellings they compare today
+// (gunbc.recurring_failure_mode generic_identity_decided_by_spelling). That is a DECLARED FRONTIER.
+// Its trigger is step 2 of docs/plans/derived-node-identity-design.md, the infer implementation
+// across the node-copying paths, which starts after eager-newt-412's facts work lands its last stage.
+//
 // `container` names the kernel carrier by its std.algebra algebra_carriers row name, the authority
 // for which kernel containers exist; `position` is the element slot, 0 for a single-argument carrier.
 type DerivedTypeOrigin
@@ -52,11 +60,19 @@ fn generic_identity_of(origin: DerivedTypeOrigin) -> GenericIdentityVerdict {
 
 // A SELF-BINDING IS IDENTITY EQUALITY. Binding parameter p to a node is a self-binding exactly when
 // that node IS p -- the same owner, declaration and parameter name -- never when it is only spelled
-// like p. Two owners' parameters that share a name are different parameters.
-fn is_self_binding(parameter: DeclarationRef, binding: DerivedTypeOrigin) -> Bool {
+// like p. Two owners' parameters that share a name are different parameters. A binding whose origin
+// could not be derived is neither answer: it reaches the caller as SelfBindingRefused (law L4), so a
+// substitution built on this verdict refuses instead of treating it as "not a self-binding".
+type SelfBindingVerdict
+  = SelfBinding
+  | NotSelfBinding
+  | SelfBindingRefused { constructor: NonEmptyStr, cause: NonEmptyStr }
+
+fn self_binding_of(parameter: DeclarationRef, binding: DerivedTypeOrigin) -> SelfBindingVerdict {
   match generic_identity_of(origin: binding) {
-    IsGenericParameter { parameter: q } => declaration_ref_eq(a: parameter, b: q)
-    NotAGenericParameter => false
-    GenericIdentityRefused { constructor: _, cause: _ } => false
+    IsGenericParameter { parameter: q } =>
+      if declaration_ref_eq(a: parameter, b: q) { SelfBinding } else { NotSelfBinding }
+    NotAGenericParameter => NotSelfBinding
+    GenericIdentityRefused { constructor: c, cause: why } => SelfBindingRefused { constructor: c, cause: why }
   }
 }
