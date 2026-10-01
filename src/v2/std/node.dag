@@ -545,7 +545,7 @@ fn arrow_signature_edges_conform(children: List<Edge>) -> Bool {
         if (sym == ^arrow_body_edge) || (edge_label_of(e: e) == arrow_signature_order_label) { acc } else { acc + 1 }
     }
   })
-  (binder_edges < 2)
+  (binder_edges <= 1)
   && arrow_signature_order_conforms(children: children)
   && fold(children, init: true, f: fn(acc, e) {
     match e.label {
