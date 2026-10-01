@@ -60,8 +60,8 @@ use crate::v1_rt::{
     rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains,
 };
 use crate::v1_std_core::{
-    arg_name_at, arg_value, arm_body, arm_pattern, authored_name_at, binop_left, binop_right,
-    block_stmts, cast_expr, cast_target, expr_call_func_at, expr_field_access_summary,
+    arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, binop_left,
+    binop_right, block_stmts, cast_expr, cast_target, expr_call_func_at, expr_field_access_summary,
     expr_method_call_semantics, expr_method_name_at, expr_var_name_at, field_access_base,
     field_access_field_at, field_binding_name_at, field_binding_pattern, field_init_node_name_at,
     field_init_node_value, find_property, find_property_string, foreach_body, foreach_collection,
@@ -7665,6 +7665,22 @@ fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
         };
         if let Some(bindings) = match_pattern(&pattern, &arm_value, ctx) {
             let arm_env = Env::extend(env, bindings);
+            // An authored guard is part of the arm's selection, evaluated under the arm's own
+            // bindings. It used to be ignored, so `P if g => a` selected `a` whenever `P`
+            // matched -- the interpreter disagreed with every emitted rendering of the same match
+            // (gunbc.recurring_failure_mode
+            // nested_pattern_accepted_by_the_interpreter_and_broken_in_emitted_rust).
+            if let Some(guard) = arm_guard(arm.clone()) {
+                match eval_expr(&guard, &arm_env, ctx)? {
+                    Value::Bool(true) => {}
+                    Value::Bool(false) => continue,
+                    other => {
+                        return Err(InterpError::TypeError {
+                            msg: format!("match guard evaluated to {other}, not Bool"),
+                        })
+                    }
+                }
+            }
             return eval_expr(&arm_body(arm.clone()), &arm_env, ctx);
         }
     }

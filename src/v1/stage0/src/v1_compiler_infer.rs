@@ -4887,7 +4887,7 @@ pub fn literal_introduction_type_mismatch(
         );
         match (*actual_expr.expr_data.clone()).clone() {
             ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitInt { .. }) =>
+                if matches!(value.as_ref(), LiteralValue::LitInt { value: _, .. }) =>
             {
                 let LiteralValue::LitInt { value: _, .. } = value.as_ref() else {
                     unreachable!()
@@ -6117,7 +6117,13 @@ pub fn nominal_product_head_name(n: Rc<Node>, scope: Rc<InferScope>) -> String {
                     nominal_product_head_name_if_declared_product(name.clone(), scope.clone())
                 }
                 TypeHeadExposure::ExposedTypeHead { ref view, .. }
-                    if matches!(view.as_ref(), TypeHeadView::ProductHead { .. }) =>
+                    if matches!(
+                        view.as_ref(),
+                        TypeHeadView::ProductHead {
+                            type_identity: _,
+                            ..
+                        }
+                    ) =>
                 {
                     let TypeHeadView::ProductHead {
                         type_identity: _, ..

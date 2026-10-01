@@ -167,7 +167,7 @@ pub fn assess_reference_binding_observation(
                             ..
                         } if matches!(
                             result.as_ref(),
-                            OccurrenceBindingResult::OccurrenceBound { .. }
+                            OccurrenceBindingResult::OccurrenceBound { binding: _, .. }
                         ) =>
                         {
                             let OccurrenceBindingResult::OccurrenceBound {
@@ -222,7 +222,7 @@ pub fn assess_reference_binding_observation(
                             ..
                         } if matches!(
                             result.as_ref(),
-                            OccurrenceBindingResult::OccurrenceBound { .. }
+                            OccurrenceBindingResult::OccurrenceBound { binding: _, .. }
                         ) =>
                         {
                             let OccurrenceBindingResult::OccurrenceBound {
@@ -281,7 +281,7 @@ pub fn assess_reference_binding_observation(
                         ..
                     } if matches!(
                         result.as_ref(),
-                        OccurrenceBindingResult::OccurrenceUnbound { .. }
+                        OccurrenceBindingResult::OccurrenceUnbound { occurrence: _, .. }
                     ) =>
                     {
                         let OccurrenceBindingResult::OccurrenceUnbound { occurrence: _, .. } =
@@ -318,7 +318,7 @@ pub fn assess_reference_binding_observation(
                     ..
                 } if matches!(
                     result.as_ref(),
-                    OccurrenceBindingResult::OccurrenceAmbiguous { .. }
+                    OccurrenceBindingResult::OccurrenceAmbiguous { candidates: _, .. }
                 ) =>
                 {
                     let OccurrenceBindingResult::OccurrenceAmbiguous {

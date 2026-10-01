@@ -1,0 +1,19 @@
+module gunbc.recurring_failure_mode.match_guard_ignored_by_the_seed_interpreter
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data match_guard_ignored_by_the_seed_interpreter: RecurringFailureMode = RecurringFailureMode {
+  identity: "match_guard_ignored_by_the_seed_interpreter" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: an authored match guard (`P if g => body`) that the seed parses, typechecks and every Rust rendering tests, but the seed interpreter never evaluates -- `eval_match` in `src/v1/stage0/src/v1_interpreter.rs` selected the first arm whose PATTERN matched and ignored `arm_guard` entirely, so `match GP { GP if n > 0 => 1  _ => 2 }` returned 1 for n = 0. Found while building the interpreter-vs-emitted differential for gunbc.recurring_failure_mode nested_pattern_accepted_by_the_interpreter_and_broken_in_emitted_rust: the authored-guard shape disagreed on the interpreter's side, not the emitter's.",
+    "HARM: silent wrongness on the reference path -- every interpreted claim, `gunbc run` and witness over a guarded match answered as if the guard were `true`, and an interpreter-vs-emitted differential reported the CORRECT emitted answer as the divergence. No `.dag` declaration outside test fixture strings authors a guard at this writing, which is why nothing observed it.",
+    "RUNG FOUND AT: below the floor (silent wrongness) on the interpreted path. NOW: the guard is evaluated under the arm's bindings after the pattern matches; `false` moves to the next arm, and a non-Bool guard is a typed refusal rather than a truthiness reading. Rung 2 (mechanically preventable): `test.claim.emit.nested_constant_pattern_emission_witness_test` `the_interpreter_honors_an_authored_guard_on_a_nested_arm` reds with the fix reverted. CEILING: structurally guaranteed -- the interpreter and the emitters read one arm-selection authority. NEXT-RUNG TRIGGER: the seed interpreter's arm selection is derived from the same modeled arm (pattern AND guard) the emitters render, rather than re-implemented by hand in `eval_match`; the v2 evaluator inherits it when it admits guards.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "test.claim.emit.nested_constant_pattern_emission_witness_test", decl_name: "the_interpreter_honors_an_authored_guard_on_a_nested_arm", field: WholeDeclaration },
+  ],
+}
