@@ -485,26 +485,26 @@ fn dre_imported_reference_source() -> Outcome<ResolvedTree> {
 // denote (it is a binding-to-type table, and the authored spelling is not a binding). Reading the
 // pre-resolve symbol_index instead is what made every named call's result typing fall to the frontier.
 //
-// resolve walks ONE module root and mints resolved_declarations over it (resolved_declarations_of), so
-// that index carries the SUBJECT module's declarations and no other. m.lib.helper is therefore absent
-// from it, the lookup answers Absent, and the reference stays underived. NOTHING IS FABRICATED: the
-// arm that would widen -- fall back to the authored index when the resolved one has no row -- is the
-// absorbing fallback DESIGN section 5 forbids, and it is the exact widening whose answer was wrong.
-// Re-deriving the return from the language's kernel spelling table inside infer is the other tempting
-// arm and is a second resolution authority (DESIGN section 3), so it is refused too.
+// resolve ONCE walked a single module root and minted resolved_declarations over it, so that index carried
+// the SUBJECT module's declarations and no other. m.lib.helper was absent from it, the lookup answered
+// Absent, and the reference stayed underived. The two tempting repairs were refused then and stay refused:
+// falling back to the authored index is the absorbing fallback DESIGN section 5 forbids, and re-deriving the
+// return from the language's kernel spelling table inside infer is a second resolution authority (section 3).
 //
-// THE TRIGGER IS A RESOLVED-DECLARATION INDEX OVER EVERY RESOLVED MODULE ROOT -- the multi-root door
-// v2.compiler.symbol_index_fill symbol_index_fill_module_roots applied to resolved roots rather than
-// authored ones, minted by resolve beside the per-module carrier. That is resolve's fact to own, not
-// infer's. Until it exists, a cross-module named call's result type is on the counted frontier.
+// THE TRIGGER THIS ROW DECLARED HAS LANDED, which is why the row now reads in the opposite direction. It
+// named "a resolved-declaration index over every resolved module root ... minted by resolve beside the
+// per-module carrier", and that is what v2.compiler.resolve resolved_tree_of now receives: the closure's
+// resolved roots, folded through the existing single-root door, assembled by v2.compiler.name_resolve
+// closure_resolved_roots. The fact stayed resolve's to own, as this row said it must.
 //
-// THIS ROW IS THE FRONTIER'S EXECUTING EVIDENCE, asserted in the direction that is true today: the
-// imported call does NOT ground. It flips the moment the trigger lands, which is what makes it a
-// transition signal rather than a permanent green. The single-module rows above are the positive
-// controls that the mechanism itself works, so this row cannot be satisfied by the mechanism being
-// broken everywhere.
-test fn dre_an_imported_reference_does_not_yet_ground_holds() -> Bool {
-  dre_call_is_grounded_for(o: dre_imported_reference_source(), wanted: ^helper) == false
+// DESIGN section 4b(4) IS WHY THIS DID NOT RETIRE. An expecting-red probe that greens when its wall lands
+// flips to a permanent regression control; it does not disappear, because the climb's evidence is what keeps
+// the higher rung real. So the row keeps its subject and its fixture and inverts its assertion, and its name
+// now states what holds rather than what is missing. The single-module rows above remain the positive
+// controls that the mechanism works at all, so this row cannot be satisfied by grounding being broken
+// everywhere -- and it goes red again the moment the closure index stops reaching an imported declaration.
+test fn dre_an_imported_reference_grounds_through_the_closure_index_holds() -> Bool {
+  dre_call_is_grounded_for(o: dre_imported_reference_source(), wanted: ^helper)
 }
 
 // THE ASYMMETRY THE TWO REFUSAL ROWS ABOVE DEPEND ON, MEASURED RATHER THAN ASSERTED. A declared `Int`

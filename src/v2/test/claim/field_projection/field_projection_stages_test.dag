@@ -11,7 +11,9 @@ import extdeps.communication.medium { Lossless, Medium }
 import std.algebra { Cons, Empty }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.diagnostic { Accepted, NodeLocus, Outcome, Rejected }
+import v2.std.diagnostic {
+  Some,
+  diagnostics_has_reason, Accepted, NodeLocus, Outcome, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, symbol_eq }
 import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_last_segment, qualified_name_spine_shape_present }
@@ -619,4 +621,118 @@ test fn fps_a_frame_binder_is_still_projected_through_holds() -> Bool {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
+}
+
+// THE RETRIEVAL JOIN, MEASURED THROUGH INFER AND NOT ONLY RESOLVE. The rows above establish that a
+// cross-module declaration path RESOLVES; they say nothing about whether inference can then retrieve that
+// declaration to read a field off it, because fps_resolves stops at the resolved tree. That retrieval is
+// v2.compiler.infer infer_projection_receiver asking ResolvedTree.resolved_declarations for the receiver
+// type's declaring path -- and resolved_declarations is filled from the resolved root of the module being
+// inferred, not from a closure-wide index of the providers it imports.
+//
+// ONE VARIABLE. Both sources declare the same record and project the same field off a plain parameter; they
+// differ only in whether the record is declared in the consuming module or in an imported one. The fold-step
+// binder of the pinned subject is deliberately NOT used here: a supplied two-module ingest cannot resolve
+// `List` or `fold` without ingesting their providers, and a plain parameter reaches the same join with
+// nothing else moving.
+fn fps_cross_module_projection_source() -> Outcome<ResolvedTree> {
+  fps_two_module_assemble(
+    provider: "module a.b.c\n\ntype Leg {\n  target: Int\n}\n",
+    consumer: "module p\n\nimport a.b.c { Leg }\n\nfn read(l: Leg) -> Int {\n  l.target\n}\n"
+  )
+}
+
+fn fps_same_module_projection_source() -> Outcome<ResolvedTree> {
+  fps_assemble(src: "module p\n\ntype Leg {\n  target: Int\n}\n\nfn read(l: Leg) -> Int {\n  l.target\n}\n")
+}
+
+// (1) POSITIVE CONTROL. Without it a red on (2) proves nothing -- the field reader and the projection rule
+// must work same-module before the cross-module retrieval is the question.
+test fn fps_a_same_module_record_projection_infers_holds() -> Bool {
+  fps_infers(o: fps_same_module_projection_source())
+}
+
+// (2) THE SUBJECT. A red here beside a green (1) locates the defect at the retrieval of an imported record's
+// declaration, and NOT at the projection rule, the field reader or resolution.
+test fn fps_a_cross_module_record_projection_infers_holds() -> Bool {
+  fps_infers(o: fps_cross_module_projection_source())
+}
+
+// ASSERTED OVER THE WHOLE CHAIN, NOT THE HEAD. An infer refusal's head is infer_grounding_not_derived --
+// the grounding that could not be completed -- and the deciding cause sits in the TAIL. A first version of
+// these rows read r.head.reason and failed for that reason alone, which is the same misattribution that cost
+// this lane a wrong causal account: in one measured diagnostic the head reason appeared 209 times and the
+// actual cause once. v2.std.diagnostic diagnostics_has_reason is the existing authority for asking the chain,
+// so these rows ask it rather than minting a second reader.
+//
+// (3) A PROVIDER THAT DOES NOT RESOLVE LEAVES ITS DECLARATIONS UNAVAILABLE, AND THAT IS NOT "DECLARES NO
+// FIELDS". This row exists because the arm it exercises would otherwise have no authorable red. The
+// honesty split gave ReceiverDeclarationUnavailable its own reason, and the closure index then made the
+// ordinary cross-module case SUCCEED -- so the only remaining way to reach the arm is a provider whose
+// declarations never enter the index. v2.compiler.name_resolve closure_resolved_roots drops a root that
+// fails to resolve, which is exactly that condition, and this fixture produces it with a provider carrying
+// an unresolvable body beside the record the consumer projects.
+//
+// DESIGN section 4b IS WHY THE ROW IS WRITTEN THIS WAY RATHER THAN DELETED. An earlier version asserted that
+// the cross-module case refuses as unavailable; the capability repair made it infer, so that row was
+// obsoleted BY SUCCESS exactly as the imported-grounding probe in
+// v2.test.claim.reference_evidence.declaration_reference_evidence was. Deleting it would leave the new arm
+// with no executing evidence and no discriminating red -- a permanently unreachable arm cited as coverage,
+// which is the decoration section 4b forbids. So the subject moves to the condition that still reaches it.
+//
+// IT ASSERTS BOTH DIRECTIONS. The unavailable reason must be present AND declares_no_fields must be absent,
+// because the whole defect being repaired was a correct program being told its receiver declares no fields.
+fn fps_unresolvable_provider_source() -> Outcome<ResolvedTree> {
+  fps_two_module_assemble(
+    provider: "module a.b.c\n\ntype Leg {\n  target: Int\n}\n\nfn broken() -> Int {\n  no_such_name_anywhere\n}\n",
+    consumer: "module p\n\nimport a.b.c { Leg }\n\nfn read(l: Leg) -> Int {\n  l.target\n}\n"
+  )
+}
+
+test fn fps_an_unresolvable_provider_leaves_its_declaration_unavailable_holds() -> Bool {
+  match fps_unresolvable_provider_source() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: r } =>
+          diagnostics_has_reason(d: Some { diagnostics: r }, reason: ^infer_reason_projection_receiver_declaration_unavailable)
+            && !diagnostics_has_reason(d: Some { diagnostics: r }, reason: ^infer_reason_projection_receiver_declares_no_fields)
+      }
+  }
+}
+
+// (4) AND A RECEIVER THAT GENUINELY DECLARES NO FIELDS STILL SAYS SO. The split is only honest if the OTHER
+// arm kept its meaning: an established type that is not a declaration reference at all is a fact about the
+// program and must refuse with declares_no_fields. Without this row the split could be satisfied by routing
+// every projection refusal to the new reason, which would lose a real diagnosis instead of gaining one.
+fn fps_scalar_receiver_source() -> Outcome<ResolvedTree> {
+  fps_assemble(src: "module p\n\nfn read(n: Int) -> Int {\n  n.target\n}\n")
+}
+
+test fn fps_a_scalar_receiver_still_declares_no_fields_holds() -> Bool {
+  match fps_scalar_receiver_source() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: r } =>
+          diagnostics_has_reason(d: Some { diagnostics: r }, reason: ^infer_reason_projection_receiver_declares_no_fields)
+      }
+  }
+}
+
+// DISCRIMINATOR: IS THE DEFECT "CROSS-MODULE" OR "MORE THAN ONE ROOT"? Same-module record and projection as
+// the passing control, assembled through the TWO-module ingest with an unrelated provider beside it. If this
+// refuses, the subject is not cross-module retrieval at all -- it is that a multi-root ingest yields an index
+// that answers for nothing, which is a different and simpler defect with a different repair.
+fn fps_same_module_projection_in_two_root_ingest() -> Outcome<ResolvedTree> {
+  fps_two_module_assemble(
+    provider: "module a.b.c\n\ntype Unused {\n  n: Int\n}\n",
+    consumer: "module p\n\ntype Leg {\n  target: Int\n}\n\nfn read(l: Leg) -> Int {\n  l.target\n}\n"
+  )
+}
+
+test fn fps_dbg_same_module_in_two_root_ingest() -> Bool {
+  fps_infers(o: fps_same_module_projection_in_two_root_ingest())
 }

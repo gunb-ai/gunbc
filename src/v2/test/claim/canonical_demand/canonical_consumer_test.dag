@@ -25,6 +25,15 @@ import v2.std.qualified_name { declaration_reference_path_optional }
 // set's membership answer decides, for every module-level name a program mentions, whether it is a kernel
 // symbol or a reference to a declaration.
 //
+// THE ROUTE THESE ROWS TRAVERSE, NAMED. That producer has exactly one consumer,
+// v2.compiler.resolve resolve_atom_bound -- the single enforcement site every door that binds a
+// module-level name accepts through, reached once the lexical frame has missed. So an annotation
+// naming a kernel spelling arrives there as an unbound-in-frame name and the canonical answer is
+// what classifies it. Naming the consumer rather than a line is DESIGN §3's standing rule, and it
+// matters more than usual here: the rows below observe the classification INDIRECTLY, through
+// whether a declaring path survives on the resolved tree, so a reader who cannot find the deciding
+// call cannot tell what the rows are discriminating.
+//
 // WHY THIS FILE EXISTS BESIDE THE EQUALITY CONTROL. The equality control proves the new derivation names
 // the same symbols as the one it replaced; it cannot show that resolve still ASKS, or that the answer still
 // discriminates. A derivation that silently returned the empty set would pass equality against another

@@ -1019,8 +1019,10 @@ fn infer_field_projection_facts(
                   descent: Holds { value: descent_proof }
                 )
               )
-            ReceiverNotARecord =>
+            ReceiverTypeNotADeclaration =>
               outcome_rejected(infer_receiver_declares_no_fields_diagnostic(node: node))
+            ReceiverDeclarationUnavailable { path: _ } =>
+              outcome_rejected(infer_receiver_declaration_unavailable_diagnostic(node: node))
             ReceiverPayload { payload: payload } =>
               match declared_field_named(payload: payload, name: projection.field) {
                 Present { value: declared } =>
@@ -1062,13 +1064,34 @@ fn infer_field_not_declared_diagnostic(node: Node) -> Diagnostic {
 //
 // SO THE DECIDED CASES REFUSE AND ONLY MISSING EVIDENCE WAITS. A receiver whose type this stage has not
 // derived is ReceiverTypeUnderived and stays at the frontier, because convicting a program whose
-// receiver is typed by a route not yet reaching here would be a wrong answer in the other direction. A
-// receiver whose type IS derived and is not a corpus declaration reference, or whose declaration the
-// index does not hold, is ReceiverNotARecord: the program projects a field off something that declares
-// none, and that is a fact about the program.
+// receiver is typed by a route not yet reaching here would be a wrong answer in the other direction.
+//
+// TWO CASES WERE ONE ARM AND THEY ARE NOT ONE FACT. ReceiverNotARecord carried both "the type is
+// established and is not a declaration reference" and "the type names a declaration this context cannot
+// retrieve", and both emitted projection_receiver_declares_no_fields. The second is not a fact about the
+// program at all: a lookup miss establishes that THIS index does not hold the declaration, which is a
+// statement about the evidence available here. Asserting it as "declares no fields" convicts a correct
+// program of a defect it does not have.
+//
+// MEASURED, with one variable moved and a green positive control beside the red:
+// v2.test.claim.field_projection.field_projection_stages
+// fps_a_same_module_record_projection_infers PASSES and
+// fps_a_cross_module_record_projection_infers FAILS over byte-identical records projected off a plain
+// parameter, differing only in whether the record is declared in the consuming module or an imported one.
+// The cause is structural rather than incidental: v2.compiler.resolve resolved_declarations_of fills the
+// index from ONE module root, so a declaration an imported provider owns is absent by construction and
+// every cross-module field read was being reported as a program defect.
+//
+// WHY THE UNAVAILABLE ARM REFUSES RATHER THAN WAITING AT THE FRONTIER. Accepting it as not-derived is the
+// shape that broke a_receiver_with_no_such_child_never_accepts, recorded above: a receiver with no such
+// child reached the frontier and was ACCEPTED. A blocked dependency must therefore be a located refusal
+// with its OWN reason -- fail-closed, and saying what is actually unknown -- and never an acceptance and
+// never a claim about the receiver's fields. The arm carries the path so a reader can name the declaration
+// that could not be retrieved.
 type ProjectionReceiver
   = ReceiverPayload { payload: Node }
-  | ReceiverNotARecord
+  | ReceiverTypeNotADeclaration
+  | ReceiverDeclarationUnavailable { path: QualifiedName }
   | ReceiverTypeUnderived
 
 fn infer_projection_receiver(
@@ -1083,14 +1106,35 @@ fn infer_projection_receiver(
         Violates { diagnostic: _ } => ReceiverTypeUnderived
         Holds { value: receiver_type } =>
           match declaration_reference_path_optional(node: receiver_type) {
-            Absent => ReceiverNotARecord
+            Absent => ReceiverTypeNotADeclaration
             Present { value: path } =>
               match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: path) {
-                Absent => ReceiverNotARecord
+                Absent => ReceiverDeclarationUnavailable { path: path }
                 Present { value: payload } => ReceiverPayload { payload: payload }
               }
           }
       }
+  }
+}
+
+// THE REFUSAL THAT NAMES MISSING EVIDENCE RATHER THAN A PROGRAM DEFECT. Its correction is a boundary of
+// this compiler's own carrier, not of the author's input: the program may be entirely correct and the
+// declaration simply unreachable from the index this stage was handed. Keeping it distinct from
+// declares_no_fields is what lets the capability repair be verified -- when inference consumes a
+// closure-level resolved-declaration authority this reason stops firing, and a corpus that still emits it
+// names exactly which declaration could not be retrieved.
+// THE LOCUS IS THE PROJECTION SITE AND NOT THE MISSING DECLARATION, deliberately: the author's cursor
+// belongs where the program reads the field, and the unretrievable path is carried on
+// ReceiverDeclarationUnavailable for a reader that wants it. NoCorrectionReason is a closed set in a shared
+// authority (v2.std.diagnostic) with no arm for a carrier gap, and widening it for this one reason would be
+// a change to every consumer of that type for a fact already held on this stage's own carrier --
+// CorrectionNotModeled is the honest existing arm, since no correction IS modeled for an index that does not
+// reach the declaration.
+fn infer_receiver_declaration_unavailable_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_reason_projection_receiver_declaration_unavailable,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: CorrectionNotModeled }
   }
 }
 

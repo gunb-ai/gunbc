@@ -772,9 +772,69 @@ fn resolve_with_admission_context_policy(
           active_roots: active_roots,
           policy: policy
         ),
-        symbol_index: shared.symbol_index
+        symbol_index: shared.symbol_index,
+        closure_roots: closure_resolved_roots(
+          context: context,
+          shared: shared,
+          index: index,
+          active_roots: active_roots,
+          policy: policy
+        )
       )
   }
+}
+
+// EVERY ROOT IN THE CLOSURE, RESOLVED ONCE, so inference can retrieve a declaration an imported provider
+// owns. v2.compiler.resolve resolved_declarations_of walks ONE root, so the subject's index held only the
+// subject's declarations and every cross-module field read refused -- measured as
+// fps_a_cross_module_record_projection_infers against a passing same-module control.
+//
+// THE RECURSION IS CUT BY PASSING AN EMPTY CLOSURE TO THE PER-ROOT RESOLVES, and that is the whole reason
+// this is N + 1 resolves rather than N squared. Each provider is resolved exactly as it is resolved today --
+// its own declarations, no closure -- and only the SUBJECT is resolved against the collected roots. A
+// provider does not need the closure index to produce the declarations this fold reads from it, so nothing
+// is lost by denying it one, and the alternative (every root resolved against every other) would multiply
+// the dominant cost of the pipeline by the closure size.
+//
+// A REFUSED ROOT CONTRIBUTES NOTHING AND DOES NOT FAIL THE FOLD. That is deliberate and is NOT an absorbing
+// fallback: it does not widen an answer or substitute a reading. A provider that cannot resolve simply has no
+// resolved declarations to offer, so a receiver typed by one of its records refuses at
+// infer_reason_projection_receiver_declaration_unavailable -- the located refusal that names missing
+// evidence, which is exactly the honest outcome for a provider the compiler could not resolve. Absorbing
+// would be answering the field read anyway.
+//
+// THIS IS THE ONE-SEAT FORM OF A DEPENDENCY THE DEMAND ENGINE OWNS. Infer(module) depends on Resolve(module)
+// AND Resolve(each provider it consumes); here that is discharged by resolving the whole selected closure,
+// which is broader than the import closure and therefore does more work than the relation requires. Narrowing
+// it to the exact provider set is a change to WHICH roots are folded and not to the inference rule, so it can
+// land later without touching this reading.
+fn closure_resolved_roots(
+  context: Outcome<ResolutionContext>,
+  shared: ResolutionContext,
+  index: SourceRootIndex,
+  active_roots: FreeMonoid<SourceRootRef>,
+  policy: NameResolutionPolicy
+) -> FreeMonoid<Node> {
+  fold_list(
+    xs: shared.roots.roots,
+    empty: [],
+    cons: fn(acc, nt) {
+      match qualified_name_from_module_node(root: nt.root) {
+        Rejected { diagnostics: _ } => acc
+        Accepted { value: module_qn, diagnostics: _ } =>
+          match resolve_walk_with_admission_context_policy(
+            context: context,
+            admission: Admission { subject: ResolutionSubject { name: module_qn }, imports: [] },
+            index: index,
+            active_roots: active_roots,
+            policy: policy
+          ) {
+            ResolveWalkAccepted { value: resolved, diagnostics: _ } => list_snoc_item(xs: acc, item: resolved)
+            ResolveWalkRefused { first: _, rest: _, observation: _ } => acc
+          }
+      }
+    }
+  )
 }
 
 // THE SUBJECT'S WHOLE RESOLUTION OBSERVATION, every independent failure chain in walk order. The

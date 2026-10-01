@@ -1,0 +1,135 @@
+module v2.test.claim.projection_dispatch.fold_step_receiver
+
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE JOIN THE EIGHT ACTUALLY REFUSE AT, ISOLATED TO ONE VARIABLE. The pinned subject's cause entry anchors
+// `e.target` inside
+//
+//   fold(root.children, init: false, f: fn(found, e) { found || g_tree_has_arrow_body(root: e.target) })
+//
+// where `root.children` is `List<Edge>` and `Edge` declares `target: Node`. So the compiler must type the
+// fold's element binder from an IMPORTED record and then retrieve that record's declaration to read a field
+// off it. v2.compiler.infer infer_projection_receiver performs that retrieval against
+// ResolvedTree.resolved_declarations, which is filled from the resolved root of the module being inferred --
+// not from a closure-wide index of the providers it imports.
+//
+// THE TWO ROWS DIFFER IN EXACTLY ONE THING: whether the record is declared in the consuming module or in
+// another module it imports. Everything else -- the fold, the element binder, the projected field name, the
+// language model -- is held constant, so a disagreement between them isolates the retrieval and nothing
+// else. This is the measurement the repair waits on; no arm is edited before it answers.
+data fsr_provider_artifact: Artifact = Artifact {
+  kind: SourceFile, id: ^fsr_provider, file_path: "src/v2/pilot/fsr_provider.dag"
+}
+
+data fsr_consumer_artifact: Artifact = Artifact {
+  kind: SourceFile, id: ^fsr_consumer, file_path: "src/v2/pilot/fsr_consumer.dag"
+}
+
+fn fsr_assemble_one(src: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: src, fidelity: Lossless },
+        artifact: fsr_consumer_artifact,
+        compilation_unit: ^fsr_consumer_cu,
+        source_root: V2Tree
+      },
+      tail: Empty
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn fsr_assemble_two(provider: String, consumer: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: provider, fidelity: Lossless },
+        artifact: fsr_provider_artifact,
+        compilation_unit: ^fsr_provider_cu,
+        source_root: V2Tree
+      },
+      tail: Cons {
+        head: DagSourceReadWitness {
+          source: Medium { carried: consumer, fidelity: Lossless },
+          artifact: fsr_consumer_artifact,
+          compilation_unit: ^fsr_consumer_cu,
+          source_root: V2Tree
+        },
+        tail: Empty
+      }
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+// SAME MODULE: the record is declared beside the fold that projects it.
+fn fsr_same_module_source() -> Outcome<ResolvedTree> {
+  fsr_assemble_one(
+    src: "module p\n\ntype Leg {\n  target: Int\n}\n\nfn total(legs: List<Leg>) -> Int {\n  fold(legs, init: 0, f: fn(acc, e) {\n    acc + e.target\n  })\n}\n"
+  )
+}
+
+// CROSS MODULE: byte-identical fold, record moved to an imported provider.
+fn fsr_cross_module_source() -> Outcome<ResolvedTree> {
+  fsr_assemble_two(
+    provider: "module q.r\n\ntype Leg {\n  target: Int\n}\n",
+    consumer: "module p\n\nimport q.r { Leg }\n\nfn total(legs: List<Leg>) -> Int {\n  fold(legs, init: 0, f: fn(acc, e) {\n    acc + e.target\n  })\n}\n"
+  )
+}
+
+fn fsr_accepted(o: Outcome<ResolvedTree>) -> Bool {
+  match o { Accepted { value: _, diagnostics: _ } => true  Rejected { diagnostics: _ } => false }
+}
+
+fn fsr_reason(o: Outcome<ResolvedTree>) -> String {
+  match o {
+    Rejected { diagnostics: r } => r.head.reason as String
+    Accepted { value: _, diagnostics: _ } => "accepted"
+  }
+}
+
+// (1) THE SAME-MODULE FORM IS THE POSITIVE CONTROL. Without it a red on (2) proves nothing: the fold's
+// element typing, the fn-literal binder and the field reader all have to work before the cross-module
+// retrieval is even the question being asked.
+test fn fsr_a_same_module_fold_step_projection_holds() -> Bool {
+  fsr_accepted(o: fsr_same_module_source())
+}
+
+// (2) AND THE CROSS-MODULE FORM IS THE SUBJECT. A red here beside a green (1) locates the defect at the
+// retrieval of an imported record's declaration, which is the join the eight die on.
+test fn fsr_a_cross_module_fold_step_projection_holds() -> Bool {
+  fsr_accepted(o: fsr_cross_module_source())
+}
+
+// (3) AND THE REASON IS CARRIED, so the receipt says WHICH refusal rather than only that one occurred. A
+// cross-module red reported as projection_receiver_declares_no_fields is the conflation under test; any other
+// reason is a different defect and must not be filed as this one.
+test fn fsr_the_cross_module_reason_is_reported_holds() -> Bool {
+  !(fsr_reason(o: fsr_cross_module_source()) == "")
+}
+
+// REASON BISECTION. claim_batch reports only a Bool, so the refusal reason is recovered by asserting
+// candidates: the row that passes names it. These are a measurement instrument, not semantic claims.
+test fn fsr_dbg_unbound() -> Bool { fsr_reason(o: fsr_same_module_source()) == "resolve_reason_unbound_symbol" }
+test fn fsr_dbg_nofields() -> Bool { fsr_reason(o: fsr_same_module_source()) == "infer_reason_projection_receiver_declares_no_fields" }
+test fn fsr_dbg_g0() -> Bool { fsr_reason(o: fsr_same_module_source()) == "parse_g0_tokens_remain" }
+test fn fsr_dbg_overlap() -> Bool { fsr_reason(o: fsr_same_module_source()) == "parse_grammar_choice_overlap_residue" }
+test fn fsr_dbg_fnbody() -> Bool { fsr_reason(o: fsr_same_module_source()) == "body_lowering_reason_function_value_body_unread" }
+test fn fsr_dbg_unsupported() -> Bool { fsr_reason(o: fsr_same_module_source()) == "body_lowering_reason_unsupported_form" }
