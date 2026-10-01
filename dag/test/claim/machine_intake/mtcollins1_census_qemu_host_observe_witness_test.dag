@@ -14,10 +14,12 @@ import gunbc.machine_intake_mtcollins1_census_qemu_host_observe {
   QemuLibrariesRead, QemuLibrariesNotRead, census_qemu_host_ready, firmware_file_standing_of,
 }
 import extdeps.tools.ldd { ldd_reading_of }
+import extdeps.exec.command { argv_words }
+import gunbc.verified_archive_install { staged_archive_fetch_commands, staged_archive_install_commands }
 import extdeps.os.ubuntu_ports_archive { UbuntuArchiveBinaryPackage, ubuntu_ports_package_url }
 import extdeps.firmware.tianocore_edk2.aavmf { aavmf_2024_02_ubuntu_noble }
 import gunbc.machine_intake_mtcollins1_census_qemu_toolchain {
-  census_qemu_archives, census_qemu_archives_of, census_qemu_location_of, census_qemu_library_path, census_qemu_rooted,
+  census_qemu_archives, census_qemu_archives_of, census_qemu_staged_archive, census_qemu_location_of, census_qemu_library_path, census_qemu_rooted,
 }
 
 // A SUPPLIED ROOT: the claims below are about the standing fold, not about where a host's HOME is.
@@ -168,4 +170,20 @@ test fn a_changed_pin_set_names_a_different_root() -> Bool {
     && (a.root as String) == (census_qemu_location_of(home: "/home/ghrunner", archives: base).root as String)
     && (a.base as String) == (b.base as String)
     && census_qemu_library_path(root: "/r") == "/r/usr/lib/aarch64-linux-gnu:/r/lib/aarch64-linux-gnu"
+}
+
+// THE SHARED STAGING ROUTE, AS A .deb TAKES IT: kept at its pool path under the archives directory
+// (whose directory is created before the download), and unpacked with `dpkg-deb -x` at the tree root.
+test fn a_deb_is_fetched_to_its_pool_path_and_unpacked_at_the_root() -> Bool {
+  let a = census_qemu_staged_archive(a: qemu_8_2_2_ubuntu_noble_arm64.archive)
+  let fetch = map(staged_archive_fetch_commands(archives_dir: "/b/archives", a: a), c => join(argv_words(command: c), " "))
+  let install = map(staged_archive_install_commands(archives_dir: "/b/archives", tree: "/b/staging.X", a: a), c => join(argv_words(command: c), " "))
+  fetch == [
+    "/usr/bin/mkdir -p /b/archives/pool/main/q/qemu",
+    "curl -fsL -o /b/archives/pool/main/q/qemu/qemu-system-arm_8.2.2+ds-0ubuntu1.18_arm64.deb https://ports.ubuntu.com/ubuntu-ports/pool/main/q/qemu/qemu-system-arm_8.2.2+ds-0ubuntu1.18_arm64.deb",
+  ]
+    && install == [
+      "/usr/bin/mkdir -p /b/staging.X/.",
+      "dpkg-deb -x /b/archives/pool/main/q/qemu/qemu-system-arm_8.2.2+ds-0ubuntu1.18_arm64.deb /b/staging.X/.",
+    ]
 }

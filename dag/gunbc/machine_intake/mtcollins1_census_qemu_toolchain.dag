@@ -1,6 +1,6 @@
 module gunbc.machine_intake_mtcollins1_census_qemu_toolchain
 
-import std.types { Bool, List, NonEmptyStr, FilePath, list_length }
+import std.types { Bool, List, NonEmptyStr, FilePath }
 import std.string_type { String }
 import std.algebra { list_append, trim }
 import std.content_hash { content_hash_atom }
@@ -11,14 +11,12 @@ import extdeps.exec.command { ArgvCommand, env_cleared_command_in }
 import extdeps.os.ubuntu_ports_archive { UbuntuArchiveBinaryPackage, ubuntu_ports_package_url }
 import extdeps.virtualization.qemu { QemuDistributionBuild, qemu_8_2_2_ubuntu_noble_arm64 }
 import extdeps.firmware.tianocore_edk2.aavmf { AavmfDistributionBuild, aavmf_2024_02_ubuntu_noble }
-import extdeps.tools.curl { curl_download_command }
-import extdeps.tools.dpkg_deb { dpkg_deb_extract_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
-import extdeps.tools.gnu_coreutils { rm_recursive_force_command, mv_exact_destination_command }
+import extdeps.tools.gnu_coreutils { rm_recursive_force_command }
 import extdeps.posix.test_utility { test_exists_command }
 import gunbc.verified_archive_install {
-  ArchiveSha256, ArchiveDigestMatches, verify_archive_digest, verified_archive_install,
-  VerifiedArchiveInstallOutcome, ArchiveInstalled, verified_archive_install_text,
+  ArchiveSha256, StagedArchive, ExtractDebData, ArchivePlacement, archive_placements_text,
+  stage_archives_wet, archives_all_staged, publish_staged_tree_wet,
 }
 import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted, LocalExec }
 
@@ -110,92 +108,45 @@ fn census_qemu_cleared_command(root: String, command: ArgvCommand) -> ArgvComman
 }
 
 // ---------------------------------------------------------------------------------------------
-// PLACEMENT
+// PLACEMENT, through the shared staging procedure of gunbc.verified_archive_install
 // ---------------------------------------------------------------------------------------------
 
-type CensusQemuArchivePlacement {
-  archive: NonEmptyStr
-  outcome: VerifiedArchiveInstallOutcome
+// A .deb is kept at its pool path under the archives directory and its data member is unpacked at the
+// tree's root, so every packaged absolute path lands at <root><path>.
+fn census_qemu_staged_archive(a: UbuntuArchiveBinaryPackage) -> StagedArchive {
+  StagedArchive {
+    file_name: a.filename,
+    url: ubuntu_ports_package_url(p: a) as NonEmptyStr,
+    pin: ArchiveSha256 { hex: a.sha256 },
+    destination_relative: ".",
+    extraction: ExtractDebData,
+  }
 }
 
 type CensusQemuPlacement
   = CensusQemuTreePresent
-  | CensusQemuPublished { archives: List<CensusQemuArchivePlacement> }
-  | CensusQemuPlacementRefused { archives: List<CensusQemuArchivePlacement>, cause: String }
-
-fn census_qemu_placement_holds(p: CensusQemuPlacement) -> Bool {
-  match p {
-    CensusQemuTreePresent => true
-    CensusQemuPublished { archives: _ } => true
-    CensusQemuPlacementRefused { archives: _, cause: _ } => false
-  }
-}
-
-fn census_qemu_placements_text(ps: List<CensusQemuArchivePlacement>) -> String {
-  join(map(ps, a => join([a.archive as String, "=", verified_archive_install_text(outcome: a.outcome)], "")), " ")
-}
+  | CensusQemuPublished { archives: List<ArchivePlacement> }
+  | CensusQemuPlacementRefused { archives: List<ArchivePlacement>, cause: String }
 
 fn census_qemu_placement_text(p: CensusQemuPlacement) -> String {
   match p {
     CensusQemuTreePresent => "placement=present (the recipe's tree already exists; nothing fetched or extracted -- the readback judges it)"
-    CensusQemuPublished { archives: ps } => join(["placement=published ", census_qemu_placements_text(ps: ps)], "")
-    CensusQemuPlacementRefused { archives: ps, cause: c } => join(["placement=REFUSED (", c, ") ", census_qemu_placements_text(ps: ps)], "")
+    CensusQemuPublished { archives: ps } => join(["placement=published ", archive_placements_text(ps: ps)], "")
+    CensusQemuPlacementRefused { archives: ps, cause: c } => join(["placement=REFUSED (", c, ") ", archive_placements_text(ps: ps)], "")
   }
-}
-
-fn census_qemu_archive_path(location: CensusQemuLocation, a: UbuntuArchiveBinaryPackage) -> String {
-  join([location.archives as String, "/", a.filename as String], "")
-}
-
-fn census_qemu_archive_dir(location: CensusQemuLocation, a: UbuntuArchiveBinaryPackage) -> String {
-  let path = census_qemu_archive_path(location: location, a: a)
-  let tail = match last(split(path, "/")) { Present { value: t } => t  Absent => "" }
-  replace(s: path, from: concat("/", tail), to: "")
 }
 
 fn census_qemu_run_ok(command: ArgvCommand) -> Bool {
   process_outcome_admitted(outcome: run_shell_command_capture(command: command, transport: LocalExec))
 }
 
-// A RETAINED ARCHIVE WHOSE BYTES STILL VERIFY IS NOT RE-FETCHED; the same fold runs with no fetch leg.
-fn stage_census_qemu_archive_wet(location: CensusQemuLocation, staging: String, a: UbuntuArchiveBinaryPackage) -> CensusQemuArchivePlacement {
-  let path = census_qemu_archive_path(location: location, a: a)
-  let pin = ArchiveSha256 { hex: a.sha256 }
-  let retained = match verify_archive_digest(archive: path as NonEmptyStr, pin: pin) { ArchiveDigestMatches => true  _ => false }
-  CensusQemuArchivePlacement {
-    archive: a.package,
-    outcome: verified_archive_install(
-      fetch: if retained { [] } else {
-        [
-          mkdir_parents_command(path: census_qemu_archive_dir(location: location, a: a)),
-          curl_download_command(url: ubuntu_ports_package_url(p: a), destination: path),
-        ]
-      },
-      archive: path as NonEmptyStr,
-      pin: pin,
-      install: [dpkg_deb_extract_command(archive: path, into_directory: staging)],
-    ),
-  }
-}
-
-// IN ORDER, AND THE FIRST REFUSAL STOPS THE REST.
-fn stage_census_qemu_archives_wet(location: CensusQemuLocation, staging: String, archives: List<UbuntuArchiveBinaryPackage>) -> List<CensusQemuArchivePlacement> {
-  fold(archives, init: [], f: (acc, a) =>
-    if fold(acc, init: true, f: (ok, p) => ok && (match p.outcome { ArchiveInstalled => true  _ => false })) {
-      list_append(left: acc, right: [stage_census_qemu_archive_wet(location: location, staging: staging, a: a)])
-    } else {
-      acc
-    })
-}
-
-fn census_qemu_all_staged(ps: List<CensusQemuArchivePlacement>, archives: List<UbuntuArchiveBinaryPackage>) -> Bool {
-  list_length(ps) == list_length(archives) && fold(ps, init: true, f: (ok, p) => ok && (match p.outcome { ArchiveInstalled => true  _ => false }))
-}
-
 // AN EXISTING TREE IS NEVER REPLACED. Its path is the recipe's, so it was published from these
 // verified archives; whether it still holds is the readback's question, and a tree that fails it is
-// reported, not rebuilt over, because a consumer may hold paths into it.
+// reported, not rebuilt over, because a consumer may hold paths into it. Unlike the browser toolchain
+// there is no whole-tree digest to admit before publishing: every archive's pin was verified before
+// extraction, and the readback hashes the files QEMU actually maps.
 fn place_census_qemu_toolchain_wet(location: CensusQemuLocation, archives: List<UbuntuArchiveBinaryPackage>) -> CensusQemuPlacement {
+  let staged_archives = map(archives, a => census_qemu_staged_archive(a: a))
   if census_qemu_run_ok(command: test_exists_command(path: location.root as String)) {
     CensusQemuTreePresent
   } else if census_qemu_run_ok(command: mkdir_parents_command(path: location.archives as String)) == false {
@@ -206,10 +157,10 @@ fn place_census_qemu_toolchain_wet(location: CensusQemuLocation, archives: List<
       CensusQemuPlacementRefused { archives: [], cause: concat("no per-invocation staging directory could be created under ", location.base as String) }
     } else {
       let staging = trim(s: made.path as String)
-      let staged = stage_census_qemu_archives_wet(location: location, staging: staging, archives: archives)
-      let result = if census_qemu_all_staged(ps: staged, archives: archives) == false {
+      let staged = stage_archives_wet(archives_dir: location.archives as String, staging: staging, archives: staged_archives)
+      let result = if archives_all_staged(ps: staged, archives: staged_archives) == false {
         CensusQemuPlacementRefused { archives: staged, cause: "an archive did not verify or extract into staging; nothing was published" }
-      } else if census_qemu_run_ok(command: mv_exact_destination_command(source: staging, destination: location.root as String)) {
+      } else if publish_staged_tree_wet(staging: staging, root: location.root as String) {
         CensusQemuPublished { archives: staged }
       } else {
         CensusQemuPlacementRefused { archives: staged, cause: join(["the staged tree could not be published over ", location.root as String, " (a concurrent converge may have published first; the readback decides)"], "") }
