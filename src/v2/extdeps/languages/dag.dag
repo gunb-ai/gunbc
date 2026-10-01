@@ -3112,17 +3112,35 @@ fn dag_language_model_binding_canonical_map(m: Map<Symbol, Bool>) -> Map<Symbol,
 // Portable share point for the dag canonical set (v2.workflow.floor_pure_producer_share
 // floor_cross_claim_pure_producers_warm). dag_canonical_symbols wraps this Map in a
 // PointwisePower closure at the consumer; that closure is not the stored value.
-fn dag_canonical_symbol_map() -> Map<Symbol, Bool> {
+// THE CANONICAL SET IS DERIVED FROM THE GRAMMAR AND LEX RULES THE MODEL IS ALREADY HOLDING, NOT FROM A
+// SECOND CALL TO THEIR PRODUCERS. dag_language_model binds lex: dag_lex() and grammar: dag_grammar(), and
+// the nullary dag_canonical_symbol_map below then called dag_grammar() and dag_lex_rules() AGAIN -- two
+// demands for a fact the constructor had in hand, which DESIGN section 2 reads as authored duplication to
+// rewire rather than a repetition to cache: the values have a shared-state least common ancestor, the
+// constructor itself.
+//
+// The `_of` forms take the prepared values, so there is ONE grammar and ONE lex-rule set per model
+// construction and the producer call sites are the constructor's. The nullary forms remain for consumers
+// that hold no model and are expressed through the `_of` forms, so the derivation itself has one authority.
+fn dag_canonical_symbol_map_of(grammar: ParseGrammar, rules: LexRuleSet) -> Map<Symbol, Bool> {
   dag_language_model_binding_canonical_map(
     m: lex_rule_set_insert_token_classes(
-      m: grammar_carried_symbol_map(grammar: dag_grammar()),
-      rules: dag_lex_rules()
+      m: grammar_carried_symbol_map(grammar: grammar),
+      rules: rules
     )
   )
 }
 
+fn dag_canonical_symbols_of(grammar: ParseGrammar, rules: LexRuleSet) -> PointwisePower<Symbol> {
+  dag_pointwise_from_symbol_map(m: dag_canonical_symbol_map_of(grammar: grammar, rules: rules))
+}
+
+fn dag_canonical_symbol_map() -> Map<Symbol, Bool> {
+  dag_canonical_symbol_map_of(grammar: dag_grammar(), rules: dag_lex_rules())
+}
+
 fn dag_canonical_symbols() -> PointwisePower<Symbol> {
-  dag_pointwise_from_symbol_map(m: dag_canonical_symbol_map())
+  dag_canonical_symbols_of(grammar: dag_grammar(), rules: dag_lex_rules())
 }
 
 fn dag_language_model_void() -> LanguageModel {
@@ -3136,11 +3154,13 @@ fn dag_language_model_void() -> LanguageModel {
 }
 
 fn dag_language_model() -> LanguageModel {
+  let rules = dag_lex_rules()
+  let grammar = dag_grammar()
   LanguageModel {
-    lex: dag_lex(),
-    grammar: dag_grammar(),
+    lex: ModeledLexRules { root: rules },
+    grammar: grammar,
     language_identity: ^dag_language_model_surface_id,
-    canonical_symbols: dag_canonical_symbols(),
+    canonical_symbols: dag_canonical_symbols_of(grammar: grammar, rules: rules),
     core: bool_model_core()
   }
 }

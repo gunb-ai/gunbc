@@ -1,0 +1,105 @@
+module v2.test.claim.canonical_demand.canonical_consumer
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.logic { Bool }
+import v2.std.integer { Int }
+import v2.std.text { String }
+import v2.std.node { Atom, Node, NodeFold, TypeNode, fold_node }
+import v2.std.node_query { find_named_child }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.collection { List }
+import v2.std.qualified_name { declaration_reference_path_optional }
+
+// THE CANONICAL SET IS CONSULTED BY AUTHORED SOURCE, NOT ONLY BY A UNIT CALL. v2.compiler.resolve
+// resolved_reference_identity asks namespace_has_canonical_symbol for a resolved reference's LEAF: a
+// canonical leaf becomes ResolvedToKernelSymbol and anything else becomes ResolvedToDeclaration. So the
+// set's membership answer decides, for every module-level name a program mentions, whether it is a kernel
+// symbol or a reference to a declaration.
+//
+// WHY THIS FILE EXISTS BESIDE THE EQUALITY CONTROL. The equality control proves the new derivation names
+// the same symbols as the one it replaced; it cannot show that resolve still ASKS, or that the answer still
+// discriminates. A derivation that silently returned the empty set would pass equality against another
+// empty set and would also let a 4-line module assemble, because a module that mentions no kernel spelling
+// asks nothing -- which is precisely how a cost measurement can look like a success. These rows make the
+// question observable from source, in both directions.
+data cc_artifact: Artifact = Artifact {
+  kind: SourceFile, id: ^canonical_consumer_artifact, file_path: "src/v2/pilot/canonical_consumer.dag"
+}
+
+fn cc_assemble(src: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: src, fidelity: Lossless },
+        artifact: cc_artifact, compilation_unit: ^canonical_consumer_cu, source_root: V2Tree
+      },
+      tail: Empty
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+// A module whose parameter is annotated with the KERNEL spelling `Int`, and one annotated with a type the
+// module itself declares. Same shape otherwise, so the annotation is the only variable.
+fn cc_kernel_annotation() -> Outcome<ResolvedTree> {
+  cc_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  x\n}\n")
+}
+
+fn cc_declared_annotation() -> Outcome<ResolvedTree> {
+  cc_assemble(src: "module p\n\ntype Box {\n  tree: Int\n}\n\nfn f(x: Box) -> Box {\n  x\n}\n")
+}
+
+// Every node in the tree that carries a declaration-reference path, counted. A kernel symbol resolves to a
+// canonical ATOM and carries none; a declaration reference carries its declaring path.
+fn cc_declaration_reference_count(o: Outcome<ResolvedTree>) -> Int {
+  match o {
+    Rejected { diagnostics: _ } => 0 - 1
+    Accepted { value: t, diagnostics: _ } =>
+      fold_node(
+        n: t.root,
+        algebra: NodeFold {
+          init: fn(n0) {
+            match declaration_reference_path_optional(node: n0) {
+              Present { value: _ } => 1
+              Absent => 0
+            }
+          },
+          step: fn(acc, _e, child) { acc + child }
+        }
+      )
+  }
+}
+
+// (1) BOTH MODULES RESOLVE, so the rows below are about classification rather than about a refusal.
+test fn cc_both_modules_resolve_holds() -> Bool {
+  (match cc_kernel_annotation() { Accepted { value: _, diagnostics: _ } => true  Rejected { diagnostics: _ } => false })
+    && (match cc_declared_annotation() { Accepted { value: _, diagnostics: _ } => true  Rejected { diagnostics: _ } => false })
+}
+
+// (2) THE DECLARED TYPE BECOMES A DECLARATION REFERENCE. If the canonical set wrongly claimed `Box`, this
+// would classify as a kernel symbol and the count would drop -- so this row goes red on a set that is too
+// LARGE.
+test fn cc_a_declared_type_is_a_declaration_reference_holds() -> Bool {
+  cc_declaration_reference_count(o: cc_declared_annotation()) > 0
+}
+
+// (3) AND THE KERNEL SPELLING IS NOT ONE. `Int` is carried by the language model's binding map, so resolve
+// must classify it ResolvedToKernelSymbol and mint a canonical atom with no declaring path. If the
+// derivation returned too SMALL a set -- the fail-open direction, since the set's absence makes resolve
+// treat a kernel spelling as a corpus declaration -- this row goes red.
+//
+// The two rows are the two signs of one question and neither is redundant: (2) fails on an over-large set
+// and (3) on an under-small one, so a derivation that drifted either way is caught by source.
+test fn cc_a_kernel_spelling_is_not_a_declaration_reference_holds() -> Bool {
+  cc_declaration_reference_count(o: cc_kernel_annotation()) == 0
+}

@@ -1,0 +1,26 @@
+module v2.test.claim.canonical_demand.canonical_cost_probe
+
+import v2.extdeps.languages.dag { dag_grammar, dag_language_model, dag_lex_rules }
+import v2.std.grammar { grammar_carried_symbol_map }
+import v2.std.logic { Bool }
+
+// THE INSTRUMENT FOR THE CANONICAL-SYMBOL COST, NOT A SEMANTIC CLAIM. DESIGN §6 requires a measurement to
+// be cited by naming the producer that re-derives it rather than by copying its number into prose, so the
+// figure for "what dag_language_model() costs" needs an entry point. These two rows are it: read eval_steps
+// from claim_batch's [witness] lines. The verdicts are deliberately trivial, and that is the honest
+// description -- neither row discriminates anything, so neither is evidence for any behaviour. The
+// behavioural evidence for this slice is canonical_set_equality (the derivation names the same symbols) and
+// canonical_consumer (resolve still asks, and the answer still separates in both directions).
+//
+// TWO ROWS AND NOT TEN. The discovery partition that located the cost ran per-link over the grammar
+// encoder, the emitted-node walk and the expression encodings; those rows answered their question once and
+// are not kept, because a probe nothing reads is DESIGN §3c's dangling declaration whatever its shape. What
+// survives is the pair that bounds the claim: the whole model, and the one link the repair changed, so a
+// later reader can attribute a regression to that link instead of re-deriving the partition.
+test fn cc_whole_language_model() -> Bool {
+  match dag_language_model() { _ => true }
+}
+
+test fn cc_carried_symbol_map_only() -> Bool {
+  match grammar_carried_symbol_map(grammar: dag_grammar()) { _ => true }
+}

@@ -1,0 +1,54 @@
+module v2.test.claim.canonical_demand.canonical_set_equality
+
+import v2.extdeps.languages.dag { dag_grammar }
+import v2.std.grammar {
+  grammar_carried_symbol_map,
+  grammar_carried_symbol_map_via_serialized_image,
+}
+import v2.std.collection { List, Map, map_lookup }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.optional { Absent, Present }
+import v2.std.integer { Int }
+
+// EXACT SET EQUALITY AGAINST THE DERIVATION IT REPLACES, OVER THE REAL GRAMMAR, IN BOTH DIRECTIONS.
+// v2.std.grammar grammar_carried_symbol_map now folds the grammar's own structure; it used to recover the
+// same symbols by encoding the whole grammar into a Node and walking its atoms. That image derivation is
+// retained as grammar_carried_symbol_map_via_serialized_image for exactly this comparison and is called
+// from no production path.
+//
+// BOTH DIRECTIONS, BECAUSE EITHER ALONE ADMITS A DEFECT WITH OPPOSITE SIGN. A structural fold that MISSED
+// an atom would shrink the canonical set, and the set's only consumer is v2.compiler.resolve's unbound
+// fallback -- so a missing symbol makes resolve admit a name it should refuse, which is a fail-open and
+// the reason this control is not optional. A fold that ADDED one (root.sync_tokens is the live candidate,
+// since grammar_root_to_node does not encode it) would refuse names that are legal today.
+//
+// THE COMPARISON IS STRUCTURAL MAP EQUALITY, NOT A COUNT. Two maps of equal size can differ in membership,
+// and DESIGN section 5 rules that completeness is an identity join rather than a count equality.
+fn cse_structural() -> Map<Symbol, Bool> { grammar_carried_symbol_map(grammar: dag_grammar()) }
+fn cse_image() -> Map<Symbol, Bool> { grammar_carried_symbol_map_via_serialized_image(grammar: dag_grammar()) }
+
+test fn cse_the_two_derivations_are_the_same_map_holds() -> Bool {
+  cse_structural() == cse_image()
+}
+
+// AND THE MAP IS NOT EMPTY, so the equality above is not two empty maps agreeing -- the vacuity this file
+// would otherwise be wide open to.
+test fn cse_the_derivation_is_not_empty_holds() -> Bool {
+  match map_lookup(m: cse_structural(), key: ^dag_surface_fn_decl) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// A DISCRIMINATING NEGATIVE FOR THE EQUALITY ITSELF: a symbol the grammar does not carry is absent from
+// both. Without it, an equality over two maps that answered Present for everything would pass.
+test fn cse_an_uncarried_symbol_is_in_neither_holds() -> Bool {
+  (match map_lookup(m: cse_structural(), key: ^cse_definitely_not_a_grammar_symbol) {
+    Absent => true
+    Present { value: _ } => false
+  }) && (match map_lookup(m: cse_image(), key: ^cse_definitely_not_a_grammar_symbol) {
+    Absent => true
+    Present { value: _ } => false
+  })
+}
