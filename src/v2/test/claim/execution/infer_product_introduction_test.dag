@@ -32,10 +32,14 @@ import v2.std.node {
   Edge,
   Named,
   Node,
+  Positional,
   TypeNode,
   arrow_signature_order_edge,
-  node_subtree_nodes
+  node_subtree_nodes,
+  symbol_lexeme
 }
+import v2.std.text { String }
+import std.algebra { list_snoc_item }
 import v2.std.optional { Absent, Optional, Present, optional_present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -44,9 +48,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // infer_gather_product_row_on_entries): a non-roster Conj or Arrow whose every child carries
 // DerivedGrounding derives, its evidence the same shape re-formed over the children's grounding
 // evidence. The specimen is the direct-rust-door fixture's ingest -- the corpus's smallest
-// real-ingest dag module. The census pins that the witness actually saw the population: four
-// Conj nodes, all derived (the grammar-projection root included -- it cascaded once the atom
-// rules grounded its children), and one bodied Arrow, derived. The evidence control pins the
+// real-ingest dag module. The census pins that the witness actually saw the population: each
+// Conj named in product_introduction_expected_conjs, all derived (the grammar-projection root
+// included -- it cascaded once the atom rules grounded its children), and one bodied Arrow, derived. The evidence control pins the
 // composed evidence's SHAPE on the parameter conj: a Conj whose named children target each `Int`
 // type atom's derived grounding -- its KIND, std.kind TypeDenotationKind -- never the source node
 // (the self-evidence wall). Until 2026-09-26 that child grounding was the dag roster's Int
@@ -192,12 +196,80 @@ fn params_conj_evidence_seen(inferred: InferredTree) -> Bool {
   )
 }
 
+// THE CENSUS IS AN IDENTITY JOIN, NOT A COUNT (DESIGN section 5). Each Conj infer is asked to derive is
+// named by its children -- each child edge's label and the last atom its subtree carries (a parameter
+// reference's path ends at the parameter it names) -- and the
+// claim names every one it expects, in walk order, and requires each to be derived. RE-STATED
+// 2026-10-01: it read `conjs == 4` and went red at gunbc#12766 (bisected), which made each named-fn
+// parameter reference a path-keyed reference carrier, a Conj under ^<parameter-reference>, so the body
+// `x + y` now carries two products the count did not name. A count copied from the tree would have
+// absorbed them; the names say which products appeared.
+data product_introduction_expected_conjs: List<String> = [
+  "[grammar_production_identity_node_projection=dag_surface_module][grammar_production_captured_node_projection=y]",
+  "[add_probe=y]",
+  "[grammar_production_identity_node_projection=namespace_graft_module_body][add=y]",
+  "[x=dag_binding_type_int][y=dag_binding_type_int]",
+  "[<parameter-reference>=x]",
+  "[<parameter-reference>=y]",
+]
+
+fn product_introduction_last_atom(n: Node) -> String {
+  fold_list(
+    xs: node_subtree_nodes(root: n),
+    empty: "",
+    cons: fn(acc, m) { product_introduction_last_atom_step(acc: acc, m: m) }
+  )
+}
+
+fn product_introduction_last_atom_step(acc: String, m: Node) -> String {
+  match m.kind {
+    TypeNode { connective: Atom { identity: id } } => symbol_lexeme(sym: id)
+    _ => acc
+  }
+}
+
+fn product_introduction_edge_name(e: Edge) -> String {
+  match e.label {
+    Named { name: l } => symbol_lexeme(sym: l) + "=" + product_introduction_last_atom(n: e.target)
+    Positional => "#=" + product_introduction_last_atom(n: e.target)
+  }
+}
+
+fn product_introduction_conj_name(n: Node) -> String {
+  fold(n.children, init: "", f: fn(acc, e) { acc + "[" + product_introduction_edge_name(e: e) + "]" })
+}
+
+fn product_introduction_flagged_name(inferred: InferredTree, n: Node) -> String {
+  if product_introduction_node_derived(inferred: inferred, n: n) {
+    product_introduction_conj_name(n: n)
+  } else {
+    "!" + product_introduction_conj_name(n: n)
+  }
+}
+
+// Every Conj infer is asked to derive, by name, with its derived flag: "name" when derived, "!name" when not.
+fn product_introduction_conj_names(inferred: InferredTree) -> List<String> {
+  fold_list(
+    xs: node_inferred_subtree_nodes(root: inferred.root),
+    empty: [],
+    cons: fn(acc, n) { product_introduction_conj_names_step(inferred: inferred, acc: acc, n: n) }
+  )
+}
+
+fn product_introduction_conj_names_step(inferred: InferredTree, acc: List<String>, n: Node) -> List<String> {
+  match n.kind {
+    TypeNode { connective: Conj } =>
+      list_snoc_item(xs: acc, item: product_introduction_flagged_name(inferred: inferred, n: n))
+    _ => acc
+  }
+}
+
 test fn product_introduction_derives_fully_evidenced_products_holds() -> Bool {
   match direct_rust_door_specimen_inferred() {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
       let census = product_introduction_census(inferred: inferred)
-      (census.conjs == 4) && (census.conjs_derived == 4)
+      (product_introduction_conj_names(inferred: inferred) == product_introduction_expected_conjs)
         && (census.arrows == 1) && (census.arrows_derived == 1)
   }
 }
