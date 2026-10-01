@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.resource_contract_validated_but_not_carried
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data resource_contract_validated_but_not_carried: RecurringFailureMode = RecurringFailureMode {
+  identity: "resource_contract_validated_but_not_carried" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a `resource` declaration's `kind:`, `mode:`, `expires:` and `acquire { hermetic }` entries are authored facts that v2 reads and then carries nowhere. `v2.compiler.body_lowering_fold` `body_lower_resource_decl` reads every entry against its home (`std.resource_contract` `ResourceKind` / `ResourceMode`, a Bool literal, the `hermetic` execution-mode claim) and refuses at the entry when one does not inhabit it, or is repeated, or `kind` / `mode` is missing. An admitted declaration then lowers to its capabilities, and the normalize capture carries only its name (`DeclaredResource { name }`). The validated values exist in no carrier after lowering.",
+    "WHY NOT CARRIED: no consumer reads them (DESIGN section 3c). The first consumer of resource declarations, D13 step (a)'s check that an operation's `requires` member names a resource, reads only whether a path IS a resource (`v2.std.symbol_index` `symbol_index_declares_resource_at`), and so does derived DependencyDemand. A carrier for the values with no reader would be dangling, and a frontier naming no scheduled change is not admissible, so the gap is declared here instead (lane ruling on gunbc#12898, review 73658).",
+    "HARM: a consumer that later needs one of these facts would find no v2 carrier for it and could be tempted to re-read the source or assume a default. `acquire { hermetic }` is the sharpest case: it states that the resource may be acquired on the hermetic route (std.resources Clock), which is exactly what a provider-admission or execution-mode check would need. CONTAINED, NOT SILENT: nothing reads the facts today, so nothing acts on their absence, and every authored entry is still checked, so a malformed one refuses rather than riding.",
+    "v1 CONTRAST: v1 `parse_resource_entries` keeps the properties but skips the acquire and release bodies token by token (`skip_until_rbrace`), so `acquire { hermetic }` is lost there at parse with no check at all. v2 reads and validates the body, then does not carry it.",
+    "RUNG FOUND AT: mitigated (validated at lowering; not carried). CEILING: structurally impossible -- each fact is a field of the resource's typed contract, so an admitted declaration cannot exist without it. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: the first consumer that reads a resource's kind, mode, expiry or acquire claim lands (for example provider admission at a composition root, binding a demanded resource to an admitted provider under D13). That change also carries the contract, as a typed record on the captured DeclaredResource, and deletes this row.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.test.claim.normalize.resource_declaration_lowering", decl_name: "an_unknown_kind_refuses_located_RED", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.normalize.resource_declaration_lowering", decl_name: "the_capture_names_the_resource_and_only_it_holds", field: WholeDeclaration },
+  ],
+}
