@@ -2281,9 +2281,8 @@ pub fn whole_tree_resolved_ctx(
 ///
 /// ENTRIES, NOT BYTES. These maps are `im::HashMap` -- persistent HAMTs -- and a module's map is
 /// built by merging its parents', which shares internal nodes. `distinct` dedupes the map ROOT,
-/// not the nodes under it, so it counts shared structure once per root and overstates bytes:
-/// on the main subject (gunbc#12774) dropping ~36.6M `tec.variant_locals` entries freed ~0.18 GB
-/// of live heap. Read a field's entry count as reach, and the seam's `[floor-heap] in_use` as bytes.
+/// not the nodes under it, so it counts shared structure once per root and overstates bytes by
+/// an amount it cannot itself report.
 ///
 /// It also answers the overlap question across graphs at identity grain: `module_paths` counts
 /// distinct module identities, `typed_modules` distinct `TypedModule` allocations. More
@@ -3955,8 +3954,8 @@ pub(crate) fn typed_graph_byte_attribution(
     // EVERY LINE SAYS WHAT KIND OF READING IT IS, because the figure alone invites the wrong one:
     // a class dropped after others is also credited every node it SHARED with them, so its
     // `freed` is what its last reference kept alive, not what removing it would save. Read as a
-    // saving, the 4.06 GB this probe credited `emit_graph_info` at #12381 predicted a peak cut
-    // that measured -0.07 GB (neat-boar-16's A/B on gunbc#12832). Only the first class dropped
+    // saving, this probe's `emit_graph_info` figure predicted a peak cut that the floor-memory
+    // qualification A/B on gunbc#12832 did not find. Only the first class dropped
     // reads exclusive bytes; the TypeEnv maps split before it are exclusive only after the
     // environment shells went. A removal's saving is a leave-one-out reading, not this one.
     for (order, (name, bytes)) in parts.into_iter().enumerate() {

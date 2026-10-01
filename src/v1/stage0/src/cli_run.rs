@@ -42824,10 +42824,10 @@ pub fn prepare_repository_from_corpus(
 /// reader of a `PreparedRepository` touches the cache: the claim scopes, the interpreter, the
 /// declarer index and discovery read `module`, `items`, `item_registry`, `type_env` and
 /// `func_env`. So every module's cache is kept past its demanded lifetime (DESIGN §2). Its SIZE is
-/// small: the maps are persistent HAMTs whose merge shares nodes, and on the main subject dropping
-/// them took `floor_retention_census`'s `tec.variant_locals` from ~40.0M to ~3.4M entries while
-/// live heap at `prepared-subject-warm` fell ~0.18 GB. It is fixed because it is a lifetime
-/// defect (DESIGN §6, bare minimum), not because it is the floor's dominant term.
+/// small, because the maps are persistent HAMTs whose merge shares nodes; the leave-one-out reading
+/// (//gunbc/instruments:typed-graph-exclusive-bytes, `type_env_cache`) re-derives what it holds. It
+/// is fixed because it is a lifetime defect (DESIGN §6, bare minimum), not because it is the floor's
+/// dominant term.
 ///
 /// So the repository holds a projection with the cache emptied. The resolve is a fresh compile
 /// with no process-level memo, so the original modules drop here and their caches with them.
