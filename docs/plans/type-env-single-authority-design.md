@@ -250,20 +250,24 @@ names, and the direct-selected overlay applies last.
 Earlier versions of this note argued PR-2's case from a SUPERLINEAR shape: deeper modules carry
 larger import closures, so the union's bytes grow faster than the module count. The measurement
 falsifies that premise for bytes.
-- The ancestry ENTRY count is still superlinear (exponent about 1.30 between the two sizes).
-- The joint holder's BYTES (`type_env`+`type_env_cache`+`interface`, read jointly by
-  //gunbc/instruments:typed-graph-exclusive-bytes and its -floor-subject row) scale with exponent
-  about 1.09, close to linear. Bytes per entry FALL as the closure grows, so the extra entries a
-  deeper module adds are increasingly shared spine.
-- So the case no longer rests on shape. It rests on SIZE: the joint holder is 62-66% of the typed
-  graph at both sizes, about 2.7-3.0 MB per module, and it grows with the corpus about linearly.
+- The ancestry ENTRY count is still superlinear between the two sizes (the `ancestry_entries` field
+  of both labels' lines).
+- The joint holder's BYTES (`type_env+type_env_cache+interface`, read jointly by
+  //gunbc/instruments:typed-graph-exclusive-bytes and its -floor-subject row) scale close to
+  linearly. Bytes per entry therefore FALL as the closure grows, so the extra entries a deeper module
+  adds are increasingly shared spine. The two-size exponent and the per-module figure are on the
+  scoring comment for PREDICTION 2 on gunbc#12850, re-derivable by those two labels.
+- So the case no longer rests on shape. It rests on SIZE: the joint holder is the majority of the
+  typed graph at both sizes (the joint class's `exclusive` over `graph_total`, same labels), and it
+  grows with the corpus about linearly.
   The operator's 2026-10-01 re-ruling of the one-level-read invariant was argued from the
   superlinear shape, so it is returned for re-confirmation on this basis before any PR-2 code.
 
 **Predicted saving, re-based, stated before any build. These are inferences from the two-size
-reading at exponent 1.09 and are labelled as such.**
-- The joint figure extrapolates to about 7.3 GB at a ~2.7k-module subject and about 21 GB at the
-  whole tree (measured at 7,090 modules).
+reading (base: the joint class's `exclusive` at both labels, extrapolated at the two-size exponent),
+and are labelled as such.**
+- The joint figure extrapolates to about 7.3 GB at a ~2.7k-module subject. At the whole tree the
+  base is the -whole-tree label's joint reading itself.
 - The walk's memo is assumed to hold 10-20% of that. The assumption is not measured, and an AFTER
   saving under 75% of the joint figure falsifies it.
 - So the saving is about 5.9-6.6 GB at ~2.7k modules, and about 17-19 GB at the whole tree.
@@ -555,8 +559,9 @@ one authority everywhere, so it produces no row.
 - **source_visible_names.** A membership predicate built from the same lemma: n is visible iff it is
   local, a kernel name, selected by a specific import, or present in an is_all parent's surface. Its
   readers (`map_has` and `map_is_empty` in the visibility wall) are membership tests.
-- **interface.env and interface.cache** carry the same union again (the 2026-10-01 CI attribution on
-  #12900 frees about 2.2 GB at `interface`, after `te.ancestry_str_bindings`). Both are replaced by the
+- **interface.env and interface.cache** carry the same union again. The floor's strict-refused byte attribution (the
+  `[floor-heap] bytes label=strict-refused` lines that `typed_graph_byte_attribution` prints, read on
+  #12900's CI run of 2026-10-01) frees a large `interface` class after `te.ancestry_str_bindings`. Both are replaced by the
   surface node: importers read the node, not a copied map.
 
 ### The differential that checks it
