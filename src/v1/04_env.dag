@@ -271,19 +271,24 @@ fn ancestry_winner(pool: SurfacePool, kernel: Map<String, TypeBinding>, imports:
   }
 }
 
+// ONE DESCENT. The union's winner is the LAST import whose surface holds the name, so that import is
+// located by the presence test alone (arithmetic over the closure bitset) and only it is descended
+// into. Descending into every import that holds the name and keeping the last would branch at each
+// level, which is exponential in depth over a diamond-shaped import graph.
 fn surface_union_winner(pool: SurfacePool, kernel: Map<String, TypeBinding>, imports: List<SurfaceImport>, name: String) -> TypeBinding? {
-  fold(imports, init: none, f: (acc, imp) =>
+  let last = fold(imports, init: none, f: (acc, imp) =>
     match map_get(pool.surfaces, imp.module_path) {
       Present { value: parent } =>
         if surface_has(pool: pool, kernel: kernel, module_path: parent.module_path, reach: parent.reach, name: name) {
-          match surface_value(pool: pool, kernel: kernel, surface: parent, name: name) {
-            Present { value: b } => Present { value: b }
-            Absent => acc
-          }
+          Present { value: parent }
         } else { acc }
       Absent => acc
     }
   )
+  match last {
+    Present { value: parent } => surface_value(pool: pool, kernel: kernel, surface: parent, name: name)
+    Absent => none
+  }
 }
 
 // What an importer reads from `surface` for `name`: own first (map_merge(ancestry, own)), then the
@@ -308,7 +313,9 @@ fn surface_fork_rows(pool: SurfacePool, kernel: Map<String, TypeBinding>, import
       Absent => acc
     }
   )
-  let rows = flat_map(sorted_map_keys(candidates), name =>
+  let reach = surface_reach_of(imports: imports, pool: pool)
+  let forkable = sorted_map_keys(candidates) |> filter(name => surface_declarers_in_reach(pool: pool, kernel: kernel, reach: reach, name: name) >= 2)
+  let rows = flat_map(forkable, name =>
     let walked = fold(imports, init: SurfaceForkWalk { winner: none, rows: [] }, f: (state, imp) =>
       match map_get(pool.surfaces, imp.module_path) {
         Absent => state
@@ -336,6 +343,23 @@ fn surface_fork_rows(pool: SurfacePool, kernel: Map<String, TypeBinding>, import
     walked.rows
   )
   rows |> sort_by(r => concat(r.name, " | ", r.import_path, " | ", r.existing_site, " | ", r.incoming_site))
+}
+
+// How many declarers of `name` a closure holds: its exporters inside the closure, plus the kernel when
+// the kernel carries the name. A name with fewer than two cannot fork at a module with that closure,
+// so the fork walk never descends for it.
+fn surface_declarers_in_reach(pool: SurfacePool, kernel: Map<String, TypeBinding>, reach: List<Int>, name: String) -> Int {
+  let from_kernel = match map_get(kernel, name) { Present { value: _ } => 1  Absent => 0 }
+  match map_get(pool.exporters, name) {
+    Absent => from_kernel
+    Present { value: paths } =>
+      fold(paths, init: from_kernel, f: (acc, p) =>
+        match map_get(pool.surfaces, p) {
+          Present { value: e } => if reach_has(reach: reach, ordinal: e.ordinal) { acc + 1 } else { acc }
+          Absent => acc
+        }
+      )
+  }
 }
 
 type SurfaceForkWalk {
