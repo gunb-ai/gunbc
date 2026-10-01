@@ -84,7 +84,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
-          ref: ${{ (github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'gcp_iam_converge' || github.event.inputs.mode == 'namecheap_observe') && github.sha || github.event.inputs.expected_revision || github.ref }}
+          ref: ${{ (github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'gcp_iam_converge' || github.event.inputs.mode == 'namecheap_observe') && github.sha || github.event.inputs.expected_revision || github.sha }}
       - name: Isolate toolchain dirs
         run: |-
           rm -rf "$RUNNER_TEMP/rustup" "$RUNNER_TEMP/cargo"
@@ -404,7 +404,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
-          ref: ${{ (github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'gcp_iam_converge' || github.event.inputs.mode == 'namecheap_observe') && github.sha || github.event.inputs.expected_revision || github.ref }}
+          ref: ${{ (github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'gcp_iam_converge' || github.event.inputs.mode == 'namecheap_observe') && github.sha || github.event.inputs.expected_revision || github.sha }}
       - name: Download release-bins artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
@@ -2152,7 +2152,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
-          ref: ${{ (github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'gcp_iam_converge' || github.event.inputs.mode == 'namecheap_observe') && github.sha || github.event.inputs.expected_revision || github.ref }}
+          ref: ${{ (github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'gcp_iam_converge' || github.event.inputs.mode == 'namecheap_observe') && github.sha || github.event.inputs.expected_revision || github.sha }}
       - name: Download release-bins artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
@@ -2265,7 +2265,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
-          ref: ${{ (github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'gcp_iam_converge' || github.event.inputs.mode == 'namecheap_observe') && github.sha || github.event.inputs.expected_revision || github.ref }}
+          ref: ${{ (github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'gcp_iam_converge' || github.event.inputs.mode == 'namecheap_observe') && github.sha || github.event.inputs.expected_revision || github.sha }}
       - name: Download release-bins artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
@@ -2399,7 +2399,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
-          ref: ${{ (github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'gcp_iam_converge' || github.event.inputs.mode == 'namecheap_observe') && github.sha || github.event.inputs.expected_revision || github.ref }}
+          ref: ${{ (github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'gcp_iam_converge' || github.event.inputs.mode == 'namecheap_observe') && github.sha || github.event.inputs.expected_revision || github.sha }}
       - name: Download release-bins artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
@@ -2498,7 +2498,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
-          ref: ${{ (github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'gcp_iam_converge' || github.event.inputs.mode == 'namecheap_observe') && github.sha || github.event.inputs.expected_revision || github.ref }}
+          ref: ${{ (github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'gcp_iam_converge' || github.event.inputs.mode == 'namecheap_observe') && github.sha || github.event.inputs.expected_revision || github.sha }}
       - name: Download release-bins artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
@@ -2601,7 +2601,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
-          ref: ${{ (github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'gcp_iam_converge' || github.event.inputs.mode == 'namecheap_observe') && github.sha || github.event.inputs.expected_revision || github.ref }}
+          ref: ${{ (github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'gcp_iam_converge' || github.event.inputs.mode == 'namecheap_observe') && github.sha || github.event.inputs.expected_revision || github.sha }}
       - name: Download release-bins artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
