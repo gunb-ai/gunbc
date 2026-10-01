@@ -835,7 +835,7 @@ pub(crate) fn cost_debt_changed_witness_ceilings(
         (Some("path".to_string()), str_value(rel_path)),
         (
             Some("functions".to_string()),
-            list_value_from_vec(functions.iter().map(|f| str_value(f)).collect()),
+            list_value_from_vec(functions.iter().map(str_value).collect()),
         ),
         (Some("head_source".to_string()), str_value(head_source)),
         (
