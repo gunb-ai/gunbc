@@ -161,8 +161,8 @@ test fn witness_floor_budget_equals_selected_target_budget_holds() -> Bool {
 
 // THE GAP NOW INCLUDES THE USABLE-RAM DIFFERENCE. Since #11625 each tree reads its own host's
 // OS-usable RAM, and srv1 and srv3 -- same board, same DIMMs -- differ by firmware reservation
-// (1,392,640 bytes, read by probe on 2026-10-01). The claim assumed equal usable RAM, so it was off by
-// exactly that. Both terms are read from the producers rather than transcribed.
+// (host_ram_of names the instrument; the figure is not transcribed here). The claim assumed equal
+// usable RAM, so it was off by exactly that difference. Both terms are read from the producers rather than transcribed.
 test fn witness_srv3_outbudgets_srv1_by_exactly_the_overhead_gap() -> Bool {
   let s1 = host_budget_tree_at(name: "srv1", offer: srv1_offer, session_slice: byte_size(fitting_slice()))
   let s3 = host_budget_tree_at(name: "srv3", offer: srv3_offer, session_slice: byte_size(fitting_slice()))
