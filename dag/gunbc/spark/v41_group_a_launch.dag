@@ -75,7 +75,7 @@ import gunbc.spark.remote_step_sequence { run_remote_step_sequence, remote_step_
 import gunbc.host_effect { FleetSsh }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.spark.managed_access_bootstrap { spark_managed_executor_login }
-import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext }
+import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, RemoteRan, RemoteUnreachable, spark_remote_run }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet_multi_principal_probe { spark_converge_target_selection, SparkConvergeTargetSingle, SparkConvergeTargetAllObserveOnly, SparkConvergeTargetRefused }
 import gunbc.spark.v41_capacity_measurement { V41MeasurementLaunchShape, v41_measurement_launch_shape }
@@ -813,6 +813,69 @@ fn v41_stage_engram_on(hosts: List<HostIdentity>, manifest_text: String, context
 // transaction (gunbc.spark.native_serving_apply spark_native_apply_transaction, the same preflight,
 // preserve, head-first apply, readback and commit-or-rollback Group B's relaunch runs). Every read is
 // in the receipt whatever the verdict, so a refused run reports the whole distance to a launch.
+// ── THE SM120 DECODE-SHAPE GATE: THE KERNEL IS ASKED BEFORE A 1.5-HOUR LAUNCH IS ─────────────────
+//
+// Attempt 13 loaded a 328 GB arm for over an hour and then died in CUDA-graph capture on every rank,
+// because FlashInfer's SM120 DSv4 decode kernel had no specialization for the shapes the launch put
+// through it. Whether it has one is decidable in seconds, from the image and the rank's own arguments,
+// before anything is staged. So each rank's host runs the image's
+// vllm.models.deepseek_v4_1.nvidia.sm120_decode_shape_selftest (the overlay member
+// gunbc.spark.v41_runtime_candidate v41_sm120_decode_selftest_patch_path) over EXACTLY that rank's
+// engine argv -- the words its container will hand `vllm serve`, parsed by vLLM's own serve parser --
+// with the checkpoint mounted where that argv names it. The self-test calls the kernel at every shape
+// with 64 or fewer query tokens a rank of that launch reaches. Any refusal, unreachable host, or a run
+// that does not end in SELFTEST PASS stops the launch before the Engram staging, with the self-test's
+// own lines in the receipt. It mutates nothing: a --rm container, the checkpoint read-only.
+data v41_sm120_selftest_module: String = "vllm.models.deepseek_v4_1.nvidia.sm120_decode_shape_selftest"
+
+type V41Sm120HostGate {
+  passed: Bool
+  receipt: String
+}
+
+fn v41_sm120_selftest_argv(l: ArmNodeLaunch, model_path: String) -> List<String> {
+  concat([
+    "docker", "run", "--rm", "--gpus", "all", "--entrypoint", "python3",
+    "-v", join([l.host_model_path as String, ":", model_path, ":ro"], ""),
+    l.image_reference as String, "-m", v41_sm120_selftest_module,
+  ], l.engine_argv)
+}
+
+fn v41_sm120_host_gate(ctx: SparkMaterializeContext, l: ArmNodeLaunch) -> V41Sm120HostGate {
+  let host = l.node.host as String
+  match get(xs: l.engine_argv, index: 0) {
+    Absent => V41Sm120HostGate { passed: false, receipt: join(["sm120 self-test ", host, ": REFUSED the rank's engine argv is empty, so it names no model path to run against\n"], "") }
+    Present { value: model_path } =>
+      match spark_remote_run(ctx: vllm_image_target_ctx(source_ctx: ctx, host: l.node.host), argv: v41_sm120_selftest_argv(l: l, model_path: model_path)) {
+        RemoteUnreachable { cause: c } => V41Sm120HostGate { passed: false, receipt: join(["sm120 self-test ", host, ": DID NOT RUN ", c, "\n"], "") }
+        RemoteRan { exit_code: code, stdout: out, stderr: err } => {
+          let passed = code == 0 && trim(s: out).ends_with(suffix: "SELFTEST PASS")
+          V41Sm120HostGate {
+            passed: passed,
+            receipt: join([
+              "sm120 self-test ", host, ": exit=", to_string(code), if passed { " PASS" } else { " FAIL" }, "\n",
+              out, if passed { "" } else { join(["stderr: ", trim(s: err), "\n"], "") },
+            ], ""),
+          }
+        }
+      }
+  }
+}
+
+fn v41_sm120_gate(ctx: SparkMaterializeContext, p: V41GroupALaunchPlan) -> V41Sm120HostGate {
+  match p {
+    V41GroupALaunchPlanned { lines: ls, profile: _, specification_runtime_key: _, manifest_text: _, master_endpoint: _ } => {
+      let gates = map(ls, l => v41_sm120_host_gate(ctx: ctx, l: l))
+      V41Sm120HostGate {
+        passed: length(ls) != 0 && all(gates, g => g.passed),
+        receipt: join(map(gates, g => g.receipt), ""),
+      }
+    }
+    V41GroupALaunchUnestablished { obligations: _ } => V41Sm120HostGate { passed: false, receipt: "sm120 self-test: not run, the plan is unestablished\n" }
+    V41GroupALaunchRefused { causes: _ } => V41Sm120HostGate { passed: false, receipt: "sm120 self-test: not run, the plan was refused\n" }
+  }
+}
+
 fn v41_group_a_launch_session(now_word: String, context: FleetSshExecutionContext, ctx: SparkMaterializeContext) -> SparkBuildHostWork {
   let hosts = fabric_group_hosts(g: FabricGroupA)
   let image = v41_production_produced_image
@@ -847,14 +910,20 @@ fn v41_group_a_launch_session(now_word: String, context: FleetSshExecutionContex
         V41GroupALaunchPlanned { lines: _, profile: _, specification_runtime_key: _, manifest_text: manifest, master_endpoint: _ } =>
           match v41_group_a_steps(p: plan) {
             NativeArmStepsRefused { cause: c } => SparkBuildHostWork { receipt: join([reads_receipt, "NOT LAUNCHED: the units did not render: ", c as String, "\n"], ""), converged: false }
-            NativeArmSteps { steps: steps, master_endpoint: _ } =>
+            NativeArmSteps { steps: steps, master_endpoint: _ } => {
+              let gate = v41_sm120_gate(ctx: ctx, p: plan)
+              if !gate.passed {
+                SparkBuildHostWork { receipt: join([reads_receipt, gate.receipt, "NOT LAUNCHED: the SM120 decode-shape self-test did not pass on every rank's host; no host was staged and no serving unit was touched\n"], ""), converged: false }
+              } else {
               match v41_stage_engram_on(hosts: map(steps, st => st.host), manifest_text: manifest, context: context) {
                 V41StagingStopped { receipt: r } => SparkBuildHostWork { receipt: join([reads_receipt, r, "NOT LAUNCHED: the Engram staging stopped; no serving unit was touched\n"], ""), converged: false }
                 V41StagedEverywhere { receipt: r } => {
                   let run = spark_native_apply_transaction(context: context, trust: ctx.trust, path: ctx.path, administrator: ctx.admin_credential, steps: steps, at_word: now_word)
-                  SparkBuildHostWork { receipt: join([reads_receipt, r, run.body], ""), converged: run.committed }
+                  SparkBuildHostWork { receipt: join([reads_receipt, gate.receipt, r, run.body], ""), converged: run.committed }
                 }
               }
+              }
+            }
           }
       }
   }
