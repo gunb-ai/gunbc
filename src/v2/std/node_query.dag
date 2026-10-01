@@ -395,22 +395,25 @@ fn member_edge_type_node(e: Edge) -> Optional<Node> {
   }
 }
 
-// WHETHER A MEMBER'S DECLARED TYPE SATISFIES `holds`, for the lenses that ask one question of each
-// field's type. A Named member that is not a binder declares no type and answers false; the binder
-// wall (v2.std.type_binder) refuses such a tree before any lens reads it.
-fn member_edge_type_satisfies(e: Edge, holds: fn(Node) -> Bool) -> Bool {
-  match member_edge_type_node(e: e) {
-    Present { value: t } => holds(t)
-    Absent => false
+// A MEMBER THAT IS NOT A BINDER, as a located refusal for the lenses that judge each field's type: a
+// Named member whose target is not a binder node declares no type, so a lens reports it rather than
+// answering "no violation" for it.
+fn member_not_a_binder_diagnostic(e: Edge) -> Diagnostic {
+  Diagnostic {
+    reason: ^member_not_a_binder,
+    at: node_locus(node: e.target),
+    correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-// A member's type name for the indexes that record one: a Named member that is not a binder renders as
-// `<not-a-binder>`, never as a fabricated type name.
+// A member's type name, for the indexes that record one. A Named member that is not a binder declares
+// no type, so it answers ^coproduct_unresolved_payload -- this module's one marker for a type it cannot
+// read (edge_field_type_name answers it for any non-Atom type) -- never a name no declaration carries.
+// The marker names no declaration, so nothing that joins on type names can match it.
 fn member_edge_type_name(e: Edge) -> Symbol {
   match member_edge_type_node(e: e) {
     Present { value: t } => edge_field_type_name(target: t)
-    Absent => symbol_intern_lexeme(lexeme: "<not-a-binder>")
+    Absent => ^coproduct_unresolved_payload
   }
 }
 
