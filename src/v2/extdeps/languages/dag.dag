@@ -805,40 +805,38 @@ fn dag_grammar_generic_params_expr() -> GrammarExpr {
 }
 
 // A PARAMETER MAY REFINE ITS TYPE WITH A WHERE CLAUSE AND MAY CARRY A DEFAULT (`lifetime_seconds: Int
-// where range(min: 1, max: 3600) = 3600`), as v1 02_parse parse_param reads it. Each refined or
-// defaulted form is an arm that REQUIRES what it adds, so it is taken only where the source writes
-// it; a parameter with neither falls to the last arm, whose shape is exactly the one every parameter
+// where range(min: 1, max: 3600) = 3600`), as v1 02_parse parse_param reads it. The refined or
+// defaulted form is the first arm and REQUIRES what it adds, so it is taken only where the source
+// writes it; a parameter with neither falls to the last arm, whose shape is exactly the one every parameter
 // reader already reads. Neither lowers yet: v2.compiler.body_lowering_fold refuses the fn at the
 // clause (body_lowering_reason_parameter_refinement_unmodeled) or at the default
 // (body_lowering_reason_default_value_unmodeled) rather than reading the type and dropping either.
 fn dag_grammar_typed_param_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_typed_param_head_expr(
-      tail: dag_grammar_sequence(
-        left: dag_grammar_nonterminal(production: ^dag_production_where_refinement_clause),
+      tail: dag_grammar_choice(
+        left: dag_grammar_sequence(
+          left: dag_grammar_nonterminal(production: ^dag_production_where_refinement_clause),
+          right: dag_grammar_optional(element: dag_grammar_nonterminal(production: ^dag_production_default_value))
+        ),
         right: dag_grammar_nonterminal(production: ^dag_production_default_value)
       )
     ),
-    right: dag_grammar_choice(
-      left: dag_grammar_typed_param_head_expr(tail: dag_grammar_nonterminal(production: ^dag_production_default_value)),
-      right: dag_grammar_choice(
-        left: dag_grammar_typed_param_head_expr(tail: dag_grammar_nonterminal(production: ^dag_production_where_refinement_clause)),
-        right: dag_grammar_sequence(
-          left: dag_grammar_binding_name_terminal(),
-          right: dag_grammar_sequence(
-            left: dag_grammar_terminal(token_class: ^dag_token_colon),
-            right: dag_grammar_nonterminal(production: ^dag_production_type_expr)
-          )
-        )
+    right: dag_grammar_sequence(
+      left: dag_grammar_binding_name_terminal(),
+      right: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: ^dag_token_colon),
+        right: dag_grammar_nonterminal(production: ^dag_production_type_expr)
       )
     )
   )
 }
 
-// `name: T <tail>` for the refined and defaulted arms above. Each such arm REQUIRES its tail, so it
-// is taken only where the source writes one; a parameter with neither falls to the last arm, the
-// unchanged shape every parameter reader already reads. The longer tails are offered first because
-// an ordered choice commits to its first success.
+// `name: T <tail>` for the first arm above. The tail is a refinement (optionally followed by a
+// default) or a default, so the arm REQUIRES one and is taken only where the source writes one; a
+// parameter with neither falls to the last arm, the unchanged shape every parameter reader already
+// reads. One head arm rather than one per tail, so a plain parameter's `name: T` is read twice, not
+// once per tail form.
 fn dag_grammar_typed_param_head_expr(tail: GrammarExpr) -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_binding_name_terminal(),
