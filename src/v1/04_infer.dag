@@ -13257,21 +13257,7 @@ fn union_parent_type_env_caches(
 fn kernel_coproduct_variant_locals(env: TypeEnv) -> Map<String, TypeBinding> {
   match env.parents |> last {
     Present { value: kernel } =>
-      let owners = fold(
-        kernel.bindings |> map_values |> sort_by(b => b.name),
-        init: empty_map(),
-        f: (acc, binding) =>
-          if (binding.resolved.connective == Disj) {
-            fold(binding.resolved.children, init: acc, f: (vacc, child) =>
-              let child_name = authored_name_at(source_indices: env.source_indices, node: child)
-              match map_get(vacc, child_name) {
-                Present { value: seen } =>
-                  if (seen |> any(b => b.resolved == binding.resolved)) { vacc } else { map_insert(vacc, child_name, concat(seen, [binding])) }
-                Absent => map_insert(vacc, child_name, [binding])
-              }
-            )
-          } else { acc }
-      )
+      let owners = kernel_arm_owner_bindings(env: env, bindings: kernel.bindings |> map_values |> sort_by(b => b.name))
       fold(owners |> map_keys, init: empty_map(), f: (acc, arm) =>
         match map_get(owners, arm) {
           Present { value: bindings } =>
@@ -13285,6 +13271,25 @@ fn kernel_coproduct_variant_locals(env: TypeEnv) -> Map<String, TypeBinding> {
         }
       )
     Absent => empty_map()
+  }
+}
+
+// Every kernel coproduct arm spelling, with the distinct kernel coproduct bindings that declare it.
+fn kernel_arm_owner_bindings(env: TypeEnv, bindings: List<TypeBinding>) -> Map<String, List<TypeBinding>> {
+  fold(bindings, init: empty_map(), f: (acc, binding) =>
+    if (binding.resolved.connective == Disj) {
+      fold(binding.resolved.children, init: acc, f: (vacc, child) =>
+        kernel_arm_owner_add(owners: vacc, arm: authored_name_at(source_indices: env.source_indices, node: child), binding: binding)
+      )
+    } else { acc }
+  )
+}
+
+fn kernel_arm_owner_add(owners: Map<String, List<TypeBinding>>, arm: String, binding: TypeBinding) -> Map<String, List<TypeBinding>> {
+  match map_get(owners, arm) {
+    Present { value: seen } =>
+      if (seen |> any(b => b.resolved == binding.resolved)) { owners } else { map_insert(owners, arm, concat(seen, [binding])) }
+    Absent => map_insert(owners, arm, [binding])
   }
 }
 
@@ -15270,6 +15275,14 @@ fn bind_local_func_conformance(func_env: ResolvedFuncEnv, env: TypeEnv, module_n
   ResolvedFuncEnv { name: func_env.name, local: bound_local, parents: func_env.parents }
 }
 
+// A MODULE ELECTS A BARE VARIANT FROM ITS DECLARED SCOPE ONLY: its own coproducts and its direct
+// imports, then the kernel arms where nothing in that scope declares the spelling
+// (merge_kernel_variant_locals_low_priority). The closure-wide unique-spelling tier this replaced
+// (build_global_bare_variant_locals) let a module bind an arm it never imported, and dropped a
+// spelling two coproducts declare closure-wide -- so `Absent` fell through to the kernel
+// Optional. "Declared scope" here is build_local_variants plus build_imported_variants (direct
+// imports, no transitive walk); it moves onto v1.compiler.infer build_ancestry_precedence when the
+// declaration-identity cut lands, which names this election as a consumer of that definition.
 fn build_module_context(contributions: List<ItemContribution>,
     parent_index: Map<String, TypedModule>,
     variant_surfaces: Map<String, VariantExportSurface>,
@@ -15292,14 +15305,6 @@ fn build_module_context(contributions: List<ItemContribution>,
     module_name: module_name,
     init: VariantFoldState { locals: empty_map(), collision_errors: [] }
   )
-  // A MODULE ELECTS A BARE VARIANT FROM ITS DECLARED SCOPE ONLY: its own coproducts and its direct
-  // imports, then the kernel arms where nothing in that scope declares the spelling
-  // (merge_kernel_variant_locals_low_priority). The closure-wide unique-spelling tier this replaced
-  // (build_global_bare_variant_locals) let a module bind an arm it never imported, and dropped a
-  // spelling two coproducts declare closure-wide -- so `Absent` fell through to the kernel
-  // Optional. "Declared scope" here is build_local_variants plus build_imported_variants (direct
-  // imports, no transitive walk); it moves onto v1.compiler.infer build_ancestry_precedence when the
-  // declaration-identity cut lands, which names this election as a consumer of that definition.
   let variant_fold = build_imported_variants(
     resolved_imports: resolved_imports,
     parent_index: parent_index,
