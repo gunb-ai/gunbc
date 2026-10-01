@@ -358,12 +358,43 @@ fn line_is_file_level_declaration(text: String) -> Bool {
   w == "use" || w == "crate"
 }
 
+// A TRAILING `//` COMMENT IS NOT PART OF THE DECLARATION IT FOLLOWS. `const LEN: usize = 8 + 16; //
+// offset, length` ends at its semicolon; reading the comment's last character as the line's end
+// left the const open, and it swallowed the const after it (resolved_graph_cache.rs
+// PART_DESCRIPTOR_LEN over V3_HEADER_LEN) -- silently. A `//` opens a comment when it is outside a
+// string literal, and on one line that is decided by the parity of the quotes before it. A `//`
+// with an odd count before it is inside a literal (a URL), and the search continues past it.
+fn code_before_line_comment_from(text: String, at: Int) -> String {
+  let found = find_from(s: text, at: at, pattern: "//")
+  if found < 0 {
+    text
+  } else if quote_count_from(s: substring(s: text, start: 0, end: found), at: 0, acc: 0) % 2 == 0 {
+    substring(s: text, start: 0, end: found)
+  } else {
+    code_before_line_comment_from(text: text, at: found + 2)
+  }
+}
+
+fn quote_count_from(s: String, at: Int, acc: Int) -> Int {
+  if at >= string_length(s: s) {
+    acc
+  } else if char_at(s: s, pos: at) == "\"" {
+    quote_count_from(s: s, at: at + 1, acc: acc + 1)
+  } else {
+    quote_count_from(s: s, at: at + 1, acc: acc)
+  }
+}
+
+fn code_before_line_comment(text: String) -> String {
+  code_before_line_comment_from(text: text, at: 0)
+}
+
 // A HEADER CLOSES ON ITS OWN LINE when it carries no block that outlives it: a `;`-terminated
 // declaration, or a whole item written on one line. Otherwise it opens a scope that closes at a
 // brace at its own indent. There is no third case, and a line matching neither at a scope boundary
 // is exactly the state this reader refuses on.
 fn head_closes_on_its_own_line(text: String) -> Bool {
-  let t = trim(s: text)
+  let t = trim(s: code_before_line_comment(text: text))
   let n = string_length(s: t)
   if n == 0 {
     true
@@ -1183,6 +1214,15 @@ fn scan_step(state: RustScanState, text: String) -> RustScanState {
         }
       } else if scan_line_closes_top_item(state: state, text: text) {
         scan_state_advance(state: scan_close_scope(state: state))
+      } else if indent == expected - 4
+        && rust_keyword_is_item_form(word: leading_ident(s: peeled_item_head(text: text))) {
+        scan_state_advance(
+          state: scan_state_refuse(
+            state: state,
+            text: text,
+            detail: "an item header at the open item's own indent: the open item never closed, and reading on would swallow this item into its extent"
+          )
+        )
       } else {
         let opened = raw_string_terminator(text: text)
         if opened == "" {

@@ -41,6 +41,10 @@ data fixture_continued_initializer: String = "static SKIPS: std::sync::atomic::A
 
 data fixture_continued_string_literal: String = "const SRC: &str =\n    \"module m\\n\\n\\\n}\\n\\\n     fn tail() {}\\n\";\n\nfn after_the_string() -> u32 {\n    1\n}\n"
 
+data fixture_trailing_comment_after_a_declaration: String = "const PART_LEN: usize = 8 + 16; // offset, digest\nconst HEADER_LEN: usize =\n    PART_LEN * 3;\n\nfn uses_the_url() -> &'static str {\n    \"https://example.invalid/a\"\n}\n"
+
+data fixture_header_swallowed_by_an_open_item: String = "pub fn fixture_text() -> &'static str {\n    \"\nfn phantom() -> u32 { 1 }\n\"\n}\n"
+
 data fixture_extern_block: String = "extern \"C\" {\n    fn getrusage(who: i32) -> i32;\n}\n"
 
 data fixture_header_opened_raw_string: String = "pub const FIXTURE_SRC: &str = r#\"\nfn phantom_item() -> u32 {\n    1\n}\n\"#;\n\npub fn after_the_literal() -> u32 {\n    1\n}\n"
@@ -276,17 +280,52 @@ test fn a_string_continued_with_a_backslash_is_text_and_the_const_ends_at_its_se
   }
 }
 
+// A TRAILING COMMENT DOES NOT HOLD A DECLARATION OPEN. `const PART_LEN: usize = 8 + 16; // ...` ends
+// at its semicolon; read to the comment's last character it stayed open and swallowed the const
+// after it, silently (resolved_graph_cache.rs PART_DESCRIPTOR_LEN over V3_HEADER_LEN). Three items,
+// each where it really is: line 2 belongs to HEADER_LEN and not to PART_LEN.
+test fn a_trailing_comment_does_not_hold_a_declaration_open() -> Bool {
+  match scan_rust_source(repo_path: "src/v1/stage0/src/probe.rs", content: fixture_trailing_comment_after_a_declaration) {
+    RustFileScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => false
+    RustFileScanned { repo_path: _, items: items, macro_regions: macro_regions, line_count: line_count } =>
+      length(xs: items) == 3
+        && fixture_line_attributes_to(
+          items: items,
+          macro_regions: macro_regions,
+          line_count: line_count,
+          line: 2,
+          key: "src/v1/stage0/src/probe.rs::const::HEADER_LEN"
+        )
+  }
+}
+
+// AN ITEM HEADER AT THE OPEN ITEM'S OWN INDENT REFUSES; IT IS NEVER READ AS BODY. This is the guard
+// that makes the swallow class structural rather than a bug-by-bug hunt (gunbc.recurring_failure_mode
+// census_instrument_silently_drops_items): whatever leaves an item open past its end -- a continued
+// initializer, a trailing comment, an ordinary multi-line string -- next meets a sibling header at
+// the open item's own indent, and a header there is not something an item's body contains. Before
+// the guard the fixture's line 3 was silently body of fixture_text and `phantom` simply did not
+// exist; now the file stops at line 3.
+test fn an_item_header_at_the_open_items_own_indent_refuses_rather_than_being_swallowed() -> Bool {
+  match scan_rust_source(repo_path: "src/v1/stage0/src/probe.rs", content: fixture_header_swallowed_by_an_open_item) {
+    RustFileScanRefused { repo_path: _, line: line, line_text: _, detail: _ } => line == 3
+    RustFileScanned { repo_path: _, items: _, macro_regions: _, line_count: _ } => false
+  }
+}
+
 // THE RAW-STRING REPAIR IS NOT A CATCH-ALL FOR LITERALS. An ORDINARY string continued across lines
 // carries no self-describing terminator this reader can recover without a lexer, so it is not
-// tracked: its column-zero `}` still closes the fn early and its tail still refuses at the scope
-// boundary. Refusing is the named residual, and this arm is what keeps the repair from having
-// quietly become "skip anything that looks like a literal".
+// tracked, and the file refuses. It now refuses at line 3, the literal's `fn phantom_item` header at
+// the open fn's own indent, rather than at line 5 after the literal's `}` had already closed the fn
+// early: the header guard stops the line at the first sibling header. Refusing is the named
+// residual, and this arm is what keeps the repair from having quietly become "skip anything that
+// looks like a literal".
 test fn an_ordinary_string_reaching_column_zero_still_refuses() -> Bool {
   match scan_rust_source(
     repo_path: "src/v1/stage0/src/probe.rs",
     content: fixture_ordinary_string_reaching_column_zero
   ) {
-    RustFileScanRefused { repo_path: _, line: line, line_text: _, detail: _ } => line == 5
+    RustFileScanRefused { repo_path: _, line: line, line_text: _, detail: _ } => line == 3
     RustFileScanned { repo_path: _, items: _, macro_regions: _, line_count: _ } => false
   }
 }
