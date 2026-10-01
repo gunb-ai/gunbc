@@ -4,12 +4,13 @@ Parent design: [service-interface-and-uses-carriers.md](service-interface-and-us
 
 ## What lands
 
-An Arrow may carry two optional **contract edges**:
+An Arrow may carry three optional **contract edges**. The first two (effect claims and execution mode) landed in PR2a. The third (resource requirements) landed with D13 step (a); see the section on it below.
 
 | Edge | Target shape | Vocabulary home | Admitted labels |
 | --- | --- | --- | --- |
 | `^arrow_effect_claims_edge` | NONEMPTY Conj of self-named childless Atoms, no label twice (no claims has one form: the absent edge) | `std.effects` `EffectClaim` (`ReadonlyClaim`, `IdempotentClaim`), new here | `readonly`, `idempotent` |
 | `^arrow_execution_mode_claim_edge` | one childless Atom | `std.execution_mode` `ExecutionMode` (existing) | `hermetic` (only `Hermetic` is claimable) |
+| `^arrow_resource_requirements_edge` | NONEMPTY Conj, one Named edge per member (label = spelling, target = type reference); no requirements has one form, the absent edge | the open set of `resource` declarations, checked at resolution (`v2.std.symbol_index` `symbol_index_declares_resource_at`) | any declared resource, each at most once by resolved declaration |
 
 `hermetic` is kept off the effect claims: it says where the Arrow may run, not what its effect does. The surface `OperationModifier` stays one syntax vocabulary (`v2.extdeps.languages.dag` `dag_grammar_op_modifier_expr`), and lowering (PR2c) projects each arm to its home.
 
@@ -51,14 +52,23 @@ Audit of every Arrow reader outside `src/v2/test`. "Metadata" means: handled exa
 
 Readers that ignore a named edge safely: the domain, codomain and body readers in resolve, infer, eval, translate and `v2.std.compilers.target_model`; `v2.std.node_query`; `v2.std.decl_index`; `v2.compiler.symbol_index_fill`; `v2.compiler.emit_produced`; `v2.compiler.compile`; `v2.std.node` `cost_edge_role`; `v2.lens.cost.copied_port_derivation`.
 
-## Standing: a DESIGN §3c declared frontier
+## Standing: DESIGN §3c, per edge family
 
-- **Consumed by execution in this change:** the conformance wall (`v2.std.node` `arrow_signature_edges_conform`, reached by every `well_formed` check of an Arrow) and `v2.test.claim.arrow_contract_edge_conformance`.
-- **Production consumer, a named later change:** PR2c. The operation-modifier lowering (`v2.compiler.body_lowering_fold` `body_lower_operation`) emits both edges, and the pipeline readers above gain their metadata arms in the same change.
-- **Transition trigger:** PR2c lands. If PR2c is abandoned, these edges and their conformance are deleted, not left standing.
+The two families have different producers and different consumers, so each has its own standing.
+
+### Effect claims and execution mode (PR2a): a declared frontier
+
+- **Consumed by execution:** the conformance wall (`v2.std.node` `arrow_signature_edges_conform`, reached by every `well_formed` check of an Arrow) and `v2.test.claim.arrow_contract_edge_conformance`. The pipeline reader arms (resolve carries both unwalked; infer and `type_binder` skip them) landed with D13 step (a), the first producer of any contract edge.
+- **Production consumer, a named later change:** PR2c. The operation-modifier lowering (`v2.compiler.body_lowering_fold` `body_lower_operation`) emits both edges, and `translate_grounding_derived_gate_subtree` gains its metadata arm in the same change.
+- **Transition trigger:** PR2c lands. If PR2c is abandoned, these two edges, their conformance and their arms in the readers are deleted, not left standing.
 - **Why ahead of the consumer:** the 2026-10-01 ruling asked for the substrate change to be reviewable on its own diff.
 
-**Why the pipeline readers move in PR2c rather than here.** Until PR2c, no producer emits a contract edge, so those readers have no input to be wrong about. Moving them here would give them branches that no test can reach. PR2c lands the producer and the reader arms together, with a discriminating red on the production route.
+### Resource requirements (D13 step a): producer landed, demand consumer a declared frontier
+
+- **Produced and consumed by execution in step (a):** `body_lower_operation_requires` emits the edge from an operation's `requires` clause. `v2.compiler.resolve` `resolve_arrow_resource_requirements` reads it on every resolved operation Arrow and refuses a member that is not a declared resource or that repeats one. Controls: `v2.test.claim.normalize.operation_requires_edge`. That is a conformance consumer: it establishes that the requirement names real resources. It does not use the requirement.
+- **Production consumer of the requirement itself, a named later change:** D13 step (b), the DependencyDemand derivation. A function's demand is the union of three parts: its direct resource operations; for each service operation it calls, that callee Arrow's `^arrow_resource_requirements_edge`; and its resolved callees' demand. That is how a `net: Network` requirement becomes derived instead of authored, which is the restoration trigger of `gunbc.rung_drop` `network_requirement_unrepresented_after_uses_cut`.
+- **Transition trigger, at executable grain:** step (b) lands, and its derivation reads this edge off the callee operation's Arrow into the calling function's derived demand. Executed evidence is a control in which a function calling an operation that `requires Network` derives demand naming `std.resources.Network`, and that demand disappears when the clause is removed. Reading the edge only for conformance, or adding Network to demand by spelling, does not satisfy the trigger.
+- **If step (b) is abandoned:** the `requires` grammar member, `body_lower_operation_requires`, the `^arrow_resource_requirements_edge` label and its at-most-one count, its target check in `v2.std.arrow_contract`, and `resolve_arrow_resource_requirements` with its two refusal reasons are deleted. The resource declaration's index mark (`symbol_index_declares_resource_at`, from #12898) then has no reader and is deleted with them, as its own frontier note states.
 
 ## Not in this change: input defaults
 
