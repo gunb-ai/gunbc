@@ -19,11 +19,11 @@ import gunbc.customer.control_plane {
   Stopping, Terminated, Running, ProvisioningFailed, Provisioning, BalanceExhausted, CustomerRequested, HostFailed,
 }
 
-// Every claim drives the REAL fold (replay_commands) over a command log, and every webhook is
-// signed with HMAC-SHA-256 through extdeps.crypto.mac's bound realization and verified back through
-// the same Stripe header parser a live delivery would hit. One claim verifies a signature computed
-// OUTSIDE the substrate (Python hmac/hashlib), so the verifier is not only agreeing with itself.
 
+// Every claim drives the REAL fold (replay_commands) over a command log, and every webhook is signed
+// with HMAC-SHA-256 through extdeps.crypto.mac's bound realization and verified back through the same
+// Stripe header parser a live delivery hits. One claim verifies a signature computed OUTSIDE the
+// substrate (Python hmac/hashlib), so the verifier is not only agreeing with itself.
 data endpoint_secret: MacKey = MacKey {
   id: "whsec-test" as MacKeyId,
   suite: HmacSha256,
@@ -105,7 +105,6 @@ fn funded_running() -> List<ControlPlaneCommand> {
   ]
 }
 
-// ── signature verification ───────────────────────────────────────────────────────────────────
 
 test fn w_externally_computed_stripe_signature_verifies() -> Bool {
   let body = checkout_body(event_id: "evt_ext", event_type: "checkout.session.completed", session_id: "cs_ext", account: "acct_a", payment_status: "paid", subtotal: 10000, tax: 663, tax_status: "complete")
@@ -145,7 +144,6 @@ test fn w_forged_webhook_never_credits() -> Bool {
   rejected && account_balance(state: r.state, account_id: "acct_a") == 0
 }
 
-// ── payments ─────────────────────────────────────────────────────────────────────────────────
 
 test fn w_paid_checkout_credits_subtotal_and_issues_receipt_with_tax() -> Bool {
   let r = run([SignUp { account_id: "acct_a", email: "a@example.com" }, paid(event_id: "evt_1", session_id: "cs_1", subtotal: 10000)])
@@ -161,7 +159,6 @@ test fn w_repeated_webhook_credits_once() -> Bool {
     SignUp { account_id: "acct_a", email: "a@example.com" },
     paid(event_id: "evt_1", session_id: "cs_1", subtotal: 10000),
     paid(event_id: "evt_1", session_id: "cs_1", subtotal: 10000),
-    // a redelivery under a NEW event id for the same checkout session is still one credit
     paid(event_id: "evt_1b", session_id: "cs_1", subtotal: 10000),
   ])
   let replayed = match last_outcome(r: r) { StripeEventAlreadyProcessed { stripe_event_id: _ } => true  _ => false }
@@ -183,7 +180,6 @@ test fn w_undetermined_tax_holds_payment_without_credit_or_receipt() -> Bool {
   held && account_balance(state: r.state, account_id: "acct_a") == 0 && count(r.state.receipts) == 0
 }
 
-// ── authentication ───────────────────────────────────────────────────────────────────────────
 
 test fn w_session_token_authenticates_and_tampering_or_expiry_refuses() -> Bool {
   let st = run([SignUp { account_id: "acct_a", email: "a@example.com" }]).state
@@ -205,7 +201,6 @@ test fn w_unauthenticated_instance_request_is_refused() -> Bool {
   refused && count(r.state.instances) == 0
 }
 
-// ── instances ────────────────────────────────────────────────────────────────────────────────
 
 test fn w_duplicate_instance_request_replays_one_instance() -> Bool {
   let tok = token_for(account: "acct_a")
@@ -255,7 +250,6 @@ test fn w_failed_provisioning_is_never_charged() -> Bool {
   failed && account_balance(state: r.state, account_id: "acct_a") == 10000
 }
 
-// ── metering, spend cap, stop ────────────────────────────────────────────────────────────────
 
 test fn w_running_charges_each_interval_once() -> Bool {
   let r = run(append(funded_running(), [

@@ -16,33 +16,26 @@ import extdeps.stripe.webhook {
   AutomaticTaxComplete, AutomaticTaxFailed, AutomaticTaxRequiresLocationInputs, AutomaticTaxDisabled,
 }
 
-// THE CUSTOMER CONTROL PLANE AS ONE FOLD. Every customer-visible fact -- who exists, who is
-// authenticated, what money has arrived, what instance exists and in which state, what has been
-// charged -- is derived by folding an ordered command log through `apply`. Durability is then a
-// property of persisting the LOG (one append per admitted command) rather than of mutating several
-// stores that can disagree; the realization binding to a durable store is a declared frontier, below.
-//
-// The policy this module owns, and the reason it is not in extdeps.stripe: which Stripe events
-// credit a prepaid balance, what idempotency means for an instance request, when charging starts and
-// stops. Stripe provides neither a prepaid balance nor instance idempotency.
-//
-// Money is integer minor units of ONE currency; a payment in any other currency refuses rather than
-// converting. A balance never goes negative: the prepaid balance IS the spend cap.
 
-// ── Policy ───────────────────────────────────────────────────────────────────────────────────
 
+// THE CUSTOMER CONTROL PLANE AS ONE FOLD. Every customer-visible fact -- who exists, what money has
+// arrived, what instance exists and in which state, what has been charged -- is derived by folding
+// an ordered command log through apply_command. Durability is then a property of persisting the LOG
+// (one append per admitted command) rather than of mutating several stores that can disagree; its
+// realization is the declared frontier control_plane_state_store_frontier.
+//
+// This module owns the policy extdeps.stripe does not: which Stripe events credit a prepaid balance,
+// what idempotency means for an instance request, when charging starts and stops. Money is integer
+// minor units of ONE currency; another currency refuses rather than converting. A balance never goes
+// negative: the prepaid balance IS the spend cap.
 type ControlPlanePolicy {
   currency: NonEmptyStr
-  // The PremiumDedicated offer is the only one sold at first customer; its price per metered
-  // interval is the policy's fact, never a literal inside the fold.
   premium_dedicated_rate_per_interval: Int
-  // Minimum balance an account must hold to REQUEST an instance (the paid minimum).
   minimum_balance_to_request: Int
   webhook_tolerance_seconds: Int
   session_lifetime_seconds: Int
 }
 
-// ── State ────────────────────────────────────────────────────────────────────────────────────
 
 type CustomerAccount {
   account_id: NonEmptyStr
@@ -106,10 +99,9 @@ fn control_plane_empty() -> ControlPlaneState {
   ControlPlaneState { accounts: [], processed_stripe_events: [], receipts: [], failed_payments: [], ledger: [], instances: [] }
 }
 
-// ── Commands ─────────────────────────────────────────────────────────────────────────────────
-// What arrives from outside. Webhooks arrive RAW (header and body bytes), because verification is
-// over the exact body; a pre-parsed event would let a caller substitute bytes after verification.
 
+// Webhooks arrive RAW (header and body bytes), because verification is over the exact body; a
+// pre-parsed event would let a caller substitute bytes after verification.
 type ControlPlaneCommand
   = SignUp { account_id: NonEmptyStr, email: NonEmptyStr }
   | StripeWebhookDelivery { signature_header: String, raw_body: String, received_at: Int }
@@ -153,13 +145,11 @@ fn unchanged(state: ControlPlaneState, outcome: ControlPlaneOutcome) -> ControlP
   ControlPlaneStep { state: state, outcome: outcome }
 }
 
-// ── Authentication ───────────────────────────────────────────────────────────────────────────
-// A session token is `<account_id>.<expires_at>.<hmac hex>` with the HMAC keyed by the control
-// plane's session key over `session:<account_id>:<expires_at>`. It is minted only for an account
-// that exists, and verification goes through extdeps.crypto.mac's constant-time realization.
-// How the token reaches the person (a mailed one-time link) is NOT modeled here: see
-// customer_identity_email_delivery_frontier.
 
+// A session token is `<account_id>.<expires_at>.<hmac hex>`, the HMAC keyed by the control plane's
+// session key over `session:<account_id>:<expires_at>`, minted only for an existing account and
+// verified through extdeps.crypto.mac's constant-time realization. Delivery of the token to the
+// person is customer_identity_email_delivery_frontier.
 type SessionIssue
   = SessionIssued { token: NonEmptyStr, expires_at: Int }
   | SessionRefused { reason: NonEmptyStr }
@@ -240,7 +230,6 @@ type ListAtScan {
   hit: String
 }
 
-// ── Balance (usage and charges visibility derives from the same ledger) ──────────────────────
 
 fn account_balance(state: ControlPlaneState, account_id: NonEmptyStr) -> Int {
   fold(state.ledger, init: 0, f: fn(acc, e) {
@@ -251,7 +240,6 @@ fn account_balance(state: ControlPlaneState, account_id: NonEmptyStr) -> Int {
   })
 }
 
-// ── Webhook: verify, decode, deduplicate, then apply ──────────────────────────────────────────
 
 fn stripe_event_processed(state: ControlPlaneState, event_id: NonEmptyStr) -> Bool {
   fold(state.processed_stripe_events, init: false, f: fn(acc, e) { acc || (e as String) == (event_id as String) })
@@ -280,8 +268,6 @@ fn credit_session(policy: ControlPlanePolicy, state: ControlPlaneState, event_id
   } else if s.amount_subtotal + s.amount_tax != s.amount_total {
     unchanged(state: state, outcome: WebhookRejected { reason: "checkout session subtotal plus tax does not equal total" })
   } else if checkout_session_credited(state: state, session_id: s.id) {
-    // Stripe may deliver checkout.session.completed and later async_payment_succeeded, or redeliver
-    // under a new event id; the SESSION is the unit that is credited, once.
     unchanged(state: mark_processed(state: state, event_id: event_id), outcome: StripeEventAlreadyProcessed { stripe_event_id: event_id })
   } else {
     match s.automatic_tax {
@@ -309,9 +295,6 @@ fn credit_session(policy: ControlPlanePolicy, state: ControlPlaneState, event_id
           outcome: PaymentCredited { receipt: receipt },
         }
       }
-      // Tax is not deferrable: a payment whose tax Stripe did not determine is neither credited nor
-      // receipted. It is held, visibly, and the event is NOT marked processed so a later corrected
-      // delivery can still credit it.
       AutomaticTaxFailed => unchanged(state: state, outcome: PaymentHeldTaxUndetermined { stripe_event_id: event_id, checkout_session_id: s.id })
       AutomaticTaxRequiresLocationInputs => unchanged(state: state, outcome: PaymentHeldTaxUndetermined { stripe_event_id: event_id, checkout_session_id: s.id })
       AutomaticTaxDisabled => unchanged(state: state, outcome: PaymentHeldTaxUndetermined { stripe_event_id: event_id, checkout_session_id: s.id })
@@ -342,8 +325,6 @@ fn apply_stripe_event(policy: ControlPlanePolicy, state: ControlPlaneState, even
     match event.kind {
       CheckoutSessionCompleted { session: s } => match s.payment_status {
         CheckoutPaid => credit_session(policy: policy, state: state, event_id: event.id, s: s)
-        // Delayed payment methods: completed but unpaid. Nothing is credited until
-        // async_payment_succeeded; the event is consumed.
         CheckoutUnpaid => unchanged(state: mark_processed(state: state, event_id: event.id), outcome: StripeEventIgnored { stripe_event_id: event.id, event_type: "checkout.session.completed (unpaid)" })
         CheckoutNoPaymentRequired => unchanged(state: mark_processed(state: state, event_id: event.id), outcome: StripeEventIgnored { stripe_event_id: event.id, event_type: "checkout.session.completed (no payment required)" })
       }
@@ -360,7 +341,6 @@ fn apply_webhook(endpoint_secret: MacKey, policy: ControlPlanePolicy, state: Con
     StripeWebhookOutsideTolerance { timestamp: _, now: _, tolerance_seconds: _ } => unchanged(state: state, outcome: WebhookRejected { reason: "webhook timestamp outside tolerance" })
     StripeWebhookNoSignatureVerified { tried: _ } => unchanged(state: state, outcome: WebhookRejected { reason: "webhook signature does not verify" })
     StripeWebhookVerified { verified: v, timestamp: t } =>
-      // The join: the verified message must be exactly the bytes about to be decoded.
       if (v.message as String) != (stripe_signed_payload(timestamp: t, raw_body: body) as String) {
         unchanged(state: state, outcome: WebhookRejected { reason: "verified payload is not the delivered body" })
       } else {
@@ -372,7 +352,6 @@ fn apply_webhook(endpoint_secret: MacKey, policy: ControlPlanePolicy, state: Con
   }
 }
 
-// ── Instances ────────────────────────────────────────────────────────────────────────────────
 
 fn instance_id_for(account_id: NonEmptyStr, idempotency_key: NonEmptyStr) -> NonEmptyStr {
   concat(concat(concat("inst_", account_id as String), "_"), idempotency_key as String) as NonEmptyStr
@@ -591,7 +570,6 @@ fn apply_command(session_key: MacKey, endpoint_secret: MacKey, policy: ControlPl
           ProvisioningFailed { reason: _ } => none
         }
       }, refusal: "teardown completion reported for an instance that was never stopped")
-    // Operator default 2026-10-01: host failure may TERMINATE an instance; there is no resume.
     HostFailureObserved { instance_id: id } =>
       transition(state: state, instance_id: id, f: fn(r) {
         match r.phase {
@@ -619,7 +597,6 @@ fn replay_commands(session_key: MacKey, endpoint_secret: MacKey, policy: Control
   })
 }
 
-// ── Usage and charges, as the portal shows them ──────────────────────────────────────────────
 
 type InstanceUsage {
   instance: InstanceRecord
@@ -657,7 +634,6 @@ fn account_statement(state: ControlPlaneState, account_id: NonEmptyStr) -> Accou
   }
 }
 
-// ── Declared frontiers (consumers that land in later changes, with their triggers) ───────────
 
 data control_plane_state_store_frontier: NonEmptyStr = "The command log is the state; its durable realization is gunbc.durable_cas_file_store file_compare_and_set appending one admitted command per generation, then replay_commands on read. Not bound in this change: there is no serialization of ControlPlaneCommand yet. Trigger: a ControlPlaneCommand JSON codec plus a store binding whose readback replays to an identical AccountStatement."
 

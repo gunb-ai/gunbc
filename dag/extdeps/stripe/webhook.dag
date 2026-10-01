@@ -125,10 +125,9 @@ fn stripe_verify_webhook(
   }
 }
 
-// ── The event object ─────────────────────────────────────────────────────────────────────────
+
 // Only the fields this repository reads, under Stripe's own names. Amounts are integers in the
 // currency's minor unit, as the API returns them.
-
 type CheckoutPaymentStatus
   = CheckoutPaid
   | CheckoutUnpaid
