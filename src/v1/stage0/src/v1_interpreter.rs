@@ -20270,9 +20270,11 @@ fn eval_emit_host_native_cache_evict_builtin(
     match std::fs::remove_dir_all(&workspace_dir) {
         Ok(()) => Ok(Value::Bool(true)),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Value::Bool(true)),
-        Err(e) => Err(InterpError::TypeError {
-            msg: format!("emit_host_native_cache_evict: {workspace_dir}: {e}"),
-        }),
+        Err(e) => Err(InterpError::host_io(
+            "emit_host_native_cache_evict: remove",
+            std::path::Path::new(&workspace_dir),
+            &e,
+        )),
     }
 }
 
@@ -20695,12 +20697,11 @@ fn emit_host_cargo_configuration_digest(
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => {
-                return Err(InterpError::TypeError {
-                    msg: format!(
-                        "emit_host_run_transport_cached: read Cargo configuration {} failed: {e}",
-                        path.display()
-                    ),
-                })
+                return Err(InterpError::host_io(
+                    "emit_host_run_transport_cached: read Cargo configuration",
+                    &path,
+                    &e,
+                ))
             }
         }
     }
@@ -20729,23 +20730,25 @@ fn observe_tool_identity(
     environment: &EmitHostBuildEnvironment,
 ) -> InterpResult<ObservedToolIdentity> {
     let resolved = resolve_host_tool_program(requested)?;
-    let canonical = std::fs::canonicalize(&resolved).map_err(|e| InterpError::TypeError {
-        msg: format!(
-            "emit_host_run_transport_cached: resolve build tool {requested:?} \
-                 ({resolved:?}) failed: {e}"
-        ),
+    let canonical = std::fs::canonicalize(&resolved).map_err(|e| {
+        InterpError::host_io(
+            "emit_host_run_transport_cached: canonicalize build tool",
+            std::path::Path::new(&resolved),
+            &e,
+        )
     })?;
-    let executable = std::fs::read(&canonical).map_err(|e| InterpError::TypeError {
-        msg: format!(
-            "emit_host_run_transport_cached: read resolved build tool {} failed: {e}",
-            canonical.display()
-        ),
+    let executable = std::fs::read(&canonical).map_err(|e| {
+        InterpError::host_io(
+            "emit_host_run_transport_cached: read resolved build tool",
+            &canonical,
+            &e,
+        )
     })?;
     let mut command = std::process::Command::new(&resolved);
     command.args(version_args).current_dir(probe_workspace);
     emit_host_apply_build_environment(&mut command, environment);
-    let output = command.output().map_err(|e| InterpError::TypeError {
-        msg: format!("emit_host_run_transport_cached: version probe for {requested:?} failed: {e}"),
+    let output = command.output().map_err(|e| {
+        host_tool_spawn_failure("emit_host_run_transport_cached", requested, &resolved, &e)
     })?;
     if !output.status.success() {
         return Err(InterpError::TypeError {
@@ -20834,6 +20837,17 @@ fn emit_host_resolved_build_context_identity(
 }
 
 #[cfg(test)]
+pub(crate) fn emit_host_cargo_configuration_digest_for_test(
+    probe_workspace: &std::path::Path,
+) -> InterpResult<String> {
+    let environment = EmitHostBuildEnvironment {
+        entries: Vec::new(),
+        digest: String::new(),
+    };
+    emit_host_cargo_configuration_digest(&environment, probe_workspace)
+}
+
+#[cfg(test)]
 pub(crate) fn emit_host_materialize_workspace_files_for_test(
     workspace: &std::path::Path,
     files: &[(String, String)],
@@ -20887,10 +20901,19 @@ fn emit_host_run_transport_cached_in_workspace(
     let cold_control = std::env::var("GUNBC_CI_NATIVE_CACHE_COLD_CONTROL")
         .map(|v| v == "1")
         .unwrap_or(false);
-    let recorded_cold_compile_nanos = std::fs::read_to_string(&cold_compile_receipt)
-        .ok()
-        .and_then(|s| s.trim().parse::<u128>().ok())
-        .filter(|n| *n > 0);
+    // An ABSENT receipt is the ordinary warm miss. Any other read failure is the host refusing,
+    // and is refused as such rather than absorbed into a rebuild that hides it.
+    let recorded_cold_compile_nanos = match std::fs::read_to_string(&cold_compile_receipt) {
+        Ok(s) => s.trim().parse::<u128>().ok().filter(|n| *n > 0),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => {
+            return Err(InterpError::host_io(
+                "emit_host_run_transport_cached: read cold compile receipt",
+                &cold_compile_receipt,
+                &e,
+            ))
+        }
+    };
     // The timing receipt is part of readiness for the production transition: an old marker
     // without its measured cold wall is a warm miss and widens to a rebuild, never a zero.
     let compile_skipped = !cold_control

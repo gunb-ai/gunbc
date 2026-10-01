@@ -18617,6 +18617,34 @@ mod runtime_error_location_tests {
         assert!(row.ends_with("ERROR in 9ms cause=host-io-failed"), "{row}");
     }
 
+    // A HOST READ FAILURE IS THE SAME TYPED REFUSAL. A directory standing where the Cargo
+    // configuration file is probed makes the read fail with something other than NotFound (which
+    // is the ordinary absent-config case and is not an error).
+    #[test]
+    fn a_host_read_failure_renders_as_the_io_cause_with_its_path() {
+        let dir =
+            std::env::temp_dir().join(format!("gunbc-host-read-control-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join(".cargo/config")).unwrap();
+        let err = crate::v1_interpreter::emit_host_cargo_configuration_digest_for_test(&dir)
+            .expect_err("the read must fail");
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            matches!(&err, crate::v1_interpreter::InterpError::HostIoFailed { operation, .. }
+                if operation.ends_with(": read Cargo configuration")),
+            "{err}"
+        );
+        assert_eq!(
+            WitnessRuntimeCause::of_interp_error(&err).token(),
+            "host-io-failed"
+        );
+        let message = format!("{err}");
+        assert!(
+            message.contains("gunbc-host-read-control-") && message.contains("/.cargo/config"),
+            "{message}"
+        );
+    }
+
     // Byte-equal to `test.claim.observation_ci_render_witness_test`
     // `w_runtime_error_detail_names_the_raising_declaration`: the mirror and its authority agree.
     #[test]
