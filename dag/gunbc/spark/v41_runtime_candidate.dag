@@ -128,10 +128,22 @@ type V41IdentityStanding
 // counted.
 data v41_jit_cache_package: NonEmptyStr = "flashinfer-jit-cache" as NonEmptyStr
 
+// FROM 0.7.x THE JIT-CACHE IS A SHIM PLUS ONE PROVIDER PER ARCHITECTURE: the 0.7.1rc1 shim wheel's own
+// METADATA (extdeps.flashinfer.flashinfer flashinfer_0_7_1rc1_wheels) Requires-Dist names these eight at
+// the shim's version, so `flashinfer-jit-cache==<version>` installs all nine and the closure carries all
+// nine. Every one of them is platform-specific, so the build-target gate below covers the family.
 data v41_required_kernel_packages: List<NonEmptyStr> = [
   "flashinfer-python" as NonEmptyStr,
   "flashinfer-cubin" as NonEmptyStr,
   v41_jit_cache_package,
+  "flashinfer-jit-cache-sm80" as NonEmptyStr,
+  "flashinfer-jit-cache-sm89" as NonEmptyStr,
+  "flashinfer-jit-cache-sm90a" as NonEmptyStr,
+  "flashinfer-jit-cache-sm100a" as NonEmptyStr,
+  "flashinfer-jit-cache-sm103a" as NonEmptyStr,
+  "flashinfer-jit-cache-sm110a" as NonEmptyStr,
+  "flashinfer-jit-cache-sm120f" as NonEmptyStr,
+  "flashinfer-jit-cache-sm121a" as NonEmptyStr,
 ]
 
 // THE JIT-CACHE WHEEL IS THE ONE PLATFORM-SPECIFIC MEMBER OF THIS CLOSURE, and its package name plus the
@@ -156,7 +168,7 @@ type V41KernelBuildTarget sole_constructor {
 }
 
 data v41_jit_cache_build_target: V41KernelBuildTarget = V41KernelBuildTarget {
-  version: "0.6.18.post1+cu130" as NonEmptyStr,
+  version: "0.7.1rc1+cu130" as NonEmptyStr,
   python: "cp39" as NonEmptyStr,
   abi: "abi3" as NonEmptyStr,
   platform: "manylinux_2_28_aarch64" as NonEmptyStr,
@@ -169,7 +181,7 @@ fn v41_kernel_field_defect(field: String, actual: String, expected: NonEmptyStr,
 }
 
 fn v41_jit_cache_target_defects(wheels: List<FlashInferWheel>, target: V41KernelBuildTarget) -> List<NonEmptyStr> {
-  flat_map(v41_wheels_named(wheels: wheels, package: v41_jit_cache_package), w =>
+  flat_map(filter(wheels, w => starts_with(s: w.package as String, prefix: v41_jit_cache_package as String)), w =>
     match flashinfer_wheel_filename_fields(filename: w.filename as String) {
       Absent => [join(["the jit-cache wheel ", w.filename as String, " does not parse as a wheel filename, so the build target it installs is unknown"], "") as NonEmptyStr]
       Present { value: f } =>
