@@ -78,7 +78,7 @@ fn conj_payload_type_name_go(xs: FreeMonoid<Edge>, acc: String) -> String {
     Empty => acc
     Cons { head: h, tail: t } =>
       let field_name = named_edge_sort_key(e: h)
-      let type_name = edge_field_type_name(target: h.target)
+      let type_name = edge_field_type_name(target: member_edge_type_node(e: h))
       let piece = concat(field_name, concat(": ", type_name))
       conj_payload_type_name_go(
         xs: t,
@@ -265,6 +265,17 @@ fn declared_field_from_edge(e: Edge) -> Optional<DeclaredField> {
         }
       }
     Positional => Absent
+  }
+}
+
+// THE TYPE A MEMBER EDGE OF A PAYLOAD OR DOMAIN CONJ DECLARES. A Named member is a binder, and its
+// type is read through declared_field_from_edge, the one binder reader; a Positional member is not a
+// binder, and its target is the type itself. Every site that asks a member edge for its type asks
+// here, so the binder's representation is read in one place.
+fn member_edge_type_node(e: Edge) -> Node {
+  match declared_field_from_edge(e: e) {
+    Present { value: binder } => binder.type_node
+    Absent => e.target
   }
 }
 

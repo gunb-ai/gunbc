@@ -2,15 +2,23 @@ module test.claim.machine_intake.mtcollins1_maintenance_hold_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List, NonEmptyStr, String }
-import std.durable_exclusive_hold { DurableHoldOwnerRef }
+import std.durable_exclusive_hold {
+  DurableHoldOwnerRef, DurableHoldReleaseRef, HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable,
+  HoldReleaseAgainstAnotherGeneration, HoldReleaseHeldByAnotherOwner, HoldReleaseAlreadyFree,
+}
 import std.durable_compare_and_set { CasGeneration, cas_generation_first }
 import gunbc.durable_exclusive_hold_file_store {
   FileHoldAcquireOutcome, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost, FileHoldSlotUndecodable,
+  FileHoldReleased, FileHoldReleaseLost,
 }
 import gunbc.machine_intake_mtcollins1_maintenance_hold {
-  UnitHoldOwner, OperatorMaintenance, BootRun, HostResetReturn, UnitHoldOwnerDecoded, UnitHoldOwnerUnrecognized,
+  UnitHoldOwner, OperatorMaintenance, BootRun, HostResetReturn, KvmObserverProbe, UnitHoldOwnerDecoded, UnitHoldOwnerUnrecognized,
   unit_hold_owner_ref, decode_unit_hold_owner, unit_hold_owner_label,
   unit_hold_refusal, operator_maintenance_owner, boot_run_owner, host_reset_owner, mtcollins1_unit_hold_key,
+  ProbeHoldReleaseDecision, ProbeHoldReleaseAt, ProbeHoldFreeNoop, ProbeHoldForeignNoop, ProbeHoldUnobservable,
+  ProbeHoldReleaseOutcome, ProbeHoldReleased, ProbeHoldAlreadyFree, ProbeHoldNotOurs, ProbeHoldStale, ProbeHoldUnreleased,
+  probe_hold_release_decision, probe_hold_release_refused, probe_hold_release_committed,
+  HolderLivenessRoute, HolderObserveProcess, HolderNotObservable, holder_liveness_route,
 }
 import gunbc.auth.oidc_claim_pins { OidcClaimPin }
 import gunbc.auth.mtcollins1_boot_federation {
@@ -143,6 +151,7 @@ test fn every_holder_kind_round_trips_and_a_foreign_owner_is_refused() -> Bool {
   round_trips(o: OperatorMaintenance { reason: "reseating DIMMs" as NonEmptyStr }, label: "operator maintenance: reseating DIMMs")
     && round_trips(o: BootRun { run_id: "41" as NonEmptyStr, process: holder_process, pid_namespace: "pid:[4026531836]" as NonEmptyStr }, label: "the mtcollins1 boot run 41 (process 3975 on boot 73c8153e-0e0e-4480-a36c-bc7560c50e8b)")
     && round_trips(o: HostResetReturn { attempt: "srv1-mtcollins1" as NonEmptyStr }, label: "host reset-return attempt srv1-mtcollins1")
+    && round_trips(o: KvmObserverProbe { run_id: "36800000000" as NonEmptyStr, process: holder_process, pid_namespace: "pid:[4026531836]" as NonEmptyStr }, label: "the mtcollins1 KVM observer probe run 36800000000 (process 3975 on boot 73c8153e-0e0e-4480-a36c-bc7560c50e8b)")
     && match decode_unit_hold_owner(owner: "someone-else:x" as DurableHoldOwnerRef) {
       UnitHoldOwnerUnrecognized { raw: _ } => true
       UnitHoldOwnerDecoded { owner: _ } => false
@@ -153,25 +162,75 @@ test fn every_holder_kind_round_trips_and_a_foreign_owner_is_refused() -> Bool {
     }
 }
 
-// A BOOT OWNER NAMES ITS PROCESS AND DECODES BACK TO IT (gunbc#12533 finding 2): the rendered owner
-// carries boot id, pid and start time, and decodes to the same identity -- the identity a successor
-// observes the holder by. A boot owner written WITHOUT a process (the spelling before this change,
-// still possibly on disk) is not guessed into one: it decodes as unrecognized, so its holder is
-// unobservable and its hold is refused rather than broken. So is one naming a process but not the
-// pid namespace it was read in (review 72326): its pid has no meaning without it.
-test fn a_boot_owner_carries_its_process_and_a_processless_one_is_not_recoverable() -> Bool {
-  let rendered = boot_run_owner(run_id: "4242", process: holder_process, pid_namespace: "pid:[4026531836]") as String
-  rendered == "mtcollins1-boot:4242@boot=73c8153e-0e0e-4480-a36c-bc7560c50e8b,pid=3975,start=81234,pidns=pid:[4026531836]"
-    && (match decode_unit_hold_owner(owner: rendered as DurableHoldOwnerRef) {
-      UnitHoldOwnerDecoded { owner: BootRun { run_id: r, process: p, pid_namespace: n } } => (n as String) == "pid:[4026531836]" && (r as String) == "4242" && p.pid == 3975 && (p.start_time as String) == "81234"
+// ── The KVM probe's always() release: only this run's own hold, at the generation it observed ─────
+// Supplied observations into the PURE decision fold (the live release plan is minted only from a live
+// read of the slot, so a supplied observation can never free a real hold).
+fn probe_owner(run_id: NonEmptyStr) -> DurableHoldOwnerRef {
+  unit_hold_owner_ref(o: KvmObserverProbe { run_id: run_id, process: holder_process, pid_namespace: "pid:[4026531836]" as NonEmptyStr })
+}
+
+test fn the_release_targets_only_this_runs_probe_hold_at_its_observed_generation() -> Bool {
+  match probe_hold_release_decision(observed: HoldSlotHeld { generation: first_generation(), owner: probe_owner(run_id: "36800000000") }, run_id: "36800000000") {
+    ProbeHoldReleaseAt { owner: o, generation: g } => (o as String) == (probe_owner(run_id: "36800000000") as String) && g == first_generation()
+    _ => false
+  }
+}
+
+// THE FOREIGN-HOLDER REDS: another probe run, a boot, host reset-return, the operator, or an owner this
+// module never wrote -- each is a no-op naming the holder, never a release.
+fn foreign(observed_owner: DurableHoldOwnerRef, pattern: String) -> Bool {
+  match probe_hold_release_decision(observed: HoldSlotHeld { generation: first_generation(), owner: observed_owner }, run_id: "36800000000") {
+    ProbeHoldForeignNoop { holder: h } => string_contains(s: h, pattern: pattern)
+    _ => false
+  }
+}
+
+test fn a_foreign_holder_is_never_released() -> Bool {
+  foreign(observed_owner: probe_owner(run_id: "36800000001"), pattern: "36800000001")
+    && foreign(observed_owner: boot_run_owner(run_id: "36800000000", process: holder_process, pid_namespace: "pid:[4026531836]"), pattern: "boot run 36800000000")
+    && foreign(observed_owner: host_reset_owner(attempt: "srv1-mtcollins1"), pattern: "reset-return")
+    && foreign(observed_owner: operator_maintenance_owner(reason: "reseating DIMMs"), pattern: "reseating DIMMs")
+    && foreign(observed_owner: "someone-else:36800000000" as DurableHoldOwnerRef, pattern: "someone-else")
+}
+
+// A FREE OR UNREADABLE SLOT IS A REPORTED NO-OP.
+test fn a_free_or_unreadable_slot_is_not_released() -> Bool {
+  (match probe_hold_release_decision(observed: HoldSlotAbsent, run_id: "36800000000") { ProbeHoldFreeNoop => true  _ => false })
+    && (match probe_hold_release_decision(observed: HoldSlotFree { generation: first_generation(), released_by: "x" as DurableHoldReleaseRef }, run_id: "36800000000") { ProbeHoldFreeNoop => true  _ => false })
+    && (match probe_hold_release_decision(observed: HoldSlotUndecodable { generation: first_generation(), detail: "garbage" }, run_id: "36800000000") { ProbeHoldUnobservable { cause: c } => string_contains(s: c, pattern: "garbage")  _ => false })
+}
+
+// THE STALE-GENERATION REDS: the slot moved between the observation and the release -- assessed against
+// another generation, or lost at the commit -- and is left alone as stale; a slot re-taken by another
+// owner meanwhile is not ours; only a committed release at the observed generation is Released.
+test fn a_stale_generation_is_left_alone() -> Bool {
+  (match probe_hold_release_refused(refusal: HoldReleaseAgainstAnotherGeneration { acquired: first_generation(), observed: first_generation() }) { ProbeHoldStale { detail: _ } => true  _ => false })
+    && (match probe_hold_release_committed(outcome: FileHoldReleaseLost { slot_key: mtcollins1_unit_hold_key }) { ProbeHoldStale { detail: _ } => true  _ => false })
+    && (match probe_hold_release_refused(refusal: HoldReleaseHeldByAnotherOwner { generation: first_generation(), holder: boot_run_owner(run_id: "41", process: holder_process, pid_namespace: "pid:[4026531836]") }) { ProbeHoldNotOurs { holder: h } => string_contains(s: h, pattern: "mtcollins1-boot:41")  _ => false })
+    && (match probe_hold_release_refused(refusal: HoldReleaseAlreadyFree { generation: first_generation(), released_by: "x" as DurableHoldReleaseRef }) { ProbeHoldAlreadyFree => true  _ => false })
+    && (match probe_hold_release_committed(outcome: FileHoldReleased { slot_key: mtcollins1_unit_hold_key, generation: first_generation() }) { ProbeHoldReleased => true  _ => false })
+}
+
+// ── A DEAD PROBE HOLDER IS RECOVERABLE (side-chat blocker 4b) ────────────────────────────────────────
+// The probe owner names its holding process -- boot id, pid, start time and the pid namespace it was
+// read in -- and decodes back to it, so the recovery route OBSERVES that process, exactly as for a boot
+// run; the std recovery fold then frees a hold whose holder is observed dead
+// (test.claim.durable_exclusive_hold_witness_test). A probe owner written WITHOUT a process (this
+// PR's earlier spelling) is not guessed into one: it is unobservable, and its hold is refused rather
+// than broken.
+test fn a_probe_holder_is_observed_by_its_process_and_a_processless_one_is_not() -> Bool {
+  let rendered = probe_owner(run_id: "36800000000") as String
+  rendered == "mtcollins1-kvm-observer:36800000000@boot=73c8153e-0e0e-4480-a36c-bc7560c50e8b,pid=3975,start=81234,pidns=pid:[4026531836]"
+    && (match holder_liveness_route(holder: rendered as DurableHoldOwnerRef) {
+      HolderObserveProcess { process: p, pid_namespace: n } => p.pid == 3975 && (p.start_time as String) == "81234" && (n as String) == "pid:[4026531836]"
       _ => false
     })
-    && (match decode_unit_hold_owner(owner: "mtcollins1-boot:4242" as DurableHoldOwnerRef) {
-      UnitHoldOwnerUnrecognized { raw: _ } => true
+    && (match holder_liveness_route(holder: "mtcollins1-kvm-observer:36800000000" as DurableHoldOwnerRef) {
+      HolderNotObservable { cause: _ } => true
       _ => false
     })
-    && (match decode_unit_hold_owner(owner: "mtcollins1-boot:4242@boot=x,pid=3975,start=5" as DurableHoldOwnerRef) {
-      UnitHoldOwnerUnrecognized { raw: _ } => true
+    && (match holder_liveness_route(holder: operator_maintenance_owner(reason: "reseating DIMMs")) {
+      HolderNotObservable { cause: c } => string_contains(s: c as String, pattern: "only the operator")
       _ => false
     })
 }
