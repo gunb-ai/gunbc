@@ -366,7 +366,8 @@ fn live_fixture_lookup(segment: Symbol) -> Bool {
                 index: symbol_index_fill_module_root(
                   index: empty_symbol_index(),
                   root: item.root,
-                  record_declarations: item.record_declarations
+                  record_declarations: item.record_declarations,
+                  resource_declarations: item.resource_declarations
                 ),
                 qualified_path: qualified_name_snoc(qn: mqn, segment: segment),
               ) {
