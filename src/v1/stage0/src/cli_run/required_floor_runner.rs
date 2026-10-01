@@ -2451,8 +2451,10 @@ pub(crate) fn unimported_bare_provider_gate(
     // (`unimported_bare_provider_entry_refusals`) refused the same file the first time anyone ran it:
     // two harnesses disagreeing about admission of one file. The roster is a monotone debt contract,
     // which DESIGN 5 admits only over a closed subject universe checked at identity grain, and a
-    // diff is not that universe. Measured cost over the 7,175-file pool on the floor's own warm
-    // index: 13.6 s (arm64 session container, 2026-10-01); it reads the index, never resolves.
+    // diff is not that universe. It reads the floor's warm index and never resolves; its cost and
+    // population are re-derived on every run by the `unimported-bare-provider-gate` phase line
+    // below (`judged_files=`, `standing_ms=`).
+    let standing_started = std::time::Instant::now();
     let pool_files: Vec<String> = index
         .source_files
         .values()
@@ -2465,9 +2467,10 @@ pub(crate) fn unimported_bare_provider_gate(
         &pool_files,
     )?);
     eprintln!(
-        "[floor-phase] phase=unimported-bare-provider-gate touched_paths={} judged_files={} refusals={}",
+        "[floor-phase] phase=unimported-bare-provider-gate touched_paths={} judged_files={} standing_ms={} refusals={}",
         changed_paths.len(),
         pool_files.len(),
+        standing_started.elapsed().as_millis(),
         refusals.len()
     );
     if refusals.is_empty() {
