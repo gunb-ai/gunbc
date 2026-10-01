@@ -841,9 +841,16 @@ fn v41_sm120_selftest_argv(l: ArmNodeLaunch, model_path: String) -> List<String>
   ], l.engine_argv)
 }
 
+// THE MODEL PATH IS THE ENGINE ARGV'S FIRST WORD, as `vllm serve` takes it (model_tag), and the gate
+// mounts the checkpoint there so the self-test reads the config the rank will.
+fn v41_engine_model_path(l: ArmNodeLaunch) -> String? {
+  let firsts = map(filter(enumerate(l.engine_argv), p => p.first == 0), p => p.second)
+  if length(firsts) == 1 { Present { value: join(firsts, "") } } else { Absent }
+}
+
 fn v41_sm120_host_gate(ctx: SparkMaterializeContext, l: ArmNodeLaunch) -> V41Sm120HostGate {
   let host = l.node.host as String
-  match get(xs: l.engine_argv, index: 0) {
+  match v41_engine_model_path(l: l) {
     Absent => V41Sm120HostGate { passed: false, receipt: join(["sm120 self-test ", host, ": REFUSED the rank's engine argv is empty, so it names no model path to run against\n"], "") }
     Present { value: model_path } =>
       match spark_remote_run(ctx: vllm_image_target_ctx(source_ctx: ctx, host: l.node.host), argv: v41_sm120_selftest_argv(l: l, model_path: model_path)) {

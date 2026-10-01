@@ -38,7 +38,7 @@ import gunbc.spark.v41_group_a_launch {
   v41_group_a_launch_admission, v41_group_a_dry_run_report,
   v41_group_a_container_name, v41_engram_manifest_env_name, v41_engram_touch_receipt_env_name,
   v41_engram_manifest_dir, v41_engram_touch_receipt_dir,
-  v41_sm120_selftest_argv, v41_sm120_selftest_module,
+  v41_sm120_selftest_argv, v41_sm120_selftest_module, v41_engine_model_path,
 }
 
 // ── THE FIXTURES ARE SUPPLIED AT THE LAUNCH'S OWN INTERFACE ────────────────────────────────────
@@ -177,7 +177,7 @@ test fn w_the_sm120_gate_runs_each_ranks_engine_argv_in_its_image() -> Bool {
   with_w_plan(f: fn(p, rk, ck) {
     let ls = planned_lines(p: p)
     length(ls) == 4
-      && all(ls, l => match get(xs: l.engine_argv, index: 0) {
+      && all(ls, l => match v41_engine_model_path(l: l) {
         Absent => false
         Present { value: model_path } => {
           let argv = v41_sm120_selftest_argv(l: l, model_path: model_path)
