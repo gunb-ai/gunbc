@@ -1180,6 +1180,38 @@ pub fn kernel_spelling_ambiguous_and_unbound(name: String, scope: Rc<InferScope>
             > 1))
 }
 
+pub fn binding_names_a_coproduct_arm(
+    binding: Rc<TypeBinding>,
+    name: String,
+    scope: Rc<InferScope>,
+) -> bool {
+    match crate::v1_compiler_infer_env::lookup_type_for(
+        scope.type_env.clone(),
+        binding.resolved.clone(),
+    ) {
+        Some(owner) => {
+            ((owner.connective.clone() == Connective::Disj)
+                && crate::v1_std_core::has_child_named(
+                    owner.clone(),
+                    name.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                ))
+        }
+        std::option::Option::None => false,
+    }
+}
+
+pub fn variant_outside_declared_scope_refusal(
+    name: String,
+    span: Rc<SourceSpan>,
+    scope: Rc<InferScope>,
+) -> Rc<InferResult> {
+    Rc::new(InferResult {
+    typed: semantic_expr_error_node(v1_rt::concat(v1_rt::concat("variant '".to_string(), name.clone()), "' has no owner in this module's scope".to_string()), span.clone()),
+    diagnostics: Rc::new(vec![inference_error(v1_rt::concat(v1_rt::concat("variant '".to_string(), name.clone()), "' is not in this module's declared scope: no own coproduct, direct import, or expected coproduct declares it".to_string()), span.clone(), scope.module_name.clone())]),
+})
+}
+
 pub fn name_binds_a_lexical_value(name: String, scope: Rc<InferScope>) -> bool {
     match v1_rt::map_get(&scope.locals.clone(), name.clone()) {
         Some(_) => {
@@ -1204,7 +1236,7 @@ pub fn expected_deciding_variant_owner(
                         scope.clone(),
                     )
                 } else {
-                    std::option::Option::None
+                    kernel_optional_owner_declaring(scope.type_env.clone(), name.clone())
                 }
             }
             std::option::Option::None => std::option::Option::None,
@@ -11810,8 +11842,11 @@ match scope_parent.clone() {
 }), scope.module_name.clone())]),
 })
                 } else {
-                    {
-                        let binding_kind = infer_var_binding_kind(scope.clone(), name.clone());
+                    if binding_names_a_coproduct_arm(gbinding.clone(), name.clone(), scope.clone()) {
+                        variant_outside_declared_scope_refusal(name.clone(), span.clone(), scope.clone())
+                    } else {
+                        {
+                            let binding_kind = infer_var_binding_kind(scope.clone(), name.clone());
 Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), name.clone(), Rc::new(ExprData::ExprVar {
     binding_kind: Some(binding_kind.clone()),
@@ -11821,6 +11856,7 @@ Rc::new(InferResult {
     diagnostics: bare_product_reference_missing_field_diagnostics(scope.clone(), name.clone(), span.clone()),
 })
 }
+                    }
                 },
 },
 }
@@ -23258,6 +23294,30 @@ pub fn kernel_arm_owner_add(
     }
 }
 
+pub fn kernel_optional_owner_declaring(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
+    match env.parents.clone().last().cloned() {
+        Some(kernel) => {
+            match v1_rt::map_get(&kernel.str_bindings.clone(), "Optional".to_string()) {
+                Some(binding) => {
+                    if ((binding.resolved.clone().connective.clone() == Connective::Disj)
+                        && crate::v1_std_core::has_child_named(
+                            binding.resolved.clone(),
+                            name.clone(),
+                            env.source_indices.clone(),
+                        ))
+                    {
+                        Some(binding.resolved.clone())
+                    } else {
+                        std::option::Option::None
+                    }
+                }
+                std::option::Option::None => std::option::Option::None,
+            }
+        }
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
 pub fn kernel_variant_owner_candidates(env: Rc<TypeEnv>, name: String) -> Rc<Vec<String>> {
     match env.parents.clone().last().cloned() {
         Some(kernel) => Rc::new({
@@ -23319,27 +23379,17 @@ pub fn merge_kernel_variant_locals_low_priority(
 ) -> Rc<HashMap<String, Rc<TypeBinding>>> {
     {
         let kernel_locals = kernel_coproduct_variant_locals(env.clone());
-        Rc::new(v1_rt::map_keys(&kernel_locals))
-            .iter()
-            .cloned()
-            .fold(
-                locals.clone(),
-                |acc: Rc<HashMap<String, Rc<TypeBinding>>>, variant_name: String| {
-                    match v1_rt::map_get(&acc, variant_name.clone()) {
-                        Some(_) => acc.clone(),
-                        std::option::Option::None => {
-                            match v1_rt::map_get(&kernel_locals, variant_name.clone()) {
-                                Some(binding) => v1_rt::rc_map_insert(
-                                    acc.clone(),
-                                    variant_name.clone(),
-                                    binding.clone(),
-                                ),
-                                std::option::Option::None => acc.clone(),
-                            }
-                        }
-                    }
-                },
-            )
+        Rc::new(v1_rt::map_keys(&kernel_locals)).iter().cloned().fold(locals.clone(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, variant_name: String| match v1_rt::map_get(&acc, variant_name.clone()) {
+    Some(_) => acc.clone(),
+    std::option::Option::None => if ((crate::v1_compiler_infer_env::global_bare_strict_ambiguity_candidates(env.clone(), variant_name.clone()).len() as i64) > 0) {
+            acc.clone()
+        } else {
+            match v1_rt::map_get(&kernel_locals, variant_name.clone()) {
+    Some(binding) => v1_rt::rc_map_insert(acc.clone(), variant_name.clone(), binding.clone()),
+    std::option::Option::None => acc.clone(),
+}
+        },
+})
     }
 }
 
@@ -27267,6 +27317,16 @@ pub fn build_local_variants(
         })
 }
 
+pub fn merge_global_bare_variant_locals(
+    state: Rc<VariantFoldState>,
+    global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
+) -> Rc<VariantFoldState> {
+    Rc::new(VariantFoldState {
+        locals: v1_rt::rc_map_merge(global_variant_base.clone(), state.locals.clone()),
+        collision_errors: state.collision_errors.clone(),
+    })
+}
+
 pub fn build_global_bare_census(
     modules: Rc<Vec<Rc<ResolvedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -27274,6 +27334,46 @@ pub fn build_global_bare_census(
     build_symbol_index_census(modules.clone(), source_indices.clone())
         .global_bare
         .clone()
+}
+
+pub fn build_global_bare_variant_locals(
+    global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    Rc::new(v1_rt::map_keys(&global_bare)).iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| match v1_rt::map_get(
+            &global_bare,
+            name.clone(),
+        )
+        .as_deref()
+        .cloned()
+        {
+            Some(GlobalBareLookupState::GlobalBareUniqueBinding { binding, .. }) => {
+                let owner = binding.resolved.clone();
+                if ((owner.connective.clone() == Connective::Disj)
+                    && crate::v1_std_core::has_child_named(
+                        owner.clone(),
+                        name.clone(),
+                        source_indices.clone(),
+                    ))
+                {
+                    v1_rt::rc_map_insert(
+                        acc.clone(),
+                        name.clone(),
+                        Rc::new(TypeBinding {
+                            name: name.clone(),
+                            resolved: owner.clone(),
+                            provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                        }),
+                    )
+                } else {
+                    acc.clone()
+                }
+            }
+            _ => acc.clone(),
+        },
+    )
 }
 
 pub fn empty_variant_export_surface() -> Rc<VariantExportSurface> {
@@ -27685,6 +27785,7 @@ pub fn build_module_context(
     resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
     env: Rc<TypeEnv>,
     module_name: String,
+    global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<ModuleContext> {
     {
         let local = fold_module_contributions(
@@ -27706,13 +27807,16 @@ pub fn build_module_context(
                 collision_errors: Rc::new(vec![]),
             }),
         );
-        let variant_fold = build_imported_variants(
-            resolved_imports.clone(),
-            parent_index.clone(),
-            variant_surfaces.clone(),
-            env.source_indices.clone(),
-            module_name.clone(),
-            local_variant_fold.clone(),
+        let variant_fold = merge_global_bare_variant_locals(
+            build_imported_variants(
+                resolved_imports.clone(),
+                parent_index.clone(),
+                variant_surfaces.clone(),
+                env.source_indices.clone(),
+                module_name.clone(),
+                local_variant_fold.clone(),
+            ),
+            global_variant_base.clone(),
         );
         let variant_collision_errors = variant_fold.collision_errors.clone();
         let env_variant_locals =
@@ -27861,6 +27965,7 @@ pub fn typecheck_module(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     symbol_index: Rc<SymbolIndex>,
+    global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<TypecheckModuleResult> {
     {
         let env_result = build_type_env(
@@ -27939,6 +28044,7 @@ pub fn typecheck_module(
             resolved.resolved_imports.clone(),
             env.clone(),
             resolved_module_name.clone(),
+            global_variant_base.clone(),
         );
         let data_locals = ctx.resolved_items.clone().iter().cloned().fold(
             ctx.locals.clone(),
@@ -28117,6 +28223,7 @@ pub fn typecheck_module_isolated(
         source_indices.clone(),
         intern_table.clone(),
         crate::v1_compiler_infer_env::empty_symbol_index(),
+        v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
     )
 }
 
@@ -28766,6 +28873,10 @@ pub fn typecheck_with_census_extra(
             build_symbol_index_census(graph.modules.clone(), census_si.clone()),
             build_symbol_index_qualified_fill(census_fill_modules.clone(), census_si.clone()),
         );
+        let global_variant_base = build_global_bare_variant_locals(
+            symbol_index.global_bare.clone(),
+            source_indices.clone(),
+        );
         let state = graph.modules.clone().iter().cloned().fold(
             Rc::new(RealizeState {
                 module_index: v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
@@ -28781,6 +28892,7 @@ pub fn typecheck_with_census_extra(
                     source_indices.clone(),
                     intern_table.clone(),
                     symbol_index.clone(),
+                    global_variant_base.clone(),
                 )
             },
         );
@@ -28862,6 +28974,7 @@ pub fn realize_module(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     symbol_index: Rc<SymbolIndex>,
+    global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<RealizeState> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match v1_rt::map_get(&state.module_index.clone(), name.clone()) {
@@ -28879,6 +28992,7 @@ pub fn realize_module(
                                 source_indices.clone(),
                                 intern_table.clone(),
                                 symbol_index.clone(),
+                                global_variant_base.clone(),
                             )
                         },
                     );
@@ -28894,6 +29008,7 @@ pub fn realize_module(
                         source_indices.clone(),
                         intern_table.clone(),
                         symbol_index.clone(),
+                        global_variant_base.clone(),
                     );
                     let typed = tc_result.typed.clone();
                     let typed_path = crate::v1_std_core::authored_name_at(
