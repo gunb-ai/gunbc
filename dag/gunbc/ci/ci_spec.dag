@@ -14,6 +14,7 @@ import gunbc.spark.v41_row_store_readback_run { v41_readback_run_receipt_path }
 import gunbc.spark.v41_engram_differential_run { v41_differential_receipt_path }
 import gunbc.spark.v41_runtime_image_converge { v41_distribution_receipt_path }
 import gunbc.spark.v41_group_a_launch { v41_group_a_launch_receipt_path }
+import gunbc.spark.v41_serving_load { v41_serving_load_receipt_path }
 import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_access_url, secret_ref_version_resource }
 import gunbc.auth.ci_app_key_rotation {
@@ -1059,6 +1060,14 @@ data gunbc_ci_spark_v41_runtime_image_distribute_target: GunbcRunStepTarget = Gu
 data gunbc_ci_spark_v41_group_a_launch_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/spark/v41_group_a_launch.dag",
   function: "v41_group_a_launch_ci_wet",
+}
+
+// THE V4.1 SERVING-LOAD STAIRCASE (gunbc.spark.v41_serving_load): the shared serving-load runner against
+// the V4.1 head, with rank pressure on every Group A host. The same prelude: the session host (the head)
+// is the dispatch's target.
+data gunbc_ci_spark_v41_serving_load_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/v41_serving_load.dag",
+  function: "v41_serving_load_ci_wet",
 }
 
 // THE PUBLISHED V4.1 CHECKPOINT ON ONE GROUP A SPARK (gunbc.spark.v41_checkpoint_materialize): the same
@@ -2719,6 +2728,17 @@ fn gunbc_ci_spark_v41_group_a_launch_invoke() -> String {
     function: gunbc_ci_spark_v41_group_a_launch_target.function,
     claim_run: false,
     receipt_rel: v41_group_a_launch_receipt_path
+  )
+}
+
+fn gunbc_ci_spark_v41_serving_load_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_spark_v41_serving_load_target.entry,
+    function: gunbc_ci_spark_v41_serving_load_target.function,
+    claim_run: false,
+    receipt_rel: v41_serving_load_receipt_path
   )
 }
 
