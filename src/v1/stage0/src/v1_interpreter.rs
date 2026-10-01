@@ -28536,3 +28536,241 @@ mod portable_canonical_order_tests {
         assert_ne!(value_hash(&v(t1)), value_hash(&other));
     }
 }
+
+/// Controls for the canonical content order as the RENDERING order (node adhoc-77383faf-d07).
+#[cfg(test)]
+mod canonical_render_order_tests {
+    use super::*;
+    use im::vector as im_vec;
+    use std::cmp::Ordering;
+
+    fn key(v: Value) -> CanonKey {
+        CanonKey::new(v).expect("reflexive key")
+    }
+
+    fn variant(t: &'static str, v: &'static str, n: i64) -> Value {
+        Value::Variant {
+            type_name: Symbol(t),
+            variant_name: Symbol(v),
+            fields: Rc::new(vec![(Symbol("n"), Value::Int(n))]),
+        }
+    }
+
+    /// A map whose HAMT iteration order follows the process's RandomState: 64 string keys,
+    /// plus same-spelled variant keys that differ only in payload (the stand-in's tie case).
+    fn subject() -> Value {
+        let mut entries = HamtMap::new();
+        for i in 0..64 {
+            entries = entries.update(key(str_value(format!("k{i:02}"))), Value::Int(i));
+        }
+        for n in 0..8 {
+            entries = entries.update(key(variant("T", "V", n)), Value::Int(n));
+        }
+        map_value(entries)
+    }
+
+    const CHILD: &str = "GUNBC_CANONICAL_RENDER_CHILD";
+
+    fn child_output(test: &str, tag: &str) -> String {
+        let out = std::process::Command::new(std::env::current_exe().expect("test exe"))
+            .args([
+                "--exact",
+                &format!("v1_interpreter::canonical_render_order_tests::{test}"),
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env(CHILD, "1")
+            .output()
+            .expect("child process");
+        let text = String::from_utf8_lossy(&out.stdout).to_string();
+        text.lines()
+            .find_map(|l| l.split(tag).nth(1).map(|d| d.to_string()))
+            .unwrap_or_else(|| panic!("child printed no {tag}: {text}"))
+    }
+
+    #[test]
+    fn rendered_map_bytes_are_equal_across_two_processes() {
+        if std::env::var_os(CHILD).is_some() {
+            println!("RENDER={}", subject());
+            return;
+        }
+        let test = "rendered_map_bytes_are_equal_across_two_processes";
+        let (a, b) = (child_output(test, "RENDER="), child_output(test, "RENDER="));
+        assert_eq!(a, b, "two processes rendered one map differently");
+        // Same-spelled variants with different payloads render in payload order.
+        let v0 = a.find("V { n: 0 }").expect("V0 rendered");
+        let v7 = a.find("V { n: 7 }").expect("V7 rendered");
+        assert!(v0 < v7, "tied-spelling variants must order by payload: {a}");
+    }
+
+    #[test]
+    fn debug_map_bytes_are_equal_across_two_processes() {
+        if std::env::var_os(CHILD).is_some() {
+            println!("DEBUG={:?}", subject());
+            return;
+        }
+        let test = "debug_map_bytes_are_equal_across_two_processes";
+        let (a, b) = (child_output(test, "DEBUG="), child_output(test, "DEBUG="));
+        assert_eq!(a, b, "two processes debug-formatted one map differently");
+    }
+
+    fn cmp(a: &Value, b: &Value) -> Ordering {
+        canonical_content_cmp(a, b).expect("content order")
+    }
+
+    /// One inhabitant of every kind, listed in ContentKind DECLARATION order.
+    fn one_of_each_kind() -> Vec<Value> {
+        vec![
+            Value::Null,
+            Value::Unit,
+            Value::Bool(false),
+            Value::Int(0),
+            Value::Float(0.0),
+            str_value("s".to_string()),
+            list_value(vec![Value::Int(1)]),
+            map_value(HamtMap::new().update(key(Value::Int(1)), Value::Int(1))),
+            Value::Set(Rc::new(OrdSet::unit("m".to_string()))),
+            Value::Record {
+                type_name: Symbol("R"),
+                fields: Rc::new(vec![(Symbol("a"), Value::Int(1))]),
+            },
+            variant("T", "V", 1),
+        ]
+    }
+
+    #[test]
+    fn kind_rank_is_content_kind_declaration_order() {
+        let xs = one_of_each_kind();
+        for w in xs.windows(2) {
+            assert_eq!(cmp(&w[0], &w[1]), Ordering::Less, "{:?} < {:?}", w[0], w[1]);
+        }
+    }
+
+    #[test]
+    fn floats_follow_ieee_total_order_including_zero_sign_and_nan_payloads() {
+        let neg_nan = f64::from_bits(0xfff8_0000_0000_0001);
+        let nan_lo = f64::from_bits(0x7ff8_0000_0000_0001);
+        let nan_hi = f64::from_bits(0x7ff8_0000_0000_0002);
+        let ordered = [
+            neg_nan,
+            f64::NEG_INFINITY,
+            -2.0,
+            -1.0,
+            -0.0,
+            0.0,
+            1.0,
+            f64::INFINITY,
+            nan_lo,
+            nan_hi,
+        ];
+        for w in ordered.windows(2) {
+            assert_eq!(
+                cmp(&Value::Float(w[0]), &Value::Float(w[1])),
+                Ordering::Less,
+                "{:e} ({:#x}) must order before {:e} ({:#x})",
+                w[0],
+                w[0].to_bits(),
+                w[1],
+                w[1].to_bits()
+            );
+        }
+    }
+
+    /// A generated corpus covering every kind pair, empty vs non-empty collections, and nested
+    /// maps and sets.
+    fn corpus() -> Vec<Value> {
+        let mut out = one_of_each_kind();
+        out.push(list_value(Vec::<Value>::new()));
+        out.push(map_value(HamtMap::new()));
+        out.push(Value::Set(Rc::new(OrdSet::new())));
+        out.push(Value::Float(-0.0));
+        out.push(Value::Float(f64::from_bits(0x7ff8_0000_0000_0003)));
+        out.push(variant("T", "W", 0));
+        out.push(variant("T", "V", 0));
+        let inner = map_value(
+            HamtMap::new()
+                .update(key(str_value("b".to_string())), Value::Int(2))
+                .update(key(str_value("a".to_string())), Value::Int(1)),
+        );
+        out.push(map_value(
+            HamtMap::new()
+                .update(key(Value::Int(1)), inner.clone())
+                .update(
+                    key(Value::Int(0)),
+                    Value::Set(Rc::new(OrdSet::unit("z".to_string()))),
+                ),
+        ));
+        out.push(list_value(vec![inner.clone(), inner]));
+        out
+    }
+
+    #[test]
+    fn value_and_portable_carriers_agree_on_every_pair() {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+        };
+        let ctx = InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic);
+        let xs = corpus();
+        let ps: Vec<PortableValue> = xs
+            .iter()
+            .map(|v| portable_value_from_ctx(&ctx, v).expect("portable"))
+            .collect();
+        for (i, a) in xs.iter().enumerate() {
+            for (j, b) in xs.iter().enumerate() {
+                assert_eq!(
+                    cmp(a, b),
+                    portable_value_cmp(&ps[i], &ps[j]),
+                    "Value and PortableValue disagree on {a:?} vs {b:?}"
+                );
+                // Antisymmetry: the order is total, not merely consistent.
+                assert_eq!(cmp(a, b), cmp(b, a).reverse(), "{a:?} vs {b:?}");
+            }
+        }
+    }
+
+    /// The emitted realization sorts admitted keys by Rust's native `Ord` on String/i64/bool;
+    /// the canonical order must BE that order on exactly those kinds.
+    #[test]
+    fn canonical_order_is_native_ord_on_emitted_admitted_key_kinds() {
+        let strs = ["", "a", "B", "b", "\u{e9}", "z", "\u{1F600}"];
+        for x in strs {
+            for y in strs {
+                assert_eq!(
+                    cmp(&str_value(x.to_string()), &str_value(y.to_string())),
+                    x.to_string().cmp(&y.to_string())
+                );
+            }
+        }
+        let ints = [i64::MIN, -1, 0, 1, i64::MAX];
+        for x in ints {
+            for y in ints {
+                assert_eq!(cmp(&Value::Int(x), &Value::Int(y)), x.cmp(&y));
+            }
+        }
+        for x in [false, true] {
+            for y in [false, true] {
+                assert_eq!(cmp(&Value::Bool(x), &Value::Bool(y)), x.cmp(&y));
+            }
+        }
+    }
+
+    #[test]
+    fn emitted_ord_admission_refuses_record_keys_and_admits_scalars() {
+        let rec = Value::Record {
+            type_name: Symbol("R"),
+            fields: Rc::new(vec![]),
+        };
+        let err = admit_emitted_ord_keys([&rec, &rec], "sort_by").expect_err("record keys refuse");
+        assert!(
+            format!("{err:?}").contains("no emitted-Rust ordering"),
+            "{err:?}"
+        );
+        let mixed = [Value::Int(1), str_value("a".to_string())];
+        assert!(admit_emitted_ord_keys(mixed.iter(), "sort_by").is_err());
+        let ints = [Value::Int(2), Value::Int(1)];
+        assert!(admit_emitted_ord_keys(ints.iter(), "sort_by").is_ok());
+    }
+}
