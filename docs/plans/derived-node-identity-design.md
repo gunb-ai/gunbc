@@ -21,8 +21,8 @@ read. This note models the identity those nodes must carry.
 
 ## 2. What was measured (not inferred)
 
-All figures are re-derived by the instrument in §7. Here they are only summarized to locate the
-problem, and the row carries the full counts.
+These facts locate the problem. Their magnitudes are deliberately not transcribed (DESIGN §6);
+§7 names the instrument that re-derives them.
 
 - **The spelling collides by construction.** The kernel container type names its element child
   after its own template parameter. Every `List<M>` therefore carries a child spelled `T` and
@@ -37,14 +37,14 @@ problem, and the row carries the full counts.
   - `Node.declaration = (owner, TypeParameter { name })` is written by `v1.compiler.resolve`
     `binder_marked_type` (#12690) on authored signature positions: parameter types, returns, type
     arguments, declaration fields and arrow positions.
-- **Coverage, measured over the whole-corpus compile.** Of about 505,000 generic bind and substitute
-  events, about 250,000 act on nodes that carry neither fact in a usable form. They come from about
-  a dozen constructors, led by `infer_call_arguments_generic_pass` and
-  `build_call_application_plan`, then record-literal instantiation, alias expansion and callable
-  substitution.
+- **Coverage, measured over the whole-corpus compile.** A large share of generic bind and
+  substitute events act on nodes that carry neither fact in a usable form. They come from about a
+  dozen constructors, listed on the class row, led by `infer_call_arguments_generic_pass` and
+  `build_call_application_plan`. No magnitudes are given here: per DESIGN §6 they belong to the
+  instrument (§7), not to prose.
 - **What happened when each fact was read alone.** Reading the `TypeVariable` mark made the
   compiler's next generation refuse its own sources: generic record fields arrive unmarked. Reading
-  the declaration mark would stop substituting at roughly a quarter of a million events.
+  the declaration mark would stop substituting at every event the constructors above produce.
 
 ## 3. Hypotheses step 2 must settle first (labelled as bets, DESIGN §4d)
 
@@ -127,13 +127,12 @@ constructors inventoried in §2. The following are outside this note:
 
 ## 6. Sequencing
 
-1. **Step 1 (this note):**
-   - this note;
-   - the class row;
-   - a std carrier declaring `DerivedTypeOrigin` and its laws, consumed by a control that executes
-     L1 to L4 over supplied nodes, so the declaration has a consumer and does not dangle.
-
-   No infer edits.
+1. **Step 1, in two PRs, with no infer edits:**
+   - **1a (#12913):** this note and the class row.
+   - **1b (#12914):** the std carrier `std.derived_type_origin`, which declares `DerivedTypeOrigin`
+     and `GenericIdentityVerdict`, and its control `test.claim.derived_type_origin_witness_test`,
+     which executes L1 to L4 over supplied origins. Until step 2 lands, that control is the
+     carrier's only consumer, a declared frontier whose trigger is step 2 (DESIGN §3c).
 2. **Step 2:** first settle §3's three bets with the instrument. Then carry origins through the
    inventoried constructors, switch the three sites to identity, and delete their name branches.
    The evidence is:
@@ -151,13 +150,13 @@ constructors inventoried in §2. The following are outside this note:
 
 ## 7. Instrument
 
-- **What to rerun.** The measurement in §2 is a locally instrumented seed. A probe in
-  `unify_generics` and `substitute_generics_apply` tags each event with whether the node carries a
-  `TypeParameter` declaration, and with its two nearest infer callers. It runs over
-  `gunbc compile --source-root dag --source-root src/v2 --target dag --repository gunbc
-  --measured-root-demands tools/whole_corpus_compile_measured_root_demands.json`.
-- **Not yet an entry point.** Step 2's first task is to make it one: a `gunbc test` label over the
-  same compile. Its counts then stop living in prose and in this row.
-
-Until that lands, the figures quoted here and on the row are transcribed. They were measured on
-main `b793732902` and are re-derivable only by rebuilding that probe.
+- **What it measures.** For each event in which `unify_generics` or `substitute_generics_apply`
+  binds or substitutes a generic, whether the node carries a `TypeParameter` declaration, and its
+  two nearest infer callers. It runs over the whole-corpus compile, `gunbc compile --source-root dag
+  --source-root src/v2 --target dag --repository gunbc --measured-root-demands
+  tools/whole_corpus_compile_measured_root_demands.json`.
+- **Not yet an entry point.** The one measurement taken so far was a local, uncommitted probe on
+  main `b793732902`. It is a one-off, so its numbers are not quoted in this note or on the row.
+  Step 2's first task is to make it an instrument: a `gunbc test` label over the same compile,
+  reporting by constructor. The step-2 decisions rest on its output, not on any figure written
+  here.
