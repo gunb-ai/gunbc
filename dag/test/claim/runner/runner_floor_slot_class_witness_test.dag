@@ -3,7 +3,6 @@ module test.claim.runner.runner_floor_slot_class_witness_test
 import std.types { String, NonEmptyStr, Bool, Int, List, list_length }
 import std.nat { Nat }
 import std.measure { byte_size, byte_size_count }
-import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
@@ -15,7 +14,6 @@ import gunbc.runner_slot_allocation {
   gunbc_runner_slot_desired_for, slot_is_floor_class, srv1_microvm_shakedown_slot,
   memory_admitted_width_of_envelope, host_floor_class_slots, gunbc_runner_slice_cap_for_width,
 }
-import gunbc.ci_runner_target { gunbc_ci_floor_runner_spec, gunbc_ci_selected_runner_spec }
 import gunbc.host_axis_caps {
   CapMember, slot_class_cap_members, derived_runner_memory_cap_members, cap_is_managed_path,
   cap_converge_decision, CapConvergeAuthorized, CapConvergeWithheld, SurplusSlotsObserved,
@@ -58,23 +56,6 @@ test fn a_class_slot_is_granted_the_class_row_and_a_fleet_slot_the_fleet_row() -
     && has_label(labels: class_row.labels.github_labels, label: gunbc_runner_floor_slot_class_label)
     && byte_size_count(b: fleet_row.memory_max) == byte_size_count(b: gunbc_runner_slot_desired().memory_max)
     && !has_label(labels: fleet_row.labels.github_labels, label: gunbc_runner_floor_slot_class_label)
-}
-
-// ONLY THE FLOOR SELECTS THE CLASS. The floor spec carries the class label on top of the selected
-// spec; the selected spec -- what every other fleet job runs on -- does not, so a generated or
-// unit-test job never lands on a 41 GiB slot by label.
-fn spec_labels(spec: RunnerSpec) -> List<String> {
-  match spec {
-    SelfHosted { labels: ls } => ls
-    HostedRunner { label: _ } => []
-    RunsOnExpression { expression: _ } => []
-  }
-}
-
-test fn only_the_floor_spec_carries_the_class_label() -> Bool {
-  has_label(labels: spec_labels(spec: gunbc_ci_floor_runner_spec()), label: gunbc_runner_floor_slot_class_label)
-    && !has_label(labels: spec_labels(spec: gunbc_ci_selected_runner_spec()), label: gunbc_runner_floor_slot_class_label)
-    && all(spec_labels(spec: gunbc_ci_selected_runner_spec()), l => has_label(labels: spec_labels(spec: gunbc_ci_floor_runner_spec()), label: l))
 }
 
 // THE CLASS IS CHARGED AS A BLOCK. With room for exactly two class slots plus a fleet slot's worth

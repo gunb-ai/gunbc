@@ -120,7 +120,7 @@ import gunbc.witness_floor_workflow {
   required_ci_measurement_scripts_are_renderable,
   WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused
 }
-import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec, gunbc_ci_floor_runner_spec }
+import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.ci_failure_class { wrap_command_with_floor_attempt_receipt, wrap_command_is_renderable }
 import gunbc.ci_spec {
   gunbc_ci_generated_artifact_verify_invoke,
@@ -722,16 +722,11 @@ fn compiler_gate_floor_scripts_are_renderable() -> Bool {
     && required_ci_measurement_scripts_are_renderable()
 }
 
-// THE FLOOR RUNS ON THE FLOOR SLOT CLASS (operator-approved stopgap 2026-10-01): its runs-on carries
-// the gunbc-floor label, so only a class slot at the 41/40 GiB leaf can pick it up, while the
-// generated, unit-test and aggregate jobs keep the plain fleet spec and the fleet row's leaf. The
-// class, its retirement trigger and its width cost are gunbc.runner_slot_desired
-// gunbc_runner_floor_slot_class_stopgap_2026_10_01; floors past the fleet's class slots queue.
 fn compiler_gate_floor_job() -> Job {
   Job {
     id: compiler_gate_floor_job_id,
     name: none,
-    runner: gunbc_ci_floor_runner_spec(),
+    runner: gunbc_ci_selected_runner_spec(),
     environment: none,
     steps: list_map(xs: compiler_gate_floor_bound_steps(), f: fn(b) { b.step }),
     needs: [],

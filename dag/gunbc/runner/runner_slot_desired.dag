@@ -179,8 +179,13 @@ fn gunbc_runner_slot_desired() -> RunnerSlotDesired {
 //
 // THE CLASS IS A ROW, NOT A SECOND FLEET. Swap, tasks, CPU weight and quota are the fleet row's,
 // read from it rather than restated, so the class differs from the fleet only on the two lines
-// that are the reason it exists and on the label that routes the floor to it
-// (gunbc.ci_runner_target gunbc_ci_floor_runner_spec).
+// that are the reason it exists and on the label that routes the floor to it.
+//
+// THE LABEL'S CONSUMER LANDS SECOND, AND THE ORDER IS FORCED. The floor job's runs-on gains
+// gunbc-floor in a follow-up change, after fleet converge has brought the class slots up carrying
+// it: a runs-on that names a label no runner yet carries queues every floor until the converge,
+// including the floor of the change that adds it. Until then the class slots also serve the plain
+// fleet selector, so they take any job and nothing is stranded.
 data gunbc_runner_floor_slot_class_stopgap_2026_10_01: DissolutionCondition = unbound_dissolution(
   description: "operator-approved stopgap 2026-10-01 (default): the floor slot class (gunbc_runner_floor_slot_desired, 41/40 GiB MemoryMax/MemoryHigh, three per host, routed by the gunbc-floor label) exists only because the floor pins the fleet row's 25 GiB memory.high. Retires when type_env exclusive bytes are reduced so a ~2.7k-module floor subject peaks under the original 25 GiB memory.high (26843545600 bytes), as measured by //gunbc/instruments:typed-graph-exclusive-bytes and confirmed by an unpinned floor receipt at that line; the class, its label and its identities are then deleted and the floor returns to the fleet row. A green floor on the class, or the instrument merely landing, satisfies neither clause" as NonEmptyStr
 )
