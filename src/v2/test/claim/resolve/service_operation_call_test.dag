@@ -1,0 +1,113 @@
+module v2.test.claim.resolve.service_operation_call
+
+import v2.compiler.resolve { ResolvedTree }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.compiler.name_resolve { Admission, ResolutionSubject, resolution_context, resolve_in_context }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model_surface_empty_prelude }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol, node_subtree_nodes }
+import v2.std.optional { Absent, Present }
+import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, qualified_name_from_dotted_string }
+import v2.std.resolution_policy { default_name_resolution_policy }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A CALL TO A SERVICE OPERATION RESOLVES TO THE OPERATION'S DECLARATION PATH (D13 b-pre). After the
+// service spine (gunbc#12949) an operation is declared at <module>.<service segments...>.<Op> and indexed
+// like any declaration, so a call `s.F.Run()` reaches the existing qualified-reference door with that
+// path: there is no second resolver. These claims hold the route on source text through the real
+// ingest, normalize and resolve: an importing module's call resolves to the op path; two services under
+// one prefix reach distinct operations; a call naming an operation the service does not declare refuses;
+// and NO MODULE REACHES A SERVICE IT DOES NOT IMPORT -- not a sibling, and not a module nested under the
+// service module's own path (the operator's nesting/shadowing ban: a merged namespace body and a parent
+// module path grant no scope).
+
+data soc_service_source: String = "module t.svc\n\nservice s.F {\n  operation Run {}\n}\n\nservice s.E {\n  operation Get {}\n}\n"
+
+data soc_caller_source: String = "module t.caller\n\nimport t.svc { s }\n\nfn run_it() { s.F.Run() }\n\nfn get_it() { s.E.Get() }\n"
+
+data soc_wrong_op_source: String = "module t.wrong\n\nimport t.svc { s }\n\nfn missing() { s.F.Get() }\n"
+
+data soc_unimported_source: String = "module t.other\n\nfn run_it() { s.F.Run() }\n"
+
+data soc_nested_source: String = "module t.svc.inner\n\nfn run_it() { s.F.Run() }\n"
+
+fn soc_read(source: String, id: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: id,
+    source_root: DagTree
+  }
+}
+
+// Each claim ingests only the service and the one module it resolves, so no claim pays for the others.
+fn soc_resolve(subject_source: String, subject_id: Symbol, subject_path: String, subject: String) -> Outcome<ResolvedTree> {
+  let ingest = [
+    soc_read(source: soc_service_source, id: ^soc_service_read, path: "src/v2/test/fixture/service_operation_call/svc.dag"),
+    soc_read(source: subject_source, id: subject_id, path: subject_path)
+  ]
+  match module_roots_from_source_root_ingest(ingest: ingest, lm: dag_language_model_surface_empty_prelude()) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: roots, diagnostics: _ } =>
+      resolve_in_context(
+        context: resolution_context(lm: dag_language_model_surface_empty_prelude(), roots: roots, index: source_root_index_empty(), active_roots: Empty, policy: default_name_resolution_policy()),
+        admission: Admission {
+          subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: subject) },
+          imports: Empty
+        }
+      ).resolved
+  }
+}
+
+fn soc_references_path(root: Node, dotted: String) -> Bool {
+  let wanted = qualified_name_from_dotted_string(dotted: dotted)
+  fold(node_subtree_nodes(root: root), init: false, f: fn(found, n) { found || soc_node_references(n: n, wanted: wanted) })
+}
+
+fn soc_node_references(n: Node, wanted: QualifiedName) -> Bool {
+  match declaration_reference_path_optional(node: n) {
+    Present { value: path } => path == wanted
+    Absent => false
+  }
+}
+
+test fn an_imported_service_operation_call_resolves_to_the_operation_path_holds() -> Bool {
+  match soc_resolve(subject_source: soc_caller_source, subject_id: ^soc_caller_read, subject_path: "src/v2/test/fixture/service_operation_call/caller.dag", subject: "t.caller") {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: resolved, diagnostics: _ } =>
+      soc_references_path(root: resolved.root, dotted: "t.svc.s.F.Run")
+        && soc_references_path(root: resolved.root, dotted: "t.svc.s.E.Get")
+  }
+}
+
+test fn a_call_to_an_operation_the_service_does_not_declare_refuses_RED() -> Bool {
+  match soc_resolve(subject_source: soc_wrong_op_source, subject_id: ^soc_wrong_read, subject_path: "src/v2/test/fixture/service_operation_call/wrong.dag", subject: "t.wrong") {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn a_module_that_does_not_import_the_service_cannot_call_it_RED() -> Bool {
+  match soc_resolve(subject_source: soc_unimported_source, subject_id: ^soc_other_read, subject_path: "src/v2/test/fixture/service_operation_call/other.dag", subject: "t.other") {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn a_module_nested_under_the_service_module_gets_no_implicit_scope_RED() -> Bool {
+  match soc_resolve(subject_source: soc_nested_source, subject_id: ^soc_nested_read, subject_path: "src/v2/test/fixture/service_operation_call/inner.dag", subject: "t.svc.inner") {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
