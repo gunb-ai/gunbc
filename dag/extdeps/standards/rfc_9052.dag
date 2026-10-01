@@ -125,7 +125,9 @@ fn cose_required_integer(key: CborValue, label: Int) -> CoseKeyRefusal? {
 fn cose_integer_at(key: CborValue, label: Int) -> Int? {
   match cose_key_label(key: key, label: label) {
     CoseLabelFound { value: v } => cose_integer_of(v: v)
-    _ => none
+    CoseLabelAbsent { label: _ } => none
+    CoseLabelDuplicated { label: _ } => none
+    CoseKeyNotAMap => none
   }
 }
 
@@ -140,7 +142,13 @@ fn cose_coordinate(key: CborValue, label: Int) -> CoseCoordinate {
         CborByteString { octets: o } =>
           if count(o) == byte_size_count(b: cose_p256_coordinate_size()) { CoseCoordinateRead { octets: o } }
           else { CoseCoordinateRefused { cause: CoseKeyCoordinateMalformed { label: label, declared: byte_size(count: count(o)), expected: cose_p256_coordinate_size() } } }
-        _ => CoseCoordinateRefused { cause: CoseKeyCoordinateNotAByteString { label: label } }
+        CborUnsigned { value: _ } => CoseCoordinateRefused { cause: CoseKeyCoordinateNotAByteString { label: label } }
+        CborNegative { value: _ } => CoseCoordinateRefused { cause: CoseKeyCoordinateNotAByteString { label: label } }
+        CborTextString { text: _ } => CoseCoordinateRefused { cause: CoseKeyCoordinateNotAByteString { label: label } }
+        CborArray { items: _ } => CoseCoordinateRefused { cause: CoseKeyCoordinateNotAByteString { label: label } }
+        CborMap { entries: _ } => CoseCoordinateRefused { cause: CoseKeyCoordinateNotAByteString { label: label } }
+        CborTagged { tag: _, item: _ } => CoseCoordinateRefused { cause: CoseKeyCoordinateNotAByteString { label: label } }
+        CborSimple { value: _ } => CoseCoordinateRefused { cause: CoseKeyCoordinateNotAByteString { label: label } }
       }
     other => CoseCoordinateRefused { cause: CoseKeyLabelRefused { lookup: other } }
   }
