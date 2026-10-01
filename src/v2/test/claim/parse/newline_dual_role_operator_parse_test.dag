@@ -91,8 +91,8 @@ fn n_refuses_at_minus(text: String, file: Symbol, start: Int, end: Int) -> Bool 
 // `-` at bytes 39..40.
 data newline_minus_after_operand_source: String = "module probe.nl_plain\n\ndata d: Int = x\n- 1\n"
 
-// `-` at bytes 74..75.
-data newline_minus_after_block_source: String = "module probe.nl_block\n\ndata d: Int = match w {\n  true => 1\n  false => 0\n}\n- 1\n"
+// `-` at bytes 58..59.
+data newline_minus_after_block_source: String = "module probe.nl_block\n\ndata d: Int = match w {\n  _ => 1\n}\n- 1\n"
 
 data same_line_minus_source: String = "module probe.nl_same\n\ndata d: Int = x - 1\n"
 
@@ -101,7 +101,7 @@ test fn a_newline_minus_after_an_operand_refuses_holds() -> Bool {
 }
 
 test fn a_newline_minus_after_a_block_refuses_holds() -> Bool {
-  n_refuses_at_minus(text: newline_minus_after_block_source, file: ^probe_nl_block, start: 74, end: 75)
+  n_refuses_at_minus(text: newline_minus_after_block_source, file: ^probe_nl_block, start: 58, end: 59)
 }
 
 test fn a_same_line_minus_is_subtraction_holds() -> Bool {
