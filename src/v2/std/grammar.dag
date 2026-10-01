@@ -3181,12 +3181,11 @@ fn grammar_emit_index(root: GrammarRoot) -> Outcome<GrammarEmitIndex> {
   )
 }
 
-fn grammar_emit_named_child_optional(node: Node, name: Symbol) -> Optional<Node> {
-  match named_child_lookup(root: node, name: name) {
-    NamedChildFound { target: target } => optional_present(value: target)
-    NamedChildMissing => optional_absent()
-    NamedChildAmbiguous => optional_absent()
-  }
+// A DUPLICATED PROJECTION EDGE IS A MALFORMED TREE, NOT AN ARM THAT DOES NOT FIT. Parse mints each
+// projection edge once, so two of one name refuse outright: treating them as missing would let
+// ordered choice try the next arm and emit through a production the tree never named (DESIGN 5).
+fn grammar_emit_projection_ambiguous(at: Node) -> GrammarEmitWalk {
+  GrammarEmitRefused { diagnostic: grammar_emit_diagnostic(reason: ^grammar_emit_projection_ambiguous, at: at) }
 }
 
 fn grammar_emit_is_empty_conj(node: Node) -> Bool {
@@ -3250,12 +3249,14 @@ fn grammar_emit_literal_terminal(token_class: Symbol, lexeme: Symbol, node: Node
 }
 
 fn grammar_emit_sequence(index: GrammarEmitIndex, left: GrammarExpr, right: GrammarExpr, node: Node) -> GrammarEmitWalk {
-  match grammar_emit_named_child_optional(node: node, name: ^grammar_sequence_left_node_projection) {
-    Absent => grammar_emit_mismatch(reason: ^grammar_emit_sequence_shape_mismatch, at: node)
-    Present { value: cap1 } =>
-      match grammar_emit_named_child_optional(node: node, name: ^grammar_sequence_right_node_projection) {
-        Absent => grammar_emit_mismatch(reason: ^grammar_emit_sequence_shape_mismatch, at: node)
-        Present { value: cap2 } =>
+  match named_child_lookup(root: node, name: ^grammar_sequence_left_node_projection) {
+    NamedChildMissing => grammar_emit_mismatch(reason: ^grammar_emit_sequence_shape_mismatch, at: node)
+    NamedChildAmbiguous => grammar_emit_projection_ambiguous(at: node)
+    NamedChildFound { target: cap1 } =>
+      match named_child_lookup(root: node, name: ^grammar_sequence_right_node_projection) {
+        NamedChildMissing => grammar_emit_mismatch(reason: ^grammar_emit_sequence_shape_mismatch, at: node)
+        NamedChildAmbiguous => grammar_emit_projection_ambiguous(at: node)
+        NamedChildFound { target: cap2 } =>
           match grammar_emit_expr(index: index, expr: left, node: cap1) {
             GrammarEmitWalked { terminals: l } =>
               grammar_emit_concat(left: l, right: grammar_emit_expr(index: index, expr: right, node: cap2))
@@ -3308,9 +3309,10 @@ fn grammar_emit_expr(index: GrammarEmitIndex, expr: GrammarExpr, node: Node) -> 
 // A capture with no stamp does not fit a nonterminal position, and if no arm around it fits either,
 // that refusal is what reaches the caller: emit never infers a production from a shape.
 fn grammar_emit_production_capture(index: GrammarEmitIndex, expected: Symbol, node: Node) -> GrammarEmitWalk {
-  match grammar_emit_named_child_optional(node: node, name: ^grammar_production_identity_node_projection) {
-    Absent => grammar_emit_mismatch(reason: ^grammar_emit_production_stamp_absent, at: node)
-    Present { value: stamp } =>
+  match named_child_lookup(root: node, name: ^grammar_production_identity_node_projection) {
+    NamedChildMissing => grammar_emit_mismatch(reason: ^grammar_emit_production_stamp_absent, at: node)
+    NamedChildAmbiguous => grammar_emit_projection_ambiguous(at: node)
+    NamedChildFound { target: stamp } =>
       match node_atom_identity_optional(node: stamp) {
         Absent => grammar_emit_mismatch(reason: ^grammar_emit_production_stamp_absent, at: node)
         Present { value: emitted } =>
@@ -3319,9 +3321,10 @@ fn grammar_emit_production_capture(index: GrammarEmitIndex, expected: Symbol, no
               GrammarEmitRefused { diagnostic: grammar_emit_diagnostic(reason: ^grammar_emit_production_unknown, at: node) }
             Present { value: production } =>
               if production.name == expected {
-                match grammar_emit_named_child_optional(node: node, name: ^grammar_production_captured_node_projection) {
-                  Absent => grammar_emit_mismatch(reason: ^grammar_emit_production_stamp_absent, at: node)
-                  Present { value: captured } => grammar_emit_expr(index: index, expr: production.expression, node: captured)
+                match named_child_lookup(root: node, name: ^grammar_production_captured_node_projection) {
+                  NamedChildMissing => grammar_emit_mismatch(reason: ^grammar_emit_production_stamp_absent, at: node)
+                  NamedChildAmbiguous => grammar_emit_projection_ambiguous(at: node)
+                  NamedChildFound { target: captured } => grammar_emit_expr(index: index, expr: production.expression, node: captured)
                 }
               } else {
                 grammar_emit_mismatch(reason: ^grammar_emit_nonterminal_stamp_mismatch, at: node)

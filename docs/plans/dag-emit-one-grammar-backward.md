@@ -1,8 +1,9 @@
 # The dag target emits by reading `dag_grammar_root` backward
 
 Status: **implemented** in gunbc#12878 (`v2.std.grammar` `grammar_emit_parse_tree`, `v2.extdeps.languages.dag` `dag_emit_parse_tree`) (work item adhoc-da997c00-fa0). This page states how emit selects a
-production for a Node shape and how each terminal's token class is recovered. Nothing here is
-implemented yet. The implementing change follows only once this model is accepted.
+production for a Node shape and how each terminal's token class is recovered. It was written as the
+model before code and accepted, and the implementation follows it except where a section below says
+otherwise.
 
 ## The defect being replaced
 
@@ -75,8 +76,8 @@ its spine re-parses through the left arm first.
 There is one place where a shape alone could mislead: a `StampClass` atom and a `StampLexeme`
 atom are both childless atoms. An identifier spelled exactly like a token-class symbol could
 therefore satisfy the wrong arm. That is not a case to guess about. The round-trip control is what
-falsifies it, and if a fixture hits it, emit refuses with `dag_emit_choice_arm_ambiguous` at the
-node.
+falsifies it. The walk resolves the collision one way: a `StampLexeme` position reads a childless
+atom as its lexeme first.
 
 None of this needs a per-production emit row. The rows ARE the `dag_grammar_root` productions. A
 new production gets emit for free, and a new target language is still rows, not an edit to the
@@ -97,8 +98,11 @@ The **spelling** of the token then comes from one of two places.
 `TokenRule { pattern: LiteralPattern }` in `dag_lex_rules`. That is the lexer's own row, so there
 is no second spelling table. A `LiteralTerminal` is spelled by its `lexeme`.
 
-**Value-carrying classes** are spelled by `token_class_emit_transforms`. These are the dag model's
-rows, each the inverse of the parse-side decoder that #12759 and its predecessors stamped:
+**Value-carrying classes** are spelled by `v2.extdeps.languages.dag`
+`dag_emit_class_terminal_spelling`. Each arm is the inverse of the parse-side decoder that #12759 and
+its predecessors stamped. These arms do **not** go into `TargetModel` `token_class_emit_transforms`:
+that map transforms one spelling into another, whereas these arms start from a decoded value. The
+map stays empty for the dag target.
 
 | class | captured Node (parse side) | emit transform |
 |---|---|---|
@@ -133,6 +137,8 @@ Each refusal is located with `node_locus` at the node being emitted. The generic
 
 - `grammar_emit_production_unknown`: the stamp names no production in the root. This is the
   "missing emit row" red.
+- `grammar_emit_projection_ambiguous`: a capture carries two projection edges of one name. Parse
+  mints each projection edge once, so this is a malformed tree, not an arm that does not fit.
 
 **Arm mismatches.** An enclosing ordered choice tries its next arm; if no arm fits, the last
 mismatch is the refusal:
@@ -162,10 +168,12 @@ There is no fallback arm anywhere. A refusal never widens to "emit the atom's sp
 
 This is one change, per DESIGN §3 on replacement migrations: delete first, then fix forward.
 
-1. **Add** the generic backward walk to `v2.std.grammar`. Add the dag `token_class_emit_transforms`
-   rows to `v2.extdeps.languages.dag`, with the string encoder sharing `dag_string_escapes`.
-2. **Route** the dag target's emit through it. `dag_translation_rules_node` stops carrying
-   hand-built rows and names `dag_grammar_root`.
+1. **Add** the generic backward walk to `v2.std.grammar` (`grammar_emit_parse_tree`), and the dag
+   spelling to `v2.extdeps.languages.dag` (`dag_emit_parse_tree`). The string encoder shares
+   `dag_string_escapes`.
+2. **Not done here; this is the declared frontier.** `dag_translation_rules_node` still enrolls only
+   the `fn add` row. It serves the core route, which needs the inverse of body lowering before it
+   can read this walk (see "Rulings and declared frontier").
 3. **Delete, in the same change:** the hand-authored declaration grammar. That means
    `dag_type_decl_structural_formal_productions`,
    `dag_type_decl_productions_only_translation_rules`, `dag_type_decl_structural_lex_rules`,
@@ -213,7 +221,7 @@ Quoted keys add more controls (from gentle-koi-724, for #12740 and #12758):
   (#12740's frontier), so they are parse-tree fixtures only.
 
 There is also one red: a root with one production removed must refuse with
-`dag_emit_production_unknown` at the right locus. Both the reds and the positives run through the
+`grammar_emit_production_unknown` at the right locus. Both the reds and the positives run through the
 real `parse_module` route, not a supplied tree. This route is the inhabitance claim.
 
 ## Rulings and declared frontier
@@ -223,7 +231,7 @@ text -> parse tree -> text -> parse tree, and the two trees must be identical. T
 the subject.
 
 **A missing stamp refuses.** A tree that lacks the production stamps emit needs is refused, typed
-and located, as `dag_emit_production_stamp_absent`. Emit never guesses a production from the
+and located, as `grammar_emit_production_stamp_absent`. Emit never guesses a production from the
 shape.
 
 **Declared frontier: core -> surface.** This emitter is a parse-tree emitter. It is **not** full

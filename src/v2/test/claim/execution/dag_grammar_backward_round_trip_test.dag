@@ -5,13 +5,15 @@ import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_emit_parse_tree, dag_emit_parse_tree_with_root, dag_grammar_root, dag_lex }
 import std.algebra { list_snoc_item }
+import v2.std.algebra { length }
 import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected, bind_outcome, node_locus, outcome_accepted }
 import v2.std.fn_index { non_empty_diagnostics_list }
-import v2.std.grammar { GrammarEmitClassTerminal, GrammarEmitLexemeTerminal, GrammarRoot, grammar_emit_parse_tree, node_atom_identity_optional }
+import v2.std.grammar { GrammarEmitClassTerminal, GrammarEmitLexemeTerminal, GrammarProduction, GrammarRoot, Sequence, grammar_atom, grammar_emit_parse_tree, grammar_expr_terminal, node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Named, Node, Positional, Symbol, content_hash, symbol_lexeme }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.node { Conj, Edge, Named, Node, Positional, Symbol, TypeNode, content_hash, symbol_lexeme }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
@@ -178,6 +180,55 @@ test fn a_production_missing_its_row_refuses_located_at_its_capture_holds() -> B
             Rejected { diagnostics: ds } => rt_refused_at(ds: non_empty_diagnostics_list(d: ds), reason: ^grammar_emit_production_unknown, at: capture)
           }
       }
+  }
+}
+
+// A DUPLICATED PROJECTION EDGE REFUSES; IT IS NEVER READ AS AN ARM THAT DOES NOT FIT. The tree is
+// supplied, because the subject is the walk's reading of a malformed capture, which no parse mints.
+// The round trips above are this boundary's inhabitance claims. One production reads `a b`, and its
+// capture carries two left edges.
+fn rt_edge(name: Symbol, target: Node) -> Edge { Edge { label: Named { name: name }, target: target } }
+
+fn rt_conj(children: List<Edge>) -> Node { Node { kind: TypeNode { connective: Conj }, children: children, occurrence_id: OccurrenceSynthetic } }
+
+fn rt_probe_root() -> GrammarRoot {
+  GrammarRoot {
+    start: ^rt_probe_production,
+    productions: [
+      GrammarProduction {
+        name: ^rt_probe_production,
+        expression: Sequence { left: grammar_expr_terminal(token_class: ^rt_probe_a), right: grammar_expr_terminal(token_class: ^rt_probe_b) },
+        emitted: grammar_atom(identity: ^rt_probe_emitted)
+      }
+    ],
+    sync_tokens: []
+  }
+}
+
+fn rt_probe_left() -> Edge { rt_edge(name: ^grammar_sequence_left_node_projection, target: grammar_atom(identity: ^rt_probe_a)) }
+
+fn rt_probe_right() -> Edge { rt_edge(name: ^grammar_sequence_right_node_projection, target: grammar_atom(identity: ^rt_probe_b)) }
+
+fn rt_probe_tree(captured: Node) -> Node {
+  rt_conj(children: [
+    rt_edge(name: ^grammar_production_identity_node_projection, target: grammar_atom(identity: ^rt_probe_emitted)),
+    rt_edge(name: ^grammar_production_captured_node_projection, target: captured)
+  ])
+}
+
+test fn a_duplicated_projection_edge_refuses_as_ambiguous_holds() -> Bool {
+  let captured = rt_conj(children: [rt_probe_left(), rt_probe_left(), rt_probe_right()])
+  match grammar_emit_parse_tree(root: rt_probe_root(), tree: rt_probe_tree(captured: captured)) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: ds } => rt_refused_at(ds: non_empty_diagnostics_list(d: ds), reason: ^grammar_emit_projection_ambiguous, at: captured)
+  }
+}
+
+// Its positive control: the same capture with one left edge walks to its two terminals.
+test fn a_single_projection_edge_walks_holds() -> Bool {
+  match grammar_emit_parse_tree(root: rt_probe_root(), tree: rt_probe_tree(captured: rt_conj(children: [rt_probe_left(), rt_probe_right()]))) {
+    Accepted { value: ts, diagnostics: _ } => length(xs: ts) == 2
+    Rejected { diagnostics: _ } => false
   }
 }
 
