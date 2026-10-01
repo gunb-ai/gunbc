@@ -424,7 +424,21 @@ fn beat_field<'a>(line: &'a str, name: &str) -> Option<&'a str> {
 /// A COUNTER THE LINE PRINTED AS `na` REFUSES THE TRANSCRIPTION, with the line named. The stat
 /// counters have no unread arm in the typed beat, and a zero would read as memory the run did not
 /// hold -- the fabricated small demand `beat_held_set` exists to refuse. Stall and swap DO have
-/// unread arms, so `na` there is carried as `None`.
+/// unread arms, so the literal `na` there -- and ONLY that spelling -- is carried as `None`. A stall
+/// or swap value that is missing, garbled or negative refuses like a stat counter: reading it as
+/// "unread" would turn a malformed line into the healthy-looking absence the fold must not invent.
+/// A stall or swap clause: `na` is unread; a non-negative integer is read; anything else refuses.
+fn unread_or_count(raw: Option<&str>, what: &str, line: &str) -> Result<Option<u64>, String> {
+    match raw {
+        None => Err(format!("floor beat line unreadable (no {what}=): {line}")),
+        Some("na") => Ok(None),
+        Some(v) => v
+            .parse::<u64>()
+            .map(Some)
+            .map_err(|_| format!("floor beat line unreadable ({what}={v}): {line}")),
+    }
+}
+
 pub fn transcribe_floor_beats(lines: &[String]) -> Result<Vec<FloorBeatLine>, String> {
     let mut swap_by_when: std::collections::HashMap<String, Option<u64>> =
         std::collections::HashMap::new();
@@ -434,7 +448,10 @@ pub fn transcribe_floor_beats(lines: &[String]) -> Result<Vec<FloorBeatLine>, St
             continue;
         };
         if let Some(swap) = beat_field(line, "swap_current") {
-            swap_by_when.insert(when.to_string(), swap.parse::<u64>().ok());
+            swap_by_when.insert(
+                when.to_string(),
+                unread_or_count(Some(swap), "swap_current", line)?,
+            );
             continue;
         }
         if beat_field(line, "stat_level").is_none() {
@@ -475,7 +492,11 @@ pub fn transcribe_floor_beats(lines: &[String]) -> Result<Vec<FloorBeatLine>, St
             opens_phase: when.starts_with("seam-"),
             seam_before,
             seam_after,
-            stall_per_min: beat_field(line, "stall_per_min").and_then(|v| v.parse::<u64>().ok()),
+            stall_per_min: unread_or_count(
+                beat_field(line, "stall_per_min"),
+                "stall_per_min",
+                line,
+            )?,
             swap_bytes: swap_by_when.remove(when).flatten(),
             charge,
             stat,
@@ -525,6 +546,23 @@ mod transcription_tests {
         );
         assert_eq!(beats[1].stat[0], 12);
         assert_eq!(beats[0].stat[10], 11);
+    }
+
+    #[test]
+    fn a_garbled_stall_or_swap_refuses_rather_than_reading_as_unread() {
+        let garbled_stall =
+            vec![stat_line("seam-parse", "parse", "1")
+                .replace("stall_per_min=na", "stall_per_min=-3")];
+        let refused =
+            transcribe_floor_beats(&garbled_stall).expect_err("a negative stall must refuse");
+        assert!(refused.contains("stall_per_min=-3"), "{refused}");
+        let garbled_swap = vec![
+            "[floor-cgroup] when=seam-parse seam=parse unix_ms=1 swap_current=4k events_local=[] pressure=[] procs=[]".to_string(),
+            stat_line("seam-parse", "parse", "1"),
+        ];
+        let refused =
+            transcribe_floor_beats(&garbled_swap).expect_err("a garbled swap must refuse");
+        assert!(refused.contains("swap_current=4k"), "{refused}");
     }
 
     #[test]
