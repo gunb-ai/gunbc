@@ -11,25 +11,27 @@ import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, diagnostic
 import v2.std.algebra { fold_list }
 import v2.std.optional { Absent, Present }
 import v2.std.logic { Bool }
+import v2.std.integer { Int }
 import v2.std.node { Node, Symbol, node_subtree_nodes, symbol_intern_lexeme }
 import v2.std.text { String }
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import v2.std.collection { List }
-import std.resource_contract { Capability, Read }
-import std.execution_mode { Hermetic }
-import v2.std.resource_declaration { DeclaredResourceContract }
 
 // DECLARATION-GRADE RESOURCE LOWERING (v2.compiler.body_lowering_fold body_lower_resource_decl). A
 // resource lowers to a service's shape -- its capabilities are operation Arrows of its payload -- and
-// its kind, mode, expires and acquire facts ride on the captured DeclaredResource kind, from which
-// v2.compiler.symbol_index_fill marks the path as a declared resource. Every entry is read or the
+// its kind, mode, expires and acquire entries are validated against their homes and not carried
+// (gunbc.recurring_failure_mode resource_contract_validated_but_not_carried); its name rides on the
+// captured DeclaredResource kind, from which v2.compiler.symbol_index_fill marks the path a resource. Every entry is read or the
 // declaration refuses at the entry; nothing is skipped the way v1 skips an acquire body.
 //
 // SUPPLIED TOKEN STREAMS, as v2.test.claim.normalize.service_declaration_lowering supplies them: each
 // is paired below with a claim that the real tokenizer produces exactly it, so supplying it removes no
 // execution of the real path (DESIGN section 3 pairing obligation).
-// A resource carrying one entry of every kind the grammar admits, beside a record, the shape of dag/std/resources.dag Clock with AuthContext's expires.
-data valid_source: String = "module m\nresource N {\n  kind: Capability\n  mode: Read\n  expires: true\n  acquire { hermetic }\n  release {}\n  capability now {\n    output { t: Int }\n  }\n}\ntype T { f: Int }\n"
+// A resource with one capability beside a record: the census claims read which path is a resource.
+data valid_source: String = "module m\nresource N {\n  kind: Capability\n  mode: Read\n  capability now {}\n}\ntype T {}\n"
+
+// Every property entry the grammar admits, with no capability: the full door reads each against its home.
+data entries_source: String = "module m\nresource N {\n  kind: Observation\n  mode: ReadWrite\n  expires: true\n  acquire { hermetic }\n  release {}\n}\n"
 // RED: a kind value no std.resource_contract ResourceKind variant projects to refuses at the entry rather than riding as a name.
 data unknown_kind_source: String = "module m\nresource N {\n  kind: Capabilty\n  mode: Read\n}\n"
 // RED: a declaration stating its kind twice has no single kind; it refuses at the second entry.
@@ -76,49 +78,32 @@ test fn census_admits_a_resource_and_marks_only_its_path_holds() -> Bool {
   }
 }
 
-// THE FULL DOOR ADMITS IT TOO. A resource sets nothing aside, so unlike a service with a transport it
+// THE FULL DOOR ADMITS IT TOO, with every property entry read against its home. A resource sets nothing aside, so unlike a service with a transport it
 // reaches resolution: a fn's `requires`/`uses` reference to it must resolve on the route that compiles.
 test fn full_door_admits_a_resource_holds() -> Bool {
-  match full_of_stream(tokens: valid_stream()) {
+  match full_of_stream(tokens: entries_stream()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: _ } => true
   }
 }
 
-// The captured contract reads each entry against its home: Capability, Read, expires, and the
-// Hermetic mode `acquire { hermetic }` claims.
-fn contract_is_capability_read_expiring_hermetic(c: DeclaredResourceContract) -> Bool {
-  let kind_ok = match c.kind {
-    Capability => true
-    _ => false
-  }
-  let mode_ok = match c.mode {
-    Read => true
-    _ => false
-  }
-  let acquire_ok = match c.acquire_mode {
-    Present { value: Hermetic } => true
-    _ => false
-  }
-  kind_ok && mode_ok && c.expires && acquire_ok
-}
-
-test fn the_captured_contract_carries_every_entry_holds() -> Bool {
+// The normalize capture names the resource, and only it: the record beside it is captured as a
+// record, so the resource names the index marks are exactly the admitted resource declarations.
+test fn the_capture_names_the_resource_and_only_it_holds() -> Bool {
   match supplied_stream_parse(tokens: valid_stream()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
       fold_list(
         xs: type_declaration_kind_capture(nodes: node_subtree_nodes(root: tree)),
-        empty: false,
+        empty: 0,
         cons: fn(found, k) {
           match k {
-            DeclaredResource { name: n, contract: c } =>
-              found || ((n == ^N) && contract_is_capability_read_expiring_hermetic(c: c))
+            DeclaredResource { name: n } => if n == ^N { found + 1 } else { found + 100 }
             DeclaredRecord { name: _ } => found
             DeclaredRefinement { name: _ } => found
           }
         }
-      )
+      ) == 1
   }
 }
 
@@ -163,34 +148,15 @@ fn valid_stream() -> TokenStream {
     Token { class: ^dag_token_ident, lexeme: "mode", file: ^resource_lowering_probe, start: 43, end: 47 },
     Token { class: ^dag_token_colon, lexeme: ":", file: ^resource_lowering_probe, start: 47, end: 48 },
     Token { class: ^dag_token_ident, lexeme: "Read", file: ^resource_lowering_probe, start: 49, end: 53 },
-    Token { class: ^dag_token_ident, lexeme: "expires", file: ^resource_lowering_probe, start: 56, end: 63 },
-    Token { class: ^dag_token_colon, lexeme: ":", file: ^resource_lowering_probe, start: 63, end: 64 },
-    Token { class: ^dag_token_kw_true, lexeme: "true", file: ^resource_lowering_probe, start: 65, end: 69 },
-    Token { class: ^dag_token_ident, lexeme: "acquire", file: ^resource_lowering_probe, start: 72, end: 79 },
-    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^resource_lowering_probe, start: 80, end: 81 },
-    Token { class: ^dag_token_ident, lexeme: "hermetic", file: ^resource_lowering_probe, start: 82, end: 90 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 91, end: 92 },
-    Token { class: ^dag_token_ident, lexeme: "release", file: ^resource_lowering_probe, start: 95, end: 102 },
-    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^resource_lowering_probe, start: 103, end: 104 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 104, end: 105 },
-    Token { class: ^dag_token_ident, lexeme: "capability", file: ^resource_lowering_probe, start: 108, end: 118 },
-    Token { class: ^dag_token_ident, lexeme: "now", file: ^resource_lowering_probe, start: 119, end: 122 },
-    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^resource_lowering_probe, start: 123, end: 124 },
-    Token { class: ^dag_token_ident, lexeme: "output", file: ^resource_lowering_probe, start: 129, end: 135 },
-    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^resource_lowering_probe, start: 136, end: 137 },
-    Token { class: ^dag_token_ident, lexeme: "t", file: ^resource_lowering_probe, start: 138, end: 139 },
-    Token { class: ^dag_token_colon, lexeme: ":", file: ^resource_lowering_probe, start: 139, end: 140 },
-    Token { class: ^dag_token_ident, lexeme: "Int", file: ^resource_lowering_probe, start: 141, end: 144 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 145, end: 146 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 149, end: 150 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 151, end: 152 },
-    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^resource_lowering_probe, start: 153, end: 157 },
-    Token { class: ^dag_token_ident, lexeme: "T", file: ^resource_lowering_probe, start: 158, end: 159 },
-    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^resource_lowering_probe, start: 160, end: 161 },
-    Token { class: ^dag_token_ident, lexeme: "f", file: ^resource_lowering_probe, start: 162, end: 163 },
-    Token { class: ^dag_token_colon, lexeme: ":", file: ^resource_lowering_probe, start: 163, end: 164 },
-    Token { class: ^dag_token_ident, lexeme: "Int", file: ^resource_lowering_probe, start: 165, end: 168 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 169, end: 170 }
+    Token { class: ^dag_token_ident, lexeme: "capability", file: ^resource_lowering_probe, start: 56, end: 66 },
+    Token { class: ^dag_token_ident, lexeme: "now", file: ^resource_lowering_probe, start: 67, end: 70 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^resource_lowering_probe, start: 71, end: 72 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 72, end: 73 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 74, end: 75 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^resource_lowering_probe, start: 76, end: 80 },
+    Token { class: ^dag_token_ident, lexeme: "T", file: ^resource_lowering_probe, start: 81, end: 82 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^resource_lowering_probe, start: 83, end: 84 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 84, end: 85 }
   ])
 }
 
@@ -284,4 +250,35 @@ fn acquire_unknown_stream() -> TokenStream {
 
 test fn acquire_unknown_stream_is_what_tokenize_produces_holds() -> Bool {
   supplied_stream_matches_tokenize(text: acquire_unknown_source, file: ^resource_lowering_probe, supplied: acquire_unknown_stream())
+}
+
+fn entries_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^resource_lowering_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^resource_lowering_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_ident, lexeme: "resource", file: ^resource_lowering_probe, start: 9, end: 17 },
+    Token { class: ^dag_token_ident, lexeme: "N", file: ^resource_lowering_probe, start: 18, end: 19 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^resource_lowering_probe, start: 20, end: 21 },
+    Token { class: ^dag_token_ident, lexeme: "kind", file: ^resource_lowering_probe, start: 24, end: 28 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^resource_lowering_probe, start: 28, end: 29 },
+    Token { class: ^dag_token_ident, lexeme: "Observation", file: ^resource_lowering_probe, start: 30, end: 41 },
+    Token { class: ^dag_token_ident, lexeme: "mode", file: ^resource_lowering_probe, start: 44, end: 48 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^resource_lowering_probe, start: 48, end: 49 },
+    Token { class: ^dag_token_ident, lexeme: "ReadWrite", file: ^resource_lowering_probe, start: 50, end: 59 },
+    Token { class: ^dag_token_ident, lexeme: "expires", file: ^resource_lowering_probe, start: 62, end: 69 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^resource_lowering_probe, start: 69, end: 70 },
+    Token { class: ^dag_token_kw_true, lexeme: "true", file: ^resource_lowering_probe, start: 71, end: 75 },
+    Token { class: ^dag_token_ident, lexeme: "acquire", file: ^resource_lowering_probe, start: 78, end: 85 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^resource_lowering_probe, start: 86, end: 87 },
+    Token { class: ^dag_token_ident, lexeme: "hermetic", file: ^resource_lowering_probe, start: 88, end: 96 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 97, end: 98 },
+    Token { class: ^dag_token_ident, lexeme: "release", file: ^resource_lowering_probe, start: 101, end: 108 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^resource_lowering_probe, start: 109, end: 110 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 110, end: 111 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 112, end: 113 }
+  ])
+}
+
+test fn entries_stream_is_what_tokenize_produces_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: entries_source, file: ^resource_lowering_probe, supplied: entries_stream())
 }
