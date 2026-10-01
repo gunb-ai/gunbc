@@ -7634,6 +7634,10 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: span, owner: Present { value: decided })
           }
         Absent =>
+      if map_get(scope.locals, name) == none
+        && (kernel_variant_owner_candidates(env: scope.type_env, name: name) |> count) > 1 {
+        ambiguous_reference_refusal(name: name, candidates: kernel_variant_owner_candidates(env: scope.type_env, name: name), span: span, scope: scope)
+      } else {
       match map_get(scope.locals, name) {
         Present { value: binding } =>
           let scope_parent = lookup_variant_parent_enum(scope: scope, name: name)
@@ -7804,6 +7808,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   }
               }
           }
+      }
       }
       }
       }
@@ -13235,25 +13240,56 @@ fn union_parent_type_env_caches(
   }
 }
 
+// THE KERNEL TIER ELECTS ONLY AN UNAMBIGUOUS SPELLING. Each kernel coproduct arm binds to its owner
+// where no other kernel coproduct declares the same spelling; a spelling two kernel coproducts declare
+// binds to NEITHER (no first-wins by name order), and a reference to it refuses AmbiguousReference
+// naming both (kernel_variant_owner_candidates, read at the reference).
 fn kernel_coproduct_variant_locals(env: TypeEnv) -> Map<String, TypeBinding> {
   match env.parents |> last {
     Present { value: kernel } =>
-      fold(
+      let owners = fold(
         kernel.bindings |> map_values |> sort_by(b => b.name),
         init: empty_map(),
         f: (acc, binding) =>
-          let is_coproduct = binding.resolved.connective == Disj
-          if is_coproduct {
+          if binding.resolved.connective == Disj {
             fold(binding.resolved.children, init: acc, f: (vacc, child) =>
               let child_name = authored_name_at(source_indices: env.source_indices, node: child)
               match map_get(vacc, child_name) {
-                Present { value: _prev } => vacc
-                Absent => map_insert(vacc, child_name, TypeBinding { name: child_name, resolved: binding.resolved, provenance: SubValueUnknown })
+                Present { value: seen } =>
+                  if seen |> any(b => b.resolved == binding.resolved) { vacc } else { map_insert(vacc, child_name, concat(seen, [binding])) }
+                Absent => map_insert(vacc, child_name, [binding])
               }
             )
           } else { acc }
       )
+      fold(owners |> map_keys, init: empty_map(), f: (acc, arm) =>
+        match map_get(owners, arm) {
+          Present { value: bindings } =>
+            if (bindings |> count) == 1 {
+              match bindings |> first {
+                Present { value: b } => map_insert(acc, arm, TypeBinding { name: arm, resolved: b.resolved, provenance: SubValueUnknown })
+                Absent => acc
+              }
+            } else { acc }
+          Absent => acc
+        }
+      )
     Absent => empty_map()
+  }
+}
+
+// The distinct kernel coproducts declaring an arm spelled `name`, by authored owner name.
+fn kernel_variant_owner_candidates(env: TypeEnv, name: String) -> List<String> {
+  match env.parents |> last {
+    Present { value: kernel } =>
+      fold(kernel.bindings |> map_values |> sort_by(b => b.name), init: [], f: (acc, binding) =>
+        if binding.resolved.connective == Disj
+          && has_child_named(n: binding.resolved, name: name, source_indices: env.source_indices) {
+          let owner = authored_name_at(source_indices: env.source_indices, node: binding.resolved)
+          if acc |> any(o => o == owner) { acc } else { concat(acc, [owner]) }
+        } else { acc }
+      )
+    Absent => []
   }
 }
 
