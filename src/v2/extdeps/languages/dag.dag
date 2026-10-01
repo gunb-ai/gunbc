@@ -920,11 +920,23 @@ fn dag_grammar_where_predicate_expr() -> GrammarExpr {
   )
 }
 
+// THE PREDICATES ARE SEPARATED BY A REQUIRED COMMA, as v1 02_parse parse_predicates_acc reads them:
+// it continues only while it eats a comma and otherwise stops. The general comma list
+// (dag_grammar_comma_list_expr) makes the separator optional, which let a clause run on into the
+// identifiers that follow it -- `type T = String where brand("T")` followed by `service a.B { .. }`
+// read `service` and `a` as two more predicates, since `service` is an exact-word identifier rather
+// than a keyword, and refused the module at `.B`. No trailing comma: v1 reads none here.
 fn dag_grammar_where_refinement_clause_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_where),
-    right: dag_grammar_comma_list_expr(
-      item: dag_grammar_nonterminal(production: ^dag_production_where_predicate)
+    right: dag_grammar_sequence(
+      left: dag_grammar_nonterminal(production: ^dag_production_where_predicate),
+      right: dag_grammar_repeat(
+        element: dag_grammar_sequence(
+          left: dag_grammar_terminal(token_class: ^dag_token_comma),
+          right: dag_grammar_nonterminal(production: ^dag_production_where_predicate)
+        )
+      )
     )
   )
 }
