@@ -13,8 +13,8 @@ import extdeps.languages.json.emit {
 }
 
 import v2.compiler.name_resolve {
-  ResolutionContext,
-  resolve_walk_with_admission_context_policy,
+  resolution_context_of_validated,
+  resolve_walk_in_context,
   validate_module_roots
 }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
@@ -338,13 +338,17 @@ fn closure_resolve_member(
   bind_outcome(
     o: validate_module_roots(roots: Cons { head: tree, tail: Empty }),
     f: fn(validated) {
-      resolved_tree_outcome(w: resolve_walk_with_admission_context_policy(
-        context: outcome_accepted(value: ResolutionContext { lm: lm, roots: validated, symbol_index: symbol_index }),
-        admission: Admission { subject: ResolutionSubject { name: member_module }, imports: Empty },
-        index: index,
-        active_roots: active_roots,
-        policy: default_name_resolution_policy()
-      ), symbol_index: symbol_index)
+      resolved_tree_outcome(w: resolve_walk_in_context(
+        context: outcome_accepted(value: resolution_context_of_validated(
+          lm: lm,
+          roots: validated,
+          symbol_index: symbol_index,
+          index: index,
+          active_roots: active_roots,
+          policy: default_name_resolution_policy()
+        )),
+        admission: Admission { subject: ResolutionSubject { name: member_module }, imports: Empty }
+      ).walk, symbol_index: symbol_index)
     }
   )
 }

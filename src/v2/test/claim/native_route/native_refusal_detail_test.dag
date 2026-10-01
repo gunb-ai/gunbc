@@ -156,22 +156,22 @@ fn ndp_resolutions() -> NdpResolutions {
           context: context,
           refusal_index: index,
           entry: ndp_universe_module(module: "v2.ndp.shadow.inner.leaf", path: ^ndp_shadow_leaf_cu, declaration: "leaf_value")
-        ),
+        ).resolution,
         collision: native_lane_module_resolution(
           context: context,
           refusal_index: index,
           entry: ndp_universe_module(module: "v2.ndq.user", path: ^ndp_collision_user_cu, declaration: "user_value")
-        ),
+        ).resolution,
         unbound: native_lane_module_resolution(
           context: context,
           refusal_index: index,
           entry: ndp_universe_module(module: "v2.ndp.unbound", path: ^ndp_unbound_cu, declaration: "unbound_value")
-        ),
+        ).resolution,
         clean: native_lane_module_resolution(
           context: context,
           refusal_index: index,
           entry: ndp_universe_module(module: "v2.ndp.clean", path: ^ndp_clean_cu, declaration: "clean_value")
-        )
+        ).resolution
       }
     }
   }
