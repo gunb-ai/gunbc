@@ -42,11 +42,11 @@ Audit of every Arrow reader outside `src/v2/test`. "Metadata" means: handled exa
 | `v2.std.node` `arrow_signature_edges_conform` | counted as the binder | **this change** |
 | `v2.std.type_binder` `arrow_named_labels_conform` | refuses | **this change**: reads `arrow_named_edge_is_non_binder` |
 | `v2.std.type_binder` `type_binder_node_conforms` | — | **this change**: runs `v2.std.arrow_contract` `arrow_contract_conforms` |
-| `v2.std.type_binder` `node_inferred_subtree_nodes` | walked as inferable | skip (metadata). Owed by PR2c: no producer emits the edges before then |
-| `v2.compiler.resolve` `resolve_arrow_node_in` | resolved under the body scope | carry unwalked (metadata). PR2c |
-| `v2.compiler.infer` `infer_gather_fold_step` / `infer_arrow_signature_order_edge` | inferred as a value child | skip predicate. PR2c |
-| `v2.compiler.infer` `infer_product_child_evidence_edges` (the Arrow's derived TYPE) | its type enters the derived type | rides as metadata. PR2c |
-| `v2.compiler.translate` `translate_grounding_derived_gate_subtree` | requires grounding for every subtree node | exempt (metadata). PR2c |
+| `v2.std.type_binder` `node_inferred_subtree_nodes` | walked as inferable | skip every `arrow_named_edge_is_contract` edge. **Landed with D13 step (a)** (the first producer) |
+| `v2.compiler.resolve` `resolve_arrow_node_in` | resolved under the body scope | effect claims and execution mode: carried unwalked. Resource requirements: walked in the Arrow's type scope (no value params), each member must name a declared resource, at most once (`resolve_arrow_resource_requirements`). **Landed with D13 step (a)** |
+| `v2.compiler.infer` `infer_gather_fold_step` / `infer_arrow_signature_order_edge` | inferred as a value child | skip every contract edge. **Landed with D13 step (a)** |
+| `v2.compiler.infer` `infer_product_child_evidence_edges` (the Arrow's derived TYPE) | its type enters the derived type | every contract edge rides as metadata. **Landed with D13 step (a)** |
+| `v2.compiler.translate` `translate_grounding_derived_gate_subtree` | requires grounding for every subtree node | exempt (metadata). Still owed by PR2c: the gate runs only over BODIED Arrows, and the requirements edge rides only on bodiless operation Arrows, so step (a) produces no input it can reach |
 | `v2.std.node` content hash (`canonicalize_arrow_labeled`) | hashes every edge, named edges sorted by label | in the hash, order-independent (tested here) |
 
 Readers that ignore a named edge safely: the domain, codomain and body readers in resolve, infer, eval, translate and `v2.std.compilers.target_model`; `v2.std.node_query`; `v2.std.decl_index`; `v2.compiler.symbol_index_fill`; `v2.compiler.emit_produced`; `v2.compiler.compile`; `v2.std.node` `cost_edge_role`; `v2.lens.cost.copied_port_derivation`.
@@ -63,3 +63,7 @@ Readers that ignore a named edge safely: the domain, codomain and body readers i
 ## Not in this change: input defaults
 
 Per the ruling, a default belongs to the binder and not to its type. One binder representation (a required type, an optional single default, closed labels, one reader and builder) serves fn parameters, service io fields and record fields. That changes the existing name-to-type binder shape, so it is a replacement migration (DESIGN §3) and is PR2b: its producers and readers are measured first, then all move together.
+
+## Third edge: resource requirements (D13 step a)
+
+`^arrow_resource_requirements_edge` (`v2.std.node` `arrow_resource_requirements_label`) is the operation's declared `requires R, ..` (`v2.extdeps.languages.dag` `dag_grammar_op_requires_expr`), lowered by `v2.compiler.body_lowering_fold` `body_lower_operation_requires`. Its target is a nonempty Conj with one Named edge per member: the label is the member's spelling, and the target is its type reference. Unlike the two claim edges, it names DECLARATIONS from an open set, so `v2.compiler.resolve` walks it and checks each member against `v2.std.symbol_index` `symbol_index_declares_resource_at`. It is the first producer of any contract edge, so the pipeline reader arms above landed with it, for all three edges. Controls: `v2.test.claim.normalize.operation_requires_edge`.

@@ -2335,6 +2335,18 @@ fn dag_grammar_op_modifier_expr() -> GrammarExpr {
 // as dag_grammar_op_modifier_expr does for readonly/idempotent/hermetic: the production holds no
 // name terminal, v2.compiler.occurrence_role needs no row for it, and an unknown kind is a located
 // parse refusal instead of an accepted identifier. The four are v1 00_core TransportKind's arms.
+// `requires R, ..` ON AN OPERATION: the resources an opaque operation reaches (D13 step a). Each member
+// is an ordinary type expression, so a resource is named exactly as a `uses` clause or a parameter
+// names it, and resolution reads it through the same type references. Lowered by
+// v2.compiler.body_lowering_fold body_lower_operation_requires onto the operation Arrow's
+// ^arrow_resource_requirements_edge.
+fn dag_grammar_op_requires_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "requires")),
+    right: dag_grammar_comma_list_expr(item: dag_grammar_nonterminal(production: ^dag_production_type_expr))
+  )
+}
+
 fn dag_grammar_transport_kind_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "rest")),
@@ -2417,12 +2429,15 @@ fn dag_grammar_operation_body_entry_expr() -> GrammarExpr {
       right: dag_grammar_choice(
         left: dag_grammar_nonterminal(production: ^dag_production_op_modifier),
         right: dag_grammar_choice(
-          left: dag_grammar_nonterminal(production: ^dag_production_transport),
+          left: dag_grammar_nonterminal(production: ^dag_production_op_requires),
           right: dag_grammar_choice(
-            left: dag_grammar_nonterminal(production: ^dag_production_exit_block),
+            left: dag_grammar_nonterminal(production: ^dag_production_transport),
             right: dag_grammar_choice(
-              left: dag_grammar_nonterminal(production: ^dag_production_response_block),
-              right: dag_grammar_nonterminal(production: ^dag_production_mock_response_block)
+              left: dag_grammar_nonterminal(production: ^dag_production_exit_block),
+              right: dag_grammar_choice(
+                left: dag_grammar_nonterminal(production: ^dag_production_response_block),
+                right: dag_grammar_nonterminal(production: ^dag_production_mock_response_block)
+              )
             )
           )
         )
@@ -2991,6 +3006,11 @@ fn dag_grammar_root() -> GrammarRoot {
     expression: dag_grammar_op_modifier_expr(),
     emitted: ^dag_surface_op_modifier
   )
+  let op_requires = dag_grammar_production(
+    name: ^dag_production_op_requires,
+    expression: dag_grammar_op_requires_expr(),
+    emitted: ^dag_surface_op_requires
+  )
   let exit_block = dag_grammar_production(
     name: ^dag_production_exit_block,
     expression: dag_grammar_exit_block_expr(),
@@ -3251,6 +3271,7 @@ fn dag_grammar_root() -> GrammarRoot {
       input_block,
       output_block,
       op_modifier,
+      op_requires,
       exit_block,
       response_block,
       mock_response_block,
