@@ -1675,7 +1675,6 @@ enum PortableValue {
 /// sequences lexicographically. Used to put map
 /// entries in one order in every process.
 fn portable_value_cmp(a: &PortableValue, b: &PortableValue) -> std::cmp::Ordering {
-    use std::cmp::Ordering;
     fn rank(v: &PortableValue) -> u8 {
         match v {
             PortableValue::Null => 0,
@@ -1745,7 +1744,7 @@ fn portable_value_cmp(a: &PortableValue, b: &PortableValue) -> std::cmp::Orderin
                 .then_with(|| v.0.cmp(w.0))
                 .then_with(|| fields(f, g))
         }
-        _ => rank(a).cmp(&rank(b)).then(Ordering::Equal),
+        _ => rank(a).cmp(&rank(b)),
     }
 }
 
