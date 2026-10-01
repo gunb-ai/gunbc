@@ -12,7 +12,7 @@ import extdeps.gpu.types {
 }
 import extdeps.vllm.server { VllmSourceRevision }
 import extdeps.vllm.source_build {
-  VllmContainerBuildRecipe, vllm_d2d649e6_aarch64_release_recipe, vllm_recipe_targeting, vllm_d2d649e6_revision,
+  VllmContainerBuildRecipe, vllm_d2d649e6_aarch64_release_recipe, vllm_recipe_targeting, vllm_recipe_with_flashinfer, vllm_d2d649e6_revision,
 }
 import extdeps.flashinfer.flashinfer {
   FlashInferAcquisition, FlashInferWheel, flashinfer_acquisition_key, flashinfer_published_version,
@@ -750,28 +750,16 @@ fn v41_candidate_standing_of(c: V41CandidateInputs) -> V41CandidateStanding {
 // FLASHINFER_VERSION carries it to the jit-cache install; the requirements member carries it to
 // flashinfer-python and flashinfer-cubin, so the image holds one FlashInfer release, not two.
 fn v41_candidate_recipe() -> VllmContainerBuildRecipe {
-  let targeted = vllm_recipe_targeting(
-    base: vllm_d2d649e6_aarch64_release_recipe,
-    torch_cuda_arch_list: v41_gb10_torch_cuda_arch_list,
-    install_kv_connectors: vllm_d2d649e6_aarch64_release_recipe.install_kv_connectors,
-    max_jobs: vllm_d2d649e6_aarch64_release_recipe.max_jobs,
-    nvcc_threads: hardware_thread_count_value(t: v41_build_nvcc_threads),
-  )
-  VllmContainerBuildRecipe {
-    source: targeted.source,
-    dockerfile_path: targeted.dockerfile_path,
-    build_target: targeted.build_target,
-    cuda_version: targeted.cuda_version,
-    build_base_image: targeted.build_base_image,
-    final_base_image: targeted.final_base_image,
-    python_version: targeted.python_version,
-    torch_version: targeted.torch_version,
+  vllm_recipe_with_flashinfer(
+    base: vllm_recipe_targeting(
+      base: vllm_d2d649e6_aarch64_release_recipe,
+      torch_cuda_arch_list: v41_gb10_torch_cuda_arch_list,
+      install_kv_connectors: vllm_d2d649e6_aarch64_release_recipe.install_kv_connectors,
+      max_jobs: vllm_d2d649e6_aarch64_release_recipe.max_jobs,
+      nvcc_threads: hardware_thread_count_value(t: v41_build_nvcc_threads),
+    ),
     flashinfer_version: flashinfer_0_7_1rc1_version,
-    torch_cuda_arch_list: targeted.torch_cuda_arch_list,
-    install_kv_connectors: targeted.install_kv_connectors,
-    max_jobs: targeted.max_jobs,
-    nvcc_threads: targeted.nvcc_threads,
-  }
+  )
 }
 
 // THE SPLIT THE FOUR-SPARK ARITHMETIC NEEDS: the two sparse embedding tables per Engram layer (weight and
