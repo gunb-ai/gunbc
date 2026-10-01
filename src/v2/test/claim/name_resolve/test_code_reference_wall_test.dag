@@ -409,17 +409,23 @@ test fn a_modules_own_declaration_beats_a_same_named_test_fn_holds() -> Bool {
 
 data default_reference_source: String = "module m\nfn f(x: T = g()) -> T = x\n"
 
-// A reference from a parameter DEFAULT cannot be written in v2: the grammar has no default, and the
-// source refuses at parse, before resolution could miss it. If this ever parses, the default has
-// become a place a reference can hide, and it needs its own red.
-test fn a_parameter_default_is_refused_at_parse_holds() -> Bool {
+// A reference from a parameter DEFAULT cannot reach resolution in v2. Since gunbc#12876 the grammar
+// has a default-value production, so the source parses, and lowering refuses it with the one typed
+// reason both defaults share (body_lowering_reason_default_value_unmodeled), before resolution could
+// miss the reference. Re-stated 2026-10-01 from "refused at parse", which #12876 made false. If this
+// ever normalizes, the default has become a place a reference can hide, and it needs its own red.
+test fn a_parameter_default_is_refused_at_lowering_holds() -> Bool {
   let lm = dag_language_model()
   match tokenize(text: default_reference_source, file: ^wall_default_file, rules: lm.lex) {
     Rejected { diagnostics: _ } => false
     Accepted { value: ts, diagnostics: _ } =>
       match parse_module(tokens: ts, grammar: lm.grammar) {
-        Rejected { diagnostics: _ } => true
-        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: d } => diagnostics_fatal(d: d).reason == ^body_lowering_reason_default_value_unmodeled
+            Accepted { value: _, diagnostics: _ } => false
+          }
       }
   }
 }
