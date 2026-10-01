@@ -639,3 +639,40 @@ materializes a whole-closure index.
   stops the change and is reported by name.
 - The A/B for this part is paired thread CPU (two runs per arm), plus a differential at identity
   grain of every name the BEFORE arm looked up.
+
+## PR-2 implementation status (2026-10-01, at wind-down)
+Branch `sleek-ibex-207/type-env-surface-walk` (no PR yet), stacked on gunbc#12895. Part (a) is
+implemented:
+- `04_env.dag`: `SurfaceImport`, `ModuleSurface`, `SurfacePool` (exporter index, multi-exporter set,
+  ordinal map), `AncestryView`, `ancestry_lookup`, `ancestry_winner` (one descent),
+  `surface_fork_rows` (canonical order, with a closure-declarer prefilter), and `ancestry_names`.
+- `04_infer.dag`: the realize loop admits each module into the pool. The final pool is attached
+  before the rewire (`modules_with_final_surface_pool`, which recomputes each view's closure bitset).
+- Encoders strip the pool, decoders re-attach it, and the format versions are bumped (resolved-graph
+  cache 6, shared typecheck store 2).
+State:
+- **Regen fixed point:** holds (`first_generation_equal=true`, `changed=0`).
+- **Declaration-grain differential:** BEFORE (`sleek-ibex-207/pr2-diff-before`) vs AFTER
+  (`sleek-ibex-207/pr2-diff-after`) over two closures (634 modules): 0 differing ancestry digests,
+  0 differing fork rows. The whole-tree run (~7k modules) is requested on srv1
+  (`pr2_whole_tree_differential_probe`, `GUNBC_ANCESTRY_DIGEST=1`).
+- **Permanent controls:** `cli_run` `surface_view_controls` (a diamond lattice lookup is linear in
+  depth; a view re-pointed across pools recomputes its closure). Both are red without their fixes.
+- **Still owed before a PR:**
+  - part (b) (the deps union) and part (c) (`source_visible_names`);
+  - the seed-growth receipt for the controls;
+  - a merge with main (the base predates gunbc#12850 and gunbc#12890), which needs a regen round;
+  - the A/B against the lane manager's gates (1)-(4).
+  The runtime-item namespace, the demand-sized frame and the cycle set are PR-2b.
+**Regen recipe used (BuildBuddy, one round per dispatch under the 1 h free-tier cap):**
+`CTRL_BUILD_RUNNER_EXEC_PROPERTIES="EstimatedMemory=60GB" ctrl-build --remote --timeout 58m -- bash -lc '<script>'`.
+The script, in order:
+1. Check out the pin.
+2. `cargo build --release --bin claim_executor`.
+3. Bind a 48 GiB cgroup v2 leaf (mkdir `/sys/fs/cgroup/gunbcrun`, write `memory.max`, then move the
+   subshell into it before exec).
+4. `claim_executor --required-regen --source-root dag --source-root src/v2`.
+5. Install every `target/stage0-regen-candidate/src/*.rs` that differs into `src/v1/stage0/src`.
+6. Emit `git diff -- src/v1/stage0/src` as gzip+base64, to apply locally.
+Bootstrap rule: hand Rust that calls newly emitted functions is withheld for one round, and a
+hand-mirrored generated change is dev-only (the regen replaces it).
