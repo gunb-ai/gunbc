@@ -178,7 +178,8 @@ fn pr_ctx(kind: FrameKind) -> ResolveContext {
     position: pr_qn(dotted: "m"),
     lm: dag_language_model(),
     under_module_root: false,
-    declaring: NotDeclaring
+    declaring: NotDeclaring,
+    binder_counts: empty_map()
   }
 }
 

@@ -1934,8 +1934,8 @@ fn resolve_pattern_node_walk(ctx: ResolveContext, pat: Node) -> ResolveNodeWalk 
     match construct_tag_optional(n: pat) {
       Absent => resolve_node_walk(ctx: ctx, n: pat)
       Present { value: reference } =>
-        resolve_construct_walk(ctx: ctx, n: pat, reference: reference, field: fn(e, _) {
-          resolve_pattern_node_walk(ctx: ctx, pat: e.target)
+        resolve_construct_walk(ctx: ctx, n: pat, reference: reference, field: fn(e, _, counts) {
+          resolve_pattern_node_walk(ctx: resolve_ctx_with_binder_counts(ctx: ctx, counts: counts), pat: e.target)
         })
     }
   }
@@ -1950,11 +1950,12 @@ fn resolve_construct_walk(
   ctx: ResolveContext,
   n: Node,
   reference: Node,
-  field: fn(Edge, Optional<QualifiedName>) -> ResolveNodeWalk
+  field: fn(Edge, Optional<QualifiedName>, Map<Symbol, Int>) -> ResolveNodeWalk
 ) -> ResolveNodeWalk {
   resolve_construct_walk_with_tag(
     n: n,
     tag: resolve_construct_tag_walk(ctx: ctx, reference: reference),
+    counts: ctx.binder_counts,
     field: field
   )
 }
@@ -1967,18 +1968,18 @@ fn resolve_construct_walk(
 fn resolve_construct_walk_with_tag(
   n: Node,
   tag: ResolveNodeWalk,
-  field: fn(Edge, Optional<QualifiedName>) -> ResolveNodeWalk
+  counts: Map<Symbol, Int>,
+  field: fn(Edge, Optional<QualifiedName>, Map<Symbol, Int>) -> ResolveNodeWalk
 ) -> ResolveNodeWalk {
   let tag_path = match tag {
     ResolveWalkAccepted { value: resolved, diagnostics: _, binder_counts: _ } => declaration_reference_path_optional(node: resolved)
     ResolveWalkRefused { first: _, rest: _, observation: _ } => Absent
   }
-  child_walk_node(n: n, w: fold(n.children, init: child_walk_init(counts: ctx.binder_counts), f: fn(acc, e) {
-    let ctx = resolve_ctx_with_binder_counts(ctx: ctx, counts: acc.binder_counts)
+  child_walk_node(n: n, w: fold(n.children, init: child_walk_init(counts: counts), f: fn(acc, e) {
     if edge_is_core(e: e, marker: ConstructTagEdge) {
       child_walk_step(w: acc, e: e, r: tag)
     } else {
-      child_walk_step(w: acc, e: e, r: field(e, tag_path))
+      child_walk_step(w: acc, e: e, r: field(e, tag_path, acc.binder_counts))
     }
   }))
 }
@@ -2142,7 +2143,8 @@ fn resolve_elided_construct_walk(ctx: ResolveContext, n: Node, x: ResolveExpecta
                   diagnostics: None,
                   binder_counts: ctx.binder_counts
                 },
-                field: fn(e, record) { resolve_record_field_edge(ctx: ctx, e: e, record: record) }
+                counts: ctx.binder_counts,
+                field: fn(e, record, counts) { resolve_record_field_edge(ctx: resolve_ctx_with_binder_counts(ctx: ctx, counts: counts), e: e, record: record) }
               )
           }
         _ => resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_record_expected_type_not_record)
@@ -2603,8 +2605,8 @@ fn resolve_node_walk_entered(
             resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_record_no_expected_type)
           }
         ConstructTagAuthored { reference: reference } =>
-          resolve_construct_walk(ctx: ctx, n: n, reference: reference, field: fn(e, record) {
-            resolve_record_field_edge(ctx: ctx, e: e, record: record)
+          resolve_construct_walk(ctx: ctx, n: n, reference: reference, field: fn(e, record, counts) {
+            resolve_record_field_edge(ctx: resolve_ctx_with_binder_counts(ctx: ctx, counts: counts), e: e, record: record)
           })
         NotAConstruct =>
           match try_resolve_qualified_name_node(ctx: ctx, n: n) {
