@@ -10939,10 +10939,11 @@ pub fn run_required_floor(
                     .map_err(|e| format!("reach differential authority resolve: {e}"))?;
             make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic)
         };
-        let identities: Vec<String> = reach_head_standings
-            .iter()
-            .map(|(i, _)| i.clone())
-            .collect();
+        // ONLY A CLAIM THAT CAN BLOCK NEEDS A BASE. `reach_head_cannot_block` is derived from
+        // claim_differential_blocks over every base arm; a claim it exempts is never run at base
+        // and never blocks. That is 60 of 1481 for a one-line v2.std.node edit (srv1, 2026-10-01).
+        let (identities, head_cannot_block) =
+            reach_base_identities(&verdict_frame, &reach_head_standings)?;
         // REPORT-ONLY DOES NOT PAY FOR THE BASE ARM. The standing exists because the base arm's
         // cost is under ruling, and running it without blocking would charge every PR that cost
         // ahead of the ruling while deciding nothing. So the run names what it did not do.
@@ -10954,6 +10955,7 @@ pub fn run_required_floor(
             )
         } else {
             match &diff_base {
+                Some(_) if identities.is_empty() => Ok(HashMap::new()),
                 Some(base) => run_reach_base_arm(
                     source_roots,
                     base,
@@ -11010,6 +11012,14 @@ pub fn run_required_floor(
                 let mut blocking: Vec<String> = Vec::new();
                 let mut counts: BTreeMap<String, usize> = BTreeMap::new();
                 for (identity, head_passed) in &reach_head_standings {
+                    if head_cannot_block.contains(identity) {
+                        *counts.entry("head_cannot_block".to_string()).or_default() += 1;
+                        eprintln!(
+                            "[floor-reach-differential] identity={identity} base=not-run \
+                             head=passed differential=head_cannot_block blocks=false"
+                        );
+                        continue;
+                    }
                     let base_name = base.get(identity).map(String::as_str).unwrap_or("missing");
                     let head_name = if *head_passed { "passed" } else { "failed" };
                     let verdict = v1_interpreter::run_in_context_with_args(
@@ -16693,6 +16703,42 @@ fn declared_no_ci_wet_lane_population() -> &'static std::collections::HashSet<St
         .into_iter()
         .collect()
     })
+}
+
+/// THE BASE ARM'S POPULATION: the reached claims whose head standing CAN block under some base,
+/// as `v2.workflow.required_floor` `reach_head_cannot_block` decides from claim_differential_blocks.
+/// Returns (identities to run at base, identities exempt because their head cannot block). An
+/// exempt claim is never run at base and never blocks.
+pub(crate) fn reach_base_identities(
+    frame: &v1_interpreter::InterpContext,
+    head_standings: &[(String, bool)],
+) -> Result<(Vec<String>, HashSet<String>), String> {
+    let mut exempt: HashSet<String> = HashSet::new();
+    let mut needs_base: Vec<String> = Vec::new();
+    for (identity, head_passed) in head_standings {
+        let head_name = if *head_passed { "passed" } else { "failed" };
+        match v1_interpreter::run_in_context_with_args(
+            frame,
+            "v2.workflow.required_floor.reach_head_cannot_block",
+            &[(
+                Some("head".to_string()),
+                v1_interpreter::str_value(head_name),
+            )],
+            false,
+        ) {
+            Ok(v1_interpreter::Value::Bool(true)) => {
+                exempt.insert(identity.clone());
+            }
+            Ok(v1_interpreter::Value::Bool(false)) => needs_base.push(identity.clone()),
+            other => {
+                return Err(format!(
+                    "reach_head_cannot_block({identity}) returned {}",
+                    floor_value_shape(other.as_ref().ok())
+                ))
+            }
+        }
+    }
+    Ok((needs_base, exempt))
 }
 
 /// THE BASELINE ARM THE RUN REPORTS IS THE ONE THAT HAPPENED (review 73484): `not-measured`

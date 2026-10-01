@@ -94,6 +94,8 @@ data floor_arm_set_consumer_seed_growth_justification: SeedGrowthJustification =
     DeclarationRef { module_path: "v1_compiler.cli_run.reach_base_standings.tests", decl_name: "a_new_failing_reach_claim_blocks_through_the_base_producer_and_the_model", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "run_reach_base_arm", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "reach_baseline_line", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "reach_base_identities", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.reach_base_standings.tests", decl_name: "a_head_passed_claim_is_never_run_at_base_and_never_blocks", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.reach_base_standings.tests", decl_name: "report_only_output_never_says_the_base_ran", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "remove_reach_base_worktree", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.bin.claim_executor", decl_name: "run_reach_base_standings", field: WholeDeclaration },

@@ -268,6 +268,38 @@ mod tests {
         }
     }
 
+    // A HEAD-PASSED CLAIM IS NEVER RUN AT BASE AND CAN NEVER BLOCK (deep-ferret-305). The partition
+    // is the model's: a passing head is exempt, a failing head goes to the base arm. And for the
+    // exempt one, no base standing at all makes the real verdict block.
+    #[test]
+    fn a_head_passed_claim_is_never_run_at_base_and_never_blocks() {
+        let root = process_workspace_root();
+        let roots: Vec<String> = default_source_roots()
+            .iter()
+            .map(|r| root.join(r).to_string_lossy().into_owned())
+            .collect();
+        let entry = root.join("src/v2/workflow/required_floor.dag");
+        let (graph, indices) =
+            resolve_entry_graph_shared(&roots, &entry.to_string_lossy()).expect("authority");
+        let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
+        let (needs_base, exempt) = super::super::required_floor_runner::reach_base_identities(
+            &ctx,
+            &[
+                ("m.passes".to_string(), true),
+                ("m.fails".to_string(), false),
+            ],
+        )
+        .expect("partition");
+        assert_eq!(needs_base, vec!["m.fails".to_string()]);
+        assert!(exempt.contains("m.passes") && !exempt.contains("m.fails"));
+        for base in ["passed", "failed", "not_declared"] {
+            assert!(
+                !verdict(base, "passed").1,
+                "a passing head blocked under base {base}"
+            );
+        }
+    }
+
     // REPORT-ONLY NEVER CLAIMS A BASE IT DID NOT RUN (review 73484). The line the floor prints
     // under a zero blocking budget is the not-measured arm and never says ran-at-merge-base; under
     // a positive budget it is the ran-at-merge-base arm. Both through the real model.

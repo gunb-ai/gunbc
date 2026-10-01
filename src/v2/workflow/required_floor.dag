@@ -2545,6 +2545,26 @@ fn reach_claim_verdict(base: String, head: String) -> ReachClaimVerdict {
   }
 }
 
+// WHICH REACHED CLAIMS NEED A BASE STANDING AT ALL. A head standing CANNOT BLOCK when no base
+// standing makes claim_differential_blocks true for it, and then its base is irrelevant to the
+// verdict. That is derived from the verdict function over EVERY base arm, not asserted. Today it
+// holds for StandingPassed and for StandingNotDeclared (a removal blocks nothing under any base),
+// so the base arm runs only the claims that FAIL at head: 60 of 1481 for a one-line v2.std.node body edit and 18 of 240 for gunbc#12582's change
+// (neat-boar-16, srv1, 2026-10-01). An unknown head name answers false, so it still goes to the
+// base arm and refuses there rather than being skipped.
+fn head_cannot_block(head: ClaimStanding) -> Bool {
+  !claim_differential_blocks(d: claim_differential(base: StandingPassed, head: head))
+    && !claim_differential_blocks(d: claim_differential(base: StandingFailed, head: head))
+    && !claim_differential_blocks(d: claim_differential(base: StandingNotDeclared, head: head))
+}
+
+fn reach_head_cannot_block(head: String) -> Bool {
+  match claim_standing_named(name: head) {
+    StandingParsed { standing: h } => head_cannot_block(head: h)
+    StandingNotParsed { name: _ } => false
+  }
+}
+
 // WHETHER A BLOCKING VERDICT STOPS THE REQUIRED RUN, AND WHETHER THE BASE SIDE RUNS AT ALL. Under
 // DifferentialBlocking the base side runs and every reached claim gets a verdict. Under
 // DifferentialReportOnly the base side is SKIPPED, no verdict is decided, and the run prints each

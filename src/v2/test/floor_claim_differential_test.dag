@@ -14,6 +14,7 @@ import v2.workflow.required_floor {
   reach_claim_verdict,
   reach_baseline_ran_at_merge_base_line,
   reach_baseline_not_measured_line,
+  reach_head_cannot_block,
 }
 
 // ONLY A VERDICT THE CHANGE MOVED BLOCKS. Passed -> failed is the one regression (gunbc#12361's
@@ -66,4 +67,15 @@ test fn the_baseline_line_names_the_merge_base_arm() -> Bool {
 test fn an_unmeasured_base_says_not_measured() -> Bool {
   reach_baseline_not_measured_line(cause: "report-only")
     == "baseline=not-measured cause=report-only"
+}
+
+// ONLY A FAILING HEAD NEEDS THE BASE ARM, and that is the verdict function's own consequence: a
+// passing head never blocks, and a head where the claim is no longer declared is a removal under
+// every base, which blocks nothing. A failing head blocks under some base, so it needs one; an
+// unknown name is never exempt.
+test fn only_a_failing_head_needs_the_base_arm() -> Bool {
+  reach_head_cannot_block(head: "passed")
+    && reach_head_cannot_block(head: "not_declared")
+    && !reach_head_cannot_block(head: "failed")
+    && !reach_head_cannot_block(head: "interrupted")
 }
