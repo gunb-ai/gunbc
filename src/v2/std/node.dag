@@ -1,7 +1,7 @@
 module v2.std.node
 
 import std.algebra { Cons, Empty, list_snoc_item }
-import v2.std.optional { Optional, Present }
+import v2.std.optional { Present }
 import std.occurrence_identity {
   NodeOccurrenceIdentity,
   OccurrenceAllocatorSnapshot,
@@ -1101,7 +1101,7 @@ fn declaration_reference_body_marked(target: Node) -> Bool {
 
 // THE BINDER SITE A REFERENCE NAMES, read from its label alone; Absent for anything that is not a
 // binder reference.
-fn binder_reference_site_optional(node: Node) -> Optional<BinderSite> {
+fn binder_reference_site_optional(node: Node) -> BinderSite? {
   match node.kind {
     TypeNode { connective: Conj } =>
       if count(node.children) == 1 {
@@ -1120,7 +1120,7 @@ fn binder_reference_site_optional(node: Node) -> Optional<BinderSite> {
   }
 }
 
-fn optional_absent_binder_site() -> Optional<BinderSite> {
+fn optional_absent_binder_site() -> BinderSite? {
   v2.std.optional.optional_absent()
 }
 
