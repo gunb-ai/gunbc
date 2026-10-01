@@ -19,7 +19,8 @@ import v2.lens.common.source_analysis_standing {
   SourceUnreadable
 }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SingleAuthority }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.lens.module_graph { ImportResolutionFact, ModuleDeclarationFact, import_resolution_facts_live, reference_derived_import_resolution_facts_live, module_declaration_facts_live }
 import v2.std.node { Node, Atom, TypeNode, symbol_lexeme }
 import v2.std.provenance { SpanIndex, span_index_empty, node_occurrence_id_optional, span_index_textual_locus_optional }
@@ -113,6 +114,22 @@ import std.primitives {
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
+
+// ADMISSION, AND THE PART OF THIS LENS THAT IS SCAFFOLD. The operator admitted this lens as the
+// migration instrument for gunbc#12760 and its deletion PR (operator default via escalation
+// msg_66c019ed, 2026-10-01, relayed by deep-bee-18). The admitted SCAFFOLD is the batch-per-module
+// running: text_string_importer_census and text_string_importer_literal_sites are driven one batch
+// of modules per process from outside the repository, because a one-process run over the whole
+// population dies by native stack exhaustion (gunbc.recurring_failure_mode
+// sweep_terminated_by_process_death_rather_than_a_typed_refusal). It dissolves when gunbc#12760 has
+// landed AND text_string_importer_population returns an empty population for both v2.std.text and
+// std.string_type: with no importer left, there is nothing for the census to classify.
+data text_string_importer_census_batch_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: decl_ref(module_path: "v2.lens.text_string_importer_census" as NonEmptyStr, decl_name: "text_string_importer_census" as NonEmptyStr)
+}
+
+data text_string_importer_census_dissolution: DissolutionCondition = unbound_dissolution(description: "gunbc#12760 has landed AND v2.lens.text_string_importer_census text_string_importer_population returns an empty population for both v2.std.text and std.string_type" as NonEmptyStr)
 
 
 // The host text primitives. Each is a `std.primitives` row; the row supplies the name.
