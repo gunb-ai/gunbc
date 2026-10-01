@@ -1,5 +1,7 @@
 module v2.test.emit.decl_emit_consolidated
 
+import v2.std.node_query { binder_edge }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data dc_bool_golden: String = concat(rust_enum_derives_copy, "\nenum Bool { True, False }")
@@ -205,7 +207,7 @@ fn dc_atom_type(t: String) -> Node {
 }
 
 fn dc_coproduct_field_edge(name: String, t: String) -> Edge {
-  dc_named_edge(name: name, target: dc_atom_type(t: t))
+  binder_edge(name: name, type_node: dc_atom_type(t: t))
 }
 
 fn dc_coproduct_variant_edge_payload(name: String, fields: List<Edge>) -> Edge {

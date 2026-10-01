@@ -1,5 +1,7 @@
 module v2.test.name_resolve.test_code_reference_wall
 
+import v2.std.node_query { binder_edge }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE WALL AT ONE INTERFACE: name resolution (v2.compiler.name_resolve resolve_with_admission, the
@@ -59,7 +61,7 @@ fn wall_member(name: Symbol, body: Node) -> Edge {
 // `name: (param: Bool) -> Bool = param` -- a parameter that shares a module-level name.
 fn wall_member_returning_its_param(name: Symbol, param: Symbol) -> Edge {
   let signature = declared_signature(
-    params: [Edge { label: Named { name: param }, target: wall_atom(identity: ^bool_node_symbol) }],
+    params: [binder_edge(name: param, type_node: wall_atom(identity: ^bool_node_symbol))],
     source: wall_atom(identity: param)
   )
   Edge {

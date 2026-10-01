@@ -8,6 +8,7 @@ import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node {
+import v2.std.node_query { binder_edge }
   Arrow,
   Atom,
   Edge,
@@ -41,8 +42,8 @@ fn rcp_atom(id: Symbol) -> Node {
 fn rcp_closure() -> Node {
   let sig = declared_signature(
     params: [
-      Edge { label: Named { name: ^rcp_z }, target: rcp_atom(id: ^rcp_int) },
-      Edge { label: Named { name: ^rcp_a }, target: rcp_atom(id: ^rcp_int) }
+      binder_edge(name: ^rcp_z, type_node: rcp_atom(id: ^rcp_int)),
+      binder_edge(name: ^rcp_a, type_node: rcp_atom(id: ^rcp_int))
     ],
     source: rcp_atom(id: ^rcp_source)
   )

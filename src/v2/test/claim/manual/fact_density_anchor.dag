@@ -1,5 +1,7 @@
 module v2.test.manual.fact_density_anchor
 
+import v2.std.node_query { binder_edge }
+
 data fact_density_anchor_hollow_alias: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^fact_density_anchor_int32_symbol } },
   children: [],
@@ -8,14 +10,14 @@ data fact_density_anchor_hollow_alias: Node = Node {
 data fact_density_anchor_fact_bundle: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Named { name: ^fact_density_anchor_width_field },
-      target: fact_density_anchor_hollow_alias
-    },
-    Edge {
-      label: Named { name: ^fact_density_anchor_signedness_field },
-      target: fact_density_anchor_hollow_alias
-    }
+    binder_edge(
+      name: ^fact_density_anchor_width_field,
+      type_node: fact_density_anchor_hollow_alias
+    ),
+    binder_edge(
+      name: ^fact_density_anchor_signedness_field,
+      type_node: fact_density_anchor_hollow_alias
+    )
   ],
   occurrence_id: OccurrenceSynthetic
 }
