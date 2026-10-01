@@ -1,0 +1,85 @@
+module test.claim.machine_intake.mtcollins1_census_qemu_host_observe_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, NonEmptyStr, String }
+import extdeps.crypto.hash { sha256_digest }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
+import extdeps.virtualization.qemu { qemu_8_2_2_ubuntu_noble_arm64 }
+import gunbc.runner_microvm_host_ready { KvmDeviceWritable }
+import gunbc.machine_intake_mtcollins1_census_qemu_host_observe {
+  qemu_binary_standing_of, QemuAbsent, QemuPinnedBuild, QemuOtherBuild,
+  QemuPresence, QemuNotExecutable, QemuExecutable, QemuBannerNotRead, QemuBannerRead, qemu_banner_may_be_read,
+  census_qemu_host_standing_text, CensusQemuHostStanding, FirmwareFileUnreadable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The digest and banner read from the verified qemu-system-arm 1:8.2.2+ds-0ubuntu1.18 archive
+// (extdeps.virtualization.qemu); the controls below vary ONE of the two facts at a time.
+fn pinned_digest() -> QemuPresence {
+  QemuExecutable { digest: Sha256FileDigest { digest: sha256_digest(hex: qemu_8_2_2_ubuntu_noble_arm64.installed_binary_sha256) } }
+}
+
+data other_digest: QemuPresence = QemuExecutable { digest: Sha256FileDigest { digest: sha256_digest(hex: "0000000000000000000000000000000000000000000000000000000000000000") } }
+
+test fn exact_banner_and_pinned_digest_is_the_pinned_build() -> Bool {
+  match qemu_binary_standing_of(build: qemu_8_2_2_ubuntu_noble_arm64, presence: pinned_digest(), banner: QemuBannerRead { banner: "QEMU emulator version 8.2.2 (Debian 1:8.2.2+ds-0ubuntu1.18)" }) {
+    QemuPinnedBuild { binary: b, banner: _ } => b == "/usr/bin/qemu-system-aarch64"
+    _ => false
+  }
+}
+
+// PREFIX ALIAS: starts with "QEMU emulator version 8.2.2" and contains the package version.
+test fn a_prefix_alias_banner_is_not_the_pinned_build() -> Bool {
+  match qemu_binary_standing_of(build: qemu_8_2_2_ubuntu_noble_arm64, presence: pinned_digest(), banner: QemuBannerRead { banner: "QEMU emulator version 8.2.20 (Debian 1:8.2.2+ds-0ubuntu1.18)" }) {
+    QemuOtherBuild { binary: _, observed_sha256: _, banner: _, banner_is_pinned: p } => !p
+    _ => false
+  }
+}
+
+// SUFFIX ALIAS: contains "1:8.2.2+ds-0ubuntu1.18" as a substring of a later package version.
+test fn a_suffix_alias_banner_is_not_the_pinned_build() -> Bool {
+  match qemu_binary_standing_of(build: qemu_8_2_2_ubuntu_noble_arm64, presence: pinned_digest(), banner: QemuBannerRead { banner: "QEMU emulator version 8.2.2 (Debian 1:8.2.2+ds-0ubuntu1.180)" }) {
+    QemuOtherBuild { binary: _, observed_sha256: _, banner: _, banner_is_pinned: p } => !p
+    _ => false
+  }
+}
+
+// THE BANNER ALONE NEVER DISCHARGES READINESS: exact banner, different bytes.
+test fn an_exact_banner_over_different_bytes_is_another_build() -> Bool {
+  match qemu_binary_standing_of(build: qemu_8_2_2_ubuntu_noble_arm64, presence: other_digest, banner: QemuBannerRead { banner: "QEMU emulator version 8.2.2 (Debian 1:8.2.2+ds-0ubuntu1.18)" }) {
+    QemuOtherBuild { binary: _, observed_sha256: h, banner: _, banner_is_pinned: p } => p && string_contains(s: h, pattern: "0000")
+    _ => false
+  }
+}
+
+test fn an_unreadable_binary_is_absent() -> Bool {
+  match qemu_binary_standing_of(build: qemu_8_2_2_ubuntu_noble_arm64, presence: QemuExecutable { digest: Sha256FileDigestUnavailable { path: "/usr/bin/qemu-system-aarch64", reason: "sha256sum could not digest the input" } }, banner: QemuBannerNotRead) {
+    QemuAbsent { binary: _, detail: _ } => true
+    _ => false
+  }
+}
+
+// THE srv1 CASE (fleet-converge run 36806730263): no executable at the pinned path. The banner may
+// NOT be read -- spawning it refused the whole run -- and the standing is QemuAbsent with nothing run.
+test fn an_absent_binary_is_never_spawned_and_reads_absent() -> Bool {
+  !qemu_banner_may_be_read(presence: QemuNotExecutable)
+    && !qemu_banner_may_be_read(presence: QemuExecutable { digest: Sha256FileDigestUnavailable { path: "/usr/bin/qemu-system-aarch64", reason: "No such file or directory" } })
+    && qemu_banner_may_be_read(presence: pinned_digest())
+    && match qemu_binary_standing_of(build: qemu_8_2_2_ubuntu_noble_arm64, presence: QemuNotExecutable, banner: QemuBannerNotRead) {
+      QemuAbsent { binary: b, detail: d } => b == "/usr/bin/qemu-system-aarch64" && string_contains(s: d, pattern: "not run")
+      _ => false
+    }
+}
+
+// THE RECEIPT IS RENDERED IN THE ABSENT ARM: the text names the absence and says not ready.
+test fn the_receipt_text_carries_the_absent_arm() -> Bool {
+  let text = census_qemu_host_standing_text(s: CensusQemuHostStanding {
+    host: "srv1",
+    kvm: KvmDeviceWritable,
+    qemu: qemu_binary_standing_of(build: qemu_8_2_2_ubuntu_noble_arm64, presence: QemuNotExecutable, banner: QemuBannerNotRead),
+    aavmf_code: FirmwareFileUnreadable { path: "/usr/share/AAVMF/AAVMF_CODE.fd", reason: "absent" },
+    aavmf_vars_template: FirmwareFileUnreadable { path: "/usr/share/AAVMF/AAVMF_VARS.fd", reason: "absent" },
+  })
+  string_contains(s: text, pattern: "qemu=absent") && string_contains(s: text, pattern: "ready=no")
+}

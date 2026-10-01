@@ -671,8 +671,8 @@ thread_local! {
     // policy + group syntax, plus the floor runner) resolves against this single
     // MultiEntryIndex, so its parse/typed caches share the union of all those closures:
     // the shared std/spec prefix typechecks ONCE, not once per prelude entry. Keyed by
-    // source_roots — a run's roots are fixed, so this is a get-or-build, rebuilt only on
-    // the rare roots change. Thread-local by the same Rc-not-Send reason as the store:
+    // source_roots — a run's roots are fixed, so this is a get-or-build over exactly one pool
+    // per slot (below). Thread-local by the same Rc-not-Send reason as the store:
     // each shard keeps its own index rather than smuggling Rc across threads.
     //
     // TWO SLOTS, ONE PER POOL SEMANTICS, and the pair is what makes the memo safe rather than
@@ -681,17 +681,18 @@ thread_local! {
     // for is a silently divergent resolution, which is the §5 fail-open this cache would
     // otherwise introduce. So precedence is part of the identity of the slot, not a build flag
     // applied to a shared one -- a roots-keyed single slot cannot express the distinction and
-    // would answer whichever mode ran first. Each slot keeps the original single-entry,
-    // rebuild-on-roots-change shape, so an index is never held for a pool nobody is asking about.
+    // would answer whichever mode ran first.
     #[allow(clippy::type_complexity)]
-    pub(crate) static PROCESS_RESOLVE_INDEX: RefCell<[Option<(String, Rc<MultiEntryIndex>)>; 2]> =
-        const { RefCell::new([None, None]) };
-
-    /// Every roots key each slot has built on this thread. A run's roots are fixed (above), so a
-    /// key built a second time is an evicted index being rebuilt: the same pool indexed twice.
-    #[allow(clippy::type_complexity)]
-    static PROCESS_RESOLVE_INDEX_BUILT: RefCell<[BTreeSet<String>; 2]> =
-        const { RefCell::new([BTreeSet::new(), BTreeSet::new()]) };
+    //
+    // ONE RESIDENT POOL PER SLOT, REFUSED AT BUILD. The map is keyed by canonical roots so a
+    // second demand for the resident roots is a hit, never an eviction and rebuild; a demand for
+    // DIFFERENT roots is refused by `try_process_shared_index_for_pool`
+    // (`SharedIndexSecondResidentPool`) before anything is walked, so a slot never holds more
+    // than one entry. A one-shot reader of another pool (a fixture, the regen round's emitted
+    // tree) owns its index instead. `shared_index_residency_control` reads the bound back at
+    // the end of the floor and of a regen round as the positive control.
+    pub(crate) static PROCESS_RESOLVE_INDEX: RefCell<[BTreeMap<String, Rc<MultiEntryIndex>>; 2]> =
+        const { RefCell::new([BTreeMap::new(), BTreeMap::new()]) };
 
     // While loading the materialization-provider authority, cross-process disk hits
     // must not re-enter provider routing (review 44268: bootstrap recursion).
@@ -891,10 +892,33 @@ pub(crate) fn on_live_pool_thread<T: Send + 'static>(
 fn release_per_entry_graphs_on_live_pool_thread() {
     PROCESS_RESOLVE_STORE.with(|s| s.borrow_mut().clear());
     PROCESS_RESOLVE_INDEX.with(|slots| {
-        for (_, index) in slots.borrow().iter().flatten() {
+        for index in slots.borrow().iter().flat_map(|slot| slot.values()) {
             clear_resolved_graph_memo_for_test(index);
         }
     });
+}
+
+/// AT MOST ONE RESIDENT POOL PER SLOT, the positive control of the build-site refusal in
+/// `try_process_shared_index_for_pool`. That refusal makes a second pool unbuildable through the
+/// memo; this reads the memo back at the end of the floor and of a regen round, so a route that
+/// ever installed one another way would still refuse rather than print.
+pub(crate) fn shared_index_residency_control() -> Result<usize, String> {
+    PROCESS_RESOLVE_INDEX.with(|s| {
+        let slots = s.borrow();
+        for (slot, pools) in slots.iter().enumerate() {
+            if pools.len() > 1 {
+                let roots: Vec<Vec<&str>> =
+                    pools.keys().map(|k| k.split('\u{1f}').collect()).collect();
+                return Err(format!(
+                    "SharedIndexMoreThanOneResidentPool: slot {slot} holds {} pools {roots:?} -- \
+                     a one-shot reader of another pool must own its index, not leave it in the \
+                     shared memo",
+                    pools.len()
+                ));
+            }
+        }
+        Ok(slots.iter().map(|pools| pools.len()).sum())
+    })
 }
 
 /// The strict-pool shared index for `source_roots` IF this thread already built it; never builds
@@ -904,11 +928,33 @@ pub(crate) fn memoized_process_shared_index(
     source_roots: &[String],
 ) -> Option<Rc<MultiEntryIndex>> {
     let roots_key = canonical_shared_index_roots(source_roots).join("\u{1f}");
-    PROCESS_RESOLVE_INDEX.with(|s| {
-        s.borrow()[0]
-            .as_ref()
-            .and_then(|(k, idx)| (*k == roots_key).then(|| idx.clone()))
-    })
+    PROCESS_RESOLVE_INDEX.with(|s| s.borrow()[0].get(&roots_key).cloned())
+}
+
+/// THE STRICT INDEX FOR A READER WHOSE ROOTS ARE A BUILTIN'S ARGUMENT. Over the layer roots
+/// (`witness_layer_roots`) it is the run's pool and is read from the shared memo; over any other
+/// roots -- a fixture a witness names -- it is a one-shot read of a pool nothing else reads, so
+/// the reader owns the index and drops it with the read. The same split
+/// `emit_host::resolve_roots_for_call_edge_pool` makes; it keeps a fixture out of the shared
+/// memo, where `try_process_shared_index_for_pool` refuses a second pool.
+#[track_caller]
+pub(crate) fn try_index_for_run_or_owned_pool(
+    source_roots: &[String],
+) -> Result<Rc<MultiEntryIndex>, String> {
+    let layers = super::witness_layer_roots();
+    if !source_roots.is_empty()
+        && source_roots
+            .iter()
+            .all(|root| layers.iter().any(|layer| layer == root))
+    {
+        return try_process_shared_index(source_roots);
+    }
+    let roots = canonical_shared_index_roots(source_roots);
+    Ok(Rc::new(new_multi_entry_index_shell(
+        try_build_module_index(&roots)?,
+        &roots,
+        None,
+    )))
 }
 
 /// Fallible twin of `process_shared_index`. The MEMO IS ONLY WRITTEN ON SUCCESS -- a failed
@@ -951,34 +997,24 @@ pub fn try_process_shared_index_for_pool(
     let slot = usize::from(primary_precedence);
     let roots = canonical_shared_index_roots(source_roots);
     let roots_key = roots.join("\u{1f}");
-    let existing = PROCESS_RESOLVE_INDEX.with(|s| {
-        s.borrow()[slot].as_ref().and_then(|(k, idx)| {
-            if *k == roots_key {
-                Some(idx.clone())
-            } else {
-                None
-            }
-        })
-    });
+    let existing = PROCESS_RESOLVE_INDEX.with(|s| s.borrow()[slot].get(&roots_key).cloned());
     if let Some(idx) = existing {
         return Ok(idx);
     }
-    // A REBUILD IS REFUSED WHERE IT HAPPENS, not counted at the end of a run it can prevent from
-    // ending: an evicted pool rebuilt re-parses every file and, while the evicted index is still
-    // held, doubles resident memory -- the shape that grew a floor past 40 GiB inside
-    // prepare-closure-resolve before any later control could look.
-    if PROCESS_RESOLVE_INDEX_BUILT.with(|b| b.borrow()[slot].contains(&roots_key)) {
+    // A SECOND POOL IS REFUSED WHERE IT WOULD BE BUILT, before it is walked, parsed and held
+    // beside the first. Every production caller passes the run's own roots or owns a private
+    // index for a pool nothing else reads (the audit that retired
+    // `gunbc.rung_drop.shared_index_residency_asserted_after_the_run`), so a different key here
+    // is a new demand for a second resident pool: carry it to its own index
+    // (`build_multi_entry_index`), never into the shared memo.
+    let resident = PROCESS_RESOLVE_INDEX.with(|s| s.borrow()[slot].keys().next().cloned());
+    if let Some(resident) = resident {
         let site = std::panic::Location::caller();
-        let resident = PROCESS_RESOLVE_INDEX.with(|s| {
-            s.borrow()[slot]
-                .as_ref()
-                .map(|(k, _)| k.split('\u{1f}').map(str::to_string).collect::<Vec<_>>())
-        });
         return Err(format!(
-            "SharedIndexRebuiltAfterEviction: roots {roots:?} (slot {slot}) were already indexed \
-             on this thread and evicted by roots {resident:?}; rebuilding them would parse the same \
-             pool twice. Demanded at {}:{} -- carry an index from its owner instead of alternating \
-             roots through the shared slot",
+            "SharedIndexSecondResidentPool: slot {slot} already holds roots {:?}; roots {roots:?} \
+             demanded at {}:{} would be a second resident pool on this thread -- a reader of \
+             another pool owns its index (build_multi_entry_index), not a slot in the shared memo",
+            resident.split('\u{1f}').collect::<Vec<_>>(),
             site.file(),
             site.line()
         ));
@@ -1003,28 +1039,7 @@ pub fn try_process_shared_index_for_pool(
         build_started.elapsed(),
     );
     PROCESS_RESOLVE_INDEX.with(|s| {
-        let mut slots = s.borrow_mut();
-        // AN EVICTION IS A REBUILD OWED LATER. The slot holds one index per precedence, so a
-        // caller with other roots displaces the resident one, and the next caller with the
-        // resident's roots builds it again -- every file re-parsed, typed caches lost. Reported
-        // with the demanding site so the second demand can be carried to its owner.
-        if let Some((evicted, old)) = slots[slot].as_ref() {
-            let site = std::panic::Location::caller();
-            eprintln!(
-                "[shared-index] evict slot={slot} evicted_generation={} evicted_roots={:?} \
-                 new_generation={} new_roots={:?} site={}:{}",
-                old.generation,
-                evicted.split('\u{1f}').collect::<Vec<_>>(),
-                idx.generation,
-                roots,
-                site.file(),
-                site.line()
-            );
-        }
-        slots[slot] = Some((roots_key.clone(), idx.clone()));
-    });
-    PROCESS_RESOLVE_INDEX_BUILT.with(|b| {
-        b.borrow_mut()[slot].insert(roots_key);
+        s.borrow_mut()[slot].insert(roots_key, idx.clone());
     });
     Ok(idx)
 }
@@ -1041,15 +1056,22 @@ pub(crate) fn process_resolve_census() -> String {
     let slots = PROCESS_RESOLVE_INDEX.with(|s| {
         s.borrow()
             .iter()
-            .map(|slot| match slot {
-                Some((_, idx)) => format!(
-                    "gen{}:parse={}:typed={}:graphs={}",
-                    idx.generation,
-                    idx.parse_cache.borrow().len(),
-                    idx.typed_module_cache.borrow().len(),
-                    idx.resolved_graph_memo.borrow().len()
-                ),
-                None => "empty".to_string(),
+            .map(|slot| {
+                if slot.is_empty() {
+                    return "empty".to_string();
+                }
+                slot.values()
+                    .map(|idx| {
+                        format!(
+                            "gen{}:parse={}:typed={}:graphs={}",
+                            idx.generation,
+                            idx.parse_cache.borrow().len(),
+                            idx.typed_module_cache.borrow().len(),
+                            idx.resolved_graph_memo.borrow().len()
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("|")
             })
             .collect::<Vec<_>>()
             .join(",")
