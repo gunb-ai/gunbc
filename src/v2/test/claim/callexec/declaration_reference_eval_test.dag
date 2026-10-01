@@ -44,7 +44,7 @@ import v2.std.integer { Int, integer_signed_i32_le_bytes_to_int }
 
 import v2.std.runtime { RuntimePrimitive, RuntimeValue }
 import v2.std.algebra { fold_list }
-import v2.std.qualified_name {
+import v2.std.qualified_name { qualified_name_last_segment,
   declaration_reference_path_optional,
   declaration_reference_spine_optional
 }
@@ -106,39 +106,66 @@ fn cref_inferred() -> Optional<InferredTree> {
   }
 }
 
-// THE CALL IS THE TRANSFORM WHOSE CHILD 0 DECODES TO A DECLARATION PATH ENDING IN `callee`. Keyed on
-// the decoded path rather than on a spelling, so an annotation or an unrelated reference cannot be
-// selected instead.
-fn cref_callee_reference_optional(n: Node) -> Optional<Node> {
-  match n.kind {
-    ComputationNode { behavior: Transform } =>
-      match list_at_optional(xs: node_positional_child_targets(node: n), index: 0) {
-        Absent => optional_absent()
-        Present { value: child } =>
-          match declaration_reference_path_optional(node: child) {
-            Absent => optional_absent()
-            Present { value: _ } => optional_present(value: child)
-          }
-      }
-    _ => optional_absent()
+// THE CALL IS SELECTED BY ITS CALLEE'S FULL DECLARING PATH, THROUGH THE PRODUCTION READER. What stood
+// here decoded the call itself: it matched ComputationNode { behavior: Transform } and read positional
+// child 0 by hand. That is a second reader of the application encoding, and it decayed exactly as DESIGN
+// section 3 says a positional scheme does -- main moved the call's lowered shape and this file's locator
+// answered Absent for every fixture, so nine rows went red while infer ACCEPTED the same trees and eval
+// was never reached. The rows were not wrong; they could not find their subject.
+//
+// It now asks v2.compiler.infer infer_application_callee_use, the same reader the application's own
+// formals and type parameters come from, so a change to the encoding reaches this file the way it reaches
+// infer.
+//
+// AND IT SELECTS BY THE WHOLE PATH, NOT BY SHAPE OR BY A LEAF. The old annotation claimed it keyed on "a
+// declaration path ending in `callee`"; the code checked no name at all and took the FIRST node with any
+// declaration-reference callee, so an annotation or an unrelated reference could have been selected and
+// the claim would still have looked green. Each fixture names one callee at module `p`, and the locator
+// requires EXACTLY ONE call to that full path -- two matches are Absent, so a fixture that grows a second
+// call to the same declaration refuses rather than silently picking one.
+fn cref_callee_path_is(callee: Node, name: Symbol) -> Bool {
+  match declaration_reference_path_optional(node: callee) {
+    Absent => false
+    Present { value: path } => path == Cons { head: ^p, tail: Cons { head: name, tail: Empty } }
   }
 }
 
-fn cref_first_call_optional(root: Node) -> Optional<Node> {
+fn cref_calls_to(root: Node, name: Symbol) -> List<Node> {
   fold_node(
     n: root,
     algebra: NodeFold {
       init: fn(n0) {
-        match cref_callee_reference_optional(n: n0) {
-          Present { value: _ } => optional_present(value: n0)
-          Absent => optional_absent()
+        match infer_application_callee_use(node: n0) {
+          Absent => []
+          Present { value: callee } =>
+            if cref_callee_path_is(callee: callee, name: name) { [n0] } else { [] }
         }
       },
-      step: fn(acc, _e, child) {
-        match acc { Present { value: _ } => acc  Absent => child }
-      }
+      step: fn(acc, _e, child) { concat(acc, child) }
     }
   )
+}
+
+fn cref_the_call_to(root: Node, name: Symbol) -> Optional<Node> {
+  match cref_calls_to(root: root, name: name) {
+    Cons { head: call, tail: rest } =>
+      match rest {
+        Empty => optional_present(value: call)
+        Cons { head: _, tail: _ } => optional_absent()
+      }
+    Empty => optional_absent()
+  }
+}
+
+fn cref_callee_reference_optional(n: Node) -> Optional<Node> {
+  match infer_application_callee_use(node: n) {
+    Absent => optional_absent()
+    Present { value: callee } =>
+      match declaration_reference_path_optional(node: callee) {
+        Absent => optional_absent()
+        Present { value: _ } => optional_present(value: callee)
+      }
+  }
 }
 
 // EVERY NODE STRICTLY UNDER THE REFERENCE MARKER -- the encoded declaring path and nothing else. The
@@ -185,7 +212,7 @@ fn cref_eval_of_the_call() -> Optional<Outcome<RuntimeValue>> {
   match cref_inferred() {
     Absent => optional_absent()
     Present { value: inferred } =>
-      match cref_first_call_optional(root: inferred.root) {
+      match cref_the_call_to(root: inferred.root, name: ^callee) {
         Absent => optional_absent()
         Present { value: call } =>
           optional_present(
@@ -227,10 +254,17 @@ fn cref_inferred_of(o: Outcome<ResolvedTree>) -> Optional<InferredTree> {
 }
 
 fn cref_eval_of(o: Outcome<ResolvedTree>) -> Optional<Outcome<RuntimeValue>> {
+  cref_eval_of_call_to(o: o, name: ^callee)
+}
+
+// THE CALLEE'S NAME IS A PARAMETER BECAUSE THE SELECTION IS BY FULL PATH. Each fixture declares one
+// callee at module `p` and the locator requires exactly one call to it, so a helper that guessed the name
+// would be back to selecting by shape.
+fn cref_eval_of_call_to(o: Outcome<ResolvedTree>, name: Symbol) -> Optional<Outcome<RuntimeValue>> {
   match cref_inferred_of(o: o) {
     Absent => optional_absent()
     Present { value: inferred } =>
-      match cref_first_call_optional(root: inferred.root) {
+      match cref_the_call_to(root: inferred.root, name: name) {
         Absent => optional_absent()
         Present { value: call } =>
           optional_present(
@@ -244,8 +278,8 @@ fn cref_eval_of(o: Outcome<ResolvedTree>) -> Optional<Outcome<RuntimeValue>> {
   }
 }
 
-fn cref_executes(o: Outcome<ResolvedTree>) -> Bool {
-  match cref_eval_of(o: o) {
+fn cref_executes(o: Outcome<ResolvedTree>, name: Symbol) -> Bool {
+  match cref_eval_of_call_to(o: o, name: name) {
     Absent => false
     Present { value: outcome } =>
       match outcome {
@@ -259,15 +293,15 @@ fn cref_executes(o: Outcome<ResolvedTree>) -> Bool {
 // rows below ask it for the magnitude, so a second decoder beside it would be one fact with two
 // authorities (DESIGN section 3) -- and the decoding rule, that only a four-byte signed primitive
 // counts, is exactly the sort that drifts between two copies.
-fn cref_executes_to(o: Outcome<ResolvedTree>, n: Int) -> Bool {
-  match cref_result_int_optional(o: o) {
+fn cref_executes_to(o: Outcome<ResolvedTree>, n: Int, name: Symbol) -> Bool {
+  match cref_result_int_optional(o: o, name: name) {
     Absent => false
     Present { value: magnitude } => magnitude == n
   }
 }
 
-fn cref_refusal_reason_is(o: Outcome<ResolvedTree>, wanted: Symbol) -> Bool {
-  match cref_eval_of(o: o) {
+fn cref_refusal_reason_is(o: Outcome<ResolvedTree>, wanted: Symbol, name: Symbol) -> Bool {
+  match cref_eval_of_call_to(o: o, name: name) {
     Absent => false
     Present { value: outcome } =>
       match outcome {
@@ -283,7 +317,7 @@ test fn cref_the_fixture_yields_a_reference_callee_call_holds() -> Bool {
   match cref_inferred() {
     Absent => false
     Present { value: inferred } =>
-      match cref_first_call_optional(root: inferred.root) {
+      match cref_the_call_to(root: inferred.root, name: ^callee) {
         Absent => false
         Present { value: _ } => true
       }
@@ -298,7 +332,7 @@ test fn cref_the_reference_facts_carry_their_declaration_holds() -> Bool {
   match cref_inferred() {
     Absent => false
     Present { value: inferred } =>
-      match cref_first_call_optional(root: inferred.root) {
+      match cref_the_call_to(root: inferred.root, name: ^callee) {
         Absent => false
         Present { value: call } =>
           match cref_callee_reference_optional(n: call) {
@@ -317,13 +351,13 @@ test fn cref_the_reference_facts_carry_their_declaration_holds() -> Bool {
 // acceptance: any Int-returning path would satisfy "Accepted" while proving nothing about WHICH
 // declaration ran, and 7 is written only in the callee's body.
 test fn cref_a_zero_argument_named_call_executes_to_its_callee_value_holds() -> Bool {
-  cref_executes_to(o: cref_zero_arg_source(), n: 7)
+  cref_executes_to(o: cref_zero_arg_source(), n: 7, name: ^callee)
 }
 
 // THE SAME WITH AN ARGUMENT SUPPLIED, which is a separate fact from the zero-argument case because
 // the argument edge is a separate child of the call.
 test fn cref_a_named_call_with_an_argument_executes_holds() -> Bool {
-  cref_executes_to(o: cref_one_arg_constant_body_source(), n: 7)
+  cref_executes_to(o: cref_one_arg_constant_body_source(), n: 7, name: ^callee)
 }
 
 // PARAMETER BINDING IS NOT YET DEMONSTRATED, AND THIS IS THE CLAIM THAT WOULD DEMONSTRATE IT. Both
@@ -339,7 +373,7 @@ test fn cref_a_named_call_with_an_argument_executes_holds() -> Bool {
 // already did, and infer_declaration_reference_facts reads the declaration from
 // v2.compiler.resolve ResolvedTree resolved_declarations rather than the authored symbol_index.
 test fn cref_a_parameter_bodied_callee_executes_holds() -> Bool {
-  cref_executes(o: cref_source())
+  cref_executes(o: cref_source(), name: ^callee)
 }
 
 // A BOOL-RETURNING CALL STILL REFUSES, AND IT IS A DIFFERENT BOUNDARY FROM THE PARAMETER BODY. This
@@ -351,14 +385,14 @@ test fn cref_a_parameter_bodied_callee_executes_holds() -> Bool {
 // typing fell to the frontier. Reading the RESOLVED declaration answers it, and the same repair is why
 // the Int rows above never separated from this one on their own.
 test fn cref_a_bool_returning_call_executes_holds() -> Bool {
-  cref_executes(o: cref_bool_pair_source())
+  cref_executes(o: cref_bool_pair_source(), name: ^truth)
 }
 
 // THE DISCRIMINATING NEGATIVE FOR THE DISPATCH: a callee naming no declaration must refuse rather
 // than execute, fabricate a value, or be looked up as a primitive under a name it does not have.
 // Without this, the repair could have admitted any Conj as a callee and still looked green.
 test fn cref_an_unresolved_callee_does_not_execute_holds() -> Bool {
-  !cref_executes(o: cref_unresolved_callee_source())
+  !cref_executes(o: cref_unresolved_callee_source(), name: ^callee)
 }
 
 // AN ARGUMENT-DEPENDENT CALLEE: its body IS its parameter, so its result cannot be produced without
@@ -376,8 +410,8 @@ fn cref_identity_source(lex: String) -> Outcome<ResolvedTree> {
 // per argument keep what the conjunctions had -- a callee answering any constant fails the row whose
 // argument it does not equal -- so this reader returns the magnitude rather than a Bool against an
 // expectation.
-fn cref_result_int_optional(o: Outcome<ResolvedTree>) -> Optional<Int> {
-  match cref_eval_of(o: o) {
+fn cref_result_int_optional(o: Outcome<ResolvedTree>, name: Symbol) -> Optional<Int> {
+  match cref_eval_of_call_to(o: o, name: name) {
     Absent => optional_absent()
     Present { value: outcome } =>
       match outcome {
@@ -396,7 +430,7 @@ fn cref_result_int_optional(o: Outcome<ResolvedTree>) -> Optional<Int> {
 }
 
 fn cref_identity_result_is_exactly(lex: String, n: Int) -> Bool {
-  cref_executes_to(o: cref_identity_source(lex: lex), n: n)
+  cref_executes_to(o: cref_identity_source(lex: lex), n: n, name: ^identity)
 }
 
 // THE ACCEPTANCE TARGET FOR THIS LANE, ENROLLED AS THE REFUSAL IT IS TODAY. The value path is written
@@ -463,7 +497,7 @@ fn cref_bool_false_source() -> Outcome<ResolvedTree> {
 // is worth recording because the reverse inference is the tempting one: a row that LOOKS like it calls
 // the front end four times is not evidence that it does, and only the instrument decides.
 test fn cref_the_bool_pair_separates_holds() -> Bool {
-  cref_results_differ(a: cref_bool_pair_source(), b: cref_bool_false_source())
+  cref_results_differ(a: cref_bool_pair_source(), a_name: ^truth, b: cref_bool_false_source(), b_name: ^falsity)
 }
 
 // THE PRIMITIVE BYTES OF A CALL'S RESULT, for the one claim whose property is that two calls produce
@@ -471,8 +505,8 @@ test fn cref_the_bool_pair_separates_holds() -> Bool {
 // asserting "true" and "false" by magnitude would be asserting this module's guess at v2.std.logic's
 // representation. Byte inequality is the property without the guess: a callee that ignored its
 // declaration and answered one constant cannot satisfy it.
-fn cref_result_bytes(o: Outcome<ResolvedTree>) -> Optional<List<Byte>> {
-  match cref_eval_of(o: o) {
+fn cref_result_bytes(o: Outcome<ResolvedTree>, name: Symbol) -> Optional<List<Byte>> {
+  match cref_eval_of_call_to(o: o, name: name) {
     Absent => optional_absent()
     Present { value: outcome } =>
       match outcome {
@@ -488,11 +522,11 @@ fn cref_result_bytes(o: Outcome<ResolvedTree>) -> Optional<List<Byte>> {
 
 // FALSE WHEN EITHER SIDE DID NOT EXECUTE, so the separation claim below pairs it with two execution
 // assertions rather than reading inequality as evidence on its own: two refusals are also unequal.
-fn cref_results_differ(a: Outcome<ResolvedTree>, b: Outcome<ResolvedTree>) -> Bool {
-  match cref_result_bytes(o: a) {
+fn cref_results_differ(a: Outcome<ResolvedTree>, a_name: Symbol, b: Outcome<ResolvedTree>, b_name: Symbol) -> Bool {
+  match cref_result_bytes(o: a, name: a_name) {
     Absent => false
     Present { value: xs } =>
-      match cref_result_bytes(o: b) {
+      match cref_result_bytes(o: b, name: b_name) {
         Absent => false
         Present { value: ys } => !(xs == ys)
       }
