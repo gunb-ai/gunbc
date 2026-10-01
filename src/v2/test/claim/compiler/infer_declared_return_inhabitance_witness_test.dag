@@ -23,8 +23,8 @@ import v2.std.diagnostic { Accepted, Rejected, Some, diagnostics_has_reason }
 import v2.std.logic { Bool }
 import v2.std.type_binder { type_params_edge }
 import std.algebra { list_snoc_item }
-import v2.std.node {
 import v2.std.node_query { binder_edge }
+import v2.std.node {
   Arrow,
   Conj,
   Edge,

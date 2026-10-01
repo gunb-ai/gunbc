@@ -10,8 +10,8 @@ import v2.compiler.infer { InferredTree }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
-import v2.test.lens_common.infer_fixture {
 import v2.std.node_query { binder_edge }
+import v2.test.lens_common.infer_fixture {
   claim_atom_node,
   claim_inferred_facts,
   claim_inferred_tree
