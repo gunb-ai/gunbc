@@ -684,3 +684,12 @@ took about 6.3x the BEFORE arm's wall to reach the same point, with no memory ga
 is a cost red flag for representation B at whole-tree scale, and possibly this note's own falsifier
 (membership tests going superlinear). PR-2 is not opened until it is attributed by thread CPU per
 phase and fixed or ruled.
+Candidate causes of the 6.3x, all unmeasured, each to be attributed by thread CPU per phase on the same
+subject before PR-2 is opened:
+- the fork-row walk (`surface_fork_rows`): multi-exporter and kernel candidates times each module's
+  imports, even with the closure-declarer prefilter;
+- the `ancestry_names` enumerations in the rewire pass and in `source_visible_names`, which
+  re-enumerate every closure module's own names per module;
+- presence tests over long exporter lists for widely declared names (`surface_has` walks every
+  exporter);
+- per-module pool snapshots during typecheck (persistent-map path copies on every admission).
