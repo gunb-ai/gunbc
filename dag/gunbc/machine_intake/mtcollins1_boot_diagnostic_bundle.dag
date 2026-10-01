@@ -109,6 +109,7 @@ import gunbc.machine_intake_megarac_media_attach {
   MegaRacImageListingEmpty,
   MegaRacImageListingUnparseable,
   MegaRacImageNotEnumerated,
+  MegaRacImageOfferedAmbiguously,
   MegaRacForeignImagePresented,
   MegaRacSeveralImagesPresented,
   MegaRacStaleDetachNotAdmitted,
@@ -116,6 +117,7 @@ import gunbc.machine_intake_megarac_media_attach {
   MegaRacRedirectionUncatalogued,
   MegaRacRefreshClockUnreadable,
   MegaRacListingUnparseableAfterDetach,
+  MegaRacOfferedAmbiguouslyAfterDetach,
   MegaRacMediaStateUnestablished,
   MegaRacMediaStateUnestablishedBeforeWrite,
   MegaRacReadinessClockIncoherent,
@@ -578,6 +580,8 @@ fn media_attach_outcome_reason(outcome: MegaRacAttachOutcome) -> String? {
     MegaRacImageListingEmpty =>
       Present { value: "the image is not presented AND the controller offers no image available to attach, and nothing is presented to stop (stopping is what re-enumerates the share); check that the export is reachable from the controller and holds the file" }
     MegaRacImageListingUnparseable { detail: d } => Present { value: concat("the images listing was not valid JSON: ", d) }
+    MegaRacImageOfferedAmbiguously { image_name: n, image_indices: ids } =>
+      Present { value: join(["the controller offers '", n as String, "' more than once (image_index ", join(ids, ", "), "), so which file would be attached is the controller's enumeration order; nothing was written"], "") }
     MegaRacImageNotEnumerated { image_name: n } =>
       Present { value: concat("the image is not presented, and the controller offers other images but not '", concat(n as String, "'; nothing is presented to stop, and stopping is what re-enumerates the share, so check that the export holds exactly that file")) }
     MegaRacForeignImagePresented { image_name: n, configurations: c } =>
@@ -592,6 +596,8 @@ fn media_attach_outcome_reason(outcome: MegaRacAttachOutcome) -> String? {
       Present { value: join(["the row presenting '", n, "' reports redirection_status ", to_string(w), ", which is uncatalogued for this firmware; refusing before any write or power action: ", c], "") }
     MegaRacRefreshClockUnreadable { detail: d, detach: x } => Present { value: join(["the clock could not be read, so the re-enumeration window could not be declared or judged: ", d, " (the detach had been executed: ", detach_evidence_text(detach: x), ")"], "") }
     MegaRacListingUnparseableAfterDetach { detail: d, detach: x } => Present { value: join(["after the stale image was stopped (", detach_evidence_text(detach: x), "), the images listing was not valid JSON: ", d], "") }
+    MegaRacOfferedAmbiguouslyAfterDetach { image_name: n, image_indices: ids, detach: x } =>
+      Present { value: join(["after the stale image was stopped (", detach_evidence_text(detach: x), "), the controller offers '", n as String, "' more than once (image_index ", join(ids, ", "), "), so which file would be attached is the controller's enumeration order; nothing further was written"], "") }
     MegaRacMediaStateUnestablished { image_name: n, route: r, look: l, looks: k, cd_before_any_write: cb, cd_at_ready: ca, general_at_ready: g } =>
       Present { value: join(["this attempt cannot establish the media state of '", n as String, "': the presentation read Started (", readiness_look_text(l: l), ", ", to_string(k), " looks, route: ", attach_route_text(route: r), ") but cd_error_code before any write was ", cd_reading_text(r: cb), " and at readiness ", cd_reading_text(r: ca), " (general settings ", raw_read_text(r: g), "). A code outside the firmware UI's stop-reason table (extdeps.bmc.megarac megarac_rmedia_status_0_32), or an unread one, has no vendor meaning, so this is a knowledge refusal, not a controller verdict. No boot-device or power handoff was made"], "") }
     MegaRacMediaStateUnestablishedBeforeWrite { cd_before_any_write: cb, reason: why } =>
@@ -739,6 +745,70 @@ fn end_media_text(e: MtCollins1EndMedia) -> String {
   match e {
     EndMediaNotTaken { reason: r } => concat("not taken: ", r as String)
     EndMediaObserved { look: l } => observation_text(r: l)
+  }
+}
+
+// A PRESENTATION AFFIRMED LOST AFTER THE HANDOFF IS A CAUSE, NOT ONLY A FINDING (gunbc#12533
+// finding 4). The after-handoff and end-of-attempt looks are taken for this attempt's own subject,
+// under the hold, after the boot override and the power action were made. When either AFFIRMS the
+// medium is no longer served, the host was booting from a medium the controller had stopped
+// serving, and a failure the attempt reports afterwards -- a watch that reaches its deadline -- is
+// that loss seen from downstream. So the attempt's verdict consumes the looks it took rather than
+// leaving them to the bundle. Only an affirmed loss attributes: an unobserved or unestablished look
+// says nothing about the medium and is never promoted to a cause. The earliest affirming look is
+// named, because the phase is what the operator acts on.
+type MediaLossPhase
+  = MediaLostAtAfterHandoff
+  | MediaLostAtEndOfAttempt
+
+fn media_loss_phase_text(p: MediaLossPhase) -> String {
+  match p {
+    MediaLostAtAfterHandoff => "after-handoff"
+    MediaLostAtEndOfAttempt => "end-of-attempt"
+  }
+}
+
+type MediaLossAfterHandoff
+  = MediaLossAffirmed { phase: MediaLossPhase, reason: NonEmptyStr }
+  | MediaLossNotAffirmed
+
+fn media_loss_of_look(look: MegaRacAttachResult, phase: MediaLossPhase) -> MediaLossAfterHandoff {
+  match presentation_still_served(result: look) {
+    PresentationNoLongerReady { reason: why } => MediaLossAffirmed { phase: phase, reason: why }
+    _ => MediaLossNotAffirmed
+  }
+}
+
+// PURE, over the two looks only a CONFIRMED handoff makes causal: a handoff that was withheld or
+// never reached made no boot write, and one attempted but unconfirmed already carries its own cause
+// (the handoff's), so neither is re-attributed to the medium.
+fn media_loss_after_handoff(handoff: MtCollins1HandoffMedia, end: MtCollins1EndMedia) -> MediaLossAfterHandoff {
+  match handoff {
+    HandoffMediaAttempted { before: _, handoff: HandoffConfirmed, after: a } =>
+      match media_loss_of_look(look: a, phase: MediaLostAtAfterHandoff) {
+        MediaLossAffirmed { phase: p, reason: r } => MediaLossAffirmed { phase: p, reason: r }
+        MediaLossNotAffirmed =>
+          match end {
+            EndMediaObserved { look: l } => media_loss_of_look(look: l, phase: MediaLostAtEndOfAttempt)
+            EndMediaNotTaken { reason: _ } => MediaLossNotAffirmed
+          }
+      }
+    _ => MediaLossNotAffirmed
+  }
+}
+
+// THE ATTEMPT'S TERMINAL CAUSE. A success stands -- the host reported its census, so whatever the
+// controller did afterwards did not stop it (the finding still records the loss) -- and a failure is
+// re-attributed to the loss, keeping the downstream symptom beside it rather than discarding it.
+fn outcome_attributing_media_loss(outcome: ProcessExit, loss: MediaLossAfterHandoff) -> ProcessExit {
+  match outcome {
+    ExitSuccess => ExitSuccess
+    ExitFailure { code: c, reason: r } =>
+      match loss {
+        MediaLossNotAffirmed => ExitFailure { code: c, reason: r }
+        MediaLossAffirmed { phase: p, reason: why } =>
+          ExitFailure { code: c, reason: join(["mtcollins1 boot: media presentation lost at ", media_loss_phase_text(p: p), " (", why as String, "); the attempt then reported: ", r], "") }
+      }
   }
 }
 
