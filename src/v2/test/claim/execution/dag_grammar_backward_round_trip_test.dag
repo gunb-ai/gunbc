@@ -1,49 +1,38 @@
 module v2.test.execution.dag_grammar_backward_round_trip
 
-import v2.compiler.parse { PreparedGrammar, parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_emit_parse_tree, dag_emit_parse_tree_with_root, dag_grammar_root, dag_lex }
+import gunbc.instruments.dag_emit_real_grammar_round_trips { dag_round_trip_parse, dag_round_trips }
+import v2.extdeps.languages.dag { dag_emit_parse_tree, dag_emit_parse_tree_with_root, dag_grammar_root }
 import std.algebra { list_snoc_item }
 import v2.std.algebra { length }
 import v2.std.collection { List }
-import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, Outcome, Rejected, bind_outcome, node_locus, outcome_accepted }
+import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected, bind_outcome, node_locus, outcome_accepted }
 import v2.std.fn_index { non_empty_diagnostics_list }
 import v2.std.grammar { GrammarProduction, GrammarRoot, Sequence, grammar_atom, grammar_emit_parse_tree, grammar_expr_terminal, node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, content_hash }
+import v2.std.node { Conj, Edge, Named, Node, Symbol, TypeNode }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// ONE GRAMMAR, BOTH DIRECTIONS (docs/plans/dag-emit-one-grammar-backward.md). Each claim runs the
-// real ingest route -- dag_prepared_grammar, the dag lexer, parse_module_prepared -- then emits the
-// parse tree by reading dag_grammar_root backward, ingests that text again, and asks for the same
-// tree. Identity is v2.std.node content_hash, which does not read occurrence ids, so spans may move.
-// Nothing here supplies a tree: the emit's subject is what the parser actually built.
+// ONE GRAMMAR, BOTH DIRECTIONS (docs/plans/dag-emit-one-grammar-backward.md). The round trip and the
+// missing-production red run the real ingest route -- dag_prepared_grammar, the dag lexer,
+// parse_module_prepared -- and emit the parse tree the parser actually built, by reading
+// dag_grammar_root backward. Identity is v2.std.node content_hash, which does not read occurrence
+// ids, so spans may move. Only the duplicated-projection pair supplies its tree, because no parse
+// mints the malformed capture that pair is about.
 
-// The grammar is prepared ONCE per claim and both ingests read it: preparing it per parse would pay
-// the grammar analysis twice for one subject.
-fn rt_parse_prepared(prepared: PreparedGrammar, residue: Diagnostics, text: String) -> Outcome<Node> {
-  bind_outcome(
-    o: tokenize(text: text, file: ^dag_grammar_backward_round_trip_probe, rules: dag_lex()),
-    f: fn(stream) {
-      match parse_module_prepared(tokens: stream, prepared: prepared, validation_residue: residue) {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }
-      }
-    }
-  )
-}
-
+// The parse and the round trip are the instrument's own helpers
+// (gunbc.instruments.dag_emit_real_grammar_round_trips), so the floor claim and the off-floor cases
+// run one route, not two copies of it.
 fn rt_parse(text: String) -> Outcome<Node> {
   match dag_prepared_grammar() {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: prepared, diagnostics: residue } => rt_parse_prepared(prepared: prepared, residue: residue, text: text)
+    Accepted { value: prepared, diagnostics: residue } => dag_round_trip_parse(prepared: prepared, residue: residue, text: text)
   }
 }
 
@@ -51,91 +40,18 @@ fn rt_emit_of(text: String) -> Outcome<String> {
   bind_outcome(o: rt_parse(text: text), f: fn(tree) { dag_emit_parse_tree(tree: tree) })
 }
 
-fn rt_round_trips(text: String) -> Bool {
-  match dag_prepared_grammar() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: prepared, diagnostics: residue } =>
-      match rt_parse_prepared(prepared: prepared, residue: residue, text: text) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: tree, diagnostics: _ } =>
-          match dag_emit_parse_tree(tree: tree) {
-            Rejected { diagnostics: _ } => false
-            Accepted { value: emitted, diagnostics: _ } =>
-              match rt_parse_prepared(prepared: prepared, residue: residue, text: emitted) {
-                Rejected { diagnostics: _ } => false
-                Accepted { value: again, diagnostics: _ } => content_hash(n: tree) == content_hash(n: again)
-              }
-          }
-      }
-  }
-}
-
 data rt_data_decl_source: String = "module rt.data_decl\ndata m: Int = 1\n"
-data rt_fn_decl_source: String = "module rt.fn_decl\nfn add(x: Int, y: Int) -> Int { x + y }\n"
-data rt_record_type_source: String = "module rt.record_type\ntype Point { x: Int, y: Int }\n"
-data rt_coproduct_source: String = "module rt.coproduct\ntype Shape = Circle { r: Int } | Square\n"
-// A NAMED FRONTIER, NOT A DROPPED FIXTURE. At gunbc#12878 f306b14297b the first ingest refuses a
-// `let .. in` in data-value position, `data v: Int = let x = 1 in x`, with
-// parse_grammar_choice_overlap_residue and parse_data_value_missing_after_eq
-// (docs/plans/parse-grammar-choice-overlap-residue-finding.md). There is no tree to emit, so it returns
-// as a fixture when that residue is repaired.
-//
-// MODULE PATHS AVOID KEYWORDS. `module rt.let` refuses at the first ingest (overlap residue, then
-// parse_g0_tokens_remain), because `let` is a keyword and not a path segment; the same body under
-// `rt.let_stmt` ingests. That refusal is not this module's subject.
-data rt_match_source: String = "module rt.match_arms\ntype T = A | B\nfn f(t: T) -> Int { match t { A => 1, _ => 2 } }\n"
-data rt_match_bool_arms_source: String = "module rt.match_bool_arms\nfn pick(a: Bool) -> Int { match a { true => 1, false => 2 } }\n"
-data rt_let_source: String = "module rt.let_stmt\nfn f(from: Int, input: Int) -> Int { let transport = from\n transport + input }\n"
-data rt_let_in_source: String = "module rt.let_in\nfn one() -> Int { let x = 1 in x }\n"
-data rt_list_source: String = "module rt.list\nimport std.types { List }\ndata xs: List<Int> = [1, 2, 3]\n"
-data rt_map_literal_source: String = "module rt.map_literal\nimport std.types { Map }\ndata m: Map<String, Bool> = { \"a\": true, \"b\": false }\n"
-data rt_quoted_key_source: String = "module rt.quoted_key\ndata r: R = { \"Node\": true }\n"
-data rt_bare_key_source: String = "module rt.bare_key\ndata r: R = { Node: true }\n"
-data rt_escaped_key_source: String = "module rt.escaped_key\nimport std.types { Map }\ndata m: Map<String, Bool> = { \"a\\\"b\": true, \"\\u\{e9\}\": false }\n"
-data rt_string_escapes_source: String = "module rt.string_escapes\ndata s: String = \"q\\\"b\\\\s\\nt\\tz\\u\{e9\}\\x41\\\{\\\}\"\n"
-data rt_caret_symbol_source: String = "module rt.caret_symbol\ndata k: Symbol = ^some_name\n"
 
-// ONE ROUND TRIP IS ENROLLED; THE REST RUN OFF THE FLOOR, DECLARED. Two parses of any construct
-// larger than a one-line data declaration exceed the new-witness eval-step budget, and six of them
-// cross the wall clock. So the data declaration is the floor's inhabitance claim for the real
-// ingest -> emit -> re-ingest path (over its budget, declared:
-// gunbc.rung_drop.dag_emit_round_trip_new_witness_eval_step_cost). The per-construct round trips
-// below are plain fns, not test fns. They are the population of the declared drop
-// gunbc.rung_drop.dag_emit_real_grammar_round_trips_off_floor, which names the instrument that
-// re-derives them. Their discriminating content is claimed at its own interfaces, under budget, in
+// ONE ROUND TRIP IS ENROLLED; THE REST RUN AS A NAMED INSTRUMENT, DECLARED. Two parses of any construct
+// larger than a one-line data declaration exceed the new-witness eval-step budget, and several cross
+// the wall clock. So this data declaration is the floor's inhabitance claim for the real
+// ingest -> emit -> re-ingest path. It is over its budget, which is declared in
+// gunbc.rung_drop.dag_emit_round_trip_new_witness_eval_step_cost. The per-construct round trips are
+// the cases of `gunbc test //gunbc/instruments:dag-emit-real-grammar-round-trips`, whose roster is the
+// population of the declared drop gunbc.rung_drop.dag_emit_real_grammar_round_trips_off_floor.
+// Their discriminating content is claimed at its own interfaces, under budget, in
 // v2.test.execution.dag_emit_interface.
-test fn a_data_declaration_round_trips_holds() -> Bool { rt_round_trips(text: rt_data_decl_source) }
-fn a_fn_declaration_round_trips_holds() -> Bool { rt_round_trips(text: rt_fn_decl_source) }
-fn a_record_type_round_trips_holds() -> Bool { rt_round_trips(text: rt_record_type_source) }
-fn a_coproduct_round_trips_holds() -> Bool { rt_round_trips(text: rt_coproduct_source) }
-fn a_match_round_trips_holds() -> Bool { rt_round_trips(text: rt_match_source) }
-fn a_let_round_trips_holds() -> Bool { rt_round_trips(text: rt_let_source) }
-fn a_let_in_round_trips_holds() -> Bool { rt_round_trips(text: rt_let_in_source) }
-fn a_match_over_bool_literal_arms_round_trips_holds() -> Bool { rt_round_trips(text: rt_match_bool_arms_source) }
-fn a_list_literal_round_trips_holds() -> Bool { rt_round_trips(text: rt_list_source) }
-
-// The SURFACE map literal, before resolve elaborates it to map_from_entries (gunbc#12758).
-fn a_map_literal_round_trips_holds() -> Bool { rt_round_trips(text: rt_map_literal_source) }
-fn a_string_with_escapes_round_trips_holds() -> Bool { rt_round_trips(text: rt_string_escapes_source) }
-fn a_caret_symbol_round_trips_holds() -> Bool { rt_round_trips(text: rt_caret_symbol_source) }
-fn an_escaped_quoted_key_round_trips_holds() -> Bool { rt_round_trips(text: rt_escaped_key_source) }
-
-// A KEY'S KIND IS ITS PRODUCTION, NOT ITS SPELLING. `"Node"` spells the same text as the bare key
-// `Node`, so an emit that chose by text would write both bare and read the quoted one back as an
-// identifier. Each round trips, and the two trees are different trees.
-fn a_quoted_key_spelled_like_an_identifier_round_trips_holds() -> Bool { rt_round_trips(text: rt_quoted_key_source) }
-fn a_bare_key_round_trips_holds() -> Bool { rt_round_trips(text: rt_bare_key_source) }
-
-fn a_quoted_key_and_a_bare_key_are_different_trees_holds() -> Bool {
-  match rt_parse(text: "module rt.k\ndata r: R = { \"Node\": true }\n") {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: quoted, diagnostics: _ } =>
-      match rt_parse(text: "module rt.k\ndata r: R = { Node: true }\n") {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: bare, diagnostics: _ } => content_hash(n: quoted) != content_hash(n: bare)
-      }
-  }
-}
+test fn a_data_declaration_round_trips_holds() -> Bool { dag_round_trips(text: rt_data_decl_source) }
 
 // THE RED: A PRODUCTION WITH NO ROW REFUSES, TYPED AND LOCATED. The same parse tree is emitted
 // against dag_grammar_root with the data-declaration production removed. The refusal names the
@@ -203,7 +119,7 @@ test fn a_production_missing_its_row_refuses_located_at_its_capture_holds() -> B
 
 // A DUPLICATED PROJECTION EDGE REFUSES; IT IS NEVER READ AS AN ARM THAT DOES NOT FIT. The tree is
 // supplied, because the subject is the walk's reading of a malformed capture, which no parse mints.
-// The round trips above are this boundary's inhabitance claims. One production reads `a b`, and its
+// The real-route round trip above, and the instrument's cases, are this boundary's inhabitance claims. One production reads `a b`, and its
 // capture carries two left edges.
 fn rt_edge(name: Symbol, target: Node) -> Edge { Edge { label: Named { name: name }, target: target } }
 
