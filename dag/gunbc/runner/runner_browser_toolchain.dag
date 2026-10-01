@@ -57,8 +57,10 @@ import gunbc.host_effect_realize {
   srv3_ensure_apt, AptPresenceSubject, AptBinaryOnPath, AptPackageInstalled,
 }
 import product.placement_supply { HostIdentity }
-import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
-import gunbc.runner_registration_labels { runner_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused }
+import gunbc.ci_runner_target { gunbc_ci_floor_runner_spec }
+import gunbc.runner_slot_allocation { host_floor_class_slots }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner_registration_labels { runner_slot_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused }
 import gunbc.runner_host_deploy { RunnerHostDeploy, RunnerHostSpec, fleet_runner_host_deploys }
 import gunbc.fleet_posix_accounts { fleet_posix_home_directory }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
@@ -286,7 +288,7 @@ fn runner_browser_toolchain_node_command(
 // ---------------------------------------------------------------------------------------------
 
 // THE POPULATION IS DERIVED, NOT LISTED (operator condition, 2026-09-28). The floor job runs on
-// gunbc.ci_runner_target gunbc_ci_selected_runner_spec; a rostered runner host belongs to its pool
+// gunbc.ci_runner_target gunbc_ci_floor_runner_spec; a rostered runner host belongs to its pool
 // exactly when that host's registration labels (gunbc.runner_registration_labels, the same
 // composition every registration reads) carry every label the spec asks for. So a host that stops
 // registering a floor label leaves the pool, and a new host that registers them joins it, with no
@@ -300,15 +302,26 @@ fn labels_cover(have: List<String>, want: List<String>) -> Bool {
   fold(want, init: true, f: (acc, w) => acc && fold(have, init: false, f: (found, h) => found || h == w))
 }
 
-fn host_runs_floor_labels(deploy: RunnerHostDeploy, floor_labels: List<String>) -> Bool {
-  match runner_registration_labels(host: (deploy.host_label as String) as HostIdentity) {
+// THE FLOOR RUNS ON A FLOOR SLOT CLASS SLOT (gunbc.ci_runner_target gunbc_ci_floor_runner_spec), so a
+// host runs the floor exactly when one of its committed class slots registers every label the floor
+// spec asks for. Asking the HOST's set would never cover the class label, which only class slots
+// carry, and the pool would converge nothing.
+fn slot_runs_floor_labels(slot: RunnerSlotIdentity, floor_labels: List<String>) -> Bool {
+  match runner_slot_registration_labels(slot: slot) {
     RegistrationLabelsResolved { labels: ls } => labels_cover(have: ls, want: floor_labels)
     RegistrationLabelsRefused { host: _, cause: _ } => false
   }
 }
 
+fn host_runs_floor_labels(deploy: RunnerHostDeploy, floor_labels: List<String>) -> Bool {
+  any(
+    host_floor_class_slots(host: (deploy.host_label as String) as HostIdentity),
+    slot => slot_runs_floor_labels(slot: slot, floor_labels: floor_labels)
+  )
+}
+
 fn runner_browser_toolchain_pool_of(deploys: List<RunnerHostDeploy>) -> BrowserToolchainPool {
-  match gunbc_ci_selected_runner_spec() {
+  match gunbc_ci_floor_runner_spec() {
     SelfHosted { labels: floor_labels } =>
       BrowserToolchainPoolDerived {
         hosts: fold(deploys, init: [], f: (acc, d) =>

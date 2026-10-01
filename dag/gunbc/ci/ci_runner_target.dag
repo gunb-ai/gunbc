@@ -1,10 +1,10 @@
 module gunbc.ci_runner_target
 
 import extdeps.cloud.ubicloud { UbicloudRunnerCatalogRow, ubicloud_standard_16_arm_catalog }
-import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner }
+import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression }
 import extdeps.github.hosted_runners { GithubHostedRunnerCatalogRow }
 import gunbc.ci_fleet { gunbc_ci_fleet_offer }
-import gunbc.runner_slot_desired { RunnerSlotDesired, gunbc_runner_slot_desired }
+import gunbc.runner_slot_desired { RunnerSlotDesired, gunbc_runner_slot_desired, gunbc_runner_floor_slot_class_label }
 import gunbc.ci_floor_measurement { gunbc_ci_runner_slot_ram_speed_ceiling }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
 import std.measure { ByteSize }
@@ -68,4 +68,27 @@ fn selected_ci_runner_target() -> CiRunnerTarget {
 
 fn gunbc_ci_selected_runner_spec() -> RunnerSpec {
   ci_runner_target_spec(target: selected_ci_runner_target())
+}
+
+// THE FLOOR JOB SELECTS THE FLOOR SLOT CLASS BY ITS LABEL, and only the floor job does (operator-
+// approved stopgap 2026-10-01, gunbc.runner_slot_desired gunbc_runner_floor_slot_class_stopgap_2026_10_01).
+// The spec is the selected target's spec with the class label added, so a switch of target still
+// moves the floor with everything else: on the fleet the floor queues for a class slot; on a cloud
+// target there is no slot class and the label is not added, because a label no runner carries would
+// queue the floor forever rather than route it.
+fn ci_runner_target_floor_spec(target: CiRunnerTarget) -> RunnerSpec {
+  match target {
+    FleetSelfHosted =>
+      match ci_runner_target_spec(target: target) {
+        SelfHosted { labels: labels } => SelfHosted { labels: concat(labels, [gunbc_runner_floor_slot_class_label]) }
+        HostedRunner { label: l } => HostedRunner { label: l }
+        RunsOnExpression { expression: e } => RunsOnExpression { expression: e }
+      }
+    UbicloudRunner { row: _ } => ci_runner_target_spec(target: target)
+    GithubHostedRunner { row: _ } => ci_runner_target_spec(target: target)
+  }
+}
+
+fn gunbc_ci_floor_runner_spec() -> RunnerSpec {
+  ci_runner_target_floor_spec(target: selected_ci_runner_target())
 }

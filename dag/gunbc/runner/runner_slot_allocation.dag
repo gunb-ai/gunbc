@@ -19,7 +19,7 @@ import gunbc.ci_failure_class { FloorOutcome, NoFailure, FloorFailed, Structural
 import product.fabric.envelope { ResourceEnvelope, memory_envelope }
 import gunbc.floor_demand { gunbc_floor_measured_peak_observation, gunbc_floor_measured_peak_is_uncensored }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
-import gunbc.runner_slot_desired { RunnerSlotDesired, gunbc_runner_slot_desired, gunbc_runner_slot_memory_max }
+import gunbc.runner_slot_desired { RunnerSlotDesired, gunbc_runner_slot_desired, gunbc_runner_slot_memory_max, gunbc_runner_floor_slot_desired, gunbc_runner_floor_slot_memory_max }
 
 type HostRunnerSlotAllocation {
   host: HostIdentity
@@ -90,9 +90,27 @@ fn slot_is_microvm_shakedown_slot(slot: RunnerSlotIdentity) -> Bool {
 // (gunbc.fabric_cell_converge) and the guest shape (gunbc.runner_microvm). A consumer with no slot in
 // hand -- width arithmetic, the fleet offer envelope -- keeps reading gunbc_runner_slot_desired,
 // because the fleet row IS the answer to a question asked of no particular slot.
+// THE FLOOR SLOT CLASS IS THE LOWEST THREE FLEET INDICES ON EVERY HOST, AUTHORED, NOT A TOP-OF-WIDTH
+// RULE (operator-approved stopgap 2026-10-01, gunbc.runner_slot_desired
+// gunbc_runner_floor_slot_class_stopgap_2026_10_01). Indices 1..3 sit at the bottom of the fleet
+// range for the reason fabric_first_slot_index sits at 6: an index that does not move when the width
+// moves. The width charges these three first, at the class row, before dividing the remainder by
+// the fleet row (memory_admitted_width_of_envelope), so a class slot is never a fleet slot the
+// width paid 26 GiB for. A floor class slot is a GitHub runner like any other; it differs only in its
+// leaf and in carrying the gunbc-floor label the floor job's runs-on selects.
+data gunbc_floor_slot_class_count: Int = 3
+
+fn slot_is_floor_class(slot: RunnerSlotIdentity) -> Bool {
+  !slot_is_microvm_shakedown_slot(slot: slot)
+    && (slot.slot_index as Int) >= 1
+    && (slot.slot_index as Int) <= gunbc_floor_slot_class_count
+}
+
 fn gunbc_runner_slot_desired_for(slot: RunnerSlotIdentity) -> RunnerSlotDesired {
   let fleet = gunbc_runner_slot_desired()
-  if slot_is_microvm_shakedown_slot(slot: slot) {
+  if slot_is_floor_class(slot: slot) {
+    gunbc_runner_floor_slot_desired()
+  } else if slot_is_microvm_shakedown_slot(slot: slot) {
     RunnerSlotDesired {
       memory_max: gunbc_microvm_shakedown_slot_memory_max,
       memory_swap_max: byte_size(0),
@@ -461,10 +479,24 @@ fn memory_admitted_width_of_envelope(envelope: ByteSize, carries_shakedown_slot:
     match measure_sub(a: envelope, b: gunbc_microvm_shakedown_slot_charge()) {
       MeasureSubtrahendExceedsMinuend => 0
       MeasureDifference { value: rest } =>
-        1 + (measure_fit_count_floor(capacity: rest, each: gunbc_runner_slot_memory_max) as Int)
+        1 + floor_class_then_fleet_width(envelope: rest)
     }
   } else {
-    measure_fit_count_floor(capacity: envelope, each: gunbc_runner_slot_memory_max) as Int
+    floor_class_then_fleet_width(envelope: envelope)
+  }
+}
+
+// THE FLOOR CLASS IS CHARGED AS A BLOCK BEFORE ANY FLEET SLOT. If the envelope cannot hold all three
+// class slots it holds as many as fit and NO fleet slot: indices 1..3 are class slots by identity, so
+// a fleet slot admitted beside a short class block would sit at a class index charged at the fleet
+// row -- the undercharge direction.
+fn floor_class_then_fleet_width(envelope: ByteSize) -> Int {
+  let class_bytes = byte_size_count(b: gunbc_runner_floor_slot_memory_max) * gunbc_floor_slot_class_count
+  match measure_sub(a: envelope, b: byte_size(class_bytes)) {
+    MeasureSubtrahendExceedsMinuend =>
+      measure_fit_count_floor(capacity: envelope, each: gunbc_runner_floor_slot_memory_max) as Int
+    MeasureDifference { value: rest } =>
+      gunbc_floor_slot_class_count + (measure_fit_count_floor(capacity: rest, each: gunbc_runner_slot_memory_max) as Int)
   }
 }
 
@@ -829,10 +861,14 @@ fn gunbc_runner_cores_per_slot() -> HardwareThreadCount {
 // `gunbc_runner_slice_cap_declared(host: host)` and nothing else -- a second name for one concept
 // (DESIGN 3), which mattered here because it is the name the conservation wall read, so the wall
 // and the deploy row reached the width by two routes that had to be kept agreeing by hand.
+// THE FIRST THREE OF ANY WIDTH ARE FLOOR CLASS SLOTS, so the slice cap charges them at the class row
+// and the rest at the fleet row. The fleet range is numbered from 1 on every host, the shakedown
+// slot is charged outside it (host_runner_pool_charge), so this needs no host.
 fn gunbc_runner_slice_cap_for_width(slots: Int) -> ByteSize {
-  gunbc_runner_slot_demand_sum_memory_max(
-    slots: slots,
-    per_slot: gunbc_runner_slot_desired().memory_max
+  let class_slots = if slots < gunbc_floor_slot_class_count { slots } else { gunbc_floor_slot_class_count }
+  byte_size(
+    byte_size_count(b: gunbc_runner_slot_demand_sum_memory_max(slots: class_slots, per_slot: gunbc_runner_floor_slot_desired().memory_max))
+      + byte_size_count(b: gunbc_runner_slot_demand_sum_memory_max(slots: slots - class_slots, per_slot: gunbc_runner_slot_desired().memory_max))
   )
 }
 
@@ -1292,8 +1328,11 @@ fn gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation(obs: R
 // position with one-axis REDs and positive controls, enrolled where the floor folds it.
 fn gunbc_runner_slot_allocation_wall_holds() -> Bool {
   let per_slot = gunbc_runner_slot_desired()
+  let floor_class = gunbc_runner_floor_slot_desired()
   let gibibyte_bytes = 1073741824
   (byte_size_count(b: per_slot.memory_high) + gibibyte_bytes == byte_size_count(b: per_slot.memory_max))
+    && (byte_size_count(b: floor_class.memory_high) + gibibyte_bytes == byte_size_count(b: floor_class.memory_max))
+    && (byte_size_count(b: floor_class.memory_high) > byte_size_count(b: per_slot.memory_high))
     && (byte_size_count(b: per_slot.memory_high) >= byte_size_count(b: gunbc_floor_minimum_viable_armed_budget))
     && (byte_size_count(b: per_slot.memory_high) >= byte_size_count(b: gunbc_floor_measured_peak_observation))
     && gunbc_floor_measured_peak_is_uncensored()
@@ -1663,6 +1702,17 @@ fn runner_slot_membership(host: HostIdentity, slot_index: Nat) -> RunnerSlotMemb
       } else {
         CommittedSlotMember { identity: identity, purpose: SlotServesGitHubActions }
       }
+  }
+}
+
+// THE FLOOR CLASS MEMBERS OF ONE HOST, read from its committed population. A host whose population
+// does not resolve carries no class slots here, and that is safe in every direction this is read:
+// the cap decision for such a host is withheld upstream (no target set), an unresolved host
+// contributes no managed path to ownership, and it joins no floor pool.
+fn host_floor_class_slots(host: HostIdentity) -> List<RunnerSlotIdentity> {
+  match committed_slot_identities(host: host) {
+    CommittedPopulationWidthUnresolved { host: _, cause: _ } => []
+    CommittedPopulationDerived { members: m } => filter(m, slot => slot_is_floor_class(slot: slot))
   }
 }
 

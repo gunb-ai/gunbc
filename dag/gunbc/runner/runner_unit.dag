@@ -58,6 +58,19 @@ fn runner_unit_dropin_path(file_name: NonEmptyStr) -> NonEmptyStr {
   join([runner_unit_dropin_dir as String, "/", file_name as String], "") as NonEmptyStr
 }
 
+// AN INSTANCE'S OWN DROP-IN DIRECTORY, beside the template's. systemd reads
+// /etc/systemd/system/actions-runner@.service.d/ for every instance and then
+// /etc/systemd/system/actions-runner@<instance>.service.d/ for that one, and a directive set in the
+// instance directory overrides the template's. That precedence is what lets one slot carry a class
+// leaf (gunbc.runner_slot_class_dropin) while every other instance keeps the template's.
+fn runner_slot_instance_dropin_dir(slot: RunnerSlotIdentity) -> NonEmptyStr {
+  join(["/etc/systemd/system/", runner_slot_unit_name(slot: slot) as String, ".d"], "") as NonEmptyStr
+}
+
+fn runner_slot_instance_dropin_path(slot: RunnerSlotIdentity, file_name: NonEmptyStr) -> NonEmptyStr {
+  join([runner_slot_instance_dropin_dir(slot: slot) as String, "/", file_name as String], "") as NonEmptyStr
+}
+
 // THE REGISTRATION NAME AND THE UNIT NAME ARE THE SAME INSTANCE READ AT TWO BOUNDARIES -- GitHub's
 // runner namespace and systemd's instance namespace -- and that is precisely why they must be
 // derived from one function. gunbc.runner_incarnation carries both on one record, and a record

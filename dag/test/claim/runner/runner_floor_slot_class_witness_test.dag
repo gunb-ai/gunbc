@@ -1,0 +1,136 @@
+module test.claim.runner.runner_floor_slot_class_witness_test
+
+import std.types { String, NonEmptyStr, Bool, Int, List, list_length }
+import std.nat { Nat }
+import std.measure { byte_size, byte_size_count }
+import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
+import gunbc.runner_slot_desired {
+  gunbc_runner_slot_desired, gunbc_runner_floor_slot_desired, gunbc_runner_floor_slot_class_label,
+  gunbc_runner_floor_slot_memory_max,
+}
+import gunbc.runner_slot_allocation {
+  gunbc_runner_slot_desired_for, slot_is_floor_class, srv1_microvm_shakedown_slot,
+  memory_admitted_width_of_envelope, host_floor_class_slots, gunbc_runner_slice_cap_for_width,
+}
+import gunbc.ci_runner_target { gunbc_ci_floor_runner_spec, gunbc_ci_selected_runner_spec }
+import gunbc.host_axis_caps {
+  CapMember, slot_class_cap_members, derived_runner_memory_cap_members, cap_is_managed_path,
+  cap_converge_decision, CapConvergeAuthorized, CapConvergeWithheld, SurplusSlotsObserved,
+  cap_member_parent_dir, deploy_cap_parent_dir_stmts,
+}
+import gunbc.runner_unit { runner_unit_dropin_dir }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FLOOR SLOT CLASS (operator-approved stopgap 2026-10-01, gunbc.runner_slot_desired
+// gunbc_runner_floor_slot_class_stopgap_2026_10_01): three slots per host at the 41/40 GiB class row,
+// routed by the gunbc-floor label, charged first by the width. Each claim below supplies its subject
+// at one interface; the real route -- slot -> row -> host members -> authorized decision -- is
+// asserted end to end by class_members_ride_the_authorized_cap_decision.
+
+fn slot(host: HostIdentity, index: Nat) -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: host, slot_index: index }
+}
+
+fn has_label(labels: List<String>, label: String) -> Bool {
+  any(labels, l => l == label)
+}
+
+// THE CLASS IS INDICES 1..3 AND NOTHING ELSE. Discriminating at both edges: index 4 is a fleet slot
+// and the shakedown slot keeps its own row, so a rule that took "the bottom of the width" or that
+// let the class arm shadow the shakedown arm reds here.
+test fn the_floor_class_is_the_lowest_three_fleet_indices_and_not_the_shakedown_slot() -> Bool {
+  slot_is_floor_class(slot: slot(host: operator_host_srv3, index: 1))
+    && slot_is_floor_class(slot: slot(host: operator_host_srv3, index: 3))
+    && !slot_is_floor_class(slot: slot(host: operator_host_srv3, index: 4))
+    && !slot_is_floor_class(slot: srv1_microvm_shakedown_slot())
+}
+
+test fn a_class_slot_is_granted_the_class_row_and_a_fleet_slot_the_fleet_row() -> Bool {
+  let class_row = gunbc_runner_slot_desired_for(slot: slot(host: operator_host_srv3, index: 2))
+  let fleet_row = gunbc_runner_slot_desired_for(slot: slot(host: operator_host_srv3, index: 4))
+  byte_size_count(b: class_row.memory_max) == 44023414784
+    && byte_size_count(b: class_row.memory_high) == 42949672960
+    && has_label(labels: class_row.labels.github_labels, label: gunbc_runner_floor_slot_class_label)
+    && byte_size_count(b: fleet_row.memory_max) == byte_size_count(b: gunbc_runner_slot_desired().memory_max)
+    && !has_label(labels: fleet_row.labels.github_labels, label: gunbc_runner_floor_slot_class_label)
+}
+
+// ONLY THE FLOOR SELECTS THE CLASS. The floor spec carries the class label on top of the selected
+// spec; the selected spec -- what every other fleet job runs on -- does not, so a generated or
+// unit-test job never lands on a 41 GiB slot by label.
+fn spec_labels(spec: RunnerSpec) -> List<String> {
+  match spec {
+    SelfHosted { labels: ls } => ls
+    HostedRunner { label: _ } => []
+    RunsOnExpression { expression: _ } => []
+  }
+}
+
+test fn only_the_floor_spec_carries_the_class_label() -> Bool {
+  has_label(labels: spec_labels(spec: gunbc_ci_floor_runner_spec()), label: gunbc_runner_floor_slot_class_label)
+    && !has_label(labels: spec_labels(spec: gunbc_ci_selected_runner_spec()), label: gunbc_runner_floor_slot_class_label)
+    && all(spec_labels(spec: gunbc_ci_selected_runner_spec()), l => has_label(labels: spec_labels(spec: gunbc_ci_floor_runner_spec()), label: l))
+}
+
+// THE CLASS IS CHARGED AS A BLOCK. With room for exactly two class slots plus a fleet slot's worth
+// left over, the width is two and NOT three: a fleet slot admitted at index 3 would sit at a class
+// index charged at the fleet row (the undercharge direction). The positive control charges a full
+// block and reads 3 + the fleet remainder.
+test fn a_short_class_block_admits_no_fleet_slot() -> Bool {
+  let class = byte_size_count(b: gunbc_runner_floor_slot_memory_max)
+  let fleet = byte_size_count(b: gunbc_runner_slot_desired().memory_max)
+  memory_admitted_width_of_envelope(envelope: byte_size(2 * class + fleet), carries_shakedown_slot: false) == 2
+    && memory_admitted_width_of_envelope(envelope: byte_size(3 * class + 2 * fleet), carries_shakedown_slot: false) == 5
+}
+
+test fn the_slice_cap_charges_the_first_three_at_the_class_row() -> Bool {
+  let class = byte_size_count(b: gunbc_runner_floor_slot_memory_max)
+  let fleet = byte_size_count(b: gunbc_runner_slot_desired().memory_max)
+  byte_size_count(b: gunbc_runner_slice_cap_for_width(slots: 2)) == 2 * class
+    && byte_size_count(b: gunbc_runner_slice_cap_for_width(slots: 5)) == 3 * class + 2 * fleet
+}
+
+// THE CLASS MEMBERS ARE INSTANCE DROP-INS, THREE PER CLASS SLOT, AND OWNED. A host whose width does
+// not resolve (srv2) carries none, which is the unresolved-is-not-zero rule one step out: it has no
+// class slots to name, and its cap decision is withheld upstream.
+fn member_paths(ms: List<CapMember>) -> List<String> {
+  map(ms, m => m.dropin_path as String)
+}
+
+test fn class_members_sit_in_instance_directories_and_are_owned() -> Bool {
+  let ms = slot_class_cap_members(host: operator_host_srv3)
+  list_length(items: ms) == 9
+    && list_length(items: host_floor_class_slots(host: operator_host_srv3)) == 3
+    && all(ms, m => cap_member_parent_dir(m: m) != (runner_unit_dropin_dir as String))
+    && all(ms, m => cap_is_managed_path(p: m.dropin_path))
+    && any(member_paths(ms: ms), p => p == "/etc/systemd/system/actions-runner@srv3-01.service.d/80-slot-class-width.conf")
+    && any(ms, m => m.content == "[Service]\nMemoryMax=44023414784\n")
+    && list_length(items: slot_class_cap_members(host: operator_host_srv2)) == 0
+}
+
+// AN INSTANCE MEMBER CREATES ITS DIRECTORY FIRST; A TEMPLATE MEMBER'S BYTES ARE UNCHANGED.
+test fn only_instance_members_create_their_directory() -> Bool {
+  all(slot_class_cap_members(host: operator_host_srv3), m => list_length(items: deploy_cap_parent_dir_stmts(m: m)) == 1)
+    && all(derived_runner_memory_cap_members(), m => list_length(items: deploy_cap_parent_dir_stmts(m: m)) == 0)
+}
+
+// THE ROUTE, NOT ONLY THE SHAPE: the members the live writer receives are the ones an authorized
+// cap decision carries, and for a host with class slots those include the class members -- so the
+// class raise is ordered behind retirement exactly as the fleet raise is.
+test fn class_members_ride_the_authorized_cap_decision() -> Bool {
+  match cap_converge_decision(host: operator_host_srv3, required_retiring: [], observation: SurplusSlotsObserved { retired: [], still_present: [] }) {
+    CapConvergeWithheld { cause: _ } => false
+    CapConvergeAuthorized { host: _, authorized_retiring: _, target_units: _, desired: ds } =>
+      list_length(items: ds) == list_length(items: derived_runner_memory_cap_members()) + 9
+        && any(member_paths(ms: ds), p => p == "/etc/systemd/system/actions-runner@srv3-03.service.d/81-slot-class-high.conf")
+  }
+}
+
+test fn the_class_labels_drop_in_carries_the_class_label() -> Bool {
+  any(slot_class_cap_members(host: operator_host_srv1), m => string_contains(s: m.content, pattern: "gunbc-floor") && string_contains(s: m.content, pattern: "LABELS_JSON"))
+}

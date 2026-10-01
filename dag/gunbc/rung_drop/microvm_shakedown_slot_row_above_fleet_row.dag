@@ -52,6 +52,7 @@ data microvm_shakedown_slot_row_above_fleet_row: RungDrop = RungDrop {
     },
     population: [
       "gunbc.runner_slot_allocation srv1_microvm_shakedown_slot (srv1-13): 30064771072 bytes against the fleet row's 27917287424",
+      "gunbc.runner_slot_allocation slot_is_floor_class (indices 1..3 on every host whose width resolves): gunbc.runner_slot_desired gunbc_runner_floor_slot_desired, 44023414784 bytes against the fleet row's 27917287424 -- a second per-slot arm, which this drop's trigger already says satisfies neither clause; it is added to the population rather than to the trigger, and it is retired by its own trigger, gunbc.runner_slot_desired gunbc_runner_floor_slot_class_stopgap_2026_10_01",
     ],
     restoration_trigger: "EITHER the shakedown slot leaves fabric_execution_slot_identities with its cell retired through the modeled teardown, OR the fleet row moves to the shakedown ceiling under an operator ruling cited on that change, so gunbc_runner_slot_desired_for has no differing arm and is deleted. A second per-slot arm satisfies neither",
   },

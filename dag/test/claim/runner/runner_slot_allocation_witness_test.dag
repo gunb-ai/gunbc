@@ -99,15 +99,20 @@ test fn runner_slot_allocation_committed_hosts_cover_the_fleet_exactly_once() ->
 //     + approval_broker_slice_memory_max 10 + repository_convergence_slice_memory_max 24)
 //   - 31.39 GiB oomd floor (1/16 of usable)
 //   = 315.85 GiB; less the 52 GiB shakedown charge (28 GiB slot + 16 + 8 GiB controller slice)
-//   = 263.85 GiB, floor(/ 26 GiB fleet row) = 10, plus the shakedown slot = 11.
+//   = 263.85 GiB; less the floor slot class block (3 x 41 GiB, operator-approved stopgap 2026-10-01,
+//   gunbc.runner_slot_desired gunbc_runner_floor_slot_class_stopgap_2026_10_01) = 140.85 GiB,
+//   floor(/ 26 GiB fleet row) = 5, plus 3 class slots plus the shakedown slot = 9.
+// srv3/srv4 by the same hand: 539282522112 B usable - 5.6 GiB overhead bound - 1/16 oomd floor =
+// 465.25 GiB; less 123 GiB of class block = 342.25 GiB, floor(/ 26) = 13, plus 3 = 16.
+// (Before the class: 11 on srv1 and 17 on srv3/srv4.)
 // It moves only when one of those rows moves, which is the alarm it exists to raise -- and it did
 // raise it once already: #12328 moved the served slices from 50 to 87 GiB and took this from 12 to
 // 11. It was 15 on main and stale: main derived 14 without the served-slice term, and 14 did not
 // conserve on srv1.
 test fn runner_slot_allocation_memory_admissions_differ_by_host_class() -> Bool {
-  host_memory_admitted_width(host: operator_host_srv1) == 11
-    && host_memory_admitted_width(host: operator_host_srv3) == 17
-    && host_memory_admitted_width(host: operator_host_srv4) == 17
+  host_memory_admitted_width(host: operator_host_srv1) == 9
+    && host_memory_admitted_width(host: operator_host_srv3) == 16
+    && host_memory_admitted_width(host: operator_host_srv4) == 16
     && match host_memory_denominator(host: operator_host_srv2) {
       MemoryDenominatorEstablished => false
       MemoryDenominatorUnestablished { cause: _ } => true
@@ -186,8 +191,8 @@ fn committed_width_is(host: HostIdentity, expected: Int) -> Bool {
 }
 
 test fn runner_slot_allocation_committed_widths_are_the_minimum_over_axes() -> Bool {
-  committed_width_is(host: operator_host_srv3, expected: 17)
-    && committed_width_is(host: operator_host_srv4, expected: 17)
+  committed_width_is(host: operator_host_srv3, expected: 16)
+    && committed_width_is(host: operator_host_srv4, expected: 16)
     && committed_width_is(host: operator_host_srv1, expected: host_memory_admitted_width(host: operator_host_srv1))
     && committed_width_is(host: operator_host_srv3, expected: host_memory_admitted_width(host: operator_host_srv3))
     && committed_width_is(host: operator_host_srv4, expected: host_memory_admitted_width(host: operator_host_srv4))
@@ -615,7 +620,7 @@ test fn the_slot_row_declares_one_core_and_no_ceiling() -> Bool {
 // width, so the row does not move when srv1's width moves.
 test fn the_shakedown_host_runner_charge_carries_the_shakedown_slot_at_its_real_size() -> Bool {
   byte_size_count(b: host_runner_pool_charge(host: operator_host_srv1, slots: 11))
-      == 10 * byte_size_count(b: gunbc_runner_slot_memory_max) + byte_size_count(b: gunbc_microvm_shakedown_slot_charge())
+      == byte_size_count(b: gunbc_runner_slice_cap_for_width(slots: 10)) + byte_size_count(b: gunbc_microvm_shakedown_slot_charge())
     && byte_size_count(b: host_runner_pool_charge(host: operator_host_srv1, slots: 11))
       > byte_size_count(b: gunbc_runner_slice_cap_for_width(slots: 11))
     && byte_size_count(b: host_runner_pool_charge(host: operator_host_srv3, slots: 17))

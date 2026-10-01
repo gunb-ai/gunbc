@@ -152,6 +152,7 @@ import gunbc.host_axis_caps {
   caps_reconcile,
   desired_cap_member,
   cap_upsert_script,
+  slot_class_cap_members,
 }
 import gunbc.host_converge {
   gunbc_runner_per_slot_dropin_path,
@@ -1645,7 +1646,7 @@ fn fleet_converge_cap_axis(host: NonEmptyStr, observed_caps: List<CapMember>) ->
         cause: "this host has no runner deploy row, so no per-slot cap population is derivable for it",
       }
     RunnerHostDeployFound { deploy: _ } =>
-      CapAxisPlanned { plan: caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps) }
+      CapAxisPlanned { plan: caps_reconcile(desired: concat(fleet_converge_desired_caps(), slot_class_cap_members(host: host as HostIdentity)), observed: observed_caps) }
   }
 }
 

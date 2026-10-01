@@ -29,7 +29,7 @@ import extdeps.tools.gnu_coreutils { cat_command, whoami_command }
 import extdeps.posix.test_utility { test_regular_file_command }
 import extdeps.languages.bash.invocation { bash_program_command }
 import gunbc.command_runner { run_shell_command_capture, run_shell_commands, process_outcome_admitted }
-import gunbc.host_axis_caps { CapMember, caps_managed_dropin_paths }
+import gunbc.host_axis_caps { CapMember, caps_managed_dropin_paths, slot_class_managed_dropin_paths }
 import gunbc.runner_unit { runner_unit_dropin_dir }
 import gunbc.runner_slot_retirement {
   SlotRetirementEvidence,
@@ -312,38 +312,52 @@ fn cap_members_observation(reads: List<CapMemberRead>) -> CapMembersObservation 
   })
 }
 
-fn observe_cap_members_wet() -> CapMembersObservation
+// EACH MANAGED PATH IS READ AGAINST ITS OWN DIRECTORY'S LISTING. The template members live in
+// actions-runner@.service.d; a floor class slot's members live in its instance directory
+// (gunbc.host_axis_caps slot_class_managed_dropin_paths), which is absent until the first class
+// write -- an absent directory is an absent member, the same answer the template arm gives for an
+// absent file, and an unreadable one is unobservable, never empty.
+fn observe_cap_member_wet(path: NonEmptyStr) -> CapMemberRead
 {
-  let listed = Filesystem.List(path: runner_unit_dropin_dir as String)
+  let segments = split(s: path as String, delimiter: "/")
+  let keep = list_length(items: segments) - 1
+  let directory = join(fold(segments, init: [], f: (acc, seg) => if list_length(items: acc) < keep { concat(acc, [seg]) } else { acc }), "/")
+  let listed = Filesystem.List(path: directory)
   let listing = filesystem_listing_observation(
-    directory: runner_unit_dropin_dir as String,
+    directory: directory,
     success: listed.success,
     entries: listed.entries,
     error: listed.error,
   )
-  cap_members_observation(reads: map(caps_managed_dropin_paths, path => {
-    let read = Filesystem.Read(path: path as String)
-    let name = match split(s: path as String, delimiter: "/").last() {
-      Present { value: value } => value
-      Absent => ""
-    }
-    match filesystem_file_observation(
-      listing: listing,
-      name: name,
-      path: path as String,
-      read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
-    ) {
-      FilesystemFileAbsent(_) => CapMemberReadAbsent
-      FilesystemFileRead { path: _, content: content } =>
-        CapMemberReadObserved { member: CapMember { dropin_path: path, content: content } }
-      FilesystemFileIndeterminate { cause: cause } =>
-        CapMemberReadUnobservable { path: path, cause: cause }
-      FilesystemFileObservationsDisagree { path: _, cause: cause } =>
-        CapMemberReadUnobservable { path: path, cause: cause }
-      FilesystemFileSubjectRefused { directory: _, name: _, cause: cause } =>
-        CapMemberReadUnobservable { path: path, cause: cause }
-    }
-  }))
+  let read = Filesystem.Read(path: path as String)
+  let name = match segments.last() {
+    Present { value: value } => value
+    Absent => ""
+  }
+  match filesystem_file_observation(
+    listing: listing,
+    name: name,
+    path: path as String,
+    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+  ) {
+    FilesystemFileAbsent(_) => CapMemberReadAbsent
+    FilesystemFileRead { path: _, content: content } =>
+      CapMemberReadObserved { member: CapMember { dropin_path: path, content: content } }
+    FilesystemFileIndeterminate { cause: cause } =>
+      CapMemberReadUnobservable { path: path, cause: cause }
+    FilesystemFileObservationsDisagree { path: _, cause: cause } =>
+      CapMemberReadUnobservable { path: path, cause: cause }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: cause } =>
+      CapMemberReadUnobservable { path: path, cause: cause }
+  }
+}
+
+fn observe_cap_members_wet(host: NonEmptyStr) -> CapMembersObservation
+{
+  cap_members_observation(reads: map(
+    concat(caps_managed_dropin_paths, slot_class_managed_dropin_paths(host: host as HostIdentity)),
+    path => observe_cap_member_wet(path: path)
+  ))
 }
 
 type FleetConvergeRequestObservation
@@ -398,7 +412,7 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
           match observe_runner_slot_members_with_provenance_wet(host: host) {
             RunnerSlotsUnobserved { reason: why } => FleetConvergeRequestUnobserved { reason: why as String }
             RunnerSlotsObserved { members: observed_slots } =>
-              match observe_cap_members_wet() {
+              match observe_cap_members_wet(host: host) {
                 CapMembersUnobservable { path: path, cause: cause } => FleetConvergeRequestUnobserved {
                   reason: join(["CapMemberUnobservable path=", path as String, " — ", cause], ""),
                 }

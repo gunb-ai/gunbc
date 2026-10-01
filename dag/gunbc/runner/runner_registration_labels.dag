@@ -5,7 +5,8 @@ import product.placement_supply { HostIdentity }
 import extdeps.github.actions { SelfHosted }
 import gunbc.ci_fleet { fleet_compute_offer_for }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
-import gunbc.runner_slot_allocation { runner_host_label, runner_label_set_union }
+import gunbc.runner_slot_allocation { runner_host_label, runner_label_set_union, gunbc_runner_slot_desired_for }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 
 // ONE COMPOSITION, EVERY PRODUCER. A registration's labels are made of three facts, each read from
@@ -46,6 +47,22 @@ fn runner_registration_labels(host: HostIdentity) -> RunnerRegistrationLabelsRes
             host: host,
             cause: "the host's compute offer did not project to a self-hosted runner spec, so it has no self-hosted registration label set" as NonEmptyStr,
           }
+      }
+  }
+}
+
+// WHAT ONE SLOT REGISTERS WITH. The host's set above carries the FLEET row's class label and is what
+// the template unit renders for every instance; a slot whose row is a different class (the floor
+// slot class, gunbc.runner_slot_allocation slot_is_floor_class) registers with that row's labels
+// instead, delivered as an instance drop-in (gunbc.runner_slot_class_dropin). Every consumer that
+// asks about a NAMED slot -- connectivity, replace postconditions -- reads this, so a floor slot
+// registered without gunbc-floor is a divergence and not a healthy runner.
+fn runner_slot_registration_labels(slot: RunnerSlotIdentity) -> RunnerRegistrationLabelsResolution {
+  match runner_registration_labels(host: slot.host) {
+    RegistrationLabelsRefused { host: h, cause: c } => RegistrationLabelsRefused { host: h, cause: c }
+    RegistrationLabelsResolved { labels: host_labels } =>
+      RegistrationLabelsResolved {
+        labels: runner_label_set_union(a: host_labels, b: gunbc_runner_slot_desired_for(slot: slot).labels.github_labels),
       }
   }
 }

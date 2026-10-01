@@ -6,7 +6,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
 import gunbc.runner_slot_allocation { runner_label_sets_equal }
 import gunbc.runner_registration_labels {
-  runner_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused,
+  runner_slot_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused,
 }
 import gunbc.runner_unit { runner_slot_unit_name }
 import gunbc.build_cache_instance {
@@ -599,7 +599,7 @@ fn plan_slot_connectivity_action(
 // A slot whose registration labels do not resolve cannot verify ANY successor's labels, so it
 // fails the postcondition rather than accepting whatever the successor registered with.
 fn replace_successor_labels_conform(slot: RunnerSlotIdentity, observed: List<String>) -> Bool {
-  match runner_registration_labels(host: slot.host) {
+  match runner_slot_registration_labels(slot: slot) {
     RegistrationLabelsResolved { labels: want } => runner_label_sets_equal(a: observed, b: want)
     RegistrationLabelsRefused { host: _, cause: _ } => false
   }
