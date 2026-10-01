@@ -17004,12 +17004,18 @@ mod module_schedule_batches_tests {
 /// GUNBC_ANCESTRY_DIGEST: per module, a digest over its sorted (name, winner declaration span) pairs,
 /// and with GUNBC_ANCESTRY_DIGEST=full every pair. Read identically in the materialized arm and the
 /// derived arm, so two runs compare at declaration grain.
-fn ancestry_digest_census(modules: &Rc<im::Vector<Rc<TypedModule>>>) {
+pub(crate) fn ancestry_digest_census(modules: &Rc<im::Vector<Rc<TypedModule>>>) {
     let Some(mode) = std::env::var_os("GUNBC_ANCESTRY_DIGEST") else {
         return;
     };
     let full = mode == "full";
+    thread_local! {
+        static PRINTED: std::cell::RefCell<std::collections::HashSet<String>> = std::cell::RefCell::new(std::collections::HashSet::new());
+    }
     for m in modules.iter() {
+        if !PRINTED.with(|p| p.borrow_mut().insert(m.type_env.module_path.clone())) {
+            continue;
+        }
         let mut lines: Vec<String> = m
             .type_env
             .ancestry_str_bindings
