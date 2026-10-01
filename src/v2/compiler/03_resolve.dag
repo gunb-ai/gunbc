@@ -41,6 +41,7 @@ import v2.std.collection {
   map_insert,
   map_lookup
 }
+import v2.std.grammar { node_atom_identity_optional }
 import v2.std.optional {
   Absent,
   Optional,
@@ -115,6 +116,11 @@ import v2.std.node {
   Arrow,
   Atom,
   Bind,
+  Branch,
+  Cardinality,
+  Instantiation,
+  Loop,
+  Value,
   ComputationNode,
   Conj,
   Disj,
@@ -327,10 +333,9 @@ fn try_edge_declared_binding(e: Edge) -> DeclaredBinding? {
 fn direct_atom_binding_fold(base: Map<Symbol, Symbol>) -> NodeFold<Map<Symbol, Symbol>> {
   NodeFold {
     init: fn(n0) {
-      match n0.kind {
-        TypeNode { connective: Atom { identity: sym } } =>
-          map_insert(base, sym, sym)
-        _ => base
+      match node_atom_identity_optional(node: n0) {
+        Present { value: sym } => map_insert(base, sym, sym)
+        Absent => base
       }
     },
     step: fn(acc, _, _) {
@@ -348,7 +353,17 @@ fn harvest_conj_named_bindings(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symb
           Absent => a
         }
       })
-    _ => acc
+    TypeNode { connective: Atom { identity: _ } } => acc
+    TypeNode { connective: Disj } => acc
+    TypeNode { connective: Arrow } => acc
+    TypeNode { connective: Cardinality } => acc
+    TypeNode { connective: Instantiation } => acc
+    ComputationNode { behavior: Value } => acc
+    ComputationNode { behavior: Transform } => acc
+    ComputationNode { behavior: Branch } => acc
+    ComputationNode { behavior: Loop } => acc
+    ComputationNode { behavior: Bind } => acc
+    ComputationNode { behavior: Match } => acc
   }
 }
 
@@ -382,7 +397,17 @@ fn add_arrow_domain_named_params(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbo
         FirstPositionalFound { target: domain } => harvest_conj_named_bindings(root: domain, acc: acc)
         FirstPositionalAbsent => acc
       }
-    _ => acc
+    TypeNode { connective: Atom { identity: _ } } => acc
+    TypeNode { connective: Conj } => acc
+    TypeNode { connective: Disj } => acc
+    TypeNode { connective: Cardinality } => acc
+    TypeNode { connective: Instantiation } => acc
+    ComputationNode { behavior: Value } => acc
+    ComputationNode { behavior: Transform } => acc
+    ComputationNode { behavior: Branch } => acc
+    ComputationNode { behavior: Loop } => acc
+    ComputationNode { behavior: Bind } => acc
+    ComputationNode { behavior: Match } => acc
   }
 }
 
@@ -398,7 +423,17 @@ fn add_bind_atom_binder(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol
       } else {
         acc
       }
-    _ => acc
+    TypeNode { connective: Atom { identity: _ } } => acc
+    TypeNode { connective: Conj } => acc
+    TypeNode { connective: Disj } => acc
+    TypeNode { connective: Arrow } => acc
+    TypeNode { connective: Cardinality } => acc
+    TypeNode { connective: Instantiation } => acc
+    ComputationNode { behavior: Value } => acc
+    ComputationNode { behavior: Transform } => acc
+    ComputationNode { behavior: Branch } => acc
+    ComputationNode { behavior: Loop } => acc
+    ComputationNode { behavior: Match } => acc
   }
 }
 
@@ -713,7 +748,9 @@ fn type_parameter_in_value_position_optional(ctx: ResolveContext, n: Node, name:
           correction: Unavailable { reason: UserInputBoundary }
         }
       )
-    _ => optional_absent()
+    Accepted { value: BoundAtRoot { canonical: _ }, diagnostics: _ } => optional_absent()
+    Accepted { value: ScopeUnbound, diagnostics: _ } => optional_absent()
+    Rejected { diagnostics: _ } => optional_absent()
   }
 }
 
@@ -1639,10 +1676,10 @@ fn resolve_transform_operator_child(
   ctx: ResolveContext,
   n: Node
 ) -> ResolveNodeWalk {
-  match n.kind {
-    TypeNode { connective: Atom { identity: id } } =>
+  match node_atom_identity_optional(node: n) {
+    Present { value: id } =>
       resolve_walk_of_outcome(o: resolve_surface_operator_atom(ctx: ctx, n: n, identity: id))
-    _ => resolve_node_walk(ctx: ctx, n: n)
+    Absent => resolve_node_walk(ctx: ctx, n: n)
   }
 }
 
@@ -1789,8 +1826,8 @@ fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: Map<Symbol, Symb
     Absent => acc
     Present { value: _ } =>
       fold(construct_field_edges(n: pat), init: acc, f: fn(m, e) {
-        match e.target.kind {
-          TypeNode { connective: Atom { identity: id } } =>
+        match node_atom_identity_optional(node: e.target) {
+          Present { value: id } =>
             if is_wildcard_pattern(pattern: e.target) {
               m
             } else if resolve_pattern_atom_names_constructor(ctx: ctx, id: id) {
@@ -1798,7 +1835,7 @@ fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: Map<Symbol, Symb
             } else {
               map_insert(m, id, id)
             }
-          _ => resolve_pattern_binders(ctx: ctx, pat: e.target, acc: m)
+          Absent => resolve_pattern_binders(ctx: ctx, pat: e.target, acc: m)
         }
       })
   }
@@ -2775,8 +2812,8 @@ fn type_param_shadows_visible_name_diagnostic(binder: Node) -> Diagnostic {
 // A binder is admitted exactly when its spelling, looked up from the declaration's own scope,
 // is unbound. Any other answer -- a binding, an ambiguity, a test-code wall -- is a visible name.
 fn resolve_type_param_binder(ctx: ResolveContext, binder: Node) -> ResolveNodeWalk {
-  match binder.kind {
-    TypeNode { connective: Atom { identity: id } } =>
+  match node_atom_identity_optional(node: binder) {
+    Present { value: id } =>
       match resolve_atom(ctx: ctx, n: binder, identity: id) {
         Rejected { diagnostics: d } =>
           if diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol {
@@ -2787,7 +2824,7 @@ fn resolve_type_param_binder(ctx: ResolveContext, binder: Node) -> ResolveNodeWa
         Accepted { value: _, diagnostics: _ } =>
           resolve_walk_refused_one(chain: diagnostics_singleton(d: type_param_shadows_visible_name_diagnostic(binder: binder)))
       }
-    _ => resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: binder)))
+    Absent => resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: binder)))
   }
 }
 
@@ -2910,10 +2947,10 @@ fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node
 }
 
 fn resolve_bind_binder_target(t: Node) -> ResolveNodeWalk {
-  match t.kind {
-    TypeNode { connective: Atom { identity: id } } =>
+  match node_atom_identity_optional(node: t) {
+    Present { value: id } =>
       ResolveWalkAccepted { value: canonical_atom(identity: id, occurrence_id: t.occurrence_id), diagnostics: None }
-    _ =>
+    Absent =>
       resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)))
   }
 }
