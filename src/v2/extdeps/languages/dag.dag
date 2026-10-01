@@ -5324,6 +5324,8 @@ fn dag_bind_resolved_arrow_with_body_wrong_value_node() -> Node {
 }
 
 data dag_bind_resolved_arrow_with_body_fixture: Node = dag_bind_resolved_arrow_with_body_node()
+data dag_bind_let_resolved_body_fixture: Node = dag_bind_let_resolved_body_from_value(value: dag_int_literal_fixture_one())
+data dag_bind_binder_reference_fixture: Node = binder_reference_node(binder: ^dag_binding_bind_x, occurrence_id: OccurrenceSynthetic)
 data dag_bind_resolved_arrow_with_body_wrong_value_fixture: Node = dag_bind_resolved_arrow_with_body_wrong_value_node()
 
 fn dag_bind_arrow_with_body_node() -> Node {
@@ -5345,7 +5347,7 @@ fn dag_bind_arrow_with_body_wrong_value_node() -> Node {
 data dag_bind_let_body_fixture: Node = dag_bind_let_body_node()
 data dag_bind_arrow_with_body_fixture: Node = dag_bind_arrow_with_body_node()
 data dag_bind_arrow_with_body_wrong_value_fixture: Node = dag_bind_arrow_with_body_wrong_value_node()
-data dag_fixture_emitted_bind_fn: Node = dag_bind_arrow_with_body_fixture
+data dag_fixture_emitted_bind_fn: Node = dag_bind_resolved_arrow_with_body_fixture
 
 fn dag_formal_production_fn_bind() -> FormalProduction {
   grammar_formal_production(

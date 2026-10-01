@@ -8,7 +8,8 @@ import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.extdeps.languages.dag {
   dag_inhabitant_atom,
   dag_bind_target_model,
-  dag_bind_let_body_fixture,
+  dag_bind_let_resolved_body_fixture,
+  dag_bind_binder_reference_fixture,
   dag_fixture_emitted_bind_fn,
   dag_fixture_int_inhabitant,
   dag_pick_arrow_domain_conj_node,
@@ -114,7 +115,7 @@ fn bind_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
     Holds {
       value: bind_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == dag_bind_let_body_fixture {
+  } else if node == dag_bind_let_resolved_body_fixture {
     Holds {
       value: bind_canonical_grounding(node: node, algebra: node)
     }
@@ -127,6 +128,10 @@ fn bind_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
       value: bind_canonical_grounding(node: node, algebra: node)
     }
   } else if node == dag_type_atom_node(identity: ^dag_binding_bind_x) {
+    Holds {
+      value: bind_canonical_grounding(node: node, algebra: node)
+    }
+  } else if node == dag_bind_binder_reference_fixture {
     Holds {
       value: bind_canonical_grounding(node: node, algebra: node)
     }
