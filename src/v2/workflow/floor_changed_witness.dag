@@ -5,7 +5,7 @@ import v2.workflow.required_floor {
   RequiredFloorDisposition,
   required_floor_disposition_name,
   Planned, PlannedAsChangedWitness, DeclinedLongModule, DeclinedFixtureMember, DeclinedCostDebt,
-  DeclinedOutsideRequiredGate, DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded,
+  DeclinedOutsideRequiredGate, DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded, DeclinedNoCiWetLane,
   ChangedWitnessCostPolicy, OrdinaryChangedWitnessCostPolicy, ChangedCostDebtVerdictOnly,
 }
 import v2.workflow.floor_terminal_ledger {
@@ -313,6 +313,7 @@ fn changed_witness_execution_standing(
         DeclinedOutsideRequiredGate => Declined { disposition: d }
         DeclinedOutsideGateClosure => Declined { disposition: d }
         DeclinedDiscoveryExcluded { matched_substring: _ } => Declined { disposition: d }
+        DeclinedNoCiWetLane { pattern: _ } => Declined { disposition: d }
         DeclinedCostDebt => Declined { disposition: d }
       }
   }
@@ -332,8 +333,25 @@ fn changed_witness_standing_blocks(standing: ChangedWitnessExecutionStanding) ->
     PlannedWithoutTerminalVerdict => true
     HermeticRouteGapHeldAndWetPassed { evidence: e, identity: i, candidate: c } =>
       !hermetic_route_gap_wet_join_complete(evidence: e, identity: i, candidate: c)
-    Declined { disposition: _ } => true
+    Declined { disposition: d } => changed_witness_decline_blocks(disposition: d)
     MissingDisposition => true
+  }
+}
+
+// WHICH DECLINES BLOCK A CHANGED WITNESS: every one, except the declared BinWitnessWet decline,
+// whose loss is `gunbc.rung_drop.edited_bin_witness_wet_rows_not_executed_by_ci` and which the PR
+// discharges with a real bin_wet receipt. Exhaustive, so a new disposition states its polarity.
+fn changed_witness_decline_blocks(disposition: RequiredFloorDisposition) -> Bool {
+  match disposition {
+    DeclinedNoCiWetLane { pattern: _ } => false
+    Planned => true
+    PlannedAsChangedWitness => true
+    DeclinedLongModule { matched_prefix: _ } => true
+    DeclinedFixtureMember { matched_prefix: _ } => true
+    DeclinedOutsideRequiredGate => true
+    DeclinedOutsideGateClosure => true
+    DeclinedDiscoveryExcluded { matched_substring: _ } => true
+    DeclinedCostDebt => true
   }
 }
 
