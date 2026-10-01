@@ -2315,7 +2315,10 @@ fn store_cross_claim_pure_memo(
     // The evaluated value's content identity, recorded for the caller BEFORE the presence
     // check, so an `AlreadyPresent` warm still reports what THIS evaluation produced.
     CROSS_CLAIM_LAST_STORE_DIGEST.with(|d| {
-        *d.borrow_mut() = Some((func_name.to_string(), portable_value_digest(&portable)))
+        *d.borrow_mut() = Some((
+            func_name.to_string(),
+            portable_value_run_invariant_digest(&portable),
+        ))
     });
     let outcome = CROSS_CLAIM_PURE_MEMO.with(|m| {
         let mut m = m.borrow_mut();
@@ -2486,6 +2489,69 @@ impl PreparedEffectInputCarry {
 /// clone rather than rebuilt per frame.
 fn ctx_free_symbol_text(s: &Symbol) -> String {
     s.0.to_string()
+}
+
+/// A digest INVARIANT UNDER FIELD AND ENTRY ORDER, for comparing two RUNS. The portable form's
+/// field order is canonical only within one process (fields sort on process-global symbol
+/// identity, i.e. interning order), so `portable_value_digest` can differ between two runs that
+/// interned in a different order while the values are equal. Here record and variant fields sort
+/// by spelling and map entries by their own digests; list order is kept because it is part of
+/// the value.
+fn portable_value_run_invariant_digest(v: &PortableValue) -> String {
+    use crate::v1_rt::{atom_identity_hash, hash_combine};
+    let d = portable_value_run_invariant_digest;
+    let fold_sorted = |seed: String, mut parts: Vec<String>| {
+        parts.sort();
+        parts.into_iter().fold(seed, hash_combine)
+    };
+    let fields_digest = |seed: String, fields: &[(Symbol, PortableValue)]| {
+        fold_sorted(
+            seed,
+            fields
+                .iter()
+                .map(|(n, f)| hash_combine(atom_identity_hash(ctx_free_symbol_text(n)), d(f)))
+                .collect(),
+        )
+    };
+    match v {
+        PortableValue::List(items) => hash_combine(
+            atom_identity_hash("list".to_string()),
+            items
+                .iter()
+                .fold(atom_identity_hash("[]".to_string()), |acc, i| {
+                    hash_combine(acc, d(i))
+                }),
+        ),
+        PortableValue::Map(pairs) => hash_combine(
+            atom_identity_hash("map".to_string()),
+            fold_sorted(
+                atom_identity_hash("{}".to_string()),
+                pairs
+                    .iter()
+                    .map(|(k, val)| hash_combine(d(k), d(val)))
+                    .collect(),
+            ),
+        ),
+        PortableValue::Record { type_name, fields } => hash_combine(
+            atom_identity_hash("record".to_string()),
+            fields_digest(atom_identity_hash(ctx_free_symbol_text(type_name)), fields),
+        ),
+        PortableValue::Variant {
+            type_name,
+            variant_name,
+            fields,
+        } => hash_combine(
+            atom_identity_hash("variant".to_string()),
+            fields_digest(
+                hash_combine(
+                    atom_identity_hash(ctx_free_symbol_text(type_name)),
+                    atom_identity_hash(ctx_free_symbol_text(variant_name)),
+                ),
+                fields,
+            ),
+        ),
+        leaf => portable_value_digest(leaf),
+    }
 }
 
 fn portable_value_digest(v: &PortableValue) -> String {
