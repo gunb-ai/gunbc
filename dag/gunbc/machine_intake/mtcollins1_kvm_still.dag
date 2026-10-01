@@ -15,8 +15,9 @@ import gunbc.runner_browser_toolchain {
   RunnerBrowserToolchainResolution, BrowserToolchainReady, BrowserToolchainNotReady, BrowserToolchainUnresolved,
   RunnerBrowserToolchainLocation, runner_browser_toolchain_node_command, runner_browser_toolchain_standing_text,
 }
+import gunbc.machine_intake_megarac_ui_features { megarac_ui_features }
 import extdeps.bmc.megarac {
-  megarac_ui_features, megarac_ui_features_json,
+  megarac_ui_features_json,
   ScreenCaptureFactKnown, ScreenCaptureFirmwareUncatalogued,
   ScreenCaptureClientSideOnly, KvmClientCanvasJpeg, megarac_screen_capture_standing, megarac_firmware_0_32,
 }
@@ -816,7 +817,7 @@ fn mtcollins1_kvm_observer_start(
             match toolchain {
               BrowserToolchainReady { location: loc, standing: _ } =>
                 match megarac_ui_features(firmware: firmware) {
-                  Absent => KvmObserverNotStarted { reason: "no viewer feature list is catalogued for this firmware (extdeps.bmc.megarac megarac_ui_features), and the viewer's KVM view reads it unguarded; no viewer was driven" }
+                  Absent => KvmObserverNotStarted { reason: "no viewer feature list is observed for this firmware (gunbc.machine_intake_megarac_ui_features megarac_ui_features), and the viewer's KVM view reads it unguarded; no viewer was driven" }
                   Present { value: names } => kvm_observer_launch(base_url: concat("https://", bmc_host as String), host: bmc_host as String, username: username, password_file: password_file, toolchain: loc, attempt: attempt, features_json: megarac_ui_features_json(names: names))
                 }
               BrowserToolchainNotReady { standing: st } => KvmObserverNotStarted { reason: concat("the runner browser toolchain is not ready: ", runner_browser_toolchain_standing_text(s: st)) as NonEmptyStr }

@@ -6,7 +6,7 @@ import std.content_hash { content_hash_of_value }
 import std.measure { Second, second, second_count }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
 import extdeps.bmc.megarac
-import extdeps.bmc.megarac { MegaRacRmediaStatus, RmediaStatusNamed, RmediaStatusOutsideTable, RmediaStatusTableUnread, megarac_rmedia_status_of_wire }
+import gunbc.machine_intake_megarac_ui_features { MegaRacRmediaStatus, RmediaStatusNamed, RmediaStatusOutsideTable, RmediaStatusTableUnread, megarac_rmedia_status_of_wire }
 import extdeps.clock { ClockUnixMillisObserved, ClockUnixMillisRefused, clock_unix_millis_read }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_name_digest_prefix }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }

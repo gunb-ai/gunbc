@@ -4,7 +4,8 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, EpochMs, List, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.content_hash { ContentHash, content_hash_of_value }
-import extdeps.bmc.megarac { megarac_firmware_0_32, megarac_rmedia_status_0_32 }
+import extdeps.bmc.megarac { megarac_firmware_0_32 }
+import gunbc.machine_intake_megarac_ui_features { megarac_rmedia_status_0_32 }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.endpoint { AmiMegaRac }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_image_name, ubuntu_seeded_install_media_name_digest_prefix }
