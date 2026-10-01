@@ -1,12 +1,14 @@
 module test.claim.plan_governance_witness
 
-import std.types { Bool, String }
+import std.types { Bool, String, List }
 import gunbc.plan { Plan }
 import gunbc.plan_registry { all_plans }
 import gunbc.plan_governance {
   PlanGovernance, CompilerStageAuthority, CompilerStageSpecialization,
-  plan_governance_rows, compiler_architecture_root_slug,
-  plan_governance_of, governance_reaches_root_from, governance_rows_all_reach_root, governance_rows_unique,
+  plan_governance_rows, compiler_architecture_root_slug, plan_governance_admission,
+  PlanGovernanceAdmission, GovernanceAdmitted, GovernanceRefused,
+  GovernanceRefusal, GovernanceRootHasGovernor, GovernanceChildHasMultipleGovernors, GovernanceOrphan, GovernanceCycle,
+  admit_plan_governance, governance_is_admitted, graph_all_reach_root, graph_parent_of, graph_children_of,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -16,91 +18,140 @@ fn plan_slug_is_registered(slug: String) -> Bool {
   fold(all_plans, init: false, f: (acc, p) => acc || p.slug == slug)
 }
 
-// THE LENS CLAIMS OF THE PLAN DOCUMENT GRAPH, over the live registry and the live governance rows.
+fn refused_with(a: PlanGovernanceAdmission, pred: fn(GovernanceRefusal) -> Bool) -> Bool {
+  match a {
+    GovernanceAdmitted { graph: _ } => false
+    GovernanceRefused { refusals: rs } => fold(rs, init: false, f: (acc, r) => acc || pred(r))
+  }
+}
+
+fn is_multiple_governors(r: GovernanceRefusal) -> Bool {
+  match r {
+    GovernanceChildHasMultipleGovernors { child: _ } => true
+    _ => false
+  }
+}
+
+fn is_root_has_governor(r: GovernanceRefusal) -> Bool {
+  match r {
+    GovernanceRootHasGovernor { governor: _ } => true
+    _ => false
+  }
+}
+
+fn is_orphan(r: GovernanceRefusal) -> Bool {
+  match r {
+    GovernanceOrphan { child: _, missing_governor: _ } => true
+    _ => false
+  }
+}
+
+fn is_cycle(r: GovernanceRefusal) -> Bool {
+  match r {
+    GovernanceCycle { child: _ } => true
+    _ => false
+  }
+}
+
+// ---- the live claims ----------------------------------------------------------------------------
+
+test fn the_live_governance_rows_are_admitted() -> Bool {
+  governance_is_admitted(a: plan_governance_admission)
+}
 
 test fn the_compiler_root_is_a_registered_plan_with_no_governor() -> Bool {
   plan_slug_is_registered(slug: compiler_architecture_root_slug)
-    && (match plan_governance_of(slug: compiler_architecture_root_slug) {
-      none => true
-      Present { value: _ } => false
+    && (match plan_governance_admission {
+      GovernanceAdmitted { graph: g } =>
+        match graph_parent_of(graph: g, child: compiler_architecture_root_slug) {
+          none => true
+          Present { value: _ } => false
+        }
+      GovernanceRefused { refusals: _ } => false
     })
 }
 
+// ENDPOINT EXISTENCE is the witness's claim, not admission's: gunbc.plan_governance cannot import the
+// registry without a cycle, so an unknown endpoint is caught here.
 test fn every_governance_row_names_two_registered_plans() -> Bool {
   all(plan_governance_rows, r =>
     plan_slug_is_registered(slug: r.plan_slug) && plan_slug_is_registered(slug: r.governed_by_slug))
 }
 
 test fn every_governed_plan_reaches_the_compiler_root() -> Bool {
-  governance_rows_all_reach_root(rows: plan_governance_rows)
+  match plan_governance_admission {
+    GovernanceAdmitted { graph: g } => graph_all_reach_root(graph: g)
+    GovernanceRefused { refusals: _ } => false
+  }
 }
 
-// DISCRIMINATING CONTROLS over synthetic row sets: a cycle and an orphan each fail to reach the
-// root, so the live claim above cannot be green by construction.
-
-fn cyclic_rows() -> List<PlanGovernance> {
-  [
-    PlanGovernance { plan_slug: "a", governed_by_slug: "b", role: CompilerStageAuthority, stage: "x" },
-    PlanGovernance { plan_slug: "b", governed_by_slug: "a", role: CompilerStageSpecialization, stage: "x" },
-  ]
+test fn the_root_lists_every_rowed_child_and_each_child_names_the_root() -> Bool {
+  match plan_governance_admission {
+    GovernanceAdmitted { graph: g } =>
+      all(graph_children_of(graph: g, parent: compiler_architecture_root_slug), c =>
+        match graph_parent_of(graph: g, child: c.plan_slug) {
+          Present { value: p } => p.governed_by_slug == compiler_architecture_root_slug
+          none => false
+        })
+    GovernanceRefused { refusals: _ } => false
+  }
 }
 
-fn orphan_rows() -> List<PlanGovernance> {
-  [
-    PlanGovernance { plan_slug: "a", governed_by_slug: "nowhere", role: CompilerStageSpecialization, stage: "x" },
-  ]
+// ---- discriminating controls over synthetic row sets --------------------------------------------
+
+fn row(child: String, parent: String) -> PlanGovernance {
+  PlanGovernance { plan_slug: child, governed_by_slug: parent, role: CompilerStageSpecialization, stage: "x" }
 }
 
 fn rooted_chain_rows() -> List<PlanGovernance> {
-  [
-    PlanGovernance { plan_slug: "leaf", governed_by_slug: "mid", role: CompilerStageSpecialization, stage: "x" },
-    PlanGovernance { plan_slug: "mid", governed_by_slug: compiler_architecture_root_slug, role: CompilerStageAuthority, stage: "x" },
-  ]
+  [row(child: "leaf", parent: "mid"), PlanGovernance { plan_slug: "mid", governed_by_slug: compiler_architecture_root_slug, role: CompilerStageAuthority, stage: "x" }]
 }
 
-test fn a_cycle_does_not_reach_the_root() -> Bool {
-  governance_rows_all_reach_root(rows: cyclic_rows()) == false
+test fn an_ordinary_parent_chain_is_admitted() -> Bool {
+  governance_is_admitted(a: admit_plan_governance(rows: rooted_chain_rows()))
+    && (match admit_plan_governance(rows: rooted_chain_rows()) {
+      GovernanceAdmitted { graph: g } => graph_all_reach_root(graph: g)
+      GovernanceRefused { refusals: _ } => false
+    })
 }
 
-test fn an_orphan_does_not_reach_the_root() -> Bool {
-  governance_rows_all_reach_root(rows: orphan_rows()) == false
+test fn a_cycle_is_refused_as_a_cycle() -> Bool {
+  refused_with(a: admit_plan_governance(rows: [row(child: "a", parent: "b"), row(child: "b", parent: "a")]), pred: is_cycle)
 }
 
-test fn a_two_step_chain_reaches_the_root() -> Bool {
-  governance_reaches_root_from(rows: rooted_chain_rows(), slug: "leaf")
-    && governance_rows_all_reach_root(rows: rooted_chain_rows())
+test fn an_orphan_is_refused_as_an_orphan() -> Bool {
+  refused_with(a: admit_plan_governance(rows: [row(child: "a", parent: "nowhere")]), pred: is_orphan)
 }
 
-// THE DUPLICATE-PARENT CONTROL (review of 14f36a479f). Every endpoint is registered-looking and the
-// first row of the duplicated child reaches the root, so a lookup that took the first row would pass
-// the walk and hide the cycle through the second row. Uniqueness is admitted first, so this refuses.
-fn duplicate_parent_rows() -> List<PlanGovernance> {
-  [
-    PlanGovernance { plan_slug: "child", governed_by_slug: compiler_architecture_root_slug, role: CompilerStageSpecialization, stage: "x" },
-    PlanGovernance { plan_slug: "child", governed_by_slug: "other", role: CompilerStageSpecialization, stage: "x" },
-    PlanGovernance { plan_slug: "other", governed_by_slug: "child", role: CompilerStageAuthority, stage: "x" },
-  ]
+test fn a_root_with_a_governor_is_refused() -> Bool {
+  refused_with(a: admit_plan_governance(rows: [row(child: compiler_architecture_root_slug, parent: "a"), row(child: "a", parent: compiler_architecture_root_slug)]), pred: is_root_has_governor)
 }
 
-// THE SAME ROWS WITH THE TWO CHILD ROWS SWAPPED: the verdict must not depend on order.
-fn duplicate_parent_rows_reordered() -> List<PlanGovernance> {
-  [
-    PlanGovernance { plan_slug: "child", governed_by_slug: "other", role: CompilerStageSpecialization, stage: "x" },
-    PlanGovernance { plan_slug: "child", governed_by_slug: compiler_architecture_root_slug, role: CompilerStageSpecialization, stage: "x" },
-    PlanGovernance { plan_slug: "other", governed_by_slug: "child", role: CompilerStageAuthority, stage: "x" },
-  ]
+test fn a_child_with_two_different_parents_is_refused() -> Bool {
+  refused_with(
+    a: admit_plan_governance(rows: [row(child: "c", parent: compiler_architecture_root_slug), row(child: "c", parent: "d"), row(child: "d", parent: compiler_architecture_root_slug)]),
+    pred: is_multiple_governors)
 }
 
-test fn the_live_rows_are_unique_per_child() -> Bool {
-  governance_rows_unique(rows: plan_governance_rows)
+test fn a_child_with_the_same_parent_twice_is_refused() -> Bool {
+  refused_with(
+    a: admit_plan_governance(rows: [row(child: "c", parent: compiler_architecture_root_slug), row(child: "c", parent: compiler_architecture_root_slug)]),
+    pred: is_multiple_governors)
 }
 
-test fn a_duplicate_parent_is_refused_even_when_its_first_row_reaches_the_root() -> Bool {
-  (governance_rows_unique(rows: duplicate_parent_rows()) == false)
-    && (governance_rows_all_reach_root(rows: duplicate_parent_rows()) == false)
+// THE REVIEW'S HIDDEN-CYCLE SPECIMEN: the child's first row reaches the root, its second row forms a
+// cycle with a third row. A first-match lookup passed this; admission refuses it in either order.
+fn hidden_cycle_rows() -> List<PlanGovernance> {
+  [row(child: "child", parent: compiler_architecture_root_slug), row(child: "child", parent: "other"), row(child: "other", parent: "child")]
 }
 
-test fn reordering_the_duplicate_rows_does_not_change_the_verdict() -> Bool {
-  (governance_rows_all_reach_root(rows: duplicate_parent_rows_reordered()) == false)
-    && (governance_rows_all_reach_root(rows: duplicate_parent_rows()) == governance_rows_all_reach_root(rows: duplicate_parent_rows_reordered()))
+fn hidden_cycle_rows_reordered() -> List<PlanGovernance> {
+  [row(child: "child", parent: "other"), row(child: "child", parent: compiler_architecture_root_slug), row(child: "other", parent: "child")]
+}
+
+test fn the_hidden_cycle_specimen_is_refused_in_both_orders() -> Bool {
+  (governance_is_admitted(a: admit_plan_governance(rows: hidden_cycle_rows())) == false)
+    && (governance_is_admitted(a: admit_plan_governance(rows: hidden_cycle_rows_reordered())) == false)
+    && refused_with(a: admit_plan_governance(rows: hidden_cycle_rows()), pred: is_multiple_governors)
+    && refused_with(a: admit_plan_governance(rows: hidden_cycle_rows_reordered()), pred: is_multiple_governors)
 }
