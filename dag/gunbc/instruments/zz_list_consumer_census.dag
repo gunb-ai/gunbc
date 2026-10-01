@@ -1,0 +1,34 @@
+module tools.list_consumer_census
+
+import std.types { NonEmptyStr, String, List }
+import extdeps.filesystem.filesystem_io
+import tools.multi_module_compile_fixture { FixtureSource }
+import tools.reference_occurrence_binding_census {
+  reference_occurrence_binding_census,
+  ReferenceOccurrenceBindingCensusRefused,
+  ReferenceOccurrenceBindingCensusObserved,
+  ReferenceOccurrenceBound,
+  ReferenceOccurrenceUnresolved,
+  ReferenceOccurrenceAmbiguous,
+  ReferenceOccurrenceBindingRefused
+}
+
+fn disposition_text(d: tools.reference_occurrence_binding_census.ReferenceOccurrenceBindingDisposition) -> String {
+  match d {
+    ReferenceOccurrenceBound { declaration_occurrence, provider_module, binding_source } => concat("bound ", provider_module as String)
+    ReferenceOccurrenceUnresolved => "unresolved"
+    ReferenceOccurrenceAmbiguous { candidates } => "ambiguous"
+    ReferenceOccurrenceBindingRefused { cause } => concat("refused ", cause as String)
+  }
+}
+
+fn census(manifest: String) -> String {
+  let paths = filter(split(s: filesystem_read(path: manifest).content, delimiter: "\n"), p => p != "")
+  let sources = map(paths, p => FixtureSource { path: p as NonEmptyStr, content: filesystem_read(path: p).content })
+  match reference_occurrence_binding_census(sources: sources, entry: "src/v2/std/collection.dag" as NonEmptyStr) {
+    ReferenceOccurrenceBindingCensusRefused { cause } => concat("REFUSED ", cause as String)
+    ReferenceOccurrenceBindingCensusObserved { source_digest, compiler_digest, denominator, observations } =>
+      join(map(filter(observations, o => o.authored_name == "List"), o =>
+        join([o.consumer_file as String, o.consumer_module as String, disposition_text(d: o.disposition)], "\t")), "\n")
+  }
+}
