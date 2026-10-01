@@ -1,0 +1,62 @@
+module std.derived_type_origin
+
+import std.types { Bool, Int, NonEmptyStr }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, TypeParameter, declaration_ref_eq }
+
+// THE ORIGIN A TYPE NODE CARRIES WHEN A COMPILER STAGE BUILDS IT, named by the constructor that
+// builds it and never reconstructed from the node's shape. Model:
+// docs/plans/derived-node-identity-design.md. It is std.decl_ref's identity carried through
+// derivation, plus the two arms a DeclarationRef cannot express: a kernel container's element
+// position, and a constructor that could not name an origin. It is not an occurrence identity
+// (std.occurrence_identity answers which AUTHORED occurrence; a built node has none) and not a site
+// key (v2.compiler.inferred_tree InferSite answers which site of one tree a fact is about).
+//
+// `container` names the kernel carrier by its std.algebra algebra_carriers row name, the authority
+// for which kernel containers exist; `position` is the element slot, 0 for a single-argument carrier.
+type DerivedTypeOrigin
+  = CarriedDeclaration { declaration: DeclarationRef }
+  | ParameterBinding { parameter: DeclarationRef }
+  | KernelElementPosition { container: NonEmptyStr, position: Int }
+  | DerivationRefused { constructor: NonEmptyStr, cause: NonEmptyStr }
+
+// WHETHER A NODE IS A GENERIC PARAMETER, decided from its origin alone. The three arms are distinct
+// facts: a refusal is neither a parameter nor a concrete type, and a consumer reaching it refuses
+// (law L4) rather than reading either answer.
+type GenericIdentityVerdict
+  = IsGenericParameter { parameter: DeclarationRef }
+  | NotAGenericParameter
+  | GenericIdentityRefused { constructor: NonEmptyStr, cause: NonEmptyStr }
+
+// L1, copy: a constructor that rebuilds a node from another carries its input's origin unchanged.
+fn derived_origin_copy(input: DerivedTypeOrigin) -> DerivedTypeOrigin {
+  input
+}
+
+// The generic-identity reading. Only a carried TypeParameter declaration is a generic parameter.
+// A ParameterBinding names the parameter a substituted node STANDS IN FOR; the node itself is the
+// binding, so it is not that parameter. A kernel element position is never a parameter whatever it
+// is spelled (L3), and spelling is not an input to this function at all (L2).
+fn generic_identity_of(origin: DerivedTypeOrigin) -> GenericIdentityVerdict {
+  match origin {
+    CarriedDeclaration { declaration: d } =>
+      match d.field {
+        TypeParameter { name: _ } => IsGenericParameter { parameter: d }
+        WholeDeclaration => NotAGenericParameter
+        NamedField { field_name: _ } => NotAGenericParameter
+      }
+    ParameterBinding { parameter: _ } => NotAGenericParameter
+    KernelElementPosition { container: _, position: _ } => NotAGenericParameter
+    DerivationRefused { constructor: c, cause: why } => GenericIdentityRefused { constructor: c, cause: why }
+  }
+}
+
+// A SELF-BINDING IS IDENTITY EQUALITY. Binding parameter p to a node is a self-binding exactly when
+// that node IS p -- the same owner, declaration and parameter name -- never when it is only spelled
+// like p. Two owners' parameters that share a name are different parameters.
+fn is_self_binding(parameter: DeclarationRef, binding: DerivedTypeOrigin) -> Bool {
+  match generic_identity_of(origin: binding) {
+    IsGenericParameter { parameter: q } => declaration_ref_eq(a: parameter, b: q)
+    NotAGenericParameter => false
+    GenericIdentityRefused { constructor: _, cause: _ } => false
+  }
+}
