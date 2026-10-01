@@ -621,6 +621,12 @@ import v2.std.collection { List }
 // v2.test.claim.fold_lowering flp_outcomes ingests the positional, positional-named-step,
 // non-fold and well-formed snippets once and stores four Bool verdicts; MQ-1's first floor run refused each claim
 // that paid its own ingest against the new-witness budget. Portable for the same reason.
+// THE FOLD-ENCODING ROW IS THE SAME GROUND AT ELEVEN SPECIMENS: v2.test.claim.fold_encoding
+// fe_outcomes drives the front end over its inline modules (the exact-shape fixture, three planted
+// drops measured by reference conservation, the canary, a user-declared fold, fold_x, two piped
+// folds and the step-binder fixture) and stores
+// eleven Bool verdicts; MQ-5's floor run 36490720680 measured each claim that paid its own front end
+// over the new-witness budget. Portable for the same reason.
 // THE FOLD-OPERAND ROW IS THE SAME GROUND AT TWO SPECIMENS: v2.test.claim.body_lowering
 // .fold_operand_structure fos_outcomes parses the `&&` and call-argument snippets once each and stores
 // six Bool verdicts; the first floor run of its PR judged each claim that paid its own parse and lowering
@@ -781,6 +787,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.body_cast_node.bcn_let_in_value_cast_verdict",
   "v2.test.claim.namespace_xl0.value_read_refusal.vrr_outcomes",
   "v2.test.claim.fold_lowering.flp_outcomes",
+  "v2.test.claim.fold_encoding.fe_outcomes",
   "v2.test.claim.body_lowering.fold_operand_structure.fos_outcomes",
   "v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal.iasl_outcomes",
   "v2.test.claim.namespace_xl0.bound_value_resolve_refusal.bvr_outcomes",
@@ -1082,6 +1089,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.parse.block_expr_as_binary_operand_parse.ordinary_binary_parsed",
   "v2.test.parse.block_expr_as_binary_operand_parse.bare_match_body_is_match",
   "v2.test.parse.block_expr_as_binary_operand_parse.bare_if_body_is_branch",
+  "v2.test.claim.parse.uses_clause.uses_parsed",
+  "v2.test.claim.parse.uses_clause.uses_refusal",
   "v2.test.claim.occurrence_role.occurrence_role.binders_fixture_outcome",
   "v2.test.claim.occurrence_role.occurrence_role.mixed_param_list_parsed",
   "v2.test.claim.occurrence_role.occurrence_role.mixed_param_list_planted",
