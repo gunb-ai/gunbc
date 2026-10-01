@@ -6390,19 +6390,23 @@ pub fn applied_type_argument_identity_known(name: String, scope: Rc<InferScope>)
     if (name.clone() == "".to_string()) {
         false
     } else {
-        if crate::std_types::is_kernel_type(name.clone()) {
-            true
+        if env_name_is_kernel_grounded_carrier(name.clone(), scope.type_env.clone()) {
+            false
         } else {
-            match crate::v1_compiler_infer_env::lookup_type_by_name(
-                scope.type_env.clone(),
-                name.clone(),
-            ) {
-                Some(decl) => {
-                    (((decl.connective.clone() == Connective::Conj)
-                        || (decl.connective.clone() == Connective::Disj))
-                        && ((decl.children.clone().len() as i64) > 0))
+            if crate::std_types::is_kernel_type(name.clone()) {
+                true
+            } else {
+                match crate::v1_compiler_infer_env::lookup_type_by_name(
+                    scope.type_env.clone(),
+                    name.clone(),
+                ) {
+                    Some(decl) => {
+                        (((decl.connective.clone() == Connective::Conj)
+                            || (decl.connective.clone() == Connective::Disj))
+                            && ((decl.children.clone().len() as i64) > 0))
+                    }
+                    std::option::Option::None => false,
                 }
-                std::option::Option::None => false,
             }
         }
     }
