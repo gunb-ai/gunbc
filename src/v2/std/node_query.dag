@@ -263,6 +263,13 @@ fn binder_default_label() -> Symbol {
   symbol_intern_lexeme(lexeme: "<binder-default>")
 }
 
+// Whether an edge label is one of a binder node's own two labels. A walk that extends a path by edge
+// labels stops extending across them: a binder's type and default are parts of the binder, not
+// members named <binder-type> or <binder-default>.
+fn binder_node_label(name: Symbol) -> Bool {
+  (name == binder_type_label()) || (name == binder_default_label())
+}
+
 type BinderParts {
   type_node: Node
   default: Optional<Node>
