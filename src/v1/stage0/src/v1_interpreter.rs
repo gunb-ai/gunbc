@@ -8635,7 +8635,7 @@ fn file_result_of_observation(
                 &[(Some("kind".to_string()), kind)],
                 false,
             ) {
-                Ok(Value::Str(s)) => s.to_string(),
+                Ok(Value::Str(ref s)) => s.to_string(),
                 _ => return Err("the file observation's kind has no name".to_string()),
             };
             Ok(FileResult {
