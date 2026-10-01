@@ -149,11 +149,3 @@ test fn w_the_declared_intents_subject_is_unestablished_until_real_receipts_land
   }
 }
 
-test fn w_all_group_b_serving_capacity_claims_hold() -> Bool {
-  w_the_restoration_intent_derives_from_the_engine_kv_inventory()
-    && w_the_six_seat_derivation_is_pinned_to_the_limiting_rank()
-    && w_the_seat_count_refuses_the_residual_arena_route()
-    && w_the_executable_profile_is_the_intents_exact_derivation()
-    && w_the_derived_profile_is_not_the_retired_crash_looping_shape()
-    && w_the_declared_intents_subject_is_unestablished_until_real_receipts_land()
-}

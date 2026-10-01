@@ -169,13 +169,3 @@ test fn a_residency_observation_binds_the_identities_a_warm_location_must_match(
   }
 }
 
-// THE CLAIM CONTRACT'S GATE: fork admittance and residency observation hold, by execution.
-test fn conversation_fork_admittance_holds() -> Bool {
-  a_fork_point_with_exact_identity_match_is_admitted()
-    && a_fork_across_a_model_change_is_invalid_with_its_named_cause()
-    && a_fork_across_a_wire_shape_change_is_invalid_with_its_named_cause()
-    && a_fork_after_the_chain_moved_is_invalid_with_its_named_cause()
-    && residency_standings_are_five_distinct_variants()
-    && only_resident_prefers_warm_and_unobserved_defaults_to_cold()
-    && a_residency_observation_binds_the_identities_a_warm_location_must_match()
-}

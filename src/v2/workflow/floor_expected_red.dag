@@ -1129,7 +1129,7 @@ fn floor_expected_red_chunk_disjoint_refinement_chains() -> List<String> {
 // cron-entry intent; when the arms pass, this roster's self-emptying arm names them for removal,
 // and the witnesses stay as permanent regression controls (DESIGN 4b(4)).
 fn floor_expected_red_chunk_shell_dag_cron_entry_line_builder() -> List<String> {
-  Cons { head: "test.claim.shell.shell_dag_cron_entry_line_builder_witness_test.adversarial_schedule_field_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_cron_entry_line_builder_witness_test.adversarial_command_field_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_cron_entry_line_builder_witness_test.adversarial_log_path_field_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_cron_entry_line_builder_witness_test.adversarial_tag_field_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_cron_entry_line_builder_witness_test.cron_entry_line_builder_acceptance_holds", tail: Empty {} } } } } }
+  Cons { head: "test.claim.shell.shell_dag_cron_entry_line_builder_witness_test.adversarial_schedule_field_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_cron_entry_line_builder_witness_test.adversarial_command_field_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_cron_entry_line_builder_witness_test.adversarial_log_path_field_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_cron_entry_line_builder_witness_test.adversarial_tag_field_renders_no_shell_control_word", tail: Empty {} } } } }
 }
 
 // SHELL-DAG-FLOOR-PEAK-CALIBRATION-ROWS' ACCEPTANCE ORACLE, AUTHORED RED BY DESIGN — the cron-entry
@@ -1141,7 +1141,7 @@ fn floor_expected_red_chunk_shell_dag_cron_entry_line_builder() -> List<String> 
 // typed filesystem observation leaves; when the arms pass, this roster's self-emptying arm names
 // them for removal (DESIGN 4b(4)).
 fn floor_expected_red_chunk_shell_dag_floor_peak_calibration_rows() -> List<String> {
-  Cons { head: "test.claim.shell.shell_dag_floor_peak_calibration_rows_witness_test.pre_calibration_surface_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_floor_peak_calibration_rows_witness_test.pre_calibration_reset_is_not_a_swallowed_echo", tail: Cons { head: "test.claim.shell.shell_dag_floor_peak_calibration_rows_witness_test.floor_peak_calibration_rows_acceptance_holds", tail: Empty {} } } }
+  Cons { head: "test.claim.shell.shell_dag_floor_peak_calibration_rows_witness_test.pre_calibration_surface_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_floor_peak_calibration_rows_witness_test.pre_calibration_reset_is_not_a_swallowed_echo", tail: Empty {} } }
 }
 
 // SHELL-DAG-CI-FMT-GATE-LINE'S ACCEPTANCE ORACLE, AUTHORED RED BY DESIGN — the cron-entry chunk
@@ -1153,7 +1153,7 @@ fn floor_expected_red_chunk_shell_dag_floor_peak_calibration_rows() -> List<Stri
 // the typed cargo operation; when the arm passes, this roster's self-emptying arm names it for
 // removal (DESIGN 4b(4)).
 fn floor_expected_red_chunk_shell_dag_ci_fmt_gate_line() -> List<String> {
-  Cons { head: "test.claim.shell.shell_dag_ci_fmt_gate_line_witness_test.gate_line_is_not_a_hand_spelled_shell_indirection", tail: Cons { head: "test.claim.shell.shell_dag_ci_fmt_gate_line_witness_test.ci_fmt_gate_line_acceptance_holds", tail: Empty {} } }
+  Cons { head: "test.claim.shell.shell_dag_ci_fmt_gate_line_witness_test.gate_line_is_not_a_hand_spelled_shell_indirection", tail: Empty {} }
 }
 
 // SHELL-DAG-CI-DEPLOY-INVOKE-PRELUDE'S ACCEPTANCE ORACLE, AUTHORED RED BY DESIGN — the cron-entry
@@ -1165,7 +1165,7 @@ fn floor_expected_red_chunk_shell_dag_ci_fmt_gate_line() -> List<String> {
 // git.Core.ShowToplevel with a nonzero-refuse arm; when the arms pass, this roster's self-emptying
 // arm names them for removal (DESIGN 4b(4)).
 fn floor_expected_red_chunk_shell_dag_ci_deploy_invoke_prelude() -> List<String> {
-  Cons { head: "test.claim.shell.shell_dag_ci_deploy_invoke_prelude_witness_test.deploy_invoke_prelude_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_ci_deploy_invoke_prelude_witness_test.deploy_invoke_prelude_has_no_pwd_fallback", tail: Cons { head: "test.claim.shell.shell_dag_ci_deploy_invoke_prelude_witness_test.ci_deploy_invoke_prelude_acceptance_holds", tail: Empty {} } } }
+  Cons { head: "test.claim.shell.shell_dag_ci_deploy_invoke_prelude_witness_test.deploy_invoke_prelude_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_ci_deploy_invoke_prelude_witness_test.deploy_invoke_prelude_has_no_pwd_fallback", tail: Empty {} } }
 }
 
 // SHELL-DAG-CI-HEAL-REGEN-INVOKE'S ACCEPTANCE ORACLE, AUTHORED RED BY DESIGN — the cron-entry
@@ -1177,7 +1177,7 @@ fn floor_expected_red_chunk_shell_dag_ci_deploy_invoke_prelude() -> List<String>
 // git.Core.ShowToplevel authority as shell-dag-ci-deploy-invoke-prelude; when the arms pass, this
 // roster's self-emptying arm names them for removal (DESIGN 4b(4)).
 fn floor_expected_red_chunk_shell_dag_ci_heal_regen_invoke() -> List<String> {
-  Cons { head: "test.claim.shell.shell_dag_ci_heal_regen_invoke_witness_test.heal_regen_invoke_prelude_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_ci_heal_regen_invoke_witness_test.heal_regen_invoke_has_no_pwd_fallback", tail: Cons { head: "test.claim.shell.shell_dag_ci_heal_regen_invoke_witness_test.ci_heal_regen_invoke_acceptance_holds", tail: Empty {} } } }
+  Cons { head: "test.claim.shell.shell_dag_ci_heal_regen_invoke_witness_test.heal_regen_invoke_prelude_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_ci_heal_regen_invoke_witness_test.heal_regen_invoke_has_no_pwd_fallback", tail: Empty {} } }
 }
 
 // SHELL-DAG-COMPILE-POOL-SLICE-INSTALL'S ACCEPTANCE ORACLE, AUTHORED RED BY DESIGN — the
@@ -1190,7 +1190,7 @@ fn floor_expected_red_chunk_shell_dag_ci_heal_regen_invoke() -> List<String> {
 // plus typed staging argv; when the arms pass, this roster's self-emptying arm names them for
 // removal (DESIGN 4b(4)).
 fn floor_expected_red_chunk_shell_dag_compile_pool_slice_install() -> List<String> {
-  Cons { head: "test.claim.shell.shell_dag_compile_pool_slice_install_witness_test.benign_install_body_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_compile_pool_slice_install_witness_test.adversarial_slice_unit_name_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_compile_pool_slice_install_witness_test.compile_pool_slice_install_acceptance_holds", tail: Empty {} } } }
+  Cons { head: "test.claim.shell.shell_dag_compile_pool_slice_install_witness_test.benign_install_body_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_compile_pool_slice_install_witness_test.adversarial_slice_unit_name_renders_no_shell_control_word", tail: Empty {} } }
 }
 
 // SHELL-DAG-SLOT-POPULATION-CENSUS-READ'S ACCEPTANCE ORACLE, AUTHORED RED BY DESIGN — the
@@ -1203,7 +1203,7 @@ fn floor_expected_red_chunk_shell_dag_compile_pool_slice_install() -> List<Strin
 // the typed-argv transport; when the arm passes, this roster's self-emptying arm names it for
 // removal (DESIGN 4b(4)).
 fn floor_expected_red_chunk_shell_dag_slot_population_census_read() -> List<String> {
-  Cons { head: "test.claim.shell.shell_dag_slot_population_census_read_witness_test.census_read_over_unexecutable_transport_carries_the_typed_refusal", tail: Cons { head: "test.claim.shell.shell_dag_slot_population_census_read_witness_test.slot_population_census_read_acceptance_holds", tail: Empty {} } }
+  Cons { head: "test.claim.shell.shell_dag_slot_population_census_read_witness_test.census_read_over_unexecutable_transport_carries_the_typed_refusal", tail: Empty {} }
 }
 
 // SHELL-DAG-CODEX-APP-SERVER-TRIP-SCRIPT'S ACCEPTANCE ORACLE, AUTHORED RED BY DESIGN — the
@@ -1215,7 +1215,7 @@ fn floor_expected_red_chunk_shell_dag_slot_population_census_read() -> List<Stri
 // a typed ArgvCommand with the payload on stdin and separate stream capture; when the arms pass,
 // this roster's self-emptying arm names them for removal (DESIGN 4b(4)).
 fn floor_expected_red_chunk_shell_dag_codex_app_server_trip_script() -> List<String> {
-  Cons { head: "test.claim.shell.shell_dag_codex_app_server_trip_script_witness_test.trip_surface_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_codex_app_server_trip_script_witness_test.trip_surface_carries_no_stdio_sentinel", tail: Cons { head: "test.claim.shell.shell_dag_codex_app_server_trip_script_witness_test.adversarial_codex_home_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_codex_app_server_trip_script_witness_test.codex_app_server_trip_script_acceptance_holds", tail: Empty {} } } } }
+  Cons { head: "test.claim.shell.shell_dag_codex_app_server_trip_script_witness_test.trip_surface_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_codex_app_server_trip_script_witness_test.trip_surface_carries_no_stdio_sentinel", tail: Cons { head: "test.claim.shell.shell_dag_codex_app_server_trip_script_witness_test.adversarial_codex_home_renders_no_shell_control_word", tail: Empty {} } } }
 }
 
 // SHELL-DAG-LIVE-DEPLOY-INSTALL-OWNED'S ACCEPTANCE ORACLE, AUTHORED RED BY DESIGN — the cron-entry
@@ -1227,7 +1227,7 @@ fn floor_expected_red_chunk_shell_dag_codex_app_server_trip_script() -> List<Str
 // leaves as a typed filesystem write plus a typed ownership effect; when the arm passes, this
 // roster's self-emptying arm names it for removal (DESIGN 4b(4)).
 fn floor_expected_red_chunk_shell_dag_live_deploy_install_owned() -> List<String> {
-  Cons { head: "test.claim.shell.shell_dag_live_deploy_install_owned_witness_test.adversarial_install_path_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_live_deploy_install_owned_witness_test.live_deploy_install_owned_acceptance_holds", tail: Empty {} } }
+  Cons { head: "test.claim.shell.shell_dag_live_deploy_install_owned_witness_test.adversarial_install_path_renders_no_shell_control_word", tail: Empty {} }
 }
 
 // SHELL-DAG-LIVE-DEPLOY-RESTART-TAILSCALE'S ACCEPTANCE ORACLE, AUTHORED RED BY DESIGN — the
@@ -1239,7 +1239,7 @@ fn floor_expected_red_chunk_shell_dag_live_deploy_install_owned() -> List<String
 // steps to sudo_elevate_argv typed privileged argv; when the arm passes, this roster's
 // self-emptying arm names it for removal (DESIGN 4b(4)).
 fn floor_expected_red_chunk_shell_dag_live_deploy_restart_tailscale() -> List<String> {
-  Cons { head: "test.claim.shell.shell_dag_live_deploy_restart_tailscale_witness_test.tree_sync_restart_step_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_live_deploy_restart_tailscale_witness_test.live_deploy_restart_tailscale_acceptance_holds", tail: Empty {} } }
+  Cons { head: "test.claim.shell.shell_dag_live_deploy_restart_tailscale_witness_test.tree_sync_restart_step_renders_no_shell_control_word", tail: Empty {} }
 }
 
 fn floor_expected_red_chunk_live_tree_admission() -> List<String> {

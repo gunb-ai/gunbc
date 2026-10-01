@@ -53,10 +53,3 @@ test fn install_line_realizes_the_declared_path_and_principal() -> Bool {
     && string_contains(s: install_d_owned_command(spec: deployment_spec_srv1(), path: "/opt/gunbc/attempt-state"), pattern: deployment_spec_srv1().service.service_user as String)
 }
 
-// THE ACCEPTANCE CONJUNCTION BOUND IN THE NODE'S EXECUTION CONTRACT. Red today because the red
-// arm is red; green only when every clause holds over the typed rebind.
-test fn live_deploy_install_owned_acceptance_holds() -> Bool {
-  adversarial_install_path_renders_no_shell_control_word()
-    && benign_install_line_renders_no_shell_control_word()
-    && install_line_realizes_the_declared_path_and_principal()
-}

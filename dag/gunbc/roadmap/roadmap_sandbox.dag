@@ -1,6 +1,7 @@
 module gunbc.roadmap_sandbox
 
-import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, NodeInProgress }
+import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, NodeInProgress, EventPrincipalAuthenticated }
+import gunbc.principal_projection { fabric_workflow_principal }
 import std.types { Int, String, Bool, List, NonEmptyStr }
 import gunbc.harness.harness_throughput {
   HarnessRoundLedger, RoundsUnobserved, HarnessThroughput, ThroughputUnobserved }
@@ -422,7 +423,7 @@ fn fixture_active_view() -> WorkRowView {
     remaining: 4,
     process: WorkerProcessExited { exit_code: 0, last_command: "codex" },
     throughput: ThroughputUnobserved { reason: "sandbox fixture models no provider event stream" as NonEmptyStr },
-    current_activity: "Worked for 6m 34s"), worker_alive: true, standing: Present { value: NodeInProgress { by: "session-a" as NonEmptyStr, last_note: "wiring the fold" as NonEmptyStr } })
+    current_activity: "Worked for 6m 34s"), worker_alive: true, standing: Present { value: NodeInProgress { by: EventPrincipalAuthenticated { ref: fabric_workflow_principal }, last_note: "wiring the fold" as NonEmptyStr } })
 }
 
 fn fixture_refused_view() -> WorkRowView {

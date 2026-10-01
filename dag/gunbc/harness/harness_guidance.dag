@@ -247,7 +247,7 @@ fn premise_requires_difference(p: HarnessPremise) -> Bool {
     ToolCanWriteBy { form: _ } => false
     CapabilityHeld { capability: _ } => false
     CapabilityWithheld { capability: _ } => false
-    CompletionRequires { term: t } => match t { FilesOnDiskDiffer => true  AcceptanceCheckPasses => false }
+    CompletionRequires { term: t } => match t { FilesOnDiskDiffer => true  AcceptanceCheckPasses => false  SubmissionDeclared { artifact: _ } => false }
     RoundsRemaining { rounds: _ } => false
     EarlierRoundsDropped { rounds: _ } => false
     WorktreeAt { path: _ } => false
@@ -265,7 +265,7 @@ fn premise_requires_acceptance(p: HarnessPremise) -> Bool {
     ToolCanWriteBy { form: _ } => false
     CapabilityHeld { capability: _ } => false
     CapabilityWithheld { capability: _ } => false
-    CompletionRequires { term: t } => match t { FilesOnDiskDiffer => false  AcceptanceCheckPasses => true }
+    CompletionRequires { term: t } => match t { FilesOnDiskDiffer => false  AcceptanceCheckPasses => true  SubmissionDeclared { artifact: _ } => false }
     RoundsRemaining { rounds: _ } => false
     EarlierRoundsDropped { rounds: _ } => false
     WorktreeAt { path: _ } => false

@@ -53,7 +53,8 @@ fn form_component(wire: String) -> String? {
 }
 
 fn form_decode(wire: String) -> FormRead {
-  fold(filter(split(s: wire, delimiter: "&"), part => part != ""), init: FormDecoded { fields: [] }, f: (state, part) => match state {
+  let parts: List<String> = filter(split(s: wire, delimiter: "&"), part => part != "")
+  fold(parts, init: FormDecoded { fields: [] }, f: (state, part) => match state {
     FormRefused { reason } => FormRefused { reason: reason }
     FormDecoded { fields } => {
       let pieces = split(s: part, delimiter: "=")

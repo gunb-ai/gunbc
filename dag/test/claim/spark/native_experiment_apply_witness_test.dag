@@ -212,10 +212,3 @@ test fn w_the_fragmentation_plan_plans_a_workload_phase_from_its_own_figures() -
   }
 }
 
-test fn w_all_native_experiment_apply_claims_hold() -> Bool {
-  w_the_actuation_refuses_without_the_unestablished_verdict_with_named_obligations()
-    && w_the_actuation_refuses_a_plan_that_skips_an_open_obligation()
-    && w_the_admitted_actuation_prepares_all_ranks_before_any_start()
-    && w_the_actuation_receipt_waits_on_the_parser_anchor()
-    && w_the_fragmentation_plan_plans_a_workload_phase_from_its_own_figures()
-}

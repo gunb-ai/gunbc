@@ -70,6 +70,8 @@ import gunbc.roadmap_execution_contract {
   PublicWorktreeLayout,
   contract_awaits_closing_validation_authoring,
   closing_contract_authoring_contract,
+  gunbc_claim_execution_contract,
+  gunbc_claims_execution_contract,
 }
 import gunbc.roadmap_focus {
   RoadmapFocus,
@@ -690,86 +692,152 @@ fn roadmap_receipt_continuity_execution_contract() -> WorkItemExecutionContract 
 // THE HARNESS LINEAGE'S CLAIM CONTRACTS: one validation each -- the canonical witness gate for
 // the lane the node owns. Validation is the claim runner's entry, not a prose obligation.
 fn harness_checkpoint_subject_planner_execution_contract() -> WorkItemExecutionContract {
-  gunbc_claim_execution_contract(
+  gunbc_claims_execution_contract(
     entry: "dag/test/claim/roadmap/roadmap_checkpoint_plan_witness_test.dag" as FilePath,
-    function: "checkpoint_probe_obligation_derivation_holds" as NonEmptyStr,
+    functions: [
+      "a_checkpoint_over_a_three_level_chain_derives_three_obligations_root_to_leaf" as NonEmptyStr,
+      "re_deriving_under_the_same_checkpoint_identity_yields_identical_obligation_keys" as NonEmptyStr,
+      "a_checkpoint_whose_fingerprint_does_not_match_the_chain_refuses" as NonEmptyStr,
+      "outstanding_guidance_carries_the_recorded_verdict_payload_and_none_for_aligned" as NonEmptyStr,
+      "the_same_checkpoint_identity_over_a_moved_chain_refuses_never_derives" as NonEmptyStr,
+      "guidance_extracts_the_reason_and_conflict_arms_too" as NonEmptyStr,
+      "a_level_the_state_has_not_reached_carries_no_guidance" as NonEmptyStr,
+    ],
   )
 }
 
 fn harness_conversation_log_forking_execution_contract() -> WorkItemExecutionContract {
-  gunbc_claim_execution_contract(
+  gunbc_claims_execution_contract(
     entry: "dag/test/claim/harness_conversation_fork_test.dag" as FilePath,
-    function: "conversation_fork_admittance_holds" as NonEmptyStr,
+    functions: [
+      "a_fork_point_with_exact_identity_match_is_admitted" as NonEmptyStr,
+      "a_fork_across_a_model_change_is_invalid_with_its_named_cause" as NonEmptyStr,
+      "a_fork_across_a_wire_shape_change_is_invalid_with_its_named_cause" as NonEmptyStr,
+      "a_fork_after_the_chain_moved_is_invalid_with_its_named_cause" as NonEmptyStr,
+      "residency_standings_are_five_distinct_variants" as NonEmptyStr,
+      "only_resident_prefers_warm_and_unobserved_defaults_to_cold" as NonEmptyStr,
+      "a_residency_observation_binds_the_identities_a_warm_location_must_match" as NonEmptyStr,
+    ],
   )
 }
 
 fn shell_dag_cron_entry_line_builder_execution_contract() -> WorkItemExecutionContract {
-  gunbc_claim_execution_contract(
+  gunbc_claims_execution_contract(
     entry: "dag/test/claim/shell/shell_dag_cron_entry_line_builder_witness_test.dag" as FilePath,
-    function: "cron_entry_line_builder_acceptance_holds" as NonEmptyStr,
+    functions: [
+      "benign_entry_renders_its_declared_fields" as NonEmptyStr,
+      "benign_entry_carries_no_shell_control_word" as NonEmptyStr,
+      "adversarial_schedule_field_renders_no_shell_control_word" as NonEmptyStr,
+      "adversarial_command_field_renders_no_shell_control_word" as NonEmptyStr,
+      "adversarial_log_path_field_renders_no_shell_control_word" as NonEmptyStr,
+      "adversarial_tag_field_renders_no_shell_control_word" as NonEmptyStr,
+    ],
   )
 }
 
 fn shell_dag_floor_peak_calibration_rows_execution_contract() -> WorkItemExecutionContract {
-  gunbc_claim_execution_contract(
+  gunbc_claims_execution_contract(
     entry: "dag/test/claim/shell/shell_dag_floor_peak_calibration_rows_witness_test.dag" as FilePath,
-    function: "floor_peak_calibration_rows_acceptance_holds" as NonEmptyStr,
+    functions: [
+      "pre_calibration_surface_renders_no_shell_control_word" as NonEmptyStr,
+      "pre_calibration_reset_is_not_a_swallowed_echo" as NonEmptyStr,
+      "calibration_surfaces_still_read_the_cgroup_peak_file" as NonEmptyStr,
+      "calibration_surfaces_keep_their_observation_labels" as NonEmptyStr,
+    ],
   )
 }
 
 fn shell_dag_ci_fmt_gate_line_execution_contract() -> WorkItemExecutionContract {
-  gunbc_claim_execution_contract(
+  gunbc_claims_execution_contract(
     entry: "dag/test/claim/shell/shell_dag_ci_fmt_gate_line_witness_test.dag" as FilePath,
-    function: "ci_fmt_gate_line_acceptance_holds" as NonEmptyStr,
+    functions: [
+      "gate_line_is_not_a_hand_spelled_shell_indirection" as NonEmptyStr,
+      "gate_line_runs_the_workspace_fmt_check" as NonEmptyStr,
+      "gate_line_renders_no_shell_control_word" as NonEmptyStr,
+    ],
   )
 }
 
 fn shell_dag_ci_deploy_invoke_prelude_execution_contract() -> WorkItemExecutionContract {
-  gunbc_claim_execution_contract(
+  gunbc_claims_execution_contract(
     entry: "dag/test/claim/shell/shell_dag_ci_deploy_invoke_prelude_witness_test.dag" as FilePath,
-    function: "ci_deploy_invoke_prelude_acceptance_holds" as NonEmptyStr,
+    functions: [
+      "deploy_invoke_prelude_renders_no_shell_control_word" as NonEmptyStr,
+      "deploy_invoke_prelude_has_no_pwd_fallback" as NonEmptyStr,
+      "deploy_invoke_still_reads_the_repo_toplevel" as NonEmptyStr,
+      "deploy_invoke_runs_the_declared_stage" as NonEmptyStr,
+    ],
   )
 }
 
 fn shell_dag_ci_heal_regen_invoke_execution_contract() -> WorkItemExecutionContract {
-  gunbc_claim_execution_contract(
+  gunbc_claims_execution_contract(
     entry: "dag/test/claim/shell/shell_dag_ci_heal_regen_invoke_witness_test.dag" as FilePath,
-    function: "ci_heal_regen_invoke_acceptance_holds" as NonEmptyStr,
+    functions: [
+      "heal_regen_invoke_prelude_renders_no_shell_control_word" as NonEmptyStr,
+      "heal_regen_invoke_has_no_pwd_fallback" as NonEmptyStr,
+      "heal_regen_invoke_still_reads_the_repo_toplevel" as NonEmptyStr,
+      "heal_regen_invoke_composes_the_declared_two_calls" as NonEmptyStr,
+    ],
   )
 }
 
 fn shell_dag_compile_pool_slice_install_execution_contract() -> WorkItemExecutionContract {
-  gunbc_claim_execution_contract(
+  gunbc_claims_execution_contract(
     entry: "dag/test/claim/shell/shell_dag_compile_pool_slice_install_witness_test.dag" as FilePath,
-    function: "compile_pool_slice_install_acceptance_holds" as NonEmptyStr,
+    functions: [
+      "benign_install_body_renders_no_shell_control_word" as NonEmptyStr,
+      "adversarial_slice_unit_name_renders_no_shell_control_word" as NonEmptyStr,
+      "install_body_installs_the_declared_unit" as NonEmptyStr,
+      "install_body_starts_never_restarts" as NonEmptyStr,
+    ],
   )
 }
 
 fn shell_dag_slot_population_census_read_execution_contract() -> WorkItemExecutionContract {
-  gunbc_claim_execution_contract(
+  gunbc_claims_execution_contract(
     entry: "dag/test/claim/shell/shell_dag_slot_population_census_read_witness_test.dag" as FilePath,
-    function: "slot_population_census_read_acceptance_holds" as NonEmptyStr,
+    functions: [
+      "census_read_over_unexecutable_transport_carries_the_typed_refusal" as NonEmptyStr,
+      "census_read_over_unexecutable_transport_is_a_refusal" as NonEmptyStr,
+      "planted_command_failure_cause_keeps_its_exit_code" as NonEmptyStr,
+      "planted_list_units_success_classifies_as_a_census" as NonEmptyStr,
+    ],
   )
 }
 
 fn shell_dag_codex_app_server_trip_script_execution_contract() -> WorkItemExecutionContract {
-  gunbc_claim_execution_contract(
+  gunbc_claims_execution_contract(
     entry: "dag/test/claim/shell/shell_dag_codex_app_server_trip_script_witness_test.dag" as FilePath,
-    function: "codex_app_server_trip_script_acceptance_holds" as NonEmptyStr,
+    functions: [
+      "trip_surface_renders_no_shell_control_word" as NonEmptyStr,
+      "trip_surface_carries_no_stdio_sentinel" as NonEmptyStr,
+      "adversarial_codex_home_renders_no_shell_control_word" as NonEmptyStr,
+      "trip_surface_carries_the_declared_payload_and_subject" as NonEmptyStr,
+    ],
   )
 }
 
 fn shell_dag_live_deploy_install_owned_execution_contract() -> WorkItemExecutionContract {
-  gunbc_claim_execution_contract(
+  gunbc_claims_execution_contract(
     entry: "dag/test/claim/shell/shell_dag_live_deploy_install_owned_witness_test.dag" as FilePath,
-    function: "live_deploy_install_owned_acceptance_holds" as NonEmptyStr,
+    functions: [
+      "adversarial_install_path_renders_no_shell_control_word" as NonEmptyStr,
+      "benign_install_line_renders_no_shell_control_word" as NonEmptyStr,
+      "install_line_realizes_the_declared_path_and_principal" as NonEmptyStr,
+    ],
   )
 }
 
 fn shell_dag_live_deploy_restart_tailscale_execution_contract() -> WorkItemExecutionContract {
-  gunbc_claim_execution_contract(
+  gunbc_claims_execution_contract(
     entry: "dag/test/claim/shell/shell_dag_live_deploy_restart_tailscale_witness_test.dag" as FilePath,
-    function: "live_deploy_restart_tailscale_acceptance_holds" as NonEmptyStr,
+    functions: [
+      "tree_sync_restart_step_renders_no_shell_control_word" as NonEmptyStr,
+      "tailscale_serve_apply_step_renders_no_shell_control_word" as NonEmptyStr,
+      "restart_step_names_the_declared_unit" as NonEmptyStr,
+      "both_steps_elevate_through_sudo" as NonEmptyStr,
+    ],
   )
 }
 

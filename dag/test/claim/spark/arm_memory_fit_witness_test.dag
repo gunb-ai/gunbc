@@ -132,7 +132,6 @@ fn w_restoration_profile() -> ServingLaunchProfile {
   }
 }
 
-
 // ── THE WITNESS SUBJECTS ARE FIXTURES WITH REAL PRODUCTION NUMBERS WHERE A DERIVATION EXISTS ────
 //
 // The pool span, the checkpoint aggregate and the envelope derive through the same functions the
@@ -2370,7 +2369,6 @@ test fn w_a_proved_prefill_beside_open_arm_terms_names_exactly_what_remains() ->
     })
 }
 
-
 // ── WITNESS 31: THE LAUNCH WALL AT 262144x6 — THE WHOLE-ARM CONJUNCTION ON THIS LAUNCH'S OWN EVIDENCE ──
 //
 // THE SUBJECT the restoration sequence asks about: the group B 262144x6 launch wall, priced on
@@ -2669,8 +2667,6 @@ test fn w_the_whole_arm_conjunction_at_262144x6_names_exactly_what_remains() -> 
     })
 }
 
-
-
 // ── WITNESS 32: THE CHECKPOINT INDEX CENSUS AND THE TP4 PLACEMENT PROJECTION ─────────────────────
 //
 // THE INDEX READ (fetched 2026-09-26) LANDED: the population census, the tensor-byte total, the
@@ -2775,8 +2771,6 @@ test fn w_the_projection_refuses_to_total_until_the_shard_headers_land() -> Bool
     && string_contains(s: glm_checkpoint_projection_pending_obligation() as String, pattern: "config.json")
 }
 
-
-
 // ── WITNESS 34: THE EXACT PROJECTION PRICED, AND THE TWO COMPLETING RUNS IN EXECUTABLE FORM ──────
 //
 // THE BYTE ROWS LAND: the five kind sums reconstruct the index tensor total exactly, the
@@ -2872,8 +2866,6 @@ test fn w_the_fragmentation_churn_plan_is_admitted_and_named() -> Bool {
   }
 }
 
-
-
 // ── WITNESS 35: THE LOADER-TRANSIENT RECEIPTS, MINTED AND GATED ──────────────────────────────────
 //
 // THE BRACKET EXECUTED and the receipts mint: three converged launches, zero failed legs, the
@@ -2919,8 +2911,6 @@ test fn w_a_trace_reading_claimed_as_engine_pinned_demand_is_refused() -> Bool {
     && !arm_loader_trace_receipt_admitted(bytes: arm_loader_trace_bound(rank: 3), receipt: no_identity)
     && !arm_loader_trace_receipt_admitted(bytes: byte_size(count: 0), receipt: arm_loader_trace_receipt(rank: 0, host: "srv9" as NonEmptyStr))
 }
-
-
 
 // ── WITNESS 36: THE SIXTH-SEAT HANG AS AN OPEN LIVENESS OBLIGATION ───────────────────────────────
 //
@@ -3006,81 +2996,3 @@ test fn w_the_five_seat_interim_protocol_is_named() -> Bool {
     })
 }
 
-test fn w_all_arm_memory_fit_claims_hold() -> Bool {
-  w_the_production_tuple_is_unestablished_with_named_obligations()
-    && w_fewer_ranks_refuse_by_the_aggregate_argument_without_naming_a_rank()
-    && w_a_profile_that_does_not_derive_from_the_intent_is_refused_at_the_mint()
-    && w_the_derived_profile_joins_and_the_subject_mints()
-    && w_a_receipt_for_another_checkpoint_or_runtime_is_refused_at_the_mint()
-    && w_a_rank_roster_with_a_duplicated_or_absent_index_is_refused()
-    && w_all_open_terms_with_the_right_rank_count_is_never_proved()
-    && w_rank_upper_bounds_that_cannot_hold_the_checkpoint_refuse_to_prove()
-    && w_the_shrunk_fully_receipted_intent_is_proved()
-    && w_the_same_subject_without_one_receipt_is_unestablished()
-    && w_the_worst_rank_decides_the_verdict()
-    && w_the_envelope_refuses_at_the_first_engine_admitted_phase()
-    && w_the_loader_transient_is_charged_only_in_its_phases()
-    && w_an_unmodeled_pool_is_unestablished_not_refused()
-    && w_a_single_sample_is_observation_only_and_discharges_nothing()
-    && w_a_peak_over_runs_protocol_discharges_to_a_ceiling()
-    && w_a_measurement_that_does_not_cover_the_lifetime_observes_only()
-    && w_a_measurement_for_an_absent_mechanism_or_zero_runs_refuses()
-    && w_readback_inside_the_predicted_interval_is_consistent_outside_falsifies()
-    && w_refused_refuses_the_experiment_too()
-    && w_unestablished_refuses_the_experiment_without_a_typed_plan()
-    && w_the_experiment_plan_names_targets_runtime_receipts_and_stop_contract()
-    && w_the_experiment_plan_refuses_empty_or_already_bounded_targets()
-    && w_the_experiment_plan_refuses_a_workload_that_does_not_join_its_policy_profile()
-    && w_the_intent_envelope_derives_from_the_seat_population()
-    && w_the_kv_byte_cost_derives_from_the_layout()
-    && w_a_measured_receipt_discharges_exactly_its_one_term()
-    && w_an_observation_receipt_discharges_nothing()
-    && w_the_join_refuses_a_second_receipt_an_absent_rank_and_foreign_provenance()
-    && w_the_joined_bound_participates_in_falsification()
-    && w_the_wet_bundle_joins_and_discharges_checkpoint_graph_and_kv()
-    && w_the_wet_verdict_is_unestablished_naming_exactly_the_open_terms()
-    && w_the_262k_prefill_workspace_is_present_and_named()
-    && w_the_six_seat_derivation_is_pinned_to_the_engine_inventory()
-    && w_the_linear_arena_route_fabricates_nine_seats_and_is_refused()
-    && w_swapping_tp0s_pool_reading_in_overstates_the_envelope_wall()
-    && w_the_join_refuses_duplicates_foreign_ranks_and_foreign_provenance_on_the_wet_terms()
-    && w_the_unified_subject_names_all_seven_axes()
-    && w_the_mechanism_census_names_every_component()
-    && w_same_inventory_different_roster_different_capacity()
-    && w_same_printed_tokens_changed_kda_count_no_proof_reuse()
-    && w_missing_tail_group_is_unestablished()
-    && w_kpool_4_to_8_changes_derived_capacity()
-    && w_the_wet_bundle_binds_with_the_doctrine_standings()
-    && w_tp4_receipt_on_tp2_refused_and_static_terms_transfer_to_262k()
-    && w_negative_observation_cannot_improve_headroom()
-    && w_cache_proved_plus_prefill_open_is_proved_beside_unestablished()
-    && w_the_candidate_is_carried_not_proved_and_the_prefill_formula_awaits_its_citation()
-    && w_the_prefill_terms_derive_exact_from_the_pinned_source()
-    && w_the_prefill_subproof_proves_at_the_v2_bundle()
-    && w_the_prefill_subproof_refuses_when_the_limiting_rank_cannot_hold()
-    && w_the_prefill_subproof_refuses_zero_readings_and_broken_coverage()
-    && w_the_prefill_derived_terms_move_with_batch_and_length()
-    && w_a_proved_prefill_beside_open_arm_terms_names_exactly_what_remains()    && w_the_launch_wall_subject_mints_with_every_carry_named()
-    && w_the_launch_wall_verdict_is_unestablished_naming_exactly_the_open_terms()
-    && w_the_composite_observation_still_discharges_no_placement_term()
-    && w_the_boot_foreign_band_holds_at_the_reporters_unit()
-    && w_the_launch_wall_refuses_a_toy_pool()
-    && w_the_whole_arm_conjunction_at_262144x6_names_exactly_what_remains()
-    && w_the_checkpoint_index_census_holds()
-    && w_the_index_confirms_the_hybrid_shape_and_names_the_mtp()
-    && w_the_placement_rules_classify_the_census_name_shapes()
-    && w_a_tensor_moved_to_a_different_shard_changes_a_rank_figure()
-    && w_the_projection_refuses_to_total_until_the_shard_headers_land()
-    && w_the_projection_census_and_conservation_hold_exact()
-    && w_the_projection_places_evenly_and_the_residue_pins_the_composite_spread()
-    && w_the_vision_tower_loads_cited_from_the_config()
-    && w_the_loader_transient_plan_is_admitted_and_named()
-    && w_the_fragmentation_churn_plan_is_admitted_and_named()
-    && w_the_loader_receipts_mint_from_the_executed_bracket()
-    && w_the_loader_receipt_names_the_page_cache_mechanism()
-    && w_a_trace_reading_claimed_as_engine_pinned_demand_is_refused()
-    && w_the_churn_run_finding_is_pinned()
-    && w_the_liveness_standing_blocks_the_whole_arm_proof()
-    && w_the_repro_matrix_discriminates_each_axis()
-    && w_the_five_seat_interim_protocol_is_named()
-}

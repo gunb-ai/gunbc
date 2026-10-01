@@ -57,11 +57,3 @@ test fn calibration_surfaces_keep_their_observation_labels() -> Bool {
     && string_contains(s: ci_floor_peak_post_script(), pattern: "[calibration]")
 }
 
-// THE ACCEPTANCE CONJUNCTION BOUND IN THE NODE'S EXECUTION CONTRACT. Red today because the red
-// arms are red; green only when every clause holds over the typed rebind.
-test fn floor_peak_calibration_rows_acceptance_holds() -> Bool {
-  pre_calibration_surface_renders_no_shell_control_word()
-    && pre_calibration_reset_is_not_a_swallowed_echo()
-    && calibration_surfaces_still_read_the_cgroup_peak_file()
-    && calibration_surfaces_keep_their_observation_labels()
-}

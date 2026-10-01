@@ -72,11 +72,3 @@ test fn both_steps_elevate_through_sudo() -> Bool {
     && string_contains(s: render_step(step: tailscale_serve_apply_step(spec: deployment_spec_srv1())), pattern: "sudo")
 }
 
-// THE ACCEPTANCE CONJUNCTION BOUND IN THE NODE'S EXECUTION CONTRACT. Red today because the red
-// arm is red; green only when every clause holds over the typed rebind.
-test fn live_deploy_restart_tailscale_acceptance_holds() -> Bool {
-  tree_sync_restart_step_renders_no_shell_control_word()
-    && tailscale_serve_apply_step_renders_no_shell_control_word()
-    && restart_step_names_the_declared_unit()
-    && both_steps_elevate_through_sudo()
-}

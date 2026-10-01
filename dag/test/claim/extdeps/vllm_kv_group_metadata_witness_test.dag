@@ -217,13 +217,3 @@ test fn w_zero_walls_refuse_the_same_group() -> Bool {
     })
 }
 
-test fn w_all_kv_group_metadata_claims_hold() -> Bool {
-  w_the_modeled_shape_binds_to_the_pinned_revision()
-    && w_the_pinned_emission_refuses_layout_construction_naming_the_missing_fields()
-    && w_a_complete_emission_constructs_the_layout()
-    && w_the_full_and_mamba_kinds_map_onto_the_growth_shape()
-    && w_the_revision_guard_refuses_a_foreign_capture()
-    && w_unmapped_kinds_refuse_naming_the_kind()
-    && w_window_inconsistency_refuses_in_both_directions()
-    && w_zero_walls_refuse_the_same_group()
-}

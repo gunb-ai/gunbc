@@ -105,13 +105,3 @@ test fn adversarial_tag_field_renders_no_shell_control_word() -> Bool {
   line_carries_no_shell_control_word(line: line)
 }
 
-// THE ACCEPTANCE CONJUNCTION BOUND IN THE NODE'S EXECUTION CONTRACT. Red today because the
-// adversarial arms are red; green only when every clause holds over the typed rebind.
-test fn cron_entry_line_builder_acceptance_holds() -> Bool {
-  benign_entry_renders_its_declared_fields()
-    && benign_entry_carries_no_shell_control_word()
-    && adversarial_schedule_field_renders_no_shell_control_word()
-    && adversarial_command_field_renders_no_shell_control_word()
-    && adversarial_log_path_field_renders_no_shell_control_word()
-    && adversarial_tag_field_renders_no_shell_control_word()
-}

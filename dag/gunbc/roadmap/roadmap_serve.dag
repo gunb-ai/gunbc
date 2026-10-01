@@ -84,7 +84,9 @@ import extdeps.languages.json.parse {
   parse_json_document, json_field_string,
   JsonDocumentParsed, JsonDocumentUnreadable, FieldAbsent, FieldRead, FieldMalformed,
 }
-import std.encoding { base64_decode, base64_encode, UrlSafe, Standard }
+import std.encoding { base64_decode, base64_encode, base64_octets, UrlSafe, Standard }
+import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused }
+import std.bytes { pure_dag_seam_unreachable_string }
 import gunbc.principal_projection {
   PrincipalRef, principal_ref_label, principal_ref_parse_label, principal_ref_eq, fabric_workflow_principal,
 }
@@ -1954,7 +1956,11 @@ fn auth_entropy_draw() -> NonEmptyStr? {
 // verifiers, and session ids all ride this alphabet, and the padding character has no place in
 // any of them.
 fn auth_base64url_wire(octets: List<UInt8>) -> String {
-  match split(s: base64_encode(octets: octets, variant: UrlSafe), delimiter: "=").first() {
+  let encoded = match base64_octets(values: octets) {
+    QualifiedOctetsReady { value: qualified } => base64_encode(octets: qualified, variant: UrlSafe)
+    QualifiedOctetsRefused { observed: _ } => pure_dag_seam_unreachable_string()
+  }
+  match split(s: encoded, delimiter: "=").first() {
     Present { value: wire } => wire
     Absent => ""
   }

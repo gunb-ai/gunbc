@@ -144,7 +144,7 @@ fn spark_experiment_member(host: HostIdentity, render: GlmNativeUnitRender) -> S
 // THE ROSTER, OR NOTHING. One member per (host, render); a render that refused anywhere refuses the
 // whole actuation before it reaches for a credential, exactly as the pre-reshape route refused.
 fn spark_experiment_members(hosts: List<HostIdentity>, renders: List<GlmNativeUnitRender>) -> List<SystemdExecutionMember>? {
-  let pairs = zip_map(a: hosts, b: renders, f: fn(h, r) { spark_experiment_member(host: h, render: r) })
+  let pairs: List<SystemdExecutionMember?> = zip_map(a: hosts, b: renders, f: fn(h, r) { spark_experiment_member(host: h, render: r) })
   if any(pairs, p => match p { Absent => true  Present { value: _ } => false }) {
     none
   } else {
@@ -1088,21 +1088,22 @@ fn spark_native_experiment_apply_wet() -> ProcessExit
                       ) {
                         MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
                         MaterializedSshKeyFileBracketCompleted { value: result } => {
-                          let body = spark_pair_apply_receipt_body(at: probed_at_word(reading: now) as String, executor: executor, path: path, outcomes: result.outcomes)
+                          let route: SparkExperimentRouteResult = result
+                          let body = spark_pair_apply_receipt_body(at: probed_at_word(reading: now) as String, executor: executor, path: path, outcomes: route.outcomes)
                           let wr = Filesystem.Write(path: spark_native_experiment_apply_receipt_path, content: body)
                           let located = join([
-                            match result.halt {
+                            match route.halt {
                               Present { value: refusal } => spark_profile_readback_halt_wire(r: refusal)
                               Absent => ""
                             },
-                            match result.workload_halt {
+                            match route.workload_halt {
                               Present { value: refusal } => spark_workload_halt_wire(r: refusal)
                               Absent => ""
                             },
                           ], "")
                           if !wr.success {
                             exit_failure(reason: join(["spark native experiment apply receipt write failed: ", wr.error], ""))
-                          } else if spark_pair_apply_all_applied(outcomes: result.outcomes) {
+                          } else if spark_pair_apply_all_applied(outcomes: route.outcomes) {
                             ExitSuccess
                           } else {
                             exit_failure(reason: join(["spark native experiment apply did not converge:\n", body, located], ""))

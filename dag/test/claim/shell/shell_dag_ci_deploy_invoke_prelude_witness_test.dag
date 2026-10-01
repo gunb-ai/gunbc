@@ -52,11 +52,3 @@ test fn deploy_invoke_runs_the_declared_stage() -> Bool {
     && string_contains(s: gunbc_ci_deploy_invoke(stage: gunbc_ci_deploy_srv1_stage), pattern: gunbc_ci_deploy_srv1_stage.function)
 }
 
-// THE ACCEPTANCE CONJUNCTION BOUND IN THE NODE'S EXECUTION CONTRACT. Red today because the red
-// arms are red; green only when every clause holds over the typed rebind.
-test fn ci_deploy_invoke_prelude_acceptance_holds() -> Bool {
-  deploy_invoke_prelude_renders_no_shell_control_word()
-    && deploy_invoke_prelude_has_no_pwd_fallback()
-    && deploy_invoke_still_reads_the_repo_toplevel()
-    && deploy_invoke_runs_the_declared_stage()
-}

@@ -53,11 +53,3 @@ test fn heal_regen_invoke_composes_the_declared_two_calls() -> Bool {
     && string_contains(s: gunbc_ci_heal_regen_invoke(), pattern: gunbc_ci_heal_verify_target.function)
 }
 
-// THE ACCEPTANCE CONJUNCTION BOUND IN THE NODE'S EXECUTION CONTRACT. Red today because the red
-// arms are red; green only when every clause holds over the typed rebind.
-test fn ci_heal_regen_invoke_acceptance_holds() -> Bool {
-  heal_regen_invoke_prelude_renders_no_shell_control_word()
-    && heal_regen_invoke_has_no_pwd_fallback()
-    && heal_regen_invoke_still_reads_the_repo_toplevel()
-    && heal_regen_invoke_composes_the_declared_two_calls()
-}

@@ -66,11 +66,3 @@ test fn trip_surface_carries_the_declared_payload_and_subject() -> Bool {
     && string_contains(s: trip_surface(codex_home: "/tmp/codex-home"), pattern: "/tmp/codex-home")
 }
 
-// THE ACCEPTANCE CONJUNCTION BOUND IN THE NODE'S EXECUTION CONTRACT. Red today because the red
-// arms are red; green only when every clause holds over the typed rebind.
-test fn codex_app_server_trip_script_acceptance_holds() -> Bool {
-  trip_surface_renders_no_shell_control_word()
-    && trip_surface_carries_no_stdio_sentinel()
-    && adversarial_codex_home_renders_no_shell_control_word()
-    && trip_surface_carries_the_declared_payload_and_subject()
-}

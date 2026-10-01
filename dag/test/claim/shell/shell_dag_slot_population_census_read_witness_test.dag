@@ -81,11 +81,3 @@ test fn planted_list_units_success_classifies_as_a_census() -> Bool {
   }
 }
 
-// THE ACCEPTANCE CONJUNCTION BOUND IN THE NODE'S EXECUTION CONTRACT. Red today because the red
-// arm is red; green only when every clause holds over the typed rebind.
-test fn slot_population_census_read_acceptance_holds() -> Bool {
-  census_read_over_unexecutable_transport_carries_the_typed_refusal()
-    && census_read_over_unexecutable_transport_is_a_refusal()
-    && planted_command_failure_cause_keeps_its_exit_code()
-    && planted_list_units_success_classifies_as_a_census()
-}

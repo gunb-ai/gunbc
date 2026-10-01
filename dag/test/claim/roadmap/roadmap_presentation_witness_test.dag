@@ -90,8 +90,9 @@ import gunbc.roadmap_presentation {
   issue_explanation, issue_first_open_kind, issue_wait_state_label,
 }
 import gunbc.roadmap.roadmap_event_log {
-  RoadmapNodeStanding, NodeOpen, NodeInProgress,
+  RoadmapNodeStanding, NodeOpen, NodeInProgress, EventPrincipalAuthenticated,
 }
+import gunbc.principal_projection { fabric_workflow_principal }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -1122,7 +1123,7 @@ test fn witness_shared_prerequisite_uses_only_authored_nesting() -> Bool {
 test fn witness_project_auto_open_follows_subtree_pulse() -> Bool {
   let edges = fx_hier_edges()
   let live = fx_hier_rows(activity_for_open: fx_specimen_activity(), standing_for_open: none)
-  let standing = fx_hier_rows(activity_for_open: NoActiveWork, standing_for_open: Present { value: NodeInProgress { by: "op" as NonEmptyStr, last_note: "working" as NonEmptyStr } })
+  let standing = fx_hier_rows(activity_for_open: NoActiveWork, standing_for_open: Present { value: NodeInProgress { by: EventPrincipalAuthenticated { ref: fabric_workflow_principal }, last_note: "working" as NonEmptyStr } })
   let open_standing = fx_hier_rows(activity_for_open: NoActiveWork, standing_for_open: Present { value: NodeOpen })
   let quiet = fx_hier_rows(activity_for_open: NoActiveWork, standing_for_open: none)
   fx_project_tree(rows: live, edges: edges, node_id: "hier-project").auto_open

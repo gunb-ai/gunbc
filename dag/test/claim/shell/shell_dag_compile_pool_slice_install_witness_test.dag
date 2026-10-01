@@ -63,11 +63,3 @@ test fn install_body_starts_never_restarts() -> Bool {
     && !string_contains(s: install_body_of(slice_unit: "gunbc-compile-pool.slice"), pattern: "restart")
 }
 
-// THE ACCEPTANCE CONJUNCTION BOUND IN THE NODE'S EXECUTION CONTRACT. Red today because the red
-// arms are red; green only when every clause holds over the typed rebind.
-test fn compile_pool_slice_install_acceptance_holds() -> Bool {
-  benign_install_body_renders_no_shell_control_word()
-    && adversarial_slice_unit_name_renders_no_shell_control_word()
-    && install_body_installs_the_declared_unit()
-    && install_body_starts_never_restarts()
-}
