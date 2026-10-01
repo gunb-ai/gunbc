@@ -470,7 +470,7 @@ data heal_publisher_isolation_refusal_reason: String = "REFUSED gunbc.heal_publi
 data heal_publisher_capability_refusal_reason: String = "REFUSED gunbc.heal_publisher_workflow: the job's capability closure does not hold. No workflow yaml was emitted."
 
 fn expected_heal_publisher_workflow_yml() -> HealPublisherWorkflowGenerationOutcome {
-  match admit_workflow_checkout_refs(workflow: heal_publisher_workflow) {
+  match admit_workflow_checkout_refs(workflow: heal_publisher_workflow, declared: []) {
     WorkflowCheckoutRefsRefused { refusals: crs } =>
       HealPublisherWorkflowGenerationRefused { reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.heal_publisher_workflow", refusals: crs) }
     WorkflowCheckoutRefsAdmitted =>

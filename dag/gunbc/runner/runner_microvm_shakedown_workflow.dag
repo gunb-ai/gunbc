@@ -251,7 +251,7 @@ fn expected_microvm_shakedown_yml_with(workflow: Workflow) -> MicrovmShakedownWo
     WorkflowActionUsesRefused { refusals: rs } =>
       MicrovmShakedownWorkflowGenerationRefused { reason: workflow_action_uses_refusal_reason(workflow_module: "gunbc.runner_microvm_shakedown_workflow", refusals: rs) }
     WorkflowActionUsesAdmitted =>
-      match admit_workflow_checkout_refs(workflow: workflow) {
+      match admit_workflow_checkout_refs(workflow: workflow, declared: []) {
     WorkflowCheckoutRefsRefused { refusals: crs } =>
       MicrovmShakedownWorkflowGenerationRefused { reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.runner_microvm_shakedown_workflow", refusals: crs) }
     WorkflowCheckoutRefsAdmitted =>

@@ -5,13 +5,67 @@ import v2.std.optional { Present, Absent }
 import extdeps.languages.yaml.types { kv, yaml_string }
 import extdeps.github.actions { Workflow, Job, UsesStep, WorkflowDispatch, HostedRunner, UbuntuLatest }
 import extdeps.github.action.upload_artifact { upload_artifact_v6_0_0 }
-import gunbc.action_use_admission { checkout_action, admit_workflow_checkout_refs, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused }
+import extdeps.github.expressions { Expression, ContextAccess, Github, Inputs, StringLiteral, Equals, LogicalOr, LogicalAnd, interpolate }
+import gunbc.action_use_admission {
+  checkout_action, checkout_ref_admitted, checkout_ref_entry,
+  admit_workflow_checkout_refs, WorkflowCheckoutRefsAdmission, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused,
+}
+import gunbc.fleet_converge_workflow { fleet_converge_checkout_ref }
 
 // THE SUBJECT IS gunbc.action_use_admission admit_workflow_checkout_refs, at its own interface: each
-// claim SUPPLIES a one-job, one-step workflow. The real path is not re-walked here -- every generated
-// workflow's expected_*_yml calls the admission and refuses emission, and the generated lane executes
-// that on every run, so deleting the call leaves the RED below as the only wall and deleting the
-// admission fails emission (DESIGN s3, a witness discriminates at one interface).
+// claim SUPPLIES an Expression or a one-step workflow. The real path is not re-walked here -- every
+// generated workflow's expected_*_yml calls the admission and refuses emission, and the generated lane
+// executes that on every run (DESIGN s3, a witness discriminates at one interface).
+fn github(path: List<String>) -> Expression { ContextAccess { context: Github, path: path } }
+fn input(name: String) -> Expression { ContextAccess { context: Inputs, path: [name] } }
+fn or(l: Expression, r: Expression) -> Expression { LogicalOr { left: l, right: r } }
+fn mode_is(m: String) -> Expression { Equals { left: github(path: ["event", "inputs", "mode"]), right: StringLiteral { value: m } } }
+
+// The fleet-converge tree with a chosen tail: github.sha now, github.ref before this change.
+fn fleet_shape(tail: Expression) -> Expression {
+  or(l: or(l: LogicalAnd { left: or(l: or(l: mode_is(m: "mtcollins1_boot"), r: mode_is(m: "gcp_iam_converge")), r: mode_is(m: "namecheap_observe")), right: github(path: ["sha"]) },
+           r: github(path: ["event", "inputs", "expected_revision"])),
+     r: tail)
+}
+
+// RED: THE EXPRESSION main EMITTED BEFORE THIS CHANGE. With no expected_revision it fell back to
+// github.ref, so a consumer job that queued behind a merge checked out a later main than the build
+// job and release-bins refused it (ConsumerSourceTreeMismatch, runs 36764203649 and 36766990321).
+test fn red_the_pre_fix_branch_fallback_is_refused() -> Bool {
+  !checkout_ref_admitted(ref_expression: fleet_shape(tail: github(path: ["ref"])))
+    && !checkout_ref_admitted(ref_expression: github(path: ["ref"]))
+    && !checkout_ref_admitted(ref_expression: StringLiteral { value: "main" })
+}
+
+// RED: A BRANCH-VALUED OPERAND IN FRONT OF A SHA TAIL. `||` takes the first non-empty operand, so the
+// sha tail is never reached when the branch operand is set.
+test fn red_a_branch_term_before_the_sha_tail_is_refused() -> Bool {
+  !checkout_ref_admitted(ref_expression: or(l: github(path: ["head_ref"]), r: github(path: ["sha"])))
+    && !checkout_ref_admitted(ref_expression: or(l: github(path: ["event", "pull_request", "head", "ref"]), r: github(path: ["sha"])))
+    && !checkout_ref_admitted(ref_expression: or(l: input(name: "branch"), r: github(path: ["sha"])))
+}
+
+// RED: A CONDITION WITH NO FALLBACK. `cond && github.sha` alone yields `false` when cond is false.
+test fn red_a_condition_with_no_fallback_is_refused() -> Bool {
+  !checkout_ref_admitted(ref_expression: LogicalAnd { left: mode_is(m: "x"), right: github(path: ["sha"]) })
+}
+
+// POSITIVE: every commit-valued form the generated workflows declare.
+test fn commit_valued_checkout_refs_are_admitted() -> Bool {
+  checkout_ref_admitted(ref_expression: github(path: ["sha"]))
+    && checkout_ref_admitted(ref_expression: github(path: ["event", "pull_request", "head", "sha"]))
+    && checkout_ref_admitted(ref_expression: input(name: "head_sha"))
+    && checkout_ref_admitted(ref_expression: or(l: input(name: "expected_healed_sha"), r: github(path: ["sha"])))
+    && checkout_ref_admitted(ref_expression: fleet_shape(tail: github(path: ["sha"])))
+}
+
+// THE RENDERING: the fleet-converge ref renders to the bytes the regenerated fleet-converge.yml
+// carries, with the mode disjunction grouped under the && (extdeps.github.expressions precedence).
+test fn the_fleet_converge_ref_renders_to_the_emitted_bytes() -> Bool {
+  interpolate(expression: fleet_converge_checkout_ref)
+    == "${{ (github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'gcp_iam_converge' || github.event.inputs.mode == 'namecheap_observe') && github.sha || github.event.inputs.expected_revision || github.sha }}"
+}
+
 fn one_step_workflow(uses_checkout: Bool, ref_text: String) -> Workflow {
   Workflow {
     name: "fixture", run_name: none, on: [WorkflowDispatch { inputs: [] }], concurrency: none,
@@ -29,51 +83,20 @@ fn one_step_workflow(uses_checkout: Bool, ref_text: String) -> Workflow {
   }
 }
 
-fn checkout_refused(ref_text: String) -> Bool {
-  match admit_workflow_checkout_refs(workflow: one_step_workflow(uses_checkout: true, ref_text: ref_text)) {
-    WorkflowCheckoutRefsAdmitted => false
-    WorkflowCheckoutRefsRefused { refusals: rs } => (rs |> count) == 1
-  }
+fn admitted(a: WorkflowCheckoutRefsAdmission) -> Bool {
+  match a { WorkflowCheckoutRefsAdmitted => true  WorkflowCheckoutRefsRefused { refusals: _ } => false }
 }
 
-// RED: THE EXPRESSION main EMITTED BEFORE THIS CHANGE. With no expected_revision it fell back to
-// github.ref, so a consumer job that queued behind a merge checked out a later main than the build
-// job and release-bins refused it (ConsumerSourceTreeMismatch, runs 36764203649 and 36766990321).
-test fn red_the_pre_fix_branch_fallback_is_refused() -> Bool {
-  checkout_refused(ref_text: "${{ (github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'gcp_iam_converge') && github.sha || github.event.inputs.expected_revision || github.ref }}")
-    && checkout_refused(ref_text: "${{ github.ref }}")
-    && checkout_refused(ref_text: "main")
-}
-
-// RED: A BRANCH-VALUED TERM IN FRONT OF A SHA TAIL. `||` takes the first non-empty operand, so the
-// sha tail is never reached when the branch term is set; the ends-with-github.sha test admitted all three.
-test fn red_a_branch_term_before_the_sha_tail_is_refused() -> Bool {
-  checkout_refused(ref_text: "${{ github.head_ref || github.sha }}")
-    && checkout_refused(ref_text: "${{ github.event.pull_request.head.ref || github.sha }}")
-    && checkout_refused(ref_text: "${{ inputs.branch || github.sha }}")
-}
-
-// POSITIVE: every commit-valued form the generated workflows emit, including the conditioned arm.
-test fn commit_valued_checkout_refs_are_admitted() -> Bool {
-  !checkout_refused(ref_text: "${{ github.sha }}")
-    && !checkout_refused(ref_text: "${{ github.event.pull_request.head.sha }}")
-    && !checkout_refused(ref_text: "${{ inputs.head_sha }}")
-    && !checkout_refused(ref_text: "${{ (github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'gcp_iam_converge') && github.sha || github.event.inputs.expected_revision || github.sha }}")
-    && !checkout_refused(ref_text: "0123456789abcdef0123456789abcdef01234567")
+// THE WORKFLOW WALL: a checkout `ref` must be the rendering of a declared Expression. A hand-typed
+// string refuses even when it spells an admissible commit; a declared, admitted one passes; a
+// declared but inadmissible one refuses even though its text matches.
+test fn a_checkout_ref_must_render_a_declared_admitted_expression() -> Bool {
+  !admitted(a: admit_workflow_checkout_refs(workflow: one_step_workflow(uses_checkout: true, ref_text: "${{ github.sha }}"), declared: []))
+    && admitted(a: admit_workflow_checkout_refs(workflow: one_step_workflow(uses_checkout: true, ref_text: "${{ github.sha }}"), declared: [github(path: ["sha"])]))
+    && !admitted(a: admit_workflow_checkout_refs(workflow: one_step_workflow(uses_checkout: true, ref_text: "${{ github.ref }}"), declared: [github(path: ["ref"])]))
 }
 
 // THE ADMISSION READS actions/checkout ONLY: another action's `ref` input is not a checkout.
 test fn a_ref_input_on_another_action_is_not_read() -> Bool {
-  match admit_workflow_checkout_refs(workflow: one_step_workflow(uses_checkout: false, ref_text: "main")) {
-    WorkflowCheckoutRefsAdmitted => true
-    WorkflowCheckoutRefsRefused { refusals: _ } => false
-  }
-}
-
-// RED: TEXT AFTER THE CLOSING BRACES. No suffix check exists; the trailing text stays in the last
-// value term, so the allowlist is the only wall and this claim is its discriminator.
-test fn red_text_after_the_closing_braces_is_refused() -> Bool {
-  checkout_refused(ref_text: "${{ github.sha }}-x")
-    && checkout_refused(ref_text: "${{ github.sha }} main")
-    && checkout_refused(ref_text: "${{ github.sha }}${{ github.ref }}")
+  admitted(a: admit_workflow_checkout_refs(workflow: one_step_workflow(uses_checkout: false, ref_text: "main"), declared: []))
 }

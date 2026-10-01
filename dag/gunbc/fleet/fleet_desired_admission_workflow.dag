@@ -440,7 +440,7 @@ fn expected_fleet_desired_yml() -> FleetDesiredGenerationOutcome {
     WorkflowActionUsesRefused { refusals: rs } =>
       FleetDesiredGenerationRefused { reason: workflow_action_uses_refusal_reason(workflow_module: "gunbc.fleet_desired_admission_workflow", refusals: rs) }
     WorkflowActionUsesAdmitted =>
-      match admit_workflow_checkout_refs(workflow: fleet_desired_admission_workflow) {
+      match admit_workflow_checkout_refs(workflow: fleet_desired_admission_workflow, declared: []) {
     WorkflowCheckoutRefsRefused { refusals: crs } =>
       FleetDesiredGenerationRefused { reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.fleet_desired_admission_workflow", refusals: crs) }
     WorkflowCheckoutRefsAdmitted =>
