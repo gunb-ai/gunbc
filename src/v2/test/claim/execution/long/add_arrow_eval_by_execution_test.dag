@@ -88,7 +88,7 @@ import v2.std.node {
   Transform,
   TypeNode,
 }
-import v2.std.node_query { node_positional_child_targets, pattern_wildcard_name }
+import v2.std.node_query { node_positional_child_targets, pattern_wildcard_name, binder_edge }
 import v2.std.runtime {
   BindInterpreter,
   BranchInterpreter,
@@ -525,8 +525,8 @@ fn add_arrow_swapped_operand_body() -> Node {
 // defect -- the body or the extra parameter -- and not for a signature shape no producer emits.
 fn add_arrow_xy_params() -> List<Edge> {
   [
-    Edge { label: Named { name: ^dag_binding_param_x }, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
-    Edge { label: Named { name: ^dag_binding_param_y }, target: add_arrow_eval_atom(s: ^dag_binding_type_int) }
+    binder_edge(name: ^dag_binding_param_x, type_node: add_arrow_eval_atom(s: ^dag_binding_type_int)),
+    binder_edge(name: ^dag_binding_param_y, type_node: add_arrow_eval_atom(s: ^dag_binding_type_int))
   ]
 }
 
@@ -545,7 +545,7 @@ fn add_arrow_swapped_add_arrow() -> Node {
 }
 
 fn add_arrow_excess_signature_arrow() -> Node {
-  let signature = declared_signature(params: concat(add_arrow_xy_params(), [Edge { label: Named { name: pattern_wildcard_name() }, target: add_arrow_eval_atom(s: ^dag_binding_type_int) }]), source: add_arrow_eval_atom(s: ^dag_binding_type_int))
+  let signature = declared_signature(params: concat(add_arrow_xy_params(), [binder_edge(name: pattern_wildcard_name(), type_node: add_arrow_eval_atom(s: ^dag_binding_type_int))]), source: add_arrow_eval_atom(s: ^dag_binding_type_int))
   Node {
     kind: TypeNode { connective: Arrow },
     occurrence_id: OccurrenceSynthetic,

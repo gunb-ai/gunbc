@@ -1,0 +1,61 @@
+module gunbc.wall_clock_model
+
+import std.types { EpochSecs, Int, List, String }
+import std.measure { Second, second, second_count, SecondDisplacement, second_displacement_count }
+import v2.std.operation_argv { OperationRef }
+import v2.std.operation_realization {
+  OperationBinding, OperationCall, OperationStep, OperationObserved, ShellObserved,
+}
+import extdeps.transports.shell { ShellProcessExited }
+import extdeps.units.iso8601_calendar { iso8601_utc_text }
+
+// A MODELED WALL CLOCK: what the worker's `date` prints, as a function of the realization's virtual
+// clock. The virtual clock (v2.std.operation_realization, a Nat-counted Second) is monotonic by
+// construction; the WALL clock is not, and a real host's can step backwards (NTP, a VM restored from
+// a snapshot). So the model keeps them apart: a reading is the Unix time the scenario assigns to the
+// virtual origin, plus the virtual seconds elapsed, plus a signed step the scenario may set -- a
+// negative step is a backward clock the consumer must survive, while virtual time, deadlines and
+// scheduled events keep moving forward.
+//
+// It answers extdeps.clock Clock.Now in `date -u +%Y-%m-%dT%H:%M:%SZ` form, and Clock.UnixSecs and
+// Clock.UnixMillis in `date +%s` and `date +%s%3N` form; the calendar is extdeps.units.iso8601_calendar's.
+// A STEP IS A JUMP THE WALL CLOCK TAKES AT A VIRTUAL INSTANT: from `at` on, readings carry `by` in
+// addition to the standing offset. Steps accumulate, so a backward jump followed by a forward one is two
+// rows. Reading is a pure function of virtual time, so a jump needs no event to fire it.
+type ModeledClockStep {
+  at: Second
+  by: SecondDisplacement
+}
+
+type ModeledWallClock {
+  unix_at_origin: EpochSecs
+  step: SecondDisplacement
+  jumps: List<ModeledClockStep>
+}
+
+fn wall_clock_unix(clock: ModeledWallClock, now: Second) -> Int {
+  let jumped = fold(clock.jumps, init: 0, f: fn(acc, j) { if second_count(s: j.at) <= second_count(s: now) { acc + second_displacement_count(d: j.by) } else { acc } })
+  (clock.unix_at_origin as Int) + (second_count(s: now) as Int) + second_displacement_count(d: clock.step) + jumped
+}
+
+data clock_operation_path: String = "dag/extdeps/clock/clock.dag"
+
+fn clock_operation(operation: String) -> OperationRef {
+  OperationRef { path: clock_operation_path, service: "Clock", operation: operation }
+}
+
+fn wall_clock_printed<S>(state: S, text: String) -> OperationStep<S> {
+  OperationObserved {
+    observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: concat(text, "\n"), stderr: "" } },
+    state: state,
+    elapsed: second(count: 0),
+  }
+}
+
+fn wall_clock_bindings<S>(get: fn(S) -> ModeledWallClock) -> List<OperationBinding<S>> {
+  [
+    OperationBinding { at: clock_operation(operation: "Now"), handler: fn(state, call) { wall_clock_printed(state: state, text: iso8601_utc_text(unix: wall_clock_unix(clock: get(state), now: call.now))) } },
+    OperationBinding { at: clock_operation(operation: "UnixSecs"), handler: fn(state, call) { wall_clock_printed(state: state, text: to_string(wall_clock_unix(clock: get(state), now: call.now))) } },
+    OperationBinding { at: clock_operation(operation: "UnixMillis"), handler: fn(state, call) { wall_clock_printed(state: state, text: to_string(wall_clock_unix(clock: get(state), now: call.now) * 1000)) } },
+  ]
+}

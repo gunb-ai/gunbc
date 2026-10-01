@@ -106,6 +106,7 @@ import v2.std.node {
   FunctionValueBody,
   RecordConstructBody,
   DeclarationReferenceBody,
+  ParameterReferenceBody,
   UnsupportedArrowBody,
   classify_arrow_body_form,
   ArrowBodyEdges,
@@ -149,6 +150,8 @@ import v2.std.witness {
 }
 import v2.std.anonymous_binder { is_anonymous_param_label }
 import v2.std.node_query {
+  declared_field_from_edge,
+  member_edge_type_node,
   NamedChildAmbiguous,
   NamedChildFound,
   NamedChildMissing,
@@ -169,6 +172,7 @@ import v2.std.qualified_name {
   qualified_name_from_node,
   qualified_name_init,
   qualified_name_last_segment,
+  parameter_reference_path_optional,
   declaration_reference_path_optional
 }
 import v2.std.logic {
@@ -414,11 +418,21 @@ fn produced_decl_param_segment_tokens(
           )
       }
     ProducedParamType =>
-      produced_decl_type_ref_tokens(
-        token_class: rows.type_ref_token_class,
-        type_node: edge.target,
-        type_binding: type_binding
-      )
+      match declared_field_from_edge(e: edge) {
+        Present { value: binder } =>
+          produced_decl_type_ref_tokens(
+            token_class: rows.type_ref_token_class,
+            type_node: binder.type_node,
+            type_binding: type_binding
+          )
+        Absent =>
+          outcome_rejected(
+            d: produced_decl_render_diagnostic(
+              reason: ^produced_decl_render_param_unnamed,
+              node: edge.target
+            )
+          )
+      }
   }
 }
 
@@ -606,7 +620,7 @@ fn produced_decl_function_type_param_tokens(
   edge: Edge,
   type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<List<ConcreteSyntaxToken>> {
-  produced_decl_type_ref_tokens(token_class: rows.type_ref_token_class, type_node: edge.target, type_binding: type_binding)
+  produced_decl_type_ref_tokens(token_class: rows.type_ref_token_class, type_node: member_edge_type_node(e: edge), type_binding: type_binding)
 }
 
 fn produced_decl_function_type_params_tokens(
@@ -14043,6 +14057,7 @@ fn target_value_expr_arrow_has_value_expression_body(arrow: Node) -> Bool {
         DirectAtomBody => target_value_expr_arrow_has_value_expression_body_by_kind(arrow: arrow)
         RecordConstructBody => target_value_expr_arrow_has_value_expression_body_by_kind(arrow: arrow)
         DeclarationReferenceBody => target_value_expr_arrow_has_value_expression_body_by_kind(arrow: arrow)
+        ParameterReferenceBody => target_value_expr_arrow_has_value_expression_body_by_kind(arrow: arrow)
         ComputationBody { behavior: _ } => target_value_expr_arrow_has_value_expression_body_by_kind(arrow: arrow)
         UnsupportedArrowBody => target_value_expr_arrow_has_value_expression_body_by_kind(arrow: arrow)
       }
@@ -14138,6 +14153,57 @@ fn target_value_expr_arrow_body_scope_binding(
   )
 }
 
+// A NAMED FN'S PARAMETER REACHES THE PROJECTOR AS A PATH-KEYED REFERENCE, AND ITS LEAF IS THE LOCAL.
+// v2.compiler.resolve mints it (v2.std.qualified_name parameter_reference_node) over
+// <fn path>.<label> after the symbol index confirmed that path, so which binder it names was decided
+// once, upstream; the projector spells the label as a local and never searches a domain for it. A
+// bare Atom operand is a LEXICAL binder -- a lambda's parameter, a `let`, a match binder -- and only
+// that still goes through target_value_expr_arrow_body_scope_binding, the frozen frontier resolve
+// names on its FrameKind carrier (trigger: anonymous Arrows carry an index path, via
+// std.occurrence_identity, so lambda parameters resolve as declaration references too).
+fn target_value_expr_parameter_reference_leaf(node: Node) -> Optional<Symbol> {
+  match parameter_reference_path_optional(node: node) {
+    Present { value: path } => qualified_name_last_segment(qn: path)
+    Absent => optional_absent()
+  }
+}
+
+fn target_arrow_scope_operand_binding(
+  arrow: Node,
+  body: Node,
+  operand: Node,
+  target: TargetModel
+) -> Outcome<Symbol> {
+  match target_value_expr_parameter_reference_leaf(node: operand) {
+    Present { value: leaf } => outcome_accepted(leaf)
+    Absent =>
+      bind_outcome(
+        o: target_transform_positional_operand_binding_atom(child: operand),
+        f: fn(binding) {
+          target_value_expr_arrow_body_scope_binding(arrow: arrow, body: body, binding: binding, target: target)
+        }
+      )
+  }
+}
+
+fn target_arrow_scope_positional_operand_binding(
+  arrow: Node,
+  body: Node,
+  index: Int,
+  target: TargetModel
+) -> Outcome<Symbol> {
+  match list_at_optional(xs: node_positional_child_targets(node: body), index: index) {
+    Present { value: operand } => target_arrow_scope_operand_binding(arrow: arrow, body: body, operand: operand, target: target)
+    Absent =>
+      outcome_rejected(
+        target_value_expr_diagnostic(
+          reason: ^target_value_expr_reason_transform_shape_invalid,
+          node: body
+        )
+      )
+  }
+}
+
 // A CAST projects as a ONE-operand primitive apply of the coercion operation: its <cast-target> is a
 // type infer has already judged, and the target's realization row (OperandUnchanged) spells the
 // crossing from the operand alone. Its shape is exactly [coerce, operand] + <cast-target>.
@@ -14157,18 +14223,13 @@ fn target_project_cast_primitive_apply_in_arrow_scope(
     )
   } else {
     bind_outcome(
-      o: target_transform_positional_operand_binding(node: body, index: 1),
-      f: fn(operand_binding) {
-        bind_outcome(
-          o: target_value_expr_arrow_body_scope_binding(arrow: arrow, body: body, binding: operand_binding, target: target),
-          f: fn(scoped_operand_binding) {
-            outcome_accepted(
-              target_value_expression_primitive_apply(
-                operation: canonical_op,
-                operands: [target_value_expression_binding_ref(binding: scoped_operand_binding)]
-              )
-            )
-          }
+      o: target_arrow_scope_positional_operand_binding(arrow: arrow, body: body, index: 1, target: target),
+      f: fn(scoped_operand_binding) {
+        outcome_accepted(
+          target_value_expression_primitive_apply(
+            operation: canonical_op,
+            operands: [target_value_expression_binding_ref(binding: scoped_operand_binding)]
+          )
         )
       }
     )
@@ -14211,43 +14272,23 @@ fn target_project_binary_primitive_apply_in_arrow_scope(
     )
   } else {
     bind_outcome(
-      o: target_transform_positional_operand_binding(node: body, index: 1),
-      f: fn(left_binding) {
+      o: target_arrow_scope_positional_operand_binding(arrow: arrow, body: body, index: 1, target: target),
+      f: fn(scoped_left_binding) {
         bind_outcome(
-          o: target_value_expr_arrow_body_scope_binding(
-            arrow: arrow,
-            body: body,
-            binding: left_binding,
-            target: target
-          ),
-          f: fn(scoped_left_binding) {
-            bind_outcome(
-              o: target_transform_positional_operand_binding(node: body, index: 2),
-              f: fn(right_binding) {
-                bind_outcome(
-                  o: target_value_expr_arrow_body_scope_binding(
-                    arrow: arrow,
-                    body: body,
-                    binding: right_binding,
-                    target: target
+          o: target_arrow_scope_positional_operand_binding(arrow: arrow, body: body, index: 2, target: target),
+          f: fn(scoped_right_binding) {
+            outcome_accepted(
+              target_value_expression_primitive_apply(
+                operation: canonical_op,
+                operands: [
+                  target_value_expression_binding_ref(
+                    binding: scoped_left_binding
                   ),
-                  f: fn(scoped_right_binding) {
-                    outcome_accepted(
-                      target_value_expression_primitive_apply(
-                        operation: canonical_op,
-                        operands: [
-                          target_value_expression_binding_ref(
-                            binding: scoped_left_binding
-                          ),
-                          target_value_expression_binding_ref(
-                            binding: scoped_right_binding
-                          )
-                        ]
-                      )
-                    )
-                  }
-                )
-              }
+                  target_value_expression_binding_ref(
+                    binding: scoped_right_binding
+                  )
+                ]
+              )
             )
           }
         )
@@ -14264,6 +14305,9 @@ fn target_project_callable_arg_in_arrow_scope(
   source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
+  match target_value_expr_parameter_reference_leaf(node: arg) {
+    Present { value: leaf } => outcome_accepted(target_value_expression_binding_ref(binding: leaf))
+    Absent =>
   match arg.kind {
     TypeNode { connective: Atom { identity: id } } =>
       bind_outcome(
@@ -14285,6 +14329,7 @@ fn target_project_callable_arg_in_arrow_scope(
         source_bool_form: source_bool_form,
         handle_transform: handle_transform
       )
+  }
   }
 }
 
@@ -15315,6 +15360,9 @@ fn target_value_expr_project_body_subexpression(
         handle_transform: handle_transform
       )
     TypeNode { connective: Conj } =>
+      match target_value_expr_parameter_reference_leaf(node: node) {
+        Present { value: leaf } => outcome_accepted(target_value_expression_binding_ref(binding: leaf))
+        Absent =>
       if target_value_expr_record_construct_gate(node: node) {
         target_project_record_construct(
           arrow: arrow,
@@ -15330,6 +15378,7 @@ fn target_value_expr_project_body_subexpression(
             node: node
           )
         )
+      }
       }
 
     TypeNode { connective: Arrow } =>
@@ -15591,6 +15640,7 @@ fn target_project_arrow_body_to_value_expression(
         DirectAtomBody => target_project_arrow_body_by_kind(arrow: arrow, body: body, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
         RecordConstructBody => target_project_arrow_body_by_kind(arrow: arrow, body: body, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
         DeclarationReferenceBody => target_project_arrow_body_by_kind(arrow: arrow, body: body, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
+        ParameterReferenceBody => target_project_arrow_body_by_kind(arrow: arrow, body: body, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
         ComputationBody { behavior: _ } => target_project_arrow_body_by_kind(arrow: arrow, body: body, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
         UnsupportedArrowBody => target_project_arrow_body_by_kind(arrow: arrow, body: body, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
       }
@@ -15660,6 +15710,9 @@ fn target_project_arrow_body_by_kind(
           handle_transform: handle_transform
         )
       TypeNode { connective: Conj } =>
+        match target_value_expr_parameter_reference_leaf(node: body) {
+          Present { value: leaf } => outcome_accepted(target_value_expression_binding_ref(binding: leaf))
+          Absent =>
         if target_value_expr_record_construct_gate(node: body) {
           target_project_record_construct(
             arrow: arrow,
@@ -15675,6 +15728,7 @@ fn target_project_arrow_body_by_kind(
               node: body
             )
           )
+        }
         }
       TypeNode { connective: Atom { identity: _ } } =>
         target_value_expr_project_atom_in_arrow_scope(

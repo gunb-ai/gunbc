@@ -656,7 +656,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "python_same_language_parse_bridge_holds"
     ]
   },
-  FrozenPathDeferral { entry: "src/v2/test/claim/execution/emit_ingest_type_decl_round_trip_test.dag", functions: ["emit_ingest_type_decl_round_trip_holds"] },
   FrozenPathDeferral {
     entry: "src/v2/test/claim/execution/emit_ingest_typescript_same_language_round_trip_test.dag",
     functions: [

@@ -78,7 +78,7 @@ fn conj_payload_type_name_go(xs: FreeMonoid<Edge>, acc: String) -> String {
     Empty => acc
     Cons { head: h, tail: t } =>
       let field_name = named_edge_sort_key(e: h)
-      let type_name = edge_field_type_name(target: h.target)
+      let type_name = edge_field_type_name(target: member_edge_type_node(e: h))
       let piece = concat(field_name, concat(": ", type_name))
       conj_payload_type_name_go(
         xs: t,
@@ -246,6 +246,24 @@ fn declared_field_cardinality_of_target(target: Node) -> Cardinality {
   }
 }
 
+// THE BINDER BUILDER: the named member of an Arrow domain, an io payload or a record payload, declaring
+// `name` of type `type_node`. Every binder producer the XL-2 census found builds through it (or through
+// binder_relabelled), as declared_field_from_edge reads every binder. RUNG, STATED HONESTLY: this is a
+// convention today -- an `Edge { label: Named .. }` literal is still writable, so nothing yet refuses a
+// hand-built binder. The wall arrives with the representation switch (XL-2 PR2b-3): once a binder's
+// target is a binder node, a hand-built name-to-type edge no longer conforms and refuses, located.
+fn binder_edge(name: Symbol, type_node: Node) -> Edge {
+  Edge { label: Named { name: name }, target: type_node }
+}
+
+// THE ONE RELABEL OF A BINDER: the same binder under another name (an anonymous slot's minted label,
+// v2.std.anonymous_binder anonymous_binder_mint_parameter_list). It keeps everything the binder
+// carries rather than rebuilding it from a type, so whatever the representation holds besides the
+// type survives the rename.
+fn binder_relabelled(binder: Edge, name: Symbol) -> Edge {
+  Edge { label: Named { name: name }, target: binder.target }
+}
+
 fn declared_field_from_edge(e: Edge) -> Optional<DeclaredField> {
   match e.label {
     Named { name: field_name } =>
@@ -257,6 +275,17 @@ fn declared_field_from_edge(e: Edge) -> Optional<DeclaredField> {
         }
       }
     Positional => Absent
+  }
+}
+
+// THE TYPE A MEMBER EDGE OF A PAYLOAD OR DOMAIN CONJ DECLARES. A Named member is a binder, and its
+// type is read through declared_field_from_edge, the one binder reader; a Positional member is not a
+// binder, and its target is the type itself. Every site that asks a member edge for its type asks
+// here, so the binder's representation is read in one place.
+fn member_edge_type_node(e: Edge) -> Node {
+  match declared_field_from_edge(e: e) {
+    Present { value: binder } => binder.type_node
+    Absent => e.target
   }
 }
 
