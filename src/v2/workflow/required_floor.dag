@@ -670,11 +670,17 @@ fn fixture_home_prefixes() -> List<String> {
 // "test.claim.bare_name_", "test.claim.legacy_binding_",
 // "test.claim.compiler_frontend_program_status_witness",
 // "test.claim.discovery_census_witness_test",
-// "test.claim.witness_floor_workflow_consolidation_witness_test",
 // "test.claim.typed_module_cache_capacity_witness",
 // "test.claim.whole_corpus_compile_admission_witness",
 // "test.claim.memory_stall_refusal_witness", "test.claim.docs_projection_gate_test",
 // "test.claim.if_join_pool_binding_witness_test", "test.claim.runner_slot_provision".
+//
+// RETURNED AT EXACT GRAIN: `test.claim.witness_floor_workflow_consolidation_witness_test` is back
+// through `required_gate_authored_modules`, not as a family row. Four declared rung drops name
+// its `w_RED_the_deleted_lanes_do_not_return` as their countable, and a drop's countable that no
+// required path runs leaves the drop unwatched -- the state
+// `test.claim.discovery_census_witness` `w_deleted_lane_countable_is_planned_by_the_required_gate`
+// exists to refuse. It reads committed files only.
 fn required_gate_prefixes() -> List<String> {
   [
     "test.claim.infer_",
@@ -821,6 +827,7 @@ fn required_gate_authored_modules() -> List<String> {
     "v2.test.claim.coercion.identity_cast_emission_route",
     "v2.test.execution.self_host_candidate_generation_stage_verdicts",
     "v2.test.manual.cross_language_add_python_to_typescript",
+    "test.claim.witness_floor_workflow_consolidation_witness_test",
   ]
 }
 
