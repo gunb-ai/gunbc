@@ -7,7 +7,7 @@ import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
 import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_parse }
 import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_declares_resource_at, symbol_index_lookup }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }
 import v2.std.algebra { fold_list }
 import v2.std.optional { Absent, Present }
 import v2.std.logic { Bool }
@@ -281,4 +281,104 @@ fn entries_stream() -> TokenStream {
 
 test fn entries_stream_is_what_tokenize_produces_holds() -> Bool {
   supplied_stream_matches_tokenize(text: entries_source, file: ^resource_lowering_probe, supplied: entries_stream())
+}
+
+// A well-formed io tail on a capability output field with an `= 1` default: the shared io grammar admits it, and it refuses as a service's
+// set-aside member does -- the owned fatal service_realization_unreachable at the capability, with
+// interface_member_unmodeled pending at the tail -- never as the malformed-entry cause.
+data default_tail_source: String = "module m\nresource N {\n  kind: Capability\n  mode: Read\n  capability c {\n    output { o: Int = 1 }\n  }\n}\n"
+
+test fn a_default_tail_refuses_as_a_service_set_aside_RED() -> Bool {
+  match census_of_stream(tokens: default_tail_stream()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: r } =>
+      (diagnostics_fatal_reason(d: r) == ^body_lowering_reason_service_realization_unreachable)
+        && carries(ne: r, reason: ^body_lowering_reason_interface_member_unmodeled)
+        && !carries(ne: r, reason: ^body_lowering_reason_resource_entry_unread)
+  }
+}
+
+fn default_tail_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^resource_lowering_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^resource_lowering_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_ident, lexeme: "resource", file: ^resource_lowering_probe, start: 9, end: 17 },
+    Token { class: ^dag_token_ident, lexeme: "N", file: ^resource_lowering_probe, start: 18, end: 19 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^resource_lowering_probe, start: 20, end: 21 },
+    Token { class: ^dag_token_ident, lexeme: "kind", file: ^resource_lowering_probe, start: 24, end: 28 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^resource_lowering_probe, start: 28, end: 29 },
+    Token { class: ^dag_token_ident, lexeme: "Capability", file: ^resource_lowering_probe, start: 30, end: 40 },
+    Token { class: ^dag_token_ident, lexeme: "mode", file: ^resource_lowering_probe, start: 43, end: 47 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^resource_lowering_probe, start: 47, end: 48 },
+    Token { class: ^dag_token_ident, lexeme: "Read", file: ^resource_lowering_probe, start: 49, end: 53 },
+    Token { class: ^dag_token_ident, lexeme: "capability", file: ^resource_lowering_probe, start: 56, end: 66 },
+    Token { class: ^dag_token_ident, lexeme: "c", file: ^resource_lowering_probe, start: 67, end: 68 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^resource_lowering_probe, start: 69, end: 70 },
+    Token { class: ^dag_token_ident, lexeme: "output", file: ^resource_lowering_probe, start: 75, end: 81 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^resource_lowering_probe, start: 82, end: 83 },
+    Token { class: ^dag_token_ident, lexeme: "o", file: ^resource_lowering_probe, start: 84, end: 85 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^resource_lowering_probe, start: 85, end: 86 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^resource_lowering_probe, start: 87, end: 90 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^resource_lowering_probe, start: 91, end: 92 },
+    Token { class: ^dag_token_int_literal, lexeme: "1", file: ^resource_lowering_probe, start: 93, end: 94 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 95, end: 96 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 99, end: 100 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 101, end: 102 }
+  ])
+}
+
+test fn default_tail_stream_is_what_tokenize_produces_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: default_tail_source, file: ^resource_lowering_probe, supplied: default_tail_stream())
+}
+
+// A well-formed io tail on a capability output field with a `from "k"` wire key: the shared io grammar admits it, and it refuses as a service's
+// set-aside member does -- the owned fatal service_realization_unreachable at the capability, with
+// interface_member_unmodeled pending at the tail -- never as the malformed-entry cause.
+data wire_key_tail_source: String = "module m\nresource N {\n  kind: Capability\n  mode: Read\n  capability c {\n    output { o: Int from \"k\" }\n  }\n}\n"
+
+test fn a_wire_key_tail_refuses_as_a_service_set_aside_RED() -> Bool {
+  match census_of_stream(tokens: wire_key_tail_stream()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: r } =>
+      (diagnostics_fatal_reason(d: r) == ^body_lowering_reason_service_realization_unreachable)
+        && carries(ne: r, reason: ^body_lowering_reason_interface_member_unmodeled)
+        && !carries(ne: r, reason: ^body_lowering_reason_resource_entry_unread)
+  }
+}
+
+fn wire_key_tail_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^resource_lowering_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^resource_lowering_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_ident, lexeme: "resource", file: ^resource_lowering_probe, start: 9, end: 17 },
+    Token { class: ^dag_token_ident, lexeme: "N", file: ^resource_lowering_probe, start: 18, end: 19 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^resource_lowering_probe, start: 20, end: 21 },
+    Token { class: ^dag_token_ident, lexeme: "kind", file: ^resource_lowering_probe, start: 24, end: 28 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^resource_lowering_probe, start: 28, end: 29 },
+    Token { class: ^dag_token_ident, lexeme: "Capability", file: ^resource_lowering_probe, start: 30, end: 40 },
+    Token { class: ^dag_token_ident, lexeme: "mode", file: ^resource_lowering_probe, start: 43, end: 47 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^resource_lowering_probe, start: 47, end: 48 },
+    Token { class: ^dag_token_ident, lexeme: "Read", file: ^resource_lowering_probe, start: 49, end: 53 },
+    Token { class: ^dag_token_ident, lexeme: "capability", file: ^resource_lowering_probe, start: 56, end: 66 },
+    Token { class: ^dag_token_ident, lexeme: "c", file: ^resource_lowering_probe, start: 67, end: 68 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^resource_lowering_probe, start: 69, end: 70 },
+    Token { class: ^dag_token_ident, lexeme: "output", file: ^resource_lowering_probe, start: 75, end: 81 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^resource_lowering_probe, start: 82, end: 83 },
+    Token { class: ^dag_token_ident, lexeme: "o", file: ^resource_lowering_probe, start: 84, end: 85 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^resource_lowering_probe, start: 85, end: 86 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^resource_lowering_probe, start: 87, end: 90 },
+    Token { class: ^dag_token_ident, lexeme: "from", file: ^resource_lowering_probe, start: 91, end: 95 },
+    Token { class: ^dag_token_string_literal, lexeme: "\"k\"", file: ^resource_lowering_probe, start: 96, end: 99 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 100, end: 101 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 104, end: 105 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 106, end: 107 }
+  ])
+}
+
+test fn wire_key_tail_stream_is_what_tokenize_produces_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: wire_key_tail_source, file: ^resource_lowering_probe, supplied: wire_key_tail_stream())
+}
+
+fn carries(ne: NonEmptyDiagnostics, reason: Symbol) -> Bool {
+  fold_list(xs: ne.tail, empty: ne.head.reason == reason, cons: fn(found, x) { found || (x.reason == reason) })
 }

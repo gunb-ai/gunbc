@@ -9851,6 +9851,13 @@ fn body_lower_resource_with_release(a: BodyLowerResourceAcc, entry: Node) -> Out
   }
 }
 
+// A CAPABILITY'S io TAILS ARE THE SERVICE'S, AND REFUSE THE SERVICE'S WAY. A capability reads its
+// input/output blocks through the shared io field grammar, which admits a `from "key"` wire key and an
+// `= expr` default; body_lower_operation sets each aside as interface_member_unmodeled, located at the
+// io item. A resource then refuses exactly as a service with a set-aside member does on a route past
+// the census: the owned fatal cause service_realization_unreachable, at the capability, with each
+// member's own located diagnostic pending. So body_lowering_reason_resource_entry_unread is reached
+// only by a malformed entry, never by a well-formed tail.
 fn body_lower_resource_with_capability(a: BodyLowerResourceAcc, entry: Node) -> Outcome<BodyLowerResourceAcc> {
   bind_outcome(o: body_lower_operation(shell: entry), f: fn(op) {
     match op.set_aside {
@@ -9860,7 +9867,7 @@ fn body_lower_resource_with_capability(a: BodyLowerResourceAcc, entry: Node) -> 
         Rejected {
           diagnostics: rejected_with_pending(
             pending: service_set_aside_diagnostics(xs: op.set_aside),
-            rejected: diagnostics_singleton(d: body_lower_diagnostic(reason: ^body_lowering_reason_resource_entry_unread, n: entry))
+            rejected: diagnostics_singleton(d: body_lower_diagnostic(reason: ^body_lowering_reason_service_realization_unreachable, n: entry))
           )
         }
     }
