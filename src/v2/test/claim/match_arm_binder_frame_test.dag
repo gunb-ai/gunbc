@@ -394,6 +394,21 @@ test fn mab_binder_spelling_a_sibling_module_binds_the_arm() -> Bool {
     && mab_has_binder_reference(o: mab_resolved_module_named_binder(), id: ^node)
 }
 
+// THE KEYWORD CONSTANT IN A PATTERN IS A CONSTANT, NOT A BINDER (review 73780). `true` reaches the
+// pattern as its lex token class dag_token_kw_true, which no declaration binds, so the classifier's
+// unbound arm answers it through the canonical set (v2.extdeps.languages.dag
+// dag_canonical_symbol_map). Read as a binder it would match every A(_) and capture the body's
+// `true` as a binder reference; the body mention is the route witness. Red with the token classes
+// removed from the canonical set.
+fn mab_resolved_keyword_constant_pattern() -> Outcome<ResolvedTree> {
+  mab_assemble(src: "module p\n\ntype C = A(Bool) | B\n\nfn pick(c: C) -> Bool {\n  match c {\n    A(true) => true\n    A(_) => false\n    B => false\n  }\n}\n")
+}
+
+test fn mab_keyword_constant_in_a_pattern_is_not_a_binder() -> Bool {
+  let o = mab_resolved_keyword_constant_pattern()
+  mab_outcome_accepts(o: o) && !mab_has_binder_reference(o: o, id: ^dag_token_kw_true)
+}
+
 // AN UNIMPORTED CONSTRUCTOR IN A PATTERN REFUSES RATHER THAN BINDING. `None` is declared only in
 // p.o and not imported into p.q, so it is off the arm's lexical chain and the classifier takes its
 // LexicalUnbound -> global-bare branch. A variant is indexed under its containment path AND its
