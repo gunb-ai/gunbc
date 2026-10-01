@@ -7,7 +7,7 @@ import gunbc.replacement_cut { EvidenceDisposition, ReenrollAgainstY, ReplaceEvi
 import v2.workflow.required_floor {
   PlannedAsReachConsumer,
   RequiredFloorDisposition, Planned, PlannedAsChangedWitness, DeclinedLongModule, DeclinedFixtureMember, DeclinedOutsideRequiredGate,
-  DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded, DeclinedNoCiWetLane, DeclinedCostDebt
+  DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded, DeclinedNoCiWetLane, DeclinedChangedWitnessOutsideDiscovery, DeclinedCostDebt
 }
 
 // XL-5's SECOND DELIVERABLE: the wall that stops the bankruptcy transaction greening by LOSING
@@ -126,6 +126,7 @@ fn floor_standing_is_fixture_member(s: RequiredFloorDisposition) -> Bool {
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
     DeclinedNoCiWetLane { pattern: _ } => false
+    DeclinedChangedWitnessOutsideDiscovery { module_path: _ } => false
     DeclinedCostDebt => false
   }
 }

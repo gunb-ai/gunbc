@@ -36,8 +36,12 @@ import gunbc.discovery_census {
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
   Planned, PlannedAsChangedWitness, PlannedAsReachConsumer, DeclinedLongModule, DeclinedFixtureMember, DeclinedOutsideRequiredGate, DeclinedCostDebt,
-  DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded, DeclinedNoCiWetLane,
+  DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded, DeclinedNoCiWetLane, DeclinedChangedWitnessOutsideDiscovery,
   required_floor_site_disposition,
+  ChangedSelectionDispositionRow, changed_selections_outside_discovery,
+}
+import v2.test.fixture.changed_selection_outside_discovery {
+  changed_selection_fixture_changed, changed_selection_fixture_declared, changed_selection_fixture_expected,
 }
 import v2.workflow.floor_terminal_ledger { ClaimDisposition, Passed }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
@@ -219,6 +223,7 @@ test fn w_fixture_home_declines_with_its_matched_prefix() -> Bool {
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
     DeclinedNoCiWetLane { pattern: _ } => false
+    DeclinedChangedWitnessOutsideDiscovery { module_path: _ } => false
     PlannedAsChangedWitness => false
     PlannedAsReachConsumer => false
   }
@@ -237,6 +242,7 @@ test fn w_long_home_module_declines_with_its_matched_prefix() -> Bool {
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
     DeclinedNoCiWetLane { pattern: _ } => false
+    DeclinedChangedWitnessOutsideDiscovery { module_path: _ } => false
     PlannedAsChangedWitness => false
     PlannedAsReachConsumer => false
   }
@@ -258,6 +264,7 @@ test fn w_long_home_is_a_prefix_not_a_substring() -> Bool {
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
     DeclinedNoCiWetLane { pattern: _ } => false
+    DeclinedChangedWitnessOutsideDiscovery { module_path: _ } => false
     PlannedAsChangedWitness => false
     PlannedAsReachConsumer => false
   }
@@ -276,6 +283,7 @@ test fn w_site_is_planned_when_no_home_matched() -> Bool {
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
     DeclinedNoCiWetLane { pattern: _ } => false
+    DeclinedChangedWitnessOutsideDiscovery { module_path: _ } => false
     PlannedAsChangedWitness => false
     PlannedAsReachConsumer => false
   }
@@ -298,6 +306,7 @@ test fn w_deleted_lane_countable_is_planned_by_the_required_gate() -> Bool {
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
     DeclinedNoCiWetLane { pattern: _ } => false
+    DeclinedChangedWitnessOutsideDiscovery { module_path: _ } => false
     PlannedAsChangedWitness => false
     PlannedAsReachConsumer => false
   }
@@ -319,6 +328,7 @@ test fn w_site_outside_the_required_gate_is_declined() -> Bool {
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
     DeclinedNoCiWetLane { pattern: _ } => false
+    DeclinedChangedWitnessOutsideDiscovery { module_path: _ } => false
     PlannedAsChangedWitness => false
     PlannedAsReachConsumer => false
   }
@@ -380,6 +390,7 @@ test fn w_rostered_identity_declines_for_cost_debt() -> Bool {
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
     DeclinedNoCiWetLane { pattern: _ } => false
+    DeclinedChangedWitnessOutsideDiscovery { module_path: _ } => false
     Planned => false
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedFixtureMember { matched_prefix: _ } => false
@@ -404,6 +415,7 @@ test fn w_unrostered_sibling_in_the_same_module_reaches_the_gate_decline() -> Bo
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
     DeclinedNoCiWetLane { pattern: _ } => false
+    DeclinedChangedWitnessOutsideDiscovery { module_path: _ } => false
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedFixtureMember { matched_prefix: _ } => false
     PlannedAsChangedWitness => false
@@ -427,6 +439,7 @@ test fn w_home_decline_outranks_cost_debt() -> Bool {
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
     DeclinedNoCiWetLane { pattern: _ } => false
+    DeclinedChangedWitnessOutsideDiscovery { module_path: _ } => false
     Planned => false
     DeclinedFixtureMember { matched_prefix: _ } => false
     PlannedAsChangedWitness => false
@@ -478,6 +491,7 @@ test fn w_planned_and_outside_gate_rows_partition_once_each() -> Bool {
       DeclinedOutsideGateClosure => false
       DeclinedDiscoveryExcluded { matched_substring: _ } => false
       DeclinedNoCiWetLane { pattern: _ } => false
+      DeclinedChangedWitnessOutsideDiscovery { module_path: _ } => false
       PlannedAsChangedWitness => false
       PlannedAsReachConsumer => false
     })
@@ -490,6 +504,7 @@ test fn w_planned_and_outside_gate_rows_partition_once_each() -> Bool {
       DeclinedOutsideGateClosure => false
       DeclinedDiscoveryExcluded { matched_substring: _ } => false
       DeclinedNoCiWetLane { pattern: _ } => false
+      DeclinedChangedWitnessOutsideDiscovery { module_path: _ } => false
       PlannedAsChangedWitness => false
       PlannedAsReachConsumer => false
     })
@@ -645,5 +660,63 @@ test fn the_census_counts_a_declined_no_ci_wet_lane_row_in_its_own_bucket() -> B
     && counts.declined_discovery_excluded == 0
     && counts.offered == 1
     && count(split.declined) == 1
+    && count(split.planned) == 0
+}
+
+fn outside_discovery_module_path(d: RequiredFloorDisposition) -> String {
+  match d {
+    DeclinedChangedWitnessOutsideDiscovery { module_path: m } => m
+    Planned => "<planned>"
+    PlannedAsChangedWitness => "<planned_as_changed_witness>"
+    PlannedAsReachConsumer => "<planned_as_reach_consumer>"
+    DeclinedLongModule { matched_prefix: _ } => "<declined_long_module>"
+    DeclinedFixtureMember { matched_prefix: _ } => "<declined_fixture_member>"
+    DeclinedOutsideRequiredGate => "<declined_outside_required_gate>"
+    DeclinedCostDebt => "<declined_cost_debt>"
+    DeclinedOutsideGateClosure => "<declined_outside_gate_closure>"
+    DeclinedDiscoveryExcluded { matched_substring: _ } => "<declined_discovery_excluded>"
+    DeclinedNoCiWetLane { pattern: _ } => "<declined_no_ci_wet_lane>"
+  }
+}
+
+fn rows_with_identity(rows: List<ChangedSelectionDispositionRow>, identity: String) -> List<ChangedSelectionDispositionRow> {
+  fold(rows, init: [], f: fn(acc, r) { if r.identity == identity { concat([r], acc) } else { acc } })
+}
+
+// THE MODELED DECIDER CLASSIFIES THE SHARED FIXTURE AT IDENTITY GRAIN: every expected row appears
+// exactly once with its module, and nothing else does -- a declared selection and an unchanged
+// declaration both produce no row. Completeness is an identity join, not a count (DESIGN section 5).
+test fn the_modeled_decider_declines_exactly_the_undeclarable_changed_selections() -> Bool {
+  let decided = changed_selections_outside_discovery(
+    changed: changed_selection_fixture_changed,
+    declared: changed_selection_fixture_declared
+  )
+  count(decided) == count(changed_selection_fixture_expected)
+    && all(changed_selection_fixture_expected, e =>
+      (count(rows_with_identity(rows: decided, identity: e.identity)) == 1)
+        && all(rows_with_identity(rows: decided, identity: e.identity), only =>
+          outside_discovery_module_path(d: only.disposition) == outside_discovery_module_path(d: e.disposition)))
+}
+
+// THE MODELED CENSUS COUNTS THOSE ROWS IN THEIR OWN BUCKET and partitions them as declined, never
+// as planned, so a selection outside discovery is visible in the census rather than absorbed.
+test fn the_census_counts_changed_selections_outside_discovery_in_their_own_bucket() -> Bool {
+  let real = census_rows_of(sites: [
+    hermetic_site(module_path: "test.claim.infer_alpha_witness", function: "w_alpha")
+  ])
+  let decided = changed_selections_outside_discovery(
+    changed: changed_selection_fixture_changed,
+    declared: changed_selection_fixture_declared
+  )
+  let rows = fold(real, init: [], f: fn(acc, r) {
+    concat(acc, map(decided, d => CensusRow { label: r.label, disposition: d.disposition }))
+  })
+  let counts = census_counts(rows: rows)
+  let split = census_partition(rows: rows)
+  count(rows) == count(changed_selection_fixture_expected)
+    && counts.declined_changed_witness_outside_discovery == count(rows)
+    && counts.declined_no_ci_wet_lane == 0
+    && counts.offered == count(rows)
+    && count(split.declined) == count(rows)
     && count(split.planned) == 0
 }

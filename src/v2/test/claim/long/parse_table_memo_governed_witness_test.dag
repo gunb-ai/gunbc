@@ -8,7 +8,7 @@ fn governed_witness_probe_key() -> ParsePositionKey {
 }
 
 fn governed_witness_dummy_entry() -> ParseMemoEntry {
-  ParseMemoRejected { diagnostics: [], furthest: FurthestNone }
+  ParseMemoRejected { diagnostics: [], furthest: FurthestNone, refusal: optional_absent() }
 }
 
 fn parse_table_recompute_fixture() -> ParseTable {
@@ -27,7 +27,9 @@ fn parse_table_recompute_fixture() -> ParseTable {
     nullable_set: base.nullable_set,
     first_rows: base.first_rows,
     productions_by_name: base.productions_by_name,
-    prepared_exprs: base.prepared_exprs
+    prepared_exprs: base.prepared_exprs,
+    layout: base.layout,
+    refusal: base.refusal
   }
 }
 
@@ -47,7 +49,9 @@ fn parse_table_memoize_fixture() -> ParseTable {
     nullable_set: base.nullable_set,
     first_rows: base.first_rows,
     productions_by_name: base.productions_by_name,
-    prepared_exprs: base.prepared_exprs
+    prepared_exprs: base.prepared_exprs,
+    layout: base.layout,
+    refusal: base.refusal
   }
 }
 
@@ -110,7 +114,9 @@ fn witness_bypass_store_reds_non_memoize_carrier() -> Bool {
     nullable_set: base.nullable_set,
     first_rows: base.first_rows,
     productions_by_name: base.productions_by_name,
-    prepared_exprs: base.prepared_exprs
+    prepared_exprs: base.prepared_exprs,
+    layout: base.layout,
+    refusal: base.refusal
   }
   !parse_table_memo_store_well_formed_at(table: bypass, key: key)
 }
