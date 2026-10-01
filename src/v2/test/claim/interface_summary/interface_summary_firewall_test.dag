@@ -18,7 +18,7 @@ import v2.std.decl_index {
   export_signature_facts,
   export_signature_facts_host_scaffold_dissolution_trigger
 }
-import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, arrow_declared_parameter_order }
+import v2.std.arrow_signature { ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, arrow_declared_parameter_order }
 import v2.std.anonymous_binder { anonymous_param_label }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, TypeNode, arrow_signature_order_label, edge_label_of, symbol_intern_lexeme }
