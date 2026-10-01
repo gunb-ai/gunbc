@@ -1671,7 +1671,8 @@ enum PortableValue {
 }
 
 /// A TOTAL ORDER over portable values that depends only on their content: variant rank, then
-/// payload; symbols by spelling, floats by bits, sequences lexicographically. Used to put map
+/// payload; symbols by spelling, floats by IEEE 754-2019 §5.10 totalOrder (`f64::total_cmp`),
+/// sequences lexicographically. Used to put map
 /// entries in one order in every process.
 fn portable_value_cmp(a: &PortableValue, b: &PortableValue) -> std::cmp::Ordering {
     use std::cmp::Ordering;
@@ -1711,7 +1712,7 @@ fn portable_value_cmp(a: &PortableValue, b: &PortableValue) -> std::cmp::Orderin
     match (a, b) {
         (PortableValue::Bool(x), PortableValue::Bool(y)) => x.cmp(y),
         (PortableValue::Int(x), PortableValue::Int(y)) => x.cmp(y),
-        (PortableValue::Float(x), PortableValue::Float(y)) => x.to_bits().cmp(&y.to_bits()),
+        (PortableValue::Float(x), PortableValue::Float(y)) => x.total_cmp(y),
         (PortableValue::Str(x), PortableValue::Str(y)) => x.as_ref().cmp(y.as_ref()),
         (PortableValue::List(x), PortableValue::List(y)) => seq(x, y, portable_value_cmp),
         (PortableValue::Map(x), PortableValue::Map(y)) => seq(x, y, |(k, v), (l, w)| {
@@ -28259,6 +28260,20 @@ mod portable_canonical_order_tests {
             first, second,
             "two processes digested one map-bearing value differently"
         );
+    }
+
+    #[test]
+    fn floats_order_by_ieee_total_order() {
+        let ordered = [-2.0f64, -1.0, -0.0, 0.0, 1.0, 2.0];
+        for w in ordered.windows(2) {
+            assert_eq!(
+                portable_value_cmp(&PortableValue::Float(w[0]), &PortableValue::Float(w[1])),
+                std::cmp::Ordering::Less,
+                "{} must order before {}",
+                w[0],
+                w[1]
+            );
+        }
     }
 
     #[test]
