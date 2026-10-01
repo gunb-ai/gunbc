@@ -11597,6 +11597,14 @@ pub enum ClaimOutcome {
         budget_ms: u64,
         kind: BudgetKind,
     },
+    /// THE CLAIM STOPPED RETURNING AND THE HANG GUARD CUT IT OFF. Not a budget outcome: the
+    /// required floor's per-claim budget is the eval-step comparison, and this is its liveness
+    /// cap (`v2.workflow.required_floor` `required_floor_claim_hang_tolerance_ms`). No verdict
+    /// was reached, so the claim was not measured; `elapsed_at_least_ms` is a lower bound.
+    HangGuardInterrupted {
+        elapsed_at_least_ms: u64,
+        guard_ms: u64,
+    },
     /// THE CLAIM REACHED ITS VERDICT and was then reclassified for exceeding its budget.
     /// `elapsed_ms` is an exact measurement, and the remedy is cost, not interruption.
     CompletedOverBudget {
@@ -19823,11 +19831,20 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
                     kind: BudgetKind::Cpu,
                 }
             }
+            // THE ONE WALL DEADLINE FIRED, AND THE FRAME SAYS WHICH KIND IT WAS. A hang guard is a
+            // liveness cap, not a budget: it carries its own outcome so a claim stopped for not
+            // returning is never read as a budget verdict.
             v1_interpreter::InterpError::WitnessWallBudgetExceeded { wall_ms, budget_ms } => {
-                ClaimOutcome::BudgetInterrupted {
-                    elapsed_at_least_ms: wall_ms,
-                    budget_ms,
-                    kind: BudgetKind::Wall,
+                match ctx.witness_hang_guard() {
+                    Some(guard_ms) => ClaimOutcome::HangGuardInterrupted {
+                        elapsed_at_least_ms: wall_ms,
+                        guard_ms,
+                    },
+                    None => ClaimOutcome::BudgetInterrupted {
+                        elapsed_at_least_ms: wall_ms,
+                        budget_ms,
+                        kind: BudgetKind::Wall,
+                    },
                 }
             }
             // THE CLASSIFICATION HAPPENS HERE, where `other` is still a typed `InterpError`.

@@ -9,7 +9,7 @@ import v2.workflow.required_floor {
 }
 import v2.workflow.floor_terminal_ledger {
   ClaimDisposition,
-  Passed, Failed, KnownRedHeld, KnownRedNowPassing, BudgetRefusedBeforeVerdict,
+  Passed, Failed, KnownRedHeld, KnownRedNowPassing, BudgetRefusedBeforeVerdict, HangGuardRefusedBeforeVerdict,
   PassedOverBudget, BudgetTerminalWithoutSafetyCause, HostToolUnresolvedBeforeVerdict,
   RouteGapBeforeVerdict, RuntimeErroredBeforeVerdict, PanickedBeforeVerdict,
   NotAttemptedAfterAbort, ObservationUnreadableBeforeVerdict,
@@ -279,6 +279,7 @@ fn changed_witness_planned_standing(
           }
         Failed => PlannedWithoutTerminalVerdict {}
         BudgetRefusedBeforeVerdict => PlannedWithoutTerminalVerdict {}
+        HangGuardRefusedBeforeVerdict => PlannedWithoutTerminalVerdict {}
         BudgetTerminalWithoutSafetyCause => PlannedWithoutTerminalVerdict {}
         HostToolUnresolvedBeforeVerdict => PlannedWithoutTerminalVerdict {}
         RouteGapBeforeVerdict =>

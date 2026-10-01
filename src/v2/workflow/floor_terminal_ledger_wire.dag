@@ -24,6 +24,7 @@ import v2.workflow.floor_terminal_ledger {
   RepositorySnapshot,
   UnpublishedWorkingTree,
   BudgetRefusedBeforeVerdict,
+  HangGuardRefusedBeforeVerdict,
   PassedOverBudget,
   BudgetTerminalWithoutSafetyCause,
   ClaimAttemptTerminal,
@@ -44,6 +45,7 @@ import v2.workflow.floor_terminal_ledger {
   ClaimTerminalRow,
   LedgerBinding,
   BudgetRefused,
+  HangGuardInterrupted,
   ExpectedRed,
   ExpectedToHold,
   HostToolUnresolved,
@@ -106,7 +108,9 @@ import v2.workflow.required_floor {
 // terminal readable under two vocabularies, which is the meaning fork this widening removes. The
 // version bump instead sends an old ledger to `a_ledger_in_an_unrecognized_format_is_unreadable_not_empty`
 // -- a typed, located refusal naming the real cause, which is that the reader is newer than the file.
-data ledger_wire_format: String = "gunbc-terminal-ledger/2"
+// /3 adds the hang-guard terminal (`hang-guard-refused`). A /2 reader handed a /3 ledger refuses at
+// the format, which names the real cause, rather than at the first hang-guard row.
+data ledger_wire_format: String = "gunbc-terminal-ledger/3"
 
 data ledger_wire_footer_tag: String = "#end"
 
@@ -259,6 +263,7 @@ fn render_terminal_tag(terminal: ClaimAttemptTerminal) -> String {
           "passed-over-budget"
         CompletedWithinSafetyLimits => "budget-terminal-without-safety-cause"
       }
+    HangGuardInterrupted { elapsed_wall_at_least: _, guard: _ } => "hang-guard-refused"
     HostToolUnresolved { name: _, probed: _ } => "host-tool-unresolved"
     RouteGap { operation: _, ground: g } => render_route_gap_ground_tag(ground: g)
   }
@@ -303,6 +308,7 @@ fn render_terminal_detail(terminal: ClaimAttemptTerminal) -> String {
     Panicked { payload: p } => p
     NotAttempted { halted_by: h } => h
     BudgetRefused { safety: s } => render_safety_detail(safety: s)
+    HangGuardInterrupted { elapsed_wall_at_least: _, guard: _ } => "hang_guard"
     HostToolUnresolved { name: n, probed: _ } => n
     RouteGap { operation: o, ground: _ } => o
   }
@@ -755,6 +761,9 @@ fn readback_disposition(row: LedgerReadbackRow) -> ClaimDisposition? {
   if row.terminal_tag == "budget-refused" {
     Present { value: BudgetRefusedBeforeVerdict }
   } else {
+  if row.terminal_tag == "hang-guard-refused" {
+    Present { value: HangGuardRefusedBeforeVerdict }
+  } else {
   if row.terminal_tag == "passed-over-budget" {
     match row.expectation {
       ExpectedToHold => Present { value: PassedOverBudget }
@@ -798,7 +807,7 @@ fn readback_disposition(row: LedgerReadbackRow) -> ClaimDisposition? {
     }
   } else {
     none
-  }}}}}}}}}}}}}}
+  }}}}}}}}}}}}}}}
 }
 
 // ── THE SEED-FACING SURFACE, AND THE MIRROR COMPARATOR THAT COMES WITH IT ──────────────────
@@ -839,6 +848,7 @@ fn render_disposition(disposition: ClaimDisposition) -> String {
     KnownRedHeld => "known-red-held"
     KnownRedNowPassing => "known-red-now-passing"
     BudgetRefusedBeforeVerdict => "budget-refused-before-verdict"
+    HangGuardRefusedBeforeVerdict => "hang-guard-refused-before-verdict"
     PassedOverBudget => "passed-over-budget"
     BudgetTerminalWithoutSafetyCause => "budget-terminal-without-safety-cause"
     HostToolUnresolvedBeforeVerdict => "host-tool-unresolved-before-verdict"

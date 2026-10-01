@@ -14,7 +14,7 @@ import extdeps.bazel.test_status {
 import extdeps.bazel.build_event_stream { AbortReason }
 import v2.workflow.floor_terminal_ledger {
   ClaimDisposition,
-  Passed, Failed, KnownRedHeld, KnownRedNowPassing, BudgetRefusedBeforeVerdict,
+  Passed, Failed, KnownRedHeld, KnownRedNowPassing, BudgetRefusedBeforeVerdict, HangGuardRefusedBeforeVerdict,
   PassedOverBudget, BudgetTerminalWithoutSafetyCause, HostToolUnresolvedBeforeVerdict,
   RouteGapBeforeVerdict, RuntimeErroredBeforeVerdict, ObservationUnreadableBeforeVerdict,
   PanickedBeforeVerdict, NotAttemptedAfterAbort,
@@ -221,6 +221,8 @@ fn claim_disposition_verdict(d: ClaimDisposition) -> StandingVerdict {
       StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: KnownRedNowPassing {} } }
     BudgetRefusedBeforeVerdict =>
       StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: BudgetRefusedBeforeVerdict {} } }
+    HangGuardRefusedBeforeVerdict =>
+      StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: HangGuardRefusedBeforeVerdict {} } }
     BudgetTerminalWithoutSafetyCause =>
       StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: BudgetTerminalWithoutSafetyCause {} } }
     HostToolUnresolvedBeforeVerdict =>
@@ -679,6 +681,7 @@ fn blaze_test_status_of_claim_disposition(d: ClaimDisposition) -> BlazeTestStatu
     KnownRedHeld => TestStatusFailed {}
     KnownRedNowPassing => TestStatusPassed {}
     BudgetRefusedBeforeVerdict => TestStatusTimeout {}
+    HangGuardRefusedBeforeVerdict => TestStatusTimeout {}
     BudgetTerminalWithoutSafetyCause => TestStatusIncomplete {}
     HostToolUnresolvedBeforeVerdict => TestStatusIncomplete {}
     RouteGapBeforeVerdict => TestStatusIncomplete {}

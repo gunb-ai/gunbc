@@ -189,12 +189,20 @@ type ClaimSafetyOutcome =
       preemption: ClaimPreemptionReachability
     }
 
+// THE HANG GUARD IS ITS OWN TERMINAL, NOT A BUDGET REFUSAL. The required floor's per-claim budget
+// is the eval-step comparison against claim_eval_step_budget_for_identity, a count with no term for
+// the host. Its wall cap is a LIVENESS guard (v2.workflow.required_floor
+// required_floor_claim_hang_tolerance_ms): it stops a claim that stopped returning, and that claim
+// was NOT MEASURED -- no verdict, no cost. Filing it under BudgetRefused made a loaded host's
+// scheduling read as a budget verdict on the subject. The wet lanes' whole-receipt wall BUDGET is
+// still a budget and still lands in BudgetRefused.
 type ClaimAttemptTerminal
   = Returned { observation: ClaimObservation }
   | RuntimeErrored { message: String }
   | Panicked { payload: String }
   | NotAttempted { halted_by: String }
   | BudgetRefused { safety: ClaimSafetyOutcome }
+  | HangGuardInterrupted { elapsed_wall_at_least: Int, guard: Int }
   | HostToolUnresolved { name: String, probed: List<String> }
   | RouteGap { operation: String, ground: FloorRouteGapGround }
 
@@ -377,6 +385,7 @@ type ClaimDisposition
   | KnownRedHeld
   | KnownRedNowPassing
   | BudgetRefusedBeforeVerdict
+  | HangGuardRefusedBeforeVerdict
   | PassedOverBudget
   | BudgetTerminalWithoutSafetyCause
   | HostToolUnresolvedBeforeVerdict
@@ -407,6 +416,7 @@ fn claim_disposition(row: ClaimTerminalRow) -> ClaimDisposition {
           }
         CompletedWithinSafetyLimits => BudgetTerminalWithoutSafetyCause
       }
+    HangGuardInterrupted { elapsed_wall_at_least: _, guard: _ } => HangGuardRefusedBeforeVerdict
     RuntimeErrored { message: _ } => RuntimeErroredBeforeVerdict
     Panicked { payload: _ } => PanickedBeforeVerdict
     NotAttempted { halted_by: _ } => NotAttemptedAfterAbort

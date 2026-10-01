@@ -15,6 +15,9 @@ import v2.workflow.floor_terminal_ledger {
   ExpectedToHold,
   LedgerBinding,
   BudgetRefused,
+  BudgetRefusedBeforeVerdict,
+  HangGuardInterrupted,
+  HangGuardRefusedBeforeVerdict,
   HostToolUnresolved,
   ObservationUnrepresentable,
   ObservedVerdict,
@@ -174,6 +177,11 @@ fn every_shape() -> List<ClaimTerminalRow> {
       }
     },
     ClaimTerminalRow {
+      identity: ident(f: "hang_guard_refused"),
+      expectation: ExpectedToHold,
+      terminal: HangGuardInterrupted { elapsed_wall_at_least: 600001, guard: 600000 }
+    },
+    ClaimTerminalRow {
       identity: ident(f: "budget_terminal_without_safety_cause"),
       expectation: ExpectedToHold,
       terminal: BudgetRefused { safety: CompletedWithinSafetyLimits }
@@ -251,7 +259,7 @@ test fn the_disposition_survives_the_round_trip_for_every_terminal_shape() -> Bo
   let rows = every_shape()
   let readback = readback_rows_of(text: rendered_text(rows: rows))
   readback.length() == rows.length()
-    && rows.length() == 17
+    && rows.length() == 18
     && filter(rows, r => !disposition_survives(row: r)).length() == 0
 }
 
@@ -372,6 +380,22 @@ test fn the_three_route_gap_grounds_render_apart_and_read_back_to_one_dispositio
     && route_gap_tag_reads_back(tag: t_no_response)
     && route_gap_tag_reads_back(tag: t_removal)
     && render_terminal_detail(terminal: no_response) == "Dir"
+}
+
+// A HANG GUARD IS NOT A BUDGET, ON THE WIRE AS IN THE MODEL. Its tag differs from the budget
+// interruption's and it reads back to its own disposition, so a ledger reader can never count a
+// claim the host starved as a claim that blew its budget. RED by construction if the arm is
+// rendered as "budget-refused" or read back as BudgetRefusedBeforeVerdict.
+test fn a_hang_guard_renders_and_reads_back_apart_from_a_budget_refusal() -> Bool {
+  let hang = HangGuardInterrupted { elapsed_wall_at_least: 600001, guard: 600000 }
+  let budget = BudgetRefused {
+    safety: SafetyInterrupted { raised_by: "wall", elapsed_cpu_at_least: 0, elapsed_wall_at_least: 0 }
+  }
+  let row = ClaimTerminalRow { identity: ident(f: "hang"), expectation: ExpectedToHold, terminal: hang }
+  render_terminal_tag(terminal: hang) != render_terminal_tag(terminal: budget)
+    && claim_disposition(row: row) == HangGuardRefusedBeforeVerdict
+    && claim_disposition(row: row) != BudgetRefusedBeforeVerdict
+    && disposition_survives(row: row)
 }
 
 // A FIELD CARRYING THE SEPARATOR IS REFUSED, NOT SANITIZED. The neighbouring disposition writer

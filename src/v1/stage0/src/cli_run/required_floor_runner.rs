@@ -474,10 +474,11 @@ pub fn run_claim_measured(
     if let Some(budget_ms) = ctx.witness_eval_budget() {
         ctx.arm_eval_deadline(budget_ms);
     }
-    if let Some(budget_ms) = ctx.witness_wall_budget() {
-        // Kill-at-deadline: shell waits poll this and SIGKILL at the ceiling.
-        // Completion-side `wall_budget_completion_outcome` stays as the backstop.
-        ctx.arm_wall_deadline(budget_ms);
+    if let Some(deadline_ms) = ctx.witness_wall_deadline_ms() {
+        // Kill-at-deadline: shell waits poll this and SIGKILL at the ceiling. A wall BUDGET keeps
+        // the completion-side `wall_budget_completion_outcome` backstop; a hang guard has none,
+        // because a claim that returned did not hang.
+        ctx.arm_wall_deadline(deadline_ms);
     }
     let started = std::time::Instant::now();
     let cpu_started_nanos = v1_interpreter::thread_cpu_nanos();

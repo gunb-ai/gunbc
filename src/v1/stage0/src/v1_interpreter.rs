@@ -5115,8 +5115,12 @@ pub struct InterpContext {
     budget_entry: std::cell::RefCell<Option<String>>,
     // Lane-level budget: when set, run_claim_measured re-arms the deadline per witness.
     witness_eval_budget_ms: std::cell::Cell<Option<u64>>,
-    // Whole-receipt wall budget for Wet self-host receipts (emit+cargo subprocess I/O included).
-    witness_wall_budget_ms: std::cell::Cell<Option<u64>>,
+    // The ONE wall deadline a frame may arm per claim, and WHICH KIND it is. A budget (the wet
+    // lanes' whole-receipt wall budget, emit+cargo subprocess I/O included) is a cost verdict and
+    // also has a completion-side backstop; a hang guard (the required floor's liveness cap) is
+    // NOT a budget: it exists only to stop a claim that stopped returning, so it raises its own
+    // refusal and never rewrites a verdict that was reached. One cell, so both cannot be armed.
+    witness_wall_deadline_kind: std::cell::Cell<Option<WallDeadlineKind>>,
     // Kill-at-deadline arm for the wall budget (Finding 1, 2026-07-25):
     // (start, budget_ms, shared-artifact fill wall nanos at arm time).
     // Shell waits poll this and SIGKILL the process group at the ceiling; the completion-side
@@ -5132,6 +5136,15 @@ pub struct InterpContext {
     // one is right. The fill nanos standing at arm time are captured here so every poll can
     // subtract what accrued since, exactly as the CPU side's subtraction cancels its own baseline.
     witness_wall_deadline: std::cell::Cell<Option<(Instant, u64, u128)>>,
+}
+
+/// Which kind of wall deadline a frame carries. See `InterpContext::witness_wall_deadline_kind`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WallDeadlineKind {
+    /// A cost verdict on the wall clock (wet receipt lanes).
+    Budget(u64),
+    /// A liveness cap: stops a claim that stopped returning; never a cost verdict.
+    HangGuard(u64),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -5527,7 +5540,7 @@ impl InterpContext {
             eval_deadline_stride: std::cell::Cell::new(0),
             budget_entry: std::cell::RefCell::new(None),
             witness_eval_budget_ms: std::cell::Cell::new(None),
-            witness_wall_budget_ms: std::cell::Cell::new(None),
+            witness_wall_deadline_kind: std::cell::Cell::new(None),
             witness_wall_deadline: std::cell::Cell::new(None),
         }
     }
@@ -5626,11 +5639,38 @@ impl InterpContext {
     }
 
     pub fn set_witness_wall_budget(&self, budget_ms: Option<u64>) {
-        self.witness_wall_budget_ms.set(budget_ms);
+        self.witness_wall_deadline_kind
+            .set(budget_ms.map(WallDeadlineKind::Budget));
     }
 
+    /// Arm the required floor's liveness cap. Replaces any wall budget: a frame carries one wall
+    /// deadline, and this one is a hang guard, not a cost verdict.
+    pub fn set_witness_hang_guard(&self, guard_ms: Option<u64>) {
+        self.witness_wall_deadline_kind
+            .set(guard_ms.map(WallDeadlineKind::HangGuard));
+    }
+
+    /// The armed wall BUDGET, `None` when the frame's wall deadline is a hang guard or unset.
     pub fn witness_wall_budget(&self) -> Option<u64> {
-        self.witness_wall_budget_ms.get()
+        match self.witness_wall_deadline_kind.get() {
+            Some(WallDeadlineKind::Budget(ms)) => Some(ms),
+            _ => None,
+        }
+    }
+
+    /// The armed hang guard, `None` when the frame's wall deadline is a budget or unset.
+    pub fn witness_hang_guard(&self) -> Option<u64> {
+        match self.witness_wall_deadline_kind.get() {
+            Some(WallDeadlineKind::HangGuard(ms)) => Some(ms),
+            _ => None,
+        }
+    }
+
+    /// The wall deadline to arm for this claim, whichever kind it is.
+    pub fn witness_wall_deadline_ms(&self) -> Option<u64> {
+        match self.witness_wall_deadline_kind.get()? {
+            WallDeadlineKind::Budget(ms) | WallDeadlineKind::HangGuard(ms) => Some(ms),
+        }
     }
 
     pub fn arm_wall_deadline(&self, budget_ms: u64) {

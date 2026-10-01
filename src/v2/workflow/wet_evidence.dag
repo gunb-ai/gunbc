@@ -10,7 +10,7 @@ import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_q
 import v2.workflow.floor_terminal_ledger {
   ClaimAttemptTerminal, ClaimExpectation, ClaimTerminalRow, ClaimDisposition,
   ExpectedToHold, ExpectedRed,
-  Passed, Failed, KnownRedHeld, KnownRedNowPassing, BudgetRefusedBeforeVerdict,
+  Passed, Failed, KnownRedHeld, KnownRedNowPassing, BudgetRefusedBeforeVerdict, HangGuardRefusedBeforeVerdict,
   PassedOverBudget, BudgetTerminalWithoutSafetyCause, HostToolUnresolvedBeforeVerdict,
   RouteGapBeforeVerdict, RuntimeErroredBeforeVerdict, PanickedBeforeVerdict,
   NotAttemptedAfterAbort, ObservationUnreadableBeforeVerdict,
@@ -262,6 +262,7 @@ fn wet_disposition_is_agreement(d: ClaimDisposition) -> Bool {
     Failed => false
     KnownRedNowPassing => false
     BudgetRefusedBeforeVerdict => false
+    HangGuardRefusedBeforeVerdict => false
     PassedOverBudget => false
     BudgetTerminalWithoutSafetyCause => false
     HostToolUnresolvedBeforeVerdict => false
