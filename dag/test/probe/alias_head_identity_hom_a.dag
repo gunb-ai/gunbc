@@ -1,0 +1,5 @@
+module test.probe.alias_head_identity_hom_a
+
+import std.integer { Int }
+
+type WrHomRec { x: Int }

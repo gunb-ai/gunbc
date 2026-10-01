@@ -158,6 +158,7 @@ import v2.std.node {
 }
 import v2.std.type_binder { GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names }
 import v2.std.node_query {
+  declared_field_from_edge,
   NamedChildAmbiguous,
   NamedChildFound,
   NamedChildMissing,
@@ -218,7 +219,7 @@ type ResolvedTree {
 // qualified name is read from the root's own header, so a declaration is keyed at its full path (p.Pos).
 // A root whose module name cannot be read yields the empty index -- every lookup through it refuses.
 fn resolved_declarations_of(root: Node) -> SymbolIndex {
-  symbol_index_fill_module_declarations(index: empty_symbol_index(), root: root, record_declarations: Empty)
+  symbol_index_fill_module_declarations(index: empty_symbol_index(), root: root, record_declarations: Empty, resource_declarations: Empty)
 }
 
 // THE ONE CONSTRUCTOR of an accepted resolution's carrier: the root, the index it was resolved
@@ -481,7 +482,7 @@ fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace
   Namespace {
     bindings: bindings,
     canonical_symbols: lm.canonical_symbols,
-    symbol_index: symbol_index_fill_module_declarations(index: empty_symbol_index(), root: tree.root, record_declarations: Empty),
+    symbol_index: symbol_index_fill_module_declarations(index: empty_symbol_index(), root: tree.root, record_declarations: Empty, resource_declarations: Empty),
     module_qn: Empty,
     test_code: test_code_index_add_module(
       index: test_code_index_empty(),
@@ -2410,10 +2411,9 @@ fn resolve_record_field_type_optional(ctx: ResolveContext, record: QualifiedName
             match acc {
               Present { value: _ } => acc
               Absent =>
-                match fe.label {
-                  Authored { name: sym } => if symbol_eq(a: sym, b: field) { optional_present(value: fe.target) } else { optional_absent() }
-                  StructuralLabel { label: _ } => optional_absent()
-                  Positional => optional_absent()
+                match declared_field_from_edge(e: fe) {
+                  Present { value: binder } => if symbol_eq(a: binder.name, b: field) { optional_present(value: binder.type_node) } else { optional_absent() }
+                  Absent => optional_absent()
                 }
             }
           })

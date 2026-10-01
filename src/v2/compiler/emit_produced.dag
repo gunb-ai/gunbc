@@ -41,7 +41,7 @@ import v2.std.type_binder { GenericTypeDecl, OpaqueTypeDecl, PlainTypeDecl, Type
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl, produced_type_binding }
 import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source, translate_target_atom_realization_for_carrier }
 import v2.std.logic { Bool }
-import v2.compiler.body_lowering_fold { DeclaredRecord, DeclaredRefinement, DeclaredTypeKind }
+import v2.compiler.body_lowering_fold { DeclaredRecord, DeclaredRefinement, DeclaredResource, DeclaredTypeKind }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, find_arrow_body_child, named_child_lookup }
 import v2.extdeps.languages.dag { namespace_graft_node_is_module_body, parse_production_emitted_identity_optional }
 import v2.std.integer { Int }
@@ -213,7 +213,8 @@ fn module_member_class(edge: Edge, kinds: FreeMonoid<DeclaredTypeKind>) -> Modul
   }
 }
 
-// A plain Conj member is a record or a refinement only when its module's captured kind SAYS so.
+// A plain Conj member is a record or a refinement only when its module's captured kind SAYS so. A
+// resource has no target realization, so its member refuses as unsupported at the member.
 fn module_member_conj_class(name: Symbol, member: Node, kinds: FreeMonoid<DeclaredTypeKind>) -> ModuleMemberClass {
   fold_list(
     xs: kinds,
@@ -226,6 +227,8 @@ fn module_member_conj_class(name: Symbol, member: Node, kinds: FreeMonoid<Declar
               if r == name { ModuleMemberRecord { name: name, record: member } } else { acc }
             DeclaredRefinement { name: r } =>
               if r == name { ModuleMemberRefinement { name: name, refinement: member } } else { acc }
+            DeclaredResource { name: r } =>
+              if r == name { ModuleMemberUnsupported } else { acc }
           }
         _ => acc
       }

@@ -634,7 +634,11 @@ pub(crate) fn with_authored_string_literals(
     if lexemes.is_empty() {
         return Ok(projection);
     }
-    let Value::Record { type_name, fields } = projection else {
+    let Value::Record {
+        type_name,
+        ref fields,
+    } = projection
+    else {
         return Err(InterpError::TypeError {
             msg: "decl_facts DataItem projection is not a Node record; cannot attach authored string literals".to_string(),
         });
