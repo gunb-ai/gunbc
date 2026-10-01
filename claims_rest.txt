@@ -1,0 +1,4 @@
+cut+1b complement_is_negation_and_bounds_are_the_values: returned `true`
+cut-without-1b complement_is_negation_and_bounds_are_the_values: cause: PatternMatchFailure
+cut+1b a_constructed_bool_arm_is_the_host_value: returned `true`
+cut-without-1b a_constructed_bool_arm_is_the_host_value: cause: CrossRepresentationEquality

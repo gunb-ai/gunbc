@@ -1,0 +1,6 @@
+== head emit exit=1 error[src/v2/test/claim/emit/trait_derive_seed_emit_binding_test.dag]: source annotation names no subject: no module item follows it. Move it above the declaration it describes.
+error[src/v2/test/claim/emit/trait_derive_seed_emit_binding_test.dag]: source annotation names no subject: no module item follows it. Move it above the declaration it describes.
+      1 error: could not find `Cargo.toml` in `/tmp/claude-1000/-home-briansrls--worktrees-warm-wolf-234/621d10a0-e4f5-4806-b66e-11fec172bc52/scratchpad/bcp_head` or any parent directory
+== nolowering emit exit=1 error[src/v2/test/claim/emit/trait_derive_seed_emit_binding_test.dag]: source annotation names no subject: no module item follows it. Move it above the declaration it describes.
+error[src/v2/test/claim/emit/trait_derive_seed_emit_binding_test.dag]: source annotation names no subject: no module item follows it. Move it above the declaration it describes.
+      1 error: could not find `Cargo.toml` in `/tmp/claude-1000/-home-briansrls--worktrees-warm-wolf-234/621d10a0-e4f5-4806-b66e-11fec172bc52/scratchpad/bcp_nolowering` or any parent directory

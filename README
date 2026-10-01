@@ -1,0 +1,3 @@
+Receipts for gunbc#12583 (Bool de-fork). Base cfc470cf, head 2237a109.
+verdicts_*.gz: raw [native-verdict] lines from v2-native-frontier (admission refused both sides).
+cb_*.txt / claims_rest.txt: claim runs base vs head. bcp_result.txt: coproduct probe.
