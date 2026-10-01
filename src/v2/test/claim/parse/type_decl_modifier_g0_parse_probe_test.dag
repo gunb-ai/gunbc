@@ -161,11 +161,23 @@ test fn caret_referenced_ident_does_not_publish_the_keyword_class_holds() -> Boo
   caret_tree_carries(identity: ^dag_token_kw_sole_constructor) == false
 }
 
-test fn generic_param_publishes_the_generic_ident_class_holds() -> Bool {
+// FLIPPED 2026-10-01 (DESIGN 4b(4)), the generic-parameter twin of the caret flip above: measured on
+// main abcb48293f, the generic-parameter site publishes the LEXEME ^sole_constructor and no site in
+// this fixture publishes ^dag_token_ident. The positive half asserts the lexeme the site carries, not
+// only the class it no longer does: an answer-only "not the ident class" would stay green if the site
+// published nothing at all.
+test fn generic_param_publishes_the_lexeme_holds() -> Bool {
+  parsed_tree_carries_atom(
+    src: modifier_spelling_as_generic_param_source,
+    identity: ^sole_constructor
+  )
+}
+
+test fn generic_param_does_not_publish_the_generic_ident_class_holds() -> Bool {
   parsed_tree_carries_atom(
     src: modifier_spelling_as_generic_param_source,
     identity: ^dag_token_ident
-  )
+  ) == false
 }
 
 test fn generic_param_does_not_publish_the_keyword_class_holds() -> Bool {
