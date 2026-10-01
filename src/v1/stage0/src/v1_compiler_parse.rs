@@ -10790,9 +10790,24 @@ pub fn parse_op_requires_clause(
         };
         if ((word.clone() == "none".to_string()) || (word.clone() == "opaque".to_string())) {
             {
-                let minted = mint_parsed_bool_property(
-                    ctx.clone(),
-                    v1_rt::concat("requires_".to_string(), word.clone()),
+                let value_mint = mint_parsed_node_identity(ctx.clone());
+                let property_mint = mint_parsed_node_identity(value_mint.ctx.clone());
+                let word_value = crate::v1_std_core::make_expr_node(
+                    value_mint.identity.clone(),
+                    Rc::new(ExprData::ExprLiteral {
+                        value: Rc::new(LiteralValue::LitStr {
+                            value: word.clone(),
+                        }),
+                    }),
+                    Rc::new(vec![]),
+                    std::option::Option::None,
+                    span.clone(),
+                );
+                let property = crate::v1_std_core::make_field_init_node(
+                    property_mint.identity.clone(),
+                    "requires".to_string(),
+                    word_value.clone(),
+                    span.clone(),
                     span.clone(),
                 );
                 let rest = token_stream_advance(tokens.clone(), 1);
@@ -10800,7 +10815,7 @@ pub fn parse_op_requires_clause(
                     Rc::new(ModsResult {
                         properties: Rc::new(vec![]),
                         tokens: rest.clone(),
-                        ctx: minted.ctx.clone(),
+                        ctx: property_mint.ctx.clone(),
                         err: Some(parse_error(
                             v1_rt::concat(
                                 "`requires ".to_string(),
@@ -10814,9 +10829,9 @@ pub fn parse_op_requires_clause(
                     })
                 } else {
                     Rc::new(ModsResult {
-                        properties: Rc::new(vec![minted.property.clone()]),
+                        properties: Rc::new(vec![property.clone()]),
                         tokens: rest.clone(),
-                        ctx: minted.ctx.clone(),
+                        ctx: property_mint.ctx.clone(),
                         err: std::option::Option::None,
                     })
                 }
@@ -10909,76 +10924,78 @@ pub fn operation_requires_declaration(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<OperationRequiresDeclaration> {
     {
-        let names = Rc::new({
+        let members = Rc::new({
             let mut __result = Vec::new();
-            for p in op.properties.clone().iter().cloned() {
-                __result.push(crate::v1_std_core::field_init_node_name_at(
-                    p.clone(),
-                    source_indices.clone(),
-                ));
+            for p in Rc::new({
+                let mut __result = Vec::new();
+                for p in op.properties.clone().iter().cloned() {
+                    if (crate::v1_std_core::field_init_node_name_at(
+                        p.clone(),
+                        source_indices.clone(),
+                    ) == "requires".to_string())
+                    {
+                        __result.push(p);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                __result.extend((*p.children.clone()).iter().cloned());
             }
             __result
         });
-        let none_marks = (Rc::new({
+        let none_words = (Rc::new({
             let mut __result = Vec::new();
-            for n in names.iter().cloned() {
-                if (n.clone() == "requires_none".to_string()) {
-                    __result.push(n);
+            for m in members.iter().cloned() {
+                if requires_word_is(m.clone(), "none".to_string()) {
+                    __result.push(m);
                 }
             }
             __result
         })
         .len() as i64);
-        let opaque_marks = (Rc::new({
+        let opaque_words = (Rc::new({
             let mut __result = Vec::new();
-            for n in names.iter().cloned() {
-                if (n.clone() == "requires_opaque".to_string()) {
-                    __result.push(n);
+            for m in members.iter().cloned() {
+                if requires_word_is(m.clone(), "opaque".to_string()) {
+                    __result.push(m);
                 }
             }
             __result
         })
         .len() as i64);
-        if (none_marks.clone() > 0) {
+        let member_count = (members.clone().len() as i64);
+        if (none_words.clone() > 0) {
             Rc::new(OperationRequiresDeclaration::RequiresNone)
         } else {
-            if (opaque_marks.clone() > 0) {
+            if (opaque_words.clone() > 0) {
                 Rc::new(OperationRequiresDeclaration::RequiresOpaque)
             } else {
-                {
-                    let members = Rc::new({
-                        let mut __result = Vec::new();
-                        for p in Rc::new({
-                            let mut __result = Vec::new();
-                            for p in op.properties.clone().iter().cloned() {
-                                if (crate::v1_std_core::field_init_node_name_at(
-                                    p.clone(),
-                                    source_indices.clone(),
-                                ) == "requires".to_string())
-                                {
-                                    __result.push(p);
-                                }
-                            }
-                            __result
-                        })
-                        .iter()
-                        .cloned()
-                        {
-                            __result.extend((*p.children.clone()).iter().cloned());
-                        }
-                        __result
-                    });
-                    let member_count = (members.clone().len() as i64);
-                    if (member_count.clone() == 0) {
-                        Rc::new(OperationRequiresDeclaration::RequiresUndeclared)
-                    } else {
-                        Rc::new(OperationRequiresDeclaration::RequiresResources {
-                            members: members.clone(),
-                        })
-                    }
+                if (member_count.clone() == 0) {
+                    Rc::new(OperationRequiresDeclaration::RequiresUndeclared)
+                } else {
+                    Rc::new(OperationRequiresDeclaration::RequiresResources {
+                        members: members.clone(),
+                    })
                 }
             }
         }
+    }
+}
+
+pub fn requires_word_is(member: Rc<Node>, word: String) -> bool {
+    match (*member.expr_data.clone()).clone() {
+        ExprData::ExprLiteral { ref value, .. }
+            if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+        {
+            let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
+                unreachable!()
+            };
+            (s.clone() == word.clone())
+        }
+        _ => false,
     }
 }
 
