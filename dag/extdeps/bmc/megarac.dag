@@ -711,6 +711,62 @@ fn megarac_ui_features_json(names: List<NonEmptyStr>) -> String {
   serialize_json_array(elements: map(names, n => json_object(members: [json_kv(key: "feature", value: json_string(s: n as String))])))
 }
 
+// THE REMOTE-MEDIA STOP REASONS, PER FIRMWARE BUILD, IN THE VENDOR'S OWN NAMES. The SP-X UI's rmedia
+// view renders a stopped CD as its `halted` label ("Stopped") followed by the i18n string
+// rmedia:status_<code>, and only for 1 <= code <= 17 (changeInSingleImages: `0==r&&l>=1&&17>=l`, where
+// r is settings/media/general mount_cd and l is its cd_error_code; changeInImages renders a
+// configurations row's redirection_status the same way when it is neither 0, 1 nor 100). Each row
+// is one rmedia:status_<code> entry of the English dictionary, " - " prefix removed. status_0 ("~")
+// and status_100 (" Starting..") are not stop reasons and are not rows. The 0.32 row is EMITTED, not
+// typed: gunbc.machine_intake_megarac_ui_features megarac_ui_bundle_rows_emit parses it out of the
+// same retained source.min.js as megarac_ui_features_0_32 (sha256 5029fae2...), refusing unless the
+// rows are exactly codes 1..N and N is the bound the vendor's own range check reads.
+type MegaRacRmediaStatus {
+  code: Int
+  name: NonEmptyStr
+}
+
+// MEGARAC_RMEDIA_STATUS_0_32_BEGIN
+data megarac_rmedia_status_0_32: List<MegaRacRmediaStatus> = [
+  MegaRacRmediaStatus { code: 1, name: "Connection Accepted" },
+  MegaRacRmediaStatus { code: 2, name: "Connection Denied" },
+  MegaRacRmediaStatus { code: 3, name: "Login Failed" },
+  MegaRacRmediaStatus { code: 4, name: "MAX Session Reached" },
+  MegaRacRmediaStatus { code: 5, name: "Permission Denied" },
+  MegaRacRmediaStatus { code: 6, name: "Unknown Error" },
+  MegaRacRmediaStatus { code: 7, name: "Media Detach Stage" },
+  MegaRacRmediaStatus { code: 8, name: "All device instances are occupied" },
+  MegaRacRmediaStatus { code: 9, name: "Unable to Connect" },
+  MegaRacRmediaStatus { code: 10, name: "Invalid Image" },
+  MegaRacRmediaStatus { code: 11, name: "Mount Error" },
+  MegaRacRmediaStatus { code: 12, name: "Unable to Open" },
+  MegaRacRmediaStatus { code: 13, name: "Media License Expired" },
+  MegaRacRmediaStatus { code: 14, name: "Connection Lost" },
+  MegaRacRmediaStatus { code: 15, name: "Mount Cancelled By User" },
+  MegaRacRmediaStatus { code: 16, name: "Device Ejected" },
+  MegaRacRmediaStatus { code: 17, name: "Session Terminated" },
+]
+// MEGARAC_RMEDIA_STATUS_0_32_END
+
+// A CODE THE BUILD'S TABLE NAMES, A CODE IT DOES NOT, OR A BUILD WITH NO TABLE. The last two are
+// different facts: one is this firmware answering outside its own UI's vocabulary, the other is this
+// repository not having read that firmware's UI.
+type MegaRacRmediaStatusLookup
+  = RmediaStatusNamed { status: MegaRacRmediaStatus }
+  | RmediaStatusOutsideTable { firmware: BmcFirmwareReleaseIdentity, wire: Int }
+  | RmediaStatusTableUnread { firmware: BmcFirmwareReleaseIdentity, wire: Int }
+
+fn megarac_rmedia_status_of_wire(firmware: BmcFirmwareReleaseIdentity, wire: Int) -> MegaRacRmediaStatusLookup {
+  if bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_32) {
+    match filter(megarac_rmedia_status_0_32, s => s.code == wire).first() {
+      Present { value: s } => RmediaStatusNamed { status: s }
+      Absent => RmediaStatusOutsideTable { firmware: firmware, wire: wire }
+    }
+  } else {
+    RmediaStatusTableUnread { firmware: firmware, wire: wire }
+  }
+}
+
 // THE FIRMWARE'S OWN UI BUNDLE, SERVED AT A FIXED PATH. The SP-X web UI is one minified bundle the
 // login page loads before any session exists, so the GET carries no cookie and no token and opens no
 // session to release. The codes this module cites as "recovered from source.min.js" (start-media's
