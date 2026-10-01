@@ -3500,8 +3500,8 @@ fn application_type_names_compatible(
 // read in the judging scope admitted a same-leaf record declared by ANOTHER module (measured), and
 // DESIGN section 4 keys compatibility on the declaration a position resolves to. So the relation
 // reads the DeclarationRef that resolve wrote on the alias item's right-hand side head, in the
-// alias's own scope (v1.compiler.infer_resolve alias_rhs_head_with_declaration, through the one
-// writer), and compares it with the declaration the other side resolves to. An alias whose head
+// alias's own scope (v1.compiler.infer alias_rhs_reference, through the one writer
+// v1.compiler.infer_resolve reference_with_declaration), and compares it with the declaration the other side resolves to. An alias whose head
 // carries no identity (a kernel spelling, today) is not read: no agreement, fail-closed. This is a
 // HEAD relation, like every name comparison application_type_names_compatible makes: an applied
 // right-hand side contributes its constructor, and its arguments are judged where the nodes are.
