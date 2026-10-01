@@ -2438,8 +2438,6 @@ fn resolve_node_walk(
       resolve_loop_node(ctx: ctx, n: n)
     ComputationNode { behavior: Transform } =>
       resolve_transform_children(ctx: ctx, n: n)
-    ComputationNode { behavior: Loop } =>
-      resolve_loop_node(ctx: ctx, n: n)
     TypeNode { connective: Conj } =>
       match construct_tag_reading(n: n) {
         ConstructTagElided =>
