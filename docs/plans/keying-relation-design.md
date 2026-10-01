@@ -256,6 +256,35 @@ Not all need become wrappers at once, but the distinction belongs in the standar
 model. Specimen 3a is a `SubjectKey` rendered as a `ResourceLocator`; specimen 3b is a
 `ResourceLocator` standing in for a `SubjectKey`.
 
+### The binder site within a named declaration
+
+A declared relation with a consumed home (`v2.std.node` `BinderSite`, minted by
+`v2.compiler.resolve` `open_lexical_frame`; ruling neat-boar-16, 2026-10-01, S-prime):
+
+- **Question answered:** which value binder (a `let`, a match-arm pattern binder, a closure
+  parameter) a reference denotes.
+- **Scope:** one named declaration. The counts reset at every named declaration and never leak to a
+  sibling or into a nested one.
+- **Preimage:** (authored name, ordinal), where the ordinal is the binder's position among the
+  declaration's binders of that name in pre-order source position, shadowing included. Nothing
+  parses an ordinal out of a `Symbol`; a target spells the binder by its authored name alone.
+- **Collision disposition:** one site per key; two binders on one key refuse.
+- **Stability:** edit-stable outside the declaration, so it may be read by `content_hash` and the
+  claim-cache key. A parse-order occurrence id may not, which is why S (a site-derived symbol)
+  was rejected.
+
+It is **one of three distinct within-scope relations**, and none derives from another:
+
+| relation | answers | scope | hashed? |
+|---|---|---|---|
+| `BinderSite` | which binder a reference denotes | one named declaration | yes (content_hash, claim cache) |
+| infer's facts key (eager-newt-412's ruling-B relation) | which position in one typed tree a fact describes | exactly one `InferredTree` | never |
+| occurrence identity (`std.occurrence_identity`, gunbc#12790) | which authored occurrence | one source graph's allocator | per its own rules |
+
+Two prohibitions keep the first two from forking: a `BinderSite` is never a facts key, and a
+facts-key path is never part of a hash or cache preimage. Infer joins a reference to its binder by
+`BinderSite` and reads that binder's facts at its facts-key site within the same tree.
+
 ## 5. Decidability — what can become a wall, and what cannot
 
 Per DESIGN section 5, "never" is the trap, so each class is classified before anything
