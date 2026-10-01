@@ -24,8 +24,8 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, TypeNode, node_subtree_nodes }
 import v2.std.text { String }
-import v2.std.qualified_name { binder_reference_symbol_optional }
-import v2.std.optional { Present }
+import v2.std.qualified_name { binder_reference_symbol_optional, declaration_reference_path_optional, qualified_name_last_segment }
+import v2.std.optional { Absent, Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -392,6 +392,33 @@ fn mab_resolved_module_named_binder() -> Outcome<ResolvedTree> {
 test fn mab_binder_spelling_a_sibling_module_binds_the_arm() -> Bool {
   mab_outcome_accepts(o: mab_resolved_module_named_binder())
     && mab_has_binder_reference(o: mab_resolved_module_named_binder(), id: ^node)
+}
+
+// THE CONSTRUCTOR PARTNER OF THE ROW ABOVE. The classifier's unbound arm now asks whether the atom
+// is a keyword constant of the language model rather than whether the canonical set holds it
+// (v2.compiler.resolve resolve_pattern_atom_is_keyword_constant); a declared payload is answered
+// earlier, by the index, and must still resolve as a declaration reference, never a binder.
+// Discriminates: red with the LexicalHit arm answering binder.
+fn mab_resolved_declared_constructor() -> Outcome<ResolvedTree> {
+  mab_assemble(src: "module p\n\ntype T = True | False\ntype C = A(T) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(True) => 1\n    A(_) => 0\n    B => 0\n  }\n}\n")
+}
+
+fn mab_has_declaration_reference_to(o: Outcome<ResolvedTree>, leaf: Symbol) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: n, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: n.root), init: false, f: fn(found, m) {
+        found || (match declaration_reference_path_optional(node: m) {
+          Present { value: path } => qualified_name_last_segment(qn: path) == Present { value: leaf }
+          Absent => false
+        })
+      })
+  }
+}
+
+test fn mab_declared_constructor_in_a_pattern_stays_a_declaration_reference() -> Bool {
+  mab_has_declaration_reference_to(o: mab_resolved_declared_constructor(), leaf: ^True)
+    && !mab_has_binder_reference(o: mab_resolved_declared_constructor(), id: ^True)
 }
 
 // AN UNIMPORTED CONSTRUCTOR IN A PATTERN REFUSES RATHER THAN BINDING. `None` is declared only in

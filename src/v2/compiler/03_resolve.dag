@@ -1,5 +1,6 @@
 module v2.compiler.resolve
 import v2.std.language_model { LanguageModel }
+import v2.std.compilers.lexing { ModeledLexRules, VoidLexRules, lex_rule_set_keyword_class_member }
 
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.namespace_graft { namespace_graft_module_body_optional }
@@ -1812,9 +1813,12 @@ fn resolve_transform_children(
 // segments (namespace_graft_spine_segment_edge_optional) without inserting a path, so a module name
 // is never an index entry and never a LexicalHit. Measured at fixture scale beside a live control
 // (v2.test.claim.match_arm_binder_frame): the reachable route for that spelling is the global-bare
-// lookup, which answers Ambiguous and REFUSES, located, rather than accepting a wrong value. The
-// specimen itself has not been observed on the native route -- that needs the emitted compiler,
-// which does not build on main -- so this states what the corpus shows and not more.
+// lookup. CORRECTED 2026-10-01: the earlier reading here, that it answers Ambiguous and refuses, was
+// not what executes. The lookup answers Unbound, and the arm consulted the canonical set, which holds
+// `node` as a grammar-encoding atom: the binder was classified a constructor and resolved to the
+// kernel atom, Accepted and silent. The control that should have caught it checked only that an
+// Atom named `node` survived, which the kernel atom satisfies. The arm now asks the lexer
+// (resolve_pattern_atom_is_keyword_constant).
 //
 // The fact is held by the writers that know what they inserted: v2.compiler.symbol_index_fill marks
 // a variant arm and its unique alias as it inserts them, and marks a record from the carrier
@@ -1826,8 +1830,8 @@ fn resolve_transform_children(
 
 // The seed's rule, at this resolver's grain: a field-target atom is a constructor when the symbol
 // index binds it to a declared payload (a variant arm, module.Type.Variant or its unique alias,
-// resolves to its payload Conj; so does a record type), or when it is a canonical symbol (`true`,
-// `false`). A fn or data declaration of the same name does NOT make it a constructor: the seed
+// resolves to its payload Conj; so does a record type), or when no declaration binds it and it is
+// a keyword constant of the language model (`true`, `false`; resolve_pattern_atom_is_keyword_constant). A fn or data declaration of the same name does NOT make it a constructor: the seed
 // binds `x` in `A(x)` even when a fn x exists, and so does this frame.
 //
 // THE LexicalUnbound BRANCH IS NOT A BRIDGE ANY MORE, AND WHY IT STAYS. It was first written as
@@ -1872,6 +1876,26 @@ fn resolve_path_is_declared_payload(ctx: ResolveContext, path: QualifiedName) ->
   }
 }
 
+// THE KERNEL CONSTANT ARM ASKS THE LEXER, NOT THE CANONICAL SET. An atom no corpus declaration
+// binds is a constructor only when the language model mints it as a constant: `true` and `false`
+// lex as KEYWORD token classes (v2.extdeps.languages.dag dag_keyword_lex_rule) and reach a pattern
+// as those class atoms, which no authored identifier can spell. The canonical set answered this
+// before, and it is the wrong authority: it is every atom the grammar's node encoding carries, plus
+// the token classes and kernel bindings (v2.extdeps.languages.dag dag_canonical_symbol_map), so it
+// says "the language model owns this name", never "this name denotes a value". Executed: `node` is a
+// member (a grammar field atom), so the binder of `Present { value: node }` was classified as a
+// constructor, the arm never bound it, and it resolved to the kernel atom
+// (v2.test.claim.match_arm_binder_frame mab_binder_spelling_a_sibling_module_binds_the_arm). Keyword
+// AND canonical: a keyword class the model does not own as a symbol is not a kernel constant.
+fn resolve_pattern_atom_is_keyword_constant(ctx: ResolveContext, id: Symbol) -> Bool {
+  match ctx.lm.lex {
+    VoidLexRules => false
+    ModeledLexRules { root: rules } =>
+      lex_rule_set_keyword_class_member(rules: rules, token_class: id)
+        && namespace_has_canonical_symbol(namespace: ctx.namespace, name: id)
+  }
+}
+
 fn resolve_pattern_atom_names_constructor(ctx: ResolveContext, id: Symbol) -> Bool {
   match symbol_index_lexical_lookup(
     index: ctx.namespace.symbol_index,
@@ -1886,7 +1910,7 @@ fn resolve_pattern_atom_names_constructor(ctx: ResolveContext, id: Symbol) -> Bo
         GlobalBareHit { node: _, path: path } => resolve_path_is_declared_payload(ctx: ctx, path: path)
         GlobalBareLookupAmbiguous { paths: paths } =>
           any(xs: paths, predicate: fn(p) { resolve_path_is_declared_payload(ctx: ctx, path: p) })
-        GlobalBareLookupUnbound => namespace_has_canonical_symbol(namespace: ctx.namespace, name: id)
+        GlobalBareLookupUnbound => resolve_pattern_atom_is_keyword_constant(ctx: ctx, id: id)
       }
   }
 }
