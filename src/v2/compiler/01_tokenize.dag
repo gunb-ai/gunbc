@@ -34,7 +34,11 @@ import v2.std.compilers.lexing {
   lex_artifact_new,
   lex_artifact_semantic_tokens,
   token_stream_empty,
-  token_stream_new,
+  lexeme_has_line_feed,
+  stream_layout_empty,
+  stream_layout_with_break,
+  StreamLayout,
+  token_stream_lexed,
   TriviaRule,
   UnboundSourceAnnotation,
   VoidLexRules,
@@ -660,6 +664,9 @@ type LexWalkAcc {
   error: Bool
   file: Symbol
   dispatch: LexRuleDispatch
+  gap_start: Int
+  gap_has_break: Bool
+  layout: StreamLayout
 }
 
 fn lex_walk_init(src: v2.std.text.String, file: Symbol, rules: LexRuleSet) -> LexWalkAcc {
@@ -672,7 +679,10 @@ fn lex_walk_init(src: v2.std.text.String, file: Symbol, rules: LexRuleSet) -> Le
     done: false,
     error: false,
     file: file,
-    dispatch: lex_rule_dispatch(compiled_rules: lex_compile_rules(rules: rules.rules))
+    dispatch: lex_rule_dispatch(compiled_rules: lex_compile_rules(rules: rules.rules)),
+    gap_start: 0,
+    gap_has_break: false,
+    layout: stream_layout_empty()
   }
 }
 
@@ -692,7 +702,10 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
         done: true,
         error: false,
         file: acc.file,
-        dispatch: acc.dispatch
+        dispatch: acc.dispatch,
+        gap_start: acc.gap_start,
+        gap_has_break: acc.gap_has_break,
+        layout: acc.layout
       }
     false =>
       match lex_try_rules(rules: lex_dispatch_candidates(dispatch: acc.dispatch, source: acc.remaining), source: acc.remaining) {
@@ -706,7 +719,10 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
             done: true,
             error: true,
             file: acc.file,
-            dispatch: acc.dispatch
+            dispatch: acc.dispatch,
+            gap_start: acc.gap_start,
+            gap_has_break: acc.gap_has_break,
+            layout: acc.layout
           }
         LexRuleTrivia { lexeme: lexeme, remaining: remaining } =>
           match string_is_empty(s: lexeme) {
@@ -720,7 +736,10 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 done: true,
                 error: true,
                 file: acc.file,
-                dispatch: acc.dispatch
+                dispatch: acc.dispatch,
+                gap_start: acc.gap_start,
+                gap_has_break: acc.gap_has_break,
+                layout: acc.layout
               }
             false =>
               LexWalkAcc {
@@ -732,7 +751,10 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 done: false,
                 error: false,
                 file: acc.file,
-                dispatch: acc.dispatch
+                dispatch: acc.dispatch,
+                gap_start: acc.gap_start,
+                gap_has_break: acc.gap_has_break || lexeme_has_line_feed(lexeme: lexeme),
+                layout: acc.layout
               }
           }
         LexRuleToken { class: class, lexeme: lexeme, remaining: remaining } =>
@@ -747,7 +769,10 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 done: true,
                 error: true,
                 file: acc.file,
-                dispatch: acc.dispatch
+                dispatch: acc.dispatch,
+                gap_start: acc.gap_start,
+                gap_has_break: acc.gap_has_break,
+                layout: acc.layout
               }
             false =>
               LexWalkAcc {
@@ -768,7 +793,10 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 done: false,
                 error: false,
                 file: acc.file,
-                dispatch: acc.dispatch
+                dispatch: acc.dispatch,
+                gap_start: acc.pos + lexeme_utf8_octet_count(lexeme: lexeme),
+                gap_has_break: false,
+                layout: if acc.gap_has_break { stream_layout_with_break(layout: acc.layout, token_start: acc.pos, gap_start: acc.gap_start) } else { acc.layout }
               }
           }
         LexRuleAnnotation { class: class, lexeme: lexeme, remaining: remaining } =>
@@ -783,7 +811,10 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 done: true,
                 error: true,
                 file: acc.file,
-                dispatch: acc.dispatch
+                dispatch: acc.dispatch,
+                gap_start: acc.gap_start,
+                gap_has_break: acc.gap_has_break,
+                layout: acc.layout
               }
             false =>
               LexWalkAcc {
@@ -805,7 +836,10 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 done: false,
                 error: false,
                 file: acc.file,
-                dispatch: acc.dispatch
+                dispatch: acc.dispatch,
+                gap_start: acc.gap_start,
+                gap_has_break: acc.gap_has_break || lexeme_has_line_feed(lexeme: lexeme),
+                layout: acc.layout
               }
           }
       }
@@ -844,7 +878,7 @@ fn lex_walk_artifact(source: v2.std.text.String, file: Symbol, rules: LexRuleSet
   } else {
     v2.std.diagnostic.Accepted {
       value: lex_artifact_new(
-        tokens: token_stream_new(all: result.tokens.reverse()),
+        tokens: token_stream_lexed(all: result.tokens.reverse(), layout: result.layout),
         annotations: result.annotations.reverse()
       ),
       diagnostics: v2.std.diagnostic.None
