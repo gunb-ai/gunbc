@@ -1,0 +1,337 @@
+module test.claim.customer_control_plane_witness
+
+import std.types { NonEmptyStr, String, Int, Bool, List, Secret }
+import extdeps.crypto.mac { MacKey, MacKeyId, HmacSha256, mac_sign, MacSigned, MacKeyMaterialNotHex }
+import extdeps.stripe.webhook {
+  stripe_verify_webhook, StripeWebhookVerified, StripeWebhookHeaderMalformed,
+  StripeWebhookOutsideTolerance, StripeWebhookNoSignatureVerified, stripe_signed_payload,
+}
+import gunbc.customer.control_plane {
+  ControlPlanePolicy, ControlPlaneState, ControlPlaneCommand, ControlPlaneOutcome, ControlPlaneReplay,
+  SignUp, StripeWebhookDelivery, RequestInstance, ProvisioningSucceeded, ProvisioningFailedReported,
+  MeterInterval, StopInstance, TeardownInterrupted, TeardownCompleted, HostFailureObserved,
+  AccountCreated, AccountAlreadyExists, PaymentCredited, PaymentFailedRecorded, PaymentHeldTaxUndetermined,
+  StripeEventAlreadyProcessed, StripeEventIgnored, WebhookRejected, InstanceAccepted, InstanceRequestReplayed,
+  InstanceRequestRefused, InstancePhaseChanged, IntervalCharged, IntervalAlreadyCharged, IntervalNotChargeable,
+  SpendCapReached, CommandRefused, Unauthenticated,
+  SessionIssued, SessionRefused, issue_session, authenticate, Authenticated, AuthenticationRefused,
+  replay_commands, account_balance, account_statement, instance_id_for, find_instance,
+  Stopping, Terminated, Running, ProvisioningFailed, Provisioning, BalanceExhausted, CustomerRequested, HostFailed,
+}
+
+// Every claim drives the REAL fold (replay_commands) over a command log, and every webhook is
+// signed with HMAC-SHA-256 through extdeps.crypto.mac's bound realization and verified back through
+// the same Stripe header parser a live delivery would hit. One claim verifies a signature computed
+// OUTSIDE the substrate (Python hmac/hashlib), so the verifier is not only agreeing with itself.
+
+data endpoint_secret: MacKey = MacKey {
+  id: "whsec-test" as MacKeyId,
+  suite: HmacSha256,
+  material: "5374726970655465737453656372657431323334" as Secret,
+}
+
+data session_key: MacKey = MacKey {
+  id: "session-test" as MacKeyId,
+  suite: HmacSha256,
+  material: "73657373696f6e2d6b65792d74657374" as Secret,
+}
+
+fn policy() -> ControlPlanePolicy {
+  ControlPlanePolicy {
+    currency: "usd",
+    premium_dedicated_rate_per_interval: 2500,
+    minimum_balance_to_request: 5000,
+    webhook_tolerance_seconds: 300,
+    session_lifetime_seconds: 3600,
+  }
+}
+
+data t0: Int = 1790000000
+
+fn q(s: String) -> String { concat(concat("\"", s), "\"") }
+
+fn checkout_body(event_id: String, event_type: String, session_id: String, account: String, payment_status: String, subtotal: Int, tax: Int, tax_status: String) -> String {
+  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(
+    "{\"id\":", q(s: event_id)),
+    ",\"type\":"), q(s: event_type)),
+    ",\"data\":{\"object\":{\"id\":"), q(s: session_id)),
+    ",\"client_reference_id\":"), q(s: account)),
+    ",\"payment_status\":"), q(s: payment_status)),
+    ",\"currency\":\"usd\",\"amount_subtotal\":"), to_string(subtotal)),
+    ",\"amount_total\":"), to_string(subtotal + tax)),
+    ",\"total_details\":{\"amount_tax\":"), to_string(tax)),
+    "},\"automatic_tax\":{\"enabled\":true,\"status\":"), concat(q(s: tax_status), "}}}}"))
+}
+
+fn sign_header(body: String, at: Int) -> String {
+  match mac_sign(key: endpoint_secret, message: stripe_signed_payload(timestamp: at, raw_body: body)) {
+    MacSigned { tag: t } => concat(concat(concat("t=", to_string(at)), ",v1="), t.hex as String)
+    MacKeyMaterialNotHex { key_id: _ } => ""
+  }
+}
+
+fn delivery(body: String, at: Int) -> ControlPlaneCommand {
+  StripeWebhookDelivery { signature_header: sign_header(body: body, at: at), raw_body: body, received_at: at + 2 }
+}
+
+fn paid(event_id: String, session_id: String, subtotal: Int) -> ControlPlaneCommand {
+  delivery(body: checkout_body(event_id: event_id, event_type: "checkout.session.completed", session_id: session_id, account: "acct_a", payment_status: "paid", subtotal: subtotal, tax: 663, tax_status: "complete"), at: t0)
+}
+
+fn token_for(account: NonEmptyStr) -> String {
+  let st = replay_commands(session_key: session_key, endpoint_secret: endpoint_secret, policy: policy(), commands: [SignUp { account_id: account, email: "a@example.com" }]).state
+  match issue_session(key: session_key, policy: policy(), state: st, account_id: account, now: t0) {
+    SessionIssued { token: t, expires_at: _ } => t as String
+    SessionRefused { reason: _ } => ""
+  }
+}
+
+fn run(commands: List<ControlPlaneCommand>) -> ControlPlaneReplay {
+  replay_commands(session_key: session_key, endpoint_secret: endpoint_secret, policy: policy(), commands: commands)
+}
+
+fn last_outcome(r: ControlPlaneReplay) -> ControlPlaneOutcome {
+  fold(r.outcomes, init: CommandRefused { reason: "no outcome" }, f: fn(acc, o) { o })
+}
+
+fn inst() -> NonEmptyStr { instance_id_for(account_id: "acct_a", idempotency_key: "req-1") }
+
+fn funded_running() -> List<ControlPlaneCommand> {
+  [
+    SignUp { account_id: "acct_a", email: "a@example.com" },
+    paid(event_id: "evt_1", session_id: "cs_1", subtotal: 10000),
+    RequestInstance { session_token: token_for(account: "acct_a"), now: t0 + 10, idempotency_key: "req-1", host: "srv3" },
+    ProvisioningSucceeded { instance_id: inst(), at_interval: 1 },
+  ]
+}
+
+// ── signature verification ───────────────────────────────────────────────────────────────────
+
+test fn w_externally_computed_stripe_signature_verifies() -> Bool {
+  let body = checkout_body(event_id: "evt_ext", event_type: "checkout.session.completed", session_id: "cs_ext", account: "acct_a", payment_status: "paid", subtotal: 10000, tax: 663, tax_status: "complete")
+  let header = "t=1790000000,v1=8ff961b95821322d8f50c7934d925e813cd076c5a82812ffa0b2c344d7bf96f5"
+  match stripe_verify_webhook(endpoint_secret: endpoint_secret, signature_header: header, raw_body: body, now: t0 + 5, tolerance_seconds: 300) {
+    StripeWebhookVerified { verified: _, timestamp: t } => t == t0
+    _ => false
+  }
+}
+
+test fn w_tampered_body_and_stale_and_malformed_headers_refuse() -> Bool {
+  let body = checkout_body(event_id: "evt_x", event_type: "checkout.session.completed", session_id: "cs_x", account: "acct_a", payment_status: "paid", subtotal: 10000, tax: 663, tax_status: "complete")
+  let header = sign_header(body: body, at: t0)
+  let tampered = checkout_body(event_id: "evt_x", event_type: "checkout.session.completed", session_id: "cs_x", account: "acct_a", payment_status: "paid", subtotal: 99999, tax: 663, tax_status: "complete")
+  let a = match stripe_verify_webhook(endpoint_secret: endpoint_secret, signature_header: header, raw_body: tampered, now: t0, tolerance_seconds: 300) {
+    StripeWebhookNoSignatureVerified { tried: n } => n == 1
+    _ => false
+  }
+  let b = match stripe_verify_webhook(endpoint_secret: endpoint_secret, signature_header: header, raw_body: body, now: t0 + 301, tolerance_seconds: 300) {
+    StripeWebhookOutsideTolerance { timestamp: _, now: _, tolerance_seconds: _ } => true
+    _ => false
+  }
+  let c = match stripe_verify_webhook(endpoint_secret: endpoint_secret, signature_header: "v1=abcd", raw_body: body, now: t0, tolerance_seconds: 300) {
+    StripeWebhookHeaderMalformed { reason: _ } => true
+    _ => false
+  }
+  a && b && c
+}
+
+test fn w_forged_webhook_never_credits() -> Bool {
+  let body = checkout_body(event_id: "evt_f", event_type: "checkout.session.completed", session_id: "cs_f", account: "acct_a", payment_status: "paid", subtotal: 10000, tax: 663, tax_status: "complete")
+  let r = run([
+    SignUp { account_id: "acct_a", email: "a@example.com" },
+    StripeWebhookDelivery { signature_header: "t=1790000000,v1=00ff961b95821322d8f50c7934d925e813cd076c5a82812ffa0b2c344d7bf96f", raw_body: body, received_at: t0 },
+  ])
+  let rejected = match last_outcome(r: r) { WebhookRejected { reason: _ } => true  _ => false }
+  rejected && account_balance(state: r.state, account_id: "acct_a") == 0
+}
+
+// ── payments ─────────────────────────────────────────────────────────────────────────────────
+
+test fn w_paid_checkout_credits_subtotal_and_issues_receipt_with_tax() -> Bool {
+  let r = run([SignUp { account_id: "acct_a", email: "a@example.com" }, paid(event_id: "evt_1", session_id: "cs_1", subtotal: 10000)])
+  let receipted = match last_outcome(r: r) {
+    PaymentCredited { receipt: rc } => rc.subtotal == 10000 && rc.tax == 663 && rc.total == 10663
+    _ => false
+  }
+  receipted && account_balance(state: r.state, account_id: "acct_a") == 10000
+}
+
+test fn w_repeated_webhook_credits_once() -> Bool {
+  let r = run([
+    SignUp { account_id: "acct_a", email: "a@example.com" },
+    paid(event_id: "evt_1", session_id: "cs_1", subtotal: 10000),
+    paid(event_id: "evt_1", session_id: "cs_1", subtotal: 10000),
+    // a redelivery under a NEW event id for the same checkout session is still one credit
+    paid(event_id: "evt_1b", session_id: "cs_1", subtotal: 10000),
+  ])
+  let replayed = match last_outcome(r: r) { StripeEventAlreadyProcessed { stripe_event_id: _ } => true  _ => false }
+  replayed && account_balance(state: r.state, account_id: "acct_a") == 10000 && count(r.state.receipts) == 1
+}
+
+test fn w_failed_payment_is_recorded_and_never_credited() -> Bool {
+  let body = checkout_body(event_id: "evt_fail", event_type: "checkout.session.async_payment_failed", session_id: "cs_2", account: "acct_a", payment_status: "unpaid", subtotal: 10000, tax: 663, tax_status: "complete")
+  let r = run([SignUp { account_id: "acct_a", email: "a@example.com" }, delivery(body: body, at: t0)])
+  let recorded = match last_outcome(r: r) { PaymentFailedRecorded { failed: _ } => true  _ => false }
+  let st = account_statement(state: r.state, account_id: "acct_a")
+  recorded && st.balance == 0 && count(st.failed_payments) == 1 && count(st.receipts) == 0
+}
+
+test fn w_undetermined_tax_holds_payment_without_credit_or_receipt() -> Bool {
+  let body = checkout_body(event_id: "evt_tax", event_type: "checkout.session.completed", session_id: "cs_3", account: "acct_a", payment_status: "paid", subtotal: 10000, tax: 0, tax_status: "requires_location_inputs")
+  let r = run([SignUp { account_id: "acct_a", email: "a@example.com" }, delivery(body: body, at: t0)])
+  let held = match last_outcome(r: r) { PaymentHeldTaxUndetermined { stripe_event_id: _, checkout_session_id: _ } => true  _ => false }
+  held && account_balance(state: r.state, account_id: "acct_a") == 0 && count(r.state.receipts) == 0
+}
+
+// ── authentication ───────────────────────────────────────────────────────────────────────────
+
+test fn w_session_token_authenticates_and_tampering_or_expiry_refuses() -> Bool {
+  let st = run([SignUp { account_id: "acct_a", email: "a@example.com" }]).state
+  let tok = token_for(account: "acct_a")
+  let ok = match authenticate(key: session_key, state: st, token: tok, now: t0 + 1) { Authenticated { account_id: a } => (a as String) == "acct_a"  _ => false }
+  let forged = match authenticate(key: session_key, state: st, token: concat("acct_b", substring(s: tok, start: 6, end: tok.length())), now: t0 + 1) { AuthenticationRefused { reason: _ } => true  _ => false }
+  let expired = match authenticate(key: session_key, state: st, token: tok, now: t0 + 3601) { AuthenticationRefused { reason: _ } => true  _ => false }
+  let no_account = match issue_session(key: session_key, policy: policy(), state: st, account_id: "acct_z", now: t0) { SessionRefused { reason: _ } => true  _ => false }
+  ok && forged && expired && no_account
+}
+
+test fn w_unauthenticated_instance_request_is_refused() -> Bool {
+  let r = run([
+    SignUp { account_id: "acct_a", email: "a@example.com" },
+    paid(event_id: "evt_1", session_id: "cs_1", subtotal: 10000),
+    RequestInstance { session_token: "acct_a.9999999999.deadbeef", now: t0, idempotency_key: "req-1", host: "srv3" },
+  ])
+  let refused = match last_outcome(r: r) { Unauthenticated { reason: _ } => true  _ => false }
+  refused && count(r.state.instances) == 0
+}
+
+// ── instances ────────────────────────────────────────────────────────────────────────────────
+
+test fn w_duplicate_instance_request_replays_one_instance() -> Bool {
+  let tok = token_for(account: "acct_a")
+  let r = run([
+    SignUp { account_id: "acct_a", email: "a@example.com" },
+    paid(event_id: "evt_1", session_id: "cs_1", subtotal: 10000),
+    RequestInstance { session_token: tok, now: t0 + 10, idempotency_key: "req-1", host: "srv3" },
+    RequestInstance { session_token: tok, now: t0 + 11, idempotency_key: "req-1", host: "srv3" },
+  ])
+  let replayed = match last_outcome(r: r) { InstanceRequestReplayed { instance: _ } => true  _ => false }
+  let reuse = run(append(funded_running(), [RequestInstance { session_token: tok, now: t0 + 12, idempotency_key: "req-1", host: "srv4" }]))
+  let reuse_refused = match last_outcome(r: reuse) { InstanceRequestRefused { reason: _ } => true  _ => false }
+  replayed && count(r.state.instances) == 1 && reuse_refused
+}
+
+test fn w_unfunded_or_unoffered_request_is_refused() -> Bool {
+  let tok = token_for(account: "acct_a")
+  let unfunded = run([
+    SignUp { account_id: "acct_a", email: "a@example.com" },
+    RequestInstance { session_token: tok, now: t0 + 10, idempotency_key: "req-1", host: "srv3" },
+  ])
+  let wrong_host = run([
+    SignUp { account_id: "acct_a", email: "a@example.com" },
+    paid(event_id: "evt_1", session_id: "cs_1", subtotal: 10000),
+    RequestInstance { session_token: tok, now: t0 + 10, idempotency_key: "req-1", host: "srv1" },
+  ])
+  let a = match last_outcome(r: unfunded) { InstanceRequestRefused { reason: _ } => true  _ => false }
+  let b = match last_outcome(r: wrong_host) { InstanceRequestRefused { reason: _ } => true  _ => false }
+  a && b
+}
+
+test fn w_failed_provisioning_is_never_charged() -> Bool {
+  let tok = token_for(account: "acct_a")
+  let r = run([
+    SignUp { account_id: "acct_a", email: "a@example.com" },
+    paid(event_id: "evt_1", session_id: "cs_1", subtotal: 10000),
+    RequestInstance { session_token: tok, now: t0 + 10, idempotency_key: "req-1", host: "srv3" },
+    ProvisioningFailedReported { instance_id: inst(), reason: "microvm boot failed" },
+    MeterInterval { instance_id: inst(), interval: 1 },
+    ProvisioningSucceeded { instance_id: inst(), at_interval: 2 },
+    MeterInterval { instance_id: inst(), interval: 2 },
+  ])
+  let failed = match find_instance(state: r.state, instance_id: inst()) {
+    Present { value: i } => match i.phase { ProvisioningFailed { reason: _ } => true  _ => false }
+    Absent => false
+  }
+  failed && account_balance(state: r.state, account_id: "acct_a") == 10000
+}
+
+// ── metering, spend cap, stop ────────────────────────────────────────────────────────────────
+
+test fn w_running_charges_each_interval_once() -> Bool {
+  let r = run(append(funded_running(), [
+    MeterInterval { instance_id: inst(), interval: 1 },
+    MeterInterval { instance_id: inst(), interval: 1 },
+    MeterInterval { instance_id: inst(), interval: 2 },
+  ]))
+  let st = account_statement(state: r.state, account_id: "acct_a")
+  let usage_ok = fold(st.instances, init: false, f: fn(acc, u) { acc || (u.intervals_charged == 2 && u.amount_charged == 5000) })
+  st.balance == 5000 && usage_ok
+}
+
+test fn w_spend_cap_stops_instead_of_overdrawing() -> Bool {
+  let r = run(append(funded_running(), [
+    MeterInterval { instance_id: inst(), interval: 1 },
+    MeterInterval { instance_id: inst(), interval: 2 },
+    MeterInterval { instance_id: inst(), interval: 3 },
+    MeterInterval { instance_id: inst(), interval: 4 },
+    MeterInterval { instance_id: inst(), interval: 5 },
+    MeterInterval { instance_id: inst(), interval: 6 },
+  ]))
+  let stopped = match find_instance(state: r.state, instance_id: inst()) {
+    Present { value: i } => match i.phase { Stopping { cause: BalanceExhausted, interrupted_attempts: _ } => true  _ => false }
+    Absent => false
+  }
+  let balance = account_balance(state: r.state, account_id: "acct_a")
+  stopped && balance == 0 && balance >= 0
+}
+
+test fn w_interrupted_teardown_charges_nothing_and_terminates_on_retry() -> Bool {
+  let tok = token_for(account: "acct_a")
+  let r = run(append(funded_running(), [
+    MeterInterval { instance_id: inst(), interval: 1 },
+    StopInstance { session_token: tok, now: t0 + 100, instance_id: inst() },
+    TeardownInterrupted { instance_id: inst() },
+    MeterInterval { instance_id: inst(), interval: 2 },
+    TeardownInterrupted { instance_id: inst() },
+    MeterInterval { instance_id: inst(), interval: 3 },
+    TeardownCompleted { instance_id: inst() },
+  ]))
+  let terminated = match find_instance(state: r.state, instance_id: inst()) {
+    Present { value: i } => match i.phase { Terminated { cause: CustomerRequested } => true  _ => false }
+    Absent => false
+  }
+  terminated && account_balance(state: r.state, account_id: "acct_a") == 7500
+}
+
+test fn w_no_charge_after_termination() -> Bool {
+  let tok = token_for(account: "acct_a")
+  let r = run(append(funded_running(), [
+    MeterInterval { instance_id: inst(), interval: 1 },
+    HostFailureObserved { instance_id: inst() },
+    MeterInterval { instance_id: inst(), interval: 2 },
+    MeterInterval { instance_id: inst(), interval: 3 },
+  ]))
+  let refused = match last_outcome(r: r) { IntervalNotChargeable { instance_id: _, interval: _, reason: _ } => true  _ => false }
+  let host_failed = match find_instance(state: r.state, instance_id: inst()) {
+    Present { value: i } => match i.phase { Terminated { cause: HostFailed } => true  _ => false }
+    Absent => false
+  }
+  refused && host_failed && account_balance(state: r.state, account_id: "acct_a") == 7500
+}
+
+test fn w_another_account_cannot_stop_my_instance() -> Bool {
+  let r0 = run([SignUp { account_id: "acct_b", email: "b@example.com" }])
+  let tok_b = match issue_session(key: session_key, policy: policy(), state: r0.state, account_id: "acct_b", now: t0) {
+    SessionIssued { token: t, expires_at: _ } => t as String
+    SessionRefused { reason: _ } => ""
+  }
+  let r = run(append(append([SignUp { account_id: "acct_b", email: "b@example.com" }], funded_running()), [
+    StopInstance { session_token: tok_b, now: t0 + 100, instance_id: inst() },
+  ]))
+  let refused = match last_outcome(r: r) { CommandRefused { reason: _ } => true  _ => false }
+  let still_running = match find_instance(state: r.state, instance_id: inst()) {
+    Present { value: i } => match i.phase { Running { since_interval: _ } => true  _ => false }
+    Absent => false
+  }
+  refused && still_running
+}

@@ -1,0 +1,668 @@
+module gunbc.customer.control_plane
+
+import std.types { NonEmptyStr, String, Int, Bool, List }
+import extdeps.crypto.mac {
+  MacKey, MacSigning, MacSigned, MacKeyMaterialNotHex, mac_sign, mac_verify,
+  MacVerified, MacTagMismatch, MacKeyUnknown, MacKeyRetired, MacSuiteMismatch, MacTagMalformed,
+}
+import extdeps.stripe.webhook {
+  StripeWebhookVerification, StripeWebhookVerified, StripeWebhookHeaderMalformed,
+  StripeWebhookOutsideTolerance, StripeWebhookNoSignatureVerified, stripe_verify_webhook,
+  stripe_signed_payload,
+  StripeEventDecode, StripeEventDecoded, StripeEventUndecodable, decode_stripe_event,
+  StripeEvent, CheckoutSession,
+  CheckoutSessionCompleted, CheckoutSessionAsyncPaymentSucceeded, CheckoutSessionAsyncPaymentFailed, StripeEventTypeNotModeled,
+  CheckoutPaid, CheckoutUnpaid, CheckoutNoPaymentRequired,
+  AutomaticTaxComplete, AutomaticTaxFailed, AutomaticTaxRequiresLocationInputs, AutomaticTaxDisabled,
+}
+
+// THE CUSTOMER CONTROL PLANE AS ONE FOLD. Every customer-visible fact -- who exists, who is
+// authenticated, what money has arrived, what instance exists and in which state, what has been
+// charged -- is derived by folding an ordered command log through `apply`. Durability is then a
+// property of persisting the LOG (one append per admitted command) rather than of mutating several
+// stores that can disagree; the realization binding to a durable store is a declared frontier, below.
+//
+// The policy this module owns, and the reason it is not in extdeps.stripe: which Stripe events
+// credit a prepaid balance, what idempotency means for an instance request, when charging starts and
+// stops. Stripe provides neither a prepaid balance nor instance idempotency.
+//
+// Money is integer minor units of ONE currency; a payment in any other currency refuses rather than
+// converting. A balance never goes negative: the prepaid balance IS the spend cap.
+
+// ── Policy ───────────────────────────────────────────────────────────────────────────────────
+
+type ControlPlanePolicy {
+  currency: NonEmptyStr
+  // The PremiumDedicated offer is the only one sold at first customer; its price per metered
+  // interval is the policy's fact, never a literal inside the fold.
+  premium_dedicated_rate_per_interval: Int
+  // Minimum balance an account must hold to REQUEST an instance (the paid minimum).
+  minimum_balance_to_request: Int
+  webhook_tolerance_seconds: Int
+  session_lifetime_seconds: Int
+}
+
+// ── State ────────────────────────────────────────────────────────────────────────────────────
+
+type CustomerAccount {
+  account_id: NonEmptyStr
+  email: NonEmptyStr
+}
+
+type InstancePhase
+  = Provisioning
+  | Running { since_interval: Int }
+  | ProvisioningFailed { reason: NonEmptyStr }
+  | Stopping { cause: StopCause, interrupted_attempts: Int }
+  | Terminated { cause: StopCause }
+
+type StopCause
+  = CustomerRequested
+  | BalanceExhausted
+  | HostFailed
+
+type InstanceRecord {
+  instance_id: NonEmptyStr
+  account_id: NonEmptyStr
+  idempotency_key: NonEmptyStr
+  host: NonEmptyStr
+  phase: InstancePhase
+}
+
+// A receipt is issued for exactly one admitted payment and carries its tax line; it is not
+// derivable without one, so a credit can never exist without the receipt that explains it.
+type Receipt {
+  receipt_id: NonEmptyStr
+  account_id: NonEmptyStr
+  stripe_event_id: NonEmptyStr
+  checkout_session_id: NonEmptyStr
+  currency: NonEmptyStr
+  subtotal: Int
+  tax: Int
+  total: Int
+}
+
+type LedgerEntry
+  = PrepaidCredit { account_id: NonEmptyStr, amount: Int, receipt_id: NonEmptyStr }
+  | UsageCharge { account_id: NonEmptyStr, instance_id: NonEmptyStr, interval: Int, amount: Int }
+
+type FailedPayment {
+  account_id: NonEmptyStr
+  stripe_event_id: NonEmptyStr
+  checkout_session_id: NonEmptyStr
+  reason: NonEmptyStr
+}
+
+type ControlPlaneState {
+  accounts: List<CustomerAccount>
+  processed_stripe_events: List<NonEmptyStr>
+  receipts: List<Receipt>
+  failed_payments: List<FailedPayment>
+  ledger: List<LedgerEntry>
+  instances: List<InstanceRecord>
+}
+
+fn control_plane_empty() -> ControlPlaneState {
+  ControlPlaneState { accounts: [], processed_stripe_events: [], receipts: [], failed_payments: [], ledger: [], instances: [] }
+}
+
+// ── Commands ─────────────────────────────────────────────────────────────────────────────────
+// What arrives from outside. Webhooks arrive RAW (header and body bytes), because verification is
+// over the exact body; a pre-parsed event would let a caller substitute bytes after verification.
+
+type ControlPlaneCommand
+  = SignUp { account_id: NonEmptyStr, email: NonEmptyStr }
+  | StripeWebhookDelivery { signature_header: String, raw_body: String, received_at: Int }
+  | RequestInstance { session_token: String, now: Int, idempotency_key: NonEmptyStr, host: NonEmptyStr }
+  | ProvisioningSucceeded { instance_id: NonEmptyStr, at_interval: Int }
+  | ProvisioningFailedReported { instance_id: NonEmptyStr, reason: NonEmptyStr }
+  | MeterInterval { instance_id: NonEmptyStr, interval: Int }
+  | StopInstance { session_token: String, now: Int, instance_id: NonEmptyStr }
+  | TeardownInterrupted { instance_id: NonEmptyStr }
+  | TeardownCompleted { instance_id: NonEmptyStr }
+  | HostFailureObserved { instance_id: NonEmptyStr }
+
+// Every outcome is typed. "Already" arms are the idempotency answers: the command was seen, the
+// state did not change, and the caller is told what stands.
+type ControlPlaneOutcome
+  = AccountCreated { account_id: NonEmptyStr }
+  | AccountAlreadyExists { account_id: NonEmptyStr }
+  | PaymentCredited { receipt: Receipt }
+  | PaymentFailedRecorded { failed: FailedPayment }
+  | PaymentHeldTaxUndetermined { stripe_event_id: NonEmptyStr, checkout_session_id: NonEmptyStr }
+  | StripeEventAlreadyProcessed { stripe_event_id: NonEmptyStr }
+  | StripeEventIgnored { stripe_event_id: NonEmptyStr, event_type: NonEmptyStr }
+  | WebhookRejected { reason: NonEmptyStr }
+  | InstanceAccepted { instance: InstanceRecord }
+  | InstanceRequestReplayed { instance: InstanceRecord }
+  | InstanceRequestRefused { reason: NonEmptyStr }
+  | InstancePhaseChanged { instance: InstanceRecord }
+  | IntervalCharged { instance_id: NonEmptyStr, interval: Int, amount: Int, balance_after: Int }
+  | IntervalAlreadyCharged { instance_id: NonEmptyStr, interval: Int }
+  | IntervalNotChargeable { instance_id: NonEmptyStr, interval: Int, reason: NonEmptyStr }
+  | SpendCapReached { instance: InstanceRecord }
+  | CommandRefused { reason: NonEmptyStr }
+  | Unauthenticated { reason: NonEmptyStr }
+
+type ControlPlaneStep {
+  state: ControlPlaneState
+  outcome: ControlPlaneOutcome
+}
+
+fn unchanged(state: ControlPlaneState, outcome: ControlPlaneOutcome) -> ControlPlaneStep {
+  ControlPlaneStep { state: state, outcome: outcome }
+}
+
+// ── Authentication ───────────────────────────────────────────────────────────────────────────
+// A session token is `<account_id>.<expires_at>.<hmac hex>` with the HMAC keyed by the control
+// plane's session key over `session:<account_id>:<expires_at>`. It is minted only for an account
+// that exists, and verification goes through extdeps.crypto.mac's constant-time realization.
+// How the token reaches the person (a mailed one-time link) is NOT modeled here: see
+// customer_identity_email_delivery_frontier.
+
+type SessionIssue
+  = SessionIssued { token: NonEmptyStr, expires_at: Int }
+  | SessionRefused { reason: NonEmptyStr }
+
+type Authentication
+  = Authenticated { account_id: NonEmptyStr }
+  | AuthenticationRefused { reason: NonEmptyStr }
+
+fn session_message(account_id: NonEmptyStr, expires_at: Int) -> NonEmptyStr {
+  concat(concat(concat("session:", account_id as String), ":"), to_string(expires_at)) as NonEmptyStr
+}
+
+fn account_exists(state: ControlPlaneState, account_id: NonEmptyStr) -> Bool {
+  fold(state.accounts, init: false, f: fn(acc, a) { acc || (a.account_id as String) == (account_id as String) })
+}
+
+fn issue_session(key: MacKey, policy: ControlPlanePolicy, state: ControlPlaneState, account_id: NonEmptyStr, now: Int) -> SessionIssue {
+  if account_exists(state: state, account_id: account_id) == false {
+    SessionRefused { reason: "no such account" }
+  } else {
+    let expires = now + policy.session_lifetime_seconds
+    match mac_sign(key: key, message: session_message(account_id: account_id, expires_at: expires)) {
+      MacKeyMaterialNotHex { key_id: _ } => SessionRefused { reason: "session key material is not hex" }
+      MacSigned { tag: t } => SessionIssued {
+        token: concat(concat(concat(concat(account_id as String, "."), to_string(expires)), "."), t.hex as String) as NonEmptyStr,
+        expires_at: expires,
+      }
+    }
+  }
+}
+
+fn authenticate(key: MacKey, state: ControlPlaneState, token: String, now: Int) -> Authentication {
+  let parts = split(s: token, delimiter: ".")
+  if count(parts) != 3 {
+    AuthenticationRefused { reason: "session token is malformed" }
+  } else {
+    let account = fold(parts, init: "", f: fn(acc, p) { if acc == "" { p } else { acc } })
+    let rest = fold(parts, init: [], f: fn(acc, p) { append(acc, [p]) })
+    let expires_text = list_at(xs: rest, i: 1)
+    let tag = list_at(xs: rest, i: 2)
+    if account == "" || tag == "" {
+      AuthenticationRefused { reason: "session token is malformed" }
+    } else {
+      match parse_int(s: expires_text) {
+        Absent => AuthenticationRefused { reason: "session token expiry is not an integer" }
+        Present { value: expires } =>
+          if now >= expires {
+            AuthenticationRefused { reason: "session token has expired" }
+          } else {
+            match mac_verify(key: key, message: session_message(account_id: account as NonEmptyStr, expires_at: expires), tag_hex: tag as NonEmptyStr) {
+              MacVerified { verified: _ } =>
+                if account_exists(state: state, account_id: account as NonEmptyStr) {
+                  Authenticated { account_id: account as NonEmptyStr }
+                } else {
+                  AuthenticationRefused { reason: "session names an account that does not exist" }
+                }
+              MacTagMismatch { key_id: _ } => AuthenticationRefused { reason: "session token does not verify" }
+              MacKeyUnknown { key_id: _ } => AuthenticationRefused { reason: "session token does not verify" }
+              MacKeyRetired { key_id: _, retired_at: _ } => AuthenticationRefused { reason: "session key retired" }
+              MacSuiteMismatch { expected: _, key_suite: _ } => AuthenticationRefused { reason: "session token does not verify" }
+              MacTagMalformed { octets_declared: _, octets_expected: _ } => AuthenticationRefused { reason: "session token does not verify" }
+            }
+          }
+      }
+    }
+  }
+}
+
+fn list_at(xs: List<String>, i: Int) -> String {
+  let scan = fold(xs, init: ListAtScan { index: 0, hit: "" }, f: fn(acc, x) {
+    ListAtScan { index: acc.index + 1, hit: if acc.index == i { x } else { acc.hit } }
+  })
+  scan.hit
+}
+
+type ListAtScan {
+  index: Int
+  hit: String
+}
+
+// ── Balance (usage and charges visibility derives from the same ledger) ──────────────────────
+
+fn account_balance(state: ControlPlaneState, account_id: NonEmptyStr) -> Int {
+  fold(state.ledger, init: 0, f: fn(acc, e) {
+    match e {
+      PrepaidCredit { account_id: a, amount: n, receipt_id: _ } => if (a as String) == (account_id as String) { acc + n } else { acc }
+      UsageCharge { account_id: a, instance_id: _, interval: _, amount: n } => if (a as String) == (account_id as String) { acc - n } else { acc }
+    }
+  })
+}
+
+// ── Webhook: verify, decode, deduplicate, then apply ──────────────────────────────────────────
+
+fn stripe_event_processed(state: ControlPlaneState, event_id: NonEmptyStr) -> Bool {
+  fold(state.processed_stripe_events, init: false, f: fn(acc, e) { acc || (e as String) == (event_id as String) })
+}
+
+fn checkout_session_credited(state: ControlPlaneState, session_id: NonEmptyStr) -> Bool {
+  fold(state.receipts, init: false, f: fn(acc, r) { acc || (r.checkout_session_id as String) == (session_id as String) })
+}
+
+fn mark_processed(state: ControlPlaneState, event_id: NonEmptyStr) -> ControlPlaneState {
+  ControlPlaneState {
+    accounts: state.accounts,
+    processed_stripe_events: append(state.processed_stripe_events, [event_id]),
+    receipts: state.receipts,
+    failed_payments: state.failed_payments,
+    ledger: state.ledger,
+    instances: state.instances,
+  }
+}
+
+fn credit_session(policy: ControlPlanePolicy, state: ControlPlaneState, event_id: NonEmptyStr, s: CheckoutSession) -> ControlPlaneStep {
+  if account_exists(state: state, account_id: s.client_reference_id) == false {
+    unchanged(state: state, outcome: WebhookRejected { reason: "checkout session names no known account" })
+  } else if (s.currency as String) != (policy.currency as String) {
+    unchanged(state: state, outcome: WebhookRejected { reason: "checkout session currency is not the control plane currency" })
+  } else if s.amount_subtotal + s.amount_tax != s.amount_total {
+    unchanged(state: state, outcome: WebhookRejected { reason: "checkout session subtotal plus tax does not equal total" })
+  } else if checkout_session_credited(state: state, session_id: s.id) {
+    // Stripe may deliver checkout.session.completed and later async_payment_succeeded, or redeliver
+    // under a new event id; the SESSION is the unit that is credited, once.
+    unchanged(state: mark_processed(state: state, event_id: event_id), outcome: StripeEventAlreadyProcessed { stripe_event_id: event_id })
+  } else {
+    match s.automatic_tax {
+      AutomaticTaxComplete => {
+        let receipt = Receipt {
+          receipt_id: concat("rcpt_", s.id as String) as NonEmptyStr,
+          account_id: s.client_reference_id,
+          stripe_event_id: event_id,
+          checkout_session_id: s.id,
+          currency: s.currency,
+          subtotal: s.amount_subtotal,
+          tax: s.amount_tax,
+          total: s.amount_total,
+        }
+        let marked = mark_processed(state: state, event_id: event_id)
+        ControlPlaneStep {
+          state: ControlPlaneState {
+            accounts: marked.accounts,
+            processed_stripe_events: marked.processed_stripe_events,
+            receipts: append(marked.receipts, [receipt]),
+            failed_payments: marked.failed_payments,
+            ledger: append(marked.ledger, [PrepaidCredit { account_id: s.client_reference_id, amount: s.amount_subtotal, receipt_id: receipt.receipt_id }]),
+            instances: marked.instances,
+          },
+          outcome: PaymentCredited { receipt: receipt },
+        }
+      }
+      // Tax is not deferrable: a payment whose tax Stripe did not determine is neither credited nor
+      // receipted. It is held, visibly, and the event is NOT marked processed so a later corrected
+      // delivery can still credit it.
+      AutomaticTaxFailed => unchanged(state: state, outcome: PaymentHeldTaxUndetermined { stripe_event_id: event_id, checkout_session_id: s.id })
+      AutomaticTaxRequiresLocationInputs => unchanged(state: state, outcome: PaymentHeldTaxUndetermined { stripe_event_id: event_id, checkout_session_id: s.id })
+      AutomaticTaxDisabled => unchanged(state: state, outcome: PaymentHeldTaxUndetermined { stripe_event_id: event_id, checkout_session_id: s.id })
+    }
+  }
+}
+
+fn record_failed_payment(state: ControlPlaneState, event_id: NonEmptyStr, s: CheckoutSession, reason: NonEmptyStr) -> ControlPlaneStep {
+  let failed = FailedPayment { account_id: s.client_reference_id, stripe_event_id: event_id, checkout_session_id: s.id, reason: reason }
+  let marked = mark_processed(state: state, event_id: event_id)
+  ControlPlaneStep {
+    state: ControlPlaneState {
+      accounts: marked.accounts,
+      processed_stripe_events: marked.processed_stripe_events,
+      receipts: marked.receipts,
+      failed_payments: append(marked.failed_payments, [failed]),
+      ledger: marked.ledger,
+      instances: marked.instances,
+    },
+    outcome: PaymentFailedRecorded { failed: failed },
+  }
+}
+
+fn apply_stripe_event(policy: ControlPlanePolicy, state: ControlPlaneState, event: StripeEvent) -> ControlPlaneStep {
+  if stripe_event_processed(state: state, event_id: event.id) {
+    unchanged(state: state, outcome: StripeEventAlreadyProcessed { stripe_event_id: event.id })
+  } else {
+    match event.kind {
+      CheckoutSessionCompleted { session: s } => match s.payment_status {
+        CheckoutPaid => credit_session(policy: policy, state: state, event_id: event.id, s: s)
+        // Delayed payment methods: completed but unpaid. Nothing is credited until
+        // async_payment_succeeded; the event is consumed.
+        CheckoutUnpaid => unchanged(state: mark_processed(state: state, event_id: event.id), outcome: StripeEventIgnored { stripe_event_id: event.id, event_type: "checkout.session.completed (unpaid)" })
+        CheckoutNoPaymentRequired => unchanged(state: mark_processed(state: state, event_id: event.id), outcome: StripeEventIgnored { stripe_event_id: event.id, event_type: "checkout.session.completed (no payment required)" })
+      }
+      CheckoutSessionAsyncPaymentSucceeded { session: s } => credit_session(policy: policy, state: state, event_id: event.id, s: s)
+      CheckoutSessionAsyncPaymentFailed { session: s } => record_failed_payment(state: state, event_id: event.id, s: s, reason: "asynchronous payment failed")
+      StripeEventTypeNotModeled { event_type: t } => unchanged(state: mark_processed(state: state, event_id: event.id), outcome: StripeEventIgnored { stripe_event_id: event.id, event_type: t })
+    }
+  }
+}
+
+fn apply_webhook(endpoint_secret: MacKey, policy: ControlPlanePolicy, state: ControlPlaneState, header: String, body: String, received_at: Int) -> ControlPlaneStep {
+  match stripe_verify_webhook(endpoint_secret: endpoint_secret, signature_header: header, raw_body: body, now: received_at, tolerance_seconds: policy.webhook_tolerance_seconds) {
+    StripeWebhookHeaderMalformed { reason: r } => unchanged(state: state, outcome: WebhookRejected { reason: r })
+    StripeWebhookOutsideTolerance { timestamp: _, now: _, tolerance_seconds: _ } => unchanged(state: state, outcome: WebhookRejected { reason: "webhook timestamp outside tolerance" })
+    StripeWebhookNoSignatureVerified { tried: _ } => unchanged(state: state, outcome: WebhookRejected { reason: "webhook signature does not verify" })
+    StripeWebhookVerified { verified: v, timestamp: t } =>
+      // The join: the verified message must be exactly the bytes about to be decoded.
+      if (v.message as String) != (stripe_signed_payload(timestamp: t, raw_body: body) as String) {
+        unchanged(state: state, outcome: WebhookRejected { reason: "verified payload is not the delivered body" })
+      } else {
+        match decode_stripe_event(raw_body: body) {
+          StripeEventUndecodable { reason: r } => unchanged(state: state, outcome: WebhookRejected { reason: r })
+          StripeEventDecoded { event: e } => apply_stripe_event(policy: policy, state: state, event: e)
+        }
+      }
+  }
+}
+
+// ── Instances ────────────────────────────────────────────────────────────────────────────────
+
+fn instance_id_for(account_id: NonEmptyStr, idempotency_key: NonEmptyStr) -> NonEmptyStr {
+  concat(concat(concat("inst_", account_id as String), "_"), idempotency_key as String) as NonEmptyStr
+}
+
+fn find_instance(state: ControlPlaneState, instance_id: NonEmptyStr) -> InstanceRecord? {
+  fold(state.instances, init: none, f: fn(acc, i) {
+    if (i.instance_id as String) == (instance_id as String) { Present { value: i } } else { acc }
+  })
+}
+
+fn replace_instance(state: ControlPlaneState, updated: InstanceRecord) -> ControlPlaneState {
+  ControlPlaneState {
+    accounts: state.accounts,
+    processed_stripe_events: state.processed_stripe_events,
+    receipts: state.receipts,
+    failed_payments: state.failed_payments,
+    ledger: state.ledger,
+    instances: map(state.instances, i => if (i.instance_id as String) == (updated.instance_id as String) { updated } else { i }),
+  }
+}
+
+fn with_phase(i: InstanceRecord, phase: InstancePhase) -> InstanceRecord {
+  InstanceRecord { instance_id: i.instance_id, account_id: i.account_id, idempotency_key: i.idempotency_key, host: i.host, phase: phase }
+}
+
+fn host_is_first_customer_host(host: NonEmptyStr) -> Bool {
+  (host as String) == "srv3" || (host as String) == "srv4"
+}
+
+fn request_instance(policy: ControlPlanePolicy, state: ControlPlaneState, account_id: NonEmptyStr, key: NonEmptyStr, host: NonEmptyStr) -> ControlPlaneStep {
+  let id = instance_id_for(account_id: account_id, idempotency_key: key)
+  match find_instance(state: state, instance_id: id) {
+    Present { value: existing } =>
+      if (existing.host as String) == (host as String) {
+        unchanged(state: state, outcome: InstanceRequestReplayed { instance: existing })
+      } else {
+        unchanged(state: state, outcome: InstanceRequestRefused { reason: "idempotency key reused with a different request" })
+      }
+    Absent =>
+      if host_is_first_customer_host(host: host) == false {
+        unchanged(state: state, outcome: InstanceRequestRefused { reason: "host is not offered for PremiumDedicated" })
+      } else if account_balance(state: state, account_id: account_id) < policy.minimum_balance_to_request {
+        unchanged(state: state, outcome: InstanceRequestRefused { reason: "prepaid balance is below the minimum to request an instance" })
+      } else {
+        let record = InstanceRecord { instance_id: id, account_id: account_id, idempotency_key: key, host: host, phase: Provisioning }
+        ControlPlaneStep {
+          state: ControlPlaneState {
+            accounts: state.accounts,
+            processed_stripe_events: state.processed_stripe_events,
+            receipts: state.receipts,
+            failed_payments: state.failed_payments,
+            ledger: state.ledger,
+            instances: append(state.instances, [record]),
+          },
+          outcome: InstanceAccepted { instance: record },
+        }
+      }
+  }
+}
+
+fn transition(state: ControlPlaneState, instance_id: NonEmptyStr, f: fn(InstanceRecord) -> InstancePhase?, refusal: NonEmptyStr) -> ControlPlaneStep {
+  match find_instance(state: state, instance_id: instance_id) {
+    Absent => unchanged(state: state, outcome: CommandRefused { reason: "no such instance" })
+    Present { value: i } => match f(i) {
+      Absent => unchanged(state: state, outcome: CommandRefused { reason: refusal })
+      Present { value: p } => {
+        let updated = with_phase(i: i, phase: p)
+        ControlPlaneStep { state: replace_instance(state: state, updated: updated), outcome: InstancePhaseChanged { instance: updated } }
+      }
+    }
+  }
+}
+
+fn interval_charged(state: ControlPlaneState, instance_id: NonEmptyStr, interval: Int) -> Bool {
+  fold(state.ledger, init: false, f: fn(acc, e) {
+    match e {
+      UsageCharge { account_id: _, instance_id: i, interval: n, amount: _ } => acc || ((i as String) == (instance_id as String) && n == interval)
+      PrepaidCredit { account_id: _, amount: _, receipt_id: _ } => acc
+    }
+  })
+}
+
+// Charging accrues ONLY while Running, once per (instance, interval). A stop request ends
+// charging at once -- an interrupted teardown is the operator's cost, never the customer's -- and a
+// terminated or failed instance is never charged. When the next interval would overdraw the prepaid
+// balance it is not charged: the instance moves to Stopping { BalanceExhausted }.
+fn meter_interval(policy: ControlPlanePolicy, state: ControlPlaneState, instance_id: NonEmptyStr, interval: Int) -> ControlPlaneStep {
+  match find_instance(state: state, instance_id: instance_id) {
+    Absent => unchanged(state: state, outcome: CommandRefused { reason: "no such instance" })
+    Present { value: i } =>
+      if interval_charged(state: state, instance_id: instance_id, interval: interval) {
+        unchanged(state: state, outcome: IntervalAlreadyCharged { instance_id: instance_id, interval: interval })
+      } else {
+        match i.phase {
+          Provisioning => unchanged(state: state, outcome: IntervalNotChargeable { instance_id: instance_id, interval: interval, reason: "instance is not running yet" })
+          ProvisioningFailed { reason: _ } => unchanged(state: state, outcome: IntervalNotChargeable { instance_id: instance_id, interval: interval, reason: "provisioning failed; never charged" })
+          Stopping { cause: _, interrupted_attempts: _ } => unchanged(state: state, outcome: IntervalNotChargeable { instance_id: instance_id, interval: interval, reason: "stop requested; charging has ended" })
+          Terminated { cause: _ } => unchanged(state: state, outcome: IntervalNotChargeable { instance_id: instance_id, interval: interval, reason: "instance terminated; no charge after termination" })
+          Running { since_interval: since } =>
+            if interval < since {
+              unchanged(state: state, outcome: IntervalNotChargeable { instance_id: instance_id, interval: interval, reason: "interval precedes the instance running" })
+            } else {
+              let balance = account_balance(state: state, account_id: i.account_id)
+              let rate = policy.premium_dedicated_rate_per_interval
+              if balance < rate {
+                let stopping = with_phase(i: i, phase: Stopping { cause: BalanceExhausted, interrupted_attempts: 0 })
+                ControlPlaneStep { state: replace_instance(state: state, updated: stopping), outcome: SpendCapReached { instance: stopping } }
+              } else {
+                ControlPlaneStep {
+                  state: ControlPlaneState {
+                    accounts: state.accounts,
+                    processed_stripe_events: state.processed_stripe_events,
+                    receipts: state.receipts,
+                    failed_payments: state.failed_payments,
+                    ledger: append(state.ledger, [UsageCharge { account_id: i.account_id, instance_id: instance_id, interval: interval, amount: rate }]),
+                    instances: state.instances,
+                  },
+                  outcome: IntervalCharged { instance_id: instance_id, interval: interval, amount: rate, balance_after: balance - rate },
+                }
+              }
+            }
+        }
+      }
+  }
+}
+
+fn stop_instance(state: ControlPlaneState, account_id: NonEmptyStr, instance_id: NonEmptyStr) -> ControlPlaneStep {
+  match find_instance(state: state, instance_id: instance_id) {
+    Absent => unchanged(state: state, outcome: CommandRefused { reason: "no such instance" })
+    Present { value: i } =>
+      if (i.account_id as String) != (account_id as String) {
+        unchanged(state: state, outcome: CommandRefused { reason: "instance belongs to another account" })
+      } else {
+        transition(state: state, instance_id: instance_id, f: fn(r) {
+          match r.phase {
+            Provisioning => Present { value: Stopping { cause: CustomerRequested, interrupted_attempts: 0 } }
+            Running { since_interval: _ } => Present { value: Stopping { cause: CustomerRequested, interrupted_attempts: 0 } }
+            Stopping { cause: c, interrupted_attempts: n } => Present { value: Stopping { cause: c, interrupted_attempts: n } }
+            Terminated { cause: c } => Present { value: Terminated { cause: c } }
+            ProvisioningFailed { reason: why } => Present { value: ProvisioningFailed { reason: why } }
+          }
+        }, refusal: "unreachable")
+      }
+  }
+}
+
+fn apply_command(session_key: MacKey, endpoint_secret: MacKey, policy: ControlPlanePolicy, state: ControlPlaneState, command: ControlPlaneCommand) -> ControlPlaneStep {
+  match command {
+    SignUp { account_id: a, email: e } =>
+      if account_exists(state: state, account_id: a) {
+        unchanged(state: state, outcome: AccountAlreadyExists { account_id: a })
+      } else {
+        ControlPlaneStep {
+          state: ControlPlaneState {
+            accounts: append(state.accounts, [CustomerAccount { account_id: a, email: e }]),
+            processed_stripe_events: state.processed_stripe_events,
+            receipts: state.receipts,
+            failed_payments: state.failed_payments,
+            ledger: state.ledger,
+            instances: state.instances,
+          },
+          outcome: AccountCreated { account_id: a },
+        }
+      }
+    StripeWebhookDelivery { signature_header: h, raw_body: b, received_at: t } =>
+      apply_webhook(endpoint_secret: endpoint_secret, policy: policy, state: state, header: h, body: b, received_at: t)
+    RequestInstance { session_token: tok, now: now, idempotency_key: k, host: host } =>
+      match authenticate(key: session_key, state: state, token: tok, now: now) {
+        AuthenticationRefused { reason: r } => unchanged(state: state, outcome: Unauthenticated { reason: r })
+        Authenticated { account_id: a } => request_instance(policy: policy, state: state, account_id: a, key: k, host: host)
+      }
+    ProvisioningSucceeded { instance_id: id, at_interval: n } =>
+      transition(state: state, instance_id: id, f: fn(r) {
+        match r.phase {
+          Provisioning => Present { value: Running { since_interval: n } }
+          Running { since_interval: s } => Present { value: Running { since_interval: s } }
+          ProvisioningFailed { reason: _ } => none
+          Stopping { cause: _, interrupted_attempts: _ } => none
+          Terminated { cause: _ } => none
+        }
+      }, refusal: "provisioning success reported for an instance that is not provisioning")
+    ProvisioningFailedReported { instance_id: id, reason: why } =>
+      transition(state: state, instance_id: id, f: fn(r) {
+        match r.phase {
+          Provisioning => Present { value: ProvisioningFailed { reason: why } }
+          ProvisioningFailed { reason: w } => Present { value: ProvisioningFailed { reason: w } }
+          Running { since_interval: _ } => none
+          Stopping { cause: _, interrupted_attempts: _ } => none
+          Terminated { cause: _ } => none
+        }
+      }, refusal: "provisioning failure reported for an instance that is past provisioning")
+    MeterInterval { instance_id: id, interval: n } => meter_interval(policy: policy, state: state, instance_id: id, interval: n)
+    StopInstance { session_token: tok, now: now, instance_id: id } =>
+      match authenticate(key: session_key, state: state, token: tok, now: now) {
+        AuthenticationRefused { reason: r } => unchanged(state: state, outcome: Unauthenticated { reason: r })
+        Authenticated { account_id: a } => stop_instance(state: state, account_id: a, instance_id: id)
+      }
+    TeardownInterrupted { instance_id: id } =>
+      transition(state: state, instance_id: id, f: fn(r) {
+        match r.phase {
+          Stopping { cause: c, interrupted_attempts: n } => Present { value: Stopping { cause: c, interrupted_attempts: n + 1 } }
+          Provisioning => none
+          Running { since_interval: _ } => none
+          ProvisioningFailed { reason: _ } => none
+          Terminated { cause: _ } => none
+        }
+      }, refusal: "teardown interruption reported for an instance that is not stopping")
+    TeardownCompleted { instance_id: id } =>
+      transition(state: state, instance_id: id, f: fn(r) {
+        match r.phase {
+          Stopping { cause: c, interrupted_attempts: _ } => Present { value: Terminated { cause: c } }
+          Terminated { cause: c } => Present { value: Terminated { cause: c } }
+          Provisioning => none
+          Running { since_interval: _ } => none
+          ProvisioningFailed { reason: _ } => none
+        }
+      }, refusal: "teardown completion reported for an instance that was never stopped")
+    // Operator default 2026-10-01: host failure may TERMINATE an instance; there is no resume.
+    HostFailureObserved { instance_id: id } =>
+      transition(state: state, instance_id: id, f: fn(r) {
+        match r.phase {
+          Provisioning => Present { value: Terminated { cause: HostFailed } }
+          Running { since_interval: _ } => Present { value: Terminated { cause: HostFailed } }
+          Stopping { cause: c, interrupted_attempts: _ } => Present { value: Terminated { cause: c } }
+          Terminated { cause: c } => Present { value: Terminated { cause: c } }
+          ProvisioningFailed { reason: w } => Present { value: ProvisioningFailed { reason: w } }
+        }
+      }, refusal: "unreachable")
+  }
+}
+
+type ControlPlaneReplay {
+  state: ControlPlaneState
+  outcomes: List<ControlPlaneOutcome>
+}
+
+// The log fold. Persisting the command log and replaying it through this function is the whole of
+// the state store's semantics; see control_plane_state_store_frontier for the realization.
+fn replay_commands(session_key: MacKey, endpoint_secret: MacKey, policy: ControlPlanePolicy, commands: List<ControlPlaneCommand>) -> ControlPlaneReplay {
+  fold(commands, init: ControlPlaneReplay { state: control_plane_empty(), outcomes: [] }, f: fn(acc, c) {
+    let step = apply_command(session_key: session_key, endpoint_secret: endpoint_secret, policy: policy, state: acc.state, command: c)
+    ControlPlaneReplay { state: step.state, outcomes: append(acc.outcomes, [step.outcome]) }
+  })
+}
+
+// ── Usage and charges, as the portal shows them ──────────────────────────────────────────────
+
+type InstanceUsage {
+  instance: InstanceRecord
+  intervals_charged: Int
+  amount_charged: Int
+}
+
+type AccountStatement {
+  account_id: NonEmptyStr
+  balance: Int
+  receipts: List<Receipt>
+  failed_payments: List<FailedPayment>
+  instances: List<InstanceUsage>
+}
+
+fn instance_usage(state: ControlPlaneState, i: InstanceRecord) -> InstanceUsage {
+  fold(state.ledger, init: InstanceUsage { instance: i, intervals_charged: 0, amount_charged: 0 }, f: fn(acc, e) {
+    match e {
+      UsageCharge { account_id: _, instance_id: id, interval: _, amount: n } =>
+        if (id as String) == (i.instance_id as String) {
+          InstanceUsage { instance: i, intervals_charged: acc.intervals_charged + 1, amount_charged: acc.amount_charged + n }
+        } else { acc }
+      PrepaidCredit { account_id: _, amount: _, receipt_id: _ } => acc
+    }
+  })
+}
+
+fn account_statement(state: ControlPlaneState, account_id: NonEmptyStr) -> AccountStatement {
+  AccountStatement {
+    account_id: account_id,
+    balance: account_balance(state: state, account_id: account_id),
+    receipts: filter(state.receipts, r => (r.account_id as String) == (account_id as String)),
+    failed_payments: filter(state.failed_payments, f => (f.account_id as String) == (account_id as String)),
+    instances: map(filter(state.instances, i => (i.account_id as String) == (account_id as String)), i => instance_usage(state: state, i: i)),
+  }
+}
+
+// ── Declared frontiers (consumers that land in later changes, with their triggers) ───────────
+
+data control_plane_state_store_frontier: NonEmptyStr = "The command log is the state; its durable realization is gunbc.durable_cas_file_store file_compare_and_set appending one admitted command per generation, then replay_commands on read. Not bound in this change: there is no serialization of ControlPlaneCommand yet. Trigger: a ControlPlaneCommand JSON codec plus a store binding whose readback replays to an identical AccountStatement."
+
+data public_edge_ingress_frontier: NonEmptyStr = "extdeps.http.server ServeHttpRequest carries method, path, body and a TailnetIdentity and NO request headers, so neither Stripe-Signature nor a bearer session token can reach a handler, and a public (non-tailnet) caller has no identity arm. Trigger: ServeHttpRequest gains a header carrier and a public-caller identity arm; then StripeWebhookDelivery and RequestInstance bind to DynamicRoute handlers."
+
+data customer_identity_email_delivery_frontier: NonEmptyStr = "Sign-up creates an account and issue_session mints a MAC session token, but no effect delivers a one-time link to the address, so possession of the email address is not yet proven. Trigger: a modeled outbound-mail effect carrying the issued token."
+
+data customer_ssh_key_binding_frontier: NonEmptyStr = "The workspace request's public_key_ref (lowercase SHA-256 of the key, gunbc.workspace_microvm workspace_public_key_catalog_path) is the join point to the srv-host instance slice; the binding account_id -> enrolled key refs is owned here and is not modeled yet. Trigger: an EnrolPublicKey command whose admitted refs RequestInstance must name."

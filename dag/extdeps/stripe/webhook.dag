@@ -1,0 +1,301 @@
+module extdeps.stripe.webhook
+
+import std.types { NonEmptyStr, String, Int, Bool, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.crypto.mac { MacKey, MacVerification, VerifiedMessage, mac_verify, MacVerified, MacTagMismatch, MacKeyUnknown, MacKeyRetired, MacSuiteMismatch, MacTagMalformed }
+import extdeps.languages.json.emit { JsonValue, JsonString, JsonNumber, JsonBool }
+import extdeps.languages.json.parse {
+  JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document,
+  JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject, json_object_unique_member,
+}
+
+// Stripe's webhook contract, modeled as Stripe publishes it and nothing more. The scheme is the
+// documented manual verification: the `Stripe-Signature` header carries `t=<unix seconds>` and one
+// or more `v1=<hex>` entries (several during an endpoint-secret roll), and each v1 is
+// HMAC-SHA-256, keyed by the endpoint secret, over the exact bytes `<t>.<raw body>`. The default
+// replay tolerance of the official libraries is 300 seconds. Business policy -- which events credit
+// a balance, what idempotency means for this product -- is NOT here; it is gunbc.customer's.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.stripe.com/webhooks#verify-manually"
+  }
+}
+
+data stripe_default_tolerance_seconds: Int = 300
+
+type StripeSignatureHeader {
+  timestamp: Int
+  v1_signatures: List<NonEmptyStr>
+}
+
+type StripeSignatureHeaderParse
+  = StripeSignatureHeaderParsed { header: StripeSignatureHeader }
+  | StripeSignatureHeaderMalformed { reason: NonEmptyStr }
+
+type StripeHeaderScan {
+  timestamp: Int?
+  timestamp_count: Int
+  v1: List<NonEmptyStr>
+}
+
+// Entries other than t and v1 (v0, future schemes) are ignored exactly as Stripe's libraries
+// ignore them; a duplicated t is refused rather than resolved by position.
+fn parse_stripe_signature_header(raw: String) -> StripeSignatureHeaderParse {
+  let scan = fold(split(s: raw, delimiter: ","), init: StripeHeaderScan { timestamp: none, timestamp_count: 0, v1: [] }, f: fn(acc, item) {
+    let entry = trim(s: item)
+    if starts_with(s: entry, prefix: "t=") {
+      StripeHeaderScan {
+        timestamp: parse_int(s: substring(s: entry, start: 2, end: entry.length())),
+        timestamp_count: acc.timestamp_count + 1,
+        v1: acc.v1,
+      }
+    } else if starts_with(s: entry, prefix: "v1=") && entry.length() > 3 {
+      StripeHeaderScan {
+        timestamp: acc.timestamp,
+        timestamp_count: acc.timestamp_count,
+        v1: append(acc.v1, [substring(s: entry, start: 3, end: entry.length()) as NonEmptyStr]),
+      }
+    } else {
+      acc
+    }
+  })
+  if scan.timestamp_count != 1 {
+    StripeSignatureHeaderMalformed { reason: "Stripe-Signature must carry exactly one t= entry" }
+  } else if count(scan.v1) == 0 {
+    StripeSignatureHeaderMalformed { reason: "Stripe-Signature carries no v1= signature" }
+  } else {
+    match scan.timestamp {
+      Absent => StripeSignatureHeaderMalformed { reason: "Stripe-Signature t= is not an integer" }
+      Present { value: t } => StripeSignatureHeaderParsed { header: StripeSignatureHeader { timestamp: t, v1_signatures: scan.v1 } }
+    }
+  }
+}
+
+fn stripe_signed_payload(timestamp: Int, raw_body: String) -> NonEmptyStr {
+  concat(concat(to_string(timestamp), "."), raw_body) as NonEmptyStr
+}
+
+// Verification succeeds only with a VerifiedMessage over the exact signed payload, so a consumer
+// can (and gunbc.customer.control_plane does) join the success to the body it is about to act on.
+type StripeWebhookVerification
+  = StripeWebhookVerified { verified: VerifiedMessage, timestamp: Int }
+  | StripeWebhookHeaderMalformed { reason: NonEmptyStr }
+  | StripeWebhookOutsideTolerance { timestamp: Int, now: Int, tolerance_seconds: Int }
+  | StripeWebhookNoSignatureVerified { tried: Int }
+
+fn stripe_first_verified(key: MacKey, payload: NonEmptyStr, signatures: List<NonEmptyStr>) -> VerifiedMessage? {
+  fold(signatures, init: none, f: fn(acc, sig) {
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent => match mac_verify(key: key, message: payload, tag_hex: sig) {
+        MacVerified { verified: v } => Present { value: v }
+        MacTagMismatch { key_id: _ } => none
+        MacKeyUnknown { key_id: _ } => none
+        MacKeyRetired { key_id: _, retired_at: _ } => none
+        MacSuiteMismatch { expected: _, key_suite: _ } => none
+        MacTagMalformed { octets_declared: _, octets_expected: _ } => none
+      }
+    }
+  })
+}
+
+fn stripe_verify_webhook(
+  endpoint_secret: MacKey,
+  signature_header: String,
+  raw_body: String,
+  now: Int,
+  tolerance_seconds: Int,
+) -> StripeWebhookVerification {
+  match parse_stripe_signature_header(raw: signature_header) {
+    StripeSignatureHeaderMalformed { reason: r } => StripeWebhookHeaderMalformed { reason: r }
+    StripeSignatureHeaderParsed { header: h } => {
+      let age = now - h.timestamp
+      if age > tolerance_seconds || (0 - age) > tolerance_seconds {
+        StripeWebhookOutsideTolerance { timestamp: h.timestamp, now: now, tolerance_seconds: tolerance_seconds }
+      } else {
+        let payload = stripe_signed_payload(timestamp: h.timestamp, raw_body: raw_body)
+        match stripe_first_verified(key: endpoint_secret, payload: payload, signatures: h.v1_signatures) {
+          Present { value: v } => StripeWebhookVerified { verified: v, timestamp: h.timestamp }
+          Absent => StripeWebhookNoSignatureVerified { tried: count(h.v1_signatures) }
+        }
+      }
+    }
+  }
+}
+
+// ── The event object ─────────────────────────────────────────────────────────────────────────
+// Only the fields this repository reads, under Stripe's own names. Amounts are integers in the
+// currency's minor unit, as the API returns them.
+
+type CheckoutPaymentStatus
+  = CheckoutPaid
+  | CheckoutUnpaid
+  | CheckoutNoPaymentRequired
+
+// automatic_tax.status as Checkout reports it. `complete` is the only state in which Stripe Tax has
+// determined the tax that amount_tax carries.
+type CheckoutAutomaticTaxStatus
+  = AutomaticTaxComplete
+  | AutomaticTaxFailed
+  | AutomaticTaxRequiresLocationInputs
+  | AutomaticTaxDisabled
+
+type CheckoutSession {
+  id: NonEmptyStr
+  client_reference_id: NonEmptyStr
+  payment_status: CheckoutPaymentStatus
+  currency: NonEmptyStr
+  amount_subtotal: Int
+  amount_tax: Int
+  amount_total: Int
+  automatic_tax: CheckoutAutomaticTaxStatus
+}
+
+type StripeEventKind
+  = CheckoutSessionCompleted { session: CheckoutSession }
+  | CheckoutSessionAsyncPaymentSucceeded { session: CheckoutSession }
+  | CheckoutSessionAsyncPaymentFailed { session: CheckoutSession }
+  | StripeEventTypeNotModeled { event_type: NonEmptyStr }
+
+type StripeEvent {
+  id: NonEmptyStr
+  kind: StripeEventKind
+}
+
+type StripeEventDecode
+  = StripeEventDecoded { event: StripeEvent }
+  | StripeEventUndecodable { reason: NonEmptyStr }
+
+fn stripe_member(v: JsonValue, key: String) -> JsonValue? {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value: x } => Present { value: x }
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
+  }
+}
+
+fn stripe_string(v: JsonValue, key: String) -> NonEmptyStr? {
+  match stripe_member(v: v, key: key) {
+    Present { value: JsonString { value: s } } => if s == "" { none } else { Present { value: s as NonEmptyStr } }
+    _ => none
+  }
+}
+
+fn stripe_int(v: JsonValue, key: String) -> Int? {
+  match stripe_member(v: v, key: key) {
+    Present { value: JsonNumber { lexeme: l } } => parse_int(s: l as String)
+    _ => none
+  }
+}
+
+fn stripe_payment_status(label: String) -> CheckoutPaymentStatus? {
+  if label == "paid" { Present { value: CheckoutPaid } }
+  else if label == "unpaid" { Present { value: CheckoutUnpaid } }
+  else if label == "no_payment_required" { Present { value: CheckoutNoPaymentRequired } }
+  else { none }
+}
+
+fn stripe_automatic_tax_status(session: JsonValue) -> CheckoutAutomaticTaxStatus? {
+  match stripe_member(v: session, key: "automatic_tax") {
+    Absent => none
+    Present { value: at } => match stripe_member(v: at, key: "enabled") {
+      Present { value: JsonBool { value: false } } => Present { value: AutomaticTaxDisabled }
+      _ => match stripe_string(v: at, key: "status") {
+        Absent => none
+        Present { value: s } =>
+          if (s as String) == "complete" { Present { value: AutomaticTaxComplete } }
+          else if (s as String) == "failed" { Present { value: AutomaticTaxFailed } }
+          else if (s as String) == "requires_location_inputs" { Present { value: AutomaticTaxRequiresLocationInputs } }
+          else { none }
+      }
+    }
+  }
+}
+
+fn stripe_amount_tax(session: JsonValue) -> Int? {
+  match stripe_member(v: session, key: "total_details") {
+    Present { value: td } => stripe_int(v: td, key: "amount_tax")
+    Absent => none
+  }
+}
+
+fn decode_checkout_session(session: JsonValue) -> CheckoutSession? {
+  match stripe_string(v: session, key: "id") {
+    Absent => none
+    Present { value: id } => match stripe_string(v: session, key: "client_reference_id") {
+      Absent => none
+      Present { value: crid } => match stripe_string(v: session, key: "payment_status") {
+        Absent => none
+        Present { value: ps_label } => match stripe_payment_status(label: ps_label as String) {
+          Absent => none
+          Present { value: ps } => match stripe_string(v: session, key: "currency") {
+            Absent => none
+            Present { value: cur } => match stripe_int(v: session, key: "amount_subtotal") {
+              Absent => none
+              Present { value: sub } => match stripe_int(v: session, key: "amount_total") {
+                Absent => none
+                Present { value: total } => match stripe_amount_tax(session: session) {
+                  Absent => none
+                  Present { value: tax } => match stripe_automatic_tax_status(session: session) {
+                    Absent => none
+                    Present { value: ats } => Present { value: CheckoutSession {
+                      id: id,
+                      client_reference_id: crid,
+                      payment_status: ps,
+                      currency: cur,
+                      amount_subtotal: sub,
+                      amount_tax: tax,
+                      amount_total: total,
+                      automatic_tax: ats,
+                    } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn stripe_session_kind(event_type: NonEmptyStr, session: CheckoutSession) -> StripeEventKind {
+  if (event_type as String) == "checkout.session.completed" { CheckoutSessionCompleted { session: session } }
+  else if (event_type as String) == "checkout.session.async_payment_succeeded" { CheckoutSessionAsyncPaymentSucceeded { session: session } }
+  else if (event_type as String) == "checkout.session.async_payment_failed" { CheckoutSessionAsyncPaymentFailed { session: session } }
+  else { StripeEventTypeNotModeled { event_type: event_type } }
+}
+
+fn stripe_event_type_is_checkout_session(event_type: NonEmptyStr) -> Bool {
+  starts_with(s: event_type as String, prefix: "checkout.session.")
+}
+
+fn decode_stripe_event(raw_body: String) -> StripeEventDecode {
+  match parse_json_document(s: raw_body) {
+    JsonDocumentUnreadable { gap: _ } => StripeEventUndecodable { reason: "event body is not a JSON document" }
+    JsonDocumentParsed { value: doc } => match stripe_string(v: doc, key: "id") {
+      Absent => StripeEventUndecodable { reason: "event has no id" }
+      Present { value: id } => match stripe_string(v: doc, key: "type") {
+        Absent => StripeEventUndecodable { reason: "event has no type" }
+        Present { value: t } =>
+          if stripe_event_type_is_checkout_session(event_type: t) == false {
+            StripeEventDecoded { event: StripeEvent { id: id, kind: StripeEventTypeNotModeled { event_type: t } } }
+          } else {
+            match stripe_member(v: doc, key: "data") {
+              Absent => StripeEventUndecodable { reason: "event has no data" }
+              Present { value: data } => match stripe_member(v: data, key: "object") {
+                Absent => StripeEventUndecodable { reason: "event data has no object" }
+                Present { value: obj } => match decode_checkout_session(session: obj) {
+                  Absent => StripeEventUndecodable { reason: "checkout session lacks a field this repository reads" }
+                  Present { value: s } => StripeEventDecoded { event: StripeEvent { id: id, kind: stripe_session_kind(event_type: t, session: s) } }
+                }
+              }
+            }
+          }
+      }
+    }
+  }
+}
