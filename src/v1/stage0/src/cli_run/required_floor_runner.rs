@@ -671,6 +671,7 @@ pub(crate) fn floor_diff_comparison_readout() -> Result<FreezeBaselineComparison
                     "ExactReplayBaseline",
                     "PushBeforeBaseline",
                     "PushParentBaseline",
+                    "MergeGroupBaseBaseline",
                     "OperatorOverrideBaseline",
                 ] {
                     if ctx.sym_eq(*variant_name, name) {
