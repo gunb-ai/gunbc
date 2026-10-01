@@ -446,7 +446,6 @@ fn v41_runtime_image_produce_ci_wet() -> ProcessExit
       match admit_host_held_by_subject(raw: build_host, subject: PairServingUnitOn { group: FabricGroupA }) {
         Present { value: why } => exit_failure(reason: why)
         Absent =>
-          // DEV-ONLY (operator ruling 2026-09-30, never merged): Group A fences srv5-8 in the fabric store, so the host-effect claim is skipped for the dev rebuild.
               release_host_effect_live(handle: Absent, exit: {
                 match with_spark_build_host(
                   host: build_host,

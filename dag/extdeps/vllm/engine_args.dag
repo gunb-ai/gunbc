@@ -204,7 +204,7 @@ fn vllm_engram_config_argv(r: VllmEngramConfigRequest) -> List<String> {
 //     above is dotted.
 // WHICH CONFIG KEY A LAUNCH OVERRIDES, AND TO WHAT, IS THE LAUNCH'S POLICY, NOT A FACT ABOUT vLLM: the
 // key and its value arrive as data from the layer that decides them. Omitted renders no flag at all.
-type VllmHfOverride sole_constructor {
+type VllmHfOverride {
   key: NonEmptyStr
   json_value: NonEmptyStr
 }
