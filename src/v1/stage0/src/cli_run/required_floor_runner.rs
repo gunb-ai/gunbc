@@ -6134,6 +6134,78 @@ impl WarmFrameSlot {
     }
 }
 
+/// The one-pass warm's module order: `candidates` already sorted by (row kind, name), reordered so
+/// every module comes after the modules whose acquisitions its carried rows read (`depends_on`).
+/// Ties keep the candidate order, so the result is deterministic. A dependency on a module outside
+/// `candidates` does not block. A cycle has no order and refuses.
+fn order_warm_modules(
+    candidates: &[String],
+    depends_on: &std::collections::HashMap<String, std::collections::BTreeSet<String>>,
+) -> Result<Vec<String>, String> {
+    let mut placed: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    let mut out: Vec<String> = Vec::with_capacity(candidates.len());
+    while out.len() < candidates.len() {
+        let next = candidates.iter().find(|m| {
+            !placed.contains(m.as_str())
+                && depends_on.get(*m).is_none_or(|deps| {
+                    deps.iter()
+                        .all(|d| placed.contains(d.as_str()) || !candidates.contains(d))
+                })
+        });
+        match next {
+            Some(m) => {
+                placed.insert(m.as_str());
+                out.push(m.clone());
+            }
+            None => {
+                let stuck: Vec<&String> = candidates
+                    .iter()
+                    .filter(|m| !placed.contains(m.as_str()))
+                    .collect();
+                return Err(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=PureProducerShareModuleOrderCycle modules={stuck:?} \
+                     -- these modules' carried rows read each other's acquisitions, so no one-pass \
+                     module order binds every carried input before the row that reads it"
+                ));
+            }
+        }
+    }
+    Ok(out)
+}
+
+#[cfg(test)]
+mod warm_module_order_tests {
+    use super::order_warm_modules;
+    use std::collections::{BTreeSet, HashMap};
+
+    fn deps(rows: &[(&str, &str)]) -> HashMap<String, BTreeSet<String>> {
+        let mut m: HashMap<String, BTreeSet<String>> = HashMap::new();
+        for (from, to) in rows {
+            m.entry(from.to_string())
+                .or_default()
+                .insert(to.to_string());
+        }
+        m
+    }
+
+    // Review 73722's case: `a` and `b` both own acquisitions, and `a`'s carried row reads `b`'s.
+    // Name order alone puts `a` first; the dependency must put `b` first.
+    #[test]
+    fn a_carried_row_runs_after_the_module_owning_its_acquisition() {
+        let order = order_warm_modules(&["a".into(), "b".into(), "c".into()], &deps(&[("a", "b")]))
+            .expect("acyclic");
+        assert_eq!(order, vec!["b", "a", "c"]);
+    }
+
+    #[test]
+    fn a_cross_module_cycle_refuses() {
+        let refused =
+            order_warm_modules(&["a".into(), "b".into()], &deps(&[("a", "b"), ("b", "a")]))
+                .expect_err("cycle");
+        assert!(refused.contains("PureProducerShareModuleOrderCycle"));
+    }
+}
+
 pub(crate) fn install_pure_producer_share(
     prepared: &PreparedRepository,
     corpus_modules: &std::collections::HashSet<String>,
@@ -6313,8 +6385,11 @@ pub(crate) fn install_pure_producer_share(
     // ONE PASS, GROUPED BY MODULE. Every row a module owns -- its acquisitions, then its
     // carried-input producers, then its plain warms -- runs while that module's frame is the one
     // held, so each module is framed exactly once for the whole warm. Modules are ordered by the
-    // earliest kind of row they own, so every acquisition precedes every carried row; a carried
-    // row whose acquisition is not yet bound refuses rather than reading an absent input.
+    // DEPENDENCY the rows declare: a module whose carried row reads an acquisition another module
+    // owns runs after that module (a topological order, ties broken by (row kind, name) so the order
+    // is deterministic). Within a module its own acquisitions precede its carried rows, so every
+    // carried row's input is bound before it runs. A dependency cycle across modules has no such
+    // order and refuses (`PureProducerShareModuleOrderCycle`).
     let rank_of = |module: &str| -> u8 {
         if prepared_inputs
             .iter()
@@ -6339,6 +6414,25 @@ pub(crate) fn install_pure_producer_share(
         .into_iter()
         .collect();
     ordered_modules.sort_by_key(|m| (rank_of(m), m.clone()));
+    let acquisition_module: std::collections::HashMap<&str, String> = prepared_inputs
+        .iter()
+        .map(|i| (i.acquisition.as_str(), module_of(&i.acquisition)))
+        .collect();
+    // module -> the other modules whose acquisitions its carried rows read.
+    let mut depends_on: std::collections::HashMap<String, std::collections::BTreeSet<String>> =
+        std::collections::HashMap::new();
+    for row in &carried_rows {
+        let producer_module = module_of(&row.producer);
+        if let Some(input_module) = acquisition_module.get(row.carried_input.as_str()) {
+            if *input_module != producer_module {
+                depends_on
+                    .entry(producer_module)
+                    .or_default()
+                    .insert(input_module.clone());
+            }
+        }
+    }
+    let ordered_modules = order_warm_modules(&ordered_modules, &depends_on)?;
     for group in &ordered_modules {
         for input in prepared_inputs
             .iter()
