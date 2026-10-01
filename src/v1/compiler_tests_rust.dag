@@ -2265,8 +2265,8 @@ fn ct_std_nat_realization_agreement_test() -> String {
 fn ct_std_nat_operators_refuse_overflow_test() -> String {
   concat(
     "    #[test]\n",
-    "    fn std_nat_emitted_operators_refuse_overflow_through_the_runtime_helpers() {\n",
-    "        let clamp = |overhead_s: i64| std::rc::Rc::new(crate::std_realization_schedule::RunnableBatchClamp {\n",
+    "    fn std_nat_emitted_operators_refuse_overflow_through_the_runtime_helpers() \{\n",
+    "        let clamp = |overhead_s: i64| std::rc::Rc::new(crate::std_realization_schedule::RunnableBatchClamp \{\n",
     "            overhead: crate::std_measure::second(overhead_s),\n",
     "            per_unit: crate::std_measure::millisecond(5),\n",
     "            authority: crate::std_decl_ref::decl_ref(\"ct\".to_string(), \"clamp\".to_string()),\n",
@@ -2274,7 +2274,7 @@ fn ct_std_nat_operators_refuse_overflow_test() -> String {
     "        assert_eq!(crate::std_realization_schedule::runnable_batch_clamp_ms(clamp(2), 3), 2015, \"an in-range clamp is the integer it denotes\");\n",
     "        let refusal = std::panic::catch_unwind(|| crate::std_realization_schedule::runnable_batch_clamp_ms(clamp(i64::MAX / 10), 0)).expect_err(\"a Nat product past i64 must refuse\");\n",
     "        let text = refusal.downcast_ref::<String>().cloned().unwrap_or_default();\n",
-    "        assert!(text.starts_with(\"integer overflow:\"), \"the Nat product must refuse through v1_rt, got {text:?}\");\n",
+    "        assert!(text.starts_with(\"integer overflow:\"), \"the Nat product must refuse through v1_rt, got \{text:?}\");\n",
     "    }\n\n")
 }
 
