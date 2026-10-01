@@ -2,6 +2,7 @@ module gunbc.required_lane_resolution_census
 
 import std.types { String, Bool, List, Int }
 import v2.std.optional { Optional, Present, Absent }
+import extdeps.languages.json.emit { serialize_json_string }
 
 // FOR EVERY MODULE UNDER THE SOURCE ROOTS, DOES AT LEAST ONE REQUIRED LANE RESOLVE IT?
 //
@@ -106,12 +107,8 @@ fn subject_rendered(s: LaneResolutionSubject) -> String {
   }
 }
 
-fn json_string(s: String) -> String {
-  concat(concat("\"", s), "\"")
-}
-
 fn json_string_list(xs: List<String>) -> String {
-  concat(concat("[", xs |> map(x => json_string(s: x)) |> join(separator: ",")), "]")
+  concat(concat("[", xs |> map(x => serialize_json_string(s: x)) |> join(separator: ",")), "]")
 }
 
 // THE RECEIPT: one JSON object per line. A summary line whose counts are the lengths of lists
@@ -126,10 +123,10 @@ fn census_receipt_lines(c: ResolutionCensus) -> List<String> {
     concat(",\"lanes\":", concat(to_string(c.lanes |> count), "}")))
   let lane_lines = c.lanes |> map(l =>
     concat(concat(concat(concat(concat(concat(
-      "{\"kind\":\"lane\",\"job_id\":", json_string(s: l.job_id)),
-      ",\"subject\":"), json_string(s: subject_rendered(s: l.subject))),
+      "{\"kind\":\"lane\",\"job_id\":", serialize_json_string(s: l.job_id)),
+      ",\"subject\":"), serialize_json_string(s: subject_rendered(s: l.subject))),
       ",\"resolved\":"), to_string(l.modules |> count)),
       concat(",\"modules\":", concat(json_string_list(xs: l.modules), "}"))))
-  let unreached_lines = c.unreached |> map(m => concat(concat("{\"kind\":\"unreached\",\"module\":", json_string(s: m)), "}"))
+  let unreached_lines = c.unreached |> map(m => concat(concat("{\"kind\":\"unreached\",\"module\":", serialize_json_string(s: m)), "}"))
   concat(concat([summary], lane_lines), unreached_lines)
 }

@@ -19,6 +19,7 @@ module v2.workflow.floor_unimported_bare_provider_debt_roster
 type UnimportedBareProviderRetirementCause =
     ImportsFixed
   | FileDeleted
+  | RelocatedOutOfSourceRoots { to: String }
   | NotAReference
 
 type UnimportedBareProviderStanding =
@@ -45,6 +46,7 @@ fn unimported_bare_provider_standing_label(standing: UnimportedBareProviderStand
     Retired { cause: c } => match c {
       ImportsFixed => "Retired ImportsFixed"
       FileDeleted => "Retired FileDeleted"
+      RelocatedOutOfSourceRoots { to: t } => "Retired RelocatedOutOfSourceRoots " + t
       NotAReference => "Retired NotAReference"
     }
   }
@@ -57,6 +59,7 @@ type UnimportedBareProviderRowView {
   name: String
   identity: String
   label: String
+  standing: UnimportedBareProviderStanding
   active: Bool
   imports_fixed: Bool
   file_deleted: Bool
@@ -69,6 +72,7 @@ fn unimported_bare_provider_row_view(row: UnimportedBareProviderDisposition) -> 
     name: row.name,
     identity: unimported_bare_provider_identity(file: row.file, name: row.name),
     label: unimported_bare_provider_standing_label(standing: row.standing),
+    standing: row.standing,
     active: match row.standing {
       ActiveDebt => true
       Retired { cause: _ } => false
@@ -1709,9 +1713,9 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/test/claim/witness_purpose_taxonomy_witness_test.dag", name: "length", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/test/claim/x509_rfc5280_witness_test.dag", name: "get", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/x509_rfc5280_witness_test.dag", name: "skip", standing: Retired { cause: NotAReference } },
-  UnimportedBareProviderDisposition { file: "dag/test/fixture/health_read_only/mutation_probe.dag", name: "SshShell", standing: ActiveDebt },
-  UnimportedBareProviderDisposition { file: "dag/test/fixture/health_read_only/mutation_probe.dag", name: "redfish.Http", standing: ActiveDebt },
-  UnimportedBareProviderDisposition { file: "dag/test/fixture/health_read_only/mutation_probe.dag", name: "ssh_session_exec", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/test/fixture/health_read_only/mutation_probe.dag", name: "SshShell", standing: Retired { cause: RelocatedOutOfSourceRoots { to: "fixtures/health_read_only/mutation_probe.dag" } } },
+  UnimportedBareProviderDisposition { file: "dag/test/fixture/health_read_only/mutation_probe.dag", name: "redfish.Http", standing: Retired { cause: RelocatedOutOfSourceRoots { to: "fixtures/health_read_only/mutation_probe.dag" } } },
+  UnimportedBareProviderDisposition { file: "dag/test/fixture/health_read_only/mutation_probe.dag", name: "ssh_session_exec", standing: Retired { cause: RelocatedOutOfSourceRoots { to: "fixtures/health_read_only/mutation_probe.dag" } } },
   UnimportedBareProviderDisposition { file: "dag/test/manual/mercurial_upstream_model_execution_test.dag", name: "append", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/test/manual/pijul_upstream_model_execution_test.dag", name: "append", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "src/v2/compiler/body_producer_forward.dag", name: "dag_translation_rules_node", standing: Retired { cause: ImportsFixed } },
