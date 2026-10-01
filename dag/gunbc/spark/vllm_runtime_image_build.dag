@@ -571,8 +571,14 @@ fn converge_vllm_image_for_recipe(target: SshTarget, context: FleetSshExecutionC
 // the key without adding it here would have reproduced exactly that: a tag and a key that say
 // connectors-on while docker falls back to the Dockerfile's `false`, which is one identity standing for
 // two different sets of bytes. Keyed and passed are the same decision, made once.
+// FLASHINFER_VERSION IS PASSED, NOT LEFT AT THE DOCKERFILE'S DEFAULT. The recipe's flashinfer_version is
+// an input of the image's build key (gunbc.spark.vllm_image_identity), and upstream's Dockerfile installs
+// flashinfer-jit-cache at `ARG FLASHINFER_VERSION`; omitting the argument made the key name a version the
+// build never read, which held only while every recipe's version equalled its revision's default. The V4.1
+// candidate's 0.7.1rc1 is the first that does not.
 fn vllm_image_build_args(r: VllmContainerBuildRecipe) -> List<DockerBuildArg> {
   [
+    DockerBuildArg { name: "FLASHINFER_VERSION" as NonEmptyStr, value: r.flashinfer_version as String },
     DockerBuildArg { name: "CUDA_VERSION" as NonEmptyStr, value: r.cuda_version as String },
     DockerBuildArg { name: "BUILD_BASE_IMAGE" as NonEmptyStr, value: r.build_base_image as String },
     DockerBuildArg { name: "torch_cuda_arch_list" as NonEmptyStr, value: vllm_torch_cuda_arch_list_wire(archs: r.torch_cuda_arch_list) },
