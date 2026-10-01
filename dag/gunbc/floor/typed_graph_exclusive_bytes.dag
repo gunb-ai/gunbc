@@ -87,7 +87,7 @@ fn class_exclusive_of(r: TypedGraphClassReading) -> ClassFold {
               ancestry_entries: r.ancestry_entries, own_entries: r.own_entries,
             }],
             first_total: Present { value: total },
-            sum: byte_size_count(b: if r.members == 1 { exclusive } else { byte_size(count: nat_magnitude(a: 0)) }),
+            sum: byte_size_count(b: exclusive),
           }
         }
     }
@@ -103,7 +103,7 @@ fn class_fold_step(acc: ClassFold, r: TypedGraphClassReading) -> ClassFold {
         ClassFoldRunning { classes: one, first_total: t, sum: x } => ClassFoldRunning {
           classes: concat(done, one),
           first_total: match first { Present { value: f } => Present { value: f } Absent => t },
-          sum: s + x,
+          sum: if r.members == 1 { s + x } else { s + 0 },
         }
       }
   }
