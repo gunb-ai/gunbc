@@ -59,6 +59,11 @@ ureq = { version = "2", features = ["json"] }
 # burns CPU and is caught). Already present transitively; declared direct for this use.
 libc = "0.2"
 
+
+[build-dependencies]
+# The recursive-Value-walker census in build.rs parses the crate's sources (a grep would be
+# satisfiable by a comment); syn is already in the lockfile through the derive crates.
+syn = { version = "2", features = ["full", "visit"] }
 [[bin]]
 name = "gunbc"
 path = "src/main.rs"
