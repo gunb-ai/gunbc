@@ -25,7 +25,7 @@ import std.content_hash { Fnv1a64Structural }
 import v2.std.integer { integer_int_content_digest }
 import v2.std.node_shape { stamp_node_shape_synthetic, type_shape }
 import v2.std.text { Char, String }
-import std.unicode.types { unicode_char_code_point, unicode_scalar_utf8_octet_count }
+import std.unicode.types { unicode_char_code_point }
 
 type Lexeme = String
 
@@ -153,21 +153,22 @@ type Token {
   end: Int
 }
 
-// THE STREAM CARRIES ITS LAYOUT, DERIVED FROM THE SOURCE ITS TOKENS WERE LEXED FROM. A token's
+// THE STREAM CARRIES ITS LAYOUT, RECORDED BY THE LEXER AS IT READS THE SOURCE. A token's
 // `start`/`end` say THAT two tokens have a gap between them, not what the gap holds, and the grammar
 // sometimes needs to know (a `-` that begins a new line after a complete operand is ambiguous
 // between infix and prefix, and the seed refuses it: v1.compiler.parse
 // is_ambiguous_prefix_infix_newline_boundary). The source text stays the ONE authority for that
 // fact: nothing about layout is stored on a Token or as a token of its own. `StreamLayout` is the
-// starts of the tokens that have a line break in the gap before them, DERIVED from the source and the
-// tokens in one walk by its only constructor (`stream_layout_of`, called by the tokenizer, the one
-// place the source is read), so a layout question is a lookup rather than a rescan of the file. Only
-// the line-break-preceded tokens are kept (a line is many tokens), each keyed by its start to the
-// 1-based line it begins -- ONE representation of the set, with a value that is a fact about the token
-// rather than a placeholder. A stream built from tokens alone (fixtures) carries no layout, and a
-// layout question on it answers `LineBreakUnknownWithoutSource` -- never an assumed single line.
-// `digest` summarizes exactly the entries of `line_break_before`, folded in the walk as each one is
-// recorded (start, then line), so the parse memo key can cover layout without a lookup per token.
+// set of tokens that have a line break in the gap before them, keyed by each token's start to the
+// octet where that gap begins (the end of the token before it) -- ONE representation of the set, whose
+// value is a fact about the gap rather than a placeholder. It is recorded in the tokenizer's own walk
+// (v2.compiler.tokenize lex_walk_step), the one place the source is read, through the two builders
+// below, so there is no second pass over the source and a layout question is a lookup. A line feed
+// counts when it is in a gap -- in trivia or an annotation between tokens -- never inside a token (a
+// multi-line string). `digest` summarizes exactly the recorded entries, folded as each is recorded, so
+// the parse memo key covers layout without a lookup per token. A stream built from tokens alone
+// (fixtures) carries no layout, and a layout question on it answers `LineBreakUnknownWithoutSource`
+// -- never an assumed single line.
 type StreamLayout {
   line_break_before: Map<Int, Int>
   digest: Fnv1a64Structural
@@ -183,10 +184,9 @@ fn token_stream_new(all: List<Token>) -> TokenStream {
   TokenStream { all: all, pos: 0, layout: optional_absent() }
 }
 
-// The tokenizer's constructor: the tokens together with the exact scalar sequence they were lexed
-// from, whose UTF-8 octet offsets their `start`/`end` name.
-fn token_stream_lexed(all: List<Token>, source: v2.std.text.String) -> TokenStream {
-  TokenStream { all: all, pos: 0, layout: optional_present(value: stream_layout_of(tokens: all, source: source)) }
+// The tokenizer's constructor: the tokens together with the layout recorded while they were lexed.
+fn token_stream_lexed(all: List<Token>, layout: StreamLayout) -> TokenStream {
+  TokenStream { all: all, pos: 0, layout: optional_present(value: layout) }
 }
 
 fn token_stream_empty() -> TokenStream {
@@ -202,73 +202,27 @@ type LineBreakAnswer
   | NoLineBreakInGap
   | LineBreakUnknownWithoutSource
 
-// ONE WALK: the source's scalars in order, with the line being walked, the tokens still ahead and the
-// end of the last token passed. A line feed (U+000A) counts only in a GAP -- at or after the previous token's end -- so a
-// line feed inside a token (a multi-line string) is not layout. When the walk reaches a token's
-// first octet, whether a line feed was seen since the previous token is that token's answer.
-// Offsets are UTF-8 octets, as token extents are, so each scalar advances by its encoded width.
-type StreamLayoutWalk {
-  octet: Int
-  line: Int
-  ahead: List<Token>
-  last_end: Int
-  seen: Bool
-  answers: Map<Int, Int>
-  digest: Fnv1a64Structural
+fn stream_layout_empty() -> StreamLayout {
+  StreamLayout { line_break_before: empty_map(), digest: symbol_identity_digest(sym: ^stream_layout_digest_nil) }
 }
 
-fn stream_layout_of(tokens: List<Token>, source: v2.std.text.String) -> StreamLayout {
-  let walked = fold_list(
-    xs: source,
-    empty: StreamLayoutWalk { octet: 0, line: 1, ahead: tokens, last_end: 0, seen: false, answers: empty_map(), digest: symbol_identity_digest(sym: ^stream_layout_digest_nil) },
-    cons: fn(acc, c) { stream_layout_step(acc: acc, c: c) }
-  )
-  StreamLayout { line_break_before: walked.answers, digest: walked.digest }
-}
-
-fn stream_layout_step(acc: StreamLayoutWalk, c: Char) -> StreamLayoutWalk {
-  let at_token = stream_layout_record_token(acc: acc)
-  let code = unicode_char_code_point(c: c)
-  StreamLayoutWalk {
-    octet: at_token.octet + unicode_scalar_utf8_octet_count(code_point: code),
-    line: if code == 10 { at_token.line + 1 } else { at_token.line },
-    ahead: at_token.ahead,
-    last_end: at_token.last_end,
-    seen: at_token.seen || ((code == 10) && (at_token.octet >= at_token.last_end)),
-    answers: at_token.answers,
-    digest: at_token.digest
+// The token starting at octet `token_start` has a line break in its gap, which began at `gap_start`.
+fn stream_layout_with_break(layout: StreamLayout, token_start: Int, gap_start: Int) -> StreamLayout {
+  StreamLayout {
+    line_break_before: map_insert(m: layout.line_break_before, key: token_start, value: gap_start),
+    digest: combine_hash(a: layout.digest, b: combine_hash(a: integer_int_content_digest(value: token_start), b: integer_int_content_digest(value: gap_start)))
   }
 }
 
-// At a token's first octet: record the gap's answer for it, then start a new gap at its end.
-fn stream_layout_record_token(acc: StreamLayoutWalk) -> StreamLayoutWalk {
-  match list_at_optional(xs: acc.ahead, index: 0) {
-    Absent => acc
-    Present { value: tok } =>
-      if tok.start == acc.octet {
-        StreamLayoutWalk {
-          octet: acc.octet,
-          line: acc.line,
-          ahead: skip(xs: acc.ahead, n: 1),
-          last_end: tok.end,
-          seen: false,
-          answers: if acc.seen { map_insert(m: acc.answers, key: tok.start, value: acc.line) } else { acc.answers },
-          digest: if acc.seen {
-            combine_hash(a: acc.digest, b: combine_hash(a: integer_int_content_digest(value: tok.start), b: integer_int_content_digest(value: acc.line)))
-          } else {
-            acc.digest
-          }
-        }
-      } else {
-        acc
-      }
-  }
+// Whether a lexeme (trivia or annotation text between tokens) holds a line feed, U+000A.
+fn lexeme_has_line_feed(lexeme: v2.std.text.String) -> Bool {
+  fold_list(xs: lexeme, empty: false, cons: fn(acc, c) { acc || (unicode_char_code_point(c: c) == 10) })
 }
 
 // THE NAMED DERIVATION, READ AT THE POINT OF USE: is there a line break in the source between the
 // token before the one starting at octet `token_start` and that token? A stream without layout
 // cannot answer. `token_start` is always a start of one of the stream's own tokens (the parser asks
-// only about the token it is at), so a start the walk did not record is a token with no break before it.
+// only about the token it is at), so a start the lexer did not record is a token with no break before it.
 fn token_stream_line_break_before(layout: Optional<StreamLayout>, token_start: Int) -> LineBreakAnswer {
   match layout {
     Absent => LineBreakUnknownWithoutSource
