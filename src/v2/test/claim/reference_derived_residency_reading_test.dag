@@ -49,6 +49,7 @@ import v2.std.node {
   TypeNode,
 }
 import v2.std.text { String }
+import v2.std.node_query { binder_edge }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -85,7 +86,7 @@ fn positional_to(target: Node) -> Edge {
 }
 
 fn named_to(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  binder_edge(name: name, type_node: target)
 }
 
 // `Map<K, V>` as the tree spells it: an instantiation whose children are the constructor and its
