@@ -154,6 +154,7 @@ import v2.std.node {
 import v2.std.type_binder { cast_target_edge, type_alias_wrapper, type_decl_wrapper, type_opaque_wrapper, type_param_names, type_params_edge }
 import v2.std.node_query {
   binder_edge,
+  member_edge_type_node,
   node_positional_child_targets,
   construct_node,
   construct_node_elided,
@@ -3873,10 +3874,20 @@ fn body_lower_fn_signature_bindings_refusal(shell: Node, sig: BodyLowerFnSignatu
   }
 }
 
+// A BINDER'S REFUSAL IS LOCATED AT ITS DECLARED TYPE, the authored node that discriminates it (XL-2
+// PR2b-3: the edge's target is a synthetic binder node, which no author wrote). A member that is not a
+// binder is located at its target.
+fn body_lower_binder_locus(edge: Edge) -> Node {
+  match member_edge_type_node(e: edge) {
+    Present { value: t } => t
+    Absent => edge.target
+  }
+}
+
 fn body_lower_repeated_param_binding_diagnostic(edge: Edge) -> Diagnostic {
   Diagnostic {
     reason: ^body_lowering_reason_arrow_domain_param_binding_repeated,
-    at: node_locus(node: edge.target),
+    at: node_locus(node: body_lower_binder_locus(edge: edge)),
     correction: Unavailable { reason: UserInputBoundary }
   }
 }

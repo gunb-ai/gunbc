@@ -153,6 +153,8 @@ type CoreEdgeLabel
   | ParameterReferenceEdge
   | ArrowEffectClaimsEdge
   | ArrowExecutionModeClaimEdge
+  | BinderTypeEdge
+  | BinderDefaultEdge
   | MapLiteralEntryEdge
   | MapLiteralEntriesEdge
 
@@ -212,6 +214,8 @@ fn core_edge_labels() -> List<CoreEdgeLabel> {
     ParameterReferenceEdge,
     ArrowEffectClaimsEdge,
     ArrowExecutionModeClaimEdge,
+    BinderTypeEdge,
+    BinderDefaultEdge,
     MapLiteralEntryEdge,
     MapLiteralEntriesEdge,
   ]
@@ -242,6 +246,8 @@ fn core_edge_label_canonical_symbol(marker: CoreEdgeLabel) -> Symbol {
     ParameterReferenceEdge => ^core_parameter_reference_edge
     ArrowEffectClaimsEdge => ^core_arrow_effect_claims_edge
     ArrowExecutionModeClaimEdge => ^core_arrow_execution_mode_claim_edge
+    BinderTypeEdge => ^core_binder_type_edge
+    BinderDefaultEdge => ^core_binder_default_edge
     MapLiteralEntryEdge => ^core_map_literal_entry_edge
     MapLiteralEntriesEdge => ^core_map_literal_entries_edge
   }

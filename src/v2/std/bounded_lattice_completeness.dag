@@ -41,7 +41,9 @@ import v2.std.node {
   fold_node,
   StructuralLabel,
 }
+import v2.std.optional { Absent, Present }
 import v2.std.node_query {
+  binder_node_parts,
   NamedChildAmbiguous,
   NamedChildFound,
   NamedChildMissing,
@@ -61,6 +63,17 @@ fn bounded_lattice_lattice_field_completeness(lattice: Node) -> BoundedLatticeIn
   }
 }
 
+// THE NODE A FIELD'S SHAPE IS READ FROM. The scan meets both declared types, whose fields are binders
+// (v2.std.node_query binder_node_parts: a binder node identifies itself by its own labels), and values,
+// whose fields are the values themselves; a binder's subject is its type, any other field's is the
+// target.
+fn bounded_lattice_field_subject(target: Node) -> Node {
+  match binder_node_parts(n: target) {
+    Present { value: parts } => parts.type_node
+    Absent => target
+  }
+}
+
 fn bounded_lattice_instance_completeness(instance: Node) -> BoundedLatticeInstanceCompleteness {
   match named_child_lookup(root: instance, name: ^bounded_lattice_field_top) {
     NamedChildFound { target: _ } =>
@@ -68,7 +81,7 @@ fn bounded_lattice_instance_completeness(instance: Node) -> BoundedLatticeInstan
         NamedChildFound { target: _ } =>
           match named_child_lookup(root: instance, name: ^bounded_lattice_field_lattice) {
             NamedChildFound { target: lattice } =>
-              bounded_lattice_lattice_field_completeness(lattice: lattice)
+              bounded_lattice_lattice_field_completeness(lattice: bounded_lattice_field_subject(target: lattice))
             NamedChildMissing => BoundedLatticePartial { missing: MissingLatticeField }
             NamedChildAmbiguous => BoundedLatticePartial { missing: MissingLatticeField }
           }

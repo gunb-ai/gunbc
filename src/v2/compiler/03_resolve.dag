@@ -157,6 +157,7 @@ import v2.std.node {
 }
 import v2.std.type_binder { GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names }
 import v2.std.node_query {
+  binder_node_edge,
   declared_field_from_edge,
   NamedChildAmbiguous,
   NamedChildFound,
@@ -576,7 +577,7 @@ fn resolve_declaring_across_named_edge(declaring: DeclaringPosition, e: Edge) ->
     DeclaringAt { path: path } =>
       match e.label {
         StructuralLabel { label: _ } =>
-          if dag_surface_module_header_metadata_edge(e: e) {
+          if dag_surface_module_header_metadata_edge(e: e) || binder_node_edge(e: e) {
             declaring
           } else {
             DeclaringAt { path: qualified_name_snoc(qn: path, segment: label_sort_key(label: e.label)) }
@@ -2674,7 +2675,7 @@ fn resolve_labeled_child_edge(ctx: ResolveContext, e: Edge) -> ResolveNodeWalk {
   if ctx.under_module_root && resolve_preserve_module_root_named_edge(e: e) {
     ResolveWalkAccepted { value: e.target, diagnostics: None }
   } else {
-    let child_ctx = if ctx.under_module_root && !dag_surface_module_header_metadata_edge(e: e) {
+    let child_ctx = if ctx.under_module_root && !dag_surface_module_header_metadata_edge(e: e) && !binder_node_edge(e: e) {
       resolve_ctx_snoc_position(ctx: ctx, segment: label_sort_key(label: e.label))
     } else {
       ctx
