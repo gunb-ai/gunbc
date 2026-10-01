@@ -71,6 +71,12 @@ No reducer is ever answered by both the predicate and the tag (neat-boar-16 ruli
 
 ## Staging (the fold is about 9.5k lines)
 
+Binding rules for every stage (neat-boar-16 review of this plan):
+
+- **This document is the plan, not the model.** The `.dag` types `LoweredShape`, `BodyTerm` and `BodyTermEdge` land in stage 1, together with their first consumer (the operand reader). They never land unconsumed.
+- **One reducer family per stage, moved whole.** No stage moves a family partly.
+- **No silent change to lowering output.** Every stage carries conservation controls showing no atom is dropped. It also carries a native census (`claim_executor --v2-native-route`, base vs head) showing zero change to lowering outcomes.
+
 Each stage is one PR. Each stage moves a reducer family **whole**: every producer it calls returns `BodyTerm`, and every reader it calls matches on `BodyTerm`. A family is never partly moved.
 
 1. **Carrier and ingress/egress.**
