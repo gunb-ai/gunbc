@@ -194,6 +194,22 @@ data known_red_class_note: String = "WHAT A KNOWN-RED ADMISSION IS: a witness re
 
 data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
   known_red_probe(
+    entry: "src/v2/test/claim/body_lowering/map_literal_test.dag",
+    f: "ml_an_elaborated_map_infers_holds",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "map arm control: a well-typed elaborated map infers. RED beyond the map arm: measured with gunbc#12760 merged, infer refuses infer_grounding_not_derived located (NodeLocus) at the MapIntroductionEntry { .. } construct, identically for the HEADED spelling and under Map<String, Int>. The discriminating specimen ml_a_same_module_generic_entry_construct_infers_holds (generic record declared in the same module) refuses the same way, so this is neither cross-module declaration reading (#12726 PR2) nor the v2 Bool fork. Owner: smart-newt-725 (record construct typing, #12763 lineage), per quiet-gull-780.",
+    dissolution: unbound_dissolution(description: "infer grounds a construct of a generic record whose type arguments come only from its expected type (callee parameter or list element): this witness greens and the row deletes in that change")
+  ),
+  known_red_probe(
+    entry: "src/v2/test/claim/body_lowering/map_literal_test.dag",
+    f: "ml_a_same_module_generic_entry_construct_infers_holds",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "the discriminating specimen for ml_an_elaborated_map_infers_holds: LocalEntry<K, V> and local_from_entries declared beside the data decl, so no cross-module declaration is read; infer refuses infer_grounding_not_derived at the LocalEntry { .. } construct (measured with gunbc#12760 merged; without it, unbound String refuses first). Owner: smart-newt-725.",
+    dissolution: unbound_dissolution(description: "infer grounds a construct of a generic record whose type arguments come only from its expected type (callee parameter or list element): this witness greens and the row deletes in that change")
+  ),
+  known_red_probe(
     entry: "dag/test/claim/declared_type_inhabitance_direct_call_witness_test.dag",
     f: "w_a_branded_product_refinement_at_an_unrelated_product_formal_still_refuses",
     kind: CorpusWitnessKind,

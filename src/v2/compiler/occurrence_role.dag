@@ -227,6 +227,9 @@ fn read_names(reader: NameReader, captured: Node) -> NameRead {
 
 // `operation name { .. }`: body lowering reads the name with the kw-then-ident decoder
 // (body_lower_operation), and lowers it to a callable edge of the service.
+// `uses net: Network`: each entry binds the resource name the fn body refers to. Its shape is
+// `name: T [(cfg)]`, the `name: value` pair ReadFieldInitLabel's decoder reads, so it is read by that
+// decoder, and the binder is a declaration.
 fn dag_name_production_rows() -> List<NameProductionRow> {
   [
     name_row(production: ^dag_production_fn_decl, disposition: NameRoleRead { role: DeclarationRole, category: CallableOccurrence, reader: ReadKwThenIdent }),
@@ -252,7 +255,8 @@ fn dag_name_production_rows() -> List<NameProductionRow> {
     name_row(production: ^dag_production_arrow_lambda, disposition: NameRoleRead { role: DeclarationRole, category: LexicalValueOccurrence, reader: ReadFunctionValueBinders { kind: ArrowLambdaValue } }),
     name_row(production: ^dag_production_operation, disposition: NameRoleRead { role: DeclarationRole, category: CallableOccurrence, reader: ReadKwThenIdent }),
     name_row(production: ^dag_production_input_block, disposition: NameRoleRead { role: DeclarationRole, category: FieldOccurrence, reader: ReadIoFieldBinders }),
-    name_row(production: ^dag_production_output_block, disposition: NameRoleRead { role: DeclarationRole, category: FieldOccurrence, reader: ReadIoFieldBinders })
+    name_row(production: ^dag_production_output_block, disposition: NameRoleRead { role: DeclarationRole, category: FieldOccurrence, reader: ReadIoFieldBinders }),
+    name_row(production: ^dag_production_uses_entry, disposition: NameRoleRead { role: DeclarationRole, category: LexicalValueOccurrence, reader: ReadFieldInitLabel })
   ]
 }
 

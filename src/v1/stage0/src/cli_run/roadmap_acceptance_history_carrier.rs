@@ -465,7 +465,6 @@ pub fn parse_roadmap_acceptance_event_history_jsonl_builtin(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_interpreter::ExecutionMode;
     use im::HashMap;
@@ -475,8 +474,8 @@ mod tests {
         let graph = ResolvedGraph {
             modules: Rc::new(im::Vector::new()),
             item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
             diagnostics: Rc::new(im::Vector::new()),
-            emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
     }

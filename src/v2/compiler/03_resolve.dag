@@ -14,6 +14,8 @@ import v2.std.declaration_marker {
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.extdeps.languages.dag {
+  dag_kernel_string_type_spelling,
+  dag_string_literal_value_optional,
   dag_kernel_type_binding_optional,
   dag_kernel_type_declaration_binding_optional,
   dag_kernel_type_foreign_declaration,
@@ -30,7 +32,7 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node
 }
 import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
-import v2.std.algebra { any, fold_list, length }
+import v2.std.algebra { any, fold_list, length, skip }
 import v2.std.collection {
   Map,
   PointwisePower,
@@ -142,10 +144,16 @@ import v2.std.node {
   construct_tag_marker,
   Instantiation,
   symbol_eq,
+  symbol_lexeme,
+  labeled_named_is,
   well_formed,
 }
 import v2.std.type_binder { GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names }
 import v2.std.node_query {
+  NamedChildAmbiguous,
+  NamedChildFound,
+  NamedChildMissing,
+  named_child_lookup,
   construct_field_edges,
   construct_tag_reading,
   ConstructTagAuthored,
@@ -159,6 +167,19 @@ import v2.std.node_query {
 }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
+import v2.std.map_introduction {
+  MapIntroductionEntryNodes,
+  MapIntroductionKeyRepeated,
+  MapIntroductionKeysDistinct,
+  MapLiteralEntriesMalformed,
+  MapLiteralEntriesNone,
+  MapLiteralEntriesPresent,
+  map_literal_entries,
+  map_literal_entries_label,
+  lower_map_introduction,
+  map_introduction_duplicate_key,
+  map_introduction_expected_head_is_map
+}
 
 // RESOLVE'S OUTPUT IS THE RESOLVED ROOT AND THE INDEX IT WAS RESOLVED AGAINST, one record. A later
 // stage that needs a reference's declaration asks the SAME authority resolution asked
@@ -1845,9 +1866,19 @@ fn resolve_expected_edge(ctx: ResolveContext, e: Edge, x: ResolveExpectation) ->
 
 fn resolve_elided_construct_walk(ctx: ResolveContext, n: Node, x: ResolveExpectation) -> ResolveNodeWalk {
   match resolve_expected_head_path(ctx: ctx, x: x) {
-    ExpectedHeadAbsent => resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_record_expected_type_not_record)
+    ExpectedHeadAbsent =>
+      if resolve_elided_construct_is_map_literal(n: n) {
+        resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_map_expected_type_not_map)
+      } else {
+        resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_record_expected_type_not_record)
+      }
     ExpectedHeadAliasCycle => resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_record_alias_cycle)
     ExpectedHeadAt { path: path } =>
+      if map_introduction_expected_head_is_map(path: path) {
+        resolve_map_literal_walk(ctx: ctx, n: n, x: x)
+      } else if resolve_elided_construct_is_map_literal(n: n) {
+        resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_map_expected_type_not_map)
+      } else {
       match symbol_index_declared_payload_at(index: ctx.namespace.symbol_index, qualified_path: path) {
         Present { value: RecordTypePayload } =>
           match construct_tag_optional_edge_target(n: n) {
@@ -1864,7 +1895,218 @@ fn resolve_elided_construct_walk(ctx: ResolveContext, n: Node, x: ResolveExpecta
           }
         _ => resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_record_expected_type_not_record)
       }
+      }
   }
+}
+
+// THE MAP ARM OF THE ONE ELABORATION WRITER (docs/plans/map-literal-introduction-design.md). A
+// headless brace whose authored expected head is, by declaration identity, a Map
+// (v2.std.map_introduction map_introduction_expected_head_is_map) elaborates to the one
+// introduction v2.std.map_introduction lower_map_introduction builds, or refuses located:
+//
+//   - the expectation must be a closed `Map<K, V>` instantiation, peeled syntactically; else
+//     resolve_anonymous_map_expected_type_not_closed at the literal;
+//   - every item must be string-keyed; a name-keyed brace under a Map head refuses
+//     resolve_anonymous_map_name_key at its first item;
+//   - K must be the type a string literal denotes: the kernel text binding an unimported String
+//     takes (v2.extdeps.languages.dag dag_kernel_type_binding_optional), never a declaration (a K resolving to any declaration -- the structural v2.std.text String
+//     included -- is a text crossing no route declares here); else
+//     resolve_anonymous_map_key_kind_mismatch at the first key;
+//   - no key may repeat, judged by the key type's equality -- for string literals, decoded text
+//     (the decoder gunbc#12759 lands; until then no key has text and the arm refuses at it) -- through the ONE key law,
+//     v2.std.map_introduction map_introduction_duplicate_key; a repeat refuses
+//     resolve_anonymous_map_duplicate_key at its SECOND occurrence. Never last-wins.
+//
+// Each value is walked under V (the fifth position rule beside #12711's four), so a nested headless
+// value elaborates through this same writer; each key is walked as the ordinary child it is.
+// Nothing is unified here, and infer still checks every value against V afterwards.
+fn resolve_elided_construct_is_map_literal(n: Node) -> Bool {
+  match map_literal_entries(n: n) {
+    MapLiteralEntriesNone => false
+    MapLiteralEntriesPresent { pairs: _ } => true
+    MapLiteralEntriesMalformed => true
+  }
+}
+
+
+fn resolve_map_literal_walk(ctx: ResolveContext, n: Node, x: ResolveExpectation) -> ResolveNodeWalk {
+  let type_args = node_positional_child_targets(node: x.expected)
+  match list_at_optional(xs: type_args, index: 1) {
+    Absent => resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_map_expected_type_not_closed)
+    Present { value: key_type } =>
+      match list_at_optional(xs: type_args, index: 2) {
+        Absent => resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_map_expected_type_not_closed)
+        Present { value: value_type } =>
+          match resolve_map_first_name_keyed_item(items: skip(xs: n.children, n: 1)) {
+            Present { value: offending } => resolve_anonymous_record_refused(n: offending, reason: ^resolve_anonymous_map_name_key)
+            Absent =>
+              match resolve_map_literal_pairs(n: n) {
+                ResolveMapPairMalformed { at: p } => resolve_anonymous_record_refused(n: p, reason: ^resolve_anonymous_map_entry_malformed)
+                ResolveMapPairsRead { entries: entries } =>
+                  if resolve_map_key_type_is_string_literal_type(ctx: ctx, position: x.position, t: key_type) {
+                    resolve_map_literal_entries(ctx: ctx, n: n, entries: entries, value_x: ResolveExpectation { expected: value_type, position: x.position, at_use_site: x.at_use_site })
+                  } else {
+                    match list_at_optional(xs: entries, index: 0) {
+                      Present { value: first } => resolve_anonymous_record_refused(n: first.key, reason: ^resolve_anonymous_map_key_kind_mismatch)
+                      Absent => resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_map_key_kind_mismatch)
+                    }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn resolve_map_first_name_keyed_item(items: List<Edge>) -> Optional<Node> {
+  fold(items, init: optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if labeled_named_is(x: e, label_of: edge_label_of, wanted: map_literal_entries_label()) { optional_absent() } else { optional_present(value: e.target) }
+    }
+  })
+}
+
+fn resolve_map_key_type_is_string_literal_type(ctx: ResolveContext, position: QualifiedName, t: Node) -> Bool {
+  match t.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      match symbol_index_lexical_lookup(index: ctx.namespace.symbol_index, position: position, name: id) {
+        LexicalUnbound =>
+          dag_kernel_string_type_spelling(sym: id) && match dag_kernel_type_binding_optional(sym: id) {
+            Present { value: _ } => true
+            Absent => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// A pair is a tag-elided construct carrying `key` and `value` (body lowering
+// body_lower_map_literal_entry_edge); these read them back.
+fn resolve_map_entry_field(entry: Node, field: Symbol) -> Optional<Node> {
+  match named_child_lookup(root: entry, name: field) {
+    NamedChildFound { target: t } => optional_present(value: t)
+    NamedChildMissing => optional_absent()
+    NamedChildAmbiguous => optional_absent()
+  }
+}
+
+// A KEY'S TEXT, OR NONE, read through the ONE string decoder: a string literal lowers to a terminal
+// carrying its decoded text (gunbc#12759, v2.extdeps.languages.dag dag_string_literal_value_optional;
+// a malformed escape already refused at lowering). A key without that payload has no text, and the
+// arm refuses at it rather than compare it -- payload-less keys would all compare equal.
+fn resolve_map_key_text_optional(key: Node) -> Optional<String> {
+  dag_string_literal_value_optional(node: key)
+}
+
+// THE PAIRS, READ TOTALLY. A pair is a tag-elided construct carrying `key` and `value` (body lowering
+// body_lower_map_literal_entry_edge). Either every pair carries both, and the entries come back typed
+// (key, value, source), or the first pair that does not is named -- never substituted: DESIGN 5 forbids
+// a fabricated default, so a missing field is a located refusal
+// (resolve_anonymous_map_entry_malformed), however unlikely lowering is to produce one.
+type ResolveMapPairs
+  = ResolveMapPairsRead { entries: List<MapIntroductionEntryNodes> }
+  | ResolveMapPairMalformed { at: Node }
+
+fn resolve_map_pairs(pairs: List<Node>) -> ResolveMapPairs {
+  fold(pairs, init: ResolveMapPairsRead { entries: [] }, f: fn(acc, p) {
+    match acc {
+      ResolveMapPairMalformed { at: _ } => acc
+      ResolveMapPairsRead { entries: es } =>
+        match resolve_map_entry_field(entry: p, field: ^key) {
+          Absent => ResolveMapPairMalformed { at: p }
+          Present { value: k } =>
+            match resolve_map_entry_field(entry: p, field: ^value) {
+              Absent => ResolveMapPairMalformed { at: p }
+              Present { value: v } =>
+                ResolveMapPairsRead { entries: list_snoc_item(xs: es, item: MapIntroductionEntryNodes { key: k, value: v, source: p }) }
+            }
+        }
+    }
+  })
+}
+
+fn resolve_map_pair_targets(items: List<Edge>) -> List<Node> {
+  fold(items, init: [], f: fn(acc, e) { list_snoc_item(xs: acc, item: e.target) })
+}
+
+// The literal's pairs, read through v2.std.map_introduction map_literal_entries: `{}` has none, and a
+// malformed entries carrier refuses at the literal rather than reading as empty.
+fn resolve_map_literal_pairs(n: Node) -> ResolveMapPairs {
+  match map_literal_entries(n: n) {
+    MapLiteralEntriesNone => ResolveMapPairsRead { entries: [] }
+    MapLiteralEntriesMalformed => ResolveMapPairMalformed { at: n }
+    MapLiteralEntriesPresent { pairs: pairs } => resolve_map_pairs(pairs: pairs)
+  }
+}
+
+// THE KEYS' TEXTS, READ TOTALLY: one text per entry, in order, or the first key with no text, named.
+type ResolveMapKeyTexts
+  = ResolveMapKeyTextsRead { texts: List<String> }
+  | ResolveMapKeyTextless { at: Node }
+
+fn resolve_map_key_texts(entries: List<MapIntroductionEntryNodes>) -> ResolveMapKeyTexts {
+  fold(entries, init: ResolveMapKeyTextsRead { texts: [] }, f: fn(acc, e) {
+    match acc {
+      ResolveMapKeyTextless { at: _ } => acc
+      ResolveMapKeyTextsRead { texts: ts } =>
+        match resolve_map_key_text_optional(key: e.key) {
+          Present { value: t } => ResolveMapKeyTextsRead { texts: list_snoc_item(xs: ts, item: t) }
+          Absent => ResolveMapKeyTextless { at: e.key }
+        }
+    }
+  })
+}
+
+// The key law sees one text per entry, so its indices are entry indices.
+// The pairs are walked under a Transform carrier (positional edges only) that never leaves this
+// arm; the resolved pairs are read again through resolve_map_pairs, never defaulted.
+fn resolve_map_literal_entries(ctx: ResolveContext, n: Node, entries: List<MapIntroductionEntryNodes>, value_x: ResolveExpectation) -> ResolveNodeWalk {
+  match resolve_map_key_texts(entries: entries) {
+    ResolveMapKeyTextless { at: key } => resolve_anonymous_record_refused(n: key, reason: ^resolve_anonymous_map_key_text_unavailable)
+    ResolveMapKeyTextsRead { texts: texts } =>
+      match map_introduction_duplicate_key(keys: texts) {
+        MapIntroductionKeyRepeated { first_index: _, second_index: second } =>
+          match list_at_optional(xs: entries, index: second) {
+            Present { value: e } => resolve_anonymous_record_refused(n: e.key, reason: ^resolve_anonymous_map_duplicate_key)
+            Absent => resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_map_duplicate_key)
+          }
+        MapIntroductionKeysDistinct =>
+          let walked = fold(entries, init: child_walk_init(), f: fn(acc, e) {
+            child_walk_step(w: acc, e: Edge { label: Positional, target: e.source }, r: resolve_map_entry_walk(ctx: ctx, entry: e.source, value_x: value_x))
+          })
+          let carrier = node_with_occurrence_id(kind: ComputationNode { behavior: Transform }, children: [], occurrence_id: n.occurrence_id)
+          match child_walk_node(w: walked, n: carrier) {
+            ResolveWalkRefused { first: f, rest: r, observation: o } => ResolveWalkRefused { first: f, rest: r, observation: o }
+            ResolveWalkAccepted { value: resolved, diagnostics: d } =>
+              match resolve_map_pairs(pairs: resolve_map_pair_targets(items: resolved.children)) {
+                ResolveMapPairMalformed { at: p } => resolve_anonymous_record_refused(n: p, reason: ^resolve_anonymous_map_entry_malformed)
+                ResolveMapPairsRead { entries: resolved_entries } =>
+                  ResolveWalkAccepted { value: lower_map_introduction(entries: resolved_entries, source: n), diagnostics: d }
+              }
+          }
+      }
+  }
+}
+
+// One entry: its key walked as an ordinary child, its value under V. The pair keeps its elided tag
+// edge untouched; it never leaves this arm.
+fn resolve_map_entry_walk(ctx: ResolveContext, entry: Node, value_x: ResolveExpectation) -> ResolveNodeWalk {
+  child_walk_node(n: entry, w: fold(entry.children, init: child_walk_init(), f: fn(acc, e) {
+    if acc.ordinal == 0 {
+      child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None })
+    } else {
+      match e.label {
+        Named { name: nm } =>
+          if symbol_eq(a: nm, b: ^value) {
+            child_walk_step(w: acc, e: e, r: resolve_expected_edge(ctx: ctx, e: e, x: value_x))
+          } else {
+            child_walk_step(w: acc, e: e, r: resolve_child_edge(ctx: ctx, e: e))
+          }
+        Positional => child_walk_step(w: acc, e: e, r: resolve_child_edge(ctx: ctx, e: e))
+      }
+    }
+  }))
 }
 
 fn construct_tag_optional_edge_target(n: Node) -> Optional<Node> {
@@ -2093,7 +2335,11 @@ fn resolve_node_walk(
     TypeNode { connective: Conj } =>
       match construct_tag_reading(n: n) {
         ConstructTagElided =>
-          resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_record_no_expected_type)
+          if resolve_elided_construct_is_map_literal(n: n) {
+            resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_map_no_expected_type)
+          } else {
+            resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_record_no_expected_type)
+          }
         ConstructTagAuthored { reference: reference } =>
           resolve_construct_walk(ctx: ctx, n: n, reference: reference, field: fn(e, record) {
             resolve_record_field_edge(ctx: ctx, e: e, record: record)
