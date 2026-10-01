@@ -141,6 +141,81 @@ separate std-induction PR so the termination checker's soundness is reviewed on 
 - **THEN → §5.5 runway** — concurrent memo + in-progress markers (intra-process parallel); content-hash key
   + per-unit determinism → the CAS (inter-process / RBE).
 
+### 5.2 Floor-memory evidence and placement (sleek-ibex-207, cost lane; 2026-10-01)
+
+**The §5.1 GATE is discharged at class grain.** The gate asked for a receipt that the ancestry
+materialization is superlinear, not a fat constant. `//gunbc/instruments:typed-graph-exclusive-bytes`
+and `//gunbc/instruments:typed-graph-exclusive-bytes-floor-subject` (gunbc#12850) read each
+`TypedModule` class's EXCLUSIVE bytes leave-one-out at two closure sizes: the whole-tree strict closure
+and the required floor's nominal prepared subject. The scored result sits on gunbc#12850 beside the
+prediction written before the runs (DESIGN §6b). What it establishes, re-derivable by the two labels:
+- `type_env` is the largest exclusive class at both sizes, and no other class is close.
+- `type_env`'s exclusive bytes per `ancestry_str_bindings` entry agree across the two sizes (the
+  structural prediction held), so its bytes ARE the per-module ancestry unions this plan targets.
+- Both the bytes and the entry sum grow superlinearly in module count (the linear falsifier did not
+  fire). The numeric band predicted for the exponent missed and is recorded as a miss there.
+- `interface` and `emit_graph_info` were candidates on the sequential split
+  (gunbc#12774 `typed_graph_byte_attribution`) and own almost nothing exclusively. gunbc#12832 cut
+  `emit_graph_info` and the floor-memory-qualification A/B found the peak unmoved, so they are not
+  this lever.
+
+**Why it matters now.** The required floor's strict prepare is v1's `compile_to_resolved` over the
+prepared subject, and its typed graph is the floor's peak (`gunbc.floor_demand`
+`floor_phase_attribution`, the prepare-closure-resolve phase). At the larger subjects
+(gunbc#12381, #12799) that peak pins the CI leaf at `memory.high` and the floor refuses
+`MemoryStallRefusedPageThrash`. The residual after the demand-side lifetime fixes (gunbc#12774) is
+this representation.
+
+**Placement (the question this lane was asked).**
+- **v1, PR-2's contract is a pure representation change.** §3.1 already established that flat
+  direct-import resolution is NOT byte-identical (re-export transitivity is load-bearing), and that
+  own bindings plus a memoized, Rc-shared walk of the re-export chain IS. That contract keeps every
+  typed result and diagnostic. Locals > kernel > direct-selected > transitive union is preserved by
+  construction, with the union's winner and the `binding_forks` ledger unchanged. So it is admissible
+  under `gunbc.v1_maintenance_standing` `v1_seed_standing` on PURPOSE (it removes the floor's dominant
+  superlinear memory on the v2 self-host path), the same admission as gunbc#12832.
+  - Its proof: the stage0 regen fixed point (`claim_executor --regen-round-cost`), plus a floor
+    differential (same subject digest, every claim outcome equal) on the real pool.
+  - The PR-4 import-from-definer migration is the SEMANTIC change and stays with the namespace-cut
+    program (`namespace-cut-replacement-plan.md`). This lane does not take it.
+- **The 2026-07-06 one-level-read invariant** (`04_env.dag`: `flatten_visible_bindings` and
+  `merge_envs` deleted) forbade a per-lookup walk standing as a FALLBACK beside the materialized map.
+  PR-2's memoized walk REPLACES the map as the single representation, so it is that invariant's
+  intent (no second representation), not its violation. Because it re-introduces a walk, it needs the
+  operator's explicit re-ruling, and this addendum asks for it.
+- **v2 does not inherit the representation.** v2's typecheck path resolves through
+  `v2.compiler.name_resolve`'s shared `ResolutionContext` and the namespace containment tree. There is
+  no per-module union, and the `v2.std.type_env` target named in §5 step 3 does not exist. So the fix
+  is v1-only, and its cost is justified by v1's remaining lifetime as the required floor's strict
+  typechecker. That lifetime ends when the floor's prepare runs on the v2 resolve: the self-host
+  frontier for `v2.compiler.compile`, with no scheduled date. Until then every floor at #12799 size
+  pays it.
+
+**Predicted floor peak after PR-2 at ~2.7k modules (deep-ferret-305's retirement trigger for the 41G
+floor slot class), stated before any build so the A/B can falsify it.**
+- **BEFORE is censored.** Every ~2.7k-module floor so far was pinned at the 25 GiB `memory.high` line
+  and stalling, so its true demand is unmeasured. The bound is derived as follows:
+  - Main's ~2.25k-module floor sits at the same line with pages already in swap.
+  - Leave-one-out puts the typed graph at ~2.25k modules near 8 GB, scaling with exponent about 1.2.
+  - So BEFORE at ~2.7k is expected around 29-31 GB uncensored.
+- **The saving** is `type_env`'s exclusive bytes at ~2.7k (about 4.2 GB by the measured exponent),
+  minus what the shared re-export memo itself holds (assumed 10-20% of it). That gives about
+  3.3-3.8 GB.
+- **AFTER is therefore expected around 25.5-27.5 GB, straddling the 25 GiB (26.84 GB) line.** The
+  honest prediction is that PR-2 alone brings ~2.7k-module floors to the line, NOT clearly under it.
+  It retires the 41G class only if the measured BEFORE comes in at the low end.
+- **Falsifiers.**
+  - An uncensored BEFORE (floor-memory-qualification under MemoryMax=96G at the #12799 subject)
+    outside 29-31 GB re-bases the prediction before the surgery is judged.
+  - An AFTER saving under 2.5 GB falsifies the claim that the ancestry unions are the bytes PR-2
+    removes, meaning the memo holds more than assumed.
+- **What would clear the line:** the shared remainder of the typed graph (the leave-one-out readings'
+  `shared_or_unlisted`), whose breakdown is not yet done.
+
+**Sign-off chain** (a load-bearing v1 typecheck representation): jolly-boar-500 → neat-boar-16 → the
+operator, who also re-rules the one-level-read invariant above. deep-ferret-305 reviews the floor-side
+consequences. No code lands before that chain; the first code is the uncensored BEFORE measurement.
+
 ## 5.5 Distributability invariants (map-reduce / RBE endgame — operator 2026-07-06)
 
 The intra-process node-level memo is not a terminal design — it is **shard 0 of a content-addressed, distributable realize** (map-reduce / Bazel-RBE shape: infinitely scalable, across-process/host irrelevant). RBE reduces to one shape: *each realize-unit is a pure function of content-addressed inputs → a content-addressed result in a shared CAS*. Then **map** (realize the ready frontier) and **reduce** (merge results into the index/CAS) are the same operations whether workers are threads, processes, or hosts — only the CAS transport changes. So "across process/host is irrelevant" holds exactly when three invariants hold; we commit to them NOW so wiring the intra-process memo cannot foreclose the endgame (cheap now, a re-architecture later):
