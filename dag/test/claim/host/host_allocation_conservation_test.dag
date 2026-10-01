@@ -45,6 +45,8 @@ import gunbc.fabric_control_plane_charge {
   ControlPlaneClaimUnmeasured,
 }
 
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // WHY THIS PROJECTION LIVES IN THE WITNESS FILE AND NOT IN gunbc.fleet_host_budget. The Bool form
