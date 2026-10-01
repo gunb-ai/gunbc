@@ -219,7 +219,7 @@ fn module_member_conj_class(name: Symbol, member: Node, kinds: FreeMonoid<Declar
               if r == name { ModuleMemberRecord { name: name, record: member } } else { acc }
             DeclaredRefinement { name: r } =>
               if r == name { ModuleMemberRefinement { name: name, refinement: member } } else { acc }
-            DeclaredResource { name: r, contract: _ } =>
+            DeclaredResource { name: r } =>
               if r == name { ModuleMemberUnsupported } else { acc }
           }
         _ => acc
