@@ -1,0 +1,84 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-executor-isolated
+✓ typecheck v2.std.compilers.target_model done in 28 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+✓ typecheck v2.compiler.body_lowering_fold done in 2 seconds
+✓ typecheck v2.compiler.source_authority done in 2 seconds
+✓ typecheck gunbc.roadmap_belt_actuate done in 3 seconds
+✓ typecheck gunbc.roadmap_component done in 3 seconds
+✓ typecheck gunbc.roadmap_page done in 2 seconds
+[pre-entry] phase=workspace_discovery ms=3 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=43 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=11728 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=2 scale=tree
+[pre-entry] phase=pool_census_parse ms=1547 scale=tree
+[pre-entry] phase=closure_name_census_build ms=4900 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=62 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=50 scale=closure
+[pre-entry] phase=closure_load ms=12358 scale=closure
+[pre-entry] phase=closure_parse ms=6420 scale=closure
+[pre-entry] phase=closure_resolve ms=331 scale=closure
+[pre-entry] phase=closure_normalize ms=1236 scale=closure
+[pre-entry] phase=closure_typecheck ms=105368 scale=closure
+[pre-entry] phase=closure_parent_envs ms=9 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=184 scale=closure
+[pre-entry] phase=closure_ownership ms=1554 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=164153 scale=closure
+[pre-entry] population pool_modules=2022 closure_files=720
+[pre-entry] process_cpu user_ms=160542 sys_ms=3027 max_rss_kib=5911108
+◐ started Filesystem.Read dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl
+◐ started Filesystem.Read dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl
+◐ started Filesystem.Read dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl
+◐ started Filesystem.Read dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl
+PASS witness_empty_doc_is_minimal_shell
+◐ started Filesystem.Read dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl
+◐ started Filesystem.Read dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl
+PASS witness_authority_differs_from_empty
+◐ started Filesystem.Read dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl
+◐ started Filesystem.Read dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl
+PASS witness_authority_shows_finish_line_progress
+PASS witness_finish_line_variants_render_from_fixture
+◐ started Filesystem.Read dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl
+PASS witness_daily_leads_operational_not_narrative
+PASS witness_bold_title_renders_strong
+PASS witness_depth_cap_fails_honest
+PASS witness_dispatch_asset_reads_belt_b_status_contract
+PASS witness_page_script_census_clean
+PASS witness_inline_hand_script_reds
+PASS witness_rogue_src_script_reds
+PASS witness_signed_off_node_doc_has_no_button
+PASS witness_merged_pr_is_review_evidence_not_acceptance
+PASS witness_undispatchable_open_node_refused_dispatch_binding_missing
+PASS witness_superseded_node_marked_no_button
+PASS witness_ticket_brief_budget_holds_and_reds
+◐ started Filesystem.Read dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl
+◐ started Filesystem.Read dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl
+PASS witness_raw_text_close_guard_refuses
+◐ started Filesystem.Read dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl
+◐ started Filesystem.Read dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl
+PASS witness_status_chip_min_width
+◐ started Filesystem.Read dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl
+◐ started Filesystem.Read dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl
+PASS witness_dispatch_button_carries_accent
+◐ started Filesystem.Read dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl
+◐ started Filesystem.Read dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl
+PASS witness_authority_leads_within_budget
+PASS witness_overlong_lead_reds
+PASS witness_parity_server_realizes_decided_regions
+PASS witness_parity_wire_carries_the_server_sentence
+PASS witness_parity_client_paints_verbatim_with_shared_constants
+PASS witness_parity_refused_arm_carries_located_reason_without_forced_open
+PASS witness_selection_has_keyboard_parity
+PASS witness_observation_channels_join_one_impact_region
+FAIL witness_authority_serializes_with_structure
+FAIL witness_authority_page_preserves_multi_parent_dependencies
+FAIL witness_ready_node_doc_emits_button_and_external_script
+FAIL witness_supporting_facts_live_in_disclosure_not_head
+FAIL witness_upcoming_node_dispatch_refused_dependencies_blocked
+FAIL witness_upcoming_node_preserves_multi_parent_dependencies
+FAIL witness_real_ticket_row_renders_structured
+FAIL witness_ticket_rows_render_structured
+FAIL witness_style_child_combinator_unescaped
+FAIL witness_item_detail_disclosure_present
+FAIL witness_page_containers_centered
+FAIL witness_selection_grammar_ships_in_client_asset
+FAIL witness_prominence_and_frame_rules_present_in_css

@@ -1,0 +1,14 @@
+[
+  {
+    "path": "dag/gunbc/workspace_commissioning_executor.dag",
+    "sha256": "7b00769e964baec3ccc46a086d1cc72ab7d69c50151eefc14b8dcc031df30a8d"
+  },
+  {
+    "path": "tools/tests/workspace_commissioning_executor_controls.py",
+    "sha256": "f8f9a131d4643bffd2cc31610249df901020b04dc6609ceded87f0183f801594"
+  },
+  {
+    "path": "docs/plans/receipts/workspace-executor-bounds-2026-10-01/executor.sh",
+    "sha256": "92e9d5a1f442bd300b435ba930eb5d99b62d1482e869fc3843cd627a5274c227"
+  }
+]

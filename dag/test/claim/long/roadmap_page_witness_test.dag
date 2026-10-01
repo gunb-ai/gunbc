@@ -729,6 +729,7 @@ fn parity_specimen_view(activity: gunbc.roadmap_presentation.ActivityView) -> gu
     disclosure: gunbc.roadmap_presentation.NoDisclosure,
     rounds: RoundsUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
     worker_alive: false,
+    attempt_stale: false,
     standing: none,
   }
 }

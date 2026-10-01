@@ -16,7 +16,7 @@ fn dispatch_fixture() -> WorkspaceCommissioningInputBytes {
     credential: executor_plan_fixture_credential() }
 }
 
-test fn protected_bundle_roundtrips_as_one_value() -> Bool {
+fn protected_bundle_roundtrips_as_one_value_control() -> Bool {
   let bytes = dispatch_fixture()
   match workspace_commissioning_input_decode(text: workspace_commissioning_input_text(bytes: bytes)) {
     WorkspaceCommissioningInputPresent { bytes: stored, plan: _ } => stored == bytes
@@ -24,7 +24,7 @@ test fn protected_bundle_roundtrips_as_one_value() -> Bool {
   }
 }
 
-test fn torn_or_substituted_bundle_is_refused() -> Bool {
+fn torn_or_substituted_bundle_is_refused_control() -> Bool {
   let bytes = dispatch_fixture()
   let changed = WorkspaceCommissioningInputBytes { body: bytes.body, shell: "changed", receipt: bytes.receipt, credential: bytes.credential }
   (match workspace_commissioning_input_decode(text: workspace_commissioning_input_text(bytes: changed)) { WorkspaceCommissioningInputRefused { reason: _ } => true _ => false })
@@ -43,3 +43,7 @@ fn export_dispatch() -> ProcessExit {
 test fn export_native_dispatch_for_controls() -> Bool {
   match export_dispatch() { ExitSuccess => true _ => false }
 }
+
+test fn protected_bundle_roundtrips_as_one_value() -> Bool { protected_bundle_roundtrips_as_one_value_control() }
+
+test fn torn_or_substituted_bundle_is_refused() -> Bool { torn_or_substituted_bundle_is_refused_control() }

@@ -5,8 +5,8 @@ import gunbc.fleet_converge_plan { WorkspaceSlotCommissioningOnly, ScopeDecoded,
 import gunbc.fleet_converge_plan_cli { fleet_converge_apply_bound_wet, fleet_converge_workspace_commissioning_plan_wet }
 import gunbc.workspace_commissioning_executor_plan { workspace_executor_scope_wire }
 import gunbc.workspace_commissioning_dispatch_operations { workspace_dispatch_grant_content }
-import test.claim.workspace_dispatch_witness { protected_bundle_roundtrips_as_one_value, torn_or_substituted_bundle_is_refused }
-import test.claim.workspace_executor_install_witness { installed_and_observed_controller_units_are_identical, workspace_install_includes_executor_without_starting_it, workspace_install_does_not_restore_competing_ci_reservation, reviewed_plan_binding_controls }
+import test.claim.workspace_dispatch_witness { protected_bundle_roundtrips_as_one_value_control, torn_or_substituted_bundle_is_refused_control }
+import test.claim.workspace_executor_install_witness { installed_and_observed_controller_units_are_identical_control, workspace_install_includes_executor_without_starting_it_control, workspace_install_does_not_restore_competing_ci_reservation_control, reviewed_plan_binding_controls_control }
 import gunbc.workspace_commissioning_dispatch_transport { workspace_dispatch_captured_command }
 import gunbc.fleet_generation_execution { fleet_generation_writer }
 
@@ -34,11 +34,11 @@ test fn installed_grants_name_only_exact_argument_free_entries() -> Bool {
 }
 
 test fn commissioning_input_and_installer_boundaries_hold_together() -> Bool {
-  protected_bundle_roundtrips_as_one_value() && torn_or_substituted_bundle_is_refused()
-    && installed_and_observed_controller_units_are_identical()
-    && workspace_install_includes_executor_without_starting_it()
-    && workspace_install_does_not_restore_competing_ci_reservation()
-    && reviewed_plan_binding_controls()
+  protected_bundle_roundtrips_as_one_value_control() && torn_or_substituted_bundle_is_refused_control()
+    && installed_and_observed_controller_units_are_identical_control()
+    && workspace_install_includes_executor_without_starting_it_control()
+    && workspace_install_does_not_restore_competing_ci_reservation_control()
+    && reviewed_plan_binding_controls_control()
 }
 
 

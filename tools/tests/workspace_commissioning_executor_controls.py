@@ -4,6 +4,7 @@
 These doubles are not commissioning evidence or production admission helpers.
 """
 import argparse
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -20,14 +21,18 @@ OLD = '1' * 32
 NEW = '2' * 32
 UNIT = 'gunbc-microvm-slot@srv1-13.service'
 DOUBLE = r'''#!/usr/bin/env python3
-import json, os, sys
+import json, os, sys, time
 from pathlib import Path
 root=Path(os.environ['EXECUTOR_TEST_ROOT'])
 config=json.loads((root/'config').read_text())
 with (root/'calls').open('a') as f: f.write(json.dumps(sys.argv[1:])+'\n')
 a=sys.argv[1]
+if config.get('hang') == a:
+    (root/'hung').write_text(a)
+    time.sleep(60)
 if a=='prepare':
     if config.get('prepare_refuse'): sys.exit(1)
+    (root/'submission').write_text('recorded')
     print(config.get('decision','start:'+('1'*32)))
 elif a=='stop':
     if config.get('stop_refuse'): sys.exit(1)
@@ -40,6 +45,7 @@ elif a=='bind':
     (root/'bound').write_text(sys.argv[3])
 elif a=='finish':
     if config.get('finish_refuse'): sys.exit(1)
+    (root/'generation').write_text('committed')
     print(config.get('terminal','commissioning-fleet-generation-committed'))
 elif a=='start':
     (root/'started').write_text('yes')
@@ -120,6 +126,44 @@ with tempfile.TemporaryDirectory(prefix='workspace-executor-controls-') as tmp:
             assert not any(c[0]=='show' for c in seen),name
         assert ('commissioning-fleet-generation-committed' in run.stdout)==(code==0),name
         results.append({'case':name,'passed':True})
+    # Exercise real timeout/flock processes; helper persistence is a boundary double.
+    def assert_unlocked(root):
+        with (root/'lock').open() as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    root,env,cmd=setup('lock-deadline',{})
+    cmd[-2]='1'
+    with (root/'lock').open() as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        run=subprocess.run(cmd,env=env,capture_output=True,text=True,timeout=8)
+        assert run.returncode==70,run.stderr
+        assert calls(root)==[]
+    results.append({'case':'lock-deadline','passed':True})
+    for phase in ('prepare','rearm','bind','finish'):
+        config={'hang':phase}
+        if phase=='rearm': config['decision']='drain:none'
+        root,env,cmd=setup(phase+'-deadline',config)
+        cmd[-2]='1'
+        run=subprocess.run(cmd,env=env,capture_output=True,text=True,timeout=8)
+        assert run.returncode==124,(phase,run.returncode,run.stderr)
+        assert (root/'hung').read_text()==phase
+        assert_unlocked(root)
+        assert not (root/'generation').exists()
+        assert 'commissioning-fleet-generation-committed' not in run.stdout
+        seen=calls(root)
+        if phase in ('prepare','rearm'):
+            assert not any(c[0] in ('start','bind','finish') for c in seen)
+        else:
+            assert (root/'submission').exists()
+            assert sum(c[0]=='start' for c in seen)==1
+            # Supply the existing journal's recovery decision, not a fresh start.
+            recovery='wait:' if phase=='bind' else 'settle:'
+            (root/'config').write_text(json.dumps({'decision':recovery+NEW,'existing':True}))
+            retry=subprocess.run(cmd,env=env,capture_output=True,text=True,timeout=8)
+            assert retry.returncode==0,(phase,retry.stderr)
+            assert sum(c[0]=='start' for c in calls(root))==1
+            assert (root/'generation').read_text()=='committed'
+            assert_unlocked(root)
+        results.append({'case':phase+'-deadline-recovery','passed':True})
     # A second actor cannot even prepare while the native waiter owns the fleet lock.
     root,env,cmd=setup('lock-and-cancel',{'running':True})
     cmd[-2]='30'

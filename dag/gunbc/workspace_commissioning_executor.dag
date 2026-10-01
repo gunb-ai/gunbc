@@ -18,6 +18,9 @@ import v2.workflow.orchestration_bash_emit_support { orch_bash_do, orch_bash_emi
 // existing fleet flock even when the workflow disconnects. Failure NEVER releases the durable
 // mutation guard; the next prepare must discharge the prior actor/job recovery obligations.
 // This transport is not installed until those production helper and unit authorities are wired.
+// The poll-count authority also bounds each lock/helper wait in seconds. Helper timeout kills
+// its process group after a five-second grace; failure closes the flock without settling the journal.
+// These are per-operation bounds, not a single wall-clock deadline for the entire transaction.
 // argv: installed helper, exact slot unit, existing fleet lock, bounded poll count, systemctl.
 // The last argument permits an executable boundary double in controls; production installation
 // must derive it from the existing systemctl tool authority. No eval/source of helper output.
@@ -34,8 +37,8 @@ data workspace_executor_admit_transport: String = join([
   "[[ $executor_polls =~ ^[1-9][0-9]\{0,4}$ ]] || exit 64",
   "[[ $\{INVOCATION_ID:-} =~ ^[a-f0-9]\{32}$ ]] || exit 64",
   "exec 9< \"$executor_lock\"",
-  "flock -x 9",
-  "executor_decision=$(\"$executor_helper\" prepare \"$INVOCATION_ID\")",
+  "flock -w \"$executor_polls\" -x 9 || exit 70",
+  "executor_decision=$(timeout --kill-after=5s \"$\{executor_polls}s\" \"$executor_helper\" prepare \"$INVOCATION_ID\")",
   "[[ $executor_decision =~ ^(start|wait|settle|complete|drain):([a-f0-9]\{32}|none)$ ]] || exit 65",
   "executor_action=$\{executor_decision%%:*}",
   "executor_expected=$\{executor_decision#*:}",
@@ -68,7 +71,7 @@ data workspace_executor_drain_submission: String = join([
   "  executor_observe || exit 66",
   "  [[ $executor_active == inactive || $executor_active == failed ]] || exit 67",
   "  [[ $executor_pid == 0 && -z $executor_job ]] || exit 67",
-  "  executor_decision=$(\"$executor_helper\" rearm \"$INVOCATION_ID\")",
+  "  executor_decision=$(timeout --kill-after=5s \"$\{executor_polls}s\" \"$executor_helper\" rearm \"$INVOCATION_ID\")",
   "  [[ $executor_decision =~ ^start:([a-f0-9]\{32}|none)$ ]] || exit 65",
   "  executor_action=start",
   "  executor_expected=$\{executor_decision#*:}",
@@ -85,7 +88,7 @@ data workspace_executor_submit_once: String = join([
   "  executor_observe || exit 66",
   "  [[ $executor_seen =~ ^[a-f0-9]\{32}$ && $executor_seen != \"$executor_expected\" ]] || exit 67",
   "  executor_expected=$executor_seen",
-  "  \"$executor_helper\" bind \"$INVOCATION_ID\" \"$executor_expected\"",
+  "  timeout --kill-after=5s \"$\{executor_polls}s\" \"$executor_helper\" bind \"$INVOCATION_ID\" \"$executor_expected\"",
   "fi",
 ], "\n")
 
@@ -112,7 +115,7 @@ data workspace_executor_await_invocation: String = join([
 ], "\n")
 
 data workspace_executor_settle: String = join([
-  "executor_terminal=$(\"$executor_helper\" finish \"$INVOCATION_ID\" \"$executor_expected\")",
+  "executor_terminal=$(timeout --kill-after=5s \"$\{executor_polls}s\" \"$executor_helper\" finish \"$INVOCATION_ID\" \"$executor_expected\")",
   "[[ $executor_terminal == 'commissioning-fleet-generation-committed' ]] || exit 69",
   "printf '%s\\n' \"$executor_terminal\"",
 ], "\n")

@@ -40,7 +40,7 @@ fn executor_plan_fixture_credential() -> String {
   workspace_commissioning_record_text(record: WorkspaceCommissioningPrepared { provenance: directive_fixture_provenance() }) as String
 }
 
-test fn exact_bundle_and_credential_join_without_a_circular_hash() -> Bool {
+fn exact_bundle_and_credential_join_without_a_circular_hash_control() -> Bool {
   let body = executor_plan_fixture_body()
   match workspace_executor_plan_bytes(plan_body: body, apply_shell: "reviewed-shell",
     receipt_text: executor_plan_fixture_receipt(body: body, shell: "reviewed-shell", host: "srv1", scope: workspace_executor_scope_wire),
@@ -50,7 +50,7 @@ test fn exact_bundle_and_credential_join_without_a_circular_hash() -> Bool {
   }
 }
 
-test fn replaced_apply_bytes_refuse_even_with_the_same_credential() -> Bool {
+fn replaced_apply_bytes_refuse_even_with_the_same_credential_control() -> Bool {
   let body = executor_plan_fixture_body()
   match workspace_executor_plan_bytes(plan_body: body, apply_shell: "substituted-shell",
     receipt_text: executor_plan_fixture_receipt(body: body, shell: "reviewed-shell", host: "srv1", scope: workspace_executor_scope_wire),
@@ -60,7 +60,7 @@ test fn replaced_apply_bytes_refuse_even_with_the_same_credential() -> Bool {
   }
 }
 
-test fn duplicated_credential_row_refuses_a_self_consistent_bundle() -> Bool {
+fn duplicated_credential_row_refuses_a_self_consistent_bundle_control() -> Bool {
   let body = join([executor_plan_fixture_body(), executor_plan_fixture_body()], "\n")
   match workspace_executor_plan_bytes(plan_body: body, apply_shell: "reviewed-shell",
     receipt_text: executor_plan_fixture_receipt(body: body, shell: "reviewed-shell", host: "srv1", scope: workspace_executor_scope_wire),
@@ -70,7 +70,7 @@ test fn duplicated_credential_row_refuses_a_self_consistent_bundle() -> Bool {
   }
 }
 
-test fn another_host_cannot_supply_a_commissioning_receipt() -> Bool {
+fn another_host_cannot_supply_a_commissioning_receipt_control() -> Bool {
   let body = executor_plan_fixture_body()
   match workspace_executor_plan_bytes(plan_body: body, apply_shell: "reviewed-shell",
     receipt_text: executor_plan_fixture_receipt(body: body, shell: "reviewed-shell", host: "srv2", scope: workspace_executor_scope_wire),
@@ -80,7 +80,7 @@ test fn another_host_cannot_supply_a_commissioning_receipt() -> Bool {
   }
 }
 
-test fn generic_fleet_receipt_is_not_a_commissioning_subject() -> Bool {
+fn generic_fleet_receipt_is_not_a_commissioning_subject_control() -> Bool {
   let body = executor_plan_fixture_body()
   match workspace_executor_plan_bytes(plan_body: body, apply_shell: "reviewed-shell",
     receipt_text: executor_plan_fixture_receipt(body: body, shell: "reviewed-shell", host: "srv1", scope: "full_host"),
@@ -90,7 +90,7 @@ test fn generic_fleet_receipt_is_not_a_commissioning_subject() -> Bool {
   }
 }
 
-test fn absent_prestate_refuses_even_a_self_consistent_bundle() -> Bool {
+fn absent_prestate_refuses_even_a_self_consistent_bundle_control() -> Bool {
   let body = workspace_executor_credential_row(provenance: directive_fixture_provenance())
   match workspace_executor_plan_bytes(plan_body: body, apply_shell: "reviewed-shell",
     receipt_text: executor_plan_fixture_receipt(body: body, shell: "reviewed-shell", host: "srv1", scope: workspace_executor_scope_wire),
@@ -100,7 +100,7 @@ test fn absent_prestate_refuses_even_a_self_consistent_bundle() -> Bool {
   }
 }
 
-test fn duplicate_prestate_refuses_even_a_self_consistent_bundle() -> Bool {
+fn duplicate_prestate_refuses_even_a_self_consistent_bundle_control() -> Bool {
   let body = concat(executor_plan_fixture_body(), "\ncommissioning-prestate:other")
   match workspace_executor_plan_bytes(plan_body: body, apply_shell: "reviewed-shell",
     receipt_text: executor_plan_fixture_receipt(body: body, shell: "reviewed-shell", host: "srv1", scope: workspace_executor_scope_wire),
@@ -109,3 +109,17 @@ test fn duplicate_prestate_refuses_even_a_self_consistent_bundle() -> Bool {
     _ => false
   }
 }
+
+test fn absent_prestate_refuses_even_a_self_consistent_bundle() -> Bool { absent_prestate_refuses_even_a_self_consistent_bundle_control() }
+
+test fn another_host_cannot_supply_a_commissioning_receipt() -> Bool { another_host_cannot_supply_a_commissioning_receipt_control() }
+
+test fn duplicate_prestate_refuses_even_a_self_consistent_bundle() -> Bool { duplicate_prestate_refuses_even_a_self_consistent_bundle_control() }
+
+test fn duplicated_credential_row_refuses_a_self_consistent_bundle() -> Bool { duplicated_credential_row_refuses_a_self_consistent_bundle_control() }
+
+test fn exact_bundle_and_credential_join_without_a_circular_hash() -> Bool { exact_bundle_and_credential_join_without_a_circular_hash_control() }
+
+test fn generic_fleet_receipt_is_not_a_commissioning_subject() -> Bool { generic_fleet_receipt_is_not_a_commissioning_subject_control() }
+
+test fn replaced_apply_bytes_refuse_even_with_the_same_credential() -> Bool { replaced_apply_bytes_refuse_even_with_the_same_credential_control() }
