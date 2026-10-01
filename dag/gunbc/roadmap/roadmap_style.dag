@@ -984,7 +984,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     StaticRule { selector: RawSelector { text: ".roadmap-frontier[data-band-filter=\"ready\"] .view-table li.node:not([data-band=\"ready\"])" }, decls: [
       decl(prop: Display, value: "none"),
     ] },
-    StaticRule { selector: RawSelector { text: ".roadmap-frontier[data-band-filter=\"upcoming\"] .view-table li.node:not([data-band=\"upcoming\"])" }, decls: [
+    StaticRule { selector: RawSelector { text: ".roadmap-frontier[data-band-filter=\"not-ready\"] .view-table li.node:not([data-band=\"not-ready\"])" }, decls: [
       decl(prop: Display, value: "none"),
     ] },
     StaticRule { selector: RawSelector { text: ".roadmap-frontier[data-band-filter=\"done\"] .view-table li.node:not([data-band=\"done\"])" }, decls: [

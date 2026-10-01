@@ -131,6 +131,8 @@ fn launch_fixture_with_contract(rn: RoadmapNode) -> RoadmapNode {
     execution: launch_fixture_contract(),
     owner: rn.owner,
     signoff: rn.signoff,
+    parent: rn.parent,
+    centering: rn.centering,
   }
 }
 

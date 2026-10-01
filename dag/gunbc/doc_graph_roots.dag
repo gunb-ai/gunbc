@@ -1245,7 +1245,7 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
     slug: "inner-cost-lanes-scoping",
-    primary_work: DeclarationRef { module_path: "gunbc.roadmap_authority", decl_name: "roadmap_authority_for", field: WholeDeclaration },
+    primary_work: DeclarationRef { module_path: "gunbc.roadmap_authority", decl_name: "roadmap_authority", field: WholeDeclaration },
     additional_works: [],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "both lanes have landed or been retired: Lane A when process_escapes_loop is migrated onto source_chars with its discriminating non-ASCII receipt, Lane B when the shared-overlap measurement it asks for exists and either opens the program or prices it down. The note is scoping for two roadmap nodes, so it dissolves when those nodes close, not into a gunbc.plan.Plan row.") },
   },
@@ -1254,7 +1254,7 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
     slug: "five-minute-ci-gate-design",
     primary_work: DeclarationRef { module_path: "gunbc.roadmap_authority", decl_name: "five_minute_ci_gate_program_note", field: WholeDeclaration },
     additional_works: [
-      DeclarationRef { module_path: "gunbc.roadmap_authority", decl_name: "roadmap_authority_for", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.roadmap_authority", decl_name: "roadmap_authority", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.native_witness_transition_receipt", decl_name: "native_at_small_scale_transition_receipt", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.ci_cost_arc_closeout_receipt", decl_name: "unattributed_ci_wall", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.ci_cost_arc_closeout_receipt", decl_name: "end_to_end_residual", field: WholeDeclaration },
@@ -1278,7 +1278,7 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
     primary_work: DeclarationRef { module_path: "gunbc.executor_schedule_retention", decl_name: "schedule_retention_policy_note", field: WholeDeclaration },
     additional_works: [
       DeclarationRef { module_path: "gunbc.roadmap_authority", decl_name: "five_minute_ci_gate_program_note", field: WholeDeclaration },
-      DeclarationRef { module_path: "gunbc.roadmap_authority", decl_name: "roadmap_authority_for", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.roadmap_authority", decl_name: "roadmap_authority", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.p1_retention_cohort_receipt", decl_name: "p1_retention_cohort_receipt_verdict", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.ci_cost_arc_closeout_receipt", decl_name: "end_to_end_residual", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.ci_cost_arc_closeout_receipt", decl_name: "retention_settle", field: WholeDeclaration },

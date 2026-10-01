@@ -99,6 +99,8 @@ fn sized_node(id: String, cell: SizingCell) -> RoadmapNode {
     execution: ExecutionContractUnspecified,
     owner: "fixture",
     signoff: Unsigned,
+    parent: none,
+    centering: none,
   }
 }
 
@@ -113,6 +115,8 @@ fn unsized_node(id: String) -> RoadmapNode {
     execution: base.execution,
     owner: base.owner,
     signoff: base.signoff,
+    parent: none,
+    centering: none,
   }
 }
 
@@ -202,8 +206,8 @@ test fn witness_live_graph_refuses_with_located_counted_calibration_gaps() -> Bo
     && match result {
       ScheduleForecastKnown { forecast: _ } => false
       ScheduleForecastRefused { refusals } =>
-        count(refusals) == 1
-          && match first(refusals) {
+        count(refusals) == 2
+          && match first(refusals |> filter(r => match r { NoCalibrationSample { gaps: _, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => true  _ => false })) {
             Absent => false
             Present { value: refusal } => match refusal {
               NoCalibrationSample { gaps, population_exclusions, assumptions: declared, scenario_adjustment: adjustment } =>
@@ -259,16 +263,20 @@ test fn witness_live_graph_gap_count_matches_refusal_rows() -> Bool {
     }
 }
 
-test fn witness_live_graph_refusal_is_only_calibration() -> Bool {
+// THE LIVE GRAPH REFUSES ON CALIBRATION AND ON SIZE, AND ON NOTHING ELSE. Since the 2026-09-30 cut
+// a project or milestone supplies no size (its dispatch facts are absent, gunbc.roadmap_model) and
+// new worksheet tasks are named before they are sized, so the live forecast honestly refuses
+// NodeUnsized beside the calibration gaps rather than forecasting work nobody has sized.
+test fn witness_live_graph_refusal_is_only_calibration_and_size() -> Bool {
   match live_roadmap_schedule_forecast(assumptions: assumptions(), anchor: anchor()) {
     ScheduleForecastKnown { forecast: _ } => false
     ScheduleForecastRefused { refusals } =>
-      count(refusals) == 1 && any(refusals, refusal => match refusal {
+      count(refusals) == 2 && all(refusals, refusal => match refusal {
         NoCalibrationSample { gaps: _, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => true
         ForecastGraphEmpty => false
         DependencyCycle { nodes: _ } => false
         DependencyEndpointUnknown { nodes: _ } => false
-        NodeUnsized { nodes: _ } => false
+        NodeUnsized { nodes: _ } => true
         CycleTimeObservationNonPositive { nodes: _ } => false
         WorkerConcurrencyCapInvalid { declared_cap: _ } => false
         CalibrationHistoryRefused { refusals: _ } => false

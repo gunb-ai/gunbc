@@ -1,7 +1,7 @@
 module gunbc.roadmap_page
 
 import gunbc.site.robot_mark { robot_mark_svg }
-import gunbc.roadmap_nesting { RoadmapMembership, declared_roadmap_memberships }
+import gunbc.roadmap_nesting { RoadmapMembership, roadmap_memberships }
 import gunbc.roadmap.roadmap_project { project_root_for_node }
 
 import gunbc.roadmap_issue_command { IssueFormContext }
@@ -81,7 +81,7 @@ import gunbc.roadmap_presentation {
   row_filter_band_key,
   WorkLifecycle, OpenLifecycle, ReviewLifecycle, DoneLifecycle, SupersededLifecycle,
   work_lifecycle, work_lifecycle_key,
-  WorkScheduling, SchedulingReady, SchedulingUpcoming, SchedulingDone, SchedulingSuperseded, SchedulingUnplanned,
+  WorkScheduling, SchedulingReady, SchedulingNotReady, SchedulingDone, SchedulingSuperseded, hidden_not_ready_summary,
   ActivityView, NoActiveWork, ActiveWork, ActiveWorkRefused, LegacySupersedableAttempt, CompletedWork, ActivityUnobservable,
   ActivityAttention, activity_attention_key, activity_arm_key,
   ActivityEvidenceRow,
@@ -96,7 +96,7 @@ import gunbc.roadmap_presentation {
   activity_line_class_key, activity_line_class_of_round, activity_summary_line, task_bar_idle_view,
   activity_state_sep, activity_detail_sep, activity_evidence_kv_sep, inspect_disclosure_label,
   ProgramProgressView,
-  DailyWorkspaceView, daily_workspace_view,
+  DailyWorkspaceView, daily_workspace_view, row_is_shown,
   ObservationImpactView, ObservationsNominal, WorkspaceObservationImpact,
   observation_impact_view, workspace_covers_row_activity,
   lifecycle_chip_renders,
@@ -1450,7 +1450,7 @@ fn section_markup(s: RoadmapSection, merged: List<Int>, launch: LaunchRowContext
 
 // The workspace is rendered from ONE DailyWorkspaceView (operator blocker 6), and since the
 // 2026-09-25 Buganizer ruling that view's page realization is the flat issue TABLE alone (see
-// workspace_markup): the view still derives the active/ready/upcoming/done/superseded band
+// workspace_markup): the view still derives the active/ready/not-ready/done/superseded band
 // entries — they are the table's row order and the data-band vocabulary the filter chips read —
 // but the banded forest that presented them retired with the tree/bands view tabs. The workspace
 // observation banner narrates a channel-level refusal ONCE, and rows the impact covers render
@@ -1643,7 +1643,7 @@ fn workspace_observation_banner(observation: ObservationImpactView) -> List<Frag
 // they go back to the old UI, it's jarring): the forest they switched to — the banded taskbar
 // rendering of the same rows — no longer ships on this page at all, and the view chips, the
 // client view switch, and the stylesheet's view rules went with them. What survives of the band
-// vocabulary is the FILTER: the all/active/ready/upcoming/done/superseded chips filter THIS table
+// vocabulary is the FILTER: the all/active/ready/not-ready/done/superseded chips filter THIS table
 // in place (the stylesheet hides non-matching data-band rows), and the search input filters by
 // the row's own data-search (headline · node id · owner). The table rows are dense lines, not
 // taskbars; the forest renderer itself lives on as the /sandbox exhibit's grouping path (a design
@@ -1713,7 +1713,7 @@ fn issue_controls_markup() -> Fragment {
       issue_band_chip(label: "all", band: "all"),
       issue_band_chip(label: "active", band: "active"),
       issue_band_chip(label: "ready", band: "ready"),
-      issue_band_chip(label: "upcoming", band: "upcoming"),
+      issue_band_chip(label: "not ready", band: "not-ready"),
       issue_band_chip(label: "done", band: "done"),
       issue_band_chip(label: "superseded", band: "superseded"),
       el_attrs("button", [
@@ -1791,7 +1791,7 @@ fn issue_line_sort_value(col: IssueResultsColumn, view: WorkRowView, bar: TaskBa
   }
 }
 
-fn issue_line_li(row: IssueTableRow, observation: ObservationImpactView, edges: List<RoadmapEdge>, memberships: List<RoadmapMembership> = declared_roadmap_memberships()) -> Fragment {
+fn issue_line_li(row: IssueTableRow, observation: ObservationImpactView, edges: List<RoadmapEdge>, memberships: List<RoadmapMembership> = roadmap_memberships()) -> Fragment {
   let view = row.view
   let bar = if view.attempt_stale { task_bar_idle_view(view: view) } else { task_bar_view_of(view: view, observation: observation) }
   Element {
@@ -1835,7 +1835,7 @@ fn issue_table_header_nodes() -> Fragment {
       ], [ txt(c.header as String) ]) ])))
 }
 
-fn issue_table_markup(rows: List<IssueTableRow>, observation: ObservationImpactView, edges: List<RoadmapEdge>, memberships: List<RoadmapMembership> = declared_roadmap_memberships()) -> Fragment {
+fn issue_table_markup(rows: List<IssueTableRow>, observation: ObservationImpactView, edges: List<RoadmapEdge>, memberships: List<RoadmapMembership> = roadmap_memberships()) -> Fragment {
   el_attrs("div", [attr(name: "class", value: "issue-table"), attr(name: "role", value: "table"), attr(name: "aria-label", value: "Issue search results")], [
     el_class("h2", "issue-table-heading", [ txt("Issue search results") ]),
     issue_table_header_nodes(),
@@ -2642,7 +2642,7 @@ fn issue_detail_page_for(
   recents: List<EventPrincipal>,
   command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" },
   profiles: List<PrincipalProfile>,
- memberships: List<RoadmapMembership> = declared_roadmap_memberships()) -> Fragment {
+ memberships: List<RoadmapMembership> = roadmap_memberships()) -> Fragment {
   match proj {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       roadmap_daily_workspace_page_for_projection_observed_stale(
@@ -2843,17 +2843,19 @@ fn project_suite_not_found_page(node_id: String, viewer: String) -> Fragment {
 
 // THE WORKSPACE RENDERS THE TABLE ALONE (owner ruling 2026-09-25: the tree/bands views and their
 // forest container retire from the served page — see the surface note above issue_owner_value).
-// The band derivation still runs one level down: DailyWorkspaceView's active/ready/upcoming/done/
+// The band derivation still runs one level down: DailyWorkspaceView's active/ready/not-ready/done/
 // superseded entries are what the flat table flattens (workspace_flat_table), so the table's row
 // ORDER is the band order and every row carries its data-band for the filter chips — the band
 // vocabulary outlives the band SURFACE. The forest renderer below (workspace_entries_ul and its
 // chain) stays in this module as the /sandbox exhibit's real grouping path; nothing on this page
 // calls it.
-fn workspace_markup(ws: DailyWorkspaceView, edges: List<RoadmapEdge>, memberships: List<RoadmapMembership> = declared_roadmap_memberships()) -> Fragment {
+fn workspace_markup(ws: DailyWorkspaceView, edges: List<RoadmapEdge>, memberships: List<RoadmapMembership> = roadmap_memberships()) -> Fragment {
   el_class("section", "roadmap-frontier", [
     el_class("div", "view-table", concat(
       [ issue_controls_markup() ],
-      [ issue_table_markup(rows: ws.table, observation: ws.observation, edges: edges, memberships: memberships) ])),
+      concat(
+        if ws.hidden_not_ready == 0 { [] } else { [ el_class("p", "issue-hidden-summary", [ txt(hidden_not_ready_summary(ws: ws)) ]) ] },
+        [ issue_table_markup(rows: ws.table, observation: ws.observation, edges: edges, memberships: memberships) ]))),
   ])
 }
 
@@ -2956,7 +2958,7 @@ fn daily_workspace_view_of_for_accepted(
   launch: LaunchHostStanding,
   stale_nodes: List<String>,
  profiles: List<PrincipalProfile>,
-  memberships: List<RoadmapMembership> = declared_roadmap_memberships()) -> DailyWorkspaceView {
+  memberships: List<RoadmapMembership> = roadmap_memberships()) -> DailyWorkspaceView {
   let nodes = doc_all_nodes(doc: doc)
   let edges = doc_all_edges(doc: doc)
   let observation = observation_impact_view(workflow_refused: attempts_refused)
@@ -2973,13 +2975,15 @@ fn daily_workspace_view_of_for_accepted(
     profiles: profiles))
   let ready_count = count(rows |> filter(r =>
     !row_is_active_work(row: r) && work_scheduling_key(s: r.scheduling) == "ready"))
+  let shown = rows |> filter(r => row_is_shown(row: r, memberships: memberships))
   daily_workspace_view(
-    rows: rows,
+    rows: shown,
     edges: edges,
     program: Present { value: v1_exit_program_progress_view_for_accepted(accepted_ids: accepted_ids, ready_count: ready_count) },
     observation: observation,
     families: live_work_family_decls(),
-    members: live_work_family_members_for_accepted(accepted: accepted_ids, withheld: withheld), memberships: memberships)
+    members: live_work_family_members_for_accepted(accepted: accepted_ids, withheld: withheld), memberships: memberships,
+    hidden_not_ready: count(rows) - count(shown))
 }
 
 fn roadmap_daily_workspace_page_impl_for_accepted(
@@ -2994,7 +2998,7 @@ fn roadmap_daily_workspace_page_impl_for_accepted(
   launch: LaunchHostStanding,
   stale_nodes: List<String>,
  profiles: List<PrincipalProfile>,
-  memberships: List<RoadmapMembership> = declared_roadmap_memberships()) -> Fragment {
+  memberships: List<RoadmapMembership> = roadmap_memberships()) -> Fragment {
   let ws = daily_workspace_view_of_for_accepted(
     doc: doc,
     merged: merged,
@@ -3185,12 +3189,12 @@ fn roadmap_page_for_projection_launch(proj: RoadmapAuthorityProjection, launch: 
 // can name the public accepted set any more, and these two get the empty one, which is what their
 // own "the event carrier is not consulted" already claimed and did not deliver.
 
-fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>, memberships: List<RoadmapMembership> = declared_roadmap_memberships()) -> Fragment {
+fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>, memberships: List<RoadmapMembership> = roadmap_memberships()) -> Fragment {
   roadmap_daily_workspace_page_impl_for_accepted(doc: doc, merged: merged, accepted_ids: [], withheld: [], main_prefix: [], attempts: [], attempts_refused: none, standings: StandingsUnobserved { reason: "static render: the event carrier is not consulted" }, launch: launch_host_unobserved_static_render(), stale_nodes: [], profiles: [],
       memberships: memberships)
 }
 
-fn roadmap_daily_workspace_page_launch(doc: RoadmapDocument, merged: List<Int>, launch: LaunchHostStanding, memberships: List<RoadmapMembership> = declared_roadmap_memberships()) -> Fragment {
+fn roadmap_daily_workspace_page_launch(doc: RoadmapDocument, merged: List<Int>, launch: LaunchHostStanding, memberships: List<RoadmapMembership> = roadmap_memberships()) -> Fragment {
   roadmap_daily_workspace_page_impl_for_accepted(doc: doc, merged: merged, accepted_ids: [], withheld: [], main_prefix: [], attempts: [], attempts_refused: none, standings: StandingsUnobserved { reason: "static render: the event carrier is not consulted" }, launch: launch, stale_nodes: [], profiles: [],
       memberships: memberships)
 
@@ -3204,7 +3208,7 @@ fn roadmap_daily_workspace_page_for_projection_observed(
   standings: RoadmapStandings,
   launch: LaunchHostStanding,
  profiles: List<PrincipalProfile>,
-  memberships: List<RoadmapMembership> = declared_roadmap_memberships()) -> Fragment {
+  memberships: List<RoadmapMembership> = roadmap_memberships()) -> Fragment {
   roadmap_daily_workspace_page_for_projection_observed_stale(
     proj: proj,
     attempts: attempts,
@@ -3231,7 +3235,7 @@ fn roadmap_daily_workspace_page_for_projection_observed_stale(
   launch: LaunchHostStanding,
   stale_nodes: List<String>,
  profiles: List<PrincipalProfile>,
-  memberships: List<RoadmapMembership> = declared_roadmap_memberships()) -> Fragment {
+  memberships: List<RoadmapMembership> = roadmap_memberships()) -> Fragment {
   match proj {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       roadmap_daily_workspace_page_impl_for_accepted(
@@ -3269,11 +3273,11 @@ fn roadmap_daily_workspace_page_for_projection_observed_stale(
   }
 }
 
-fn roadmap_daily_workspace_page_for_authority( memberships: List<RoadmapMembership> = declared_roadmap_memberships()) -> Fragment {
+fn roadmap_daily_workspace_page_for_authority( memberships: List<RoadmapMembership> = roadmap_memberships()) -> Fragment {
   roadmap_daily_workspace_page_for_projection(proj: roadmap_authority_projection(), memberships: memberships)
 }
 
-fn roadmap_daily_workspace_page_for_projection(proj: RoadmapAuthorityProjection, memberships: List<RoadmapMembership> = declared_roadmap_memberships()) -> Fragment {
+fn roadmap_daily_workspace_page_for_projection(proj: RoadmapAuthorityProjection, memberships: List<RoadmapMembership> = roadmap_memberships()) -> Fragment {
   roadmap_daily_workspace_page_for_projection_observed(
     proj: proj,
     attempts: [],
