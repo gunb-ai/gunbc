@@ -698,6 +698,17 @@ fn arrow_named_edge_is_non_binder(e: Edge) -> Bool {
   }
 }
 
+// WHETHER AN EDGE IS AN ARROW'S DECLARED ORDER: label metadata (the domain's binder labels), not a value
+// the Arrow is built from. The one classification every reader that walks values through an Arrow asks
+// -- v2.compiler.infer (its gather fold and product evidence) and std.kind's roster-kind index -- so
+// no reader keeps its own list of metadata labels.
+fn arrow_signature_order_edge(parent: Node, edge: Edge) -> Bool {
+  match parent.kind {
+    TypeNode { connective: Arrow } => edge_is_core(e: edge, marker: ArrowSignatureOrderEdge)
+    _ => false
+  }
+}
+
 fn arrow_signature_edges_conform(children: List<Edge>) -> Bool {
   let binder_edges = fold(children, init: 0, f: fn(acc, e) {
     match e.label {
