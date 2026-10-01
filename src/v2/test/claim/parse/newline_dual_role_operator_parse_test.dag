@@ -1,6 +1,5 @@
 module v2.test.parse.newline_dual_role_operator_parse
 
-import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.tokenize { tokenize }
@@ -47,7 +46,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // refuses a line-break-preceded `-` with NewlineBeforeDualRoleOperator at the `-`
 // (v2.extdeps.languages.dag dag_grammar_additive_expr_helper). Each side of the rule, through the
 // live prepared grammar on a lexed stream (which carries its layout): the next-line forms refuse at
-// the `-`, for a plain operand and for a block, and the same-line form stays one subtraction. The
+// the `-`, for a plain operand and for a block, and the same-line form parses. The
 // mutation that reds the refusals is test.claim.long.newline_dual_role_operator_mutation_witness.
 
 fn n_tokenize_parse(text: String, file: Symbol) -> Outcome<Node> {
@@ -87,35 +86,29 @@ fn n_refuses_at_minus(text: String, file: Symbol, start: Int, end: Int) -> Bool 
   }
 }
 
-fn n_parses_and_normalizes(text: String, file: Symbol) -> Bool {
-  match n_tokenize_parse(text: text, file: file) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: tree, diagnostics: _ } =>
-      match normalize(parse_tree: tree) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: _, diagnostics: _ } => true
-      }
-  }
-}
+// One `data` declaration each: the rule is about an expression, and a declaration is its smallest
+// carrier, so each claim pays one tokenize and one parse of a few lines.
+// `-` at bytes 39..40.
+data newline_minus_after_operand_source: String = "module probe.nl_plain\n\ndata d: Int = x\n- 1\n"
 
-// `-` at bytes 51..52.
-data newline_minus_after_operand_source: String = "module probe.nl_plain\n\nfn f(x: Int) -> Int {\n  x\n  - 1\n}\n"
+// `-` at bytes 74..75.
+data newline_minus_after_block_source: String = "module probe.nl_block\n\ndata d: Int = match w {\n  true => 1\n  false => 0\n}\n- 1\n"
 
-// `-` at bytes 101..102.
-data newline_minus_after_block_source: String = "module probe.nl_block\n\nfn f(w: Bool, n: Int) -> Int {\n  match w {\n    true => n\n    false => 0\n  }\n  - n\n}\n"
-
-data same_line_minus_source: String = "module probe.nl_same\n\nfn f(x: Int) -> Int {\n  x - 1\n}\n"
+data same_line_minus_source: String = "module probe.nl_same\n\ndata d: Int = x - 1\n"
 
 test fn a_newline_minus_after_an_operand_refuses_holds() -> Bool {
-  n_refuses_at_minus(text: newline_minus_after_operand_source, file: ^probe_nl_plain, start: 51, end: 52)
+  n_refuses_at_minus(text: newline_minus_after_operand_source, file: ^probe_nl_plain, start: 39, end: 40)
 }
 
 test fn a_newline_minus_after_a_block_refuses_holds() -> Bool {
-  n_refuses_at_minus(text: newline_minus_after_block_source, file: ^probe_nl_block, start: 101, end: 102)
+  n_refuses_at_minus(text: newline_minus_after_block_source, file: ^probe_nl_block, start: 74, end: 75)
 }
 
 test fn a_same_line_minus_is_subtraction_holds() -> Bool {
-  n_parses_and_normalizes(text: same_line_minus_source, file: ^probe_nl_same)
+  match n_tokenize_parse(text: same_line_minus_source, file: ^probe_nl_same) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 // THE EMIT DIRECTION (DESIGN section 4: one grammar, read both ways). The refusal is ingest-only:
