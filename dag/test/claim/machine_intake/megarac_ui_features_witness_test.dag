@@ -4,13 +4,15 @@ import std.types { Bool, List, NonEmptyStr, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { any }
-import extdeps.bmc.megarac { megarac_ui_features_0_32, megarac_ui_features, megarac_ui_features_json, megarac_firmware_0_32 }
+import extdeps.bmc.megarac { megarac_ui_features_json, megarac_firmware_0_32 }
+import extdeps.external_authority { TranscribedUncited }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.endpoint { AmiMegaRac }
 import gunbc.machine_intake_megarac_served_ui_catalog_observation { megarac_source_min_js_sha256_2026_09_27 }
 import gunbc.machine_intake_megarac_ui_features {
   MegaRacUiFeatures, MegaRacUiFeaturesRead, MegaRacUiFeaturesUnread,
   megarac_ui_features_of_bundle, megarac_ui_feature_name_admitted, megarac_ui_features_reading, megarac_ui_features_row_text,
+  megarac_ui_features_0_32, megarac_ui_features_0_32_receipt, megarac_ui_features,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -63,4 +65,18 @@ test fn the_stored_value_is_the_vendor_shape_and_only_0_32_has_one() -> Bool {
   megarac_ui_features_json(names: ["A_B" as NonEmptyStr, "C" as NonEmptyStr]) == "[\{\"feature\": \"A_B\"}, \{\"feature\": \"C\"}]"
     && (match megarac_ui_features(firmware: megarac_firmware_0_32) { Present { value: l } => count(l) == count(megarac_ui_features_0_32)  Absent => false })
     && (match megarac_ui_features(firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.33")) { Absent => true  Present { value: _ } => false })
+}
+
+// THE ROW IS AN OBSERVATION RECEIPT, NOT A CLAIMED DERIVATION (review 73613): it names the build, the
+// pinned bundle digest and the producing run, and its standing is TranscribedUncited with the
+// re-derivation route as its read obligation -- the emitter, which refuses any other digest.
+test fn the_feature_list_is_a_receipt_with_its_read_obligation() -> Bool {
+  let r = megarac_ui_features_0_32_receipt
+  (r.bundle_sha256 as String) == (megarac_source_min_js_sha256_2026_09_27 as String)
+    && (r.producing_run as String) == "36787375313"
+    && count(r.names) == count(megarac_ui_features_0_32)
+    && (match r.standing {
+      TranscribedUncited { read_obligation: o } => string_contains(s: o as String, pattern: "megarac_ui_features_row_emit") && string_contains(s: o as String, pattern: "mtcollins1_ui_bundle_observe")
+      _ => false
+    })
 }

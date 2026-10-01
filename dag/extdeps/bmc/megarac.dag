@@ -16,7 +16,6 @@ import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.vendor.ami { ami }
 import extdeps.languages.json.emit { JsonValue, json_object, json_array, json_kv, json_int, json_string, serialize_json_array }
-import v2.std.optional { Present, Absent }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -617,96 +616,11 @@ service megarac.Media {
   }
 }
 
-// THE FEATURE LIST THE UI HANDS ITS KVM VIEWER, PER FIRMWARE BUILD. The SP-X UI stores
-// sessionStorage "features" = JSON.stringify of its project-configurations collection, seeded from the
-// static `features` module compiled into source.min.js; the viewer's KVM view reads it with unguarded
-// indexOf calls, so a viewer opened without it never opens /kvm. The 0.32 row is EMITTED, not typed:
-// gunbc.machine_intake_megarac_ui_features megarac_ui_features_row_emit parses it out of the retained
-// source.min.js of fleet-converge crawl run 36787375313 (mtcollins1-ui-bundle), refusing unless those
-// bytes digest to the 2026-09-27 read's sha256 (5029fae2...). A build with no row has no list here.
-// MEGARAC_UI_FEATURES_0_32_BEGIN
-data megarac_ui_features_0_32: List<NonEmptyStr> = [
-  "RMEDIA_MULTI_IMAGE_SUPPORT",
-  "BIOS_SUPPORT",
-  "KVM_SESSION_RECONNECT",
-  "SYSTEM_FIREWALL",
-  "OEM_PROPRIETARY_LEVEL_SUPPORT",
-  "HTML5_KVM",
-  "DUAL_BIOS_FLASH_SUPPORT",
-  "IPV6_SUPPORT",
-  "ALLOW_NON_SECURE_COMMUNICATION",
-  "SET_SENSOR_THRESHOLDS",
-  "REPLACE_OEM_LOGO",
-  "EXTENDEDLOG",
-  "AUTO_RESIZE_KVM_CLIENT_WINDOW",
-  "SERVICES",
-  "RMEDIA",
-  "AUTOVDORECORD_REMOTE",
-  "CAPTURE_BSOD_JPEG",
-  "RADIUS_SUPPORT",
-  "SYSTEM_FIREWALL_TIMEOUT",
-  "UARTLOG",
-  "RUNTIME_HOST_LOCK",
-  "SOL_SUPPORT",
-  "HPM_SUPPORT",
-  "ADVISER_SUPPORT",
-  "AD_SUPPORT",
-  "MULTIPLE_USER_VMEDIA",
-  "LDAP_SUPPORT",
-  "KVM_SESSION_TIMEOUT",
-  "FIRMWARE_FLASH_SUPPORT",
-  "CPLD_SUPPORT",
-  "PTP_SERVER_SUPPORT",
-  "BOOTFW_SUPPORT",
-  "HOST_LOCK_AUTO",
-  "BACKUP_CONFIG",
-  "SET_SENSOR_THRESHOLDS_RESET",
-  "SAVE_SELLOG",
-  "SESSION_MANAGEMENT",
-  "RMEDIA_MULTI_CD_SUPPORT",
-  "TSIG",
-  "IPV6_COMPLIANCE",
-  "CD_SERVER_APP",
-  "WEB_DASHBOARD_WIDGETS",
-  "FOLDER_REDIRECTION",
-  "CIRCULAR_SEL",
-  "FW_IMAGE",
-  "DISABLE_EMPTY_PASSWORD",
-  "KB_LANG_SELECT_SUPPORT",
-  "DYNAMIC_KCS_LAN_SUPPORT",
-  "LMEDIA",
-  "DUAL_BOOTFW_EEPROM_SUPPORT",
-  "BLOCK_ICMP_TIMESTAMP",
-  "SINGLE_PORT_APP",
-  "MDNS",
-  "NCSI_SUPPORT",
-  "IMG_REDIRECTION",
-  "HD_SERVER_APP",
-  "PAM_REORDERING",
-  "EXTENDED_PRIV",
-  "SNMP",
-  "WEB_APP_PROXY",
-  "LMEDIA_MULTI_IMAGE_SUPPORT",
-  "VMEDIA_MAX_COUNT_FOR_KVM",
-  "MEDIA_REDIR_READ_WRITE_ONLY",
-  "RMEDIA_SESSION_RECONNECT",
-  "PRESERVECONF",
-  "TIMEZONE_SUPPORT",
-  "RMEDIA_MULTI_HD_SUPPORT",
-  "AUTOVDORECORD",
-  "YES",
-  "VERSION_CMP_FLASH",
-  "BMC_RECOVERY",
-  "NWLINK",
-  "KVM_OR_MEDIA_AVAILABLE",
-]
-// MEGARAC_UI_FEATURES_0_32_END
-
-fn megarac_ui_features(firmware: BmcFirmwareReleaseIdentity) -> List<NonEmptyStr>? {
-  if bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_32) { Present { value: megarac_ui_features_0_32 } } else { none }
-}
-
-// THE VALUE THE VENDOR STORES: the JSON array of {"feature": NAME} objects its collection serialises to.
+// THE VALUE THE SP-X UI STORES AS sessionStorage "features": JSON.stringify of its project-configurations
+// collection, an array of {"feature": NAME} objects; the viewer's KVM view reads it with unguarded
+// indexOf calls. Which names a given build carries is an OBSERVATION this repository made of that
+// build's served bundle, so it is a receipt in the observing layer
+// (gunbc.machine_intake_megarac_ui_features megarac_ui_features_0_32_receipt), not a fact owned here.
 fn megarac_ui_features_json(names: List<NonEmptyStr>) -> String {
   serialize_json_array(elements: map(names, n => json_object(members: [json_kv(key: "feature", value: json_string(s: n as String))])))
 }
