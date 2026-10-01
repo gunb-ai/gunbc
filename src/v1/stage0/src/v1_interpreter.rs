@@ -2286,6 +2286,37 @@ fn store_cross_claim_pure_memo(
     if !cross_claim_pure_admitted(fn_node, func_name) {
         return CrossClaimStoreOutcome::NotAdmitted;
     }
+    match cross_claim_portable_result(ctx, func_name, result) {
+        Ok(portable) => commit_cross_claim_pure_memo(ctx, fn_node, args, portable, fill_guard),
+        Err(refused) => refused,
+    }
+}
+
+/// The stored form of a producer's result, or the refusal that keeps it out.
+fn cross_claim_portable_result(
+    ctx: &InterpContext,
+    func_name: &str,
+    result: &Value,
+) -> Result<PortableValue, CrossClaimStoreOutcome> {
+    portable_value_from_ctx_at(ctx, result, &mut String::new()).map_err(|refusal| {
+        CROSS_CLAIM_LAST_UNPORTABLE
+            .with(|c| *c.borrow_mut() = Some((func_name.to_string(), refusal.clone())));
+        CROSS_CLAIM_PURE_MEMO.with(|m| m.borrow_mut().unportable_refusals += 1);
+        CrossClaimStoreOutcome::RefusedValueNotPortable(refusal)
+    })
+}
+
+/// The store, from an already-derived portable result: keying, budget, and the served value built
+/// from the portable form. The one home of the store's rules, whichever caller derived `portable` --
+/// so a caller may DROP the interpreter value, and the working set that built it, between deriving
+/// the portable form and storing what is served from it (`warm_cross_claim_pure_producer`).
+fn commit_cross_claim_pure_memo(
+    ctx: &InterpContext,
+    fn_node: &Rc<Node>,
+    args: &[(Option<String>, Value)],
+    portable: PortableValue,
+    fill_guard: Option<&CrossClaimFillGuard>,
+) -> CrossClaimStoreOutcome {
     // The same substitution the lookup makes, in the same place in the fold, so a warm and a
     // serve cannot disagree about what the key represents.
     let carried_key_args = cross_claim_key_args(fn_node, args);
@@ -2299,18 +2330,6 @@ fn store_cross_claim_pure_memo(
     let memo_key = (Rc::as_ptr(fn_node) as usize, args_hash);
     let Some(portable_args) = portable_args_from_ctx(ctx, args) else {
         return CrossClaimStoreOutcome::RefusedArgsNotPortable;
-    };
-    let portable = match portable_value_from_ctx_at(ctx, result, &mut String::new()) {
-        Ok(p) => p,
-        Err(refusal) => {
-            // TOTAL publication check: the first origin-bound child refuses the whole store,
-            // typed and located, and is retained so the warm path can stop the line with the
-            // exact path instead of a bare "not stored".
-            CROSS_CLAIM_LAST_UNPORTABLE
-                .with(|c| *c.borrow_mut() = Some((func_name.to_string(), refusal.clone())));
-            CROSS_CLAIM_PURE_MEMO.with(|m| m.borrow_mut().unportable_refusals += 1);
-            return CrossClaimStoreOutcome::RefusedValueNotPortable(refusal);
-        }
     };
     let outcome = CROSS_CLAIM_PURE_MEMO.with(|m| {
         let mut m = m.borrow_mut();
@@ -2408,12 +2427,20 @@ pub fn warm_cross_claim_pure_producer(
         if effects != 0 {
             return Err(PureProducerWarmRefusal::DispatchedEffect { effects });
         }
-        Ok(store_cross_claim_pure_memo(
+        // COPY OUT AFTER THE DROP: the portable form is derived, then the interpreter value -- and
+        // every transient its evaluation left reachable from it -- is dropped BEFORE the served
+        // value is built from the portable form, so what the store keeps is allocated into memory
+        // the producer has already released rather than among its live transients.
+        let portable = match cross_claim_portable_result(ctx, bare, &value) {
+            Ok(p) => p,
+            Err(refused) => return Ok(refused),
+        };
+        drop(value);
+        Ok(commit_cross_claim_pure_memo(
             ctx,
             &fn_node,
-            bare,
             &[],
-            &value,
+            portable,
             Some(&guard),
         ))
     })
