@@ -10833,30 +10833,39 @@ pub fn parse_op_requires_members(
     }
 }
 
-pub fn operation_requires_members(
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum OperationRequiresDeclaration {
+    RequiresUndeclared,
+    RequiresNone,
+    RequiresOpaque,
+    RequiresResources { members: Rc<Vec<Rc<Node>>> },
+}
+
+pub fn operation_requires_declaration(
     op: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<Node>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for p in Rc::new({
-            let mut __result = Vec::new();
-            for p in op.properties.clone().iter().cloned() {
-                if (crate::v1_std_core::field_init_node_name_at(p.clone(), source_indices.clone())
-                    == "requires".to_string())
-                {
-                    __result.push(p);
-                }
-            }
-            __result
-        })
+) -> Rc<OperationRequiresDeclaration> {
+    let name_of = |p: &Rc<Node>| {
+        crate::v1_std_core::field_init_node_name_at(p.clone(), source_indices.clone()).to_string()
+    };
+    if op.properties.iter().any(|p| name_of(p) == "requires_none") {
+        return Rc::new(OperationRequiresDeclaration::RequiresNone);
+    }
+    if op.properties.iter().any(|p| name_of(p) == "requires_opaque") {
+        return Rc::new(OperationRequiresDeclaration::RequiresOpaque);
+    }
+    let members: Vec<Rc<Node>> = op
+        .properties
         .iter()
-        .cloned()
-        {
-            __result.extend((*p.children.clone()).iter().cloned());
-        }
-        __result
-    })
+        .filter(|p| name_of(p) == "requires")
+        .flat_map(|p| p.children.iter().cloned().collect::<Vec<_>>())
+        .collect();
+    if members.is_empty() {
+        Rc::new(OperationRequiresDeclaration::RequiresUndeclared)
+    } else {
+        Rc::new(OperationRequiresDeclaration::RequiresResources { members: Rc::new(members) })
+    }
 }
 
 pub fn parse_operation_modifiers(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ModsResult> {
