@@ -4327,6 +4327,9 @@ enum EvalRecomputeArgKey {
     // memoized per allocation with Weak-liveness validation so a reused address never serves a
     // stale hash. Closures remain unkeyed (captured-env identity is not computed).
     ContentHash(u64),
+    // A composite keyed by its ALLOCATION, never its content: the eval-frame call memo's key for
+    // Record/Variant/List/Map/Set (see eval_call_memo_key). Only that memo builds it.
+    Allocation(usize),
     /// ONE ARGUMENT POSITION THAT HAS NO SOUND IDENTITY, carried so the OTHER positions can still
     /// key. It is deliberately NOT a hash and deliberately NOT distinguishing: two calls whose
     /// keyable arguments agree and whose unkeyable arguments differ produce the SAME partial key.
@@ -9612,7 +9615,19 @@ fn eval_pure_named_call(
         return result;
     }
     let started = Instant::now();
-    let key = match eval_recompute_key(ctx, fn_node, args) {
+    // Two keys for two subjects: the memo serves by allocation (eval_call_memo_key), the demand
+    // ledger counts by content (eval_recompute_key), and the content key is computed only when
+    // the ledger is on. A call either key cannot represent (a closure argument) is unkeyed.
+    let memo_key = if memo_on {
+        eval_call_memo_key(ctx, fn_node, args)
+    } else {
+        None
+    };
+    let key = match if trace_on {
+        eval_recompute_key(ctx, fn_node, args)
+    } else {
+        memo_key.clone()
+    } {
         Some(key) => key,
         None => {
             if !trace_on {
@@ -9634,8 +9649,8 @@ fn eval_pure_named_call(
             return result;
         }
     };
-    if memo_on {
-        if let Some(v) = eval_call_memo_get(ctx, &key, args) {
+    if let Some(mk) = memo_key.as_ref() {
+        if let Some(v) = eval_call_memo_get(ctx, mk, args) {
             if trace_on {
                 eval_recompute_record(
                     ctx,
@@ -9657,9 +9672,11 @@ fn eval_pure_named_call(
                 store_cross_claim_pure_memo(ctx, fn_node, func_name, args, v, fill_guard.as_ref());
         }
     }
-    if memo_on && ctx.effect_dispatch_count.get() == effects_before {
-        if let Ok(v) = &result {
-            eval_call_memo_put(ctx, fn_node, key.clone(), args, v.clone());
+    if let Some(mk) = memo_key {
+        if ctx.effect_dispatch_count.get() == effects_before {
+            if let Ok(v) = &result {
+                eval_call_memo_put(ctx, fn_node, mk, args, v.clone());
+            }
         }
     }
     if trace_on {
@@ -10345,6 +10362,56 @@ fn eval_recompute_arg_key(
             eval_recompute_value_hash(memo, interner, other).map(EvalRecomputeArgKey::ContentHash)
         }
     }
+}
+
+// THE EVAL-FRAME CALL MEMO'S KEY: scalars by value, composites by ALLOCATION. The content key
+// (eval_recompute_key) hashes every composite argument in full, and its per-allocation hash memo
+// only amortizes a value the program passes again. A fresh composite on every call -- the
+// lexer's shrinking `remaining`, a successive tail per character -- was hashed in full on every
+// call, O(argument) per call and quadratic over the walk, on calls that by construction can
+// never hit (A/B on one binary, successive-tail walk calling lex_match_char_pred:
+// GUNBC_EVAL_MEMO=1 7.2 s at 16 KB -> 26.7 s at 32 KB; =0 1.7 s -> 3.4 s).
+//
+// SOUND BECAUSE A HIT IS VERIFIED, NOT TRUSTED: eval_call_memo_get serves only after
+// eval_call_memo_args_match confirms every stored argument equal (value_fast_eq: pointer, then
+// Value::eq), and eval_call_memo_put stores the full argument row, so each keyed allocation is
+// held live by its entry and its address cannot be reused while the key exists. What identity
+// gives up is a hit between equal-content DISTINCT allocations; the memo's hit/miss counters
+// measure that. The demand ledger (eval_recompute_record) keeps the content key: it counts
+// equal demands by content, which is its subject.
+fn eval_call_memo_key(
+    ctx: &InterpContext,
+    fn_node: &Rc<Node>,
+    args: &[(Option<String>, Value)],
+) -> Option<EvalRecomputeKey> {
+    let interner = ctx.symbols.borrow();
+    let mut keys = Vec::with_capacity(args.len());
+    for (_, v) in args {
+        keys.push(match v {
+            Value::Null => EvalRecomputeArgKey::Null,
+            Value::Bool(b) => EvalRecomputeArgKey::Bool(*b),
+            Value::Int(i) => EvalRecomputeArgKey::Int(*i),
+            Value::Float(f) => EvalRecomputeArgKey::FloatBits(f.to_bits()),
+            Value::Str(s) => EvalRecomputeArgKey::StrHash(s.content_hash()),
+            Value::Variant {
+                type_name,
+                variant_name,
+                fields,
+            } if fields.is_empty() => EvalRecomputeArgKey::UnitVariant(
+                eval_recompute_str_hash(interner.resolve(*type_name)),
+                eval_recompute_str_hash(interner.resolve(*variant_name)),
+            ),
+            Value::List(xs) if xs.is_empty() => EvalRecomputeArgKey::EmptyList,
+            Value::Closure { .. } => return None,
+            Value::Fn { node } => EvalRecomputeArgKey::Allocation(Rc::as_ptr(node) as usize),
+            Value::Unit => EvalRecomputeArgKey::ContentHash(0xA5A5_0002),
+            composite => EvalRecomputeArgKey::Allocation(value_rc_identity(composite)?),
+        });
+    }
+    Some(EvalRecomputeKey {
+        fn_ptr: Rc::as_ptr(fn_node) as usize,
+        args: keys,
+    })
 }
 
 fn eval_recompute_key(
