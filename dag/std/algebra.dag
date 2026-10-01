@@ -826,8 +826,11 @@ data kernel_algebra_profile: Map<String, AlgebraProfile> = kernel_algebra_profil
 // A total order is one law with one row. OrderedRing and ApproximateField COMPOSE it rather than
 // restating `compare`: a ring that is ordered, and a field that is ordered, are each a ring/field
 // operation set PLUS this order -- one compare concept, not one per profile (DESIGN section 3).
-// The canonical content order (std.algebra canonical_content_order) is the derivation that gives
-// every admissible key type an inhabitant of this law.
+// The canonical content order over value content (kind rank, IEEE 754-2019 totalOrder for floats,
+// spelling then payload for records and variants) inhabits this law, but it is NOT yet a .dag
+// declaration: its only realization is the seed's hand-written comparator, v1_interpreter
+// canonical_content_cmp, seed-retained under gunbc.portable_value_canonical_order_seed_growth,
+// whose trigger is the .dag model that would make it a fold.
 fn total_order_templates() -> List<AlgebraFieldTemplate> {
   [
     { name: "compare", param_types: [ReceiverSelf, ReceiverSelf], return_type: NamedTemplate { name: "Ordering" }, size_effect: none, cost_shape: none, callback_element_position: none }
