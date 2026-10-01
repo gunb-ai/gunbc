@@ -9052,13 +9052,18 @@ fn emit_dag_artifact_text(root_rel: &str) -> Result<String, String> {
     // repository, so it is addressed as one.
     let root = workspace_root().join(root_rel);
     let entry = root.join(DAG_ARTIFACT_IDENTITY_SPECIMEN_BASENAME);
-    let run = super::compile_emission(&super::CompileRequest {
-        subject: super::CompileSubject::Entry(entry.to_string_lossy().to_string()),
-        root_demand: super::RootDemandDeclaration::default(),
-        source_roots: vec![root.to_string_lossy().to_string()],
-        primary_precedence: false,
-        render_targets: vec![RenderTarget::Dag],
-    });
+    // A FIXTURE POOL, COMPILED ONCE AND READ BY NOTHING AFTER: it owns its index, so the
+    // subject and the perturbed root never sit beside the run's pool in the shared memo.
+    let run = super::compile_emission_over(
+        &super::CompileRequest {
+            subject: super::CompileSubject::Entry(entry.to_string_lossy().to_string()),
+            root_demand: super::RootDemandDeclaration::default(),
+            source_roots: vec![root.to_string_lossy().to_string()],
+            primary_precedence: false,
+            render_targets: vec![RenderTarget::Dag],
+        },
+        super::IndexResidency::OwnedByThisCompile,
+    );
     match &run.disposition {
         super::CompileDisposition::Completed { .. } => {}
         super::CompileDisposition::Refused { phase, cause } => {

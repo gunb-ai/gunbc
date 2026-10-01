@@ -111,6 +111,7 @@ import gunbc.compiler_frontend_program_status {
   ElseLessIfStatementLowering,
   WildcardMatchArmResolution,
   QualifiedFieldTypeVisibility,
+  UsesClauseCarrier,
   PrerequisiteDelivered,
   PrerequisiteOutstanding,
   xl2_prerequisites,
@@ -697,8 +698,8 @@ fn xl2_label_is(p: Xl2Prerequisite, want: Xl2Prerequisite) -> Bool {
   xl2_prerequisite_label(p: p) == xl2_prerequisite_label(p: want)
 }
 
-test fn xl2_prerequisites_partition_into_twenty_two_delivered_and_two_outstanding() -> Bool {
-  count(xl2_prerequisites) == 24
+test fn xl2_prerequisites_partition_into_twenty_two_delivered_and_three_outstanding() -> Bool {
+  count(xl2_prerequisites) == 25
     && xl2_delivered_by(p: PlainCallArgumentReferenceVisibility, pr: 12108, merge_sha: "b0d307c31b")
     && xl2_delivered_by(p: BareFieldTypeVisibility, pr: 11574, merge_sha: "b705d17c45")
     && xl2_delivered_by(p: WholeTreeResolveCensus, pr: 11738, merge_sha: "c6b4e7ed2c")
@@ -723,17 +724,19 @@ test fn xl2_prerequisites_partition_into_twenty_two_delivered_and_two_outstandin
     && xl2_delivered_by(p: EnclosingExpressionLoweredWhole, pr: 12436, merge_sha: "d28bf20f0e")
     && xl2_delivered_by(p: DataInitializerMatchScrutineeLowering, pr: 12510, merge_sha: "b768b0f431")
     && xl2_delivered_by(p: MatchArmStatementBodyLowering, pr: 12510, merge_sha: "b768b0f431")
-    && count(xl2_prerequisites_outstanding()) == 2
+    && xl2_outstanding_tracked_by(p: UsesClauseCarrier, decl_name: "uses_clause_has_no_carrier")
+    && count(xl2_prerequisites_outstanding()) == 3
     && all(xl2_prerequisites_outstanding(),
          p => xl2_label_is(p: p, want: LoweringOccurrenceProjection)
-           || xl2_label_is(p: p, want: ServiceModuleLowering))
+           || xl2_label_is(p: p, want: ServiceModuleLowering)
+           || xl2_label_is(p: p, want: UsesClauseCarrier))
     && all(xl2_prerequisites,
          p => count(xl2_prerequisites |> filter(q => xl2_prerequisite_label(p: q) == xl2_prerequisite_label(p: p))) == 1)
 }
 
 // THE INVARIANT THE PARTITION MUST NOT MOVE: prerequisites are necessary, not sufficient, so
-// XL-2 stays NotDerivable and the producer literal stays Unavailable with twenty-two of twenty-four delivered
-// -- and would stay so with twenty-four of twenty-four, because the producer is its own deliverable.
+// XL-2 stays NotDerivable and the producer literal stays Unavailable with twenty-two of twenty-five delivered
+// -- and would stay so with twenty-five of twenty-five, because the producer is its own deliverable.
 test fn xl2_stays_not_derivable_with_its_prerequisites_mostly_delivered() -> Bool {
   count(xl2_prerequisites |> filter(p => xl2_prerequisite_is_delivered(p: p))) == 22
     && standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL2RootDeletionRehearsal))

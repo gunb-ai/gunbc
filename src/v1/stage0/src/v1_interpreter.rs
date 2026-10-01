@@ -7956,6 +7956,15 @@ fn current_witness_evaluation_frame() -> Option<Value> {
 struct ModeledRealizationSlot {
     envelope: Value,
     realization: Value,
+    /// The realization's bindings by operation identity (`operation_realization_index`), built
+    /// once at admission so no dispatch rescans the binding list.
+    index: Value,
+    /// Handler selections already decided in this frame, keyed by the COMPLETE input of
+    /// `operation_handler_selection` that varies: the operation's declaring file, service,
+    /// operation and whether it is readonly. The envelope, the realization and its index are fixed
+    /// for the frame's extent and the selection reads nothing else of the invocation, so a hit is
+    /// the same fact recomputed, never a different one.
+    selections: HashMap<String, Value>,
     identity: String,
     state: Value,
     /// The virtual clock, an opaque `std.measure` `Second`: the dispatcher never reads its
@@ -8182,9 +8191,17 @@ fn admit_modeled_realization(
     let advance = record_field(ctx, &realization, "advance")
         .ok_or_else(|| modeled_refused("(frame)", "the realization carries no advance function"))?;
     let state = apply_modeled_handler(&advance, &[initial, now.clone()], env, ctx)?;
+    let index = run_in_context_with_args(
+        ctx,
+        "operation_realization_index",
+        &[(Some("realization".to_string()), realization.clone())],
+        false,
+    )?;
     Ok(Some(ModeledRealizationSlot {
         envelope,
         realization,
+        index,
+        selections: HashMap::new(),
         identity,
         state,
         now,
@@ -8219,6 +8236,24 @@ fn bound_operation_invocation_value(
             continue;
         };
         let bound = match value {
+            // An argv expansion binds as the words a real spawn receives, expanded by the same
+            // seed realization of v2.std.compilers.cli_surface ProcessArgvExpansion the shell
+            // dispatcher uses, never as a rendering of the carrier.
+            Value::Record { type_name, fields }
+                if resolve_sym(*type_name).rsplit('.').next() == Some("ProcessArgvExpansion") =>
+            {
+                let mut words = Vec::new();
+                push_process_argv_expansion(&mut words, &fields)?;
+                variant_value(
+                    ctx,
+                    "OperationInputValue",
+                    "InputTextList",
+                    vec![(
+                        "items",
+                        list_value(words.into_iter().map(str_value).collect::<Vec<_>>()),
+                    )],
+                )
+            }
             Value::List(items) => {
                 let texts: Vec<Value> = items.iter().map(|v| str_value(render_input(v))).collect();
                 variant_value(
@@ -8275,6 +8310,7 @@ fn dispatch_modeled_operation(
                 (
                     s.envelope.clone(),
                     s.realization.clone(),
+                    s.index.clone(),
                     s.identity.clone(),
                     s.state.clone(),
                     s.now.clone(),
@@ -8283,7 +8319,7 @@ fn dispatch_modeled_operation(
             })
         })
     });
-    let Some((envelope, realization, identity, state, now, ordinal)) = snapshot else {
+    let Some((envelope, realization, index, identity, state, now, ordinal)) = snapshot else {
         return Ok(None);
     };
     let key = format!("{service_name}.{op_name}");
@@ -8317,20 +8353,41 @@ fn dispatch_modeled_operation(
             });
             record
         };
-    let selection = run_in_context_with_args(
-        ctx,
-        "operation_handler_selection",
-        &[
-            (Some("env".to_string()), envelope),
-            (Some("realization".to_string()), realization.clone()),
-            (Some("invocation".to_string()), invocation.clone()),
-            (
-                Some("readonly".to_string()),
-                Value::Bool(op_declared_readonly(op_node, ctx)),
-            ),
-        ],
-        false,
-    )?;
+    let readonly = op_declared_readonly(op_node, ctx);
+    let selection_key = format!(
+        "{}#{}.{}#{}",
+        op_node.span.file, service_name, op_name, readonly
+    );
+    let remembered = MODELED_REALIZATION_SLOTS.with(|slots| {
+        slots.borrow().last().and_then(|slot| {
+            slot.as_ref()
+                .and_then(|s| s.selections.get(&selection_key).cloned())
+        })
+    });
+    let selection = match remembered {
+        Some(v) => v,
+        None => {
+            let decided = run_in_context_with_args(
+                ctx,
+                "operation_handler_selection",
+                &[
+                    (Some("env".to_string()), envelope),
+                    (Some("realization".to_string()), realization.clone()),
+                    (Some("index".to_string()), index),
+                    (Some("invocation".to_string()), invocation.clone()),
+                    (Some("readonly".to_string()), Value::Bool(readonly)),
+                ],
+                false,
+            )?;
+            MODELED_REALIZATION_SLOTS.with(|slots| {
+                if let Some(Some(slot)) = slots.borrow_mut().last_mut() {
+                    slot.selections
+                        .insert(selection_key.clone(), decided.clone());
+                }
+            });
+            decided
+        }
+    };
     let (arm, fields) = variant_parts(ctx, &selection)
         .ok_or_else(|| modeled_refused(&key, "handler selection returned a malformed value"))?;
     let binding = match arm.as_str() {
@@ -8375,9 +8432,10 @@ fn dispatch_modeled_operation(
         );
         modeled_refused(&key, format!("harness fault: {reason}"))
     };
-    if !is_shell_transport(transport.clone()) {
+    let shell_operation = is_shell_transport(transport.clone());
+    if !shell_operation && !is_file_transport(transport.clone(), ctx.si()) {
         return Err(harness_fault(
-            "a modeled realization supplies shell transport observations only; this operation's transport is not shell".to_string(),
+            "a modeled realization supplies shell and file transport observations only; this operation's transport is neither".to_string(),
         ));
     }
     let handler = record_field(ctx, &binding, "handler")
@@ -8455,7 +8513,24 @@ fn dispatch_modeled_operation(
                     return Err(error);
                 }
             };
-            let shell = shell_result_of_observation(&observation, ctx).map_err(&harness_fault)?;
+            let projected = if shell_operation {
+                shell_result_of_observation(&observation, ctx)
+                    .map_err(&harness_fault)
+                    .map(|shell| shell_result_projection(shell, op_node, ctx))
+            } else {
+                // The path is the transport's own (file_transport_path), resolved exactly as the wet
+                // dispatch resolves it; one that is missing or empty refuses, never an empty path the
+                // projection would report as if the operation had named one.
+                match file_transport_path(transport, param_env, ctx) {
+                    Ok(p) => file_result_of_observation(&observation, &p, ctx),
+                    Err(e) => Err(format!(
+                        "a file operation's transport path did not resolve: {e}"
+                    )),
+                }
+                .map_err(&harness_fault)
+                .map(|file| map_file_outputs(&file, op_node, ctx))
+            };
+            let projected = projected?;
             log(
                 variant_value(
                     ctx,
@@ -8467,7 +8542,7 @@ fn dispatch_modeled_operation(
                 Some(advanced),
                 false,
             );
-            shell_result_projection(shell, op_node, ctx).map(Some)
+            projected.map(Some)
         }
         "OperationWorkerKilled" => {
             let committed = ctx
@@ -8499,6 +8574,80 @@ fn dispatch_modeled_operation(
             Err(harness_fault(reason))
         }
         other => Err(harness_fault(format!("unrecognized step {other}"))),
+    }
+}
+
+/// A modeled FileExchangeObservation as the file transport result the real dispatcher produces.
+/// The failure kind is named by its closed .dag authority (`filesystem_failure_kind_name`), the same
+/// channel a host `io::Error` is projected onto, so a consumer's kind admission reads it unchanged.
+fn file_result_of_observation(
+    observation: &Value,
+    path: &str,
+    ctx: &InterpContext,
+) -> Result<FileResult, String> {
+    let (arm, fields) = variant_parts(ctx, observation).ok_or("the observation is malformed")?;
+    if arm != "FileObserved" {
+        return Err(format!(
+            "a file operation was answered with a {arm} observation; a file operation needs FileObserved"
+        ));
+    }
+    let file = ctx
+        .field(&fields, "observation")
+        .ok_or("FileObserved carries no observation")?;
+    let (file_arm, file_fields) =
+        variant_parts(ctx, file).ok_or("the file observation is malformed")?;
+    let text = |name: &str| match ctx.field(&file_fields, name) {
+        Some(Value::Str(s)) => Ok(s.to_string()),
+        _ => Err(format!("the file observation carries no {name}")),
+    };
+    match file_arm.as_str() {
+        "FileOperationSucceeded" => {
+            let bytes = ctx
+                .field(&file_fields, "byte_count")
+                .cloned()
+                .ok_or("the file observation carries no byte_count")?;
+            let byte_count = match run_in_context_with_args(
+                ctx,
+                "file_observation_byte_count",
+                &[(Some("bytes".to_string()), bytes)],
+                false,
+            ) {
+                Ok(Value::Int(n)) => n,
+                _ => return Err("the file observation's byte_count is not a byte size".to_string()),
+            };
+            Ok(FileResult {
+                success: true,
+                byte_count,
+                path: path.to_string(),
+                error: String::new(),
+                error_kind: String::new(),
+                content: text("content")?,
+            })
+        }
+        "FileOperationFailed" => {
+            let kind = ctx
+                .field(&file_fields, "kind")
+                .cloned()
+                .ok_or("the file observation carries no kind")?;
+            let kind_name = match run_in_context_with_args(
+                ctx,
+                "filesystem_failure_kind_name",
+                &[(Some("kind".to_string()), kind)],
+                false,
+            ) {
+                Ok(Value::Str(s)) => s.to_string(),
+                _ => return Err("the file observation's kind has no name".to_string()),
+            };
+            Ok(FileResult {
+                success: false,
+                byte_count: 0,
+                path: path.to_string(),
+                error: text("error")?,
+                error_kind: kind_name,
+                content: String::new(),
+            })
+        }
+        other => Err(format!("unrecognized file observation {other}")),
     }
 }
 
@@ -17291,18 +17440,20 @@ fn io_error_kind_name(e: &std::io::Error) -> String {
     .to_string()
 }
 
-fn dispatch_file(
-    op_node: &Rc<Node>,
+/// THE ONE RESOLUTION OF A FILE OPERATION'S PATH: the transport's own `path` property, evaluated and
+/// template-substituted over the operation's inputs. The wet dispatch and the modeled realization both
+/// read it here, so a modeled answer is recorded against exactly the path the real transport would
+/// touch -- including an operation whose path is a literal in its transport and not an input
+/// (linux.Procfs ReadUptime). A missing or empty path refuses.
+fn file_transport_path(
     transport: &Rc<Node>,
     param_env: &Rc<Env>,
     ctx: &InterpContext,
-) -> InterpResult<FileResult> {
-    let si = ctx.si();
-
+) -> InterpResult<String> {
     let path = match find_property(
         transport.properties.clone(),
         "base_path".to_string(),
-        si.clone(),
+        ctx.si(),
     ) {
         Some(path_node) => {
             let path_val = eval_expr(&path_node, param_env, ctx)?;
@@ -17319,6 +17470,18 @@ fn dispatch_file(
             msg: "file transport resolved to an empty path".to_string(),
         });
     }
+    Ok(path)
+}
+
+fn dispatch_file(
+    op_node: &Rc<Node>,
+    transport: &Rc<Node>,
+    param_env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<FileResult> {
+    let si = ctx.si();
+
+    let path = file_transport_path(transport, param_env, ctx)?;
 
     // Optional explicit verb on the transport row (`transport file { path: ..., verb: "delete" }`).
     // Delete/List are structurally indistinguishable from Read (path-only inputs), so the
