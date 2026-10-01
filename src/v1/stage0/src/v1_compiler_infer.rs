@@ -6365,18 +6365,52 @@ pub fn applied_type_argument_conflicts(
 }
 
 pub fn applied_type_argument_is_nested_application(n: Rc<Node>, scope: Rc<InferScope>) -> bool {
-    match (*exposure_view_for_node(n.clone(), scope.type_env.clone().source_indices.clone()))
-        .clone()
     {
-        TypeHeadExposure::ExposedTypeHead { ref view, .. }
-            if matches!(view.as_ref(), TypeHeadView::ApplicationHead { .. }) =>
-        {
-            let TypeHeadView::ApplicationHead { .. } = view.as_ref() else {
-                unreachable!()
-            };
-            true
+        let source_indices = scope.type_env.clone().source_indices.clone();
+        let names_declared_alias = match crate::v1_compiler_infer_env::lookup_type_by_name(
+            scope.type_env.clone(),
+            crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()),
+        ) {
+            Some(decl) => {
+                declaration_is_transparent_alias_of_named_type(decl.clone(), source_indices.clone())
+            }
+            std::option::Option::None => false,
+        };
+        if names_declared_alias.clone() {
+            false
+        } else {
+            match (*exposure_view_for_node(n.clone(), source_indices.clone())).clone() {
+                TypeHeadExposure::ExposedTypeHead { ref view, .. }
+                    if matches!(view.as_ref(), TypeHeadView::ApplicationHead { .. }) =>
+                {
+                    let TypeHeadView::ApplicationHead { .. } = view.as_ref() else {
+                        unreachable!()
+                    };
+                    true
+                }
+                _ => false,
+            }
         }
-        _ => false,
+    }
+}
+
+pub fn declaration_is_transparent_alias_of_named_type(
+    decl: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if (((decl.connective.clone() != Connective::NoConnective)
+        || ((decl.params.clone().len() as i64) > 0))
+        || ((decl.children.clone().len() as i64) != 1))
+    {
+        false
+    } else {
+        match decl.children.clone().first().cloned() {
+            Some(rhs) => {
+                (crate::v1_std_core::authored_name_at(source_indices.clone(), rhs.clone())
+                    != "".to_string())
+            }
+            std::option::Option::None => false,
+        }
     }
 }
 
@@ -6392,9 +6426,13 @@ pub fn applied_type_argument_identity_known(name: String, scope: Rc<InferScope>)
                 name.clone(),
             ) {
                 Some(decl) => {
-                    (((decl.connective.clone() == Connective::Conj)
+                    ((((decl.connective.clone() == Connective::Conj)
                         || (decl.connective.clone() == Connective::Disj))
                         && ((decl.children.clone().len() as i64) > 0))
+                        || declaration_is_transparent_alias_of_named_type(
+                            decl.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                        ))
                 }
                 std::option::Option::None => false,
             }

@@ -4546,13 +4546,36 @@ fn applied_type_arguments_conflict(
   produced: Node,
   scope: InferScope
 ) -> Bool {
-  let declared_args = declared.children
-  let produced_args = produced.children
+  let declared_args = applied_type_arguments_through_alias(n: declared, scope: scope)
+  let produced_args = applied_type_arguments_through_alias(n: produced, scope: scope)
   if (declared_args |> count) == 0 || (declared_args |> count) != (produced_args |> count) {
     false
   } else {
     applied_type_arguments_conflict_scan(
       declared_args: declared_args, produced_args: produced_args, scope: scope)
+  }
+}
+
+// AN ALIAS OF AN INSTANCE CARRIES ITS INSTANCE ARGUMENTS ON ITS DECLARATION, NOT ON THE LEAF THAT
+// NAMES IT. `fn f(t: Tp)` with `type Tp = FieldOfFractions<Nat>` hands this relation a bare `Tp`
+// leaf, so reading the node's own children found no arguments and the relation said nothing about
+// `FieldOfFractions<String>` arriving there (gunbc.recurring_failure_mode
+// product_instance_arguments_unjudged_at_call_argument, alias arm). The environment's declaration
+// for a transparent alias is its right-hand side's structure under the alias's identity, so its
+// children ARE the instance arguments; alias_declared_target_head_name is the one test of whether
+// a declaration is such an alias, the relation type_name_transparently_aliases_to chases.
+fn applied_type_arguments_through_alias(n: Node, scope: InferScope) -> List<Node> {
+  if (n.children |> count) > 0 {
+    n.children
+  } else {
+    match lookup_type_by_name(
+        env: scope.type_env, name: authored_name_at(source_indices: scope.type_env.source_indices, node: n)) {
+      Present { value: decl } =>
+        if alias_declared_target_head_name(decl: decl, source_indices: scope.type_env.source_indices) != "" {
+          decl.children
+        } else { [] }
+      Absent => []
+    }
   }
 }
 
@@ -4636,10 +4659,29 @@ fn applied_type_argument_conflicts(
 // a leaf reference by looking up what it names, and a leaf naming a parameterised record would
 // come back as a head with arguments -- which is the opposite of what this asks. Here the
 // question is about the argument's own written form.
+//
+// A REFERENCE TO A DECLARED ALIAS IS NOT A NESTED APPLICATION, even when the node standing for it
+// carries the alias's right-hand side as its child. Measured: past the declaring boundary the
+// argument node for `Nat` renders `Nat<Magnitude>` -- the alias's own declaration node, whose one
+// child is `CommutativeSemiring<Magnitude>` -- so the direct view answered ApplicationHead and every
+// instance argument naming an alias left this relation unjudged. An alias is not written as an
+// application of the alias's name, so whether the argument is nested is read off the declaration
+// that name denotes, through the same predicate applied_type_argument_identity_known consults.
 fn applied_type_argument_is_nested_application(n: Node, scope: InferScope) -> Bool {
-  match exposure_view_for_node(n: n, source_indices: scope.type_env.source_indices) {
-    ExposedTypeHead { view: ApplicationHead { constructor_identity: _, argument_identities: _ } } => true
-    _ => false
+  let source_indices = scope.type_env.source_indices
+  let names_declared_alias = match lookup_type_by_name(
+      env: scope.type_env, name: authored_name_at(source_indices: source_indices, node: n)) {
+    Present { value: decl } =>
+      declaration_is_transparent_alias_of_named_type(decl: decl, source_indices: source_indices)
+    Absent => false
+  }
+  if names_declared_alias {
+    false
+  } else {
+    match exposure_view_for_node(n: n, source_indices: source_indices) {
+      ExposedTypeHead { view: ApplicationHead { constructor_identity: _, argument_identities: _ } } => true
+      _ => false
+    }
   }
 }
 
@@ -4661,8 +4703,32 @@ fn applied_type_argument_is_nested_application(n: Node, scope: InferScope) -> Bo
 // WHAT HOLDS OVER THE CORPUS: a type parameter binds to a bare leaf standing for itself, while a
 // real type resolves to a declaration WITH STRUCTURE -- a record's fields, a coproduct's variants.
 // So the test is structural rather than nominal, and it fails open twice over: an argument whose
-// name does not resolve, and an argument that resolves to something structureless (a bare alias,
-// a parameter), are both left unjudged.
+// name does not resolve, and an argument that resolves to something structureless (a parameter),
+// are both left unjudged.
+//
+// A DECLARED TRANSPARENT ALIAS IS A REAL TYPE, NOT A STRUCTURELESS LEAF. `type Nat =
+// CommutativeSemiring<Magnitude>` has no fields or variants of its own, so the structural test
+// alone read it as possibly a type parameter and left every instance argument that names an alias
+// unjudged: `FieldOfFractions<String>` inhabited `FieldOfFractions<Nat>` at every declared-type
+// position (gunbc.recurring_failure_mode product_instance_arguments_unjudged_at_call_argument).
+// What separates an alias from a parameter is that the alias's declaration carries a declared
+// right-hand side and a parameter does not. MEASURED, NOT ASSUMED: the declaration the type
+// environment returns for `Nat` has NoConnective, no params and ONE child -- the authored
+// right-hand side -- and NO `inferred` edge, so alias_declared_target_head_name (which reads that
+// edge) answers "" here and cannot be the test. The declared child is the fact that survives into
+// the environment, so an alias is known when it declares exactly one right-hand side that names a
+// type. The name comparison that follows is application_type_names_compatible, unchanged.
+fn declaration_is_transparent_alias_of_named_type(decl: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if decl.connective != NoConnective || (decl.params |> count) > 0 || (decl.children |> count) != 1 {
+    false
+  } else {
+    match decl.children |> first {
+      Present { value: rhs } => authored_name_at(source_indices: source_indices, node: rhs) != ""
+      Absent => false
+    }
+  }
+}
+
 fn applied_type_argument_identity_known(name: String, scope: InferScope) -> Bool {
   if name == "" {
     false
@@ -4671,7 +4737,8 @@ fn applied_type_argument_identity_known(name: String, scope: InferScope) -> Bool
   } else {
     match lookup_type_by_name(env: scope.type_env, name: name) {
       Present { value: decl } =>
-        (decl.connective == Conj || decl.connective == Disj) && (decl.children |> count) > 0
+        ((decl.connective == Conj || decl.connective == Disj) && (decl.children |> count) > 0)
+          || declaration_is_transparent_alias_of_named_type(decl: decl, source_indices: scope.type_env.source_indices)
       Absent => false
     }
   }
@@ -10129,6 +10196,16 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
             )]
           } else if structured_application_site_type_mismatch(
             formal: expected_node, actual_expr: field_init_node_value(n: fi), scope: scope) {
+            [type_mismatch_error(
+              expected: node_type_shape(n: formal_peeled, source_indices: scope.type_env.source_indices),
+              got: node_type_shape(n: actual_peeled, source_indices: scope.type_env.source_indices),
+              span: ar_typed.span,
+              module_name: scope.module_name
+            )]
+          } else if expected_node.return_cardinality != CardOptional
+            && got_node.return_cardinality != CardOptional
+            && nominal_product_inhabitance_refusal(
+              declared: expected_required, produced: got_node, scope: scope) != none {
             [type_mismatch_error(
               expected: node_type_shape(n: formal_peeled, source_indices: scope.type_env.source_indices),
               got: node_type_shape(n: actual_peeled, source_indices: scope.type_env.source_indices),
