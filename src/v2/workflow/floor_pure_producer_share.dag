@@ -751,7 +751,18 @@ import v2.std.collection { List }
 // read the arrow this roster already serves (ingested_emit_shape_frontier_tree_from_arrow) rather than
 // re-ingesting, so with this row served they fit the new-witness budget; gunbc#12639's floor runs
 // measure present against absent.
+//
+// THE parameter_reference PROGRAM IS ONE FRONT END FOR FOUR ROUTE ROWS. gunbc#12766's floor refused
+// v2.test.claim.parameter_reference's four route rows as ENROLMENT-MARGIN-REFUSED and
+// COMPLETED-OVER-COST-REQUIREMENT (re-derive: that run's lines, or claim_batch's [witness] receipt over
+// the file): each re-ran ingest -> resolve (and one, infer) over its own module-constant source and
+// inspected only a list of paths or four types. The rows now ask one program, so the share point is
+// the two nullary producers over it. The values are an Optional list of QualifiedNames and a record of
+// four Optional<Node> -- portable, no closure, no resolution context -- and both are WARM for the
+// ceiling arithmetic above: one front end is more than one claim's budget.
 data floor_cross_claim_pure_producers_warm: List<String> = [
+  "v2.test.claim.parameter_reference.pr_program_parameter_paths",
+  "v2.test.claim.parameter_reference.pr_program_grounding",
   "test.claim.namespace_xl2_rehearsal_census.xl2_control_runs",
   "v2.test.claim.provenance.loaded_carrier_receipts.lcr_loaded_roots",
   "v2.test.claim.provenance.loaded_carrier_receipts.lcr_located_roots",
@@ -1029,6 +1040,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.body_let_annotation.bla_symbol_literal_as_symbol",
   "v2.test.claim.body_let_annotation.bla_symbol_literal_as_symbol_inferred",
   "v2.test.claim.body_let_annotation.bla_symbol_literal_payload_verdict",
+  "v2.test.infer_facts.key_collision_ref_and_int.kc_verdicts",
   "v2.test.claim.body_let_annotation.bla_int_literal_payload_digit_verdict",
   "v2.test.claim.body_let_annotation.bla_single_tree_declared_int",
   "v2.test.claim.body_let_annotation.bla_single_tree_declared_bool",
@@ -1107,6 +1119,12 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.parse.data_keyword_as_value.data_value_parsed",
   "v2.test.claim.parse.data_keyword_as_value.data_value_normalized",
   "v2.test.claim.parse.data_keyword_as_value.else_value_parsed",
+  "v2.test.claim.parse.record_field_tail.default_parsed",
+  "v2.test.claim.parse.record_field_tail.from_key_refused_as_unmodeled",
+  "v2.test.claim.parse.record_field_tail.plain_normalized",
+  "v2.test.claim.parse.where_clause_required_comma.alias_then_service_parsed",
+  "v2.test.claim.parse.where_clause_required_comma.two_predicates_parsed",
+  "v2.test.claim.parse.where_clause_required_comma.adjacent_predicates_parsed",
   "v2.test.claim.occurrence_role.occurrence_role.binders_fixture_outcome",
   "v2.test.claim.occurrence_role.occurrence_role.mixed_param_list_parsed",
   "v2.test.claim.occurrence_role.occurrence_role.mixed_param_list_planted",
@@ -1196,6 +1214,10 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_far_missing",
   "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_bool_field",
   "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test.rcf_resolved_pattern",
+  "v2.test.claim.compiler.kernel_value_type_roster_witness_test.kvr_fixture_normalized",
+  "v2.test.claim.compiler.kernel_value_type_roster_witness_test.kvr_resolved_return_bad",
+  "v2.test.claim.compiler.kernel_value_type_roster_witness_test.kvr_resolved_return_good",
+  "v2.test.claim.compiler.kernel_value_type_roster_witness_test.kvr_resolved_formal",
   "v2.test.claim.compiler.infer_optional_at_required_witness_test.oar_fixture_normalized",
   "v2.test.claim.compiler.infer_optional_at_required_witness_test.oar_resolved_return_bad",
   "v2.test.claim.compiler.infer_optional_at_required_witness_test.oar_resolved_lift",

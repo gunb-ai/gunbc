@@ -101,7 +101,8 @@ fn clean_control_subject() -> ReferenceConservationSubject {
 
 // Nullary and pure, enrolled WARM in v2.workflow.floor_pure_producer_share beside its subject: five
 // claims read this one report, so it is computed once rather than once per claim (each paid it in
-// full and measured 73.5k eval steps against the 72.3k new-witness budget on the required floor).
+// full and went over the new-witness budget, v2.workflow.required_floor
+// claim_eval_step_budget_for_identity, as the floor's required_floor_claim_cost rows recorded).
 fn clean_control_report() -> ReferenceConservationReport {
   conservation_report_of(subject: clean_control_subject())
 }

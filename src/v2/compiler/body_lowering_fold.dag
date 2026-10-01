@@ -1081,19 +1081,41 @@ fn body_lower_field_decl_optional(item: Node) -> Optional<BodyLowerTypedParam> {
   body_lower_typed_param_optional(param_capture: body_lower_deep_unwrap_optional(node: item))
 }
 
-// Every field of a list of field items, or Absent if any one is unreadable: the all-or-nothing read
-// both field-bearing blocks lower through.
-fn body_lower_field_decls_optional(items: List<Node>) -> Optional<List<BodyLowerTypedParam>> {
+// Every field item of a list, each read as its field and its `[from "key"] [= default]` tail, or
+// Absent if any one is unreadable: the all-or-nothing read every field-bearing block lowers through.
+// ONE FIELD GRAMMAR (dag_grammar_field_decl_list_helper admits v1 parse_field's tail on every field),
+// so a record field and a service io field are read by the same reader (body_lower_io_item_optional).
+fn body_lower_field_items_optional(items: List<Node>) -> Optional<List<BodyLowerIoItem>> {
   fold(items, init: Present { value: Empty }, f: fn(acc, item) {
     match acc {
       Absent => Absent
       Present { value: fields } =>
-        match body_lower_field_decl_optional(item: item) {
+        match body_lower_io_item_optional(item: item) {
           Absent => Absent
           Present { value: f } => Present { value: list_snoc_item(xs: fields, item: f) }
         }
     }
   })
+}
+
+// THE FIRST FIELD THAT CARRIES A TAIL, if any. A record field's wire key or default has no typed
+// carrier yet (gunbc.recurring_failure_mode service_interface_member_has_no_carrier), so a record
+// field that writes one refuses at its tail rather than lowering its type and dropping the tail.
+fn body_lower_first_field_tail_optional(fields: List<BodyLowerIoItem>) -> Optional<Node> {
+  fold(fields, init: optional_absent(), f: fn(acc, io) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => body_lower_field_tail_if_present(io: io)
+    }
+  })
+}
+
+fn body_lower_field_tail_if_present(io: BodyLowerIoItem) -> Optional<Node> {
+  if body_lower_io_field_tail_present(tail: io.tail) {
+    optional_present(value: io.tail)
+  } else {
+    optional_absent()
+  }
 }
 
 // `{ f: T, g: U }`: the block's captured is seq(`{`, seq(list, `}`)); its field items.
@@ -1113,9 +1135,9 @@ fn body_lower_field_decl_block_binder_atoms(captured: Node) -> Optional<List<Nod
   match body_lower_field_decl_block_items_optional(captured: captured) {
     Absent => Absent
     Present { value: items } =>
-      match body_lower_field_decls_optional(items: items) {
+      match body_lower_field_items_optional(items: items) {
         Absent => Absent
-        Present { value: fields } => Present { value: list_map(xs: fields, f: fn(f) { f.binder }) }
+        Present { value: fields } => Present { value: list_map(xs: fields, f: fn(io) { io.field.binder }) }
       }
   }
 }
@@ -1139,10 +1161,15 @@ fn body_lower_field_decl_block_payload(block_shell: Node) -> Outcome<Node> {
       match body_lower_field_decl_block_items_optional(captured: captured) {
         Absent => refuse
         Present { value: items } =>
-          match body_lower_field_decls_optional(items: items) {
+          match body_lower_field_items_optional(items: items) {
             Absent => refuse
             Present { value: fields } =>
-              outcome_accepted(value: body_lower_payload_node(edges: list_map(xs: fields, f: fn(f) { body_lower_typed_param_edge_of(param: f) }), source: block_shell))
+              match body_lower_first_field_tail_optional(fields: fields) {
+                Present { value: tail } =>
+                  outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_interface_member_unmodeled, n: tail))
+                Absent =>
+                  outcome_accepted(value: body_lower_payload_node(edges: list_map(xs: fields, f: fn(io) { body_lower_typed_param_edge_of(param: io.field) }), source: block_shell))
+              }
           }
       }
   }
