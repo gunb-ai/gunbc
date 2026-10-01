@@ -23004,6 +23004,7 @@ mod closure_bare_disposition_tests {
                 name: decl_name.to_string(),
                 resolved: node,
                 provenance: Rc::new(crate::std_induction::SubValueRelation::PreservedValue),
+                alias_rhs: None,
             }),
         })
     }
@@ -40973,6 +40974,7 @@ mod peel_alias_fixpoint_termination {
                 provenance: std::rc::Rc::new(
                     crate::std_induction::SubValueRelation::SubValueUnknown,
                 ),
+                alias_rhs: None,
             });
             let global_bare = crate::v1_rt::rc_map_insert(
                 crate::v1_rt::rc_empty_map(),
