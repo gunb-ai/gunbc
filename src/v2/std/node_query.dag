@@ -80,7 +80,7 @@ fn conj_payload_type_name_go(xs: FreeMonoid<Edge>, acc: String) -> String {
     Empty => acc
     Cons { head: h, tail: t } =>
       let field_name = named_edge_sort_key(e: h)
-      let type_name = edge_field_type_name(target: member_edge_type_node(e: h))
+      let type_name = member_edge_type_name(e: h)
       let piece = concat(field_name, concat(": ", type_name))
       conj_payload_type_name_go(
         xs: t,
@@ -385,6 +385,25 @@ fn member_edge_type_node(e: Edge) -> Optional<Node> {
         Present { value: binder } => Present { value: binder.type_node }
         Absent => Absent
       }
+  }
+}
+
+// WHETHER A MEMBER'S DECLARED TYPE SATISFIES `holds`, for the lenses that ask one question of each
+// field's type. A Named member that is not a binder declares no type and answers false; the binder
+// wall (v2.std.type_binder) refuses such a tree before any lens reads it.
+fn member_edge_type_satisfies(e: Edge, holds: fn(Node) -> Bool) -> Bool {
+  match member_edge_type_node(e: e) {
+    Present { value: t } => holds(t)
+    Absent => false
+  }
+}
+
+// A member's type name for the indexes that record one: a Named member that is not a binder renders as
+// `<not-a-binder>`, never as a fabricated type name.
+fn member_edge_type_name(e: Edge) -> Symbol {
+  match member_edge_type_node(e: e) {
+    Present { value: t } => edge_field_type_name(target: t)
+    Absent => symbol_intern_lexeme(lexeme: "<not-a-binder>")
   }
 }
 

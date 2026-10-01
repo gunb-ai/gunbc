@@ -4,7 +4,7 @@ import v2.lens.common.construction_justification { ConstructionJustification, Wa
 import std.disposition { SingleAuthority }
 
 import v2.std.witness { Holds }
-import v2.std.node_query { edge_field_type_name, member_edge_type_node }
+import v2.std.node_query { edge_field_type_name, member_edge_type_satisfies }
 import v2.std.diagnostic { node_locus, outcome_accepted, outcome_rejected }
 import v2.std.optional { optional_absent, optional_present, optional_prefer_first_present }
 
@@ -91,7 +91,7 @@ fn type_is_flat_scalar(target: Node) -> Bool {
 fn field_unit_violation(carrier: Node, edge: Edge) -> Optional<Diagnostic> {
   match edge.label {
     Named { name: nm } =>
-      if type_is_flat_scalar(target: member_edge_type_node(e: edge)) {
+      if member_edge_type_satisfies(e: edge, holds: fn(t) { type_is_flat_scalar(target: t) }) {
         if name_is_exempt(name: nm) {
           optional_absent()
         } else {
