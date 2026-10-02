@@ -4,9 +4,12 @@ import std.types { String, Int, Bool, List, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.languages.json.emit {
   JsonValue,
+  JsonNull,
+  JsonBool,
   JsonString,
   JsonNumber,
   JsonArray,
+  JsonObject,
   json_string,
   json_int,
   json_array,
@@ -21,10 +24,13 @@ import extdeps.languages.json.parse {
   json_document_gap_text,
   json_object_unique_member,
   JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
 }
 import gunbc.roadmap_nesting { roadmap_roots }
 import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, MemberOf, AdmittedRoot, Closes }
-import gunbc.roadmap_status { TicketLine }
+import gunbc.roadmap_status { TicketLine, DerivableLine, AuthoredLine, PlainLine, SupersededLine }
 import gunbc.roadmap_authority { declared_roadmap_nodes, closing_contract_task_for }
 import gunbc.roadmap.roadmap_lineage {
   LineageWalk,
@@ -118,7 +124,10 @@ fn alignment_link_project(node_id: String, nodes: List<RoadmapNode>, contributio
                 contribution_to_parent: contribution_to_parent,
               },
             }
-          _ => LinkRowUndeclared { node_id: node_id }
+          DerivableLine { prs: _, title: _, description: _ } => LinkRowUndeclared { node_id: node_id }
+          AuthoredLine { done: _, content: _ } => LinkRowUndeclared { node_id: node_id }
+          PlainLine { content: _ } => LinkRowUndeclared { node_id: node_id }
+          SupersededLine { by: _, content: _ } => LinkRowUndeclared { node_id: node_id }
         }
     }
   }
@@ -736,7 +745,14 @@ type AlignmentBindingDecode
 fn alignment_binding_member_string(doc: JsonValue, key: String) -> String? {
   match json_object_unique_member(v: doc, key: key) {
     JsonMemberFound { value: JsonString { value: s } } => Present { value: s }
-    _ => none
+    JsonMemberFound { value: JsonNull } => none
+    JsonMemberFound { value: JsonBool { value: _ } } => none
+    JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+    JsonMemberFound { value: JsonArray { elements: _ } } => none
+    JsonMemberFound { value: JsonObject { members: _ } } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -821,27 +837,62 @@ fn alignment_verdict_decode_json(v: JsonValue) -> AlignmentVerdict? {
       } else if kind == "misaligned" {
         match json_object_unique_member(v: v, key: "direction") {
           JsonMemberFound { value: JsonString { value: d } } => Present { value: Misaligned { direction: d } }
-          _ => none
+          JsonMemberFound { value: JsonNull } => none
+          JsonMemberFound { value: JsonBool { value: _ } } => none
+          JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+          JsonMemberFound { value: JsonArray { elements: _ } } => none
+          JsonMemberFound { value: JsonObject { members: _ } } => none
+          JsonMemberAbsent => none
+          JsonMemberDuplicated { count: _ } => none
+          JsonMemberNotAnObject => none
         }
       } else if kind == "extremely-misaligned" {
         match json_object_unique_member(v: v, key: "direction") {
           JsonMemberFound { value: JsonString { value: d } } => Present { value: ExtremelyMisaligned { direction: d } }
-          _ => none
+          JsonMemberFound { value: JsonNull } => none
+          JsonMemberFound { value: JsonBool { value: _ } } => none
+          JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+          JsonMemberFound { value: JsonArray { elements: _ } } => none
+          JsonMemberFound { value: JsonObject { members: _ } } => none
+          JsonMemberAbsent => none
+          JsonMemberDuplicated { count: _ } => none
+          JsonMemberNotAnObject => none
         }
       } else if kind == "catastrophically-misaligned" {
         match json_object_unique_member(v: v, key: "reason") {
           JsonMemberFound { value: JsonString { value: r } } => Present { value: CatastrophicallyMisaligned { reason: r } }
-          _ => none
+          JsonMemberFound { value: JsonNull } => none
+          JsonMemberFound { value: JsonBool { value: _ } } => none
+          JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+          JsonMemberFound { value: JsonArray { elements: _ } } => none
+          JsonMemberFound { value: JsonObject { members: _ } } => none
+          JsonMemberAbsent => none
+          JsonMemberDuplicated { count: _ } => none
+          JsonMemberNotAnObject => none
         }
       } else if kind == "routed-conflict" {
         match json_object_unique_member(v: v, key: "conflict") {
           JsonMemberFound { value: JsonString { value: c } } => Present { value: RoutedConflict { conflict: c } }
-          _ => none
+          JsonMemberFound { value: JsonNull } => none
+          JsonMemberFound { value: JsonBool { value: _ } } => none
+          JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+          JsonMemberFound { value: JsonArray { elements: _ } } => none
+          JsonMemberFound { value: JsonObject { members: _ } } => none
+          JsonMemberAbsent => none
+          JsonMemberDuplicated { count: _ } => none
+          JsonMemberNotAnObject => none
         }
       } else {
         none
       }
-    _ => none
+    JsonMemberFound { value: JsonNull } => none
+    JsonMemberFound { value: JsonBool { value: _ } } => none
+    JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+    JsonMemberFound { value: JsonArray { elements: _ } } => none
+    JsonMemberFound { value: JsonObject { members: _ } } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -864,7 +915,14 @@ type AlignmentCadenceStateDecode
 fn alignment_member_string(doc: JsonValue, key: String) -> String? {
   match json_object_unique_member(v: doc, key: key) {
     JsonMemberFound { value: JsonString { value: s } } => Present { value: s }
-    _ => none
+    JsonMemberFound { value: JsonNull } => none
+    JsonMemberFound { value: JsonBool { value: _ } } => none
+    JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+    JsonMemberFound { value: JsonArray { elements: _ } } => none
+    JsonMemberFound { value: JsonObject { members: _ } } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -879,7 +937,11 @@ fn alignment_member_int_array(doc: JsonValue, key: String) -> List<Int>? {
       } else {
         let parsed = map(elements, e => match e {
           JsonNumber { lexeme: lx } => parse_int(s: lx as String)
-          _ => none
+          JsonNull => none
+          JsonBool { value: _ } => none
+          JsonString { value: _ } => none
+          JsonArray { elements: _ } => none
+          JsonObject { members: _ } => none
         })
         let readable = filter(parsed, n => match n {
           Present { value: _ } => true
@@ -900,7 +962,14 @@ fn alignment_member_int_array(doc: JsonValue, key: String) -> List<Int>? {
           none
         }
       }
-    _ => none
+    JsonMemberFound { value: JsonNull } => none
+    JsonMemberFound { value: JsonBool { value: _ } } => none
+    JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+    JsonMemberFound { value: JsonString { value: _ } } => none
+    JsonMemberFound { value: JsonObject { members: _ } } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -926,7 +995,14 @@ fn alignment_member_verdict_array(doc: JsonValue, key: String) -> List<Alignment
           none
         }
       }
-    _ => none
+    JsonMemberFound { value: JsonNull } => none
+    JsonMemberFound { value: JsonBool { value: _ } } => none
+    JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+    JsonMemberFound { value: JsonString { value: _ } } => none
+    JsonMemberFound { value: JsonObject { members: _ } } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 

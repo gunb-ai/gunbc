@@ -32,7 +32,7 @@ import gunbc.roadmap_authority {
   fields,
 }
 import extdeps.languages.json.emit {
-  JsonValue, JsonNull, JsonKeyValue,
+  JsonValue, JsonKeyValue,
   serialize_json,
   quote_json_string,
   json_null,
@@ -286,14 +286,9 @@ fn acceptance_json_value(a: Acceptance, line: RoadmapItem) -> JsonValue {
 }
 
 fn node_plan_doc_json(carriers: List<Pointer>) -> JsonValue {
-  let plans = carriers |> filter(p => p.label == "plan")
-  if count(plans) > 0 {
-    fold(plans, init: json_null(), f: (acc, p) => match acc {
-      JsonNull => json_string(s: p.path)
-      _ => acc
-    })
-  } else {
-    json_null()
+  match (carriers |> filter(p => p.label == "plan")).first() {
+    Present { value: p } => json_string(s: p.path)
+    Absent => json_null()
   }
 }
 

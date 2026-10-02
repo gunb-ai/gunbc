@@ -15,7 +15,7 @@ import extdeps.languages.json.parse {
   json_field, json_field_string, json_field_nat, json_field_string_list,
   FieldAbsent, FieldRead, FieldMalformed,
 }
-import extdeps.languages.json.emit { JsonValue, JsonArray, JsonObject }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
 import extdeps.vllm.server { VllmSourceRevision }
 import extdeps.vllm.runtime_defaults { vllm_modelled_revisions, defaults_source_revision }
 import extdeps.vllm.kv_layout {
@@ -129,28 +129,32 @@ fn kv_plan_nat_member(obj: JsonValue, key: String) -> KvPlanMemberRead<Nat> {
 fn kv_plan_string_causes(r: KvPlanMemberRead<String>) -> List<NonEmptyStr> {
   match r {
     KvPlanMemberMalformed { cause: c } => [c]
-    _ => [] as List<NonEmptyStr>
+    KvPlanMemberPresent { value: _ } => [] as List<NonEmptyStr>
+    KvPlanMemberAbsent => [] as List<NonEmptyStr>
   }
 }
 
 fn kv_plan_nat_causes(r: KvPlanMemberRead<Nat>) -> List<NonEmptyStr> {
   match r {
     KvPlanMemberMalformed { cause: c } => [c]
-    _ => [] as List<NonEmptyStr>
+    KvPlanMemberPresent { value: _ } => [] as List<NonEmptyStr>
+    KvPlanMemberAbsent => [] as List<NonEmptyStr>
   }
 }
 
 fn kv_plan_revision_causes(r: KvPlanMemberRead<VllmSourceRevision>) -> List<NonEmptyStr> {
   match r {
     KvPlanMemberMalformed { cause: c } => [c]
-    _ => [] as List<NonEmptyStr>
+    KvPlanMemberPresent { value: _ } => [] as List<NonEmptyStr>
+    KvPlanMemberAbsent => [] as List<NonEmptyStr>
   }
 }
 
 fn kv_plan_group_list_causes(r: KvPlanMemberRead<List<KvAllocationPlanCaptureGroup>>) -> List<NonEmptyStr> {
   match r {
     KvPlanMemberMalformed { cause: c } => [c]
-    _ => [] as List<NonEmptyStr>
+    KvPlanMemberPresent { value: _ } => [] as List<NonEmptyStr>
+    KvPlanMemberAbsent => [] as List<NonEmptyStr>
   }
 }
 
@@ -272,7 +276,23 @@ type KvPlanGroupRowParse
 fn kv_plan_group_row(el: JsonValue) -> KvPlanGroupRowParse {
   match el {
     JsonObject { members: _ } => kv_plan_group_row_members(el: el)
-    _ =>
+    JsonNull =>
+      KvPlanGroupRowUnreadable {
+        cause: "a groups entry is not an object" as NonEmptyStr,
+      }
+    JsonBool { value: _ } =>
+      KvPlanGroupRowUnreadable {
+        cause: "a groups entry is not an object" as NonEmptyStr,
+      }
+    JsonNumber { lexeme: _ } =>
+      KvPlanGroupRowUnreadable {
+        cause: "a groups entry is not an object" as NonEmptyStr,
+      }
+    JsonString { value: _ } =>
+      KvPlanGroupRowUnreadable {
+        cause: "a groups entry is not an object" as NonEmptyStr,
+      }
+    JsonArray { elements: _ } =>
       KvPlanGroupRowUnreadable {
         cause: "a groups entry is not an object" as NonEmptyStr,
       }
@@ -342,7 +362,9 @@ fn kv_plan_group_row_kind(
               kv_plan_group_row_assemble(identity: identity, mapped: Present { value: k }, layers: layers, block_size: block_size, page: page, tokens_per_state: tokens_per_state, max_use: max_use, blocks_at: blocks_at)
           }
       }
-    _ =>
+    KvPlanMemberAbsent =>
+      kv_plan_group_row_assemble(identity: identity, mapped: none, layers: layers, block_size: block_size, page: page, tokens_per_state: tokens_per_state, max_use: max_use, blocks_at: blocks_at)
+    KvPlanMemberMalformed { cause: _ } =>
       kv_plan_group_row_assemble(identity: identity, mapped: none, layers: layers, block_size: block_size, page: page, tokens_per_state: tokens_per_state, max_use: max_use, blocks_at: blocks_at)
   }
 }
@@ -350,7 +372,8 @@ fn kv_plan_group_row_kind(
 fn kv_plan_token_opt(r: KvPlanMemberRead<Nat>) -> TokenCount? {
   match r {
     KvPlanMemberPresent { value: n } => Present { value: token_count(count: n) }
-    _ => none
+    KvPlanMemberAbsent => none
+    KvPlanMemberMalformed { cause: _ } => none
   }
 }
 
@@ -381,28 +404,32 @@ fn kv_plan_group_row_assemble(
 fn kv_plan_nonempty_opt(r: KvPlanMemberRead<String>) -> NonEmptyStr? {
   match r {
     KvPlanMemberPresent { value: s } => Present { value: s as NonEmptyStr }
-    _ => none
+    KvPlanMemberAbsent => none
+    KvPlanMemberMalformed { cause: _ } => none
   }
 }
 
 fn kv_plan_layer_opt(r: KvPlanMemberRead<List<String>>) -> List<NonEmptyStr>? {
   match r {
     KvPlanMemberPresent { value: ss } => Present { value: map(ss, s => s as NonEmptyStr) }
-    _ => none
+    KvPlanMemberAbsent => none
+    KvPlanMemberMalformed { cause: _ } => none
   }
 }
 
 fn kv_plan_byte_opt(r: KvPlanMemberRead<Nat>) -> ByteSize? {
   match r {
     KvPlanMemberPresent { value: n } => Present { value: byte_size(count: n) }
-    _ => none
+    KvPlanMemberAbsent => none
+    KvPlanMemberMalformed { cause: _ } => none
   }
 }
 
 fn kv_plan_block_opt(r: KvPlanMemberRead<Nat>) -> AllocatorBlockCount? {
   match r {
     KvPlanMemberPresent { value: n } => Present { value: allocator_block_count(count: n) }
-    _ => none
+    KvPlanMemberAbsent => none
+    KvPlanMemberMalformed { cause: _ } => none
   }
 }
 
@@ -419,7 +446,8 @@ fn kv_plan_layers_member(obj: JsonValue) -> KvPlanMemberRead<List<String>> {
 fn kv_plan_layers_causes(r: KvPlanMemberRead<List<String>>) -> List<NonEmptyStr> {
   match r {
     KvPlanMemberMalformed { cause: c } => [c]
-    _ => [] as List<NonEmptyStr>
+    KvPlanMemberPresent { value: _ } => [] as List<NonEmptyStr>
+    KvPlanMemberAbsent => [] as List<NonEmptyStr>
   }
 }
 
@@ -434,7 +462,11 @@ fn kv_plan_groups_member(obj: JsonValue) -> KvPlanMemberRead<List<KvAllocationPl
     FieldRead { value: v } =>
       match v {
         JsonArray { elements: es } => kv_plan_groups_fold(es: es)
-        _ => KvPlanMemberMalformed { cause: "groups is not an array" as NonEmptyStr }
+        JsonNull => KvPlanMemberMalformed { cause: "groups is not an array" as NonEmptyStr }
+        JsonBool { value: _ } => KvPlanMemberMalformed { cause: "groups is not an array" as NonEmptyStr }
+        JsonNumber { lexeme: _ } => KvPlanMemberMalformed { cause: "groups is not an array" as NonEmptyStr }
+        JsonString { value: _ } => KvPlanMemberMalformed { cause: "groups is not an array" as NonEmptyStr }
+        JsonObject { members: _ } => KvPlanMemberMalformed { cause: "groups is not an array" as NonEmptyStr }
       }
   }
 }
@@ -502,12 +534,17 @@ fn kv_plan_capture_top(doc: JsonValue) -> KvPlanCaptureParse {
               scheduler_block_size: kv_plan_token_opt(r: scheduler_block_size),
               groups: match groups {
                 KvPlanMemberPresent { value: gs } => Present { value: gs }
-                _ => none
+                KvPlanMemberAbsent => none
+                KvPlanMemberMalformed { cause: _ } => none
               },
               grouping_padding: kv_plan_nonempty_opt(r: grouping_padding),
             },
           }
-        _ =>
+        KvPlanMemberAbsent =>
+          KvPlanCaptureUnreadable {
+            cause: "unreachable: the runtime self-report refusal above already named the absent revision" as NonEmptyStr,
+          }
+        KvPlanMemberMalformed { cause: _ } =>
           KvPlanCaptureUnreadable {
             cause: "unreachable: the runtime self-report refusal above already named the absent revision" as NonEmptyStr,
           }

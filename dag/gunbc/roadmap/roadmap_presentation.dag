@@ -1002,7 +1002,47 @@ fn activity_view_from_progress(progress: WorkflowAttemptProgress) -> ActivityVie
           current_activity: provider_execution_activity(state: progress.provider),
         )
       }
-    _ =>
+    ProviderNotStarted =>
+      activity_view_from_parts(
+        segments: progress.segments,
+        remaining: progress.reconciliation.remaining_count,
+        process: progress.process,
+        throughput: harness_throughput_from_ledger(ledger: progress.rounds),
+        current_activity: provider_execution_activity(state: progress.provider),
+      )
+    ProviderStarting { activity: _ } =>
+      activity_view_from_parts(
+        segments: progress.segments,
+        remaining: progress.reconciliation.remaining_count,
+        process: progress.process,
+        throughput: harness_throughput_from_ledger(ledger: progress.rounds),
+        current_activity: provider_execution_activity(state: progress.provider),
+      )
+    ProviderRunning { activity: _ } =>
+      activity_view_from_parts(
+        segments: progress.segments,
+        remaining: progress.reconciliation.remaining_count,
+        process: progress.process,
+        throughput: harness_throughput_from_ledger(ledger: progress.rounds),
+        current_activity: provider_execution_activity(state: progress.provider),
+      )
+    ProviderCompleted { activity: _ } =>
+      activity_view_from_parts(
+        segments: progress.segments,
+        remaining: progress.reconciliation.remaining_count,
+        process: progress.process,
+        throughput: harness_throughput_from_ledger(ledger: progress.rounds),
+        current_activity: provider_execution_activity(state: progress.provider),
+      )
+    ProviderFailed { activity: _, detail: _ } =>
+      activity_view_from_parts(
+        segments: progress.segments,
+        remaining: progress.reconciliation.remaining_count,
+        process: progress.process,
+        throughput: harness_throughput_from_ledger(ledger: progress.rounds),
+        current_activity: provider_execution_activity(state: progress.provider),
+      )
+    ProviderBudgetSpent { activity: _, detail: _ } =>
       activity_view_from_parts(
         segments: progress.segments,
         remaining: progress.reconciliation.remaining_count,
@@ -1782,7 +1822,8 @@ fn project_task_rows(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members:
 fn row_display_parent_id(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, node_id: String, memberships: List<RoadmapMembership> = roadmap_memberships()) -> String? {
   match node_project_membership(node_id: node_id, memberships: memberships) {
     MembershipMember { arc } => if any(rows, r => r.node_id == arc && row_is_rendered(row: r) && !row_is_family_member(members: members, node_id: arc)) { Present { value: arc } } else { none }
-    _ => none
+    MembershipStandalone => none
+    MembershipAmbiguous { arcs: _ } => none
   }
 }
 
@@ -2056,7 +2097,8 @@ fn issue_link_panel(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<Roadm
   IssueLinkPanel {
     parent: match node_project_membership(node_id: rn.node as String, memberships: memberships) {
       MembershipMember { arc } => Present { value: issue_member_link_view(id: arc, nodes: nodes, member_titles: member_titles) }
-      _ => none
+      MembershipStandalone => none
+      MembershipAmbiguous { arcs: _ } => none
     },
     children: map(project_member_ids(arc: rn.node as String, memberships: memberships), id => issue_member_link_view(id: id, nodes: nodes, member_titles: member_titles)),
     blocking: map(child_nodes_of(nodes: nodes, edges: edges, parent: rn.node), issue_link_view_of),

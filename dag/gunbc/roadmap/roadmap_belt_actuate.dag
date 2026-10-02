@@ -3187,21 +3187,39 @@ fn belt_pass_outcome_from_json(doc: JsonValue) -> BeltPassOutcomeDecode {
           match json_object_unique_member(v: doc, key: "reason") {
             JsonMemberFound { value: JsonString { value: r } } =>
               BeltPassOutcomeDecoded { outcome: BeltPassDeferred { reason: r } }
-            _ =>
+            JsonMemberFound { value: _ } =>
+              BeltPassOutcomeUnreadable { reason: "belt tick pass deferred without reason" }
+            JsonMemberAbsent =>
+              BeltPassOutcomeUnreadable { reason: "belt tick pass deferred without reason" }
+            JsonMemberDuplicated { count: _ } =>
+              BeltPassOutcomeUnreadable { reason: "belt tick pass deferred without reason" }
+            JsonMemberNotAnObject =>
               BeltPassOutcomeUnreadable { reason: "belt tick pass deferred without reason" }
           }
         "refused" =>
           match json_object_unique_member(v: doc, key: "reason") {
             JsonMemberFound { value: JsonString { value: r } } =>
               BeltPassOutcomeDecoded { outcome: BeltPassRefused { reason: r } }
-            _ =>
+            JsonMemberFound { value: _ } =>
+              BeltPassOutcomeUnreadable { reason: "belt tick pass refused without reason" }
+            JsonMemberAbsent =>
+              BeltPassOutcomeUnreadable { reason: "belt tick pass refused without reason" }
+            JsonMemberDuplicated { count: _ } =>
+              BeltPassOutcomeUnreadable { reason: "belt tick pass refused without reason" }
+            JsonMemberNotAnObject =>
               BeltPassOutcomeUnreadable { reason: "belt tick pass refused without reason" }
           }
         "failed" =>
           match json_object_unique_member(v: doc, key: "reason") {
             JsonMemberFound { value: JsonString { value: r } } =>
               BeltPassOutcomeDecoded { outcome: BeltPassFailed { reason: r } }
-            _ =>
+            JsonMemberFound { value: _ } =>
+              BeltPassOutcomeUnreadable { reason: "belt tick pass failed without reason" }
+            JsonMemberAbsent =>
+              BeltPassOutcomeUnreadable { reason: "belt tick pass failed without reason" }
+            JsonMemberDuplicated { count: _ } =>
+              BeltPassOutcomeUnreadable { reason: "belt tick pass failed without reason" }
+            JsonMemberNotAnObject =>
               BeltPassOutcomeUnreadable { reason: "belt tick pass failed without reason" }
           }
         _ => BeltPassOutcomeUnreadable { reason: "belt tick pass outcome is unknown" }
@@ -3274,7 +3292,13 @@ fn belt_tick_receipt_decode(raw: String) -> BeltTickReceiptRead {
                                             } else {
                                               BeltTickReceiptPresent { receipt: receipt }
                                             }
-                                          _ =>
+                                          JsonMemberFound { value: _ } =>
+                                            BeltTickReceiptUnreadable { reason: "belt tick receipt receipt_identity is missing" }
+                                          JsonMemberAbsent =>
+                                            BeltTickReceiptUnreadable { reason: "belt tick receipt receipt_identity is missing" }
+                                          JsonMemberDuplicated { count: _ } =>
+                                            BeltTickReceiptUnreadable { reason: "belt tick receipt receipt_identity is missing" }
+                                          JsonMemberNotAnObject =>
                                             BeltTickReceiptUnreadable { reason: "belt tick receipt receipt_identity is missing" }
                                         }
                                       }
@@ -3285,11 +3309,23 @@ fn belt_tick_receipt_decode(raw: String) -> BeltTickReceiptRead {
                         }
                     }
                 }
-              _ =>
+              JsonMemberFound { value: _ } =>
+                BeltTickReceiptUnreadable { reason: "belt tick receipt observed_at is missing" }
+              JsonMemberAbsent =>
+                BeltTickReceiptUnreadable { reason: "belt tick receipt observed_at is missing" }
+              JsonMemberDuplicated { count: _ } =>
+                BeltTickReceiptUnreadable { reason: "belt tick receipt observed_at is missing" }
+              JsonMemberNotAnObject =>
                 BeltTickReceiptUnreadable { reason: "belt tick receipt observed_at is missing" }
             }
           }
-        _ =>
+        JsonMemberFound { value: _ } =>
+          BeltTickReceiptUnreadable { reason: "belt tick receipt schema is missing" }
+        JsonMemberAbsent =>
+          BeltTickReceiptUnreadable { reason: "belt tick receipt schema is missing" }
+        JsonMemberDuplicated { count: _ } =>
+          BeltTickReceiptUnreadable { reason: "belt tick receipt schema is missing" }
+        JsonMemberNotAnObject =>
           BeltTickReceiptUnreadable { reason: "belt tick receipt schema is missing" }
       }
   }
@@ -3320,7 +3356,15 @@ fn belt_tick_launches_from_member(doc: JsonValue) -> BeltTickLaunchesDecode {
 fn belt_pass_outcome_from_member(doc: JsonValue, key: String) -> BeltPassOutcomeDecode {
   match json_object_unique_member(v: doc, key: key) {
     JsonMemberFound { value: pass_doc } => belt_pass_outcome_from_json(doc: pass_doc)
-    _ =>
+    JsonMemberAbsent =>
+      BeltPassOutcomeUnreadable {
+        reason: join(["belt tick receipt ", key, " is missing"], ""),
+      }
+    JsonMemberDuplicated { count: _ } =>
+      BeltPassOutcomeUnreadable {
+        reason: join(["belt tick receipt ", key, " is missing"], ""),
+      }
+    JsonMemberNotAnObject =>
       BeltPassOutcomeUnreadable {
         reason: join(["belt tick receipt ", key, " is missing"], ""),
       }
@@ -3430,21 +3474,36 @@ fn belt_tick_execution_from_member(doc: JsonValue) -> BeltTickExecutionDecode {
                                 execution: TickExecuted { instance_id: instance_id, deployed_revision: revision, spawn_mode: mode },
                               }
                           }
-                        _ => BeltTickExecutionUnreadable { reason: "belt tick receipt execution spawn_mode is missing" }
+                        JsonMemberFound { value: _ } => BeltTickExecutionUnreadable { reason: "belt tick receipt execution spawn_mode is missing" }
+                        JsonMemberAbsent => BeltTickExecutionUnreadable { reason: "belt tick receipt execution spawn_mode is missing" }
+                        JsonMemberDuplicated { count: _ } => BeltTickExecutionUnreadable { reason: "belt tick receipt execution spawn_mode is missing" }
+                        JsonMemberNotAnObject => BeltTickExecutionUnreadable { reason: "belt tick receipt execution spawn_mode is missing" }
                       }
-                    _ => BeltTickExecutionUnreadable { reason: "belt tick receipt execution deployed_revision is missing" }
+                    JsonMemberFound { value: _ } => BeltTickExecutionUnreadable { reason: "belt tick receipt execution deployed_revision is missing" }
+                    JsonMemberAbsent => BeltTickExecutionUnreadable { reason: "belt tick receipt execution deployed_revision is missing" }
+                    JsonMemberDuplicated { count: _ } => BeltTickExecutionUnreadable { reason: "belt tick receipt execution deployed_revision is missing" }
+                    JsonMemberNotAnObject => BeltTickExecutionUnreadable { reason: "belt tick receipt execution deployed_revision is missing" }
                   }
-                _ => BeltTickExecutionUnreadable { reason: "belt tick receipt execution instance_id is missing" }
+                JsonMemberFound { value: _ } => BeltTickExecutionUnreadable { reason: "belt tick receipt execution instance_id is missing" }
+                JsonMemberAbsent => BeltTickExecutionUnreadable { reason: "belt tick receipt execution instance_id is missing" }
+                JsonMemberDuplicated { count: _ } => BeltTickExecutionUnreadable { reason: "belt tick receipt execution instance_id is missing" }
+                JsonMemberNotAnObject => BeltTickExecutionUnreadable { reason: "belt tick receipt execution instance_id is missing" }
               }
             "withheld" =>
               match json_object_unique_member(v: inner, key: "refusal") {
                 JsonMemberFound { value: JsonString { value: why } } =>
                   BeltTickExecutionDecoded { execution: TickExecutionWithheld { refusal: why } }
-                _ => BeltTickExecutionUnreadable { reason: "belt tick receipt execution withheld without refusal" }
+                JsonMemberFound { value: _ } => BeltTickExecutionUnreadable { reason: "belt tick receipt execution withheld without refusal" }
+                JsonMemberAbsent => BeltTickExecutionUnreadable { reason: "belt tick receipt execution withheld without refusal" }
+                JsonMemberDuplicated { count: _ } => BeltTickExecutionUnreadable { reason: "belt tick receipt execution withheld without refusal" }
+                JsonMemberNotAnObject => BeltTickExecutionUnreadable { reason: "belt tick receipt execution withheld without refusal" }
               }
             _ => BeltTickExecutionUnreadable { reason: join(["belt tick receipt execution standing is unknown: ", standing], "") }
           }
-        _ => BeltTickExecutionUnreadable { reason: "belt tick receipt execution standing is missing" }
+        JsonMemberFound { value: _ } => BeltTickExecutionUnreadable { reason: "belt tick receipt execution standing is missing" }
+        JsonMemberAbsent => BeltTickExecutionUnreadable { reason: "belt tick receipt execution standing is missing" }
+        JsonMemberDuplicated { count: _ } => BeltTickExecutionUnreadable { reason: "belt tick receipt execution standing is missing" }
+        JsonMemberNotAnObject => BeltTickExecutionUnreadable { reason: "belt tick receipt execution standing is missing" }
       }
     JsonMemberAbsent => BeltTickExecutionUnreadable { reason: "belt tick receipt execution is missing" }
     JsonMemberDuplicated { count: _ } => BeltTickExecutionUnreadable { reason: "belt tick receipt execution is duplicated" }
@@ -3693,28 +3752,40 @@ fn belt_tick_session_class(
 fn belt_tick_is_running(live: List<DispatchLiveSession>, s: DispatchLiveSession) -> Bool {
   match belt_tick_session_class(live: live, s: s) {
     BeltSessionRunning { session_name: _, command: _ } => true
-    _ => false
+    BeltSessionStaleTerminal { session_name: _, detail: _ } => false
+    BeltSessionLivenessUnobserved { session_name: _, reason: _ } => false
+    BeltSessionAbsent => false
+    BeltSessionMultiplicityConflict { session_names: _, session_count: _ } => false
   }
 }
 
 fn belt_tick_is_stale(live: List<DispatchLiveSession>, s: DispatchLiveSession) -> Bool {
   match belt_tick_session_class(live: live, s: s) {
     BeltSessionStaleTerminal { session_name: _, detail: _ } => true
-    _ => false
+    BeltSessionRunning { session_name: _, command: _ } => false
+    BeltSessionLivenessUnobserved { session_name: _, reason: _ } => false
+    BeltSessionAbsent => false
+    BeltSessionMultiplicityConflict { session_names: _, session_count: _ } => false
   }
 }
 
 fn belt_tick_is_refused(live: List<DispatchLiveSession>, s: DispatchLiveSession) -> Bool {
   match belt_tick_session_class(live: live, s: s) {
     BeltSessionLivenessUnobserved { session_name: _, reason: _ } => true
-    _ => false
+    BeltSessionRunning { session_name: _, command: _ } => false
+    BeltSessionStaleTerminal { session_name: _, detail: _ } => false
+    BeltSessionAbsent => false
+    BeltSessionMultiplicityConflict { session_names: _, session_count: _ } => false
   }
 }
 
 fn belt_tick_is_conflicted(live: List<DispatchLiveSession>, s: DispatchLiveSession) -> Bool {
   match belt_tick_session_class(live: live, s: s) {
     BeltSessionMultiplicityConflict { session_names: _, session_count: _ } => true
-    _ => false
+    BeltSessionRunning { session_name: _, command: _ } => false
+    BeltSessionStaleTerminal { session_name: _, detail: _ } => false
+    BeltSessionLivenessUnobserved { session_name: _, reason: _ } => false
+    BeltSessionAbsent => false
   }
 }
 
@@ -4047,7 +4118,33 @@ fn belt_spawn_tally(outcomes: List<BeltSpawnOutcome>) -> BeltSpawnTally {
       match refusal {
         LaunchNoCapacity { occupied: _, max_concurrent: _ } =>
           BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred + 1 }
-        _ =>
+        LaunchNoActuatingInstance { reason: _ } =>
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
+        LaunchInstanceActuationRefused { instance_id: _, reason: _ } =>
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
+        LaunchTransitionInhibited { reason: _ } =>
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
+        LaunchRevisionUnobserved { cause: _ } =>
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
+        LaunchAuthorityUnobserved { detail: _ } =>
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
+        LaunchNodeUnknown =>
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
+        LaunchNotReady { missing: _ } =>
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
+        LaunchSessionsUnobservable { reason: _ } =>
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
+        LaunchAlreadyLive { session_name: _ } =>
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
+        LaunchStaleSession { session_name: _, detail: _ } =>
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
+        LaunchLivenessUnobserved { session_name: _, reason: _ } =>
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
+        LaunchSessionMultiplicityConflict { session_names: _, session_count: _ } =>
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
+        LaunchCauseNotPermitted { cause: _, mode: _ } =>
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
+        LaunchGateNotEvaluated { gate: _ } =>
           BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
       }
   })
@@ -6691,7 +6788,8 @@ fn belt_commit_pass_outcome_from(outcomes: List<BeltCommitOutcome>) -> BeltPassO
   if count(ledger_refusals) > 0 {
     match ledger_refusals.first() {
       Present { value: CommitDeferred { node_id: _, reason: r } } => BeltPassRefused { reason: r }
-      _ => BeltPassRefused { reason: "the attempts ledger is unobservable" }
+      Present { value: _ } => BeltPassRefused { reason: "the attempts ledger is unobservable" }
+      Absent => BeltPassRefused { reason: "the attempts ledger is unobservable" }
     }
   } else if any(outcomes, o => belt_commit_outcome_is_failure(o: o)) {
     BeltPassFailed { reason: "one or more attempt worktrees could not be committed" }
@@ -7337,7 +7435,8 @@ fn belt_verify_attempt_for_instance(
                                   value: GitDiffWindowPrepareRefused { cause: cause },
                                 } =>
                                   Present { value: cause }
-                                _ => none
+                                Present { value: GitDiffWindowPrepared { path: _, window: _ } } => none
+                                Absent => none
                               },
                             )
                         }
@@ -7381,9 +7480,16 @@ fn belt_attempt_unrecoverable(provider: ProviderExecutionState, evidence: Worker
     ProviderEventsRefused { activity: _, detail: _ } =>
       match evidence {
         WorkerProcessAbsent => true
-        _ => false
+        WorkerProcessUnobserved { reason: _ } => false
+        WorkerProcessRunning { command: _ } => false
+        WorkerProcessExited { exit_code: _, last_command: _ } => false
       }
-    _ => false
+    ProviderNotStarted => false
+    ProviderStarting { activity: _ } => false
+    ProviderRunning { activity: _ } => false
+    ProviderCompleted { activity: _ } => false
+    ProviderFailed { activity: _, detail: _ } => false
+    ProviderBudgetSpent { activity: _, detail: _ } => false
   }
 }
 
@@ -7746,7 +7852,10 @@ fn belt_verify_one_receipt_observation_of(evidence: VerificationFileEvidence) ->
             verdict_key: validation_verdict_key(verdict: receipt.verdict),
             detail: validation_verdict_detail(verdict: receipt.verdict),
           }
-        _ => VerifyOneReceiptUnreadable { reason: "the receipt at this head's address is not an exact-subject v2 receipt, so it does not settle this head" }
+        VerificationEvidenceForAnotherSubject { field: _, expected: _, found: _ } => VerifyOneReceiptUnreadable { reason: "the receipt at this head's address is not an exact-subject v2 receipt, so it does not settle this head" }
+        VerificationEvidenceLegacyAttemptLevel { verdict_key: _ } => VerifyOneReceiptUnreadable { reason: "the receipt at this head's address is not an exact-subject v2 receipt, so it does not settle this head" }
+        VerificationEvidenceUnreadable { reason: _ } => VerifyOneReceiptUnreadable { reason: "the receipt at this head's address is not an exact-subject v2 receipt, so it does not settle this head" }
+        VerificationEvidenceV1LegacyExactHead { legacy: _ } => VerifyOneReceiptUnreadable { reason: "the receipt at this head's address is not an exact-subject v2 receipt, so it does not settle this head" }
       }
   }
 }
@@ -7919,7 +8028,9 @@ fn belt_verify_pass_outcome_from(outcomes: List<BeltVerifyOutcome>) -> BeltPassO
     match ledger_refusals.first() {
       Present { value: VerifyDeferred { node_id: _, reason: r } } =>
         BeltPassRefused { reason: r }
-      _ =>
+      Present { value: _ } =>
+        BeltPassRefused { reason: "the attempts ledger is unobservable" }
+      Absent =>
         BeltPassRefused { reason: "the attempts ledger is unobservable" }
     }
   } else {
@@ -7943,7 +8054,9 @@ fn belt_verify_pass_outcome_from(outcomes: List<BeltVerifyOutcome>) -> BeltPassO
         match verification_refusals.first() {
           Present { value: VerifyRefused { node_id: _, cause: r } } =>
             BeltPassRefused { reason: r }
-          _ =>
+          Present { value: _ } =>
+            BeltPassRefused { reason: "verification refused on one or more attempts" }
+          Absent =>
             BeltPassRefused { reason: "verification refused on one or more attempts" }
         }
       } else if count(outcomes) > 0
@@ -9382,7 +9495,13 @@ fn belt_goal_audit_segment(progress: WorkflowAttemptProgress) -> WorkflowSegment
     Absent =>
       match s.kind {
         GoalAuditWorkflowSegment => Present { value: s }
-        _ => none
+        EnvironmentWorkflowSegment => none
+        WorkspaceWorkflowSegment => none
+        AgentWorkflowSegment => none
+        SubmissionWorkflowSegment => none
+        VerificationWorkflowSegment => none
+        PublicationWorkflowSegment => none
+        ReviewWorkflowSegment => none
       }
   })
 }
@@ -9406,7 +9525,11 @@ fn belt_audit_attempt_for_instance(instance: HostDashboardInstance, progress: Wo
     Present { value: v } =>
       match v.state {
         WorkflowSegmentComplete => belt_audit_verified_attempt(instance: instance, progress: progress, verification_detail: v.detail)
-        _ => ReviewSkipped { node_id: progress.node_id, criterion: goal_audit_criterion_key, reason: "verification has not passed for this head" }
+        WorkflowSegmentPending => ReviewSkipped { node_id: progress.node_id, criterion: goal_audit_criterion_key, reason: "verification has not passed for this head" }
+        WorkflowSegmentActive => ReviewSkipped { node_id: progress.node_id, criterion: goal_audit_criterion_key, reason: "verification has not passed for this head" }
+        WorkflowSegmentFailed => ReviewSkipped { node_id: progress.node_id, criterion: goal_audit_criterion_key, reason: "verification has not passed for this head" }
+        WorkflowSegmentRefused => ReviewSkipped { node_id: progress.node_id, criterion: goal_audit_criterion_key, reason: "verification has not passed for this head" }
+        WorkflowSegmentStopped => ReviewSkipped { node_id: progress.node_id, criterion: goal_audit_criterion_key, reason: "verification has not passed for this head" }
       }
   }
 }
@@ -9605,7 +9728,13 @@ fn belt_review_segment(progress: WorkflowAttemptProgress) -> WorkflowSegment? {
     Absent =>
       match s.kind {
         ReviewWorkflowSegment => Present { value: s }
-        _ => none
+        EnvironmentWorkflowSegment => none
+        WorkspaceWorkflowSegment => none
+        AgentWorkflowSegment => none
+        SubmissionWorkflowSegment => none
+        VerificationWorkflowSegment => none
+        PublicationWorkflowSegment => none
+        GoalAuditWorkflowSegment => none
       }
   })
 }
@@ -9638,7 +9767,11 @@ fn belt_review_attempt_for_instance(instance: HostDashboardInstance, progress: W
     Present { value: v } =>
       match v.state {
         WorkflowSegmentComplete => belt_review_verified_attempt(instance: instance, progress: progress, verification_detail: v.detail)
-        _ => [ ReviewSkipped { node_id: progress.node_id, criterion: "", reason: "verification has not passed for this head" } ]
+        WorkflowSegmentPending => [ ReviewSkipped { node_id: progress.node_id, criterion: "", reason: "verification has not passed for this head" } ]
+        WorkflowSegmentActive => [ ReviewSkipped { node_id: progress.node_id, criterion: "", reason: "verification has not passed for this head" } ]
+        WorkflowSegmentFailed => [ ReviewSkipped { node_id: progress.node_id, criterion: "", reason: "verification has not passed for this head" } ]
+        WorkflowSegmentRefused => [ ReviewSkipped { node_id: progress.node_id, criterion: "", reason: "verification has not passed for this head" } ]
+        WorkflowSegmentStopped => [ ReviewSkipped { node_id: progress.node_id, criterion: "", reason: "verification has not passed for this head" } ]
       }
   }
 }
@@ -10397,7 +10530,8 @@ fn belt_publish_attempt_for_instance(
               attempt_key: attempt_key,
               project_key: arc,
             )
-          _ => belt_publish_attempt_adjudicate(instance: instance, node_id: node_id, attempt_key: attempt_key)
+          MembershipStandalone => belt_publish_attempt_adjudicate(instance: instance, node_id: node_id, attempt_key: attempt_key)
+          MembershipAmbiguous { arcs: _ } => belt_publish_attempt_adjudicate(instance: instance, node_id: node_id, attempt_key: attempt_key)
         }
       }
   }
@@ -10897,7 +11031,9 @@ fn belt_publish_pass_outcome_from(outcomes: List<BeltPublishOutcome>) -> BeltPas
     match ledger_refusals.first() {
       Present { value: PublishDeferred { node_id: _, reason: r } } =>
         BeltPassRefused { reason: r }
-      _ =>
+      Present { value: _ } =>
+        BeltPassRefused { reason: "the attempts ledger is unobservable" }
+      Absent =>
         BeltPassRefused { reason: "the attempts ledger is unobservable" }
     }
   } else {
@@ -10922,7 +11058,13 @@ fn belt_verification_segment(progress: WorkflowAttemptProgress) -> WorkflowSegme
     Absent =>
       match s.kind {
         VerificationWorkflowSegment => Present { value: s }
-        _ => none
+        EnvironmentWorkflowSegment => none
+        WorkspaceWorkflowSegment => none
+        AgentWorkflowSegment => none
+        SubmissionWorkflowSegment => none
+        PublicationWorkflowSegment => none
+        ReviewWorkflowSegment => none
+        GoalAuditWorkflowSegment => none
       }
   })
 }
