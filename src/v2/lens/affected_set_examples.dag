@@ -14,7 +14,7 @@ import v2.std.diagnostic {
   ExternalContractUnknown,
   diagnostics_singleton
 }
-import v2.std.node { Atom, Conj, Diff, Edit, Hash, Node, Path, Symbol, TypeNode }
+import v2.std.node { Atom, Conj, Diff, Edit, Hash, Node, Path, Symbol, TypeNode, Authored }
 import v2.lens.affected_set {
   AffectedBoundaryRead,
   AffectedFrontierRead,
@@ -57,7 +57,7 @@ data affected_set_claim_failure_node: Node = Node {
   occurrence_id: OccurrenceSynthetic
 }
 
-data affected_set_example_path: Path = Path { steps: [^affected_set_example_path_symbol] }
+data affected_set_example_path: Path = Path { steps: [Authored { name: ^affected_set_example_path_symbol }] }
 
 data affected_set_example_edit: Edit = Edit {
   at: affected_set_example_path,

@@ -361,10 +361,7 @@ pub fn emit_simple_expr(
                                 binding_kind: bk, ..
                             } => match bk.clone().as_deref().cloned() {
                                 Some(VarBindingKind::MatchBoundBinding) => false,
-                                Some(VarBindingKind::VariantValueBinding {
-                                    parent_enum: _,
-                                    ..
-                                }) => false,
+                                Some(VarBindingKind::VariantValueBinding { .. }) => false,
                                 _ => true,
                             },
                             _ => false,
