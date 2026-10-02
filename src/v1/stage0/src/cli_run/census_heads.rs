@@ -317,6 +317,7 @@ fn project_node(n: &Rc<Node>, base: i64, relabel: &[i64]) -> Result<Rc<Node>, St
         NodeOccurrenceIdentity::OccurrenceProjected { .. } => {
             return refuse("a projected occurrence")
         }
+        NodeOccurrenceIdentity::OccurrencePending { .. } => return refuse("a pending occurrence"),
     };
     let payload_free = match &**expr_data {
         ExprData::NoExprData

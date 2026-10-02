@@ -21,7 +21,7 @@ pub use crate::std_import::{
     ImportStatementParseCause, ParsedImportStatement, ParsedImportStatements,
 };
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::{
-    OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic,
+    OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic,
 };
 use crate::std_occurrence_identity::OccurrenceCategory::{
     CallableOccurrence, FieldOccurrence, LexicalValueOccurrence, MethodOccurrence,
@@ -2823,6 +2823,7 @@ pub fn occurrence_allocator_after_identity(
                 alloc
             }
         }
+        NodeOccurrenceIdentity::OccurrencePending { caused_by: _, .. } => alloc,
         NodeOccurrenceIdentity::OccurrenceSynthetic => alloc,
     }
 }
@@ -3402,6 +3403,17 @@ pub fn stamp_parsed_node(
                     ctx: ctx.clone(),
                     err: Some(parse_error(
                         "projected occurrence identity is invalid at the authored parser boundary"
+                            .to_string(),
+                        node.span.clone(),
+                    )),
+                })
+            }
+            NodeOccurrenceIdentity::OccurrencePending { caused_by: _, .. } => {
+                return Rc::new(ParsedNodeStampResult {
+                    node: node.clone(),
+                    ctx: ctx.clone(),
+                    err: Some(parse_error(
+                        "pending occurrence identity is invalid at the authored parser boundary"
                             .to_string(),
                         node.span.clone(),
                     )),
