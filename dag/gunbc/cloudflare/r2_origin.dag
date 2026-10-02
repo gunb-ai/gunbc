@@ -7,6 +7,9 @@ import extdeps.securities { Securities }
 import extdeps.vendor { Vendor }
 import extdeps.vendor.cloudflare { cloudflare }
 import extdeps.cloudflare.r2 { R2Jurisdiction, R2JurisdictionDefault }
+import extdeps.cloudflare.r2_lifecycle { R2LifecycleRule }
+import std.measure { second_count }
+import gunbc.fabric.fabric_blob_placement { fabric_cache_blob_prefix, fabric_cache_release }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
@@ -85,6 +88,7 @@ fn fleet_cloudflare_account_standing() -> FleetCloudflareAccountStanding {
 type OriginAdmission
   = FabricCommitManifestsAndContentAddressedOutputs {}
   | DigestKeyedBootArtifacts {}
+  | KeyAddressedCacheBlobs {}
 
 // A CREDENTIAL FOR THE ORIGIN IS TWO FACTS AND A STANDING. The S3 access key id IS the Cloudflare
 // token id (extdeps.cloudflare.r2 R2S3AccessPair, cited) and is not a secret: it is what the
@@ -148,9 +152,17 @@ type R2OriginBucket {
 // THE BOOT ORIGIN IS A SECOND PURPOSE, NOT A WIDENING OF THE FIRST. The durable origin is private and byte-owning for commit readback; the
 // boot origin is read by machines over a public custom domain. Admitting boot bytes into the durable
 // bucket would make it public, and the durable origin's read token would become a boot reader's.
+//
+// THE CACHE-BLOB PLACEMENT IS A THIRD PURPOSE, NOT A THIRD STORE. It holds the fabric blob plane's
+// cache population (std.fabric_blob, laid out by gunbc.fabric.fabric_blob_placement): whole-object
+// blobs under exact keys, released by age. It is a separate bucket because it is the one purpose
+// whose objects EXPIRE -- a lifecycle rule on a shared bucket would be one prefix typo away from
+// expiring durable history -- and because its writer (the canonical publisher) is a different
+// principal from the durable origin's committer.
 type BucketPurpose
   = FabricDurableOrigin {}
   | FabricBootOrigin {}
+  | FabricCacheBlobs {}
 
 type R2BucketAllocation {
   purpose: BucketPurpose
@@ -161,6 +173,7 @@ fn bucket_purpose_key(purpose: BucketPurpose) -> String {
   match purpose {
     FabricDurableOrigin {} => "fabric-durable-origin"
     FabricBootOrigin {} => "fabric-boot-origin"
+    FabricCacheBlobs {} => "fabric-cache-blobs"
   }
 }
 
@@ -170,6 +183,7 @@ fn bucket_purpose_admission(purpose: BucketPurpose) -> OriginAdmission {
   match purpose {
     FabricDurableOrigin {} => FabricCommitManifestsAndContentAddressedOutputs {}
     FabricBootOrigin {} => DigestKeyedBootArtifacts {}
+    FabricCacheBlobs {} => KeyAddressedCacheBlobs {}
   }
 }
 
@@ -180,6 +194,7 @@ fn origin_admission_is_create_only(admission: OriginAdmission) -> Bool {
   match admission {
     FabricCommitManifestsAndContentAddressedOutputs {} => true
     DigestKeyedBootArtifacts {} => true
+    KeyAddressedCacheBlobs {} => true
   }
 }
 
@@ -189,6 +204,7 @@ fn bucket_purpose_admits_public_read(purpose: BucketPurpose) -> Bool {
   match purpose {
     FabricDurableOrigin {} => false
     FabricBootOrigin {} => true
+    FabricCacheBlobs {} => false
   }
 }
 
@@ -212,6 +228,10 @@ data gunbc_fleet_r2_bucket_allocations: List<R2BucketAllocation> = [
   R2BucketAllocation {
     purpose: FabricBootOrigin {},
     bucket_name: "gunbai-fabric-boot",
+  },
+  R2BucketAllocation {
+    purpose: FabricCacheBlobs {},
+    bucket_name: "gunbai-fabric-cache",
   },
 ]
 
@@ -391,6 +411,51 @@ fn bucket_purpose_origin_standing(purpose: BucketPurpose) -> R2OriginStanding {
   match purpose {
     FabricDurableOrigin {} => fabric_durable_origin_standing()
     FabricBootOrigin {} => fabric_boot_origin_standing()
+    FabricCacheBlobs {} => fabric_cache_blobs_standing()
+  }
+}
+
+// WHICH OBJECTS A PURPOSE'S BUCKET RELEASES BY AGE, DERIVED FROM THE PLACEMENT THAT OWNS THE
+// INTERVAL rather than restated: the cache's one rule is gunbc.fabric.fabric_blob_placement's
+// release over its blob prefix. The durable and boot origins declare no lifecycle
+// rule, and an empty list here is that declaration -- their objects are released never.
+fn bucket_purpose_lifecycle_rules(purpose: BucketPurpose) -> List<R2LifecycleRule> {
+  match purpose {
+    FabricDurableOrigin {} => []
+    FabricBootOrigin {} => []
+    FabricCacheBlobs {} => [
+      R2LifecycleRule {
+        id: "fabric-cache-blobs-release",
+        enabled: true,
+        prefix: fabric_cache_blob_prefix as String,
+        delete_after_age_seconds: second_count(s: fabric_cache_release()),
+      },
+    ]
+  }
+}
+
+// THE CACHE'S READER AND ITS PUBLISHER HOLD DIFFERENT TOKENS. The read token is held by every
+// consumer that serves from the cache (hw boot, fleet, heal); the write token only by the canonical
+// publisher, and it is create-only by admission. A merge-group run holds neither. Neither is minted
+// yet, so both are MintEntryUnbuilt and every cache transfer refuses at this standing, typed and
+// before any network call, until gunbc.cloudflare.r2_token_mint_run mints per purpose.
+data fabric_cache_blobs_read_secret_id: NonEmptyStr = "cloudflare-r2-cache-blobs-read-token"
+
+data fabric_cache_blobs_write_secret_id: NonEmptyStr = "cloudflare-r2-cache-blobs-write-token"
+
+fn fabric_cache_blobs_standing() -> R2OriginStanding {
+  match allocated_bucket_name(purpose: FabricCacheBlobs {}) {
+    Absent => R2OriginUnallocated { purpose: FabricCacheBlobs {} }
+    Present { value: name } =>
+      R2OriginAllocated {
+        bucket: R2OriginBucket {
+          bucket_name: name,
+          jurisdiction: R2JurisdictionDefault,
+          purpose: FabricCacheBlobs {},
+          read_credential: OriginCredentialMintEntryUnbuilt { secret_id: fabric_cache_blobs_read_secret_id },
+          write_credential: OriginCredentialMintEntryUnbuilt { secret_id: fabric_cache_blobs_write_secret_id },
+        }
+      }
   }
 }
 

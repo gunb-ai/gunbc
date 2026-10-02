@@ -63,6 +63,7 @@ import gunbc.cloudflare.r2_origin {
   cloudflare_bootstrap_custody_secret_id,
   FabricCommitManifestsAndContentAddressedOutputs,
   DigestKeyedBootArtifacts,
+  KeyAddressedCacheBlobs,
   bucket_purpose_admission,
   OriginCredentialStanding,
   OriginCredentialPinned,
@@ -365,6 +366,7 @@ test fn r2_origin_bucket_read_credential_is_the_minted_container() -> Bool {
         && match bucket_purpose_admission(purpose: bucket.purpose) {
              FabricCommitManifestsAndContentAddressedOutputs {} => true
              DigestKeyedBootArtifacts {} => false
+             KeyAddressedCacheBlobs {} => false
            }
   }
 }
