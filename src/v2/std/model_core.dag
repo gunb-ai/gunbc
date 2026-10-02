@@ -21,7 +21,7 @@ import v2.std.logic {
   bool_primitive_facts_node,
   bool_width_fact_node
 }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode }
 import v2.std.witness { Holds, Violates, Witness }
 
 type ModelCorePrimitiveFactAxis
@@ -186,15 +186,15 @@ fn model_core_law_node(key: ModelCoreBoolLawKey) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^model_core_law_field_subject },
+        label: Authored { name: ^model_core_law_field_subject },
         target: model_core_bool_inhabitance_witness()
       },
       Edge {
-        label: Named { name: ^model_core_law_field_algebra },
+        label: Authored { name: ^model_core_law_field_algebra },
         target: model_core_bool_algebra_node()
       },
       Edge {
-        label: Named { name: ^model_core_law_field_kind },
+        label: Authored { name: ^model_core_law_field_kind },
         target: model_core_atom(id: discriminant(v: key))
       },
     ],

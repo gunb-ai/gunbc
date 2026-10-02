@@ -39,6 +39,7 @@ fn effective_posix_principal_read(
 
 service access.PosixEffectivePrincipal {
   operation Read {
+    requires none
     input { read: EffectivePosixPrincipalRead }
     output {
       exit_code: Int from "exit_code"
