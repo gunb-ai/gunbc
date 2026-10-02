@@ -18,7 +18,8 @@ import extdeps.docker.cli {
   docker_run_foreground_argv,
 }
 import gunbc.spark.serving_arm { ArmIntent, ArmNormalServing, ArmBoundedExperiment, glm_native_concurrent_profile }
-import gunbc.spark.arm_memory_fit { arm_memory_experiment_runtime_seconds }
+import gunbc.spark.arm_memory_fit { arm_memory_experiment_runtime_seconds, engine_ready_timeout_for, EngineReadyTimeoutResolved, EngineReadyTimeoutUnreadable }
+import extdeps.vllm.engine_args { vllm_argv_nat, vllm_max_num_seqs_flag, VllmArgvNat, VllmArgvNatUnread }
 import gunbc.spark.serving_arm_launch {
   ArmLaunchPlanned, ArmLaunchRefused, ArmNodeLaunch, glm_native_master_port,
 }
@@ -245,6 +246,22 @@ fn arm_unit_directives(intent: ArmIntent, units: ArmUnitIdentity, launch: ArmNod
 // plan admits (gunbc.spark.arm_memory_fit arm_memory_experiment_runtime_seconds), and EVERY rank
 // unit carries the same value. ExecStopPost removes the container after any stop -- including a
 // runtime expiry -- so a timed-out experiment leaves no engine holding pool bytes.
+// THE BOUND IS RE-DERIVED FROM THE LAUNCH ITSELF -- its container environment's ready timeout and its
+// argv's --max-num-seqs -- through the same function the experiment plan admits with, so every rank
+// unit of a GLM or a DeepSeek V4.1 experiment carries that arm's own figure. The plan already refused an
+// unreadable environment before any unit is rendered; should one reach here anyway, the unit is bounded
+// at one second, so it stops rather than running unbounded.
+fn arm_launch_experiment_runtime_wire(launch: ArmNodeLaunch) -> NonEmptyStr {
+  match engine_ready_timeout_for(env: launch.container.env) {
+    EngineReadyTimeoutUnreadable { cause: _ } => "1" as NonEmptyStr
+    EngineReadyTimeoutResolved { seconds: ready } =>
+      match vllm_argv_nat(argv: launch.engine_argv, flag: vllm_max_num_seqs_flag) {
+        VllmArgvNatUnread { cause: _ } => "1" as NonEmptyStr
+        VllmArgvNat { value: seqs } => to_string(arm_memory_experiment_runtime_seconds(ready_timeout_seconds: ready, max_num_seqs: seqs)) as NonEmptyStr
+      }
+  }
+}
+
 fn arm_service_directives(intent: ArmIntent, launch: ArmNodeLaunch, run_line: NonEmptyStr, log_path: NonEmptyStr) -> List<SystemdServiceDirective> {
   match intent {
     ArmNormalServing => [
@@ -266,7 +283,7 @@ fn arm_service_directives(intent: ArmIntent, launch: ArmNodeLaunch, run_line: No
       ExecStopPost { command: join(["-/usr/bin/docker rm -f ", launch.container.name as String], "") as NonEmptyStr },
       Restart { policy: "no" as NonEmptyStr },
       TimeoutStartSec { duration: "0" as NonEmptyStr },
-      RuntimeMaxSec { duration: to_string(arm_memory_experiment_runtime_seconds()) as NonEmptyStr },
+      RuntimeMaxSec { duration: arm_launch_experiment_runtime_wire(launch: launch) },
       ServiceStandardOutput { stream: OutputAppendFile { path: log_path } },
       ServiceStandardError { stream: OutputAppendFile { path: log_path } },
     ]

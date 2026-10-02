@@ -77,7 +77,7 @@ test fn w_bounded_experiment_units_are_one_shot_and_not_enrolled() -> Bool {
       string_contains(s: t, pattern: "Restart=no")
         && string_contains(s: t, pattern: "StartLimitIntervalSec=600")
         && string_contains(s: t, pattern: "StartLimitBurst=1")
-        && string_contains(s: t, pattern: join(["RuntimeMaxSec=", to_string(arm_memory_experiment_runtime_seconds()), "\n"], ""))
+        && string_contains(s: t, pattern: join(["RuntimeMaxSec=", to_string(arm_memory_experiment_runtime_seconds(ready_timeout_seconds: 3600, max_num_seqs: 8)), "\n"], ""))
         && string_contains(s: t, pattern: "TimeoutStartSec=0")
         && string_contains(s: t, pattern: "ExecStopPost=-/usr/bin/docker rm -f glm-native-tp4")
         && string_contains(s: t, pattern: "BOUNDED EXPERIMENT")

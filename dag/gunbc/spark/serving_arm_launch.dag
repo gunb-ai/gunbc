@@ -707,7 +707,8 @@ fn plan_arm_launch_under_memory_fit(checkpoint: ServingCheckpoint, runtime: Serv
             topology: topology,
             profile: profile,
             workload: mem_subject.intent,
-            open: arm_memory_subject_open_components(subject: mem_subject)) {
+            open: arm_memory_subject_open_components(subject: mem_subject),
+            deployment_env: deployment_env) {
             ArmWallExperimentRefused { cause: c } => ArmLaunchRefused { cause: c }
             ArmWallExperimentNotRequired =>
               arm_memory_gated_plan(gate: arm_memory_launch_gate(intent: intent, verdict: verdict, experiment: none), lines: ls, master: m)
@@ -748,6 +749,7 @@ fn arm_memory_experiment_for_wall(
   profile: ServingLaunchProfile,
   workload: ServingCapacityIntent,
   open: List<ArmMemoryComponent>,
+  deployment_env: List<DockerEnvAssignment>,
 ) -> ArmWallExperiment {
   match intent {
     ArmNormalServing => ArmWallExperimentNotRequired
@@ -756,7 +758,7 @@ fn arm_memory_experiment_for_wall(
         ArmMemoryFitUnestablished { obligations: _ } =>
           match arm_memory_fit_experiment_plan(
             checkpoint: checkpoint, runtime: runtime, topology: topology,
-            workload: workload, policy_profile: profile, targets: open) {
+            workload: workload, policy_profile: profile, targets: open, deployment_env: deployment_env) {
             ArmMemoryExperimentAdmitted { plan: p } => ArmWallExperimentPlanned { plan: p }
             ArmMemoryExperimentRefused { cause: c } => ArmWallExperimentRefused { cause: c }
           }

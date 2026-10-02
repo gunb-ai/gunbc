@@ -36,7 +36,7 @@ import gunbc.spark.pair_serving_capacity_floor {
   spark_pair_serving_minimum_cold_sessions, minimum_cold_sessions_intent,
 }
 import gunbc.spark.group_b_serving_capacity { group_b_restoration_executable }
-import gunbc.spark.glm_group_b_launch { glm_group_b_sparse_indexer_max_logits }
+import gunbc.spark.glm_group_b_launch { glm_group_b_deployment_env, glm_group_b_sparse_indexer_max_logits }
 import gunbc.spark.arm_memory_fit {
   ArmMemoryComponent, ArmComponentBound, ArmRankDemand, ArmSupplyDeductions,
   ArmPoolBound, ArmPoolBounded, ArmPoolUnbounded,
@@ -803,7 +803,7 @@ fn fx_plan() -> ArmMemoryExperimentPlan {
     topology: FourSparkTp4,
     workload: fx_shrunk_intent(),
     policy_profile: fx_derived_profile(),
-    targets: [ArmKvCache, ArmGraphCapture]) {
+    targets: [ArmKvCache, ArmGraphCapture], deployment_env: glm_group_b_deployment_env()) {
     ArmMemoryExperimentAdmitted { plan: p } => p
     ArmMemoryExperimentRefused { cause: _ } => ArmMemoryExperimentPlan {
       checkpoint: Glm53NativeFp8,
@@ -860,7 +860,7 @@ test fn w_unestablished_refuses_the_experiment_without_a_typed_plan() -> Bool {
 test fn w_the_experiment_plan_names_targets_runtime_receipts_and_stop_contract() -> Bool {
   let plan = fx_plan()
   length(plan.targets) == 2
-    && plan.max_runtime_seconds == arm_memory_experiment_runtime_seconds()
+    && plan.max_runtime_seconds == arm_memory_experiment_runtime_seconds(ready_timeout_seconds: 3600, max_num_seqs: plan.profile.max_num_seqs)
     && plan.max_runtime_seconds > 0
     && plan.expected_receipts == ["KvLayoutReceipt" as NonEmptyStr, "GraphCaptureBound" as NonEmptyStr]
     && (match plan.stop.stops_every_rank { ArmEveryRankStopped { witness: w } => w == "every rank unit of the experiment carries the same admitted runtime bound" as NonEmptyStr })
@@ -872,14 +872,14 @@ test fn w_the_experiment_plan_names_targets_runtime_receipts_and_stop_contract()
 test fn w_the_experiment_plan_refuses_empty_or_already_bounded_targets() -> Bool {
   (match arm_memory_fit_experiment_plan(
     checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
-    workload: fx_shrunk_intent(), policy_profile: fx_derived_profile(), targets: []) {
+    workload: fx_shrunk_intent(), policy_profile: fx_derived_profile(), targets: [], deployment_env: glm_group_b_deployment_env()) {
     ArmMemoryExperimentRefused { cause: c } => string_contains(s: c as String, pattern: "names no open obligations")
     ArmMemoryExperimentAdmitted { plan: _ } => false
   })
     && (match arm_memory_fit_experiment_plan(
       checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
       workload: fx_shrunk_intent(), policy_profile: fx_derived_profile(),
-      targets: [ArmGraphCapture, ArmFragmentationAllowance]) {
+      targets: [ArmGraphCapture, ArmFragmentationAllowance], deployment_env: glm_group_b_deployment_env()) {
       ArmMemoryExperimentAdmitted { plan: _ } => true
       ArmMemoryExperimentRefused { cause: _ } => false
     })
@@ -889,7 +889,7 @@ test fn w_the_experiment_plan_refuses_a_workload_that_does_not_join_its_policy_p
   match arm_memory_fit_experiment_plan(
     checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
     workload: fx_shrunk_intent(), policy_profile: glm_native_concurrent_profile,
-    targets: [ArmKvCache]) {
+    targets: [ArmKvCache], deployment_env: glm_group_b_deployment_env()) {
     ArmMemoryExperimentRefused { cause: c } => string_contains(s: c as String, pattern: "do not join")
     ArmMemoryExperimentAdmitted { plan: _ } => false
   }
@@ -2840,7 +2840,7 @@ test fn w_the_loader_transient_plan_is_admitted_and_named() -> Bool {
         && length(p.expected_receipts) == 1
         && p.expected_receipts == ["CheckpointRankResidencyBound"]
         && basis_point_count(bp: p.envelope_basis_points) == 8567
-        && p.max_runtime_seconds == arm_memory_experiment_runtime_seconds()
+        && p.max_runtime_seconds == arm_memory_experiment_runtime_seconds(ready_timeout_seconds: 3600, max_num_seqs: p.profile.max_num_seqs)
         && arm_experiment_kvplan_v2_2026_09_26_loader_runbook.plan == "loader-transient"
         && arm_experiment_kvplan_v2_2026_09_26_loader_runbook.poll_seconds == 2
         && arm_experiment_kvplan_v2_2026_09_26_loader_runbook.runs == 3

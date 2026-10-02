@@ -20,6 +20,8 @@ import std.interval {
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.vllm.runtime_defaults { vllm_requested_envelope_bytes }
 import extdeps.vllm.engine_args { vllm_kv_cache_dtype_wire }
+import extdeps.vllm.environment { vllm_environment_variable_name, VllmEngineReadyTimeoutSeconds, vllm_engine_ready_timeout_default_seconds }
+import extdeps.docker.cli { DockerEnvAssignment }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
 import extdeps.vllm.sparse_prefill_transient {
   sparse_indexer_k_gather_workspace_bytes, sparse_indexer_prefill_logits_cap_bytes,
@@ -37,7 +39,6 @@ import extdeps.vllm.kv_layout {
 }
 import extdeps.zhipu.glm_5_3_flash {
   Glm53FlashHybridShape, glm_5_3_flash_hybrid_shape, glm_5_3_flash_hybrid_shape_consistent,
-  glm_5_3_flash_vllm_engine_ready_timeout_seconds,
 }
 import gunbc.spark.serving_arm {
   ServingCheckpoint, ServingRuntime, ServingTopology, ServingLaunchProfile,
@@ -1394,8 +1395,43 @@ type ArmMemoryExperimentAdmission
 // variants — a larger bound for a smaller variant costs nothing because the stall watchdog, not
 // the lifetime, is the hang detector; the stop contract's timeout disposition stays the failure
 // that outlived its window.
-fn arm_memory_experiment_runtime_seconds() -> Nat {
-  glm_5_3_flash_vllm_engine_ready_timeout_seconds + 8 * 400 + 1200 + 4405 + 375
+//
+// GENERALIZED 2026-10-02 (deforking cut 4): the ready term is the LAUNCH's own -- the
+// VLLM_ENGINE_READY_TIMEOUT_S its deployment environment sets, or upstream's default when it sets none
+// -- and the seat term is the profile's sequence ceiling, so the same derivation bounds a GLM and a
+// DeepSeek V4.1 experiment. At Group B's 3600s and eight seats the code yields 12780 seconds; the
+// 12476 the paragraph above derives (848 + 4453 for the churn and tail terms) disagrees with the
+// 1200 + 4405 the expression has carried since before this change, and is left for its owner to reconcile.
+fn arm_memory_experiment_runtime_seconds(ready_timeout_seconds: Nat, max_num_seqs: Nat) -> Nat {
+  ready_timeout_seconds + max_num_seqs * 400 + 1200 + 4405 + 375
+}
+
+type EngineReadyTimeout
+  = EngineReadyTimeoutResolved { seconds: Nat }
+  | EngineReadyTimeoutUnreadable { cause: NonEmptyStr }
+
+// THE ENGINE WAITS WHAT ITS ENVIRONMENT SAYS. Set once with an integer: that value; unset: upstream's
+// default; set twice or to a non-integer: unreadable, because the engine's own parse would fail or pick
+// one, and a runtime bound built on a guess is the fabricated default this wall exists to refuse.
+fn engine_ready_timeout_for(env: List<DockerEnvAssignment>) -> EngineReadyTimeout {
+  let name = vllm_environment_variable_name(v: VllmEngineReadyTimeoutSeconds) as String
+  let set = filter(env, e => (e.name as String) == name)
+  if count(set) == 0 {
+    EngineReadyTimeoutResolved { seconds: vllm_engine_ready_timeout_default_seconds }
+  } else if count(set) > 1 {
+    EngineReadyTimeoutUnreadable { cause: join([name, " is set ", to_string(count(set)), " times in the deployment environment"], "") as NonEmptyStr }
+  } else {
+    match set.first() {
+      Absent => EngineReadyTimeoutUnreadable { cause: "the single assignment could not be read back" as NonEmptyStr }
+      Present { value: e } =>
+        match parse_int(s: e.value) {
+          Absent => EngineReadyTimeoutUnreadable { cause: join([name, "=", e.value, " is not an integer"], "") as NonEmptyStr }
+          Present { value: n } =>
+            if n < 0 { EngineReadyTimeoutUnreadable { cause: join([name, "=", e.value, " is negative"], "") as NonEmptyStr } }
+            else { EngineReadyTimeoutResolved { seconds: n } }
+        }
+    }
+  }
 }
 
 fn experiment_receipt_kind(component: ArmMemoryComponent) -> NonEmptyStr {
@@ -1422,6 +1458,26 @@ fn arm_memory_fit_experiment_plan(
   workload: ServingCapacityIntent,
   policy_profile: ServingLaunchProfile,
   targets: List<ArmMemoryComponent>,
+  deployment_env: List<DockerEnvAssignment>,
+) -> ArmMemoryExperimentAdmission {
+  match engine_ready_timeout_for(env: deployment_env) {
+    EngineReadyTimeoutUnreadable { cause: c } => ArmMemoryExperimentRefused { cause: join([
+      "the experiment's runtime bound cannot be derived: ", c as String,
+    ], "") as NonEmptyStr }
+    EngineReadyTimeoutResolved { seconds: ready } => arm_memory_fit_experiment_plan_at(
+      checkpoint: checkpoint, runtime: runtime, topology: topology, workload: workload,
+      policy_profile: policy_profile, targets: targets, ready_timeout_seconds: ready)
+  }
+}
+
+fn arm_memory_fit_experiment_plan_at(
+  checkpoint: ServingCheckpoint,
+  runtime: ServingRuntime,
+  topology: ServingTopology,
+  workload: ServingCapacityIntent,
+  policy_profile: ServingLaunchProfile,
+  targets: List<ArmMemoryComponent>,
+  ready_timeout_seconds: Nat,
 ) -> ArmMemoryExperimentAdmission {
   if !profile_joins_intent(intent: workload, p: policy_profile) {
     ArmMemoryExperimentRefused {
@@ -1452,7 +1508,7 @@ fn arm_memory_fit_experiment_plan(
               profile: policy_profile,
               targets: targets,
               envelope_basis_points: policy_profile.decided_gpu_memory_basis_points,
-              max_runtime_seconds: arm_memory_experiment_runtime_seconds(),
+              max_runtime_seconds: arm_memory_experiment_runtime_seconds(ready_timeout_seconds: ready_timeout_seconds, max_num_seqs: policy_profile.max_num_seqs),
               expected_receipts: map(targets, t => experiment_receipt_kind(t)),
               stop: ArmExperimentStopContract {
                 timeout_preserves: "on runtime expiry the engine container is stopped and the observer preserves the per-rank logs and records an unminted-receipt disposition against every expected receipt: a measurement that outlived its window establishes nothing" as NonEmptyStr,

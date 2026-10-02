@@ -1,6 +1,6 @@
 module test.claim.spark.arm_memory_fit_envelope_witness_test
 
-import std.types { Bool, NonEmptyStr }
+import std.types { Bool, NonEmptyStr, List, String }
 import std.nat { Nat }
 import std.measure { token_count, basis_point }
 import v2.std.optional { Present, Absent }
@@ -12,6 +12,8 @@ import gunbc.spark.serving_arm {
   ServingLaunchProfile, serving_launch_profile, Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4,
 }
 import gunbc.spark.serving_capacity_intent { intent_max_active_sequences }
+import extdeps.docker.cli { DockerEnvAssignment }
+import gunbc.spark.arm_memory_fit { engine_ready_timeout_for, EngineReadyTimeoutResolved, EngineReadyTimeoutUnreadable, arm_memory_experiment_runtime_seconds }
 import gunbc.spark.arm_memory_fit {
   arm_memory_fit_subject_for_launch, ArmMemorySubjectReady, ArmMemorySubjectRefused,
   memory_proof_subject_for_launch, MemoryProofSubject, MemoryProofSubjectReady, MemoryProofSubjectRefused,
@@ -110,4 +112,32 @@ test fn w_a_receipt_at_one_ceiling_does_not_discharge_a_ceiling_sensitive_term_a
             && memory_scaling_law_discharges_on(law: MemoryScalingPerSequenceFixed, measured_on: above, target: above)
       }
   }
+}
+
+// THE EXPERIMENT'S RUNTIME BOUND IS THE LAUNCH'S OWN (deforking cut 4): the ready timeout its environment
+// sets, upstream's default when it sets none, and a refusal when it is set twice or to a non-integer.
+fn w_ready_is(env: List<DockerEnvAssignment>, want: Nat) -> Bool {
+  match engine_ready_timeout_for(env: env) {
+    EngineReadyTimeoutResolved { seconds: n } => n == want
+    EngineReadyTimeoutUnreadable { cause: _ } => false
+  }
+}
+
+fn w_ready_refuses(env: List<DockerEnvAssignment>) -> Bool {
+  match engine_ready_timeout_for(env: env) {
+    EngineReadyTimeoutResolved { seconds: _ } => false
+    EngineReadyTimeoutUnreadable { cause: _ } => true
+  }
+}
+
+fn w_assign(v: String) -> DockerEnvAssignment {
+  DockerEnvAssignment { name: "VLLM_ENGINE_READY_TIMEOUT_S" as NonEmptyStr, value: v }
+}
+
+test fn w_the_ready_timeout_is_read_from_the_launch_environment() -> Bool {
+  w_ready_is(env: [], want: 600)
+    && w_ready_is(env: [w_assign(v: "3600")], want: 3600)
+    && w_ready_refuses(env: [w_assign(v: "3600"), w_assign(v: "600")])
+    && w_ready_refuses(env: [w_assign(v: "an hour")])
+    && arm_memory_experiment_runtime_seconds(ready_timeout_seconds: 3600, max_num_seqs: 8) == 12780
 }

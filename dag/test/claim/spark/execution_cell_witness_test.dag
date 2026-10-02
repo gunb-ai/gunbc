@@ -1,6 +1,7 @@
 module test.claim.spark.execution_cell_witness_test
 
 import std.types { Bool, String, NonEmptyStr, List }
+import gunbc.spark.glm_group_b_launch { glm_group_b_deployment_env }
 import std.nat { Nat }
 import std.measure { token_count, token_count_value }
 import v2.std.optional { Present, Absent }
@@ -498,14 +499,14 @@ test fn w_the_real_plan_targets_the_subjects_open_obligations_at_the_one_admitte
               length(os) > 0
                 && (match arm_memory_fit_experiment_plan(
                   checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
-                  workload: subject.intent, policy_profile: executable.profile, targets: open) {
+                  workload: subject.intent, policy_profile: executable.profile, targets: open, deployment_env: glm_group_b_deployment_env()) {
                   ArmMemoryExperimentRefused { cause: _ } => false
                   ArmMemoryExperimentAdmitted { plan: p } =>
-                    p.max_runtime_seconds == arm_memory_experiment_runtime_seconds()
+                    p.max_runtime_seconds == arm_memory_experiment_runtime_seconds(ready_timeout_seconds: 3600, max_num_seqs: p.profile.max_num_seqs)
                       && 3600 <= p.max_runtime_seconds
                       && (match spark_workload_variant_named(name: "e-stall-captured-six-full-window" as NonEmptyStr) {
                         Present { value: e } =>
-                          spark_churn_window_seconds(admitted_seconds: p.max_runtime_seconds) + e.request_timeout_seconds < arm_memory_experiment_runtime_seconds()
+                          spark_churn_window_seconds(admitted_seconds: p.max_runtime_seconds) + e.request_timeout_seconds < arm_memory_experiment_runtime_seconds(ready_timeout_seconds: 3600, max_num_seqs: p.profile.max_num_seqs)
                         Absent => false
                       })
                       && length(p.targets) == length(open)

@@ -31,7 +31,7 @@ import gunbc.spark.serving_arm {
   runtime_artifact_identity, PinnedByDigest, SourceRevisionEstablished,
 }
 import gunbc.spark.serving_arm_launch {
-  ArmContainerIdentity, ArmNodeLaunch, ArmLaunchPlanned, ArmLaunchRefused, plan_arm_launch_for,
+  ArmContainerIdentity, ArmNodeLaunch, ArmLaunchPlanned, ArmLaunchRefused, plan_arm_launch_under_memory_fit
 }
 import gunbc.spark.native_serving_realization {
   ArmUnitIdentity, GlmNativeUnitRender, GlmNativeUnitRendered, GlmNativeUnitRenderRefused,
@@ -340,6 +340,12 @@ fn v41_manifest_defects(m: V41EngramStoreManifest) -> List<String> {
   }
 }
 
+// THE LAUNCH PASSES THE SAME MEMORY WALL AS EVERY ARM (deforking cut 4): plan_arm_launch_under_memory_fit,
+// not plan_arm_launch_for. The fit verdict is Unestablished for V4.1 today (its per-rank terms are open),
+// so the bounded experiment is admitted only behind a typed experiment plan with a stop contract and a
+// runtime bound derived from THIS launch's environment -- upstream's 600-second ready default, since the
+// deployment sets none -- and its own sequence ceiling. Normal serving stays refused until the fit proves.
+//
 // THE PROFILE IS DERIVED THE WAY EVERY MODEL'S IS (deforking cut 3): the measurement shape's window,
 // sequence population and batch become a cold intent; the envelope sits AT THE FLOOR, so the engine's
 // ceiling equals the measured seat population exactly as before; the model's own choices are
@@ -384,7 +390,7 @@ fn v41_group_a_launch_plan(inputs: V41GroupALaunchInputs) -> V41GroupALaunchPlan
                 match v41_group_a_profile(shape: v41_measurement_launch_shape()) {
                  Absent => V41GroupALaunchRefused { causes: ["the V4.1 measurement shape's cold intent refused (zero seats or zero batched tokens), so no launch profile derives"] }
                  Present { value: launch_profile } =>
-                match plan_arm_launch_for(
+                match plan_arm_launch_under_memory_fit(
                   checkpoint: DeepseekV41FlashDba1be0a,
                   runtime: runtime,
                   topology: FourSparkTp4,
