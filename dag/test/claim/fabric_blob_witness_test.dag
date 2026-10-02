@@ -3,19 +3,14 @@ module test.claim.fabric_blob
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import std.measure { second, byte_size, measure_count, seconds_per_day }
+import std.measure { byte_size, measure_count }
 import std.content_hash { sha256_hex_digest, Sha256Digest }
-import std.cache_interface { ProviderRetention, ReleasedAfterInterval, ReleasedNever, CapacityUnobserved }
 import std.fabric_blob {
-  FabricBlobRef, FabricBlobScope, FabricBlobReference, FabricBlobPlacementRetention,
-  FabricBlobStaged, FabricBlobStagingRefused, stage_fabric_blob, staged_fabric_blob_size,
-  FabricBlobFetched, FabricBlobCorrupt, fabric_blob_fetch_verified,
-  fabric_blob_reference_of, fabric_blob_reference_text, fabric_blob_reference_parse,
-  fabric_blob_reference_size_holds, fabric_blob_ref_eq, blob_release_outlives_owner,
+  FabricBlobAddress, FabricBlobRead, FabricBlobReadRefused, read_staged_fabric_blob,
+  fabric_blob_reading_size, fabric_blob_reading_digest,
+  FabricBlobPutAdmitted, FabricBlobPutTooLarge, fabric_blob_put_plan, fabric_blob_address_eq, fabric_blob_fits,
 }
-import gunbc.fabric.fabric_blob_placement {
-  fabric_cache_absent_blob_is_corruption, fabric_cache_blob_key, fabric_cache_record_key,
-}
+import gunbc.fabric.fabric_blob_placement { fabric_cache_blob_key, fabric_cache_object_bound }
 import gunbc.fabric.fabric_blob_r2 {
   CacheBlobRead, CacheBlobWrite, CacheBlobTargetReady, CacheBlobTargetRefused, resolve_cache_blob_target,
 }
@@ -27,111 +22,56 @@ import extdeps.cloudflare.r2_lifecycle {
 import gunbc.cloudflare.r2_bucket_ensure { classify_r2_lifecycle }
 import std.upsert_decision { Noop, Apply, Refuse }
 
-// READS THE LIVE TREE: a StagedFabricBlob is sole_constructor, so the staged arms are taken through
-// stage_fabric_blob over a committed fixture rather than written as literals.
+// READS THE LIVE TREE: a FabricBlobReading is sole_constructor, so the reading arms are taken through
+// read_staged_fabric_blob over a committed fixture. Under the hermetic route its two handlers replay
+// their mocks -- sha256sum's empty-input digest and stat's zero size -- so the fixture is the empty
+// file, and what this establishes is the mint's wiring (digest and size from the handlers into one
+// reading), not the hashing, which extdeps.crypto.hash's own witnesses own.
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data fixture_blob_path: NonEmptyStr = "dag/test/fixture/fabric_blob/blob.bin"
-data fixture_blob_hex: String = "89427e487454c1b5b3cafc50013e056c2d496587b9922f4e8600a3b3c7e3be4f"
-data other_hex: String = "0000000000000000000000000000000000000000000000000000000000000000"
-data fixture_scope: FabricBlobScope = "witness-record" as FabricBlobScope
+data fixture_blob_path: NonEmptyStr = "dag/test/fixture/fabric_blob/empty.bin"
+data empty_sha256_hex: String = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+data key_hex: String = "89427e487454c1b5b3cafc50013e056c2d496587b9922f4e8600a3b3c7e3be4f"
 
 fn digest_of(hex: String) -> Sha256Digest {
   match sha256_hex_digest(hex: hex) {
     Present { value: d } => d
-    Absent => match sha256_hex_digest(hex: other_hex) { Present { value: d } => d  Absent => digest_of(hex: other_hex) }
+    Absent => digest_of(hex: empty_sha256_hex)
   }
 }
 
-// ── STAGING DIGESTS AND SIZES THE FILE ITSELF ──────────────────────────────────────────────────
+fn witness_address() -> FabricBlobAddress {
+  FabricBlobAddress { key: digest_of(hex: key_hex) }
+}
 
-test fn staging_mints_the_files_own_digest_and_size() -> Bool {
-  match stage_fabric_blob(path: fixture_blob_path) {
-    FabricBlobStaged { staged: s } =>
-      fabric_blob_ref_eq(a: fabric_blob_reference_of(staged: s, scope: fixture_scope).blob, b: FabricBlobRef { scope: fixture_scope, digest: digest_of(hex: fixture_blob_hex) })
-        && measure_count(m: staged_fabric_blob_size(staged: s)) == 28
-    FabricBlobStagingRefused { fault: _ } => false
+test fn reading_carries_the_handlers_digest_and_size() -> Bool {
+  match read_staged_fabric_blob(path: fixture_blob_path) {
+    FabricBlobRead { reading: r } =>
+      (fabric_blob_reading_digest(reading: r).hex as String) == empty_sha256_hex
+        && measure_count(m: fabric_blob_reading_size(reading: r)) == 0
+    FabricBlobReadRefused { fault: _ } => false
   }
 }
 
-test fn staging_a_missing_file_refuses() -> Bool {
-  match stage_fabric_blob(path: "dag/test/fixture/fabric_blob/absent.bin") {
-    FabricBlobStaged { staged: _ } => false
-    FabricBlobStagingRefused { fault: _ } => true
-  }
-}
+// ── THE PUT PLAN: AN OBJECT OVER THE BOUND NEVER REACHES THE NETWORK ───────────────────────────
 
-// ── A FETCH IS A BLOB ONLY WHEN ITS BYTES HASH TO THE ASKED DIGEST ──────────────────────────────
-
-test fn fetched_bytes_matching_the_ref_are_served_and_others_are_corrupt() -> Bool {
-  match stage_fabric_blob(path: fixture_blob_path) {
-    FabricBlobStagingRefused { fault: _ } => false
-    FabricBlobStaged { staged: s } => {
-      let right = match fabric_blob_fetch_verified(asked: FabricBlobRef { scope: fixture_scope, digest: digest_of(hex: fixture_blob_hex) }, staged: s) {
-        FabricBlobFetched { blob: _, staged: _ } => true
-        _ => false
+test fn the_put_plan_admits_within_the_bound_and_refuses_beyond_it() -> Bool {
+  match read_staged_fabric_blob(path: fixture_blob_path) {
+    FabricBlobReadRefused { fault: _ } => false
+    FabricBlobRead { reading: r } => {
+      let within = match fabric_blob_put_plan(address: witness_address(), reading: r, bound: fabric_cache_object_bound()) {
+        FabricBlobPutAdmitted { address: a, reading: _ } => fabric_blob_address_eq(a: a, b: witness_address())
+        FabricBlobPutTooLarge { address: _, size: _, bound: _ } => false
       }
-      let wrong = match fabric_blob_fetch_verified(asked: FabricBlobRef { scope: fixture_scope, digest: digest_of(hex: other_hex) }, staged: s) {
-        FabricBlobCorrupt { blob: _, observed: _ } => true
-        _ => false
-      }
-      right && wrong
+      within && fabric_blob_fits(size: byte_size(count: 0), bound: byte_size(count: 0))
+        && !fabric_blob_fits(size: byte_size(count: 1), bound: byte_size(count: 0))
+        && !fabric_blob_fits(size: byte_size(count: 4 * 1024 * 1024 * 1024 + 1), bound: fabric_cache_object_bound())
     }
   }
 }
 
-// ── THE REFERENCE A RECORD CARRIES ─────────────────────────────────────────────────────────────
-
-test fn blob_reference_round_trips_and_refuses_forged_fields() -> Bool {
-  let reference = FabricBlobReference { blob: FabricBlobRef { scope: fixture_scope, digest: digest_of(hex: fixture_blob_hex) }, size: byte_size(count: 28) }
-  let round = match fabric_blob_reference_text(reference: reference) {
-    Present { value: t } => match fabric_blob_reference_parse(text: t) {
-      Present { value: back } => fabric_blob_ref_eq(a: back.blob, b: reference.blob) && measure_count(m: back.size) == 28
-      Absent => false
-    }
-    Absent => false
-  }
-  let spaced = match fabric_blob_reference_text(reference: FabricBlobReference { blob: FabricBlobRef { scope: "two words" as FabricBlobScope, digest: digest_of(hex: fixture_blob_hex) }, size: byte_size(count: 1) }) {
-    Present { value: _ } => false
-    Absent => true
-  }
-  let extra = match fabric_blob_reference_parse(text: join(["fabric-blob/1 witness-record", fixture_blob_hex, "28 extra"], " ")) { Present { value: _ } => false  Absent => true }
-  let wrong_magic = match fabric_blob_reference_parse(text: join(["fabric-blob/2 witness-record", fixture_blob_hex, "28"], " ")) { Present { value: _ } => false  Absent => true }
-  round && spaced && extra && wrong_magic
-}
-
-test fn a_reference_naming_another_size_does_not_hold_over_the_staged_blob() -> Bool {
-  match stage_fabric_blob(path: fixture_blob_path) {
-    FabricBlobStagingRefused { fault: _ } => false
-    FabricBlobStaged { staged: s } =>
-      fabric_blob_reference_size_holds(reference: fabric_blob_reference_of(staged: s, scope: fixture_scope), staged: s)
-        && !fabric_blob_reference_size_holds(reference: FabricBlobReference { blob: FabricBlobRef { scope: fixture_scope, digest: digest_of(hex: fixture_blob_hex) }, size: byte_size(count: 29) }, staged: s)
-  }
-}
-
-// ── RELEASE ORDER: A PRESENT RECORD FINDS ITS BLOBS ────────────────────────────────────────────
-
-fn timed(days: Int) -> ProviderRetention {
-  ProviderRetention { release_policy: ReleasedAfterInterval { after_write: second(count: days * seconds_per_day()) }, capacity: CapacityUnobserved }
-}
-
-test fn the_cache_placement_releases_blobs_after_their_records() -> Bool {
-  fabric_cache_absent_blob_is_corruption()
-}
-
-// The discriminating red: blobs released no later than records, or released by age under records
-// kept forever, leave "record present, blob absent" reachable by release.
-test fn a_placement_releasing_blobs_first_is_refused() -> Bool {
-  let window = second(count: seconds_per_day())
-  !blob_release_outlives_owner(retention: FabricBlobPlacementRetention { records: timed(days: 7), blobs: timed(days: 7) }, publication_window: window)
-    && !blob_release_outlives_owner(retention: FabricBlobPlacementRetention { records: ProviderRetention { release_policy: ReleasedNever, capacity: CapacityUnobserved }, blobs: timed(days: 30) }, publication_window: window)
-    && blob_release_outlives_owner(retention: FabricBlobPlacementRetention { records: timed(days: 7), blobs: timed(days: 8) }, publication_window: window)
-}
-
-test fn blob_and_record_keys_live_under_their_own_prefixes() -> Bool {
-  let blob = FabricBlobRef { scope: fixture_scope, digest: digest_of(hex: fixture_blob_hex) }
-  (fabric_cache_blob_key(blob: blob) as String) == concat("blobs/witness-record/", fixture_blob_hex)
-    && (fabric_cache_record_key(name: "abc" as NonEmptyStr) as String) == "records/abc"
+test fn the_blob_key_is_the_address_under_the_cache_prefix() -> Bool {
+  (fabric_cache_blob_key(address: witness_address()) as String) == concat("blobs/", key_hex)
 }
 
 // ── THE CACHE'S CREDENTIALS ARE UNMINTED, SO EVERY TRANSFER REFUSES BEFORE THE NETWORK ─────────
@@ -154,10 +94,10 @@ test fn only_the_cache_purpose_declares_release_by_age() -> Bool {
   bucket_purpose_lifecycle_rules(purpose: FabricDurableOrigin {}).length() == 0
     && bucket_purpose_lifecycle_rules(purpose: FabricBootOrigin {}).length() == 0
     && r2_lifecycle_rules_canonical(rules: bucket_purpose_lifecycle_rules(purpose: FabricCacheBlobs {}))
-      == "fabric-cache-blobs-release enabled prefix=blobs/ max_age=691200\nfabric-cache-records-release enabled prefix=records/ max_age=604800"
+      == "fabric-cache-blobs-release enabled prefix=blobs/ max_age=604800"
 }
 
-data lifecycle_converged_body: String = "{\"success\":true,\"errors\":[],\"messages\":[],\"result\":{\"rules\":[{\"id\":\"fabric-cache-records-release\",\"enabled\":true,\"conditions\":{\"prefix\":\"records/\"},\"deleteObjectsTransition\":{\"condition\":{\"type\":\"Age\",\"maxAge\":604800}}},{\"id\":\"fabric-cache-blobs-release\",\"enabled\":true,\"conditions\":{\"prefix\":\"blobs/\"},\"deleteObjectsTransition\":{\"condition\":{\"type\":\"Age\",\"maxAge\":691200}}}]}}"
+data lifecycle_converged_body: String = "{\"success\":true,\"errors\":[],\"messages\":[],\"result\":{\"rules\":[{\"id\":\"fabric-cache-blobs-release\",\"enabled\":true,\"conditions\":{\"prefix\":\"blobs/\"},\"deleteObjectsTransition\":{\"condition\":{\"type\":\"Age\",\"maxAge\":604800}}}]}}"
 data lifecycle_empty_body: String = "{\"success\":true,\"errors\":[],\"messages\":[],\"result\":{\"rules\":[]}}"
 data lifecycle_unmodeled_body: String = "{\"success\":true,\"errors\":[],\"messages\":[],\"result\":{\"rules\":[{\"id\":\"abort\",\"enabled\":true,\"conditions\":{\"prefix\":\"\"},\"abortMultipartUploadsTransition\":{\"condition\":{\"type\":\"Age\",\"maxAge\":86400}}}]}}"
 
