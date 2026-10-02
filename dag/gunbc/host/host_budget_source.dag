@@ -332,6 +332,15 @@ fn kernel_budget_sourcing_static_source(g: KernelBudgetSourcing) -> HostBudgetSo
 // nobody had measured, and it is that use, not the constant, that is deleted. A declared constant
 // may bound a refusal; it may not stand in for a reading.
 
+// THE CGROUP-v1 ARM JOINS THIS SAME DECLARED MIRROR rather than opening a second one. The seed's
+// memory_governor CgroupV1HierarchicalMemoryLimit arm, CgroupV1MemoryLimitValue,
+// cgroup_v1_hierarchical_limit_from_stat and cgroup_v1_unlimited_bytes hand-realize
+// BudgetSourceCgroupV1HierarchicalMemoryLimit here and extdeps.linux.cgroup_v1_memory's parse, under
+// the bootstrap constraint stated in the note below: the budget bounds the resolve, so it is read
+// before any .dag value exists. The mirror keeps the model's three states (limited / unlimited /
+// unparseable) so a failed read never becomes an absent limit, and it dissolves at the same trigger
+// as the v2 arms. Until that trigger the .dag parse is consumed by its witness only; its production
+// consumer is the stage0 emission this disposition binds, not a hand-call from the seed.
 data host_budget_source_seed_mirror_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {

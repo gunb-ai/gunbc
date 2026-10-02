@@ -1233,9 +1233,24 @@ pub fn resolve_host_budget(
     env_override: Option<u64>,
     cgroup_high: Option<(String, u64)>,
     cgroup_max: Option<(String, u64)>,
-    cgroup_v1_limit: Option<(String, u64)>,
+    cgroup_v1_limit: Option<(String, CgroupV1MemoryLimitValue)>,
     darwin_physical: Option<u64>,
 ) -> HostBudgetResolution {
+    // A v1 memory hierarchy holds this process but its limit could not be read: that limit may
+    // be the tightest one, so no other observation may stand in for it (DESIGN §5).
+    let cgroup_v1_limit = match cgroup_v1_limit {
+        Some((dir, CgroupV1MemoryLimitValue::Unparseable(body))) => {
+            return HostBudgetResolution::Unreadable {
+                reason: format!(
+                    "cgroup v1 memory hierarchy at {dir} holds this process but its \
+                     hierarchical_memory_limit is unreadable ({body}); a bound that may be the \
+                     tightest cannot be replaced by another reading"
+                ),
+            };
+        }
+        Some((dir, CgroupV1MemoryLimitValue::Limited(bytes))) => Some((dir, bytes)),
+        Some((_, CgroupV1MemoryLimitValue::Unlimited)) | None => None,
+    };
     // Every observed process-scoped line is a candidate; the tightest one is the planning
     // ceiling. On a hybrid host the unified hierarchy carries no memory files, so the v2 and
     // v1 readings do not normally coexist; when they do, the minimum is still the honest bound.
@@ -1475,43 +1490,66 @@ pub fn cgroup_v1_unlimited_bytes(page_size: u64) -> u64 {
     (i64::MAX as u64 / page_size) * page_size
 }
 
-/// Mirror of `extdeps.linux.cgroup_v1_memory` `cgroup_v1_hierarchical_memory_limit`, collapsed
-/// to the budget's question: `Some(bytes)` for a finite limit; `None` for unlimited, a missing
-/// key, or a malformed body (none of which is a bound).
-pub fn cgroup_v1_hierarchical_limit_from_stat(memory_stat: &str, page_size: u64) -> Option<u64> {
-    let mut hits = memory_stat
+/// Mirror of `extdeps.linux.cgroup_v1_memory` `CgroupV1MemoryLimitValue`: three states, because
+/// "no limit" and "could not read the limit" have opposite consequences for the budget.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CgroupV1MemoryLimitValue {
+    Limited(u64),
+    Unlimited,
+    Unparseable(String),
+}
+
+/// Mirror of `extdeps.linux.cgroup_v1_memory` `cgroup_v1_hierarchical_memory_limit`.
+pub fn cgroup_v1_hierarchical_limit_from_stat(
+    memory_stat: &str,
+    page_size: u64,
+) -> CgroupV1MemoryLimitValue {
+    let hits: Vec<&str> = memory_stat
         .lines()
-        .filter_map(|l| l.trim().strip_prefix("hierarchical_memory_limit "));
-    let body = hits.next()?;
-    if hits.next().is_some() {
-        return None;
+        .filter_map(|l| l.trim().strip_prefix("hierarchical_memory_limit "))
+        .collect();
+    let [body] = hits.as_slice() else {
+        return CgroupV1MemoryLimitValue::Unparseable(memory_stat.to_string());
+    };
+    match body.trim().parse::<i128>() {
+        Ok(n) if n < 0 => CgroupV1MemoryLimitValue::Unparseable(body.to_string()),
+        Ok(n) if n >= cgroup_v1_unlimited_bytes(page_size) as i128 => {
+            CgroupV1MemoryLimitValue::Unlimited
+        }
+        Ok(n) => CgroupV1MemoryLimitValue::Limited(n as u64),
+        Err(_) => CgroupV1MemoryLimitValue::Unparseable(body.to_string()),
     }
-    let n = body.trim().parse::<u64>().ok()?;
-    (n < cgroup_v1_unlimited_bytes(page_size)).then_some(n)
 }
 
 /// The v1 reading over supplied procfs content and a filesystem root (`/` in production, a
 /// fixture directory in tests), so the real route — locate, read, parse — runs under test.
+/// `None` only when no v1 memory hierarchy holds this process; once one does, an unreadable
+/// `memory.stat` is `Unparseable`, never absent, because it may hide the tightest bound.
 pub fn cgroup_v1_hierarchical_limit_under(
     fs_root: &Path,
     self_cg: &str,
     mountinfo: &str,
     page_size: u64,
-) -> Option<(String, u64)> {
+) -> Option<(String, CgroupV1MemoryLimitValue)> {
     let dir = cgroup_v1_memory_dir(self_cg, mountinfo)?;
     let dir = fs_root.join(dir.strip_prefix("/").unwrap_or(&dir));
-    let stat = std::fs::read_to_string(dir.join("memory.stat")).ok()?;
-    let bytes = cgroup_v1_hierarchical_limit_from_stat(&stat, page_size)?;
-    Some((dir.display().to_string(), bytes))
+    let value = match std::fs::read_to_string(dir.join("memory.stat")) {
+        Ok(stat) => cgroup_v1_hierarchical_limit_from_stat(&stat, page_size),
+        Err(e) => CgroupV1MemoryLimitValue::Unparseable(format!("memory.stat: {e}")),
+    };
+    Some((dir.display().to_string(), value))
 }
 
-pub fn read_cgroup_v1_hierarchical_limit() -> Option<(String, u64)> {
+pub fn read_cgroup_v1_hierarchical_limit() -> Option<(String, CgroupV1MemoryLimitValue)> {
     let self_cg = std::fs::read_to_string("/proc/self/cgroup").ok()?;
     let mountinfo = std::fs::read_to_string("/proc/self/mountinfo").ok()?;
-    // SAFETY: sysconf has no preconditions; a non-positive answer is treated as unreadable.
+    // SAFETY: sysconf has no preconditions.
     let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
     if page_size <= 0 {
-        return None;
+        return Some((
+            "/proc/self/mountinfo".to_string(),
+            CgroupV1MemoryLimitValue::Unparseable("sysconf(_SC_PAGESIZE) unreadable".to_string()),
+        ));
     }
     cgroup_v1_hierarchical_limit_under(Path::new("/"), &self_cg, &mountinfo, page_size as u64)
 }
@@ -2153,7 +2191,14 @@ mod tests {
             cgroup_v1_fixture("hierarchical_memory_limit 9223372036854771712\n");
         let v1 = cgroup_v1_hierarchical_limit_under(&root, self_cg, mountinfo, 4096);
         let _ = std::fs::remove_dir_all(&root);
-        assert_eq!(v1, None);
+        assert!(
+            matches!(&v1, Some((_, CgroupV1MemoryLimitValue::Unlimited))),
+            "{v1:?}"
+        );
+        assert!(matches!(
+            resolve_host_budget(None, None, None, v1, None),
+            HostBudgetResolution::Unreadable { .. }
+        ));
         assert_eq!(cgroup_v1_unlimited_bytes(4096), 9_223_372_036_854_771_712);
         assert_eq!(cgroup_v1_unlimited_bytes(65536), 9_223_372_036_854_710_272);
         assert_eq!(
@@ -2161,16 +2206,43 @@ mod tests {
                 "hierarchical_memory_limit 9223372036854644736",
                 65536
             ),
-            Some(9_223_372_036_854_644_736)
+            CgroupV1MemoryLimitValue::Limited(9_223_372_036_854_644_736)
         );
-        assert_eq!(
-            cgroup_v1_hierarchical_limit_from_stat("rss 1\n", 4096),
-            None
-        );
-        assert_eq!(
-            cgroup_v1_hierarchical_limit_from_stat("hierarchical_memory_limit -1", 4096),
-            None
-        );
+    }
+
+    /// THE RED for the collapse review 74325 found: a malformed or missing v1 limit is NOT "no
+    /// limit". It refuses even when a looser v2 reading is available, because the unread v1
+    /// limit may be the tighter one.
+    #[test]
+    #[allow(non_snake_case)]
+    fn RED_a_malformed_v1_limit_refuses_rather_than_reading_as_unlimited() {
+        for stat in [
+            "rss 1\n",
+            "hierarchical_memory_limit -1",
+            "hierarchical_memory_limit x",
+        ] {
+            let v = cgroup_v1_hierarchical_limit_from_stat(stat, 4096);
+            assert!(
+                matches!(v, CgroupV1MemoryLimitValue::Unparseable(_)),
+                "{stat}: {v:?}"
+            );
+            let r = resolve_host_budget(
+                None,
+                None,
+                Some(("/sys/fs/cgroup/runner.slice".to_string(), 8_589_934_592)),
+                Some(("/sys/fs/cgroup/memory".to_string(), v)),
+                None,
+            );
+            assert!(
+                matches!(r, HostBudgetResolution::Unreadable { .. }),
+                "{stat}: {r:?}"
+            );
+            assert!(
+                r.label().contains("hierarchical_memory_limit"),
+                "{}",
+                r.label()
+            );
+        }
     }
 
     /// THE v2 CONTROL: a unified-only host still resolves through memory.max, and the v1 reader
