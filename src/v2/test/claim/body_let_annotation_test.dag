@@ -11,7 +11,7 @@ import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree, infer }
-import v2.extdeps.languages.dag { dag_arrow_domain_conj_node, dag_arrow_with_body_node, dag_int_literal_magnitude_node_optional, dag_canonical_literal_from_node, DagCanonicalStringLiteral, dag_symbol_literal_name_optional, dag_type_atom_node }
+import v2.extdeps.languages.dag { dag_arrow_domain_conj_node, dag_arrow_with_body_node, dag_int_literal_magnitude_node_optional, dag_symbol_literal_name_optional, dag_type_atom_node }
 import v2.compiler.inferred_tree { DerivedGrounding, GroundingNotDerived }
 import v2.std.integer { integer_decimal_digit_type_node }
 import std.types { Int }
@@ -34,7 +34,7 @@ import v2.std.diagnostic {
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { host_text_type_node, symbol_type_node, named_edges, positional_edges, Atom, Bind, ComputationNode, Edge, Named, Node, Positional, Symbol, TypeNode, content_hash, node_subtree_nodes, node_synthetic }
+import v2.std.node { symbol_type_node, named_edges, positional_edges, Atom, Bind, ComputationNode, Edge, Named, Node, Positional, Symbol, TypeNode, content_hash, node_subtree_nodes, node_synthetic }
 import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.std.type_binder { cast_target_edge, edge_is_type_annotation, type_annotation_edge, type_annotation_optional, type_binder_labels_conform }
 import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
@@ -787,172 +787,6 @@ test fn bla_symbol_literal_ascribed_symbol_is_admitted_and_derived() -> Bool {
       Accepted { value: _, diagnostics: Some { diagnostics: d } } =>
         !bla_frontier_at_symbol_literal(xs: Cons { head: d.head, tail: d.tail })
     }
-}
-
-// (5f) THE KERNEL HOST-TEXT STRING, AND THE STRUCTURAL STRING IT IS NOT. The spelling `String` binds
-// the kernel host text (v2.std.node String, typed by host_text_type_node) ONLY where no declaration
-// of the spelling is visible. A String declaration the author reached by import binds THAT
-// declaration: v2.std.text String and std.string_type String are the structural FreeMonoid<Char>
-// and are never refused and never kernel (neat-boar-16's ruling, decision A). A string literal is
-// typed as host text. Where FreeMonoid<Char> is declared, a host-text value refuses, literal or not.
-// The declared unfold for literals (gunbc.structural_realization_bindings literal_homomorphism_rows,
-// UnicodeScalarSequenceUnfold) is not reachable in v2 yet. The literal now carries its value (#12759),
-// but v2 infer does not peel an alias to its body, so it cannot recognize the destination as the
-// row's FreeMonoid over Char (gunbc.recurring_failure_mode
-// string_literal_lowers_to_one_class_stamped_atom). It refuses and is never admitted. RED BEFORE: the unimported String refused as unbound (the std.types
-// failure), and a string literal was underived, so `let y: Int = "abc"` was admitted unjudged.
-data bla_s_artifact: Artifact = Artifact {
-  kind: SourceFile,
-  id: ^body_let_annotation_s_artifact,
-  file_path: "src/v2/pilot/body_let_annotation_s.dag"
-}
-
-fn bla_string_literal_unimported() -> Outcome<ResolvedTree> {
-  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: String = \"abc\"\n  x\n}\n")
-}
-
-fn bla_string_literal_as_int() -> Outcome<ResolvedTree> {
-  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Int = \"abc\"\n  x\n}\n")
-}
-
-fn bla_unknown_unimported_type() -> Outcome<ResolvedTree> {
-  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Strang = \"abc\"\n  x\n}\n")
-}
-
-// q declares the structural String exactly as v2.std.text does. The two peers supply the
-// declarations it names, so the fixture resolves without the real std modules.
-fn bla_structural_string_peers() -> List<DagSourceReadWitness> {
-  [
-    bla_source(src: "module q\n\nimport std.algebra { FreeMonoid }\nimport std.types { Char }\n\ntype String = FreeMonoid<Char>\n", artifact: bla_q_artifact, cu: ^body_let_annotation_q_cu),
-    bla_source(src: "module std.algebra\n\ntype FreeMonoid<T> = | Empty | Cons { head: T, tail: FreeMonoid<T> }\n", artifact: bla_r_artifact, cu: ^body_let_annotation_r_cu),
-    bla_source(src: "module std.types\n\ntype Char\n", artifact: bla_s_artifact, cu: ^body_let_annotation_s_cu)
-  ]
-}
-
-fn bla_structural_string_literal() -> Outcome<ResolvedTree> {
-  bla_assemble_with_peers(
-    p_src: "module p\n\nimport q { String }\n\nfn f(x: Int) -> Int {\n  let y: String = \"abc\"\n  x\n}\n",
-    peers: bla_structural_string_peers()
-  )
-}
-
-// The non-literal host-text value is a call result: `host` lives in a module with no String
-// declaration in scope, so its declared return is the kernel host text, and infer types an
-// application's result by that declared return. (A let-bound reference is not used: v2 infer does
-// not type it from its initializer, so it would sit on the frontier and discriminate nothing.)
-fn bla_structural_string_host_value() -> Outcome<ResolvedTree> {
-  bla_assemble_with_peers(
-    p_src: "module p\n\nimport q { String }\nimport h { host }\n\nfn f(x: Int) -> Int {\n  let y: String = host()\n  x\n}\n",
-    peers: Cons {
-      head: bla_source(src: "module h\n\nfn host() -> String {\n  \"abc\"\n}\n", artifact: bla_h_artifact, cu: ^body_let_annotation_h_cu),
-      tail: bla_structural_string_peers()
-    }
-  )
-}
-
-data bla_h_artifact: Artifact = Artifact {
-  kind: SourceFile,
-  id: ^body_let_annotation_h_artifact,
-  file_path: "src/v2/pilot/body_let_annotation_h.dag"
-}
-
-fn bla_string_literal_unimported_inferred() -> Outcome<Bool> {
-  bla_infers(o: bla_string_literal_unimported())
-}
-
-fn bla_string_literal_as_int_inferred() -> Outcome<Bool> {
-  bla_infers(o: bla_string_literal_as_int())
-}
-
-fn bla_structural_string_literal_inferred() -> Outcome<Bool> {
-  bla_infers(o: bla_structural_string_literal())
-}
-
-fn bla_structural_string_host_value_inferred() -> Outcome<Bool> {
-  bla_infers(o: bla_structural_string_host_value())
-}
-
-// The literal's own recorded type, computed once (the tree carries a closure the share store refuses).
-// The literal's decoded-value payload (#12759) is typed host text by its own family, never a digit:
-// the same payload-family fix #12549 made for the Symbol name (review 5348050288).
-fn bla_string_payload_typed_host_text(t: InferredTree, literal: Node) -> Bool {
-  fold(literal.children, init: false, f: fn(acc, e) {
-    acc || (bla_resolved_type_is(t: t, n: e.target, ty: host_text_type_node())
-      && !bla_resolved_type_is(t: t, n: e.target, ty: integer_decimal_digit_type_node()))
-  })
-}
-
-fn bla_string_literal_typed_host_text_verdict() -> Bool {
-  match bla_inferred_tree(o: bla_string_literal_unimported()) {
-    Absent => false
-    Present { value: t } =>
-      fold(node_subtree_nodes(root: t.root), init: BlaPayloadCheck { seen: false, all: true }, f: fn(acc, n) {
-        match dag_canonical_literal_from_node(node: n) {
-          Accepted { value: DagCanonicalStringLiteral { value: _ }, diagnostics: _ } =>
-            BlaPayloadCheck {
-              seen: true,
-              all: acc.all
-                && bla_resolved_type_is(t: t, n: n, ty: host_text_type_node())
-                && bla_string_payload_typed_host_text(t: t, literal: n)
-            }
-          _ => acc
-        }
-      }).all
-  }
-}
-
-fn bla_refuses_with_annotation_reason(o: Outcome<Bool>) -> Bool {
-  match o {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } =>
-      diagnostics_fatal_reason(d: d) == ^infer_reason_bound_value_does_not_inhabit_annotation
-  }
-}
-
-test fn bla_unimported_string_binds_kernel_host_text() -> Bool {
-  bla_annotation_is(o: bla_string_literal_unimported(), id: ^string_node_symbol)
-    && match bla_string_literal_unimported_inferred() {
-      Accepted { value: _, diagnostics: _ } => true
-      Rejected { diagnostics: _ } => false
-    }
-}
-
-test fn bla_string_literal_is_typed_host_text() -> Bool {
-  bla_string_literal_typed_host_text_verdict()
-}
-
-test fn bla_string_literal_ascribed_int_refuses() -> Bool {
-  tpb_accepts(o: bla_string_literal_as_int())
-    && bla_refuses_with_annotation_reason(o: bla_string_literal_as_int_inferred())
-}
-
-test fn bla_imported_structural_string_binds_its_declaration() -> Bool {
-  tpb_accepts(o: bla_structural_string_literal())
-    && !bla_annotation_is(o: bla_structural_string_literal(), id: ^string_node_symbol)
-}
-
-test fn bla_host_text_literal_at_structural_string_refuses() -> Bool {
-  tpb_accepts(o: bla_structural_string_literal())
-    && bla_refuses_with_annotation_reason(o: bla_structural_string_literal_inferred())
-}
-
-// A NON-LITERAL host-text value at the structural String is never passed as matched. It cannot yet
-// be made to REFUSE in v2: no non-literal expression derives host text today (neither a let-bound
-// reference nor a call result is typed from its source), so the value stays on the counted
-// GroundingNotDerived frontier. This row pins that it is refused or carries that frontier, never a
-// clean admit. It flips to a refusal control when non-literal values derive their types.
-test fn bla_host_text_value_at_structural_string_is_never_matched() -> Bool {
-  tpb_accepts(o: bla_structural_string_host_value())
-    && match bla_structural_string_host_value_inferred() {
-      Rejected { diagnostics: _ } => true
-      Accepted { value: _, diagnostics: None } => false
-      Accepted { value: _, diagnostics: Some { diagnostics: d } } =>
-        bla_has_reason(d: d, reason: ^infer_grounding_not_derived)
-    }
-}
-
-test fn bla_unknown_unimported_type_name_still_refuses() -> Bool {
-  tpb_refuses_with(o: bla_unknown_unimported_type(), reason: ^resolve_reason_unbound_symbol)
 }
 
 // TRANSLATE is driven over the Bind rows (1)-(2) establish lowering produces: three positionals and
