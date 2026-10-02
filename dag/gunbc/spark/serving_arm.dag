@@ -20,7 +20,7 @@ import extdeps.vllm.kv_dtype_capability {
   KvCapabilitySubject, DsaSparseIndexer, kv_capability_verdict, upstream_kv_main_dtype_rows,
   KvCombinationAdmitted, KvCombinationRefused, KvCombinationUnanswered,
 }
-import extdeps.nvidia.glm_5_3_flash_nvfp4 { glm_5_3_flash_nvfp4_hub_repo, glm_5_3_flash_nvfp4_manifest, glm_5_3_flash_nvfp4_quant_method, glm_5_3_flash_nvfp4_kv_cache_quant_algo }
+import extdeps.nvidia.glm_5_3_flash_nvfp4 { glm_5_3_flash_nvfp4_hub_repo, glm_5_3_flash_nvfp4_manifest, glm_5_3_flash_nvfp4_quant_method, glm_5_3_flash_nvfp4_kv_cache_dtype }
 import extdeps.zhipu.glm_5_3_flash {
   glm_5_3_flash_native_manifest, glm_5_3_flash_vllm_integration_commit, glm_5_3_flash_mla_pe_dim,
 }
@@ -337,9 +337,9 @@ data glm53_native_fp8_row: ServingCheckpointRow = ServingCheckpointRow {
 
 // NVIDIA's NVFP4 GLM-5.3-FLASH IS THE SAME MODEL AS THE NATIVE ROW, QUANTIZED: same architecture class
 // and parsers (the base's), a different publisher, revision, byte population and quantization. Its
-// launch policy is derived from its own kv_cache_quant_algo (checkpoint_launch_policy): FP8 is the fp8
-// request the derived build admits, so it takes the native policy; any other scheme refuses -- so adding
-// this checkpoint is this row, its wire, its policy entry and its extdeps module, and nothing downstream.
+// launch policy reads its KV request from the checkpoint's own extdeps row (glm_5_3_flash_nvfp4_kv_cache_dtype),
+// and whether a backend admits that request is the capability join's answer, not this row's -- so adding
+// this checkpoint is this row, its wire, its policy and its extdeps module, and nothing downstream.
 data glm53_flash_nvidia_nvfp4_row: ServingCheckpointRow = ServingCheckpointRow {
   checkpoint: Glm53FlashNvidiaNvfp4,
   repo: glm_5_3_flash_nvfp4_hub_repo,
@@ -1349,6 +1349,15 @@ data deepseek_v41_launch_policy: ModelLaunchPolicy = model_launch_policy(
   modality: LanguageModelOnly { hf_overrides: [vllm_hf_override(key: "vision_n_layers" as NonEmptyStr, json_value: "0" as NonEmptyStr)] },
 )
 
+// THE NVFP4 CHECKPOINT'S POLICY: its KV request is its own row's; the rest is the base model's (no
+// Engram, text by omission, indexer at its default).
+data glm53_flash_nvidia_nvfp4_launch_policy: ModelLaunchPolicy = model_launch_policy(
+  kv_cache_dtype: glm_5_3_flash_nvfp4_kv_cache_dtype,
+  indexer_kv_dtype: IndexerKvDtypeOmitted,
+  engram: EngramConfigOmitted,
+  modality: ModalityOmitted,
+)
+
 fn checkpoint_launch_policy(c: ServingCheckpoint) -> ModelLaunchPolicy? {
   match c {
     Glm53NativeFp8 => Present { value: glm53_native_launch_policy }
@@ -1357,8 +1366,7 @@ fn checkpoint_launch_policy(c: ServingCheckpoint) -> ModelLaunchPolicy? {
     Glm53Nvfp4CompressedTensors => none
     DeepseekV4FlashIq3sSplit => none
     Glm53RadixArkNvfp4Modelopt => none
-    Glm53FlashNvidiaNvfp4 =>
-      if (glm_5_3_flash_nvfp4_kv_cache_quant_algo as String) == "FP8" { Present { value: glm53_native_launch_policy } } else { none }
+    Glm53FlashNvidiaNvfp4 => Present { value: glm53_flash_nvidia_nvfp4_launch_policy }
   }
 }
 

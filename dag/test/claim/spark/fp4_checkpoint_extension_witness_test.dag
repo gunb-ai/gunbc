@@ -5,10 +5,14 @@ import std.nat { Nat }
 import std.measure { token_count, basis_point, gibibyte_count }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { length }
-import extdeps.vllm.engine_args { PrefixCachingExplicit }
+import extdeps.vllm.engine_args { PrefixCachingExplicit, VllmKvCacheDtypeRequest, KvNvfp4, IndexerKvDtypeOmitted }
+import extdeps.vllm.kv_dtype_capability {
+  kv_capability_verdict, KvCapabilitySubject, FlashInferMlaSparseSm120, DsaSparseIndexer, upstream_kv_main_dtype_rows,
+  KvCombinationAdmitted, KvCombinationRefused, KvCombinationUnanswered,
+}
 import gunbc.spark.serving_arm {
   ServingCheckpoint, Glm53FlashNvidiaNvfp4, Glm53NativeFp8, GunbcGlm53DerivedKvplanV2Gb10, FourSparkTp4,
-  ServingLaunchProfile, checkpoint_launch_policy, serving_checkpoint_row,
+  ServingLaunchProfile, checkpoint_launch_policy, serving_checkpoint_row, glm_derived_flashinfer_sm120_row,
 }
 import gunbc.spark.serving_capacity_intent {
   uniform_cold_seats, envelope_at_cold_floor, profile_for_envelope, ServingCapacityIntentAdmitted, ServingCapacityIntentRefused,
@@ -73,5 +77,25 @@ test fn w_the_fp4_checkpoint_carries_fewer_weight_bytes_than_the_native_one() ->
         Absent => false
         Present { value: fp8 } => gibibyte_count(g: fp4.weight_gib) < gibibyte_count(g: fp8.weight_gib)
       }
+  }
+}
+
+// THE CHECKPOINT'S KV REQUEST IS ANSWERED BY THE CAPABILITY JOIN, which can refuse: on the GLM derived
+// build's backend (sm_12x) its request is admitted, and an nvfp4 KV request on the same backend is
+// refused -- the red the policy's own row cannot reach by comparing a string with itself.
+fn w_kv_admitted(main: VllmKvCacheDtypeRequest) -> Bool {
+  match kv_capability_verdict(
+    subject: KvCapabilitySubject { backend: FlashInferMlaSparseSm120, device_major: 12, main: main, indexer_kind: Present { value: DsaSparseIndexer }, indexer: IndexerKvDtypeOmitted },
+    rows: concat(upstream_kv_main_dtype_rows, [glm_derived_flashinfer_sm120_row])) {
+    KvCombinationAdmitted { bases: _ } => true
+    KvCombinationRefused { cause: _, basis: _ } => false
+    KvCombinationUnanswered { obligation: _ } => false
+  }
+}
+
+test fn w_the_fp4_checkpoints_kv_request_is_admitted_by_the_capability_join() -> Bool {
+  match checkpoint_launch_policy(c: Glm53FlashNvidiaNvfp4) {
+    Absent => false
+    Present { value: p } => w_kv_admitted(main: p.kv_cache_dtype) && !w_kv_admitted(main: KvNvfp4)
   }
 }
