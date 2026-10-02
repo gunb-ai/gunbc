@@ -234,7 +234,13 @@ fn vllm_modality_argv(r: VllmModalityRequest) -> List<String> {
 // argument it sent, not the behaviour it got.
 // fp8_ds_mla is the DeepSeek MLA-specific fp8 KV layout; read back from the srv6 front door on
 // 2026-09-03 (gunbc.spark.vllm_observed) and the operator's pair tuple.
-type VllmKvCacheDtypeRequest = KvAuto | KvFp8 | KvFp16 | KvBf16 | KvFp8DsMla
+// NVFP4 JOINED THE REQUEST VOCABULARY WHEN THE SELECTOR'S OWN KV VOCABULARY WAS DELETED
+// (gunbc.spark.serving_deployment_selection's KvLayoutPolicy carried a `KvFp4Layout` rendering "fp4",
+// which is not a value upstream accepts). The canonical spellings are upstream's: CacheDType at
+// revision 8d09804c877c48165c6ba69bc9dc02d09bae0b83 (vllm/config/cache.py) lists both "nvfp4" and
+// "nvfp4_ds_mla". Whether a runtime, backend and device ADMIT either is a capability question with
+// its own refusals, never a property of the spelling.
+type VllmKvCacheDtypeRequest = KvAuto | KvFp8 | KvFp16 | KvBf16 | KvFp8DsMla | KvNvfp4 | KvNvfp4DsMla
 
 // THE WIRE SPELLINGS, CORRECTED AGAINST THE ENGINE'S OWN CHOICE LIST. This map carried
 // KvFp16 => "fp16" and KvBf16 => "bf16", which no consumer had ever sent -- the pair requests fp8
@@ -253,6 +259,90 @@ fn vllm_kv_cache_dtype_wire(request: VllmKvCacheDtypeRequest) -> NonEmptyStr {
     KvFp16 => "float16" as NonEmptyStr
     KvBf16 => "bfloat16" as NonEmptyStr
     KvFp8DsMla => "fp8_ds_mla" as NonEmptyStr
+    KvNvfp4 => "nvfp4" as NonEmptyStr
+    KvNvfp4DsMla => "nvfp4_ds_mla" as NonEmptyStr
+  }
+}
+
+// THE CLOSED ROSTER, so a selector enumerates requests rather than re-listing them, and a wire read
+// back from a running engine maps to the request that renders it -- one grammar asked both ways.
+data vllm_kv_cache_dtype_requests: List<VllmKvCacheDtypeRequest> = [KvAuto, KvFp8, KvFp16, KvBf16, KvFp8DsMla, KvNvfp4, KvNvfp4DsMla]
+
+// WIRE MATCH IS NOT ADMISSION: this names the request a spelling denotes, and nothing about whether
+// any runtime accepts it.
+fn vllm_kv_cache_dtype_request_matching_wire(wire: NonEmptyStr) -> VllmKvCacheDtypeRequest? {
+  (filter(vllm_kv_cache_dtype_requests, k => (vllm_kv_cache_dtype_wire(request: k) as String) == (wire as String))).first()
+}
+
+// ── THE SPARSE-ATTENTION INDEXER'S K CACHE DTYPE, AN AXIS INDEPENDENT OF THE MAIN KV DTYPE ─────
+//
+// vLLM's AttentionConfig.indexer_kv_dtype as upstream ships it, read at revision
+// 8d09804c877c48165c6ba69bc9dc02d09bae0b83 (vllm/config/attention.py): IndexerKVDType =
+// Literal["auto", "bf16", "fp8", "mxfp4", "nvfp4"], default "auto", which "picks the model's default
+// (bf16 for MiniMax M3, fp8 for the DeepSeek sparse indexer)". The DeepSeek sparse indexer admits only
+// ("fp8", "mxfp4") (vllm/v1/attention/backends/mla/indexer.py DSA_INDEXER_KV_DTYPES), and mxfp4 only on
+// sm_10x. It is set through the --attention-config group, whose dotted form
+// (vllm/utils/argparse_utils.py, the same rewrite --engram-config uses) needs no JSON quoting.
+//
+// IT IS A SEPARATE AXIS FROM --kv-cache-dtype ON PURPOSE: the main cache and the indexer cache are two
+// allocations with two dtypes, and a subject that carried one field for both could not tell an fp8
+// main cache with an mxfp4 indexer from the reverse. Per-revision support is
+// extdeps.vllm.runtime_defaults' job: older revisions declare a different default or no field at all.
+type VllmIndexerKvDtype = IndexerKvAuto | IndexerKvBf16 | IndexerKvFp8 | IndexerKvMxfp4 | IndexerKvNvfp4
+
+type VllmIndexerKvDtypeRequest
+  = IndexerKvDtypeOmitted
+  | IndexerKvDtypeExplicit { dtype: VllmIndexerKvDtype }
+
+data vllm_indexer_kv_dtype_flag: String = "--attention-config.indexer_kv_dtype"
+
+fn vllm_indexer_kv_dtype_wire(d: VllmIndexerKvDtype) -> NonEmptyStr {
+  match d {
+    IndexerKvAuto => "auto" as NonEmptyStr
+    IndexerKvBf16 => "bf16" as NonEmptyStr
+    IndexerKvFp8 => "fp8" as NonEmptyStr
+    IndexerKvMxfp4 => "mxfp4" as NonEmptyStr
+    IndexerKvNvfp4 => "nvfp4" as NonEmptyStr
+  }
+}
+
+data vllm_indexer_kv_dtypes: List<VllmIndexerKvDtype> = [IndexerKvAuto, IndexerKvBf16, IndexerKvFp8, IndexerKvMxfp4, IndexerKvNvfp4]
+
+fn vllm_indexer_kv_dtype_matching_wire(wire: String) -> VllmIndexerKvDtype? {
+  (filter(vllm_indexer_kv_dtypes, d => (vllm_indexer_kv_dtype_wire(d: d) as String) == wire)).first()
+}
+
+fn vllm_indexer_kv_dtype_argv(r: VllmIndexerKvDtypeRequest) -> List<String> {
+  match r {
+    IndexerKvDtypeOmitted => []
+    IndexerKvDtypeExplicit { dtype: d } => [vllm_indexer_kv_dtype_flag, vllm_indexer_kv_dtype_wire(d: d) as String]
+  }
+}
+
+fn vllm_indexer_kv_dtype_key(r: VllmIndexerKvDtypeRequest) -> String {
+  match r {
+    IndexerKvDtypeOmitted => "indexer_kv:omitted"
+    IndexerKvDtypeExplicit { dtype: d } => join(["indexer_kv:", vllm_indexer_kv_dtype_wire(d: d) as String], "")
+  }
+}
+
+type VllmIndexerKvDtypeRead
+  = IndexerKvDtypeReadOmitted
+  | IndexerKvDtypeReadExplicit { dtype: VllmIndexerKvDtype }
+  | IndexerKvDtypeReadUnread { cause: NonEmptyStr }
+
+fn vllm_argv_indexer_kv_dtype(argv: List<String>) -> VllmIndexerKvDtypeRead {
+  let flag = vllm_indexer_kv_dtype_flag
+  let read = vllm_argv_value(argv: argv, flag: flag)
+  match read {
+    VllmArgvFlagAbsent => IndexerKvDtypeReadOmitted
+    VllmArgvValue { value: v } =>
+      match vllm_indexer_kv_dtype_matching_wire(wire: v) {
+        Present { value: d } => IndexerKvDtypeReadExplicit { dtype: d }
+        Absent => IndexerKvDtypeReadUnread { cause: join([flag, " carries ", v, ", which is not an indexer KV dtype this module models"], "") as NonEmptyStr }
+      }
+    VllmArgvFlagWithoutValue => IndexerKvDtypeReadUnread { cause: vllm_argv_value_text(r: read, flag: flag) as NonEmptyStr }
+    VllmArgvFlagRepeated { values: _ } => IndexerKvDtypeReadUnread { cause: vllm_argv_value_text(r: read, flag: flag) as NonEmptyStr }
   }
 }
 

@@ -1128,6 +1128,14 @@ fn glm_native_kv_cache_dtype_admission(build: GlmNativeEngineBuild, dtype: VllmK
           dtype: dtype,
           cause: "unobserved, and this build's only backend for the model supports only the fp8 KV cache (the selector's refusal vocabulary for bfloat16, 2026-09-17)" as NonEmptyStr,
         }
+        KvNvfp4 => GlmNativeKvCacheDtypeRefused {
+          dtype: dtype,
+          cause: "this build's only backend for the model (FLASHINFER_MLA_SPARSE_SM120) supports only the fp8 KV cache, and no observation admits an nvfp4 KV cache for it" as NonEmptyStr,
+        }
+        KvNvfp4DsMla => GlmNativeKvCacheDtypeRefused {
+          dtype: dtype,
+          cause: "this build's only backend for the model (FLASHINFER_MLA_SPARSE_SM120) supports only the fp8 KV cache, and no observation admits nvfp4_ds_mla for it" as NonEmptyStr,
+        }
       }
     GlmNativeEngineStockG385dce36b =>
       match dtype {
@@ -1138,6 +1146,14 @@ fn glm_native_kv_cache_dtype_admission(build: GlmNativeEngineBuild, dtype: VllmK
         KvFp16 => GlmNativeKvCacheDtypeRefused {
           dtype: dtype,
           cause: "no observation admits float16 for this model on this build" as NonEmptyStr,
+        }
+        KvNvfp4 => GlmNativeKvCacheDtypeRefused {
+          dtype: dtype,
+          cause: "no observation admits an nvfp4 KV cache for this model on this build" as NonEmptyStr,
+        }
+        KvNvfp4DsMla => GlmNativeKvCacheDtypeRefused {
+          dtype: dtype,
+          cause: "no observation admits nvfp4_ds_mla for this model on this build" as NonEmptyStr,
         }
         KvAuto => stock_fp8_ds_mla_admission(dtype: dtype, because: "auto inherits this fp8-quantized checkpoint's dtype and resolves to fp8_ds_mla" as NonEmptyStr)
         KvFp8 => stock_fp8_ds_mla_admission(dtype: dtype, because: "fp8 resolves to fp8_ds_mla on this MLA checkpoint" as NonEmptyStr)
