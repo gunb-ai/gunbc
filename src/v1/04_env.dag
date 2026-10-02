@@ -296,7 +296,12 @@ fn surface_union_winner(pool: SurfacePool, kernel: Map<String, TypeBinding>, imp
 fn surface_value(pool: SurfacePool, kernel: Map<String, TypeBinding>, surface: ModuleSurface, name: String) -> TypeBinding? {
   match map_get(surface.own, name) {
     Present { value: b } => Present { value: b }
-    Absent => ancestry_winner(pool: pool, kernel: kernel, imports: surface.imports, name: name)
+    Absent =>
+      match closure_sole_declarer(pool: pool, kernel: kernel, module_path: surface.module_path, reach: surface.reach, name: name) {
+        ClosureDeclarerSole { binding: b } => Present { value: b }
+        ClosureDeclarerNone => none
+        ClosureDeclarerContested => ancestry_winner(pool: pool, kernel: kernel, imports: surface.imports, name: name)
+      }
   }
 }
 
@@ -402,9 +407,65 @@ fn ancestry_lookup(view: AncestryView, name: String) -> TypeBinding? {
   match map_get(view.rewrites, name) {
     Present { value: b } => Present { value: b }
     Absent =>
-      if surface_has(pool: view.pool, kernel: view.kernel, module_path: view.module_path, reach: view.reach, name: name) {
-        ancestry_winner(pool: view.pool, kernel: view.kernel, imports: view.imports, name: name)
-      } else { none }
+      match closure_sole_declarer(pool: view.pool, kernel: view.kernel, module_path: view.module_path, reach: view.reach, name: name) {
+        ClosureDeclarerSole { binding: b } => Present { value: b }
+        ClosureDeclarerNone => none
+        ClosureDeclarerContested =>
+          if surface_has(pool: view.pool, kernel: view.kernel, module_path: view.module_path, reach: view.reach, name: name) {
+            ancestry_winner(pool: view.pool, kernel: view.kernel, imports: view.imports, name: name)
+          } else { none }
+      }
+  }
+}
+
+// HOW MANY DECLARERS OF A NAME A CLOSURE HOLDS, which is what decides whether the union can disagree
+// with itself ("The winner", fast path). The exporter index is pool-wide, and in a whole tree almost
+// every name is declared somewhere twice, so a pool-wide count classifies nearly every name as
+// contested; the presence lemma and the fold reach only the closure. With exactly one declarer E in the
+// closure (E not the module itself) and no kernel binding, every surface carrying the name carries
+// own(E)[n], so that is the answer. With none, the ancestry does not carry the name. Only a name with two
+// or more declarers in the closure, or a kernel name, is descended.
+type ClosureDeclarer
+  = ClosureDeclarerSole { binding: TypeBinding }
+  | ClosureDeclarerNone
+  | ClosureDeclarerContested
+
+type ClosureDeclarerTally {
+  count: Int
+  binding: TypeBinding?
+}
+
+fn closure_sole_declarer(pool: SurfacePool, kernel: Map<String, TypeBinding>, module_path: String, reach: List<Int>, name: String) -> ClosureDeclarer {
+  match map_get(kernel, name) {
+    Present { value: _ } => ClosureDeclarerContested
+    Absent =>
+      match map_get(pool.exporters, name) {
+        Absent => ClosureDeclarerNone
+        Present { value: paths } =>
+          let tally = fold(paths, init: ClosureDeclarerTally { count: 0, binding: none }, f: (acc, p) =>
+            if p == module_path {
+              acc
+            } else {
+              match map_get(pool.surfaces, p) {
+                Present { value: e } =>
+                  if reach_has(reach: reach, ordinal: e.ordinal) {
+                    ClosureDeclarerTally { count: acc.count + 1, binding: map_get(e.own, name) }
+                  } else { acc }
+                Absent => acc
+              }
+            }
+          )
+          if tally.count == 0 {
+            ClosureDeclarerNone
+          } else if tally.count == 1 {
+            match tally.binding {
+              Present { value: b } => ClosureDeclarerSole { binding: b }
+              Absent => ClosureDeclarerNone
+            }
+          } else {
+            ClosureDeclarerContested
+          }
+      }
   }
 }
 
