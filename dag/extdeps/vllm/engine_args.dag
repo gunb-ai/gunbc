@@ -805,32 +805,34 @@ type AdmissionStrip {
   skip_next: Bool
 }
 
-// THE ADMISSION CONTROLS AN ARGV CARRIES, as one comparable spelling: the same key a launch profile
-// renders, read back from the words, or a refusal when either control cannot be read.
-fn vllm_argv_admission_key(argv: List<String>) -> String? {
+// THE ADMISSION CONTROLS AN ARGV CARRIES, read back into the TYPED requests the launch rendered them
+// from (review 74142), or none when either cannot be read (a repeated or conflicting flag). Comparison
+// goes through the renderers' own keys (vllm_scheduler_admission_key, vllm_indexer_kv_dtype_key), so
+// there is one spelling of each control and a reader cannot drift from what a launch renders.
+fn vllm_argv_scheduler_admission(argv: List<String>) -> VllmSchedulerAdmissionRequest? {
   let full = match vllm_argv_full_input_admission(argv: argv) {
-    FullInputAdmissionReadOmitted => Present { value: "fullisl:omitted" }
-    FullInputAdmissionReadExplicit { enabled: e } => Present { value: if e { "fullisl:on" } else { "fullisl:off" } }
+    FullInputAdmissionReadOmitted => Present { value: FullInputAdmissionOmitted }
+    FullInputAdmissionReadExplicit { enabled: e } => Present { value: FullInputAdmissionExplicit { enabled: e } }
     FullInputAdmissionReadConflict { cause: _ } => none
   }
   let wm = match vllm_argv_kv_watermark(argv: argv) {
-    KvWatermarkReadOmitted => Present { value: "watermark:omitted" }
-    KvWatermarkReadExplicit { fraction: bp } => Present { value: join(["watermark:", vllm_basis_point_fraction_wire(bp: bp)], "") }
+    KvWatermarkReadOmitted => Present { value: KvWatermarkOmitted }
+    KvWatermarkReadExplicit { fraction: bp } => Present { value: KvWatermarkExplicit { fraction: bp } }
     KvWatermarkReadUnread { cause: _ } => none
-  }
-  let ix = match vllm_argv_indexer_kv_dtype(argv: argv) {
-    IndexerKvDtypeReadOmitted => Present { value: "indexer_kv:omitted" }
-    IndexerKvDtypeReadExplicit { dtype: d } => Present { value: join(["indexer_kv:", vllm_indexer_kv_dtype_wire(d: d) as String], "") }
-    IndexerKvDtypeReadUnread { cause: _ } => none
   }
   match full {
     Absent => none
     Present { value: f } => match wm {
       Absent => none
-      Present { value: w } => match ix {
-        Absent => none
-        Present { value: i } => Present { value: join([f, "/", w, "/", i], "") }
-      }
+      Present { value: w } => Present { value: VllmSchedulerAdmissionRequest { full_input_admission: f, kv_watermark: w } }
     }
+  }
+}
+
+fn vllm_argv_indexer_kv_dtype_request(argv: List<String>) -> VllmIndexerKvDtypeRequest? {
+  match vllm_argv_indexer_kv_dtype(argv: argv) {
+    IndexerKvDtypeReadOmitted => Present { value: IndexerKvDtypeOmitted }
+    IndexerKvDtypeReadExplicit { dtype: d } => Present { value: IndexerKvDtypeExplicit { dtype: d } }
+    IndexerKvDtypeReadUnread { cause: _ } => none
   }
 }

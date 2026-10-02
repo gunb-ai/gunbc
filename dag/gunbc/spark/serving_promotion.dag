@@ -105,6 +105,7 @@ type ServingPromotionEvidence {
   cache: CacheFitVerdict?
   quality: QualityReceipt?
   calibration: WorkloadCalibrationReceipt?
+  incumbent_subject_key: String?
   incumbent_quality: QualityReceipt?
   incumbent_calibration: WorkloadCalibrationReceipt?
 }
@@ -116,19 +117,21 @@ type ServingPromotionReceipts {
   cache: CacheFitVerdict?
   quality: QualityReceipt?
   calibration: WorkloadCalibrationReceipt?
+  incumbent_subject_key: String?
   incumbent_quality: QualityReceipt?
   incumbent_calibration: WorkloadCalibrationReceipt?
 }
 
 // NO RECEIPT HAS BEEN PRODUCED, stated as such: a subject with these receipts is a measurement serve.
 data no_promotion_receipts: ServingPromotionReceipts = ServingPromotionReceipts {
-  cache: none, quality: none, calibration: none, incumbent_quality: none, incumbent_calibration: none,
+  cache: none, quality: none, calibration: none, incumbent_subject_key: none, incumbent_quality: none, incumbent_calibration: none,
 }
 
 fn promotion_evidence(compatibility: CompatibilityAdmission, memory: ArmMemoryFitVerdict, receipts: ServingPromotionReceipts) -> ServingPromotionEvidence {
   ServingPromotionEvidence {
     compatibility: compatibility, memory: Present { value: memory }, cache: receipts.cache,
     quality: receipts.quality, calibration: receipts.calibration,
+    incumbent_subject_key: receipts.incumbent_subject_key,
     incumbent_quality: receipts.incumbent_quality, incumbent_calibration: receipts.incumbent_calibration,
   }
 }
@@ -164,8 +167,8 @@ fn promotion_fold(key: String, evidence: ServingPromotionEvidence, policy: Servi
         Present { value: c } => PromotionRefused { cause: c }
         Absent => {
           let missing = concat(compatibility_missing, concat(memory_missing(m: evidence.memory), concat(cache_missing(c: evidence.cache),
-            concat(quality_missing(key: key, q: evidence.quality, incumbent: evidence.incumbent_quality, policy: policy),
-              calibration_missing(key: key, c: evidence.calibration, incumbent: evidence.incumbent_calibration, policy: policy)))))
+            concat(quality_missing(key: key, q: evidence.quality, incumbent_key: evidence.incumbent_subject_key, incumbent: evidence.incumbent_quality, policy: policy),
+              calibration_missing(key: key, c: evidence.calibration, incumbent_key: evidence.incumbent_subject_key, incumbent: evidence.incumbent_calibration, policy: policy)))))
           if length(missing) == 0 { PromotionAdmitsNormalServing } else { PromotionMeasurementServeOnly { missing: missing } }
         }
       }
@@ -219,7 +222,20 @@ fn cache_missing(c: CacheFitVerdict?) -> List<NonEmptyStr> {
 
 // QUALITY: present, about this subject, on the incumbent's acceptance set, and within the margin.
 // Rates are compared in basis points of accepted/attempts, cross-multiplied so nothing rounds.
-fn quality_missing(key: String, q: QualityReceipt?, incumbent: QualityReceipt?, policy: ServingPromotionPolicy) -> List<NonEmptyStr> {
+// THE INCUMBENT IS A NAMED SUBJECT (review 74140): its receipts must carry the incumbent's key, and
+// that key must not be the candidate's -- otherwise a caller could pass the candidate's own receipt as
+// the baseline and every comparison would pass against itself.
+fn incumbent_defect(key: String, incumbent_key: String?, receipt_key: String, what: String) -> NonEmptyStr? {
+  match incumbent_key {
+    Absent => Present { value: join([what, ": no incumbent subject is named, so there is nothing to compare against"], "") as NonEmptyStr }
+    Present { value: ik } =>
+      if ik == key { Present { value: join([what, ": the named incumbent is the candidate itself"], "") as NonEmptyStr } }
+      else if receipt_key != ik { Present { value: join([what, ": the incumbent receipt names a subject other than the named incumbent"], "") as NonEmptyStr } }
+      else { none }
+  }
+}
+
+fn quality_missing(key: String, q: QualityReceipt?, incumbent_key: String?, incumbent: QualityReceipt?, policy: ServingPromotionPolicy) -> List<NonEmptyStr> {
   match q {
     Absent => ["quality: no acceptance-set receipt for this subject" as NonEmptyStr]
     Present { value: r } =>
@@ -229,6 +245,9 @@ fn quality_missing(key: String, q: QualityReceipt?, incumbent: QualityReceipt?, 
         match incumbent {
           Absent => ["quality: no incumbent receipt on the same acceptance set to compare against" as NonEmptyStr]
           Present { value: i } =>
+            match incumbent_defect(key: key, incumbent_key: incumbent_key, receipt_key: i.subject_key, what: "quality") {
+             Present { value: d } => [d]
+             Absent =>
             if (i.acceptance_set as String) != (r.acceptance_set as String) {
               ["quality: the incumbent was measured on a different acceptance set" as NonEmptyStr]
             } else if i.attempts == 0 {
@@ -238,6 +257,7 @@ fn quality_missing(key: String, q: QualityReceipt?, incumbent: QualityReceipt?, 
             } else if !policy.allow_more_tool_parse_failures && r.tool_parse_failures * i.attempts > i.tool_parse_failures * r.attempts {
               [join(["quality: tool-call parse failures rose (", to_string(r.tool_parse_failures), "/", to_string(r.attempts), " against the incumbent's ", to_string(i.tool_parse_failures), "/", to_string(i.attempts), ")"], "") as NonEmptyStr]
             } else { [] }
+            }
         }
       }
   }
@@ -245,7 +265,7 @@ fn quality_missing(key: String, q: QualityReceipt?, incumbent: QualityReceipt?, 
 
 // CALIBRATION: present, about this subject, on the incumbent's trace, no OOMs or restarts, no
 // preemptions where the policy forbids them, and goodput at least the incumbent's.
-fn calibration_missing(key: String, c: WorkloadCalibrationReceipt?, incumbent: WorkloadCalibrationReceipt?, policy: ServingPromotionPolicy) -> List<NonEmptyStr> {
+fn calibration_missing(key: String, c: WorkloadCalibrationReceipt?, incumbent_key: String?, incumbent: WorkloadCalibrationReceipt?, policy: ServingPromotionPolicy) -> List<NonEmptyStr> {
   match c {
     Absent => ["workload calibration: no receipt on the real trace for this subject" as NonEmptyStr]
     Present { value: r } =>
@@ -260,6 +280,9 @@ fn calibration_missing(key: String, c: WorkloadCalibrationReceipt?, incumbent: W
         match incumbent {
           Absent => ["workload calibration: no incumbent receipt on the same trace to compare against" as NonEmptyStr]
           Present { value: i } =>
+            match incumbent_defect(key: key, incumbent_key: incumbent_key, receipt_key: i.subject_key, what: "workload calibration") {
+             Present { value: d } => [d]
+             Absent =>
             if (i.trace_digest as String) != (r.trace_digest as String) {
               ["workload calibration: the incumbent was measured on a different trace" as NonEmptyStr]
             } else if !policy.require_goodput_at_least_incumbent { [] }
@@ -275,6 +298,7 @@ fn calibration_missing(key: String, c: WorkloadCalibrationReceipt?, incumbent: W
                       } else { [] }
                   }
               }
+            }
             }
         }
       }
