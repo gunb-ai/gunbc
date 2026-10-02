@@ -3686,6 +3686,10 @@ type NativeDemandCensusOutput {
   exit: Int
 }
 
+fn native_demand_census_exit(conserved: Bool) -> Int {
+  if conserved { 0 } else { 1 }
+}
+
 fn native_demand_census_output(ingest: SourceRootIngest) -> NativeDemandCensusOutput {
   match native_demand_census_report(ingest: ingest) {
     Rejected { diagnostics: d } =>
@@ -3693,7 +3697,7 @@ fn native_demand_census_output(ingest: SourceRootIngest) -> NativeDemandCensusOu
     Accepted { value: report, diagnostics: _ } =>
       NativeDemandCensusOutput {
         lines: demand_census_lines(r: report),
-        exit: if demand_census_conserved(r: report) { 0 } else { 1 }
+        exit: native_demand_census_exit(conserved: demand_census_conserved(r: report))
       }
   }
 }

@@ -131,11 +131,15 @@ fn demand_census_authored_in(acc: List<AuthoredUsesFunction>, node: Node, module
 // entry carries none the reader can find (that row then reads AuthoredTypeUnresolved).
 fn demand_census_entry_types(clause: Node) -> List<Optional<Node>> {
   fold_list(xs: demand_census_entry_shells(acc: Empty, node: clause), empty: Empty, cons: fn(acc, entry) {
-    list_snoc_item(xs: acc, item: match parse_production_captured_child_optional(node: entry) {
-      Absent => optional_absent()
-      Present { value: captured } => body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_type_expr)
-    })
+    list_snoc_item(xs: acc, item: demand_census_entry_type(entry: entry))
   })
+}
+
+fn demand_census_entry_type(entry: Node) -> Optional<Node> {
+  match parse_production_captured_child_optional(node: entry) {
+    Absent => optional_absent()
+    Present { value: captured } => body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_type_expr)
+  }
 }
 
 fn demand_census_entry_shells(acc: List<Node>, node: Node) -> List<Node> {
@@ -254,7 +258,7 @@ type DemandPrefixScan {
 
 // The SHORTEST prefix that is a declared resource: a capability's path is under its resource.
 fn demand_census_resource_prefix(index: SymbolIndex, path: QualifiedName) -> Optional<QualifiedName> {
-  fold_list(xs: path, empty: DemandPrefixScan { prefix: Empty, resource: optional_absent() }, cons: fn(scan, seg) {
+  let scanned = fold_list(xs: path, empty: DemandPrefixScan { prefix: Empty, resource: optional_absent() }, cons: fn(scan, seg) {
     let prefix = qualified_name_snoc(qn: scan.prefix, segment: seg)
     match scan.resource {
       Present { value: r } => DemandPrefixScan { prefix: prefix, resource: optional_present(value: r) }
@@ -265,7 +269,8 @@ fn demand_census_resource_prefix(index: SymbolIndex, path: QualifiedName) -> Opt
           DemandPrefixScan { prefix: prefix, resource: optional_absent() }
         }
     }
-  }).resource
+  })
+  scanned.resource
 }
 
 // The edge a contract or body label names. v2.std.node arrow_signature_edges_conform admits at most
@@ -379,13 +384,14 @@ type DemandKnownScan {
 }
 
 fn demand_census_known_prefix(known: Map<QualifiedName, Bool>, path: QualifiedName) -> QualifiedName {
-  match fold_list(xs: path, empty: DemandKnownScan { prefix: Empty, longest: optional_absent() }, cons: fn(scan, seg) {
+  let scanned = fold_list(xs: path, empty: DemandKnownScan { prefix: Empty, longest: optional_absent() }, cons: fn(scan, seg) {
     let prefix = qualified_name_snoc(qn: scan.prefix, segment: seg)
     match map_lookup(m: known, key: prefix) {
       Present { value: _ } => DemandKnownScan { prefix: prefix, longest: optional_present(value: prefix) }
       Absent => DemandKnownScan { prefix: prefix, longest: scan.longest }
     }
-  }).longest {
+  })
+  match scanned.longest {
     Present { value: p } => p
     Absent => path
   }
@@ -402,23 +408,27 @@ type AuthoredRowReading
 // `std.resources.Network` both read as the declaration they name.
 fn demand_census_authored_readings(ctx: ResolveContext, authored: AuthoredUsesFunction) -> List<AuthoredRowReading> {
   fold_list(xs: authored.types, empty: Empty, cons: fn(acc, shell) {
-    list_snoc_item(xs: acc, item: match shell {
-      Absent => AuthoredTypeUnresolved
-      Present { value: s } =>
-        match body_lower_type_expr_lowered_optional(node: s) {
-          Absent => AuthoredTypeUnresolved
-          Present { value: lowered } =>
-            match resolve_node(ctx: ctx, n: lowered) {
-              Rejected { diagnostics: _ } => AuthoredTypeUnresolved
-              Accepted { value: r, diagnostics: _ } =>
-                match declaration_reference_path_optional(node: r) {
-                  Present { value: p } => AuthoredResolved { resource: p }
-                  Absent => AuthoredTypeUnresolved
-                }
-            }
-        }
-    })
+    list_snoc_item(xs: acc, item: demand_census_authored_reading(ctx: ctx, shell: shell))
   })
+}
+
+fn demand_census_authored_reading(ctx: ResolveContext, shell: Optional<Node>) -> AuthoredRowReading {
+  match shell {
+    Absent => AuthoredTypeUnresolved
+    Present { value: s } =>
+      match body_lower_type_expr_lowered_optional(node: s) {
+        Absent => AuthoredTypeUnresolved
+        Present { value: lowered } =>
+          match resolve_node(ctx: ctx, n: lowered) {
+            Rejected { diagnostics: _ } => AuthoredTypeUnresolved
+            Accepted { value: r, diagnostics: _ } =>
+              match declaration_reference_path_optional(node: r) {
+                Present { value: p } => AuthoredResolved { resource: p }
+                Absent => AuthoredTypeUnresolved
+              }
+          }
+      }
+  }
 }
 
 // ═══ THE ROW AND ITS VERDICT ═══════════════════════════════════════════════════════════════════
@@ -636,11 +646,15 @@ fn demand_census_row_line(r: DemandCensusRow) -> String {
   }
 }
 
+fn demand_census_conserved_word(r: DemandCensusReport) -> String {
+  if demand_census_conserved(r: r) { "true" } else { "false" }
+}
+
 fn demand_census_lines(r: DemandCensusReport) -> List<String> {
   let head = concat("[demand-census] vocabulary=", concat(demand_census_network,
     concat(" uses_functions=", concat(to_string(r.uses_functions),
     concat(" rows=", concat(to_string(length(xs: r.rows)),
-    concat(" conserved=", concat(if demand_census_conserved(r: r) { "true" } else { "false" },
+    concat(" conserved=", concat(demand_census_conserved_word(r: r),
     concat(" equal=", concat(to_string(demand_census_count(rows: r.rows, word: "equal")),
     concat(" mismatch=", concat(to_string(demand_census_count(rows: r.rows, word: "mismatch")),
     concat(" undecided=", concat(to_string(demand_census_count(rows: r.rows, word: "undecided")),
