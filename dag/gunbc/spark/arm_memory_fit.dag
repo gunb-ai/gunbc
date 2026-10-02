@@ -8,6 +8,7 @@ import std.measure {
   ByteSize, byte_size, byte_size_count, measure_add, measure_le,
   Gibibyte, gibibyte, gibibyte_count, gibibyte_to_byte_size,
   BasisPoint, basis_point_count,
+  Second, second, second_count,
   TokenCount, token_count, token_count_value,
   Mebibyte,
   AllocatorBlockCount, allocator_block_count, allocator_block_count_value,
@@ -1382,32 +1383,61 @@ type ArmMemoryExperimentAdmission
 // profiling/readback + the admitted seat cohort + the churn window + the sampler's tail
 // backstop + settlement, or a client/unit deadline mid-sequence masquerades as an engine
 // failure — the q closing run's 14:42:37 RuntimeMaxSec expiry under the churn phase is the
-// named incident). The derivation: the engine's own ready timeout (startup, profiling,
-// readback) + 400s per full-window seat at the LARGEST admitted subject (8; the observed cold
-// price is ~323s per seat at the shared ~800 tok/s aggregate, so 400 covers it with margin)
-// + the churn window + the sampler's tail backstop (churn window + the churn request timeout
-// + one cadence) + settlement margin. The churn window derives from this figure (twelfths), so
-// the bound is the consistent figure of 12476 seconds: 3600 startup + 3200 seat cohort + the
-// derived 848s churn window + the 4453s sampler tail (window + the LARGEST variant's declared
-// churn timeout 3600 + cadence — q's churn requests are honest full-band work under the cohort,
-// and the closing run's two rc=28 expiries at the old 600s churn timeout with the endpoint alive
-// are the named counterexample) + settlement slack. Uniform across
-// variants — a larger bound for a smaller variant costs nothing because the stall watchdog, not
-// the lifetime, is the hang detector; the stop contract's timeout disposition stays the failure
-// that outlived its window.
+// named incident).
 //
-// GENERALIZED 2026-10-02 (deforking cut 4): the ready term is the LAUNCH's own -- the
-// VLLM_ENGINE_READY_TIMEOUT_S its deployment environment sets, or upstream's default when it sets none
-// -- and the seat term is the profile's sequence ceiling, so the same derivation bounds a GLM and a
-// DeepSeek V4.1 experiment. At Group B's 3600s and eight seats the code yields 12780 seconds; the
-// 12476 the paragraph above derives (848 + 4453 for the churn and tail terms) disagrees with the
-// 1200 + 4405 the expression has carried since before this change, and is left for its owner to reconcile.
-fn arm_memory_experiment_runtime_seconds(ready_timeout_seconds: Nat, max_num_seqs: Nat) -> Nat {
-  ready_timeout_seconds + max_num_seqs * 400 + 1200 + 4405 + 375
+// EVERY TERM IS A NAMED ROW AND THE TAIL IS DERIVED (review 74098, 2026-10-02). The bound used to be
+// the literal sum ready + seats*400 + 1200 + 4405 + 375, beside a paragraph deriving a different total
+// (12476, from a churn window of 848 = 10180/12 left over from the previous bound); and 4405 was below
+// what its own definition requires at the current total. Now:
+//   startup        the LAUNCH's engine ready timeout (its environment, or upstream's default)
+//   seat cohort    the profile's sequence ceiling x the per-seat cold price (~323s observed, 400 bound)
+//   churn window   the window the churn driver opens is a twelfth of the admitted runtime
+//                  (gunbc.spark.native_experiment_apply spark_churn_window_seconds), and the runtime
+//                  contains the window twice (once as the window, once inside the tail), so the
+//                  allowance W must satisfy W >= T/12 with T = R + 2W + K; solving, W = ceil((R + K)/10),
+//                  where R is startup + seat cohort and K is the churn request timeout + cadence +
+//                  settlement. A FIXED allowance held at eight seats and failed at sixteen, which the
+//                  witness caught -- so it is derived, at every ceiling.
+//   sampler tail   the allowance + the largest churn request timeout + one sampler cadence, so a churn
+//                  request admitted at the window's last instant can finish and be sampled
+//   settlement     a fixed margin
+// Uniform across variants -- a larger bound for a smaller variant costs nothing because the stall
+// watchdog, not the lifetime, is the hang detector.
+data arm_experiment_seat_cold_price: Second = second(count: 400)
+data arm_experiment_churn_request_timeout: Second = second(count: 3600)
+data arm_experiment_sampler_cadence: Second = second(count: 5)
+data arm_experiment_settlement_margin: Second = second(count: 375)
+
+fn arm_experiment_startup_and_cohort(ready_timeout: Second, max_num_seqs: Nat) -> Nat {
+  second_count(s: ready_timeout) + max_num_seqs * second_count(s: arm_experiment_seat_cold_price)
+}
+
+fn arm_experiment_fixed_tail_terms() -> Nat {
+  second_count(s: arm_experiment_churn_request_timeout) + second_count(s: arm_experiment_sampler_cadence) + second_count(s: arm_experiment_settlement_margin)
+}
+
+fn arm_experiment_churn_window_allowance(ready_timeout: Second, max_num_seqs: Nat) -> Second {
+  let need = arm_experiment_startup_and_cohort(ready_timeout: ready_timeout, max_num_seqs: max_num_seqs) + arm_experiment_fixed_tail_terms()
+  second(count: (need + 9) / 10)
+}
+
+fn arm_experiment_sampler_tail(ready_timeout: Second, max_num_seqs: Nat) -> Second {
+  second(count: second_count(s: arm_experiment_churn_window_allowance(ready_timeout: ready_timeout, max_num_seqs: max_num_seqs))
+    + second_count(s: arm_experiment_churn_request_timeout)
+    + second_count(s: arm_experiment_sampler_cadence))
+}
+
+// THE READY TERM IS THE LAUNCH'S OWN and the seat term its sequence ceiling, so the same derivation
+// bounds a GLM and a DeepSeek V4.1 experiment.
+fn arm_memory_experiment_runtime(ready_timeout: Second, max_num_seqs: Nat) -> Second {
+  second(count: arm_experiment_startup_and_cohort(ready_timeout: ready_timeout, max_num_seqs: max_num_seqs)
+    + second_count(s: arm_experiment_churn_window_allowance(ready_timeout: ready_timeout, max_num_seqs: max_num_seqs))
+    + second_count(s: arm_experiment_sampler_tail(ready_timeout: ready_timeout, max_num_seqs: max_num_seqs))
+    + second_count(s: arm_experiment_settlement_margin))
 }
 
 type EngineReadyTimeout
-  = EngineReadyTimeoutResolved { seconds: Nat }
+  = EngineReadyTimeoutResolved { timeout: Second }
   | EngineReadyTimeoutUnreadable { cause: NonEmptyStr }
 
 // THE ENGINE WAITS WHAT ITS ENVIRONMENT SAYS. Set once with an integer: that value; unset: upstream's
@@ -1417,7 +1447,7 @@ fn engine_ready_timeout_for(env: List<DockerEnvAssignment>) -> EngineReadyTimeou
   let name = vllm_environment_variable_name(v: VllmEngineReadyTimeoutSeconds) as String
   let set = filter(env, e => (e.name as String) == name)
   if count(set) == 0 {
-    EngineReadyTimeoutResolved { seconds: vllm_engine_ready_timeout_default_seconds }
+    EngineReadyTimeoutResolved { timeout: second(count: vllm_engine_ready_timeout_default_seconds) }
   } else if count(set) > 1 {
     EngineReadyTimeoutUnreadable { cause: join([name, " is set ", to_string(count(set)), " times in the deployment environment"], "") as NonEmptyStr }
   } else {
@@ -1428,7 +1458,7 @@ fn engine_ready_timeout_for(env: List<DockerEnvAssignment>) -> EngineReadyTimeou
           Absent => EngineReadyTimeoutUnreadable { cause: join([name, "=", e.value, " is not an integer"], "") as NonEmptyStr }
           Present { value: n } =>
             if n < 0 { EngineReadyTimeoutUnreadable { cause: join([name, "=", e.value, " is negative"], "") as NonEmptyStr } }
-            else { EngineReadyTimeoutResolved { seconds: n } }
+            else { EngineReadyTimeoutResolved { timeout: second(count: n) } }
         }
     }
   }
@@ -1464,9 +1494,9 @@ fn arm_memory_fit_experiment_plan(
     EngineReadyTimeoutUnreadable { cause: c } => ArmMemoryExperimentRefused { cause: join([
       "the experiment's runtime bound cannot be derived: ", c as String,
     ], "") as NonEmptyStr }
-    EngineReadyTimeoutResolved { seconds: ready } => arm_memory_fit_experiment_plan_at(
+    EngineReadyTimeoutResolved { timeout: ready } => arm_memory_fit_experiment_plan_at(
       checkpoint: checkpoint, runtime: runtime, topology: topology, workload: workload,
-      policy_profile: policy_profile, targets: targets, ready_timeout_seconds: ready)
+      policy_profile: policy_profile, targets: targets, ready_timeout: ready)
   }
 }
 
@@ -1477,7 +1507,7 @@ fn arm_memory_fit_experiment_plan_at(
   workload: ServingCapacityIntent,
   policy_profile: ServingLaunchProfile,
   targets: List<ArmMemoryComponent>,
-  ready_timeout_seconds: Nat,
+  ready_timeout: Second,
 ) -> ArmMemoryExperimentAdmission {
   if !profile_joins_intent(intent: workload, p: policy_profile) {
     ArmMemoryExperimentRefused {
@@ -1508,7 +1538,7 @@ fn arm_memory_fit_experiment_plan_at(
               profile: policy_profile,
               targets: targets,
               envelope_basis_points: policy_profile.decided_gpu_memory_basis_points,
-              max_runtime_seconds: arm_memory_experiment_runtime_seconds(ready_timeout_seconds: ready_timeout_seconds, max_num_seqs: policy_profile.max_num_seqs),
+              max_runtime_seconds: second_count(s: arm_memory_experiment_runtime(ready_timeout: ready_timeout, max_num_seqs: policy_profile.max_num_seqs)),
               expected_receipts: map(targets, t => experiment_receipt_kind(t)),
               stop: ArmExperimentStopContract {
                 timeout_preserves: "on runtime expiry the engine container is stopped and the observer preserves the per-rank logs and records an unminted-receipt disposition against every expected receipt: a measurement that outlived its window establishes nothing" as NonEmptyStr,

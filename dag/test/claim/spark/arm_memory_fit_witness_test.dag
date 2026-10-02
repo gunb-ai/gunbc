@@ -9,7 +9,7 @@ import std.measure {
   token_count, token_count_value,
   allocator_block_count, attention_layer_count,
   concurrent_request_hundredths_count, mebibyte,
-}
+ second, second_count }
 import std.interval { closed_interval, IntervalReady, IntervalRefused }
 import extdeps.vllm.server { vllm_source_revision_read }
 import extdeps.vllm.runtime_defaults { vllm_requested_envelope_bytes }
@@ -50,12 +50,12 @@ import gunbc.spark.arm_memory_fit {
   arm_memory_fit_subject, arm_memory_fit_subject_with_rank_demands, arm_memory_fit_subject_for_launch,
   arm_memory_fit_verdict, arm_memory_subject_open_components,
   gb10_pool_bound,
-  arm_memory_fit_experiment_plan, arm_memory_experiment_runtime_seconds, arm_memory_launch_gate,
+  arm_memory_fit_experiment_plan, arm_memory_experiment_runtime, arm_memory_launch_gate,
   arm_classify_measurement, arm_apply_measurement, arm_readback_observation,
   ArmMemorySubjectReady, ArmMemorySubjectRefused,
   ArmMemoryFitProved, ArmMemoryFitRefused, ArmMemoryFitUnestablished,
   ArmMemoryExperimentAdmission, ArmMemoryExperimentAdmitted, ArmMemoryExperimentRefused,
-  arm_memory_experiment_runtime_seconds,
+  arm_memory_experiment_runtime,
   ArmAllRanksStopped, ArmRouteEnrollmentProhibited, ArmEveryRankStopped, ArmNoRouteEnrollment,
   ArmMeasurement, ArmMeasurementProtocol, ProtocolPeakOverRuns, ProtocolEngineReportedMaximum, ProtocolSingleSample,
   MeasuredUpperBound, MeasuredInterval, ObservationOnly, MeasurementRefused,
@@ -860,7 +860,7 @@ test fn w_unestablished_refuses_the_experiment_without_a_typed_plan() -> Bool {
 test fn w_the_experiment_plan_names_targets_runtime_receipts_and_stop_contract() -> Bool {
   let plan = fx_plan()
   length(plan.targets) == 2
-    && plan.max_runtime_seconds == arm_memory_experiment_runtime_seconds(ready_timeout_seconds: 3600, max_num_seqs: plan.profile.max_num_seqs)
+    && plan.max_runtime_seconds == second_count(s: arm_memory_experiment_runtime(ready_timeout: second(count: 3600), max_num_seqs: plan.profile.max_num_seqs))
     && plan.max_runtime_seconds > 0
     && plan.expected_receipts == ["KvLayoutReceipt" as NonEmptyStr, "GraphCaptureBound" as NonEmptyStr]
     && (match plan.stop.stops_every_rank { ArmEveryRankStopped { witness: w } => w == "every rank unit of the experiment carries the same admitted runtime bound" as NonEmptyStr })
@@ -2840,7 +2840,7 @@ test fn w_the_loader_transient_plan_is_admitted_and_named() -> Bool {
         && length(p.expected_receipts) == 1
         && p.expected_receipts == ["CheckpointRankResidencyBound"]
         && basis_point_count(bp: p.envelope_basis_points) == 8567
-        && p.max_runtime_seconds == arm_memory_experiment_runtime_seconds(ready_timeout_seconds: 3600, max_num_seqs: p.profile.max_num_seqs)
+        && p.max_runtime_seconds == second_count(s: arm_memory_experiment_runtime(ready_timeout: second(count: 3600), max_num_seqs: p.profile.max_num_seqs))
         && arm_experiment_kvplan_v2_2026_09_26_loader_runbook.plan == "loader-transient"
         && arm_experiment_kvplan_v2_2026_09_26_loader_runbook.poll_seconds == 2
         && arm_experiment_kvplan_v2_2026_09_26_loader_runbook.runs == 3

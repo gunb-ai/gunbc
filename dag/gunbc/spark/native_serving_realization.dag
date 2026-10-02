@@ -18,7 +18,8 @@ import extdeps.docker.cli {
   docker_run_foreground_argv,
 }
 import gunbc.spark.serving_arm { ArmIntent, ArmNormalServing, ArmBoundedExperiment, glm_native_concurrent_profile }
-import gunbc.spark.arm_memory_fit { arm_memory_experiment_runtime_seconds, engine_ready_timeout_for, EngineReadyTimeoutResolved, EngineReadyTimeoutUnreadable }
+import gunbc.spark.arm_memory_fit { arm_memory_experiment_runtime, engine_ready_timeout_for, EngineReadyTimeoutResolved, EngineReadyTimeoutUnreadable }
+import std.measure { Second, second, second_count }
 import extdeps.vllm.engine_args { vllm_argv_nat, vllm_max_num_seqs_flag, VllmArgvNat, VllmArgvNatUnread }
 import gunbc.spark.serving_arm_launch {
   ArmLaunchPlanned, ArmLaunchRefused, ArmNodeLaunch, glm_native_master_port,
@@ -243,26 +244,38 @@ fn arm_unit_directives(intent: ArmIntent, units: ArmUnitIdentity, launch: ArmNod
 
 // THE EXPERIMENT'S RUNTIME IS ADMITTED, NOT UNBOUNDED. TimeoutStartSec stays zero because startup
 // is a multi-minute weight load; RuntimeMaxSec bounds the whole run at the figure the experiment
-// plan admits (gunbc.spark.arm_memory_fit arm_memory_experiment_runtime_seconds), and EVERY rank
+// plan admits (gunbc.spark.arm_memory_fit arm_memory_experiment_runtime), and EVERY rank
 // unit carries the same value. ExecStopPost removes the container after any stop -- including a
 // runtime expiry -- so a timed-out experiment leaves no engine holding pool bytes.
 // THE BOUND IS RE-DERIVED FROM THE LAUNCH ITSELF -- its container environment's ready timeout and its
 // argv's --max-num-seqs -- through the same function the experiment plan admits with, so every rank
-// unit of a GLM or a DeepSeek V4.1 experiment carries that arm's own figure. The plan already refused an
-// unreadable environment before any unit is rendered; should one reach here anyway, the unit is bounded
-// at one second, so it stops rather than running unbounded.
-fn arm_launch_experiment_runtime_wire(launch: ArmNodeLaunch) -> NonEmptyStr {
+// unit carries that arm's own figure. An underivable bound REFUSES the unit render with its cause
+// (review 74098): a unit with an invented lifetime would die early and read as an engine crash.
+type ArmExperimentRuntime
+  = ArmExperimentRuntimeBound { bound: Second }
+  | ArmExperimentRuntimeUnderivable { cause: NonEmptyStr }
+
+fn arm_launch_experiment_runtime(launch: ArmNodeLaunch) -> ArmExperimentRuntime {
   match engine_ready_timeout_for(env: launch.container.env) {
-    EngineReadyTimeoutUnreadable { cause: _ } => "1" as NonEmptyStr
-    EngineReadyTimeoutResolved { seconds: ready } =>
+    EngineReadyTimeoutUnreadable { cause: c } => ArmExperimentRuntimeUnderivable { cause: c }
+    EngineReadyTimeoutResolved { timeout: ready } =>
       match vllm_argv_nat(argv: launch.engine_argv, flag: vllm_max_num_seqs_flag) {
-        VllmArgvNatUnread { cause: _ } => "1" as NonEmptyStr
-        VllmArgvNat { value: seqs } => to_string(arm_memory_experiment_runtime_seconds(ready_timeout_seconds: ready, max_num_seqs: seqs)) as NonEmptyStr
+        VllmArgvNatUnread { cause: c } => ArmExperimentRuntimeUnderivable { cause: c }
+        VllmArgvNat { value: seqs } => ArmExperimentRuntimeBound { bound: arm_memory_experiment_runtime(ready_timeout: ready, max_num_seqs: seqs) }
       }
   }
 }
 
-fn arm_service_directives(intent: ArmIntent, launch: ArmNodeLaunch, run_line: NonEmptyStr, log_path: NonEmptyStr) -> List<SystemdServiceDirective> {
+// A NORMAL-SERVING UNIT CARRIES NO RUNTIME BOUND, so it never needs one derived: only a bounded
+// experiment asks, and only it can be refused for want of one.
+fn arm_unit_runtime_for(intent: ArmIntent, launch: ArmNodeLaunch) -> ArmExperimentRuntime {
+  match intent {
+    ArmNormalServing => ArmExperimentRuntimeBound { bound: second(count: 0) }
+    ArmBoundedExperiment => arm_launch_experiment_runtime(launch: launch)
+  }
+}
+
+fn arm_service_directives(intent: ArmIntent, launch: ArmNodeLaunch, run_line: NonEmptyStr, log_path: NonEmptyStr, experiment_runtime: Second) -> List<SystemdServiceDirective> {
   match intent {
     ArmNormalServing => [
       ServiceType { mode: SimpleMode },
@@ -283,7 +296,7 @@ fn arm_service_directives(intent: ArmIntent, launch: ArmNodeLaunch, run_line: No
       ExecStopPost { command: join(["-/usr/bin/docker rm -f ", launch.container.name as String], "") as NonEmptyStr },
       Restart { policy: "no" as NonEmptyStr },
       TimeoutStartSec { duration: "0" as NonEmptyStr },
-      RuntimeMaxSec { duration: arm_launch_experiment_runtime_wire(launch: launch) },
+      RuntimeMaxSec { duration: to_string(second_count(s: experiment_runtime)) as NonEmptyStr },
       ServiceStandardOutput { stream: OutputAppendFile { path: log_path } },
       ServiceStandardError { stream: OutputAppendFile { path: log_path } },
     ]
@@ -309,13 +322,20 @@ fn arm_host_unit_file_for(intent: ArmIntent, launch: ArmNodeLaunch, units: ArmUn
       match glm_native_exec_line(words: words) {
         Absent => GlmNativeUnitRenderRefused { unit_name: unit_name, cause: "the container line is not a plain argv: a rendered word carries whitespace or a quote, which this render does not model" as NonEmptyStr }
         Present { value: run_line } =>
-          GlmNativeUnitRendered {
-            unit_name: unit_name,
-            text: serialize_systemd_unit_file(file: ServiceUnitFile {
-              unit: arm_unit_directives(intent: intent, units: units, launch: launch, served_alias: served_alias),
-              service: arm_service_directives(intent: intent, launch: launch, run_line: run_line, log_path: log_path),
-              install: arm_install_section(intent: intent),
-            }),
+          match arm_unit_runtime_for(intent: intent, launch: launch) {
+            ArmExperimentRuntimeUnderivable { cause: c } => GlmNativeUnitRenderRefused {
+              unit_name: unit_name,
+              cause: join(["the bounded experiment's runtime bound cannot be derived from this launch: ", c as String], "") as NonEmptyStr,
+            }
+            ArmExperimentRuntimeBound { bound: rt } =>
+              GlmNativeUnitRendered {
+                unit_name: unit_name,
+                text: serialize_systemd_unit_file(file: ServiceUnitFile {
+                  unit: arm_unit_directives(intent: intent, units: units, launch: launch, served_alias: served_alias),
+                  service: arm_service_directives(intent: intent, launch: launch, run_line: run_line, log_path: log_path, experiment_runtime: rt),
+                  install: arm_install_section(intent: intent),
+                }),
+              }
           }
       }
   }
