@@ -303,6 +303,29 @@ fn emitted_closure_identity(crate_dir: &Path) -> Result<String, String> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
+/// A FAILED BUILD KEEPS ITS ROOT. Dropping it deleted the emitted sources the first error names,
+/// so the one artefact a reader needs to open `file:line` was gone before the refusal printed
+/// (a one-line E0308 in the self-host closure cost three rounds that way). The root is consumed
+/// here and retained, and its path is printed beside the first error's typed locus.
+fn emitted_build_failed_refusal(
+    probe_root: super::emitted_closure_compile_host::PrivateProbeRoot,
+    crate_dir: &Path,
+    verdict: &super::emitted_closure_compile_host::CargoVerdict,
+    invocation: &str,
+) -> String {
+    let first_error = super::emitted_closure_compile_host::rustc_error_locus_render(
+        super::emitted_closure_compile_host::cargo_verdict_first_error(verdict),
+    );
+    let retained = probe_root.retain();
+    format!(
+        "V2-NATIVE REFUSAL cause=EmittedCompilerBuildFailed first_error={first_error} \
+         retained_probe_root={} crate_dir={} — {} ({invocation})",
+        retained.display(),
+        crate_dir.display(),
+        super::emitted_closure_compile_host::cargo_verdict_summary(verdict),
+    )
+}
+
 /// PREPARATION IS THE EMIT-COMPILE PHASE'S OWN MACHINERY, REUSED. The same emission entry
 /// point, the same crate writer, the same cargo invocation the required emit-compile probes use
 /// — a second emit-or-build path beside them would be free to disagree about what "the emitted
@@ -391,11 +414,14 @@ fn prepare_emitted_compiler_for_entry(
         super::emitted_closure_compile_host::MUTATION_PROBE_SYMBOL,
     );
     if !super::emitted_closure_compile_host::cargo_verdict_compiled(&verdict) {
-        return Err(format!(
-            "V2-NATIVE REFUSAL cause=EmittedCompilerBuildFailed — {} (argv={:?} RUSTFLAGS={:?} rustc={rustc})",
-            super::emitted_closure_compile_host::cargo_verdict_summary(&verdict),
-            invocation.argv,
-            invocation.rustflags,
+        return Err(emitted_build_failed_refusal(
+            probe_root,
+            &crate_dir,
+            &verdict,
+            &format!(
+                "argv={:?} RUSTFLAGS={:?} rustc={rustc}",
+                invocation.argv, invocation.rustflags
+            ),
         ));
     }
     // `cargo_verdict_compiled` admitted only the `Completed { status: 0 }` arm, so the fields
@@ -2516,6 +2542,36 @@ fn run_required_v2_native_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A FAILED BUILD'S ROOT OUTLIVES THE REFUSAL. Before this, the root dropped on the `Err`
+    /// return and the emitted sources the error names were deleted; the control reds there
+    /// (`exists()` false) and names the first error's span, which the old message did not carry.
+    #[test]
+    fn a_failed_emitted_build_retains_its_root_and_names_the_first_error() {
+        use super::super::emitted_closure_compile_host as host;
+        let base = std::env::temp_dir().join(format!("nlr-retain-{}", std::process::id()));
+        std::fs::create_dir_all(&base).unwrap();
+        let root = host::create_private_probe_root(&base).unwrap();
+        let path = root.path().to_path_buf();
+        let stderr = "error[E0308]: mismatched types\n --> src/m.rs:7:3\n";
+        let verdict = host::CargoVerdict::Completed {
+            status: 101,
+            stderr_tail: stderr.to_string(),
+            probe_line: None,
+            probe_diagnostic: None,
+            warning_count: 0,
+            warning_headers: Vec::new(),
+            first_error: host::first_rustc_error(stderr),
+        };
+        let message = emitted_build_failed_refusal(root, &path.join("crate"), &verdict, "argv=[]");
+        assert!(
+            path.is_dir(),
+            "the root was deleted with the refusal: {message}"
+        );
+        assert!(message.contains(&format!("retained_probe_root={}", path.display())));
+        assert!(message.contains("first_error=error[E0308]: mismatched types @ src/m.rs:7:3"));
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     /// THE MEMBER FOLD, HANDED REAL PRODUCER BYTES.
     ///
