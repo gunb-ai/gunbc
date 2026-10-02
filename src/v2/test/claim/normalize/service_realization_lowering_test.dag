@@ -18,6 +18,7 @@ import v2.std.logic { Bool }
 import v2.std.integer { Int }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.collection { List }
+import v2.std.list_introduction { list_introduction_elements_optional }
 import v2.std.text { String }
 import v2.std.node { Found, Node, Symbol, named_edge_target_lookup, symbol_intern_lexeme }
 
@@ -84,9 +85,14 @@ fn srl_has(n: Optional<Node>, names: List<Symbol>) -> Bool {
   }
 }
 
+// An arms block is a list introduction (v2.std.list_introduction); its arms are the list's elements.
 fn srl_arm_count(n: Optional<Node>, names: List<Symbol>) -> Int {
   match srl_path(n: n, names: names) {
-    Present { value: arms } => count(arms.children)
+    Present { value: arms } =>
+      match list_introduction_elements_optional(node: arms) {
+        Present { value: elements } => count(elements)
+        Absent => 0
+      }
     Absent => 0
   }
 }
