@@ -446,19 +446,29 @@ type AdmitExportsFold {
   origin: QualifiedName
   state: AdmissionState
   at_conj: Bool
+  scope: ExportAdmissionScope
 }
 
-// A SERVICE NAMESPACE IS NOT ADMITTED AS A BARE NAME (v2.compiler.resolve
-// module_binding_edge_is_namespace_body; the operator's nesting ban). This is the multi-root route's
-// counterpart of the single-tree module-root harvest, so both resolution entries agree. It applies to
-// the subject's own body and to an imported module's exports alike: an imported service prefix is the
-// same namespace body, reachable by its qualified path, never bound bare in the importer.
+// WHOSE NAMES AN ADMISSION READS. The subject's OWN body is the scope the operator's nesting ban governs:
+// a service namespace it declares is a path segment, never a bare binding, so its members are reached
+// qualified. An IMPORTED module's exports are the sanctioned route by which a service's name enters a
+// module bare: `import t` admits t's service `s`, and `s.F.Run` then resolves in the importer (XL-2
+// manager ruling, 2026-10-02).
+type ExportAdmissionScope
+  = OwnModuleBody
+  | ImportedModuleExports
+
+// A SERVICE NAMESPACE OF THE SUBJECT'S OWN BODY IS NOT ADMITTED AS A BARE NAME (v2.compiler.resolve
+// module_binding_edge_is_namespace_body). This is the multi-root route's counterpart of the single-tree
+// module-root harvest, so both resolution entries agree on the subject's own names; an imported module's
+// service namespaces are admitted as any export is.
 fn admit_named_export_edge(
   edge: Edge,
   origin: QualifiedName,
-  state: AdmissionState
+  state: AdmissionState,
+  scope: ExportAdmissionScope
 ) -> AdmissionState {
-  if module_binding_edge_is_namespace_body(e: edge) {
+  if export_edge_is_withheld(edge: edge, scope: scope) {
     state
   } else {
     match try_admitted_export_binding(e: edge) {
@@ -466,6 +476,13 @@ fn admit_named_export_edge(
         admit_export_symbol(sym: b.name, origin: origin, state: state)
       Absent => state
     }
+  }
+}
+
+fn export_edge_is_withheld(edge: Edge, scope: ExportAdmissionScope) -> Bool {
+  match scope {
+    OwnModuleBody => module_binding_edge_is_namespace_body(e: edge)
+    ImportedModuleExports => false
   }
 }
 
@@ -478,7 +495,8 @@ fn named_exports_topdown_algebra() -> NodeFoldTopDown<AdmitExportsFold, AdmitExp
         at_conj: match n.kind {
           TypeNode { connective: Conj } => true
           _ => false
-        }
+        },
+        scope: fold.scope
       }
     },
     child_context: fn(n, fold, e) { fold },
@@ -489,9 +507,11 @@ fn named_exports_topdown_algebra() -> NodeFoldTopDown<AdmitExportsFold, AdmitExp
           state: admit_named_export_edge(
             edge: e,
             origin: acc.origin,
-            state: acc.state
+            state: acc.state,
+            scope: acc.scope
           ),
-          at_conj: true
+          at_conj: true,
+          scope: acc.scope
         }
       } else {
         child_r
@@ -503,7 +523,8 @@ fn named_exports_topdown_algebra() -> NodeFoldTopDown<AdmitExportsFold, AdmitExp
 fn admit_named_exports(
   root: Node,
   origin: QualifiedName,
-  state: AdmissionState
+  state: AdmissionState,
+  scope: ExportAdmissionScope
 ) -> AdmissionState {
   let working = namespace_graft_module_body_root(root: root)
   match working.kind {
@@ -513,11 +534,12 @@ fn admit_named_exports(
         ctx: AdmitExportsFold {
           origin: origin,
           state: state,
-          at_conj: false
+          at_conj: false,
+          scope: scope
         },
         algebra: named_exports_topdown_algebra()
       ) {
-        AdmitExportsFold { state: folded_state, origin: _, at_conj: _ } =>
+        AdmitExportsFold { state: folded_state, origin: _, at_conj: _, scope: _ } =>
           folded_state
       }
     _ => state
@@ -537,7 +559,8 @@ fn admit_import_root_find(
         admit_named_exports(
           root: imported_root.root,
           origin: origin,
-          state: state
+          state: state,
+          scope: ImportedModuleExports
         )
       } else {
         AdmissionRejected {
@@ -665,7 +688,8 @@ fn namespace_admission_initial_state(
       admit_named_exports(
         root: subject_module_root.root,
         origin: subject_qn,
-        state: admission_initial(base: base)
+        state: admission_initial(base: base),
+        scope: OwnModuleBody
       )
   }
 }

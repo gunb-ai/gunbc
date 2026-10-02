@@ -5,6 +5,13 @@ import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
 import v2.compiler.normalized_tree { normalized_tree_roots_to_binding_sources }
 import v2.test.claim.type_param_binder_frame { tpb_accepts, tpb_assemble, tpb_refuses_with }
 import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.name_resolve { Admission, Import, ImportVisible, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
 import v2.std.symbol_index { LexicalAmbiguous, LexicalHit, LexicalUnbound, SymbolIndex, empty_symbol_index, symbol_index_lexical_lookup, symbol_index_lookup }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -189,4 +196,43 @@ test fn a_service_namespace_does_not_bind_bare_on_the_resolve_route_holds() -> B
     && tpb_accepts(o: ss_route_module_name())
     && tpb_accepts(o: ss_route_qualified())
     && tpb_refuses_with(o: ss_route_qualified_missing(), reason: ^resolve_reason_unbound_symbol)
+}
+
+// AN EXPLICIT IMPORT IS THE SANCTIONED ROUTE (XL-2 manager ruling, 2026-10-02). The ban governs a
+// module's OWN service namespaces; an imported module's service binds bare in the importer, so module
+// `a`, which imports `t`, reaches `s.F.Run` head-bare, while module `b`, which does not, refuses the same
+// reference as unbound. Each program is assembled for real over both sources, once, WARM.
+data ss_import_target_source: String = "module t\n\nservice s.F {\n  operation Run {}\n}\n"
+data ss_importer_source: String = "module a\n\nimport t\n\nfn f(x: s.F.Run) -> Int { 1 }\n"
+data ss_non_importer_source: String = "module b\n\nfn f(x: s.F.Run) -> Int { 1 }\n"
+
+data ss_import_target_artifact: Artifact = Artifact { kind: SourceFile, id: ^ss_import_target_artifact, file_path: "src/v2/pilot/ss_import_target.dag" }
+data ss_import_subject_artifact: Artifact = Artifact { kind: SourceFile, id: ^ss_import_subject_artifact, file_path: "src/v2/pilot/ss_import_subject.dag" }
+
+fn ss_import_witness(src: String, artifact: Artifact, unit: Symbol) -> DagSourceReadWitness {
+  DagSourceReadWitness { source: Medium { carried: src, fidelity: Lossless }, artifact: artifact, compilation_unit: unit, source_root: V2Tree }
+}
+
+fn ss_import_assemble(subject_src: String, subject: Symbol, imports: FreeMonoid<Import>) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: ss_import_witness(src: ss_import_target_source, artifact: ss_import_target_artifact, unit: ^ss_import_target_cu),
+      tail: Cons { head: ss_import_witness(src: subject_src, artifact: ss_import_subject_artifact, unit: ^ss_import_subject_cu), tail: Empty }
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: subject, tail: Empty } }, imports: imports },
+    lm: dag_language_model()
+  )
+}
+
+fn ss_importer_assembled() -> Outcome<ResolvedTree> {
+  ss_import_assemble(subject_src: ss_importer_source, subject: ^a, imports: Cons { head: Import { target: Cons { head: ^t, tail: Empty }, visibility: ImportVisible }, tail: Empty })
+}
+
+fn ss_non_importer_assembled() -> Outcome<ResolvedTree> {
+  ss_import_assemble(subject_src: ss_non_importer_source, subject: ^b, imports: Empty)
+}
+
+test fn an_imported_service_binds_bare_in_the_importer_holds() -> Bool {
+  tpb_accepts(o: ss_importer_assembled())
+    && tpb_refuses_with(o: ss_non_importer_assembled(), reason: ^resolve_reason_unbound_symbol)
 }
