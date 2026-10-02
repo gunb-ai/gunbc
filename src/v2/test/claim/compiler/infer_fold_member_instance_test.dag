@@ -8,7 +8,8 @@ import v2.test.claim.body_let_annotation { bla_assemble_with_peers, bla_q_artifa
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, CorrectionNotModeled, Diagnostic, Locus, NodeLocus, Outcome, Rejected, Unavailable, Some, diagnostics_has_reason, diagnostics_fatal, diagnostics_fatal_reason, diagnostics_singleton, node_locus }
-import v2.std.node_query { binder_type_label, declared_field_from_edge }
+import v2.std.node_query { binder_type_label, declared_field_from_edge, field_projection_optional }
+import v2.std.qualified_name { lexical_reference_label_optional }
 import std.algebra { list_snoc_item }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
@@ -197,6 +198,27 @@ fn fmi_has_reason(o: Outcome<Bool>, reason: Symbol) -> Bool {
   }
 }
 
+// (r) A LAMBDA BINDER PROJECTED THROUGH IS THE SAME LEXICAL REFERENCE A BARE USE OF IT IS: resolve mints
+// the `e` of `e.target` through v2.compiler.resolve resolve_frame_bound_reference, so its binding is
+// recorded and infer can type it. RED ON THE BASE: the base was the bare canonical atom `e`, which nothing
+// typed, so the projection landed in the non-refusing ReceiverTypeUnderived arm.
+test fn fmi_lambda_binder_projection_base_is_a_lexical_reference() -> Bool {
+  match fmi_assemble(src: fmi_record_fold) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: tree.root), init: false, f: fn(acc, n) {
+        acc || match field_projection_optional(n: n) {
+          Present { value: projection } =>
+            match lexical_reference_label_optional(node: projection.base) {
+              Present { value: label } => label == ^e
+              Absent => false
+            }
+          Absent => false
+        }
+      })
+  }
+}
+
 // (2) THE SAME FOLD WITH AN UNDECLARED FIELD REFUSES AT THAT FIELD.
 test fn fmi_fold_member_undeclared_field_refuses() -> Bool {
   fmi_reason(o: fmi_infer(src: fmi_undeclared_field_fold)) == ^infer_reason_field_not_declared_on_receiver
@@ -303,6 +325,8 @@ fn fmi_fixture_shape_diagnostic(at: Node) -> Diagnostic {
 fn fmi_scratch_all() -> ProcessExit {
   if !fmi_fold_member_projects_a_declared_field() {
     ExitFailure { code: 1, reason: "c1" }
+  } else if !fmi_lambda_binder_projection_base_is_a_lexical_reference() {
+    ExitFailure { code: 4, reason: "cr" }
   } else if !fmi_fold_member_undeclared_field_refuses() {
     ExitFailure { code: 2, reason: "c2" }
   } else if !fmi_fold_member_incompatible_formal_refuses() {
