@@ -1,0 +1,14 @@
+{
+  "verdict": "full-file equivalence proved by contiguous reference-transition composition",
+  "subject_revision": "359661af2d7",
+  "reference_revision": "85f92ac853cba7149c0d6f66c08190f2277e56fa",
+  "input_bytes": 137314,
+  "transitions": 19670,
+  "tokens": 12072,
+  "intervals": 10,
+  "compared": "complete remaining suffix, cumulative tokens and annotations, byte position, layout, line-prefix/trivia state, file, error and EOF",
+  "dispatch_premise": "Legacy dispatch is constructed from the same immutable authored rules and carried unchanged by all eight legacy step record arms.",
+  "coverage": "Genuine legacy initializer for first interval; all subsequent starts are justified by preceding interval equality. Exact roster and final EOF required. Input text never segmented.",
+  "monolithic_reference": "Prior 600-second timeouts remain valid historical results; no claim that this monolithic path became fast.",
+  "remaining": "Same-base whole-floor qualification, stack reconciliation and exact-head required CI; no deployment or VM commissioning."
+}
