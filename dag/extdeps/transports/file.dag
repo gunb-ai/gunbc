@@ -40,6 +40,9 @@ fn file_observation_byte_count(bytes: ByteSize) -> Int {
 // WHAT AN OPERATION'S `from "key"` NAMES ON THE FILE TRANSPORT (XL-2 PR3a): one channel of the file
 // result. The v2 home of the vocabulary the seed reads as v1.compiler.emit FileResultChannel and
 // file_result_channel_of_key, transcribed arm for arm and key for key (aliases included).
+// The same stated cross-generation divergence as extdeps.transports.shell ShellOutputChannel: the seed's
+// FileResultChannel and file_result_channel_of_key are frozen, and are deleted when file transport
+// realization is emitted from v2.
 type FileOutputChannel
   = FileSuccess
   | FileByteCount
