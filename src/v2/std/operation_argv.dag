@@ -2,6 +2,7 @@ module v2.std.operation_argv
 
 import std.types { String, List, Bool }
 import v2.std.algebra { list_map }
+import v2.std.template { Template }
 
 // An operation's transport argv is materialized by binding THAT OPERATION'S OWN DECLARED INPUTS, by
 // name, from the declaration. The seed's prior materializer carried a fixed five-name vocabulary
@@ -87,6 +88,12 @@ type ArgvRefusalCause
   | TokenListInStringPosition { name: String }
   | ArgvExpressionUnsupported { detail: String }
   | BindingMalformed { detail: String }
+
+// A transport string that interpolates a declared input, as a value: holes are input NAMES, resolved
+// against the operation's declared inputs by its consumer (XL-2 3b-ii). An expression in a hole is
+// not a name and refuses as ArgvExpressionUnsupported; a list input in a hole refuses as
+// TokenListInStringPosition. No new refusal vocabulary.
+type ArgvTemplate = Template<String>
 
 type ArgvMaterialization
   = ArgvMaterialized { argv: List<String> }
