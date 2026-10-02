@@ -75,7 +75,8 @@ import gunbc.roadmap_authority {
   RoadmapAuthorityProjection, RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
 }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
-import gunbc.roadmap_page { roadmap_daily_workspace_page_for_projection_observed }
+import gunbc.roadmap_page { roadmap_daily_workspace_page_for_projection_observed_stale_with_stylesheet }
+import gunbc.roadmap_nesting { roadmap_memberships }
 import gunbc.roadmap.roadmap_event_log { StandingsUnobserved }
 import gunbc.auth.oidc_deployment_config { OidcDeploymentConfig }
 import extdeps.auth.oidc {
@@ -578,8 +579,8 @@ test fn witness_an_unrouted_path_is_refused_not_answered() -> Bool {
 
 // ── The DAILY surface, which is where the seam leaked ───────────────────────────────────────────
 //
-// WHAT THIS PROBE IS, AND WHAT IT IS NOT. It is a composition check over
-// roadmap_daily_workspace_page_for_projection_observed on both arms. It is NOT the control for the
+// WHAT THIS PROBE IS, AND WHAT IT IS NOT. It is a composition check over the served daily fold
+// (roadmap_daily_workspace_page_for_projection_observed_stale_with_stylesheet) on both arms. It is NOT the control for the
 // leak that review 63317 found, and the first version of this block claimed it was.
 //
 // The claim was tested and it was false. With the leak deliberately restored in an isolated
@@ -603,14 +604,19 @@ test fn witness_an_unrouted_path_is_refused_not_answered() -> Bool {
 // true of a clean render too.
 
 
+// The served daily fold every observed render delegates to, with the head's style text supplied
+// empty: the claim reads the plan's arms in the body, never the stylesheet.
 fn daily_page_html_over_plan(plan: RoadmapAuthorityProjection) -> String {
-  match try_serialize_html_source(node: roadmap_daily_workspace_page_for_projection_observed(
+  match try_serialize_html_source(node: roadmap_daily_workspace_page_for_projection_observed_stale_with_stylesheet(
     proj: plan,
     attempts: [],
     attempts_refused: none,
     standings: StandingsUnobserved { reason: "witness render: the event carrier is not consulted" },
     launch: launch_host_unobserved_static_render(),
+    stale_nodes: [],
     profiles: [],
+    memberships: roadmap_memberships(),
+    stylesheet: "",
   )) {
     EmitOk { html } => html
     EmitRejected { reason } => reason

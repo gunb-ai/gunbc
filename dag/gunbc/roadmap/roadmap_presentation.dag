@@ -2,12 +2,12 @@ module gunbc.roadmap_presentation
 
 import gunbc.roadmap_nesting { RoadmapMembership, roadmap_memberships }
 import gunbc.roadmap.roadmap_lineage { lineage_walk_in, lineage_index }
-import v2.std.collection { Map }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import gunbc.roadmap.roadmap_readiness {
   ReadinessGap, NodeReadiness, ReadyToDispatch, NotReady, node_readiness, readiness_text, readiness_reason_text,
   readiness_is_dispatchable,
 }
-import gunbc.roadmap.roadmap_project { node_project_membership, MembershipMember, project_member_ids, RoadmapMembershipIndex, membership_index, project_member_ids_in }
+import gunbc.roadmap.roadmap_project { node_project_membership, node_project_membership_in, MembershipMember, project_member_ids, RoadmapMembershipIndex, membership_index, project_member_ids_in }
 
 import gunbc.roadmap.roadmap_event_log {
   RoadmapNodeStanding, IssueAssignmentProjection,
@@ -15,7 +15,8 @@ import gunbc.roadmap.roadmap_event_log {
 }
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, Pointer,
-  roadmap_parent_ids, roadmap_primary_parent,
+  RoadmapNodeId, roadmap_parent_ids, roadmap_primary_parent,
+  roadmap_parent_index, roadmap_parent_ids_in,
   RoadmapParent, TopLevel, UnderParent,
   WorkItemDispatch, NotDispatchable, Dispatchable,
   node_sizing_derivation,
@@ -313,38 +314,70 @@ type WorkScheduling
   | SchedulingSuperseded
 
 fn scheduling_blockers(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> List<String> {
-  let parents = roadmap_parent_ids(edges: edges, node: rn.node)
-  let unmet = filter(xs: parents, predicate: pid =>
-    !any(nodes, n => n.node == pid && node_closes_dependency(n: n)))
-  map(unmet, p => p as String)
+  scheduling_blockers_of(rn: rn, parents: roadmap_parent_index(edges: edges), closes: dependency_closing_ids(nodes: nodes))
 }
 
-// The page's readiness walks lineage over the rendered graph itself: the projected graph carries
-// every open project, so a member's parent walk resolves inside it, and a planted fixture graph is
-// its own universe.
-// A page projects every row's readiness over one graph, so it builds the lineage index once
-// (gunbc.roadmap.roadmap_lineage lineage_index) and each row's walk is a lookup per level; the
-// single-row forms below build it for the one row they answer.
-fn work_readiness_in(rn: RoadmapNode, index: Map<String, RoadmapNode>, fuel: Int, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> NodeReadiness {
+// The ids some node of the graph closes as a dependency (gunbc.roadmap_spawner node_closes_dependency):
+// a prerequisite is met exactly when its id is here.
+fn dependency_closing_ids(nodes: List<RoadmapNode>) -> Map<String, Bool> {
+  let empty: Map<String, Bool> = empty_map()
+  fold(nodes |> filter(n => node_closes_dependency(n: n)), init: empty, f: (acc, n) => map_insert(m: acc, key: n.node as String, value: true))
+}
+
+fn dependency_is_closed(closes: Map<String, Bool>, id: RoadmapNodeId) -> Bool {
+  match map_lookup(m: closes, key: id as String) { Present { value: _ } => true  Absent => false }
+}
+
+fn scheduling_blockers_of(rn: RoadmapNode, parents: Map<String, List<RoadmapNodeId>>, closes: Map<String, Bool>) -> List<String> {
+  roadmap_parent_ids_in(parents: parents, node: rn.node)
+    |> filter(pid => !dependency_is_closed(closes: closes, id: pid))
+    |> map(p => p as String)
+}
+
+// THE ROW GRAPH, indexed once per rendered graph. A page projects every row's readiness over one
+// graph, and each row asks the same three questions of it -- its lineage walk, its prerequisites,
+// which prerequisites are closed -- so the graph is indexed once (lineage by id, parents by child,
+// closed ids) and each row's answer is lookups. Asked per row of the raw lists, the parents and
+// closed questions made a page nodes x edges and nodes x prerequisites x nodes. The page's
+// readiness walks lineage over the rendered graph itself: the projected graph carries every open
+// project, so a member's parent walk resolves inside it, and a planted fixture graph is its own
+// universe. The single-row forms below index the graph for the one row they answer.
+type RowGraph {
+  lineage: Map<String, RoadmapNode>
+  fuel: Int
+  parents: Map<String, List<RoadmapNodeId>>
+  closes: Map<String, Bool>
+}
+
+fn row_graph(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> RowGraph {
+  RowGraph {
+    lineage: lineage_index(nodes: nodes),
+    fuel: count(nodes) + 1,
+    parents: roadmap_parent_index(edges: edges),
+    closes: dependency_closing_ids(nodes: nodes),
+  }
+}
+
+fn work_readiness_in(rn: RoadmapNode, graph: RowGraph, merged: List<Int>) -> NodeReadiness {
   node_readiness(
     node: rn,
-    lineage: lineage_walk_in(node_id: rn.node as String, index: index, fuel: fuel),
-    unmet_parents: scheduling_blockers(rn: rn, nodes: nodes, edges: edges),
+    lineage: lineage_walk_in(node_id: rn.node as String, index: graph.lineage, fuel: graph.fuel),
+    unmet_parents: scheduling_blockers_of(rn: rn, parents: graph.parents, closes: graph.closes),
     merged: merged,
   )
 }
 
 fn work_readiness(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> NodeReadiness {
-  work_readiness_in(rn: rn, index: lineage_index(nodes: nodes), fuel: count(nodes) + 1, nodes: nodes, edges: edges, merged: merged)
+  work_readiness_in(rn: rn, graph: row_graph(nodes: nodes, edges: edges), merged: merged)
 }
 
-fn work_scheduling_in(rn: RoadmapNode, index: Map<String, RoadmapNode>, fuel: Int, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> WorkScheduling {
+fn work_scheduling_in(rn: RoadmapNode, graph: RowGraph, merged: List<Int>) -> WorkScheduling {
   if !(item_superseded_by(item: rn.line) == "") {
     SchedulingSuperseded
   } else if node_is_frontier_done(n: rn) {
     SchedulingDone
   } else {
-    match work_readiness_in(rn: rn, index: index, fuel: fuel, nodes: nodes, edges: edges, merged: merged) {
+    match work_readiness_in(rn: rn, graph: graph, merged: merged) {
       ReadyToDispatch => SchedulingReady
       NotReady { missing } => SchedulingNotReady { missing: missing }
     }
@@ -352,7 +385,7 @@ fn work_scheduling_in(rn: RoadmapNode, index: Map<String, RoadmapNode>, fuel: In
 }
 
 fn work_scheduling(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int> = []) -> WorkScheduling {
-  work_scheduling_in(rn: rn, index: lineage_index(nodes: nodes), fuel: count(nodes) + 1, nodes: nodes, edges: edges, merged: merged)
+  work_scheduling_in(rn: rn, graph: row_graph(nodes: nodes, edges: edges), merged: merged)
 }
 
 fn work_scheduling_key(s: WorkScheduling) -> String {
@@ -1064,7 +1097,7 @@ fn work_row_view(
   assignment: IssueAssignmentProjection? = none,
 ) -> WorkRowView {
   work_row_view_in(
-    rn: rn, index: lineage_index(nodes: nodes), fuel: count(nodes) + 1, nodes: nodes, edges: edges, merged: merged,
+    rn: rn, graph: row_graph(nodes: nodes, edges: edges), merged: merged,
     activity: activity, rounds: rounds, launch: launch, worker_alive: worker_alive, standing: standing,
     attempt_stale: attempt_stale, profiles: profiles, assignment: assignment,
   )
@@ -1072,10 +1105,7 @@ fn work_row_view(
 
 fn work_row_view_in(
   rn: RoadmapNode,
-  index: Map<String, RoadmapNode>,
-  fuel: Int,
-  nodes: List<RoadmapNode>,
-  edges: List<RoadmapEdge>,
+  graph: RowGraph,
   merged: List<Int>,
   activity: ActivityView,
   rounds: HarnessRoundLedger,
@@ -1087,7 +1117,7 @@ fn work_row_view_in(
   assignment: IssueAssignmentProjection?,
 ) -> WorkRowView {
   let lifecycle = work_lifecycle(rn: rn, merged: merged)
-  let scheduling = work_scheduling_in(rn: rn, index: index, fuel: fuel, nodes: nodes, edges: edges, merged: merged)
+  let scheduling = work_scheduling_in(rn: rn, graph: graph, merged: merged)
   WorkRowView {
     node_id: rn.node as String,
     headline: row_headline(line: rn.line),
@@ -1234,7 +1264,7 @@ fn row_activity_erred(row: WorkRowView) -> Bool {
   }
 }
 
-fn project_subtree_errored(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, node_id: String, fuel: Int, memberships: List<RoadmapMembership> = roadmap_memberships()) -> Bool {
+fn project_subtree_errored(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, node_id: String, fuel: Int, memberships: RoadmapMembershipIndex) -> Bool {
   if fuel <= 0 {
     false
   } else {
@@ -1773,20 +1803,20 @@ fn row_is_family_member(members: List<WorkFamilyMemberFact>, node_id: String) ->
   }
 }
 
-fn project_task_rows(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, node_id: String, memberships: List<RoadmapMembership> = roadmap_memberships()) -> List<WorkRowView> {
-  flat_map(project_member_ids(arc: node_id, memberships: memberships), id =>
-    if node_project_membership(node_id: id, memberships: memberships) != MembershipMember { arc: node_id } { [] }
+fn project_task_rows(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, node_id: String, memberships: RoadmapMembershipIndex) -> List<WorkRowView> {
+  flat_map(project_member_ids_in(arc: node_id, index: memberships), id =>
+    if node_project_membership_in(node_id: id, index: memberships) != MembershipMember { arc: node_id } { [] }
     else { filter(rows, r => r.node_id == id && row_is_rendered(row: r) && !row_is_family_member(members: members, node_id: id)) })
 }
 
-fn row_display_parent_id(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, node_id: String, memberships: List<RoadmapMembership> = roadmap_memberships()) -> String? {
-  match node_project_membership(node_id: node_id, memberships: memberships) {
+fn row_display_parent_id(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, node_id: String, memberships: RoadmapMembershipIndex) -> String? {
+  match node_project_membership_in(node_id: node_id, index: memberships) {
     MembershipMember { arc } => if any(rows, r => r.node_id == arc && row_is_rendered(row: r) && !row_is_family_member(members: members, node_id: arc)) { Present { value: arc } } else { none }
     _ => none
   }
 }
 
-fn row_nest_chain_reaches_top(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, node_id: String, fuel: Int, memberships: List<RoadmapMembership> = roadmap_memberships()) -> Bool {
+fn row_nest_chain_reaches_top(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, node_id: String, fuel: Int, memberships: RoadmapMembershipIndex) -> Bool {
   if fuel <= 0 {
     false
   } else {
@@ -1798,7 +1828,7 @@ fn row_nest_chain_reaches_top(rows: List<WorkRowView>, edges: List<RoadmapEdge>,
   }
 }
 
-fn row_is_nested(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, node_id: String, memberships: List<RoadmapMembership> = roadmap_memberships()) -> Bool {
+fn row_is_nested(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, node_id: String, memberships: RoadmapMembershipIndex) -> Bool {
   match row_display_parent_id(rows: rows, edges: edges, members: members, node_id: node_id, memberships: memberships) {
     Absent => false
     Present { value: _ } =>
@@ -1806,7 +1836,7 @@ fn row_is_nested(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: Lis
   }
 }
 
-fn row_is_project(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, row: WorkRowView, memberships: List<RoadmapMembership> = roadmap_memberships()) -> Bool {
+fn row_is_project(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, row: WorkRowView, memberships: RoadmapMembershipIndex) -> Bool {
   row_is_rendered(row: row)
     && !row_is_family_member(members: members, node_id: row.node_id)
     && count(project_task_rows(rows: rows, edges: edges, members: members, node_id: row.node_id, memberships: memberships)) > 0
@@ -1832,7 +1862,7 @@ fn row_pulses(row: WorkRowView) -> Bool {
   }
 }
 
-fn project_subtree_pulses(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, node_id: String, fuel: Int, memberships: List<RoadmapMembership> = roadmap_memberships()) -> Bool {
+fn project_subtree_pulses(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, node_id: String, fuel: Int, memberships: RoadmapMembershipIndex) -> Bool {
   if fuel <= 0 {
     false
   } else {
@@ -1856,7 +1886,7 @@ fn project_subtree_pulses(rows: List<WorkRowView>, edges: List<RoadmapEdge>, mem
 // two chains). The walk stops at the chain end: a node with zero or several display children, or
 // one whose single display child is a leaf or owned elsewhere. chain carries every swallowed
 // project INCLUDING the end; an uncollapsed project has chain [] and end == its own row.
-fn project_chain_walk(row: WorkRowView, rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, fuel: Int, memberships: List<RoadmapMembership> = roadmap_memberships()) -> ProjectChainWalk {
+fn project_chain_walk(row: WorkRowView, rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, fuel: Int, memberships: RoadmapMembershipIndex) -> ProjectChainWalk {
   if fuel <= 0 {
     ProjectChainWalk { end: row, chain: [] }
   } else {
@@ -1882,7 +1912,7 @@ fn project_chain_walk(row: WorkRowView, rows: List<WorkRowView>, edges: List<Roa
   }
 }
 
-fn project_tree_view(row: WorkRowView, rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, depth: Int, fuel: Int, memberships: List<RoadmapMembership> = roadmap_memberships()) -> ProjectTreeView {
+fn project_tree_view(row: WorkRowView, rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, depth: Int, fuel: Int, memberships: RoadmapMembershipIndex) -> ProjectTreeView {
   let walk = project_chain_walk(row: row, rows: rows, edges: edges, members: members, fuel: fuel, memberships: memberships)
   let end = walk.end
   let tasks = project_task_rows(rows: rows, edges: edges, members: members, node_id: end.node_id, memberships: memberships)
@@ -2151,7 +2181,7 @@ fn row_is_active_work(row: WorkRowView) -> Bool {
 // in its display subtree — itself or any descendant — so a project whose tasks are being worked
 // surfaces as ONE grouped row at the top, with the live tasks nested inside it. Family members
 // keep their established law: active work leaves the group for the Active band as a flat row.
-fn project_subtree_active(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, node_id: String, fuel: Int, memberships: List<RoadmapMembership> = roadmap_memberships()) -> Bool {
+fn project_subtree_active(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, node_id: String, fuel: Int, memberships: RoadmapMembershipIndex) -> Bool {
   if fuel <= 0 {
     false
   } else {
@@ -2161,24 +2191,24 @@ fn project_subtree_active(rows: List<WorkRowView>, edges: List<RoadmapEdge>, mem
   }
 }
 
-fn row_subtree_active(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, row: WorkRowView, memberships: List<RoadmapMembership> = roadmap_memberships()) -> Bool {
+fn row_subtree_active(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, row: WorkRowView, memberships: RoadmapMembershipIndex) -> Bool {
   row_is_active_work(row: row)
     || project_subtree_active(rows: rows, edges: edges, members: members, node_id: row.node_id, fuel: count(rows), memberships: memberships)
 }
 
-fn row_is_active_root(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, row: WorkRowView, memberships: List<RoadmapMembership> = roadmap_memberships()) -> Bool {
+fn row_is_active_root(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, row: WorkRowView, memberships: RoadmapMembershipIndex) -> Bool {
   !row_is_family_member(members: members, node_id: row.node_id)
     && !row_is_nested(rows: rows, edges: edges, members: members, node_id: row.node_id, memberships: memberships)
     && row_subtree_active(rows: rows, edges: edges, members: members, row: row, memberships: memberships)
 }
 
-fn rows_for_active_band(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, memberships: List<RoadmapMembership> = roadmap_memberships()) -> List<WorkRowView> {
+fn rows_for_active_band(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, memberships: RoadmapMembershipIndex) -> List<WorkRowView> {
   rows |> filter(r =>
     (row_is_family_member(members: members, node_id: r.node_id) && row_is_active_work(row: r))
       || row_is_active_root(rows: rows, edges: edges, members: members, row: r, memberships: memberships))
 }
 
-fn rows_for_scheduling_band(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, key: String, memberships: List<RoadmapMembership> = roadmap_memberships()) -> List<WorkRowView> {
+fn rows_for_scheduling_band(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, key: String, memberships: RoadmapMembershipIndex) -> List<WorkRowView> {
   rows |> filter(r =>
     work_scheduling_key(s: r.scheduling) == key
       && !(row_is_family_member(members: members, node_id: r.node_id) && row_is_active_work(row: r))
@@ -2229,7 +2259,7 @@ fn band_entries(
   edges: List<RoadmapEdge>,
   families: List<WorkFamilyDecl>,
   members: List<WorkFamilyMemberFact>,
- memberships: List<RoadmapMembership> = roadmap_memberships()) -> List<WorkBandEntry> {
+ memberships: RoadmapMembershipIndex) -> List<WorkBandEntry> {
   let grouped = fold(rows, init: BandEntriesAcc { entries: [], emitted_family_ids: [] }, f: (acc, r) =>
     match family_member_for(members: members, node_id: r.node_id) {
       Absent =>
@@ -2347,6 +2377,22 @@ fn daily_workspace_view(
   members: List<WorkFamilyMemberFact>,
   memberships: List<RoadmapMembership> = roadmap_memberships(),
   hidden_not_ready: Int = 0,
+) -> DailyWorkspaceView {
+  daily_workspace_view_in(rows: rows, edges: edges, program: program, observation: observation, families: families, members: members, memberships: membership_index(memberships: memberships), hidden_not_ready: hidden_not_ready)
+}
+
+// The banding over a membership index the caller built once: every hierarchy question each band
+// asks per row -- is it nested, is it a project, which rows are its tasks -- reads the index
+// instead of scanning the whole membership relation per question.
+fn daily_workspace_view_in(
+  rows: List<WorkRowView>,
+  edges: List<RoadmapEdge>,
+  program: ProgramProgressView?,
+  observation: ObservationImpactView,
+  families: List<WorkFamilyDecl>,
+  members: List<WorkFamilyMemberFact>,
+  memberships: RoadmapMembershipIndex,
+  hidden_not_ready: Int,
 ) -> DailyWorkspaceView {
   let shown = rows
   let active_entries = band_entries(rows: rows_for_active_band(rows: shown, edges: edges, members: members, memberships: memberships), all_rows: shown, edges: edges, families: [], members: [], memberships: memberships)

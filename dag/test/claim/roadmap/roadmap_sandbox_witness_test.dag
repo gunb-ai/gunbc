@@ -3,10 +3,11 @@ module test.claim.roadmap_sandbox_witness
 import std.types { Int, String, Bool, List }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 import gunbc.roadmap_sandbox {
-  sandbox_page, sandbox_gallery_terminal_labels,
+  sandbox_page, sandbox_page_with_stylesheet, sandbox_gallery_terminal_labels,
   fixture_family_decl, fixture_family_members, fixture_family_rows, family_fixture_frame,
 }
 import gunbc.roadmap_presentation { WorkBandEntry, BandRow, BandFamily, band_entries }
+import gunbc.roadmap.roadmap_project { membership_index }
 import gunbc.roadmap_component {
   dispatch_button_component, dispatch_state_display_text, sandbox_live_class,
 }
@@ -30,6 +31,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn sandbox_html() -> String {
   match try_serialize_html_source(node: sandbox_page()) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => ""
+  }
+}
+
+// The page fold with the head's style text supplied empty: the gallery and live claims read body
+// markup only, and the stylesheet they never inspect is sandbox_css's own claims' subject.
+fn sandbox_body_html() -> String {
+  match try_serialize_html_source(node: sandbox_page_with_stylesheet(stylesheet: "")) {
     EmitOk { html: h } => h
     EmitRejected { reason: _ } => ""
   }
@@ -105,7 +115,7 @@ test fn witness_sandbox_renders_register_depths() -> Bool {
 }
 
 test fn witness_sandbox_gallery_and_live_render() -> Bool {
-  let h = sandbox_html()
+  let h = sandbox_body_html()
   string_contains(s: h, pattern: "dispatch button — every state")
     && string_contains(s: h, pattern: "dispatch-ok")
     && string_contains(s: h, pattern: "dispatch-refused")
@@ -155,6 +165,7 @@ test fn witness_family_fixture_typed_structure_exact() -> Bool {
     edges: [],
     families: [fixture_family_decl()],
     members: fixture_family_members(),
+    memberships: membership_index(memberships: []),
   )
   map(entries, e => fixture_band_entry_signature(e: e)) == [
     "family|Every startable node carries a closing contract|3|dag_compile_clean_gate,affected_set_falsifier,regen_floor_skip_witness",

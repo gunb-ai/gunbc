@@ -7,7 +7,8 @@ import gunbc.roadmap_altitude {
   SectionCounts, section_counts, section_counts_wire, statuses_all_routine,
 }
 import gunbc.roadmap_component { dispatch_expand_band_keys, dispatch_client_js_source }
-import gunbc.roadmap_page { roadmap_page }
+import gunbc.roadmap_page { roadmap_page_launch_with_stylesheet }
+import gunbc.roadmap_launch_admission { launch_host_unobserved_static_render }
 import gunbc.roadmap_model { RoadmapNode, section_group }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_signed }
@@ -68,10 +69,12 @@ test fn altitude_counts_wire_holds() -> Bool {
     && !statuses_all_routine(statuses: ["done", "zombie"])
 }
 
+// The page fold roadmap_page delegates to, with the head's style text supplied empty: the fold
+// decision is section markup, and the stylesheet is roadmap_css's own claims' subject.
 fn doc_html(nodes: List<RoadmapNode>) -> String {
   let sec = RoadmapSection { title: "Belt", elements: [ section_group(label: "", nodes: nodes, edges: []) ] }
   let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
-  match try_serialize_html_source(node: roadmap_page(doc: doc, merged: [])) {
+  match try_serialize_html_source(node: roadmap_page_launch_with_stylesheet(doc: doc, merged: [], launch: launch_host_unobserved_static_render(), stylesheet: "")) {
     EmitOk { html: h } => h
     EmitRejected { reason: _ } => ""
   }
