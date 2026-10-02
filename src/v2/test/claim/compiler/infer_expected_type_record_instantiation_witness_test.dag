@@ -33,10 +33,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // parameter, or one that occurs only inside a field whose own value is a construct only the context
 // can type -- at a position that DECLARES the instantiation. infer is a bottom-up fold, so today the
 // construct's row decides before its expected type is known: the phantom and the nested construct are
-// accepted with a counted obligation, and `b: 3` at a declared Two<Bool> is accepted where it should
-// refuse at the value. All three claims assert the CHECKING-MODE answer, so all three are red today
-// and pass unchanged when checking mode carries the declared type into the construct's row
-// (v2.std.node fold_node_topdown; plan docs/plans/infer-checking-mode-plan.md).
+// accepted with a counted obligation. Both claims here assert the CHECKING-MODE answer, so both are
+// red today and pass unchanged when checking mode carries the declared type into the construct's row
+// (v2.std.node fold_node_topdown; plan docs/plans/infer-checking-mode-plan.md). The discriminating
+// refusal (`b: 3` at a declared Two<Bool> refused at the value) is deliberately NOT here: while red it
+// exceeds the floor's new-witness budget, so checking mode enrolls it green; the plan carries its
+// specimen and required verdict.
 //
 // THE RED IS ISOLATED FROM THE STRING-LITERAL GAP: no field value here is a String literal. The
 // map-literal case (a String key) is not claimed; it stays counted until a String literal is typed

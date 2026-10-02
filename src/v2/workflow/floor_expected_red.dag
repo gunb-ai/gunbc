@@ -1159,19 +1159,21 @@ fn floor_expected_red_chunk_emitted_add_algebra_ref_ungrounded() -> List<String>
   Cons { head: "v2.test.manual.ingest_bridge.ingest_identity_coercion_accepts_source_present_in_authored_roster", tail: Empty {} }
 }
 
-// THREE IDENTITIES ENROLLED 2026-10-01, AUTHORED red: the controls for top-down CHECKING MODE in
+// TWO IDENTITIES ENROLLED 2026-10-01, AUTHORED red: the controls for top-down CHECKING MODE in
 // v2.compiler.infer. Each hands infer a generic record construct whose type its field values cannot
 // fix -- a phantom parameter (`Ph<T> { n: Int }`), or one that occurs only inside a field whose own
 // value is a construct only the context can type (`Two<T> { a: Ph<T>, b: T }`) -- at a position that
 // DECLARES the instantiation (`data p: Ph<Bool> = ...`). infer is a bottom-up fold, so the construct's
-// row decides before its expected type is known, and all three answer the wrong way today: the
-// phantom and the nested construct are accepted with a counted obligation where they should be
-// decided, and `b: 3` at a declared Two<Bool> is accepted where it should refuse at the value.
+// row decides before its expected type is known, and both answer the wrong way today: the phantom
+// and the nested construct are accepted with a counted obligation where they should be decided.
+// The discriminating refusal (`b: 3` at a declared Two<Bool> is accepted where it should refuse at
+// the value) is NOT enrolled here: while red it runs the whole member and exceeds the floor's
+// new-witness budget. Checking mode enrolls it green, per docs/plans/infer-checking-mode-plan.md.
 //
 // TRIGGER, the capability and not an artifact: checking mode carries a declared position's expected
 // type INTO the construct's row before that row decides -- infer's gather run as
 // v2.std.node fold_node_topdown, whose child_context hands each child the type its parent expects --
-// so the construct forms R<instances> itself. Sufficient for all three to pass unchanged. Owner:
+// so the construct forms R<instances> itself. Sufficient for both to pass unchanged and for the refusal to be enrolled green. Owner:
 // smart-newt-725, sequenced after eager-newt-412's site-keyed facts store (branch
 // eager-newt-412/facts-site-key), which makes a child's site addressable from its parent and keeps
 // one fact per site; checking mode must deliver the expected type before a row decides, never
