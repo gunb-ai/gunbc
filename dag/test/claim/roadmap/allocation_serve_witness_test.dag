@@ -3,11 +3,11 @@ module test.claim.allocation_serve_witness
 import std.types { Bool }
 import extdeps.ietf.http_semantics { GET, POST }
 import extdeps.http.server { ServeResponseHeaderNoStore, serve_select_route, MethodNotAllowed }
-import gunbc.roadmap_serve { allocation_page_response, AllocationPageHandler, AllocationClientHandler }
+import gunbc.roadmap_serve { allocation_page_response_over, AllocationPageHandler, AllocationClientHandler }
 import test.claim.roadmap_serve_witness { fixture_request, selects, live_table_or_empty }
 
 test fn allocation_personalized_response_is_not_cached() -> Bool {
-  let response = allocation_page_response(request: fixture_request(method: GET, path: "/allocations"))
+  let response = allocation_page_response_over(request: fixture_request(method: GET, path: "/allocations"), roadmap_stylesheet: "")
   response.status == 200 && any(response.headers, h => match h { ServeResponseHeaderNoStore => true _ => false })
 }
 
