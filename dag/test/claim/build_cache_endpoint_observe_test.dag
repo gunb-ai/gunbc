@@ -2,7 +2,13 @@ module test.claim.build_cache_endpoint_observe
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.build_cache_instance { ProcessIdentity }
-import extdeps.systemd.unit_file { systemd_unit_file_lines }
+import extdeps.systemd.unit_file { systemd_unit_file_lines, SliceUnitFile, NotInstallable }
+import v2.std.algebra { filter }
+import gunbc.host_effect_realize {
+  compile_pool_slice_install_body,
+  compile_pool_stage_directory_line,
+  compile_pool_stage_trap_line,
+}
 import std.materialization_ladder { string_list_contains }
 
 // THIS MODULE IMPORTS ProcessIdentity EXPLICITLY BECAUSE THE BARE NAME IS AMBIGUOUS CORPUS-WIDE,
@@ -675,4 +681,50 @@ test fn witness_holder_argv_cannot_regress_to_the_bracket_form() -> Bool {
     && !string_contains(s: pattern, pattern: "]")
     && !string_list_contains(xs: argv, wanted: "sh")
     && !string_list_contains(xs: argv, wanted: "-c")
+}
+
+// THE COMPILE-POOL SLICE INSTALL CARRIES NO SHELL PROGRAM. The managed cgroup slice reaches its
+// host through a transport; this claim projects that transport's surface as text and asserts it
+// contains no shell programming word: no `set -euo pipefail` preamble, no `mktemp` staging, no
+// `trap` cleanup, no command substitution `$(`, no `rm -rf`, no `printf`, no `export`. The
+// property is identity-stable across the shell-to-dag migration
+// (docs/plans/shell-to-dag-residual-census-and-arc-completion.md 4): on the retained-shell side
+// the surface WAS the script body `compile_pool_slice_install_body` assembled from
+// `compile_pool_stage_directory_line` and `compile_pool_stage_trap_line` -- the two authored lines
+// that body's own comment names as the only shell left -- and it was exactly the forbidden words,
+// so the claim fails and is enrolled expected-red in v2.workflow.floor_expected_red while the
+// script is the transport (receipt in that commit: FAIL here, this module's pre-existing claims
+// PASS). The migration lands the install as a typed staging fold: unit bytes cross as stdin data
+// to dd, a sudo install -m moves them into /etc/systemd/system, sudo systemctl daemon-reload and
+// start follow, and the staged sibling is discarded -- an argv list per op, no script anywhere.
+// This module is the witness home because the compile-pool slice is the write half of the same
+// build-cache domain whose observation half these fixtures already decode. Only the SURFACE
+// PROJECTION changes with the transport; the property and the forbidden-word list do not.
+data compile_pool_install_forbidden_shell_words: List<String> = [
+  "set -euo pipefail", "mktemp", "trap ", "$(", "rm -rf", "printf", "export ",
+]
+
+fn compile_pool_slice_install_shell_text() -> String {
+  join(
+    concat(
+      [compile_pool_stage_directory_line(), compile_pool_stage_trap_line()],
+      [
+        compile_pool_slice_install_body(
+          slice_unit: "gunbc-compile-pool.slice" as NonEmptyStr,
+          slice_unit_file: SliceUnitFile { unit: [], slice: [], install: NotInstallable },
+        ),
+      ],
+    ),
+    "\n",
+  )
+}
+
+test fn compile_pool_slice_install_surface_carries_no_shell_control_word() -> Bool {
+  let surface = compile_pool_slice_install_shell_text()
+  count(
+    filter(
+      xs: compile_pool_install_forbidden_shell_words,
+      predicate: fn(word) { string_contains(s: surface, pattern: word) },
+    ),
+  ) == 0
 }
