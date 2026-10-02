@@ -3,7 +3,7 @@
 
 pub use crate::extdeps_languages_rust_representation::RustRepresentation;
 use crate::extdeps_languages_rust_representation::RustRepresentation::{
-    RustBool, RustF64, RustI64, RustSerdeJsonValue, RustStdString, RustUnit, RustVecU8,
+    RustBool, RustI64, RustSerdeJsonValue, RustStdString, RustUnit, RustVecU8,
 };
 pub use crate::std_decl_ref::decl_ref;
 pub use crate::std_decl_ref::DeclarationRef;
@@ -37,7 +37,7 @@ pub fn rust_source_binding(
 pub fn rust_source_type_binding_rows() -> Rc<Vec<Rc<SourceTypeTargetBinding<RustRepresentation>>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<SourceTypeTargetBinding<RustRepresentation>>>> = {
-            Rc::new(vec![rust_source_binding("v2.std.node".to_string(), "Symbol".to_string(), RustRepresentation::RustStdString), rust_source_binding("v2.std.node".to_string(), "String".to_string(), RustRepresentation::RustStdString), rust_source_binding("std.types".to_string(), "Secret".to_string(), RustRepresentation::RustStdString), rust_source_binding("std.integer".to_string(), "Int".to_string(), RustRepresentation::RustI64), rust_source_binding("std.float".to_string(), "Float".to_string(), RustRepresentation::RustF64), rust_source_binding("std.types".to_string(), "Bool".to_string(), RustRepresentation::RustBool), rust_source_binding("std.types".to_string(), "Unit".to_string(), RustRepresentation::RustUnit), rust_source_binding("v2.std.cardinality".to_string(), "Unit".to_string(), RustRepresentation::RustUnit), rust_source_binding("std.types".to_string(), "Bytes".to_string(), RustRepresentation::RustVecU8), rust_source_binding("std.types".to_string(), "Json".to_string(), RustRepresentation::RustSerdeJsonValue)])
+            Rc::new(vec![rust_source_binding("v2.std.node".to_string(), "Symbol".to_string(), RustRepresentation::RustStdString), rust_source_binding("v2.std.node".to_string(), "String".to_string(), RustRepresentation::RustStdString), rust_source_binding("std.types".to_string(), "Secret".to_string(), RustRepresentation::RustStdString), rust_source_binding("std.integer".to_string(), "Int".to_string(), RustRepresentation::RustI64), rust_source_binding("std.types".to_string(), "Bool".to_string(), RustRepresentation::RustBool), rust_source_binding("std.types".to_string(), "Unit".to_string(), RustRepresentation::RustUnit), rust_source_binding("v2.std.cardinality".to_string(), "Unit".to_string(), RustRepresentation::RustUnit), rust_source_binding("std.types".to_string(), "Bytes".to_string(), RustRepresentation::RustVecU8), rust_source_binding("std.types".to_string(), "Json".to_string(), RustRepresentation::RustSerdeJsonValue)])
         };
     }
     CACHED.with(|c: &Rc<Vec<Rc<SourceTypeTargetBinding<RustRepresentation>>>>| c.clone())
@@ -72,9 +72,8 @@ pub fn checkpoint_row_migration_rows() -> Rc<Vec<Rc<CheckpointRowMigration>>> {
 }),
 }), Rc::new(CheckpointRowMigration {
     dag_name: "Float".to_string(),
-    disposition: Rc::new(CheckpointRowDisposition::StillBareNameDebt {
-    reason: "std.float Float has an exact row (RustF64). v2.std.float Float (= Binary64) is answered f64 by the bare-name bypass with no ruling that this is its modeled realization; the kernel float_type mint rides the same row.".to_string(),
-    restoration_trigger: "The same ruling as Int, for v2.std.float Float; then ProvenUniqueKernelBinding on the f64 primitive token.".to_string(),
+    disposition: Rc::new(CheckpointRowDisposition::ProvenUniqueKernelBinding {
+    proof: "No .dag declaration of the spelling Float remains: the Float de-fork (operator ruling relayed 2026-09-28) deleted std.float (Float = Float64 = Real64) and v2.std.float (Float = Binary64) together, and moved the IEEE 754-2019 binary64 facts to extdeps.standards.ieee_754_2019. What reaches this row is the kernel float_type mint and a bare Float in a module importing std.types Float, which is the same kernel name. What kernel Float MEANS is std.kernel_type_denotation (binary64), target-independent; this row states only how Rust spells it. That realization is checked against the denotation by extdeps.languages.rust.primitives rust_float_binding_verdict, and `f64` is a primitive token no use-line can shadow.".to_string(),
 }),
 }), Rc::new(CheckpointRowMigration {
     dag_name: "Bool".to_string(),

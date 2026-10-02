@@ -83,6 +83,8 @@ type DeclaredTypePosition
   = PositionDirectCallArgument
   | PositionDeclaredReturn
   | PositionRecordField { record: Node }
+  | PositionLetAnnotation { bound: Node }
+  | PositionBinderDefault { default: Node }
 
 // type_variables are the declaring Arrow's type parameters (v2.std.type_binder type_param_names):
 // the only atoms in `declared` that name no type, and so the only thing that keeps an
@@ -92,6 +94,7 @@ type DeclaredTypeObligation {
   parameter_identity: Symbol
   declared: Node
   produced: Node
+  produced_declared_carrier: Optional<Node>
   application: Node
   type_variables: List<Symbol>
 }
@@ -112,10 +115,11 @@ type InhabitanceVerdict
   | InhabitanceRefused { find_witness_reason: Symbol }
   | InhabitanceUndecidable { reason: InhabitanceUndecidableReason }
 
-// Three producers, one relation: v2.compiler.infer builds PositionDirectCallArgument per argument of
+// Five producers, one relation: v2.compiler.infer builds PositionDirectCallArgument per argument of
 // an application, PositionDeclaredReturn per Arrow body against its declared return, and
 // PositionRecordField per field value of a record construct against the field the record declares,
-// and all three hand the obligation to declared_type_inhabitance. A record field's position carries
+// and PositionLetAnnotation per annotated let's bound value against its annotation, and all four
+// hand the obligation to declared_type_inhabitance. A record field's position carries
 // the construct's resolved constructor reference, so its refusal names the record as well as the
 // field (the obligation's parameter_identity) and the two types.
 fn position_direct_call_argument() -> DeclaredTypePosition {
@@ -130,11 +134,32 @@ fn position_record_field(record: Node) -> DeclaredTypePosition {
   PositionRecordField { record: record }
 }
 
+// An annotated let (`let x: T = e`) is a declared position like the others, not a cast. Its
+// obligation is located at the authored annotation (the declared type the author wrote, as a
+// declared return is located at the body it judges), and the position names the bound value e
+// whose type did not inhabit it.
+fn position_let_annotation(bound: Node) -> DeclaredTypePosition {
+  PositionLetAnnotation { bound: bound }
+}
+
+// A binder's default (XL-2 PR2c-ii) is a declared position like the others: its value is judged at the
+// binder's declared type, the type an omitted argument or field is declared to have. The obligation is
+// located at the default, and the position names it.
+fn position_binder_default(default: Node) -> DeclaredTypePosition {
+  PositionBinderDefault { default: default }
+}
+
+fn inhabitance_no_candidate_binder_default_reason() -> Symbol {
+  ^infer_reason_default_does_not_inhabit_binder_type
+}
+
 fn inhabitance_position_symbol(position: DeclaredTypePosition) -> Symbol {
   match position {
     PositionDirectCallArgument => ^position_direct_call_argument
     PositionDeclaredReturn => ^position_declared_return
     PositionRecordField { record: _ } => ^position_record_field
+    PositionLetAnnotation { bound: _ } => ^position_let_annotation
+    PositionBinderDefault { default: _ } => ^position_binder_default
   }
 }
 
@@ -293,7 +318,48 @@ fn declared_type_inhabitance_structural(obligation: DeclaredTypeObligation) -> I
             }
           }
         Rejected { diagnostics: r } =>
-          InhabitanceRefused { find_witness_reason: r.head.reason }
+          declared_type_inhabitance_declared_carrier(
+            obligation: obligation,
+            exact_refusal: InhabitanceRefused { find_witness_reason: r.head.reason }
+          )
+      }
+  }
+}
+
+// A REFINED VALUE INHABITS ITS DECLARED CARRIER (subsumption). `type Pos = Int where positive`: every
+// Pos is an Int, so a produced Pos inhabits a declared Int. Reached only after the exact comparison
+// refused, and only for the carrier the refinement's declaration states -- one step, never walked:
+// a produced Pos2 (`type Pos2 = Pos where ..`) inhabits Pos and not Int, and a sibling refinement of
+// the same carrier (Neg at Pos) refuses. The carrier is SUPPLIED by the producer of the obligation
+// (v2.compiler.infer refinement_declared_carrier over ResolvedTree.resolved_declarations), because
+// reading a declaration is resolution's fact, not this relation's; Absent -- not a refinement, or a
+// lookup miss -- leaves the exact refusal standing, never admits. No predicate is evaluated: widening
+// forgets the predicate, it does not check one. The optional-at-required refusal is decided before
+// this half (declared_type_inhabitance), so a refinement of an optional cannot widen past it.
+fn declared_type_inhabitance_declared_carrier(
+  obligation: DeclaredTypeObligation,
+  exact_refusal: InhabitanceVerdict
+) -> InhabitanceVerdict {
+  match obligation.produced_declared_carrier {
+    Absent => exact_refusal
+    Present { value: carrier } =>
+      match find_witness(
+        source_facts: carrier,
+        candidates: inhabitance_declared_singleton(declared: obligation.declared),
+        predicate: PreservationPredicate {
+          algebra: carrier,
+          preservation_rule: ^preservation_rule_exact_structural_equality_zip_fold
+        },
+        multiplicity_policy: UniqueOnly
+      ) {
+        Accepted { value: fw, diagnostics: _ } =>
+          Inhabits {
+            homomorphism: HomomorphismWitness {
+              rule: ^homomorphism_rule_refinement_declared_carrier,
+              evidence: fw.witness.evidence
+            }
+          }
+        Rejected { diagnostics: _ } => exact_refusal
       }
   }
 }
@@ -310,6 +376,10 @@ fn inhabitance_no_candidate_record_field_reason() -> Symbol {
   ^record_field_value_does_not_inhabit
 }
 
+fn inhabitance_no_candidate_let_annotation_reason() -> Symbol {
+  ^infer_reason_bound_value_does_not_inhabit_annotation
+}
+
 // WHAT A POSITION ADDS TO ITS REFUSAL BEYOND THE SITE, THE FORMAL AND THE TWO TYPES. A record field
 // names the record it is a field of; an argument and a declared return are already named by the
 // site they are located at.
@@ -318,6 +388,8 @@ fn inhabitance_position_context_edges(position: DeclaredTypePosition) -> List<Ed
     PositionDirectCallArgument => []
     PositionDeclaredReturn => []
     PositionRecordField { record: record } => [Edge { label: Named { name: ^inhabitance_record }, target: record }]
+    PositionLetAnnotation { bound: bound } => [Edge { label: Named { name: ^inhabitance_bound_value }, target: bound }]
+    PositionBinderDefault { default: default } => [Edge { label: Named { name: ^inhabitance_default_value }, target: default }]
   }
 }
 
@@ -326,6 +398,8 @@ fn inhabitance_no_candidate_reason(position: DeclaredTypePosition) -> Symbol {
     PositionDirectCallArgument => inhabitance_no_candidate_application_reason()
     PositionDeclaredReturn => inhabitance_no_candidate_return_reason()
     PositionRecordField { record: _ } => inhabitance_no_candidate_record_field_reason()
+    PositionLetAnnotation { bound: _ } => inhabitance_no_candidate_let_annotation_reason()
+    PositionBinderDefault { default: _ } => inhabitance_no_candidate_binder_default_reason()
   }
 }
 

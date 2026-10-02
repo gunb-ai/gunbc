@@ -3,7 +3,6 @@ module v2.compiler.reference_conservation
 import v2.compiler.parse { ParseArtifact, PreparedGrammar }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.program_assembly {
-  program_assembly_phase_normalize,
   program_assembly_phase_parse_measured_seeded,
   program_assembly_phase_tokenize
 }
@@ -32,8 +31,10 @@ import v2.std.diagnostic {
   Outcome,
   Rejected,
   Textual,
-  WholeFile
+  WholeFile,
+  bind_outcome
 }
+import v2.compiler.normalize { normalize }
 import v2.std.language_model { LanguageModel }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Named, Node, Positional, Symbol, TypeNode, symbol_lexeme }
@@ -49,6 +50,7 @@ import std.occurrence_identity {
   OccurrenceCategoryModuleScopeNotExposed,
   OccurrenceId,
   OccurrenceMinted,
+  OccurrencePending,
   OccurrenceProjected,
   OccurrenceSynthetic,
   ReferenceRole,
@@ -240,10 +242,16 @@ fn conserved_identity_of(node: Node) -> Optional<Symbol> {
   }
 }
 
-fn minted_occurrence_of(node: Node) -> Optional<OccurrenceId> {
+// THE AUTHORED OCCURRENCE A NODE ANSWERS FOR. A lowering keeps its source's minted id on the image
+// root and projects the other members with that source as their cause, so a member answers for the
+// same authored occurrence its cause names -- which is exactly what it answered for when every
+// member carried the source's minted id, so conservation's population is unchanged by the cut. A
+// pending member (normalization has not yet allocated it) answers for its cause too.
+fn authored_occurrence_of(node: Node) -> Optional<OccurrenceId> {
   match node.occurrence_id {
     OccurrenceMinted { id: id } => Present { value: id }
-    OccurrenceProjected { id: _, caused_by: _ } => Absent
+    OccurrenceProjected { id: _, caused_by: caused_by } => Present { value: caused_by.occurrence }
+    OccurrencePending { caused_by: caused_by } => Present { value: caused_by }
     OccurrenceSynthetic => Absent
   }
 }
@@ -440,7 +448,7 @@ fn population_walk_node(
   let observed = match conserved_identity_of(node: node) {
     Absent => acc
     Present { value: identity } =>
-      match minted_occurrence_of(node: node) {
+      match authored_occurrence_of(node: node) {
         Absent => acc
         Present { value: id } =>
           match dag_string_literal_value_symbol_optional(node: node) {
@@ -504,7 +512,7 @@ fn occurrence_identity_index(acc: Map<OccurrenceId, Symbol>, node: Node) -> Map<
   let here = match conserved_identity_of(node: node) {
     Absent => acc
     Present { value: identity } =>
-      match minted_occurrence_of(node: node) {
+      match authored_occurrence_of(node: node) {
         Absent => acc
         Present { value: id } => map_insert(m: acc, key: id, value: identity)
       }
@@ -531,7 +539,7 @@ type RefusalCover {
 }
 
 fn refusal_cover_anchor(acc: Map<OccurrenceId, Bool>, node: Node) -> Map<OccurrenceId, Bool> {
-  let here = match minted_occurrence_of(node: node) {
+  let here = match authored_occurrence_of(node: node) {
     Absent => acc
     Present { value: id } => map_insert(m: acc, key: id, value: true)
   }
@@ -721,7 +729,7 @@ fn rebuilt_spelling_pool(acc: Map<Symbol, Int>, node: Node) -> Map<Symbol, Int> 
   let here = match node_atom_identity_of(node: node) {
     Absent => acc
     Present { value: identity } =>
-      match minted_occurrence_of(node: node) {
+      match authored_occurrence_of(node: node) {
         Present { value: _ } => acc
         Absent => pool_add(pool: acc, sym: identity)
       }
@@ -1107,7 +1115,7 @@ fn reference_conservation_subject_of_read(
   ReferenceConservationSubject {
     path: read.artifact.file_path,
     parsed: parsed,
-    normalized: program_assembly_phase_normalize(parsed: parsed)
+    normalized: bind_outcome(o: parsed, f: fn(artifact) { normalize(parse_tree: artifact.tree) })
   }
 }
 

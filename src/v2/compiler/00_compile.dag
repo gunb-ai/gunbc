@@ -46,8 +46,8 @@ import v2.compiler.name_resolve {
   ResolutionSubject,
   ResolutionContext,
   resolution_context,
-  resolve_walk_with_admission_context_policy,
-  resolve_with_admission_context_policy,
+  resolve_walk_in_context,
+  resolve_in_context,
   resolve_with_admission
 }
 import std.occurrence_identity { OccurrenceIdAllocator, occurrence_id_allocator_initial }
@@ -86,12 +86,13 @@ import std.judgment_contract {
   persisted_output
 }
 import std.cache_identity {
-  native_module_infer_artifact_kind,
+  native_module_occurrence_census_artifact_kind, native_module_infer_artifact_kind,
   native_module_resolve_artifact_kind,
   native_test_identity_artifact_kind
 }
 import std.materialization_ladder { DemandNature }
 import v2.compiler.program_assembly {
+  program_assembly_ingest_scope_outcome,
   program_assembly_read_to_normalized_root_seeded,
   assemble_program_from_ingest,
   program_assembly_fold_ingest,
@@ -160,7 +161,7 @@ import v2.lens.fact_density { fact_density_hollow_alias_gate }
 import v2.lens.unit_modeling { unit_modeling_gate }
 import v2.lens.lifecycle_carrier { lifecycle_carrier_gate }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
-import std.content_hash { content_hash_of_value, serialize_content_hash }
+import std.content_hash { Fnv1a64Structural, content_hash_of_value, serialize_content_hash }
 import std.types { NonEmptyStr }
 import std.algebra { Cons, Empty, FreeMonoid, trim, list_append, list_snoc_item }
 import v2.std.algebra { any, contains, fold_list, is_empty, length, list_find_first, list_reverse }
@@ -191,7 +192,8 @@ import v2.std.diagnostic {
   outcome_rejected,
   outcome_with_diagnostics
 }
-import v2.std.node { Arrow, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node, symbol_intern_lexeme, symbol_lexeme }
+import v2.std.node { Arrow, Atom, ComputationNode, Edge, Named, Node, NodeFold, NodeKind, Positional, Symbol, TypeNode, fold_node, symbol_intern_lexeme, symbol_lexeme }
+import v2.compiler.inferred_tree { AuthoredOccurrenceCollision, authored_occurrence_collisions }
 import v2.std.node_query { find_arrow_body_child, find_named_child }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_init, qualified_name_snoc }
@@ -1293,10 +1295,10 @@ fn compile_ingest_staging(source: Medium<String>, target: TargetModel) -> Outcom
 // test either, and running them here would conflate the modeling door with the execution route
 // and multiply their whole-tree cost by the test population.
 
+// The source-root index and the active roots live on `resolution` (ResolutionContext binds them once
+// per ingest as admission inputs); a second copy here would be two authorities for one fact.
 type NativeTestContext {
   resolution: Outcome<ResolutionContext>
-  index: SourceRootIndex
-  active_roots: FreeMonoid<SourceRootRef>
   file_refusals: FreeMonoid<NativeTestFileRefusal>
 }
 
@@ -1421,14 +1423,16 @@ fn native_test_context_fold_step(
   read: DagSourceReadWitness,
   lm: LanguageModel,
   prepared: PreparedGrammar,
-  residue: Diagnostics
+  residue: Diagnostics,
+  scope: Fnv1a64Structural
 ) -> NativeTestContextFoldState {
   let result = program_assembly_read_to_normalized_root_seeded(
     read: read,
     lm: lm,
     prepared: prepared,
     residue: residue,
-    seed: state.alloc
+    seed: state.alloc,
+    scope: scope
   )
   native_test_context_absorb(
     state: state,
@@ -1482,9 +1486,13 @@ fn native_test_context_finish(
   ingest: SourceRootIngest
 ) -> NativeTestContext {
   NativeTestContext {
-    resolution: resolution_context(lm: front.lm, roots: state.roots),
-    index: state.index,
-    active_roots: source_root_set_from_ingest(ingest: ingest),
+    resolution: resolution_context(
+      lm: front.lm,
+      roots: state.roots,
+      index: state.index,
+      active_roots: source_root_set_from_ingest(ingest: ingest),
+      policy: v2.std.resolution_policy.default_name_resolution_policy()
+    ),
     file_refusals: state.file_refusals
   }
 }
@@ -1496,6 +1504,7 @@ fn native_test_context_from_ingest(ingest: SourceRootIngest) -> Outcome<NativeTe
   bind_outcome(
     o: native_test_front_end_prepare(),
     f: fn(front) {
+      bind_outcome(o: program_assembly_ingest_scope_outcome(ingest: ingest), f: fn(scope) {
       outcome_accepted(value: native_test_context_finish(
         state: fold_list(
           xs: ingest,
@@ -1506,31 +1515,54 @@ fn native_test_context_from_ingest(ingest: SourceRootIngest) -> Outcome<NativeTe
               read: read,
               lm: front.lm,
               prepared: front.prepared,
-              residue: front.residue
+              residue: front.residue,
+              scope: scope
             )
           }
         ),
         front: front,
         ingest: ingest
       ))
+      })
     }
   )
+}
+
+// EVERY PER-MODULE STEP OVER A NativeTestContext RETURNS THE CONTEXT IT ENDED WITH. The context's
+// resolution carries the module namespace provider (v2.compiler.name_resolve ResolutionContext
+// `namespaces`), which produces a module's namespace at most once per ingest -- but only for a
+// caller that binds the context it gets back. A loop over modules threads it; a caller that resolves
+// once projects the value and drops it.
+fn native_test_context_with_resolution(context: NativeTestContext, resolution: Outcome<ResolutionContext>) -> NativeTestContext {
+  NativeTestContext {
+    resolution: resolution,
+    file_refusals: context.file_refusals
+  }
+}
+
+fn native_test_module_admission(module: QualifiedName) -> Admission {
+  Admission { subject: ResolutionSubject { name: module }, imports: Empty }
+}
+
+type NativeTestResolved {
+  resolved: Outcome<ResolvedTree>
+  context: NativeTestContext
 }
 
 fn native_test_resolve_module(
   context: NativeTestContext,
   module: QualifiedName
-) -> Outcome<ResolvedTree> {
-  resolve_with_admission_context_policy(
-    context: context.resolution,
-    admission: Admission {
-      subject: ResolutionSubject { name: module },
-      imports: Empty
-    },
-    index: context.index,
-    active_roots: context.active_roots,
-    policy: v2.std.resolution_policy.default_name_resolution_policy()
-  )
+) -> NativeTestResolved {
+  let step = resolve_in_context(context: context.resolution, admission: native_test_module_admission(module: module))
+  NativeTestResolved {
+    resolved: step.resolved,
+    context: native_test_context_with_resolution(context: context, resolution: step.context)
+  }
+}
+
+type NativeTestWalk {
+  walk: ResolveNodeWalk
+  context: NativeTestContext
 }
 
 // THE SAME RESOLUTION AS native_test_resolve_module, OBSERVED WHOLE: every independent failure
@@ -1538,17 +1570,12 @@ fn native_test_resolve_module(
 fn native_test_resolve_module_walk(
   context: NativeTestContext,
   module: QualifiedName
-) -> ResolveNodeWalk {
-  resolve_walk_with_admission_context_policy(
-    context: context.resolution,
-    admission: Admission {
-      subject: ResolutionSubject { name: module },
-      imports: Empty
-    },
-    index: context.index,
-    active_roots: context.active_roots,
-    policy: v2.std.resolution_policy.default_name_resolution_policy()
-  )
+) -> NativeTestWalk {
+  let step = resolve_walk_in_context(context: context.resolution, admission: native_test_module_admission(module: module))
+  NativeTestWalk {
+    walk: step.walk,
+    context: native_test_context_with_resolution(context: context, resolution: step.context)
+  }
 }
 
 fn native_test_infer_resolved(
@@ -1566,14 +1593,23 @@ fn native_test_infer_resolved(
   )
 }
 
+type NativeTestPrepared {
+  prepared: Outcome<NativeTestPreparedModule>
+  context: NativeTestContext
+}
+
 fn native_test_prepare_module(
   context: NativeTestContext,
   module: QualifiedName
-) -> Outcome<NativeTestPreparedModule> {
-  bind_outcome(
-    o: native_test_resolve_module(context: context, module: module),
-    f: fn(resolved) { native_test_infer_resolved(module: module, resolved: resolved) }
-  )
+) -> NativeTestPrepared {
+  let step = native_test_resolve_module(context: context, module: module)
+  NativeTestPrepared {
+    prepared: bind_outcome(
+      o: step.resolved,
+      f: fn(resolved) { native_test_infer_resolved(module: module, resolved: resolved) }
+    ),
+    context: step.context
+  }
 }
 
 // THE DECLARATION SEARCH IS EXACT: a test identity names a top-level declaration of one prepared
@@ -3178,9 +3214,13 @@ type NativeModuleResolveVerdict
     }
   | NativeModuleResolveAccepted { resolved: ResolvedTree }
 
-// The walk ran under context.resolution's index (resolve_walk_with_admission_context_policy
-// builds the subject namespace over it), so that index is minted beside the root. An
+// The walk ran under context.resolution's index, so that index is minted beside the root. An
 // accepted walk implies an accepted context; the Rejected arm states the refusal it would be.
+type NativeModuleResolveStep {
+  verdict: NativeModuleResolveVerdict
+  context: NativeTestContext
+}
+
 // A MODULE WHOSE IMPORT TARGET WAS REFUSED AT INGEST IS TOLD SO. When a file the context refused
 // declares a module this one imports, none of that module's declarations entered the index, so the
 // resolver finds each imported name unbound. That is true and located, but it names the SYMPTOM:
@@ -3235,73 +3275,87 @@ fn native_module_resolve_verdict(
   refusal_index: Map<Symbol, NativeTestFileRefusal>,
   module: String,
   path: Symbol
-) -> NativeModuleResolveVerdict {
+) -> NativeModuleResolveStep {
   match native_lane_file_refusal_for_path(index: refusal_index, path: path) {
-    Present { value: fr } => NativeModuleResolveFileRefused { refusal: fr }
+    Present { value: fr } =>
+      NativeModuleResolveStep { verdict: NativeModuleResolveFileRefused { refusal: fr }, context: context }
     Absent =>
-      match native_test_resolve_module_walk(
+      let step = native_test_resolve_module_walk(
         context: context,
         module: qualified_name_from_dotted_string(dotted: module)
-      ) {
-        ResolveWalkRefused { first: f, rest: r, observation: o } =>
-          match native_import_target_file_refusal(context: context, module: qualified_name_from_dotted_string(dotted: module)) {
-            Present { value: target } =>
-              NativeModuleResolveImportTargetFileRefused { target: target, first: f, rest: r, observation: o }
-            Absent => NativeModuleResolveRefused { first: f, rest: r, observation: o }
-          }
-        ResolveWalkAccepted { value: resolved, diagnostics: _ } =>
-          match context.resolution {
-            Accepted { value: shared, diagnostics: _ } =>
-              NativeModuleResolveAccepted { resolved: resolved_tree_of(root: resolved, symbol_index: shared.symbol_index) }
-            Rejected { diagnostics: r } =>
-              NativeModuleResolveRefused {
-                first: r,
-                rest: [],
-                observation: ObservationIncomplete { reason: ^resolve_observation_context_refused }
-              }
-          }
+      )
+      NativeModuleResolveStep {
+        verdict: match step.walk {
+          ResolveWalkRefused { first: f, rest: r, observation: o } =>
+            match native_import_target_file_refusal(context: step.context, module: qualified_name_from_dotted_string(dotted: module)) {
+              Present { value: target } =>
+                NativeModuleResolveImportTargetFileRefused { target: target, first: f, rest: r, observation: o }
+              Absent => NativeModuleResolveRefused { first: f, rest: r, observation: o }
+            }
+          ResolveWalkAccepted { value: resolved, diagnostics: _ } =>
+            match step.context.resolution {
+              Accepted { value: shared, diagnostics: _ } =>
+                NativeModuleResolveAccepted { resolved: resolved_tree_of(root: resolved, symbol_index: shared.symbol_index) }
+              Rejected { diagnostics: r } =>
+                NativeModuleResolveRefused {
+                  first: r,
+                  rest: [],
+                  observation: ObservationIncomplete { reason: ^resolve_observation_context_refused }
+                }
+            }
+        },
+        context: step.context
       }
   }
+}
+
+type NativeLaneModuleResolutionStep {
+  resolution: NativeLaneModuleResolution
+  context: NativeTestContext
 }
 
 fn native_lane_module_resolution(
   context: NativeTestContext,
   refusal_index: Map<Symbol, NativeTestFileRefusal>,
   entry: NativeLaneUniverseModule
-) -> NativeLaneModuleResolution {
-  match native_module_resolve_verdict(
+) -> NativeLaneModuleResolutionStep {
+  let step = native_module_resolve_verdict(
     context: context,
     refusal_index: refusal_index,
     module: entry.module,
     path: entry.path
-  ) {
-    NativeModuleResolveFileRefused { refusal: fr } =>
-      NativeLaneModuleContextRowsDecided {
-        rows: native_lane_module_refusal_rows(
-          entry: entry,
-          verdict: native_test_refused_located(
-            stage: NativeTestStageContext,
-            reason: fr.fatal_reason,
-            at: Textual { file: fr.path, extent: WholeFile }
+  )
+  NativeLaneModuleResolutionStep {
+    resolution: match step.verdict {
+      NativeModuleResolveFileRefused { refusal: fr } =>
+        NativeLaneModuleContextRowsDecided {
+          rows: native_lane_module_refusal_rows(
+            entry: entry,
+            verdict: native_test_refused_located(
+              stage: NativeTestStageContext,
+              reason: fr.fatal_reason,
+              at: Textual { file: fr.path, extent: WholeFile }
+            )
           )
-        )
-      }
-    NativeModuleResolveImportTargetFileRefused { target: t, first: d, rest: _, observation: _ } =>
-      NativeLaneModuleResolveRowsDecided {
-        rows: native_lane_module_refusal_rows(
-          entry: entry,
-          verdict: NativeTestRefused { stage: NativeTestStagePrepare, diagnostics: native_import_target_refusal_diagnostics(target: t, resolver: d) }
-        )
-      }
-    NativeModuleResolveRefused { first: d, rest: _, observation: _ } =>
-      NativeLaneModuleResolveRowsDecided {
-        rows: native_lane_module_refusal_rows(
-          entry: entry,
-          verdict: NativeTestRefused { stage: NativeTestStagePrepare, diagnostics: d }
-        )
-      }
-    NativeModuleResolveAccepted { resolved: resolved } =>
-      NativeLaneModuleResolved { resolved: resolved }
+        }
+      NativeModuleResolveImportTargetFileRefused { target: t, first: d, rest: _, observation: _ } =>
+        NativeLaneModuleResolveRowsDecided {
+          rows: native_lane_module_refusal_rows(
+            entry: entry,
+            verdict: NativeTestRefused { stage: NativeTestStagePrepare, diagnostics: native_import_target_refusal_diagnostics(target: t, resolver: d) }
+          )
+        }
+      NativeModuleResolveRefused { first: d, rest: _, observation: _ } =>
+        NativeLaneModuleResolveRowsDecided {
+          rows: native_lane_module_refusal_rows(
+            entry: entry,
+            verdict: NativeTestRefused { stage: NativeTestStagePrepare, diagnostics: d }
+          )
+        }
+      NativeModuleResolveAccepted { resolved: resolved } =>
+        NativeLaneModuleResolved { resolved: resolved }
+    },
+    context: step.context
   }
 }
 
@@ -3323,6 +3377,82 @@ fn native_lane_module_inference(
     Accepted { value: prepared, diagnostics: _ } =>
       NativeLaneModulePrepared { prepared: prepared }
   }
+}
+
+// THE OCCURRENCE-KEY PREMISE, OBSERVED ON THE TREES INFER IS HANDED. Keying infer's facts on a node's
+// authored occurrence is sound only if no resolved module holds two different nodes under one authored
+// occurrence (v2.compiler.inferred_tree authored_occurrence_collisions). The native route resolves every
+// admitted module, so the census rides that route: one row per RESOLVED module. Its reader is the
+// lowering repair that must drive colliding_modules to zero before any occurrence key lands; the rule
+// it measures against is v2.std.node's same-graph lowering keeping its source text's occurrence.
+// OBSERVATION ONLY -- nothing here changes a module's standing, row or refusal. A module that did not
+// resolve has no row, and the summary counts it as UNOBSERVED against the universe size, never as
+// zero collisions.
+type NativeLaneOccurrenceCollision {
+  occurrence: Int
+  first_kind: NodeKind
+  second_kind: NodeKind
+}
+
+type NativeLaneOccurrenceCensusRow {
+  module: String
+  collisions: List<NativeLaneOccurrenceCollision>
+}
+
+type NativeLaneOccurrenceCensus {
+  universe: Int
+  observed: Int
+  colliding: List<NativeLaneOccurrenceCensusRow>
+}
+
+fn native_lane_occurrence_collision(c: AuthoredOccurrenceCollision) -> NativeLaneOccurrenceCollision {
+  NativeLaneOccurrenceCollision { occurrence: c.occurrence.value, first_kind: c.first.kind, second_kind: c.second.kind }
+}
+
+fn native_lane_occurrence_census_row(entry: NativeLaneUniverseModule, resolved: ResolvedTree) -> NativeLaneOccurrenceCensusRow {
+  NativeLaneOccurrenceCensusRow {
+    module: entry.module,
+    collisions: fold_list(
+      xs: authored_occurrence_collisions(root: resolved.root),
+      empty: Empty,
+      cons: fn(acc, c) { list_snoc_item(xs: acc, item: native_lane_occurrence_collision(c: c)) }
+    )
+  }
+}
+
+// THE READER. The host hands every row it minted and the universe size; the census keeps the
+// colliding rows by identity and counts the rest, so observed + unobserved = universe by construction.
+fn native_lane_occurrence_census(universe: Int, rows: List<NativeLaneOccurrenceCensusRow>) -> NativeLaneOccurrenceCensus {
+  NativeLaneOccurrenceCensus {
+    universe: universe,
+    observed: length(xs: rows),
+    colliding: fold_list(xs: rows, empty: Empty, cons: fn(acc, r) {
+      if is_empty(xs: r.collisions) { acc } else { list_snoc_item(xs: acc, item: r) }
+    })
+  }
+}
+
+fn native_lane_occurrence_kind_text(k: NodeKind) -> String {
+  match k {
+    TypeNode { connective: Atom { identity: s } } => concat("atom:", symbol_lexeme(sym: s))
+    TypeNode { connective: _ } => "type"
+    ComputationNode { behavior: _ } => "computation"
+  }
+}
+
+fn native_lane_occurrence_census_lines(c: NativeLaneOccurrenceCensus) -> List<String> {
+  let head = concat("[native-occurrence-census] universe=", concat(to_string(c.universe),
+    concat(" observed=", concat(to_string(c.observed),
+    concat(" unobserved=", concat(to_string(c.universe - c.observed),
+    concat(" colliding_modules=", to_string(length(xs: c.colliding)))))))))
+  fold_list(xs: c.colliding, empty: Cons { head: head, tail: Empty }, cons: fn(acc, r) {
+    fold_list(xs: r.collisions, empty: acc, cons: fn(acc2, x) {
+      list_snoc_item(xs: acc2, item: concat("[native-occurrence-collision] module=", concat(r.module,
+        concat(" occurrence=", concat(to_string(x.occurrence),
+        concat(" first=", concat(native_lane_occurrence_kind_text(k: x.first_kind),
+        concat(" second=", native_lane_occurrence_kind_text(k: x.second_kind)))))))))
+    })
+  })
 }
 
 // ONE IDENTITY, EVALUATED. The per-declaration grain the profile lane prices: this call and nothing
@@ -3407,23 +3537,32 @@ type NativeCensusModuleOutcome
     }
   | NativeCensusModuleResolved
 
+type NativeCensusModuleStep {
+  outcome: NativeCensusModuleOutcome
+  context: NativeTestContext
+}
+
 fn native_census_module_resolution(
   context: NativeTestContext,
   refusal_index: Map<Symbol, NativeTestFileRefusal>,
   entry: NativeCensusModule
-) -> NativeCensusModuleOutcome {
-  match native_module_resolve_verdict(
+) -> NativeCensusModuleStep {
+  let step = native_module_resolve_verdict(
     context: context,
     refusal_index: refusal_index,
     module: entry.module,
     path: entry.path
-  ) {
-    NativeModuleResolveFileRefused { refusal: _ } => NativeCensusModuleFileRefused
-    NativeModuleResolveImportTargetFileRefused { target: _, first: f, rest: r, observation: o } =>
-      NativeCensusModuleResolveRefused { first: f, rest: r, observation: o }
-    NativeModuleResolveRefused { first: f, rest: r, observation: o } =>
-      NativeCensusModuleResolveRefused { first: f, rest: r, observation: o }
-    NativeModuleResolveAccepted { resolved: _ } => NativeCensusModuleResolved
+  )
+  NativeCensusModuleStep {
+    outcome: match step.verdict {
+      NativeModuleResolveFileRefused { refusal: _ } => NativeCensusModuleFileRefused
+      NativeModuleResolveImportTargetFileRefused { target: _, first: f, rest: r, observation: o } =>
+        NativeCensusModuleResolveRefused { first: f, rest: r, observation: o }
+      NativeModuleResolveRefused { first: f, rest: r, observation: o } =>
+        NativeCensusModuleResolveRefused { first: f, rest: r, observation: o }
+      NativeModuleResolveAccepted { resolved: _ } => NativeCensusModuleResolved
+    },
+    context: step.context
   }
 }
 
@@ -3504,7 +3643,7 @@ fn native_lane_controls(context: NativeTestContext) -> NativeLaneControls {
   match native_test_prepare_module(
     context: context,
     module: qualified_name_from_dotted_string(dotted: native_route_live_control_module)
-  ) {
+  ).prepared {
     Rejected { diagnostics: d } =>
       {
         let refused = NativeTestRefused { stage: NativeTestStagePrepare, diagnostics: d }
@@ -3763,6 +3902,38 @@ fn native_demand_eval_contract(
   )
 }
 
+// THE OCCURRENCE CENSUS IS ITS OWN JUDGMENT, a pure reading of a module's resolved tree, observation
+// only: it decides no standing and refuses nothing, so its result carries no refusal arm. It is a
+// separate demand rather than a step inside infer so that its cost is its own exclusive row
+// (std.compiler_entry ExclusiveOccurrenceCensus) and never inflates prepare.
+fn native_module_occurrence_census_judgment_contract(
+  module_digest: Fnv1a64Structural,
+  compiler: DeclaredInput
+) -> JudgmentContract {
+  JudgmentContract {
+    demand_identity: DemandIdentity {
+      kind: native_module_occurrence_census_artifact_kind,
+      subject: module_digest,
+      declared_inputs: [compiler]
+    },
+    result: ResultContract {
+      carries_semantic_value: true,
+      ordered_diagnostics: false,
+      carries_effect_requests_receipts: false,
+      carries_refusal_arm: false,
+      required_persisted_outputs: []
+    },
+    demand_nature: PureComputation
+  }
+}
+
+fn native_demand_occurrence_census_contract(module: String, compiler: DeclaredInput) -> JudgmentContract {
+  native_module_occurrence_census_judgment_contract(
+    module_digest: native_demand_module_subject(module: module),
+    compiler: compiler
+  )
+}
+
 fn native_demand_resolve_identity(module: String, compiler: DeclaredInput) -> DemandIdentity {
   native_demand_resolve_contract(module: module, compiler: compiler).demand_identity
 }
@@ -3790,6 +3961,7 @@ fn native_demand_eval_identity(
 type NativeDemandValue
   = NativeResolveValue { resolution: NativeLaneModuleResolution }
   | NativeInferValue { preparation: NativeLaneModulePreparation }
+  | NativeOccurrenceCensusValue { row: NativeLaneOccurrenceCensusRow }
   | NativeEvalValue { row: NativeRouteMemberRow }
 
 // The binding from a keyed demand back to what it denotes. The engine keys, orders and admits; it
@@ -3799,6 +3971,7 @@ type NativeDemandValue
 type NativeDemandSubject
   = NativeResolveSubject { entry: NativeLaneUniverseModule }
   | NativeInferSubject { entry: NativeLaneUniverseModule }
+  | NativeOccurrenceCensusSubject { entry: NativeLaneUniverseModule }
   | NativeEvalSubject { module: String, declaration: String }
 
 type NativeDemandBinding {
@@ -3826,9 +3999,11 @@ fn native_demand_plan_module(
 ) -> NativeDemandPlan {
   let resolve_contract = native_demand_resolve_contract(module: entry.module, compiler: compiler)
   let infer_contract = native_demand_infer_contract(module: entry.module, compiler: compiler)
+  let census_contract = native_demand_occurrence_census_contract(module: entry.module, compiler: compiler)
   let resolve_id = resolve_contract.demand_identity
   let infer_id = infer_contract.demand_identity
-  let with_stages = NativeDemandPlan {
+  let census_id = census_contract.demand_identity
+  let with_resolve_infer = NativeDemandPlan {
     engine: demand_engine_relate(
       e: demand_engine_request(
         e: demand_engine_request(e: plan.engine, id: resolve_id, nature: resolve_contract.demand_nature),
@@ -3847,6 +4022,20 @@ fn native_demand_plan_module(
         item: NativeDemandBinding { identity: resolve_id, subject: NativeResolveSubject { entry: entry } }
       ),
       item: NativeDemandBinding { identity: infer_id, subject: NativeInferSubject { entry: entry } }
+    )
+  }
+  let with_stages = NativeDemandPlan {
+    engine: demand_engine_relate(
+      e: demand_engine_request(e: with_resolve_infer.engine, id: census_id, nature: census_contract.demand_nature),
+      relation: DependencyRelation {
+        prerequisite: resolve_id,
+        dependent: census_id,
+        kind: DataDependsOn
+      }
+    ),
+    bindings: list_snoc_item(
+      xs: with_resolve_infer.bindings,
+      item: NativeDemandBinding { identity: census_id, subject: NativeOccurrenceCensusSubject { entry: entry } }
     )
   }
   fold_list(
@@ -3957,6 +4146,7 @@ type NativeDemandTransition {
 type NativeDemandCostClass
   = NativeCostPrepare
   | NativeCostEval
+  | NativeCostOccurrenceCensus
   | NativeCostUnclassified
 
 fn native_demand_cost_class(identity: DemandIdentity) -> NativeDemandCostClass {
@@ -3966,6 +4156,8 @@ fn native_demand_cost_class(identity: DemandIdentity) -> NativeDemandCostClass {
     NativeCostPrepare
   } else if identity.kind == native_test_identity_artifact_kind {
     NativeCostEval
+  } else if identity.kind == native_module_occurrence_census_artifact_kind {
+    NativeCostOccurrenceCensus
   } else {
     NativeCostUnclassified
   }
@@ -4005,6 +4197,7 @@ fn native_demand_settled_label(state: DemandState<NativeDemandValue>) -> String 
             NativeLaneModuleRowsDecided { rows: _ } => "infer_refused"
           }
         NativeEvalValue { row: _ } => "eval_available"
+        NativeOccurrenceCensusValue { row: _ } => "occurrence_census_available"
       }
     DemandRefused => "refused"
     _ => "unsettled"
@@ -4068,6 +4261,10 @@ fn native_demand_prepared(
 // THE THREE PRODUCERS ARE CALLED HERE EXACTLY AS THE DISPLACED LOOP CALLED THEM. Same functions,
 // same arguments, same order. That is what makes "verdicts preserved" a structural claim rather
 // than an empirical hope.
+// A RESOLVE STEP'S RETURNED CONTEXT IS NOT CARRIED INTO THE NEXT DEMAND: on this route each module is
+// resolved exactly once, so its namespace (v2.compiler.name_resolve ResolutionContext namespaces) is
+// demanded once and nothing is lost. The run carries it when PR2 of
+// docs/plans/declaration-body-resolution-provider.md adds a module's cross-module declaration demands.
 fn native_demand_execute(
   run: NativeDemandRun,
   subject: NativeDemandSubject,
@@ -4083,7 +4280,7 @@ fn native_demand_execute(
             context: context,
             refusal_index: refusal_index,
             entry: entry
-          )
+          ).resolution
         }
       }
     NativeInferSubject { entry: entry } =>
@@ -4095,6 +4292,21 @@ fn native_demand_execute(
               DemandAvailable {
                 value: NativeInferValue {
                   preparation: native_lane_module_inference(entry: entry, resolved: resolved)
+                }
+              }
+            NativeLaneModuleContextRowsDecided { rows: _ } => DemandRefused
+            NativeLaneModuleResolveRowsDecided { rows: _ } => DemandRefused
+          }
+      }
+    NativeOccurrenceCensusSubject { entry: entry } =>
+      match native_demand_resolved_tree(engine: run.engine, module: entry.module, compiler: compiler) {
+        Absent => DemandRefused
+        Present { value: resolution } =>
+          match resolution {
+            NativeLaneModuleResolved { resolved: resolved } =>
+              DemandAvailable {
+                value: NativeOccurrenceCensusValue {
+                  row: native_lane_occurrence_census_row(entry: entry, resolved: resolved)
                 }
               }
             NativeLaneModuleContextRowsDecided { rows: _ } => DemandRefused
@@ -4287,6 +4499,7 @@ fn native_demand_stage_label(plan: NativeDemandPlan, identity: DemandIdentity) -
       match subject {
         NativeResolveSubject { entry: _ } => "resolve"
         NativeInferSubject { entry: _ } => "infer"
+        NativeOccurrenceCensusSubject { entry: _ } => "occurrence_census"
         NativeEvalSubject { module: _, declaration: _ } => "eval"
       }
   }
@@ -4314,6 +4527,7 @@ fn native_demand_collect_rows(
             NativeLaneModuleRowsDecided { rows: decided } => list_append_rows(left: rows, right: decided)
           }
         NativeEvalValue { row: row } => list_snoc_item(xs: rows, item: row)
+        NativeOccurrenceCensusValue { row: _ } => rows
       }
     _ => rows
   }
@@ -4397,6 +4611,7 @@ fn native_demand_tested_tree_input(tree: String) -> DeclaredInput {
 type NativeDemandObservationRollup {
   prepare_nanos: Int
   eval_nanos: Int
+  occurrence_census_nanos: Int
   prepare_samples: List<Int>
   eval_samples: List<Int>
   prepare_ok: Int
@@ -4410,6 +4625,7 @@ fn native_demand_rollup_empty() -> NativeDemandObservationRollup {
   NativeDemandObservationRollup {
     prepare_nanos: 0,
     eval_nanos: 0,
+    occurrence_census_nanos: 0,
     prepare_samples: [],
     eval_samples: [],
     prepare_ok: 0,
@@ -4456,6 +4672,7 @@ fn native_demand_infer_preparation_standing(
       }
     NativeResolveValue { resolution: _ } => PreparationNotApplicable
     NativeEvalValue { row: _ } => PreparationNotApplicable
+    NativeOccurrenceCensusValue { row: _ } => PreparationNotApplicable
   }
 }
 
@@ -4493,6 +4710,7 @@ fn native_demand_rollup_step(
       NativeDemandObservationRollup {
         prepare_nanos: acc.prepare_nanos + nanos,
         eval_nanos: acc.eval_nanos,
+        occurrence_census_nanos: acc.occurrence_census_nanos,
         prepare_samples: list_snoc_item(xs: acc.prepare_samples, item: nanos),
         eval_samples: acc.eval_samples,
         prepare_ok: acc.prepare_ok + ok_delta,
@@ -4505,8 +4723,22 @@ fn native_demand_rollup_step(
       NativeDemandObservationRollup {
         prepare_nanos: acc.prepare_nanos,
         eval_nanos: acc.eval_nanos + nanos,
+        occurrence_census_nanos: acc.occurrence_census_nanos,
         prepare_samples: acc.prepare_samples,
         eval_samples: list_snoc_item(xs: acc.eval_samples, item: nanos),
+        prepare_ok: acc.prepare_ok,
+        prepare_refused: acc.prepare_refused,
+        classified: acc.classified + 1,
+        unclassified: acc.unclassified,
+        invalid_elapsed: acc.invalid_elapsed + invalid_delta
+      }
+    NativeCostOccurrenceCensus =>
+      NativeDemandObservationRollup {
+        prepare_nanos: acc.prepare_nanos,
+        eval_nanos: acc.eval_nanos,
+        occurrence_census_nanos: acc.occurrence_census_nanos + nanos,
+        prepare_samples: acc.prepare_samples,
+        eval_samples: acc.eval_samples,
         prepare_ok: acc.prepare_ok,
         prepare_refused: acc.prepare_refused,
         classified: acc.classified + 1,
@@ -4517,6 +4749,7 @@ fn native_demand_rollup_step(
       NativeDemandObservationRollup {
         prepare_nanos: acc.prepare_nanos,
         eval_nanos: acc.eval_nanos,
+        occurrence_census_nanos: acc.occurrence_census_nanos,
         prepare_samples: acc.prepare_samples,
         eval_samples: acc.eval_samples,
         prepare_ok: acc.prepare_ok,
@@ -4576,6 +4809,41 @@ fn native_demand_observation_progressed(run: NativeDemandRun) -> Bool {
 
 fn native_demand_prepare_nanos(run: NativeDemandRun) -> Int {
   native_demand_observation_rollup(run: run).prepare_nanos
+}
+
+fn native_demand_occurrence_census_nanos(run: NativeDemandRun) -> Int {
+  native_demand_observation_rollup(run: run).occurrence_census_nanos
+}
+
+// THE CENSUS ROWS ARE READ FROM THE RUN'S OWN SETTLED CENSUS DEMANDS, one per transition whose
+// identity is a census judgment. A module whose resolve refused settles its census demand
+// DemandRefused and contributes no row, so it is counted UNOBSERVED by native_lane_occurrence_census,
+// never as zero collisions. Observation only: nothing here is read back by resolve, infer or admission.
+fn native_demand_occurrence_census_rows(run: NativeDemandRun) -> List<NativeLaneOccurrenceCensusRow> {
+  fold_list(xs: run.transitions, empty: [], cons: fn(acc, t) {
+    if t.identity.kind == native_module_occurrence_census_artifact_kind {
+      match demand_engine_entry(e: run.engine, id: t.identity) {
+        Present { value: entry } =>
+          match entry.state {
+            DemandAvailable { value: v } =>
+              match v {
+                NativeOccurrenceCensusValue { row: row } => list_snoc_item(xs: acc, item: row)
+                _ => acc
+              }
+            _ => acc
+          }
+        Absent => acc
+      }
+    } else {
+      acc
+    }
+  })
+}
+
+fn native_demand_occurrence_census_lines(run: NativeDemandRun, universe: Int) -> List<String> {
+  native_lane_occurrence_census_lines(
+    c: native_lane_occurrence_census(universe: universe, rows: native_demand_occurrence_census_rows(run: run))
+  )
 }
 
 fn native_demand_eval_nanos(run: NativeDemandRun) -> Int {
@@ -4666,6 +4934,7 @@ fn native_demand_cost_class_label(c: NativeDemandCostClass) -> String {
   match c {
     NativeCostPrepare => "prepare"
     NativeCostEval => "eval"
+    NativeCostOccurrenceCensus => "occurrence_census"
     NativeCostUnclassified => "UNCLASSIFIED"
   }
 }

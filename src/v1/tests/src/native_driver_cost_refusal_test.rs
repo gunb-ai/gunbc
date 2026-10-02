@@ -41,6 +41,7 @@ fn planted_over_attribution_is_over_attributed_not_clamped() {
             NativeDriverExclusiveRowKey::ExclusiveModuleRelease => nanosecond(0),
             NativeDriverExclusiveRowKey::ExclusiveRelayEmit => nanosecond(0),
             NativeDriverExclusiveRowKey::ExclusiveDemandScheduling => nanosecond(0),
+            NativeDriverExclusiveRowKey::ExclusiveOccurrenceCensus => nanosecond(0),
         }),
         native_driver_cost_remainder_tolerance_nanos(),
     );
@@ -71,6 +72,7 @@ fn reconciled_parent_passes() {
             NativeDriverExclusiveRowKey::ExclusiveModuleRelease => nanosecond(0),
             NativeDriverExclusiveRowKey::ExclusiveRelayEmit => nanosecond(0),
             NativeDriverExclusiveRowKey::ExclusiveDemandScheduling => nanosecond(0),
+            NativeDriverExclusiveRowKey::ExclusiveOccurrenceCensus => nanosecond(0),
         }),
         native_driver_cost_remainder_tolerance_nanos(),
     );

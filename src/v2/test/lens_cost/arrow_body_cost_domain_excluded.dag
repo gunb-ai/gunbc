@@ -2,7 +2,7 @@ module v2.test.lens_cost.arrow_body_cost_domain_excluded
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.arrow_signature { declared_signature }
-import v2.std.node_query { pattern_wildcard_name }
+import v2.std.node_query { pattern_wildcard_name, binder_edge }
 import v2.lens.cost { SumCost, cost_lens, unit_cost }
 import v2.std.logic { Bool }
 import v2.std.node {
@@ -48,7 +48,7 @@ data arrow_body_cost_body: Node = Node {
 
 fn arrow_body_cost_arrow() -> Node {
   let signature = declared_signature(
-    params: [Edge { label: Named { name: pattern_wildcard_name() }, target: arrow_body_cost_domain_param }],
+    params: [binder_edge(name: pattern_wildcard_name(), type_node: arrow_body_cost_domain_param)],
     source: arrow_body_cost_domain_param
   )
   Node {
@@ -77,6 +77,6 @@ fn arrow_body_cost_domain_excluded_holds() -> Bool {
         lhs: unit_cost(),
         rhs: unit_cost()
       }
-    _ => false
+    Violates { diagnostic: _ } => false
   }
 }
