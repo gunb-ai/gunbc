@@ -1,0 +1,26 @@
+   Compiling v1-compiler v0.1.0 (/home/briansrls/scratch-wt/workspace-current-main/src/v1/stage0)
+    Finished `test` profile [unoptimized] target(s) in 3m 41s
+     Running unittests src/lib.rs (/home/briansrls/scratch-wt/workspace-executor-isolated/target/debug/deps/v1_compiler-d402653f743c64a3)
+
+running 18 tests
+test cli_run::closure_edge_demand_tests::a_genuine_unimported_bare_reference_is_still_named ... ok
+test cli_run::closure_edge_demand_tests::a_second_pool_in_one_slot_refuses_at_build ... ok
+test cli_run::closure_edge_demand_tests::a_service_response_block_never_reaches_a_top_level_fn_response ... ok
+test cli_run::closure_edge_demand_tests::a_test_marked_declaration_is_not_pulled_as_a_bare_provider ... ok
+test cli_run::closure_edge_demand_tests::decomposition_releases_production_name_censuses_and_admission ... ok
+test cli_run::closure_edge_demand_tests::entry_produces_only_reached_rows_and_explicit_whole_demand_completes_them ... ok
+test cli_run::closure_edge_demand_tests::floor_index_controls_hold_over_a_shared_index_the_closure_already_read ... ok
+test cli_run::closure_edge_demand_tests::heads_and_resolved_readings_agree_on_candidate_and_variant_gating ... ok
+test cli_run::closure_edge_demand_tests::live_pool_heads_and_resolved_provider_readings_agree ... ignored, live-corpus differential: execute explicitly for closure-census changes
+test cli_run::closure_edge_demand_tests::nonclosure_ambiguity_is_entry_local_and_still_refused_by_the_whole_pool_demand ... ok
+test cli_run::closure_edge_demand_tests::qualified_service_prefix_does_not_pull_an_unrelated_bare_helper ... ok
+test cli_run::closure_edge_demand_tests::regen_reverse_walk_requests_unvisited_modules_by_execution ... ok
+test cli_run::closure_edge_demand_tests::required_phase_refuses_the_specimen_admits_the_twin_and_catches_a_bypass ... ok
+test cli_run::closure_edge_demand_tests::scoped_admission_never_certifies_a_poisoned_entry_or_the_pool ... ok
+test cli_run::closure_edge_demand_tests::service_response_clause_is_not_a_bare_reference ... ok
+test cli_run::closure_edge_demand_tests::the_index_route_reads_the_one_parse_per_file_the_index_owns ... ok
+test cli_run::closure_edge_demand_tests::the_pool_entry_route_follows_dotted_references_without_a_second_parse ... ok
+test cli_run::closure_edge_demand_tests::valid_twin_is_admitted_by_entry_and_pool ... ok
+
+test result: ok. 17 passed; 0 failed; 1 ignored; 0 measured; 1263 filtered out; finished in 0.19s
+
