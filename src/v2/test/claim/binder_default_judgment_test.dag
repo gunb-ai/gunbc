@@ -102,3 +102,15 @@ test fn a_type_parameter_spelling_is_not_a_default_value_holds() -> Bool {
 test fn a_generic_default_refuses_until_modeled_holds() -> Bool {
   bdj_refused_with(o: bdj_generic_default_inferred(), reason: ^infer_binder_default_generic_unmodeled)
 }
+
+// A default nested in a generic COPRODUCT's arm payload is under the declaration's type parameters too:
+// the traversal (v2.compiler.infer infer_first_default_beneath) reaches it, so it refuses at the default
+// rather than reaching the per-binder judgment with no type variables in scope (side-chat review on
+// #12948).
+fn bdj_generic_coproduct_default_inferred() -> Outcome<Bool> {
+  bdj_infers(o: tpb_assemble(src: "module p\n\ntype Box<T> = Full { value: T = 1 } | Empty\n"))
+}
+
+test fn a_default_in_a_generic_coproduct_payload_refuses_until_modeled_holds() -> Bool {
+  bdj_refused_with(o: bdj_generic_coproduct_default_inferred(), reason: ^infer_binder_default_generic_unmodeled)
+}

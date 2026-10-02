@@ -4294,37 +4294,58 @@ fn infer_generic_default_refusal(node: Node) -> Outcome<Bool> {
   match type_param_names(n: node) {
     Empty => outcome_accepted(true)
     Cons { head: _, tail: _ } =>
-      match infer_first_binder_default(members: infer_declared_binder_members(node: node)) {
+      match infer_first_default_beneath(nodes: infer_declared_binder_scope(node: node)) {
         Absent => outcome_accepted(true)
         Present { value: default } => outcome_rejected(infer_binder_default_generic_unmodeled_diagnostic(default: default))
       }
   }
 }
 
-fn infer_declared_binder_members(node: Node) -> List<Edge> {
+// THE SUBTREE A GENERIC DECLARATION'S TYPE PARAMETERS GOVERN: an Arrow's domain, or a generic type
+// declaration's member. A default anywhere beneath it -- an immediate binder, or one nested in a record
+// type, a coproduct arm's payload or an inline record -- is under those type parameters (side-chat review
+// on #12948: `type Box<T> = Full { value: T = 1 } | Empty` nests its default in the Full payload).
+fn infer_declared_binder_scope(node: Node) -> List<Node> {
   match node.kind {
     TypeNode { connective: Arrow } =>
       match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
-        Present { value: domain } => domain.children
+        Present { value: domain } => [domain]
         Absent => []
       }
     _ =>
       match type_decl_view(target: node) {
-        GenericTypeDecl { binders: _, member: m } => m.children
+        GenericTypeDecl { binders: _, member: m } => [m]
         _ => []
       }
   }
 }
 
-fn infer_first_binder_default(members: List<Edge>) -> Optional<Node> {
-  fold(members, init: optional_absent(), f: fn(acc, e) {
+// The first binder default beneath the given nodes, in one depth-first traversal bounded to them.
+fn infer_first_default_beneath(nodes: List<Node>) -> Optional<Node> {
+  fold(nodes, init: optional_absent(), f: fn(acc, n) {
     match acc {
       Present { value: _ } => acc
-      Absent =>
-        match binder_node_parts(n: e.target) {
-          Present { value: parts } => parts.default
-          Absent => optional_absent()
-        }
+      Absent => infer_first_default_in(node: n)
+    }
+  })
+}
+
+fn infer_first_default_in(node: Node) -> Optional<Node> {
+  match binder_node_parts(n: node) {
+    Present { value: parts } =>
+      match parts.default {
+        Present { value: d } => optional_present(value: d)
+        Absent => infer_first_default_under(node: node)
+      }
+    Absent => infer_first_default_under(node: node)
+  }
+}
+
+fn infer_first_default_under(node: Node) -> Optional<Node> {
+  fold(node.children, init: optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => infer_first_default_in(node: e.target)
     }
   })
 }
