@@ -10,7 +10,7 @@ import gunbc.roadmap_component { dispatch_expand_band_keys, dispatch_client_js_s
 import gunbc.roadmap_page { roadmap_page }
 import gunbc.roadmap_model { RoadmapNode, section_group }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
-import gunbc.roadmap_authority { authored, signed }
+import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_signed }
 import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap_status { RedControlExecuted, HandbackDelivered }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -78,7 +78,7 @@ fn doc_html(nodes: List<RoadmapNode>) -> String {
 }
 
 fn done_signed_node() -> RoadmapNode {
-  let base = authored(identity: "rnfx_WA4EZDD0ZGMCQMTKQA21", id: "alt-done", done: true, content: "finished work")
+  let base = fx_authored(identity: "rnfx_WA4EZDD0ZGMCQMTKQA21", id: "alt-done", done: true, content: "finished work")
   RoadmapNode {
     identity: "rnfx_2K15QJ1CVZY55K15AHJK" as RoadmapNodeIdentity,
     node: base.node,
@@ -87,12 +87,14 @@ fn done_signed_node() -> RoadmapNode {
     dispatch: base.dispatch,
     execution: base.execution,
     owner: base.owner,
-    signoff: signed(by: "op", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true),
+    signoff: fx_signed(by: "op", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true),
+    parent: none,
+    centering: none,
   }
 }
 
 fn open_node() -> RoadmapNode {
-  authored(identity: "rnfx_140ZV0QZTY3R9PTENK99", id: "alt-open", done: false, content: "working item")
+  fx_authored(identity: "rnfx_140ZV0QZTY3R9PTENK99", id: "alt-open", done: false, content: "working item")
 }
 
 // The fold decision proven over the RENDERED page, not the predicate alone: an all-routine section
@@ -119,7 +121,7 @@ test fn altitude_working_member_holds_section_open() -> Bool {
 }
 
 test fn altitude_unsigned_done_holds_section_open() -> Bool {
-  let unsigned_done = doc_html(nodes: [authored(identity: "rnfx_0A9N7HZG1Q9HRP760WD7", id: "alt-unsigned", done: true, content: "done but unsigned")])
+  let unsigned_done = doc_html(nodes: [fx_authored(identity: "rnfx_0A9N7HZG1Q9HRP760WD7", id: "alt-unsigned", done: true, content: "done but unsigned")])
   return string_contains(s: unsigned_done, pattern: "<details class=\"section-fold\" open=\"\">")
     && string_contains(s: unsigned_done, pattern: "1 review")
 }

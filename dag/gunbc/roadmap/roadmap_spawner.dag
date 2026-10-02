@@ -21,15 +21,16 @@ import gunbc.roadmap_authority {
   roadmap_authority_projection,
   RoadmapAuthorityProjection,
   RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
-  roadmap_authority_for,
   declared_roadmap_nodes,
   closing_contract_task_pairs_projection,
   ClosingContractTaskPairsProjected,
   ClosingContractTaskPairsProjectionRefused,
-  active,
+  roadmap_node,
+  ticket,
+  dispatchable,
+  carrier,
   fields,
 }
-import gunbc.roadmap_focus { NoFocus }
 import extdeps.languages.json.emit {
   JsonValue, JsonNull, JsonKeyValue,
   serialize_json,
@@ -108,7 +109,7 @@ fn roadmap_rendered_ghost_count(doc: RoadmapDocument) -> Int {
 }
 
 fn ghost_probe_document(ghost: RoadmapNode) -> RoadmapDocument {
-  let base = roadmap_authority_for(focus: NoFocus)
+  let base = roadmap_authority()
   RoadmapDocument {
     preamble: base.preamble,
     lead_lanes: base.lead_lanes,
@@ -120,11 +121,11 @@ fn ghost_probe_document(ghost: RoadmapNode) -> RoadmapDocument {
 }
 
 fn roadmap_ghost_node_red_probe_count() -> Int {
-  roadmap_rendered_ghost_count(doc: ghost_probe_document(ghost: active(
+  roadmap_rendered_ghost_count(doc: ghost_probe_document(ghost: roadmap_node(
     identity: "rn_GHOSTPROBEAAAAAAAAAAAAAAAA", id: "synthetic-ghost-probe",
     owner: "compiler-guarantee",
-    path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-    t: fields(
+    carriers: carrier(path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md"),
+    line: ticket(t: fields(
       headline: "SYNTHETIC: a rendered node that no declared authority carries",
       boundary: "Negative control for the containment witness — never declared, never rendered outside the probe.",
       displaced_cost: "None; this row exists to be caught.",
@@ -132,11 +133,17 @@ fn roadmap_ghost_node_red_probe_count() -> Int {
       red_control: "Its own detection: the containment predicate must count exactly this node.",
       out_of_scope: "Everything.",
       handback: "None."
-    ))))
+    )),
+    dispatch: dispatchable(),
+  )))
 }
 
+// THE ALTERED-COPY PROBE COPIES THE FIRST DECLARED NODE rather than a named one. It used to look up
+// one id and answer 0 when that id was absent, so deleting the row would have turned the probe into
+// a count that no longer probes anything; the first declared node is absent only when the authority
+// declares nothing, and the witness asserting a count of exactly 1 reds on that too.
 fn roadmap_altered_copy_red_probe_count() -> Int {
-  match declared_roadmap_nodes() |> filter(n => (n.node as String) == "ladder-claims-carrier") |> first {
+  match declared_roadmap_nodes() |> first {
     Absent => 0
     Present { value: n } => roadmap_rendered_ghost_count(doc: ghost_probe_document(ghost: RoadmapNode {
       identity: n.identity,
@@ -147,6 +154,8 @@ fn roadmap_altered_copy_red_probe_count() -> Int {
       execution: n.execution,
       owner: "SYNTHETIC-altered-copy-probe",
       signoff: n.signoff,
+      parent: n.parent,
+      centering: n.centering,
     }))
   }
 }

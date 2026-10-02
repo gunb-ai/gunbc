@@ -51,6 +51,27 @@ type WorkItemDispatch
   = NotDispatchable
   | Dispatchable { repo: String, acceptance: Acceptance }
 
+// ONE NODE INTERFACE, OPTIONAL DISPATCH FACTS (operator ruling, 2026-09-30). A project, a
+// milestone and a task are the same record; what distinguishes them is which dispatch facts a row
+// supplies. parent and centering are optional and absent unless the row passes them, exactly like an
+// unbound execution contract (ExecutionContractUnspecified) or an unsized row (Unsized): an absent
+// fact is not a failure to author, it is a reason the node is NOT READY, and readiness is derived
+// from these fields by ONE predicate (gunbc.roadmap.roadmap_readiness node_readiness) that the
+// dispatcher's admission and the page both read. A container is simply a node that supplies no
+// centering and no contract and has members.
+//
+// parent is where the node sits in the functional decomposition: MemberOf names the project this
+// node's work advances and argues why (the contribution belongs to the edge, so it rides with the
+// child that states it); AdmittedRoot is the top, and the admitted roots are exactly the rows that
+// carry it; Closes is the lineage of a DERIVED closing-contract task, set by gunbc.roadmap_authority
+// closing_contract_task_for when it mints the task, so its chain is its target's. One field is one
+// parent: two owners for one level has no constructor, which retires the former keyed roster
+// (gunbc.roadmap_nesting roadmap_memberships) and its ambiguity refusals with it.
+type NodeParent
+  = MemberOf { project: String, contribution: NonEmptyStr }
+  | AdmittedRoot
+  | Closes { target: String }
+
 type RoadmapNode {
   identity: RoadmapNodeIdentity
   node: RoadmapNodeId
@@ -60,6 +81,8 @@ type RoadmapNode {
   execution: WorkItemExecutionContract
   owner: String
   signoff: Signoff
+  parent: NodeParent?
+  centering: NonEmptyStr?
 }
 
 // THE ROADMAP'S ADAPTER ONTO THE TASK SIZER, and the only place a RoadmapNode meets it. The
