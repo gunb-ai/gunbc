@@ -776,6 +776,7 @@ pub fn guarded_union_str_bindings(
     import_path: String,
     conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
 ) -> Rc<GuardedStrBindingsUnion> {
+    let _phase_cpu_guard = crate::phase_cpu::guard("guarded_union_str_bindings");
     if ((acc.clone().len() as i64) >= (overlay.clone().len() as i64)) {
         guarded_union_str_bindings_into_acc(
             acc.clone(),
@@ -1033,6 +1034,7 @@ pub fn str_bindings_from_bindings(
 }
 
 pub fn lookup_binding_on_chain(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
+    crate::phase_cpu::count("lookup_binding_on_chain");
     match v1_rt::map_get(&env.str_bindings.clone(), name.clone()) {
         Some(binding) => Some(binding.clone()),
         std::option::Option::None => {
