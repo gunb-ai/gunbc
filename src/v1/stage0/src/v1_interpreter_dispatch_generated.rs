@@ -59,6 +59,7 @@ pub enum EvalBuiltinArm {
     FreeCallAtomIdentityHash,
     FreeCallObservedPeakResidentBytes,
     FreeCallObservedMonotonicNanos,
+    FreeCallObservedThreadCpuNanos,
     FreeCallHashCombine,
     FreeCallFilesystemRead,
     FreeCallToolchainHomeInterferenceProbe,
@@ -214,6 +215,7 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "atom_identity_hash" => Some(EvalBuiltinArm::FreeCallAtomIdentityHash),
         "observed_peak_resident_bytes" => Some(EvalBuiltinArm::FreeCallObservedPeakResidentBytes),
         "observed_monotonic_nanos" => Some(EvalBuiltinArm::FreeCallObservedMonotonicNanos),
+        "observed_thread_cpu_nanos" => Some(EvalBuiltinArm::FreeCallObservedThreadCpuNanos),
         "hash_combine" => Some(EvalBuiltinArm::FreeCallHashCombine),
         "filesystem_read" => Some(EvalBuiltinArm::FreeCallFilesystemRead),
         "toolchain_home_interference_probe" => Some(EvalBuiltinArm::FreeCallToolchainHomeInterferenceProbe),
@@ -367,6 +369,7 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.atom_identity_hash") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallAtomIdentityHash };
     ("free_call.observed_peak_resident_bytes") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallObservedPeakResidentBytes };
     ("free_call.observed_monotonic_nanos") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallObservedMonotonicNanos };
+    ("free_call.observed_thread_cpu_nanos") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallObservedThreadCpuNanos };
     ("free_call.hash_combine") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallHashCombine };
     ("free_call.filesystem_read") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallFilesystemRead };
     ("free_call.toolchain_home_interference_probe") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallToolchainHomeInterferenceProbe };

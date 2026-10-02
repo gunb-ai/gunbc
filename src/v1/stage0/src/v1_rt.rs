@@ -1433,6 +1433,32 @@ pub fn observed_monotonic_nanos(_label: String) -> i64 {
     }
 }
 
+/// THE EMITTED REALIZATION OF std.realization_measurement ObserveThreadCpuAtSubject.
+///
+/// The calling thread's CPU time (extdeps.posix.clock_gettime ClockThreadCputimeId): it advances
+/// only while this thread executes, so a span read on it is the thread's own work and never an
+/// interval the host took the thread away. The label plays the same anti-memoization role as
+/// observed_monotonic_nanos's and is never identity material.
+///
+/// A HOST WITHOUT THE CLOCK REFUSES THE PROCESS. POSIX makes CLOCK_THREAD_CPUTIME_ID an option;
+/// answering with the monotonic wall instead would put host load back into every verdict read
+/// on this clock, and answering zero would make every span vanish. Neither is a reading.
+pub fn observed_thread_cpu_nanos(_label: String) -> i64 {
+    let mut ts = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    // SAFETY: clock_gettime writes one timespec through a pointer to a live local.
+    let rc = unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut ts) };
+    if rc != 0 {
+        eprintln!("REFUSED: clock_gettime(CLOCK_THREAD_CPUTIME_ID) is unavailable on this host ({}); no thread CPU span is measurable and the wall is not substituted", std::io::Error::last_os_error());
+        std::process::exit(2);
+    }
+    (ts.tv_sec as i64)
+        .saturating_mul(1_000_000_000)
+        .saturating_add(ts.tv_nsec as i64)
+}
+
 fn int_relu(x: i64) -> i64 {
     if x > 0 {
         x
