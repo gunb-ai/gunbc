@@ -353,6 +353,36 @@ fn surface_contested_walk(pool: SurfacePool, kernel: Map<String, TypeBinding>, i
   }
 }
 
+// THE NAMES THAT CAN FORK AT A MODULE, counted from the CLOSURE'S declarations. A row needs two
+// declarers of the name inside the closure (the kernel counts as one), so only a name some closure
+// module declares can qualify, and its in-closure declarer count is exactly the number of closure
+// modules whose own bindings carry it. Enumerating the pool's multi-exporter names instead and walking
+// each one's whole exporter list costs the POOL's homonyms at every module, which grows with the tree
+// rather than with the closure. Sorted, for the ledger's one canonical order.
+fn closure_contested_names(pool: SurfacePool, kernel: Map<String, TypeBinding>, reach: List<Int>) -> List<String> {
+  let tally = fold(enumerate(reach), init: empty_map(), f: (acc, pair) =>
+    fold(reach_word_ordinals(word: pair.second, base: pair.first * 32), init: acc, f: (acc2, ordinal) =>
+      match map_get(pool.by_ordinal, ordinal) {
+        Absent => acc2
+        Present { value: path } =>
+          match map_get(pool.surfaces, path) {
+            Absent => acc2
+            Present { value: surface } =>
+              fold(surface.own |> map_keys, init: acc2, f: (acc3, n) =>
+                if map_has(pool.multi_exporters, n) || map_has(kernel, n) {
+                  match map_get(acc3, n) {
+                    Present { value: c } => map_insert(acc3, n, c + 1)
+                    Absent => map_insert(acc3, n, if map_has(kernel, n) { 2 } else { 1 })
+                  }
+                } else { acc3 }
+              )
+          }
+      }
+    )
+  )
+  sorted_map_keys(tally) |> filter(n => match map_get(tally, n) { Present { value: c } => c >= 2  Absent => false })
+}
+
 type SurfaceForkWalk {
   winner: TypeBinding?
   last: TypeBinding?
