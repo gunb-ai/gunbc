@@ -23,7 +23,7 @@ import extdeps.vllm.kv_layout {
 import extdeps.vllm.sparse_prefill_transient { sparse_topk_indices_buffer_bytes }
 import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_hybrid_shape }
 import gunbc.spark.serving_arm {
-  model_launch_policy,
+  glm53_native_launch_policy,
   Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4,
   serving_checkpoint_wire, serving_runtime_wire, serving_topology_wire,
   ServingLaunchProfile,
@@ -157,12 +157,11 @@ fn arm_experiment_2026_09_25_subject_mint() -> MemoryProofSubjectMint {
       MemoryProofSubjectRefused { cause: "the experiment's own workload (one 65536-token seat at a 2048 batch ceiling) refused to derive, so the subject these readings bind to has no spelling" as NonEmptyStr }
     ServingCapacityIntentAdmitted { intent: experiment_intent } =>
       memory_proof_subject_for_launch(
-        checkpoint: Glm53NativeFp8,
         runtime: GunbcGlm53NopeDerivedGb10,
         topology: FourSparkTp4,
         profile: profile_for_envelope(
           envelope: envelope_at_cold_floor(cold: experiment_intent),
-          policy: model_launch_policy(kv_cache_dtype: KvFp8, indexer_kv_dtype: IndexerKvDtypeOmitted, engram: EngramConfigOmitted, modality: ModalityOmitted),
+          policy: glm53_native_launch_policy,
           decided_gpu_memory_basis_points: basis_point(count: 8567),
           serve_port: 30000,
           served_alias: "glm-5.3-flash" as NonEmptyStr,
@@ -521,12 +520,11 @@ fn arm_experiment_2026_09_26_subject_mint() -> MemoryProofSubjectMint {
       MemoryProofSubjectRefused { cause: "the completing run's own workload (six 262144-token seats at a 2048 batch ceiling) refused to derive, so the subject these readings bind to has no spelling" as NonEmptyStr }
     ServingCapacityIntentAdmitted { intent: experiment_intent } =>
       memory_proof_subject_for_launch(
-        checkpoint: Glm53NativeFp8,
         runtime: GunbcGlm53NopeDerivedGb10,
         topology: FourSparkTp4,
         profile: profile_for_envelope(
           envelope: envelope_at_cold_floor(cold: experiment_intent),
-          policy: model_launch_policy(kv_cache_dtype: KvFp8, indexer_kv_dtype: IndexerKvDtypeOmitted, engram: EngramConfigOmitted, modality: ModalityOmitted),
+          policy: glm53_native_launch_policy,
           decided_gpu_memory_basis_points: basis_point(count: 8567),
           serve_port: 30000,
           served_alias: "glm-5.3-flash" as NonEmptyStr,
@@ -735,12 +733,11 @@ fn arm_experiment_kvplan_v2_2026_09_26_subject_mint() -> MemoryProofSubjectMint 
       MemoryProofSubjectRefused { cause: "the v2-plan launch's own workload (six 262144-token seats at a 2048 batch ceiling) refused to derive, so the subject these readings bind to has no spelling" as NonEmptyStr }
     ServingCapacityIntentAdmitted { intent: experiment_intent } =>
       memory_proof_subject_for_launch(
-        checkpoint: Glm53NativeFp8,
         runtime: GunbcGlm53NopeDerivedGb10,
         topology: FourSparkTp4,
         profile: profile_for_envelope(
           envelope: envelope_at_cold_floor(cold: experiment_intent),
-          policy: model_launch_policy(kv_cache_dtype: KvFp8, indexer_kv_dtype: IndexerKvDtypeOmitted, engram: EngramConfigOmitted, modality: ModalityOmitted),
+          policy: glm53_native_launch_policy,
           decided_gpu_memory_basis_points: basis_point(count: 8567),
           serve_port: 30000,
           served_alias: "glm-5.3-flash" as NonEmptyStr,
@@ -1474,7 +1471,7 @@ fn arm_experiment_kvplan_v2_2026_09_26_workload() -> ServingCapacityIntent {
 fn arm_experiment_kvplan_v2_2026_09_26_policy_profile() -> ServingLaunchProfile {
   profile_for_envelope(
     envelope: envelope_at_cold_floor(cold: arm_experiment_kvplan_v2_2026_09_26_workload()),
-    policy: model_launch_policy(kv_cache_dtype: KvFp8, indexer_kv_dtype: IndexerKvDtypeOmitted, engram: EngramConfigOmitted, modality: ModalityOmitted),
+    policy: glm53_native_launch_policy,
     decided_gpu_memory_basis_points: basis_point(count: 8567),
     serve_port: 30000,
     served_alias: "glm-5.3-flash" as NonEmptyStr,

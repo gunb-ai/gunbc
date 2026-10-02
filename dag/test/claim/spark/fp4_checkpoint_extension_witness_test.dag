@@ -13,7 +13,7 @@ import extdeps.vllm.kv_dtype_capability {
 }
 import gunbc.spark.serving_arm { GlmNativeEngineDerived8d09804, glm_native_engine_build_image,
   ServingCheckpoint, Glm53FlashNvidiaNvfp4, Glm53NativeFp8, GunbcGlm53DerivedKvplanV2Gb10, FourSparkTp4,
-  ServingLaunchProfile, checkpoint_launch_policy, serving_checkpoint_row, glm_derived_flashinfer_sm120_row,
+  ServingLaunchProfile, glm53_flash_nvidia_nvfp4_launch_policy, ModelLaunchPolicy, serving_checkpoint_row, glm_derived_flashinfer_sm120_row,
 }
 import gunbc.spark.serving_capacity_intent {
   uniform_cold_seats, envelope_at_cold_floor, profile_for_envelope, ServingCapacityIntentAdmitted, ServingCapacityIntentRefused,
@@ -31,10 +31,7 @@ import gunbc.spark.serving_promotion {
 // memory wall, the runner, the launch transaction or promotion. This witness drives the new checkpoint
 // through each of those unchanged and asserts each derives an answer for it: if any step needed an
 // edit to stand for this checkpoint, this claim is where that would have shown.
-fn w_profile(c: ServingCheckpoint) -> ServingLaunchProfile? {
-  match checkpoint_launch_policy(c: c) {
-    Absent => none
-    Present { value: policy } =>
+fn w_profile(policy: ModelLaunchPolicy) -> ServingLaunchProfile? {
       match uniform_cold_seats(each: token_count(count: 262144), seats: 8, max_batched_tokens: token_count(count: 2048)) {
         ServingCapacityIntentRefused { cause: _ } => none
         ServingCapacityIntentAdmitted { intent: i } => Present { value: profile_for_envelope(
@@ -42,19 +39,18 @@ fn w_profile(c: ServingCheckpoint) -> ServingLaunchProfile? {
           decided_gpu_memory_basis_points: basis_point(count: 8567), serve_port: 30000,
           served_alias: "glm-5.3-flash" as NonEmptyStr, prefix_caching: PrefixCachingExplicit { enabled: true }) }
       }
-  }
 }
 
 test fn w_the_fp4_checkpoint_derives_a_profile_a_subject_a_fit_subject_and_a_promotion_standing() -> Bool {
-  match w_profile(c: Glm53FlashNvidiaNvfp4) {
+  match w_profile(policy: glm53_flash_nvidia_nvfp4_launch_policy) {
     Absent => false
     Present { value: p } => {
       let subject = serving_subject_for_launch(
-        checkpoint: Glm53FlashNvidiaNvfp4, checkpoint_revision: Present { value: "da920bb0b9f4a06727223a349e55468e38352348" as NonEmptyStr },
+        checkpoint_revision: Present { value: "da920bb0b9f4a06727223a349e55468e38352348" as NonEmptyStr },
         runtime: GunbcGlm53DerivedKvplanV2Gb10, runtime_image_reference: "fixture@sha256:0" as NonEmptyStr,
         topology: FourSparkTp4, profile: p, collective_transport: none)
       (serving_subject_axis_value(s: subject, a: AxisWeightQuantization) as String) == "modelopt"
-        && (match arm_memory_fit_subject_for_launch(checkpoint: Glm53FlashNvidiaNvfp4, runtime: GunbcGlm53DerivedKvplanV2Gb10, topology: FourSparkTp4, profile: p) {
+        && (match arm_memory_fit_subject_for_launch(runtime: GunbcGlm53DerivedKvplanV2Gb10, topology: FourSparkTp4, profile: p) {
           ArmMemorySubjectRefused { cause: _ } => false
           ArmMemorySubjectReady { subject: mem } =>
             match serving_promotion_standing(subject: subject, policy: serving_promotion_policy,
@@ -95,8 +91,5 @@ fn w_kv_admitted(main: VllmKvCacheDtypeRequest) -> Bool {
 }
 
 test fn w_the_fp4_checkpoints_kv_request_is_admitted_by_the_capability_join() -> Bool {
-  match checkpoint_launch_policy(c: Glm53FlashNvidiaNvfp4) {
-    Absent => false
-    Present { value: p } => w_kv_admitted(main: p.kv_cache_dtype) && !w_kv_admitted(main: KvNvfp4)
-  }
+  w_kv_admitted(main: glm53_flash_nvidia_nvfp4_launch_policy.kv_cache_dtype) && !w_kv_admitted(main: KvNvfp4)
 }
