@@ -829,7 +829,8 @@ test fn witness_host_exec_argv_shapes_bound_to_extdeps() -> Bool {
       persist_session: true,
     },
   )
-  bound_worktree.args == worktree_args
+  bound_worktree.program == "git"
+    && bound_worktree.args == worktree_args
     && starts_with(s: join(tmux_args, separator: " "), prefix: "new-session -d -s gunbc-dispatch-bound-node")
     && string_contains(s: join(claude_args_dangerous, separator: "\0"), pattern: "--dangerously-skip-permissions")
     && !string_contains(s: join(claude_args_default, separator: "\0"), pattern: "--dangerously-skip-permissions")
