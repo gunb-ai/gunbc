@@ -10298,10 +10298,12 @@ pub fn parse_op_body_entries(
                                     continue;
                                 }
                             } else {
-                                if (id.clone() == "mock_response".to_string()) {
-                                    let r = parse_optional_mock_response_block(
-                                        tokens.clone(),
+                                if (id.clone() == "requires".to_string()) {
+                                    let r = parse_op_requires_members(
+                                        token_stream_advance(tokens.clone(), 1),
                                         ctx.clone(),
+                                        span.clone(),
+                                        Rc::new(vec![]),
                                     );
                                     if has_err(r.err.clone()) {
                                         return Rc::new(OpBodyResult {
@@ -10322,11 +10324,12 @@ pub fn parse_op_body_entries(
                                         let __tco_1 = r.ctx.clone();
                                         let __tco_2 = inputs;
                                         let __tco_3 = outputs;
-                                        let __tco_4 = modifier_props;
+                                        let __tco_4 =
+                                            v1_rt::concat(modifier_props, r.properties.clone());
                                         let __tco_5 = transport;
                                         let __tco_6 = exit_props;
                                         let __tco_7 = response_props;
-                                        let __tco_8 = r.mocks.clone();
+                                        let __tco_8 = mock_props;
                                         __tco_loop_tokens = __tco_0;
                                         __tco_loop_ctx = __tco_1;
                                         __tco_loop_inputs = __tco_2;
@@ -10339,8 +10342,11 @@ pub fn parse_op_body_entries(
                                         continue;
                                     }
                                 } else {
-                                    if peek_is_colon_after_ident(tokens.clone()) {
-                                        let r = expect_ident(tokens.clone());
+                                    if (id.clone() == "mock_response".to_string()) {
+                                        let r = parse_optional_mock_response_block(
+                                            tokens.clone(),
+                                            ctx.clone(),
+                                        );
                                         if has_err(r.err.clone()) {
                                             return Rc::new(OpBodyResult {
                                                 inputs: inputs.clone(),
@@ -10351,53 +10357,20 @@ pub fn parse_op_body_entries(
                                                 response_props: response_props.clone(),
                                                 mock_props: mock_props.clone(),
                                                 tokens: r.tokens.clone(),
-                                                ctx: ctx.clone(),
+                                                ctx: r.ctx.clone(),
                                                 err: r.err.clone(),
                                             });
                                         }
-                                        let r2 = expect(
-                                            r.tokens.clone(),
-                                            Rc::new(ExpectedToken::ExpectColon),
-                                        );
-                                        if has_err(r2.err.clone()) {
-                                            return Rc::new(OpBodyResult {
-                                                inputs: inputs.clone(),
-                                                outputs: outputs.clone(),
-                                                modifier_props: modifier_props.clone(),
-                                                transport: transport.clone(),
-                                                exit_props: exit_props.clone(),
-                                                response_props: response_props.clone(),
-                                                mock_props: mock_props.clone(),
-                                                tokens: r2.tokens.clone(),
-                                                ctx: ctx.clone(),
-                                                err: r2.err.clone(),
-                                            });
-                                        }
-                                        let r3 = parse_expr(r2.tokens.clone(), ctx.clone());
-                                        if has_err(r3.err.clone()) {
-                                            return Rc::new(OpBodyResult {
-                                                inputs: inputs.clone(),
-                                                outputs: outputs.clone(),
-                                                modifier_props: modifier_props.clone(),
-                                                transport: transport.clone(),
-                                                exit_props: exit_props.clone(),
-                                                response_props: response_props.clone(),
-                                                mock_props: mock_props.clone(),
-                                                tokens: r3.tokens.clone(),
-                                                ctx: r3.ctx.clone(),
-                                                err: r3.err.clone(),
-                                            });
-                                        }
                                         {
-                                            let __tco_0 = skip_newlines(r3.tokens.clone());
-                                            let __tco_1 = r3.ctx.clone();
+                                            let __tco_0 = r.tokens.clone();
+                                            let __tco_1 = r.ctx.clone();
                                             let __tco_2 = inputs;
                                             let __tco_3 = outputs;
                                             let __tco_4 = modifier_props;
                                             let __tco_5 = transport;
                                             let __tco_6 = exit_props;
                                             let __tco_7 = response_props;
-                                            let __tco_8 = mock_props;
+                                            let __tco_8 = r.mocks.clone();
                                             __tco_loop_tokens = __tco_0;
                                             __tco_loop_ctx = __tco_1;
                                             __tco_loop_inputs = __tco_2;
@@ -10410,24 +10383,96 @@ pub fn parse_op_body_entries(
                                             continue;
                                         }
                                     } else {
-                                        break Rc::new(OpBodyResult {
-                                            inputs: inputs.clone(),
-                                            outputs: outputs.clone(),
-                                            modifier_props: modifier_props.clone(),
-                                            transport: transport.clone(),
-                                            exit_props: exit_props.clone(),
-                                            response_props: response_props.clone(),
-                                            mock_props: mock_props.clone(),
-                                            tokens: tokens.clone(),
-                                            ctx: ctx.clone(),
-                                            err: Some(parse_error(
-                                                format!(
-                                                    "unexpected '{}' in operation body",
-                                                    id.clone()
-                                                ),
-                                                span.clone(),
-                                            )),
-                                        });
+                                        if peek_is_colon_after_ident(tokens.clone()) {
+                                            let r = expect_ident(tokens.clone());
+                                            if has_err(r.err.clone()) {
+                                                return Rc::new(OpBodyResult {
+                                                    inputs: inputs.clone(),
+                                                    outputs: outputs.clone(),
+                                                    modifier_props: modifier_props.clone(),
+                                                    transport: transport.clone(),
+                                                    exit_props: exit_props.clone(),
+                                                    response_props: response_props.clone(),
+                                                    mock_props: mock_props.clone(),
+                                                    tokens: r.tokens.clone(),
+                                                    ctx: ctx.clone(),
+                                                    err: r.err.clone(),
+                                                });
+                                            }
+                                            let r2 = expect(
+                                                r.tokens.clone(),
+                                                Rc::new(ExpectedToken::ExpectColon),
+                                            );
+                                            if has_err(r2.err.clone()) {
+                                                return Rc::new(OpBodyResult {
+                                                    inputs: inputs.clone(),
+                                                    outputs: outputs.clone(),
+                                                    modifier_props: modifier_props.clone(),
+                                                    transport: transport.clone(),
+                                                    exit_props: exit_props.clone(),
+                                                    response_props: response_props.clone(),
+                                                    mock_props: mock_props.clone(),
+                                                    tokens: r2.tokens.clone(),
+                                                    ctx: ctx.clone(),
+                                                    err: r2.err.clone(),
+                                                });
+                                            }
+                                            let r3 = parse_expr(r2.tokens.clone(), ctx.clone());
+                                            if has_err(r3.err.clone()) {
+                                                return Rc::new(OpBodyResult {
+                                                    inputs: inputs.clone(),
+                                                    outputs: outputs.clone(),
+                                                    modifier_props: modifier_props.clone(),
+                                                    transport: transport.clone(),
+                                                    exit_props: exit_props.clone(),
+                                                    response_props: response_props.clone(),
+                                                    mock_props: mock_props.clone(),
+                                                    tokens: r3.tokens.clone(),
+                                                    ctx: r3.ctx.clone(),
+                                                    err: r3.err.clone(),
+                                                });
+                                            }
+                                            {
+                                                let __tco_0 = skip_newlines(r3.tokens.clone());
+                                                let __tco_1 = r3.ctx.clone();
+                                                let __tco_2 = inputs;
+                                                let __tco_3 = outputs;
+                                                let __tco_4 = modifier_props;
+                                                let __tco_5 = transport;
+                                                let __tco_6 = exit_props;
+                                                let __tco_7 = response_props;
+                                                let __tco_8 = mock_props;
+                                                __tco_loop_tokens = __tco_0;
+                                                __tco_loop_ctx = __tco_1;
+                                                __tco_loop_inputs = __tco_2;
+                                                __tco_loop_outputs = __tco_3;
+                                                __tco_loop_modifier_props = __tco_4;
+                                                __tco_loop_transport = __tco_5;
+                                                __tco_loop_exit_props = __tco_6;
+                                                __tco_loop_response_props = __tco_7;
+                                                __tco_loop_mock_props = __tco_8;
+                                                continue;
+                                            }
+                                        } else {
+                                            break Rc::new(OpBodyResult {
+                                                inputs: inputs.clone(),
+                                                outputs: outputs.clone(),
+                                                modifier_props: modifier_props.clone(),
+                                                transport: transport.clone(),
+                                                exit_props: exit_props.clone(),
+                                                response_props: response_props.clone(),
+                                                mock_props: mock_props.clone(),
+                                                tokens: tokens.clone(),
+                                                ctx: ctx.clone(),
+                                                err: Some(parse_error(
+                                                    format!(
+                                                        "unexpected '{}' in operation body",
+                                                        id.clone()
+                                                    ),
+                                                    span.clone(),
+                                                )),
+                                            });
+                                        }
                                     }
                                 }
                             }
@@ -10730,6 +10775,88 @@ pub fn parse_exit_entries_acc(
             }
         }
     }
+}
+
+pub fn parse_op_requires_members(
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_span: Rc<SourceSpan>,
+    mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
+) -> Rc<ModsResult> {
+    loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut span = __tco_loop_span;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
+        let r = parse_type_expr(tokens.clone(), ctx.clone());
+        if has_err(r.err.clone()) {
+            return Rc::new(ModsResult {
+                properties: acc.clone(),
+                tokens: r.tokens.clone(),
+                ctx: r.ctx.clone(),
+                err: r.err.clone(),
+            });
+        }
+        let minted = mint_parsed_node_identity(r.ctx.clone());
+        let property = crate::v1_std_core::make_field_init_node(
+            minted.identity.clone(),
+            "requires".to_string(),
+            r.type_expr.clone(),
+            span.clone(),
+            span.clone(),
+        );
+        let next = v1_rt::rc_list_push(acc.clone(), property.clone());
+        if tok_is_comma(token_stream_first(r.tokens.clone())) {
+            {
+                let __tco_0 = token_stream_advance(r.tokens.clone(), 1);
+                let __tco_1 = minted.ctx.clone();
+                let __tco_2 = span;
+                let __tco_3 = next.clone();
+                __tco_loop_tokens = __tco_0;
+                __tco_loop_ctx = __tco_1;
+                __tco_loop_span = __tco_2;
+                __tco_loop_acc = __tco_3;
+                continue;
+            }
+        } else {
+            break Rc::new(ModsResult {
+                properties: next.clone(),
+                tokens: r.tokens.clone(),
+                ctx: minted.ctx.clone(),
+                err: std::option::Option::None,
+            });
+        }
+    }
+}
+
+pub fn operation_requires_members(
+    op: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<Node>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for p in Rc::new({
+            let mut __result = Vec::new();
+            for p in op.properties.clone().iter().cloned() {
+                if (crate::v1_std_core::field_init_node_name_at(p.clone(), source_indices.clone())
+                    == "requires".to_string())
+                {
+                    __result.push(p);
+                }
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        {
+            __result.extend((*p.children.clone()).iter().cloned());
+        }
+        __result
+    })
 }
 
 pub fn parse_operation_modifiers(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ModsResult> {

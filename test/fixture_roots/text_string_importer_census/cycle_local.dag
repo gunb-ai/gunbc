@@ -1,0 +1,8 @@
+module fixture.text_string_importer_census.cycle_local
+import v2.std.text { String }
+fn ping(t: String) -> Int {
+  pong(t: t)
+}
+fn pong(t: String) -> Int {
+  ping(t: t)
+}

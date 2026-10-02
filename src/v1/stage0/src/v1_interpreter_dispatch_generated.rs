@@ -114,6 +114,7 @@ pub enum EvalBuiltinArm {
     FreeCallCompileDagImporterResolvedCallEdges,
     FreeCallCompileDagCallsiteResolvedCallEdges,
     FreeCallBuiltinFunctionRegistryKeys,
+    FreeCallCompileDagOperationRequires,
     FreeCallCompileDagPrimitiveCallEdges,
     FreeCallSourceRootIngestModuleIdentities,
     FreeCallRequiredFloorNominalSubjectModuleIdentities,
@@ -270,6 +271,7 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "compile_dag_importer_resolved_call_edges" => Some(EvalBuiltinArm::FreeCallCompileDagImporterResolvedCallEdges),
         "compile_dag_callsite_resolved_call_edges" => Some(EvalBuiltinArm::FreeCallCompileDagCallsiteResolvedCallEdges),
         "builtin_function_registry_keys" => Some(EvalBuiltinArm::FreeCallBuiltinFunctionRegistryKeys),
+        "compile_dag_operation_requires" => Some(EvalBuiltinArm::FreeCallCompileDagOperationRequires),
         "compile_dag_primitive_call_edges" => Some(EvalBuiltinArm::FreeCallCompileDagPrimitiveCallEdges),
         "source_root_ingest_module_identities" => Some(EvalBuiltinArm::FreeCallSourceRootIngestModuleIdentities),
         "required_floor_nominal_subject_module_identities" => Some(EvalBuiltinArm::FreeCallRequiredFloorNominalSubjectModuleIdentities),
@@ -424,6 +426,7 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.compile_dag_importer_resolved_call_edges") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagImporterResolvedCallEdges };
     ("free_call.compile_dag_callsite_resolved_call_edges") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagCallsiteResolvedCallEdges };
     ("free_call.builtin_function_registry_keys") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallBuiltinFunctionRegistryKeys };
+    ("free_call.compile_dag_operation_requires") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagOperationRequires };
     ("free_call.compile_dag_primitive_call_edges") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagPrimitiveCallEdges };
     ("free_call.source_root_ingest_module_identities") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallSourceRootIngestModuleIdentities };
     ("free_call.required_floor_nominal_subject_module_identities") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallRequiredFloorNominalSubjectModuleIdentities };
