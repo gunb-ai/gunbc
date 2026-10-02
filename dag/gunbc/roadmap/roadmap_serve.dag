@@ -1,6 +1,8 @@
 module gunbc.roadmap_serve
 
-import extdeps.tailscale.identity { tailnet_identity_of }
+import gunbc.auth.approval_transport { roadmap_approval_transport_request }
+import gunbc.auth.request_authentication { RequestAuthenticationEvidence }
+import gunbc.roadmap_auth_routes { auth_login_response, auth_google_callback_response, auth_logout_response, auth_session_response, roadmap_serve_request_security }
 import std.types { String, Int, Bool, List, CommitSha, HttpStatus }
 import extdeps.uri_path { PathParamBinding, path_param_value }
 import std.markup { Fragment }
@@ -182,7 +184,11 @@ data roadmap_serve_interpreted_scaffold: Disposition = Scaffold {
 // v1_seed_standing already warns about for the active-maintenance arm.
 
 type RoadmapServeHandler
-  = RoadmapDailyPageHandler
+  = AuthLoginHandler
+  | AuthGoogleCallbackHandler
+  | AuthLogoutHandler
+  | AuthSessionHandler
+  | RoadmapDailyPageHandler
   | RoadmapFullPageHandler
   | FleetStandingPageHandler
   | RoadmapMdHandler
@@ -252,6 +258,10 @@ type ServedDailyBodyAuthority
 
 fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>> {
   [
+    ServedRouteSpec { method: GET, raw: "/auth/login", handler: AuthLoginHandler },
+    ServedRouteSpec { method: GET, raw: "/auth/google/callback", handler: AuthGoogleCallbackHandler },
+    ServedRouteSpec { method: POST, raw: "/auth/logout", handler: AuthLogoutHandler },
+    ServedRouteSpec { method: GET, raw: "/auth/session", handler: AuthSessionHandler },
     ServedRouteSpec { method: GET, raw: roadmap_site_daily_url_path as String, handler: RoadmapDailyPageHandler },
     ServedRouteSpec { method: GET, raw: roadmap_site_full_url_path as String, handler: RoadmapFullPageHandler },
     ServedRouteSpec { method: GET, raw: "/fleet", handler: FleetStandingPageHandler },
@@ -293,7 +303,7 @@ fn roadmap_serve_route_table_build() -> ServedRouteTableBuild<RoadmapServeHandle
 }
 
 fn serve_text_response(status: HttpStatus, content_type: MediaType, body: String) -> ServeHttpResponse {
-  ServeHttpResponse { status: status, content_type: content_type, body: body }
+  ServeHttpResponse { status: status, content_type: content_type, body: body, headers: [] }
 }
 
 // A page render refusal is a TYPED 500 carrying the emitter's reason — never an empty page and
@@ -594,7 +604,7 @@ fn dashboard_instance_json(instance: HostDashboardInstance) -> String {
 // identical to production, never a mock. Fail-closed: an unknown or missing status refuses with a
 // 400 that names the valid label set, never a fabricated arm.
 
-fn sandbox_echo_response(request: ServeHttpRequest) -> ServeHttpResponse {
+fn sandbox_echo_response(request: ServeHttpRequest<RequestAuthenticationEvidence>) -> ServeHttpResponse {
   let status = uri_query_param(path: request.path, key: "status")
   match belt_dispatch_result_for_label(wire_label: status) {
     Present { value: r } =>
@@ -651,10 +661,15 @@ fn roadmap_serve_invoke_over(
   daily_body: ServedDailyBodyAuthority,
   handler: RoadmapServeHandler,
   params: List<PathParamBinding>,
-  request: ServeHttpRequest,
+  request: ServeHttpRequest<RequestAuthenticationEvidence>,
   release_revision: CommitSha,
+  cookie_header: String = "",
 ) -> ServeHttpResponse {
   match handler {
+    AuthLoginHandler => auth_login_response(instance: instance, request: request)
+    AuthGoogleCallbackHandler => auth_google_callback_response(instance: instance, path: request.path, cookie_header: cookie_header)
+    AuthLogoutHandler => auth_logout_response(instance: instance, request: request)
+    AuthSessionHandler => auth_session_response(request: request)
     RoadmapDailyPageHandler =>
       match daily_body {
         DailyBodyRenderedUnderThisPlan => serve_daily_page_response_for_instance(instance: instance)
@@ -714,7 +729,7 @@ fn roadmap_serve_invoke_over(
     BeltStopHandler => serve_stop_handler_response_for_instance(instance: instance, params: params)
     BeltPublishHandler => serve_publish_handler_response_for_instance(instance: instance, params: params)
     ApprovalBrokerCutoverHandler { route: r } =>
-      approval_broker_invoke(handler: r, params: params, request: request, process: RoadmapProcess)
+      approval_broker_invoke(handler: r, params: params, request: roadmap_approval_transport_request(request: request), process: RoadmapProcess)
   }
 }
 
@@ -722,7 +737,7 @@ fn roadmap_serve_invoke_for_instance(
   instance: HostDashboardInstance,
   handler: RoadmapServeHandler,
   params: List<PathParamBinding>,
-  request: ServeHttpRequest,
+  request: ServeHttpRequest<RequestAuthenticationEvidence>,
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
   roadmap_serve_invoke_over(
@@ -739,7 +754,7 @@ fn roadmap_serve_invoke_for_instance(
 fn roadmap_serve_invoke(
   handler: RoadmapServeHandler,
   params: List<PathParamBinding>,
-  request: ServeHttpRequest,
+  request: ServeHttpRequest<RequestAuthenticationEvidence>,
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
   roadmap_serve_invoke_for_instance(
@@ -879,8 +894,9 @@ fn roadmap_serve_selection_response_over(
   plan: RoadmapAuthorityProjection,
   daily_body: ServedDailyBodyAuthority,
   sel: RouteSelection<RoadmapServeHandler>,
-  request: ServeHttpRequest,
+  request: ServeHttpRequest<RequestAuthenticationEvidence>,
   release_revision: CommitSha,
+  cookie_header: String = "",
 ) -> ServeHttpResponse {
   match sel {
     SelectedDynamic { handler: h, params: ps } =>
@@ -891,10 +907,11 @@ fn roadmap_serve_selection_response_over(
         handler: h,
         params: ps,
         request: request,
+        cookie_header: cookie_header,
         release_revision: release_revision,
       )
     SelectedStatic { route: r } =>
-      ServeHttpResponse { status: r.status_on_hit, content_type: r.content_type, body: r.body }
+      ServeHttpResponse { status: r.status_on_hit, content_type: r.content_type, body: r.body, headers: [] }
     MethodNotAllowed { allowed: ms } =>
       serve_text_response(
         status: 405,
@@ -909,7 +926,7 @@ fn roadmap_serve_selection_response_over(
 fn roadmap_serve_selection_response_for_instance(
   instance: HostDashboardInstance,
   sel: RouteSelection<RoadmapServeHandler>,
-  request: ServeHttpRequest,
+  request: ServeHttpRequest<RequestAuthenticationEvidence>,
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
   roadmap_serve_selection_response_over(
@@ -924,7 +941,7 @@ fn roadmap_serve_selection_response_for_instance(
 
 fn roadmap_serve_selection_response(
   sel: RouteSelection<RoadmapServeHandler>,
-  request: ServeHttpRequest,
+  request: ServeHttpRequest<RequestAuthenticationEvidence>,
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
   roadmap_serve_selection_response_for_instance(
@@ -943,6 +960,7 @@ fn roadmap_serve_respond_over(
   path: String,
   body: String,
   tailscale_identity: String,
+  cookie_header: String = "",
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
   match parse_http_method_label(label: method_label) {
@@ -971,11 +989,12 @@ fn roadmap_serve_respond_over(
             plan: plan,
             daily_body: daily_body,
             sel: serve_select_route(table: t, method: m, path: path),
+            cookie_header: cookie_header,
             request: ServeHttpRequest {
               method: m,
               path: path,
               body: body,
-              identity: tailnet_identity_of(header_value: tailscale_identity),
+              security: roadmap_serve_request_security(instance: instance, tailscale_identity: tailscale_identity, cookie_header: cookie_header),
             },
             release_revision: release_revision,
           )
@@ -989,6 +1008,7 @@ fn roadmap_serve_respond_for_instance(
   path: String,
   body: String,
   tailscale_identity: String,
+  cookie_header: String = "",
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
   roadmap_serve_respond_over(
@@ -999,6 +1019,7 @@ fn roadmap_serve_respond_for_instance(
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    cookie_header: cookie_header,
     release_revision: release_revision,
   )
 }
@@ -1008,6 +1029,7 @@ fn roadmap_serve_respond(
   path: String,
   body: String,
   tailscale_identity: String,
+  cookie_header: String = "",
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
   roadmap_serve_respond_for_instance(
@@ -1016,6 +1038,7 @@ fn roadmap_serve_respond(
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    cookie_header: cookie_header,
     release_revision: release_revision,
   )
 }
@@ -1058,6 +1081,7 @@ fn roadmap_serve_handle_over(
   path: String,
   body: String,
   tailscale_identity: String,
+  cookie_header: String = "",
   release_revision: CommitSha,
 ) -> ServeWireResponse {
   serve_wire_response(r: roadmap_serve_respond_over(
@@ -1068,6 +1092,7 @@ fn roadmap_serve_handle_over(
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    cookie_header: cookie_header,
     release_revision: release_revision,
   ))
 }
@@ -1077,6 +1102,7 @@ fn roadmap_serve_handle(
   path: String,
   body: String,
   tailscale_identity: String,
+  cookie_header: String = "",
   release_revision: CommitSha,
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
@@ -1087,6 +1113,7 @@ fn roadmap_serve_handle(
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    cookie_header: cookie_header,
     release_revision: release_revision,
   )
 }
@@ -1103,6 +1130,7 @@ fn roadmap_serve_handle_macbook_local(
   path: String,
   body: String,
   tailscale_identity: String,
+  cookie_header: String = "",
   release_revision: CommitSha,
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
@@ -1113,6 +1141,7 @@ fn roadmap_serve_handle_macbook_local(
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    cookie_header: cookie_header,
     release_revision: release_revision,
   )
 }
@@ -1122,6 +1151,7 @@ fn roadmap_serve_handle_srv1_lab(
   path: String,
   body: String,
   tailscale_identity: String,
+  cookie_header: String = "",
   release_revision: CommitSha,
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
@@ -1132,6 +1162,7 @@ fn roadmap_serve_handle_srv1_lab(
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    cookie_header: cookie_header,
     release_revision: release_revision,
   )
 }
@@ -1141,6 +1172,7 @@ fn roadmap_serve_handle_srv2_preview(
   path: String,
   body: String,
   tailscale_identity: String,
+  cookie_header: String = "",
   release_revision: CommitSha,
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
@@ -1151,6 +1183,7 @@ fn roadmap_serve_handle_srv2_preview(
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    cookie_header: cookie_header,
     release_revision: release_revision,
   )
 }
@@ -1163,6 +1196,7 @@ fn roadmap_serve_handle_srv2_deploy(
   path: String,
   body: String,
   tailscale_identity: String,
+  cookie_header: String = "",
   release_revision: CommitSha,
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
@@ -1173,6 +1207,7 @@ fn roadmap_serve_handle_srv2_deploy(
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    cookie_header: cookie_header,
     release_revision: release_revision,
   )
 }
@@ -1182,6 +1217,7 @@ fn roadmap_serve_handle_srv2_lab(
   path: String,
   body: String,
   tailscale_identity: String,
+  cookie_header: String = "",
   release_revision: CommitSha,
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
@@ -1192,6 +1228,7 @@ fn roadmap_serve_handle_srv2_lab(
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    cookie_header: cookie_header,
     release_revision: release_revision,
   )
 }

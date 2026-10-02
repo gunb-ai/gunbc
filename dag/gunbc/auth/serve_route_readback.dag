@@ -1,0 +1,53 @@
+module gunbc.auth.serve_route_readback
+
+import std.types { String, NonEmptyStr, Port }
+import extdeps.tailscale.serve { TailscaleServeRouteKey, ServeRootMount, tailscale_status_web_entry_proxies, tailscale_serve_status_funnel_listeners, FunnelListeners, FunnelStatusUnreadable, json_unique_member_value }
+import extdeps.languages.json.emit { JsonObject }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_object_unique_member, JsonMemberAbsent, JsonMemberFound, JsonMemberDuplicated, JsonMemberNotAnObject }
+
+// Attribute the observed root handler to this exact backend. A different site on the host,
+// duplicate listener, malformed listener or public Funnel cannot attest this request path.
+fn serve_backend_route_readback_valid(status_json: String, listen_host: NonEmptyStr, listen_port: Port) -> TailscaleServeRouteKey? {
+  let backend = join(["http://", listen_host as String, ":", to_string(listen_port)], "")
+  match tailscale_serve_status_funnel_listeners(status_json: status_json) {
+    FunnelListeners { host_ports } => match parse_json_document(s: status_json) {
+      JsonDocumentParsed { value: document } => match json_unique_member_value(v: document, key: "Web") {
+        Present { value: JsonObject { members } } => {
+          let matching = filter(members, member => tailscale_status_web_entry_proxies(entry: member.value, mount: ServeRootMount) == [backend])
+          if count(matching) != 1 { none } else { match first(matching) {
+            Present { value: listener } => if any(host_ports, public_listener => public_listener == listener.key) { none } else {
+              let parts = split(s: listener.key, delimiter: ":")
+              if count(parts) != 2 { none } else { match parts.last() {
+                Present { value: port_wire } => match parse_int(s: port_wire) {
+                  Present { value: port_number } => if port_number > 0 && port_number <= 65535 {
+                    Present { value: TailscaleServeRouteKey { https_port: port_number, mount: ServeRootMount } }
+                  } else { none }
+                  Absent => none
+                }
+                Absent => none
+              } }
+            }
+            Absent => none
+          } }
+        }
+        Present { value: _ } => none
+        Absent => none
+      }
+      JsonDocumentUnreadable { gap: _ } => none
+    }
+    FunnelStatusUnreadable => none
+  }
+}
+
+fn serve_backend_route_readback(status_json: String, listen_host: NonEmptyStr, listen_port: Port) -> TailscaleServeRouteKey? {
+  match parse_json_document(s: status_json) {
+    JsonDocumentParsed { value: document } => match json_object_unique_member(v: document, key: "AllowFunnel") {
+      JsonMemberAbsent => serve_backend_route_readback_valid(status_json: status_json, listen_host: listen_host, listen_port: listen_port)
+      JsonMemberFound { value: JsonObject { members: _ } } => serve_backend_route_readback_valid(status_json: status_json, listen_host: listen_host, listen_port: listen_port)
+      JsonMemberFound { value: _ } => none
+      JsonMemberDuplicated { count: _ } => none
+      JsonMemberNotAnObject => none
+    }
+    JsonDocumentUnreadable { gap: _ } => none
+  }
+}

@@ -1,0 +1,21 @@
+module gunbc.auth.approval_transport
+
+import extdeps.http.server { ServeHttpRequest, RequestSecurityContext, AccessPathTailnetProxy, AccessPathDirectHttps, AccessPathLocalDev }
+import extdeps.tailscale.identity { TailnetIdentity, TailnetIdentityAbsent }
+import gunbc.auth.request_authentication { RequestAuthenticationEvidence }
+
+// The mounted legacy broker consumes transport evidence under its own capability/trust gates.
+// A Google session is never converted to that evidence; non-tailnet paths carry absence.
+fn roadmap_approval_transport_request(request: ServeHttpRequest<RequestAuthenticationEvidence>) -> ServeHttpRequest<TailnetIdentity> {
+  ServeHttpRequest {
+    method: request.method, path: request.path, body: request.body,
+    security: RequestSecurityContext {
+      access_path: request.security.access_path,
+      authentication: match request.security.access_path {
+        AccessPathTailnetProxy { transport_observation: observed, route_readback: _ } => observed
+        AccessPathDirectHttps => TailnetIdentityAbsent
+        AccessPathLocalDev => TailnetIdentityAbsent
+      },
+    },
+  }
+}

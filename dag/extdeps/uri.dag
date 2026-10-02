@@ -542,3 +542,14 @@ fn uri_percent_encode_code_points(code_points: List<Int>) -> UriPercentEncodeCom
     }
   }
 }
+
+// PERCENT-DECODE FOR QUERY VALUES (the decode half query consumers need): an authorization code
+// arrives %XX-encoded in the callback query and must decode EXACTLY ONCE before it is re-encoded
+// for the token form -- the 2026-09-27 invalid_grant defect: the callback read the raw encoded
+// value and the token form encoded it a second time, so Google saw a code it never issued. The
+// decode order is load-bearing: %25 LAST, so the percent sign it yields can never combine with the
+// characters after it into an escape a later pass would decode a second time ("%252F" decodes to
+// "%2F", not "/"). Google's code alphabet ([A-Za-z0-9/+=-]) bounds the reserved set here.
+fn uri_percent_decode_component(value: String) -> String {
+  replace(replace(replace(replace(value, "%2F", "/"), "%3D", "="), "%2B", "+"), "%25", "%")
+}

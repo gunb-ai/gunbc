@@ -1,0 +1,41 @@
+module test.claim.auth.login_browser_binding_witness_test
+
+import std.types { String, Bool, FilePath }
+import extdeps.auth.oidc { OidcLoginTransaction, OidcPkceCodeVerifier, RelativeReturnPath }
+import extdeps.shell
+import gunbc.auth.login_browser_binding { auth_login_browser_binding, auth_login_browser_admitted }
+import gunbc.auth.login_transaction_store { LoginTransactionStoreLayout, login_transaction_store_save, login_transaction_store_delete, LoginTransactionSaved, LoginTransactionDeleted }
+
+fn browser_transaction(verifier: String = "verifier-from-jar-A") -> OidcLoginTransaction {
+  OidcLoginTransaction { state: "state-A", nonce: "nonce-A", created_at: "2026-09-28T00:00:00Z", expires_at: "2026-09-28T00:10:00Z",
+    verifier: OidcPkceCodeVerifier { verifier: verifier }, return_path: RelativeReturnPath { path: "/" } }
+}
+
+test fn callback_requires_initiating_browser_cookie() -> Bool {
+  let transaction = browser_transaction()
+  let jar_a = concat("__Host-gunbc-login=", auth_login_browser_binding(transaction: transaction))
+  let jar_b = concat("__Host-gunbc-login=", auth_login_browser_binding(transaction: browser_transaction(verifier: "verifier-from-jar-B")))
+  auth_login_browser_admitted(transaction: transaction, cookie_header: jar_a)
+    && !auth_login_browser_admitted(transaction: transaction, cookie_header: jar_b)
+    && !auth_login_browser_admitted(transaction: transaction, cookie_header: "")
+    && !auth_login_browser_admitted(transaction: transaction, cookie_header: concat(jar_a, concat("; ", jar_a)))
+    && !auth_login_browser_admitted(transaction: transaction, cookie_header: "__Host-gunbc-login=state-A")
+}
+
+test fn transaction_consume_has_one_winner_over_real_files() -> Bool {
+  let directory = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-login-consume.XXXXXX").path
+  if directory == "" { false } else {
+    let layout = LoginTransactionStoreLayout { root: directory as FilePath }
+    let transaction = browser_transaction()
+    match login_transaction_store_save(layout: layout, transaction: transaction) {
+      LoginTransactionSaved { state: _ } => match login_transaction_store_delete(layout: layout, state: transaction.state) {
+        LoginTransactionDeleted { state: _ } => match login_transaction_store_delete(layout: layout, state: transaction.state) {
+          LoginTransactionDeleted { state: _ } => false
+          _ => true
+        }
+        _ => false
+      }
+      _ => false
+    }
+  }
+}

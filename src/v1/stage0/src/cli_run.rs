@@ -21784,6 +21784,7 @@ pub fn handle_serve(
                     400,
                     "text/plain; charset=utf-8",
                     &format!("bad request: {}\n", reason),
+                    &[],
                 ),
                 // Idle or cleanly-closed connection: no request was made, so the
                 // connection is dropped without a response.
@@ -21808,7 +21809,7 @@ pub fn handle_serve(
                 // NO BUDGET IS ARMED and no `.dag` function is called, deliberately: arming a
                 // deadline around a `format!` would be ceremony, and reaching the evaluator at all
                 // would reintroduce the dependency this endpoint exists to remove.
-                Ok(Some((method, path, _body, _identity)))
+                Ok(Some((method, path, _body, _identity, _cookie_header)))
                     if method == "GET" && path == SERVE_LIVENESS_PATH =>
                 {
                     serve_write_response(
@@ -21825,15 +21826,17 @@ pub fn handle_serve(
                             serve_json_string(&bound.host),
                             bound.port,
                         ),
+                        &[],
                     )
                 }
-                Ok(Some((method, path, body, tailscale_identity))) => {
+                Ok(Some((method, path, body, tailscale_identity, cookie_header))) => {
                     let args = serve_handler_args(
                         method,
                         path,
                         body,
                         tailscale_identity,
                         release_revision.clone(),
+                        Some(cookie_header),
                         if listener_attests_peer { Some(peer_user.clone()) } else { None },
                     );
                     // THE DEADLINE IS ARMED HERE, AROUND THIS CALL, AND THE SCOPE IS THE POINT.
@@ -21885,6 +21888,7 @@ pub fn handle_serve(
                                         500,
                                         "text/plain; charset=utf-8",
                                         "budget refusal did not name the armed contract\n",
+                                        &[],
                                     )
                                 } else {
                                 // Refusal rendering is HOST-SIDE by necessity, not by preference:
@@ -21908,6 +21912,7 @@ pub fn handle_serve(
                                     &serve_budget_refusal::serve_budget_refusal_machine_body(
                                         &refusal,
                                     ),
+                                    &[],
                                 )
                                 }
                             }
@@ -21916,14 +21921,16 @@ pub fn handle_serve(
                                 500,
                                 "text/plain; charset=utf-8",
                                 &format!("handler error: {}\n", e),
+                                &[],
                             ),
                         },
                         Ok(val) => match serve_wire_fields(&val, &ctx) {
-                            Some((status, content_type, resp_body)) => serve_write_response(
+                            Some((status, content_type, resp_body, resp_headers)) => serve_write_response(
                                 &mut *stream,
                                 status,
                                 &content_type,
                                 &resp_body,
+                                &resp_headers,
                             ),
                             None => serve_write_response(
                                 &mut *stream,
@@ -21933,6 +21940,7 @@ pub fn handle_serve(
                                     "handler returned `{}`, not ServeWireResponse {{ status: Int, content_type_label: String, body: String }}\n",
                                     ctx.format_value(&val)
                                 ),
+                                &[],
                             ),
                         },
                     }
@@ -21978,6 +21986,13 @@ pub fn handle_serve(
 /// side treats an absent value as a refusal rather than as "unknown", so the failure mode of a
 /// misconfigured deployment is a closed door rather than an open one.
 const SERVE_TAILSCALE_IDENTITY_HEADER: &str = "tailscale-user-login";
+
+/// THE SECOND NAMED HEADER, on the same discipline as the tailnet identity above: the session
+/// cookie. The login flow's Set-Cookie answers a session mint, and this is the only way the
+/// browser can present it back — the `.dag` side's request-security context builds from this
+/// exact string (absent = AuthAbsent, never anonymous), and every other header stays out of the
+/// handlers exactly as before.
+const SERVE_COOKIE_HEADER: &str = "cookie";
 
 // ONE CONNECTION SHAPE FOR BOTH LISTENERS. The request parse and the response write are the same
 // bytes over TCP and over a unix socket; only binding, accepting and the peer differ.
@@ -22093,6 +22108,7 @@ fn serve_handler_args(
     body: String,
     tailscale_identity: String,
     release_revision: String,
+    cookie_header: Option<String>,
     attested_peer: Option<String>,
 ) -> Vec<(Option<String>, v1_interpreter::Value)> {
     let mut args = vec![
@@ -22108,6 +22124,9 @@ fn serve_handler_args(
             str_value(release_revision),
         ),
     ];
+    if let Some(cookie) = cookie_header {
+        args.push((Some("cookie_header".to_string()), str_value(cookie)));
+    }
     if let Some(peer) = attested_peer {
         args.push((Some("peer_user".to_string()), str_value(peer)));
     }
@@ -22147,7 +22166,7 @@ fn serve_peer_user(s: &std::os::unix::net::UnixStream) -> std::io::Result<String
 
 fn serve_read_request(
     stream: &mut dyn ServeConnection,
-) -> Result<Option<(String, String, String, String)>, String> {
+) -> Result<Option<(String, String, String, String, String)>, String> {
     use std::io::{BufRead, Read};
     const MAX_HEAD: usize = 16 << 10;
     const MAX_BODY: usize = 1 << 20;
@@ -22195,6 +22214,7 @@ fn serve_read_request(
     }
     let mut content_length: Option<usize> = None;
     let mut tailscale_identity: Option<String> = None;
+    let mut cookie_header: Option<String> = None;
     loop {
         let mut line = String::new();
         let n = reader
@@ -22235,6 +22255,12 @@ fn serve_read_request(
                 }
                 tailscale_identity = Some(value.trim().to_string());
             }
+            if name.eq_ignore_ascii_case(SERVE_COOKIE_HEADER) {
+                if cookie_header.is_some() {
+                    return Err(format!("duplicate {} header", SERVE_COOKIE_HEADER));
+                }
+                cookie_header = Some(value.trim().to_string());
+            }
         }
     }
     let content_length = content_length.unwrap_or(0);
@@ -22254,6 +22280,7 @@ fn serve_read_request(
         target,
         body,
         tailscale_identity.unwrap_or_default(),
+        cookie_header.unwrap_or_default(),
     )))
 }
 
@@ -22262,10 +22289,12 @@ fn serve_write_response(
     status: u16,
     content_type: &str,
     body: &str,
+    headers: &[String],
 ) {
     use std::io::Write;
     let reason = match status {
         200 => "OK",
+        302 => "Found",
         400 => "Bad Request",
         404 => "Not Found",
         405 => "Method Not Allowed",
@@ -22276,12 +22305,18 @@ fn serve_write_response(
         503 => "Service Unavailable",
         _ => "",
     };
+    let mut extra = String::new();
+    for header in headers {
+        extra.push_str(header);
+        extra.push_str("\r\n");
+    }
     let response = format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n{}\r\n{}",
         status,
         reason,
         content_type,
         body.len(),
+        extra,
         body
     );
     if let Err(e) = stream.write_all(response.as_bytes()) {
@@ -22290,11 +22325,32 @@ fn serve_write_response(
 }
 
 /// Read back the .dag handler's ServeWireResponse record. None = wrong shape
-/// (surfaced as a typed 500 by the caller, never a fabricated response).
+/// (surfaced as a typed 500 by the caller, never a fabricated response). The
+/// headers list carries one complete header line per element, in write order —
+/// a handler that sets no headers produces the same wire shape as before.
+fn serve_response_header_line_admitted(line: &str) -> bool {
+    if line.bytes().any(|b| b == b'\r' || b == b'\n' || b == 0) {
+        return false;
+    }
+    let Some((name, _)) = line.split_once(':') else {
+        return false;
+    };
+    !name.is_empty()
+        && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+        && ![
+            "content-length",
+            "transfer-encoding",
+            "connection",
+            "content-type",
+        ]
+        .iter()
+        .any(|reserved| name.eq_ignore_ascii_case(reserved))
+}
+
 fn serve_wire_fields(
     val: &v1_interpreter::Value,
     ctx: &v1_interpreter::InterpContext,
-) -> Option<(u16, String, String)> {
+) -> Option<(u16, String, String, Vec<String>)> {
     if let v1_interpreter::Value::Record { type_name, fields } = val {
         if !ctx.sym_eq(*type_name, "ServeWireResponse") {
             return None;
@@ -22311,7 +22367,23 @@ fn serve_wire_fields(
             Some(Value::Str(s)) => s.to_string(),
             _ => return None,
         };
-        return Some((status, content_type, body));
+        let headers = match ctx.field(fields, "headers") {
+            None => Vec::new(),
+            Some(v1_interpreter::Value::List(items)) => {
+                let mut lines = Vec::with_capacity(items.len());
+                for item in items.iter() {
+                    match item {
+                        Value::Str(s) if serve_response_header_line_admitted(s) => {
+                            lines.push(s.to_string())
+                        }
+                        _ => return None,
+                    }
+                }
+                lines
+            }
+            _ => return None,
+        };
+        return Some((status, content_type, body, headers));
     }
     None
 }
@@ -46986,6 +47058,7 @@ mod serve_unix_socket_door_tests {
             String::new(),
             "r".into(),
             None,
+            None,
         );
         assert_eq!(
             names(&tcp),
@@ -47003,9 +47076,30 @@ mod serve_unix_socket_door_tests {
             String::new(),
             String::new(),
             "r".into(),
+            None,
             Some("ghrunner".into()),
         );
         assert_eq!(names(&unix).last().map(|s| s.as_str()), Some("peer_user"));
+    }
+
+    #[test]
+    fn cookie_context_does_not_manufacture_a_tcp_peer() {
+        let args = serve_handler_args(
+            "GET".into(),
+            "/allocations".into(),
+            String::new(),
+            String::new(),
+            "revision".into(),
+            Some("session=opaque".into()),
+            None,
+        );
+        assert!(args
+            .iter()
+            .any(|(name, value)| name.as_deref() == Some("cookie_header")
+                && format!("{value:?}").contains("session=opaque")));
+        assert!(!args
+            .iter()
+            .any(|(name, _)| name.as_deref() == Some("peer_user")));
     }
 
     // A TCP listener attests nothing: its peer is empty, which the fabric door refuses to admit.

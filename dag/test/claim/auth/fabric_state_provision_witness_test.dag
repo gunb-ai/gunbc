@@ -1,0 +1,57 @@
+module test.claim.auth.fabric_state_provision_witness_test
+
+import std.types { Bool, String }
+import gunbc.fabric_storage_state_provision { fabric_state_provision_request, FabricStateProvisionRequested, FabricStateProvisionUnrequestable, fabric_state_provision_token_variable }
+import gunbc.auth.approved_secret_grants { secret_grants_approval_request, secret_grant_token_variable }
+import gunbc.auth.fleet_secret_accessor_roster { fabric_state_key_accessor_row, fleet_accessor_grant }
+import gunbc.auth.approval_decision_store { request_revision_of }
+import gunbc.auth.approval_gate { approval_gate_from_poll, GateRefused, GateAdmitted }
+import gunbc.auth.approval_request_client { PollApproved }
+
+test fn material_approval_cannot_authorize_accessor_policy() -> Bool {
+  match fabric_state_provision_request(attempt: "fixture-run-1") {
+    FabricStateProvisionUnrequestable { reason: _ } => false
+    FabricStateProvisionRequested { request: material } => match secret_grants_approval_request(
+      grants: [fleet_accessor_grant(row: fabric_state_key_accessor_row)], member: "serviceAccount:fixture@example.invalid", attempt: "fixture-run-1") {
+      Absent => false
+      Present { value: policy } => {
+        let decision = PollApproved { revision: request_revision_of(request: material), decided_by: "fixture-operator",
+          decided_at: "2026-09-28T12:00:00Z", execute_by: "2026-09-28T12:05:00Z" }
+        match approval_gate_from_poll(poll: decision, request: policy, observed_at: "2026-09-28T12:01:00Z") {
+          GateRefused { cause: _ } => match approval_gate_from_poll(poll: decision, request: material, observed_at: "2026-09-28T12:01:00Z") {
+            GateRefused { cause: _ } => false
+            GateAdmitted { authorization: _ } => {
+              let policy_decision = PollApproved { revision: request_revision_of(request: policy), decided_by: "fixture-operator",
+                decided_at: "2026-09-28T12:00:00Z", execute_by: "2026-09-28T12:05:00Z" }
+              match approval_gate_from_poll(poll: policy_decision, request: material, observed_at: "2026-09-28T12:01:00Z") {
+                GateRefused { cause: _ } => match approval_gate_from_poll(poll: policy_decision, request: policy, observed_at: "2026-09-28T12:01:00Z") {
+                  GateAdmitted { authorization: _ } => fabric_state_provision_token_variable != secret_grant_token_variable
+                  GateRefused { cause: _ } => false
+                }
+                GateAdmitted { authorization: _ } => false
+              }
+            }
+          }
+          GateAdmitted { authorization: _ } => false
+        }
+      }
+    }
+  }
+}
+
+test fn material_approval_is_bound_to_its_run_attempt() -> Bool {
+  match fabric_state_provision_request(attempt: "fixture-run-1") {
+    FabricStateProvisionUnrequestable { reason: _ } => false
+    FabricStateProvisionRequested { request: first } => match fabric_state_provision_request(attempt: "fixture-run-2") {
+      FabricStateProvisionUnrequestable { reason: _ } => false
+      FabricStateProvisionRequested { request: retry } => {
+        let decision = PollApproved { revision: request_revision_of(request: first), decided_by: "fixture-operator",
+          decided_at: "2026-09-28T12:00:00Z", execute_by: "2026-09-28T12:05:00Z" }
+        match approval_gate_from_poll(poll: decision, request: retry, observed_at: "2026-09-28T12:01:00Z") {
+          GateRefused { cause: _ } => request_revision_of(request: first) != request_revision_of(request: retry) && first.escalation_id != retry.escalation_id
+          GateAdmitted { authorization: _ } => false
+        }
+      }
+    }
+  }
+}

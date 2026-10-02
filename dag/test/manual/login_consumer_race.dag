@@ -1,0 +1,55 @@
+module test.manual.login_consumer_race
+
+import std.types { String, FilePath, Int, Bool }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.measure { second }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import gunbc.auth.login_transaction_store { LoginTransactionStoreLayout, login_transaction_store_save, login_transaction_store_lookup, login_transaction_store_delete, LoginTransactionSaved, LoginTransactionStoreFound, LoginTransactionDeleted }
+import test.claim.auth.login_browser_binding_witness_test { browser_transaction }
+
+fn race_root_admitted(root: String) -> Bool {
+  starts_with(s: root, prefix: "/tmp/gunbc-login-race-") && !string_contains(s: root, pattern: "..")
+}
+
+fn prepare(root: String) -> ProcessExit {
+  if !race_root_admitted(root: root) { exit_failure(reason: "temporary race fixture only") }
+  else { match login_transaction_store_save(layout: LoginTransactionStoreLayout { root: root as FilePath }, transaction: browser_transaction()) {
+    LoginTransactionSaved { state: _ } => ExitSuccess
+    _ => exit_failure(reason: "transaction fixture could not be stored")
+  } }
+}
+
+fn race_gate(root: String, remaining: Int) -> Bool {
+  if remaining <= 0 { false }
+  else if Filesystem.Read(path: concat(root, "/go")).success { true }
+  else {
+    let slept = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
+    if !slept { false } else { race_gate(root: root, remaining: remaining - 1) }
+  }
+}
+
+// Both independent processes must have read the live transaction before the harness opens the
+// barrier. The production consume primitive elects the winner; the harness never consumes it.
+fn consume(root: String, contender: String) -> ProcessExit {
+  if !race_root_admitted(root: root) || (contender != "a" && contender != "b") {
+    exit_failure(reason: "race fixture subject refused")
+  } else {
+    let layout = LoginTransactionStoreLayout { root: root as FilePath }
+    match login_transaction_store_lookup(layout: layout, state: browser_transaction().state) {
+      LoginTransactionStoreFound { transaction: transaction } => {
+        let ready = Filesystem.WriteCreateNew(path: concat(root, "/ready-", contender), content: "ready")
+        if !ready.success || !race_gate(root: root, remaining: 30) { exit_failure(reason: "race barrier failed") }
+        else {
+          let result = match login_transaction_store_delete(layout: layout, state: transaction.state) {
+            LoginTransactionDeleted { state: _ } => "winner"
+            _ => "loser"
+          }
+          let wrote = Filesystem.WriteCreateNew(path: concat(root, "/result-", contender), content: result)
+          if wrote.success { ExitSuccess } else { exit_failure(reason: "race result could not be persisted") }
+        }
+      }
+      _ => exit_failure(reason: "both racers must observe the live transaction before the barrier")
+    }
+  }
+}
