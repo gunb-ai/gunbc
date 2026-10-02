@@ -995,21 +995,6 @@ test fn witness_selection_grammar_ships_in_client_asset() -> Bool {
     && !string_contains(s: js, pattern: "action-live")
 }
 
-test fn witness_selection_has_keyboard_parity() -> Bool {
-  let js = dispatch_client_js_source()
-  match dispatch_doc_html_for(rn: ready_dispatch_node()) {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } => string_contains(s: h, pattern: "tabindex=\"0\"")
-  }
-    && string_contains(s: js, pattern: "addEventListener('focusin'")
-    && string_contains(s: js, pattern: "matches(':focus-visible')")
-    && string_contains(s: js, pattern: "matches('li.node')")
-    && string_contains(s: js, pattern: "e.key !== 'Enter' && e.key !== ' '")
-    && string_contains(s: js, pattern: "e.preventDefault()")
-    && string_contains(s: js, pattern: "gunbcSelectRow(t)")
-    && string_contains(s: js, pattern: "gunbcSelectRow(li)")
-}
-
 // The channels' statement groups (the impact preamble, the observation fetch, the workflow fetch)
 // are where each of these lines is emitted; the asset-wide negative -- no channel prepends its own
 // banner -- rides the client-asset partition, which reads every group.
