@@ -361,10 +361,7 @@ pub fn emit_simple_expr(
                                 binding_kind: bk, ..
                             } => match bk.clone().as_deref().cloned() {
                                 Some(VarBindingKind::MatchBoundBinding) => false,
-                                Some(VarBindingKind::VariantValueBinding {
-                                    parent_enum: _,
-                                    ..
-                                }) => false,
+                                Some(VarBindingKind::VariantValueBinding { .. }) => false,
                                 _ => true,
                             },
                             _ => false,
@@ -399,10 +396,7 @@ pub fn emit_simple_expr(
                     for child in expr.children.clone().iter().cloned() {
                         __result.push(match (*child.expr_data.clone()).clone() {
                             ExprData::ExprLiteral { ref value, .. }
-                                if matches!(
-                                    value.as_ref(),
-                                    LiteralValue::LitStr { value: _, .. }
-                                ) =>
+                                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
                             {
                                 let LiteralValue::LitStr { value: text, .. } = value.as_ref()
                                 else {
@@ -5244,7 +5238,7 @@ pub fn child_from_key(
         .clone()
         {
             ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
+                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
             {
                 let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
                     unreachable!()
@@ -5351,7 +5345,7 @@ pub fn file_transport_declared_verb(
     match crate::v1_std_core::transport_verb(t.clone(), source_indices.clone()) {
         Some(v) => match (*v.expr_data.clone()).clone() {
             ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
+                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
             {
                 let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
                     unreachable!()
@@ -5447,7 +5441,7 @@ pub fn file_transport_path_is_renderable(
     match crate::v1_std_core::transport_base_path(t.clone(), source_indices.clone()) {
         Some(p) => match (*p.expr_data.clone()).clone() {
             ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
+                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
             {
                 let LiteralValue::LitStr { value: _, .. } = value.as_ref() else {
                     unreachable!()
@@ -5955,7 +5949,7 @@ pub fn extract_string_interp_parts(expr: Rc<Node>) -> Rc<Vec<Rc<StringPart>>> {
         for child in expr.children.clone().iter().cloned() {
             __result.push(match (*child.expr_data.clone()).clone() {
                 ExprData::ExprLiteral { ref value, .. }
-                    if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
+                    if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
                 {
                     let LiteralValue::LitStr { value: text, .. } = value.as_ref() else {
                         unreachable!()

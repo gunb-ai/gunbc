@@ -52,6 +52,11 @@ pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation}
 use crate::std_interface_summary::ExportKind::{ExportData, ExportFn, ExportService, ExportType};
 pub use crate::std_interface_summary::{interface_summary_rollup, signature_contract};
 pub use crate::std_interface_summary::{ExportEntry, ExportKind, InterfaceSummary};
+pub use crate::std_kernel_type_name::kernel_type_name;
+pub use crate::std_kernel_type_name::KernelTypeNameAdmission;
+use crate::std_kernel_type_name::KernelTypeNameAdmission::{
+    KernelTypeNameAdmitted, NotAKernelTypeName,
+};
 use crate::std_literal_elaboration::LiteralElaborationOutcome::{
     DirectLiteral, LiteralElaborationRefused, ViaHomomorphism,
 };
@@ -74,6 +79,13 @@ use crate::std_syntax::BinOp::{
 use crate::std_syntax::LiteralValue::LitStr;
 use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull};
 pub use crate::std_syntax::{BinOp, LiteralValue};
+use crate::std_target_representation::VariantParentIdentity::{
+    VariantParentIdentified, VariantParentUnrecovered,
+};
+use crate::std_target_representation::VariantParentKey::{
+    VariantParentDeclaration, VariantParentKernelType,
+};
+pub use crate::std_target_representation::{VariantParentIdentity, VariantParentKey};
 pub use crate::std_termination::PositiveDescentAmount;
 use crate::std_termination::PositiveDescentAmount::OneStep;
 pub use crate::std_termination::{
@@ -288,7 +300,7 @@ pub use crate::v1_std_core::{
     admit_callers_entry_coords, admit_callers_entry_uninterpretable_spans, arg_name_at, arg_value,
     arm_body, arm_guard, arm_pattern, authored_name_at, binop_left, binop_right, bool_type,
     build_newline_index, call_semantics_target, callable_identity, cast_expr, cast_target,
-    container_expected_arity, decl_ref_coords_label, default_ident_span,
+    container_expected_arity, decl_ref_coords_label, declaration_provenance_of, default_ident_span,
     diagnostic_frontier_occurrence_key, diagnostic_to_span, empty_intern_table, error_type,
     expr_call_func_at, expr_has_non_tail_self_call, expr_has_self_call, expr_literal_int_optional,
     expr_literal_string_optional, expr_method_name_at, expr_var_name_at, field_access_base,
@@ -1137,6 +1149,39 @@ pub fn variant_reference_inferred_node(
     }
 }
 
+pub fn variant_parent_identity_of(
+    owner: Option<Rc<Node>>,
+    scope: Rc<InferScope>,
+) -> Rc<VariantParentIdentity> {
+    match owner.clone() {
+    std::option::Option::None => Rc::new(VariantParentIdentity::VariantParentUnrecovered {
+    cause: "no owning coproduct declaration was found for the variant".to_string(),
+}),
+    Some(o) => match crate::v1_compiler_infer_env::type_reference_declaration(o.clone(), scope.type_env.clone().source_indices.clone(), scope.type_env.clone()) {
+    Some(od) => Rc::new(VariantParentIdentity::VariantParentIdentified {
+    key: Rc::new(VariantParentKey::VariantParentDeclaration {
+    declaration: od.declaration.clone(),
+}),
+}),
+    std::option::Option::None => match (*crate::v1_std_core::declaration_provenance_of(o.clone())).clone() {
+    TypeDeclarationProvenance::KernelMinted { minted_name: m, .. } => match (*crate::std_kernel_type_name::kernel_type_name(m.clone())).clone() {
+    KernelTypeNameAdmission::KernelTypeNameAdmitted { kernel_name: k, .. } => Rc::new(VariantParentIdentity::VariantParentIdentified {
+    key: Rc::new(VariantParentKey::VariantParentKernelType {
+    kernel_name: k.clone(),
+}),
+}),
+    KernelTypeNameAdmission::NotAKernelTypeName { name: _, .. } => Rc::new(VariantParentIdentity::VariantParentUnrecovered {
+    cause: "the owning coproduct is a kernel mint whose name is not a kernel type".to_string(),
+}),
+},
+    _ => Rc::new(VariantParentIdentity::VariantParentUnrecovered {
+    cause: "the owning coproduct is neither an identified corpus declaration nor a kernel type (alias or unresolved)".to_string(),
+}),
+},
+},
+}
+}
+
 pub fn expected_decided_variant_value(
     texpr: Rc<Node>,
     name: String,
@@ -1156,6 +1201,10 @@ pub fn expected_decided_variant_value(
                 Rc::new(ExprData::ExprVar {
                     binding_kind: Some(Rc::new(VarBindingKind::VariantValueBinding {
                         parent_enum: decided_name.clone(),
+                        parent_identity: variant_parent_identity_of(
+                            Some(decided.clone()),
+                            scope.clone(),
+                        ),
                     })),
                 }),
                 Rc::new(vec![]),
@@ -1476,6 +1525,10 @@ pub fn infer_var_binding_kind(scope: Rc<InferScope>, name: String) -> Rc<VarBind
     match lookup_variant_parent_enum(scope.clone(), name.clone()) {
         Some(parent_enum) => Rc::new(VarBindingKind::VariantValueBinding {
             parent_enum: parent_enum.clone(),
+            parent_identity: variant_parent_identity_of(
+                variant_owner_node(scope.clone(), name.clone()),
+                scope.clone(),
+            ),
         }),
         std::option::Option::None => match v1_rt::map_get(&scope.locals.clone(), name.clone()) {
             Some(binding) => {
@@ -5010,7 +5063,7 @@ pub fn literal_introduction_type_mismatch(
         );
         match (*actual_expr.expr_data.clone()).clone() {
             ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitInt { value: _, .. }) =>
+                if matches!(value.as_ref(), LiteralValue::LitInt { .. }) =>
             {
                 let LiteralValue::LitInt { value: _, .. } = value.as_ref() else {
                     unreachable!()
@@ -6302,13 +6355,7 @@ pub fn nominal_product_head_name(n: Rc<Node>, scope: Rc<InferScope>) -> String {
                     nominal_product_head_name_if_declared_product(name.clone(), scope.clone())
                 }
                 TypeHeadExposure::ExposedTypeHead { ref view, .. }
-                    if matches!(
-                        view.as_ref(),
-                        TypeHeadView::ProductHead {
-                            type_identity: _,
-                            ..
-                        }
-                    ) =>
+                    if matches!(view.as_ref(), TypeHeadView::ProductHead { .. }) =>
                 {
                     let TypeHeadView::ProductHead {
                         type_identity: _, ..
@@ -10128,6 +10175,12 @@ pub fn resolve_pattern_subject(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PatternParentReading {
+    pub parent_enum: Option<String>,
+    pub identity: Rc<VariantParentIdentity>,
+}
+
 pub fn annotate_pattern_parent_enums(
     pattern: Rc<MatchPattern>,
     scrutinee_subject: Rc<PatternSubject>,
@@ -10143,7 +10196,7 @@ pub fn annotate_pattern_parent_enums(
             } => {
                 let resolved_scrut =
                     resolve_pattern_subject(scope.clone(), scrutinee_subject.clone());
-                let inferred_parent = match (*resolved_scrut.clone()).clone() {
+                let parent_reading = match (*resolved_scrut.clone()).clone() {
                     PatternSubject::PatternResolved {
                         node: resolved_scrut_node,
                         ..
@@ -10169,26 +10222,61 @@ pub fn annotate_pattern_parent_enums(
                             && ((variant_name.clone() == "Present".to_string())
                                 || (variant_name.clone() == "Absent".to_string())))
                         {
-                            Some("Optional".to_string())
+                            Rc::new(PatternParentReading {
+    parent_enum: Some("Optional".to_string()),
+    identity: Rc::new(VariantParentIdentity::VariantParentUnrecovered {
+    cause: "the arm belongs to the optional wrapper, not to the scrutinee's declared coproduct".to_string(),
+}),
+})
                         } else {
                             if witness_container_subject.clone() {
-                                Some("Witness".to_string())
+                                Rc::new(PatternParentReading {
+    parent_enum: Some("Witness".to_string()),
+    identity: Rc::new(VariantParentIdentity::VariantParentUnrecovered {
+    cause: "the arm belongs to the witness wrapper, not to the scrutinee's declared coproduct".to_string(),
+}),
+})
                             } else {
                                 {
                                     let is_coproduct = (resolved_scrut_node.connective.clone()
                                         == Connective::Disj);
                                     if is_coproduct.clone() {
-                                        Some(scrutinee_name.clone())
+                                        Rc::new(PatternParentReading {
+                                            parent_enum: Some(scrutinee_name.clone()),
+                                            identity: variant_parent_identity_of(
+                                                Some(resolved_scrut_node.clone()),
+                                                scope.clone(),
+                                            ),
+                                        })
                                     } else {
-                                        std::option::Option::None
+                                        Rc::new(PatternParentReading {
+    parent_enum: std::option::Option::None,
+    identity: Rc::new(VariantParentIdentity::VariantParentUnrecovered {
+    cause: "the scrutinee's resolved type is not a coproduct declaration".to_string(),
+}),
+})
                                     }
                                 }
                             }
                         }
                     }
-                    PatternSubject::PatternDynamic { span: _, .. } => std::option::Option::None,
-                    PatternSubject::PatternLookupBlocked => std::option::Option::None,
+                    PatternSubject::PatternDynamic { span: _, .. } => {
+                        Rc::new(PatternParentReading {
+                            parent_enum: std::option::Option::None,
+                            identity: Rc::new(VariantParentIdentity::VariantParentUnrecovered {
+                                cause: "the scrutinee's type is dynamic".to_string(),
+                            }),
+                        })
+                    }
+                    PatternSubject::PatternLookupBlocked => Rc::new(PatternParentReading {
+                        parent_enum: std::option::Option::None,
+                        identity: Rc::new(VariantParentIdentity::VariantParentUnrecovered {
+                            cause: "the scrutinee's type lookup was blocked".to_string(),
+                        }),
+                    }),
                 };
+                let inferred_parent = parent_reading.parent_enum.clone();
+                let parent_identity = parent_reading.identity.clone();
                 let annotated_variant_name = variant_name.clone();
                 let variant_lookup = crate::v1_compiler_infer_patterns::lookup_variant_in_type(
                     resolved_scrut.clone(),
@@ -10243,11 +10331,13 @@ pub fn annotate_pattern_parent_enums(
                         name: annotated_variant_name.clone(),
                         parent_enum: Some(parent_name.clone()),
                         field_bindings: annotated_bindings.clone(),
+                        parent_identity: parent_identity.clone(),
                     }),
                     std::option::Option::None => Rc::new(MatchPattern::VariantPattern {
                         name: variant_name.clone(),
                         parent_enum: std::option::Option::None,
                         field_bindings: annotated_bindings.clone(),
+                        parent_identity: parent_identity.clone(),
                     }),
                 }
             }
@@ -11544,6 +11634,7 @@ pub fn unfold_peano_image(
     succ: String,
     prev_field: String,
     parent: String,
+    parent_identity: Rc<VariantParentIdentity>,
     destination_type: Rc<Node>,
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
@@ -11554,6 +11645,7 @@ pub fn unfold_peano_image(
                 Rc::new(ExprData::ExprVar {
                     binding_kind: Some(Rc::new(VarBindingKind::VariantValueBinding {
                         parent_enum: parent.clone(),
+                        parent_identity: parent_identity.clone(),
                     })),
                 }),
                 Rc::new(vec![]),
@@ -11568,6 +11660,7 @@ pub fn unfold_peano_image(
                     succ.clone(),
                     prev_field.clone(),
                     parent.clone(),
+                    parent_identity.clone(),
                     destination_type.clone(),
                     span.clone(),
                 );
@@ -11638,7 +11731,11 @@ pub fn unfold_literal_image(
     _ => crate::v1_std_core::make_expr_error_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), ExprErrorKind::InternalExprError, "literal elaboration: a Unicode-scalar-sequence unfolding row was selected for a non-string literal (gunbc.structural_realization_bindings keys the row on KernelStringLiteral, so this row is malformed)".to_string(), span.clone()),
 },
     LiteralUnfolding::PeanoUnfold { zero, succ, prev_field, .. } => match (*lit.clone()).clone() {
-    LiteralValue::LitInt { value: n, .. } => unfold_peano_image(n.clone(), zero.decl_name.clone(), succ.decl_name.clone(), prev_field.clone(), elaboration.destination.clone().decl_name.clone(), destination_type.clone(), span.clone()),
+    LiteralValue::LitInt { value: n, .. } => unfold_peano_image(n.clone(), zero.decl_name.clone(), succ.decl_name.clone(), prev_field.clone(), elaboration.destination.clone().decl_name.clone(), Rc::new(VariantParentIdentity::VariantParentIdentified {
+    key: Rc::new(VariantParentKey::VariantParentDeclaration {
+    declaration: elaboration.destination.clone(),
+}),
+}), destination_type.clone(), span.clone()),
     _ => crate::v1_std_core::make_expr_error_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), ExprErrorKind::InternalExprError, "literal elaboration: a Peano unfolding row was selected for a non-integer literal (gunbc.structural_realization_bindings keys the row on KernelIntLiteral, so this row is malformed)".to_string(), span.clone()),
 },
     LiteralUnfolding::BooleanUnfold { true_variant: t, false_variant: f, .. } => match (*lit.clone()).clone() {
@@ -11649,6 +11746,11 @@ pub fn unfold_literal_image(
     }, Rc::new(ExprData::ExprVar {
     binding_kind: Some(Rc::new(VarBindingKind::VariantValueBinding {
     parent_enum: elaboration.destination.clone().decl_name.clone(),
+    parent_identity: Rc::new(VariantParentIdentity::VariantParentIdentified {
+    key: Rc::new(VariantParentKey::VariantParentDeclaration {
+    declaration: elaboration.destination.clone(),
+}),
+}),
 })),
 }), Rc::new(vec![]), destination_type.clone(), span.clone()),
     _ => crate::v1_std_core::make_expr_error_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), ExprErrorKind::InternalExprError, "literal elaboration: a Boolean unfolding row was selected for a non-boolean literal (gunbc.structural_realization_bindings keys the row on KernelBoolLiteral, so this row is malformed)".to_string(), span.clone()),
@@ -11889,6 +11991,7 @@ match scope_parent.clone() {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), name.clone(), Rc::new(ExprData::ExprVar {
     binding_kind: Some(Rc::new(VarBindingKind::VariantValueBinding {
     parent_enum: scope_enum.clone(),
+    parent_identity: variant_parent_identity_of(variant_owner_node(scope.clone(), name.clone()), scope.clone()),
 })),
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
     node: variant_reference_inferred_node(expected.clone(), name.clone(), scope_enum.clone(), scope.clone(), binding.resolved.clone()),
@@ -11944,6 +12047,7 @@ match scope_parent.clone() {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), name.clone(), Rc::new(ExprData::ExprVar {
     binding_kind: Some(Rc::new(VarBindingKind::VariantValueBinding {
     parent_enum: scope_enum.clone(),
+    parent_identity: variant_parent_identity_of(variant_owner_node(scope.clone(), name.clone()), scope.clone()),
 })),
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
     node: variant_reference_inferred_node(expected.clone(), name.clone(), scope_enum.clone(), scope.clone(), gbinding.resolved.clone()),
@@ -11955,6 +12059,7 @@ match scope_parent.clone() {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), name.clone(), Rc::new(ExprData::ExprVar {
     binding_kind: Some(Rc::new(VarBindingKind::VariantValueBinding {
     parent_enum: crate::v1_std_core::authored_name_at(scope.type_env.clone().source_indices.clone(), exp_enum.clone()),
+    parent_identity: variant_parent_identity_of(Some(exp_enum.clone()), scope.clone()),
 })),
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
     node: exp_enum.clone(),
@@ -12000,6 +12105,7 @@ match expected_variant_enum.clone() {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), name.clone(), Rc::new(ExprData::ExprVar {
     binding_kind: Some(Rc::new(VarBindingKind::VariantValueBinding {
     parent_enum: crate::v1_std_core::authored_name_at(scope.type_env.clone().source_indices.clone(), exp_enum.clone()),
+    parent_identity: variant_parent_identity_of(Some(exp_enum.clone()), scope.clone()),
 })),
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
     node: exp_enum.clone(),
@@ -23416,7 +23522,7 @@ pub fn kernel_coproduct_variant_locals(env: Rc<TypeEnv>) -> Rc<HashMap<String, R
                     __sorted.sort_by(|a: &Rc<TypeBinding>, b: &Rc<TypeBinding>| {
                         let __ka = (|b: Rc<TypeBinding>| b.name.clone())(a.clone());
                         let __kb = (|b: Rc<TypeBinding>| b.name.clone())(b.clone());
-                        v1_rt::canonical_key_cmp(&__ka, &__kb)
+                        __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
                     });
                     __sorted
                 }),
@@ -23555,7 +23661,7 @@ pub fn kernel_variant_owner_candidates(env: Rc<TypeEnv>, name: String) -> Rc<Vec
             __sorted.sort_by(|a: &Rc<TypeBinding>, b: &Rc<TypeBinding>| {
                 let __ka = (|b: Rc<TypeBinding>| b.name.clone())(a.clone());
                 let __kb = (|b: Rc<TypeBinding>| b.name.clone())(b.clone());
-                v1_rt::canonical_key_cmp(&__ka, &__kb)
+                __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
             });
             __sorted
         })

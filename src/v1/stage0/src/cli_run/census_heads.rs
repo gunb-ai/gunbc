@@ -406,10 +406,12 @@ fn project_node(n: &Rc<Node>, base: i64, relabel: &[i64]) -> Result<Rc<Node>, St
             name,
             parent_enum,
             field_bindings,
+            parent_identity,
         }) => Some(Rc::new(MatchPattern::VariantPattern {
             name: name.clone(),
             parent_enum: parent_enum.clone(),
             field_bindings: list(field_bindings)?,
+            parent_identity: parent_identity.clone(),
         })),
         Some(MatchPattern::LitPattern { value: _ }) | Some(MatchPattern::Wildcard) => {
             match_pattern.clone()

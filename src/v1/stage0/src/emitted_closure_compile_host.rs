@@ -1913,6 +1913,45 @@ pub(crate) fn run_nested_refinement_cast_discrimination(
     }
 }
 
+/// THE ARMS OF A NATIVELY REALIZED COPRODUCT, POSED TO RUSTC. `std.types` `Bool = True | False`
+/// realizes as Rust `bool`, so `True`/`False` in value, pattern and nested-pattern position must be
+/// spelled as that carrier's values, from `gunbc.rust_source_type_bindings`
+/// `rust_source_variant_value_rows` keyed on the declaration. Before those rows the emitter wrote
+/// `Bool::True` against a `bool`: accepted source, rustc E0308
+/// (`gunbc.recurring_failure_mode` `accepted_source_emits_uncompilable_target`).
+#[cfg(test)]
+const FIXTURE_NATIVE_BOOL_VARIANT_GREEN_PATH: &str =
+    "fixtures/fixture_closure_rustc/native_bool_variant_probe.dag";
+
+/// THE IDENTITY CONTROL for the pair above: a module-local coproduct (`Verdict`) whose arms are
+/// spelled `True`/`False` has no row and must keep its own enum. A lowering keyed on the arm
+/// spelling would rewrite them to `true`/`false` against an enum, which rustc refuses.
+#[cfg(test)]
+const FIXTURE_LOCAL_TRUE_FALSE_COPRODUCT_GREEN_PATH: &str =
+    "fixtures/fixture_closure_rustc/local_true_false_coproduct_probe.dag";
+
+/// Both native-variant controls, each against the route's own adjudicated red -- the same arm
+/// runner and predicate as every pair beside them, not a second harness.
+#[cfg(test)]
+pub(crate) fn run_native_bool_variant_discrimination(
+    probe_root: &PrivateProbeRoot,
+) -> FixtureDiscrimination {
+    FixtureDiscrimination {
+        green: fixture_arm_verdict(FIXTURE_NATIVE_BOOL_VARIANT_GREEN_PATH, probe_root),
+        red: fixture_arm_verdict(FIXTURE_RED_PATH, probe_root),
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn run_local_true_false_coproduct_discrimination(
+    probe_root: &PrivateProbeRoot,
+) -> FixtureDiscrimination {
+    FixtureDiscrimination {
+        green: fixture_arm_verdict(FIXTURE_LOCAL_TRUE_FALSE_COPRODUCT_GREEN_PATH, probe_root),
+        red: fixture_arm_verdict(FIXTURE_RED_PATH, probe_root),
+    }
+}
+
 /// THE PHANTOM-MARKER POSITION PAIR, POSED THROUGH THE ROUTE ABOVE (node adhoc-f044ad97-222).
 ///
 /// IT IS NOT THE BROAD-VERSUS-POSITIONAL CLASSIFIER DISCRIMINATOR, AND SAYING SO IS THE POINT.
