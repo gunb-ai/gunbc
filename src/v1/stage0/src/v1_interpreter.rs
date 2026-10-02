@@ -1102,6 +1102,37 @@ impl Drop for Value {
     }
 }
 
+/// The portable form is a plain tree with no sharing, so it is as deep as the value it was taken
+/// from and needs the same iterative drop (`impl Drop for Value`): a recursive drop of a deep
+/// portable chain aborted the process (stack overflow) in
+/// `value_depth_walker_tests::a_deep_value_round_trips_through_the_portable_form`.
+/// Class: gunbc.recurring_failure_mode recursion_over_value_depth_uncounted_by_the_call_limit.
+impl Drop for PortableValue {
+    fn drop(&mut self) {
+        let mut pending: Vec<PortableValue> = Vec::new();
+        detach_portable_children(self, &mut pending);
+        while let Some(mut child) = pending.pop() {
+            detach_portable_children(&mut child, &mut pending);
+        }
+    }
+}
+
+fn detach_portable_children(value: &mut PortableValue, pending: &mut Vec<PortableValue>) {
+    match value {
+        PortableValue::List(items) => pending.append(items),
+        PortableValue::Map(entries) => {
+            for (k, v) in entries.drain(..) {
+                pending.push(k);
+                pending.push(v);
+            }
+        }
+        PortableValue::Record { fields, .. } | PortableValue::Variant { fields, .. } => {
+            pending.extend(fields.drain(..).map(|(_, v)| v));
+        }
+        _ => {}
+    }
+}
+
 fn detach_owned_children(value: &mut Value, pending: &mut Vec<Value>) {
     match value {
         Value::List(items) => {
