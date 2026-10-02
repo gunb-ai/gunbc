@@ -53,6 +53,19 @@ impl Drop for Guard {
         if self.0 == "typecheck_module" && calls % 500 == 0 {
             report(&format!("progress-{calls}"));
         }
+        // A timing repetition may stop at a fixed module count, so several arms fit one runner.
+        if self.0 == "typecheck_module" {
+            if let Some(stop) = std::env::var("GUNBC_PHASE_STOP_AT")
+                .ok()
+                .and_then(|v| v.parse::<u64>().ok())
+            {
+                if calls == stop {
+                    report(&format!("stop-{calls}"));
+                    eprintln!("[phase-cpu-stop] modules={calls} maxrss_kb={}", maxrss_kb());
+                    std::process::exit(0);
+                }
+            }
+        }
     }
 }
 
@@ -95,5 +108,23 @@ pub fn thread_cpu_nanos() -> u128 {
         (ts.tv_sec as u128) * 1_000_000_000 + ts.tv_nsec as u128
     } else {
         0
+    }
+}
+
+#[repr(C)]
+struct Rusage {
+    fields: [i64; 18],
+}
+extern "C" {
+    fn getrusage(who: i32, usage: *mut Rusage) -> i32;
+}
+/// Peak resident set of this process, in KiB (ru_maxrss, linux x86_64 struct rusage).
+pub fn maxrss_kb() -> i64 {
+    let mut ru = Rusage { fields: [0; 18] };
+    // SAFETY: ru is owned and is the 144-byte struct rusage; the call only writes it.
+    if unsafe { getrusage(0, &mut ru) } == 0 {
+        ru.fields[4]
+    } else {
+        -1
     }
 }

@@ -47231,6 +47231,28 @@ mod multi_entry_index_sharing_control_tests {
 
 #[cfg(test)]
 mod pr2_whole_tree_differential_probe {
+    fn fork_rows_of(view: &std::rc::Rc<crate::v1_compiler_infer_env::AncestryView>) -> Vec<String> {
+        crate::v1_compiler_infer_env::surface_fork_rows(
+            view.pool.clone(),
+            view.kernel.clone(),
+            view.imports.clone(),
+        )
+        .iter()
+        .map(|r| {
+            format!(
+                "{}|{}|{}|{}|{}:{}:{}",
+                r.name,
+                r.import_path,
+                r.existing_site,
+                r.incoming_site,
+                r.span.file,
+                r.span.start,
+                r.span.end
+            )
+        })
+        .collect()
+    }
+
     /// PR-2's whole-tree differential AND its phase-CPU attribution (calm-pike-525).
     /// The resolve is NOT gated: a blocking diagnostic no longer stops the probe. Every module the
     /// graph carries is digested EXCEPT those owning a blocking diagnostic, which are reported as a
@@ -47269,6 +47291,10 @@ mod pr2_whole_tree_differential_probe {
             wall0.elapsed().as_millis()
         );
         v1_stage0_v1_infer::phase_cpu::report("resolve");
+        eprintln!(
+            "[phase-cpu-peak] maxrss_kb={}",
+            v1_stage0_v1_infer::phase_cpu::maxrss_kb()
+        );
         let mut blocked: BTreeSet<String> = BTreeSet::new();
         let mut blocking = 0usize;
         for d in result.diagnostics.iter() {
@@ -47348,6 +47374,24 @@ mod pr2_whole_tree_differential_probe {
                 }
             }
             eprintln!("[fork-candidate-equality] equal={equal} differ={differ}");
+        }
+        // FORK-ROW DIGEST: each module's fork ledger recomputed over the final pool (a module's rows
+        // depend only on surfaces inside its closure, all fixed before it was typechecked), as one
+        // digest over its sorted (name, import_path, existing_site, incoming_site, span) rows.
+        if std::env::var_os("GUNBC_FORK_ROW_DIGEST").is_some() {
+            use std::hash::{Hash, Hasher};
+            for m in digested.iter() {
+                let view = m.type_env.ancestry.clone();
+                let rows = fork_rows_of(&view);
+                let mut h = std::collections::hash_map::DefaultHasher::new();
+                rows.hash(&mut h);
+                eprintln!(
+                    "[fork-digest] module={} rows={} digest={:016x}",
+                    m.type_env.module_path,
+                    rows.len(),
+                    h.finish()
+                );
+            }
         }
         super::ancestry_digest_census(&std::rc::Rc::new(digested.iter().cloned().collect()));
         eprintln!(
