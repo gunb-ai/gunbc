@@ -25,7 +25,26 @@ import std.content_hash {
 }
 
 type Symbol
+
+// THE KERNEL HOST-TEXT TYPE, declared beside Symbol (the v2 kernel-types home, neat-boar-16's ruling
+// on #12549's successor). It is NOT v2.std.text String, which is the structural FreeMonoid<Char>:
+// the two are distinct representations, and a host-text value reaches the structural carrier only
+// through the declared unfold (gunbc.structural_realization_bindings literal_homomorphism_rows,
+// UnicodeScalarSequenceUnfold) or refuses. v2.extdeps.languages.dag binds the spelling `String` to
+// this declaration only where no other declaration of the spelling is visible.
+type String
 type Hash = Fnv1a64Structural
+
+// THE VALUE TYPE OF HOST TEXT, as a node: what a string literal is typed as, and what the unbound
+// spelling `String` binds to. This module declares the kernel String, so it owns its type node, as
+// it does symbol_type_node for Symbol.
+fn host_text_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^string_node_symbol } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
 
 // THE VALUE TYPE OF A SYMBOL, as a node: what a symbol literal (`^x`) is typed as and what an
 // annotation naming Symbol binds to. This module declares Symbol, so it owns its type node, as
