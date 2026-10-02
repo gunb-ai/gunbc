@@ -195,7 +195,7 @@ fn kvm_standing_ready(k: KvmDeviceStanding) -> Bool {
 }
 
 fn library_standing_ready(l: QemuLibraryStanding) -> Bool {
-  match l { QemuLibrariesRead { reading: LddAllResolved } => true  QemuLibrariesRead { reading: LddUnresolved } => false  QemuLibrariesNotRead { reason: _ } => false }
+  match l { QemuLibrariesRead { reading: LddAllResolved } => true  QemuLibrariesRead { reading: LddUnresolved } => false  QemuLibrariesRead { reading: LddUnreadable } => false  QemuLibrariesNotRead { reason: _ } => false }
 }
 
 fn census_qemu_host_ready(s: CensusQemuHostStanding) -> Bool {

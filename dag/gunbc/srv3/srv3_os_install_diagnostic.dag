@@ -788,6 +788,17 @@ fn diagnose_weak_kvm_or_inconclusive(
     SolGrubSeen => InstallerBooted
     SolInstallerSeen => InstallerBooted
     SolSilent => FirmwareIdle
+    SolFirmwareMenu =>
+      match observations.kvm.video_state {
+        KvmFirmwareMenu =>
+          if !observations.kvm.keyboard_accepted {
+            KvmUntrustedVerdict
+          } else {
+            InconclusiveVerdict
+          }
+        KvmIdle => InconclusiveVerdict
+        KvmUnknown => InconclusiveVerdict
+      }
     SolAutoinstallSeen =>
       match observations.kvm.video_state {
         KvmFirmwareMenu =>

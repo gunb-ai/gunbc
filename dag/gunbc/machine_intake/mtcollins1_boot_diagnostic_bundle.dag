@@ -793,6 +793,7 @@ fn media_loss_after_handoff(handoff: MtCollins1HandoffMedia, end: MtCollins1EndM
             EndMediaNotTaken { reason: _ } => MediaLossNotAffirmed
           }
       }
+    HandoffMediaAttempted { before: _, handoff: HandoffAttemptedUnconfirmed { reason: _ }, after: _ } => MediaLossNotAffirmed
     HandoffMediaNotReached { reason: _ } => MediaLossNotAffirmed
         HandoffMediaWithheldAtRecheck { before: _ } => MediaLossNotAffirmed
   }

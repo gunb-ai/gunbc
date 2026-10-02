@@ -564,6 +564,7 @@ fn kvm_standing_step(acc: KvmObserverStanding, e: KvmJournalEvent, subject: KvmO
                 KvmJournalNavigated { at: a, seq: _, phase: _, url: _ } => acc
                 KvmJournalPageConsole { at: a, phase: _, level: _, detail: _ } => acc
                 KvmJournalPageError { at: a, phase: _, detail: _ } => acc
+                KvmJournalUnparsed { line: _ } => acc
       }
     KvmObserverEstablished { at: ea, host: _, session: _, attempt: _ } =>
       match e {
@@ -585,11 +586,12 @@ fn kvm_standing_step(acc: KvmObserverStanding, e: KvmJournalEvent, subject: KvmO
                 KvmJournalNavigated { at: a, seq: _, phase: _, url: _ } => acc
                 KvmJournalPageConsole { at: a, phase: _, level: _, detail: _ } => acc
                 KvmJournalPageError { at: a, phase: _, detail: _ } => acc
+                KvmJournalUnparsed { line: _ } => acc
       }
     KvmObserverLost { at: _, established_at: _ } => acc
-        KvmObserverMismatch { at: _, expected: _, observed: _ } => acc
+        KvmObserverMismatch { at: _, detail: _ } => acc
         KvmObserverStopped { at: _ } => acc
-        KvmObserverProcessNotRunning { at: _, standing: _ } => acc
+        KvmObserverProcessNotRunning { process: _ } => acc
         KvmObserverJournalUnread { cause: _ } => acc
         KvmObserverRefused { at: _, refusal: _ } => acc
         KvmObserverFailed { at: _, detail: _ } => acc
@@ -725,7 +727,7 @@ fn kvm_journal_read_at(dir: String) -> KvmJournalRead {
 fn kvm_journal_events_of(read: KvmJournalRead) -> List<KvmJournalEvent> {
   match read {
     KvmJournalText { text: t } => kvm_journal_events(text: t)
-    KvmJournalAbsent { cause: _ } => []
+    KvmJournalAbsent => []
         KvmJournalUnread { cause: _ } => []
   }
 }
@@ -750,7 +752,7 @@ type KvmObserverStart
 fn kvm_live_standing(journal: KvmJournalRead, subject: KvmObserverSubject, process: OwnedProcessStanding) -> KvmObserverStanding {
   match journal {
     KvmJournalUnread { cause: c } => KvmObserverJournalUnread { cause: c }
-    KvmJournalAbsent { cause: _ } =>
+    KvmJournalAbsent =>
       match kvm_observer_standing(events: kvm_journal_events_of(read: journal), subject: subject) {
         KvmObserverEstablished { at: a, host: h, session: s, attempt: t } =>
           match process {
