@@ -3,8 +3,7 @@ module v2.test.claim.resolve.service_operation_call
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.compiler.resolve { Namespace, NotDeclaring, ResolveContext, empty_canonical_symbol_set, resolve_node, scope_from_namespace }
-import v2.compiler.symbol_index_fill { symbol_index_fill_module_root, symbol_index_fill_module_roots }
-import v2.std.namespace_alias { AliasBindingRow, ModuleBindingSource }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
 import v2.extdeps.languages.dag { dag_grammar_atom, dag_language_model_surface_empty_prelude, dag_named_edge, namespace_graft_namespace_body_node }
 import v2.std.algebra { fold_list_node }
 import v2.std.arrow_signature { declared_signature }
@@ -20,8 +19,8 @@ import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// A SERVICE OPERATION IS ADDRESSED AT ITS DECLARATION PATH THROUGH THE ONE QUALIFIED-REFERENCE DOOR, AND
-// NO MODULE REACHES IT WITHOUT NAMING IT (D13 b-pre). After the service spine (gunbc#12949) an operation is
+// A SERVICE OPERATION IS ADDRESSED AT ITS DECLARATION PATH THROUGH THE ONE QUALIFIED-REFERENCE DOOR, AND A
+// BARE SERVICE PREFIX REACHES NOTHING FROM ANOTHER MODULE (D13 b-pre). After the service spine (gunbc#12949) an operation is
 // declared at <module>.<service segments...>.<Op>; a call names that path, and its callee resolves through
 // the same door as any qualified reference -- there is no second resolver.
 //
@@ -129,84 +128,18 @@ test fn an_operation_the_service_does_not_declare_refuses_RED() -> Bool {
   !soc_resolves(at: "t.caller", reference: "t.svc.s.F.Get")
 }
 
-// THE NESTING/SHADOWING BAN. A module that names `s.F.Run` without importing it reaches nothing -- not a
-// sibling module, and not a module nested under the service module's own path: neither a merged namespace
-// body nor a parent module path grants scope.
-test fn a_module_that_does_not_import_the_service_cannot_reach_it_RED() -> Bool {
+// THE NESTING/SHADOWING BAN, AS IT STANDS TODAY. A BARE service prefix (`s.F.Run`) resolves from no other
+// module -- not a sibling, and not a module nested under the service module's own path: neither a merged
+// namespace body nor a parent module path grants scope. These claims are about the BARE prefix only. They
+// do not claim that reaching an operation is gated by an import: a fully QUALIFIED path (`t.svc.s.F.Run`)
+// resolves from any module with or without an import (the claims above, at t.caller, import nothing). That
+// is pre-existing qualified-path behaviour, being recorded as its own recurring-failure-mode row; imports
+// never bind a service bare (a whole-module import binds only the module, qualified; a brace import of a
+// service refuses).
+test fn a_bare_service_prefix_does_not_resolve_from_a_sibling_module_RED() -> Bool {
   !soc_resolves(at: "t.other", reference: "s.F.Run")
 }
 
-test fn a_module_nested_under_the_service_module_gets_no_implicit_scope_RED() -> Bool {
+test fn a_bare_service_prefix_does_not_resolve_from_a_module_nested_under_the_service_module_RED() -> Bool {
   !soc_resolves(at: "t.svc.inner", reference: "s.F.Run")
-}
-
-// AN IMPORTING MODULE REACHES THE SERVICE QUALIFIED THROUGH ITS IMPORT. An import binds the MODULE, not its
-// members (a bare service prefix is never bound by an import), so `import t.svc` gives the caller the
-// binding row svc -> t.svc and the caller names the operation `svc.s.F.Run`. The index is filled by the real
-// multi-root route, symbol_index_fill_module_roots, which binds import rows to a fixed point after every
-// root's declarations. From t.caller, `svc.s.F.Run` resolves; the paired RED is the identical caller with
-// no row. Capturing the row from a parsed `import` is the normalize capture's fact, not this claim's.
-fn soc_caller_root() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      dag_named_edge(name: ^dag_surface_module_header, target: dag_grammar_atom(id: ^dag_surface_module_header)),
-      dag_named_edge(name: ^dag_surface_module_header_qualified_name, target: soc_spine(dotted: "t.caller"))
-    ],
-    occurrence_id: OccurrenceSynthetic
-  }
-}
-
-fn soc_index_with_caller(rows: FreeMonoid<AliasBindingRow>) -> SymbolIndex {
-  symbol_index_fill_module_roots(
-    index: empty_symbol_index(),
-    roots: Cons {
-      head: ModuleBindingSource { root: soc_service_root(), import_bindings: Empty, record_declarations: Empty, resource_declarations: Empty },
-      tail: Cons {
-        head: ModuleBindingSource { root: soc_caller_root(), import_bindings: rows, record_declarations: Empty, resource_declarations: Empty },
-        tail: Empty
-      }
-    }
-  )
-}
-
-fn soc_resolves_in(index: SymbolIndex, at: String, reference: String) -> Bool {
-  let module_qn = qualified_name_from_dotted_string(dotted: at)
-  let namespace = Namespace {
-    bindings: empty_map(),
-    canonical_symbols: empty_canonical_symbol_set(),
-    symbol_index: index,
-    module_qn: module_qn,
-    test_code: test_code_index_empty(),
-    declared_in: module_qn,
-    imported_origins: empty_map()
-  }
-  match resolve_node(
-    ctx: ResolveContext {
-      scope: scope_from_namespace(namespace: namespace),
-      type_scope: scope_from_namespace(namespace: namespace),
-      namespace: namespace,
-      policy: NamespaceOnlyY,
-      position: module_qn,
-      lm: dag_language_model_surface_empty_prelude(),
-      under_module_root: false,
-      declaring: NotDeclaring
-    },
-    n: soc_spine(dotted: reference)
-  ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn an_importing_module_calls_a_service_operation_holds() -> Bool {
-  soc_resolves_in(
-    index: soc_index_with_caller(rows: Cons { head: AliasBindingRow { binding: ^svc, target: qualified_name_from_dotted_string(dotted: "t.svc") }, tail: Empty }),
-    at: "t.caller",
-    reference: "svc.s.F.Run"
-  )
-}
-
-test fn the_same_caller_without_the_import_row_cannot_reach_it_RED() -> Bool {
-  !soc_resolves_in(index: soc_index_with_caller(rows: Empty), at: "t.caller", reference: "svc.s.F.Run")
 }
