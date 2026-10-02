@@ -94,18 +94,37 @@ data src_lambda_in_nested_else: String = "module m.t\nfn g(p: Int) -> Bool {\n  
 
 data src_fn_literal_in_nested_else: String = "module m.t\nfn g(p: Int) -> Bool {\n  p > 3\n}\nfn h(w: fn(Int) -> Bool) -> Int {\n  0\n}\nfn t(b: Bool, c: Bool) -> Int {\n  if b {\n    if c {\n      2\n    } else {\n      h(w: fn(p) { g(p: p) })\n    }\n  } else {\n    0\n  }\n}\n"
 
+// ONE PRODUCER FOR EVERY CLAIM, enrolled WARM in v2.workflow.floor_pure_producer_share. Each verdict
+// pays a full tokenize -> parse -> normalize of its own source, and the four claims would otherwise
+// pay all four per claim frame; the stored value is four Bools (no Node, no closure), so it is portable.
+type IapVerdicts {
+  nested_in_then_keeps_outer_else: Bool,
+  function_value_in_nested_else_lowers: Bool,
+  fn_literal_in_nested_else_lowers: Bool,
+  else_if_chain_keeps_every_arm: Bool,
+}
+
+fn iap_verdicts() -> IapVerdicts {
+  IapVerdicts {
+    nested_in_then_keeps_outer_else: iap_each_arm_kept_once(src: src_nested_in_then),
+    function_value_in_nested_else_lowers: iap_normalize_outcome(src: src_lambda_in_nested_else) == "ACCEPTED",
+    fn_literal_in_nested_else_lowers: iap_normalize_outcome(src: src_fn_literal_in_nested_else) == "ACCEPTED",
+    else_if_chain_keeps_every_arm: iap_each_arm_kept_once(src: src_flat_and_else_if),
+  }
+}
+
 test fn an_if_nested_in_the_then_arm_keeps_the_outer_else_holds() -> Bool {
-  iap_each_arm_kept_once(src: src_nested_in_then)
+  iap_verdicts().nested_in_then_keeps_outer_else
 }
 
 test fn a_function_value_in_a_nested_else_lowers_once_holds() -> Bool {
-  iap_normalize_outcome(src: src_lambda_in_nested_else) == "ACCEPTED"
+  iap_verdicts().function_value_in_nested_else_lowers
 }
 
 test fn a_fn_literal_in_a_nested_else_lowers_once_holds() -> Bool {
-  iap_normalize_outcome(src: src_fn_literal_in_nested_else) == "ACCEPTED"
+  iap_verdicts().fn_literal_in_nested_else_lowers
 }
 
 test fn an_else_if_chain_keeps_every_arm_control_holds() -> Bool {
-  iap_each_arm_kept_once(src: src_flat_and_else_if)
+  iap_verdicts().else_if_chain_keeps_every_arm
 }
