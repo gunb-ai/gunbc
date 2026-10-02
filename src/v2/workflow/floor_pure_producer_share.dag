@@ -765,6 +765,21 @@ import v2.std.collection { List }
 // arithmetic. The same change's v2.test.claim.parse.expression_bodied_continuation reads each source's
 // parse-then-normalize verdict through one nullary Bool producer per source, WARM because a prepared parse plus
 // normalize is past one claim's budget.
+// THE REFERENCE-EVIDENCE ROWS READ ONE FRONT END PER FIXTURE, NOT ONE PER ROW. gunbc#12506's floor
+// refused v2.test.claim.reference_evidence.declaration_reference_evidence's eleven rows past the new-witness
+// enrolment margin: each assembled, resolved and inferred its fixture itself, and several fixtures were
+// asked by two rows. Each of its eight fixtures is now one nullary producer answering a DreReading -- the
+// single use's grounded domain labels, whether the call grounds, whether infer refused, the declared
+// return -- portable Optional lists of Symbols, Bools and an Optional<Node>. WARM: one front end plus infer
+// is past one claim's budget.
+// THE NAMED-CALL EVAL ROWS READ ONE FRONT END AND ONE EVAL PER FIXTURE. The same floor refused ten rows of
+// v2.test.claim.callexec.declaration_reference_eval, each of which ran assemble -> resolve -> infer -> eval
+// inline. Each of its eight fixtures is now one nullary producer answering a CrefReading (call found,
+// declaration carried, executed, the result as an Optional<Int> and as Optional primitive bytes). WARM for
+// the same arithmetic.
+// THE SYNTHETIC-KEY ROWS READ ONE INFER PER FIXTURE. v2.test.claim.callexec.synthetic_facts_key_collision's
+// four rows each re-inferred one of two fixtures (two rows re-inferred theirs twice). Each fixture is one
+// nullary producer answering SfkCounts, three portable scalars. WARM for the same arithmetic.
 // THE NEWLINE-REFUSAL MUTATION'S TWO GRAMMAR FACTS ARE SUPPLIED, NOT RE-DERIVED PER CLAIM.
 // v2.test.parse.newline_dual_role_operator_mutation discriminates the newline-`-` refusal by parsing
 // three one-line sources under the live grammar and under a mutant with every RefuseOnMatch arm
@@ -781,6 +796,24 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.parse.expression_bodied_continuation.cont_braced_survives_normalize",
   "v2.test.claim.parse.expression_bodied_continuation.cont_expression_bodied_survives_normalize",
   "v2.test.claim.parse.expression_bodied_continuation.cont_expression_bodied_literal_survives_normalize",
+  "v2.test.claim.reference_evidence.declaration_reference_evidence.dre_reference_reading",
+  "v2.test.claim.reference_evidence.declaration_reference_evidence.dre_same_leaf_reading",
+  "v2.test.claim.reference_evidence.declaration_reference_evidence.dre_execution_reading",
+  "v2.test.claim.reference_evidence.declaration_reference_evidence.dre_bool_declared_int_body_reading",
+  "v2.test.claim.reference_evidence.declaration_reference_evidence.dre_int_declared_bool_body_reading",
+  "v2.test.claim.reference_evidence.declaration_reference_evidence.dre_unresolved_signature_reading",
+  "v2.test.claim.reference_evidence.declaration_reference_evidence.dre_invalid_argument_reading",
+  "v2.test.claim.reference_evidence.declaration_reference_evidence.dre_imported_reference_reading",
+  "v2.test.claim.callexec.declaration_reference_eval.cref_source_reading",
+  "v2.test.claim.callexec.declaration_reference_eval.cref_zero_arg_reading",
+  "v2.test.claim.callexec.declaration_reference_eval.cref_one_arg_constant_body_reading",
+  "v2.test.claim.callexec.declaration_reference_eval.cref_bool_pair_reading",
+  "v2.test.claim.callexec.declaration_reference_eval.cref_bool_false_reading",
+  "v2.test.claim.callexec.declaration_reference_eval.cref_unresolved_callee_reading",
+  "v2.test.claim.callexec.declaration_reference_eval.cref_identity_three_reading",
+  "v2.test.claim.callexec.declaration_reference_eval.cref_identity_eight_reading",
+  "v2.test.claim.callexec.synthetic_facts_key_collision.sfk_cref_source_counts",
+  "v2.test.claim.callexec.synthetic_facts_key_collision.sfk_bool_pair_counts",
   "v2.test.claim.text_string_importer_census.tsic_real_route_outcome",
   "v2.test.claim.text_string_importer_census.tsic_window_coverage_outcome",
   "v2.test.claim.text_string_importer_census.tsil_literal_rows_outcome",
