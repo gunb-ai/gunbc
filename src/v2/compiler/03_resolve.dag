@@ -14,6 +14,7 @@ import v2.std.declaration_marker {
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.extdeps.languages.dag {
+  namespace_graft_node_is_module_body,
   dag_kernel_string_type_spelling,
   dag_string_literal_value_optional,
   dag_kernel_type_binding_optional,
@@ -116,6 +117,7 @@ import v2.std.symbol_index {
   symbol_index_renaming_alias_at
 }
 import v2.std.node {
+  Cardinality,
   MapLiteralEntriesEdge,
   labeled_core_is,
   named_edges,
@@ -430,7 +432,51 @@ fn namespace_bindings_augment_from_module_atoms(
   root: Node,
   bindings: Map<Symbol, Symbol>
 ) -> Map<Symbol, Symbol> {
-  harvest_conj_named_bindings(root: root, acc: bindings)
+  harvest_module_root_named_bindings(root: root, acc: bindings)
+}
+
+// A MODULE ROOT'S BARE BINDINGS OMIT ITS SERVICE NAMESPACES (the operator's nesting ban; XL-2 service
+// spine). A named edge whose target is a marked namespace body -- the prefix `s` of `service s.F` -- is a
+// path segment, never a lexical binding: its members stay reachable by their qualified paths through the
+// symbol index, and v2.std.symbol_index NamespaceBodyDeclared keeps the index walk from answering with
+// it. This is the same classification at the module root's binding harvest, which resolve consults
+// before the index. Module-root only: an Arrow domain's binders (add_arrow_domain_named_params) are
+// harvested by harvest_conj_named_bindings, unchanged.
+fn harvest_module_root_named_bindings(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
+  match root.kind {
+    TypeNode { connective: c } =>
+      match c {
+        Conj => harvest_module_root_conj_bindings(root: root, acc: acc)
+        Atom { identity: _ } => acc
+        Disj => acc
+        Arrow => acc
+        Cardinality => acc
+        Instantiation => acc
+      }
+    ComputationNode { behavior: _ } => acc
+  }
+}
+
+// Only a Conj root has named members to harvest; every other node kind binds nothing at the module root.
+fn harvest_module_root_conj_bindings(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
+  fold(root.children, init: acc, f: fn(a, e) {
+    if module_binding_edge_is_namespace_body(e: e) {
+      a
+    } else {
+      match try_edge_declared_binding(e: e) {
+        Present { value: b } => map_insert(a, b.name, b.name)
+        Absent => a
+      }
+    }
+  })
+}
+
+fn module_binding_edge_is_namespace_body(e: Edge) -> Bool {
+  match e.label {
+    Authored { name: _ } => namespace_graft_node_is_module_body(node: e.target)
+    StructuralLabel { label: _ } => false
+    Positional => false
+  }
 }
 
 // A FRAME'S BINDERS, BUILT ONCE: the name each binder answers (locals, what lookup_chain reads) and,
@@ -527,7 +573,7 @@ fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace
     bindings: empty_map()
   )
   let bindings = match namespace_graft_module_body_optional(root: tree.root) {
-    Present { value: body } => harvest_conj_named_bindings(root: body, acc: root_bindings)
+    Present { value: body } => harvest_module_root_named_bindings(root: body, acc: root_bindings)
     Absent => root_bindings
   }
   Namespace {
