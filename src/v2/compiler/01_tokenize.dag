@@ -1,14 +1,15 @@
 module v2.compiler.tokenize
 
 import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
-import v2.std.optional { Absent, Present }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.diagnostic { Accepted, ByteRange, Diagnostic, ExternalContractUnknown, Locus, None, Outcome, Rejected, Textual, Unavailable, UserInputBoundary, WholeFile, diagnostics_singleton }
 import v2.std.node { Symbol }
 import std.algebra { Cons, Empty, list_append, list_snoc_item }
 import v2.std.algebra { TailAbsent, TailFound, fold_list, is_empty, is_prefix_of, length }
 import v2.std.text { Char, CharAbsent, CharFound, SourceFold, String, fold_source, string_head, string_is_empty, string_tail }
 import v2.std.logic { Bool }
-import std.unicode.types { unicode_char_code_point, unicode_scalar_utf8_octet_count }
+import std.unicode.types { unicode_scalar_utf8_octet_count }
+import std.unicode.char_class { unicode_char_code_point }
 import std.source_annotation { AnnotationPlacement, LeadingAfterLineIndent, TrailingAfterSemanticToken, advance_line_prefix_indent_only, placement_from_line_prefix }
 import v2.std.compilers.lexing {
   AnnotationRule,
@@ -24,6 +25,14 @@ import v2.std.compilers.lexing {
   LexRule,
   LexRuleSet,
   LexRules,
+  LexMode,
+  LexModeDeclaredTwice,
+  LexModeDeclarationRefusal,
+  LexModeTransition,
+  ModeTransitionTokenRule,
+  PopLexMode,
+  PushLexMode,
+  lex_rule_set_mode_refusal,
   LineCommentTextChar,
   ModeledLexRules,
   StringTextChar,
@@ -54,6 +63,7 @@ type LexRuleApply
   | LexRuleToken { class: Symbol, lexeme: v2.std.text.String, remaining: v2.std.text.String }
   | LexRuleTrivia { lexeme: v2.std.text.String, remaining: v2.std.text.String }
   | LexRuleAnnotation { class: Symbol, lexeme: v2.std.text.String, remaining: v2.std.text.String }
+  | LexRuleModalToken { class: Symbol, lexeme: v2.std.text.String, remaining: v2.std.text.String, transition: LexModeTransition }
 
 type LexMatchThunk {
   apply: fn(v2.std.text.String) -> LexMatchResult
@@ -71,6 +81,49 @@ fn tokenize_lex_e1_unrecognized_char_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
     reason: ^tokenize_lex_e1_unrecognized_char,
     at: at,
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+// THE MODE STACK'S THREE MEANINGLESS STATES, each its own refusal (v2.std.compilers.lexing LexRule
+// lexical modes). A push names a mode the rule set never declared; a pop is attempted in the default
+// mode, which has nothing beneath it; or the source ends with a mode still pushed, located at the
+// token that pushed it, since that is where the unclosed context began.
+fn tokenize_lex_e2_mode_undeclared_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: ^tokenize_lex_e2_mode_undeclared,
+    at: at,
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+fn tokenize_lex_e3_mode_pop_at_default_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: ^tokenize_lex_e3_mode_pop_at_default,
+    at: at,
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+fn tokenize_lex_e4_mode_unterminated_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: ^tokenize_lex_e4_mode_unterminated,
+    at: at,
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+fn lex_mode_declaration_refusal_reason(refusal: LexModeDeclarationRefusal) -> Symbol {
+  match refusal {
+    LexModeDeclaredTwice { mode: _ } => ^tokenize_lex_e5_mode_declared_twice
+  }
+}
+
+// A rule set whose mode declarations are malformed is refused before any text is walked.
+fn tokenize_lex_e5_mode_declaration_diagnostic(file: Symbol, refusal: LexModeDeclarationRefusal) -> Diagnostic {
+  Diagnostic {
+    reason: lex_mode_declaration_refusal_reason(refusal: refusal),
+    at: Textual { file: file, extent: WholeFile },
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
@@ -169,6 +222,7 @@ fn lex_rule_pattern(rule: LexRule) -> LexPattern {
     TokenRule { token_class: _, pattern: p } => p
     TriviaRule { pattern: p } => p
     AnnotationRule { annotation_class: _, pattern: p } => p
+    ModeTransitionTokenRule { token_class: _, pattern: p, transition: _ } => p
   }
 }
 
@@ -330,7 +384,8 @@ fn lex_pattern_first(pattern: LexPattern) -> LexFirst {
         } else {
           open
         }
-      }
+      },
+      not_followed_by: fn(element) { LexFirst { chars: std.algebra.Empty, classes: std.algebra.Empty, nullable: true } }
     }
   )
 }
@@ -435,9 +490,9 @@ fn lex_dispatch_candidates(dispatch: LexRuleDispatch, source: v2.std.text.String
   }
 }
 
-fn lex_rule_thunk(rule: LexRule) -> LexMatchThunk {
+fn lex_rule_thunk(pattern: LexPattern) -> LexMatchThunk {
   fold_lex_pattern(
-    pattern: lex_rule_pattern(rule: rule),
+    pattern: pattern,
     algebra: LexPatternFold {
       empty: LexMatchThunk { apply: fn(s) {
         LexMatchAccepted { remaining: s, lexeme: std.algebra.Empty }
@@ -542,6 +597,14 @@ fn lex_rule_thunk(rule: LexRule) -> LexMatchThunk {
               }
           }
         } }
+      },
+      not_followed_by: fn(elem_r) {
+        LexMatchThunk { apply: fn(s) {
+          match elem_r.apply(s) {
+            LexMatchAccepted { remaining: _, lexeme: _ } => LexMatchRejected
+            LexMatchRejected => LexMatchAccepted { remaining: s, lexeme: std.algebra.Empty }
+          }
+        } }
       }
     }
   )
@@ -558,6 +621,8 @@ fn lex_try_compiled(compiled: CompiledLexRule, source: v2.std.text.String) -> Le
           LexRuleTrivia { lexeme: lexeme, remaining: remaining }
         AnnotationRule { annotation_class: class, pattern: _ } =>
           LexRuleAnnotation { class: class, lexeme: lexeme, remaining: remaining }
+        ModeTransitionTokenRule { token_class: class, pattern: _, transition: t } =>
+          LexRuleModalToken { class: class, lexeme: lexeme, remaining: remaining, transition: t }
       }
   }
 }
@@ -576,7 +641,7 @@ fn lex_compile_rules(rules: List<LexRule>) -> List<CompiledLexRule> {
         reversed: Cons {
           head: CompiledLexRule {
             rule: rule,
-            thunk: lex_rule_thunk(rule: rule),
+            thunk: lex_rule_thunk(pattern: lex_rule_pattern(rule: rule)),
             index: acc.next_index,
             first: lex_pattern_first(pattern: lex_rule_pattern(rule: rule))
           },
@@ -593,7 +658,7 @@ fn lex_try_rule(rule: LexRule, source: v2.std.text.String) -> LexRuleApply {
   lex_try_compiled(
     compiled: CompiledLexRule {
       rule: rule,
-      thunk: lex_rule_thunk(rule: rule),
+      thunk: lex_rule_thunk(pattern: lex_rule_pattern(rule: rule)),
       index: 0,
       first: lex_pattern_first(pattern: lex_rule_pattern(rule: rule))
     },
@@ -607,6 +672,7 @@ fn lex_rule_apply_lexeme_length(apply: LexRuleApply) -> Int {
     LexRuleToken { lexeme: lexeme, remaining: _, class: _ } => length(xs: lexeme)
     LexRuleTrivia { lexeme: lexeme, remaining: _ } => length(xs: lexeme)
     LexRuleAnnotation { lexeme: lexeme, remaining: _, class: _ } => length(xs: lexeme)
+    LexRuleModalToken { lexeme: lexeme, remaining: _, class: _, transition: _ } => length(xs: lexeme)
   }
 }
 
@@ -663,9 +729,103 @@ type LexWalkAcc {
   error: Bool
   file: Symbol
   dispatch: LexRuleDispatch
+  modes: Map<Symbol, LexRuleDispatch>
+  mode_stack: List<LexModeFrame>
+  mode_fault: Optional<LexWalkModeFault>
   gap_start: Int
   gap_has_break: Bool
   layout: StreamLayout
+}
+
+// One pushed mode: the dispatch to resume when it pops, and the extent of the token that pushed it,
+// which is where an unterminated mode is reported.
+type LexModeFrame {
+  resume: LexRuleDispatch
+  opened_start: Int
+  opened_end: Int
+}
+
+type LexWalkModeFault
+  = ModeUndeclaredAt { start: Int, end: Int }
+  | ModePopAtDefaultAt { start: Int, end: Int }
+  | ModeUnterminatedAt { start: Int, end: Int }
+
+fn lex_mode_dispatches(rules: LexRuleSet) -> Map<Symbol, LexRuleDispatch> {
+  fold_list(
+    xs: rules.modes,
+    empty: empty_map(),
+    cons: fn(acc, mode) { map_insert(m: acc, key: mode.mode, value: lex_rule_dispatch(compiled_rules: lex_compile_rules(rules: mode.rules))) }
+  )
+}
+
+// The walk state with its mode fields replaced; every other field carried. The one place a mode
+// change is written, so the push, the pop and each refusal cannot drift apart.
+fn lex_walk_with_mode(
+  acc: LexWalkAcc,
+  dispatch: LexRuleDispatch,
+  mode_stack: List<LexModeFrame>,
+  mode_fault: Optional<LexWalkModeFault>
+) -> LexWalkAcc {
+  let faulted = match mode_fault {
+    Present { value: _ } => true
+    Absent => false
+  }
+  LexWalkAcc {
+    remaining: acc.remaining,
+    tokens: acc.tokens,
+    annotations: acc.annotations,
+    line_prefix_indent_only: acc.line_prefix_indent_only,
+    pos: acc.pos,
+    done: acc.done || faulted,
+    error: acc.error || faulted,
+    file: acc.file,
+    dispatch: dispatch,
+    modes: acc.modes,
+    mode_stack: mode_stack,
+    mode_fault: mode_fault,
+    gap_start: acc.gap_start,
+    gap_has_break: acc.gap_has_break,
+    layout: acc.layout
+  }
+}
+
+// Applied after a mode-transition token is emitted; `start`..`end` is that token's extent. A walk
+// already stopped is left as it is.
+fn lex_walk_transition(acc: LexWalkAcc, transition: LexModeTransition, start: Int, end: Int) -> LexWalkAcc {
+  if acc.done {
+    acc
+  } else {
+    match transition {
+      PushLexMode { mode: m } =>
+        match map_lookup(m: acc.modes, key: m) {
+          Present { value: d } =>
+            lex_walk_with_mode(
+              acc: acc,
+              dispatch: d,
+              mode_stack: Cons { head: LexModeFrame { resume: acc.dispatch, opened_start: start, opened_end: end }, tail: acc.mode_stack },
+              mode_fault: optional_absent()
+            )
+          Absent =>
+            lex_walk_with_mode(acc: acc, dispatch: acc.dispatch, mode_stack: acc.mode_stack, mode_fault: optional_present(value: ModeUndeclaredAt { start: start, end: end }))
+        }
+      PopLexMode =>
+        match acc.mode_stack {
+          Empty =>
+            lex_walk_with_mode(acc: acc, dispatch: acc.dispatch, mode_stack: acc.mode_stack, mode_fault: optional_present(value: ModePopAtDefaultAt { start: start, end: end }))
+          Cons { head: frame, tail: rest } =>
+            lex_walk_with_mode(acc: acc, dispatch: frame.resume, mode_stack: rest, mode_fault: optional_absent())
+        }
+    }
+  }
+}
+
+// End of input: a mode still pushed is an unterminated context, refused at the token that opened it.
+fn lex_walk_finish(acc: LexWalkAcc) -> LexWalkAcc {
+  match acc.mode_stack {
+    Empty => acc
+    Cons { head: frame, tail: _ } =>
+      lex_walk_with_mode(acc: acc, dispatch: acc.dispatch, mode_stack: acc.mode_stack, mode_fault: optional_present(value: ModeUnterminatedAt { start: frame.opened_start, end: frame.opened_end }))
+  }
 }
 
 fn lex_walk_init(src: v2.std.text.String, file: Symbol, rules: LexRuleSet) -> LexWalkAcc {
@@ -679,6 +839,9 @@ fn lex_walk_init(src: v2.std.text.String, file: Symbol, rules: LexRuleSet) -> Le
     error: false,
     file: file,
     dispatch: lex_rule_dispatch(compiled_rules: lex_compile_rules(rules: rules.rules)),
+    modes: lex_mode_dispatches(rules: rules),
+    mode_stack: Empty,
+    mode_fault: optional_absent(),
     gap_start: 0,
     gap_has_break: false,
     layout: stream_layout_empty()
@@ -692,20 +855,25 @@ fn lex_walk_is_done(acc: LexWalkAcc) -> Bool {
 fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
   match string_is_empty(s: acc.remaining) {
     true =>
-      LexWalkAcc {
-        remaining: acc.remaining,
-        tokens: acc.tokens,
-        annotations: acc.annotations,
-        line_prefix_indent_only: acc.line_prefix_indent_only,
-        pos: acc.pos,
-        done: true,
-        error: false,
-        file: acc.file,
-        dispatch: acc.dispatch,
-        gap_start: acc.gap_start,
-        gap_has_break: acc.gap_has_break,
-        layout: acc.layout
-      }
+      lex_walk_finish(
+        acc: LexWalkAcc {
+            remaining: acc.remaining,
+            tokens: acc.tokens,
+            annotations: acc.annotations,
+            line_prefix_indent_only: acc.line_prefix_indent_only,
+            pos: acc.pos,
+            done: true,
+            error: false,
+            file: acc.file,
+            dispatch: acc.dispatch,
+            modes: acc.modes,
+            mode_stack: acc.mode_stack,
+            mode_fault: acc.mode_fault,
+            gap_start: acc.gap_start,
+            gap_has_break: acc.gap_has_break,
+            layout: acc.layout
+          }
+      )
     false =>
       match lex_try_rules(rules: lex_dispatch_candidates(dispatch: acc.dispatch, source: acc.remaining), source: acc.remaining) {
         LexRuleNoMatch =>
@@ -719,6 +887,9 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
             error: true,
             file: acc.file,
             dispatch: acc.dispatch,
+            modes: acc.modes,
+            mode_stack: acc.mode_stack,
+            mode_fault: acc.mode_fault,
             gap_start: acc.gap_start,
             gap_has_break: acc.gap_has_break,
             layout: acc.layout
@@ -736,6 +907,9 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 error: true,
                 file: acc.file,
                 dispatch: acc.dispatch,
+                modes: acc.modes,
+                mode_stack: acc.mode_stack,
+                mode_fault: acc.mode_fault,
                 gap_start: acc.gap_start,
                 gap_has_break: acc.gap_has_break,
                 layout: acc.layout
@@ -751,53 +925,16 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 error: false,
                 file: acc.file,
                 dispatch: acc.dispatch,
+                modes: acc.modes,
+                mode_stack: acc.mode_stack,
+                mode_fault: acc.mode_fault,
                 gap_start: acc.gap_start,
                 gap_has_break: acc.gap_has_break || lexeme_has_line_feed(lexeme: lexeme),
                 layout: acc.layout
               }
           }
         LexRuleToken { class: class, lexeme: lexeme, remaining: remaining } =>
-          match string_is_empty(s: lexeme) {
-            true =>
-              LexWalkAcc {
-                remaining: acc.remaining,
-                tokens: acc.tokens,
-                annotations: acc.annotations,
-                line_prefix_indent_only: acc.line_prefix_indent_only,
-                pos: acc.pos,
-                done: true,
-                error: true,
-                file: acc.file,
-                dispatch: acc.dispatch,
-                gap_start: acc.gap_start,
-                gap_has_break: acc.gap_has_break,
-                layout: acc.layout
-              }
-            false =>
-              LexWalkAcc {
-                remaining: remaining,
-                tokens: Cons {
-                  head: Token {
-                    class: class,
-                    lexeme: chars_to_string(chars: lexeme, start: 0, end: length(xs: lexeme)),
-                    file: acc.file,
-                    start: acc.pos,
-                    end: acc.pos + lexeme_utf8_octet_count(lexeme: lexeme)
-                  },
-                  tail: acc.tokens
-                },
-                annotations: acc.annotations,
-                line_prefix_indent_only: advance_line_prefix_indent_only(previous: acc.line_prefix_indent_only, code_points: lexeme),
-                pos: acc.pos + lexeme_utf8_octet_count(lexeme: lexeme),
-                done: false,
-                error: false,
-                file: acc.file,
-                dispatch: acc.dispatch,
-                gap_start: acc.pos + lexeme_utf8_octet_count(lexeme: lexeme),
-                gap_has_break: false,
-                layout: if acc.gap_has_break { stream_layout_with_break(layout: acc.layout, token_start: acc.pos, gap_start: acc.gap_start) } else { acc.layout }
-              }
-          }
+          lex_walk_emit_token(acc: acc, class: class, lexeme: lexeme, remaining: remaining)
         LexRuleAnnotation { class: class, lexeme: lexeme, remaining: remaining } =>
           match string_is_empty(s: lexeme) {
             true =>
@@ -811,6 +948,9 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 error: true,
                 file: acc.file,
                 dispatch: acc.dispatch,
+                modes: acc.modes,
+                mode_stack: acc.mode_stack,
+                mode_fault: acc.mode_fault,
                 gap_start: acc.gap_start,
                 gap_has_break: acc.gap_has_break,
                 layout: acc.layout
@@ -836,11 +976,72 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 error: false,
                 file: acc.file,
                 dispatch: acc.dispatch,
+                modes: acc.modes,
+                mode_stack: acc.mode_stack,
+                mode_fault: acc.mode_fault,
                 gap_start: acc.gap_start,
                 gap_has_break: acc.gap_has_break || lexeme_has_line_feed(lexeme: lexeme),
                 layout: acc.layout
               }
           }
+        LexRuleModalToken { class: class, lexeme: lexeme, remaining: remaining, transition: t } =>
+          lex_walk_transition(
+            acc: lex_walk_emit_token(acc: acc, class: class, lexeme: lexeme, remaining: remaining),
+            transition: t,
+            start: acc.pos,
+            end: acc.pos + lexeme_utf8_octet_count(lexeme: lexeme)
+          )
+      }
+  }
+}
+
+// A token rule's match, emitted onto the walk: shared by the plain and the mode-transition token arms.
+fn lex_walk_emit_token(acc: LexWalkAcc, class: Symbol, lexeme: v2.std.text.String, remaining: v2.std.text.String) -> LexWalkAcc {
+  match string_is_empty(s: lexeme) {
+    true =>
+      LexWalkAcc {
+        remaining: acc.remaining,
+        tokens: acc.tokens,
+        annotations: acc.annotations,
+        line_prefix_indent_only: acc.line_prefix_indent_only,
+        pos: acc.pos,
+        done: true,
+        error: true,
+        file: acc.file,
+        dispatch: acc.dispatch,
+        modes: acc.modes,
+        mode_stack: acc.mode_stack,
+        mode_fault: acc.mode_fault,
+        gap_start: acc.gap_start,
+        gap_has_break: acc.gap_has_break,
+        layout: acc.layout
+      }
+    false =>
+      LexWalkAcc {
+        remaining: remaining,
+        tokens: Cons {
+          head: Token {
+            class: class,
+            lexeme: chars_to_string(chars: lexeme, start: 0, end: length(xs: lexeme)),
+            file: acc.file,
+            start: acc.pos,
+            end: acc.pos + lexeme_utf8_octet_count(lexeme: lexeme)
+          },
+          tail: acc.tokens
+        },
+        annotations: acc.annotations,
+        line_prefix_indent_only: advance_line_prefix_indent_only(previous: acc.line_prefix_indent_only, code_points: lexeme),
+        pos: acc.pos + lexeme_utf8_octet_count(lexeme: lexeme),
+        done: false,
+        error: false,
+        file: acc.file,
+        dispatch: acc.dispatch,
+        modes: acc.modes,
+        mode_stack: acc.mode_stack,
+        mode_fault: acc.mode_fault,
+        gap_start: acc.pos + lexeme_utf8_octet_count(lexeme: lexeme),
+        gap_has_break: false,
+        layout: if acc.gap_has_break { stream_layout_with_break(layout: acc.layout, token_start: acc.pos, gap_start: acc.gap_start) } else { acc.layout }
       }
   }
 }
@@ -864,6 +1065,22 @@ fn lex_unmatched_scalar_octets(remaining: v2.std.text.String) -> Int {
 // lex_walk_artifact is the authored result; lex_walk is its SEMANTIC PROJECTION and is what every existing caller keeps using. The direction matters: the projection is derived from the artifact by dropping the annotation channel, never the reverse, so a semantic consumer cannot reach annotation text and an annotation-aware consumer does not have to re-lex. Both fold the same walk exactly once — this is one traversal read two ways, not two traversals (DESIGN 4c erasure boundary at the lexical layer, mirroring AuthoredParseArtifact at the parse layer).
 // Zero-width [pos, pos] is the caret BEFORE the unmatched character, so a refusal on an offending literal landed on the insertion point rather than covering the character. Cover one scalar, in octets, when remaining is nonempty.
 fn lex_walk_artifact(source: v2.std.text.String, file: Symbol, rules: LexRuleSet) -> Outcome<LexArtifact> {
+  match lex_rule_set_mode_refusal(rules: rules) {
+    Present { value: refusal } =>
+      v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e5_mode_declaration_diagnostic(file: file, refusal: refusal)) }
+    Absent => lex_walk_artifact_walked(source: source, file: file, rules: rules)
+  }
+}
+
+fn lex_walk_mode_fault_diagnostic(file: Symbol, fault: LexWalkModeFault) -> Diagnostic {
+  match fault {
+    ModeUndeclaredAt { start: a, end: b } => tokenize_lex_e2_mode_undeclared_diagnostic(at: Textual { file: file, extent: ByteRange { start: a, end: b } })
+    ModePopAtDefaultAt { start: a, end: b } => tokenize_lex_e3_mode_pop_at_default_diagnostic(at: Textual { file: file, extent: ByteRange { start: a, end: b } })
+    ModeUnterminatedAt { start: a, end: b } => tokenize_lex_e4_mode_unterminated_diagnostic(at: Textual { file: file, extent: ByteRange { start: a, end: b } })
+  }
+}
+
+fn lex_walk_artifact_walked(source: v2.std.text.String, file: Symbol, rules: LexRuleSet) -> Outcome<LexArtifact> {
   let result = fold_source(
     src: source,
     algebra: lex_walk_source_algebra(file: file, rules: rules)
@@ -873,7 +1090,12 @@ fn lex_walk_artifact(source: v2.std.text.String, file: Symbol, rules: LexRuleSet
     false => Textual { file: file, extent: ByteRange { start: result.pos, end: result.pos + lex_unmatched_scalar_octets(remaining: result.remaining) } }
   }
   if result.error {
-    v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
+    match result.mode_fault {
+      Present { value: fault } =>
+        v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: lex_walk_mode_fault_diagnostic(file: file, fault: fault)) }
+      Absent =>
+        v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
+    }
   } else {
     v2.std.diagnostic.Accepted {
       value: lex_artifact_new(

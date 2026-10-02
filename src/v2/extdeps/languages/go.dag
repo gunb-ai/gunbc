@@ -64,7 +64,7 @@ import v2.std.grounding {
   PerLanguageFactBundleKey,
   PerLanguageFactBundleRegistry
 }
-import v2.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v2.std.node { Arrow, Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode }
 import v2.std.compilers.target_model {
   ProducedDeclUnwired, ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node, target_model_emit_transforms_empty}
 import v2.std.compilers.target_model {
@@ -412,7 +412,7 @@ fn go_inhabitant_atom(id: Symbol) -> Node {
 }
 
 fn go_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn go_int_kind_node(kind: GoIntKind) -> Node {
@@ -1962,7 +1962,8 @@ fn go_lex_rules() -> LexRuleSet {
       go_lex_rule(token_class: ^go_token_kw_return, text: "return "),
       go_lex_rule(token_class: ^go_token_plus, text: " + "),
       go_lex_rule(token_class: ^go_token_rbrace, text: " }")
-    ]
+    ],
+    modes: []
   }
 }
 

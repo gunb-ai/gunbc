@@ -1258,6 +1258,14 @@ pub enum InterpError {
         at: String,
         found: String,
     },
+    /// A variant occurrence of a natively realized coproduct (std.types Bool over the host `bool`)
+    /// whose realization could not be decided -- its owning coproduct was not recovered, or the
+    /// row set refused -- so it is refused rather than matched or constructed by its arm NAME.
+    /// The decision is `v1.compiler.coercion` `rust_variant_value_realization`, the same one the
+    /// Rust emitter consumes.
+    VariantRealizationRefused {
+        detail: String,
+    },
     /// A REST response value did not inhabit the coproduct its declared output type names.
     /// Raised by `decode_json_by_declared_type`; see `RestResponseDecodeRefusal`.
     RestResponseUndecodable {
@@ -1495,6 +1503,9 @@ impl fmt::Display for InterpError {
             }
             InterpError::StringRealizationStraddle { detail } => {
                 write!(f, "string realization straddle: {}", detail)
+            }
+            InterpError::VariantRealizationRefused { detail } => {
+                write!(f, "{}", detail)
             }
             InterpError::PoolRootContributesNothing {
                 caller,
@@ -5306,6 +5317,11 @@ pub struct InterpContext {
     // eval goes straight to env.lookup(sym), materializing the String only on the registry slow path.
     var_sym_cache: std::cell::RefCell<HashMap<usize, Symbol>>,
     var_sym_cache_keepalive: std::cell::RefCell<Vec<Rc<Node>>>,
+    /// A refusal raised inside `match_pattern` (which answers match / no-match as an `Option`),
+    /// taken by the one caller that owns the match and turned into
+    /// `InterpError::VariantRealizationRefused` -- so an undecidable native arm stops the match
+    /// instead of falling through to the next arm.
+    variant_realization_refusal: std::cell::RefCell<Option<String>>,
     // Same chokepoint, ExprCall callee name: eval_call re-sliced the callee name from its source
     // span (expr_call_func_at -> authored_name_at) on every call. Memoize the decoded name per
     // call node — keyed by node pointer, kept alive via call_func_name_cache_keepalive as above.
@@ -5739,6 +5755,7 @@ impl InterpContext {
             param_name_cache_keepalive: std::cell::RefCell::new(Vec::new()),
             var_sym_cache: std::cell::RefCell::new(HashMap::new()),
             var_sym_cache_keepalive: std::cell::RefCell::new(Vec::new()),
+            variant_realization_refusal: std::cell::RefCell::new(None),
             call_func_name_cache: std::cell::RefCell::new(HashMap::new()),
             call_func_name_cache_keepalive: std::cell::RefCell::new(Vec::new()),
             cast_kernel_cache: std::cell::RefCell::new(HashMap::new()),
@@ -7098,7 +7115,25 @@ fn eval_var(
         }
     };
 
-    if let Some(VarBindingKind::VariantValueBinding { parent_enum }) = binding_kind {
+    if let Some(VarBindingKind::VariantValueBinding {
+        parent_enum,
+        parent_identity,
+    }) = binding_kind
+    {
+        let arm_spelling = ctx.resolve(sym);
+        let arm = arm_spelling.rsplit('.').next().unwrap_or(&arm_spelling);
+        match native_variant_reading(parent_identity, arm) {
+            NativeVariantReading::HostBool(b) => return Ok(Value::Bool(b)),
+            NativeVariantReading::Structural => {}
+            NativeVariantReading::Refused(detail) => {
+                // A value construction refuses only for an arm a native row could have claimed;
+                // an unrecovered owner whose arm no row mentions is structural, as in emission.
+                if crate::v1_compiler_coercion::rust_variant_arm_is_bound_somewhere(arm.to_string())
+                {
+                    return Err(InterpError::VariantRealizationRefused { detail });
+                }
+            }
+        }
         // Bounded residual: Nat's intentional native representation is still selected by the
         // arm lexeme because the seed binding carrier lacks exact owner declaration identity.
         // The executable shorthand test and GuaranteeStall keep that silent-wrongness path
@@ -7915,7 +7950,11 @@ fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
         } else {
             scrutinee_val.clone()
         };
-        if let Some(bindings) = match_pattern(&pattern, &arm_value, ctx) {
+        let matched = match_pattern(&pattern, &arm_value, ctx);
+        if let Some(detail) = ctx.variant_realization_refusal.borrow_mut().take() {
+            return Err(InterpError::VariantRealizationRefused { detail });
+        }
+        if let Some(bindings) = matched {
             let arm_env = Env::extend(env, bindings);
             // A guard is part of the arm's admission, evaluated in the arm's bindings: a false
             // guard falls through to the next arm, exactly as the emitted `pat if guard =>` does.
@@ -8991,6 +9030,41 @@ fn try_witness_evaluation_dispatch(
     }
 }
 
+/// THE INTERPRETER'S HALF OF THE NATIVE-VARIANT LOWERING. The interpreter is a Rust-hosted
+/// realization whose `Value::Bool` holds a Rust `bool`, so it asks the SAME identity-keyed decision
+/// the Rust emitter asks (`v1.compiler.coercion` `rust_variant_value_realization`, over
+/// `gunbc.rust_source_type_bindings` `rust_source_variant_value_rows`) and reads the row's value
+/// with Rust's own `bool` parse -- the projection of that row onto this host, not a second table.
+enum NativeVariantReading {
+    HostBool(bool),
+    Structural,
+    Refused(String),
+}
+
+fn native_variant_reading(
+    parent: &Rc<crate::std_target_representation::VariantParentIdentity>,
+    arm: &str,
+) -> NativeVariantReading {
+    use crate::std_target_representation::VariantValueRealization as R;
+    let r = crate::v1_compiler_coercion::rust_variant_value_realization(
+        parent.clone(),
+        arm.to_string(),
+    );
+    match &*r {
+        R::VariantRealizesAsTargetValue { value_spelling } => match value_spelling.parse::<bool>() {
+            Ok(b) => NativeVariantReading::HostBool(b),
+            Err(_) => NativeVariantReading::Refused(format!(
+                "variant realization: arm `{arm}` realizes as the target value `{value_spelling}`, which the interpreter's host bool cannot hold"
+            )),
+        },
+        R::VariantRealizesStructurally => NativeVariantReading::Structural,
+        _ => NativeVariantReading::Refused(
+            crate::std_target_representation::variant_value_realization_refusal_message(r.clone())
+                .unwrap_or_else(|| format!("variant realization: arm `{arm}` was refused")),
+        ),
+    }
+}
+
 fn match_pattern(
     pattern: &MatchPattern,
     value: &Value,
@@ -9019,7 +9093,29 @@ fn match_pattern(
                 name,
                 parent_enum,
                 field_bindings,
+                parent_identity,
             } => {
+                // A variant pattern against a HOST bool is a native arm or nothing: the identity
+                // inference carried decides which value it denotes, and an undecidable one refuses.
+                // Variant values (a module-local coproduct whose arms happen to be spelled True/False)
+                // never reach this branch and keep their structural match below.
+                if let Value::Bool(held) = value {
+                    let arm = name.rsplit('.').next().unwrap_or(name);
+                    return match native_variant_reading(parent_identity, arm) {
+                        NativeVariantReading::HostBool(b) => {
+                            if *held == b {
+                                Some(HashMap::new())
+                            } else {
+                                None
+                            }
+                        }
+                        NativeVariantReading::Structural => None,
+                        NativeVariantReading::Refused(detail) => {
+                            *ctx.variant_realization_refusal.borrow_mut() = Some(detail);
+                            None
+                        }
+                    };
+                }
                 // A qualified pattern spelling (`module.Variant`) resolves the arm name to its
                 // containment path, but values are constructed with the bare last segment (the
                 // short-name normalization at value construction). Every name-vs-literal
@@ -23207,17 +23303,6 @@ macro_rules! v1_builtin_arms {
                 crate::cli_run::inert_carrier_declared_count_live(),
             ))),
 
-            arm "free_call.non_fold_residue_count" { "non_fold_residue_count" } => Ok(Some(Value::Int(crate::cli_run::non_fold_residue_count()))),
-            arm "free_call.non_fold_residue_unrostered_count" { "non_fold_residue_unrostered_count" } => Ok(Some(Value::Int(
-                crate::cli_run::non_fold_residue_unrostered_count(),
-            ))),
-            arm "free_call.non_fold_residue_stale_roster_count" { "non_fold_residue_stale_roster_count" } => Ok(Some(Value::Int(
-                crate::cli_run::non_fold_residue_stale_roster_count(),
-            ))),
-            arm "free_call.non_fold_residue_coproduct_universe_count" { "non_fold_residue_coproduct_universe_count" } => Ok(Some(Value::Int(
-                crate::cli_run::non_fold_residue_coproduct_universe_count(),
-            ))),
-
             arm "free_call.commit_witness_claim_roster_unresolvable_count" { "commit_witness_claim_roster_unresolvable_count" } => Ok(Some(Value::Int(
                 crate::cli_run::commit_witness_claim_roster_unresolvable_count(),
             ))),
@@ -23234,18 +23319,6 @@ macro_rules! v1_builtin_arms {
                     crate::cli_run::commit_witness_claim_pair_resolvable(&entry, &function),
                 )))
             },
-            arm "free_call.non_fold_residue_wildcard_red_fixture_holds" { "non_fold_residue_wildcard_red_fixture_holds" } => Ok(Some(Value::Bool(
-                crate::cli_run::non_fold_residue_wildcard_red_fixture_holds(),
-            ))),
-            arm "free_call.non_fold_residue_total_fold_green_fixture_holds" { "non_fold_residue_total_fold_green_fixture_holds" } => Ok(Some(Value::Bool(
-                crate::cli_run::non_fold_residue_total_fold_green_fixture_holds(),
-            ))),
-            arm "free_call.non_fold_residue_roster_red_fixture_holds" { "non_fold_residue_roster_red_fixture_holds" } => Ok(Some(Value::Bool(
-                crate::cli_run::non_fold_residue_roster_red_fixture_holds(),
-            ))),
-            arm "free_call.non_fold_residue_synthetic_unrostered_red_holds" { "non_fold_residue_synthetic_unrostered_red_holds" } => Ok(Some(Value::Bool(
-                crate::cli_run::non_fold_residue_synthetic_unrostered_red_holds(),
-            ))),
 
             arm "free_call.complexity_linearity_syntactic_finding_count" { "complexity_linearity_syntactic_finding_count" } => Ok(Some(Value::Int(
                 crate::cli_run::complexity_linearity_syntactic_finding_count(),

@@ -4,7 +4,7 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.compiler.resolve { Namespace, NotDeclaring, ResolveContext, empty_canonical_symbol_set, resolve_node, scope_from_namespace }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
-import v2.extdeps.languages.dag { dag_grammar_atom, dag_language_model_surface_empty_prelude, dag_named_edge, namespace_graft_namespace_body_node }
+import v2.extdeps.languages.dag { dag_grammar_atom, dag_language_model_surface_empty_prelude, dag_surface_edge, namespace_graft_namespace_body_node }
 import v2.std.algebra { fold_list_node }
 import v2.std.arrow_signature { declared_signature }
 import v2.std.collection { List, empty_map }
@@ -12,7 +12,7 @@ import v2.std.declaration_marker { test_code_index_empty }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v2.std.node { Arrow, Atom, Authored, Conj, Edge, Node, Positional, Symbol, TypeNode }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
 import v2.std.resolution_policy { NamespaceOnlyY }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
@@ -50,7 +50,7 @@ fn soc_payload(edges: List<Edge>) -> Node {
 fn soc_operation(name: Symbol) -> Edge {
   let signature = declared_signature(params: [], source: soc_atom(sym: name))
   Edge {
-    label: Named { name: name },
+    label: Authored { name: name },
     target: Node {
       kind: TypeNode { connective: Arrow },
       children: [signature.domain, Edge { label: Positional, target: soc_payload(edges: []) }, signature.order],
@@ -65,14 +65,14 @@ fn soc_service_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      dag_named_edge(name: ^dag_surface_module_header, target: dag_grammar_atom(id: ^dag_surface_module_header)),
-      dag_named_edge(name: ^dag_surface_module_header_qualified_name, target: soc_spine(dotted: "t.svc")),
+      dag_surface_edge(edge: ^dag_surface_module_header, target: dag_grammar_atom(id: ^dag_surface_module_header)),
+      dag_surface_edge(edge: ^dag_surface_module_header_qualified_name, target: soc_spine(dotted: "t.svc")),
       Edge {
-        label: Named { name: ^s },
+        label: Authored { name: ^s },
         target: namespace_graft_namespace_body_node(
           edges: [
-            Edge { label: Named { name: ^F }, target: soc_payload(edges: [soc_operation(name: ^Run)]) },
-            Edge { label: Named { name: ^E }, target: soc_payload(edges: [soc_operation(name: ^Get)]) }
+            Edge { label: Authored { name: ^F }, target: soc_payload(edges: [soc_operation(name: ^Run)]) },
+            Edge { label: Authored { name: ^E }, target: soc_payload(edges: [soc_operation(name: ^Get)]) }
           ],
           source: soc_atom(sym: ^s)
         )

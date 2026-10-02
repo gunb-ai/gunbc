@@ -1,6 +1,6 @@
 module product.fabric.execution
 
-import std.types { NonEmptyStr, Timestamp, List, Int }
+import std.types { NonEmptyStr, Timestamp, List, Int, brand }
 import std.measure { MoneyAmountMicro, Second }
 import std.content_hash { ContentHash, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
 import product.fabric.identity { fabric_identity_eq, FabricIdentity, ExecutionAttemptKey, DemandKey, WorkKey, GrantKey, OfferKey, ReceiptKey }
