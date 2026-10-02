@@ -40,7 +40,7 @@ import v2.std.node {
   CostEdgeNotPriced,
   CostEdgePricedOnce,
   cost_edge_role,
-  Named,
+  Authored,
   Node,
   NodeFold,
   Symbol,

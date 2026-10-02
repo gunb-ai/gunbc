@@ -1,7 +1,7 @@
 module v2.std.algebra
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.node { Conj, Edge, Named, Node, TypeNode }
+import v2.std.node { Conj, Edge, Authored, Node, TypeNode }
 import v2.std.optional { Optional, optional_absent, optional_present }
 import std.algebra {
   AbelianGroup,
@@ -123,8 +123,8 @@ fn fold_list_node<T>(
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge { label: Named { name: ^fold_list_node_head }, target: item_node(item) },
-          Edge { label: Named { name: ^fold_list_node_tail }, target: tail_node },
+          Edge { label: Authored { name: ^fold_list_node_head }, target: item_node(item) },
+          Edge { label: Authored { name: ^fold_list_node_tail }, target: tail_node },
         ],
         occurrence_id: OccurrenceSynthetic
 }

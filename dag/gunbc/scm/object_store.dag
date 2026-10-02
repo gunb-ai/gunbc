@@ -17,7 +17,7 @@ import v2.std.node {
   Conj,
   Edge,
   EdgeLabel,
-  Named,
+  Authored,
   Symbol,
   content_hash,
   node_synthetic,
@@ -1863,7 +1863,7 @@ fn collision_probe_atom(identity: Symbol) -> Node {
 fn collision_probe_parent(child: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: Named { name: ^only_child }, target: child }],
+    children: [Edge { label: Authored { name: ^only_child }, target: child }],
   )
 }
 

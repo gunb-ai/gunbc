@@ -76,6 +76,7 @@ data jq_cli_tool: CliTool = CliTool {
 // reachable by every future caller.
 service jq.Process {
   operation RunWithStdin {
+    requires none
     input { arguments: ProcessArgvExpansion, stdin_payload: String }
     output {
       exit_code: Int from "exit_code"
@@ -94,6 +95,7 @@ service jq.Process {
   }
 
   operation RunWithoutStdin {
+    requires none
     input { arguments: ProcessArgvExpansion }
     output {
       exit_code: Int from "exit_code"

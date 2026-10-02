@@ -1,5 +1,7 @@
 module v2.test.claim.provenance.cross_file_provenance
 
+
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // The closing check for the cross-file-provenance lane, authored before the mechanism it closes.
@@ -28,12 +30,10 @@ fn cfp_module_root(qn_spine: Node, exports: List<Edge>) -> Node {
     kind: TypeNode { connective: Conj },
     children: concat(
       [
-        dag_named_edge(
-          name: ^dag_surface_module_header,
+        dag_surface_edge(edge: ^dag_surface_module_header,
           target: dag_grammar_atom(id: ^dag_surface_module_header)
         ),
-        dag_named_edge(
-          name: ^dag_surface_module_header_qualified_name,
+        dag_surface_edge(edge: ^dag_surface_module_header_qualified_name,
           target: qn_spine
         )
       ],
@@ -45,7 +45,7 @@ fn cfp_module_root(qn_spine: Node, exports: List<Edge>) -> Node {
 
 fn cfp_declaration(decl_sym: Symbol) -> Edge {
   Edge {
-    label: Named { name: decl_sym },
+    label: Authored { name: decl_sym },
     target: Node {
       kind: TypeNode { connective: Atom { identity: decl_sym } },
       children: [],
@@ -91,25 +91,29 @@ data cfp_roster: FreeMonoid<QualifiedName> = module_roster_from_roots(roots: cfp
 
 // A bare name mentioned in the consumer whose only declaration lives in the
 // producer: the one name answered across a file boundary.
+fn cfp_authored_position(qn: QualifiedName) -> List<EdgeLabel> {
+  list_map(xs: qn, f: fn(segment) { Authored { name: segment } })
+}
+
 data cfp_cross_file_site: ReferenceSite = ReferenceSite {
-  position: cfp_consumer_qn,
+  position: cfp_authored_position(qn: cfp_consumer_qn),
   spelling: qualified_name_from_dotted_string(dotted: "CrossFileMarker")
 }
 
 data cfp_own_module_site: ReferenceSite = ReferenceSite {
-  position: cfp_consumer_qn,
+  position: cfp_authored_position(qn: cfp_consumer_qn),
   spelling: qualified_name_from_dotted_string(dotted: "ConsumerLocal")
 }
 
 data cfp_qualified_site: ReferenceSite = ReferenceSite {
-  position: cfp_consumer_qn,
+  position: cfp_authored_position(qn: cfp_consumer_qn),
   spelling: qualified_name_from_dotted_string(
     dotted: "v2.test.provenance_producer.CrossFileHelper"
   )
 }
 
 data cfp_undeclared_but_prefixed_site: ReferenceSite = ReferenceSite {
-  position: cfp_consumer_qn,
+  position: cfp_authored_position(qn: cfp_consumer_qn),
   spelling: qualified_name_from_dotted_string(
     dotted: "v2.test.provenance_producer.NotDeclaredAnywhere"
   )
@@ -124,7 +128,7 @@ data cfp_consumer_sites: FreeMonoid<ReferenceSite> = Cons {
 }
 
 data cfp_second_mention_site: ReferenceSite = ReferenceSite {
-  position: qualified_name_snoc(qn: cfp_consumer_qn, segment: ^ConsumerLocal),
+  position: cfp_authored_position(qn: qualified_name_snoc(qn: cfp_consumer_qn, segment: ^ConsumerLocal)),
   spelling: qualified_name_from_dotted_string(dotted: "CrossFileMarker")
 }
 
