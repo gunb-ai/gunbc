@@ -1,0 +1,55 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-cursor-integration
+✓ typecheck v2.std.compilers.target_model done in 29 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+✓ typecheck v2.compiler.body_lowering_fold done in 2 seconds
+✓ typecheck v2.compiler.source_authority done in 2 seconds
+✓ typecheck v2.compiler.translate done in 4 seconds
+✓ typecheck gunbc.spark.pair_serving_authority_log done in 2 seconds
+✓ typecheck gunbc.roadmap_belt_actuate done in 3 seconds
+✓ typecheck gunbc.roadmap_component done in 3 seconds
+✓ typecheck gunbc.roadmap_page done in 2 seconds
+✓ typecheck gunbc.live_deploy.emit done in 3 seconds
+✓ typecheck gunbc.host_effect_realize done in 21 seconds
+✓ typecheck gunbc.machine_intake_mtcollins1_boot_run done in 2 seconds
+✓ typecheck gunbc.ci_spec done in 2 seconds
+✓ typecheck gunbc.fleet_converge_workflow done in 2 seconds
+[pre-entry] phase=workspace_discovery ms=3 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=37 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=9853 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=1 scale=tree
+[pre-entry] phase=pool_census_parse ms=1289 scale=tree
+[pre-entry] phase=closure_name_census_build ms=1923 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=54 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=92 scale=closure
+[pre-entry] phase=closure_load ms=14246 scale=closure
+[pre-entry] phase=closure_parse ms=10810 scale=closure
+[pre-entry] phase=closure_resolve ms=603 scale=closure
+[pre-entry] phase=closure_normalize ms=2114 scale=closure
+[pre-entry] phase=closure_typecheck ms=212707 scale=closure
+[pre-entry] phase=closure_parent_envs ms=17 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=294 scale=closure
+[pre-entry] phase=closure_ownership ms=2499 scale=closure
+[pre-entry] phase=reconcile_pool_qualified_fill ms=1975 scale=tree
+[pre-entry] phase=reconcile_root_bare_underlay ms=1713 scale=tree
+[pre-entry] phase=reconcile_root_variant_base ms=246 scale=tree
+[pre-entry] phase=resolve_entry_graph_inclusive ms=312773 scale=closure
+[pre-entry] population pool_modules=1322 closure_files=1321
+[pre-entry] process_cpu user_ms=307307 sys_ms=4571 max_rss_kib=10082256
+◐ started sha256sum.Sha256.DigestFile
+✓ sha256sum.Sha256.DigestFile done in 3ms
+◐ started sha256sum.Sha256.DigestFile
+✓ sha256sum.Sha256.DigestFile done in 1ms
+◐ started sha256sum.Sha256.DigestFile
+✓ sha256sum.Sha256.DigestFile done in 3ms
+◐ started sha256sum.Sha256.DigestFile
+✓ sha256sum.Sha256.DigestFile done in 3ms
+◐ started sha256sum.Sha256.DigestFile
+✓ sha256sum.Sha256.DigestFile done in 3ms
+◐ started sha256sum.Sha256.DigestFile
+✓ sha256sum.Sha256.DigestFile done in 3ms
+◐ started sha256sum.Sha256.DigestFile
+✓ sha256sum.Sha256.DigestFile done in 3ms
+◐ started sha256sum.Sha256.DigestStdin
+✓ sha256sum.Sha256.DigestStdin done in 2ms
+◐ started sha256sum.Sha256.DigestStdin
+✓ sha256sum.Sha256.DigestStdin done in 2ms

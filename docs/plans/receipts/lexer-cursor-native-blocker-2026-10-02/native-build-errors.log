@@ -1,0 +1,107 @@
+error[E0308]: mismatched types
+  --> src/v2_std_logic.rs:53:5
+   |
+22 |     True,
+   |     ---- unit variant defined here
+...
+52 |     meet: { Rc::new(move |a, b| match a.clone() {
+   |                                       --------- this expression has type `bool`
+53 |     Bool::True => b.clone(),
+   |     ^^^^^^^^^^ expected `bool`, found `Bool`
+
+error[E0308]: mismatched types
+  --> src/v2_std_logic.rs:54:5
+   |
+23 |     False,
+   |     ----- unit variant defined here
+...
+52 |     meet: { Rc::new(move |a, b| match a.clone() {
+   |                                       --------- this expression has type `bool`
+53 |     Bool::True => b.clone(),
+54 |     Bool::False => Bool::False,
+   |     ^^^^^^^^^^^ expected `bool`, found `Bool`
+
+error[E0308]: `match` arms have incompatible types
+  --> src/v2_std_logic.rs:54:20
+   |
+52 |       meet: { Rc::new(move |a, b| match a.clone() {
+   |  _________________________________-
+53 | |     Bool::True => b.clone(),
+   | |                   --------- this is found to be of type `bool`
+54 | |     Bool::False => Bool::False,
+   | |                    ^^^^^^^^^^^ expected `bool`, found `Bool`
+55 | | }) },
+   | |_- `match` arms have incompatible types
+
+error[E0308]: mismatched types
+  --> src/v2_std_logic.rs:57:5
+   |
+22 |     True,
+   |     ---- unit variant defined here
+...
+56 |     join: { Rc::new(move |a, b| match a.clone() {
+   |                                       --------- this expression has type `bool`
+57 |     Bool::True => Bool::True,
+   |     ^^^^^^^^^^ expected `bool`, found `Bool`
+
+error[E0308]: mismatched types
+  --> src/v2_std_logic.rs:58:5
+   |
+23 |     False,
+   |     ----- unit variant defined here
+...
+56 |     join: { Rc::new(move |a, b| match a.clone() {
+   |                                       --------- this expression has type `bool`
+57 |     Bool::True => Bool::True,
+58 |     Bool::False => b.clone(),
+   |     ^^^^^^^^^^^ expected `bool`, found `Bool`
+
+error[E0308]: mismatched types
+  --> src/v2_std_logic.rs:57:19
+   |
+57 |     Bool::True => Bool::True,
+   |                   ^^^^^^^^^^ expected `bool`, found `Bool`
+
+error[E0308]: mismatched types
+  --> src/v2_std_logic.rs:61:5
+   |
+22 |     True,
+   |     ---- unit variant defined here
+...
+60 |     complement: { Rc::new(move |a| match a.clone() {
+   |                                          --------- this expression has type `bool`
+61 |     Bool::True => Bool::False,
+   |     ^^^^^^^^^^ expected `bool`, found `Bool`
+
+error[E0308]: mismatched types
+  --> src/v2_std_logic.rs:62:5
+   |
+23 |     False,
+   |     ----- unit variant defined here
+...
+60 |     complement: { Rc::new(move |a| match a.clone() {
+   |                                          --------- this expression has type `bool`
+61 |     Bool::True => Bool::False,
+62 |     Bool::False => Bool::True,
+   |     ^^^^^^^^^^^ expected `bool`, found `Bool`
+
+error[E0308]: mismatched types
+  --> src/v2_std_logic.rs:61:19
+   |
+61 |     Bool::True => Bool::False,
+   |                   ^^^^^^^^^^^ expected `bool`, found `Bool`
+
+error[E0308]: mismatched types
+  --> src/v2_std_logic.rs:64:10
+   |
+64 |     top: Bool::True,
+   |          ^^^^^^^^^^ expected `bool`, found `Bool`
+
+error[E0308]: mismatched types
+  --> src/v2_std_logic.rs:65:13
+   |
+65 |     bottom: Bool::False,
+   |             ^^^^^^^^^^^ expected `bool`, found `Bool`
+
+For more information about this error, try `rustc --explain E0308`.
+error: could not compile `v1_compiled` (lib) due to 11 previous errors

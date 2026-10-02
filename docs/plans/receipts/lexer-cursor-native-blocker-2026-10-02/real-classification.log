@@ -1,0 +1,26 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/lexer-cursor-qualification
+✓ typecheck v2.std.compilers.target_model done in 24 seconds
+[pre-entry] phase=workspace_discovery ms=3 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=7 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=1335 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=0 scale=tree
+[pre-entry] phase=pool_census_parse ms=144 scale=tree
+[pre-entry] phase=closure_name_census_build ms=179 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=4 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=16 scale=closure
+[pre-entry] phase=closure_load ms=1732 scale=closure
+[pre-entry] phase=closure_parse ms=1478 scale=closure
+[pre-entry] phase=closure_resolve ms=52 scale=closure
+[pre-entry] phase=closure_normalize ms=280 scale=closure
+[pre-entry] phase=closure_typecheck ms=32033 scale=closure
+[pre-entry] phase=closure_parent_envs ms=1 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=27 scale=closure
+[pre-entry] phase=closure_ownership ms=283 scale=closure
+[pre-entry] phase=reconcile_pool_qualified_fill ms=190 scale=tree
+[pre-entry] phase=reconcile_root_bare_underlay ms=165 scale=tree
+[pre-entry] phase=reconcile_root_variant_base ms=19 scale=tree
+[pre-entry] phase=resolve_entry_graph_inclusive ms=39693 scale=closure
+[pre-entry] population pool_modules=123 closure_files=119
+[pre-entry] process_cpu user_ms=39072 sys_ms=482 max_rss_kib=876244
+◐ started git.Core.Show
+✓ git.Core.Show done in 18ms

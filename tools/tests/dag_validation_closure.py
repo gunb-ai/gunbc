@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""Copy byte-identical DAG import closure and emit source hashes; no semantic edits."""
+"""Copy a DAG closure with hashes. Emission requires --preserve-source-paths:
+byte equality alone does not preserve path-dependent declaration realization.
+"""
 import argparse, hashlib, json, re, shutil
 from pathlib import Path
 parser=argparse.ArgumentParser()
 parser.add_argument('entry',nargs='+',help='module names')
 parser.add_argument('--output',required=True)
 parser.add_argument('--include-sealed-callers',action='store_true',help='Include caller-only authority modules when their reference resolution is required')
+parser.add_argument('--preserve-source-paths', action='store_true', help='Retain declaration path identity for emitter qualification')
 args=parser.parse_args()
 modules={}
 for root in ('dag','src/v2'):
@@ -40,10 +43,11 @@ out=Path(args.output)
 if not out.resolve().is_relative_to((Path.cwd()/'target').resolve()):
     raise SystemExit('output must be a scratch subdirectory of this checkout target/')
 out.mkdir(parents=True,exist_ok=True)
-for stale in out.glob('*.dag'): stale.unlink()
+for stale in out.rglob('*.dag'): stale.unlink()
 manifest=[]
 for name in sorted(seen):
-    original=modules[name][0]; target=out/(name+'.dag')
+    original=modules[name][0]; target=out/original if args.preserve_source_paths else out/(name+'.dag')
+    target.parent.mkdir(parents=True,exist_ok=True)
     shutil.copyfile(original,target)
     manifest.append({'module':name,'source':str(original),'copy':str(target),'sha256':hashlib.sha256(original.read_bytes()).hexdigest()})
 (out/'sources.json').write_text(json.dumps(manifest,indent=2)+'\n')

@@ -492,10 +492,10 @@ import v2.std.collection { List }
 // preparation (the real path, refused there if it cannot run) and read by the rows. Nullary, pure,
 // inline sources; Nodes and located diagnostics, no closure. Re-derive rather than trust: the run's
 // [floor-shared-fill] ledger must show all eight Stored at preparation and the rows serving hits.
-// AND THE TWO ROWS AFTER THOSE ARE THE ENUMERATOR-DIFFERENTIAL FIXTURE, parsed and normalized, for
-// v2.test.claim.namespace_xl0.qualified_site_enumerator_differential: the rows there name the two
-// site WALKS and share the one-module ingest the walks read, exactly as the sibling rows do. Both
-// values are Nodes; no closure.
+// AND THE ROW AFTER THOSE IS THE ENUMERATOR FIXTURE, normalized, for
+// v2.test.claim.namespace_xl0.qualified_site_enumerator_differential: the rows there name the
+// collector's site WALK and share the one-module ingest the walk reads, exactly as the sibling rows
+// do. The value is Nodes; no closure. (The parsed twin left with the retired parse walker.)
 //
 // AND THE FINAL ROW:
 // DAG CANONICAL-SYMBOL MAP EARNS ITS ROW ON THE ENROLMENT-MARGIN CPU THE EVAL-STEP GATE
@@ -1055,6 +1055,16 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.body_let_annotation.bla_symbol_literal_payload_verdict",
   "v2.test.infer_facts.key_collision_ref_and_int.kc_verdicts",
   "v2.test.claim.body_let_annotation.bla_int_literal_payload_digit_verdict",
+  "v2.test.claim.body_let_annotation.bla_string_literal_unimported",
+  "v2.test.claim.body_let_annotation.bla_string_literal_as_int",
+  "v2.test.claim.body_let_annotation.bla_unknown_unimported_type",
+  "v2.test.claim.body_let_annotation.bla_structural_string_literal",
+  "v2.test.claim.body_let_annotation.bla_structural_string_host_value",
+  "v2.test.claim.body_let_annotation.bla_string_literal_unimported_inferred",
+  "v2.test.claim.body_let_annotation.bla_string_literal_as_int_inferred",
+  "v2.test.claim.body_let_annotation.bla_structural_string_literal_inferred",
+  "v2.test.claim.body_let_annotation.bla_structural_string_host_value_inferred",
+  "v2.test.claim.body_let_annotation.bla_string_literal_typed_host_text_verdict",
   "v2.test.claim.body_let_annotation.bla_single_tree_declared_int",
   "v2.test.claim.body_let_annotation.bla_single_tree_declared_bool",
   "v2.test.claim.body_let_annotation.bla_single_tree_undeclared_int",
@@ -1101,6 +1111,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.parse.expression_bodied_fn_decl_parse.expression_bodied_fn_parsed",
   "v2.test.parse.expression_bodied_fn_decl_parse.expression_bodied_literal_fn_parsed",
   "v2.test.parse.expression_bodied_fn_decl_parse.braced_fn_control_parsed",
+  "v2.test.parse.match_arm_statement_body_parse.match_arm_statement_body_parsed",
   "v2.test.parse.newline_dual_role_operator_mutation.nlm_mutant_prepared",
   "v2.test.parse.newline_dual_role_operator_mutation.nlm_refusal_arm_census",
   "v2.test.claim.body_lowering_block_body_call.body_lowering_block_call_parsed",
@@ -1115,6 +1126,16 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.reference_conservation.if_arm_call_argument_subject",
   "v2.test.claim.namespace_xl0.reference_conservation.infix_right_operand_subject",
   "v2.test.claim.namespace_xl0.reference_conservation.caret_symbol_payload_subject",
+  "v2.test.claim.normalize.service_declaration_lowering.sdl_posix_census",
+  "v2.test.claim.normalize.operation_modifier.om_all_modifiers_lowered",
+  "v2.test.claim.normalize.operation_modifier.om_repeated_modifier_refused",
+  "v2.test.claim.binder_default_judgment.bdj_inhabiting_inferred",
+  "v2.test.claim.binder_default_judgment.bdj_not_inhabiting_inferred",
+  "v2.test.claim.binder_default_judgment.bdj_outer_value_inferred",
+  "v2.test.claim.binder_default_judgment.bdj_sibling_param_assembled",
+  "v2.test.claim.binder_default_judgment.bdj_type_param_as_default_assembled",
+  "v2.test.claim.binder_default_judgment.bdj_generic_default_inferred",
+  "v2.test.claim.binder_default_judgment.bdj_generic_coproduct_default_inferred",
   "v2.test.claim.namespace_xl0.reference_conservation.repeated_spelling_subject",
   "v2.test.claim.namespace_xl0.reference_conservation.named_argument_label_subject",
   "v2.test.claim.namespace_xl0.reference_conservation.list_literal_argument_subject",
@@ -1129,8 +1150,9 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.reference_conservation_census.half_share_fixture_files",
   "v2.test.claim.occurrence_role.occurrence_role.roles_fixture_outcome",
   "v2.test.claim.parse.default_value.param_default_parsed",
-  "v2.test.claim.parse.default_value.param_default_refused_at_default",
-  "v2.test.claim.parse.default_value.field_default_refused_as_default",
+  "v2.test.claim.parse.default_value.param_default_lowered_onto_its_binder",
+  "v2.test.claim.parse.default_value.field_default_lowered_onto_its_binder",
+  "v2.test.claim.parse.default_value.io_default_lowered_onto_its_binder",
   "v2.test.claim.parse.default_value.field_key_refused_as_interface",
   "v2.test.claim.parse.pattern_and_let_sugar.fn_tree",
   "v2.test.claim.parse.pattern_and_let_sugar.pattern_tree",
@@ -1288,7 +1310,6 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.self_host.closure_emission.ce_emission_member_body_refuses",
   "v2.test.claim.self_host.closure_emission.ce_emission_duplicate_module",
   "v2.test.claim.namespace_xl0.qualified_site_enumerator_differential.qsd_normalized",
-  "v2.test.claim.namespace_xl0.qualified_site_enumerator_differential.qsd_parsed",
   "v2.extdeps.languages.dag.dag_canonical_symbol_map",
   "v2.test.claim.declaration_graft_assemble.declaration_graft_combined_assembled",
   "v2.test.claim.declaration_graft_assemble.declaration_graft_alias_spelled_as_emitted_id_assembled",

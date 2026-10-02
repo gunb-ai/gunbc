@@ -1,0 +1,28 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-cursor-integration
+✓ typecheck v2.std.compilers.target_model done in 29 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+✓ typecheck v2.compiler.body_lowering_fold done in 2 seconds
+✓ typecheck v2.compiler.source_authority done in 2 seconds
+[pre-entry] phase=workspace_discovery ms=3 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=13 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=2519 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=0 scale=tree
+[pre-entry] phase=pool_census_parse ms=307 scale=tree
+[pre-entry] phase=closure_name_census_build ms=400 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=11 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=30 scale=closure
+[pre-entry] phase=closure_load ms=3334 scale=closure
+[pre-entry] phase=closure_parse ms=2686 scale=closure
+[pre-entry] phase=closure_resolve ms=143 scale=closure
+[pre-entry] phase=closure_normalize ms=532 scale=closure
+[pre-entry] phase=closure_typecheck ms=61482 scale=closure
+[pre-entry] phase=closure_parent_envs ms=4 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=73 scale=closure
+[pre-entry] phase=closure_ownership ms=604 scale=closure
+[pre-entry] phase=reconcile_pool_qualified_fill ms=440 scale=tree
+[pre-entry] phase=reconcile_root_bare_underlay ms=382 scale=tree
+[pre-entry] phase=reconcile_root_variant_base ms=50 scale=tree
+[pre-entry] phase=resolve_entry_graph_inclusive ms=79045 scale=closure
+[pre-entry] population pool_modules=398 closure_files=398
+[pre-entry] process_cpu user_ms=77834 sys_ms=987 max_rss_kib=2033404
+◐ started Filesystem.Write target/reconcile-workflow/header.txt (213 bytes)

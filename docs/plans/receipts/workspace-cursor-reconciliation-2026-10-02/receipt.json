@@ -1,0 +1,22 @@
+{
+  "allocation_parent": "359661af2d715933ebe8e54e938114cd8d94ac06",
+  "merged_parent": "b3446567fd713dcc342f6f75b8384c2420664eda",
+  "compiler_sha256": "2fae4880f6a8a34155742dcf436ed771a8e3f200989ab7508bbef3854aac977e",
+  "conflicts_resolved": [
+    "dag/gunbc/fleet/fleet_converge_workflow.dag",
+    ".github/workflows/fleet-converge.yml",
+    "tools/tests/dag_validation_closure.py"
+  ],
+  "mode_union_count": 62,
+  "header_generation_exit": 0,
+  "combined_generation_exit": 137,
+  "body_generation_exit": 137,
+  "generation_systemd_result": "oom-kill",
+  "memory_max_gib": 12,
+  "swap_max": 0,
+  "standing": "source reconciliation only; generated workflow equality UNESTABLISHED",
+  "yaml_status": "merge resolution preserves both parent mode sets; authoritative full-byte projection comparison blocked by generator OOM",
+  "deployment": "not attempted",
+  "initial_readiness": "not published",
+  "qualification": "HOLD; do not land or install from this receipt"
+}

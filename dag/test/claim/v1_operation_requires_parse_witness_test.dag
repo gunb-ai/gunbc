@@ -56,19 +56,56 @@ test fn the_same_operation_without_requires_compiles() -> Bool {
 
 // THE MEMBERS ARE CARRIED, NOT ONLY ACCEPTED. A parser that read and dropped them would compile every
 // source above. compile_dag_operation_requires parses the source with the seed's own parser and reads
-// the named operation through v1.compiler.parse operation_requires_members, the reader D13 step (c)
-// consumes: one member gives exactly that member, two give both in authored order, and an operation
-// without the clause gives none.
+// the named operation through v1.compiler.parse operation_requires_declaration, the closed answer D13
+// step (c) consumes: one member gives exactly that member, two give both in authored order, and an
+// operation without the clause is UNDECLARED -- not none (D13 ruling B).
 data requires_carry_source: String = "module requires_carry\nservice requires_carry.S {\n  operation One {\n    requires Net\n    output { ok: Bool }\n  }\n  operation Two {\n    requires Net, Fs\n    output { ok: Bool }\n  }\n  operation None {\n    output { ok: Bool }\n  }\n}\n"
 
 test fn one_requires_member_is_carried_as_that_member() -> Bool {
-  compile_dag_operation_requires(requires_carry_source, "requires_carry.S", "One") == ["Net"]
+  compile_dag_operation_requires(requires_carry_source, "requires_carry.S", "One") == ["resources", "Net"]
 }
 
 test fn two_requires_members_are_carried_in_order() -> Bool {
-  compile_dag_operation_requires(requires_carry_source, "requires_carry.S", "Two") == ["Net", "Fs"]
+  compile_dag_operation_requires(requires_carry_source, "requires_carry.S", "Two") == ["resources", "Net", "Fs"]
 }
 
-test fn an_operation_without_requires_carries_none() -> Bool {
-  compile_dag_operation_requires(requires_carry_source, "requires_carry.S", "None") == []
+test fn an_operation_without_requires_is_undeclared_not_none() -> Bool {
+  compile_dag_operation_requires(requires_carry_source, "requires_carry.S", "None") == ["undeclared"]
+}
+
+// THE TWO WHOLE-CLAUSE WORDS (D13 ruling B). `requires none` and `requires opaque` are carried as their
+// own declared forms, distinct from an undeclared operation and from each other; a member after either
+// refuses, so one clause cannot both declare nothing and name a resource.
+data requires_words_source: String = "module requires_words\nservice requires_words.S {\n  operation Quiet {\n    requires none\n    output { ok: Bool }\n  }\n  operation Exec {\n    requires opaque\n    output { ok: Bool }\n  }\n}\n"
+
+test fn requires_none_is_carried_as_declared_none() -> Bool {
+  compile_dag_operation_requires(requires_words_source, "requires_words.S", "Quiet") == ["none"]
+}
+
+test fn requires_opaque_is_carried_as_declared_opaque() -> Bool {
+  compile_dag_operation_requires(requires_words_source, "requires_words.S", "Exec") == ["opaque"]
+}
+
+test fn requires_none_followed_by_a_member_refuses() -> Bool {
+  !compiles(
+    "module requires_none_member\nservice requires_none_member.S {\n  operation Op {\n    requires none, Net\n    output { ok: Bool }\n  }\n}\n",
+    "src/requires_none_member.rs"
+  )
+}
+
+// ONE CLAUSE PER OPERATION (review 73995). Two clauses could otherwise say both "none" and a resource, and
+// a reader of the merged members would answer one of them silently. A second clause refuses at parse,
+// whichever words it carries.
+test fn a_second_requires_clause_after_none_refuses() -> Bool {
+  !compiles(
+    "module requires_twice_none\nservice requires_twice_none.S {\n  operation Op {\n    requires none\n    requires Net\n    output { ok: Bool }\n  }\n}\n",
+    "src/requires_twice_none.rs"
+  )
+}
+
+test fn a_second_requires_clause_after_opaque_refuses() -> Bool {
+  !compiles(
+    "module requires_twice_opaque\nservice requires_twice_opaque.S {\n  operation Op {\n    requires opaque\n    requires Net\n    output { ok: Bool }\n  }\n}\n",
+    "src/requires_twice_opaque.rs"
+  )
 }
