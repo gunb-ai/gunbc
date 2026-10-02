@@ -250,6 +250,7 @@ pub enum TargetProducer {
     SelfHost,
     V2NativeCli,
     V2NativeFrontier,
+    V2NativeCensus,
     EmittedCrateWorkspace,
     HeadsReadingDifferential,
     BehavioralReceiptPlan,
@@ -334,6 +335,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("v2-native-frontier"),
             TargetProducer::V2NativeFrontier,
+        ),
+        (
+            instrument_label("v2-native-census"),
+            TargetProducer::V2NativeCensus,
         ),
         (
             instrument_label("emitted-crate-workspace"),
@@ -780,6 +785,7 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::SelfHost => run_self_host(&self_host_source_roots()),
         TargetProducer::V2NativeCli => run_v2_native_cli(&v2_native_cli_source_roots()),
         TargetProducer::V2NativeFrontier => run_v2_native_frontier(&self_host_source_roots()),
+        TargetProducer::V2NativeCensus => run_v2_native_census(&self_host_source_roots()),
         TargetProducer::NativeClaimProgram { entry } => run_native_claim_program(entry),
         TargetProducer::EmittedCrateWorkspace => {
             run_emitted_crate_workspace(&emitted_crate_workspace_source_roots())
@@ -1130,6 +1136,30 @@ fn run_v2_native_frontier(source_roots: &[String]) -> InvocationOutcome {
                 ),
             }
         }
+        Err(cause) => InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: cause,
+        },
+    }
+}
+
+/// THE V2-NATIVE CENSUS PRODUCER. The partition verdict is the emitted fold's
+/// (`v2.compiler.compile` `native_census_cause_partition_holds`); this arm maps it to a termination.
+/// A census whose run never completed is the subject unreached, never a held observation.
+fn run_v2_native_census(source_roots: &[String]) -> InvocationOutcome {
+    match cli_run::run_v2_native_census(source_roots) {
+        Ok(run) => InvocationOutcome {
+            termination: if run.partition_holds {
+                Termination::ObservationHeld
+            } else {
+                Termination::ObservationDidNotHold
+            },
+            message: format!(
+                "v2-native-census: modules={} file_refusals={} residual_rows={} cause_groups={} \
+                 partition_holds={}; the rows grouped by fatal reason are the cause_group lines above",
+                run.modules, run.file_refusals, run.residual_rows, run.cause_groups, run.partition_holds
+            ),
+        },
         Err(cause) => InvocationOutcome {
             termination: Termination::SubjectUnreached,
             message: cause,

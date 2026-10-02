@@ -863,6 +863,13 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
             });
             continue;
         }
+        // A CAUSE GROUP IS RECOGNIZED AND NOT CONSUMED HERE. `census` now prints the same file
+        // refusals grouped by fatal reason (v2.compiler.compile native_census_cause_group_rows);
+        // the malformed control reads the per-file row above and owes nothing to the grouping,
+        // whose consumer is the census instrument (`//gunbc/instruments:v2-native-census`).
+        if value.get("cause_group").is_some() {
+            continue;
+        }
         // THE BASE CONTRACT, RESTORED (review 64181). This loop had no final arm, so any line that
         // was neither the terminal marker nor a file refusal fell off the end silently — an
         // undeclared drop of the rule the base states in as many words: the binary's stdout is a
@@ -2339,6 +2346,79 @@ pub fn run_v2_native_frontier(
     run_required_v2_native_inner(source_roots, pattern).map(|admission| NativeFrontierRun {
         frontier: admission.frontier,
         admission_summary: admission.summary,
+    })
+}
+
+/// THE NATIVE CENSUS, AS THE EMITTED BINARY REPORTED IT. The grouping and the partition verdict are
+/// decided inside the binary by `v2.compiler.compile` `native_census_cause_partition_holds`; the
+/// host carries the terminal marker's words and decides nothing about them.
+pub struct NativeCensusRun {
+    pub partition_holds: bool,
+    pub cause_groups: u64,
+    pub file_refusals: u64,
+    pub residual_rows: u64,
+    pub modules: u64,
+}
+
+/// `gunbc test //gunbc/instruments:v2-native-census`: the emitted compiler's `census-resolve` verb
+/// over the given roots. The child's stdout -- one `file_refusal`, `census_residual` and
+/// `cause_group` line per row, then the terminal -- is relayed whole, because those rows ARE the
+/// census; only the terminal is decoded, and every field it must carry is required, none defaulted.
+pub fn run_v2_native_census(source_roots: &[String]) -> Result<NativeCensusRun, String> {
+    let preparation = prepare_emitted_compiler(source_roots)?;
+    let mut args = vec!["census-resolve".to_string()];
+    args.extend(source_roots.iter().cloned());
+    let output = Command::new(&preparation.binary_path)
+        .args(&args)
+        .output()
+        .map_err(|e| {
+            format!(
+                "V2-NATIVE-CENSUS REFUSAL cause=NativeRunSpawnFailed — spawning {}: {e}",
+                preparation.binary_path.display()
+            )
+        })?;
+    let stdout = String::from_utf8(output.stdout).map_err(|cause| {
+        format!("V2-NATIVE-CENSUS REFUSAL cause=NativeRunStdoutNotUtf8 — {cause}")
+    })?;
+    eprint!("{}", String::from_utf8_lossy(&output.stderr));
+    print!("{stdout}");
+    let terminal = stdout
+        .lines()
+        .rev()
+        .find_map(|line| {
+            serde_json::from_str::<serde_json::Value>(line)
+                .ok()
+                .filter(|v| v.get("_terminal").is_some())
+        })
+        .ok_or_else(|| {
+            format!(
+                "V2-NATIVE-CENSUS REFUSAL cause=NoTerminalMarker — the census run (exit {:?}) printed no terminal marker",
+                output.status.code()
+            )
+        })?;
+    if terminal.get("_terminal").and_then(|t| t.as_str()) != Some("complete")
+        || terminal.get("mode").and_then(|m| m.as_str()) != Some("census-resolve")
+    {
+        return Err(format!(
+            "V2-NATIVE-CENSUS REFUSAL cause=TerminalNotComplete — {terminal}"
+        ));
+    }
+    let need_u64 = |key: &str| -> Result<u64, String> {
+        terminal.get(key).and_then(|v| v.as_u64()).ok_or_else(|| {
+            format!("V2-NATIVE-CENSUS REFUSAL cause=TerminalFieldMissing — no {key}: {terminal}")
+        })
+    };
+    Ok(NativeCensusRun {
+        partition_holds: terminal
+            .get("partition_holds")
+            .and_then(|v| v.as_bool())
+            .ok_or_else(|| {
+                format!("V2-NATIVE-CENSUS REFUSAL cause=TerminalFieldMissing — no partition_holds: {terminal}")
+            })?,
+        cause_groups: need_u64("cause_groups")?,
+        file_refusals: need_u64("file_refusals")?,
+        residual_rows: need_u64("residual_rows")?,
+        modules: need_u64("modules")?,
     })
 }
 
