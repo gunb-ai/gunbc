@@ -9707,7 +9707,7 @@ fn body_lower_service_member_unread<T>(member: Node) -> Outcome<T> {
 // AN OPERATION TAKES ONE INPUT, OF A RECORD TYPE: its domain is a parameter list with the one binder
 // ^operation_input whose target is the input payload, never the payload's fields standing in the
 // domain's place. A payload Conj at domain position reads, to every domain reader (v2.std.node
-// arrow_domain_binder_labels, v2.compiler.resolve add_arrow_domain_named_params), as one parameter
+// arrow_domain_binder_labels, v2.compiler.resolve arrow_domain_frame_binders), as one parameter
 // per field -- bound by name, with no declared order, and scoped as locals of an Arrow that has no
 // body. Built through v2.std.arrow_signature declared_signature like every other signature,
 // so the operation's domain and its order come from one mint. An operation with no input block has
