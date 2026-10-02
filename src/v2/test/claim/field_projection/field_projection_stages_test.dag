@@ -477,56 +477,45 @@ test fn fps_a_match_binder_receiver_resolves_holds() -> Bool {
   fps_resolves(o: fps_match_binder_source(field: "tree"))
 }
 
-// A MATCH-ARM BINDER AS A RECEIVER NO LONGER INFERS, AND THESE TWO ROWS ARE WRITTEN AT THAT REFUSAL RATHER
-// THAN AT THE CAPABILITY THEY USED TO ASSERT. This is a declared loss, not a discovery: the capability came
-// from gunbc#12641, which types a match over a declared coproduct and its arm binders, and it is LANE-ONLY --
-// it never reached main. Merging main into the lane leaves its code present and its inputs changed, so the
-// fixture resolves and then stops with infer_grounding_not_derived and no more specific cause: the
-// receiver's type is simply not derived.
+// A MATCH-ARM BINDER AS A RECEIVER IS NOT YET TYPED, AND THIS ROW PINS EXACTLY HOW. It is the population of
+// the DECLARED RUNG DROP gunbc.rung_drop match_arm_binder_typing_lost_to_lexical_carrier: gunbc#12641 typed a
+// match-arm binder, and that typing rode on infer_parameter_scope_search, which #12766 narrowed to lambdas and
+// main's lexical-reference cut deleted. The binder's use is now a lexical reference whose recorded binding
+// declares no type, so the program INFERS and the projection off the binder is accepted UNDERIVED -- not
+// refused, and not fabricated. (Before the pattern-field reader read a lexical binder, the whole program
+// refused with infer_grounding_not_derived; that was a reader defect, repaired in gunbc#12506, and is why this
+// row no longer asserts a refusal.)
 //
-// THE CAUSE IS MAIN'S NARROWING OF PARAMETER GROUNDING, NOT A MERGE DEFECT, and that was established by
-// probe rather than by argument. Three candidate causes in this lane were each bypassed and the rows failed
-// identically every time: the value-binder gate, the closure resolved-declaration index (restored to
-// resolved_declarations_of), and the match-arm walk, whose admitted body is byte-equivalent to main's inlined
-// version with only the gate wrapped around it. The ArmBinder route itself survived the merge intact -- nine
-// of ten occurrences, the single loss being a COMMENT line -- and infer_parameter_scope_search's entry points
-// and resolve_pattern_binders are byte-identical to their pre-merge forms. main froze that search to LAMBDA
-// parameters, because a named fn's parameter now arrives as a path-keyed parameter reference; a match-arm
-// binder is neither, so it falls between the two routes.
-//
-// WHAT IS ASSERTED IS WHAT HOLDS TODAY, IN THE DIRECTION THAT IS TRUE. Resolve still commits the projection
-// shape off a match binder -- fps_a_match_binder_receiver_resolves above -- and the projection NODE is in the
-// resolved tree, which is why the second row reads the RESOLVED root rather than the inferred one: reading
-// the inferred tree would make it vacuous, since there is no inferred tree to read. Neither row claims a
-// wall. An absent field off a match binder is not refused either, which is the ordinary consequence of a
-// receiver whose type is underived and not a fail-open.
+// EXACT ROUTE, SO AN UNRELATED REFUSAL REDS IT: the program must infer, the projection node must be found in
+// the inferred tree, and ITS facts must carry no derived grounding. A program refused for any cause, or a
+// projection typed by some other route, makes it false.
 //
 // WHY THIS IS NOT "EVERYTHING IS UNDERIVED": the PARAMETER receiver in this same file grounds
 // (fps_a_valid_field_projection_grounds) and its absent field IS refused (fps_an_absent_field_does_not_infer).
-// Those are the discriminating positive controls, so what these rows record is specific to the match-arm
-// binder as a receiver.
-//
-// RESTORATION TRIGGER, STATED AS THE CAPABILITY: a match-arm binder reference grounds through the same route
-// that now grounds a named fn's parameter -- resolve mints it as a path-keyed reference and infer grounds it
-// from the resolved declarations -- or infer_parameter_scope_search's arm route is re-derived against that
-// change. Either way these two rows flip, and under DESIGN section 4b(4) they do not retire: they become the
-// controls that the restoration stays real. A rung-drop row on #12641's subject may also be owed; it is
-// flagged rather than filed here, because the capability belongs to that change and not to this lane.
-test fn fps_a_match_binder_receiver_does_not_yet_infer_holds() -> Bool {
+// Those are the discriminating positive controls. RESTORATION TRIGGER, the drop's: match-arm binder typing
+// through the lexical-binding carrier (N7-3). This row then flips to the projection grounded, and under DESIGN
+// section 4b(4) it stays as the control that the restoration is real.
+test fn fps_a_match_binder_receiver_is_not_yet_typed_holds() -> Bool {
   match fps_match_binder_source(field: "tree") {
     Rejected { diagnostics: _ } => false
     Accepted { value: resolved, diagnostics: _ } =>
       match infer(tree: resolved) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: r } =>
-          diagnostics_has_reason(d: Some { diagnostics: r }, reason: ^infer_grounding_not_derived)
+        Rejected { diagnostics: _ } => false
+        Accepted { value: inferred, diagnostics: _ } =>
+          match fps_projection_node_optional(root: inferred.root) {
+            Absent => false
+            Present { value: proj } =>
+              match inferred.facts.lookup(proj) {
+                Absent => false
+                Present { value: facts } => !inferred_facts_grounding_derived(facts: facts)
+              }
+          }
       }
   }
 }
 
 // THE PROJECTION NODE IS THERE, IN THE RESOLVED TREE, so the row above is about a receiver whose projection
-// exists rather than about a fixture that never built one. It reads the resolved root for the reason stated
-// above, and it is the guard that keeps the refusal row from being satisfied by an absent subject.
+// resolve really built, read independently of infer.
 test fn fps_a_match_binder_projection_is_in_the_resolved_tree_holds() -> Bool {
   match fps_match_binder_source(field: "tree") {
     Rejected { diagnostics: _ } => false

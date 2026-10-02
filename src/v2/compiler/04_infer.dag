@@ -4739,10 +4739,11 @@ fn infer_disj_is_named_sum(n: Node) -> Bool {
 // call stays judged (a positional deficit still refuses: v2.test.claim.parameter_reference_test
 // pr_ordinary_named_call_deficit_still_refuses). IT IS LOUD, NOT SILENT: each predicate call emits
 // inhabitance_undecidable_where_predicate_subject_unmodelled at its own locus, so the population is counted by
-// execution over any compiled corpus rather than transcribed here. NEXT TRIGGER, NAMING THE CAPABILITY: the
-// where-predicate declaration model carries a typed subject slot (and a typed no-subject disposition for
-// `brand`), SUFFICIENT FOR infer to judge each predicate call with the refined carrier as its implicit first
-// actual -- then this arm is deleted and the calls go through infer_application_argument_inhabitance.
+// execution over any compiled corpus rather than transcribed here. PARKED; NO INFER JUDGMENT IS COMING
+// (operator ruling, 2026-10-02): refinements are being deleted, replaced by checked constructors returning
+// Optional. NEXT TRIGGER, NAMING THE CAPABILITY: where-refinement clauses are removed from the language in
+// favour of checked constructors returning Optional, SUFFICIENT FOR no where-predicate call to reach infer --
+// then this arm and its reason are deleted with the clause.
 fn infer_where_predicate_set_edge(parent: Node, edge: Edge) -> Bool {
   match edge.label {
     Positional => false
