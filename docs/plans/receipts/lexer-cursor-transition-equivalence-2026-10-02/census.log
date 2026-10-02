@@ -1,0 +1,26 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/lexer-cursor-qualification
+✓ typecheck v2.std.compilers.target_model done in 24 seconds
+[pre-entry] phase=workspace_discovery ms=3 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=4 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=775 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=0 scale=tree
+[pre-entry] phase=pool_census_parse ms=95 scale=tree
+[pre-entry] phase=closure_name_census_build ms=128 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=3 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=13 scale=closure
+[pre-entry] phase=closure_load ms=1128 scale=closure
+[pre-entry] phase=closure_parse ms=930 scale=closure
+[pre-entry] phase=closure_resolve ms=39 scale=closure
+[pre-entry] phase=closure_normalize ms=180 scale=closure
+[pre-entry] phase=closure_typecheck ms=28964 scale=closure
+[pre-entry] phase=closure_parent_envs ms=0 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=17 scale=closure
+[pre-entry] phase=closure_ownership ms=187 scale=closure
+[pre-entry] phase=reconcile_pool_qualified_fill ms=134 scale=tree
+[pre-entry] phase=reconcile_root_bare_underlay ms=115 scale=tree
+[pre-entry] phase=reconcile_root_variant_base ms=12 scale=tree
+[pre-entry] phase=resolve_entry_graph_inclusive ms=33879 scale=closure
+[pre-entry] population pool_modules=90 closure_files=90
+[pre-entry] process_cpu user_ms=33464 sys_ms=298 max_rss_kib=602500
+◐ started Filesystem.Read /home/briansrls/scratch-wt/lexer-cursor-qualification/target/cursor-transitions-ychjj1fx/input.dag
+◐ started Filesystem.Write /home/briansrls/scratch-wt/lexer-cursor-qualification/target/cursor-transitions-ychjj1fx/census.txt (18 bytes)
