@@ -2301,15 +2301,15 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       owner: "self-host",
       carriers: carrier(path: "src/v2/compiler/04_infer.dag"),
       line: ticket(t: updated(t: fields(
-          headline: "v2 parses and types its own seven native test modules end to end",
-          boundary: "The seven modules that quiet-hawk-702 measured on 2026-09-29, taken through ingest, lowering, resolve and infer on the native route. Every refusal is removed at its root.",
-          displaced_cost: "The first root (tokenize refused at ingest) hid every other cause. Until the seven pass, no v2 frontend claim has a real subject behind it.",
-          first_slice: "Land the remaining blockers: artifact.tree (#12506), match-binder typing (#12641, only on the #12506 stack branch), maps (#12758), built-in String (#12760). Then rebase #12628.",
-          red_control: "Any of the seven refusing before type inference, or refusing by blaming an import target (native_import_target_file_refusal), keeps this red.",
-          out_of_scope: "Whole-corpus refusals; emission.",
-          handback: "All seven typed, with the run receipt."
-        ), on: "2026-09-30", note: "Not yet centered: integration PR #12628 is a draft stacked on four open PRs.")),
-      parent: in_project(project: "v2-frontend", contribution: "The seven native test modules are the smallest real subject v2 must read and type end to end."),
+          headline: "v2 parses and types its native test target end to end",
+          boundary: "The target is the test label //v2/test/parse/expression_bodied_fn_decl_parse:all, taken through ingest, lowering, resolve and infer on the native route. The population is derived from the label, not counted: there is no list of seven to keep in sync. Every refusal is removed at its root.",
+          displaced_cost: "Until the target's members type end to end, no v2 frontend claim has a real subject behind it.",
+          first_slice: "Attribution before repair: for each failing member, record the stage, the fatal cause, the full cause chain, the earliest point where the derivation stops being justified, any shared root and any existing owner, then group the failures by root (DESIGN §6b). The repair plan is the N7 ledger (N7-0 to N7-5, with owners): N7-1 fold element typing and N7-4 the evaluation gate sit with the #12506 owner; N7-3, the match-variable typing regression, is queued after N7-1.",
+          red_control: "Any member of the target refusing before type inference, or refusing by blaming an import target (native_import_target_file_refusal), keeps this red.",
+          out_of_scope: "Whole-corpus refusals; emission. The type_env cycle-time investigation is a regression investigation, not this node's wall.",
+          handback: "Every member of the target typed, with the run receipt for the label."
+        ), on: "2026-10-02", note: "Rewritten to the N7 ledger: the target is the test label, and the walls this row used to list are retired (kept as history in the ledger).")),
+      parent: in_project(project: "v2-frontend", contribution: "The native test target is the smallest real subject v2 must read and type end to end."),
     ),
     roadmap_node(
       identity: "rn_JNQNQAP6N7Y65GV8VJ1ZX1008P",
