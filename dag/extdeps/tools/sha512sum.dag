@@ -55,6 +55,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 service sha512sum.Sha512 {
   operation DigestFile {
+    requires none
     input { path: FilePath }
     output {
       stdout: String from "stdout"

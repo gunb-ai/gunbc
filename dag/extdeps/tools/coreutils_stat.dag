@@ -46,6 +46,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // spelling.
 service coreutils.Stat {
   operation PathOwnership {
+    requires none
     input { path: NonEmptyStr }
     output {
       line: String from "stdout"
@@ -60,6 +61,7 @@ service coreutils.Stat {
   }
 
   operation PathSize {
+    requires none
     input { path: NonEmptyStr }
     output {
       size_text: String from "stdout"
@@ -74,6 +76,7 @@ service coreutils.Stat {
   }
 
   operation PathMode {
+    requires none
     input { path: NonEmptyStr }
     output {
       mode_text: String from "stdout"

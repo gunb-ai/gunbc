@@ -95,6 +95,7 @@ fn sha512_digest_content_hash(digest: Digest) -> ContentHash? {
 // transport row can be read from the operation itself.
 service crypto.Sha256Sum {
   operation File {
+    requires none
     input { path: String }
     output {
       line: String from "stdout"

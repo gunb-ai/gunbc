@@ -401,6 +401,7 @@ data tailscale_serve_resource_relation: KeyedResourceRelation<TailscaleServeRout
 // EnableBackground IS DELETED RATHER THAN CORRECTED. It took a local port and shaped the literal argv `serve --bg {local_port}`, which is precisely the unscoped root-mount rebind described above — the operation whose every invocation on a second deployment silently steals `/` from the first. Correcting it in place would have meant a template with a conditional flag, which the argv template form cannot express; carrying it beside the endpoint fns would have left two spellings of one operation, the fork this module is being repaired for.\n\nSo the enable argv is a fn (the established form for conditional argv — see extdeps.llm.cursor_cli), and the collision shape is unwritable because it no longer exists. It had zero consumers at deletion: the one caller that mattered hand-built the same string in the emitter instead of consuming this module at all.
 service tailscale.Serve {
   operation Status {
+    requires none
     input {}
     output { stdout: String from "stdout" }
     readonly
@@ -412,6 +413,7 @@ service tailscale.Serve {
   }
 
   operation StatusJson {
+    requires none
     input {}
     output { stdout: String from "stdout" }
     readonly

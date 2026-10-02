@@ -38,6 +38,7 @@ data sed_cli_tool: CliTool = CliTool {
 // string, which is the failure this operation's first consumer exists to catch.
 service sed.Sed {
   operation InPlaceSubstitute {
+    requires opaque
     input { expression: NonEmptyStr, path: NonEmptyStr }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["sed", "-i", "{expression}", "{path}"] }
@@ -48,6 +49,7 @@ service sed.Sed {
   }
 
   operation ScriptsSuppressAutoPrint {
+    requires opaque
     input { arguments: List<String>, path: NonEmptyStr }
     output {
       lines: List<String> from "stdout_lines"

@@ -20,6 +20,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // was all that held the fork together; equality is not single authority.
 service dpkg.Package {
   operation Status {
+    requires none
     input { package: NonEmptyStr }
     output { installed: Bool from "exit_success" }
     readonly

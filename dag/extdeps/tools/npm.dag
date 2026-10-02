@@ -30,6 +30,7 @@ data npm_cli_tool: CliTool = CliTool {
 
 service npm.Cli {
   operation Version {
+    requires none
     input {}
     output {
       version: String from "stdout"
@@ -87,7 +88,7 @@ service npm.Cache {
 
 service npm.Ci {
   operation IgnoreScripts {
-    requires Network
+    requires opaque
     input { workdir: FilePath }
     output {
       success: Bool from "exit_success"
@@ -104,6 +105,7 @@ service npm.Ci {
   }
 
   operation IgnoreScriptsOffline {
+    requires opaque
     input { workdir: FilePath, cache: FilePath }
     output {
       success: Bool from "exit_success"

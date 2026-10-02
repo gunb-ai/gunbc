@@ -118,6 +118,7 @@ data procfs_paths_read_by_this_repository: List<ProcfsPath> = [
 // not something this binding can supply.
 service linux.Procfs {
   operation ReadStat {
+    requires none
     input {}
     output {
       value: String from "stdout"
@@ -135,6 +136,7 @@ service linux.Procfs {
   }
 
   operation ReadUptime {
+    requires none
     input {}
     output {
       value: String from "content"
@@ -148,6 +150,7 @@ service linux.Procfs {
   }
 
   operation ReadMeminfo {
+    requires none
     input {}
     output {
       value: String from "stdout"
@@ -165,6 +168,7 @@ service linux.Procfs {
   }
 
   operation ReadPidStat {
+    requires none
     input { pid: NonEmptyStr }
     output {
       value: String from "stdout"
@@ -182,6 +186,7 @@ service linux.Procfs {
   }
 
   operation ReadNetTcp {
+    requires none
     input {}
     output {
       value: String from "stdout"
@@ -199,6 +204,7 @@ service linux.Procfs {
   }
 
   operation ReadNetTcp6 {
+    requires none
     input {}
     output {
       value: String from "stdout"
@@ -216,6 +222,7 @@ service linux.Procfs {
   }
 
   operation ReadPidCgroup {
+    requires none
     input { pid: NonEmptyStr }
     output {
       value: String from "stdout"

@@ -167,6 +167,7 @@ fn stat_allocated_blocks_command(path: String) -> ArgvCommand {
 // -L. The default is relied on here deliberately and is part of the cited GNU authority.
 service stat.File {
   operation FileType {
+    requires none
     input { path: String }
     output {
       file_type: String from "stdout"

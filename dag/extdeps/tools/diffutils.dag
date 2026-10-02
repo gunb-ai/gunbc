@@ -19,6 +19,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 service shell.Diff {
   operation Recursive {
+    requires none
     input { left: FilePath, right: FilePath }
     output { identical: Bool from "exit_success", exit_code: Int from "exit_code" }
     readonly

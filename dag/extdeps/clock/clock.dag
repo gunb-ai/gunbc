@@ -26,6 +26,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 service Clock {
   operation Now {
+    requires none
     input {}
     output { timestamp: Timestamp from "stdout" }
     readonly
@@ -37,6 +38,7 @@ service Clock {
   }
 
   operation UnixMillis {
+    requires none
     input {}
     output { unix_millis: String from "stdout" }
     readonly
@@ -48,6 +50,7 @@ service Clock {
   }
 
   operation UnixSecs {
+    requires none
     input {}
     output { unix_secs: String from "stdout" }
     readonly
@@ -59,6 +62,7 @@ service Clock {
   }
 
   operation TimestampOffset {
+    requires none
     input { timestamp: Timestamp, offset: Nat }
     output { result: Timestamp from "stdout" }
     readonly
@@ -70,6 +74,7 @@ service Clock {
   }
 
   operation TimestampAdd {
+    requires none
     input { timestamp: Timestamp, offset: Nat }
     output { result: Timestamp from "stdout" }
     readonly
@@ -81,6 +86,7 @@ service Clock {
   }
 
   operation TimestampToUnixSecs {
+    requires none
     input { timestamp: Timestamp }
     output { unix_secs: String from "stdout" }
     readonly

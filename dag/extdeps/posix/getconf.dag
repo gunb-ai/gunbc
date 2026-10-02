@@ -45,6 +45,7 @@ fn getconf_clock_ticks_command() -> ArgvCommand {
 
 service posix.Getconf {
   operation ClockTicksPerSecond {
+    requires none
     input {}
     output {
       value: String from "stdout"

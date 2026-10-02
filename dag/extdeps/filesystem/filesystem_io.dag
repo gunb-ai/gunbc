@@ -685,6 +685,7 @@ data filesystem_absence_establishment_adoption_standing: String = "RUNG: structu
 service Filesystem {
 
   operation Write {
+    requires none
     input { path: String, content: String }
     output {
       success: Bool from "write_success"
@@ -696,6 +697,7 @@ service Filesystem {
   }
 
   operation WriteOwnerOnly {
+    requires none
     input { path: String, content: String }
     output {
       success: Bool from "write_success"
@@ -707,6 +709,7 @@ service Filesystem {
   }
 
   operation WriteCreateNew {
+    requires none
     input { path: String, content: String }
     output {
       success: Bool from "write_success"
@@ -719,6 +722,7 @@ service Filesystem {
   }
 
   operation WriteCreateNewWithMode {
+    requires none
     input { path: String, content: String, mode: Int }
     output {
       success: Bool from "write_success"
@@ -731,6 +735,7 @@ service Filesystem {
   }
 
   operation Read {
+    requires none
     input { path: String }
     output {
       content: String from "content"
@@ -743,6 +748,7 @@ service Filesystem {
   }
 
   operation Delete {
+    requires none
     input { path: String }
     output {
       success: Bool from "delete_success"
@@ -752,6 +758,7 @@ service Filesystem {
   }
 
   operation List {
+    requires none
     input { path: String }
     output {
       entries: String from "entries"
