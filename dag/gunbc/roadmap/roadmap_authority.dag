@@ -26,7 +26,10 @@ import gunbc.roadmap_model {
   LiveReceiptDoesNotMatchDeclaredNode,
   LiveReceiptJoinsUndeclaredNode,
   LiveReceiptJoinsAmbiguousDeclaredNode,
-  node_accepted,
+  node_accepted_in,
+  receipts_by_node,
+  roadmap_parent_index,
+  roadmap_parents_of,
   project_live_acceptance_receipts,
   LiveAcceptanceReceiptsReplayed,
   LiveAcceptanceReceiptsReplayRefused,
@@ -73,8 +76,7 @@ import std.markdown {
 }
 import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.roadmap.roadmap_lineage { lineage_walk_in, lineage_index }
-import gunbc.roadmap.roadmap_readiness { node_readiness, readiness_only_contract_missing }
-import gunbc.roadmap.roadmap_readiness { node_readiness, readiness_only_contract_missing }
+import gunbc.roadmap.roadmap_readiness { node_readiness, readiness_only_contract_missing, readiness_may_be_only_contract_missing }
 
 fn nid(s: String) -> RoadmapNodeId { s }
 
@@ -4619,23 +4621,6 @@ fn ticket_red_control_of(n: RoadmapNode) -> String {
 // mechanism, not a deletion list, is what keeps a project from growing a closing-contract task.
 // Dependencies here are the declared edges against the accepted set: the derived edge from a node
 // to its own closing-contract task is a CONSEQUENCE of minting and cannot be its precondition.
-// THE PARENT INDEX, one pass over the edges: child id to its parents in edge order (the order
-// roadmap_parent_ids' filter yields). The minting rule asks every node for its unmet parents; a
-// per-node filter over every edge made that fold nodes x edges.
-fn roadmap_parent_index(edges: List<RoadmapEdge>) -> Map<String, List<RoadmapNodeId>> {
-  let empty: Map<String, List<RoadmapNodeId>> = empty_map()
-  fold(edges, init: empty, f: fn(acc, e) {
-    match roadmap_parents_of(parents: acc, id: e.child as String) {
-      Present { value: ps } => map_insert(m: acc, key: e.child as String, value: concat(ps, [e.parent]))
-      Absent => map_insert(m: acc, key: e.child as String, value: [e.parent])
-    }
-  })
-}
-
-fn roadmap_parents_of(parents: Map<String, List<RoadmapNodeId>>, id: String) -> List<RoadmapNodeId>? {
-  map_lookup(m: parents, key: id)
-}
-
 fn unmet_parents_in(n: RoadmapNode, parents: Map<String, List<RoadmapNodeId>>, accepted: Set<RoadmapNodeId>) -> List<String> {
   match roadmap_parents_of(parents: parents, id: n.node as String) {
     Absent => []
@@ -4660,6 +4645,7 @@ fn closing_contract_candidates(
   nodes
     |> filter(n => !set_contains(accepted_set, n.node))
     |> filter(n => !set_contains(withheld_set, n.node))
+    |> filter(n => readiness_may_be_only_contract_missing(node: n, merged: []))
     |> filter(n => readiness_only_contract_missing(r: node_readiness(
       node: n,
       lineage: lineage_walk_in(node_id: n.node as String, index: index, fuel: fuel),
@@ -4893,8 +4879,9 @@ fn active_section_for_acceptance(
 }
 
 fn accepted_node_ids_from_receipts(receipts: List<RoadmapAcceptanceReceipt>) -> List<RoadmapNodeId> {
+  let index = receipts_by_node(receipts: receipts)
   declared_roadmap_nodes()
-    |> filter(n => node_accepted(receipts: receipts, rn: n))
+    |> filter(n => node_accepted_in(index: index, rn: n))
     |> map(n => n.node)
 }
 

@@ -7,7 +7,7 @@ import gunbc.roadmap_model {
   node_sizing_derivation,
   SectionElement, Prose, Group, SectionGroup,
   RoadmapParent, TopLevel, UnderParent, roadmap_primary_parent, roadmap_parent_ids,
-  section_group,
+  section_group, roadmap_nodes_by_id, roadmap_nodes_with_id,
 }
 import gunbc.roadmap_sizing {
   NodeSizingDerivation, SizingDerived, SizingNotDerivable,
@@ -101,9 +101,9 @@ fn roadmap_rendered_ghost_count(doc: RoadmapDocument) -> Int {
     ClosingContractTaskPairsProjectionRefused { detail: _ } =>
       count(doc_all_nodes(doc: doc))
     ClosingContractTaskPairsProjected { pairs: pairs } =>
-      let sanctioned = concat(declared_roadmap_nodes(), pairs |> map(p => p.task))
+      let sanctioned = roadmap_nodes_by_id(nodes: concat(declared_roadmap_nodes(), pairs |> map(p => p.task)))
       doc_all_nodes(doc: doc)
-        |> filter(n => !any(sanctioned, s => s == n))
+        |> filter(n => !any(roadmap_nodes_with_id(index: sanctioned, id: n.node), s => s == n))
         |> count
   }
 }
