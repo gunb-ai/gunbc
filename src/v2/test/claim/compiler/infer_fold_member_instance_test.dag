@@ -1,22 +1,27 @@
 module v2.test.claim.compiler.infer_fold_member_instance
 
 import v2.compiler.resolve { ResolvedTree }
-import v2.compiler.infer { infer, infer_entries_for_tree, inferred_facts_resolved_type, lookup_inferred_facts_in_entries }
+import v2.compiler.infer { infer }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.witness { Holds, Violates }
 import v2.test.claim.body_let_annotation { bla_assemble_with_peers, bla_q_artifact, bla_r_artifact, bla_source }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.std.collection { List }
-import v2.std.diagnostic { Accepted, CorrectionNotModeled, Diagnostic, Locus, NodeLocus, Outcome, Rejected, Unavailable, Some, diagnostics_has_reason, diagnostics_fatal, diagnostics_fatal_reason, diagnostics_singleton, node_locus }
+import v2.std.diagnostic { Accepted, CorrectionNotModeled, Diagnostic, Outcome, Rejected, Unavailable, Some, diagnostics_has_reason, diagnostics_fatal_reason, diagnostics_singleton, node_locus }
 import v2.std.node_query { binder_type_label, declared_field_from_edge, field_projection_optional }
 import v2.std.qualified_name { lexical_reference_label_optional }
 import std.algebra { list_snoc_item }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import std.process { ExitFailure, ExitSuccess, ProcessExit }
-import v2.std.node { Arrow, Atom, Bind, Branch, Cardinality, Conj, Disj, EdgeLabel, Instantiation, Match, Named, NodeKind, Positional, Transform, TypeNode, Value, ComputationNode, Edge, Found, Loop, Node, Symbol, node_with_occurrence_id, loop_domain_value_target, node_subtree_nodes }
+import v2.std.node { Atom, Edge, Named, Node, Positional, Symbol, TypeNode, node_subtree_nodes, node_with_occurrence_id }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: a collection fold's step member formal is typed by the Loop DOMAIN's element type, through
+// v2.compiler.infer's dependent-child walk (v2.std.node fold_node_dependent), and a lambda binder used as
+// a projection base reaches infer as the lexical reference a bare use of it is (v2.compiler.resolve
+// resolve_projection_base). BOUNDARY: source text in, through the production assembly route, then
+// v2.compiler.infer infer -- except control (3), whose input is supplied (see its header).
+// gunbc.recurring_failure_mode infer_child_context_cannot_depend_on_a_sibling_result.
 
 // THE PEERS RESTATE THE REAL DECLARATIONS, as v2.test.claim.body_let_annotation
 // bla_structural_string_peers does: v2.std.collection List<T> is std.algebra FreeMonoid<T>, and the
@@ -50,7 +55,6 @@ data fmi_record_fold: String = "module p\n\nimport v2.std.collection { List }\n\
 
 data fmi_undeclared_field_fold: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Bool {\n  fold(xs, init: false, f: fn(found, e) { found || e.nope == 0 })\n}\n"
 
-
 fn fmi_reason(o: Outcome<Bool>) -> Symbol {
   match o {
     Accepted { value: _, diagnostics: _ } => ^accepted
@@ -58,125 +62,6 @@ fn fmi_reason(o: Outcome<Bool>) -> Symbol {
   }
 }
 
-fn fmi_probe_record() -> Symbol { fmi_reason(o: fmi_infer(src: fmi_record_fold)) }
-fn fmi_probe_undeclared() -> Symbol { fmi_reason(o: fmi_infer(src: fmi_undeclared_field_fold)) }
-fn fmi_probe_incompatible() -> Symbol { fmi_reason(o: fmi_infer_with_member_formal_authored()) }
-
-data fmi_no_projection_fold: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Bool {\n  fold(xs, init: false, f: fn(found, e) { found })\n}\n"
-
-fn fmi_probe_domain_type() -> Optional<Node> {
-  match fmi_assemble(src: fmi_no_projection_fold) {
-    Rejected { diagnostics: _ } => Absent
-    Accepted { value: tree, diagnostics: _ } =>
-      match infer_entries_for_tree(tree: tree) {
-        Rejected { diagnostics: _ } => Absent
-        Accepted { value: entries, diagnostics: _ } =>
-          fold(node_subtree_nodes(root: tree.root), init: Absent, f: fn(acc, n) {
-            match n.kind {
-              ComputationNode { behavior: Loop } =>
-                match loop_domain_value_target(children: n.children) {
-                  Found { target: d } =>
-                    match lookup_inferred_facts_in_entries(entries: entries, key: d) {
-                      Present { value: facts } =>
-                        match inferred_facts_resolved_type(facts: facts) {
-                          Holds { value: t } => Present { value: t }
-                          Violates { diagnostic: _ } => acc
-                        }
-                      Absent => acc
-                    }
-                  _ => acc
-                }
-              _ => acc
-            }
-          })
-      }
-  }
-}
-
-fn fmi_locus(o: Outcome<Bool>) -> Optional<Locus> {
-  match o {
-    Accepted { value: _, diagnostics: _ } => Absent
-    Rejected { diagnostics: d } => Present { value: diagnostics_fatal(d: d).at }
-  }
-}
-
-fn fmi_probe_record_locus() -> Optional<Locus> { fmi_locus(o: fmi_infer(src: fmi_record_fold)) }
-
-fn fmi_kind_text(k: NodeKind) -> String {
-  match k {
-    TypeNode { connective: Atom { identity: id } } => id as String
-    TypeNode { connective: Conj } => "Conj"
-    TypeNode { connective: Disj } => "Disj"
-    TypeNode { connective: Arrow } => "Arrow"
-    TypeNode { connective: Cardinality } => "Card"
-    TypeNode { connective: Instantiation } => "Inst"
-    ComputationNode { behavior: Value } => "Value"
-    ComputationNode { behavior: Transform } => "Transform"
-    ComputationNode { behavior: Branch } => "Branch"
-    ComputationNode { behavior: Loop } => "Loop"
-    ComputationNode { behavior: Bind } => "Bind"
-    ComputationNode { behavior: Match } => "Match"
-  }
-}
-
-fn fmi_edge_text(l: EdgeLabel) -> String {
-  match l {
-    Named { name: s } => concat(s as String, "=")
-    Positional => ""
-  }
-}
-
-fn fmi_render(n: Node) -> String {
-  fold(n.children, init: concat(fmi_kind_text(k: n.kind), "("), f: fn(acc, e) {
-    concat(concat(concat(acc, fmi_edge_text(l: e.label)), fmi_render(n: e.target)), " ")
-  })
-}
-
-fn fmi_render_domain() -> String {
-  match fmi_probe_domain_type() {
-    Present { value: t } => fmi_render(n: t)
-    Absent => "absent"
-  }
-}
-
-fn fmi_render_locus(o: Outcome<Bool>) -> String {
-  match o {
-    Accepted { value: _, diagnostics: _ } => "accepted"
-    Rejected { diagnostics: d } =>
-      match diagnostics_fatal(d: d).at {
-        NodeLocus { anchor: a } => fmi_render(n: a.at)
-        _ => "non-node locus"
-      }
-  }
-}
-
-fn fmi_render_record_locus() -> String { fmi_render_locus(o: fmi_infer(src: fmi_record_fold)) }
-
-fn fmi_all_reasons(o: Outcome<Bool>) -> String {
-  match o {
-    Accepted { value: _, diagnostics: _ } => "accepted"
-    Rejected { diagnostics: d } =>
-      fold(d.tail, init: d.head.reason as String, f: fn(acc, x) { concat(concat(acc, " | "), x.reason as String) })
-  }
-}
-
-fn fmi_reasons_record() -> String { fmi_all_reasons(o: fmi_infer(src: fmi_record_fold)) }
-fn fmi_reasons_noproj() -> String { fmi_all_reasons(o: fmi_infer(src: fmi_no_projection_fold)) }
-
-fn fmi_render_resolved_root() -> String {
-  match fmi_assemble(src: fmi_no_projection_fold) {
-    Rejected { diagnostics: _ } => "rejected"
-    Accepted { value: tree, diagnostics: _ } => fmi_render(n: tree.root)
-  }
-}
-
-// (1) A FOLD OVER A COLLECTION OF RECORDS PERMITS e.target: no diagnostic anywhere in the outcome refuses
-// the projection, where the unrepaired walk refused it infer_reason_projection_receiver_declares_no_fields
-// (`e` typed as its bare fresh variable). Asserted over the WHOLE chain rather than as an Accepted outcome
-// because the fixture's step Arrow still refuses infer_grounding_not_derived -- a separate, named link that
-// is the next wall, refused identically on the base -- and this control must not change verdict when it
-// lands. The mutation red: delete the domain-to-step frame join in v2.compiler.infer
-// infer_gather_child_context and this control refuses again.
 test fn fmi_fold_member_projects_a_declared_field() -> Bool {
   match fmi_assemble(src: fmi_record_fold) {
     Rejected { diagnostics: _ } => false
@@ -320,18 +205,4 @@ fn fmi_infer_with_member_formal_authored() -> Outcome<Bool> {
 
 fn fmi_fixture_shape_diagnostic(at: Node) -> Diagnostic {
   Diagnostic { reason: ^fmi_fixture_shape_unexpected, at: node_locus(node: at), correction: Unavailable { reason: CorrectionNotModeled } }
-}
-
-fn fmi_scratch_all() -> ProcessExit {
-  if !fmi_fold_member_projects_a_declared_field() {
-    ExitFailure { code: 1, reason: "c1" }
-  } else if !fmi_lambda_binder_projection_base_is_a_lexical_reference() {
-    ExitFailure { code: 4, reason: "cr" }
-  } else if !fmi_fold_member_undeclared_field_refuses() {
-    ExitFailure { code: 2, reason: "c2" }
-  } else if !fmi_fold_member_incompatible_formal_refuses() {
-    ExitFailure { code: 3, reason: "c3" }
-  } else {
-    ExitSuccess
-  }
 }

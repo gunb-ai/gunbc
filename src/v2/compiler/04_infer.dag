@@ -5603,10 +5603,10 @@ fn infer_frame_instantiated(declared: Node, instances: List<TypeVariableInstance
   }
 }
 
-fn infer_loop_member_role(loop: Node) -> Optional<FoldMemberRole> {
-  match loop.kind {
+fn infer_loop_member_role(loop_node: Node) -> Optional<FoldMemberRole> {
+  match loop_node.kind {
     ComputationNode { behavior: Loop } =>
-      match loop_realized_declaration_target(children: loop.children) {
+      match loop_realized_declaration_target(children: loop_node.children) {
         Found { target: realized } => fold_realized_member_role(realized: realized)
         _ => Absent
       }
@@ -5614,8 +5614,8 @@ fn infer_loop_member_role(loop: Node) -> Optional<FoldMemberRole> {
   }
 }
 
-fn infer_loop_takes_collection_member(loop: Node) -> Bool {
-  match infer_loop_member_role(loop: loop) {
+fn infer_loop_takes_collection_member(loop_node: Node) -> Bool {
+  match infer_loop_member_role(loop_node: loop_node) {
     Present { value: FoldStepTakesCollectionMember } => true
     _ => false
   }
@@ -5637,8 +5637,8 @@ fn infer_frame_with_advisory(frame: InferFrame, reason: Symbol, at: Node) -> Inf
 // scheduled first), its member by the fold realization's relation, and the step's member formal by ROLE.
 // Every arm that cannot instantiate says so, typed and located, rather than leaving the variable to fall
 // silently into the non-refusing ReceiverTypeUnderived arm.
-fn infer_fold_member_frame(loop: Node, frame: InferFrame, acc: InferGatherFoldAcc, step: Node, resolved: ResolvedTree) -> InferFrame {
-  match loop_domain_value_target(children: loop.children) {
+fn infer_fold_member_frame(loop_node: Node, frame: InferFrame, acc: InferGatherFoldAcc, step: Node, resolved: ResolvedTree) -> InferFrame {
+  match loop_domain_value_target(children: loop_node.children) {
     Found { target: domain } =>
       match lookup_inferred_facts_in_entries(entries: acc.entries, key: domain) {
         Absent => infer_frame_with_advisory(frame: frame, reason: ^infer_reason_fold_member_domain_type_not_derived, at: domain)
@@ -5656,7 +5656,7 @@ fn infer_fold_member_frame(loop: Node, frame: InferFrame, acc: InferGatherFoldAc
               }
           }
       }
-    _ => infer_frame_with_advisory(frame: frame, reason: ^infer_reason_fold_member_domain_type_not_derived, at: loop)
+    _ => infer_frame_with_advisory(frame: frame, reason: ^infer_reason_fold_member_domain_type_not_derived, at: loop_node)
   }
 }
 
@@ -5705,8 +5705,8 @@ fn infer_fold_member_judged_frame(frame: InferFrame, formal: FoldMemberFormal, m
 fn infer_gather_child_context(parent: Node, frame: InferFrame, acc: InferGatherFoldAcc, edge: Edge, resolved: ResolvedTree) -> InferFrame {
   match edge.label {
     Positional =>
-      if infer_loop_takes_collection_member(loop: parent) {
-        infer_fold_member_frame(loop: parent, frame: infer_frame_inherited(frame: frame), acc: acc, step: edge.target, resolved: resolved)
+      if infer_loop_takes_collection_member(loop_node: parent) {
+        infer_fold_member_frame(loop_node: parent, frame: infer_frame_inherited(frame: frame), acc: acc, step: edge.target, resolved: resolved)
       } else {
         infer_frame_inherited(frame: frame)
       }
@@ -5716,7 +5716,7 @@ fn infer_gather_child_context(parent: Node, frame: InferFrame, acc: InferGatherF
 
 fn infer_gather_schedules_first(parent: Node, edge: Edge) -> Bool {
   match edge.label {
-    Named { name: name } => name == ^loop_domain_edge && infer_loop_takes_collection_member(loop: parent)
+    Named { name: name } => name == ^loop_domain_edge && infer_loop_takes_collection_member(loop_node: parent)
     Positional => false
   }
 }
