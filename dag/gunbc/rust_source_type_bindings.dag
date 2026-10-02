@@ -7,7 +7,7 @@ import std.target_representation {
   MigratedToExactBinding, ProvenUniqueKernelBinding, StillBareNameDebt
 }
 import extdeps.languages.rust.representation {
-  RustRepresentation, RustStdString, RustI64, RustF64, RustBool, RustUnit, RustVecU8, RustSerdeJsonValue
+  RustRepresentation, RustStdString, RustI64, RustBool, RustUnit, RustVecU8, RustSerdeJsonValue
 }
 
 // THE CORPUS'S HALF OF THE THREE-IDENTITY SPLIT (std.target_representation): which of THIS corpus's
@@ -55,7 +55,6 @@ data rust_source_type_binding_rows: List<SourceTypeTargetBinding<RustRepresentat
   rust_source_binding(module_path: "v2.std.node", decl_name: "Symbol", representation: RustStdString),
   rust_source_binding(module_path: "std.types", decl_name: "Secret", representation: RustStdString),
   rust_source_binding(module_path: "std.integer", decl_name: "Int", representation: RustI64),
-  rust_source_binding(module_path: "std.float", decl_name: "Float", representation: RustF64),
   rust_source_binding(module_path: "std.types", decl_name: "Bool", representation: RustBool),
   rust_source_binding(module_path: "std.types", decl_name: "Unit", representation: RustUnit),
   rust_source_binding(module_path: "v2.std.cardinality", decl_name: "Unit", representation: RustUnit),
@@ -108,9 +107,8 @@ fn checkpoint_row_migration_rows() -> List<CheckpointRowMigration> {
     },
     CheckpointRowMigration {
       dag_name: "Float" as NonEmptyStr,
-      disposition: StillBareNameDebt {
-        reason: "std.float Float has an exact row (RustF64). v2.std.float Float (= Binary64) is answered f64 by the bare-name bypass with no ruling that this is its modeled realization; the kernel float_type mint rides the same row." as NonEmptyStr,
-        restoration_trigger: "The same ruling as Int, for v2.std.float Float; then ProvenUniqueKernelBinding on the f64 primitive token." as NonEmptyStr
+      disposition: ProvenUniqueKernelBinding {
+        proof: "No .dag declaration of the spelling Float remains: the Float de-fork (operator ruling relayed 2026-09-28) deleted std.float (Float = Float64 = Real64) and v2.std.float (Float = Binary64) together, and moved the IEEE 754-2019 binary64 facts to extdeps.standards.ieee_754_2019. What reaches this row is the kernel float_type mint and a bare Float in a module importing std.types Float, which is the same kernel name. What kernel Float MEANS is std.kernel_type_denotation (binary64), target-independent; this row states only how Rust spells it. That realization is checked against the denotation by extdeps.languages.rust.primitives rust_float_binding_verdict, and `f64` is a primitive token no use-line can shadow." as NonEmptyStr
       }
     },
     CheckpointRowMigration {

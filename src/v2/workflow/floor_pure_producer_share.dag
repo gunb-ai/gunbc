@@ -492,10 +492,10 @@ import v2.std.collection { List }
 // preparation (the real path, refused there if it cannot run) and read by the rows. Nullary, pure,
 // inline sources; Nodes and located diagnostics, no closure. Re-derive rather than trust: the run's
 // [floor-shared-fill] ledger must show all eight Stored at preparation and the rows serving hits.
-// AND THE TWO ROWS AFTER THOSE ARE THE ENUMERATOR-DIFFERENTIAL FIXTURE, parsed and normalized, for
-// v2.test.claim.namespace_xl0.qualified_site_enumerator_differential: the rows there name the two
-// site WALKS and share the one-module ingest the walks read, exactly as the sibling rows do. Both
-// values are Nodes; no closure.
+// AND THE ROW AFTER THOSE IS THE ENUMERATOR FIXTURE, normalized, for
+// v2.test.claim.namespace_xl0.qualified_site_enumerator_differential: the rows there name the
+// collector's site WALK and share the one-module ingest the walk reads, exactly as the sibling rows
+// do. The value is Nodes; no closure. (The parsed twin left with the retired parse walker.)
 //
 // AND THE FINAL ROW:
 // DAG CANONICAL-SYMBOL MAP EARNS ITS ROW ON THE ENROLMENT-MARGIN CPU THE EVAL-STEP GATE
@@ -771,6 +771,14 @@ import v2.std.collection { List }
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.parameter_reference.pr_program_parameter_paths",
   "v2.test.claim.parameter_reference.pr_program_grounding",
+  "v2.test.claim.text_string_importer_census.tsic_real_route_outcome",
+  "v2.test.claim.text_string_importer_census.tsic_window_coverage_outcome",
+  "v2.test.claim.text_string_importer_census.tsil_literal_rows_outcome",
+  "v2.test.claim.text_string_importer_census.tsil_population_outcome",
+  "v2.test.claim.text_string_importer_census.tsil_alias_rows_outcome",
+  "v2.test.claim.text_string_importer_census.tsil_declined_rows_outcome",
+  "v2.test.claim.text_string_importer_census.tsic_crossing_outcome",
+  "v2.test.claim.text_string_importer_census.tsic_roster_outcome",
   "test.claim.namespace_xl2_rehearsal_census.xl2_control_runs",
   "v2.test.claim.provenance.loaded_carrier_receipts.lcr_loaded_roots",
   "v2.test.claim.provenance.loaded_carrier_receipts.lcr_located_roots",
@@ -946,6 +954,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.match_arm_binder_frame.mab_resolved_ambiguous_binder",
   "v2.test.claim.match_arm_binder_frame.mab_resolved_module_named_binder",
   "v2.test.claim.match_arm_binder_frame.mab_resolved_unimported_constructor",
+  "v2.test.claim.match_arm_binder_frame.mab_resolved_declared_constructor",
   "v2.test.claim.match_arm_binder_frame.mab_resolved_two_module_variant",
   "v2.test.claim.match_arm_binder_frame.mab_record_declarations_specimen",
   "v2.test.claim.type_param_binder_frame.tpb_identity",
@@ -1279,7 +1288,6 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.self_host.closure_emission.ce_emission_member_body_refuses",
   "v2.test.claim.self_host.closure_emission.ce_emission_duplicate_module",
   "v2.test.claim.namespace_xl0.qualified_site_enumerator_differential.qsd_normalized",
-  "v2.test.claim.namespace_xl0.qualified_site_enumerator_differential.qsd_parsed",
   "v2.extdeps.languages.dag.dag_canonical_symbol_map",
   "v2.test.claim.declaration_graft_assemble.declaration_graft_combined_assembled",
   "v2.test.claim.declaration_graft_assemble.declaration_graft_alias_spelled_as_emitted_id_assembled",

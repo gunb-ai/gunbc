@@ -19,8 +19,8 @@ pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation}
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 pub use crate::std_operator_realization::OperandDeclaration;
-pub use crate::std_types::is_kernel_type;
 pub use crate::std_types::SourceSpan;
+pub use crate::std_types::{is_container_type, is_kernel_type};
 pub use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection;
 use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection::{
     ModulePathBindingAmbiguous, ModulePathBindingHit, ModulePathBindingMiss,
@@ -1495,10 +1495,11 @@ pub fn qualify_borrowed_type_names(
             Some(InferredNode::TypeVariable { id: _, .. }) => true,
             _ => false,
         };
-        let rewrite = ((((((n.connective.clone() == Connective::NoConnective)
+        let rewrite = (((((((n.connective.clone() == Connective::NoConnective)
             && (name.clone() != "".to_string()))
             && !v1_rt::contains(name.clone(), ".".to_string()))
             && !crate::std_types::is_kernel_type(name.clone()))
+            && !crate::std_types::is_container_type(name.clone()))
             && !v1_rt::map_has(&excluded, name.clone()))
             && !is_type_var.clone());
         let owner_hit = if rewrite.clone() {

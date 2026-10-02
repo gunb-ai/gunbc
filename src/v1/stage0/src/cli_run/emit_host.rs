@@ -1938,6 +1938,64 @@ pub(crate) fn compile_dag_rust_emit_check_memo_key(
 /// Advisory diagnostics (including `WhereRefinementUnenforced` deferrals) do not fail this
 /// check. A real, green-by-execution consumer of the v1 Rust emitter (DESIGN §5) — not a
 /// re-derivation of the emitter's own formula, so it can go red on a real emission regression.
+/// THE PARSED `requires` MEMBERS OF ONE OPERATION, as the seed parser carried them (D13 step b0).
+/// Parses the supplied source with the seed's own tokenizer and parser, finds the named service
+/// and operation, and reads the members through the one .dag reader,
+/// `v1.compiler.parse` `operation_requires_members` -- whose production consumer is D13 step (c) --
+/// returning each member's type spelling in authored order. A parse error, a missing service or a
+/// missing operation REFUSES with a located message; it never answers an empty list for a source
+/// it could not read.
+pub fn compile_dag_operation_requires(
+    source: &str,
+    service: &str,
+    operation: &str,
+) -> Result<Vec<String>, String> {
+    let filename = "test.dag".to_string();
+    let tokens = crate::v1_compiler_tokenize::tokenize(
+        source.to_string(),
+        filename.clone(),
+        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+    );
+    let source_index =
+        crate::v1_std_core::build_newline_index(filename.clone(), source.to_string());
+    let mut source_indices = HashMap::new();
+    source_indices.insert(filename.clone(), source_index);
+    let source_indices = Rc::new(source_indices);
+    let result = crate::v1_compiler_parse::parse(tokens, source_indices.clone());
+    if let Some(err) = result.error.as_ref() {
+        return Err(format!(
+            "compile_dag_operation_requires: parse error: {}",
+            crate::v1_std_core::diagnostic_to_message(err.diagnostic.clone())
+        ));
+    }
+    let module = result
+        .module
+        .as_ref()
+        .ok_or_else(|| "compile_dag_operation_requires: source parsed to no module".to_string())?;
+    let service_item = module
+        .children
+        .iter()
+        .find(|item| {
+            item.name == service
+                && item.module_item_kind
+                    == crate::v1_std_core::ParsedModuleItemKind::ModuleItemService
+        })
+        .ok_or_else(|| format!("compile_dag_operation_requires: no service `{service}`"))?;
+    let op = service_item
+        .children
+        .iter()
+        .find(|op| op.name == operation)
+        .ok_or_else(|| {
+            format!("compile_dag_operation_requires: no operation `{operation}` in `{service}`")
+        })?;
+    Ok(
+        crate::v1_compiler_parse::operation_requires_members(op.clone(), source_indices)
+            .iter()
+            .map(|member| member.name.to_string())
+            .collect(),
+    )
+}
+
 pub fn compile_dag_rust_emit_check(
     source: &str,
     file_path: &str,

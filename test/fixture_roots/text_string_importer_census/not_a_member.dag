@@ -1,0 +1,5 @@
+module fixture.text_string_importer_census.not_a_member
+import v2.std.text { string_head }
+fn f() -> Int {
+  1
+}
