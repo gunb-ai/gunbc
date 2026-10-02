@@ -364,7 +364,7 @@ fn bare_reference_channel_outcome_label() -> Label {
 // SELF-HOST BEHAVIORAL EQUIVALENCE, TAKEN ON PURPOSE (operator ruling 2026-09-27): runs every
 // tools.self_host_module_behavioral_transport_roster row for real and prints one receipt of
 // gunbc.self_host_behavioral_equivalence_receipt to persist; the interlock milestone
-// SelfHostBehavioralEquivalenceReestablished derives from the latest persisted receipt. Deliberately
+// SelfHostEmittedContractsHeld derives from the latest persisted receipt. Deliberately
 // not nightly and not per pull request, so this label is on no lane.
 // `gunbc test //gunbc/instruments:self-host-behavioral-equivalence`.
 fn self_host_behavioral_equivalence_label() -> Label {

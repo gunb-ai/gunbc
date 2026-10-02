@@ -362,7 +362,7 @@ fn swift_row_lex() -> LexRules {
     swr_lex(c: ^swift_tok_switch, text: "switch "),
     swr_lex(c: ^swift_tok_do, text: "do"),
     swr_lex(c: ^swift_tok_catch, text: " catch")
-  ] } }
+  ], modes: [] } }
 }
 
 fn swift_row_emit_transforms() -> Map<Symbol, TokenClassEmitTransform> {
