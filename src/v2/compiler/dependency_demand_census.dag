@@ -86,7 +86,7 @@ fn demand_census_vocabulary() -> List<QualifiedName> {
 // One authored `uses` clause, read from the parse of the fn that carries it. `name` is Absent only
 // when the fn's own name could not be read off the same parse; that fn still gets a census row.
 type AuthoredUsesFunction {
-  module: QualifiedName
+  owner: QualifiedName
   name: Optional<Symbol>
   types: List<Optional<Node>>
 }
@@ -96,8 +96,8 @@ type DemandCensusStripped {
   authored: List<AuthoredUsesFunction>
 }
 
-fn demand_census_strip(tree: Node, module: QualifiedName) -> DemandCensusStripped {
-  let authored = demand_census_authored_in(acc: Empty, node: tree, module: module)
+fn demand_census_strip(tree: Node, owner: QualifiedName) -> DemandCensusStripped {
+  let authored = demand_census_authored_in(acc: Empty, node: tree, owner: owner)
   if is_empty(xs: authored) {
     DemandCensusStripped { tree: tree, authored: authored }
   } else {
@@ -107,7 +107,7 @@ fn demand_census_strip(tree: Node, module: QualifiedName) -> DemandCensusStrippe
 
 // A fn declaration is not descended into: the clause belongs to the declaration's own signature,
 // and a fn body holds no fn declaration.
-fn demand_census_authored_in(acc: List<AuthoredUsesFunction>, node: Node, module: QualifiedName) -> List<AuthoredUsesFunction> {
+fn demand_census_authored_in(acc: List<AuthoredUsesFunction>, node: Node, owner: QualifiedName) -> List<AuthoredUsesFunction> {
   if dag_node_is_fn_decl(node: node) {
     match parse_production_captured_child_optional(node: node) {
       Absent => acc
@@ -116,14 +116,14 @@ fn demand_census_authored_in(acc: List<AuthoredUsesFunction>, node: Node, module
           Absent => acc
           Present { value: clause } =>
             list_snoc_item(xs: acc, item: AuthoredUsesFunction {
-              module: module,
+              owner: owner,
               name: dag_surface_kw_then_ident_from_captured(captured: captured),
               types: demand_census_entry_types(clause: clause)
             })
         }
     }
   } else {
-    fold(node.children, init: acc, f: fn(a, e) { demand_census_authored_in(acc: a, node: e.target, module: module) })
+    fold(node.children, init: acc, f: fn(a, e) { demand_census_authored_in(acc: a, node: e.target, owner: owner) })
   }
 }
 
@@ -184,10 +184,10 @@ type DemandFactWalk {
 // A declaration is a named edge whose path the resolved tree's own declaration index carries
 // (ResolvedTree resolved_declarations); every other named edge -- a record field, a body edge -- is
 // containment inside the declaration that holds it.
-fn demand_census_module_facts(resolved: ResolvedTree, module: QualifiedName) -> DemandCensusModuleFacts {
+fn demand_census_module_facts(resolved: ResolvedTree, module_qn: QualifiedName) -> DemandCensusModuleFacts {
   let w = demand_fact_node(
     w: DemandFactWalk { functions: Empty, operations: Empty, current: Empty },
-    position: module,
+    position: module_qn,
     node: module_spine_unwrapped(root: resolved.root),
     resolved: resolved
   )
@@ -226,8 +226,8 @@ fn demand_fact_edge(w: DemandFactWalk, position: QualifiedName, edge: Edge, reso
 // (D13 ruling B). (3) Anything else -- a fn, a data row, a type -- demands what its subtree refers to.
 fn demand_fact_declaration(w: DemandFactWalk, path: QualifiedName, node: Node, resolved: ResolvedTree) -> DemandFactWalk {
   match demand_census_resource_prefix(index: resolved.symbol_index, path: path) {
-    Present { value: resource } =>
-      demand_fact_with_operation(w: w, op: OperationFact { path: path, requirement: RequiresResources { resources: [resource] } })
+    Present { value: declared } =>
+      demand_fact_with_operation(w: w, op: OperationFact { path: path, requirement: RequiresResources { resources: [declared] } })
     Absent =>
       if demand_census_is_operation_arrow(node: node) {
         demand_fact_with_operation(w: w, op: OperationFact { path: path, requirement: demand_census_requirement(arrow: node) })
@@ -253,24 +253,24 @@ fn demand_fact_with_operation(w: DemandFactWalk, op: OperationFact) -> DemandFac
 
 type DemandPrefixScan {
   prefix: QualifiedName
-  resource: Optional<QualifiedName>
+  declared: Optional<QualifiedName>
 }
 
 // The SHORTEST prefix that is a declared resource: a capability's path is under its resource.
 fn demand_census_resource_prefix(index: SymbolIndex, path: QualifiedName) -> Optional<QualifiedName> {
-  let scanned = fold_list(xs: path, empty: DemandPrefixScan { prefix: Empty, resource: optional_absent() }, cons: fn(scan, seg) {
+  let scanned = fold_list(xs: path, empty: DemandPrefixScan { prefix: Empty, declared: optional_absent() }, cons: fn(scan, seg) {
     let prefix = qualified_name_snoc(qn: scan.prefix, segment: seg)
-    match scan.resource {
-      Present { value: r } => DemandPrefixScan { prefix: prefix, resource: optional_present(value: r) }
+    match scan.declared {
+      Present { value: r } => DemandPrefixScan { prefix: prefix, declared: optional_present(value: r) }
       Absent =>
         if symbol_index_declares_resource_at(index: index, qualified_path: prefix) {
-          DemandPrefixScan { prefix: prefix, resource: optional_present(value: prefix) }
+          DemandPrefixScan { prefix: prefix, declared: optional_present(value: prefix) }
         } else {
-          DemandPrefixScan { prefix: prefix, resource: optional_absent() }
+          DemandPrefixScan { prefix: prefix, declared: optional_absent() }
         }
     }
   })
-  scanned.resource
+  scanned.declared
 }
 
 // The edge a contract or body label names. v2.std.node arrow_signature_edges_conform admits at most
@@ -400,7 +400,7 @@ fn demand_census_known_prefix(known: Map<QualifiedName, Bool>, path: QualifiedNa
 // ═══ THE AUTHORED SIDE, RESOLVED BY THE MODULE'S OWN SCOPE ═══════════════════════════════════════
 
 type AuthoredRowReading
-  = AuthoredResolved { resource: QualifiedName }
+  = AuthoredResolved { declared: QualifiedName }
   | AuthoredTypeUnresolved
 
 // The authored type is lowered by the same type lowering a parameter's type takes and resolved by the
@@ -423,7 +423,7 @@ fn demand_census_authored_reading(ctx: ResolveContext, shell: Optional<Node>) ->
             Rejected { diagnostics: _ } => AuthoredTypeUnresolved
             Accepted { value: r, diagnostics: _ } =>
               match declaration_reference_path_optional(node: r) {
-                Present { value: p } => AuthoredResolved { resource: p }
+                Present { value: p } => AuthoredResolved { declared: p }
                 Absent => AuthoredTypeUnresolved
               }
           }
@@ -471,7 +471,7 @@ fn demand_census_same_set(left: List<QualifiedName>, right: List<QualifiedName>)
 fn demand_census_authored_paths(readings: List<AuthoredRowReading>) -> List<QualifiedName> {
   fold_list(xs: readings, empty: Empty, cons: fn(acc, r) {
     match r {
-      AuthoredResolved { resource: p } => list_snoc_item(xs: acc, item: p)
+      AuthoredResolved { declared: p } => list_snoc_item(xs: acc, item: p)
       AuthoredTypeUnresolved => acc
     }
   })
@@ -480,7 +480,7 @@ fn demand_census_authored_paths(readings: List<AuthoredRowReading>) -> List<Qual
 fn demand_census_has_unresolved(readings: List<AuthoredRowReading>) -> Bool {
   fold_list(xs: readings, empty: false, cons: fn(any, r) {
     match r {
-      AuthoredResolved { resource: _ } => any
+      AuthoredResolved { declared: _ } => any
       AuthoredTypeUnresolved => true
     }
   })
@@ -511,8 +511,8 @@ fn demand_census_row_unobserved(function: QualifiedName, reason: DemandCensusUno
 
 fn demand_census_function_path(authored: AuthoredUsesFunction) -> QualifiedName {
   match authored.name {
-    Present { value: n } => qualified_name_snoc(qn: authored.module, segment: n)
-    Absent => authored.module
+    Present { value: n } => qualified_name_snoc(qn: authored.owner, segment: n)
+    Absent => authored.owner
   }
 }
 

@@ -3552,7 +3552,7 @@ fn native_demand_census_read(
   front: NativeTestFrontEnd,
   scope: Fnv1a64Structural
 ) -> NativeDemandCensusFoldState {
-  let module = match native_refused_file_module(content: read.source.carried) {
+  let module_qn = match native_refused_file_module(content: read.source.carried) {
     Present { value: qn } => qn
     Absent => Empty
   }
@@ -3569,7 +3569,7 @@ fn native_demand_census_read(
         file_refused: state.file_refused
       }
     Accepted { value: artifact, diagnostics: _ } =>
-      let stripped = demand_census_strip(tree: artifact.tree, module: module)
+      let stripped = demand_census_strip(tree: artifact.tree, owner: module_qn)
       match normalize_scoped(parse_tree: stripped.tree, allocator: scoped_occurrence_allocator(alloc: artifact.alloc, scope: scope)) {
         Rejected { diagnostics: d } =>
           NativeDemandCensusFoldState {
@@ -3596,11 +3596,11 @@ type NativeDemandCensusWalk {
 
 // The module's root scope, as resolution itself built it for the module just resolved: the namespace
 // provider answers from its cache, so this produces no second namespace.
-fn native_demand_census_module_ctx(context: NativeTestContext, module: QualifiedName) -> Optional<ResolveContext> {
+fn native_demand_census_module_ctx(context: NativeTestContext, module_qn: QualifiedName) -> Optional<ResolveContext> {
   match context.resolution {
     Rejected { diagnostics: _ } => optional_absent()
     Accepted { value: shared, diagnostics: validate_diag } =>
-      match resolution_context_namespace(shared: shared, validate_diag: validate_diag, admission: native_test_module_admission(module: module)).admitted {
+      match resolution_context_namespace(shared: shared, validate_diag: validate_diag, admission: native_test_module_admission(module: module_qn)).admitted {
         Rejected { diagnostics: _ } => optional_absent()
         Accepted { value: admitted, diagnostics: _ } =>
           optional_present(value: resolve_ctx_init(namespace: admitted.namespace, lm: shared.lm, policy: shared.policy))
@@ -3608,8 +3608,8 @@ fn native_demand_census_module_ctx(context: NativeTestContext, module: Qualified
   }
 }
 
-fn native_demand_census_readings(context: NativeTestContext, module: QualifiedName, authored: AuthoredUsesFunction) -> List<AuthoredRowReading> {
-  match native_demand_census_module_ctx(context: context, module: module) {
+fn native_demand_census_readings(context: NativeTestContext, module_qn: QualifiedName, authored: AuthoredUsesFunction) -> List<AuthoredRowReading> {
+  match native_demand_census_module_ctx(context: context, module_qn: module_qn) {
     Present { value: ctx } => demand_census_authored_readings(ctx: ctx, authored: authored)
     Absent => fold_list(xs: authored.types, empty: Empty, cons: fn(acc, t) { list_snoc_item(xs: acc, item: AuthoredTypeUnresolved) })
   }
@@ -3618,9 +3618,9 @@ fn native_demand_census_readings(context: NativeTestContext, module: QualifiedNa
 fn native_demand_census_module(w: NativeDemandCensusWalk, root: NormalizedTree, authored: List<AuthoredUsesFunction>) -> NativeDemandCensusWalk {
   match qualified_name_from_module_node(root: root.root) {
     Rejected { diagnostics: _ } => w
-    Accepted { value: module, diagnostics: _ } =>
-      let mine = fold_list(xs: authored, empty: Empty, cons: fn(acc, a) { if a.module == module { list_snoc_item(xs: acc, item: a) } else { acc } })
-      let step = native_test_resolve_module(context: w.context, module: module)
+    Accepted { value: module_qn, diagnostics: _ } =>
+      let mine = fold_list(xs: authored, empty: Empty, cons: fn(acc, a) { if a.owner == module_qn { list_snoc_item(xs: acc, item: a) } else { acc } })
+      let step = native_test_resolve_module(context: w.context, module: module_qn)
       match step.resolved {
         Rejected { diagnostics: _ } =>
           NativeDemandCensusWalk {
@@ -3630,7 +3630,7 @@ fn native_demand_census_module(w: NativeDemandCensusWalk, root: NormalizedTree, 
             standings: list_snoc_item(xs: w.standings, item: DemandModuleResolveRefused { authored: mine })
           }
         Accepted { value: resolved, diagnostics: _ } =>
-          let facts = demand_census_module_facts(resolved: resolved, module: module)
+          let facts = demand_census_module_facts(resolved: resolved, module_qn: module_qn)
           NativeDemandCensusWalk {
             context: step.context,
             functions: fold_list(xs: facts.functions, empty: w.functions, cons: fn(acc, f) { list_snoc_item(xs: acc, item: f) }),
@@ -3639,7 +3639,7 @@ fn native_demand_census_module(w: NativeDemandCensusWalk, root: NormalizedTree, 
               readings: fold_list(xs: mine, empty: Empty, cons: fn(acc, a) {
                 list_snoc_item(xs: acc, item: DemandCensusAuthoredReading {
                   authored: a,
-                  readings: native_demand_census_readings(context: step.context, module: module, authored: a)
+                  readings: native_demand_census_readings(context: step.context, module_qn: module_qn, authored: a)
                 })
               })
             })
