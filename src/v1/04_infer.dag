@@ -16031,7 +16031,7 @@ fn peano_pattern_reading(p: MatchPattern, view: GroundedView, si: Map<String, Ne
         LitInt { value: k } => PeanoExact { k: k }
         _ => PeanoPatternUnreadable
       }
-    VariantPattern { name: n, parent_enum: _, field_bindings: fbs } =>
+    VariantPattern { name: n, parent_enum: _, field_bindings: fbs, parent_identity: _ } =>
       let leaf = qualified_last_segment(name: n)
       if leaf == view.zero {
         PeanoExact { k: 0 }
@@ -16053,7 +16053,7 @@ fn peano_pattern_reading(p: MatchPattern, view: GroundedView, si: Map<String, Ne
 
 fn pattern_spells_grounded_constructor(p: MatchPattern, ctx: GroundCtx) -> Bool {
   match p {
-    VariantPattern { name: n, parent_enum: _, field_bindings: fbs } =>
+    VariantPattern { name: n, parent_enum: _, field_bindings: fbs, parent_identity: _ } =>
       grounded_view_for_constructor(name: qualified_last_segment(name: n), ctx: ctx) != none
         || (fbs |> any(fb => pattern_spells_grounded_constructor(p: field_binding_pattern(n: fb), ctx: ctx)))
     _ => false
@@ -16077,7 +16077,7 @@ fn grounded_pattern_refused(p: MatchPattern, message: String, span: SourceSpan, 
 fn ground_nested_pattern(p: MatchPattern, subject_type: Node, span: SourceSpan, ctx: GroundCtx) -> GroundedPattern {
   let si = ctx.env.source_indices
   match p {
-    VariantPattern { name: n, parent_enum: pe, field_bindings: fbs } =>
+    VariantPattern { name: n, parent_enum: pe, field_bindings: fbs, parent_identity: pid } =>
       if !pattern_spells_grounded_constructor(p: p, ctx: ctx) {
         grounded_pattern_unchanged(p: p)
       } else {
@@ -16118,7 +16118,7 @@ fn ground_nested_pattern(p: MatchPattern, subject_type: Node, span: SourceSpan, 
               })
             if grounded |> any(g => g.changed) {
               GroundedPattern {
-                pattern: VariantPattern { name: n, parent_enum: pe, field_bindings: grounded |> map(g => g.node) },
+                pattern: VariantPattern { name: n, parent_enum: pe, field_bindings: grounded |> map(g => g.node), parent_identity: pid },
                 changed: true,
                 diagnostics: grounded |> flat_map(g => g.diagnostics)
               }
