@@ -4,6 +4,7 @@ import std.types { String, Secret, NonEmptyStr, AuthScheme, HttpStatus }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.ietf.http_semantics { HttpMethod }
+import std.resources { Network }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -25,6 +26,7 @@ service tailscale.AclAdmin {
   }
 
   operation GetPolicy {
+    requires Network
     input {
       api_key: Secret
       tailnet: NonEmptyStr
@@ -45,6 +47,7 @@ service tailscale.AclAdmin {
   }
 
   operation UpsertPolicy {
+    requires Network
     input {
       api_key: Secret
       tailnet: NonEmptyStr

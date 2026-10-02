@@ -61,6 +61,7 @@ pub enum EvalBuiltinArm {
     FreeCallAtomIdentityHash,
     FreeCallObservedPeakResidentBytes,
     FreeCallObservedMonotonicNanos,
+    FreeCallObservedThreadCpuNanos,
     FreeCallHashCombine,
     FreeCallFilesystemRead,
     FreeCallToolchainHomeInterferenceProbe,
@@ -218,6 +219,7 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "atom_identity_hash" => Some(EvalBuiltinArm::FreeCallAtomIdentityHash),
         "observed_peak_resident_bytes" => Some(EvalBuiltinArm::FreeCallObservedPeakResidentBytes),
         "observed_monotonic_nanos" => Some(EvalBuiltinArm::FreeCallObservedMonotonicNanos),
+        "observed_thread_cpu_nanos" => Some(EvalBuiltinArm::FreeCallObservedThreadCpuNanos),
         "hash_combine" => Some(EvalBuiltinArm::FreeCallHashCombine),
         "filesystem_read" => Some(EvalBuiltinArm::FreeCallFilesystemRead),
         "toolchain_home_interference_probe" => Some(EvalBuiltinArm::FreeCallToolchainHomeInterferenceProbe),
@@ -373,6 +375,7 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.atom_identity_hash") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallAtomIdentityHash };
     ("free_call.observed_peak_resident_bytes") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallObservedPeakResidentBytes };
     ("free_call.observed_monotonic_nanos") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallObservedMonotonicNanos };
+    ("free_call.observed_thread_cpu_nanos") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallObservedThreadCpuNanos };
     ("free_call.hash_combine") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallHashCombine };
     ("free_call.filesystem_read") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallFilesystemRead };
     ("free_call.toolchain_home_interference_probe") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallToolchainHomeInterferenceProbe };
@@ -718,6 +721,7 @@ pub enum TryV2StdCollectionMapPrimitiveGroundingArm {
     MapGroundingEmptyMap,
     MapGroundingMapInsert,
     MapGroundingLookup,
+    MapGroundingListAt,
 }
 
 #[rustfmt::skip]
@@ -729,6 +733,8 @@ pub fn lookup_try_v2_std_collection_map_primitive_grounding(spelling: &str) -> O
         "map_insert_primitive_delegate" => Some(TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingMapInsert),
         "map_lookup_primitive_delegate" => Some(TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingLookup),
         "map_lookup" => Some(TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingLookup),
+        "list_at_primitive_delegate" => Some(TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingListAt),
+        "list_at_optional" => Some(TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingListAt),
         _ => None,
     }
 }
@@ -738,6 +744,7 @@ macro_rules! try_v2_std_collection_map_primitive_grounding_arm {
     ("map_grounding.empty_map") => { $crate::v1_interpreter_dispatch_generated::TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingEmptyMap };
     ("map_grounding.map_insert") => { $crate::v1_interpreter_dispatch_generated::TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingMapInsert };
     ("map_grounding.lookup") => { $crate::v1_interpreter_dispatch_generated::TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingLookup };
+    ("map_grounding.list_at") => { $crate::v1_interpreter_dispatch_generated::TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingListAt };
 }
 #[rustfmt::skip]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

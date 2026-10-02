@@ -7,6 +7,7 @@ import std.string_type { String }
 import v2.std.optional { Present, Absent }
 import std.algebra { trim }
 import v2.std.algebra { filter }
+import std.resources { Network }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -169,6 +170,7 @@ fn ipmitool_sol_activate_refusal_text(refusal: IpmitoolSolActivateRefusal) -> St
 
 service diagnostic.ipmi.Tool {
   operation SensorList {
+    requires Network
     input { bmc_host: NonEmptyStr }
     output { stdout: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -180,6 +182,7 @@ service diagnostic.ipmi.Tool {
   }
 
   operation SdrList {
+    requires Network
     input { bmc_host: NonEmptyStr }
     output { stdout: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -191,6 +194,7 @@ service diagnostic.ipmi.Tool {
   }
 
   operation SdrTypeList {
+    requires Network
     input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, sensor_type: NonEmptyStr }
     output { stdout: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -202,6 +206,7 @@ service diagnostic.ipmi.Tool {
   }
 
   operation SelList {
+    requires Network
     input { bmc_host: NonEmptyStr }
     output { stdout: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -213,6 +218,7 @@ service diagnostic.ipmi.Tool {
   }
 
   operation SelListAuthenticated {
+    requires Network
     input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
     output {
       stdout: String from "stdout",
@@ -229,6 +235,7 @@ service diagnostic.ipmi.Tool {
   }
 
   operation SdrDumpAuthenticated {
+    requires Network
     input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, sdr_cache_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
     output {
       stdout: String from "stdout",
@@ -244,6 +251,7 @@ service diagnostic.ipmi.Tool {
   }
 
   operation SelListAuthenticatedCached {
+    requires Network
     input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, sdr_cache_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
     output {
       stdout: String from "stdout",
@@ -260,6 +268,7 @@ service diagnostic.ipmi.Tool {
   }
 
   operation SdrElistAuthenticatedCached {
+    requires Network
     input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, sdr_cache_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
     output {
       stdout: String from "stdout",
@@ -276,6 +285,7 @@ service diagnostic.ipmi.Tool {
   }
 
   operation MasterWriteReadAuthenticated {
+    requires Network
     input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, bus: NonEmptyStr, slave_address: NonEmptyStr, read_count: NonEmptyStr, write_first: NonEmptyStr, write_second: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
     output {
       stdout: String from "stdout",
@@ -291,6 +301,7 @@ service diagnostic.ipmi.Tool {
   }
 
   operation ChassisBootDev {
+    requires Network
     input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, device: NonEmptyStr }
     output { stdout: String from "stdout", success: Bool from "exit_success" }
     transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "chassis", "bootdev", "{device}"] }
@@ -301,6 +312,7 @@ service diagnostic.ipmi.Tool {
   }
 
   operation ChassisBootDevWithOptions {
+    requires Network
     input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, device: NonEmptyStr, options: NonEmptyStr }
     output { stdout: String from "stdout", success: Bool from "exit_success" }
     transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "chassis", "bootdev", "{device}", "options={options}"] }
@@ -311,6 +323,7 @@ service diagnostic.ipmi.Tool {
   }
 
   operation SolDeactivate {
+    requires Network
     input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr }
     output { stdout: String from "stdout", success: Bool from "exit_success" }
     transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "sol", "deactivate"] }
@@ -321,6 +334,7 @@ service diagnostic.ipmi.Tool {
   }
 
   operation ChassisBootParamGet {
+    requires Network
     input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, parameter: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
     output {
       stdout: String from "stdout",
@@ -337,6 +351,7 @@ service diagnostic.ipmi.Tool {
   }
 
   operation ChassisPowerControl {
+    requires Network
     input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, action: NonEmptyStr }
     output { stdout: String from "stdout", success: Bool from "exit_success" }
     transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "chassis", "power", "{action}"] }
@@ -347,6 +362,7 @@ service diagnostic.ipmi.Tool {
   }
 
   operation ChassisStatus {
+    requires Network
     input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
     output {
       stdout: String from "stdout",
@@ -363,6 +379,7 @@ service diagnostic.ipmi.Tool {
   }
 
   operation FruPrint {
+    requires Network
     input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, fru_id: NonEmptyStr }
     output { stdout: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -374,6 +391,7 @@ service diagnostic.ipmi.Tool {
   }
 
   operation McInfo {
+    requires Network
     input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
     output {
       stdout: String from "stdout",
