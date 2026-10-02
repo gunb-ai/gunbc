@@ -2,6 +2,7 @@ module v1.compiler.runtime_rust
 
 import extdeps.filesystem.rust_realization { rust_file_create_new_canonical_block }
 import extdeps.cargo { CargoFeature }
+import extdeps.posix.clock_gettime { ClockThreadCputimeId, clock_id_label }
 
 fn rt_header() -> String {
   concat(
@@ -1191,6 +1192,27 @@ fn rt_realization_measurement() -> String {
     "    // wrapping into a negative duration that would read as a span running backwards.\n",
     "    let nanos = epoch.elapsed().as_nanos();\n",
     "    if nanos > i64::MAX as u128 \{ i64::MAX \} else \{ nanos as i64 \}\n",
+    "\}\n",
+    "\n",
+    "/// THE EMITTED REALIZATION OF std.realization_measurement ObserveThreadCpuAtSubject.\n",
+    "///\n",
+    "/// The calling thread's CPU time (extdeps.posix.clock_gettime ClockThreadCputimeId): it advances\n",
+    "/// only while this thread executes, so a span read on it is the thread's own work and never an\n",
+    "/// interval the host took the thread away. The label plays the same anti-memoization role as\n",
+    "/// observed_monotonic_nanos's and is never identity material.\n",
+    "///\n",
+    "/// A HOST WITHOUT THE CLOCK REFUSES THE PROCESS. POSIX makes CLOCK_THREAD_CPUTIME_ID an option;\n",
+    "/// answering with the monotonic wall instead would put host load back into every verdict read\n",
+    "/// on this clock, and answering zero would make every span vanish. Neither is a reading.\n",
+    "pub fn observed_thread_cpu_nanos(_label: String) -> i64 \{\n",
+    "    let mut ts = libc::timespec \{ tv_sec: 0, tv_nsec: 0 \};\n",
+    "    // SAFETY: clock_gettime writes one timespec through a pointer to a live local.\n",
+    "    let rc = unsafe \{ libc::clock_gettime(libc::", clock_id_label(c: ClockThreadCputimeId), ", &mut ts) \};\n",
+    "    if rc != 0 \{\n",
+    "        eprintln!(\"REFUSED: clock_gettime(", clock_id_label(c: ClockThreadCputimeId), ") is unavailable on this host (\{\}); no thread CPU span is measurable and the wall is not substituted\", std::io::Error::last_os_error());\n",
+    "        std::process::exit(2);\n",
+    "    \}\n",
+    "    (ts.tv_sec as i64).saturating_mul(1_000_000_000).saturating_add(ts.tv_nsec as i64)\n",
     "\}\n",
     "\n")
 }
