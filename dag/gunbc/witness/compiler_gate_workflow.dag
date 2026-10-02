@@ -1,5 +1,6 @@
 module gunbc.compiler_gate_workflow
 
+
 // NO LANE THE REQUIRED CONTEXT READS RUNS ON A HOSTED RUNNER (operator ruling 2026-09-28). The
 // lanes the `witnesses` aggregate reads -- `floor` and `generated` -- run on the fleet, and so does
 // the aggregate. The one lane that blocks nothing, `emit-build`, stays on `ubuntu-24.04-arm`.
@@ -83,6 +84,7 @@ import extdeps.github.actions {
   github_event_name_merge_group
 }
 import gunbc.action_use_admission {
+  admit_workflow_checkout_refs, checkout_ref_entry, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused, workflow_checkout_refs_refusal_reason,
   checkout_action, upload_artifact_action,
   admit_workflow_action_uses, WorkflowActionUsesAdmitted, WorkflowActionUsesRefused, workflow_action_uses_refusal_reason
 }
@@ -141,7 +143,7 @@ import gunbc.heal_publication_boundary { heal_repair_candidate_artifact_name }
 import gunbc.heal_workflow { heal_same_repository_clause, heal_not_dependabot_clause }
 import gunbc.repo_self_build { repo_self_build_command, repo_self_clippy_command }
 import extdeps.exec.command { shell_command_render }
-import extdeps.github.expressions { interpolate, ContextAccess, Needs, default_expression_spellings }
+import extdeps.github.expressions { interpolate, ContextAccess, Needs, Github, Expression, default_expression_spellings }
 import extdeps.github.log_annotations { emit_line_shell }
 import gunbc.emitted_subject_build_gate {
   EmittedSubjectBuildRow,
@@ -340,7 +342,7 @@ fn compiler_gate_floor_checkout_step() -> Step {
     with: Present {
       value: [
         kv(key: "fetch-depth", value: yaml_int(n: 0)),
-        kv(key: "ref", value: yaml_string(s: "${{ github.event.pull_request.head.sha }}")),
+        checkout_ref_entry(ref_expression: compiler_gate_checkout_ref),
         kv(key: "persist-credentials", value: yaml_bool(b: false))
       ]
     },
@@ -1425,6 +1427,10 @@ fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
     WorkflowActionUsesRefused { refusals: rs } =>
       WitnessFloorGenerationRefused { reason: workflow_action_uses_refusal_reason(workflow_module: "gunbc.compiler_gate_workflow", refusals: rs) }
     WorkflowActionUsesAdmitted =>
+      match admit_workflow_checkout_refs(workflow: compiler_gate_workflow, declared: [compiler_gate_checkout_ref]) {
+    WorkflowCheckoutRefsRefused { refusals: crs } =>
+      WitnessFloorGenerationRefused { reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.compiler_gate_workflow", refusals: crs) }
+    WorkflowCheckoutRefsAdmitted =>
       match admit_workflow_toolchain_homes(workflow: compiler_gate_workflow) {
         WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
           WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
@@ -1439,4 +1445,7 @@ fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
           }
       }
   }
+  }
 }
+
+data compiler_gate_checkout_ref: Expression = ContextAccess { context: Github, path: ["event", "pull_request", "head", "sha"] }
