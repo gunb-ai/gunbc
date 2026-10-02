@@ -1,6 +1,6 @@
 module extdeps.systemd.journalctl
 
-import std.types { NonEmptyStr, Bool, Unit }
+import std.types { NonEmptyStr, Bool, Unit, List }
 import std.string_type { String }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -85,4 +85,12 @@ service systemd.Journalctl {
       } "hermetic systemd.Journalctl.UnitInvocationLog"
     }
   }
+}
+
+// THE KERNEL RING OF THE CURRENT BOOT, AS AN ARGV a remote leg can carry. journalctl(1): `-k`
+// (`--dmesg`) shows only kernel messages and implies `-b`; `-b` with no argument is the current
+// boot. `-b` is spelled anyway so the boot scope is read off the argv rather than an implication.
+// Filtering lines is a fold over stdout in the consumer, never a grep spliced in here.
+fn journalctl_kernel_current_boot_argv() -> List<String> {
+  ["journalctl", "-k", "-b", "--no-pager", "-o", "short-unix"]
 }
