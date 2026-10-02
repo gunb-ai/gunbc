@@ -1290,7 +1290,7 @@ fn sandbox_echo_response(request: ServeHttpRequest<RequestAuthenticationEvidence
 // same authority).
 fn roadmap_serve_invoke_over(
   instance: HostDashboardInstance,
-  plan: RoadmapAuthorityProjection,
+  plan: fn() -> RoadmapAuthorityProjection,
   daily_body: ServedDailyBodyAuthority,
   handler: RoadmapServeHandler,
   params: List<PathParamBinding>,
@@ -1317,16 +1317,18 @@ fn roadmap_serve_invoke_over(
             ], ""),
           )
       }
-    RoadmapFullPageHandler =>
+    RoadmapFullPageHandler => {
+      let p = plan()
       serve_page_response(page: roadmap_page_for_projection_launch(
-        proj: plan,
-        launch: belt_launch_host_standing_for_page_over(instance: instance, plan: plan),
+        proj: p,
+        launch: belt_launch_host_standing_for_page_over(instance: instance, plan: p),
       ))
+    }
     AllocationPageHandler => allocation_page_response(request: request)
     AllocationClientHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: allocation_client_source())
     FleetStandingPageHandler => serve_page_response(page: roadmap_fleet_page())
-    RoadmapMdHandler => serve_text_response(status: 200, content_type: text_plain_utf8, body: roadmap_site_roadmap_md_body_over(plan: plan))
-    DispatchJsonHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_dispatch_json_body_over(plan: plan))
+    RoadmapMdHandler => serve_text_response(status: 200, content_type: text_plain_utf8, body: roadmap_site_roadmap_md_body_over(plan: plan()))
+    DispatchJsonHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_dispatch_json_body_over(plan: plan()))
     HealthzHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_healthz_body_for_release(release_revision: release_revision))
     DashboardInstanceHandler =>
       serve_text_response(
@@ -1341,7 +1343,7 @@ fn roadmap_serve_invoke_over(
         body: dashboard_provider_readiness_json(instance: instance),
       )
     BeltDispatchHandler =>
-      serve_dispatch_handler_response_over(instance: instance, plan: plan, params: params)
+      serve_dispatch_handler_response_over(instance: instance, plan: plan(), params: params)
     DispatchAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: dispatch_client_js_source())
     SandboxPageHandler => serve_page_response(page: sandbox_page())
     InstrumentSandboxPageHandler => serve_page_response(page: instrument_sandbox_page())
@@ -1352,10 +1354,10 @@ fn roadmap_serve_invoke_over(
     RepoAtlasPageHandler => serve_page_response(page: repo_atlas_page())
     SandboxAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: sandbox_client_js_source())
     SandboxEchoHandler => sandbox_echo_response(request: request)
-    IssueDetailPageHandler => serve_issue_detail_response_over(instance: instance, plan: plan, params: params, request: request)
-    ProjectSuitePageHandler => serve_project_suite_response_over(plan: plan, params: params, request: request)
-    IssueAssignmentContextHandler => serve_issue_assignment_context_over(instance: instance, plan: plan, request: request, params: params)
-    IssueAssignHandler => serve_issue_assign_response_over(instance: instance, plan: plan, request: request, params: params)
+    IssueDetailPageHandler => serve_issue_detail_response_over(instance: instance, plan: plan(), params: params, request: request)
+    ProjectSuitePageHandler => serve_project_suite_response_over(plan: plan(), params: params, request: request)
+    IssueAssignmentContextHandler => serve_issue_assignment_context_over(instance: instance, plan: plan(), request: request, params: params)
+    IssueAssignHandler => serve_issue_assign_response_over(instance: instance, plan: plan(), request: request, params: params)
     IssueCommentHandler => serve_issue_comment_response_over(instance: instance, request: request, params: params)
     AuthLoginHandler => auth_login_response(instance: instance, request: request)
     AuthGoogleCallbackHandler => auth_google_callback_response(instance: instance, path: request.path)
@@ -1381,7 +1383,7 @@ fn roadmap_serve_invoke_for_instance(
 ) -> ServeHttpResponse {
   roadmap_serve_invoke_over(
     instance: instance,
-    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
+    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
     daily_body: DailyBodyRenderedUnderThisPlan,
     handler: handler,
     params: params,
@@ -1530,7 +1532,7 @@ fn serve_sessions_response() -> ServeHttpResponse {
 
 fn roadmap_serve_selection_response_over(
   instance: HostDashboardInstance,
-  plan: RoadmapAuthorityProjection,
+  plan: fn() -> RoadmapAuthorityProjection,
   daily_body: ServedDailyBodyAuthority,
   sel: RouteSelection<RoadmapServeHandler>,
   request: ServeHttpRequest<RequestAuthenticationEvidence>,
@@ -1568,7 +1570,7 @@ fn roadmap_serve_selection_response_for_instance(
 ) -> ServeHttpResponse {
   roadmap_serve_selection_response_over(
     instance: instance,
-    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
+    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
     daily_body: DailyBodyRenderedUnderThisPlan,
     sel: sel,
     request: request,
@@ -1656,7 +1658,7 @@ fn roadmap_serve_authentication_evidence(
 
 fn roadmap_serve_respond_over(
   instance: HostDashboardInstance,
-  plan: RoadmapAuthorityProjection,
+  plan: fn() -> RoadmapAuthorityProjection,
   daily_body: ServedDailyBodyAuthority,
   method_label: String,
   path: String,
@@ -1718,7 +1720,7 @@ fn roadmap_serve_respond_for_instance(
 ) -> ServeHttpResponse {
   roadmap_serve_respond_over(
     instance: instance,
-    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
+    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method_label: method_label,
     path: path,
@@ -1787,7 +1789,7 @@ fn roadmap_serve_respond(
 // stays unaware of who calls it and needs no edit when another one does.
 fn roadmap_serve_handle_over(
   instance: HostDashboardInstance,
-  plan: RoadmapAuthorityProjection,
+  plan: fn() -> RoadmapAuthorityProjection,
   daily_body: ServedDailyBodyAuthority,
   method: String,
   path: String,
@@ -1820,7 +1822,7 @@ fn roadmap_serve_handle(
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv1_live_dashboard_instance(),
-    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
+    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -1848,7 +1850,7 @@ fn roadmap_serve_handle_macbook_local(
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: macbook_local_dashboard_instance(),
-    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
+    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -1869,7 +1871,7 @@ fn roadmap_serve_handle_srv1_lab(
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv1_lab_dashboard_instance(),
-    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
+    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -1890,7 +1892,7 @@ fn roadmap_serve_handle_srv2_preview(
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv2_preview_dashboard_instance(),
-    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
+    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -1914,7 +1916,7 @@ fn roadmap_serve_handle_srv2_deploy(
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv2_deploy_dashboard_instance(),
-    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
+    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -1935,7 +1937,7 @@ fn roadmap_serve_handle_srv2_lab(
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv2_lab_dashboard_instance(),
-    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
+    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,

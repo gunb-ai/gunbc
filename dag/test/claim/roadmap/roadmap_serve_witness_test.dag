@@ -519,7 +519,7 @@ fn serve_over_plan_declaring(
 ) -> ServeHttpResponse {
   roadmap_serve_respond_over(
     instance: srv2_preview_dashboard_instance(),
-    plan: plan,
+    plan: fn() { plan },
     daily_body: daily_body,
     method_label: "GET",
     path: path,
