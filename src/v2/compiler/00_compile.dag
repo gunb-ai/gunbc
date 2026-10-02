@@ -4977,8 +4977,16 @@ fn native_demand_run_receipt_lines(run: NativeDemandRun) -> List<String> {
 }
 
 // THROWAWAY (do not merge): a deliberate emit-only break for gunbc#13018's discriminating red --
-// an unused binding the floor accepts and the emitted crate's rustc reports as a warning.
-fn throwaway_emit_red(x: Int) -> Int {
-  let throwaway_unused_binding = x
-  x
+// idioms gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target records as
+// accepted by the compiler and refused by rustc in the emitted crate.
+fn throwaway_seven() -> Int { 7 }
+
+fn throwaway_apply0(f: fn() -> Int) -> Int { f() }
+
+fn throwaway_emit_red() -> Int {
+  throwaway_apply0(f: throwaway_seven)
+}
+
+fn throwaway_call_bound(fs: List<fn() -> Int>) -> Int {
+  fold(fs, init: 0, f: fn(acc, r) { acc + r() })
 }
