@@ -1,6 +1,7 @@
 module test.claim.codex_app_server_press_witness_test
 
 import std.types { Bool, String, NonEmptyStr, FilePath }
+import v2.std.algebra { filter }
 import std.content_hash {
   sha512_hex_digest,
   Sha512Digest,
@@ -25,6 +26,7 @@ import gunbc.codex_app_server_press {
   AccountTripNativeCauseNumericCode,
   codex_press_method_itinerary,
   codex_press_account_trip_methods,
+  codex_press_account_trip_script,
   codex_press_outcome_wire_status,
   codex_press_outcome_operator_caption,
   parse_account_trip_stdout_for_tests,
@@ -676,4 +678,38 @@ test fn structured_rpc_error_with_an_integer_numeric_code_is_a_numeric_code() ->
     AccountTripNativeCauseNumericCode { code: c } => c == -32600
     _ => false
   }
+}
+
+// THE ACCOUNT-TRIP TRANSPORT SURFACE CARRIES NO SHELL CONTROL WORD. The account trip reaches the
+// codex app-server through a transport; this claim projects that transport's surface as text and
+// asserts it contains no shell programming word: no `export`, no command substitution `$(`, no
+// `mktemp`, no `printf`, no `---GUNBC_` sentinel, no `rm -f`. The property is identity-stable
+// across the shell-to-dag migration (docs/plans/shell-to-dag-residual-census-and-arc-completion.md
+// 4): on the retained-heredoc side the surface IS the script body `codex_press_account_trip_script`
+// assembles, and that body is exactly the forbidden words, so the claim FAILS and is enrolled
+// expected-red in v2.workflow.floor_expected_red
+// (floor_expected_red_chunk_shell_to_dag_typed_transport) while the script is the transport. When
+// the trip runs as a typed argv through shell.Exec.RunArgvStdin -- program word, env-prefixed
+// argument words, and a stdin payload of request lines -- the same projection contains none of
+// them, the claim passes, and the roster row names itself for removal. Only the SURFACE
+// PROJECTION below changes with the transport; the property and the forbidden-word list do not.
+data codex_account_trip_forbidden_shell_words: List<String> = [
+  "export ", "$(", "mktemp", "printf", "---GUNBC_", "rm -f",
+]
+
+fn codex_account_trip_transport_surface_text() -> String {
+  codex_press_account_trip_script(
+    executable: "/usr/local/bin/codex" as FilePath,
+    codex_home: "/home/witness/.codex" as FilePath,
+  )
+}
+
+test fn codex_account_trip_transport_surface_carries_no_shell_control_word() -> Bool {
+  let surface = codex_account_trip_transport_surface_text()
+  count(
+    filter(
+      xs: codex_account_trip_forbidden_shell_words,
+      predicate: fn(word) { string_contains(s: surface, pattern: word) },
+    ),
+  ) == 0
 }
