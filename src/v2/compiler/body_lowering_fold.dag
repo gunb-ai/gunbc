@@ -9628,17 +9628,13 @@ fn body_lower_type_decl_eq_rhs_optional(captured: Node) -> Optional<Node> {
 // time this lowering runs, so it takes the member arm.
 fn body_lower_eq_type_decl(shell: Node, captured: Node, type_name: Symbol, type_params: DeclTypeParams) -> Outcome<Node> {
   match body_lower_type_decl_eq_rhs_optional(captured: captured) {
-    Present { value: rhs } =>
-      match rhs.kind {
-        TypeNode { connective: Disj } =>
-          outcome_accepted(value: body_lower_type_decl_member(shell: shell, type_name: type_name, body: rhs, type_params: type_params))
-        TypeNode { connective: Conj } =>
-          if body_lower_node_is_production_shell(n: rhs) {
-            body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
-          } else {
-            outcome_accepted(value: body_lower_type_decl_member(shell: shell, type_name: type_name, body: rhs, type_params: type_params))
-          }
-        _ => body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
+    Present { value: rhs_term } =>
+      match body_term_of(node: rhs_term) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: Lowered { node: rhs, shape: _ }, diagnostics: _ } =>
+          body_lower_eq_type_decl_rhs(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
+        Accepted { value: _, diagnostics: _ } =>
+          body_lower_eq_type_decl_rhs(shell: shell, type_name: type_name, rhs: rhs_term, type_params: type_params)
       }
     Absent =>
       match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_type_alias_rhs_lead) {
@@ -9650,6 +9646,25 @@ fn body_lower_eq_type_decl(shell: Node, captured: Node, type_name: Symbol, type_
             Absent => body_lower_type_decl_uncarried(shell: shell)
           }
       }
+  }
+}
+
+// THE TYPE DECLARATION'S RIGHT-HAND SIDE, read as a term first (MQ-5). The rhs reaches this reader
+// either as raw parse or as a producer's sealed output; a sealed wrapper is a non-production Conj, so
+// reading its kind directly took the record-member arm and treated the wrapper's one marker edge as a
+// field. body_lower_eq_type_decl unwraps a Lowered term to its node and passes raw parse through, so this
+// reader sees exactly the node it saw before the cut; anything that is not a term refuses there.
+fn body_lower_eq_type_decl_rhs(shell: Node, type_name: Symbol, rhs: Node, type_params: DeclTypeParams) -> Outcome<Node> {
+  match rhs.kind {
+    TypeNode { connective: Disj } =>
+      outcome_accepted(value: body_lower_type_decl_member(shell: shell, type_name: type_name, body: rhs, type_params: type_params))
+    TypeNode { connective: Conj } =>
+      if body_lower_node_is_production_shell(n: rhs) {
+        body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
+      } else {
+        outcome_accepted(value: body_lower_type_decl_member(shell: shell, type_name: type_name, body: rhs, type_params: type_params))
+      }
+    _ => body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
   }
 }
 
