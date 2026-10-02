@@ -135,7 +135,7 @@ import v2.compiler.dependency_demand_census {
   DemandModuleResolveRefused,
   DemandModuleResolved,
   demand_census_authored_readings,
-  demand_census_conserved,
+  demand_census_exit,
   demand_census_lines,
   demand_census_module_facts,
   demand_census_report,
@@ -3540,6 +3540,7 @@ type NativeDemandCensusFoldState {
   context: NativeTestContextFoldState
   authored: List<AuthoredUsesFunction>
   file_refused: List<AuthoredUsesFunction>
+  unreadable: Int
 }
 
 fn native_demand_census_snoc_all(xs: List<AuthoredUsesFunction>, ys: List<AuthoredUsesFunction>) -> List<AuthoredUsesFunction> {
@@ -3566,7 +3567,8 @@ fn native_demand_census_read(
       NativeDemandCensusFoldState {
         context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: state.context.alloc),
         authored: state.authored,
-        file_refused: state.file_refused
+        file_refused: state.file_refused,
+        unreadable: state.unreadable + 1
       }
     Accepted { value: artifact, diagnostics: _ } =>
       let stripped = demand_census_strip(tree: artifact.tree, owner: module_qn)
@@ -3575,13 +3577,15 @@ fn native_demand_census_read(
           NativeDemandCensusFoldState {
             context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: artifact.alloc),
             authored: state.authored,
-            file_refused: native_demand_census_snoc_all(xs: state.file_refused, ys: stripped.authored)
+            file_refused: native_demand_census_snoc_all(xs: state.file_refused, ys: stripped.authored),
+            unreadable: state.unreadable
           }
         Accepted { value: scoped, diagnostics: _ } =>
           NativeDemandCensusFoldState {
             context: native_test_context_absorb(state: state.context, read: read, root_outcome: outcome_accepted(value: scoped.tree), alloc: scoped.allocator.alloc),
             authored: native_demand_census_snoc_all(xs: state.authored, ys: stripped.authored),
-            file_refused: state.file_refused
+            file_refused: state.file_refused,
+            unreadable: state.unreadable
           }
       }
   }
@@ -3656,7 +3660,7 @@ fn native_demand_census_report(ingest: SourceRootIngest) -> Outcome<DemandCensus
     bind_outcome(o: program_assembly_ingest_scope_outcome(ingest: ingest), f: fn(scope) {
       let folded = fold_list(
         xs: ingest,
-        empty: NativeDemandCensusFoldState { context: native_test_context_state_empty(), authored: Empty, file_refused: Empty },
+        empty: NativeDemandCensusFoldState { context: native_test_context_state_empty(), authored: Empty, file_refused: Empty, unreadable: 0 },
         cons: fn(state, read) { native_demand_census_read(state: state, read: read, front: front, scope: scope) }
       )
       let walked = fold_list(
@@ -3677,22 +3681,20 @@ fn native_demand_census_report(ingest: SourceRootIngest) -> Outcome<DemandCensus
         audited: walked.audited,
         standings: walked.standings,
         file_refused: folded.file_refused,
-        file_refusals: length(xs: folded.context.file_refusals)
+        file_refusals: length(xs: folded.context.file_refusals),
+        unreadable_files: folded.unreadable
       ))
     })
   })
 }
 
-// THE VERB'S WHOLE ANSWER: the lines to print and the exit. A census that ran and conserved its count
-// is held (0); one whose rows do not account for every uses fn is a finding (1); a context that would
-// not build is no observation (2), and its diagnostics are the line.
+// THE VERB'S WHOLE ANSWER: the lines to print and the exit, decided by
+// v2.compiler.dependency_demand_census demand_census_exit -- held (0), a census whose rows do not account
+// for every uses fn read (1), or no observation (2): a read refused before authorship, or a context that
+// would not build, whose diagnostics are the line.
 type NativeDemandCensusOutput {
   lines: List<String>
   exit: Int
-}
-
-fn native_demand_census_exit(conserved: Bool) -> Int {
-  if conserved { 0 } else { 1 }
 }
 
 fn native_demand_census_output(ingest: SourceRootIngest) -> NativeDemandCensusOutput {
@@ -3702,7 +3704,7 @@ fn native_demand_census_output(ingest: SourceRootIngest) -> NativeDemandCensusOu
     Accepted { value: report, diagnostics: _ } =>
       NativeDemandCensusOutput {
         lines: demand_census_lines(r: report),
-        exit: native_demand_census_exit(conserved: demand_census_conserved(r: report))
+        exit: demand_census_exit(r: report)
       }
   }
 }
