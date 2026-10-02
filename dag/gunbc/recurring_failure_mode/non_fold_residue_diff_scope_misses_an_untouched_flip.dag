@@ -16,6 +16,7 @@ data non_fold_residue_diff_scope_misses_an_untouched_flip: RecurringFailureMode 
     "RUNG found at 2, mechanically preventable, for sites in touched and planned modules; at 1, mitigatable, for an untouched flip (found only when the one-time whole-corpus typed census -- the ignored nfr_whole_corpus_typed_census test -- is re-run by an operator). ATTAINABLE CEILING 3, structurally guaranteed: closedness is decidable from the typed program, so a corpus-wide typed reading refuses the state for every module on every run.",
 
     "NEXT-RUNG TRIGGER, at capability grain: the v2 lens (#5364) reads typed scrutinees corpus-wide -- v2.lens.fallback_arm_census derives scrutinee_closed_total for every match in every module from v2 inference on the merge path, rather than from the v1 checker over one pull request's prepared subject. An artifact that types more modules on one run is not sufficient; the capability is corpus-wide typed coverage on every run, enrolled with a red that flips an untouched module's scrutinee through a changed upstream type.",
+    "RECEIPT (gunbc#12512, 2026-10-02): the first floor after #12610 on that PR refused NonFoldResidueRosterDiverged unrostered=37 -- 37 closed-coproduct wildcard sites PRE-EXISTING on main in 10 modules the PR touched only to delete one import, latent because no earlier pull request had touched those files; pre-existence established by the same floor phase on base main with the same 10 files touched, identity-diffed, and the 37 enrolled in non_fold_residue_frontier by that PR.",
   ],
 
   evidence: [],
