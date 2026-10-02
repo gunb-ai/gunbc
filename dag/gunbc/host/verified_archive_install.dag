@@ -233,3 +233,4 @@ fn archives_all_staged(ps: List<ArchivePlacement>, archives: List<StagedArchive>
 fn publish_staged_tree_wet(staging: String, root: String) -> Bool {
   process_outcome_admitted(outcome: run_shell_command_capture(command: mv_exact_destination_command(source: staging, destination: root), transport: LocalExec))
 }
+

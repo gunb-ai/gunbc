@@ -1178,3 +1178,4 @@ fn kvm_observer_receipt_line(rec: KvmObserverRecord) -> String {
       })
   })
 }
+

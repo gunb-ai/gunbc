@@ -142,3 +142,4 @@ fn megarac_web_transport_serve(dir: String, table: String, node_binary: String) 
 fn megarac_web_transport_stop(dir: String) -> OwnedRelease {
   owned_process_release(pid_path: concat(dir, "/transport.pid"))
 }
+

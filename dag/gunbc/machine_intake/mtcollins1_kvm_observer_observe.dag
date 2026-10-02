@@ -274,3 +274,4 @@ fn mtcollins1_kvm_observer_release_wet() -> ProcessExit
     _ => ExitSuccess
   }
 }
+

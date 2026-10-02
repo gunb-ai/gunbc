@@ -407,3 +407,4 @@ fn bmc_with_sol_drop_after_boot(world: BmcWorld, after: Second) -> BmcWorld {
 fn bmc_sol_drop_fired(world: BmcWorld) -> Bool {
   !all(world.fired, e => match e.event { BmcSolSessionDropped {} => false _ => true })
 }
+
