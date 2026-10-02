@@ -53,7 +53,7 @@ fn fx_quality(key: ServingSubjectKey, accepted: Nat, parse_failures: Nat) -> Qua
 
 fn fx_calibration_at(key: ServingSubjectKey, turns: Nat, preemptions: Nat?, sustained: Nat) -> WorkloadCalibrationReceipt {
   WorkloadCalibrationReceipt {
-    subject_key: key, trace_digest: "trace-sha256:fixture" as NonEmptyStr, run_id: "run-fixture" as NonEmptyStr,
+    subject_key: key, trace_digest: content_hash_of_value(value: "trace-fixture" as NonEmptyStr), run_id: "run-fixture" as NonEmptyStr,
     accepted_turns: Present { value: turns }, observation_window: Present { value: second(count: 3600) }, sustained_concurrency: sustained,
     realized_transport: Present { value: NcclTransportIbVerbs { read_from: "fixture" as NonEmptyStr } },
     preemptions: preemptions, engine_restarts: Present { value: 0 }, out_of_memory_events: Present { value: 0 },
@@ -230,4 +230,16 @@ test fn w_goodput_compares_rates_over_each_receipts_own_window() -> Bool {
     out_of_memory_events: c.out_of_memory_events, stalls_or_lost_requests: c.stalls_or_lost_requests, evidence: c.evidence,
   }
   w_admits(e: fx_evidence(memory: fx_proved, quality: fx_good_quality(), calibration: Present { value: mine }))
+}
+
+// GOODPUT IS COMPARED ONLY ON THE SAME TRACE, BY CONTENT DIGEST: a run on another trace is no comparison.
+test fn w_calibration_on_a_different_trace_is_not_compared() -> Bool {
+  let c = fx_calibration(key: fx_key(), turns: 200, preemptions: Present { value: 0 })
+  let other = WorkloadCalibrationReceipt {
+    subject_key: c.subject_key, trace_digest: content_hash_of_value(value: "another-trace" as NonEmptyStr), run_id: c.run_id, accepted_turns: c.accepted_turns,
+    observation_window: c.observation_window, sustained_concurrency: c.sustained_concurrency,
+    realized_transport: c.realized_transport, preemptions: c.preemptions, engine_restarts: c.engine_restarts,
+    out_of_memory_events: c.out_of_memory_events, stalls_or_lost_requests: c.stalls_or_lost_requests, evidence: c.evidence,
+  }
+  w_missing_count(e: fx_evidence(memory: fx_proved, quality: fx_good_quality(), calibration: Present { value: other })) == 1
 }
