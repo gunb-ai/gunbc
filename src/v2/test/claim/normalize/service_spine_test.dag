@@ -2,6 +2,7 @@ module v2.test.claim.normalize.service_spine
 
 import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
+import v2.compiler.normalized_tree { normalized_tree_roots_to_binding_sources }
 import v2.test.claim.type_param_binder_frame { tpb_accepts, tpb_assemble }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_lookup }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
@@ -31,7 +32,7 @@ fn ss_index_holds(text: String, path: FreeMonoid<String>) -> Bool {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
       match symbol_index_lookup(
-        index: symbol_index_fill_module_roots(index: empty_symbol_index(), roots: Cons { head: tree.root, tail: Empty }),
+        index: symbol_index_fill_module_roots(index: empty_symbol_index(), roots: normalized_tree_roots_to_binding_sources(roots: Cons { head: tree, tail: Empty })),
         qualified_path: Cons { head: ^m, tail: path |> map(s => symbol_intern_lexeme(lexeme: s)) }
       ) {
         Absent => false
