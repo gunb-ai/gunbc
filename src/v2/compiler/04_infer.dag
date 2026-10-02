@@ -1633,7 +1633,8 @@ fn infer_conj_named_type_for_binding(domain: Node, binding: Symbol) -> Optional<
           Absent => infer_conj_edge_named_type_for_binding(edge: e, binding: binding)
         }
       })
-    _ => Absent
+    TypeNode { connective: _ } => Absent
+    ComputationNode { behavior: _ } => Absent
   }
 }
 
@@ -2256,7 +2257,8 @@ fn infer_type_head_and_args(t: Node) -> InferTypeHeadArgs {
             TailAbsent => InferTypeHeadArgs { head: head, args: Empty }
           }
       }
-    _ => InferTypeHeadArgs { head: t, args: Empty }
+    TypeNode { connective: _ } => InferTypeHeadArgs { head: t, args: Empty }
+    ComputationNode { behavior: _ } => InferTypeHeadArgs { head: t, args: Empty }
   }
 }
 
@@ -2283,7 +2285,8 @@ fn infer_match_coproduct_of_type(scrutinee_type: Node, resolved: ResolvedTree) -
                   }
                 }
               }
-            _ => CoproductNotDeclared
+            TypeNode { connective: _ } => CoproductNotDeclared
+            ComputationNode { behavior: _ } => CoproductNotDeclared
           }
       }
   }
@@ -2325,7 +2328,8 @@ fn infer_match_field_type_instantiated(field_type: Node, instances: List<TypeVar
       } else {
         optional_absent()
       }
-    _ => Absent
+    TypeNode { connective: _ } => Absent
+    ComputationNode { behavior: _ } => Absent
   }
 }
 
@@ -2355,24 +2359,29 @@ fn infer_coproduct_arm_pattern(pat: Node) -> InferCoproductArmPattern {
   match pat.kind {
     TypeNode { connective: Atom { identity: id } } =>
       if id == pattern_wildcard_name() { ArmPatternWildcard } else { ArmPatternUnread }
-    _ =>
-      match declaration_reference_path_optional(node: pat) {
+    TypeNode { connective: _ } => infer_coproduct_arm_pattern_constructed(pat: pat)
+    ComputationNode { behavior: _ } => infer_coproduct_arm_pattern_constructed(pat: pat)
+  }
+}
+
+// A non-atom arm pattern: a bare variant reference or a constructed pattern with field binders.
+fn infer_coproduct_arm_pattern_constructed(pat: Node) -> InferCoproductArmPattern {
+  match declaration_reference_path_optional(node: pat) {
+    Present { value: path } =>
+      match qualified_name_last_segment(qn: path) {
+        Present { value: tag } => ArmPatternVariant { tag: tag, fields: Empty }
+        Absent => ArmPatternUnread
+      }
+    Absent =>
+      match construct_tag_path_optional(n: pat) {
+        Absent => ArmPatternUnread
         Present { value: path } =>
           match qualified_name_last_segment(qn: path) {
-            Present { value: tag } => ArmPatternVariant { tag: tag, fields: Empty }
             Absent => ArmPatternUnread
-          }
-        Absent =>
-          match construct_tag_path_optional(n: pat) {
-            Absent => ArmPatternUnread
-            Present { value: path } =>
-              match qualified_name_last_segment(qn: path) {
-                Absent => ArmPatternUnread
-                Present { value: tag } =>
-                  match list_tail(xs: pat.children) {
-                    TailFound { tail: fields } => ArmPatternVariant { tag: tag, fields: fields }
-                    TailAbsent => ArmPatternVariant { tag: tag, fields: Empty }
-                  }
+            Present { value: tag } =>
+              match list_tail(xs: pat.children) {
+                TailFound { tail: fields } => ArmPatternVariant { tag: tag, fields: fields }
+                TailAbsent => ArmPatternVariant { tag: tag, fields: Empty }
               }
           }
       }
@@ -2383,14 +2392,16 @@ fn infer_field_pattern_binds(target: Node) -> Optional<Symbol> {
   match target.kind {
     TypeNode { connective: Atom { identity: id } } =>
       if (count(target.children) == 0) && (id != pattern_wildcard_name()) { optional_present(value: id) } else { optional_absent() }
-    _ => Absent
+    TypeNode { connective: _ } => Absent
+    ComputationNode { behavior: _ } => Absent
   }
 }
 
 fn infer_field_pattern_is_wildcard(target: Node) -> Bool {
   match target.kind {
     TypeNode { connective: Atom { identity: id } } => id == pattern_wildcard_name()
-    _ => false
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
@@ -4716,7 +4727,8 @@ fn infer_where_predicate_set_edge(parent: Node, edge: Edge) -> Bool {
           Accepted { value: identity, diagnostics: _ } =>
             match identity.kind {
               TypeNode { connective: Atom { identity: emitted } } => emitted == ^dag_surface_where_refinement_clause
-              _ => false
+              TypeNode { connective: _ } => false
+              ComputationNode { behavior: _ } => false
             }
           Rejected { diagnostics: _ } => false
         }

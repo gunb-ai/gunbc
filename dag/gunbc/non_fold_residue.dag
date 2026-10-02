@@ -175,6 +175,10 @@ data nfr_reason_typed_census_undetermined_node_kind: String = "the v1 checker le
 
 data nfr_reason_landed_after_typed_census: String = "a top-level wildcard arm over a closed coproduct that landed on main after the ca5ed1724b typed census, while that census's roster was still in review (#12980); the floor's diff-scoped typed walk named it on the roster PR's own run. Un-migrated modeling (DESIGN §6), rostered so the ratchet stays armed at unrostered=0"
 
+data nfr_reason_eval_projection_receiver_not_aggregate: String = "field projection at eval: RuntimeAggregate is the one RuntimeValue variant that carries named fields, and every other variant refuses with the same located eval_rejected_projection_receiver_not_aggregate; enumerating them would clone one refusal arm per variant. Landed with gunbc#12506's field-projection eval route; declared at landing so the ratchet arms with the code"
+
+data nfr_dissolve_eval_projection_receiver_not_aggregate: DissolutionCondition = unbound_dissolution(description: "RuntimeValue exposes a typed field-bearing projection (derived from its declaration, dag/std/algebra) so eval reads fields without a per-variant match, and this row deletes")
+
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/fabric_control_plane_live_probe.dag::fci1_slot_prestate_equal" }, reason: nfr_reason_fci1_prestate_equal, dissolution: nfr_dissolve_fci1_prestate_equal },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/native_app_attest.dag::same_assertion_arm" }, reason: nfr_reason_native_app_attest_arm_equal, dissolution: nfr_dissolve_native_app_attest_arm_equal },
@@ -2014,6 +2018,11 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "src/v2/compiler/body_lowering_fold.dag::body_lower_where_leaf_atom_optional" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "src/v2/compiler/body_lowering_fold.dag::body_lower_where_predicate" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "src/v2/std/qualified_name.dag::lexical_reference_label_optional" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow {
+    subject: PathSubject { path: "src/v2/compiler/05_eval.dag::eval_field_projection_of_receiver" },
+    reason: nfr_reason_eval_projection_receiver_not_aggregate,
+    dissolution: nfr_dissolve_eval_projection_receiver_not_aggregate,
+  },
 ]
 
 fn non_fold_residue_frontier_units() -> List<String> {

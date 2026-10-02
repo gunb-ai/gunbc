@@ -507,7 +507,8 @@ fn arrow_domain_binder_name_list(n: Node) -> List<Symbol> {
         FirstPositionalFound { target: domain } => conj_named_binder_name_list(root: domain)
         FirstPositionalAbsent => []
       }
-    _ => []
+    TypeNode { connective: _ } => []
+    ComputationNode { behavior: _ } => []
   }
 }
 
@@ -520,7 +521,8 @@ fn conj_named_binder_name_list(root: Node) -> List<Symbol> {
           Absent => acc
         }
       })
-    _ => []
+    TypeNode { connective: _ } => []
+    ComputationNode { behavior: _ } => []
   }
 }
 
@@ -540,7 +542,8 @@ fn pattern_binder_name_list(ctx: ResolveContext, pat: Node) -> List<Symbol> {
             } else {
               list_snoc_item(xs: acc, item: id)
             }
-          _ => concat(acc, pattern_binder_name_list(ctx: ctx, pat: e.target))
+          TypeNode { connective: _ } => concat(acc, pattern_binder_name_list(ctx: ctx, pat: e.target))
+          ComputationNode { behavior: _ } => concat(acc, pattern_binder_name_list(ctx: ctx, pat: e.target))
         }
       })
   }
@@ -559,7 +562,8 @@ fn bind_binder_name_list(n: Node) -> List<Symbol> {
       } else {
         []
       }
-    _ => []
+    TypeNode { connective: _ } => []
+    ComputationNode { behavior: _ } => []
   }
 }
 
@@ -570,7 +574,8 @@ fn atom_name_list(root: Node) -> List<Symbol> {
       init: fn(n0) {
         match n0.kind {
           TypeNode { connective: Atom { identity: sym } } => [sym]
-          _ => []
+          TypeNode { connective: _ } => []
+          ComputationNode { behavior: _ } => []
         }
       },
       step: fn(acc, _e, child) { concat(acc, child) }
@@ -1456,7 +1461,8 @@ fn resolve_projection_base(ctx: ResolveContext, head_segment: Node) -> Optional<
             ScopeUnbound => optional_absent()
           }
       }
-    _ => optional_absent()
+    TypeNode { connective: _ } => optional_absent()
+    ComputationNode { behavior: _ } => optional_absent()
   }
 }
 
