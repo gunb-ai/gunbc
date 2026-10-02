@@ -13,10 +13,14 @@ import extdeps.filesystem.filesystem_io {
 // directory and entry name, list the directory, read the named entry, and fold both transport
 // channels through filesystem_file_observation, so a could-not-look arrives as its own typed
 // refusal instead of masquerading as an established absence. This spelling was carried verbatim in
-// four wet readers (review 74161 finding 2) and is owned here now: gunbc.codex_supervised_turn,
-// gunbc.host_effect_nbd_proxy_serve, tools.merge_admission_walk, and tools.opaque_realization_census
-// call it instead of re-spelling the composition. A consumer whose question is not this question
-// composes the filesystem_io folds itself rather than varying a copy of this one.
+// five wet readers (review 74161 finding 2, extended by review 74191 to the fifth) and is owned
+// here now: gunbc.codex_supervised_turn, gunbc.host_effect_nbd_proxy_serve,
+// tools.merge_admission_walk, tools.opaque_realization_census, and
+// v2.workflow.product_receipt_stage call it instead of re-spelling the composition. A consumer
+// whose question is not this question composes the filesystem_io folds itself rather than varying
+// a copy of this one -- in particular a consumer that already holds an admitted directory and an
+// admitted FilesystemEntryName keeps its own composition, because re-splitting a joined path would
+// discard the admission it starts from.
 //
 // WHY THE HELPER IS HERE AND NOT IN extdeps.filesystem.filesystem_io: that module is pure over
 // outcomes the caller already obtained -- its own annotation on the FilesystemFileObservation arms

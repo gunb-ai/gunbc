@@ -10,10 +10,8 @@ import extdeps.filesystem.filesystem_io {
   FilesystemFileIndeterminate,
   FilesystemFileObservationsDisagree,
   FilesystemFileSubjectRefused,
-  filesystem_read_outcome,
-  filesystem_listing_observation,
-  filesystem_file_observation,
 }
+import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.gunbc
@@ -600,28 +598,8 @@ fn run_product_receipt_stage(txn: String, manifest_identity: String, entry: Stri
 
   let b1_produced = stage_identity_from_hex(hex: manifest_identity, file_count: 1)
 
-  let manifest_parts = split(s: manifest_path, delimiter: "/")
-  let manifest_name = match manifest_parts.last() {
-    Present { value: value } => value
-    Absent => ""
-  }
-  let manifest_directory = join(manifest_parts.take(n: length(manifest_parts) - 1), "/")
-  let manifest_listing = Filesystem.List(path: manifest_directory)
-  let manifest_read = Filesystem.Read(path: manifest_path)
-  let manifest_observation = manifest_file_observation_of(o: filesystem_file_observation(
-    listing: filesystem_listing_observation(
-      directory: manifest_directory,
-      success: manifest_listing.success,
-      entries: manifest_listing.entries,
-      error: manifest_listing.error,
-    ),
-    name: manifest_name,
-    path: manifest_path,
-    read: filesystem_read_outcome(
-      content: manifest_read.content,
-      success: manifest_read.success,
-      error: manifest_read.error
-    ),
+  let manifest_observation = manifest_file_observation_of(o: filesystem_file_observation_of_path(
+    path: manifest_path
   ))
 
   let b2_consumed = manifest_boundary2_consumed(o: manifest_observation)
