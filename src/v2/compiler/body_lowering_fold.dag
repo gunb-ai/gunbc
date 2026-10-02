@@ -947,13 +947,6 @@ fn body_lower_type_variant_children_with_where(
 // A field declaration is `name: T`, the shape of a typed parameter, so it is read into the same
 // record (BodyLowerTypedParam): the binder atom keeps its token's occurrence, and the field Edge is the
 // record's projection.
-fn body_lower_field_decl_edge_optional(item: Node) -> Optional<Edge> {
-  match body_lower_field_decl_optional(item: item) {
-    Absent => Absent
-    Present { value: field } => Present { value: body_lower_typed_param_edge_of(param: field) }
-  }
-}
-
 fn body_lower_field_decl_optional(item: Node) -> Optional<BodyLowerTypedParam> {
   body_lower_typed_param_optional(param_capture: body_lower_deep_unwrap_optional(node: item))
 }
@@ -975,24 +968,33 @@ fn body_lower_field_items_optional(items: List<Node>) -> Optional<List<BodyLower
   })
 }
 
-// THE FIRST FIELD THAT CARRIES A TAIL, if any. A record field's wire key or default has no typed
-// carrier yet (gunbc.recurring_failure_mode service_interface_member_has_no_carrier), so a record
-// field that writes one refuses at its tail rather than lowering its type and dropping the tail.
-fn body_lower_first_field_tail_optional(fields: List<BodyLowerIoItem>) -> Optional<Node> {
+// THE FIRST FIELD THAT CARRIES A WIRE KEY (`from "key"`), if any. A wire key is a realization fact (the
+// decode projection of one transport's observation), which has no carrier until the realization
+// binding (XL-2 PR3), so a record field carrying one refuses at its tail. A field's DEFAULT is not a
+// tail refusal any more: it lowers onto the field's binder (body_lower_field_binder_edges).
+fn body_lower_first_field_wire_key_optional(fields: List<BodyLowerIoItem>) -> Optional<Node> {
   fold(fields, init: optional_absent(), f: fn(acc, io) {
     match acc {
       Present { value: _ } => acc
-      Absent => body_lower_field_tail_if_present(io: io)
+      Absent =>
+        if body_lower_io_field_wire_key_present(tail: io.tail) {
+          optional_present(value: io.tail)
+        } else {
+          optional_absent()
+        }
     }
   })
 }
 
-fn body_lower_field_tail_if_present(io: BodyLowerIoItem) -> Optional<Node> {
-  if body_lower_io_field_tail_present(tail: io.tail) {
-    optional_present(value: io.tail)
-  } else {
-    optional_absent()
-  }
+// Each field's binder, carrying the default its tail holds when it has one.
+fn body_lower_field_binder_edges(fields: List<BodyLowerIoItem>) -> Outcome<List<Edge>> {
+  fold(fields, init: outcome_accepted(value: Empty), f: fn(acc, io) {
+    bind_outcome(o: acc, f: fn(edges) {
+      bind_outcome(o: body_lower_binder_edge_read(param: io.field, default: body_lower_io_field_default_optional(tail: io.tail)), f: fn(edge) {
+        outcome_accepted(value: list_snoc_item(xs: edges, item: edge))
+      })
+    })
+  })
 }
 
 // `{ f: T, g: U }`: the block's captured is seq(`{`, seq(list, `}`)); its field items.
@@ -1041,16 +1043,13 @@ fn body_lower_field_decl_block_payload(block_shell: Node) -> Outcome<Node> {
           match body_lower_field_items_optional(items: items) {
             Absent => refuse
             Present { value: fields } =>
-              match body_lower_first_field_tail_optional(fields: fields) {
+              match body_lower_first_field_wire_key_optional(fields: fields) {
                 Present { value: tail } =>
-                  match body_lower_find_production_shell_optional(root: tail, emitted: ^dag_surface_default_value) {
-                    Present { value: default } =>
-                      outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_default_value_unmodeled, n: default))
-                    Absent =>
-                      outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_interface_member_unmodeled, n: tail))
-                  }
+                  outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_interface_member_unmodeled, n: tail))
                 Absent =>
-                  outcome_accepted(value: body_lower_payload_node(edges: list_map(xs: fields, f: fn(io) { body_lower_typed_param_edge_of(param: io.field) }), source: block_shell))
+                  bind_outcome(o: body_lower_field_binder_edges(fields: fields), f: fn(edges) {
+                    outcome_accepted(value: body_lower_payload_node(edges: edges, source: block_shell))
+                  })
               }
           }
       }
@@ -2073,21 +2072,24 @@ fn body_lower_after_comma_tail_optional(node: Node) -> Optional<Node> {
 
 // ONE PARAMETER AS AUTHORED: the binder atom, lowered from the token it was read from so it keeps
 // its minted occurrence (body_lower_param_binding_atom_optional), and the lowered type. The
-// parameter Edge is this record's projection (body_lower_typed_param_edge_of), and so is the binder
+// parameter Edge is this record's projection (body_lower_binder_edge_read), and so is the binder
 // list v2.compiler.occurrence_role reads (body_lower_param_list_binder_atoms): one reader, two views.
 type BodyLowerTypedParam {
   binder: Node,
   name: Symbol,
   type_node: Node,
-}
-
-fn body_lower_typed_param_edge_of(param: BodyLowerTypedParam) -> Edge {
-  binder_edge(name: param.name, type_node: param.type_node)
+  default: Optional<Node>,
 }
 
 fn body_lower_collect_param_edges(sequence_capture: Node) -> Outcome<List<Edge>> {
   bind_outcome(o: body_lower_collect_typed_params(sequence_capture: sequence_capture), f: fn(params) {
-    outcome_accepted(value: list_map(xs: params, f: fn(param) { body_lower_typed_param_edge_of(param: param) }))
+    fold(params, init: outcome_accepted(value: Empty), f: fn(acc, param) {
+      bind_outcome(o: acc, f: fn(edges) {
+        bind_outcome(o: body_lower_binder_edge_read(param: param, default: param.default), f: fn(edge) {
+          outcome_accepted(value: list_snoc_item(xs: edges, item: edge))
+        })
+      })
+    })
   })
 }
 
@@ -2269,14 +2271,62 @@ fn body_lower_typed_param_optional(param_capture: Node) -> Optional<BodyLowerTyp
               match sugar_sequence_pair_optional(node: pair.right) {
                 Absent => Absent
                 Present { value: after_colon } =>
-                  match body_lower_type_expr_lowered_optional(node: after_colon.right) {
-                    Absent => Absent
-                    Present { value: type_node } =>
-                      Present { value: BodyLowerTypedParam { binder: binder, name: binding, type_node: type_node } }
-                  }
+                  body_lower_typed_param_after_colon_optional(binder: binder, binding: binding, after_colon: after_colon.right)
               }
           }
       }
+  }
+}
+
+// WHAT FOLLOWS A PARAMETER'S COLON: its type, or -- for `name: T = v` -- the sequence of its type and a
+// tail holding the default production (v2.extdeps.languages.dag dag_grammar_typed_param_expr). The default
+// is kept RAW here and lowered by body_lower_binder_edge_read, so it reaches the binder (XL-2 PR2c-ii)
+// rather than being refused or dropped. A where-clause refinement is refused before this reader runs
+// (body_lower_param_refinement_refusal_optional), so a tail here carries only a default.
+fn body_lower_typed_param_after_colon_optional(binder: Node, binding: Symbol, after_colon: Node) -> Optional<BodyLowerTypedParam> {
+  match body_lower_find_production_shell_optional(root: after_colon, emitted: ^dag_surface_default_value) {
+    Absent =>
+      match body_lower_type_expr_lowered_optional(node: after_colon) {
+        Absent => Absent
+        Present { value: type_node } =>
+          Present { value: BodyLowerTypedParam { binder: binder, name: binding, type_node: type_node, default: Absent } }
+      }
+    Present { value: default_shell } =>
+      match sugar_sequence_pair_optional(node: after_colon) {
+        Absent => Absent
+        Present { value: type_and_tail } =>
+          match body_lower_type_expr_lowered_optional(node: type_and_tail.left) {
+            Absent => Absent
+            Present { value: type_node } =>
+              Present { value: BodyLowerTypedParam { binder: binder, name: binding, type_node: type_node, default: Present { value: default_shell } } }
+          }
+      }
+  }
+}
+
+// A DEFAULT'S VALUE: the default production `= expr` (dag_grammar_default_value_expr) lowered through
+// the one value reader every value position uses, refused at the value under that reader's own cause.
+fn body_lower_default_value_read(default_shell: Node) -> Outcome<Node> {
+  match parse_production_captured_child_optional(node: default_shell) {
+    Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_value_unlowered, n: default_shell))
+    Present { value: captured } =>
+      match sugar_sequence_pair_optional(node: captured) {
+        Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_value_unlowered, n: default_shell))
+        Present { value: eq_and_expr } => body_lower_value_read(value: eq_and_expr.right)
+      }
+  }
+}
+
+// THE BINDER A TYPED PARAMETER OR FIELD LOWERS TO: its type, and its default when it has one, lowered.
+// `default` overrides the parameter's own (a record or io field's default sits in the field's tail,
+// beside the field declaration, not inside it).
+fn body_lower_binder_edge_read(param: BodyLowerTypedParam, default: Optional<Node>) -> Outcome<Edge> {
+  match default {
+    Absent => outcome_accepted(value: binder_edge(name: param.name, type_node: param.type_node))
+    Present { value: default_shell } =>
+      bind_outcome(o: body_lower_default_value_read(default_shell: default_shell), f: fn(value) {
+        outcome_accepted(value: binder_edge_with_default(name: param.name, type_node: param.type_node, default: value))
+      })
   }
 }
 
@@ -3731,26 +3781,12 @@ fn body_lower_first_signature_refusal_optional(captured: Node) -> Optional<Outco
 // refinement. So until a parameter's type can carry its refinement the fn refuses
 // (gunbc.recurring_failure_mode parameter_refinement_has_no_carrier). The clause is searched only
 // inside this declaration's own param_list.
-// A PARAMETER THAT CARRIES A DEFAULT REFUSES, LOCATED AT THE DEFAULT. Nothing on a lowered parameter
-// can hold it, so lowering the fn would drop it (gunbc.recurring_failure_mode
-// default_value_has_no_carrier); the same reason refuses a record field's default.
-// The declaration's param_list is found once and both parameter refusals read it.
+// A parameter's DEFAULT is not refused here any more: it lowers onto the parameter's binder
+// (body_lower_typed_param_after_colon_optional, body_lower_binder_edge_read; XL-2 PR2c-ii).
 fn body_lower_param_list_refusal_optional(captured: Node) -> Optional<Outcome<Node>> {
   match body_lower_find_captured(root: captured, emitted: ^dag_surface_param_list) {
     ParseSubtreeAbsent => optional_absent()
-    ParseSubtreeFound { captured: param_list } =>
-      match body_lower_param_refinement_refusal_optional(param_list: param_list) {
-        Present { value: refused } => optional_present(value: refused)
-        Absent => body_lower_param_default_refusal_optional(param_list: param_list)
-      }
-  }
-}
-
-fn body_lower_param_default_refusal_optional(param_list: Node) -> Optional<Outcome<Node>> {
-  match body_lower_find_production_shell_optional(root: param_list, emitted: ^dag_surface_default_value) {
-    Absent => optional_absent()
-    Present { value: default } =>
-      optional_present(value: outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_default_value_unmodeled, n: default)))
+    ParseSubtreeFound { captured: param_list } => body_lower_param_refinement_refusal_optional(param_list: param_list)
   }
 }
 
@@ -9477,6 +9513,23 @@ fn body_lower_service_member_shells_at(node: Node) -> List<Node> {
 }
 
 // An io field's `[from "key"] [= default]` tail is present when either optional captured anything.
+// A field tail is seq(opt(`from "key"`), opt(default)). Its default is the default production when the
+// tail holds one; its wire key is the first part when that is not empty.
+fn body_lower_io_field_default_optional(tail: Node) -> Optional<Node> {
+  body_lower_find_production_shell_optional(root: tail, emitted: ^dag_surface_default_value)
+}
+
+fn body_lower_io_field_wire_key_present(tail: Node) -> Bool {
+  match sugar_sequence_pair_optional(node: tail) {
+    Present { value: pair } => is_empty_conj_root(n: pair.left) == false
+    Absent =>
+      match body_lower_io_field_default_optional(tail: tail) {
+        Present { value: _ } => false
+        Absent => is_empty_conj_root(n: tail) == false
+      }
+  }
+}
+
 fn body_lower_io_field_tail_present(tail: Node) -> Bool {
   match sugar_sequence_pair_optional(node: tail) {
     Absent => (is_empty_conj_root(n: tail) == false)
@@ -9501,33 +9554,37 @@ fn body_lower_io_block(shell: Node) -> Outcome<BodyLowerIoBlock> {
       match body_lower_io_block_items_optional(captured: captured) {
         Absent => refuse
         Present { value: items } =>
-          match fold(items, init: Present { value: IoAcc { edges: Empty, set_aside: Empty } }, f: fn(acc, item) {
-            match acc {
-              Absent => Absent
-              Present { value: a } =>
-                match body_lower_io_item_optional(item: item) {
-                  Absent => Absent
-                  Present { value: io } =>
-                    Present {
-                      value: IoAcc {
-                        edges: list_snoc_item(xs: a.edges, item: body_lower_typed_param_edge_of(param: io.field)),
-                        set_aside: if body_lower_io_field_tail_present(tail: io.tail) {
-                          list_snoc_item(xs: a.set_aside, item: ServiceSetAside { kind: InterfaceMemberUnmodeled, member: item })
-                        } else {
-                          a.set_aside
-                        }
-                      }
-                    }
-                }
-            }
-          }) {
-            Absent => refuse
-            Present { value: a } =>
+          bind_outcome(
+            o: fold(items, init: outcome_accepted(value: IoAcc { edges: Empty, set_aside: Empty }), f: fn(acc, item) {
+              bind_outcome(o: acc, f: fn(a) { body_lower_io_item_step(a: a, item: item) })
+            }),
+            f: fn(a) {
               outcome_accepted(
                 value: BodyLowerIoBlock { payload: body_lower_payload_node(edges: a.edges, source: shell), set_aside: a.set_aside }
               )
-          }
+            }
+          )
       }
+  }
+}
+
+// ONE IO FIELD: its binder, carrying its default when the tail holds one (lowered, XL-2 PR2c-ii); a
+// wire key in its tail is still set aside (a realization fact, carried by the realization binding in
+// XL-2 PR3). A field this reader cannot read refuses the block, located.
+fn body_lower_io_item_step(a: IoAcc, item: Node) -> Outcome<IoAcc> {
+  match body_lower_io_item_optional(item: item) {
+    Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_field_decl_unlowered, n: item))
+    Present { value: io } =>
+      bind_outcome(o: body_lower_binder_edge_read(param: io.field, default: body_lower_io_field_default_optional(tail: io.tail)), f: fn(edge) {
+        outcome_accepted(value: IoAcc {
+          edges: list_snoc_item(xs: a.edges, item: edge),
+          set_aside: if body_lower_io_field_wire_key_present(tail: io.tail) {
+            list_snoc_item(xs: a.set_aside, item: ServiceSetAside { kind: InterfaceMemberUnmodeled, member: item })
+          } else {
+            a.set_aside
+          }
+        })
+      })
   }
 }
 
