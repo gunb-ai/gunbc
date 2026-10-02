@@ -1128,7 +1128,6 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.reference_conservation.caret_symbol_payload_subject",
   "v2.test.claim.normalize.service_declaration_lowering.sdl_posix_census",
   "v2.test.claim.compiler.dependency_demand_census.ddc_report",
-  "v2.test.claim.compiler.dependency_demand_census.ddc_production_context",
   "v2.test.claim.normalize.operation_modifier.om_all_modifiers_lowered",
   "v2.test.claim.normalize.operation_modifier.om_repeated_modifier_refused",
   "v2.test.claim.binder_default_judgment.bdj_inhabiting_inferred",

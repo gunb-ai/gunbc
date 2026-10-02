@@ -170,7 +170,8 @@ test fn only_equal_network_rows_are_deletable_and_filesystem_is_counted_apart_ho
 
 // THE PRODUCTION CONTROL: the elision is the census route's alone. The production fold over the SAME
 // ingest still refuses the uses module at the clause (v2.compiler.body_lowering_fold
-// body_lower_fn_uses_refusal_optional), so nothing outside the census lowers a uses fn.
+// body_lower_fn_uses_refusal_optional), so nothing outside the census lowers a uses fn. Read by this
+// one claim only, and not shared: a context carries closures, which the cross-claim store refuses.
 fn ddc_production_context() -> Outcome<NativeTestContext> {
   native_test_context_from_ingest(ingest: ddc_ingest)
 }
