@@ -1,0 +1,14 @@
+{
+  "baseline": "3756d624604",
+  "candidate": "07cf32568c5",
+  "baseline_exit": 1,
+  "candidate_exit": 1,
+  "reported_blockers_identical": true,
+  "standing": "both local full runs completed with the same seven browser-host refusals; neither is a green qualification",
+  "host": "srv2, excluded from the browser-test pool srv1/srv3/srv4",
+  "baseline_log_sha256": "be8794d57819db64d7e2f623023fbf5bbb53156b9c936818d048933f6e79cd28",
+  "baseline_elapsed": "39:31.19",
+  "candidate_elapsed": "37:33.31",
+  "performance_claim": "none; host environment refusals and concurrent workloads prevent a clean whole-floor performance verdict",
+  "next_authority": "eligible-runner CI 37022147268 at allocation merge ba4c65cec0a3"
+}
