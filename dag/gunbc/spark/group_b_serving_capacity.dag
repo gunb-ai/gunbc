@@ -155,13 +155,22 @@ data group_b_route_offer_ceiling: Nat = 8
 // engine, where a cold request at the head blocks every warm one behind it (the pinned scheduler
 // stops scanning the waiting queue at the first request whose blocks do not fit). The durable backlog
 // belongs before the engine. Absent means the envelope is unavailable or the offer breaches it; the
-// route fails closed rather than offering what the engine cannot hold.
-fn group_b_route_offer() -> Nat? {
+// route is UNRESOLVED with the cause (gunbc.serving.serving_enrollment) -- never a guessed capacity.
+type RouteOfferStanding
+  = RouteOfferAdmitted { seats: Nat }
+  | RouteOfferRefused { cause: NonEmptyStr }
+
+fn group_b_route_offer() -> RouteOfferStanding {
   match group_b_scheduler_envelope() {
-    Absent => none
+    Absent => RouteOfferRefused { cause: "the Group B scheduler envelope is unavailable (its cold intent refused), so there is no engine ceiling to bound an offer by" as NonEmptyStr }
     Present { value: e } =>
-      if group_b_route_offer_ceiling == 0 || group_b_route_offer_ceiling > envelope_hard_max_num_seqs(e: e) { none }
-      else { Present { value: group_b_route_offer_ceiling } }
+      if group_b_route_offer_ceiling == 0 {
+        RouteOfferRefused { cause: "the Group B route offer is zero, which offers nothing" as NonEmptyStr }
+      } else if group_b_route_offer_ceiling > envelope_hard_max_num_seqs(e: e) {
+        RouteOfferRefused { cause: join(["the Group B route offer of ", to_string(group_b_route_offer_ceiling), " exceeds the engine ceiling of ", to_string(envelope_hard_max_num_seqs(e: e)), ": offered turns would queue inside the engine"], "") as NonEmptyStr }
+      } else {
+        RouteOfferAdmitted { seats: group_b_route_offer_ceiling }
+      }
   }
 }
 
