@@ -24,10 +24,14 @@ import v2.std.node {
   Node,
   Symbol,
   TypeNode,
+  allocate_pending_occurrences,
+  content_hash,
+  node_occurrence_allocator_after,
   node_rebuild,
   node_subtree_nodes,
   well_formed
 }
+import std.occurrence_identity { ScopedOccurrenceAllocator, scoped_occurrence_allocator }
 import v2.std.compilers.sugar {
   ProductionIdentityKey,
   SugarKey,
@@ -411,13 +415,34 @@ fn bind_retention_free(o: Outcome<BodyLoweredTree>) -> Outcome<Node> {
 // shell is the earlier fact, and it is why either of them would refuse. v2.compiler.normalized_tree
 // admit_retention_free is where the retained list is consumed and the Node leaves the lowering
 // carrier; nothing downstream of it holds a retention to drop.
-fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
+// WHERE THE ALLOCATOR COMES FROM, RESOLVED ONLY WHERE IT IS USED. An isolated allocator starts after the
+// tree's highest id, which is a walk over the parse tree; resolving it only once lowering and the
+// graft have succeeded means a normalize that refuses earlier pays nothing for an allocation it
+// never makes.
+type NormalizeAllocatorSource
+  = NormalizeWithIngestAllocator { allocator: ScopedOccurrenceAllocator }
+  | NormalizeWithIsolatedAllocator
+
+fn normalize_allocator_resolve(source: NormalizeAllocatorSource, parse_tree: ParseTree) -> ScopedOccurrenceAllocator {
+  match source {
+    NormalizeWithIngestAllocator { allocator: a } => a
+    NormalizeWithIsolatedAllocator => normalize_isolated_allocator(parse_tree: parse_tree)
+  }
+}
+
+fn normalize_scoped(parse_tree: ParseTree, allocator: ScopedOccurrenceAllocator) -> Outcome<ScopedNormalizedTree> {
+  normalize_with(parse_tree: parse_tree, source: NormalizeWithIngestAllocator { allocator: allocator })
+}
+
+fn normalize_with(parse_tree: ParseTree, source: NormalizeAllocatorSource) -> Outcome<ScopedNormalizedTree> {
   match bind_retention_free(o: normalize_node(n: parse_tree)) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: normalized, diagnostics: d } =>
       match normalize_module_graft_finish(folded: normalized, cd: d) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: grafted, diagnostics: d1 } =>
+        Accepted { value: lowered, diagnostics: d1 } =>
+          let allocated = allocate_pending_occurrences(root: lowered, allocator: normalize_allocator_resolve(source: source, parse_tree: parse_tree))
+          let grafted = allocated.root
           if well_formed(n: grafted) {
             let parse_nodes = node_subtree_nodes(root: parse_tree)
             match test_marker_capture(tree: parse_tree) {
@@ -428,13 +453,17 @@ fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
                   Rejected { diagnostics: r } =>
                     Rejected { diagnostics: rejected_with_pending(pending: d1, rejected: r) }
                   Accepted { value: bindings, diagnostics: _ } =>
-                    admit_normalized_tree(
+                    match admit_normalized_tree(
                       root: grafted,
                       test_markers: markers,
                       import_bindings: bindings,
                       type_declaration_kinds: type_declaration_kind_capture(nodes: parse_nodes),
                       diagnostics: d1
-                    )
+                    ) {
+                      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                      Accepted { value: tree, diagnostics: d2 } =>
+                        Accepted { value: ScopedNormalizedTree { tree: tree, allocator: allocated.allocator }, diagnostics: d2 }
+                    }
                 }
             }
           } else {
@@ -448,6 +477,33 @@ fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
             }
           }
       }
+  }
+}
+
+// A NORMALIZED TREE TOGETHER WITH THE ALLOCATOR ITS LOWERING ADVANCED. normalize_scoped allocates every
+// pending image member (v2.std.node allocate_pending_occurrences) from the allocator it is handed,
+// so a caller that normalizes several files of one ingest threads this allocator to the next file
+// and every id stays unique across the ingest -- which matters because an ingest merges its span
+// indexes, and a projected id that reused another file's authored id would resolve to that file's
+// location.
+type ScopedNormalizedTree {
+  tree: NormalizedTree
+  allocator: ScopedOccurrenceAllocator
+}
+
+// THE ISOLATED ALLOCATOR: for a tree normalized on its own. Its allocation begins after the highest
+// id the tree already carries, so no projected id reuses an authored one inside it, and its scope
+// is the tree's own structural digest (content_hash ignores occurrences), which is the isolated
+// allocator domain occurrence_identity_scope_law names for a standalone parse.
+fn normalize_isolated_allocator(parse_tree: ParseTree) -> ScopedOccurrenceAllocator {
+  scoped_occurrence_allocator(alloc: node_occurrence_allocator_after(root: parse_tree), scope: content_hash(n: parse_tree))
+}
+
+// A tree normalized on its own, for every caller that is not threading an ingest's allocator.
+fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
+  match normalize_with(parse_tree: parse_tree, source: NormalizeWithIsolatedAllocator) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: scoped, diagnostics: d } => Accepted { value: scoped.tree, diagnostics: d }
   }
 }
 
@@ -539,7 +595,8 @@ fn normalize_census(parse_tree: ParseTree) -> Outcome<CensusTree> {
     Accepted { value: normalized, diagnostics: d } =>
       match normalize_module_graft_finish(folded: normalized, cd: d) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: grafted, diagnostics: d1 } =>
+        Accepted { value: lowered, diagnostics: d1 } =>
+          let grafted = allocate_pending_occurrences(root: lowered, allocator: normalize_isolated_allocator(parse_tree: parse_tree)).root
           if well_formed(n: grafted) {
             let parse_nodes = node_subtree_nodes(root: parse_tree)
             match import_binding_capture(tree: parse_tree, nodes: parse_nodes) {

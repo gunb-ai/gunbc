@@ -5,6 +5,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.ebay.ebay { production_api_base }
 import extdeps.ietf.http_semantics { HttpMethod }
+import std.resources { Network }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -63,6 +64,7 @@ service ebay.OAuth {
   }
 
   operation MintApplicationToken {
+    requires Network
     input {
       client_id: String
       client_secret: Secret
@@ -90,6 +92,7 @@ service ebay.OAuth {
   }
 
   operation MintUserToken {
+    requires Network
     input {
       client_id: String
       client_secret: Secret
@@ -118,6 +121,7 @@ service ebay.OAuth {
   }
 
   operation ExchangeAuthorizationCode {
+    requires Network
     input {
       client_id: String
       client_secret: Secret
