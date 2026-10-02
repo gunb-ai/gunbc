@@ -67,7 +67,7 @@ pub fn checkpoint_row_migration_rows() -> Rc<Vec<Rc<CheckpointRowMigration>>> {
 }), Rc::new(CheckpointRowMigration {
     dag_name: "Int".to_string(),
     disposition: Rc::new(CheckpointRowDisposition::StillBareNameDebt {
-    reason: "std.integer Int has an exact row (RustI64; native by v1.compiler.coercion numeric_realization_declaring_modules). v2.std.integer Int (GroupCompletion<v2.std.nat.Nat>) is answered i64 by the bare-name bypass today and no authority has ruled that this is its modeled realization rather than an accident of the bypass; the kernel int_type mint rides the same row.".to_string(),
+    reason: "std.integer Int has an exact row (RustI64; native by v1.compiler.coercion numeric_realization_declaring_modules). v2.std.integer Int (GroupCompletion<std.nat.Nat>) is answered i64 by the bare-name bypass today and no authority has ruled that this is its modeled realization rather than an accident of the bypass; the kernel int_type mint rides the same row.".to_string(),
     restoration_trigger: "A ruling on v2.std.integer Int's Rust realization sufficient to author its exact row or its structural gate, after which this bare row serves only the kernel mint and its verdict becomes ProvenUniqueKernelBinding (i64 is a primitive token no use-line can shadow).".to_string(),
 }),
 }), Rc::new(CheckpointRowMigration {

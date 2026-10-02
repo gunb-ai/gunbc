@@ -810,7 +810,9 @@ fn algebra_profile_support(profile: AlgebraProfile) -> AlgebraSupportAxis {
 
 // WHICH CARRIERS A NUMERAL DENOTES AN ELEMENT OF. A numeral names the image of an integer under the
 // unique ring homomorphism out of the integers, so it has a denotation exactly in a profile that
-// carries ring structure: the ordered ring and the (approximate) field. A Boolean algebra, a free
+// carries ring structure: the ordered ring and the (approximate) field. The ordered semiring is the
+// same reading one step down: a non-negative numeral names the image of a natural under the unique
+// semiring homomorphism out of the naturals, so it too has a denotation there. A Boolean algebra, a free
 // monoid and every collection or function profile carry no such map, so a numeral at one of them
 // is a different value, never a spelling of one of theirs (DESIGN section 4: a Bool literal is not
 // an Int literal, and no implicit route exists). Every arm is spelled, so a new profile is a
@@ -818,6 +820,7 @@ fn algebra_profile_support(profile: AlgebraProfile) -> AlgebraSupportAxis {
 fn algebra_profile_admits_numeral(profile: AlgebraProfile) -> Bool {
   match profile {
     OrderedRingProfile => true
+    OrderedSemiringProfile => true
     ApproximateFieldProfile => true
     BooleanAlgebraProfile => false
     FinitePowerSetProfile => false
