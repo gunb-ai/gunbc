@@ -17473,9 +17473,9 @@ pub fn emit_enum_from_children(
 ) -> String {
     {
         let has_fn_fields = type_has_fn_fields(name.clone(), emit_info.clone());
-        let deserialize_forbidden = enum_variant_payloads_forbid_deserialize(
+        let deserialize_forbidden = members_forbid_deserialize(
             name.clone(),
-            children.clone(),
+            member_type_nodes(false, children.clone()),
             emit_info.clone(),
             env.source_indices.clone(),
         );
@@ -23206,11 +23206,11 @@ pub fn type_expr_reaches_sealed_carrier(
                                     v1_rt::rc_map_insert(seen.clone(), name.clone(), true);
                                 {
                                     let mut __found = false;
-                                    for child in decl.children.clone().iter().cloned() {
+                                    for member in
+                                        decl_member_type_nodes(decl.clone()).iter().cloned()
+                                    {
                                         if type_expr_reaches_sealed_carrier(
-                                            crate::v1_compiler_infer_types::child_type_node(
-                                                child.clone(),
-                                            ),
+                                            member.clone(),
                                             emit_info.clone(),
                                             source_indices.clone(),
                                             next_seen.clone(),
@@ -23231,9 +23231,50 @@ pub fn type_expr_reaches_sealed_carrier(
     })
 }
 
-pub fn decl_children_forbid_deserialize(
+pub fn member_type_nodes(is_product: bool, children: Rc<Vec<Rc<Node>>>) -> Rc<Vec<Rc<Node>>> {
+    if is_product.clone() {
+        Rc::new({
+            let mut __result = Vec::new();
+            for field in children.iter().cloned() {
+                __result.push(crate::v1_compiler_infer_types::child_type_node(
+                    field.clone(),
+                ));
+            }
+            __result
+        })
+    } else {
+        Rc::new({
+            let mut __result = Vec::new();
+            for variant in children.iter().cloned() {
+                __result.extend(
+                    (*Rc::new({
+                        let mut __result = Vec::new();
+                        for field in variant.children.clone().iter().cloned() {
+                            __result.push(crate::v1_compiler_infer_types::child_type_node(
+                                field.clone(),
+                            ));
+                        }
+                        __result
+                    }))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        })
+    }
+}
+
+pub fn decl_member_type_nodes(decl: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
+    member_type_nodes(
+        crate::v1_compiler_infer_types::is_product_type(decl.clone()),
+        decl.children.clone(),
+    )
+}
+
+pub fn members_forbid_deserialize(
     name: String,
-    children: Rc<Vec<Rc<Node>>>,
+    members: Rc<Vec<Rc<Node>>>,
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
@@ -23245,9 +23286,9 @@ pub fn decl_children_forbid_deserialize(
         );
         {
             let mut __found = false;
-            for child in children.iter().cloned() {
+            for member in members.iter().cloned() {
                 if type_expr_reaches_sealed_carrier(
-                    crate::v1_compiler_infer_types::child_type_node(child.clone()),
+                    member.clone(),
                     emit_info.clone(),
                     source_indices.clone(),
                     seen.clone(),
@@ -23269,51 +23310,12 @@ pub fn item_forbids_deserialize(
     if item_seals_construction(item.clone()) {
         true
     } else {
-        decl_children_forbid_deserialize(
+        members_forbid_deserialize(
             crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
-            item.children.clone(),
+            decl_member_type_nodes(item.clone()),
             emit_info.clone(),
             source_indices.clone(),
         )
-    }
-}
-
-pub fn enum_variant_payloads_forbid_deserialize(
-    name: String,
-    children: Rc<Vec<Rc<Node>>>,
-    emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    {
-        let seen = v1_rt::rc_map_insert(
-            v1_rt::rc_empty_map::<String, bool>(),
-            crate::v1_std_core::qualified_last_segment(name.clone()),
-            true,
-        );
-        {
-            let mut __found = false;
-            for variant in children.iter().cloned() {
-                if {
-                    let mut __found = false;
-                    for field in variant.children.clone().iter().cloned() {
-                        if type_expr_reaches_sealed_carrier(
-                            crate::v1_compiler_infer_types::child_type_node(field.clone()),
-                            emit_info.clone(),
-                            source_indices.clone(),
-                            seen.clone(),
-                        ) {
-                            __found = true;
-                            break;
-                        }
-                    }
-                    __found
-                } {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        }
     }
 }
 

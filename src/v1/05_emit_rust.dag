@@ -8209,7 +8209,7 @@ fn enum_derives(name: String, children: List<Node>, has_fn_fields: Bool, deseria
 // same has_fn_fields here rather than deriving it twice.
 fn emit_enum_from_children(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, serde_policy: RustEnumWireSerde, emit_info: EmitGraphInfo) -> String {
   let has_fn_fields = type_has_fn_fields(name: name, emit_info: emit_info)
-  let deserialize_forbidden = enum_variant_payloads_forbid_deserialize(name: name, children: children, emit_info: emit_info, source_indices: env.source_indices)
+  let deserialize_forbidden = members_forbid_deserialize(name: name, members: member_type_nodes(is_product: false, children: children), emit_info: emit_info, source_indices: env.source_indices)
   let derives = enum_derives(name: name, children: children, has_fn_fields: has_fn_fields, deserialize_forbidden: deserialize_forbidden, generic_param_names: generic_param_names, emit_info: emit_info, source_indices: env.source_indices)
   let effective_serde_policy = if has_fn_fields {
     rust_serde_policy(enum_attr: "", rename_prefix: none, rename_suffix: none, rename_style: none)
@@ -10881,8 +10881,8 @@ fn type_expr_reaches_sealed_carrier(n: Node, emit_info: EmitGraphInfo, source_in
           true
         } else {
           let next_seen = map_insert(seen, name, true)
-          decl.children |> any(child =>
-            type_expr_reaches_sealed_carrier(n: child_type_node(ch: child), emit_info: emit_info, source_indices: source_indices, seen: next_seen)
+          decl_member_type_nodes(decl: decl) |> any(member =>
+            type_expr_reaches_sealed_carrier(n: member, emit_info: emit_info, source_indices: source_indices, seen: next_seen)
           )
         }
       Absent => false
@@ -10890,10 +10890,29 @@ fn type_expr_reaches_sealed_carrier(n: Node, emit_info: EmitGraphInfo, source_in
   }
 }
 
-fn decl_children_forbid_deserialize(name: String, children: List<Node>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> Bool {
+// THE MEMBER TYPES OF A DECLARATION, read the same way at every depth. A product's members are its
+// fields; a coproduct's are its variants' payload fields. The walk once read a LOOKED-UP coproduct's
+// children as if they were fields, and child_type_node resolves a variant to the coproduct itself --
+// already in the seen-set -- so a seal two coproducts deep was never reached: v2.std.node's
+// EdgeLabel -> StructuralEdgeLabel -> CoreEdgeLabel -> BodyTermLoweredSeal kept a derived Deserialize
+// on every container and the emitted crate refused E0277. The top-level enum entry read variants
+// correctly, so the defect was the two readings disagreeing; one reader closes it.
+fn member_type_nodes(is_product: Bool, children: List<Node>) -> List<Node> {
+  if is_product {
+    children |> map(field => child_type_node(ch: field))
+  } else {
+    children |> flat_map(variant => variant.children |> map(field => child_type_node(ch: field)))
+  }
+}
+
+fn decl_member_type_nodes(decl: Node) -> List<Node> {
+  member_type_nodes(is_product: is_product_type(n: decl), children: decl.children)
+}
+
+fn members_forbid_deserialize(name: String, members: List<Node>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> Bool {
   let seen = map_insert(empty_map(), qualified_last_segment(name: name), true)
-  children |> any(child =>
-    type_expr_reaches_sealed_carrier(n: child_type_node(ch: child), emit_info: emit_info, source_indices: source_indices, seen: seen)
+  members |> any(member =>
+    type_expr_reaches_sealed_carrier(n: member, emit_info: emit_info, source_indices: source_indices, seen: seen)
   )
 }
 
@@ -10901,17 +10920,8 @@ fn item_forbids_deserialize(item: Node, emit_info: EmitGraphInfo, source_indices
   if item_seals_construction(item: item) {
     true
   } else {
-    decl_children_forbid_deserialize(name: authored_name_at(source_indices: source_indices, node: item), children: item.children, emit_info: emit_info, source_indices: source_indices)
+    members_forbid_deserialize(name: authored_name_at(source_indices: source_indices, node: item), members: decl_member_type_nodes(decl: item), emit_info: emit_info, source_indices: source_indices)
   }
-}
-
-fn enum_variant_payloads_forbid_deserialize(name: String, children: List<Node>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> Bool {
-  let seen = map_insert(empty_map(), qualified_last_segment(name: name), true)
-  children |> any(variant =>
-    variant.children |> any(field =>
-      type_expr_reaches_sealed_carrier(n: child_type_node(ch: field), emit_info: emit_info, source_indices: source_indices, seen: seen)
-    )
-  )
 }
 
 // A sealed record's fields are private in the emitted crate, so a stored-field read
