@@ -13,7 +13,7 @@ import gunbc.roadmap_serve {
   BeltPublishHandler,
   IssueDetailPageHandler, IssueAssignHandler, IssueCommentHandler, IssueAssignmentContextHandler,
   serve_issue_assignment_context_over,
-  AuthLoginHandler, AuthGoogleCallbackHandler, AuthLogoutHandler, AuthSessionHandler,
+  AuthSessionHandler,
   roadmap_serve_route_table_build,
   roadmap_serve_route_specs,
   roadmap_serve_own_route_specs,
@@ -31,9 +31,7 @@ import gunbc.roadmap_serve {
   serve_fabric_assignment_response,
   issue_comment_body_of,
   serve_comment_recorded_response,
-  auth_login_config_refusal, auth_login_redirect_location, auth_callback_state_refusal,
-  auth_session_body, auth_logout_response,
-  auth_login_prompt_admit, LoginPromptAdmitted, LoginPromptRefused, OidcLoginPromptSelectAccount,
+  auth_session_body,
 }
 import gunbc.roadmap_belt_actuate {
   BeltSpawnOutcome, Spawned, SpawnFailed, SpawnNotAdmitted,
@@ -56,7 +54,6 @@ import gunbc.roadmap_component { instrument_lab_links }
 import gunbc.roadmap_component { roadmap_dispatch_asset_path, dispatch_client_js_source, sandbox_asset_path }
 import extdeps.http.server {
   ServeHttpRequest, ServeHttpResponse,
-  ServeResponseHeader, ServeResponseHeaderLocation, ServeResponseHeaderSetCookie, ServeResponseHeaderNoStore,
   RequestSecurityContext, AccessPathLocalDev,
   ServedRouteTable,
   ServedRouteSpec, ServedRouteTableBuild, ServedRouteTableBuilt, ServedRouteTableBuildRefused,
@@ -70,21 +67,16 @@ import extdeps.http.server {
 import extdeps.uri_path { PathParamBinding, path_param_value }
 import gunbc.auth.approval_broker_serve { approval_broker_route_specs }
 import std.types {
-  Secret, String, Int, Bool, List, NonEmptyStr, Email }
+  String, Int, Bool, List, NonEmptyStr, Email }
 import gunbc.roadmap_authority {
   RoadmapAuthorityProjection, RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
 }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_page { roadmap_daily_workspace_page_for_projection_observed }
 import gunbc.roadmap.roadmap_event_log { StandingsUnobserved }
-import gunbc.auth.oidc_deployment_config { OidcDeploymentConfig }
-import extdeps.auth.oidc {
-  OidcLoginTransaction, OidcPkceCodeVerifier, RelativeReturnPath,
-}
 import gunbc.auth.session {
   AuthenticatedSession, AuthMethodGoogleOidc, SessionClientTrackerWeb, CsrfToken,
   SessionProfile, SessionCookieAbsent,
-  session_cookie_clear_line,
 }
 import extdeps.uri { Uri, Https }
 import gunbc.principal_projection {
@@ -885,24 +877,12 @@ test fn witness_comment_recorded_response_names_the_deep_link() -> Bool {
   let first = serve_comment_recorded_response(node_id: "demo-node", comments: comments, comment: "k2", event_id: "evt-9", already_present: false)
   let retry = serve_comment_recorded_response(node_id: "demo-node", comments: comments, comment: "k2", event_id: "", already_present: true)
   let missing = serve_comment_recorded_response(node_id: "demo-node", comments: comments, comment: "k9", event_id: "evt-10", already_present: false)
-  first.status == 303
-    && response_location_of(response: first) == "/issue/demo-node#comment-2"
+  first.status == 200
     && string_contains(s: first.body, pattern: "comment recorded: /issue/demo-node#comment-2 (event evt-9)")
-    && retry.status == 303
-    && response_location_of(response: retry) == "/issue/demo-node#comment-2"
+    && retry.status == 200
+    && string_contains(s: retry.body, pattern: "comment recorded (already present): /issue/demo-node#comment-2")
     && missing.status == 502
-    && response_location_of(response: missing) == ""
     && !string_contains(s: missing.body, pattern: "#comment-")
-}
-
-fn response_location_of(response: ServeHttpResponse) -> String {
-  fold(response.headers, init: "", f: fn(acc, h) {
-    match h {
-      ServeResponseHeaderLocation { location: l } => l as String
-      ServeResponseHeaderSetCookie { set_cookie: _ } => acc
-      ServeResponseHeaderNoStore => acc
-    }
-  })
 }
 
 // ── The auth routes (lane A3 frontier 3) ───────────────────────────────────────────────────────
@@ -911,31 +891,6 @@ fn response_location_of(response: ServeHttpResponse) -> String {
 // logout clearing — exactly the arms the witnesses name; the IO arms (entropy, store, the
 // exchange, the verification) are the same substrate folds the earlier frontiers witnessed
 // piece by piece.
-
-data witness_auth_redirect_expected: String = "https://accounts.google.com/o/oauth2/v2/auth?client_id=fixture-client-id&response_type=code&scope=openid%20email%20profile&redirect_uri=%68%74%74%70%73%3A%2F%2F%74%72%61%63%6B%65%72%2E%67%75%6E%62%2E%61%69%2F%61%75%74%68%2F%67%6F%6F%67%6C%65%2F%63%61%6C%6C%62%61%63%6B&state=state-1&nonce=nonce-1&code_challenge=xTYRBLTDt1gS3-rw_3FBVafZ0iNg9bZYBbG8fRPvkEs&code_challenge_method=S256"
-
-fn witness_auth_config() -> OidcDeploymentConfig {
-  OidcDeploymentConfig {
-    client_id: "fixture-client-id" as NonEmptyStr,
-    client_secret: "fixture-secret" as Secret,
-    redirect_uri: "https://tracker.gunb.ai/auth/google/callback" as NonEmptyStr,
-    admitted_audiences: ["fixture-client-id" as NonEmptyStr],
-    expected_hosted_domain: "gunb.ai" as NonEmptyStr,
-    session_lifetime_seconds: 43200,
-    login_transaction_lifetime_seconds: 600,
-  }
-}
-
-fn witness_auth_transaction() -> OidcLoginTransaction {
-  OidcLoginTransaction {
-    state: "state-1" as NonEmptyStr,
-    nonce: "nonce-1" as NonEmptyStr,
-    created_at: "2026-09-27T00:00:00Z",
-    expires_at: "2026-09-27T00:10:00Z",
-    verifier: OidcPkceCodeVerifier { verifier: "verifier-1" as NonEmptyStr },
-    return_path: RelativeReturnPath { path: "/roadmap" as NonEmptyStr },
-  }
-}
 
 fn witness_auth_session() -> AuthenticatedSession {
   AuthenticatedSession {
@@ -977,105 +932,30 @@ fn witness_auth_session_without_picture() -> AuthenticatedSession {
   }
 }
 
-// THE FOUR ROUTES ARE SERVED: each auth route selects its handler on the live table, with the
-// methods the ruling names — login and callback are GETs, logout is a POST, session is a GET.
-test fn the_auth_routes_are_served_with_their_methods() -> Bool {
+// THE SESSION ROUTE IS SERVED AND THE LOGIN ROUTES ARE NOT: the OIDC login, callback and
+// logout routes moved to a follow-up (their redirect and Set-Cookie answers need a socket
+// runtime that writes response headers, which this revision's seed does not), so each path
+// selects no route rather than reaching a handler whose headers would be dropped.
+test fn the_session_route_is_served_and_the_login_routes_are_not() -> Bool {
   match roadmap_serve_route_table_build() {
     ServedRouteTableBuildRefused { raw: _, segment: _, reason: _ } => false
     ServedRouteTableBuilt { table: t } =>
-      match serve_select_route(table: t, method: GET, path: "/auth/login") {
-        SelectedDynamic { handler: AuthLoginHandler, params: _ } => true
+      match serve_select_route(table: t, method: GET, path: "/auth/session") {
+        SelectedDynamic { handler: AuthSessionHandler, params: _ } => true
         _ => false
       }
+        && match serve_select_route(table: t, method: GET, path: "/auth/login") {
+          NoRouteMatched => true
+          _ => false
+        }
         && match serve_select_route(table: t, method: GET, path: "/auth/google/callback") {
-          SelectedDynamic { handler: AuthGoogleCallbackHandler, params: _ } => true
+          NoRouteMatched => true
           _ => false
         }
         && match serve_select_route(table: t, method: POST, path: "/auth/logout") {
-          SelectedDynamic { handler: AuthLogoutHandler, params: _ } => true
+          NoRouteMatched => true
           _ => false
         }
-        && match serve_select_route(table: t, method: GET, path: "/auth/session") {
-          SelectedDynamic { handler: AuthSessionHandler, params: _ } => true
-          _ => false
-        }
-        && match serve_select_route(table: t, method: GET, path: "/auth/logout") {
-          MethodNotAllowed { allowed: _ } => true
-          _ => false
-        }
-  }
-}
-
-// THE LOGIN ROUTE WITHOUT CONFIG REFUSES NAMING THE CAUSE: the 503 an unconfigured deployment
-// answers carries the located cause — here the env var — so the operator reads what to fix,
-// and nothing else about the serve breaks.
-test fn the_login_route_without_config_refuses_naming_the_cause() -> Bool {
-  match auth_login_config_refusal(cause: "GUNBC_OIDC_CONFIG_FILE is not set in the serve process environment; drop the operator config file and name its path there") {
-    ServeHttpResponse { status, content_type: _, body, headers: _ } =>
-      status == 503
-        && string_contains(s: body, pattern: "GUNBC_OIDC_CONFIG_FILE")
-        && string_contains(s: body, pattern: "login refused")
-    _ => false
-  }
-}
-
-// THE LOGIN REDIRECT IS THE GOOGLE AUTHORIZATION REQUEST, derived entirely from the closed
-// model: the fixture transaction's state and nonce, the PKCE challenge computed the RFC 7636
-// way from the fixture verifier, the config's exact-match redirect URI percent-encoded by the
-// uri authority, only the ruling's three scopes, and the prompt member ONLY when the login
-// admitted one — an ordinary login carries no prompt, the account menu's "Switch account"
-// carries prompt=select_account, and an unadmitted prompt spelling refuses before anything
-// else.
-test fn the_login_redirect_location_is_the_google_authorization_request() -> Bool {
-  auth_login_redirect_location(
-    config: witness_auth_config(),
-    transaction: witness_auth_transaction(),
-    redirect_encoded: "%68%74%74%70%73%3A%2F%2F%74%72%61%63%6B%65%72%2E%67%75%6E%62%2E%61%69%2F%61%75%74%68%2F%67%6F%6F%67%6C%65%2F%63%61%6C%6C%62%61%63%6B",
-    challenge: "xTYRBLTDt1gS3-rw_3FBVafZ0iNg9bZYBbG8fRPvkEs" as NonEmptyStr,
-    prompt: none,
-  ) == witness_auth_redirect_expected()
-    && string_contains(s: witness_auth_redirect_expected(), pattern: "code_challenge_method=S256")
-    && !string_contains(s: witness_auth_redirect_expected(), pattern: "gmail")
-    && !string_contains(s: witness_auth_redirect_expected(), pattern: "prompt")
-    && string_contains(
-      s: auth_login_redirect_location(
-        config: witness_auth_config(),
-        transaction: witness_auth_transaction(),
-        redirect_encoded: "%68%74%74%70%73%3A%2F%2F%74%72%61%63%6B%65%72%2E%67%75%6E%62%2E%61%69%2F%61%75%74%68%2F%67%6F%6F%67%6C%65%2F%63%61%6C%6C%62%61%63%6B",
-        challenge: "xTYRBLTDt1gS3-rw_3FBVafZ0iNg9bZYBbG8fRPvkEs" as NonEmptyStr,
-        prompt: Present { value: OidcLoginPromptSelectAccount },
-      ),
-      pattern: "&prompt=select_account",
-    )
-    && match auth_login_prompt_admit(raw: "") {
-      LoginPromptAdmitted { prompt: p } => match p {
-        Absent => true
-        Present { value: _ } => false
-      }
-      LoginPromptRefused { raw: _ } => false
-    }
-    && match auth_login_prompt_admit(raw: "select_account") {
-      LoginPromptAdmitted { prompt: p } => match p {
-        Present { value: OidcLoginPromptSelectAccount } => true
-        Absent => false
-      }
-      LoginPromptRefused { raw: _ } => false
-    }
-    && match auth_login_prompt_admit(raw: "consent") {
-      LoginPromptRefused { raw: r } => r == "consent"
-      LoginPromptAdmitted { prompt: _ } => false
-    }
-}
-
-// A CALLBACK WITH WRONG STATE REFUSES BEFORE ANYTHING ELSE: the 400 names the state as forged,
-// consumed, or expired, and no code is read, no store is written, no Google is asked — the
-// wrong-state control the ruling demands.
-test fn a_callback_with_wrong_state_refuses_before_anything_else() -> Bool {
-  match auth_callback_state_refusal() {
-    ServeHttpResponse { status, content_type: _, body, headers: _ } =>
-      status == 400
-        && string_contains(s: body, pattern: "state names no live login transaction")
-    _ => false
   }
 }
 
@@ -1111,44 +991,6 @@ test fn the_session_wire_carries_the_picture_only_when_the_profile_projects_one(
     && !string_contains(s: auth_session_body(evidence: AuthAbsent), pattern: "\"name\"")
     && !string_contains(s: auth_session_body(evidence: SessionStandingInvalid { standing: SessionCookieAbsent }), pattern: "\"picture\"")
     && !string_contains(s: auth_session_body(evidence: SessionStandingInvalid { standing: SessionCookieAbsent }), pattern: "\"name\"")
-}
-
-// LOGOUT CLEARS THE COOKIE, DELETES NOTHING IT WAS NOT SHOWN, AND REDIRECTS HOME: a request
-// presenting no session answers 303 to the dashboard root with the Set-Cookie clearing line
-// (the browser drops the cookie whether or not the server had anything to delete, and the
-// follow-navigation reloads the main page, where the account client re-fetches against the
-// cleared cookie and Sign in returns — no raw receipt page), and names that no live session
-// was presented.
-test fn logout_clears_the_cookie_even_with_no_live_session() -> Bool {
-  let request = ServeHttpRequest {
-    method: POST,
-    path: "/auth/logout",
-    body: "",
-    security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent },
-  }
-  match auth_logout_response(instance: srv2_preview_dashboard_instance(), request: request) {
-    ServeHttpResponse { status, content_type: _, body, headers } =>
-      status == 303
-        && string_contains(s: body, pattern: "no live session was presented")
-        && string_contains(s: join(map(headers, h => auth_header_wire(header: h)), "|"), pattern: "gunbc_session=")
-        && string_contains(s: join(map(headers, h => auth_header_wire(header: h)), "|"), pattern: "Max-Age=0")
-        && match headers.first() {
-          Present { value: h } => match h {
-            ServeResponseHeaderLocation { location: l } => (l as String) == "/"
-            _ => false
-          }
-          Absent => false
-        }
-    _ => false
-  }
-}
-
-fn auth_header_wire(header: ServeResponseHeader) -> String {
-  match header {
-    ServeResponseHeaderLocation { location: l } => l as String
-    ServeResponseHeaderSetCookie { set_cookie: c } => c as String
-    ServeResponseHeaderNoStore => "Cache-Control: no-store"
-  }
 }
 
 // Anonymous context reads expose no token or history, and an authenticated request for

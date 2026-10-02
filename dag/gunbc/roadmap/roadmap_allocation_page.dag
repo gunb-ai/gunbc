@@ -40,7 +40,7 @@ fn allocation_page(signed_in: Bool) -> Fragment {
         el_class("p", "allocation-intro", [txt("Choose the resources for your microVM. Placement will select an eligible srv host.")]),
         el_attrs("section", [attr(name: "class", value: "allocation-notice"), attr(name: "aria-label", value: "Availability")],
           if signed_in { [el("strong", [txt("Allocation requests are not available yet.")]), el("p", [txt("You can prepare a size below. Your draft stays in this page; no resources are reserved.")])] }
-          else { [el("strong", [txt("Sign in to prepare an allocation.")]), el("p", [txt("Allocation requests are not available yet.")]), el_attrs("a", [attr(name: "href", value: "/auth/login")], [txt("Sign in with Google")])] }),
+          else { [el("strong", [txt("Sign in to prepare an allocation.")]), el("p", [txt("Allocation requests are not available yet.")])] }),
         el_class("div", "allocation-layout", [
           el_attrs("form", [attr(name: "id", value: "allocation-draft"), attr(name: "aria-label", value: "Allocation draft")], [
             el_attrs("fieldset", if signed_in { [] } else { [attr(name: "disabled", value: "")] }, [
