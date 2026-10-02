@@ -1,0 +1,227 @@
+module v2.compiler.dependency_demand
+
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
+import v2.std.algebra { fold_list, length }
+import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.qualified_name { QualifiedName }
+
+// DERIVED DEPENDENCY DEMAND (DESIGN D13; the carrier gunbc.rung_drop
+// network_requirement_unrepresented_after_uses_cut names as its restoration trigger). For a transparent
+// fn, the resources it requires are DERIVED from what it calls, never authored: its demand is the union
+// of the declared requirements of the opaque operations it calls (each operation Arrow's
+// ^arrow_resource_requirements_edge, keyed by the RESOURCE DECLARATION's path) and the demand of the fns it
+// calls. That is produced once, over the whole resolved closure, to a fixed point keyed by declaration
+// path (lane ruling: a whole-closure stage, not a per-module step).
+//
+// UNDECIDED IS NEVER EMPTY. A demand that cannot be derived is DemandUndecided with its cause, and it
+// absorbs: a fn reaching an undecided callee is itself undecided. The causes are the ways derivation can
+// fail to be total -- an operation declared `requires opaque` (runtime-argv exec), an operation with no
+// clause at all (undeclared: D13 ruling B reads silence as unknown, never as "none"), a call through a
+// function value (no static callee), a callee path outside the closure, and a fixed point that did not
+// settle within its bound. Each is carried with the path it names, so the census can report the
+// Undecided population BY CAUSE.
+//
+// THE INPUTS ARE FACT ROWS, not trees: a per-module reader (the census route, D13 step b2) extracts them
+// from each resolved module, and this reducer joins them. Its interface is therefore the rows, which is
+// where its controls supply them (v2.test.claim.compiler.dependency_demand).
+
+type RequirementClass
+  = RequiresResources { resources: List<QualifiedName> }
+  | RequiresNone
+  | RequiresOpaque
+  | RequiresUndeclared
+
+type OperationFact {
+  path: QualifiedName
+  requirement: RequirementClass
+}
+
+// The paths in a fn body's CALL positions, and whether any call goes through a function value.
+type FunctionFact {
+  path: QualifiedName
+  callees: List<QualifiedName>
+  calls_function_value: Bool
+}
+
+type UndecidedCause
+  = OpaqueOperationCalled { operation: QualifiedName }
+  | UndeclaredOperationCalled { operation: QualifiedName }
+  | FunctionValueCalled { function: QualifiedName }
+  | CalleeOutsideClosure { callee: QualifiedName }
+  | DemandDidNotSettle { function: QualifiedName }
+
+type DependencyDemand
+  = DemandDerived { resources: List<QualifiedName> }
+  | DemandUndecided { cause: UndecidedCause }
+
+type DependencyDemandRow {
+  function: QualifiedName
+  demand: DependencyDemand
+}
+
+fn path_in(path: QualifiedName, paths: List<QualifiedName>) -> Bool {
+  fold_list(xs: paths, empty: false, cons: fn(found, p) { found || (p == path) })
+}
+
+fn union_paths(left: List<QualifiedName>, right: List<QualifiedName>) -> List<QualifiedName> {
+  fold_list(xs: right, empty: left, cons: fn(acc, p) {
+    if path_in(path: p, paths: acc) { acc } else { list_snoc_item(xs: acc, item: p) }
+  })
+}
+
+// The JOIN of two demands: undecided absorbs (the first cause found is kept), otherwise the resources
+// union.
+fn demand_join(left: DependencyDemand, right: DependencyDemand) -> DependencyDemand {
+  match left {
+    DemandUndecided { cause: c } => DemandUndecided { cause: c }
+    DemandDerived { resources: l } =>
+      match right {
+        DemandUndecided { cause: c } => DemandUndecided { cause: c }
+        DemandDerived { resources: r } => DemandDerived { resources: union_paths(left: l, right: r) }
+      }
+  }
+}
+
+fn demand_of_operation(operation: QualifiedName, requirement: RequirementClass) -> DependencyDemand {
+  match requirement {
+    RequiresResources { resources: rs } => DemandDerived { resources: rs }
+    RequiresNone => DemandDerived { resources: Empty }
+    RequiresOpaque => DemandUndecided { cause: OpaqueOperationCalled { operation: operation } }
+    RequiresUndeclared => DemandUndecided { cause: UndeclaredOperationCalled { operation: operation } }
+  }
+}
+
+fn operation_table(operations: List<OperationFact>) -> Map<QualifiedName, RequirementClass> {
+  fold_list(xs: operations, empty: empty_map(), cons: fn(m, o) { map_insert(m: m, key: o.path, value: o.requirement) })
+}
+
+fn function_paths(functions: List<FunctionFact>) -> List<QualifiedName> {
+  fold_list(xs: functions, empty: Empty, cons: fn(acc, f) { list_snoc_item(xs: acc, item: f.path) })
+}
+
+// ONE ROUND: each fn's demand recomputed from the operations it calls and its callees' demand in
+// `current`. A callee that is neither an operation nor a fn of the closure is undecided.
+fn demand_round(
+  functions: List<FunctionFact>,
+  ops: Map<QualifiedName, RequirementClass>,
+  fn_paths: List<QualifiedName>,
+  current: Map<QualifiedName, DependencyDemand>
+) -> Map<QualifiedName, DependencyDemand> {
+  fold_list(xs: functions, empty: empty_map(), cons: fn(m, f) {
+    let seed = if f.calls_function_value {
+      DemandUndecided { cause: FunctionValueCalled { function: f.path } }
+    } else {
+      DemandDerived { resources: Empty }
+    }
+    let demand = fold_list(xs: f.callees, empty: seed, cons: fn(acc, callee) {
+      demand_join(left: acc, right: callee_demand(callee: callee, ops: ops, fn_paths: fn_paths, current: current))
+    })
+    map_insert(m: m, key: f.path, value: demand)
+  })
+}
+
+fn callee_demand(
+  callee: QualifiedName,
+  ops: Map<QualifiedName, RequirementClass>,
+  fn_paths: List<QualifiedName>,
+  current: Map<QualifiedName, DependencyDemand>
+) -> DependencyDemand {
+  match map_lookup(m: ops, key: callee) {
+    Present { value: requirement } => demand_of_operation(operation: callee, requirement: requirement)
+    Absent =>
+      if path_in(path: callee, paths: fn_paths) {
+        match map_lookup(m: current, key: callee) {
+          Present { value: d } => d
+          Absent => DemandDerived { resources: Empty }
+        }
+      } else {
+        DemandUndecided { cause: CalleeOutsideClosure { callee: callee } }
+      }
+  }
+}
+
+fn demand_tables_equal(functions: List<FunctionFact>, left: Map<QualifiedName, DependencyDemand>, right: Map<QualifiedName, DependencyDemand>) -> Bool {
+  fold_list(xs: functions, empty: true, cons: fn(same, f) {
+    same && demand_entry_equal(left: map_lookup(m: left, key: f.path), right: map_lookup(m: right, key: f.path))
+  })
+}
+
+fn demand_entry_equal(left: Optional<DependencyDemand>, right: Optional<DependencyDemand>) -> Bool {
+  match left {
+    Absent =>
+      match right {
+        Absent => true
+        Present { value: _ } => false
+      }
+    Present { value: l } =>
+      match right {
+        Absent => false
+        Present { value: r } => demand_equal(left: l, right: r)
+      }
+  }
+}
+
+// Two demands are equal when both are undecided, or both derive the same SET of resources.
+fn demand_equal(left: DependencyDemand, right: DependencyDemand) -> Bool {
+  match left {
+    DemandUndecided { cause: _ } =>
+      match right {
+        DemandUndecided { cause: _ } => true
+        DemandDerived { resources: _ } => false
+      }
+    DemandDerived { resources: l } =>
+      match right {
+        DemandUndecided { cause: _ } => false
+        DemandDerived { resources: r } => (length(xs: l) == length(xs: r)) && fold_list(xs: l, empty: true, cons: fn(all, p) { all && path_in(path: p, paths: r) })
+      }
+  }
+}
+
+// THE FIXED POINT. The demand of every fn starts empty and rounds recompute it from its callees until no
+// entry changes. Demand only grows (resources union, and undecided absorbs), so the iteration is
+// monotone over a finite lattice; it is still BOUNDED, and a table that has not settled after
+// (fns + 1) rounds reports each fn as DemandDidNotSettle rather than returning a guess.
+fn dependency_demand_of(functions: List<FunctionFact>, operations: List<OperationFact>) -> List<DependencyDemandRow> {
+  let ops = operation_table(operations: operations)
+  let fn_paths = function_paths(functions: functions)
+  let start = fold_list(xs: functions, empty: empty_map(), cons: fn(m, f) { map_insert(m: m, key: f.path, value: DemandDerived { resources: Empty }) })
+  let bound = length(xs: functions) + 1
+  let settled = demand_fixed_point(functions: functions, ops: ops, fn_paths: fn_paths, current: start, remaining: bound)
+  fold_list(xs: functions, empty: Empty, cons: fn(acc, f) {
+    list_snoc_item(xs: acc, item: DependencyDemandRow { function: f.path, demand: demand_row_value(table: settled, function: f.path) })
+  })
+}
+
+fn demand_row_value(table: Optional<Map<QualifiedName, DependencyDemand>>, function: QualifiedName) -> DependencyDemand {
+  match table {
+    Absent => DemandUndecided { cause: DemandDidNotSettle { function: function } }
+    Present { value: t } =>
+      match map_lookup(m: t, key: function) {
+        Present { value: d } => d
+        Absent => DemandUndecided { cause: DemandDidNotSettle { function: function } }
+      }
+  }
+}
+
+fn demand_fixed_point(
+  functions: List<FunctionFact>,
+  ops: Map<QualifiedName, RequirementClass>,
+  fn_paths: List<QualifiedName>,
+  current: Map<QualifiedName, DependencyDemand>,
+  remaining: Int
+) -> Optional<Map<QualifiedName, DependencyDemand>> {
+  if remaining <= 0 {
+    optional_absent()
+  } else {
+    let next = demand_round(functions: functions, ops: ops, fn_paths: fn_paths, current: current)
+    let same = demand_tables_equal(functions: functions, left: current, right: next)
+    if same {
+      optional_present(value: next)
+    } else {
+      demand_fixed_point(functions: functions, ops: ops, fn_paths: fn_paths, current: next, remaining: remaining - 1)
+    }
+  }
+}
