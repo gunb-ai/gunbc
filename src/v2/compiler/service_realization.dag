@@ -1,0 +1,593 @@
+module v2.compiler.service_realization
+
+import std.fidelity { TransportClass, LocalDirect, ShellLocal, FileBoundary, RestNetwork, InterfaceStub, Unknown }
+import extdeps.ietf.http_semantics { HttpStatusClass, Informational, Successful, Redirection, ClientError, ServerError, http_status_class_digit }
+import extdeps.transports.shell { ShellArgv, shell_binding_field_key, shell_binding_field_of_key, shell_exit_nonzero_spelling, shell_output_channel_of_key }
+import extdeps.transports.rest { rest_binding_field_of_key }
+import extdeps.transports.file { file_binding_field_of_key, file_output_channel_of_key }
+import v2.extdeps.languages.dag { dag_int_literal_magnitude_int_from_node, dag_string_literal_value_optional }
+import std.types { http_status_of }
+import v2.std.operation_argv { ArgvEmpty, ArgvExpressionUnsupported, ArgvRefusalCause, BindingMalformed, ExecutablePositionNotLiteral, UndeclaredInputBound }
+import v2.std.list_introduction { list_introduction_elements_optional }
+import std.algebra { Cons, Empty, list_snoc_item }
+import v2.std.service_realization_labels {
+  realization_root_label,
+  realization_config_label,
+  realization_transport_label,
+  realization_transport_kind_label,
+  realization_status_arms_label,
+  realization_mock_arms_label,
+  realization_projection_label,
+  realization_arm_pattern_label,
+  realization_arm_payload_label,
+  realization_status_code_label
+}
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, Diagnostic, ExternalContractUnknown, Rejected, Unavailable, node_locus }
+import v2.std.logic { Bool }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+import v2.std.node {
+  Arrow,
+  Atom,
+  Conj,
+  Edge,
+  Found,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+  all_names_distinct,
+  content_hash,
+  named_edge_target_lookup,
+  symbol_intern_lexeme,
+  symbol_lexeme
+}
+
+// A SERVICE'S REALIZATION, BESIDE ITS INTERFACE AND NEVER INSIDE IT (XL-2 PR3a;
+// docs/plans/service-interface-and-uses-carriers.md, "Realization: a sibling node"). A service lowers
+// to its interface, a named product of operation Arrows. Its realization members -- transport,
+// config, exit, response, mock_response and each output's `from "key"` -- are a different fact (DESIGN
+// section 3: interface, realization and policy are three facts), so they lower into a sibling that
+// MIRRORS the operation path under an unspellable root (ruling 2026-10-02, MIRROR):
+//
+//   <realization> -> <namespace body> { shell -> <namespace body> { Find -> LEAF } }
+//   LEAF  = Conj { Run -> ENTRY, ..., <realization-config> -> CONFIG? }
+//   ENTRY = Conj { <realization-transport> -> TRANSPORT, <status-arms> -> ARMS?, <mock-arms> -> ARMS?, <projection> -> ROWS? }
+//
+// The mirror keys an entry by the operation's path structurally -- the path v2.std.operation_argv
+// OperationRef names at run time -- so no second identity is minted. Its prefix bodies are the spine's
+// marked namespace bodies, so services sharing a prefix merge through the spine's one merge rule. The
+// root is unspellable, so no source can name an entry, and v2.compiler.symbol_index_fill indexes nothing
+// beneath it: an entry is not a declaration and can neither collide with nor shadow the operation.
+//
+// This module owns the sibling's labels and its conformance wall. The vocabularies the wall admits are
+// their homes' (std.fidelity TransportClass for the kind; extdeps.transports.<kind> for each kind's
+// binding fields, output channels and exit patterns; extdeps.ietf.http_semantics HttpStatusClass for a
+// response class), read here and never restated.
+//
+// STANDING (DESIGN section 3c): a declared frontier. Its consumers by execution in 3a are this wall and
+// v2.test.claim.service_realization_conformance; its production consumer is 3b's lowering
+// (v2.compiler.body_lowering_fold body_lower_service_decl), which emits the sibling and runs this wall on
+// it. TRIGGER: 3b lands. If 3b is abandoned the sibling's labels and this wall are deleted.
+
+
+// THE TRANSPORT KIND IS std.fidelity TransportClass, spelled by the surface keyword the grammar admits
+// (v2.extdeps.languages.dag dag_grammar_transport_kind_expr). The match is exhaustive, so a class added
+// there must be decided here; InterfaceStub and Unknown are not authored kinds and have no keyword.
+fn transport_class_keyword(class: TransportClass) -> Optional<Symbol> {
+  match class {
+    ShellLocal => optional_present(value: symbol_intern_lexeme(lexeme: "shell"))
+    RestNetwork => optional_present(value: symbol_intern_lexeme(lexeme: "rest"))
+    FileBoundary => optional_present(value: symbol_intern_lexeme(lexeme: "file"))
+    LocalDirect => optional_present(value: symbol_intern_lexeme(lexeme: "local"))
+    InterfaceStub => optional_absent()
+    Unknown => optional_absent()
+  }
+}
+
+fn transport_class_keyword_is(class: TransportClass, label: Symbol) -> Bool {
+  match transport_class_keyword(class: class) {
+    Present { value: k } => k == label
+    Absent => false
+  }
+}
+
+// A kind with a declared binding (a home naming its authored fields). `local` is an admitted keyword
+// with none -- no corpus operation uses it -- so it refuses as unmodeled rather than being read as a
+// neighbour's binding.
+type DeclaredTransport
+  = DeclaredShell
+  | DeclaredRest
+  | DeclaredFile
+
+fn declared_transport_of_keyword(label: Symbol) -> Optional<DeclaredTransport> {
+  if transport_class_keyword_is(class: ShellLocal, label: label) { optional_present(value: DeclaredShell) }
+  else if transport_class_keyword_is(class: RestNetwork, label: label) { optional_present(value: DeclaredRest) }
+  else if transport_class_keyword_is(class: FileBoundary, label: label) { optional_present(value: DeclaredFile) }
+  else { optional_absent() }
+}
+
+fn declared_transport_admits_field(kind: DeclaredTransport, key: String) -> Bool {
+  match kind {
+    DeclaredShell => match shell_binding_field_of_key(key: key) { Present { value: _ } => true  Absent => false }
+    DeclaredRest => match rest_binding_field_of_key(key: key) { Present { value: _ } => true  Absent => false }
+    DeclaredFile => match file_binding_field_of_key(key: key) { Present { value: _ } => true  Absent => false }
+  }
+}
+
+// A `from "key"` on rest names a member of the decoded body (RFC 8259 member names are open); on shell
+// and file it names one of the transport's closed output channels.
+fn declared_transport_admits_wire_key(kind: DeclaredTransport, key: String) -> Bool {
+  match kind {
+    DeclaredShell => match shell_output_channel_of_key(key: key) { Present { value: _ } => true  Absent => false }
+    DeclaredRest => true
+    DeclaredFile => match file_output_channel_of_key(key: key) { Present { value: _ } => true  Absent => false }
+  }
+}
+
+// A response class spelled as its leading digit then `xx` (RFC 9110 section 15), projected from the
+// class so the spelling has one source.
+fn http_status_class_label(class: HttpStatusClass) -> Symbol {
+  symbol_intern_lexeme(lexeme: concat(to_string(http_status_class_digit(class: class)), "xx"))
+}
+
+fn http_status_class_label_is_admitted(label: Symbol) -> Bool {
+  (label == http_status_class_label(class: Informational))
+    || (label == http_status_class_label(class: Successful))
+    || (label == http_status_class_label(class: Redirection))
+    || (label == http_status_class_label(class: ClientError))
+    || (label == http_status_class_label(class: ServerError))
+}
+
+// A STATUS PATTERN reads in its transport's vocabulary only. An exact code is a Conj carrying one int
+// literal; a class (`5xx`) is a self-identified Atom and belongs to rest; `nonzero` is a self-identified
+// Atom and belongs to shell's exit status. An HTTP class never matches an exit status, and `nonzero`
+// never matches a response: each is refused at the pattern, not coerced.
+fn status_pattern_conforms(kind: DeclaredTransport, pat: Node) -> Bool {
+  match pat.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      (count(pat.children) == 0) && status_atom_is_of_transport(kind: kind, id: id)
+    TypeNode { connective: Conj } =>
+      (count(pat.children) == 1) && status_code_is_of_transport(kind: kind, pat: pat)
+    _ => false
+  }
+}
+
+fn status_atom_is_of_transport(kind: DeclaredTransport, id: Symbol) -> Bool {
+  match kind {
+    DeclaredShell => id == symbol_intern_lexeme(lexeme: shell_exit_nonzero_spelling)
+    DeclaredRest => http_status_class_label_is_admitted(label: id)
+    DeclaredFile => false
+  }
+}
+
+// An exact code is an int literal, decoded by the dag language's own int reader. Shell reads it as an
+// exit status on its own route (an integer, extdeps.process.posix_exit), never through an HTTP type. Rest
+// admits it only through std.types http_status_of, the one admission fold for an Int that claims to be an
+// HttpStatus, so 99 and 600 refuse at the pattern. The file transport observes no status, so no code arm
+// is admitted on it.
+fn status_code_is_of_transport(kind: DeclaredTransport, pat: Node) -> Bool {
+  match named_edge_target_lookup(children: pat.children, name: realization_status_code_label()) {
+    Found { target: code } =>
+      match dag_int_literal_magnitude_int_from_node(node: code) {
+        Accepted { value: n, diagnostics: _ } => status_int_is_of_transport(kind: kind, n: n)
+        Rejected { diagnostics: _ } => false
+      }
+    _ => false
+  }
+}
+
+fn status_int_is_of_transport(kind: DeclaredTransport, n: Int) -> Bool {
+  match kind {
+    DeclaredShell => true
+    DeclaredRest => http_status_admits(n: n)
+    DeclaredFile => false
+  }
+}
+
+fn http_status_admits(n: Int) -> Bool {
+  match http_status_of(n: n) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// `argv` carries the shared argv vocabulary's cause (v2.std.operation_argv ArgvRefusalCause) when the
+// refusal is a shell argv's, and is Absent otherwise.
+type RealizationRefusal {
+  reason: Symbol
+  at: Node
+  argv: Optional<ArgvRefusalCause>
+}
+
+fn realization_refusal(reason: Symbol, at: Node) -> Optional<RealizationRefusal> {
+  optional_present(value: RealizationRefusal { reason: reason, at: at, argv: optional_absent() })
+}
+
+fn realization_refusal_diagnostic(r: RealizationRefusal) -> Diagnostic {
+  Diagnostic { reason: r.reason, at: node_locus(node: r.at), correction: Unavailable { reason: ExternalContractUnknown } }
+}
+
+// The first refusal, in authored order; Absent when every member conforms.
+fn realization_first_refusal(acc: Optional<RealizationRefusal>, next: fn() -> Optional<RealizationRefusal>) -> Optional<RealizationRefusal> {
+  match acc {
+    Present { value: _ } => acc
+    Absent => next()
+  }
+}
+
+fn named_label(e: Edge) -> Optional<Symbol> {
+  match e.label {
+    Named { name: n } => optional_present(value: n)
+    Positional => optional_absent()
+  }
+}
+
+// An operation's declared output fields: the named members of its Arrow's codomain, the second
+// Positional child (v2.std.arrow_signature declared_signature_arrow builds [domain, codomain, order]).
+fn operation_output_names(op: Node) -> List<Symbol> {
+  let walk = fold(op.children, init: positional_walk_initial(), f: positional_walk_step)
+  match walk.second {
+    Present { value: codomain } => fold(codomain.children, init: symbol_list_empty(), f: edge_name_step)
+    Absent => symbol_list_empty()
+  }
+}
+
+// Its declared inputs: the binder names of its domain, the first Positional child.
+fn operation_input_names(op: Node) -> List<Symbol> {
+  let walk = fold(op.children, init: positional_walk_initial(), f: positional_walk_step)
+  match walk.first {
+    Present { value: domain } => fold(domain.children, init: symbol_list_empty(), f: edge_name_step)
+    Absent => symbol_list_empty()
+  }
+}
+
+type PositionalWalk {
+  seen: Int
+  first: Optional<Node>
+  second: Optional<Node>
+}
+
+fn positional_walk_initial() -> PositionalWalk {
+  PositionalWalk { seen: 0, first: optional_absent(), second: optional_absent() }
+}
+
+fn positional_walk_step(acc: PositionalWalk, e: Edge) -> PositionalWalk {
+  match e.label {
+    Positional =>
+      if acc.seen == 0 { PositionalWalk { seen: 1, first: optional_present(value: e.target), second: acc.second } }
+      else if acc.seen == 1 { PositionalWalk { seen: 2, first: acc.first, second: optional_present(value: e.target) } }
+      else { PositionalWalk { seen: acc.seen + 1, first: acc.first, second: acc.second } }
+    Named { name: _ } => acc
+  }
+}
+
+fn symbol_list_empty() -> List<Symbol> {
+  Empty
+}
+
+fn edge_name_step(acc: List<Symbol>, e: Edge) -> List<Symbol> {
+  match e.label {
+    Named { name: n } => list_snoc_item(xs: acc, item: n)
+    Positional => acc
+  }
+}
+
+fn symbol_in(xs: List<Symbol>, s: Symbol) -> Bool {
+  fold(xs, init: false, f: fn(acc, x) { acc || (x == s) })
+}
+
+// THE WALL. `interface` is the service's leaf (Conj { Op -> Arrow }) and `realization` is its mirror
+// leaf. Every entry names an operation of the interface, at most once; every entry carries exactly one
+// transport of a kind with a declared binding; every member reads in that kind's vocabulary. Located at
+// the offending node; the first refusal in authored order.
+fn service_realization_refusal(interface: Node, realization: Node) -> Optional<RealizationRefusal> {
+  if !all_names_distinct(children: realization.children) {
+    realization_refusal(reason: ^service_realization_entry_repeated, at: realization)
+  } else {
+    fold(realization.children, init: optional_absent(), f: fn(acc, e) {
+      realization_first_refusal(acc: acc, next: fn() { realization_leaf_member_refusal(interface: interface, member: e) })
+    })
+  }
+}
+
+fn realization_leaf_member_refusal(interface: Node, member: Edge) -> Optional<RealizationRefusal> {
+  match member.label {
+    Positional => realization_refusal(reason: ^service_realization_member_unknown, at: member.target)
+    Named { name: n } =>
+      if n == realization_config_label() {
+        realization_config_refusal(config: member.target)
+      } else {
+        match named_edge_target_lookup(children: interface.children, name: n) {
+          Found { target: op } => realization_entry_refusal(op: op, entry: member.target)
+          _ => realization_refusal(reason: ^service_realization_entry_without_operation, at: member.target)
+        }
+      }
+  }
+}
+
+// Service-grain configuration: a nonempty Conj of named values. Its field names are the grammar's
+// closed set (v2.extdeps.languages.dag dag_grammar_service_config_field_name_expr), which the lowering
+// reads; the values are ordinary expressions whose references resolve.
+fn realization_config_refusal(config: Node) -> Optional<RealizationRefusal> {
+  match config.kind {
+    TypeNode { connective: Conj } =>
+      if (count(config.children) > 0) && all_names_distinct(children: config.children) { optional_absent() }
+      else { realization_refusal(reason: ^service_realization_config_malformed, at: config) }
+    _ => realization_refusal(reason: ^service_realization_config_malformed, at: config)
+  }
+}
+
+// An ENTRY is a Conj carrying its transport once and each optional member (<status-arms>, <mock-arms>,
+// <projection>) at most once; a second block of one kind refuses at the entry.
+fn realization_entry_refusal(op: Node, entry: Node) -> Optional<RealizationRefusal> {
+  match op.kind {
+    TypeNode { connective: Arrow } =>
+      if !node_is_conj(n: entry) {
+        realization_refusal(reason: ^service_realization_entry_malformed, at: entry)
+      } else if !all_names_distinct(children: entry.children) {
+        realization_refusal(reason: ^service_realization_entry_member_repeated, at: entry)
+      } else {
+        match named_edge_target_lookup(children: entry.children, name: realization_transport_label()) {
+          Found { target: transport } => realization_entry_with_transport_refusal(op: op, entry: entry, transport: transport)
+          _ => realization_refusal(reason: ^service_realization_entry_without_transport, at: entry)
+        }
+      }
+    _ => realization_refusal(reason: ^service_realization_entry_without_operation, at: entry)
+  }
+}
+
+fn realization_entry_with_transport_refusal(op: Node, entry: Node, transport: Node) -> Optional<RealizationRefusal> {
+  if !node_is_conj(n: transport) {
+    realization_refusal(reason: ^service_realization_transport_malformed, at: transport)
+  } else {
+    match named_edge_target_lookup(children: transport.children, name: realization_transport_kind_label()) {
+      Found { target: k } =>
+        match realization_transport_kind(k: k) {
+          Present { value: kind } =>
+            fold(entry.children, init: realization_transport_refusal(kind: kind, op: op, transport: transport), f: fn(acc, e) {
+              realization_first_refusal(acc: acc, next: fn() { realization_entry_member_refusal(kind: kind, op: op, member: e) })
+            })
+          Absent => realization_transport_kind_refusal(k: k)
+        }
+      _ => realization_refusal(reason: ^service_realization_transport_unmodeled, at: transport)
+    }
+  }
+}
+
+fn node_is_conj(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Conj } => true
+    _ => false
+  }
+}
+
+// The kind is a CHILDLESS self-identified Atom naming a kind with a declared binding.
+fn realization_transport_kind(k: Node) -> Optional<DeclaredTransport> {
+  match k.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if count(k.children) == 0 { declared_transport_of_keyword(label: id) } else { optional_absent() }
+    _ => optional_absent()
+  }
+}
+
+fn realization_transport_kind_refusal(k: Node) -> Optional<RealizationRefusal> {
+  match k.kind {
+    TypeNode { connective: Atom { identity: _ } } =>
+      if count(k.children) == 0 { realization_refusal(reason: ^service_realization_transport_unmodeled, at: k) }
+      else { realization_refusal(reason: ^service_realization_transport_kind_malformed, at: k) }
+    _ => realization_refusal(reason: ^service_realization_transport_kind_malformed, at: k)
+  }
+}
+
+// Every field of the transport block other than its kind is one of the kind's declared binding fields,
+// each at most once.
+fn realization_transport_refusal(kind: DeclaredTransport, op: Node, transport: Node) -> Optional<RealizationRefusal> {
+  if !all_names_distinct(children: transport.children) {
+    realization_refusal(reason: ^service_realization_binding_field_repeated, at: transport)
+  } else {
+    fold(transport.children, init: optional_absent(), f: fn(acc, e) {
+      realization_first_refusal(acc: acc, next: fn() { realization_binding_field_refusal(kind: kind, op: op, field: e) })
+    })
+  }
+}
+
+fn realization_binding_field_refusal(kind: DeclaredTransport, op: Node, field: Edge) -> Optional<RealizationRefusal> {
+  match named_label(e: field) {
+    Present { value: n } =>
+      if n == realization_transport_kind_label() { optional_absent() }
+      else if !declared_transport_admits_field(kind: kind, key: symbol_lexeme(sym: n)) { realization_refusal(reason: ^service_realization_binding_field_unknown, at: field.target) }
+      else if declared_field_is_shell_argv(kind: kind, n: n) { shell_argv_refusal(op: op, argv: field.target) }
+      else { optional_absent() }
+    Absent => realization_refusal(reason: ^service_realization_binding_field_unknown, at: field.target)
+  }
+}
+
+fn declared_field_is_shell_argv(kind: DeclaredTransport, n: Symbol) -> Bool {
+  match kind {
+    DeclaredShell => symbol_lexeme(sym: n) == shell_binding_field_key(field: ShellArgv)
+    DeclaredRest => false
+    DeclaredFile => false
+  }
+}
+
+// A SHELL ARGV IS READ IN THE SHARED ARGV VOCABULARY (v2.std.operation_argv). It is a list literal whose
+// executable position (argv[0]) is a string literal -- a declared input may never decide which program
+// runs -- and whose every other element is a string literal or a reference to one of the operation's
+// declared inputs. Each other shape refuses with that module's ArgvRefusalCause: not a list
+// (BindingMalformed), empty (ArgvEmpty), a non-literal executable (ExecutablePositionNotLiteral), a name
+// the operation does not declare (UndeclaredInputBound), or any other expression
+// (ArgvExpressionUnsupported). An interpolating string literal is read as its text here, as v2 lexes it
+// (gunbc.recurring_failure_mode string_interpolation_read_as_literal_text_by_v2).
+fn shell_argv_refusal(op: Node, argv: Node) -> Optional<RealizationRefusal> {
+  match shell_argv_cause(inputs: operation_input_names(op: op), argv: argv) {
+    Present { value: cause } =>
+      optional_present(value: RealizationRefusal { reason: ^service_realization_argv_refused, at: argv, argv: optional_present(value: cause) })
+    Absent => optional_absent()
+  }
+}
+
+fn shell_argv_cause(inputs: List<Symbol>, argv: Node) -> Optional<ArgvRefusalCause> {
+  match list_introduction_elements_optional(node: argv) {
+    Absent => optional_present(value: BindingMalformed { detail: "argv is not a list literal" })
+    Present { value: elements } =>
+      if count(elements) == 0 {
+        optional_present(value: ArgvEmpty)
+      } else {
+        let walked = fold(elements, init: argv_walk_initial(), f: fn(acc, el) { argv_walk_step(inputs: inputs, acc: acc, el: el) })
+        walked.cause
+      }
+  }
+}
+
+type ArgvWalk {
+  index: Int
+  cause: Optional<ArgvRefusalCause>
+}
+
+fn argv_walk_initial() -> ArgvWalk {
+  ArgvWalk { index: 0, cause: optional_absent() }
+}
+
+fn argv_walk_step(inputs: List<Symbol>, acc: ArgvWalk, el: Node) -> ArgvWalk {
+  match acc.cause {
+    Present { value: _ } => acc
+    Absent => ArgvWalk { index: acc.index + 1, cause: argv_element_cause(inputs: inputs, index: acc.index, el: el) }
+  }
+}
+
+fn argv_element_cause(inputs: List<Symbol>, index: Int, el: Node) -> Optional<ArgvRefusalCause> {
+  match dag_string_literal_value_optional(node: el) {
+    Present { value: _ } => optional_absent()
+    Absent =>
+      if index == 0 {
+        optional_present(value: ExecutablePositionNotLiteral { detail: "argv[0] is not a string literal" })
+      } else {
+        argv_reference_cause(inputs: inputs, el: el)
+      }
+  }
+}
+
+// A bare name lowers to a childless Atom whose identity is its spelling.
+fn argv_reference_cause(inputs: List<Symbol>, el: Node) -> Optional<ArgvRefusalCause> {
+  match el.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if count(el.children) != 0 {
+        optional_present(value: ArgvExpressionUnsupported { detail: "argv element is not a string literal or a declared input" })
+      } else if symbol_in(xs: inputs, s: id) {
+        optional_absent()
+      } else {
+        optional_present(value: UndeclaredInputBound { name: symbol_lexeme(sym: id) })
+      }
+    _ => optional_present(value: ArgvExpressionUnsupported { detail: "argv element is not a string literal or a declared input" })
+  }
+}
+
+fn realization_entry_member_refusal(kind: DeclaredTransport, op: Node, member: Edge) -> Optional<RealizationRefusal> {
+  match named_label(e: member) {
+    Present { value: n } =>
+      if n == realization_transport_label() { optional_absent() }
+      else if (n == realization_status_arms_label()) || (n == realization_mock_arms_label()) { realization_arms_refusal(kind: kind, arms: member.target) }
+      else if n == realization_projection_label() { realization_projection_refusal(kind: kind, op: op, rows: member.target) }
+      else { realization_refusal(reason: ^service_realization_member_unknown, at: member.target) }
+    Absent => realization_refusal(reason: ^service_realization_member_unknown, at: member.target)
+  }
+}
+
+// ARMS: a nonempty Conj of Positional arms, in authored order (the first matching arm is the one that
+// applies), each { <arm-pattern> -> pattern, <arm-payload> -> type or value }. A pattern repeated
+// within one block refuses at its second arm.
+fn realization_arms_refusal(kind: DeclaredTransport, arms: Node) -> Optional<RealizationRefusal> {
+  if !node_is_conj(n: arms) {
+    realization_refusal(reason: ^service_realization_arm_malformed, at: arms)
+  } else if count(arms.children) == 0 {
+    realization_refusal(reason: ^service_realization_arms_empty, at: arms)
+  } else {
+    let walked = fold(arms.children, init: realization_arms_walk_initial(), f: fn(acc, e) {
+      match acc.refusal {
+        Present { value: _ } => acc
+        Absent => realization_arm_step(kind: kind, acc: acc, arm: e)
+      }
+    })
+    walked.refusal
+  }
+}
+
+type RealizationArmsWalk {
+  seen: List<Node>
+  refusal: Optional<RealizationRefusal>
+}
+
+fn realization_arms_walk_initial() -> RealizationArmsWalk {
+  RealizationArmsWalk { seen: Empty, refusal: optional_absent() }
+}
+
+// An arm is a Positional CONJ of exactly { <arm-pattern>, <arm-payload> }: a Named arm or any other
+// connective refuses as malformed before its members are read.
+fn realization_arm_step(kind: DeclaredTransport, acc: RealizationArmsWalk, arm: Edge) -> RealizationArmsWalk {
+  match arm.label {
+    Named { name: _ } => realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm.target)
+    Positional =>
+      if node_is_conj(n: arm.target) { realization_conj_arm_step(kind: kind, acc: acc, arm: arm.target) }
+      else { realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm.target) }
+  }
+}
+
+fn realization_arms_walk_refused(acc: RealizationArmsWalk, reason: Symbol, at: Node) -> RealizationArmsWalk {
+  RealizationArmsWalk { seen: acc.seen, refusal: realization_refusal(reason: reason, at: at) }
+}
+
+fn realization_conj_arm_step(kind: DeclaredTransport, acc: RealizationArmsWalk, arm: Node) -> RealizationArmsWalk {
+  match named_edge_target_lookup(children: arm.children, name: realization_arm_pattern_label()) {
+    Found { target: pat } =>
+      if !status_pattern_conforms(kind: kind, pat: pat) {
+        realization_arms_walk_refused(acc: acc, reason: ^service_realization_status_pattern_not_of_transport, at: pat)
+      } else if fold(acc.seen, init: false, f: fn(found, p) { found || (content_hash(n: p) == content_hash(n: pat)) }) {
+        realization_arms_walk_refused(acc: acc, reason: ^service_realization_status_pattern_repeated, at: pat)
+      } else {
+        match named_edge_target_lookup(children: arm.children, name: realization_arm_payload_label()) {
+          Found { target: _ } =>
+            if count(arm.children) == 2 { RealizationArmsWalk { seen: list_snoc_item(xs: acc.seen, item: pat), refusal: optional_absent() } }
+            else { realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm) }
+          _ => realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm)
+        }
+      }
+    _ => realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm)
+  }
+}
+
+// PROJECTION: a nonempty Conj of rows `output -> "key"`, at most one per output field (one per output
+// that authored a key).
+// The output must be one the operation declares, and the key must name something the transport
+// observes (closed on shell and file, an open body member on rest).
+fn realization_projection_refusal(kind: DeclaredTransport, op: Node, rows: Node) -> Optional<RealizationRefusal> {
+  if !node_is_conj(n: rows) {
+    realization_refusal(reason: ^service_realization_projection_malformed, at: rows)
+  } else if count(rows.children) == 0 {
+    realization_refusal(reason: ^service_realization_projection_empty, at: rows)
+  } else if !all_names_distinct(children: rows.children) {
+    realization_refusal(reason: ^service_realization_projection_field_repeated, at: rows)
+  } else {
+    let outputs = operation_output_names(op: op)
+    fold(rows.children, init: optional_absent(), f: fn(acc, e) {
+      realization_first_refusal(acc: acc, next: fn() {
+        match named_label(e: e) {
+          Present { value: field } =>
+            if !symbol_in(xs: outputs, s: field) {
+              realization_refusal(reason: ^service_realization_projection_field_not_an_output, at: e.target)
+            } else {
+              match dag_string_literal_value_optional(node: e.target) {
+                Present { value: key } =>
+                  if declared_transport_admits_wire_key(kind: kind, key: key) { optional_absent() }
+                  else { realization_refusal(reason: ^service_realization_wire_key_not_of_transport, at: e.target) }
+                Absent => realization_refusal(reason: ^service_realization_wire_key_not_a_string, at: e.target)
+              }
+            }
+          Absent => realization_refusal(reason: ^service_realization_projection_field_not_an_output, at: e.target)
+        }
+      })
+    })
+  }
+}
