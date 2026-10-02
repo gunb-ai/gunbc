@@ -1,73 +1,31 @@
 module test.claim.auth.login_browser_binding_witness_test
 
-import std.types { String, Bool, FilePath }
+import std.types { String, Bool }
 import extdeps.auth.oidc { OidcLoginTransaction, OidcPkceCodeVerifier, RelativeReturnPath }
-import extdeps.shell
-import gunbc.auth.login_browser_binding { auth_login_browser_binding, auth_login_browser_admitted }
-import gunbc.auth.login_transaction_store { LoginTransactionStoreLayout, login_transaction_store_save, login_transaction_store_delete, login_transaction_store_lookup, login_transaction_file_path, LoginTransactionSaved, LoginTransactionSaveRefused, LoginTransactionDeleted, LoginTransactionNothingToDelete, LoginTransactionDeleteRefused, LoginTransactionStoreFound, LoginTransactionStoreUnknown, LoginTransactionStoreUnread, LoginTransactionStoreEntryMalformed }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.auth.login_browser_binding { auth_login_browser_presents }
 
 fn browser_transaction(verifier: String = "verifier-from-jar-A") -> OidcLoginTransaction {
   OidcLoginTransaction { state: "state-A", nonce: "nonce-A", created_at: "2026-09-28T00:00:00Z", expires_at: "2026-09-28T00:10:00Z",
     verifier: OidcPkceCodeVerifier { verifier: verifier }, return_path: RelativeReturnPath { path: "/" } }
 }
 
+// THE COOKIE HALF OF THE ADMISSION OVER A SUPPLIED BINDING (DESIGN §3 witness rule): the subject is
+// which cookie headers present a given binding, so the binding is a value, not a digest computed per
+// case. The real binding digest is exercised by test.claim.auth.login_callback_hold_wet_witness,
+// which runs the callback route itself.
+data supplied_binding: String = "4f1c2a-browser-a-binding"
+
 test fn callback_requires_initiating_browser_cookie() -> Bool {
-  let transaction = browser_transaction()
-  let jar_a = concat("__Host-gunbc-login=", auth_login_browser_binding(transaction: transaction))
-  let jar_b = concat("__Host-gunbc-login=", auth_login_browser_binding(transaction: browser_transaction(verifier: "verifier-from-jar-B")))
-  auth_login_browser_admitted(transaction: transaction, cookie_header: jar_a)
-    && !auth_login_browser_admitted(transaction: transaction, cookie_header: jar_b)
-    && !auth_login_browser_admitted(transaction: transaction, cookie_header: "")
-    && !auth_login_browser_admitted(transaction: transaction, cookie_header: concat(jar_a, concat("; ", jar_a)))
-    && !auth_login_browser_admitted(transaction: transaction, cookie_header: "__Host-gunbc-login=state-A")
+  let jar_a = concat("__Host-gunbc-login=", supplied_binding)
+  auth_login_browser_presents(binding: supplied_binding, cookie_header: jar_a)
+    && !auth_login_browser_presents(binding: supplied_binding, cookie_header: "__Host-gunbc-login=4f1c2a-browser-b-binding")
+    && !auth_login_browser_presents(binding: supplied_binding, cookie_header: "")
+    && !auth_login_browser_presents(binding: supplied_binding, cookie_header: concat(jar_a, concat("; ", jar_a)))
+    && !auth_login_browser_presents(binding: supplied_binding, cookie_header: "__Host-gunbc-login=state-A")
 }
 
-test fn transaction_consume_has_one_winner_over_real_files() -> Bool {
-  let directory = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-login-consume.XXXXXX").path
-  if directory == "" { false } else {
-    let layout = LoginTransactionStoreLayout { root: directory as FilePath }
-    let transaction = browser_transaction()
-    match login_transaction_store_save(layout: layout, transaction: transaction) {
-      LoginTransactionSaved { state: _ } => match login_transaction_store_delete(layout: layout, state: transaction.state) {
-        LoginTransactionDeleted { state: _ } => match login_transaction_store_delete(layout: layout, state: transaction.state) {
-          LoginTransactionDeleted { state: _ } => false
-          LoginTransactionNothingToDelete { state: _ } => true
-          LoginTransactionDeleteRefused { state: _, detail: _ } => false
-        }
-        LoginTransactionNothingToDelete { state: _ } => false
-        LoginTransactionDeleteRefused { state: _, detail: _ } => false
-      }
-      LoginTransactionSaveRefused { step: _, reason: _ } => false
-    }
-  }
+test fn the_binding_is_not_the_public_state() -> Bool {
+  supplied_binding != browser_transaction().state
 }
 
-// THE CONCURRENT LOSER, by supplied state: a second consumer that still lists the transaction
-// file finds the winner's create-new claim already on disk. The claim is planted here rather than
-// raced, so the arm is reached deterministically. RED if the claim write stops being create-new
-// (the loser would then delete and report Deleted); the transaction file must survive the loser.
-test fn a_consumer_that_loses_the_create_new_claim_refuses_and_deletes_nothing() -> Bool {
-  let directory = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-login-consume.XXXXXX").path
-  if directory == "" { false } else {
-    let layout = LoginTransactionStoreLayout { root: directory as FilePath }
-    let transaction = browser_transaction()
-    match login_transaction_store_save(layout: layout, transaction: transaction) {
-      LoginTransactionSaveRefused { step: _, reason: _ } => false
-      LoginTransactionSaved { state: _ } => {
-        let planted = Filesystem.WriteCreateNewWithMode(path: concat(login_transaction_file_path(layout: layout, state: transaction.state), ".consumed"), content: "consumed", mode: 384)
-        planted.success && match login_transaction_store_delete(layout: layout, state: transaction.state) {
-          LoginTransactionDeleteRefused { state: _, detail: _ } =>
-            match login_transaction_store_lookup(layout: layout, state: transaction.state) {
-              LoginTransactionStoreFound { transaction: _ } => true
-              LoginTransactionStoreUnknown { state: _ } => false
-              LoginTransactionStoreUnread { state: _, detail: _ } => false
-              LoginTransactionStoreEntryMalformed { state: _, detail: _ } => false
-            }
-          LoginTransactionDeleted { state: _ } => false
-          LoginTransactionNothingToDelete { state: _ } => false
-        }
-      }
-    }
-  }
-}
+

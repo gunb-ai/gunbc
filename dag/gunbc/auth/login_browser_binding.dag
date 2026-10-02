@@ -12,8 +12,14 @@ fn auth_login_browser_binding(transaction: OidcLoginTransaction) -> String {
 }
 
 fn auth_login_browser_admitted(transaction: OidcLoginTransaction, cookie_header: String) -> Bool {
+  auth_login_browser_presents(binding: auth_login_browser_binding(transaction: transaction), cookie_header: cookie_header)
+}
+
+// The cookie half of the admission, over an already-derived binding: exactly one login cookie,
+// equal to the binding. The digest is paid once by the caller, not per comparison.
+fn auth_login_browser_presents(binding: String, cookie_header: String) -> Bool {
   match session_cookie_id_of_header(cookie_header: cookie_header, cookie_name: "__Host-gunbc-login") {
-    SessionCookieIdParsed { session_id: presented } => (presented as String) == auth_login_browser_binding(transaction: transaction)
+    SessionCookieIdParsed { session_id: presented } => (presented as String) == binding
     SessionCookieIdNotPresent => false
     SessionCookieIdMalformed { detail: _ } => false
   }

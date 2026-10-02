@@ -23,13 +23,18 @@ fn approved_gcp_access_from_poll<Subject>(request: AuthorizationRequest<Subject>
   observed_at: Timestamp, token_variable: NonEmptyStr) -> ApprovedGcpAccess<Subject> {
   match approval_gate_from_poll(poll: poll, request: request, observed_at: observed_at) {
     GateRefused { cause } => ApprovedGcpAccessRefused { reason: approval_refusal_text(cause: cause) }
-    GateAdmitted { authorization } => {
-      let credential = actions_variable_trimmed(name: token_variable)
-      if credential == "" {
-        ApprovedGcpAccessRefused { reason: concat("Approval admitted, but the workload credential is unavailable: ", token_variable as String) }
-      } else { ApprovedGcpAccessReady { authorization: authorization, token: credential as Secret } }
-    }
+    GateAdmitted { authorization } => approved_gcp_access_with_credential(authorization: authorization,
+      token_variable: token_variable, credential: actions_variable_trimmed(name: token_variable))
   }
+}
+
+// The join after admission: the approval alone never exposes a token, and the credential alone
+// never authorizes. Split from the variable read so the decision is a function of its inputs.
+fn approved_gcp_access_with_credential<Subject>(authorization: ScopedAuthorization<Subject>, token_variable: NonEmptyStr,
+  credential: String) -> ApprovedGcpAccess<Subject> {
+  if credential == "" {
+    ApprovedGcpAccessRefused { reason: concat("Approval admitted, but the workload credential is unavailable: ", token_variable as String) }
+  } else { ApprovedGcpAccessReady { authorization: authorization, token: credential as Secret } }
 }
 
 // Call with the freshly re-derived concrete plan, not a cached approval bit or an arbitrary ID.

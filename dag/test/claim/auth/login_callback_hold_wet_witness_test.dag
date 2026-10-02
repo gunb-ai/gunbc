@@ -1,4 +1,4 @@
-module test.claim.auth.login_callback_hold_witness_test
+module test.claim.auth.login_callback_hold_wet_witness
 
 import std.types { Bool, FilePath, String }
 import extdeps.auth.oidc { OidcLoginTransaction, OidcPkceCodeVerifier, RelativeReturnPath }
