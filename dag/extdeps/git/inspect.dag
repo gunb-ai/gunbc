@@ -239,7 +239,7 @@ service git.Inspect {
   }
 
   operation ReadTreeIntoIndex {
-    requires none
+    requires Network
     input { repository_path: String, revision_hex: String, index_path: String }
     output {
       success: Bool from "exit_success"
@@ -331,7 +331,7 @@ service git.Inspect {
   }
 
   operation ListTreePathsAtRevision {
-    requires none
+    requires Network
     input { ref: GitRef }
     output {
       paths_nul: String from "stdout"
@@ -347,7 +347,7 @@ service git.Inspect {
   }
 
   operation ListTreeEntriesAtRevision {
-    requires none
+    requires Network
     input { ref: GitRef }
     output {
       entries_nul: String from "stdout"
@@ -446,7 +446,7 @@ service git.Inspect {
   }
 
   operation MergeTreeWriteTree {
-    requires none
+    requires Network
     input { left: GitRef, right: GitRef }
     output {
       stdout: String from "stdout"

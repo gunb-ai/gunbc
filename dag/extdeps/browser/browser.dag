@@ -37,14 +37,14 @@ type Element        = String where brand("Element")
 
 service browser.Context {
   operation Launch {
-    requires none
+    requires Network
     input { headless: String = "false", profile_path: FilePath }
     output { context: BrowserContext from "stdout" }
     transport shell { argv: ["playwright-runner", "launch", "--headless", "{headless}", "--profile", "{profile_path}"] }
   }
 
   operation Close {
-    requires none
+    requires opaque
     input { context: BrowserContext }
     output {}
     transport shell { argv: ["playwright-runner", "close", "{context}"] }
@@ -62,7 +62,7 @@ service browser.Page {
   }
 
   operation CurrentUrl {
-    requires none
+    requires Network
 
     input {}
     output { url: String from "stdout" }
@@ -70,35 +70,35 @@ service browser.Page {
   }
 
   operation Title {
-    requires none
+    requires Network
     input {}
     output { title: String from "stdout" }
     transport shell { argv: ["playwright-runner", "title"] }
   }
 
   operation WaitForSelector {
-    requires none
+    requires opaque
     input { selector: String, timeout_ms: Int = 30000 }
     output { found: String from "stdout" }
     transport shell { argv: ["playwright-runner", "wait-for", "{selector}", "--timeout", "{timeout_ms}"] }
   }
 
   operation QueryAll {
-    requires none
+    requires opaque
     input { selector: String }
     output { count: String from "stdout" }
     transport shell { argv: ["playwright-runner", "query-all", "{selector}"] }
   }
 
   operation Click {
-    requires none
+    requires opaque
     input { selector: String }
     output {}
     transport shell { argv: ["playwright-runner", "click", "{selector}"] }
   }
 
   operation Fill {
-    requires none
+    requires opaque
     input { selector: String, text: String }
     output {}
     transport shell { argv: ["playwright-runner", "fill", "{selector}", "{text}"] }
@@ -112,21 +112,21 @@ service browser.Page {
   }
 
   operation UploadFile {
-    requires none
+    requires opaque
     input { selector: String, path: FilePath }
     output {}
     transport shell { argv: ["playwright-runner", "upload", "{selector}", "{path}"] }
   }
 
   operation Screenshot {
-    requires none
+    requires opaque
     input { path: FilePath }
     output {}
     transport shell { argv: ["playwright-runner", "screenshot", "{path}"] }
   }
 
   operation Wait {
-    requires none
+    requires opaque
     input { ms: Int }
     output {}
     transport shell { argv: ["playwright-runner", "wait", "{ms}"] }
@@ -136,14 +136,14 @@ service browser.Page {
 service browser.Element {
 
   operation IsVisible {
-    requires none
+    requires opaque
     input { selector: String }
     output { visible: String from "stdout" }
     transport shell { argv: ["playwright-runner", "is-visible", "{selector}"] }
   }
 
   operation InnerText {
-    requires none
+    requires opaque
     input { selector: String }
     output { text: String from "stdout" }
     transport shell { argv: ["playwright-runner", "inner-text", "{selector}"] }

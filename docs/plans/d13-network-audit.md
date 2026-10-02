@@ -17,6 +17,9 @@ A `requires` clause states what a sandbox must GRANT, so the fail-closed directi
   - **Runtime program in an argument** (ruling 2026-10-02): an argument that carries a program the invoked tool executes is **OpaqueDemand** -- scripts, expressions, inner argv, executing templates. This includes an unrefined string in option position that the tool accepts as a program-executing option (`git grep -O<pager>`). A runtime program whose language has no network or exec primitive (a jq filter; Rust source that rustc only compiles) does not raise the demand above its host program's.
   - **Remote-selecting option in an unrefined string** (ruling 2026-10-02): if an unrefined string sits where the tool parses options, and the tool has an option that selects a remote host or URL (`systemctl -H/--host=`, `hostnamectl -H`, curl `-K<config>`/`-x<proxy>`), the operation is **Network**. That holds unless the argv structurally prevents it, e.g. the string follows `--` or is the value of a preceding option.
   - Everything else is a local program on local paths: NotNetwork.
+  - **Live browser page** (ruling 2026-10-02): an interaction with a running browser is **Network**. A click can navigate, page scripts run during any call, and browser startup can fetch. A program whose option surface cannot be verified (`playwright-runner` is not in this repository) is **OpaqueDemand** for every runtime positional it receives; it is never assumed none.
+  - **Partial clone** (ruling 2026-10-02): a git read that needs blob or tree objects is **Network**, because in a partial clone git lazily fetches missing objects from the promisor remote, and whether a repository is a partial clone belongs to the repository the operation is pointed at, i.e. its input. Reads of commits, refs, the index or config only are not affected.
+- **Boundary — host environment is not demand** (ruling 2026-10-02): host-wide resolver configuration (NSS, which can route `id`/`whoami`/`stat %U` to LDAP; DNS) is the sandbox's environment, not an operation's demand, and does not raise a clause.
 
 ## Citations by class
 
@@ -61,7 +64,8 @@ A `requires` clause states what a sandbox must GRANT, so the fail-closed directi
 | Network → `requires Network` | vendor CLI prompt mode calls the hosted model API (Claude Code docs.anthropic.com/claude-code/cli-reference; Codex CLI `exec` github.com/openai/codex; Gemini CLI github.com/google-gemini/gemini-cli) | `extdeps.llm.anthropic_rest`, `extdeps.llm.cli` |
 | NotNetwork → `requires none` | /usr/bin/stat: local coreutils/POSIX utility (man stat(1)); argv names only local paths/values | `extdeps.tools.stat` |
 | NotNetwork → `requires none` | Docker Engine API (docs.docker.com/reference/api/engine): default endpoint unix:///var/run/docker.sock (extdeps.docker.endpoint docker_default_endpoint), a unix socket | `extdeps.docker.container_inspect`, `extdeps.docker.container_stats` |
-| NotNetwork → `requires none` | Playwright Page/BrowserContext API (playwright.dev/docs/api/class-page): acts on an already-loaded local browser page | `extdeps.browser` |
+| Network → `requires Network` | RULING live page: Playwright Page/BrowserContext API (playwright.dev/docs/api/class-page); a running page and browser startup may fetch (`Launch`, `CurrentUrl`, `Title`) | `extdeps.browser` |
+| OpaqueDemand → `requires opaque` | RULING unverifiable surface: `playwright-runner` is not in this repository, so a runtime positional (selector, text, path, ms, context) may reach an unknown option | `extdeps.browser` |
 | OpaqueDemand → `requires opaque` | RULING runtime program: Playwright page.evaluate / locator.evaluate (playwright.dev/docs/evaluating) run runtime JavaScript in the page, which can call fetch | `extdeps.browser` |
 | NotNetwork → `requires none` | cargo(1) --version / cargo-fmt: no registry access (doc.rust-lang.org/cargo/commands) | `extdeps.cargo_build` |
 | NotNetwork → `requires none` | cat: local coreutils/POSIX utility (man cat(1)); argv names only local paths/values | `extdeps.linux.cgroup_v2`, `extdeps.linux.procfs` |
@@ -75,7 +79,8 @@ A `requires` clause states what a sandbox must GRANT, so the fail-closed directi
 | NotNetwork → `requires none` | dpkg(1): local status database | `extdeps.dpkg` |
 | NotNetwork → `requires none` | find: local coreutils/POSIX utility (man find(1)); argv names only local paths/values | `extdeps.linux.cgroup_v2`, `extdeps.shell` |
 | NotNetwork → `requires none` | getconf: local coreutils/POSIX utility (man getconf(1)); argv names only local paths/values | `extdeps.posix.getconf` |
-| NotNetwork → `requires none` | git(1); local subcommand per git-scm.com/docs (no transport; only fetch/push/ls-remote/clone/pull use git transfer protocols, gitprotocol-v2(5)) | `extdeps.git`, `extdeps.git.inspect`, `extdeps.git.plumbing`, `extdeps.git.publication_transport` |
+| NotNetwork → `requires none` | git(1); local subcommand per git-scm.com/docs reading only commits, refs, the index or config (no transport; only fetch/push/ls-remote/clone/pull use git transfer protocols, gitprotocol-v2(5)) | `extdeps.git`, `extdeps.git.inspect`, `extdeps.git.plumbing`, `extdeps.git.publication_transport` |
+| Network → `requires Network` | RULING partial clone: git-partial-clone (git-scm.com/docs/partial-clone) lazily fetches missing blobs/trees from the promisor remote; diff, show, cat-file, ls-tree, log -- path, read-tree, checkout-index, unpack-file, merge, merge-tree, checkout, restore, reset --hard, worktree add | `extdeps.git`, `extdeps.git.inspect`, `extdeps.git.plumbing` |
 | OpaqueDemand → `requires opaque` | RULING runtime program: git-grep(1) `-O<pager>` opens matches with a runtime program; `{pattern}` and `{ref}` (GitRef is only non-empty) sit in option position | `extdeps.git.inspect` |
 | NotNetwork → `requires none` | grep: local coreutils/POSIX utility (man grep(1)); argv names only local paths/values | `extdeps.tools.grep` |
 | NotNetwork → `requires none` | gunbc file transport: local filesystem read/write (POSIX open(2), read(2)) | `extdeps.filesystem.filesystem_io`, `extdeps.linux.procfs` |
@@ -134,4 +139,6 @@ A `requires` clause states what a sandbox must GRANT, so the fail-closed directi
 - `tmux.Session.New`: an inner-command carrier whose program demand is declared.
 - `browser.Page.Evaluate` / `browser.Element.EvaluateOn`: a structurally non-network expression vocabulary.
 - `git.Inspect` grep operations: `-e {pattern}` plus `--` before the revision, or a refined GitRef, would remove the `-O` route.
+- git object reads: add `git --no-lazy-fetch` (git 2.44+) to the read operations, then move them to `requires none`.
+- `extdeps.browser`: bring the runner's CLI into the repository (or cite its option surface) and terminate options before positionals; the selector operations then fall to the live-page Network rule.
 - `http.Client.PostStdinWithinUnixSocket`: put `--` before `{url}` and type the url to the socket's authority.

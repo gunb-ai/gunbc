@@ -1203,7 +1203,7 @@ service git.Core {
   }
 
   operation TrackedWorktreeDiffFromInRepo {
-    requires none
+    requires Network
     input { repository_path: String, treeish: GitRef }
     output {
       paths_nul: String from "stdout"
@@ -1227,7 +1227,7 @@ service git.Core {
   }
 
   operation Diff {
-    requires none
+    requires Network
     input { base: GitRef, head: GitRef = "HEAD" }
     output { diff: String from "stdout" }
     readonly
@@ -1239,7 +1239,7 @@ service git.Core {
   }
 
   operation DiffNameOnly {
-    requires none
+    requires Network
     input { base: GitRef, head: GitRef = "HEAD" }
     output {
       paths: List<FilePath> from "stdout_lines"
@@ -1254,7 +1254,7 @@ service git.Core {
   }
 
   operation DiffNameOnlyNoRenames {
-    requires none
+    requires Network
     input { base: GitRef, head: GitRef = "HEAD" }
     output {
       paths: List<FilePath> from "stdout_lines"
@@ -1270,7 +1270,7 @@ service git.Core {
   }
 
   operation DiffNameOnlyMerge {
-    requires none
+    requires Network
     input { base: GitRef, head: GitRef = "HEAD" }
     output {
       paths: List<FilePath> from "stdout_lines"
@@ -1285,7 +1285,7 @@ service git.Core {
   }
 
   operation DiffUnified0 {
-    requires none
+    requires Network
     input { base: GitRef, head: GitRef = "HEAD", range: GitDiffRange }
     output {
       diff: String from "stdout"
@@ -1300,7 +1300,7 @@ service git.Core {
   }
 
   operation DiffNameStatus {
-    requires none
+    requires Network
     input { base: GitRef, head: GitRef = "HEAD", range: GitDiffRange }
     output {
       raw: String from "stdout"
@@ -1327,7 +1327,7 @@ service git.Core {
   }
 
   operation LogPathCommits {
-    requires none
+    requires Network
     input { path: FilePath }
     output { commits: List<CommitSha> from "stdout_lines" }
     readonly
@@ -1351,7 +1351,7 @@ service git.Core {
   }
 
   operation Show {
-    requires none
+    requires Network
     input { ref: GitRef, path: FilePath }
     output {
       content: String from "stdout"
@@ -1367,7 +1367,7 @@ service git.Core {
   }
 
   operation RestoreBlobTo {
-    requires none
+    requires Network
     input { ref: GitRef, path: FilePath, work_tree: FilePath }
     output {
       success: Bool from "exit_success"
@@ -1532,7 +1532,7 @@ service git.Core {
   }
 
   operation CheckoutNewBranchAtInRepo {
-    requires none
+    requires Network
     input { repo: FilePath, branch: String, start_point: GitRef }
     output {
       exit_code: Int from "exit_code"
@@ -1542,7 +1542,7 @@ service git.Core {
   }
 
   operation CheckoutBranchInRepo {
-    requires none
+    requires Network
     input { repo: FilePath, branch: String }
     output {
       exit_code: Int from "exit_code"
@@ -1552,7 +1552,7 @@ service git.Core {
   }
 
   operation MergeNoEditInRepo {
-    requires none
+    requires Network
     input { repo: FilePath, branch: String }
     output {
       exit_code: Int from "exit_code"
@@ -1684,7 +1684,7 @@ service git.Core {
   }
 
   operation CatFileBlobInRepo {
-    requires none
+    requires Network
     input { repo: FilePath, oid: String }
     output {
       content: String from "stdout"
@@ -1740,7 +1740,7 @@ service git.Core {
   }
 
   operation ResetHardInRepo {
-    requires none
+    requires Network
     input { repo: FilePath, target: String }
     output {
       exit_code: Int from "exit_code"
@@ -1859,7 +1859,7 @@ fn shape_git_rev_parse_argv(repo: FilePath, target: GitRef) -> List<String> {
 
 service git.Worktree {
   operation Add {
-    requires none
+    requires Network
     input { path: FilePath, branch: NonEmptyStr, remote_ref: GitRef }
     output {
       success: Bool from "exit_success"
