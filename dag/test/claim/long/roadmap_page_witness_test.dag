@@ -1780,27 +1780,29 @@ fn fx_shell_task_ids() -> List<String> {
 // witness_project_bar_flags_red_from_decided_field; the derivation lives in the presentation
 // witness).
 test fn witness_shell_project_row_heads_the_table_with_live_task() -> Bool {
-  let doc = fx_shell_subtree_doc()
-  let memberships = roadmap_memberships()
-  match fx_shell_live_workspace_html(refused: false, doc: doc, memberships: memberships) {
+  match fx_shell_live_workspace_html(refused: false, doc: fx_shell_subtree_doc(), memberships: roadmap_memberships()) {
     EmitRejected { reason: _ } => false
     EmitOk { html: live } =>
-      match fx_shell_live_workspace_html(refused: true, doc: doc, memberships: memberships) {
-        EmitRejected { reason: _ } => false
-        EmitOk { html: refused_h } =>
-          let project_row = li_of_node(html: live, node_id: "shell-typed-invocation")
-          let live_row = li_of_node(html: live, node_id: "shell-dag-cron-entry-line-builder")
-          let refused_row = li_of_node(html: refused_h, node_id: "shell-dag-cron-entry-line-builder")
-          !string_contains(s: project_row, pattern: "node-project")
-            && !string_contains(s: project_row, pattern: " tasks closed")
-            && marker_before(s: live, first: "data-node=\"shell-typed-invocation\"", second: "data-node=\"shell-dag-cron-entry-line-builder\"")
-            && all(fx_shell_task_ids(), id => occurrence_count(s: live, pattern: join(["data-node=\"", id, "\" tabindex=\"0\""], "")) == 1)
-            && string_contains(s: live_row, pattern: "data-band=\"active\"")
-            && !string_contains(s: live_row, pattern: "activity-line-error-refusal")
-            && string_contains(s: refused_row, pattern: "activity-line-error-refusal")
-            && !string_contains(s: live, pattern: "frontier-bucket")
-            && !string_contains(s: live, pattern: "class=\"taskbar\"")
-      }
+      let project_row = li_of_node(html: live, node_id: "shell-typed-invocation")
+      let live_row = li_of_node(html: live, node_id: "shell-dag-cron-entry-line-builder")
+      !string_contains(s: project_row, pattern: "node-project")
+        && !string_contains(s: project_row, pattern: " tasks closed")
+        && marker_before(s: live, first: "data-node=\"shell-typed-invocation\"", second: "data-node=\"shell-dag-cron-entry-line-builder\"")
+        && all(fx_shell_task_ids(), id => occurrence_count(s: live, pattern: join(["data-node=\"", id, "\" tabindex=\"0\""], "")) == 1)
+        && string_contains(s: live_row, pattern: "data-band=\"active\"")
+        && !string_contains(s: live_row, pattern: "activity-line-error-refusal")
+        && !string_contains(s: live, pattern: "frontier-bucket")
+        && !string_contains(s: live, pattern: "class=\"taskbar\"")
+  }
+}
+
+// The refused arm of the same table, its own claim: the two renders share no assertion, so one
+// claim paid for both tables to state two independent facts.
+test fn witness_shell_live_task_refusal_marks_its_row() -> Bool {
+  match fx_shell_live_workspace_html(refused: true, doc: fx_shell_subtree_doc(), memberships: roadmap_memberships()) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: refused_h } =>
+      string_contains(s: li_of_node(html: refused_h, node_id: "shell-dag-cron-entry-line-builder"), pattern: "activity-line-error-refusal")
   }
 }
 
