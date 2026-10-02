@@ -13,7 +13,7 @@ import v2.std.compilers.target_model {
   canonical_operation_op_add,
   canonical_operation_op_coerce,
   canonical_operation_wire_matches_operation,
-  target_model_canonical_operation_member_declared_type
+  target_model_canonical_operation_member_declared_type,
 }
 import v2.compiler.resolve { ResolvedTree, resolved_tree_lexical_binding }
 import v2.compiler.inferred_tree {
@@ -63,9 +63,9 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, lexical_reference_label_optional, parameter_reference_path_optional }
-import v2.std.node_query { BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, declared_field_from_edge }
+import v2.std.node_query { BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, declared_field_from_edge, find_labeled_child }
 import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_lookup }
-import v2.std.node { Ambiguous, Found, NotMarkedReference, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_signature_order_edge, match_arm_pattern_edge, resolved_reference_body_kind }
+import v2.std.node { Ambiguous, Found, NotMarkedReference, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_signature_order_edge, match_arm_pattern_edge, resolved_reference_body_kind, edge_label_of, MatchArmBodyEdge, MatchArmPatternEdge, production_edge_label }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.arrow_signature {
   ApplicationBindingRefused,
@@ -137,6 +137,7 @@ import v2.std.diagnostic {
 }
 import v2.std.logic { Bool }
 import v2.std.node {
+  StructuralLabel,
   host_text_type_node,
   symbol_type_node,
   Arrow,
@@ -151,7 +152,7 @@ import v2.std.node {
   Instantiation,
   Loop,
   Match,
-  Named,
+  Authored,
   Node,
   NodeFold,
   Positional,
@@ -166,8 +167,6 @@ import v2.std.node {
   canonicalize_node_strip_provenance,
   fold_node,
   loop_edge_contributes_to_iteration_fold,
-  match_arm_body,
-  match_arm_pattern,
   node_subtree_nodes,
   well_formed,
 }
@@ -178,6 +177,7 @@ import v2.std.node_query {
   construct_tag_path_optional,
   declared_field_named,
   field_projection_optional,
+  find_core_child,
   find_named_child,
   node_positional_child_targets,
   pattern_wildcard_name
@@ -1674,7 +1674,7 @@ fn refinement_declaration(index: SymbolIndex, reference: Node) -> Optional<Refin
       match symbol_index_lookup(index: index, qualified_path: path) {
         Absent => Absent
         Present { value: decl } =>
-          match find_named_child(root: decl, name: ^dag_surface_where_refinement_clause) {
+          match find_labeled_child(root: decl, label: production_edge_label(language: ^dag_language_model_surface_id, edge: ^dag_surface_where_refinement_clause)) {
             Rejected { diagnostics: _ } => Absent
             Accepted { value: clause, diagnostics: _ } =>
               match find_named_child(root: decl, name: ^dag_surface_type_expr) {
@@ -2068,11 +2068,11 @@ fn infer_match_bool_arm_row(
 ) -> Outcome<InferMatchArmRow> {
   match arm.kind {
     TypeNode { connective: Conj } =>
-      match find_named_child(root: arm, name: match_arm_pattern) {
+      match find_core_child(root: arm, marker: MatchArmPatternEdge) {
         Rejected { diagnostics: _ } =>
           outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
         Accepted { value: pat, diagnostics: pd } =>
-          match find_named_child(root: arm, name: match_arm_body) {
+          match find_core_child(root: arm, marker: MatchArmBodyEdge) {
             Rejected { diagnostics: _ } =>
               outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
             Accepted { value: body_target, diagnostics: bd } =>
@@ -2173,7 +2173,7 @@ fn infer_match_bool(
 // is not yet typed into the literal family, which refuses it as infer_match_scrutinee_not_bool -- a
 // verdict about the wrong question.
 fn infer_match_arm_pattern_is_literal(arm: Node) -> Bool {
-  match find_named_child(root: arm, name: match_arm_pattern) {
+  match find_core_child(root: arm, marker: MatchArmPatternEdge) {
     Rejected { diagnostics: _ } => false
     Accepted { value: pat, diagnostics: _ } =>
       match dag_canonical_literal_from_node(node: pat) {
@@ -2189,7 +2189,7 @@ fn infer_match_arm_pattern_is_literal(arm: Node) -> Bool {
 // untyped scrutinee and accept it at the frontier, widening a refusal into an admission
 // (v2.test.claim.manual.match_infer_fail_open_audit complement_body_real_infer_refuses_unsupported_pattern_holds).
 fn infer_match_arm_pattern_is_constructor(arm: Node) -> Bool {
-  match find_named_child(root: arm, name: match_arm_pattern) {
+  match find_core_child(root: arm, marker: MatchArmPatternEdge) {
     Rejected { diagnostics: _ } => false
     Accepted { value: pat, diagnostics: _ } =>
       match infer_coproduct_arm_pattern(pat: pat) {
@@ -2304,7 +2304,8 @@ fn infer_match_variant_payload(variants: Node, tag: Symbol) -> Optional<Node> {
 fn infer_match_variant_tags(variants: Node) -> List<Symbol> {
   fold(variants.children, init: Empty, f: fn(acc, e) {
     match e.label {
-      Named { name: tag } => list_snoc_item(xs: acc, item: tag)
+      Authored { name: tag } => list_snoc_item(xs: acc, item: tag)
+      StructuralLabel { label: _ } => acc
       Positional => acc
     }
   })
@@ -2484,7 +2485,8 @@ fn infer_coproduct_arm_fields_check(pat: Node, payload: Node, fields: List<Edge>
       Accepted { value: _, diagnostics: _ } =>
         match e.label {
           Positional => outcome_rejected(infer_match_pattern_unread_diagnostic(pattern: pat))
-          Named { name: field } =>
+          StructuralLabel { label: _ } => outcome_rejected(infer_match_pattern_unread_diagnostic(pattern: pat))
+          Authored { name: field } =>
             match infer_conj_named_type_for_binding(domain: payload, binding: field) {
               Absent => outcome_rejected(infer_match_pattern_field_not_declared_diagnostic(pattern: pat))
               Present { value: _ } =>
@@ -2504,10 +2506,10 @@ fn infer_coproduct_arm_fields_check(pat: Node, payload: Node, fields: List<Edge>
 }
 
 fn infer_coproduct_arm_row(arm: Node, coproduct: InferMatchCoproduct) -> Outcome<InferCoproductArmRow> {
-  match find_named_child(root: arm, name: match_arm_pattern) {
+  match find_core_child(root: arm, marker: MatchArmPatternEdge) {
     Rejected { diagnostics: _ } => outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
     Accepted { value: pat, diagnostics: _ } =>
-      match find_named_child(root: arm, name: match_arm_body) {
+      match find_core_child(root: arm, marker: MatchArmBodyEdge) {
         Rejected { diagnostics: _ } => outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
         Accepted { value: body, diagnostics: _ } =>
           match infer_coproduct_arm_pattern(pat: pat) {
@@ -4401,21 +4403,24 @@ fn infer_literal_edge_payload(parent: Node, edge: Edge) -> InferLiteralPayload {
   match dag_canonical_literal_from_node(node: parent) {
     Accepted { value: DagCanonicalIntLiteral { magnitude: _ }, diagnostics: _ } =>
       match edge.label {
-        Named { name: field } =>
+        StructuralLabel { label: _ } => InferNotALiteralPayload
+        Authored { name: field } =>
           if field == ^integer_literal_magnitude_field { InferIntMagnitudePayload } else { InferNotALiteralPayload }
         Positional => InferNotALiteralPayload
       }
     Accepted { value: DagCanonicalSymbolLiteral { symbol: _ }, diagnostics: _ } =>
       match edge.label {
-        Named { name: field } =>
+        Authored { name: field } =>
           if field == ^symbol_literal_name_field { InferSymbolNamePayload } else { InferNotALiteralPayload }
+        StructuralLabel { label: _ } => InferNotALiteralPayload
         Positional => InferNotALiteralPayload
       }
     Accepted { value: DagCanonicalBoolLiteral { value: _ }, diagnostics: _ } => InferNotALiteralPayload
     Accepted { value: DagCanonicalStringLiteral { value: _ }, diagnostics: _ } =>
       match edge.label {
-        Named { name: field } =>
+        Authored { name: field } =>
           if field == ^string_literal_value_field { InferStringValuePayload } else { InferNotALiteralPayload }
+        StructuralLabel { label: _ } => InferNotALiteralPayload
         Positional => InferNotALiteralPayload
       }
     Rejected { diagnostics: _ } => InferNotALiteralPayload
@@ -4648,7 +4653,8 @@ fn infer_sum_nullary_payload_edge(parent: Node, edge: Edge) -> Bool {
   match parent.kind {
     TypeNode { connective: Disj } =>
       (match edge.label {
-        Named { name: _ } => true
+        StructuralLabel { label: _ } => false
+        Authored { name: _ } => true
         Positional => false
       })
         && (length(xs: edge.target.children) == 0)
@@ -4677,7 +4683,8 @@ fn infer_disj_is_named_sum(n: Node) -> Bool {
   (length(xs: n.children) > 0)
     && fold(n.children, init: true, f: fn(acc, e) {
       acc && match e.label {
-        Named { name: _ } => true
+        StructuralLabel { label: _ } => false
+        Authored { name: _ } => true
         Positional => false
       }
     })
@@ -4721,7 +4728,8 @@ fn infer_disj_is_named_sum(n: Node) -> Bool {
 fn infer_where_predicate_set_edge(parent: Node, edge: Edge) -> Bool {
   match edge.label {
     Positional => false
-    Named { name: label } =>
+    StructuralLabel { label: _ } => false
+    Authored { name: label } =>
       if label == ^grammar_production_captured_node_projection {
         match find_named_child(root: parent, name: ^grammar_production_identity_node_projection) {
           Accepted { value: identity, diagnostics: _ } =>
@@ -5020,7 +5028,7 @@ fn infer_record_construct_refusal(reason: Symbol, at: Node, record: Node, field:
       node: Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge { label: Named { name: ^inhabitance_record }, target: record },
+          Edge { label: Authored { name: ^inhabitance_record }, target: record },
           field
         ],
         occurrence_id: at.occurrence_id
@@ -5059,7 +5067,8 @@ fn infer_record_construct_binding_reason(plan_reason: Symbol) -> Symbol {
 fn infer_record_actual_label_set(actuals: List<Edge>) -> Map<Symbol, Bool> {
   fold(actuals, init: empty_map(), f: fn(m, e) {
     match e.label {
-      Named { name: label } => map_insert(m: m, key: label, value: true)
+      Authored { name: label } => map_insert(m: m, key: label, value: true)
+      StructuralLabel { label: _ } => m
       Positional => m
     }
   })
@@ -5085,8 +5094,9 @@ fn infer_record_first_positional_actual(actuals: List<Edge>) -> Optional<Edge> {
       Present { value: _ } => acc
       Absent =>
         match e.label {
+          StructuralLabel { label: _ } => acc
           Positional => optional_present(value: e)
-          Named { name: _ } => acc
+          Authored { name: _ } => acc
         }
     }
   })
@@ -5108,7 +5118,7 @@ fn infer_record_construct_binding_refusal(
           reason: reason,
           at: node,
           record: construct.record,
-          field: Edge { label: Named { name: missing.parameter_identity }, target: missing.declared }
+          field: Edge { label: Authored { name: missing.parameter_identity }, target: missing.declared }
         )
       Absent => application_parameter_order_diagnostic(application: node, reason: application_parameter_order_malformed_reason())
     }

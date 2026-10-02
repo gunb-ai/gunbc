@@ -80,7 +80,7 @@ import v2.std.node {
   ComputationNode,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -105,7 +105,7 @@ data add_body_ts_emit_operand_swap_source_text: String = "function add(x: number
 data add_body_ts_emit_catalog_minus_source_text: String = "function add(x: number, y: number): number { return x - y; }"
 
 fn add_body_ts_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn add_body_ts_add_operator_row_minus() -> Node {

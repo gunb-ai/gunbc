@@ -22,13 +22,14 @@ import v2.std.node {
   Edge,
   Instantiation,
   Match,
-  Named,
+  Authored,
+  MatchArmBodyEdge,
+  MatchArmPatternEdge,
   Node,
   Positional,
   Symbol,
   TypeNode,
-  match_arm_body,
-  match_arm_pattern
+  core_edge_label
 }
 import v2.std.node_query { construct_node }
 import v2.std.symbol_index {
@@ -408,7 +409,7 @@ fn mbt_conj(fields: List<Edge>) -> Node {
 }
 
 fn mbt_named(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn mbt_pos(target: Node) -> Edge {
@@ -517,8 +518,8 @@ fn mbt_entry(node: Node, ty: Node) -> List<InferredFactsEntry> {
 
 fn mbt_arm(pattern: Node, body: Node) -> Node {
   mbt_conj(fields: [
-    mbt_named(name: match_arm_pattern, target: pattern),
-    mbt_named(name: match_arm_body, target: body)
+    Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: pattern },
+    Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: body }
   ])
 }
 

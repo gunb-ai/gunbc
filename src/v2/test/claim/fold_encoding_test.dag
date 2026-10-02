@@ -261,7 +261,8 @@ fn piped_chain_takes_the_whole_prefix_as_its_collection_verdict() -> Bool {
 fn fe_domain_names(domain: Node) -> List<Symbol> {
   fold(domain.children, init: [], f: fn(acc, e) {
     match e.label {
-      Named { name: n } => list_snoc_item(xs: acc, item: n)
+      Authored { name: n } => list_snoc_item(xs: acc, item: n)
+      StructuralLabel { label: _ } => acc
       Positional => acc
     }
   })

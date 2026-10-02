@@ -20,14 +20,15 @@ import v2.std.node {
   Conj,
   Disj,
   Instantiation,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
   TypeNode,
   node_subtree_nodes,
   fold_node,
-  NodeFold
+  NodeFold,
+  StructuralLabel
 }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.qualified_name { qualified_name_to_dotted_string }
@@ -136,7 +137,8 @@ fn tree_named_edge_count_in_root(root: Node, needle: Symbol) -> Int {
       init: fn(_) { 0 },
       step: fn(acc, edge, child_count) {
         let here = match edge.label {
-          Named { name: nm } => if nm == needle { 1 } else { 0 }
+          StructuralLabel { label: _ } => 0
+          Authored { name: nm } => if nm == needle { 1 } else { 0 }
           Positional => 0
         }
         acc + here + child_count

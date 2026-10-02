@@ -17,7 +17,7 @@ import v2.std.diagnostic {
   outcome_diagnostics
 }
 import v2.std.logic { Bool }
-import v2.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v2.std.node { Arrow, ArrowBodyEdge, Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode, core_edge_label }
 import v2.std.node_query { find_arrow_body_child }
 import v2.std.text { String }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -232,7 +232,7 @@ fn cont_arrow_with_body(body: Node) -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Named { name: ^arrow_body_edge }, target: body }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body }
     ],
     occurrence_id: OccurrenceSynthetic
   }
