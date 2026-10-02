@@ -6970,15 +6970,27 @@ fn namespace_graft_namespace_body_node(edges: List<Edge>, source: Node) -> Node 
   }
 }
 
-// A marked body's members: its children without the mark.
+// A marked body's members: its children without the mark, in order. Built by prepending onto an
+// accumulator and reversed once (DESIGN 6: no copied accumulator), and shared with the graft's group
+// merge through namespace_graft_namespace_body_members_onto.
 fn namespace_graft_namespace_body_members(body: Node) -> List<Edge> {
-  fold(body.children, init: [], f: fn(acc, e) {
+  namespace_graft_reverse_edges(edges: namespace_graft_namespace_body_members_onto(body: body, acc: Empty))
+}
+
+// The body's members PREPENDED onto `acc` (so in reverse order): the one O(members) step both the member
+// list and the graft's group merge are built from.
+fn namespace_graft_namespace_body_members_onto(body: Node, acc: List<Edge>) -> List<Edge> {
+  fold(body.children, init: acc, f: fn(a, e) {
     match e.label {
       Named { name: sym } =>
-        if sym == ^grammar_production_identity_node_projection { acc } else { list_snoc_item(xs: acc, item: e) }
-      Positional => list_snoc_item(xs: acc, item: e)
+        if sym == ^grammar_production_identity_node_projection { a } else { Cons { head: e, tail: a } }
+      Positional => Cons { head: e, tail: a }
     }
   })
+}
+
+fn namespace_graft_reverse_edges(edges: List<Edge>) -> List<Edge> {
+  fold(edges, init: Empty, f: fn(acc, e) { Cons { head: e, tail: acc } })
 }
 
 fn namespace_graft_node_is_module_body(node: Node) -> Bool {
