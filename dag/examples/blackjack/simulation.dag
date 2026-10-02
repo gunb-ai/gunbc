@@ -5,4 +5,53 @@ module examples.blackjack.simulation
 // summary_reconciles -- is specified in docs/plans/blackjack-onboarding.md section 4.5
 // (authority gunbc.plans.blackjack_onboarding). The anchor is a teaching fixture and not
 // blackjack advice: the two thresholds the brief compares are both inhabitants of it.
+
+import examples.blackjack.cards { standard_deck }
+import examples.blackjack.hand { Hand, hand_value }
+import examples.blackjack.round {
+    BlackjackRules,
+    RoundOutcome,
+    PlayerAction,
+    PlayerHits,
+    PlayerStands,
+}
+import examples.blackjack.shuffle { ShuffleSeed }
+
 type Strategy = HitBelow { threshold: Int }
+
+type SimulationPlan {
+    rounds: Int
+    seed: ShuffleSeed
+    rules: BlackjackRules
+    strategy: Strategy
+}
+
+type SimulatedRound {
+    round_index: Int
+    seed: ShuffleSeed
+    player_actions: List<PlayerAction>
+    player_total: Int
+    dealer_total: Int
+    outcome: RoundOutcome
+}
+
+type SimulationSummary {
+    rounds_requested: Int
+    rounds_completed: Int
+    player_wins: Int
+    dealer_wins: Int
+    pushes: Int
+    player_blackjacks: Int
+    player_busts: Int
+}
+
+fn choose(strategy: Strategy, player: Hand) -> PlayerAction {
+    match strategy {
+        HitBelow { threshold: threshold } =>
+            if hand_value(hand: player).total < threshold {
+                PlayerHits
+            } else {
+                PlayerStands
+            }
+    }
+}
