@@ -1,6 +1,6 @@
 # PLAN — one nominal type-declaration model; delete refinements
 
-**Status: PLAN, revision 2. Design only; nothing lands until the operator rules on §9.**
+**Status: PLAN, revision 3 — APPROVED by the operator 2026-10-02; decisions RULED in §9 (S1 spelling: pick-list). Design only.**
 Operator direction 2026-10-02 (work item adhoc-7e1dbee1-8e0); revision 2 recuts the plan around the
 operator's ruling on gunbc#13024 rev 1, relayed by sharp-raven-357:
 
@@ -85,7 +85,7 @@ never `TrueAlias` or `Unrelated`); and a mutation control — an introduction re
 **Equality.** `type X = Y`. Unchanged; the default.
 
 **Progress.** A nominal declaration names its constructor(s); a one-field nominal over `Y` lowers to a
-single-field record. Concrete surface syntax for the visibility axes is a §9 decision (S1); this plan
+single-field record. The surface is a declaration modifier (§9 S1); this plan
 fixes the semantics:
 
 - **In:** only by a constructor whose visibility admits the call site. A **raw** constructor is total
@@ -227,21 +227,37 @@ Each red is run on the v2 route and the seed route (rung is the minimum across p
 The N7 lane (calm-boar-904) is not touched; if M0 finds a brand or refinement in its 8 native tests,
 M4 sequences after N7.
 
-## 9. Residual operator decisions
+## 9. Decisions — RULED 2026-10-02
 
-Ruled: D1 (alias is equality), D2 (constructor + independent visibility axes), D3 (no typecase),
-D4 (resolved census sizes M2), D5 (atomic deletion), D6 (selective derived capabilities), D7 (checked
-construction may return residue). Left open:
+All rulings relayed by sharp-raven-357 on gunbc#13024.
 
-- **S1 — surface syntax** for constructor visibility, view visibility and capability opt-in. Recommend:
-  annotations on the declaration only (no new declaration keyword), so the one form stays one form;
-  the operator picks the spelling.
-- **S2 — encoding's home.** The DFS found equality/ordering in `std.algebra` and hashing in
-  `std.content_hash`, but no consumed encoding capability authority. Recommend: a bounded DFS in M1
-  before anything is named; if none exists, an operator ruling on the home before M1 lands.
-- **S3 — evidence in checked construction.** Recommend: residue + typed cause only (`Result`); a
-  carried proof witness waits for a consumer (DESIGN §3c).
-- **S4 — default view visibility** for a brand-like nominal. Recommend: public (it is the old brand's
-  behavior; the census will show how many already only project).
-- **S5 — PR size.** M4 is one cutover; its size is unknown until M0 runs. Recommend: accept it as one
-  generated PR whatever the number, since staging would make both forms observable.
+- **D1–D7 — RULED** as stated in §1–§5 (alias is equality; constructor plus two independent
+  visibility axes; no typecase; the resolved census sizes M2; atomic deletion; selective derived
+  capabilities; checked construction may return residue).
+- **S1 — RULED: a declaration modifier from a closed vocabulary**, in the slot `nominal_opaque`
+  occupies today (`type X <modifier> = Y`). No new declaration keyword. **Not** a `//` annotation:
+  DESIGN §4c erases annotations before any semantic pass, so they cannot carry semantics. The concrete
+  spelling is the operator's pick (below).
+- **S2 — RULED:** bounded DFS for encoding's capability home in M1; if none is found, an operator
+  ruling on the home before M1 lands.
+- **S3 — RULED:** checked construction returns `Result` residue plus a typed cause only; no proof
+  witness.
+- **S4 — RULED:** the representation view is public by default.
+- **S5 — RULED:** M4 is one generated PR.
+
+### S1 pick-list (spelling of the modifier)
+
+The modifier's presence is what turns `=` from equality into construction, so the modifier is
+mandatory for every nominal and absent for every alias — the parser, not the reader, discriminates.
+
+| option | brand | validated (old refinement) | opaque | capabilities |
+|---|---|---|---|---|
+| **A (recommended)** — one word per point in the plane | `type T nominal = String` | `type Port sealed = Int` (raw ctor private; `port_of` public) | `type Secret opaque = String` | `derives(equality, ordering, hash)` as a second modifier: `type Port sealed derives(equality, ordering) = Int` |
+| B — one parameterized modifier | `nominal(construct: public)` | `nominal(construct: private)` | `nominal(construct: private, view: private)` | `nominal(…, derives: [equality])` |
+| C — two orthogonal words | `type T nominal = String` | `type T nominal private_construct = Int` | `type T nominal private_construct private_view = String` | `derives(…)` |
+
+Recommendation **A**: three closed words map one-to-one onto the three legitimate points, so an
+author cannot spell the fourth point (public construction, private view), which has no use in the
+corpus. With S4 (view public by default) the only private-view point is `opaque`. The `derives` list
+draws its members from `std.algebra` / `std.content_hash` names (§5), never a fresh vocabulary;
+default is nothing derived. If the census (M0) finds a use for the fourth point, B is the fallback.
