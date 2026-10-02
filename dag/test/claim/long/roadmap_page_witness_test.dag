@@ -891,13 +891,15 @@ test fn witness_client_asset_is_exactly_its_statement_groups() -> Bool {
 
 // THE ASSET-WIDE NEGATIVES AND THE ONE-FETCH LAW, over a partition of the groups that together
 // cover the whole asset (sized so each part serializes inside the new-witness budget): no part ships the retired selection closest() list, the retired
-// action-live class, a `=> if (` arrow (a JS syntax error) or the retired view-chip selector, and exactly one part -- the one
+// action-live class, a `=> if (` arrow (a JS syntax error), the retired view-chip selector or a channel prepending its
+// own observation banner (the channels join one impact region), and exactly one part -- the one
 // holding session_read_bind_statements -- fetches /auth/session, exactly once.
 fn fx_client_part_holds(js: String, session_fetches: Int) -> Bool {
   !string_contains(s: js, pattern: "closest('button, a, details, input, select, textarea')")
     && !string_contains(s: js, pattern: "action-live")
     && !string_contains(s: js, pattern: "=> if (")
     && !string_contains(s: js, pattern: "[data-view-chip]")
+    && !string_contains(s: js, pattern: "mn && mn.prepend(bn)")
     && occurrence_count(s: js, pattern: "fetch('/auth/session'") == session_fetches
 }
 
@@ -1031,15 +1033,21 @@ test fn witness_selection_has_keyboard_parity() -> Bool {
     && string_contains(s: js, pattern: "gunbcSelectRow(li)")
 }
 
+// The channels' statement groups (the impact preamble, the observation fetch, the workflow fetch)
+// are where each of these lines is emitted; the asset-wide negative -- no channel prepends its own
+// banner -- rides the client-asset partition, which reads every group.
 test fn witness_observation_channels_join_one_impact_region() -> Bool {
-  let js = dispatch_client_js_source()
+  let js = join([
+    fx_client_group_js(stmts: observe_impact_preamble_statements()),
+    fx_client_group_js(stmts: observation_fetch_statements()),
+    fx_client_group_js(stmts: workflow_fetch_statements()),
+  ], "\n")
   string_contains(s: js, pattern: "const gunbcObserveImpactBox")
     && string_contains(s: js, pattern: "'workspace-observation client-minted'")
     && string_contains(s: js, pattern: "impactDetail && impactDetail.append(bn)")
     && string_contains(s: js, pattern: "'observe-refused sessions-observe-refused'")
     && string_contains(s: js, pattern: "'observe-refused attempts-observe-refused'")
     && string_contains(s: js, pattern: "'observe-refused workflow-observe-refused'")
-    && !string_contains(s: js, pattern: "mn && mn.prepend(bn)")
 }
 
 // THE STYLESHEET, SUPPLIED BY ITS PARTS (DESIGN section 3, a witness discriminates at one interface).
