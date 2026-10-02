@@ -539,11 +539,11 @@ data v41_arm_a_produced_image: V41ProducedImageHeld = V41ProducedImageHeld {
 data v41_production_produced_image: V41ProducedImageHeld = V41ProducedImageHeld {
   observed: v41_observed_source_identity_of(
     revision_head: "d2d649e674c75425d2d6975c87eb89fd4d55fff8" as NonEmptyStr,
-    worktree_diff_sha256: Sha256Digest { hex: "2f58ab0a60ddbc0b9683b409f0205f4782cdaea7bfd42dabb8be74a26b79cf1b" as Sha256DigestHex },
+    worktree_diff_sha256: Sha256Digest { hex: "fe046420916cb120b484a2735e650e20443f95e8f6dbc1bfda44f3ac28a09b58" as Sha256DigestHex },
   ),
-  config: OciSha256Digest(Sha256Digest { hex: "d06eb249f6061bb5bcffadf858630989b9f620367e4511e0a0dcbbf000d4cfc7" as Sha256DigestHex }),
+  config: OciSha256Digest(Sha256Digest { hex: "00eb3c41602070504b1df2deb32c0ee2befada11ef15f5765ecf4cd211666fb3" as Sha256DigestHex }),
   held_on: "srv8" as HostIdentity,
-  receipt_run: "36934138860" as NonEmptyStr,
+  receipt_run: "36947339779" as NonEmptyStr,
 }
 
 fn v41_produced_image_subject(p: V41ProducedImageHeld) -> VllmImageDistributionSubject {
