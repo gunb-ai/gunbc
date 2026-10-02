@@ -72,7 +72,8 @@ test fn an_opaque_operation_is_undecided_by_its_cause_RED() -> Bool {
   let rows = dependency_demand_of(functions: [plain(path: "m.outer", callees: [q(dotted: "m.inner")]), plain(path: "m.inner", callees: [q(dotted: "m.Shell.Exec"), q(dotted: "m.Http.Get")])], operations: ops())
   match demand_for(rows: rows, path: "m.outer") {
     DemandUndecided { cause: OpaqueOperationCalled { operation: o } } => o == q(dotted: "m.Shell.Exec")
-    _ => false
+    DemandUndecided { cause: _ } => false
+    DemandDerived { resources: _ } => false
   }
 }
 
@@ -80,7 +81,8 @@ test fn an_undeclared_operation_is_never_read_as_none_RED() -> Bool {
   let rows = dependency_demand_of(functions: [plain(path: "m.f", callees: [q(dotted: "m.Legacy.Call")])], operations: ops())
   match demand_for(rows: rows, path: "m.f") {
     DemandUndecided { cause: UndeclaredOperationCalled { operation: _ } } => true
-    _ => false
+    DemandUndecided { cause: _ } => false
+    DemandDerived { resources: _ } => false
   }
 }
 
@@ -88,7 +90,8 @@ test fn a_function_value_call_is_undecided_RED() -> Bool {
   let rows = dependency_demand_of(functions: [FunctionFact { path: q(dotted: "m.f"), callees: [], calls_function_value: true }], operations: ops())
   match demand_for(rows: rows, path: "m.f") {
     DemandUndecided { cause: FunctionValueCalled { function: _ } } => true
-    _ => false
+    DemandUndecided { cause: _ } => false
+    DemandDerived { resources: _ } => false
   }
 }
 
@@ -96,6 +99,7 @@ test fn a_callee_outside_the_closure_is_undecided_RED() -> Bool {
   let rows = dependency_demand_of(functions: [plain(path: "m.f", callees: [q(dotted: "elsewhere.g")])], operations: ops())
   match demand_for(rows: rows, path: "m.f") {
     DemandUndecided { cause: CalleeOutsideClosure { callee: c } } => c == q(dotted: "elsewhere.g")
-    _ => false
+    DemandUndecided { cause: _ } => false
+    DemandDerived { resources: _ } => false
   }
 }
