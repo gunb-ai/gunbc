@@ -1401,7 +1401,9 @@ fn resolve_bound_head_projection(
                   rejected: diagnostics_singleton(d: unbound_symbol_diagnostic(n: n))
                 )
               }
-            Present { value: base } =>
+            Present { value: Rejected { diagnostics: r } } =>
+              Rejected { diagnostics: rejected_with_pending(pending: pending, rejected: r) }
+            Present { value: Accepted { value: base, diagnostics: _ } } =>
               outcome_with_diagnostics(
                 value: fold_list(
                   xs: field_segments,
@@ -1432,21 +1434,44 @@ fn resolve_bound_head_projection(
 // the path never having been this function's subject at all; the later receipt established the second. Its
 // deletion is therefore a correctness repair on this function's own contract, claiming nothing about the
 // eight.
-fn resolve_projection_base(ctx: ResolveContext, head_segment: Node) -> Optional<Node> {
+//
+// A NAMED FN'S PARAMETER AS THE HEAD IS THE SAME PATH-KEYED REFERENCE IT IS ANYWHERE ELSE. A ParameterFrame
+// answers through resolve_frame_bound_reference, the one route that mints parameter_reference_node, so infer
+// grounds the receiver through the resolved declarations exactly as it grounds a bare use of that parameter
+// (v2.compiler.infer infer_parameter_reference_facts). A bare atom here was typed only by the scope search
+// that main deleted, so it would leave every such receiver underived. A Lexical or type-parameter head stays
+// the canonical atom: minting a lexical reference here would need its binding recorded, and this Outcome<Node>
+// route carries no lexical entries, so it would refuse as unrecorded at infer. DECLARED FRONTIER, TRIGGER
+// NAMING THE CAPABILITY: the projection route carries LexicalBindingEntry beside its node, SUFFICIENT FOR a
+// let, match-arm or lambda binder to be a typed projection receiver.
+fn resolve_projection_base(ctx: ResolveContext, head_segment: Node) -> Optional<Outcome<Node>> {
   match head_segment.kind {
     TypeNode { connective: Atom { identity: name } } =>
       match lookup_chain(s: ctx.scope, name: name) {
         Rejected { diagnostics: _ } => optional_absent()
         Accepted { value: found, diagnostics: _ } =>
           match found {
+            BoundInFrame { canonical: canonical, kind: ParameterFrame { arrow_path: arrow_path } } =>
+              optional_present(value: match resolve_frame_bound_reference(
+                ctx: ctx,
+                n: head_segment,
+                canonical: canonical,
+                kind: ParameterFrame { arrow_path: arrow_path },
+                pending: None
+              ) {
+                Accepted { value: atom, diagnostics: d } => Accepted { value: atom.node, diagnostics: d }
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+              })
             BoundInFrame { canonical: canonical, kind: _ } =>
-              optional_present(
-                value: canonical_atom(identity: canonical, occurrence_id: head_segment.occurrence_id)
-              )
+              optional_present(value: Accepted {
+                value: canonical_atom(identity: canonical, occurrence_id: head_segment.occurrence_id),
+                diagnostics: None
+              })
             BoundAtRoot { canonical: canonical } =>
-              optional_present(
-                value: canonical_atom(identity: canonical, occurrence_id: head_segment.occurrence_id)
-              )
+              optional_present(value: Accepted {
+                value: canonical_atom(identity: canonical, occurrence_id: head_segment.occurrence_id),
+                diagnostics: None
+              })
             ScopeUnbound => optional_absent()
           }
       }
