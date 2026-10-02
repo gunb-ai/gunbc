@@ -91,6 +91,7 @@ service docker.ContainerStats {
   }
 
   operation GetStats {
+    requires none
     input {
       container_id: String
       stream: Bool = false

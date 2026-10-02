@@ -57,66 +57,66 @@ A `requires` clause states what a sandbox must GRANT, so the fail-closed directi
 | Network → `requires Network` | ipmitool(1) INTERFACES: -I lanplus = IPMI v2.0 RMCP+ over UDP/623 to -H {bmc_host} | `extdeps.bmc.ipmi` |
 | Network → `requires Network` | ssh(1)/scp(1) (+sshpass(1)): opens TCP/22 session to the host named in argv | `extdeps.bmc.openbmc_password_ssh_transport`, `extdeps.ssh.password_session`, `extdeps.ssh.session` |
 | Network → `requires Network` | vendor CLI prompt mode calls the hosted model API (Claude Code docs.anthropic.com/claude-code/cli-reference; Codex CLI `exec` github.com/openai/codex; Gemini CLI github.com/google-gemini/gemini-cli) | `extdeps.llm.anthropic_rest`, `extdeps.llm.cli` |
-| NotNetwork → `requires none` (pending #12960) | /usr/bin/stat: local coreutils/POSIX utility (man stat(1)); argv names only local paths/values | `extdeps.tools.stat` |
-| NotNetwork → `requires none` (pending #12960) | Docker Engine API (docs.docker.com/reference/api/engine): default endpoint unix:///var/run/docker.sock (extdeps.docker.endpoint docker_default_endpoint), a unix socket | `extdeps.docker.container_inspect`, `extdeps.docker.container_stats` |
-| NotNetwork → `requires none` (pending #12960) | Playwright Page/BrowserContext API (playwright.dev/docs/api/class-page): acts on an already-loaded local browser page | `extdeps.browser` |
-| NotNetwork → `requires none` (pending #12960) | cargo(1) --version / cargo-fmt: no registry access (doc.rust-lang.org/cargo/commands) | `extdeps.cargo_build` |
-| NotNetwork → `requires none` (pending #12960) | cat: local coreutils/POSIX utility (man cat(1)); argv names only local paths/values | `extdeps.linux.cgroup_v2`, `extdeps.linux.procfs` |
-| NotNetwork → `requires none` (pending #12960) | chmod: local coreutils/POSIX utility (man chmod(1)); argv names only local paths/values | `extdeps.shell` |
-| NotNetwork → `requires none` (pending #12960) | codex app-server generate-json-schema (github.com/openai/codex app-server README): writes schema files locally | `extdeps.llm.codex_app_server` |
-| NotNetwork → `requires none` (pending #12960) | cp: local coreutils/POSIX utility (man cp(1)); argv names only local paths/values | `extdeps.shell` |
-| NotNetwork → `requires none` (pending #12960) | crontab(1): local spool | `extdeps.cron` |
-| NotNetwork → `requires none` (pending #12960) | curl(1) --unix-socket: connects to a local unix socket, not TCP | `extdeps.http.client` |
-| NotNetwork → `requires none` (pending #12960) | date: local coreutils/POSIX utility (man date(1)); argv names only local paths/values | `extdeps.clock` |
-| NotNetwork → `requires none` (pending #12960) | diff: local coreutils/POSIX utility (man diff(1)); argv names only local paths/values | `extdeps.tools.diffutils` |
-| NotNetwork → `requires none` (pending #12960) | dpkg(1): local status database | `extdeps.dpkg` |
-| NotNetwork → `requires none` (pending #12960) | find: local coreutils/POSIX utility (man find(1)); argv names only local paths/values | `extdeps.linux.cgroup_v2`, `extdeps.shell` |
-| NotNetwork → `requires none` (pending #12960) | getconf: local coreutils/POSIX utility (man getconf(1)); argv names only local paths/values | `extdeps.posix.getconf` |
-| NotNetwork → `requires none` (pending #12960) | git(1); local subcommand per git-scm.com/docs (no transport; only fetch/push/ls-remote/clone/pull use git transfer protocols, gitprotocol-v2(5)) | `extdeps.git`, `extdeps.git.inspect`, `extdeps.git.plumbing`, `extdeps.git.publication_transport` |
-| NotNetwork → `requires none` (pending #12960) | grep: local coreutils/POSIX utility (man grep(1)); argv names only local paths/values | `extdeps.tools.grep` |
-| NotNetwork → `requires none` (pending #12960) | gunbc file transport: local filesystem read/write (POSIX open(2), read(2)) | `extdeps.filesystem.filesystem_io`, `extdeps.linux.procfs` |
-| NotNetwork → `requires none` (pending #12960) | gzip: local coreutils/POSIX utility (man gzip(1)); argv names only local paths/values | `extdeps.tools.gzip` |
-| NotNetwork → `requires none` (pending #12960) | hostname: local coreutils/POSIX utility (man hostname(1)); argv names only local paths/values | `extdeps.tools.hostname` |
-| NotNetwork → `requires none` (pending #12960) | hostnamectl(1): D-Bus to local systemd-hostnamed | `extdeps.tools.hostname` |
-| NotNetwork → `requires none` (pending #12960) | id: local coreutils/POSIX utility (man id(1)); argv names only local paths/values | `extdeps.shell`, `extdeps.tools.id` |
-| NotNetwork → `requires none` (pending #12960) | ip-address(8): rtnetlink to the local kernel | `extdeps.iproute2.ip_address` |
-| NotNetwork → `requires none` (pending #12960) | journalctl(1): reads the local journal | `extdeps.systemd.journalctl` |
-| NotNetwork → `requires none` (pending #12960) | jq(1) manual: filter over stdin/args | `extdeps.bmc.openbmc_fan_control`, `extdeps.tools.jq` |
-| NotNetwork → `requires none` (pending #12960) | kill: local coreutils/POSIX utility (man kill(1)); argv names only local paths/values | `extdeps.posix.signal` |
-| NotNetwork → `requires none` (pending #12960) | ln: local coreutils/POSIX utility (man ln(1)); argv names only local paths/values | `extdeps.shell` |
-| NotNetwork → `requires none` (pending #12960) | mkdir: local coreutils/POSIX utility (man mkdir(1)); argv names only local paths/values | `extdeps.shell` |
-| NotNetwork → `requires none` (pending #12960) | mktemp: local coreutils/POSIX utility (man mktemp(1)); argv names only local paths/values | `extdeps.shell` |
-| NotNetwork → `requires none` (pending #12960) | mv: local coreutils/POSIX utility (man mv(1)); argv names only local paths/values | `extdeps.shell` |
-| NotNetwork → `requires none` (pending #12960) | node: local coreutils/POSIX utility (man node(1)); argv names only local paths/values | `extdeps.tools.node` |
-| NotNetwork → `requires none` (pending #12960) | npm --version (docs.npmjs.com/cli/commands/npm) | `extdeps.tools.npm` |
-| NotNetwork → `requires none` (pending #12960) | npm ci --offline (docs.npmjs.com/cli/using-npm/config#offline): forces cache-only, no network | `extdeps.tools.npm` |
-| NotNetwork → `requires none` (pending #12960) | nvidia-smi(1): local NVML | `extdeps.nvidia.system_management_interface` |
-| NotNetwork → `requires none` (pending #12960) | oomctl(1): local systemd-oomd | `extdeps.systemd.oomd` |
-| NotNetwork → `requires none` (pending #12960) | openssl-dgst(1): local signing | `extdeps.tools.openssl` |
-| NotNetwork → `requires none` (pending #12960) | printenv: local coreutils/POSIX utility (man printenv(1)); argv names only local paths/values | `extdeps.shell` |
-| NotNetwork → `requires none` (pending #12960) | ras-mc-ctl(8): local EDAC sysfs/rasdaemon DB | `extdeps.linux.edac` |
-| NotNetwork → `requires none` (pending #12960) | realpath: local coreutils/POSIX utility (man realpath(1)); argv names only local paths/values | `extdeps.shell` |
-| NotNetwork → `requires none` (pending #12960) | rm: local coreutils/POSIX utility (man rm(1)); argv names only local paths/values | `extdeps.shell` |
-| NotNetwork → `requires none` (pending #12960) | rmdir: local coreutils/POSIX utility (man rmdir(1)); argv names only local paths/values | `extdeps.shell` |
-| NotNetwork → `requires none` (pending #12960) | rustc --version / local compilation (doc.rust-lang.org/rustc) | `extdeps.rustc` |
-| NotNetwork → `requires none` (pending #12960) | rustfmt: local coreutils/POSIX utility (man rustfmt(1)); argv names only local paths/values | `extdeps.tools.rustfmt` |
-| NotNetwork → `requires none` (pending #12960) | sed: local coreutils/POSIX utility (man sed(1)); argv names only local paths/values | `extdeps.tools.sed` |
-| NotNetwork → `requires none` (pending #12960) | sh -c script authored in the declaration uses only local programs (mktemp(1), find(1), sort(1), head(1)/tr(1) over /dev/urandom, rustc --emit=metadata, command -v) | `extdeps.entropy`, `extdeps.rustc`, `extdeps.shell` |
-| NotNetwork → `requires none` (pending #12960) | sha256sum: local coreutils/POSIX utility (man sha256sum(1)); argv names only local paths/values | `extdeps.crypto.hash`, `extdeps.tools.sha256sum` |
-| NotNetwork → `requires none` (pending #12960) | sha512sum: local coreutils/POSIX utility (man sha512sum(1)); argv names only local paths/values | `extdeps.tools.sha512sum` |
-| NotNetwork → `requires none` (pending #12960) | sleep: local coreutils/POSIX utility (man sleep(1)); argv names only local paths/values | `extdeps.tools.sleep` |
-| NotNetwork → `requires none` (pending #12960) | stat: local coreutils/POSIX utility (man stat(1)); argv names only local paths/values | `extdeps.shell`, `extdeps.tools.coreutils_stat` |
-| NotNetwork → `requires none` (pending #12960) | sudo(8) -l: local policy | `extdeps.sudo.nopasswd_execute_probe_check_op` |
-| NotNetwork → `requires none` (pending #12960) | systemctl(1): talks to the local systemd manager over D-Bus/private socket | `extdeps.systemd.systemctl` |
-| NotNetwork → `requires none` (pending #12960) | tailscale CLI `serve status` reads the local tailscaled LocalAPI socket (tailscale.com/kb/1242/tailscale-serve) | `extdeps.tailscale.serve` |
-| NotNetwork → `requires none` (pending #12960) | test: local coreutils/POSIX utility (man test(1)); argv names only local paths/values | `extdeps.linux.cgroup_v2`, `extdeps.shell` |
-| NotNetwork → `requires none` (pending #12960) | tmux(1): local server socket | `extdeps.tmux` |
-| NotNetwork → `requires none` (pending #12960) | uname: local coreutils/POSIX utility (man uname(1)); argv names only local paths/values | `extdeps.shell` |
-| NotNetwork → `requires none` (pending #12960) | wc: local coreutils/POSIX utility (man wc(1)); argv names only local paths/values | `extdeps.tools.wc` |
-| NotNetwork → `requires none` (pending #12960) | whoami: local coreutils/POSIX utility (man whoami(1)); argv names only local paths/values | `extdeps.access.posix_effective_principal_read_op` |
-| NotNetwork → `requires none` (pending #12960) | xorriso: local coreutils/POSIX utility (man xorriso(1)); argv names only local paths/values | `extdeps.tools.xorriso` |
-| OpaqueDemand → `requires opaque` (pending #12960) | PARAM bin_path: program is runtime | `extdeps.gunbc` |
-| OpaqueDemand → `requires opaque` (pending #12960) | PARAM command_argv: systemd-run(1) itself is local; the transient unit runs a runtime command | `extdeps.systemd.systemd_run` |
-| OpaqueDemand → `requires opaque` (pending #12960) | PARAM probe.command_path: sudo(8) runs a runtime program | `extdeps.sudo.nopasswd_execute_probe_check_op` |
-| OpaqueDemand → `requires opaque` (pending #12960) | PARAM program/command body: argv supplied at runtime | `extdeps.shell.exec` |
-| OpaqueDemand → `requires opaque` (pending #12960) | PARAM script_path: behaviour is the runtime script | `extdeps.go`, `extdeps.node`, `extdeps.python` |
+| NotNetwork → `requires none` | /usr/bin/stat: local coreutils/POSIX utility (man stat(1)); argv names only local paths/values | `extdeps.tools.stat` |
+| NotNetwork → `requires none` | Docker Engine API (docs.docker.com/reference/api/engine): default endpoint unix:///var/run/docker.sock (extdeps.docker.endpoint docker_default_endpoint), a unix socket | `extdeps.docker.container_inspect`, `extdeps.docker.container_stats` |
+| NotNetwork → `requires none` | Playwright Page/BrowserContext API (playwright.dev/docs/api/class-page): acts on an already-loaded local browser page | `extdeps.browser` |
+| NotNetwork → `requires none` | cargo(1) --version / cargo-fmt: no registry access (doc.rust-lang.org/cargo/commands) | `extdeps.cargo_build` |
+| NotNetwork → `requires none` | cat: local coreutils/POSIX utility (man cat(1)); argv names only local paths/values | `extdeps.linux.cgroup_v2`, `extdeps.linux.procfs` |
+| NotNetwork → `requires none` | chmod: local coreutils/POSIX utility (man chmod(1)); argv names only local paths/values | `extdeps.shell` |
+| NotNetwork → `requires none` | codex app-server generate-json-schema (github.com/openai/codex app-server README): writes schema files locally | `extdeps.llm.codex_app_server` |
+| NotNetwork → `requires none` | cp: local coreutils/POSIX utility (man cp(1)); argv names only local paths/values | `extdeps.shell` |
+| NotNetwork → `requires none` | crontab(1): local spool | `extdeps.cron` |
+| NotNetwork → `requires none` | curl(1) --unix-socket: connects to a local unix socket, not TCP | `extdeps.http.client` |
+| NotNetwork → `requires none` | date: local coreutils/POSIX utility (man date(1)); argv names only local paths/values | `extdeps.clock` |
+| NotNetwork → `requires none` | diff: local coreutils/POSIX utility (man diff(1)); argv names only local paths/values | `extdeps.tools.diffutils` |
+| NotNetwork → `requires none` | dpkg(1): local status database | `extdeps.dpkg` |
+| NotNetwork → `requires none` | find: local coreutils/POSIX utility (man find(1)); argv names only local paths/values | `extdeps.linux.cgroup_v2`, `extdeps.shell` |
+| NotNetwork → `requires none` | getconf: local coreutils/POSIX utility (man getconf(1)); argv names only local paths/values | `extdeps.posix.getconf` |
+| NotNetwork → `requires none` | git(1); local subcommand per git-scm.com/docs (no transport; only fetch/push/ls-remote/clone/pull use git transfer protocols, gitprotocol-v2(5)) | `extdeps.git`, `extdeps.git.inspect`, `extdeps.git.plumbing`, `extdeps.git.publication_transport` |
+| NotNetwork → `requires none` | grep: local coreutils/POSIX utility (man grep(1)); argv names only local paths/values | `extdeps.tools.grep` |
+| NotNetwork → `requires none` | gunbc file transport: local filesystem read/write (POSIX open(2), read(2)) | `extdeps.filesystem.filesystem_io`, `extdeps.linux.procfs` |
+| NotNetwork → `requires none` | gzip: local coreutils/POSIX utility (man gzip(1)); argv names only local paths/values | `extdeps.tools.gzip` |
+| NotNetwork → `requires none` | hostname: local coreutils/POSIX utility (man hostname(1)); argv names only local paths/values | `extdeps.tools.hostname` |
+| NotNetwork → `requires none` | hostnamectl(1): D-Bus to local systemd-hostnamed | `extdeps.tools.hostname` |
+| NotNetwork → `requires none` | id: local coreutils/POSIX utility (man id(1)); argv names only local paths/values | `extdeps.shell`, `extdeps.tools.id` |
+| NotNetwork → `requires none` | ip-address(8): rtnetlink to the local kernel | `extdeps.iproute2.ip_address` |
+| NotNetwork → `requires none` | journalctl(1): reads the local journal | `extdeps.systemd.journalctl` |
+| NotNetwork → `requires none` | jq(1) manual: filter over stdin/args | `extdeps.bmc.openbmc_fan_control`, `extdeps.tools.jq` |
+| NotNetwork → `requires none` | kill: local coreutils/POSIX utility (man kill(1)); argv names only local paths/values | `extdeps.posix.signal` |
+| NotNetwork → `requires none` | ln: local coreutils/POSIX utility (man ln(1)); argv names only local paths/values | `extdeps.shell` |
+| NotNetwork → `requires none` | mkdir: local coreutils/POSIX utility (man mkdir(1)); argv names only local paths/values | `extdeps.shell` |
+| NotNetwork → `requires none` | mktemp: local coreutils/POSIX utility (man mktemp(1)); argv names only local paths/values | `extdeps.shell` |
+| NotNetwork → `requires none` | mv: local coreutils/POSIX utility (man mv(1)); argv names only local paths/values | `extdeps.shell` |
+| NotNetwork → `requires none` | node: local coreutils/POSIX utility (man node(1)); argv names only local paths/values | `extdeps.tools.node` |
+| NotNetwork → `requires none` | npm --version (docs.npmjs.com/cli/commands/npm) | `extdeps.tools.npm` |
+| NotNetwork → `requires none` | npm ci --offline (docs.npmjs.com/cli/using-npm/config#offline): forces cache-only, no network | `extdeps.tools.npm` |
+| NotNetwork → `requires none` | nvidia-smi(1): local NVML | `extdeps.nvidia.system_management_interface` |
+| NotNetwork → `requires none` | oomctl(1): local systemd-oomd | `extdeps.systemd.oomd` |
+| NotNetwork → `requires none` | openssl-dgst(1): local signing | `extdeps.tools.openssl` |
+| NotNetwork → `requires none` | printenv: local coreutils/POSIX utility (man printenv(1)); argv names only local paths/values | `extdeps.shell` |
+| NotNetwork → `requires none` | ras-mc-ctl(8): local EDAC sysfs/rasdaemon DB | `extdeps.linux.edac` |
+| NotNetwork → `requires none` | realpath: local coreutils/POSIX utility (man realpath(1)); argv names only local paths/values | `extdeps.shell` |
+| NotNetwork → `requires none` | rm: local coreutils/POSIX utility (man rm(1)); argv names only local paths/values | `extdeps.shell` |
+| NotNetwork → `requires none` | rmdir: local coreutils/POSIX utility (man rmdir(1)); argv names only local paths/values | `extdeps.shell` |
+| NotNetwork → `requires none` | rustc --version / local compilation (doc.rust-lang.org/rustc) | `extdeps.rustc` |
+| NotNetwork → `requires none` | rustfmt: local coreutils/POSIX utility (man rustfmt(1)); argv names only local paths/values | `extdeps.tools.rustfmt` |
+| NotNetwork → `requires none` | sed: local coreutils/POSIX utility (man sed(1)); argv names only local paths/values | `extdeps.tools.sed` |
+| NotNetwork → `requires none` | sh -c script authored in the declaration uses only local programs (mktemp(1), find(1), sort(1), head(1)/tr(1) over /dev/urandom, rustc --emit=metadata, command -v) | `extdeps.entropy`, `extdeps.rustc`, `extdeps.shell` |
+| NotNetwork → `requires none` | sha256sum: local coreutils/POSIX utility (man sha256sum(1)); argv names only local paths/values | `extdeps.crypto.hash`, `extdeps.tools.sha256sum` |
+| NotNetwork → `requires none` | sha512sum: local coreutils/POSIX utility (man sha512sum(1)); argv names only local paths/values | `extdeps.tools.sha512sum` |
+| NotNetwork → `requires none` | sleep: local coreutils/POSIX utility (man sleep(1)); argv names only local paths/values | `extdeps.tools.sleep` |
+| NotNetwork → `requires none` | stat: local coreutils/POSIX utility (man stat(1)); argv names only local paths/values | `extdeps.shell`, `extdeps.tools.coreutils_stat` |
+| NotNetwork → `requires none` | sudo(8) -l: local policy | `extdeps.sudo.nopasswd_execute_probe_check_op` |
+| NotNetwork → `requires none` | systemctl(1): talks to the local systemd manager over D-Bus/private socket | `extdeps.systemd.systemctl` |
+| NotNetwork → `requires none` | tailscale CLI `serve status` reads the local tailscaled LocalAPI socket (tailscale.com/kb/1242/tailscale-serve) | `extdeps.tailscale.serve` |
+| NotNetwork → `requires none` | test: local coreutils/POSIX utility (man test(1)); argv names only local paths/values | `extdeps.linux.cgroup_v2`, `extdeps.shell` |
+| NotNetwork → `requires none` | tmux(1): local server socket | `extdeps.tmux` |
+| NotNetwork → `requires none` | uname: local coreutils/POSIX utility (man uname(1)); argv names only local paths/values | `extdeps.shell` |
+| NotNetwork → `requires none` | wc: local coreutils/POSIX utility (man wc(1)); argv names only local paths/values | `extdeps.tools.wc` |
+| NotNetwork → `requires none` | whoami: local coreutils/POSIX utility (man whoami(1)); argv names only local paths/values | `extdeps.access.posix_effective_principal_read_op` |
+| NotNetwork → `requires none` | xorriso: local coreutils/POSIX utility (man xorriso(1)); argv names only local paths/values | `extdeps.tools.xorriso` |
+| OpaqueDemand → `requires opaque` | PARAM bin_path: program is runtime | `extdeps.gunbc` |
+| OpaqueDemand → `requires opaque` | PARAM command_argv: systemd-run(1) itself is local; the transient unit runs a runtime command | `extdeps.systemd.systemd_run` |
+| OpaqueDemand → `requires opaque` | PARAM probe.command_path: sudo(8) runs a runtime program | `extdeps.sudo.nopasswd_execute_probe_check_op` |
+| OpaqueDemand → `requires opaque` | PARAM program/command body: argv supplied at runtime | `extdeps.shell.exec` |
+| OpaqueDemand → `requires opaque` | PARAM script_path: behaviour is the runtime script | `extdeps.go`, `extdeps.node`, `extdeps.python` |

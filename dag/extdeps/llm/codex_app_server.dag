@@ -72,6 +72,7 @@ type CodexAppServerExecutable {
 // module's method vocabulary was derived from, not a different product surface.
 service codex_app_server.Cli {
   operation GenerateJsonSchema {
+    requires none
     input { executable: CodexAppServerExecutable, output_dir: FilePath }
     output {
       success: Bool from "exit_success"

@@ -248,6 +248,7 @@ service docker.Container {
   }
 
   operation Inspect {
+    requires none
     input {
       container_id: String
       size: Bool = false

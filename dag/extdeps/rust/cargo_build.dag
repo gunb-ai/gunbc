@@ -200,6 +200,7 @@ service cargo.Build {
   }
 
   operation Fmt {
+    requires none
     input { extra_args: List<String> = [] }
     output {
       success: Bool from "exit_success"
@@ -271,6 +272,7 @@ service cargo.Build {
 // separately versioned, and a toolchain can carry a cargo that a rustc release line does not name.
 service cargo.Identity {
   operation Version {
+    requires none
     input {}
     output {
       success: Bool from "exit_success"

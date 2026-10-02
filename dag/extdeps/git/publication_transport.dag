@@ -175,6 +175,7 @@ service git.PublicationTransport {
   }
 
   operation RecordCommit {
+    requires none
     input {
       message: NonEmptyStr
     }
@@ -191,6 +192,7 @@ service git.PublicationTransport {
   }
 
   operation RecordEmptyCommit {
+    requires none
     input {
       message: NonEmptyStr
     }
