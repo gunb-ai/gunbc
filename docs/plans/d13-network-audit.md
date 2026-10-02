@@ -14,6 +14,8 @@ A `requires` clause states what a sandbox must GRANT, so the fail-closed directi
   - A fetch that depends on cache state is Network: cargo without `--offline`, `npm ci`, `npm cache add`, `npx -y`, `apt-get install`, `gcloud auth print-access-token`.
   - `arping` is Network: it uses the network interface.
   - A runtime-program parameter is **OpaqueDemand**: `shell.exec` Run*, `systemd-run` with `command_argv`, the sudo probe `Check`, `gunbc.WitnessBin` `Run`, and the node/python/go `RunFile` runners. The argv is runtime data, so step (b) yields DemandUndecided for their callers instead of an empty demand.
+  - **Runtime program in an argument** (ruling 2026-10-02): an argument that carries a program the invoked tool executes is **OpaqueDemand** -- scripts, expressions, inner argv, executing templates. This includes an unrefined string in option position that the tool accepts as a program-executing option (`git grep -O<pager>`). A runtime program whose language has no network or exec primitive (a jq filter; Rust source that rustc only compiles) does not raise the demand above its host program's.
+  - **Remote-selecting option in an unrefined string** (ruling 2026-10-02): if an unrefined string sits where the tool parses options, and the tool has an option that selects a remote host or URL (`systemctl -H/--host=`, `hostnamectl -H`, curl `-K<config>`/`-x<proxy>`), the operation is **Network**. That holds unless the argv structurally prevents it, e.g. the string follows `--` or is the value of a preceding option.
   - Everything else is a local program on local paths: NotNetwork.
 
 ## Citations by class
@@ -60,24 +62,26 @@ A `requires` clause states what a sandbox must GRANT, so the fail-closed directi
 | NotNetwork → `requires none` | /usr/bin/stat: local coreutils/POSIX utility (man stat(1)); argv names only local paths/values | `extdeps.tools.stat` |
 | NotNetwork → `requires none` | Docker Engine API (docs.docker.com/reference/api/engine): default endpoint unix:///var/run/docker.sock (extdeps.docker.endpoint docker_default_endpoint), a unix socket | `extdeps.docker.container_inspect`, `extdeps.docker.container_stats` |
 | NotNetwork → `requires none` | Playwright Page/BrowserContext API (playwright.dev/docs/api/class-page): acts on an already-loaded local browser page | `extdeps.browser` |
+| OpaqueDemand → `requires opaque` | RULING runtime program: Playwright page.evaluate / locator.evaluate (playwright.dev/docs/evaluating) run runtime JavaScript in the page, which can call fetch | `extdeps.browser` |
 | NotNetwork → `requires none` | cargo(1) --version / cargo-fmt: no registry access (doc.rust-lang.org/cargo/commands) | `extdeps.cargo_build` |
 | NotNetwork → `requires none` | cat: local coreutils/POSIX utility (man cat(1)); argv names only local paths/values | `extdeps.linux.cgroup_v2`, `extdeps.linux.procfs` |
 | NotNetwork → `requires none` | chmod: local coreutils/POSIX utility (man chmod(1)); argv names only local paths/values | `extdeps.shell` |
 | NotNetwork → `requires none` | codex app-server generate-json-schema (github.com/openai/codex app-server README): writes schema files locally | `extdeps.llm.codex_app_server` |
 | NotNetwork → `requires none` | cp: local coreutils/POSIX utility (man cp(1)); argv names only local paths/values | `extdeps.shell` |
 | NotNetwork → `requires none` | crontab(1): local spool | `extdeps.cron` |
-| NotNetwork → `requires none` | curl(1) --unix-socket: connects to a local unix socket, not TCP | `extdeps.http.client` |
+| Network → `requires Network` | RULING remote option: curl(1) --unix-socket, but the `{url}` positional is unrefined and not after `--`, so it can carry curl options (`-K<config>`, `-x<proxy>`) that retarget the connection | `extdeps.http.client` |
 | NotNetwork → `requires none` | date: local coreutils/POSIX utility (man date(1)); argv names only local paths/values | `extdeps.clock` |
 | NotNetwork → `requires none` | diff: local coreutils/POSIX utility (man diff(1)); argv names only local paths/values | `extdeps.tools.diffutils` |
 | NotNetwork → `requires none` | dpkg(1): local status database | `extdeps.dpkg` |
 | NotNetwork → `requires none` | find: local coreutils/POSIX utility (man find(1)); argv names only local paths/values | `extdeps.linux.cgroup_v2`, `extdeps.shell` |
 | NotNetwork → `requires none` | getconf: local coreutils/POSIX utility (man getconf(1)); argv names only local paths/values | `extdeps.posix.getconf` |
 | NotNetwork → `requires none` | git(1); local subcommand per git-scm.com/docs (no transport; only fetch/push/ls-remote/clone/pull use git transfer protocols, gitprotocol-v2(5)) | `extdeps.git`, `extdeps.git.inspect`, `extdeps.git.plumbing`, `extdeps.git.publication_transport` |
+| OpaqueDemand → `requires opaque` | RULING runtime program: git-grep(1) `-O<pager>` opens matches with a runtime program; `{pattern}` and `{ref}` (GitRef is only non-empty) sit in option position | `extdeps.git.inspect` |
 | NotNetwork → `requires none` | grep: local coreutils/POSIX utility (man grep(1)); argv names only local paths/values | `extdeps.tools.grep` |
 | NotNetwork → `requires none` | gunbc file transport: local filesystem read/write (POSIX open(2), read(2)) | `extdeps.filesystem.filesystem_io`, `extdeps.linux.procfs` |
 | NotNetwork → `requires none` | gzip: local coreutils/POSIX utility (man gzip(1)); argv names only local paths/values | `extdeps.tools.gzip` |
 | NotNetwork → `requires none` | hostname: local coreutils/POSIX utility (man hostname(1)); argv names only local paths/values | `extdeps.tools.hostname` |
-| NotNetwork → `requires none` | hostnamectl(1): D-Bus to local systemd-hostnamed | `extdeps.tools.hostname` |
+| Network → `requires Network` | RULING remote option: hostnamectl(1) `-H/--host=` runs over SSH; `Process.Run` forwards an unrestricted ProcessArgvExpansion | `extdeps.tools.hostname` |
 | NotNetwork → `requires none` | id: local coreutils/POSIX utility (man id(1)); argv names only local paths/values | `extdeps.shell`, `extdeps.tools.id` |
 | NotNetwork → `requires none` | ip-address(8): rtnetlink to the local kernel | `extdeps.iproute2.ip_address` |
 | NotNetwork → `requires none` | journalctl(1): reads the local journal | `extdeps.systemd.journalctl` |
@@ -100,17 +104,19 @@ A `requires` clause states what a sandbox must GRANT, so the fail-closed directi
 | NotNetwork → `requires none` | rmdir: local coreutils/POSIX utility (man rmdir(1)); argv names only local paths/values | `extdeps.shell` |
 | NotNetwork → `requires none` | rustc --version / local compilation (doc.rust-lang.org/rustc) | `extdeps.rustc` |
 | NotNetwork → `requires none` | rustfmt: local coreutils/POSIX utility (man rustfmt(1)); argv names only local paths/values | `extdeps.tools.rustfmt` |
-| NotNetwork → `requires none` | sed: local coreutils/POSIX utility (man sed(1)); argv names only local paths/values | `extdeps.tools.sed` |
+| OpaqueDemand → `requires opaque` | RULING runtime program: GNU sed's `e` command and `s///e` execute shell commands; the operations take a runtime sed program without `--sandbox` | `extdeps.tools.sed` |
 | NotNetwork → `requires none` | sh -c script authored in the declaration uses only local programs (mktemp(1), find(1), sort(1), head(1)/tr(1) over /dev/urandom, rustc --emit=metadata, command -v) | `extdeps.entropy`, `extdeps.rustc`, `extdeps.shell` |
 | NotNetwork → `requires none` | sha256sum: local coreutils/POSIX utility (man sha256sum(1)); argv names only local paths/values | `extdeps.crypto.hash`, `extdeps.tools.sha256sum` |
 | NotNetwork → `requires none` | sha512sum: local coreutils/POSIX utility (man sha512sum(1)); argv names only local paths/values | `extdeps.tools.sha512sum` |
 | NotNetwork → `requires none` | sleep: local coreutils/POSIX utility (man sleep(1)); argv names only local paths/values | `extdeps.tools.sleep` |
 | NotNetwork → `requires none` | stat: local coreutils/POSIX utility (man stat(1)); argv names only local paths/values | `extdeps.shell`, `extdeps.tools.coreutils_stat` |
 | NotNetwork → `requires none` | sudo(8) -l: local policy | `extdeps.sudo.nopasswd_execute_probe_check_op` |
-| NotNetwork → `requires none` | systemctl(1): talks to the local systemd manager over D-Bus/private socket | `extdeps.systemd.systemctl` |
+| NotNetwork → `requires none` | systemctl(1): talks to the local systemd manager over D-Bus/private socket; only operations with no unrefined positional string (`DaemonReload`) | `extdeps.systemd.systemctl` |
+| Network → `requires Network` | RULING remote option: systemctl(1) `-H/--host=` runs over SSH; the unit/pattern positional is an unrefined NonEmptyStr with no `--` before it | `extdeps.systemd.systemctl` |
 | NotNetwork → `requires none` | tailscale CLI `serve status` reads the local tailscaled LocalAPI socket (tailscale.com/kb/1242/tailscale-serve) | `extdeps.tailscale.serve` |
 | NotNetwork → `requires none` | test: local coreutils/POSIX utility (man test(1)); argv names only local paths/values | `extdeps.linux.cgroup_v2`, `extdeps.shell` |
-| NotNetwork → `requires none` | tmux(1): local server socket | `extdeps.tmux` |
+| NotNetwork → `requires none` | tmux(1): local server socket (`List`, `Kill`) | `extdeps.tmux` |
+| OpaqueDemand → `requires opaque` | RULING runtime program: tmux new-session runs `inner_argv`, a runtime command | `extdeps.tmux` |
 | NotNetwork → `requires none` | uname: local coreutils/POSIX utility (man uname(1)); argv names only local paths/values | `extdeps.shell` |
 | NotNetwork → `requires none` | wc: local coreutils/POSIX utility (man wc(1)); argv names only local paths/values | `extdeps.tools.wc` |
 | NotNetwork → `requires none` | whoami: local coreutils/POSIX utility (man whoami(1)); argv names only local paths/values | `extdeps.access.posix_effective_principal_read_op` |
@@ -120,3 +126,12 @@ A `requires` clause states what a sandbox must GRANT, so the fail-closed directi
 | OpaqueDemand → `requires opaque` | PARAM probe.command_path: sudo(8) runs a runtime program | `extdeps.sudo.nopasswd_execute_probe_check_op` |
 | OpaqueDemand → `requires opaque` | PARAM program/command body: argv supplied at runtime | `extdeps.shell.exec` |
 | OpaqueDemand → `requires opaque` | PARAM script_path: behaviour is the runtime script | `extdeps.go`, `extdeps.node`, `extdeps.python` |
+
+## Follow-ups (better modeling than the clauses above; not done here)
+
+- `systemd.Systemctl` and `hostnamectl.Process`: terminate options before the unit/pattern positional (`--`), or refine the input to a unit-name type. Either move those operations back to `requires none`.
+- `sed.Sed`: a typed non-executing sed subset, or `--sandbox` in the argv, would move both operations to `requires none`.
+- `tmux.Session.New`: an inner-command carrier whose program demand is declared.
+- `browser.Page.Evaluate` / `browser.Element.EvaluateOn`: a structurally non-network expression vocabulary.
+- `git.Inspect` grep operations: `-e {pattern}` plus `--` before the revision, or a refined GitRef, would remove the `-O` route.
+- `http.Client.PostStdinWithinUnixSocket`: put `--` before `{url}` and type the url to the socket's authority.

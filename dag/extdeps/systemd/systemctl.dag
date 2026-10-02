@@ -445,7 +445,7 @@ type UnitFileState
 //
 service systemd.Systemctl {
   operation Enable {
-    requires none
+    requires Network
     input { unit: NonEmptyStr }
     output {
       success: Bool from "exit_success"
@@ -460,7 +460,7 @@ service systemd.Systemctl {
   }
 
   operation Restart {
-    requires none
+    requires Network
     input { unit: NonEmptyStr }
     output {
       success: Bool from "exit_success"
@@ -475,7 +475,7 @@ service systemd.Systemctl {
   }
 
   operation DisableNow {
-    requires none
+    requires Network
     input { unit: NonEmptyStr }
     output {
       success: Bool from "exit_success"
@@ -490,7 +490,7 @@ service systemd.Systemctl {
   }
 
   operation Start {
-    requires none
+    requires Network
     input { unit: NonEmptyStr }
     output {
       success: Bool from "exit_success"
@@ -505,7 +505,7 @@ service systemd.Systemctl {
   }
 
   operation Stop {
-    requires none
+    requires Network
     input { unit: NonEmptyStr }
     output {
       success: Bool from "exit_success"
@@ -523,7 +523,7 @@ service systemd.Systemctl {
   }
 
   operation ResetFailedUnit {
-    requires none
+    requires Network
     input { unit: NonEmptyStr }
     output {
       success: Bool from "exit_success"
@@ -540,7 +540,7 @@ service systemd.Systemctl {
   }
 
   operation KillUnitTerm {
-    requires none
+    requires Network
     input { unit: NonEmptyStr }
     output {
       success: Bool from "exit_success"
@@ -557,7 +557,7 @@ service systemd.Systemctl {
   }
 
   operation MaskNow {
-    requires none
+    requires Network
     input { unit: NonEmptyStr }
     output {
       success: Bool from "exit_success"
@@ -575,7 +575,7 @@ service systemd.Systemctl {
   }
 
   operation SetProperty {
-    requires none
+    requires Network
     input { unit: NonEmptyStr, property: NonEmptyStr, value: NonEmptyStr }
     output {
       success: Bool from "exit_success"
@@ -592,7 +592,7 @@ service systemd.Systemctl {
   }
 
   operation RevertMemoryCaps {
-    requires none
+    requires Network
     input { unit: NonEmptyStr }
     output {
       success: Bool from "exit_success"
@@ -623,7 +623,7 @@ service systemd.Systemctl {
   }
 
   operation IsActive {
-    requires none
+    requires Network
     input { unit: NonEmptyStr }
     output {
       state: String from "stdout"
@@ -642,7 +642,7 @@ service systemd.Systemctl {
   }
 
   operation ShowProperty {
-    requires none
+    requires Network
     input { unit: NonEmptyStr, property: NonEmptyStr }
     output {
       value: String from "stdout"
@@ -660,7 +660,7 @@ service systemd.Systemctl {
   }
 
   operation ShowUserProperty {
-    requires none
+    requires Network
     input { unit: NonEmptyStr, property: NonEmptyStr }
     output {
       outcome: ShellOutcome
@@ -679,7 +679,7 @@ service systemd.Systemctl {
   }
 
   operation ShowLoadState {
-    requires none
+    requires Network
     input { unit: NonEmptyStr }
     output {
       value: String from "stdout"
@@ -697,7 +697,7 @@ service systemd.Systemctl {
   }
 
   operation ListUnits {
-    requires none
+    requires Network
     input {
       pattern: NonEmptyStr,
       unit_type: String = "service",
@@ -732,7 +732,7 @@ service systemd.Systemctl {
   }
 
   operation ListUnitsAllLoaded {
-    requires none
+    requires Network
     input {
       pattern: NonEmptyStr,
       unit_type: String = "service",
@@ -766,7 +766,7 @@ service systemd.Systemctl {
   }
 
   operation Status {
-    requires none
+    requires Network
     input { unit: NonEmptyStr }
     output {
       stdout: String from "stdout"

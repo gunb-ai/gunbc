@@ -201,7 +201,7 @@ fn hostname_set_surface_words(surface: CliSurface) -> List<String> {
 // carried no readonly marker. The process handler is a realization, not an observation.
 service hostnamectl.Process {
   operation Run {
-    requires none
+    requires Network
     input { arguments: ProcessArgvExpansion }
     output {
       exit_code: Int from "exit_code"

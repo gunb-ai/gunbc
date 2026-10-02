@@ -214,7 +214,7 @@ service http.Client {
   }
 
   operation PostStdinWithinUnixSocket {
-    requires none
+    requires Network
     input { socket: NonEmptyStr, url: NonEmptyStr, request_body: String, connect_seconds: NonEmptyStr, max_seconds: NonEmptyStr }
     output {
       exit_code: Int from "exit_code"

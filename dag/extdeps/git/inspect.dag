@@ -363,7 +363,7 @@ service git.Inspect {
   }
 
   operation GrepMatchesAtRevision {
-    requires none
+    requires opaque
     input { pattern: String, ref: GitRef, pathspec: String }
     output {
       matches: String from "stdout"
@@ -396,7 +396,7 @@ service git.Inspect {
   }
 
   operation GrepFixedAtRevision {
-    requires none
+    requires opaque
     input { pattern: String, ref: GitRef }
     output {
       paths: String from "stdout"

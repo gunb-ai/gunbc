@@ -616,7 +616,7 @@ fn shape_tmux_attempt_panes_argv_for(scope: TmuxServerScope) -> List<String> {
 
 service tmux.Session {
   operation New {
-    requires none
+    requires opaque
     input { session_name: String, working_dir: String, inner_argv: List<String> }
     output {
       success: Bool from "exit_success"
