@@ -585,6 +585,12 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/bmc/ipmi_boot_selection.dag",
   "dag/extdeps/bmc/openbmc_operation.dag",
   "dag/extdeps/bmc/openbmc_password_ssh_transport.dag",
+  "dag/extdeps/hardware.dag",
+  "dag/extdeps/securities.dag",
+  "dag/extdeps/vendor.dag",
+  "dag/extdeps/advertising/types.dag",
+  "dag/extdeps/test/http_pilot.dag",
+  "dag/extdeps/tailscale/acl_api.dag",
 ]
 
 data scope_machinery_exempt_paths: List<String> = [
