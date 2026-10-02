@@ -1,8 +1,7 @@
 module gunbc.roadmap_presentation
 
 import gunbc.roadmap_nesting { RoadmapMembership, roadmap_memberships }
-import gunbc.roadmap.roadmap_lineage { lineage_walk_in, lineage_index }
-import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import v2.std.collection { Map }
 import gunbc.roadmap.roadmap_readiness {
   ReadinessGap, NodeReadiness, ReadyToDispatch, NotReady, node_readiness, readiness_text, readiness_reason_text,
   readiness_is_dispatchable,
@@ -15,8 +14,7 @@ import gunbc.roadmap.roadmap_event_log {
 }
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, Pointer,
-  RoadmapNodeId, roadmap_parent_ids, roadmap_primary_parent,
-  roadmap_parent_index, roadmap_parent_ids_in,
+  roadmap_parent_ids, roadmap_primary_parent,
   RoadmapParent, TopLevel, UnderParent,
   WorkItemDispatch, NotDispatchable, Dispatchable,
   node_sizing_derivation,
@@ -32,6 +30,7 @@ import gunbc.roadmap_status {
 }
 import gunbc.roadmap_spawner {
   node_is_spawnable, node_is_upcoming, node_is_frontier_done, node_closes_dependency,
+  ReadinessGraph, readiness_graph, node_readiness_in_graph, node_unmet_parent_ids,
 }
 import gunbc.roadmap_launch_admission {
   LaunchCause, Operator, LaunchIdentity, launch_cause_label,
@@ -314,64 +313,27 @@ type WorkScheduling
   | SchedulingSuperseded
 
 fn scheduling_blockers(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> List<String> {
-  scheduling_blockers_of(rn: rn, parents: roadmap_parent_index(edges: edges), closes: dependency_closing_ids(nodes: nodes))
+  node_unmet_parent_ids(nodes: nodes, edges: edges, id: rn.node) |> map(p => p as String)
 }
 
-// The ids some node of the graph closes as a dependency (gunbc.roadmap_spawner node_closes_dependency):
-// a prerequisite is met exactly when its id is here.
-fn dependency_closing_ids(nodes: List<RoadmapNode>) -> Map<String, Bool> {
-  let empty: Map<String, Bool> = empty_map()
-  fold(nodes |> filter(n => node_closes_dependency(n: n)), init: empty, f: (acc, n) => map_insert(m: acc, key: n.node as String, value: true))
+// A page projects every row's readiness over one graph, so it indexes the graph once
+// (gunbc.roadmap_spawner readiness_graph) and each row's answer is lookups. The page's readiness
+// walks lineage over the rendered graph itself: the projected graph carries every open project, so
+// a member's parent walk resolves inside it, and a planted fixture graph is its own universe. The
+// single-row forms below index the graph for the one row they answer.
+fn row_graph(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> ReadinessGraph {
+  readiness_graph(nodes: nodes, edges: edges)
 }
 
-fn dependency_is_closed(closes: Map<String, Bool>, id: RoadmapNodeId) -> Bool {
-  match map_lookup(m: closes, key: id as String) { Present { value: _ } => true  Absent => false }
-}
-
-fn scheduling_blockers_of(rn: RoadmapNode, parents: Map<String, List<RoadmapNodeId>>, closes: Map<String, Bool>) -> List<String> {
-  roadmap_parent_ids_in(parents: parents, node: rn.node)
-    |> filter(pid => !dependency_is_closed(closes: closes, id: pid))
-    |> map(p => p as String)
-}
-
-// THE ROW GRAPH, indexed once per rendered graph. A page projects every row's readiness over one
-// graph, and each row asks the same three questions of it -- its lineage walk, its prerequisites,
-// which prerequisites are closed -- so the graph is indexed once (lineage by id, parents by child,
-// closed ids) and each row's answer is lookups. Asked per row of the raw lists, the parents and
-// closed questions made a page nodes x edges and nodes x prerequisites x nodes. The page's
-// readiness walks lineage over the rendered graph itself: the projected graph carries every open
-// project, so a member's parent walk resolves inside it, and a planted fixture graph is its own
-// universe. The single-row forms below index the graph for the one row they answer.
-type RowGraph {
-  lineage: Map<String, RoadmapNode>
-  fuel: Int
-  parents: Map<String, List<RoadmapNodeId>>
-  closes: Map<String, Bool>
-}
-
-fn row_graph(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> RowGraph {
-  RowGraph {
-    lineage: lineage_index(nodes: nodes),
-    fuel: count(nodes) + 1,
-    parents: roadmap_parent_index(edges: edges),
-    closes: dependency_closing_ids(nodes: nodes),
-  }
-}
-
-fn work_readiness_in(rn: RoadmapNode, graph: RowGraph, merged: List<Int>) -> NodeReadiness {
-  node_readiness(
-    node: rn,
-    lineage: lineage_walk_in(node_id: rn.node as String, index: graph.lineage, fuel: graph.fuel),
-    unmet_parents: scheduling_blockers_of(rn: rn, parents: graph.parents, closes: graph.closes),
-    merged: merged,
-  )
+fn work_readiness_in(rn: RoadmapNode, graph: ReadinessGraph, merged: List<Int>) -> NodeReadiness {
+  node_readiness_in_graph(node: rn, graph: graph, merged: merged)
 }
 
 fn work_readiness(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> NodeReadiness {
   work_readiness_in(rn: rn, graph: row_graph(nodes: nodes, edges: edges), merged: merged)
 }
 
-fn work_scheduling_in(rn: RoadmapNode, graph: RowGraph, merged: List<Int>) -> WorkScheduling {
+fn work_scheduling_in(rn: RoadmapNode, graph: ReadinessGraph, merged: List<Int>) -> WorkScheduling {
   if !(item_superseded_by(item: rn.line) == "") {
     SchedulingSuperseded
   } else if node_is_frontier_done(n: rn) {
@@ -1105,7 +1067,7 @@ fn work_row_view(
 
 fn work_row_view_in(
   rn: RoadmapNode,
-  graph: RowGraph,
+  graph: ReadinessGraph,
   merged: List<Int>,
   activity: ActivityView,
   rounds: HarnessRoundLedger,

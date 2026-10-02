@@ -8790,7 +8790,7 @@ fn belt_dispatch_node_staged_over(
     LaunchAdmitted { identity } =>
       match (match graph {
         LaunchGraphUnobserved { detail } => AuthorityProjectionRefused { detail: detail }
-        LaunchGraphProjected { nodes, edges: _ } =>
+        LaunchGraphProjected { nodes, edges: _, readiness: _ } =>
           belt_find_node_in(nodes: nodes, node_id: node_id)
       }) {
         AuthorityProjectionRefused { detail } =>

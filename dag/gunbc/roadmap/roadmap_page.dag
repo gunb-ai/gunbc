@@ -53,7 +53,7 @@ import gunbc.roadmap_authority {
   declared_roadmap_edges,
   closing_contract_family_claim, ticket_headline_of,
 }
-import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes, doc_all_edges, node_title }
+import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes, doc_all_edges, node_title, ReadinessGraph }
 import gunbc.roadmap.roadmap_alignment {
   AlignmentResolution, AlignmentReady, AlignmentUnresolved,
   AlignmentLevel, RootPrinciplesLevel, ProjectIntentLevel, TaskContractLevel,
@@ -79,7 +79,7 @@ import gunbc.roadmap_launch_admission {
   launch_identity_instance_text, launch_identity_revision_hex,
 }
 import gunbc.roadmap_presentation {
-  WorkRowView, work_row_view, work_row_view_in, RowGraph, row_graph, row_headline, LaunchRowContext,
+  WorkRowView, work_row_view, work_row_view_in, row_graph, row_headline, LaunchRowContext,
   TaskBarView, task_bar_view_of, BarFillNone, BarFillStages, BarFillProject, BarFillClosed,
   row_filter_band_key,
   WorkLifecycle, OpenLifecycle, ReviewLifecycle, DoneLifecycle, SupersededLifecycle,
@@ -1357,7 +1357,7 @@ fn node_li_attributes(view: WorkRowView) -> List<Attribute> {
 // THE TREE ROW carries no profile roster: the roadmap tree is the static render path (no instance
 // in scope) and its rows name no assignee surface — the empty roster renders every fallback
 // exactly as before.
-fn node_work_row_view(rn: RoadmapNode, graph: RowGraph, merged: List<Int>, launch: LaunchRowContext) -> WorkRowView {
+fn node_work_row_view(rn: RoadmapNode, graph: ReadinessGraph, merged: List<Int>, launch: LaunchRowContext) -> WorkRowView {
   work_row_view_in(rn: rn, graph: graph, merged: merged, activity: NoActiveWork, rounds: RoundsUnobserved { reason: "no active attempt" as NonEmptyStr }, worker_alive: false, standing: none, launch: launch, attempt_stale: false, profiles: [], assignment: none)
 }
 
@@ -1366,7 +1366,7 @@ fn node_work_row_view(rn: RoadmapNode, graph: RowGraph, merged: List<Int>, launc
 // roadmap_primary_children_index). Asked per row of the raw lists, the children filter alone made
 // the tree nodes x nodes.
 type PageTree {
-  rows: RowGraph
+  rows: ReadinessGraph
   children: Map<String, List<RoadmapNode>>
 }
 
