@@ -1,0 +1,268 @@
+module gunbc.spark.serving_promotion
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import std.measure { BasisPoint, basis_point, basis_point_count }
+import v2.std.algebra { length }
+import gunbc.spark.serving_performance_subject { ServingPerformanceSubject, serving_subject_key }
+import gunbc.spark.serving_compatibility { CompatibilityAdmission, AdmitsNormalServing, AdmitsBoundedExperimentOnly, AdmitsNothing }
+import gunbc.spark.arm_memory_fit {
+  ArmMemoryFitVerdict, ArmMemoryFitProved, ArmMemoryFitRefused, ArmMemoryFitUnestablished,
+  CacheFitVerdict, CacheFitProved, CacheFitRefused, CacheFitUnestablished,
+}
+
+// ── ONE PROMOTION STEP FOR EVERY SERVING SUBJECT ─────────────────────────────────────────────────
+//
+// WHAT IT REPLACES. GLM's normal serving was admitted by an execution-compatibility receipt plus a
+// proved memory fit; DeepSeek V4.1's production admission was its own fold over a capacity report
+// (gunbc.spark.v41_capacity_measurement, now deleted). Neither asked for quality, and neither bound
+// its evidence to the exact subject, so a measurement on one checkpoint, quantization or ceiling could
+// stand for another. Here one fold answers for any subject -- including a checkpoint that does not exist
+// yet -- from five receipts, each of which must name THIS subject's key (serving_subject_key):
+//   1. execution compatibility   (gunbc.spark.serving_compatibility)
+//   2. all-rank memory fit       (gunbc.spark.arm_memory_fit ArmMemoryFitVerdict, proved)
+//   3. resolved-layout cache fit (gunbc.spark.arm_memory_fit CacheFitVerdict, from its own plan)
+//   4. quality                   on the agentic acceptance set, against the incumbent
+//   5. workload calibration      on the real trace, against the incumbent
+// Anything missing admits a BOUNDED MEASUREMENT SERVE only, and the standing names every missing or
+// failing receipt at once. Nothing here launches anything: the launch wall consumes the standing.
+//
+// RELATIVE TO THE INCUMBENT, NOT ABSOLUTE. A quality or goodput figure means something only beside the
+// configuration it would replace, measured on the same inputs; so both receipts compare against the
+// incumbent's receipt on the same set or trace, and a comparison across different sets refuses.
+
+// THE THRESHOLDS ARE ONE POLICY ROW (proposed 2026-10-02, awaiting the operator's ruling; changing them
+// is an edit to this row and nothing else).
+type ServingPromotionPolicy {
+  quality_non_inferiority_margin: BasisPoint
+  allow_more_tool_parse_failures: Bool
+  require_goodput_at_least_incumbent: Bool
+  require_zero_preemptions: Bool
+}
+
+data serving_promotion_policy: ServingPromotionPolicy = ServingPromotionPolicy {
+  quality_non_inferiority_margin: basis_point(count: 200),
+  allow_more_tool_parse_failures: false,
+  require_goodput_at_least_incumbent: true,
+  require_zero_preemptions: true,
+}
+
+// ── THE SUBJECT-BOUND RECEIPTS ────────────────────────────────────────────────────────────────────
+type QualityReceipt {
+  subject_key: String
+  acceptance_set: NonEmptyStr
+  attempts: Nat
+  accepted: Nat
+  tool_parse_failures: Nat
+  evidence: NonEmptyStr
+}
+
+type WorkloadCalibrationReceipt {
+  subject_key: String
+  trace_digest: NonEmptyStr
+  run_id: NonEmptyStr
+  accepted_turns_per_hour: Nat?
+  sustained_concurrency: Nat
+  preemptions: Nat?
+  engine_restarts: Nat?
+  out_of_memory_events: Nat?
+  evidence: NonEmptyStr
+}
+
+// AN UNOBSERVED COUNT IS NOT ZERO. A producer that did not read preemptions, restarts or OOM events
+// leaves them absent, and the fold names each as missing rather than reading absence as a clean run.
+fn calibration_count_missing(name: String, n: Nat?) -> List<NonEmptyStr> {
+  match n {
+    Absent => [join(["workload calibration: ", name, " was not observed in this run"], "") as NonEmptyStr]
+    Present { value: _ } => []
+  }
+}
+
+// ONLY READ AFTER calibration_count_missing HAS CONFIRMED EVERY COUNT PRESENT, so its Absent arm is
+// never the answer to a question the fold asks.
+fn observed_count(n: Nat?) -> Nat {
+  match n { Absent => 0  Present { value: v } => v }
+}
+
+type ServingPromotionEvidence {
+  compatibility: CompatibilityAdmission
+  memory: ArmMemoryFitVerdict?
+  cache: CacheFitVerdict?
+  quality: QualityReceipt?
+  calibration: WorkloadCalibrationReceipt?
+  incumbent_quality: QualityReceipt?
+  incumbent_calibration: WorkloadCalibrationReceipt?
+}
+
+// THE RECEIPTS A CALLER HOLDS, separate from the two verdicts the launch wall computes itself
+// (compatibility and the all-rank memory fit), so no caller can supply a verdict the wall would
+// compute differently.
+type ServingPromotionReceipts {
+  cache: CacheFitVerdict?
+  quality: QualityReceipt?
+  calibration: WorkloadCalibrationReceipt?
+  incumbent_quality: QualityReceipt?
+  incumbent_calibration: WorkloadCalibrationReceipt?
+}
+
+// NO RECEIPT HAS BEEN PRODUCED, stated as such: a subject with these receipts is a measurement serve.
+data no_promotion_receipts: ServingPromotionReceipts = ServingPromotionReceipts {
+  cache: none, quality: none, calibration: none, incumbent_quality: none, incumbent_calibration: none,
+}
+
+fn promotion_evidence(compatibility: CompatibilityAdmission, memory: ArmMemoryFitVerdict, receipts: ServingPromotionReceipts) -> ServingPromotionEvidence {
+  ServingPromotionEvidence {
+    compatibility: compatibility, memory: Present { value: memory }, cache: receipts.cache,
+    quality: receipts.quality, calibration: receipts.calibration,
+    incumbent_quality: receipts.incumbent_quality, incumbent_calibration: receipts.incumbent_calibration,
+  }
+}
+
+fn promotion_standing_text(st: ServingPromotionStanding) -> String {
+  match st {
+    PromotionAdmitsNormalServing => "admits normal serving"
+    PromotionRefused { cause: c } => join(["refused: ", c as String], "")
+    PromotionMeasurementServeOnly { missing: ms } => join(["normal serving needs this subject's own receipts; missing: ", join(map(ms, m => m as String), "; ")], "")
+  }
+}
+
+type ServingPromotionStanding
+  = PromotionAdmitsNormalServing
+  | PromotionMeasurementServeOnly { missing: List<NonEmptyStr> }
+  | PromotionRefused { cause: NonEmptyStr }
+
+// ── THE FOLD ─────────────────────────────────────────────────────────────────────────────────────
+fn serving_promotion_standing(subject: ServingPerformanceSubject, evidence: ServingPromotionEvidence, policy: ServingPromotionPolicy) -> ServingPromotionStanding {
+  let key = serving_subject_key(s: subject)
+  match evidence.compatibility {
+    AdmitsNothing { because: b } => PromotionRefused { cause: b }
+    AdmitsBoundedExperimentOnly => promotion_fold(key: key, evidence: evidence, policy: policy, compatibility_missing: ["execution compatibility: this subject has no execution receipt" as NonEmptyStr])
+    AdmitsNormalServing => promotion_fold(key: key, evidence: evidence, policy: policy, compatibility_missing: [])
+  }
+}
+
+fn promotion_fold(key: String, evidence: ServingPromotionEvidence, policy: ServingPromotionPolicy, compatibility_missing: List<NonEmptyStr>) -> ServingPromotionStanding {
+  match memory_refusal(m: evidence.memory) {
+    Present { value: c } => PromotionRefused { cause: c }
+    Absent =>
+      match cache_refusal(c: evidence.cache) {
+        Present { value: c } => PromotionRefused { cause: c }
+        Absent => {
+          let missing = concat(compatibility_missing, concat(memory_missing(m: evidence.memory), concat(cache_missing(c: evidence.cache),
+            concat(quality_missing(key: key, q: evidence.quality, incumbent: evidence.incumbent_quality, policy: policy),
+              calibration_missing(key: key, c: evidence.calibration, incumbent: evidence.incumbent_calibration, policy: policy)))))
+          if length(missing) == 0 { PromotionAdmitsNormalServing } else { PromotionMeasurementServeOnly { missing: missing } }
+        }
+      }
+  }
+}
+
+// A REFUSED FIT IS NOT A MISSING RECEIPT: a shape that cannot fit is refused outright, not measured.
+fn memory_refusal(m: ArmMemoryFitVerdict?) -> NonEmptyStr? {
+  match m {
+    Absent => none
+    Present { value: v } => match v {
+      ArmMemoryFitRefused { rank: _, phase: _, demand_lower: _, supply_upper: _, cause: c } => Present { value: c }
+      ArmMemoryFitProved { rank: _, phase: _, headroom_bytes: _ } => none
+      ArmMemoryFitUnestablished { obligations: _ } => none
+    }
+  }
+}
+
+fn memory_missing(m: ArmMemoryFitVerdict?) -> List<NonEmptyStr> {
+  match m {
+    Absent => ["all-rank memory fit: no verdict for this subject" as NonEmptyStr]
+    Present { value: v } => match v {
+      ArmMemoryFitProved { rank: _, phase: _, headroom_bytes: _ } => []
+      ArmMemoryFitRefused { rank: _, phase: _, demand_lower: _, supply_upper: _, cause: _ } => []
+      ArmMemoryFitUnestablished { obligations: os } => [join(["all-rank memory fit is unestablished: ", join(map(os, o => o as String), "; ")], "") as NonEmptyStr]
+    }
+  }
+}
+
+fn cache_refusal(c: CacheFitVerdict?) -> NonEmptyStr? {
+  match c {
+    Absent => none
+    Present { value: v } => match v {
+      CacheFitRefused { limiting_rank: _, seats: _, length: _, blocks_per_seat: _, blocks_used: _, supply_allocator_blocks: _, cause: cause } => Present { value: cause }
+      CacheFitProved { limiting_rank: _, seats: _, length: _, blocks_per_seat: _, blocks_used: _, blocks_reserved: _, hard_ceiling: _, block_equivalent_bytes: _ } => none
+      CacheFitUnestablished { obligations: _ } => none
+    }
+  }
+}
+
+fn cache_missing(c: CacheFitVerdict?) -> List<NonEmptyStr> {
+  match c {
+    Absent => ["resolved-layout cache fit: no allocation plan has been read from this subject's own launch" as NonEmptyStr]
+    Present { value: v } => match v {
+      CacheFitProved { limiting_rank: _, seats: _, length: _, blocks_per_seat: _, blocks_used: _, blocks_reserved: _, hard_ceiling: _, block_equivalent_bytes: _ } => []
+      CacheFitRefused { limiting_rank: _, seats: _, length: _, blocks_per_seat: _, blocks_used: _, supply_allocator_blocks: _, cause: _ } => []
+      CacheFitUnestablished { obligations: os } => [join(["resolved-layout cache fit is unestablished: ", join(map(os, o => o as String), "; ")], "") as NonEmptyStr]
+    }
+  }
+}
+
+// QUALITY: present, about this subject, on the incumbent's acceptance set, and within the margin.
+// Rates are compared in basis points of accepted/attempts, cross-multiplied so nothing rounds.
+fn quality_missing(key: String, q: QualityReceipt?, incumbent: QualityReceipt?, policy: ServingPromotionPolicy) -> List<NonEmptyStr> {
+  match q {
+    Absent => ["quality: no acceptance-set receipt for this subject" as NonEmptyStr]
+    Present { value: r } =>
+      if r.subject_key != key { ["quality: the receipt names another subject" as NonEmptyStr] }
+      else if r.attempts == 0 { ["quality: the receipt carries zero attempts" as NonEmptyStr] }
+      else {
+        match incumbent {
+          Absent => ["quality: no incumbent receipt on the same acceptance set to compare against" as NonEmptyStr]
+          Present { value: i } =>
+            if (i.acceptance_set as String) != (r.acceptance_set as String) {
+              ["quality: the incumbent was measured on a different acceptance set" as NonEmptyStr]
+            } else if i.attempts == 0 {
+              ["quality: the incumbent receipt carries zero attempts" as NonEmptyStr]
+            } else if r.accepted * 10000 * i.attempts + basis_point_count(bp: policy.quality_non_inferiority_margin) * r.attempts * i.attempts < i.accepted * 10000 * r.attempts {
+              [join(["quality: accepted ", to_string(r.accepted), "/", to_string(r.attempts), " is more than the margin below the incumbent's ", to_string(i.accepted), "/", to_string(i.attempts)], "") as NonEmptyStr]
+            } else if !policy.allow_more_tool_parse_failures && r.tool_parse_failures * i.attempts > i.tool_parse_failures * r.attempts {
+              [join(["quality: tool-call parse failures rose (", to_string(r.tool_parse_failures), "/", to_string(r.attempts), " against the incumbent's ", to_string(i.tool_parse_failures), "/", to_string(i.attempts), ")"], "") as NonEmptyStr]
+            } else { [] }
+        }
+      }
+  }
+}
+
+// CALIBRATION: present, about this subject, on the incumbent's trace, no OOMs or restarts, no
+// preemptions where the policy forbids them, and goodput at least the incumbent's.
+fn calibration_missing(key: String, c: WorkloadCalibrationReceipt?, incumbent: WorkloadCalibrationReceipt?, policy: ServingPromotionPolicy) -> List<NonEmptyStr> {
+  match c {
+    Absent => ["workload calibration: no receipt on the real trace for this subject" as NonEmptyStr]
+    Present { value: r } =>
+      if r.subject_key != key { ["workload calibration: the receipt names another subject" as NonEmptyStr] }
+      else if length(concat(calibration_count_missing(name: "OOM events", n: r.out_of_memory_events), concat(calibration_count_missing(name: "engine restarts", n: r.engine_restarts), calibration_count_missing(name: "preemptions", n: r.preemptions)))) > 0 {
+        concat(calibration_count_missing(name: "OOM events", n: r.out_of_memory_events), concat(calibration_count_missing(name: "engine restarts", n: r.engine_restarts), calibration_count_missing(name: "preemptions", n: r.preemptions)))
+      } else if observed_count(n: r.out_of_memory_events) > 0 || observed_count(n: r.engine_restarts) > 0 {
+        [join(["workload calibration: OOM events or engine restarts in run ", r.run_id as String], "") as NonEmptyStr]
+      } else if policy.require_zero_preemptions && observed_count(n: r.preemptions) > 0 {
+        [join(["workload calibration: preemptions in run ", r.run_id as String], "") as NonEmptyStr]
+      } else {
+        match incumbent {
+          Absent => ["workload calibration: no incumbent receipt on the same trace to compare against" as NonEmptyStr]
+          Present { value: i } =>
+            if (i.trace_digest as String) != (r.trace_digest as String) {
+              ["workload calibration: the incumbent was measured on a different trace" as NonEmptyStr]
+            } else if !policy.require_goodput_at_least_incumbent { [] }
+            else {
+              match r.accepted_turns_per_hour {
+                Absent => ["workload calibration: this subject's accepted turns/hour was not measured" as NonEmptyStr]
+                Present { value: mine } =>
+                  match i.accepted_turns_per_hour {
+                    Absent => ["workload calibration: the incumbent's accepted turns/hour was not measured" as NonEmptyStr]
+                    Present { value: theirs } =>
+                      if mine < theirs {
+                        [join(["workload calibration: ", to_string(mine), " accepted turns/hour is below the incumbent's ", to_string(theirs)], "") as NonEmptyStr]
+                      } else { [] }
+                  }
+              }
+            }
+        }
+      }
+  }
+}

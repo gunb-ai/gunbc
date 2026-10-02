@@ -1,0 +1,156 @@
+module test.claim.spark.serving_promotion_witness_test
+
+import std.types { Bool, List, String, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { token_count, byte_size, allocator_block_count }
+import v2.std.optional { Present, Absent }
+import v2.std.algebra { length }
+import extdeps.vllm.engine_args { KvFp8, SpeculativeDecodingOff, IndexerKvDtypeOmitted, vllm_scheduler_admission_omitted }
+import gunbc.spark.serving_arm { Glm53NativeFp8, GunbcGlm53DerivedKvplanV2Gb10, FourSparkTp4 }
+import gunbc.spark.serving_performance_subject { ServingPerformanceSubject, serving_performance_subject, serving_subject_key }
+import gunbc.spark.serving_compatibility { AdmitsNormalServing, AdmitsBoundedExperimentOnly }
+import gunbc.spark.arm_memory_fit { ArmMemoryFitVerdict, ArmMemoryFitProved, ArmMemoryFitRefused, ArmMemoryFitUnestablished, ArmPhaseModelLoad, CacheFitProved }
+import gunbc.spark.serving_promotion {
+  ServingPromotionEvidence, ServingPromotionStanding, PromotionAdmitsNormalServing, PromotionMeasurementServeOnly, PromotionRefused,
+  serving_promotion_standing, serving_promotion_policy, QualityReceipt, WorkloadCalibrationReceipt,
+}
+
+// THE SUBJECT IS THE ONE PROMOTION FOLD: five receipts, each bound to this subject's key, compared
+// against the incumbent on the same inputs. The positive control holds all five; each red removes or
+// spoils exactly one. Every value is supplied here -- the fold, not any producer, is under test.
+data fx_subject: ServingPerformanceSubject = serving_performance_subject(
+  checkpoint: Glm53NativeFp8,
+  checkpoint_revision: Present { value: "fixture-revision" as NonEmptyStr },
+  runtime: GunbcGlm53DerivedKvplanV2Gb10,
+  runtime_image_reference: "fixture@sha256:0" as NonEmptyStr,
+  topology: Present { value: FourSparkTp4 },
+  rank_population: Present { value: 4 },
+  context_ceiling: Present { value: token_count(count: 262144) },
+  max_num_batched_tokens: token_count(count: 2048),
+  max_num_seqs: Present { value: 12 },
+  kv_cache_dtype: Present { value: KvFp8 },
+  speculative: Present { value: SpeculativeDecodingOff },
+  collective_transport: none,
+  indexer_kv_dtype: Present { value: IndexerKvDtypeOmitted },
+  scheduler_admission: Present { value: vllm_scheduler_admission_omitted },
+)
+
+fn fx_key() -> String { serving_subject_key(s: fx_subject) }
+
+fn fx_quality(key: String, accepted: Nat, parse_failures: Nat) -> QualityReceipt {
+  QualityReceipt { subject_key: key, acceptance_set: "agentic-set-v1" as NonEmptyStr, attempts: 100, accepted: accepted, tool_parse_failures: parse_failures, evidence: "fixture" as NonEmptyStr }
+}
+
+fn fx_calibration(key: String, turns: Nat, preemptions: Nat?) -> WorkloadCalibrationReceipt {
+  WorkloadCalibrationReceipt {
+    subject_key: key, trace_digest: "trace-sha256:fixture" as NonEmptyStr, run_id: "run-fixture" as NonEmptyStr,
+    accepted_turns_per_hour: Present { value: turns }, sustained_concurrency: 12,
+    preemptions: preemptions, engine_restarts: Present { value: 0 }, out_of_memory_events: Present { value: 0 },
+    evidence: "fixture" as NonEmptyStr,
+  }
+}
+
+data fx_proved: ArmMemoryFitVerdict = ArmMemoryFitProved { rank: 3, phase: ArmPhaseModelLoad, headroom_bytes: byte_size(count: 1) }
+
+fn fx_evidence(memory: ArmMemoryFitVerdict, quality: QualityReceipt?, calibration: WorkloadCalibrationReceipt?) -> ServingPromotionEvidence {
+  ServingPromotionEvidence {
+    compatibility: AdmitsNormalServing,
+    memory: Present { value: memory },
+    cache: Present { value: CacheFitProved {
+      limiting_rank: 3, seats: 8, length: token_count(count: 262144), blocks_per_seat: allocator_block_count(count: 123),
+      blocks_used: allocator_block_count(count: 984), blocks_reserved: allocator_block_count(count: 0), hard_ceiling: 8, block_equivalent_bytes: none,
+    } },
+    quality: quality,
+    calibration: calibration,
+    incumbent_quality: Present { value: fx_quality(key: "incumbent", accepted: 80, parse_failures: 2) },
+    incumbent_calibration: Present { value: fx_calibration(key: "incumbent", turns: 100, preemptions: Present { value: 0 }) },
+  }
+}
+
+fn w_standing(e: ServingPromotionEvidence) -> ServingPromotionStanding {
+  serving_promotion_standing(subject: fx_subject, evidence: e, policy: serving_promotion_policy)
+}
+
+fn w_admits(e: ServingPromotionEvidence) -> Bool {
+  match w_standing(e: e) {
+    PromotionAdmitsNormalServing => true
+    PromotionMeasurementServeOnly { missing: _ } => false
+    PromotionRefused { cause: _ } => false
+  }
+}
+
+fn w_missing_count(e: ServingPromotionEvidence) -> Nat {
+  match w_standing(e: e) {
+    PromotionMeasurementServeOnly { missing: ms } => length(ms)
+    PromotionAdmitsNormalServing => 0
+    PromotionRefused { cause: _ } => 0
+  }
+}
+
+// THE POSITIVE CONTROL: within the 2-point margin (79 vs 80), no more parse failures, at least the
+// incumbent's goodput, zero preemptions.
+test fn w_a_subject_with_all_five_receipts_is_promoted() -> Bool {
+  w_admits(e: fx_evidence(memory: fx_proved,
+    quality: Present { value: fx_quality(key: fx_key(), accepted: 79, parse_failures: 2) },
+    calibration: Present { value: fx_calibration(key: fx_key(), turns: 120, preemptions: Present { value: 0 }) }))
+}
+
+// ── THE REDS: each spoils exactly one receipt of the control ─────────────────────────────────────
+test fn w_quality_more_than_the_margin_below_the_incumbent_is_not_promoted() -> Bool {
+  w_missing_count(e: fx_evidence(memory: fx_proved,
+    quality: Present { value: fx_quality(key: fx_key(), accepted: 77, parse_failures: 2) },
+    calibration: Present { value: fx_calibration(key: fx_key(), turns: 120, preemptions: Present { value: 0 }) })) == 1
+}
+
+test fn w_more_tool_parse_failures_is_not_promoted() -> Bool {
+  w_missing_count(e: fx_evidence(memory: fx_proved,
+    quality: Present { value: fx_quality(key: fx_key(), accepted: 80, parse_failures: 3) },
+    calibration: Present { value: fx_calibration(key: fx_key(), turns: 120, preemptions: Present { value: 0 }) })) == 1
+}
+
+test fn w_goodput_below_the_incumbent_is_not_promoted() -> Bool {
+  w_missing_count(e: fx_evidence(memory: fx_proved,
+    quality: Present { value: fx_quality(key: fx_key(), accepted: 80, parse_failures: 2) },
+    calibration: Present { value: fx_calibration(key: fx_key(), turns: 99, preemptions: Present { value: 0 }) })) == 1
+}
+
+test fn w_a_preemption_or_an_unobserved_preemption_count_is_not_promoted() -> Bool {
+  w_missing_count(e: fx_evidence(memory: fx_proved,
+    quality: Present { value: fx_quality(key: fx_key(), accepted: 80, parse_failures: 2) },
+    calibration: Present { value: fx_calibration(key: fx_key(), turns: 120, preemptions: Present { value: 1 }) })) == 1
+  && w_missing_count(e: fx_evidence(memory: fx_proved,
+    quality: Present { value: fx_quality(key: fx_key(), accepted: 80, parse_failures: 2) },
+    calibration: Present { value: fx_calibration(key: fx_key(), turns: 120, preemptions: Absent) })) == 1
+}
+
+// A RECEIPT FOR ANOTHER SUBJECT IS NOT THIS SUBJECT'S EVIDENCE: the same figures under another key.
+test fn w_receipts_for_another_subject_do_not_promote_this_one() -> Bool {
+  w_missing_count(e: fx_evidence(memory: fx_proved,
+    quality: Present { value: fx_quality(key: "another-subject", accepted: 80, parse_failures: 2) },
+    calibration: Present { value: fx_calibration(key: "another-subject", turns: 120, preemptions: Present { value: 0 }) })) == 2
+}
+
+test fn w_an_unestablished_fit_is_a_measurement_serve_and_a_refused_fit_is_refused() -> Bool {
+  w_missing_count(e: fx_evidence(memory: ArmMemoryFitUnestablished { obligations: ["kv-cache has no defensible bound" as NonEmptyStr] },
+    quality: Present { value: fx_quality(key: fx_key(), accepted: 80, parse_failures: 2) },
+    calibration: Present { value: fx_calibration(key: fx_key(), turns: 120, preemptions: Present { value: 0 }) })) == 1
+  && (match w_standing(e: fx_evidence(memory: ArmMemoryFitRefused { rank: 3, phase: ArmPhaseModelLoad, demand_lower: byte_size(count: 2), supply_upper: byte_size(count: 1), cause: "fixture: demand exceeds supply" as NonEmptyStr },
+    quality: none, calibration: none)) {
+      PromotionRefused { cause: _ } => true
+      PromotionAdmitsNormalServing => false
+      PromotionMeasurementServeOnly { missing: _ } => false
+    })
+}
+
+// WITH NOTHING PRODUCED, EVERY OBLIGATION IS NAMED AT ONCE: compatibility, quality and calibration
+// here (memory and cache supplied by the fixture).
+test fn w_a_subject_with_nothing_produced_names_every_missing_receipt() -> Bool {
+  match serving_promotion_standing(subject: fx_subject, policy: serving_promotion_policy, evidence: ServingPromotionEvidence {
+    compatibility: AdmitsBoundedExperimentOnly, memory: none, cache: none, quality: none, calibration: none,
+    incumbent_quality: none, incumbent_calibration: none,
+  }) {
+    PromotionMeasurementServeOnly { missing: ms } => length(ms) == 5
+    PromotionAdmitsNormalServing => false
+    PromotionRefused { cause: _ } => false
+  }
+}

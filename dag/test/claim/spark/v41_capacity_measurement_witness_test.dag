@@ -38,8 +38,7 @@ import gunbc.spark.v41_capacity_measurement {
   StopSuperlinearRefault, StopPsiFullSustained, StopNvmeLatency, StopSloBreach, V41ResidencyPhase,
   V41Capacity, CapacityAt, CapacityBelowFirstStep, CapacityRefused, v41_capacity_wire,
   v41_kv_admission_capacity, v41_engram_resident_capacity, v41_sla_capacity, v41_capacity_report,
-  V41CapacityReport, V41MeasurementServe, V41ProductionServe, v41_serving_admission,
-  MeasurementServeAdmitted, ProductionAdmitted, ProductionRefused,
+  V41CapacityReport, v41_calibration_receipt, V41CalibrationProjected, V41CalibrationRefused,
   v41_capacity_measurement_plan_text, v41_measurement_ranks, v41_engram_resident_bets, V41RankStartupReceipt, RankStartupAdmitted, RankStartupRefused, v41_admit_rank_startup, ExtensionLoaded, ExtensionImportFailed, ExtensionUnobserved, v41_engram_arm_of, v41_engram_arm_bindings, v41_judge_engram_resident_bet, v41_after_requests_resident, PointBetObserved, PointBetUnreadable, v41_measurement_launch_shape,
 }
 
@@ -427,36 +426,25 @@ test fn a_hole_in_the_staircase_refuses_the_sla_capacity_above_it() -> Bool {
   contains(v41_capacity_wire(c: v41_sla_capacity(o: v41_run_staircase(policy: w_signed(), run_id: "run-1" as NonEmptyStr, steps: steps))), "a reading is missing at x2")
 }
 
-// ── the production gate ──
+// ── the report as V4.1's workload calibration (production admission is gunbc.spark.serving_promotion) ──
 
-test fn the_measurement_serve_is_admitted_and_production_refuses_without_a_report() -> Bool {
-  let m = match v41_serving_admission(realization: V41MeasurementServe { run_id: "run-1" as NonEmptyStr }, report: none) {
-    MeasurementServeAdmitted { run_id: _ } => true
-    ProductionAdmitted { run_id: _, concurrency: _ } => false
-    ProductionRefused { cause: _ } => false
+test fn the_report_projects_the_minimum_of_three_capacities_and_leaves_unobserved_counts_absent() -> Bool {
+  let all = V41CapacityReport { run_id: "run-1" as NonEmptyStr, kv_admission: CapacityAt { concurrency: 6 }, engram_resident: CapacityAt { concurrency: 4 }, sla_sustainable: CapacityAt { concurrency: 8 }, indexer_kernel: ExtensionLoaded }
+  match v41_calibration_receipt(report: all, subject_key: "fixture-subject", trace_digest: "fixture-trace" as NonEmptyStr) {
+    V41CalibrationRefused { cause: _ } => false
+    V41CalibrationProjected { receipt: r } =>
+      r.sustained_concurrency == 4
+        && (match r.preemptions { Absent => true  Present { value: _ } => false })
+        && (match r.accepted_turns_per_hour { Absent => true  Present { value: _ } => false })
   }
-  let p = match v41_serving_admission(realization: V41ProductionServe, report: none) {
-    ProductionRefused { cause: _ } => true
-    MeasurementServeAdmitted { run_id: _ } => false
-    ProductionAdmitted { run_id: _, concurrency: _ } => false
-  }
-  m && p
 }
 
-test fn production_admits_the_minimum_of_three_capacities_and_refuses_on_any_refusal() -> Bool {
-  let all = V41CapacityReport { run_id: "run-1" as NonEmptyStr, kv_admission: CapacityAt { concurrency: 6 }, engram_resident: CapacityAt { concurrency: 4 }, sla_sustainable: CapacityAt { concurrency: 8 }, indexer_kernel: ExtensionLoaded }
-  let admitted = match v41_serving_admission(realization: V41ProductionServe, report: Present { value: all }) {
-    ProductionAdmitted { run_id: _, concurrency: c } => c == 4
-    ProductionRefused { cause: _ } => false
-    MeasurementServeAdmitted { run_id: _ } => false
-  }
+test fn a_refused_capacity_refuses_the_projection_and_names_it() -> Bool {
   let today = V41CapacityReport { run_id: "run-1" as NonEmptyStr, kv_admission: CapacityAt { concurrency: 6 }, sla_sustainable: CapacityAt { concurrency: 8 }, engram_resident: CapacityRefused { cause: "the distinct-touch counter is unavailable" as NonEmptyStr }, indexer_kernel: ExtensionLoaded }
-  let refused = match v41_serving_admission(realization: V41ProductionServe, report: Present { value: today }) {
-    ProductionRefused { cause: c } => contains(c as String, "Engram resident")
-    ProductionAdmitted { run_id: _, concurrency: _ } => false
-    MeasurementServeAdmitted { run_id: _ } => false
+  match v41_calibration_receipt(report: today, subject_key: "fixture-subject", trace_digest: "fixture-trace" as NonEmptyStr) {
+    V41CalibrationRefused { cause: c } => contains(c as String, "Engram resident")
+    V41CalibrationProjected { receipt: _ } => false
   }
-  admitted && refused
 }
 
 test fn the_dry_run_plan_renders_the_derived_thresholds_and_the_open_preconditions() -> Bool {
