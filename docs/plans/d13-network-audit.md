@@ -1,0 +1,122 @@
+# D13 Network audit — the selection rule and its citations
+
+Input to D13 step (b) (`gunbc.plans.demand_engine_program`; rung drop `gunbc.rung_drop` `network_requirement_unrepresented_after_uses_cut`). This page holds the reasoning behind the `requires` clauses on `dag/extdeps` operations: the rule, the rulings, and a citation for each program or API class. **It holds no per-operation verdicts.** Each verdict is the operation's own `requires` clause, which is the single authority (DESIGN §3, §6). Read the population from the clauses themselves, e.g. `grep -rn 'requires ' dag/extdeps`. The per-row table used for review was posted on gunbc#12965 rather than committed.
+
+## Selection rule (ruled by quiet-seal-543, 2026-10-01)
+
+A `requires` clause states what a sandbox must GRANT, so the fail-closed direction is to over-declare. An operation is **Network** if executing it Wet **may** open a connection to a non-local endpoint. This replaces the first draft's "necessarily". The judgement is made from the operation's own declaration (transport kind + argv/endpoint) against the cited upstream behaviour of the program or API it invokes.
+
+- **rest**: Network unless the declared endpoint is a unix socket or a fixed loopback address. Docker Engine binds `extdeps.docker.endpoint` `docker_default_endpoint`, a unix socket, so it is NotNetwork. The GCP metadata server (169.254.169.254) is link-local, not loopback, so it is Network.
+- **file**: NotNetwork.
+- **shell**: decided by program **and** authored argv:
+  - A fixed network protocol to a host is Network: ssh/scp/sshpass, `ipmitool -I lanplus`, `curl https://…`, `gh`, `gcloud auth`, hosted-model CLIs.
+  - A url/remote parameter is Network: `curl {url}`, `git fetch|push|ls-remote {remote}`, Playwright `goto {url}`, and `github.OIDC` `GetToken` with its runtime `request_url`. An operation name is not a type, so `http.Client` `GetLocalhostBounded` is Network until its `{url}` is typed loopback. That typing is the trigger that would move it.
+  - A fetch that depends on cache state is Network: cargo without `--offline`, `npm ci`, `npm cache add`, `npx -y`, `apt-get install`, `gcloud auth print-access-token`.
+  - `arping` is Network: it uses the network interface.
+  - A runtime-program parameter is **OpaqueDemand**: `shell.exec` Run*, `systemd-run` with `command_argv`, the sudo probe `Check`, `gunbc.WitnessBin` `Run`, and the node/python/go `RunFile` runners. The argv is runtime data, so step (b) yields DemandUndecided for their callers instead of an empty demand.
+  - Everything else is a local program on local paths: NotNetwork.
+
+## Citations by class
+
+| verdict → clause | citation | modules |
+|---|---|---|
+| Network → `requires Network` | Cloudflare API v4 (developers.cloudflare.com/api) | `extdeps.cloudflare.account_api_tokens`, `extdeps.cloudflare.r2_buckets` |
+| Network → `requires Network` | GCP metadata server (cloud.google.com/compute/docs/metadata/overview): metadata.google.internal = 169.254.169.254, link-local, not loopback | `extdeps.cloud.gcp.sts` |
+| Network → `requires Network` | GitHub REST API docs (docs.github.com/rest), base https://api.github.com | `extdeps.github.actions_jit_runner`, `extdeps.github.app`, `extdeps.github.checks`, `extdeps.github.code_search`, `extdeps.github.commits`, `extdeps.github.gists`, `extdeps.github.git_database`, `extdeps.github.issues`, `extdeps.github.org_actions`, `extdeps.github.pulls`, `extdeps.github.repository_contents`, `extdeps.github.rulesets`, `extdeps.github.users`, `extdeps.github.workflow_runs`, `extdeps.github.workflows` |
+| Network → `requires Network` | Google Drive API v3 reference (developers.google.com/drive/api/reference/rest/v3) | `extdeps.google.drive` |
+| Network → `requires Network` | Google Sheets API v4 reference (developers.google.com/sheets/api/reference/rest) | `extdeps.google.sheets` |
+| Network → `requires Network` | PARAM remote: git-fetch(1)/git-push(1)/git-ls-remote(1) use the remote's transport (gitprotocol-v2(5)); a {remote} may be a local path (file transport) or a URL | `extdeps.git`, `extdeps.git.publication_transport` |
+| Network → `requires Network` | PARAM request_url: endpoint is the runtime ACTIONS_ID_TOKEN_REQUEST_URL (docs.github.com/actions/reference/security/oidc); declaration fixes no host | `extdeps.cloud.gcp.sts` |
+| Network → `requires Network` | PARAM tarball: npm cache add (docs.npmjs.com/cli/commands/npm-cache) accepts a path or a URL | `extdeps.tools.npm` |
+| Network → `requires Network` | PARAM url: Playwright page.goto (playwright.dev/docs/api/class-page#page-goto) navigates to a runtime URL | `extdeps.browser` |
+| Network → `requires Network` | PARAM url: curl(1) URL scheme+host both runtime (could be file:// or loopback) | `extdeps.http.client` |
+| Network → `requires Network` | RULING link-layer: arping(8) broadcasts ARP on {device} to {target}; L2 traffic, no connection to an endpoint | `extdeps.iputils.arping` |
+| Network → `requires Network` | SEC EDGAR APIs (sec.gov/search-filings/edgar-application-programming-interfaces) | `extdeps.sec.edgar_rest` |
+| Network → `requires Network` | STATE credential cache: gcloud auth print-access-token (cloud.google.com/sdk/gcloud/reference/auth/print-access-token) refreshes over oauth2.googleapis.com only when the cached token is expired | `extdeps.shell` |
+| Network → `requires Network` | STATE package cache: apt-get(8) install downloads .debs from sources.list unless already installed/cached; PARAM package | `extdeps.apt` |
+| Network → `requires Network` | STATE package cache: npm ci (docs.npmjs.com/cli/commands/npm-ci) fetches from the registry unless every tarball is cached | `extdeps.tools.npm` |
+| Network → `requires Network` | STATE package cache: npx -y -p (docs.npmjs.com/cli/commands/npx) installs the package from the registry unless already cached | `extdeps.typescript` |
+| Network → `requires Network` | STATE registry cache: cargo build/check/test (doc.rust-lang.org/cargo/commands/cargo-build.html, --offline/--frozen) fetch the index/crates only when Cargo.lock deps are not already downloaded; argv does not pass --offline | `extdeps.cargo_build` |
+| Network → `requires Network` | TCGplayer API (docs.tcgplayer.com), base https://api.tcgplayer.com | `extdeps.tcgplayer.catalog`, `extdeps.tcgplayer.pricing`, `extdeps.tcgplayer.store`, `extdeps.tcgplayer.tcgplayer` |
+| Network → `requires Network` | curl(1) to fixed https://api.github.com (GitHub Apps REST docs.github.com/rest/apps) | `extdeps.github.app` |
+| Network → `requires Network` | curl(1) to https://{bmc_host}: DMTF Redfish DSP0266 / MegaRAC web API over HTTPS — argv fixes the https scheme to a BMC host | `extdeps.bmc.http`, `extdeps.bmc.megarac` |
+| Network → `requires Network` | eBay REST APIs (developer.ebay.com/api-docs), base https://api.ebay.com | `extdeps.ebay.browse`, `extdeps.ebay.inventory`, `extdeps.ebay.oauth` |
+| Network → `requires Network` | fixed HTTPS endpoint https://api.anthropic.com (upstream API reference for that host) | `extdeps.llm.anthropic_rest` |
+| Network → `requires Network` | fixed HTTPS endpoint https://api.openai.com (upstream API reference for that host) | `extdeps.llm.openai_rest` |
+| Network → `requires Network` | fixed HTTPS endpoint https://api.tailscale.com (upstream API reference for that host) | `extdeps.tailscale.acl_api` |
+| Network → `requires Network` | fixed HTTPS endpoint https://cloudresourcemanager.googleapis.com (upstream API reference for that host) | `extdeps.cloud.gcp.iam` |
+| Network → `requires Network` | fixed HTTPS endpoint https://iam.googleapis.com (upstream API reference for that host) | `extdeps.cloud.gcp.iam`, `extdeps.cloud.gcp.iam_admin` |
+| Network → `requires Network` | fixed HTTPS endpoint https://iamcredentials.googleapis.com (upstream API reference for that host) | `extdeps.cloud.gcp.iam` |
+| Network → `requires Network` | fixed HTTPS endpoint https://jsonplaceholder.typicode.com (upstream API reference for that host) | `extdeps.test.http_pilot` |
+| Network → `requires Network` | fixed HTTPS endpoint https://oauth2.googleapis.com (upstream API reference for that host) | `extdeps.cloud.gcp.gcp` |
+| Network → `requires Network` | fixed HTTPS endpoint https://secretmanager.googleapis.com (upstream API reference for that host) | `extdeps.cloud.gcp.secret_manager` |
+| Network → `requires Network` | fixed HTTPS endpoint https://serviceusage.googleapis.com (upstream API reference for that host) | `extdeps.cloud.gcp.serviceusage` |
+| Network → `requires Network` | fixed HTTPS endpoint https://sts.googleapis.com (upstream API reference for that host) | `extdeps.cloud.gcp.sts` |
+| Network → `requires Network` | gcloud auth login (cloud.google.com/sdk/gcloud/reference/auth/login): OAuth flow against accounts.google.com | `extdeps.cloud.gcp.gcp` |
+| Network → `requires Network` | gh(1) manual (cli.github.com/manual): `gh api`/`gh pr`/`gh run` call api.github.com | `extdeps.github.actions_runs`, `extdeps.github.ci_runner`, `extdeps.github.org_actions`, `extdeps.github.organizations`, `extdeps.github.pulls` |
+| Network → `requires Network` | ipmitool(1) INTERFACES: -I lanplus = IPMI v2.0 RMCP+ over UDP/623 to -H {bmc_host} | `extdeps.bmc.ipmi` |
+| Network → `requires Network` | ssh(1)/scp(1) (+sshpass(1)): opens TCP/22 session to the host named in argv | `extdeps.bmc.openbmc_password_ssh_transport`, `extdeps.ssh.password_session`, `extdeps.ssh.session` |
+| Network → `requires Network` | vendor CLI prompt mode calls the hosted model API (Claude Code docs.anthropic.com/claude-code/cli-reference; Codex CLI `exec` github.com/openai/codex; Gemini CLI github.com/google-gemini/gemini-cli) | `extdeps.llm.anthropic_rest`, `extdeps.llm.cli` |
+| NotNetwork → `requires none` (pending #12960) | /usr/bin/stat: local coreutils/POSIX utility (man stat(1)); argv names only local paths/values | `extdeps.tools.stat` |
+| NotNetwork → `requires none` (pending #12960) | Docker Engine API (docs.docker.com/reference/api/engine): default endpoint unix:///var/run/docker.sock (extdeps.docker.endpoint docker_default_endpoint), a unix socket | `extdeps.docker.container_inspect`, `extdeps.docker.container_stats` |
+| NotNetwork → `requires none` (pending #12960) | Playwright Page/BrowserContext API (playwright.dev/docs/api/class-page): acts on an already-loaded local browser page | `extdeps.browser` |
+| NotNetwork → `requires none` (pending #12960) | cargo(1) --version / cargo-fmt: no registry access (doc.rust-lang.org/cargo/commands) | `extdeps.cargo_build` |
+| NotNetwork → `requires none` (pending #12960) | cat: local coreutils/POSIX utility (man cat(1)); argv names only local paths/values | `extdeps.linux.cgroup_v2`, `extdeps.linux.procfs` |
+| NotNetwork → `requires none` (pending #12960) | chmod: local coreutils/POSIX utility (man chmod(1)); argv names only local paths/values | `extdeps.shell` |
+| NotNetwork → `requires none` (pending #12960) | codex app-server generate-json-schema (github.com/openai/codex app-server README): writes schema files locally | `extdeps.llm.codex_app_server` |
+| NotNetwork → `requires none` (pending #12960) | cp: local coreutils/POSIX utility (man cp(1)); argv names only local paths/values | `extdeps.shell` |
+| NotNetwork → `requires none` (pending #12960) | crontab(1): local spool | `extdeps.cron` |
+| NotNetwork → `requires none` (pending #12960) | curl(1) --unix-socket: connects to a local unix socket, not TCP | `extdeps.http.client` |
+| NotNetwork → `requires none` (pending #12960) | date: local coreutils/POSIX utility (man date(1)); argv names only local paths/values | `extdeps.clock` |
+| NotNetwork → `requires none` (pending #12960) | diff: local coreutils/POSIX utility (man diff(1)); argv names only local paths/values | `extdeps.tools.diffutils` |
+| NotNetwork → `requires none` (pending #12960) | dpkg(1): local status database | `extdeps.dpkg` |
+| NotNetwork → `requires none` (pending #12960) | find: local coreutils/POSIX utility (man find(1)); argv names only local paths/values | `extdeps.linux.cgroup_v2`, `extdeps.shell` |
+| NotNetwork → `requires none` (pending #12960) | getconf: local coreutils/POSIX utility (man getconf(1)); argv names only local paths/values | `extdeps.posix.getconf` |
+| NotNetwork → `requires none` (pending #12960) | git(1); local subcommand per git-scm.com/docs (no transport; only fetch/push/ls-remote/clone/pull use git transfer protocols, gitprotocol-v2(5)) | `extdeps.git`, `extdeps.git.inspect`, `extdeps.git.plumbing`, `extdeps.git.publication_transport` |
+| NotNetwork → `requires none` (pending #12960) | grep: local coreutils/POSIX utility (man grep(1)); argv names only local paths/values | `extdeps.tools.grep` |
+| NotNetwork → `requires none` (pending #12960) | gunbc file transport: local filesystem read/write (POSIX open(2), read(2)) | `extdeps.filesystem.filesystem_io`, `extdeps.linux.procfs` |
+| NotNetwork → `requires none` (pending #12960) | gzip: local coreutils/POSIX utility (man gzip(1)); argv names only local paths/values | `extdeps.tools.gzip` |
+| NotNetwork → `requires none` (pending #12960) | hostname: local coreutils/POSIX utility (man hostname(1)); argv names only local paths/values | `extdeps.tools.hostname` |
+| NotNetwork → `requires none` (pending #12960) | hostnamectl(1): D-Bus to local systemd-hostnamed | `extdeps.tools.hostname` |
+| NotNetwork → `requires none` (pending #12960) | id: local coreutils/POSIX utility (man id(1)); argv names only local paths/values | `extdeps.shell`, `extdeps.tools.id` |
+| NotNetwork → `requires none` (pending #12960) | ip-address(8): rtnetlink to the local kernel | `extdeps.iproute2.ip_address` |
+| NotNetwork → `requires none` (pending #12960) | journalctl(1): reads the local journal | `extdeps.systemd.journalctl` |
+| NotNetwork → `requires none` (pending #12960) | jq(1) manual: filter over stdin/args | `extdeps.bmc.openbmc_fan_control`, `extdeps.tools.jq` |
+| NotNetwork → `requires none` (pending #12960) | kill: local coreutils/POSIX utility (man kill(1)); argv names only local paths/values | `extdeps.posix.signal` |
+| NotNetwork → `requires none` (pending #12960) | ln: local coreutils/POSIX utility (man ln(1)); argv names only local paths/values | `extdeps.shell` |
+| NotNetwork → `requires none` (pending #12960) | mkdir: local coreutils/POSIX utility (man mkdir(1)); argv names only local paths/values | `extdeps.shell` |
+| NotNetwork → `requires none` (pending #12960) | mktemp: local coreutils/POSIX utility (man mktemp(1)); argv names only local paths/values | `extdeps.shell` |
+| NotNetwork → `requires none` (pending #12960) | mv: local coreutils/POSIX utility (man mv(1)); argv names only local paths/values | `extdeps.shell` |
+| NotNetwork → `requires none` (pending #12960) | node: local coreutils/POSIX utility (man node(1)); argv names only local paths/values | `extdeps.tools.node` |
+| NotNetwork → `requires none` (pending #12960) | npm --version (docs.npmjs.com/cli/commands/npm) | `extdeps.tools.npm` |
+| NotNetwork → `requires none` (pending #12960) | npm ci --offline (docs.npmjs.com/cli/using-npm/config#offline): forces cache-only, no network | `extdeps.tools.npm` |
+| NotNetwork → `requires none` (pending #12960) | nvidia-smi(1): local NVML | `extdeps.nvidia.system_management_interface` |
+| NotNetwork → `requires none` (pending #12960) | oomctl(1): local systemd-oomd | `extdeps.systemd.oomd` |
+| NotNetwork → `requires none` (pending #12960) | openssl-dgst(1): local signing | `extdeps.tools.openssl` |
+| NotNetwork → `requires none` (pending #12960) | printenv: local coreutils/POSIX utility (man printenv(1)); argv names only local paths/values | `extdeps.shell` |
+| NotNetwork → `requires none` (pending #12960) | ras-mc-ctl(8): local EDAC sysfs/rasdaemon DB | `extdeps.linux.edac` |
+| NotNetwork → `requires none` (pending #12960) | realpath: local coreutils/POSIX utility (man realpath(1)); argv names only local paths/values | `extdeps.shell` |
+| NotNetwork → `requires none` (pending #12960) | rm: local coreutils/POSIX utility (man rm(1)); argv names only local paths/values | `extdeps.shell` |
+| NotNetwork → `requires none` (pending #12960) | rmdir: local coreutils/POSIX utility (man rmdir(1)); argv names only local paths/values | `extdeps.shell` |
+| NotNetwork → `requires none` (pending #12960) | rustc --version / local compilation (doc.rust-lang.org/rustc) | `extdeps.rustc` |
+| NotNetwork → `requires none` (pending #12960) | rustfmt: local coreutils/POSIX utility (man rustfmt(1)); argv names only local paths/values | `extdeps.tools.rustfmt` |
+| NotNetwork → `requires none` (pending #12960) | sed: local coreutils/POSIX utility (man sed(1)); argv names only local paths/values | `extdeps.tools.sed` |
+| NotNetwork → `requires none` (pending #12960) | sh -c script authored in the declaration uses only local programs (mktemp(1), find(1), sort(1), head(1)/tr(1) over /dev/urandom, rustc --emit=metadata, command -v) | `extdeps.entropy`, `extdeps.rustc`, `extdeps.shell` |
+| NotNetwork → `requires none` (pending #12960) | sha256sum: local coreutils/POSIX utility (man sha256sum(1)); argv names only local paths/values | `extdeps.crypto.hash`, `extdeps.tools.sha256sum` |
+| NotNetwork → `requires none` (pending #12960) | sha512sum: local coreutils/POSIX utility (man sha512sum(1)); argv names only local paths/values | `extdeps.tools.sha512sum` |
+| NotNetwork → `requires none` (pending #12960) | sleep: local coreutils/POSIX utility (man sleep(1)); argv names only local paths/values | `extdeps.tools.sleep` |
+| NotNetwork → `requires none` (pending #12960) | stat: local coreutils/POSIX utility (man stat(1)); argv names only local paths/values | `extdeps.shell`, `extdeps.tools.coreutils_stat` |
+| NotNetwork → `requires none` (pending #12960) | sudo(8) -l: local policy | `extdeps.sudo.nopasswd_execute_probe_check_op` |
+| NotNetwork → `requires none` (pending #12960) | systemctl(1): talks to the local systemd manager over D-Bus/private socket | `extdeps.systemd.systemctl` |
+| NotNetwork → `requires none` (pending #12960) | tailscale CLI `serve status` reads the local tailscaled LocalAPI socket (tailscale.com/kb/1242/tailscale-serve) | `extdeps.tailscale.serve` |
+| NotNetwork → `requires none` (pending #12960) | test: local coreutils/POSIX utility (man test(1)); argv names only local paths/values | `extdeps.linux.cgroup_v2`, `extdeps.shell` |
+| NotNetwork → `requires none` (pending #12960) | tmux(1): local server socket | `extdeps.tmux` |
+| NotNetwork → `requires none` (pending #12960) | uname: local coreutils/POSIX utility (man uname(1)); argv names only local paths/values | `extdeps.shell` |
+| NotNetwork → `requires none` (pending #12960) | wc: local coreutils/POSIX utility (man wc(1)); argv names only local paths/values | `extdeps.tools.wc` |
+| NotNetwork → `requires none` (pending #12960) | whoami: local coreutils/POSIX utility (man whoami(1)); argv names only local paths/values | `extdeps.access.posix_effective_principal_read_op` |
+| NotNetwork → `requires none` (pending #12960) | xorriso: local coreutils/POSIX utility (man xorriso(1)); argv names only local paths/values | `extdeps.tools.xorriso` |
+| OpaqueDemand → `requires opaque` (pending #12960) | PARAM bin_path: program is runtime | `extdeps.gunbc` |
+| OpaqueDemand → `requires opaque` (pending #12960) | PARAM command_argv: systemd-run(1) itself is local; the transient unit runs a runtime command | `extdeps.systemd.systemd_run` |
+| OpaqueDemand → `requires opaque` (pending #12960) | PARAM probe.command_path: sudo(8) runs a runtime program | `extdeps.sudo.nopasswd_execute_probe_check_op` |
+| OpaqueDemand → `requires opaque` (pending #12960) | PARAM program/command body: argv supplied at runtime | `extdeps.shell.exec` |
+| OpaqueDemand → `requires opaque` (pending #12960) | PARAM script_path: behaviour is the runtime script | `extdeps.go`, `extdeps.node`, `extdeps.python` |

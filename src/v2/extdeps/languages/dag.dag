@@ -2361,10 +2361,23 @@ fn dag_grammar_keyword_expr(lexeme: String) -> GrammarExpr {
 // names it, and resolution reads it through the same type references. Lowered by
 // v2.compiler.body_lowering_fold body_lower_operation_requires onto the operation Arrow's
 // ^arrow_resource_requirements_edge.
+// THREE DECLARED FORMS, ONE CLAUSE (D13 ruling B: an operation's demand is never read from silence).
+// `requires none` declares no requirement in the audited vocabulary; `requires opaque` declares that the
+// operation's demand is decided by runtime values (a generic exec), so a caller's demand is Undecided;
+// `requires R, ..` names the resources. The two words are their own productions because a literal
+// terminal stamps its token CLASS, not its word, so only the production's emitted identity can say
+// which word was written; an exact word is chosen over the any-identifier type list, so a resource
+// cannot be named `none` or `opaque`.
 fn dag_grammar_op_requires_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "requires")),
-    right: dag_grammar_comma_list_expr(item: dag_grammar_nonterminal(production: ^dag_production_type_expr))
+    right: dag_grammar_choice(
+      left: dag_grammar_nonterminal(production: ^dag_production_op_requires_none),
+      right: dag_grammar_choice(
+        left: dag_grammar_nonterminal(production: ^dag_production_op_requires_opaque),
+        right: dag_grammar_comma_list_expr(item: dag_grammar_nonterminal(production: ^dag_production_type_expr))
+      )
+    )
   )
 }
 
@@ -3048,6 +3061,16 @@ fn dag_grammar_root() -> GrammarRoot {
     expression: dag_grammar_keyword_expr(lexeme: "hermetic"),
     emitted: ^dag_surface_op_modifier_hermetic
   )
+  let op_requires_none = dag_grammar_production(
+    name: ^dag_production_op_requires_none,
+    expression: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "none")),
+    emitted: ^dag_surface_op_requires_none
+  )
+  let op_requires_opaque = dag_grammar_production(
+    name: ^dag_production_op_requires_opaque,
+    expression: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "opaque")),
+    emitted: ^dag_surface_op_requires_opaque
+  )
   let op_requires = dag_grammar_production(
     name: ^dag_production_op_requires,
     expression: dag_grammar_op_requires_expr(),
@@ -3317,6 +3340,8 @@ fn dag_grammar_root() -> GrammarRoot {
       op_modifier_idempotent,
       op_modifier_hermetic,
       op_requires,
+      op_requires_none,
+      op_requires_opaque,
       exit_block,
       response_block,
       mock_response_block,
