@@ -2607,13 +2607,44 @@ mod tests {
             "{summary}"
         );
         assert!(!summary.contains("fatal_cause 2x parse_grammar_choice_overlap_residue"));
-        assert!(summary.contains(
-            "refused a.dag fatal=parse_g0_tokens_remain head(advisory)=parse_grammar_choice_overlap_residue"
-        ));
-        assert!(
-            summary.contains("refused c.dag fatal=parse_g0_tokens_remain\n")
-                || summary.ends_with("refused c.dag fatal=parse_g0_tokens_remain")
+        // EVERY SUPPLIED FILE, EXACTLY ONCE, AS ITS WHOLE LINE. Asserting a and c alone let a
+        // rendering that dropped b pass (review on #13005); the expected line is derived per row,
+        // so the head appears only where it differs from the cause.
+        let expected = [
+            "  refused a.dag fatal=parse_g0_tokens_remain head(advisory)=parse_grammar_choice_overlap_residue",
+            "  refused b.dag fatal=body_lowering_reason_x head(advisory)=parse_grammar_choice_overlap_residue",
+            "  refused c.dag fatal=parse_g0_tokens_remain",
+        ];
+        assert_eq!(
+            each_line_exactly_once(&summary, &expected),
+            Ok(()),
+            "{summary}"
         );
+        // THE MUTATIONS THE CHECK MUST RED ON: b's line dropped, and a's line duplicated.
+        let dropped_b: String = summary
+            .lines()
+            .filter(|l| !l.contains("refused b.dag"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert_eq!(
+            each_line_exactly_once(&dropped_b, &expected),
+            Err(format!("{} appears 0 times", expected[1]))
+        );
+        let doubled_a = format!("{summary}\n{}", expected[0]);
+        assert_eq!(
+            each_line_exactly_once(&doubled_a, &expected),
+            Err(format!("{} appears 2 times", expected[0]))
+        );
+    }
+
+    fn each_line_exactly_once(summary: &str, expected: &[&str]) -> Result<(), String> {
+        for line in expected {
+            let n = summary.lines().filter(|l| l == line).count();
+            if n != 1 {
+                return Err(format!("{line} appears {n} times"));
+            }
+        }
+        Ok(())
     }
 
     /// THE MEMBER FOLD, HANDED REAL PRODUCER BYTES.
