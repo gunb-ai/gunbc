@@ -23377,6 +23377,18 @@ macro_rules! v1_builtin_arms {
                 )))
             },
 
+            arm "free_call.compile_dag_operation_requires" { "compile_dag_operation_requires" } => {
+                let source = expect_str($positional.first().copied(), $name)?;
+                let service = expect_str($positional.get(1).copied(), $name)?;
+                let operation = expect_str($positional.get(2).copied(), $name)?;
+                match crate::cli_run::compile_dag_operation_requires(&source, &service, &operation) {
+                    Ok(members) => Ok(Some(list_value(
+                        members.into_iter().map(str_value).collect::<Vec<_>>(),
+                    ))),
+                    Err(msg) => Err(InterpError::TypeError { msg }),
+                }
+            },
+
             arm "free_call.compile_dag_primitive_call_edges" { "compile_dag_primitive_call_edges" } => {
                 let exclude_substrings = expect_str_list($positional.first().copied(), $name)?;
                 let pool_roots = expect_str_list($positional.get(1).copied(), $name)?;
