@@ -14,7 +14,7 @@ import gunbc.auth.login_transaction_store { LoginTransactionStoreLayout, login_t
 import gunbc.auth.oidc_id_token_verification { oidc_id_token_signature_verify, oidc_id_token_wire_decode, OidcIdTokenWireDecoded, OidcIdTokenWireRefused }
 import extdeps.auth.oidc { OidcIdTokenClaims, OidcIdTokenVerdict, OidcIdTokenVerified, OidcIdTokenRefused, OidcHostedDomain, oidc_id_token_refusal_reason, OidcLoginTransaction, OidcPkceCodeVerifier, RelativeReturnPath, admit_login_return_path, ReturnPathAdmitted, ReturnPathRefused, OidcIdTokenVerdictPolicy, login_transaction_expired, OidcScopeOpenId, OidcScopeEmail, OidcScopeProfile, oidc_login_scope_label }
 import extdeps.auth.jwt { JwtBareString, JwtUriString, NumericDateWholeSeconds }
-import extdeps.uri { uri_percent_encode_component, uri_percent_decode_component, UriPercentComponentEncoded, UriPercentComponentRefused }
+import extdeps.uri { uri_percent_encode_component, uri_percent_decode_component, UriPercentComponentEncoded, UriPercentComponentRefused, UriPercentComponentDecoded, UriPercentComponentDecodeRefused }
 import extdeps.entropy { Urandom }
 import extdeps.clock { Clock }
 import extdeps.http.client
@@ -398,8 +398,19 @@ fn auth_callback_exchange(instance: HostDashboardInstance, transaction: OidcLogi
   }
 }
 
+// The authorization code arrives percent-encoded in the callback query and must decode EXACTLY ONCE
+// before the token form encodes it again (the 2026-09-27 invalid_grant defect: the raw encoded code
+// was encoded a second time, so Google saw a code it never issued). A code that does not decode is
+// refused here, never forwarded half-decoded.
 fn auth_callback_exchange_configured(instance: HostDashboardInstance, transaction: OidcLoginTransaction, path: String, config: OidcDeploymentConfig) -> ServeHttpResponse {
-  let code = uri_percent_decode_component(value: uri_query_param(path: path, key: "code"))
+  match uri_percent_decode_component(value: uri_query_param(path: path, key: "code")) {
+    UriPercentComponentDecodeRefused { cause: _ } =>
+      serve_text_response(status: 400, content_type: text_plain_utf8, body: "login refused: the callback code is not a well-formed percent-encoded value\n")
+    UriPercentComponentDecoded { value: code } => auth_callback_exchange_decoded(instance: instance, transaction: transaction, code: code, config: config)
+  }
+}
+
+fn auth_callback_exchange_decoded(instance: HostDashboardInstance, transaction: OidcLoginTransaction, code: String, config: OidcDeploymentConfig) -> ServeHttpResponse {
   if code == "" {
     serve_text_response(status: 400, content_type: text_plain_utf8, body: "login refused: the callback carries no code\n")
   } else {
