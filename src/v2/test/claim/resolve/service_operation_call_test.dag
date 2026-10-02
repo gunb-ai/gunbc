@@ -53,10 +53,14 @@ fn soc_read(source: String, id: Symbol, path: String) -> DagSourceReadWitness {
   }
 }
 
-// Each claim ingests only the service and the one module it resolves, so no claim pays for the others.
+// Each claim ingests only the provider and the one module it resolves, so no claim pays for the others.
 fn soc_resolve(subject_source: String, subject_id: Symbol, subject_path: String, subject: String) -> Outcome<ResolvedTree> {
+  soc_resolve_with(provider_source: soc_service_source, subject_source: subject_source, subject_id: subject_id, subject_path: subject_path, subject: subject)
+}
+
+fn soc_resolve_with(provider_source: String, subject_source: String, subject_id: Symbol, subject_path: String, subject: String) -> Outcome<ResolvedTree> {
   let ingest = [
-    soc_read(source: soc_service_source, id: ^soc_service_read, path: "src/v2/test/fixture/service_operation_call/svc.dag"),
+    soc_read(source: provider_source, id: ^soc_service_read, path: "src/v2/test/fixture/service_operation_call/svc.dag"),
     soc_read(source: subject_source, id: subject_id, path: subject_path)
   ]
   match module_roots_from_source_root_ingest(ingest: ingest, lm: dag_language_model_surface_empty_prelude()) {
@@ -136,4 +140,33 @@ test fn probe_a_fully_qualified_call_resolves() -> Bool {
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: _ } => true
   }
+}
+
+// CONTROLS FOR THE PROBES: an ordinary fn called by absolute path, in the same untyped shape and in a fully
+// typed shape. If these resolve while the operation call does not, the operation call needs its own arm.
+data soc_fn_provider_source: String = "module t.svc\n\nfn f() -> Int { 1 }\n"
+
+data soc_fn_caller_untyped_source: String = "module t.absolute\n\nfn run_it() { t.svc.f() }\n"
+
+data soc_fn_caller_typed_source: String = "module t.absolute\n\nfn run_it() -> Int { t.svc.f() }\n"
+
+data soc_op_caller_typed_source: String = "module t.absolute\n\nfn run_it() -> Int { t.svc.s.F.Run() }\n"
+
+fn soc_accepts(o: Outcome<ResolvedTree>) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+  }
+}
+
+test fn probe_an_untyped_absolute_fn_call_resolves() -> Bool {
+  soc_accepts(o: soc_resolve_with(provider_source: soc_fn_provider_source, subject_source: soc_fn_caller_untyped_source, subject_id: ^soc_absolute_read, subject_path: "src/v2/test/fixture/service_operation_call/absolute.dag", subject: "t.absolute"))
+}
+
+test fn probe_a_typed_absolute_fn_call_resolves() -> Bool {
+  soc_accepts(o: soc_resolve_with(provider_source: soc_fn_provider_source, subject_source: soc_fn_caller_typed_source, subject_id: ^soc_absolute_read, subject_path: "src/v2/test/fixture/service_operation_call/absolute.dag", subject: "t.absolute"))
+}
+
+test fn probe_a_typed_absolute_operation_call_resolves() -> Bool {
+  soc_accepts(o: soc_resolve(subject_source: soc_op_caller_typed_source, subject_id: ^soc_absolute_read, subject_path: "src/v2/test/fixture/service_operation_call/absolute.dag", subject: "t.absolute"))
 }
