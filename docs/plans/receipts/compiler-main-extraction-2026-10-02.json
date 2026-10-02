@@ -1,0 +1,127 @@
+{
+  "main_base": "1a013596270a82690bbb1c777ec5c8bbbfac4701",
+  "integration_source": "e7c4426229cb92751a6dbbcecf0fb5d4257aef77",
+  "scope": "compiler qualification only; no HTTP, auth, storage, fleet or allocation changes",
+  "differences": {
+    "src/v1/stage0/src/cli_run.rs": "only the three service-prefix/admission test hunks from 1296fb5f713; HTTP changes excluded; latest main retained",
+    "tools/tests/lexer_cursor_qualification.py": "explicit reference and subject revisions; reference defaults to this main base; ensure target directory exists",
+    "tools/tests/lexer_cursor_transition_qualification.py": "explicit reference and subject revisions; reference defaults to this main base; ensure target directory exists"
+  },
+  "files": [
+    {
+      "path": "docs/plans/receipts/lexer-cursor-native-blocker-2026-10-02/equivalence-harness.dag.txt",
+      "integration_sha256": "23bebc5e8352857cc33085d17fed0e4d6fa72839f2d6cd87120eb96ce9acf083",
+      "extracted_sha256": "23bebc5e8352857cc33085d17fed0e4d6fa72839f2d6cd87120eb96ce9acf083",
+      "equal_to_integration": true
+    },
+    {
+      "path": "src/v1/stage0/src/cli_run.rs",
+      "integration_sha256": "6e80c9c6f2372f62ee98307b71a131aec82cfe30d86b1ff0dc3277e8d06b5a32",
+      "extracted_sha256": "6cccb7c7bdf41a94fea2632f8c81e0a7b5f1c4eebaf45b57950a0197c9d7e569",
+      "equal_to_integration": false
+    },
+    {
+      "path": "src/v1/stage0/src/cli_run/required_floor_runner.rs",
+      "integration_sha256": "0b09bffd0074fb622ad8a9491f10a96cde4552ecb0fb891e98687b26342a7803",
+      "extracted_sha256": "0b09bffd0074fb622ad8a9491f10a96cde4552ecb0fb891e98687b26342a7803",
+      "equal_to_integration": true
+    },
+    {
+      "path": "src/v2/compiler/01_tokenize.dag",
+      "integration_sha256": "9927e03740dae3331d6dc1a4abee7bf8166f064509b68bb1692b49af585060af",
+      "extracted_sha256": "9927e03740dae3331d6dc1a4abee7bf8166f064509b68bb1692b49af585060af",
+      "equal_to_integration": true
+    },
+    {
+      "path": "src/v2/extdeps/languages/rust_native_driver.dag",
+      "integration_sha256": "6f2d5202c284cf0114f442b2f8e6dc7ddfb1a91caeae74b7acac7de7f93c1224",
+      "extracted_sha256": "6f2d5202c284cf0114f442b2f8e6dc7ddfb1a91caeae74b7acac7de7f93c1224",
+      "equal_to_integration": true
+    },
+    {
+      "path": "src/v2/extdeps/languages/rust_test_fixtures.dag",
+      "integration_sha256": "33dce09600cbaba55bb7b229105a1d496a4b3655ab9372bcb2c99f737a9d97ac",
+      "extracted_sha256": "33dce09600cbaba55bb7b229105a1d496a4b3655ab9372bcb2c99f737a9d97ac",
+      "equal_to_integration": true
+    },
+    {
+      "path": "src/v2/test/claim/tokenize/lex_match_thunk_claims_test.dag",
+      "integration_sha256": "687e2b213549be8d3772c182969021a3c9888ae370bc4011397831f3eb228e7c",
+      "extracted_sha256": "687e2b213549be8d3772c182969021a3c9888ae370bc4011397831f3eb228e7c",
+      "equal_to_integration": true
+    },
+    {
+      "path": "src/v2/test/claim/tokenize/lex_rule_dispatch_test.dag",
+      "integration_sha256": "559f01299293a1c0ffeb69fb586d4c1088be7bae9f997af24d0d74bd5847fa2a",
+      "extracted_sha256": "559f01299293a1c0ffeb69fb586d4c1088be7bae9f997af24d0d74bd5847fa2a",
+      "equal_to_integration": true
+    },
+    {
+      "path": "src/v2/test/compiler/pipeline/tokenize_stage_test.dag",
+      "integration_sha256": "f3007482dbc784e4309d92e312695bef3cd3fbf3810e3eddddc5c6cabd4b7537",
+      "extracted_sha256": "f3007482dbc784e4309d92e312695bef3cd3fbf3810e3eddddc5c6cabd4b7537",
+      "equal_to_integration": true
+    },
+    {
+      "path": "src/v2/test/fixture/list_at_native/entry.dag",
+      "integration_sha256": "4ebc24b76a4fa4b9bacf133171a579edaf3ce5bfbb1db4bb63f0552d4180b201",
+      "extracted_sha256": "4ebc24b76a4fa4b9bacf133171a579edaf3ce5bfbb1db4bb63f0552d4180b201",
+      "equal_to_integration": true
+    },
+    {
+      "path": "src/v2/test/fixture/list_at_native/export_driver.dag",
+      "integration_sha256": "1c368f923897d824acddf81f828e771ff80fd71517facdc08d319af093ae3253",
+      "extracted_sha256": "1c368f923897d824acddf81f828e771ff80fd71517facdc08d319af093ae3253",
+      "equal_to_integration": true
+    },
+    {
+      "path": "src/v2/test/floor_cost_debt_edit_test.dag",
+      "integration_sha256": "a17fe3d903b70d26db633cf484440d43d149ec76208852ae8a0610351c7fb9c9",
+      "extracted_sha256": "a17fe3d903b70d26db633cf484440d43d149ec76208852ae8a0610351c7fb9c9",
+      "equal_to_integration": true
+    },
+    {
+      "path": "src/v2/workflow/floor_cost_debt_edit.dag",
+      "integration_sha256": "82a4db889165caf8aa090c8b0e15400daf8a4e0e544bf78c58e48f821067509f",
+      "extracted_sha256": "82a4db889165caf8aa090c8b0e15400daf8a4e0e544bf78c58e48f821067509f",
+      "equal_to_integration": true
+    },
+    {
+      "path": "tools/tests/dag_validation_closure.py",
+      "integration_sha256": "f0587391c2f0ec835298052f5034e6c7d4d4e0fc606de5536eb5cb64f5d3742b",
+      "extracted_sha256": "f0587391c2f0ec835298052f5034e6c7d4d4e0fc606de5536eb5cb64f5d3742b",
+      "equal_to_integration": true
+    },
+    {
+      "path": "tools/tests/fixtures/lexer_cursor/census.dag.txt",
+      "integration_sha256": "3ecf7d11e053149e5ee967267792bae27eb9b565317c38325ed115a0ad0d76d7",
+      "extracted_sha256": "3ecf7d11e053149e5ee967267792bae27eb9b565317c38325ed115a0ad0d76d7",
+      "equal_to_integration": true
+    },
+    {
+      "path": "tools/tests/fixtures/lexer_cursor/transitions.dag.txt",
+      "integration_sha256": "9808168adc97d4509e51308d6e74e153b7b830685b0387c04bbc8f085ee5b671",
+      "extracted_sha256": "9808168adc97d4509e51308d6e74e153b7b830685b0387c04bbc8f085ee5b671",
+      "equal_to_integration": true
+    },
+    {
+      "path": "tools/tests/lexer_cursor_qualification.py",
+      "integration_sha256": "81c939b2c8b1a5b86109a408963bfdefda4e952ed5c0bd7c1f31387c78614a8a",
+      "extracted_sha256": "818b7d26c2abfcfb32996dc26a324173db85c0f2534c2fb1a860f942bcfb0093",
+      "equal_to_integration": false
+    },
+    {
+      "path": "tools/tests/lexer_cursor_transition_qualification.py",
+      "integration_sha256": "6755e6968247a33235f9ecac5e7e1dcb113142f753e01ac50fb5101d1661b879",
+      "extracted_sha256": "50caaaf9380ec6354129919faf9b3a87c20df29693101f9dd8de2f8d595616f0",
+      "equal_to_integration": false
+    },
+    {
+      "path": "tools/tests/list_at_native_qualification.py",
+      "integration_sha256": "9f4c6fbfb33082dd0ad18cd60821b8898b002d661c82108fae91e9ed9298206d",
+      "extracted_sha256": "9f4c6fbfb33082dd0ad18cd60821b8898b002d661c82108fae91e9ed9298206d",
+      "equal_to_integration": true
+    }
+  ],
+  "qualification": "original integration evidence is historical; extracted-head qualification required"
+}
