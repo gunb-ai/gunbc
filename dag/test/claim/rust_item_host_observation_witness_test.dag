@@ -229,8 +229,10 @@ test fn a_changed_region_the_reader_cannot_attribute_refuses() -> Bool {
 // reader has no name for it, so the join stops the line rather than reporting nothing.
 test fn a_change_inside_a_macro_block_refuses_rather_than_reporting_no_item() -> Bool {
   match change_of(head_content: head_with_macro_block_addition, new_ranges: [LineRange { start: 8, count: 1 }]) {
-    RustItemChangeUnattributed { repo_path: path, line: line, detail: _ } =>
-      path == cli_run_path && line == 8
+    RustItemChangeUnattributed { repo_path: path, line: line, detail: detail } =>
+      path == cli_run_path
+        && line == 8
+        && string_contains(s: detail, pattern: "inside a `thread_local!` block")
     RustItemChangeObserved {
       added_hand_items: _,
       modified_hand_items: _,

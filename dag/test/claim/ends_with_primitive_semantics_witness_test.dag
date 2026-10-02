@@ -1,0 +1,39 @@
+module test.claim.ends_with_primitive_semantics_witness
+
+import std.types { String, Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT: gunbc.rust_item_scan carried a hand re-implementation of the host `ends_with`
+// primitive (std.primitives ends_with_contract) -- a second definition of one fact (DESIGN 3), and
+// the declaration the unimported-bare-provider gate then attributed every bare `ends_with` to. It
+// is deleted and its callers bind the primitive. These claims pin the semantics the callers rely
+// on at the edges where a length/substring re-implementation and the host operation could part:
+// the empty suffix, a suffix longer than the subject, equality, multi-byte text, and repetition.
+// The same expectations were run against the deleted re-implementation before removal.
+
+test fn ends_with_empty_suffix_holds() -> Bool {
+  ends_with(s: "abc", suffix: "") && ends_with(s: "", suffix: "")
+}
+
+test fn ends_with_suffix_longer_than_subject_refuses() -> Bool {
+  !ends_with(s: "ab", suffix: "abc") && !ends_with(s: "", suffix: "a")
+}
+
+test fn ends_with_equal_strings_holds() -> Bool {
+  ends_with(s: "abc", suffix: "abc")
+}
+
+test fn ends_with_multibyte_text_is_judged_by_character() -> Bool {
+  ends_with(s: "naïve", suffix: "ïve")
+    && ends_with(s: "日本語", suffix: "語")
+    && !ends_with(s: "é", suffix: "e")
+    && !ends_with(s: "日本語", suffix: "本")
+}
+
+test fn ends_with_repeated_suffix_matches_only_the_tail() -> Bool {
+  ends_with(s: "aaa", suffix: "aa")
+    && ends_with(s: "abab", suffix: "ab")
+    && !ends_with(s: "abab", suffix: "ba")
+}

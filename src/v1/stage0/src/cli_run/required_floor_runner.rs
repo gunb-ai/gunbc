@@ -11930,8 +11930,29 @@ pub fn run_required_floor(
         };
         let seed_rows: Vec<terminal_ledger_publish::SeedLedgerRow> =
             terminal_rows.iter().map(seed_ledger_row).collect();
+        // THE LEDGER RENDERS IN A FRAME OF THE PREPARED SUBJECT, not through a second strict
+        // typecheck of its grammar's closure beside the still-resident subject: the wire module is
+        // a runtime authority seed of the subject (`REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES`), so
+        // the one preparation already holds everything it reads.
+        let framing = std::time::Instant::now();
+        let ledger_frame = floor_authority_frame(
+            &prepared,
+            terminal_ledger_publish::TERMINAL_LEDGER_WIRE_MODULE,
+        )
+        .map_err(|why| {
+            format!(
+                "REQUIRED-FLOOR REFUSAL cause=TerminalLedgerWireOutsidePreparedSubject \
+                         module={} -- the ledger grammar is a declared closure seed and must be in \
+                         every required-floor subject: {why}",
+                terminal_ledger_publish::TERMINAL_LEDGER_WIRE_MODULE
+            )
+        })?;
+        eprintln!(
+            "[floor-phase] phase=terminal-ledger-frame state=completed frame_ms={}",
+            framing.elapsed().as_millis()
+        );
         match terminal_ledger_publish::publish_terminal_ledger(
-            source_roots,
+            &ledger_frame,
             snapshot_wire,
             &prepared.subject_digest,
             terminal_ledger_publish::TERMINAL_LEDGER_PATH,

@@ -1,26 +1,160 @@
 module test.claim.bmc_virtual_media
 
 import std.logic { Bool }
-import std.types { list_length }
-import extdeps.linux.usb_gadget { ConfigfsOp, ConfigfsWriteAttr, ConfigfsMkdir, ConfigfsSymlink, ConfigfsRemoveLink, ConfigfsRmdir }
+import std.types { list_length, Int }
+import std.algebra { list_append }
+import extdeps.linux.usb_gadget {
+  ConfigfsOp,
+  ConfigfsMkdir,
+  ConfigfsWriteAttr,
+  ConfigfsLinkFunction,
+  ConfigfsUnlinkFunction,
+  ConfigfsRmdir,
+  ConfigfsPreparedOp,
+  ConfigfsPreparedMkdir,
+  ConfigfsPreparedWriteAttr,
+  ConfigfsPreparedLinkFunction,
+  ConfigfsPreparedUnlinkFunction,
+  ConfigfsPreparedRmdir,
+  ConfigfsOpCommand,
+  ConfigfsOpRunsArgv,
+  ConfigfsOpWritesAttr,
+  ConfigfsStaging,
+  ConfigfsStagingReady,
+  ConfigfsStagingRefused,
+  configfs_prepared_realization,
+  usb_gadget_dir,
+}
+import extdeps.tools.gnu_coreutils {
+  coreutils_ln_symbolic_force_into_directory_flags,
+  coreutils_rm_force_flag,
+}
 import gunbc.bmc_virtual_media {
+  srv4_vm_gadget,
+  srv4_vm_gadget_setup_ops,
+  srv4_vm_gadget_setup_staging,
+  srv4_vm_gadget_teardown_staging,
   srv4_nbd_server_config_text,
   srv4_nbd_client_attach_command_text,
-  srv4_vm_gadget_setup_script,
-  srv4_vm_gadget_setup_ops,
 }
 import gunbc.fleet_intent_network { srv1_host_lan_endpoint }
 import extdeps.bmc.webui.nbd_proxy_serve { srv3_nbd_proxy_local_port }
+
+// THE TOOL-REALIZATION SIDE of the witness split (review on a28daf4844, recommended next slice).
+// The domain gates over the typed staging and its refusals live in
+// dag/test/claim/shell/shell_typed_invocation_witness_test.dag; THIS module owns the fixture and
+// the realization boundary: which builder each prepared op lowers to, and what the lowered argv
+// carries. Every assertion here reads ARGV FIELDS -- the program against the builder's own
+// declared name row, the argument count, word membership, and the directory argument's
+// directory-spelled form -- and NONE of them call shell_command_render or search a rendered
+// string: rendering is narration, and searching it for meaning is the scraped-shell anti-pattern
+// this node exists to delete. The nbd lane below is the pre-existing CLI-authority surface and is
+// untouched by this control.
 
 fn configfs_write_value_for(ops: List<ConfigfsOp>, path_suffix: String) -> String {
   fold(ops, init: "", f: (acc, op) => match op {
     ConfigfsWriteAttr { path: p, value: v } =>
       if string_contains(s: p as String, pattern: path_suffix) { v } else { acc }
     ConfigfsMkdir { path: _ } => acc
-    ConfigfsSymlink { target: _, link: _ } => acc
-    ConfigfsRemoveLink { link: _ } => acc
+    ConfigfsLinkFunction { function: _, configuration: _ } => acc
+    ConfigfsUnlinkFunction { function: _, configuration: _ } => acc
     ConfigfsRmdir { path: _ } => acc
   })
+}
+
+// The staged form's value reader: reads the PREPARED ops (validated, still semantic), not the ops
+// as authored -- so a value the staging would refuse never reaches these assertions. The ops are
+// the sealed staged value (review at 51c4ca9e3e, blocker 1): the variant pattern reads the
+// disposition out of the wrapper.
+fn configfs_prepared_write_value_for(ops: List<ConfigfsPreparedOp>, path_suffix: String) -> String {
+  fold(ops, init: "", f: (acc, op) => match op.disposition {
+    ConfigfsPreparedWriteAttr { path: p, value: v } =>
+      if string_contains(s: p as String, pattern: path_suffix) { v } else { acc }
+    ConfigfsPreparedMkdir { path: _ } => acc
+    ConfigfsPreparedLinkFunction { gadget_dir: _, function: _, configuration: _ } => acc
+    ConfigfsPreparedUnlinkFunction { gadget_dir: _, function: _, configuration: _ } => acc
+    ConfigfsPreparedRmdir { path: _ } => acc
+  })
+}
+
+fn is_write_cmd(cmd: ConfigfsOpCommand) -> Bool {
+  match cmd {
+    ConfigfsOpWritesAttr { path: _, value: _ } => true
+    ConfigfsOpRunsArgv { command: _ } => false
+  }
+}
+
+fn is_argv_cmd(cmd: ConfigfsOpCommand) -> Bool {
+  match cmd {
+    ConfigfsOpRunsArgv { command: _ } => true
+    ConfigfsOpWritesAttr { path: _, value: _ } => false
+  }
+}
+
+// THE UNION DOES NOT PROJECT: a realized command is one variant or the other, and its fields are
+// read by matching, once, here -- so no assertion below pattern-matches and no assertion indexes
+// into an argv position.
+fn argv_program(cmd: ConfigfsOpCommand) -> String {
+  match cmd {
+    ConfigfsOpRunsArgv { command: c } => c.program.invocation as String
+    ConfigfsOpWritesAttr { path: _, value: _ } => ""
+  }
+}
+
+fn argv_arguments(cmd: ConfigfsOpCommand) -> List<String> {
+  match cmd {
+    ConfigfsOpRunsArgv { command: c } => c.arguments
+    ConfigfsOpWritesAttr { path: _, value: _ } => []
+  }
+}
+
+fn write_path(cmd: ConfigfsOpCommand) -> String {
+  match cmd {
+    ConfigfsOpWritesAttr { path: p, value: _ } => p as String
+    ConfigfsOpRunsArgv { command: _ } => ""
+  }
+}
+
+fn write_value(cmd: ConfigfsOpCommand) -> String {
+  match cmd {
+    ConfigfsOpWritesAttr { path: _, value: v } => v
+    ConfigfsOpRunsArgv { command: _ } => ""
+  }
+}
+
+fn realized_names_gadget(cmd: ConfigfsOpCommand, gd: String) -> Bool {
+  is_write_cmd(cmd: cmd) && string_contains(s: write_path(cmd: cmd), pattern: gd)
+    || is_argv_cmd(cmd: cmd) && any(argv_arguments(cmd: cmd), w => string_contains(s: w, pattern: gd))
+}
+
+// THE DETACH IS THE TEARDOWN'S FIRST REALIZED ACT: the UDC attribute written EMPTY unregisters the
+// gadget before anything under its tree is removed. The position is found by a fold that counts
+// past non-writes -- no argument or command indexing.
+type FoldPos {
+  pos: Int
+  found: Int
+}
+
+fn index_of_first_write(cmds: List<ConfigfsOpCommand>) -> Int {
+  let walked = fold(cmds, init: FoldPos { pos: 0, found: -1 }, f: (acc, cmd) => FoldPos {
+    pos: acc.pos + 1,
+    found: if is_write_cmd(cmd: cmd) && acc.found == -1 { acc.pos } else { acc.found },
+  })
+  walked.found
+}
+
+fn staging_ready_ops(staging: ConfigfsStaging) -> List<ConfigfsPreparedOp> {
+  match staging {
+    ConfigfsStagingReady { operations: os } => os
+    ConfigfsStagingRefused { reason: _ } => []
+  }
+}
+
+// The realization boundary, applied per prepared op. Order is preserved: the realized list is the
+// staged list in the same order.
+fn realized_commands(ops: List<ConfigfsPreparedOp>) -> List<ConfigfsOpCommand> {
+  fold(ops, init: [], f: (acc, op) =>
+    list_append(left: acc, right: [configfs_prepared_realization(op: op)]))
 }
 
 test fn srv4_nbd_export_read_only_seeded_iso() -> Bool {
@@ -44,12 +178,17 @@ test fn srv4_nbd_client_attaches_named_export() -> Bool {
   )
 }
 
+// MIGRATED TO THE STAGED FORM (was: substrings of the assembled shell script, then of the rendered
+// commands). The same facts, read off the PREPARED staging: the gadget root is ensured, the
+// attribute writes carry the values the srv4 fixture states, and the whole staging is ready -- a
+// refusal here mints nothing, so every value read below would be the empty string.
 test fn srv4_gadget_is_readonly_cdrom_on_nbd0() -> Bool {
-  let s = srv4_vm_gadget_setup_script()
-  string_contains(s: s, pattern: "mkdir -p /sys/kernel/config/usb_gadget/gunbcvm")
-    && string_contains(s: s, pattern: "printf '%s' '/dev/nbd0' > /sys/kernel/config/usb_gadget/gunbcvm/functions/mass_storage.0/lun.0/file")
-    && string_contains(s: s, pattern: "printf '%s' '0' > /sys/kernel/config/usb_gadget/gunbcvm/functions/mass_storage.0/lun.0/cdrom")
-    && string_contains(s: s, pattern: "printf '%s' '1e6a0000.usb-vhub:p3' > /sys/kernel/config/usb_gadget/gunbcvm/UDC")
+  let ops = staging_ready_ops(staging: srv4_vm_gadget_setup_staging())
+  configfs_prepared_write_value_for(ops: ops, path_suffix: "/lun.0/file") == "/dev/nbd0"
+    && configfs_prepared_write_value_for(ops: ops, path_suffix: "/lun.0/cdrom") == "0"
+    && configfs_prepared_write_value_for(ops: ops, path_suffix: "/lun.0/ro") == "1"
+    && configfs_prepared_write_value_for(ops: ops, path_suffix: "gunbcvm/UDC") == "1e6a0000.usb-vhub:p3"
+    && list_length(items: ops) == 16
 }
 
 test fn srv4_gadget_ops_are_typed_not_scraped_from_shell() -> Bool {
@@ -59,4 +198,82 @@ test fn srv4_gadget_ops_are_typed_not_scraped_from_shell() -> Bool {
     && configfs_write_value_for(ops: ops, path_suffix: "/lun.0/ro") == "1"
     && configfs_write_value_for(ops: ops, path_suffix: "gunbcvm/UDC") == "1e6a0000.usb-vhub:p3"
     && list_length(items: ops) == 16
+}
+
+// THE SETUP'S REALIZATION (review on a28daf4844, recommended next slice): each prepared op lowers
+// to its builder's command, and the lowered argv is asserted FIELD BY FIELD against the builder's
+// own declared rows -- the program word against the minted invocation ('mkdir' / 'ln' / 'rm' /
+// 'rmdir'; ProgramIdentity carries the invocation since argv_command moved to ProgramIdentity),
+// the ln flags against the coreutils row, the link TARGET the derived functions endpoint, the link
+// DESTINATION the derived configuration directory in its directory-spelled form (exactly one
+// argument ends with "/", and it is that directory). The old probe matched the rendered spelling
+// `"'ln' '-sf' '/dev/nbd0'"` -- a rendered-string search that also blessed a target (`/dev/nbd0`)
+// which cannot be the configfs operation's meaning; the destination is now derived, and the
+// assertion reads the field.
+test fn srv4_gadget_setup_realization_lowers_prepared_ops_to_builder_commands() -> Bool {
+  let g = srv4_vm_gadget()
+  let gd = usb_gadget_dir(gadget: g) as String
+  let realized = realized_commands(ops: staging_ready_ops(staging: srv4_vm_gadget_setup_staging()))
+  let argvs = filter(realized, cmd => is_argv_cmd(cmd: cmd))
+  let writes = filter(realized, cmd => is_write_cmd(cmd: cmd))
+  let mkdirs = filter(argvs, c => argv_program(cmd: c) == "mkdir")
+  let lns = filter(argvs, c => argv_program(cmd: c) == "ln")
+  list_length(items: realized) == 16
+    && list_length(items: writes) == 11
+    && all(writes, cmd => string_contains(s: write_path(cmd: cmd), pattern: gd))
+    && list_length(items: argvs) == 5
+    && all(argvs, c =>
+      argv_program(cmd: c) == "mkdir"
+        || argv_program(cmd: c) == "ln"
+        || argv_program(cmd: c) == "rm"
+        || argv_program(cmd: c) == "rmdir")
+    && list_length(items: mkdirs) == 4
+    && all(mkdirs, c => any(argv_arguments(cmd: c), w => w == "-p"))
+    && count(filter(mkdirs, c => any(argv_arguments(cmd: c), w => w == gd))) == 1
+    && count(filter(mkdirs, c => any(argv_arguments(cmd: c), w => w == join([gd, "/strings/0x409"], "")))) == 1
+    && count(filter(mkdirs, c => any(argv_arguments(cmd: c), w => w == join([gd, "/functions/mass_storage.0"], "")))) == 1
+    && count(filter(mkdirs, c => any(argv_arguments(cmd: c), w => w == join([gd, "/configs/c.1/strings/0x409"], "")))) == 1
+    && list_length(items: lns) == 1
+    && all(lns, c =>
+      any(argv_arguments(cmd: c), w => w == (coreutils_ln_symbolic_force_into_directory_flags as String))
+        && any(argv_arguments(cmd: c), w => w == join([gd, "/functions/mass_storage.0"], ""))
+        && count(filter(argv_arguments(cmd: c), w => ends_with(s: w, suffix: "/"))) == 1
+        && any(argv_arguments(cmd: c), w => w == join([gd, "/configs/c.1/"], "")))
+    && count(filter(argvs, c => argv_program(cmd: c) == "rm")) == 0
+    && count(filter(argvs, c => argv_program(cmd: c) == "rmdir")) == 0
+}
+
+// THE TEARDOWN'S REALIZATION (review 38602, findings 1 and 3; carried through the rework): seven
+// realized commands in the staged order -- the FIRST the empty UDC write (position found by the
+// fold, not by reading the display's first line), then the mass-storage link unlinked by the rm
+// builder with the force flag row, then the five rmdir builder commands, one per teardown path
+// down to the gadget root itself. The rmdir absence frontier names the host-effect lane as the
+// consumer that will model an already-removed directory as done; until that lands this realization
+// is the described teardown and nothing suppresses its failures.
+test fn srv4_gadget_teardown_realization_detaches_first_then_unlinks_and_rmdirs() -> Bool {
+  let g = srv4_vm_gadget()
+  let gd = usb_gadget_dir(gadget: g) as String
+  let realized = realized_commands(ops: staging_ready_ops(staging: srv4_vm_gadget_teardown_staging()))
+  let argvs = filter(realized, cmd => is_argv_cmd(cmd: cmd))
+  let writes = filter(realized, cmd => is_write_cmd(cmd: cmd))
+  let rms = filter(argvs, c => argv_program(cmd: c) == "rm")
+  let rmdirs = filter(argvs, c => argv_program(cmd: c) == "rmdir")
+  list_length(items: realized) == 7
+    && index_of_first_write(cmds: realized) == 0
+    && list_length(items: writes) == 1
+    && any(writes, cmd =>
+      string_contains(s: write_path(cmd: cmd), pattern: "gunbcvm/UDC") && write_value(cmd: cmd) == "")
+    && all(realized, cmd => realized_names_gadget(cmd: cmd, gd: gd))
+    && list_length(items: rms) == 1
+    && all(rms, c =>
+      list_length(items: argv_arguments(cmd: c)) == 2
+        && any(argv_arguments(cmd: c), w => w == (coreutils_rm_force_flag as String))
+        && any(argv_arguments(cmd: c), w => w == join([gd, "/configs/c.1/mass_storage.0"], "")))
+    && list_length(items: rmdirs) == 5
+    && all(rmdirs, c => list_length(items: argv_arguments(cmd: c)) == 1)
+    && count(filter(rmdirs, c => any(argv_arguments(cmd: c), w => w == gd))) == 1
+    && count(filter(rmdirs, c => any(argv_arguments(cmd: c), w => w == join([gd, "/functions/mass_storage.0"], "")))) == 1
+    && count(filter(rmdirs, c => any(argv_arguments(cmd: c), w => w == join([gd, "/configs/c.1/strings/0x409"], "")))) == 1
+    && count(filter(rmdirs, c => any(argv_arguments(cmd: c), w => w == join([gd, "/configs/c.1"], "")))) == 1
+    && count(filter(rmdirs, c => any(argv_arguments(cmd: c), w => w == join([gd, "/strings/0x409"], "")))) == 1
 }

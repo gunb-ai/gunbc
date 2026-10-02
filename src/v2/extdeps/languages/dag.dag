@@ -54,7 +54,6 @@ import v2.std.grammar {
   Terminal,
   VoidGrammar,
   grammar_carries_symbol,
-  grammar_carried_symbol_map,
   grammar_symbol_list_put,
   formal_production_to_node,
   formal_productions_catalog_to_node,
@@ -2349,6 +2348,18 @@ fn dag_grammar_op_modifier_expr() -> GrammarExpr {
   )
 }
 
+// `requires R, ..` ON AN OPERATION: the resources an opaque operation reaches (D13 step a). Each member
+// is an ordinary type expression, so a resource is named exactly as a `uses` clause or a parameter
+// names it, and resolution reads it through the same type references. Lowered by
+// v2.compiler.body_lowering_fold body_lower_operation_requires onto the operation Arrow's
+// ^arrow_resource_requirements_edge.
+fn dag_grammar_op_requires_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "requires")),
+    right: dag_grammar_comma_list_expr(item: dag_grammar_nonterminal(production: ^dag_production_type_expr))
+  )
+}
+
 // THE TRANSPORT KIND IS A CLOSED CHOICE, NOT A NAME. `transport shell { .. }` selects the realization
 // handler kind; it binds nothing and name resolution never looks it up (body lowering sets the member
 // aside as a realization member). So the grammar admits exactly the four kinds as literal terminals,
@@ -2437,12 +2448,15 @@ fn dag_grammar_operation_body_entry_expr() -> GrammarExpr {
       right: dag_grammar_choice(
         left: dag_grammar_nonterminal(production: ^dag_production_op_modifier),
         right: dag_grammar_choice(
-          left: dag_grammar_nonterminal(production: ^dag_production_transport),
+          left: dag_grammar_nonterminal(production: ^dag_production_op_requires),
           right: dag_grammar_choice(
-            left: dag_grammar_nonterminal(production: ^dag_production_exit_block),
+            left: dag_grammar_nonterminal(production: ^dag_production_transport),
             right: dag_grammar_choice(
-              left: dag_grammar_nonterminal(production: ^dag_production_response_block),
-              right: dag_grammar_nonterminal(production: ^dag_production_mock_response_block)
+              left: dag_grammar_nonterminal(production: ^dag_production_exit_block),
+              right: dag_grammar_choice(
+                left: dag_grammar_nonterminal(production: ^dag_production_response_block),
+                right: dag_grammar_nonterminal(production: ^dag_production_mock_response_block)
+              )
             )
           )
         )
@@ -3011,6 +3025,11 @@ fn dag_grammar_root() -> GrammarRoot {
     expression: dag_grammar_op_modifier_expr(),
     emitted: ^dag_surface_op_modifier
   )
+  let op_requires = dag_grammar_production(
+    name: ^dag_production_op_requires,
+    expression: dag_grammar_op_requires_expr(),
+    emitted: ^dag_surface_op_requires
+  )
   let exit_block = dag_grammar_production(
     name: ^dag_production_exit_block,
     expression: dag_grammar_exit_block_expr(),
@@ -3271,6 +3290,7 @@ fn dag_grammar_root() -> GrammarRoot {
       input_block,
       output_block,
       op_modifier,
+      op_requires,
       exit_block,
       response_block,
       mock_response_block,
@@ -3406,12 +3426,20 @@ fn dag_language_model_binding_canonical_map(m: Map<Symbol, Bool>) -> Map<Symbol,
 // Portable share point for the dag canonical set (v2.workflow.floor_pure_producer_share
 // floor_cross_claim_pure_producers_warm). dag_canonical_symbols wraps this Map in a
 // PointwisePower closure at the consumer; that closure is not the stored value.
+//
+// WHAT THE SET HOLDS: the names the language model mints as atoms a resolved body may carry --
+// the lex token classes (a keyword constant reaches a body as its class atom) and the kernel
+// bindings -- and NOT every atom the grammar's node encoding carries. That encoding is production
+// names plus contextual-keyword terminals (`node`, `rest`, `input`, `output`, ...), which parse
+// consumes in their grammar positions; none reaches resolution as a reference. Its consumers read
+// membership as "resolves to the kernel atom" (v2.compiler.resolve resolve_atom_unbound,
+// resolved_reference_identity, resolve_pattern_atom_is_keyword_constant), so carrying the grammar
+// atoms made an unbound `node` in a body resolve, Accepted and silent, to a grammar atom, and a
+// declaration spelled `output` resolve to the kernel symbol rather than to its path. Same cut as
+// the sugar spellings before it (v2.test.claim.normalize.authored_marker_spelling).
 fn dag_canonical_symbol_map() -> Map<Symbol, Bool> {
   dag_language_model_binding_canonical_map(
-    m: lex_rule_set_insert_token_classes(
-      m: grammar_carried_symbol_map(grammar: dag_grammar()),
-      rules: dag_lex_rules()
-    )
+    m: lex_rule_set_insert_token_classes(m: empty_map(), rules: dag_lex_rules())
   )
 }
 
@@ -3659,7 +3687,8 @@ fn dag_node_is_module_root_conj(n: Node) -> Bool {
               }
             }
           )
-        _ => false
+        TypeNode { connective: _ } => false
+        ComputationNode { behavior: _ } => false
       }
   }
 }
@@ -4129,7 +4158,8 @@ fn dag_binding_branded_atom_identity(node: Node) -> Optional<Symbol> {
         true => Absent
         false => Present { value: id }
       }
-    _ => Absent
+    TypeNode { connective: _ } => Absent
+    ComputationNode { behavior: _ } => Absent
   }
 }
 
@@ -6895,7 +6925,8 @@ fn namespace_graft_has_module_header(root: Node) -> Bool {
 fn namespace_graft_node_is_conj(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Conj } => true
-    _ => false
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 

@@ -61,9 +61,9 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, parameter_reference_path_optional }
-import v2.std.node_query { construct_field_edges, construct_tag_optional, declared_field_from_edge }
+import v2.std.node_query { BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, declared_field_from_edge }
 import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_lookup }
-import v2.std.node { Ambiguous, Found, NotMarkedReference, arrow_body_target_lookup, arrow_signature_order_edge, match_arm_pattern_edge, resolved_reference_body_kind }
+import v2.std.node { Ambiguous, Found, NotMarkedReference, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_signature_order_edge, match_arm_pattern_edge, resolved_reference_body_kind }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.arrow_signature {
   ApplicationBindingRefused,
@@ -669,7 +669,7 @@ fn infer_product_child_evidence_edges(
   infer_formation_child_evidence_edges(
     children: node.children,
     entries: entries,
-    is_metadata: fn(edge) { arrow_signature_order_edge(parent: node, edge: edge) }
+    is_metadata: fn(edge) { arrow_signature_order_edge(parent: node, edge: edge) || arrow_named_edge_is_contract(e: edge) }
   )
 }
 
@@ -724,11 +724,67 @@ fn infer_formation_facts_from_entries(
   entries: List<InferredFactsEntry>,
   partials: List<Node>,
 ) -> Outcome<InferredFacts> {
+  match binder_node_parts(n: node) {
+    Present { value: parts } => infer_binder_node_facts_from_entries(node: node, parts: parts, entries: entries)
+    Absent => infer_type_decl_formation_facts_from_entries(node: node, entries: entries, partials: partials)
+  }
+}
+
+fn infer_type_decl_formation_facts_from_entries(
+  node: Node,
+  entries: List<InferredFactsEntry>,
+  partials: List<Node>,
+) -> Outcome<InferredFacts> {
   match type_decl_view(target: node) {
     TypeAlias { binders: _, aliased: _ } => infer_declaration_wrapper_facts_from_entries(node: node, entries: entries, partials: partials)
     GenericTypeDecl { binders: _, member: _ } => infer_declaration_wrapper_facts_from_entries(node: node, entries: entries, partials: partials)
     OpaqueTypeDecl { binders: _ } => infer_opaque_declaration_facts(node: node, partials: partials)
     PlainTypeDecl { member: _ } => infer_product_facts_from_entries(node: node, entries: entries, partials: partials)
+  }
+}
+
+// A BINDER NODE IS NOT A PRODUCT (XL-2 PR2b-3). It carries one declared type and, optionally, the
+// default an omitted argument takes (v2.std.node_query binder_node_parts). Its derived type is a binder
+// node over its type's derived type with NO default: the default is a value, not part of the type, so
+// two binders differing only in their default have one type. A binder that carries a default refuses
+// here, located at the default, as ^infer_binder_default_unjudged: nothing yet judges that a default
+// inhabits its declared type, and that judgment lands with the first producer of a default (XL-2
+// PR2c). Until then no lowering emits one (v2.compiler.body_lowering_fold refuses a default as
+// ^body_lowering_reason_default_value_unmodeled), so this arm is the wall behind that refusal.
+fn infer_binder_node_facts_from_entries(
+  node: Node,
+  parts: BinderParts,
+  entries: List<InferredFactsEntry>,
+) -> Outcome<InferredFacts> {
+  match parts.default {
+    Present { value: default } =>
+      Rejected { diagnostics: diagnostics_singleton(d: infer_binder_default_unjudged_diagnostic(default: default)) }
+    Absent =>
+      match infer_descent_witness_for_node(n: node) {
+        Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+        Holds { value: descent_proof } =>
+          match lookup_inferred_facts_in_entries(entries: entries, key: parts.type_node) {
+            Absent => inferred_facts_not_derived(node: node, descent: Holds { value: descent_proof })
+            Present { value: type_facts } =>
+              match inferred_facts_resolved_type(facts: type_facts) {
+                Violates { diagnostic: _ } => inferred_facts_not_derived(node: node, descent: Holds { value: descent_proof })
+                Holds { value: type_evidence } =>
+                  inferred_facts_from_derived_type(
+                    node: node,
+                    derived_type: binder_node(type_node: type_evidence, default: Absent),
+                    descent: Holds { value: descent_proof }
+                  )
+              }
+          }
+      }
+  }
+}
+
+fn infer_binder_default_unjudged_diagnostic(default: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_binder_default_unjudged,
+    at: node_locus(node: default),
+    correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -3618,7 +3674,9 @@ fn infer_disj_is_named_sum(n: Node) -> Bool {
     })
 }
 
-// AN ARROW'S DECLARED ORDER IS NOT INFERRED. The ^arrow_signature_order_edge's subtree is a list of
+// AN ARROW'S DECLARED ORDER, AND ITS CONTRACT EDGES, ARE NOT INFERRED (contract edges:
+// v2.std.node arrow_named_edge_is_contract -- effect claims, execution mode, resource requirements --
+// state what the Arrow promises in labels or declaration references, never values). The ^arrow_signature_order_edge's subtree is a list of
 // the domain's binder LABELS (v2.std.arrow_signature signature_order_edge), not values: there
 // is no type for a label atom to derive, so walking it left every declared Arrow's order atoms on the
 // frontier (infer_grounding_not_derived) and the Arrow itself NotDerived. The Arrow carries the edge
@@ -3644,6 +3702,7 @@ fn infer_gather_fold_step(
   if acc.failed {
     acc
   } else if arrow_signature_order_edge(parent: acc.node, edge: edge)
+    || arrow_named_edge_is_contract(e: edge)
     || infer_declaration_binder_edge(parent: acc.node, edge: edge)
     || match_arm_pattern_edge(parent: acc.node, edge: edge)
     || (resolved_reference_body_kind(target: acc.node) != NotMarkedReference) {

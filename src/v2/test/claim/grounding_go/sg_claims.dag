@@ -36,7 +36,9 @@ fn go_g2_sg1_symbol_evidence_targets_canonical_carrier() -> Bool {
   match go_g2_sg1_symbol_evidence() {
     Sg1Evidence { source_carrier } =>
       go_g2_source_carrier_eq(a: source_carrier, b: symbol_kernel_type_node())
-    _ => false
+    Sg1bEvidence { source_carrier: _, boundary_site: _ } => false
+    Sg2Evidence { source_carrier: _ } => false
+    Sg5Evidence { source_carrier: _ } => false
   }
 }
 
@@ -44,7 +46,9 @@ fn go_g2_sg2_absence_evidence_targets_canonical_carrier() -> Bool {
   match go_g2_sg2_absence_evidence() {
     Sg2Evidence { source_carrier } =>
       go_g2_source_carrier_eq(a: source_carrier, b: symbol_kernel_type_node())
-    _ => false
+    Sg1Evidence { source_carrier: _ } => false
+    Sg1bEvidence { source_carrier: _, boundary_site: _ } => false
+    Sg5Evidence { source_carrier: _ } => false
   }
 }
 
@@ -52,7 +56,9 @@ fn go_g2_sg5_absence_evidence_targets_canonical_carrier() -> Bool {
   match go_g2_sg5_absence_evidence() {
     Sg5Evidence { source_carrier } =>
       go_g2_source_carrier_eq(a: source_carrier, b: symbol_kernel_type_node())
-    _ => false
+    Sg1Evidence { source_carrier: _ } => false
+    Sg1bEvidence { source_carrier: _, boundary_site: _ } => false
+    Sg2Evidence { source_carrier: _ } => false
   }
 }
 
