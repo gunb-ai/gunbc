@@ -19,7 +19,7 @@ import test.claim.roadmap.roadmap_launch_admission_fixture { launch_fixture_stan
 import gunbc.roadmap_issue_command { IssueFormContext }
 import gunbc.roadmap_page {
   issue_standing_text,
-  roadmap_page_launch, roadmap_page_launch_with_stylesheet, roadmap_daily_workspace_page_launch,
+  roadmap_page_launch, roadmap_page_launch_with_stylesheet, roadmap_daily_workspace_page_launch, roadmap_daily_workspace_page_launch_with_stylesheet, launch_host_unobserved_static_render,
   roadmap_page_for_authority,
   roadmap_page_for_doc,
   roadmap_page,
@@ -1163,7 +1163,7 @@ fn fx_page_project_doc() -> RoadmapDocument {
 }
 
 fn fx_page_project_html() -> HtmlEmitResult {
-  try_serialize_html_source(node: roadmap_daily_workspace_page_launch(doc: fx_page_project_doc(), merged: [], launch: dispatch_doc_standing(), memberships: fixture_nesting_relation(edges: doc_all_edges(doc: fx_page_project_doc()))))
+  try_serialize_html_source(node: roadmap_daily_workspace_page_launch_with_stylesheet(doc: fx_page_project_doc(), merged: [], launch: dispatch_doc_standing(), memberships: fixture_nesting_relation(edges: doc_all_edges(doc: fx_page_project_doc())), stylesheet: ""))
 }
 
 fn occurrence_count(s: String, pattern: String) -> Int {
@@ -1276,7 +1276,7 @@ fn fx_page_chain_doc() -> RoadmapDocument {
 }
 
 fn fx_page_chain_html() -> HtmlEmitResult {
-  try_serialize_html_source(node: roadmap_daily_workspace_page_launch(doc: fx_page_chain_doc(), merged: [], launch: dispatch_doc_standing(), memberships: fixture_nesting_relation(edges: doc_all_edges(doc: fx_page_chain_doc()))))
+  try_serialize_html_source(node: roadmap_daily_workspace_page_launch_with_stylesheet(doc: fx_page_chain_doc(), merged: [], launch: dispatch_doc_standing(), memberships: fixture_nesting_relation(edges: doc_all_edges(doc: fx_page_chain_doc())), stylesheet: ""))
 }
 
 fn fx_chain_top_project_view() -> gunbc.roadmap_presentation.ProjectTreeView {
@@ -1345,8 +1345,8 @@ test fn witness_shell_arc_renders_as_project_with_ten_tasks() -> Bool {
   ]
   let chain_ids = ["shell-typed-invocation"]
   let shell_doc = fx_shell_subtree_doc()
-  match try_serialize_html_source(node: roadmap_daily_workspace_page(
-      doc: shell_doc, merged: [], memberships: fixture_nesting_relation(edges: doc_all_edges(doc: shell_doc)))) {
+  match try_serialize_html_source(node: roadmap_daily_workspace_page_launch_with_stylesheet(
+      doc: shell_doc, merged: [], launch: launch_host_unobserved_static_render(), memberships: fixture_nesting_relation(edges: doc_all_edges(doc: shell_doc)), stylesheet: "")) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       all(task_ids, id => occurrence_count(s: h, pattern: join(["data-node=\"", id, "\" tabindex=\"0\""], "")) == 1)
@@ -1383,7 +1383,7 @@ test fn witness_collapsed_chain_renders_one_row_with_chain_line() -> Bool {
       elements: [ section_group(label: "", nodes: [top, mid, t1, t2], edges: edges) ],
     } ],
   }
-  match try_serialize_html_source(node: roadmap_daily_workspace_page_launch(doc: doc, merged: [], launch: dispatch_doc_standing(), memberships: fixture_nesting_relation(edges: doc_all_edges(doc: doc)))) {
+  match try_serialize_html_source(node: roadmap_daily_workspace_page_launch_with_stylesheet(doc: doc, merged: [], launch: dispatch_doc_standing(), memberships: fixture_nesting_relation(edges: doc_all_edges(doc: doc)), stylesheet: "")) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       let top_row = li_of_node(html: h, node_id: "page-collapse-top")
@@ -2026,7 +2026,7 @@ test fn witness_issue_tab_switch_contracts() -> Bool {
 // attempt's summary, painted by no one but the server. The client paint must skip these rows,
 // and the table region must render zero taskbar-inspect disclosures.
 fn fx_summary_only_page_html(stale: Bool) -> HtmlEmitResult {
-  try_serialize_html_source(node: gunbc.roadmap_page.roadmap_daily_workspace_page_impl_for_accepted(
+  try_serialize_html_source(node: gunbc.roadmap_page.roadmap_daily_workspace_page_impl_for_accepted_with_stylesheet(
     doc: fx_page_project_doc(),
     merged: [],
     accepted_ids: [],
@@ -2040,7 +2040,8 @@ fn fx_summary_only_page_html(stale: Bool) -> HtmlEmitResult {
     launch: dispatch_doc_standing(),
     stale_nodes: if stale { ["page-task-one"] } else { [] },
     profiles: [],
-    memberships: fixture_nesting_relation(edges: doc_all_edges(doc: fx_page_project_doc()))))
+    memberships: fixture_nesting_relation(edges: doc_all_edges(doc: fx_page_project_doc())),
+    stylesheet: ""))
 }
 
 fn table_region(html: String) -> String {
@@ -2278,7 +2279,7 @@ fn fx_long_title_doc(long: String) -> RoadmapDocument {
 }
 
 fn fx_long_title_page_html(long: String) -> HtmlEmitResult {
-  try_serialize_html_source(node: gunbc.roadmap_page.roadmap_daily_workspace_page_impl_for_accepted(
+  try_serialize_html_source(node: gunbc.roadmap_page.roadmap_daily_workspace_page_impl_for_accepted_with_stylesheet(
     doc: fx_long_title_doc(long: long),
     merged: [],
     accepted_ids: [],
@@ -2290,12 +2291,13 @@ fn fx_long_title_page_html(long: String) -> HtmlEmitResult {
     launch: dispatch_doc_standing(),
     stale_nodes: [],
     profiles: [],
-    memberships: fixture_nesting_relation(edges: doc_all_edges(doc: fx_long_title_doc(long: long)))))
+    memberships: fixture_nesting_relation(edges: doc_all_edges(doc: fx_long_title_doc(long: long))),
+    stylesheet: ""))
 }
 
 test fn witness_issue_table_long_cells_clip_within_their_tracks() -> Bool {
   let long_title = "an deliberately enormous issue title that would run the row entirely off the page when its track sized to the content the way the old per-row grids did"
-  let css = roadmap_css()
+  let css = fx_css_rule_blocks()
   match fx_long_title_page_html(long: long_title) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
