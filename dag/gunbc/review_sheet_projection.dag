@@ -669,7 +669,7 @@ fn first_omitted_derived_column(row: ProjectionRow, schema: ReviewSheetSchema) -
 // only when the schema puts it nowhere.
 //
 // EMPTY NAMES ARE NOT CHECKED HERE BECAUSE THEY ARE NOT WRITABLE. ReviewColumn.name and
-// ReviewSheetSchema.identity_column are NonEmptyStr (std.types: String where non_empty), so an empty
+// ReviewSheetSchema.identity_column are NonEmptyStr (std.types: String where string_non_empty), so an empty
 // header name is refused at construction of the schema itself, one rung above anything this fold
 // could add. A check for it here would be permanently green and would be cited as coverage
 // (DESIGN 4b: ask whether the RED is authorable before writing the check).
