@@ -430,7 +430,7 @@ fn is_variant_value_binding(expr: &Rc<Node>) -> bool {
 
 fn variant_value_binding_parent_enum(expr: &Rc<Node>) -> Option<String> {
     match expr_var_binding_kind(expr).as_deref() {
-        Some(VarBindingKind::VariantValueBinding { parent_enum }) => Some(parent_enum.clone()),
+        Some(VarBindingKind::VariantValueBinding { parent_enum, .. }) => Some(parent_enum.clone()),
         _ => None,
     }
 }

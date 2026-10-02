@@ -17,12 +17,13 @@ import std.decl_ref { DeclarationRef }
 
 import std.target_representation {
   ExactBindingResolution, ResolvedExactBinding, ExactBindingAbsent, ExactBindingAmbiguous, ExactSourceIdentityUnavailable,
-  resolve_exact_binding, checkpoint_row_migration_for, checkpoint_row_disposition_keeps_bare_row
+  resolve_exact_binding, checkpoint_row_migration_for, checkpoint_row_disposition_keeps_bare_row,
+  VariantParentIdentity, VariantValueRealization, variant_value_realization
 }
 
-import extdeps.languages.rust.representation { RustRepresentation, rust_exact_type_checkpoint }
+import extdeps.languages.rust.representation { RustRepresentation, rust_exact_type_checkpoint, rust_representation_eq }
 
-import gunbc.rust_source_type_bindings { rust_source_type_binding_rows, checkpoint_row_migration_rows }
+import gunbc.rust_source_type_bindings { rust_source_type_binding_rows, checkpoint_row_migration_rows, rust_source_variant_value_rows }
 
 import std.types { container_template_algebra, canonical_container_names, NonEmptyStr }
 
@@ -682,4 +683,28 @@ fn extract_coercion_tests() -> List<CoercionTestEntry> {
     inhabitant_tests(target: Go),
     copy_tests(),
     template_application_tests())
+}
+
+// WHAT A VARIANT OCCURRENCE REALIZES AS ON RUST, decided from the declaration-keyed rows
+// (gunbc.rust_source_type_bindings rust_source_type_binding_rows and rust_source_variant_value_rows)
+// and the identity inference carried on the occurrence -- never from the parent's spelling. Target
+// generic in std.target_representation variant_value_realization; this is the Rust binding of it.
+fn rust_variant_value_realization(parent: VariantParentIdentity, variant: String) -> VariantValueRealization {
+  variant_value_realization(
+    parent: parent,
+    variant: variant as NonEmptyStr,
+    bindings: rust_source_type_binding_rows,
+    values: rust_source_variant_value_rows,
+    same_representation: fn(a, b) { rust_representation_eq(a: a, b: b) }
+  )
+}
+
+// WHETHER AN UNIDENTIFIED VARIANT OCCURRENCE COULD HAVE NEEDED A TARGET VALUE: its arm is spelled
+// like an arm some row binds. This never SELECTS a realization -- a spelling cannot, which is the
+// whole reason the rows are identity-keyed -- it only decides that an occurrence whose identity was
+// not recovered cannot be shown to render structurally, so it must refuse rather than emit the
+// source spelling (the absorbing fallback DESIGN section 5 forbids). An unidentified occurrence
+// whose arm no row mentions cannot be a native arm and keeps its structural rendering.
+fn rust_variant_arm_is_bound_somewhere(variant: String) -> Bool {
+  rust_source_variant_value_rows |> any(v => (v.variant as String) == variant)
 }

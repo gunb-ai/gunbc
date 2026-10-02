@@ -129,6 +129,9 @@ pub mod std_occurrence_identity;
 #[path = "../../stage0/src/std_source_annotation.rs"]
 pub mod std_source_annotation;
 #[rustfmt::skip]
+#[path = "../../stage0/src/std_kernel_type_name.rs"]
+pub mod std_kernel_type_name;
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_target_representation.rs"]
 pub mod std_target_representation;
 #[rustfmt::skip]

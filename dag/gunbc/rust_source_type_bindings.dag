@@ -2,12 +2,15 @@ module gunbc.rust_source_type_bindings
 
 import std.types { List, String, Bool, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
+import std.kernel_type_name { kernel_type_name, KernelTypeNameAdmitted, NotAKernelTypeName }
 import std.target_representation {
-  SourceTypeTargetBinding, CheckpointRowMigration, CheckpointRowDisposition,
+  SourceTypeTargetBinding, SourceVariantTargetValue, VariantParentKey, VariantParentDeclaration, VariantParentKernelType, RepresentationValue,
+  CheckpointRowMigration, CheckpointRowDisposition,
   MigratedToExactBinding, ProvenUniqueKernelBinding, StillBareNameDebt
 }
 import extdeps.languages.rust.representation {
-  RustRepresentation, RustStdString, RustI64, RustBool, RustUnit, RustVecU8, RustSerdeJsonValue
+  RustRepresentation, RustStdString, RustI64, RustBool, RustUnit, RustVecU8, RustSerdeJsonValue,
+  rust_bool_true_value, rust_bool_false_value
 }
 
 // THE CORPUS'S HALF OF THE THREE-IDENTITY SPLIT (std.target_representation): which of THIS corpus's
@@ -62,6 +65,41 @@ data rust_source_type_binding_rows: List<SourceTypeTargetBinding<RustRepresentat
   rust_source_binding(module_path: "std.types", decl_name: "Bytes", representation: RustVecU8),
   rust_source_binding(module_path: "std.types", decl_name: "Json", representation: RustSerdeJsonValue)
 ]
+
+// WHICH TARGET VALUE EACH ARM OF A NATIVELY REALIZED COPRODUCT IS (std.target_representation
+// SourceVariantTargetValue). Bool = True | False realizes as RustBool, and its two arms are the two
+// values extdeps.languages.rust.representation lists for that representation. The arm-to-value
+// pairing is stated ONCE, below, and keyed twice, because Bool has two identities that reach the
+// emitter: the std.types declaration (bound above, and what a reference inside std.types resolves
+// to) and the kernel mint every other module's `Bool` resolves to (the kernel name, admitted by
+// std.kernel_type_name kernel_type_name -- the same two routes the type level carries as the exact row above and
+// the ProvenUniqueKernelBinding verdict below). Keyed on identity, so an unrelated coproduct whose
+// arms are spelled True/False has no row and renders its own enum.
+type BoolArmValue {
+  variant: NonEmptyStr
+  value: RepresentationValue<RustRepresentation>
+}
+
+data rust_bool_arm_values: List<BoolArmValue> = [
+  BoolArmValue { variant: "True" as NonEmptyStr, value: rust_bool_true_value },
+  BoolArmValue { variant: "False" as NonEmptyStr, value: rust_bool_false_value }
+]
+
+fn rust_bool_variant_rows(parent: VariantParentKey) -> List<SourceVariantTargetValue<RustRepresentation>> {
+  rust_bool_arm_values |> map(a => SourceVariantTargetValue { parent: parent, variant: a.variant, value: a.value })
+}
+
+fn rust_bool_kernel_variant_rows() -> List<SourceVariantTargetValue<RustRepresentation>> {
+  match kernel_type_name(name: "Bool") {
+    KernelTypeNameAdmitted { kernel_name: k } => rust_bool_variant_rows(parent: VariantParentKernelType { kernel_name: k })
+    NotAKernelTypeName { name: _ } => []
+  }
+}
+
+data rust_source_variant_value_rows: List<SourceVariantTargetValue<RustRepresentation>> = concat(
+  rust_bool_variant_rows(parent: VariantParentDeclaration { declaration: decl_ref(module_path: "std.types", decl_name: "Bool") }),
+  rust_bool_kernel_variant_rows()
+)
 
 fn rust_bound_declaration_refs() -> List<DeclarationRef> {
   rust_source_type_binding_rows |> map(r => r.source)

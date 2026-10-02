@@ -137,7 +137,7 @@ fn match_pattern_fingerprint_rec(pattern: MatchPattern?) -> String {
       hash_combine(atom_identity_hash("Bind"), dag_node_surface_fingerprint_rec(node: d))
     Present { value: LitPattern { value: v } } =>
       atom_identity_hash(concat("LitPattern:", literal_value_fingerprint(value: v)))
-    Present { value: VariantPattern { name: n, parent_enum: pe, field_bindings: fbs } } =>
+    Present { value: VariantPattern { name: n, parent_enum: pe, field_bindings: fbs, parent_identity: _ } } =>
       let base = atom_identity_hash(concat(
         "VariantPattern:", n, "|",
         match pe { Present { value: p } => p  Absent => "" }))
