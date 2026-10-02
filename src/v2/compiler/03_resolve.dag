@@ -114,6 +114,7 @@ import v2.std.symbol_index {
   symbol_index_renaming_alias_at
 }
 import v2.std.node {
+  Cardinality,
   named_edges,
   positional_child_count,
   positional_edges,
@@ -393,19 +394,31 @@ fn namespace_bindings_augment_from_module_atoms(
 // harvested by harvest_conj_named_bindings, unchanged.
 fn harvest_module_root_named_bindings(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
   match root.kind {
-    TypeNode { connective: Conj } =>
-      fold(root.children, init: acc, f: fn(a, e) {
-        if module_binding_edge_is_namespace_body(e: e) {
-          a
-        } else {
-          match try_edge_declared_binding(e: e) {
-            Present { value: b } => map_insert(a, b.name, b.name)
-            Absent => a
-          }
-        }
-      })
-    _ => acc
+    TypeNode { connective: c } =>
+      match c {
+        Conj => harvest_module_root_conj_bindings(root: root, acc: acc)
+        Atom { identity: _ } => acc
+        Disj => acc
+        Arrow => acc
+        Cardinality => acc
+        Instantiation => acc
+      }
+    ComputationNode { behavior: _ } => acc
   }
+}
+
+// Only a Conj root has named members to harvest; every other node kind binds nothing at the module root.
+fn harvest_module_root_conj_bindings(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
+  fold(root.children, init: acc, f: fn(a, e) {
+    if module_binding_edge_is_namespace_body(e: e) {
+      a
+    } else {
+      match try_edge_declared_binding(e: e) {
+        Present { value: b } => map_insert(a, b.name, b.name)
+        Absent => a
+      }
+    }
+  })
 }
 
 fn module_binding_edge_is_namespace_body(e: Edge) -> Bool {
