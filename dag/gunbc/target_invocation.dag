@@ -317,7 +317,9 @@ fn binary_freshness_step(acc: BinaryFreshness, input: BinaryInput) -> BinaryFres
     BinaryStale { binary: b, input: _, why: _ } =>
       match input {
         InputOutsideWorktree { path: p } => binary_built_elsewhere(binary: b, path: p)
-        _ => acc
+        InputNewer { path: _ } => acc
+        InputMissing { path: _ } => acc
+        InputNotNewer { path: _ } => acc
       }
     BinaryFresh { binary: b, inputs: n } =>
       match input {
