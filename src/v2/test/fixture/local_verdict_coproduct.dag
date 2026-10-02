@@ -1,0 +1,25 @@
+module v2.test.fixture.local_verdict_coproduct
+
+// A MODULE-LOCAL COPRODUCT WHOSE ARMS ARE SPELLED True/False, for the identity control in
+// v2.test.claim.logic.native_bool_arm_interpretation_test. It has no row in
+// gunbc.rust_source_type_bindings, so the interpreter must construct and match it as its own
+// variants, never as the host bool its arm spellings resemble.
+type Verdict = True | False
+
+fn verdict_top() -> Verdict {
+  True
+}
+
+fn verdict_negate(v: Verdict) -> Verdict {
+  match v {
+    True => False
+    False => True
+  }
+}
+
+fn verdict_is_top(v: Verdict) -> Bool {
+  match v {
+    True => true
+    False => false
+  }
+}
