@@ -1,6 +1,7 @@
 module gunbc.roadmap.roadmap_lineage
 
 import std.types { String, Int, Bool, List }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import gunbc.roadmap_model { RoadmapNode, NodeParent, MemberOf, AdmittedRoot, Closes }
 
 // THE ONE PARENT WALK. Every consumer that asks where a node sits -- the alignment chain, the
@@ -31,12 +32,32 @@ fn lineage_find(nodes: List<RoadmapNode>, id: String) -> RoadmapNode? {
   })
 }
 
+// THE NODE INDEX, built once per node list. A consumer that walks EVERY node's lineage (readiness,
+// the closing-contract minting, the page's rows, alignment) builds it once and passes it, so a walk
+// is a lookup per level instead of a scan of the whole list per level -- the scan made the
+// whole-authority fold quadratic in the node count times the depth (measured 2026-10-01: the
+// readiness fold over the declared authority dominated every whole-authority witness). FIRST
+// declaration wins, exactly as lineage_find's fold keeps its first match.
+fn lineage_index(nodes: List<RoadmapNode>) -> Map<String, RoadmapNode> {
+  let empty: Map<String, RoadmapNode> = empty_map()
+  fold(nodes, init: empty, f: fn(acc, n) {
+    match lineage_lookup(index: acc, id: n.node as String) {
+      Present { value: _ } => acc
+      Absent => map_insert(m: acc, key: n.node as String, value: n)
+    }
+  })
+}
+
+fn lineage_lookup(index: Map<String, RoadmapNode>, id: String) -> RoadmapNode? {
+  map_lookup(m: index, key: id)
+}
+
 // state: 0 walking, 1 rooted, 2 no parent at stop_at, 3 undeclared stop_at, 4 cyclic at stop_at.
-fn lineage_step(nodes: List<RoadmapNode>, acc: LineageStep) -> LineageStep {
+fn lineage_step(index: Map<String, RoadmapNode>, acc: LineageStep) -> LineageStep {
   if acc.state != 0 {
     acc
   } else {
-    match lineage_find(nodes: nodes, id: acc.current) {
+    match lineage_lookup(index: index, id: acc.current) {
       Absent => LineageStep { current: acc.current, ids: acc.ids, state: 3, stop_at: acc.current }
       Present { value: n } =>
         match n.parent {
@@ -74,7 +95,11 @@ fn lineage_drop_second(ids: List<String>) -> List<String> {
 }
 
 fn lineage_starts_with_closes(nodes: List<RoadmapNode>, node_id: String) -> Bool {
-  match lineage_find(nodes: nodes, id: node_id) {
+  lineage_index_starts_with_closes(index: lineage_index(nodes: nodes), node_id: node_id)
+}
+
+fn lineage_index_starts_with_closes(index: Map<String, RoadmapNode>, node_id: String) -> Bool {
+  match lineage_lookup(index: index, id: node_id) {
     Absent => false
     Present { value: n } =>
       match n.parent {
@@ -90,11 +115,22 @@ fn lineage_starts_with_closes(nodes: List<RoadmapNode>, node_id: String) -> Bool
 }
 
 fn lineage_walk(node_id: String, nodes: List<RoadmapNode>) -> LineageWalk {
-  let fuel = concat(nodes, nodes.take(n: 1))
-  let walked = fold(fuel, init: LineageStep { current: node_id, ids: [node_id], state: 0, stop_at: "" }, f: fn(acc, unused) {
-    lineage_step(nodes: nodes, acc: acc)
-  })
-  let closes = lineage_starts_with_closes(nodes: nodes, node_id: node_id)
+  lineage_walk_in(node_id: node_id, index: lineage_index(nodes: nodes), fuel: count(nodes) + 1)
+}
+
+// The fuel is still the node count plus one; a resolved walk stops spending it, which is the same
+// answer the fold reached by stepping the settled state through the rest of its fuel unchanged.
+fn lineage_walk_steps(index: Map<String, RoadmapNode>, acc: LineageStep, fuel: Int) -> LineageStep {
+  if fuel <= 0 || acc.state != 0 {
+    acc
+  } else {
+    lineage_walk_steps(index: index, acc: lineage_step(index: index, acc: acc), fuel: fuel - 1)
+  }
+}
+
+fn lineage_walk_in(node_id: String, index: Map<String, RoadmapNode>, fuel: Int) -> LineageWalk {
+  let walked = lineage_walk_steps(index: index, acc: LineageStep { current: node_id, ids: [node_id], state: 0, stop_at: "" }, fuel: fuel)
+  let closes = lineage_index_starts_with_closes(index: index, node_id: node_id)
   let ids = if closes { lineage_drop_second(ids: walked.ids) } else { walked.ids }
   if walked.state == 1 {
     LineageRooted { ids: ids }

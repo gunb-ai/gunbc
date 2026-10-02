@@ -1,12 +1,13 @@
 module gunbc.roadmap_presentation
 
 import gunbc.roadmap_nesting { RoadmapMembership, roadmap_memberships }
-import gunbc.roadmap.roadmap_lineage { lineage_walk }
+import gunbc.roadmap.roadmap_lineage { lineage_walk_in, lineage_index }
+import v2.std.collection { Map }
 import gunbc.roadmap.roadmap_readiness {
   ReadinessGap, NodeReadiness, ReadyToDispatch, NotReady, node_readiness, readiness_text, readiness_reason_text,
   readiness_is_dispatchable,
 }
-import gunbc.roadmap.roadmap_project { node_project_membership, MembershipMember, project_member_ids }
+import gunbc.roadmap.roadmap_project { node_project_membership, MembershipMember, project_member_ids, RoadmapMembershipIndex, membership_index, project_member_ids_in }
 
 import gunbc.roadmap.roadmap_event_log {
   RoadmapNodeStanding, IssueAssignmentProjection,
@@ -321,26 +322,37 @@ fn scheduling_blockers(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<Ro
 // The page's readiness walks lineage over the rendered graph itself: the projected graph carries
 // every open project, so a member's parent walk resolves inside it, and a planted fixture graph is
 // its own universe.
-fn work_readiness(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> NodeReadiness {
+// A page projects every row's readiness over one graph, so it builds the lineage index once
+// (gunbc.roadmap.roadmap_lineage lineage_index) and each row's walk is a lookup per level; the
+// single-row forms below build it for the one row they answer.
+fn work_readiness_in(rn: RoadmapNode, index: Map<String, RoadmapNode>, fuel: Int, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> NodeReadiness {
   node_readiness(
     node: rn,
-    lineage: lineage_walk(node_id: rn.node as String, nodes: nodes),
+    lineage: lineage_walk_in(node_id: rn.node as String, index: index, fuel: fuel),
     unmet_parents: scheduling_blockers(rn: rn, nodes: nodes, edges: edges),
     merged: merged,
   )
 }
 
-fn work_scheduling(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int> = []) -> WorkScheduling {
+fn work_readiness(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> NodeReadiness {
+  work_readiness_in(rn: rn, index: lineage_index(nodes: nodes), fuel: count(nodes) + 1, nodes: nodes, edges: edges, merged: merged)
+}
+
+fn work_scheduling_in(rn: RoadmapNode, index: Map<String, RoadmapNode>, fuel: Int, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> WorkScheduling {
   if !(item_superseded_by(item: rn.line) == "") {
     SchedulingSuperseded
   } else if node_is_frontier_done(n: rn) {
     SchedulingDone
   } else {
-    match work_readiness(rn: rn, nodes: nodes, edges: edges, merged: merged) {
+    match work_readiness_in(rn: rn, index: index, fuel: fuel, nodes: nodes, edges: edges, merged: merged) {
       ReadyToDispatch => SchedulingReady
       NotReady { missing } => SchedulingNotReady { missing: missing }
     }
   }
+}
+
+fn work_scheduling(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int> = []) -> WorkScheduling {
+  work_scheduling_in(rn: rn, index: lineage_index(nodes: nodes), fuel: count(nodes) + 1, nodes: nodes, edges: edges, merged: merged)
 }
 
 fn work_scheduling_key(s: WorkScheduling) -> String {
@@ -1051,8 +1063,31 @@ fn work_row_view(
   profiles: List<PrincipalProfile>,
   assignment: IssueAssignmentProjection? = none,
 ) -> WorkRowView {
+  work_row_view_in(
+    rn: rn, index: lineage_index(nodes: nodes), fuel: count(nodes) + 1, nodes: nodes, edges: edges, merged: merged,
+    activity: activity, rounds: rounds, launch: launch, worker_alive: worker_alive, standing: standing,
+    attempt_stale: attempt_stale, profiles: profiles, assignment: assignment,
+  )
+}
+
+fn work_row_view_in(
+  rn: RoadmapNode,
+  index: Map<String, RoadmapNode>,
+  fuel: Int,
+  nodes: List<RoadmapNode>,
+  edges: List<RoadmapEdge>,
+  merged: List<Int>,
+  activity: ActivityView,
+  rounds: HarnessRoundLedger,
+  launch: LaunchRowContext,
+  worker_alive: Bool,
+  standing: RoadmapNodeStanding?,
+  attempt_stale: Bool,
+  profiles: List<PrincipalProfile>,
+  assignment: IssueAssignmentProjection?,
+) -> WorkRowView {
   let lifecycle = work_lifecycle(rn: rn, merged: merged)
-  let scheduling = work_scheduling(rn: rn, nodes: nodes, edges: edges, merged: merged)
+  let scheduling = work_scheduling_in(rn: rn, index: index, fuel: fuel, nodes: nodes, edges: edges, merged: merged)
   WorkRowView {
     node_id: rn.node as String,
     headline: row_headline(line: rn.line),
@@ -2286,9 +2321,14 @@ fn row_has_work_in_flight(row: WorkRowView) -> Bool {
 }
 
 fn row_is_shown(row: WorkRowView, memberships: List<RoadmapMembership>) -> Bool {
+  row_is_shown_in(row: row, index: membership_index(memberships: memberships))
+}
+
+// The page filters every row, so it builds the membership index once and asks it per row.
+fn row_is_shown_in(row: WorkRowView, index: RoadmapMembershipIndex) -> Bool {
   match row.scheduling {
     SchedulingNotReady { missing: _ } =>
-      count(project_member_ids(arc: row.node_id, memberships: memberships)) > 0
+      count(project_member_ids_in(arc: row.node_id, index: index)) > 0
         || row_has_work_in_flight(row: row)
     SchedulingReady => true
     SchedulingDone => true

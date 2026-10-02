@@ -2,7 +2,9 @@ module gunbc.roadmap_page
 
 import gunbc.site.robot_mark { robot_mark_svg }
 import gunbc.roadmap_nesting { RoadmapMembership, roadmap_memberships }
-import gunbc.roadmap.roadmap_project { project_root_for_node }
+import gunbc.roadmap.roadmap_project { RoadmapMembershipIndex, membership_index, project_root_for_node_in }
+import gunbc.roadmap.roadmap_lineage { lineage_index }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 
 import gunbc.roadmap_issue_command { IssueFormContext }
 
@@ -77,7 +79,7 @@ import gunbc.roadmap_launch_admission {
   launch_identity_instance_text, launch_identity_revision_hex,
 }
 import gunbc.roadmap_presentation {
-  WorkRowView, work_row_view, row_headline, LaunchRowContext,
+  WorkRowView, work_row_view, work_row_view_in, row_headline, LaunchRowContext,
   TaskBarView, task_bar_view_of, BarFillNone, BarFillStages, BarFillProject, BarFillClosed,
   row_filter_band_key,
   WorkLifecycle, OpenLifecycle, ReviewLifecycle, DoneLifecycle, SupersededLifecycle,
@@ -97,7 +99,7 @@ import gunbc.roadmap_presentation {
   activity_line_class_key, activity_line_class_of_round, activity_summary_line, task_bar_idle_view,
   activity_state_sep, activity_detail_sep, activity_evidence_kv_sep, inspect_disclosure_label,
   ProgramProgressView,
-  DailyWorkspaceView, daily_workspace_view, row_is_shown,
+  DailyWorkspaceView, daily_workspace_view, row_is_shown, row_is_shown_in,
   ObservationImpactView, ObservationsNominal, WorkspaceObservationImpact,
   observation_impact_view, workspace_covers_row_activity,
   lifecycle_chip_renders,
@@ -1792,7 +1794,24 @@ fn issue_line_sort_value(col: IssueResultsColumn, view: WorkRowView, bar: TaskBa
   }
 }
 
-fn issue_line_li(row: IssueTableRow, observation: ObservationImpactView, edges: List<RoadmapEdge>, memberships: List<RoadmapMembership> = roadmap_memberships()) -> Fragment {
+// THE TABLE'S PER-ROW FACTS READ INDEXES BUILT ONCE PER TABLE: each row's project root and its
+// dependency list were a walk over the whole membership relation and a filter over every edge,
+// per row (measured 2026-10-01: the daily page's issue table dominated its cost).
+fn issue_dependency_index(edges: List<RoadmapEdge>) -> Map<String, List<String>> {
+  let empty: Map<String, List<String>> = empty_map()
+  fold(edges, init: empty, f: fn(acc, e) {
+    match issue_dependencies_of(index: acc, node_id: e.child as String) {
+      Absent => map_insert(m: acc, key: e.child as String, value: [e.parent as String])
+      Present { value: ps } => map_insert(m: acc, key: e.child as String, value: concat(ps, [e.parent as String]))
+    }
+  })
+}
+
+fn issue_dependencies_of(index: Map<String, List<String>>, node_id: String) -> List<String>? {
+  map_lookup(m: index, key: node_id)
+}
+
+fn issue_line_li(row: IssueTableRow, observation: ObservationImpactView, memberships: RoadmapMembershipIndex, dependencies: Map<String, List<String>>) -> Fragment {
   let view = row.view
   let bar = if view.attempt_stale { task_bar_idle_view(view: view) } else { task_bar_view_of(view: view, observation: observation) }
   Element {
@@ -1800,9 +1819,9 @@ fn issue_line_li(row: IssueTableRow, observation: ObservationImpactView, edges: 
     attributes: concat(
       node_li_attributes_for(view: view, class_infix: "") |> filter(a => !(a.name == "id")),
       [ attr(name: "role", value: "row"),
-        attr(name: "data-project", value: match project_root_for_node(node_id: view.node_id, memberships: memberships) { Present { value: project } => project Absent => "" }),
+        attr(name: "data-project", value: match project_root_for_node_in(node_id: view.node_id, index: memberships) { Present { value: project } => project Absent => "" }),
         attr(name: "data-complete", value: if work_lifecycle_key(l: view.lifecycle) == "done" { "true" } else { "false" }),
-        attr(name: "data-dependencies", value: join(map(filter(edges, e => e.child as String == view.node_id), e => e.parent as String), " ") ),
+        attr(name: "data-dependencies", value: join(match issue_dependencies_of(index: dependencies, node_id: view.node_id) { Present { value: ps } => ps Absent => [] }, " ") ),
         attr(name: "data-search", value: issue_search_value(view: view) ),
         attr(name: "data-summary-only", value: "" ) ]),
     children: [ el_attrs("div", [attr(name: "class", value: "issue-line"), attr(name: "role", value: "presentation")],
@@ -1837,11 +1856,13 @@ fn issue_table_header_nodes() -> Fragment {
 }
 
 fn issue_table_markup(rows: List<IssueTableRow>, observation: ObservationImpactView, edges: List<RoadmapEdge>, memberships: List<RoadmapMembership> = roadmap_memberships()) -> Fragment {
+  let membership_index_of_table = membership_index(memberships: memberships)
+  let dependency_index_of_table = issue_dependency_index(edges: edges)
   el_attrs("div", [attr(name: "class", value: "issue-table"), attr(name: "role", value: "table"), attr(name: "aria-label", value: "Issue search results")], [
     el_class("h2", "issue-table-heading", [ txt("Issue search results") ]),
     issue_table_header_nodes(),
     el_class("div", "issue-empty", [ txt("No issues match your search.") ]),
-    el_attrs("ul", [attr(name: "role", value: "rowgroup")], map(rows, r => issue_line_li(row: r, observation: observation, edges: edges, memberships: memberships))),
+    el_attrs("ul", [attr(name: "role", value: "rowgroup")], map(rows, r => issue_line_li(row: r, observation: observation, memberships: membership_index_of_table, dependencies: dependency_index_of_table))),
   ])
 }
 
@@ -2964,8 +2985,10 @@ fn daily_workspace_view_of_for_accepted(
   let edges = doc_all_edges(doc: doc)
   let observation = observation_impact_view(workflow_refused: attempts_refused)
   let ctx = page_launch_context(doc: doc, merged: merged, launch: launch)
-  let rows = map(nodes, rn => work_row_view(
-    rn: rn, nodes: nodes, edges: edges, merged: merged,
+  let lineage = lineage_index(nodes: nodes)
+  let fuel = count(nodes) + 1
+  let rows = map(nodes, rn => work_row_view_in(
+    rn: rn, index: lineage, fuel: fuel, nodes: nodes, edges: edges, merged: merged,
     activity: daily_row_activity(node_id: rn.node as String, attempts: attempts, attempts_refused: attempts_refused),
     rounds: daily_row_rounds(node_id: rn.node as String, attempts: attempts, attempts_refused: attempts_refused),
     worker_alive: daily_row_worker_alive(node_id: rn.node as String, attempts: attempts, attempts_refused: attempts_refused),
@@ -2976,7 +2999,8 @@ fn daily_workspace_view_of_for_accepted(
     profiles: profiles))
   let ready_count = count(rows |> filter(r =>
     !row_is_active_work(row: r) && work_scheduling_key(s: r.scheduling) == "ready"))
-  let shown = rows |> filter(r => row_is_shown(row: r, memberships: memberships))
+  let shown_index = membership_index(memberships: memberships)
+  let shown = rows |> filter(r => row_is_shown_in(row: r, index: shown_index))
   daily_workspace_view(
     rows: shown,
     edges: edges,

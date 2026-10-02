@@ -2,6 +2,7 @@ module gunbc.roadmap_authority
 
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection, project_roadmap_to_markdown }
 import std.types { FilePath, NonEmptyStr, Set }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import gunbc.seed_growth { SeedGrowthJustification }
 import gunbc.roadmap_model {
   RoadmapNode,
@@ -71,7 +72,7 @@ import std.markdown {
   H1,
 }
 import extdeps.languages.markdown { serialize_markdown_source }
-import gunbc.roadmap.roadmap_lineage { lineage_walk }
+import gunbc.roadmap.roadmap_lineage { lineage_walk_in, lineage_index }
 import gunbc.roadmap.roadmap_readiness { node_readiness, readiness_only_contract_missing }
 import gunbc.roadmap.roadmap_readiness { node_readiness, readiness_only_contract_missing }
 
@@ -4618,27 +4619,51 @@ fn ticket_red_control_of(n: RoadmapNode) -> String {
 // mechanism, not a deletion list, is what keeps a project from growing a closing-contract task.
 // Dependencies here are the declared edges against the accepted set: the derived edge from a node
 // to its own closing-contract task is a CONSEQUENCE of minting and cannot be its precondition.
-fn unmet_parents_for_accepted(n: RoadmapNode, edges: List<RoadmapEdge>, accepted: List<RoadmapNodeId>) -> List<String> {
-  roadmap_parent_ids(edges: edges, node: n.node)
-    |> filter(p => !(accepted |> any(a => a == p)))
-    |> map(p => p as String)
+// THE PARENT INDEX, one pass over the edges: child id to its parents in edge order (the order
+// roadmap_parent_ids' filter yields). The minting rule asks every node for its unmet parents; a
+// per-node filter over every edge made that fold nodes x edges.
+fn roadmap_parent_index(edges: List<RoadmapEdge>) -> Map<String, List<RoadmapNodeId>> {
+  let empty: Map<String, List<RoadmapNodeId>> = empty_map()
+  fold(edges, init: empty, f: fn(acc, e) {
+    match roadmap_parents_of(parents: acc, id: e.child as String) {
+      Present { value: ps } => map_insert(m: acc, key: e.child as String, value: concat(ps, [e.parent]))
+      Absent => map_insert(m: acc, key: e.child as String, value: [e.parent])
+    }
+  })
+}
+
+fn roadmap_parents_of(parents: Map<String, List<RoadmapNodeId>>, id: String) -> List<RoadmapNodeId>? {
+  map_lookup(m: parents, key: id)
+}
+
+fn unmet_parents_in(n: RoadmapNode, parents: Map<String, List<RoadmapNodeId>>, accepted: Set<RoadmapNodeId>) -> List<String> {
+  match roadmap_parents_of(parents: parents, id: n.node as String) {
+    Absent => []
+    Present { value: ps } => ps |> filter(p => !set_contains(accepted, p)) |> map(p => p as String)
+  }
 }
 
 // THE MINTING RULE AS A PURE FOLD over a supplied graph, so a witness plants the nodes it asks
-// about; the live frontier below applies it to the declared authority.
+// about; the live frontier below applies it to the declared authority. Every per-node question --
+// accepted, withheld, lineage, unmet parents -- reads an index built once from the supplied graph.
 fn closing_contract_candidates(
   nodes: List<RoadmapNode>,
   edges: List<RoadmapEdge>,
   accepted: List<RoadmapNodeId>,
   withheld: List<RoadmapNodeId>,
 ) -> List<RoadmapNode> {
+  let accepted_set = roadmap_node_id_set(ids: accepted)
+  let withheld_set = roadmap_node_id_set(ids: withheld)
+  let index = lineage_index(nodes: nodes)
+  let fuel = count(nodes) + 1
+  let parents = roadmap_parent_index(edges: edges)
   nodes
-    |> filter(n => !(accepted |> any(a => a == n.node)))
-    |> filter(n => !(withheld |> any(w => w == n.node)))
+    |> filter(n => !set_contains(accepted_set, n.node))
+    |> filter(n => !set_contains(withheld_set, n.node))
     |> filter(n => readiness_only_contract_missing(r: node_readiness(
       node: n,
-      lineage: lineage_walk(node_id: n.node as String, nodes: nodes),
-      unmet_parents: unmet_parents_for_accepted(n: n, edges: edges, accepted: accepted),
+      lineage: lineage_walk_in(node_id: n.node as String, index: index, fuel: fuel),
+      unmet_parents: unmet_parents_in(n: n, parents: parents, accepted: accepted_set),
       merged: [],
     )))
 }
