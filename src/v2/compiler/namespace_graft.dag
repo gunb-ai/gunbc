@@ -46,9 +46,7 @@ import v2.extdeps.languages.dag {
   namespace_graft_already_grafted,
   namespace_graft_has_module_header,
   namespace_graft_module_body_marker_node,
-  namespace_graft_namespace_body_members,
   namespace_graft_namespace_body_members_onto,
-  namespace_graft_reverse_edges,
   namespace_graft_namespace_body_node,
   namespace_graft_node_is_module_body,
   namespace_graft_spine_body_optional,
@@ -793,7 +791,7 @@ fn namespace_graft_all_namespace_bodies(group: List<Edge>) -> Bool {
 // (namespace_graft_namespace_body_members_onto) and the whole reversed once, so building it is linear in
 // the total member count rather than copying the growing result per body.
 fn namespace_graft_group_members(group: List<Edge>) -> List<Edge> {
-  namespace_graft_reverse_edges(edges: fold(group, init: Empty, f: fn(acc, e) {
+  list_reverse(xs: fold(group, init: Empty, f: fn(acc, e) {
     namespace_graft_namespace_body_members_onto(body: e.target, acc: acc)
   }))
 }
