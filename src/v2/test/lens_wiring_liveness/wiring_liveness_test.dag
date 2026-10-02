@@ -4,7 +4,7 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.node_reflection { resolve_type_node }
-import v2.std.node { Symbol }
+import v2.std.node { Symbol, Authored }
 
 // READS THE LIVE TREE AS OF THE REFLECTION CUTOVER. The reflection read now names pool roots and
 // consults the live declaration index through v2.std.decl_index, so SubstrateInputsOnly became
@@ -39,7 +39,7 @@ fn wl_output_tree() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^wiring_liveness_output_field }, target: wl_mid_node() }
+      Edge { label: Authored { name: ^wiring_liveness_output_field }, target: wl_mid_node() }
     ],
     occurrence_id: OccurrenceSynthetic
   }

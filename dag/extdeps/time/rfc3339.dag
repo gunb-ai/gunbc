@@ -1,6 +1,6 @@
 module extdeps.time.rfc3339
 
-import std.types { Bool, String, NonEmptyStr }
+import std.types { Bool, String, NonEmptyStr, brand }
 import std.algebra { Less, Equal, Greater }
 import std.string_type { string_lex_compare }
 import extdeps.external_authority { ExternalAuthority }

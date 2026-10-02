@@ -20,7 +20,7 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.parse_refusal_reason { DataValueMissingAfterEq, FnExpressionBodyMissingAfterEq, NewlineBeforeDualRoleOperator, ParseRefusalReason }
+import v2.std.parse_refusal_reason { DataValueMissingAfterEq, FnExpressionBodyMissingAfterEq, KeywordAsPathSegment, NewlineBeforeDualRoleOperator, ParseRefusalReason }
 import v2.std.grammar {
   GrammarEmitClassTerminal,
   GrammarEmitLexemeTerminal,
@@ -62,6 +62,7 @@ import v2.std.grammar {
   grammar_empty_sync_tokens,
   grammar_expr_after_line_break,
   grammar_expr_expect,
+  grammar_expr_not_predicate,
   grammar_expr_refuse_on_match,
   derive_grammar_relation_row,
   derive_grammar_relation_row_node,
@@ -103,7 +104,6 @@ import v2.std.compilers.lexing {
 import v2.std.node {
   host_text_type_node,
   symbol_lexeme,
-  construct_tag_marker,
   symbol_type_node,
   Arrow,
   Atom,
@@ -114,17 +114,28 @@ import v2.std.node {
   Edge,
   Loop,
   Match,
-  Named,
+  Authored,
   Node,
   Positional,
+  StructuralLabel,
   Symbol,
   Transform,
   TypeNode,
   is_empty_conj_root,
   node_lowered_from,
   symbol_intern_lexeme,
+  ArrowBodyEdge,
+  LoopBoundEdge,
+  MatchArmBodyEdge,
+  MatchArmPatternEdge,
+  core_edge,
+  core_edge_label,
+  EdgeLabel,
+  edge_is_production,
+  production_edge_label,
+  ConstructTagEdge,
 }
-import v2.std.node_query { binder_edge, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, find_named_child, named_child_lookup }
+import v2.std.node_query { binder_edge, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, find_named_child, named_child_lookup, find_labeled_child }
 import v2.std.compilers.target_model {
   lex_rules_literal_for_class,
   char_kernel_type_node,
@@ -656,7 +667,8 @@ fn dag_lex_rules() -> LexRuleSet {
       dag_literal_lex_rule(token_class: ^dag_token_gt, text: ">"),
       dag_literal_lex_rule(token_class: ^dag_token_question, text: "?"),
       dag_literal_lex_rule(token_class: ^dag_token_match_scrutinee_nop, text: "")
-    ]
+    ],
+    modes: []
   }
 }
 
@@ -676,9 +688,24 @@ fn dag_grammar_atom(id: Symbol) -> Node {
 
 fn dag_named_edge(name: Symbol, target: Node) -> Edge {
   Edge {
-    label: Named { name: name },
+    label: Authored { name: name },
     target: target
   }
+}
+
+// A DAG SURFACE PRODUCTION'S EDGE: a structural label keyed by this language, so an authored name
+// spelled like a production never reaches a reader of the production (gunbc#12473 plan). Readers
+// compare the whole label (edge_is_production), never the spelling.
+fn dag_surface_edge_label(edge: Symbol) -> EdgeLabel {
+  production_edge_label(language: ^dag_language_model_surface_id, edge: edge)
+}
+
+fn dag_surface_edge(edge: Symbol, target: Node) -> Edge {
+  Edge { label: dag_surface_edge_label(edge: edge), target: target }
+}
+
+fn dag_surface_edge_is(e: Edge, edge: Symbol) -> Bool {
+  edge_is_production(e: e, language: ^dag_language_model_surface_id, edge: edge)
 }
 
 fn dag_positional_edge(target: Node) -> Edge {
@@ -787,7 +814,43 @@ fn dag_grammar_comma_list_expr(item: GrammarExpr) -> GrammarExpr {
 fn dag_grammar_module_header_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_module),
-    right: dag_grammar_nonterminal(production: ^dag_production_qualified_name)
+    right: dag_grammar_declared_path_expr()
+  )
+}
+
+// A DECLARED PATH ENDS AT ITS LAST ADMITTED SEGMENT, AND A KEYWORD AFTER IT REFUSES BY NAME. A path
+// segment is an identifier or a type-declaration modifier (dag_grammar_ident_or_type_decl_modifier_name);
+// a keyword is not one, so `module rt.match` is not a module path. Without this row the path ended at
+// `rt` and the refusal was the generic leftover of `.match`. The guard is a not-predicate, so it
+// captures nothing and the path's tree is the qualified name's. It sits on the declaring positions
+// (module header, import) and NOT inside qualified_name: an expression admits a keyword after a dot
+// (dag_grammar_postfix_dot_suffix_expr, `node.type`), and a pattern -- which reads qualified_name and
+// is probed ahead of every match-arm statement -- must not refuse where that expression parses.
+fn dag_grammar_declared_path_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_nonterminal(production: ^dag_production_qualified_name),
+    right: grammar_expr_not_predicate(
+      element: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: ^dag_token_dot),
+        right: grammar_expr_refuse_on_match(element: dag_grammar_keyword_terminal(), reason: KeywordAsPathSegment)
+      )
+    )
+  )
+}
+
+// Every keyword a path segment does not admit: the keyword roster less the two modifiers
+// dag_grammar_ident_or_type_decl_modifier_name admits (and less `module`, the fold's seed).
+fn dag_grammar_keyword_terminal() -> GrammarExpr {
+  fold_list(
+    xs: dag_binding_name_keyword_tokens(),
+    empty: dag_grammar_terminal(token_class: ^dag_token_kw_module),
+    cons: fn(acc, tok) {
+      if (tok == ^dag_token_kw_module) || (tok == ^dag_token_kw_nominal_opaque) || (tok == ^dag_token_kw_sole_constructor) {
+        acc
+      } else {
+        dag_grammar_choice(left: acc, right: dag_grammar_terminal(token_class: tok))
+      }
+    }
   )
 }
 
@@ -1724,10 +1787,28 @@ fn dag_grammar_match_expr_expr() -> GrammarExpr {
   )
 }
 
+// A STATEMENT BODY ENDS WHERE THE NEXT ARM BEGINS. Arms need no separator (dag_grammar_comma_list_expr
+// makes the comma optional), and an arm head such as `Foo =>` begins with something that also parses
+// as an expression statement, so under ordered repetition a bare `stmt*` reads the next arm's
+// pattern as one more statement of this body. Each statement is therefore guarded by the PEG
+// not-predicate over the arm head: `(!(pattern =>) stmt) (!(pattern =>) stmt)*`. The predicate
+// captures nothing, so the parsed body is the same statement spine `stmt stmt*` derives.
+fn dag_grammar_match_arm_stmt_body_statement() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: grammar_expr_not_predicate(
+      element: dag_grammar_sequence(
+        left: dag_grammar_nonterminal(production: ^dag_production_pattern),
+        right: dag_grammar_terminal(token_class: ^dag_token_fat_arrow)
+      )
+    ),
+    right: dag_grammar_nonterminal(production: ^dag_production_stmt)
+  )
+}
+
 fn dag_grammar_match_arm_stmt_body_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_nonterminal(production: ^dag_production_stmt),
-    right: dag_grammar_repeat(element: dag_grammar_nonterminal(production: ^dag_production_stmt))
+    left: dag_grammar_match_arm_stmt_body_statement(),
+    right: dag_grammar_repeat(element: dag_grammar_match_arm_stmt_body_statement())
   )
 }
 
@@ -1931,7 +2012,7 @@ fn dag_grammar_import_decl_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_import),
     right: dag_grammar_sequence(
-      left: dag_grammar_nonterminal(production: ^dag_production_qualified_name),
+      left: dag_grammar_declared_path_expr(),
       right: dag_grammar_optional(element: dag_grammar_nonterminal(production: ^dag_production_import_block))
     )
   )
@@ -2743,12 +2824,10 @@ fn emit_module_header_emitted_node(qualified_name: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      dag_named_edge(
-        name: ^dag_surface_module_header,
+      dag_surface_edge(edge: ^dag_surface_module_header,
         target: dag_grammar_atom(id: ^dag_surface_module_header)
       ),
-      dag_named_edge(
-        name: ^dag_surface_module_header_qualified_name,
+      dag_surface_edge(edge: ^dag_surface_module_header_qualified_name,
         target: qualified_name
       )
     ],
@@ -2776,12 +2855,10 @@ fn emit_import_decl_emitted_node(
   import_block: Node?
 ) -> Node {
   let prefix = [
-    dag_named_edge(
-      name: ^dag_surface_import_decl,
+    dag_surface_edge(edge: ^dag_surface_import_decl,
       target: dag_grammar_atom(id: ^dag_surface_import_decl)
     ),
-    dag_named_edge(
-      name: ^dag_surface_import_decl_qualified_name,
+    dag_surface_edge(edge: ^dag_surface_import_decl_qualified_name,
       target: qualified_name
     )
   ]
@@ -2792,7 +2869,7 @@ fn emit_import_decl_emitted_node(
         list_append(
           left: prefix,
           right: [
-            dag_named_edge(name: ^dag_surface_import_decl_block, target: block)
+            dag_surface_edge(edge: ^dag_surface_import_decl_block, target: block)
           ]
         )
       Absent => prefix
@@ -3786,9 +3863,9 @@ fn dag_target_model_lossless_fidelity_quotient() -> TargetModel {
   )
 }
 
-fn dag_surface_module_header_metadata_edge(name: Symbol) -> Bool {
-  (name == ^dag_surface_module_header)
-    || (name == ^dag_surface_module_header_qualified_name)
+fn dag_surface_module_header_metadata_edge(e: Edge) -> Bool {
+  dag_surface_edge_is(e: e, edge: ^dag_surface_module_header)
+    || dag_surface_edge_is(e: e, edge: ^dag_surface_module_header_qualified_name)
 }
 
 fn dag_resolve_preserve_module_metadata_subtree(node: Node) -> Bool {
@@ -3809,14 +3886,7 @@ fn dag_node_is_module_root_conj(n: Node) -> Bool {
             n.children,
             init: false,
             f: fn(found, e) {
-              if found {
-                true
-              } else {
-                match e.label {
-                  Named { name: sym } => sym == ^dag_surface_module_header
-                  Positional => false
-                }
-              }
+              found || dag_surface_edge_is(e: e, edge: ^dag_surface_module_header)
             }
           )
         TypeNode { connective: _ } => false
@@ -4345,7 +4415,7 @@ fn dag_loop_body_from_literal(lit: Node) -> Node {
         target: lit
       },
       Edge {
-        label: Named { name: ^loop_bound_edge },
+        label: core_edge_label(marker: LoopBoundEdge),
         target: dag_loop_measure_node()
       }
     ],
@@ -4411,19 +4481,20 @@ fn dag_node_is_int_literal_atom(node: Node) -> Bool {
 fn dag_symbol_literal_node(name: Node, occurrence_id: NodeOccurrenceIdentity) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^dag_token_caret } },
-    children: [Edge { label: Named { name: ^symbol_literal_name_field }, target: name }],
+    children: [Edge { label: Authored { name: ^symbol_literal_name_field }, target: name }],
     occurrence_id: occurrence_id
   }
 }
 
 fn dag_symbol_literal_name_edge_target_optional(edge: Edge) -> Optional<Node> {
   match edge.label {
-    Named { name: field } =>
+    Authored { name: field } =>
       if field == ^symbol_literal_name_field {
         optional_present(value: edge.target)
       } else {
         optional_absent()
       }
+    StructuralLabel { label: _ } => optional_absent()
     Positional => optional_absent()
   }
 }
@@ -4505,7 +4576,7 @@ fn dag_int_literal_node_from_magnitude(magnitude: DecimalMagnitude, occurrence_i
     kind: TypeNode { connective: Atom { identity: ^dag_token_int_literal } },
     children: [
       Edge {
-        label: Named { name: ^integer_literal_magnitude_field },
+        label: Authored { name: ^integer_literal_magnitude_field },
         target: integer_decimal_magnitude_node(magnitude: magnitude)
       }
     ],
@@ -4543,7 +4614,7 @@ fn dag_float_literal_node_from_lexeme(lexeme: String, occurrence_id: NodeOccurre
     kind: TypeNode { connective: Atom { identity: ^dag_token_float_literal } },
     children: [
       Edge {
-        label: Named { name: ^float_literal_lexeme_field },
+        label: Authored { name: ^float_literal_lexeme_field },
         target: Node {
           kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: lexeme) } },
           children: [],
@@ -4566,7 +4637,7 @@ fn dag_float_literal_lexeme_optional(node: Node) -> Optional<String> {
             Present { value: _ } => acc
             Absent =>
               match edge.label {
-                Named { name: field } =>
+                Authored { name: field } =>
                   if field == ^float_literal_lexeme_field {
                     match node_atom_identity_optional(node: edge.target) {
                       Present { value: l } => optional_present(value: symbol_lexeme(sym: l))
@@ -4575,6 +4646,7 @@ fn dag_float_literal_lexeme_optional(node: Node) -> Optional<String> {
                   } else {
                     optional_absent()
                   }
+                StructuralLabel { label: _ } => optional_absent()
                 Positional => optional_absent()
               }
           }
@@ -4824,7 +4896,7 @@ fn dag_string_literal_node(value: String, occurrence_id: NodeOccurrenceIdentity)
     kind: TypeNode { connective: Atom { identity: ^dag_token_string_literal } },
     children: [
       Edge {
-        label: Named { name: ^string_literal_value_field },
+        label: Authored { name: ^string_literal_value_field },
         target: Node {
           kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: value) } },
           children: [],
@@ -4840,12 +4912,13 @@ fn dag_string_literal_node(value: String, occurrence_id: NodeOccurrenceIdentity)
 // every other node, including a payload-less string-literal atom.
 fn dag_string_literal_value_edge_target_optional(edge: Edge) -> Optional<Node> {
   match edge.label {
-    Named { name: field } =>
+    Authored { name: field } =>
       if field == ^string_literal_value_field {
         optional_present(value: edge.target)
       } else {
         optional_absent()
       }
+    StructuralLabel { label: _ } => optional_absent()
     Positional => optional_absent()
   }
 }
@@ -4891,12 +4964,13 @@ data dag_float_literal_magnitude_home_dissolve_on: DissolutionCondition = retire
 
 fn dag_int_literal_magnitude_edge_target_optional(edge: Edge) -> Optional<Node> {
   match edge {
-    Edge { label: Named { name: field }, target: magnitude } =>
+    Edge { label: Authored { name: field }, target: magnitude } =>
       if field == ^integer_literal_magnitude_field {
         optional_present(value: magnitude)
       } else {
         optional_absent()
       }
+    Edge { label: StructuralLabel { label: _ }, target: _ } => optional_absent()
     Edge { label: Positional, target: _ } => optional_absent()
   }
 }
@@ -5029,7 +5103,7 @@ fn dag_arrow_with_body_node(
         target: dag_type_atom_node(identity: return_type_binding)
       },
       signature.order,
-      Edge { label: Named { name: ^arrow_body_edge }, target: body }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -5239,12 +5313,10 @@ fn dag_match_arm_node(pattern_lit: Symbol, body_lit: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      dag_named_edge(
-        name: ^match_arm_pattern,
+      core_edge(marker: MatchArmPatternEdge,
         target: dag_type_atom_node(identity: pattern_lit)
       ),
-      dag_named_edge(
-        name: ^match_arm_body,
+      core_edge(marker: MatchArmBodyEdge,
         target: dag_type_atom_node(identity: body_lit)
       )
     ],
@@ -5322,8 +5394,7 @@ fn dag_rec_construct_body_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      dag_named_edge(
-        name: construct_tag_marker(),
+      core_edge(marker: ConstructTagEdge,
         target: dag_type_atom_node(identity: ^dag_binding_type_rec)
       ),
       dag_named_edge(
@@ -5351,8 +5422,7 @@ fn dag_variant_holds_construct_node(value_lit: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      dag_named_edge(
-        name: construct_tag_marker(),
+      core_edge(marker: ConstructTagEdge,
         target: dag_type_atom_node(identity: ^dag_binding_type_variant_holds)
       ),
       dag_named_edge(
@@ -5372,9 +5442,8 @@ fn dag_variant_match_arm_node(pattern_target: Node, body_lit: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      dag_named_edge(name: ^match_arm_pattern, target: pattern_target),
-      dag_named_edge(
-        name: ^match_arm_body,
+      core_edge(marker: MatchArmPatternEdge, target: pattern_target),
+      core_edge(marker: MatchArmBodyEdge,
         target: dag_type_atom_node(identity: body_lit)
       )
     ],
@@ -6226,7 +6295,7 @@ fn dag_round_trip_atom(s: Symbol) -> Node {
 }
 
 fn dag_round_trip_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn dag_round_trip_bool_node(pass: Bool) -> Node {
@@ -6887,7 +6956,7 @@ fn import_decl_target_module(decl: Node, module_root: Node) -> Outcome<Qualified
           qualified_name_from_symbol_segments(segments: segments, root: module_root)
       }
     ParseSubtreeAbsent =>
-      match find_named_child(root: decl, name: ^dag_surface_import_decl_qualified_name) {
+      match find_labeled_child(root: decl, label: dag_surface_edge_label(edge: ^dag_surface_import_decl_qualified_name)) {
         Rejected { diagnostics: d } => Rejected { diagnostics: d }
         Accepted { value: qn_node, diagnostics: _ } =>
           qualified_name_from_node(root: qn_node)
@@ -7028,10 +7097,10 @@ fn qualified_name_from_symbol_segments(segments: List<Symbol>, root: Node) -> Ou
 }
 
 fn qualified_name_from_emit_shaped_module_root(root: Node) -> Outcome<QualifiedName> {
-  match find_named_child(root: root, name: ^dag_surface_module_header) {
+  match find_labeled_child(root: root, label: dag_surface_edge_label(edge: ^dag_surface_module_header)) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
     Accepted { value: _, diagnostics: _ } =>
-      match find_named_child(root: root, name: ^dag_surface_module_header_qualified_name) {
+      match find_labeled_child(root: root, label: dag_surface_edge_label(edge: ^dag_surface_module_header_qualified_name)) {
         Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
         Accepted { value: qn_node, diagnostics: _ } =>
           match qualified_name_from_node(root: qn_node) {
@@ -7093,7 +7162,7 @@ fn namespace_graft_unwrap_module_working_root(root: Node) -> Node {
 }
 
 fn namespace_graft_has_module_header(root: Node) -> Bool {
-  match find_named_child(root: root, name: ^dag_surface_module_header) {
+  match find_labeled_child(root: root, label: dag_surface_edge_label(edge: ^dag_surface_module_header)) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
@@ -7156,8 +7225,9 @@ fn namespace_graft_namespace_body_node(edges: List<Edge>, source: Node) -> Node 
 fn namespace_graft_namespace_body_members_onto(body: Node, acc: FreeMonoid<Edge>) -> FreeMonoid<Edge> {
   fold(body.children, init: acc, f: fn(a, e) {
     match e.label {
-      Named { name: sym } =>
+      Authored { name: sym } =>
         if sym == ^grammar_production_identity_node_projection { a } else { Cons { head: e, tail: a } }
+      StructuralLabel { label: _ } => Cons { head: e, tail: a }
       Positional => Cons { head: e, tail: a }
     }
   })
@@ -7223,12 +7293,13 @@ fn namespace_graft_spine_shaped_edge_optional(node: Node) -> Optional<Edge> {
           Absent => optional_absent()
           Present { value: edge } =>
             match edge.label {
-              Named { name: _ } =>
+              Authored { name: _ } =>
                 if namespace_graft_node_is_conj(node: edge.target) {
                   optional_present(value: edge)
                 } else {
                   optional_absent()
                 }
+              StructuralLabel { label: _ } => optional_absent()
               Positional => optional_absent()
             }
         }
@@ -7272,11 +7343,17 @@ fn namespace_graft_qualified_name_from_spine_node(node: Node, acc: QualifiedName
   match namespace_graft_spine_shaped_edge_optional(node: node) {
     Present { value: edge } =>
       match edge.label {
-        Named { name: seg } =>
+        Authored { name: seg } =>
           namespace_graft_qualified_name_from_spine_node(
             node: edge.target,
             acc: qualified_name_snoc(qn: acc, segment: seg)
           )
+        StructuralLabel { label: _ } =>
+          outcome_rejected(Diagnostic {
+            reason: ^qualified_name_structure_invalid,
+            at: node_locus(node: node),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          })
         Positional =>
           outcome_rejected(Diagnostic {
             reason: ^qualified_name_structure_invalid,

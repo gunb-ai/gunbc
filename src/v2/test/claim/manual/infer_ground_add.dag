@@ -41,7 +41,7 @@ import v2.std.node {
   Conj,
   Edge,
   Hash,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -334,7 +334,7 @@ fn fixture_add_resolved_node() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^fixture_add_name },
+        label: Authored { name: ^fixture_add_name },
         target: anonymous_signature_arrow(
           domain_types: [
             fixture_int_type_node(atom: ^fixture_add_int_atom),

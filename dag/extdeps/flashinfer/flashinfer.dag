@@ -133,6 +133,94 @@ fn flashinfer_0_6_18_post1_wheel_url(w: FlashInferWheel) -> NonEmptyStr {
   join([flashinfer_0_6_18_post1_release_url as String, "/", w.filename as String], "") as NonEmptyStr
 }
 
+// ── 0.7.1rc1: THE FIRST RELEASE CARRYING RUNTIME SM120 SPARSE-MLA PAGE SIZES ──────────────────
+//
+// flashinfer-ai/flashinfer#5197 (merged 2026-09-18, eb5f05be1f) makes the SM120 sparse-MLA page size a
+// runtime parameter, including the 32-token extra pages a DeepSeek V4.1 ratio-2 layer takes once the
+// kernel page is 64 tokens (vllm-project/vllm#57292, #56461, #59203). v0.7.0 and v0.7.0.post1 predate it
+// (compare eb5f05be1f...v0.7.0.post1: diverged); v0.7.1rc1 (GitHub release, published 2026-09-30) contains
+// it (compare eb5f05be1f...v0.7.1rc1: ahead 221, behind 0), read 2026-10-01. It is a RELEASE CANDIDATE,
+// adopted by operator ruling 2026-10-01 for the V4.1 GB10 launch; 0.7.1 final replaces it when published.
+data flashinfer_0_7_1rc1_version: NonEmptyStr = "0.7.1rc1" as NonEmptyStr
+
+data flashinfer_0_7_1rc1: FlashInferAcquisition = FlashInferPublishedRelease {
+  version: flashinfer_0_7_1rc1_version,
+  channel: FlashInferProjectStable,
+  index: "flashinfer.ai/whl for flashinfer-python and flashinfer-cubin, flashinfer.ai/whl/cu130 for flashinfer-jit-cache and its per-architecture providers" as NonEmptyStr,
+}
+
+// THE ELEVEN 0.7.1rc1 WHEELS AN aarch64 cu130 IMAGE INSTALLS. From 0.7.x the jit-cache is a 4 KB shim
+// (flashinfer_jit_cache) whose METADATA Requires-Dist names one provider wheel per architecture
+// (sm80, sm89, sm90a, sm100a, sm103a, sm110a, sm120f, sm121a), all at 0.7.1rc1+cu130 -- read from the
+// shim wheel itself, whose downloaded sha256 matched below -- so `flashinfer-jit-cache==0.7.1rc1` from the
+// cu130 index installs all nine. Each digest was read 2026-10-01 from two agreeing upstream surfaces: the
+// `digest` field of the GitHub release v0.7.1rc1 asset and the `#sha256=` fragment of the flashinfer.ai
+// index link (whl/flashinfer-python, whl/flashinfer-cubin, whl/cu130/flashinfer-jit-cache,
+// whl/cu130/flashinfer-jit-cache-sm121a cross-checked; the other providers rest on the release listing).
+data flashinfer_0_7_1rc1_wheels: List<FlashInferWheel> = [
+  FlashInferWheel {
+    package: "flashinfer-python" as NonEmptyStr,
+    filename: "flashinfer_python-0.7.1rc1-py3-none-any.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "17b7a2d47a153456f056f9f4d309ac13a0a7bfccbec852f562f120f36146edd9" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-cubin" as NonEmptyStr,
+    filename: "flashinfer_cubin-0.7.1rc1-py3-none-any.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "760ea1b6485b7315683ea1852f9926270eb57b7d05b95f8cd262fd12c93e062b" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache" as NonEmptyStr,
+    filename: "flashinfer_jit_cache-0.7.1rc1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "bfd71831bb06f3361a9631dcfc0474712e8c45e6d44db16774ba65789a95067c" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache-sm100a" as NonEmptyStr,
+    filename: "flashinfer_jit_cache_sm100a-0.7.1rc1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "a1ff150e5f81f1a96ab900bd9357e98092a119004b8292078fa9b09cabae92e5" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache-sm103a" as NonEmptyStr,
+    filename: "flashinfer_jit_cache_sm103a-0.7.1rc1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "15f6c9df6e3928c6de664191582075e087d49dfc3ed1e0db6741d37263155baa" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache-sm110a" as NonEmptyStr,
+    filename: "flashinfer_jit_cache_sm110a-0.7.1rc1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "242cdbf730471211883f0aa145f24c02ff0b2b51e083f160f4ec97592a9443d3" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache-sm120f" as NonEmptyStr,
+    filename: "flashinfer_jit_cache_sm120f-0.7.1rc1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "9d5b55adfbf0d68127710dbc602c7c8e93893581b598f73b97d259b457df232f" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache-sm121a" as NonEmptyStr,
+    filename: "flashinfer_jit_cache_sm121a-0.7.1rc1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "a900e973695798581d60d5297fee3c9bee8d1f1e6211303af7c0171481446a34" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache-sm80" as NonEmptyStr,
+    filename: "flashinfer_jit_cache_sm80-0.7.1rc1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "539bb1454af4df30b0f846e3f27838e6de1b0a4f9eeb221a561ff99a52ddc2ce" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache-sm89" as NonEmptyStr,
+    filename: "flashinfer_jit_cache_sm89-0.7.1rc1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "25bff4e71bffaef61cf35a02c19fd4f06600d74f3643f9e84fc3672088fb154a" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache-sm90a" as NonEmptyStr,
+    filename: "flashinfer_jit_cache_sm90a-0.7.1rc1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "67511bdeb5ee4de4c9af78b4b77d7158cf822cb4ba5ad29b3c25f7a3201cbca7" as Sha256DigestHex },
+  },
+]
+
+data flashinfer_0_7_1rc1_release_url: NonEmptyStr = "https://github.com/flashinfer-ai/flashinfer/releases/download/v0.7.1rc1" as NonEmptyStr
+
+fn flashinfer_0_7_1rc1_wheel_url(w: FlashInferWheel) -> NonEmptyStr {
+  join([flashinfer_0_7_1rc1_release_url as String, "/", w.filename as String], "") as NonEmptyStr
+}
+
 // THE PLAIN 0.6.18 SPELLING, which upstream pinned before the .post1 release existed:
 // requirements/cuda.txt at 8d09804c877c48165c6ba69bc9dc02d09bae0b83 (2026-09-04) states
 // `flashinfer-python==0.6.18` and `flashinfer-cubin==0.6.18`, and docker/Dockerfile at the same

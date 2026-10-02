@@ -67,7 +67,7 @@ service llm.Anthropic {
   }
 
   operation CliPrompt {
-    requires Network
+    requires opaque
     input {
       prompt: String
       model: String = "opus"

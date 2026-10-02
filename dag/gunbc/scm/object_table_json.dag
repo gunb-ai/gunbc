@@ -210,7 +210,7 @@ import extdeps.languages.json.parse {
 }
 import v2.std.node {
   EdgeLabel,
-  Named,
+  Authored, StructuralLabel, CoreMarker, ProductionEdge, core_edge_label_canonical_symbol,
   Positional,
   NodeKind,
   TypeNode,
@@ -232,6 +232,9 @@ import v2.std.node {
   Symbol,
   symbol_intern_lexeme,
   symbol_lexeme,
+  core_edge_label,
+  core_edge_labels,
+  production_edge_label,
 }
 import v2.std.collection {
   Map,
@@ -263,6 +266,8 @@ type NodeEntryMemberContext
   | NodeEntryAtomKindMembers
   | NodeEntryComputationKindMembers
   | NodeEntryNamedEdgeMembers
+  | NodeEntryCoreMarkerEdgeMembers
+  | NodeEntryProductionEdgeMembers
   | NodeEntryPositionalEdgeMembers
 
 type NodeEntryDecodeRefusal
@@ -535,10 +540,21 @@ fn encode_kind(k: NodeKind) -> JsonValue {
 
 fn encode_label(l: EdgeLabel) -> List<JsonKeyValue> {
   match l {
-    Named { name: n } =>
+    Authored { name: n } =>
       [
         json_kv(key: "label", value: json_string(s: "named")),
         json_kv(key: "name", value: json_string(s: symbol_lexeme(sym: n))),
+      ]
+    StructuralLabel { label: CoreMarker { marker: m } } =>
+      [
+        json_kv(key: "label", value: json_string(s: "structural_core")),
+        json_kv(key: "marker", value: json_string(s: symbol_lexeme(sym: core_edge_label_canonical_symbol(marker: m)))),
+      ]
+    StructuralLabel { label: ProductionEdge { language: lang, edge: p } } =>
+      [
+        json_kv(key: "label", value: json_string(s: "structural_production")),
+        json_kv(key: "language", value: json_string(s: symbol_lexeme(sym: lang))),
+        json_kv(key: "edge", value: json_string(s: symbol_lexeme(sym: p))),
       ]
     Positional => [json_kv(key: "label", value: json_string(s: "positional"))]
   }
@@ -970,8 +986,61 @@ fn decode_named_label(edge_value: JsonValue) -> LabelDecode {
       match read_string_member(v: edge_value, key: "name") {
         MemberFailed { cause: c } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: c } }
         MemberString { value: lexeme } =>
-          LabelDecoded { label: Named { name: symbol_intern_lexeme(lexeme: lexeme) } }
+          LabelDecoded { label: Authored { name: symbol_intern_lexeme(lexeme: lexeme) } }
         _ => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "name" } } }
+      }
+  }
+}
+
+// A core marker travels as the marker's canonical symbol and comes back only as one of the closed
+// set's arms: a symbol no arm spells is an unknown label and refuses, never an Authored fallback.
+fn decode_core_marker_label(edge_value: JsonValue) -> LabelDecode {
+  match node_entry_member_set_refusal(
+    v: edge_value,
+    allowed: ["label", "marker", "target"],
+    context: NodeEntryCoreMarkerEdgeMembers
+  ) {
+    Present { value: c } => LabelDecodeFailed { cause: c }
+    Absent =>
+      match read_string_member(v: edge_value, key: "marker") {
+        MemberFailed { cause: c } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: c } }
+        MemberString { value: lexeme } => {
+          let sym = symbol_intern_lexeme(lexeme: lexeme)
+          fold(core_edge_labels(), init: LabelDecodeFailed { cause: NodeEntryUnknownLabelTag { found: lexeme } }, f: fn(acc, m) {
+            if core_edge_label_canonical_symbol(marker: m) == sym { LabelDecoded { label: core_edge_label(marker: m) } } else { acc }
+          })
+        }
+        MemberArray { elements: _ } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "marker" } } }
+        MemberObject { value: _ } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "marker" } } }
+      }
+  }
+}
+
+fn decode_production_label(edge_value: JsonValue) -> LabelDecode {
+  match node_entry_member_set_refusal(
+    v: edge_value,
+    allowed: ["label", "language", "edge", "target"],
+    context: NodeEntryProductionEdgeMembers
+  ) {
+    Present { value: c } => LabelDecodeFailed { cause: c }
+    Absent =>
+      match read_string_member(v: edge_value, key: "language") {
+        MemberFailed { cause: c } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: c } }
+        MemberString { value: language } =>
+          match read_string_member(v: edge_value, key: "edge") {
+            MemberFailed { cause: c } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: c } }
+            MemberString { value: edge } =>
+              LabelDecoded {
+                label: production_edge_label(
+                  language: symbol_intern_lexeme(lexeme: language),
+                  edge: symbol_intern_lexeme(lexeme: edge)
+                )
+              }
+            MemberArray { elements: _ } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "edge" } } }
+            MemberObject { value: _ } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "edge" } } }
+          }
+        MemberArray { elements: _ } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "language" } } }
+        MemberObject { value: _ } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "language" } } }
       }
   }
 }
@@ -993,6 +1062,10 @@ fn decode_label(edge_value: JsonValue) -> LabelDecode {
     MemberString { value: tag } =>
       if tag == "named" {
         decode_named_label(edge_value: edge_value)
+      } else if tag == "structural_core" {
+        decode_core_marker_label(edge_value: edge_value)
+      } else if tag == "structural_production" {
+        decode_production_label(edge_value: edge_value)
       } else if tag == "positional" {
         decode_positional_label(edge_value: edge_value)
       } else {

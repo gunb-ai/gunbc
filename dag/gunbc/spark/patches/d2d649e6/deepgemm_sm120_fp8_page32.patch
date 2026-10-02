@@ -1,0 +1,62 @@
+--- a/cmake/external_projects/deepgemm.cmake
++++ b/cmake/external_projects/deepgemm.cmake
+@@ -56,6 +56,24 @@
+     )
+   endif()
+   message(STATUS "DeepGEMM is available at ${deepgemm_SOURCE_DIR}")
++
++  # SM120 FP8 paged-MQA logits at 32-state pages (vllm-project/DeepGEMM#14 host
++  # changes, ported to this pin): DeepSeek-V4.1 ratio-2 indexer layers take
++  # 32-state pages once the kernel page is 64 tokens on SM12x. Idempotent:
++  # an already-applied tree is left alone, anything else that does not apply
++  # stops the build.
++  set(_deepgemm_page32_patch "${CMAKE_CURRENT_LIST_DIR}/deepgemm_sm120_fp8_page32.patch")
++  execute_process(
++    COMMAND git -C "${deepgemm_SOURCE_DIR}" apply --reverse --check "${_deepgemm_page32_patch}"
++    RESULT_VARIABLE _deepgemm_page32_present OUTPUT_QUIET ERROR_QUIET)
++  if(NOT _deepgemm_page32_present EQUAL 0)
++    execute_process(
++      COMMAND git -C "${deepgemm_SOURCE_DIR}" apply "${_deepgemm_page32_patch}"
++      RESULT_VARIABLE _deepgemm_page32_applied)
++    if(NOT _deepgemm_page32_applied EQUAL 0)
++      message(FATAL_ERROR "DeepGEMM SM120 page32 patch did not apply to ${deepgemm_SOURCE_DIR}")
++    endif()
++  endif()
+ endif()
+ 
+ # DeepGEMM requires CUDA 12.3+ for SM90, 12.9+ for SM100 (official upstream),
+--- /dev/null
++++ b/cmake/external_projects/deepgemm_sm120_fp8_page32.patch
+@@ -0,0 +1,32 @@
++--- a/csrc/apis/attention.hpp
+++++ b/csrc/apis/attention.hpp
++@@ -320,8 +320,7 @@
++     DG_HOST_ASSERT(
++         (arch_major == 10 and (block_kv == 32 or block_kv == 64 or block_kv == 128)) or
++         (arch_major == 9 and (block_kv == 32 or block_kv == 64)) or
++-        (arch_major == 12 and ((is_fp4 and (block_kv == 32 or block_kv == 64)) or
++-                               (not is_fp4 and block_kv == 64))));
+++        (arch_major == 12 and (block_kv == 32 or block_kv == 64)));
++     const int kv_head_dim = is_fp4 ? head_dim / 2 : head_dim;
++     const int sf_bytes = static_cast<int>(is_mx_sf ? sizeof(int) : sizeof(float));
++     DG_HOST_ASSERT(num_heads_kv == 1 and head_dim_with_sf == kv_head_dim + sf_bytes);
++--- a/csrc/jit_kernels/impls/sm120_mqa_logits.hpp
+++++ b/csrc/jit_kernels/impls/sm120_mqa_logits.hpp
++@@ -444,11 +444,15 @@
++     const int& num_sms, const int& split_kv) {
++     constexpr int num_tma_threads = 128;
++     constexpr int num_math_threads = 256;
++-    constexpr int num_q_stages = 2, num_kv_stages = 3;
+++    constexpr int num_q_stages = 2;
+++    // Four 32-row KV groups exceed the 99 KiB SMEM budget with three
+++    // stages at 64 heads and paired queries. Keep the 64-row path unchanged.
+++    const int num_kv_stages =
+++        (block_kv == 32 and num_heads == 64 and (is_varlen or next_n >= 2)) ? 2 : 3;
++     const int num_groups = split_kv / block_kv;
++     const int next_n_atom = (is_varlen or next_n >= 2) ? 2 : 1;
++     DG_HOST_ASSERT(device_runtime->get_arch_major() == 12);
++-    DG_HOST_ASSERT(block_kv == 64);
+++    DG_HOST_ASSERT(block_kv == 32 or block_kv == 64);
++     DG_HOST_ASSERT(split_kv == 128 and logits_stride % split_kv == 0);
++ 
++     const auto tensor_map_q = make_tma_2d_desc(
