@@ -1159,28 +1159,8 @@ fn floor_expected_red_chunk_emitted_add_algebra_ref_ungrounded() -> List<String>
   Cons { head: "v2.test.manual.ingest_bridge.ingest_identity_coercion_accepts_source_present_in_authored_roster", tail: Empty {} }
 }
 
-// SHELL-TO-DAG TYPED TRANSPORT: the account trip in gunbc.codex_app_server_press still reaches
-// the codex app-server as a retained heredoc -- `retained_foreign` wrapping the bash body
-// `codex_press_account_trip_script` assembles (export, mktemp, printf, sentinel echo, rm), run
-// through shell.Exec.Run's `bash -s` -- so the transport surface of that trip is shell PROGRAM
-// TEXT and the claim
-// test.claim.codex_app_server_press_witness_test.codex_account_trip_transport_surface_carries_no_shell_control_word
-// asserts the property the migration exists to deliver. Class: authored shell control words over
-// a process transport. Mechanism: the body is built by string concat with interpolated paths and
-// captured streams, and its stdout is a ---GUNBC_EXIT--- mux that parse_gunbc_exit_marker
-// re-parses. Attribution: session/witty-wren-554,
-// docs/plans/shell-to-dag-residual-census-and-arc-completion.md 4. DISSOLVE-ON: the trip runs as
-// a typed argv through shell.Exec.RunArgvStdin (minted in dag/extdeps/shell/exec.dag, the
-// caller-named-program cell of the Run/RunArgv family) bound in observe_codex_account_preflight,
-// with the script builder, the sentinel parse and the retained_foreign site deleted together --
-// the claim's surface projection then names the typed invocation, the claim PASSES, and this row
-// reports stale-quarantine naming itself for removal.
-fn floor_expected_red_chunk_shell_to_dag_typed_transport() -> List<String> {
-  Cons { head: "test.claim.codex_app_server_press_witness_test.codex_account_trip_transport_surface_carries_no_shell_control_word", tail: Empty {} }
-}
-
 fn floor_expected_red_chunks() -> List<List<String>> {
-  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_loaded_carrier_body_receipt(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Cons { head: floor_expected_red_chunk_emitted_add_algebra_ref_ungrounded(), tail: Cons { head: floor_expected_red_chunk_shell_to_dag_typed_transport(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } }  }
+  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_loaded_carrier_body_receipt(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Cons { head: floor_expected_red_chunk_emitted_add_algebra_ref_ungrounded(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } }   }
 }
 
 // Mock-totality's 21 expected-red rows were stale-quarantined by the explicit-import closure in
