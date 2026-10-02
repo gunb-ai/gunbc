@@ -134,16 +134,8 @@ pub enum EvalBuiltinArm {
     FreeCallTestMigrationBehaviorDiscoveryHolds,
     FreeCallInertCarrierNamesLive,
     FreeCallInertCarrierDeclaredCount,
-    FreeCallNonFoldResidueCount,
-    FreeCallNonFoldResidueUnrosteredCount,
-    FreeCallNonFoldResidueStaleRosterCount,
-    FreeCallNonFoldResidueCoproductUniverseCount,
     FreeCallCommitWitnessClaimRosterUnresolvableCount,
     FreeCallCommitWitnessClaimPairResolvable,
-    FreeCallNonFoldResidueWildcardRedFixtureHolds,
-    FreeCallNonFoldResidueTotalFoldGreenFixtureHolds,
-    FreeCallNonFoldResidueRosterRedFixtureHolds,
-    FreeCallNonFoldResidueSyntheticUnrosteredRedHolds,
     FreeCallComplexityLinearitySyntacticFindingCount,
     FreeCallComplexityLinearityWildcardFacts,
     FreeCallFallbackArmCensusFacts,
@@ -290,16 +282,8 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "test_migration_behavior_discovery_holds" => Some(EvalBuiltinArm::FreeCallTestMigrationBehaviorDiscoveryHolds),
         "inert_carrier_names_live" => Some(EvalBuiltinArm::FreeCallInertCarrierNamesLive),
         "inert_carrier_declared_count" => Some(EvalBuiltinArm::FreeCallInertCarrierDeclaredCount),
-        "non_fold_residue_count" => Some(EvalBuiltinArm::FreeCallNonFoldResidueCount),
-        "non_fold_residue_unrostered_count" => Some(EvalBuiltinArm::FreeCallNonFoldResidueUnrosteredCount),
-        "non_fold_residue_stale_roster_count" => Some(EvalBuiltinArm::FreeCallNonFoldResidueStaleRosterCount),
-        "non_fold_residue_coproduct_universe_count" => Some(EvalBuiltinArm::FreeCallNonFoldResidueCoproductUniverseCount),
         "commit_witness_claim_roster_unresolvable_count" => Some(EvalBuiltinArm::FreeCallCommitWitnessClaimRosterUnresolvableCount),
         "commit_witness_claim_pair_resolvable" => Some(EvalBuiltinArm::FreeCallCommitWitnessClaimPairResolvable),
-        "non_fold_residue_wildcard_red_fixture_holds" => Some(EvalBuiltinArm::FreeCallNonFoldResidueWildcardRedFixtureHolds),
-        "non_fold_residue_total_fold_green_fixture_holds" => Some(EvalBuiltinArm::FreeCallNonFoldResidueTotalFoldGreenFixtureHolds),
-        "non_fold_residue_roster_red_fixture_holds" => Some(EvalBuiltinArm::FreeCallNonFoldResidueRosterRedFixtureHolds),
-        "non_fold_residue_synthetic_unrostered_red_holds" => Some(EvalBuiltinArm::FreeCallNonFoldResidueSyntheticUnrosteredRedHolds),
         "complexity_linearity_syntactic_finding_count" => Some(EvalBuiltinArm::FreeCallComplexityLinearitySyntacticFindingCount),
         "complexity_linearity_wildcard_facts" => Some(EvalBuiltinArm::FreeCallComplexityLinearityWildcardFacts),
         "fallback_arm_census_facts" => Some(EvalBuiltinArm::FreeCallFallbackArmCensusFacts),
@@ -444,16 +428,8 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.test_migration_behavior_discovery_holds") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallTestMigrationBehaviorDiscoveryHolds };
     ("free_call.inert_carrier_names_live") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallInertCarrierNamesLive };
     ("free_call.inert_carrier_declared_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallInertCarrierDeclaredCount };
-    ("free_call.non_fold_residue_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallNonFoldResidueCount };
-    ("free_call.non_fold_residue_unrostered_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallNonFoldResidueUnrosteredCount };
-    ("free_call.non_fold_residue_stale_roster_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallNonFoldResidueStaleRosterCount };
-    ("free_call.non_fold_residue_coproduct_universe_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallNonFoldResidueCoproductUniverseCount };
     ("free_call.commit_witness_claim_roster_unresolvable_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCommitWitnessClaimRosterUnresolvableCount };
     ("free_call.commit_witness_claim_pair_resolvable") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCommitWitnessClaimPairResolvable };
-    ("free_call.non_fold_residue_wildcard_red_fixture_holds") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallNonFoldResidueWildcardRedFixtureHolds };
-    ("free_call.non_fold_residue_total_fold_green_fixture_holds") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallNonFoldResidueTotalFoldGreenFixtureHolds };
-    ("free_call.non_fold_residue_roster_red_fixture_holds") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallNonFoldResidueRosterRedFixtureHolds };
-    ("free_call.non_fold_residue_synthetic_unrostered_red_holds") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallNonFoldResidueSyntheticUnrosteredRedHolds };
     ("free_call.complexity_linearity_syntactic_finding_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallComplexityLinearitySyntacticFindingCount };
     ("free_call.complexity_linearity_wildcard_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallComplexityLinearityWildcardFacts };
     ("free_call.fallback_arm_census_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallFallbackArmCensusFacts };
@@ -715,6 +691,7 @@ pub enum TryV2StdCollectionMapPrimitiveGroundingArm {
     MapGroundingEmptyMap,
     MapGroundingMapInsert,
     MapGroundingLookup,
+    MapGroundingListAt,
 }
 
 #[rustfmt::skip]
@@ -726,6 +703,8 @@ pub fn lookup_try_v2_std_collection_map_primitive_grounding(spelling: &str) -> O
         "map_insert_primitive_delegate" => Some(TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingMapInsert),
         "map_lookup_primitive_delegate" => Some(TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingLookup),
         "map_lookup" => Some(TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingLookup),
+        "list_at_primitive_delegate" => Some(TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingListAt),
+        "list_at_optional" => Some(TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingListAt),
         _ => None,
     }
 }
@@ -735,6 +714,7 @@ macro_rules! try_v2_std_collection_map_primitive_grounding_arm {
     ("map_grounding.empty_map") => { $crate::v1_interpreter_dispatch_generated::TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingEmptyMap };
     ("map_grounding.map_insert") => { $crate::v1_interpreter_dispatch_generated::TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingMapInsert };
     ("map_grounding.lookup") => { $crate::v1_interpreter_dispatch_generated::TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingLookup };
+    ("map_grounding.list_at") => { $crate::v1_interpreter_dispatch_generated::TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingListAt };
 }
 #[rustfmt::skip]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

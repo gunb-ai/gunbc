@@ -1,6 +1,6 @@
 module gunbc.devboot.outcome
 
-import std.types { String, Bool, NonEmptyStr }
+import std.types { String, Bool, NonEmptyStr, brand }
 import std.measure { ByteSize }
 import std.content_hash { ContentHash, Sha256Digest }
 

@@ -33,7 +33,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // success describes the exit, never the existence or absence of emitted files.
 service typescript.Compiler {
   operation Compile {
-    requires Network
+    requires opaque
     input { workdir: FilePath, source_path: FilePath, out_dir: FilePath, target: String, module: String }
     output {
       success: Bool from "exit_success"

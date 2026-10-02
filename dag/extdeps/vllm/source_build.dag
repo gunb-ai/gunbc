@@ -207,6 +207,28 @@ data vllm_8d09804_sm121_recipe: VllmContainerBuildRecipe = VllmContainerBuildRec
 // are the ones a deployment legitimately chooses: which architectures to compile for, and how much of
 // the build machine to use. Everything else -- the revision, the bases, the toolchain pins -- is
 // upstream's and is not a knob.
+// THE SAME RECIPE AT A DIFFERENT FLASHINFER RELEASE. A candidate whose kernels need a later FlashInfer
+// than its source revision pins (gunbc.spark.v41_runtime_candidate v41_candidate_recipe) states the
+// version here, where the recipe is constructed, so the build key and the FLASHINFER_VERSION build
+// argument both read it from the one field.
+fn vllm_recipe_with_flashinfer(base: VllmContainerBuildRecipe, flashinfer_version: NonEmptyStr) -> VllmContainerBuildRecipe {
+  VllmContainerBuildRecipe {
+    source: base.source,
+    dockerfile_path: base.dockerfile_path,
+    build_target: base.build_target,
+    cuda_version: base.cuda_version,
+    build_base_image: base.build_base_image,
+    final_base_image: base.final_base_image,
+    python_version: base.python_version,
+    torch_version: base.torch_version,
+    flashinfer_version: flashinfer_version,
+    torch_cuda_arch_list: base.torch_cuda_arch_list,
+    install_kv_connectors: base.install_kv_connectors,
+    max_jobs: base.max_jobs,
+    nvcc_threads: base.nvcc_threads,
+  }
+}
+
 fn vllm_recipe_targeting(
   base: VllmContainerBuildRecipe,
   torch_cuda_arch_list: List<NonEmptyStr>,

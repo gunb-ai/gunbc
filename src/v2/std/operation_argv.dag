@@ -2,6 +2,7 @@ module v2.std.operation_argv
 
 import std.types { String, List, Bool }
 import v2.std.algebra { list_map }
+import v2.std.template { Template }
 
 // An operation's transport argv is materialized by binding THAT OPERATION'S OWN DECLARED INPUTS, by
 // name, from the declaration. The seed's prior materializer carried a fixed five-name vocabulary
@@ -48,12 +49,19 @@ fn operation_ref_label(at: OperationRef) -> String {
 // mechanism resolving the ref; a human reading a refusal wants the operation, and including a file
 // path would put a storage fact into a domain sentence.
 
+// The identity of one declared operation input. Every place this module names an input -- a
+// binding, a refusal cause, a declared-input row, a template hole -- carries this type, so a hole
+// and a binding compare as one identity rather than as two spellings (DESIGN 3).
+// In production, operation_argv_bind_text / operation_argv_bind_text_list are the only places that
+// mint it from a String; a fixture may cast a literal with `as OperationInputName` directly.
+type OperationInputName = String where brand("OperationInputName")
+
 type OperationInputValue
   = InputText { text: String }
   | InputTextList { items: List<String> }
 
 type OperationInputBinding {
-  name: String
+  name: OperationInputName
   value: OperationInputValue
 }
 
@@ -80,13 +88,19 @@ fn bind_operation_invocation(
 type ArgvRefusalCause
   = OperationNotFound
   | ArgvEmpty
-  | UndeclaredInputBound { name: String }
-  | DuplicateInputBinding { name: String }
-  | DeclaredInputUnbound { name: String }
+  | UndeclaredInputBound { name: OperationInputName }
+  | DuplicateInputBinding { name: OperationInputName }
+  | DeclaredInputUnbound { name: OperationInputName }
   | ExecutablePositionNotLiteral { detail: String }
-  | TokenListInStringPosition { name: String }
+  | TokenListInStringPosition { name: OperationInputName }
   | ArgvExpressionUnsupported { detail: String }
   | BindingMalformed { detail: String }
+
+// A transport string that interpolates a declared input, as a value: holes are OperationInputName, resolved
+// against the operation's declared inputs by its consumer (XL-2 3b-ii). An expression in a hole is
+// not a name and refuses as ArgvExpressionUnsupported; a list input in a hole refuses as
+// TokenListInStringPosition. No new refusal vocabulary.
+type ArgvTemplate = Template<OperationInputName>
 
 type ArgvMaterialization
   = ArgvMaterialized { argv: List<String> }
@@ -94,20 +108,20 @@ type ArgvMaterialization
 
 type ShellTransportOperationRow {
   at: OperationRef
-  declared_inputs: List<String>
-  argv_input_refs: List<String>
+  declared_inputs: List<OperationInputName>
+  argv_input_refs: List<OperationInputName>
 }
 
 fn operation_argv_bind_text(name: String, text: String) -> OperationInputBinding {
   OperationInputBinding {
-    name: name,
+    name: name as OperationInputName,
     value: InputText { text: text }
   }
 }
 
 fn operation_argv_bind_text_list(name: String, items: List<String>) -> OperationInputBinding {
   OperationInputBinding {
-    name: name,
+    name: name as OperationInputName,
     value: InputTextList { items: items }
   }
 }
@@ -149,11 +163,11 @@ fn operation_argv_cause_label(cause: ArgvRefusalCause) -> String {
   match cause {
     OperationNotFound => "OperationNotFound"
     ArgvEmpty => "ArgvEmpty"
-    UndeclaredInputBound { name: n } => concat("UndeclaredInputBound:", n)
-    DuplicateInputBinding { name: n } => concat("DuplicateInputBinding:", n)
-    DeclaredInputUnbound { name: n } => concat("DeclaredInputUnbound:", n)
+    UndeclaredInputBound { name: n } => concat("UndeclaredInputBound:", n as String)
+    DuplicateInputBinding { name: n } => concat("DuplicateInputBinding:", n as String)
+    DeclaredInputUnbound { name: n } => concat("DeclaredInputUnbound:", n as String)
     ExecutablePositionNotLiteral { detail: d } => concat("ExecutablePositionNotLiteral:", d)
-    TokenListInStringPosition { name: n } => concat("TokenListInStringPosition:", n)
+    TokenListInStringPosition { name: n } => concat("TokenListInStringPosition:", n as String)
     ArgvExpressionUnsupported { detail: d } => concat("ArgvExpressionUnsupported:", d)
     BindingMalformed { detail: d } => concat("BindingMalformed:", d)
   }
@@ -178,8 +192,8 @@ fn operation_argv_tokens_or_refusal_label(m: ArgvMaterialization) -> List<String
   }
 }
 
-fn operation_argv_row_binding_for_input(name: String) -> OperationInputBinding {
-  operation_argv_bind_text(name: name, text: concat("bound-", name))
+fn operation_argv_row_binding_for_input(name: OperationInputName) -> OperationInputBinding {
+  operation_argv_bind_text(name: name as String, text: concat("bound-", name as String))
 }
 
 fn operation_argv_row_bindings(row: ShellTransportOperationRow) -> List<OperationInputBinding> {
