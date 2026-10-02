@@ -1649,161 +1649,237 @@ fn test_operand_set_form_refusal_rendered(operand: &str) -> String {
     )
 }
 
-/// `gunbc.target_invocation` `BuiltIdentity`, mirrored. Classified from `GUNBC_BUILD_IDENTITY`,
-/// whose three spellings build.rs owns: `<40 hex>`, `<40 hex>-dirty`, `tree:<algo>:<hex>`.
+/// `gunbc.target_invocation` `BinaryInput`, mirrored.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BuiltIdentity {
-    AtCommit(String),
-    AtDirtyCommit(String),
-    AtTree(String),
+pub enum BinaryInput {
+    NotNewer(String),
+    Newer(String),
+    Missing(String),
+    OutsideWorktree(String),
 }
 
-pub fn built_identity_from(identity: &str) -> BuiltIdentity {
-    if let Some(tree) = identity.strip_prefix("tree:") {
-        // `tree:sha1:<hex>` -> the hex `git rev-parse HEAD^{tree}` prints.
-        let hex = tree.rsplit(':').next().unwrap_or(tree);
-        return BuiltIdentity::AtTree(hex.to_string());
-    }
-    match identity.strip_suffix("-dirty") {
-        Some(commit) => BuiltIdentity::AtDirtyCommit(commit.to_string()),
-        None => BuiltIdentity::AtCommit(identity.to_string()),
-    }
-}
-
-/// `gunbc.target_invocation` `HeadObservation`, mirrored.
+/// `gunbc.target_invocation` `BinaryInputObservation`, mirrored.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum HeadObservation {
+pub enum BinaryInputObservation {
     Observed {
-        commit: String,
-        tree: String,
-        uncommitted: Vec<String>,
+        binary: String,
+        inputs: Vec<BinaryInput>,
     },
-    Unobservable(String),
+    DepInfoUnreadable {
+        binary: String,
+        reason: String,
+    },
 }
 
 /// `gunbc.target_invocation` `BinaryFreshness`, mirrored.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BinaryFreshness {
-    AtHead {
-        head: String,
-        uncommitted: Vec<String>,
+    Fresh {
+        binary: String,
+        inputs: usize,
     },
     Stale {
-        built: String,
-        head: String,
+        binary: String,
+        input: String,
+        why: String,
     },
     Undecided {
-        built: String,
+        binary: String,
         reason: String,
     },
 }
 
-fn built_identity_rendered(built: &BuiltIdentity) -> String {
-    match built {
-        BuiltIdentity::AtCommit(b) => b.clone(),
-        BuiltIdentity::AtDirtyCommit(b) => format!("{b}-dirty"),
-        BuiltIdentity::AtTree(b) => format!("tree {b}"),
+fn binary_built_elsewhere(binary: &str, path: &str) -> BinaryFreshness {
+    BinaryFreshness::Undecided {
+        binary: binary.to_string(),
+        reason: format!(
+            "its dep-info names an input outside this worktree ({path}); it was built from another checkout, so nothing here says whether it answers for this one"
+        ),
     }
 }
 
-/// `gunbc.target_invocation` `assess_binary_freshness`, mirrored arm for arm.
-pub fn assess_binary_freshness(built: &BuiltIdentity, head: &HeadObservation) -> BinaryFreshness {
-    match head {
-        HeadObservation::Unobservable(reason) => BinaryFreshness::Undecided {
-            built: built_identity_rendered(built),
-            reason: reason.clone(),
+/// `gunbc.target_invocation` `binary_freshness_step`, mirrored arm for arm.
+fn binary_freshness_step(acc: BinaryFreshness, input: &BinaryInput) -> BinaryFreshness {
+    match acc {
+        BinaryFreshness::Undecided { .. } => acc,
+        BinaryFreshness::Stale { ref binary, .. } => match input {
+            BinaryInput::OutsideWorktree(p) => binary_built_elsewhere(binary, p),
+            _ => acc,
         },
-        HeadObservation::Observed {
-            commit,
-            tree,
-            uncommitted,
-        } => match built {
-            BuiltIdentity::AtCommit(b) if b == commit => BinaryFreshness::AtHead {
-                head: commit.clone(),
-                uncommitted: uncommitted.clone(),
+        BinaryFreshness::Fresh { binary, inputs } => match input {
+            BinaryInput::OutsideWorktree(p) => binary_built_elsewhere(&binary, p),
+            BinaryInput::Newer(p) => BinaryFreshness::Stale {
+                binary,
+                input: p.clone(),
+                why: "changed after the binary was built".to_string(),
             },
-            BuiltIdentity::AtCommit(b) => BinaryFreshness::Stale {
-                built: b.clone(),
-                head: commit.clone(),
+            BinaryInput::Missing(p) => BinaryFreshness::Stale {
+                binary,
+                input: p.clone(),
+                why: "no longer exists".to_string(),
             },
-            BuiltIdentity::AtTree(b) if b == tree => BinaryFreshness::AtHead {
-                head: commit.clone(),
-                uncommitted: uncommitted.clone(),
-            },
-            BuiltIdentity::AtTree(b) => BinaryFreshness::Stale {
-                built: format!("tree {b}"),
-                head: format!("tree {tree}"),
-            },
-            BuiltIdentity::AtDirtyCommit(b) => BinaryFreshness::Undecided {
-                built: format!("{b}-dirty"),
-                reason: "the binary was built from an uncommitted tree, so no commit names its bytes; commit and rebuild".to_string(),
+            BinaryInput::NotNewer(_) => BinaryFreshness::Fresh {
+                binary,
+                inputs: inputs + 1,
             },
         },
+    }
+}
+
+/// `gunbc.target_invocation` `assess_binary_freshness`, mirrored.
+pub fn assess_binary_freshness(observed: &BinaryInputObservation) -> BinaryFreshness {
+    match observed {
+        BinaryInputObservation::DepInfoUnreadable { binary, reason } => {
+            BinaryFreshness::Undecided {
+                binary: binary.clone(),
+                reason: reason.clone(),
+            }
+        }
+        BinaryInputObservation::Observed { binary, inputs } => inputs.iter().fold(
+            BinaryFreshness::Fresh {
+                binary: binary.clone(),
+                inputs: 0,
+            },
+            binary_freshness_step,
+        ),
     }
 }
 
 /// `gunbc.target_invocation` `binary_freshness_rendered`, mirrored.
 pub fn binary_freshness_rendered(f: &BinaryFreshness) -> String {
     match f {
-        BinaryFreshness::AtHead { head, .. } => format!("gunbc test: binary at HEAD {head}"),
-        BinaryFreshness::Stale { built, head } => format!(
-            "gunbc test: REFUSED cause=StaleBinary — this binary was built at {built} but HEAD is {head}; rebuild before measuring"
+        BinaryFreshness::Fresh { binary, .. } => {
+            format!("gunbc test: binary fresh against its dep-info: {binary}")
+        }
+        BinaryFreshness::Stale { binary, input, why } => format!(
+            "gunbc test: REFUSED cause=StaleBinary — {binary}: input {input} {why}; rebuild before measuring"
         ),
-        BinaryFreshness::Undecided { built, reason } => {
-            format!("gunbc test: REFUSED cause=BinaryFreshnessUndecided built={built} — {reason}")
+        BinaryFreshness::Undecided { binary, reason } => {
+            format!("gunbc test: REFUSED cause=BinaryFreshnessUndecided — {binary}: {reason}")
         }
     }
 }
 
-fn git_line(args: &[&str]) -> Result<String, String> {
-    let out = std::process::Command::new("git")
-        .args(args)
-        .current_dir(cli_run::process_workspace_root())
-        .output()
-        .map_err(|e| format!("git {}: {e}", args.join(" ")))?;
-    if !out.status.success() {
-        return Err(format!(
-            "git {} exited {:?}: {}",
-            args.join(" "),
-            out.status.code(),
-            String::from_utf8_lossy(&out.stderr).trim()
-        ));
+/// The inputs of a cargo dep-info file: the first rule's prerequisites, `\ `-escaped spaces
+/// unescaped. Cargo's uplifted `<bin>.d` is one rule, `<bin>: <input> <input> ...`.
+pub fn dep_info_inputs(dep_info: &str) -> Result<Vec<String>, String> {
+    let rule = dep_info
+        .lines()
+        .find(|l| !l.trim().is_empty() && !l.starts_with('#'))
+        .ok_or("dep-info carries no rule")?;
+    let (_, prerequisites) = rule
+        .split_once(": ")
+        .ok_or("dep-info rule has no `: ` separator")?;
+    let mut inputs = Vec::new();
+    let mut current = String::new();
+    let mut chars = prerequisites.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' if chars.peek() == Some(&' ') => {
+                current.push(' ');
+                chars.next();
+            }
+            ' ' => {
+                if !current.is_empty() {
+                    inputs.push(std::mem::take(&mut current));
+                }
+            }
+            other => current.push(other),
+        }
     }
-    Ok(String::from_utf8_lossy(&out.stdout).trim_end().to_string())
+    if !current.is_empty() {
+        inputs.push(current);
+    }
+    if inputs.is_empty() {
+        return Err("dep-info lists no inputs".to_string());
+    }
+    Ok(inputs)
 }
 
-/// The effectful half: what the checkout's HEAD is. Any git failure is `Unobservable`, which
-/// refuses -- never a pass because the question could not be asked.
-fn observe_head() -> HeadObservation {
+/// THE CRATE THE BINARY WAS BUILT FROM is the directory of the first `Cargo.toml` its dep-info
+/// lists; the checkout is that manifest's `src/v1/stage0` ancestor. Comparing that ONE root
+/// against ours is the "built elsewhere" test -- not a list of excluded prefixes. Registry and
+/// sysroot inputs are outside every checkout and are judged by mtime like any other input.
+///
+/// Git paths are skipped, with a reason: build.rs watches `HEAD`, `index`, `packed-refs` and the
+/// branch ref only to re-stamp `GUNBC_BUILD_IDENTITY`, the version string. `packed-refs` moves on
+/// any fetch in any worktree, so judging them would refuse a binary whose code did not change --
+/// the spurious refusal this check exists not to make. The cost is that a fresh binary may print
+/// an older commit as its identity; its bytes are still those that commit built.
+pub fn classify_binary_inputs(
+    inputs: &[String],
+    workspace: &std::path::Path,
+    built_at: std::time::SystemTime,
+) -> Vec<BinaryInput> {
+    let build_root = inputs
+        .iter()
+        .find(|p| p.ends_with("/src/v1/stage0/Cargo.toml"))
+        .map(|p| p.trim_end_matches("/src/v1/stage0/Cargo.toml").to_string());
+    let mut out = Vec::new();
+    if let Some(root) = &build_root {
+        if std::path::Path::new(root) != workspace {
+            out.push(BinaryInput::OutsideWorktree(root.clone()));
+        }
+    }
+    for input in inputs {
+        if input.contains("/.git/") {
+            continue;
+        }
+        let classified = match std::fs::metadata(input).and_then(|m| m.modified()) {
+            Err(_) => BinaryInput::Missing(input.clone()),
+            Ok(modified) if modified > built_at => BinaryInput::Newer(input.clone()),
+            Ok(_) => BinaryInput::NotNewer(input.clone()),
+        };
+        out.push(classified);
+    }
+    out
+}
+
+/// The effectful half: read the running binary's dep-info and stat its inputs. Every failure is
+/// `DepInfoUnreadable`, which refuses -- never a pass because the question could not be asked.
+fn observe_binary_inputs() -> BinaryInputObservation {
+    let exe = match std::env::current_exe() {
+        Ok(exe) => exe,
+        Err(e) => {
+            return BinaryInputObservation::DepInfoUnreadable {
+                binary: "<current_exe unreadable>".to_string(),
+                reason: e.to_string(),
+            }
+        }
+    };
+    let binary = exe.display().to_string();
+    let dep_info_path = exe.with_extension("d");
     let observed = (|| {
-        let commit = git_line(&["rev-parse", "HEAD"])?;
-        let tree = git_line(&["rev-parse", "HEAD^{tree}"])?;
-        let status = git_line(&["status", "--porcelain"])?;
-        let uncommitted = status
-            .lines()
-            .map(|l| l.get(3..).unwrap_or(l).to_string())
-            .collect();
-        Ok::<_, String>(HeadObservation::Observed {
-            commit,
-            tree,
-            uncommitted,
-        })
+        let built_at = std::fs::metadata(&exe)
+            .and_then(|m| m.modified())
+            .map_err(|e| format!("cannot read the binary's mtime: {e}"))?;
+        let text = std::fs::read_to_string(&dep_info_path)
+            .map_err(|e| format!("cannot read dep-info {}: {e}", dep_info_path.display()))?;
+        let inputs = dep_info_inputs(&text)?;
+        Ok::<_, String>(classify_binary_inputs(
+            &inputs,
+            &cli_run::process_workspace_root(),
+            built_at,
+        ))
     })();
-    observed.unwrap_or_else(HeadObservation::Unobservable)
+    match observed {
+        Ok(inputs) => BinaryInputObservation::Observed { binary, inputs },
+        Err(reason) => BinaryInputObservation::DepInfoUnreadable { binary, reason },
+    }
 }
 
-/// THE INVOCATION'S FIRST ACT: refuse a binary that does not answer for HEAD
+/// THE INVOCATION'S FIRST ACT: refuse a binary that no longer answers for its own inputs
 /// (`gunbc.target_invocation` `assess_binary_freshness`), then route. Kept beside `test_verb`
 /// rather than inside it so the routing tests stay a function of the operand alone.
-pub fn test_verb_at_head(operand: &str, build_identity: &str) -> InvocationOutcome {
-    let freshness = assess_binary_freshness(&built_identity_from(build_identity), &observe_head());
-    let line = binary_freshness_rendered(&freshness);
+pub fn test_verb_checked(operand: &str) -> InvocationOutcome {
+    test_verb_after(operand, &assess_binary_freshness(&observe_binary_inputs()))
+}
+
+fn test_verb_after(operand: &str, freshness: &BinaryFreshness) -> InvocationOutcome {
+    let line = binary_freshness_rendered(freshness);
     match freshness {
-        BinaryFreshness::AtHead { uncommitted, .. } => {
-            eprintln!("{line} uncommitted_paths={}", uncommitted.len());
-            for path in uncommitted.iter().take(20) {
-                eprintln!("  uncommitted {path}");
-            }
+        BinaryFreshness::Fresh { inputs, .. } => {
+            eprintln!("{line} inputs={inputs}");
             test_verb(operand)
         }
         BinaryFreshness::Stale { .. } | BinaryFreshness::Undecided { .. } => InvocationOutcome {
@@ -2688,36 +2764,98 @@ mod binary_freshness_tests {
     /// THE OLD BEHAVIOUR RAN THE INSTRUMENT ON EVERY ARM BELOW; the stale and undecided arms are
     /// the refusals it lacked. Mirrors `test.claim.target_invocation_witness`'s freshness tests.
     #[test]
-    fn a_stale_or_unverifiable_binary_is_refused_before_any_instrument_runs() {
-        let head = HeadObservation::Observed {
-            commit: "c2".into(),
-            tree: "t2".into(),
-            uncommitted: vec!["dag/x.dag".into()],
+    fn freshness_precedence_matches_the_model() {
+        let obs = |inputs: Vec<BinaryInput>| BinaryInputObservation::Observed {
+            binary: "bin".into(),
+            inputs,
         };
-        let at = |id: &str| assess_binary_freshness(&built_identity_from(id), &head);
-        assert!(matches!(at("c1"), BinaryFreshness::Stale { .. }));
-        assert!(matches!(at("c2"), BinaryFreshness::AtHead { .. }));
-        assert!(matches!(at("c2-dirty"), BinaryFreshness::Undecided { .. }));
-        assert!(matches!(at("tree:sha1:t2"), BinaryFreshness::AtHead { .. }));
-        assert!(matches!(at("tree:sha1:t1"), BinaryFreshness::Stale { .. }));
+        let fresh = assess_binary_freshness(&obs(vec![
+            BinaryInput::NotNewer("a".into()),
+            BinaryInput::NotNewer("b".into()),
+        ]));
+        assert!(matches!(fresh, BinaryFreshness::Fresh { inputs: 2, .. }));
+        match assess_binary_freshness(&obs(vec![
+            BinaryInput::NotNewer("a".into()),
+            BinaryInput::Newer("b".into()),
+            BinaryInput::Missing("c".into()),
+        ])) {
+            BinaryFreshness::Stale { input, .. } => assert_eq!(input, "b"),
+            other => panic!("{other:?}"),
+        }
         assert!(matches!(
-            assess_binary_freshness(
-                &built_identity_from("c2"),
-                &HeadObservation::Unobservable("no git".into())
-            ),
+            assess_binary_freshness(&obs(vec![
+                BinaryInput::Newer("b".into()),
+                BinaryInput::OutsideWorktree("/w/other".into()),
+            ])),
             BinaryFreshness::Undecided { .. }
         ));
-        // THE ROUTE, NOT ONLY THE DECISION: an all-zero commit is never HEAD, so the verb must
-        // refuse with status 2 and never reach the self-host producer.
-        let stale = test_verb_at_head(
-            "//gunbc/instruments:self-host",
-            "0000000000000000000000000000000000000000",
+        assert!(matches!(
+            assess_binary_freshness(&BinaryInputObservation::DepInfoUnreadable {
+                binary: "bin".into(),
+                reason: "none".into()
+            }),
+            BinaryFreshness::Undecided { .. }
+        ));
+    }
+
+    /// The observation over REAL files: a file touched after the build instant is named; a
+    /// git watch path is skipped; another checkout's manifest is outside; escaped spaces parse.
+    #[test]
+    fn dep_info_classification_over_real_files() {
+        let dir = std::env::temp_dir().join(format!("freshness-{}", std::process::id()));
+        let ws = dir.join("ws");
+        std::fs::create_dir_all(ws.join("src/v1/stage0")).unwrap();
+        let old = ws.join("old file.rs");
+        std::fs::write(&old, "x").unwrap();
+        let built_at = std::time::SystemTime::now();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let new = ws.join("new.rs");
+        std::fs::write(&new, "y").unwrap();
+        let manifest = ws.join("src/v1/stage0/Cargo.toml");
+        std::fs::write(&manifest, "").unwrap();
+        let text = format!(
+            "/t/gunbc: {} {} {} {} /nowhere/.git/index\n",
+            manifest.display(),
+            old.display().to_string().replace(' ', "\\ "),
+            new.display(),
+            ws.join("gone.rs").display()
         );
-        assert_eq!(stale.termination, Termination::Refused);
+        let inputs = dep_info_inputs(&text).unwrap();
+        assert_eq!(inputs.len(), 5);
+        let classified = classify_binary_inputs(&inputs, &ws, built_at);
+        assert_eq!(
+            classified.len(),
+            4,
+            "the .git path is skipped: {classified:?}"
+        );
+        assert!(classified.contains(&BinaryInput::NotNewer(old.display().to_string())));
+        assert!(classified.contains(&BinaryInput::Newer(new.display().to_string())));
+        assert!(classified.contains(&BinaryInput::Missing(
+            ws.join("gone.rs").display().to_string()
+        )));
+        let elsewhere = classify_binary_inputs(&inputs, &dir.join("other"), built_at);
+        assert_eq!(
+            elsewhere[0],
+            BinaryInput::OutsideWorktree(ws.display().to_string())
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// THE ROUTE: a stale verdict refuses with status 2 and never reaches the producer.
+    #[test]
+    fn a_stale_binary_is_refused_before_any_instrument_runs() {
+        let stale = BinaryFreshness::Stale {
+            binary: "bin".into(),
+            input: "a.rs".into(),
+            why: "changed after the binary was built".into(),
+        };
+        let outcome = test_verb_after("//gunbc/instruments:self-host", &stale);
+        assert_eq!(outcome.termination, Termination::Refused);
         assert!(
-            stale.message.contains("cause=StaleBinary"),
+            outcome.message.contains("cause=StaleBinary"),
             "{}",
-            stale.message
+            outcome.message
         );
+        assert!(outcome.message.contains("a.rs"));
     }
 }

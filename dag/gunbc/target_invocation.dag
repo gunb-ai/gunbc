@@ -270,76 +270,92 @@ fn invocation_refusal_rendered(cause: TargetInvocationRefusal) -> String {
 // IS THE BINARY ANSWERING FOR THE TREE IT IS ABOUT TO READ?
 //
 // Every instrument behind `gunbc test` is compiled into the binary that runs it, and reads a live
-// tree beside it. A binary built at an older commit answers for code that is no longer HEAD, and
-// its reading is reported under the current head's name. That is a silent wrong answer, and it
-// recurred four times in one day before this check existed. So the invocation's first act is to
-// ask whether the binary's build identity names HEAD, and refuse when it does not or when nothing
-// can say.
+// tree beside it. A binary whose inputs have changed since it was built answers for code that is
+// no longer there, and its reading is reported under the current tree's name -- a silent wrong
+// answer, four incidents in one day before this check existed. So the invocation's first act is
+// to ask whether the binary still answers for its inputs, and refuse when it does not or when
+// nothing can say.
 //
-// EQUALITY OF COMMIT, NOT A GUESS ABOUT WHICH PATHS MATTER. A rule like "stale only if a seed
-// path changed" needs a closed list of the files the binary depends on, and the seed
-// `include_str!`s `.dag` and tool files from outside its crate directories, so any such list is a
-// heuristic that would pass exactly the skew it missed. A `.dag`-only commit therefore forces a
-// rebuild. That cost is priced, not hidden.
+// THE INPUT SET IS THE ONE RUSTC RECORDED, NOT A LIST WE AUTHOR. Cargo's dep-info beside the
+// binary (`<bin>.d`) lists every file the compile read, `include_str!` files included, so the
+// set is exact, not a path heuristic. Keying on HEAD equality instead would refuse a correct binary
+// after every unrelated commit, which teaches people to route around the check
+// (calm-boar-904's ruling on #13007).
 //
-// UNCOMMITTED EDITS ARE THE SUBJECT, NOT THE BINARY. A clean-built binary at HEAD over a dirty
-// tree is fresh: the edits are the live input the instrument reads, which `InvocationOutcome`
-// already disclaims binding to. They are named on the fresh arm so the reading says what it read
-// over. A binary built FROM a dirty tree has no commit its bytes are equal to, so it is
-// unverifiable, not fresh.
-type BuiltIdentity
-  = BuiltAtCommit { commit: String }
-  | BuiltAtDirtyCommit { commit: String }
-  | BuiltAtTree { tree: String }
+// The comparison is cargo's own rule, an input newer than the binary. So a refusal here means
+// exactly "cargo build would rebuild". It is NOT content-exact: an input whose mtime moved
+// without its bytes changing refuses too, as cargo would rebuild. A content-exact check needs a
+// digest recorded AFTER the compile that writes dep-info, which no in-tree build hook can do.
+//
+// An input outside this worktree is the shared-target hazard: `/cargo-target` serves a binary
+// another worktree built, and its dep-info names that worktree's files. Nothing here can say
+// whether those files match ours, so that is undecided, not fresh.
+//
+// The host classifies each input (the effectful mtime and path reads); this function decides
+// the precedence: undecided beats stale beats fresh, so an unjudgeable input is never masked by a
+// staleness verdict and a stale input never by a fresh one.
+type BinaryInput
+  = InputNotNewer { path: String }
+  | InputNewer { path: String }
+  | InputMissing { path: String }
+  | InputOutsideWorktree { path: String }
 
-type HeadObservation
-  = HeadObserved { commit: String, tree: String, uncommitted: List<String> }
-  | HeadUnobservable { reason: String }
+type BinaryInputObservation
+  = InputsObserved { binary: String, inputs: List<BinaryInput> }
+  | DepInfoUnreadable { binary: String, reason: String }
 
 type BinaryFreshness
-  = BinaryAtHead { head: String, uncommitted: List<String> }
-  | BinaryStale { built: String, head: String }
-  | BinaryFreshnessUndecided { built: String, reason: String }
+  = BinaryFresh { binary: String, inputs: Int }
+  | BinaryStale { binary: String, input: String, why: String }
+  | BinaryFreshnessUndecided { binary: String, reason: String }
 
-fn assess_binary_freshness(built: BuiltIdentity, head: HeadObservation) -> BinaryFreshness {
-  match head {
-    HeadUnobservable { reason: r } =>
-      BinaryFreshnessUndecided { built: built_identity_rendered(built: built), reason: r }
-    HeadObserved { commit: c, tree: t, uncommitted: u } =>
-      match built {
-        BuiltAtCommit { commit: b } =>
-          if b == c { BinaryAtHead { head: c, uncommitted: u } } else { BinaryStale { built: b, head: c } }
-        BuiltAtTree { tree: b } =>
-          if b == t { BinaryAtHead { head: c, uncommitted: u } } else { BinaryStale { built: concat("tree ", b), head: concat("tree ", t) } }
-        BuiltAtDirtyCommit { commit: b } =>
-          BinaryFreshnessUndecided {
-            built: concat(b, "-dirty"),
-            reason: "the binary was built from an uncommitted tree, so no commit names its bytes; commit and rebuild"
-          }
+// One input's step. An undecided verdict absorbs every later input; a stale one absorbs every
+// later input except an outside one, which outranks it.
+fn binary_freshness_step(acc: BinaryFreshness, input: BinaryInput) -> BinaryFreshness {
+  match acc {
+    BinaryFreshnessUndecided { binary: _, reason: _ } => acc
+    BinaryStale { binary: b, input: _, why: _ } =>
+      match input {
+        InputOutsideWorktree { path: p } => binary_built_elsewhere(binary: b, path: p)
+        _ => acc
+      }
+    BinaryFresh { binary: b, inputs: n } =>
+      match input {
+        InputOutsideWorktree { path: p } => binary_built_elsewhere(binary: b, path: p)
+        InputNewer { path: p } => BinaryStale { binary: b, input: p, why: "changed after the binary was built" }
+        InputMissing { path: p } => BinaryStale { binary: b, input: p, why: "no longer exists" }
+        InputNotNewer { path: _ } => BinaryFresh { binary: b, inputs: n + 1 }
       }
   }
 }
 
-fn built_identity_rendered(built: BuiltIdentity) -> String {
-  match built {
-    BuiltAtCommit { commit: b } => b
-    BuiltAtDirtyCommit { commit: b } => concat(b, "-dirty")
-    BuiltAtTree { tree: b } => concat("tree ", b)
+fn binary_built_elsewhere(binary: String, path: String) -> BinaryFreshness {
+  BinaryFreshnessUndecided {
+    binary: binary,
+    reason: concat(concat("its dep-info names an input outside this worktree (", path),
+      "); it was built from another checkout, so nothing here says whether it answers for this one")
   }
 }
 
-// Only `BinaryAtHead` admits the invocation; both other arms terminate `InvocationRefused` (exit
+fn assess_binary_freshness(observed: BinaryInputObservation) -> BinaryFreshness {
+  match observed {
+    DepInfoUnreadable { binary: b, reason: r } => BinaryFreshnessUndecided { binary: b, reason: r }
+    InputsObserved { binary: b, inputs: is } =>
+      fold(is, init: BinaryFresh { binary: b, inputs: 0 }, f: fn(acc, i) {
+        binary_freshness_step(acc: acc, input: i)
+      })
+  }
+}
+
+// Only `BinaryFresh` admits the invocation; both other arms terminate `InvocationRefused` (exit
 // 2, no observation) with their line, never a warning printed beside a reading.
 fn binary_freshness_rendered(f: BinaryFreshness) -> String {
   match f {
-    BinaryAtHead { head: h, uncommitted: _ } =>
-      concat("gunbc test: binary at HEAD ", h)
-    BinaryStale { built: b, head: h } =>
-      concat(concat(concat(concat(
-        "gunbc test: REFUSED cause=StaleBinary — this binary was built at ", b), " but HEAD is "), h),
-        "; rebuild before measuring")
-    BinaryFreshnessUndecided { built: b, reason: r } =>
-      concat(concat(concat(
-        "gunbc test: REFUSED cause=BinaryFreshnessUndecided built=", b), " — "), r)
+    BinaryFresh { binary: b, inputs: _ } => concat("gunbc test: binary fresh against its dep-info: ", b)
+    BinaryStale { binary: b, input: p, why: w } =>
+      concat(concat(concat(concat(concat(concat(
+        "gunbc test: REFUSED cause=StaleBinary — ", b), ": input "), p), " "), w), "; rebuild before measuring")
+    BinaryFreshnessUndecided { binary: b, reason: r } =>
+      concat(concat(concat("gunbc test: REFUSED cause=BinaryFreshnessUndecided — ", b), ": "), r)
   }
 }

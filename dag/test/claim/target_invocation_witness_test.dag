@@ -41,9 +41,9 @@ import gunbc.target_binding {
   BareChannelEntryAbsent, BareChannelIndexRefused,
 }
 import gunbc.target_invocation {
-  BuiltIdentity, BuiltAtCommit, BuiltAtDirtyCommit, BuiltAtTree,
-  HeadObservation, HeadObserved, HeadUnobservable,
-  BinaryFreshness, BinaryAtHead, BinaryStale, BinaryFreshnessUndecided,
+  BinaryInput, InputNotNewer, InputNewer, InputMissing, InputOutsideWorktree,
+  BinaryInputObservation, InputsObserved, DepInfoUnreadable,
+  BinaryFreshness, BinaryFresh, BinaryStale, BinaryFreshnessUndecided,
   assess_binary_freshness,
   TargetInvocationRoute, TargetInvocationRouted, TargetInvocationRouteRefused,
   TargetInvocationRefusal,
@@ -1102,45 +1102,36 @@ test fn a_refused_single_target_renders_the_label_grammars_located_cause() -> Bo
 }
 
 // STALE-BINARY CONTROLS. Before `assess_binary_freshness` existed every arm below ran its
-// instrument; the stale and dirty arms are the reds that old behaviour lacked.
-fn freshness_head() -> HeadObservation {
-  HeadObserved { commit: "c2", tree: "t2", uncommitted: ["dag/x.dag"] }
+// instrument; the stale and undecided arms are the reds that old behaviour lacked. The fresh arm
+// is the positive control that an unrelated commit no longer refuses: no input moved.
+fn observed(inputs: List<BinaryInput>) -> BinaryInputObservation {
+  InputsObserved { binary: "bin", inputs: inputs }
 }
 
-test fn a_binary_built_at_an_older_commit_is_refused_as_stale() -> Bool {
-  match assess_binary_freshness(built: BuiltAtCommit { commit: "c1" }, head: freshness_head()) {
-    BinaryStale { built: b, head: h } => b == "c1" && h == "c2"
-    _ => false
-  }
-}
-
-test fn a_binary_at_head_is_admitted_and_carries_the_uncommitted_paths() -> Bool {
-  match assess_binary_freshness(built: BuiltAtCommit { commit: "c2" }, head: freshness_head()) {
-    BinaryAtHead { head: h, uncommitted: u } => h == "c2" && count(u) == 1
+test fn a_binary_whose_inputs_did_not_move_is_fresh() -> Bool {
+  match assess_binary_freshness(observed: observed(inputs: [InputNotNewer { path: "a.rs" }, InputNotNewer { path: "b.dag" }])) {
+    BinaryFresh { binary: _, inputs: n } => n == 2
     _ => false
   }
 }
 
-test fn a_dirty_build_or_an_unobservable_head_is_undecided_not_fresh() -> Bool {
-  let dirty = match assess_binary_freshness(built: BuiltAtDirtyCommit { commit: "c2" }, head: freshness_head()) {
-    BinaryFreshnessUndecided { built: _, reason: _ } => true
+test fn the_first_changed_input_is_named_as_stale() -> Bool {
+  match assess_binary_freshness(observed: observed(inputs: [InputNotNewer { path: "a.rs" }, InputNewer { path: "b.rs" }, InputMissing { path: "c.rs" }])) {
+    BinaryStale { binary: _, input: p, why: _ } => p == "b.rs"
     _ => false
   }
-  let blind = match assess_binary_freshness(built: BuiltAtCommit { commit: "c2" }, head: HeadUnobservable { reason: "no git" }) {
-    BinaryFreshnessUndecided { built: _, reason: _ } => true
-    _ => false
-  }
-  dirty && blind
 }
 
-test fn a_tree_identity_is_compared_against_the_head_tree() -> Bool {
-  let at = match assess_binary_freshness(built: BuiltAtTree { tree: "t2" }, head: freshness_head()) {
-    BinaryAtHead { head: _, uncommitted: _ } => true
+test fn an_input_from_another_worktree_outranks_staleness() -> Bool {
+  match assess_binary_freshness(observed: observed(inputs: [InputNewer { path: "b.rs" }, InputOutsideWorktree { path: "/w/other/a.rs" }])) {
+    BinaryFreshnessUndecided { binary: _, reason: _ } => true
     _ => false
   }
-  let stale = match assess_binary_freshness(built: BuiltAtTree { tree: "t1" }, head: freshness_head()) {
-    BinaryStale { built: _, head: _ } => true
+}
+
+test fn unreadable_dep_info_is_undecided_not_fresh() -> Bool {
+  match assess_binary_freshness(observed: DepInfoUnreadable { binary: "bin", reason: "no bin.d" }) {
+    BinaryFreshnessUndecided { binary: _, reason: _ } => true
     _ => false
   }
-  at && stale
 }

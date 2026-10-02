@@ -795,10 +795,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
         // each refuses instrument producers by design, so either would answer a question this
         // verb is not asking.
         RetainedCommands::Test { target } => {
-            let outcome = cli_run::target_invocation_host::test_verb_at_head(
-                &target,
-                env!("GUNBC_BUILD_IDENTITY"),
-            );
+            let outcome = cli_run::target_invocation_host::test_verb_checked(&target);
             Verdict {
                 status: cli_run::target_invocation_host::invocation_exit_status(
                     outcome.termination,
