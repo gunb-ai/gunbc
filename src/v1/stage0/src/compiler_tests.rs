@@ -4482,6 +4482,76 @@ mod compiler_tests {
     }
 
     #[test]
+    fn std_nat_emitted_realization_agrees_with_the_interpreted_witness() {
+        use crate::std_nat::{NatDivision, NatSubtraction};
+        let three: i64 = 3;
+        let seventeen = crate::std_nat::nat_add(crate::std_nat::nat_mul(three, 5), 2);
+        assert_eq!(
+            seventeen, 17,
+            "numerals and arithmetic are the integers they denote"
+        );
+        assert_eq!(
+            crate::std_nat::nat_cata(three, 10i64, |acc: i64| acc + 7),
+            31,
+            "the eliminator applies its step once per successor"
+        );
+        assert_eq!(
+            crate::std_nat::nat_cata(0, 10i64, |acc: i64| acc + 7),
+            10,
+            "the eliminator over zero is its zero case"
+        );
+        assert!(crate::std_nat::is_zero(0) && !crate::std_nat::is_zero(three));
+        assert!(
+            matches!(&*crate::std_nat::nat_sub(seventeen, three), NatSubtraction::NatDifference { value } if *value == 14)
+        );
+        assert!(matches!(
+            &*crate::std_nat::nat_sub(three, seventeen),
+            NatSubtraction::NatSubtrahendExceedsMinuend
+        ));
+        assert!(
+            matches!(&*crate::std_nat::nat_div_rem(seventeen, 5), NatDivision::NatQuotientRemainder { quotient, remainder } if *quotient == 3 && *remainder == 2)
+        );
+        assert!(matches!(
+            &*crate::std_nat::nat_div_rem(seventeen, 0),
+            NatDivision::NatDivisionByZero
+        ));
+        let by_succ = crate::std_nat::nat_div_rem_by_succ(seventeen, 4);
+        assert_eq!(
+            (by_succ.quotient, by_succ.remainder),
+            (3, 2),
+            "division by a successor has no zero arm and divides"
+        );
+    }
+
+    #[test]
+    fn std_nat_emitted_operators_refuse_overflow_through_the_runtime_helpers() {
+        let clamp = |overhead_s: i64| {
+            std::rc::Rc::new(crate::std_realization_schedule::RunnableBatchClamp {
+                overhead: crate::std_measure::second(overhead_s),
+                per_unit: crate::std_measure::millisecond(5),
+                authority: crate::std_decl_ref::decl_ref("ct".to_string(), "clamp".to_string()),
+            })
+        };
+        assert_eq!(
+            crate::std_realization_schedule::runnable_batch_clamp_ms(clamp(2), 3),
+            2015,
+            "an in-range clamp is the integer it denotes"
+        );
+        let refusal = std::panic::catch_unwind(|| {
+            crate::std_realization_schedule::runnable_batch_clamp_ms(clamp(i64::MAX / 10), 0)
+        })
+        .expect_err("a Nat product past i64 must refuse");
+        let text = refusal
+            .downcast_ref::<String>()
+            .cloned()
+            .unwrap_or_default();
+        assert!(
+            text.starts_with("integer overflow:"),
+            "the Nat product must refuse through v1_rt, got {text:?}"
+        );
+    }
+
+    #[test]
     fn render_rust_applied_type_routes_qualified_base_through_leaf_name() {
         // Discriminating witness (PR #7269 / sharp-bee-290 msg_6c27c10b): namespace-qualified
         // applied-type bases must route through rust_fn_sig_leaf_name, not authored_name_at
@@ -4704,9 +4774,9 @@ mod compiler_tests {
             "the grounded numeric declaration must realize as the host numeric"
         );
         assert_eq!(
-            base("Nat", "src/v2/std/nat.dag"),
+            base("Nat", "dag/test/claim/user_declared_peano.dag"),
             "Nat",
-            "the Peano declaration of the same spelling must NOT realize as a machine integer"
+            "a user-declared type of the same spelling must NOT realize as a machine integer"
         );
         // POSITIVE CONTROL. Without it every row above is satisfied by a renderer that had simply
         // stopped consulting identity and echoed the authored name, which is half of each pair.
