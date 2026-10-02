@@ -47,7 +47,7 @@ Audit of every Arrow reader outside `src/v2/test`. "Metadata" means: handled exa
 | `v2.compiler.resolve` `resolve_arrow_node_in` | resolved under the body scope | effect claims and execution mode: carried unwalked. Resource requirements: walked in the Arrow's type scope (no value params), each member must name a declared resource, at most once (`resolve_arrow_resource_requirements`). **Landed with D13 step (a)** |
 | `v2.compiler.infer` `infer_gather_fold_step` / `infer_arrow_signature_order_edge` | inferred as a value child | skip every contract edge. **Landed with D13 step (a)** |
 | `v2.compiler.infer` `infer_product_child_evidence_edges` (the Arrow's derived TYPE) | its type enters the derived type | every contract edge rides as metadata. **Landed with D13 step (a)** |
-| `v2.compiler.translate` `translate_grounding_derived_gate_subtree` | requires grounding for every subtree node | exempt (metadata). Still owed by PR2c: the gate runs only over BODIED Arrows, and the requirements edge rides only on bodiless operation Arrows, so step (a) produces no input it can reach |
+| `v2.compiler.translate` `translate_grounding_derived_gate_subtree` | requires grounding for every subtree node | exempt (metadata). **Landed with PR2c-i**: the walk skips a contract edge under an Arrow (`translate_edge_is_arrow_contract`, reading `arrow_named_edge_is_contract`), so a claim payload is never required to carry grounding. Discriminator: `v2.test.claim.translate_underived_refusal` `translate_gates_a_positional_payload_but_not_a_contract_payload_holds` |
 | `v2.std.node` content hash (`canonicalize_arrow_labeled`) | hashes every edge, named edges sorted by label | in the hash, order-independent (tested here) |
 
 Readers that ignore a named edge safely: the domain, codomain and body readers in resolve, infer, eval, translate and `v2.std.compilers.target_model`; `v2.std.node_query`; `v2.std.decl_index`; `v2.compiler.symbol_index_fill`; `v2.compiler.emit_produced`; `v2.compiler.compile`; `v2.std.node` `cost_edge_role`; `v2.lens.cost.copied_port_derivation`.
@@ -56,11 +56,11 @@ Readers that ignore a named edge safely: the domain, codomain and body readers i
 
 The two families have different producers and different consumers, so each has its own standing.
 
-### Effect claims and execution mode (PR2a): a declared frontier
+### Effect claims and execution mode (PR2a, produced by PR2c-i): consumer a declared frontier
 
 - **Consumed by execution:** the conformance wall (`v2.std.node` `arrow_signature_edges_conform`, reached by every `well_formed` check of an Arrow) and `v2.test.claim.arrow_contract_edge_conformance`. The pipeline reader arms (resolve carries both unwalked; infer and `type_binder` skip them) landed with D13 step (a), the first producer of any contract edge.
-- **Production consumer, a named later change:** PR2c. The operation-modifier lowering (`v2.compiler.body_lowering_fold` `body_lower_operation`) emits both edges, and `translate_grounding_derived_gate_subtree` gains its metadata arm in the same change.
-- **Transition trigger:** PR2c lands. If PR2c is abandoned, these two edges, their conformance and their arms in the readers are deleted, not left standing.
+- **Produced by execution (PR2c-i):** the operation-modifier lowering (`v2.compiler.body_lowering_fold` `body_lower_operation_modifier`) emits both edges from `readonly`, `idempotent` and `hermetic`, and refuses a repeated modifier at the second (`v2.test.claim.normalize.operation_modifier`). `translate_grounding_derived_gate_subtree` carries them as metadata in the same change.
+- **Consumer of the claims themselves, still a declared frontier:** no stage yet reads an effect claim or the execution mode to decide anything (retry admission, caching, hermetic placement). Trigger: the first such reader lands and consumes the edge off the operation Arrow; until then the conformance wall and the reader arms are the consumers.
 - **Why ahead of the consumer:** the 2026-10-01 ruling asked for the substrate change to be reviewable on its own diff.
 
 ### Resource requirements (D13 step a): producer landed, demand consumer a declared frontier
