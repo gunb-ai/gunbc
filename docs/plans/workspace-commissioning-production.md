@@ -1,0 +1,99 @@
+# Initial workspace commissioning: implementation standing
+
+This branch extends allocation integration `7e64f4bcd7a0b93d88e82577596c26c1bd8eadfa`. It is not a commissioned-host receipt. No reservation, VM launch or slot commissioning has occurred. The separate storage prerequisite has now applied successfully, as recorded below.
+
+## Current dispatch checkpoint
+
+The latest local qualification passes 40 roadmap, 36 workflow, 20 scope, 4 dispatch and 2 readiness controls. The generated workflow now exposes the host/revision-bound commissioning plan choice. Scope metadata no longer imports the VM controller into the workflow. See [the workflow qualification receipt](receipts/workflow-qualification-2026-10-01/README.md), including the memory and generation limits. Integrated exact-head CI and all live acceptance remain outstanding.
+
+The commissioning fleet scope and protected dispatcher are now connected in source. The earlier checkpoint sections below describe historical gaps; the current qualification receipt is [fleet dispatch qualification](receipts/workspace-executor-dispatch-2026-09-30/README.md). No production installation or commissioning is claimed. The initial combined fleet regression was OOM-killed at 12 GiB after 70/87 passes. Its unchanged test population now passes as 86 fleet controls plus one isolated workflow control under the same cap; see [the qualification repair receipt](receipts/workspace-qualification-2026-10-01/README.md). Exact-head CI remains a separate gate.
+
+Fleet apply preserves run/revision/host/artifact admission, captures the reviewed bytes, and publishes one immutable root-custodied CAS bundle. It starts or reattaches to the installed executor under the existing fleet lock, then releases that lock before waiting so the executor can own the transaction. The dispatcher requires the same executor invocation, a successful terminal, protected completed journal and durable fleet-generation readback before publishing `FullyApplied`. Cancellation leaves the host-owned executor recoverable; the generic fleet generation writer does not run on this path.
+
+The root entry points are exact-release, argument-free commands with stdin data and narrowly generated grants. An operator-local invocation adopts the existing fleet lock owner. The native wait loop does not load the interpreter on each poll. Identical reviewed input can retry; different input cannot replace an existing slot commissioning transaction. Replacing or aborting that protected input is not implemented by this slice.
+
+The next operational gate is an exact reviewed release installation and read-only commissioning plan, followed by bounded commissioning acceptance. Initial readiness, reservation, boot, SSH, release and same-slot reuse remain unexecuted.
+
+## Implemented source connections
+
+- Initial admission remains the existing budget/purpose/history/sanitation authority.
+- A separate commissioning CAS journal records prepared and committed provenance: slot, plan, revision, controller/image identities, CPU and memory boundary, no-swap policy, sanitation identity and initial generation.
+- The existing file-CAS implementation owns conditional publication. Commissioning journal generations never consume allocation/hold generations. Missing or unreadable roots refuse. Both the directory and the selected immutable generation file must be root-owned and protected against other writers.
+- The bounded reconciliation routine composes prepare publication, existing readiness persistence, commit publication, and final readback. Publication rechecks readiness and CAS; restart recovery uses recorded authority and refuses advanced or quarantined readiness while still prepared.
+- Preparation and offer production now require a sealed committed readback. Initial admission and a prepared journal do not satisfy that type. Supply rechecks the protected journal and readiness; restoring the original commissioning basis does not reset current cell generation.
+- The existing controller installer provisions the separate root-owned journal directory and reads ownership back. It does not create a journal record or initial readiness.
+
+## Still required before a host run
+
+The installed slot controller's credential dispatcher now recognizes the canonical commissioning directive, binds it to the unit instance and actual host, resolves the existing network sanitation subject, and invokes fresh admission followed by reconciliation. A successful controller outcome means protected readiness and provenance were read back. It is not a VM launch. No standalone privileged commissioning CLI is provided.
+
+The enclosing reviewed fleet commissioning plan/apply path is still missing. In particular, the existing slot unit is `Type=exec`: starting it does not wait for its controller to finish. Reusing the ordinary allocation start operations alone would release the fleet apply exclusion too early. The commissioning apply must retain exclusion until the exact invocation's commit/readback or explicit failure; timeout and workflow interruption must not let uncertain work masquerade as settled. This remains a deployment blocker.
+
+The remaining subject must bind a reviewed fleet plan to fresh host facts: exact installed runtime/image, 28 GiB/no-swap cell and separate controller budget, withdrawal of competing starts, complete history, slot-scoped sanitation (or recovery of a real prior attempt), and expected journal/readiness heads. It must route that subject through the existing slot controller and preserve exclusion until journal commit/readback. Unknown physical residue must refuse; no invented attempt identity is allowed.
+
+Read-only producers now observe cell/network/storage sanitation, protected controller history, existing host budget conservation, cell/controller limits, root-owned controller and image digests, and withdrawal of the prior reservation service. Missing storage and unreadable observations refuse. Sanitation is reread before every journal phase, and its identity covers the observed subject and facts rather than the observation clock. The reviewed commissioning plan/apply projection and its exclusion/recovery boundary remain unfinished. Consequently this source must not be deployed as completed commissioning. The slot remains unavailable until the full production connection and wet acceptance are qualified.
+
+## Qualification
+
+Exploratory controls: 8 transition claims and 4 canonical-record claims passed under 6 GiB/no swap. Preparation and controller composition closures typechecked under the same cap. Those are local source checks over recorded dependency snapshots, not concurrency, filesystem durability, installed-runtime or fleet acceptance evidence. At source head `7e4ae78ab02818da0e47241555d2f372d74c5392`, all 12 claims and the controller composition passed under 6 GiB/no swap. The full serve entry reached loopback readiness in 271.405 seconds under 12 GiB/no swap, with no OOM events. That is a local startup check, not deployment or VM acceptance. At `bb9a1d67b6704e2495f9a62d7767d9f505803bcc`, the 12 claims and controller composition passed again under 6 GiB/no swap after record-custody hardening. Three scoped compiler admission probes also passed over the recorded dependency snapshot; their receipt records the intervening indentation-only normalization. These prove constructor-access boundaries, not that every imported compiler diagnostic is absent. No privileged filesystem or concurrent host commissioning test has run.
+
+Storage prerequisite #12657 remains on review HOLD. Its corrected read-only plan run [36621851623](https://github.com/gunb-ai/gunbc/actions/runs/36621851623) succeeded at `28861d7d4a491c89a3c0784f5d3c5e1df950ca44`. Downloaded artifact inspection established both root-owned 0700 directory ensures in the human plan and executable script, with matching host/revision/run/generation receipt fields. All required checks passed at that repair head. Apply run [36635360479](https://github.com/gunb-ai/gunbc/actions/runs/36635360479), bound to the corrected plan and artifact hash `6b0cfb91ef522bcc`, completed its apply step successfully with a bound fully_applied receipt, generation 16 to 17. Independent metadata readback confirmed both directories as root:root 0700. Follow-up read-only plan [36637771191](https://github.com/gunb-ai/gunbc/actions/runs/36637771191) failed because the unprivileged observer could not list the protected namespace; a genuine no-op replan is still owed. The obsolete run 36616988377 must not be applied because its script omitted both installation operations. Runner availability is owned elsewhere; this lane leaves runner services alone.
+
+The current host-observation/controller slice passed six directive/history controls and the full 777-module controller composition under 6 GiB/no swap. [Exact dependency snapshots and logs](receipts/workspace-commissioning-host-observers-2026-09-29/README.md) distinguish pure controls from actual host acceptance. Full serve startup at `c2528d9ef3451d53dde3a0a47523e9d712e0016c` subsequently reached loopback readiness in 240.323 seconds under 12 GiB/no swap with no OOM events, and the check stopped its owned process. This is integrated startup, not live deployment or allocation acceptance.
+
+All ten initial-sanitation controls subsequently passed under 6 GiB/no swap, including late process appearance, unreadable TAP ownership, and an old-attempt mount. The same receipt directory records their exact dependency snapshot.
+
+## Review 5359751040 follow-up
+
+The original no-op storage replan 36637771191 failed because the runner could not enumerate the correctly installed 0700 directories. Repair is in the storage prerequisite branch; permissions remain unchanged.
+
+CPU provenance now must exactly equal the desired slot CPU boundary. A workspace-designated shakedown cell derives that finite boundary from the largest supported workspace profile (four CPUs); other slots retain the existing runner CPU policy. Six controls passed under 6 GiB/no swap, including refusal of an eight-CPU credential and preservation of an unrelated slot’s unbounded runner policy. Installation must still establish and read back that desired boundary. This source change is not a live limit change.
+
+Commissioning provenance now also carries the installed source-tree digest. Runtime reads the existing root-owned installer tree receipt and requires both revision and digest to match. Ten focused controls and the complete controller composition passed under 6 GiB/no swap; [receipt and source manifests](receipts/workspace-installed-tree-binding-2026-09-30/README.md) describe the limits of this evidence. The guarded fleet apply subject remains outstanding.
+
+The privileged storage observer repair passed its actual srv1 read-only plan in [36656014104](https://github.com/gunb-ai/gunbc/actions/runs/36656014104) at source `e7d13768d49dc392b891c184b513350afb4db986`: both protected directories present with uid/gid 0 and mode 700, zero ensure operations, and matching run-bound receipt. No no-op apply was dispatched. Storage re-observation is established; initial slot commissioning remains outstanding.
+
+Integrated floor run 36655903531 failed on missing imports and stale import-debt standings before changed-witness execution. Those specific defects have source repairs; the recursive-workflow witness passed locally. The shared slot-start wait now checks the expected InvocationID around activity reads and after receipt readback, with four controls passing under 6 GiB/no swap. Neither result qualifies the still-missing guarded commissioning apply.
+
+Re-review 5360810834: main@81d292e9dbb was merged through the parent allocation branch and reconciled at c74d34ef844. Eight HTTP transport tests passed on parent 6eeb14c95cd. Integrated floor 36661497113 then refused the missing `any` import in the issue-tracker model before changed-witness execution; the explicit import is repaired. Generated-document heal 36661495178 succeeded; its App publication run 36664586278 remains queued.
+
+The apply post-controller readback now composes actual invocation/receipt, protected committed journal, generation-zero readiness, runtime/budget/no-hold and sanitation reads. Four negative/positive controls and its full composition passed under 6 GiB/no swap. This result is explicitly not FullyApplied: the enclosing shared exclusion, credential cleanup and fleet-scope wiring remain unfinished. [Validation receipt](receipts/workspace-apply-readback-2026-09-30/README.md).
+
+
+## Shared mutation exclusion checkpoint
+
+The workspace slot now uses the existing durable exclusive-hold/CAS store for a distinct mutation key. Reservation writes and guest launch take this guard; commissioning admission and every controller journal phase require the reviewed plan to hold it. This key does not consume physical reservation or readiness generations. It has no time-based expiry.
+
+A committed journal alone no longer exposes supply while a mutation remains outstanding. The post-controller finish function requires the exact held guard, repeats the strong readback, removes only the canonical root-owned commissioning credential, proves its absence, and releases that exact guard generation. Direct calls to its privileged cleanup and fenced-release functions are restricted to their admitted callers.
+
+This is an incomplete source checkpoint, not a deployable commissioning apply. The enclosing fleet subject, acquisition/start orchestration, and interrupted-guard recovery still need wiring. In particular, a crashed actor can leave the guard held; recovery must establish what that actor did before releasing or resuming it. The current acquire function deliberately refuses an already-held key, even for the same owner. No automatic recovery or host acceptance is claimed.
+
+Completed-controller recovery now rereads the exact successful invocation, committed journal, generation-zero readiness and host identities before recovering its recorded mutation generation. A retained guard resumes credential cleanup and fenced release. A lost release response is accepted only when the guard records this owner's exact successor generation and the credential is absent. Missing history, another owner, or a later generation refuses. This entry contains no controller start.
+
+The enclosing fleet transaction still must durably record the acquired guard generation and actual invocation. The start-dispatch window is not covered by completed-controller recovery: a crash before invocation capture must recover an attributable existing start, not infer permission from an inactive unit or issue a blind second start. This remains part of the HOLD.
+
+
+## Lightweight executor transport
+
+The operator selected a lightweight host-owned executor. `workspace_commissioning_executor` now emits its Bash transport through the orchestration backend; `workspace_commissioning_executor_unit` models a root-owned service in the existing controller slice. The native process owns the fleet lock while it waits and invokes no DAG interpreter per poll. The existing slot controller remains the only commissioning/readiness worker.
+
+Process-boundary controls and a temporary user-service lifetime test exercise the exported transport, not production commissioning. The remaining production adapter must bind durable submission intent, executor and slot invocations, mutation generation and reviewed fleet generation to the existing CAS/readback authorities. Installation and the fleet commissioning scope remain gated on that adapter and its crash recovery. Nothing in this checkpoint publishes initial readiness or makes srv1-13 supply. See [the selected executor contract](workspace-commissioning-executor-decision.md).
+
+
+## Durable executor source checkpoint
+
+The executor now has a protected CAS phase journal and a controller-side invocation fence. Eight journal controls, 22 native transport controls and the actual controller composition passed locally. The integrated fleet witness closure was OOM-killed at 6 GiB before tests; qualification remains incomplete. The bounded production helper, enclosing fleet scope and complete release/generation recovery remain outstanding. See the [journal checkpoint receipt](receipts/workspace-executor-journal-2026-09-30/README.md). No live commissioning or VM is claimed.
+
+The finalizer now conditionally records `ExecutorReadbackAccepted` after successful strong readback and canonical credential removal, before releasing the mutation guard. It records `ExecutorReleaseObserved` only after the fenced release; lost-publication recovery must join that exact prior obligation. Journal writes are restricted to the controller binding and finalizer. This still does not constitute the enclosing fleet apply or authorize supply: helper/installer wiring and generation-publication recovery remain outstanding.
+
+Supply now also requires the same plan’s protected executor generation-completion record; releasing the slot mutation guard alone cannot expose capacity while fleet publication remains outstanding. The operator approved 12 GiB for temporary integrated qualification. That run exposed inherited host-standup import defects, which are repaired from their existing declaration owners; see the [settlement qualification receipt](receipts/workspace-executor-settlement-2026-09-30/README.md).
+
+After the explicit host-standup imports, all 87 fleet-plan witness controls passed locally under the approved temporary 12 GiB/no-swap scope (1,910-module snapshot). Seven finalizer/recovery controls also passed on the updated settlement/supply closure under 6 GiB. The production helper, guarded commissioning fleet subject and crash-safe generation publication remain unfinished; HOLD and no-deployment standing are unchanged.
+
+## Native publication and helper checkpoint
+
+The bounded helper now joins actual executor membership, protected controller binding, strong settlement and shared fleet-generation publication. The shared native writer has process-level interruption and racing-retry controls; historical publication receipts allow finalization without rolling back later fleet generations. This is still source qualification, not commissioning. Initial reviewed-plan preparation, uncertain-submission drainage, the helper CLI/installer and commissioning fleet scope remain required. See the [publication checkpoint receipt](receipts/workspace-executor-publication-2026-09-30/README.md).
+
+## Preparation and installer checkpoint
+
+The bounded helper now implements reviewed prestate admission, initial submission and fenced drainage/rearm; the controller checks a snapshotted submitter identity. The existing installer emits the executor/helper/unit and checks exact installed bytes. A shared unit renderer fixes installation/readback drift. The sealed commissioning observer is implemented, but the fleet scope and root-custodied dispatch/reattachment connection remain outstanding. See the [preparation receipt](receipts/workspace-executor-preparation-2026-09-30/README.md). This is not live commissioning evidence; HOLD remains.

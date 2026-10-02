@@ -1,0 +1,32 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-commissioning-production
+✓ typecheck v2.std.compilers.target_model done in 23 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+[pre-entry] phase=workspace_discovery ms=14 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=16 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=4091 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=0 scale=tree
+[pre-entry] phase=pool_census_parse ms=1451 scale=tree
+[pre-entry] phase=closure_name_census_build ms=1653 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=27 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=43 scale=closure
+[pre-entry] phase=closure_load ms=1958 scale=closure
+[pre-entry] phase=closure_parse ms=7454 scale=closure
+[pre-entry] phase=closure_resolve ms=271 scale=closure
+[pre-entry] phase=closure_normalize ms=839 scale=closure
+[pre-entry] phase=closure_typecheck ms=69600 scale=closure
+[pre-entry] phase=closure_parent_envs ms=7 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=144 scale=closure
+[pre-entry] phase=closure_ownership ms=1095 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=107298 scale=closure
+[pre-entry] population pool_modules=632 closure_files=632
+[pre-entry] process_cpu user_ms=104969 sys_ms=1936 max_rss_kib=3935576
+PASS commissioning_directive_preserves_exact_provenance
+PASS committed_receipt_cannot_be_replayed_as_initial_directive
+PASS commissioning_directive_refuses_non_digest_artifact_identity
+PASS incomplete_directive_cannot_authorize_initial_readiness
+PASS executed_or_unknown_controller_history_requires_recovery
+PASS absent_reservation_receipt_remains_unstarted_history
+PASS installed_tree_receipt_binds_both_revision_and_digest
+PASS correct_directory_revision_cannot_hide_a_different_installed_tree
+PASS matching_digest_does_not_admit_another_release_receipt
+PASS unreadable_installed_tree_receipt_refuses_commissioning

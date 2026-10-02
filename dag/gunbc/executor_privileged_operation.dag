@@ -95,8 +95,9 @@ type ExecutorPrivilegedOperation
     }
 
 // THE PRINCIPAL AN OPERATION RUNS AS IS A FACT OF THE OPERATION, not of the renderer. Every
-// operation above needs root. RunGunbcEntryAs is the one that must NOT run as root: it runs a released
-// gunbc entry as the service account whose process it reads (the approval broker's ntfy runtime
+// operation above needs root. RunGunbcEntryAs names its exact service principal: it runs a released
+// gunbc entry as the service account whose authority it needs (the commissioning adapter is root;
+// the approval broker's ntfy runtime
 // observation reads /proc/<MainPID> of gunbc-ntfy's own process, which that uid can read and the
 // operator's cannot). Before this, executor_sudoers_run_as was a constant, and the elevation always
 // had -n and no -u. Both the sudoers `(run_as)` field and the `sudo -u` word are now read from this

@@ -1,6 +1,19 @@
 module gunbc.live_deploy.emit
 
+import gunbc.workspace_commissioning_dispatch_operations { workspace_dispatch_grant_path, workspace_dispatch_grant_content }
+
+import gunbc.live_deploy.release_environment { installed_release_environment, installed_release_unit }
+import gunbc.runner_microvm_slot_unit { microvm_controller_requires_ci_reservation_unit }
+import gunbc.workspace_commissioning_executor { workspace_commissioning_executor_script }
+import gunbc.workspace_commissioning_executor_artifact { workspace_executor_helper_script }
+import gunbc.workspace_commissioning_executor_unit {
+  workspace_executor_template_name, workspace_executor_script_name, workspace_executor_helper_name,
+  workspace_executor_unit_text, workspace_executor_unit_path, workspace_executor_wait_bound,
+}
+import gunbc.fleet_generation_execution { fleet_generation_lock }
+
 import gunbc.runner_microvm_cell_readiness_location { cell_readiness_store_location }
+import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
 import gunbc.live_deploy.belt_cadence { belt_tick_cadence }
 
 import gunbc.auth.approval_device_redemption { approval_device_store_directory }
@@ -126,7 +139,7 @@ import gunbc.live_deploy.slice_bounds {
 import gunbc.fabric_storage_placement { fabric_storage_door_socket }
 import gunbc.live_deploy.spec {
   deployment_slice_unit_name, deployment_slice_unit_path,
-  deployment_fabric_storage_unit_name, deployment_fabric_storage_serve_endpoint,
+  deployment_fabric_storage_unit_name, deployment_fabric_storage_serve_endpoint, deployment_approval_broker_front_door_endpoints,
   gunbc_approval_broker_unit_name, gunbc_approval_broker_unit_path,
   deployment_owns_the_host_approval_broker,
   gunbc_approval_broker_slice_unit_name, gunbc_approval_broker_slice_unit_path,
@@ -137,7 +150,7 @@ import gunbc.live_deploy.spec {
   EnsuredSubject, EnsuredPackage, EnsuredHostDirectory, EnsuredManagedHostDirectory, ensured_subject_identity,
   deployment_provider_state_step,
   DeploymentArtifactStep,
-  ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot, SystemdUnit, BeltTimerUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperTimerUnit, FabricStorageServeUnit, FabricStorageServeMapping,
+  ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot, SystemdUnit, BeltTimerUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperTimerUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor,
   deployment_belt_service_unit_name,
   deployment_tree_remote_unit_name,
   deployment_belt_timer_unit_name,
@@ -1657,9 +1670,21 @@ fn deploy_memory_cap_apply_steps(
 // apply overwrote the host's broker unit to point at the lab tree and restarted it, killing
 // production's broker. The steps are now CONSTRUCTED from the ownership predicate rather than
 // guarded after the fact: a non-owner produces an empty list, so there is no write to skip.
+//
+// THE UNIT AND ITS RELEASE ARE ONE FACT, SO THEY ARE ONE STEP LIST. The unit's ExecStart names the
+// per-candidate release locus (gunbc.live_deploy.release_locus approval_broker_release_binary_path),
+// and only approval_broker_dark_install_release_steps populates it. When the ordinary apply wrote
+// the unit without them, a dashboard_deploy at a revision the dark install never ran (the 2026-09-29
+// rollback to 361db90) pointed the broker at a directory that did not exist: status=203/EXEC on
+// every restart, and the device routes unreachable with nothing but a crashed unit to say so. So
+// the release install is constructed INTO the unit write rather than left for a second pipeline to
+// remember.
 fn apply_approval_broker_unit_write_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
   if deployment_owns_the_host_approval_broker(spec: spec) {
-    approval_broker_unit_write_steps_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port)
+    concat(
+      approval_broker_dark_install_release_steps(spec: spec, revision: revision),
+      approval_broker_unit_write_steps_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port),
+    )
   } else {
     []
   }
@@ -1747,7 +1772,7 @@ data approval_broker_release_retention_note: String = "The broker's release locu
 // 2026-09-21, where both the broker's serve unit and the microVM slot unit exited 101 in
 // workspace_root before any stage ran. One row feeds both units.
 fn release_locus_workspace_root_environment(release_dir: String) -> SystemdServiceDirective {
-  Environment { assignment: join([gunbc_workspace_root_env_name, "=", release_dir], "") as NonEmptyStr }
+  installed_release_environment(release_dir: release_dir)
 }
 
 // THE DIGEST IS OVER CONTENT, ORDER-INDEPENDENTLY, so two trees with the same bytes in the same
@@ -2068,15 +2093,7 @@ fn microvm_controller_vmm_install_steps(revision: ReleaseRevisionBinding) -> Lis
 // EVERY UNIT THAT RUNS `gunbc run` FROM THE LOCUS NEEDS THE SAME ROW, so the insertion is one function
 // over any such unit: the slot controller and the shakedown broker both exec from this locus.
 fn microvm_locus_unit_with_workspace_root(file: SystemdUnitFile, release_dir: String) -> SystemdUnitFile {
-  match file {
-    ServiceUnitFile { unit: u, service: s, install: i } =>
-      ServiceUnitFile {
-        unit: u,
-        service: concat([release_locus_workspace_root_environment(release_dir: release_dir)], s),
-        install: i,
-      }
-    other => other
-  }
+  installed_release_unit(file: file, release_dir: release_dir)
 }
 
 fn microvm_slot_unit_file_with_workspace_root(release_dir: String) -> SystemdUnitFile {
@@ -2108,6 +2125,7 @@ fn microvm_slot_unit_write_steps(revision: ReleaseRevisionBinding) -> List<Pipel
       mode: install_file_shared_mode,
       dest: microvm_slot_unit_path() as String,
     )),
+  ] + (if microvm_controller_requires_ci_reservation_unit() { [
     deploy_raw(command: deploy_stage_write_command(
       stage_name: microvm_slot_reserve_unit_name as String,
       content: serialize_systemd_unit_file(file: microvm_locus_unit_with_workspace_root(
@@ -2120,7 +2138,7 @@ fn microvm_slot_unit_write_steps(revision: ReleaseRevisionBinding) -> List<Pipel
       mode: install_file_shared_mode,
       dest: microvm_slot_reserve_unit_path() as String,
     )),
-  ]
+  ] } else { [] })
 }
 
 // THE INSTALL IS ADDITIVE AND STARTS NOTHING: it writes the locus and the TEMPLATE unit and reloads
@@ -2145,8 +2163,9 @@ fn microvm_controller_install_intent(revision: ReleaseRevisionBinding) -> Pipeli
         [
           deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: microvm_slot_controller_receipt_dir)),
           deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: cell_readiness_store_location)),
+          deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: workspace_commissioning_store_location)),
         ],
-        concat(microvm_slot_unit_write_steps(revision: revision), [deploy_effect(inv: systemctl_daemon_reload_effect())]),
+        concat(microvm_slot_unit_write_steps(revision: revision) + workspace_executor_install_steps(revision: revision) + workspace_dispatch_grant_steps(revision: revision), [deploy_effect(inv: systemctl_daemon_reload_effect())]),
       ),
     ),
     on_failure: FailFast,
@@ -2762,6 +2781,10 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
         argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: deployment_fabric_storage_serve_endpoint())),
       )),
     ]
+    ApprovalBrokerFrontDoor => map(
+      deployment_approval_broker_front_door_endpoints(),
+      e => deploy_raw(command: shell_privileged_command_text_of_argv(argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: e)))),
+    )
     DeployedTreeRemoteUnit => [
       apply_tree_remote_unit_write_step(spec: spec),
       deploy_raw(command: deploy_stage_install_command(
@@ -2810,6 +2833,10 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
         argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: deployment_fabric_storage_serve_endpoint())),
       )),
     ]
+    ApprovalBrokerFrontDoor => map(
+      deployment_approval_broker_front_door_endpoints(),
+      e => deploy_raw(command: shell_privileged_command_text_of_argv(argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: e)))),
+    )
     FabricStorageServeUnit => concat(
       systemctl_disable_now_if_present_steps(unit: deployment_fabric_storage_unit_name(names: spec.names), privileged: true),
       [
@@ -3182,10 +3209,7 @@ fn approval_broker_dark_install_intent(
     steps: concat(
       concat(
         [deploy_raw(command: deploy_shell_strict_options_command), deploy_stage_directory_let_step()],
-        concat(
-          approval_broker_dark_install_release_steps(spec: spec, revision: revision),
-          apply_approval_broker_unit_write_steps(spec: spec, revision: revision),
-        ),
+        apply_approval_broker_unit_write_steps(spec: spec, revision: revision),
       ),
       concat([deploy_effect(inv: systemctl_daemon_reload_effect())], approval_broker_lifecycle_steps(spec: spec)),
     ),
@@ -3373,4 +3397,40 @@ data live_deploy_intent_dependency_graph_emit_dissolution_trigger: Disposition =
     decl_name: "orch_emit_pipeline",
     field: WholeDeclaration,
   }
+}
+
+// Additive installation only: the executor is not enabled or started here. Its native waiter,
+// bounded adapter and unit are derived from the same installed release as the slot controller.
+fn workspace_executor_install_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  let dir = microvm_controller_release_dir(revision: revision)
+  [
+    deploy_raw(command: deploy_stage_write_command(stage_name: workspace_executor_script_name,
+      content: workspace_commissioning_executor_script())),
+    deploy_raw(command: deploy_stage_install_command(stage_name: workspace_executor_script_name,
+      mode: install_executable_shared_mode, dest: join([dir, "/", workspace_executor_script_name], ""))),
+    deploy_raw(command: deploy_stage_write_command(stage_name: workspace_executor_helper_name,
+      content: workspace_executor_helper_script(release_dir: dir))),
+    deploy_raw(command: deploy_stage_install_command(stage_name: workspace_executor_helper_name,
+      mode: install_executable_shared_mode, dest: join([dir, "/", workspace_executor_helper_name], ""))),
+    deploy_raw(command: deploy_stage_write_command(stage_name: workspace_executor_template_name as String,
+      content: workspace_executor_unit_text(release_dir: dir, fleet_lock: fleet_generation_lock, wait_bound: workspace_executor_wait_bound))),
+    deploy_raw(command: deploy_stage_install_command(stage_name: workspace_executor_template_name as String,
+      mode: install_file_shared_mode, dest: workspace_executor_unit_path() as String)),
+  ]
+}
+
+// The installer has already installed the exact controller release under root custody. These
+// argument-free grants name that binary, tree and three fixed entries; no job code is elevated.
+fn workspace_dispatch_grant_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  let stage = "workspace-commissioning-sudoers"
+  let pending = concat(workspace_dispatch_grant_path, ".pending")
+  [
+    deploy_raw(command: deploy_stage_write_command(stage_name: stage,
+      content: concat(workspace_dispatch_grant_content(release_dir: microvm_controller_release_dir(revision: revision) as NonEmptyStr), "\n"))),
+    deploy_raw(command: deploy_stage_visudo_check_command(stage_name: stage)),
+    deploy_raw(command: deploy_stage_install_owned_command(stage_name: stage, mode: "0440", owner: microvm_controller_owner, group: microvm_controller_owner, dest: pending)),
+    deploy_raw(command: installed_visudo_policy_check_command(path: pending)),
+    deploy_raw(command: rename_no_target_directory_command(source: pending, dest: workspace_dispatch_grant_path)),
+    deploy_raw(command: installed_visudo_policy_check_command(path: workspace_dispatch_grant_path)),
+  ]
 }

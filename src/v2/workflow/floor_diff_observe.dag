@@ -187,11 +187,15 @@ fn floor_observe_ci_diff_event() -> CiDiffEvent {
 
 fn floor_resolve_baseline(policy: DiffPolicy) -> DiffBaselineResolution {
   let push_parent = policy.base as GitRef
-  resolve_diff_baseline(
-    event: floor_observe_ci_diff_event(),
-    push_parent_ref: push_parent,
-    default_remote_name: git_remote_ref_parts(ref: push_parent).remote
-  )
+  match git_remote_ref_parts(ref: push_parent) {
+    Present { value: parts } =>
+      resolve_diff_baseline(
+        event: floor_observe_ci_diff_event(),
+        push_parent_ref: push_parent,
+        default_remote_name: parts.remote
+      )
+    Absent => BaselineRefused { reason: "diff policy base ref names no remote" }
+  }
 }
 
 fn floor_resolved_head(policy: DiffPolicy) -> String {
@@ -468,6 +472,35 @@ fn floor_base_paths_present(paths_nul: String) -> Map<String, Bool> {
       }
     }
   )
+}
+
+// ONE FILE AT THE RESOLVED DIFF BASE, read through the same listing + show effects the
+// test-declaration census uses: absent at base is its own arm (a file the diff adds), never an
+// empty file, and a failed listing or show refuses. Consumer: the required floor's typed
+// non-fold-residue check, which compares the gunbc.non_fold_residue roster at base and head so a
+// row the diff adds or deletes brings its subject module into the typed scope.
+type FloorBaseFileRead
+  = BaseFileAbsent
+  | BaseFileRead { content: String }
+  | BaseFileReadRefused { reason: String }
+
+fn floor_run_base_file_read(base: String, path: String) -> FloorBaseFileRead {
+  let listed = git.Inspect.ListTreePathsAtRevision(ref: base as GitRef)
+  if !listed.success {
+    BaseFileReadRefused { reason: listed.stderr }
+  } else {
+    match map_lookup(m: floor_base_paths_present(paths_nul: listed.paths_nul), key: path) {
+      Absent => BaseFileAbsent
+      Present { value: _ } => {
+        let shown = git.Core.Show(ref: base as GitRef, path: path as FilePath)
+        if shown.success {
+          BaseFileRead { content: shown.content }
+        } else {
+          BaseFileReadRefused { reason: shown.stderr }
+        }
+      }
+    }
+  }
 }
 
 fn floor_base_census_acc_append(

@@ -339,6 +339,15 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     })]),
         returns: crate::v1_std_core::with_optional_cardinality(string_type()),
     }));
+                __m.insert("sha256_hex_of_text".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![Rc::new(BuiltinParam {
+        name: "text".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    })]),
+        returns: string_type(),
+    }));
                 __m.insert("string_length".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "s".to_string(),
@@ -755,7 +764,21 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         returns: int_type(),
     }));
                 __m.insert("observed_monotonic_nanos".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![]),
+        params: Rc::new(vec![Rc::new(BuiltinParam {
+        name: "label".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    })]),
+        returns: int_type(),
+    }));
+                __m.insert("observed_thread_cpu_nanos".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![Rc::new(BuiltinParam {
+        name: "label".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    })]),
         returns: int_type(),
     }));
                 __m.insert("string_contains".to_string(), Rc::new(BuiltinSignature {
@@ -1334,6 +1357,25 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     }));
                 __m.insert("builtin_function_registry_keys".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
+        returns: list_of_element(string_type()),
+    }));
+                __m.insert("compile_dag_operation_requires".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![Rc::new(BuiltinParam {
+        name: "source".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    }), Rc::new(BuiltinParam {
+        name: "service".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    }), Rc::new(BuiltinParam {
+        name: "operation".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    })]),
         returns: list_of_element(string_type()),
     }));
                 __m.insert("compile_dag_primitive_call_edges".to_string(), Rc::new(BuiltinSignature {

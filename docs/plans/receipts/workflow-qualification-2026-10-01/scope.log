@@ -1,0 +1,70 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-executor-isolated
+✓ typecheck v2.std.compilers.target_model done in 27 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+✓ typecheck v2.compiler.body_lowering_fold done in 2 seconds
+✓ typecheck v2.compiler.source_authority done in 2 seconds
+✓ typecheck v2.compiler.translate done in 4 seconds
+✓ typecheck gunbc.runner_microvm_slot_controller done in 4 seconds
+✓ typecheck gunbc.fleet_converge_plan done in 2 seconds
+[pre-entry] phase=workspace_discovery ms=3 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=27 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=8061 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=1 scale=tree
+[pre-entry] phase=pool_census_parse ms=1031 scale=tree
+[pre-entry] phase=closure_name_census_build ms=2973 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=37 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=49 scale=closure
+[pre-entry] phase=closure_load ms=9875 scale=closure
+[pre-entry] phase=closure_parse ms=5920 scale=closure
+[pre-entry] phase=closure_resolve ms=360 scale=closure
+[pre-entry] phase=closure_normalize ms=1188 scale=closure
+[pre-entry] phase=closure_typecheck ms=120541 scale=closure
+[pre-entry] phase=closure_parent_envs ms=11 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=183 scale=closure
+[pre-entry] phase=closure_ownership ms=1395 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=181501 scale=closure
+[pre-entry] population pool_modules=1160 closure_files=859
+[pre-entry] process_cpu user_ms=178277 sys_ms=2704 max_rss_kib=6266340
+PASS the_launch_environment_scope_is_fully_applied_where_the_host_scope_is_not
+PASS the_launch_environment_terminal_wire_is_the_token_the_rlm_join_requires
+PASS the_host_scope_detail_still_attributes_its_refusal_to_the_slot_axis
+PASS the_launch_environment_scope_carries_a_real_timer_obligation
+PASS the_launch_environment_apply_script_emits_no_foreign_axis_work
+PASS the_launch_environment_plan_body_carries_only_its_own_axis_counter
+PASS the_full_host_plan_body_still_carries_the_slot_and_activation_counters
+PASS cap_drift_is_visible_under_full_host_and_unconstructible_under_launch
+PASS the_cap_axis_lives_under_the_actions_runner_unit_template
+PASS a_refusing_fabric_observation_moves_full_host_and_cannot_enter_launch
+PASS a_launch_environment_plan_cannot_be_applied_against_a_full_host_reobservation
+PASS a_full_host_plan_cannot_be_applied_against_a_launch_environment_reobservation
+PASS a_mutated_persisted_scope_wire_refuses_rather_than_choosing_a_scope
+PASS an_identical_looking_population_under_the_other_scope_still_refuses
+PASS the_launch_environment_wire_round_trips_through_the_decode
+PASS every_scope_wire_is_distinct
+PASS the_two_scopes_fingerprint_the_same_host_differently
+PASS the_production_shaped_srv1_observation_splits_on_the_scope_alone
+PASS the_excluded_families_still_refuse_loudly_under_the_scope_that_owns_them
+PASS the_launch_environment_owns_no_runner_unit_and_no_runner_unit_owns_it
+	Command being timed: "/home/briansrls/scratch-wt/workspace-commissioning-reconcile/target/release/gunbc run --source-root target/scope-integration --entry target/scope-integration/test.claim.fleet_converge_launch_environment_scope_witness.dag --claim-run"
+	User time (seconds): 188.35
+	System time (seconds): 3.27
+	Percent of CPU this job got: 99%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 3:12.18
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 6367328
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 1601882
+	Voluntary context switches: 5
+	Involuntary context switches: 74688
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 72
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

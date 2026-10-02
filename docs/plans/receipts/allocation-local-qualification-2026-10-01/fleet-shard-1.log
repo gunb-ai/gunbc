@@ -1,0 +1,83 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-executor-isolated
+✓ typecheck v2.std.compilers.target_model done in 27 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+✓ typecheck v2.compiler.body_lowering_fold done in 2 seconds
+✓ typecheck v2.compiler.source_authority done in 2 seconds
+✓ typecheck v2.compiler.translate done in 4 seconds
+✓ typecheck gunbc.roadmap_belt_actuate done in 3 seconds
+✓ typecheck gunbc.roadmap_component done in 3 seconds
+✓ typecheck gunbc.roadmap_page done in 2 seconds
+✓ typecheck gunbc.live_deploy.emit done in 3 seconds
+✓ typecheck gunbc.host_effect_realize done in 23 seconds
+✓ typecheck gunbc.runner_microvm_slot_controller done in 5 seconds
+✓ typecheck gunbc.live_deploy.apply done in 3 seconds
+✓ typecheck gunbc.fleet_converge_plan done in 2 seconds
+✓ typecheck gunbc.fleet_converge_plan_cli done in 2 seconds
+✓ typecheck test.claim.fleet_converge_plan_witness done in 2 seconds
+[pre-entry] phase=workspace_discovery ms=3 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=28 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=8182 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=1 scale=tree
+[pre-entry] phase=pool_census_parse ms=1148 scale=tree
+[pre-entry] phase=closure_name_census_build ms=1736 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=47 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=70 scale=closure
+[pre-entry] phase=closure_load ms=11976 scale=closure
+[pre-entry] phase=closure_parse ms=8840 scale=closure
+[pre-entry] phase=closure_resolve ms=538 scale=closure
+[pre-entry] phase=closure_normalize ms=1719 scale=closure
+[pre-entry] phase=closure_typecheck ms=198721 scale=closure
+[pre-entry] phase=closure_parent_envs ms=16 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=260 scale=closure
+[pre-entry] phase=closure_ownership ms=2179 scale=closure
+[pre-entry] phase=reconcile_pool_qualified_fill ms=1696 scale=tree
+[pre-entry] phase=reconcile_root_bare_underlay ms=1507 scale=tree
+[pre-entry] phase=reconcile_root_variant_base ms=207 scale=tree
+[pre-entry] phase=resolve_entry_graph_inclusive ms=285787 scale=closure
+[pre-entry] population pool_modules=1159 closure_files=1159
+[pre-entry] process_cpu user_ms=280869 sys_ms=3983 max_rss_kib=8213764
+PASS timer_retirement_plan_shows_refused_removal_for_foreign_cap
+PASS timer_retirement_plan_lists_removed_legacy_timer
+PASS plan_artifact_hash_is_stable_for_fixed_observation
+PASS observed_baseline_cas_refuses_after_drift
+PASS plan_body_names_subject_host_and_generation
+PASS cross_host_apply_refuses_subject_identity
+PASS same_host_different_generation_changes_plan_hash
+PASS second_concurrent_apply_refuses_generation_gate
+PASS member_set_fingerprint_mismatch_refuses_identity
+PASS plan_content_hash_path_is_apply_interlock_sidecar
+PASS plan_cli_surfaces_content_hash_for_apply_dispatch
+PASS bundle_hash_binds_apply_shell_not_plan_body_only
+PASS parse_nonneg_generation_refuses_corrupt_and_negative
+PASS generation_observation_separates_absent_from_unreadable
+PASS generation_admission_admits_absent_as_first_and_refuses_unreadable
+PASS locked_apply_script_serializes_generation_under_flock
+PASS locked_apply_inner_program_is_quoted_not_spliced
+PASS locked_apply_guard_does_not_coerce_an_unreadable_store_to_zero
+PASS locked_apply_guard_compares_the_modelled_prior_generation
+PASS subject_host_matches_same_host
+PASS subject_host_matches_refuses_cross_host
+PASS apply_shell_carries_dissolve_on_marker_not_host_gate
+	Command being timed: "./target/release/gunbc run --source-root target/local-fleet-qualification --entry target/local-fleet-qualification/test.claim.fleet_converge_plan_witness.dag --claim-run --function timer_retirement_plan_shows_refused_removal_for_foreign_cap --function timer_retirement_plan_lists_removed_legacy_timer --function plan_artifact_hash_is_stable_for_fixed_observation --function observed_baseline_cas_refuses_after_drift --function plan_body_names_subject_host_and_generation --function cross_host_apply_refuses_subject_identity --function same_host_different_generation_changes_plan_hash --function second_concurrent_apply_refuses_generation_gate --function member_set_fingerprint_mismatch_refuses_identity --function plan_content_hash_path_is_apply_interlock_sidecar --function plan_cli_surfaces_content_hash_for_apply_dispatch --function bundle_hash_binds_apply_shell_not_plan_body_only --function parse_nonneg_generation_refuses_corrupt_and_negative --function generation_observation_separates_absent_from_unreadable --function generation_admission_admits_absent_as_first_and_refuses_unreadable --function locked_apply_script_serializes_generation_under_flock --function locked_apply_inner_program_is_quoted_not_spliced --function locked_apply_guard_does_not_coerce_an_unreadable_store_to_zero --function locked_apply_guard_compares_the_modelled_prior_generation --function subject_host_matches_same_host --function subject_host_matches_refuses_cross_host --function apply_shell_carries_dissolve_on_marker_not_host_gate"
+	User time (seconds): 301.34
+	System time (seconds): 5.12
+	Percent of CPU this job got: 99%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 5:07.49
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 8464456
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 2127965
+	Voluntary context switches: 242
+	Involuntary context switches: 122602
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 120
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

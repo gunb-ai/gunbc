@@ -1,0 +1,46 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-executor-isolated
+✓ typecheck v2.std.compilers.target_model done in 24 seconds
+✓ typecheck v2.compiler.body_lowering_fold done in 2 seconds
+[pre-entry] phase=workspace_discovery ms=3 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=11 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=2328 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=0 scale=tree
+[pre-entry] phase=pool_census_parse ms=291 scale=tree
+[pre-entry] phase=closure_name_census_build ms=737 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=9 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=27 scale=closure
+[pre-entry] phase=closure_load ms=3359 scale=closure
+[pre-entry] phase=closure_parse ms=2395 scale=closure
+[pre-entry] phase=closure_resolve ms=131 scale=closure
+[pre-entry] phase=closure_normalize ms=472 scale=closure
+[pre-entry] phase=closure_typecheck ms=51000 scale=closure
+[pre-entry] phase=closure_parent_envs ms=4 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=75 scale=closure
+[pre-entry] phase=closure_ownership ms=591 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=67182 scale=closure
+[pre-entry] population pool_modules=390 closure_files=390
+[pre-entry] process_cpu user_ms=65996 sys_ms=970 max_rss_kib=1944872
+◐ started Filesystem.Write target/workflow-provenance.txt (213 bytes)
+	Command being timed: "/home/briansrls/scratch-wt/workspace-commissioning-reconcile/target/release/gunbc run --source-root target/workflow-provenance --entry target/workflow-provenance/workflow_provenance.dag --claim-run --function main"
+	User time (seconds): 68.86
+	System time (seconds): 1.12
+	Percent of CPU this job got: 99%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 1:10.21
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 1958184
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 496838
+	Voluntary context switches: 5
+	Involuntary context switches: 27696
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 40
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

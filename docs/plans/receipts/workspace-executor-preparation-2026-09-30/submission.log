@@ -1,0 +1,27 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-commissioning-production
+✓ typecheck v2.std.compilers.target_model done in 21 seconds
+✓ typecheck v2.compiler.translate done in 3 seconds
+✓ typecheck gunbc.runner_microvm_slot_controller done in 4 seconds
+[pre-entry] phase=workspace_discovery ms=12 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=21 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=5073 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=0 scale=tree
+[pre-entry] phase=pool_census_parse ms=1823 scale=tree
+[pre-entry] phase=closure_name_census_build ms=2083 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=35 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=47 scale=closure
+[pre-entry] phase=closure_load ms=2639 scale=closure
+[pre-entry] phase=closure_parse ms=9339 scale=closure
+[pre-entry] phase=closure_resolve ms=334 scale=closure
+[pre-entry] phase=closure_normalize ms=1066 scale=closure
+[pre-entry] phase=closure_typecheck ms=95328 scale=closure
+[pre-entry] phase=closure_parent_envs ms=10 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=180 scale=closure
+[pre-entry] phase=closure_ownership ms=1335 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=149175 scale=closure
+[pre-entry] population pool_modules=827 closure_files=824
+[pre-entry] process_cpu user_ms=145918 sys_ms=2741 max_rss_kib=5626560
+PASS unbound_submission_requires_fencing_before_replacement
+PASS controller_cas_winner_cannot_be_fenced_or_rearmed
+PASS old_credential_cannot_claim_a_rearmed_submission
+PASS fence_survives_restart_as_an_explicit_obligation

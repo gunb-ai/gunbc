@@ -1,0 +1,8 @@
+module test.probe.commissioning_cleanup_bypass
+import std.process { ProcessExit, ExitSuccess }
+import std.types { Bool }
+import gunbc.workspace_commissioning_transaction { WorkspaceCommissioningProvenance }
+import gunbc.workspace_commissioning_apply_readback { workspace_commissioning_credential_remove }
+fn skip(provenance: WorkspaceCommissioningProvenance) -> Bool { workspace_commissioning_credential_remove(provenance: provenance) }
+
+fn check() -> ProcessExit { ExitSuccess }

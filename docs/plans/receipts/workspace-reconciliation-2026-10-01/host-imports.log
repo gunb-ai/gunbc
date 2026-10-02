@@ -1,0 +1,35 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-commissioning-reconcile
+✓ typecheck v2.std.compilers.target_model done in 28 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+✓ typecheck v2.compiler.body_lowering_fold done in 2 seconds
+✓ typecheck v2.compiler.source_authority done in 2 seconds
+[pre-entry] phase=workspace_discovery ms=14 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=35 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=8341 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=1 scale=tree
+[pre-entry] phase=pool_census_parse ms=1175 scale=tree
+[pre-entry] phase=closure_name_census_build ms=3609 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=40 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=49 scale=closure
+[pre-entry] phase=closure_load ms=8419 scale=closure
+[pre-entry] phase=closure_parse ms=4014 scale=closure
+[pre-entry] phase=closure_resolve ms=235 scale=closure
+[pre-entry] phase=closure_normalize ms=795 scale=closure
+[pre-entry] phase=closure_typecheck ms=76560 scale=closure
+[pre-entry] phase=closure_parent_envs ms=6 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=135 scale=closure
+[pre-entry] phase=closure_ownership ms=1036 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=116695 scale=closure
+[pre-entry] population pool_modules=1167 closure_files=569
+[pre-entry] process_cpu user_ms=114025 sys_ms=2227 max_rss_kib=4290004
+PASS pre_install_within_budget_is_absent_not_converged
+PASS post_install_lease_row_deduces_converged_noop
+PASS unreadable_lease_is_unknown_refused_not_pending
+PASS no_lease_past_budget_is_drifted_not_fabricated_success
+PASS upsert_pending_applies_assert_pending_plan
+PASS stall_cause_fold_legacy_boot_mode
+PASS stall_cause_fold_subiquity_storage_screen
+PASS stall_cause_fold_media_and_logger_distinct
+PASS stall_cause_fold_no_bootable_device
+PASS post_install_subsumption_clears_os_install_actuated_gap
+PASS host_identity_converge_step_stays_modeled_not_gap

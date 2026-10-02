@@ -1,0 +1,27 @@
+module tools.cursor_classifier_stages
+import v2.workflow.floor_cost_debt_edit { cost_debt_edit_source_tokens, cost_debt_edit_decl_tokens, cost_debt_edit_from_file_tokens, cost_debt_changed_witness_ceiling }
+import v2.extdeps.languages.dag { dag_language_model }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+fn mark(name: String, good: Bool) -> Bool {
+ if good { Filesystem.Write(path: concat("target/cursor-samples/stage-", name), content: "complete").success } else { false }
+}
+fn main() -> ProcessExit {
+ let base = Filesystem.Read(path: "target/cursor-samples/fleet-base.dag")
+ let head = Filesystem.Read(path: "target/cursor-samples/fleet-full.dag")
+ let names = ["lease_guard_sudoes_only_granted_binaries", "locked_apply_guard_compares_the_modelled_prior_generation", "locked_apply_guard_does_not_coerce_an_unreadable_store_to_zero"]
+ let rules = dag_language_model().lex
+ if !base.success || !head.success { exit_failure(reason: "source read failed") } else {
+ if !mark(name: "inputs-read", good: true) { exit_failure(reason: "initial marker failed") } else {
+ let bt = cost_debt_edit_source_tokens(source: base.content, rules: rules)
+ if !mark(name: "base-tokenization", good: match bt { Present { value: _ } => true, Absent => false }) { exit_failure(reason: "base tokenization failed") } else {
+ let ht = cost_debt_edit_source_tokens(source: head.content, rules: rules)
+ if !mark(name: "head-tokenization", good: match ht { Present { value: _ } => true, Absent => false }) { exit_failure(reason: "head tokenization failed") } else {
+ let bd = match bt { Present { value: ts } => all(names, n => match cost_debt_edit_decl_tokens(tokens: ts, function: n) { Present { value: _ } => true, Absent => false }), Absent => false }
+ if !mark(name: "base-declarations", good: bd) { exit_failure(reason: "base declarations failed") } else {
+ let hd = match ht { Present { value: ts } => all(names, n => match cost_debt_edit_decl_tokens(tokens: ts, function: n) { Present { value: _ } => true, Absent => false }), Absent => false }
+ if !mark(name: "head-declarations", good: hd) { exit_failure(reason: "head declarations failed") } else {
+ let judged = all(names, n => mark(name: n, good: cost_debt_changed_witness_ceiling(edit: cost_debt_edit_from_file_tokens(base_tokens: bt, head_tokens: ht, function: n, test_fn_identities: [])).label == "rejudged_as_new_witness cause=edit_is_not_a_conjunct_removal"))
+ if judged { ExitSuccess } else { exit_failure(reason: "judgment failed") }
+ } } } } } }
+}

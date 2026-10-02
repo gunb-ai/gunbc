@@ -1,0 +1,11 @@
+module gunbc.spark.v41_workflow_artifacts
+
+import std.types { String }
+
+// Receipt locations shared by workflow projection and the operations that publish them.
+data v41_encode_run_receipt_path: String = "target/v41-row-store-encode-receipt.txt"
+data v41_readback_run_receipt_path: String = "target/v41-row-store-readback-receipt.txt"
+data v41_differential_receipt_path: String = "target/v41-engram-differential-receipt.txt"
+data v41_distribution_receipt_path: String = "target/v41-runtime-image-distribute-receipt.txt"
+data v41_group_a_launch_receipt_path: String = "target/v41-group-a-launch-receipt.txt"
+data v41_serving_load_receipt_path: String = "target/v41-serving-load-receipt.txt"

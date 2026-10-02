@@ -1,5 +1,9 @@
 module test.claim.live_deploy.fleet_request_witness_test
 
+import gunbc.fleet_converge_scope { LiveDeploy }
+
+import gunbc.fleet_converge_terminal { FullyApplied, AwaitingCapability }
+
 import std.types { Bool, String, List, NonEmptyStr, CommitSha }
 import std.decl_ref { declaration_ref_eq, declaration_ref_display_key }
 import extdeps.crypto.hash { Digest, sha256_digest }
@@ -63,14 +67,11 @@ import gunbc.fleet_converge_plan {
   fleet_converge_apply_terminal,
   fleet_converge_plan_artifact_of_request,
   live_deploy_converge_request,
-  LiveDeploy,
   ApplyAdmitted,
   ApplyMemberSetMismatch,
   ApplyAwaitingCapability,
-  FullyApplied,
-  AwaitingCapability,
   ScopeDecoded,
-  ScopeUndecodable,
+  ScopeUndecodable
 }
 
 fn rev_a() -> CommitSha { "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as CommitSha }

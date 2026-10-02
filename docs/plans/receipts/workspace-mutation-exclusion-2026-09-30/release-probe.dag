@@ -1,0 +1,7 @@
+module test.probe.commissioning_release_bypass
+import std.process { ProcessExit, ExitSuccess }
+import std.types { Bool }
+import gunbc.workspace_slot_mutation { WorkspaceSlotMutationLease, workspace_slot_mutation_release_fenced }
+fn skip(lease: WorkspaceSlotMutationLease) -> Bool { workspace_slot_mutation_release_fenced(lease: lease) }
+
+fn check() -> ProcessExit { ExitSuccess }

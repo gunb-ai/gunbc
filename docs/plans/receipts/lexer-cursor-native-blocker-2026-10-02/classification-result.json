@@ -1,0 +1,48 @@
+{
+  "original_benchmark_exit": 0,
+  "stage_probe_exit": 0,
+  "stage_markers": [
+    {
+      "stage": "stage-inputs-read",
+      "mtime_ns": 1790918476145856132,
+      "seconds_since_previous": null
+    },
+    {
+      "stage": "stage-base-tokenization",
+      "mtime_ns": 1790918503591973506,
+      "seconds_since_previous": 27.446117374
+    },
+    {
+      "stage": "stage-head-tokenization",
+      "mtime_ns": 1790918530875090365,
+      "seconds_since_previous": 27.283116859
+    },
+    {
+      "stage": "stage-base-declarations",
+      "mtime_ns": 1790918531681093820,
+      "seconds_since_previous": 0.806003455
+    },
+    {
+      "stage": "stage-head-declarations",
+      "mtime_ns": 1790918532466097185,
+      "seconds_since_previous": 0.785003365
+    },
+    {
+      "stage": "stage-lease_guard_sudoes_only_granted_binaries",
+      "mtime_ns": 1790918533021099565,
+      "seconds_since_previous": 0.55500238
+    },
+    {
+      "stage": "stage-locked_apply_guard_compares_the_modelled_prior_generation",
+      "mtime_ns": 1790918533540101789,
+      "seconds_since_previous": 0.519002224
+    },
+    {
+      "stage": "stage-locked_apply_guard_does_not_coerce_an_unreadable_store_to_zero",
+      "mtime_ns": 1790918534057104006,
+      "seconds_since_previous": 0.517002217
+    }
+  ],
+  "head_source_sha256": "83cffcb99fc4b8566d66f29988a7ea3be4254b1247ad19486d5980e8d0634186",
+  "note": "Timing rerun adds an inputs-read marker before base tokenization. Concurrent bounded qualification ran; these are local timings, not whole-floor speedups."
+}

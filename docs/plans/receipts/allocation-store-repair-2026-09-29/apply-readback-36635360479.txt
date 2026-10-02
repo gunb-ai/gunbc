@@ -1,0 +1,6 @@
+Read-only sudo stat on srv1 after the apply step succeeded:
+/var/lib/gunbc/fabric root:root 700
+/var/lib/gunbc/fabric/allocation root:root 700
+
+Follow-up read-only plan dispatched: https://github.com/gunb-ai/gunbc/actions/runs/36637771191
+No no-op result claimed until its artifact is inspected.

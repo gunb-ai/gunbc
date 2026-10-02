@@ -1,0 +1,14 @@
+{
+  "base_revision": "85f92ac853cba7149c0d6f66c08190f2277e56fa",
+  "source_status": "uncommitted cursor/native qualification work",
+  "compiler_sha256": "52a4996c5ad92b813378c4a88df261723acaade575dd65be5277ecbafe0b4543",
+  "native_verdict": "blocked: generated standard-library bool/Bool mismatch; 11 E0308 errors",
+  "native_execution": "not reached",
+  "generated_sha256": {
+    "target/list-at-native-emitted/src/v2_std_logic.rs": "56ea89eb5bc3be3af64c0012dabc15ab363601c69583b29e5838a782f351d55d",
+    "target/list-at-native-emitted/src/v2_test_fixture_list_at_native.rs": "1b72cb50672b53dc388e13a7d2c1f11b6eb71a622ecf04c2a4f2ff1ffa863b40",
+    "target/list-at-native-emitted/src/main.rs": "df62d3a013da90f2610e819c4926eeebbef8f1163b326292d91f15bb39dc1b23"
+  },
+  "full_roots_reproducer": "terminated with exit 143 during emission; not a second native verdict",
+  "deployment": false
+}

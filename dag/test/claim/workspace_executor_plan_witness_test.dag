@@ -1,0 +1,125 @@
+module test.claim.workspace_executor_plan_witness
+
+import std.types { String, Bool }
+import gunbc.actions_run_binding { ActionsRunBinding }
+import gunbc.fleet_converge_receipt { FleetConvergePlanReceipt, fleet_converge_plan_receipt_json }
+import gunbc.fleet_converge_terminal { FullyApplied }
+import gunbc.fleet_plan_bundle { fleet_plan_bundle_hash }
+import extdeps.languages.json.emit { serialize_json }
+import test.claim.workspace_commissioning_directive_witness { directive_fixture_provenance }
+import gunbc.workspace_commissioning_transaction { WorkspaceCommissioningPrepared }
+import gunbc.workspace_commissioning_store { workspace_commissioning_record_text }
+import gunbc.workspace_commissioning_executor_plan {
+  workspace_executor_scope_wire, workspace_executor_credential_row,
+  workspace_executor_plan_bytes, WorkspaceExecutorPlanBytesVerified, WorkspaceExecutorPlanBytesRefused,
+}
+
+fn executor_plan_fixture_body() -> String {
+  join([workspace_executor_credential_row(provenance: directive_fixture_provenance()), "commissioning-prestate:reviewed-prestate"], "\n")
+}
+
+fn executor_plan_fixture_receipt(body: String, shell: String, host: String, scope: String) -> String {
+  let p = directive_fixture_provenance()
+  let digest = match fleet_plan_bundle_hash(plan_body: body, apply_shell: shell) {
+    Present { value: hash } => hash.digest as String
+    _ => "unavailable"
+  }
+  serialize_json(v: fleet_converge_plan_receipt_json(r: FleetConvergePlanReceipt {
+    run: ActionsRunBinding { repository: "gunb-ai/gunbc",
+      workflow_ref: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/main",
+      run_id: "1001", run_revision: p.source_revision as String },
+    observed_host: host, scope_wire: scope, member_set_fingerprint_hex: "0011223344556677",
+    plan_artifact_hash: digest, observed_baseline_hex: "1122334455667788",
+    prior_generation: 17, planned_generation: 18, lease_key: "fleet-converge-plan:srv1",
+    lease_resource_fingerprint: "fnv1a64:aaaaaaaaaaaaaaaa", lease_owner_fingerprint: "fnv1a64:bbbbbbbbbbbbbbbb",
+    lease_generation: 18, apply_terminal: FullyApplied,
+  }))
+}
+
+fn executor_plan_fixture_credential() -> String {
+  workspace_commissioning_record_text(record: WorkspaceCommissioningPrepared { provenance: directive_fixture_provenance() }) as String
+}
+
+fn exact_bundle_and_credential_join_without_a_circular_hash_control() -> Bool {
+  let body = executor_plan_fixture_body()
+  match workspace_executor_plan_bytes(plan_body: body, apply_shell: "reviewed-shell",
+    receipt_text: executor_plan_fixture_receipt(body: body, shell: "reviewed-shell", host: "srv1", scope: workspace_executor_scope_wire),
+    credential: executor_plan_fixture_credential()) {
+    WorkspaceExecutorPlanBytesVerified { verified } => verified.provenance == directive_fixture_provenance()
+    _ => false
+  }
+}
+
+fn replaced_apply_bytes_refuse_even_with_the_same_credential_control() -> Bool {
+  let body = executor_plan_fixture_body()
+  match workspace_executor_plan_bytes(plan_body: body, apply_shell: "substituted-shell",
+    receipt_text: executor_plan_fixture_receipt(body: body, shell: "reviewed-shell", host: "srv1", scope: workspace_executor_scope_wire),
+    credential: executor_plan_fixture_credential()) {
+    WorkspaceExecutorPlanBytesRefused { reason } => reason == "reviewed fleet bundle digest does not match its bytes"
+    _ => false
+  }
+}
+
+fn duplicated_credential_row_refuses_a_self_consistent_bundle_control() -> Bool {
+  let body = join([executor_plan_fixture_body(), executor_plan_fixture_body()], "\n")
+  match workspace_executor_plan_bytes(plan_body: body, apply_shell: "reviewed-shell",
+    receipt_text: executor_plan_fixture_receipt(body: body, shell: "reviewed-shell", host: "srv1", scope: workspace_executor_scope_wire),
+    credential: executor_plan_fixture_credential()) {
+    WorkspaceExecutorPlanBytesRefused { reason } => reason == "commissioning credential and reviewed receipt disagree"
+    _ => false
+  }
+}
+
+fn another_host_cannot_supply_a_commissioning_receipt_control() -> Bool {
+  let body = executor_plan_fixture_body()
+  match workspace_executor_plan_bytes(plan_body: body, apply_shell: "reviewed-shell",
+    receipt_text: executor_plan_fixture_receipt(body: body, shell: "reviewed-shell", host: "srv2", scope: workspace_executor_scope_wire),
+    credential: executor_plan_fixture_credential()) {
+    WorkspaceExecutorPlanBytesRefused { reason } => reason == "commissioning credential and reviewed receipt disagree"
+    _ => false
+  }
+}
+
+fn generic_fleet_receipt_is_not_a_commissioning_subject_control() -> Bool {
+  let body = executor_plan_fixture_body()
+  match workspace_executor_plan_bytes(plan_body: body, apply_shell: "reviewed-shell",
+    receipt_text: executor_plan_fixture_receipt(body: body, shell: "reviewed-shell", host: "srv1", scope: "full_host"),
+    credential: executor_plan_fixture_credential()) {
+    WorkspaceExecutorPlanBytesRefused { reason } => reason == "commissioning credential and reviewed receipt disagree"
+    _ => false
+  }
+}
+
+fn absent_prestate_refuses_even_a_self_consistent_bundle_control() -> Bool {
+  let body = workspace_executor_credential_row(provenance: directive_fixture_provenance())
+  match workspace_executor_plan_bytes(plan_body: body, apply_shell: "reviewed-shell",
+    receipt_text: executor_plan_fixture_receipt(body: body, shell: "reviewed-shell", host: "srv1", scope: workspace_executor_scope_wire),
+    credential: executor_plan_fixture_credential()) {
+    WorkspaceExecutorPlanBytesRefused { reason } => reason == "reviewed commissioning prestate is missing or ambiguous"
+    _ => false
+  }
+}
+
+fn duplicate_prestate_refuses_even_a_self_consistent_bundle_control() -> Bool {
+  let body = concat(executor_plan_fixture_body(), "\ncommissioning-prestate:other")
+  match workspace_executor_plan_bytes(plan_body: body, apply_shell: "reviewed-shell",
+    receipt_text: executor_plan_fixture_receipt(body: body, shell: "reviewed-shell", host: "srv1", scope: workspace_executor_scope_wire),
+    credential: executor_plan_fixture_credential()) {
+    WorkspaceExecutorPlanBytesRefused { reason } => reason == "reviewed commissioning prestate is missing or ambiguous"
+    _ => false
+  }
+}
+
+test fn absent_prestate_refuses_even_a_self_consistent_bundle() -> Bool { absent_prestate_refuses_even_a_self_consistent_bundle_control() }
+
+test fn another_host_cannot_supply_a_commissioning_receipt() -> Bool { another_host_cannot_supply_a_commissioning_receipt_control() }
+
+test fn duplicate_prestate_refuses_even_a_self_consistent_bundle() -> Bool { duplicate_prestate_refuses_even_a_self_consistent_bundle_control() }
+
+test fn duplicated_credential_row_refuses_a_self_consistent_bundle() -> Bool { duplicated_credential_row_refuses_a_self_consistent_bundle_control() }
+
+test fn exact_bundle_and_credential_join_without_a_circular_hash() -> Bool { exact_bundle_and_credential_join_without_a_circular_hash_control() }
+
+test fn generic_fleet_receipt_is_not_a_commissioning_subject() -> Bool { generic_fleet_receipt_is_not_a_commissioning_subject_control() }
+
+test fn replaced_apply_bytes_refuse_even_with_the_same_credential() -> Bool { replaced_apply_bytes_refuse_even_with_the_same_credential_control() }

@@ -2,6 +2,7 @@ module extdeps.google.issue_tracker
 
 import std.types { Bool, Int, List, NonEmptyStr, String, Timestamp }
 import std.algebra { trim }
+import v2.std.algebra { any }
 import extdeps.color.srgb { Srgb8 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }

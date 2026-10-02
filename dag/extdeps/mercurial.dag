@@ -1,6 +1,6 @@
 module extdeps.mercurial
 
-import std.types { NonEmptyStr, Bytes, Timestamp }
+import std.types { NonEmptyStr, Bytes, Timestamp, brand }
 import std.integer { NonNegativeInt, UInt8, qualified_octet_members }
 import std.graph {
   GraphEdge,
@@ -121,28 +121,108 @@ type MercurialNodeIdentityDecodeOutcome
 
 fn mercurial_node_id_from_octets(
   octets: List<UInt8>,
-) -> MercurialNodeId {
-  MercurialNodeId {
-    octet00: octets.first(),
-    octet01: octets.skip(n: 1).first(),
-    octet02: octets.skip(n: 2).first(),
-    octet03: octets.skip(n: 3).first(),
-    octet04: octets.skip(n: 4).first(),
-    octet05: octets.skip(n: 5).first(),
-    octet06: octets.skip(n: 6).first(),
-    octet07: octets.skip(n: 7).first(),
-    octet08: octets.skip(n: 8).first(),
-    octet09: octets.skip(n: 9).first(),
-    octet10: octets.skip(n: 10).first(),
-    octet11: octets.skip(n: 11).first(),
-    octet12: octets.skip(n: 12).first(),
-    octet13: octets.skip(n: 13).first(),
-    octet14: octets.skip(n: 14).first(),
-    octet15: octets.skip(n: 15).first(),
-    octet16: octets.skip(n: 16).first(),
-    octet17: octets.skip(n: 17).first(),
-    octet18: octets.skip(n: 18).first(),
-    octet19: octets.skip(n: 19).first(),
+) -> MercurialNodeId? {
+  match octets.first() {
+    Absent => none
+    Present { value: o00 } =>
+  match octets.skip(n: 1).first() {
+    Absent => none
+    Present { value: o01 } =>
+  match octets.skip(n: 2).first() {
+    Absent => none
+    Present { value: o02 } =>
+  match octets.skip(n: 3).first() {
+    Absent => none
+    Present { value: o03 } =>
+  match octets.skip(n: 4).first() {
+    Absent => none
+    Present { value: o04 } =>
+  match octets.skip(n: 5).first() {
+    Absent => none
+    Present { value: o05 } =>
+  match octets.skip(n: 6).first() {
+    Absent => none
+    Present { value: o06 } =>
+  match octets.skip(n: 7).first() {
+    Absent => none
+    Present { value: o07 } =>
+  match octets.skip(n: 8).first() {
+    Absent => none
+    Present { value: o08 } =>
+  match octets.skip(n: 9).first() {
+    Absent => none
+    Present { value: o09 } =>
+  match octets.skip(n: 10).first() {
+    Absent => none
+    Present { value: o10 } =>
+  match octets.skip(n: 11).first() {
+    Absent => none
+    Present { value: o11 } =>
+  match octets.skip(n: 12).first() {
+    Absent => none
+    Present { value: o12 } =>
+  match octets.skip(n: 13).first() {
+    Absent => none
+    Present { value: o13 } =>
+  match octets.skip(n: 14).first() {
+    Absent => none
+    Present { value: o14 } =>
+  match octets.skip(n: 15).first() {
+    Absent => none
+    Present { value: o15 } =>
+  match octets.skip(n: 16).first() {
+    Absent => none
+    Present { value: o16 } =>
+  match octets.skip(n: 17).first() {
+    Absent => none
+    Present { value: o17 } =>
+  match octets.skip(n: 18).first() {
+    Absent => none
+    Present { value: o18 } =>
+  match octets.skip(n: 19).first() {
+    Absent => none
+    Present { value: o19 } =>
+  Present { value: MercurialNodeId {
+    octet00: o00,
+    octet01: o01,
+    octet02: o02,
+    octet03: o03,
+    octet04: o04,
+    octet05: o05,
+    octet06: o06,
+    octet07: o07,
+    octet08: o08,
+    octet09: o09,
+    octet10: o10,
+    octet11: o11,
+    octet12: o12,
+    octet13: o13,
+    octet14: o14,
+    octet15: o15,
+    octet16: o16,
+    octet17: o17,
+    octet18: o18,
+    octet19: o19,
+  } }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
   }
 }
 
@@ -213,14 +293,12 @@ fn mercurial_decode_node_identity(
         cause: MercurialNodeIdentityNonHexadecimal,
       }
       Present { value: qualified } =>
-        if count(qualified_octet_members(q: qualified)) == 20 {
-          MercurialNodeIdentityDecoded {
-            node: mercurial_node_id_from_octets(octets: qualified_octet_members(q: qualified)),
-          }
-        } else {
-          MercurialNodeIdentityDecodeRefused {
+        let members = qualified_octet_members(q: qualified)
+        match (if count(members) == 20 { mercurial_node_id_from_octets(octets: members) } else { none }) {
+          Present { value: node } => MercurialNodeIdentityDecoded { node: node }
+          Absent => MercurialNodeIdentityDecodeRefused {
             cause: MercurialNodeIdentityWrongLength {
-              observed: count(qualified_octet_members(q: qualified)) * 2,
+              observed: count(members) * 2,
             },
           }
         }

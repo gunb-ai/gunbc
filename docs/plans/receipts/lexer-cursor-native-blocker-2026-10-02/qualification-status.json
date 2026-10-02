@@ -1,0 +1,18 @@
+{
+  "source_commit": "23ae77b15e4",
+  "focused_controls_passed": 29,
+  "classifier_controls_passed": 17,
+  "original_three_identity_benchmark_exit": 0,
+  "full_file_cursor_tokenization_seconds": 27.92,
+  "full_file_tokens": 12072,
+  "sample_equivalence": "16/32/64 KiB passed",
+  "full_file_equivalence": "PASS via 10 contiguous reference-transition intervals covering all 19,670 transitions, including EOF, and all 12,072 tokens. See sibling lexer-cursor-transition-equivalence-2026-10-02 receipt.",
+  "native": "PASS: path-preserving snapshot emits, builds, and passes 10 native cases. Previous Bool failure was caused by flattened declaration paths in qualification harness.",
+  "memory_max_gib": 6,
+  "swap_max": 0,
+  "required_floor": "not run",
+  "deployment": "not run",
+  "qualification": "Focused native and lexer equivalence gates passed. Integration HOLD remains pending same-base whole-floor comparison, stack reconciliation, and exact-head required CI.",
+  "timing_caveat": "Concurrent bounded local tests; not a same-base whole-floor speedup claim",
+  "native_emission_scope": "v1 seed emits v2 fixture and production indexed runtime bridge; not v2 self-hosted emitter qualification"
+}

@@ -1,0 +1,21 @@
+module tools.commissioning_sudoers_generate
+
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import product.placement_supply { HostIdentity }
+import gunbc.generated_artifact { RunnerHostSudoersArtifact, artifact_path }
+import gunbc.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound }
+import gunbc.runner_host_grants { runner_host_sudoers_content }
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+fn main() -> ProcessExit {
+  let host = "srv1" as HostIdentity
+  let path = artifact_path(a: RunnerHostSudoersArtifact { host: host })
+  match runner_host_deploy_for(host: host) {
+    RunnerHostDeployFound { deploy } => {
+      let content = runner_host_sudoers_content(deploy: deploy, artifact_path: path)
+      let wrote = Filesystem.Write(path: path, content: content)
+      if wrote.success { ExitSuccess } else { exit_failure(reason: wrote.error) }
+    }
+    _ => exit_failure(reason: "srv1 deployment model did not admit sudoers generation")
+  }
+}

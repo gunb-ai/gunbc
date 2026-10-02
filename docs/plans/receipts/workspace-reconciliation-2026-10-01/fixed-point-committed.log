@@ -1,0 +1,11 @@
+memory-cgroup-bind: not requested
+◐ started compile.frontend
+✓ compile.frontend done in 7 seconds
+✓ compile.normalize done in 666ms
+✓ compile.reconcile done in 53 seconds
+✓ compile.analyses done in 972ms
+◐ started compile.emit
+✓ compile.emit done in 4 minutes
+required-regen: emitted-edge admission admitted edges=1021
+required-regen-fixed-point: fixed_point_equal=true referenced_first_generation_equal=true referenced_at=b83a547de305b73d6af3e9583b43c7a00deec0fa
+[floor-teardown] released process caches without freeing them in 0 ms (the residue after this line is whatever main's return still drops)

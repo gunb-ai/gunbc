@@ -1,0 +1,25 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-commissioning-production
+✓ typecheck v2.std.compilers.target_model done in 21 seconds
+[pre-entry] phase=workspace_discovery ms=16 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=6 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=826 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=0 scale=tree
+[pre-entry] phase=pool_census_parse ms=309 scale=tree
+[pre-entry] phase=closure_name_census_build ms=292 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=5 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=18 scale=closure
+[pre-entry] phase=closure_load ms=349 scale=closure
+[pre-entry] phase=closure_parse ms=1552 scale=closure
+[pre-entry] phase=closure_resolve ms=50 scale=closure
+[pre-entry] phase=closure_normalize ms=184 scale=closure
+[pre-entry] phase=closure_typecheck ms=25793 scale=closure
+[pre-entry] phase=closure_parent_envs ms=1 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=27 scale=closure
+[pre-entry] phase=closure_ownership ms=205 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=31886 scale=closure
+[pre-entry] population pool_modules=129 closure_files=129
+[pre-entry] process_cpu user_ms=31287 sys_ms=476 max_rss_kib=695868
+PASS absent_job_field_is_not_an_empty_queue
+PASS inactive_unit_with_pending_job_is_not_quiescent
+PASS another_unit_cannot_supply_start_history
+PASS live_process_or_unloaded_unit_cannot_be_retried

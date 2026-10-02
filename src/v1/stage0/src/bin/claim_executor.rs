@@ -580,7 +580,6 @@ fn run() -> Result<ExitCode, ExitCode> {
                         "required-ci: parse OK {} file(s) parse-clean",
                         sweep.parse_clean
                     );
-                    head_index = Some(sweep.index.clone());
                     v1_compiler::cli_run::floor_seam("declarations");
                     // THE DECLARATION INTEGRITY CHECKS RIDE THE PARSE THAT JUST RAN.
                     //
@@ -719,6 +718,9 @@ fn run() -> Result<ExitCode, ExitCode> {
                             );
                         }
                     }
+                    // MOVED, NOT CLONED: the riders above read the sweep's own index, so it is
+                    // handed on once they are done rather than copied while they run.
+                    head_index = Some(sweep.index);
                 }
                 Err(errors) => {
                     for e in &errors {
@@ -1048,7 +1050,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 &source_roots,
                 &commit,
                 v1_compiler::cli_run::ShardStyle::single_shard(),
-                head_index.as_ref(),
+                head_index.take(),
             ) {
                 Ok(outcome) => {
                     report_required_floor_outcome(&outcome);
@@ -1126,12 +1128,20 @@ fn run() -> Result<ExitCode, ExitCode> {
                     "required-ci: admitted-module-identities {:?}",
                     admitted_module_identities
                 );
+                // ADMITTED MINUS JUDGED IS THE POPULATION OUTSIDE THIS RUN'S PREPARED SUBJECT,
+                // not a set of resolve failures: a module here was never handed to the checker,
+                // so nothing about it was refused. It was printed as
+                // `unresolved-module-identities`, a name for a failure it does not record (DESIGN
+                // section 3, a meaning fork), and a reader took it for silently dropped resolve
+                // errors. Which modules a run prepares, and under which seed ground, is printed by
+                // the floor's `[floor-phase]` lines; this is the count of the rest.
                 eprintln!(
-                    "required-ci: unresolved-module-identities {:?}",
-                    v1_compiler::cli_run::declaration_index::modules_unresolved_by_lane(
+                    "required-ci: outside-subject-module-count {}",
+                    v1_compiler::cli_run::declaration_index::modules_outside_lane_subject(
                         admitted_module_identities,
                         &judged_module_identities,
                     )
+                    .len()
                 );
             }
             Err(cause) => {
@@ -2122,6 +2132,10 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
         "required-floor: compile_dag_diagnostic_census_memo hits={census_hits} \
          misses={census_misses}"
     );
+    // The eval-frame call memo, process-wide: the subject of a whole-floor before/after
+    // comparison when its keying changes. Its own line for the same reason as the two above.
+    let (eval_hits, eval_misses) = v1_compiler::v1_interpreter::eval_call_memo_process_counts();
+    eprintln!("required-floor: eval_call_memo hits={eval_hits} misses={eval_misses}");
     for failure in &outcome.failures {
         eprintln!("required-floor: FAIL {failure}");
     }

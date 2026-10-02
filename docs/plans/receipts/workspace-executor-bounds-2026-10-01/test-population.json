@@ -1,0 +1,40 @@
+[
+  {
+    "path": "dag/test/claim/workspace_executor_plan_witness_test.dag",
+    "unchanged_test_names": [
+      "absent_prestate_refuses_even_a_self_consistent_bundle",
+      "another_host_cannot_supply_a_commissioning_receipt",
+      "duplicate_prestate_refuses_even_a_self_consistent_bundle",
+      "duplicated_credential_row_refuses_a_self_consistent_bundle",
+      "exact_bundle_and_credential_join_without_a_circular_hash",
+      "generic_fleet_receipt_is_not_a_commissioning_subject",
+      "replaced_apply_bytes_refuse_even_with_the_same_credential"
+    ]
+  },
+  {
+    "path": "dag/test/claim/workspace_executor_install_witness_test.dag",
+    "unchanged_test_names": [
+      "installed_and_observed_controller_units_are_identical",
+      "reviewed_plan_binding_controls",
+      "workspace_install_does_not_restore_competing_ci_reservation",
+      "workspace_install_includes_executor_without_starting_it"
+    ]
+  },
+  {
+    "path": "dag/test/claim/workspace_dispatch_witness_test.dag",
+    "unchanged_test_names": [
+      "export_native_dispatch_for_controls",
+      "protected_bundle_roundtrips_as_one_value",
+      "torn_or_substituted_bundle_is_refused"
+    ]
+  },
+  {
+    "path": "dag/test/claim/workspace_dispatch_fleet_witness_test.dag",
+    "unchanged_test_names": [
+      "commissioning_input_and_installer_boundaries_hold_together",
+      "commissioning_scope_roundtrips_through_fleet_authority",
+      "dispatch_uses_fleet_lock_owner_without_reopening_artifacts",
+      "installed_grants_name_only_exact_argument_free_entries"
+    ]
+  }
+]

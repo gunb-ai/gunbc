@@ -1,6 +1,6 @@
 module product.fabric.sanitation
 
-import std.types { String, NonEmptyStr, Bool, List, Int }
+import std.types { String, NonEmptyStr, Bool, List, Int, brand }
 
 // A CELL RETURNS TO SUPPLY ONLY AFTER TEARDOWN IS PROVEN, NOT WHEN THE PROCESS EXITS.
 //

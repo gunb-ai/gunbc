@@ -1,0 +1,49 @@
+module test.claim.workspace_executor_submission_witness
+
+import std.types { Bool }
+import gunbc.workspace_commissioning_fleet { workspace_commissioning_candidate }
+import gunbc.workspace_commissioning_executor_cli { workspace_executor_cli_main }
+import gunbc.workspace_commissioning_executor_submission { workspace_executor_prepare, workspace_executor_rearm }
+import gunbc.workspace_commissioning_executor_journal {
+  WorkspaceExecutorRecord, ExecutorSubmissionRecorded, ExecutorSubmissionFenced, ExecutorInvocationRecorded,
+  workspace_executor_record_follows, workspace_executor_record_text, workspace_executor_record_decode,
+}
+import gunbc.workspace_commissioning_executor_fence { workspace_executor_submission_identity_matches }
+import test.claim.workspace_executor_journal_witness { journal_fixture, journal_invocation }
+
+fn fenced_fixture() -> WorkspaceExecutorRecord {
+  journal_fixture(phase: ExecutorSubmissionFenced, invocation: "")
+}
+
+fn rearmed_fixture() -> WorkspaceExecutorRecord {
+  let p = fenced_fixture()
+  WorkspaceExecutorRecord { subject: p.subject, submitter: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    previous_invocation: "33333333333333333333333333333333", invocation: "", phase: ExecutorSubmissionRecorded }
+}
+
+test fn unbound_submission_requires_fencing_before_replacement() -> Bool {
+  let old = journal_fixture(phase: ExecutorSubmissionRecorded, invocation: "")
+  workspace_executor_record_follows(previous: old, next: fenced_fixture())
+    && !workspace_executor_record_follows(previous: old, next: rearmed_fixture())
+    && workspace_executor_record_follows(previous: fenced_fixture(), next: rearmed_fixture())
+}
+
+test fn controller_cas_winner_cannot_be_fenced_or_rearmed() -> Bool {
+  let winner = journal_fixture(phase: ExecutorInvocationRecorded, invocation: journal_invocation)
+  !workspace_executor_record_follows(previous: winner, next: fenced_fixture())
+    && !workspace_executor_record_follows(previous: winner, next: rearmed_fixture())
+}
+
+test fn old_credential_cannot_claim_a_rearmed_submission() -> Bool {
+  !workspace_executor_submission_identity_matches(record: rearmed_fixture(), submitter: Present { value: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" })
+    && workspace_executor_submission_identity_matches(record: rearmed_fixture(), submitter: Present { value: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" })
+    && !workspace_executor_submission_identity_matches(record: rearmed_fixture(), submitter: none)
+}
+
+test fn fence_survives_restart_as_an_explicit_obligation() -> Bool {
+  let fenced = fenced_fixture()
+  match workspace_executor_record_decode(text: workspace_executor_record_text(record: fenced)) {
+    Present { value } => value == fenced
+    _ => false
+  }
+}

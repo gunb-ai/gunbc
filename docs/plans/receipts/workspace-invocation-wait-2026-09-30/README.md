@@ -1,0 +1,3 @@
+Four shared slot-start controls passed over the 781-module composition under MemoryMax=6G and MemorySwapMax=0. Peak RSS: 5,220,352 KiB. Binary SHA256: 717e9b4159dc7bc722e94a235325e6760f5acd246e63d8bed14b828dac970243. Source manifest checked against the checkout after completion.
+
+The shared wait now checks InvocationID around each activity read and again after status/receipt readback. Unknown or unreadable activity and changed invocation refuse; deactivating remains pending. This observes completion, not successful commissioning: the enclosing apply still owes exclusion, commissioning-terminal admission, protected journal/readiness readback and credential removal. No service was started by these controls.

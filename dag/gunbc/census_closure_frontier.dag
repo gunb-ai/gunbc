@@ -2,6 +2,7 @@ module gunbc.census_closure_frontier
 
 import gunbc.runner.runner_canary_evidence_frontier { runner_canary_executed_evidence_frontier }
 import std.roster_frontier { FrontierRow, concat_frontier_row_groups }
+import gunbc.resolver_cost_frontier { resolver_cost_frontier_rows }
 import gunbc.auth.privileged_effect_census { human_intervention_frequency_frontier_rows }
 import extdeps.cloud.hetzner { hetzner_money_rate_frontier_rows }
 import extdeps.dhcp.v4 { mac_address_anemic_brand_frontier_rows }
@@ -50,6 +51,7 @@ import extdeps.router.verizon_cr1000a {
   cr1000a_expires_in_ui_text_frontier_rows,
 }
 import extdeps.tools.sha256sum { sha256_verify_native_transport_frontier_rows }
+import extdeps.linux.usb_gadget { configfs_attr_write_realization_frontier_rows, configfs_rmdir_absent_as_converged_frontier_rows }
 import gunbc.cloudflare.r2_token_mint { cloudflare_r2_token_mint_frontier_rows }
 import extdeps.cloudflare.account_api_tokens { cloudflare_account_api_tokens_frontier_rows }
 import extdeps.cloudflare.r2 { cloudflare_r2_frontier_rows }
@@ -82,6 +84,7 @@ import gunbc.instruments.github_app_acquire {
 
 fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
   [
+    resolver_cost_frontier_rows,
     review_sheet_whole_estate_consumer_frontier_rows,
     review_sheet_formula_observation_consumer_frontier_rows,
     review_sheet_header_init_consumer_frontier_rows,
@@ -125,6 +128,8 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     cr1000a_delegated_prefix_length_scalar_frontier_rows,
     cr1000a_expires_in_ui_text_frontier_rows,
     sha256_verify_native_transport_frontier_rows,
+    configfs_attr_write_realization_frontier_rows,
+    configfs_rmdir_absent_as_converged_frontier_rows,
     pin_frontier_rows,
     cloudflare_r2_token_mint_frontier_rows,
     cloudflare_account_api_tokens_frontier_rows,

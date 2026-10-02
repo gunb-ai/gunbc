@@ -1,0 +1,26 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-commissioning-reconcile
+[pre-entry] phase=workspace_discovery ms=12 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=2 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=327 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=0 scale=tree
+[pre-entry] phase=pool_census_parse ms=41 scale=tree
+[pre-entry] phase=closure_name_census_build ms=61 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=1 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=2 scale=closure
+[pre-entry] phase=closure_load ms=411 scale=closure
+[pre-entry] phase=closure_parse ms=328 scale=closure
+[pre-entry] phase=closure_resolve ms=16 scale=closure
+[pre-entry] phase=closure_normalize ms=66 scale=closure
+[pre-entry] phase=closure_typecheck ms=2514 scale=closure
+[pre-entry] phase=closure_parent_envs ms=0 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=9 scale=closure
+[pre-entry] phase=closure_ownership ms=50 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=4500 scale=closure
+[pre-entry] population pool_modules=56 closure_files=54
+[pre-entry] process_cpu user_ms=4341 sys_ms=155 max_rss_kib=253948
+PASS a_shared_kernel_offer_fails_only_the_dedicated_kernel_guarantee
+PASS a_shared_kernel_offer_satisfies_a_shared_kernel_requirement
+PASS todays_slots_could_not_host_a_tenant_workload
+PASS todays_slots_still_satisfy_our_own_floor
+PASS the_seven_guarantees_do_not_share_a_wire_word
+PASS requiring_nothing_is_satisfied_rather_than_unanswerable

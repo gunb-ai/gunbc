@@ -60,8 +60,8 @@ type WitnessEvalVerdict
 // WHY A SUPPRESSED ROW IS ITS OWN DISPOSITION AND NOT A NotEvaluated REASON. NotEvaluated says
 // the identity was ATTEMPTED and produced no verdict -- host tool missing, hermetic route gap,
 // budget interrupt. A suppressed row was never attempted at all: the floor removed it from the
-// roster BEFORE the fold, because its module is outside the required gate or the cost-debt roster
-// withholds it. Same absence of a verdict, different fact and a different remedy -- one needs a
+// roster BEFORE the fold, because its module is outside the required gate, the cost-debt roster
+// withholds it, or the changed-witness sublane declined it as a declared BinWitnessWet row. Same absence of a verdict, different fact and a different remedy -- one needs a
 // route or a budget, the other needs a gate roster edit or a debt to clear -- so collapsing them
 // would be the state-space conflation DESIGN section 5 names.
 //
@@ -73,6 +73,7 @@ type WitnessEvalVerdict
 type ExpectedRedSuppressionGround
   = OutsideRequiredGate
   | WithheldCostDebt
+  | DeclinedNoCiWetLane
 
 type ExpectedRedJoinDisposition
   = StillRed
@@ -133,6 +134,7 @@ fn suppression_ground_label(ground: ExpectedRedSuppressionGround) -> String {
   match ground {
     OutsideRequiredGate => "suppressed_outside_required_gate"
     WithheldCostDebt => "suppressed_withheld_cost_debt"
+    DeclinedNoCiWetLane => "suppressed_declined_no_ci_wet_lane"
   }
 }
 
@@ -140,6 +142,7 @@ fn suppression_ground_detail(ground: ExpectedRedSuppressionGround) -> String {
   match ground {
     OutsideRequiredGate => "enrolled, but its module is outside the required gate and was never loaded, so this run could not attempt it -- dormant, not deleted"
     WithheldCostDebt => "enrolled, but the cost-debt roster withholds it from execution in this run -- dormant, not deleted"
+    DeclinedNoCiWetLane => "enrolled and changed by this run, but its file is a declared BinWitnessWet row no CI lane executes (gunbc.rung_drop edited_bin_witness_wet_rows_not_executed_by_ci), so the changed-witness sublane declined it -- dormant, not deleted"
   }
 }
 

@@ -1,0 +1,4 @@
+Oct 02 13:33:42 srv2 systemd[3570]: Started run-r1d0b86ee8d5544169d2da4b2966ee471.scope - /usr/bin/env MALLOC_ARENA_MAX=2 timeout --kill-after=5s 600 /home/briansrls/scratch-wt/lexer-cursor-integrated/target/cursor-whole-floor/bin/gunbc run --source-root target/reconcile-workflow/body --entry target/reconcile-workflow/body/run.dag.
+Oct 02 13:39:16 srv2 systemd[3570]: run-r1d0b86ee8d5544169d2da4b2966ee471.scope: A process of this unit has been killed by the OOM killer.
+Oct 02 13:39:17 srv2 systemd[3570]: run-r1d0b86ee8d5544169d2da4b2966ee471.scope: Failed with result 'oom-kill'.
+Oct 02 13:39:17 srv2 systemd[3570]: run-r1d0b86ee8d5544169d2da4b2966ee471.scope: Consumed 5min 33.972s CPU time.

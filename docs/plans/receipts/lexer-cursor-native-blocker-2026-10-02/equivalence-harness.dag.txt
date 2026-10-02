@@ -1,0 +1,18 @@
+module tools.cursor_equivalence
+import v2.compiler.tokenize { tokenize }
+import tools.reference_tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex_rules }
+import v2.std.compilers.lexing { ModeledLexRules }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+fn main(input_path: String, marker_path: String) -> ProcessExit {
+  let source = Filesystem.Read(path: input_path)
+  if !source.success { exit_failure(reason: "input unreadable") } else {
+    let current = v2.compiler.tokenize.tokenize(text: source.content, file: ^comparison, rules: ModeledLexRules { root: dag_lex_rules() })
+    let marked = Filesystem.Write(path: marker_path, content: match current { v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => "accepted", v2.std.diagnostic.Rejected { diagnostics: _ } => "rejected" })
+    if !marked.success { exit_failure(reason: "marker unreadable") } else {
+      let previous = tools.reference_tokenize.tokenize(text: source.content, file: ^comparison, rules: ModeledLexRules { root: dag_lex_rules() })
+      if current == previous && match current { v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true, v2.std.diagnostic.Rejected { diagnostics: _ } => false } { ExitSuccess } else { exit_failure(reason: "token outcomes differ") }
+    }
+  }
+}

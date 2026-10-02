@@ -1,0 +1,18 @@
+[
+  {
+    "path": "target/executor-review-prestate-v1/sources.json",
+    "sha256": "0f3e0f87260bf94679945ba24f238b42e2825ce0ff9098786713954532a58c93"
+  },
+  {
+    "path": "target/executor-install-integration-v1/sources.json",
+    "sha256": "bce607a0ff754ca61c7ffd1d58184d78e8b8bd56246b9fc1347e76596ac087c7"
+  },
+  {
+    "path": "target/workspace-commissioning-executor.sh",
+    "sha256": "7d7f7fe010a01cadda5d35c69ec754aa98b3fe867d2c303daadf90183da79337"
+  },
+  {
+    "path": "target/executor-preparation-final/sources.json",
+    "sha256": "e482da67404a200ccef04898e87b4474fd6d03327068f83288f2ff871df1f732"
+  }
+]

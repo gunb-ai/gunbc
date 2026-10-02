@@ -1,5 +1,7 @@
 module gunbc.spark.v41_row_store_readback_run
 
+import gunbc.spark.v41_workflow_artifacts { v41_readback_run_receipt_path }
+
 import std.types { String, Bool, Int, List, NonEmptyStr, Secret }
 import std.nat { Nat }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -59,7 +61,6 @@ import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, obse
 // the transcribed readings, where each record is compared against v41_place_row.
 
 data v41_readback_run_attempt_raw: String = "v41-row-store-readback"
-data v41_readback_run_receipt_path: String = "target/v41-row-store-readback-receipt.txt"
 
 // WHERE ONE SAMPLE IS ON THE HOST: a file and an absolute byte offset, with the region's length.
 type V41HostRegion {

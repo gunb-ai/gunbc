@@ -1,0 +1,16 @@
+# fleet-converge allocation-store plan
+subject_host:srv1
+subject_scope:scope:fabric-allocation-store-only
+subject_member_set:c6c96ab12a36a48e
+plan_generation:17
+# allocation-store
+allocation-namespace:allocation-store:absent:path=/var/lib/gunbc/fabric:listed-parent=/var/lib/gunbc:missing-entry=fabric
+allocation-store:absent-because-namespace-absent:path=/var/lib/gunbc/fabric/allocation
+ensure-directory:path=/var/lib/gunbc/fabric
+ensure-directory:mode=0700
+ensure-directory:owner=CellSubstrateRootOwned
+ensure-directory:path=/var/lib/gunbc/fabric/allocation
+ensure-directory:mode=0700
+ensure-directory:owner=CellSubstrateRootOwned
+# allocation-store-refusals=0
+apply-admission:ready

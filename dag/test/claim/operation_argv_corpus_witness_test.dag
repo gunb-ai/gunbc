@@ -106,7 +106,7 @@ fn operation_argv_name_is_legacy_vocabulary(name: String) -> Bool {
 fn operation_argv_row_is_outside_legacy_vocabulary(row: ShellTransportOperationRow) -> Bool {
   any(
     xs: row.argv_input_refs,
-    predicate: fn(n) { !operation_argv_name_is_legacy_vocabulary(name: n) }
+    predicate: fn(n) { !operation_argv_name_is_legacy_vocabulary(name: n as String) }
   )
 }
 

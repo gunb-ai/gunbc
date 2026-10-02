@@ -1,0 +1,37 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-commissioning-production
+[pre-entry] phase=workspace_discovery ms=13 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=2 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=285 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=0 scale=tree
+[pre-entry] phase=pool_census_parse ms=111 scale=tree
+[pre-entry] phase=closure_name_census_build ms=101 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=2 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=12 scale=closure
+[pre-entry] phase=closure_load ms=127 scale=closure
+[pre-entry] phase=closure_parse ms=516 scale=closure
+[pre-entry] phase=closure_resolve ms=15 scale=closure
+[pre-entry] phase=closure_normalize ms=63 scale=closure
+[pre-entry] phase=closure_typecheck ms=1537 scale=closure
+[pre-entry] phase=closure_parent_envs ms=0 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=8 scale=closure
+[pre-entry] phase=closure_ownership ms=58 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=3480 scale=closure
+[pre-entry] population pool_modules=46 closure_files=46
+[pre-entry] process_cpu user_ms=3338 sys_ms=142 max_rss_kib=235028
+PASS witness_plan_receipt_round_trips
+PASS witness_apply_receipt_round_trips
+PASS witness_plan_receipt_with_tampered_host_refuses
+PASS witness_plan_receipt_wrong_schema_refuses
+PASS witness_apply_plan_binding_admits_the_exact_plan
+PASS witness_apply_plan_binding_refuses_run_id_substitution
+PASS witness_apply_plan_binding_refuses_hash_substitution
+PASS witness_apply_plan_binding_refuses_a_plan_from_another_revision
+PASS witness_apply_plan_binding_refuses_another_repository
+PASS witness_run_binding_names_its_workflow_file
+PASS witness_run_binding_round_trips_and_refuses_a_short_revision
+PASS witness_admit_run_revision_is_a_comparison_of_two_origins
+PASS witness_plan_receipt_with_tampered_lease_resource_fingerprint_refuses
+PASS witness_plan_receipt_with_tampered_lease_owner_fingerprint_refuses
+PASS witness_plan_receipt_with_tampered_lease_generation_refuses
+PASS witness_apply_receipt_partially_applied_round_trips
+PASS witness_apply_receipt_with_unknown_terminal_wire_refuses

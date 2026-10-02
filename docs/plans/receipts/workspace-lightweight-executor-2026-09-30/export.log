@@ -1,0 +1,23 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-commissioning-production
+✓ typecheck v2.std.compilers.target_model done in 21 seconds
+✓ typecheck v2.compiler.translate done in 3 seconds
+[pre-entry] phase=workspace_discovery ms=12 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=16 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=3289 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=0 scale=tree
+[pre-entry] phase=pool_census_parse ms=1178 scale=tree
+[pre-entry] phase=closure_name_census_build ms=1278 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=22 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=36 scale=closure
+[pre-entry] phase=closure_load ms=1496 scale=closure
+[pre-entry] phase=closure_parse ms=6081 scale=closure
+[pre-entry] phase=closure_resolve ms=208 scale=closure
+[pre-entry] phase=closure_normalize ms=684 scale=closure
+[pre-entry] phase=closure_typecheck ms=59653 scale=closure
+[pre-entry] phase=closure_parent_envs ms=5 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=110 scale=closure
+[pre-entry] phase=closure_ownership ms=871 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=87564 scale=closure
+[pre-entry] population pool_modules=502 closure_files=502
+[pre-entry] process_cpu user_ms=85606 sys_ms=1632 max_rss_kib=3166596
+[file] write target/workspace-commissioning-executor.sh (2977 bytes)

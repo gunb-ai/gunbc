@@ -1,11 +1,12 @@
 module v2.test.claim.emit.produced_item_parameter_order
 
 import v2.std.collection { Absent, List, Present, list_at_optional }
-import v2.std.arrow_signature { declared_signature }
+import v2.std.arrow_signature { ArrowParameterOrderMalformed, arrow_declared_parameter_order, declared_signature }
 import v2.std.compilers.target_model { ProducedDeclSignatureSubject, arrow_domain_binder_names, produced_decl_subject_from_name_and_arrow }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
+import v2.std.node_query { binder_edge }
 import v2.std.node {
   Arrow,
   Atom,
@@ -44,8 +45,8 @@ fn ipo_atom(id: Symbol) -> Node {
 fn ipo_item() -> Node {
   let sig = declared_signature(
     params: [
-      Edge { label: Named { name: ^ipo_z }, target: ipo_atom(id: ^ipo_int) },
-      Edge { label: Named { name: ^ipo_a }, target: ipo_atom(id: ^ipo_bool) }
+      binder_edge(name: ^ipo_z, type_node: ipo_atom(id: ^ipo_int)),
+      binder_edge(name: ^ipo_a, type_node: ipo_atom(id: ^ipo_bool))
     ],
     source: ipo_atom(id: ^ipo_source)
   )
@@ -162,9 +163,20 @@ test fn the_canonical_domain_stored_order_is_not_the_declared_order() -> Bool {
   arrow_domain_binder_names(arrow: ipo_canonical_domain(arrow: ipo_item())) == [^ipo_a, ^ipo_z]
 }
 
+// AN ITEM WHOSE DOMAIN BINDS NAMES BUT CARRIES NO ORDER EDGE IS ILL FORMED (A4, gunbc#12770): such an
+// Arrow has no admitted meaning (v2.std.node arrow_signature_edges_conform refuses it at Node
+// admission), so the declared-order read answers Malformed for it and the renderer refuses with the
+// malformed reason. Before A4 the same Arrow was well formed and refused later, as order ABSENT; the
+// refusal moved earlier, it did not go away. The claim pins both the route (the admission wall's
+// answer) and the typed refusal, and still reds if the renderer ever accepts the order-less item.
 test fn an_item_with_parameters_and_no_order_refuses_typed() -> Bool {
-  match produced_decl_subject_from_name_and_arrow(fn_name: ^ipo_f, arrow: ipo_without_order(arrow: ipo_item())) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^produced_decl_render_parameter_order_absent
+  let stripped = ipo_without_order(arrow: ipo_item())
+  match arrow_declared_parameter_order(arrow: stripped) {
+    ArrowParameterOrderMalformed =>
+      match produced_decl_subject_from_name_and_arrow(fn_name: ^ipo_f, arrow: stripped) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^produced_decl_render_parameter_order_malformed
+      }
+    _ => false
   }
 }

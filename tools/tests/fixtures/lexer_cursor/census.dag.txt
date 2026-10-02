@@ -1,0 +1,18 @@
+module tools.cursor_transition_census
+import tools.cursor_transition_proof { CurrentCount, advance_current }
+import v2.compiler.tokenize { lex_walk_init }
+import v2.extdeps.languages.dag { dag_lex_rules }
+import v2.std.algebra { length }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+fn main(input_path: String, receipt_path: String) -> ProcessExit {
+ let read = Filesystem.Read(path: input_path)
+ if !read.success { exit_failure(reason: "input unreadable") } else {
+ let source = chars(s: read.content)
+ let end = advance_current(seed: CurrentCount { state: lex_walk_init(src: source, file: ^comparison, rules: dag_lex_rules()), steps: 0 }, source: source, count: length(xs: source))
+ if end.state.done && !end.state.error && end.state.remaining.index == length(xs: source) {
+ let written = Filesystem.Write(path: receipt_path, content: "{end.steps} {length(xs: end.state.tokens)} {end.state.remaining.index}")
+ if written.success { ExitSuccess } else { exit_failure(reason: "census write failed") }
+ } else { exit_failure(reason: "census did not reach EOF") }
+ }
+}

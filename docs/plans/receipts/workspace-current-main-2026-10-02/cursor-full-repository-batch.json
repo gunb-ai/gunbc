@@ -1,0 +1,20 @@
+{
+  "source_revision": "01a43aa013a",
+  "exit": 0,
+  "source_roots": [
+    "dag",
+    "src/v2"
+  ],
+  "passes": [
+    "PASS lex_match_thunk_claims_holds",
+    "PASS lex_rule_dispatch_agrees_with_trying_every_rule",
+    "PASS pipeline_tokenize_add_relationship_green",
+    "PASS pipeline_tokenize_pick_relationship_green"
+  ],
+  "log_sha256": "6180661ce58c076b9a20e866cff66ade4d2c49085ba43ce3994ff2992d8662b7",
+  "memory_max_bytes": 27917287424,
+  "memory_high_bytes": 26843545600,
+  "swap_max_bytes": 34359738368,
+  "scope": "full-repository entry import admission and four cursor witness assertions; not required-floor qualification",
+  "cost_attribution": "Refused OverAttributed; no cost shares or performance conclusion claimed"
+}

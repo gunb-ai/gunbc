@@ -1,0 +1,11 @@
+{
+  "controls": {
+    "missing_interval_refuses": true,
+    "duplicate_interval_refuses": true,
+    "overlap_refuses": true,
+    "missing_eof_refuses": true,
+    "wrong_token_count_refuses": true
+  },
+  "qualifier_sha256": "6755e6968247a33235f9ecac5e7e1dcb113142f753e01ac50fb5101d1661b879",
+  "note": "Additional pure aggregate controls run against the successful immutable interval receipts; transition executions were not repeated."
+}

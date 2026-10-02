@@ -1,0 +1,46 @@
+{
+  "binary_sha256": "717e9b4159dc7bc722e94a235325e6760f5acd246e63d8bed14b828dac970243",
+  "checks": [
+    {
+      "check": "helper",
+      "passed": 5,
+      "log_sha256": "bf96f399441f9fd042bc672fc7766f75300f1f5623d7b53909b70b4648cd718d",
+      "source_manifest_sha256": "27c10bb8266d09bc7f08e5a7b54a25935f39b686b564070a49dcb3ecb9d1bb4d",
+      "source_modules": 791,
+      "snapshot": "target/executor-helper-finish-qualified-v2"
+    },
+    {
+      "check": "recovery",
+      "passed": 5,
+      "log_sha256": "9e54c6ffb59e37e0119cbc07ab553e54ef33ebf63c44abf5567ade1916f2433f",
+      "source_manifest_sha256": "d30c729fa999cc9c6cf0a962bc3ff937761bf6d6c9ebe47d6bb8862fdc51f024",
+      "source_modules": 792,
+      "snapshot": "target/executor-recovery-qualified"
+    },
+    {
+      "check": "plan-bytes",
+      "passed": 5,
+      "log_sha256": "ddb0ce15aa40c937ad17a222a670dc120e24708cadba25bb3b922ab0a282e2d1",
+      "source_manifest_sha256": "448a08ceb2986967a35580f93f567ac950584c3c594711ea96121ce4f593e861",
+      "source_modules": 642,
+      "snapshot": "target/executor-plan-qualified-v3"
+    },
+    {
+      "check": "fleet-receipt",
+      "passed": 17,
+      "log_sha256": "b8b84c889bb86106789b7b4c1ab9f216cb07eb884e56de432d30e56d0c210fa4",
+      "source_manifest_sha256": "5264a5004b205b504aef0857285a664492c7ba88849b8b64427f8f6cea3ea25c",
+      "source_modules": 46,
+      "snapshot": "target/fleet-receipt-lightweight-v2"
+    },
+    {
+      "check": "fleet-integrated",
+      "passed": 87,
+      "log_sha256": "880f8c079e881db9bdd59c857821eb0fadaeaf2befe105cbefca7e4731b74dc1",
+      "source_manifest_sha256": "9c8dc5033643eb4288c7859880526680a45900738b26657b13c2427ad9f6b7c4",
+      "source_modules": 1913,
+      "snapshot": "target/fleet-publication-final-v3"
+    }
+  ],
+  "live_host_effects": false
+}

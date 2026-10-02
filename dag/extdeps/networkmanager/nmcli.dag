@@ -1,0 +1,106 @@
+module extdeps.networkmanager.nmcli
+
+import std.types { NonEmptyStr, String, List, Int }
+import std.algebra { trim }
+import v2.std.optional { Present, Absent }
+import v2.std.algebra { filter }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+// NetworkManager's command-line client. Its own independently versioned upstream (DESIGN §3,
+// external upstream decomposition), so it owns its module rather than rows on a network hub.
+// The setting this module models is documented in nm-settings-nmcli(5); the verbs in nmcli(1).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "networkmanager.dev/docs/api/latest/nm-settings-nmcli.html"
+  }
+}
+
+data nmcli_manual_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "networkmanager.dev/docs/api/latest/nmcli.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.networkmanager.nmcli",
+      decl_name: "NmWirelessPowersave",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [nmcli_manual_authority]
+}
+
+data nmcli_binary_name: NonEmptyStr = "nmcli" as NonEmptyStr
+
+// nm-settings-nmcli(5), 802-11-wireless setting: "powersave -- One of
+// NM_SETTING_WIRELESS_POWERSAVE_DISABLE (2) (disable Wi-Fi power saving),
+// NM_SETTING_WIRELESS_POWERSAVE_ENABLE (3) (enable Wi-Fi power saving),
+// NM_SETTING_WIRELESS_POWERSAVE_IGNORE (1) (don't touch currently configure setting) or
+// NM_SETTING_WIRELESS_POWERSAVE_DEFAULT (0) (use the globally configured value)."
+// The closed set of four is upstream's; it is not widened or renamed here.
+data nm_wireless_powersave_property: NonEmptyStr = "802-11-wireless.powersave" as NonEmptyStr
+
+type NmWirelessPowersave
+  = NmPowersaveDefault
+  | NmPowersaveIgnore
+  | NmPowersaveDisable
+  | NmPowersaveEnable
+
+fn nm_wireless_powersave_numeric(v: NmWirelessPowersave) -> Int {
+  match v {
+    NmPowersaveDefault => 0
+    NmPowersaveIgnore => 1
+    NmPowersaveDisable => 2
+    NmPowersaveEnable => 3
+  }
+}
+
+// The nick the getter prints (`nmcli -g 802-11-wireless.powersave connection show <id>` answers
+// "disable" for value 2; read on the Spark fleet 2026-10-01).
+fn nm_wireless_powersave_nick(v: NmWirelessPowersave) -> String {
+  match v {
+    NmPowersaveDefault => "default"
+    NmPowersaveIgnore => "ignore"
+    NmPowersaveDisable => "disable"
+    NmPowersaveEnable => "enable"
+  }
+}
+
+data nm_wireless_powersave_values: List<NmWirelessPowersave> = [NmPowersaveDefault, NmPowersaveIgnore, NmPowersaveDisable, NmPowersaveEnable]
+
+// An unrecognised getter answer is UNREADABLE, never a default: an empty answer (no such
+// connection, or a non-wireless one) is not "default" and must not read as one.
+type NmPowersaveRead
+  = NmPowersaveReadValue { value: NmWirelessPowersave }
+  | NmPowersaveUnreadable { text: String }
+
+fn nm_wireless_powersave_of_getter(stdout: String) -> NmPowersaveRead {
+  let t = trim(s: stdout)
+  match first(filter(nm_wireless_powersave_values, v => nm_wireless_powersave_nick(v: v) == t)) {
+    Present { value: v } => NmPowersaveReadValue { value: v }
+    Absent => NmPowersaveUnreadable { text: t }
+  }
+}
+
+// nmcli(1): `-g | --get-values <field>` prints the values of the named fields in terse form;
+// `connection show <id>` shows the profile's settings.
+fn nmcli_connection_property_get_argv(connection: NonEmptyStr, property: NonEmptyStr) -> List<String> {
+  [nmcli_binary_name as String, "-g", property as String, "connection", "show", connection as String]
+}
+
+// nmcli(1): `connection modify <id> <setting>.<property> <value>` changes the stored profile. It
+// does not reactivate the connection, so the running link is untouched by this argv; the runtime
+// value is set separately (extdeps.iw).
+fn nmcli_wireless_powersave_modify_argv(connection: NonEmptyStr, value: NmWirelessPowersave) -> List<String> {
+  [
+    nmcli_binary_name as String, "connection", "modify", connection as String,
+    nm_wireless_powersave_property as String, to_string(nm_wireless_powersave_numeric(v: value)),
+  ]
+}

@@ -1,0 +1,18 @@
+module v2.test.fixture.list_at_native_driver
+
+import v2.extdeps.languages.rust_native_driver { RustEmitHostFamilyMember, rust_family_main_suffix }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+
+// Only runtime argument decoding and result framing live in this driver. Both indexed
+// reads are emitted from entry.dag and call the production runtime projection.
+fn main(output_path: String) -> ProcessExit {
+  let text = rust_family_main_suffix(
+    prelude: "use v1_compiled::v2_test_fixture_list_at_native::f;\nuse v1_compiled::v2_test_fixture_list_at_native::empty;\n",
+    members: [
+      RustEmitHostFamilyMember { member_id: "apply", result_expression: "f(std::env::args().nth(2).unwrap().parse::<i64>().unwrap()) as i32" },
+      RustEmitHostFamilyMember { member_id: "empty", result_expression: "empty(std::env::args().nth(2).unwrap().parse::<i64>().unwrap()) as i32" }
+    ])
+  let written = Filesystem.Write(path: output_path, content: text)
+  if written.success { ExitSuccess } else { exit_failure(reason: "native fixture driver was not written") }
+}

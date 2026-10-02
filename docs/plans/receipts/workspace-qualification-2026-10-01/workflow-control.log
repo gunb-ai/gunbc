@@ -1,0 +1,34 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-commissioning-production
+✓ typecheck v2.std.compilers.target_model done in 21 seconds
+✓ typecheck v2.compiler.translate done in 3 seconds
+✓ typecheck gunbc.spark.pair_serving_authority_log done in 2 seconds
+✓ typecheck gunbc.roadmap_belt_actuate done in 2 seconds
+✓ typecheck gunbc.roadmap_component done in 2 seconds
+✓ typecheck gunbc.runner_microvm_slot_controller done in 4 seconds
+✓ typecheck gunbc.live_deploy.emit done in 3 seconds
+✓ typecheck gunbc.host_effect_realize done in 19 seconds
+✓ typecheck gunbc.live_deploy.apply done in 3 seconds
+✓ typecheck gunbc.fleet_converge_plan done in 2 seconds
+✓ typecheck gunbc.fleet_converge_plan_cli done in 2 seconds
+✓ typecheck gunbc.ci_spec done in 2 seconds
+✓ typecheck gunbc.fleet_converge_workflow done in 2 seconds
+[pre-entry] phase=workspace_discovery ms=14 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=44 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=10629 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=1 scale=tree
+[pre-entry] phase=pool_census_parse ms=3450 scale=tree
+[pre-entry] phase=closure_name_census_build ms=4171 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=71 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=101 scale=closure
+[pre-entry] phase=closure_load ms=5719 scale=closure
+[pre-entry] phase=closure_parse ms=19829 scale=closure
+[pre-entry] phase=closure_resolve ms=707 scale=closure
+[pre-entry] phase=closure_normalize ms=2109 scale=closure
+[pre-entry] phase=closure_typecheck ms=217480 scale=closure
+[pre-entry] phase=closure_parent_envs ms=26 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=399 scale=closure
+[pre-entry] phase=closure_ownership ms=2654 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=345247 scale=closure
+[pre-entry] population pool_modules=1993 closure_files=1985
+[pre-entry] process_cpu user_ms=338578 sys_ms=5454 max_rss_kib=12159328
+PASS both_microvm_steps_pass_the_selected_host_to_the_binding

@@ -1,0 +1,26 @@
+memory-cgroup-bind: not requested
+regen-scope: WholePopulationScope
+◐ started regen.corpus_load
+✓ regen.corpus_load done in 54 seconds
+◐ started compile.frontend
+✓ compile.frontend done in 7 seconds
+✓ compile.normalize done in 750ms
+✓ compile.reconcile done in 62 seconds
+✓ compile.analyses done in 1 seconds
+◐ started compile.emit
+✓ compile.emit done in 4 minutes
+required-regen: emitted-edge admission admitted edges=1021
+◐ started regen.mirror_write
+✓ regen.mirror_write done in 95ms
+◐ started regen.candidate_verify
+✓ regen.candidate_verify done in 0ms
+◐ started regen.adjudicate
+✓ regen.adjudicate done in 11ms
+◐ started regen.hand_verify
+✓ regen.hand_verify done in 118ms
+◐ started regen.digest
+✓ regen.digest done in 127ms
+[shared-index] evict slot=0 evicted_generation=2 evicted_roots=["src/v1", "dag"] new_generation=4 new_roots=["dag", "src/v2"] site=src/v1/stage0/src/cli_run/entry_resolve.rs:1012
+required-regen: elapsed_ms=524346 first_generation_equal=true planned=161 executed=161 adjudicated=161 declared_divergent=1 [main.rs]
+required-regen: first_generation_equal=true candidate=target/stage0-regen-candidate
+[floor-teardown] released process caches without freeing them in 0 ms (the residue after this line is whatever main's return still drops)

@@ -1,0 +1,28 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-commissioning-production
+✓ typecheck v2.std.compilers.target_model done in 24 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+✓ typecheck v2.compiler.body_lowering_fold done in 2 seconds
+✓ typecheck gunbc.runner_microvm_slot_controller done in 4 seconds
+[pre-entry] phase=workspace_discovery ms=14 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=23 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=5205 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=0 scale=tree
+[pre-entry] phase=pool_census_parse ms=1903 scale=tree
+[pre-entry] phase=closure_name_census_build ms=2157 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=36 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=50 scale=closure
+[pre-entry] phase=closure_load ms=2684 scale=closure
+[pre-entry] phase=closure_parse ms=9739 scale=closure
+[pre-entry] phase=closure_resolve ms=345 scale=closure
+[pre-entry] phase=closure_normalize ms=1106 scale=closure
+[pre-entry] phase=closure_typecheck ms=96710 scale=closure
+[pre-entry] phase=closure_parent_envs ms=10 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=186 scale=closure
+[pre-entry] phase=closure_ownership ms=1380 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=151452 scale=closure
+[pre-entry] population pool_modules=783 closure_files=783
+[pre-entry] process_cpu user_ms=148300 sys_ms=2586 max_rss_kib=5237236
+PASS readable_refusal_is_not_successful_commissioning
+PASS failed_or_other_invocation_cannot_complete_commissioning
+PASS unreadable_exit_status_cannot_complete_commissioning
+PASS advanced_readiness_is_not_initial_commissioning_readback

@@ -1,0 +1,8 @@
+{
+  "sha256": "0dcff40a737ae17cdf25900d6a83a2b8fd88271cc05fe3335b37565c1b659852",
+  "bytes": 305888,
+  "commissioning_plan_steps": 1,
+  "timeout_minutes": 15,
+  "host_revision_bound": true,
+  "plan_upload_bound": true
+}

@@ -86,7 +86,7 @@ test fn witness_both_runner_lifecycles_refuse_at_the_verdict() -> Bool {
 }
 
 fn refuses(placement: BuildCacheServerPlacement) -> Bool {
-  match placement_verdict(catalog_id: sccache_local_id, stats_line: "stats", placement: placement) {
+  match gunbc.build_cache_provision_verdict.placement_verdict(catalog_id: sccache_local_id, stats_line: "stats", placement: placement) {
     BuildCacheProvisionRefused { cause: _, reason: _ } => true
     BuildCacheProvisionConverged { catalog_id: _, stats_line: _ } => false
   }

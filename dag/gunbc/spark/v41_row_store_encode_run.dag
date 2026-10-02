@@ -1,5 +1,7 @@
 module gunbc.spark.v41_row_store_encode_run
 
+import gunbc.spark.v41_workflow_artifacts { v41_encode_run_receipt_path }
+
 import std.types { String, Bool, Int, List, NonEmptyStr, Secret }
 import std.nat { Nat }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -63,7 +65,6 @@ import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, obse
 // its own host is staging, a later step (gunbc.spark.v41_engram_staging).
 
 data v41_encode_run_attempt_raw: String = "v41-row-store-encode"
-data v41_encode_run_receipt_path: String = "target/v41-row-store-encode-receipt.txt"
 
 // ONE STORE'S OUTCOME, AS A CLOSED SUM (review 70572): present-and-read, encoded-and-read, encoded but
 // the digest read failed, or the encode itself failed. No arm carries a digest it did not read.

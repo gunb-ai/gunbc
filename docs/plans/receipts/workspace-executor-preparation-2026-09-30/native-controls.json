@@ -1,0 +1,106 @@
+[
+  {
+    "case": "start-and-settle",
+    "passed": true
+  },
+  {
+    "case": "fence-drain-rearm",
+    "passed": true
+  },
+  {
+    "case": "drain-stop-refused",
+    "passed": true
+  },
+  {
+    "case": "drain-job-remains",
+    "passed": true
+  },
+  {
+    "case": "drain-rearm-refused",
+    "passed": true
+  },
+  {
+    "case": "drain-invalid-rearm",
+    "passed": true
+  },
+  {
+    "case": "missing-lock-refuses",
+    "passed": true
+  },
+  {
+    "case": "reattach-no-start",
+    "passed": true
+  },
+  {
+    "case": "recover-completed",
+    "passed": true
+  },
+  {
+    "case": "settle-after-reuse",
+    "passed": true
+  },
+  {
+    "case": "complete-after-reuse",
+    "passed": true
+  },
+  {
+    "case": "missing-job",
+    "passed": true
+  },
+  {
+    "case": "duplicate-job",
+    "passed": true
+  },
+  {
+    "case": "queued-job",
+    "passed": true
+  },
+  {
+    "case": "different-unit",
+    "passed": true
+  },
+  {
+    "case": "changed-invocation",
+    "passed": true
+  },
+  {
+    "case": "change-at-final-read",
+    "passed": true
+  },
+  {
+    "case": "settlement-refused",
+    "passed": true
+  },
+  {
+    "case": "readable-refusal",
+    "passed": true
+  },
+  {
+    "case": "controller-only-success",
+    "passed": true
+  },
+  {
+    "case": "bind-failed",
+    "passed": true
+  },
+  {
+    "case": "start-submit-failed",
+    "passed": true
+  },
+  {
+    "case": "prepare-uncertain",
+    "passed": true
+  },
+  {
+    "case": "bad-decision",
+    "passed": true
+  },
+  {
+    "case": "timeout",
+    "passed": true
+  },
+  {
+    "case": "exclusion-and-cancellation",
+    "passed": true
+  }
+]

@@ -1,0 +1,89 @@
+module test.claim.workspace_commissioning_directive_witness
+
+import std.types { Bool, NonEmptyStr, String }
+import gunbc.workspace_commissioning_runtime { workspace_commissioning_tree_receipt_matches }
+import gunbc.auth.approval_broker_cutover { TreeReceiptObserved, TreeReceiptUnreadable }
+import test.claim.workspace_commissioning_transaction_witness { transaction_fixture_provenance }
+import gunbc.workspace_commissioning_transaction { WorkspaceCommissioningProvenance, WorkspaceCommissioningPrepared, WorkspaceCommissioningCommitted }
+import gunbc.workspace_commissioning_store { workspace_commissioning_record_text }
+import gunbc.workspace_commissioning_directive { workspace_commissioning_directive_from_text, WorkspaceCommissioningDirectiveReady, WorkspaceCommissioningDirectiveRefused }
+import gunbc.workspace_commissioning_history { workspace_initial_receipt_refusal }
+
+fn directive_fixture_provenance() -> WorkspaceCommissioningProvenance {
+  let p = transaction_fixture_provenance()
+  WorkspaceCommissioningProvenance {
+    slot: p.slot, plan_hash: p.plan_hash, source_revision: p.source_revision, installed_tree_digest: p.installed_tree_digest,
+    controller_digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr,
+    guest_image_digest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as NonEmptyStr,
+    cpu_budget: p.cpu_budget, attempt_envelope: p.attempt_envelope,
+    no_swap: p.no_swap, sanitation_observation: p.sanitation_observation,
+  }
+}
+
+test fn commissioning_directive_preserves_exact_provenance() -> Bool {
+  let p = directive_fixture_provenance()
+  match workspace_commissioning_directive_from_text(text: workspace_commissioning_record_text(record: WorkspaceCommissioningPrepared { provenance: p }) as String) {
+    WorkspaceCommissioningDirectiveReady { provenance } => provenance == p
+    _ => false
+  }
+}
+
+test fn committed_receipt_cannot_be_replayed_as_initial_directive() -> Bool {
+  match workspace_commissioning_directive_from_text(text: workspace_commissioning_record_text(record: WorkspaceCommissioningCommitted { provenance: directive_fixture_provenance() }) as String) {
+    WorkspaceCommissioningDirectiveRefused { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn commissioning_directive_refuses_non_digest_artifact_identity() -> Bool {
+  match workspace_commissioning_directive_from_text(text: workspace_commissioning_record_text(record: WorkspaceCommissioningPrepared { provenance: transaction_fixture_provenance() }) as String) {
+    WorkspaceCommissioningDirectiveRefused { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn incomplete_directive_cannot_authorize_initial_readiness() -> Bool {
+  match workspace_commissioning_directive_from_text(text: "{\"schema\":\"workspace-commissioning/v1\"}") {
+    WorkspaceCommissioningDirectiveRefused { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn executed_or_unknown_controller_history_requires_recovery() -> Bool {
+  let readings = ["ran: controller-ran-attempt", "", "refused: ShapeRefused unknown", "settled without launch: prior reservation"]
+  fold(readings, init: true, f: (ok, text) => ok && match workspace_initial_receipt_refusal(content: text) {
+    Present { value: _ } => true
+    Absent => false
+  })
+}
+
+test fn absent_reservation_receipt_remains_unstarted_history() -> Bool {
+  match workspace_initial_receipt_refusal(content: "refused: ReservationNotObserved no reservation holds srv1-13\n") {
+    Absent => true
+    _ => false
+  }
+}
+
+
+test fn installed_tree_receipt_binds_both_revision_and_digest() -> Bool {
+  let p = directive_fixture_provenance()
+  workspace_commissioning_tree_receipt_matches(provenance: p,
+    receipt: TreeReceiptObserved { revision: p.source_revision, installed_digest: p.installed_tree_digest })
+}
+
+test fn correct_directory_revision_cannot_hide_a_different_installed_tree() -> Bool {
+  let p = directive_fixture_provenance()
+  !workspace_commissioning_tree_receipt_matches(provenance: p,
+    receipt: TreeReceiptObserved { revision: p.source_revision, installed_digest: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" as NonEmptyStr })
+}
+
+test fn matching_digest_does_not_admit_another_release_receipt() -> Bool {
+  let p = directive_fixture_provenance()
+  !workspace_commissioning_tree_receipt_matches(provenance: p,
+    receipt: TreeReceiptObserved { revision: "ffffffffffffffffffffffffffffffffffffffff" as NonEmptyStr, installed_digest: p.installed_tree_digest })
+}
+
+test fn unreadable_installed_tree_receipt_refuses_commissioning() -> Bool {
+  !workspace_commissioning_tree_receipt_matches(provenance: directive_fixture_provenance(),
+    receipt: TreeReceiptUnreadable { detail: "denied" as NonEmptyStr })
+}

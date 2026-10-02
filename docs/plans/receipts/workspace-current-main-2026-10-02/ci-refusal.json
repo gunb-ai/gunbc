@@ -1,0 +1,9 @@
+{
+  "head": "ba4c65cec0a30badccd7ed69eef936d44c7376a2",
+  "ci_run": 37022147268,
+  "floor_job": 110887630815,
+  "standing": "refused",
+  "cause": "UnimportedBareProvider: github service namespace prefix attributed to unrelated test helper",
+  "log_sha256": "1fb48103af27b8b896fed098251aa38a3c0dcea564fa60264df988563f99ee8d",
+  "live_commissioning": false
+}

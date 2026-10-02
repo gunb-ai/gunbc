@@ -36,7 +36,7 @@ import gunbc.fleet_converge_plan_cli { observe_host_short_wet }
 import gunbc.live_deploy.apply_receipt {
   live_deploy_apply_receipt_artifact_path_for,
   read_live_deploy_apply_receipt_at, LiveDeployApplyReceiptDecoded, LiveDeployApplyReceiptUnreadable,
-  rlm_plan_run_id_env_name, rlm_apply_run_id_env_name,
+  rlm_plan_run_id_env_name, rlm_apply_run_id_env_name, rlm_dashboard_run_id_env_name,
   observe_candidate_root_tree_oid, CandidateTreeOidObserved, CandidateTreeOidUnobservable,
 }
 import gunbc.fleet_desired_observe {
@@ -146,7 +146,6 @@ fn rlm_workflow_file_path() -> String {
 // rather than skipped.
 data rlm1_merge_commit: String = "0beef8a2c1a035f4f1f0507e77075bdeaba74cba"
 data rlm1_contract_digest_frozen: String = "20ca8a8cde2f7e84"
-data rlm_dashboard_run_id_env_name: String = "RLM_DASHBOARD_RUN_ID"
 data rlm_receipt_host: String = "srv1"
 data rlm_receipt_vantage: String = "."
 data rlm_receipt_ssh_attempt_raw: String = "rlm-launch-deployment-receipt"
@@ -212,10 +211,17 @@ fn transition_text(s: ActuationStanding) -> String {
   }
 }
 
-fn deployed_tree_hexes(o: DeployedTreeObservation) -> List<String> {
+fn deployed_revision_hex_text(o: DeployedTreeObservation) -> String {
   match o {
-    DeployedTreeObserved { revision: r, tree: t, content: _ } => [git_object_id_wire_hex(oid: r) as String, git_object_id_wire_hex(oid: t) as String]
-    DeployedTreeUnobservable { cause: c } => [join(["unobserved: ", deployed_tree_unobservable_text(cause: c)], ""), "unobserved"]
+    DeployedTreeObserved { revision: r, tree: _, content: _ } => git_object_id_wire_hex(oid: r) as String
+    DeployedTreeUnobservable { cause: c } => join(["unobserved: ", deployed_tree_unobservable_text(cause: c)], "")
+  }
+}
+
+fn deployed_tree_hex_text(o: DeployedTreeObservation) -> String {
+  match o {
+    DeployedTreeObserved { revision: _, tree: t, content: _ } => git_object_id_wire_hex(oid: t) as String
+    DeployedTreeUnobservable { cause: _ } => "unobserved"
   }
 }
 
@@ -252,12 +258,11 @@ fn window_snapshot(context: FleetSshExecutionContext, instance: HostDashboardIns
     target: fleet_locus_ssh_target(host: rlm_receipt_host as HostIdentity),
     repo: srv1_gunbc_repo_root as String as NonEmptyStr,
   ))
-  let hexes = deployed_tree_hexes(o: tree)
   WindowSnapshot {
     main_hex: remote_ref_text(r: read_remote_main_hex()),
     desired_hex: remote_ref_text(r: read_desired_hex()),
-    deployed_revision_hex: hexes.first(),
-    deployed_tree_hex: hexes.last(),
+    deployed_revision_hex: deployed_revision_hex_text(o: tree),
+    deployed_tree_hex: deployed_tree_hex_text(o: tree),
     running_release_hex: running_release_hex_routed(base: routed_base),
     transition: transition_text(s: transition_actuation_standing(instance_root: instance.instance_root as String)),
     active_instance: active_instance_text_routed(base: routed_base),

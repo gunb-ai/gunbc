@@ -80,6 +80,7 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  arrow_named_edge_is_contract,
   content_hash,
   fold_node,
   node_rebuild,
@@ -90,6 +91,10 @@ import v2.std.type_binder {
   type_param_names
 }
 import v2.std.node_query {
+  binder_node_parts,
+  find_binder_type,
+  binder_type_label,
+  member_edge_type_node,
   find_arrow_body_child,
   find_named_child,
   node_positional_child_targets
@@ -160,10 +165,19 @@ import v2.std.compilers.target_model {
   target_reference_layer_apply_value_expression
 }
 import v2.std.collection {
-  List
+  List,
+  list_at_optional
+}
+import v2.std.arrow_signature {
+  ArrowParameterOrderAbsent,
+  ArrowParameterOrderDeclared,
+  ArrowParameterOrderMalformed,
+  arrow_declared_parameter_order
 }
 import v2.std.qualified_name {
-  declaration_reference_path_optional
+  declaration_reference_path_optional,
+  parameter_reference_path_optional,
+  lexical_reference_label_optional
 }
 import v2.std.optional {
   Absent,
@@ -237,21 +251,9 @@ import v2.compiler.target_serialize {
   translate_grammar_relation_row_not_found_diagnostic,
   translate_reference_layer_tokens_from_target,
   translate_type_expression_shape_missing_diagnostic,
-  type_expr_arrow_split_from_types,
   type_expr_atom_binding
 }
 
-fn token_item_serialize_measure(item: Node, target: TargetModel) -> Outcome<Int> {
-  bind_outcome(
-    o: target_translation_rules_budget(target: target),
-    f: fn(rules_budget) {
-      Accepted {
-        value: node_subtree_count(n: item) + rules_budget + 1,
-        diagnostics: None
-      }
-    }
-  )
-}
 fn token_list_node_budget(tokens: List<Node>) -> Int {
   fold_list(
     xs: tokens,
@@ -348,20 +350,38 @@ fn translate_derived_parent_underived_child_gate(
   }
 }
 
+// AN ARROW'S CONTRACT EDGES ARE METADATA, NOT TRANSLATED VALUES (v2.std.node
+// arrow_named_edge_is_contract; docs/plans/arrow-contract-edges.md). Their targets -- effect claims,
+// execution mode, resource requirements -- are never inferred (v2.compiler.infer skips them), so they
+// carry no grounding to require; gating them would refuse every operation once a missing-facts lookup
+// stops being the compatibility accept. The walk therefore skips a contract edge under an Arrow, and
+// only there: the same label elsewhere is not a contract edge and is gated like any child.
+fn translate_edge_is_arrow_contract(parent: Node, edge: Edge) -> Bool {
+  match parent.kind {
+    TypeNode { connective: Arrow } => arrow_named_edge_is_contract(e: edge)
+    _ => false
+  }
+}
+
 fn translate_grounding_derived_gate_subtree(
   tree: InferredTree,
   root: Node
 ) -> Outcome<GroundingGatePassed> {
-  fold_list(
-    xs: node_subtree_nodes(root: root),
-    empty: outcome_accepted(GroundingGatePassed {}),
-    cons: fn(acc, n) {
-      bind_outcome(
-        o: acc,
-        f: fn(_) {
-          translate_grounding_derived_gate(tree: tree, node: n)
-        }
-      )
+  bind_outcome(
+    o: translate_grounding_derived_gate(tree: tree, node: root),
+    f: fn(_) {
+      fold(root.children, init: outcome_accepted(GroundingGatePassed {}), f: fn(acc, e) {
+        bind_outcome(
+          o: acc,
+          f: fn(_) {
+            if translate_edge_is_arrow_contract(parent: root, edge: e) {
+              outcome_accepted(GroundingGatePassed {})
+            } else {
+              translate_grounding_derived_gate_subtree(tree: tree, root: e.target)
+            }
+          }
+        )
+      })
     }
   )
 }
@@ -507,14 +527,6 @@ fn translate_binding_spelling_not_found_diagnostic(binding: Symbol) -> Diagnosti
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-fn token_item_to_source(item: Node, target: TargetModel) -> Outcome<TargetText> {
-  bind_outcome(
-    o: token_item_serialize_measure(item: item, target: target),
-    f: fn(measure) {
-      token_item_to_source_bounded(measure, item, target, lex_literal_index(rules: target.lex))
-    }
-  )
-}
 fn token_sequence_to_source_bounded(
   remaining: Int,
   tokens: List<Node>,
@@ -614,6 +626,28 @@ fn coerce_grounded_node(
 // closure_emit_renders_an_arrow_without_its_body). The projection refuses here, located at the
 // arrow, rather than dropping the body; a bodied arrow is rendered only by the bodied-arrow route,
 // which reads the same grammar rows backward.
+// A PARAMETER REFERENCE IS A VALUE, NEVER A TYPE EXPRESSION. v2.compiler.resolve resolves type
+// positions in the type-role frame, which carries no value binder, so no resolved type expression
+// holds one; were one to arrive, reading it by connective would fold its spine as a record of its
+// own segments. It refuses at the reference instead.
+fn translate_parameter_reference_in_type_expression_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^translate_parameter_reference_in_type_expression,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// A LEXICAL REFERENCE IS LIKEWISE A VALUE: a `let`, arm or lambda binder is never in the type-role
+// frame, and reading its marked Conj by connective would emit it as an empty record.
+fn translate_lexical_reference_in_type_expression_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^translate_lexical_reference_in_type_expression,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
 fn translate_arrow_body_not_a_type_expression_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: ^translate_arrow_body_not_a_type_expression,
@@ -972,6 +1006,7 @@ type TypeExprTranslateAcc
   | TypeExprTranslateVariants { variants: List<TargetTypeExprVariantSlot> }
   | TypeExprTranslatePositional { items: List<Node> }
   | TypeExprTranslateDone { node: Node }
+  | TypeExprTranslateBinder { type_expr: Optional<Node> }
 
 // A GENERIC TYPE DECLARATION'S MEMBER IS REFUSED HERE for the reason a generic Arrow is refused at
 // target_serialize_bodied_arrow_from_model: its target is the v2.std.type_binder wrapper, and the
@@ -1014,6 +1049,11 @@ fn translate_algebra_finalize(
         Conj =>
           match acc {
             TypeExprTranslateDone { node: n } => outcome_accepted(n)
+            TypeExprTranslateBinder { type_expr: translated } =>
+              match translated {
+                Present { value: n } => outcome_accepted(n)
+                Absent => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+              }
             TypeExprTranslateSlots { slots: fields } =>
               if is_empty(xs: fields) && !is_empty(xs: anchor.children) {
                 outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
@@ -1102,10 +1142,7 @@ fn translate_type_expression_arrow_project_signature(
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
   bind_outcome(
-    o: type_expr_arrow_split_from_types(
-      types: node_positional_child_targets(node: node),
-      node: node
-    ),
+    o: translate_arrow_signature_split(arrow: node),
     f: fn(original_split) {
       bind_outcome(
         o: translate_project_arrow_split_types(
@@ -1128,6 +1165,44 @@ fn translate_type_expression_arrow_project_signature(
   )
 }
 
+// AN ARROW'S INPUTS ARE ITS DOMAIN BINDERS IN DECLARED ORDER; ITS OUTPUT IS POSITIONAL CHILD 1. The
+// domain is a Conj of Named binders (positional child 0) whose stored sequence is not the signature's
+// order, so the order is read through v2.std.arrow_signature arrow_declared_parameter_order -- the one
+// reader -- and each label is joined to its binder's type. An Arrow with no order edge, a malformed
+// one, a domain that is not a Conj of the ordered labels, or no codomain REFUSES: in particular the
+// retired positional-types shape [T1..Tn, U] has no order edge and never projects.
+fn translate_arrow_signature_split(arrow: Node) -> Outcome<TypeExprArrowSplit> {
+  match arrow_declared_parameter_order(arrow: arrow) {
+    ArrowParameterOrderAbsent => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: arrow))
+    ArrowParameterOrderMalformed => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: arrow))
+    ArrowParameterOrderDeclared { labels: labels } =>
+      match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+        Absent => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: arrow))
+        Present { value: domain } =>
+          match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 1) {
+            Absent => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: arrow))
+            Present { value: codomain } =>
+              translate_arrow_signature_split_from(labels: labels, domain: domain, codomain: codomain)
+          }
+      }
+  }
+}
+
+// Each declared label selects its domain binder's type, in declared order; a label the domain does not
+// bind refuses (find_named_child), never skipped.
+fn translate_arrow_signature_split_from(labels: List<Symbol>, domain: Node, codomain: Node) -> Outcome<TypeExprArrowSplit> {
+  bind_outcome(
+    o: fold(labels, init: outcome_accepted(Empty), f: fn(acc, label) {
+      bind_outcome(o: acc, f: fn(so_far) {
+        bind_outcome(o: find_binder_type(root: domain, name: label), f: fn(t) {
+          outcome_accepted(list_snoc_item(xs: so_far, item: t))
+        })
+      })
+    }),
+    f: fn(domain_types) { outcome_accepted(TypeExprArrowSplit { inputs: domain_types, output: codomain }) }
+  )
+}
+
 // THE FOLD READS A RESOLVED CORPUS-DECLARATION REFERENCE BEFORE IT READS THE CONNECTIVE. Resolution
 // carries a reference to a declaration as its declaring path (v2.compiler.resolve
 // resolved_reference_node), a qualified-name spine that shares the Conj connective with a record;
@@ -1137,6 +1212,47 @@ fn translate_type_expression_arrow_project_signature(
 // the derived module-scoped spelling where the target has one, a located refusal where it has none
 // -- never the leaf, which is the collapse resolution refused to make. The spine is DONE at init,
 // so its segment children are never folded as slots.
+// A BINDER NODE TRANSLATES AS ITS TYPE (XL-2 PR2b-3). Its <binder-type> child's translation, finalized
+// against that type, is the binder's translation; its <binder-default> child is a value, not part of
+// the type, so its fold result is discarded here whatever it was. A binder node with no type, or a
+// second type, refuses.
+fn translate_binder_node_step(
+  done: TypeExprTranslateAcc,
+  d: Diagnostics,
+  e: Edge,
+  child: Outcome<TypeExprTranslateAcc>,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<TypeExprTranslateAcc> {
+  match e.label {
+    Positional => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: e.target))
+    Named { name: sym } =>
+      if sym == binder_type_label() {
+        match child {
+          Rejected { diagnostics: cr } => Rejected { diagnostics: rejected_with_pending(pending: d, rejected: cr) }
+          Accepted { value: child_acc, diagnostics: cd } =>
+            bind_outcome(
+              o: translate_algebra_finalize(acc: child_acc, anchor: e.target, projection: projection),
+              f: fn(translated) {
+                Accepted { value: TypeExprTranslateBinder { type_expr: Present { value: translated } }, diagnostics: diagnostics_merge(outer: d, inner: cd) }
+              }
+            )
+        }
+      } else {
+        Accepted { value: done, diagnostics: d }
+      }
+  }
+}
+
+// The type a record member's ownership is decided over: a binder's type, or a Positional member's
+// target. A Named member of a record type that is not a binder refuses here, located at its target,
+// so a hand-built name-to-type edge is never rendered as if it were a well-formed field.
+fn translate_binder_member_type(e: Edge) -> Outcome<Node> {
+  match member_edge_type_node(e: e) {
+    Present { value: t } => outcome_accepted(t)
+    Absent => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: e.target))
+  }
+}
+
 fn translate_algebra(
   target: TargetModel,
   projection: TargetTypeExpressionProjection
@@ -1156,6 +1272,14 @@ fn translate_algebra(
             }
           )
         Absent =>
+      match parameter_reference_path_optional(node: n) {
+        Present { value: _ } =>
+          outcome_rejected(translate_parameter_reference_in_type_expression_diagnostic(node: n))
+        Absent =>
+      match lexical_reference_label_optional(node: n) {
+        Present { value: _ } =>
+          outcome_rejected(translate_lexical_reference_in_type_expression_diagnostic(node: n))
+        Absent =>
       match n.kind {
         TypeNode { connective: connective } =>
           match connective {
@@ -1170,7 +1294,12 @@ fn translate_algebra(
                 diagnostics: None
               }
             Conj =>
-              Accepted { value: TypeExprTranslateSlots { slots: Empty }, diagnostics: None }
+              match binder_node_parts(n: n) {
+                Present { value: _ } =>
+                  Accepted { value: TypeExprTranslateBinder { type_expr: Absent }, diagnostics: None }
+                Absent =>
+                  Accepted { value: TypeExprTranslateSlots { slots: Empty }, diagnostics: None }
+              }
             Disj =>
               Accepted {
                 value: TypeExprTranslateVariants { variants: Empty },
@@ -1205,6 +1334,8 @@ fn translate_algebra(
           outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: n))
       }
       }
+      }
+      }
     },
     step: fn(acc, e, child) {
       match acc {
@@ -1212,6 +1343,8 @@ fn translate_algebra(
         Accepted { value: done, diagnostics: d } =>
           match done {
             TypeExprTranslateDone { node: _ } => Accepted { value: done, diagnostics: d }
+            TypeExprTranslateBinder { type_expr: _ } =>
+              translate_binder_node_step(done: done, d: d, e: e, child: child, projection: projection)
             TypeExprTranslateSlots { slots: slots } =>
               match e.label {
                 Named { name: label } =>
@@ -1227,12 +1360,17 @@ fn translate_algebra(
                         ),
                         f: fn(projected) {
                           bind_outcome(
-                            o: translate_apply_use_site_ownership_to_projected_boundary(
-                              projected: projected,
-                              source_for_binding: e.target,
-                              target: target,
-                              projection: projection,
-                              use_site: OwnershipAtStructField
+                            o: bind_outcome(
+                              o: translate_binder_member_type(e: e),
+                              f: fn(member_type) {
+                                translate_apply_use_site_ownership_to_projected_boundary(
+                                  projected: projected,
+                                  source_for_binding: member_type,
+                                  target: target,
+                                  projection: projection,
+                                  use_site: OwnershipAtStructField
+                                )
+                              }
                             ),
                             f: fn(wrapped) {
                               Accepted {

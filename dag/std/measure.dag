@@ -1609,6 +1609,19 @@ fn second_count(s: Second) -> Nat {
   measure_count(s)
 }
 
+// A SIGNED DURATION: a displacement in time that may be negative, as a wall clock stepping backwards
+// is. Second is Nat-counted and so cannot carry it; this is the same instant-versus-displacement split
+// CelsiusDelta and ArcsecondDisplacement make for their quantities.
+type SecondDisplacement = Measure<Time, One, Int>
+
+fn second_displacement(count: Int) -> SecondDisplacement {
+  Measure { count: count }
+}
+
+fn second_displacement_count(d: SecondDisplacement) -> Int {
+  measure_count(d)
+}
+
 fn energy_from_power_and_time(power: Watt, time: Second) -> Joule {
   joule(watt_count(w: power) * second_count(s: time))
 }
@@ -1644,6 +1657,10 @@ fn minute_to_second(m: Minute) -> Second {
 
 fn minute_to_millisecond(m: Minute) -> Millisecond {
   millisecond(count: minute_count(m) * seconds_per_minute() * milliseconds_per_second())
+}
+
+fn second_to_millisecond(s: Second) -> Millisecond {
+  millisecond(count: second_count(s: s) * milliseconds_per_second())
 }
 
 type Percent = Measure<Dimensionless, One, Nat>

@@ -1,0 +1,65 @@
+{
+  "full_file": "unproved: reference comparison timed out at 600 seconds after cursor completion",
+  "results": [
+    {
+      "sample": "emit-16k",
+      "exit": 0,
+      "wall_seconds": 49.614,
+      "events": [
+        {
+          "seconds": 33.86,
+          "event": "\u25d0 started Filesystem.Read target/cursor-samples/emit-16k.dag"
+        },
+        {
+          "seconds": 37.271,
+          "event": "\u25d0 started Filesystem.Write target/cursor-samples/emit-16k.equivalence-cursor-done (8 bytes)"
+        }
+      ]
+    },
+    {
+      "sample": "emit-32k",
+      "exit": 0,
+      "wall_seconds": 78.14,
+      "events": [
+        {
+          "seconds": 33.729,
+          "event": "\u25d0 started Filesystem.Read target/cursor-samples/emit-32k.dag"
+        },
+        {
+          "seconds": 40.097,
+          "event": "\u25d0 started Filesystem.Write target/cursor-samples/emit-32k.equivalence-cursor-done (8 bytes)"
+        }
+      ]
+    },
+    {
+      "sample": "emit-64k",
+      "exit": 0,
+      "wall_seconds": 176.952,
+      "events": [
+        {
+          "seconds": 33.827,
+          "event": "\u25d0 started Filesystem.Read target/cursor-samples/emit-64k.dag"
+        },
+        {
+          "seconds": 47.287,
+          "event": "\u25d0 started Filesystem.Write target/cursor-samples/emit-64k.equivalence-cursor-done (8 bytes)"
+        }
+      ]
+    },
+    {
+      "sample": "fleet-full",
+      "exit": 124,
+      "wall_seconds": 600.212,
+      "events": [
+        {
+          "seconds": 38.551,
+          "event": "\u25d0 started Filesystem.Read target/cursor-samples/fleet-full.dag"
+        },
+        {
+          "seconds": 66.471,
+          "event": "\u25d0 started Filesystem.Write target/cursor-samples/fleet-full.equivalence-cursor-done (8 bytes)"
+        }
+      ]
+    }
+  ]
+}

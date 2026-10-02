@@ -1,0 +1,7 @@
+module gunbc.fleet_plan_artifact_location
+import std.types { String }
+
+data fleet_converge_plan_artifact_dir: String = "/tmp/fleet-converge-plan"
+
+data fleet_reviewed_plan_path: String = "/tmp/fleet-converge-plan/plan.txt"
+data fleet_reviewed_apply_path: String = "/tmp/fleet-converge-plan/apply.sh"

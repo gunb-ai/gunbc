@@ -1,0 +1,56 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-executor-isolated
+✓ typecheck v2.std.compilers.target_model done in 23 seconds
+✓ typecheck v2.compiler.body_lowering_fold done in 2 seconds
+[pre-entry] phase=workspace_discovery ms=3 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=18 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=3831 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=0 scale=tree
+[pre-entry] phase=pool_census_parse ms=546 scale=tree
+[pre-entry] phase=closure_name_census_build ms=741 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=22 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=38 scale=closure
+[pre-entry] phase=closure_load ms=5100 scale=closure
+[pre-entry] phase=closure_parse ms=3898 scale=closure
+[pre-entry] phase=closure_resolve ms=236 scale=closure
+[pre-entry] phase=closure_normalize ms=781 scale=closure
+[pre-entry] phase=closure_typecheck ms=67158 scale=closure
+[pre-entry] phase=closure_parent_envs ms=6 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=128 scale=closure
+[pre-entry] phase=closure_ownership ms=973 scale=closure
+[pre-entry] phase=reconcile_pool_qualified_fill ms=783 scale=tree
+[pre-entry] phase=reconcile_root_bare_underlay ms=709 scale=tree
+[pre-entry] phase=reconcile_root_variant_base ms=100 scale=tree
+[pre-entry] phase=resolve_entry_graph_inclusive ms=96789 scale=closure
+[pre-entry] population pool_modules=596 closure_files=596
+[pre-entry] process_cpu user_ms=94617 sys_ms=1803 max_rss_kib=3527464
+PASS a_console_without_the_cited_runner_version_is_not_a_boot
+PASS a_failed_vmm_and_a_silent_guest_are_distinguishable_and_both_keep_the_console
+PASS the_probe_boots_a_copy_rather_than_the_built_image
+PASS the_config_document_carries_upstreams_own_key_spelling
+PASS the_run_command_boots_rather_than_waiting_for_an_api_call
+PASS a_hung_guest_is_killed_by_the_host_and_its_console_survives_the_kill
+PASS the_bounded_command_escalates_rather_than_asking_politely
+PASS a_live_boot_requires_the_agents_guest_booted_marker
+	Command being timed: "./target/release/gunbc run --source-root target/boot-probe-import-qualification --entry target/boot-probe-import-qualification/test.claim.runner_microvm_boot_probe_witness.dag --claim-run"
+	User time (seconds): 99.76
+	System time (seconds): 2.20
+	Percent of CPU this job got: 99%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 1:42.35
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 3549992
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 896197
+	Voluntary context switches: 259
+	Involuntary context switches: 42955
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 32
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

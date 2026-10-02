@@ -3,7 +3,8 @@ module test.claim.witness_floor_workflow_consolidation_witness_test
 import std.types { Bool, List, String }
 import v2.std.algebra { count_where, length, non_empty_to_list }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, witness_floor_workflow_job_id, required_ci_measurement_publish_condition, required_ci_measurement_bound_steps, witness_floor_run_step, required_lanes_roster, witness_floor_lane_job_ids, build_lane_needs, witness_floor_lane_needs, ci_heal_expected_healed_sha_input_name, WitnessFloorGroupFixture, DispatchInputBinding, resolve_witness_floor_concurrency_group, WitnessFloorGroupResolved, WitnessFloorGroupRefused, evaluate_against_group_fixture, witness_floor_pull_request_activity_types, witness_floor_group_expression, witness_floor_triggers }
+import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, witness_floor_workflow_job_id, required_ci_measurement_publish_condition, required_ci_measurement_bound_steps, witness_floor_run_step, build_lane_needs, witness_floor_lane_needs, ci_heal_expected_healed_sha_input_name, WitnessFloorGroupFixture, DispatchInputBinding, resolve_witness_floor_concurrency_group, WitnessFloorGroupResolved, WitnessFloorGroupRefused, evaluate_against_group_fixture, witness_floor_pull_request_activity_types, witness_floor_group_expression, witness_floor_triggers }
+import gunbc.witness_floor_lanes { build_lane_job_id, floor_lane_job_id, required_lanes_roster }
 import gunbc.fabric_witness_run { required_ci_lane_build, required_ci_lane_witnesses }
 import gunbc.required_lanes_gate { required_lanes_gate_unrenderable_stmts }
 import gunbc.fleet_converge_workflow { fleet_converge_workflow }
@@ -310,47 +311,6 @@ test fn w_RED_neither_lane_waits_on_the_other() -> Bool {
       xs: non_empty_to_list(xs: required_lanes_roster()),
       predicate: fn(lane) { lane.job_id == floor_lane_job_id },
     ) == 1
-}
-
-// THE FABRIC LANE STILL RUNS AND NO LONGER GATES, AND THIS ROW ASSERTS BOTH HALVES.
-//
-// It replaces w_RED_fabric_evidence_executes_without_gating, whose subject was the lane still
-// EXECUTING while `gunbc.rung_drop` `fabric_evidence_gating` withheld only its merge block. The
-// 2026-09-04 runner-capacity ruling deleted the job itself, so that row asserted a fact that is
-// deliberately no longer true. It is not retired as obsolete -- the lane's restoration is still
-// the drop's trigger -- it is restated at the subject the drop now covers.
-//
-// SO THE CLAIM IS ABSENCE AT THE TYPED PRODUCERS rather than after whole-workflow serialization.
-// A diff that re-adds any deleted job authors RED here; so does one that restores only the
-// FABRIC_EVIDENCE roster binding, because a lane that gates without running is the fail-open a
-// skipped required check produces. The row goes green again only together with the drop's
-// retirement, which is a measured wall and not a pull request.
-//
-// PERMANENT AFTER OBSERVED RED (DESIGN 4b(4)). Run 33924210916 supplied `fabric-evidence` and
-// observed this exact identity return Bool(false). This probe is therefore a regression control,
-// not scaffolding: keep it enrolled for as long as any of the citing rung drops stands.
-// `required-v2-native` joined the deleted set 2026-09-11 (gunbc.rung_drop
-// v2_native_route_off_the_merge_path): its ~4h wall on every push, with no supersession,
-// starved the two lanes that gate. Re-adding it into the same envelope authors RED here.
-// POSITIVE-CONTROL SEAM: the countable must author RED when a deleted lane is supplied. Without
-// this input boundary, a planned/pass receipt would not distinguish a live absence wall from a
-// vacuous projection that always returned an empty list.
-fn deleted_lane_job_ids_are_absent(job_ids: List<String>) -> Bool {
-  !any(xs: job_ids, predicate: fn(job_id) {
-      job_id == "fabric-evidence"
-        || job_id == "rust-unit-tests"
-        || job_id == "emit-copy-qualification-battery"
-        || job_id == "required-v2-native"
-    })
-}
-
-test fn w_RED_the_deleted_lanes_do_not_return() -> Bool {
-  deleted_lane_job_ids_are_absent(job_ids: witness_floor_lane_job_ids())
-    && !deleted_lane_job_ids_are_absent(job_ids: ["fabric-evidence"])
-    && !deleted_lane_job_ids_are_absent(job_ids: ["required-v2-native"])
-    && !any(xs: non_empty_to_list(xs: required_lanes_roster()), predicate: fn(lane) {
-      lane.var_name == "FABRIC_EVIDENCE" || lane.var_name == "V2_NATIVE"
-    })
 }
 
 // THE GATE RUNS FOR EVERY ATTEMPT, INCLUDING A CANCELLED ONE, AND THEN REFUSES A NON-SUCCESS

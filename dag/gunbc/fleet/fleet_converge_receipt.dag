@@ -1,5 +1,7 @@
 module gunbc.fleet_converge_receipt
 
+import gunbc.fleet_converge_terminal { FleetConvergeApplyTerminal, FullyApplied, PartiallyApplied, fleet_converge_apply_terminal_wire, fleet_converge_apply_terminal_of_wire }
+
 import std.types { String, Bool, NonEmptyStr, Int, List }
 import std.algebra { trim }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_tagged_structural }
@@ -8,10 +10,7 @@ import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.fleet_converge_plan {
-  FleetConvergeApplyTerminal, FullyApplied, PartiallyApplied,
-  fleet_converge_apply_terminal_wire, fleet_converge_apply_terminal_of_wire,
-}
+
 import gunbc.actions_run_binding {
   ActionsRunBinding,
   actions_run_binding_json,

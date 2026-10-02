@@ -1,6 +1,13 @@
 module test.claim.codex_app_server_press_witness_test
 
 import std.types { Bool, String, NonEmptyStr, FilePath }
+import v2.std.algebra { filter, list_flat_map }
+import v2.std.compilers.cli_surface {
+  process_argv_expansion_surface,
+  cli_surface_arguments,
+  cli_argument_text,
+}
+import extdeps.tools.env { env_path_resolved_program }
 import std.content_hash {
   sha512_hex_digest,
   Sha512Digest,
@@ -18,9 +25,15 @@ import gunbc.provider_interface_binding {
   ProviderInterfaceResolved,
   ProviderControlInterface,
 }
+import extdeps.languages.json.emit { JsonNumber, json_object, json_kv }
+import extdeps.languages.json.grammar { json_number_lexeme_unchecked }
 import gunbc.codex_app_server_press {
+  disposition_from_structured_rpc_error,
+  AccountTripNativeCauseNumericCode,
   codex_press_method_itinerary,
   codex_press_account_trip_methods,
+  codex_press_account_trip_invocation,
+  codex_press_account_trip_request_lines,
   codex_press_outcome_wire_status,
   codex_press_outcome_operator_caption,
   parse_account_trip_stdout_for_tests,
@@ -651,4 +664,119 @@ test fn unknown_frame_is_digested_not_silent() -> Bool {
     AccountStandingAuthenticatedRateLimitsReadable => count(evidence.unknown_frame_digests) == 1
     _ => false
   }
+}
+
+// A JSON-RPC error `code` is a JSON number, which need not be an integer: `1e3` is a valid JSON
+// number that parse_int does not read. It must NOT become a numeric-code cause (that would need a
+// fabricated Int); it falls through to the message-based cause like any unreadable code. Review
+// 73175 on gunbc#12677.
+test fn structured_rpc_error_with_a_non_integer_numeric_code_is_not_a_numeric_code() -> Bool {
+  let err = json_object(members: [json_kv(key: "code", value: JsonNumber { lexeme: json_number_lexeme_unchecked(s: "1e3") })])
+  match disposition_from_structured_rpc_error(err: err) {
+    AccountTripNativeCauseNumericCode { code: _ } => false
+    _ => true
+  }
+}
+
+// POSITIVE CONTROL: an integer code is carried as the numeric cause, with its value.
+test fn structured_rpc_error_with_an_integer_numeric_code_is_a_numeric_code() -> Bool {
+  let err = json_object(members: [json_kv(key: "code", value: JsonNumber { lexeme: json_number_lexeme_unchecked(s: "-32600") })])
+  match disposition_from_structured_rpc_error(err: err) {
+    AccountTripNativeCauseNumericCode { code: c } => c == -32600
+    _ => false
+  }
+}
+
+// THE ACCOUNT-TRIP TRANSPORT SURFACE CARRIES NO SHELL CONTROL WORD. The account trip reaches the
+// codex app-server through a transport; this claim projects that transport's surface as text and
+// asserts it contains no shell programming word: no `export`, no command substitution `$(`, no
+// `mktemp`, no `printf`, no `---GUNBC_` sentinel, no `rm -f`. The property is identity-stable
+// across the shell-to-dag migration (docs/plans/shell-to-dag-residual-census-and-arc-completion.md
+// 4): on the retained-heredoc side the surface WAS the script body `codex_press_account_trip_script`
+// assembled, and that body was exactly the forbidden words -- the claim failed and was enrolled
+// expected-red in v2.workflow.floor_expected_red while the script was the transport (receipt in
+// that commit: FAIL here, the 24 pre-existing claims PASS). The migration landed: the trip runs as
+// a typed argv through shell.Exec.RunArgvStdin -- program word (env(1)), env-prefixed argument
+// words, and a stdin payload of request lines -- the projection below names that invocation, the
+// claim passes, and the roster row removed itself by the roster's own stale-quarantine arm. Only
+// the SURFACE PROJECTION changed with the transport; the property and the forbidden-word list did
+// not.
+data codex_account_trip_forbidden_shell_words: List<String> = [
+  "export ", "$(", "mktemp", "printf", "---GUNBC_", "rm -f",
+]
+
+fn codex_account_trip_transport_surface_text() -> String {
+  let invocation = codex_press_account_trip_invocation(
+    executable: "/usr/local/bin/codex" as FilePath,
+    codex_home: "/home/witness/.codex" as FilePath,
+  )
+  let argument_words: List<String> = list_flat_map(
+    xs: cli_surface_arguments(surface: process_argv_expansion_surface(expansion: invocation)),
+    f: fn(argument) { [cli_argument_text(argument: argument)] },
+  )
+  join(
+    concat(
+      concat([env_path_resolved_program().invocation as String], argument_words),
+      [codex_press_account_trip_request_lines()],
+    ),
+    "\n",
+  )
+}
+
+test fn codex_account_trip_transport_surface_carries_no_shell_control_word() -> Bool {
+  let surface = codex_account_trip_transport_surface_text()
+  count(
+    filter(
+      xs: codex_account_trip_forbidden_shell_words,
+      predicate: fn(word) { string_contains(s: surface, pattern: word) },
+    ),
+  ) == 0
+}
+
+// POSITIVE CONTROL: the typed invocation preserves what the script did, not just what it stopped
+// doing. env(1) carries the CODEX_HOME binding as an argv element (never quoted into a script),
+// the child is the projected executable invoked `app-server --stdio`, and the stdin payload is
+// four request lines each newline-terminated -- initialize first, the account rate-limits read
+// last, and no turn/start anywhere (the account trip itinerary has three steps without it, which
+// press_account_trip_itinerary_is_three_steps_without_turn_start pins at the method grain).
+test fn codex_account_trip_typed_invocation_preserves_trip_semantics() -> Bool {
+  let invocation = codex_press_account_trip_invocation(
+    executable: "/usr/local/bin/codex" as FilePath,
+    codex_home: "/home/witness/.codex" as FilePath,
+  )
+  let words: List<String> = list_flat_map(
+    xs: cli_surface_arguments(surface: process_argv_expansion_surface(expansion: invocation)),
+    f: fn(argument) { [cli_argument_text(argument: argument)] },
+  )
+  let stdin = codex_press_account_trip_request_lines()
+  count(words) == 4
+    && match words.first() {
+      Present { value: binding } => binding == "CODEX_HOME=/home/witness/.codex"
+      Absent => false
+    }
+    && match words.skip(n: 1).first() {
+      Present { value: executable } => executable == "/usr/local/bin/codex"
+      Absent => false
+    }
+    && match words.skip(n: 2).first() {
+      Present { value: subcommand } => subcommand == "app-server"
+      Absent => false
+    }
+    && match words.last() {
+      Present { value: flag } => flag == "--stdio"
+      Absent => false
+    }
+    && count(split(s: stdin, delimiter: "\n")) == 5
+    && string_contains(
+      s: stdin,
+      pattern: codex_app_server_method_wire_name(method: CodexAppServerInitialize) as String,
+    )
+    && string_contains(
+      s: stdin,
+      pattern: codex_app_server_method_wire_name(method: CodexAppServerAccountRateLimitsRead) as String,
+    )
+    && !string_contains(
+      s: stdin,
+      pattern: codex_app_server_method_wire_name(method: CodexAppServerTurnStart) as String,
+    )
 }

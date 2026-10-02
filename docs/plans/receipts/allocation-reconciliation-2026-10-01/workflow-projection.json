@@ -1,0 +1,7 @@
+{
+  "main_modes_preserved": 60,
+  "added_mode": "workspace_commissioning_plan",
+  "bound_commissioning_steps": 1,
+  "planning_timeout_minutes": 15,
+  "yaml_sha256": "82be7596be94ce9194306dbc8d87a51f751c3a05dd5140d4cc6e2695bad1c8f8"
+}

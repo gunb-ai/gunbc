@@ -1,0 +1,58 @@
+[
+  {
+    "case": "success",
+    "passed": true
+  },
+  {
+    "case": "stage-refused",
+    "passed": true
+  },
+  {
+    "case": "bad-stage",
+    "passed": true
+  },
+  {
+    "case": "failed-unit",
+    "passed": true
+  },
+  {
+    "case": "changed-invocation",
+    "passed": true
+  },
+  {
+    "case": "missing-job",
+    "passed": true
+  },
+  {
+    "case": "uncommitted",
+    "passed": true
+  },
+  {
+    "case": "readable-refusal",
+    "passed": true
+  },
+  {
+    "case": "wrong-bundle",
+    "passed": true
+  },
+  {
+    "case": "changed-after-completion",
+    "passed": true
+  },
+  {
+    "case": "cancel-and-reattach",
+    "passed": true
+  },
+  {
+    "case": "lost-response-and-retry",
+    "passed": true
+  },
+  {
+    "case": "concurrent-callers",
+    "passed": true
+  },
+  {
+    "case": "pending-executor-never-advertises-completion",
+    "passed": true
+  }
+]

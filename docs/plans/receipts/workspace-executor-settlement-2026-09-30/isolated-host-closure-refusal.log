@@ -1,0 +1,48 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-commissioning-production
+[pre-entry] phase=workspace_discovery ms=13 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=5 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=689 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=0 scale=tree
+[pre-entry] phase=pool_census_parse ms=280 scale=tree
+[pre-entry] phase=closure_name_census_build ms=282 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=5 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=30 scale=closure
+[pre-entry] phase=closure_load ms=365 scale=closure
+[pre-entry] phase=closure_parse ms=1175 scale=closure
+[pre-entry] phase=closure_resolve ms=46 scale=closure
+[pre-entry] phase=closure_normalize ms=143 scale=closure
+[pre-entry] phase=closure_typecheck ms=4322 scale=closure
+[pre-entry] phase=closure_parent_envs ms=1 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=25 scale=closure
+[pre-entry] phase=closure_ownership ms=0 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=9543 scale=closure
+[pre-entry] population pool_modules=135 closure_files=refused
+[pre-entry] process_cpu user_ms=9162 sys_ms=350 max_rss_kib=620256
+error: resolve failed for target/host-assimilation-import-repair/test.claim.host_standup_assimilation_deduction.dag
+  cause: target/host-assimilation-import-repair/gunbc.host_standup.dag:699:49: error: unresolved type 'BmcCredentialProbeResult'
+target/host-assimilation-import-repair/gunbc.host_standup.dag:707:53: error: unresolved type 'BmcCredentialProbeResult'
+target/host-assimilation-import-repair/gunbc.host_standup.dag:715:44: error: unresolved type 'ConvergePolicy'
+target/host-assimilation-import-repair/gunbc.host_standup.dag:177:22: error: undefined variable 'host_effect_identity_evidence'
+target/host-assimilation-import-repair/gunbc.host_standup.dag:187:22: error: undefined variable 'host_effect_identity_evidence'
+target/host-assimilation-import-repair/gunbc.host_standup.dag:194:22: error: undefined variable 'host_effect_identity_evidence'
+target/host-assimilation-import-repair/gunbc.host_standup.dag:202:22: error: undefined variable 'host_effect_converge_loop_evidence'
+target/host-assimilation-import-repair/gunbc.host_standup.dag:221:22: error: undefined variable 'host_effect_identity_evidence'
+target/host-assimilation-import-repair/gunbc.host_standup.dag:230:22: error: undefined variable 'host_effect_identity_evidence'
+target/host-assimilation-import-repair/gunbc.host_standup.dag:245:22: error: undefined variable 'host_effect_converge_loop_evidence'
+target/host-assimilation-import-repair/gunbc.host_standup.dag:257:22: error: undefined variable 'host_effect_identity_evidence'
+target/host-assimilation-import-repair/gunbc.host_standup.dag:269:22: error: undefined variable 'host_effect_identity_evidence'
+target/host-assimilation-import-repair/gunbc.host_standup.dag:278:22: error: undefined variable 'host_effect_identity_evidence'
+target/host-assimilation-import-repair/gunbc.host_standup.dag:291:22: error: undefined variable 'host_effect_converge_loop_evidence'
+target/host-assimilation-import-repair/gunbc.host_standup.dag:300:22: error: undefined variable 'host_effect_identity_evidence'
+target/host-assimilation-import-repair/gunbc.host_standup.dag:314:22: error: undefined variable 'host_effect_converge_loop_evidence'
+target/host-assimilation-import-repair/gunbc.host_standup.dag:693:9: error: undefined variable 'srv3_install_mechanism_solution'
+target/host-assimilation-import-repair/gunbc.host_standup.dag:700:9: error: function 'bmc_credential_probe_to_phase' not found in scope
+target/host-assimilation-import-repair/gunbc.host_standup.dag:700:3: error: a 'Present' arm decides from the scrutinee's type whether it reads an optional's present value, and the checker could not resolve that type: the scrutinee's type is unresolved, typically because a generic variant upstream was constructed with no expected type, so its type arguments were never instantiated. Without that type the arm's meaning is undecided, so it refuses rather than guessing. Give the value that produces the scrutinee a declared type (annotate the let, or construct it inside a function whose return type declares it)
+target/host-assimilation-import-repair/gunbc.host_standup.dag:700:3: error: a 'Present' arm decides from the scrutinee's type whether it reads an optional's present value, and the checker could not resolve that type: the scrutinee's type is unresolved, typically because a generic variant upstream was constructed with no expected type, so its type arguments were never instantiated. Without that type the arm's meaning is undecided, so it refuses rather than guessing. Give the value that produces the scrutinee a declared type (annotate the let, or construct it inside a function whose return type declares it)
+target/host-assimilation-import-repair/gunbc.host_standup.dag:708:9: error: function 'bmc_credential_probe_to_phase' not found in scope
+target/host-assimilation-import-repair/gunbc.host_standup.dag:708:3: error: a 'Present' arm decides from the scrutinee's type whether it reads an optional's present value, and the checker could not resolve that type: the scrutinee's type is unresolved, typically because a generic variant upstream was constructed with no expected type, so its type arguments were never instantiated. Without that type the arm's meaning is undecided, so it refuses rather than guessing. Give the value that produces the scrutinee a declared type (annotate the let, or construct it inside a function whose return type declares it)
+target/host-assimilation-import-repair/gunbc.host_standup.dag:708:3: error: a 'Present' arm decides from the scrutinee's type whether it reads an optional's present value, and the checker could not resolve that type: the scrutinee's type is unresolved, typically because a generic variant upstream was constructed with no expected type, so its type arguments were never instantiated. Without that type the arm's meaning is undecided, so it refuses rather than guessing. Give the value that produces the scrutinee a declared type (annotate the let, or construct it inside a function whose return type declares it)
+target/host-assimilation-import-repair/gunbc.host_standup.dag:716:3: error: function 'fleet_converge_policy' not found in scope
+<synthetic>: error: effect summary incomplete: call to 'bmc_credential_probe_to_phase' in gunbc.host_standup.credential_probe_maps_factory_default has no established callee identity, so its effects cannot be joined
+<synthetic>: error: effect summary incomplete: call to 'bmc_credential_probe_to_phase' in gunbc.host_standup.credential_probe_maps_credentials_rotated has no established callee identity, so its effects cannot be joined
+<synthetic>: error: effect summary incomplete: call to 'fleet_converge_policy' in gunbc.host_standup.host_standup_fleet_converge_policy has no established callee identity, so its effects cannot be joined

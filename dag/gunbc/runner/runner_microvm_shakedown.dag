@@ -17,7 +17,7 @@ import extdeps.accounting.encumbrance { EncumbranceLedger }
 import product.fabric.supply { SupplierOffer, QuotedPerSecond, ObservedSupply }
 import product.fabric.provider_route { ProviderRoute }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.fabric_floor_policy { floor_execution_requirements }
+import gunbc.floor_demand { floor_execution_requirements }
 import gunbc.fabric_floor_dispatch { floor_demand }
 import gunbc.fabric_control_plane { fabric_cell_allocation_key }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_offer_envelope, srv1_microvm_shakedown_slot }

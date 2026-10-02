@@ -1,0 +1,26 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/lexer-cursor-qualification
+✓ typecheck v2.std.compilers.target_model done in 27 seconds
+[pre-entry] phase=workspace_discovery ms=3 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=4 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=848 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=0 scale=tree
+[pre-entry] phase=pool_census_parse ms=107 scale=tree
+[pre-entry] phase=closure_name_census_build ms=147 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=3 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=14 scale=closure
+[pre-entry] phase=closure_load ms=1245 scale=closure
+[pre-entry] phase=closure_parse ms=981 scale=closure
+[pre-entry] phase=closure_resolve ms=40 scale=closure
+[pre-entry] phase=closure_normalize ms=186 scale=closure
+[pre-entry] phase=closure_typecheck ms=32925 scale=closure
+[pre-entry] phase=closure_parent_envs ms=0 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=18 scale=closure
+[pre-entry] phase=closure_ownership ms=180 scale=closure
+[pre-entry] phase=reconcile_pool_qualified_fill ms=149 scale=tree
+[pre-entry] phase=reconcile_root_bare_underlay ms=136 scale=tree
+[pre-entry] phase=reconcile_root_variant_base ms=14 scale=tree
+[pre-entry] phase=resolve_entry_graph_inclusive ms=38198 scale=closure
+[pre-entry] population pool_modules=91 closure_files=88
+[pre-entry] process_cpu user_ms=37738 sys_ms=340 max_rss_kib=586072
+◐ started Filesystem.Read target/cursor-samples/fleet-full.dag
+◐ started Filesystem.Write target/cursor-samples/fleet-full.count (5 bytes)

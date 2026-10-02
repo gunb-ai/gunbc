@@ -1,0 +1,29 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-commissioning-production
+✓ typecheck v2.std.compilers.target_model done in 21 seconds
+✓ typecheck gunbc.runner_microvm_slot_controller done in 4 seconds
+[pre-entry] phase=workspace_discovery ms=15 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=20 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=4911 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=0 scale=tree
+[pre-entry] phase=pool_census_parse ms=1761 scale=tree
+[pre-entry] phase=closure_name_census_build ms=1974 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=32 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=48 scale=closure
+[pre-entry] phase=closure_load ms=2497 scale=closure
+[pre-entry] phase=closure_parse ms=9183 scale=closure
+[pre-entry] phase=closure_resolve ms=330 scale=closure
+[pre-entry] phase=closure_normalize ms=1024 scale=closure
+[pre-entry] phase=closure_typecheck ms=88153 scale=closure
+[pre-entry] phase=closure_parent_envs ms=9 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=174 scale=closure
+[pre-entry] phase=closure_ownership ms=1240 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=139570 scale=closure
+[pre-entry] population pool_modules=784 closure_files=784
+[pre-entry] process_cpu user_ms=136474 sys_ms=2582 max_rss_kib=5301832
+PASS readable_refusal_is_not_successful_commissioning
+PASS failed_or_other_invocation_cannot_complete_commissioning
+PASS unreadable_exit_status_cannot_complete_commissioning
+PASS advanced_readiness_is_not_initial_commissioning_readback
+PASS recovery_retains_only_the_recorded_guard_incarnation
+PASS lost_release_response_recovers_only_the_exact_successor
+PASS missing_or_undecodable_guard_does_not_mean_released

@@ -1,0 +1,17 @@
+{
+  "standing": "PASS: authoritative generated workflow bytes equal merged artifact",
+  "bytes": 324285,
+  "sha256": "031ddfbc5fb5ada89507b4d964fdfc659d71a8327e806ee5285e9ee5565cb3ed",
+  "body_exit": 0,
+  "header_exit": 0,
+  "composition": "generated_workflow_provenance_header(FleetConvergeYamlArtifact) + expected_fleet_converge_yml(), same composition as artifact_generate",
+  "memory_max_bytes": 27917287424,
+  "memory_high_bytes": 26843545600,
+  "memory_swap_max_bytes": 34359738368,
+  "authority": "gunbc.runner_slot_desired gunbc_runner_slot_desired",
+  "mode_union_count": 62,
+  "conflict_resolution": "both parent populations preserved without duplicates",
+  "supersedes": "12 GiB generation diagnostics as a qualification blocker; historical logs retained",
+  "remaining": "integrated qualification and live commissioning/VM acceptance",
+  "deployment": "not attempted"
+}

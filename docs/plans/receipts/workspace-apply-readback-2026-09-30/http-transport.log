@@ -1,0 +1,16 @@
+   Compiling v1-compiler v0.1.0 (/home/briansrls/scratch-wt/allocation-stack-reconcile/src/v1/stage0)
+    Finished `test` profile [unoptimized] target(s) in 6m 02s
+     Running unittests src/lib.rs (target/debug/deps/v1_compiler-781f59c3e94464a2)
+
+running 8 tests
+test cli_run::serve_cookie_transport_tests::cookie_and_csrf_body_reach_separate_request_fields ... ok
+test cli_run::serve_cookie_transport_tests::duplicate_cookie_is_refused_before_handler_dispatch ... ok
+test cli_run::serve_cookie_transport_tests::response_headers_cannot_inject_lines_or_override_framing ... ok
+test cli_run::serve_unix_socket_door_tests::a_tcp_handler_is_not_handed_peer_user ... ok
+test cli_run::serve_unix_socket_door_tests::a_tcp_listener_attests_no_peer ... ok
+test cli_run::serve_unix_socket_door_tests::a_unix_door_attests_the_connecting_account ... ok
+test cli_run::serve_unix_socket_door_tests::a_unix_door_replaces_only_a_socket ... ok
+test cli_run::serve_unix_socket_door_tests::cookie_context_does_not_manufacture_a_tcp_peer ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 1194 filtered out; finished in 0.01s
+

@@ -1,0 +1,8 @@
+{
+  "earlier_failure": "11 bool/Bool E0308 errors",
+  "cause": "The qualification snapshot flattened repository-relative source paths. Structural Bool realization still recognizes src/v2/std/logic.dag in declaration provenance.",
+  "repair": "Preserve source-relative directories in native qualification snapshots. Production compiler and library code unchanged.",
+  "negative_control": "flat-path snapshot fails Rust compilation",
+  "positive_control": "path-preserving snapshot emits, compiles, and passes all 10 runtime cases",
+  "emission_door": "v1 seed emission of the v2 list_at fixture with production runtime helper and shared native driver; not a claim that the v2 self-hosted emission door passed"
+}
