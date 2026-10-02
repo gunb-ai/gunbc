@@ -1795,7 +1795,34 @@ fn eval_transform_node(
                             runtime: runtime,
                             effect_io: effect_io
                           )
+                        LexicalReferenceBody =>
+                          eval_runtime_node(
+                            node: body,
+                            tree: tree,
+                            interpretation: interpretation,
+                            environment: call_environment,
+                            runtime: runtime,
+                            effect_io: effect_io
+                          )
                         ComputationBody { behavior: _ } =>
+                          eval_runtime_node(
+                            node: body,
+                            tree: tree,
+                            interpretation: interpretation,
+                            environment: call_environment,
+                            runtime: runtime,
+                            effect_io: effect_io
+                          )
+                        FunctionValueBody =>
+                          eval_runtime_node(
+                            node: body,
+                            tree: tree,
+                            interpretation: interpretation,
+                            environment: call_environment,
+                            runtime: runtime,
+                            effect_io: effect_io
+                          )
+                        UnsupportedArrowBody =>
                           eval_runtime_node(
                             node: body,
                             tree: tree,
