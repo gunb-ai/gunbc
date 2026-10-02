@@ -2,6 +2,7 @@ module v2.std.type_binder
 
 import std.algebra { Cons, Empty, list_snoc_item }
 import v2.std.collection { List }
+import v2.std.algebra { zip_map }
 import v2.std.logic { Bool }
 import v2.std.optional { Optional, Present, Absent, optional_present, optional_absent }
 import v2.std.arrow_contract { arrow_contract_conforms }
@@ -38,6 +39,8 @@ import v2.std.node {
   TypeAnnotationEdge,
   TypeBodyEdge,
   TypeParamsEdge,
+  BinderTypeEdge,
+  edge_is_core,
   core_edge_label,
   ArrowBodyEdge,
   ArrowSignatureOrderEdge,
@@ -245,6 +248,84 @@ fn type_param_names(n: Node) -> List<Symbol> {
     fold(carried, init: Empty, f: fn(acc, t) { binder_conj_names(conj: t) })
   } else {
     Empty
+  }
+}
+
+// THE KIND A TYPE PARAMETER DECLARES, read off its binder Atom: `bits: WidthResolution` lowers its
+// binder to Atom{bits} carrying one BinderTypeEdge -> WidthResolution (v2.std.node
+// type_binder_conforms admits exactly that child). Absent for an unkinded parameter.
+fn type_param_kind_optional(binder: Node) -> Optional<Node> {
+  fold(binder.children, init: optional_absent(), f: fn(acc, e) {
+    if edge_is_core(e: e, marker: BinderTypeEdge) { optional_present(value: e.target) } else { acc }
+  })
+}
+
+// WHETHER AN APPLIED TYPE ARGUMENT INHABITS A PARAMETER'S KIND, as the caller can establish it. The
+// judgment needs the declarations the kind and argument resolve to, which only resolve holds, so it
+// is supplied; the PAIRING it is applied over is decided here and nowhere else. ArgumentLiteralUnjudged
+// is the language-level Nat literal rule: a literal is admitted in any kinded position and is NOT
+// judged against the kind's roster (std.machine_constraints machine_width_literal_roster_frontier),
+// so it is counted rather than credited as inhabitance. ArgumentTypeParameterUnjudged is an argument
+// that is itself a type parameter of an enclosing declaration (`MachineWidth<bits>` inside a generic
+// over bits): its instances are judged where that declaration is applied, not here, so it too is
+// counted rather than credited.
+type KindInhabitance
+  = ArgumentInhabitsKind
+  | ArgumentLiteralUnjudged
+  | ArgumentTypeParameterUnjudged
+  | ArgumentOutsideKind
+  | KindUnresolved
+
+// A TYPE APPLICATION AGAINST ITS DECLARATION'S BINDERS. Exact bijection first: arguments pair with
+// binders by position only once their counts agree, so a kind is never judged against an argument an
+// arity error has shifted. Then each kinded binder's argument is judged in order and the first that
+// is not inhabited refuses AT THAT ARGUMENT. An unkinded binder admits any argument, as before.
+type TypeApplicationConformance
+  = TypeApplicationConforms { literals_unjudged: Int, type_parameters_unjudged: Int }
+  | TypeApplicationArityMismatch { declared: Int, supplied: Int }
+  | TypeApplicationKindNotInhabited { argument: Node, kind: Node }
+  | TypeApplicationKindUnresolved { argument: Node, kind: Node }
+
+// THE ONE AUTHORITY for checking an applied type against the binders it instantiates, consumed by
+// v2.compiler.resolve at the head->declaration join (resolve_type_application_conformance). Before it,
+// this module's wrapper notes said a use's arity "is checked against" the binders while nothing
+// performed the check.
+fn type_application_conformance(
+  binders: Node,
+  arguments: List<Node>,
+  inhabits: fn(Node, Node) -> KindInhabitance
+) -> TypeApplicationConformance {
+  let declared = count(binders.children)
+  let supplied = count(arguments)
+  if declared != supplied {
+    TypeApplicationArityMismatch { declared: declared, supplied: supplied }
+  } else {
+    fold(zip_map(a: binders.children, b: arguments, f: fn(e, arg) { TypeParamArgument { binder: e.target, argument: arg } }),
+      init: TypeApplicationConforms { literals_unjudged: 0, type_parameters_unjudged: 0 },
+      f: fn(acc, pa) { type_application_step(acc: acc, pa: pa, inhabits: inhabits) })
+  }
+}
+
+type TypeParamArgument {
+  binder: Node
+  argument: Node
+}
+
+fn type_application_step(acc: TypeApplicationConformance, pa: TypeParamArgument, inhabits: fn(Node, Node) -> KindInhabitance) -> TypeApplicationConformance {
+  match acc {
+    TypeApplicationConforms { literals_unjudged: n, type_parameters_unjudged: p } =>
+      match type_param_kind_optional(binder: pa.binder) {
+        Absent => acc
+        Present { value: kind } =>
+          match inhabits(pa.argument, kind) {
+            ArgumentInhabitsKind => acc
+            ArgumentLiteralUnjudged => TypeApplicationConforms { literals_unjudged: n + 1, type_parameters_unjudged: p }
+            ArgumentTypeParameterUnjudged => TypeApplicationConforms { literals_unjudged: n, type_parameters_unjudged: p + 1 }
+            ArgumentOutsideKind => TypeApplicationKindNotInhabited { argument: pa.argument, kind: kind }
+            KindUnresolved => TypeApplicationKindUnresolved { argument: pa.argument, kind: kind }
+          }
+      }
+    _ => acc
   }
 }
 
