@@ -37,7 +37,7 @@ import v2.std.node {
   node_subtree_nodes
 }
 import v2.std.optional { Absent, Optional, Present, optional_present }
-import v2.std.node_query { binder_node_parts }
+import v2.std.node_query { BinderParts, binder_node_parts }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -152,8 +152,18 @@ fn is_params_conj(n: Node) -> Bool {
 // (v2.std.node_query binder_node_parts), and its type must be the type-denotation kind.
 fn binder_evidence_is_type_kind(evidence: Node) -> Bool {
   match binder_node_parts(n: evidence) {
-    Present { value: parts } => parts.type_node == kind_node(kind: TypeDenotationKind)
+    Present { value: parts } => (parts.type_node == kind_node(kind: TypeDenotationKind)) && binder_evidence_has_no_default(parts: parts)
     Absent => false
+  }
+}
+
+// Canonical binder evidence carries NO default: infer derives a binder node over the type's evidence
+// alone (v2.compiler.infer infer_binder_node_facts_from_entries), so a default in the evidence is a
+// defect the old exact-equality check would have caught, and this check keeps catching it.
+fn binder_evidence_has_no_default(parts: BinderParts) -> Bool {
+  match parts.default {
+    Present { value: _ } => false
+    Absent => true
   }
 }
 
