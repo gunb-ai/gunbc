@@ -1,12 +1,13 @@
 module gunbc.machine_intake_mtcollins1_socket1_investigation_observation
 
-import std.types { NonEmptyStr, List }
+import std.types { Bool, Int, NonEmptyStr, List, list_length }
 import std.nat { Nat }
 import std.measure { Gibibyte, gibibyte }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.publication { SpecificationDocumentDate }
 import extdeps.external_authority { CitedFigureStanding }
 import extdeps.ampere.mt_collins_getting_started_guide.dimm_layout { MtCollinsDimmFigure }
+import extdeps.ampere.smpro_register { SmproStageReading, smpro_cur_bootstage_of }
 
 // MT. COLLINS UNIT 1, 2026-09-23: THE SOCKET-1 INVESTIGATION, ONE RECEIPT PER BOOT.
 // This continues the unit's bring-up history rather than starting a second log: the previous
@@ -367,6 +368,8 @@ data mtcollins1_j1_j17_stick_swap: MtCollins1StickSwapReport = MtCollins1StickSw
 type MtCollins1HypothesisStanding
   = HypothesisOpen
   | HypothesisRefutedByStickSwap { swap: MtCollins1StickSwapReport }
+  | HypothesisRefutedBySameCpuInTwoSocketBoot { comparison: MtCollins1CpuFingerprintComparison }
+  | HypothesisRefutedByJoinOutcome { reading: MtCollins1SecondaryJoinReading, refutes: MtCollins1JoinRefutation }
 
 type MtCollins1DiagnosisHypothesis {
   hypothesis: NonEmptyStr
@@ -382,8 +385,116 @@ data mtcollins1_socket1_hypotheses: List<MtCollins1DiagnosisHypothesis> = [
   MtCollins1DiagnosisHypothesis { hypothesis: "Power and rails: CPU1's VRM or rails do not come up.", discriminator: "BMC CPU1 VR sensors and the SEL across a power-on: absent or faulted CPU1 rails.", standing: HypothesisOpen },
   MtCollins1DiagnosisHypothesis { hypothesis: "Reset and firmware-ready: socket 1 is not released from reset or never signals firmware-ready.", discriminator: "Per-socket SMpro/BMC reset and ready status for socket 1 in the boot bundle.", standing: HypothesisOpen },
   MtCollins1DiagnosisHypothesis { hypothesis: "SCP/SMpro boot stage: socket 1's SCP or SMpro stops before joining the two-socket boot.", discriminator: "Socket 1's SCP/SMpro boot-stage and error registers via the BMC in the boot bundle.", standing: HypothesisOpen },
-  MtCollins1DiagnosisHypothesis { hypothesis: "DDR init and training: socket 1 comes up but its memory initialisation fails, so the socket is dropped.", discriminator: "Socket 1 DDR init/training status from SMpro/BMC; a J17 module listed as SK1 MC0 in the roster.", standing: HypothesisOpen },
-  MtCollins1DiagnosisHypothesis { hypothesis: "UEFI enumeration: socket 1 completes SCP bring-up but UEFI does not enumerate it.", discriminator: "SCP reporting two active sockets while UEFI and lscpu still report one.", standing: HypothesisOpen },
-  MtCollins1DiagnosisHypothesis { hypothesis: "The engineering-sample CPU0 with the production CPU1 is an unsupported two-socket pairing (stepping or microcode).", discriminator: "An operator report that this pairing showed both sockets / 160 CPUs after the swap would weaken it; booting J1+J17 with a production CPU0 matching CPU1 and seeing SK1 MC0 train would support it.", standing: HypothesisOpen },
+  MtCollins1DiagnosisHypothesis { hypothesis: "DDR init and training: socket 1 comes up but its memory initialisation fails, so the socket is dropped.", discriminator: "Socket 1 DDR init/training status from SMpro/BMC; a J17 module listed as SK1 MC0 in the roster.", standing: HypothesisRefutedByJoinOutcome { reading: mtcollins1_secondary_join_reading_two_cpus, refutes: StoppedBeforeDdr } },
+  MtCollins1DiagnosisHypothesis { hypothesis: "UEFI enumeration: socket 1 completes SCP bring-up but UEFI does not enumerate it.", discriminator: "SCP reporting two active sockets while UEFI and lscpu still report one.", standing: HypothesisRefutedByJoinOutcome { reading: mtcollins1_secondary_join_reading_two_cpus, refutes: StoppedBeforeUefi } },
+  MtCollins1DiagnosisHypothesis { hypothesis: "The engineering-sample CPU0 with the production CPU1 is an unsupported two-socket pairing (stepping or microcode).", discriminator: "An operator report that this pairing showed both sockets / 160 CPUs after the swap would weaken it; booting J1+J17 with a production CPU0 matching CPU1 and seeing SK1 MC0 train would support it.", standing: HypothesisRefutedBySameCpuInTwoSocketBoot { comparison: mtcollins1_cpu0_fingerprint_comparison } },
   MtCollins1DiagnosisHypothesis { hypothesis: "The DIMM is at fault: a stick placed in J17 is bad.", discriminator: "Exchange the J1 and J17 sticks: the stick that was silent in J17 training in J1 clears it. This clears the stick, not the J17 slot.", standing: HypothesisRefutedByStickSwap { swap: mtcollins1_j1_j17_stick_swap } },
 ]
+
+// DID SOCKET 1 JOIN, READ FROM ONE BOOT (2026-10-02). Socket 1's SMpro answers and its rails read
+// nominal, so "socket 1 is defective" says more than the readings do. What a boot establishes is
+// narrower: whether socket 1 joined the two-socket bring-up, and if not, the last stage its SMpro
+// reports while socket 0 carries on alone. A reading carries the firmware summary's active-socket
+// count and Inter Socket Connection lines, the console checkpoints socket 1 posted (the 1xxxxxxx
+// CP lines), and socket 1's SMpro CUR_BOOTSTAGE word as the BMC read it in that boot.
+type MtCollins1SecondaryJoinReading {
+  run: NonEmptyStr
+  capture_sha256: NonEmptyStr
+  active_sockets: Nat
+  inter_socket_connection_lines: List<NonEmptyStr>
+  secondary_checkpoints: List<NonEmptyStr>
+  secondary_cur_bootstage_word: Int?
+}
+
+type MtCollins1SocketTopology = SingleSocket | TwoSocket
+
+// SecondaryJoinTimeout is a LIVENESS finding, not a fault record: socket 1 never completed the
+// transition and socket 0 went on as one socket. No error register need fire for it, so the
+// absence of one is part of this arm's evidence, not a contradiction of it.
+type MtCollins1SecondaryJoinOutcome
+  = SecondaryJoined { inter_socket_links_reported: Bool }
+  | SecondaryJoinTimeout {
+      secondary_last_stage: SmproStageReading
+      primary_continued_as: MtCollins1SocketTopology
+      inter_socket_links_reported: Bool
+      secondary_host_checkpoints: List<NonEmptyStr>
+    }
+  | SecondaryJoinUnclassified { reason: NonEmptyStr }
+
+// Derived, never authored: the stage comes from the raw word through the Ampere ABI's own decode.
+fn secondary_join_outcome(reading: MtCollins1SecondaryJoinReading) -> MtCollins1SecondaryJoinOutcome {
+  let links = list_length(items: reading.inter_socket_connection_lines) > 0
+  if reading.active_sockets >= 2 { SecondaryJoined { inter_socket_links_reported: links } }
+  else if reading.active_sockets == 0 { SecondaryJoinUnclassified { reason: "the firmware summary reported no active socket" } }
+  else {
+    match reading.secondary_cur_bootstage_word {
+      Absent => SecondaryJoinUnclassified { reason: "socket 1's SMpro CUR_BOOTSTAGE was not read in this boot" }
+      Present { value: w } => SecondaryJoinTimeout {
+        secondary_last_stage: smpro_cur_bootstage_of(word: w),
+        primary_continued_as: SingleSocket,
+        inter_socket_links_reported: links,
+        secondary_host_checkpoints: reading.secondary_checkpoints,
+      }
+    }
+  }
+}
+
+// The reference: the J1 + J17 boot on 2026-09-13 that trained SK1 MC0, before socket 1 stopped
+// joining. Its SMpro words were not read; its summary and console carry the join.
+data mtcollins1_secondary_join_reading_reference: MtCollins1SecondaryJoinReading = MtCollins1SecondaryJoinReading {
+  run: "artifacts/bmc/mtcollins1-run-a-sparse-reference-j1-j17-2026-09-13.txt",
+  capture_sha256: "268e7154c751c2feb2aa1920e02a68018e2358c307ddb38ae3433a1d66629cd3",
+  active_sockets: 2,
+  inter_socket_connection_lines: [
+    "Inter Socket Connection 0   : Width: x16 / Speed 25 GT/s",
+    "Inter Socket Connection 1   : Width: x16 / Speed 25 GT/s",
+  ],
+  secondary_checkpoints: ["CP: 1ff00900", "CP: 10f01902", "CP: 1ff00a00", "CP: 1ff00b01", "CP: 1ff00c00", "CP: 1ff01000", "CP: 1ff01101", "CP: 1ff01200"],
+  secondary_cur_bootstage_word: Absent,
+}
+
+// Run 37062170720 (2026-10-02): a second, different CPU in socket 1 (an engineering sample) and its
+// module moved to J25 (SK1 MC4, the other memory-power half). The summary reports one active
+// socket and no Inter Socket Connection lines, the console carries no socket-1 checkpoint, and the
+// BMC read socket 1's CUR_BOOTSTAGE as 0x0001 mid-boot, while socket 0 read UEFI.
+data mtcollins1_secondary_join_reading_two_cpus: MtCollins1SecondaryJoinReading = MtCollins1SecondaryJoinReading {
+  run: "GitHub Actions run 37062170720, artifact mtcollins1-boot-receipts (mtcollins1-boot-sol.capture, mtcollins1-boot-diagnostics.txt)",
+  capture_sha256: "c17ad69a97d8db5a62a0fc26ae0f2e821c9d4e0584c05f6b69485cb683601f18",
+  active_sockets: 1,
+  inter_socket_connection_lines: [],
+  secondary_checkpoints: [],
+  secondary_cur_bootstage_word: Present { value: 1 },
+}
+
+data mtcollins1_secondary_join_readings: List<MtCollins1SecondaryJoinReading> = [
+  mtcollins1_secondary_join_reading_reference,
+  mtcollins1_secondary_join_reading_two_cpus,
+]
+
+// What a join outcome can refute: a hypothesis about memory needs socket 1 to have reached DDR
+// initialisation, one about UEFI needs SCP to have reported both sockets.
+type MtCollins1JoinRefutation = StoppedBeforeDdr | StoppedBeforeUefi
+
+// THE SAME CPU0 IN A TWO-SOCKET BOOT. The firmware summary prints each socket's fused core and AVS
+// voltages and warranty bit; equal readings in a two-socket boot and in today's mean today's CPU0
+// has already joined a two-socket boot. The refutation is derived from the two readings.
+type MtCollins1SocketFingerprint {
+  socket: Nat
+  core_voltage_mv: Nat
+  avs_voltage_mv: Nat
+  warranty: Nat
+}
+
+type MtCollins1CpuFingerprintComparison {
+  reference: MtCollins1SecondaryJoinReading
+  reference_fingerprint: MtCollins1SocketFingerprint
+  current: MtCollins1SecondaryJoinReading
+  current_fingerprint: MtCollins1SocketFingerprint
+}
+
+data mtcollins1_cpu0_fingerprint_comparison: MtCollins1CpuFingerprintComparison = MtCollins1CpuFingerprintComparison {
+  reference: mtcollins1_secondary_join_reading_reference,
+  reference_fingerprint: MtCollins1SocketFingerprint { socket: 0, core_voltage_mv: 1065, avs_voltage_mv: 1027, warranty: 0 },
+  current: mtcollins1_secondary_join_reading_two_cpus,
+  current_fingerprint: MtCollins1SocketFingerprint { socket: 0, core_voltage_mv: 1065, avs_voltage_mv: 1027, warranty: 0 },
+}

@@ -34,6 +34,9 @@ import gunbc.machine_intake_mtcollins1_socket1_investigation_observation {
   MtCollins1Viewpoint, FirmwareTrainedFact, OperatorByEyeReport, ViewpointReported, ViewpointNotYetReported, RearEnd, FrontEnd,
   mtcollins1_operator_front_report, mtcollins1_socket1_investigation_boots, mtcollins1_socket1_boot_two_sticks,
   MtCollins1DiagnosisHypothesis, HypothesisRefutedByStickSwap, MtCollins1StickSwapReport, MtCollins1StickPlacement, mtcollins1_j1_j17_stick_swap,
+  MtCollins1SecondaryJoinReading, secondary_join_outcome, SecondaryJoined, SecondaryJoinTimeout, SecondaryJoinUnclassified,
+  mtcollins1_secondary_join_reading_two_cpus, mtcollins1_cpu0_fingerprint_comparison, MtCollins1CpuFingerprintComparison, MtCollins1SocketFingerprint,
+  HypothesisRefutedBySameCpuInTwoSocketBoot, HypothesisRefutedByJoinOutcome, StoppedBeforeDdr,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -428,9 +431,11 @@ test fn w_slot_map_carries_cpu_facts_and_hypothesis_standing() -> Bool {
       && string_contains(s: t, pattern: "\nOpen hypothesis (not established): Power and rails: ")
       && string_contains(s: t, pattern: "\nOpen hypothesis (not established): Reset and firmware-ready: ")
       && string_contains(s: t, pattern: "\nOpen hypothesis (not established): SCP/SMpro boot stage: ")
-      && string_contains(s: t, pattern: "\nOpen hypothesis (not established): DDR init and training: ")
-      && string_contains(s: t, pattern: "\nOpen hypothesis (not established): UEFI enumeration: ")
-      && string_contains(s: t, pattern: "\nOpen hypothesis (not established): The engineering-sample CPU0 with the production CPU1")
+      && string_contains(s: t, pattern: "\nRefuted hypothesis: DDR init and training: ")
+      && string_contains(s: t, pattern: "\nRefuted hypothesis: UEFI enumeration: ")
+      && string_contains(s: t, pattern: "\nRefuted hypothesis: The engineering-sample CPU0 with the production CPU1")
+      && string_contains(s: t, pattern: "SecondaryJoinTimeout { secondary_last_stage: PMpro firmware booting, primary_continued_as: SingleSocket, inter_socket_links_reported: false, secondary_host_checkpoints: none }")
+      && string_contains(s: t, pattern: "SecondaryJoined { inter_socket_links_reported: true }")
       && string_contains(s: t, pattern: "\nRefuted hypothesis: The DIMM is at fault: a stick placed in J17 is bad. By the operator's swap report: stick B was silent in J17 (run 35810323032) and trained in J1 (run 35871654468). The J17 slot is not cleared.")
       && string_contains(s: t, pattern: "\nrun 35871654468: placed by the resolved mapping = physical J1, J17 -> trained SK0 MC0 S0; DRAM 16 GiB; mcu_enable_mask = 00000001")
     SlotMapRefused { refusal: _ } => false
@@ -456,4 +461,30 @@ test fn w_slot_map_carries_cpu_facts_and_hypothesis_standing() -> Bool {
   }
   let unheld = hypothesis_text(h: MtCollins1DiagnosisHypothesis { hypothesis: "x.", discriminator: "y.", standing: HypothesisRefutedByStickSwap { swap: no_exchange } }, history: mtcollins1_socket1_investigation_boots, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs)
   shown && red_no_exchange && red_unreceipted && string_contains(s: unheld, pattern: "unverified") && !string_contains(s: unheld, pattern: "Refuted hypothesis")
+}
+
+// The join outcome is derived from the reading, and each refutation it licenses has a red. A boot
+// whose SMpro word was not read is unclassified, not a timeout; a socket-1 stage at DDR training
+// refutes no memory hypothesis; a CPU0 whose fused voltages differ refutes no pairing bet.
+test fn w_secondary_join_outcome_and_its_refutations_are_derived() -> Bool {
+  let bad = mtcollins1_secondary_join_reading_two_cpus
+  let timeout = match secondary_join_outcome(reading: bad) {
+    SecondaryJoinTimeout { secondary_last_stage: _, primary_continued_as: _, inter_socket_links_reported: l, secondary_host_checkpoints: cps } => !l && list_length(items: cps) == 0
+    SecondaryJoined { inter_socket_links_reported: _ } => false
+    SecondaryJoinUnclassified { reason: _ } => false
+  }
+  let unread = MtCollins1SecondaryJoinReading { run: bad.run, capture_sha256: bad.capture_sha256, active_sockets: 1, inter_socket_connection_lines: [], secondary_checkpoints: [], secondary_cur_bootstage_word: Absent }
+  let red_unread = match secondary_join_outcome(reading: unread) {
+    SecondaryJoinUnclassified { reason: _ } => true
+    SecondaryJoined { inter_socket_links_reported: _ } => false
+    SecondaryJoinTimeout { secondary_last_stage: _, primary_continued_as: _, inter_socket_links_reported: _, secondary_host_checkpoints: _ } => false
+  }
+  let reached_training = MtCollins1SecondaryJoinReading { run: bad.run, capture_sha256: bad.capture_sha256, active_sockets: 1, inter_socket_connection_lines: [], secondary_checkpoints: [], secondary_cur_bootstage_word: Present { value: 4 } }
+  let ddr = MtCollins1DiagnosisHypothesis { hypothesis: "x.", discriminator: "y.", standing: HypothesisRefutedByJoinOutcome { reading: reached_training, refutes: StoppedBeforeDdr } }
+  let red_ddr = string_contains(s: hypothesis_text(h: ddr, history: mtcollins1_socket1_investigation_boots, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs), pattern: "unverified")
+  let c = mtcollins1_cpu0_fingerprint_comparison
+  let other_cpu = MtCollins1CpuFingerprintComparison { reference: c.reference, reference_fingerprint: c.reference_fingerprint, current: c.current, current_fingerprint: MtCollins1SocketFingerprint { socket: 0, core_voltage_mv: 1035, avs_voltage_mv: 996, warranty: 1 } }
+  let pairing = MtCollins1DiagnosisHypothesis { hypothesis: "x.", discriminator: "y.", standing: HypothesisRefutedBySameCpuInTwoSocketBoot { comparison: other_cpu } }
+  let red_pairing = string_contains(s: hypothesis_text(h: pairing, history: mtcollins1_socket1_investigation_boots, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs), pattern: "unverified")
+  timeout && red_unread && red_ddr && red_pairing
 }
