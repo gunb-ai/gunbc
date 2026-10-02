@@ -10,15 +10,17 @@ pub use crate::extdeps_languages_python_types::{
     python_algebra_inhabitants, python_callable, python_cast_syntax, python_optional_template,
     python_type_checkpoints,
 };
-pub use crate::extdeps_languages_rust_representation::rust_exact_type_checkpoint;
 pub use crate::extdeps_languages_rust_representation::RustRepresentation;
 use crate::extdeps_languages_rust_representation::RustRepresentation::*;
+pub use crate::extdeps_languages_rust_representation::{
+    rust_exact_type_checkpoint, rust_representation_eq,
+};
 pub use crate::extdeps_languages_rust_types::{
     rust_algebra_inhabitants, rust_callable, rust_cast_syntax, rust_optional_template,
     rust_type_checkpoints,
 };
 pub use crate::gunbc_rust_source_type_bindings::{
-    checkpoint_row_migration_rows, rust_source_type_binding_rows,
+    checkpoint_row_migration_rows, rust_source_type_binding_rows, rust_source_variant_value_rows,
 };
 use crate::std_coercion::RealizationGround::{
     GroundedByCheckpointRow, GroundedByHostNumericAlias, GroundedByUnidentifiedBareRow,
@@ -37,12 +39,17 @@ pub use crate::std_coercion::{
     TypeCheckpoint, TypeDeclarationProvenance, TypeRealizationDecision,
 };
 pub use crate::std_decl_ref::DeclarationRef;
-pub use crate::std_target_representation::ExactBindingResolution;
 use crate::std_target_representation::ExactBindingResolution::{
     ExactBindingAbsent, ExactBindingAmbiguous, ExactSourceIdentityUnavailable, ResolvedExactBinding,
 };
+use crate::std_target_representation::VariantParentIdentity::*;
+use crate::std_target_representation::VariantValueRealization::*;
 pub use crate::std_target_representation::{
     checkpoint_row_disposition_keeps_bare_row, checkpoint_row_migration_for, resolve_exact_binding,
+    variant_value_realization,
+};
+pub use crate::std_target_representation::{
+    ExactBindingResolution, VariantParentIdentity, VariantValueRealization,
 };
 pub use crate::std_types::NonEmptyStr;
 pub use crate::std_types::{canonical_container_names, container_template_algebra};
@@ -822,4 +829,35 @@ pub fn extract_coercion_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
         ),
         template_application_tests(),
     )
+}
+
+pub fn rust_variant_value_realization(
+    parent: Rc<VariantParentIdentity>,
+    variant: String,
+) -> Rc<VariantValueRealization> {
+    crate::std_target_representation::variant_value_realization(
+        parent.clone(),
+        variant.clone(),
+        rust_source_type_binding_rows(),
+        rust_source_variant_value_rows(),
+        |a, b| {
+            crate::extdeps_languages_rust_representation::rust_representation_eq(
+                a.clone(),
+                b.clone(),
+            )
+        },
+    )
+}
+
+pub fn rust_variant_arm_is_bound_somewhere(variant: String) -> bool {
+    {
+        let mut __found = false;
+        for v in rust_source_variant_value_rows().iter().cloned() {
+            if (v.variant.clone() == variant.clone()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
 }

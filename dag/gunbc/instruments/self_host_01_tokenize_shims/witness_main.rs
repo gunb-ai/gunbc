@@ -22,6 +22,7 @@ fn a_only_rules() -> Rc<LexRules> {
                     text: Rc::new(vec!['a' as i64]),
                 }),
             })]),
+            modes: Rc::new(vec![]),
         }),
     })
 }

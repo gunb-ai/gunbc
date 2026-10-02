@@ -150,7 +150,8 @@ fn ptx_lex() -> LexRules {
         ptx_lex_token(token_class: ^ptx_token_rparen, pattern: LiteralPattern { text: ")" }),
         ptx_lex_token(token_class: ^ptx_token_lbrace, pattern: LiteralPattern { text: "{" }),
         ptx_lex_token(token_class: ^ptx_token_rbrace, pattern: LiteralPattern { text: "}" })
-      ]
+      ],
+      modes: []
     }
   }
 }
