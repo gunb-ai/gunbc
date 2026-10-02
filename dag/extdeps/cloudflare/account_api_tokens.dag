@@ -15,6 +15,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.transports.rest { RestOutcome }
 import extdeps.cloudflare.client_v4 {
+import std.resources { Network }
   cloudflare_client_v4_base,
   CloudflareApiError
 }
@@ -435,6 +436,7 @@ service cloudflare.AccountTokens {
   }
 
   operation ListPermissionGroupsRaw {
+    requires Network
     input {
       auth_token: Secret
       account_id: String
@@ -456,6 +458,7 @@ service cloudflare.AccountTokens {
   }
 
   operation ListPermissionGroups {
+    requires Network
     input {
       auth_token: Secret
       account_id: String
@@ -478,6 +481,7 @@ service cloudflare.AccountTokens {
   }
 
   operation Create {
+    requires Network
     input {
       auth_token: Secret
       account_id: String
@@ -515,6 +519,7 @@ service cloudflare.AccountTokens {
   }
 
   operation List {
+    requires Network
     input {
       auth_token: Secret
       account_id: String
@@ -537,6 +542,7 @@ service cloudflare.AccountTokens {
   }
 
   operation Delete {
+    requires Network
     input {
       auth_token: Secret
       account_id: String

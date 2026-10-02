@@ -12,6 +12,7 @@ import extdeps.cloudflare.client_v4 {
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.cloudflare.r2 {
+import std.resources { Network }
   r2_create_bucket_authority,
   r2_get_bucket_authority,
   r2_error_codes_authority,
@@ -73,6 +74,7 @@ service cloudflare.R2Buckets {
   }
 
   operation Get {
+    requires Network
     input {
       auth_token: Secret
       account_id: String
@@ -99,6 +101,7 @@ service cloudflare.R2Buckets {
   }
 
   operation Create {
+    requires Network
     input {
       auth_token: Secret
       account_id: String

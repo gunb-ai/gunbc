@@ -14,6 +14,7 @@ import extdeps.currency.currency { CurrencyCode, currency_alphabetic_code }
 import extdeps.ebay.ebay { production_api_base, MarketplaceEnum }
 import extdeps.ebay.errors { EbayErrorShape }
 import extdeps.ebay.inventory {
+import std.resources { Network }
   ConditionEnum, New, LikeNew, NewOther, NewWithDefects, ManufacturerRefurbished,
   CertifiedRefurbished, ExcellentRefurbished, VeryGoodRefurbished, GoodRefurbished,
   SellerRefurbished, UsedExcellent, UsedVeryGood, UsedGood, UsedAcceptable,
@@ -562,6 +563,7 @@ service ebay.Browse {
   }
 
   operation SearchItemSummaries {
+    requires Network
     input {
       access_token: Secret
       marketplace_id: MarketplaceEnum
@@ -590,6 +592,7 @@ service ebay.Browse {
   }
 
   operation GetItem {
+    requires Network
     input {
       access_token: Secret
       marketplace_id: MarketplaceEnum
