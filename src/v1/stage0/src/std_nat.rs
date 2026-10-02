@@ -81,18 +81,6 @@ pub fn nat_min(a: Nat, b: Nat) -> Nat {
     }
 }
 
-pub fn is_zero(n: Nat) -> bool {
-    (n.clone() == 0)
-}
-
-pub fn nat_lte(a: Nat, b: Nat) -> bool {
-    (a.clone() <= b.clone())
-}
-
-pub fn nat_gte(a: Nat, b: Nat) -> bool {
-    (a.clone() >= b.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum NatSubtraction {

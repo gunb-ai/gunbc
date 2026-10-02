@@ -4500,7 +4500,7 @@ mod compiler_tests {
             10,
             "the eliminator over zero is its zero case"
         );
-        assert!(crate::std_nat::is_zero(0) && !crate::std_nat::is_zero(three));
+        assert!(three != 0);
         assert!(
             matches!(&*crate::std_nat::nat_sub(seventeen, three), NatSubtraction::NatDifference { value } if *value == 14)
         );
