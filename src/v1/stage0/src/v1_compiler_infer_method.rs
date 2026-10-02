@@ -7,7 +7,9 @@ use crate::std_algebra::AlgebraTypeTemplate::{
     ReceiverKey, ReceiverSelf, ReceiverValue, TupleOf, WitnessOf,
 };
 use crate::std_algebra::ContainerSource::{Named, SameAsReceiver};
-pub use crate::std_algebra::{algebra_templates_for_profile, all_algebra_profiles};
+pub use crate::std_algebra::{
+    algebra_templates_for_profile, all_algebra_profiles, free_monoid_scalar_templates,
+};
 pub use crate::std_algebra::{
     AlgebraFieldTemplate, AlgebraProfile, AlgebraTypeTemplate, ContainerSource,
 };
@@ -2090,6 +2092,64 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
 
 pub fn builtin_signature(name: String) -> Option<Rc<BuiltinSignature>> {
     v1_rt::map_get(&builtin_function_registry(), name.clone())
+}
+
+pub fn builtin_param_names(name: String) -> Rc<Vec<String>> {
+    match builtin_signature(name.clone()) {
+        Some(sig) => Rc::new({
+            let mut __result = Vec::new();
+            for p in sig.params.clone().iter().cloned() {
+                __result.push(p.name.clone());
+            }
+            __result
+        }),
+        std::option::Option::None => Rc::new(vec![]),
+    }
+}
+
+pub fn builtin_host_text_param_names(name: String) -> Rc<Vec<String>> {
+    match builtin_signature(name.clone()) {
+        std::option::Option::None => Rc::new(vec![]),
+        Some(sig) => {
+            let scalar_string_method = {
+                let mut __found = false;
+                for t in crate::std_algebra::free_monoid_scalar_templates()
+                    .iter()
+                    .cloned()
+                {
+                    if (t.name.clone() == name.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            };
+            Rc::new({
+                let mut __result = Vec::new();
+                for p in Rc::new({
+                    let mut __result = Vec::new();
+                    for p in sig.params.clone().iter().cloned() {
+                        if match (*p.ty.clone()).clone() {
+                            AlgebraTypeTemplate::NamedTemplate { name: n, .. } => {
+                                (n.clone() == "String".to_string())
+                            }
+                            AlgebraTypeTemplate::ReceiverSelf => scalar_string_method.clone(),
+                            _ => false,
+                        } {
+                            __result.push(p);
+                        }
+                    }
+                    __result
+                })
+                .iter()
+                .cloned()
+                {
+                    __result.push(p.name.clone());
+                }
+                __result
+            })
+        }
+    }
 }
 
 pub fn infer_builtin_call_type(name: String) -> Option<Rc<Node>> {
