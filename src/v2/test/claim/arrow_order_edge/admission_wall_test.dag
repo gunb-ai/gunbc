@@ -11,8 +11,9 @@ import v2.std.arrow_signature { declared_signature }
 import v2.std.declaration_marker { test_marker_channel_empty }
 import v2.std.diagnostic { Accepted, None, Rejected, diagnostics_fatal_reason }
 import v2.std.logic { Bool }
-import v2.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode, well_formed }
+import v2.std.node { Arrow, Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode, well_formed }
 import v2.std.symbol_index { empty_symbol_index }
+import v2.std.collection { empty_map }
 
 // A4: AN ARROW WHOSE DOMAIN BINDS A NAME OWES ITS DECLARED ORDER, AT NODE ADMISSION. Since Program P
 // (gunbc#12625) a Named edge in an Arrow's domain is a parameter binder, and only
@@ -29,7 +30,7 @@ fn aoe_atom(sym: Symbol) -> Node {
 }
 
 fn aoe_binder() -> Edge {
-  Edge { label: Named { name: ^aoe_x }, target: aoe_atom(sym: ^aoe_int) }
+  Edge { label: Authored { name: ^aoe_x }, target: aoe_atom(sym: ^aoe_int) }
 }
 
 // THE RED: a Named-binder domain, no order edge. Deliberately hand-built; it has no producer.
@@ -67,7 +68,7 @@ fn aoe_positional_no_binder() -> Node {
 fn aoe_module_root(arrow: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: Named { name: ^aoe_decl }, target: arrow }],
+    children: [Edge { label: Authored { name: ^aoe_decl }, target: arrow }],
     occurrence_id: OccurrenceSynthetic
   }
 }
@@ -80,7 +81,7 @@ test fn aoe_well_formed_refuses_a_named_domain_without_order() -> Bool {
 
 // PATH: infer, entered directly with a ResolvedTree.
 fn aoe_infer_reason(arrow: Node) -> Symbol {
-  match infer(tree: ResolvedTree { root: aoe_module_root(arrow: arrow), symbol_index: empty_symbol_index(), resolved_declarations: empty_symbol_index() }) {
+  match infer(tree: ResolvedTree { root: aoe_module_root(arrow: arrow), symbol_index: empty_symbol_index(), resolved_declarations: empty_symbol_index(), lexical_bindings: empty_map() }) {
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
     Accepted { value: _, diagnostics: _ } => ^aoe_accepted
   }

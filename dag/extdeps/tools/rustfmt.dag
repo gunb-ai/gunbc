@@ -27,6 +27,7 @@ data rustfmt_parse_files_note: String = "--emit stdout makes this a parse observ
 
 service rustfmt.Parse {
   operation Files {
+    requires opaque
     input { workdir: FilePath, edition: String, files: List<String> }
     output {
       success: Bool from "exit_success"

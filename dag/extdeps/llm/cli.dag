@@ -526,7 +526,7 @@ fn shape_codex_exec_argv(
 
 service llm.Codex {
   operation Review {
-    requires Network
+    requires opaque
     input {
       prompt: String
       cwd: String
@@ -557,7 +557,7 @@ service llm.Codex {
 
 service claude.Invoke {
   operation Run {
-    requires Network
+    requires opaque
     input {
       session_id: String
       node_id: String

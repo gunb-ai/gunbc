@@ -51,6 +51,8 @@ pub use crate::std_syntax::{
     BinOp, BodyKind, ItemForm, ItemFormKind, LiteralValue, OperatorSpec, ParseEnvironment,
     SyntaxSpec,
 };
+pub use crate::std_target_representation::VariantParentIdentity;
+use crate::std_target_representation::VariantParentIdentity::VariantParentBeforeInference;
 pub use crate::std_types::{NonEmptyStr, SourceSpan};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -3048,6 +3050,7 @@ pub fn stamp_parsed_pattern(
             name,
             parent_enum,
             field_bindings,
+            parent_identity,
             ..
         }) => {
             let stamped = stamp_parsed_node_list(
@@ -3063,6 +3066,7 @@ pub fn stamp_parsed_pattern(
                     name: name.clone(),
                     parent_enum: parent_enum.clone(),
                     field_bindings: stamped.nodes.clone(),
+                    parent_identity: parent_identity.clone(),
                 })),
                 ctx: stamped.ctx.clone(),
                 err: stamped.err.clone(),
@@ -6132,13 +6136,13 @@ pub fn parse_single_predicate(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) ->
                 }
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => match pred_name.clone().as_str() {
-                "non_empty" => parsed_predicate_result(
+                "string_non_empty" => parsed_predicate_result(
                     tokens.clone(),
                     ctx.clone(),
                     |value_identity, predicate_identity| {
                         crate::v1_std_core::make_field_init_node(
                             predicate_identity.clone(),
-                            "non_empty".to_string(),
+                            "string_non_empty".to_string(),
                             crate::v1_std_core::make_expr_node(
                                 value_identity.clone(),
                                 Rc::new(ExprData::ExprLiteral {
@@ -16428,6 +16432,9 @@ pub fn parse_variant_pattern(
                         name: name.clone(),
                         parent_enum: std::option::Option::None,
                         field_bindings: r.field_bindings.clone(),
+                        parent_identity: Rc::new(
+                            VariantParentIdentity::VariantParentBeforeInference,
+                        ),
                     }),
                     tokens: r2.tokens.clone(),
                     ctx: r.ctx.clone(),
@@ -16468,6 +16475,9 @@ pub fn parse_variant_pattern(
                             name: name.clone(),
                             parent_enum: std::option::Option::None,
                             field_bindings: Rc::new(vec![fb.clone()]),
+                            parent_identity: Rc::new(
+                                VariantParentIdentity::VariantParentBeforeInference,
+                            ),
                         }),
                         tokens: r2.tokens.clone(),
                         ctx: minted.ctx.clone(),
@@ -16480,6 +16490,9 @@ pub fn parse_variant_pattern(
                         name: name.clone(),
                         parent_enum: std::option::Option::None,
                         field_bindings: Rc::new(vec![]),
+                        parent_identity: Rc::new(
+                            VariantParentIdentity::VariantParentBeforeInference,
+                        ),
                     }),
                     tokens: tokens.clone(),
                     ctx: ctx.clone(),

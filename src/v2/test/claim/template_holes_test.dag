@@ -1,0 +1,21 @@
+module v2.test.claim.template_holes
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.template { Template, TemplateHolePart, TemplateLiteralPart, template_holes }
+import v2.std.operation_argv { ArgvTemplate, OperationInputName }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// "git -C {repository_path}/{sub}" -- holes in authored order, literals contribute none.
+data git_path_template: ArgvTemplate = Template {
+  parts: [
+    TemplateHolePart { hole: "repository_path" as OperationInputName },
+    TemplateLiteralPart { text: "/" },
+    TemplateHolePart { hole: "sub" as OperationInputName }
+  ]
+}
+
+test fn template_holes_are_names_in_authored_order() -> Bool {
+  template_holes(t: git_path_template) == ["repository_path" as OperationInputName, "sub" as OperationInputName]
+}
+

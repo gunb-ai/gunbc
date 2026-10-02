@@ -27,7 +27,7 @@ import v2.std.optional {
 }
 import v2.std.logic { Bool }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
-import v2.std.node { Atom, Conj, Edge, EdgeLabel, Named, Node, NodeFold, Positional, Symbol, TypeNode, DeclarationReferenceKind, MarkedReference, NotMarkedReference, ParameterReferenceKind, ResolvedReferenceKind, fold_node, resolved_reference_kind_marker, resolved_reference_body_kind, node_synthetic, node_with_occurrence_id, symbol_eq, symbol_intern_lexeme, symbol_lexeme }
+import v2.std.node { Atom, Conj, Edge, EdgeLabel, Node, NodeFold, Positional, Symbol, TypeNode, DeclarationReferenceKind, LexicalReferenceKind, MarkedReference, NotMarkedReference, ParameterReferenceKind, ResolvedReferenceKind, fold_node, resolved_reference_kind_marker, resolved_reference_body_kind, node_synthetic, node_with_occurrence_id, symbol_eq, symbol_intern_lexeme, symbol_lexeme, Authored, core_edge_label, StructuralLabel }
 import v2.std.text { String }
 
 type QualifiedName = FreeMonoid<Symbol>
@@ -83,7 +83,7 @@ type QnSpineRole
 
 fn qn_spine_role(label: EdgeLabel) -> QnSpineRole {
   match label {
-    Named { name: sym } =>
+    Authored { name: sym } =>
       if sym == ^fold_list_node_head {
         QnSpineHead
       } else if sym == ^fold_list_node_tail {
@@ -91,6 +91,7 @@ fn qn_spine_role(label: EdgeLabel) -> QnSpineRole {
       } else {
         QnNotSpine
       }
+    StructuralLabel { label: _ } => QnNotSpine
     Positional => QnNotSpine
   }
 }
@@ -316,7 +317,7 @@ fn qualified_name_spine_of_atoms(atoms: FreeMonoid<Node>, occurrence_id: NodeOcc
   node_with_occurrence_id(kind: spine.kind, children: spine.children, occurrence_id: occurrence_id)
 }
 
-// The marker is v2.std.node declaration_reference_marker, beside the node kinds it labels, so
+// The marker is v2.std.node CoreEdgeLabel DeclarationReferenceEdge (ParameterReferenceEdge for a parameter), beside the node kinds it labels, so
 // v2.std.node well_formed can hold an arrow body to it (gunbc#12377).
 // THE ONE PRODUCER OF THE MARKED CARRIER (consumed by v2.compiler.resolve resolved_reference_node).
 // The occurrence stays on the marker node alone, which is the node that stands where the reference
@@ -331,12 +332,42 @@ fn parameter_reference_node(qn: QualifiedName, occurrence_id: NodeOccurrenceIden
   resolved_reference_node_of_kind(kind: ParameterReferenceKind, qn: qn, occurrence_id: occurrence_id)
 }
 
+// THE ONE PRODUCER OF A LEXICAL REFERENCE (consumed by v2.compiler.resolve
+// resolve_lexical_reference_keyed, which records the binder that answered it in
+// ResolvedTree.lexical_bindings under this node's occurrence). Its one child is the local's label, a
+// synthetic atom, so the reference's occurrence stays on the marker node alone.
+fn lexical_reference_node(label: Symbol, occurrence_id: NodeOccurrenceIdentity) -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: core_edge_label(marker: resolved_reference_kind_marker(kind: LexicalReferenceKind)),
+        target: node_synthetic(kind: TypeNode { connective: Atom { identity: label } }, children: [])
+      },
+    ],
+    occurrence_id: occurrence_id
+  )
+}
+
+// A LEXICAL REFERENCE READS AS ITS LOCAL'S LABEL OR AS NOTHING, keyed on the marker like its siblings;
+// a declaration or parameter reference answers Absent here.
+fn lexical_reference_label_optional(node: Node) -> Optional<Symbol> {
+  match resolved_reference_spine_optional(node: node, kind: LexicalReferenceKind) {
+    Present { value: label_atom } =>
+      match label_atom.kind {
+        TypeNode { connective: Atom { identity: label } } => optional_present(value: label)
+        _ => optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+
 fn resolved_reference_node_of_kind(kind: ResolvedReferenceKind, qn: QualifiedName, occurrence_id: NodeOccurrenceIdentity) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: resolved_reference_kind_marker(kind: kind) },
+        label: core_edge_label(marker: resolved_reference_kind_marker(kind: kind)),
         target: qualified_name_spine_node(qn: qn, occurrence_id: OccurrenceSynthetic)
       },
     ],
