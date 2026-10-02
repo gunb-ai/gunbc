@@ -2265,11 +2265,11 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           headline: "v2 parses and types its own seven native test modules end to end",
           boundary: "The seven modules that quiet-hawk-702 measured on 2026-09-29, taken through ingest, lowering, resolve and infer on the native route. Every refusal is removed at its root.",
           displaced_cost: "The first root (tokenize refused at ingest) hid every other cause. Until the seven pass, no v2 frontend claim has a real subject behind it.",
-          first_slice: "Land the remaining blockers: artifact.tree (#12506), match-binder typing (#12641, only on the #12506 stack branch), maps (#12758), built-in String (#12760). Then rebase #12628.",
+          first_slice: "Introduce the infer dependent-child join that lowered fold requires: infer the Loop domain once, derive the collection member instance from its element type, and infer the step subtree under that scoped instance. Prove the unchanged native-seven subject moves past e.target, then stop at and name the next root. The class is gunbc.recurring_failure_mode infer_child_context_cannot_depend_on_a_sibling_result, which also records that a NodeFold to NodeFoldTopDown conversion is the DISPROVEN route: inherited context cannot carry a sibling's synthesized result.",
           red_control: "Any of the seven refusing before type inference, or refusing by blaming an import target (native_import_target_file_refusal), keeps this red.",
           out_of_scope: "Whole-corpus refusals; emission.",
           handback: "All seven typed, with the run receipt."
-        ), on: "2026-09-30", note: "Not yet centered: integration PR #12628 is a draft stacked on four open PRs.")),
+        ), on: "2026-10-02", note: "The frontier is now one named root inside infer rather than a PR stack. Resolve and cross-module declaration retrieval were measured and excluded as causes; the eight refuse at a fold step formal that nothing instantiates from the Loop domain.")),
       parent: in_project(project: "v2-frontend", contribution: "The seven native test modules are the smallest real subject v2 must read and type end to end."),
     ),
     roadmap_node(
