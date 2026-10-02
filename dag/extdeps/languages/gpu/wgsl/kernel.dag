@@ -13,21 +13,12 @@ import extdeps.languages.simd.kernel {
 import std.bytes { pure_dag_seam_unreachable, pure_dag_seam_unreachable_float }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "www.w3.org/TR/WGSL/"
   }
-}
-
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef { declaration: DeclarationRef {
-    module_path: "extdeps.languages.gpu.wgsl.kernel", decl_name: "WgslKernelEmitSurface", field: WholeDeclaration
-  } },
-  first_citation: extdeps_external_authority_anchor,
-  further_citations: []
 }
 
 data wgsl_kernel_target_medium_name: NonEmptyStr = "wgsl-compute-relu-mul-add"

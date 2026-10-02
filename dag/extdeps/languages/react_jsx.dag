@@ -16,21 +16,12 @@ import extdeps.uri_validation {
 }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "react.dev/learn/writing-markup-with-jsx"
   }
-}
-
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef { declaration: DeclarationRef {
-    module_path: "extdeps.languages.react_jsx", decl_name: "JsxEmitResult", field: WholeDeclaration
-  } },
-  first_citation: extdeps_external_authority_anchor,
-  further_citations: []
 }
 
 // KEEP with mark (#7272 A3; gpu/wgsl treatment). Live CI keystone

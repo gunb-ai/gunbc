@@ -12,22 +12,12 @@ import extdeps.github.repository { RepositoryVisibility, PublicRepository, Priva
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "docs.github.com/en/actions/reference/runners/github-hosted-runners"
   }
-}
-
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef { declaration: DeclarationRef {
-    module_path: "extdeps.github.hosted_runners", decl_name: "GithubHostedRunnerCatalogRow", field: WholeDeclaration
-  } },
-  first_citation: extdeps_external_authority_anchor,
-  further_citations: []
 }
 
 // Cited 2026-07-11 from the hosted-runner hardware tables (the anchor above). GitHub publishes

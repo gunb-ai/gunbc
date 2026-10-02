@@ -8,22 +8,12 @@ import extdeps.uri { Uri, Https }
 import extdeps.tcgplayer.tcgplayer { production_api_base, TcgplayerErrorEnvelope }
 import extdeps.ietf.http_semantics { HttpMethod }
 import std.resources { Network }
-import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
-import std.decl_ref { WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "docs.tcgplayer.com/reference/stores_updatestoreskuprice-1"
   }
-}
-
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef { declaration: DeclarationRef {
-    module_path: "extdeps.tcgplayer.store", decl_name: "StoreInventoryUpdateResponse", field: WholeDeclaration
-  } },
-  first_citation: extdeps_external_authority_anchor,
-  further_citations: []
 }
 
 type StoreInventoryUpdateResponse {

@@ -67,7 +67,12 @@ fn diff_added_paths_observation(success: Bool, raw: String) -> DiffAddedObservat
               DiffAddedStatus => concat(acc, [entry.path])
               DiffCopiedStatus { similarity: _ } => concat(acc, [entry.path])
               DiffRenamedStatus { similarity: _ } => concat(acc, [entry.path])
-              _ => acc
+              DiffDeletedStatus => acc
+              DiffModifiedStatus => acc
+              DiffPairingBrokenStatus => acc
+              DiffTypeChangedStatus => acc
+              DiffUnmergedStatus => acc
+              DiffUnknownGitStatus { raw: _ } => acc
             }
           })
         }
