@@ -6,7 +6,7 @@ import std.measure { TokenCount, token_count, token_count_value, BasisPoint }
 import extdeps.vllm.engine_args {
   VllmPrefixCachingRequest, VllmKvCacheDtypeRequest, VllmEngramConfigRequest, VllmModalityRequest,
   VllmSchedulerAdmissionRequest, FullInputAdmissionOmitted, FullInputAdmissionExplicit,
-  KvWatermarkOmitted, KvWatermarkExplicit, vllm_scheduler_admission_omitted, IndexerKvDtypeOmitted,
+  KvWatermarkOmitted, KvWatermarkExplicit, vllm_scheduler_admission_omitted, IndexerKvDtypeOmitted, vllm_scheduler_admission_defect,
 }
 import gunbc.spark.serving_arm { ServingLaunchProfile, serving_launch_profile }
 import v2.std.algebra { length }
@@ -147,6 +147,9 @@ fn scheduler_envelope(
   admission: VllmSchedulerAdmissionRequest,
 ) -> SchedulerEnvelopeAdmission {
   let floor = intent_max_active_sequences(i: cold)
+  match vllm_scheduler_admission_defect(r: admission) {
+   Present { value: why } => SchedulerEnvelopeRefused { cause: why }
+   Absent =>
   if hard_max_num_seqs < floor {
     SchedulerEnvelopeRefused { cause: join([
       "a sequence ceiling of ", to_string(hard_max_num_seqs), " is below the ", to_string(floor),
@@ -162,6 +165,7 @@ fn scheduler_envelope(
       ], "") as NonEmptyStr }
       Absent => SchedulerEnvelopeAdmitted { envelope: SchedulerEnvelope { cold: cold, hard_max_num_seqs: hard_max_num_seqs, admission: admission } }
     }
+  }
   }
 }
 
