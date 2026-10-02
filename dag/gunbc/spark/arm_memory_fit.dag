@@ -21,7 +21,7 @@ import std.interval {
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.vllm.runtime_defaults { vllm_requested_envelope_bytes }
 import extdeps.vllm.engine_args { vllm_kv_cache_dtype_wire }
-import extdeps.vllm.environment { vllm_environment_variable_name, VllmEngineReadyTimeoutSeconds, vllm_engine_ready_timeout_default_seconds }
+import extdeps.vllm.environment { vllm_environment_variable_name, VllmEngineReadyTimeoutSeconds, vllm_engine_ready_timeout_default }
 import extdeps.docker.cli { DockerEnvAssignment }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
 import extdeps.vllm.sparse_prefill_transient {
@@ -1446,7 +1446,7 @@ fn engine_ready_timeout_for(env: List<DockerEnvAssignment>) -> EngineReadyTimeou
   let name = vllm_environment_variable_name(v: VllmEngineReadyTimeoutSeconds) as String
   let set = filter(env, e => (e.name as String) == name)
   if count(set) == 0 {
-    EngineReadyTimeoutResolved { timeout: second(count: vllm_engine_ready_timeout_default_seconds) }
+    EngineReadyTimeoutResolved { timeout: vllm_engine_ready_timeout_default }
   } else if count(set) > 1 {
     EngineReadyTimeoutUnreadable { cause: join([name, " is set ", to_string(count(set)), " times in the deployment environment"], "") as NonEmptyStr }
   } else {
@@ -2278,7 +2278,7 @@ type ExpectedGroupKind = ExpectMambaKind | ExpectFullAttentionKind | ExpectSlidi
 
 type ExpectedLayoutGroup
   = ExpectGroupLayers { kind: ExpectedGroupKind, layers: Nat, missing: NonEmptyStr }
-  | ExpectKPoolInterval { tokens: Nat, missing: NonEmptyStr, other_interval: NonEmptyStr }
+  | ExpectKPoolInterval { tokens: TokenCount, missing: NonEmptyStr, other_interval: NonEmptyStr }
   | ExpectAtLeastGroups { kind: ExpectedGroupKind, groups: Nat, missing: NonEmptyStr }
 
 type ExpectedPlanCensus
@@ -2289,22 +2289,33 @@ type ExpectedPlanCensus
 type ExpectedKvRoster sole_constructor {
   model: NonEmptyStr
   runtime: VllmSourceRevision
-  consistent: Bool
   layout: List<ExpectedLayoutGroup>
   plan: List<ExpectedPlanCensus>
 }
 
-fn glm_5_3_flash_expected_kv_roster(shape: Glm53FlashHybridShape) -> ExpectedKvRoster {
-  ExpectedKvRoster {
+// AN INCONSISTENT SHAPE DERIVES NO ROSTER (review 74218): the constructor refuses, so no ExpectedKvRoster exists
+// that a consumer would have to remember to test, and no roster author can assert consistency by writing a flag.
+type ExpectedKvRosterStanding
+  = ExpectedKvRosterDerived { roster: ExpectedKvRoster }
+  | ExpectedKvRosterUnderivable { model: NonEmptyStr, cause: NonEmptyStr }
+
+fn expected_kv_roster_underivable_obligation(model: NonEmptyStr, cause: NonEmptyStr) -> NonEmptyStr {
+  join(["the ", model as String, " shape is inconsistent (", cause as String, "): the roster requirement it prices cannot be derived from it"], "") as NonEmptyStr
+}
+
+fn glm_5_3_flash_expected_kv_roster(shape: Glm53FlashHybridShape) -> ExpectedKvRosterStanding {
+  if !glm_5_3_flash_hybrid_shape_consistent(shape) {
+    ExpectedKvRosterUnderivable { model: "GLM-5.3-Flash" as NonEmptyStr, cause: "the recurrent and sparse layer counts do not sum to the layer count, or a growth divisor is zero" as NonEmptyStr }
+  } else {
+  ExpectedKvRosterDerived { roster: ExpectedKvRoster {
     model: "GLM-5.3-Flash" as NonEmptyStr,
     runtime: vllm_source_revision_read,
-    consistent: glm_5_3_flash_hybrid_shape_consistent(shape),
     layout: [
       ExpectGroupLayers { kind: ExpectMambaKind, layers: shape.kda_linear_attention_layers,
         missing: join(["missing KDA state group: the model's ", to_string(shape.kda_linear_attention_layers), " recurrent layers require a mamba-shaped group of exactly that layer count, and the roster carries none"], "") as NonEmptyStr },
       ExpectGroupLayers { kind: ExpectFullAttentionKind, layers: shape.sparse_attention_layers,
         missing: join(["missing sparse-MLA group: the model's ", to_string(shape.sparse_attention_layers), " sparse-attention layers require a full-growth group of exactly that layer count, and the roster carries none"], "") as NonEmptyStr },
-      ExpectKPoolInterval { tokens: shape.index_kpool,
+      ExpectKPoolInterval { tokens: token_count(count: shape.index_kpool),
         missing: join(["missing KPool index group: the sparse layers keep a compressed index growing once per index_kpool ", to_string(shape.index_kpool), " tokens, and the roster carries no KPool group at that interval"], "") as NonEmptyStr,
         other_interval: join(["the roster's KPool group is priced at a pool interval other than the model's index_kpool ", to_string(shape.index_kpool), ": a different pool interval is a different capacity, and this proof binds the exact roster"], "") as NonEmptyStr },
       ExpectAtLeastGroups { kind: ExpectMambaKind, groups: 2,
@@ -2318,6 +2329,7 @@ fn glm_5_3_flash_expected_kv_roster(shape: Glm53FlashHybridShape) -> ExpectedKvR
       ExpectPlanWindowedEntries { entries: shape.sparse_attention_layers, noun: "tail_cache entries" as NonEmptyStr, model_noun: "sparse layers" as NonEmptyStr,
         consequence: "the sparse-indexer tail is one state per sparse layer, and a roster missing or multiplying it prices a different cache than the engine allocates" as NonEmptyStr },
     ],
+  } }
   }
 }
 
@@ -2358,7 +2370,7 @@ fn layout_group_obligation(layout: ResolvedKvLayout, e: ExpectedLayoutGroup) -> 
     ExpectGroupLayers { kind: k, layers: n, missing: m } =>
       if any(layout.groups, g => expected_group_kind_matches(kind: k, g: g.kind) && attention_layer_count_value(c: g.layer_count) == n) { [] } else { [m] }
     ExpectKPoolInterval { tokens: t, missing: m, other_interval: o } =>
-      if any(layout.groups, g => match kv_group_kpool_interval(k: g.kind) { Present { value: p } => token_count_value(t: p) == t  Absent => false }) { [] }
+      if any(layout.groups, g => match kv_group_kpool_interval(k: g.kind) { Present { value: p } => token_count_value(t: p) == token_count_value(t: t)  Absent => false }) { [] }
       else if any(layout.groups, g => match kv_group_kpool_interval(k: g.kind) { Present { value: _ } => true  Absent => false }) { [o] }
       else { [m] }
     ExpectAtLeastGroups { kind: k, groups: n, missing: m } =>
@@ -2366,10 +2378,15 @@ fn layout_group_obligation(layout: ResolvedKvLayout, e: ExpectedLayoutGroup) -> 
   }
 }
 
-fn cache_roster_obligations(layout: ResolvedKvLayout, roster: ExpectedKvRoster) -> List<NonEmptyStr> {
-  if !roster.consistent {
-    [join(["the ", roster.model as String, " shape is inconsistent (the recurrent and sparse layer counts do not sum to the layer count, or a growth divisor is zero): the roster requirement it prices cannot be derived from it"], "") as NonEmptyStr]
-  } else if (layout.established_at_revision.repository as String) != (roster.runtime.repository as String)
+fn cache_roster_obligations(layout: ResolvedKvLayout, standing: ExpectedKvRosterStanding) -> List<NonEmptyStr> {
+  match standing {
+    ExpectedKvRosterUnderivable { model: m, cause: c } => [expected_kv_roster_underivable_obligation(model: m, cause: c)]
+    ExpectedKvRosterDerived { roster: roster } => cache_roster_obligations_derived(layout: layout, roster: roster)
+  }
+}
+
+fn cache_roster_obligations_derived(layout: ResolvedKvLayout, roster: ExpectedKvRoster) -> List<NonEmptyStr> {
+  if (layout.established_at_revision.repository as String) != (roster.runtime.repository as String)
     || (layout.established_at_revision.full_revision as String) != (roster.runtime.full_revision as String) {
     [join([
       "the roster was established at ", layout.established_at_revision.repository as String, "@", layout.established_at_revision.full_revision as String,
@@ -2403,13 +2420,13 @@ fn cache_supply_obligations(supplies: List<ArmRankCacheSupply>, rank_count: Nat)
 // by construction, because the obligations above already refused.
 fn cache_fit_verdict(
   layout: ResolvedKvLayout,
-  roster: ExpectedKvRoster,
+  roster: ExpectedKvRosterStanding,
   seats: Nat,
   at: TokenCount,
   supplies: List<ArmRankCacheSupply>,
   rank_count: Nat,
 ) -> CacheFitVerdict {
-  let roster_obligations = cache_roster_obligations(layout: layout, roster: roster)
+  let roster_obligations = cache_roster_obligations(layout: layout, standing: roster)
   let supply_obligations = cache_supply_obligations(supplies: supplies, rank_count: rank_count)
   let obligations = concat(roster_obligations, supply_obligations)
   match length(obligations) > 0 {
@@ -2583,10 +2600,15 @@ fn plan_census_obligation(plan: ResolvedKvAllocationPlan, e: ExpectedPlanCensus)
   }
 }
 
-fn cache_plan_roster_obligations(plan: ResolvedKvAllocationPlan, roster: ExpectedKvRoster) -> List<NonEmptyStr> {
-  if !roster.consistent {
-    [join(["the ", roster.model as String, " shape is inconsistent (the recurrent and sparse layer counts do not sum to the layer count, or a growth divisor is zero): the roster requirement it prices cannot be derived from it"], "") as NonEmptyStr]
-  } else if (plan.runtime.repository as String) != (roster.runtime.repository as String)
+fn cache_plan_roster_obligations(plan: ResolvedKvAllocationPlan, standing: ExpectedKvRosterStanding) -> List<NonEmptyStr> {
+  match standing {
+    ExpectedKvRosterUnderivable { model: m, cause: c } => [expected_kv_roster_underivable_obligation(model: m, cause: c)]
+    ExpectedKvRosterDerived { roster: roster } => cache_plan_roster_obligations_derived(plan: plan, roster: roster)
+  }
+}
+
+fn cache_plan_roster_obligations_derived(plan: ResolvedKvAllocationPlan, roster: ExpectedKvRoster) -> List<NonEmptyStr> {
+  if (plan.runtime.repository as String) != (roster.runtime.repository as String)
     || (plan.runtime.full_revision as String) != (roster.runtime.full_revision as String) {
     [join([
       "the allocation plan was read at ", plan.runtime.repository as String, "@", plan.runtime.full_revision as String,
@@ -2635,14 +2657,14 @@ fn cache_reserve_blocks(policy: CacheReservePolicy, blocks_per_seat: AllocatorBl
 // requested length, the only length the plan vouches.
 fn cache_fit_verdict_from_plan(
   plan: ResolvedKvAllocationPlan,
-  roster: ExpectedKvRoster,
+  roster: ExpectedKvRosterStanding,
   seats: Nat,
   supplies: List<ArmRankCacheSupply>,
   rank_count: Nat,
   limiting_rank: Nat,
   reserve_policy: CacheReservePolicy,
 ) -> CacheFitVerdict {
-  let roster_obligations = cache_plan_roster_obligations(plan: plan, roster: roster)
+  let roster_obligations = cache_plan_roster_obligations(plan: plan, standing: roster)
   let supply_obligations = cache_supply_obligations(supplies: supplies, rank_count: rank_count)
   let rank_obligations = match limiting_rank < rank_count {
     true => [] as List<NonEmptyStr>
@@ -2956,7 +2978,7 @@ type CacheFitWithPoolConstruction {
 
 fn cache_fit_with_pool_construction(
   plan: ResolvedKvAllocationPlan,
-  roster: ExpectedKvRoster,
+  roster: ExpectedKvRosterStanding,
   seats: Nat,
   supplies: List<ArmRankCacheSupply>,
   rank_count: Nat,
@@ -3439,13 +3461,13 @@ fn cache_frontier_rung_seats(hard_ceiling: Nat) -> List<Nat> {
 
 fn cache_frontier_from_plan(
   plan: ResolvedKvAllocationPlan,
-  roster: ExpectedKvRoster,
+  roster: ExpectedKvRosterStanding,
   supplies: List<ArmRankCacheSupply>,
   rank_count: Nat,
   limiting_rank: Nat,
   reserve_policy: CacheReservePolicy,
 ) -> CacheFrontierVerdict {
-  let roster_obligations = cache_plan_roster_obligations(plan: plan, roster: roster)
+  let roster_obligations = cache_plan_roster_obligations(plan: plan, standing: roster)
   let supply_obligations = cache_supply_obligations(supplies: supplies, rank_count: rank_count)
   let rank_obligations = match limiting_rank < rank_count {
     true => [] as List<NonEmptyStr>

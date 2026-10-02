@@ -12,7 +12,7 @@ import std.measure {
   ByteSize, byte_size, byte_size_count, token_count, millisecond, microsecond, microsecond_count,
   milli_tokens_per_second, concurrent_request_hundredths, basis_point, basis_point_count, token_count_value,
 }
-import std.content_hash { Sha256Digest, Sha256DigestHex }
+import std.content_hash { Sha256Digest, Sha256DigestHex, content_hash_of_value }
 import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.container.oci.digest { OciSha256Digest }
@@ -433,7 +433,7 @@ test fn a_hole_in_the_staircase_refuses_the_sla_capacity_above_it() -> Bool {
 
 test fn the_report_projects_the_minimum_of_three_capacities_and_leaves_unobserved_counts_absent() -> Bool {
   let all = V41CapacityReport { run_id: "run-1" as NonEmptyStr, kv_admission: CapacityAt { concurrency: 6 }, engram_resident: CapacityAt { concurrency: 4 }, sla_sustainable: CapacityAt { concurrency: 8 }, indexer_kernel: ExtensionLoaded }
-  match v41_calibration_receipt(report: all, subject_key: w_v41_key(), trace_digest: "fixture-trace" as NonEmptyStr) {
+  match v41_calibration_receipt(report: all, subject_key: w_v41_key(), trace_digest: content_hash_of_value(value: "fixture-trace" as NonEmptyStr)) {
     V41CalibrationRefused { cause: _ } => false
     V41CalibrationProjected { receipt: r } =>
       r.sustained_concurrency == 4
@@ -444,7 +444,7 @@ test fn the_report_projects_the_minimum_of_three_capacities_and_leaves_unobserve
 
 test fn a_refused_capacity_refuses_the_projection_and_names_it() -> Bool {
   let today = V41CapacityReport { run_id: "run-1" as NonEmptyStr, kv_admission: CapacityAt { concurrency: 6 }, sla_sustainable: CapacityAt { concurrency: 8 }, engram_resident: CapacityRefused { cause: "the distinct-touch counter is unavailable" as NonEmptyStr }, indexer_kernel: ExtensionLoaded }
-  match v41_calibration_receipt(report: today, subject_key: w_v41_key(), trace_digest: "fixture-trace" as NonEmptyStr) {
+  match v41_calibration_receipt(report: today, subject_key: w_v41_key(), trace_digest: content_hash_of_value(value: "fixture-trace" as NonEmptyStr)) {
     V41CalibrationRefused { cause: c } => contains(c as String, "Engram resident")
     V41CalibrationProjected { receipt: _ } => false
   }
