@@ -11,7 +11,8 @@ import extdeps.vllm.engine_args {
 }
 import gunbc.spark.serving_arm { ServingLaunchProfile }
 import gunbc.spark.serving_capacity_intent {
-  ServingCapacityIntent, ServingCapacityIntentAdmission, uniform_cold_seats, profile_for_intent,
+  ServingCapacityIntent, ServingCapacityIntentAdmission, uniform_cold_seats, profile_for_envelope, envelope_at_cold_floor,
+  SchedulerEnvelope, envelope_hard_max_num_seqs,
   ServingCapacityIntentAdmitted, ServingCapacityIntentRefused,
 }
 
@@ -130,12 +131,49 @@ type GroupBRestorationExecutable {
   profile: ServingLaunchProfile
 }
 
-fn group_b_restoration_executable() -> GroupBRestorationExecutable? {
+// ── THE THREE COUNTS ARE THREE FACTS (operator ruling 2026-10-02) ─────────────────────────────────
+//
+// "Keep the cold guarantee at 8x262K, split out a hard scheduler ceiling and independent route-offer
+// ceiling ... Keep C behavior-preserving at 8/8." The cold guarantee is the intent above; the
+// scheduler ceiling is the envelope below, AT THE FLOOR today, so the engine renders exactly the
+// launch it ran before the split; the route offer is its own row, decided rather than derived. Group
+// B is promoted above the floor only after the measured goodput winner from the group A sweep has
+// its own all-rank memory and allocation-plan evidence -- the envelope is the one place that moves.
+fn group_b_scheduler_envelope() -> SchedulerEnvelope? {
   match group_b_restoration_intent() {
     Absent => none
-    Present { value: intent } =>
-      Present { value: GroupBRestorationExecutable { profile: profile_for_intent(
-        intent: intent,
+    Present { value: intent } => Present { value: envelope_at_cold_floor(cold: intent) }
+  }
+}
+
+// THE ROUTE OFFER IS HOW MANY CONCURRENT TURNS THIS REPOSITORY OFFERS THE ROUTE, a control-plane
+// admission decision -- not the cold guarantee and not the engine's ceiling. It supersedes the
+// 2026-09-28 derivation from the cold seat count ("make it equivalent to whatever the fabric offer is
+// offering"), which tied the offer to the guarantee so they could not fork; the 2026-10-02 ruling
+// separates them on purpose, and what keeps them from forking now is the bound below rather than
+// identity. Eight is the value it had, so nothing a caller sees moves.
+data group_b_route_offer_ceiling: Nat = 8
+
+// THE OFFER MAY NOT EXCEED THE ENGINE'S CEILING: a turn offered above it would queue inside the
+// engine, where a cold request at the head blocks every warm one behind it (the pinned scheduler
+// stops scanning the waiting queue at the first request whose blocks do not fit). The durable backlog
+// belongs before the engine. Absent means the envelope is unavailable or the offer breaches it; the
+// route fails closed rather than offering what the engine cannot hold.
+fn group_b_route_offer() -> Nat? {
+  match group_b_scheduler_envelope() {
+    Absent => none
+    Present { value: e } =>
+      if group_b_route_offer_ceiling == 0 || group_b_route_offer_ceiling > envelope_hard_max_num_seqs(e: e) { none }
+      else { Present { value: group_b_route_offer_ceiling } }
+  }
+}
+
+fn group_b_restoration_executable() -> GroupBRestorationExecutable? {
+  match group_b_scheduler_envelope() {
+    Absent => none
+    Present { value: envelope } =>
+      Present { value: GroupBRestorationExecutable { profile: profile_for_envelope(
+        envelope: envelope,
         decided_gpu_memory_basis_points: group_b_restoration_utilization,
         kv_cache_dtype: group_b_restoration_kv_cache_dtype,
         serve_port: group_b_restoration_serve_port,

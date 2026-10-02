@@ -85,7 +85,7 @@ import std.measure {
   token_count_value,
 }
 import std.decl_ref { decl_ref }
-import extdeps.vllm.engine_args { vllm_prefix_caching_argv, vllm_basis_point_fraction_wire, vllm_kv_cache_dtype_wire, vllm_engram_config_argv, vllm_modality_argv }
+import extdeps.vllm.engine_args { vllm_prefix_caching_argv, vllm_basis_point_fraction_wire, vllm_kv_cache_dtype_wire, vllm_engram_config_argv, vllm_modality_argv, vllm_scheduler_admission_argv }
 
 import gunbc.spark.model_snapshot_acquisition {
   SnapshotPlacement,
@@ -495,7 +495,7 @@ fn arm_engine_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRo
   ], concat(
     vllm_prefix_caching_argv(r: profile.prefix_caching),
     concat(checkpoint_quantization_argv(row: crow), concat(arm_headless_argv(node: node),
-      concat(arm_tokenizer_mode_argv(crow: crow), concat(vllm_engram_config_argv(r: profile.engram), vllm_modality_argv(r: profile.modality)))))))
+      concat(arm_tokenizer_mode_argv(crow: crow), concat(vllm_engram_config_argv(r: profile.engram), concat(vllm_modality_argv(r: profile.modality), vllm_scheduler_admission_argv(r: profile.scheduler_admission))))))))
 }
 
 // ── ONLY RANK ZERO HOSTS AN API SERVER, AND THE OTHER THREE MUST BE TOLD SO ────────────────────
