@@ -32,7 +32,7 @@ The inventory covered every Arrow, domain and payload reader outside `src/v2/tes
 
 | Walker | Now |
 | --- | --- |
-| `v2.compiler.infer` formation (`infer_formation_facts_from_entries`) | A binder node has its own arm, `infer_binder_node_facts_from_entries`. Its derived type is a binder node over the type's derived type with **no default**, so defaults are not type identity, and derived types and source types share one binder shape. A binder that carries a default refuses as `^infer_binder_default_unjudged` until a default judgment exists (2c). |
+| `v2.compiler.infer` formation (`infer_formation_facts_from_entries`) | A binder node has its own arm, `infer_binder_node_facts_from_entries`. Its derived type is a binder node over the type's derived type with **no default**, so defaults are not type identity, and derived types and source types share one binder shape. A binder's default is judged at the binder's declared type (`infer_binder_default_check`, position `PositionBinderDefault`; XL-2 PR2c-ii). |
 | `v2.compiler.symbol_index_fill` `symbol_index_fill_containment_edge` | Indexes a binder at its **type** (`symbol_index_binder_type_or_target`), so a parameter or field path resolves to its declared type. `<binder-type>`/`<binder-default>` never become path segments. |
 | `v2.compiler.translate` `translate_algebra` | A binder node translates **as its type** (`TypeExprTranslateBinder`, `translate_binder_node_step`). The default's fold result is discarded. A non-binder record member refuses (`translate_binder_member_type`). Arrow type expressions read parameter types through `find_binder_type`. |
 | `v2.compiler.resolve` declaring path | Does not extend across `binder_node_label`s. |
@@ -55,5 +55,27 @@ What moves with it:
 
 A nullary Arrow, an Atom type, and a payload-free variant keep their hashes.
 
-## Out of scope (2c and later)
-- **Defaults.** Lowering a default, judging that it inhabits its binder's type, choosing its resolution scope (the outer scope, never the binder's own parameters), and each subtree lens's count-or-skip decision all land with the first producer of a default.
+## Defaults (XL-2 PR2c-ii)
+
+- **Lowering.** Every default lowers onto its binder through `v2.compiler.body_lowering_fold` `body_lower_binder_edge_read` (`binder_edge_with_default`):
+  - a fn or pattern parameter's from its own tail (`body_lower_typed_param_after_colon_optional`);
+  - a record field's and a service io field's from the field tail (`body_lower_io_field_default_optional`).
+
+  The value lowers through the one value reader (`body_lower_value_read`) and refuses at the value under that reader's cause. `body_lowering_reason_default_value_unmodeled` has no producer and is deleted. A field's **wire key** is a realization fact and still refuses (records) or is set aside (io blocks) until the realization binding (XL-2 PR3).
+- **Judgment.** `v2.compiler.infer` `infer_binder_default_check` judges the default at the binder's declared type through `infer_judge_declared_position`, at a fifth position, `v2.std.inhabitance` `PositionBinderDefault`. That is the same relation an argument meets at its formal. A non-inhabiting default refuses as `^infer_reason_default_does_not_inhabit_binder_type`, located at the default. `^infer_binder_default_unjudged` is retired.
+- **Scope.** A default sits under the Arrow's domain, which resolve walks in the type-parameter frame over the OUTER scope, never the Arrow's own value parameters. So a default cannot read a sibling parameter.
+- **Emission.** A target with no parameter or field defaults refuses a defaulted binder, located at the default (`^produced_decl_render_param_default_unrealized`, `^target_semantic_decl_field_default_unrealized`), rather than dropping it.
+- **Subtree lenses.** A default is code that runs when its argument is omitted, so the subtree-fold lenses (effect reach, determinism, cost, fn index, mandatory tag, decl-facts skeleton) COUNT it as code of the declaration it sits in. No lens skips it.
+
+## Declared frontier: omission at a call or a construction
+
+A caller may not yet OMIT a defaulted argument, and a construction may not yet omit a defaulted field. Both bind through one binding plan, which still requires every formal, so an omitting call or construction refuses at the application or construct, loudly:
+- calls: `v2.std.arrow_signature` `application_binding_plan`, used by infer and eval;
+- record construction: `application_binding_plan_over`, used by `v2.compiler.infer` `infer_record_field_binding`.
+
+**Trigger:** one shared binding plan that reads each formal's binder metadata (via `declared_field_from_edge`) and admits a defaulted formal as optional, together with default materialization, so that eval, and emission where the target admits it, supply the default for the missing slot or field. Until then a default is lowered, judged and carried, and an omitting site refuses.
+
+## Scope and generics (side-chat review on #12948)
+
+- A default resolves in the ENCLOSING value scope, with the declaration's type parameters only as its type scope (`v2.compiler.resolve` `resolve_arrow_domain_walk`). An outer value is visible; a sibling parameter is not; a type parameter's spelling does not resolve as a default value.
+- A default under a generic declaration (an Arrow or type declaration with type parameters) refuses at the default as `^infer_binder_default_generic_unmodeled` (`v2.compiler.infer` `infer_generic_default_refusal`), until a default is judged with its declaring type parameters in scope.

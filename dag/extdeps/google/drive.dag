@@ -8,6 +8,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.api_rate_limit { UpstreamRateLimit, RateLimitPeriod, PerMinute }
 import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact, Subject, JsonPending }
 import std.credentials { EnvVar }
+import std.resources { Network }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https locator: "developers.google.com/drive/api/reference/rest/v3" }
@@ -293,6 +294,7 @@ service drive.Drives {
   }
 
   operation GetDrive {
+    requires Network
     input { drive_id: String }
     output { drive: DriveResource, outcome: RestOutcome }
     readonly
@@ -323,6 +325,7 @@ service drive.Permissions {
   }
 
   operation ListPermissions {
+    requires Network
     input { file_id: String }
     output { list: DrivePermissionList, outcome: RestOutcome }
     readonly
@@ -345,6 +348,7 @@ service drive.Permissions {
   }
 
   operation CreatePermission {
+    requires Network
     input {
       file_id: String
       role: DrivePermissionRole
@@ -417,6 +421,7 @@ service drive.Files {
   }
 
   operation ListFiles {
+    requires Network
     input { drive_id: String, query: String }
     output { list: DriveFileList, outcome: RestOutcome }
     readonly
@@ -444,6 +449,7 @@ service drive.Files {
   }
 
   operation GetFile {
+    requires Network
     input { file_id: String }
     output { file: DriveFile, outcome: RestOutcome }
     readonly
@@ -464,6 +470,7 @@ service drive.Files {
   }
 
   operation CreateFile {
+    requires Network
     input {
       name: String
       mime_type: String
