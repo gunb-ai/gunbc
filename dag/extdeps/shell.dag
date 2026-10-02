@@ -5,6 +5,7 @@ import std.string_type { String }
 import extdeps.external_authority { ExternalAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.uri { Uri, Https }
+import std.resources { Network }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -599,6 +600,7 @@ service shell.Copy {
 
 service shell.GCloud {
   operation AuthPrintAccessToken {
+    requires Network
     input {}
     output {
       access_token: Secret from "stdout"
