@@ -2100,9 +2100,10 @@ fn dag_grammar_type_alias_rhs_lead_expr() -> GrammarExpr {
 //
 // PARSE ADMISSION IS NOT THE SEALING PROPERTY. Declared drop:
 // gunbc.rung_drop.g0_type_decl_modifier_parse_without_sealing_property. v1 mints
-// only sole_constructor via parsed_sole_constructor_properties; G0 only consumes
-// the tokens so the native door can continue. nominal_opaque is dropped in v1 and
-// mints nothing.
+// only sole_constructor via parsed_sole_constructor_properties. On the native route the
+// slot is read back off the parse by v2.compiler.body_lowering_fold
+// body_lower_type_decl_declared_modifiers and carried on NormalizedTree
+// type_declaration_modifiers; carrying it enforces nothing.
 fn dag_grammar_type_decl_modifiers_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_optional(
