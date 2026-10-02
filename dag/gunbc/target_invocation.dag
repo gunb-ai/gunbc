@@ -266,3 +266,80 @@ fn invocation_refusal_rendered(cause: TargetInvocationRefusal) -> String {
       concat("gunbc test: target has no bound producer: ", render_label(l: t))
   }
 }
+
+// IS THE BINARY ANSWERING FOR THE TREE IT IS ABOUT TO READ?
+//
+// Every instrument behind `gunbc test` is compiled into the binary that runs it, and reads a live
+// tree beside it. A binary built at an older commit answers for code that is no longer HEAD, and
+// its reading is reported under the current head's name. That is a silent wrong answer, and it
+// recurred four times in one day before this check existed. So the invocation's first act is to
+// ask whether the binary's build identity names HEAD, and refuse when it does not or when nothing
+// can say.
+//
+// EQUALITY OF COMMIT, NOT A GUESS ABOUT WHICH PATHS MATTER. A rule like "stale only if a seed
+// path changed" needs a closed list of the files the binary depends on, and the seed
+// `include_str!`s `.dag` and tool files from outside its crate directories, so any such list is a
+// heuristic that would pass exactly the skew it missed. A `.dag`-only commit therefore forces a
+// rebuild. That cost is priced, not hidden.
+//
+// UNCOMMITTED EDITS ARE THE SUBJECT, NOT THE BINARY. A clean-built binary at HEAD over a dirty
+// tree is fresh: the edits are the live input the instrument reads, which `InvocationOutcome`
+// already disclaims binding to. They are named on the fresh arm so the reading says what it read
+// over. A binary built FROM a dirty tree has no commit its bytes are equal to, so it is
+// unverifiable, not fresh.
+type BuiltIdentity
+  = BuiltAtCommit { commit: String }
+  | BuiltAtDirtyCommit { commit: String }
+  | BuiltAtTree { tree: String }
+
+type HeadObservation
+  = HeadObserved { commit: String, tree: String, uncommitted: List<String> }
+  | HeadUnobservable { reason: String }
+
+type BinaryFreshness
+  = BinaryAtHead { head: String, uncommitted: List<String> }
+  | BinaryStale { built: String, head: String }
+  | BinaryFreshnessUndecided { built: String, reason: String }
+
+fn assess_binary_freshness(built: BuiltIdentity, head: HeadObservation) -> BinaryFreshness {
+  match head {
+    HeadUnobservable { reason: r } =>
+      BinaryFreshnessUndecided { built: built_identity_rendered(built: built), reason: r }
+    HeadObserved { commit: c, tree: t, uncommitted: u } =>
+      match built {
+        BuiltAtCommit { commit: b } =>
+          if b == c { BinaryAtHead { head: c, uncommitted: u } } else { BinaryStale { built: b, head: c } }
+        BuiltAtTree { tree: b } =>
+          if b == t { BinaryAtHead { head: c, uncommitted: u } } else { BinaryStale { built: concat("tree ", b), head: concat("tree ", t) } }
+        BuiltAtDirtyCommit { commit: b } =>
+          BinaryFreshnessUndecided {
+            built: concat(b, "-dirty"),
+            reason: "the binary was built from an uncommitted tree, so no commit names its bytes; commit and rebuild"
+          }
+      }
+  }
+}
+
+fn built_identity_rendered(built: BuiltIdentity) -> String {
+  match built {
+    BuiltAtCommit { commit: b } => b
+    BuiltAtDirtyCommit { commit: b } => concat(b, "-dirty")
+    BuiltAtTree { tree: b } => concat("tree ", b)
+  }
+}
+
+// Only `BinaryAtHead` admits the invocation; both other arms terminate `InvocationRefused` (exit
+// 2, no observation) with their line, never a warning printed beside a reading.
+fn binary_freshness_rendered(f: BinaryFreshness) -> String {
+  match f {
+    BinaryAtHead { head: h, uncommitted: _ } =>
+      concat("gunbc test: binary at HEAD ", h)
+    BinaryStale { built: b, head: h } =>
+      concat(concat(concat(concat(
+        "gunbc test: REFUSED cause=StaleBinary — this binary was built at ", b), " but HEAD is "), h),
+        "; rebuild before measuring")
+    BinaryFreshnessUndecided { built: b, reason: r } =>
+      concat(concat(concat(
+        "gunbc test: REFUSED cause=BinaryFreshnessUndecided built=", b), " — "), r)
+  }
+}

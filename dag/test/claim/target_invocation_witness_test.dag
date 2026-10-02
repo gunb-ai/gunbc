@@ -41,6 +41,10 @@ import gunbc.target_binding {
   BareChannelEntryAbsent, BareChannelIndexRefused,
 }
 import gunbc.target_invocation {
+  BuiltIdentity, BuiltAtCommit, BuiltAtDirtyCommit, BuiltAtTree,
+  HeadObservation, HeadObserved, HeadUnobservable,
+  BinaryFreshness, BinaryAtHead, BinaryStale, BinaryFreshnessUndecided,
+  assess_binary_freshness,
   TargetInvocationRoute, TargetInvocationRouted, TargetInvocationRouteRefused,
   TargetInvocationRefusal,
   OperandNotALabel, InvocationRegistryRefused, InvocationLabelNotCanonical,
@@ -1095,4 +1099,48 @@ test fn a_refused_single_target_renders_the_label_grammars_located_cause() -> Bo
         && string_contains(s: test_operand_refusal_rendered(operand: o, cause: c), pattern: "bad/name")
     _ => false
   }
+}
+
+// STALE-BINARY CONTROLS. Before `assess_binary_freshness` existed every arm below ran its
+// instrument; the stale and dirty arms are the reds that old behaviour lacked.
+fn freshness_head() -> HeadObservation {
+  HeadObserved { commit: "c2", tree: "t2", uncommitted: ["dag/x.dag"] }
+}
+
+test fn a_binary_built_at_an_older_commit_is_refused_as_stale() -> Bool {
+  match assess_binary_freshness(built: BuiltAtCommit { commit: "c1" }, head: freshness_head()) {
+    BinaryStale { built: b, head: h } => b == "c1" && h == "c2"
+    _ => false
+  }
+}
+
+test fn a_binary_at_head_is_admitted_and_carries_the_uncommitted_paths() -> Bool {
+  match assess_binary_freshness(built: BuiltAtCommit { commit: "c2" }, head: freshness_head()) {
+    BinaryAtHead { head: h, uncommitted: u } => h == "c2" && count(u) == 1
+    _ => false
+  }
+}
+
+test fn a_dirty_build_or_an_unobservable_head_is_undecided_not_fresh() -> Bool {
+  let dirty = match assess_binary_freshness(built: BuiltAtDirtyCommit { commit: "c2" }, head: freshness_head()) {
+    BinaryFreshnessUndecided { built: _, reason: _ } => true
+    _ => false
+  }
+  let blind = match assess_binary_freshness(built: BuiltAtCommit { commit: "c2" }, head: HeadUnobservable { reason: "no git" }) {
+    BinaryFreshnessUndecided { built: _, reason: _ } => true
+    _ => false
+  }
+  dirty && blind
+}
+
+test fn a_tree_identity_is_compared_against_the_head_tree() -> Bool {
+  let at = match assess_binary_freshness(built: BuiltAtTree { tree: "t2" }, head: freshness_head()) {
+    BinaryAtHead { head: _, uncommitted: _ } => true
+    _ => false
+  }
+  let stale = match assess_binary_freshness(built: BuiltAtTree { tree: "t1" }, head: freshness_head()) {
+    BinaryStale { built: _, head: _ } => true
+    _ => false
+  }
+  at && stale
 }

@@ -1649,6 +1649,170 @@ fn test_operand_set_form_refusal_rendered(operand: &str) -> String {
     )
 }
 
+/// `gunbc.target_invocation` `BuiltIdentity`, mirrored. Classified from `GUNBC_BUILD_IDENTITY`,
+/// whose three spellings build.rs owns: `<40 hex>`, `<40 hex>-dirty`, `tree:<algo>:<hex>`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BuiltIdentity {
+    AtCommit(String),
+    AtDirtyCommit(String),
+    AtTree(String),
+}
+
+pub fn built_identity_from(identity: &str) -> BuiltIdentity {
+    if let Some(tree) = identity.strip_prefix("tree:") {
+        // `tree:sha1:<hex>` -> the hex `git rev-parse HEAD^{tree}` prints.
+        let hex = tree.rsplit(':').next().unwrap_or(tree);
+        return BuiltIdentity::AtTree(hex.to_string());
+    }
+    match identity.strip_suffix("-dirty") {
+        Some(commit) => BuiltIdentity::AtDirtyCommit(commit.to_string()),
+        None => BuiltIdentity::AtCommit(identity.to_string()),
+    }
+}
+
+/// `gunbc.target_invocation` `HeadObservation`, mirrored.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HeadObservation {
+    Observed {
+        commit: String,
+        tree: String,
+        uncommitted: Vec<String>,
+    },
+    Unobservable(String),
+}
+
+/// `gunbc.target_invocation` `BinaryFreshness`, mirrored.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BinaryFreshness {
+    AtHead {
+        head: String,
+        uncommitted: Vec<String>,
+    },
+    Stale {
+        built: String,
+        head: String,
+    },
+    Undecided {
+        built: String,
+        reason: String,
+    },
+}
+
+fn built_identity_rendered(built: &BuiltIdentity) -> String {
+    match built {
+        BuiltIdentity::AtCommit(b) => b.clone(),
+        BuiltIdentity::AtDirtyCommit(b) => format!("{b}-dirty"),
+        BuiltIdentity::AtTree(b) => format!("tree {b}"),
+    }
+}
+
+/// `gunbc.target_invocation` `assess_binary_freshness`, mirrored arm for arm.
+pub fn assess_binary_freshness(built: &BuiltIdentity, head: &HeadObservation) -> BinaryFreshness {
+    match head {
+        HeadObservation::Unobservable(reason) => BinaryFreshness::Undecided {
+            built: built_identity_rendered(built),
+            reason: reason.clone(),
+        },
+        HeadObservation::Observed {
+            commit,
+            tree,
+            uncommitted,
+        } => match built {
+            BuiltIdentity::AtCommit(b) if b == commit => BinaryFreshness::AtHead {
+                head: commit.clone(),
+                uncommitted: uncommitted.clone(),
+            },
+            BuiltIdentity::AtCommit(b) => BinaryFreshness::Stale {
+                built: b.clone(),
+                head: commit.clone(),
+            },
+            BuiltIdentity::AtTree(b) if b == tree => BinaryFreshness::AtHead {
+                head: commit.clone(),
+                uncommitted: uncommitted.clone(),
+            },
+            BuiltIdentity::AtTree(b) => BinaryFreshness::Stale {
+                built: format!("tree {b}"),
+                head: format!("tree {tree}"),
+            },
+            BuiltIdentity::AtDirtyCommit(b) => BinaryFreshness::Undecided {
+                built: format!("{b}-dirty"),
+                reason: "the binary was built from an uncommitted tree, so no commit names its bytes; commit and rebuild".to_string(),
+            },
+        },
+    }
+}
+
+/// `gunbc.target_invocation` `binary_freshness_rendered`, mirrored.
+pub fn binary_freshness_rendered(f: &BinaryFreshness) -> String {
+    match f {
+        BinaryFreshness::AtHead { head, .. } => format!("gunbc test: binary at HEAD {head}"),
+        BinaryFreshness::Stale { built, head } => format!(
+            "gunbc test: REFUSED cause=StaleBinary — this binary was built at {built} but HEAD is {head}; rebuild before measuring"
+        ),
+        BinaryFreshness::Undecided { built, reason } => {
+            format!("gunbc test: REFUSED cause=BinaryFreshnessUndecided built={built} — {reason}")
+        }
+    }
+}
+
+fn git_line(args: &[&str]) -> Result<String, String> {
+    let out = std::process::Command::new("git")
+        .args(args)
+        .current_dir(cli_run::process_workspace_root())
+        .output()
+        .map_err(|e| format!("git {}: {e}", args.join(" ")))?;
+    if !out.status.success() {
+        return Err(format!(
+            "git {} exited {:?}: {}",
+            args.join(" "),
+            out.status.code(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim_end().to_string())
+}
+
+/// The effectful half: what the checkout's HEAD is. Any git failure is `Unobservable`, which
+/// refuses -- never a pass because the question could not be asked.
+fn observe_head() -> HeadObservation {
+    let observed = (|| {
+        let commit = git_line(&["rev-parse", "HEAD"])?;
+        let tree = git_line(&["rev-parse", "HEAD^{tree}"])?;
+        let status = git_line(&["status", "--porcelain"])?;
+        let uncommitted = status
+            .lines()
+            .map(|l| l.get(3..).unwrap_or(l).to_string())
+            .collect();
+        Ok::<_, String>(HeadObservation::Observed {
+            commit,
+            tree,
+            uncommitted,
+        })
+    })();
+    observed.unwrap_or_else(HeadObservation::Unobservable)
+}
+
+/// THE INVOCATION'S FIRST ACT: refuse a binary that does not answer for HEAD
+/// (`gunbc.target_invocation` `assess_binary_freshness`), then route. Kept beside `test_verb`
+/// rather than inside it so the routing tests stay a function of the operand alone.
+pub fn test_verb_at_head(operand: &str, build_identity: &str) -> InvocationOutcome {
+    let freshness = assess_binary_freshness(&built_identity_from(build_identity), &observe_head());
+    let line = binary_freshness_rendered(&freshness);
+    match freshness {
+        BinaryFreshness::AtHead { uncommitted, .. } => {
+            eprintln!("{line} uncommitted_paths={}", uncommitted.len());
+            for path in uncommitted.iter().take(20) {
+                eprintln!("  uncommitted {path}");
+            }
+            test_verb(operand)
+        }
+        BinaryFreshness::Stale { .. } | BinaryFreshness::Undecided { .. } => InvocationOutcome {
+            termination: Termination::Refused,
+            message: line,
+        },
+    }
+}
+
 pub fn test_verb(operand: &str) -> InvocationOutcome {
     let pattern = match parse_target_pattern(operand) {
         Ok(pattern) => pattern,
@@ -2514,5 +2678,46 @@ mod native_route_termination_tests {
             "s",
         );
         assert_eq!(out.termination, Termination::ObservationDidNotHold);
+    }
+}
+
+#[cfg(test)]
+mod binary_freshness_tests {
+    use super::*;
+
+    /// THE OLD BEHAVIOUR RAN THE INSTRUMENT ON EVERY ARM BELOW; the stale and undecided arms are
+    /// the refusals it lacked. Mirrors `test.claim.target_invocation_witness`'s freshness tests.
+    #[test]
+    fn a_stale_or_unverifiable_binary_is_refused_before_any_instrument_runs() {
+        let head = HeadObservation::Observed {
+            commit: "c2".into(),
+            tree: "t2".into(),
+            uncommitted: vec!["dag/x.dag".into()],
+        };
+        let at = |id: &str| assess_binary_freshness(&built_identity_from(id), &head);
+        assert!(matches!(at("c1"), BinaryFreshness::Stale { .. }));
+        assert!(matches!(at("c2"), BinaryFreshness::AtHead { .. }));
+        assert!(matches!(at("c2-dirty"), BinaryFreshness::Undecided { .. }));
+        assert!(matches!(at("tree:sha1:t2"), BinaryFreshness::AtHead { .. }));
+        assert!(matches!(at("tree:sha1:t1"), BinaryFreshness::Stale { .. }));
+        assert!(matches!(
+            assess_binary_freshness(
+                &built_identity_from("c2"),
+                &HeadObservation::Unobservable("no git".into())
+            ),
+            BinaryFreshness::Undecided { .. }
+        ));
+        // THE ROUTE, NOT ONLY THE DECISION: an all-zero commit is never HEAD, so the verb must
+        // refuse with status 2 and never reach the self-host producer.
+        let stale = test_verb_at_head(
+            "//gunbc/instruments:self-host",
+            "0000000000000000000000000000000000000000",
+        );
+        assert_eq!(stale.termination, Termination::Refused);
+        assert!(
+            stale.message.contains("cause=StaleBinary"),
+            "{}",
+            stale.message
+        );
     }
 }
