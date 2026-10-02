@@ -23,7 +23,6 @@ import v2.std.node_query { FieldProjection, declared_field_named, field_projecti
 import v2.std.symbol_index { symbol_index_lookup }
 import v2.compiler.infer {
   infer_atom_binding_sym,
-  infer_parameter_type_in_scope,
   infer_type_equal_ignoring_provenance,
   inferred_facts_grounding_derived,
   inferred_facts_resolved_type

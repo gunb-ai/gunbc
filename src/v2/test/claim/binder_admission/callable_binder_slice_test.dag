@@ -167,7 +167,7 @@ fn cbs_root_scope_declaring(name: Symbol) -> Scope {
 }
 
 fn cbs_frame_binding(name: Symbol) -> Scope {
-  ScopeFrame { locals: map_insert(empty_map(), name, name), outer: cbs_root_scope(), kind: LexicalFrame }
+  ScopeFrame { locals: map_insert(empty_map(), name, name), outer: cbs_root_scope(), kind: LexicalFrame { binders: empty_map() } }
 }
 
 fn cbs_admitted_has(a: BinderAdmission, name: Symbol) -> Bool {
@@ -254,7 +254,7 @@ fn cbs_ctx(scope: Scope) -> ResolveContext {
 
 fn cbs_walk_accepts(n: Node) -> Bool {
   match resolve_node_walk(ctx: cbs_ctx(scope: cbs_root_scope()), n: n) {
-    ResolveWalkAccepted { value: _, diagnostics: _ } => true
+    ResolveWalkAccepted { value: _, diagnostics: _, lexical: _ } => true
     ResolveWalkRefused { first: _, rest: _, observation: _ } => false
   }
 }
@@ -280,7 +280,7 @@ test fn cbs_a_loop_carrier_bound_above_resolves_holds() -> Bool {
     ctx: cbs_ctx(scope: cbs_frame_binding(name: ^found)),
     n: cbs_carrier_loop(body: cbs_atom(id: ^found), carrier: ^found)
   ) {
-    ResolveWalkAccepted { value: _, diagnostics: _ } => true
+    ResolveWalkAccepted { value: _, diagnostics: _, lexical: _ } => true
     ResolveWalkRefused { first: _, rest: _, observation: _ } => false
   }
 }

@@ -925,7 +925,7 @@ fn closure_resolved_roots(context: Outcome<ResolutionContext>, shared: Resolutio
             context: context,
             admission: Admission { subject: ResolutionSubject { name: module_qn }, imports: [] }
           ).walk {
-            ResolveWalkAccepted { value: resolved, diagnostics: _ } => list_snoc_item(xs: acc, item: resolved)
+            ResolveWalkAccepted { value: resolved, diagnostics: _, lexical: _ } => list_snoc_item(xs: acc, item: resolved)
             ResolveWalkRefused { first: _, rest: _, observation: _ } => acc
           }
       }

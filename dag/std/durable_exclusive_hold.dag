@@ -26,7 +26,7 @@ module std.durable_exclusive_hold
 // codec or comparison would return the fork one layer below a generic-looking
 // API, which is the same second authority wearing a type parameter.
 
-import std.types { NonEmptyStr, String, Bool }
+import std.types { NonEmptyStr, String, Bool, brand }
 import std.durable_compare_and_set {
   CasGeneration, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration,
   CasUnreadableSlot, cas_generation_count,
