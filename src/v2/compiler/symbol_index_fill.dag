@@ -38,6 +38,7 @@ import v2.std.qualified_name { QualifiedName, qualified_name_snoc }
 import v2.std.symbol_index {
   RecordTypePayload,
   SymbolIndex,
+  symbol_index_mark_namespace_body,
   VariantArmPayload,
   symbol_index_bind_at,
   symbol_index_declaring_path_of,
@@ -50,6 +51,7 @@ import v2.std.symbol_index {
 import v2.std.namespace_alias { ModuleBindingSource, PendingBinding }
 import v2.extdeps.languages.dag {
   alias_binding_row_from_decl_node,
+  namespace_graft_node_is_module_body,
   dag_surface_module_header_metadata_edge,
   namespace_graft_spine_body_optional,
   qualified_name_from_module_node
@@ -117,6 +119,17 @@ fn symbol_index_binder_type_or_target(target: Node) -> Node {
   }
 }
 
+// A Named member whose target is a MARKED namespace body is a service-spine prefix (the module's own body is
+// the root this fill starts from, never a member), so its path is marked as a lookup boundary
+// (v2.std.symbol_index NamespaceBodyDeclared). Its members are still indexed under it.
+fn symbol_index_mark_namespace_body_if(index: SymbolIndex, qualified_path: QualifiedName, target: Node) -> SymbolIndex {
+  if namespace_graft_node_is_module_body(node: target) {
+    symbol_index_mark_namespace_body(index: index, qualified_path: qualified_path)
+  } else {
+    index
+  }
+}
+
 fn symbol_index_fill_containment_edge(
   index: SymbolIndex,
   path: QualifiedName,
@@ -139,14 +152,18 @@ fn symbol_index_fill_containment_edge(
       } else {
         let child_path = qualified_name_snoc(qn: path, segment: sym)
         let declared = symbol_index_declared(target: symbol_index_binder_type_or_target(target: edge.target))
-        let with_binding = symbol_index_mark_declared_type_params(
-          index: symbol_index_insert(
-            index: index,
+        let with_binding = symbol_index_mark_namespace_body_if(
+          index: symbol_index_mark_declared_type_params(
+            index: symbol_index_insert(
+              index: index,
+              qualified_path: child_path,
+              resolved: declared.bound
+            ),
             qualified_path: child_path,
-            resolved: declared.bound
+            params: declared.type_params
           ),
           qualified_path: child_path,
-          params: declared.type_params
+          target: edge.target
         )
         match declared.members {
           Present { value: member } =>
