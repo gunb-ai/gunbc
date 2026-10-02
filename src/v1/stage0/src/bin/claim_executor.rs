@@ -520,17 +520,15 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
         }
 
-        // Finish the isolated runtime producer before preparing the roster's source universe.
-        // Both preparations retain a whole-pool census: overlapping them OOMs the 12 GiB local
-        // qualification envelope even on unchanged main. Keep the same producer, mutation
-        // control and verdict; retain its result for the phase ledger below. This trades the
-        // previous startup overlap for a bounded combined resident set, without skipping work.
+        // THE RUNTIME-BODY CHILD STARTS HERE AND IS JUDGED AT ITS PHASE'S PLACE BELOW. It is
+        // already a separate process with its own roots and caches, it reads the tree and writes
+        // nothing, and no phase in front of it reads its answer -- so waiting for the lane
+        // roster, the parse sweep and its riders to finish before starting it only lengthened
+        // the lane by the child's whole wall (154 s on merge-queue run 36339106604). It is still
+        // waited on before the floor phase, so the floor's memory peak never overlaps it.
         let primitive_runtime_body =
             required_ci_phase_selected(RequiredCiPhase::PrimitiveRuntimeBody, required_ci_lane)
-                .then(|| {
-                    eprintln!("required-ci: preparing isolated primitive-runtime-body verdict");
-                    finish_required_primitive_runtime_body(spawn_required_primitive_runtime_body())
-                });
+                .then(spawn_required_primitive_runtime_body);
 
         // THE (PHASE, LANE) PAIR JOIN RUNS IN EVERY LANE, BEFORE ANY PHASE. The variant-set
         // join rides the parse phase's index, but a match arm is not a declaration, so lane
@@ -737,9 +735,9 @@ fn run() -> Result<ExitCode, ExitCode> {
         // A separate source universe: the runtime producer is in src/v1, whose module-name
         // collisions must not widen the floor's prepared subject. The .dag door owns both
         // the population verdict and the permanent missing-body mutation control.
-        if let Some(passed) = primitive_runtime_body {
+        if let Some(spawned) = primitive_runtime_body {
             eprintln!("required-ci: phase primitive-runtime-body (live emitted source + mutation control)");
-            if !passed {
+            if !finish_required_primitive_runtime_body(spawned) {
                 phase_failures.push("primitive-runtime-body".to_string());
             }
             ran.push("primitive-runtime-body");

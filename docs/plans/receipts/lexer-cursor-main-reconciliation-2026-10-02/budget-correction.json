@@ -1,0 +1,12 @@
+{
+  "correction": "The 12 GiB paired runs are constrained local diagnostics, not tests at the required-CI runner budget. Their OOMs do not establish required CI is blocked.",
+  "authority": "dag/gunbc/runner/runner_slot_desired.dag gunbc_runner_slot_desired",
+  "ci_memory_max_bytes": 27917287424,
+  "ci_memory_high_bytes": 26843545600,
+  "ci_memory_swap_max_bytes": 34359738368,
+  "server_limit_gib": 12,
+  "vm_cell_limit_gib": 28,
+  "scheduling_experiment": "restored original scheduling; do not land a global scheduling change to satisfy an incorrectly imposed 12 GiB CI budget",
+  "serial_run": "cancelled after passing parse and admission, during witness preparation; no full-floor verdict",
+  "next_run": "existing modeled CI envelope; no deployment limits changed"
+}
