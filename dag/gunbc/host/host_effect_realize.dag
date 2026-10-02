@@ -2437,7 +2437,12 @@ fn srv3_dpkg_package_installed(package: NonEmptyStr, transport: HostEffectTransp
   let outcome = match transport {
     FleetSsh { target: t, context: c } => Present { value: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv) }
     SshShell { ssh_host: h } => Present { value: typed_argv_exec_over_ssh(host: h, argv: argv) }
-    _ => none
+    // TOTALLED BY NAME (parent ruling on the 84c0dcf floor refusal): a dpkg query reads the state
+    // only where a transport executes argv and reports its exit code. LocalShell reaches no srv3
+    // host and EmitArtifactThenThinRun does not run on the target at all, so both fall to the
+    // Absent arm's sentence -- now owed per variant when a fifth transport lands, not silently.
+    LocalShell => none
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => none
   }
   match outcome {
     Absent => Srv3PredicateUnobserved { reason: "this transport has no typed exec that keeps a query's exit code and stderr, so the package state is not read" }
@@ -4325,6 +4330,37 @@ fn observe_slot_population_over_host_effect_transport(
         ),
       )
     _ =>
+      slot_census_from_typed_argv_outcome(
+        host: host,
+        outcome: run_typed_argv_transport(
+          argv: systemctl_list_all_service_units_argv(),
+          transport: transport,
+        ),
+        edge_noun: "the transport",
+      )
+    // TOTALLED BY NAME (parent ruling on the 84c0dcf floor refusal): the typed-argv probe runs the
+    // same way on every non-local transport -- run_typed_argv_transport dispatches per variant
+    // internally -- but the census must DECIDE each new transport here; the wildcard's silence
+    // would have admitted one unexamined.
+    SshShell { ssh_host: _ } =>
+      slot_census_from_typed_argv_outcome(
+        host: host,
+        outcome: run_typed_argv_transport(
+          argv: systemctl_list_all_service_units_argv(),
+          transport: transport,
+        ),
+        edge_noun: "the transport",
+      )
+    FleetSsh { target: _, context: _ } =>
+      slot_census_from_typed_argv_outcome(
+        host: host,
+        outcome: run_typed_argv_transport(
+          argv: systemctl_list_all_service_units_argv(),
+          transport: transport,
+        ),
+        edge_noun: "the transport",
+      )
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       slot_census_from_typed_argv_outcome(
         host: host,
         outcome: run_typed_argv_transport(
