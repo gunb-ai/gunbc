@@ -556,32 +556,8 @@ pub fn surface_fork_rows(
     imports: Rc<Vec<Rc<SurfaceImport>>>,
 ) -> Rc<Vec<Rc<TypeEnvCacheMergeConflict>>> {
     {
-        let candidates = Rc::new(v1_rt::map_keys(&kernel)).iter().cloned().fold(
-            pool.multi_exporters.clone(),
-            |acc: Rc<HashMap<String, bool>>, n: String| match v1_rt::map_get(
-                &pool.exporters.clone(),
-                n.clone(),
-            ) {
-                Some(_) => v1_rt::rc_map_insert(acc.clone(), n.clone(), true),
-                std::option::Option::None => acc.clone(),
-            },
-        );
         let reach = surface_reach_of(imports.clone(), pool.clone());
-        let forkable = Rc::new({
-            let mut __result = Vec::new();
-            for name in Rc::new(v1_rt::sorted_map_keys(&candidates)).iter().cloned() {
-                if (surface_declarers_in_reach(
-                    pool.clone(),
-                    kernel.clone(),
-                    reach.clone(),
-                    name.clone(),
-                ) >= 2)
-                {
-                    __result.push(name);
-                }
-            }
-            __result
-        });
+        let forkable = closure_contested_names(pool.clone(), kernel.clone(), reach.clone());
         let rows = Rc::new({
             let mut __result = Vec::new();
             for name in forkable.iter().cloned() {
@@ -673,42 +649,60 @@ walked.rows.clone()
     }
 }
 
-pub fn surface_declarers_in_reach(
+pub fn closure_contested_names(
     pool: Rc<SurfacePool>,
     kernel: Rc<HashMap<String, Rc<TypeBinding>>>,
     reach: Rc<Vec<i64>>,
-    name: String,
-) -> i64 {
-    {
-        let from_kernel = match v1_rt::map_get(&kernel, name.clone()) {
-            Some(_) => 1,
-            std::option::Option::None => 0,
-        };
-        match v1_rt::map_get(&pool.exporters.clone(), name.clone()) {
-            std::option::Option::None => from_kernel.clone(),
-            Some(paths) => {
-                paths
-                    .iter()
-                    .cloned()
-                    .fold(
-                        from_kernel.clone(),
-                        |acc: i64, p: String| match v1_rt::map_get(
-                            &pool.surfaces.clone(),
-                            p.clone(),
-                        ) {
-                            Some(e) => {
-                                if reach_has(reach.clone(), e.ordinal.clone()) {
-                                    v1_rt::int_add(acc.clone(), 1)
-                                } else {
-                                    acc.clone()
-                                }
-                            }
-                            std::option::Option::None => acc.clone(),
+) -> Rc<Vec<String>> {
+    let tally = reach.iter().cloned().enumerate().fold(
+        v1_rt::rc_empty_map::<String, i64>(),
+        |acc: Rc<HashMap<String, i64>>, (i, word): (usize, i64)| {
+            reach_word_ordinals(word, (i as i64) * 32)
+                .iter()
+                .cloned()
+                .fold(
+                    acc,
+                    |acc2: Rc<HashMap<String, i64>>, ordinal: i64| match v1_rt::map_get(
+                        &pool.by_ordinal.clone(),
+                        ordinal,
+                    ) {
+                        std::option::Option::None => acc2,
+                        Some(path) => match v1_rt::map_get(&pool.surfaces.clone(), path.clone()) {
+                            std::option::Option::None => acc2,
+                            Some(surface) => Rc::new(v1_rt::map_keys(&surface.own.clone()))
+                                .iter()
+                                .cloned()
+                                .fold(acc2, |acc3: Rc<HashMap<String, i64>>, n: String| {
+                                    if v1_rt::map_has(&pool.multi_exporters.clone(), n.clone())
+                                        || v1_rt::map_has(&kernel.clone(), n.clone())
+                                    {
+                                        match v1_rt::map_get(&acc3.clone(), n.clone()) {
+                                            Some(c) => v1_rt::rc_map_insert(acc3, n.clone(), c + 1),
+                                            std::option::Option::None => {
+                                                let start =
+                                                    if v1_rt::map_has(&kernel.clone(), n.clone()) {
+                                                        2
+                                                    } else {
+                                                        1
+                                                    };
+                                                v1_rt::rc_map_insert(acc3, n.clone(), start)
+                                            }
+                                        }
+                                    } else {
+                                        acc3
+                                    }
+                                }),
                         },
-                    )
-            }
-        }
-    }
+                    },
+                )
+        },
+    );
+    Rc::new(
+        v1_rt::sorted_map_keys(&tally)
+            .into_iter()
+            .filter(|n| matches!(v1_rt::map_get(&tally.clone(), n.clone()), Some(c) if c >= 2))
+            .collect(),
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

@@ -312,14 +312,8 @@ fn surface_value(pool: SurfacePool, kernel: Map<String, TypeBinding>, surface: M
 // can fork. Rows are returned in the one canonical order: their content fields, byte-lexicographic
 // (name, import_path, existing_site, incoming_site), the order a portable record of them takes.
 fn surface_fork_rows(pool: SurfacePool, kernel: Map<String, TypeBinding>, imports: List<SurfaceImport>) -> List<TypeEnvCacheMergeConflict> {
-  let candidates = fold(kernel |> map_keys, init: pool.multi_exporters, f: (acc, n) =>
-    match map_get(pool.exporters, n) {
-      Present { value: _ } => map_insert(acc, n, true)
-      Absent => acc
-    }
-  )
   let reach = surface_reach_of(imports: imports, pool: pool)
-  let forkable = sorted_map_keys(candidates) |> filter(name => surface_declarers_in_reach(pool: pool, kernel: kernel, reach: reach, name: name) >= 2)
+  let forkable = closure_contested_names(pool: pool, kernel: kernel, reach: reach)
   let rows = flat_map(forkable, name =>
     let walked = fold(imports, init: SurfaceForkWalk { winner: none, rows: [] }, f: (state, imp) =>
       match map_get(pool.surfaces, imp.module_path) {
@@ -350,21 +344,34 @@ fn surface_fork_rows(pool: SurfacePool, kernel: Map<String, TypeBinding>, import
   rows |> sort_by(r => concat(r.name, " | ", r.import_path, " | ", r.existing_site, " | ", r.incoming_site))
 }
 
-// How many declarers of `name` a closure holds: its exporters inside the closure, plus the kernel when
-// the kernel carries the name. A name with fewer than two cannot fork at a module with that closure,
-// so the fork walk never descends for it.
-fn surface_declarers_in_reach(pool: SurfacePool, kernel: Map<String, TypeBinding>, reach: List<Int>, name: String) -> Int {
-  let from_kernel = match map_get(kernel, name) { Present { value: _ } => 1  Absent => 0 }
-  match map_get(pool.exporters, name) {
-    Absent => from_kernel
-    Present { value: paths } =>
-      fold(paths, init: from_kernel, f: (acc, p) =>
-        match map_get(pool.surfaces, p) {
-          Present { value: e } => if reach_has(reach: reach, ordinal: e.ordinal) { acc + 1 } else { acc }
-          Absent => acc
-        }
-      )
-  }
+// THE NAMES THAT CAN FORK AT A MODULE, counted from the CLOSURE'S declarations. A row needs two
+// declarers of the name inside the closure (the kernel counts as one), so only a name some closure
+// module declares can qualify, and its in-closure declarer count is exactly the number of closure
+// modules whose own bindings carry it. Enumerating the pool's multi-exporter names instead and walking
+// each one's whole exporter list costs the POOL's homonyms at every module, which grows with the tree
+// rather than with the closure. Sorted, for the ledger's one canonical order.
+fn closure_contested_names(pool: SurfacePool, kernel: Map<String, TypeBinding>, reach: List<Int>) -> List<String> {
+  let tally = fold(enumerate(reach), init: empty_map(), f: (acc, pair) =>
+    fold(reach_word_ordinals(word: pair.second, base: pair.first * 32), init: acc, f: (acc2, ordinal) =>
+      match map_get(pool.by_ordinal, ordinal) {
+        Absent => acc2
+        Present { value: path } =>
+          match map_get(pool.surfaces, path) {
+            Absent => acc2
+            Present { value: surface } =>
+              fold(surface.own |> map_keys, init: acc2, f: (acc3, n) =>
+                if map_has(pool.multi_exporters, n) || map_has(kernel, n) {
+                  match map_get(acc3, n) {
+                    Present { value: c } => map_insert(acc3, n, c + 1)
+                    Absent => map_insert(acc3, n, if map_has(kernel, n) { 2 } else { 1 })
+                  }
+                } else { acc3 }
+              )
+          }
+      }
+    )
+  )
+  sorted_map_keys(tally) |> filter(n => match map_get(tally, n) { Present { value: c } => c >= 2  Absent => false })
 }
 
 type SurfaceForkWalk {
