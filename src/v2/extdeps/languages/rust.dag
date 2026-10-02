@@ -2095,7 +2095,8 @@ fn rust_binding_spellings() -> Map<Symbol, String> {
 
 fn rust_production_lex_rules_with(extra: List<LexRule>) -> LexRuleSet {
   LexRuleSet {
-    rules: list_append(left: rust_production_lex_rules().rules, right: extra)
+    rules: list_append(left: rust_production_lex_rules().rules, right: extra),
+    modes: []
   }
 }
 
@@ -2356,7 +2357,8 @@ fn rust_staging_lex_rules() -> LexRuleSet {
     rules: list_append(
       left: rust_fn_add_lex_rules().rules,
       right: rust_staging_match_additional_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 
@@ -2412,7 +2414,8 @@ fn rust_fn_add_lex_rules() -> LexRuleSet {
         rust_lex_rule(token_class: ^rust_token_pipe, text: " | ")
       ],
       right: rust_binop_operator_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 
@@ -2432,7 +2435,8 @@ fn rust_production_lex_rules() -> LexRuleSet {
     rules: list_append(
       left: rust_fn_add_lex_rules().rules,
       right: rust_value_expression_family_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 
@@ -2772,7 +2776,8 @@ fn rust_decl_general_lex_rules() -> LexRuleSet {
       rust_lex_rule(token_class: ^rust_token_comma, text: ", "),
       rust_lex_rule(token_class: ^rust_token_rbrace, text: " }"),
       rust_ident_lex_rule()
-    ]
+    ],
+    modes: []
   }
 }
 
@@ -3768,7 +3773,8 @@ fn rust_lex_rules() -> LexRuleSet {
     rules: list_append(
       left: rust_fn_add_lex_rules().rules,
       right: rust_extended_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 
@@ -4648,7 +4654,8 @@ fn rust_sg2_lex_rules() -> LexRuleSet {
       rust_lex_rule(token_class: ^rust_token_rparen, text: ")"),
       rust_lex_rule(token_class: ^rust_token_arrow, text: " -> "),
       rust_lex_rule(token_class: ^rust_token_pipe, text: " | ")
-    ]
+    ],
+    modes: []
   }
 }
 

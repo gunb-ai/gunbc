@@ -402,7 +402,7 @@ fn semantic_decl_lex_rules_from_rows(rows: List<Node>) -> Outcome<LexRules> {
     ),
     f: fn(rules) {
       outcome_accepted(
-        value: ModeledLexRules { root: LexRuleSet { rules: rules } }
+        value: ModeledLexRules { root: LexRuleSet { rules: rules, modes: [] } }
       )
     }
   )

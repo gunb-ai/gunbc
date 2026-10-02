@@ -670,7 +670,8 @@ fn verilog_lex() -> LexRules {
             right: LiteralPattern { text: "|" }
           }
         )
-      ]
+      ],
+      modes: []
     }
   }
 }

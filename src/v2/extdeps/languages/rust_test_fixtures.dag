@@ -225,7 +225,8 @@ fn rust_pick_lex_rules() -> LexRuleSet {
         right: rust_pick_additional_lex_rules()
       ),
       right: rust_value_expression_family_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 
@@ -328,7 +329,7 @@ fn rust_sgb_target_model_bundle_core() -> Node {
 }
 
 fn rust_sgb_lex() -> LexRules {
-  ModeledLexRules { root: LexRuleSet { rules: [] } }
+  ModeledLexRules { root: LexRuleSet { rules: [], modes: [] } }
 }
 
 fn rust_sgb_binding_spellings() -> Map<Symbol, String> {
@@ -495,7 +496,8 @@ fn rust_match_lex_rules() -> LexRuleSet {
         right: rust_match_additional_lex_rules()
       ),
       right: rust_value_expression_family_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 
@@ -515,7 +517,8 @@ fn rust_call_lex_rules() -> LexRuleSet {
     rules: list_append(
       left: rust_fn_add_lex_rules().rules,
       right: rust_call_closure_additional_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 
@@ -842,7 +845,8 @@ fn rust_loop_lex_rules() -> LexRuleSet {
     rules: list_append(
       left: rust_fn_add_lex_rules().rules,
       right: rust_loop_additional_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 
@@ -1539,7 +1543,8 @@ fn rust_variant_construct_lex_rules() -> LexRuleSet {
     rules: list_append(
       left: rust_fn_add_lex_rules().rules,
       right: rust_variant_construct_additional_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 
@@ -1809,7 +1814,8 @@ fn rust_logic_complement_lex_rules() -> LexRuleSet {
     rules: list_append(
       left: rust_fn_add_lex_rules().rules,
       right: rust_logic_complement_additional_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 
@@ -2038,7 +2044,8 @@ fn rust_bool_fn_lex() -> LexRules {
       rules: list_append(
         left: rust_fn_add_lex_rules().rules,
         right: rust_bool_fn_additional_lex_rules()
-      )
+      ),
+      modes: []
     }
   }
 }
@@ -3407,7 +3414,8 @@ fn rust_literal_emit_lex_rules() -> LexRuleSet {
         rust_lex_rule(token_class: ^rust_lit_char_a, text: "'a'"),
         rust_lex_rule(token_class: ^rust_lit_char_b, text: "'b'")
       ]
-    )
+    ),
+    modes: []
   }
 }
 
@@ -3757,7 +3765,8 @@ fn rust_emit_directive_lex() -> LexRules {
       rules: [
         rust_lex_rule(token_class: ^rust_token_macro_eprintln_open, text: "eprintln!("),
         rust_lex_rule(token_class: ^rust_token_rparen, text: ")")
-      ]
+      ],
+      modes: []
     }
   }
 }
@@ -3862,7 +3871,8 @@ fn rust_type_alias_decl_structural_lex_rules() -> LexRuleSet {
       rust_lex_rule(token_class: ^rust_token_type_alias_eq, text: " = "),
       rust_lex_rule(token_class: ^rust_token_semicolon, text: ";"),
       rust_ident_lex_rule()
-    ]
+    ],
+    modes: []
   }
 }
 

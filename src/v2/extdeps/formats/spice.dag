@@ -282,7 +282,8 @@ fn spice_lex() -> LexRules {
         TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
         spice_lex_token(token_class: ^spice_token_ident, pattern: spice_identifier_pattern()),
         spice_lex_token(token_class: ^spice_token_value, pattern: spice_value_pattern())
-      ]
+      ],
+      modes: []
     }
   }
 }

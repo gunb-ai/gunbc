@@ -918,7 +918,8 @@ fn wasm_lex_rules() -> LexRuleSet {
       wasm_lex_rule(token_class: ^wasm_token_f64_min, text: "f64.min"),
       wasm_lex_rule(token_class: ^wasm_token_f64_max, text: "f64.max"),
       wasm_lex_rule(token_class: ^wasm_token_f64_copysign, text: "f64.copysign")
-    ]
+    ],
+    modes: []
   }
 }
 
