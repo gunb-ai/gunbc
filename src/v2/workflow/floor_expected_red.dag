@@ -362,7 +362,7 @@ fn floor_expected_red_chunk_03() -> List<String> {
 }
 
 fn floor_expected_red_chunk_04() -> List<String> {
-     Cons { head: "test.claim.namespace_reference_derived_closure_acceptance.witness_namespace_reference_derived_closure_closing_contract_holds", tail: Cons { head: "test.claim.non_fold_residue_witness.non_fold_residue_clean_holds", tail: Cons { head: "test.claim.observation_raw_print_retirement_acceptance_test.observation_emit_frontier_is_zero", tail: Cons { head: "test.claim.operation_admit_callers_inert_witness.operation_form_admission_refuses_unadmitted_caller", tail:           Empty {} } } } }
+     Cons { head: "test.claim.namespace_reference_derived_closure_acceptance.witness_namespace_reference_derived_closure_closing_contract_holds", tail: Cons { head: "test.claim.observation_raw_print_retirement_acceptance_test.observation_emit_frontier_is_zero", tail: Cons { head: "test.claim.operation_admit_callers_inert_witness.operation_form_admission_refuses_unadmitted_caller", tail:           Empty {} } } }
 }
 
 // shell-typed-invocation's acceptance oracle. It was RED until the node's slice landed (2026-09-29):
