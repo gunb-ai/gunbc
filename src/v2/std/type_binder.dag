@@ -301,7 +301,8 @@ fn type_application_conformance(
   if declared != supplied {
     TypeApplicationArityMismatch { declared: declared, supplied: supplied }
   } else {
-    fold(zip_map(a: binders.children, b: arguments, f: fn(e, arg) { TypeParamArgument { binder: e.target, argument: arg } }),
+    let binder_targets = fold(binders.children, init: Empty, f: fn(acc, e) { list_snoc_item(xs: acc, item: e.target) })
+    fold(zip_map(a: binder_targets, b: arguments, f: fn(b, arg) { TypeParamArgument { binder: b, argument: arg } }),
       init: TypeApplicationConforms { literals_unjudged: 0, type_parameters_unjudged: 0 },
       f: fn(acc, pa) { type_application_step(acc: acc, pa: pa, inhabits: inhabits) })
   }

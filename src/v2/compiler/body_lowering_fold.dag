@@ -3004,19 +3004,24 @@ type BodyLowerGenericBinder {
   kind: Optional<Node>,
 }
 
+// generic_param is seq(name, optional(seq(`:`, kind))); an absent kind captures as the empty Conj.
 fn body_lower_generic_param_binder_optional(item: Node) -> Optional<BodyLowerGenericBinder> {
-  let unwrapped = body_lower_deep_unwrap_optional(node: item)
-  match sugar_sequence_pair_optional(node: unwrapped) {
+  match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: item)) {
+    Absent => optional_absent()
     Present { value: name_then_kind } =>
-      match sugar_sequence_pair_optional(node: name_then_kind.right) {
-        Absent => optional_absent()
-        Present { value: colon_then_kind } =>
-          match body_lower_type_expr_lowered_optional(node: colon_then_kind.right) {
-            Absent => optional_absent()
-            Present { value: kind } => body_lower_generic_param_named_optional(item: item, name_node: name_then_kind.left, kind: optional_present(value: kind))
-          }
+      let suffix = body_lower_deep_unwrap_optional(node: name_then_kind.right)
+      if is_empty_conj_root(n: suffix) {
+        body_lower_generic_param_named_optional(item: item, name_node: name_then_kind.left, kind: optional_absent())
+      } else {
+        match sugar_sequence_pair_optional(node: suffix) {
+          Absent => optional_absent()
+          Present { value: colon_then_kind } =>
+            match body_lower_type_expr_lowered_optional(node: colon_then_kind.right) {
+              Absent => optional_absent()
+              Present { value: kind } => body_lower_generic_param_named_optional(item: item, name_node: name_then_kind.left, kind: optional_present(value: kind))
+            }
+        }
       }
-    Absent => body_lower_generic_param_named_optional(item: item, name_node: unwrapped, kind: optional_absent())
   }
 }
 

@@ -3264,7 +3264,7 @@ fn resolve_type_application(ctx: ResolveContext, walked: ResolveNodeWalk) -> Res
 }
 
 fn resolve_type_application_refusal_optional(ctx: ResolveContext, n: Node) -> Optional<Diagnostic> {
-  match node_positional_child_targets(n: n) {
+  match node_positional_child_targets(node: n) {
     Empty => optional_absent()
     Cons { head: head, tail: arguments } =>
       match declaration_reference_path_optional(node: head) {
@@ -3313,7 +3313,11 @@ fn resolve_type_application_diagnostic(reason: Symbol, at: Node) -> Diagnostic {
 // WHETHER A RESOLVED ARGUMENT INHABITS A KIND AS AUTHORED ON `declaration`'s BINDER. The kind is the
 // lowered binder's own node, so its name resolves from the DECLARATION's position, never the use's;
 // it must name a coproduct, and an argument inhabits it exactly when the argument resolves to one of
-// that coproduct's variants -- by declaration path, never by leaf spelling. A Nat literal and a type
+// that coproduct's variants -- by the DECLARATION the index holds, never by leaf spelling. A unique
+// variant referenced bare resolves to its module-level path (p.Pointer), which
+// v2.compiler.symbol_index_fill symbol_index_fill_unique_variant_aliases files as a second ENTRY over
+// the same arm node rather than as a binding to p.Resolution.Pointer, so
+// symbol_index_declaring_path_of cannot relate the two paths; the arm node they share can. A Nat literal and a type
 // parameter of an enclosing declaration are not judged (v2.std.type_binder KindInhabitance).
 fn resolve_kind_inhabitance(ctx: ResolveContext, declaration: QualifiedName, argument: Node, kind: Node) -> KindInhabitance {
   if dag_node_is_int_literal_atom(node: argument) {
@@ -3327,7 +3331,11 @@ fn resolve_kind_inhabitance(ctx: ResolveContext, declaration: QualifiedName, arg
         match declaration_reference_path_optional(node: argument) {
           Absent => ArgumentOutsideKind
           Present { value: arg_path } =>
-            if any(xs: variants, predicate: fn(v) { v == arg_path }) { ArgumentInhabitsKind } else { ArgumentOutsideKind }
+            match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: arg_path) {
+              Absent => ArgumentOutsideKind
+              Present { value: arg_decl } =>
+                if any(xs: variants, predicate: fn(v) { resolve_path_declares_node(ctx: ctx, path: v, declared: arg_decl) }) { ArgumentInhabitsKind } else { ArgumentOutsideKind }
+            }
         }
     }
   }
@@ -3352,13 +3360,21 @@ fn resolve_scope_binds_type_parameter(s: Scope, name: Symbol) -> Bool {
   }
 }
 
+fn resolve_path_declares_node(ctx: ResolveContext, path: QualifiedName, declared: Node) -> Bool {
+  match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: path) {
+    Present { value: n } => n == declared
+    Absent => false
+  }
+}
+
 // The variant paths of the coproduct a kind atom names, looked up lexically from the declaration.
 fn resolve_kind_variant_paths_optional(ctx: ResolveContext, declaration: QualifiedName, kind: Node) -> Optional<List<QualifiedName>> {
   match type_binder_atom_identity_optional(n: kind) {
     Absent => optional_absent()
     Present { value: kind_name } =>
       match symbol_index_lexical_lookup(index: ctx.namespace.symbol_index, position: declaration, name: kind_name) {
-        LexicalHit { node: kind_decl, path: kind_path } =>
+        LexicalHit { node: kind_decl, path: kind_binding } =>
+          let kind_path = symbol_index_declaring_path_of(index: ctx.namespace.symbol_index, target: kind_binding)
           match kind_decl.kind {
             TypeNode { connective: Disj } =>
               optional_present(value: fold(kind_decl.children, init: Empty, f: fn(acc, e) {
