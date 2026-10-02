@@ -1,263 +1,246 @@
-# PLAN — one nominal type-declaration model; delete refinements
+# PLAN — nominal types as the first consumer of the coercion frontier; delete refinements
 
-**Status: PLAN, revision 3 — APPROVED by the operator 2026-10-02; decisions RULED in §9 (S1 spelling: pick-list). Design only.**
-Operator direction 2026-10-02 (work item adhoc-7e1dbee1-8e0); revision 2 recuts the plan around the
-operator's ruling on gunbc#13024 rev 1, relayed by sharp-raven-357:
+**Status: PLAN, revision 4 — design only. Do not re-enqueue.** Revision 3 (one declaration modifier
+per point in the visibility plane, plus a `derives` list) was approved and then withdrawn by the
+operator on 2026-10-02: too many keywords, and the nominal question is really a coercion question.
+This revision recasts it as the **first consumer of the coercion frontier** that
+[v2 compiler architecture](v2-compiler-architecture.md) §1.4 and its frontier line ("Coercion and
+named conversions") name. §7 places revision 3 (option A) side by side with this model.
 
-> **Alias is equality, constructor is progress, visibility is authority.**
+Governing sections: DESIGN §4 (operations from inhabitance; the coercion ruling, `bool_indicator`),
+§3 (replacement migrations), §4b, §5; architecture plan §1 (completion law, residual addressees),
+§1.4.
 
-Governing sections: DESIGN §2, §3 (replacement migrations), §4 (operations from inhabitance; the
-coercion law), §4b, §5.
+Every count is **provisional** — line greps at main `dd0614551b5`, not the census — and is not a size
+(DESIGN §6). M0, the resolved census (`gunbc.instruments.type_declaration_use_census`, being built by
+tidy-koi-264), is the only admissible size.
 
-Every count in this document is **provisional** — line greps at main `dd0614551b5`, not the census.
-They are not a size and are not to be quoted onward (DESIGN §6). The only admissible size is the
-output of the resolved census (§2).
+## 1. What stays as ruled
 
-## 1. The principle, applied
+- `type X = Y` is a transparent alias: X and Y are the same type.
+- Refinements (`where <pred>`) are deleted. Every invariant becomes a checked construction one layer
+  down.
+- No typecase, and no conditional design for one. Matching is on constructors and closed sums.
+- M0, the resolved semantic census, sizes the migration.
+- The cutover is one atomic, generated PR that deletes `where`, `brand`, `nominal_opaque`, the v1
+  spelling matches and hand tables, `gunbc.where_refinement_predicate_vocabulary` with
+  `WherePredicateGrounding`, and #12506's parked row together (the full consumer list is revision 3 §6, commit 97dea7c55fd, and stands unchanged).
+- Checked construction returns `Result` residue plus a typed cause (`std.error_primitives` `Result`).
 
-| concern | after this program | replaces |
-|---|---|---|
-| **equality** | `type X = Y` — X and Y are the same type; no construction, no projection, no identity | (unchanged) |
-| **progress** | a new type is introduced by a **data constructor**; a value of `X` exists only because a constructor ran | `where brand(...)`, `where <pred>`, `nominal_opaque` |
-| **authority** | who may **construct** and who may **view** the representation are two independent visibility axes, governed by the declaring module | the three declaration modes |
+## 2. The model: identity on the declaration, everything else is a route
 
-Brand, refinement and opacity stop being declaration modes. They become **points in the
-(constructor visibility × view visibility) plane** of one declaration form:
+**Declaration side: two forms and zero new words.**
 
-| old mode | raw constructor | checked constructor | representation view |
-|---|---|---|---|
-| brand (plain nominal tag) | public | — | public |
-| refinement (validated type) | **private** | public | public |
-| `nominal_opaque` (opaque) | private | as the module chooses | private or restricted |
-
-A one-field nominal type **may lower** to the existing single-field record machinery (v2 records are
-already nominal: `v2.compiler.infer` `infer_record_construct_type`). That is a realization choice: the
-constructor is the semantic authority, not the record layout, and nothing downstream may read
-nominality off the layout.
-
-## 2. The resolved semantic census (M0)
-
-The grep counts in circulation (~16.6k `"…" as T`, ~9.3k `as String|Int|Nat`, ~334 brand lines, ~31
-refinement lines, 2 `nominal_opaque` declarations) are **not a size** — a spelling match cannot tell an
-alias no-op from a nominal introduction. M2 is sized from this census only.
-
-**Instrument:** `gunbc.instruments.type_declaration_use_census`, rostered as
-`//gunbc/instruments:type-declaration-use-census` (a row in `instrument_registry`; DESIGN
-"Building & checks"). It reads the **resolved** tree of the closure `dag` + `src/v2` — the declaration
-each reference resolves to, never the leaf spelling (DESIGN §4: compatibility keys on the exact
-declaration).
-
-**Declaration classes** (every type declaration the program affects):
-
-| class | definition |
+| form | meaning |
 |---|---|
-| `TrueAlias` | `type X = Y` with no nominal use: every `as` into/out of it is an alias no-op |
-| `UnconstrainedNominal` | brand-like: some site relies on X ≠ its body; no predicate |
-| `CheckedConstructionStage` | carries a predicate today (refinement) or an `_of` checked constructor |
-| `Opaque` | `nominal_opaque`, or a nominal whose view no consumer outside its module reads |
-| `MultiFieldRecord` | record with >1 field (already nominal; listed so the census is total) |
-| `Sum` | closed coproduct |
+| `type X = Y` | alias. Equality, no routes. |
+| `type X { value: Y }` | a new type. Records are already nominal in v2 (`v2.compiler.infer` `infer_record_construct_type`), so a one-field record is the whole declaration of a nominal. |
 
-A declaration that matches no class is a **census refusal** (exit 2), not a default bucket.
+The brand (`where brand("…")`), the refinement and `nominal_opaque` stop being declaration facts.
+What distinguished them was never the type. It was **which conversions exist between X and Y, and who
+may use them**, and those are conversion routes.
 
-**`as`-site classes** (every `as`, target resolved to its declaration):
+**Routes.** A conversion route is a declared function between X and its representation. Each of the
+three old modes is a set of routes:
 
-| class | definition | M3 rewrite |
+| old mode | Y → X (in) | X → Y (out) |
 |---|---|---|
-| `AliasNoOp` | target is a `TrueAlias` of the source | delete the cast |
-| `NominalIntroduction` | base → nominal | constructor call (checked where the type is a stage) |
-| `NominalProjection` | nominal → base, consumer genuinely needs the raw value | explicit view (`.value`) |
-| `OperationWorkaround` | nominal → base only to compare, hash, encode, concatenate | the derived operation on the nominal directly (§5) |
-| `GenuineConversion` | a declared conversion between distinct representations | unchanged (DESIGN §4 named conversion) |
-| `Unrelated` | `as` in another grammar role (import rename, …) | unchanged |
+| brand | total route, public | exact route, public |
+| refinement | **partial** route `Y -> Result<X, R>`, public; the total raw constructor confined | exact route, public |
+| opaque | confined to the declaring module | **no exported route** |
 
-Each row carries `{module, symbol | site, class, evidence_site}`; a classification without its
-evidence site is a §5 fabricated output. Output also lists, by name, every affected module **outside**
-`v2.workflow.required_floor required_gate_prefixes` (DESIGN §3: those do not refuse loudly).
+The in-route is the constructor. Confining it uses the mechanism the corpus already has:
+`sole_constructor` with `admit_callers`, which `std.bignat`, `std.allocation_roster`, `v2.compiler.normalized_tree`
+and others already use. The confined raw constructor plus a public checked function **is** the
+refinement. No new word is needed for it.
 
-**Controls:** a fixture closure with one declaration of each class and one `as` of each class must
-classify exactly; a module the reference index did not cover must refuse exit 2 (could-not-tell is
-never `TrueAlias` or `Unrelated`); and a mutation control — an introduction rewritten as a projection
-— must change the classification.
+**Why no route is implicit.** Each route fails DESIGN §4's implicit-safety test, for a different
+reason:
 
-## 3. One declaration form
+- `Y → X` adds meaning (it asserts that a String *is* a RoadmapNodeId). That is not
+  semantics-preserving, so it is never silent. When it is partial (`Int → Port`), it also requires
+  proof.
+- `X → Y` (`RoadmapNodeId → String`) is exact and information-preserving, but it **changes
+  interpretation**: the meaning is dropped. Under §4 that refuses implicit coercion, and under the
+  architecture plan §1 it is a **residual addressed to the call site**. The developer answers it by
+  naming the route, which is the operator's "might be valid, but the developer might need to
+  coerce/acknowledge it". This is DESIGN §4's `bool_indicator` case exactly: `true as Int` refuses
+  unless it names a declared route.
 
-**Equality.** `type X = Y`. Unchanged; the default.
+So the coercion fold's three outcomes (architecture §1.4) apply to nominals with no special case:
 
-**Progress.** A nominal declaration names its constructor(s); a one-field nominal over `Y` lowers to a
-single-field record. The surface is a declaration modifier (§9 S1); this plan
-fixes the semantics:
+| crossing | outcome |
+|---|---|
+| alias `X = Y` | silent (`Identity`) |
+| `X → Y` with an exported route | residual to the call site, answered by naming the route |
+| `Y → X` | residual to the call site, answered by calling the constructor (or the checked route) |
+| `X → Y` with no exported route (opaque) | residual to the **upstream module**: the module never offered one |
+| two exported routes for one crossing | residual (`AmbiguousTargetCandidate`): never a pick |
 
-- **In:** only by a constructor whose visibility admits the call site. A **raw** constructor is total
-  over the representation; a **checked** constructor is an ordinary function in the declaring module
-  that is the only public entry when the raw one is private.
-- **Out:** only by the representation view, where its visibility admits the site. Opaque means there is
-  no view outside the module.
-- **Matching:** on constructors (destructure a nominal value where its view is visible) and on closed
-  sums. **There is no typecase**, and no design for one.
-- **No `as` between nominal types**, and no `as` that introduces or strips nominality — those are
-  constructor calls and views. `as` remains only for declared conversions (DESIGN §4).
+**The one remaining word, if any.** `sole_constructor` confines *in*. Nothing in v2 confines *out*:
+`x.value` is a field read, legal from any module, so a field read bypasses "no exported route". There are two
+ways to close that, and choosing between them is decision O2:
 
-Composed stages build from the layer below: `SecretValue` is checked from `Secret`, `PositiveInt` from
-`Nat`, `CTranslationUnitBasename` from `NonEmptyStr`. The crossing is an inhabitance judgment
-(`v2.std.inhabitance`), never type equality.
+- **(i) zero words.** Reading the representation field of a `sole_constructor` record outside its
+  module is itself an `X → Y` crossing, so it must name an exported route. This changes every existing
+  `sole_constructor` carrier that is read from outside, so M0 must count those sites first.
+- **(ii) one word.** A modifier in the existing `nominal_opaque` slot (`type X opaque { value: Y }`)
+  confines field reads to the declaring module. `nominal_opaque` is deleted and this word replaces it.
 
-## 4. Checked construction (D7)
+## 3. Operations from inhabitance, without a `derives` list
 
-A checked constructor is an ordinary function boundary. Its definition is "success advances the value
-one stage; refusal leaves it where it was, with a reason" — `Optional` is a convenience shape, not the
-definition. Vocabulary is existing (DFS'd, nothing minted):
+Equality, hash and ordering are not routes. The value never becomes a `Y`. They are operations X
+**inhabits** (DESIGN §4: operations come from inhabitance), and inhabitance can be derived from the
+routes rather than listed:
 
-- residue plus reason: `std.error_primitives` `Result<ok, err>` with `err` carrying the **original
-  value** and a typed cause (`port_of(n: Int) -> Result<Port, PortRefusal>`, `PortRefusal { value: Int,
-  cause: … }`);
-- stage-level diagnostics where the boundary is a compiler stage: `v2.std.diagnostic` `Outcome<T>`;
-- `T?` where no consumer needs the reason (the existing `std.types` `http_status_of`).
+- An **exact, injective** exported route `X → Y` is an embedding. An embedding reflects equality
+  and hash, so `X` inhabits `Y`'s equality (`std.algebra` `algebra_profile_equality_extensional`) and
+  `Y`'s `std.content_hash` `HashFamily` by pullback. `RoadmapNodeId == RoadmapNodeId` works.
+  `RoadmapNodeId` where `String` is declared still refuses, because the operation pulled back and
+  the value did not cross.
+- **Ordering** pulls back just as lawfully, but it may be meaningless (IDs ordered by spelling).
+  Whether order pulls back by default is decision O3.
+- **Display and encoding** are not pullbacks. They are crossings *out* (to text or bytes). They need
+  the exported route, so an opaque `Secret`, which has no route out, has no display and no JSON by
+  construction. No list and no special case are needed. That is the property revision 3 needed a
+  `derives` opt-in to protect.
+- **An opaque type that still needs equality** (constant-time `Secret` comparison) gets it from a
+  function its declaring module writes. That is an ordinary operation, not a capability vocabulary.
 
-Whether evidence beyond the reason is carried (a witness that the predicate held) is §9 decision S3.
+So **no `derives` list is needed**. What an author controls is which routes the module exports, and
+the operations follow from them. The single residual case is O3, and it is a default, not a list.
 
-Candidates, per the provisional list (M0 decides each one's class and may demote a lower-bound-only
-range nobody enforced to `TrueAlias`): `Octet`, `PrefixLength`, `Hextet`, `IpmiChannelNumber`,
-`IpmiUserId`, `RetryCount`, `HttpStatus`, `Port`, `GitTreeEntryName{Before,After}SlashValue`,
-`EpochSecs`, `EpochMs`, `Duration`, `PositiveFanCount`, `PositiveInt`, `NonEmptyStr`, `LanguageId`,
-`SecretName`, `FilePath`, `GitRef`, `GcpProjectId`, `SecretValue`, `Sha1/Sha256/Sha512DigestHex`,
-`Fnv1a64StructuralDigestHex`, the four `Oci*` syntax types, `ReadableEntry`,
-`CTranslationUnitBasename`, and `unicode_scalar`'s users. Bounds come from data rows (as
-`http_status_min/max` already do); the refinement's duplicated literals disappear with it.
+## 4. What `v2.std.coercion` must gain (model-first)
 
-## 5. Derived capabilities (D6)
+What exists today (`v2.std.coercion`, `v2.std.inhabitance`, `v2.std.find_witness`):
 
-A nominal type **derives or exports selected capabilities** from its representation — equality, hash,
-ordering where meaningful, encoding where intentionally exposed. This is DESIGN §4's
-"operations come from inhabitance" applied to a nominal: the type inhabits the structure its
-representation inhabits, **by the declaring module's selection**.
+- the coercion result is `CoercionResult { target, quality: Identity | Exact | Widened, witness }` or a
+  typed `CoercionMismatchKind = NoTargetCandidate | AmbiguousTargetCandidate | StructuralMismatch |
+  WouldLoseInformation`;
+- candidate selection is `find_witness` under `TargetSelectionPolicy = TargetDeclaredPriority |
+  UserSelected`;
+- position-aware inhabitance is `declared_type_inhabitance` over `DeclaredTypePosition`;
+- value-set widening is `v2.std.refinement_widening_predicate`. That handles representation widening
+  such as `rust i32 → python int`. It is **not** the `where` machinery and is kept.
 
-- **Not subtyping, not coercion.** `RoadmapNodeId` has equality because its representation does; it
-  is never usable where a `String` is expected. No implicit route is added (DESIGN §4 law untouched).
-- **Selective.** A `Secret` does not acquire display or JSON because its field is a `String`. The
-  default is **nothing derived**; each capability is opted into at the declaration.
-- **One vocabulary.** Equality and ordering are `std.algebra` (`AlgebraProfile`,
-  `AlgebraCarrier`, `algebra_profile_equality_extensional`, `Ordering`); hashing is `std.content_hash`
-  `HashFamily`. Encoding has no single consumed home I could find in the DFS — §9 decision S2 (DFS
-  further vs. name the home), never a second capability vocabulary.
-- **Consequence for the census:** every `OperationWorkaround` cast (strip to compare/hash/encode) is
-  replaced by the derived operation, which is why M0 must separate it from `NominalProjection`.
+In order, each step model-first (types and witnesses land before any stage consumes them):
 
-## 6. Deletion (D5, atomic, in the cutover)
+1. **C1: the residual addressee.** The architecture plan §1.2 makes the addressee part of a
+   residual's type: call site, root, upstream module or observer. No addressee type exists anywhere in
+   `dag` or `src/v2` (DFS: none found). Completion and coercion are one procedure (§1.4), so the
+   addressee is minted **once**, in a home both consume, never inside `v2.std.coercion` alone. The home
+   is decision O4. `CoercionMismatchKind` gains its addressee by a total map from kind to addressee,
+   not by a parallel field authored per site.
+2. **C2: a mismatch kind for "exact, but changes interpretation".** Today an exact, lossless crossing
+   that drops meaning has no kind. `WouldLoseInformation` is false of it and `StructuralMismatch` is
+   wrong. Add `ChangesInterpretation`, whose addressee is the call site. This is the kind
+   `RoadmapNodeId → String` and `true as Int` both produce.
+3. **C3: the declared conversion route.** A route is a declared function, not a new declaration kind:
+   any function in X's declaring module whose signature is `Y -> X`, `Y -> Result<X, R>` or `X -> Y`
+   is a candidate route for that crossing, and the candidate set is closed by the module. That keeps the
+   declaration count at zero, and it is decision O1. The route carrier records source, target,
+   totality (`Total` or `Partial { refusal: R }`) and the quality the fold already computes. A
+   `ChangesInterpretation` residual names its candidate routes in its diagnostic, so the developer is
+   told the answer. With two candidates it is `AmbiguousTargetCandidate`.
+4. **C4: route visibility.** For the in-route, v2 must **enforce** `sole_constructor` and
+   `admit_callers`. Today v2 parses them, and the seed enforces them (`v1.compiler.infer`
+   sole-constructor construction diagnostics), but on the native route they are dropped:
+   `gunbc.rung_drop.admit_callers_discarded_on_the_native_route`. Closing that drop is a precondition,
+   not new design. For the out-route, see O2.
+5. **C5: operation pullback.** `v2.std.inhabitance` admits X into an algebra Y inhabits when exactly
+   one exact injective route `X → Y` is exported (§3). The judgment cites the route, so the
+   inhabitance witness carries its own provenance.
+6. **C6: the first instrument**, as the architecture frontier names it: one core module emitted to the
+   Rust and TypeScript targets, with the per-target mismatch list. For this program, the M0 census
+   rows are what that list is checked against.
 
-Deleted in the same semantic cutover as the migration — no intermediate state where a brand and a
-constructor both answer for one type:
+Then the migration (generated from M0, as before): brand → one-field record + public in-route + public
+out-route; refinement → `sole_constructor` record + public checked route + public out-route;
+`nominal_opaque` → per O2; aliases untouched; introduction casts → constructor calls; workaround casts
+(strip to compare, hash or encode) → the pulled-back operation directly; true raw consumers → the named
+out-route.
 
-- **Grammar:** `where` clause and `nominal_opaque` modifier — `src/v2/extdeps/languages/dag.dag`;
-  `v1.compiler.parse` including the `"brand" =>` spelling match.
-- **v2 stages:** the where-call path in `src/v2/compiler/03_resolve.dag`; the `RefinementDeclaration`
-  frontier in `src/v2/compiler/04_infer.dag`; where lowering in `body_lowering_fold.dag`,
-  `emit_produced.dag`.
-- **v1 seed:** `v1.compiler.infer` `where_refinement_predicates_equivalent`,
-  `where_predicate_literal_string_args_match`, `decidable_where_string_predicate_holds`, the brand arm;
-  `v1.compiler.emit_rust` where handling; the hand tables.
-- **Vocabulary:** `std.types` `brand`, `range`, `string_non_empty`, `gt_zero`, `WherePredicateMarker`;
-  `std.content_hash` `lower_hex_*`; `unicode_scalar`; the OCI, `is_text_readable` and
-  `c_translation_unit_basename_safe` predicate fns; **`gunbc.where_refinement_predicate_vocabulary`
-  whole, with `WherePredicateGrounding`** — never left as a second authority.
-- **Frontier:** #12506's parked where-predicate row is **retired**, not flipped to a judgment.
-- **Rows naming the deleted machinery:** `dag/extdeps/languages/rust/types.dag` where rows,
-  `gunbc.plans.p1_where_clause_lowering`, `gunbc.plan_registry_batch_e`, `gunbc.census_closure_frontier`,
-  `gunbc.rung_drop.g0_type_decl_modifier_parse_without_sealing_property`,
-  `gunbc.rust_source_type_bindings` Secret row, the where rows in `src/v2/workflow/floor_cost_debt.dag`,
-  `floor_grandfathered_roster.dag`, `floor_pure_producer_share.dag`.
-- **Tests whose subject is gone:** `test.claim.where_refinement_predicate_vocabulary_witness_test`,
-  `where_clause_required_comma_test`, the where arms of `d1_declaration_grammar_parse_test`,
-  `type_decl_modifier_g0_parse_probe_test`, where references in
-  `edge_label/structural_label_readers_test`, `namespace_xl0/reference_conservation_test`.
-- **Recurring-failure-mode rows** (`refinement_predicate_enforced_only_where_the_value_is_a_literal`,
-  `parameter_refinement_has_no_carrier`, `authored_lexeme_read_as_a_grammar_marker`,
-  `kernel_type_secret_has_no_v2_value_type_node`, `behavior_named_edge_label_validated_not_constructed`)
-  are **updated, not deleted**: each records its climb.
+## 5. Controls (expecting red first)
 
-This list is the known set; M0's out-of-gate enumeration completes it, and anything it names that the
-cutover does not repair is a declared §4b(3) drop with population and trigger.
+The six arms of `test.claim.brand_nominal_identity_witness_test` are kept and their refusals
+preserved, re-spelled over records and routes:
 
-**v1 seed under `gunbc.v1_maintenance_standing` `v1_seed_standing`:** deletion of seed machinery the
-self-host path no longer reaches is shrink, admitted. The seed must also **gain** constructor/view
-visibility enforcement for the sources it compiles, or the refusals of §7 are lost on the seed route —
-a silent regression; that gain serves v2 self-host and is admitted under the purpose test, sized by M1.
-Stage0 mirrors are regenerated in each PR that edits `src/v1` (regen-fixed-point, `build` lane), never
-hand-edited.
+- **COLLISION / MISMATCH:** refuse, unchanged.
+- **CONSTRUCT / STRIP:** accept, via the in-route and the out-route.
+- **DUAL:** accept.
+- **UNDECLARED_SITE:** refuses at parse.
 
-## 7. Controls (written expecting-red first)
+These controls are added:
 
-The brand witness's six arms (`test.claim.brand_nominal_identity_witness_test`) are rewritten over
-constructors and every refusal is preserved; each is run against current main before the wall lands.
-Per DESIGN §4b(4) none retires.
+| control | expected after | today |
+|---|---|---|
+| `RoadmapNodeId` at a declared `String` with no route named | residual `ChangesInterpretation`, addressee call site, names the route | refuses with no addressee: **red** for the addressee |
+| same, route named | accept | n/a |
+| `Port { value: 0 }` outside the module (`sole_constructor`) | refuse on the **v2** route | **red** (rung drop `admit_callers_discarded_on_the_native_route`) |
+| `port_of(n: 0)` | `Err` with residue `0` and a cause; `port_of(n: 80)` advances; by execution | positive control |
+| `Secret` displayed or encoded, no exported route | refuse, addressee upstream module | **red** |
+| `RoadmapNodeId == RoadmapNodeId` | accept by pullback (C5) | depends on today's leniency; M0 measures |
+| two exported `X → Y` routes | `AmbiguousTargetCandidate` | **red** |
+| `true as Int` without `bool_indicator` | `ChangesInterpretation`, call site | refuses with no addressee |
 
-| arm | fixture (semantic) | after | before |
-|---|---|---|---|
-| COLLISION | two nominals over `String`, value of A where B is declared | refuse | control (records already refuse) |
-| MISMATCH | same, through a cast `a as B` | refuse | **red** if `as` admits it |
-| CONSTRUCT | public raw ctor from `String` | accept | accept |
-| DUAL | one declaration, two use sites | accept | accept |
-| STRIP | `B` constructed from `A`'s view | accept | accept |
-| UNDECLARED_SITE | `where brand(...)` on a parameter | refuse at parse | **red** |
-| PRIVATE_RAW_CTOR | raw ctor of a validated type called outside its module | refuse | **red** (no visibility yet) |
-| PRIVATE_VIEW | view of an opaque type read outside its module | refuse | **red** |
-| NO_IMPLICIT_CAPABILITY | `RoadmapNodeId` where `String` is declared, equality derived | refuse | control |
-| UNDERIVED_CAPABILITY | display/JSON of `Secret` with no opt-in | refuse | **red** |
-| CHECKED_CTOR | `port_of(n: 0)` refuses with residue `0` and a cause; `port_of(n: 80)` advances; by execution | green | positive control |
-| NO_WHERE / NO_OPAQUE | `type A = String where range(...)`, `type A nominal_opaque = String` | refuse at parse | **red** |
+None of these retires (DESIGN §4b(4)).
 
-Each red is run on the v2 route and the seed route (rung is the minimum across paths, §4b(1)).
+## 6. Rungs (DESIGN §4b) and §4's coercion law
 
-## 8. Migration order
+- **Identity (X vs Y, X vs sibling):** structurally guaranteed on both models. Records are nominal.
+- **Invariant (`Port ∈ 1..65535`):** structurally guaranteed only when the raw constructor is confined
+  **and** that confinement is enforced on the v2 route. Until `admit_callers_discarded_on_the_native_route`
+  closes, the v2 route's rung for every invariant is mechanically preventable at best, and the plan
+  must say so per type rather than claim it.
+- **Opacity:** guaranteed only after O2 lands. Before that, a field read leaks.
+- **Coercion law:** unchanged and strengthened. No nominal crossing is implicit. Every one is a residual
+  with an addressee, answered by a named route. The only silent route is the alias's identity. "A brand
+  is cosmetic until construction enforces it" (§4b) becomes "a nominal is cosmetic until its routes'
+  visibility is enforced", and C4 plus O2 are exactly that enforcement.
 
-1. **M0 — resolved census** (§2). Read-only.
-2. **M1 — constructor/view visibility and capability derivation semantics**, with §7's controls, in v2
-   and the seed. Lands with its reds; legacy forms still parse.
-3. **M2 — mechanical rewrite, generated from the census**, never hand-edited:
-   brand → public ctor + public view; refinement → private raw ctor + checked ctor + public view;
-   `nominal_opaque` → private ctor/view; aliases untouched; `NominalIntroduction` → ctor calls;
-   `OperationWorkaround` → derived operations; `NominalProjection` → explicit view; `AliasNoOp` →
-   cast deleted. The generator is a fold over the census rows.
-4. **M3 — exception review**: every site the generator could not classify or rewrite, listed by M0,
-   reviewed by hand. The generator refuses rather than guessing.
-5. **M4 — one semantic cutover PR**: the generated migration, the reviewed exceptions, and §6's
-   deletion together. The deletion is the census's confirmation: anything that still refuses was
-   missed by M0, and M0 is corrected rather than the site patched.
+## 7. Revision 3 (option A) against this model
 
-The N7 lane (calm-boar-904) is not touched; if M0 finds a brand or refinement in its 8 native tests,
-M4 sequences after N7.
+Population figures are provisional. They are not a size, and M0 sizes both.
 
-## 9. Decisions — RULED 2026-10-02
+| | option A (rev 3) | conversions (rev 4) |
+|---|---|---|
+| **new words** | `nominal`, `sealed`, `opaque`, `derives(…)` = 4 | 0 (O2-i) or 1 (O2-ii `opaque`). `sole_constructor`/`admit_callers` already exist |
+| **TrueAlias** | untouched | untouched |
+| **UnconstrainedNominal** (old brand) | `type T nominal = Y` | `type T { value: Y }` + in/out routes |
+| **CheckedConstructionStage** (old refinement) | `sealed` + checked ctor | `sole_constructor` record + checked route |
+| **Opaque** | `opaque` | O2 |
+| **introduction sites** (~16.6k `"…" as T`, provisional) | rewritten to a constructor call | same rewrite, generated; identical burden |
+| **projection sites** (~9.3k `as String\|Int\|Nat`, provisional) | rewritten to `.value` | rewritten to the named out-route; per site, a function call rather than a field read. **Workaround sites** (compare, hash, encode) **vanish** under C5 pullback instead of being rewritten, so this model's burden is lower by exactly M0's `OperationWorkaround` count |
+| **capabilities** | `derives(…)`: author-listed, a second vocabulary to keep in step with `std.algebra` | derived from exported routes; nothing listed; display/encode blocked on opaque by construction |
+| **invariant rung** | structural once `sealed` is enforced | structural once `sole_constructor` is enforced on v2 (C4): **the same precondition**, already modeled and with a seed implementation |
+| **`RoadmapNodeId` as `String`** | refuses; author projects `.value`, with no stated reason | residual to the call site naming the route: the acknowledgment the operator asked for |
+| **needs that do not exist** | 3 modifiers + derives parser/infer, visibility semantics, capability derivation | C1 addressee, C2 kind, C3 route carrier, C4 enforcement on v2, C5 pullback, O2 (if ii) |
+| **reusable beyond nominals** | no | yes: C1–C3 are the coercion frontier the architecture plan already owes (`bool_indicator`, target emission mismatches) |
 
-All rulings relayed by sharp-raven-357 on gunbc#13024.
+The deciding row is the last one. Option A built a nominal-only mechanism next to an unfinished
+coercion model. Revision 4 finishes the coercion model, and nominals fall out of it. That is §2's
+test that net concepts must not grow by re-invention: `sealed` was a re-invention of
+`sole_constructor`, which the revision 3 DFS missed.
 
-- **D1–D7 — RULED** as stated in §1–§5 (alias is equality; constructor plus two independent
-  visibility axes; no typecase; the resolved census sizes M2; atomic deletion; selective derived
-  capabilities; checked construction may return residue).
-- **S1 — RULED: a declaration modifier from a closed vocabulary**, in the slot `nominal_opaque`
-  occupies today (`type X <modifier> = Y`). No new declaration keyword. **Not** a `//` annotation:
-  DESIGN §4c erases annotations before any semantic pass, so they cannot carry semantics. The concrete
-  spelling is the operator's pick (below).
-- **S2 — RULED:** bounded DFS for encoding's capability home in M1; if none is found, an operator
-  ruling on the home before M1 lands.
-- **S3 — RULED:** checked construction returns `Result` residue plus a typed cause only; no proof
-  witness.
-- **S4 — RULED:** the representation view is public by default.
-- **S5 — RULED:** M4 is one generated PR.
+## 8. Operator decisions
 
-### S1 pick-list (spelling of the modifier)
-
-The modifier's presence is what turns `=` from equality into construction, so the modifier is
-mandatory for every nominal and absent for every alias — the parser, not the reader, discriminates.
-
-| option | brand | validated (old refinement) | opaque | capabilities |
-|---|---|---|---|---|
-| **A (recommended)** — one word per point in the plane | `type T nominal = String` | `type Port sealed = Int` (raw ctor private; `port_of` public) | `type Secret opaque = String` | `derives(equality, ordering, hash)` as a second modifier: `type Port sealed derives(equality, ordering) = Int` |
-| B — one parameterized modifier | `nominal(construct: public)` | `nominal(construct: private)` | `nominal(construct: private, view: private)` | `nominal(…, derives: [equality])` |
-| C — two orthogonal words | `type T nominal = String` | `type T nominal private_construct = Int` | `type T nominal private_construct private_view = String` | `derives(…)` |
-
-Recommendation **A**: three closed words map one-to-one onto the three legitimate points, so an
-author cannot spell the fourth point (public construction, private view), which has no use in the
-corpus. With S4 (view public by default) the only private-view point is `opaque`. The `derives` list
-draws its members from `std.algebra` / `std.content_hash` names (§5), never a fresh vocabulary;
-default is nothing derived. If the census (M0) finds a use for the fourth point, B is the fallback.
+- **O1: routes are recognised by signature in the declaring module** (no route keyword, no route
+  table). Recommend: yes. The candidate set is closed by the module, and two candidates refuse as
+  ambiguous rather than being picked.
+- **O2: out-route confinement.** (i) a field read of a `sole_constructor` record outside its module is
+  a crossing that must name a route; or (ii) one modifier, `opaque`, in `nominal_opaque`'s slot.
+  Recommend: **(ii)**. (i) silently retypes every existing `sole_constructor` carrier's public reads,
+  which is a meaning fork over 1k+ existing uses. Choose (i) only if M0 shows the outside reads are
+  few.
+- **O3: ordering pulls back by default?** Recommend: **no**. Equality and hash pull back. Ordering pulls
+  back only if the module exports an order-preserving route, which is spelled as the same signature
+  rule over `Ordering`. A spelling order on IDs is not a fact anyone asserted.
+- **O4: home of the residual addressee.** It is shared by completion and coercion (architecture §1.4).
+  Recommend: a new `v2.std.residual` module consumed by `v2.std.coercion` first. Its second consumer
+  is completion when §1.5's elaboration lands, which is a stated frontier.
+- **O5: spelling of "answering" a route at a use site.** Recommend: **the function call**
+  (`roadmap_node_id_text(id)`). That adds no syntax. `as <route>` would be a second spelling of the same
+  call.
+- **O6: sequencing.** C1–C5 land before the generated cutover, and C4 (closing the native
+  `admit_callers` drop) is first because every invariant rung depends on it. M0 continues independently
+  under either model. Recommend: as listed.
