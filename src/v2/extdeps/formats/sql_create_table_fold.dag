@@ -579,7 +579,8 @@ fn sql_fold_lex_rules() -> LexRuleSet {
       sql_lex_rule(token_class: ^sql_token_primary_key, text: ", PRIMARY KEY ("),
       sql_lex_rule(token_class: ^sql_token_pk_rparen, text: ")"),
       sql_lex_rule(token_class: ^sql_fold_stmt_kind_tag, text: sql_fold_stmt_kind_sentinel)
-    ]
+    ],
+    modes: []
   }
 }
 
