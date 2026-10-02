@@ -1,6 +1,7 @@
 module v2.extdeps.languages.rust_test
 
 import v2.extdeps.languages.rust_native_driver { RustEmitHostFamilyMember, rust_family_main_suffix }
+import v2.std.node { ArrowBodyEdge, core_edge_label, Authored, StructuralLabel }
 
 import std.algebra { Cons, Empty }
 
@@ -225,7 +226,8 @@ fn rust_pick_lex_rules() -> LexRuleSet {
         right: rust_pick_additional_lex_rules()
       ),
       right: rust_value_expression_family_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 
@@ -328,7 +330,7 @@ fn rust_sgb_target_model_bundle_core() -> Node {
 }
 
 fn rust_sgb_lex() -> LexRules {
-  ModeledLexRules { root: LexRuleSet { rules: [] } }
+  ModeledLexRules { root: LexRuleSet { rules: [], modes: [] } }
 }
 
 fn rust_sgb_binding_spellings() -> Map<Symbol, String> {
@@ -495,7 +497,8 @@ fn rust_match_lex_rules() -> LexRuleSet {
         right: rust_match_additional_lex_rules()
       ),
       right: rust_value_expression_family_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 
@@ -515,7 +518,8 @@ fn rust_call_lex_rules() -> LexRuleSet {
     rules: list_append(
       left: rust_fn_add_lex_rules().rules,
       right: rust_call_closure_additional_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 
@@ -842,7 +846,8 @@ fn rust_loop_lex_rules() -> LexRuleSet {
     rules: list_append(
       left: rust_fn_add_lex_rules().rules,
       right: rust_loop_additional_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 
@@ -1092,7 +1097,7 @@ fn rust_classical_not_target_model_bundle_core() -> Node {
       init: Empty,
       f: fn(acc, edge) {
         match edge.label {
-          Named { name: n } =>
+          Authored { name: n } =>
             if n == ^target_model_edge_translation_rules {
               list_snoc_item(
                 xs: acc,
@@ -1104,6 +1109,7 @@ fn rust_classical_not_target_model_bundle_core() -> Node {
             } else {
               list_snoc_item(xs: acc, item: edge)
             }
+          StructuralLabel { label: _ } => list_snoc_item(xs: acc, item: edge)
           Positional => list_snoc_item(xs: acc, item: edge)
         }
       }
@@ -1538,7 +1544,8 @@ fn rust_variant_construct_lex_rules() -> LexRuleSet {
     rules: list_append(
       left: rust_fn_add_lex_rules().rules,
       right: rust_variant_construct_additional_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 
@@ -1808,7 +1815,8 @@ fn rust_logic_complement_lex_rules() -> LexRuleSet {
     rules: list_append(
       left: rust_fn_add_lex_rules().rules,
       right: rust_logic_complement_additional_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 
@@ -2037,7 +2045,8 @@ fn rust_bool_fn_lex() -> LexRules {
       rules: list_append(
         left: rust_fn_add_lex_rules().rules,
         right: rust_bool_fn_additional_lex_rules()
-      )
+      ),
+      modes: []
     }
   }
 }
@@ -3361,7 +3370,8 @@ fn rust_literal_emit_lex_rules() -> LexRuleSet {
         rust_lex_rule(token_class: ^rust_lit_char_a, text: "'a'"),
         rust_lex_rule(token_class: ^rust_lit_char_b, text: "'b'")
       ]
-    )
+    ),
+    modes: []
   }
 }
 
@@ -3431,7 +3441,7 @@ fn rust_arrow_with_body_node(
         label: Positional,
         target: rust_type_atom_node(identity: return_type_binding)
       },
-      Edge { label: Named { name: ^arrow_body_edge }, target: body }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -3565,7 +3575,7 @@ fn rust_bind_literal_target_model_bundle() -> Node {
       init: Empty,
       f: fn(acc, edge) {
         match edge.label {
-          Named { name: n } =>
+          Authored { name: n } =>
             if n == ^target_model_edge_translation_rules {
               list_snoc_item(
                 xs: acc,
@@ -3577,6 +3587,7 @@ fn rust_bind_literal_target_model_bundle() -> Node {
             } else {
               list_snoc_item(xs: acc, item: edge)
             }
+          StructuralLabel { label: _ } => list_snoc_item(xs: acc, item: edge)
           Positional => list_snoc_item(xs: acc, item: edge)
         }
       }
@@ -3710,7 +3721,8 @@ fn rust_emit_directive_lex() -> LexRules {
       rules: [
         rust_lex_rule(token_class: ^rust_token_macro_eprintln_open, text: "eprintln!("),
         rust_lex_rule(token_class: ^rust_token_rparen, text: ")")
-      ]
+      ],
+      modes: []
     }
   }
 }
@@ -3815,7 +3827,8 @@ fn rust_type_alias_decl_structural_lex_rules() -> LexRuleSet {
       rust_lex_rule(token_class: ^rust_token_type_alias_eq, text: " = "),
       rust_lex_rule(token_class: ^rust_token_semicolon, text: ";"),
       rust_ident_lex_rule()
-    ]
+    ],
+    modes: []
   }
 }
 

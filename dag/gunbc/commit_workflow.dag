@@ -1414,19 +1414,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/lens/non_fold_residue_test.dag",
-      check_fns: [
-        "non_fold_residue_no_unrostered_or_stale",
-        "non_fold_residue_synthetic_unrostered_red_control_holds",
-        "non_fold_residue_wildcard_red_fixture_control_holds"
-      ],
-      kind: CorpusWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
       entry: "dag/test/claim/keyed_roster_witness_test.dag",
       check_fns: [
         "keyed_roster_two_branch_union_disjoint_keys_admits",

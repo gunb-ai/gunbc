@@ -25,12 +25,14 @@ import v2.std.node {
   ComputationNode,
   Edge,
   Loop,
-  Named,
+  Authored,
   Node,
   OccurrenceSynthetic,
   Positional,
   Symbol,
-  TypeNode
+  TypeNode,
+  LoopBoundEdge,
+  core_edge_label,
 }
 
 fn cod_loop(measure: Symbol) -> Node {
@@ -39,7 +41,7 @@ fn cod_loop(measure: Symbol) -> Node {
     children: [
       Edge { label: Positional, target: dag_int_literal_fixture_one() },
       Edge {
-        label: Named { name: ^loop_bound_edge },
+        label: core_edge_label(marker: LoopBoundEdge),
         target: Node {
           kind: TypeNode { connective: Atom { identity: measure } },
           children: [],

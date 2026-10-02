@@ -35,7 +35,7 @@ import v2.std.find_witness {
   find_witness,
 }
 import v2.std.optional { Absent, Optional, Present }
-import v2.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
+import v2.std.node { Conj, Edge, Authored, Node, Symbol, TypeNode, well_formed }
 import v2.std.refinement_widening_predicate { refinement_widening_is_strict_coarsening }
 import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }
 
@@ -150,10 +150,10 @@ fn coercion_homomorphism_evidence_for_node(
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^coercion_homomorphism_evidence_source }, target: source },
-      Edge { label: Named { name: ^coercion_homomorphism_evidence_candidate }, target: fw.candidate },
+      Edge { label: Authored { name: ^coercion_homomorphism_evidence_source }, target: source },
+      Edge { label: Authored { name: ^coercion_homomorphism_evidence_candidate }, target: fw.candidate },
       Edge {
-        label: Named { name: ^coercion_homomorphism_evidence_find_witness },
+        label: Authored { name: ^coercion_homomorphism_evidence_find_witness },
         target: fw.witness.evidence
       }
     ],

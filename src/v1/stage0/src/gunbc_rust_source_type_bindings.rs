@@ -5,13 +5,25 @@ pub use crate::extdeps_languages_rust_representation::RustRepresentation;
 use crate::extdeps_languages_rust_representation::RustRepresentation::{
     RustBool, RustI64, RustSerdeJsonValue, RustStdString, RustUnit, RustVecU8,
 };
+pub use crate::extdeps_languages_rust_representation::{
+    rust_bool_false_value, rust_bool_true_value,
+};
 pub use crate::std_decl_ref::decl_ref;
 pub use crate::std_decl_ref::DeclarationRef;
+pub use crate::std_kernel_type_name::kernel_type_name;
+pub use crate::std_kernel_type_name::KernelTypeNameAdmission;
+use crate::std_kernel_type_name::KernelTypeNameAdmission::{
+    KernelTypeNameAdmitted, NotAKernelTypeName,
+};
 use crate::std_target_representation::CheckpointRowDisposition::{
     MigratedToExactBinding, ProvenUniqueKernelBinding, StillBareNameDebt,
 };
+use crate::std_target_representation::VariantParentKey::{
+    VariantParentDeclaration, VariantParentKernelType,
+};
 pub use crate::std_target_representation::{
-    CheckpointRowDisposition, CheckpointRowMigration, SourceTypeTargetBinding,
+    CheckpointRowDisposition, CheckpointRowMigration, RepresentationValue, SourceTypeTargetBinding,
+    SourceVariantTargetValue, VariantParentKey,
 };
 use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List, NonEmptyStr};
@@ -41,6 +53,68 @@ pub fn rust_source_type_binding_rows() -> Rc<Vec<Rc<SourceTypeTargetBinding<Rust
         };
     }
     CACHED.with(|c: &Rc<Vec<Rc<SourceTypeTargetBinding<RustRepresentation>>>>| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct BoolArmValue {
+    pub variant: NonEmptyStr,
+    pub value: Rc<RepresentationValue<RustRepresentation>>,
+}
+
+pub fn rust_bool_arm_values() -> Rc<Vec<Rc<BoolArmValue>>> {
+    thread_local! {
+            static CACHED: Rc<Vec<Rc<BoolArmValue>>> = {
+                Rc::new(vec![Rc::new(BoolArmValue {
+        variant: "True".to_string(),
+        value: rust_bool_true_value(),
+    }), Rc::new(BoolArmValue {
+        variant: "False".to_string(),
+        value: rust_bool_false_value(),
+    })])
+            };
+        }
+    CACHED.with(|c: &Rc<Vec<Rc<BoolArmValue>>>| c.clone())
+}
+
+pub fn rust_bool_variant_rows(
+    parent: Rc<VariantParentKey>,
+) -> Rc<Vec<Rc<SourceVariantTargetValue<RustRepresentation>>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for a in rust_bool_arm_values().iter().cloned() {
+            __result.push(Rc::new(SourceVariantTargetValue {
+                parent: parent.clone(),
+                variant: a.variant.clone(),
+                value: a.value.clone(),
+                _phantom: std::marker::PhantomData,
+            }));
+        }
+        __result
+    })
+}
+
+pub fn rust_bool_kernel_variant_rows() -> Rc<Vec<Rc<SourceVariantTargetValue<RustRepresentation>>>>
+{
+    match (*crate::std_kernel_type_name::kernel_type_name("Bool".to_string())).clone() {
+        KernelTypeNameAdmission::KernelTypeNameAdmitted { kernel_name: k, .. } => {
+            rust_bool_variant_rows(Rc::new(VariantParentKey::VariantParentKernelType {
+                kernel_name: k.clone(),
+            }))
+        }
+        KernelTypeNameAdmission::NotAKernelTypeName { name: _, .. } => Rc::new(vec![]),
+    }
+}
+
+pub fn rust_source_variant_value_rows() -> Rc<Vec<Rc<SourceVariantTargetValue<RustRepresentation>>>>
+{
+    thread_local! {
+            static CACHED: Rc<Vec<Rc<SourceVariantTargetValue<RustRepresentation>>>> = {
+                v1_rt::concat(rust_bool_variant_rows(Rc::new(VariantParentKey::VariantParentDeclaration {
+        declaration: crate::std_decl_ref::decl_ref("std.types".to_string(), "Bool".to_string()),
+    })), rust_bool_kernel_variant_rows())
+            };
+        }
+    CACHED.with(|c: &Rc<Vec<Rc<SourceVariantTargetValue<RustRepresentation>>>>| c.clone())
 }
 
 pub fn rust_bound_declaration_refs() -> Rc<Vec<Rc<DeclarationRef>>> {
