@@ -1,34 +1,7 @@
 module v2.test.claim.variant_field_native_binding
 
-import std.algebra { FreeMonoid }
-import v2.compiler.normalized_tree { no_record_declarations, no_resource_declarations }
-import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
-import v2.extdeps.languages.dag { dag_grammar_atom, dag_named_edge }
-import v2.std.algebra { fold_list, fold_list_node, is_empty }
-import v2.std.collection { List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  Conj,
-  Disj,
-  Edge,
-  Named,
-  Node,
-  Symbol,
-  TypeNode,
-  node_synthetic
-}
-import v2.std.qualified_name {
-  qualified_name_from_dotted_string,
-  qualified_name_snoc,
-  qualified_name_to_dotted_string
-}
-import v2.std.symbol_index {
-  SymbolIndex,
-  empty_symbol_index,
-  symbol_index_candidates_at
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -42,9 +15,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // declared over, "a positional binder was silently lost" — fails here, on the native route.
 //
 // THE SPECIMEN, VERBATIM FROM THE ROW: "the binder `node` of the `Present { value: node }` arms
-// of v2.std.symbol_index symbol_index_candidates_at". The specimen claim calls the real std fn
-// (not a mirror) and holds that the candidate it returns CARRIES the bound node — the value the
-// arm's binder delivered. A native execution that dropped the binder cannot produce it.
+// of v2.std.symbol_index symbol_index_candidates_at". The specimen claims live beside this file
+// in v2.test.claim.variant_field_native_specimen; they call the real std fn (not a mirror) and
+// hold that the candidate it returns CARRIES the bound node — the value the arm's binder
+// delivered. A native execution that dropped the binder cannot produce it.
 //
 // CI ENROLLMENT WAITS ON gunbc.rung_drop v2_native_route_off_the_merge_path: until the
 // `emit-build` lane's first green fleet run executes the frontier, this universe is adjudicated
@@ -102,132 +76,4 @@ test fn vfb_named_arm_of_a_positional_value_stays_unmatched() -> Bool {
     Held { value: _ } => false
     Boxed(_) => true
   }
-}
-
-// ---- THE FILED SPECIMEN: the real symbol_index_candidates_at, called for real ----
-
-fn vfb_qn_spine(segments: FreeMonoid<Symbol>) -> Node {
-  fold_list_node(
-    xs: segments,
-    item_node: fn(sym) {
-      node_synthetic(
-        kind: TypeNode { connective: Atom { identity: sym } },
-        children: []
-      )
-    }
-  )
-}
-
-fn vfb_module_root(qn_spine: Node) -> Node {
-  node_synthetic(
-    kind: TypeNode { connective: Conj },
-    children: [
-      dag_named_edge(
-        name: ^dag_surface_module_header,
-        target: dag_grammar_atom(id: ^dag_surface_module_header)
-      ),
-      dag_named_edge(
-        name: ^dag_surface_module_header_qualified_name,
-        target: qn_spine
-      ),
-      vfb_type_with_variants(type_sym: ^Mood)
-    ]
-  )
-}
-
-fn vfb_type_with_variants(type_sym: Symbol) -> Edge {
-  Edge {
-    label: Named { name: type_sym },
-    target: node_synthetic(
-      kind: TypeNode { connective: Disj },
-      children: [
-        vfb_variant_arm_edge(variant_sym: ^Yes),
-        vfb_variant_arm_edge(variant_sym: ^No)
-      ]
-    )
-  }
-}
-
-fn vfb_variant_arm_edge(variant_sym: Symbol) -> Edge {
-  Edge {
-    label: Named { name: variant_sym },
-    target: node_synthetic(
-      kind: TypeNode { connective: Atom { identity: variant_sym } },
-      children: []
-    )
-  }
-}
-
-data vfb_specimen_module_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(
-  dotted: "v2.test.variant_field_binding_specimen"
-)
-
-data vfb_specimen_root: Node = vfb_module_root(
-  qn_spine: vfb_qn_spine(segments: vfb_specimen_module_qn)
-)
-
-data vfb_specimen_index: SymbolIndex = symbol_index_fill_module_root(
-  index: empty_symbol_index(),
-  root: vfb_specimen_root,
-  record_declarations: no_record_declarations(), resource_declarations: no_resource_declarations()
-)
-
-// THE SPECIMEN OBSERVATION: symbol_index_candidates_at's `Present { value: node }` arm binds
-// `node` and the candidate CARRIES it — the declared type's node, at the declared path. If the
-// binder were dropped the way #11998 dropped positional binders, the arm cannot hand this back.
-// The fold spells the observation without a record pattern: the candidate arrives as the fold's
-// item, and the claim holds when exactly it — the single candidate the specimen declares —
-// carries the type node at the declared path.
-test fn vfb_specimen_binder_present_value_node_binds() -> Bool {
-  fold_list(
-    xs: symbol_index_candidates_at(
-      index: vfb_specimen_index,
-      position: vfb_specimen_module_qn,
-      name: ^Mood
-    ),
-    empty: false,
-    cons: fn(acc, candidate) {
-      acc
-        || ((qualified_name_to_dotted_string(qn: candidate.path) == "v2.test.variant_field_binding_specimen.Mood")
-          && (match candidate.node.kind {
-            TypeNode { connective: Disj } => true
-            _ => false
-          }))
-    }
-  )
-}
-
-// THE BINDER CARRIES THE VARIANT ARM TOO: position inside the type, name = variant — the same
-// `Present { value: node }` arm, a different declared field identity ("0" on a variant declared
-// positionally is the OTHER arm of the row's one fact; here the variant's node comes back).
-test fn vfb_specimen_variant_binder_binds() -> Bool {
-  let type_position = qualified_name_snoc(qn: vfb_specimen_module_qn, segment: ^Mood)
-  fold_list(
-    xs: symbol_index_candidates_at(
-      index: vfb_specimen_index,
-      position: type_position,
-      name: ^Yes
-    ),
-    empty: false,
-    cons: fn(acc, candidate) {
-      acc
-        || ((qualified_name_to_dotted_string(qn: candidate.path) == "v2.test.variant_field_binding_specimen.Mood.Yes")
-          && (match candidate.node.kind {
-            TypeNode { connective: Atom { identity: sym } } => sym == ^Yes
-            _ => false
-          }))
-    }
-  )
-}
-
-// AN ABSENT LOOKUP STAYS ABSENT: the arm that answers Empty is the other edge of the same
-// Optional the specimen matches over.
-test fn vfb_specimen_unbound_name_yields_no_candidates() -> Bool {
-  is_empty(
-    xs: symbol_index_candidates_at(
-      index: vfb_specimen_index,
-      position: vfb_specimen_module_qn,
-      name: ^Nowhere
-    )
-  )
 }
