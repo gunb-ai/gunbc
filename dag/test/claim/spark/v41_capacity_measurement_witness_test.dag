@@ -1,5 +1,8 @@
 module test.claim.spark.v41_capacity_measurement_witness
 
+import gunbc.spark.serving_performance_subject { ServingSubjectKey, serving_subject_key, serving_performance_subject }
+import gunbc.spark.serving_arm { DeepseekV41FlashDba1be0a, GunbcSparkrunVllmDs4Gb10 }
+
 import v2.std.algebra { filter }
 import v2.std.collection { list_at_optional }
 import std.staircase { StaircaseStopped, StaircaseCompleted }
@@ -430,7 +433,7 @@ test fn a_hole_in_the_staircase_refuses_the_sla_capacity_above_it() -> Bool {
 
 test fn the_report_projects_the_minimum_of_three_capacities_and_leaves_unobserved_counts_absent() -> Bool {
   let all = V41CapacityReport { run_id: "run-1" as NonEmptyStr, kv_admission: CapacityAt { concurrency: 6 }, engram_resident: CapacityAt { concurrency: 4 }, sla_sustainable: CapacityAt { concurrency: 8 }, indexer_kernel: ExtensionLoaded }
-  match v41_calibration_receipt(report: all, subject_key: "fixture-subject", trace_digest: "fixture-trace" as NonEmptyStr) {
+  match v41_calibration_receipt(report: all, subject_key: w_v41_key(), trace_digest: "fixture-trace" as NonEmptyStr) {
     V41CalibrationRefused { cause: _ } => false
     V41CalibrationProjected { receipt: r } =>
       r.sustained_concurrency == 4
@@ -441,7 +444,7 @@ test fn the_report_projects_the_minimum_of_three_capacities_and_leaves_unobserve
 
 test fn a_refused_capacity_refuses_the_projection_and_names_it() -> Bool {
   let today = V41CapacityReport { run_id: "run-1" as NonEmptyStr, kv_admission: CapacityAt { concurrency: 6 }, sla_sustainable: CapacityAt { concurrency: 8 }, engram_resident: CapacityRefused { cause: "the distinct-touch counter is unavailable" as NonEmptyStr }, indexer_kernel: ExtensionLoaded }
-  match v41_calibration_receipt(report: today, subject_key: "fixture-subject", trace_digest: "fixture-trace" as NonEmptyStr) {
+  match v41_calibration_receipt(report: today, subject_key: w_v41_key(), trace_digest: "fixture-trace" as NonEmptyStr) {
     V41CalibrationRefused { cause: c } => contains(c as String, "Engram resident")
     V41CalibrationProjected { receipt: _ } => false
   }
@@ -551,4 +554,15 @@ test fn arm_b_is_the_production_image() -> Bool {
     Present { value: arm } => match arm { EngramFileBackedReleased => true  EngramUpstreamPinned => false }
     Absent => false
   }
+}
+
+// THE PROJECTION'S SUBJECT IS SUPPLIED: the claim is about how the report becomes a receipt, not about
+// which subject V4.1 launches, so a fixture subject keys it.
+fn w_v41_key() -> ServingSubjectKey {
+  serving_subject_key(s: serving_performance_subject(
+    checkpoint: DeepseekV41FlashDba1be0a, checkpoint_revision: Absent, runtime: GunbcSparkrunVllmDs4Gb10,
+    runtime_image_reference: "fixture@sha256:0" as NonEmptyStr, topology: Absent, rank_population: Absent,
+    context_ceiling: Absent, max_num_batched_tokens: token_count(count: 8192), max_num_seqs: Absent,
+    kv_cache_dtype: Absent, speculative: Absent, collective_transport: Absent, indexer_kv_dtype: Absent,
+    scheduler_admission: Absent, launch_profile_key: Absent))
 }

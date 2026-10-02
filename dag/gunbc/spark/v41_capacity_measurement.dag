@@ -2,6 +2,7 @@ module gunbc.spark.v41_capacity_measurement
 
 import v2.std.algebra { filter }
 import gunbc.spark.serving_promotion { WorkloadCalibrationReceipt }
+import gunbc.spark.serving_performance_subject { ServingSubjectKey }
 import v2.std.collection { list_at_optional }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat, nat_min, nat_max }
@@ -933,7 +934,7 @@ type V41CalibrationProjection
   = V41CalibrationProjected { receipt: WorkloadCalibrationReceipt }
   | V41CalibrationRefused { cause: NonEmptyStr }
 
-fn v41_calibration_receipt(report: V41CapacityReport, subject_key: String, trace_digest: NonEmptyStr) -> V41CalibrationProjection {
+fn v41_calibration_receipt(report: V41CapacityReport, subject_key: ServingSubjectKey, trace_digest: NonEmptyStr) -> V41CalibrationProjection {
   match v41_capacity_at(c: report.kv_admission) {
     Absent => V41CalibrationRefused { cause: join(["KV admission: ", v41_capacity_wire(c: report.kv_admission)], "") as NonEmptyStr }
     Present { value: kv } => match v41_capacity_at(c: report.engram_resident) {
@@ -947,9 +948,11 @@ fn v41_calibration_receipt(report: V41CapacityReport, subject_key: String, trace
           accepted_turns: none,
           observation_window: none,
           sustained_concurrency: nat_min(a: nat_min(a: kv, b: en), b: sla),
+          realized_transport: none,
           preemptions: none,
           engine_restarts: none,
           out_of_memory_events: none,
+          stalls_or_lost_requests: none,
           evidence: join(["V4.1 capacity report, run ", report.run_id as String, ": the minimum of KV admission, Engram residency and SLA-sustainable concurrency"], "") as NonEmptyStr,
         } }
       }

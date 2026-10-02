@@ -775,7 +775,7 @@ fn normal_serving_promotion_refusal(intent: ArmIntent, checkpoint: ServingCheckp
               let subject = serving_subject_for_launch(
                 checkpoint: checkpoint, checkpoint_revision: Present { value: crow.revision }, runtime: runtime,
                 runtime_image_reference: runtime_artifact_wire(a: rrow.artifact), topology: topology, profile: profile,
-                speculative: none, collective_transport: none)
+                collective_transport: none)
               let compat = measured_admission_for(subject: launch_compatibility_subject(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, profile: profile))
               let standing = serving_promotion_standing(subject: subject, evidence: promotion_evidence(compatibility: compat, memory: verdict, receipts: receipts), policy: serving_promotion_policy)
               match standing {
