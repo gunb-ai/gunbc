@@ -151,10 +151,10 @@ test fn witness_first_recorded_fault_is_the_one_carried() -> Bool {
 
 // POSITIVE CONTROL: an established absence -- a listing that succeeded and did not name the file --
 // is the one shape that still answers unresolved, because that is a location genuinely looked at.
+// The established absence is MINTED, never written: FilesystemEstablishedAbsence is
+// sole_constructor and constructible only inside the interface module, so the fixture derives
+// the observation from a listed directory whose entries omit the candidate's name.
 test fn witness_established_candidate_absence_still_answers_unresolved() -> Bool {
-  // The established absence is MINTED, never written: FilesystemEstablishedAbsence is
-  // sole_constructor and constructible only inside the interface module, so the fixture derives
-  // the observation from a listed directory whose entries omit the candidate's name.
   let listing = filesystem_listing_observation(directory: "dag", success: true, entries: "", error: "")
   match filesystem_file_observation(
     listing: listing,

@@ -322,11 +322,11 @@ test fn witness_nonzero_exit_without_turn_start_is_not_observed() -> Bool {
 // unlistable evidence directory, an inadmissible store name, and a listing/read disagreement are
 // could-not-look shapes that now refuse with their cause. Established absence -- a listing that
 // succeeded and did not name the store -- is the only Absent route, and it still admits.
+// The established absence is MINTED, never written: FilesystemEstablishedAbsence is
+// sole_constructor and constructible only inside the interface module, so the fixture derives
+// the observation from a listed directory whose entries omit the store name -- the same
+// modeled route the wet reader takes.
 test fn witness_missing_generation_store_reads_as_zero() -> Bool {
-  // The established absence is MINTED, never written: FilesystemEstablishedAbsence is
-  // sole_constructor and constructible only inside the interface module, so the fixture derives
-  // the observation from a listed directory whose entries omit the store name -- the same
-  // modeled route the wet reader takes.
   let listing = filesystem_listing_observation(
     directory: "/tmp/gunbc-supervised-evidence",
     success: true,
@@ -354,9 +354,9 @@ test fn witness_missing_generation_store_reads_as_zero() -> Bool {
   }
 }
 
+// MINTED, never written: the absence comes from a listed directory whose entries omit the
+// store name, the only route the sole_constructor carrier authorizes.
 test fn witness_established_generation_absence_admits_supervised_turn_start() -> Bool {
-  // MINTED, never written: the absence comes from a listed directory whose entries omit the
-  // store name, the only route the sole_constructor carrier authorizes.
   let listing = filesystem_listing_observation(
     directory: "/tmp/gunbc-supervised-evidence",
     success: true,
