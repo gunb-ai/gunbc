@@ -180,7 +180,8 @@ fn namespace_graft_grammar_expr_nonterminal_productions(expr: GrammarExpr) -> Li
       repeat: fn(xs) { xs },
       expect: fn(xs, _reason) { xs },
       refuse_on_match: fn(xs, _reason) { xs },
-      after_line_break: fn(xs) { xs }
+      after_line_break: fn(xs) { xs },
+      not_predicate: fn(_xs) { [] }
     }
   )
 }

@@ -157,7 +157,8 @@ fn ge_wrap_all(expr: GrammarExpr) -> GrammarExpr {
       repeat: fn(e) { Expect { element: Repeat { element: e }, reason: FnExpressionBodyMissingAfterEq } },
       expect: fn(e, reason) { Expect { element: Expect { element: e, reason: reason }, reason: FnExpressionBodyMissingAfterEq } },
       refuse_on_match: fn(e, reason) { Expect { element: RefuseOnMatch { element: e, reason: reason }, reason: FnExpressionBodyMissingAfterEq } },
-      after_line_break: fn(e) { Expect { element: AfterLineBreak { element: e }, reason: FnExpressionBodyMissingAfterEq } }
+      after_line_break: fn(e) { Expect { element: AfterLineBreak { element: e }, reason: FnExpressionBodyMissingAfterEq } },
+      not_predicate: fn(e) { Expect { element: NotPredicate { element: e }, reason: FnExpressionBodyMissingAfterEq } }
     }
   )
 }

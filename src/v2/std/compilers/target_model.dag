@@ -107,6 +107,7 @@ import v2.std.node {
   RecordConstructBody,
   DeclarationReferenceBody,
   ParameterReferenceBody,
+  LexicalReferenceBody,
   UnsupportedArrowBody,
   classify_arrow_body_form,
   ArrowBodyEdges,
@@ -173,6 +174,7 @@ import v2.std.qualified_name {
   qualified_name_init,
   qualified_name_last_segment,
   parameter_reference_path_optional,
+  lexical_reference_label_optional,
   declaration_reference_path_optional
 }
 import v2.std.text {
@@ -200,6 +202,7 @@ import extdeps.uri {
   UriScheme,
   uri_scheme_inhabitants
 }
+import std.types { brand }
 
 // Produced-declaration support is a TARGET-owned rendering, opaque to the compiler.
 // The compiler asks a target for a produced declaration and receives a bodied-arrow
@@ -13957,16 +13960,23 @@ fn target_value_expr_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   }
 }
 
+// A positional operand read as a binding: a bare atom, or a resolved local (a parameter or lexical
+// reference), whose leaf is the local's spelling. A callee bound by a `let` or a lambda arrives as
+// the latter after resolve.
 fn target_transform_positional_operand_binding_atom(child: Node) -> Outcome<Symbol> {
   match child.kind {
     TypeNode { connective: Atom { identity: id } } => outcome_accepted(id)
     _ =>
-      outcome_rejected(
-        target_value_expr_diagnostic(
-          reason: ^target_value_expr_reason_transform_shape_invalid,
-          node: child
-        )
-      )
+      match target_value_expr_local_reference_leaf(node: child) {
+        Present { value: leaf } => outcome_accepted(leaf)
+        Absent =>
+          outcome_rejected(
+            target_value_expr_diagnostic(
+              reason: ^target_value_expr_reason_transform_shape_invalid,
+              node: child
+            )
+          )
+      }
   }
 }
 
@@ -14068,6 +14078,7 @@ fn target_value_expr_arrow_has_value_expression_body(arrow: Node) -> Bool {
         RecordConstructBody => target_value_expr_arrow_has_value_expression_body_by_kind(arrow: arrow)
         DeclarationReferenceBody => target_value_expr_arrow_has_value_expression_body_by_kind(arrow: arrow)
         ParameterReferenceBody => target_value_expr_arrow_has_value_expression_body_by_kind(arrow: arrow)
+        LexicalReferenceBody => target_value_expr_arrow_has_value_expression_body_by_kind(arrow: arrow)
         ComputationBody { behavior: _ } => target_value_expr_arrow_has_value_expression_body_by_kind(arrow: arrow)
         UnsupportedArrowBody => target_value_expr_arrow_has_value_expression_body_by_kind(arrow: arrow)
       }
@@ -14171,10 +14182,13 @@ fn target_value_expr_arrow_body_scope_binding(
 // that still goes through target_value_expr_arrow_body_scope_binding, the frozen frontier resolve
 // names on its FrameKind carrier (trigger: anonymous Arrows carry an index path, via
 // std.occurrence_identity, so lambda parameters resolve as declaration references too).
-fn target_value_expr_parameter_reference_leaf(node: Node) -> Optional<Symbol> {
+// A LEXICAL REFERENCE REACHES THE PROJECTOR THE SAME WAY: v2.compiler.resolve mints it from a Lexical
+// frame (a `let`, a match arm, a lambda) under its own marker, so its label is a local the projector
+// spells as written, exactly like a parameter's leaf.
+fn target_value_expr_local_reference_leaf(node: Node) -> Optional<Symbol> {
   match parameter_reference_path_optional(node: node) {
     Present { value: path } => qualified_name_last_segment(qn: path)
-    Absent => optional_absent()
+    Absent => lexical_reference_label_optional(node: node)
   }
 }
 
@@ -14184,7 +14198,7 @@ fn target_arrow_scope_operand_binding(
   operand: Node,
   target: TargetModel
 ) -> Outcome<Symbol> {
-  match target_value_expr_parameter_reference_leaf(node: operand) {
+  match target_value_expr_local_reference_leaf(node: operand) {
     Present { value: leaf } => outcome_accepted(leaf)
     Absent =>
       bind_outcome(
@@ -14315,7 +14329,7 @@ fn target_project_callable_arg_in_arrow_scope(
   source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
-  match target_value_expr_parameter_reference_leaf(node: arg) {
+  match target_value_expr_local_reference_leaf(node: arg) {
     Present { value: leaf } => outcome_accepted(target_value_expression_binding_ref(binding: leaf))
     Absent =>
   match arg.kind {
@@ -15370,7 +15384,7 @@ fn target_value_expr_project_body_subexpression(
         handle_transform: handle_transform
       )
     TypeNode { connective: Conj } =>
-      match target_value_expr_parameter_reference_leaf(node: node) {
+      match target_value_expr_local_reference_leaf(node: node) {
         Present { value: leaf } => outcome_accepted(target_value_expression_binding_ref(binding: leaf))
         Absent =>
       if target_value_expr_record_construct_gate(node: node) {
@@ -15651,6 +15665,7 @@ fn target_project_arrow_body_to_value_expression(
         RecordConstructBody => target_project_arrow_body_by_kind(arrow: arrow, body: body, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
         DeclarationReferenceBody => target_project_arrow_body_by_kind(arrow: arrow, body: body, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
         ParameterReferenceBody => target_project_arrow_body_by_kind(arrow: arrow, body: body, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
+        LexicalReferenceBody => target_project_arrow_body_by_kind(arrow: arrow, body: body, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
         ComputationBody { behavior: _ } => target_project_arrow_body_by_kind(arrow: arrow, body: body, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
         UnsupportedArrowBody => target_project_arrow_body_by_kind(arrow: arrow, body: body, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
       }
@@ -15720,7 +15735,7 @@ fn target_project_arrow_body_by_kind(
           handle_transform: handle_transform
         )
       TypeNode { connective: Conj } =>
-        match target_value_expr_parameter_reference_leaf(node: body) {
+        match target_value_expr_local_reference_leaf(node: body) {
           Present { value: leaf } => outcome_accepted(target_value_expression_binding_ref(binding: leaf))
           Absent =>
         if target_value_expr_record_construct_gate(node: body) {

@@ -1,6 +1,6 @@
 module gunbc.model.publication
 
-import std.types { String, Bool, List, NonEmptyStr, Int, Timestamp }
+import std.types { String, Bool, List, NonEmptyStr, Int, Timestamp, brand }
 import std.content_hash { ContentHash, serialize_content_hash }
 import std.nat { Nat }
 import std.measure { TokenCount, ParameterCount }

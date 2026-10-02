@@ -14,7 +14,7 @@ import v2.std.compilers.target_model {
   canonical_operation_wire_matches_operation,
   target_model_canonical_operation_member_declared_type
 }
-import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.resolve { ResolvedTree, resolved_tree_lexical_binding }
 import v2.compiler.inferred_tree {
   DerivedGrounding,
   GroundingNotDerived,
@@ -61,7 +61,7 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, parameter_reference_path_optional }
+import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, lexical_reference_label_optional, parameter_reference_path_optional }
 import v2.std.node_query { BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, declared_field_from_edge }
 import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_lookup }
 import v2.std.node { Ambiguous, Found, NotMarkedReference, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_signature_order_edge, match_arm_pattern_edge, resolved_reference_body_kind }
@@ -904,7 +904,40 @@ fn infer_product_facts_from_entries(
 fn infer_node_facts(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>, resolved: ResolvedTree) -> Outcome<InferredFacts> {
   match parameter_reference_path_optional(node: n) {
     Present { value: path } => infer_parameter_reference_facts(n: n, path: path, index: resolved.resolved_declarations)
-    Absent => infer_term_node_facts(n: n, partials: partials, kinds: kinds, resolved: resolved)
+    Absent =>
+      match lexical_reference_label_optional(node: n) {
+        Present { value: _ } => infer_lexical_reference_facts(n: n, resolved: resolved)
+        Absent => infer_term_node_facts(n: n, partials: partials, kinds: kinds, resolved: resolved)
+      }
+  }
+}
+
+// A LEXICAL BINDER'S REFERENCE IS GROUNDED BY THE BINDING RESOLVE RECORDED FOR IT. v2.compiler.resolve
+// mints it from a Lexical frame and records which binder answered it in ResolvedTree.lexical_bindings,
+// keyed by the reference's occurrence, so infer reads that binding and never searches scope. A binder
+// that declares a type (a lambda parameter's domain edge) grounds to it; one that declares none (a
+// `let` or a pattern binder, which carry no type here) is underived, as before. A reference resolve
+// did not record is the tree disagreeing with the resolver that produced it: refused, located.
+fn infer_lexical_reference_facts(n: Node, resolved: ResolvedTree) -> Outcome<InferredFacts> {
+  match infer_descent_witness_for_node(n: n) {
+    Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+    Holds { value: descent_proof } =>
+      match resolved_tree_lexical_binding(tree: resolved, reference: n) {
+        Present { value: binding } =>
+          match binding.declared {
+            Present { value: declared } =>
+              inferred_facts_from_derived_type(node: n, derived_type: declared, descent: Holds { value: descent_proof })
+            Absent => inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
+          }
+        Absent =>
+          Rejected {
+            diagnostics: diagnostics_singleton(d: Diagnostic {
+              reason: ^infer_reason_lexical_reference_unrecorded,
+              at: node_locus(node: n),
+              correction: Unavailable { reason: UserInputBoundary }
+            })
+          }
+      }
   }
 }
 
@@ -974,19 +1007,10 @@ fn infer_term_node_facts(n: Node, partials: List<Node>, kinds: List<RosterKindIn
                               descent: Holds { value: descent_proof }
                             )
                           Absent =>
-                            match infer_parameter_type_in_scope(tree: resolved.root, reference: n, binding: binding) {
-                              Present { value: domain_ty } =>
-                                inferred_facts_from_derived_type(
-                                  node: n,
-                                  derived_type: domain_ty,
-                                  descent: Holds { value: descent_proof }
-                                )
-                              Absent =>
-                                inferred_facts_not_derived(
-                                  node: n,
-                                  descent: Holds { value: descent_proof }
-                                )
-                            }
+                            inferred_facts_not_derived(
+                              node: n,
+                              descent: Holds { value: descent_proof }
+                            )
                         }
                     }
                   Absent =>
@@ -1173,94 +1197,6 @@ fn infer_atom_binding_sym(node: Node) -> Optional<Symbol> {
   }
 }
 
-fn infer_conj_edge_named_type_for_binding(edge: Edge, binding: Symbol) -> Optional<Node> {
-  match declared_field_from_edge(e: edge) {
-    Present { value: binder } =>
-      if binder.name == binding {
-        optional_present(value: binder.type_node)
-      } else {
-        optional_absent()
-      }
-    Absent => optional_absent()
-  }
-}
-
-fn infer_conj_named_type_for_binding(domain: Node, binding: Symbol) -> Optional<Node> {
-  match domain.kind {
-    TypeNode { connective: Conj } =>
-      fold(domain.children, init: Absent, f: fn(acc, e) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => infer_conj_edge_named_type_for_binding(edge: e, binding: binding)
-        }
-      })
-    _ => Absent
-  }
-}
-
-fn infer_arrow_domain_type_for_binding(arrow: Node, binding: Symbol) -> Optional<Node> {
-  match arrow.kind {
-    TypeNode { connective: Arrow } =>
-      match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
-        Present { value: domain } =>
-          infer_conj_named_type_for_binding(domain: domain, binding: binding)
-        Absent => Absent
-      }
-    _ => Absent
-  }
-}
-
-// A PARAMETER REFERENCE IS BOUND BY THE INNERMOST ENCLOSING ARROW THAT DECLARES IT. The walk this
-// replaces returned the FIRST Arrow anywhere in the tree naming the binding, so in a module declaring
-// `fn positive(x: Int)` and `fn f(x: Pos)` every `x` in f's body grounded as positive's Int: a
-// derived type fabricated from an unrelated declaration, which admitted `x as Int` and refused
-// `x as Pos` for the wrong reason (v2.test.claim.body_cast_node rows 15 and 16). One descent, the
-// same cost as the unscoped walk: it locates the reference OCCURRENCE (Node equality carries the
-// occurrence identity) and each Arrow on the way back up binds it if its domain names it.
-// Consumers: infer_node_facts' parameter arm (the grounding every cast, add, application, branch,
-// match and loop operand reads) and infer_branch_operand_resolved_type_in_tree.
-// FROZEN, LAMBDA PARAMETERS ONLY (neat-boar-16 ruling): no new callers and no new arms. A named fn's
-// parameter no longer reaches this: v2.compiler.resolve mints it as a path-keyed parameter reference
-// and infer_parameter_reference_facts grounds it through the resolved declarations. What still arrives
-// as a bare atom bound by an Arrow's domain is a lambda's parameter, whose anonymous Arrow has no index
-// path. DECLARED FRONTIER, carried on v2.compiler.resolve FrameKind; NEXT TRIGGER, NAMING THE
-// CAPABILITY: anonymous Arrows carry an index path (via std.occurrence_identity), so lambda parameters
-// resolve as declaration references too -- then this search and infer_parameter_type_in_scope are
-// deleted.
-type InferParameterScopeSearch
-  = ParameterReferenceNotHere
-  | ParameterReferenceUnbound
-  | ParameterReferenceBound { declared: Node }
-
-fn infer_parameter_scope_search(root: Node, reference: Node, binding: Symbol) -> InferParameterScopeSearch {
-  if root == reference {
-    ParameterReferenceUnbound
-  } else {
-    match fold(root.children, init: ParameterReferenceNotHere, f: fn(acc, e) {
-      match acc {
-        ParameterReferenceNotHere => infer_parameter_scope_search(root: e.target, reference: reference, binding: binding)
-        _ => acc
-      }
-    }) {
-      ParameterReferenceUnbound =>
-        match infer_arrow_domain_type_for_binding(arrow: root, binding: binding) {
-          Present { value: ty } => ParameterReferenceBound { declared: ty }
-          Absent => ParameterReferenceUnbound
-        }
-      ParameterReferenceBound { declared: ty } => ParameterReferenceBound { declared: ty }
-      ParameterReferenceNotHere => ParameterReferenceNotHere
-    }
-  }
-}
-
-fn infer_parameter_type_in_scope(tree: Node, reference: Node, binding: Symbol) -> Optional<Node> {
-  match infer_parameter_scope_search(root: tree, reference: reference, binding: binding) {
-    ParameterReferenceBound { declared: ty } => Present { value: ty }
-    ParameterReferenceUnbound => Absent
-    ParameterReferenceNotHere => Absent
-  }
-}
-
 // A REFINEMENT DECLARATION, READ FROM A TYPE REFERENCE THROUGH THE AUTHORITY RESOLUTION USED. A
 // resolved reference carries its declaration's qualified path (v2.std.qualified_name
 // declaration_reference_path_optional); the declaration is what v2.std.symbol_index
@@ -1333,10 +1269,10 @@ fn infer_branch_operand_resolved_type_in_tree(
     Accepted { value: literal, diagnostics: _ } =>
       infer_binding_value_type_witness(binding: infer_literal_type_binding(literal: literal), at: node)
     Rejected { diagnostics: _ } =>
-      match infer_atom_binding_sym(node: node) {
+      match resolved_tree_lexical_binding(tree: resolved, reference: node) {
         Present { value: binding } =>
-          match infer_parameter_type_in_scope(tree: resolved.root, reference: node, binding: binding) {
-            Present { value: domain_ty } => Holds { value: domain_ty }
+          match binding.declared {
+            Present { value: declared } => Holds { value: declared }
             Absent => inferred_facts_resolved_type(facts: facts)
           }
         Absent => inferred_facts_resolved_type(facts: facts)
@@ -3333,6 +3269,9 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindI
       match parameter_reference_path_optional(node: n) {
         Present { value: _ } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved)
         Absent =>
+      match lexical_reference_label_optional(node: n) {
+        Present { value: _ } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved)
+        Absent =>
       if infer_type_node_awaits_product_row(kinds: kinds, n: n) {
         infer_gather_fold_acc_ok(
           node: n,
@@ -3346,6 +3285,7 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindI
         )
       } else {
         infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved)
+      }
       }
       }
       }
