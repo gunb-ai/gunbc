@@ -136,8 +136,9 @@ fn type_alias_wrapper(binders: Node, aliased: Node) -> Node {
 
 // `type MachineWidth<bits>` declares binders and no body: Conj { <type-parameters>: Conj { bits: bits } }.
 // Not an empty member: an empty Conj body would assert a record with no fields, a different fact. The
-// binders are carried because a use's arity (`MachineWidth<64>`) is checked against them. THE ONE
-// PRODUCER of the opaque wrapper.
+// binders are carried because a use (`MachineWidth<64>`) is checked against them -- arity and kind --
+// by type_application_conformance at v2.compiler.resolve resolve_type_application. Until that consumer
+// landed this sentence claimed a check nothing performed. THE ONE PRODUCER of the opaque wrapper.
 fn type_opaque_wrapper(binders: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },

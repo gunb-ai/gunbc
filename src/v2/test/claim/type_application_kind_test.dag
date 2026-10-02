@@ -11,6 +11,9 @@ import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.logic { Bool }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.node { Atom, Authored, BinderTypeEdge, Conj, Edge, Node, Symbol, TypeNode, core_edge }
+import v2.std.type_binder { ArgumentLiteralUnjudged, ArgumentOutsideKind, TypeApplicationArityMismatch, TypeApplicationConforms, type_application_conformance }
 
 // A TYPE APPLICATION AGAINST ITS DECLARATION'S BINDERS (v2.std.type_binder type_application_conformance,
 // consumed by v2.compiler.resolve resolve_type_application). Each specimen is one inline source over the
@@ -93,4 +96,39 @@ test fn tak_application_with_more_arguments_than_binders_refuses() -> Bool {
 
 test fn tak_application_of_a_non_generic_declaration_refuses() -> Bool {
   tak_refuses_with(o: tak_arity_nongeneric(), reason: ^resolve_reason_type_application_arity_mismatch)
+}
+
+// THE VERDICT AT ITS OWN INTERFACE, over supplied binders and a supplied judgment (DESIGN section 3: a
+// witness discriminates at one interface; the specimens above are this boundary's inhabitance claims on
+// the real route). A literal is counted as unjudged rather than credited as inhabiting the kind -- the
+// honesty std.machine_constraints machine_width_literal_roster_frontier records -- and an arity mismatch
+// is decided before any kind is judged.
+fn tak_atom(id: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: id } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn tak_kinded_binders() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [Edge {
+      label: Authored { name: ^bits },
+      target: Node { kind: TypeNode { connective: Atom { identity: ^bits } }, children: [core_edge(marker: BinderTypeEdge, target: tak_atom(id: ^Resolution))], occurrence_id: OccurrenceSynthetic }
+    }],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+
+test fn tak_literal_argument_is_counted_unjudged() -> Bool {
+  match type_application_conformance(binders: tak_kinded_binders(), arguments: [tak_atom(id: ^eight)], inhabits: fn(a, k) { ArgumentLiteralUnjudged }) {
+    TypeApplicationConforms { literals_unjudged: n, type_parameters_unjudged: p } => (n == 1) && (p == 0)
+    _ => false
+  }
+}
+
+test fn tak_arity_is_decided_before_kind() -> Bool {
+  match type_application_conformance(binders: tak_kinded_binders(), arguments: [tak_atom(id: ^a), tak_atom(id: ^b)], inhabits: fn(a, k) { ArgumentOutsideKind }) {
+    TypeApplicationArityMismatch { declared: d, supplied: s } => (d == 1) && (s == 2)
+    _ => false
+  }
 }
