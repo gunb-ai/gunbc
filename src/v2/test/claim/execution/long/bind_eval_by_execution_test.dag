@@ -62,7 +62,7 @@ import v2.std.node {
   ComputationNode,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -275,8 +275,8 @@ fn bind_tree_root(call: Node, expected: Node) -> Node {
     kind: TypeNode { connective: Conj },
     occurrence_id: OccurrenceSynthetic,
     children: [
-      Edge { label: Named { name: ^bind_actual }, target: call },
-      Edge { label: Named { name: ^bind_expected }, target: expected }
+      Edge { label: Authored { name: ^bind_actual }, target: call },
+      Edge { label: Authored { name: ^bind_expected }, target: expected }
     ]
   }
 }

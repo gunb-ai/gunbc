@@ -12,12 +12,14 @@ import v2.std.node {
   ComputationNode,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
   TypeNode,
-  node_synthetic
+  node_synthetic,
+  ArrowBodyEdge,
+  core_edge,
 }
 import v2.std.compilers.target_model {
   ProducedDeclUnwired,
@@ -48,7 +50,7 @@ fn probe_atom(id: Symbol) -> Node {
 }
 
 fn probe_named(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn probe_positional(target: Node) -> Edge {
@@ -77,7 +79,7 @@ fn probe_fn(param: Symbol, body: Node) -> Node {
       signature.domain,
       probe_positional(target: probe_atom(id: ^fold_call_type_int)),
       signature.order,
-      probe_named(name: ^arrow_body_edge, target: body)
+      core_edge(marker: ArrowBodyEdge, target: body)
     ]
   )
 }

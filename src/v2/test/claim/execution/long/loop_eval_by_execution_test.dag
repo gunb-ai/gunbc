@@ -67,7 +67,7 @@ import v2.std.node {
   Conj,
   Edge,
   Loop,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -287,8 +287,8 @@ fn loop_tree_root(call: Node, expected: Node) -> Node {
     kind: TypeNode { connective: Conj },
     occurrence_id: OccurrenceSynthetic,
     children: [
-      Edge { label: Named { name: ^loop_actual }, target: call },
-      Edge { label: Named { name: ^loop_expected }, target: expected }
+      Edge { label: Authored { name: ^loop_actual }, target: call },
+      Edge { label: Authored { name: ^loop_expected }, target: expected }
     ]
   }
 }

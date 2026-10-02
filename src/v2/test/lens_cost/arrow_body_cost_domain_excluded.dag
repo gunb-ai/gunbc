@@ -11,12 +11,14 @@ import v2.std.node {
   ComputationNode,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
   Transform,
   TypeNode,
+  ArrowBodyEdge,
+  core_edge_label,
 }
 import v2.std.witness { Holds }
 
@@ -63,7 +65,7 @@ fn arrow_body_cost_arrow() -> Node {
       }
     },
     signature.order,
-    Edge { label: Named { name: ^arrow_body_edge }, target: arrow_body_cost_body }
+    Edge { label: core_edge_label(marker: ArrowBodyEdge), target: arrow_body_cost_body }
   ],
   occurrence_id: OccurrenceSynthetic
   }

@@ -26,7 +26,7 @@ import v2.std.node {
   ComputationNode,
   Arrow,
   Found,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,

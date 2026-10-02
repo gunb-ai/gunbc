@@ -4,7 +4,7 @@ module v2.test.lens_application.serialize_applied_diff_swap_operands
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data serialize_loop_body_edit: Edit = Edit {
-  at: Path { steps: [^arrow_body_edge] },
+  at: Path { steps: [core_edge_label(marker: ArrowBodyEdge)] },
   replacement: dag_loop_body_wrong_value_node()
 }
 

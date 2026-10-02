@@ -28,12 +28,14 @@ import v2.std.node {
   Conj,
   Edge,
   Instantiation,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
   TypeNode,
-  node_synthetic
+  node_synthetic,
+  ArrowBodyEdge,
+  core_edge_label,
 }
 
 // WHAT THIS FILE ESTABLISHES: a fn's body is judged at its declared return. v2.compiler.infer
@@ -85,7 +87,7 @@ fn dr_arrow(return_type: Node, body: Node) -> Node {
       Edge { label: Positional, target: return_type },
       Edge { label: Positional, target: return_type },
       signature.order,
-      Edge { label: Named { name: ^arrow_body_edge }, target: body }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body }
     ]
   )
 }
@@ -100,7 +102,7 @@ fn dr_generic_arrow(type_param: Symbol, return_type: Node, body: Node) -> Node {
         conj: node_synthetic(
           kind: TypeNode { connective: Conj },
           children: [
-            Edge { label: Named { name: type_param }, target: dag_type_atom_node(identity: type_param) }
+            Edge { label: Authored { name: type_param }, target: dag_type_atom_node(identity: type_param) }
           ]
         )
       )

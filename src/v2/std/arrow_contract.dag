@@ -8,21 +8,25 @@ import v2.std.node {
   Conj,
   Edge,
   Found,
-  Named,
+  Authored,
+  ArrowEffectClaimsEdge,
+  ArrowExecutionModeClaimEdge,
+  ArrowResourceRequirementsEdge,
   Node,
   Positional,
+  StructuralLabel,
   Symbol,
   TypeNode,
   all_names_distinct,
-  named_edge_target_lookup,
+  core_edge_target_lookup,
   symbol_intern_lexeme
 }
 
 // THE VOCABULARY OF AN ARROW'S CONTRACT EDGES (the resource-requirements edge's vocabulary is the open
 // set of declared resources, checked at resolution; see arrow_resource_requirements_edge_target_reads) (XL-2 PR2a; docs/plans/arrow-contract-edges.md).
 // v2.std.node owns the edges' structure (at most one each, never a binder). This module checks their
-// TARGETS against the vocabularies' homes: std.effects EffectClaim for ^arrow_effect_claims_edge and
-// std.execution_mode ExecutionMode for ^arrow_execution_mode_claim_edge. Each label is the PROJECTION
+// TARGETS against the vocabularies' homes: std.effects EffectClaim for ArrowEffectClaimsEdge and
+// std.execution_mode ExecutionMode for ArrowExecutionModeClaimEdge. Each label is the PROJECTION
 // of one home variant, spelled once below as an exhaustive match, so a variant added to a home cannot
 // be lowered or admitted without a spelling here. The spelling is the surface keyword the grammar
 // admits (v2.extdeps.languages.dag dag_grammar_op_modifier_expr), so lowering and this check agree.
@@ -78,7 +82,8 @@ fn arrow_contract_atom_is_self_named(label: Symbol, target: Node) -> Bool {
 fn arrow_effect_claim_edge_conforms(e: Edge) -> Bool {
   match e.label {
     Positional => false
-    Named { name: sym } => effect_claim_label_is_admitted(label: sym) && arrow_contract_atom_is_self_named(label: sym, target: e.target)
+    StructuralLabel { label: _ } => false
+    Authored { name: sym } => effect_claim_label_is_admitted(label: sym) && arrow_contract_atom_is_self_named(label: sym, target: e.target)
   }
 }
 
@@ -119,7 +124,7 @@ fn arrow_contract_conforms(children: List<Edge>) -> Bool {
 // member names a declared resource, and whether two spellings name one, are facts of resolution
 // (v2.compiler.resolve), not of this pre-resolve wall.
 fn arrow_resource_requirements_edge_target_reads(children: List<Edge>) -> Bool {
-  match named_edge_target_lookup(children: children, name: ^arrow_resource_requirements_edge) {
+  match core_edge_target_lookup(children: children, marker: ArrowResourceRequirementsEdge) {
     Found { target: requirements } =>
       match requirements.kind {
         TypeNode { connective: Conj } => count(requirements.children) > 0
@@ -132,14 +137,14 @@ fn arrow_resource_requirements_edge_target_reads(children: List<Edge>) -> Bool {
 }
 
 fn arrow_effect_claims_edge_target_reads(children: List<Edge>) -> Bool {
-  match named_edge_target_lookup(children: children, name: ^arrow_effect_claims_edge) {
+  match core_edge_target_lookup(children: children, marker: ArrowEffectClaimsEdge) {
     Found { target: claims } => arrow_effect_claims_target_conforms(claims: claims)
     _ => true
   }
 }
 
 fn arrow_execution_mode_edge_target_reads(children: List<Edge>) -> Bool {
-  match named_edge_target_lookup(children: children, name: ^arrow_execution_mode_claim_edge) {
+  match core_edge_target_lookup(children: children, marker: ArrowExecutionModeClaimEdge) {
     Found { target: mode } => arrow_execution_mode_claim_target_conforms(mode: mode)
     _ => true
   }

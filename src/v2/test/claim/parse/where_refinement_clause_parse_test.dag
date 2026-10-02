@@ -8,11 +8,12 @@ import v2.extdeps.languages.dag {
   dag_lex,
   parse_subtree_find_production_captured,
   ParseSubtreeAbsent,
-  ParseSubtreeFound
+  ParseSubtreeFound,
+  dag_surface_edge_is,
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Edge, Named, Node, Positional, symbol_lexeme }
+import v2.std.node { Edge, Authored, Node, Positional, symbol_lexeme, StructuralLabel }
 import v2.std.optional { Absent, Optional, Present }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 
@@ -69,10 +70,7 @@ fn where_refinement_tree_carries_clause(root: Node) -> Bool {
 }
 
 fn where_refinement_edge_names_clause(e: Edge) -> Bool {
-  match e.label {
-    Named { name: n } => n == ^dag_surface_where_refinement_clause
-    _ => false
-  }
+  dag_surface_edge_is(e: e, edge: ^dag_surface_where_refinement_clause)
 }
 
 fn where_refinement_find_host_conj(root: Node) -> Optional<Node> {
@@ -92,7 +90,8 @@ fn where_refinement_find_host_conj(root: Node) -> Optional<Node> {
 
 fn where_refinement_edge_label_text(e: Edge) -> String {
   match e.label {
-    Named { name: n } => symbol_lexeme(sym: n)
+    StructuralLabel { label: _ } => "structural"
+    Authored { name: n } => symbol_lexeme(sym: n)
     Positional => "positional"
   }
 }

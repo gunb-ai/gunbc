@@ -40,6 +40,7 @@ import v2.std.node {
   TypeNode,
   well_formed,
   symbol_lexeme,
+  Authored,
 }
 import v2.std.node_query { find_arrow_body_child }
 
@@ -434,7 +435,7 @@ fn body_lowering_domain_named_count(arrow: Node) -> Int {
       Present { value: e0 } =>
         fold(e0.target.children, init: 0, f: fn(n, e) {
           match e.label {
-            Named { name: _ } => n + 1
+            Authored { name: _ } => n + 1
             _ => n
           }
         })
@@ -491,9 +492,9 @@ fn body_lowering_normalized_operands_swapped() -> Bool {
                             match list_at_optional(xs: e0.target.children, index: 1) {
                               Present { value: de1 } =>
                                 match de0.label {
-                                  Named { name: bind0 } =>
+                                  Authored { name: bind0 } =>
                                     match de1.label {
-                                      Named { name: bind1 } =>
+                                      Authored { name: bind1 } =>
                                         (left == bind1) && (right == bind0)
                                       _ => false
                                     }
@@ -548,7 +549,7 @@ test fn body_lowering_domain_operand2_match() -> Bool {
                 match list_at_optional(xs: e0.target.children, index: 1) {
                   Present { value: de1 } =>
                     match de1.label {
-                      Named { name: domain_binding } =>
+                      Authored { name: domain_binding } =>
                         match body_lower_arrow_operand_identity(arrow: arrow, index: 2) {
                           Present { value: operand } => domain_binding == operand
                           Absent => false
@@ -575,7 +576,7 @@ fn body_lower_arrow_domain_first_binding(arrow: Node) -> Optional<Symbol> {
             Present { value: _ } => found
             Absent =>
               match e.label {
-                Named { name: sym } => Present { value: sym }
+                Authored { name: sym } => Present { value: sym }
                 _ => optional_absent()
               }
           }

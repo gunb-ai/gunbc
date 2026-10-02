@@ -7,7 +7,7 @@ import extdeps.languages.rust.emit { rust_enum_derives, rust_struct_derives }
 import std.algebra { Empty }
 import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
-import v2.std.node { Atom, Conj, Disj, Edge, Named, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Conj, Disj, Edge, Authored, Node, Symbol, TypeNode }
 import extdeps.communication.medium { Medium }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -36,7 +36,7 @@ fn sdrg_record(edges: List<Edge>) -> Node {
 }
 
 fn sdrg_variant_edge(name: Symbol, payload: Node) -> Edge {
-  Edge { label: Named { name: name }, target: payload }
+  Edge { label: Authored { name: name }, target: payload }
 }
 
 fn semantic_witness_coproduct() -> Node {

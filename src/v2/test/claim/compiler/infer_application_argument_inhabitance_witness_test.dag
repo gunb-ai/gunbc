@@ -35,7 +35,7 @@ import v2.std.node {
   Conj,
   Edge,
   Instantiation,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -119,7 +119,7 @@ fn inhabitance_generic_formal_tree() -> Node {
                 kind: TypeNode { connective: Conj },
                 children: [
                   Edge {
-                    label: Named { name: ^inhabitance_type_param_t },
+                    label: Authored { name: ^inhabitance_type_param_t },
                     target: dag_type_atom_node(identity: ^inhabitance_type_param_t)
                   }
                 ]

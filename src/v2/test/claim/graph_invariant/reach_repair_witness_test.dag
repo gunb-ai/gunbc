@@ -39,13 +39,15 @@ import v2.std.node {
   Path,
   Symbol,
   TypeNode,
+  ArrowBodyEdge,
+  core_edge_label,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data reach_repair_surgical_body_edit: Edit = Edit {
-  at: Path { steps: [^arrow_body_edge] },
+  at: Path { steps: [core_edge_label(marker: ArrowBodyEdge)] },
   replacement: dag_loop_body_node()
 }
 

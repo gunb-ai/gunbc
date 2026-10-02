@@ -10,13 +10,18 @@ import v2.std.node {
   Arrow,
   Atom,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
   TypeNode,
   canonicalize_node_for_content_hash,
-  node_synthetic
+  node_synthetic,
+  ArrowBodyEdge,
+  core_edge_label,
+  ArrowSignatureOrderEdge,
+  edge_is_core,
+  StructuralLabel,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -55,7 +60,7 @@ fn ipo_item() -> Node {
       sig.domain,
       Edge { label: Positional, target: ipo_atom(id: ^ipo_int) },
       sig.order,
-      Edge { label: Named { name: ^arrow_body_edge }, target: ipo_atom(id: ^ipo_z) }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: ipo_atom(id: ^ipo_z) }
     ]
   )
 }
@@ -68,13 +73,14 @@ type IpoDomainWalk {
 fn ipo_canonical_domain(arrow: Node) -> Node {
   let seen = fold(arrow.children, init: IpoDomainWalk { done: false, edges: [] }, f: fn(acc, e) {
     match e.label {
+      StructuralLabel { label: _ } => IpoDomainWalk { done: acc.done, edges: concat(acc.edges, [e]) }
       Positional =>
         if acc.done {
           IpoDomainWalk { done: true, edges: concat(acc.edges, [e]) }
         } else {
           IpoDomainWalk { done: true, edges: concat(acc.edges, [Edge { label: Positional, target: canonicalize_node_for_content_hash(n: e.target) }]) }
         }
-      Named { name: _ } => IpoDomainWalk { done: acc.done, edges: concat(acc.edges, [e]) }
+      Authored { name: _ } => IpoDomainWalk { done: acc.done, edges: concat(acc.edges, [e]) }
     }
   })
   Node { kind: arrow.kind, children: seen.edges, occurrence_id: arrow.occurrence_id }
@@ -84,10 +90,7 @@ fn ipo_without_order(arrow: Node) -> Node {
   Node {
     kind: arrow.kind,
     children: fold(arrow.children, init: [], f: fn(acc, e) {
-      match e.label {
-        Named { name: sym } => if sym == ^arrow_signature_order_edge { acc } else { concat(acc, [e]) }
-        Positional => concat(acc, [e])
-      }
+      if edge_is_core(e: e, marker: ArrowSignatureOrderEdge) { acc } else { concat(acc, [e]) }
     }),
     occurrence_id: arrow.occurrence_id
   }
@@ -98,7 +101,8 @@ fn ipo_without_order(arrow: Node) -> Node {
 fn ipo_param_symbols(params: List<Edge>) -> List<Symbol> {
   fold(params, init: [], f: fn(acc, e) {
     let name = match e.label {
-      Named { name: n } => n
+      StructuralLabel { label: _ } => ^ipo_structural
+      Authored { name: n } => n
       Positional => ^ipo_positional
     }
     let ty = match e.target.kind {

@@ -14,7 +14,7 @@ import v2.std.dependency {
   DependencyView,
   ResourceDependsOn
 }
-import v2.std.node { Atom, Edge, Named, Node, TypeNode }
+import v2.std.node { Atom, Edge, Authored, Node, TypeNode }
 import v2.std.witness { Violates, Witness }
 import v2.test.lens_common.infer_fixture {
   claim_atom_node,
@@ -27,7 +27,7 @@ data ownership_child: Node = claim_atom_node(s: ^ownership_child_symbol)
 data ownership_root: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^ownership_root_symbol } },
   children: [
-    Edge { label: Named { name: ^ownership_edge_symbol }, target: ownership_child }
+    Edge { label: Authored { name: ^ownership_edge_symbol }, target: ownership_child }
   ],
   occurrence_id: OccurrenceSynthetic
 }

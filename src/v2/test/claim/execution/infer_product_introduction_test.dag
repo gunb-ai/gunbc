@@ -25,11 +25,13 @@ import v2.std.integer { Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.type_binder { node_inferred_subtree_nodes }
 import v2.std.node {
+  StructuralLabel,
+  label_sort_key,
   Arrow,
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   TypeNode,
@@ -128,9 +130,9 @@ fn params_conj_children_match(children: List<Edge>) -> Bool {
           match list_at_optional(xs: children, index: 2) {
             Absent =>
               match first.label {
-                Named { name: a } =>
+                Authored { name: a } =>
                   match second.label {
-                    Named { name: b } => (a == ^x) && (b == ^y)
+                    Authored { name: b } => (a == ^x) && (b == ^y)
                     _ => false
                   }
                 _ => false
@@ -255,7 +257,8 @@ fn product_introduction_last_atom_step(acc: String, m: Node) -> String {
 
 fn product_introduction_edge_name(e: Edge) -> String {
   match e.label {
-    Named { name: l } => symbol_lexeme(sym: l) + "=" + product_introduction_last_atom(n: e.target)
+    Authored { name: l } => symbol_lexeme(sym: l) + "=" + product_introduction_last_atom(n: e.target)
+    StructuralLabel { label: _ } => symbol_lexeme(sym: label_sort_key(label: e.label)) + "=" + product_introduction_last_atom(n: e.target)
     Positional => "#=" + product_introduction_last_atom(n: e.target)
   }
 }
@@ -352,8 +355,8 @@ test fn product_introduction_leaves_partially_evidenced_conj_on_the_frontier_hol
   let partial = Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^derived_field }, target: derived_child },
-      Edge { label: Named { name: ^frontier_field }, target: frontier_child }
+      Edge { label: Authored { name: ^derived_field }, target: derived_child },
+      Edge { label: Authored { name: ^frontier_field }, target: frontier_child }
     ],
     occurrence_id: OccurrenceSynthetic
   }

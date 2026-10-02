@@ -16,10 +16,10 @@ import v2.std.node {
   Node,
   Symbol,
   TypeNode,
-  match_arm_body,
-  match_arm_pattern
+  MatchArmBodyEdge,
+  MatchArmPatternEdge,
 }
-import v2.std.node_query { find_named_child, node_positional_child_targets }
+import v2.std.node_query { node_positional_child_targets, find_core_child }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.extdeps.languages.dag {
   dag_match_arm_node,
@@ -122,9 +122,9 @@ fn classify_planted_arm(
   scrutinee_closed_total: Bool,
   interim_declared: Bool
 ) -> FallbackArmClass {
-  match find_named_child(root: arm, name: match_arm_pattern) {
+  match find_core_child(root: arm, marker: MatchArmPatternEdge) {
     Accepted { value: pat_node, diagnostics: _ } =>
-      match find_named_child(root: arm, name: match_arm_body) {
+      match find_core_child(root: arm, marker: MatchArmBodyEdge) {
         Accepted { value: body_node, diagnostics: _ } =>
           classify_fallback_arm(
             input: FallbackArmClassifyInput {

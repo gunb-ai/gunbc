@@ -11,13 +11,18 @@ import v2.std.node {
   Arrow,
   Atom,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
   TypeNode,
   canonicalize_node_for_content_hash,
-  node_synthetic
+  node_synthetic,
+  ArrowBodyEdge,
+  core_edge_label,
+  ArrowSignatureOrderEdge,
+  edge_is_core,
+  StructuralLabel,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -53,7 +58,7 @@ fn rcp_closure() -> Node {
       Edge { label: Positional, target: rcp_atom(id: ^rcp_int) },
       Edge { label: Positional, target: rcp_atom(id: ^rcp_int) },
       sig.order,
-      Edge { label: Named { name: ^arrow_body_edge }, target: rcp_atom(id: ^rcp_z) }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: rcp_atom(id: ^rcp_z) }
     ]
   )
 }
@@ -66,13 +71,14 @@ type RcpDomainWalk {
 fn rcp_canonical_domain(arrow: Node) -> Node {
   let seen = fold(arrow.children, init: RcpDomainWalk { done: false, edges: [] }, f: fn(acc, e) {
     match e.label {
+      StructuralLabel { label: _ } => RcpDomainWalk { done: acc.done, edges: concat(acc.edges, [e]) }
       Positional =>
         if acc.done {
           RcpDomainWalk { done: true, edges: concat(acc.edges, [e]) }
         } else {
           RcpDomainWalk { done: true, edges: concat(acc.edges, [Edge { label: Positional, target: canonicalize_node_for_content_hash(n: e.target) }]) }
         }
-      Named { name: _ } => RcpDomainWalk { done: acc.done, edges: concat(acc.edges, [e]) }
+      Authored { name: _ } => RcpDomainWalk { done: acc.done, edges: concat(acc.edges, [e]) }
     }
   })
   Node { kind: arrow.kind, children: seen.edges, occurrence_id: arrow.occurrence_id }
@@ -82,10 +88,7 @@ fn rcp_without_order(arrow: Node) -> Node {
   Node {
     kind: arrow.kind,
     children: fold(arrow.children, init: [], f: fn(acc, e) {
-      match e.label {
-        Named { name: sym } => if sym == ^arrow_signature_order_edge { acc } else { concat(acc, [e]) }
-        Positional => concat(acc, [e])
-      }
+      if edge_is_core(e: e, marker: ArrowSignatureOrderEdge) { acc } else { concat(acc, [e]) }
     }),
     occurrence_id: arrow.occurrence_id
   }

@@ -33,7 +33,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // A QUALIFIED CONSTRUCTOR IS THE SAME CONSTRUCT AS ITS UNQUALIFIED SPELLING, BY IDENTITY.
 //
-// The subject is the construct's tag (v2.std.node construct_tag_marker): a record construction, a
+// The subject is the construct's tag (v2.std.node CoreEdgeLabel ConstructTagEdge): a record construction, a
 // fielded constructor pattern and a nullary constructor value each carry the constructor as a
 // REFERENCE -- the authored path before resolution, a declaration reference after it -- so
 // `v2.test.qcp.QcRow { n: true }` and an imported `QcRow { n: true }` resolve to one node, and the

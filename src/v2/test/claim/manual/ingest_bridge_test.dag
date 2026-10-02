@@ -49,7 +49,7 @@ import v2.std.diagnostic { Accepted, None, Outcome, Rejected, diagnostics_fatal_
 import v2.std.node {
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Symbol,
   TypeNode,
@@ -117,9 +117,9 @@ fn ingest_fixture_row_node(emitted: Node, spine_class: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^grammar_relation_field_emitted }, target: emitted },
+      Edge { label: Authored { name: ^grammar_relation_field_emitted }, target: emitted },
       Edge {
-        label: Named { name: ^grammar_relation_field_tokens },
+        label: Authored { name: ^grammar_relation_field_tokens },
         target: grammar_relation_tokens_node(
           tokens: Cons { head: spine_class, tail: Empty },
           token_to_node: grammar_concrete_fixed_token_node
@@ -134,10 +134,10 @@ fn ingest_fixture_bundle_with_rules(rules: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^target_model_edge_selection_policy }, target: dag_selection_policy_node() },
-      Edge { label: Named { name: ^target_model_edge_declared_inhabitants }, target: dag_declared_inhabitants_root() },
-      Edge { label: Named { name: ^target_model_edge_translation_rules }, target: rules },
-      Edge { label: Named { name: ^target_model_edge_fidelity_quotient }, target: dag_fidelity_quotient_node() }
+      Edge { label: Authored { name: ^target_model_edge_selection_policy }, target: dag_selection_policy_node() },
+      Edge { label: Authored { name: ^target_model_edge_declared_inhabitants }, target: dag_declared_inhabitants_root() },
+      Edge { label: Authored { name: ^target_model_edge_translation_rules }, target: rules },
+      Edge { label: Authored { name: ^target_model_edge_fidelity_quotient }, target: dag_fidelity_quotient_node() }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -159,7 +159,7 @@ fn ingest_fixture_model(emitted: Node, spine_class: Symbol) -> TargetModel {
   let rules = Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^ingest_fixture_rule }, target: ingest_fixture_row_node(emitted: emitted, spine_class: spine_class) }
+      Edge { label: Authored { name: ^ingest_fixture_rule }, target: ingest_fixture_row_node(emitted: emitted, spine_class: spine_class) }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -170,8 +170,8 @@ fn ingest_fixture_model_ambiguous(emitted: Node, spine_class: Symbol) -> TargetM
   let rules = Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^ingest_fixture_rule }, target: ingest_fixture_row_node(emitted: emitted, spine_class: spine_class) },
-      Edge { label: Named { name: ^ingest_fixture_rule_alt }, target: ingest_fixture_row_node(emitted: emitted, spine_class: spine_class) }
+      Edge { label: Authored { name: ^ingest_fixture_rule }, target: ingest_fixture_row_node(emitted: emitted, spine_class: spine_class) },
+      Edge { label: Authored { name: ^ingest_fixture_rule_alt }, target: ingest_fixture_row_node(emitted: emitted, spine_class: spine_class) }
     ],
     occurrence_id: OccurrenceSynthetic
   }

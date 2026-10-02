@@ -12,7 +12,7 @@ import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { ParseSubtreeAbsent, ParseSubtreeFound, dag_language_model }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Atom, Edge, Named, Node, Symbol, TypeNode, node_synthetic }
+import v2.std.node { Atom, Edge, Authored, Node, Symbol, TypeNode, node_synthetic }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.algebra { list_snoc_item }
 
@@ -68,7 +68,7 @@ fn psr_first_slot(shell: Node) -> Optional<Node> {
               Present { value: _ } => acc
               Absent =>
                 match e.label {
-                  Named { name: n } => if n == ^grammar_sequence_left_node_projection { optional_present(value: e.target) } else { acc }
+                  Authored { name: n } => if n == ^grammar_sequence_left_node_projection { optional_present(value: e.target) } else { acc }
                   _ => acc
                 }
             }

@@ -24,7 +24,7 @@ import std.algebra { Empty }
 import v2.std.algebra { fold_list, length, list_snoc_item }
 import v2.std.collection { List, Map, map_lookup }
 import v2.std.optional { Absent, Present }
-import v2.std.node { Atom, Conj, Edge, Named, Node, TypeNode, node_with_occurrence_id, symbol_intern_lexeme }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, TypeNode, node_with_occurrence_id, symbol_intern_lexeme }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { GrammarProduction, GrammarRoot, grammar_atom, grammar_expr_terminal_lexeme }
@@ -181,8 +181,8 @@ fn planted_unreadable_fn_decl() -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^grammar_production_identity_node_projection }, target: grammar_atom(identity: ^dag_surface_fn_decl) },
-      Edge { label: Named { name: ^grammar_production_captured_node_projection }, target: grammar_atom(identity: ^occurrence_role_planted_not_a_spine) }
+      Edge { label: Authored { name: ^grammar_production_identity_node_projection }, target: grammar_atom(identity: ^dag_surface_fn_decl) },
+      Edge { label: Authored { name: ^grammar_production_captured_node_projection }, target: grammar_atom(identity: ^occurrence_role_planted_not_a_spine) }
     ],
     occurrence_id: OccurrenceSynthetic
   )

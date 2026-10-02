@@ -21,7 +21,7 @@ import v2.std.integer { integer_int_type_node }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { bool_node }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.node { Arrow, Edge, Named, Node, Positional, Symbol, TypeNode, node_subtree_nodes }
+import v2.std.node { Arrow, Edge, Authored, StructuralLabel, Node, Positional, Symbol, TypeNode, node_subtree_nodes }
 import v2.std.node_query { construct_field_edges, construct_tag_optional, find_named_child }
 import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_from_dotted_string, qualified_name_to_dotted_string }
 import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
@@ -196,7 +196,8 @@ fn rcf_construct_field_value(resolved: Outcome<ResolvedTree>, field: Symbol) -> 
           Present { value: _ } =>
             fold(construct_field_edges(n: n), init: acc, f: fn(inner, e) {
               match e.label {
-                Named { name: label } => if label == field { optional_present(value: e.target) } else { inner }
+                Authored { name: label } => if label == field { optional_present(value: e.target) } else { inner }
+                StructuralLabel { label: _ } => inner
                 Positional => inner
               }
             })
@@ -272,7 +273,7 @@ fn rcf_member_arrow(root: Node, name: Symbol) -> Optional<Node> {
       Absent =>
         fold(n.children, init: acc, f: fn(inner, e) {
           match e.label {
-            Named { name: label } =>
+            Authored { name: label } =>
               if label == name {
                 match e.target.kind {
                   TypeNode { connective: Arrow } => optional_present(value: e.target)
@@ -281,6 +282,7 @@ fn rcf_member_arrow(root: Node, name: Symbol) -> Optional<Node> {
               } else {
                 inner
               }
+            StructuralLabel { label: _ } => inner
             Positional => inner
           }
         })

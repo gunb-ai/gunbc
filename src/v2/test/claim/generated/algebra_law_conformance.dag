@@ -6,7 +6,7 @@ import v2.lens.testgen {
 }
 import v2.std.algebra { length }
 import v2.std.collection { List }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode }
 import v2.std.nat {
   Nat,
   Succ,
@@ -38,8 +38,8 @@ fn algebra_law_generated_nat_value(value: v2.std.nat.Nat) -> Node {
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge { label: Named { name: ^algebra_law_generated_operation_field }, target: algebra_law_generated_atom(s: ^algebra_law_generated_nat_succ_constructor) },
-          Edge { label: Named { name: ^algebra_law_generated_nat_prev_field }, target: algebra_law_generated_nat_value(value: p) },
+          Edge { label: Authored { name: ^algebra_law_generated_operation_field }, target: algebra_law_generated_atom(s: ^algebra_law_generated_nat_succ_constructor) },
+          Edge { label: Authored { name: ^algebra_law_generated_nat_prev_field }, target: algebra_law_generated_nat_value(value: p) },
         ],
         occurrence_id: OccurrenceSynthetic
 }
@@ -50,10 +50,10 @@ fn algebra_law_generated_binary(operation: Symbol, left: Node, right: Node, resu
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^algebra_law_generated_operation_field }, target: algebra_law_generated_atom(s: operation) },
-      Edge { label: Named { name: ^algebra_law_generated_left_field }, target: left },
-      Edge { label: Named { name: ^algebra_law_generated_right_field }, target: right },
-      Edge { label: Named { name: ^algebra_law_generated_result_field }, target: algebra_law_generated_nat_value(value: result) },
+      Edge { label: Authored { name: ^algebra_law_generated_operation_field }, target: algebra_law_generated_atom(s: operation) },
+      Edge { label: Authored { name: ^algebra_law_generated_left_field }, target: left },
+      Edge { label: Authored { name: ^algebra_law_generated_right_field }, target: right },
+      Edge { label: Authored { name: ^algebra_law_generated_result_field }, target: algebra_law_generated_nat_value(value: result) },
     ],
     occurrence_id: OccurrenceSynthetic
 }

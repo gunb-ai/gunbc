@@ -82,7 +82,7 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -503,7 +503,7 @@ fn java_void_declared_inhabitant_node() -> Node {
 }
 
 fn java_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn java_declared_inhabitants_root() -> Node {

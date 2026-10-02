@@ -58,10 +58,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // claims run source text through the production front end into infer and read the same verdict
 // where a program reaches it: a declared return and a record field.
 //
-// THE ROUTE CLAIMS NEED OPTIONAL TYPES TO REACH THEIR JUDGMENTS AT ALL. Until gunbc#12777 a program
-// mentioning `T?` was refused for descent before any declared-type judgment was asked (measured on
-// main and on gunbc#12566: infer_descent_not_derived), so this module's route claims execute only on
-// a tree that carries that change.
+// THE ROUTE CLAIMS NEED OPTIONAL TYPES TO REACH THEIR JUDGMENTS AT ALL. Before the descent fix that
+// landed with this witness (gunbc#12806, which carried gunbc#12777: v2.std.cardinality
+// connective_multiplicity answers Bounded for Cardinality) a program mentioning `T?` was refused for
+// descent before any declared-type judgment was asked (infer_descent_not_derived). The route claims
+// are therefore also that fix's real-route evidence.
 //
 // A DIRECT-CALL ARGUMENT IS NOT A ROUTE RED YET: a named call's callee is a declaration reference
 // infer does not type by its declaration (gunbc#12506), so its formals are unresolved whatever is
