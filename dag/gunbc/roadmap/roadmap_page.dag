@@ -3,7 +3,7 @@ module gunbc.roadmap_page
 import gunbc.site.robot_mark { robot_mark_svg }
 import gunbc.roadmap_nesting { RoadmapMembership, roadmap_memberships }
 import gunbc.roadmap.roadmap_project { RoadmapMembershipIndex, membership_index, project_root_for_node_in }
-import gunbc.roadmap.roadmap_lineage { lineage_index }
+import gunbc.roadmap.roadmap_lineage { lineage_index, lineage_lookup }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 
 import gunbc.roadmap_issue_command { IssueFormContext }
@@ -35,7 +35,7 @@ import gunbc.fleet_capacity_panel { fleet_capacity_panel }
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, RoadmapNodeId,
   RoadmapParent, TopLevel, UnderParent, roadmap_primary_parent, roadmap_parent_ids, is_top_level,
-  SectionElement, Prose, Group, SectionGroup,
+  SectionElement, Prose, Group, SectionGroup, Closes, MemberOf, AdmittedRoot,
 }
 import gunbc.roadmap_status { line_ticket, TicketLine }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
@@ -51,7 +51,7 @@ import gunbc.roadmap_authority {
   FrontierSetsProjected, FrontierSetsProjectionRefused,
   declared_roadmap_nodes,
   declared_roadmap_edges,
-  ClosingContractTaskPair, closing_contract_task_pairs_for_accepted, closing_contract_family_claim,
+  closing_contract_family_claim, ticket_headline_of,
 }
 import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes, doc_all_edges, node_title }
 import gunbc.roadmap.roadmap_alignment {
@@ -2954,14 +2954,23 @@ fn live_work_family_decls() -> List<WorkFamilyDecl> {
   [ WorkFamilyDecl { id: closing_contract_family_id(), claim: closing_contract_family_claim } ]
 }
 
-fn live_work_family_members_for_accepted(
-  accepted: List<RoadmapNodeId>,
-  withheld: List<RoadmapNodeId>,
-) -> List<WorkFamilyMemberFact> {
-  closing_contract_task_pairs_for_accepted(accepted: accepted, withheld: withheld) |> map(p => WorkFamilyMemberFact {
-    family_id: closing_contract_family_id(),
-    task_node: p.task.node as String,
-    subject: p.subject,
+// The family members are read off the document being rendered: a closing-contract task is the one row
+// whose parent is Closes { target } (gunbc.roadmap_authority closing_contract_task_for mints it, and
+// nothing else declares that parent), and its subject is the gated row's own headline. The projected
+// authority carries exactly the tasks closing_contract_task_pairs_for_accepted derives, in the same
+// order, beside the rows they gate -- so the served page sees the same members, and a page rendered for
+// a supplied document no longer reaches past it to the declared authority for them.
+fn live_work_family_members_of(nodes: List<RoadmapNode>, index: Map<String, RoadmapNode>) -> List<WorkFamilyMemberFact> {
+  flat_map(nodes, t => match t.parent {
+    Absent => []
+    Present { value: p } => match p {
+      Closes { target: g } => match lineage_lookup(index: index, id: g) {
+        Present { value: gated } => [WorkFamilyMemberFact { family_id: closing_contract_family_id(), task_node: t.node as String, subject: ticket_headline_of(n: gated) }]
+        Absent => []
+      }
+      MemberOf { project: _, contribution: _ } => []
+      AdmittedRoot => []
+    }
   })
 }
 
@@ -3007,7 +3016,7 @@ fn daily_workspace_view_of_for_accepted(
     program: Present { value: v1_exit_program_progress_view_for_accepted(accepted_ids: accepted_ids, ready_count: ready_count) },
     observation: observation,
     families: live_work_family_decls(),
-    members: live_work_family_members_for_accepted(accepted: accepted_ids, withheld: withheld), memberships: memberships,
+    members: live_work_family_members_of(nodes: nodes, index: lineage), memberships: memberships,
     hidden_not_ready: count(rows) - count(shown))
 }
 
