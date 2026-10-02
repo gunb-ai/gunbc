@@ -140,12 +140,12 @@ fn http_status_class_label_is_admitted(label: Symbol) -> Bool {
 // literal; a class (`5xx`) is a self-identified Atom and belongs to rest; `nonzero` is a self-identified
 // Atom and belongs to shell's exit status. An HTTP class never matches an exit status, and `nonzero`
 // never matches a response: each is refused at the pattern, not coerced.
-fn status_pattern_conforms(kind: DeclaredTransport, pattern: Node) -> Bool {
-  match pattern.kind {
+fn status_pattern_conforms(kind: DeclaredTransport, pat: Node) -> Bool {
+  match pat.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      (count(pattern.children) == 0) && status_atom_is_of_transport(kind: kind, id: id)
+      (count(pat.children) == 0) && status_atom_is_of_transport(kind: kind, id: id)
     TypeNode { connective: Conj } =>
-      (count(pattern.children) == 1) && status_code_is_of_transport(kind: kind, pattern: pattern)
+      (count(pat.children) == 1) && status_code_is_of_transport(kind: kind, pat: pat)
     _ => false
   }
 }
@@ -160,8 +160,8 @@ fn status_atom_is_of_transport(kind: DeclaredTransport, id: Symbol) -> Bool {
 
 // An exact code is an int literal; shell reads it as an exit status and rest as an HTTP status. The
 // file transport observes no status, so no arm of either form is admitted on it.
-fn status_code_is_of_transport(kind: DeclaredTransport, pattern: Node) -> Bool {
-  match named_edge_target_lookup(children: pattern.children, name: realization_status_code_label()) {
+fn status_code_is_of_transport(kind: DeclaredTransport, pat: Node) -> Bool {
+  match named_edge_target_lookup(children: pat.children, name: realization_status_code_label()) {
     Found { target: code } => dag_node_is_int_literal_atom(node: code) && transport_observes_a_status(kind: kind)
     _ => false
   }
@@ -206,31 +206,39 @@ fn named_label(e: Edge) -> Optional<Symbol> {
 // An operation's declared output fields: the named members of its Arrow's codomain, the second
 // Positional child (v2.std.arrow_signature declared_signature_arrow builds [domain, codomain, order]).
 fn operation_output_names(op: Node) -> List<Symbol> {
-  match nth_positional_target(edges: op.children, n: 1) {
-    Present { value: codomain } => edge_names_onto(edges: codomain.children, acc: Empty)
-    Absent => Empty
+  let walk = fold(op.children, init: positional_walk_initial(), f: positional_walk_step)
+  match walk.second {
+    Present { value: codomain } => fold(codomain.children, init: symbol_list_empty(), f: edge_name_step)
+    Absent => symbol_list_empty()
   }
 }
 
-fn nth_positional_target(edges: List<Edge>, n: Int) -> Optional<Node> {
-  match edges {
-    Empty => optional_absent()
-    Cons { head: e, tail: rest } =>
-      match e.label {
-        Positional => if n == 0 { optional_present(value: e.target) } else { nth_positional_target(edges: rest, n: n - 1) }
-        Named { name: _ } => nth_positional_target(edges: rest, n: n)
-      }
+type PositionalWalk {
+  seen: Int
+  second: Optional<Node>
+}
+
+fn positional_walk_initial() -> PositionalWalk {
+  PositionalWalk { seen: 0, second: optional_absent() }
+}
+
+fn positional_walk_step(acc: PositionalWalk, e: Edge) -> PositionalWalk {
+  match e.label {
+    Positional =>
+      if acc.seen == 1 { PositionalWalk { seen: 2, second: optional_present(value: e.target) } }
+      else { PositionalWalk { seen: acc.seen + 1, second: acc.second } }
+    Named { name: _ } => acc
   }
 }
 
-fn edge_names_onto(edges: List<Edge>, acc: List<Symbol>) -> List<Symbol> {
-  match edges {
-    Empty => acc
-    Cons { head: e, tail: rest } =>
-      match e.label {
-        Named { name: n } => edge_names_onto(edges: rest, acc: Cons { head: n, tail: acc })
-        Positional => edge_names_onto(edges: rest, acc: acc)
-      }
+fn symbol_list_empty() -> List<Symbol> {
+  Empty
+}
+
+fn edge_name_step(acc: List<Symbol>, e: Edge) -> List<Symbol> {
+  match e.label {
+    Named { name: n } => list_snoc_item(xs: acc, item: n)
+    Positional => acc
   }
 }
 
@@ -369,15 +377,15 @@ fn realization_arm_step(kind: DeclaredTransport, acc: RealizationArmsWalk, arm: 
     Named { name: _ } => RealizationArmsWalk { seen: acc.seen, refusal: realization_refusal(reason: ^service_realization_arm_malformed, at: arm.target) }
     Positional =>
       match named_edge_target_lookup(children: arm.target.children, name: realization_arm_pattern_label()) {
-        Found { target: pattern } =>
-          if !status_pattern_conforms(kind: kind, pattern: pattern) {
-            RealizationArmsWalk { seen: acc.seen, refusal: realization_refusal(reason: ^service_realization_status_pattern_not_of_transport, at: pattern) }
-          } else if fold(acc.seen, init: false, f: fn(found, p) { found || (content_hash(n: p) == content_hash(n: pattern)) }) {
-            RealizationArmsWalk { seen: acc.seen, refusal: realization_refusal(reason: ^service_realization_status_pattern_repeated, at: pattern) }
+        Found { target: pat } =>
+          if !status_pattern_conforms(kind: kind, pat: pat) {
+            RealizationArmsWalk { seen: acc.seen, refusal: realization_refusal(reason: ^service_realization_status_pattern_not_of_transport, at: pat) }
+          } else if fold(acc.seen, init: false, f: fn(found, p) { found || (content_hash(n: p) == content_hash(n: pat)) }) {
+            RealizationArmsWalk { seen: acc.seen, refusal: realization_refusal(reason: ^service_realization_status_pattern_repeated, at: pat) }
           } else {
             match named_edge_target_lookup(children: arm.target.children, name: realization_arm_payload_label()) {
               Found { target: _ } =>
-                if count(arm.target.children) == 2 { RealizationArmsWalk { seen: list_snoc_item(xs: acc.seen, item: pattern), refusal: optional_absent() } }
+                if count(arm.target.children) == 2 { RealizationArmsWalk { seen: list_snoc_item(xs: acc.seen, item: pat), refusal: optional_absent() } }
                 else { RealizationArmsWalk { seen: acc.seen, refusal: realization_refusal(reason: ^service_realization_arm_malformed, at: arm.target) } }
               _ => RealizationArmsWalk { seen: acc.seen, refusal: realization_refusal(reason: ^service_realization_arm_malformed, at: arm.target) }
             }

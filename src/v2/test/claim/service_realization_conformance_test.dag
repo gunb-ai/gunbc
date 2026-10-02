@@ -75,8 +75,8 @@ fn sr_transport(kind: String, fields: List<Edge>) -> Edge {
   sr_named(name: realization_transport_label(), target: sr_conj(children: Cons { head: sr_named(name: realization_transport_kind_label(), target: sr_atom(id: sr_lex(s: kind))), tail: fields }))
 }
 
-fn sr_arm(pattern: Node) -> Edge {
-  Edge { label: Positional, target: sr_conj(children: [sr_named(name: realization_arm_pattern_label(), target: pattern), sr_named(name: realization_arm_payload_label(), target: sr_atom(id: ^Unit))]) }
+fn sr_arm(pat: Node) -> Edge {
+  Edge { label: Positional, target: sr_conj(children: [sr_named(name: realization_arm_pattern_label(), target: pat), sr_named(name: realization_arm_payload_label(), target: sr_atom(id: ^Unit))]) }
 }
 
 fn sr_code(lexeme: String) -> Node {
@@ -100,13 +100,13 @@ fn sr_shell_entry(arms: List<Edge>, field: Symbol, key: String) -> Node {
 }
 
 fn sr_shell_ok() -> Node {
-  sr_shell_entry(arms: [sr_arm(pattern: sr_code(lexeme: "0")), sr_arm(pattern: sr_atom(id: sr_lex(s: "nonzero")))], field: ^out, key: "stdout")
+  sr_shell_entry(arms: [sr_arm(pat: sr_code(lexeme: "0")), sr_arm(pat: sr_atom(id: sr_lex(s: "nonzero")))], field: ^out, key: "stdout")
 }
 
-fn sr_rest_entry(pattern: Node, key: String) -> Node {
+fn sr_rest_entry(pat: Node, key: String) -> Node {
   sr_conj(children: [
     sr_transport(kind: "rest", fields: [sr_named(name: ^method, target: sr_atom(id: ^GET)), sr_named(name: ^path, target: sr_string(value: "/x"))]),
-    sr_arms(arms: [sr_arm(pattern: sr_code(lexeme: "200")), sr_arm(pattern: pattern)]),
+    sr_arms(arms: [sr_arm(pat: sr_code(lexeme: "200")), sr_arm(pat: pat)]),
     sr_projection(field: ^out, key: key)
   ])
 }
@@ -135,7 +135,7 @@ fn sr_refused_as(realization: Node, reason: Symbol) -> Bool {
 
 test fn a_shell_entry_and_a_rest_entry_conform_holds() -> Bool {
   sr_admitted(realization: sr_leaf(op: ^Run, entry: sr_shell_ok()))
-    && sr_admitted(realization: sr_leaf(op: ^Run, entry: sr_rest_entry(pattern: sr_atom(id: sr_lex(s: "5xx")), key: "entityName")))
+    && sr_admitted(realization: sr_leaf(op: ^Run, entry: sr_rest_entry(pat: sr_atom(id: sr_lex(s: "5xx")), key: "entityName")))
 }
 
 // An entry keyed by a name the interface does not declare realizes nothing.
@@ -160,13 +160,13 @@ test fn a_binding_field_of_another_kind_refuses_holds() -> Bool {
 // An exit status is never an HTTP status and the reverse: a `5xx` class on shell and `nonzero` on rest
 // each refuse at the pattern.
 test fn a_status_pattern_of_the_other_transport_refuses_holds() -> Bool {
-  sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_shell_entry(arms: [sr_arm(pattern: sr_atom(id: sr_lex(s: "5xx")))], field: ^out, key: "stdout")), reason: ^service_realization_status_pattern_not_of_transport)
-    && sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_rest_entry(pattern: sr_atom(id: sr_lex(s: "nonzero")), key: "x")), reason: ^service_realization_status_pattern_not_of_transport)
+  sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_shell_entry(arms: [sr_arm(pat: sr_atom(id: sr_lex(s: "5xx")))], field: ^out, key: "stdout")), reason: ^service_realization_status_pattern_not_of_transport)
+    && sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_rest_entry(pat: sr_atom(id: sr_lex(s: "nonzero")), key: "x")), reason: ^service_realization_status_pattern_not_of_transport)
 }
 
 test fn a_repeated_status_pattern_refuses_holds() -> Bool {
   sr_refused_as(
-    realization: sr_leaf(op: ^Run, entry: sr_shell_entry(arms: [sr_arm(pattern: sr_code(lexeme: "0")), sr_arm(pattern: sr_code(lexeme: "0"))], field: ^out, key: "stdout")),
+    realization: sr_leaf(op: ^Run, entry: sr_shell_entry(arms: [sr_arm(pat: sr_code(lexeme: "0")), sr_arm(pat: sr_code(lexeme: "0"))], field: ^out, key: "stdout")),
     reason: ^service_realization_status_pattern_repeated
   )
 }
@@ -174,12 +174,12 @@ test fn a_repeated_status_pattern_refuses_holds() -> Bool {
 // A wire key the shell does not observe refuses; the same misspelling on rest is an open body member
 // and is admitted (the accepted control above reads `entityName`).
 test fn a_wire_key_the_transport_does_not_observe_refuses_holds() -> Bool {
-  sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_shell_entry(arms: [sr_arm(pattern: sr_code(lexeme: "0"))], field: ^out, key: "stdoutt")), reason: ^service_realization_wire_key_not_of_transport)
-    && sr_admitted(realization: sr_leaf(op: ^Run, entry: sr_rest_entry(pattern: sr_code(lexeme: "404"), key: "stdoutt")))
+  sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_shell_entry(arms: [sr_arm(pat: sr_code(lexeme: "0"))], field: ^out, key: "stdoutt")), reason: ^service_realization_wire_key_not_of_transport)
+    && sr_admitted(realization: sr_leaf(op: ^Run, entry: sr_rest_entry(pat: sr_code(lexeme: "404"), key: "stdoutt")))
 }
 
 test fn a_projection_onto_an_undeclared_output_refuses_holds() -> Bool {
-  sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_shell_entry(arms: [sr_arm(pattern: sr_code(lexeme: "0"))], field: ^other, key: "stdout")), reason: ^service_realization_projection_field_not_an_output)
+  sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_shell_entry(arms: [sr_arm(pat: sr_code(lexeme: "0"))], field: ^other, key: "stdout")), reason: ^service_realization_projection_field_not_an_output)
 }
 
 // AN ENTRY IS NOT A DECLARATION (ruling 2026-10-02, condition 1). A module carrying the service and its
