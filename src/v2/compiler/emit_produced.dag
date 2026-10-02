@@ -35,7 +35,7 @@ import v2.std.diagnostic {
   node_locus,
   outcome_rejected
 }
-import v2.std.node { Arrow, Atom, Conj, Disj, Edge, Named, Node, node_synthetic, Positional, Symbol, TypeNode }
+import v2.std.node { Arrow, Atom, Conj, Disj, Edge, Authored, StructuralLabel, Node, node_synthetic, Positional, Symbol, TypeNode }
 import v2.std.qualified_name { declaration_reference_path_optional }
 import v2.std.type_binder { GenericTypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, type_decl_view }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl, produced_type_binding }
@@ -69,7 +69,13 @@ fn emit_produced_decl_inner_arrow(decl: Node) -> Outcome<Node> {
       match list_at_optional(xs: decl.children, index: 0) {
         Present { value: edge } =>
           match edge.label {
-            Named { name: _ } => Accepted { value: edge.target, diagnostics: None }
+            Authored { name: _ } => Accepted { value: edge.target, diagnostics: None }
+            StructuralLabel { label: _ } =>
+              Rejected {
+                diagnostics: diagnostics_singleton(
+                  d: emit_produced_decl_diagnostic(reason: ^emit_produced_decl_unnamed, node: decl)
+                )
+              }
             Positional =>
               Rejected {
                 diagnostics: diagnostics_singleton(
@@ -121,7 +127,7 @@ fn emit_produced_decl_inner_arrow(decl: Node) -> Outcome<Node> {
 // variables from a declared parameter type, not from a field-access scrutinee.
 fn produced_decl_edge_is_decl(edge: Edge) -> Bool {
   match edge.label {
-    Named { name: _ } =>
+    Authored { name: _ } =>
       match edge.target.kind {
         TypeNode { connective: Arrow } => true
         TypeNode { connective: Atom { identity: _ } } => false
@@ -131,6 +137,7 @@ fn produced_decl_edge_is_decl(edge: Edge) -> Bool {
         TypeNode { connective: Instantiation } => false
         ComputationNode { behavior: _ } => false
       }
+    StructuralLabel { label: _ } => false
     Positional => false
   }
 }
@@ -193,8 +200,9 @@ type ModuleMemberClass
 
 fn module_member_class(edge: Edge, kinds: FreeMonoid<DeclaredTypeKind>) -> ModuleMemberClass {
   match edge.label {
+    StructuralLabel { label: _ } => ModuleMemberUnsupported
     Positional => ModuleMemberUnsupported
-    Named { name: n } =>
+    Authored { name: n } =>
       match edge.target.kind {
         TypeNode { connective: Arrow } =>
           match find_arrow_body_child(root: edge.target) {
@@ -383,7 +391,8 @@ fn emit_module_member(edge: Edge, target: TargetModel, realization_host: TargetM
 
 fn produced_module_edge_is_production_marker(edge: Edge) -> Bool {
   match edge.label {
-    Named { name: n } => n == ^grammar_production_identity_node_projection
+    Authored { name: n } => n == ^grammar_production_identity_node_projection
+    StructuralLabel { label: _ } => false
     Positional => false
   }
 }

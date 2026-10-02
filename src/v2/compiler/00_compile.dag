@@ -199,7 +199,7 @@ import v2.std.diagnostic {
   outcome_rejected,
   outcome_with_diagnostics
 }
-import v2.std.node { Arrow, Atom, ComputationNode, Edge, Named, Node, NodeFold, NodeKind, Positional, Symbol, TypeNode, fold_node, symbol_intern_lexeme, symbol_lexeme }
+import v2.std.node { Arrow, Atom, ComputationNode, Edge, Node, NodeFold, NodeKind, Positional, Symbol, TypeNode, fold_node, symbol_intern_lexeme, symbol_lexeme, Authored, StructuralLabel }
 import v2.compiler.inferred_tree { AuthoredOccurrenceCollision, authored_occurrence_collisions }
 import v2.std.node_query { find_arrow_body_child, find_named_child }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
@@ -1652,7 +1652,8 @@ fn native_test_decl_in_children(children: List<Edge>, name: Symbol) -> Optional<
       Present { value: v } => optional_present(value: v)
       Absent =>
         match e.label {
-          Named { name: edge_name } =>
+          StructuralLabel { label: _ } => optional_absent()
+          Authored { name: edge_name } =>
             if edge_name == name {
               optional_present(value: e.target)
             } else {

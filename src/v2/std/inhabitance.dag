@@ -22,7 +22,7 @@ import v2.std.node {
   Cardinality,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -392,9 +392,9 @@ fn inhabitance_position_context_edges(position: DeclaredTypePosition) -> List<Ed
   match position {
     PositionDirectCallArgument => []
     PositionDeclaredReturn => []
-    PositionRecordField { record: record } => [Edge { label: Named { name: ^inhabitance_record }, target: record }]
-    PositionLetAnnotation { bound: bound } => [Edge { label: Named { name: ^inhabitance_bound_value }, target: bound }]
-    PositionBinderDefault { default: default } => [Edge { label: Named { name: ^inhabitance_default_value }, target: default }]
+    PositionRecordField { record: record } => [Edge { label: Authored { name: ^inhabitance_record }, target: record }]
+    PositionLetAnnotation { bound: bound } => [Edge { label: Authored { name: ^inhabitance_bound_value }, target: bound }]
+    PositionBinderDefault { default: default } => [Edge { label: Authored { name: ^inhabitance_default_value }, target: default }]
   }
 }
 
@@ -517,19 +517,19 @@ fn application_argument_does_not_inhabit_diagnostic(
         kind: TypeNode { connective: Conj },
         children: list_append(left: [
           Edge {
-            label: Named { name: inhabitance_position_symbol(position: obligation.position) },
+            label: Authored { name: inhabitance_position_symbol(position: obligation.position) },
             target: obligation.application
           },
           Edge {
-            label: Named { name: obligation.parameter_identity },
+            label: Authored { name: obligation.parameter_identity },
             target: obligation.declared
           },
           Edge {
-            label: Named { name: ^inhabitance_produced_type },
+            label: Authored { name: ^inhabitance_produced_type },
             target: obligation.produced
           },
           Edge {
-            label: Named { name: find_witness_reason },
+            label: Authored { name: find_witness_reason },
             target: obligation.produced
           }
         ], right: inhabitance_position_context_edges(position: obligation.position)),

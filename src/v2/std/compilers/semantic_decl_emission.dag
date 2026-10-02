@@ -67,7 +67,7 @@ import v2.std.node {
   Conj,
   Disj,
   Edge,
-  Named,
+  Authored, StructuralLabel,
   Node,
   Positional,
   Symbol,
@@ -2063,7 +2063,7 @@ fn target_semantic_decl_tagged_union_variant_surface_from_edge(
   type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<Node> {
   match edge.label {
-    Named { name: vname } =>
+    Authored { name: vname } =>
       if coproduct_variant_edge_has_payload(edge: edge) {
         bind_outcome(
           o: target_semantic_decl_field_surfaces(
@@ -2083,6 +2083,12 @@ fn target_semantic_decl_tagged_union_variant_surface_from_edge(
       } else {
         outcome_accepted(value: target_semantic_decl_surface_variant_nullary(name: vname))
       }
+    StructuralLabel { label: _ } =>
+      outcome_rejected(d: Diagnostic {
+            reason: ^target_semantic_decl_variant_not_named,
+            at: node_locus(node: edge.target),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          })
     Positional =>
       outcome_rejected(d: Diagnostic {
             reason: ^target_semantic_decl_variant_not_named,
@@ -2126,7 +2132,7 @@ fn target_semantic_decl_variant_surface_from_edge(
   type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<Node> {
   match edge.label {
-    Named { name: vname } =>
+    Authored { name: vname } =>
       if coproduct_variant_edge_has_payload(edge: edge) {
         bind_outcome(
           o: target_semantic_decl_field_surfaces(
@@ -2143,6 +2149,12 @@ fn target_semantic_decl_variant_surface_from_edge(
       } else {
         outcome_accepted(value: target_semantic_decl_surface_variant_nullary(name: vname))
       }
+    StructuralLabel { label: _ } =>
+      outcome_rejected(d: Diagnostic {
+            reason: ^target_semantic_decl_variant_not_named,
+            at: node_locus(node: edge.target),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          })
     Positional =>
       outcome_rejected(d: Diagnostic {
             reason: ^target_semantic_decl_variant_not_named,

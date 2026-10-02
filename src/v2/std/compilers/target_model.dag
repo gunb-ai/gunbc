@@ -1,5 +1,6 @@
 module v2.std.compilers.target_model
 
+
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.layout { Doc, DocText, DocLine, DocConcat, LayoutProtocol, render, doc_nest_by }
 import std.dissolution {
@@ -93,6 +94,7 @@ import v2.std.passing_candidate_fold {
 }
 import v2.std.type_binder { cast_target_optional, type_annotation_optional }
 import v2.std.node {
+  StructuralLabel,
   LoopBoundMeasure,
   LoopCarrierBinder,
   LoopDomainValue,
@@ -124,9 +126,7 @@ import v2.std.node {
   LabeledEdges,
   LoopBoundEdges,
   Match,
-  match_arm_body,
-  match_arm_pattern,
-  Named,
+  Authored,
   NoEdges,
   Node,
   NodeFold,
@@ -145,6 +145,12 @@ import v2.std.node {
   node_rebuild,
   symbol_intern_lexeme,
   symbol_lexeme,
+  MatchArmBodyEdge,
+  MatchArmPatternEdge,
+  core_edge,
+  core_occurrences,
+  edge_is_core,
+  production_edge_label,
 }
 import v2.std.witness {
   StructuralPropertyWitness
@@ -165,8 +171,10 @@ import v2.std.node_query {
   nullary_inhabitant_by_discriminant,
   is_wildcard_pattern_identity,
   pattern_wildcard_name,
+  find_core_child,
+  find_labeled_child,
   construct_field_edges,
-  construct_tag_optional
+  construct_tag_optional,
 }
 import v2.std.qualified_name {
   QualifiedName,
@@ -410,8 +418,15 @@ fn produced_decl_param_segment_tokens(
       outcome_accepted(value: [FixedToken { token_class: tc }])
     ProducedParamName { token_class: tc } =>
       match edge.label {
-        Named { name: pname } =>
+        Authored { name: pname } =>
           outcome_accepted(value: [BoundToken { token_class: tc, binding: pname }])
+        StructuralLabel { label: _ } =>
+          outcome_rejected(
+            d: produced_decl_render_diagnostic(
+              reason: ^produced_decl_render_param_unnamed,
+              node: edge.target
+            )
+          )
         Positional =>
           outcome_rejected(
             d: produced_decl_render_diagnostic(
@@ -770,7 +785,7 @@ fn produced_decl_ordered_params(arrow: Node, domain: Node) -> Outcome<List<Edge>
 // binder here is a wall the reader already holds; it still refuses typed rather than dropping one.
 fn produced_decl_domain_binder(arrow: Node, domain: Node, label: Symbol) -> Outcome<Edge> {
   match named_child_lookup(root: domain, name: label) {
-    NamedChildFound { target: t } => outcome_accepted(value: Edge { label: Named { name: label }, target: t })
+    NamedChildFound { target: t } => outcome_accepted(value: Edge { label: Authored { name: label }, target: t })
     NamedChildMissing =>
       outcome_rejected(
         d: produced_decl_render_diagnostic(reason: ^produced_decl_render_parameter_order_malformed, node: arrow)
@@ -826,10 +841,17 @@ fn produced_decl_subject_from_decl(decl: Node) -> Outcome<ProducedDeclSignatureS
       match list_at_optional(xs: decl.children, index: 0) {
         Present { value: decl_edge } =>
           match decl_edge.label {
-            Named { name: fn_name } =>
+            Authored { name: fn_name } =>
               produced_decl_subject_from_name_and_arrow(
                 fn_name: fn_name,
                 arrow: decl_edge.target
+              )
+            StructuralLabel { label: _ } =>
+              outcome_rejected(
+                d: produced_decl_render_diagnostic(
+                  reason: ^produced_decl_render_decl_unnamed,
+                  node: decl
+                )
               )
             Positional =>
               outcome_rejected(
@@ -981,7 +1003,7 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
         kind: TypeNode { connective: Conj },
         children: [
           Edge {
-            label: Named { name: ^concrete_syntax_token_field_kind },
+            label: Authored { name: ^concrete_syntax_token_field_kind },
             target: Node {
               kind: TypeNode { connective: Atom { identity: ^concrete_syntax_token_kind_fixed } },
               children: [],
@@ -989,7 +1011,7 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
 }
           },
           Edge {
-            label: Named { name: ^concrete_syntax_token_field_class },
+            label: Authored { name: ^concrete_syntax_token_field_class },
             target: Node {
               kind: TypeNode { connective: Atom { identity: c } },
               children: [],
@@ -1004,7 +1026,7 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
         kind: TypeNode { connective: Conj },
         children: [
           Edge {
-            label: Named { name: ^concrete_syntax_token_field_kind },
+            label: Authored { name: ^concrete_syntax_token_field_kind },
             target: Node {
               kind: TypeNode { connective: Atom { identity: ^concrete_syntax_token_kind_bound } },
               children: [],
@@ -1012,7 +1034,7 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
 }
           },
           Edge {
-            label: Named { name: ^concrete_syntax_token_field_class },
+            label: Authored { name: ^concrete_syntax_token_field_class },
             target: Node {
               kind: TypeNode { connective: Atom { identity: c } },
               children: [],
@@ -1020,7 +1042,7 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
 }
           },
           Edge {
-            label: Named { name: ^concrete_syntax_token_field_binding },
+            label: Authored { name: ^concrete_syntax_token_field_binding },
             target: Node {
               kind: TypeNode { connective: Atom { identity: b } },
               children: [],
@@ -1977,7 +1999,7 @@ fn target_model_canonical_operation_atom_field_from_wire(
         Present { value: _ } => acc
         Absent =>
           match edge.label {
-            Named { name: n } =>
+            Authored { name: n } =>
               if n == field_name {
                 match edge.target.kind {
                   TypeNode { connective: Atom { identity: id } } =>
@@ -1992,6 +2014,7 @@ fn target_model_canonical_operation_atom_field_from_wire(
               } else {
                 acc
               }
+            StructuralLabel { label: _ } => acc
             Positional => acc
           }
       }
@@ -2143,7 +2166,7 @@ fn target_model_canonical_operation_roster_edge(
   operation: CanonicalOperation
 ) -> Edge {
   Edge {
-    label: Named { name: name },
+    label: Authored { name: name },
     target: target_model_canonical_operation_wire_node(operation: operation)
   }
 }
@@ -2271,7 +2294,7 @@ fn target_model_canonical_operation_wire_predicate_type(wire: Node) -> Optional<
 
 fn target_model_canonical_operation_wire_child_declared_type(wire: Node, edge: Edge) -> Optional<Node> {
   match edge.label {
-    Named { name: field } =>
+    Authored { name: field } =>
       if field == ^target_canonical_operation_field_predicate {
         target_model_canonical_operation_wire_predicate_type(wire: wire)
       } else {
@@ -2629,7 +2652,8 @@ fn target_operator_shape_wire_schema_valid(wire: Node) -> Outcome<Bool> {
           f: fn(acc, edge) {
             if acc {
               match edge.label {
-                Named { name: n } => n == ^target_operator_shape_field_token
+                Authored { name: n } => n == ^target_operator_shape_field_token
+                StructuralLabel { label: _ } => false
                 Positional => false
               }
             } else {
@@ -2666,7 +2690,7 @@ fn target_operator_shape_token_from_wire(wire: Node) -> Outcome<Symbol> {
         Present { value: _ } => acc
         Absent =>
           match edge.label {
-            Named { name: n } =>
+            Authored { name: n } =>
               if n == ^target_operator_shape_field_token {
                 match edge.target.kind {
                   TypeNode { connective: Atom { identity: token } } =>
@@ -2681,6 +2705,7 @@ fn target_operator_shape_token_from_wire(wire: Node) -> Outcome<Symbol> {
               } else {
                 acc
               }
+            StructuralLabel { label: _ } => acc
             Positional => acc
           }
       }
@@ -2765,9 +2790,10 @@ fn target_operator_realization_row_wire_schema_valid(row: Node) -> Outcome<Bool>
           f: fn(acc, edge) {
             if acc {
               match edge.label {
-                Named { name: n } =>
+                Authored { name: n } =>
                   n == ^target_operator_realization_field_operation
                   || n == ^target_operator_realization_field_shape
+                StructuralLabel { label: _ } => false
                 Positional => false
               }
             } else {
@@ -3436,7 +3462,7 @@ fn decode_effect_apply_callee_rows(bundle: Node) -> Outcome<List<TargetEffectCal
         Rejected { diagnostics: r } => acc
         Accepted { value: rows, diagnostics: d } =>
           match edge.label {
-            Named { name: n } =>
+            Authored { name: n } =>
               if n == ^target_value_expr_effect_callee_row_edge {
                 bind_outcome(
                   o: target_value_expr_effect_callee_row_from_wire(row: edge.target),
@@ -3447,6 +3473,7 @@ fn decode_effect_apply_callee_rows(bundle: Node) -> Outcome<List<TargetEffectCal
               } else {
                 acc
               }
+            StructuralLabel { label: _ } => acc
             Positional => acc
           }
       }
@@ -4545,10 +4572,11 @@ fn concrete_syntax_token_wire_schema_valid(token: Node) -> Outcome<Bool> {
           f: fn(acc, edge) {
             if acc {
               match edge.label {
-                Named { name: n } =>
+                Authored { name: n } =>
                   n == ^concrete_syntax_token_field_kind
                   || n == ^concrete_syntax_token_field_class
                   || n == ^concrete_syntax_token_field_binding
+                StructuralLabel { label: _ } => false
                 Positional => false
               }
             } else {
@@ -4805,7 +4833,7 @@ fn source_atom_string(value: Node) -> SourceAtomValue {
 }
 
 fn target_model_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn source_atom_symbol_projection_from_node(source: Node) -> Optional<SourceAtomValue> {
@@ -5066,7 +5094,7 @@ fn target_value_expression_int_literal_lexeme_from_wire(wire: Node) -> Outcome<S
         Present { value: _ } => acc
         Absent =>
           match edge.label {
-            Named { name: n } =>
+            Authored { name: n } =>
               if n == ^target_value_expression_field_value {
                 match edge.target.kind {
                   TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
@@ -5080,6 +5108,7 @@ fn target_value_expression_int_literal_lexeme_from_wire(wire: Node) -> Outcome<S
               } else {
                 acc
               }
+            StructuralLabel { label: _ } => acc
             Positional => acc
           }
       }
@@ -5174,7 +5203,8 @@ fn target_value_expr_binding_ref_wire_schema_valid(wire: Node) -> Outcome<Bool> 
             f: fn(acc, edge) {
               if acc {
                 match edge.label {
-                  Named { name: n } => n == ^target_value_expr_field_binding
+                  Authored { name: n } => n == ^target_value_expr_field_binding
+                  StructuralLabel { label: _ } => false
                   Positional => false
                 }
               } else {
@@ -5218,7 +5248,7 @@ fn target_value_expr_binding_ref_binding_from_wire(wire: Node) -> Outcome<Symbol
         Present { value: _ } => acc
         Absent =>
           match edge.label {
-            Named { name: n } =>
+            Authored { name: n } =>
               if n == ^target_value_expr_field_binding {
                 match edge.target.kind {
                   TypeNode { connective: Atom { identity: id } } =>
@@ -5233,6 +5263,7 @@ fn target_value_expr_binding_ref_binding_from_wire(wire: Node) -> Outcome<Symbol
               } else {
                 acc
               }
+            StructuralLabel { label: _ } => acc
             Positional => acc
           }
       }
@@ -5276,9 +5307,10 @@ fn target_value_expr_primitive_apply_wire_schema_valid(wire: Node) -> Outcome<Bo
           f: fn(acc, edge) {
             if acc {
               match edge.label {
-                Named { name: n } =>
+                Authored { name: n } =>
                   n == ^target_value_expr_field_operation
                   || n == ^target_value_expr_field_operand
+                StructuralLabel { label: _ } => false
                 Positional => false
               }
             } else {
@@ -5314,7 +5346,7 @@ fn target_value_expr_primitive_apply_operand_bindings(wire: Node) -> Outcome<Lis
             Rejected { diagnostics: r } => acc
             Accepted { value: bindings, diagnostics: d } =>
               match edge.label {
-                Named { name: n } =>
+                Authored { name: n } =>
                   if n == ^target_value_expr_field_operation {
                     acc
                   } else if n == ^target_value_expr_field_operand {
@@ -5331,6 +5363,10 @@ fn target_value_expr_primitive_apply_operand_bindings(wire: Node) -> Outcome<Lis
                       target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
                     )
                   }
+                StructuralLabel { label: _ } =>
+                  outcome_rejected(
+                    target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+                  )
                 Positional =>
                   outcome_rejected(
                     target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
@@ -5416,9 +5452,10 @@ fn target_value_expr_effect_apply_wire_schema_valid(wire: Node) -> Outcome<Bool>
           f: fn(acc, edge) {
             if acc {
               match edge.label {
-                Named { name: n } =>
+                Authored { name: n } =>
                   n == ^target_value_expr_field_effect_kind
                   || n == ^target_value_expr_field_operand
+                StructuralLabel { label: _ } => false
                 Positional => false
               }
             } else {
@@ -5451,7 +5488,7 @@ fn target_value_expr_effect_apply_kind_from_wire(wire: Node) -> Outcome<Symbol> 
         Present { value: _ } => acc
         Absent =>
           match edge.label {
-            Named { name: n } =>
+            Authored { name: n } =>
               if n == ^target_value_expr_field_effect_kind {
                 match edge.target.kind {
                   TypeNode { connective: Atom { identity: id } } =>
@@ -5466,6 +5503,7 @@ fn target_value_expr_effect_apply_kind_from_wire(wire: Node) -> Outcome<Symbol> 
               } else {
                 acc
               }
+            StructuralLabel { label: _ } => acc
             Positional => acc
           }
       }
@@ -5491,7 +5529,7 @@ fn target_value_expr_effect_apply_operand_bindings(wire: Node) -> Outcome<List<S
             Rejected { diagnostics: r } => acc
             Accepted { value: bindings, diagnostics: d } =>
               match edge.label {
-                Named { name: n } =>
+                Authored { name: n } =>
                   if n == ^target_value_expr_field_effect_kind {
                     acc
                   } else if n == ^target_value_expr_field_operand {
@@ -5508,6 +5546,10 @@ fn target_value_expr_effect_apply_operand_bindings(wire: Node) -> Outcome<List<S
                       target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
                     )
                   }
+                StructuralLabel { label: _ } =>
+                  outcome_rejected(
+                    target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+                  )
                 Positional =>
                   outcome_rejected(
                     target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
@@ -5766,6 +5808,7 @@ fn target_value_expr_match_arm_edges_after_scrutinee(children: List<Edge>) -> Li
     init: TargetValueExprMatchArmEdgeFold { edges: Empty, skipped_scrutinee: false },
     f: fn(acc, edge) {
       match edge.label {
+        StructuralLabel { label: _ } => acc
         Positional =>
           if !acc.skipped_scrutinee {
             TargetValueExprMatchArmEdgeFold {
@@ -5778,7 +5821,7 @@ fn target_value_expr_match_arm_edges_after_scrutinee(children: List<Edge>) -> Li
               skipped_scrutinee: true
             }
           }
-        Named { name: _ } => acc
+        Authored { name: _ } => acc
       }
     }
   )
@@ -5789,8 +5832,8 @@ fn target_value_expr_match_arm_wire(arm: TargetValueExprMatchArmSlot) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      target_model_named_edge(name: match_arm_pattern, target: arm.pattern.node),
-      target_model_named_edge(name: match_arm_body, target: arm.body.node)
+      core_edge(marker: MatchArmPatternEdge, target: arm.pattern.node),
+      core_edge(marker: MatchArmBodyEdge, target: arm.body.node)
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -5930,7 +5973,7 @@ fn target_value_expr_closure_tokens_from_wire(wire: Node, field: Symbol) -> Outc
         o: acc,
         f: fn(so_far) {
           match edge.label {
-            Named { name: n } =>
+            Authored { name: n } =>
               if n == field {
                 match edge.target.kind {
                   TypeNode { connective: Atom { identity: tc } } =>
@@ -5945,6 +5988,7 @@ fn target_value_expr_closure_tokens_from_wire(wire: Node, field: Symbol) -> Outc
               } else {
                 outcome_accepted(so_far)
               }
+            StructuralLabel { label: _ } => outcome_accepted(so_far)
             Positional => outcome_accepted(so_far)
           }
         }
@@ -6040,8 +6084,9 @@ fn target_operator_realization_catalog_wire_schema_valid(catalog: Node) -> Outco
         f: fn(acc, e) {
           if acc {
             match e.label {
+              StructuralLabel { label: _ } => false
               Positional => false
-              Named { name: n } => n == ^target_operator_realization_row_edge
+              Authored { name: n } => n == ^target_operator_realization_row_edge
             }
           } else {
             false
@@ -6106,7 +6151,7 @@ fn target_operator_realization_catalog_lookup(
             init: NoPassingCandidate,
             f: fn(acc, e) {
               match e.label {
-                Named { name: n } =>
+                Authored { name: n } =>
                   if n == ^target_operator_realization_row_edge {
                     target_operator_realization_catalog_lookup_step(
                       acc: acc,
@@ -6116,6 +6161,7 @@ fn target_operator_realization_catalog_lookup(
                   } else {
                     acc
                   }
+                StructuralLabel { label: _ } => acc
                 Positional => acc
               }
             }
@@ -6157,7 +6203,7 @@ fn target_value_expr_primitive_apply_operation_from_wire(wire: Node) -> Outcome<
         Present { value: _ } => acc
         Absent =>
           match e.label {
-            Named { name: n } =>
+            Authored { name: n } =>
               if n == ^target_value_expr_field_operation {
                 match canonical_operation_from_wire_node(wire: e.target) {
                   Accepted { value: canonical_op, diagnostics: _ } =>
@@ -6167,6 +6213,7 @@ fn target_value_expr_primitive_apply_operation_from_wire(wire: Node) -> Outcome<
               } else {
                 acc
               }
+            StructuralLabel { label: _ } => acc
             Positional => acc
           }
       }
@@ -6399,7 +6446,7 @@ fn target_value_expression_symbol_identity_from_wire(wire: Node) -> Outcome<Symb
         Present { value: _ } => acc
         Absent =>
           match edge.label {
-            Named { name: n } =>
+            Authored { name: n } =>
               if n == ^target_value_expression_field_identity {
                 match edge.target.kind {
                   TypeNode { connective: Atom { identity: id } } =>
@@ -6414,6 +6461,7 @@ fn target_value_expression_symbol_identity_from_wire(wire: Node) -> Outcome<Symb
               } else {
                 acc
               }
+            StructuralLabel { label: _ } => acc
             Positional => acc
           }
       }
@@ -6601,12 +6649,13 @@ fn target_value_expr_conditional_child_from_wire(
         Present { value: _ } => acc
         Absent =>
           match edge.label {
-            Named { name: n } =>
+            Authored { name: n } =>
               if n == field {
                 optional_present(value: edge.target)
               } else {
                 acc
               }
+            StructuralLabel { label: _ } => acc
             Positional => acc
           }
       }
@@ -7004,7 +7053,7 @@ fn target_value_expr_record_construct_type_from_wire(wire: Node) -> Outcome<Symb
         Present { value: _ } => acc
         Absent =>
           match edge.label {
-            Named { name: n } =>
+            Authored { name: n } =>
               if n == ^target_value_expr_field_record_type {
                 match edge.target.kind {
                   TypeNode { connective: Atom { identity: id } } =>
@@ -7019,6 +7068,7 @@ fn target_value_expr_record_construct_type_from_wire(wire: Node) -> Outcome<Symb
               } else {
                 acc
               }
+            StructuralLabel { label: _ } => acc
             Positional => acc
           }
       }
@@ -7043,7 +7093,7 @@ fn target_value_expr_record_construct_field_slots_from_wire(
         Rejected { diagnostics: r } => acc
         Accepted { value: slots, diagnostics: d } =>
           match edge.label {
-            Named { name: n } =>
+            Authored { name: n } =>
               if n == ^target_value_expr_field_record_type {
                 acc
               } else {
@@ -7059,6 +7109,10 @@ fn target_value_expr_record_construct_field_slots_from_wire(
                   }
                 )
               }
+            StructuralLabel { label: _ } =>
+              outcome_rejected(
+                target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+              )
             Positional =>
               outcome_rejected(
                 target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
@@ -7337,13 +7391,13 @@ fn import_name_symbols_from_block(block: Node) -> Outcome<List<Symbol>> {
 
 fn import_value_from_carrier(carrier: Node) -> Outcome<TargetImport> {
   bind_outcome(
-    o: find_named_child(root: carrier, name: ^dag_surface_import_decl_qualified_name),
+    o: find_labeled_child(root: carrier, label: production_edge_label(language: ^dag_language_model_surface_id, edge: ^dag_surface_import_decl_qualified_name)),
     f: fn(qn_node) {
       bind_outcome(
         o: qualified_name_from_node(root: qn_node),
         f: fn(qn) {
           bind_outcome(
-            o: find_named_child(root: carrier, name: ^dag_surface_import_decl_block),
+            o: find_labeled_child(root: carrier, label: production_edge_label(language: ^dag_language_model_surface_id, edge: ^dag_surface_import_decl_block)),
             f: fn(block) {
               bind_outcome(
                 o: import_name_symbols_from_block(block: block),
@@ -7549,9 +7603,10 @@ fn target_value_expr_field_access_wire_schema_valid(wire: Node) -> Outcome<Bool>
           f: fn(acc, edge) {
             if acc {
               match edge.label {
-                Named { name: n } =>
+                Authored { name: n } =>
                   n == ^target_value_expr_field_field_access_base
                   || n == ^target_value_expr_field_field_access_field
+                StructuralLabel { label: _ } => false
                 Positional => false
               }
             } else {
@@ -7593,7 +7648,7 @@ fn target_value_expr_field_access_field_from_wire(wire: Node) -> Outcome<Symbol>
         Present { value: _ } => acc
         Absent =>
           match edge.label {
-            Named { name: n } =>
+            Authored { name: n } =>
               if n == ^target_value_expr_field_field_access_field {
                 match edge.target.kind {
                   TypeNode { connective: Atom { identity: id } } =>
@@ -7608,6 +7663,7 @@ fn target_value_expr_field_access_field_from_wire(wire: Node) -> Outcome<Symbol>
               } else {
                 acc
               }
+            StructuralLabel { label: _ } => acc
             Positional => acc
           }
       }
@@ -7675,11 +7731,11 @@ fn target_value_expression_field_access_to_concrete_tokens(
 fn target_value_expr_match_arm_wire_schema_valid(arm_wire: Node) -> Outcome<Bool> {
   match arm_wire.kind {
     TypeNode { connective: Conj } =>
-      if name_occurrences(name: match_arm_pattern, children: arm_wire.children) != 1 {
+      if core_occurrences(marker: MatchArmPatternEdge, children: arm_wire.children) != 1 {
         outcome_rejected(
           target_value_expr_operand_wire_malformed_diagnostic(wire: arm_wire)
         )
-      } else if name_occurrences(name: match_arm_body, children: arm_wire.children) != 1 {
+      } else if core_occurrences(marker: MatchArmBodyEdge, children: arm_wire.children) != 1 {
         outcome_rejected(
           target_value_expr_operand_wire_malformed_diagnostic(wire: arm_wire)
         )
@@ -7689,11 +7745,7 @@ fn target_value_expr_match_arm_wire_schema_valid(arm_wire: Node) -> Outcome<Bool
           init: true,
           f: fn(acc, edge) {
             if acc {
-              match edge.label {
-                Named { name: n } =>
-                  n == match_arm_pattern || n == match_arm_body
-                Positional => false
-              }
+              edge_is_core(e: edge, marker: MatchArmPatternEdge) || edge_is_core(e: edge, marker: MatchArmBodyEdge)
             } else {
               false
             }
@@ -7747,7 +7799,7 @@ fn target_value_expr_match_wire_schema_valid(wire: Node) -> Outcome<Bool> {
                   acc
                 } else {
                   match edge.label {
-                    Named { name: n } =>
+                    Authored { name: n } =>
                       if n == ^target_value_expr_field_match_scrutinee {
                         acc
                       } else {
@@ -7755,6 +7807,7 @@ fn target_value_expr_match_wire_schema_valid(wire: Node) -> Outcome<Bool> {
                           target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
                         )
                       }
+                    StructuralLabel { label: _ } => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
                     Positional =>
                       bind_outcome(
                         o: target_value_expr_match_arm_wire_schema_valid(arm_wire: edge.target),
@@ -7796,10 +7849,10 @@ fn target_value_expr_match_arm_slot_from_wire(arm_wire: Node) -> Outcome<TargetV
     o: target_value_expr_match_arm_wire_schema_valid(arm_wire: arm_wire),
     f: fn(_) {
       bind_outcome(
-        o: find_named_child(root: arm_wire, name: match_arm_pattern),
+        o: find_core_child(root: arm_wire, marker: MatchArmPatternEdge),
         f: fn(pattern_wire) {
           bind_outcome(
-            o: find_named_child(root: arm_wire, name: match_arm_body),
+            o: find_core_child(root: arm_wire, marker: MatchArmBodyEdge),
             f: fn(body_wire) {
               bind_outcome(
                 o: target_value_expression_reify_from_wire(wire: pattern_wire),
@@ -7836,7 +7889,8 @@ fn target_value_expr_match_arms_from_wire(
         Rejected { diagnostics: r } => acc
         Accepted { value: arms, diagnostics: d } =>
           match edge.label {
-            Named { name: _ } => acc
+            Authored { name: _ } => acc
+            StructuralLabel { label: _ } => acc
             Positional =>
               bind_outcome(
                 o: target_value_expr_match_arm_slot_from_wire(arm_wire: edge.target),
@@ -7971,12 +8025,13 @@ fn target_value_expression_bool_literal_value_from_wire(wire: Node) -> Optional<
         Present { value: _ } => acc
         Absent =>
           match edge.label {
-            Named { name: n } =>
+            Authored { name: n } =>
               if n == ^target_value_expression_field_value {
                 target_value_expr_bool_literal_value_from_atom(node: edge.target)
               } else {
                 acc
               }
+            StructuralLabel { label: _ } => acc
             Positional => acc
           }
       }
@@ -8604,7 +8659,7 @@ fn target_value_expr_callable_apply_callee_from_wire(wire: Node) -> Outcome<Symb
         Present { value: _ } => acc
         Absent =>
           match edge.label {
-            Named { name: n } =>
+            Authored { name: n } =>
               if n == ^target_value_expr_field_callee {
                 match edge.target.kind {
                   TypeNode { connective: Atom { identity: id } } =>
@@ -8619,6 +8674,7 @@ fn target_value_expr_callable_apply_callee_from_wire(wire: Node) -> Outcome<Symb
               } else {
                 acc
               }
+            StructuralLabel { label: _ } => acc
             Positional => acc
           }
       }
@@ -8643,7 +8699,7 @@ fn target_value_expr_callable_apply_args_from_wire(
         Rejected { diagnostics: _ } => acc
         Accepted { value: args, diagnostics: _ } =>
           match edge.label {
-            Named { name: n } =>
+            Authored { name: n } =>
               if n == ^target_value_expr_field_callable_arg {
                 bind_outcome(
                   o: target_value_expression_reify_from_wire(wire: edge.target),
@@ -8658,6 +8714,10 @@ fn target_value_expr_callable_apply_args_from_wire(
                   target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
                 )
               }
+            StructuralLabel { label: _ } =>
+              outcome_rejected(
+                target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+              )
             Positional =>
               outcome_rejected(
                 target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
@@ -8772,7 +8832,7 @@ fn target_value_expr_closure_params_from_wire(wire: Node) -> Outcome<List<Symbol
         Rejected { diagnostics: _ } => acc
         Accepted { value: ps, diagnostics: _ } =>
           match edge.label {
-            Named { name: n } =>
+            Authored { name: n } =>
               if n == ^target_value_expr_field_closure_param {
                 match edge.target.kind {
                   TypeNode { connective: Atom { identity: id } } =>
@@ -8795,6 +8855,10 @@ fn target_value_expr_closure_params_from_wire(wire: Node) -> Outcome<List<Symbol
                   target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
                 )
               }
+            StructuralLabel { label: _ } =>
+              outcome_rejected(
+                target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
+              )
             Positional =>
               outcome_rejected(
                 target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
@@ -9706,7 +9770,7 @@ fn target_constructor_template_from_node_otherwise(source_carrier: Node) -> Outc
 
 fn target_model_bundle_core_keep_edge(acc: List<Edge>, edge: Edge) -> List<Edge> {
   match edge.label {
-    Named { name: n } =>
+    Authored { name: n } =>
 
       match n == ^target_model_edge_atom_realizations
         || n == ^target_model_edge_signature_realizations
@@ -9714,6 +9778,7 @@ fn target_model_bundle_core_keep_edge(acc: List<Edge>, edge: Edge) -> List<Edge>
         true => acc
         false => list_snoc_item(xs: acc, item: edge)
       }
+    StructuralLabel { label: _ } => list_snoc_item(xs: acc, item: edge)
     Positional => list_snoc_item(xs: acc, item: edge)
   }
 }
@@ -9972,12 +10037,13 @@ fn target_atom_realization_conj_child(row_node: Node, edge_name: Symbol) -> Node
         init: row_node,
         f: fn(acc, e) {
           match e.label {
-            Named { name: n } =>
+            Authored { name: n } =>
               if n == edge_name {
                 e.target
               } else {
                 acc
               }
+            StructuralLabel { label: _ } => acc
             Positional => acc
           }
         }
@@ -10690,7 +10756,8 @@ fn target_type_expr_declaration_reference_form_node(form: DeclarationReferenceFo
 fn projection_bundle_has_child(bundle: Node, name: Symbol) -> Bool {
   fold(bundle.children, init: false, f: fn(acc, e) {
     acc || (match e.label {
-      Named { name: sym } => sym == name
+      Authored { name: sym } => sym == name
+      StructuralLabel { label: _ } => false
       Positional => false
     })
   })
@@ -10735,7 +10802,7 @@ fn decode_declaration_reference_form_bundle(bundle: Node) -> Outcome<Declaration
 
 fn target_type_expr_surface_edge(surface: Symbol) -> Edge {
   Edge {
-    label: Named { name: ^target_type_expr_field_surface },
+    label: Authored { name: ^target_type_expr_field_surface },
     target: Node {
       kind: TypeNode { connective: Atom { identity: surface } },
       children: [],
@@ -10789,7 +10856,7 @@ type TargetTypeExprKindEdgeDecode
 
 fn target_type_expr_decode_kind_edge(edge: Edge) -> TargetTypeExprKindEdgeDecode {
   match edge.label {
-    Named { name: n } =>
+    Authored { name: n } =>
       if n == ^target_type_expr_field_kind {
         match edge.target.kind {
           TypeNode { connective: Atom { identity: id } } =>
@@ -10807,6 +10874,7 @@ fn target_type_expr_decode_kind_edge(edge: Edge) -> TargetTypeExprKindEdgeDecode
       } else {
         KindEdgeNotKindField
       }
+    StructuralLabel { label: _ } => KindEdgeNotKindField
     Positional => KindEdgeNotKindField
   }
 }
@@ -10848,7 +10916,7 @@ fn target_type_expr_emitted_kind(node: Node) -> TargetTypeExprKindProbe {
 
 fn target_type_expr_kind_edge(kind: TargetTypeExprKind) -> Edge {
   Edge {
-    label: Named { name: ^target_type_expr_field_kind },
+    label: Authored { name: ^target_type_expr_field_kind },
     target: Node {
       kind: TypeNode {
         connective: Atom { identity: discriminant(v: kind) }
@@ -10966,7 +11034,7 @@ fn target_type_expr_field_slot_edges(fields: List<TargetTypeExprFieldSlot>) -> L
   fold(fields, init: Empty, f: fn(acc, field) {
     list_snoc_item(
       xs: acc,
-      item: Edge { label: Named { name: field.label }, target: field.type_expr }
+      item: Edge { label: Authored { name: field.label }, target: field.type_expr }
     )
   })
 }
@@ -10975,7 +11043,7 @@ fn target_type_expr_arrow_param_slot_edges(params: List<TargetTypeExprArrowParam
   fold(params, init: Empty, f: fn(acc, param) {
     list_snoc_item(
       xs: acc,
-      item: Edge { label: Named { name: param.label }, target: param.type_expr }
+      item: Edge { label: Authored { name: param.label }, target: param.type_expr }
     )
   })
 }
@@ -10984,7 +11052,7 @@ fn target_type_expr_variant_slot_edges(variants: List<TargetTypeExprVariantSlot>
   fold(variants, init: Empty, f: fn(acc, variant) {
     list_snoc_item(
       xs: acc,
-      item: Edge { label: Named { name: variant.label }, target: variant.type_expr }
+      item: Edge { label: Authored { name: variant.label }, target: variant.type_expr }
     )
   })
 }
@@ -10992,12 +11060,13 @@ fn target_type_expr_variant_slot_edges(variants: List<TargetTypeExprVariantSlot>
 fn target_type_expr_emitted_slot_type_nodes(node: Node) -> List<Node> {
   fold(node.children, init: Empty, f: fn(acc, e) {
     match e.label {
-      Named { name: n } =>
+      Authored { name: n } =>
         if n == ^target_type_expr_field_surface || n == ^target_type_expr_field_kind {
           acc
         } else {
           list_snoc_item(xs: acc, item: e.target)
         }
+      StructuralLabel { label: _ } => acc
       Positional => acc
     }
   })
@@ -11021,8 +11090,9 @@ fn target_type_expr_fold_named_metadata_edges(node: Node) -> TargetTypeExprNamed
       NamedMetadataFoldMalformed => acc
       NamedMetadataFoldOk { kind_seen: kind_seen, surface_seen: surface_seen, extra_named: extra_named } =>
         match e.label {
+          StructuralLabel { label: _ } => NamedMetadataFoldMalformed
           Positional => acc
-          Named { name: n } =>
+          Authored { name: n } =>
             if n == ^target_type_expr_field_kind {
               if kind_seen {
                 NamedMetadataFoldMalformed
@@ -11323,12 +11393,13 @@ fn target_type_expr_emitted_labeled_slot_edges(node: Node) -> Outcome<List<Edge>
     Accepted {
       value: fold(node.children, init: Empty, f: fn(acc, e) {
         match e.label {
-          Named { name: n } =>
+          Authored { name: n } =>
             if n == ^target_type_expr_field_surface || n == ^target_type_expr_field_kind {
               acc
             } else {
               list_snoc_item(xs: acc, item: e)
             }
+          StructuralLabel { label: _ } => acc
           Positional => acc
         }
       }),
@@ -11385,7 +11456,7 @@ fn target_type_expr_arrow_emitted_named(
       left: target_type_expr_arrow_param_slot_edges(params: params),
       right: Cons {
         head: Edge {
-          label: Named { name: ^target_type_expr_field_codomain },
+          label: Authored { name: ^target_type_expr_field_codomain },
           target: output
         },
         tail: Empty
@@ -11425,7 +11496,7 @@ fn target_type_expr_arrow_labeled_param_slots(node: Node) -> Outcome<List<Target
                 init: Empty,
                 f: fn(acc, e) {
                   match e.label {
-                    Named { name: label } =>
+                    Authored { name: label } =>
                       if label == ^target_type_expr_field_surface ||
                         label == ^target_type_expr_field_kind ||
                         label == ^target_type_expr_field_codomain {
@@ -11436,6 +11507,7 @@ fn target_type_expr_arrow_labeled_param_slots(node: Node) -> Outcome<List<Target
                           item: TargetTypeExprArrowParamSlot { label: label, type_expr: e.target }
                         )
                       }
+                    StructuralLabel { label: _ } => acc
                     Positional => acc
                   }
                 }
@@ -13309,7 +13381,7 @@ fn target_use_site_ownership_catalog_lookup_step(
     TargetUseSiteOwnershipCatalogInvalid => TargetUseSiteOwnershipCatalogInvalid
     _ =>
       match edge.label {
-    Named { name: display_name } =>
+    Authored { name: display_name } =>
       target_use_site_ownership_catalog_lookup_step_for_row(
         acc: acc,
         row_node: edge.target,
@@ -13317,6 +13389,7 @@ fn target_use_site_ownership_catalog_lookup_step(
         source_carrier: source_carrier,
         use_site: use_site
       )
+    StructuralLabel { label: _ } => TargetUseSiteOwnershipCatalogInvalid
     Positional =>
       target_use_site_ownership_catalog_lookup_step_for_row(
         acc: acc,
@@ -13626,7 +13699,7 @@ fn target_model_bundle_replace_edge_target(
           init: Empty,
           f: fn(acc, edge) {
             match edge.label {
-              Named { name: n } =>
+              Authored { name: n } =>
                 if n == edge_name {
                   list_snoc_item(
                     xs: acc,
@@ -13635,6 +13708,7 @@ fn target_model_bundle_replace_edge_target(
                 } else {
                   list_snoc_item(xs: acc, item: edge)
                 }
+              StructuralLabel { label: _ } => list_snoc_item(xs: acc, item: edge)
               Positional => list_snoc_item(xs: acc, item: edge)
             }
           }
@@ -13733,12 +13807,13 @@ fn target_model_augment_use_site_ownership_catalog(
           init: optional_absent(),
           f: fn(acc, edge) {
             match edge.label {
-              Named { name: n } =>
+              Authored { name: n } =>
                 if n == ^target_model_edge_use_site_ownership_realizations {
                   optional_present(value: edge.target)
                 } else {
                   acc
                 }
+              StructuralLabel { label: _ } => acc
               Positional => acc
             }
           }
@@ -13788,12 +13863,13 @@ fn target_model_augment_value_semantics_carriers(
           init: optional_absent(),
           f: fn(acc, edge) {
             match edge.label {
-              Named { name: n } =>
+              Authored { name: n } =>
                 if n == ^target_model_edge_value_semantics_carriers {
                   optional_present(value: edge.target)
                 } else {
                   acc
                 }
+              StructuralLabel { label: _ } => acc
               Positional => acc
             }
           }
@@ -13856,8 +13932,8 @@ fn target_value_semantics_carriers_node(atoms: List<Symbol>) -> Node {
 
 fn target_value_semantics_carrier_snoc(acc: List<Symbol>, edge: Edge) -> List<Symbol> {
   match edge.label {
-    Named { name: n } => list_snoc_item(xs: acc, item: n)
-    Positional => acc
+    Authored { name: n } => list_snoc_item(xs: acc, item: n)
+    _ => acc
   }
 }
 
@@ -15060,12 +15136,13 @@ fn target_value_expr_int_literal_magnitude_node_optional(node: Node) -> Optional
         Present { value: _ } => acc
         Absent =>
           match edge {
-            Edge { label: Named { name: field }, target: magnitude } =>
+            Edge { label: Authored { name: field }, target: magnitude } =>
               if field == ^integer_literal_magnitude_field {
                 optional_present(value: magnitude)
               } else {
                 optional_absent()
               }
+            Edge { label: StructuralLabel { label: _ }, target: _ } => optional_absent()
             Edge { label: Positional, target: _ } => optional_absent()
           }
       }
@@ -15305,7 +15382,7 @@ fn target_value_expr_record_construct_field_slots_from_edges(
         Rejected { diagnostics: r } => acc
         Accepted { value: slots, diagnostics: d } =>
           match edge.label {
-            Named { name: field_label } =>
+            Authored { name: field_label } =>
               bind_outcome(
                 o: target_value_expr_project_body_subexpression(
                   arrow: arrow,
@@ -15325,6 +15402,13 @@ fn target_value_expr_record_construct_field_slots_from_edges(
                     )
                   )
                 }
+              )
+            StructuralLabel { label: _ } =>
+              outcome_rejected(
+                target_value_expr_diagnostic(
+                  reason: ^target_value_expr_reason_transform_shape_invalid,
+                  node: edge.target
+                )
               )
             Positional =>
               outcome_rejected(
@@ -15507,10 +15591,10 @@ fn target_value_expr_match_arm_slot_from_arm_edge(
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExprMatchArmSlot> {
   bind_outcome(
-    o: find_named_child(root: arm_edge.target, name: match_arm_pattern),
+    o: find_core_child(root: arm_edge.target, marker: MatchArmPatternEdge),
     f: fn(pattern_node) {
       bind_outcome(
-        o: find_named_child(root: arm_edge.target, name: match_arm_body),
+        o: find_core_child(root: arm_edge.target, marker: MatchArmBodyEdge),
         f: fn(body_node) {
           bind_outcome(
             o: target_value_expr_project_body_subexpression(
@@ -16116,7 +16200,8 @@ fn arrow_domain_edge_names(edges: List<Edge>) -> List<Symbol> {
 
 fn arrow_domain_edge_name_step(acc: List<Symbol>, edge: Edge) -> List<Symbol> {
   match edge.label {
-    Named { name: n } => list_snoc_item(xs: acc, item: n)
+    Authored { name: n } => list_snoc_item(xs: acc, item: n)
+    StructuralLabel { label: _ } => acc
     Positional => acc
   }
 }

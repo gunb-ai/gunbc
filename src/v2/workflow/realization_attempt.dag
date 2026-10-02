@@ -14,7 +14,7 @@ import v2.std.collection { list_at_optional }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.communication.medium { Medium }
 import v2.std.diagnostic { Accepted, Rejected, Outcome, Diagnostic, NonEmptyDiagnostics, Textual }
-import v2.std.node { Node, Edge, TypeNode, Arrow, Conj, Named, Symbol, node_synthetic, symbol_lexeme }
+import v2.std.node { Node, Edge, TypeNode, Arrow, Conj, Authored, Symbol, node_synthetic, symbol_lexeme }
 import v2.std.optional { Optional, Present, Absent }
 import v2.std.algebra { fold_list, length }
 import std.algebra { Cons, Empty }
@@ -140,12 +140,12 @@ fn first_arrow_in_children(root: Node) -> Optional<Node> {
 fn collect_arrows(root: Node, acc: List<Node>) -> List<Node> {
   fold(root.children, init: acc, f: fn(inner, e) {
     match e.label {
-      Named { name: decl_name } =>
+      Authored { name: decl_name } =>
         match first_arrow_in(root: e.target) {
           Present { value: arrow } =>
             concat(inner, [node_synthetic(
               kind: TypeNode { connective: Conj },
-              children: [Edge { label: Named { name: decl_name }, target: arrow }]
+              children: [Edge { label: Authored { name: decl_name }, target: arrow }]
             )])
           Absent => inner
         }
@@ -244,12 +244,12 @@ fn attempt_cause(a: EntryRealizationAttempt) -> Optional<Symbol> {
 fn decl_edges_named(root: Node, fn_name: Symbol, acc: List<Node>) -> List<Node> {
   let here = fold(root.children, init: acc, f: fn(inner, e) {
     match e.label {
-      Named { name: n } =>
+      Authored { name: n } =>
         if n == fn_name {
           match first_arrow_in(root: e.target) {
             Present { value: _ } => concat(inner, [node_synthetic(
               kind: TypeNode { connective: Conj },
-              children: [Edge { label: Named { name: n }, target: e.target }]
+              children: [Edge { label: Authored { name: n }, target: e.target }]
             )])
             Absent => inner
           }

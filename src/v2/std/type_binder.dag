@@ -21,7 +21,7 @@ import v2.std.node {
   ComputationNode,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -33,7 +33,17 @@ import v2.std.node {
   node_subtree_nodes,
   node_synthetic,
   type_binder_conj_conforms,
-  symbol_intern_lexeme,
+  CastTargetEdge,
+  TypeAliasEdge,
+  TypeAnnotationEdge,
+  TypeBodyEdge,
+  TypeParamsEdge,
+  core_edge_label,
+  ArrowBodyEdge,
+  ArrowSignatureOrderEdge,
+  StructuralLabel,
+  edge_is_core,
+  is_positional,
 }
 
 // THE EDGE THAT CARRIES A DECLARATION'S TYPE PARAMETERS. One label for one concept: `fn f<T>` carries
@@ -44,48 +54,30 @@ import v2.std.node {
 // -- the precedent is v2.std.qualified_name declaration_reference_marker -- so no authored field,
 // variant, binder or name can carry it, and only the producers below write it. The shape of the Conj
 // it targets is v2.std.node's (type_binder_conj_conforms).
-fn type_params_marker() -> Symbol {
-  symbol_intern_lexeme(lexeme: "<type-parameters>")
-}
 
 // The wrapper's other edge: the declaration's member (the record's field Conj, the coproduct's Disj).
-fn type_body_marker() -> Symbol {
-  symbol_intern_lexeme(lexeme: "<type-body>")
-}
 
 // The alias wrapper's other edge: the aliased type expression (`type List<T> = FreeMonoid<T>`). A
 // distinct label from <type-body>, because an aliased expression is not a member -- it declares no
 // fields or variants -- and a reader telling the two apart by the target's KIND would be the hidden
 // sum gunbc#12240 review 71065 refused (a qualified head can lower to a Conj spine that reads as a
 // record).
-fn type_alias_marker() -> Symbol {
-  symbol_intern_lexeme(lexeme: "<type-alias>")
-}
 
 fn edge_is_type_alias(e: Edge) -> Bool {
-  match e.label {
-    Named { name: sym } => sym == type_alias_marker()
-    Positional => false
-  }
+  edge_is_core(e: e, marker: TypeAliasEdge)
 }
 
 fn edge_is_type_params(e: Edge) -> Bool {
-  match e.label {
-    Named { name: sym } => sym == type_params_marker()
-    Positional => false
-  }
+  edge_is_core(e: e, marker: TypeParamsEdge)
 }
 
 fn edge_is_type_body(e: Edge) -> Bool {
-  match e.label {
-    Named { name: sym } => sym == type_body_marker()
-    Positional => false
-  }
+  edge_is_core(e: e, marker: TypeBodyEdge)
 }
 
 // THE ONE PRODUCER of the edge on an Arrow (consumed by v2.compiler.body_lowering_fold).
 fn type_params_edge(conj: Node) -> Edge {
-  Edge { label: Named { name: type_params_marker() }, target: conj }
+  Edge { label: core_edge_label(marker: TypeParamsEdge), target: conj }
 }
 
 // A GENERIC TYPE DECLARATION'S TARGET IS A WRAPPER BESIDE ITS MEMBER, NEVER A MEMBER WITH ITS
@@ -99,8 +91,8 @@ fn type_decl_wrapper(binders: Node, member: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: type_params_marker() }, target: binders },
-      Edge { label: Named { name: type_body_marker() }, target: member }
+      Edge { label: core_edge_label(marker: TypeParamsEdge), target: binders },
+      Edge { label: core_edge_label(marker: TypeBodyEdge), target: member }
     ]
   )
 }
@@ -133,8 +125,8 @@ fn type_alias_wrapper(binders: Node, aliased: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: type_params_marker() }, target: binders },
-      Edge { label: Named { name: type_alias_marker() }, target: aliased }
+      Edge { label: core_edge_label(marker: TypeParamsEdge), target: binders },
+      Edge { label: core_edge_label(marker: TypeAliasEdge), target: aliased }
     ]
   )
 }
@@ -146,7 +138,7 @@ fn type_alias_wrapper(binders: Node, aliased: Node) -> Node {
 fn type_opaque_wrapper(binders: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: Named { name: type_params_marker() }, target: binders }]
+    children: [Edge { label: core_edge_label(marker: TypeParamsEdge), target: binders }]
   )
 }
 
@@ -226,8 +218,8 @@ fn declaration_binder_edge(parent: Node, edge: Edge) -> Bool {
 // edge's marker is this module's fact (v2.std.node cannot intern it). Before the binder edge was
 // excluded, a module declaring an alias, a bodyless declaration or a generic declaration refused at the
 // partition closure as partition_facts_miss on its binder nodes.
-// A RESOLVED REFERENCE IS ONE TERM: the qualified-name cells under a <declaration-reference> or
-// <parameter-reference> marker (v2.std.qualified_name resolved_reference_node_of_kind) name where the
+// A RESOLVED REFERENCE IS ONE TERM: the qualified-name cells under a DeclarationReferenceEdge or
+// ParameterReferenceEdge core marker (v2.std.qualified_name resolved_reference_node_of_kind) name where the
 // referent is declared, so they are not subterms. They are synthetic and alike across every reference
 // to one path, so entered as facts they collide as one key carrying different facts
 // (infer_facts_key_conflict). v2.compiler.infer's gather skips the same cells by the same accessor.
@@ -264,7 +256,8 @@ fn type_param_names(n: Node) -> List<Symbol> {
 fn binder_conj_names(conj: Node) -> List<Symbol> {
   fold(conj.children, init: Empty, f: fn(acc, e) {
     match e.label {
-      Named { name: sym } => list_snoc_item(xs: acc, item: sym)
+      Authored { name: sym } => list_snoc_item(xs: acc, item: sym)
+      StructuralLabel { label: _ } => acc
       Positional => acc
     }
   })
@@ -275,20 +268,14 @@ fn binder_conj_names(conj: Node) -> List<Symbol> {
 // -- v2.std.coercion decides whether e's type crosses to T, and the value may change -- so it is its
 // own label and never a let's static ascription under a shared one (one name carrying two
 // obligations). Unauthorable for the reason type_params_marker is.
-fn cast_target_marker() -> Symbol {
-  symbol_intern_lexeme(lexeme: "<cast-target>")
-}
 
 // THE ONE PRODUCER of the edge.
 fn cast_target_edge(target_type: Node) -> Edge {
-  Edge { label: Named { name: cast_target_marker() }, target: target_type }
+  Edge { label: core_edge_label(marker: CastTargetEdge), target: target_type }
 }
 
 fn edge_is_cast_target(e: Edge) -> Bool {
-  match e.label {
-    Named { name: sym } => sym == cast_target_marker()
-    Positional => false
-  }
+  edge_is_core(e: e, marker: CastTargetEdge)
 }
 
 // THE ONE ACCESSOR: the cast target a Transform carries, Absent on any other node. A reader that
@@ -314,13 +301,10 @@ fn cast_target_optional(n: Node) -> Optional<Node> {
 // static ASCRIPTION -- the bound value must already inhabit T, nothing is converted -- so it is its
 // own label beside <cast-target> and never shares one with the coercion. Unauthorable for the
 // reason type_params_marker is.
-fn type_annotation_marker() -> Symbol {
-  symbol_intern_lexeme(lexeme: "<type-annotation>")
-}
 
 // THE ONE PRODUCER of the edge.
 fn type_annotation_edge(annotation: Node) -> Edge {
-  Edge { label: Named { name: type_annotation_marker() }, target: annotation }
+  Edge { label: core_edge_label(marker: TypeAnnotationEdge), target: annotation }
 }
 
 // 🟡 dissolve-on: edge labels on behavior nodes becoming a closed coproduct owned by v2.std.node, the
@@ -330,10 +314,7 @@ fn type_annotation_edge(annotation: Node) -> Edge {
 // <type-annotation> edge is recognized, the same shape as edge_is_type_params and edge_is_cast_target;
 // with typed labels it dissolves into a match on the label arm.
 fn edge_is_type_annotation(e: Edge) -> Bool {
-  match e.label {
-    Named { name: sym } => sym == type_annotation_marker()
-    Positional => false
-  }
+  edge_is_core(e: e, marker: TypeAnnotationEdge)
 }
 
 // THE ONE ACCESSOR: the annotation a Bind carries, Absent on an unannotated Bind and on any other
@@ -359,10 +340,7 @@ fn type_annotation_optional(n: Node) -> Optional<Node> {
 // at most one, wherever it stands.
 fn bind_named_labels_conform(n: Node) -> Bool {
   fold(n.children, init: true, f: fn(acc, e) {
-    match e.label {
-      Positional => acc
-      Named { name: sym } => acc && (sym == type_annotation_marker())
-    }
+    acc && (is_positional(e: e) || edge_is_type_annotation(e: e))
   })
 }
 
@@ -385,14 +363,12 @@ type TransformLabelWalk {
 
 fn transform_named_labels_conform(n: Node) -> Bool {
   let walk = fold(n.children, init: TransformLabelWalk { markers: 0, actuals: 0 }, f: fn(acc, e) {
-    match e.label {
-      Positional => acc
-      Named { name: sym } =>
-        if sym == cast_target_marker() {
-          TransformLabelWalk { markers: acc.markers + 1, actuals: acc.actuals }
-        } else {
-          TransformLabelWalk { markers: acc.markers, actuals: acc.actuals + 1 }
-        }
+    if is_positional(e: e) {
+      acc
+    } else if edge_is_cast_target(e: e) {
+      TransformLabelWalk { markers: acc.markers + 1, actuals: acc.actuals }
+    } else {
+      TransformLabelWalk { markers: acc.markers, actuals: acc.actuals + 1 }
     }
   })
   (walk.markers == 0) || ((walk.markers == 1) && (walk.actuals == 0))
@@ -460,7 +436,8 @@ fn arrow_domain_members_are_binders(n: Node) -> Bool {
 fn arrow_domain_member_is_binder(e: Edge) -> Bool {
   match e.label {
     Positional => true
-    Named { name: _ } =>
+    StructuralLabel { label: _ } => false
+    Authored { name: _ } =>
       match binder_node_parts(n: e.target) {
         Present { value: _ } => true
         Absent => false
@@ -470,10 +447,7 @@ fn arrow_domain_member_is_binder(e: Edge) -> Bool {
 
 fn arrow_named_labels_conform(n: Node) -> Bool {
   fold(n.children, init: true, f: fn(acc, e) {
-    match e.label {
-      Positional => acc
-      Named { name: sym } => acc && (arrow_named_edge_is_non_binder(e: e) || (sym == type_params_marker()))
-    }
+    acc && (is_positional(e: e) || arrow_named_edge_is_non_binder(e: e) || edge_is_type_params(e: e))
   })
 }
 

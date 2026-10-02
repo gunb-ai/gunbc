@@ -7,7 +7,7 @@ import v2.std.algebra { list_append, length }
 import extdeps.numeric.base16 { int_to_upper_hex }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import v2.std.node { Conj, Edge, Node, Named, Positional, Symbol, TypeNode, Atom }
+import v2.std.node { Conj, Edge, Node, Authored, Positional, Symbol, TypeNode, Atom }
 import v2.std.collection { Map, empty_map, map_insert }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.witness { Holds, Violates }
@@ -394,7 +394,7 @@ fn swift_row_rules(row: Node) -> Node {
 }
 
 fn swl_named_conj(name: Symbol, target: Node) -> Node {
-  Node { kind: TypeNode { connective: Conj }, children: [Edge { label: Named { name: name }, target: target }], occurrence_id: OccurrenceSynthetic }
+  Node { kind: TypeNode { connective: Conj }, children: [Edge { label: Authored { name: name }, target: target }], occurrence_id: OccurrenceSynthetic }
 }
 
 // ── Emission ──────────────────────────────────────────────────────────────────────────────────

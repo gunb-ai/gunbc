@@ -24,7 +24,7 @@ import v2.std.node {
   ComputationNode,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -234,7 +234,7 @@ fn ingested_add_decl_node(fn_name: Symbol) -> Outcome<Node> {
           kind: TypeNode { connective: Conj },
           children: [
             Edge {
-              label: Named { name: fn_name },
+              label: Authored { name: fn_name },
               target: arrow_with_body
             }
           ]

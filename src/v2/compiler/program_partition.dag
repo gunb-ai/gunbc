@@ -72,7 +72,7 @@ import v2.std.node {
   Conj,
   Disj,
   Edge,
-  Named,
+  Authored,
   Node,
   Symbol,
   Transform,
@@ -176,7 +176,7 @@ fn partition_collect_user_semantic_type_edge(
   edge: Edge
 ) -> List<PartitionUserSemanticType> {
   match edge.label {
-    Named { name: sym } =>
+    Authored { name: sym } =>
       match partition_semantic_type_from_decl_target(target: edge.target) {
         Present { value: semantic } =>
           partition_snoc_user_semantic_type_unique(
