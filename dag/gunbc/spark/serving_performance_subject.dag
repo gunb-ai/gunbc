@@ -130,7 +130,6 @@ fn serving_performance_subject(
 // the profile renders no speculative configuration (gunbc.spark.serving_arm_launch arm_engine_argv), so a
 // launch's speculation is off, known, not unread. Only the realized collective transport is a reading.
 fn serving_subject_for_launch(
-  checkpoint: ServingCheckpoint,
   checkpoint_revision: NonEmptyStr?,
   runtime: ServingRuntime,
   runtime_image_reference: NonEmptyStr,
@@ -139,7 +138,7 @@ fn serving_subject_for_launch(
   collective_transport: NcclRealizedTransport?,
 ) -> ServingPerformanceSubject {
   serving_performance_subject(
-    checkpoint: checkpoint,
+    checkpoint: profile.checkpoint,
     checkpoint_revision: checkpoint_revision,
     runtime: runtime,
     runtime_image_reference: runtime_image_reference,
