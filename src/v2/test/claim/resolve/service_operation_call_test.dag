@@ -7,7 +7,7 @@ import v2.compiler.name_resolve { Admission, ResolutionSubject, resolution_conte
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import v2.extdeps.languages.dag { dag_language_model }
+import v2.extdeps.languages.dag { dag_language_model_surface_empty_prelude }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.cross_tree.resolution { source_root_index_empty }
@@ -36,11 +36,11 @@ data soc_logic_source: String = "module v2.std.logic\n\ntype Bool = True | False
 
 data soc_service_source: String = "module t.svc\n\nservice s.F {\n  operation Run {}\n}\n\nservice s.E {\n  operation Get {}\n}\n"
 
-data soc_caller_source: String = "module t.caller\n\nimport v2.std.logic { Bool }\nimport t.svc { s }\n\nfn run_it(p: Bool) -> Bool { s.F.Run() }\n\nfn get_it(p: Bool) -> Bool { s.E.Get() }\n"
+data soc_caller_source: String = "module t.caller\n\nimport v2.std.logic { Bool }\nimport t.svc\n\nfn run_it(p: Bool) -> Bool { s.F.Run() }\n\nfn get_it(p: Bool) -> Bool { s.E.Get() }\n"
 
 data soc_absolute_source: String = "module t.absolute\n\nimport v2.std.logic { Bool }\n\nfn run_it(p: Bool) -> Bool { t.svc.s.F.Run() }\n"
 
-data soc_wrong_op_source: String = "module t.wrong\n\nimport v2.std.logic { Bool }\nimport t.svc { s }\n\nfn missing(p: Bool) -> Bool { s.F.Get() }\n"
+data soc_wrong_op_source: String = "module t.wrong\n\nimport v2.std.logic { Bool }\nimport t.svc\n\nfn missing(p: Bool) -> Bool { s.F.Get() }\n"
 
 data soc_unimported_source: String = "module t.other\n\nimport v2.std.logic { Bool }\n\nfn run_it(p: Bool) -> Bool { s.F.Run() }\n"
 
@@ -63,7 +63,12 @@ fn soc_read(source: String, id: Symbol, path: String) -> DagSourceReadWitness {
 }
 
 // Each claim ingests v2.std.logic, the provider and the one module it resolves, as
-// v2.test.claim.reference_closure does, with the full dag language model.
+// v2.test.claim.reference_closure does. Bool comes from that logic module, so the empty-prelude language
+// model suffices (the full model put each claim at ~360,000 eval steps).
+// The importing form is a WHOLE-MODULE import, `import t.svc`, then `s.F.Run()` relative to it: the form
+// the corpus writes (dag/gunbc/tools/bmc_health_reader_converge.dag: `import extdeps.bmc.http`, then
+// `redfish.Http.GetSystem(..)`). A brace import of a merged namespace body (`import t.svc { s }`) is not a
+// form the corpus uses.
 fn soc_resolve(subject_source: String, subject_id: Symbol, subject_path: String, subject: String) -> Outcome<ResolvedTree> {
   soc_resolve_with(provider_source: soc_service_source, subject_source: subject_source, subject_id: subject_id, subject_path: subject_path, subject: subject)
 }
@@ -74,11 +79,11 @@ fn soc_resolve_with(provider_source: String, subject_source: String, subject_id:
     soc_read(source: provider_source, id: ^soc_service_read, path: "src/v2/test/fixture/service_operation_call/svc.dag"),
     soc_read(source: subject_source, id: subject_id, path: subject_path)
   ]
-  match module_roots_from_source_root_ingest(ingest: ingest, lm: dag_language_model()) {
+  match module_roots_from_source_root_ingest(ingest: ingest, lm: dag_language_model_surface_empty_prelude()) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: roots, diagnostics: _ } =>
       resolve_in_context(
-        context: resolution_context(lm: dag_language_model(), roots: roots, index: source_root_index_empty(), active_roots: Empty, policy: default_name_resolution_policy()),
+        context: resolution_context(lm: dag_language_model_surface_empty_prelude(), roots: roots, index: source_root_index_empty(), active_roots: Empty, policy: default_name_resolution_policy()),
         admission: Admission {
           subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: subject) },
           imports: Empty
