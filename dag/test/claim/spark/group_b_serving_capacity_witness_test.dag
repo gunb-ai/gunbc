@@ -6,7 +6,7 @@ import gunbc.spark.group_b_serving_capacity {
   group_b_restoration_intent_admission, group_b_restoration_intent, group_b_restoration_profile,
   group_b_restoration_utilization, group_b_restoration_seats, group_b_restoration_executable, group_b_experiment_subject_seats,
   group_b_kv_inventory_tokens, group_b_restoration_window_tokens,
-  group_b_scheduler_envelope, group_b_route_offer, group_b_route_offer_ceiling,
+  group_b_scheduler_envelope, group_b_route_offer, group_b_route_offer_ceiling, RouteOfferAdmitted, RouteOfferRefused,
 }
 import gunbc.spark.serving_capacity_intent {
   ServingCapacityIntentAdmitted, ServingCapacityIntentRefused,
@@ -168,7 +168,7 @@ test fn w_group_b_holds_the_cold_floor_with_no_best_effort_seats() -> Bool {
               Absent => false
               Present { value: p } => p.max_num_seqs == 8 && p.guaranteed_cold_seqs == 8
             })
-        && (match group_b_route_offer() { Present { value: n } => n == 8 Absent => false })
+        && (match group_b_route_offer() { RouteOfferAdmitted { seats: n } => n == 8  RouteOfferRefused { cause: _ } => false })
   }
 }
 
@@ -179,6 +179,6 @@ test fn w_the_route_offer_never_exceeds_the_scheduler_ceiling() -> Bool {
     Absent => false
     Present { value: e } =>
       group_b_route_offer_ceiling <= envelope_hard_max_num_seqs(e: e)
-        && (match group_b_route_offer() { Present { value: n } => n <= envelope_hard_max_num_seqs(e: e) Absent => false })
+        && (match group_b_route_offer() { RouteOfferAdmitted { seats: n } => n <= envelope_hard_max_num_seqs(e: e)  RouteOfferRefused { cause: _ } => false })
   }
 }
