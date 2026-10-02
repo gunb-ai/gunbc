@@ -304,8 +304,18 @@ fn play_round_from_shoe(index: Int, seed: ShuffleSeed, shoe: Shoe, rules: Blackj
 // shuffle(standard_deck, seed), then play_round_from_shoe.
 fn play_round(index: Int, seed: ShuffleSeed, rules: BlackjackRules, strategy: Strategy) -> RoundPlay { … }
 
-// plan.rounds rounds, each with next_seed(previous) — so round k of plan P is replayable
-// alone. Stops at the first RoundPlayRefused and returns SimulationRefused.
+// The shoe one round is dealt from, with the seed that built it.
+type SeededShoe { seed: ShuffleSeed, shoe: Shoe }
+
+// plan.rounds seeds, each next_seed(previous), each shuffled from standard_deck — so
+// round k of plan P is replayable alone.
+fn seeded_shoes(plan: SimulationPlan) -> List<SeededShoe> { … }
+
+// Plays the supplied shoes in order, round_index counting from 0. Stops at the first
+// RoundPlayRefused and returns SimulationRefused with that round's index and seed.
+fn simulate_shoes(shoes: List<SeededShoe>, rules: BlackjackRules, strategy: Strategy) -> BlackjackSimulation { … }
+
+// simulate_shoes(seeded_shoes(plan), plan.rules, plan.strategy).
 fn simulate(plan: SimulationPlan) -> BlackjackSimulation { … }
 
 // Only a completed run has a summary.
@@ -317,9 +327,9 @@ fn summary_reconciles(s: SimulationSummary) -> Bool { … }
 
 `win_rate` is deliberately absent from the summary: a ratio is derived from two counts, so storing it beside them is a second copy of one fact (DESIGN §2). Compute it where it is displayed.
 
-**A refusal inside a simulation is a defect, not a statistic.** `play_round` drives the engine itself from a freshly shuffled 52-card deck, so none of the four `RoundRefusal` causes is a nominal event there: an out-of-turn action or an action after `RoundComplete` means the driver called the engine in the wrong order, and `ShoeExhausted` means a round consumed more cards than one round can. So `simulate` does not count refused rounds and carry on — that would turn a bug into a row of the report (DESIGN §5's absorbing fallback). It stops at the first refusal and returns `SimulationRefused` with the round index, the seed and the cause: the line stops, the stop is typed and located, and the seed replays it. Do not reach for a fabricated `SimulatedRound` (totals of 0, an outcome of `Pushed`) or a `_ =>` arm; `RoundRefused` carries no completed state, so there is nothing honest to build one from. Because a run either completes every requested round or refuses, the summary needs no requested-versus-completed pair: `rounds` is one count, and a test asserts that a `SimulationCompleted` for plan P holds exactly `P.rounds` rounds.
+**A refusal inside a simulation is a defect, not a statistic.** `play_round` drives the engine itself from a freshly shuffled 52-card deck, so none of the four `RoundRefusal` causes is a nominal event there: an out-of-turn action or an action after `RoundComplete` means the driver called the engine in the wrong order, and `ShoeExhausted` means a round consumed more cards than one round can. So `simulate` does not count refused rounds and carry on — that would turn a bug into a row of the report (DESIGN §5's absorbing fallback). It stops at the first refusal and returns `SimulationRefused` with the round index, the seed and the cause: the line stops, the stop is typed and located, and the seed replays it. Do not reach for a fabricated `SimulatedRound` (totals of 0, an outcome of `Pushed`) or a `_ =>` arm; `RoundRefused` carries no completed state, so there is nothing honest to build one from. Because a run either completes every requested round or refuses, the summary needs no requested-versus-completed pair: `rounds` is one count, and the real-route test below asserts it.
 
-`play_round_from_shoe` exists so the refusal route can *execute*: `play_round` always shuffles a full deck, so nothing can make it refuse. Supply a shoe too short to finish a round and assert `RoundPlayRefused { cause: ShoeExhausted }` — that is the test that goes red if a driver ever swallows a refusal. And if the game later grows a nominal event — several rounds dealt from one shoe, where running low is ordinary — model it as a lawful transition (a reshuffle), not as a refusal; refusals are reserved for what must not happen, which is what makes stopping on them correct.
+`simulate` is split at its shoes so the refusal route can *execute*: from a plan, every shoe is a full shuffled deck and nothing can make a round refuse, so a test that only calls `simulate(plan)` never runs the `SimulationRefused` arm. `simulate_shoes` takes the shoes as supplied values instead. Hand it three seeded shoes whose second is too short to finish a round, and assert the whole result: `SimulationRefused { round_index: 1, seed: <the second seed>, cause: ShoeExhausted }`. That one assertion goes red if the driver fabricates a round, carries on past the refusal, or attaches the wrong index or seed. Pair it with the real-route claim that `simulate(plan)` returns a `SimulationCompleted` of exactly `plan.rounds` rounds. And if the game later grows a nominal event — several rounds dealt from one shoe, where running low is ordinary — model it as a lawful transition (a reshuffle), not as a refusal; refusals are reserved for what must not happen, which is what makes stopping on them correct.
 
 ## 5. Tests, evidence, and what "mocking" means here
 
@@ -422,7 +432,7 @@ Five, each ending in a small PR so review can focus on one conceptual layer. Eac
 - no unit test depends on live entropy; exactly one test exercises the real entropy route
 - two strategies compare through the same engine over the same seeds
 - `player_wins + dealer_wins + pushes == rounds` is a test, and it is green
-- an engine refusal inside a round reaches the caller of `simulate` as `SimulationRefused` with its index, seed and cause — never a fabricated round — and a test drives `play_round_from_shoe` with a short shoe to `ShoeExhausted`
+- an engine refusal inside a round reaches the caller of `simulate` as `SimulationRefused` with its index, seed and cause — never a fabricated round — and a test drives `simulate_shoes` with a short second shoe to `SimulationRefused { round_index: 1, seed: <that shoe's seed>, cause: ShoeExhausted }`
 - every test names its case and can be made red by a mutation of the code it covers
 - the example's closure emits Rust and the crate passes `cargo check` unedited
 - the README explains the project through the lenses, not the rules
