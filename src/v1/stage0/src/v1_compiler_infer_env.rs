@@ -309,6 +309,7 @@ pub fn surface_reach_of(
     imports: Rc<Vec<Rc<SurfaceImport>>>,
     pool: Rc<SurfacePool>,
 ) -> Rc<Vec<i64>> {
+    let _phase_cpu_guard = crate::phase_cpu::guard("surface_reach_of");
     imports.iter().cloned().fold(
         Rc::new(vec![]),
         |acc: Rc<Vec<i64>>, imp: Rc<SurfaceImport>| match v1_rt::map_get(
@@ -331,6 +332,7 @@ pub fn surface_pool_admit(
     imports: Rc<Vec<Rc<SurfaceImport>>>,
     contested: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<SurfacePool> {
+    let _phase_cpu_guard = crate::phase_cpu::guard("surface_pool_admit");
     {
         let surface = Rc::new(ModuleSurface {
             module_path: module_path.clone(),
@@ -393,6 +395,7 @@ pub fn surface_has(
     reach: Rc<Vec<i64>>,
     name: String,
 ) -> bool {
+    crate::phase_cpu::count("surface_has");
     match v1_rt::map_get(&kernel, name.clone()) {
         Some(_) => true,
         std::option::Option::None => match v1_rt::map_get(&pool.exporters.clone(), name.clone()) {
@@ -514,6 +517,7 @@ pub fn surface_contested_walk(
     kernel: Rc<HashMap<String, Rc<TypeBinding>>>,
     imports: Rc<Vec<Rc<SurfaceImport>>>,
 ) -> Rc<ContestedWalk> {
+    let _phase_cpu_guard = crate::phase_cpu::guard("surface_contested_walk");
     {
         let reach = surface_reach_of(imports.clone(), pool.clone());
         let contested = closure_contested_names(pool.clone(), kernel.clone(), reach.clone());
@@ -789,6 +793,7 @@ pub struct SurfaceForkWalk {
 }
 
 pub fn ancestry_names(view: Rc<AncestryView>) -> Rc<Vec<String>> {
+    let _phase_cpu_guard = crate::phase_cpu::guard("ancestry_names");
     {
         let with_kernel = Rc::new(v1_rt::map_keys(&view.kernel.clone()))
             .iter()
@@ -876,6 +881,7 @@ pub fn reach_word_ordinals(word: i64, base: i64) -> Rc<Vec<i64>> {
 }
 
 pub fn ancestry_lookup(view: Rc<AncestryView>, name: String) -> Option<Rc<TypeBinding>> {
+    crate::phase_cpu::count("ancestry_lookup");
     match v1_rt::map_get(&view.rewrites.clone(), name.clone()) {
         Some(b) => Some(b.clone()),
         std::option::Option::None => match (*closure_sole_declarer(
@@ -1764,6 +1770,7 @@ pub fn str_bindings_from_bindings(
 }
 
 pub fn lookup_binding_on_chain(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
+    crate::phase_cpu::count("lookup_binding_on_chain");
     match v1_rt::map_get(&env.str_bindings.clone(), name.clone()) {
         Some(binding) => Some(binding.clone()),
         std::option::Option::None => ancestry_lookup(env.ancestry.clone(), name.clone()),

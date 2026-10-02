@@ -17000,6 +17000,58 @@ mod module_schedule_batches_tests {
     }
 }
 
+/// DIFFERENTIAL PROBE (PR-2 of docs/plans/type-env-single-authority-design.md), armed by
+/// GUNBC_ANCESTRY_DIGEST: per module, a digest over its sorted (name, winner declaration span) pairs,
+/// and with GUNBC_ANCESTRY_DIGEST=full every pair. Read identically in the materialized arm and the
+/// derived arm, so two runs compare at declaration grain.
+pub(crate) fn ancestry_digest_census(modules: &Rc<im::Vector<Rc<TypedModule>>>) {
+    let Some(mode) = std::env::var_os("GUNBC_ANCESTRY_DIGEST") else {
+        return;
+    };
+    let full = mode == "full";
+    thread_local! {
+        static PRINTED: std::cell::RefCell<std::collections::HashSet<String>> = std::cell::RefCell::new(std::collections::HashSet::new());
+    }
+    for m in modules.iter() {
+        if !PRINTED.with(|p| p.borrow_mut().insert(m.type_env.module_path.clone())) {
+            continue;
+        }
+        let mut lines: Vec<String> =
+            crate::v1_compiler_infer_env::ancestry_names(m.type_env.ancestry.clone())
+                .iter()
+                .filter_map(|name| {
+                    crate::v1_compiler_infer_env::ancestry_lookup(
+                        m.type_env.ancestry.clone(),
+                        name.clone(),
+                    )
+                    .map(|b| {
+                        format!(
+                            "{}|{}:{}:{}",
+                            name, b.resolved.span.file, b.resolved.span.start, b.resolved.span.end
+                        )
+                    })
+                })
+                .collect();
+        lines.sort();
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        std::hash::Hash::hash(&lines, &mut h);
+        eprintln!(
+            "[ancestry-digest] module={} entries={} digest={:016x}",
+            m.type_env.module_path,
+            lines.len(),
+            std::hash::Hasher::finish(&h)
+        );
+        if full {
+            for line in &lines {
+                eprintln!(
+                    "[ancestry-entry] module={} {}",
+                    m.type_env.module_path, line
+                );
+            }
+        }
+    }
+}
+
 fn finish_resolved_graph_assembly(
     modules: Rc<im::Vector<Rc<TypedModule>>>,
     diag_chunks: Vec<Rc<im::Vector<Rc<ErrorNode>>>>,
@@ -17077,6 +17129,7 @@ fn finish_resolved_graph_assembly(
     let modules =
         v1_compiler_infer::rewire_func_env_parent_links(modules.clone(), source_indices.clone());
     resolve_stage_slot_add(|s| s.assembly_rewire_func_env += rewire3_started.elapsed().as_nanos());
+    ancestry_digest_census(&modules);
     resolve_stage_slot_add(|s| s.assembly_rewire += rewire_started.elapsed().as_nanos());
     // NO EmitGraphInfo IS BUILT HERE (v1.compiler.infer_items ResolvedGraph): emission builds its
     // own, and the resolve carries only the registry's leaf-owner projection. `assembly_emit_info`
@@ -17215,6 +17268,28 @@ fn try_reconcile_all_cache_hits(
         let diagnostics_started = std::time::Instant::now();
         diag_chunks.push(empty_parent_diags.clone());
         diag_chunks.push(tc_result.diagnostics.clone());
+        if std::env::var_os("GUNBC_ANCESTRY_DIGEST").is_some() {
+            let mut rows: Vec<String> = tc_result
+                .binding_forks
+                .iter()
+                .map(|f| {
+                    format!(
+                        "{}|{}|{}|{}|{}:{}",
+                        f.name,
+                        f.import_path,
+                        f.existing_site,
+                        f.incoming_site,
+                        f.span.start,
+                        f.span.end
+                    )
+                })
+                .collect();
+            rows.sort();
+            let module = &tc_result.typed.type_env.module_path;
+            for row in rows {
+                eprintln!("[fork-row] module={module} row={row}");
+            }
+        }
         for fork in tc_result.binding_forks.iter() {
             if fork.same_tree {
                 same_tree_fork_count += 1;
@@ -18115,6 +18190,28 @@ fn reconcile_with_typed_cache(
         let diagnostics_started = std::time::Instant::now();
         diag_chunks.push(parent_diags);
         diag_chunks.push(tc_result.diagnostics.clone());
+        if std::env::var_os("GUNBC_ANCESTRY_DIGEST").is_some() {
+            let mut rows: Vec<String> = tc_result
+                .binding_forks
+                .iter()
+                .map(|f| {
+                    format!(
+                        "{}|{}|{}|{}|{}:{}",
+                        f.name,
+                        f.import_path,
+                        f.existing_site,
+                        f.incoming_site,
+                        f.span.start,
+                        f.span.end
+                    )
+                })
+                .collect();
+            rows.sort();
+            let module = &tc_result.typed.type_env.module_path;
+            for row in rows {
+                eprintln!("[fork-row] module={module} row={row}");
+            }
+        }
         for fork in tc_result.binding_forks.iter() {
             if fork.same_tree {
                 same_tree_fork_count += 1;
@@ -47267,6 +47364,181 @@ mod surface_view_controls {
         assert!(
             ancestry_lookup(stale, "FromA".into()).is_none(),
             "a carried-over bitset happened to agree; the control would not discriminate"
+        );
+    }
+}
+
+#[cfg(test)]
+mod pr2_whole_tree_differential_probe {
+    fn fork_rows_of(view: &std::rc::Rc<crate::v1_compiler_infer_env::AncestryView>) -> Vec<String> {
+        crate::v1_compiler_infer_env::surface_contested_walk(
+            view.pool.clone(),
+            view.kernel.clone(),
+            view.imports.clone(),
+        )
+        .rows
+        .iter()
+        .map(|r| {
+            format!(
+                "{}|{}|{}|{}|{}:{}:{}",
+                r.name,
+                r.import_path,
+                r.existing_site,
+                r.incoming_site,
+                r.span.file,
+                r.span.start,
+                r.span.end
+            )
+        })
+        .collect()
+    }
+
+    /// PR-2's whole-tree differential AND its phase-CPU attribution (calm-pike-525).
+    /// The resolve is NOT gated: a blocking diagnostic no longer stops the probe. Every module the
+    /// graph carries is digested EXCEPT those owning a blocking diagnostic, which are reported as a
+    /// counted, named set. A graph-less compile is a loud cannot-tell, never a vacuous pass.
+    /// Armed by GUNBC_ANCESTRY_DIGEST; run with --ignored.
+    #[test]
+    #[ignore]
+    fn whole_tree_ancestry_digest() {
+        use std::collections::BTreeSet;
+        let root = super::workspace_root();
+        let roots = vec![
+            root.join("dag").to_string_lossy().into_owned(),
+            root.join("src/v2").to_string_lossy().into_owned(),
+        ];
+        let corpus = super::read_source_corpus_once(&roots);
+        let subject = super::assemble_prepared_subject_from_corpus(
+            &corpus,
+            &super::required_floor_runner::floor_prepared_subject_exclusions(),
+            None,
+        )
+        .expect("subject assembles");
+        let sources = subject.sources.clone();
+        eprintln!(
+            "[phase-cpu-subject] modules={} digest={}",
+            sources.len(),
+            subject.subject_digest
+        );
+        v1_stage0_v1_infer::phase_cpu::reset();
+        let cpu0 = crate::v1_interpreter::thread_cpu_nanos();
+        let wall0 = std::time::Instant::now();
+        let result =
+            crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(sources.into()));
+        let cpu_ms = (crate::v1_interpreter::thread_cpu_nanos() - cpu0) / 1_000_000;
+        eprintln!(
+            "[phase-cpu-total] resolve_thread_cpu_ms={cpu_ms} wall_ms={}",
+            wall0.elapsed().as_millis()
+        );
+        v1_stage0_v1_infer::phase_cpu::report("resolve");
+        eprintln!(
+            "[phase-cpu-peak] maxrss_kb={}",
+            v1_stage0_v1_infer::phase_cpu::maxrss_kb()
+        );
+        let mut blocked: BTreeSet<String> = BTreeSet::new();
+        let mut blocking = 0usize;
+        for d in result.diagnostics.iter() {
+            if super::is_resolve_typecheck_blocking(
+                d.diagnostic.clone(),
+                super::ResolveTypecheckGate::Strict,
+            ) {
+                blocking += 1;
+                blocked.insert(d.module_name.clone());
+            }
+        }
+        eprintln!(
+            "[ancestry-digest-blocked] blocking_diagnostics={blocking} blocked_modules={}",
+            blocked.len()
+        );
+        for m in &blocked {
+            eprintln!("[ancestry-digest-blocked-module] {m}");
+        }
+        let graph = result
+            .graph
+            .clone()
+            .expect("CANNOT-TELL: the resolve produced no graph, so no module can be digested");
+        let digested: Vec<_> = graph
+            .modules
+            .iter()
+            .filter(|m| !blocked.contains(&m.type_env.module_path))
+            .cloned()
+            .collect();
+        // FORK-CANDIDATE EQUALITY: the deleted pool-wide filter (every multi-exporter or kernel-exported
+        // name, kept when its exporters inside the closure plus the kernel reach two) against
+        // closure_contested_names, per module, over the final pool. Probe-only reconstruction.
+        if std::env::var_os("GUNBC_FORK_CANDIDATE_EQUALITY").is_some() {
+            use crate::v1_compiler_infer_env as env;
+            let (mut equal, mut differ) = (0usize, 0usize);
+            for m in digested.iter() {
+                let view = m.type_env.ancestry.clone();
+                let pool = view.pool.clone();
+                let reach = env::surface_reach_of(view.imports.clone(), pool.clone());
+                let mut old: Vec<String> = Vec::new();
+                let mut names: std::collections::BTreeSet<String> =
+                    pool.multi_exporters.keys().cloned().collect();
+                for k in view.kernel.keys() {
+                    if pool.exporters.contains_key(k) {
+                        names.insert(k.clone());
+                    }
+                }
+                for n in names {
+                    let mut c = if view.kernel.contains_key(&n) { 1 } else { 0 };
+                    if let Some(paths) = pool.exporters.get(&n) {
+                        for p in paths.iter() {
+                            if let Some(e) = pool.surfaces.get(p) {
+                                if env::reach_has(reach.clone(), e.ordinal) {
+                                    c += 1;
+                                }
+                            }
+                        }
+                    }
+                    if c >= 2 {
+                        old.push(n);
+                    }
+                }
+                let new: Vec<String> =
+                    env::closure_contested_names(pool.clone(), view.kernel.clone(), reach.clone())
+                        .iter()
+                        .cloned()
+                        .collect();
+                if old == new {
+                    equal += 1;
+                } else {
+                    differ += 1;
+                    eprintln!(
+                        "[fork-candidate-differ] module={} old={} new={}",
+                        m.type_env.module_path,
+                        old.len(),
+                        new.len()
+                    );
+                }
+            }
+            eprintln!("[fork-candidate-equality] equal={equal} differ={differ}");
+        }
+        // FORK-ROW DIGEST: each module's fork ledger recomputed over the final pool (a module's rows
+        // depend only on surfaces inside its closure, all fixed before it was typechecked), as one
+        // digest over its sorted (name, import_path, existing_site, incoming_site, span) rows.
+        if std::env::var_os("GUNBC_FORK_ROW_DIGEST").is_some() {
+            use std::hash::{Hash, Hasher};
+            for m in digested.iter() {
+                let view = m.type_env.ancestry.clone();
+                let rows = fork_rows_of(&view);
+                let mut h = std::collections::hash_map::DefaultHasher::new();
+                rows.hash(&mut h);
+                eprintln!(
+                    "[fork-digest] module={} rows={} digest={:016x}",
+                    m.type_env.module_path,
+                    rows.len(),
+                    h.finish()
+                );
+            }
+        }
+        super::ancestry_digest_census(&std::rc::Rc::new(digested.iter().cloned().collect()));
+        eprintln!(
+            "[ancestry-digest-done] graph_modules={} digested={} blocked={}",
+            graph.modules.len(),
+            digested.len(),
+            blocked.len()
         );
     }
 }

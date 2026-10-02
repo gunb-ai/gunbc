@@ -4076,6 +4076,7 @@ pub struct ResolvedPipelineResult {
 }
 
 pub fn compile_to_resolved(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<ResolvedPipelineResult> {
+    let _phase_cpu_guard = crate::phase_cpu::guard("compile_to_resolved");
     compile_to_resolved_with_options(sources.clone(), default_compile_pipeline_options())
 }
 

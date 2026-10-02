@@ -22970,6 +22970,7 @@ pub fn union_parent_type_env_caches(
     resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
 ) -> Rc<TypeEnvCache> {
+    let _phase_cpu_guard = crate::phase_cpu::guard("union_parent_type_env_caches");
     {
         let parent_caches = Rc::new({
             let mut __result = Vec::new();
@@ -25182,6 +25183,7 @@ pub fn build_ancestry_precedence(
     kernel_cache: Rc<TypeEnvCache>,
     kernel_str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<AncestryPrecedence> {
+    let _phase_cpu_guard = crate::phase_cpu::guard("build_ancestry_precedence");
     {
         let imports = surface_imports_of(resolved_imports.clone());
         let contested = crate::v1_compiler_infer_env::surface_contested_walk(
@@ -25219,6 +25221,7 @@ pub fn build_type_env(
     intern_table: Rc<InternTable>,
     symbol_index: Rc<SymbolIndex>,
 ) -> Rc<BuildTypeEnvResult> {
+    let _phase_cpu_guard = crate::phase_cpu::guard("build_type_env");
     {
         let source_indices = Rc::new(v1_rt::map_keys(&kernel_type_set()))
             .iter()
@@ -27644,6 +27647,7 @@ pub fn typecheck_module(
     symbol_index: Rc<SymbolIndex>,
     global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<TypecheckModuleResult> {
+    let _phase_cpu_guard = crate::phase_cpu::guard("typecheck_module");
     {
         let env_result = build_type_env(
             resolved.clone(),
@@ -27909,6 +27913,7 @@ pub fn surface_pool_from_index(
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<SurfacePool> {
+    let _phase_cpu_guard = crate::phase_cpu::guard("surface_pool_from_index");
     Rc::new(v1_rt::sorted_map_keys(&parent_index))
         .iter()
         .cloned()
@@ -29062,6 +29067,7 @@ pub fn rewire_type_env_import_str_binding_identity(
     modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypedModule>>> {
+    let _phase_cpu_guard = crate::phase_cpu::guard("rewire_type_env_import_str_binding_identity");
     rewire_type_env_import_str_binding_identity_unpooled(
         modules_with_final_surface_pool(modules.clone(), source_indices.clone()),
         source_indices.clone(),
@@ -29072,6 +29078,7 @@ pub fn modules_with_final_surface_pool(
     modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypedModule>>> {
+    let _phase_cpu_guard = crate::phase_cpu::guard("modules_with_final_surface_pool");
     {
         let index = modules.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
@@ -29140,6 +29147,8 @@ pub fn rewire_type_env_import_str_binding_identity_unpooled(
     modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypedModule>>> {
+    let _phase_cpu_guard =
+        crate::phase_cpu::guard("rewire_type_env_import_str_binding_identity_unpooled");
     {
         let export_indexes = build_export_indexes(modules.clone(), source_indices.clone());
         let type_name_index = export_indexes.by_name.clone();
