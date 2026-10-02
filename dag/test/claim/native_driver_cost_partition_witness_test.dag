@@ -16,6 +16,7 @@ import std.compiler_entry {
   ExclusiveRelayEmit,
   ExclusiveDemandScheduling,
   ExclusiveDriverCollection,
+  ExclusiveOccurrenceCensus,
   NativeDriverCostOverAttributed,
   NativeDriverCostReconciled,
   NativeDriverCostRemainderExceedsTolerance,
@@ -46,6 +47,7 @@ fn sample_exclusive_rows() -> NativeDriverExclusiveRows {
       ExclusiveRelayEmit => nanosecond(count: 10007)
       ExclusiveDemandScheduling => nanosecond(count: 7000003)
       ExclusiveDriverCollection => nanosecond(count: 20011)
+      ExclusiveOccurrenceCensus => nanosecond(count: 0)
     }
   })
 }
@@ -94,6 +96,7 @@ test fn exclusive_rows_past_the_parent_are_over_attributed() -> Bool {
         ExclusiveRelayEmit => nanosecond(count: 0)
         ExclusiveDemandScheduling => nanosecond(count: 0)
         ExclusiveDriverCollection => nanosecond(count: 0)
+        ExclusiveOccurrenceCensus => nanosecond(count: 0)
       }
     }),
     tolerance: native_driver_cost_remainder_tolerance_nanos
@@ -121,6 +124,7 @@ test fn a_remainder_past_tolerance_is_not_a_partition() -> Bool {
         ExclusiveRelayEmit => nanosecond(count: 0)
         ExclusiveDemandScheduling => nanosecond(count: 0)
         ExclusiveDriverCollection => nanosecond(count: 0)
+        ExclusiveOccurrenceCensus => nanosecond(count: 0)
       }
     }),
     tolerance: native_driver_cost_remainder_tolerance_nanos
@@ -166,6 +170,7 @@ test fn an_over_attribution_routed_through_demand_scheduling_is_the_same_refusal
         ExclusiveRelayEmit => nanosecond(count: 0)
         ExclusiveDemandScheduling => nanosecond(count: 80)
         ExclusiveDriverCollection => nanosecond(count: 0)
+        ExclusiveOccurrenceCensus => nanosecond(count: 0)
       }
     }),
     tolerance: native_driver_cost_remainder_tolerance_nanos
@@ -193,6 +198,7 @@ test fn an_over_attribution_routed_through_universe_derivation_is_the_same_refus
         ExclusiveRelayEmit => nanosecond(count: 0)
         ExclusiveDemandScheduling => nanosecond(count: 0)
         ExclusiveDriverCollection => nanosecond(count: 0)
+        ExclusiveOccurrenceCensus => nanosecond(count: 0)
       }
     }),
     tolerance: native_driver_cost_remainder_tolerance_nanos
@@ -220,6 +226,7 @@ test fn an_over_attribution_routed_through_receipt_admission_is_the_same_refusal
         ExclusiveRelayEmit => nanosecond(count: 0)
         ExclusiveDemandScheduling => nanosecond(count: 0)
         ExclusiveDriverCollection => nanosecond(count: 0)
+        ExclusiveOccurrenceCensus => nanosecond(count: 0)
       }
     }),
     tolerance: native_driver_cost_remainder_tolerance_nanos
@@ -252,6 +259,7 @@ test fn a_driver_handed_its_universe_reconciles_with_the_phases_it_does_not_have
         ExclusiveRelayEmit => nanosecond(count: 0)
         ExclusiveDemandScheduling => nanosecond(count: 0)
         ExclusiveDriverCollection => nanosecond(count: 0)
+        ExclusiveOccurrenceCensus => nanosecond(count: 0)
       }
     }),
     tolerance: native_driver_cost_remainder_tolerance_nanos
@@ -278,6 +286,7 @@ test fn a_driver_that_derives_its_universe_reconciles_over_the_same_law() -> Boo
         ExclusiveRelayEmit => nanosecond(count: 0)
         ExclusiveDemandScheduling => nanosecond(count: 0)
         ExclusiveDriverCollection => nanosecond(count: 0)
+        ExclusiveOccurrenceCensus => nanosecond(count: 0)
       }
     }),
     tolerance: native_driver_cost_remainder_tolerance_nanos
@@ -346,6 +355,7 @@ fn serialization_sample_rows_measured() -> NativeDriverExclusiveRows {
       ExclusiveRelayEmit => nanosecond(count: 0)
       ExclusiveDemandScheduling => nanosecond(count: 0)
       ExclusiveDriverCollection => nanosecond(count: 0)
+      ExclusiveOccurrenceCensus => nanosecond(count: 0)
     }
   })
 }
@@ -364,6 +374,7 @@ fn serialization_sample_rows_dropped() -> NativeDriverExclusiveRows {
       ExclusiveRelayEmit => nanosecond(count: 0)
       ExclusiveDemandScheduling => nanosecond(count: 0)
       ExclusiveDriverCollection => nanosecond(count: 0)
+      ExclusiveOccurrenceCensus => nanosecond(count: 0)
     }
   })
 }

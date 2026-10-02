@@ -42,6 +42,7 @@ fn planted_over_attribution_is_over_attributed_not_clamped() {
             NativeDriverExclusiveRowKey::ExclusiveRelayEmit => nanosecond(0),
             NativeDriverExclusiveRowKey::ExclusiveDemandScheduling => nanosecond(0),
             NativeDriverExclusiveRowKey::ExclusiveDriverCollection => nanosecond(0),
+            NativeDriverExclusiveRowKey::ExclusiveOccurrenceCensus => nanosecond(0),
         }),
         native_driver_cost_remainder_tolerance_nanos(),
     );
@@ -73,6 +74,7 @@ fn reconciled_parent_passes() {
             NativeDriverExclusiveRowKey::ExclusiveRelayEmit => nanosecond(0),
             NativeDriverExclusiveRowKey::ExclusiveDemandScheduling => nanosecond(0),
             NativeDriverExclusiveRowKey::ExclusiveDriverCollection => nanosecond(0),
+            NativeDriverExclusiveRowKey::ExclusiveOccurrenceCensus => nanosecond(0),
         }),
         native_driver_cost_remainder_tolerance_nanos(),
     );
@@ -349,6 +351,11 @@ fn scheduling_is_the_engine_call_span_and_collection_is_its_own_row() {
     assert!(
         main_rs.contains("let demand_scheduling_nanos = schedule_span_nanos - attributed_in_call;")
     );
+    // Every engine-attributed demand row leaves the call span, the occurrence census included:
+    // leaving one out would count its windows in scheduling AND in its own row.
+    assert!(main_rs.contains(
+        "let attributed_in_call = engine_prepare_nanos + engine_eval_nanos + occurrence_census_nanos;"
+    ));
     assert!(
         !main_rs.contains("let demand_scheduling_nanos = native_demand_scheduling_nanos("),
         "the bookkeeping-only sum must not be the scheduling row"
