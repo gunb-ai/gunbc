@@ -100,8 +100,8 @@ data floor_eval_step_cost_drop_apply_render_rows: List<EvalStepCostDropMeasureme
 // THIRD DROP, SAME MEMBERSHIP TEST. One identity: the live control gunbc.rung_drop
 // roadmap_sizing_authored_to_derived names as the ONE claim that executes the live roadmap
 // authority and refuses. It is on its OWN list because this module's rule is that growing a
-// drop's list is a new drop -- the roadmap four above may only shrink, and this identity is not
-// one of them.
+// drop's list is a new drop -- the roadmap list above may only shrink, and this identity is not
+// on it.
 //
 // WHY IT IS NOT MOVED OR WEAKENED INSTEAD. Weakening it would delete the pairing obligation's
 // last execution of the real path (DESIGN section 3). Moving it to the long home would stop it
