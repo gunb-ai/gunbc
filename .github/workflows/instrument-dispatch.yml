@@ -20,6 +20,17 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: Seed the run's receipt before anything that can fail
+        id: seed_receipt
+        run: |
+          set -e
+          'mkdir' '-p' "$RUNNER_TEMP"'/instrument-dispatch'
+          'echo' 'instrument-dispatch label='"$INSTRUMENT_LABEL"' revision='"$GITHUB_SHA"' run='"$GITHUB_RUN_ID"' attempt='"$GITHUB_RUN_ATTEMPT" > "$RUNNER_TEMP"'/instrument-dispatch/receipt.txt'
+          'echo' 'not-started' > "$RUNNER_TEMP"'/instrument-dispatch/stdout.txt'
+          'echo' 'exit=not-started' > "$RUNNER_TEMP"'/instrument-dispatch/exit.txt'
+        shell: bash
+        env:
+          INSTRUMENT_LABEL: ${{ inputs.label }}
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -76,12 +87,10 @@ jobs:
         id: instrument
         run: |
           set -e
-          'mkdir' '-p' 'instrument-dispatch'
-          'echo' 'instrument-dispatch label='"$INSTRUMENT_LABEL"' revision='"$GITHUB_SHA"' run='"$GITHUB_RUN_ID"' attempt='"$GITHUB_RUN_ATTEMPT" > 'instrument-dispatch/receipt.txt'
           status='0'
-          'target/release/gunbc' 'test' "$INSTRUMENT_LABEL" > 'instrument-dispatch/stdout.txt' || status="$?"
-          'cat' 'instrument-dispatch/stdout.txt'
-          'echo' 'exit='"$status" > 'instrument-dispatch/exit.txt'
+          'target/release/gunbc' 'test' "$INSTRUMENT_LABEL" > "$RUNNER_TEMP"'/instrument-dispatch/stdout.txt' || status="$?"
+          'cat' "$RUNNER_TEMP"'/instrument-dispatch/stdout.txt'
+          'echo' 'exit='"$status" > "$RUNNER_TEMP"'/instrument-dispatch/exit.txt'
           '[' "$status" '=' '0' ']'
         shell: bash
         env:
@@ -90,7 +99,7 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: instrument-dispatch-receipt
-          path: instrument-dispatch
+          path: ${{ runner.temp }}/instrument-dispatch
           if-no-files-found: error
           retention-days: 30
         if: always()
