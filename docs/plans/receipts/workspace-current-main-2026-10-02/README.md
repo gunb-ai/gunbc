@@ -10,3 +10,5 @@ The repair uses resolved service prefixes for each dotted chain. An independent 
 No host installation, commissioning, readiness publication, reservation, guest boot, SSH, release, or reuse is established by these receipts.
 
 The closure-admission group passes 17 tests, with the explicitly ignored live-corpus differential scheduled separately. The original group run exposed a stale two-pool fixture; the test now retains its cross-root bypass assertion, drops the first owned index, and resets the test-only cache before the clean counterpart. The production second-pool refusal remains tested and unchanged.
+
+At 1296fb5f713, all 621 live-corpus sources compared successfully, the native fixture passed all ten cases, and the complete site reached loopback readiness in 236.074 seconds within 12 GiB/no swap. CI then correctly found a missing live-tree import after the cursor witnesses gained their first explicit imports. All three affected witness files now name the live-tree authority; their four assertions pass under 6 GiB/no swap. Full-repository batch admission and exact-head CI remain separate gates.

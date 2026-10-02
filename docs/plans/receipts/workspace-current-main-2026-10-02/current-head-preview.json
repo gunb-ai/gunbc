@@ -1,0 +1,36 @@
+{
+  "revision": "1296fb5f7134c1245a77bdb06c8ae753d81f2a5c",
+  "binary_sha256": "e141c6f2ab82cb43946d134d03fe9d854beeba3b6cf085176c5c262725d88939",
+  "command": [
+    "/home/briansrls/scratch-wt/workspace-current-main/target/repaired-build/bin/gunbc",
+    "serve",
+    "--source-root",
+    "dag",
+    "--source-root",
+    "src/v2",
+    "--entry",
+    "dag/gunbc/roadmap/roadmap_serve.dag",
+    "--function",
+    "roadmap_serve_handle_srv2_preview",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "0",
+    "--release-revision",
+    "1296fb5f7134c1245a77bdb06c8ae753d81f2a5c"
+  ],
+  "unit": "workspace-preview-qualification-934272.scope",
+  "ready": true,
+  "scope": "loopback startup only; no HTTP request or deployment",
+  "port": 44309,
+  "memory": {
+    "memory.max": "12884901888",
+    "memory.swap.max": "0",
+    "memory.peak": "12007780352",
+    "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+  },
+  "result_before_stop": "success",
+  "duration_seconds": 236.074,
+  "process_exit": -15,
+  "stopped_after_check": true
+}

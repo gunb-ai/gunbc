@@ -1,0 +1,28 @@
+{
+  "binary_source_revision": "1296fb5f7134c1245a77bdb06c8ae753d81f2a5c",
+  "source_change": "explicit live_tree imports in three lexer/pipeline witnesses",
+  "memory_max_bytes": 6442450944,
+  "swap_max_bytes": 0,
+  "standing": "four focused assertions passed; full-repository batch admission pending",
+  "runs": [
+    {
+      "log_sha256": "4ba42ac83d76c488dbb5128ff2fdd1cef3f128a00dc12d0aaac919a6637d39a7",
+      "passes": [
+        "PASS lex_match_thunk_claims_holds"
+      ]
+    },
+    {
+      "log_sha256": "225d6dc938d76175006a1e9d77e42108c69e69b96962ea4059d802275b9c7af3",
+      "passes": [
+        "PASS lex_rule_dispatch_agrees_with_trying_every_rule"
+      ]
+    },
+    {
+      "log_sha256": "84a9a4d5b24beddb429ea89d2f8c7fdbcc80ce8ae67934cdf4ded252eacb98d1",
+      "passes": [
+        "PASS pipeline_tokenize_add_relationship_green",
+        "PASS pipeline_tokenize_pick_relationship_green"
+      ]
+    }
+  ]
+}
