@@ -1010,7 +1010,8 @@ fn decode_core_marker_label(edge_value: JsonValue) -> LabelDecode {
             if core_edge_label_canonical_symbol(marker: m) == sym { LabelDecoded { label: core_edge_label(marker: m) } } else { acc }
           })
         }
-        _ => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "marker" } } }
+        MemberArray { elements: _ } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "marker" } } }
+        MemberObject { value: _ } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "marker" } } }
       }
   }
 }
@@ -1035,9 +1036,11 @@ fn decode_production_label(edge_value: JsonValue) -> LabelDecode {
                   edge: symbol_intern_lexeme(lexeme: edge)
                 )
               }
-            _ => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "edge" } } }
+            MemberArray { elements: _ } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "edge" } } }
+            MemberObject { value: _ } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "edge" } } }
           }
-        _ => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "language" } } }
+        MemberArray { elements: _ } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "language" } } }
+        MemberObject { value: _ } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "language" } } }
       }
   }
 }

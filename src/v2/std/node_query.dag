@@ -17,6 +17,7 @@ import v2.std.algebra { TailAbsent, TailFound, fold_list, is_empty, list_tail }
 import v2.std.collection { Absent, List, Present, empty_map, list_at_optional, map_insert, map_lookup }
 import std.types { Map }
 import v2.std.node {
+  Instantiation,
   BinderTypeEdge,
   BinderDefaultEdge,
   core_edge,
@@ -922,7 +923,12 @@ fn core_child_lookup(root: Node, marker: CoreEdgeLabel) -> NamedChildLookup {
       fold(root.children, init: NamedChildMissing, f: fn(acc, e) {
         child_lookup_step(acc: acc, hit: edge_is_core(e: e, marker: marker), target: e.target)
       })
-    _ => NamedChildMissing
+    TypeNode { connective: Atom { identity: _ } } => NamedChildMissing
+    TypeNode { connective: Disj } => NamedChildMissing
+    TypeNode { connective: Arrow } => NamedChildMissing
+    TypeNode { connective: Cardinality } => NamedChildMissing
+    TypeNode { connective: Instantiation } => NamedChildMissing
+    ComputationNode { behavior: _ } => NamedChildMissing
   }
 }
 
@@ -933,7 +939,12 @@ fn labeled_child_lookup(root: Node, label: EdgeLabel) -> NamedChildLookup {
       fold(root.children, init: NamedChildMissing, f: fn(acc, e) {
         child_lookup_step(acc: acc, hit: (e.label == label) && !is_positional(e: e), target: e.target)
       })
-    _ => NamedChildMissing
+    TypeNode { connective: Atom { identity: _ } } => NamedChildMissing
+    TypeNode { connective: Disj } => NamedChildMissing
+    TypeNode { connective: Arrow } => NamedChildMissing
+    TypeNode { connective: Cardinality } => NamedChildMissing
+    TypeNode { connective: Instantiation } => NamedChildMissing
+    ComputationNode { behavior: _ } => NamedChildMissing
   }
 }
 
