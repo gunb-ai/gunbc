@@ -3300,7 +3300,7 @@ fn native_module_resolve_verdict(
                   resolved: resolved_tree_of(
                     root: resolved,
                     symbol_index: shared.symbol_index,
-                    closure_roots: closure_resolved_roots(context: step.context, shared: shared)
+                    closure_roots: closure_resolved_roots(context: step.context.resolution, shared: shared)
                   )
                 }
               Rejected { diagnostics: r } =>
