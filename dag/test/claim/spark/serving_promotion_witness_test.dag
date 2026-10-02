@@ -2,7 +2,7 @@ module test.claim.spark.serving_promotion_witness_test
 
 import std.types { Bool, List, String, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { token_count, byte_size, allocator_block_count }
+import std.measure { token_count, byte_size, allocator_block_count, second }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { length }
 import extdeps.vllm.engine_args { KvFp8, SpeculativeDecodingOff, IndexerKvDtypeOmitted, vllm_scheduler_admission_omitted }
@@ -44,7 +44,7 @@ fn fx_quality(key: String, accepted: Nat, parse_failures: Nat) -> QualityReceipt
 fn fx_calibration(key: String, turns: Nat, preemptions: Nat?) -> WorkloadCalibrationReceipt {
   WorkloadCalibrationReceipt {
     subject_key: key, trace_digest: "trace-sha256:fixture" as NonEmptyStr, run_id: "run-fixture" as NonEmptyStr,
-    accepted_turns_per_hour: Present { value: turns }, sustained_concurrency: 12,
+    accepted_turns: Present { value: turns }, observation_window: Present { value: second(count: 3600) }, sustained_concurrency: 12,
     preemptions: preemptions, engine_restarts: Present { value: 0 }, out_of_memory_events: Present { value: 0 },
     evidence: "fixture" as NonEmptyStr,
   }
@@ -172,4 +172,18 @@ fn fx_self_baseline() -> ServingPromotionEvidence {
 
 test fn w_the_candidate_cannot_be_its_own_incumbent() -> Bool {
   w_missing_count(e: fx_self_baseline()) == 2
+}
+
+// A RATE IS A COUNT OVER ITS OWN WINDOW: 60 turns in half an hour beats 100 in an hour, which a bare
+// "turns" field compared directly would get backwards.
+test fn w_goodput_compares_rates_over_each_receipts_own_window() -> Bool {
+  let mine = WorkloadCalibrationReceipt {
+    subject_key: fx_key(), trace_digest: "trace-sha256:fixture" as NonEmptyStr, run_id: "run-fixture" as NonEmptyStr,
+    accepted_turns: Present { value: 60 }, observation_window: Present { value: second(count: 1800) }, sustained_concurrency: 12,
+    preemptions: Present { value: 0 }, engine_restarts: Present { value: 0 }, out_of_memory_events: Present { value: 0 },
+    evidence: "fixture" as NonEmptyStr,
+  }
+  w_admits(e: fx_evidence(memory: fx_proved,
+    quality: Present { value: fx_quality(key: fx_key(), accepted: 80, parse_failures: 2) },
+    calibration: Present { value: mine }))
 }

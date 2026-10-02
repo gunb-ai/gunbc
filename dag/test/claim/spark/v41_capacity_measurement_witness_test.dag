@@ -435,7 +435,7 @@ test fn the_report_projects_the_minimum_of_three_capacities_and_leaves_unobserve
     V41CalibrationProjected { receipt: r } =>
       r.sustained_concurrency == 4
         && (match r.preemptions { Absent => true  Present { value: _ } => false })
-        && (match r.accepted_turns_per_hour { Absent => true  Present { value: _ } => false })
+        && (match r.accepted_turns { Absent => true  Present { value: _ } => false })
   }
 }
 
