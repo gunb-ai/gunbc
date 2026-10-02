@@ -1,6 +1,6 @@
 module product.fabric.supply
 
-import std.types { Timestamp, Int, List, NonEmptyStr }
+import std.types { Timestamp, Int, List, NonEmptyStr, brand }
 import std.decl_ref { DeclarationRef }
 import std.measure {
   ByteSize,

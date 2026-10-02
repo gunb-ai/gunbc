@@ -2,7 +2,7 @@ module v2.std.compilers.compilation_unit
 
 
 import std.algebra { Empty }
-import std.types { NonEmptyStr, List, Bool, String, Int }
+import std.types { NonEmptyStr, List, Bool, String, Int, brand }
 import std.content_hash { Fnv1a64StructuralDigestHex }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { SingleAuthority }
