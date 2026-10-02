@@ -246,8 +246,11 @@ type GrammarExpr
 // where it MATCHES, refuses the whole parse with `reason`, located at the first token of the match:
 // the refusal is not a failed alternative that ordered choice may backtrack past, it stops the
 // parse. Where `element` does not match, it fails like any alternative. It exists for source the
-// seed refuses although some other reading would succeed -- the success is the defect -- so a
-// relabel (`Expect`) cannot express it. Emit never selects it: it derives no tree.
+// language rules out although some other reading would succeed -- an ambiguity the grammar refuses
+// to resolve silently, where the success is the defect -- so a relabel (`Expect`) cannot express
+// it. That the seed also refuses a form is evidence, never the reason (DESIGN section 7): a
+// refusal standing where a rule is missing is a seed defect for v2 to fix, not copy. Emit never
+// selects it: it derives no tree.
 fn grammar_expr_refuse_on_match(element: GrammarExpr, reason: ParseRefusalReason) -> GrammarExpr {
   RefuseOnMatch { element: element, reason: reason }
 }
