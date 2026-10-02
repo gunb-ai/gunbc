@@ -12,6 +12,7 @@ import extdeps.github.checks_contracts {
 }
 import v2.std.collection { Absent, Present }
 import std.resources { Network }
+import extdeps.ietf.http_semantics { GET, PATCH, POST }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
