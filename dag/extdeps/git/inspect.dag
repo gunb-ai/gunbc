@@ -313,7 +313,7 @@ service git.Inspect {
   }
 
   operation MergeBase {
-    requires none
+    requires opaque
     input { repository_path: String, left: GitRef, right: GitRef }
     output {
       sha: CommitSha from "stdout"
@@ -331,7 +331,7 @@ service git.Inspect {
   }
 
   operation ListTreePathsAtRevision {
-    requires Network
+    requires opaque
     input { ref: GitRef }
     output {
       paths_nul: String from "stdout"
@@ -347,7 +347,7 @@ service git.Inspect {
   }
 
   operation ListTreeEntriesAtRevision {
-    requires Network
+    requires opaque
     input { ref: GitRef }
     output {
       entries_nul: String from "stdout"
@@ -380,7 +380,7 @@ service git.Inspect {
   }
 
   operation ResolveRefCommit {
-    requires none
+    requires opaque
     input { ref: GitRef }
     output {
       sha: CommitSha from "stdout"
@@ -413,7 +413,7 @@ service git.Inspect {
   }
 
   operation ShowTree {
-    requires none
+    requires opaque
     input { ref: GitRef }
     output {
       tree: String from "stdout"

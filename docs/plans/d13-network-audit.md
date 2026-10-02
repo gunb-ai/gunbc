@@ -28,7 +28,10 @@ A `requires` clause states what a sandbox must GRANT, so the fail-closed directi
   - Claude Code: hooks in `--settings` (docs.anthropic.com/claude-code/hooks).
   - Agent CLIs (`codex exec`, and `claude -p` with a runtime permission mode) execute model-chosen commands, which makes them runtime programs.
 
-  Git commands that run none of these surfaces stay as classified, e.g. rev-parse, rev-list, for-each-ref, `show -s`, merge-base, `config`, `init`, `commit-tree`, `cat-file` without `--filters`/`--textconv`, `ls-tree`, `log` without patch output, and `diff --name-only`/`--name-status` between two commits. Paging is not reached because stdout is captured, not a TTY.
+  - Index reads (ruling 2026-10-02, no special case): any git command that reads the index can run the `core.fsmonitor` hook on the first index load (read-cache `tweak_fsmonitor`). That covers plain `ls-files`, and also every unrefined revision argument, because a revision may be spelled `:<path>` or `:<stage>:<path>`, which reads the index (gitrevisions(7)). So rev-parse/show/cat-file/ls-tree/merge-base/reflog/rev-list/commit-tree/diff with a runtime revision are opaque.
+  - Toolchain proxies in an input directory (ruling 2026-10-02): rustup selects the toolchain from `rust-toolchain.toml` in the working directory (rust-lang.github.io/rustup/overrides.html). npx reads the project `.npmrc` (e.g. `node-options`). So an operation that runs these in a cwd or repository it takes as input is opaque. The same programs run with an ambient cwd (`cargo --version`, `rustc --version`) fall under the host-environment boundary.
+
+  Git operations that reach none of these surfaces keep their transport verdict. They have fixed revisions and no index read: rev-parse of `HEAD`/`--show-toplevel`, `rev-list --before=… HEAD`, `for-each-ref`, `worktree list`, `branch -r`, `config`, `init`, `hash-object --stdin`, and `log -- {path}` (Network: partial clone). Paging is not reached because stdout is captured, not a TTY.
 - **Boundary — host environment is not demand** (ruling 2026-10-02): host-wide configuration (global/system git config, `~/.ssh/config`, rustup toolchain selection from an ambient cwd) and host-wide resolver configuration (NSS, which can route `id`/`whoami`/`stat %U` to LDAP; DNS) is the sandbox's environment, not an operation's demand, and does not raise a clause.
 
 ## Citations by class
@@ -146,7 +149,9 @@ A `requires` clause states what a sandbox must GRANT, so the fail-closed directi
 
 - Repository-selected executables in git, by structural disabling. Each item has its citation, and each would move the affected operations back to their transport verdict:
   - `-c core.hooksPath=/dev/null` disables every hook, including `prepare-commit-msg` and `reference-transaction` (git-config `core.hooksPath`; githooks(5)). `--no-verify` alone is insufficient.
-  - `-c core.fsmonitor=false` (git-config `core.fsmonitor`).
+  - `-c core.fsmonitor=false` (git-config `core.fsmonitor`) disables the fsmonitor hook on every index read. `--no-optional-locks` does not: it only skips the opportunistic index write (git(1)).
+  - Revision arguments: a refined revision type that excludes the `:<path>` index forms, or `--end-of-options` plus a full object id, removes the index read from rev-parse/show/cat-file/ls-tree/merge-base/rev-list.
+  - Toolchain proxies: pin the toolchain explicitly (`cargo +<toolchain>`, `RUSTUP_TOOLCHAIN`) and run npx with `--userconfig`/an isolated cwd, or the operation stays opaque.
   - `--no-textconv --no-ext-diff` on diff (git-diff(1)).
   - `hash-object --no-filters` (git-hash-object(1)).
   - Overriding the filter and merge-driver surfaces needs per-driver `-c filter.<driver>.*`/`merge.<driver>.driver` overrides, which are unknown in advance. A typed attribute-free checkout realization is the structural route; otherwise those operations stay opaque.

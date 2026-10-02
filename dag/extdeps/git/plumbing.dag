@@ -179,7 +179,7 @@ service git.Plumbing {
   }
 
   operation CatFileBlob {
-    requires Network
+    requires opaque
     input { address: GitRepositoryAddress, object: String }
     output {
       content: String from "stdout"
@@ -191,7 +191,7 @@ service git.Plumbing {
   }
 
   operation CatFileExists {
-    requires Network
+    requires opaque
     input { address: GitRepositoryAddress, object: String }
     output {
       exit_code: Int from "exit_code"
@@ -202,7 +202,7 @@ service git.Plumbing {
   }
 
   operation CatFileSize {
-    requires Network
+    requires opaque
     input { address: GitRepositoryAddress, object: String }
     output {
       size: String from "stdout"
@@ -214,7 +214,7 @@ service git.Plumbing {
   }
 
   operation UnpackObject {
-    requires Network
+    requires opaque
     input { address: GitRepositoryAddress, object: String }
     output {
       path: String from "stdout"
@@ -286,7 +286,7 @@ service git.Plumbing {
   }
 
   operation CommitTree {
-    requires none
+    requires opaque
     input { address: GitRepositoryAddress, tree: String, parents: GitCommitParents, message: String }
     output {
       commit: String from "stdout"
@@ -317,7 +317,7 @@ service git.Plumbing {
   }
 
   operation ObserveRef {
-    requires none
+    requires opaque
     input { address: GitRepositoryAddress, ref_name: String }
     output {
       revision: String from "stdout"
