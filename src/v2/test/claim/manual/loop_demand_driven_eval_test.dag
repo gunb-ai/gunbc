@@ -55,13 +55,16 @@ import v2.std.node {
   Conj,
   Edge,
   Loop,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
   Transform,
   TypeNode,
   Value,
+  ArrowBodyEdge,
+  LoopBoundEdge,
+  core_edge_label,
 }
 import v2.std.runtime {
   BindInterpreter,
@@ -270,7 +273,7 @@ fn loop_eval_loop_node(body: Node) -> Node {
     occurrence_id: OccurrenceSynthetic,
     children: [
       Edge { label: Positional, target: body },
-      Edge { label: Named { name: ^loop_bound_edge }, target: loop_eval_measure() }
+      Edge { label: core_edge_label(marker: LoopBoundEdge), target: loop_eval_measure() }
     ]
   }
 }
@@ -293,7 +296,7 @@ fn loop_eval_arrow_with_body(body: Node) -> Node {
       Edge { label: Positional, target: loop_eval_i64() },
       Edge { label: Positional, target: loop_eval_i64() },
       signature.order,
-      Edge { label: Named { name: ^arrow_body_edge }, target: body }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body }
     ]
   }
 }
@@ -303,8 +306,8 @@ fn loop_eval_tree_root(call: Node, expected: Node) -> Node {
     kind: TypeNode { connective: Conj },
     occurrence_id: OccurrenceSynthetic,
     children: [
-      Edge { label: Named { name: ^loop_eval_actual }, target: call },
-      Edge { label: Named { name: ^loop_eval_expected }, target: expected }
+      Edge { label: Authored { name: ^loop_eval_actual }, target: call },
+      Edge { label: Authored { name: ^loop_eval_expected }, target: expected }
     ]
   }
 }

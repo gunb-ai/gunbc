@@ -13,20 +13,23 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
+  ArrowEffectClaimsEdge,
+  ArrowExecutionModeClaimEdge,
   Node,
   Positional,
   Symbol,
   TypeNode,
   arrow_signature_edges_conform,
   content_hash,
+  core_edge,
   node_synthetic,
   symbol_intern_lexeme
 }
 
 // THE CONFORMANCE WALL FOR AN ARROW'S CONTRACT EDGES (v2.std.node arrow_signature_edges_conform):
-// ^arrow_effect_claims_edge, a Conj of self-named Atoms from { readonly, idempotent }, and
-// ^arrow_execution_mode_claim_edge, one Atom from { hermetic }. The subject is an operation-shaped
+// ArrowEffectClaimsEdge, a Conj of self-named Atoms from { readonly, idempotent }, and
+// ArrowExecutionModeClaimEdge, one Atom from { hermetic }. The subject is an operation-shaped
 // Arrow built as v2.compiler.body_lowering_fold body_lower_operation builds one: one ^operation_input
 // binder whose target is the input payload. The bare Arrow is the positive control, and every red
 // differs from an accepted Arrow in exactly the property its claim names.
@@ -40,7 +43,7 @@ fn ace_conj(children: List<Edge>) -> Node {
 }
 
 fn ace_named(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn ace_payload() -> Node {
@@ -56,11 +59,11 @@ fn ace_arrow(extra: List<Edge>) -> Node {
 }
 
 fn ace_claims(names: List<Symbol>) -> Edge {
-  ace_named(name: ^arrow_effect_claims_edge, target: ace_conj(children: names |> map(n => ace_named(name: n, target: ace_atom(identity: n)))))
+  core_edge(marker: ArrowEffectClaimsEdge, target: ace_conj(children: names |> map(n => ace_named(name: n, target: ace_atom(identity: n)))))
 }
 
 fn ace_mode(mode: Symbol) -> Edge {
-  ace_named(name: ^arrow_execution_mode_claim_edge, target: ace_atom(identity: mode))
+  core_edge(marker: ArrowExecutionModeClaimEdge, target: ace_atom(identity: mode))
 }
 
 fn ace_readonly() -> Symbol {
@@ -106,17 +109,17 @@ test fn a_malformed_effect_claim_refuses() -> Bool {
     && !ace_conforms(extra: [ace_claims(names: [ace_readonly()]), ace_claims(names: [ace_idempotent()])])
     && !ace_conforms(extra: [ace_claims(names: [^pure])])
     && !ace_conforms(extra: [ace_claims(names: [ace_hermetic()])])
-    && !ace_conforms(extra: [ace_named(name: ^arrow_effect_claims_edge, target: ace_conj(children: [ace_named(name: ace_readonly(), target: ace_atom(identity: ace_idempotent()))]))])
+    && !ace_conforms(extra: [core_edge(marker: ArrowEffectClaimsEdge, target: ace_conj(children: [ace_named(name: ace_readonly(), target: ace_atom(identity: ace_idempotent()))]))])
 }
 
 // Reds, in order: an empty Conj where the mode should be one Atom; an unknown mode; an effect claim on the mode edge; two mode edges; a mode that is
 // a Conj rather than one Atom.
 test fn a_malformed_execution_mode_claim_refuses() -> Bool {
-  !ace_conforms(extra: [ace_named(name: ^arrow_execution_mode_claim_edge, target: ace_conj(children: []))])
+  !ace_conforms(extra: [core_edge(marker: ArrowExecutionModeClaimEdge, target: ace_conj(children: []))])
     && !ace_conforms(extra: [ace_mode(mode: ^wet)])
     && !ace_conforms(extra: [ace_mode(mode: ace_readonly())])
     && !ace_conforms(extra: [ace_mode(mode: ace_hermetic()), ace_mode(mode: ace_hermetic())])
-    && !ace_conforms(extra: [ace_named(name: ^arrow_execution_mode_claim_edge, target: ace_conj(children: [ace_named(name: ace_hermetic(), target: ace_atom(identity: ace_hermetic()))]))])
+    && !ace_conforms(extra: [core_edge(marker: ArrowExecutionModeClaimEdge, target: ace_conj(children: [ace_named(name: ace_hermetic(), target: ace_atom(identity: ace_hermetic()))]))])
 }
 
 // Canonical identity does not depend on the authored order of the claims or of the contract edges,

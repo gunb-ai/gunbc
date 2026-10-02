@@ -9,7 +9,7 @@ import v2.std.materialize {
   distinct_hashes,
   hashes_contain
 }
-import v2.std.node { Node, Edge, Named, TypeNode, Atom, Conj, Symbol, node_synthetic, content_hash }
+import v2.std.node { Node, Edge, Authored, TypeNode, Atom, Conj, Symbol, node_synthetic, content_hash }
 import std.realization_schedule {
   RealizationPlan,
   Runnable,
@@ -31,8 +31,8 @@ fn conj2(a: Node, b: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^left }, target: a },
-      Edge { label: Named { name: ^right }, target: b }
+      Edge { label: Authored { name: ^left }, target: a },
+      Edge { label: Authored { name: ^right }, target: b }
     ]
   )
 }

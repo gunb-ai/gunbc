@@ -538,7 +538,7 @@ test fn a_struck_identity_selects_the_new_witness_tier() -> Bool {
 // may separate the two outcomes. A drop arm that ignored identity (every overrun admitted) fails the
 // RED; one that never fired fails the control; one that dropped the figures fails both.
 fn drop_member_identity() -> String {
-  "test.claim.roadmap_receipt_continuity_acceptance.witness_dispatch_never_presents_empty_frontier_on_authority_refusal"
+  "test.claim.live_deploy.emit.repository_convergence_is_ordered_after_binary_and_before_readback"
 }
 
 fn drop_probe_steps() -> EvalStepCount {

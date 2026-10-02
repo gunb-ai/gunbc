@@ -76,14 +76,6 @@ data floor_eval_step_cost_drop_rows: List<EvalStepCostDropMeasurement> = [
     identity: "test.claim.roadmap_program_view_live_corpus_receipt.live_roadmap_program_view_corpus_projection_receipt" as NonEmptyStr,
     measured_by: "required floor run 34854812903, artifact required-floor-claim-cost; pre-existing unchanged identity first measured under the gunbc#11195 new-witness tier" as NonEmptyStr,
   },
-  EvalStepCostDropMeasurement {
-    identity: "test.claim.roadmap_receipt_continuity_acceptance.witness_dispatch_never_presents_empty_frontier_on_authority_refusal" as NonEmptyStr,
-    measured_by: "required floor run 34854812903, artifact required-floor-claim-cost; pre-existing unchanged identity first measured under the gunbc#11195 new-witness tier" as NonEmptyStr,
-  },
-  EvalStepCostDropMeasurement {
-    identity: "test.claim.roadmap_receipt_continuity_acceptance.witness_missing_carrier_prevents_silent_empty_authority_projection" as NonEmptyStr,
-    measured_by: "required floor run 34854812903, artifact required-floor-claim-cost; pre-existing unchanged identity first measured under the gunbc#11195 new-witness tier" as NonEmptyStr,
-  },
 ]
 
 // SECOND DROP, SAME MEMBERSHIP TEST. These two identities string-inspect the production apply
@@ -107,8 +99,8 @@ data floor_eval_step_cost_drop_apply_render_rows: List<EvalStepCostDropMeasureme
 // THIRD DROP, SAME MEMBERSHIP TEST. One identity: the live control gunbc.rung_drop
 // roadmap_sizing_authored_to_derived names as the ONE claim that executes the live roadmap
 // authority and refuses. It is on its OWN list because this module's rule is that growing a
-// drop's list is a new drop -- the roadmap four above may only shrink, and this identity is not
-// one of them.
+// drop's list is a new drop -- the roadmap list above may only shrink, and this identity is not
+// on it.
 //
 // WHY IT IS NOT MOVED OR WEAKENED INSTEAD. Weakening it would delete the pairing obligation's
 // last execution of the real path (DESIGN section 3). Moving it to the long home would stop it

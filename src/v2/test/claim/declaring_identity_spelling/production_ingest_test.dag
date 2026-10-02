@@ -13,7 +13,8 @@ import v2.compiler.resolution_provenance {
   ProvenanceOwnerless,
   ProvenanceResolved,
   ProvenanceUnbound,
-  resolve_reference_provenance
+  resolve_reference_provenance,
+  reference_site_scope_path,
 }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
@@ -328,7 +329,7 @@ fn marker_site_fill_lookup_is_present(roots: FreeMonoid<ModuleBindingSource>) ->
             Present { value: name } =>
               match symbol_index_lookup(
                 index: index,
-                qualified_path: qualified_name_snoc(qn: site.position, segment: name)
+                qualified_path: qualified_name_snoc(qn: reference_site_scope_path(site: site), segment: name)
               ) {
                 Present { value: _ } => true
                 Absent => false

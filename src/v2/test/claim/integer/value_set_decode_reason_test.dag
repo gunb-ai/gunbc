@@ -10,7 +10,7 @@ import v2.std.integer_value_set {
   integer_value_set_atom,
   integer_value_set_from_node
 }
-import v2.std.node { Conj, Edge, Named, Node, Symbol, TypeNode }
+import v2.std.node { Conj, Edge, Authored, Node, Symbol, TypeNode }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -24,7 +24,7 @@ fn conj_carrier(children: List<Edge>) -> Node {
 }
 
 fn named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn kind_edge(kind: Symbol) -> Edge {

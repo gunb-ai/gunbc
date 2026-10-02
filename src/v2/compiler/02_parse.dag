@@ -44,7 +44,7 @@ import v2.std.node {
   Conj,
   Edge,
   Hash,
-  Named,
+  Authored,
   Node,
   Symbol,
   TypeNode,

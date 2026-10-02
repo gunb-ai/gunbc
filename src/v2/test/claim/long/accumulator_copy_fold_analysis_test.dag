@@ -1,5 +1,9 @@
 module v2.test.long.accumulator_copy_fold_analysis
 
+import v2.std.live_tree { LiveTreeDisposition }
+
+import v2.std.node { Authored, StructuralLabel }
+
 import v2.std.algebra { Cons, Empty }
 
 
@@ -256,7 +260,8 @@ fn edge_target_is_mystery(e: Edge) -> Bool {
 
 fn edge_is_seq_left(e: Edge) -> Bool {
   match e.label {
-    Named { name: nm } => nm == ^grammar_sequence_left_node_projection
+    StructuralLabel { label: _ } => false
+    Authored { name: nm } => nm == ^grammar_sequence_left_node_projection
     Positional => false
   }
 }

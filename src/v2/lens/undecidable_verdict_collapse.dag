@@ -46,10 +46,10 @@ import v2.std.node {
   Symbol,
   TypeNode,
   fold_node_topdown,
-  match_arm_body,
-  match_arm_pattern
+  MatchArmBodyEdge,
+  MatchArmPatternEdge,
 }
-import v2.std.node_query { find_named_child, node_positional_child_targets }
+import v2.std.node_query { node_positional_child_targets, find_core_child }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 
 // UNDECIDABLE-VERDICT ROUTING WALL (DESIGN §5 typed-and-located diagnostic; recurring failure mode
@@ -195,11 +195,11 @@ fn match_positional_arms(match_node: Node) -> List<Node> {
 }
 
 fn arm_collapse_findings(arm: Node) -> List<Diagnostic> {
-  match find_named_child(root: arm, name: match_arm_pattern) {
+  match find_core_child(root: arm, marker: MatchArmPatternEdge) {
     Rejected { diagnostics: _ } => []
     Accepted { value: pat, diagnostics: _ } =>
       if pattern_names_undecidable_verdict(pattern: pat) {
-        match find_named_child(root: arm, name: match_arm_body) {
+        match find_core_child(root: arm, marker: MatchArmBodyEdge) {
           Rejected { diagnostics: _ } => []
           Accepted { value: body, diagnostics: _ } =>
             if body_is_decidable_literal(body: body) {

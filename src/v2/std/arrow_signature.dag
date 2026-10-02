@@ -12,7 +12,7 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   OrderAbsent,
   OrderLabels,
@@ -24,7 +24,10 @@ import v2.std.node {
   arrow_signature_order_label,
   arrow_signature_order_read,
   edge_label_of,
-  node_with_occurrence_id
+  node_with_occurrence_id,
+  ArrowSignatureOrderEdge,
+  core_edge_label,
+  StructuralLabel,
 }
 import v2.std.node_query { binder_edge, node_positional_child_targets, pattern_wildcard_name }
 
@@ -36,7 +39,7 @@ import v2.std.node_query { binder_edge, node_positional_child_targets, pattern_w
 // (v2.extdeps.languages.dag dag_arrow_with_body_node).
 fn signature_order_edge(order: List<Symbol>, source: Node) -> Edge {
   Edge {
-    label: Named { name: ^arrow_signature_order_edge },
+    label: core_edge_label(marker: ArrowSignatureOrderEdge),
     target: lower_list_introduction(
       elements: fold(order, init: Empty, f: fn(acc, sym) {
         list_snoc_item(xs: acc, item: node_with_occurrence_id(
@@ -219,12 +222,13 @@ fn application_binding_plan_over(labels: List<Symbol>, actuals: List<Edge>) -> A
       acc
     } else {
       match e.label {
+        StructuralLabel { label: _ } => application_walk_refuse(acc: acc, reason: ^application_argument_label_unknown)
         Positional =>
           match map_lookup(m: declared.label_at, key: acc.positional_next) {
             Absent => application_walk_refuse(acc: acc, reason: ^application_positional_surplus)
             Present { value: label } => application_walk_fill(acc: acc, label: label, positional: true)
           }
-        Named { name: label } =>
+        Authored { name: label } =>
           match map_lookup(m: declared.position_of, key: label) {
             Absent => application_walk_refuse(acc: acc, reason: ^application_argument_label_unknown)
             Present { value: _ } => application_walk_fill(acc: acc, label: label, positional: false)

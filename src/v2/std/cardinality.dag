@@ -36,7 +36,7 @@ import v2.std.node {
   Edge,
   Instantiation,
   Loop,
-  Named,
+  Authored,
   Node,
   NodeFold,
   Symbol,
@@ -46,7 +46,9 @@ import v2.std.node {
   fold_node,
   loop_behavior_edges_conform,
   loop_bound_measure_target,
-  name_occurrences
+  name_occurrences,
+  LoopBoundEdge,
+  core_occurrences,
 }
 import v2.std.witness { Holds, Violates, Witness }
 
@@ -171,7 +173,7 @@ fn loop_bound_not_loop_diagnostic(n: Node) -> Diagnostic {
 fn loop_measure_node(n: Node) -> Witness<Node> {
   match n.kind {
     ComputationNode { behavior: Loop } => {
-      let bound_count = name_occurrences(name: ^loop_bound_edge, children: n.children)
+      let bound_count = core_occurrences(marker: LoopBoundEdge, children: n.children)
       if bound_count == 0 {
         Violates { diagnostic: loop_bound_undeclared_diagnostic(n: n) }
       } else if bound_count > 1 {

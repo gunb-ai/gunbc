@@ -192,7 +192,7 @@ import v2.std.node {
   Disj,
   Edge,
   Instantiation,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -287,7 +287,7 @@ fn ts_inhabitant_atom(id: Symbol) -> Node {
 }
 
 fn ts_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn ts_primitive_algebra_witness_node(

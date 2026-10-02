@@ -23,7 +23,7 @@ import extdeps.languages.json.parse {
 }
 
 import v2.std.node {
-  Node, Edge, Named, TypeNode, Connective, Atom, Conj, Symbol, node_synthetic,
+  Node, Edge, Authored, TypeNode, Connective, Atom, Conj, Symbol, node_synthetic,
 }
 
 import gunbc.scm.object_store {
@@ -148,7 +148,7 @@ fn scm_env_atom(identity: Symbol) -> Node {
 }
 
 fn scm_env_named(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 // Two programs SHARING a subtree. The shared-population claim is meaningless without real sharing.
@@ -1705,7 +1705,7 @@ test fn scm_env_a_source_occupied_target_refuses_to_encode_as_its_own_cause() ->
         store: with_file,
         kind: TypeNode { connective: Conj },
         children: [
-          StoredEdge { label: Named { name: ^only_child }, target: SemanticNodeTarget { locator: file.locator } },
+          StoredEdge { label: Authored { name: ^only_child }, target: SemanticNodeTarget { locator: file.locator } },
         ],
       ) {
         LocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
@@ -2038,7 +2038,7 @@ fn scm_env_child_over(store: ObjectStore, locator: ObjectId) -> ObjectStore {
     store: store,
     kind: TypeNode { connective: Conj },
     children: [
-      StoredEdge { label: Named { name: ^only_child }, target: SemanticNodeTarget { locator: locator } },
+      StoredEdge { label: Authored { name: ^only_child }, target: SemanticNodeTarget { locator: locator } },
     ],
   ) {
     LocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()

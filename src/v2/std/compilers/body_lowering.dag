@@ -31,16 +31,22 @@ import v2.std.node {
   Match,
   Atom,
   Arrow,
-  Named,
+  Authored,
   Node,
   Positional,
+  StructuralLabel,
   Symbol,
   Transform,
   TypeNode,
   positional_prefix_then_labeled_conform,
   is_empty_conj_root,
   node_synthetic,
-  symbol_eq
+  symbol_eq,
+  LoopBoundEdge,
+  core_edge_label,
+  MatchArmBodyEdge,
+  MatchArmPatternEdge,
+  edge_is_core,
 }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.list_introduction { list_introduction_elements_optional }
@@ -93,7 +99,7 @@ fn lower_loop(value: Node, bound: Node) -> Node {
     kind: ComputationNode { behavior: Loop },
     children: [
       Edge { label: Positional, target: value },
-      Edge { label: Named { name: ^loop_bound_edge }, target: bound }
+      Edge { label: core_edge_label(marker: LoopBoundEdge), target: bound }
     ]
   )
 }
@@ -237,7 +243,8 @@ fn view_whole_positional_children(site: Node) -> Outcome<List<Node>> {
       Rejected { diagnostics: r } => Rejected { diagnostics: r }
       Accepted { value: xs, diagnostics: _ } =>
         match e.label {
-          Named { name: _ } => view_refusal(reason: ^body_view_unexpected_named_edge, at: site)
+          Authored { name: _ } => view_refusal(reason: ^body_view_unexpected_named_edge, at: site)
+          StructuralLabel { label: _ } => view_refusal(reason: ^body_view_unexpected_named_edge, at: site)
           Positional =>
             match operand_slot_of(n: e.target) {
               ResidueOperand { node: r } => view_refusal(reason: ^body_view_operand_residue, at: r)
@@ -341,7 +348,8 @@ fn application_positional_targets(site: Node) -> Outcome<List<Node>> {
       Absent => outcome_accepted(value: Empty)
       Present { value: first } =>
         match first.label {
-          Named { name: _ } => view_refusal(reason: ^body_view_unexpected_named_edge, at: site)
+          Authored { name: _ } => view_refusal(reason: ^body_view_unexpected_named_edge, at: site)
+          StructuralLabel { label: _ } => view_refusal(reason: ^body_view_unexpected_named_edge, at: site)
           Positional =>
             outcome_accepted(value: fold(site.children, init: Empty, f: fn(acc, e) {
               if edge_is_cast_target(e: e) { acc } else { list_snoc_item(xs: acc, item: e.target) }
@@ -544,21 +552,13 @@ fn match_arm_view(arm: Node) -> Outcome<MatchArmView> {
           Present { value: p } =>
             match list_at_optional(xs: arm.children, index: 1) {
               Present { value: b } =>
-                match p.label {
-                  Named { name: pn } =>
-                    match b.label {
-                      Named { name: bn } =>
-                        if (pn == ^match_arm_pattern) && (bn == ^match_arm_body) {
-                          match operand_slot_of(n: b.target) {
-                            ResidueOperand { node: r } => view_refusal(reason: ^body_view_operand_residue, at: r)
-                            WholeOperand { node: body } => outcome_accepted(value: MatchArmView { arm: arm, pattern: p.target, body: body })
-                          }
-                        } else {
-                          view_refusal(reason: ^body_view_match_arm_malformed, at: arm)
-                        }
-                      Positional => view_refusal(reason: ^body_view_match_arm_malformed, at: arm)
-                    }
-                  Positional => view_refusal(reason: ^body_view_match_arm_malformed, at: arm)
+                if edge_is_core(e: p, marker: MatchArmPatternEdge) && edge_is_core(e: b, marker: MatchArmBodyEdge) {
+                  match operand_slot_of(n: b.target) {
+                    ResidueOperand { node: r } => view_refusal(reason: ^body_view_operand_residue, at: r)
+                    WholeOperand { node: body } => outcome_accepted(value: MatchArmView { arm: arm, pattern: p.target, body: body })
+                  }
+                } else {
+                  view_refusal(reason: ^body_view_match_arm_malformed, at: arm)
                 }
               Absent => view_refusal(reason: ^body_view_match_arm_malformed, at: arm)
             }
