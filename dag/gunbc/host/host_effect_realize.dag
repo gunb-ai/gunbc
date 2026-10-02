@@ -4333,15 +4333,6 @@ fn observe_slot_population_over_host_effect_transport(
           transport: LocalExec,
         ),
       )
-    _ =>
-      slot_census_from_typed_argv_outcome(
-        host: host,
-        outcome: run_typed_argv_transport(
-          argv: systemctl_list_all_service_units_argv(),
-          transport: transport,
-        ),
-        edge_noun: "the transport",
-      )
     SshShell { ssh_host: _ } =>
       slot_census_from_typed_argv_outcome(
         host: host,
