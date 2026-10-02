@@ -1684,7 +1684,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/test/claim/spark/v41_index_engram_selection_witness_test.dag", name: "length", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/test/claim/spark/v41_published_row_store_witness_test.dag", name: "get", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/test/claim/spark/v41_row_store_encode_witness_test.dag", name: "get", standing: ActiveDebt },
-  UnimportedBareProviderDisposition { file: "dag/test/claim/spark/v41_source_patch_converge_witness_test.dag", name: "get", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/test/claim/spark/v41_source_patch_converge_witness_test.dag", name: "get", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/spatial_connectivity_witness_test.dag", name: "length", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/test/claim/spatial_projection_witness_test.dag", name: "length", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/test/claim/supplier/hetzner_route_witness_test.dag", name: "filter", standing: ActiveDebt },
