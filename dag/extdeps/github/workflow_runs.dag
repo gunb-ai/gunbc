@@ -15,6 +15,7 @@ import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
 import std.algebra { Cons, Empty }
+import std.resources { Network }
 
 // WorkflowJobRun.labels are read by gunbc.public_workload_census (observed_job_labels) to
 // settle observed architecture and provider. run_attempt is modeled here and copied onto
@@ -300,6 +301,7 @@ service github.WorkflowRuns {
   }
 
   operation GetRun {
+    requires Network
     input {
       auth_token: Secret
       owner: String
@@ -324,6 +326,7 @@ service github.WorkflowRuns {
   }
 
   operation ListForRef {
+    requires Network
     input {
       auth_token: Secret
       owner: String
@@ -351,6 +354,7 @@ service github.WorkflowRuns {
   }
 
   operation ListWorkflowRuns {
+    requires Network
     input {
       auth_token: Secret
       owner: String
@@ -385,6 +389,7 @@ service github.WorkflowRuns {
   }
 
   operation ListAttemptJobs {
+    requires Network
     input {
       auth_token: Secret
       owner: String
@@ -412,6 +417,7 @@ service github.WorkflowRuns {
     }
   }
   operation ListJobs {
+    requires Network
     input {
       auth_token: Secret
       owner: String

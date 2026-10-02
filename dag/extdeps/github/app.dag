@@ -36,6 +36,7 @@ import std.markup { Fragment, Element, FragmentText, attr }
 import extdeps.languages.html { HtmlEmitResult, EmitOk, EmitRejected, try_serialize_html_source }
 import extdeps.transports.rest { RestOutcome }
 import v2.std.algebra { fold_list }
+import std.resources { Network }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -541,6 +542,7 @@ fn hook_tls_eq(a: GitHubAppHookTlsVerification, b: GitHubAppHookTlsVerification)
 // and never evidence of health; preserving that distinction is the consumer's duty.
 service github.CliAppRegistration {
   operation GetAppRegistrationJson {
+    requires Network
     input {
       jwt_header_file: String
     }
@@ -561,6 +563,7 @@ service github.CliAppRegistration {
   }
 
   operation GetAppHookDeliveriesJson {
+    requires Network
     input {
       jwt_header_file: String
     }
@@ -581,6 +584,7 @@ service github.CliAppRegistration {
   }
 
   operation GetAppHookConfigJson {
+    requires Network
     input {
       jwt_header_file: String
     }
@@ -1436,6 +1440,7 @@ service github.AppManifests {
   }
 
   operation ConvertManifestCode {
+    requires Network
     input {
       code: String
     }
@@ -1465,6 +1470,7 @@ service github.AppPublicRegistry {
   }
 
   operation GetApp {
+    requires Network
     input {
       auth_token: Secret
       app_slug: String
@@ -1509,6 +1515,7 @@ service github.AppInstallations {
   }
 
   operation ListInstallations {
+    requires Network
     input {
       auth_token: Secret
       per_page: Int = default_per_page
@@ -1694,6 +1701,7 @@ service github.AppInstallationAccessTokens {
   }
 
   operation Create {
+    requires Network
     input {
       app_jwt: Secret
       installation_id: Int
@@ -1729,6 +1737,7 @@ service github.AuthenticatedApp {
   }
 
   operation GetAuthenticatedApp {
+    requires Network
     input {
       app_jwt: Secret
     }
@@ -1750,6 +1759,7 @@ service github.AuthenticatedApp {
   }
 
   operation GetAppInstallation {
+    requires Network
     input {
       app_jwt: Secret
       installation_id: Int

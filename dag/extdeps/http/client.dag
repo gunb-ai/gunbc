@@ -1,4 +1,5 @@
 module extdeps.http.client
+import std.resources { Network }
 
 import std.types { NonEmptyStr, Bool, List, Unit, Int }
 import std.string_type { String }
@@ -80,6 +81,7 @@ fn http_client_get_argv(url: NonEmptyStr, max_time: Second) -> List<String> {
 // PostStdinWithin's; a socket that is absent or not traversable is exit 7, could not connect.
 service http.Client {
   operation Get {
+    requires Network
     input { url: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -93,6 +95,7 @@ service http.Client {
   }
 
   operation GetLocalhostBounded {
+    requires Network
     input { url: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -117,6 +120,7 @@ service http.Client {
   }
 
   operation GetBounded {
+    requires Network
     input { url: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -141,6 +145,7 @@ service http.Client {
   }
 
   operation GetWithin {
+    requires Network
     input { url: NonEmptyStr, max_seconds: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -157,6 +162,7 @@ service http.Client {
   }
 
   operation StatusWithin {
+    requires Network
     input { url: NonEmptyStr, max_seconds: NonEmptyStr }
     output { status: String from "stdout", success: Bool from "exit_success", exit_code: Int from "exit_code" }
     readonly
@@ -173,6 +179,7 @@ service http.Client {
   }
 
   operation GetQueryStdinWithin {
+    requires Network
     input { url: NonEmptyStr, query: String, connect_seconds: NonEmptyStr, max_seconds: NonEmptyStr }
     output { success: Bool from "exit_success", body: String from "stdout" }
     readonly
@@ -185,6 +192,7 @@ service http.Client {
   }
 
   operation PostStdinWithin {
+    requires Network
     input { url: NonEmptyStr, request_body: String, connect_seconds: NonEmptyStr, max_seconds: NonEmptyStr }
     output {
       exit_code: Int from "exit_code"
@@ -227,6 +235,7 @@ service http.Client {
   }
 
   operation PostJsonFromFile {
+    requires Network
     input { url: NonEmptyStr, request_body_file: NonEmptyStr, max_seconds: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -249,6 +258,7 @@ service http.Client {
   }
 
   operation DownloadToFile {
+    requires Network
     input { url: NonEmptyStr, destination: NonEmptyStr }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["curl", "-fL", "{url}", "-o", "{destination}"] }
@@ -259,6 +269,7 @@ service http.Client {
   }
 
   operation GetFollowRedirectsBoundedWithHeaderFile {
+    requires Network
     input { url: NonEmptyStr, max_seconds: NonEmptyStr, accept: NonEmptyStr, header_file: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
