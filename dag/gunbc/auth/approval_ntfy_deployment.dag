@@ -21,6 +21,7 @@ import gunbc.fleet_intent_network { fleet_intent_network, operator_host_srv1 }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_version_resource }
 import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
 import extdeps.ietf.http_semantics { POST }
+import std.resources { Network }
 
 // ── The self-hosted notification server on srv1 ──────────────────────────────────────────────
 // It follows gunbc-publication exactly: its own system account, its own state directory owned by
