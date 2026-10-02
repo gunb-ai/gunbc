@@ -1,7 +1,7 @@
 module v2.compiler.infer
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.kind { Kind, RosterKindIndex, TypeDenotationKind, kind_node, roster_kind_index, roster_kind_index_lookup }
+import std.kind { Kind, RosterKindIndex, TypeDenotationKind, kind_denoted_by_node, kind_node, roster_kind_index, roster_kind_index_lookup }
 import v2.std.algebra { any, Empty, TailAbsent, TailFound, length, list_map, list_tail, zip_map }
 import std.algebra { Cons, Empty, list_snoc_item }
 import v2.std.bounded_lattice_completeness {
@@ -430,11 +430,21 @@ fn infer_match_int_scrutinee_bool_literal_scaffold_diagnostic(node: Node) -> Dia
   }
 }
 
+// A BARE ATOM IS UNGROUNDED UNLESS A DECLARED AUTHORITY MINTED IT. Since gunbc#12290 a declared-
+// inhabitant roster member's derived type is its KIND (std.kind kind_node), an Atom whose authority is
+// std.kind; refusing every Atom here refused every roster member's grounding before coercion (bisected:
+// ingest_identity_coercion_accepts_source_present_in_authored_roster red from #12290). The atom is
+// recognised through std.kind's own reader of its mint, not by matching its spelling, so a kind is the
+// only atom this admits and any other bare atom still refuses.
 fn algebra_ref_is_grounded(algebra: Node) -> Bool {
   match algebra.kind {
     TypeNode { connective: c } =>
       match c {
-        Atom { identity: _ } => false
+        Atom { identity: _ } =>
+          match kind_denoted_by_node(n: algebra) {
+            Present { value: _ } => true
+            Absent => false
+          }
         Conj => true
         Disj => true
         Arrow => true
