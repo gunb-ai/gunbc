@@ -1,10 +1,10 @@
 module v2.test.claim.variant_field_native_binding
 
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { FreeMonoid }
 import v2.compiler.normalized_tree { no_record_declarations, no_resource_declarations }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
 import v2.extdeps.languages.dag { dag_grammar_atom, dag_named_edge }
-import v2.std.algebra { fold_list_node, is_empty }
+import v2.std.algebra { fold_list, fold_list_node, is_empty }
 import v2.std.collection { List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
@@ -175,21 +175,26 @@ data vfb_specimen_index: SymbolIndex = symbol_index_fill_module_root(
 // THE SPECIMEN OBSERVATION: symbol_index_candidates_at's `Present { value: node }` arm binds
 // `node` and the candidate CARRIES it — the declared type's node, at the declared path. If the
 // binder were dropped the way #11998 dropped positional binders, the arm cannot hand this back.
+// The fold spells the observation without a record pattern: the candidate arrives as the fold's
+// item, and the claim holds when exactly it — the single candidate the specimen declares —
+// carries the type node at the declared path.
 test fn vfb_specimen_binder_present_value_node_binds() -> Bool {
-  match symbol_index_candidates_at(
-    index: vfb_specimen_index,
-    position: vfb_specimen_module_qn,
-    name: ^Mood
-  ) {
-    Cons { head: candidate, tail: tail } =>
-      (qualified_name_to_dotted_string(qn: candidate.path) == "v2.test.variant_field_binding_specimen.Mood")
-        && (match candidate.node.kind {
-          TypeNode { connective: Disj } => true
-          _ => false
-        })
-        && is_empty(xs: tail)
-    Empty => false
-  }
+  fold_list(
+    xs: symbol_index_candidates_at(
+      index: vfb_specimen_index,
+      position: vfb_specimen_module_qn,
+      name: ^Mood
+    ),
+    empty: false,
+    cons: fn(acc, candidate) {
+      acc
+        || ((qualified_name_to_dotted_string(qn: candidate.path) == "v2.test.variant_field_binding_specimen.Mood")
+          && (match candidate.node.kind {
+            TypeNode { connective: Disj } => true
+            _ => false
+          }))
+    }
+  )
 }
 
 // THE BINDER CARRIES THE VARIANT ARM TOO: position inside the type, name = variant — the same
@@ -197,20 +202,22 @@ test fn vfb_specimen_binder_present_value_node_binds() -> Bool {
 // positionally is the OTHER arm of the row's one fact; here the variant's node comes back).
 test fn vfb_specimen_variant_binder_binds() -> Bool {
   let type_position = qualified_name_snoc(qn: vfb_specimen_module_qn, segment: ^Mood)
-  match symbol_index_candidates_at(
-    index: vfb_specimen_index,
-    position: type_position,
-    name: ^Yes
-  ) {
-    Cons { head: candidate, tail: tail } =>
-      (qualified_name_to_dotted_string(qn: candidate.path) == "v2.test.variant_field_binding_specimen.Mood.Yes")
-        && (match candidate.node.kind {
-          TypeNode { connective: Atom { identity: sym } } => sym == ^Yes
-          _ => false
-        })
-        && is_empty(xs: tail)
-    Empty => false
-  }
+  fold_list(
+    xs: symbol_index_candidates_at(
+      index: vfb_specimen_index,
+      position: type_position,
+      name: ^Yes
+    ),
+    empty: false,
+    cons: fn(acc, candidate) {
+      acc
+        || ((qualified_name_to_dotted_string(qn: candidate.path) == "v2.test.variant_field_binding_specimen.Mood.Yes")
+          && (match candidate.node.kind {
+            TypeNode { connective: Atom { identity: sym } } => sym == ^Yes
+            _ => false
+          }))
+    }
+  )
 }
 
 // AN ABSENT LOOKUP STAYS ABSENT: the arm that answers Empty is the other edge of the same
