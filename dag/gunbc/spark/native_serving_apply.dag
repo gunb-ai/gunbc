@@ -902,10 +902,10 @@ type SparkNativeLeftoverReading
   | LeftoverUnread { host: HostIdentity, cause: String }
 
 // THE PARSE REFUSES ON ANY MISSING OR UNKNOWN FIELD: a fact this reader did not receive is unread, never
-// defaulted to absent, because "absent" is exactly the value that would license a removal.
+// defaulted to absent, because "absent" is exactly the value that would license a removal. It parses
+// WORDS, NOT LINES: the leg's detail carries the reach-path wire ahead of the script's first line, and
+// no value the observation script prints contains a space.
 fn spark_native_leftover_reading_of(host: HostIdentity, stdout: String) -> SparkNativeLeftoverReading {
-  // WORDS, NOT LINES: the leg's detail carries the reach-path wire ahead of the script's first line,
-  // and no value this script prints contains a space.
   let lines = filter(flat_map(split(s: stdout, delimiter: "\n"), l => split(s: trim(s: l), delimiter: " ")), w => w != "")
   let fence = spark_native_leftover_presence(lines: lines, key: "fence")
   let backup = spark_native_leftover_presence(lines: lines, key: "incumbent_backup")
