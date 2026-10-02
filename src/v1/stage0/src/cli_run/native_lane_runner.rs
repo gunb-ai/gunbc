@@ -2342,6 +2342,38 @@ pub fn run_v2_native_frontier(
     })
 }
 
+/// D13's DEPENDENCY-DEMAND CENSUS, RUN BY THE EMITTED COMPILER (`demand-census` verb). The seed's
+/// whole job is the preparation it shares with every native instrument; the census is the emitted
+/// binary's, which prints its own lines and decides its own exit. The child's stdout is relayed
+/// line for line and its status is returned unjudged.
+pub fn run_v2_demand_census(source_roots: &[String]) -> Result<i32, String> {
+    let preparation = prepare_emitted_compiler(source_roots)?;
+    let mut args = vec!["demand-census".to_string()];
+    args.extend(source_roots.iter().cloned());
+    let output = Command::new(&preparation.binary_path)
+        .args(&args)
+        .output()
+        .map_err(|e| {
+            format!(
+                "V2-NATIVE REFUSAL cause=NativeRunSpawnFailed — spawning {}: {e}",
+                preparation.binary_path.display()
+            )
+        })?;
+    let stdout = String::from_utf8(output.stdout).map_err(|cause| {
+        format!("V2-NATIVE REFUSAL cause=NativeRunStdoutNotUtf8 — demand-census stdout: {cause}")
+    })?;
+    for line in stdout.lines() {
+        println!("{line}");
+    }
+    for line in String::from_utf8_lossy(&output.stderr).lines() {
+        eprintln!("{line}");
+    }
+    output.status.code().ok_or_else(|| {
+        "V2-NATIVE REFUSAL cause=NativeRunKilled — the demand-census child exited without a status"
+            .to_string()
+    })
+}
+
 /// What the adjudicating run decided, carried out of the body as a value.
 struct NativeRunAdmission {
     admitted: bool,

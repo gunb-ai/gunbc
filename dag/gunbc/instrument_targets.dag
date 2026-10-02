@@ -49,6 +49,7 @@ import gunbc.target_binding {
   DifferentialReadingExecutionRefused, DifferentialObservationAssemblyRefused,
   BareReferenceChannelOutcomeProducer,
   SelfHostBehavioralEquivalenceProducer,
+  DependencyDemandCensusProducer,
   BareChannelEligibility, BareChannelRuns, BareChannelDisabledByImportLine,
   BareReferenceChannelEntryReading, BareReferenceChannelExpectation,
   BareReferenceChannelStanding, BareReferenceChannelRead,
@@ -370,6 +371,16 @@ fn self_host_behavioral_equivalence_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "self-host-behavioral-equivalence" } }
 }
 
+// D13 DEPENDENCY-DEMAND CENSUS (v2.compiler.compile native_demand_census_output, the emitted compiler's
+// `demand-census` verb): one row per fn that authors a `uses` clause, pairing the authored rows with
+// the demand derived over the whole closure and a verdict scoped to the audited vocabulary (Network).
+// Run by name, on no lane: its consumer is the D13 row-deletion change, which executes it at its own
+// head as part of its evidence rather than citing an earlier run.
+// `gunbc test //gunbc/instruments:dependency-demand-census`.
+fn dependency_demand_census_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "dependency-demand-census" } }
+}
+
 // THE INSTRUMENT IS A `TestRule` WITH NO DEPENDENCIES, and both halves are measurements rather
 // than placeholders. It answers a test question — does the heads reading read the same grammar as
 // the full reading — so it is not a `BuildRule`; and it depends on no other target in this graph,
@@ -448,6 +459,10 @@ fn required_lane_resolution_census_target() -> BuildTarget {
 
 fn self_host_behavioral_equivalence_binding() -> TargetBinding {
   TargetBinding { target: self_host_behavioral_equivalence_label() producer: SelfHostBehavioralEquivalenceProducer {} }
+}
+
+fn dependency_demand_census_binding() -> TargetBinding {
+  TargetBinding { target: dependency_demand_census_label() producer: DependencyDemandCensusProducer {} }
 }
 
 fn emitted_crate_workspace_binding() -> TargetBinding {
@@ -615,7 +630,7 @@ fn instrument_targets() -> List<Label> {
     primitive_egress_census_v2_label(), primitive_egress_census_dag_label(),
     primitive_egress_census_seed_label(), floor_memory_qualification_label(), typed_graph_exclusive_bytes_label(), typed_graph_exclusive_bytes_floor_subject_label(),
     required_lane_resolution_census_label(), bare_reference_channel_outcome_label(),
-    self_host_behavioral_equivalence_label(),
+    self_host_behavioral_equivalence_label(), dependency_demand_census_label(),
     emitted_crate_workspace_label(),
     native_crypto_vectors_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label()
   ]
@@ -630,7 +645,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(),
     primitive_egress_census_seed_binding(), floor_memory_qualification_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
     required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding(),
-    self_host_behavioral_equivalence_binding(),
+    self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(),
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding()
   ]
