@@ -35581,64 +35581,15 @@ fn nfr_parse_params(s: &str) -> std::collections::BTreeMap<String, String> {
     out
 }
 
-fn nfr_residue_sites(files: &[(String, String)]) -> Vec<String> {
-    let coproducts = nfr_closed_coproduct_names(files);
-    let mut out: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    for (rel, content) in files {
-        if is_test_dag(rel) {
-            continue;
-        }
-        let src = nfr_strip_comments(content);
-        for sig in nfr_parse_fns(&src) {
-            for (mi, _) in sig.body.match_indices("match ") {
-                if mi > 0 && nfr_is_ident_byte(sig.body.as_bytes()[mi - 1]) {
-                    continue;
-                }
-                let after = mi + "match ".len();
-                let Some(brace_rel) = sig.body[after..].find('{') else {
-                    continue;
-                };
-                let scrut = sig.body[after..after + brace_rel].trim();
-                if !nfr_is_ident(scrut) {
-                    continue;
-                }
-                let Some(ty) = sig.params.get(scrut) else {
-                    continue;
-                };
-                if !coproducts.contains(ty) {
-                    continue;
-                }
-                let body_bytes = sig.body.as_bytes();
-                let brace_abs = after + brace_rel;
-                let Some(close) = nfr_matching_brace(body_bytes, brace_abs) else {
-                    continue;
-                };
-                let body = &sig.body[brace_abs + 1..close];
-                if nfr_has_top_level_wildcard_arm(body) {
-                    out.insert(format!("{}::{}", rel, sig.name));
-                }
-            }
-        }
-    }
-    out.into_iter().collect()
-}
-
-struct NonFoldReport {
-    sites: Vec<String>,
-    coproduct_universe: usize,
-    closed_coproduct_names: std::collections::BTreeSet<String>,
-}
-
-fn nfr_build_report() -> &'static NonFoldReport {
-    static REPORT: std::sync::OnceLock<NonFoldReport> = std::sync::OnceLock::new();
-    shared_fill::once(&REPORT, "non_fold_residue", "corpus", || {
-        let files = corpus_dag_files();
-        let closed_coproduct_names = nfr_closed_coproduct_names(&files);
-        NonFoldReport {
-            sites: nfr_residue_sites(&files),
-            coproduct_universe: closed_coproduct_names.len(),
-            closed_coproduct_names,
-        }
+/// The closed-coproduct type names of the corpus, read from `type` declarations' text. The
+/// parameter-keyed site scan that once shared this set was deleted with its census roster
+/// (DESIGN §3 replacement: the typed walk `typed_fallback_arm_walk` is the one site authority);
+/// the complexity-linearity audit and the fallback-arm census still key on these names.
+fn nfr_closed_coproduct_name_set() -> &'static std::collections::BTreeSet<String> {
+    static NAMES: std::sync::OnceLock<std::collections::BTreeSet<String>> =
+        std::sync::OnceLock::new();
+    shared_fill::once(&NAMES, "non_fold_residue", "closed_coproduct_names", || {
+        nfr_closed_coproduct_names(&corpus_dag_files())
     })
 }
 
@@ -35663,130 +35614,6 @@ mod nfr_tests {
         assert!(cps.contains("Mode"));
         assert!(!cps.contains("Rec"));
         assert!(!cps.contains("Alias"));
-    }
-
-    #[test]
-    fn red_control_wildcard_over_closed_coproduct_is_residue() {
-        let f = files(&[(
-            "m.dag",
-            "module m\ntype Mode = A | B | C\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    _ => false\n  }\n}\n",
-        )]);
-        let sites = nfr_residue_sites(&f);
-        assert!(
-            sites.contains(&"m.dag::f".to_string()),
-            "a wildcard over a closed-coproduct param must be flagged; got {sites:?}"
-        );
-    }
-
-    #[test]
-    fn green_control_total_fold_is_not_residue() {
-        let f = files(&[(
-            "m.dag",
-            "module m\ntype Mode = A | B | C\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    B => false\n    C => false\n  }\n}\n",
-        )]);
-        let sites = nfr_residue_sites(&f);
-        assert!(
-            !sites.contains(&"m.dag::f".to_string()),
-            "an exhaustive match (no wildcard) must NOT be flagged; got {sites:?}"
-        );
-    }
-
-    #[test]
-    fn nfr_roster_receipt() {
-        let live: std::collections::BTreeSet<&str> = nfr_build_report()
-            .sites
-            .iter()
-            .map(|s| s.as_str())
-            .collect();
-        // POPULATION BOUND (rung honesty, DESIGN §4b(1)): the census scans matches whose scrutinee
-        // is a closed-coproduct PARAMETER; a match on a local binding or a field is not scanned, so
-        // this receipt's green covers that population only (bound stated on the roster's
-        // registration in gunbc.roster_registry).
-        eprintln!(
-            "nfr_roster_receipt (scope: parameter-scrutinee matches only): unrostered={} stale={} live={}",
-            non_fold_residue_unrostered_count(),
-            non_fold_residue_stale_roster_count(),
-            live.len()
-        );
-        let unrostered: Vec<&String> = nfr_build_report()
-            .sites
-            .iter()
-            .filter(|site| !non_fold_residue_site_is_rostered(site))
-            .collect();
-        for site in &unrostered {
-            eprintln!("unrostered live site: {site}");
-        }
-        let stale: Vec<&String> = non_fold_residue_roster_entries()
-            .iter()
-            .filter(|entry| !live.contains(entry.as_str()))
-            .collect();
-        for entry in &stale {
-            eprintln!("stale roster entry: {entry}");
-        }
-        assert!(unrostered.is_empty(), "unrostered: {unrostered:?}");
-        assert!(stale.is_empty(), "stale roster: {stale:?}");
-    }
-
-    #[test]
-    fn green_control_wildcard_over_open_domain_is_not_residue() {
-        let f = files(&[(
-            "m.dag",
-            "module m\ntype Mode = A | B\nfn g(s: String) -> Bool {\n  match s {\n    \"y\" => true\n    _ => false\n  }\n}\n",
-        )]);
-        let sites = nfr_residue_sites(&f);
-        assert!(
-            !sites.contains(&"m.dag::g".to_string()),
-            "a wildcard over an open/primitive domain must NOT be flagged; got {sites:?}"
-        );
-    }
-
-    #[test]
-    fn green_control_field_placeholder_underscore_is_not_a_wildcard_arm() {
-        let f = files(&[(
-            "m.dag",
-            "module m\ntype Mode = A { v: Int } | B { v: Int }\nfn f(x: Mode) -> Int {\n  match x {\n    A { v: _ } => 1\n    B { v: _ } => 2\n  }\n}\n",
-        )]);
-        let sites = nfr_residue_sites(&f);
-        assert!(
-            !sites.contains(&"m.dag::f".to_string()),
-            "field-placeholder `_` is not a wildcard arm; got {sites:?}"
-        );
-    }
-
-    #[test]
-    fn nested_match_wildcard_is_attributed_to_its_own_match() {
-        let f = files(&[(
-            "m.dag",
-            "module m\ntype Mode = A | B\nfn eq(a: Mode, b: Mode) -> Bool {\n  match a {\n    A => match b { A => true _ => false }\n    B => match b { B => true _ => false }\n  }\n}\n",
-        )]);
-        let sites = nfr_residue_sites(&f);
-        assert!(sites.contains(&"m.dag::eq".to_string()));
-    }
-
-    #[test]
-    fn green_control_wildcard_and_slashes_inside_string_literal_are_ignored() {
-        let f = files(&[(
-            "m.dag",
-            "module m\ntype Mode = A | B\nfn f(x: Mode) -> String {\n  match x {\n    A => \"see https://x/y and _ => z\"\n    B => \"b\"\n  }\n}\n",
-        )]);
-        let sites = nfr_residue_sites(&f);
-        assert!(
-            !sites.contains(&"m.dag::f".to_string()),
-            "`_ =>`/`//` inside a string literal must not be read as code; got {sites:?}"
-        );
-    }
-
-    #[test]
-    fn red_control_real_wildcard_survives_an_in_string_decoy() {
-        let f = files(&[(
-            "m.dag",
-            "module m\ntype Mode = A | B | C\nfn f(x: Mode) -> String {\n  match x {\n    A => \"see https://x/y and _ => z\"\n    _ => \"rest\"\n  }\n}\n",
-        )]);
-        let sites = nfr_residue_sites(&f);
-        assert!(
-            sites.contains(&"m.dag::f".to_string()),
-            "a real wildcard arm must still be flagged despite an in-string decoy; got {sites:?}"
-        );
     }
 
     #[test]
