@@ -3,7 +3,7 @@ module gunbc.roadmap_page
 import gunbc.site.robot_mark { robot_mark_svg }
 import gunbc.roadmap_nesting { RoadmapMembership, roadmap_memberships }
 import gunbc.roadmap.roadmap_project { RoadmapMembershipIndex, membership_index, project_root_for_node_in }
-import gunbc.roadmap.roadmap_lineage { lineage_index }
+import gunbc.roadmap.roadmap_lineage { lineage_lookup }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 
 import gunbc.roadmap_issue_command { IssueFormContext }
@@ -34,8 +34,8 @@ import gunbc.roadmap_style { roadmap_css, round_fill_delay_var, round_fill_durat
 import gunbc.fleet_capacity_panel { fleet_capacity_panel }
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, RoadmapNodeId,
-  RoadmapParent, TopLevel, UnderParent, roadmap_primary_parent, roadmap_parent_ids, is_top_level,
-  SectionElement, Prose, Group, SectionGroup,
+  roadmap_parent_ids, roadmap_parent_ids_in, roadmap_primary_children_index, roadmap_primary_children_in,
+  SectionElement, Prose, Group, SectionGroup, Closes, MemberOf, AdmittedRoot,
 }
 import gunbc.roadmap_status { line_ticket, TicketLine, DerivableLine, AuthoredLine, PlainLine, SupersededLine }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
@@ -51,9 +51,9 @@ import gunbc.roadmap_authority {
   FrontierSetsProjected, FrontierSetsProjectionRefused,
   declared_roadmap_nodes,
   declared_roadmap_edges,
-  ClosingContractTaskPair, closing_contract_task_pairs_for_accepted, closing_contract_family_claim,
+  closing_contract_family_claim, ticket_headline_of,
 }
-import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes, doc_all_edges, node_title }
+import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes, doc_all_edges, node_title, ReadinessGraph }
 import gunbc.roadmap.roadmap_alignment {
   AlignmentResolution, AlignmentReady, AlignmentUnresolved,
   AlignmentLevel, RootPrinciplesLevel, ProjectIntentLevel, TaskContractLevel,
@@ -79,7 +79,7 @@ import gunbc.roadmap_launch_admission {
   launch_identity_instance_text, launch_identity_revision_hex,
 }
 import gunbc.roadmap_presentation {
-  WorkRowView, work_row_view, work_row_view_in, row_headline, LaunchRowContext,
+  WorkRowView, work_row_view, work_row_view_in, row_graph, row_headline, LaunchRowContext,
   TaskBarView, task_bar_view_of, BarFillNone, BarFillStages, BarFillProject, BarFillClosed,
   row_filter_band_key,
   WorkLifecycle, OpenLifecycle, ReviewLifecycle, DoneLifecycle, SupersededLifecycle,
@@ -99,7 +99,7 @@ import gunbc.roadmap_presentation {
   activity_line_class_key, activity_line_class_of_round, activity_summary_line, task_bar_idle_view,
   activity_state_sep, activity_detail_sep, activity_evidence_kv_sep, inspect_disclosure_label,
   ProgramProgressView,
-  DailyWorkspaceView, daily_workspace_view, row_is_shown, row_is_shown_in,
+  DailyWorkspaceView, daily_workspace_view, daily_workspace_view_in, row_is_shown, row_is_shown_in,
   ObservationImpactView, ObservationsNominal, WorkspaceObservationImpact,
   observation_impact_view, workspace_covers_row_activity,
   lifecycle_chip_renders,
@@ -476,13 +476,6 @@ fn view_supporting_facts(view: WorkRowView) -> List<Fragment> {
 // blobs remain relative — a named residue that dies with the blobs themselves (W2-bulk).
 
 data github_blob_base: String = "https://github.com/gunb-ai/gunbc/blob/main/"
-
-fn children_of(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, parent: RoadmapNodeId) -> List<RoadmapNode> {
-  nodes |> filter(n => match roadmap_primary_parent(edges: edges, node: n.node) {
-    UnderParent { parent: p } => p == parent
-    TopLevel => false
-  })
-}
 
 // The launch button (operator 2026-07-20: manual click-to-dispatch). Rendered on every open or
 // review row as the PROJECTION of gunbc.roadmap_launch_admission for cause Operator (RLM-1): an
@@ -1329,19 +1322,32 @@ fn node_li_attributes(view: WorkRowView) -> List<Attribute> {
 // THE TREE ROW carries no profile roster: the roadmap tree is the static render path (no instance
 // in scope) and its rows name no assignee surface — the empty roster renders every fallback
 // exactly as before.
-fn node_work_row_view(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, launch: LaunchRowContext) -> WorkRowView {
-  work_row_view(rn: rn, nodes: nodes, edges: edges, merged: merged, activity: NoActiveWork, rounds: RoundsUnobserved { reason: "no active attempt" as NonEmptyStr }, worker_alive: false, standing: none, launch: launch, attempt_stale: false, profiles: [])
+fn node_work_row_view(rn: RoadmapNode, graph: ReadinessGraph, merged: List<Int>, launch: LaunchRowContext) -> WorkRowView {
+  work_row_view_in(rn: rn, graph: graph, merged: merged, activity: NoActiveWork, rounds: RoundsUnobserved { reason: "no active attempt" as NonEmptyStr }, worker_alive: false, standing: none, launch: launch, attempt_stale: false, profiles: [], assignment: none)
 }
 
-fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int, launch: LaunchRowContext) -> Fragment {
-  let view = node_work_row_view(rn: rn, nodes: nodes, edges: edges, merged: merged, launch: launch)
+// THE TREE'S GRAPH, indexed once per rendered group: the row graph every row's readiness reads
+// (gunbc.roadmap_presentation row_graph) and each node's primary children (gunbc.roadmap_model
+// roadmap_primary_children_index). Asked per row of the raw lists, the children filter alone made
+// the tree nodes x nodes.
+type PageTree {
+  rows: ReadinessGraph
+  children: Map<String, List<RoadmapNode>>
+}
+
+fn page_tree(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> PageTree {
+  PageTree { rows: row_graph(nodes: nodes, edges: edges), children: roadmap_primary_children_index(nodes: nodes, edges: edges) }
+}
+
+fn node_li(rn: RoadmapNode, tree: PageTree, merged: List<Int>, fuel: Int, launch: LaunchRowContext) -> Fragment {
+  let view = node_work_row_view(rn: rn, graph: tree.rows, merged: merged, launch: launch)
   let head = render_task_row(view: view, observation: ObservationsNominal)
-  let kids = children_of(nodes: nodes, edges: edges, parent: rn.node)
+  let kids = roadmap_primary_children_in(index: tree.children, parent: rn.node)
   let child_block = if count(kids) == 0 {
     []
   } else {
     if fuel > 0 {
-      [ nodes_ul(items: kids, nodes: nodes, edges: edges, merged: merged, fuel: fuel - 1, launch: launch) ]
+      [ nodes_ul_in(items: kids, tree: tree, merged: merged, fuel: fuel - 1, launch: launch) ]
     } else {
       [ el_class("ul", "depth-limited", [
           el_class("li", "depth-limit", [
@@ -1358,12 +1364,17 @@ fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, 
 }
 
 fn nodes_ul(items: List<RoadmapNode>, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int, launch: LaunchRowContext) -> Fragment {
-  el("ul", map(items, rn => node_li(rn: rn, nodes: nodes, edges: edges, merged: merged, fuel: fuel, launch: launch)))
+  nodes_ul_in(items: items, tree: page_tree(nodes: nodes, edges: edges), merged: merged, fuel: fuel, launch: launch)
+}
+
+fn nodes_ul_in(items: List<RoadmapNode>, tree: PageTree, merged: List<Int>, fuel: Int, launch: LaunchRowContext) -> Fragment {
+  el("ul", map(items, rn => node_li(rn: rn, tree: tree, merged: merged, fuel: fuel, launch: launch)))
 }
 
 fn group_markup(g: SectionGroup, merged: List<Int>, launch: LaunchRowContext) -> List<Fragment> {
-  let tops = g.nodes |> filter(n => is_top_level(edges: g.edges, node: n.node))
-  let ul = nodes_ul(items: tops, nodes: g.nodes, edges: g.edges, merged: merged, fuel: roadmap_page_max_depth(), launch: launch)
+  let tree = page_tree(nodes: g.nodes, edges: g.edges)
+  let tops = g.nodes |> filter(n => count(roadmap_parent_ids_in(parents: tree.rows.parents, node: n.node)) == 0)
+  let ul = nodes_ul_in(items: tops, tree: tree, merged: merged, fuel: roadmap_page_max_depth(), launch: launch)
   if g.label == "" {
     [ ul ]
   } else {
@@ -2938,14 +2949,23 @@ fn live_work_family_decls() -> List<WorkFamilyDecl> {
   [ WorkFamilyDecl { id: closing_contract_family_id(), claim: closing_contract_family_claim } ]
 }
 
-fn live_work_family_members_for_accepted(
-  accepted: List<RoadmapNodeId>,
-  withheld: List<RoadmapNodeId>,
-) -> List<WorkFamilyMemberFact> {
-  closing_contract_task_pairs_for_accepted(accepted: accepted, withheld: withheld) |> map(p => WorkFamilyMemberFact {
-    family_id: closing_contract_family_id(),
-    task_node: p.task.node as String,
-    subject: p.subject,
+// The family members are read off the document being rendered: a closing-contract task is the one row
+// whose parent is Closes { target } (gunbc.roadmap_authority closing_contract_task_for mints it, and
+// nothing else declares that parent), and its subject is the gated row's own headline. The projected
+// authority carries exactly the tasks closing_contract_task_pairs_for_accepted derives, in the same
+// order, beside the rows they gate -- so the served page sees the same members, and a page rendered for
+// a supplied document no longer reaches past it to the declared authority for them.
+fn live_work_family_members_of(nodes: List<RoadmapNode>, index: Map<String, RoadmapNode>) -> List<WorkFamilyMemberFact> {
+  flat_map(nodes, t => match t.parent {
+    Absent => []
+    Present { value: p } => match p {
+      Closes { target: g } => match lineage_lookup(index: index, id: g) {
+        Present { value: gated } => [WorkFamilyMemberFact { family_id: closing_contract_family_id(), task_node: t.node as String, subject: ticket_headline_of(n: gated) }]
+        Absent => []
+      }
+      MemberOf { project: _, contribution: _ } => []
+      AdmittedRoot => []
+    }
   })
 }
 
@@ -2969,10 +2989,9 @@ fn daily_workspace_view_of_for_accepted(
   let edges = doc_all_edges(doc: doc)
   let observation = observation_impact_view(workflow_refused: attempts_refused)
   let ctx = page_launch_context(doc: doc, merged: merged, launch: launch)
-  let lineage = lineage_index(nodes: nodes)
-  let fuel = count(nodes) + 1
+  let graph = row_graph(nodes: nodes, edges: edges)
   let rows = map(nodes, rn => work_row_view_in(
-    rn: rn, index: lineage, fuel: fuel, nodes: nodes, edges: edges, merged: merged,
+    rn: rn, graph: graph, merged: merged,
     activity: daily_row_activity(node_id: rn.node as String, attempts: attempts, attempts_refused: attempts_refused),
     rounds: daily_row_rounds(node_id: rn.node as String, attempts: attempts, attempts_refused: attempts_refused),
     worker_alive: daily_row_worker_alive(node_id: rn.node as String, attempts: attempts, attempts_refused: attempts_refused),
@@ -2985,13 +3004,13 @@ fn daily_workspace_view_of_for_accepted(
     !row_is_active_work(row: r) && work_scheduling_key(s: r.scheduling) == "ready"))
   let shown_index = membership_index(memberships: memberships)
   let shown = rows |> filter(r => row_is_shown_in(row: r, index: shown_index))
-  daily_workspace_view(
+  daily_workspace_view_in(
     rows: shown,
     edges: edges,
     program: Present { value: v1_exit_program_progress_view_for_accepted(accepted_ids: accepted_ids, ready_count: ready_count) },
     observation: observation,
     families: live_work_family_decls(),
-    members: live_work_family_members_for_accepted(accepted: accepted_ids, withheld: withheld), memberships: memberships,
+    members: live_work_family_members_of(nodes: nodes, index: graph.lineage), memberships: shown_index,
     hidden_not_ready: count(rows) - count(shown))
 }
 
@@ -3008,6 +3027,26 @@ fn roadmap_daily_workspace_page_impl_for_accepted(
   stale_nodes: List<String>,
  profiles: List<PrincipalProfile>,
   memberships: List<RoadmapMembership> = roadmap_memberships()) -> Fragment {
+  roadmap_daily_workspace_page_impl_for_accepted_with_stylesheet(
+    doc: doc, merged: merged, accepted_ids: accepted_ids, withheld: withheld, main_prefix: main_prefix,
+    attempts: attempts, attempts_refused: attempts_refused, standings: standings, launch: launch,
+    stale_nodes: stale_nodes, profiles: profiles, memberships: memberships, stylesheet: roadmap_css())
+}
+
+fn roadmap_daily_workspace_page_impl_for_accepted_with_stylesheet(
+  doc: RoadmapDocument,
+  merged: List<Int>,
+  accepted_ids: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+  main_prefix: List<Fragment>,
+  attempts: List<WorkflowAttemptProgress>,
+  attempts_refused: String?,
+  standings: RoadmapStandings,
+  launch: LaunchHostStanding,
+  stale_nodes: List<String>,
+ profiles: List<PrincipalProfile>,
+  memberships: List<RoadmapMembership>,
+  stylesheet: String) -> Fragment {
   let ws = daily_workspace_view_of_for_accepted(
     doc: doc,
     merged: merged,
@@ -3030,7 +3069,7 @@ fn roadmap_daily_workspace_page_impl_for_accepted(
       el("head", [
         Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
         Element { tag: "meta", attributes: [ attr(name: "name", value: "viewport" ), attr(name: "content", value: "width=device-width, initial-scale=1" ) ], children: [] },
-        el("style", [ txt(roadmap_css()) ]),
+        el("style", [ txt(stylesheet) ]),
         el("title", [ txt("gunbc — daily workspace") ]),
       ]),
       el("body", [
@@ -3176,9 +3215,16 @@ fn roadmap_page_for_projection(proj: RoadmapAuthorityProjection) -> Fragment {
 }
 
 fn roadmap_page_for_projection_launch(proj: RoadmapAuthorityProjection, launch: LaunchHostStanding) -> Fragment {
+  roadmap_page_for_projection_launch_with_stylesheet(proj: proj, launch: launch, stylesheet: roadmap_css())
+}
+
+// The supplied-stylesheet seam of the served roadmap route: the projection's own page fold with only
+// the head's style text handed in, so a claim about rows of a supplied projection does not pay for
+// the stylesheet it never reads. roadmap_page_for_projection_launch passes roadmap_css().
+fn roadmap_page_for_projection_launch_with_stylesheet(proj: RoadmapAuthorityProjection, launch: LaunchHostStanding, stylesheet: String) -> Fragment {
   match proj {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
-      roadmap_page_impl(
+      roadmap_page_impl_with_stylesheet(
         doc: RoadmapDocument { preamble: [], lead_lanes: [], sections: [] },
         merged: [],
         main_prefix: [
@@ -3186,9 +3232,10 @@ fn roadmap_page_for_projection_launch(proj: RoadmapAuthorityProjection, launch: 
           roadmap_authority_refusal_markup(detail: detail),
         ],
         launch: launch,
+        stylesheet: stylesheet,
       )
     RoadmapAuthorityProjected { doc: doc, accepted: accepted, withheld: _ } =>
-      roadmap_page_impl(
+      roadmap_page_impl_with_stylesheet(
         doc: doc,
         merged: authored_merged_prs(),
         main_prefix: [
@@ -3196,6 +3243,7 @@ fn roadmap_page_for_projection_launch(proj: RoadmapAuthorityProjection, launch: 
           finish_line_progress_markup_for_accepted(accepted_ids: accepted),
         ],
         launch: launch,
+        stylesheet: stylesheet,
       )
   }
 }
@@ -3218,6 +3266,14 @@ fn roadmap_page_for_projection_launch(proj: RoadmapAuthorityProjection, launch: 
 fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>, memberships: List<RoadmapMembership> = roadmap_memberships()) -> Fragment {
   roadmap_daily_workspace_page_impl_for_accepted(doc: doc, merged: merged, accepted_ids: [], withheld: [], main_prefix: [], attempts: [], attempts_refused: none, standings: StandingsUnobserved { reason: "static render: the event carrier is not consulted" }, launch: launch_host_unobserved_static_render(), stale_nodes: [], profiles: [],
       memberships: memberships)
+}
+
+// The supplied-stylesheet seam a row or table claim renders through (the daily twin of
+// roadmap_page_launch_with_stylesheet): the same page fold with only the head's style text handed in.
+// A claim that asserts on the stylesheet itself reads roadmap_css or its rule blocks directly.
+fn roadmap_daily_workspace_page_launch_with_stylesheet(doc: RoadmapDocument, merged: List<Int>, launch: LaunchHostStanding, memberships: List<RoadmapMembership>, stylesheet: String) -> Fragment {
+  roadmap_daily_workspace_page_impl_for_accepted_with_stylesheet(doc: doc, merged: merged, accepted_ids: [], withheld: [], main_prefix: [], attempts: [], attempts_refused: none, standings: StandingsUnobserved { reason: "static render: the event carrier is not consulted" }, launch: launch, stale_nodes: [], profiles: [],
+      memberships: memberships, stylesheet: stylesheet)
 }
 
 fn roadmap_daily_workspace_page_launch(doc: RoadmapDocument, merged: List<Int>, launch: LaunchHostStanding, memberships: List<RoadmapMembership> = roadmap_memberships()) -> Fragment {
@@ -3262,9 +3318,27 @@ fn roadmap_daily_workspace_page_for_projection_observed_stale(
   stale_nodes: List<String>,
  profiles: List<PrincipalProfile>,
   memberships: List<RoadmapMembership> = roadmap_memberships()) -> Fragment {
+  roadmap_daily_workspace_page_for_projection_observed_stale_with_stylesheet(
+    proj: proj, attempts: attempts, attempts_refused: attempts_refused, standings: standings, launch: launch,
+    stale_nodes: stale_nodes, profiles: profiles, memberships: memberships, stylesheet: roadmap_css())
+}
+
+// The supplied-stylesheet seam of the served daily route (the twin of
+// roadmap_page_for_projection_launch_with_stylesheet): every served daily render reaches this fold,
+// and only the head's style text is handed in.
+fn roadmap_daily_workspace_page_for_projection_observed_stale_with_stylesheet(
+  proj: RoadmapAuthorityProjection,
+  attempts: List<WorkflowAttemptProgress>,
+  attempts_refused: String?,
+  standings: RoadmapStandings,
+  launch: LaunchHostStanding,
+  stale_nodes: List<String>,
+  profiles: List<PrincipalProfile>,
+  memberships: List<RoadmapMembership>,
+  stylesheet: String) -> Fragment {
   match proj {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
-      roadmap_daily_workspace_page_impl_for_accepted(
+      roadmap_daily_workspace_page_impl_for_accepted_with_stylesheet(
         doc: RoadmapDocument { preamble: [], lead_lanes: [], sections: [] },
         merged: [],
         accepted_ids: [],
@@ -3279,9 +3353,10 @@ fn roadmap_daily_workspace_page_for_projection_observed_stale(
         launch: launch,
         stale_nodes: stale_nodes,
         profiles: profiles,
-      memberships: memberships)
+        memberships: memberships,
+        stylesheet: stylesheet)
     RoadmapAuthorityProjected { doc: doc, accepted: accepted, withheld: withheld } =>
-      roadmap_daily_workspace_page_impl_for_accepted(
+      roadmap_daily_workspace_page_impl_for_accepted_with_stylesheet(
         doc: doc,
         merged: authored_merged_prs(),
         accepted_ids: accepted,
@@ -3295,7 +3370,8 @@ fn roadmap_daily_workspace_page_for_projection_observed_stale(
         launch: launch,
         stale_nodes: stale_nodes,
         profiles: profiles,
-      memberships: memberships)
+        memberships: memberships,
+        stylesheet: stylesheet)
   }
 }
 

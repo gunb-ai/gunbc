@@ -7,8 +7,10 @@ import gunbc.roadmap_model {
   node_sizing_derivation,
   SectionElement, Prose, Group, SectionGroup,
   RoadmapParent, TopLevel, UnderParent, roadmap_primary_parent, roadmap_parent_ids,
-  section_group,
+  section_group, roadmap_nodes_by_id, roadmap_nodes_with_id, roadmap_parent_index, roadmap_parent_ids_in,
 }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import gunbc.roadmap.roadmap_lineage { lineage_index, lineage_walk_in }
 import gunbc.roadmap_sizing {
   NodeSizingDerivation, SizingDerived, SizingNotDerivable,
   intricacy_label, volume_label,
@@ -101,9 +103,9 @@ fn roadmap_rendered_ghost_count(doc: RoadmapDocument) -> Int {
     ClosingContractTaskPairsProjectionRefused { detail: _ } =>
       count(doc_all_nodes(doc: doc))
     ClosingContractTaskPairsProjected { pairs: pairs } =>
-      let sanctioned = concat(declared_roadmap_nodes(), pairs |> map(p => p.task))
+      let sanctioned = roadmap_nodes_by_id(nodes: concat(declared_roadmap_nodes(), pairs |> map(p => p.task)))
       doc_all_nodes(doc: doc)
-        |> filter(n => !any(sanctioned, s => s == n))
+        |> filter(n => !any(roadmap_nodes_with_id(index: sanctioned, id: n.node), s => s == n))
         |> count
   }
 }
@@ -344,8 +346,50 @@ fn node_json(n: RoadmapNode, repo: String, acceptance: Acceptance, edges: List<R
 }
 
 fn node_unmet_parent_ids(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: RoadmapNodeId) -> List<RoadmapNodeId> {
-  roadmap_parent_ids(edges: edges, node: id)
-    |> filter(pid => !any(nodes, n => n.node == pid && node_closes_dependency(n: n)))
+  node_unmet_parent_ids_in(graph: readiness_graph(nodes: nodes, edges: edges), id: id)
+}
+
+// THE READINESS GRAPH, indexed once per graph. Readiness asks every node of one graph the same
+// three questions -- its lineage walk, its prerequisites, which of them are closed -- so a fold over
+// a graph (a page's rows, the dispatcher's admission) indexes it once: lineage by id, parents by
+// child, the ids some node closes as a dependency. Asked of the raw lists per node, the parents and
+// closed reads made the fold nodes x edges and nodes x prerequisites x nodes, and the page and the
+// admission each paid it for the same rows.
+type ReadinessGraph {
+  lineage: Map<String, RoadmapNode>
+  fuel: Int
+  parents: Map<String, List<RoadmapNodeId>>
+  closes: Map<String, Bool>
+}
+
+fn readiness_graph(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> ReadinessGraph {
+  let empty: Map<String, Bool> = empty_map()
+  ReadinessGraph {
+    lineage: lineage_index(nodes: nodes),
+    fuel: count(nodes) + 1,
+    parents: roadmap_parent_index(edges: edges),
+    closes: fold(nodes |> filter(n => node_closes_dependency(n: n)), init: empty, f: (acc, n) => map_insert(m: acc, key: n.node as String, value: true)),
+  }
+}
+
+fn readiness_graph_closes(graph: ReadinessGraph, id: RoadmapNodeId) -> Bool {
+  match map_lookup(m: graph.closes, key: id as String) { Present { value: _ } => true  Absent => false }
+}
+
+fn node_unmet_parent_ids_in(graph: ReadinessGraph, id: RoadmapNodeId) -> List<RoadmapNodeId> {
+  roadmap_parent_ids_in(parents: graph.parents, node: id)
+    |> filter(pid => !readiness_graph_closes(graph: graph, id: pid))
+}
+
+// The one readiness of a node over an indexed graph: the page's scheduling and the dispatcher's
+// readiness gate both read this value.
+fn node_readiness_in_graph(node: RoadmapNode, graph: ReadinessGraph, merged: List<Int>) -> NodeReadiness {
+  node_readiness(
+    node: node,
+    lineage: lineage_walk_in(node_id: node.node as String, index: graph.lineage, fuel: graph.fuel),
+    unmet_parents: node_unmet_parent_ids_in(graph: graph, id: node.node) |> map(p => p as String),
+    merged: merged,
+  )
 }
 
 fn ready_array_json(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> String {

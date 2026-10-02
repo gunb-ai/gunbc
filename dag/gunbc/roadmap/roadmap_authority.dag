@@ -26,7 +26,10 @@ import gunbc.roadmap_model {
   LiveReceiptDoesNotMatchDeclaredNode,
   LiveReceiptJoinsUndeclaredNode,
   LiveReceiptJoinsAmbiguousDeclaredNode,
-  node_accepted,
+  node_accepted_in,
+  receipts_by_node,
+  roadmap_parent_index,
+  roadmap_parents_of,
   project_live_acceptance_receipts,
   LiveAcceptanceReceiptsReplayed,
   LiveAcceptanceReceiptsReplayRefused,
@@ -73,8 +76,7 @@ import std.markdown {
 }
 import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.roadmap.roadmap_lineage { lineage_walk_in, lineage_index }
-import gunbc.roadmap.roadmap_readiness { node_readiness, readiness_only_contract_missing }
-import gunbc.roadmap.roadmap_readiness { node_readiness, readiness_only_contract_missing }
+import gunbc.roadmap.roadmap_readiness { node_readiness, readiness_only_contract_missing, readiness_may_be_only_contract_missing }
 
 fn nid(s: String) -> RoadmapNodeId { s }
 
@@ -224,15 +226,6 @@ data five_minute_ci_gate_program_note: String = "PROGRAM BOUNDARY, NOT A SINGLE 
 // is the failure that note itself documents. The floor executes. When the test greened, the
 // floor_expected_red row left by the roster's own removal path -- the counted un-quarantine, not a
 // silent pass -- which is why nothing points there now.
-// Main's #12993 bound this node to its closing contract witness; re-expressed here in the
-// branch's execution-field idiom when #12787 merged it.
-fn test_reference_discipline_remainder_execution_contract() -> WorkItemExecutionContract {
-  gunbc_claim_execution_contract(
-    entry: "dag/test/claim/closing/test_reference_discipline_remainder_closing_contract_witness_test.dag" as FilePath,
-    function: "test_reference_discipline_remainder_closing_contract_holds" as NonEmptyStr,
-  )
-}
-
 fn shell_typed_invocation_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
     entry: "dag/test/claim/shell/shell_typed_invocation_witness_test.dag" as FilePath,
@@ -577,8 +570,10 @@ fn shell_dag_floor_peak_calibration_rows_execution_contract() -> WorkItemExecuti
     functions: [
       "pre_calibration_surface_renders_no_shell_control_word" as NonEmptyStr,
       "pre_calibration_reset_is_not_a_swallowed_echo" as NonEmptyStr,
-      "calibration_surfaces_still_read_the_cgroup_peak_file" as NonEmptyStr,
-      "calibration_surfaces_keep_their_observation_labels" as NonEmptyStr,
+      "pre_calibration_surface_still_reads_the_cgroup_peak_file" as NonEmptyStr,
+      "post_calibration_surface_still_reads_the_cgroup_peak_file" as NonEmptyStr,
+      "pre_calibration_surface_keeps_its_observation_label" as NonEmptyStr,
+      "post_calibration_surface_keeps_its_observation_label" as NonEmptyStr,
     ],
   )
 }
@@ -2306,15 +2301,15 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       owner: "self-host",
       carriers: carrier(path: "src/v2/compiler/04_infer.dag"),
       line: ticket(t: updated(t: fields(
-          headline: "v2 parses and types its own seven native test modules end to end",
-          boundary: "The seven modules that quiet-hawk-702 measured on 2026-09-29, taken through ingest, lowering, resolve and infer on the native route. Every refusal is removed at its root.",
-          displaced_cost: "The first root (tokenize refused at ingest) hid every other cause. Until the seven pass, no v2 frontend claim has a real subject behind it.",
-          first_slice: "Land the remaining blockers: artifact.tree (#12506), match-binder typing (#12641, only on the #12506 stack branch), maps (#12758), built-in String (#12760). Then rebase #12628.",
-          red_control: "Any of the seven refusing before type inference, or refusing by blaming an import target (native_import_target_file_refusal), keeps this red.",
-          out_of_scope: "Whole-corpus refusals; emission.",
-          handback: "All seven typed, with the run receipt."
-        ), on: "2026-09-30", note: "Not yet centered: integration PR #12628 is a draft stacked on four open PRs.")),
-      parent: in_project(project: "v2-frontend", contribution: "The seven native test modules are the smallest real subject v2 must read and type end to end."),
+          headline: "v2 parses and types its native test target end to end",
+          boundary: "The target is the test label //v2/test/parse/expression_bodied_fn_decl_parse:all, taken through ingest, lowering, resolve and infer on the native route. The population is derived from the label, not counted: there is no list of seven to keep in sync. Every refusal is removed at its root.",
+          displaced_cost: "Until the target's members type end to end, no v2 frontend claim has a real subject behind it.",
+          first_slice: "Attribution before repair: for each failing member, record the stage, the fatal cause, the full cause chain, the earliest point where the derivation stops being justified, any shared root and any existing owner, then group the failures by root (DESIGN §6b). The repair plan is the N7 ledger (N7-0 to N7-5, with owners): N7-1 fold element typing and N7-4 the evaluation gate sit with the #12506 owner; N7-3, the match-variable typing regression, is queued after N7-1.",
+          red_control: "Any member of the target refusing before type inference, or refusing by blaming an import target (native_import_target_file_refusal), keeps this red.",
+          out_of_scope: "Whole-corpus refusals; emission. The type_env cycle-time investigation is a regression investigation, not this node's wall.",
+          handback: "Every member of the target typed, with the run receipt for the label."
+        ), on: "2026-10-02", note: "Rewritten to the N7 ledger: the target is the test label, and the walls this row used to list are retired (kept as history in the ledger).")),
+      parent: in_project(project: "v2-frontend", contribution: "The native test target is the smallest real subject v2 must read and type end to end."),
     ),
     roadmap_node(
       identity: "rn_JNQNQAP6N7Y65GV8VJ1ZX1008P",
@@ -3210,7 +3205,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The prefix landed with its reds observed executing on a required run; the v2 corpus route either carrying a refusal for a real test-fn reference or that obligation transferred BY NAME to the node owning the native route; test_reference_debt carrying zero corpus-debt rows, or that remainder transferred BY NAME to a successor node and this node's headline narrowed accordingly; and the two instrument gaps either closed or written down as their own rows."
       ), on: "2026-09-24", note: "The brief before the 100-word re-cut, verbatim (obligations kept in the brief, context here): The walls themselves are landed -- v1 IDENTIFIES every test reference its typed frontier can see (a call from anywhere including another test, a function value, a parameter default, a named import) and refuses any that the shrink-only debt ledger does not exactly cover -- a reference matching a surviving row is ADMITTED, as a temporary admission awaiting deletion, not permitted; v2 refuses at name resolution. That frontier is not the whole language: out_of_scope names the import-all function value v1 inference cannot see. What remains is around them. THE LEDGER: test_reference_debt carries the surviving corpus rows plus one fixture control, an equality budget at (module, referrer, target) refusing in BOTH directions, so a row is paid down only by deleting the reference and its row together. THE EVIDENCE GAP: the v1 wall's discriminating reds live in test.claim.test_reference_wall_witness, which matches no entry in v2.workflow.required_floor required_gate_prefixes, so they execute nowhere on the merge path while every other gated class runs; the loss is covered generically by gunbc.rung_drop witness_floor_off_the_required_gate rather than specifically. THE V2 WALL'S COVERAGE IS NARROWER THAN ITS NAME: its refusal is established by execution AT THE INTERFACE, on supplied roots plus two route claims, and NO required lane compiles the corpus through v2 name resolution -- so a real test-fn reference in the tree does not red it, which is how one survived until a reviewer read for it. Corpus-wide v2 enforcement waits on the native route. TWO INSTRUMENT GAPS found while landing the four PRs: the warm-roster admission instrument does not execute in the restored floor -- a row naming a declaration that no longer existed passed green, though the roster's own rule says an unresolvable row stops preparation -- and there is no cheap way to read what a producer actually emits, labels included, which is what let a supplied fixture diverge silently until its pairing claim went red.")),
       dispatch: dispatchable(),
-      execution: bound(contract: test_reference_discipline_remainder_execution_contract()),
+      execution: bound(contract: gunbc_claim_execution_contract(
+        entry: "dag/test/claim/closing/test_reference_discipline_remainder_closing_contract_witness_test.dag" as FilePath,
+        function: "test_reference_discipline_remainder_closing_contract_holds" as NonEmptyStr,
+      )),
       parent: in_project(project: "ci-end-to-end-execution", contribution: "The required run is the factory verification half; a gap in what it counts, bills or reports is a gap in every landing it gates."),
     ),
     roadmap_node(
@@ -4629,23 +4627,6 @@ fn ticket_red_control_of(n: RoadmapNode) -> String {
 // mechanism, not a deletion list, is what keeps a project from growing a closing-contract task.
 // Dependencies here are the declared edges against the accepted set: the derived edge from a node
 // to its own closing-contract task is a CONSEQUENCE of minting and cannot be its precondition.
-// THE PARENT INDEX, one pass over the edges: child id to its parents in edge order (the order
-// roadmap_parent_ids' filter yields). The minting rule asks every node for its unmet parents; a
-// per-node filter over every edge made that fold nodes x edges.
-fn roadmap_parent_index(edges: List<RoadmapEdge>) -> Map<String, List<RoadmapNodeId>> {
-  let empty: Map<String, List<RoadmapNodeId>> = empty_map()
-  fold(edges, init: empty, f: fn(acc, e) {
-    match roadmap_parents_of(parents: acc, id: e.child as String) {
-      Present { value: ps } => map_insert(m: acc, key: e.child as String, value: concat(ps, [e.parent]))
-      Absent => map_insert(m: acc, key: e.child as String, value: [e.parent])
-    }
-  })
-}
-
-fn roadmap_parents_of(parents: Map<String, List<RoadmapNodeId>>, id: String) -> List<RoadmapNodeId>? {
-  map_lookup(m: parents, key: id)
-}
-
 fn unmet_parents_in(n: RoadmapNode, parents: Map<String, List<RoadmapNodeId>>, accepted: Set<RoadmapNodeId>) -> List<String> {
   match roadmap_parents_of(parents: parents, id: n.node as String) {
     Absent => []
@@ -4670,6 +4651,7 @@ fn closing_contract_candidates(
   nodes
     |> filter(n => !set_contains(accepted_set, n.node))
     |> filter(n => !set_contains(withheld_set, n.node))
+    |> filter(n => readiness_may_be_only_contract_missing(node: n, merged: []))
     |> filter(n => readiness_only_contract_missing(r: node_readiness(
       node: n,
       lineage: lineage_walk_in(node_id: n.node as String, index: index, fuel: fuel),
@@ -4903,8 +4885,9 @@ fn active_section_for_acceptance(
 }
 
 fn accepted_node_ids_from_receipts(receipts: List<RoadmapAcceptanceReceipt>) -> List<RoadmapNodeId> {
+  let index = receipts_by_node(receipts: receipts)
   declared_roadmap_nodes()
-    |> filter(n => node_accepted(receipts: receipts, rn: n))
+    |> filter(n => node_accepted_in(index: index, rn: n))
     |> map(n => n.node)
 }
 

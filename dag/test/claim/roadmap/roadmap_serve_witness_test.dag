@@ -72,7 +72,8 @@ import gunbc.roadmap_authority {
   RoadmapAuthorityProjection, RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
 }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
-import gunbc.roadmap_page { roadmap_daily_workspace_page_for_projection_observed }
+import gunbc.roadmap_page { roadmap_daily_workspace_page_for_projection_observed_stale_with_stylesheet }
+import gunbc.roadmap_nesting { roadmap_memberships }
 import gunbc.roadmap.roadmap_event_log { StandingsUnobserved }
 import gunbc.auth.session {
   AuthenticatedSession, AuthMethodGoogleOidc, SessionClientTrackerWeb, CsrfToken,
@@ -570,8 +571,8 @@ test fn witness_an_unrouted_path_is_refused_not_answered() -> Bool {
 
 // ── The DAILY surface, which is where the seam leaked ───────────────────────────────────────────
 //
-// WHAT THIS PROBE IS, AND WHAT IT IS NOT. It is a composition check over
-// roadmap_daily_workspace_page_for_projection_observed on both arms. It is NOT the control for the
+// WHAT THIS PROBE IS, AND WHAT IT IS NOT. It is a composition check over the served daily fold
+// (roadmap_daily_workspace_page_for_projection_observed_stale_with_stylesheet) on both arms. It is NOT the control for the
 // leak that review 63317 found, and the first version of this block claimed it was.
 //
 // The claim was tested and it was false. With the leak deliberately restored in an isolated
@@ -594,30 +595,23 @@ test fn witness_an_unrouted_path_is_refused_not_answered() -> Bool {
 // daily page renders work rows and bands, never the roadmap's section headings, so its absence is
 // true of a clean render too.
 
-
+// The served daily fold every observed render delegates to, with the head's style text supplied
+// empty: the claim reads the plan's arms in the body, never the stylesheet.
 fn daily_page_html_over_plan(plan: RoadmapAuthorityProjection) -> String {
-  match try_serialize_html_source(node: roadmap_daily_workspace_page_for_projection_observed(
+  match try_serialize_html_source(node: roadmap_daily_workspace_page_for_projection_observed_stale_with_stylesheet(
     proj: plan,
     attempts: [],
     attempts_refused: none,
     standings: StandingsUnobserved { reason: "witness render: the event carrier is not consulted" },
     launch: launch_host_unobserved_static_render(),
+    stale_nodes: [],
     profiles: [],
+    memberships: roadmap_memberships(),
+    stylesheet: "",
   )) {
     EmitOk { html } => html
     EmitRejected { reason } => reason
   }
-}
-
-test fn witness_daily_page_answers_from_the_supplied_plan() -> Bool {
-  let projected = daily_page_html_over_plan(plan: caller_supplied_plan_fixture())
-  let refused = daily_page_html_over_plan(
-    plan: RoadmapAuthorityProjectionRefused { detail: "the caller's plan carrier could not be read" },
-  )
-  string_contains(s: projected, pattern: " ready now")
-    && string_contains(s: projected, pattern: "workspace")
-    && string_contains(s: refused, pattern: "the caller's plan carrier could not be read")
-    && string_contains(s: refused, pattern: " ready now")
 }
 
 // ── The route the plan parameter CANNOT reach refuses instead of answering ───────────────────────
@@ -663,7 +657,6 @@ test fn witness_issue_detail_route_selects() -> Bool {
     && selects(method: POST, path: "/issue/some-node/assign", want: IssueAssignHandler)
     && selects(method: POST, path: "/issue/some-node/comment", want: IssueCommentHandler)
 }
-
 
 // ── The durable assign route: validation, concurrency, and the fabric execution entry point ──────
 // THE ASSIGN BODY'S WIRE SHAPE (the form ships enctype text/plain): a field reads as its own
@@ -804,7 +797,6 @@ test fn witness_reassign_same_revision_joins_the_existing_request() -> Bool {
     && string_contains(s: r.body, pattern: "attempt already live in gunbc-some-node-abc")
     && string_contains(s: r.body, pattern: "joins the existing attempt when one is live")
 }
-
 
 // ── The durable comment route: body wire shape, early refusals, retry-idempotence ────────────────
 // THE COMMENT BODY'S WIRE SHAPE: the body rides LAST (markdown freely carries newlines) — the

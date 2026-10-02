@@ -15,7 +15,6 @@ import gunbc.roadmap_launch_canary { roadmap_launch_canary_execution_contract }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_spawner { spawn_frontier, next_spawnable }
 import gunbc.roadmap_page {
-  roadmap_daily_workspace_page_for_authority,
   roadmap_header, workspace_markup,
   daily_row_activity, daily_row_rounds, page_launch_context,
 }
@@ -23,6 +22,7 @@ import gunbc.roadmap_presentation { DailyWorkspaceView, work_row_view, daily_wor
 import gunbc.roadmap_launch_admission { launch_host_unobserved_static_render }
 import gunbc.roadmap_spawner { doc_all_nodes, doc_all_edges }
 import gunbc.roadmap_authority { authored_merged_prs }
+import test.claim.roadmap.roadmap_authority_subtree_fixture { fx_authority_subtree_daily_page, fx_ready_task_ids }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -294,12 +294,13 @@ test fn witness_page_places_ready_node_in_ready_bucket() -> Bool {
     && !string_contains(s: h, pattern: "class=\"status status-open\"")
 }
 
-test fn witness_authority_daily_workspace_serializes() -> Bool {
-  match try_serialize_html_source(node: roadmap_daily_workspace_page_for_authority()) {
-    EmitOk { html: h } =>
-      string_contains(s: h, pattern: "data-band=\"ready\"")
-        && string_contains(s: h, pattern: "data-band=\"done\"")
-        && !string_contains(s: h, pattern: "frontier-bucket")
-    EmitRejected { reason: _ } => false
-  }
+// A signed, sized node is done, and the table row carries the done band the band chips filter on.
+test fn witness_page_places_done_node_in_done_bucket() -> Bool {
+  let node = accepted_node(base: sized_derivable(id: "finished-row", prs: [43], title: "Finished Row"))
+  let h = workspace_band_html(doc: fixture_doc(nodes: [node], edges: []), merged: [])
+  string_contains(s: h, pattern: "Finished Row")
+    && string_contains(s: h, pattern: "data-band=\"done\"")
+    && !string_contains(s: h, pattern: "data-band=\"ready\"")
+    && !string_contains(s: h, pattern: "frontier-bucket")
 }
+

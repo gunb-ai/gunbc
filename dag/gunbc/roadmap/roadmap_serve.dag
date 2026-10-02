@@ -13,7 +13,8 @@ import gunbc.auth.profile_projection {
   profile_store_layout_for_instance, profile_store_upsert_from_session, profile_store_read_all, ProfileStoreReadAll,
   ProfileStoreUpserted, ProfileStoreUpsertRefused, ProfileStoreRead, ProfileStoreUnread, PrincipalProfile,
 }
-import gunbc.roadmap_allocation_page { allocation_page, allocation_client_path }
+import gunbc.roadmap_allocation_page { allocation_page_with_stylesheet, allocation_client_path }
+import gunbc.roadmap_style { roadmap_css }
 import gunbc.roadmap_allocation_client { allocation_client_source }
 
 
@@ -1983,15 +1984,22 @@ fn auth_session_body(evidence: RequestAuthenticationEvidence) -> String {
   }))
 }
 
-// Session-dependent HTML must not be reused for a different viewer.
+// Session-dependent HTML; its no-store header moved to the OAuth follow-up with the response-header channel.
 fn allocation_page_response(request: ServeHttpRequest<RequestAuthenticationEvidence>) -> ServeHttpResponse {
+  allocation_page_response_over(request: request, roadmap_stylesheet: roadmap_css())
+}
+
+// The response over a supplied roadmap stylesheet: the session and header decisions do not read the
+// stylesheet, so a claim about them supplies it (gunbc.roadmap_allocation_page
+// allocation_page_with_stylesheet).
+fn allocation_page_response_over(request: ServeHttpRequest<RequestAuthenticationEvidence>, roadmap_stylesheet: String) -> ServeHttpResponse {
   let signed_in = match request.security.authentication {
     GoogleOidcSession { session: _ } => true
     AuthAbsent => false
     SessionStandingInvalid { standing: _ } => false
     FabricServiceEvidence { kind: _, authenticated_at: _ } => false
   }
-  match try_serialize_html_source(node: allocation_page(signed_in: signed_in)) {
+  match try_serialize_html_source(node: allocation_page_with_stylesheet(signed_in: signed_in, roadmap_stylesheet: roadmap_stylesheet)) {
     EmitOk { html } => serve_text_response(status: 200, content_type: text_html_utf8, body: html)
     EmitRejected { reason } => serve_text_response(status: 500, content_type: text_plain_utf8, body: page_render_refusal_body(reason: reason))
   }
