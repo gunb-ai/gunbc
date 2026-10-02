@@ -1,0 +1,156 @@
+module v2.test.claim.parse.declaration_choice_route
+
+import v2.compiler.body_lowering_fold {
+  BodyLowerTypedParam,
+  body_lower_collect_typed_params,
+  body_lower_deep_unwrap_optional,
+  body_lower_field_pattern_edge,
+  body_lower_find_captured,
+  body_lower_param_list_comma_spine_optional
+}
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag {
+  ParseSubtreeAbsent,
+  ParseSubtreeFound,
+  dag_lex,
+  parse_production_captured_child_optional,
+  parse_production_emitted_identity_optional
+}
+import v2.std.compilers.sugar { sugar_sequence_pair_optional }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Authored, Edge, Node, Positional, StructuralLabel, Symbol, is_empty_conj_root, symbol_lexeme }
+import v2.std.optional { Absent, Optional, Present }
+import v2.std.text { String }
+import std.algebra { List, list_snoc_item }
+import v2.std.algebra { list_map }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DECLARATION-LEVEL CHOICES ARE DISJOINT BY CONSTRUCTION, AND EACH INPUT TAKES ONE ROUTE
+// (operator zero_ambiguity_ruling 2026-10-02). A typed parameter, a field pattern and a status pattern
+// used to be choices whose alternatives started on the same token; each is now LEFT-FACTORED, so the
+// former alternatives are one shared prefix and an optional suffix (v2.extdeps.languages.dag
+// dag_grammar_typed_param_expr, dag_grammar_field_pattern_expr, dag_grammar_status_pattern_expr).
+// Each claim parses ONE supplied source holding every former alternative and asserts the ROUTE
+// each one took -- whether the suffix is present -- read by the real reader where one exists, not
+// only that the module parses. The `test` marker's half of the family is held in
+// v2.test.claim.parse.test_marker_channel.
+
+fn route_parse(text: String) -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      bind_outcome(
+        o: tokenize(text: text, file: ^declaration_choice_route_probe, rules: dag_lex()),
+        f: fn(token_stream) {
+          match parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }
+          }
+        }
+      )
+  }
+}
+
+// Every shell emitted as `emitted`, in source order.
+fn route_shells(n: Node, emitted: Symbol, acc: List<Node>) -> List<Node> {
+  let here = match parse_production_emitted_identity_optional(node: n) {
+    Present { value: e } => if e == emitted { list_snoc_item(xs: acc, item: n) } else { acc }
+    Absent => acc
+  }
+  fold(n.children, init: here, f: fn(a, e) { route_shells(n: e.target, emitted: emitted, acc: a) })
+}
+
+// THE SUFFIX ROUTE: a shell whose capture is a pair with an empty right took the bare route; a
+// non-empty right took the suffixed one; a capture that is no pair took neither (the status name arm).
+fn route_of(shell: Node) -> String {
+  match parse_production_captured_child_optional(node: shell) {
+    Absent => "unread"
+    Present { value: captured } =>
+      match sugar_sequence_pair_optional(node: captured) {
+        Absent => "unpaired"
+        Present { value: pair } =>
+          if is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: pair.right)) { "bare" } else { "suffixed" }
+      }
+  }
+}
+
+fn route_list(text: String, emitted: Symbol) -> List<String> {
+  match route_parse(text: text) {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: tree, diagnostics: _ } =>
+      list_map(xs: route_shells(n: tree, emitted: emitted, acc: []), f: fn(s) { route_of(shell: s) })
+  }
+}
+
+data status_route_source: String = "module probe.status_route\n\nservice probe.Svc {\n  operation Op {\n    response {\n      404 => Int\n      5xx => Int\n      nonzero => Int\n    }\n  }\n}\n"
+
+// `404` is the int with no class suffix, `5xx` the int with it, `nonzero` the name arm.
+test fn status_patterns_take_code_class_and_name_routes_holds() -> Bool {
+  route_list(text: status_route_source, emitted: ^dag_surface_status_pattern) == ["bare", "suffixed", "unpaired"]
+}
+
+data field_pattern_route_source: String = "module probe.field_route\n\nfn f(x: P) -> Int {\n  match x {\n    P { v, w: y } => v\n  }\n}\n"
+
+// The edge the real field-pattern reader lowers each field to: the label and the bound name.
+fn field_edge_reading(shell: Node) -> String {
+  match body_lower_field_pattern_edge(item: shell) {
+    Rejected { diagnostics: _ } => "refused"
+    Accepted { value: edge, diagnostics: _ } =>
+      match edge.label {
+        Authored { name: label } =>
+          match node_atom_identity_optional(node: edge.target) {
+            Present { value: bound } => symbol_lexeme(sym: label) + "->" + symbol_lexeme(sym: bound)
+            Absent => "unbound"
+          }
+        StructuralLabel { label: _ } => "structural"
+        Positional => "positional"
+      }
+  }
+}
+
+// `v` is the pun (bare route, bound to `v` itself); `w: y` the suffixed route, bound to `y`.
+test fn field_patterns_take_pun_and_suffix_routes_holds() -> Bool {
+  match route_parse(text: field_pattern_route_source) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      let shells = route_shells(n: tree, emitted: ^dag_surface_field_pattern, acc: [])
+      (list_map(xs: shells, f: fn(s) { route_of(shell: s) }) == ["bare", "suffixed"])
+        && (list_map(xs: shells, f: fn(s) { field_edge_reading(shell: s) }) == ["v->v", "w->y"])
+  }
+}
+
+data param_route_source: String = "module probe.param_route\n\nfn f(a: Int, b: Int = 1) -> Int {\n  a\n}\n"
+
+fn param_has_default(p: BodyLowerTypedParam) -> String {
+  match p.default {
+    Present { value: _ } => symbol_lexeme(sym: p.name) + "=default"
+    Absent => symbol_lexeme(sym: p.name)
+  }
+}
+
+// `a: Int` takes the bare route, `b: Int = 1` the tail route, read by the real slot reader.
+test fn typed_params_take_plain_and_default_routes_holds() -> Bool {
+  match route_parse(text: param_route_source) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match body_lower_find_captured(root: tree, emitted: ^dag_surface_param_list) {
+        ParseSubtreeAbsent => false
+        ParseSubtreeFound { captured: param_list } =>
+          match body_lower_param_list_comma_spine_optional(param_list_captured: param_list) {
+            Absent => false
+            Present { value: spine } =>
+              match body_lower_collect_typed_params(sequence_capture: spine) {
+                Rejected { diagnostics: _ } => false
+                Accepted { value: params, diagnostics: _ } =>
+                  list_map(xs: params, f: fn(p) { param_has_default(p: p) }) == ["a", "b=default"]
+              }
+          }
+      }
+  }
+}

@@ -20,7 +20,7 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.parse_refusal_reason { DataValueMissingAfterEq, FnExpressionBodyMissingAfterEq, KeywordAsPathSegment, NewlineBeforeDualRoleOperator, ParseRefusalReason }
+import v2.std.parse_refusal_reason { DataValueMissingAfterEq, DeclarationMarkerNotTest, FnExpressionBodyMissingAfterEq, KeywordAsPathSegment, NewlineBeforeDualRoleOperator, ParseRefusalReason }
 import v2.std.grammar {
   GrammarEmitClassTerminal,
   GrammarEmitLexemeTerminal,
@@ -877,46 +877,31 @@ fn dag_grammar_generic_params_expr() -> GrammarExpr {
 }
 
 // A PARAMETER MAY REFINE ITS TYPE WITH A WHERE CLAUSE AND MAY CARRY A DEFAULT (`lifetime_seconds: Int
-// where range(min: 1, max: 3600) = 3600`), as v1 02_parse parse_param reads it. The refined or
-// defaulted form is the first arm and REQUIRES what it adds, so it is taken only where the source
-// writes it; a parameter with neither falls to the last arm, whose shape is exactly the one every parameter
-// reader already reads. Neither lowers yet: v2.compiler.body_lowering_fold refuses the fn at the
-// clause (body_lowering_reason_parameter_refinement_unmodeled) or at the default
-// (and a default, since XL-2 PR2c-ii, lowers onto the parameter's binder) rather than reading the type and dropping the refinement.
+// where range(min: 1, max: 3600) = 3600`), as v1 02_parse parse_param reads it. ONE ALTERNATIVE,
+// LEFT-FACTORED: `name: T` is the shared prefix and the tail is optional, so no choice is made on a
+// token both readings could start with (operator zero_ambiguity_ruling 2026-10-02). It was a choice
+// of `name: T <tail>` before `name: T`, both led by the same binding name. The tail is a refinement
+// (optionally followed by a default) or a default; the two start with `where` and `=`, so that inner
+// choice is disjoint. A plain parameter captures `name: (T, <empty>)`, which
+// v2.compiler.body_lowering_fold body_lower_typed_param_after_colon_optional reads. Neither the
+// refinement nor (before XL-2 PR2c-ii) the default lowered: the fn refuses at the clause
+// (body_lowering_reason_parameter_refinement_unmodeled), and a default lowers onto the parameter's binder.
 fn dag_grammar_typed_param_expr() -> GrammarExpr {
-  dag_grammar_choice(
-    left: dag_grammar_typed_param_head_expr(
-      tail: dag_grammar_choice(
-        left: dag_grammar_sequence(
-          left: dag_grammar_nonterminal(production: ^dag_production_where_refinement_clause),
-          right: dag_grammar_optional(element: dag_grammar_nonterminal(production: ^dag_production_default_value))
-        ),
-        right: dag_grammar_nonterminal(production: ^dag_production_default_value)
-      )
-    ),
-    right: dag_grammar_sequence(
-      left: dag_grammar_binding_name_terminal(),
-      right: dag_grammar_sequence(
-        left: dag_grammar_terminal(token_class: ^dag_token_colon),
-        right: dag_grammar_nonterminal(production: ^dag_production_type_expr)
-      )
-    )
-  )
-}
-
-// `name: T <tail>` for the first arm above. The tail is a refinement (optionally followed by a
-// default) or a default, so the arm REQUIRES one and is taken only where the source writes one; a
-// parameter with neither falls to the last arm, the unchanged shape every parameter reader already
-// reads. One head arm rather than one per tail, so a plain parameter's `name: T` is read twice, not
-// once per tail form.
-fn dag_grammar_typed_param_head_expr(tail: GrammarExpr) -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_binding_name_terminal(),
     right: dag_grammar_sequence(
       left: dag_grammar_terminal(token_class: ^dag_token_colon),
       right: dag_grammar_sequence(
         left: dag_grammar_nonterminal(production: ^dag_production_type_expr),
-        right: tail
+        right: dag_grammar_optional(
+          element: dag_grammar_choice(
+            left: dag_grammar_sequence(
+              left: dag_grammar_nonterminal(production: ^dag_production_where_refinement_clause),
+              right: dag_grammar_optional(element: dag_grammar_nonterminal(production: ^dag_production_default_value))
+            ),
+            right: dag_grammar_nonterminal(production: ^dag_production_default_value)
+          )
+        )
       )
     )
   )
@@ -1872,16 +1857,18 @@ fn dag_grammar_pattern_expr() -> GrammarExpr {
   )
 }
 
+// `name: pattern` or the punned `name`: LEFT-FACTORED on the shared binding name, so the field name is
+// read once and the `: pattern` suffix is optional (operator zero_ambiguity_ruling 2026-10-02; it was a
+// choice of the two forms, both led by the same name). A punned field captures `(name, <empty>)`.
 fn dag_grammar_field_pattern_expr() -> GrammarExpr {
-  dag_grammar_choice(
-    left: dag_grammar_sequence(
-      left: dag_grammar_binding_name_terminal(),
-      right: dag_grammar_sequence(
+  dag_grammar_sequence(
+    left: dag_grammar_binding_name_terminal(),
+    right: dag_grammar_optional(
+      element: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_colon),
         right: dag_grammar_nonterminal(production: ^dag_production_pattern)
       )
-    ),
-    right: dag_grammar_binding_name_terminal()
+    )
   )
 }
 
@@ -2316,16 +2303,19 @@ fn dag_grammar_fn_decl_expr() -> GrammarExpr {
   )
 }
 
-// `test fn` IS A CONTEXTUAL PRODUCTION, NOT A KEYWORD. `test` stays an ordinary identifier
+// `test fn` IS A CONTEXTUAL PRODUCTION, NOT A RESERVED KEYWORD. `test` stays an ordinary identifier
 // everywhere else — dag/extdeps/languages/typescript/program.dag models the TypeScript
 // compiler's own `Cond { test: ... }` field under §3's real-upstream-names rule, and a reserved
-// kw_test would break that module's parse. So the production matches an ident lexeme followed by
-// a fn_decl, and the body-lowering arm refuses any marker lexeme other than "test" with a typed
-// diagnostic. No other top-level item starts with an ident, so the choice arm has no FIRST
-// overlap with the keyword-led alternatives.
+// kw_test would break that module's parse. In THIS position the marker is the EXACT WORD `test`, a
+// literal terminal, as `service` and `resource` are: the top-level choice is then three distinct
+// exact words beside the keyword-led alternatives, disjoint by construction (operator
+// zero_ambiguity_ruling 2026-10-02). It used to match ANY identifier and leave a reader to refuse a
+// marker other than "test", so the marker overlapped `service`/`resource` and the check sat
+// downstream of the grammar. Another identifier in marker position refuses in the grammar, located
+// (dag_grammar_module_expr, DeclarationMarkerNotTest).
 fn dag_grammar_test_fn_decl_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+    left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "test")),
     right: dag_grammar_choice(
       left: dag_grammar_nonterminal(production: ^dag_production_fn_decl),
       right: dag_grammar_nonterminal(production: ^dag_production_data_decl)
@@ -2357,19 +2347,19 @@ fn dag_grammar_test_fn_decl_expr() -> GrammarExpr {
 // interface members aside, typed and located.
 // A STATUS PATTERN IS AN EXACT CODE (`404`), A CLASS (`5xx`) OR A NAME (`nonzero`). The lexer reads
 // `5xx` as the int literal `5` then the identifier `xx`, so the class is that pair, written as the int
-// followed by the literal terminal `xx` and tried before the bare int -- the reading v1 02_parse
+// followed by an optional literal terminal `xx`, LEFT-FACTORED on the int so the code and the class
+// are one alternative (operator zero_ambiguity_ruling 2026-10-02) -- the reading v1 02_parse
 // parse_status_pattern makes. Without it every response block with a status class refused its whole
 // module as parse_g0_tokens_remain at the `xx`.
 fn dag_grammar_status_pattern_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
       left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
-      right: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "xx"))
+      right: dag_grammar_optional(
+        element: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "xx"))
+      )
     ),
-    right: dag_grammar_choice(
-      left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
-      right: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident)
-    )
+    right: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident)
   )
 }
 
@@ -2792,10 +2782,28 @@ fn dag_grammar_top_level_item_expr() -> GrammarExpr {
   )
 }
 
+// WHERE THE ITEMS END, AN IDENTIFIER FOLLOWED BY `fn` OR `data` IS A MARKER THAT IS NOT `test`, and
+// it refuses by name at the marker instead of leaving the rest of the module to the generic leftover
+// refusal. The guard follows the repeat, so it is not a choice alternative and adds no overlap; it is
+// a not-predicate, so it captures nothing and the module's tree is the items'.
 fn dag_grammar_module_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_nonterminal(production: ^dag_production_module_header),
-    right: dag_grammar_repeat(element: dag_grammar_nonterminal(production: ^dag_production_top_level_item))
+    right: dag_grammar_sequence(
+      left: dag_grammar_repeat(element: dag_grammar_nonterminal(production: ^dag_production_top_level_item)),
+      right: grammar_expr_not_predicate(
+        element: grammar_expr_refuse_on_match(
+          element: dag_grammar_sequence(
+            left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+            right: dag_grammar_choice(
+              left: dag_grammar_terminal(token_class: ^dag_token_kw_fn),
+              right: dag_grammar_terminal(token_class: ^dag_token_kw_data)
+            )
+          ),
+          reason: DeclarationMarkerNotTest
+        )
+      )
+    )
   )
 }
 
