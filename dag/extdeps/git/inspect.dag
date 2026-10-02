@@ -201,7 +201,7 @@ service git.Inspect {
   }
 
   operation WorkingTreeStatus {
-    requires none
+    requires opaque
     input { repository_path: String }
     output {
       entries_nul: String from "stdout"
@@ -239,7 +239,7 @@ service git.Inspect {
   }
 
   operation ReadTreeIntoIndex {
-    requires Network
+    requires opaque
     input { repository_path: String, revision_hex: String, index_path: String }
     output {
       success: Bool from "exit_success"
@@ -256,7 +256,7 @@ service git.Inspect {
   }
 
   operation StatusAgainstIndex {
-    requires none
+    requires opaque
     input { repository_path: String, index_path: String }
     output {
       entries_nul: String from "stdout"
@@ -275,7 +275,7 @@ service git.Inspect {
   }
 
   operation IgnoredAgainstIndex {
-    requires none
+    requires opaque
     input { repository_path: String, index_path: String }
     output {
       paths_nul: String from "stdout"
@@ -294,7 +294,7 @@ service git.Inspect {
   }
 
   operation IgnoredFiles {
-    requires none
+    requires opaque
     input {}
     output {
       paths_nul: String from "stdout"
@@ -446,7 +446,7 @@ service git.Inspect {
   }
 
   operation MergeTreeWriteTree {
-    requires Network
+    requires opaque
     input { left: GitRef, right: GitRef }
     output {
       stdout: String from "stdout"

@@ -89,7 +89,7 @@ service npm.Cache {
 
 service npm.Ci {
   operation IgnoreScripts {
-    requires Network
+    requires opaque
     input { workdir: FilePath }
     output {
       success: Bool from "exit_success"
@@ -106,7 +106,7 @@ service npm.Ci {
   }
 
   operation IgnoreScriptsOffline {
-    requires none
+    requires opaque
     input { workdir: FilePath, cache: FilePath }
     output {
       success: Bool from "exit_success"

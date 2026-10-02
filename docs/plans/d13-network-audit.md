@@ -19,7 +19,17 @@ A `requires` clause states what a sandbox must GRANT, so the fail-closed directi
   - Everything else is a local program on local paths: NotNetwork.
   - **Live browser page** (ruling 2026-10-02): an interaction with a running browser is **Network**. A click can navigate, page scripts run during any call, and browser startup can fetch. A program whose option surface cannot be verified (`playwright-runner` is not in this repository) is **OpaqueDemand** for every runtime positional it receives; it is never assumed none.
   - **Partial clone** (ruling 2026-10-02): a git read that needs blob or tree objects is **Network**, because in a partial clone git lazily fetches missing objects from the promisor remote, and whether a repository is a partial clone belongs to the repository the operation is pointed at, i.e. its input. Reads of commits, refs, the index or config only are not affected.
-- **Boundary — host environment is not demand** (ruling 2026-10-02): host-wide resolver configuration (NSS, which can route `id`/`whoami`/`stat %U` to LDAP; DNS) is the sandbox's environment, not an operation's demand, and does not raise a clause.
+- **Repository-selected executable** (ruling 2026-10-02): if the invoked command executes a program selected by the input repository or its configuration, the operation is **OpaqueDemand**, unless the operation structurally disables that surface. This covers hooks, clean/smudge/process filters, diff/merge drivers, textconv, the credential helper, the fsmonitor hook, `core.sshCommand`, `remote.*.uploadpack`, a cargo build script or proc macro, `.cargo/config` aliases and runners, the `.npmrc` `git` executable, and agent hooks in a settings argument. Upstream surfaces, all git per git-scm.com/docs:
+  - githooks(5): `pre-commit`, `prepare-commit-msg` (not suppressed by `--no-verify`), `commit-msg`, `post-commit`, `post-checkout` (checkout, worktree add), `pre-merge-commit`/`post-merge`, `pre-push`, `reference-transaction` (every ref update, including `update-ref`), `post-index-change` (every index write: add, read-tree, update-index, write-tree).
+  - gitattributes(5): clean on add/status/diff-against-worktree/`hash-object` with a path; smudge on checkout/restore/reset/checkout-index/merge; diff drivers and textconv on patch output; merge drivers on merge and merge-tree.
+  - git-config(1): `core.fsmonitor` on index refresh (status, add, commit, untracked scans); `credential.helper`, `core.sshCommand`, `remote.<name>.uploadpack`/`receivepack` on every transport (fetch, push, ls-remote).
+  - Cargo: build scripts and proc macros (doc.rust-lang.org/cargo/reference/build-scripts.html), and user aliases that shadow external subcommands such as `fmt` (doc.rust-lang.org/cargo/reference/config.html#alias).
+  - npm: the `git` config key (docs.npmjs.com/cli/using-npm/config#git) for git dependencies.
+  - Claude Code: hooks in `--settings` (docs.anthropic.com/claude-code/hooks).
+  - Agent CLIs (`codex exec`, and `claude -p` with a runtime permission mode) execute model-chosen commands, which makes them runtime programs.
+
+  Git commands that run none of these surfaces stay as classified, e.g. rev-parse, rev-list, for-each-ref, `show -s`, merge-base, `config`, `init`, `commit-tree`, `cat-file` without `--filters`/`--textconv`, `ls-tree`, `log` without patch output, and `diff --name-only`/`--name-status` between two commits. Paging is not reached because stdout is captured, not a TTY.
+- **Boundary — host environment is not demand** (ruling 2026-10-02): host-wide configuration (global/system git config, `~/.ssh/config`, rustup toolchain selection from an ambient cwd) and host-wide resolver configuration (NSS, which can route `id`/`whoami`/`stat %U` to LDAP; DNS) is the sandbox's environment, not an operation's demand, and does not raise a clause.
 
 ## Citations by class
 
@@ -30,7 +40,7 @@ A `requires` clause states what a sandbox must GRANT, so the fail-closed directi
 | Network → `requires Network` | GitHub REST API docs (docs.github.com/rest), base https://api.github.com | `extdeps.github.actions_jit_runner`, `extdeps.github.app`, `extdeps.github.checks`, `extdeps.github.code_search`, `extdeps.github.commits`, `extdeps.github.gists`, `extdeps.github.git_database`, `extdeps.github.issues`, `extdeps.github.org_actions`, `extdeps.github.pulls`, `extdeps.github.repository_contents`, `extdeps.github.rulesets`, `extdeps.github.users`, `extdeps.github.workflow_runs`, `extdeps.github.workflows` |
 | Network → `requires Network` | Google Drive API v3 reference (developers.google.com/drive/api/reference/rest/v3) | `extdeps.google.drive` |
 | Network → `requires Network` | Google Sheets API v4 reference (developers.google.com/sheets/api/reference/rest) | `extdeps.google.sheets` |
-| Network → `requires Network` | PARAM remote: git-fetch(1)/git-push(1)/git-ls-remote(1) use the remote's transport (gitprotocol-v2(5)); a {remote} may be a local path (file transport) or a URL | `extdeps.git`, `extdeps.git.publication_transport` |
+| Network → `requires Network` | PARAM remote: git-fetch(1)/git-push(1)/git-ls-remote(1) use the remote's transport (gitprotocol-v2(5)); a {remote} may be a local path (file transport) or a URL; operations run in a repository are now opaque (repository-selected credential helper/sshCommand/uploadpack/pre-push/reference-transaction); the Network clause remains only where none of those surfaces is reached | `extdeps.git`, `extdeps.git.publication_transport` |
 | Network → `requires Network` | PARAM request_url: endpoint is the runtime ACTIONS_ID_TOKEN_REQUEST_URL (docs.github.com/actions/reference/security/oidc); declaration fixes no host | `extdeps.cloud.gcp.sts` |
 | Network → `requires Network` | PARAM tarball: npm cache add (docs.npmjs.com/cli/commands/npm-cache) accepts a path or a URL | `extdeps.tools.npm` |
 | Network → `requires Network` | PARAM url: Playwright page.goto (playwright.dev/docs/api/class-page#page-goto) navigates to a runtime URL | `extdeps.browser` |
@@ -39,9 +49,9 @@ A `requires` clause states what a sandbox must GRANT, so the fail-closed directi
 | Network → `requires Network` | SEC EDGAR APIs (sec.gov/search-filings/edgar-application-programming-interfaces) | `extdeps.sec.edgar_rest` |
 | Network → `requires Network` | STATE credential cache: gcloud auth print-access-token (cloud.google.com/sdk/gcloud/reference/auth/print-access-token) refreshes over oauth2.googleapis.com only when the cached token is expired | `extdeps.shell` |
 | Network → `requires Network` | STATE package cache: apt-get(8) install downloads .debs from sources.list unless already installed/cached; PARAM package | `extdeps.apt` |
-| Network → `requires Network` | STATE package cache: npm ci (docs.npmjs.com/cli/commands/npm-ci) fetches from the registry unless every tarball is cached | `extdeps.tools.npm` |
+| Network → `requires Network` | STATE package cache: npm ci (docs.npmjs.com/cli/commands/npm-ci) fetches from the registry unless every tarball is cached; superseded for `npm.Ci` by the repository-selected executable rule (`.npmrc` `git`): opaque | `extdeps.tools.npm` |
 | Network → `requires Network` | STATE package cache: npx -y -p (docs.npmjs.com/cli/commands/npx) installs the package from the registry unless already cached | `extdeps.typescript` |
-| Network → `requires Network` | STATE registry cache: cargo build/check/test (doc.rust-lang.org/cargo/commands/cargo-build.html, --offline/--frozen) fetch the index/crates only when Cargo.lock deps are not already downloaded; argv does not pass --offline | `extdeps.cargo_build` |
+| Network → `requires Network` | STATE registry cache: cargo build/check/test (doc.rust-lang.org/cargo/commands/cargo-build.html, --offline/--frozen) fetch the index/crates only when Cargo.lock deps are not already downloaded; argv does not pass --offline; superseded for `cargo.Build` by the repository-selected executable rule (build scripts, proc macros): opaque | `extdeps.cargo_build` |
 | Network → `requires Network` | TCGplayer API (docs.tcgplayer.com), base https://api.tcgplayer.com | `extdeps.tcgplayer.catalog`, `extdeps.tcgplayer.pricing`, `extdeps.tcgplayer.store`, `extdeps.tcgplayer.tcgplayer` |
 | Network → `requires Network` | curl(1) to fixed https://api.github.com (GitHub Apps REST docs.github.com/rest/apps) | `extdeps.github.app` |
 | Network → `requires Network` | curl(1) to https://{bmc_host}: DMTF Redfish DSP0266 / MegaRAC web API over HTTPS — argv fixes the https scheme to a BMC host | `extdeps.bmc.http`, `extdeps.bmc.megarac` |
@@ -61,13 +71,13 @@ A `requires` clause states what a sandbox must GRANT, so the fail-closed directi
 | Network → `requires Network` | gh(1) manual (cli.github.com/manual): `gh api`/`gh pr`/`gh run` call api.github.com | `extdeps.github.actions_runs`, `extdeps.github.ci_runner`, `extdeps.github.org_actions`, `extdeps.github.organizations`, `extdeps.github.pulls` |
 | Network → `requires Network` | ipmitool(1) INTERFACES: -I lanplus = IPMI v2.0 RMCP+ over UDP/623 to -H {bmc_host} | `extdeps.bmc.ipmi` |
 | Network → `requires Network` | ssh(1)/scp(1) (+sshpass(1)): opens TCP/22 session to the host named in argv | `extdeps.bmc.openbmc_password_ssh_transport`, `extdeps.ssh.password_session`, `extdeps.ssh.session` |
-| Network → `requires Network` | vendor CLI prompt mode calls the hosted model API (Claude Code docs.anthropic.com/claude-code/cli-reference; Codex CLI `exec` github.com/openai/codex; Gemini CLI github.com/google-gemini/gemini-cli) | `extdeps.llm.anthropic_rest`, `extdeps.llm.cli` |
+| Network → `requires Network` | vendor CLI prompt mode calls the hosted model API (Claude Code docs.anthropic.com/claude-code/cli-reference; Codex CLI `exec` github.com/openai/codex; Gemini CLI github.com/google-gemini/gemini-cli); `claude.Invoke.Run` (hooks in `--settings`), `llm.Anthropic.CliPrompt` (runtime permission mode) and `llm.Codex.Review` (agent exec in `-C {cwd}`) are opaque | `extdeps.llm.anthropic_rest`, `extdeps.llm.cli` |
 | NotNetwork → `requires none` | /usr/bin/stat: local coreutils/POSIX utility (man stat(1)); argv names only local paths/values | `extdeps.tools.stat` |
 | NotNetwork → `requires none` | Docker Engine API (docs.docker.com/reference/api/engine): default endpoint unix:///var/run/docker.sock (extdeps.docker.endpoint docker_default_endpoint), a unix socket | `extdeps.docker.container_inspect`, `extdeps.docker.container_stats` |
 | Network → `requires Network` | RULING live page: Playwright Page/BrowserContext API (playwright.dev/docs/api/class-page); a running page and browser startup may fetch (`Launch`, `CurrentUrl`, `Title`) | `extdeps.browser` |
 | OpaqueDemand → `requires opaque` | RULING unverifiable surface: `playwright-runner` is not in this repository, so a runtime positional (selector, text, path, ms, context) may reach an unknown option | `extdeps.browser` |
 | OpaqueDemand → `requires opaque` | RULING runtime program: Playwright page.evaluate / locator.evaluate (playwright.dev/docs/evaluating) run runtime JavaScript in the page, which can call fetch | `extdeps.browser` |
-| NotNetwork → `requires none` | cargo(1) --version / cargo-fmt: no registry access (doc.rust-lang.org/cargo/commands) | `extdeps.cargo_build` |
+| NotNetwork → `requires none` | cargo(1) --version / cargo-fmt: no registry access (doc.rust-lang.org/cargo/commands); `cargo fmt` is now opaque (a workspace alias can shadow the external subcommand); `--version` stays none | `extdeps.cargo_build` |
 | NotNetwork → `requires none` | cat: local coreutils/POSIX utility (man cat(1)); argv names only local paths/values | `extdeps.linux.cgroup_v2`, `extdeps.linux.procfs` |
 | NotNetwork → `requires none` | chmod: local coreutils/POSIX utility (man chmod(1)); argv names only local paths/values | `extdeps.shell` |
 | NotNetwork → `requires none` | codex app-server generate-json-schema (github.com/openai/codex app-server README): writes schema files locally | `extdeps.llm.codex_app_server` |
@@ -79,8 +89,8 @@ A `requires` clause states what a sandbox must GRANT, so the fail-closed directi
 | NotNetwork → `requires none` | dpkg(1): local status database | `extdeps.dpkg` |
 | NotNetwork → `requires none` | find: local coreutils/POSIX utility (man find(1)); argv names only local paths/values | `extdeps.linux.cgroup_v2`, `extdeps.shell` |
 | NotNetwork → `requires none` | getconf: local coreutils/POSIX utility (man getconf(1)); argv names only local paths/values | `extdeps.posix.getconf` |
-| NotNetwork → `requires none` | git(1); local subcommand per git-scm.com/docs reading only commits, refs, the index or config (no transport; only fetch/push/ls-remote/clone/pull use git transfer protocols, gitprotocol-v2(5)) | `extdeps.git`, `extdeps.git.inspect`, `extdeps.git.plumbing`, `extdeps.git.publication_transport` |
-| Network → `requires Network` | RULING partial clone: git-partial-clone (git-scm.com/docs/partial-clone) lazily fetches missing blobs/trees from the promisor remote; diff, show, cat-file, ls-tree, log -- path, read-tree, checkout-index, unpack-file, merge, merge-tree, checkout, restore, reset --hard, worktree add | `extdeps.git`, `extdeps.git.inspect`, `extdeps.git.plumbing` |
+| NotNetwork → `requires none` | git(1); local subcommand per git-scm.com/docs reading only commits, refs, the index or config (no transport; only fetch/push/ls-remote/clone/pull use git transfer protocols, gitprotocol-v2(5)), and running no hook, filter, driver or fsmonitor surface | `extdeps.git`, `extdeps.git.inspect`, `extdeps.git.plumbing`, `extdeps.git.publication_transport` |
+| Network → `requires Network` | RULING partial clone: git-partial-clone (git-scm.com/docs/partial-clone) lazily fetches missing blobs/trees from the promisor remote; diff, show, cat-file, ls-tree, log -- path, read-tree, checkout-index, unpack-file, merge, merge-tree, checkout, restore, reset --hard, worktree add; any of these that also runs a repository-selected executable is opaque instead | `extdeps.git`, `extdeps.git.inspect`, `extdeps.git.plumbing` |
 | OpaqueDemand → `requires opaque` | RULING runtime program: git-grep(1) `-O<pager>` opens matches with a runtime program; `{pattern}` and `{ref}` (GitRef is only non-empty) sit in option position | `extdeps.git.inspect` |
 | NotNetwork → `requires none` | grep: local coreutils/POSIX utility (man grep(1)); argv names only local paths/values | `extdeps.tools.grep` |
 | NotNetwork → `requires none` | gunbc file transport: local filesystem read/write (POSIX open(2), read(2)) | `extdeps.filesystem.filesystem_io`, `extdeps.linux.procfs` |
@@ -98,7 +108,7 @@ A `requires` clause states what a sandbox must GRANT, so the fail-closed directi
 | NotNetwork → `requires none` | mv: local coreutils/POSIX utility (man mv(1)); argv names only local paths/values | `extdeps.shell` |
 | NotNetwork → `requires none` | node: local coreutils/POSIX utility (man node(1)); argv names only local paths/values | `extdeps.tools.node` |
 | NotNetwork → `requires none` | npm --version (docs.npmjs.com/cli/commands/npm) | `extdeps.tools.npm` |
-| NotNetwork → `requires none` | npm ci --offline (docs.npmjs.com/cli/using-npm/config#offline): forces cache-only, no network | `extdeps.tools.npm` |
+| NotNetwork → `requires none` | npm ci --offline (docs.npmjs.com/cli/using-npm/config#offline): forces cache-only, no network; superseded by the repository-selected executable rule: opaque | `extdeps.tools.npm` |
 | NotNetwork → `requires none` | nvidia-smi(1): local NVML | `extdeps.nvidia.system_management_interface` |
 | NotNetwork → `requires none` | oomctl(1): local systemd-oomd | `extdeps.systemd.oomd` |
 | NotNetwork → `requires none` | openssl-dgst(1): local signing | `extdeps.tools.openssl` |
@@ -133,6 +143,16 @@ A `requires` clause states what a sandbox must GRANT, so the fail-closed directi
 | OpaqueDemand → `requires opaque` | PARAM script_path: behaviour is the runtime script | `extdeps.go`, `extdeps.node`, `extdeps.python` |
 
 ## Follow-ups (better modeling than the clauses above; not done here)
+
+- Repository-selected executables in git, by structural disabling. Each item has its citation, and each would move the affected operations back to their transport verdict:
+  - `-c core.hooksPath=/dev/null` disables every hook, including `prepare-commit-msg` and `reference-transaction` (git-config `core.hooksPath`; githooks(5)). `--no-verify` alone is insufficient.
+  - `-c core.fsmonitor=false` (git-config `core.fsmonitor`).
+  - `--no-textconv --no-ext-diff` on diff (git-diff(1)).
+  - `hash-object --no-filters` (git-hash-object(1)).
+  - Overriding the filter and merge-driver surfaces needs per-driver `-c filter.<driver>.*`/`merge.<driver>.driver` overrides, which are unknown in advance. A typed attribute-free checkout realization is the structural route; otherwise those operations stay opaque.
+  - On transports, `-c credential.helper=` (an empty value resets the helper list; gitcredentials(7)), `-c core.sshCommand=ssh`, and dropping `--upload-pack`.
+- Cargo: no flag disables build scripts or proc macros, so those operations stay opaque until the workspace's build-time programs are modeled.
+- npm ci: `--git=false`-style suppression is not documented. Pin the lockfile to registry-only sources and refuse git dependencies.
 
 - `systemd.Systemctl` and `hostnamectl.Process`: terminate options before the unit/pattern positional (`--`), or refine the input to a unit-name type. Either move those operations back to `requires none`.
 - `sed.Sed`: a typed non-executing sed subset, or `--sandbox` in the argv, would move both operations to `requires none`.
