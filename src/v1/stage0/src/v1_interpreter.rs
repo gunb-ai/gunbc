@@ -6810,20 +6810,39 @@ mod budgeted_cpu_clock_tests {
     }
 }
 
-pub fn thread_cpu_nanos() -> u128 {
+/// The one read of the calling thread's CPU clock (extdeps.posix.clock_gettime
+/// ClockThreadCputimeId), FALLIBLE: POSIX makes the clock an option, so its absence is an error
+/// the caller must decide about, never a number. `thread_cpu_nanos` below is the budget clock's
+/// lenient view of this read; `observed_thread_cpu_nanos` refuses on the error arm.
+pub fn thread_cpu_nanos_checked() -> std::io::Result<u128> {
     #[cfg(unix)]
     {
         let mut ts = libc::timespec {
             tv_sec: 0,
             tv_nsec: 0,
         };
-        // SAFETY: `ts` is a valid, owned timespec; CLOCK_THREAD_CPUTIME_ID is always supported
-        // on linux/macos. rc != 0 (unreachable there) falls through to 0.
+        // SAFETY: `ts` is a valid, owned timespec written once by clock_gettime.
         let rc = unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut ts) };
         if rc == 0 {
-            return (ts.tv_sec as u128) * 1_000_000_000 + (ts.tv_nsec as u128);
+            return Ok((ts.tv_sec as u128) * 1_000_000_000 + (ts.tv_nsec as u128));
         }
-        0
+        Err(std::io::Error::last_os_error())
+    }
+    #[cfg(not(unix))]
+    {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "CLOCK_THREAD_CPUTIME_ID is a POSIX clock",
+        ))
+    }
+}
+
+pub fn thread_cpu_nanos() -> u128 {
+    #[cfg(unix)]
+    {
+        // CLOCK_THREAD_CPUTIME_ID is supported on linux/macos; the error arm (unreachable
+        // there) falls through to 0 for the budget clock.
+        thread_cpu_nanos_checked().unwrap_or(0)
     }
     #[cfg(not(unix))]
     {
@@ -9454,6 +9473,7 @@ macro_rules! v1_map_grounding_arms {
             arm "map_grounding.empty_map" { "empty_map_primitive_delegate" | "empty_map" } => "empty_map",
             arm "map_grounding.map_insert" { "map_insert_primitive_delegate" | "map_insert" } => "map_insert",
             arm "map_grounding.lookup" { "map_lookup_primitive_delegate" | "map_lookup" } => "lookup",
+            arm "map_grounding.list_at" { "list_at_primitive_delegate" | "list_at_optional" } => "get",
         }
     };
 }
@@ -9510,6 +9530,55 @@ fn is_v2_std_collection_map_grounded_fn(ctx: &InterpContext, fn_node: &Rc<Node>)
         .is_some_and(|info| info.module_name == V2_STD_COLLECTION_MODULE)
 }
 
+/// THE `get` PRIMITIVE'S TOTAL PROJECTION (`v2.std.collection` `list_at_optional`). A native list is
+/// indexed on its persistent carrier, `log n` as `std.primitives` `get_contract` declares; an index
+/// outside the list, negative included, is `Absent`. The raw `get` builtin keeps its `Null` miss for
+/// its v1 callers, which is why this does not route through it: a `Null` element and a miss would be
+/// one value there. A value that is not a free-monoid list refuses typed.
+fn list_at_as_optional(
+    args: &[(Option<String>, Value)],
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let (list, index) = match args {
+        [(_, list), (_, index)] => (list, index),
+        _ => {
+            return Err(InterpError::TypeError {
+                msg: format!(
+                    "{V2_STD_COLLECTION_MODULE}.list_at_optional expects (xs, index), got {} argument(s)",
+                    args.len()
+                ),
+            })
+        }
+    };
+    let index = expect_int(Some(index), "list_at_optional")?;
+    let found = match list {
+        Value::List(items) => {
+            if index < 0 {
+                None
+            } else {
+                items.get(index as usize).cloned()
+            }
+        }
+        other => {
+            let items = free_monoid_to_vec(other).ok_or_else(|| InterpError::TypeError {
+                msg: format!(
+                    "{V2_STD_COLLECTION_MODULE}.list_at_optional expects a list, got {}",
+                    other.type_label()
+                ),
+            })?;
+            if index < 0 {
+                None
+            } else {
+                items.get(index as usize).cloned()
+            }
+        }
+    };
+    Ok(match found {
+        Some(v) => optional_present(v, ctx),
+        None => optional_absent(ctx),
+    })
+}
+
 fn try_v2_std_collection_map_primitive_grounding(
     ctx: &InterpContext,
     fn_node: &Rc<Node>,
@@ -9520,6 +9589,9 @@ fn try_v2_std_collection_map_primitive_grounding(
     }
     let grounded_name = fn_node.name.as_str();
     let builtin_name = v1_map_grounding_arms!(v1_map_grounding_dispatch, grounded_name);
+    if builtin_name == "get" {
+        return Some(list_at_as_optional(args, ctx));
+    }
     match eval_builtin(builtin_name, args, ctx) {
         Ok(Some(v)) => Some(Ok(v)),
         Ok(None) => Some(Err(InterpError::TypeError {
@@ -22144,6 +22216,23 @@ macro_rules! v1_builtin_arms {
                 }
                 _ => Err(InterpError::TypeError {
                     msg: "observed_monotonic_nanos takes exactly one boundary label".to_string(),
+                }),
+            },
+
+            // ObserveThreadCpuAtSubject realization seam: the calling thread's CPU time
+            // (extdeps.posix.clock_gettime ClockThreadCputimeId). An unsupported clock refuses;
+            // the monotonic wall is never substituted for it.
+            arm "free_call.observed_thread_cpu_nanos" { "observed_thread_cpu_nanos" } => match $positional.as_slice() {
+                [Value::Str(_boundary)] => match thread_cpu_nanos_checked() {
+                    Ok(nanos) => Ok(Some(Value::Int(nanos.min(i64::MAX as u128) as i64))),
+                    Err(cause) => Err(InterpError::TypeError {
+                        msg: format!(
+                            "observed_thread_cpu_nanos: clock_gettime(CLOCK_THREAD_CPUTIME_ID) unavailable on this host ({cause}); refusing rather than substituting the wall"
+                        ),
+                    }),
+                },
+                _ => Err(InterpError::TypeError {
+                    msg: "observed_thread_cpu_nanos takes exactly one boundary label".to_string(),
                 }),
             },
 

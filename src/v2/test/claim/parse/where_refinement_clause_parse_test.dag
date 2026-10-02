@@ -20,7 +20,7 @@ import std.process { ExitSuccess, ProcessExit, exit_failure }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data where_refinement_positive_bare_source: String = "module probe.where_bare\n\ntype Tight = String where non_empty\n\nfn f() -> Int {\n  1\n}\n"
+data where_refinement_positive_bare_source: String = "module probe.where_bare\n\ntype Tight = String where string_non_empty\n\nfn f() -> Int {\n  1\n}\n"
 
 data where_refinement_positive_brand_source: String = "module probe.where_brand\n\ntype UnitId = String where brand(\"UnitId\")\n\nfn f() -> Int {\n  1\n}\n"
 

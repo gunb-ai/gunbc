@@ -257,6 +257,7 @@ fn stage0_foundation_runtime_dependencies() -> List<CargoDependency> {
   [
     CargoDependency { name: "stacker", source: RegistryDep { version: "0.1", features: [] } },
     CargoDependency { name: "im", source: RegistryDep { version: "15.1", features: ["serde"] } },
+    CargoDependency { name: "libc", source: RegistryDep { version: "0.2", features: [] } },
     CargoDependency { name: "serde", source: RegistryDep { version: "1", features: ["derive", "rc"] } },
     CargoDependency { name: "serde_json", source: RegistryDep { version: "1", features: [] } },
     CargoDependency { name: "unicode-ident", source: RegistryDep { version: "1", features: [] } },

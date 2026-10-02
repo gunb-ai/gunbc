@@ -173,6 +173,7 @@ type CoreEdgeLabel
   | BinderTypeEdge
   | BinderDefaultEdge
   | ArrowResourceRequirementsEdge
+  | LexicalReferenceEdge
   | MapLiteralEntryEdge
   | MapLiteralEntriesEdge
 
@@ -235,6 +236,7 @@ fn core_edge_labels() -> List<CoreEdgeLabel> {
     BinderTypeEdge,
     BinderDefaultEdge,
     ArrowResourceRequirementsEdge,
+    LexicalReferenceEdge,
     MapLiteralEntryEdge,
     MapLiteralEntriesEdge,
   ]
@@ -268,6 +270,7 @@ fn core_edge_label_canonical_symbol(marker: CoreEdgeLabel) -> Symbol {
     BinderTypeEdge => ^core_binder_type_edge
     BinderDefaultEdge => ^core_binder_default_edge
     ArrowResourceRequirementsEdge => ^core_arrow_resource_requirements_edge
+    LexicalReferenceEdge => ^core_lexical_reference_edge
     MapLiteralEntryEdge => ^core_map_literal_entry_edge
     MapLiteralEntriesEdge => ^core_map_literal_entries_edge
   }
@@ -1110,6 +1113,7 @@ type ArrowBodyForm
   | RecordConstructBody
   | DeclarationReferenceBody
   | ParameterReferenceBody
+  | LexicalReferenceBody
   | ComputationBody { behavior: Behavior }
   | FunctionValueBody
   | UnsupportedArrowBody
@@ -1157,16 +1161,27 @@ fn symbol_lexeme(sym: Symbol) -> String {
 // target spells its leaf as a local rather than a module-scoped name. A distinct core arm keeps the
 // two apart without a shape test, and no authored name can carry either.
 
+// A REFERENCE TO A LEXICAL BINDER IS THE SAME CARRIER UNDER A THIRD MARKER, the core marker
+// LexicalReferenceEdge. v2.compiler.resolve mints
+// it from a LexicalFrame -- a `let`, a match-arm pattern binder, a lambda's parameter -- whose binder
+// is not a declaration and has no declaring path. Its one child is the local's label, a synthetic
+// atom, so the reference's own occurrence stays on the marker node alone; which binder answered it is
+// recorded by resolve in v2.compiler.resolve ResolvedTree.lexical_bindings under that occurrence, keyed
+// to the binder's SITE (std.occurrence_identity), so a reader never searches scope again. It pulls no
+// module into the reference closure and a target spells its label as a local.
+
 // WHICH REFERENCE A MARKER DENOTES, AS A CLOSED VARIANT. Every reader of a resolved reference asks
 // this, never the marker symbol, so a third marker is a new arm every reader must place.
 type ResolvedReferenceKind
   = DeclarationReferenceKind
   | ParameterReferenceKind
+  | LexicalReferenceKind
 
 fn resolved_reference_kind_marker(kind: ResolvedReferenceKind) -> CoreEdgeLabel {
   match kind {
     DeclarationReferenceKind => DeclarationReferenceEdge
     ParameterReferenceKind => ParameterReferenceEdge
+    LexicalReferenceKind => LexicalReferenceEdge
   }
 }
 
@@ -1178,6 +1193,7 @@ fn resolved_reference_kind_of_label(label: EdgeLabel) -> ResolvedReferenceMarkin
   match label {
     StructuralLabel { label: CoreMarker { marker: DeclarationReferenceEdge } } => MarkedReference { kind: DeclarationReferenceKind }
     StructuralLabel { label: CoreMarker { marker: ParameterReferenceEdge } } => MarkedReference { kind: ParameterReferenceKind }
+    StructuralLabel { label: CoreMarker { marker: LexicalReferenceEdge } } => MarkedReference { kind: LexicalReferenceKind }
     StructuralLabel { label: _ } => NotMarkedReference
     Authored { name: _ } => NotMarkedReference
     Positional => NotMarkedReference
@@ -1243,6 +1259,7 @@ fn classify_arrow_body_form(target: Node) -> ArrowBodyForm {
       match resolved_reference_body_kind(target: target) {
         MarkedReference { kind: DeclarationReferenceKind } => DeclarationReferenceBody
         MarkedReference { kind: ParameterReferenceKind } => ParameterReferenceBody
+        MarkedReference { kind: LexicalReferenceKind } => LexicalReferenceBody
         NotMarkedReference => RecordConstructBody
       }
     TypeNode { connective: Arrow } => FunctionValueBody
@@ -1258,6 +1275,7 @@ fn arrow_body_admits_eval_entry(form: ArrowBodyForm) -> Bool {
     RecordConstructBody => false
     DeclarationReferenceBody => false
     ParameterReferenceBody => false
+    LexicalReferenceBody => true
     FunctionValueBody => false
     ComputationBody { behavior: Value } => false
     ComputationBody { behavior: Transform } => true
@@ -1341,6 +1359,7 @@ fn arrow_body_target_is_valid_realization(target: Node) -> Bool {
     RecordConstructBody => arrow_body_record_construct_conforms(node: target)
     DeclarationReferenceBody => true
     ParameterReferenceBody => true
+    LexicalReferenceBody => true
     DirectAtomBody => true
     FunctionValueBody => true
     ComputationBody { behavior: _ } => true

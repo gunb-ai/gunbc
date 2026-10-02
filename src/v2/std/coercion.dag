@@ -357,7 +357,7 @@ fn coercion_fold_exact_structural(
 // procedure (find_witness under exact structural equality) and refused with the same typed
 // mismatch (coercion_wrap_find_witness_rejection). Exact on the source's own type is Identity or
 // Exact.
-// A TARGET THAT NAMES A REFINEMENT (`NonEmptyStr = String where non_empty`) is structurally equal
+// A TARGET THAT NAMES A REFINEMENT (`NonEmptyStr = String where string_non_empty`) is structurally equal
 // only to an operand whose derived type is that same refinement: v2.compiler.infer grounds a
 // parameter by its enclosing Arrow's declared type, so the identity cast `x as Pos` from `x: Pos` is
 // admitted, and a literal cast into Pos refuses (its predicate is not decided here).
