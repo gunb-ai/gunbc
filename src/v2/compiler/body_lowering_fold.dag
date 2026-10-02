@@ -1584,7 +1584,8 @@ fn body_lower_grammar_terminals(expr: GrammarExpr) -> List<Symbol> {
       repeat: fn(e) { e },
       expect: fn(e, _reason) { e },
       refuse_on_match: fn(e, _reason) { e },
-      after_line_break: fn(e) { e }
+      after_line_break: fn(e) { e },
+      not_predicate: fn(_e) { Empty }
     }
   )
 }
@@ -6474,28 +6475,22 @@ fn body_lower_pattern_atom_form(atom: Node) -> Node {
 // statement's, located there; the navigation refusal is left to exactly what it names: an arm whose
 // pattern or `=>` cannot be found.
 // AN ARM BODY THAT IS A STATEMENT SEQUENCE LOWERS THROUGH THE STATEMENT AUTHORITY. The grammar's
-// match_arm_stmt_body is seq(stmt, repeat(stmt)) (v2.extdeps.languages.dag
-// dag_grammar_match_arm_stmt_body_expr), and the parser realizes it UNWRAPPED:
-// v2.compiler.parse parse_match_arm_stmt_body answers the statements' repeat spine itself, with no
-// production shell (measured on a parsed arm: `A =>` is followed directly by two `stmt` productions).
-// So a statement body is recognized by what it is -- a spine whose head is a `stmt` production and
-// which has a successor -- and lowers through body_lower_stmt_spine, the reader a fn body and an if
-// arm use: a let binds the rest, the last statement is the value, and any other statement that
-// precedes another refuses located. An expression body sits under its own expr production and is
-// read by the value reader, as before.
+// match_arm_stmt_body (v2.extdeps.languages.dag dag_grammar_match_arm_stmt_body_expr) is parsed by
+// its own production, so a statement body is recognized by its production stamp, and its captured
+// child is the statement spine `stmt stmt*` (the arm-head predicates guarding each statement
+// capture nothing). It lowers through body_lower_stmt_spine, the reader a fn body and an if arm use:
+// a let binds the rest, the last statement is the value, and any other statement that precedes
+// another refuses located. An expression body sits under its own expr production and is read by the
+// value reader, as before.
 fn body_lower_match_arm_statement_spine_optional(body_capture: Node) -> Optional<Node> {
-  let spine = body_lower_deep_unwrap_optional(node: body_capture)
-  match body_lower_stmt_spine_head_optional(spine: spine) {
+  let shell = body_lower_deep_unwrap_optional(node: body_capture)
+  match parse_production_emitted_identity_optional(node: shell) {
     Absent => optional_absent()
-    Present { value: head } =>
-      match parse_production_emitted_identity_optional(node: body_lower_deep_unwrap_optional(node: head)) {
-        Absent => optional_absent()
-        Present { value: emitted } =>
-          if (emitted == ^dag_surface_stmt) && body_lower_stmt_spine_has_successor(spine: spine) {
-            optional_present(value: spine)
-          } else {
-            optional_absent()
-          }
+    Present { value: emitted } =>
+      if emitted == ^dag_surface_match_arm_stmt_body {
+        parse_production_captured_child_optional(node: shell)
+      } else {
+        optional_absent()
       }
   }
 }
@@ -10593,6 +10588,11 @@ fn body_lower_exit_walk(node: Node, tail: Bool, arm_tail: Bool) -> Optional<Outc
       } else if id == ^dag_surface_else_less_if_stmt {
         body_lower_exit_refused(reason: ^body_lowering_reason_else_less_if_unlowered, at: node)
       } else if id == ^dag_surface_stmt_seq {
+        match body_lower_unwrap_captured(shell: node) {
+          Present { value: spine } => body_lower_exit_walk_spine(spine: spine, tail: tail)
+          Absent => optional_absent()
+        }
+      } else if id == ^dag_surface_match_arm_stmt_body {
         match body_lower_unwrap_captured(shell: node) {
           Present { value: spine } => body_lower_exit_walk_spine(spine: spine, tail: tail)
           Absent => optional_absent()
