@@ -1,0 +1,42 @@
+module test.claim.instruments.instrument_dispatch_workflow_witness_test
+
+import std.types { Bool, List, String }
+import v2.std.algebra { length }
+import gunbc.instrument_dispatch_workflow {
+  InstrumentDispatchWorkflowGenerated, InstrumentDispatchWorkflowGenerationRefused,
+  expected_instrument_dispatch_yml, instrument_dispatch_label_options, instrument_dispatch_labels_are_rostered
+}
+
+// THE OPERATOR'S CONDITIONS FOR THE DISPATCH-ONLY INSTRUMENT WORKFLOW, AS THE GENERATED TEXT CARRIES
+// THEM. The drift gate (gunbc.generated_artifact) holds the committed file to this generator; these
+// claims hold the generator to the conditions.
+
+// The input is a closed choice whose every option is a rostered instrument label.
+test fn every_dispatch_option_is_a_rostered_instrument_label_holds() -> Bool {
+  instrument_dispatch_labels_are_rostered() && (length(xs: instrument_dispatch_label_options()) > 0)
+}
+
+fn generated_text() -> String {
+  match expected_instrument_dispatch_yml() {
+    InstrumentDispatchWorkflowGenerated { content: c } => c
+    InstrumentDispatchWorkflowGenerationRefused { reason: _ } => ""
+  }
+}
+
+// workflow_dispatch is the only trigger; the input is a choice; the job is bounded, serialized and
+// read-only; and the receipt is uploaded on every termination.
+test fn the_workflow_is_dispatch_only_bounded_serialized_and_read_only_holds() -> Bool {
+  let t = generated_text()
+  contains(t, "workflow_dispatch:")
+    && !contains(t, "pull_request")
+    && !contains(t, "merge_group")
+    && !contains(t, "schedule")
+    && !contains(t, "push:")
+    && contains(t, "type: choice")
+    && contains(t, "timeout-minutes: 240")
+    && contains(t, "concurrency: instrument-dispatch")
+    && contains(t, "contents: read")
+    && !contains(t, ": write")
+    && contains(t, "instrument-dispatch-receipt")
+    && contains(t, "if: always()")
+}
