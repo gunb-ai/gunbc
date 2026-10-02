@@ -6,7 +6,8 @@ import std.checked_arithmetic { nat_magnitude }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Https, Uri }
-import std.measure { ByteSize, byte_size }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.nat { Nat }
 import std.types { Int, NonEmptyStr, String, List }
 import v2.std.optional { Present, Absent }
 
@@ -47,10 +48,12 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // page_counter.h, 64-bit), and reports it in bytes as PAGE_COUNTER_MAX * PAGE_SIZE. The byte value
 // therefore depends on the page size (4 KiB and 64 KiB pages give different numbers), so the page
 // size is an input and the sentinel is computed from it rather than copied from one machine.
-data cgroup_v1_long_max: Int = 9223372036854775807
+data cgroup_v1_long_max: Nat = 9223372036854775807
 
-fn cgroup_v1_unlimited_bytes(page_size_bytes: Int) -> Int {
-  (cgroup_v1_long_max / page_size_bytes) * page_size_bytes
+// A zero page size describes no kernel; callers refuse it before asking for the sentinel.
+fn cgroup_v1_unlimited_bytes(page_size: ByteSize) -> ByteSize {
+  let p = byte_size_count(b: page_size)
+  byte_size(count: (cgroup_v1_long_max / p) * p)
 }
 
 type CgroupV1MemoryLimitValue
@@ -60,17 +63,21 @@ type CgroupV1MemoryLimitValue
 
 // A value at or above the sentinel is "no limit"; a negative or non-integer body is malformed, never
 // a magnitude and never "no limit" (a failed read is not an absent limit).
-fn cgroup_v1_memory_limit_from_body(body: String, page_size_bytes: Int) -> CgroupV1MemoryLimitValue {
-  match parse_int(s: trim(body)) {
-    Present { value: n } =>
-      if n < 0 {
-        CgroupV1MemoryLimitUnparseable { body: body }
-      } else if n >= cgroup_v1_unlimited_bytes(page_size_bytes: page_size_bytes) {
-        CgroupV1MemoryUnlimited
-      } else {
-        CgroupV1MemoryLimited { bytes: byte_size(count: nat_magnitude(a: n)) }
-      }
-    Absent => CgroupV1MemoryLimitUnparseable { body: body }
+fn cgroup_v1_memory_limit_from_body(body: String, page_size: ByteSize) -> CgroupV1MemoryLimitValue {
+  if byte_size_count(b: page_size) == 0 {
+    CgroupV1MemoryLimitUnparseable { body: body }
+  } else {
+    match parse_int(s: trim(body)) {
+      Present { value: n } =>
+        if n < 0 {
+          CgroupV1MemoryLimitUnparseable { body: body }
+        } else if nat_magnitude(a: n) >= byte_size_count(b: cgroup_v1_unlimited_bytes(page_size: page_size)) {
+          CgroupV1MemoryUnlimited
+        } else {
+          CgroupV1MemoryLimited { bytes: byte_size(count: nat_magnitude(a: n)) }
+        }
+      Absent => CgroupV1MemoryLimitUnparseable { body: body }
+    }
   }
 }
 
@@ -78,7 +85,7 @@ data cgroup_v1_hierarchical_limit_key: NonEmptyStr = "hierarchical_memory_limit"
 
 // memory.stat is `key value` lines. A file with no hierarchical_memory_limit line is unparseable for
 // this purpose: the key is documented, so its absence is a malformed read, not an absent limit.
-fn cgroup_v1_hierarchical_memory_limit(memory_stat: String, page_size_bytes: Int) -> CgroupV1MemoryLimitValue {
+fn cgroup_v1_hierarchical_memory_limit(memory_stat: String, page_size: ByteSize) -> CgroupV1MemoryLimitValue {
   let hits = split(s: memory_stat, delimiter: "\n")
     |> map(l => trim(l))
     |> filter(l => starts_with(s: l, prefix: join([cgroup_v1_hierarchical_limit_key as String, " "], "")))
@@ -87,7 +94,7 @@ fn cgroup_v1_hierarchical_memory_limit(memory_stat: String, page_size_bytes: Int
       if length(hits) == 1 {
         cgroup_v1_memory_limit_from_body(
           body: substring(s: line, start: string_length(s: cgroup_v1_hierarchical_limit_key as String) + 1, end: string_length(s: line)),
-          page_size_bytes: page_size_bytes
+          page_size: page_size
         )
       } else {
         CgroupV1MemoryLimitUnparseable { body: memory_stat }
