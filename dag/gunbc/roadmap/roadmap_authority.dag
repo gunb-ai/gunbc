@@ -570,8 +570,10 @@ fn shell_dag_floor_peak_calibration_rows_execution_contract() -> WorkItemExecuti
     functions: [
       "pre_calibration_surface_renders_no_shell_control_word" as NonEmptyStr,
       "pre_calibration_reset_is_not_a_swallowed_echo" as NonEmptyStr,
-      "calibration_surfaces_still_read_the_cgroup_peak_file" as NonEmptyStr,
-      "calibration_surfaces_keep_their_observation_labels" as NonEmptyStr,
+      "pre_calibration_surface_still_reads_the_cgroup_peak_file" as NonEmptyStr,
+      "post_calibration_surface_still_reads_the_cgroup_peak_file" as NonEmptyStr,
+      "pre_calibration_surface_keeps_its_observation_label" as NonEmptyStr,
+      "post_calibration_surface_keeps_its_observation_label" as NonEmptyStr,
     ],
   )
 }
