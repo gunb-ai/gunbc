@@ -12,7 +12,7 @@ import std.measure {
   BasisPoint, basis_point, basis_point_count, concurrent_request_hundredths_count,
   Gibibyte, gibibyte, gibibyte_to_byte_size,
 }
-import std.content_hash { Sha256Digest, Sha256DigestHex }
+import std.content_hash { Sha256Digest, Sha256DigestHex, ContentHash }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.std.optional { Present, Absent }
 import std.staircase { StepVerdict, StepStops, StepContinues, StaircaseOutcome, StaircaseStopped, StaircaseCompleted, StaircaseRefused, StaircasePlanEmpty, StaircasePlanLevelDuplicated, run_staircase }
@@ -934,7 +934,7 @@ type V41CalibrationProjection
   = V41CalibrationProjected { receipt: WorkloadCalibrationReceipt }
   | V41CalibrationRefused { cause: NonEmptyStr }
 
-fn v41_calibration_receipt(report: V41CapacityReport, subject_key: ServingSubjectKey, trace_digest: NonEmptyStr) -> V41CalibrationProjection {
+fn v41_calibration_receipt(report: V41CapacityReport, subject_key: ServingSubjectKey, trace_digest: ContentHash) -> V41CalibrationProjection {
   match v41_capacity_at(c: report.kv_admission) {
     Absent => V41CalibrationRefused { cause: join(["KV admission: ", v41_capacity_wire(c: report.kv_admission)], "") as NonEmptyStr }
     Present { value: kv } => match v41_capacity_at(c: report.engram_resident) {
