@@ -634,15 +634,17 @@ fn demand_census_paths_text(paths: List<QualifiedName>) -> String {
 }
 
 fn demand_census_row_line(r: DemandCensusRow) -> String {
-  let head = concat("[demand-census-row] function=", concat(qualified_name_to_dotted_string(qn: r.function),
-    concat(" verdict=", concat(demand_census_verdict_word(v: r.verdict),
-    concat(" authored=", demand_census_paths_text(paths: demand_census_authored_paths(readings: r.authored)))))))
+  let head = demand_census_text(parts: [
+    "[demand-census-row] function=", qualified_name_to_dotted_string(qn: r.function),
+    " verdict=", demand_census_verdict_word(v: r.verdict),
+    " authored=", demand_census_paths_text(paths: demand_census_authored_paths(readings: r.authored))
+  ])
   match r.verdict {
     CensusEqual => head
-    CensusMismatch { authored: _, derived: d } => concat(head, concat(" derived_in_vocabulary=", demand_census_paths_text(paths: d)))
+    CensusMismatch { authored: _, derived: d } => demand_census_text(parts: [head, " derived_in_vocabulary=", demand_census_paths_text(paths: d)])
     CensusUndecided { cause: c } =>
-      concat(head, concat(" cause=", concat(demand_census_cause_word(c: c), concat(" at=", qualified_name_to_dotted_string(qn: demand_census_cause_subject(c: c))))))
-    CensusUnobserved { reason: u } => concat(head, concat(" reason=", demand_census_unobserved_word(u: u)))
+      demand_census_text(parts: [head, " cause=", demand_census_cause_word(c: c), " at=", qualified_name_to_dotted_string(qn: demand_census_cause_subject(c: c))])
+    CensusUnobserved { reason: u } => demand_census_text(parts: [head, " reason=", demand_census_unobserved_word(u: u)])
   }
 }
 
@@ -650,20 +652,26 @@ fn demand_census_conserved_word(r: DemandCensusReport) -> String {
   if demand_census_conserved(r: r) { "true" } else { "false" }
 }
 
+fn demand_census_text(parts: List<String>) -> String {
+  fold_list(xs: parts, empty: "", cons: fn(acc, p) { concat(acc, p) })
+}
+
 fn demand_census_lines(r: DemandCensusReport) -> List<String> {
-  let head = concat("[demand-census] vocabulary=", concat(demand_census_network,
-    concat(" uses_functions=", concat(to_string(r.uses_functions),
-    concat(" rows=", concat(to_string(length(xs: r.rows)),
-    concat(" conserved=", concat(demand_census_conserved_word(r: r),
-    concat(" equal=", concat(to_string(demand_census_count(rows: r.rows, word: "equal")),
-    concat(" mismatch=", concat(to_string(demand_census_count(rows: r.rows, word: "mismatch")),
-    concat(" undecided=", concat(to_string(demand_census_count(rows: r.rows, word: "undecided")),
-    concat(" unobserved=", concat(to_string(demand_census_count(rows: r.rows, word: "unobserved")),
-    concat(" deletable_rows=", concat(to_string(demand_census_deletable_rows(rows: r.rows)),
-    concat(" out_of_vocabulary_rows=", concat(to_string(demand_census_out_of_vocabulary_rows(rows: r.rows)),
-    concat(" filesystem_agreeing_functions=", concat(to_string(demand_census_filesystem_agreeing(rows: r.rows)),
-    concat(" file_refusals=", concat(to_string(r.file_refusals),
-    concat(" resolve_refused_modules=", to_string(r.resolve_refused_modules)))))))))))))))))))))))))))
+  let head = demand_census_text(parts: [
+    "[demand-census] vocabulary=", demand_census_network,
+    " uses_functions=", to_string(r.uses_functions),
+    " rows=", to_string(length(xs: r.rows)),
+    " conserved=", demand_census_conserved_word(r: r),
+    " equal=", to_string(demand_census_count(rows: r.rows, word: "equal")),
+    " mismatch=", to_string(demand_census_count(rows: r.rows, word: "mismatch")),
+    " undecided=", to_string(demand_census_count(rows: r.rows, word: "undecided")),
+    " unobserved=", to_string(demand_census_count(rows: r.rows, word: "unobserved")),
+    " deletable_rows=", to_string(demand_census_deletable_rows(rows: r.rows)),
+    " out_of_vocabulary_rows=", to_string(demand_census_out_of_vocabulary_rows(rows: r.rows)),
+    " filesystem_agreeing_functions=", to_string(demand_census_filesystem_agreeing(rows: r.rows)),
+    " file_refusals=", to_string(r.file_refusals),
+    " resolve_refused_modules=", to_string(r.resolve_refused_modules)
+  ])
   let causes = fold_list(
     xs: ["opaque_operation", "undeclared_operation", "function_value", "callee_outside_closure", "did_not_settle"],
     empty: [head],
