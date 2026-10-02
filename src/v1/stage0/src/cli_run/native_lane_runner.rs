@@ -675,14 +675,18 @@ struct NativeFileRefusalObserved {
 /// fatal cause leads each line and the head is printed only as `head=` when it differs, after a
 /// grouped tally of FATAL causes, which is the population a causal account is about.
 fn native_file_refusal_summary(refusals: &[NativeFileRefusalObserved]) -> String {
+    // First-seen order, one map probe per refusal (DESIGN §6 bare minimum cost: no linear
+    // scan per row, whatever the cause count is today).
+    let mut slot: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
     let mut by_cause: Vec<(&str, usize)> = Vec::new();
     for refusal in refusals {
-        match by_cause
-            .iter_mut()
-            .find(|(cause, _)| *cause == refusal.fatal_reason)
-        {
-            Some((_, n)) => *n += 1,
-            None => by_cause.push((refusal.fatal_reason.as_str(), 1)),
+        let cause = refusal.fatal_reason.as_str();
+        match slot.get(cause) {
+            Some(&i) => by_cause[i].1 += 1,
+            None => {
+                slot.insert(cause, by_cause.len());
+                by_cause.push((cause, 1));
+            }
         }
     }
     let mut out = format!(
