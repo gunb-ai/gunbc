@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.record_field_admits_a_distinct_product_value
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data record_field_admits_a_distinct_product_value: RecurringFailureMode = RecurringFailureMode {
+  identity: "record_field_admits_a_distinct_product_value" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a record literal's field declared as one nominal product is initialised with a NON-LITERAL value of a DISTINCT product, and the program is Accepted. HARM: silent wrongness at the compiler floor -- DESIGN section 4b names `values inhabit declared types` as part of the ordinary floor, so this is below it, not a rung.",
+
+    "SPECIMEN, measured on main 7af52ea7e2 with an entry compile (`gunbc compile --source-root dag --source-root src/v2 --entry <probe> --target dag`): `type RfA { a: Int }`, `type RfB { b: String }`, `type RfHolderB { f: RfB }`, `fn rf_a() -> RfA { RfA { a: 1 } }`, `fn rf_field_distinct_product() -> RfHolderB { RfHolderB { f: rf_a() } }` -- ACCEPTED, no diagnostic at the field. The probe is not enrolled: an expected-red claim needs a roster row in the floor's expected-red authority, and this row records the specimen source here instead so it can be re-run verbatim.",
+
+    "DISTINGUISHING FACTS, from the same compile. (1) The SAME value at a call argument -- `fn rf_take_b(x: RfB) -> RfB`, `rf_take_b(x: rf_a())` -- REFUSES `value does not inhabit its declared type at the direct call argument`, through v1.compiler.infer nominal_product_inhabitance_refusal. (2) A record LITERAL of the distinct product at the same field -- `RfHolderB { f: RfA { a: 1 } }` -- REFUSES `type mismatch`, through structured_application_site_type_mismatch, which judges only an actual whose EXPRESSION is a record literal. (3) So the gap is the non-literal value at the record-field position: that position's judgment in infer_record_lit_structural is a local chain (kernel mismatch, structured literal, coproduct payload at parent) that never consults the nominal-product relation the call-argument and declared-return positions share. The obligation itself exists: infer_record_lit_structural constructs a DeclaredTypeObligation at PositionRecordLiteralField, but only for the cardinality verdict (optional_at_required_value_obligation_diags); the nominal-product inhabitance judgment never consumes it.",
+
+    "RUNG FOUND AT: outside the ladder (silently wrong). CEILING: structurally guaranteed -- both identities are established and the relation that decides them exists. NEXT-RUNG TRIGGER, named as the capability: field-value inhabitance judged by declared product identity at the record-field position, through the same nominal-product relation the call-argument position consumes, not a per-site guard. SUFFICIENT FOR: the specimen above to refuse, located at the field value, while a value of the declared product and a transparent alias of it stay accepted. OWNER: none yet.",
+  ],
+
+  evidence: [],
+}

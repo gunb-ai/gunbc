@@ -69,6 +69,12 @@ type CarrierKeyPopulation
 type CarrierReadability
   = CarrierTypeRecognized
   | CarrierTypeUnrecognized { spelling: Symbol }
+  | CarrierMemberNotABinder { member: Symbol }
+
+// CarrierMemberNotABinder: a Named member of the carrier is not a binder (v2.std.node_query
+// member_edge_type_node answers Absent), so the carrier declares no type for it at all -- not an
+// unrecognised type, which is a type the derivation cannot read, but a malformed declaration. It
+// travels as its own reading and refuses as CarrierMemberUnreadable, never as a qualifying answer.
 
 type ProducerCarrierReading {
   carrier: DeclarationRef
@@ -89,6 +95,7 @@ type ResidencyBoundFailure
   = WholeCorpusSyntaxAtConstructionPeak { carrier: DeclarationRef }
   | WholeCorpusSyntaxRetainedAtReturn { carrier: DeclarationRef }
   | CarrierReadingUndecidable { carrier: DeclarationRef, spelling: Symbol }
+  | CarrierMemberUnreadable { carrier: DeclarationRef, member: Symbol }
   | LifecycleReadingAbsent
 
 // A QUALIFICATION RESULT, not a reading that exists. The class row's harm is a reading being consumed
@@ -119,6 +126,10 @@ fn first_undecidable_failure(
           CarrierTypeUnrecognized { spelling: spelling } =>
             optional_present(
               value: CarrierReadingUndecidable { carrier: r.carrier, spelling: spelling },
+            )
+          CarrierMemberNotABinder { member: member } =>
+            optional_present(
+              value: CarrierMemberUnreadable { carrier: r.carrier, member: member },
             )
         }
     }
