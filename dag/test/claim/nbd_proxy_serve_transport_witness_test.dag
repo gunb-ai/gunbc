@@ -12,6 +12,9 @@ import gunbc.host_effect_nbd_proxy_serve {
   bmcweb_session_token_observation_of,
   bmcweb_session_token_start_decision,
 }
+import gunbc.srv3_nbd_proxy_serve_intent {
+  srv3_nbd_proxy_lease_key,
+}
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
