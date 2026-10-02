@@ -881,13 +881,13 @@ type EmittedTreeRead
   = EmittedTreeFiles { files: List<EmittedFile> }
   | EmittedTreeUnreadable { cause: String }
 
+// THE FOLD'S READ IS THE INTERFACE'S COPRODUCT, NOT A BRANCH ON `success`. The read's scalar
+// channels are folded through filesystem_read_outcome rather than branched on directly, so this
+// site consumes the modeled result like every converted consumer of the transport.
 fn emitted_tree_read_then(acc: EmittedTreeRead, path: String) -> EmittedTreeRead {
   match acc {
     EmittedTreeUnreadable { cause: c } => EmittedTreeUnreadable { cause: c }
     EmittedTreeFiles { files: so_far } =>
-      // The read's scalar channels are folded through the interface's own coproduct
-      // (filesystem_read_outcome) rather than branched on `success` directly, so this site consumes
-      // the modeled result like every converted consumer of the transport.
       let read = Filesystem.Read(path: path)
       match filesystem_read_outcome(
         content: read.content,

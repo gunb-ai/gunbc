@@ -588,6 +588,10 @@ fn product_receipt_tail(
   }
 }
 
+// ONE OBSERVATION, THREE WORLDS. The listing establishes what the read cannot: a manifest that
+// was never written is ABSENT (the producer's transaction holds no manifest, which is what
+// `ProducerReportedNoArtifact` may finally assert); a manifest that is there and cannot be read
+// is UNOBSERVED and refuses with the cause; only bytes in hand are OBSERVED.
 fn run_product_receipt_stage(txn: String, manifest_identity: String, entry: String) -> ProcessExit {
   let manifest_path = concat(txn, product_receipt_stage_manifest_rel)
   let candidate_dir = concat(txn, product_receipt_stage_candidate_rel)
@@ -595,10 +599,6 @@ fn run_product_receipt_stage(txn: String, manifest_identity: String, entry: Stri
 
   let b1_produced = stage_identity_from_hex(hex: manifest_identity, file_count: 1)
 
-  // ONE OBSERVATION, THREE WORLDS. The listing establishes what the read cannot: a manifest that
-  // was never written is ABSENT (the producer's transaction holds no manifest, which is what
-  // `ProducerReportedNoArtifact` may finally assert); a manifest that is there and cannot be read
-  // is UNOBSERVED and refuses with the cause; only bytes in hand are OBSERVED.
   let manifest_parts = split(s: manifest_path, delimiter: "/")
   let manifest_name = match manifest_parts.last() {
     Present { value: value } => value
