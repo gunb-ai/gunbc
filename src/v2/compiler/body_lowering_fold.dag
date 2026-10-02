@@ -145,6 +145,8 @@ import v2.std.node {
   symbol_lexeme,
 }
 import v2.std.type_binder { cast_target_edge, type_alias_wrapper, type_decl_wrapper, type_opaque_wrapper, type_param_names, type_params_edge }
+import v2.std.arrow_contract { effect_claim_label, hermetic_claim_label }
+import std.effects { EffectClaim, ReadonlyClaim, IdempotentClaim }
 import v2.std.node_query {
   binder_edge,
   member_edge_type_node,
@@ -1798,7 +1800,8 @@ fn body_lower_grammar_terminals(expr: GrammarExpr) -> List<Symbol> {
       repeat: fn(e) { e },
       expect: fn(e, _reason) { e },
       refuse_on_match: fn(e, _reason) { e },
-      after_line_break: fn(e) { e }
+      after_line_break: fn(e) { e },
+      not_predicate: fn(_e) { Empty }
     }
   )
 }
@@ -6688,28 +6691,22 @@ fn body_lower_pattern_atom_form(atom: Node) -> Node {
 // statement's, located there; the navigation refusal is left to exactly what it names: an arm whose
 // pattern or `=>` cannot be found.
 // AN ARM BODY THAT IS A STATEMENT SEQUENCE LOWERS THROUGH THE STATEMENT AUTHORITY. The grammar's
-// match_arm_stmt_body is seq(stmt, repeat(stmt)) (v2.extdeps.languages.dag
-// dag_grammar_match_arm_stmt_body_expr), and the parser realizes it UNWRAPPED:
-// v2.compiler.parse parse_match_arm_stmt_body answers the statements' repeat spine itself, with no
-// production shell (measured on a parsed arm: `A =>` is followed directly by two `stmt` productions).
-// So a statement body is recognized by what it is -- a spine whose head is a `stmt` production and
-// which has a successor -- and lowers through body_lower_stmt_spine, the reader a fn body and an if
-// arm use: a let binds the rest, the last statement is the value, and any other statement that
-// precedes another refuses located. An expression body sits under its own expr production and is
-// read by the value reader, as before.
+// match_arm_stmt_body (v2.extdeps.languages.dag dag_grammar_match_arm_stmt_body_expr) is parsed by
+// its own production, so a statement body is recognized by its production stamp, and its captured
+// child is the statement spine `stmt stmt*` (the arm-head predicates guarding each statement
+// capture nothing). It lowers through body_lower_stmt_spine, the reader a fn body and an if arm use:
+// a let binds the rest, the last statement is the value, and any other statement that precedes
+// another refuses located. An expression body sits under its own expr production and is read by the
+// value reader, as before.
 fn body_lower_match_arm_statement_spine_optional(body_capture: Node) -> Optional<Node> {
-  let spine = body_lower_deep_unwrap_optional(node: body_capture)
-  match body_lower_stmt_spine_head_optional(spine: spine) {
+  let shell = body_lower_deep_unwrap_optional(node: body_capture)
+  match parse_production_emitted_identity_optional(node: shell) {
     Absent => optional_absent()
-    Present { value: head } =>
-      match parse_production_emitted_identity_optional(node: body_lower_deep_unwrap_optional(node: head)) {
-        Absent => optional_absent()
-        Present { value: emitted } =>
-          if (emitted == ^dag_surface_stmt) && body_lower_stmt_spine_has_successor(spine: spine) {
-            optional_present(value: spine)
-          } else {
-            optional_absent()
-          }
+    Present { value: emitted } =>
+      if emitted == ^dag_surface_match_arm_stmt_body {
+        parse_production_captured_child_optional(node: shell)
+      } else {
+        optional_absent()
       }
   }
 }
@@ -9866,7 +9863,17 @@ type BodyLowerOperationAcc {
   input: Optional<Node>,
   output: Optional<Node>,
   requires: Optional<Node>,
+  claims: BodyLowerOperationClaims,
   set_aside: List<ServiceSetAside>,
+}
+
+// AN OPERATION'S DECLARED CLAIMS (XL-2 PR2c-i): its effect claims (`readonly`, `idempotent`: std.effects
+// EffectClaim) and its execution-mode claim (`hermetic`: std.execution_mode ExecutionMode), read from the
+// surface modifiers in authored order. They lower onto the operation Arrow's contract edges
+// (^arrow_effect_claims_edge, ^arrow_execution_mode_claim_edge), each present only when declared.
+type BodyLowerOperationClaims {
+  effects: List<Symbol>,
+  mode: Optional<Symbol>,
 }
 
 fn body_lower_operation_member(acc: Outcome<BodyLowerOperationAcc>, member: Node) -> Outcome<BodyLowerOperationAcc> {
@@ -9881,26 +9888,26 @@ fn body_lower_operation_member(acc: Outcome<BodyLowerOperationAcc>, member: Node
                 Present { value: _ } =>
                   outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_service_io_block_repeated, n: member))
                 Absent =>
-                  outcome_accepted(value: BodyLowerOperationAcc { input: Present { value: io.payload }, output: a.output, requires: a.requires, set_aside: list_append(left: a.set_aside, right: io.set_aside) })
+                  outcome_accepted(value: BodyLowerOperationAcc { input: Present { value: io.payload }, output: a.output, requires: a.requires, claims: a.claims, set_aside: list_append(left: a.set_aside, right: io.set_aside) })
               }
             } else {
               match a.output {
                 Present { value: _ } =>
                   outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_service_io_block_repeated, n: member))
                 Absent =>
-                  outcome_accepted(value: BodyLowerOperationAcc { input: a.input, output: Present { value: io.payload }, requires: a.requires, set_aside: list_append(left: a.set_aside, right: io.set_aside) })
+                  outcome_accepted(value: BodyLowerOperationAcc { input: a.input, output: Present { value: io.payload }, requires: a.requires, claims: a.claims, set_aside: list_append(left: a.set_aside, right: io.set_aside) })
               }
             }
           })
         } else if id == ^dag_surface_op_modifier {
-          body_lower_operation_acc_set_aside(a: a, kind: InterfaceMemberUnmodeled, n: member)
+          body_lower_operation_modifier(a: a, member: member)
         } else if id == ^dag_surface_op_requires {
           match a.requires {
             Present { value: _ } =>
               outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_operation_requires_repeated, n: member))
             Absent =>
               bind_outcome(o: body_lower_operation_requires(shell: member), f: fn(target) {
-                outcome_accepted(value: BodyLowerOperationAcc { input: a.input, output: a.output, requires: Present { value: target }, set_aside: a.set_aside })
+                outcome_accepted(value: BodyLowerOperationAcc { input: a.input, output: a.output, requires: Present { value: target }, claims: a.claims, set_aside: a.set_aside })
               })
           }
         } else if (id == ^dag_surface_transport)
@@ -10001,11 +10008,85 @@ fn body_lower_edges_carry_name(edges: List<Edge>, name: Symbol) -> Bool {
 
 // The requirements edge rides on the Arrow beside its signature edges, present only when declared: an
 // operation with no `requires` carries no edge, so its Arrow -- and its identity -- is unchanged.
-fn body_lower_operation_arrow_children(signature_edges: List<Edge>, requires: Optional<Node>) -> List<Edge> {
-  match requires {
+fn body_lower_operation_arrow_children(signature_edges: List<Edge>, requires: Optional<Node>, claims: BodyLowerOperationClaims) -> List<Edge> {
+  let with_requires = match requires {
     Absent => signature_edges
     Present { value: target } => list_snoc_item(xs: signature_edges, item: Edge { label: Named { name: ^arrow_resource_requirements_edge }, target: target })
   }
+  let with_effects = match claims.effects {
+    Empty => with_requires
+    Cons { head: _, tail: _ } => list_snoc_item(xs: with_requires, item: Edge { label: Named { name: ^arrow_effect_claims_edge }, target: body_lower_effect_claims_node(labels: claims.effects) })
+  }
+  match claims.mode {
+    Absent => with_effects
+    Present { value: mode } => list_snoc_item(xs: with_effects, item: Edge { label: Named { name: ^arrow_execution_mode_claim_edge }, target: node_synthetic(kind: TypeNode { connective: Atom { identity: mode } }, children: []) })
+  }
+}
+
+// The effect-claims target: a Conj of self-named childless Atoms, one per declared claim
+// (v2.std.arrow_contract arrow_effect_claims_target_conforms checks it against std.effects EffectClaim).
+fn body_lower_effect_claims_node(labels: List<Symbol>) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: fold(labels, init: Empty, f: fn(acc, l) {
+      list_snoc_item(xs: acc, item: Edge { label: Named { name: l }, target: node_synthetic(kind: TypeNode { connective: Atom { identity: l } }, children: []) })
+    })
+  )
+}
+
+// ONE SURFACE MODIFIER, PROJECTED TO ITS HOME (XL-2 PR2c-i; ruling 2026-10-01). The modifier's own
+// production says which keyword was written (v2.extdeps.languages.dag dag_grammar_op_modifier_expr);
+// `readonly` and `idempotent` are std.effects EffectClaim arms and `hermetic` the std.execution_mode
+// Hermetic arm, each spelled by v2.std.arrow_contract, never here. A claim declared twice, or a second
+// mode, refuses at the repeated modifier (^body_lowering_reason_operation_modifier_repeated); a modifier
+// whose production names no home refuses as an unread member.
+type OperationModifierClaim
+  = ModifierEffectClaim { claim: EffectClaim }
+  | ModifierModeClaim
+
+fn body_lower_operation_modifier_claim_optional(member: Node) -> Optional<OperationModifierClaim> {
+  match body_lower_find_production_shell_optional(root: member, emitted: ^dag_surface_op_modifier_readonly) {
+    Present { value: _ } => optional_present(value: ModifierEffectClaim { claim: ReadonlyClaim })
+    Absent =>
+      match body_lower_find_production_shell_optional(root: member, emitted: ^dag_surface_op_modifier_idempotent) {
+        Present { value: _ } => optional_present(value: ModifierEffectClaim { claim: IdempotentClaim })
+        Absent =>
+          match body_lower_find_production_shell_optional(root: member, emitted: ^dag_surface_op_modifier_hermetic) {
+            Present { value: _ } => optional_present(value: ModifierModeClaim)
+            Absent => optional_absent()
+          }
+      }
+  }
+}
+
+fn body_lower_operation_modifier(a: BodyLowerOperationAcc, member: Node) -> Outcome<BodyLowerOperationAcc> {
+  match body_lower_operation_modifier_claim_optional(member: member) {
+    Absent => body_lower_service_member_unread(member: member)
+    Present { value: claim } =>
+      match claim {
+        ModifierEffectClaim { claim: c } =>
+          body_lower_operation_effect_claim(a: a, label: effect_claim_label(claim: c), member: member)
+        ModifierModeClaim =>
+          match a.claims.mode {
+            Present { value: _ } =>
+              outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_operation_modifier_repeated, n: member))
+            Absent =>
+              outcome_accepted(value: body_lower_operation_acc_with_claims(a: a, claims: BodyLowerOperationClaims { effects: a.claims.effects, mode: Present { value: hermetic_claim_label() } }))
+          }
+      }
+  }
+}
+
+fn body_lower_operation_effect_claim(a: BodyLowerOperationAcc, label: Symbol, member: Node) -> Outcome<BodyLowerOperationAcc> {
+  if fold(a.claims.effects, init: false, f: fn(seen, l) { seen || (l == label) }) {
+    outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_operation_modifier_repeated, n: member))
+  } else {
+    outcome_accepted(value: body_lower_operation_acc_with_claims(a: a, claims: BodyLowerOperationClaims { effects: list_snoc_item(xs: a.claims.effects, item: label), mode: a.claims.mode }))
+  }
+}
+
+fn body_lower_operation_acc_with_claims(a: BodyLowerOperationAcc, claims: BodyLowerOperationClaims) -> BodyLowerOperationAcc {
+  BodyLowerOperationAcc { input: a.input, output: a.output, requires: a.requires, claims: claims, set_aside: a.set_aside }
 }
 
 fn body_lower_operation_acc_set_aside(a: BodyLowerOperationAcc, kind: ServiceSetAsideKind, n: Node) -> Outcome<BodyLowerOperationAcc> {
@@ -10014,6 +10095,7 @@ fn body_lower_operation_acc_set_aside(a: BodyLowerOperationAcc, kind: ServiceSet
       input: a.input,
       output: a.output,
       requires: a.requires,
+      claims: a.claims,
       set_aside: list_snoc_item(xs: a.set_aside, item: ServiceSetAside { kind: kind, member: n })
     }
   )
@@ -10063,7 +10145,7 @@ fn body_lower_operation(shell: Node) -> Outcome<BodyLowerOperation> {
           bind_outcome(
             o: fold(
               body_lower_service_member_shells(root: captured),
-              init: outcome_accepted(value: BodyLowerOperationAcc { input: Absent, output: Absent, requires: Absent, set_aside: Empty }),
+              init: outcome_accepted(value: BodyLowerOperationAcc { input: Absent, output: Absent, requires: Absent, claims: BodyLowerOperationClaims { effects: Empty, mode: Absent }, set_aside: Empty }),
               f: fn(acc, member) { body_lower_operation_member(acc: acc, member: member) }
             ),
             f: fn(a) {
@@ -10080,7 +10162,8 @@ fn body_lower_operation(shell: Node) -> Outcome<BodyLowerOperation> {
                           Edge { label: Positional, target: body_lower_io_payload_or_empty(o: a.output, source: shell) },
                           signature.order
                         ],
-                        requires: a.requires
+                        requires: a.requires,
+                        claims: a.claims
                       ),
                       occurrence_id: shell.occurrence_id
                     ))
@@ -10701,6 +10784,11 @@ fn body_lower_exit_walk(node: Node, tail: Bool, arm_tail: Bool) -> Optional<Outc
       } else if id == ^dag_surface_else_less_if_stmt {
         body_lower_exit_refused(reason: ^body_lowering_reason_else_less_if_unlowered, at: node)
       } else if id == ^dag_surface_stmt_seq {
+        match body_lower_unwrap_captured(shell: node) {
+          Present { value: spine } => body_lower_exit_walk_spine(spine: spine, tail: tail)
+          Absent => optional_absent()
+        }
+      } else if id == ^dag_surface_match_arm_stmt_body {
         match body_lower_unwrap_captured(shell: node) {
           Present { value: spine } => body_lower_exit_walk_spine(spine: spine, tail: tail)
           Absent => optional_absent()

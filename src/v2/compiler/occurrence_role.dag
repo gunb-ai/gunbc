@@ -291,7 +291,8 @@ fn production_holds_name_terminal(expr: GrammarExpr) -> Bool {
     repeat: fn(a) { a },
     expect: fn(a, _reason) { a },
     refuse_on_match: fn(a, _reason) { a },
-    after_line_break: fn(a) { a }
+    after_line_break: fn(a) { a },
+    not_predicate: fn(_a) { false }
   })
 }
 
