@@ -27,6 +27,7 @@ import std.cache_interface {
   CrossHostNetwork,
   ReleasedAtProviderScopeExit,
   ReleasedManually,
+  ReleasedAfterInterval,
   ReleasedNever,
 }
 import std.materialization_ladder {
@@ -217,6 +218,7 @@ fn growth_admission(r: ProviderRetention) -> RoleAdmission {
     ReleasedAtProviderScopeExit => RoleAdmitted
     ReleasedNever => capacity_admission(c: r.capacity)
     ReleasedManually => capacity_admission(c: r.capacity)
+    ReleasedAfterInterval { after_write: _ } => capacity_admission(c: r.capacity)
   }
 }
 
