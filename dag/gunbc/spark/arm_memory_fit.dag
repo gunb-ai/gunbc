@@ -21,7 +21,7 @@ import std.interval {
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.vllm.runtime_defaults { vllm_requested_envelope_bytes }
 import extdeps.vllm.engine_args { vllm_kv_cache_dtype_wire }
-import extdeps.vllm.environment { vllm_environment_variable_name, VllmEngineReadyTimeoutSeconds, vllm_engine_ready_timeout_default_seconds }
+import extdeps.vllm.environment { vllm_environment_variable_name, VllmEngineReadyTimeoutSeconds, vllm_engine_ready_timeout_default }
 import extdeps.docker.cli { DockerEnvAssignment }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
 import extdeps.vllm.sparse_prefill_transient {
@@ -1446,7 +1446,7 @@ fn engine_ready_timeout_for(env: List<DockerEnvAssignment>) -> EngineReadyTimeou
   let name = vllm_environment_variable_name(v: VllmEngineReadyTimeoutSeconds) as String
   let set = filter(env, e => (e.name as String) == name)
   if count(set) == 0 {
-    EngineReadyTimeoutResolved { timeout: second(count: vllm_engine_ready_timeout_default_seconds) }
+    EngineReadyTimeoutResolved { timeout: vllm_engine_ready_timeout_default }
   } else if count(set) > 1 {
     EngineReadyTimeoutUnreadable { cause: join([name, " is set ", to_string(count(set)), " times in the deployment environment"], "") as NonEmptyStr }
   } else {

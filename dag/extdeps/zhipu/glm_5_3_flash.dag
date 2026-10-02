@@ -1,7 +1,7 @@
 module extdeps.zhipu.glm_5_3_flash
 
 import std.types { NonEmptyStr }
-import std.measure { TokenCount, token_count, byte_size }
+import std.measure { TokenCount, token_count, byte_size, Second, second }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -201,7 +201,7 @@ data glm_5_3_flash_carries_no_serving_measurements: Bool = true
 // distributed rendezvous defaults to 601 seconds; a four-rank group whose members are still
 // materialising exceeds that and dies with "Timed out waiting for clients", which is a different
 // failure from anything about the model and reports nothing about it.
-data glm_5_3_flash_vllm_engine_ready_timeout_seconds: Nat = 3600
+data glm_5_3_flash_vllm_engine_ready_timeout: Second = second(count: 3600)
 
 // A COMPATIBILITY GUARD FOR THIS HARDWARE, CITED TO AN UPSTREAM REPORT RATHER THAN TO THE RECIPE.
 // vllm-project/vllm#55569 reports unified-memory exhaustion on a GB10 at roughly 230K context, from
