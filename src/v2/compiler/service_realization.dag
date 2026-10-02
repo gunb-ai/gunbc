@@ -497,22 +497,25 @@ fn realization_entry_member_refusal(kind: DeclaredTransport, op: Node, member: E
   }
 }
 
-// ARMS: a nonempty Conj of Positional arms, in authored order (the first matching arm is the one that
-// applies), each { <arm-pattern> -> pattern, <arm-payload> -> type or value }. A pattern repeated
+// ARMS: a nonempty LIST of arms (v2.std.list_introduction; an ordered block is a list, not a Conj, whose
+// edges must be named and distinct), in authored order -- the first matching arm is the one that applies.
+// Each arm is { <arm-pattern> -> pattern, <arm-payload> -> type or value, <arm-doc>? }. A pattern repeated
 // within one block refuses at its second arm.
 fn realization_arms_refusal(kind: DeclaredTransport, arms: Node) -> Optional<RealizationRefusal> {
-  if !node_is_conj(n: arms) {
-    realization_refusal(reason: ^service_realization_arm_malformed, at: arms)
-  } else if count(arms.children) == 0 {
-    realization_refusal(reason: ^service_realization_arms_empty, at: arms)
-  } else {
-    let walked = fold(arms.children, init: realization_arms_walk_initial(), f: fn(acc, e) {
-      match acc.refusal {
-        Present { value: _ } => acc
-        Absent => realization_arm_step(kind: kind, acc: acc, arm: e)
+  match list_introduction_elements_optional(node: arms) {
+    Absent => realization_refusal(reason: ^service_realization_arm_malformed, at: arms)
+    Present { value: elements } =>
+      if count(elements) == 0 {
+        realization_refusal(reason: ^service_realization_arms_empty, at: arms)
+      } else {
+        let walked = fold(elements, init: realization_arms_walk_initial(), f: fn(acc, arm) {
+          match acc.refusal {
+            Present { value: _ } => acc
+            Absent => realization_arm_step(kind: kind, acc: acc, arm: arm)
+          }
+        })
+        walked.refusal
       }
-    })
-    walked.refusal
   }
 }
 
@@ -525,15 +528,11 @@ fn realization_arms_walk_initial() -> RealizationArmsWalk {
   RealizationArmsWalk { seen: Empty, refusal: optional_absent() }
 }
 
-// An arm is a Positional CONJ of { <arm-pattern>, <arm-payload>, <arm-doc>? }: a Named arm or any other
-// connective refuses as malformed before its members are read.
-fn realization_arm_step(kind: DeclaredTransport, acc: RealizationArmsWalk, arm: Edge) -> RealizationArmsWalk {
-  match arm.label {
-    Named { name: _ } => realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm.target)
-    Positional =>
-      if node_is_conj(n: arm.target) { realization_conj_arm_step(kind: kind, acc: acc, arm: arm.target) }
-      else { realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm.target) }
-  }
+// An arm is a CONJ of { <arm-pattern>, <arm-payload>, <arm-doc>? }: any other connective refuses as
+// malformed before its members are read.
+fn realization_arm_step(kind: DeclaredTransport, acc: RealizationArmsWalk, arm: Node) -> RealizationArmsWalk {
+  if node_is_conj(n: arm) { realization_conj_arm_step(kind: kind, acc: acc, arm: arm) }
+  else { realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm) }
 }
 
 fn realization_arms_walk_refused(acc: RealizationArmsWalk, reason: Symbol, at: Node) -> RealizationArmsWalk {

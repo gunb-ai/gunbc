@@ -10061,15 +10061,21 @@ fn body_lower_operation_status_arms(a: BodyLowerOperationAcc, member: Node, mock
   }
 }
 
+// An ordered block of arms is a LIST (v2.std.list_introduction lower_list_introduction), never a Conj:
+// a Conj's edges are named and distinct, so positional arms there are ill-formed.
 fn body_lower_status_arms_node(block: Node, mock: Bool) -> Outcome<Node> {
   bind_outcome(
-    o: fold(body_lower_status_entry_shells(block: block), init: outcome_accepted(value: body_lower_edge_list_empty()), f: fn(acc, entry) {
-      bind_outcome(o: acc, f: fn(edges) {
-        bind_outcome(o: body_lower_status_arm(entry: entry, mock: mock), f: fn(arm) { outcome_accepted(value: list_snoc_item(xs: edges, item: arm)) })
+    o: fold(body_lower_status_entry_shells(block: block), init: outcome_accepted(value: body_lower_node_list_empty()), f: fn(acc, entry) {
+      bind_outcome(o: acc, f: fn(arms) {
+        bind_outcome(o: body_lower_status_arm(entry: entry, mock: mock), f: fn(arm) { outcome_accepted(value: list_snoc_item(xs: arms, item: arm)) })
       })
     }),
-    f: fn(edges) { outcome_accepted(value: node_synthetic(kind: TypeNode { connective: Conj }, children: edges)) }
+    f: fn(arms) { outcome_accepted(value: lower_list_introduction(elements: arms, source: node_synthetic(kind: TypeNode { connective: Conj }, children: Empty))) }
   )
+}
+
+fn body_lower_node_list_empty() -> List<Node> {
+  Empty
 }
 
 fn body_lower_edge_list_empty() -> List<Edge> {
@@ -10091,7 +10097,7 @@ fn body_lower_status_entry_shells(block: Node) -> List<Node> {
 }
 
 // An entry's captured is seq(status_pattern, seq(`=>`, seq(payload, opt(doc string)))).
-fn body_lower_status_arm(entry: Node, mock: Bool) -> Outcome<Edge> {
+fn body_lower_status_arm(entry: Node, mock: Bool) -> Outcome<Node> {
   let refuse = outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_status_arm_unlowered, n: entry))
   match parse_production_captured_child_optional(node: entry) {
     Absent => refuse
@@ -10109,10 +10115,7 @@ fn body_lower_status_arm(entry: Node, mock: Bool) -> Outcome<Edge> {
                     Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_status_pattern_unlowered, n: p1.left))
                     Present { value: pat } =>
                       bind_outcome(o: body_lower_arm_payload(payload: p3.left, mock: mock), f: fn(payload) {
-                        outcome_accepted(value: Edge {
-                          label: Positional,
-                          target: node_synthetic(kind: TypeNode { connective: Conj }, children: body_lower_arm_children(pat: pat, payload: payload, doc: body_lower_first_string_literal_optional(root: p3.right)))
-                        })
+                        outcome_accepted(value: node_synthetic(kind: TypeNode { connective: Conj }, children: body_lower_arm_children(pat: pat, payload: payload, doc: body_lower_first_string_literal_optional(root: p3.right))))
                       })
                   }
               }
