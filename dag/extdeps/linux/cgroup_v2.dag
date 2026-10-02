@@ -62,6 +62,7 @@ data cgroup_v2_mount_point: NonEmptyStr = "/sys/fs/cgroup"
 // inhabitance claim over the real route needs to reach a positive verdict without a host.
 service linux.CgroupV2 {
   operation ListChildCgroups {
+    requires none
     input { cgroup_path: NonEmptyStr }
     output {
       value: String from "stdout"
@@ -77,6 +78,7 @@ service linux.CgroupV2 {
   }
 
   operation ReadInterfaceFile {
+    requires none
     input { file_path: NonEmptyStr }
     output {
       value: String from "stdout"
@@ -91,6 +93,7 @@ service linux.CgroupV2 {
     }
   }
   operation PathIsDirectory {
+    requires none
     input { path: NonEmptyStr }
     output {
       value: String from "stdout"
@@ -109,6 +112,7 @@ service linux.CgroupV2 {
   }
 
   operation ReadEvents {
+    requires none
     input { events_path: NonEmptyStr }
     output {
       value: String from "stdout"

@@ -794,6 +794,7 @@ fn openbmc_execute(
 
 service openbmc.JsonProjection {
   operation ProjectFanConfig {
+    requires none
     input {
       desired_json: String
       path: NonEmptyStr
