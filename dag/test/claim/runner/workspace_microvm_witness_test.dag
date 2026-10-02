@@ -118,3 +118,5 @@ test fn workspace_resolve_public_key_never_substitutes_the_operator_key() -> Boo
   }
   operator && foreign
 }
+
+test fn zz_red_control_must_fail() -> Bool { !workspace_public_key_catalog_admits_only_digest_names() }
