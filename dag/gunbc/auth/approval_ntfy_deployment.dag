@@ -493,6 +493,7 @@ service ntfy.Publish {
   }
 
   operation PublishMessage {
+    requires Network
     input {
       access_token: Secret
       topic: NtfyTopic
