@@ -916,7 +916,7 @@ fn v41_capacity_wire(c: V41Capacity) -> String {
 // serving_promotion_standing, and this report enters it as the shared WorkloadCalibrationReceipt.
 // The projection keeps the old fold's law -- all three capacities must be CapacityAt, and the
 // sustained concurrency is their MINIMUM -- and states what the report does not observe: accepted
-// turns per hour, preemptions, restarts and OOM events are absent, so the promotion fold names them
+// turns and their observation window, preemptions, restarts and OOM events are absent, so the promotion fold names them
 // missing rather than reading the report as a clean run. The measurement serve itself is not gated on
 // the report (that would be circular); it runs as a bounded experiment. Its route into a launch's
 // promotion receipts is a declared frontier, not yet a call: gunbc.spark.serving_promotion
@@ -944,7 +944,8 @@ fn v41_calibration_receipt(report: V41CapacityReport, subject_key: String, trace
           subject_key: subject_key,
           trace_digest: trace_digest,
           run_id: report.run_id,
-          accepted_turns_per_hour: none,
+          accepted_turns: none,
+          observation_window: none,
           sustained_concurrency: nat_min(a: nat_min(a: kv, b: en), b: sla),
           preemptions: none,
           engine_restarts: none,
