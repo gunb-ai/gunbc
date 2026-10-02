@@ -55,7 +55,6 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // v2_native_route_off_the_merge_path.
 data variant_fields_unlowered_on_the_native_route_population: List<String> = [
   "the emitted (native-route) compiler: variant-field lowering and match-arm binder binding are executed by the interpreted v2 stages but not yet observed on the native route (the emitted compiler builds since gunbc#12089; the native run over the specimen is deferred until gunbc#12100 fixes the compile.emit cost); specimen: the binder `node` of the `Present { value: node }` arms of v2.std.symbol_index symbol_index_candidates_at",
-  "the native route's own front-end frontier, named by the first native run (2026-10-02): the emitted infer accepts only Bool and Int match scrutinees, so a variant-scrutinee match refuses at prepare with infer_match_scrutinee_not_bool before variant-field lowering is reached, and the native resolver does not bind a fold handler's binder, so the specimen half refuses at prepare with resolve_reason_unbound_symbol; retiring capabilities: variant-scrutinee match infer plus payload binder grounding, and fold-handler binder resolution in the native resolver (the interpreted floor never runs either stage over test modules, so the floor cannot see these refusals)",
 ]
 
 data variant_fields_unlowered_on_the_native_route: RungDrop = RungDrop {

@@ -27,9 +27,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // native receipt is recorded on the retiring PR.
 //
 // THE discriminating red is a mutation receipt: with the binder binding
-// broken (the arm's binder dropped in v2.std.symbol_index, the #11998 state), the specimen and
-// round-trip claims refuse or return false — on the floor before the change, on the native route
-// after it.
+// broken (the arm's binder dropped in v2.std.symbol_index, the #11998 state), the two specimen
+// claims refuse — on the floor before the change, on the native route after it. The round-trip
+// claims above do not observe that mutation: the Seal identities never call
+// symbol_index_candidates_at, so a dropped arm binder is invisible to them.
 
 type Seal = Boxed(Int) | Held { value: Int }
 
