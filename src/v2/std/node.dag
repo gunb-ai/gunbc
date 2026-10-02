@@ -479,7 +479,11 @@ fn connective_edge_discipline(c: Connective) -> EdgeDiscipline {
 fn connective_edge_discipline_for_child_count(c: Connective, child_count: Int) -> EdgeDiscipline {
   match c {
     Atom { identity: _ } => atom_connective_edge_discipline(child_count: child_count)
-    _ => connective_edge_discipline(c: c)
+    Arrow { domain: _, codomain: _ } => connective_edge_discipline(c: c)
+    Conj { factors: _ } => connective_edge_discipline(c: c)
+    Disj { alternatives: _ } => connective_edge_discipline(c: c)
+    Instantiation { head: _, arguments: _ } => connective_edge_discipline(c: c)
+    Cardinality { base: _, quantifier: _ } => connective_edge_discipline(c: c)
   }
 }
 

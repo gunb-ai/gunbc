@@ -37,7 +37,11 @@ fn density_fact(named_facts: v2.std.nat.Nat) -> SourceSpecReadFact {
 fn connective_is_kernel_ambient_atom(c: Connective) -> Bool {
   match c {
     Atom { identity: id } => symbol_is_kernel_ambient(s: id)
-    _ => false
+    Conj => false
+    Disj => false
+    Arrow => false
+    Cardinality => false
+    Instantiation => false
   }
 }
 

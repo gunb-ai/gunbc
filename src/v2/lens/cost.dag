@@ -155,10 +155,16 @@ fn unknown_cost(diagnostic: Diagnostic) -> SymbolicCost {
 
 fn symbolic_cost_witness(c: SymbolicCost, n: Node) -> Witness<SymbolicCost> {
   match c {
-    UnknownCost { diagnostic: d } =>
-      Violates { diagnostic: d }
-    _ =>
-      Holds { value: c }
+    ConstantCost { value: _ } => Holds { value: c }
+    LinearCost { variable: _ } => Holds { value: c }
+    LogCost { variable: _ } => Holds { value: c }
+    PolynomialCost { variable: _, degree: _ } => Holds { value: c }
+    PolyLogCost { variable: _, exponent: _ } => Holds { value: c }
+    ExponentialCost { variable: _, base: _ } => Holds { value: c }
+    FactorialCost { variable: _ } => Holds { value: c }
+    SumCost { lhs: _, rhs: _ } => Holds { value: c }
+    ProductCost { lhs: _, rhs: _ } => Holds { value: c }
+    UnknownCost { diagnostic: d } => Violates { diagnostic: d }
   }
 }
 
@@ -238,11 +244,131 @@ fn symbolic_sequential(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
   match a {
     ConstantCost { value: Zero } => b
     UnknownCost { diagnostic: _ } => a
-    _ =>
+    ConstantCost { value: Succ { prev: _ } } =>
       match b {
         ConstantCost { value: Zero } => a
         UnknownCost { diagnostic: _ } => b
-        _ => SumCost { lhs: a, rhs: b }
+        ConstantCost { value: Succ { prev: _ } } => SumCost { lhs: a, rhs: b }
+        LinearCost { variable: _ } => SumCost { lhs: a, rhs: b }
+        LogCost { variable: _ } => SumCost { lhs: a, rhs: b }
+        PolynomialCost { variable: _, degree: _ } => SumCost { lhs: a, rhs: b }
+        PolyLogCost { variable: _, exponent: _ } => SumCost { lhs: a, rhs: b }
+        ExponentialCost { variable: _, base: _ } => SumCost { lhs: a, rhs: b }
+        FactorialCost { variable: _ } => SumCost { lhs: a, rhs: b }
+        SumCost { lhs: _, rhs: _ } => SumCost { lhs: a, rhs: b }
+        ProductCost { lhs: _, rhs: _ } => SumCost { lhs: a, rhs: b }
+      }
+    LinearCost { variable: _ } =>
+      match b {
+        ConstantCost { value: Zero } => a
+        UnknownCost { diagnostic: _ } => b
+        ConstantCost { value: Succ { prev: _ } } => SumCost { lhs: a, rhs: b }
+        LinearCost { variable: _ } => SumCost { lhs: a, rhs: b }
+        LogCost { variable: _ } => SumCost { lhs: a, rhs: b }
+        PolynomialCost { variable: _, degree: _ } => SumCost { lhs: a, rhs: b }
+        PolyLogCost { variable: _, exponent: _ } => SumCost { lhs: a, rhs: b }
+        ExponentialCost { variable: _, base: _ } => SumCost { lhs: a, rhs: b }
+        FactorialCost { variable: _ } => SumCost { lhs: a, rhs: b }
+        SumCost { lhs: _, rhs: _ } => SumCost { lhs: a, rhs: b }
+        ProductCost { lhs: _, rhs: _ } => SumCost { lhs: a, rhs: b }
+      }
+    LogCost { variable: _ } =>
+      match b {
+        ConstantCost { value: Zero } => a
+        UnknownCost { diagnostic: _ } => b
+        ConstantCost { value: Succ { prev: _ } } => SumCost { lhs: a, rhs: b }
+        LinearCost { variable: _ } => SumCost { lhs: a, rhs: b }
+        LogCost { variable: _ } => SumCost { lhs: a, rhs: b }
+        PolynomialCost { variable: _, degree: _ } => SumCost { lhs: a, rhs: b }
+        PolyLogCost { variable: _, exponent: _ } => SumCost { lhs: a, rhs: b }
+        ExponentialCost { variable: _, base: _ } => SumCost { lhs: a, rhs: b }
+        FactorialCost { variable: _ } => SumCost { lhs: a, rhs: b }
+        SumCost { lhs: _, rhs: _ } => SumCost { lhs: a, rhs: b }
+        ProductCost { lhs: _, rhs: _ } => SumCost { lhs: a, rhs: b }
+      }
+    PolynomialCost { variable: _, degree: _ } =>
+      match b {
+        ConstantCost { value: Zero } => a
+        UnknownCost { diagnostic: _ } => b
+        ConstantCost { value: Succ { prev: _ } } => SumCost { lhs: a, rhs: b }
+        LinearCost { variable: _ } => SumCost { lhs: a, rhs: b }
+        LogCost { variable: _ } => SumCost { lhs: a, rhs: b }
+        PolynomialCost { variable: _, degree: _ } => SumCost { lhs: a, rhs: b }
+        PolyLogCost { variable: _, exponent: _ } => SumCost { lhs: a, rhs: b }
+        ExponentialCost { variable: _, base: _ } => SumCost { lhs: a, rhs: b }
+        FactorialCost { variable: _ } => SumCost { lhs: a, rhs: b }
+        SumCost { lhs: _, rhs: _ } => SumCost { lhs: a, rhs: b }
+        ProductCost { lhs: _, rhs: _ } => SumCost { lhs: a, rhs: b }
+      }
+    PolyLogCost { variable: _, exponent: _ } =>
+      match b {
+        ConstantCost { value: Zero } => a
+        UnknownCost { diagnostic: _ } => b
+        ConstantCost { value: Succ { prev: _ } } => SumCost { lhs: a, rhs: b }
+        LinearCost { variable: _ } => SumCost { lhs: a, rhs: b }
+        LogCost { variable: _ } => SumCost { lhs: a, rhs: b }
+        PolynomialCost { variable: _, degree: _ } => SumCost { lhs: a, rhs: b }
+        PolyLogCost { variable: _, exponent: _ } => SumCost { lhs: a, rhs: b }
+        ExponentialCost { variable: _, base: _ } => SumCost { lhs: a, rhs: b }
+        FactorialCost { variable: _ } => SumCost { lhs: a, rhs: b }
+        SumCost { lhs: _, rhs: _ } => SumCost { lhs: a, rhs: b }
+        ProductCost { lhs: _, rhs: _ } => SumCost { lhs: a, rhs: b }
+      }
+    ExponentialCost { variable: _, base: _ } =>
+      match b {
+        ConstantCost { value: Zero } => a
+        UnknownCost { diagnostic: _ } => b
+        ConstantCost { value: Succ { prev: _ } } => SumCost { lhs: a, rhs: b }
+        LinearCost { variable: _ } => SumCost { lhs: a, rhs: b }
+        LogCost { variable: _ } => SumCost { lhs: a, rhs: b }
+        PolynomialCost { variable: _, degree: _ } => SumCost { lhs: a, rhs: b }
+        PolyLogCost { variable: _, exponent: _ } => SumCost { lhs: a, rhs: b }
+        ExponentialCost { variable: _, base: _ } => SumCost { lhs: a, rhs: b }
+        FactorialCost { variable: _ } => SumCost { lhs: a, rhs: b }
+        SumCost { lhs: _, rhs: _ } => SumCost { lhs: a, rhs: b }
+        ProductCost { lhs: _, rhs: _ } => SumCost { lhs: a, rhs: b }
+      }
+    FactorialCost { variable: _ } =>
+      match b {
+        ConstantCost { value: Zero } => a
+        UnknownCost { diagnostic: _ } => b
+        ConstantCost { value: Succ { prev: _ } } => SumCost { lhs: a, rhs: b }
+        LinearCost { variable: _ } => SumCost { lhs: a, rhs: b }
+        LogCost { variable: _ } => SumCost { lhs: a, rhs: b }
+        PolynomialCost { variable: _, degree: _ } => SumCost { lhs: a, rhs: b }
+        PolyLogCost { variable: _, exponent: _ } => SumCost { lhs: a, rhs: b }
+        ExponentialCost { variable: _, base: _ } => SumCost { lhs: a, rhs: b }
+        FactorialCost { variable: _ } => SumCost { lhs: a, rhs: b }
+        SumCost { lhs: _, rhs: _ } => SumCost { lhs: a, rhs: b }
+        ProductCost { lhs: _, rhs: _ } => SumCost { lhs: a, rhs: b }
+      }
+    SumCost { lhs: _, rhs: _ } =>
+      match b {
+        ConstantCost { value: Zero } => a
+        UnknownCost { diagnostic: _ } => b
+        ConstantCost { value: Succ { prev: _ } } => SumCost { lhs: a, rhs: b }
+        LinearCost { variable: _ } => SumCost { lhs: a, rhs: b }
+        LogCost { variable: _ } => SumCost { lhs: a, rhs: b }
+        PolynomialCost { variable: _, degree: _ } => SumCost { lhs: a, rhs: b }
+        PolyLogCost { variable: _, exponent: _ } => SumCost { lhs: a, rhs: b }
+        ExponentialCost { variable: _, base: _ } => SumCost { lhs: a, rhs: b }
+        FactorialCost { variable: _ } => SumCost { lhs: a, rhs: b }
+        SumCost { lhs: _, rhs: _ } => SumCost { lhs: a, rhs: b }
+        ProductCost { lhs: _, rhs: _ } => SumCost { lhs: a, rhs: b }
+      }
+    ProductCost { lhs: _, rhs: _ } =>
+      match b {
+        ConstantCost { value: Zero } => a
+        UnknownCost { diagnostic: _ } => b
+        ConstantCost { value: Succ { prev: _ } } => SumCost { lhs: a, rhs: b }
+        LinearCost { variable: _ } => SumCost { lhs: a, rhs: b }
+        LogCost { variable: _ } => SumCost { lhs: a, rhs: b }
+        PolynomialCost { variable: _, degree: _ } => SumCost { lhs: a, rhs: b }
+        PolyLogCost { variable: _, exponent: _ } => SumCost { lhs: a, rhs: b }
+        ExponentialCost { variable: _, base: _ } => SumCost { lhs: a, rhs: b }
+        FactorialCost { variable: _ } => SumCost { lhs: a, rhs: b }
+        SumCost { lhs: _, rhs: _ } => SumCost { lhs: a, rhs: b }
+        ProductCost { lhs: _, rhs: _ } => SumCost { lhs: a, rhs: b }
       }
   }
 }
@@ -268,47 +394,183 @@ fn symbolic_sequential(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
 // on the annihilator fix.
 
 fn symbolic_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
-  match a {
-    ConstantCost { value: Zero } => zero_cost()
-    _ =>
-      match b {
+  if a == zero_cost() {
+    zero_cost()
+  } else {
+    if b == zero_cost() {
+      zero_cost()
+    } else {
+      match a {
         ConstantCost { value: Zero } => zero_cost()
-        _ =>
-          match a {
-            ConstantCost { value: Succ { prev: Zero } } => b
-            UnknownCost { diagnostic: _ } => a
-            _ =>
-              match b {
-                ConstantCost { value: Succ { prev: Zero } } => a
-                UnknownCost { diagnostic: _ } => b
-                _ => ProductCost { lhs: a, rhs: b }
-              }
+        ConstantCost { value: Succ { prev: Zero } } => b
+        UnknownCost { diagnostic: _ } => a
+        ConstantCost { value: Succ { prev: Succ { prev: _ } } } =>
+          match b {
+            ConstantCost { value: Zero } => zero_cost()
+            ConstantCost { value: Succ { prev: Zero } } => a
+            UnknownCost { diagnostic: _ } => b
+            ConstantCost { value: Succ { prev: Succ { prev: _ } } } =>
+              ProductCost { lhs: a, rhs: b }
+            LinearCost { variable: _ } => ProductCost { lhs: a, rhs: b }
+            LogCost { variable: _ } => ProductCost { lhs: a, rhs: b }
+            PolynomialCost { variable: _, degree: _ } => ProductCost { lhs: a, rhs: b }
+            PolyLogCost { variable: _, exponent: _ } => ProductCost { lhs: a, rhs: b }
+            ExponentialCost { variable: _, base: _ } => ProductCost { lhs: a, rhs: b }
+            FactorialCost { variable: _ } => ProductCost { lhs: a, rhs: b }
+            SumCost { lhs: _, rhs: _ } => ProductCost { lhs: a, rhs: b }
+            ProductCost { lhs: _, rhs: _ } => ProductCost { lhs: a, rhs: b }
+          }
+        LinearCost { variable: _ } =>
+          match b {
+            ConstantCost { value: Zero } => zero_cost()
+            ConstantCost { value: Succ { prev: Zero } } => a
+            UnknownCost { diagnostic: _ } => b
+            ConstantCost { value: Succ { prev: Succ { prev: _ } } } =>
+              ProductCost { lhs: a, rhs: b }
+            LinearCost { variable: _ } => ProductCost { lhs: a, rhs: b }
+            LogCost { variable: _ } => ProductCost { lhs: a, rhs: b }
+            PolynomialCost { variable: _, degree: _ } => ProductCost { lhs: a, rhs: b }
+            PolyLogCost { variable: _, exponent: _ } => ProductCost { lhs: a, rhs: b }
+            ExponentialCost { variable: _, base: _ } => ProductCost { lhs: a, rhs: b }
+            FactorialCost { variable: _ } => ProductCost { lhs: a, rhs: b }
+            SumCost { lhs: _, rhs: _ } => ProductCost { lhs: a, rhs: b }
+            ProductCost { lhs: _, rhs: _ } => ProductCost { lhs: a, rhs: b }
+          }
+        LogCost { variable: _ } =>
+          match b {
+            ConstantCost { value: Zero } => zero_cost()
+            ConstantCost { value: Succ { prev: Zero } } => a
+            UnknownCost { diagnostic: _ } => b
+            ConstantCost { value: Succ { prev: Succ { prev: _ } } } =>
+              ProductCost { lhs: a, rhs: b }
+            LinearCost { variable: _ } => ProductCost { lhs: a, rhs: b }
+            LogCost { variable: _ } => ProductCost { lhs: a, rhs: b }
+            PolynomialCost { variable: _, degree: _ } => ProductCost { lhs: a, rhs: b }
+            PolyLogCost { variable: _, exponent: _ } => ProductCost { lhs: a, rhs: b }
+            ExponentialCost { variable: _, base: _ } => ProductCost { lhs: a, rhs: b }
+            FactorialCost { variable: _ } => ProductCost { lhs: a, rhs: b }
+            SumCost { lhs: _, rhs: _ } => ProductCost { lhs: a, rhs: b }
+            ProductCost { lhs: _, rhs: _ } => ProductCost { lhs: a, rhs: b }
+          }
+        PolynomialCost { variable: _, degree: _ } =>
+          match b {
+            ConstantCost { value: Zero } => zero_cost()
+            ConstantCost { value: Succ { prev: Zero } } => a
+            UnknownCost { diagnostic: _ } => b
+            ConstantCost { value: Succ { prev: Succ { prev: _ } } } =>
+              ProductCost { lhs: a, rhs: b }
+            LinearCost { variable: _ } => ProductCost { lhs: a, rhs: b }
+            LogCost { variable: _ } => ProductCost { lhs: a, rhs: b }
+            PolynomialCost { variable: _, degree: _ } => ProductCost { lhs: a, rhs: b }
+            PolyLogCost { variable: _, exponent: _ } => ProductCost { lhs: a, rhs: b }
+            ExponentialCost { variable: _, base: _ } => ProductCost { lhs: a, rhs: b }
+            FactorialCost { variable: _ } => ProductCost { lhs: a, rhs: b }
+            SumCost { lhs: _, rhs: _ } => ProductCost { lhs: a, rhs: b }
+            ProductCost { lhs: _, rhs: _ } => ProductCost { lhs: a, rhs: b }
+          }
+        PolyLogCost { variable: _, exponent: _ } =>
+          match b {
+            ConstantCost { value: Zero } => zero_cost()
+            ConstantCost { value: Succ { prev: Zero } } => a
+            UnknownCost { diagnostic: _ } => b
+            ConstantCost { value: Succ { prev: Succ { prev: _ } } } =>
+              ProductCost { lhs: a, rhs: b }
+            LinearCost { variable: _ } => ProductCost { lhs: a, rhs: b }
+            LogCost { variable: _ } => ProductCost { lhs: a, rhs: b }
+            PolynomialCost { variable: _, degree: _ } => ProductCost { lhs: a, rhs: b }
+            PolyLogCost { variable: _, exponent: _ } => ProductCost { lhs: a, rhs: b }
+            ExponentialCost { variable: _, base: _ } => ProductCost { lhs: a, rhs: b }
+            FactorialCost { variable: _ } => ProductCost { lhs: a, rhs: b }
+            SumCost { lhs: _, rhs: _ } => ProductCost { lhs: a, rhs: b }
+            ProductCost { lhs: _, rhs: _ } => ProductCost { lhs: a, rhs: b }
+          }
+        ExponentialCost { variable: _, base: _ } =>
+          match b {
+            ConstantCost { value: Zero } => zero_cost()
+            ConstantCost { value: Succ { prev: Zero } } => a
+            UnknownCost { diagnostic: _ } => b
+            ConstantCost { value: Succ { prev: Succ { prev: _ } } } =>
+              ProductCost { lhs: a, rhs: b }
+            LinearCost { variable: _ } => ProductCost { lhs: a, rhs: b }
+            LogCost { variable: _ } => ProductCost { lhs: a, rhs: b }
+            PolynomialCost { variable: _, degree: _ } => ProductCost { lhs: a, rhs: b }
+            PolyLogCost { variable: _, exponent: _ } => ProductCost { lhs: a, rhs: b }
+            ExponentialCost { variable: _, base: _ } => ProductCost { lhs: a, rhs: b }
+            FactorialCost { variable: _ } => ProductCost { lhs: a, rhs: b }
+            SumCost { lhs: _, rhs: _ } => ProductCost { lhs: a, rhs: b }
+            ProductCost { lhs: _, rhs: _ } => ProductCost { lhs: a, rhs: b }
+          }
+        FactorialCost { variable: _ } =>
+          match b {
+            ConstantCost { value: Zero } => zero_cost()
+            ConstantCost { value: Succ { prev: Zero } } => a
+            UnknownCost { diagnostic: _ } => b
+            ConstantCost { value: Succ { prev: Succ { prev: _ } } } =>
+              ProductCost { lhs: a, rhs: b }
+            LinearCost { variable: _ } => ProductCost { lhs: a, rhs: b }
+            LogCost { variable: _ } => ProductCost { lhs: a, rhs: b }
+            PolynomialCost { variable: _, degree: _ } => ProductCost { lhs: a, rhs: b }
+            PolyLogCost { variable: _, exponent: _ } => ProductCost { lhs: a, rhs: b }
+            ExponentialCost { variable: _, base: _ } => ProductCost { lhs: a, rhs: b }
+            FactorialCost { variable: _ } => ProductCost { lhs: a, rhs: b }
+            SumCost { lhs: _, rhs: _ } => ProductCost { lhs: a, rhs: b }
+            ProductCost { lhs: _, rhs: _ } => ProductCost { lhs: a, rhs: b }
+          }
+        SumCost { lhs: _, rhs: _ } =>
+          match b {
+            ConstantCost { value: Zero } => zero_cost()
+            ConstantCost { value: Succ { prev: Zero } } => a
+            UnknownCost { diagnostic: _ } => b
+            ConstantCost { value: Succ { prev: Succ { prev: _ } } } =>
+              ProductCost { lhs: a, rhs: b }
+            LinearCost { variable: _ } => ProductCost { lhs: a, rhs: b }
+            LogCost { variable: _ } => ProductCost { lhs: a, rhs: b }
+            PolynomialCost { variable: _, degree: _ } => ProductCost { lhs: a, rhs: b }
+            PolyLogCost { variable: _, exponent: _ } => ProductCost { lhs: a, rhs: b }
+            ExponentialCost { variable: _, base: _ } => ProductCost { lhs: a, rhs: b }
+            FactorialCost { variable: _ } => ProductCost { lhs: a, rhs: b }
+            SumCost { lhs: _, rhs: _ } => ProductCost { lhs: a, rhs: b }
+            ProductCost { lhs: _, rhs: _ } => ProductCost { lhs: a, rhs: b }
+          }
+        ProductCost { lhs: _, rhs: _ } =>
+          match b {
+            ConstantCost { value: Zero } => zero_cost()
+            ConstantCost { value: Succ { prev: Zero } } => a
+            UnknownCost { diagnostic: _ } => b
+            ConstantCost { value: Succ { prev: Succ { prev: _ } } } =>
+              ProductCost { lhs: a, rhs: b }
+            LinearCost { variable: _ } => ProductCost { lhs: a, rhs: b }
+            LogCost { variable: _ } => ProductCost { lhs: a, rhs: b }
+            PolynomialCost { variable: _, degree: _ } => ProductCost { lhs: a, rhs: b }
+            PolyLogCost { variable: _, exponent: _ } => ProductCost { lhs: a, rhs: b }
+            ExponentialCost { variable: _, base: _ } => ProductCost { lhs: a, rhs: b }
+            FactorialCost { variable: _ } => ProductCost { lhs: a, rhs: b }
+            SumCost { lhs: _, rhs: _ } => ProductCost { lhs: a, rhs: b }
+            ProductCost { lhs: _, rhs: _ } => ProductCost { lhs: a, rhs: b }
           }
       }
+    }
   }
 }
 
 fn symbolic_max(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
-  match a {
-    ConstantCost { value: Zero } => b
-    _ =>
-      match b {
-        ConstantCost { value: Zero } => a
-        _ =>
-          if a == b {
-            a
-          } else {
-            if symbolic_cost_dominates(a: a, b: b) {
-              if symbolic_cost_dominates(a: b, b: a) {
-                SumCost { lhs: a, rhs: b }
-              } else {
-                a
-              }
-            } else {
-              b
-            }
-          }
+  // The zero absorptions need no arms of their own: with a == 0 the general body below answers
+  // through a == b (when b == 0) or the dominance chain, where a constant never dominates a
+  // growing cost and an unknown is dominated only by an unknown, so the answer is b either way —
+  // and symmetrically for b == 0. The two special-case arms this function carried before the
+  // non-fold-residue paydown priced the same pairs a second time.
+  if a == b {
+    a
+  } else {
+    if symbolic_cost_dominates(a: a, b: b) {
+      if symbolic_cost_dominates(a: b, b: a) {
+        SumCost { lhs: a, rhs: b }
+      } else {
+        a
       }
+    } else {
+      b
+    }
   }
 }
 
@@ -480,13 +742,26 @@ fn asymptotic_class_dominates(a: AsymptoticClass, b: AsymptoticClass) -> Bool {
     ClassFactorial =>
       match b {
         ClassUnknown => false
-        _ => true
+        ClassConstant => true
+        ClassLog => true
+        ClassLinear => true
+        ClassLinearithmic => true
+        ClassPolynomial { degree: _ } => true
+        ClassPolyLog { exponent: _ } => true
+        ClassExponential => true
+        ClassFactorial => true
       }
     ClassExponential =>
       match b {
         ClassUnknown => false
         ClassFactorial => false
-        _ => true
+        ClassConstant => true
+        ClassLog => true
+        ClassLinear => true
+        ClassLinearithmic => true
+        ClassPolynomial { degree: _ } => true
+        ClassPolyLog { exponent: _ } => true
+        ClassExponential => true
       }
     ClassPolynomial { degree: ad } =>
       match b {
@@ -496,7 +771,8 @@ fn asymptotic_class_dominates(a: AsymptoticClass, b: AsymptoticClass) -> Bool {
         ClassLinearithmic => true
         ClassPolynomial { degree: bd } => polynomial_degree_dominates(a: ad, b: bd)
         ClassPolyLog { exponent: _ } => true
-        _ => false
+        ClassExponential => false
+        ClassFactorial => false
       }
     ClassLinearithmic =>
       match b {
@@ -504,7 +780,9 @@ fn asymptotic_class_dominates(a: AsymptoticClass, b: AsymptoticClass) -> Bool {
         ClassLog => true
         ClassLinear => true
         ClassPolyLog { exponent: _ } => true
-        _ => false
+        ClassPolynomial { degree: _ } => false
+        ClassExponential => false
+        ClassFactorial => false
       }
     ClassLinear =>
       match b {
@@ -512,25 +790,43 @@ fn asymptotic_class_dominates(a: AsymptoticClass, b: AsymptoticClass) -> Bool {
         ClassLog => true
         ClassPolyLog { exponent: _ } => true
         ClassLinear => true
-        _ => false
+        ClassLinearithmic => false
+        ClassPolynomial { degree: _ } => false
+        ClassExponential => false
+        ClassFactorial => false
       }
     ClassPolyLog { exponent: ae } =>
       match b {
         ClassConstant => true
         ClassLog => true
         ClassPolyLog { exponent: be } => polylog_exponent_dominates(a: ae, b: be)
-        _ => false
+        ClassLinear => false
+        ClassLinearithmic => false
+        ClassPolynomial { degree: _ } => false
+        ClassExponential => false
+        ClassFactorial => false
       }
     ClassLog =>
       match b {
         ClassConstant => true
         ClassLog => true
-        _ => false
+        ClassPolyLog { exponent: _ } => false
+        ClassLinear => false
+        ClassLinearithmic => false
+        ClassPolynomial { degree: _ } => false
+        ClassExponential => false
+        ClassFactorial => false
       }
     ClassConstant =>
       match b {
         ClassConstant => true
-        _ => false
+        ClassLog => false
+        ClassLinear => false
+        ClassLinearithmic => false
+        ClassPolynomial { degree: _ } => false
+        ClassPolyLog { exponent: _ } => false
+        ClassExponential => false
+        ClassFactorial => false
       }
   }
 }
@@ -540,12 +836,497 @@ fn symbolic_cost_dominates(a: SymbolicCost, b: SymbolicCost) -> Bool {
     ConstantCost { value: av } =>
       match b {
         ConstantCost { value: bv } => nat_dominates(a: av, b: bv)
-        _ => false
+        LinearCost { variable: _ } => false
+        LogCost { variable: _ } => false
+        PolynomialCost { variable: _, degree: _ } => false
+        PolyLogCost { variable: _, exponent: _ } => false
+        ExponentialCost { variable: _, base: _ } => false
+        FactorialCost { variable: _ } => false
+        SumCost { lhs: _, rhs: _ } => false
+        ProductCost { lhs: _, rhs: _ } => false
+        UnknownCost { diagnostic: _ } => false
       }
-    _ =>
+    LinearCost { variable: _ } =>
       match b {
         ConstantCost { value: Zero } => true
-        _ =>
+        ConstantCost { value: Succ { prev: _ } } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        LinearCost { variable: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        LogCost { variable: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        PolynomialCost { variable: _, degree: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        PolyLogCost { variable: _, exponent: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        ExponentialCost { variable: _, base: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        FactorialCost { variable: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        SumCost { lhs: _, rhs: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        ProductCost { lhs: _, rhs: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        UnknownCost { diagnostic: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+      }
+    LogCost { variable: _ } =>
+      match b {
+        ConstantCost { value: Zero } => true
+        ConstantCost { value: Succ { prev: _ } } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        LinearCost { variable: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        LogCost { variable: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        PolynomialCost { variable: _, degree: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        PolyLogCost { variable: _, exponent: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        ExponentialCost { variable: _, base: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        FactorialCost { variable: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        SumCost { lhs: _, rhs: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        ProductCost { lhs: _, rhs: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        UnknownCost { diagnostic: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+      }
+    PolynomialCost { variable: _, degree: _ } =>
+      match b {
+        ConstantCost { value: Zero } => true
+        ConstantCost { value: Succ { prev: _ } } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        LinearCost { variable: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        LogCost { variable: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        PolynomialCost { variable: _, degree: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        PolyLogCost { variable: _, exponent: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        ExponentialCost { variable: _, base: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        FactorialCost { variable: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        SumCost { lhs: _, rhs: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        ProductCost { lhs: _, rhs: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        UnknownCost { diagnostic: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+      }
+    PolyLogCost { variable: _, exponent: _ } =>
+      match b {
+        ConstantCost { value: Zero } => true
+        ConstantCost { value: Succ { prev: _ } } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        LinearCost { variable: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        LogCost { variable: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        PolynomialCost { variable: _, degree: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        PolyLogCost { variable: _, exponent: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        ExponentialCost { variable: _, base: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        FactorialCost { variable: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        SumCost { lhs: _, rhs: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        ProductCost { lhs: _, rhs: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        UnknownCost { diagnostic: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+      }
+    ExponentialCost { variable: _, base: _ } =>
+      match b {
+        ConstantCost { value: Zero } => true
+        ConstantCost { value: Succ { prev: _ } } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        LinearCost { variable: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        LogCost { variable: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        PolynomialCost { variable: _, degree: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        PolyLogCost { variable: _, exponent: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        ExponentialCost { variable: _, base: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        FactorialCost { variable: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        SumCost { lhs: _, rhs: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        ProductCost { lhs: _, rhs: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        UnknownCost { diagnostic: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+      }
+    FactorialCost { variable: _ } =>
+      match b {
+        ConstantCost { value: Zero } => true
+        ConstantCost { value: Succ { prev: _ } } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        LinearCost { variable: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        LogCost { variable: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        PolynomialCost { variable: _, degree: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        PolyLogCost { variable: _, exponent: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        ExponentialCost { variable: _, base: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        FactorialCost { variable: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        SumCost { lhs: _, rhs: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        ProductCost { lhs: _, rhs: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        UnknownCost { diagnostic: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+      }
+    SumCost { lhs: _, rhs: _ } =>
+      match b {
+        ConstantCost { value: Zero } => true
+        ConstantCost { value: Succ { prev: _ } } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        LinearCost { variable: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        LogCost { variable: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        PolynomialCost { variable: _, degree: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        PolyLogCost { variable: _, exponent: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        ExponentialCost { variable: _, base: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        FactorialCost { variable: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        SumCost { lhs: _, rhs: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        ProductCost { lhs: _, rhs: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        UnknownCost { diagnostic: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+      }
+    ProductCost { lhs: _, rhs: _ } =>
+      match b {
+        ConstantCost { value: Zero } => true
+        ConstantCost { value: Succ { prev: _ } } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        LinearCost { variable: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        LogCost { variable: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        PolynomialCost { variable: _, degree: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        PolyLogCost { variable: _, exponent: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        ExponentialCost { variable: _, base: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        FactorialCost { variable: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        SumCost { lhs: _, rhs: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        ProductCost { lhs: _, rhs: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        UnknownCost { diagnostic: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+      }
+    UnknownCost { diagnostic: _ } =>
+      match b {
+        ConstantCost { value: Zero } => true
+        ConstantCost { value: Succ { prev: _ } } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        LinearCost { variable: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        LogCost { variable: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        PolynomialCost { variable: _, degree: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        PolyLogCost { variable: _, exponent: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        ExponentialCost { variable: _, base: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        FactorialCost { variable: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        SumCost { lhs: _, rhs: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        ProductCost { lhs: _, rhs: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+        UnknownCost { diagnostic: _ } =>
           asymptotic_class_dominates(
             a: asymptotic_class_of_cost(cost: a),
             b: asymptotic_class_of_cost(cost: b)
@@ -560,9 +1341,15 @@ fn multiply_classes(a: AsymptoticClass, b: AsymptoticClass) -> AsymptoticClass {
     ClassUnknown => ClassUnknown
     ClassFactorial => ClassFactorial
     ClassExponential => match b {
+      ClassConstant => ClassExponential
+      ClassLog => ClassExponential
+      ClassLinear => ClassExponential
+      ClassLinearithmic => ClassExponential
+      ClassPolynomial { degree: _ } => ClassExponential
+      ClassPolyLog { exponent: _ } => ClassExponential
       ClassFactorial => ClassFactorial
       ClassUnknown => ClassUnknown
-      _ => ClassExponential
+      ClassExponential => ClassExponential
     }
     ClassPolynomial { degree: ad } =>
       match b {

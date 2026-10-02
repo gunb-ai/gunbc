@@ -98,7 +98,7 @@ fn qn_spine_role(label: EdgeLabel) -> QnSpineRole {
 fn qn_fold_step(acc: QnFoldStatus, edge: Edge, child: QnFoldStatus) -> QnFoldStatus {
   match acc {
     QnFoldError { diag: d } => QnFoldError { diag: d }
-    _ =>
+    QnFoldInit =>
       match child {
         QnFoldError { diag: d } => QnFoldError { diag: d }
         QnFoldDone { qn: child_qn } =>
@@ -113,7 +113,12 @@ fn qn_fold_step(acc: QnFoldStatus, edge: Edge, child: QnFoldStatus) -> QnFoldSta
                             match acc {
                               QnFoldInit => QnFoldHeadSeen { sym: sym }
                               QnFoldTailSeen { tail: tail_qn } => QnFoldDone { qn: Cons { head: sym, tail: tail_qn } }
-                              _ => QnFoldError { diag: Diagnostic {
+                              QnFoldDone { qn: _ } => QnFoldError { diag: Diagnostic {
+                                reason: ^qualified_name_structure_invalid,
+                                at: node_locus(node: edge.target),
+                                correction: Unavailable { reason: ExternalContractUnknown }
+                              }}
+                              QnFoldError { diag: _ } => QnFoldError { diag: Diagnostic {
                                 reason: ^qualified_name_structure_invalid,
                                 at: node_locus(node: edge.target),
                                 correction: Unavailable { reason: ExternalContractUnknown }
@@ -143,7 +148,12 @@ fn qn_fold_step(acc: QnFoldStatus, edge: Edge, child: QnFoldStatus) -> QnFoldSta
                     match acc {
                       QnFoldInit => QnFoldTailSeen { tail: child_qn }
                       QnFoldHeadSeen { sym: sym } => QnFoldDone { qn: Cons { head: sym, tail: child_qn } }
-                      _ => QnFoldError { diag: Diagnostic {
+                      QnFoldDone { qn: _ } => QnFoldError { diag: Diagnostic {
+                        reason: ^qualified_name_structure_invalid,
+                        at: node_locus(node: edge.target),
+                        correction: Unavailable { reason: ExternalContractUnknown }
+                      }}
+                      QnFoldError { diag: _ } => QnFoldError { diag: Diagnostic {
                         reason: ^qualified_name_structure_invalid,
                         at: node_locus(node: edge.target),
                         correction: Unavailable { reason: ExternalContractUnknown }
@@ -161,7 +171,17 @@ fn qn_fold_step(acc: QnFoldStatus, edge: Edge, child: QnFoldStatus) -> QnFoldSta
               correction: Unavailable { reason: ExternalContractUnknown }
             }}
           }
-        _ => QnFoldError { diag: Diagnostic {
+        QnFoldInit => QnFoldError { diag: Diagnostic {
+          reason: ^qualified_name_structure_invalid,
+          at: node_locus(node: edge.target),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }}
+        QnFoldHeadSeen { sym: _ } => QnFoldError { diag: Diagnostic {
+          reason: ^qualified_name_structure_invalid,
+          at: node_locus(node: edge.target),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }}
+        QnFoldTailSeen { tail: _ } => QnFoldError { diag: Diagnostic {
           reason: ^qualified_name_structure_invalid,
           at: node_locus(node: edge.target),
           correction: Unavailable { reason: ExternalContractUnknown }
