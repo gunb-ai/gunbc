@@ -36299,9 +36299,13 @@ fn fac_walk_body_marks(
         }
         _ => {}
     }
-    for child in node.children.iter() {
-        fac_walk_body_marks(child, si, marks);
-    }
+    // Expression depth is unbounded by the call limit, so each level may grow the stack
+    // (class gunbc.recurring_failure_mode recursion_over_value_depth_uncounted_by_the_call_limit).
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        for child in node.children.iter() {
+            fac_walk_body_marks(child, si, marks);
+        }
+    });
 }
 
 fn fac_owning_lane(rel_path: &str) -> &'static str {

@@ -415,9 +415,15 @@ fn typed_collect_wildcard_arms(
             }
         }
     }
-    for child in node.children.iter() {
-        typed_collect_wildcard_arms(child, si, env, decl, rel, walk);
-    }
+    // Expression depth is unbounded by the call limit, and the floor runs this walk on its main
+    // thread. #12980's floor overflowed that stack inside the non-fold-residue diff (runs
+    // 36986661184 and 36990280178), and this walk is the unguarded recursion on that path; each
+    // level may now grow the stack, as the checker's own node walks do.
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        for child in node.children.iter() {
+            typed_collect_wildcard_arms(child, si, env, decl, rel, walk);
+        }
+    });
 }
 
 /// (unrostered live sites, stale roster rows) over one typed walk, against the live roster.
