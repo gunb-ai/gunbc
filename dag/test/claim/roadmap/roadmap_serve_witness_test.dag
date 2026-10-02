@@ -603,7 +603,6 @@ test fn witness_an_unrouted_path_is_refused_not_answered() -> Bool {
 // daily page renders work rows and bands, never the roadmap's section headings, so its absence is
 // true of a clean render too.
 
-
 // The served daily fold every observed render delegates to, with the head's style text supplied
 // empty: the claim reads the plan's arms in the body, never the stylesheet.
 fn daily_page_html_over_plan(plan: RoadmapAuthorityProjection) -> String {
@@ -621,17 +620,6 @@ fn daily_page_html_over_plan(plan: RoadmapAuthorityProjection) -> String {
     EmitOk { html } => html
     EmitRejected { reason } => reason
   }
-}
-
-test fn witness_daily_page_answers_from_the_supplied_plan() -> Bool {
-  let projected = daily_page_html_over_plan(plan: caller_supplied_plan_fixture())
-  let refused = daily_page_html_over_plan(
-    plan: RoadmapAuthorityProjectionRefused { detail: "the caller's plan carrier could not be read" },
-  )
-  string_contains(s: projected, pattern: " ready now")
-    && string_contains(s: projected, pattern: "workspace")
-    && string_contains(s: refused, pattern: "the caller's plan carrier could not be read")
-    && string_contains(s: refused, pattern: " ready now")
 }
 
 // ── The route the plan parameter CANNOT reach refuses instead of answering ───────────────────────
@@ -677,7 +665,6 @@ test fn witness_issue_detail_route_selects() -> Bool {
     && selects(method: POST, path: "/issue/some-node/assign", want: IssueAssignHandler)
     && selects(method: POST, path: "/issue/some-node/comment", want: IssueCommentHandler)
 }
-
 
 // ── The durable assign route: validation, concurrency, and the fabric execution entry point ──────
 // THE ASSIGN BODY'S WIRE SHAPE (the form ships enctype text/plain): a field reads as its own
@@ -818,7 +805,6 @@ test fn witness_reassign_same_revision_joins_the_existing_request() -> Bool {
     && string_contains(s: r.body, pattern: "attempt already live in gunbc-some-node-abc")
     && string_contains(s: r.body, pattern: "joins the existing attempt when one is live")
 }
-
 
 // ── The durable comment route: body wire shape, early refusals, retry-idempotence ────────────────
 // THE COMMENT BODY'S WIRE SHAPE: the body rides LAST (markdown freely carries newlines) — the

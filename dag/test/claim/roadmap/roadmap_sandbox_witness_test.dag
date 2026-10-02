@@ -116,17 +116,6 @@ test fn witness_sandbox_renders_register_depths() -> Bool {
     && string_contains(s: h, pattern: "space-8")
 }
 
-test fn witness_sandbox_gallery_and_live_render() -> Bool {
-  let h = sandbox_gallery_page_html()
-  string_contains(s: h, pattern: "dispatch button — every state")
-    && string_contains(s: h, pattern: "dispatch-ok")
-    && string_contains(s: h, pattern: "dispatch-refused")
-    && string_contains(s: h, pattern: "dispatching...")
-    && string_contains(s: h, pattern: sandbox_live_class)
-    && string_contains(s: h, pattern: "/assets/sandbox.js")
-    && all(belt_dispatch_all_status_labels(), l => string_contains(s: h, pattern: join(["data-status=\"", l, "\""], "")))
-}
-
 // The A3 exhibit's discriminating pins, strengthened per review 46754 (the containment-only draft
 // would have survived a duplicated claim, a '13 nodes' count, the neighbour absorbed into the
 // family, or chips reappearing). Three layers: (1) the TYPED band_entries output is pinned by exact

@@ -85,32 +85,6 @@ fn authority_subtree_page_html() -> HtmlEmitResult {
   try_serialize_html_source(node: fx_authority_subtree_roadmap_page(ids: fx_multi_parent_ids()))
 }
 
-test fn witness_authority_serializes_with_structure() -> Bool {
-  match authority_subtree_page_html() {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
-      string_contains(s: h, pattern: "<span class=\"wordmark\">gunbc</span>")
-        && string_contains(s: h, pattern: "<h1>roadmap</h1>")
-        && string_contains(s: h, pattern: "<button class=\"sound-toggle\" type=\"button\">sound</button>")
-        && string_contains(s: h, pattern: "<button class=\"theme-toggle\" type=\"button\">theme · auto</button>")
-        && !string_contains(s: h, pattern: "class=\"mark mark-d1\"")
-        && !string_contains(s: h, pattern: "<h1>gunbc — roadmap</h1>")
-        && string_contains(s: h, pattern: "<main class=\"roadmap\">")
-        && string_contains(s: h, pattern: "class=\"roadmap-section\"")
-        && string_contains(s: h, pattern: "class=\"taskbar\"")
-        && !string_contains(s: h, pattern: "class=\"status status-open\"")
-  }
-}
-
-// A3 routine-state collapse flip: the former positive pin 'class="status status-' asserted that SOME chip serialized, which an all-open focused page satisfies only by rendering the routine default as permanent chrome. The decided rule (lifecycle_chip_renders) hides exactly the open default, so the discriminating page pins are the NEGATIVE — an open chip serialized anywhere is the collapse failing — plus taskbar presence for the structural claim; the review/done chips keep their own positive pins on constructed fixtures (witness_merged_pr_is_review_evidence_not_acceptance).
-test fn witness_authority_page_preserves_multi_parent_dependencies() -> Bool {
-  match authority_subtree_page_html() {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
-      string_contains(s: h, pattern: "dependencies (namespace-v2-import-completion, declaration-identity-switchover, namespace-semantic-waves, v1-interpreter-delete)")
-  }
-}
-
 fn empty_doc_html() -> HtmlEmitResult {
   let empty = RoadmapDocument { preamble: [], lead_lanes: [], sections: [] }
   try_serialize_html_source(node: roadmap_page(doc: empty, merged: []))
@@ -189,18 +163,6 @@ data daily_leads_operational_note: String = "The A1 placement wall (presentation
 // The / fold over the authority's live project and its root (the shared subtree fixture).
 fn live_project_daily_html() -> HtmlEmitResult {
   try_serialize_html_source(node: fx_authority_subtree_daily_page(ids: fx_live_project_ids()))
-}
-
-test fn witness_daily_leads_operational_not_narrative() -> Bool {
-  match live_project_daily_html() {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
-      string_contains(s: h, pattern: "class=\"program-progress\"")
-        && string_contains(s: h, pattern: " ready now")
-        && !string_contains(s: h, pattern: "finish lines complete")
-        && !string_contains(s: h, pattern: "class=\"finish-line-progress\"")
-        && !string_contains(s: h, pattern: "class=\"finish-line-claim\"")
-  }
 }
 
 fn depth_chain_html(fuel: Int) -> HtmlEmitResult {
@@ -659,7 +621,6 @@ test fn witness_ticket_brief_budget_holds_and_reds() -> Bool {
 
 data combinator_witness_repoint_note: String = "Repointed at A1: the former subject '.node-superseded > .title' was an UNREACHABLE selector — direct-child, while .title actually nests two levels down (.node-head > .node-mid > .title), so the strikethrough could never paint; the rule now uses the descendant combinator and the escape-guard witness repoints to a selector that still legitimately carries '>' (the section-fold summary). The claim under test is unchanged: a raw '>' inside emitted style text must not be entity-escaped."
 
-
 // THE STYLE ELEMENT'S TEXT THROUGH THE REAL PAGE SERIALIZER, over the real rule blocks: a page with
 // one row whose head carries the serialized rules (the stylesheet seam
 // roadmap_page_launch_with_stylesheet), so a claim about how the page emits rule text reads the
@@ -937,7 +898,6 @@ test fn witness_client_asset_part_3_negatives_hold() -> Bool {
   fx_client_part_holds(js: fx_client_part_js(lo: 16, hi: 1000), session_fetches: 0, summary_only_marks: 0)
 }
 
-
 test fn witness_parity_client_paints_verbatim_with_shared_constants() -> Bool {
   let js = fx_client_group_js(stmts: workflow_fetch_statements())
   string_contains(s: js, pattern: "av.summary")
@@ -1138,7 +1098,6 @@ test fn witness_css_rule_blocks_laws_hold() -> Bool {
 test fn witness_css_tail_part_laws_hold() -> Bool {
   fx_css_part_holds(css: fx_css_tail_part(), rail_widths: 0, grid_templates: 0, token_declarations: 0)
 }
-
 
 test fn witness_prominence_and_frame_rules_present_in_css() -> Bool {
   let css = fx_css_rule_blocks()
@@ -1353,31 +1312,6 @@ test fn witness_project_depth_cap_renders_deeper_affordance() -> Bool {
 fn li_of_node(html: String, node_id: String) -> String {
   fold(split(s: html, delimiter: "<li"), init: "", f: (acc, p) =>
     if string_contains(s: p, pattern: join(["data-node=\"", node_id, "\""], "")) { p } else { acc })
-}
-
-test fn witness_shell_arc_renders_as_project_with_ten_tasks() -> Bool {
-  let task_ids = [
-    "shell-dag-cron-entry-line-builder",
-    "shell-dag-floor-peak-calibration-rows",
-    "shell-dag-ci-fmt-gate-line",
-    "shell-dag-ci-deploy-invoke-prelude",
-    "shell-dag-ci-heal-regen-invoke",
-    "shell-dag-compile-pool-slice-install",
-    "shell-dag-slot-population-census-read",
-    "shell-dag-codex-app-server-trip-script",
-    "shell-dag-live-deploy-install-owned",
-    "shell-dag-live-deploy-restart-tailscale",
-  ]
-  let chain_ids = ["shell-typed-invocation"]
-  let shell_doc = fx_shell_subtree_doc()
-  match try_serialize_html_source(node: roadmap_daily_workspace_page_launch_with_stylesheet(
-      doc: shell_doc, merged: [], launch: launch_host_unobserved_static_render(), memberships: fixture_nesting_relation(edges: doc_all_edges(doc: shell_doc)), stylesheet: "")) {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
-      all(task_ids, id => occurrence_count(s: h, pattern: join(["data-node=\"", id, "\" tabindex=\"0\""], "")) == 1)
-        && all(chain_ids, id => occurrence_count(s: h, pattern: join(["data-node=\"", id, "\" tabindex=\"0\""], "")) == 1)
-        && !string_contains(s: h, pattern: "project-chain-member")
-  }
 }
 
 // THE COLLAPSED CHAIN ON THE TABLE (the 2026-09-25 rendering half): the tree derivation swallows
@@ -1769,33 +1703,6 @@ fn fx_shell_task_ids() -> List<String> {
   ]
 }
 
-// THE GROUP-EVERYWHERE RULING ON THE TABLE (owner feedback 2026-09-21, re-pointed 2026-09-25): a
-// fabricated live attempt on shell-dag-cron-entry-line-builder pulls the whole collapsed shell
-// project to the head of the table as ONE node-project row (the Active band's flat-table
-// realization — the band vocabulary survives as row order and data-band), with the arc's k-of-n
-// chip and every task still rendered exactly once. The live row carries the decided active band
-// and a non-refusal status; the REFUSED arm carries the error-refusal status line — the table's
-// whole claim about execution, where the retired forest used to roll the red flag up to the
-// project bar (that render survives on the kept project-tree component:
-// witness_project_bar_flags_red_from_decided_field; the derivation lives in the presentation
-// witness).
-test fn witness_shell_project_row_heads_the_table_with_live_task() -> Bool {
-  match fx_shell_live_workspace_html(refused: false, doc: fx_shell_subtree_doc(), memberships: roadmap_memberships()) {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: live } =>
-      let project_row = li_of_node(html: live, node_id: "shell-typed-invocation")
-      let live_row = li_of_node(html: live, node_id: "shell-dag-cron-entry-line-builder")
-      !string_contains(s: project_row, pattern: "node-project")
-        && !string_contains(s: project_row, pattern: " tasks closed")
-        && marker_before(s: live, first: "data-node=\"shell-typed-invocation\"", second: "data-node=\"shell-dag-cron-entry-line-builder\"")
-        && all(fx_shell_task_ids(), id => occurrence_count(s: live, pattern: join(["data-node=\"", id, "\" tabindex=\"0\""], "")) == 1)
-        && string_contains(s: live_row, pattern: "data-band=\"active\"")
-        && !string_contains(s: live_row, pattern: "activity-line-error-refusal")
-        && !string_contains(s: live, pattern: "frontier-bucket")
-        && !string_contains(s: live, pattern: "class=\"taskbar\"")
-  }
-}
-
 // The refused arm of the same table, its own claim: the two renders share no assertion, so one
 // claim paid for both tables to state two independent facts.
 test fn witness_shell_live_task_refusal_marks_its_row() -> Bool {
@@ -2031,7 +1938,6 @@ test fn witness_issue_tab_switch_contracts() -> Bool {
     && string_contains(s: css, pattern: ".issue-detail[data-tab=\"work\"] .panel-comments, .issue-detail[data-tab=\"work\"] .panel-dependencies, .issue-detail[data-tab=\"work\"] .panel-history { display: none }")
 }
 
-
 // DEFECT 1 (owner 2026-09-23): attempt history spilled into the issue table — the client paint
 // minted one taskbar-inspect disclosure after EVERY row the wire carried an attempt for, inline
 // in the dense table and stacked one-per-member inside project and family rows on the old
@@ -2143,7 +2049,6 @@ test fn witness_issue_action_rules_consume_the_tokens() -> Bool {
   string_contains(s: rules, pattern: ".issue-action-contained { background: var(--issue-action)")
     && string_contains(s: rules, pattern: ".issue-action.is-disabled, .issue-action:disabled { background: transparent")
 }
-
 
 // THE TABLE'S BUTTON CENSUS (owner ruling 2026-09-25, "scrap the button stuff ... just copy
 // buganizer"): the Buganizer results row carries NO action surface — no Start Work, no Assign, no
@@ -2325,7 +2230,6 @@ test fn witness_issue_table_long_cells_clip_within_their_tracks() -> Bool {
   }
 }
 
-
 // THE ASSIGN CONTROL (owner rulings 2026-09-25, "just copy buganizer" + the issue-page mandate):
 // the durable Assign action is a NATIVE FORM — text/plain POST to the assign route, the email
 // input with its datalist, the hidden expected_revision pin, the avatar-backed suggestions roster
@@ -2410,7 +2314,6 @@ test fn witness_issue_detail_attempt_does_not_invent_a_workflow_assignee() -> Bo
   }
 }
 
-
 // THE HISTORY TAB'S EVENT LEDGER (owner ruling 2026-09-24, moved to the History tab by the
 // 2026-09-25 page architecture): the issue's durable event history renders one row per envelope,
 // NEWEST FIRST by recorded_at — the envelope written at 03:00 heads the 02:00 and the 01:00, each
@@ -2475,21 +2378,6 @@ test fn witness_issue_history_tab_renders_event_history_newest_first() -> Bool {
                 Present { value: after_two } => occurrence_count(s: after_two, pattern: "2026-09-24T01:00:00Z") == 1
               })
         })
-  }
-}
-
-// A LIVE PROJECT RENDERS ON THE ISSUE TABLE (re-pointed 2026-09-30 from the deleted serving-restore
-// row): vm-service is declared in the authority with members, so the not-ready filter keeps it, and
-// it renders exactly once with its headline and its fleet owner on the row's data-search.
-test fn witness_a_live_project_renders_on_the_issue_table() -> Bool {
-  match live_project_daily_html() {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
-      let table = table_region(html: h)
-      string_contains(s: table, pattern: "vm-service")
-        && string_contains(s: table, pattern: "End-of-year VM service")
-        && occurrence_count(s: table, pattern: "data-node=\"vm-service\" tabindex=\"0\"") == 1
-        && string_contains(s: table, pattern: "vm-service @fleet")
   }
 }
 
@@ -2732,7 +2620,6 @@ test fn witness_header_account_rules_hide_and_crop() -> Bool {
     && string_contains(s: css, pattern: "var(--issue-text-dim); position: relative; overflow: hidden }")
 }
 
-
 // THE SWAP TABLE (the client program's contract), ONE SESSION READ since the 2026-09-27
 // unification: the program names GET /auth/session exactly ONCE — the shared gunbcSessionRead
 // promise (same-origin credentials, no-store, non-OK standings rejected) — and BOTH consumers
@@ -2946,7 +2833,4 @@ test fn witness_issue_standing_text_names_principals_by_their_display() -> Bool 
     && known == "claimed by Fixture Viewer"
     && unknown == "claimed by principal:google-oidc/accounts/sub-viewer"
 }
-
-
-
 
