@@ -4102,7 +4102,7 @@ fn body_lower_fn_decl_arrow(shell: Node, sig: BodyLowerFnSignature, body: Option
         Present { value: b } =>
           optional_present(value: body_lower_position_function_values(node: b, path: body_lower_unpositioned_path()))
       }
-    )),
+    ),
     fn_name: sig.fn_name,
     source: shell
   )
