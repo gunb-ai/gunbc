@@ -173,7 +173,7 @@ test fn witness_established_candidate_absence_still_answers_unresolved() -> Bool
         name: "X",
         path: "dag/x.dag",
       ) {
-        DeclarationSourceUnresolved { attempted: att } => att == "dag/x.dag"
+        DeclarationScanUnresolved { attempted: att, unobserved: _ } => att == "dag/x.dag"
         _ => false
       }
     _ => false
