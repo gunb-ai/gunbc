@@ -1,5 +1,7 @@
 module v2.test.claim.variant_field_native_binding
 
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // SUBJECT: the restoration trigger of gunbc.rung_drop
