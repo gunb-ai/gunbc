@@ -7,8 +7,12 @@ import gunbc.typed_graph_exclusive_bytes {
 }
 
 fn reading(class: String, all: Int, after: Int, end: Int) -> TypedGraphClassReading {
+  set_reading(class: class, members: 1, all: all, after: after, end: end)
+}
+
+fn set_reading(class: String, members: Int, all: Int, after: Int, end: Int) -> TypedGraphClassReading {
   TypedGraphClassReading {
-    class: class as NonEmptyStr, modules: 3, in_use_all: all, in_use_after_class: after, in_use_end: end,
+    class: class as NonEmptyStr, members: members, modules: 3, in_use_all: all, in_use_after_class: after, in_use_end: end,
     ancestry_entries: 7, own_entries: 2,
   }
 }
@@ -55,6 +59,30 @@ test fn exclusives_past_the_total_report_the_typed_arm_not_a_zero_residual() -> 
 test fn no_readings_is_empty_not_a_zero_report() -> Bool {
   match typed_graph_exclusive_report(readings: []) {
     ExclusiveReadingEmpty => true
+    _ => false
+  }
+}
+
+// A JOINT SET IS REPORTED, NEVER SUMMED: its bytes include its members' exclusives (30 and 20 here,
+// 70 jointly because they share 20 with each other only), so adding it into the sum would count the
+// members twice and drive the residual below zero. The sum stays the singles' 50 and the residual 50.
+test fn a_joint_set_is_reported_beside_the_sum_and_not_added_into_it() -> Bool {
+  match typed_graph_exclusive_report(readings: [
+    reading(class: "type_env", all: 1000, after: 970, end: 900),
+    reading(class: "items", all: 1000, after: 980, end: 900),
+    set_reading(class: "type_env+items", members: 2, all: 1000, after: 930, end: 900),
+  ]) {
+    ExclusiveBytesReported { classes: cs, graph_total: _, sum_of_exclusives: s, shared_or_unlisted: r } =>
+      list_length(items: cs) == 3
+        && byte_size_count(b: s) == 50
+        && match r { MeasureDifference { value: v } => byte_size_count(b: v) == 50, _ => false }
+    _ => false
+  }
+}
+
+test fn a_reading_of_no_members_refuses() -> Bool {
+  match typed_graph_exclusive_report(readings: [set_reading(class: "nothing", members: 0, all: 1000, after: 1000, end: 900)]) {
+    ExclusiveReadingTorn { class: c, cause: _ } => c == "nothing" as NonEmptyStr
     _ => false
   }
 }

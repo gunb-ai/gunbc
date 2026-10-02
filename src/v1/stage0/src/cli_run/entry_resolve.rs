@@ -4442,6 +4442,8 @@ impl TypedModuleClass {
 /// `gunbc.typed_graph_exclusive_bytes` `typed_graph_exclusive_report`; this reader only reads. A
 /// graph or module list another owner keeps refuses, because dropping it would free nothing.
 pub(crate) struct ExclusiveBytesReading {
+    /// How many classes were dropped together: 1 for a single class, more for a joint set.
+    pub members: usize,
     pub modules: usize,
     pub in_use_all: u64,
     pub in_use_after_class: u64,
@@ -4521,6 +4523,7 @@ pub(crate) fn typed_module_class_exclusive_bytes(
     drop(graph.diagnostics);
     let end = floor_heap_in_use().ok_or("no allocator reading on this target")?;
     Ok(ExclusiveBytesReading {
+        members: classes.len(),
         modules: module_count,
         in_use_all,
         in_use_after_class: after,

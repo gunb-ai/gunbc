@@ -17,7 +17,7 @@ import std.literal_elaboration {
   elaborate_literal_at, literal_source_kind_of, literal_elaboration_refusal_message
 }
 import gunbc.structural_realization_bindings { literal_homomorphism_rows }
-import std.coercion { dag_can_cast, is_dag_cast_domain_type, dag_cast_requires_proof, SubtractionRefinementAmbiguous }
+import std.coercion { dag_can_cast, is_dag_cast_domain_type, dag_cast_requires_proof, SubtractionRefinementAmbiguous, KernelMinted, CorpusDeclared, DeclarationIdentityAbsent }
 import v1.compiler.type_head_exposure {
   TypeHeadView, KernelScalarHead, ApplicationHead, ProductHead, CoproductHead, CallableHead,
   TypeHeadExposure, ExposedTypeHead, OpaqueTypeHead, StuckTypeHead, MalformedApplicationHead,
@@ -161,7 +161,7 @@ import std.termination {
   proportional_divisor_from_int_at_least_two,
   OneStep
 }
-import std.algebra { CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons, carrier_container_equality_rows }
+import std.algebra { CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons, carrier_container_equality_rows, kernel_carrier_admits_numeral }
 import v1.compiler.infer_resolve {
   resolve_node, resolve_node_bounded, resolve_item_types, reference_with_declaration, fn_type_param_names, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
   resolve_generic_use_decl,
@@ -3870,7 +3870,8 @@ fn foreign_concrete_coproduct_where_parent_required(
 // callers, and the three grades are different facts that one word ("wired") may not hold.
 //
 // WHOLE RELATION (declared_type_obligation_diags): PositionDirectCallArgument, PositionListElement,
-// PositionGenericTypeArgument.
+// PositionGenericTypeArgument, and PositionCondition (a position outside the twelve: an if
+// condition or match-arm guard, declared Bool by the grammar rather than by an annotation).
 //
 // CARDINALITY VERDICT ONLY (optional_at_required_obligation_diags): PositionRecordLiteralField,
 // PositionDeclaredReturn, PositionLetAnnotation, PositionDataInitializer. Each builds the same
@@ -3912,6 +3913,7 @@ type DeclaredTypePosition
   | PositionParameterDefault
   | PositionCallableReturn
   | PositionDirectCallArgument
+  | PositionCondition
 
 type DeclaredTypeObligation {
   position: DeclaredTypePosition
@@ -3968,6 +3970,7 @@ fn declared_type_position_label(position: DeclaredTypePosition, subject: String)
     PositionDirectCallArgument =>
       if subject == "" { "direct call argument" }
       else { concat("direct call argument for parameter '", subject, "'") }
+    PositionCondition => subject
   }
 }
 
@@ -4473,7 +4476,13 @@ fn coproduct_at_record_declared_type(declared: Node, produced: Node, scope: Infe
 // kernel-backed -- a REALIZATION fact answering a TYPING question. It fails closed on unknown
 // identity and is measured behaviour-preserving against main, so it is not unsound; it is
 // UNDER-SPECIFIC, and it grants literal syntax module-wide permission to inhabit anything whose
-// implementation eventually mentions a numeric carrier. The durable model is an
+// implementation eventually mentions a numeric carrier.
+// THE KERNEL ARM IS KEYED ON THE CARRIER'S ALGEBRA, NOT ON BEING MINTED. It used to answer every
+// kernel mint through provenance_realizes_natively, so an Int reached Bool and String declared
+// positions as Inhabits -- `x if 5` and `fn f() -> Bool { 1 }` typechecked (gunbc.recurring_failure_mode
+// numeral_admitted_at_every_kernel_declared_type). Both sides now read std.algebra
+// kernel_carrier_admits_numeral, so the numeric family has one home and a Bool or String declared
+// type falls through to the judgments below, which refuse it. The durable model is an
 // expected-type-directed literal introduction judgment -- a type admits a numeral because it
 // SUPPLIES one, not because its module realizes natively. Do not build on this predicate.
 fn declared_realizes_as_kernel_numeric(
@@ -4482,11 +4491,14 @@ fn declared_realizes_as_kernel_numeric(
   source_indices: Map<String, NewlineIndex>
 ) -> Bool {
   let produced_name = authored_name_at(source_indices: source_indices, node: produced)
-  let produced_is_kernel_numeric = produced_name == "Int" || produced_name == "Float"
-  if produced_is_kernel_numeric == false {
+  if kernel_carrier_admits_numeral(name: produced_name) == false {
     false
   } else {
-    provenance_realizes_natively(p: type_reference_provenance(n: declared))
+    match type_reference_provenance(n: declared) {
+      KernelMinted { minted_name: nm } => kernel_carrier_admits_numeral(name: nm)
+      CorpusDeclared { decl_file: f } => provenance_realizes_natively(p: CorpusDeclared { decl_file: f })
+      DeclarationIdentityAbsent => false
+    }
   }
 }
 
@@ -4910,6 +4922,21 @@ fn obligation_type_shape(n: Node, source_indices: Map<String, NewlineIndex>) -> 
   } else {
     shape
   }
+}
+
+// A CONDITION IS A DECLARED-TYPE POSITION WHOSE DECLARED TYPE IS Bool. An if condition and a
+// match-arm guard were inferred with no expected type and judged by nothing, so any value passed as
+// a condition (`x if 5`, `if 1 { .. }`: gunbc.recurring_failure_mode
+// condition_position_unjudged_against_bool). The obligation is the same carrier every other position
+// builds, decided by the whole relation, so a condition inherits every arm the relation owns rather
+// than a condition-specific test. `label` names which condition, for the located refusal.
+fn condition_obligation_diags(label: String, typed: Node, scope: InferScope) -> List<ErrorNode> {
+  declared_type_obligation_diags(
+    obligation: DeclaredTypeObligation {
+      position: PositionCondition, subject: label, declared: bool_type,
+      produced: resolved_type(n: typed), span: typed.span
+    },
+    scope: scope)
 }
 
 fn declared_type_obligation_diags(obligation: DeclaredTypeObligation, scope: InferScope) -> List<ErrorNode> {
@@ -8746,7 +8773,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           Present { value: gr } => gr
           Absent => InferResult { typed: arm_b, diagnostics: [] }
         }
-        let guard_diags = if guard_result != none { guard_unwrapped.diagnostics } else { [] }
+        let guard_diags = if guard_result != none { concat(guard_unwrapped.diagnostics, condition_obligation_diags(label: "match-arm guard", typed: guard_unwrapped.typed, scope: arm_scope)) } else { [] }
         ArmInferResult {
           typed_arm: make_arm_node(occurrence_identity: arm_node.occurrence_identity,
             pattern: typed_pattern,
@@ -8802,7 +8829,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               Present { value: gr } => gr
               Absent => InferResult { typed: arm_b, diagnostics: [] }
             }
-            let guard_diags = if guard_result != none { guard_unwrapped.diagnostics } else { [] }
+            let guard_diags = if guard_result != none { concat(guard_unwrapped.diagnostics, condition_obligation_diags(label: "match-arm guard", typed: guard_unwrapped.typed, scope: arm_scope)) } else { [] }
             ArmInferResult {
               typed_arm: make_arm_node(occurrence_identity: arm_node.occurrence_identity,
                 pattern: typed_pattern,
@@ -8864,7 +8891,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let else_expr = if_else_branch(texpr: texpr)
       let cond_result = infer_expr(texpr: cond, scope: scope, expected: none)
       let cond_typed = cond_result.typed
-      let cond_diags = cond_result.diagnostics
+      let cond_diags = concat(cond_result.diagnostics, condition_obligation_diags(label: "if condition", typed: cond_typed, scope: scope))
       let then_result = infer_expr(texpr: then_expr, scope: scope, expected: expected)
       let then_typed = then_result.typed
       let then_diags = then_result.diagnostics
