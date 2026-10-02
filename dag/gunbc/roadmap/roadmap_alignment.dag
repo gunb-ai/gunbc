@@ -32,14 +32,16 @@ import gunbc.roadmap.roadmap_lineage {
   LineageNoParent,
   LineageUndeclared,
   LineageCyclic,
-  lineage_walk,
-  lineage_find,
+  lineage_walk_in,
+  lineage_index,
+  lineage_lookup,
 }
 import gunbc.roadmap.roadmap_attempt_continuation {
   continuation_alignment_l0_pointer,
   continuation_alignment_ask,
 }
 import std.content_hash { content_hash_atom }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 
 // The recursive alignment ladder follows the parent each row declares, never reverse blocking. Each
 // level carries the node's declared ticket structure and the edge's contribution argument.
@@ -96,12 +98,35 @@ type AlignmentLinkProjection
   = LinkProjected { link: AlignmentChainLink }
   | LinkRowUndeclared { node_id: String }
 
-fn alignment_link_project(node_id: String, nodes: List<RoadmapNode>, contribution_to_parent: String) -> AlignmentLinkProjection {
-  let found = nodes |> filter(n => (n.node as String) == node_id)
-  if count(found) != 1 {
+// ONE INDEX PER CHAIN, built once from the rows the chain is resolved over: the first row per id
+// (the lineage walk's own first-match rule, gunbc.roadmap.roadmap_lineage lineage_index) beside how
+// many rows declare that id, so a link still refuses a duplicated or missing id exactly as the
+// per-link filter did, without re-scanning every row for every link.
+type AlignmentIndex {
+  first: Map<String, RoadmapNode>
+  counts: Map<String, Int>
+}
+
+fn alignment_index(nodes: List<RoadmapNode>) -> AlignmentIndex {
+  let empty: Map<String, Int> = empty_map()
+  AlignmentIndex {
+    first: lineage_index(nodes: nodes),
+    counts: fold(nodes, init: empty, f: fn(acc, n) {
+      let k = n.node as String
+      match map_lookup(m: acc, key: k) {
+        Present { value: c } => map_insert(m: acc, key: k, value: c + 1)
+        Absent => map_insert(m: acc, key: k, value: 1)
+      }
+    }),
+  }
+}
+
+fn alignment_link_project(node_id: String, index: AlignmentIndex, contribution_to_parent: String) -> AlignmentLinkProjection {
+  let declared = match map_lookup(m: index.counts, key: node_id) { Present { value: c } => c  Absent => 0 }
+  if declared != 1 {
     LinkRowUndeclared { node_id: node_id }
   } else {
-    match found.first() {
+    match lineage_lookup(index: index.first, id: node_id) {
       Absent => LinkRowUndeclared { node_id: node_id }
       Present { value: node } =>
         match node.line {
@@ -126,8 +151,8 @@ fn alignment_link_project(node_id: String, nodes: List<RoadmapNode>, contributio
 
 // THE EDGE'S ARGUMENT a row states for its own parent. A derived closing-contract task stands in
 // its target's place, so it carries the target's argument.
-fn alignment_contribution_of(nodes: List<RoadmapNode>, id: String) -> String {
-  match lineage_find(nodes: nodes, id: id) {
+fn alignment_contribution_of(index: AlignmentIndex, id: String) -> String {
+  match lineage_lookup(index: index.first, id: id) {
     Absent => ""
     Present { value: n } =>
       match n.parent {
@@ -136,7 +161,7 @@ fn alignment_contribution_of(nodes: List<RoadmapNode>, id: String) -> String {
           match p {
             MemberOf { project: _, contribution } => contribution as String
             AdmittedRoot => ""
-            Closes { target } => alignment_contribution_of(nodes: nodes, id: target)
+            Closes { target } => alignment_contribution_of(index: index, id: target)
           }
       }
   }
@@ -146,12 +171,12 @@ type AlignmentLinksBuild
   = AlignmentLinksBuilt { links: List<AlignmentChainLink> }
   | AlignmentLinksRowUndeclared { node_id: String }
 
-fn alignment_links_for_ids(ids: List<String>, nodes: List<RoadmapNode>) -> AlignmentLinksBuild {
+fn alignment_links_for_ids(ids: List<String>, index: AlignmentIndex) -> AlignmentLinksBuild {
   fold(ids, init: AlignmentLinksBuilt { links: [] }, f: fn(acc, id) {
     match acc {
       AlignmentLinksRowUndeclared { node_id } => AlignmentLinksRowUndeclared { node_id: node_id }
       AlignmentLinksBuilt { links } =>
-        match alignment_link_project(node_id: id, nodes: nodes, contribution_to_parent: alignment_contribution_of(nodes: nodes, id: id)) {
+        match alignment_link_project(node_id: id, index: index, contribution_to_parent: alignment_contribution_of(index: index, id: id)) {
           LinkRowUndeclared { node_id } => AlignmentLinksRowUndeclared { node_id: node_id }
           LinkProjected { link } => AlignmentLinksBuilt { links: concat(links, [link]) }
         }
@@ -202,17 +227,22 @@ fn alignment_list_string_at(items: List<String>, index: Int) -> String? {
 // level (the walk already substitutes it), which is what lets a derived closing-contract task
 // resolve alignment instead of refusing as undeclared.
 fn alignment_chain(node_id: String, nodes: List<RoadmapNode>) -> AlignmentChain {
-  match lineage_walk(node_id: node_id, nodes: nodes) {
+  alignment_chain_in(node_id: node_id, index: alignment_index(nodes: nodes), fuel: count(nodes) + 1)
+}
+
+// The chain over an index the caller built once; alignment_chain is this at a fresh index.
+fn alignment_chain_in(node_id: String, index: AlignmentIndex, fuel: Int) -> AlignmentChain {
+  match lineage_walk_in(node_id: node_id, index: index.first, fuel: fuel) {
     LineageCyclic { node_id: at } => AlignmentChainCyclic { node_id: at }
     LineageUndeclared { walked: _, node_id: missing } => AlignmentChainRowUndeclared { node_id: missing }
     LineageNoParent { walked, at } =>
-      match alignment_links_for_ids(ids: walked, nodes: nodes) {
+      match alignment_links_for_ids(ids: walked, index: index) {
         AlignmentLinksRowUndeclared { node_id: missing } => AlignmentChainRowUndeclared { node_id: missing }
         AlignmentLinksBuilt { links } =>
           AlignmentChainUnrooted { walked: alignment_link_list_tail(items: links), at: at }
       }
     LineageRooted { ids } =>
-      match alignment_links_for_ids(ids: ids, nodes: nodes) {
+      match alignment_links_for_ids(ids: ids, index: index) {
         AlignmentLinksRowUndeclared { node_id: missing } => AlignmentChainRowUndeclared { node_id: missing }
         AlignmentLinksBuilt { links } =>
           match links.first() {
