@@ -185,11 +185,23 @@ fn realization_connective_shape(c: Connective) -> RealizationNodeShape {
 // self-identified Atom that decodes only on rest, to extdeps.ietf.http_semantics HttpStatusClass;
 // `nonzero` is a self-identified Atom that decodes only on shell. The file transport observes no status.
 // A pattern that does not decode refuses at the pattern (service_realization_status_pattern_not_of_transport).
-fn status_pattern_conforms(kind: DeclaredTransport, pat: Node) -> Bool {
+type DecodedStatusPattern
+  = DecodedShellExit { pattern: ShellExitPattern }
+  | DecodedRestStatus { status: RestResponseStatus }
+
+fn decoded_status_pattern(kind: DeclaredTransport, pat: Node) -> Optional<DecodedStatusPattern> {
   match kind {
-    DeclaredShell => match shell_exit_pattern_of(pat: pat) { Present { value: _ } => true  Absent => false }
-    DeclaredRest => match rest_response_status_of(pat: pat) { Present { value: _ } => true  Absent => false }
-    DeclaredFile => false
+    DeclaredShell =>
+      match shell_exit_pattern_of(pat: pat) {
+        Present { value: p } => optional_present(value: DecodedShellExit { pattern: p })
+        Absent => optional_absent()
+      }
+    DeclaredRest =>
+      match rest_response_status_of(pat: pat) {
+        Present { value: st } => optional_present(value: DecodedRestStatus { status: st })
+        Absent => optional_absent()
+      }
+    DeclaredFile => optional_absent()
   }
 }
 
@@ -373,21 +385,35 @@ fn realization_leaf_member_refusal(interface: Node, member: Edge) -> Optional<Re
 // closed set (v2.extdeps.languages.dag dag_grammar_service_config_field_name_expr), which the lowering
 // reads; the values are ordinary expressions whose references resolve.
 fn realization_config_refusal(config: Node) -> Optional<RealizationRefusal> {
-  if node_is_conj(n: config) && (count(config.children) > 0) && all_names_distinct(children: config.children) {
-    optional_absent()
-  } else {
-    realization_refusal(reason: ^service_realization_config_malformed, at: config)
+  realization_require_conj(n: config, reason: ^service_realization_config_malformed, then: fn() {
+    if (count(config.children) > 0) && all_names_distinct(children: config.children) { optional_absent() }
+    else { realization_refusal(reason: ^service_realization_config_malformed, at: config) }
+  })
+}
+
+// Proceed with `then` when the node is a Conj; any other shape refuses with `reason`, at the node.
+fn realization_require_conj(n: Node, reason: Symbol, then: fn() -> Optional<RealizationRefusal>) -> Optional<RealizationRefusal> {
+  match realization_node_shape(n: n) {
+    ShapeConj => then()
+    ShapeAtom { identity: _ } => realization_refusal(reason: reason, at: n)
+    ShapeArrow => realization_refusal(reason: reason, at: n)
+    ShapeOther => realization_refusal(reason: reason, at: n)
   }
 }
 
 // An ENTRY is a Conj carrying its transport once and each optional member (<status-arms>, <mock-arms>,
 // <projection>) at most once; a second block of one kind refuses at the entry.
 fn realization_entry_refusal(op: Node, entry: Node) -> Optional<RealizationRefusal> {
-  if !node_is_arrow(n: op) {
-    realization_refusal(reason: ^service_realization_entry_without_operation, at: entry)
-  } else if !node_is_conj(n: entry) {
-    realization_refusal(reason: ^service_realization_entry_malformed, at: entry)
-  } else if !all_names_distinct(children: entry.children) {
+  match realization_node_shape(n: op) {
+    ShapeArrow => realization_require_conj(n: entry, reason: ^service_realization_entry_malformed, then: fn() { realization_entry_members_refusal(op: op, entry: entry) })
+    ShapeAtom { identity: _ } => realization_refusal(reason: ^service_realization_entry_without_operation, at: entry)
+    ShapeConj => realization_refusal(reason: ^service_realization_entry_without_operation, at: entry)
+    ShapeOther => realization_refusal(reason: ^service_realization_entry_without_operation, at: entry)
+  }
+}
+
+fn realization_entry_members_refusal(op: Node, entry: Node) -> Optional<RealizationRefusal> {
+  if !all_names_distinct(children: entry.children) {
     realization_refusal(reason: ^service_realization_entry_member_repeated, at: entry)
   } else {
     match named_edge_target_lookup(children: entry.children, name: realization_transport_label()) {
@@ -399,39 +425,21 @@ fn realization_entry_refusal(op: Node, entry: Node) -> Optional<RealizationRefus
 }
 
 fn realization_entry_with_transport_refusal(op: Node, entry: Node, transport: Node) -> Optional<RealizationRefusal> {
-  if !node_is_conj(n: transport) {
-    realization_refusal(reason: ^service_realization_transport_malformed, at: transport)
-  } else {
-    match named_edge_target_lookup(children: transport.children, name: realization_transport_kind_label()) {
-      Found { target: k } =>
-        match realization_transport_kind(k: k) {
-          Present { value: kind } =>
-            fold(entry.children, init: realization_transport_refusal(kind: kind, op: op, transport: transport), f: fn(acc, e) {
-              realization_first_refusal(acc: acc, next: fn() { realization_entry_member_refusal(kind: kind, op: op, member: e) })
-            })
-          Absent => realization_transport_kind_refusal(k: k)
-        }
-      Ambiguous => realization_refusal(reason: ^service_realization_transport_unmodeled, at: transport)
-      Absent => realization_refusal(reason: ^service_realization_transport_unmodeled, at: transport)
-    }
-  }
+  realization_require_conj(n: transport, reason: ^service_realization_transport_malformed, then: fn() { realization_transport_block_refusal(op: op, entry: entry, transport: transport) })
 }
 
-fn node_is_conj(n: Node) -> Bool {
-  match realization_node_shape(n: n) {
-    ShapeConj => true
-    ShapeAtom { identity: _ } => false
-    ShapeArrow => false
-    ShapeOther => false
-  }
-}
-
-fn node_is_arrow(n: Node) -> Bool {
-  match realization_node_shape(n: n) {
-    ShapeArrow => true
-    ShapeAtom { identity: _ } => false
-    ShapeConj => false
-    ShapeOther => false
+fn realization_transport_block_refusal(op: Node, entry: Node, transport: Node) -> Optional<RealizationRefusal> {
+  match named_edge_target_lookup(children: transport.children, name: realization_transport_kind_label()) {
+    Found { target: k } =>
+      match realization_transport_kind(k: k) {
+        Present { value: kind } =>
+          fold(entry.children, init: realization_transport_refusal(kind: kind, op: op, transport: transport), f: fn(acc, e) {
+            realization_first_refusal(acc: acc, next: fn() { realization_entry_member_refusal(kind: kind, op: op, member: e) })
+          })
+        Absent => realization_transport_kind_refusal(k: k)
+      }
+    Ambiguous => realization_refusal(reason: ^service_realization_transport_unmodeled, at: transport)
+    Absent => realization_refusal(reason: ^service_realization_transport_unmodeled, at: transport)
   }
 }
 
@@ -581,9 +589,11 @@ fn realization_entry_member_refusal(kind: DeclaredTransport, op: Node, member: E
 // applies), each { <arm-pattern> -> pattern, <arm-payload> -> type or value }. A pattern repeated
 // within one block refuses at its second arm.
 fn realization_arms_refusal(kind: DeclaredTransport, arms: Node) -> Optional<RealizationRefusal> {
-  if !node_is_conj(n: arms) {
-    realization_refusal(reason: ^service_realization_arm_malformed, at: arms)
-  } else if count(arms.children) == 0 {
+  realization_require_conj(n: arms, reason: ^service_realization_arm_malformed, then: fn() { realization_arms_members_refusal(kind: kind, arms: arms) })
+}
+
+fn realization_arms_members_refusal(kind: DeclaredTransport, arms: Node) -> Optional<RealizationRefusal> {
+  if count(arms.children) == 0 {
     realization_refusal(reason: ^service_realization_arms_empty, at: arms)
   } else {
     let walked = fold(arms.children, init: realization_arms_walk_initial(), f: fn(acc, e) {
@@ -612,8 +622,12 @@ fn realization_arm_step(kind: DeclaredTransport, acc: RealizationArmsWalk, arm: 
     Authored { name: _ } => realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm.target)
     StructuralLabel { label: _ } => realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm.target)
     Positional =>
-      if node_is_conj(n: arm.target) { realization_conj_arm_step(kind: kind, acc: acc, arm: arm.target) }
-      else { realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm.target) }
+      match realization_node_shape(n: arm.target) {
+        ShapeConj => realization_conj_arm_step(kind: kind, acc: acc, arm: arm.target)
+        ShapeAtom { identity: _ } => realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm.target)
+        ShapeArrow => realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm.target)
+        ShapeOther => realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm.target)
+      }
   }
 }
 
@@ -624,21 +638,28 @@ fn realization_arms_walk_refused(acc: RealizationArmsWalk, reason: Symbol, at: N
 fn realization_conj_arm_step(kind: DeclaredTransport, acc: RealizationArmsWalk, arm: Node) -> RealizationArmsWalk {
   match named_edge_target_lookup(children: arm.children, name: realization_arm_pattern_label()) {
     Found { target: pat } =>
-      if !status_pattern_conforms(kind: kind, pat: pat) {
-        realization_arms_walk_refused(acc: acc, reason: ^service_realization_status_pattern_not_of_transport, at: pat)
-      } else if fold(acc.seen, init: false, f: fn(found, p) { found || (content_hash(n: p) == content_hash(n: pat)) }) {
-        realization_arms_walk_refused(acc: acc, reason: ^service_realization_status_pattern_repeated, at: pat)
-      } else {
-        match named_edge_target_lookup(children: arm.children, name: realization_arm_payload_label()) {
-          Found { target: _ } =>
-            if count(arm.children) == 2 { RealizationArmsWalk { seen: list_snoc_item(xs: acc.seen, item: pat), refusal: optional_absent() } }
-            else { realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm) }
-          Ambiguous => realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm)
-          Absent => realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm)
-        }
+      match decoded_status_pattern(kind: kind, pat: pat) {
+        Absent => realization_arms_walk_refused(acc: acc, reason: ^service_realization_status_pattern_not_of_transport, at: pat)
+        Present { value: _ } => realization_decoded_arm_step(acc: acc, arm: arm, pat: pat)
       }
     Ambiguous => realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm)
     Absent => realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm)
+  }
+}
+
+// An arm whose pattern decoded: it refuses as a repeat of an earlier arm's pattern, or when it is not
+// exactly { pattern, payload }.
+fn realization_decoded_arm_step(acc: RealizationArmsWalk, arm: Node, pat: Node) -> RealizationArmsWalk {
+  if fold(acc.seen, init: false, f: fn(found, p) { found || (content_hash(n: p) == content_hash(n: pat)) }) {
+    realization_arms_walk_refused(acc: acc, reason: ^service_realization_status_pattern_repeated, at: pat)
+  } else {
+    match named_edge_target_lookup(children: arm.children, name: realization_arm_payload_label()) {
+      Found { target: _ } =>
+        if count(arm.children) == 2 { RealizationArmsWalk { seen: list_snoc_item(xs: acc.seen, item: pat), refusal: optional_absent() } }
+        else { realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm) }
+      Ambiguous => realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm)
+      Absent => realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm)
+    }
   }
 }
 
@@ -647,9 +668,11 @@ fn realization_conj_arm_step(kind: DeclaredTransport, acc: RealizationArmsWalk, 
 // The output must be one the operation declares, and the key must name something the transport
 // observes (closed on shell and file, an open body member on rest).
 fn realization_projection_refusal(kind: DeclaredTransport, op: Node, rows: Node) -> Optional<RealizationRefusal> {
-  if !node_is_conj(n: rows) {
-    realization_refusal(reason: ^service_realization_projection_malformed, at: rows)
-  } else if count(rows.children) == 0 {
+  realization_require_conj(n: rows, reason: ^service_realization_projection_malformed, then: fn() { realization_projection_rows_refusal(kind: kind, op: op, rows: rows) })
+}
+
+fn realization_projection_rows_refusal(kind: DeclaredTransport, op: Node, rows: Node) -> Optional<RealizationRefusal> {
+  if count(rows.children) == 0 {
     realization_refusal(reason: ^service_realization_projection_empty, at: rows)
   } else if !all_names_distinct(children: rows.children) {
     realization_refusal(reason: ^service_realization_projection_field_repeated, at: rows)
