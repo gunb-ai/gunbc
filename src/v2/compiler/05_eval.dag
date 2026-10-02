@@ -34,7 +34,9 @@ import v2.std.collection {
   list_at_optional,
   list_nth
 }
-import v2.std.qualified_name { declaration_reference_path_optional, parameter_reference_path_optional }
+import v2.std.qualified_name {
+  qualified_name_snoc,
+  qualified_name_to_dotted_string, declaration_reference_path_optional, parameter_reference_path_optional }
 import v2.std.optional {
   Absent,
   Optional,
@@ -94,6 +96,7 @@ import v2.std.runtime {
   runtime_value_resolved_type
 }
 import v2.std.node {
+  symbol_intern_lexeme,
   positional_edges,
   ArrowBodyForm,
   Behavior,
@@ -1332,10 +1335,21 @@ fn eval_type_node_atom(
       )
     Absent =>
   match parameter_reference_path_optional(node: node) {
-    Present { value: _ } =>
-      outcome_rejected(
-        d: eval_diagnostic(reason: ^eval_rejected_parameter_reference_unbound, node: node)
-      )
+    Present { value: path } =>
+      // THE REFERENCE CARRIES ITS OWN KEY, so the body looks the actual up under the path the call bound it
+      // at -- the same key eval_parameter_binding_key produced, which is why that constructor is the only
+      // place either side derives one. The refusal that stood here answered for EVERY parameter reference,
+      // which was honest while no route evaluated a declared body over resolver output and became a wall
+      // against the capability once one did. It does not disappear: a reference whose path the environment
+      // does not hold still refuses with the same reason, so a wrong path or an unbound parameter is still
+      // a located refusal and only a BOUND one now executes.
+      match environment.bindings.lookup(eval_parameter_binding_key(parameter_path: path)) {
+        Present { value: v } => Accepted { value: v, diagnostics: None }
+        Absent =>
+          outcome_rejected(
+            d: eval_diagnostic(reason: ^eval_rejected_parameter_reference_unbound, node: node)
+          )
+      }
     Absent =>
   match node.kind {
     TypeNode { connective: Atom { identity: _ } } =>
@@ -1369,12 +1383,48 @@ fn eval_type_node_atom(
 // for each declared parameter, which of them fills it -- the same plan v2.compiler.infer checked, so
 // the two stages cannot bind one call differently. A domain with no named binder keeps its positional
 // edges, bound in their own order.
+// THE PARAMETER BINDING KEY, AND IT IS ONE CONSTRUCTOR BECAUSE BINDING AND LOOKUP MUST NOT DISAGREE.
+// gunbc#12766 made a named fn's parameter use a PATH-KEYED parameter reference and declared eval's keying a
+// frontier whose trigger is this lane's named-call route. Binding by the bare label while the body looks the
+// parameter up by its declaring path is exactly the two-authorities defect that frontier existed to prevent,
+// so the key is derived here and nowhere else: the callee's declaring path, then the formal's label.
+//
+// THE FULL PATH, NEVER THE LEAF. `p.f.x` and `p.g.x` are different parameters of different declarations, and
+// keying on `x` would alias them -- one function's actual answering another function's body. That is the same
+// reasoning v2.compiler.infer records for symbol_index_lookup, which asks for the whole declaring path
+// precisely because a leaf answer fabricated a type from an unrelated declaration.
+//
+// THE KEY IS INTERNED, because EnvironmentBindingKey carries a Symbol (v2.std.runtime) rather than a path,
+// and the dotted rendering is v2.std.qualified_name's own. A separator that could occur inside a segment
+// would make two distinct paths collide, and `.` cannot: it is the segment separator of the very grammar
+// these names come from.
+fn eval_parameter_binding_key(parameter_path: QualifiedName) -> EnvironmentBindingKey {
+  environment_binding_key_for_symbol(
+    sym: symbol_intern_lexeme(lexeme: qualified_name_to_dotted_string(qn: parameter_path))
+  )
+}
+
+// WHICH KEYING A FORMAL GETS, decided once. A call whose callee is a resolved declaration reference supplies
+// a declaring path, so its formals are keyed by path. A LAMBDA supplies none: gunbc#12766 deliberately left
+// lambda parameters on their lexical bare-label route, because an anonymous Arrow has no index path to key
+// by, so Absent keeps exactly the behaviour that route already had. This is not a fallback for the
+// path-keyed case -- a named declaration NEVER keys by bare label, because binding both spellings would make
+// the route look repaired while preserving the two authorities the frontier forbids.
+fn eval_formal_binding_key(callee_path: Optional<QualifiedName>, label: Symbol) -> EnvironmentBindingKey {
+  match callee_path {
+    Present { value: path } =>
+      eval_parameter_binding_key(parameter_path: qualified_name_snoc(qn: path, segment: label))
+    Absent => environment_binding_key_for_symbol(sym: label)
+  }
+}
+
 fn eval_bind_arrow_params(
   arrow: Node,
   args: List<RuntimeValue>,
   environment: EvaluationEnvironment,
   bind: BindInterpreter,
-  node: Node
+  node: Node,
+  callee_path: Optional<QualifiedName>
 ) -> Outcome<EvaluationEnvironment> {
   bind_outcome(
     o: eval_nth_child(node: arrow, wanted: 0, absent_reason: ^eval_rejected_callee_absent),
@@ -1394,7 +1444,13 @@ fn eval_bind_arrow_params(
                       absent: eval_diagnostic(reason: ^eval_rejected_argument_bind_absent, node: node)
                     )
                   ),
-                  f: fn(value) { bind.bind_value(environment_binding_key_for_symbol(sym: slot.label), value, env) }
+                  f: fn(value) {
+                    bind.bind_value(
+                      eval_formal_binding_key(callee_path: callee_path, label: slot.label),
+                      value,
+                      env
+                    )
+                  }
                 )
               })
             })
@@ -1787,7 +1843,12 @@ fn eval_transform_node(
                       args: args,
                       environment: environment,
                       bind: interpretation.bind,
-                      node: node
+                      node: node,
+                      // THE CALLEE'S OWN DECLARING PATH, read off the reference the call carries rather than
+                      // re-resolved: eval is a consumer of resolution's answer here, never a second naming
+                      // authority. A callee that is not a declaration reference (a lambda) yields Absent and
+                      // its formals stay on the lexical route.
+                      callee_path: declaration_reference_path_optional(node: callee_edge.target)
                     ),
                     f: fn(call_environment) {
                       match body_form {
