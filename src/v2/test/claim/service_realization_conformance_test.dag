@@ -6,6 +6,8 @@ import v2.std.service_realization_labels {
   realization_transport_label,
   realization_transport_kind_label,
   realization_status_arms_label,
+  realization_mock_arms_label,
+  realization_config_label,
   realization_projection_label,
   realization_arm_pattern_label,
   realization_arm_payload_label,
@@ -15,11 +17,13 @@ import v2.compiler.symbol_index_fill { symbol_index_fill_containment_node }
 import v2.extdeps.languages.dag { dag_int_literal_node_from_lexeme, dag_string_literal_node }
 import v2.std.arrow_signature { declared_signature_arrow }
 import v2.std.node_query { binder_edge }
+import v2.std.list_introduction { lower_list_introduction }
+import v2.std.operation_argv { ArgvEmpty, ArgvExpressionUnsupported, ArgvRefusalCause, BindingMalformed, DeclaredInputUnbound, DuplicateInputBinding, ExecutablePositionNotLiteral, OperationNotFound, TokenListInStringPosition, UndeclaredInputBound }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_lookup }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.optional { Absent, Optional, Present }
+import v2.std.optional { Absent, Optional, Present, optional_absent }
 import v2.std.collection { List }
 import v2.std.text { String }
 import std.algebra { Cons, Empty }
@@ -63,11 +67,21 @@ fn sr_string(value: String) -> Node {
   dag_string_literal_node(value: value, occurrence_id: OccurrenceSynthetic)
 }
 
-// The interface leaf: Run, an Arrow from no inputs to { out: Int }.
+// The interface leaf: Run, an Arrow from { x: String } to { out: Int }.
 fn sr_interface() -> Node {
   sr_conj(children: [
-    sr_named(name: ^Run, target: declared_signature_arrow(params: Empty, codomain: sr_conj(children: [binder_edge(name: ^out, type_node: sr_atom(id: ^Int))]), source: sr_atom(id: ^Run)))
+    sr_named(name: ^Run, target: declared_signature_arrow(params: [binder_edge(name: ^x, type_node: sr_atom(id: ^String))], codomain: sr_conj(children: [binder_edge(name: ^out, type_node: sr_atom(id: ^Int))]), source: sr_atom(id: ^Run)))
   ])
+}
+
+// An argv list literal in the lowered form (v2.std.list_introduction lower_list_introduction).
+fn sr_list(elements: List<Node>) -> Node {
+  lower_list_introduction(elements: elements, source: sr_atom(id: ^argv))
+}
+
+// `["git", x]`: a literal executable and a reference to the declared input x.
+fn sr_argv_ok() -> Node {
+  sr_list(elements: [sr_string(value: "git"), sr_atom(id: ^x)])
 }
 
 fn sr_transport(kind: String, fields: List<Edge>) -> Edge {
@@ -92,7 +106,7 @@ fn sr_projection(field: Symbol, key: String) -> Edge {
 
 fn sr_shell_entry(arms: List<Edge>, field: Symbol, key: String) -> Node {
   sr_conj(children: [
-    sr_transport(kind: "shell", fields: [sr_named(name: ^argv, target: sr_string(value: "true"))]),
+    sr_transport(kind: "shell", fields: [sr_named(name: ^argv, target: sr_argv_ok())]),
     sr_arms(arms: arms),
     sr_projection(field: field, key: key)
   ])
@@ -211,4 +225,110 @@ test fn a_realization_entry_is_never_indexed_holds() -> Bool {
     && !sr_indexed(index: realized, path: [realization_root_label()])
     && !sr_indexed(index: realized, path: [realization_root_label(), ^S, ^Run])
     && sr_indexed(index: control, path: [^R, ^S, ^Run])
+}
+
+// ---- XL-2 side-chat hold on 3a (P1a, P1b, P1c, P2) ----
+
+fn sr_rest_code(lexeme: String) -> Node {
+  sr_leaf(op: ^Run, entry: sr_rest_entry(pat: sr_code(lexeme: lexeme), key: "x"))
+}
+
+// P1a. A rest exact code is admitted only through std.types http_status_of: the range's ends conform and
+// one past either end refuses at the pattern. A shell exit code stays on its own integer route: 600 is an
+// admitted exit-status spelling there, never read as an HTTP status.
+test fn a_rest_code_is_admitted_only_as_an_http_status_holds() -> Bool {
+  sr_admitted(realization: sr_rest_code(lexeme: "100"))
+    && sr_admitted(realization: sr_rest_code(lexeme: "599"))
+    && sr_refused_as(realization: sr_rest_code(lexeme: "99"), reason: ^service_realization_status_pattern_not_of_transport)
+    && sr_refused_as(realization: sr_rest_code(lexeme: "600"), reason: ^service_realization_status_pattern_not_of_transport)
+    && sr_admitted(realization: sr_leaf(op: ^Run, entry: sr_shell_entry(arms: [sr_arm(pat: sr_code(lexeme: "600"))], field: ^out, key: "stdout")))
+}
+
+fn sr_shell_transport() -> Edge {
+  sr_transport(kind: "shell", fields: [sr_named(name: ^argv, target: sr_argv_ok())])
+}
+
+fn sr_arms_of(label: Symbol, arms: List<Edge>) -> Edge {
+  sr_named(name: label, target: sr_conj(children: arms))
+}
+
+// P1b. THE DOCUMENTED SHAPE. An entry is a Conj; each optional member at most once; a projection
+// projects an output once; the transport block is a Conj whose kind is a CHILDLESS Atom; arms and
+// projection are Conjs.
+test fn the_entry_shape_is_enforced_holds() -> Bool {
+  sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_atom(id: ^Unit)), reason: ^service_realization_entry_malformed)
+    && sr_refused_as(
+         realization: sr_leaf(op: ^Run, entry: sr_conj(children: [sr_shell_transport(), sr_arms(arms: [sr_arm(pat: sr_code(lexeme: "0"))]), sr_arms(arms: [sr_arm(pat: sr_code(lexeme: "1"))])])),
+         reason: ^service_realization_entry_member_repeated)
+    && sr_refused_as(
+         realization: sr_leaf(op: ^Run, entry: sr_conj(children: [sr_shell_transport(), sr_named(name: realization_projection_label(), target: sr_conj(children: [sr_named(name: ^out, target: sr_string(value: "stdout")), sr_named(name: ^out, target: sr_string(value: "stderr"))]))])),
+         reason: ^service_realization_projection_field_repeated)
+    && sr_refused_as(
+         realization: sr_leaf(op: ^Run, entry: sr_conj(children: [sr_named(name: realization_transport_label(), target: sr_atom(id: sr_lex(s: "shell")))])),
+         reason: ^service_realization_transport_malformed)
+    && sr_refused_as(
+         realization: sr_leaf(op: ^Run, entry: sr_conj(children: [sr_named(name: realization_transport_label(), target: sr_conj(children: [sr_named(name: realization_transport_kind_label(), target: node_synthetic(kind: TypeNode { connective: Atom { identity: sr_lex(s: "shell") } }, children: [sr_named(name: ^extra, target: sr_atom(id: ^Unit))]))]))])),
+         reason: ^service_realization_transport_kind_malformed)
+    && sr_refused_as(
+         realization: sr_leaf(op: ^Run, entry: sr_conj(children: [sr_shell_transport(), sr_named(name: realization_status_arms_label(), target: sr_atom(id: ^Unit))])),
+         reason: ^service_realization_arm_malformed)
+    && sr_refused_as(
+         realization: sr_leaf(op: ^Run, entry: sr_conj(children: [sr_shell_transport(), sr_named(name: realization_projection_label(), target: sr_atom(id: ^Unit))])),
+         reason: ^service_realization_projection_malformed)
+}
+
+fn sr_argv_entry(argv: Node) -> Node {
+  sr_leaf(op: ^Run, entry: sr_conj(children: [sr_transport(kind: "shell", fields: [sr_named(name: ^argv, target: argv)])]))
+}
+
+fn sr_argv_cause(argv: Node) -> Optional<ArgvRefusalCause> {
+  match sr_refusal_of(realization: sr_argv_entry(argv: argv)) {
+    Present { value: r } => if r.reason == ^service_realization_argv_refused { r.argv } else { optional_absent() }
+    Absent => optional_absent()
+  }
+}
+
+fn sr_argv_cause_is(argv: Node, expected: String) -> Bool {
+  match sr_argv_cause(argv: argv) {
+    Present { value: c } => sr_argv_cause_tag(c: c) == expected
+    Absent => false
+  }
+}
+
+fn sr_argv_cause_tag(c: ArgvRefusalCause) -> String {
+  match c {
+    OperationNotFound => "OperationNotFound"
+    ArgvEmpty => "ArgvEmpty"
+    UndeclaredInputBound { name: n } => concat("UndeclaredInputBound:", n)
+    DuplicateInputBinding { name: _ } => "DuplicateInputBinding"
+    DeclaredInputUnbound { name: _ } => "DeclaredInputUnbound"
+    ExecutablePositionNotLiteral { detail: _ } => "ExecutablePositionNotLiteral"
+    TokenListInStringPosition { name: _ } => "TokenListInStringPosition"
+    ArgvExpressionUnsupported { detail: _ } => "ArgvExpressionUnsupported"
+    BindingMalformed { detail: _ } => "BindingMalformed"
+  }
+}
+
+// P1c. A SHELL ARGV IS READ IN THE SHARED ARGV VOCABULARY (v2.std.operation_argv ArgvRefusalCause). The
+// accepted control references the declared input x; each red differs in the one property its cause
+// names.
+test fn a_shell_argv_is_checked_in_the_shared_argv_vocabulary_holds() -> Bool {
+  sr_admitted(realization: sr_argv_entry(argv: sr_argv_ok()))
+    && sr_argv_cause_is(argv: sr_string(value: "git status"), expected: "BindingMalformed")
+    && sr_argv_cause_is(argv: sr_list(elements: Empty), expected: "ArgvEmpty")
+    && sr_argv_cause_is(argv: sr_list(elements: [sr_atom(id: ^x)]), expected: "ExecutablePositionNotLiteral")
+    && sr_argv_cause_is(argv: sr_list(elements: [sr_string(value: "git"), sr_atom(id: ^y)]), expected: "UndeclaredInputBound:y")
+    && sr_argv_cause_is(argv: sr_list(elements: [sr_string(value: "git"), sr_int(lexeme: "7")]), expected: "ArgvExpressionUnsupported")
+}
+
+// P2. One red for each remaining refusal reason, each differing from an accepted shape in that property.
+test fn each_remaining_refusal_has_its_red_holds() -> Bool {
+  sr_refused_as(realization: sr_conj(children: [sr_named(name: ^Run, target: sr_shell_ok()), sr_named(name: ^Run, target: sr_shell_ok())]), reason: ^service_realization_entry_repeated)
+    && sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_conj(children: [sr_shell_transport(), sr_named(name: ^bogus, target: sr_atom(id: ^Unit))])), reason: ^service_realization_member_unknown)
+    && sr_refused_as(realization: sr_conj(children: [sr_named(name: realization_config_label(), target: sr_conj(children: Empty))]), reason: ^service_realization_config_malformed)
+    && sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_conj(children: [sr_transport(kind: "shell", fields: [sr_named(name: ^argv, target: sr_argv_ok()), sr_named(name: ^argv, target: sr_argv_ok())])])), reason: ^service_realization_binding_field_repeated)
+    && sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_conj(children: [sr_shell_transport(), sr_arms_of(label: realization_mock_arms_label(), arms: Empty)])), reason: ^service_realization_arms_empty)
+    && sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_conj(children: [sr_shell_transport(), sr_arms(arms: [Edge { label: Positional, target: sr_conj(children: [sr_named(name: realization_arm_pattern_label(), target: sr_code(lexeme: "0"))]) }])])), reason: ^service_realization_arm_malformed)
+    && sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_conj(children: [sr_shell_transport(), sr_named(name: realization_projection_label(), target: sr_conj(children: Empty))])), reason: ^service_realization_projection_empty)
+    && sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_conj(children: [sr_shell_transport(), sr_named(name: realization_projection_label(), target: sr_conj(children: [sr_named(name: ^out, target: sr_int(lexeme: "1"))]))])), reason: ^service_realization_wire_key_not_a_string)
 }
