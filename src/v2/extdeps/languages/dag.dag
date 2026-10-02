@@ -2338,14 +2338,23 @@ fn dag_grammar_io_block_expr(keyword: String) -> GrammarExpr {
   )
 }
 
+// EACH MODIFIER KEYWORD IS ITS OWN PRODUCTION (XL-2 PR2c-i). A literal terminal is a match constraint
+// that publishes its CLASS (v2.compiler.parse parse_expr_with_first), so `readonly`, `idempotent` and
+// `hermetic` would all parse to the same ident atom and the parse could not say which was written. The
+// production that emitted the keyword says it, as `input`/`output` are told apart by theirs, and
+// v2.compiler.body_lowering_fold body_lower_operation_modifier projects each to its home.
 fn dag_grammar_op_modifier_expr() -> GrammarExpr {
   dag_grammar_choice(
-    left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "readonly")),
+    left: dag_grammar_nonterminal(production: ^dag_production_op_modifier_readonly),
     right: dag_grammar_choice(
-      left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "idempotent")),
-      right: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "hermetic"))
+      left: dag_grammar_nonterminal(production: ^dag_production_op_modifier_idempotent),
+      right: dag_grammar_nonterminal(production: ^dag_production_op_modifier_hermetic)
     )
   )
+}
+
+fn dag_grammar_keyword_expr(lexeme: String) -> GrammarExpr {
+  dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: lexeme))
 }
 
 // `requires R, ..` ON AN OPERATION: the resources an opaque operation reaches (D13 step a). Each member
@@ -3038,6 +3047,21 @@ fn dag_grammar_root() -> GrammarRoot {
     expression: dag_grammar_op_modifier_expr(),
     emitted: ^dag_surface_op_modifier
   )
+  let op_modifier_readonly = dag_grammar_production(
+    name: ^dag_production_op_modifier_readonly,
+    expression: dag_grammar_keyword_expr(lexeme: "readonly"),
+    emitted: ^dag_surface_op_modifier_readonly
+  )
+  let op_modifier_idempotent = dag_grammar_production(
+    name: ^dag_production_op_modifier_idempotent,
+    expression: dag_grammar_keyword_expr(lexeme: "idempotent"),
+    emitted: ^dag_surface_op_modifier_idempotent
+  )
+  let op_modifier_hermetic = dag_grammar_production(
+    name: ^dag_production_op_modifier_hermetic,
+    expression: dag_grammar_keyword_expr(lexeme: "hermetic"),
+    emitted: ^dag_surface_op_modifier_hermetic
+  )
   let op_requires_none = dag_grammar_production(
     name: ^dag_production_op_requires_none,
     expression: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "none")),
@@ -3313,6 +3337,9 @@ fn dag_grammar_root() -> GrammarRoot {
       input_block,
       output_block,
       op_modifier,
+      op_modifier_readonly,
+      op_modifier_idempotent,
+      op_modifier_hermetic,
       op_requires,
       op_requires_none,
       op_requires_opaque,
