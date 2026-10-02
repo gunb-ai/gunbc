@@ -3235,6 +3235,17 @@ fn resolve_binder_part(type_ctx: ResolveContext, default_ctx: ResolveContext, pa
 // resource declarations), at most once by resolved declaration. A member naming anything else, or a
 // declaration a second spelling already named, refuses at that member.
 fn resolve_arrow_resource_requirements(ctx: ResolveContext, requirements: Node) -> ResolveNodeWalk {
+  match requirements.kind {
+    TypeNode { connective: Atom { identity: _ } } =>
+      ResolveWalkAccepted { value: requirements, diagnostics: None }
+    _ => resolve_arrow_resource_requirement_members(ctx: ctx, requirements: requirements)
+  }
+}
+
+// `requires none` and `requires opaque` are declared words, not references, so the Atom forms are
+// carried unwalked (v2.std.arrow_contract has already checked their identity); only the member Conj
+// names declarations.
+fn resolve_arrow_resource_requirement_members(ctx: ResolveContext, requirements: Node) -> ResolveNodeWalk {
   match resolve_node_walk(ctx: ctx, n: requirements) {
     ResolveWalkRefused { first: f, rest: rs, observation: o } => ResolveWalkRefused { first: f, rest: rs, observation: o }
     ResolveWalkAccepted { value: resolved, diagnostics: d, lexical: l } =>
