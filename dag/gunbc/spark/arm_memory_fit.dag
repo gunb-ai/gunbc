@@ -2270,11 +2270,11 @@ type ArmRankCacheSupply {
 // interval, minimum group count) and which plan-entry populations (recurrent entries, full-attention
 // identities by suffix, sliding-window entries) the engine must allocate, each with the message that
 // names it. The folds take the roster from their caller; GLM-5.3-Flash's is derived from its hybrid
-// shape (glm_5_3_flash_expected_kv_roster, the same counts and messages as before). DeepSeek V4.1 has
+// shape (glm_5_3_flash_expected_kv_roster: the same counts as before; the full-attention census message now names the suffixes it counts). DeepSeek V4.1 has
 // no derived roster yet: its allocation plan has never been read (gunbc.spark.vllm_allocation_plan_observe
 // captures GLM's), so there is nothing for a V4.1 roster to be checked against until one is -- that
 // capture is the trigger for writing its roster from its own shape (extdeps.deepseek).
-type ExpectedGroupKind = ExpectMambaKind | ExpectFullAttentionKind
+type ExpectedGroupKind = ExpectMambaKind | ExpectFullAttentionKind | ExpectSlidingWindowKind { window: TokenCount }
 
 type ExpectedLayoutGroup
   = ExpectGroupLayers { kind: ExpectedGroupKind, layers: Nat, missing: NonEmptyStr }
@@ -2288,6 +2288,7 @@ type ExpectedPlanCensus
 
 type ExpectedKvRoster sole_constructor {
   model: NonEmptyStr
+  runtime: VllmSourceRevision
   consistent: Bool
   layout: List<ExpectedLayoutGroup>
   plan: List<ExpectedPlanCensus>
@@ -2296,6 +2297,7 @@ type ExpectedKvRoster sole_constructor {
 fn glm_5_3_flash_expected_kv_roster(shape: Glm53FlashHybridShape) -> ExpectedKvRoster {
   ExpectedKvRoster {
     model: "GLM-5.3-Flash" as NonEmptyStr,
+    runtime: vllm_source_revision_read,
     consistent: glm_5_3_flash_hybrid_shape_consistent(shape),
     layout: [
       ExpectGroupLayers { kind: ExpectMambaKind, layers: shape.kda_linear_attention_layers,
@@ -2320,9 +2322,34 @@ fn glm_5_3_flash_expected_kv_roster(shape: Glm53FlashHybridShape) -> ExpectedKvR
 }
 
 fn expected_group_kind_matches(kind: ExpectedGroupKind, g: KvGroupKind) -> Bool {
-  match kind {
-    ExpectMambaKind => match g { MambaState => true  _ => false }
-    ExpectFullAttentionKind => match g { FullAttention => true  _ => false }
+  match g {
+    FullAttention => match kind {
+      ExpectFullAttentionKind => true
+      ExpectMambaKind => false
+      ExpectSlidingWindowKind { window: _ } => false
+    }
+    SlidingWindowAttention { window: gw } => match kind {
+      ExpectSlidingWindowKind { window: w } => token_count_value(t: gw) == token_count_value(t: w)
+      ExpectFullAttentionKind => false
+      ExpectMambaKind => false
+    }
+    MambaState => match kind {
+      ExpectMambaKind => true
+      ExpectFullAttentionKind => false
+      ExpectSlidingWindowKind { window: _ } => false
+    }
+    KPoolIndex { pool_every: _ } => false
+  }
+}
+
+// THE KPOOL INTERVAL OF A GROUP, IF IT IS ONE: spelled over every kind so a new kind is a compile-time
+// decision here rather than a silent non-match.
+fn kv_group_kpool_interval(k: KvGroupKind) -> TokenCount? {
+  match k {
+    KPoolIndex { pool_every: p } => Present { value: p }
+    FullAttention => none
+    SlidingWindowAttention { window: _ } => none
+    MambaState => none
   }
 }
 
@@ -2331,8 +2358,8 @@ fn layout_group_obligation(layout: ResolvedKvLayout, e: ExpectedLayoutGroup) -> 
     ExpectGroupLayers { kind: k, layers: n, missing: m } =>
       if any(layout.groups, g => expected_group_kind_matches(kind: k, g: g.kind) && attention_layer_count_value(c: g.layer_count) == n) { [] } else { [m] }
     ExpectKPoolInterval { tokens: t, missing: m, other_interval: o } =>
-      if any(layout.groups, g => match g.kind { KPoolIndex { pool_every: p } => token_count_value(t: p) == t  _ => false }) { [] }
-      else if any(layout.groups, g => match g.kind { KPoolIndex { pool_every: _ } => true  _ => false }) { [o] }
+      if any(layout.groups, g => match kv_group_kpool_interval(k: g.kind) { Present { value: p } => token_count_value(t: p) == t  Absent => false }) { [] }
+      else if any(layout.groups, g => match kv_group_kpool_interval(k: g.kind) { Present { value: _ } => true  Absent => false }) { [o] }
       else { [m] }
     ExpectAtLeastGroups { kind: k, groups: n, missing: m } =>
       if count(filter(layout.groups, g => expected_group_kind_matches(kind: k, g: g.kind))) >= n { [] } else { [m] }
@@ -2342,11 +2369,11 @@ fn layout_group_obligation(layout: ResolvedKvLayout, e: ExpectedLayoutGroup) -> 
 fn cache_roster_obligations(layout: ResolvedKvLayout, roster: ExpectedKvRoster) -> List<NonEmptyStr> {
   if !roster.consistent {
     [join(["the ", roster.model as String, " shape is inconsistent (the recurrent and sparse layer counts do not sum to the layer count, or a growth divisor is zero): the roster requirement it prices cannot be derived from it"], "") as NonEmptyStr]
-  } else if (layout.established_at_revision.repository as String) != (vllm_source_revision_read.repository as String)
-    || (layout.established_at_revision.full_revision as String) != (vllm_source_revision_read.full_revision as String) {
+  } else if (layout.established_at_revision.repository as String) != (roster.runtime.repository as String)
+    || (layout.established_at_revision.full_revision as String) != (roster.runtime.full_revision as String) {
     [join([
       "the roster was established at ", layout.established_at_revision.repository as String, "@", layout.established_at_revision.full_revision as String,
-      " but the capacity arithmetic is modelled against ", vllm_source_revision_read.repository as String, "@", vllm_source_revision_read.full_revision as String,
+      " but the capacity arithmetic is modelled against ", roster.runtime.repository as String, "@", roster.runtime.full_revision as String,
       ": a roster from another revision is a different engine's shape and this proof binds the exact roster",
     ], "") as NonEmptyStr]
   } else {
@@ -2559,11 +2586,11 @@ fn plan_census_obligation(plan: ResolvedKvAllocationPlan, e: ExpectedPlanCensus)
 fn cache_plan_roster_obligations(plan: ResolvedKvAllocationPlan, roster: ExpectedKvRoster) -> List<NonEmptyStr> {
   if !roster.consistent {
     [join(["the ", roster.model as String, " shape is inconsistent (the recurrent and sparse layer counts do not sum to the layer count, or a growth divisor is zero): the roster requirement it prices cannot be derived from it"], "") as NonEmptyStr]
-  } else if (plan.runtime.repository as String) != (vllm_source_revision_read.repository as String)
-    || (plan.runtime.full_revision as String) != (vllm_source_revision_read.full_revision as String) {
+  } else if (plan.runtime.repository as String) != (roster.runtime.repository as String)
+    || (plan.runtime.full_revision as String) != (roster.runtime.full_revision as String) {
     [join([
       "the allocation plan was read at ", plan.runtime.repository as String, "@", plan.runtime.full_revision as String,
-      " but the capacity arithmetic is modelled against ", vllm_source_revision_read.repository as String, "@", vllm_source_revision_read.full_revision as String,
+      " but the capacity arithmetic is modelled against ", roster.runtime.repository as String, "@", roster.runtime.full_revision as String,
       ": a plan from another revision is a different engine's roster and this proof binds the exact one",
     ], "") as NonEmptyStr]
   } else {
