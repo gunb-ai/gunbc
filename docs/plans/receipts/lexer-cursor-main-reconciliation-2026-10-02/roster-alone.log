@@ -1,0 +1,50 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/lexer-floor-baseline
+[pre-entry] phase=workspace_discovery ms=3 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=148 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=33260 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=6 scale=tree
+[pre-entry] phase=pool_census_parse ms=4385 scale=tree
+[pre-entry] phase=closure_name_census_build ms=6699 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=176 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=0 scale=closure
+[pre-entry] phase=closure_load ms=6770 scale=closure
+[pre-entry] phase=closure_parse ms=39 scale=closure
+[pre-entry] phase=closure_resolve ms=1 scale=closure
+[pre-entry] phase=closure_normalize ms=8 scale=closure
+[pre-entry] phase=closure_typecheck ms=259 scale=closure
+[pre-entry] phase=closure_parent_envs ms=0 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=2 scale=closure
+[pre-entry] phase=closure_ownership ms=5 scale=closure
+[pre-entry] phase=reconcile_pool_qualified_fill ms=5738 scale=tree
+[pre-entry] phase=reconcile_root_bare_underlay ms=3778 scale=tree
+[pre-entry] phase=reconcile_root_variant_base ms=461 scale=tree
+[pre-entry] phase=resolve_entry_graph_inclusive ms=55308 scale=closure
+[pre-entry] population pool_modules=7271 closure_files=4
+[pre-entry] process_cpu user_ms=52079 sys_ms=3084 max_rss_kib=6559840
+error: function `required_ci_lane_phase_rows` returned `[RequiredCiLanePhaseRow { lane: witnesses, phase: parse }, RequiredCiLanePhaseRow { lane: witnesses, phase: primitive-runtime-body }, RequiredCiLanePhaseRow { lane: build, phase: generated-artifact }, RequiredCiLanePhaseRow { lane: build, phase: regen-fixed-point }, RequiredCiLanePhaseRow { lane: witnesses, phase: bare-reference-admission }, RequiredCiLanePhaseRow { lane: witnesses, phase: floor }]`, not `ProcessExit`.
+  cause: the host maps a run's verdict to an exit code, and only ProcessExit carries one. Wrap the result in ExitSuccess / ExitFailure.
+  status: refused — printing the value and exiting 0 would report success for a run whose outcome is unknown.
+Command exited with non-zero status 2
+	Command being timed: "/home/briansrls/scratch-wt/lexer-cursor-integrated/target/cursor-whole-floor/bin/gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/required_ci_phase_roster.dag --function required_ci_lane_phase_rows"
+	User time (seconds): 60.82
+	System time (seconds): 3.69
+	Percent of CPU this job got: 99%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 1:04.71
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 6560864
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 1649318
+	Voluntary context switches: 79
+	Involuntary context switches: 26897
+	Swaps: 0
+	File system inputs: 208
+	File system outputs: 16
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 2

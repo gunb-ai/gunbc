@@ -1,0 +1,11 @@
+{
+  "roster_cli_exit": 2,
+  "roster_evaluation": "returned all six phase rows; CLI refused non-ProcessExit return; diagnostic only, not a passed gate",
+  "roster_peak_rss_kib": 6560864,
+  "runtime_producer_exit": 0,
+  "runtime_peak_rss_kib": 7705260,
+  "memory_max_gib_per_run": 12,
+  "swap_max": 0,
+  "inference": "the two whole-pool preparations fit individually but their summed observed peaks exceed the combined 12 GiB envelope",
+  "repair_under_test": "finish the runtime producer before preparing the roster; preserve producer and phase verdicts"
+}
