@@ -172,6 +172,7 @@ service shell.Exec {
     }
   }
   operation RunArgvStdin {
+    requires opaque
     input { program: NonEmptyStr, arguments: ProcessArgvExpansion, stdin_payload: String }
 
     output {
