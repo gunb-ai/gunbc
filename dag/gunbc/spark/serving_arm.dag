@@ -16,7 +16,7 @@ import extdeps.vllm.engine_args {
   VllmIndexerKvDtypeRequest, vllm_indexer_kv_dtype_argv, vllm_indexer_kv_dtype_key,
 }
 import extdeps.vllm.kv_dtype_capability {
-  KvMainDtypeRow, kv_main_dtype_row, FlashInferMlaSparseSm120, KvBasisObservedOnBuild,
+  KvMainDtypeRow, kv_main_dtype_row, FlashInferMlaSparseSm120, KvBasisObservedOnBuild, RowOnBuild, kv_runtime,
   KvCapabilitySubject, DsaSparseIndexer, kv_capability_verdict, upstream_kv_main_dtype_rows,
   KvCombinationAdmitted, KvCombinationRefused, KvCombinationUnanswered,
 }
@@ -1132,6 +1132,7 @@ fn stock_fp8_ds_mla_admission(dtype: VllmKvCacheDtypeRequest, because: NonEmptyS
 // the same join the DeepSeek V4.1 arm is answered by, so neither model carries a private table.
 data glm_derived_flashinfer_sm120_row: KvMainDtypeRow = kv_main_dtype_row(
   backend: FlashInferMlaSparseSm120,
+  runtime: RowOnBuild { image: glm_native_engine_build_image(build: GlmNativeEngineDerived8d09804) },
   device_major: 12,
   admitted: [KvAuto, KvFp8, KvFp8DsMla],
   basis: KvBasisObservedOnBuild {
@@ -1146,6 +1147,7 @@ fn glm_native_kv_cache_dtype_admission(build: GlmNativeEngineBuild, dtype: VllmK
       match kv_capability_verdict(
         subject: KvCapabilitySubject {
           backend: FlashInferMlaSparseSm120,
+          runtime: kv_runtime(image: Present { value: glm_native_engine_build_image(build: GlmNativeEngineDerived8d09804) }, source: vllm_8d09804_sm121_recipe.source),
           device_major: 12,
           main: dtype,
           indexer_kind: Present { value: DsaSparseIndexer },
