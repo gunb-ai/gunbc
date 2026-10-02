@@ -535,12 +535,25 @@ pub fn surface_value(
 ) -> Option<Rc<TypeBinding>> {
     match v1_rt::map_get(&surface.own.clone(), name.clone()) {
         Some(b) => Some(b.clone()),
-        std::option::Option::None => ancestry_winner(
+        std::option::Option::None => match closure_sole_declarer(
             pool.clone(),
             kernel.clone(),
-            surface.imports.clone(),
+            surface.module_path.clone(),
+            surface.reach.clone(),
             name.clone(),
-        ),
+        ) {
+            ClosureDeclarer::ClosureDeclarerSole { binding: b } => {
+                crate::phase_cpu::count("descent_closure_sole");
+                Some(b.clone())
+            }
+            ClosureDeclarer::ClosureDeclarerNone => std::option::Option::None,
+            ClosureDeclarer::ClosureDeclarerContested => ancestry_winner(
+                pool.clone(),
+                kernel.clone(),
+                surface.imports.clone(),
+                name.clone(),
+            ),
+        },
     }
 }
 
@@ -706,46 +719,6 @@ pub fn surface_declarers_in_reach(
     }
 }
 
-pub fn surface_name_has_one_declarer(view: Rc<AncestryView>, name: String) -> bool {
-    match v1_rt::map_get(&view.kernel.clone(), name.clone()) {
-        Some(_) => false,
-        std::option::Option::None => {
-            match v1_rt::map_get(&view.pool.clone().exporters.clone(), name.clone()) {
-                Some(paths) => (paths.clone().len() as i64) == 1,
-                std::option::Option::None => false,
-            }
-        }
-    }
-}
-
-pub fn surface_single_exporter_binding(
-    view: Rc<AncestryView>,
-    name: String,
-) -> Option<Rc<TypeBinding>> {
-    match v1_rt::map_get(&view.pool.clone().exporters.clone(), name.clone()) {
-        std::option::Option::None => std::option::Option::None,
-        Some(paths) => match paths.clone().get(0).cloned() {
-            std::option::Option::None => std::option::Option::None,
-            Some(path) => {
-                if path == view.module_path {
-                    std::option::Option::None
-                } else {
-                    match v1_rt::map_get(&view.pool.clone().surfaces.clone(), path.clone()) {
-                        std::option::Option::None => std::option::Option::None,
-                        Some(exporter) => {
-                            if reach_has(view.reach.clone(), exporter.ordinal.clone()) {
-                                v1_rt::map_get(&exporter.own.clone(), name.clone())
-                            } else {
-                                std::option::Option::None
-                            }
-                        }
-                    }
-                }
-            }
-        },
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SurfaceForkWalk {
     pub winner: Option<Rc<TypeBinding>>,
@@ -844,27 +817,106 @@ pub fn ancestry_lookup(view: Rc<AncestryView>, name: String) -> Option<Rc<TypeBi
     crate::phase_cpu::count("ancestry_lookup");
     match v1_rt::map_get(&view.rewrites.clone(), name.clone()) {
         Some(b) => Some(b.clone()),
-        std::option::Option::None => {
-            if surface_name_has_one_declarer(view.clone(), name.clone()) {
-                crate::phase_cpu::count("ancestry_lookup_single_exporter");
-                surface_single_exporter_binding(view.clone(), name.clone())
-            } else if surface_has(
-                view.pool.clone(),
-                view.kernel.clone(),
-                view.module_path.clone(),
-                view.reach.clone(),
-                name.clone(),
-            ) {
-                ancestry_winner(
-                    view.pool.clone(),
-                    view.kernel.clone(),
-                    view.imports.clone(),
-                    name.clone(),
-                )
-            } else {
+        std::option::Option::None => match closure_sole_declarer(
+            view.pool.clone(),
+            view.kernel.clone(),
+            view.module_path.clone(),
+            view.reach.clone(),
+            name.clone(),
+        ) {
+            ClosureDeclarer::ClosureDeclarerSole { binding: b } => {
+                crate::phase_cpu::count("ancestry_lookup_closure_sole");
+                Some(b.clone())
+            }
+            ClosureDeclarer::ClosureDeclarerNone => {
+                crate::phase_cpu::count("ancestry_lookup_closure_none");
                 std::option::Option::None
             }
-        }
+            ClosureDeclarer::ClosureDeclarerContested => {
+                crate::phase_cpu::count("ancestry_lookup_contested");
+                if surface_has(
+                    view.pool.clone(),
+                    view.kernel.clone(),
+                    view.module_path.clone(),
+                    view.reach.clone(),
+                    name.clone(),
+                ) {
+                    ancestry_winner(
+                        view.pool.clone(),
+                        view.kernel.clone(),
+                        view.imports.clone(),
+                        name.clone(),
+                    )
+                } else {
+                    std::option::Option::None
+                }
+            }
+        },
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum ClosureDeclarer {
+    ClosureDeclarerSole { binding: Rc<TypeBinding> },
+    ClosureDeclarerNone,
+    ClosureDeclarerContested,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ClosureDeclarerTally {
+    pub count: i64,
+    pub binding: Option<Rc<TypeBinding>>,
+}
+
+pub fn closure_sole_declarer(
+    pool: Rc<SurfacePool>,
+    kernel: Rc<HashMap<String, Rc<TypeBinding>>>,
+    module_path: String,
+    reach: Rc<Vec<i64>>,
+    name: String,
+) -> ClosureDeclarer {
+    match v1_rt::map_get(&kernel.clone(), name.clone()) {
+        Some(_) => ClosureDeclarer::ClosureDeclarerContested,
+        std::option::Option::None => match v1_rt::map_get(&pool.exporters.clone(), name.clone()) {
+            std::option::Option::None => ClosureDeclarer::ClosureDeclarerNone,
+            Some(paths) => {
+                let tally = paths.iter().cloned().fold(
+                    ClosureDeclarerTally {
+                        count: 0,
+                        binding: std::option::Option::None,
+                    },
+                    |acc: ClosureDeclarerTally, p: String| {
+                        if p == module_path {
+                            acc
+                        } else {
+                            match v1_rt::map_get(&pool.surfaces.clone(), p.clone()) {
+                                Some(e) => {
+                                    if reach_has(reach.clone(), e.ordinal.clone()) {
+                                        ClosureDeclarerTally {
+                                            count: acc.count + 1,
+                                            binding: v1_rt::map_get(&e.own.clone(), name.clone()),
+                                        }
+                                    } else {
+                                        acc
+                                    }
+                                }
+                                std::option::Option::None => acc,
+                            }
+                        }
+                    },
+                );
+                if tally.count == 0 {
+                    ClosureDeclarer::ClosureDeclarerNone
+                } else if tally.count == 1 {
+                    match tally.binding {
+                        Some(b) => ClosureDeclarer::ClosureDeclarerSole { binding: b },
+                        std::option::Option::None => ClosureDeclarer::ClosureDeclarerNone,
+                    }
+                } else {
+                    ClosureDeclarer::ClosureDeclarerContested
+                }
+            }
+        },
     }
 }
 
