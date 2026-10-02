@@ -1,0 +1,233 @@
+module gunbc.plan_governance
+
+import std.types { String, Bool, List }
+import v2.std.algebra { filter }
+
+// THE ONE AUTHORED FACT OF THE PLAN DOCUMENT GRAPH: which design authority governs a plan, and in
+// what role. Everything a reader sees about that relation -- the banner on the child, the children
+// list on the parent, reachability from the compiler root -- is DERIVED from these rows by
+// gunbc.plan plan_to_blocks and the governance witness. A plan author writes one row here and
+// nothing in any markdown body; a hand-written 'governed by' or 'see also' paragraph beside a row
+// is the second authority DESIGN section 3 forbids, at the documentation layer. The rows key on the
+// plan SLUG because the slug is the identity the generated-artifact registry already deduplicates
+// plans by; a Plan value does not know its own declaration name.
+//
+// THE ROWS ARE NOT THE RELATION; THE ADMITTED GRAPH IS (review of 14f36a479f). A first-match lookup
+// over raw rows let a child with two parents pass the root walk through its first row while a cycle
+// hid behind its second, rendered a banner naming one parent while both parents' children lists
+// claimed the child, and changed its answer when the rows were reordered. So every consumer --
+// banner, children list, reachability -- accepts only an AdmittedPlanGovernanceGraph, which is
+// sole_constructor here and minted only by admit_plan_governance after the relation is proven
+// FUNCTIONAL (one governor per child), ROOTED (the compiler root has no governor), ACYCLIC and
+// COMPLETE (every governor is a rowed plan or the root). No first-match operation exists after
+// admission. A refusal is typed per defect so the witness can discriminate them; endpoint existence
+// against the plan registry is the witness's claim, because this module cannot import the registry
+// without a cycle (the registry imports the plans, which import gunbc.plan, which imports this).
+//
+// One relation, one meaning: governed_by is singular. A second architectural relationship --
+// references, informs, cross-cuts -- is a separately named relation when it is needed, never a
+// second governed_by row.
+
+type CompilerPlanRole
+  = CompilerStageAuthority
+  | CompilerStageSpecialization
+  | CrossCuttingLensAuthority
+  | ImplementationProgram
+
+type PlanGovernance {
+  plan_slug: String,
+  governed_by_slug: String,
+  role: CompilerPlanRole,
+  stage: String,
+}
+
+data compiler_architecture_root_slug: String = "v2-compiler-architecture"
+
+data plan_governance_rows: List<PlanGovernance> = [
+  PlanGovernance {
+    plan_slug: "demand-engine-program",
+    governed_by_slug: "v2-compiler-architecture",
+    role: CompilerStageAuthority,
+    stage: "demand minimization and the demand engine; materialization, realization and placement",
+  },
+  PlanGovernance {
+    plan_slug: "ensure-closure-design",
+    governed_by_slug: "v2-compiler-architecture",
+    role: CompilerStageSpecialization,
+    stage: "completion, residual and closure -- environmental completion at a concrete placement",
+  },
+]
+
+fn plan_governance_role_label(role: CompilerPlanRole) -> String {
+  match role {
+    CompilerStageAuthority => "compiler-stage authority"
+    CompilerStageSpecialization => "compiler-stage specialization"
+    CrossCuttingLensAuthority => "cross-cutting lens authority"
+    ImplementationProgram => "implementation program"
+  }
+}
+
+// ---- admission ----------------------------------------------------------------------------------
+
+type GovernanceRefusal
+  = GovernanceRootHasGovernor { governor: String }
+  | GovernanceChildHasMultipleGovernors { child: String }
+  | GovernanceOrphan { child: String, missing_governor: String }
+  | GovernanceCycle { child: String }
+
+type AdmittedPlanGovernanceGraph sole_constructor {
+  rows: List<PlanGovernance>,
+}
+
+type PlanGovernanceAdmission
+  = GovernanceAdmitted { graph: AdmittedPlanGovernanceGraph }
+  | GovernanceRefused { refusals: List<GovernanceRefusal> }
+
+fn governance_rows_for_child(rows: List<PlanGovernance>, child: String) -> List<PlanGovernance> {
+  filter(rows, r => r.plan_slug == child)
+}
+
+fn governance_count(rows: List<PlanGovernance>) -> Int {
+  fold(rows, init: 0, f: (acc, r) => acc + 1)
+}
+
+fn refusal_count(rs: List<GovernanceRefusal>) -> Int {
+  fold(rs, init: 0, f: (acc, r) => acc + 1)
+}
+
+// The one row of a child whose row count is exactly one. Called only after that count was checked,
+// so this is the admitted shape, not a first match; the fold over a one-element list is the element.
+fn governance_sole_row(rows: List<PlanGovernance>) -> PlanGovernance? {
+  fold(rows, init: none, f: (acc, r) =>
+    match acc {
+      Present { value: found } => Present { value: found }
+      none => Present { value: r }
+    })
+}
+
+// THE WALK, over raw rows, used only inside admission. It carries WHY it stopped so a cycle, an
+// orphan and an ambiguous child are told apart: an orphan is a step whose governor has no row and
+// is not the root; an ambiguous step is a child with more than one row; a cycle is fuel exhausted
+// without ever stopping. Fuel is the row population: a chain through n rows has at most n edges.
+type GovernanceStop
+  = GovernanceNotStopped
+  | GovernanceStoppedMissing { at: String }
+  | GovernanceStoppedAmbiguous { at: String }
+
+type GovernanceWalk {
+  current: String,
+  reached: Bool,
+  stop: GovernanceStop,
+}
+
+fn governance_walk_advance(rows: List<PlanGovernance>, w: GovernanceWalk) -> GovernanceWalk {
+  let here = governance_rows_for_child(rows: rows, child: w.current)
+  let n = governance_count(rows: here)
+  if n == 0 {
+    GovernanceWalk { current: w.current, reached: false, stop: GovernanceStoppedMissing { at: w.current } }
+  } else if n > 1 {
+    GovernanceWalk { current: w.current, reached: false, stop: GovernanceStoppedAmbiguous { at: w.current } }
+  } else {
+    match governance_sole_row(rows: here) {
+      Present { value: r } =>
+        GovernanceWalk {
+          current: r.governed_by_slug,
+          reached: r.governed_by_slug == compiler_architecture_root_slug,
+          stop: GovernanceNotStopped,
+        }
+      none => GovernanceWalk { current: w.current, reached: false, stop: GovernanceStoppedMissing { at: w.current } }
+    }
+  }
+}
+
+fn governance_walk_step(rows: List<PlanGovernance>, w: GovernanceWalk) -> GovernanceWalk {
+  if w.reached {
+    w
+  } else {
+    match w.stop {
+      GovernanceStoppedMissing { at: _ } => w
+      GovernanceStoppedAmbiguous { at: _ } => w
+      GovernanceNotStopped => governance_walk_advance(rows: rows, w: w)
+    }
+  }
+}
+
+// n rows give n steps, and a chain of n edges needs ONE MORE step to resolve its final node -- a
+// one-row orphan (a -> nowhere) takes its only step onto 'nowhere' and must still look 'nowhere' up
+// to learn it is missing. Without that extra step the orphan read as a cycle (witness red, cd1d335e85).
+fn governance_walk_from(rows: List<PlanGovernance>, child: String) -> GovernanceWalk {
+  let start = GovernanceWalk { current: child, reached: child == compiler_architecture_root_slug, stop: GovernanceNotStopped }
+  let walked = fold(rows, init: start, f: (acc, r) => governance_walk_step(rows: rows, w: acc))
+  governance_walk_step(rows: rows, w: walked)
+}
+
+fn governance_row_refusals(rows: List<PlanGovernance>, r: PlanGovernance) -> List<GovernanceRefusal> {
+  if r.plan_slug == compiler_architecture_root_slug {
+    [GovernanceRootHasGovernor { governor: r.governed_by_slug }]
+  } else if governance_count(rows: governance_rows_for_child(rows: rows, child: r.plan_slug)) > 1 {
+    [GovernanceChildHasMultipleGovernors { child: r.plan_slug }]
+  } else {
+    let end = governance_walk_from(rows: rows, child: r.plan_slug)
+    if end.reached {
+      []
+    } else {
+      match end.stop {
+        GovernanceStoppedMissing { at: at } => [GovernanceOrphan { child: r.plan_slug, missing_governor: at }]
+        GovernanceStoppedAmbiguous { at: at } => [GovernanceChildHasMultipleGovernors { child: at }]
+        GovernanceNotStopped => [GovernanceCycle { child: r.plan_slug }]
+      }
+    }
+  }
+}
+
+fn admit_plan_governance(rows: List<PlanGovernance>) -> PlanGovernanceAdmission {
+  let refusals = fold(rows, init: [], f: (acc, r) => concat(acc, governance_row_refusals(rows: rows, r: r)))
+  if refusal_count(rs: refusals) == 0 {
+    GovernanceAdmitted { graph: AdmittedPlanGovernanceGraph { rows: rows } }
+  } else {
+    GovernanceRefused { refusals: refusals }
+  }
+}
+
+data plan_governance_admission: PlanGovernanceAdmission = admit_plan_governance(rows: plan_governance_rows)
+
+// ---- the only lookups: over the admitted graph ---------------------------------------------------
+
+// Exactly zero rows for the root, exactly one for every other rowed child: admission proved it, so
+// the optional here is the admitted shape, not a first match.
+fn graph_parent_of(graph: AdmittedPlanGovernanceGraph, child: String) -> PlanGovernance? {
+  let here = governance_rows_for_child(rows: graph.rows, child: child)
+  if governance_count(rows: here) == 1 {
+    governance_sole_row(rows: here)
+  } else {
+    none
+  }
+}
+
+fn graph_children_of(graph: AdmittedPlanGovernanceGraph, parent: String) -> List<PlanGovernance> {
+  filter(graph.rows, r => r.governed_by_slug == parent)
+}
+
+fn graph_reaches_root(graph: AdmittedPlanGovernanceGraph, child: String) -> Bool {
+  governance_walk_from(rows: graph.rows, child: child).reached
+}
+
+fn graph_all_reach_root(graph: AdmittedPlanGovernanceGraph) -> Bool {
+  all(graph.rows, r => graph_reaches_root(graph: graph, child: r.plan_slug))
+}
+
+fn governance_is_admitted(a: PlanGovernanceAdmission) -> Bool {
+  match a {
+    GovernanceAdmitted { graph: _ } => true
+    GovernanceRefused { refusals: _ } => false
+  }
+}
+
+fn governance_refusal_label(r: GovernanceRefusal) -> String {
+  match r {
+    GovernanceRootHasGovernor { governor: g } => concat("the compiler root has a governor: ", g)
+    GovernanceChildHasMultipleGovernors { child: c } => concat("a child has more than one governor: ", c)
+    GovernanceOrphan { child: c, missing_governor: m } => concat(concat(concat("an orphan: ", c), " names a governor with no row: "), m)
+    GovernanceCycle { child: c } => concat("a governance cycle through: ", c)
+  }
+}
