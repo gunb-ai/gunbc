@@ -10300,6 +10300,31 @@ pub fn parse_op_body_entries(
                                 }
                             } else {
                                 if (id.clone() == "requires".to_string()) {
+                                    let prior_requires = (Rc::new({
+                                        let mut __result = Vec::new();
+                                        for p in modifier_props.iter().cloned() {
+                                            if (p.name.clone() == "requires".to_string()) {
+                                                __result.push(p);
+                                            }
+                                        }
+                                        __result
+                                    })
+                                    .len()
+                                        as i64);
+                                    if (prior_requires.clone() > 0) {
+                                        return Rc::new(OpBodyResult {
+    inputs: inputs.clone(),
+    outputs: outputs.clone(),
+    modifier_props: modifier_props.clone(),
+    transport: transport.clone(),
+    exit_props: exit_props.clone(),
+    response_props: response_props.clone(),
+    mock_props: mock_props.clone(),
+    tokens: tokens.clone(),
+    ctx: ctx.clone(),
+    err: Some(parse_error("an operation declares `requires` once: a second clause would let one declaration say both none and a resource".to_string(), span.clone())),
+});
+                                    }
                                     let r = parse_op_requires_clause(
                                         token_stream_advance(tokens.clone(), 1),
                                         ctx.clone(),
