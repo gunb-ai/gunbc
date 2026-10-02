@@ -127,7 +127,6 @@ fn v41_serving_load_live_subject() -> ServingPerformanceSubject? {
   match v41_group_a_profile(shape: shape) {
    Absent => none
    Present { value: launch_profile } => Present { value: serving_subject_for_launch(
-    checkpoint: DeepseekV41FlashDba1be0a,
     checkpoint_revision: Present { value: deepseek_v41_flash_row.revision },
     runtime: GunbcDeepseekV41EngramProduced {
       artifact: runtime_artifact_identity(

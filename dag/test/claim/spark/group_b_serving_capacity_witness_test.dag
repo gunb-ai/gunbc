@@ -131,7 +131,6 @@ test fn w_the_declared_intents_subject_is_unestablished_until_real_receipts_land
     Absent => false
     Present { value: executable } =>
       match arm_memory_fit_subject_for_launch(
-        checkpoint: Glm53NativeFp8,
         runtime: GunbcGlm53NopeDerivedGb10,
         topology: FourSparkTp4,
         profile: executable.profile,

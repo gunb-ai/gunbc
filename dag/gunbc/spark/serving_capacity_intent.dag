@@ -239,19 +239,17 @@ fn profile_for_envelope(
   prefix_caching: VllmPrefixCachingRequest,
 ) -> ServingLaunchProfile {
   serving_launch_profile(
+    policy: policy,
     max_model_len: intent_max_single_sequence_tokens(i: envelope.cold),
     max_num_batched_tokens: envelope.cold.max_batched_tokens,
     max_num_seqs: envelope.hard_max_num_seqs,
     guaranteed_cold_seqs: intent_max_active_sequences(i: envelope.cold),
     decided_gpu_memory_basis_points: decided_gpu_memory_basis_points,
-    kv_cache_dtype: policy.kv_cache_dtype,
     serve_port: serve_port,
     served_alias: served_alias,
     prefix_caching: prefix_caching,
-    engram: policy.engram,
-    modality: policy.modality,
     scheduler_admission: envelope.admission,
-    indexer_kv_dtype: policy.indexer_kv_dtype)
+  )
 }
 
 // ── THE WORKLOAD A LAUNCH PROFILE OWES, DERIVED THE SAME WAY ────────────────────────────────────
