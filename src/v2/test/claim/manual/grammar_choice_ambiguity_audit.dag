@@ -35,12 +35,26 @@ fn witness_dag_grammar_validate_accepts() -> Bool {
   }
 }
 
-fn witness_dag_first_choice_ambiguity_production() -> Symbol {
-  match list_at_optional(
-    xs: grammar_choice_ambiguity_roster(root: dag_grammar_root()),
-    index: 0
-  ) {
-    Present { value: row } => row.production
-    Absent => ^grammar_choice_ambiguity_roster_empty
-  }
+// THE RESIDUE ROSTER BY IDENTITY, not a count plus its first row. A row's identity is its
+// production and the terminals both arms can start with: two rosters of equal length can differ
+// in every row, so a count cannot show a row was removed and another added. One line per row,
+// `production: t1 t2 ...`, in roster order.
+fn grammar_choice_ambiguity_row_identity(row: GrammarChoiceAmbiguityRow) -> String {
+  symbol_lexeme(sym: row.production) + ": " + string_join(
+    fields: fold_list(xs: row.overlap_terminals, empty: [], cons: fn(acc, t) {
+      list_snoc_item(xs: acc, item: symbol_lexeme(sym: t))
+    }),
+    separator: " "
+  )
+}
+
+fn witness_dag_overlap_residue_row_identities() -> String {
+  string_join(
+    fields: fold_list(
+      xs: grammar_choice_ambiguity_roster(root: dag_grammar_root()),
+      empty: [],
+      cons: fn(acc, row) { list_snoc_item(xs: acc, item: grammar_choice_ambiguity_row_identity(row: row)) }
+    ),
+    separator: "\n"
+  )
 }
