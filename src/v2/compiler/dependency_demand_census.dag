@@ -21,7 +21,9 @@ import v2.compiler.dependency_demand {
   UndeclaredOperationCalled,
   UndecidedCause,
   dependency_demand_of,
-  path_in
+  resource_set_has,
+  resource_set_of,
+  ResourceSet
 }
 import v2.compiler.resolve { ResolveContext, ResolvedTree, resolve_node }
 import v2.compiler.reference_site_collector { module_spine_unwrapped }
@@ -79,6 +81,10 @@ data demand_census_filesystem: String = "std.resources.Filesystem"
 
 fn demand_census_vocabulary() -> List<QualifiedName> {
   [qualified_name_from_dotted_string(dotted: demand_census_network)]
+}
+
+fn demand_census_vocabulary_set() -> ResourceSet {
+  resource_set_of(paths: demand_census_vocabulary())
 }
 
 // ═══ THE STRIP ═══════════════════════════════════════════════════════════════════════════════════
@@ -459,13 +465,15 @@ type DemandCensusRow {
 
 fn demand_census_in_vocabulary(paths: List<QualifiedName>) -> List<QualifiedName> {
   fold_list(xs: paths, empty: Empty, cons: fn(acc, p) {
-    if path_in(path: p, paths: demand_census_vocabulary()) { list_snoc_item(xs: acc, item: p) } else { acc }
+    if resource_set_has(set: demand_census_vocabulary_set(), path: p) { list_snoc_item(xs: acc, item: p) } else { acc }
   })
 }
 
+// Set equality through the keyed sets of v2.compiler.dependency_demand, never a member-by-member scan.
 fn demand_census_same_set(left: List<QualifiedName>, right: List<QualifiedName>) -> Bool {
-  fold_list(xs: left, empty: true, cons: fn(all, p) { all && path_in(path: p, paths: right) })
-    && fold_list(xs: right, empty: true, cons: fn(all, p) { all && path_in(path: p, paths: left) })
+  let l = resource_set_of(paths: left)
+  let r = resource_set_of(paths: right)
+  (l.size == r.size) && fold_list(xs: l.members, empty: true, cons: fn(all, p) { all && resource_set_has(set: r, path: p) })
 }
 
 fn demand_census_authored_paths(readings: List<AuthoredRowReading>) -> List<QualifiedName> {
@@ -495,7 +503,7 @@ fn demand_census_verdict(readings: List<AuthoredRowReading>, demand: DependencyD
       DemandUndecided { cause: c } => CensusUndecided { cause: c }
       DemandDerived { resources: derived } =>
         let a = demand_census_in_vocabulary(paths: demand_census_authored_paths(readings: readings))
-        let d = demand_census_in_vocabulary(paths: derived)
+        let d = demand_census_in_vocabulary(paths: derived.members)
         if demand_census_same_set(left: a, right: d) {
           CensusEqual
         } else {
@@ -612,12 +620,12 @@ fn demand_census_out_of_vocabulary_rows(rows: List<DemandCensusRow>) -> Int {
 fn demand_census_filesystem_agreeing(rows: List<DemandCensusRow>) -> Int {
   let fs = qualified_name_from_dotted_string(dotted: demand_census_filesystem)
   fold_list(xs: rows, empty: 0, cons: fn(n, r) {
-    if path_in(path: fs, paths: demand_census_authored_paths(readings: r.authored)) {
+    if resource_set_has(set: resource_set_of(paths: demand_census_authored_paths(readings: r.authored)), path: fs) {
       match r.demand {
         Absent => n
         Present { value: d } =>
           match d {
-            DemandDerived { resources: rs } => if path_in(path: fs, paths: rs) { n + 1 } else { n }
+            DemandDerived { resources: rs } => if resource_set_has(set: rs, path: fs) { n + 1 } else { n }
             DemandUndecided { cause: _ } => n
           }
       }
