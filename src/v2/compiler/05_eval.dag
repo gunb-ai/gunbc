@@ -1418,6 +1418,25 @@ fn eval_formal_binding_key(callee_path: Optional<QualifiedName>, label: Symbol) 
   }
 }
 
+fn eval_parameter_reference_is_value(node: Node) -> Bool {
+  match parameter_reference_path_optional(node: node) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn eval_parameter_reference_value(node: Node, environment: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  match parameter_reference_path_optional(node: node) {
+    Absent => outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_parameter_reference_unbound, node: node))
+    Present { value: path } =>
+      match environment.bindings.lookup(eval_parameter_binding_key(parameter_path: path)) {
+        Present { value: v } => Accepted { value: v, diagnostics: None }
+        Absent =>
+          outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_parameter_reference_unbound, node: node))
+      }
+  }
+}
+
 fn eval_bind_arrow_params(
   arrow: Node,
   args: List<RuntimeValue>,
@@ -2882,7 +2901,19 @@ fn eval_runtime_node(
   runtime: V4EvaluatorRuntime,
   effect_io: EffectIoEvalContext
 ) -> Outcome<RuntimeValue> {
-  if eval_runtime_node_is_control_transfer(node: node) {
+  // A PARAMETER REFERENCE IS A LEAF HERE, NOT A STRUCTURE TO WALK. Its carrier is a marked Conj whose child
+  // is the encoded declaring path (v2.std.qualified_name parameter_reference_node), so letting the data-flow
+  // fold see it descends into that path and demands value-grounding for the internal representation of a
+  // parameter identity -- the same defect this module already fixed for DECLARATION references, recorded at
+  // eval_fold_is_callee_reference_edge, and the reason its regression control exists.
+  //
+  // IT RESOLVES THROUGH THE SAME KEY THE CALL BOUND IT AT, so eval_parameter_binding_key stays the only
+  // place either side derives a key. A reference whose path the environment does not hold still refuses with
+  // ^eval_rejected_parameter_reference_unbound, which is now a statement about a MISSING BINDING rather than
+  // about the body's form.
+  if eval_parameter_reference_is_value(node: node) {
+    eval_parameter_reference_value(node: node, environment: environment)
+  } else if eval_runtime_node_is_control_transfer(node: node) {
     eval_runtime_control_node(
       node: node,
       tree: tree,

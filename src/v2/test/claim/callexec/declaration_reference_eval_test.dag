@@ -4,6 +4,9 @@ import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.infer { infer }
 import v2.compiler.inferred_tree { InferredTree }
 import v2.compiler.eval {
+  arrow_body_admits_eval_entry,
+  empty_evaluation_environment,
+  eval_parameter_reference_value,
   eval,
   eval_callee_declaration_optional,
   inputs_root_only
@@ -26,6 +29,7 @@ import v2.std.diagnostic {
 }
 import v2.std.logic { Bool }
 import v2.std.node {
+  ParameterReferenceBody,
   DeclarationReferenceKind,
   Symbol,
   symbol_eq,
@@ -45,7 +49,8 @@ import v2.std.integer { Int, integer_signed_i32_le_bytes_to_int }
 
 import v2.std.runtime { RuntimePrimitive, RuntimeValue }
 import v2.std.algebra { fold_list }
-import v2.std.qualified_name { qualified_name_last_segment,
+import v2.std.qualified_name {
+  parameter_reference_node, qualified_name_last_segment,
   declaration_reference_path_optional,
   resolved_reference_spine_optional
 }
@@ -531,5 +536,85 @@ fn cref_results_differ(a: Outcome<ResolvedTree>, a_name: Symbol, b: Outcome<Reso
         Absent => false
         Present { value: ys } => !(xs == ys)
       }
+  }
+}
+
+// WHICH NODE THE REFUSAL IS LOCATED AT, BECAUSE THE REASON HAS TWO PRODUCERS. The three
+// argument-dependent rows above refuse with ^eval_rejected_parameter_reference_unbound, and that symbol is
+// emitted from two places that mean different things: v2.compiler.eval eval_callee_body_refusal_reason maps
+// the ParameterReferenceBody ARM to it, located at the callee's declaring Arrow and raised BEFORE
+// eval_bind_arrow_params; and the parameter-reference arm of eval_type_node_atom raises it at the USE when a
+// binding is genuinely missing. One is a categorical refusal of a body FORM, the other is a real unbound
+// parameter, and the reason alone cannot tell them apart.
+//
+// THAT AMBIGUITY COST FOUR PROBES. Reading the reason as a key mismatch led to lookups by full path and by
+// leaf, and to binding under both spellings, none of which touched the failing fixture -- because a
+// parameter-bodied callee never reaches binding at all, while the constant-bodied controls beside it do. So
+// the locus is measured here rather than inferred, and it is measured against the EXACT nodes the production
+// route uses rather than by rendering, spelling or occurrence class.
+fn cref_fatal_locus_node(o: Outcome<ResolvedTree>, name: Symbol) -> Optional<Node> {
+  match cref_eval_of_call_to(o: o, name: name) {
+    Absent => optional_absent()
+    Present { value: outcome } =>
+      match outcome {
+        Accepted { value: _, diagnostics: _ } => optional_absent()
+        Rejected { diagnostics: ds } =>
+          match ds.head.at {
+            NodeLocus { anchor: a } => optional_present(value: a.at)
+            _ => optional_absent()
+          }
+      }
+  }
+}
+
+// The callee's declaring Arrow, through the same two production readers eval itself uses: the callee use,
+// then the denotation infer recorded for it.
+fn cref_callee_declaration(o: Outcome<ResolvedTree>) -> Optional<Node> {
+  match cref_inferred_of(o: o) {
+    Absent => optional_absent()
+    Present { value: inferred } =>
+      match cref_the_call_to(root: inferred.root, name: ^callee) {
+        Absent => optional_absent()
+        Present { value: call } =>
+          match cref_callee_reference_optional(n: call) {
+            Absent => optional_absent()
+            Present { value: ref } => eval_callee_declaration_optional(tree: inferred, callee: ref)
+          }
+      }
+  }
+}
+
+// THE ENTRY GATE ADMITS THE FORM, which is the climb this measurement located. The row that stood here
+// asserted the refusal was located at the callee's DECLARING ARROW rather than at the parameter use, and that
+// is how the firing producer was identified: ^eval_rejected_parameter_reference_unbound has two producers --
+// v2.compiler.eval eval_callee_body_refusal_reason maps the ParameterReferenceBody ARM to it before any
+// binding happens, and eval_parameter_reference_value raises it at the USE when a binding is missing -- so
+// the reason alone could not say which. Measuring the LOCUS could, and it said the gate.
+//
+// DESIGN section 4b(4): the measurement row does not retire, it flips. v2.std.node
+// arrow_body_admits_eval_entry now admits ParameterReferenceBody, so the gate is asserted directly rather
+// than through the locus of a refusal that no longer happens. It goes red if that policy arm is reverted.
+test fn cref_the_entry_gate_admits_a_parameter_reference_body_holds() -> Bool {
+  arrow_body_admits_eval_entry(form: ParameterReferenceBody)
+}
+
+// AND A MISSING BINDING STILL REFUSES, which is what keeps admitting the form from being a widening. The
+// subject is supplied at one interface -- a parameter reference whose declaring path nothing bound, evaluated
+// in an empty environment -- because what is under test is the lookup's refusal and not the route that
+// reaches it. Without this row the repair could be satisfied by answering every parameter reference with
+// something, which is the fail-open direction.
+//
+// IT ALSO PINS WHAT THE REASON NOW MEANS. After the gate opened, this symbol reports a MISSING BINDING and
+// nothing else; a reader who sees it can stop looking for a body-form refusal.
+test fn cref_a_parameter_reference_with_no_binding_refuses_holds() -> Bool {
+  match eval_parameter_reference_value(
+    node: parameter_reference_node(
+      qn: Cons { head: ^p, tail: Cons { head: ^nowhere, tail: Cons { head: ^x, tail: Empty } } },
+      occurrence_id: OccurrenceSynthetic
+    ),
+    environment: empty_evaluation_environment()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: ds } => symbol_eq(a: ds.head.reason, b: ^eval_rejected_parameter_reference_unbound)
   }
 }
