@@ -357,7 +357,7 @@ data glm53_radixark_nvfp4_row: ServingCheckpointRow = ServingCheckpointRow {
 // THE WEIGHT FIGURE IS THE BACKBONE, THE POPULATION THE POOL HOLDS, and that is a measured consequence
 // rather than a convenience. serving_arm_fits screens weights against the aggregate unified pool, and
 // this checkpoint is launched only through the file-backed Engram path -- the one V4.1 profile
-// (deepseek_v41_measurement_profile) fixes cpu_offload true and dp_shared_memory false, which is what
+// (deepseek_v41_launch_policy) fixes cpu_offload true and dp_shared_memory false, which is what
 // the file-backed overlay requires -- so the two Engram shards are served from row stores on disk and
 // never loaded into the pool as weights. Counting the whole tables put this checkpoint at 476 GiB against
 // 484 GiB across four GB10s and refused a launch that fits. What the tables DO cost the pool is their
@@ -1259,9 +1259,46 @@ data glm_native_concurrent_profile: ServingLaunchProfile = ServingLaunchProfile 
   indexer_kv_dtype: IndexerKvDtypeOmitted,
 }
 
-// ── THE V4.1 MEASUREMENT PROFILE: WHAT V4.1 DECIDES, OVER WHAT THE MEASUREMENT DECIDES ─────────
+// ── WHAT A MODEL DECIDES ABOUT ITS LAUNCH, ONE ROW PER CHECKPOINT ───────────────────────────────
 //
-// THIS IS A MINT AND NOT A ROW because half its fields belong to another authority. The capacity
+// The scheduler envelope (gunbc.spark.serving_capacity_intent) owns window, sequences and batch; the
+// deployment owns memory fraction, port and alias. What remains is the model's: which main-KV and
+// indexer-KV dtypes it is launched with, whether Engram tables are configured, and which modality
+// is served. Each is an exact subject axis, so a different checkpoint is a different row, and adding a
+// checkpoint -- an FP4 one included -- is a row here plus its capability rows
+// (extdeps.vllm.kv_dtype_capability), with no edit to the envelope, the wall, the runner, the launch
+// transaction or promotion. A checkpoint without a row has no launch policy and refuses at derivation.
+type ModelLaunchPolicy sole_constructor {
+  kv_cache_dtype: VllmKvCacheDtypeRequest
+  indexer_kv_dtype: VllmIndexerKvDtypeRequest
+  engram: VllmEngramConfigRequest
+  modality: VllmModalityRequest
+}
+
+fn model_launch_policy(
+  kv_cache_dtype: VllmKvCacheDtypeRequest,
+  indexer_kv_dtype: VllmIndexerKvDtypeRequest,
+  engram: VllmEngramConfigRequest,
+  modality: VllmModalityRequest,
+) -> ModelLaunchPolicy {
+  ModelLaunchPolicy { kv_cache_dtype: kv_cache_dtype, indexer_kv_dtype: indexer_kv_dtype, engram: engram, modality: modality }
+}
+
+// GLM-5.3-Flash native FP8: the fp8 KV request the derived build admits (glm_derived_flashinfer_sm120_row),
+// the indexer at its revision default, no Engram, text only by omission.
+data glm53_native_launch_policy: ModelLaunchPolicy = model_launch_policy(
+  kv_cache_dtype: KvFp8,
+  indexer_kv_dtype: IndexerKvDtypeOmitted,
+  engram: EngramConfigOmitted,
+  modality: ModalityOmitted,
+)
+
+// ── THE V4.1 LAUNCH POLICY: WHAT THE MODEL DECIDES, OVER WHAT THE ENVELOPE DECIDES ─────────────
+//
+// THIS WAS A MINT THAT BUILT A WHOLE PROFILE (deepseek_v41_measurement_profile), deleted with the
+// deforking: its model half is this row, and its capacity half is the V4.1 cold intent and envelope
+// (gunbc.spark.v41_group_a_launch v41_group_a_profile) through the one profile derivation every model
+// uses. Half its fields belonged to another authority, which is why it could not stay a row of its own. The capacity
 // measurement (gunbc.spark.v41_capacity_measurement) owns the window, the admitted sequences, the
 // scheduler budget, the memory fraction and the prefix-caching request: they are the axes it measures
 // at, and a row here would be a second copy of each. What this mint fixes is what the V4.1 launch
@@ -1283,29 +1320,21 @@ data glm_native_concurrent_profile: ServingLaunchProfile = ServingLaunchProfile 
 //     this one with a flag flipped.
 // The route's port and served name are the caller's because they belong to the route this launch
 // answers, not to the model.
-fn deepseek_v41_measurement_profile(
-  max_model_len: TokenCount,
-  max_num_seqs: Nat,
-  max_num_batched_tokens: TokenCount,
-  gpu_memory_basis_points: BasisPoint,
-  prefix_caching: VllmPrefixCachingRequest,
-  serve_port: Port,
-  served_alias: NonEmptyStr,
-) -> ServingLaunchProfile {
-  ServingLaunchProfile {
-    max_model_len: max_model_len,
-    max_num_batched_tokens: max_num_batched_tokens,
-    max_num_seqs: max_num_seqs,
-    guaranteed_cold_seqs: max_num_seqs,
-    decided_gpu_memory_basis_points: gpu_memory_basis_points,
-    kv_cache_dtype: KvFp8DsMla,
-    serve_port: serve_port,
-    served_alias: served_alias,
-    prefix_caching: prefix_caching,
-    engram: EngramConfigExplicit { cpu_offload: true, dp_shared_memory: false },
-    modality: LanguageModelOnly { hf_overrides: [vllm_hf_override(key: "vision_n_layers" as NonEmptyStr, json_value: "0" as NonEmptyStr)] },
-    scheduler_admission: vllm_scheduler_admission_omitted,
-    indexer_kv_dtype: IndexerKvDtypeOmitted,
+data deepseek_v41_launch_policy: ModelLaunchPolicy = model_launch_policy(
+  kv_cache_dtype: KvFp8DsMla,
+  indexer_kv_dtype: IndexerKvDtypeOmitted,
+  engram: EngramConfigExplicit { cpu_offload: true, dp_shared_memory: false },
+  modality: LanguageModelOnly { hf_overrides: [vllm_hf_override(key: "vision_n_layers" as NonEmptyStr, json_value: "0" as NonEmptyStr)] },
+)
+
+fn checkpoint_launch_policy(c: ServingCheckpoint) -> ModelLaunchPolicy? {
+  match c {
+    Glm53NativeFp8 => Present { value: glm53_native_launch_policy }
+    DeepseekV41FlashDba1be0a => Present { value: deepseek_v41_launch_policy }
+    Glm53Exl3_205 => none
+    Glm53Nvfp4CompressedTensors => none
+    DeepseekV4FlashIq3sSplit => none
+    Glm53RadixArkNvfp4Modelopt => none
   }
 }
 
