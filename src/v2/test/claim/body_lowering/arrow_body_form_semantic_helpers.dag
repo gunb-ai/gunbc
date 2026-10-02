@@ -72,7 +72,7 @@ fn classify_arrow_body_form_red_no_direct_atom(target: Node) -> ArrowBodyForm {
       }
     TypeNode { connective: Arrow } => FunctionValueBody
     ComputationNode { behavior: b } => ComputationBody { behavior: b }
-    _ => UnsupportedArrowBody
+    TypeNode { connective: _ } => UnsupportedArrowBody
   }
 }
 
@@ -87,7 +87,7 @@ fn classify_arrow_body_form_red_no_computation_body(target: Node) -> ArrowBodyFo
       }
     TypeNode { connective: Arrow } => FunctionValueBody
     ComputationNode { behavior: _ } => UnsupportedArrowBody
-    _ => UnsupportedArrowBody
+    TypeNode { connective: _ } => UnsupportedArrowBody
   }
 }
 
@@ -103,7 +103,7 @@ fn classify_arrow_body_form_red_no_declaration_reference(target: Node) -> ArrowB
       }
     TypeNode { connective: Arrow } => FunctionValueBody
     ComputationNode { behavior: b } => ComputationBody { behavior: b }
-    _ => UnsupportedArrowBody
+    TypeNode { connective: _ } => UnsupportedArrowBody
   }
 }
 
@@ -118,7 +118,7 @@ fn classify_arrow_body_form_red_no_function_value_body(target: Node) -> ArrowBod
         NotMarkedReference => RecordConstructBody
       }
     ComputationNode { behavior: b } => ComputationBody { behavior: b }
-    _ => UnsupportedArrowBody
+    TypeNode { connective: _ } => UnsupportedArrowBody
   }
 }
 
@@ -304,7 +304,7 @@ fn arrow_body_form_eval_int_result_equals_for_call(call: Node, expected: Int) ->
   match arrow_body_form_eval_call_outcome_for_call(call: call) {
     Accepted { value: actual, diagnostics: _ } =>
       arrow_body_form_eval_runtime_int_equals(value: actual, n: expected)
-    _ => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

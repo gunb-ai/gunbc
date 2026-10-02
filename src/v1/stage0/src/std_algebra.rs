@@ -379,7 +379,6 @@ pub fn ordering_is_less(o: Ordering) -> bool {
 #[serde(tag = "_variant")]
 pub enum AlgebraProfile {
     OrderedRingProfile,
-    OrderedSemiringProfile,
     ApproximateFieldProfile,
     BooleanAlgebraProfile,
     FinitePowerSetProfile,
@@ -755,10 +754,6 @@ pub fn algebra_carriers() -> Rc<Vec<Rc<AlgebraCarrier>>> {
     profile: AlgebraProfile::OrderedRingProfile,
     spellings: Rc::new(vec![scalar_carrier_spelling("Int".to_string())]),
 }), Rc::new(AlgebraCarrier {
-    name: "Nat".to_string(),
-    profile: AlgebraProfile::OrderedSemiringProfile,
-    spellings: Rc::new(vec![scalar_carrier_spelling("Nat".to_string())]),
-}), Rc::new(AlgebraCarrier {
     name: "Float".to_string(),
     profile: AlgebraProfile::ApproximateFieldProfile,
     spellings: Rc::new(vec![scalar_carrier_spelling("Float".to_string())]),
@@ -992,7 +987,6 @@ pub enum AlgebraSupportAxis {
 pub fn algebra_profile_support(profile: AlgebraProfile) -> AlgebraSupportAxis {
     match profile.clone() {
         AlgebraProfile::OrderedRingProfile => AlgebraSupportAxis::FiniteSupport,
-        AlgebraProfile::OrderedSemiringProfile => AlgebraSupportAxis::FiniteSupport,
         AlgebraProfile::ApproximateFieldProfile => AlgebraSupportAxis::FiniteSupport,
         AlgebraProfile::BooleanAlgebraProfile => AlgebraSupportAxis::FiniteSupport,
         AlgebraProfile::FinitePowerSetProfile => AlgebraSupportAxis::FiniteSupport,
@@ -1001,6 +995,44 @@ pub fn algebra_profile_support(profile: AlgebraProfile) -> AlgebraSupportAxis {
         AlgebraProfile::FreeMonoidCollectionProfile => AlgebraSupportAxis::FiniteSupport,
         AlgebraProfile::PartialFunctionProfile => AlgebraSupportAxis::OpenSupport,
         AlgebraProfile::FinitelySupportedFunctionProfile => AlgebraSupportAxis::FiniteSupport,
+    }
+}
+
+pub fn algebra_profile_admits_numeral(profile: AlgebraProfile) -> bool {
+    match profile.clone() {
+        AlgebraProfile::OrderedRingProfile => true,
+        AlgebraProfile::ApproximateFieldProfile => true,
+        AlgebraProfile::BooleanAlgebraProfile => false,
+        AlgebraProfile::FinitePowerSetProfile => false,
+        AlgebraProfile::PointwisePowerCollectionProfile => false,
+        AlgebraProfile::FreeMonoidScalarProfile => false,
+        AlgebraProfile::FreeMonoidCollectionProfile => false,
+        AlgebraProfile::PartialFunctionProfile => false,
+        AlgebraProfile::FinitelySupportedFunctionProfile => false,
+    }
+}
+
+pub fn kernel_carrier_admits_numeral(name: String) -> bool {
+    {
+        let mut __found = false;
+        for carrier in algebra_carriers().iter().cloned() {
+            if (algebra_profile_admits_numeral(carrier.profile.clone()) && {
+                let mut __found = false;
+                for spelling in carrier.spellings.clone().iter().cloned() {
+                    if ((spelling.text.clone() == name.clone())
+                        && carrier_spelling_row_present(spelling.method_surface.clone()))
+                    {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            }) {
+                __found = true;
+                break;
+            }
+        }
+        __found
     }
 }
 
@@ -1066,74 +1098,6 @@ pub fn ordered_ring_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
         Rc::new(AlgebraFieldTemplate {
             name: "negate".to_string(),
             param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
-            return_type: Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-            size_effect: std::option::Option::None,
-            cost_shape: std::option::Option::None,
-            callback_element_position: std::option::Option::None,
-        }),
-        Rc::new(AlgebraFieldTemplate {
-            name: "mul".to_string(),
-            param_types: Rc::new(vec![
-                Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-                Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-            ]),
-            return_type: Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-            size_effect: std::option::Option::None,
-            cost_shape: std::option::Option::None,
-            callback_element_position: std::option::Option::None,
-        }),
-        Rc::new(AlgebraFieldTemplate {
-            name: "one".to_string(),
-            param_types: Rc::new(vec![]),
-            return_type: Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-            size_effect: std::option::Option::None,
-            cost_shape: std::option::Option::None,
-            callback_element_position: std::option::Option::None,
-        }),
-        Rc::new(AlgebraFieldTemplate {
-            name: "compare".to_string(),
-            param_types: Rc::new(vec![
-                Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-                Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-            ]),
-            return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-                name: "Ordering".to_string(),
-            }),
-            size_effect: std::option::Option::None,
-            cost_shape: std::option::Option::None,
-            callback_element_position: std::option::Option::None,
-        }),
-        Rc::new(AlgebraFieldTemplate {
-            name: "clamp".to_string(),
-            param_types: Rc::new(vec![
-                Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-                Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-                Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-            ]),
-            return_type: Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-            size_effect: std::option::Option::None,
-            cost_shape: Some(CostShape::ShapeConstant),
-            callback_element_position: std::option::Option::None,
-        }),
-    ])
-}
-
-pub fn ordered_semiring_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
-    Rc::new(vec![
-        Rc::new(AlgebraFieldTemplate {
-            name: "add".to_string(),
-            param_types: Rc::new(vec![
-                Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-                Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-            ]),
-            return_type: Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-            size_effect: std::option::Option::None,
-            cost_shape: std::option::Option::None,
-            callback_element_position: std::option::Option::None,
-        }),
-        Rc::new(AlgebraFieldTemplate {
-            name: "zero".to_string(),
-            param_types: Rc::new(vec![]),
             return_type: Rc::new(AlgebraTypeTemplate::ReceiverSelf),
             size_effect: std::option::Option::None,
             cost_shape: std::option::Option::None,
@@ -2240,7 +2204,6 @@ pub fn algebra_method_template_name(name: String) -> bool {
 pub fn algebra_templates_for_profile(profile: AlgebraProfile) -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     match profile.clone() {
         AlgebraProfile::OrderedRingProfile => ordered_ring_templates(),
-        AlgebraProfile::OrderedSemiringProfile => ordered_semiring_templates(),
         AlgebraProfile::ApproximateFieldProfile => approximate_field_templates(),
         AlgebraProfile::BooleanAlgebraProfile => boolean_algebra_templates(),
         AlgebraProfile::FinitePowerSetProfile => finite_power_set_templates(),
@@ -2255,7 +2218,6 @@ pub fn algebra_templates_for_profile(profile: AlgebraProfile) -> Rc<Vec<Rc<Algeb
 pub fn algebra_type_param_names(profile: AlgebraProfile) -> Rc<Vec<String>> {
     match profile.clone() {
         AlgebraProfile::OrderedRingProfile => Rc::new(vec![]),
-        AlgebraProfile::OrderedSemiringProfile => Rc::new(vec![]),
         AlgebraProfile::ApproximateFieldProfile => Rc::new(vec![]),
         AlgebraProfile::BooleanAlgebraProfile => Rc::new(vec![]),
         AlgebraProfile::FinitePowerSetProfile => Rc::new(vec!["T".to_string()]),
@@ -2272,7 +2234,6 @@ pub fn algebra_type_param_names(profile: AlgebraProfile) -> Rc<Vec<String>> {
 pub fn all_algebra_profiles() -> Rc<Vec<AlgebraProfile>> {
     Rc::new(vec![
         AlgebraProfile::OrderedRingProfile,
-        AlgebraProfile::OrderedSemiringProfile,
         AlgebraProfile::ApproximateFieldProfile,
         AlgebraProfile::BooleanAlgebraProfile,
         AlgebraProfile::FinitePowerSetProfile,
@@ -2320,8 +2281,6 @@ pub struct Equal;
 pub struct Greater;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct OrderedRingProfile;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct OrderedSemiringProfile;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ApproximateFieldProfile;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

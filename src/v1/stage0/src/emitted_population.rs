@@ -23,6 +23,7 @@
 // src/extdeps_languages_rust_representation.rs
 // src/extdeps_languages_rust_syntax.rs
 // src/extdeps_languages_rust_types.rs
+// src/extdeps_posix_clock_gettime.rs
 // src/extdeps_units_dimensionless.rs
 // src/extdeps_units_iec_80000_13.rs
 // src/extdeps_units_iso8601.rs
@@ -71,6 +72,7 @@
 // src/std_keyed_row.rs
 // src/std_literal_elaboration.rs
 // src/std_machine_constraints.rs
+// src/std_magnitude.rs
 // src/std_measure.rs
 // src/std_nat.rs
 // src/std_node.rs

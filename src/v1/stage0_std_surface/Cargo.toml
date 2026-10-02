@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 stacker = "0.1"
 im = { version = "15.1", features = ["serde"] }
+libc = "0.2"
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 unicode-ident = "1"

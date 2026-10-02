@@ -328,7 +328,7 @@ fn nat_dominates(a: std.nat.Nat, b: std.nat.Nat) -> Bool {
   match nat_compare(a: a, b: b) {
     Greater => true
     Equal => true
-    _ => false
+    Less => false
   }
 }
 

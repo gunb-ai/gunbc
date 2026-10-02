@@ -194,15 +194,10 @@ fn normalize_cost_expr_to_symbolic(expr: CostExpr) -> SymbolicCost {
       } else {
         match a {
           SizeOf { variable: v } => LogCost { variable: v }
-          _ =>
-            normalize_cost_expr_to_symbolic(
-              expr: CostRefused {
-                cause: UngroundedLogArgument {
-                  argument: a,
-                  at: cost_expr_authority_locus()
-                }
-              }
-            )
+          SizeConst { value: _ } => normalize_cost_expr_to_symbolic_ungrounded_log(a: a)
+          SizeLength { of: _ } => normalize_cost_expr_to_symbolic_ungrounded_log(a: a)
+          SizeAdd { left: _, right: _ } => normalize_cost_expr_to_symbolic_ungrounded_log(a: a)
+          SizeMax { left: _, right: _ } => normalize_cost_expr_to_symbolic_ungrounded_log(a: a)
         }
       }
     CostEffect { operation: op } =>
@@ -217,4 +212,15 @@ fn normalize_cost_expr_to_symbolic(expr: CostExpr) -> SymbolicCost {
     CostRefused { cause: c } =>
       UnknownCost { diagnostic: cost_expr_refusal_diagnostic(cause: c) }
   }
+}
+
+fn normalize_cost_expr_to_symbolic_ungrounded_log(a: SizeExpr) -> SymbolicCost {
+  normalize_cost_expr_to_symbolic(
+    expr: CostRefused {
+      cause: UngroundedLogArgument {
+        argument: a,
+        at: cost_expr_authority_locus()
+      }
+    }
+  )
 }
