@@ -70,18 +70,16 @@ type NatSubtraction
   | NatSubtrahendExceedsMinuend
 
 // THE ONE PLACE A DIFFERENCE OF NATURALS RE-ENTERS THE NATURALS. `a - b` is an Int
-// (std.coercion dag_subtraction_refinement), and an Int crosses into a Nat at a function return
-// position. The crossing is sound only when b does not exceed a, which nat_sub establishes before
-// it calls this and which nothing else may assume: it is not a general subtraction.
-fn nat_difference_of_ordered(minuend: Nat, subtrahend: Nat) -> Nat {
-  minuend - subtrahend
-}
-
+// (std.coercion dag_subtraction_refinement), and an Int crosses into a Nat at the field position
+// below. The crossing is sound only because the branch has already ruled out b > a; it is written
+// inside that branch rather than behind a callable helper, so no caller can reach it without the
+// ordering having been established (review 73960). The crossing itself is still admitted implicitly
+// by the checker -- gunbc.recurring_failure_mode the_checker_admits_a_cast_the_evaluator_refuses.
 fn nat_sub(a: Nat, b: Nat) -> NatSubtraction {
   if b > a {
     NatSubtrahendExceedsMinuend
   } else {
-    NatDifference { value: nat_difference_of_ordered(minuend: a, subtrahend: b) }
+    NatDifference { value: a - b }
   }
 }
 
