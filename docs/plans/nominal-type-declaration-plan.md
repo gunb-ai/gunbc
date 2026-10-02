@@ -1,244 +1,247 @@
 # PLAN — one nominal type-declaration model; delete refinements
 
-**Status: PLAN. No implementation lands until the operator rules on the decisions in §7.**
-Operator direction 2026-10-02 (work item adhoc-7e1dbee1-8e0). Governing sections: DESIGN §2, §3
-(replacement migrations), §4 (coercion law, text identity), §4b, §5.
+**Status: PLAN, revision 2. Design only; nothing lands until the operator rules on §9.**
+Operator direction 2026-10-02 (work item adhoc-7e1dbee1-8e0); revision 2 recuts the plan around the
+operator's ruling on gunbc#13024 rev 1, relayed by sharp-raven-357:
 
-## 0. What the corpus holds today (provisional — grep, not the instrument)
+> **Alias is equality, constructor is progress, visibility is authority.**
 
-These figures come from a line grep over `dag/` and `src/v2/` at main `dd0614551b5`. They are
-**not** the census; §1 names the instrument that replaces them, and its first run supersedes every
-number here. Per DESIGN §6 they are not to be quoted onward.
+Governing sections: DESIGN §2, §3 (replacement migrations), §4 (operations from inhabitance; the
+coercion law), §4b, §5.
 
-| form | grep count | mechanism today |
+Every count in this document is **provisional** — line greps at main `dd0614551b5`, not the census.
+They are not a size and are not to be quoted onward (DESIGN §6). The only admissible size is the
+output of the resolved census (§2).
+
+## 1. The principle, applied
+
+| concern | after this program | replaces |
 |---|---|---|
-| `type X = Y` (no `where`, no modifier) | ~556 lines | transparent alias |
-| `type X = Y where brand("…")` | ~334 | nominal by brand literal; v1 seed recognises `brand` by spelling (`v1.compiler.parse`, `v1.compiler.infer` `where_refinement_predicates_equivalent`) |
-| `type X nominal_opaque = Y` | 2 declarations (`std.types` `Secret`, `extdeps.access.posix_effective_principal`) | second nominal mechanism |
-| `type X = Y where <pred>` (real refinements) | 31 lines, ~27 distinct types | `range`, `string_non_empty`, `gt_zero`, `lower_hex_16/40/64/128`, `oci_path_component_syntax`, `oci_tag_syntax`, `oci_other_digest_algorithm`, `oci_other_digest_encoded`, `is_text_readable`, `c_translation_unit_basename_safe` (and `unicode_scalar` per the carry-over list) |
-| single-field records | — | already nominal in v2 (`v2.compiler.infer` `infer_record_construct_type`) |
+| **equality** | `type X = Y` — X and Y are the same type; no construction, no projection, no identity | (unchanged) |
+| **progress** | a new type is introduced by a **data constructor**; a value of `X` exists only because a constructor ran | `where brand(...)`, `where <pred>`, `nominal_opaque` |
+| **authority** | who may **construct** and who may **view** the representation are two independent visibility axes, governed by the declaring module | the three declaration modes |
 
-The brief's alias figure (~324) and mine (~556) disagree by a factor that a line grep cannot
-explain; that disagreement is itself the reason M0 is an instrument and not a grep.
+Brand, refinement and opacity stop being declaration modes. They become **points in the
+(constructor visibility × view visibility) plane** of one declaration form:
 
-## 1. The use census (instrument, M0)
+| old mode | raw constructor | checked constructor | representation view |
+|---|---|---|---|
+| brand (plain nominal tag) | public | — | public |
+| refinement (validated type) | **private** | public | public |
+| `nominal_opaque` (opaque) | private | as the module chooses | private or restricted |
+
+A one-field nominal type **may lower** to the existing single-field record machinery (v2 records are
+already nominal: `v2.compiler.infer` `infer_record_construct_type`). That is a realization choice: the
+constructor is the semantic authority, not the record layout, and nothing downstream may read
+nominality off the layout.
+
+## 2. The resolved semantic census (M0)
+
+The grep counts in circulation (~16.6k `"…" as T`, ~9.3k `as String|Int|Nat`, ~334 brand lines, ~31
+refinement lines, 2 `nominal_opaque` declarations) are **not a size** — a spelling match cannot tell an
+alias no-op from a nominal introduction. M2 is sized from this census only.
 
 **Instrument:** `gunbc.instruments.type_declaration_use_census`, rostered as
-`//gunbc/instruments:type-declaration-use-census` (a row in `instrument_registry`, DESIGN
-"Building & checks": a new measurement is a row, not a flag). It does not exist yet; it is the first
-landing of this program.
+`//gunbc/instruments:type-declaration-use-census` (a row in `instrument_registry`; DESIGN
+"Building & checks"). It reads the **resolved** tree of the closure `dag` + `src/v2` — the declaration
+each reference resolves to, never the leaf spelling (DESIGN §4: compatibility keys on the exact
+declaration).
 
-It walks the annotation-erased declaration tree of the closure `dag` + `src/v2` (not text) and, for
-every type declaration of form alias / brand / `nominal_opaque` / refinement, joins it against its
-**use sites** from the resolved reference index:
+**Declaration classes** (every type declaration the program affects):
 
-- **(a) nickname / instantiation name** — every use site is interchangeable with the body: no `as`
-  into or out of it, no site whose acceptance would change if the name were replaced by its body.
-- **(b) distinct type over a representation** — some site relies on the name *not* unifying with its
-  body or a sibling: an `as` cast into it (construction), a cast out of it (projection), or a
-  signature where a sibling over the same body would be a defect (the `HostIdentity` collision the
-  brand witness records).
-- **(c) discriminant** — the name's identity is *branched on*: it appears as a coproduct variant
-  payload that a `match` eliminates, as a key/column of a dispatch table, or as a type argument
-  that selects a projection (`Vendor<Domain>`-style; `std.os` per-vendor rows).
+| class | definition |
+|---|---|
+| `TrueAlias` | `type X = Y` with no nominal use: every `as` into/out of it is an alias no-op |
+| `UnconstrainedNominal` | brand-like: some site relies on X ≠ its body; no predicate |
+| `CheckedConstructionStage` | carries a predicate today (refinement) or an `_of` checked constructor |
+| `Opaque` | `nominal_opaque`, or a nominal whose view no consumer outside its module reads |
+| `MultiFieldRecord` | record with >1 field (already nominal; listed so the census is total) |
+| `Sum` | closed coproduct |
 
-Output: one row per declaration `{module, symbol, form, class, witness_site}` where `witness_site`
-is the reference that put it in (b) or (c) — a classification without its evidence site is a
-§5 fabricated output. A declaration with no use site is reported as **unconsumed** (DESIGN §3c),
-not folded into (a). The instrument refuses (exit 2) if the reference index is incomplete for any
-module in the closure — an unindexed module is could-not-tell, never (a).
+A declaration that matches no class is a **census refusal** (exit 2), not a default bucket.
 
-**What I can say without the instrument, and stake as a falsifiable prediction:** the language has
-no typecase, so (c) cannot exist today as "switch on which named type a value is"; wherever it is
-real, the corpus already spells it as a coproduct whose variants carry the named types, or as a
-type argument (`Vendor<Domain>`). If M0 finds a (c) site that is neither — a brand literal compared
-as a string, a dispatch keyed on a type's spelling — that is a finding against this plan's §2.3 and
-reopens it.
+**`as`-site classes** (every `as`, target resolved to its declaration):
 
-## 2. One declaration model
-
-There are exactly **two** type-declaration forms after this program, and they are not two identity
-mechanisms — one introduces no identity, the other is the only thing that does:
-
-### 2.1 Default: `type X = Y` is a transparent name (class a)
-
-Unchanged in meaning: an alias, identity coercion, no construction, no projection. This is the
-default because the operator ruled the nickname use intended and because it is the overwhelming
-majority (§0). It carries no `where` and no modifier, ever.
-
-It is **not** a nominal type and makes no safety claim (DESIGN §4b: a richer name is not safety).
-A nickname for a concept already named elsewhere is still DESIGN §3's nicknaming; that is a review
-matter, not a type-system one, and this plan does not change it.
-
-### 2.2 Explicit: a record is the only nominal identity (class b)
-
-`type X { value: Y }` — a single-field record. Records are already nominal in v2, so this adds no
-mechanism; it deletes two (`brand`, `nominal_opaque`).
-
-- **In (construction):** `X { value: y }`. For a type with an invariant, the **checked constructor**
-  `fn x_of(y: Y) -> X?` is the only intended entry: it builds `X` from the layer below or answers
-  `Absent` (the existing `std.types` `http_status_of` shape — assembly line: a value that is not what
-  we need is rejected one layer down, never produced and then narrowed).
-- **Out (projection):** `x.value`. Total, exact, explicit.
-- **No `as` between nominal types.** `as` is no longer how a brand is asserted; a cast from `X` to a
-  sibling record over the same body has no declared route and refuses (§6).
-
-Where a type composes another nominal type (`SecretValue` over `Secret`, `PositiveInt` over `Nat`,
-`CTranslationUnitBasename` over `NonEmptyStr`), the checked constructor takes the *lower nominal
-type*, not its representation: `secret_value_of(s: Secret) -> SecretValue?`. The crossing between
-carriers is an inhabitance judgment (`v2.std.inhabitance`), not type equality (sharp-raven-357
-carry-over (1)).
-
-### 2.3 Discriminant (class c) is a coproduct, not a type-identity match
-
-"Switch on which named type a value is" is written as a closed coproduct whose variants carry the
-nominal records: `type Payload = Http(HttpStatus) | Port(Port)`, eliminated by `match`. Reasons:
-
-- A match over *open* type identity (typecase) is not exhaustive, so it cannot sit on the floor's
-  "closed variants eliminate exhaustively" (DESIGN §4b); a coproduct is closed by construction.
-- Typecase makes the alias/record distinction observable at runtime, so changing a nickname into a
-  record would silently change control flow — a meaning fork (§3).
-- Where the discrimination is at the type level (`Vendor<Domain>`), it is already a type argument
-  and needs nothing new.
-
-So no third form exists. If M0 refutes the §1 prediction this subsection reopens before M2.
-
-## 3. Refinement deletion
-
-### 3.1 Each refinement becomes a record plus a checked constructor
-
-| type(s) | new body | checked constructor (one layer down) |
+| class | definition | M3 rewrite |
 |---|---|---|
-| `Octet`, `PrefixLength`, `Hextet`, `IpmiChannelNumber`, `IpmiUserId`, `RetryCount`, `HttpStatus`, `Port`, `GitTreeEntryName{Before,After}SlashValue`, `EpochSecs`, `EpochMs`, `Duration`, `PositiveFanCount` | `{ value: Int }` | `<t>_of(n: Int) -> T?` with bounds from data rows (as `http_status_min/max` today — the refinement's duplicated literals disappear) |
-| `PositiveInt` | `{ value: Nat }` | `positive_int_of(n: Nat) -> PositiveInt?` |
-| `NonEmptyStr`, `LanguageId`, `SecretName`, `FilePath`, `GitRef`, `GcpProjectId` | `{ value: String }` | `<t>_of(s: String) -> T?` |
-| `SecretValue` | `{ value: Secret }` | `secret_value_of(s: Secret) -> SecretValue?` |
-| `Sha1/Sha256/Sha512/Fnv1a64StructuralDigestHex` | `{ value: String }` | `<t>_of(s: String) -> T?` in `std.content_hash` |
-| `OciPathComponent`, `OciTag`, `OciOtherDigestAlgorithm`, `OciOtherDigestEncoded` | `{ value: String }` | in the OCI extdeps module, beside the grammar they cite |
-| `ReadableEntry` | `{ value: FileEntry }` | `readable_entry_of(e: FileEntry) -> ReadableEntry?` |
-| `CTranslationUnitBasename` | `{ value: NonEmptyStr }` | takes `NonEmptyStr` |
-| `unicode_scalar` users | per M0 | per M0 |
+| `AliasNoOp` | target is a `TrueAlias` of the source | delete the cast |
+| `NominalIntroduction` | base → nominal | constructor call (checked where the type is a stage) |
+| `NominalProjection` | nominal → base, consumer genuinely needs the raw value | explicit view (`.value`) |
+| `OperationWorkaround` | nominal → base only to compare, hash, encode, concatenate | the derived operation on the nominal directly (§5) |
+| `GenuineConversion` | a declared conversion between distinct representations | unchanged (DESIGN §4 named conversion) |
+| `Unrelated` | `as` in another grammar role (import rename, …) | unchanged |
 
-`std.types` currently declares `Port`, `SecretValue`, `NonEmptyStr` twice; the rewrite keeps one.
-Some `EpochSecs`/`Duration`-style ranges with only a lower bound may be (a) in practice — M0 decides
-whether each keeps a constructor or becomes a plain alias (dropping a check nothing enforced is not a
-rung drop: DESIGN §4b says the brand/refinement was cosmetic until construction enforced it; M0 must
-show which sites the seed's literal-only check actually refused).
+Each row carries `{module, symbol | site, class, evidence_site}`; a classification without its
+evidence site is a §5 fabricated output. Output also lists, by name, every affected module **outside**
+`v2.workflow.required_floor required_gate_prefixes` (DESIGN §3: those do not refuse loudly).
 
-### 3.2 Consumers of the where-machinery, deleted with it
+**Controls:** a fixture closure with one declaration of each class and one `as` of each class must
+classify exactly; a module the reference index did not cover must refuse exit 2 (could-not-tell is
+never `TrueAlias` or `Unrelated`); and a mutation control — an introduction rewritten as a projection
+— must change the classification.
 
-v2:
-- `src/v2/extdeps/languages/dag.dag` — the `where` clause productions and the `nominal_opaque` modifier.
-- `src/v2/compiler/03_resolve.dag` — the where-call resolution path.
-- `src/v2/compiler/04_infer.dag` — the `RefinementDeclaration` frontier.
-- `src/v2/compiler/body_lowering_fold.dag`, `src/v2/compiler/emit_produced.dag` — where lowering.
-- `src/v2/workflow/floor_cost_debt.dag`, `floor_grandfathered_roster.dag`, `floor_pure_producer_share.dag` — rows naming where witnesses.
-- Tests: `src/v2/test/claim/parse/where_clause_required_comma_test.dag`, the where arms of `d1_declaration_grammar_parse_test.dag`, `type_decl_modifier_g0_parse_probe_test.dag`, and the where references in `edge_label/structural_label_readers_test.dag`, `namespace_xl0/reference_conservation_test.dag`.
+## 3. One declaration form
 
-dag:
-- `std.types` `brand`, `range`, `string_non_empty`, `gt_zero`, `WherePredicateMarker`; `std.content_hash` `lower_hex_*`; `unicode_scalar`; the OCI and `is_text_readable` / `c_translation_unit_basename_safe` predicate fns.
-- `gunbc.where_refinement_predicate_vocabulary` whole (`WherePredicateGrounding`, `WherePredicateEnforcement`, the v1 hand tables) — deleted with the refinements, never left as a second authority (carry-over (2)).
-- `test.claim.where_refinement_predicate_vocabulary_witness_test` (its subject is gone).
-- `dag/extdeps/languages/rust/types.dag` where rows; `gunbc.plans.p1_where_clause_lowering`; `gunbc.plan_registry_batch_e` row; `gunbc.census_closure_frontier` row; `gunbc.rung_drop.g0_type_decl_modifier_parse_without_sealing_property`; `gunbc.rust_source_type_bindings` Secret row.
-- Recurring-failure-mode rows (`refinement_predicate_enforced_only_where_the_value_is_a_literal`, `parameter_refinement_has_no_carrier`, `authored_lexeme_read_as_a_grammar_marker`, `kernel_type_secret_has_no_v2_value_type_node`, `behavior_named_edge_label_validated_not_constructed`) are **updated, not deleted**: the class is climbed by construction, and each records the dissolution.
-- The #12506 parked where-predicate frontier row is **retired by the deletion**, not flipped to a judgment (carry-over (3)).
+**Equality.** `type X = Y`. Unchanged; the default.
 
-v1 (§4): `v1.compiler.parse` (`"brand" =>` and the where grammar), `v1.compiler.infer`
-(`where_refinement_predicates_equivalent`, `where_predicate_literal_string_args_match`,
-`decidable_where_string_predicate_holds`, the brand arm), `v1.compiler.emit_rust` where handling.
+**Progress.** A nominal declaration names its constructor(s); a one-field nominal over `Y` lowers to a
+single-field record. Concrete surface syntax for the visibility axes is a §9 decision (S1); this plan
+fixes the semantics:
 
-## 4. The v1 seed
+- **In:** only by a constructor whose visibility admits the call site. A **raw** constructor is total
+  over the representation; a **checked** constructor is an ordinary function in the declaring module
+  that is the only public entry when the raw one is private.
+- **Out:** only by the representation view, where its visibility admits the site. Opaque means there is
+  no view outside the module.
+- **Matching:** on constructors (destructure a nominal value where its view is visible) and on closed
+  sums. **There is no typecase**, and no design for one.
+- **No `as` between nominal types**, and no `as` that introduces or strips nominality — those are
+  constructor calls and views. `as` remains only for declared conversions (DESIGN §4).
 
-Purpose test (`gunbc.v1_maintenance_standing` `v1_seed_standing`): the seed compiles `src/v2` and
-the corpus the floor reads; once no source contains `where` or `nominal_opaque`, the seed's where
-machinery serves nothing on the self-host path, and **deleting** it shrinks the seed — admitted as
-the opposite of growth. What the seed must *gain* is at most this, and M1 measures it before any
-seed edit:
+Composed stages build from the layer below: `SecretValue` is checked from `Secret`, `PositiveInt` from
+`Nat`, `CTranslationUnitBasename` from `NonEmptyStr`. The crossing is an inhabitance judgment
+(`v2.std.inhabitance`), never type equality.
 
-1. Single-field-record nominality: the seed must refuse `X { value: … }` where `Y` is expected for two
-   distinct records over the same body. If v1 already types record construction nominally, the gain
-   is zero. If not, the edit is admitted under the purpose test because the brand witness's
-   COLLISION/MISMATCH refusals would otherwise be lost on the seed path — a §4b silent regression.
-2. Nothing else: checked constructors are ordinary functions returning `T?`.
+## 4. Checked construction (D7)
 
-Stage0 mirrors of `src/v1/*` are regenerated in the same PR as each seed edit (regen-fixed-point on
-the `build` lane); a mirror is never hand-edited.
+A checked constructor is an ordinary function boundary. Its definition is "success advances the value
+one stage; refusal leaves it where it was, with a reason" — `Optional` is a convenience shape, not the
+definition. Vocabulary is existing (DFS'd, nothing minted):
 
-## 5. Replacement-migration order (delete-first)
+- residue plus reason: `std.error_primitives` `Result<ok, err>` with `err` carrying the **original
+  value** and a typed cause (`port_of(n: Int) -> Result<Port, PortRefusal>`, `PortRefusal { value: Int,
+  cause: … }`);
+- stage-level diagnostics where the boundary is a compiler stage: `v2.std.diagnostic` `Outcome<T>`;
+- `T?` where no consumer needs the reason (the existing `std.types` `http_status_of`).
 
-**M0 — census instrument** (§1). Read-only; lands first because §2.3 rests on its prediction and §3.1's
-alias-vs-constructor split rests on its classes. Its own controls: a fixture closure with one
-declaration of each class must classify exactly; an unindexed module must refuse exit 2.
+Whether evidence beyond the reason is carried (a witness that the predicate held) is §9 decision S3.
 
-**M1 — controls, expecting red** (lands before the cutover, in one PR with M2 or immediately ahead):
-the brand witness's six arms rewritten over records, each first run against current main:
+Candidates, per the provisional list (M0 decides each one's class and may demote a lower-bound-only
+range nobody enforced to `TrueAlias`): `Octet`, `PrefixLength`, `Hextet`, `IpmiChannelNumber`,
+`IpmiUserId`, `RetryCount`, `HttpStatus`, `Port`, `GitTreeEntryName{Before,After}SlashValue`,
+`EpochSecs`, `EpochMs`, `Duration`, `PositiveFanCount`, `PositiveInt`, `NonEmptyStr`, `LanguageId`,
+`SecretName`, `FilePath`, `GitRef`, `GcpProjectId`, `SecretValue`, `Sha1/Sha256/Sha512DigestHex`,
+`Fnv1a64StructuralDigestHex`, the four `Oci*` syntax types, `ReadableEntry`,
+`CTranslationUnitBasename`, and `unicode_scalar`'s users. Bounds come from data rows (as
+`http_status_min/max` already do); the refinement's duplicated literals disappear with it.
 
-| arm | new fixture | expected after cutover | today |
+## 5. Derived capabilities (D6)
+
+A nominal type **derives or exports selected capabilities** from its representation — equality, hash,
+ordering where meaningful, encoding where intentionally exposed. This is DESIGN §4's
+"operations come from inhabitance" applied to a nominal: the type inhabits the structure its
+representation inhabits, **by the declaring module's selection**.
+
+- **Not subtyping, not coercion.** `RoadmapNodeId` has equality because its representation does; it
+  is never usable where a `String` is expected. No implicit route is added (DESIGN §4 law untouched).
+- **Selective.** A `Secret` does not acquire display or JSON because its field is a `String`. The
+  default is **nothing derived**; each capability is opted into at the declaration.
+- **One vocabulary.** Equality and ordering are `std.algebra` (`AlgebraProfile`,
+  `AlgebraCarrier`, `algebra_profile_equality_extensional`, `Ordering`); hashing is `std.content_hash`
+  `HashFamily`. Encoding has no single consumed home I could find in the DFS — §9 decision S2 (DFS
+  further vs. name the home), never a second capability vocabulary.
+- **Consequence for the census:** every `OperationWorkaround` cast (strip to compare/hash/encode) is
+  replaced by the derived operation, which is why M0 must separate it from `NominalProjection`.
+
+## 6. Deletion (D5, atomic, in the cutover)
+
+Deleted in the same semantic cutover as the migration — no intermediate state where a brand and a
+constructor both answer for one type:
+
+- **Grammar:** `where` clause and `nominal_opaque` modifier — `src/v2/extdeps/languages/dag.dag`;
+  `v1.compiler.parse` including the `"brand" =>` spelling match.
+- **v2 stages:** the where-call path in `src/v2/compiler/03_resolve.dag`; the `RefinementDeclaration`
+  frontier in `src/v2/compiler/04_infer.dag`; where lowering in `body_lowering_fold.dag`,
+  `emit_produced.dag`.
+- **v1 seed:** `v1.compiler.infer` `where_refinement_predicates_equivalent`,
+  `where_predicate_literal_string_args_match`, `decidable_where_string_predicate_holds`, the brand arm;
+  `v1.compiler.emit_rust` where handling; the hand tables.
+- **Vocabulary:** `std.types` `brand`, `range`, `string_non_empty`, `gt_zero`, `WherePredicateMarker`;
+  `std.content_hash` `lower_hex_*`; `unicode_scalar`; the OCI, `is_text_readable` and
+  `c_translation_unit_basename_safe` predicate fns; **`gunbc.where_refinement_predicate_vocabulary`
+  whole, with `WherePredicateGrounding`** — never left as a second authority.
+- **Frontier:** #12506's parked where-predicate row is **retired**, not flipped to a judgment.
+- **Rows naming the deleted machinery:** `dag/extdeps/languages/rust/types.dag` where rows,
+  `gunbc.plans.p1_where_clause_lowering`, `gunbc.plan_registry_batch_e`, `gunbc.census_closure_frontier`,
+  `gunbc.rung_drop.g0_type_decl_modifier_parse_without_sealing_property`,
+  `gunbc.rust_source_type_bindings` Secret row, the where rows in `src/v2/workflow/floor_cost_debt.dag`,
+  `floor_grandfathered_roster.dag`, `floor_pure_producer_share.dag`.
+- **Tests whose subject is gone:** `test.claim.where_refinement_predicate_vocabulary_witness_test`,
+  `where_clause_required_comma_test`, the where arms of `d1_declaration_grammar_parse_test`,
+  `type_decl_modifier_g0_parse_probe_test`, where references in
+  `edge_label/structural_label_readers_test`, `namespace_xl0/reference_conservation_test`.
+- **Recurring-failure-mode rows** (`refinement_predicate_enforced_only_where_the_value_is_a_literal`,
+  `parameter_refinement_has_no_carrier`, `authored_lexeme_read_as_a_grammar_marker`,
+  `kernel_type_secret_has_no_v2_value_type_node`, `behavior_named_edge_label_validated_not_constructed`)
+  are **updated, not deleted**: each records its climb.
+
+This list is the known set; M0's out-of-gate enumeration completes it, and anything it names that the
+cutover does not repair is a declared §4b(3) drop with population and trigger.
+
+**v1 seed under `gunbc.v1_maintenance_standing` `v1_seed_standing`:** deletion of seed machinery the
+self-host path no longer reaches is shrink, admitted. The seed must also **gain** constructor/view
+visibility enforcement for the sources it compiles, or the refusals of §7 are lost on the seed route —
+a silent regression; that gain serves v2 self-host and is admitted under the purpose test, sized by M1.
+Stage0 mirrors are regenerated in each PR that edits `src/v1` (regen-fixed-point, `build` lane), never
+hand-edited.
+
+## 7. Controls (written expecting-red first)
+
+The brand witness's six arms (`test.claim.brand_nominal_identity_witness_test`) are rewritten over
+constructors and every refusal is preserved; each is run against current main before the wall lands.
+Per DESIGN §4b(4) none retires.
+
+| arm | fixture (semantic) | after | before |
 |---|---|---|---|
-| COLLISION | `type A { value: String }`, `type B { value: String }`, `fn f(a: A) -> B { a }` | refuse TypeMismatch | records already refuse — run to confirm; if green-before, it is a control, not a red |
-| MISMATCH | same, spelled through a cast `a as B` | refuse (no declared route) | **red expected** if `as` admits record-to-record |
-| CONSTRUCT | `fn f(s: String) -> A { A { value: s } }` | accept | accept |
+| COLLISION | two nominals over `String`, value of A where B is declared | refuse | control (records already refuse) |
+| MISMATCH | same, through a cast `a as B` | refuse | **red** if `as` admits it |
+| CONSTRUCT | public raw ctor from `String` | accept | accept |
 | DUAL | one declaration, two use sites | accept | accept |
-| STRIP | `fn f(a: A) -> B { B { value: a.value } }` | accept | accept |
-| UNDECLARED_SITE | `fn f(a: String where brand("x")) -> …` | refuse at **parse** (`where` no longer exists) | **red**: parses today |
-| NO_WHERE_ON_TYPE | `type A = String where range(min: 0)` | refuse at parse | **red** |
-| NO_OPAQUE | `type A nominal_opaque = String` | refuse at parse | **red** |
-| CHECKED_CTOR | `http_status_of(n: 600)` is `Absent`, `http_status_of(n: 200)` Present, both by execution | green | green (positive control) |
+| STRIP | `B` constructed from `A`'s view | accept | accept |
+| UNDECLARED_SITE | `where brand(...)` on a parameter | refuse at parse | **red** |
+| PRIVATE_RAW_CTOR | raw ctor of a validated type called outside its module | refuse | **red** (no visibility yet) |
+| PRIVATE_VIEW | view of an opaque type read outside its module | refuse | **red** |
+| NO_IMPLICIT_CAPABILITY | `RoadmapNodeId` where `String` is declared, equality derived | refuse | control |
+| UNDERIVED_CAPABILITY | display/JSON of `Secret` with no opt-in | refuse | **red** |
+| CHECKED_CTOR | `port_of(n: 0)` refuses with residue `0` and a cause; `port_of(n: 80)` advances; by execution | green | positive control |
+| NO_WHERE / NO_OPAQUE | `type A = String where range(...)`, `type A nominal_opaque = String` | refuse at parse | **red** |
 
-Per DESIGN §4b(4) none retires; the reds flip to permanent controls. The pre-wall-red /
-post-wall-green pair is the discriminator, run on both the v2 route and the seed route.
+Each red is run on the v2 route and the seed route (rung is the minimum across paths, §4b(1)).
 
-**M2 — the cutover, one motion.** Delete the `where` grammar and `nominal_opaque` modifier in v2
-`dag.dag` and v1 parse together, *then* fix forward every site the compile refuses — the refusals are
-the census of load-bearing dependents (DESIGN §3). Brand sites become records; refinement sites become
-§3.1. No intermediate state where both a brand and a record answer for one type.
+## 8. Migration order
 
-Consumers **outside the required gate** (`v2.workflow.required_floor required_gate_prefixes`) do not
-refuse loudly and are enumerated by name before deletion: the M0 instrument emits that list (every
-declaring/consuming module not under a gate prefix) and M2's PR body carries it; any not repaired in
-M2 is a declared §4b(3) rung drop with population and trigger, never silence. Known now:
-`dag/extdeps/languages/rust/types.dag`, `gunbc.rust_source_type_bindings`,
-`gunbc.plans.p1_where_clause_lowering`, the recurring-failure-mode rows in §3.2.
+1. **M0 — resolved census** (§2). Read-only.
+2. **M1 — constructor/view visibility and capability derivation semantics**, with §7's controls, in v2
+   and the seed. Lands with its reds; legacy forms still parse.
+3. **M2 — mechanical rewrite, generated from the census**, never hand-edited:
+   brand → public ctor + public view; refinement → private raw ctor + checked ctor + public view;
+   `nominal_opaque` → private ctor/view; aliases untouched; `NominalIntroduction` → ctor calls;
+   `OperationWorkaround` → derived operations; `NominalProjection` → explicit view; `AliasNoOp` →
+   cast deleted. The generator is a fold over the census rows.
+4. **M3 — exception review**: every site the generator could not classify or rewrite, listed by M0,
+   reviewed by hand. The generator refuses rather than guessing.
+5. **M4 — one semantic cutover PR**: the generated migration, the reviewed exceptions, and §6's
+   deletion together. The deletion is the census's confirmation: anything that still refuses was
+   missed by M0, and M0 is corrected rather than the site patched.
 
-M2 is large (~360 declaration sites plus every brand `as` site). The only admissible staging is by
-the gap-intolerant carve-out — and it does not apply: nothing outside this repo consumes these types.
-So the operator decision is size, not staging (§7 D4).
+The N7 lane (calm-boar-904) is not touched; if M0 finds a brand or refinement in its 8 native tests,
+M4 sequences after N7.
 
-**M3 — delete the machinery** that the cutover left unreferenced (§3.2 list, seed tables, vocabulary
-module, #12506 row) — in M2's PR if it fits; it must not outlive M2 by more than one landing.
+## 9. Residual operator decisions
 
-Does not touch the N7 lane (calm-boar-904): the 8 native tests need none of these forms; if M0 finds
-one of them uses a brand or refinement, M2 sequences after N7 lands.
+Ruled: D1 (alias is equality), D2 (constructor + independent visibility axes), D3 (no typecase),
+D4 (resolved census sizes M2), D5 (atomic deletion), D6 (selective derived capabilities), D7 (checked
+construction may return residue). Left open:
 
-## 6. Coercion (§4) and cosmetic brands (§4b)
-
-- **Alias:** identity is total, exact, unique, semantics-preserving — the only implicit route this
-  plan keeps.
-- **Record construction / projection** are not coercions: they are explicit terms, so §4's law is not
-  asked of them. Record `X` to sibling `Z` over the same body has **no** declared route; `as` refuses.
-  This makes STRIP an explicit `.value` projection instead of a cast down, which is the honest spelling
-  of what the brand witness already admitted.
-- **Checked constructor** is a partial conversion; it returns `T?` and is never implicit (§4: a phase
-  that requires proof refuses implicit coercion).
-- **§4b, "a brand is cosmetic until construction enforces it":** today a brand is enforced only at
-  literal sites by the seed table — cosmetic everywhere else. After M2 a record's identity is enforced
-  by the typechecker everywhere, which climbs (b) from mitigation to structurally guaranteed. The
-  *invariant* (`Port ∈ 1..65535`) climbs only as far as construction is controlled: while
-  `Port { value: 0 }` is writable outside `port_of`, the invariant is mechanically preventable at best
-  (review), not guaranteed. Reaching structural impossibility needs **constructor visibility** —
-  record literal admitted only inside the declaring module — which is §7 D2. Without D2 this plan
-  must say so beside each checked constructor rather than claim the invariant.
-
-## 7. Decisions the operator owns
-
-- **D1 — default form.** Plain `type X = Y` stays a transparent alias (default); nominal identity
-  only by single-field record (explicit). Recommend: yes.
-- **D2 — constructor visibility.** Admit a record literal for an invariant-carrying type only in its
-  declaring module, so `x_of` is the sole entry and the invariant is structural (also what
-  `nominal_opaque` was reaching for). Recommend: yes, as a separate landing after M2, with the
-  invariant's rung stated honestly until then.
-- **D3 — discriminant = coproduct; no typecase.** Recommend: yes, contingent on M0's prediction.
-- **D4 — M2 as one cutover PR** (~360 declarations), not split by module. Recommend: one PR, with
-  M3 included if it fits review.
-- **D5 — seed:** delete where machinery from v1 under the purpose test; add record nominality to v1
-  only if M1 shows the seed lacks it. Recommend: yes.
+- **S1 — surface syntax** for constructor visibility, view visibility and capability opt-in. Recommend:
+  annotations on the declaration only (no new declaration keyword), so the one form stays one form;
+  the operator picks the spelling.
+- **S2 — encoding's home.** The DFS found equality/ordering in `std.algebra` and hashing in
+  `std.content_hash`, but no consumed encoding capability authority. Recommend: a bounded DFS in M1
+  before anything is named; if none exists, an operator ruling on the home before M1 lands.
+- **S3 — evidence in checked construction.** Recommend: residue + typed cause only (`Result`); a
+  carried proof witness waits for a consumer (DESIGN §3c).
+- **S4 — default view visibility** for a brand-like nominal. Recommend: public (it is the old brand's
+  behavior; the census will show how many already only project).
+- **S5 — PR size.** M4 is one cutover; its size is unknown until M0 runs. Recommend: accept it as one
+  generated PR whatever the number, since staging would make both forms observable.
