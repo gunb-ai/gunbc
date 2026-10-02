@@ -28,7 +28,7 @@ import gunbc.toolchain_home_standing {
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.compiler_gate_workflow { compiler_gate_hosted_build_prelude_bound_steps }
 import gunbc.witness_floor_workflow { witness_toolchain_homes_isolated_guard_step }
-import gunbc.instrument_targets { dag_emit_real_grammar_round_trips_label, instrument_targets }
+import gunbc.instrument_targets { dag_emit_real_grammar_round_trips_label, dependency_demand_census_label, instrument_targets }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
   bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes,
@@ -86,7 +86,7 @@ data instrument_dispatch_timeout_minutes: Int = 240
 // gate). Each is a row of gunbc.instrument_targets (instrument_dispatch_labels_are_rostered), and
 // adding one is a row here.
 fn instrument_dispatch_labels() -> List<Label> {
-  [dag_emit_real_grammar_round_trips_label()]
+  [dag_emit_real_grammar_round_trips_label(), dependency_demand_census_label()]
 }
 
 fn instrument_dispatch_label_options() -> List<String> {
