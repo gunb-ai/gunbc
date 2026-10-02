@@ -19,6 +19,7 @@ import v2.std.diagnostic {
 }
 import v2.std.logic { Bool }
 import v2.std.node {
+  close_lowered_image,
   Atom,
   Cardinality,
   Conj,
@@ -46,7 +47,7 @@ import v2.extdeps.languages.dag {
   namespace_graft_already_grafted,
   namespace_graft_has_module_header,
   namespace_graft_module_body_marker_node,
-  namespace_graft_namespace_body_members,
+  namespace_graft_namespace_body_members_onto,
   namespace_graft_namespace_body_node,
   namespace_graft_node_is_module_body,
   namespace_graft_spine_body_optional,
@@ -627,7 +628,13 @@ fn namespace_graft_atom_node(id: Symbol) -> Node {
   }
 }
 
+// Closes the image namespace_graft_wrap_module_shell_image builds: its returned node is the named root (v2.std.node
+// close_lowered_image).
 fn namespace_graft_wrap_module_shell(captured: Node, source: Node) -> Node {
+  close_lowered_image(root: namespace_graft_wrap_module_shell_image(captured: captured, source: source))
+}
+
+fn namespace_graft_wrap_module_shell_image(captured: Node, source: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -693,11 +700,10 @@ fn namespace_graft_dual_position_refused(root: Node) -> Bool {
 // built the Conj anyway and normalize's recursive well_formed gate refused the whole module at its
 // root with no locus (gen-two census: two `data fixture_v3_tick_wire` in
 // test.claim.roadmap.roadmap_launch_deployment_observe_witness). A repeated name is also a §3 fork --
-// the seed answers it last-write-wins, so the first declaration was dead. The offending edge comes
-// from v2.std.node_query repeated_name_edges, which is empty exactly when v2.std.node
-// all_names_distinct holds; the locus is the member node of the first name seen a second time,
-// which carries its declaration's occurrence. The refusal is a match on that edge, so it has no
-// locus fallback to reach.
+// the seed answers it last-write-wins, so the first declaration was dead. The repeat is found by the
+// keyed grouping below (namespace_graft_merge_namespace_bodies), and a group that does not merge refuses
+// at its second edge (namespace_graft_repeated_name_refusal), located at that member node, which carries
+// its declaration's occurrence.
 // SAME-NAMED NAMESPACE BODIES MERGE; ANY OTHER REPEATED NAME REFUSES (XL-2 service spine; ruling
 // 2026-10-01). Two services under one prefix (`shell.Find`, `shell.Env`) each lower to
 // `shell -> <namespace body>` (v2.extdeps.languages.dag namespace_graft_namespace_body_node); those two
@@ -788,8 +794,13 @@ fn namespace_graft_all_namespace_bodies(group: List<Edge>) -> Bool {
   fold(group, init: true, f: fn(acc, e) { acc && namespace_graft_node_is_module_body(node: e.target) })
 }
 
+// Every group member's body members, in order: each body's members prepended onto one accumulator
+// (namespace_graft_namespace_body_members_onto) and the whole reversed once, so building it is linear in
+// the total member count rather than copying the growing result per body.
 fn namespace_graft_group_members(group: List<Edge>) -> List<Edge> {
-  fold(group, init: Empty, f: fn(acc, e) { list_append(left: acc, right: namespace_graft_namespace_body_members(body: e.target)) })
+  list_reverse(xs: fold(group, init: Empty, f: fn(acc, e) {
+    namespace_graft_namespace_body_members_onto(body: e.target, acc: acc)
+  }))
 }
 
 fn module_header_containment_graft(root: Node) -> Outcome<Node> {
