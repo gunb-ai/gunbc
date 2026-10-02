@@ -10516,8 +10516,8 @@ fn rc_field_pattern_str(field_name: String, field_pattern: MatchPattern, owner_v
 fn match_pattern_binds_erased(pattern: MatchPattern) -> MatchPattern {
   match pattern {
     Bind { declaration: _ } => Wildcard
-    VariantPattern { name: n, parent_enum: parent, field_bindings: fbs, parent_identity: _ } =>
-      VariantPattern { name: n, parent_enum: parent, field_bindings: fbs |> map(fb => field_binding_with_pattern(field_binding: fb, pattern: match_pattern_binds_erased(pattern: field_binding_pattern(n: fb)))) }
+    VariantPattern { name: n, parent_enum: parent, field_bindings: fbs, parent_identity: identity } =>
+      VariantPattern { name: n, parent_enum: parent, parent_identity: identity, field_bindings: fbs |> map(fb => field_binding_with_pattern(field_binding: fb, pattern: match_pattern_binds_erased(pattern: field_binding_pattern(n: fb)))) }
     LitPattern { value: v } => LitPattern { value: v }
     Wildcard => Wildcard
   }
