@@ -6,6 +6,7 @@ import gunbc.roadmap_spawner { doc_all_edges }
 import gunbc.roadmap_nesting { roadmap_memberships }
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import gunbc.harness.harness_throughput {
   HarnessRoundLedger, RoundsUnobserved, RoundsObserved, RoundObservation, HarnessThroughput, ThroughputUnobserved }
 import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
@@ -893,31 +894,33 @@ test fn witness_client_asset_is_exactly_its_statement_groups() -> Bool {
 // cover the whole asset (sized so each part serializes inside the new-witness budget): no part ships the retired selection closest() list, the retired
 // action-live class, a `=> if (` arrow (a JS syntax error), the retired view-chip selector or a channel prepending its
 // own observation banner (the channels join one impact region), and exactly one part -- the one
-// holding session_read_bind_statements -- fetches /auth/session, exactly once.
-fn fx_client_part_holds(js: String, session_fetches: Int) -> Bool {
+// holding session_read_bind_statements -- fetches /auth/session, exactly once; and exactly one part -- the one
+// holding workflow_fetch_statements -- paints the data-summary-only mark, exactly once.
+fn fx_client_part_holds(js: String, session_fetches: Int, summary_only_marks: Int) -> Bool {
   !string_contains(s: js, pattern: "closest('button, a, details, input, select, textarea')")
     && !string_contains(s: js, pattern: "action-live")
     && !string_contains(s: js, pattern: "=> if (")
     && !string_contains(s: js, pattern: "[data-view-chip]")
     && !string_contains(s: js, pattern: "mn && mn.prepend(bn)")
     && occurrence_count(s: js, pattern: "fetch('/auth/session'") == session_fetches
+    && occurrence_count(s: js, pattern: "data-summary-only") == summary_only_marks
 }
 
 test fn witness_client_asset_part_0_negatives_hold() -> Bool {
-  fx_client_part_holds(js: fx_client_part_js(lo: 0, hi: 9), session_fetches: 0)
+  fx_client_part_holds(js: fx_client_part_js(lo: 0, hi: 9), session_fetches: 0, summary_only_marks: 0)
 }
 
 test fn witness_client_asset_part_1_negatives_hold() -> Bool {
-  fx_client_part_holds(js: fx_client_part_js(lo: 9, hi: 11), session_fetches: 0)
+  fx_client_part_holds(js: fx_client_part_js(lo: 9, hi: 11), session_fetches: 0, summary_only_marks: 1)
 }
 
 test fn witness_client_asset_part_2_negatives_hold() -> Bool {
-  fx_client_part_holds(js: fx_client_part_js(lo: 11, hi: 16), session_fetches: 1)
+  fx_client_part_holds(js: fx_client_part_js(lo: 11, hi: 16), session_fetches: 1, summary_only_marks: 0)
 }
 
 // The last part runs to the end of the group list, so a group appended to the asset is still read.
 test fn witness_client_asset_part_3_negatives_hold() -> Bool {
-  fx_client_part_holds(js: fx_client_part_js(lo: 16, hi: 1000), session_fetches: 0)
+  fx_client_part_holds(js: fx_client_part_js(lo: 16, hi: 1000), session_fetches: 0, summary_only_marks: 0)
 }
 
 
@@ -1671,37 +1674,50 @@ fn fx_shell_subtree_ids() -> List<String> {
   concat(["gunbc-project-root", "debt-payoff", "dp-m2-shell-residue-retired", "shell-typed-invocation"], fx_shell_task_ids())
 }
 
-fn fx_shell_id_in(id: String) -> Bool {
-  fold(fx_shell_subtree_ids(), init: false, f: (acc, i) => acc || i == id)
+// The arc's ids as a set, built once, so narrowing the declared rows reads one lookup per row.
+fn fx_shell_id_set() -> Map<String, Bool> {
+  let empty: Map<String, Bool> = empty_map()
+  fold(fx_shell_subtree_ids(), init: empty, f: (acc, i) => map_insert(m: acc, key: i, value: true))
+}
+
+fn fx_shell_id_in(ids: Map<String, Bool>, id: String) -> Bool {
+  match map_lookup(m: ids, key: id) { Present { value: _ } => true  Absent => false }
 }
 
 fn fx_shell_subtree_nodes(doc: RoadmapDocument) -> List<RoadmapNode> {
-  fold(gunbc.roadmap_spawner.doc_all_nodes(doc: doc), init: [], f: (acc, rn) =>
-    if fx_shell_id_in(id: rn.node as String) { concat(acc, [rn]) } else { acc })
+  let ids = fx_shell_id_set()
+  gunbc.roadmap_spawner.doc_all_nodes(doc: doc) |> filter(rn => fx_shell_id_in(ids: ids, id: rn.node as String))
 }
 
 fn fx_shell_subtree_edges(doc: RoadmapDocument) -> List<RoadmapEdge> {
-  fold(gunbc.roadmap_spawner.doc_all_edges(doc: doc), init: [], f: (acc, e) =>
-    if fx_shell_id_in(id: e.child as String) && fx_shell_id_in(id: e.parent as String) { concat(acc, [e]) } else { acc })
+  let ids = fx_shell_id_set()
+  gunbc.roadmap_spawner.doc_all_edges(doc: doc) |> filter(e => fx_shell_id_in(ids: ids, id: e.child as String) && fx_shell_id_in(ids: ids, id: e.parent as String))
 }
 
+// The shell arc's rows and edges as the authority declares them. None of the arc is accepted, so the
+// projected authority carries these same rows; reading the declared rows narrows to the arc without
+// projecting the whole acceptance history (~141k steps) for every render.
 fn fx_shell_subtree_doc() -> RoadmapDocument {
-  let doc = gunbc.roadmap_authority.roadmap_authority()
+  let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [ RoadmapSection {
+    title: "declared",
+    elements: [ section_group(label: "", nodes: gunbc.roadmap_authority.declared_roadmap_nodes(), edges: gunbc.roadmap_authority.declared_roadmap_edges()) ],
+  } ] }
   RoadmapDocument { preamble: [], lead_lanes: [], sections: [ RoadmapSection {
     title: "Shell",
     elements: [ section_group(label: "", nodes: fx_shell_subtree_nodes(doc: doc), edges: fx_shell_subtree_edges(doc: doc)) ],
   } ] }
 }
 
-fn fx_shell_live_rows(refused: Bool) -> List<gunbc.roadmap_presentation.WorkRowView> {
-  let doc = fx_shell_subtree_doc()
+fn fx_shell_live_rows(refused: Bool, doc: RoadmapDocument) -> List<gunbc.roadmap_presentation.WorkRowView> {
   let nodes = gunbc.roadmap_spawner.doc_all_nodes(doc: doc)
   let edges = gunbc.roadmap_spawner.doc_all_edges(doc: doc)
   let ctx = gunbc.roadmap_page.page_launch_context(doc: doc, merged: [], launch: dispatch_doc_standing())
+  let lineage = gunbc.roadmap.roadmap_lineage.lineage_index(nodes: nodes)
+  let fuel = count(nodes) + 1
   map(nodes, rn => {
     let is_live = (rn.node as String) == "shell-dag-cron-entry-line-builder"
-    gunbc.roadmap_presentation.work_row_view(
-      rn: rn, nodes: nodes, edges: edges, merged: [],
+    gunbc.roadmap_presentation.work_row_view_in(
+      rn: rn, index: lineage, fuel: fuel, nodes: nodes, edges: edges, merged: [],
       activity: if is_live {
         if refused {
           gunbc.roadmap_presentation.activity_view_from_parts(
@@ -1738,17 +1754,17 @@ fn fx_shell_live_rows(refused: Bool) -> List<gunbc.roadmap_presentation.WorkRowV
       standing: none,
       attempt_stale: false,
       launch: ctx,
-      profiles: [])
+      profiles: [],
+      assignment: none)
   })
 }
 
-fn fx_shell_live_workspace_html(refused: Bool) -> HtmlEmitResult {
-  let doc = fx_shell_subtree_doc()
+fn fx_shell_live_workspace_html(refused: Bool, doc: RoadmapDocument, memberships: List<gunbc.roadmap_nesting.RoadmapMembership>) -> HtmlEmitResult {
   let edges = gunbc.roadmap_spawner.doc_all_edges(doc: doc)
-  let rows = fx_shell_live_rows(refused: refused)
+  let rows = fx_shell_live_rows(refused: refused, doc: doc)
   let ws = gunbc.roadmap_presentation.daily_workspace_view(
     rows: rows, edges: edges, program: none,
-    observation: gunbc.roadmap_presentation.ObservationsNominal, families: [], members: [], memberships: roadmap_memberships())
+    observation: gunbc.roadmap_presentation.ObservationsNominal, families: [], members: [], memberships: memberships)
   try_serialize_html_source(node: gunbc.roadmap_page.workspace_markup(ws: ws, edges: edges))
 }
 
@@ -1778,10 +1794,12 @@ fn fx_shell_task_ids() -> List<String> {
 // witness_project_bar_flags_red_from_decided_field; the derivation lives in the presentation
 // witness).
 test fn witness_shell_project_row_heads_the_table_with_live_task() -> Bool {
-  match fx_shell_live_workspace_html(refused: false) {
+  let doc = fx_shell_subtree_doc()
+  let memberships = roadmap_memberships()
+  match fx_shell_live_workspace_html(refused: false, doc: doc, memberships: memberships) {
     EmitRejected { reason: _ } => false
     EmitOk { html: live } =>
-      match fx_shell_live_workspace_html(refused: true) {
+      match fx_shell_live_workspace_html(refused: true, doc: doc, memberships: memberships) {
         EmitRejected { reason: _ } => false
         EmitOk { html: refused_h } =>
           let project_row = li_of_node(html: live, node_id: "shell-typed-invocation")
@@ -2077,7 +2095,6 @@ test fn witness_issue_table_is_summary_only_and_stale_rows_fall_back_to_scheduli
             && !string_contains(s: live_table, pattern: "earlier attempt")
             && !string_contains(s: stale_table, pattern: "earlier attempt")
             && string_contains(s: stale_table, pattern: "<span class=\"taskbar-signal issue-status activity-line-neutral\">ready to dispatch</span>")
-            && count(split(s: dispatch_client_js_source(), delimiter: "data-summary-only")) == 2
       }
   }
 }
