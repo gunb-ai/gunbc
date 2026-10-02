@@ -3,6 +3,7 @@ module v2.test.tokenize.annotation_channel
 import v2.std.node { symbol_lexeme }
 import v2.std.text { String }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.algebra { fold_list, length }
 import std.source_annotation { LeadingAfterLineIndent, TrailingAfterSemanticToken }
 import v2.std.compilers.lexing {
@@ -84,6 +85,7 @@ test fn annotation_rule_routes_to_the_annotation_arm() -> Bool {
   match lex_try_rule(rule: AnnotationRule { annotation_class: ^line_comment, pattern: annotation_pattern() }, source: "// hi") {
     LexRuleAnnotation { class: c, lexeme: _, remaining: _ } => c == ^line_comment
     LexRuleToken { class: _, lexeme: _, remaining: _ } => false
+    LexRuleModalToken { class: _, lexeme: _, remaining: _, transition: _ } => false
     LexRuleTrivia { lexeme: _, remaining: _ } => false
     LexRuleNoMatch => false
   }

@@ -2083,7 +2083,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "src/v2/test/claim/stage0_partition_rebuild_scope_witness_test.dag", name: "filter", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "src/v2/test/claim/stage0_partition_roster_layout_join_witness_test.dag", name: "any", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "src/v2/test/claim/stage0_partition_roster_layout_join_witness_test.dag", name: "filter", standing: Retired { cause: NotAReference } },
-  UnimportedBareProviderDisposition { file: "src/v2/test/claim/tokenize/annotation_channel_test.dag", name: "SubstrateInputsOnly", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "src/v2/test/claim/tokenize/annotation_channel_test.dag", name: "SubstrateInputsOnly", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "src/v2/test/fixture/derivable_coercion_task_id.dag", name: "ModelCoreFactAxisEncoding", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "src/v2/test/fixture/derivable_coercion_task_id.dag", name: "ModelCoreFactAxisSurfaceSpelling", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "src/v2/test/fixture/derivable_coercion_task_id.dag", name: "StructuralPropertyWitness", standing: ActiveDebt },

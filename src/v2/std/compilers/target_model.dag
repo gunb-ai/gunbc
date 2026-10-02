@@ -76,6 +76,11 @@ import v2.std.compilers.lexing {
   LiteralPattern,
   ModeledLexRules,
   TokenRule,
+  ModeTransitionTokenRule,
+  LexModeDeclaration,
+  NotFollowedByPattern,
+  lex_rule_set_matching_rules,
+  lex_rule_token_class_optional,
   TriviaRule,
   VoidLexRules,
 }
@@ -1181,8 +1186,15 @@ fn lex_rule_fixed_spelling(rule: LexRule, token_class: Symbol) -> Optional<Strin
       } else {
         optional_absent()
       }
+    ModeTransitionTokenRule { token_class: c, pattern: pattern, transition: _ } =>
+      if c == token_class {
+        lex_pattern_fixed_spelling(pattern: pattern)
+      } else {
+        optional_absent()
+      }
     TriviaRule { pattern: _ } => optional_absent()
     AnnotationRule { annotation_class: _, pattern: _ } => optional_absent()
+    LexModeDeclaration { mode: _, rules: _ } => optional_absent()
   }
 }
 
@@ -1199,6 +1211,7 @@ fn lex_pattern_fixed_spelling(pattern: LexPattern) -> Optional<String> {
     RepeatPattern { element: _ } => optional_absent()
     OneOrMorePattern { element: _ } => optional_absent()
     DelimitedPattern { open: _, body: _, close: _ } => optional_absent()
+    NotFollowedByPattern { element: _ } => optional_absent()
   }
 }
 
@@ -1212,11 +1225,11 @@ fn lex_literal_index(rules: LexRules) -> LexLiteralIndex {
     ModeledLexRules { root: set } =>
       LexLiteralIndex {
         by_class: fold_list(
-          xs: set.rules,
+          xs: lex_rule_set_matching_rules(rules: set),
           empty: empty_map(),
           cons: fn(acc, rule) {
-            match rule {
-              TokenRule { token_class: c, pattern: _ } =>
+            match lex_rule_token_class_optional(rule: rule) {
+              Present { value: c } =>
                 match map_lookup(m: acc, key: c) {
                   Present { value: _ } => acc
                   Absent =>
@@ -1225,8 +1238,7 @@ fn lex_literal_index(rules: LexRules) -> LexLiteralIndex {
                       Absent => acc
                     }
                 }
-              TriviaRule { pattern: _ } => acc
-              AnnotationRule { annotation_class: _, pattern: _ } => acc
+              Absent => acc
             }
           }
         )
@@ -1246,7 +1258,7 @@ fn lex_rules_fixed_spelling(rules: LexRules, token_class: Symbol) -> Optional<St
     VoidLexRules => optional_absent()
     ModeledLexRules { root: set } =>
       fold_list(
-        xs: set.rules,
+        xs: lex_rule_set_matching_rules(rules: set),
         empty: optional_absent(),
         cons: fn(acc, rule) {
           match acc {
