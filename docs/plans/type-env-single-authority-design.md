@@ -693,3 +693,95 @@ subject before PR-2 is opened:
 - presence tests over long exporter lists for widely declared names (`surface_has` walks every
   exporter);
 - per-module pool snapshots during typecheck (persistent-map path copies on every admission).
+
+## PR-2 slowdown: attribution (calm-pike-525, 2026-10-02)
+**Instrument.** `cli_run` `pr2_whole_tree_differential_probe` `whole_tree_ancestry_digest` (run with
+`--ignored`, `GUNBC_ANCESTRY_DIGEST=1`) on the probe branches `calm-pike-525/pr2-cpu-before` and
+`calm-pike-525/pr2-cpu-after`. Each pins `sleek-ibex-207/pr2-diff-before|after` and adds a `phase_cpu`
+module (`v1-stage0-runtime`) with a guard at the head of each emitted function under test. The guards
+report inclusive thread CPU per function, charged at the outermost activation only. Hot point lookups
+are counted, not timed. A cumulative table is printed every 500 typechecked modules, so two arms compare
+at equal module counts even when one cannot finish within a runner's cap. Subject: the whole tree (`dag`
+plus `src/v2`, floor exclusions; 7,138 modules), on BuildBuddy. Each arm ran on its own runner, and the
+same BEFORE pin measured about 1.5x apart on two runners. So the CPU ratio between arms is read only
+alongside the CALL COUNTS, which are host-independent. `lookup_binding_on_chain` demand is identical in
+both arms, which shows the arms do the same typecheck work.
+
+**The probe no longer voids.** It runs the resolve ungated (`compile_to_resolved`), then digests every
+module in the graph except the modules that own a blocking diagnostic. Those are printed as a counted,
+named set (`[ancestry-digest-blocked]`, one `[ancestry-digest-blocked-module]` line each). If no graph
+is produced, it panics as a loud cannot-tell. At the pinned base the set is 3 modules carrying the 9
+blocking diagnostics: `test.claim.srv3_websocat_sequence_witness`, `v2.test.claim.fold_encoding`,
+`v2.test.name_resolve.test_code_reference_wall`. Every other module is digested.
+
+**Predictions, stated before the run, and their outcome.** They were recorded before dispatch, with the
+probe branches.
+- P1, the fork-row walk. Structural: its candidates are pool-global, so its per-module cost grows with
+  the pool. HIT: its CPU grew far faster than the module count. Magnitude (at least half the delta):
+  MISS. It is the SECOND term, not the first.
+- P2, the `ancestry_names` enumerations (rewire, `source_visible_names`). Magnitude (under a quarter):
+  MISS. The rewire pass alone ends well above the BEFORE arm's, and `ancestry_names` is a large part of
+  that.
+- P3, presence tests over long exporter lists. Magnitude (under 15%): MISS. It is part of the dominant
+  term below.
+- P4, pool snapshots and closure recomputation (`surface_pool_admit`, `surface_reach_of`). Magnitude
+  (10-30%): MISS, low. It was small and linear.
+
+**Attribution.** The dominant term is none of the four as named. It is the point lookups during
+typecheck, outside `build_type_env`.
+- Demand is identical in both arms: the same `lookup_binding_on_chain` call count.
+- In the AFTER arm, every lookup that passed presence descended (`ancestry_winner`). Each descent level
+  ran `surface_has` over every import, and each `surface_has` walked the name's whole POOL-wide exporter
+  list. Winner descents per lookup, and presence tests per lookup, both rose steadily as modules were
+  typechecked. The arms ran level up to about 2.5k modules and diverged after that. AFTER could not
+  finish the whole tree inside a 47-minute bound, where BEFORE took about 20 minutes on a comparable
+  runner.
+- The design's single-exporter fast path ("The winner", fast path) was never implemented. Added keyed
+  POOL-wide (`calm-pike-525/pr2-fastpath`), it served under 1% of lookups and did not move the curve,
+  because in a whole tree almost every name has a homonym somewhere. That is a labelled miss of my own
+  first fix. The lemma and the fold reach only the closure, so that is the grain the classification
+  belongs at.
+
+**Repair (cost shape), PR against `sleek-ibex-207/type-env-surface-walk`, branch
+`calm-pike-525/pr2-lookup-closure-grain`.** The stage0 bytes are regenerated, and the regen fixed point
+holds at the PR head.
+1. `closure_sole_declarer` classifies a name by its declarers in the module's closure, both at the top
+   lookup and at every descent level (`surface_value`).
+   - One declarer in the closure, and no kernel binding: that declarer's own binding.
+   - None: absent.
+   - Only contested names descend.
+2. `closure_contested_names` counts fork candidates from the closure's own declarations, not from the
+   pool's multi-exporter set. `surface_declarers_in_reach` lost its only consumer and is deleted.
+
+Neither change caches anything. Both evaluate the existing rule at the grain the rule is stated at.
+
+**Equality.** All of the following are at declaration grain, over the 7,135 digested modules.
+- The repaired PR-2 and the pool-wide fast-path arm, whose rule is trivially equivalent to PR-2 as
+  written, agree on every module.
+- PR-2 and BEFORE are also equal: no module resolves any name to a different declaration. The digests
+  of 8 modules, all importers of `gunbc.namespace_cut_subject_roster`, differ for a reason that is not
+  a resolution difference:
+  - All 40 differing entries name the same declaration in the same file.
+  - Their byte spans differ by exactly 3, because PR-2 itself edits one probe row of that roster
+    (`surface_import_selects`), which moves every later offset in the file.
+
+  The probe's digest keys a winner by byte span, so an arm that edits a source file it also resolves
+  shows that file's declarations as moved. The full-entry mode (`GUNBC_ANCESTRY_DIGEST=full`) is what
+  separates an edited span from a different winner, and here it shows none.
+
+**After repair, PR-2 is still not cheaper than BEFORE at whole-tree scale. This needs a ruling.** The
+same probe on the repaired head still costs more thread CPU than BEFORE, read against the runner-to-runner
+spread stated above. The remaining terms are the ones representation B pays by construction:
+- contested-name descents during typecheck: names with two or more declarers in the closure, plus kernel
+  names, a large share of all lookups;
+- the fork-candidate enumeration, which is now closure-grain but still sized like the union it replaced;
+- the rewire's `ancestry_names` re-enumeration.
+
+BEFORE materialized each union once, as persistent maps that share structure. B re-derives it at every
+demand that enumerates or contests. The note's own falsifier ("multi-exporter lookups dominate") is met.
+Its named remedy, a per-module table for contested names only, is reserved as its own decision.
+Derivation, for that decision:
+- identity: (module view, name);
+- recurrence: every typecheck occurrence of a contested name within one module;
+- least common ancestor: that module's typecheck;
+- retention: the module's `TypeEnv`.
