@@ -6,12 +6,13 @@
   "full_file_cursor_tokenization_seconds": 27.92,
   "full_file_tokens": 12072,
   "sample_equivalence": "16/32/64 KiB passed",
-  "full_file_equivalence": "reference did not finish before 600-second bound; sample exit 124",
-  "native": "emission passed; generated Rust build exit 101 with 11 bool/Bool E0308 errors",
+  "full_file_equivalence": "Unproved: reference did not finish within 600 seconds with default memoization or diagnostic GUNBC_EVAL_MEMO=0.",
+  "native": "PASS: path-preserving snapshot emits, builds, and passes 10 native cases. Previous Bool failure was caused by flattened declaration paths in qualification harness.",
   "memory_max_gib": 6,
   "swap_max": 0,
   "required_floor": "not run",
   "deployment": "not run",
-  "qualification": "HOLD: native build and full-file reference equivalence unresolved",
-  "timing_caveat": "Concurrent bounded local tests; not a same-base whole-floor speedup claim"
+  "qualification": "HOLD: full-file reference equivalence unresolved; whole-floor comparison and exact-head required CI not run.",
+  "timing_caveat": "Concurrent bounded local tests; not a same-base whole-floor speedup claim",
+  "native_emission_scope": "v1 seed emits v2 fixture and production indexed runtime bridge; not v2 self-hosted emitter qualification"
 }

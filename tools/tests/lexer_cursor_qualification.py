@@ -7,6 +7,7 @@ fresh process and a 600-second bound; no generated source snapshot is committed.
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -17,6 +18,7 @@ import time
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--gunbc', type=Path, required=True)
+parser.add_argument('--diagnostic-no-memo', action='store_true', help='Semantic comparison only; disable existing eval memo diagnostic switch')
 args = parser.parse_args()
 root = Path(__file__).resolve().parents[2]
 binary = args.gunbc.resolve()
@@ -42,7 +44,11 @@ samples.append(('fleet-full', subprocess.check_output(['git', 'show', allocation
 receipt = {'reference_revision': reference, 'allocation_revision': allocation,
            'compiler_sha256': hashlib.sha256(binary.read_bytes()).hexdigest(),
            'source_manifest': json.loads((closure / 'sources.json').read_text()),
-           'standing': 'incomplete', 'samples': []}
+           'standing': 'incomplete', 'samples': [],
+           'eval_memo': 'diagnostic-disabled' if args.diagnostic_no_memo else 'enabled',
+           'performance_qualification': not args.diagnostic_no_memo}
+environment = os.environ.copy()
+environment['GUNBC_EVAL_MEMO'] = '0' if args.diagnostic_no_memo else '1'
 for name, data in samples:
     path = out / (name + '.dag'); path.write_bytes(data)
     marker = out / (name + '.cursor-done')
@@ -51,7 +57,7 @@ for name, data in samples:
                str(closure / 'tools.cursor_equivalence.dag'), '--arg',
                'input_path=' + str(path), '--arg', 'marker_path=' + str(marker)]
     process = subprocess.Popen(command, cwd=root, stdout=subprocess.PIPE,
-                               stderr=subprocess.STDOUT, text=True)
+                               stderr=subprocess.STDOUT, text=True, env=environment)
     def consume():
         with (out / (name + '.log')).open('w') as log:
             for line in process.stdout:

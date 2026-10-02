@@ -48,13 +48,13 @@ def stage(name, command):
 
 closure = out / 'source'
 stage('closure', [sys.executable, str(root / 'tools/tests/dag_validation_closure.py'),
-                  '--output', str(closure), 'v2.test.fixture.list_at_native',
+                  '--output', str(closure), '--preserve-source-paths', 'v2.test.fixture.list_at_native',
                   'v2.test.fixture.list_at_native_driver'])
 receipt['closure_manifest'] = json.loads((closure / 'sources.json').read_text())
 stage('emit', [str(gunbc), 'compile', '--source-root', str(closure), '--entry',
-              str(closure / 'v2.test.fixture.list_at_native.dag'), '--output-dir', str(crate)])
+              str(closure / 'src/v2/test/fixture/list_at_native/entry.dag'), '--output-dir', str(crate)])
 stage('driver', [str(gunbc), 'run', '--source-root', str(closure), '--entry',
-                str(closure / 'v2.test.fixture.list_at_native_driver.dag'),
+                str(closure / 'src/v2/test/fixture/list_at_native/export_driver.dag'),
                 '--arg', 'output_path=' + str(crate / 'src/main.rs')])
 receipt['emitted_sha256'] = {str(p.relative_to(crate)): hashlib.sha256(p.read_bytes()).hexdigest()
                             for p in sorted(crate.rglob('*')) if p.is_file()}
