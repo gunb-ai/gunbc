@@ -974,23 +974,24 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
                 .get("path")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| format!("accepted-file advisories carry no path: {line}"))?;
-            let reasons = advised
-                .get("reasons")
+            // The row is head plus tail, non-empty by its producer's type
+            // (`NativeTestFileAdvisories`), so the decoder reads a head it can require rather than
+            // a list it would have to refuse when empty.
+            let as_reason = |r: &serde_json::Value| {
+                r.as_str()
+                    .map(|s| s.to_string())
+                    .ok_or_else(|| format!("an advisory reason is not a string: {line}"))
+            };
+            let mut reasons =
+                vec![as_reason(advised.get("head").ok_or_else(|| {
+                    format!("accepted-file advisories carry no head: {line}")
+                })?)?];
+            for r in advised
+                .get("tail")
                 .and_then(|v| v.as_array())
-                .ok_or_else(|| format!("accepted-file advisories carry no reasons: {line}"))?
-                .iter()
-                .map(|r| {
-                    r.as_str()
-                        .map(|s| s.to_string())
-                        .ok_or_else(|| format!("an advisory reason is not a string: {line}"))
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            // The producer emits a row only for a non-empty chain; an empty one is a decoder or
-            // producer defect, never a file with zero advisories.
-            if reasons.is_empty() {
-                return Err(format!(
-                    "accepted-file advisories carry an empty chain: {line}"
-                ));
+                .ok_or_else(|| format!("accepted-file advisories carry no tail: {line}"))?
+            {
+                reasons.push(as_reason(r)?);
             }
             advised_files.push(NativeFileAdvisoriesObserved {
                 path: path.to_string(),
@@ -2985,8 +2986,8 @@ mod tests {
     #[test]
     fn accepted_file_advisories_decode_and_tally_by_reason() {
         let stdout = concat!(
-            "{\"accepted_file_advisories\":{\"path\":\"a.dag\",\"reasons\":[\"r\",\"s\"]}}\n",
-            "{\"accepted_file_advisories\":{\"path\":\"b.dag\",\"reasons\":[\"r\"]}}\n",
+            "{\"accepted_file_advisories\":{\"path\":\"a.dag\",\"head\":\"r\",\"tail\":[\"s\"]}}\n",
+            "{\"accepted_file_advisories\":{\"path\":\"b.dag\",\"head\":\"r\",\"tail\":[]}}\n",
             "{\"_terminal\":\"complete\",\"mode\":\"census\",\"file_refusals\":0,\"advised_files\":2}\n"
         );
         let parsed = parse_native_run_output(stdout).expect("advisory rows decode");
@@ -3011,7 +3012,7 @@ mod tests {
     #[test]
     fn advised_files_count_disagreeing_with_rows_refuses() {
         let stdout = concat!(
-            "{\"accepted_file_advisories\":{\"path\":\"a.dag\",\"reasons\":[\"r\"]}}\n",
+            "{\"accepted_file_advisories\":{\"path\":\"a.dag\",\"head\":\"r\",\"tail\":[]}}\n",
             "{\"_terminal\":\"complete\",\"mode\":\"census\",\"file_refusals\":0,\"advised_files\":2}\n"
         );
         let cause = match parse_native_run_output(stdout) {
