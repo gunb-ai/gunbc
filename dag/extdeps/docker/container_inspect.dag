@@ -7,6 +7,7 @@ import std.measure { ByteSize, byte_size, byte_size_count, Microsecond, microsec
 import extdeps.docker.endpoint { docker_default_endpoint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.ietf.http_semantics { GET }
 import extdeps.docker.container_inspect_contracts { container_state_wire_contract }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
