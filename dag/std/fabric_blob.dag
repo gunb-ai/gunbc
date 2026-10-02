@@ -1,0 +1,276 @@
+module std.fabric_blob
+
+import std.types { String, NonEmptyStr, Bool, List }
+import v2.std.optional { Present, Absent }
+import std.content_hash { Sha256Digest, Sha256DigestHex, content_hash_eq_cryptographic, sha256_hex_digest }
+import extdeps.crypto.hash { sha256sum_line_digest }
+import extdeps.crypto.hash
+import extdeps.tools.coreutils_stat
+import std.algebra { trim }
+import std.measure { Second, second_count, ByteSize, byte_size, measure_count }
+import std.cache_interface {
+  ProviderRetention, ReleasePolicy,
+  ReleasedAtProviderScopeExit, ReleasedNever, ReleasedManually, ReleasedAfterInterval,
+}
+
+// THE FABRIC BLOB PLANE: IMMUTABLE, DIGEST-VERIFIED BYTE OBJECTS TOO LARGE OR TOO BINARY FOR
+// std.fabric_storage.
+//
+// std.fabric_storage holds small text objects whose preimage travels inside one request and whose
+// links the store walks; an object there is NonEmptyStr, so a tarball of executables has no
+// constructor in it, and chunking is that plan's step 5. The blob plane is its sibling for the
+// other shape: an opaque byte file that lives on disk on both sides of a transfer, is named by the
+// SHA-256 of its bytes, and is never decoded by the store. The two share a placement policy and a
+// transport family; they do not share an object model, because a blob has no links and a fabric
+// object has no file.
+//
+// THE DIGEST IS A REALIZATION READBACK, never asserted. A blob's identity is the SHA-256 that a
+// digest handler computed over the staged file (std.materialization_provider's source (3)), so it is
+// cryptographic from the first blob -- unlike std.fabric_storage's object refs, whose mint runs in
+// memory and is held at the structural family by a declared stall (gunbc.recurring_failure_mode
+// fabric_object_identity_is_a_structural_locator). Hashing a FILE is a shell-out the in-memory mint
+// cannot take; hashing a file that is already on disk is exactly what a blob transfer has.
+//
+// A BLOB IS SCOPED TO THE RECORD THAT OWNS IT. The address is (scope, digest), not digest alone.
+// Content-only addressing dedups across owners, and under timed release that dedup is a hole: a
+// blob first written long ago and found AlreadyPresent by a fresh publication is released on its
+// OLD clock while the fresh record that names it is still live. Scoping each blob to its owner
+// makes every blob exactly as old as the publication that wrote it, so the placement can release
+// blobs no earlier than the records naming them (blob_release_outlives_owner) and "the record is
+// present" implies "its blobs are present" -- the invariant a reader needs to treat a missing blob
+// under a present record as corruption rather than as weather.
+//
+// PLACEMENT, TRANSPORT AND RETENTION ARE NOT FACTS OF THIS MODULE (DESIGN 3). Which bucket holds a
+// placement's blobs, and over which transport, is a realization (gunbc.fabric.fabric_blob_r2 over
+// R2, and the emitted-shell realization of the same operations for a run that has no gunbc yet);
+// this module states only the shapes every realization answers in.
+
+type FabricBlobScope = NonEmptyStr where brand("FabricBlobScope")
+
+type FabricBlobRef {
+  scope: FabricBlobScope
+  digest: Sha256Digest
+}
+
+fn fabric_blob_ref_eq(a: FabricBlobRef, b: FabricBlobRef) -> Bool {
+  (a.scope as String) == (b.scope as String) && content_hash_eq_cryptographic(left: a.digest, right: b.digest)
+}
+
+// THE OBJECT NAME A REALIZATION STORES A BLOB UNDER, derived and never chosen: the scope, then the
+// digest's lower hex. A realization prefixes it with its placement's blob prefix and nothing else.
+fn fabric_blob_object_name(blob: FabricBlobRef) -> NonEmptyStr {
+  join([blob.scope as String, "/", blob.digest.hex as String], "") as NonEmptyStr
+}
+
+// A BLOB THIS HOST HOLDS ON DISK, WITH THE DIGEST AND BYTE SIZE OF THOSE BYTES. sole_constructor: only a
+// digest handler mints one (stage_fabric_blob, below), from the file it digested, so a path and a digest that
+// describe different bytes have no constructor (gunbc.recurring_failure_mode
+// subject_and_its_digest_as_independent_parameters).
+type StagedFabricBlob sole_constructor {
+  path: NonEmptyStr
+  digest: Sha256Digest
+  size: ByteSize
+}
+
+type FabricBlobStaging
+  = FabricBlobStaged { staged: StagedFabricBlob }
+  | FabricBlobStagingRefused { fault: FabricBlobFault }
+
+// THE SOLE MINT. One operation digests the file and names it, so the two cannot describe different
+// bytes. The digest handler is consumed, not re-implemented: extdeps.crypto.hash owns the SHA-256
+// citation and the sha256sum transport (the same handler gunbc.fabric_m0_origin_readback mints its
+// OriginReading through). Every non-digest outcome refuses with a located cause.
+fn stage_fabric_blob(path: NonEmptyStr) -> FabricBlobStaging {
+  let observed = crypto.Sha256Sum.File(path: path as String)
+  if observed.success == false {
+    FabricBlobStagingRefused { fault: FabricBlobDigestUnavailable { cause: concat("sha256sum could not read ", path as String) as NonEmptyStr } }
+  } else {
+    match sha256sum_line_digest(line: observed.line) {
+      Absent => FabricBlobStagingRefused { fault: FabricBlobDigestUnavailable { cause: concat("sha256sum printed no digest field for ", path as String) as NonEmptyStr } }
+      Present { value: d } =>
+        match sha256_hex_digest(hex: d.hex as String) {
+          Absent => FabricBlobStagingRefused { fault: FabricBlobDigestUnavailable { cause: concat("sha256sum printed a field that is not a 64-digit lower-hex SHA-256 for ", path as String) as NonEmptyStr } }
+          Present { value: digest } => {
+            let st = coreutils.Stat.PathSize(path: path)
+            if st.success == false {
+              FabricBlobStagingRefused { fault: FabricBlobDigestUnavailable { cause: concat("stat could not read the size of ", path as String) as NonEmptyStr } }
+            } else {
+              match parse_int(s: trim(s: st.size_text)) {
+                Present { value: n } =>
+                  if n < 0 { FabricBlobStagingRefused { fault: FabricBlobDigestUnavailable { cause: concat("stat printed a negative size for ", path as String) as NonEmptyStr } } }
+                  else { FabricBlobStaged { staged: StagedFabricBlob { path: path, digest: digest, size: byte_size(count: n) } } }
+                Absent => FabricBlobStagingRefused { fault: FabricBlobDigestUnavailable { cause: concat("stat printed no byte count for ", path as String) as NonEmptyStr } }
+              }
+            }
+          }
+        }
+    }
+  }
+}
+
+fn staged_fabric_blob_path(staged: StagedFabricBlob) -> NonEmptyStr {
+  staged.path
+}
+
+fn staged_fabric_blob_digest(staged: StagedFabricBlob) -> Sha256Digest {
+  staged.digest
+}
+
+fn staged_fabric_blob_size(staged: StagedFabricBlob) -> ByteSize {
+  staged.size
+}
+
+fn staged_fabric_blob_ref(staged: StagedFabricBlob, scope: FabricBlobScope) -> FabricBlobRef {
+  FabricBlobRef { scope: scope, digest: staged.digest }
+}
+
+// WHY A BLOB OPERATION FAILED, each arm with its own owner and remedy, and none of them absence.
+type FabricBlobFault
+  = FabricBlobStoreUnreachable { cause: NonEmptyStr }
+  | FabricBlobStoreRefused { cause: NonEmptyStr }
+  | FabricBlobCredentialUnavailable { cause: NonEmptyStr }
+  | FabricBlobStagingFailed { cause: NonEmptyStr }
+  | FabricBlobDigestUnavailable { cause: NonEmptyStr }
+
+// A PUT ANSWERS FOUR THINGS, NOT THREE (gunbc.cloudflare.r2_origin_object): stored; already present
+// (create-only found an occupant -- for a digest-named blob that is the same bytes, so a lost
+// acknowledgement and not a conflict); refused before anything committed; or OUTCOME UNKNOWN, which
+// a caller reconciles by fetching and never by putting again.
+type FabricBlobPut
+  = FabricBlobStored { blob: FabricBlobRef }
+  | FabricBlobAlreadyPresent { blob: FabricBlobRef }
+  | FabricBlobPutRefused { blob: FabricBlobRef, fault: FabricBlobFault }
+  | FabricBlobPutOutcomeUnknown { blob: FabricBlobRef, cause: NonEmptyStr }
+
+// A GET ANSWERS THE BLOB VERIFIED, OR WHY NOT. The realization stages the bytes into a directory it
+// minted, digests them, and admits them only through fabric_blob_fetch_verified, so a staged file
+// whose bytes do not hash to the asked digest is FabricBlobCorrupt and never a fetched blob.
+type FabricBlobGet
+  = FabricBlobFetched { blob: FabricBlobRef, staged: StagedFabricBlob }
+  | FabricBlobAbsent { blob: FabricBlobRef }
+  | FabricBlobCorrupt { blob: FabricBlobRef, observed: Sha256Digest }
+  | FabricBlobGetUnavailable { blob: FabricBlobRef, fault: FabricBlobFault }
+
+// THE SINGLE AUTHORITY every realization routes fetched bytes through. The comparison is inside the
+// arm that holds both the asked ref and the staged blob, so there is no signature through which a
+// digest of OTHER bytes could be reported under this ref.
+fn fabric_blob_fetch_verified(asked: FabricBlobRef, staged: StagedFabricBlob) -> FabricBlobGet {
+  if content_hash_eq_cryptographic(left: asked.digest, right: staged.digest) {
+    FabricBlobFetched { blob: asked, staged: staged }
+  } else {
+    FabricBlobCorrupt { blob: asked, observed: staged.digest }
+  }
+}
+
+// A PLACEMENT'S RETENTION, PER OBJECT CLASS. A placement holds blobs and the records that own them,
+// and the two are released separately so a record never outlives its blobs.
+type FabricBlobPlacementRetention {
+  records: ProviderRetention
+  blobs: ProviderRetention
+}
+
+// "THE RECORD IS PRESENT" IMPLIES "ITS BLOBS ARE PRESENT" exactly when no blob can be released
+// while a record written after it is held. Blobs are written before the record that names them and
+// in the same publication, so a blob is never younger than its record; it suffices that the blob
+// class is held at least as long as the record class plus the publication window. A placement for
+// which this is false has no admissible reading of "record present, blob absent", so a reader
+// refuses to open it rather than guessing which of corruption or release it observed.
+fn blob_release_outlives_owner(retention: FabricBlobPlacementRetention, publication_window: Second) -> Bool {
+  match retention.blobs.release_policy {
+    ReleasedNever => true
+    ReleasedManually => false
+    ReleasedAtProviderScopeExit => false
+    ReleasedAfterInterval { after_write: blob_after } =>
+      match retention.records.release_policy {
+        ReleasedAfterInterval { after_write: record_after } =>
+          second_count(s: blob_after) >= second_count(s: record_after) + second_count(s: publication_window)
+        ReleasedNever => false
+        ReleasedManually => false
+        ReleasedAtProviderScopeExit => false
+      }
+  }
+}
+
+fn fabric_blob_fault_text(fault: FabricBlobFault) -> String {
+  match fault {
+    FabricBlobStoreUnreachable { cause: c } => concat("blob store unreachable: ", c as String)
+    FabricBlobStoreRefused { cause: c } => concat("blob store refused: ", c as String)
+    FabricBlobCredentialUnavailable { cause: c } => concat("blob credential unavailable: ", c as String)
+    FabricBlobStagingFailed { cause: c } => concat("blob staging failed: ", c as String)
+    FabricBlobDigestUnavailable { cause: c } => concat("blob digest unavailable: ", c as String)
+  }
+}
+
+// ── A RECORD'S REFERENCE TO A BLOB ─────────────────────────────────────────────────────────────
+//
+// A record that owns blobs carries each one as this canonical text, so the record's own integrity
+// (its part digest is over these bytes) binds exactly which blob, of which digest and size, it
+// names. The blob's BYTES are verified separately, at fetch, against the digest named here; the
+// record never vouches for them. One line, space-separated, versioned, and parsed exactly:
+//   fabric-blob/1 <scope> <sha256 lower hex> <byte size>
+// A scope containing a space has no encoding and is refused at encode, so a reference cannot forge
+// a field.
+type FabricBlobReference {
+  blob: FabricBlobRef
+  size: ByteSize
+}
+
+data fabric_blob_reference_magic: String = "fabric-blob/1"
+
+fn fabric_blob_reference_of(staged: StagedFabricBlob, scope: FabricBlobScope) -> FabricBlobReference {
+  FabricBlobReference { blob: FabricBlobRef { scope: scope, digest: staged.digest }, size: staged.size }
+}
+
+fn fabric_blob_reference_text(reference: FabricBlobReference) -> String? {
+  if string_contains(s: reference.blob.scope as String, pattern: " ") || string_contains(s: reference.blob.scope as String, pattern: "\n") {
+    none
+  } else {
+    Present { value: join([fabric_blob_reference_magic, reference.blob.scope as String, reference.blob.digest.hex as String, to_string(measure_count(m: reference.size))], " ") }
+  }
+}
+
+fn fabric_blob_reference_parse(text: String) -> FabricBlobReference? {
+  let words = split(s: text, delimiter: " ")
+  if count(words) != 4 {
+    none
+  } else {
+    match get(xs: words, index: 0) {
+      Present { value: magic } =>
+        if magic != fabric_blob_reference_magic { none } else {
+          match get(xs: words, index: 1) {
+            Present { value: scope } =>
+              if scope == "" { none } else {
+                match get(xs: words, index: 2) {
+                  Present { value: hex } =>
+                    match sha256_hex_digest(hex: hex) {
+                      Present { value: digest } =>
+                        match get(xs: words, index: 3) {
+                          Present { value: size_word } =>
+                            match parse_int(s: size_word) {
+                              Present { value: n } =>
+                                if n < 0 { none } else {
+                                  Present { value: FabricBlobReference { blob: FabricBlobRef { scope: scope as FabricBlobScope, digest: digest }, size: byte_size(count: n) } }
+                                }
+                              Absent => none
+                            }
+                          Absent => none
+                        }
+                      Absent => none
+                    }
+                  Absent => none
+                }
+              }
+            Absent => none
+          }
+        }
+      Absent => none
+    }
+  }
+}
+
+// A FETCHED BLOB SERVES A REFERENCE only when its verified bytes have the size the reference names.
+// The digest already matched (fabric_blob_fetch_verified); a size disagreement under a matching
+// SHA-256 is a corrupt reference, not a different blob.
+fn fabric_blob_reference_size_holds(reference: FabricBlobReference, staged: StagedFabricBlob) -> Bool {
+  measure_count(m: reference.size) == measure_count(m: staged.size)
+}

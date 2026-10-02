@@ -1,0 +1,134 @@
+module gunbc.fabric.fabric_blob_r2
+
+import std.types { String, NonEmptyStr, Bool, FilePath }
+import extdeps.cloudflare.r2 { R2S3Endpoint, R2ObjectLocator }
+import gunbc.auth.access_token_source { AccessTokenSource }
+import gunbc.cloudflare.r2_origin {
+  CloudflareAccountAllocated, CloudflareAccountUnallocated, fleet_cloudflare_account_standing,
+  R2OriginAllocated, R2OriginUnallocated, R2OriginStanding,
+  OriginCredentialStanding, OriginCredentialPinned, OriginCredentialUnminted, OriginCredentialMintEntryUnbuilt,
+  FabricCacheBlobs, bucket_purpose_origin_standing, bucket_purpose_admission, origin_admission_is_create_only,
+}
+import gunbc.cloudflare.r2_staged_transfer {
+  R2TransferTarget,
+  R2Put, R2ObjectStored, R2ObjectAlreadyPresent, R2PutRefused, R2PutOutcomeUnknown,
+  WriteCredentialCustody, WriteCredentialShredded, WriteCredentialResidueRemains,
+  r2_put_staged_file,
+  R2FetchStaged, R2FetchObjectAbsent, R2FetchUnavailable,
+  r2_fetch_into_staging,
+}
+import std.fabric_blob {
+  FabricBlobRef, StagedFabricBlob, FabricBlobPut, FabricBlobGet,
+  FabricBlobStored, FabricBlobAlreadyPresent, FabricBlobPutRefused, FabricBlobPutOutcomeUnknown,
+  FabricBlobFetched, FabricBlobAbsent, FabricBlobCorrupt, FabricBlobGetUnavailable,
+  FabricBlobStoreUnreachable, FabricBlobStoreRefused, FabricBlobCredentialUnavailable, FabricBlobStagingFailed,
+  FabricBlobStaged, FabricBlobStagingRefused,
+  stage_fabric_blob, staged_fabric_blob_path, fabric_blob_fetch_verified,
+}
+import gunbc.fabric.fabric_blob_placement { fabric_cache_blob_key }
+
+// THE FABRIC CACHE'S BLOBS OVER R2: std.fabric_blob's put and get, bound to the cache-blob placement
+// (gunbc.cloudflare.r2_origin FabricCacheBlobs) and carried by gunbc.cloudflare.r2_staged_transfer,
+// the same transfer the durable origin uses. This module adds exactly what is the blob plane's: the
+// object key a blob ref derives (gunbc.fabric.fabric_blob_placement), the direction's credential,
+// and the verification every fetched byte passes before it is a blob.
+//
+// THE PUT IS CREATE-ONLY BY THE PURPOSE'S ADMISSION, and a blob is named by its digest within its
+// scope, so AlreadyPresent is the same bytes -- a lost acknowledgement, not a conflict.
+
+type CacheBlobDirection
+  = CacheBlobRead
+  | CacheBlobWrite
+
+type CacheBlobTarget
+  = CacheBlobTargetReady { target: R2TransferTarget }
+  | CacheBlobTargetRefused { cause: NonEmptyStr }
+
+fn cache_blob_credential(direction: CacheBlobDirection, read: OriginCredentialStanding, write: OriginCredentialStanding) -> OriginCredentialStanding {
+  match direction {
+    CacheBlobRead => read
+    CacheBlobWrite => write
+  }
+}
+
+// PURE OVER THE STANDING, so every refusal arm is reachable from a supplied value.
+fn resolve_cache_blob_target_under(direction: CacheBlobDirection, key: NonEmptyStr, standing: R2OriginStanding) -> CacheBlobTarget {
+  match fleet_cloudflare_account_standing() {
+    CloudflareAccountUnallocated { company: _, intervention: intervention } =>
+      CacheBlobTargetRefused { cause: concat("NO CLOUDFLARE ACCOUNT ID: ", intervention.instruction as String) as NonEmptyStr }
+    CloudflareAccountAllocated { company: _, account_id: account_id } =>
+      match standing {
+        R2OriginUnallocated { purpose: _ } => CacheBlobTargetRefused { cause: "NO BUCKET ALLOCATED FOR THE FABRIC CACHE" }
+        R2OriginAllocated { bucket: bucket } =>
+          match cache_blob_credential(direction: direction, read: bucket.read_credential, write: bucket.write_credential) {
+            OriginCredentialUnminted { mint_entry: entry } =>
+              CacheBlobTargetRefused { cause: join(["THE FABRIC CACHE CREDENTIAL IS NOT MINTED: run ", entry.module_path as String, " ", entry.decl_name as String], "") as NonEmptyStr }
+            OriginCredentialMintEntryUnbuilt { secret_id: secret_id } =>
+              CacheBlobTargetRefused { cause: concat("THE FABRIC CACHE CREDENTIAL HAS NO MINT ENTRY: nothing mints ", secret_id as String) as NonEmptyStr }
+            OriginCredentialPinned { access_key_id: access_key_id, token_value: token_value } =>
+              CacheBlobTargetReady {
+                target: R2TransferTarget {
+                  locator: R2ObjectLocator {
+                    endpoint: R2S3Endpoint { account_id: account_id as String, jurisdiction: bucket.jurisdiction },
+                    bucket_name: bucket.bucket_name,
+                    key: key,
+                  },
+                  access_key_id: access_key_id,
+                  token_value: token_value,
+                  create_only: origin_admission_is_create_only(admission: bucket_purpose_admission(purpose: bucket.purpose)),
+                }
+              }
+          }
+      }
+  }
+}
+
+fn resolve_cache_blob_target(direction: CacheBlobDirection, key: NonEmptyStr) -> CacheBlobTarget {
+  resolve_cache_blob_target_under(direction: direction, key: key, standing: bucket_purpose_origin_standing(purpose: FabricCacheBlobs {}))
+}
+
+// THE PUT'S WHOLE ANSWER: the blob plane's verdict and the write credential's custody, two facts.
+type CacheBlobPut {
+  verdict: FabricBlobPut
+  credential: WriteCredentialCustody
+}
+
+fn cache_blob_put_of(blob: FabricBlobRef, put: R2Put) -> CacheBlobPut {
+  CacheBlobPut {
+    verdict: match put.verdict {
+      R2ObjectStored => FabricBlobStored { blob: blob }
+      R2ObjectAlreadyPresent => FabricBlobAlreadyPresent { blob: blob }
+      R2PutRefused { cause: cause } => FabricBlobPutRefused { blob: blob, fault: FabricBlobStoreRefused { cause: cause } }
+      R2PutOutcomeUnknown { cause: cause } => FabricBlobPutOutcomeUnknown { blob: blob, cause: cause }
+    },
+    credential: put.credential,
+  }
+}
+
+// THE BLOB PUT. The ref is derived from the staged blob the caller holds, never supplied beside it.
+fn put_cache_blob(staged: StagedFabricBlob, blob: FabricBlobRef, token_source: AccessTokenSource) -> CacheBlobPut {
+  match resolve_cache_blob_target(direction: CacheBlobWrite, key: fabric_cache_blob_key(blob: blob)) {
+    CacheBlobTargetRefused { cause: cause } =>
+      CacheBlobPut { verdict: FabricBlobPutRefused { blob: blob, fault: FabricBlobCredentialUnavailable { cause: cause } }, credential: WriteCredentialShredded }
+    CacheBlobTargetReady { target: target } =>
+      cache_blob_put_of(blob: blob, put: r2_put_staged_file(target: target, local_path: staged_fabric_blob_path(staged: staged) as FilePath, token_source: token_source))
+  }
+}
+
+// THE BLOB GET. The transfer stages the bytes in a directory it minted; they are digested there and
+// admitted only through std.fabric_blob fabric_blob_fetch_verified.
+fn get_cache_blob(blob: FabricBlobRef, token_source: AccessTokenSource) -> FabricBlobGet {
+  match resolve_cache_blob_target(direction: CacheBlobRead, key: fabric_cache_blob_key(blob: blob)) {
+    CacheBlobTargetRefused { cause: cause } => FabricBlobGetUnavailable { blob: blob, fault: FabricBlobCredentialUnavailable { cause: cause } }
+    CacheBlobTargetReady { target: target } =>
+      match r2_fetch_into_staging(target: target, token_source: token_source) {
+        R2FetchObjectAbsent => FabricBlobAbsent { blob: blob }
+        R2FetchUnavailable { cause: cause } => FabricBlobGetUnavailable { blob: blob, fault: FabricBlobStoreUnreachable { cause: cause } }
+        R2FetchStaged { staged_path: p } =>
+          match stage_fabric_blob(path: p) {
+            FabricBlobStagingRefused { fault: fault } => FabricBlobGetUnavailable { blob: blob, fault: fault }
+            FabricBlobStaged { staged: staged } => fabric_blob_fetch_verified(asked: blob, staged: staged)
+          }
+      }
+  }
+}

@@ -1,0 +1,67 @@
+module gunbc.fabric.fabric_blob_placement
+
+import std.types { String, NonEmptyStr, List, Bool }
+import std.measure { Second, second, second_count, seconds_per_day }
+import std.cache_interface {
+  ProviderRetention, ReleasedAfterInterval, CapacityUnobserved,
+}
+import std.fabric_blob {
+  FabricBlobRef, FabricBlobPlacementRetention, fabric_blob_object_name, blob_release_outlives_owner,
+}
+
+// WHERE THE FABRIC CACHE'S BLOBS AND THEIR RECORDS LIVE, AND FOR HOW LONG. This is the POLICY fact of
+// the blob plane (DESIGN 3): std.fabric_blob is the interface, gunbc.fabric.fabric_blob_r2 and the
+// emitted-shell realization are its transports, and which bucket, which prefixes and which release
+// intervals are this module's rows. The bucket itself is allocated where every fleet bucket is, as a
+// purpose in gunbc.cloudflare.r2_origin (FabricCacheBlobs); this module names only what lives inside it.
+//
+// THE CACHE IS FOR WARMING, SO IT RELEASES BY AGE. A record (a materialization's manifest, the
+// binding a canonical publisher wrote) is released a week after it was written; nothing reads a
+// week-old warming entry often enough to keep it, and an expired entry is an established Miss, never
+// a fault (std.cache_interface ReleasedAfterInterval). Blobs are released a day later than records,
+// which is the margin blob_release_outlives_owner requires: a blob is written before the record
+// naming it, inside one publication, so a blob outliving its record by the publication window means
+// a present record always finds its blobs.
+//
+// CAPACITY IS UNOBSERVED, STATED. R2 has no per-bucket byte ceiling this fleet has set, and the held
+// population is the landing rate times the interval; no row carries the landing rate, so the
+// retention honestly reports no ceiling rather than inventing one.
+
+data fabric_cache_record_prefix: NonEmptyStr = "records/"
+data fabric_cache_blob_prefix: NonEmptyStr = "blobs/"
+
+fn fabric_cache_record_release() -> Second {
+  second(count: 7 * seconds_per_day())
+}
+
+fn fabric_cache_blob_release() -> Second {
+  second(count: 8 * seconds_per_day())
+}
+
+// THE WINDOW ONE PUBLICATION MAY SPAN between its first blob and its record. A publication is one
+// job's sequence of PUTs; a day bounds it with a wide margin and is what the release gap is sized by.
+fn fabric_cache_publication_window() -> Second {
+  second(count: seconds_per_day())
+}
+
+fn fabric_cache_retention() -> FabricBlobPlacementRetention {
+  FabricBlobPlacementRetention {
+    records: ProviderRetention { release_policy: ReleasedAfterInterval { after_write: fabric_cache_record_release() }, capacity: CapacityUnobserved },
+    blobs: ProviderRetention { release_policy: ReleasedAfterInterval { after_write: fabric_cache_blob_release() }, capacity: CapacityUnobserved },
+  }
+}
+
+// A READER MAY TREAT "RECORD PRESENT, BLOB ABSENT" AS CORRUPTION only over a placement whose
+// retention makes that state unreachable by release; this is that predicate, evaluated over the rows
+// above rather than assumed.
+fn fabric_cache_absent_blob_is_corruption() -> Bool {
+  blob_release_outlives_owner(retention: fabric_cache_retention(), publication_window: fabric_cache_publication_window())
+}
+
+fn fabric_cache_blob_key(blob: FabricBlobRef) -> NonEmptyStr {
+  concat(fabric_cache_blob_prefix as String, fabric_blob_object_name(blob: blob) as String) as NonEmptyStr
+}
+
+fn fabric_cache_record_key(name: NonEmptyStr) -> NonEmptyStr {
+  concat(fabric_cache_record_prefix as String, name as String) as NonEmptyStr
+}
