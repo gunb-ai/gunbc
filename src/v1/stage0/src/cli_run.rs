@@ -36278,34 +36278,33 @@ fn fac_walk_body_marks(
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
     marks: &mut FacBodyMarks,
 ) {
-    match node.expr_data.as_ref() {
-        ExprData::ExprCall { .. } => {
-            let fname = expr_call_func_at(node.clone(), si.clone());
-            if fac_name_is_refuse(&fname) {
-                marks.refuses = true;
+    // Explicit worklist: body depth is corpus-shaped (the #10610 class), and the marks are
+    // order-insensitive booleans.
+    let mut pending: Vec<&Rc<Node>> = vec![node];
+    while let Some(node) = pending.pop() {
+        match node.expr_data.as_ref() {
+            ExprData::ExprCall { .. } => {
+                let fname = expr_call_func_at(node.clone(), si.clone());
+                if fac_name_is_refuse(&fname) {
+                    marks.refuses = true;
+                }
+                if fac_name_is_answer(&fname) {
+                    marks.answers = true;
+                }
             }
-            if fac_name_is_answer(&fname) {
-                marks.answers = true;
+            ExprData::ExprVar { binding_kind: _ } => {
+                let name = authored_name_at(si.clone(), node.clone());
+                if fac_name_is_refuse(&name) {
+                    marks.refuses = true;
+                }
+                if fac_name_is_answer(&name) {
+                    marks.answers = true;
+                }
             }
+            _ => {}
         }
-        ExprData::ExprVar { binding_kind: _ } => {
-            let name = authored_name_at(si.clone(), node.clone());
-            if fac_name_is_refuse(&name) {
-                marks.refuses = true;
-            }
-            if fac_name_is_answer(&name) {
-                marks.answers = true;
-            }
-        }
-        _ => {}
+        pending.extend(node.children.iter());
     }
-    // Expression depth is unbounded by the call limit, so each level may grow the stack
-    // (class gunbc.recurring_failure_mode recursion_over_value_depth_uncounted_by_the_call_limit).
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        for child in node.children.iter() {
-            fac_walk_body_marks(child, si, marks);
-        }
-    });
 }
 
 fn fac_owning_lane(rel_path: &str) -> &'static str {
