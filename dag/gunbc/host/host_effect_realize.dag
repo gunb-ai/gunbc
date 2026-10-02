@@ -2432,15 +2432,15 @@ fn srv3_apt_subject_version_ok(subject: AptPresenceSubject, transport: HostEffec
 // and stderr, and extdeps.dpkg dpkg_query_status_verdict_of decides: installed holds; a decoded
 // not-installed state or a package unknown to dpkg fails (the ensure may install); anything
 // undecidable is Unobserved, which the ensure fold refuses rather than installing on.
+//
+// The transport dispatch is TOTALLED BY NAME (parent ruling on the 84c0dcf floor refusal):
+// LocalShell reaches no srv3 host and EmitArtifactThenThinRun does not run on the target, so both
+// read as unobserved -- each variant named, so a fifth transport is a decision here, not silence.
 fn srv3_dpkg_package_installed(package: NonEmptyStr, transport: HostEffectTransport) -> Srv3HostPredicate {
   let argv = dpkg_query_status_argv(package: package)
   let outcome = match transport {
     FleetSsh { target: t, context: c } => Present { value: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv) }
     SshShell { ssh_host: h } => Present { value: typed_argv_exec_over_ssh(host: h, argv: argv) }
-    // TOTALLED BY NAME (parent ruling on the 84c0dcf floor refusal): a dpkg query reads the state
-    // only where a transport executes argv and reports its exit code. LocalShell reaches no srv3
-    // host and EmitArtifactThenThinRun does not run on the target at all, so both fall to the
-    // Absent arm's sentence -- now owed per variant when a fifth transport lands, not silently.
     LocalShell => none
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => none
   }
@@ -4316,6 +4316,10 @@ fn slot_census_from_process_outcome(host: HostIdentity, outcome: ProcessOutcome)
   }
 }
 
+// TOTALLED BY NAME (parent ruling on the 84c0dcf floor refusal): the typed-argv probe runs the same
+// way on every non-local transport -- run_typed_argv_transport dispatches per variant internally --
+// but the census must DECIDE each new transport here; the wildcard's silence would have admitted
+// one unexamined.
 fn observe_slot_population_over_host_effect_transport(
   host: HostIdentity,
   transport: HostEffectTransport,
@@ -4338,10 +4342,6 @@ fn observe_slot_population_over_host_effect_transport(
         ),
         edge_noun: "the transport",
       )
-    // TOTALLED BY NAME (parent ruling on the 84c0dcf floor refusal): the typed-argv probe runs the
-    // same way on every non-local transport -- run_typed_argv_transport dispatches per variant
-    // internally -- but the census must DECIDE each new transport here; the wildcard's silence
-    // would have admitted one unexamined.
     SshShell { ssh_host: _ } =>
       slot_census_from_typed_argv_outcome(
         host: host,
