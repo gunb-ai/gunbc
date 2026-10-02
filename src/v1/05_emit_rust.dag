@@ -650,6 +650,25 @@ fn rust_opaque_kernel_alias_carrier(name: String) -> String? {
   }
 }
 
+// AN OPAQUE DECLARATION WITH AN EXACT REALIZATION ROW IS REALIZED BY THAT ROW, not by a phantom
+// struct. gunbc.rust_source_type_bindings keys its rows by declaration, and the phantom struct
+// ignored them: v2.std.node String (the kernel host text, gunbc#12760) was emitted as
+// `pub struct String(PhantomData)`, so the kernel's bare `String` render inside that module meant
+// the struct (E0308 at symbol_lexeme). The rule is general and declaration-keyed. Any opaque
+// declaration with a row takes the kernel-alias route: `pub type X = <row spelling>`.
+// rust_exact_binding_spelling renders an ambiguous row, or a row with no realization, as a located
+// compile_error!, so there is no silent choice. The phantom struct stays only where no row exists.
+// Ruled by deep-bee-18 (2026-09-30); admitted under gunbc.v1_maintenance_standing v1_seed_standing
+// because it serves the v2 self-host (the emitted compiler closure must build).
+fn rust_opaque_declaration_has_exact_row(module_path: String, name: String) -> Bool {
+  match rust_lookup_exact_binding(source: Present { value: decl_ref(module_path: module_path, decl_name: name) }) {
+    ExactBindingAbsent => false
+    ExactSourceIdentityUnavailable { cause: _ } => false
+    ResolvedExactBinding { binding: _ } => true
+    ExactBindingAmbiguous { candidate_count: _ } => true
+  }
+}
+
 fn rust_opaque_kernel_alias_type_decl(name: String, module_path: String) -> String {
   let carrier = match rust_exact_binding_spelling(source: Present { value: decl_ref(module_path: module_path, decl_name: name) }, grounding: true) {
     Present { value: exact } => exact
@@ -6362,7 +6381,7 @@ fn type_item_has_rust_nominal_shell_authority(item: Node, item_text: String, mod
   } else if is_type_alias_item(item: item, source_indices: source_indices) {
     true
   } else if is_type_decl_item(item: item, source_indices: source_indices) {
-    if (item.params |> count) == 0 && rust_opaque_kernel_alias_type_eligible(name: item_text) {
+    if (item.params |> count) == 0 && (rust_opaque_kernel_alias_type_eligible(name: item_text) || rust_opaque_declaration_has_exact_row(module_path: module_name, name: item_text)) {
       true
     } else if (item.params |> count) > 0 {
       if is_parametric_opaque_type_decl_item(item: item, source_indices: source_indices) {
@@ -7404,7 +7423,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
         emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: data_items, module_items: module_items, imports: imports)
       } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
 
-        if (item.params |> count) == 0 && rust_opaque_kernel_alias_type_eligible(name: item_text) {
+        if (item.params |> count) == 0 && (rust_opaque_kernel_alias_type_eligible(name: item_text) || rust_opaque_declaration_has_exact_row(module_path: module_name, name: item_text)) {
           rust_opaque_kernel_alias_type_decl(name: item_text, module_path: module_name)
         } else if is_zero_param_self_referential_opaque_decl(item: item, source_indices: env.source_indices) {
           emit_zero_param_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, item_text), source_indices: env.source_indices)
@@ -7429,7 +7448,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
           }
         }
       } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
-        if (item.params |> count) == 0 && rust_opaque_kernel_alias_type_eligible(name: item_text) {
+        if (item.params |> count) == 0 && (rust_opaque_kernel_alias_type_eligible(name: item_text) || rust_opaque_declaration_has_exact_row(module_path: module_name, name: item_text)) {
           rust_opaque_kernel_alias_type_decl(name: item_text, module_path: module_name)
         } else {
 
@@ -17727,6 +17746,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    native_demand_prepare_nanos, native_demand_prepare_samples,", "\n",
       "    native_demand_prepare_ok, native_demand_prepare_refused,", "\n",
       "    native_demand_scheduling_nanos,", "\n",
+      "    native_demand_occurrence_census_lines, native_demand_occurrence_census_nanos,", "\n",
       "    native_demand_run_demand_count, native_demand_run_readiness_derivations,", "\n",
       "    native_demand_run_receipt_lines, native_demand_run_rows,", "\n",
       "    native_demand_observation_progressed,", "\n",
@@ -17737,7 +17757,8 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    program_assembly_measured_outcome, program_assembly_memo_hits,", "\n",
       "    program_assembly_memo_lookup_calls, program_assembly_memo_misses,", "\n",
       "    program_assembly_allocator_next, program_assembly_measured_alloc,", "\n",
-      "    program_assembly_phase_normalize,", "\n",
+      "    program_assembly_phase_normalize_seeded, program_assembly_normalized_outcome,", "\n",
+      "    program_assembly_normalized_alloc, program_assembly_ingest_scope_outcome,", "\n",
       "    program_assembly_phase_parse_measured_seeded,", "\n",
       "    program_assembly_phase_token_count, program_assembly_phase_tokenize,", "\n",
       "\};", "\n",
@@ -18209,6 +18230,16 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        \}", "\n",
       "    \};", "\n",
       "    let front_end_nanos = span_nanos(context_started);", "\n",
+      "    // THE INGEST'S OCCURRENCE SCOPE, computed once: every projected occurrence the loop's", "\n",
+      "    // normalize allocates states its cause in it (v2.compiler.program_assembly", "\n",
+      "    // program_assembly_ingest_scope).", "\n",
+      "    let ingest_scope = match &*program_assembly_ingest_scope_outcome(closure_ingest.clone()) \{", "\n",
+      "        Outcome::Accepted \{ value, .. \} => value.clone(),", "\n",
+      "        Outcome::Rejected \{ diagnostics \} => \{", "\n",
+      "            eprintln!(\"CONTEXT-REFUSED: \{diagnostics:#?\}\");", "\n",
+      "            std::process::exit(1);", "\n",
+      "        \}", "\n",
+      "    \};", "\n",
       "    let mut context_state = native_test_context_state_empty();", "\n",
       "    let mut tokenize_nanos: u128 = 0;", "\n",
       "    let mut parse_nanos: u128 = 0;", "\n",
@@ -18259,10 +18290,14 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        // mark the attempt reached is not recoverable. See the precondition on", "\n",
       "        // v2.compiler.compile native_test_context_absorb.", "\n",
       "        let file_alloc = program_assembly_measured_alloc(measured.clone(), file_seed);", "\n",
-      "        let file_alloc_reported = file_alloc.clone();", "\n",
       "        let parsed = program_assembly_measured_outcome(measured);", "\n",
       "        let normalize_started = Instant::now();", "\n",
-      "        let root = program_assembly_phase_normalize(parsed.clone());", "\n",
+      "        // NORMALIZE ADVANCES THE ALLOCATOR: lowering allocates every image member an id, so the", "\n",
+      "        // next file seeds from the mark normalize reached, not the one parse reached.", "\n",
+      "        let normalized = program_assembly_phase_normalize_seeded(parsed.clone(), file_alloc.clone(), ingest_scope.clone());", "\n",
+      "        let root = program_assembly_normalized_outcome(normalized.clone());", "\n",
+      "        let file_alloc = program_assembly_normalized_alloc(normalized);", "\n",
+      "        let file_alloc_reported = file_alloc.clone();", "\n",
       "        let file_normalize_nanos = span_nanos(normalize_started);", "\n",
       "        // qualified-name read plus source-root index insertion: the half of the per-file step", "\n",
       "        // that is not the front end, timed separately because a quadratic accumulator would", "\n",
@@ -18422,6 +18457,12 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    // collection -- and those spans are disjoint from each demand's own window by construction, so", "\n",
       "    // this row overlaps neither prepare nor eval. The driver reports the reading.", "\n",
       "    let demand_scheduling_nanos = native_demand_scheduling_nanos(run.clone()).max(0) as u128;", "\n",
+      "    // OBSERVATION ONLY (v2.compiler.compile native_demand_occurrence_census_lines): the census is its", "\n",
+      "    // own demand kind, so its cost is the engine-reported ExclusiveOccurrenceCensus row, not a host span.", "\n",
+      "    let occurrence_census_nanos = native_demand_occurrence_census_nanos(run.clone()).max(0) as u128;", "\n",
+      "    for line in native_demand_occurrence_census_lines(run.clone(), universe.modules.len() as i64).iter() \{", "\n",
+      "        eprintln!(\"\{\}\", line);", "\n",
+      "    \}", "\n",
       "    for n in native_demand_prepare_samples(run.clone()).iter() \{", "\n",
       "        prepare_samples.push((*n).max(0) as u128);", "\n",
       "    \}", "\n",
@@ -18542,6 +18583,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        NativeDriverExclusiveRowKey::ExclusiveReceiptAdmission => nanosecond(native_cost_i64(admission_nanos)),", "\n",
       "        NativeDriverExclusiveRowKey::ExclusiveRowSerialization => nanosecond(native_cost_i64(row_serialization_nanos)),", "\n",
       "        NativeDriverExclusiveRowKey::ExclusiveDemandScheduling => nanosecond(native_cost_i64(demand_scheduling_nanos)),", "\n",
+      "        NativeDriverExclusiveRowKey::ExclusiveOccurrenceCensus => nanosecond(native_cost_i64(occurrence_census_nanos)),", "\n",
       "        NativeDriverExclusiveRowKey::ExclusiveModuleRelease => nanosecond(native_cost_i64(module_release_nanos)),", "\n",
       "        NativeDriverExclusiveRowKey::ExclusiveRelayEmit => nanosecond(native_cost_i64(relay_emit_nanos)),", "\n",
       "    \});", "\n",

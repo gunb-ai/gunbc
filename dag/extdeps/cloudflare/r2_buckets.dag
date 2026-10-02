@@ -1,4 +1,5 @@
 module extdeps.cloudflare.r2_buckets
+import std.resources { Network }
 
 import std.types { NonEmptyStr, String, List, Secret, HttpStatus }
 import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
@@ -73,6 +74,7 @@ service cloudflare.R2Buckets {
   }
 
   operation Get {
+    requires Network
     input {
       auth_token: Secret
       account_id: String
@@ -99,6 +101,7 @@ service cloudflare.R2Buckets {
   }
 
   operation Create {
+    requires Network
     input {
       auth_token: Secret
       account_id: String
