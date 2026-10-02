@@ -1,0 +1,21 @@
+{
+  "source_commit": "07cf32568c5",
+  "base_commit": "3756d624604",
+  "exit": 1,
+  "elapsed": "37:33.31",
+  "max_process_rss_kib": 22502228,
+  "compiler_sha256": "2fae4880f6a8a34155742dcf436ed771a8e3f200989ab7508bbef3854aac977e",
+  "executor_sha256": "253a6758366a94a8fdf95f6922609dde6a2683ec287a502f961447bed9606de3",
+  "memory_max_bytes": 27917287424,
+  "memory_high_bytes": 26843545600,
+  "memory_swap_max_bytes": 34359738368,
+  "log_sha256": "34950f7e7fb47cdbcbf1bbd8d676751b5f49844edf212e13360207320c028492",
+  "log_bytes": 1018007,
+  "raw_log": "/home/briansrls/scratch-wt/lexer-cursor-integrated/target/cursor-whole-floor/modeled-floor.log",
+  "standing": "NOT GREEN: completed with local browser-host prerequisite refusals",
+  "reported_blockers": "seven KVM observer local-repo-wet controls; srv2 is outside the modeled browser-test pool srv1/srv3/srv4",
+  "inference": "the two Bool failures in that same group cannot obtain their required browser-backed rig here; they are not waived",
+  "limits": "completion is not a successful full-floor or whole-floor speedup verdict",
+  "remote_followup": "https://github.com/gunb-ai/gunbc/actions/runs/37020644051",
+  "deployment": "not attempted"
+}
