@@ -90,6 +90,7 @@ type OomdDropIn {
 
 service systemd.Oomctl {
   operation Dump {
+    requires none
     input {}
     output {
       stdout: String from "stdout"

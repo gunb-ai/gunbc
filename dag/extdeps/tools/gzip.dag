@@ -43,6 +43,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // disk is never modified (--stdout).
 service gzip.Gzip {
   operation DecodeToStdout {
+    requires none
     input { path: NonEmptyStr }
     output {
       text: String from "stdout"
