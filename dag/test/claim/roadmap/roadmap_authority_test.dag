@@ -68,7 +68,7 @@ import gunbc.roadmap_document { RoadmapDocument }
 import gunbc.roadmap_authority { roadmap_authority_projection, RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused }
 import gunbc.roadmap_spawner { doc_all_nodes }
 import gunbc.roadmap_emit { node_is_superseded, signoff_suffix_inlines, line_inlines }
-import std.markdown { MarkdownInline, TextInline }
+import std.markdown { MarkdownInline, TextInline, ParagraphBlock }
 import test.claim.roadmap.roadmap_authority_subtree_fixture { fx_subtree_fixture_ids }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import gunbc.roadmap_model {
@@ -943,20 +943,39 @@ fn inline_text_contains(i: MarkdownInline, pattern: String) -> Bool {
   }
 }
 
+// One pass per projected row: neither accepted row named below, not superseded, not awaiting
+// sign-off.
+fn projected_row_is_active(n: RoadmapNode) -> Bool {
+  let id = n.node as String
+  !(id == "namespace-occurrence-transport")
+    && !(id == "pderive-typesafe-nullary-reflection")
+    && !node_is_superseded(rn: n)
+    && !any(signoff_suffix_inlines(rn: n, merged: authored_merged_prs()), i => inline_text_contains(i: i, pattern: "awaiting sign-off"))
+}
+
 test fn witness_projection_is_active_only() -> Bool {
   match roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) {
     RoadmapAuthorityProjectionRefused { detail: _ } => false
     RoadmapAuthorityProjected { doc: d, accepted: _, withheld: _ } => {
       let rows = doc_all_nodes(doc: d)
-      let ids = rows |> map(n => n.node as String)
       any(d.sections, s => s.title == "Active deliverables — dependency order")
-        && any(ids, id => id == "v1-products-v1-free")
-        && !any(ids, id => id == "namespace-occurrence-transport")
-        && !any(ids, id => id == "pderive-typesafe-nullary-reflection")
-        && !any(rows, n => node_is_superseded(rn: n))
-        && !any(rows, n => any(signoff_suffix_inlines(rn: n, merged: authored_merged_prs()), i => inline_text_contains(i: i, pattern: "awaiting sign-off")))
-        && !any(rows, n => any(line_inlines(line: n.line), i => inline_text_contains(i: i, pattern: "Operator TODO")))
+        && any(rows, n => (n.node as String) == "v1-products-v1-free")
+        && all(rows, n => projected_row_is_active(n: n))
     }
+  }
+}
+
+// The former markdown claim's text clause, split off because it is independent of which rows are
+// active: no projected row's line and no preamble paragraph carries an operator TODO.
+test fn witness_projection_carries_no_operator_todo() -> Bool {
+  match roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) {
+    RoadmapAuthorityProjectionRefused { detail: _ } => false
+    RoadmapAuthorityProjected { doc: d, accepted: _, withheld: _ } =>
+      !any(doc_all_nodes(doc: d), n => any(line_inlines(line: n.line), i => inline_text_contains(i: i, pattern: "Operator TODO")))
+        && !any(d.preamble, b => match b {
+          ParagraphBlock { inlines } => any(inlines, i => inline_text_contains(i: i, pattern: "Operator TODO"))
+          _ => false
+        })
   }
 }
 
