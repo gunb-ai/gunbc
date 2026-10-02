@@ -53,6 +53,7 @@ fn id_uid_of_command(user: NonEmptyStr) -> ArgvCommand {
 
 service os.Id {
   operation Uid {
+    requires none
     input {}
     output {
       value: String from "stdout"
@@ -70,6 +71,7 @@ service os.Id {
   }
 
   operation Gid {
+    requires none
     input {}
     output {
       value: String from "stdout"
@@ -87,6 +89,7 @@ service os.Id {
   }
 
   operation Lookup {
+    requires none
     input { user: NonEmptyStr }
     output {
       stdout: String from "stdout"

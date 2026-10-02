@@ -24,6 +24,7 @@ data grep_cli_tool: CliTool = CliTool {
 
 service grep.Grep {
   operation MatchesFixedString {
+    requires none
     input { pattern: NonEmptyStr, path: NonEmptyStr }
     output { matches: Bool from "exit_success" }
     readonly

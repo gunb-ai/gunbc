@@ -6,7 +6,7 @@ import v2.std.integer_value_set {
   integer_value_set_contains,
   integer_value_set_strictly_contains
 }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, well_formed }
 import v2.std.node_query { find_named_child }
 fn refinement_widening_predicate_algebra(
   source: Node,
@@ -33,23 +33,23 @@ fn refinement_widening_predicate_algebra_for_value_sets(
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^refinement_widening_field_source },
+        label: Authored { name: ^refinement_widening_field_source },
         target: source
       },
       Edge {
-        label: Named { name: ^refinement_widening_field_candidate },
+        label: Authored { name: ^refinement_widening_field_candidate },
         target: candidate
       },
       Edge {
-        label: Named { name: ^refinement_widening_field_source_facts },
+        label: Authored { name: ^refinement_widening_field_source_facts },
         target: source
       },
       Edge {
-        label: Named { name: ^refinement_widening_field_source_value_set },
+        label: Authored { name: ^refinement_widening_field_source_value_set },
         target: source_value_set
       },
       Edge {
-        label: Named { name: ^refinement_widening_field_candidate_value_set },
+        label: Authored { name: ^refinement_widening_field_candidate_value_set },
         target: candidate_value_set
       }
     ],

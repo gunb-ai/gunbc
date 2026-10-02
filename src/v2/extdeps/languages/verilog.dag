@@ -8,7 +8,7 @@ import v2.std.node {
   Conj,
   Edge,
   Node,
-  Named,
+  Authored,
   Positional,
   Symbol,
   TypeNode,
@@ -1061,7 +1061,7 @@ fn verilog_module_relation_row() -> Witness<Node> {
 }
 
 fn verilog_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn verilog_row_or_empty(lhs: Symbol, emitted: Node) -> Node {

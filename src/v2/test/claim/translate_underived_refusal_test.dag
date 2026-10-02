@@ -59,7 +59,8 @@ import v2.std.node {
   Positional,
   TypeNode,
   Value,
-  arrow_effect_claims_label,
+  ArrowEffectClaimsEdge,
+  core_edge,
   content_hash,
   node_rebuild,
 }
@@ -264,7 +265,7 @@ fn translate_bodied_arrow_contract_payload_tree() -> Outcome<InferredTree> {
             n: arrow,
             children: list_snoc_item(
               xs: arrow.children,
-              item: Edge { label: arrow_effect_claims_label, target: translate_underived_value_specimen }
+              item: core_edge(marker: ArrowEffectClaimsEdge, target: translate_underived_value_specimen)
             )
           ),
           facts: PartialFunction { lookup: translate_bodied_arrow_shortcut_facts_lookup }

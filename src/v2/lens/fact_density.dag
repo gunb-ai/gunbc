@@ -1,7 +1,9 @@
 module v2.lens.fact_density
 
 import std.nat { Nat, Succ, Zero }
+import v2.std.node { Authored, StructuralLabel }
 import v2.lens.common.construction_justification { ConstructionJustification }
+
 import v2.std.witness { Holds }
 import v2.std.diagnostic { outcome_accepted, outcome_rejected, node_locus }
 
@@ -23,7 +25,8 @@ type SourceSpecReadFact
 fn named_fact_count(children: List<Edge>) -> Nat {
   fold(children, init: Zero, f: fn(acc, e) {
     match e.label {
-      Named { name: _ } => Succ { prev: acc }
+      Authored { name: _ } => Succ { prev: acc }
+      StructuralLabel { label: _ } => acc
       Positional => acc
     }
   })

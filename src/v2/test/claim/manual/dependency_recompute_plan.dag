@@ -18,7 +18,7 @@ import v2.std.dependency {
   topological_layers
 }
 import v2.std.diagnostic { Accepted, None }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Path, Symbol, TypeNode }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Path, Symbol, TypeNode }
 
 data refinement_subject_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^refinement_subject_symbol } },
@@ -36,7 +36,7 @@ data refinement_after_node: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: ^refinement_new_field_symbol },
+      label: Authored { name: ^refinement_new_field_symbol },
       target: refinement_new_field_node
     }
   ],
@@ -65,15 +65,15 @@ data dependency_projection_subgraph: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: ^testclaim_lens_symbol },
+      label: Authored { name: ^testclaim_lens_symbol },
       target: testclaim_lens_node
     },
     Edge {
-      label: Named { name: ^boundary_test_lens_symbol },
+      label: Authored { name: ^boundary_test_lens_symbol },
       target: boundary_test_lens_node
     },
     Edge {
-      label: Named { name: ^target_test_projection_symbol },
+      label: Authored { name: ^target_test_projection_symbol },
       target: target_test_projection_node
     }
   ],
@@ -81,7 +81,7 @@ data dependency_projection_subgraph: Node = Node {
 }
 
 data refinement_change_path: Path = Path {
-  steps: [^refinement_change_path_symbol]
+  steps: [Authored { name: ^refinement_change_path_symbol }]
 }
 
 data refinement_change: Change = Change {

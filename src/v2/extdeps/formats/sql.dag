@@ -31,7 +31,7 @@ import v2.std.diagnostic {
 }
 import std.nat { Nat }
 import v2.std.cardinality { NonZeroNat }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode }
 import v2.std.model_core {
   PrimitiveFactBundle,
   ModelCoreFactAxisEncoding,

@@ -69,6 +69,7 @@ fn sleep_seconds_argv(duration: Second) -> SleepArgvRendering {
 
 service sleep.Delay {
   operation Seconds {
+    requires none
     input { seconds: NonEmptyStr }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["sleep", "{seconds}"] }
