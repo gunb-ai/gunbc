@@ -2561,7 +2561,7 @@ mod tests {
             probe_diagnostic: None,
             warning_count: 0,
             warning_headers: Vec::new(),
-            first_error: host::first_rustc_error(stderr),
+            first_error: host::first_rustc_error(stderr).map(Box::new),
         };
         let message = emitted_build_failed_refusal(root, &path.join("crate"), &verdict, "argv=[]");
         assert!(

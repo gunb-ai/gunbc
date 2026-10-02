@@ -174,7 +174,8 @@ pub enum CargoVerdict {
         /// I planted refuse"; this answers "what refused at all", which is the question a
         /// build that was meant to be green poses. Without it the self-host instrument printed
         /// `diagnostic=unattributed` and a 20-line tail that began after the cause.
-        first_error: Option<RustcErrorLocus>,
+        /// Boxed so the variant stays the size it was (clippy `large_enum_variant`).
+        first_error: Option<Box<RustcErrorLocus>>,
     },
 }
 
@@ -257,7 +258,7 @@ pub fn rustc_error_locus_render(first: Option<&RustcErrorLocus>) -> String {
 
 pub fn cargo_verdict_first_error(verdict: &CargoVerdict) -> Option<&RustcErrorLocus> {
     match verdict {
-        CargoVerdict::Completed { first_error, .. } => first_error.as_ref(),
+        CargoVerdict::Completed { first_error, .. } => first_error.as_deref(),
         _ => None,
     }
 }
@@ -299,7 +300,7 @@ pub fn cargo_verdict_summary(verdict: &CargoVerdict) -> String {
             first_error,
         } => format!(
             "Completed status={status} first_error={} diagnostic={} line={} stderr_tail={stderr_tail}",
-            rustc_error_locus_render(first_error.as_ref()),
+            rustc_error_locus_render(first_error.as_deref()),
             probe_diagnostic.as_deref().unwrap_or("unattributed"),
             probe_line.as_deref().unwrap_or("unattributed"),
         ),
@@ -1186,7 +1187,7 @@ pub(crate) fn run_cargo(
                     probe_diagnostic,
                     warning_count: warning_header_count(&stderr),
                     warning_headers: warning_header_lines(&stderr),
-                    first_error: first_rustc_error(&stderr),
+                    first_error: first_rustc_error(&stderr).map(Box::new),
                 }
             }
         },
@@ -2660,7 +2661,7 @@ mod tests {
             probe_diagnostic: None,
             warning_count: 1,
             warning_headers: Vec::new(),
-            first_error: Some(first),
+            first_error: Some(Box::new(first)),
         };
         assert!(cargo_verdict_summary(&verdict).contains(
             "first_error=error[E0308]: mismatched types @ src/v2_compiler_resolve.rs:4120:17"
