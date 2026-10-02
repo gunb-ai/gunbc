@@ -7,6 +7,7 @@ import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_bi
 import v2.std.declaration_marker { TestCodeIndex, test_code_index_add_module, test_code_index_empty }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
 import v2.compiler.resolve {
+  module_binding_edge_is_namespace_body,
   DeclaredBinding,
   Namespace,
   namespace_bindings_augment_from_module_atoms,
@@ -447,15 +448,24 @@ type AdmitExportsFold {
   at_conj: Bool
 }
 
+// A SERVICE NAMESPACE IS NOT ADMITTED AS A BARE NAME (v2.compiler.resolve
+// module_binding_edge_is_namespace_body; the operator's nesting ban). This is the multi-root route's
+// counterpart of the single-tree module-root harvest, so both resolution entries agree. It applies to
+// the subject's own body and to an imported module's exports alike: an imported service prefix is the
+// same namespace body, reachable by its qualified path, never bound bare in the importer.
 fn admit_named_export_edge(
   edge: Edge,
   origin: QualifiedName,
   state: AdmissionState
 ) -> AdmissionState {
-  match try_admitted_export_binding(e: edge) {
-    Present { value: b } =>
-      admit_export_symbol(sym: b.name, origin: origin, state: state)
-    Absent => state
+  if module_binding_edge_is_namespace_body(e: edge) {
+    state
+  } else {
+    match try_admitted_export_binding(e: edge) {
+      Present { value: b } =>
+        admit_export_symbol(sym: b.name, origin: origin, state: state)
+      Absent => state
+    }
   }
 }
 
