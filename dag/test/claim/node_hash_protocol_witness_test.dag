@@ -7,7 +7,7 @@ import v2.std.node {
   Node,
   Edge,
   EdgeLabel,
-  Named,
+  Authored,
   Positional,
   Symbol,
   Connective,
@@ -30,6 +30,9 @@ import v2.std.node {
   node_synthetic,
   node_with_occurrence_id,
   content_hash,
+  ArrowBodyEdge,
+  LoopBoundEdge,
+  core_edge,
 }
 
 // FNV1A64-STRUCTURAL-NODE-PROTOCOL-0 -- the conformance corpus for the node identity rule.
@@ -57,6 +60,14 @@ import v2.std.node {
 //                      implementation would never have revealed this.
 //   node             = fold over CANONICAL children from the kind digest, each step
 //                      combine(combine(acc, label), child)
+//   label            = Authored { name }: combine(atom("canonical_tag_named_edge"), atom(name))
+//                      core marker:        combine(atom("canonical_tag_core_marker_edge"), atom(marker's
+//                                          canonical symbol, e.g. "arrow_body_edge"))
+//                      Positional:         atom("canonical_tag_positional_edge")
+//                      The arrow-body and loop-bound vectors were re-derived by the same reference
+//                      implementation when those edges became core markers (the EdgeLabel cut); it
+//                      first reproduced their previous values, 838a07cf36bb337b and e1ea7ccc630cdeeb,
+//                      under the old authored-label rule, so only the label rule moved.
 //
 // WHAT THIS CORPUS DOES NOT CLAIM, stated here so no reader and no review upgrades it:
 //   - it does not prove injectivity;
@@ -84,7 +95,7 @@ fn comp(b: Behavior, children: List<Edge>) -> Node {
 }
 
 fn named(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn positional(target: Node) -> Edge {
@@ -183,20 +194,20 @@ test fn positional_edges_discipline_matches_its_vector() -> Bool {
 // canonical order at once.
 test fn arrow_body_discipline_matches_its_vector() -> Bool {
   digest_of(n: ty(c: Arrow, children: [
-    named(name: ^arrow_body_edge, target: atom_node(identity: ^body)),
+    core_edge(marker: ArrowBodyEdge, target: atom_node(identity: ^body)),
     named(name: ^g, target: atom_node(identity: ^beta)),
     positional(target: atom_node(identity: ^sig)),
     named(name: ^f, target: atom_node(identity: ^alpha)),
-  ])) == "838a07cf36bb337b"
+  ])) == "4b696908eff8d6e5"
 }
 
 test fn loop_bound_discipline_matches_its_vector() -> Bool {
   digest_of(n: comp(b: Loop, children: [
-    named(name: ^loop_bound_edge, target: atom_node(identity: ^bound)),
+    core_edge(marker: LoopBoundEdge, target: atom_node(identity: ^bound)),
     named(name: ^g, target: atom_node(identity: ^beta)),
     positional(target: atom_node(identity: ^body)),
     named(name: ^f, target: atom_node(identity: ^alpha)),
-  ])) == "e1ea7ccc630cdeeb"
+  ])) == "e5456d4b1de1cf38"
 }
 
 // Parent assembly from child identities, two levels deep.
@@ -320,10 +331,10 @@ test fn child_content_is_not_erased() -> Bool {
 // is the quotient), while the body edge carrying different content must change the digest.
 test fn arrow_body_content_is_not_erased() -> Bool {
   digest_of(n: ty(c: Arrow, children: [
-    named(name: ^arrow_body_edge, target: atom_node(identity: ^body)),
+    core_edge(marker: ArrowBodyEdge, target: atom_node(identity: ^body)),
     positional(target: atom_node(identity: ^sig)),
   ])) != digest_of(n: ty(c: Arrow, children: [
-    named(name: ^arrow_body_edge, target: atom_node(identity: ^other_body)),
+    core_edge(marker: ArrowBodyEdge, target: atom_node(identity: ^other_body)),
     positional(target: atom_node(identity: ^sig)),
   ]))
 }

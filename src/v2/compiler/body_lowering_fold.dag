@@ -31,6 +31,7 @@ import v2.compiler.body_producer_forward {
   body_producer_forward_surface_identities
 }
 import v2.extdeps.languages.dag {
+  namespace_graft_namespace_body_node,
   ParseSubtreeAbsent,
   ParseSubtreeFind,
   ParseSubtreeFound,
@@ -54,6 +55,8 @@ import v2.extdeps.languages.dag {
   parse_qualified_name_segment_atoms_from_capture,
   parse_qualified_name_segments_from_capture,
   qualified_name_from_module_node,
+  dag_surface_edge_label,
+  dag_surface_edge_is,
 }
 import v2.std.anonymous_binder { DeclaredParameterList, anonymous_binder_mint_parameter_list, fresh_return_type_variable, fresh_type_variable }
 import v2.std.algebra { fold_list, list_map, length, zip_eq }
@@ -84,7 +87,6 @@ import v2.std.compilers.body_lowering {
   lower_unary_prefix
 }
 import v2.std.list_introduction { lower_list_introduction }
-import v2.std.map_introduction { map_literal_entries_label, map_literal_entry_label }
 import v2.std.arrow_signature { anonymous_signature_arrow, declared_signature, signature_order_edge }
 import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional }
 import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr }
@@ -114,6 +116,14 @@ import v2.std.symbol_index {
   symbol_index_lookup
 }
 import v2.std.node {
+  ArrowEffectClaimsEdge,
+  ArrowExecutionModeClaimEdge,
+  ArrowResourceRequirementsEdge,
+  MapLiteralEntryEdge,
+  MapLiteralEntriesEdge,
+  core_edge,
+  labeled_core_is,
+  StructuralLabel,
   close_lowered_image,
   close_lowered_image_of,
   Arrow,
@@ -128,21 +138,24 @@ import v2.std.node {
   Edge,
   EdgeLabel,
   Instantiation,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
   Transform,
   TypeNode,
   is_empty_conj_root,
-  match_arm_body,
-  match_arm_pattern,
   node_lowered_from,
   node_rebuild,
   node_synthetic,
   node_with_occurrence_id,
   symbol_intern_lexeme,
   symbol_lexeme,
+  ArrowBodyEdge,
+  MatchArmBodyEdge,
+  MatchArmPatternEdge,
+  core_edge_label,
+  edge_is_core,
 }
 import v2.std.type_binder { cast_target_edge, type_alias_wrapper, type_decl_wrapper, type_opaque_wrapper, type_param_names, type_params_edge }
 import v2.std.arrow_contract { effect_claim_label, hermetic_claim_label }
@@ -401,7 +414,8 @@ fn body_lower_arrow_domain_named_bindings(root: Node) -> List<Symbol> {
     TypeNode { connective: Conj } =>
       fold(root.children, init: Empty, f: fn(acc, e) {
         match e.label {
-          Named { name: sym } => Cons { head: sym, tail: acc }
+          StructuralLabel { label: _ } => acc
+          Authored { name: sym } => Cons { head: sym, tail: acc }
           Positional => acc
         }
       })
@@ -427,7 +441,8 @@ fn body_lower_param_binding_symbols_from_param_list(param_list: Node) -> Optiona
           Present {
             value: fold(edges, init: Empty, f: fn(acc, e) {
               match e.label {
-                Named { name: sym } => Cons { head: sym, tail: acc }
+                StructuralLabel { label: _ } => acc
+                Authored { name: sym } => Cons { head: sym, tail: acc }
                 Positional => acc
               }
             })
@@ -631,7 +646,8 @@ fn body_lower_is_core_substrate(node: Node) -> Bool {
 fn body_lower_has_grammar_projection_edge(node: Node) -> Bool {
   fold(node.children, init: false, f: fn(acc, e) {
     acc || (match e.label {
-      Named { name: n } => parse_tree_projection_edge(name: n)
+      Authored { name: n } => parse_tree_projection_edge(name: n)
+      StructuralLabel { label: _ } => false
       Positional => false
     })
   })
@@ -701,7 +717,8 @@ fn body_lower_is_pass_through_emitted(emitted: Symbol) -> Bool {
 
 fn body_lower_is_identity_projection_edge(edge: Edge) -> Bool {
   match edge.label {
-    Named { name: n } => n == ^grammar_production_identity_node_projection
+    StructuralLabel { label: _ } => false
+    Authored { name: n } => n == ^grammar_production_identity_node_projection
     Positional => false
   }
 }
@@ -856,12 +873,13 @@ fn body_lower_where_leaf_atom_optional(node: Node) -> Optional<Node> {
           Present { value: _ } => acc
           Absent =>
             match e.label {
-              Named { name: sym } =>
+              Authored { name: sym } =>
                 if sym == ^grammar_production_identity_node_projection {
                   acc
                 } else {
                   body_lower_where_leaf_atom_optional(node: e.target)
                 }
+              StructuralLabel { label: _ } => body_lower_where_leaf_atom_optional(node: e.target)
               Positional => body_lower_where_leaf_atom_optional(node: e.target)
             }
         }
@@ -884,12 +902,13 @@ fn body_lower_where_predicate_productions(node: Node) -> List<Node> {
 fn body_lower_where_predicate_productions_below(node: Node) -> List<Node> {
   fold(node.children, init: Empty, f: fn(acc, e) {
     match e.label {
-      Named { name: sym } =>
+      Authored { name: sym } =>
         if sym == ^grammar_production_identity_node_projection {
           acc
         } else {
           list_append(left: acc, right: body_lower_where_predicate_productions(node: e.target))
         }
+      StructuralLabel { label: _ } => list_append(left: acc, right: body_lower_where_predicate_productions(node: e.target))
       Positional => list_append(left: acc, right: body_lower_where_predicate_productions(node: e.target))
     }
   })
@@ -974,7 +993,7 @@ fn body_lower_where_labelled_record(args: List<WherePredicateArgument>, at: Node
   let labelled = fold(args, init: Empty, f: fn(acc, a) {
     match a {
       WhereArgumentLabelled { label: label, value: value } =>
-        list_snoc_item(xs: acc, item: Edge { label: Named { name: label }, target: value })
+        list_snoc_item(xs: acc, item: Edge { label: Authored { name: label }, target: value })
       WhereArgumentPositional { value: _ } => acc
     }
   })
@@ -1056,7 +1075,8 @@ fn body_lower_where_predicates(preds: List<Node>, done: List<Edge>) -> Outcome<L
         f: fn(lowered) {
           if fold(done, init: false, f: fn(seen, e) {
             seen || match e.label {
-              Named { name: n } => n == lowered.spelling
+              Authored { name: n } => n == lowered.spelling
+              StructuralLabel { label: _ } => false
               Positional => false
             }
           }) {
@@ -1064,7 +1084,7 @@ fn body_lower_where_predicates(preds: List<Node>, done: List<Edge>) -> Outcome<L
           } else {
             body_lower_where_predicates(
               preds: rest,
-              done: list_snoc_item(xs: done, item: Edge { label: Named { name: lowered.spelling }, target: lowered.call })
+              done: list_snoc_item(xs: done, item: Edge { label: Authored { name: lowered.spelling }, target: lowered.call })
             )
           }
         }
@@ -1089,7 +1109,7 @@ fn body_lower_where_predicate_set(where_clause: Node) -> Outcome<Node> {
   }
 }
 
-// Conj is LabeledEdges: every child must be Named. The clause is a production-shaped Conj whose
+// Conj is LabeledEdges: every child must be labeled. The clause is a production-shaped Conj whose
 // captured child is the predicate set above. The clause and each predicate call are images of their
 // sources, closed at the root each returns (v2.std.node close_lowered_image).
 fn body_lower_kept_where_clause(where_clause: Node) -> Outcome<Node> {
@@ -1100,7 +1120,7 @@ fn body_lower_kept_where_clause(where_clause: Node) -> Outcome<Node> {
         kind: TypeNode { connective: Conj },
         children: [
           Edge {
-            label: Named { name: ^grammar_production_identity_node_projection },
+            label: Authored { name: ^grammar_production_identity_node_projection },
             target: node_with_occurrence_id(
               kind: TypeNode { connective: Atom { identity: ^dag_surface_where_refinement_clause } },
               children: [],
@@ -1108,7 +1128,7 @@ fn body_lower_kept_where_clause(where_clause: Node) -> Outcome<Node> {
             )
           },
           Edge {
-            label: Named { name: ^grammar_production_captured_node_projection },
+            label: Authored { name: ^grammar_production_captured_node_projection },
             target: predicates
           }
         ],
@@ -1118,7 +1138,7 @@ fn body_lower_kept_where_clause(where_clause: Node) -> Outcome<Node> {
         kind: TypeNode { connective: Conj },
         children: [
           Edge {
-            label: Named { name: ^dag_surface_where_refinement_clause },
+            label: dag_surface_edge_label(edge: ^dag_surface_where_refinement_clause),
             target: production
           }
         ],
@@ -1134,9 +1154,9 @@ fn body_lower_type_variant_children_with_where(
   fields: Node
 ) -> List<Edge> {
   let with_clause = [
-    Edge { label: Named { name: ^dag_surface_type_expr }, target: base },
+    Edge { label: Authored { name: ^dag_surface_type_expr }, target: base },
     Edge {
-      label: Named { name: ^dag_surface_where_refinement_clause },
+      label: dag_surface_edge_label(edge: ^dag_surface_where_refinement_clause),
       target: kept_clause
     }
   ]
@@ -1145,7 +1165,7 @@ fn body_lower_type_variant_children_with_where(
   } else {
     list_snoc_item(
       xs: with_clause,
-      item: Edge { label: Named { name: ^dag_surface_field_decl_block }, target: fields }
+      item: Edge { label: Authored { name: ^dag_surface_field_decl_block }, target: fields }
     )
   }
 }
@@ -2990,7 +3010,7 @@ fn body_lower_generic_param_binder_optional(item: Node) -> Optional<BodyLowerGen
 }
 
 fn body_lower_generic_param_edge_of(b: BodyLowerGenericBinder) -> Edge {
-  Edge { label: Named { name: b.name }, target: body_lower_param_ref_atom(source: b.item, identity: b.name) }
+  Edge { label: Authored { name: b.name }, target: body_lower_param_ref_atom(source: b.item, identity: b.name) }
 }
 
 // The repeat tail of comma_list(item): each element is seq(opt(comma), item).
@@ -3872,7 +3892,7 @@ fn body_lower_fn_decl_named_member_wrap(arrow: Node, fn_name: Symbol, source: No
   node_lowered_from(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: fn_name }, target: arrow }
+      Edge { label: Authored { name: fn_name }, target: arrow }
     ],
     source: source
   )
@@ -4223,7 +4243,7 @@ fn body_lower_data_decl_to_member(shell: Node) -> Outcome<BodyLowering> {
                                       Edge { label: Positional, target: declared_type },
                                       signature.order,
                                       Edge {
-                                        label: Named { name: ^arrow_body_edge },
+                                        label: core_edge_label(marker: ArrowBodyEdge),
                                         target: body_lower_position_function_values(node: reified_body, path: body_lower_unpositioned_path())
                                       }
                                     ]
@@ -4275,7 +4295,7 @@ fn body_lower_fn_decl_arrow(shell: Node, sig: BodyLowerFnSignature, body: Option
         Present { value: b } =>
           list_append(
             left: signature,
-            right: [Edge { label: Named { name: ^arrow_body_edge }, target: body_lower_position_function_values(node: b, path: body_lower_unpositioned_path()) }]
+            right: [Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body_lower_position_function_values(node: b, path: body_lower_unpositioned_path()) }]
           )
       }
     )),
@@ -4926,11 +4946,13 @@ fn body_lower_function_value_signature(binders: List<FunctionValueBinder>) -> Fu
   let minted: DeclaredParameterList = anonymous_binder_mint_parameter_list(edges: authored)
   fold(minted.edges, init: FunctionValueSignature { domain: no_edges, type_params: no_edges, order: minted.order }, f: fn(acc, e) {
     match e.label {
-      Named { name: label } =>
+      StructuralLabel { label: _ } =>
+        FunctionValueSignature { domain: list_snoc_item(xs: acc.domain, item: e), type_params: acc.type_params, order: acc.order }
+      Authored { name: label } =>
         let tv = fresh_type_variable(path: body_lower_unpositioned_path(), label: label)
         FunctionValueSignature {
           domain: list_snoc_item(xs: acc.domain, item: binder_edge(name: label, type_node: body_lower_function_value_type_var_atom(tv: tv))),
-          type_params: list_snoc_item(xs: acc.type_params, item: Edge { label: Named { name: tv }, target: body_lower_function_value_type_var_atom(tv: tv) }),
+          type_params: list_snoc_item(xs: acc.type_params, item: Edge { label: Authored { name: tv }, target: body_lower_function_value_type_var_atom(tv: tv) }),
           order: acc.order
         }
       Positional =>
@@ -5011,10 +5033,7 @@ fn body_lower_arrow_declares_a_renamed_type_param(arrow: Node, renames: Map<Symb
 }
 
 fn body_lower_edge_is_arrow_body(e: Edge) -> Bool {
-  match e.label {
-    Named { name: n } => n == ^arrow_body_edge
-    Positional => false
-  }
+  edge_is_core(e: e, marker: ArrowBodyEdge)
 }
 
 fn body_lower_fresh_type_variable_renames(arrow: Node, path: List<Int>) -> Map<Symbol, Symbol> {
@@ -5032,7 +5051,8 @@ fn body_lower_fresh_type_variable_renames(arrow: Node, path: List<Int>) -> Map<S
 fn body_lower_fresh_type_variable_domain_renames(edges: List<Edge>, path: List<Int>, init: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
   fold(edges, init: init, f: fn(acc, e) {
     match e.label {
-      Named { name: l } =>
+      StructuralLabel { label: _ } => acc
+      Authored { name: l } =>
         map_insert(m: acc, key: fresh_type_variable(path: body_lower_unpositioned_path(), label: l), value: fresh_type_variable(path: path, label: l))
       Positional => acc
     }
@@ -5056,9 +5076,10 @@ fn body_lower_rename_fresh_type_variables(node: Node, renames: Map<Symbol, Symbo
           kind: node.kind,
           children: fold(node.children, init: body_lower_no_type_param_edges(), f: fn(acc, e) {
             let label = match e.label {
-              Named { name: n } =>
+              StructuralLabel { label: _ } => e.label
+              Authored { name: n } =>
                 match map_lookup(m: renames, key: n) {
-                  Present { value: renamed } => Named { name: renamed }
+                  Present { value: renamed } => Authored { name: renamed }
                   Absent => e.label
                 }
               Positional => e.label
@@ -5092,7 +5113,7 @@ fn body_lower_function_value_arrow(
         CodomainElided =>
           list_append(
             left: sig.type_params,
-            right: [Edge { label: Named { name: return_tv }, target: codomain_node }]
+            right: [Edge { label: Authored { name: return_tv }, target: codomain_node }]
           )
       }
       let no_edges: List<Edge> = []
@@ -5118,7 +5139,7 @@ fn body_lower_function_value_arrow(
               ],
               right: type_param_edges
             ),
-            right: [Edge { label: Named { name: ^arrow_body_edge }, target: reified }]
+            right: [Edge { label: core_edge_label(marker: ArrowBodyEdge), target: reified }]
           )
         )),
         diagnostics: bd
@@ -5190,7 +5211,7 @@ fn body_lower_call_arg_edge(arg_capture: Node) -> Outcome<Edge> {
       Present { value: named } =>
         bind_outcome(
           o: body_lower_arg_value_read(arg_capture: arg_capture, value_capture: named.value),
-          f: fn(value) { outcome_accepted(value: Edge { label: Named { name: named.label }, target: value }) }
+          f: fn(value) { outcome_accepted(value: Edge { label: Authored { name: named.label }, target: value }) }
         )
       Absent =>
         outcome_rejected(
@@ -5306,6 +5327,10 @@ fn body_lower_call_arg_edges(items: List<Node>) -> Outcome<List<Edge>> {
       bind_outcome(o: acc, f: fn(state) {
         bind_outcome(o: body_lower_call_arg_edge(arg_capture: item), f: fn(edge) {
           match edge.label {
+            StructuralLabel { label: _ } =>
+              outcome_rejected(
+                d: body_lower_diagnostic(reason: ^body_lowering_reason_call_argument_list_shape_unread, n: item)
+              )
             Positional =>
               if state.seen_named {
                 outcome_rejected(
@@ -5318,7 +5343,7 @@ fn body_lower_call_arg_edges(items: List<Node>) -> Outcome<List<Edge>> {
                   seen_named: false
                 })
               }
-            Named { name: label } =>
+            Authored { name: label } =>
               if body_lowering_surface_identity_list_contains(xs: state.labels, target: label) {
                 outcome_rejected(
                   d: body_lower_diagnostic(reason: ^body_lowering_reason_argument_label_repeated, n: item)
@@ -6290,8 +6315,8 @@ fn body_lower_match_arm_wire(pat_node: Node, body: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: match_arm_pattern }, target: pat_node },
-      Edge { label: Named { name: match_arm_body }, target: body }
+      Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: pat_node },
+      Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: body }
     ]
   )
 }
@@ -6490,7 +6515,7 @@ fn body_lower_field_pattern_edge(item: Node) -> Outcome<Edge> {
         Present { value: field_name } =>
           outcome_accepted(
             value: Edge {
-              label: Named { name: field_name },
+              label: Authored { name: field_name },
               target: body_lower_param_ref_atom(source: captured, identity: field_name)
             }
           )
@@ -6506,7 +6531,7 @@ fn body_lower_field_pattern_edge(item: Node) -> Outcome<Edge> {
               match body_lower_pattern_lowered(pattern_capture: after_colon.right) {
                 Rejected { diagnostics: r } => Rejected { diagnostics: r }
                 Accepted { value: sub, diagnostics: d } =>
-                  Accepted { value: Edge { label: Named { name: field_name }, target: sub }, diagnostics: d }
+                  Accepted { value: Edge { label: Authored { name: field_name }, target: sub }, diagnostics: d }
               }
           }
       }
@@ -6529,7 +6554,7 @@ fn body_lower_pattern_field_edges(items: List<Node>, braced: Bool, witness: Node
         Present { value: only } =>
           bind_outcome(o: body_lower_pattern_lowered(pattern_capture: only), f: fn(sub) {
             outcome_accepted(
-              value: [Edge { label: Named { name: positional_payload_field_name() }, target: sub }]
+              value: [Edge { label: Authored { name: positional_payload_field_name() }, target: sub }]
             )
           })
       }
@@ -8513,11 +8538,11 @@ fn body_lowering_match_spine_identity_absent_fixture_spine() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^grammar_sequence_left_node_projection },
+        label: Authored { name: ^grammar_sequence_left_node_projection },
         target: lbrace
       },
       Edge {
-        label: Named { name: ^grammar_sequence_right_node_projection },
+        label: Authored { name: ^grammar_sequence_right_node_projection },
         target: empty_interior
       }
     ]
@@ -8526,11 +8551,11 @@ fn body_lowering_match_spine_identity_absent_fixture_spine() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^grammar_sequence_left_node_projection },
+        label: Authored { name: ^grammar_sequence_left_node_projection },
         target: match_kw
       },
       Edge {
-        label: Named { name: ^grammar_sequence_right_node_projection },
+        label: Authored { name: ^grammar_sequence_right_node_projection },
         target: braced
       }
     ]
@@ -8553,11 +8578,11 @@ fn body_lowering_match_field_name_spine() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^grammar_sequence_left_node_projection },
+        label: Authored { name: ^grammar_sequence_left_node_projection },
         target: match_kw
       },
       Edge {
-        label: Named { name: ^grammar_sequence_right_node_projection },
+        label: Authored { name: ^grammar_sequence_right_node_projection },
         target: empty_suffix
       }
     ]
@@ -8758,7 +8783,7 @@ fn body_lower_field_init_edge(item: Node) -> Outcome<Edge> {
                 Rejected { diagnostics: r } => Rejected { diagnostics: r }
                 Accepted { value: value, diagnostics: d } =>
                   outcome_with_diagnostics(
-                    value: Edge { label: Named { name: field_name }, target: value },
+                    value: Edge { label: Authored { name: field_name }, target: value },
                     diagnostics: d
                   )
               }
@@ -8790,7 +8815,7 @@ fn parse_production_captured_child_optional_or_self(node: Node) -> Node {
   }
 }
 
-// The entry edge: v2.std.map_introduction map_literal_entry_label, targeting a tag-elided construct
+// The entry edge: v2.std.node CoreEdgeLabel MapLiteralEntryEdge, targeting a tag-elided construct
 // carrying `key` and `value`. Only resolve's map arm reads it.
 fn body_lower_map_literal_entry_edge(key: Node, after_key: Node, item: Node, refuse: Outcome<Edge>) -> Outcome<Edge> {
   match sugar_sequence_pair_optional(node: after_key) {
@@ -8801,11 +8826,11 @@ fn body_lower_map_literal_entry_edge(key: Node, after_key: Node, item: Node, ref
         Accepted { value: value, diagnostics: d } =>
           outcome_with_diagnostics(
             value: Edge {
-              label: Named { name: map_literal_entry_label() },
+              label: core_edge_label(marker: MapLiteralEntryEdge),
               target: close_lowered_image(root: construct_node_elided(
                 field_edges: [
-                  Edge { label: Named { name: ^key }, target: key },
-                  Edge { label: Named { name: ^value }, target: value }
+                  Edge { label: Authored { name: ^key }, target: key },
+                  Edge { label: Authored { name: ^value }, target: value }
                 ],
                 source: item
               ))
@@ -8821,12 +8846,12 @@ fn body_lower_map_literal_entry_edge(key: Node, after_key: Node, item: Node, ref
 // is returned as it is.
 fn body_lower_map_literal_entries_collapsed(edges: List<Edge>, source: Node) -> List<Edge> {
   let pairs = fold(edges, init: [], f: fn(acc, e) {
-    if labeled_named_is(x: e, label_of: edge_label_of, wanted: map_literal_entry_label()) { list_snoc_item(xs: acc, item: e.target) } else { acc }
+    if labeled_core_is(x: e, label_of: edge_label_of, wanted: MapLiteralEntryEdge) { list_snoc_item(xs: acc, item: e.target) } else { acc }
   })
   match pairs {
     Empty => edges
     Cons { head: _, tail: _ } =>
-      [Edge { label: Named { name: map_literal_entries_label() }, target: lower_list_introduction(elements: pairs, source: source) }]
+      [core_edge(marker: MapLiteralEntriesEdge, target: lower_list_introduction(elements: pairs, source: source))]
   }
 }
 
@@ -8843,13 +8868,13 @@ fn body_lower_brace_key_kinds_refusal_optional(reference: Node, edges: List<Edge
   let first_entry = fold(edges, init: optional_absent(), f: fn(acc, e) {
     match acc {
       Present { value: _ } => acc
-      Absent => if labeled_named_is(x: e, label_of: edge_label_of, wanted: map_literal_entry_label()) { optional_present(value: e) } else { optional_absent() }
+      Absent => if labeled_core_is(x: e, label_of: edge_label_of, wanted: MapLiteralEntryEdge) { optional_present(value: e) } else { optional_absent() }
     }
   })
   let first_field = fold(edges, init: optional_absent(), f: fn(acc, e) {
     match acc {
       Present { value: _ } => acc
-      Absent => if labeled_named_is(x: e, label_of: edge_label_of, wanted: map_literal_entry_label()) { optional_absent() } else { optional_present(value: e) }
+      Absent => if labeled_core_is(x: e, label_of: edge_label_of, wanted: MapLiteralEntryEdge) { optional_absent() } else { optional_present(value: e) }
     }
   })
   match first_entry {
@@ -8971,7 +8996,7 @@ fn body_lower_record_literal_tag_optional(captured: Node) -> Optional<RecordLite
 // (v2.std.node_query construct_tag_elided_reference), and resolve's construct-tag writer either
 // writes the expected record's reference or refuses located
 // (docs/plans/anonymous-record-literal-design.md). The field set is never consulted to choose. A
-// string-keyed brace (a map literal) carries its pairs on one map_literal_entries edge; resolve's map arm reads
+// string-keyed brace (a map literal) carries its pairs on one MapLiteralEntriesEdge edge; resolve's map arm reads
 // it (docs/plans/map-literal-introduction-design.md).
 fn body_lower_try_headless_record_literal(captured: Node) -> Outcome<Optional<Node>> {
   match body_lower_record_brace_items_optional(brace: captured) {
@@ -9275,10 +9300,7 @@ fn body_lower_forward_row_apply(shell: Node, emitted: Symbol) -> Outcome<BodyLow
 }
 
 fn body_lower_edge_names_where_clause(e: Edge) -> Bool {
-  match e.label {
-    Named { name: n } => n == ^dag_surface_where_refinement_clause
-    Positional => false
-  }
+  dag_surface_edge_is(e: e, edge: ^dag_surface_where_refinement_clause)
 }
 
 fn body_lower_find_where_host_conj(root: Node) -> Optional<Node> {
@@ -9349,7 +9371,7 @@ fn body_lower_type_decl_member(shell: Node, type_name: Symbol, body: Node, type_
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: type_name },
+        label: Authored { name: type_name },
         target: body_lower_type_decl_member_body(body: body, type_params: type_params)
       }
     ],
@@ -9479,7 +9501,7 @@ fn body_lower_type_decl_declared(shell: Node, type_name: Symbol, target: Node) -
 fn body_lower_type_decl_declared_image(shell: Node, type_name: Symbol, target: Node) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: Named { name: type_name }, target: target }],
+    children: [Edge { label: Authored { name: type_name }, target: target }],
     occurrence_id: shell.occurrence_id
   )
 }
@@ -9923,7 +9945,7 @@ fn body_lower_operation_member(acc: Outcome<BodyLowerOperationAcc>, member: Node
 }
 
 // `requires R, ..` (v2.extdeps.languages.dag dag_grammar_op_requires_expr) lowers to the target of the
-// operation Arrow's ^arrow_resource_requirements_edge: a Conj with one Named edge per member, labelled
+// operation Arrow's ArrowResourceRequirementsEdge: a Conj with one Authored edge per member, labelled
 // by the member's spelling as written and targeting its type reference, lowered by the one type-position
 // reader (body_lower_type_expr_lowered_optional) a parameter's type goes through. The label is only the
 // Conj's discipline (v2.std.node LabeledEdges: named, distinct), so a spelling written twice is
@@ -9931,7 +9953,7 @@ fn body_lower_operation_member(acc: Outcome<BodyLowerOperationAcc>, member: Node
 // a declared resource and is not repeated under another spelling. A member that is not a readable type
 // expression refuses at the member.
 // `requires none` and `requires opaque` lower to a single childless Atom on the same edge, so the one
-// carrier has three declared states (v2.std.node arrow_resource_requirements_label); an operation with
+// carrier has three declared states (v2.std.node CoreEdgeLabel ArrowResourceRequirementsEdge); an operation with
 // no clause carries no edge, which D13 step (b) reads as Undecided, never as none.
 fn body_lower_operation_requires(shell: Node) -> Outcome<Node> {
   match parse_production_captured_child_optional(node: shell) {
@@ -9961,7 +9983,7 @@ fn body_lower_operation_requires_members(shell: Node, captured: Node) -> Outcome
                     if body_lower_edges_carry_name(edges: edges, name: label) {
                       outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_operation_requirement_repeated, n: member))
                     } else {
-                      outcome_accepted(value: list_snoc_item(xs: edges, item: Edge { label: Named { name: label }, target: type_node }))
+                      outcome_accepted(value: list_snoc_item(xs: edges, item: Edge { label: Authored { name: label }, target: type_node }))
                     }
                 }
             }
@@ -10000,7 +10022,8 @@ fn body_lower_operation_requires_member_label_optional(member: Node, type_node: 
 fn body_lower_edges_carry_name(edges: List<Edge>, name: Symbol) -> Bool {
   fold(edges, init: false, f: fn(seen, e) {
     match e.label {
-      Named { name: n } => seen || (n == name)
+      Authored { name: n } => seen || (n == name)
+      StructuralLabel { label: _ } => seen
       Positional => seen
     }
   })
@@ -10011,15 +10034,15 @@ fn body_lower_edges_carry_name(edges: List<Edge>, name: Symbol) -> Bool {
 fn body_lower_operation_arrow_children(signature_edges: List<Edge>, requires: Optional<Node>, claims: BodyLowerOperationClaims) -> List<Edge> {
   let with_requires = match requires {
     Absent => signature_edges
-    Present { value: target } => list_snoc_item(xs: signature_edges, item: Edge { label: Named { name: ^arrow_resource_requirements_edge }, target: target })
+    Present { value: target } => list_snoc_item(xs: signature_edges, item: core_edge(marker: ArrowResourceRequirementsEdge, target: target))
   }
   let with_effects = match claims.effects {
     Empty => with_requires
-    Cons { head: _, tail: _ } => list_snoc_item(xs: with_requires, item: Edge { label: Named { name: ^arrow_effect_claims_edge }, target: body_lower_effect_claims_node(labels: claims.effects) })
+    Cons { head: _, tail: _ } => list_snoc_item(xs: with_requires, item: core_edge(marker: ArrowEffectClaimsEdge, target: body_lower_effect_claims_node(labels: claims.effects)))
   }
   match claims.mode {
     Absent => with_effects
-    Present { value: mode } => list_snoc_item(xs: with_effects, item: Edge { label: Named { name: ^arrow_execution_mode_claim_edge }, target: node_synthetic(kind: TypeNode { connective: Atom { identity: mode } }, children: []) })
+    Present { value: mode } => list_snoc_item(xs: with_effects, item: core_edge(marker: ArrowExecutionModeClaimEdge, target: node_synthetic(kind: TypeNode { connective: Atom { identity: mode } }, children: [])))
   }
 }
 
@@ -10029,7 +10052,7 @@ fn body_lower_effect_claims_node(labels: List<Symbol>) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: fold(labels, init: Empty, f: fn(acc, l) {
-      list_snoc_item(xs: acc, item: Edge { label: Named { name: l }, target: node_synthetic(kind: TypeNode { connective: Atom { identity: l } }, children: []) })
+      list_snoc_item(xs: acc, item: Edge { label: Authored { name: l }, target: node_synthetic(kind: TypeNode { connective: Atom { identity: l } }, children: []) })
     })
   )
 }
@@ -10153,7 +10176,7 @@ fn body_lower_operation(shell: Node) -> Outcome<BodyLowerOperation> {
               outcome_accepted(
                 value: BodyLowerOperation {
                   edge: Edge {
-                    label: Named { name: op_name },
+                    label: Authored { name: op_name },
                     target: close_lowered_image(root: node_with_occurrence_id(
                       kind: TypeNode { connective: Arrow },
                       children: body_lower_operation_arrow_children(
@@ -10215,7 +10238,7 @@ fn body_lower_service_member(acc: Outcome<BodyLowerServiceAcc>, member: Node) ->
   })
 }
 
-fn body_lower_service_name_optional(captured: Node) -> Optional<Symbol> {
+fn body_lower_service_name_optional(captured: Node) -> Optional<List<Symbol>> {
   match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_qualified_name) {
     Absent => Absent
     Present { value: qn_shell } =>
@@ -10224,8 +10247,7 @@ fn body_lower_service_name_optional(captured: Node) -> Optional<Symbol> {
         Present { value: qn_capture } =>
           match parse_qualified_name_segments_from_capture(qn_capture: qn_capture, root: qn_shell) {
             Rejected { diagnostics: _ } => Absent
-            Accepted { value: segments, diagnostics: _ } =>
-              optional_present(value: symbol_intern_lexeme(lexeme: qualified_name_to_dotted_string(qn: segments)))
+            Accepted { value: segments, diagnostics: _ } => optional_present(value: segments)
           }
       }
   }
@@ -10262,11 +10284,11 @@ fn body_lower_service_decl(shell: Node, admit_set_aside: Bool) -> Outcome<BodyLo
                   )
                 Absent =>
               match a.set_aside {
-                Empty => body_lowering_lowered(o: outcome_accepted(value: body_lower_service_node(shell: shell, service_name: service_name, operations: a.operations)))
+                Empty => body_lowering_lowered(o: outcome_accepted(value: body_lower_service_node(shell: shell, service_path: service_name, operations: a.operations)))
                 Cons { head: _, tail: _ } =>
                   if admit_set_aside {
                     Accepted {
-                      value: BodyLowered { node: body_lower_service_node(shell: shell, service_name: service_name, operations: a.operations) },
+                      value: BodyLowered { node: body_lower_service_node(shell: shell, service_path: service_name, operations: a.operations) },
                       diagnostics: service_set_aside_diagnostics(xs: a.set_aside)
                     }
                   } else {
@@ -10313,20 +10335,41 @@ fn body_lower_service_second_operation_shell(operations: List<Edge>, shells: Lis
   }
 }
 
+// A SERVICE LOWERS UNDER ITS NAME AS A SPINE, ONE SEGMENT PER DOTTED PART (XL-2 service spine; ruling
+// 2026-10-01): `service shell.Find { operation Run .. }` is `shell -> <namespace body { Find -> payload
+// { Run -> Arrow } }>`, so its operation's declaration path is <module>.shell.Find.Run. Every segment but
+// the last is a MARKED namespace body (v2.extdeps.languages.dag namespace_graft_namespace_body_node), so
+// v2.compiler.namespace_graft merges the bodies of services sharing a prefix (the sixteen shell.* services
+// of dag/extdeps/shell.dag) into one namespace rather than refusing the repeated `shell`. The last segment
+// carries the operations' payload, which is not a namespace and never merges. A one-segment name (a
+// resource, `service S`) is the single edge it always was.
 // Closes the image body_lower_service_node_image builds: its returned node is the named root (v2.std.node
 // close_lowered_image).
-fn body_lower_service_node(shell: Node, service_name: Symbol, operations: List<Edge>) -> Node {
-  close_lowered_image(root: body_lower_service_node_image(shell: shell, service_name: service_name, operations: operations))
+fn body_lower_service_node(shell: Node, service_path: List<Symbol>, operations: List<Edge>) -> Node {
+  close_lowered_image(root: body_lower_service_node_image(shell: shell, service_path: service_path, operations: operations))
 }
 
-fn body_lower_service_node_image(shell: Node, service_name: Symbol, operations: List<Edge>) -> Node {
+fn body_lower_service_node_image(shell: Node, service_path: List<Symbol>, operations: List<Edge>) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Named { name: service_name }, target: body_lower_payload_node(edges: operations, source: shell) }
-    ],
+    children: [body_lower_service_spine_edge(shell: shell, path: service_path, leaf: body_lower_payload_node(edges: operations, source: shell))],
     occurrence_id: shell.occurrence_id
   )
+}
+
+fn body_lower_service_spine_edge(shell: Node, path: List<Symbol>, leaf: Node) -> Edge {
+  match path {
+    Empty => Edge { label: Positional, target: leaf }
+    Cons { head: segment, tail: rest } =>
+      match rest {
+        Empty => Edge { label: Authored { name: segment }, target: leaf }
+        Cons { head: _, tail: _ } =>
+          Edge {
+            label: Authored { name: segment },
+            target: namespace_graft_namespace_body_node(edges: [body_lower_service_spine_edge(shell: shell, path: rest, leaf: leaf)], source: shell)
+          }
+      }
+  }
 }
 
 // A RESOURCE DECLARATION (v2.extdeps.languages.dag dag_grammar_resource_decl_expr). Its capabilities
@@ -10557,7 +10600,7 @@ fn body_lower_resource_finish(shell: Node, name: Symbol, a: BodyLowerResourceAcc
 
 fn body_lower_resource_decl(shell: Node) -> Outcome<BodyLowering> {
   bind_outcome(o: body_lower_resource_read(shell: shell), f: fn(r) {
-    body_lowering_lowered(o: outcome_accepted(value: body_lower_service_node(shell: shell, service_name: r.name, operations: r.capabilities)))
+    body_lowering_lowered(o: outcome_accepted(value: body_lower_service_node(shell: shell, service_path: [r.name], operations: r.capabilities)))
   })
 }
 

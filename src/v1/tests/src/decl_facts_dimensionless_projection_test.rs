@@ -111,7 +111,7 @@ fn edge_target_named(ctx: &InterpContext, projection: &Value, label: &str) -> Op
                             fields: label_fields,
                             ..
                         }) => {
-                            if *variant_name != ctx.sym("Named") {
+                            if *variant_name != ctx.sym("Authored") {
                                 continue;
                             }
                             match ctx.field(label_fields, "name") {

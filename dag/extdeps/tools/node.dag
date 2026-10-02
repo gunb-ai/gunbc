@@ -33,6 +33,7 @@ data node_cli_tool: CliTool = CliTool {
 
 service nodejs.Cli {
   operation Version {
+    requires none
     input {}
     output {
       version: String from "stdout"
