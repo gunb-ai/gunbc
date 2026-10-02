@@ -102,6 +102,7 @@ import v2.std.inhabitance {
   declared_type_inhabitance,
   inhabitance_node_undecidable_reason,
   inhabitance_undecidable_diagnostic,
+  position_binder_default,
   position_declared_return,
   position_record_field,
   position_let_annotation,
@@ -761,45 +762,29 @@ fn infer_type_decl_formation_facts_from_entries(
 // A BINDER NODE IS NOT A PRODUCT (XL-2 PR2b-3). It carries one declared type and, optionally, the
 // default an omitted argument takes (v2.std.node_query binder_node_parts). Its derived type is a binder
 // node over its type's derived type with NO default: the default is a value, not part of the type, so
-// two binders differing only in their default have one type. A binder that carries a default refuses
-// here, located at the default, as ^infer_binder_default_unjudged: nothing yet judges that a default
-// inhabits its declared type, and that judgment lands with the first producer of a default (XL-2
-// PR2c). Until then no lowering emits one (v2.compiler.body_lowering_fold refuses a default as
-// ^body_lowering_reason_default_value_unmodeled), so this arm is the wall behind that refusal.
+// two binders differing only in their default have one type. The default itself is judged at the
+// declared type by infer_binder_default_check before this row forms (XL-2 PR2c-ii).
 fn infer_binder_node_facts_from_entries(
   node: Node,
   parts: BinderParts,
   entries: List<InferredFactsEntry>,
 ) -> Outcome<InferredFacts> {
-  match parts.default {
-    Present { value: default } =>
-      Rejected { diagnostics: diagnostics_singleton(d: infer_binder_default_unjudged_diagnostic(default: default)) }
-    Absent =>
-      match infer_descent_witness_for_node(n: node) {
-        Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
-        Holds { value: descent_proof } =>
-          match lookup_inferred_facts_in_entries(entries: entries, key: parts.type_node) {
-            Absent => inferred_facts_not_derived(node: node, descent: Holds { value: descent_proof })
-            Present { value: type_facts } =>
-              match inferred_facts_resolved_type(facts: type_facts) {
-                Violates { diagnostic: _ } => inferred_facts_not_derived(node: node, descent: Holds { value: descent_proof })
-                Holds { value: type_evidence } =>
-                  inferred_facts_from_derived_type(
-                    node: node,
-                    derived_type: binder_node(type_node: type_evidence, default: Absent),
-                    descent: Holds { value: descent_proof }
-                  )
-              }
+  match infer_descent_witness_for_node(n: node) {
+    Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+    Holds { value: descent_proof } =>
+      match lookup_inferred_facts_in_entries(entries: entries, key: parts.type_node) {
+        Absent => inferred_facts_not_derived(node: node, descent: Holds { value: descent_proof })
+        Present { value: type_facts } =>
+          match inferred_facts_resolved_type(facts: type_facts) {
+            Violates { diagnostic: _ } => inferred_facts_not_derived(node: node, descent: Holds { value: descent_proof })
+            Holds { value: type_evidence } =>
+              inferred_facts_from_derived_type(
+                node: node,
+                derived_type: binder_node(type_node: type_evidence, default: Absent),
+                descent: Holds { value: descent_proof }
+              )
           }
       }
-  }
-}
-
-fn infer_binder_default_unjudged_diagnostic(default: Node) -> Diagnostic {
-  Diagnostic {
-    reason: ^infer_binder_default_unjudged,
-    at: node_locus(node: default),
-    correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -4349,7 +4334,7 @@ fn infer_gather_settled_row(
         resolved: resolved
       )
     Absent =>
-      match infer_arrow_declared_return_check(node: acc.node, entries: merged_entries, declarations: resolved.resolved_declarations) {
+      match infer_declared_position_check(node: acc.node, entries: merged_entries, declarations: resolved.resolved_declarations) {
         Rejected { diagnostics: r } =>
           infer_gather_fold_acc_failed(
             node: acc.node,
@@ -4369,6 +4354,116 @@ fn infer_gather_settled_row(
             resolved: resolved
           )
       }
+  }
+}
+
+// THE DECLARED POSITIONS A SETTLED NODE OWES: a binder node's default is judged at the binder's declared
+// type (infer_binder_default_check), and an Arrow's body at its declared return
+// (infer_arrow_declared_return_check). Any other node owes nothing here.
+fn infer_declared_position_check(node: Node, entries: List<InferredFactsEntry>, declarations: SymbolIndex) -> Outcome<Bool> {
+  match binder_node_parts(n: node) {
+    Present { value: parts } => infer_binder_default_check(parts: parts, entries: entries, declarations: declarations)
+    Absent =>
+      bind_outcome(o: infer_generic_default_refusal(node: node), f: fn(_) {
+        infer_arrow_declared_return_check(node: node, entries: entries, declarations: declarations)
+      })
+  }
+}
+
+// A DEFAULT UNDER A GENERIC DECLARATION REFUSES, LOCATED AT THE DEFAULT, until it is modeled
+// (^infer_binder_default_generic_unmodeled; side-chat review on #12948). A default's binder node does not
+// see its declaration's type parameters, and judged without them a default typed by one lands in
+// InhabitanceUndecidable, which is an advisory acceptance -- fail-open. So the declaration that owns the
+// type parameters -- a generic Arrow over its domain, a generic type declaration over its member --
+// refuses each defaulted binder it carries. A non-generic declaration owes nothing here, and its
+// defaults are judged at their binder (infer_binder_default_check).
+fn infer_generic_default_refusal(node: Node) -> Outcome<Bool> {
+  match type_param_names(n: node) {
+    Empty => outcome_accepted(true)
+    Cons { head: _, tail: _ } =>
+      match infer_first_default_beneath(nodes: infer_declared_binder_scope(node: node)) {
+        Absent => outcome_accepted(true)
+        Present { value: default } => outcome_rejected(infer_binder_default_generic_unmodeled_diagnostic(default: default))
+      }
+  }
+}
+
+// THE SUBTREE A GENERIC DECLARATION'S TYPE PARAMETERS GOVERN: an Arrow's domain, or a generic type
+// declaration's member. A default anywhere beneath it -- an immediate binder, or one nested in a record
+// type, a coproduct arm's payload or an inline record -- is under those type parameters (side-chat review
+// on #12948: `type Box<T> = Full { value: T = 1 } | Empty` nests its default in the Full payload).
+fn infer_declared_binder_scope(node: Node) -> List<Node> {
+  match node.kind {
+    TypeNode { connective: Arrow } =>
+      match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+        Present { value: domain } => [domain]
+        Absent => []
+      }
+    _ =>
+      match type_decl_view(target: node) {
+        GenericTypeDecl { binders: _, member: m } => [m]
+        _ => []
+      }
+  }
+}
+
+// The first binder default beneath the given nodes, in one depth-first traversal bounded to them.
+fn infer_first_default_beneath(nodes: List<Node>) -> Optional<Node> {
+  fold(nodes, init: optional_absent(), f: fn(acc, n) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => infer_first_default_in(node: n)
+    }
+  })
+}
+
+fn infer_first_default_in(node: Node) -> Optional<Node> {
+  match binder_node_parts(n: node) {
+    Present { value: parts } =>
+      match parts.default {
+        Present { value: d } => optional_present(value: d)
+        Absent => infer_first_default_under(node: node)
+      }
+    Absent => infer_first_default_under(node: node)
+  }
+}
+
+fn infer_first_default_under(node: Node) -> Optional<Node> {
+  fold(node.children, init: optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => infer_first_default_in(node: e.target)
+    }
+  })
+}
+
+fn infer_binder_default_generic_unmodeled_diagnostic(default: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_binder_default_generic_unmodeled,
+    at: node_locus(node: default),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// A BINDER'S DEFAULT IS JUDGED AT THE BINDER'S DECLARED TYPE (XL-2 PR2c-ii), through the same judge --
+// and so the same relation -- an argument meets at its formal and a body at its declared return: the
+// default must inhabit the type an omitted argument or field is declared to have. A binder with no
+// default owes nothing. The default is judged with no type variables in scope, so a default whose
+// type mentions the declaring Arrow's own type parameter does not inhabit an unrelated type by
+// accident: it is refused, located at the default, not assumed.
+fn infer_binder_default_check(parts: BinderParts, entries: List<InferredFactsEntry>, declarations: SymbolIndex) -> Outcome<Bool> {
+  match parts.default {
+    Absent => outcome_accepted(true)
+    Present { value: default } =>
+      infer_judge_declared_position(
+        position: position_binder_default(default: default),
+        application: default,
+        entries: entries,
+        declarations: declarations,
+        formal: InhabitanceFormal { parameter_identity: ^binder_default, declared: parts.type_node },
+        produced_at: default,
+        type_params: []
+      )
   }
 }
 

@@ -1,6 +1,6 @@
 module v1.compiler.emit
 
-import std.occurrence_identity { OccurrenceSynthetic, OccurrenceMinted, OccurrenceProjected, OccurrenceId, NodeOccurrenceIdentity, occurrence_id_eq }
+import std.occurrence_identity { OccurrenceSynthetic, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceId, NodeOccurrenceIdentity, occurrence_id_eq }
 
 import std.coercion { TypeRealizationDecision }
 
@@ -3010,6 +3010,7 @@ fn occurrence_identity_id(identity: NodeOccurrenceIdentity) -> OccurrenceId? {
   match identity {
     OccurrenceMinted { id: id } => Present { value: id }
     OccurrenceProjected { id: id, caused_by: _ } => Present { value: id }
+    OccurrencePending { caused_by: _ } => none
     OccurrenceSynthetic => none
   }
 }

@@ -99,6 +99,7 @@ import std.cache_identity {
 }
 import std.materialization_ladder { DemandNature }
 import v2.compiler.program_assembly {
+  program_assembly_ingest_scope_outcome,
   program_assembly_read_to_normalized_root_seeded,
   assemble_program_from_ingest,
   program_assembly_fold_ingest,
@@ -167,7 +168,7 @@ import v2.lens.fact_density { fact_density_hollow_alias_gate }
 import v2.lens.unit_modeling { unit_modeling_gate }
 import v2.lens.lifecycle_carrier { lifecycle_carrier_gate }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
-import std.content_hash { content_hash_of_value, serialize_content_hash }
+import std.content_hash { Fnv1a64Structural, content_hash_of_value, serialize_content_hash }
 import std.types { NonEmptyStr }
 import std.algebra { Cons, Empty, FreeMonoid, trim, list_append, list_snoc_item }
 import v2.std.algebra { any, contains, fold_list, is_empty, length, list_find_first, list_reverse }
@@ -1429,14 +1430,16 @@ fn native_test_context_fold_step(
   read: DagSourceReadWitness,
   lm: LanguageModel,
   prepared: PreparedGrammar,
-  residue: Diagnostics
+  residue: Diagnostics,
+  scope: Fnv1a64Structural
 ) -> NativeTestContextFoldState {
   let result = program_assembly_read_to_normalized_root_seeded(
     read: read,
     lm: lm,
     prepared: prepared,
     residue: residue,
-    seed: state.alloc
+    seed: state.alloc,
+    scope: scope
   )
   native_test_context_absorb(
     state: state,
@@ -1508,6 +1511,7 @@ fn native_test_context_from_ingest(ingest: SourceRootIngest) -> Outcome<NativeTe
   bind_outcome(
     o: native_test_front_end_prepare(),
     f: fn(front) {
+      bind_outcome(o: program_assembly_ingest_scope_outcome(ingest: ingest), f: fn(scope) {
       outcome_accepted(value: native_test_context_finish(
         state: fold_list(
           xs: ingest,
@@ -1518,13 +1522,15 @@ fn native_test_context_from_ingest(ingest: SourceRootIngest) -> Outcome<NativeTe
               read: read,
               lm: front.lm,
               prepared: front.prepared,
-              residue: front.residue
+              residue: front.residue,
+              scope: scope
             )
           }
         ),
         front: front,
         ingest: ingest
       ))
+      })
     }
   )
 }

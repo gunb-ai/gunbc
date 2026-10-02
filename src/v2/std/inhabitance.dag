@@ -89,6 +89,7 @@ type DeclaredTypePosition
   | PositionDeclaredReturn
   | PositionRecordField { record: Node }
   | PositionLetAnnotation { bound: Node }
+  | PositionBinderDefault { default: Node }
 
 // type_variables are the declaring Arrow's type parameters (v2.std.type_binder type_param_names):
 // the only atoms in `declared` that name no type, and so the only thing that keeps an
@@ -119,7 +120,7 @@ type InhabitanceVerdict
   | InhabitanceRefused { find_witness_reason: Symbol }
   | InhabitanceUndecidable { reason: InhabitanceUndecidableReason }
 
-// Four producers, one relation: v2.compiler.infer builds PositionDirectCallArgument per argument of
+// Five producers, one relation: v2.compiler.infer builds PositionDirectCallArgument per argument of
 // an application, PositionDeclaredReturn per Arrow body against its declared return, and
 // PositionRecordField per field value of a record construct against the field the record declares,
 // and PositionLetAnnotation per annotated let's bound value against its annotation, and all four
@@ -146,12 +147,24 @@ fn position_let_annotation(bound: Node) -> DeclaredTypePosition {
   PositionLetAnnotation { bound: bound }
 }
 
+// A binder's default (XL-2 PR2c-ii) is a declared position like the others: its value is judged at the
+// binder's declared type, the type an omitted argument or field is declared to have. The obligation is
+// located at the default, and the position names it.
+fn position_binder_default(default: Node) -> DeclaredTypePosition {
+  PositionBinderDefault { default: default }
+}
+
+fn inhabitance_no_candidate_binder_default_reason() -> Symbol {
+  ^infer_reason_default_does_not_inhabit_binder_type
+}
+
 fn inhabitance_position_symbol(position: DeclaredTypePosition) -> Symbol {
   match position {
     PositionDirectCallArgument => ^position_direct_call_argument
     PositionDeclaredReturn => ^position_declared_return
     PositionRecordField { record: _ } => ^position_record_field
     PositionLetAnnotation { bound: _ } => ^position_let_annotation
+    PositionBinderDefault { default: _ } => ^position_binder_default
   }
 }
 
@@ -381,6 +394,7 @@ fn inhabitance_position_context_edges(position: DeclaredTypePosition) -> List<Ed
     PositionDeclaredReturn => []
     PositionRecordField { record: record } => [Edge { label: Named { name: ^inhabitance_record }, target: record }]
     PositionLetAnnotation { bound: bound } => [Edge { label: Named { name: ^inhabitance_bound_value }, target: bound }]
+    PositionBinderDefault { default: default } => [Edge { label: Named { name: ^inhabitance_default_value }, target: default }]
   }
 }
 
@@ -390,6 +404,7 @@ fn inhabitance_no_candidate_reason(position: DeclaredTypePosition) -> Symbol {
     PositionDeclaredReturn => inhabitance_no_candidate_return_reason()
     PositionRecordField { record: _ } => inhabitance_no_candidate_record_field_reason()
     PositionLetAnnotation { bound: _ } => inhabitance_no_candidate_let_annotation_reason()
+    PositionBinderDefault { default: _ } => inhabitance_no_candidate_binder_default_reason()
   }
 }
 
