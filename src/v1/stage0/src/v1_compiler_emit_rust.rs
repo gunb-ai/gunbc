@@ -23384,10 +23384,16 @@ pub fn member_type_nodes(is_product: bool, children: Rc<Vec<Rc<Node>>>) -> Rc<Ve
 }
 
 pub fn decl_member_type_nodes(decl: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
-    member_type_nodes(
-        crate::v1_compiler_infer_types::is_product_type(decl.clone()),
-        decl.children.clone(),
-    )
+    if crate::v1_compiler_infer_types::is_leaf_type(decl.clone()) {
+        Rc::new(vec![crate::v1_compiler_infer_types::resolved_type(
+            decl.clone(),
+        )])
+    } else {
+        member_type_nodes(
+            crate::v1_compiler_infer_types::is_product_type(decl.clone()),
+            decl.children.clone(),
+        )
+    }
 }
 
 pub fn members_forbid_deserialize(
@@ -38927,6 +38933,19 @@ pub fn value_inferred_type_is_rc_wrapped(
     }
 }
 
+pub fn data_row_type_forbids_deserialize(
+    type_node: Rc<Node>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    type_expr_reaches_sealed_carrier(
+        type_node.clone(),
+        emit_info.clone(),
+        source_indices.clone(),
+        v1_rt::rc_empty_map::<String, bool>(),
+    )
+}
+
 pub fn emit_data_def_body(
     type_node: Rc<Node>,
     value: Rc<Node>,
@@ -39103,10 +39122,15 @@ pub fn emit_data_def_body(
                     ),
                 )
             } else {
-                if (crate::v1_compiler_emit::has_nested_records_node(
+                if ((crate::v1_compiler_emit::has_nested_records_node(
                     type_node.clone(),
                     scope.type_env.clone().source_indices.clone(),
                 ) && !data_value_has_cross_refs(value.clone()))
+                    && !data_row_type_forbids_deserialize(
+                        type_node.clone(),
+                        emit_info.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    ))
                 {
                     match (*crate::v1_compiler_emit::emit_data_value_json(value.clone(), scope.type_env.clone().source_indices.clone(), emit_info.data_variant_wire_spellings.clone())).clone() {
     EmitterOutcome::Refused { reason: r, .. } => v1_rt::concat(v1_rt::concat("            compile_error!(\"".to_string(), crate::v1_compiler_emit_core_support::escape_string_literal_body(r.clone())), "\")".to_string()),
