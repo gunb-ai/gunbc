@@ -1,6 +1,8 @@
 module v2.test.claim.binder_admission.callable_binder_slice
 
 import v2.compiler.resolve {
+  LexicalFrame,
+  NotDeclaring,
   BinderAdmission,
   BinderDuplicateInFrame,
   BinderHidesVisibleValue,
@@ -165,7 +167,7 @@ fn cbs_root_scope_declaring(name: Symbol) -> Scope {
 }
 
 fn cbs_frame_binding(name: Symbol) -> Scope {
-  ScopeFrame { locals: map_insert(empty_map(), name, name), outer: cbs_root_scope() }
+  ScopeFrame { locals: map_insert(empty_map(), name, name), outer: cbs_root_scope(), kind: LexicalFrame }
 }
 
 fn cbs_admitted_has(a: BinderAdmission, name: Symbol) -> Bool {
@@ -245,7 +247,8 @@ fn cbs_ctx(scope: Scope) -> ResolveContext {
     policy: default_name_resolution_policy(),
     position: Empty,
     lm: void_language_model(identity: ^cbs_void_language),
-    under_module_root: false
+    under_module_root: false,
+    declaring: NotDeclaring
   }
 }
 

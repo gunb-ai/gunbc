@@ -26,6 +26,7 @@ import v2.std.diagnostic {
 }
 import v2.std.logic { Bool }
 import v2.std.node {
+  DeclarationReferenceKind,
   Symbol,
   symbol_eq,
   Conj,
@@ -46,7 +47,7 @@ import v2.std.runtime { RuntimePrimitive, RuntimeValue }
 import v2.std.algebra { fold_list }
 import v2.std.qualified_name { qualified_name_last_segment,
   declaration_reference_path_optional,
-  declaration_reference_spine_optional
+  resolved_reference_spine_optional
 }
 
 // THE EVALUATOR BOUNDARY FOR A NAMED CALL, ISOLATED FROM THE NATIVE ROUTE. The reference-evidence
@@ -172,7 +173,7 @@ fn cref_callee_reference_optional(n: Node) -> Optional<Node> {
 // marker itself is excluded, because the marker IS the node that stands where the reference stood and
 // a refusal anchored there would be a different finding from a refusal anchored on path data.
 fn cref_spine_nodes(reference: Node) -> List<Node> {
-  match declaration_reference_spine_optional(node: reference) {
+  match resolved_reference_spine_optional(node: reference, kind: DeclarationReferenceKind) {
     Absent => Empty
     Present { value: spine } =>
       fold_node(
