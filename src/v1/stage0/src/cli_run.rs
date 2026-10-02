@@ -6464,6 +6464,9 @@ mod compile_clean_via_index_verdict_equivalence {
         fs::create_dir_all(&provider_root).expect("create provider root");
 
         // The ONLY difference from the admitting test: no reference to the provider.
+        // QUALIFIED, not bare: since #12741 a bare name across source trees refuses typed
+        // (CrossTreeBareReference), so the cross-tree reference the de-fork must follow is
+        // written the way production must write it.
         fs::write(
             entry_root.join("seed.dag"),
             "module v1.regen_seed_probe\nfn probe() -> Int {\n  1\n}\n",
@@ -6542,7 +6545,7 @@ mod compile_clean_via_index_verdict_equivalence {
 
         fs::write(
             entry_root.join("seed.dag"),
-            "module v1.regen_seed_probe\nfn probe() -> Int {\n  regen_provider_probe_answer()\n}\n",
+            "module v1.regen_seed_probe\nfn probe() -> Int {\n  std.regen_provider_probe.regen_provider_probe_answer()\n}\n",
         )
         .expect("write seed");
         fs::write(
@@ -10437,25 +10440,32 @@ mod closure_edge_demand_tests {
             "a refusal is a recorded judgment"
         );
 
-        let twin = Fixture::new(&[
-            ("a.dag", "module frontier\nfn duplicated() -> Int { 1 }\n"),
-            (
-                "c.dag",
-                "module frontier.child.consumer\nfn read() -> Int { duplicated() }\n",
-            ),
-        ]);
-        let twin_roots = vec![twin.0.to_string_lossy().into_owned()];
-        assert!(
-            required_bare_reference_admission_completion_failure(&twin_roots)
-                .is_some_and(|f| f.contains("bypassed")),
-            "a judgment of OTHER roots is not a judgment of these"
-        );
-        let ok = run_required_bare_reference_admission(&twin_roots).unwrap();
-        assert!(ok.contains("judged=2 pool=2"), "{ok}");
-        assert_eq!(
-            required_bare_reference_admission_completion_failure(&twin_roots),
-            None
-        );
+        // The twin is a SECOND pool. The shared index allows one resident pool per thread
+        // (SharedIndexSecondResidentPool, #12831), so the twin's judgment runs on its own thread,
+        // exactly as a separate floor run would.
+        std::thread::spawn(|| {
+            let twin = Fixture::new(&[
+                ("a.dag", "module frontier\nfn duplicated() -> Int { 1 }\n"),
+                (
+                    "c.dag",
+                    "module frontier.child.consumer\nfn read() -> Int { duplicated() }\n",
+                ),
+            ]);
+            let twin_roots = vec![twin.0.to_string_lossy().into_owned()];
+            assert!(
+                required_bare_reference_admission_completion_failure(&twin_roots)
+                    .is_some_and(|f| f.contains("bypassed")),
+                "a judgment of OTHER roots is not a judgment of these"
+            );
+            let ok = run_required_bare_reference_admission(&twin_roots).unwrap();
+            assert!(ok.contains("judged=2 pool=2"), "{ok}");
+            assert_eq!(
+                required_bare_reference_admission_completion_failure(&twin_roots),
+                None
+            );
+        })
+        .join()
+        .expect("the twin's judgment thread");
         reset_bare_reference_admission_completion_for_test();
     }
 

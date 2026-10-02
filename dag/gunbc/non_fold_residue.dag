@@ -36,6 +36,8 @@ data nfr_dissolve_orch_emit: DissolutionCondition = unbound_dissolution(descript
 
 data nfr_reason_land_red_era: String = "landed unrostered while the gate was red during the land-red-with-local-proof era (revoked 2026-07-12); declared so the ratchet re-arms"
 
+data nfr_reason_landed_after_census_unit_lane_nonblocking: String = "landed on main after the 2026-10-01 NFR census while the --lib unit-test lane (nfr_roster_receipt) was non-blocking, so nothing refused it; surfaced composing integration PR #12951, where #12753 makes that lane blocking"
+
 data nfr_dissolve_owning_fold: DissolutionCondition = unbound_dissolution(description: "the owning file's fold migration totals the match and the row deletes")
 
 data nfr_reason_legacy_slice1_bridge: String = "projection over the legacy HostConvergeSlice1HostResult bridge (host_converge_slice1_unit_outcome_to_legacy_result) — off-variant arms reduce to the identity, so enumerating would clone the arm per variant; landed with #7009, surfaced by the scheduled cold falsifier (alert #7032)"
@@ -1080,6 +1082,19 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     reason: nfr_reason_acceptance_verdict_append,
     dissolution: nfr_dissolve_acceptance_verdict_append,
   },
+  FrontierRow { subject: PathSubject { path: "dag/gunbc/bmc_model.dag::bmc_event_eq" }, reason: nfr_reason_landed_after_census_unit_lane_nonblocking, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "dag/gunbc/machine_intake/megarac_media_attach.dag::stopped_with_reason" }, reason: nfr_reason_landed_after_census_unit_lane_nonblocking, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "dag/gunbc/machine_intake/mtcollins1_boot_diagnostic_bundle.dag::media_loss_after_handoff" }, reason: nfr_reason_landed_after_census_unit_lane_nonblocking, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "dag/gunbc/machine_intake/mtcollins1_census_qemu_host_observe.dag::library_standing_ready" }, reason: nfr_reason_landed_after_census_unit_lane_nonblocking, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "dag/gunbc/machine_intake/mtcollins1_kvm_observer_observe.dag::kvm_probe_seat_parts_gap" }, reason: nfr_reason_landed_after_census_unit_lane_nonblocking, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "src/v2/extdeps/languages/dag.dag::dag_emit_text_step" }, reason: nfr_reason_landed_after_census_unit_lane_nonblocking, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "src/v2/lens/text_string_importer_census.dag::is_census_undecided" }, reason: nfr_reason_landed_after_census_unit_lane_nonblocking, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "src/v2/lens/text_string_importer_census.dag::is_listed_position" }, reason: nfr_reason_landed_after_census_unit_lane_nonblocking, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "src/v2/lens/text_string_importer_census.dag::is_parse_refused" }, reason: nfr_reason_landed_after_census_unit_lane_nonblocking, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "src/v2/lens/text_string_importer_census.dag::literal_kind_token" }, reason: nfr_reason_landed_after_census_unit_lane_nonblocking, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "src/v2/lens/text_string_importer_census.dag::literal_position" }, reason: nfr_reason_landed_after_census_unit_lane_nonblocking, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "src/v2/lens/text_string_importer_census.dag::position_is_structural" }, reason: nfr_reason_landed_after_census_unit_lane_nonblocking, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "src/v2/lens/text_string_importer_census.dag::position_is_unresolved" }, reason: nfr_reason_landed_after_census_unit_lane_nonblocking, dissolution: nfr_dissolve_owning_fold },
 ]
 
 fn non_fold_residue_frontier_units() -> List<String> {
