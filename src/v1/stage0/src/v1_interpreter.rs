@@ -23640,17 +23640,6 @@ macro_rules! v1_builtin_arms {
                 crate::cli_run::inert_carrier_declared_count_live(),
             ))),
 
-            arm "free_call.non_fold_residue_count" { "non_fold_residue_count" } => Ok(Some(Value::Int(crate::cli_run::non_fold_residue_count()))),
-            arm "free_call.non_fold_residue_unrostered_count" { "non_fold_residue_unrostered_count" } => Ok(Some(Value::Int(
-                crate::cli_run::non_fold_residue_unrostered_count(),
-            ))),
-            arm "free_call.non_fold_residue_stale_roster_count" { "non_fold_residue_stale_roster_count" } => Ok(Some(Value::Int(
-                crate::cli_run::non_fold_residue_stale_roster_count(),
-            ))),
-            arm "free_call.non_fold_residue_coproduct_universe_count" { "non_fold_residue_coproduct_universe_count" } => Ok(Some(Value::Int(
-                crate::cli_run::non_fold_residue_coproduct_universe_count(),
-            ))),
-
             arm "free_call.commit_witness_claim_roster_unresolvable_count" { "commit_witness_claim_roster_unresolvable_count" } => Ok(Some(Value::Int(
                 crate::cli_run::commit_witness_claim_roster_unresolvable_count(),
             ))),
@@ -23667,18 +23656,6 @@ macro_rules! v1_builtin_arms {
                     crate::cli_run::commit_witness_claim_pair_resolvable(&entry, &function),
                 )))
             },
-            arm "free_call.non_fold_residue_wildcard_red_fixture_holds" { "non_fold_residue_wildcard_red_fixture_holds" } => Ok(Some(Value::Bool(
-                crate::cli_run::non_fold_residue_wildcard_red_fixture_holds(),
-            ))),
-            arm "free_call.non_fold_residue_total_fold_green_fixture_holds" { "non_fold_residue_total_fold_green_fixture_holds" } => Ok(Some(Value::Bool(
-                crate::cli_run::non_fold_residue_total_fold_green_fixture_holds(),
-            ))),
-            arm "free_call.non_fold_residue_roster_red_fixture_holds" { "non_fold_residue_roster_red_fixture_holds" } => Ok(Some(Value::Bool(
-                crate::cli_run::non_fold_residue_roster_red_fixture_holds(),
-            ))),
-            arm "free_call.non_fold_residue_synthetic_unrostered_red_holds" { "non_fold_residue_synthetic_unrostered_red_holds" } => Ok(Some(Value::Bool(
-                crate::cli_run::non_fold_residue_synthetic_unrostered_red_holds(),
-            ))),
 
             arm "free_call.complexity_linearity_syntactic_finding_count" { "complexity_linearity_syntactic_finding_count" } => Ok(Some(Value::Int(
                 crate::cli_run::complexity_linearity_syntactic_finding_count(),

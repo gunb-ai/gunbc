@@ -1,6 +1,6 @@
 module extdeps.mercurial
 
-import std.types { NonEmptyStr, Bytes, Timestamp }
+import std.types { NonEmptyStr, Bytes, Timestamp, brand }
 import std.integer { NonNegativeInt, UInt8, qualified_octet_members }
 import std.graph {
   GraphEdge,

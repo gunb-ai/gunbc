@@ -1,6 +1,6 @@
 module extdeps.ntfy.ntfy
 
-import std.types { NonEmptyStr, String, Int, Secret, List, Bool }
+import std.types { NonEmptyStr, String, Int, Secret, List, Bool, brand }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable, mutation_status_is_commit_ambiguous }
