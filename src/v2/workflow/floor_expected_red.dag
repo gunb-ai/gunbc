@@ -1205,9 +1205,12 @@ fn floor_expected_red_chunk_shell_dag_compile_pool_slice_install() -> List<Strin
 // codex_home) and the acceptance conjunction. Each reaches its subject and answers Bool(false) on
 // BEHAVIOR — the module's positive control passes on the same run. The worker realizes the trip as
 // a typed ArgvCommand with the payload on stdin and separate stream capture; when the arms pass,
-// this roster's self-emptying arm names them for removal (DESIGN 4b(4)).
+// this roster's self-emptying arm names them for removal (DESIGN 4b(4)). gunbc#12973 landed the
+// typed argv realization on main; with the witness re-pointed at it, the control-word and sentinel
+// arms pass and leave this chunk. The adversarial codex_home arm still answers false: the
+// separator travels as argv data, but the rendered surface text still contains it.
 fn floor_expected_red_chunk_shell_dag_codex_app_server_trip_script() -> List<String> {
-  Cons { head: "test.claim.shell.shell_dag_codex_app_server_trip_script_witness_test.trip_surface_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_codex_app_server_trip_script_witness_test.trip_surface_carries_no_stdio_sentinel", tail: Cons { head: "test.claim.shell.shell_dag_codex_app_server_trip_script_witness_test.adversarial_codex_home_renders_no_shell_control_word", tail: Empty {} } } }
+  Cons { head: "test.claim.shell.shell_dag_codex_app_server_trip_script_witness_test.adversarial_codex_home_renders_no_shell_control_word", tail: Empty {} }
 }
 
 // SHELL-DAG-LIVE-DEPLOY-INSTALL-OWNED'S ACCEPTANCE ORACLE, AUTHORED RED BY DESIGN — the cron-entry
