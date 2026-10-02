@@ -775,7 +775,7 @@ fn normal_serving_promotion_refusal(intent: ArmIntent, checkpoint: ServingCheckp
             Absent => Present { value: "no runtime row, so no promotion subject derives" as NonEmptyStr }
             Present { value: rrow } => {
               let subject = serving_subject_for_launch(
-                checkpoint: checkpoint, checkpoint_revision: Present { value: crow.revision }, runtime: runtime,
+                checkpoint_revision: Present { value: crow.revision }, runtime: runtime,
                 runtime_image_reference: runtime_artifact_wire(a: rrow.artifact), topology: topology, profile: profile,
                 collective_transport: none)
               let compat = measured_admission_for(subject: launch_compatibility_subject(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, profile: profile))
