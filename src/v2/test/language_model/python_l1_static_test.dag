@@ -19,13 +19,11 @@ test fn python_l1_static_expected_verdicts_wired() -> Bool {
   match leaf_model_python_static_happy_verdict(c: python_l1_static_fixture().happy) {
     StaticAnalysisAccepted => true
     StaticAnalysisRejected { tool_id: _, diagnostic_code: _ } => false
-    StaticAnalysisAdvisory { tool_id: _, diagnostic_code: _ } => false
   }
   && match leaf_model_python_static_falsification_verdict(c: python_l1_static_fixture().falsification) {
        StaticAnalysisAccepted => false
        StaticAnalysisRejected { tool_id: t, diagnostic_code: d } =>
          t == ^pyright_tool_id && d == ^pyright_diag_report_return_type
-       StaticAnalysisAdvisory { tool_id: _, diagnostic_code: _ } => false
      }
 }
 
@@ -54,13 +52,11 @@ fn python_l1_static_roster_pair_verdicts_wired(
   match leaf_model_python_static_happy_verdict(c: p.happy) {
     StaticAnalysisAccepted => true
     StaticAnalysisRejected { tool_id: _, diagnostic_code: _ } => false
-    StaticAnalysisAdvisory { tool_id: _, diagnostic_code: _ } => false
   }
   && match leaf_model_python_static_falsification_verdict(c: p.falsification) {
        StaticAnalysisAccepted => false
        StaticAnalysisRejected { tool_id: t, diagnostic_code: d } =>
          t == ^pyright_tool_id && d == expected_diag_code
-       StaticAnalysisAdvisory { tool_id: _, diagnostic_code: _ } => false
      }
 }
 
@@ -111,12 +107,10 @@ test fn python_l1_static_mypy_expected_verdicts_wired() -> Bool {
   match leaf_model_python_static_happy_verdict(c: python_l1_static_mypy_fixture().happy) {
     StaticAnalysisAccepted => true
     StaticAnalysisRejected { tool_id: _, diagnostic_code: _ } => false
-    StaticAnalysisAdvisory { tool_id: _, diagnostic_code: _ } => false
   }
   && match leaf_model_python_static_falsification_verdict(c: python_l1_static_mypy_fixture().falsification) {
        StaticAnalysisAccepted => false
        StaticAnalysisRejected { tool_id: t, diagnostic_code: d } =>
          t == ^mypy_tool_id && d == ^mypy_diag_return_value
-       StaticAnalysisAdvisory { tool_id: _, diagnostic_code: _ } => false
      }
 }

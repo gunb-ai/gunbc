@@ -85,7 +85,6 @@ type TargetStaticAnalysisInvocation {
 type TargetStaticAnalysisVerdict
   = StaticAnalysisAccepted
   | StaticAnalysisRejected { tool_id: Symbol, diagnostic_code: Symbol }
-  | StaticAnalysisAdvisory { tool_id: Symbol, diagnostic_code: Symbol }
 
 type TargetTypeScriptCompileVerdict
   = TargetTypeScriptCompileAccepted
