@@ -12,6 +12,7 @@ import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
 import v2.std.symbol_index { empty_symbol_index }
 import v2.std.qualified_name { declaration_reference_node }
 import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { fold_list_node }
 import v2.extdeps.languages.dag { dag_grammar_atom, dag_language_model_surface_empty_prelude, dag_named_edge }
 import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_parse }
 import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
@@ -335,14 +336,16 @@ test fn requires_none_with_member_stream_is_what_tokenize_produces_holds() -> Bo
   supplied_stream_matches_tokenize(text: requires_none_with_member_source, file: ^requires_edge_probe, supplied: requires_none_with_member_stream())
 }
 
-// THE RESOLVE HALF OF THE ROUTE. A module m declaring T; an operation Arrow whose requirements edge names
+// THE RESOLVE HALF OF THE ROUTE. A module m declaring T, its header naming m through the qualified-name
+// spine a parsed header carries (fold_list_node, as v2.test.resolve.qualified_module_projection_resolve
+// builds it), so the index fill reads the module's own path; an operation Arrow whose requirements edge names
 // T, as body_lower_operation_requires builds it. Resolved at m through the real resolve_node.
 fn req_module_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(name: ^dag_surface_module_header, target: dag_grammar_atom(id: ^dag_surface_module_header)),
-      dag_named_edge(name: ^dag_surface_module_header_qualified_name, target: req_atom(sym: ^m)),
+      dag_named_edge(name: ^dag_surface_module_header_qualified_name, target: fold_list_node(xs: Cons { head: ^m, tail: Empty }, item_node: fn(sym) { req_atom(sym: sym) })),
       Edge { label: Named { name: ^T }, target: req_atom(sym: ^T) }
     ],
     occurrence_id: OccurrenceSynthetic
