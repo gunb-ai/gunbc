@@ -1,6 +1,5 @@
 module v2.lens.module_graph
 
-import gunbc.rust_item_scan { ends_with }
 import v2.compiler.normalized_tree { normalized_tree_record_declarations, normalized_tree_resource_declarations }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
