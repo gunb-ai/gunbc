@@ -71,6 +71,8 @@ fn egress_alias_rows() -> List<SpellingAliasRow> {
     spelling_alias(spelling: "insert", canonical: "map_insert", reason: "method_call.insert carries the spellings insert and map_insert on one arm"),
     spelling_alias(spelling: "map_lookup", canonical: "lookup", reason: "v2.std.collection map_lookup is the ModeledProjection of the lookup primitive (std.primitive_projection roster) and shares the map_grounding.lookup arm"),
     spelling_alias(spelling: "map_lookup_primitive_delegate", canonical: "lookup", reason: "HostRealizedSeam projection of lookup; shares the map_grounding.lookup arm"),
+    spelling_alias(spelling: "list_at_optional", canonical: "get", reason: "v2.std.collection list_at_optional is the ModeledProjection of the get primitive (std.primitive_projection primitive_projection_roster)"),
+    spelling_alias(spelling: "list_at_primitive_delegate", canonical: "get", reason: "HostRealizedSeam projection of get; shares the map_grounding.list_at arm"),
     spelling_alias(spelling: "merge", canonical: "map_merge", reason: "method_call.merge overlays one map on another and increments the map_merge mutation counter -- the method spelling of the map_merge free call"),
     spelling_alias(spelling: "push", canonical: "append", reason: "push is a third spelling on the method_call.concat arm beside append; it joins the append identity so the append conflict (element push on the algebra template versus concatenation on the interpreter arm) is carried once"),
     spelling_alias(spelling: "list_concat", canonical: "concat", reason: "extdeps.languages.rust.emit rt row list_concat -> rc_list_concat is the List realization name of concat; the bridge-family arm of the same name realizes it in the interpreter"),

@@ -289,6 +289,7 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "code_point",         bridge_name: "code_point",       passes_by_ref: false, wraps_result: false },
   { name: "from_code_point",    bridge_name: "from_code_point",  passes_by_ref: false, wraps_result: false },
   { name: "lookup",             bridge_name: "lookup",           passes_by_ref: true,  wraps_result: false },
+  { name: "get",                bridge_name: "list_get_optional", passes_by_ref: true, wraps_result: false },
   { name: "index_by",           bridge_name: "rc_index_by",      passes_by_ref: false, wraps_result: false },
   { name: "empty_map",          bridge_name: "rc_empty_map",     passes_by_ref: false, wraps_result: false },
   { name: "empty_set",          bridge_name: "rc_empty_set",     passes_by_ref: false, wraps_result: false },
