@@ -1146,7 +1146,8 @@ fn planted_field_names_join_and_keeps_profiles(wire: NonEmptyStr, admitted: List
 test fn different_failed_sm12_wires_have_different_decision_identities() -> Bool {
   let empty_admit: List<NonEmptyStr> = []
   let unadmitted = vllm_kv_cache_dtype_wire(request: KvAuto)
-  let nomatch_opt = (filter(v41_sm12_admitted_kv_cache_dtypes, d =>
+  let planted_admit = w_planted_nomatch_roster()
+  let nomatch_opt = (filter(planted_admit, d =>
     match vllm_kv_cache_dtype_request_matching_wire(wire: d) {
       Absent => true
       Present { value: _ } => false
@@ -1154,11 +1155,11 @@ test fn different_failed_sm12_wires_have_different_decision_identities() -> Bool
   match nomatch_opt {
     Absent => false
     Present { value: nomatch } =>
-      decision_snapshot_key(input: v4_1_decision_input_from_sm12(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes))
-        != decision_snapshot_key(input: v4_1_decision_input_from_sm12(wire: nomatch, admitted: v41_sm12_admitted_kv_cache_dtypes))
-        && decision_snapshot_key(input: v4_1_decision_input_from_sm12(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes))
+      decision_snapshot_key(input: v4_1_decision_input_from_sm12(wire: unadmitted, admitted: planted_admit))
+        != decision_snapshot_key(input: v4_1_decision_input_from_sm12(wire: nomatch, admitted: planted_admit))
+        && decision_snapshot_key(input: v4_1_decision_input_from_sm12(wire: unadmitted, admitted: planted_admit))
           != decision_snapshot_key(input: v4_1_decision_input_from_sm12(wire: v41_sm12_kv_layout, admitted: empty_admit))
-        && decision_snapshot_key(input: v4_1_decision_input_from_sm12(wire: nomatch, admitted: v41_sm12_admitted_kv_cache_dtypes))
+        && decision_snapshot_key(input: v4_1_decision_input_from_sm12(wire: nomatch, admitted: planted_admit))
           != decision_snapshot_key(input: v4_1_decision_input_from_sm12(wire: v41_sm12_kv_layout, admitted: empty_admit))
   }
 }
@@ -1185,10 +1186,19 @@ test fn a_planted_unadmitted_wire_keeps_a_named_join_standing() -> Bool {
     }
 }
 
+// THE NOMATCH WIRE IS PLANTED, because the real roster no longer holds one: fp8_e4m3 was it until the
+// canonical request vocabulary gained KvFp8E4m3 (extdeps.vllm.engine_args). The join's behaviour on a
+// wire it admits but cannot name is still a case worth pinning, so the roster here is the real one
+// plus a spelling no request renders.
+fn w_planted_nomatch_roster() -> List<NonEmptyStr> {
+  concat(v41_sm12_admitted_kv_cache_dtypes, ["fp8_planted_nomatch" as NonEmptyStr])
+}
+
 // A WIRE THE ROSTER ADMITS BUT NO POLICY MATCHES is the case the unadmitted one cannot reach: admission
 // and policy matching are two joins, and a wire can pass the first and fail the second.
 test fn a_planted_nomatch_wire_keeps_a_named_join_standing() -> Bool {
-  let nomatch_opt = (filter(v41_sm12_admitted_kv_cache_dtypes, d =>
+  let planted_admit = w_planted_nomatch_roster()
+  let nomatch_opt = (filter(planted_admit, d =>
     match vllm_kv_cache_dtype_request_matching_wire(wire: d) {
       Absent => true
       Present { value: _ } => false
@@ -1196,14 +1206,14 @@ test fn a_planted_nomatch_wire_keeps_a_named_join_standing() -> Bool {
   match nomatch_opt {
     Absent => false
     Present { value: nomatch } =>
-      v41_sm12_kv_cache_dtype_admitted(dtype: nomatch)
+      count(filter(planted_admit, d => (d as String) == (nomatch as String))) == 1
         && match vllm_kv_cache_dtype_request_matching_wire(wire: nomatch) {
           Absent => true
           Present { value: _ } => false
         }
-        && planted_join_is_named_failure(wire: nomatch, admitted: v41_sm12_admitted_kv_cache_dtypes)
-        && planted_field_names_join_and_keeps_profiles(wire: nomatch, admitted: v41_sm12_admitted_kv_cache_dtypes)
-        && match sm12_kv_layout_standing(wire: nomatch, admitted: v41_sm12_admitted_kv_cache_dtypes) {
+        && planted_join_is_named_failure(wire: nomatch, admitted: planted_admit)
+        && planted_field_names_join_and_keeps_profiles(wire: nomatch, admitted: planted_admit)
+        && match sm12_kv_layout_standing(wire: nomatch, admitted: planted_admit) {
           Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => true
           Sm12KvLayoutAdmitted { policy: _ } => false
         }

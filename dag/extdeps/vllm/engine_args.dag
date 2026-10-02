@@ -240,7 +240,10 @@ fn vllm_modality_argv(r: VllmModalityRequest) -> List<String> {
 // revision 8d09804c877c48165c6ba69bc9dc02d09bae0b83 (vllm/config/cache.py) lists both "nvfp4" and
 // "nvfp4_ds_mla". Whether a runtime, backend and device ADMIT either is a capability question with
 // its own refusals, never a property of the spelling.
-type VllmKvCacheDtypeRequest = KvAuto | KvFp8 | KvFp16 | KvBf16 | KvFp8DsMla | KvNvfp4 | KvNvfp4DsMla
+// fp8_e4m3 joined with the capability table: the DeepSeek V4.1 sparse MLA backend names it among
+// the dtypes each device major admits (extdeps.vllm.kv_dtype_capability), so the canonical request
+// must be able to say it.
+type VllmKvCacheDtypeRequest = KvAuto | KvFp8 | KvFp8E4m3 | KvFp16 | KvBf16 | KvFp8DsMla | KvNvfp4 | KvNvfp4DsMla
 
 // THE WIRE SPELLINGS, CORRECTED AGAINST THE ENGINE'S OWN CHOICE LIST. This map carried
 // KvFp16 => "fp16" and KvBf16 => "bf16", which no consumer had ever sent -- the pair requests fp8
@@ -256,6 +259,7 @@ fn vllm_kv_cache_dtype_wire(request: VllmKvCacheDtypeRequest) -> NonEmptyStr {
   match request {
     KvAuto => "auto" as NonEmptyStr
     KvFp8 => "fp8" as NonEmptyStr
+    KvFp8E4m3 => "fp8_e4m3" as NonEmptyStr
     KvFp16 => "float16" as NonEmptyStr
     KvBf16 => "bfloat16" as NonEmptyStr
     KvFp8DsMla => "fp8_ds_mla" as NonEmptyStr
@@ -266,7 +270,7 @@ fn vllm_kv_cache_dtype_wire(request: VllmKvCacheDtypeRequest) -> NonEmptyStr {
 
 // THE CLOSED ROSTER, so a selector enumerates requests rather than re-listing them, and a wire read
 // back from a running engine maps to the request that renders it -- one grammar asked both ways.
-data vllm_kv_cache_dtype_requests: List<VllmKvCacheDtypeRequest> = [KvAuto, KvFp8, KvFp16, KvBf16, KvFp8DsMla, KvNvfp4, KvNvfp4DsMla]
+data vllm_kv_cache_dtype_requests: List<VllmKvCacheDtypeRequest> = [KvAuto, KvFp8, KvFp8E4m3, KvFp16, KvBf16, KvFp8DsMla, KvNvfp4, KvNvfp4DsMla]
 
 // WIRE MATCH IS NOT ADMISSION: this names the request a spelling denotes, and nothing about whether
 // any runtime accepts it.

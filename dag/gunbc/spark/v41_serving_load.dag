@@ -28,11 +28,11 @@ import gunbc.spark.serving_arm {
 }
 import gunbc.spark.serving_arm_launch { arm_mount_plan }
 import gunbc.spark.pair_serving_realization { spark_pair_serve_port }
-import gunbc.spark.v41_group_a_launch { v41_group_a_container_name, v41_group_a_served_alias }
+import gunbc.spark.v41_group_a_launch { v41_group_a_container_name, v41_group_a_served_alias, v41_group_a_profile }
 import gunbc.spark.v41_row_store_encode { v41_row_store_output_directory }
 import gunbc.spark.v41_runtime_image_converge { v41_production_produced_image }
 import gunbc.spark.serving_performance_subject {
-  ServingPerformanceSubject, serving_performance_subject, serving_subject_standing, ServingPerformanceSubjectStanding,
+  ServingPerformanceSubject, serving_subject_for_launch, serving_subject_standing, ServingPerformanceSubjectStanding,
 }
 import gunbc.spark.serving_load_probe {
   ClientRateQualificationFrontier, client_rate_qualification_frontier, preemption_count, bench_serve_latency,
@@ -117,10 +117,14 @@ data v41_serving_load_qualification_frontier: ClientRateQualificationFrontier = 
 
 // The runtime is the production image the Group A launch applies (v41_production_produced_image); this
 // probe does not read the running container's image back, so the subject is believed, not established.
+// THE LAUNCH AXES ARE THE PROFILE'S, DERIVED through gunbc.spark.serving_performance_subject
+// serving_subject_for_launch from the profile the Group A launch renders (v41_group_a_launch
+// v41_group_a_profile), the same constructor the GLM subject uses; the kv dtype is therefore the
+// fp8_ds_mla the launch requests rather than unread.
 fn v41_serving_load_live_subject() -> ServingPerformanceSubject {
   let shape = v41_measurement_launch_shape()
   let image = v41_production_produced_image
-  serving_performance_subject(
+  serving_subject_for_launch(
     checkpoint: DeepseekV41FlashDba1be0a,
     checkpoint_revision: Present { value: deepseek_v41_flash_row.revision },
     runtime: GunbcDeepseekV41EngramProduced {
@@ -133,12 +137,8 @@ fn v41_serving_load_live_subject() -> ServingPerformanceSubject {
       registry_reading: none,
     },
     runtime_image_reference: render_oci_content_digest_wire(d: image.config) as NonEmptyStr,
-    topology: Present { value: FourSparkTp4 },
-    rank_population: Present { value: 4 },
-    context_ceiling: Present { value: shape.max_model_len },
-    max_num_batched_tokens: shape.max_num_batched_tokens,
-    max_num_seqs: Present { value: shape.max_num_seqs },
-    kv_cache_dtype: none,
+    topology: FourSparkTp4,
+    profile: v41_group_a_profile(shape: shape),
     speculative: none,
     collective_transport: none,
   )
