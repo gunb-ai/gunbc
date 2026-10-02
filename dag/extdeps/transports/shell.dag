@@ -18,13 +18,8 @@ data shell_transport_fidelity: TransportFidelity = TransportFidelity { depth: S,
 // This is the v2 home of the vocabulary the seed reads as v1.compiler.emit ShellResultChannel and
 // shell_result_channel_of_key, transcribed arm for arm and key for key (aliases included) so the two
 // directions agree while v1 stays frozen; it is not a narrower copy.
-// A STATED CROSS-GENERATION DIVERGENCE (DESIGN section 3b), not an accidental fork. Neither copy can read
-// the other: the stage0 seed carries no extdeps.transports module (v1 cannot import this one without
-// growing the frozen seed), and v2's source roots do not include src/v1 (no v2 claim can import the
-// seed's). The seed's list is frozen (gunbc.v1_maintenance_standing v1_seed_standing), so it changes only
-// under that standing's admission test, which a change to this vocabulary must then mirror here.
-// DISSOLUTION: the seed's ShellResultChannel and shell_result_channel_of_key are deleted when shell
-// transport realization is emitted from v2 (the 3b sibling's consumer), leaving this the only list. The four arms that stood here
+// A STATED CROSS-GENERATION DIVERGENCE, recorded as a dated debt with its executable exit in ONE place:
+// gunbc.recurring_failure_mode vocabulary_held_in_both_the_frozen_seed_and_v2.
 // before XL-2 PR3a had no consumer and lacked exit_code (135 corpus rows), so it was completed rather
 // than kept beside a second list.
 type ShellOutputChannel
