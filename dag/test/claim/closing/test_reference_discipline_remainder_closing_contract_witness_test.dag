@@ -1,0 +1,92 @@
+module test.claim.closing.test_reference_discipline_remainder_closing_contract_witness_test
+
+// CLOSING CONTRACT for roadmap node test-reference-discipline-remainder: the test-to-test
+// reference debt is discharged to zero and the discriminating reds that enforce the rule execute
+// where merges are decided. The bar's five clauses, and where each is proven:
+//
+//   (1) test-calling-test refuses on the required lane and not only locally
+//       -> PROVEN HERE: the wall witness test.claim.test_reference_wall_witness is enrolled on the
+//          required gate's authored-module roster, at exact module grain (no prefix family admits
+//          it), so its refusal claims execute on every required run. This claim is placement, not
+//          re-execution: re-running the wall's census probes here would be identical call+input
+//          duplication (DESIGN 2).
+//   (2) a real source with a test-fn reference reaches v2 name resolution through a required
+//       corpus route and refuses there
+//       -> TRANSFERRED, OUT OF THIS NODE'S SCOPE (the v2-corpus-wide wall waits on the native
+//          route); named in the node's report, not stubbed here.
+//   (3) deleting a reference without its ledger row refuses
+//       -> OWNED BY NAME by the enrolled wall's arms (TestCodeReferenced for the unledgered
+//          direction, TestCodeReferenceBudgetMismatch for the paid-down direction; the budget is
+//          equality in both directions, so deletion-without-row is the same arm). Not duplicated
+//          here for the same DESIGN 2 reason.
+//   (4) a ledger row whose module is gone refuses when the census is loaded
+//       -> TRANSFERRED BY NAME: the census-loaded path executes against the real ledger on every
+//          floor compile of dag + src/v2, but the PLANTED discriminating red has no reachable
+//          execution point on the closed roster -- the census probe compiles one supplied source
+//          with CorpusUnknown (CensusAbsent), so TestCodeReferenceRowOrphaned can never fire
+//          there, and no lane that can import v1.compiler.compile exists (adding one is a
+//          job-roster change, out of scope). Its red remains owned by the cfg(test) orphan test
+//          in the v1 seed, which executes nowhere; the gap is reported in the node's PR.
+//   (5) at close test_reference_debt contains zero CorpusDebtRow entries while FixtureControlRow
+//       remains
+//       -> PROVEN HERE at the lane-reachable interface: the ledger is part of the v1 seed, which
+//          no witness-lane module can import, so the zero observation reads the seed's ledger
+//          source and pins both halves -- zero debt rows in EITHER construction path (the
+//          test_reference_row helper call and the bare TestReferenceDebtRow literal with
+//          scope: CorpusDebtRow), and the wall.fixture.paid_down control row standing with
+//          occurrences 1. The typed half -- the compiled binary refusing on the control identity
+//          and admitting nothing -- executes on the gate via (1).
+
+import extdeps.filesystem.filesystem_io
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.workflow.required_floor { required_gate_authored_modules, required_gate_prefixes }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data compile_path: String = "src/v1/compile.dag"
+data wall_module: String = "test.claim.test_reference_wall_witness"
+
+fn list_contains_string(xs: List<String>, needle: String) -> Bool {
+  any(xs, x => x == needle)
+}
+
+fn starts_with(s: String, prefix: String) -> Bool {
+  let n = string_length(s: prefix)
+  string_length(s: s) >= n && substring(s: s, start: 0, end: n) == prefix
+}
+
+fn src_has(path: String, needle: String) -> Bool {
+  let r = filesystem_read(path: path)
+  string_contains(s: r.content, pattern: needle)
+}
+
+fn src_lacks(path: String, needle: String) -> Bool {
+  let r = filesystem_read(path: path)
+  !string_contains(s: r.content, pattern: needle)
+}
+
+// CLAUSE 1: enrolled on the required gate, and by the roster whose rule fits a single module --
+// the authored-module roster admits at named-module grain, while the prefix roster admits every
+// suffix neighbour of a row. A future sibling planted under test.claim.test_reference_wall_*
+// stays OUTSIDE the gate unless it is deliberately enrolled, which is what exact grain buys.
+fn gate_enrollment_holds() -> Bool {
+  list_contains_string(xs: required_gate_authored_modules(), needle: wall_module)
+    && !any(required_gate_prefixes(), p => starts_with(s: wall_module, prefix: p))
+}
+
+// CLAUSE 5: zero debt rows in either construction path, control row standing. The helper-call
+// needle catches a row re-added through test_reference_row; the literal needle catches one
+// hand-constructed with scope: CorpusDebtRow. The control row must remain, declaring exactly
+// one occurrence, because the wall's paid-down arm is what keeps it discriminating.
+fn ledger_close_holds() -> Bool {
+  src_lacks(compile_path, "scope: CorpusDebtRow")
+    && src_lacks(compile_path, "test_reference_row(module_name: \"")
+    && src_has(
+      compile_path,
+      "TestReferenceDebtRow { module_name: \"wall.fixture.paid_down\", referrer: \"reader\", target: \"wall.fixture.paid_down.leaf\", occurrences: 1, scope: FixtureControlRow",
+    )
+}
+
+test fn test_reference_discipline_remainder_closing_contract_holds() -> Bool {
+  gate_enrollment_holds() && ledger_close_holds()
+}

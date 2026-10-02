@@ -1079,7 +1079,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/test/claim/cli_dispatch_surface_witness_test.dag", name: "any", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/cli_dispatch_surface_witness_test.dag", name: "filter", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/cli_run_workspace_root_hand_rust_witness_test.dag", name: "filter", standing: ActiveDebt },
-  UnimportedBareProviderDisposition { file: "dag/test/claim/climbing_hold_witness_roster_test.dag", name: "filter", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/test/claim/climbing_hold_witness_roster_test.dag", name: "filter", standing: Retired { cause: FileDeleted } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/cloudflare_r2_token_witness_test.dag", name: "get", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/codex_package_lock_parse_witness_test.dag", name: "pinned", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/compile_pool_ensure_test.dag", name: "SubstrateInputsOnly", standing: ActiveDebt },
