@@ -754,14 +754,20 @@ fn infer_formation_facts_from_entries(
 ) -> Outcome<InferredFacts> {
   match binder_node_parts(n: node) {
     Present { value: parts } => infer_binder_node_facts_from_entries(node: node, parts: parts, entries: entries)
-    Absent => infer_type_decl_formation_facts_from_entries(node: node, entries: entries, partials: partials)
+    Absent => infer_type_decl_formation_facts_from_entries(node: node, entries: entries, partials: partials, resolved: resolved)
   }
 }
 
+// THE CARRIER REACHES THE PRODUCT ROW THROUGH THIS DISPATCHER, which is a merge seam worth naming. main
+// introduced this function while this lane widened infer_product_facts_from_entries to take the
+// ResolvedTree its projection arm needs, so main's caller passed three arguments to a row that now requires
+// four. Threading `resolved` here is the resolution: the dispatcher above already holds it, and every arm
+// that does not need it ignores it, so no arm gains a dependency it does not use.
 fn infer_type_decl_formation_facts_from_entries(
   node: Node,
   entries: List<InferredFactsEntry>,
   partials: List<Node>,
+  resolved: ResolvedTree,
 ) -> Outcome<InferredFacts> {
   match type_decl_view(target: node) {
     TypeAlias { binders: _, aliased: _ } => infer_declaration_wrapper_facts_from_entries(node: node, entries: entries, partials: partials)

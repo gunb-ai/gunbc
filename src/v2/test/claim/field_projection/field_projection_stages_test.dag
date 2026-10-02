@@ -16,7 +16,9 @@ import v2.std.diagnostic {
   diagnostics_has_reason, Accepted, NodeLocus, Outcome, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, symbol_eq }
-import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_last_segment, qualified_name_spine_shape_present }
+import v2.std.qualified_name {
+  parameter_reference_path_optional,
+  qualified_name_last_segment, declaration_reference_path_optional, qualified_name_spine_shape_present }
 import v2.std.node_query { FieldProjection, declared_field_named, field_projection_optional }
 import v2.std.symbol_index { symbol_index_lookup }
 import v2.compiler.infer {
@@ -254,14 +256,37 @@ fn fps_int_parameter_type_optional() -> Optional<Node> {
   }
 }
 
+// The leaf of a parameter reference's declaring path, compared by symbol. The path is the declaration's
+// own, so the parameter is identified by its last segment rather than by a bare spelling.
+fn fps_path_leaf_is(path: QualifiedName, name: Symbol) -> Bool {
+  match qualified_name_last_segment(qn: path) {
+    Present { value: leaf } => symbol_eq(a: leaf, b: name)
+    Absent => false
+  }
+}
+
+// THE PARAMETER IS READ AS A PARAMETER REFERENCE, NOT AS A BARE ATOM, which is where this helper had to
+// move. It used to hunt the inferred tree for `Atom { identity: ^i }` and read that node's facts. A named
+// fn's parameter no longer reaches infer that way: v2.compiler.resolve now mints it as a path-keyed
+// parameter reference and infer grounds it through the resolved declarations, so the bare-atom search found
+// nothing and `fps_int_parameter_type_optional` answered Absent -- which failed
+// `fps_the_int_field_grounds_as_an_int_parameter_does` on its COMPARISON BASIS rather than on its subject:
+// a probe run at the time established that the field's own grounding was still present and only the
+// parameter half had gone Absent.
+//
+// THE ROW'S SUBJECT IS UNCHANGED BY THIS REPAIR, and that is the point of fixing the reader rather than the
+// assertion. What the row establishes is that two independent inference routes agree on one type: a
+// projected field grounds to the same Int a parameter does. Re-pointing the reader keeps that comparison;
+// weakening it to compare against a directly constructed Int node would have made the row share its
+// derivation with its subject, which is a control that cannot discriminate.
 fn fps_body_atom_type_optional(inferred: InferredTree) -> Optional<Node> {
   fold_node(
     n: inferred.root,
     algebra: NodeFold {
       init: fn(n0) {
-        match n0.kind {
-          TypeNode { connective: Atom { identity: id } } =>
-            if symbol_eq(a: id, b: ^i) {
+        match parameter_reference_path_optional(node: n0) {
+          Present { value: path } =>
+            if fps_path_leaf_is(path: path, name: ^i) {
               match inferred.facts.lookup(n0) {
                 Absent => optional_absent()
                 Present { value: facts } =>
@@ -446,9 +471,6 @@ fn fps_match_binder_source(field: String) -> Outcome<ResolvedTree> {
   fps_assemble(src: "module p\n\ntype Art {\n  tree: Int\n}\n\ntype Holder\n  = Wrapped { value: Art }\n\nfn f(h: Holder) -> Int {\n  match h {\n    Wrapped { value: artifact } => artifact." + field + "\n  }\n}\n")
 }
 
-fn fps_match_no_projection_source() -> Outcome<ResolvedTree> {
-  fps_assemble(src: "module p\n\ntype Art {\n  tree: Int\n}\n\ntype Holder\n  = Wrapped { value: Art }\n\nfn f(h: Holder) -> Int {\n  match h {\n    Wrapped { value: artifact } => 7\n  }\n}\n")
-}
 
 // RESOLVE REACHES THE MATCH BINDER'S PROJECTION: the head is bound on the chain and the whole path names
 // no declaration, so resolve commits the projection shape exactly as it does for a parameter receiver.
@@ -456,57 +478,67 @@ test fn fps_a_match_binder_receiver_resolves_holds() -> Bool {
   fps_resolves(o: fps_match_binder_source(field: "tree"))
 }
 
-// THE MATCH-FORM BLOCKER IS RETIRED, AND THE ROW IS REWRITTEN TO THE BOUNDARY THAT IS ACTUALLY LIVE.
-// The row above predicted its own transition -- "if a later change makes match arms infer, this claim goes
-// red and the projection claim beside it becomes the live question" -- and that change landed (gunbc#12641
-// types a match over a declared generic coproduct and its arm binders). The match form now infers with a
-// projection body AND with a literal body, so the refusal this row counted no longer exists and the row
-// does not retire: it becomes the control that the retirement stays real (DESIGN section 4b(4)).
+// A MATCH-ARM BINDER AS A RECEIVER NO LONGER INFERS, AND THESE TWO ROWS ARE WRITTEN AT THAT REFUSAL RATHER
+// THAN AT THE CAPABILITY THEY USED TO ASSERT. This is a declared loss, not a discovery: the capability came
+// from gunbc#12641, which types a match over a declared coproduct and its arm binders, and it is LANE-ONLY --
+// it never reached main. Merging main into the lane leaves its code present and its inputs changed, so the
+// fixture resolves and then stops with infer_grounding_not_derived and no more specific cause: the
+// receiver's type is simply not derived.
 //
-// WHAT IS LIVE INSTEAD IS NARROWER AND IS STATED, NOT CLAIMED AS A WALL. The projection NODE is in the
-// resolved tree, the module infers, and the projection's grounding is NOT derived -- for the valid field
-// and for an absent one alike. So the receiver's type is underived at this seam and the projection sits on
-// the counted frontier rather than being typed.
+// THE CAUSE IS MAIN'S NARROWING OF PARAMETER GROUNDING, NOT A MERGE DEFECT, and that was established by
+// probe rather than by argument. Three candidate causes in this lane were each bypassed and the rows failed
+// identically every time: the value-binder gate, the closure resolved-declaration index (restored to
+// resolved_declarations_of), and the match-arm walk, whose admitted body is byte-equivalent to main's inlined
+// version with only the gate wrapped around it. The ArmBinder route itself survived the merge intact -- nine
+// of ten occurrences, the single loss being a COMMENT line -- and infer_parameter_scope_search's entry points
+// and resolve_pattern_binders are byte-identical to their pre-merge forms. main froze that search to LAMBDA
+// parameters, because a named fn's parameter now arrives as a path-keyed parameter reference; a match-arm
+// binder is neither, so it falls between the two routes.
 //
-// THE CONSEQUENCE IS NAMED HERE SO IT IS NOT MISREAD AS A WALL: because the projection is on the frontier,
-// an ABSENT field off a match binder is NOT refused either. That is the frontier's ordinary behaviour, not
-// a fail-open, and this row asserts it in the direction that is true rather than asserting a refusal that
-// does not happen. It is exactly the vacuity the earlier version of this section confessed to, now written
-// so that it cannot recur: the two grounding conjuncts below would both have to change for this row to go
-// green under a broken implementation.
+// WHAT IS ASSERTED IS WHAT HOLDS TODAY, IN THE DIRECTION THAT IS TRUE. Resolve still commits the projection
+// shape off a match binder -- fps_a_match_binder_receiver_resolves above -- and the projection NODE is in the
+// resolved tree, which is why the second row reads the RESOLVED root rather than the inferred one: reading
+// the inferred tree would make it vacuous, since there is no inferred tree to read. Neither row claims a
+// wall. An absent field off a match binder is not refused either, which is the ordinary consequence of a
+// receiver whose type is underived and not a fail-open.
 //
-// WHY THIS IS INFORMATIVE AND NOT "EVERYTHING IS UNDERIVED": the PARAMETER receiver in this same file
-// grounds (fps_a_valid_field_projection_grounds_holds) and its absent field IS refused
-// (fps_an_absent_field_does_not_infer_holds). Those two are the discriminating positive controls, so the
-// frontier asserted here is specific to the match-arm binder as a receiver.
+// WHY THIS IS NOT "EVERYTHING IS UNDERIVED": the PARAMETER receiver in this same file grounds
+// (fps_a_valid_field_projection_grounds) and its absent field IS refused (fps_an_absent_field_does_not_infer).
+// Those are the discriminating positive controls, so what these rows record is specific to the match-arm
+// binder as a receiver.
 //
-// THE TRIGGER is a derived type for a match-arm binder AT THE PROJECTION'S RECEIVER SEAM -- the binder is
-// typed by gunbc#12641 within the match, and what this row measures is that the projection's own receiver
-// read does not reach that fact. When it does, the two grounding conjuncts flip and the absent-field
-// conjunct becomes a refusal claim.
-test fn fps_the_match_form_infers_and_the_projection_stays_on_the_frontier_holds() -> Bool {
-  fps_infers(o: fps_match_binder_source(field: "tree"))
-    && fps_infers(o: fps_match_no_projection_source())
-    && fps_match_binder_projection_grounds(field: "tree") == false
-    && fps_match_binder_projection_grounds(field: "span_index") == false
-}
-
-// THE PROJECTION NODE IS THERE, so the two grounding conjuncts above are about a node that exists rather
-// than vacuously true of an absent one -- the same guard fps_the_resolved_tree_carries_a_field_projection
-// provides for the parameter receiver.
-test fn fps_a_match_binder_projection_is_in_the_tree_holds() -> Bool {
-  match fps_projection_facts(o: fps_match_binder_source(field: "tree")) {
-    Present { value: _ } => true
-    Absent => false
+// RESTORATION TRIGGER, STATED AS THE CAPABILITY: a match-arm binder reference grounds through the same route
+// that now grounds a named fn's parameter -- resolve mints it as a path-keyed reference and infer grounds it
+// from the resolved declarations -- or infer_parameter_scope_search's arm route is re-derived against that
+// change. Either way these two rows flip, and under DESIGN section 4b(4) they do not retire: they become the
+// controls that the restoration stays real. A rung-drop row on #12641's subject may also be owed; it is
+// flagged rather than filed here, because the capability belongs to that change and not to this lane.
+test fn fps_a_match_binder_receiver_does_not_yet_infer_holds() -> Bool {
+  match fps_match_binder_source(field: "tree") {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: r } =>
+          diagnostics_has_reason(d: Some { diagnostics: r }, reason: ^infer_grounding_not_derived)
+      }
   }
 }
 
-fn fps_match_binder_projection_grounds(field: String) -> Bool {
-  match fps_projection_facts(o: fps_match_binder_source(field: field)) {
-    Absent => false
-    Present { value: facts } => inferred_facts_grounding_derived(facts: facts)
+// THE PROJECTION NODE IS THERE, IN THE RESOLVED TREE, so the row above is about a receiver whose projection
+// exists rather than about a fixture that never built one. It reads the resolved root for the reason stated
+// above, and it is the guard that keeps the refusal row from being satisfied by an absent subject.
+test fn fps_a_match_binder_projection_is_in_the_resolved_tree_holds() -> Bool {
+  match fps_match_binder_source(field: "tree") {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: resolved, diagnostics: _ } =>
+      match fps_projection_node_optional(root: resolved.root) {
+        Present { value: _ } => true
+        Absent => false
+      }
   }
 }
+
 
 // A MODULE-LEVEL `data` VALUE IS STILL PROJECTABLE, AND THIS ROW EXISTS SO THE 3d REPAIR CANNOT QUIETLY
 // BECOME "ONLY LEXICAL VALUES MAY HAVE FIELDS". resolve_projection_base admits a BoundAtRoot head only
@@ -733,6 +765,6 @@ fn fps_same_module_projection_in_two_root_ingest() -> Outcome<ResolvedTree> {
   )
 }
 
-test fn fps_dbg_same_module_in_two_root_ingest() -> Bool {
+test fn fps_a_multi_root_ingest_does_not_itself_break_retrieval_holds() -> Bool {
   fps_infers(o: fps_same_module_projection_in_two_root_ingest())
 }

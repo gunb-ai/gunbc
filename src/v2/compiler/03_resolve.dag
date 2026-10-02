@@ -263,8 +263,8 @@ fn resolved_tree_of(
 // is total and order-independent, and no index-union authority needs to exist. A root whose module name does
 // not resolve contributes nothing, which is that function's existing behaviour and not a new drop.
 //
-// RECORD PAYLOAD MARKS ARE NOT CARRIED HERE, AND THAT IS INHERITED RATHER THAN CHOSEN. The fill takes a
-// record_declarations carrier captured at normalize, and resolved_declarations_of passed Empty for it before
+// RECORD AND RESOURCE PAYLOAD MARKS ARE NOT CARRIED HERE, AND THAT IS INHERITED RATHER THAN CHOSEN. The
+// fill takes record_declarations and resource_declarations carriers captured at normalize, and resolved_declarations_of passed Empty for it before
 // this change; the fold passes Empty for every provider root for the same reason -- a resolved Node does not
 // carry the normalize-time record roster, and inventing one here would be a second authority for a fact
 // v2.compiler.normalize owns. The consequence is precise and bounded: v2.std.symbol_index
@@ -284,11 +284,12 @@ fn resolved_declarations_over(roots: FreeMonoid<Node>, subject: Node) -> SymbolI
       xs: roots,
       empty: empty_symbol_index(),
       cons: fn(acc, r) {
-        symbol_index_fill_module_declarations(index: acc, root: r, record_declarations: Empty)
+        symbol_index_fill_module_declarations(index: acc, root: r, record_declarations: Empty, resource_declarations: Empty)
       }
     ),
     root: subject,
-    record_declarations: Empty
+    record_declarations: Empty,
+    resource_declarations: Empty
   )
 }
 
@@ -2883,30 +2884,7 @@ fn resolve_match_arm_walk(ctx: ResolveContext, arm: Node) -> ResolveNodeWalk {
     Accepted { value: pat, diagnostics: _ } =>
       match gate_value_binders(names: pattern_binder_name_list(ctx: ctx, pat: pat), outer: ctx.scope, at: pat) {
         BinderGateRefused { diagnostic: d } => resolve_walk_refused_one(chain: diagnostics_singleton(d: d))
-        BinderGateAdmitted =>
-          let arm_ctx = resolve_ctx_with_scope(
-            ctx: ctx,
-            scope: ScopeFrame {
-              locals: resolve_pattern_binders(ctx: ctx, pat: pat, acc: empty_map()),
-              outer: ctx.scope,
-              kind: LexicalFrame
-            }
-          )
-          child_walk_node(n: arm, w: fold(arm.children, init: child_walk_init(), f: fn(acc, e) {
-            child_walk_step(
-              w: acc,
-              e: e,
-              r: match e.label {
-                Named { name: label } =>
-                  if label == match_arm_pattern {
-                    resolve_pattern_node_walk(ctx: arm_ctx, pat: e.target)
-                  } else {
-                    resolve_node_walk(ctx: arm_ctx, n: e.target)
-                  }
-                Positional => resolve_node_walk(ctx: arm_ctx, n: e.target)
-              }
-            )
-          }))
+        BinderGateAdmitted => resolve_match_arm_admitted(ctx: ctx, arm: arm, pat: pat)
       }
   }
 }
@@ -2916,7 +2894,8 @@ fn resolve_match_arm_admitted(ctx: ResolveContext, arm: Node, pat: Node) -> Reso
     ctx: ctx,
     scope: ScopeFrame {
       locals: resolve_pattern_binders(ctx: ctx, pat: pat, acc: empty_map()),
-      outer: ctx.scope
+      outer: ctx.scope,
+      kind: LexicalFrame
     }
   )
   child_walk_node(n: arm, w: fold(arm.children, init: child_walk_init(), f: fn(acc, e) {
