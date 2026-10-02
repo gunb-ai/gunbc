@@ -554,23 +554,1448 @@ fn symbolic_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
 }
 
 fn symbolic_max(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
-  // The zero absorptions need no arms of their own: with a == 0 the general body below answers
-  // through a == b (when b == 0) or the dominance chain, where a constant never dominates a
-  // growing cost and an unknown is dominated only by an unknown, so the answer is b either way —
-  // and symmetrically for b == 0. The two special-case arms this function carried before the
-  // non-fold-residue paydown priced the same pairs a second time.
-  if a == b {
-    a
-  } else {
-    if symbolic_cost_dominates(a: a, b: b) {
-      if symbolic_cost_dominates(a: b, b: a) {
-        SumCost { lhs: a, rhs: b }
-      } else {
-        a
+  match a {
+    ConstantCost { value: Zero } => b
+    ConstantCost { value: Succ { prev: _ } } =>
+      match b {
+        ConstantCost { value: Zero } => a
+        ConstantCost { value: Succ { prev: _ } } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        LinearCost { variable: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        LogCost { variable: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        PolynomialCost { variable: _, degree: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        PolyLogCost { variable: _, exponent: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        ExponentialCost { variable: _, base: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        FactorialCost { variable: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        SumCost { lhs: _, rhs: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        ProductCost { lhs: _, rhs: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        UnknownCost { diagnostic: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
       }
-    } else {
-      b
-    }
+    LinearCost { variable: _ } =>
+      match b {
+        ConstantCost { value: Zero } => a
+        ConstantCost { value: Succ { prev: _ } } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        LinearCost { variable: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        LogCost { variable: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        PolynomialCost { variable: _, degree: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        PolyLogCost { variable: _, exponent: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        ExponentialCost { variable: _, base: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        FactorialCost { variable: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        SumCost { lhs: _, rhs: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        ProductCost { lhs: _, rhs: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        UnknownCost { diagnostic: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+      }
+    LogCost { variable: _ } =>
+      match b {
+        ConstantCost { value: Zero } => a
+        ConstantCost { value: Succ { prev: _ } } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        LinearCost { variable: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        LogCost { variable: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        PolynomialCost { variable: _, degree: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        PolyLogCost { variable: _, exponent: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        ExponentialCost { variable: _, base: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        FactorialCost { variable: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        SumCost { lhs: _, rhs: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        ProductCost { lhs: _, rhs: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        UnknownCost { diagnostic: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+      }
+    PolynomialCost { variable: _, degree: _ } =>
+      match b {
+        ConstantCost { value: Zero } => a
+        ConstantCost { value: Succ { prev: _ } } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        LinearCost { variable: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        LogCost { variable: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        PolynomialCost { variable: _, degree: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        PolyLogCost { variable: _, exponent: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        ExponentialCost { variable: _, base: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        FactorialCost { variable: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        SumCost { lhs: _, rhs: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        ProductCost { lhs: _, rhs: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        UnknownCost { diagnostic: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+      }
+    PolyLogCost { variable: _, exponent: _ } =>
+      match b {
+        ConstantCost { value: Zero } => a
+        ConstantCost { value: Succ { prev: _ } } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        LinearCost { variable: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        LogCost { variable: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        PolynomialCost { variable: _, degree: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        PolyLogCost { variable: _, exponent: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        ExponentialCost { variable: _, base: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        FactorialCost { variable: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        SumCost { lhs: _, rhs: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        ProductCost { lhs: _, rhs: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        UnknownCost { diagnostic: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+      }
+    ExponentialCost { variable: _, base: _ } =>
+      match b {
+        ConstantCost { value: Zero } => a
+        ConstantCost { value: Succ { prev: _ } } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        LinearCost { variable: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        LogCost { variable: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        PolynomialCost { variable: _, degree: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        PolyLogCost { variable: _, exponent: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        ExponentialCost { variable: _, base: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        FactorialCost { variable: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        SumCost { lhs: _, rhs: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        ProductCost { lhs: _, rhs: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        UnknownCost { diagnostic: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+      }
+    FactorialCost { variable: _ } =>
+      match b {
+        ConstantCost { value: Zero } => a
+        ConstantCost { value: Succ { prev: _ } } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        LinearCost { variable: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        LogCost { variable: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        PolynomialCost { variable: _, degree: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        PolyLogCost { variable: _, exponent: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        ExponentialCost { variable: _, base: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        FactorialCost { variable: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        SumCost { lhs: _, rhs: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        ProductCost { lhs: _, rhs: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        UnknownCost { diagnostic: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+      }
+    SumCost { lhs: _, rhs: _ } =>
+      match b {
+        ConstantCost { value: Zero } => a
+        ConstantCost { value: Succ { prev: _ } } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        LinearCost { variable: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        LogCost { variable: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        PolynomialCost { variable: _, degree: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        PolyLogCost { variable: _, exponent: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        ExponentialCost { variable: _, base: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        FactorialCost { variable: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        SumCost { lhs: _, rhs: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        ProductCost { lhs: _, rhs: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        UnknownCost { diagnostic: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+      }
+    ProductCost { lhs: _, rhs: _ } =>
+      match b {
+        ConstantCost { value: Zero } => a
+        ConstantCost { value: Succ { prev: _ } } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        LinearCost { variable: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        LogCost { variable: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        PolynomialCost { variable: _, degree: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        PolyLogCost { variable: _, exponent: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        ExponentialCost { variable: _, base: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        FactorialCost { variable: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        SumCost { lhs: _, rhs: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        ProductCost { lhs: _, rhs: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        UnknownCost { diagnostic: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+      }
+    UnknownCost { diagnostic: _ } =>
+      match b {
+        ConstantCost { value: Zero } => a
+        ConstantCost { value: Succ { prev: _ } } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        LinearCost { variable: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        LogCost { variable: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        PolynomialCost { variable: _, degree: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        PolyLogCost { variable: _, exponent: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        ExponentialCost { variable: _, base: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        FactorialCost { variable: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        SumCost { lhs: _, rhs: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        ProductCost { lhs: _, rhs: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+        UnknownCost { diagnostic: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+      }
   }
 }
 
@@ -773,16 +2198,19 @@ fn asymptotic_class_dominates(a: AsymptoticClass, b: AsymptoticClass) -> Bool {
         ClassPolyLog { exponent: _ } => true
         ClassExponential => false
         ClassFactorial => false
+        ClassUnknown => false
       }
     ClassLinearithmic =>
       match b {
         ClassConstant => true
         ClassLog => true
         ClassLinear => true
+        ClassLinearithmic => false
         ClassPolyLog { exponent: _ } => true
         ClassPolynomial { degree: _ } => false
         ClassExponential => false
         ClassFactorial => false
+        ClassUnknown => false
       }
     ClassLinear =>
       match b {
@@ -794,6 +2222,7 @@ fn asymptotic_class_dominates(a: AsymptoticClass, b: AsymptoticClass) -> Bool {
         ClassPolynomial { degree: _ } => false
         ClassExponential => false
         ClassFactorial => false
+        ClassUnknown => false
       }
     ClassPolyLog { exponent: ae } =>
       match b {
@@ -805,6 +2234,7 @@ fn asymptotic_class_dominates(a: AsymptoticClass, b: AsymptoticClass) -> Bool {
         ClassPolynomial { degree: _ } => false
         ClassExponential => false
         ClassFactorial => false
+        ClassUnknown => false
       }
     ClassLog =>
       match b {
@@ -816,6 +2246,7 @@ fn asymptotic_class_dominates(a: AsymptoticClass, b: AsymptoticClass) -> Bool {
         ClassPolynomial { degree: _ } => false
         ClassExponential => false
         ClassFactorial => false
+        ClassUnknown => false
       }
     ClassConstant =>
       match b {
@@ -827,6 +2258,7 @@ fn asymptotic_class_dominates(a: AsymptoticClass, b: AsymptoticClass) -> Bool {
         ClassPolyLog { exponent: _ } => false
         ClassExponential => false
         ClassFactorial => false
+        ClassUnknown => false
       }
   }
 }
