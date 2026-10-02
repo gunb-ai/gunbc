@@ -1,6 +1,6 @@
 module extdeps.crypto.mac
 
-import std.types { NonEmptyStr, String, Secret, Int }
+import std.types { NonEmptyStr, String, Secret, Int, brand }
 import std.logic { Bool }
 import std.measure { ByteSize, byte_size, byte_size_count }
 

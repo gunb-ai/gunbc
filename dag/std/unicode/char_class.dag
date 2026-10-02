@@ -1,0 +1,10 @@
+module std.unicode.char_class
+
+import std.types { Char }
+
+// THE CODE POINT OF A Char. It lived in std.unicode.types, which imported Char from std.types while
+// std.types' `Char = Int where unicode_scalar` names std.unicode.types unicode_scalar -- a module
+// cycle once v2 resolve binds the where atom as a reference. This module sits above both. Its
+// consumers are v2.compiler.tokenize and v2.std.compilers.lexing.
+
+fn unicode_char_code_point(c: Char) -> Int = c + 0
