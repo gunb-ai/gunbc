@@ -18,9 +18,8 @@ import extdeps.filesystem.filesystem_io {
   FilesystemReadSucceeded,
   FilesystemReadRefused,
   filesystem_read_outcome,
-  filesystem_listing_observation,
-  filesystem_file_observation,
 }
+import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import tools.host_prelude {
   witness_bin,
   witness_bin_ensure_built_typed,
@@ -754,31 +753,13 @@ fn declaration_body_standing_in(content: String, name: String) -> DeclarationBod
   }
 }
 
-// THE ONE WET READER the candidate fold is allowed, and the pure policy over what it reported. The
-// observation is ONE fact per candidate -- the listing decides presence, the read supplies content
-// only for a listed file -- so the fold below cannot sequence the two channels differently from any
-// other consumer of this module.
-fn declaration_candidate_observation(path: String) -> FilesystemFileObservation {
-  let parts = split(s: path, delimiter: "/")
-  let name = match parts.last() {
-    Present { value: value } => value
-    Absent => ""
-  }
-  let directory = join(parts.take(n: length(parts) - 1), "/")
-  let listing = Filesystem.List(path: directory)
-  let read = Filesystem.Read(path: path)
-  filesystem_file_observation(
-    listing: filesystem_listing_observation(
-      directory: directory,
-      success: listing.success,
-      entries: listing.entries,
-      error: listing.error,
-    ),
-    name: name,
-    path: path,
-    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
-  )
-}
+// THE CANDIDATE FOLD'S ONE WET READ, and the pure policy over what it reported. The wet read is one
+// call into the shared composition -- gunbc.filesystem_file_observe
+// filesystem_file_observation_of_path, per candidate path; this module owns no raw filesystem call
+// for the candidate fold -- and the observation is ONE fact per candidate: the listing decides
+// presence, the read supplies content only for a listed file. Because the composition is shared,
+// the fold below cannot sequence the two channels differently from any other consumer of the
+// transport.
 
 // THE FOLD STEP IS TOTAL OVER THE OBSERVATION, which is what makes the policy claimable: the witness
 // suite constructs each transport shape and holds the rules -- resolved wins, an established absence
@@ -857,7 +838,7 @@ fn declaration_body_standing(source_module: String, name: String, roots: List<St
     f: (acc, path) =>
       declaration_candidate_scan_then_with(
         acc: acc,
-        o: declaration_candidate_observation(path: path),
+        o: filesystem_file_observation_of_path(path: path),
         name: name,
         path: path,
       )

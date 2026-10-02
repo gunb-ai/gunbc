@@ -73,8 +73,9 @@ test fn opaque_census_declaration_scan_witnesses() -> Bool {
     && witness_a_same_line_body_is_still_a_body()
 }
 
-// THE CANDIDATE FOLD'S POLICY, held over constructed observations. The wet reader is one small
-// function (declaration_candidate_observation, per candidate path); everything below constructs the
+// THE CANDIDATE FOLD'S POLICY, held over constructed observations. The wet read is one call into
+// the shared composition (gunbc.filesystem_file_observe filesystem_file_observation_of_path, per
+// candidate path); everything below constructs the
 // transport shapes by hand and steps the SAME fold the wet caller runs, so the suite holds the
 // rules -- resolved wins, an established absence keeps the search unresolved, a could-not-look is
 // recorded and finally refuses as unreadable -- without a host filesystem. The three reds are

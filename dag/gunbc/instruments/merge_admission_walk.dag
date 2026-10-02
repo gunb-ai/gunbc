@@ -14,10 +14,8 @@ import extdeps.filesystem.filesystem_io {
   FilesystemFileIndeterminate,
   FilesystemFileObservationsDisagree,
   FilesystemFileSubjectRefused,
-  filesystem_read_outcome,
-  filesystem_listing_observation,
-  filesystem_file_observation,
 }
+import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import extdeps.github.checks { CheckConclusion, Success }
 import gunbc.merge_admission {
   MergeAdmissionReceiptV2,
@@ -103,28 +101,6 @@ type FloorReceiptWireObservation
   | FloorReceiptWireAbsent(FilesystemEstablishedAbsence)
   | FloorReceiptWireUnobservable { cause: String }
 
-fn wire_file_observation(path: String) -> FilesystemFileObservation {
-  let parts = split(s: path, delimiter: "/")
-  let name = match parts.last() {
-    Present { value: value } => value
-    Absent => ""
-  }
-  let directory = join(parts.take(n: length(parts) - 1), "/")
-  let listing = Filesystem.List(path: directory)
-  let read = Filesystem.Read(path: path)
-  filesystem_file_observation(
-    listing: filesystem_listing_observation(
-      directory: directory,
-      success: listing.success,
-      entries: listing.entries,
-      error: listing.error,
-    ),
-    name: name,
-    path: path,
-    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
-  )
-}
-
 fn tested_subject_wire_observation_of(o: FilesystemFileObservation) -> TestedSubjectWireObservation {
   match o {
     FilesystemFileRead { path: _, content: text } =>
@@ -150,13 +126,13 @@ fn floor_receipt_wire_observation_of(o: FilesystemFileObservation) -> FloorRecei
 }
 
 fn read_tested_subject(root: String, attempt_id: WalkAttemptId) -> TestedSubjectWireObservation {
-  tested_subject_wire_observation_of(o: wire_file_observation(
+  tested_subject_wire_observation_of(o: filesystem_file_observation_of_path(
     path: merge_admission_tested_subject_path(root: root, attempt_id: attempt_id)
   ))
 }
 
 fn read_floor_receipt(root: String, attempt_id: WalkAttemptId) -> FloorReceiptWireObservation {
-  floor_receipt_wire_observation_of(o: wire_file_observation(
+  floor_receipt_wire_observation_of(o: filesystem_file_observation_of_path(
     path: merge_admission_floor_receipt_path(root: root, attempt_id: attempt_id)
   ))
 }
@@ -369,7 +345,11 @@ fn merge_target_refresh() -> MergeTargetRefresh {
                               if merge_freshness_verdict_is_consumed_to_block() {
                                 match verdict {
                                   MergeAdmitted => MergeTargetRefreshed
-                                  _ => MergeTargetRefreshRefused { cause: RefreshVerdictDenied { verdict: merge_admission_verdict_label(v: verdict) } }
+                                  MergeDeniedStaleBase => MergeTargetRefreshRefused { cause: RefreshVerdictDenied { verdict: merge_admission_verdict_label(v: verdict) } }
+                                  MergeDeniedStaleRoster => MergeTargetRefreshRefused { cause: RefreshVerdictDenied { verdict: merge_admission_verdict_label(v: verdict) } }
+                                  MergeDeniedNotSuccess => MergeTargetRefreshRefused { cause: RefreshVerdictDenied { verdict: merge_admission_verdict_label(v: verdict) } }
+                                  MergeDeniedWrongAttempt => MergeTargetRefreshRefused { cause: RefreshVerdictDenied { verdict: merge_admission_verdict_label(v: verdict) } }
+                                  MergeDeniedSubjectMismatch => MergeTargetRefreshRefused { cause: RefreshVerdictDenied { verdict: merge_admission_verdict_label(v: verdict) } }
                                 }
                               } else {
                                 MergeTargetRefreshed

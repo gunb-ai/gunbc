@@ -231,7 +231,8 @@ fn manifest_overlay_resolved(o: ManifestFileObservation) -> Bool {
     ManifestObserved { content: c } =>
       host_source_root_ingest_content_hash != ""
         && string_contains(s: c, pattern: host_source_root_ingest_content_hash)
-    _ => false
+    ManifestAbsent(_) => false
+    ManifestUnobserved { cause: _ } => false
   }
 }
 

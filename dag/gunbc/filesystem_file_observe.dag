@@ -1,0 +1,50 @@
+module gunbc.filesystem_file_observe
+
+import std.types { String }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemFileObservation,
+  filesystem_read_outcome,
+  filesystem_listing_observation,
+  filesystem_file_observation,
+}
+
+// ONE WET COMPOSITION FOR ONE QUESTION. "Observe the file at this path" is: split the path into
+// directory and entry name, list the directory, read the named entry, and fold both transport
+// channels through filesystem_file_observation, so a could-not-look arrives as its own typed
+// refusal instead of masquerading as an established absence. This spelling was carried verbatim in
+// four wet readers (review 74161 finding 2) and is owned here now: gunbc.codex_supervised_turn,
+// gunbc.host_effect_nbd_proxy_serve, tools.merge_admission_walk, and tools.opaque_realization_census
+// call it instead of re-spelling the composition. A consumer whose question is not this question
+// composes the filesystem_io folds itself rather than varying a copy of this one.
+//
+// WHY THE HELPER IS HERE AND NOT IN extdeps.filesystem.filesystem_io: that module is pure over
+// outcomes the caller already obtained -- its own annotation on the FilesystemFileObservation arms
+// says the folds execute no host operations and that preventing the calls themselves is a separate
+// migration the module does not claim. This module is the wet side of that boundary: it owns raw
+// Filesystem.List and Filesystem.Read calls so consumers do not have to. The
+// absence-establishment row's next-rung trigger (the raw projections ceasing to be reachable
+// outside filesystem_io's folds) is recorded in
+// filesystem_absence_establishment_adoption_standing and remains open; centralizing the calls here
+// narrows the population that can spell the conflation without retiring that trigger.
+fn filesystem_file_observation_of_path(path: String) -> FilesystemFileObservation {
+  let parts = split(s: path, delimiter: "/")
+  let name = match parts.last() {
+    Present { value: value } => value
+    Absent => ""
+  }
+  let directory = join(parts.take(n: length(parts) - 1), "/")
+  let listing = Filesystem.List(path: directory)
+  let read = Filesystem.Read(path: path)
+  filesystem_file_observation(
+    listing: filesystem_listing_observation(
+      directory: directory,
+      success: listing.success,
+      entries: listing.entries,
+      error: listing.error,
+    ),
+    name: name,
+    path: path,
+    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+  )
+}
