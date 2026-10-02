@@ -199,12 +199,15 @@ test fn a_service_namespace_does_not_bind_bare_on_the_resolve_route_holds() -> B
 }
 
 // AN EXPLICIT IMPORT IS THE SANCTIONED ROUTE (XL-2 manager ruling, 2026-10-02). The ban governs a
-// module's OWN service namespaces; an imported module's service binds bare in the importer, so module
-// `a`, which imports `t`, reaches `s.F.Run` head-bare, while module `b`, which does not, refuses the same
-// reference as unbound. Each program is assembled for real over both sources, once, WARM.
+// module's OWN service namespaces; name_resolve admits an imported module's exports under
+// ImportedModuleExports, which withholds nothing. Module `a`, which imports `t`, reaches t's service
+// operation as `t.s.F.Run`; module `b`, which does not import `t`, refuses the same reference as unbound.
+// Each program is assembled for real over both sources, once, WARM. (A bare-headed `s.F.Run` through an
+// import does not resolve on main for ANY service, a one-segment one included, by brace or whole-module
+// import; that is an import-admission gap independent of the spine, measured 2026-10-02.)
 data ss_import_target_source: String = "module t\n\nservice s.F {\n  operation Run {}\n}\n"
-data ss_importer_source: String = "module a\n\nimport t\n\nfn f(x: s.F.Run) -> Int { 1 }\n"
-data ss_non_importer_source: String = "module b\n\nfn f(x: s.F.Run) -> Int { 1 }\n"
+data ss_importer_source: String = "module a\n\nimport t\n\nfn f(x: t.s.F.Run) -> Int { 1 }\n"
+data ss_non_importer_source: String = "module b\n\nfn f(x: t.s.F.Run) -> Int { 1 }\n"
 
 data ss_import_target_artifact: Artifact = Artifact { kind: SourceFile, id: ^ss_import_target_artifact, file_path: "src/v2/pilot/ss_import_target.dag" }
 data ss_import_subject_artifact: Artifact = Artifact { kind: SourceFile, id: ^ss_import_subject_artifact, file_path: "src/v2/pilot/ss_import_subject.dag" }
@@ -232,7 +235,7 @@ fn ss_non_importer_assembled() -> Outcome<ResolvedTree> {
   ss_import_assemble(subject_src: ss_non_importer_source, subject: ^b, imports: Empty)
 }
 
-test fn an_imported_service_binds_bare_in_the_importer_holds() -> Bool {
+test fn an_imported_service_resolves_through_the_import_holds() -> Bool {
   tpb_accepts(o: ss_importer_assembled())
     && tpb_refuses_with(o: ss_non_importer_assembled(), reason: ^resolve_reason_unbound_symbol)
 }
