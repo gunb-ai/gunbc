@@ -124,7 +124,6 @@ fn glm_native_live_subject() -> ServingPerformanceSubject? {
           runtime_image_reference: runtime_artifact_wire(a: rrow.artifact),
           topology: a.topology,
           profile: p,
-          speculative: Present { value: SpeculativeDecodingOff },
           collective_transport: none,
         ) }
       }

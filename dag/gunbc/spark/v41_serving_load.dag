@@ -141,7 +141,6 @@ fn v41_serving_load_live_subject() -> ServingPerformanceSubject? {
     runtime_image_reference: render_oci_content_digest_wire(d: image.config) as NonEmptyStr,
     topology: FourSparkTp4,
     profile: launch_profile,
-    speculative: none,
     collective_transport: none,
   ) }
   }
@@ -152,7 +151,7 @@ fn v41_serving_load_subject_standing() -> ServingPerformanceSubjectStanding? {
     Absent => none
     Present { value: subject } => Present { value: serving_subject_standing(
       subject: subject,
-      believed: "the running Group A arm is believed to be the production image at the profile the launch derives; collective transport and speculative policy are unread" as NonEmptyStr,
+      believed: "the running Group A arm is believed to be the production image at the profile the launch derives; collective transport is unread; speculation is off (the launch renders none)" as NonEmptyStr,
       would_settle: "read the head container's image Id and launch argv on this incarnation, and the NCCL transport announcement on every rank" as NonEmptyStr,
     ) }
   }
