@@ -1,0 +1,16 @@
+module gunbc.recurring_failure_mode.annotation_only_edit_selects_a_changed_witness
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data annotation_only_edit_selects_a_changed_witness: RecurringFailureMode = RecurringFailureMode {
+  identity: "annotation_only_edit_selects_a_changed_witness" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: an edit confined to a leading `//` annotation block is read by the required floor as an edit to the test fn the block is attached to. v1_compiler.cli_run required_floor_runner changed_witness_identities_from_edited_test_fns takes its population from the diff's edited test fns, and that population includes an annotation-only hunk. So the witness is selected as CHANGED although DESIGN section 4c rules that adding, deleting or moving an annotation cannot alter any semantic occurrence, graph, resolution or hash.",
+    "HARM: a correct, semantics-free annotation edit is refused. When the selected witness's module sits on the floor's hermetic exclusion list, the floor refuses with REQUIRED-FLOOR REFUSAL cause=ChangedWitnessOutsidePreparedSubject. That wall is correct for a real change: it stops the exclusion list from being an escape hatch. Here it fires on a change that has no semantics. The remedy an author then reaches for is to leave the annotation stale, which is how a false statement survives in the corpus.",
+    "SPECIMEN (gunbc#12969, integrating gunbc#12381): #12381 renamed the std.types predicate non_empty to string_non_empty and corrected one annotation in test.manual.command_runner_local_argv_receipt (above zero_exit_printing_nothing_is_absent_not_refused), a wet receipt on the hermetic exclusion list. The floor refused the integration head with ChangedWitnessOutsidePreparedSubject for that identity. The correction was REVERTED to land: that annotation still says NonEmptyStr is `String where non_empty`, which is stale after the rename. Restore the correction when the trigger below lands.",
+    "DISTINGUISHING FACTS: the hunk touches only lines the dag annotation channel captures (a standalone leading `//` block attached to a module-scope declaration), and the declaration's annotation-erased projection is byte-identical before and after. A hunk that also touches the declaration's own lines IS a changed witness, and the refusal must stand for it.",
+    "RUNG FOUND AT: mitigatable. The failure is loud and typed, but the honest edit cannot land. CEILING: structurally guaranteed. Whether a test fn changed is decidable over the annotation-erased projection that section 4c already defines. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: the changed-witness selection decides 'edited' on the annotation-erased projection of each declaration, not on diff line ranges. At that point an annotation-only hunk selects nothing, a hunk on the declaration still selects it, and both are enrolled as the discriminating pair.",
+  ],
+  evidence: [],
+}
