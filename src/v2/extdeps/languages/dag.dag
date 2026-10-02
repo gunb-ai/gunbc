@@ -6983,14 +6983,19 @@ fn namespace_graft_namespace_body_members_onto(body: Node, acc: List<Edge>) -> L
   fold(body.children, init: acc, f: fn(a, e) {
     match e.label {
       Named { name: sym } =>
-        if sym == ^grammar_production_identity_node_projection { a } else { Cons { head: e, tail: a } }
-      Positional => Cons { head: e, tail: a }
+        if sym == ^grammar_production_identity_node_projection { a } else { namespace_graft_prepend_edge(e: e, acc: a) }
+      Positional => namespace_graft_prepend_edge(e: e, acc: a)
     }
   })
 }
 
 fn namespace_graft_reverse_edges(edges: List<Edge>) -> List<Edge> {
-  fold(edges, init: Empty, f: fn(acc, e) { Cons { head: e, tail: acc } })
+  fold(edges, init: Empty, f: fn(acc, e) { namespace_graft_prepend_edge(e: e, acc: acc) })
+}
+
+// One edge prepended, typed as the edge list both branches of a member read return.
+fn namespace_graft_prepend_edge(e: Edge, acc: List<Edge>) -> List<Edge> {
+  Cons { head: e, tail: acc }
 }
 
 fn namespace_graft_node_is_module_body(node: Node) -> Bool {
