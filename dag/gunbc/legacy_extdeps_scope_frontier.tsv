@@ -194,7 +194,6 @@ dag/extdeps/linux/proc_meminfo.dag
 dag/extdeps/linux/usb_gadget.dag
 dag/extdeps/llm/anthropic.dag
 dag/extdeps/llm/anthropic_errors.dag
-dag/extdeps/llm/anthropic_rest.dag
 dag/extdeps/llm/cli.dag
 dag/extdeps/llm/cli_lifecycle.dag
 dag/extdeps/llm/codex_auth.dag
@@ -204,7 +203,6 @@ dag/extdeps/llm/llm.dag
 dag/extdeps/llm/openai_contracts.dag
 dag/extdeps/llm/openai.dag
 dag/extdeps/llm/openai_errors.dag
-dag/extdeps/llm/openai_rest.dag
 dag/extdeps/memory.dag
 dag/extdeps/memory/jedec.dag
 dag/extdeps/memory/types.dag
@@ -237,7 +235,6 @@ dag/extdeps/pricing/hetzner_dedicated.dag
 dag/extdeps/pricing/object_storage.dag
 dag/extdeps/pricing/regional_compute.dag
 dag/extdeps/pricing/ubicloud.dag
-dag/extdeps/process/gnu_bash_exit.dag
 dag/extdeps/process/posix_exit.dag
 dag/extdeps/provisioning/dhcp_client_arch.dag
 dag/extdeps/provisioning/network_boot.dag
