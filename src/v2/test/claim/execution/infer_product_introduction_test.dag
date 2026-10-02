@@ -37,6 +37,7 @@ import v2.std.node {
   node_subtree_nodes
 }
 import v2.std.optional { Absent, Optional, Present, optional_present }
+import v2.std.node_query { binder_node_parts }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -144,6 +145,18 @@ fn is_params_conj(n: Node) -> Bool {
   }
 }
 
+// A PARAMETER'S EVIDENCE IS A BINDER NODE OVER ITS TYPE'S EVIDENCE (XL-2 PR2b-3, #12923): a domain
+// member's target is a binder node, and infer derives a binder node over the type's derived evidence
+// with no default (v2.compiler.infer infer_binder_node_facts_from_entries), so the composed evidence of
+// a params Conj carries binder nodes. Each child is read through the one binder reader
+// (v2.std.node_query binder_node_parts), and its type must be the type-denotation kind.
+fn binder_evidence_is_type_kind(evidence: Node) -> Bool {
+  match binder_node_parts(n: evidence) {
+    Present { value: parts } => parts.type_node == kind_node(kind: TypeDenotationKind)
+    Absent => false
+  }
+}
+
 fn evidence_children_target_type_kind(children: List<Edge>) -> Bool {
   match list_at_optional(xs: children, index: 0) {
     Absent => false
@@ -153,8 +166,8 @@ fn evidence_children_target_type_kind(children: List<Edge>) -> Bool {
         Present { value: second } =>
           match list_at_optional(xs: children, index: 2) {
             Absent =>
-              (first.target == kind_node(kind: TypeDenotationKind))
-                && (second.target == kind_node(kind: TypeDenotationKind))
+              binder_evidence_is_type_kind(evidence: first.target)
+                && binder_evidence_is_type_kind(evidence: second.target)
             Present { value: _ } => false
           }
       }
