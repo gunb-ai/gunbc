@@ -248,6 +248,7 @@ fn resolved_tree_lexical_binding(tree: ResolvedTree, reference: Node) -> Optiona
     OccurrenceMinted { id: id } => map_lookup(m: tree.lexical_bindings, key: id)
     OccurrenceProjected { id: id, caused_by: _ } => map_lookup(m: tree.lexical_bindings, key: id)
     OccurrenceSynthetic => optional_absent()
+    OccurrencePending { caused_by: _ } => optional_absent()
   }
 }
 
@@ -1415,6 +1416,7 @@ fn resolve_lexical_reference(
     Present { value: b } =>
       match n.occurrence_id {
         OccurrenceSynthetic => unkeyed
+        OccurrencePending { caused_by: _ } => unkeyed
         OccurrenceMinted { id: id } => resolve_lexical_reference_keyed(n: n, canonical: canonical, id: id, binding: b, pending: pending)
         OccurrenceProjected { id: id, caused_by: _ } => resolve_lexical_reference_keyed(n: n, canonical: canonical, id: id, binding: b, pending: pending)
       }
