@@ -64,7 +64,13 @@ import gunbc.roadmap_execution_contract {
   execution_capability_label,
   PathsUnrestricted, PublicWorktreeLayout,
 }
-import gunbc.roadmap_document { project_roadmap_to_markdown }
+import gunbc.roadmap_document { RoadmapDocument }
+import gunbc.roadmap_authority { roadmap_authority_projection, RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused }
+import gunbc.roadmap_spawner { doc_all_nodes }
+import gunbc.roadmap_emit { node_is_superseded, signoff_suffix_inlines, line_inlines }
+import std.markdown { MarkdownInline, TextInline }
+import test.claim.roadmap.roadmap_authority_subtree_fixture { fx_subtree_fixture_ids }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import gunbc.roadmap_model {
   RoadmapNode,
   RoadmapEdge,
@@ -123,7 +129,6 @@ import gunbc.roadmap_status {
   item_is_done,
   signoff_is_present,
 }
-import extdeps.languages.markdown { serialize_markdown_source }
 import std.graph { GraphEdge, CallGraph, graph_has_multi_node_scc }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.filesystem.filesystem_io
@@ -924,22 +929,35 @@ test fn witness_v2_emitter_direct_rust_door_has_discriminating_contract() -> Boo
 }
 
 // THE ACTIVE-SET CLAIM READS THE WHOLE PROJECTION: the page's focus row was deleted on 2026-09-30,
-// so an accepted row's absence here can only mean it was accepted, never that a view hid it.
+// so an accepted row's absence here can only mean it was accepted, never that a view hid it. It
+// reads the projected rows themselves rather than their serialized markdown: every clause is a
+// fact about which rows the projection carries (an accepted row is absent, an active one present,
+// no superseded or awaiting-sign-off row survives), and serializing ~200 rows to find those facts
+// cost the markdown emitter's whole fold per run. The markers' spelling is the emitter's own
+// subject (test.claim.roadmap_emit_test); the clauses here are the same per-row predicates the
+// emitter renders them from (gunbc.roadmap_emit node_is_superseded, signoff_suffix_inlines).
+fn inline_text_contains(i: MarkdownInline, pattern: String) -> Bool {
+  match i {
+    TextInline { text } => string_contains(s: text, pattern: pattern)
+    _ => false
+  }
+}
 
 test fn witness_projection_is_active_only() -> Bool {
-  let out = serialize_markdown_source(
-    doc: project_roadmap_to_markdown(
-      doc: roadmap_authority(),
-      merged: authored_merged_prs()
-    )
-  )
-  string_contains(s: out, pattern: "## Active deliverables — dependency order")
-    && string_contains(s: out, pattern: "Build and run every product without the old code present")
-    && !string_contains(s: out, pattern: "Keep track of exactly which name is which")
-    && !string_contains(s: out, pattern: "Stop the compiler from mixing up one type with another")
-    && !string_contains(s: out, pattern: "**superseded →**")
-    && !string_contains(s: out, pattern: "awaiting sign-off")
-    && !string_contains(s: out, pattern: "Operator TODO")
+  match roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) {
+    RoadmapAuthorityProjectionRefused { detail: _ } => false
+    RoadmapAuthorityProjected { doc: d, accepted: _, withheld: _ } => {
+      let rows = doc_all_nodes(doc: d)
+      let ids = rows |> map(n => n.node as String)
+      any(d.sections, s => s.title == "Active deliverables — dependency order")
+        && any(ids, id => id == "v1-products-v1-free")
+        && !any(ids, id => id == "namespace-occurrence-transport")
+        && !any(ids, id => id == "pderive-typesafe-nullary-reflection")
+        && !any(rows, n => node_is_superseded(rn: n))
+        && !any(rows, n => any(signoff_suffix_inlines(rn: n, merged: authored_merged_prs()), i => inline_text_contains(i: i, pattern: "awaiting sign-off")))
+        && !any(rows, n => any(line_inlines(line: n.line), i => inline_text_contains(i: i, pattern: "Operator TODO")))
+    }
+  }
 }
 
 data execution_frontier_witness_note: String = "The execution-contract frontier is a COUNT, and these claims pin both of its halves. Before the first binding the count was zero — dispatch_environment_admit refused on every node, so nothing below Env in the workflow had ever executed end to end and the whole seven-segment strip was unreachable in production. A binding is therefore the gate for every downstream receipt, and an unwitnessed one could regress to zero silently (the way it already did once, when the 2026-07-27 authority refresh deleted the node that carried the prior contract and no claim noticed). The first claim proves the bound node yields a real contract rather than the fail-closed variant; the second proves the platform/task capability JOIN actually happens at admission — 8 fixed dispatch mechanics plus the one capability this contract's validation derives — which is the fact that turns a contract into an admissible environment; the third is the frontier itself, and it is the RED-shaped one: it fails if a binding is lost AND it fails if a second node is bound without this roster being updated, so the count in roadmap_execution_contract_frontier_note cannot silently drift from the authority it describes."
@@ -1094,5 +1112,34 @@ fn withheld_sized_subject_verdict() -> Bool {
             ) |> any(x => x.node == victim.node))
         }
       }
+  }
+}
+
+// THE AUTHORITY-WIDE HALF OF THE PAGE CLAIMS, AS A CENSUS THAT DOES NOT RENDER. The page claims read
+// the served folds over a projection holding a few named declared rows
+// (test.claim.roadmap.roadmap_authority_subtree_fixture); what made rendering the whole authority
+// look necessary was that the rows they read are the rows the real projection carries. That is an
+// identity join over the projection, so it is stated here once: the projected document carries
+// every active declared row (the completeness half -- witness_rendered_nodes_are_declared_or_derived
+// is the soundness half), and every row a subtree claim names is one of them.
+fn projected_document_id_set(doc: RoadmapDocument) -> Map<String, Bool> {
+  let empty: Map<String, Bool> = empty_map()
+  fold(doc_all_nodes(doc: doc), init: empty, f: (acc, n) => map_insert(m: acc, key: n.node as String, value: true))
+}
+
+fn projected_document_carries(ids: Map<String, Bool>, id: String) -> Bool {
+  match map_lookup(m: ids, key: id) { Present { value: _ } => true  Absent => false }
+}
+
+test fn witness_authority_document_carries_every_active_declared_row() -> Bool {
+  match roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) {
+    RoadmapAuthorityProjectionRefused { detail: _ } => false
+    RoadmapAuthorityProjected { doc: d, accepted, withheld } => {
+      let shown = projected_document_id_set(doc: d)
+      let active = active_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld)
+      count(active) > 0
+        && all(active, n => projected_document_carries(ids: shown, id: n.node as String))
+        && all(fx_subtree_fixture_ids(), id => any(active, n => (n.node as String) == id))
+    }
   }
 }

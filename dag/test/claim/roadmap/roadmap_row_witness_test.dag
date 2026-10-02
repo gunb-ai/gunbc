@@ -2,7 +2,7 @@ module test.claim.roadmap_row_witness
 
 import gunbc.roadmap_style { roadmap_css, roadmap_rules }
 import gunbc.design.material { serialize_rules }
-import gunbc.roadmap_page { roadmap_page_for_authority }
+import test.claim.roadmap.roadmap_authority_subtree_fixture { fx_authority_subtree_roadmap_page, fx_multi_parent_ids }
 import gunbc.roadmap_component {
   dispatch_reserved_width, workflow_controls_class,
 }
@@ -48,8 +48,10 @@ test fn roadmap_row_grid_structure_holds() -> Bool {
     && !string_contains(s: rules, pattern: "grid-template-columns: auto 1fr auto")
 }
 
+// The cells are row markup, so the claim reads the /roadmap fold over the authority's own rows (the
+// shared subtree fixture) rather than every row of the whole authority.
 test fn roadmap_row_page_carries_the_cells() -> Bool {
-  match try_serialize_html_source(node: roadmap_page_for_authority()) {
+  match try_serialize_html_source(node: fx_authority_subtree_roadmap_page(ids: fx_multi_parent_ids())) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       h.length() > 0

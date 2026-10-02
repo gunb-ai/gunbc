@@ -1,5 +1,7 @@
 module test.claim.long.roadmap_page_witness
 
+import gunbc.roadmap.roadmap_project { membership_index }
+import test.claim.roadmap.roadmap_authority_subtree_fixture { fx_authority_subtree_doc, fx_authority_subtree_roadmap_page, fx_authority_subtree_daily_page, fx_multi_parent_ids, fx_live_project_ids }
 import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_authored_wi, fx_derivable_wi, fx_ticket_row, fx_ticket_wi, fx_superseded, fx_signed, fx_sign }
 
 import gunbc.roadmap_spawner { doc_all_edges }
@@ -76,8 +78,15 @@ fn authority_page_html() -> HtmlEmitResult {
 
 data header_pin_a1_note: String = "The header assertions moved TWICE at A1 (presentation recon, operator feedback 2026-08-01). First the content: the unselected site mark (candidate A, whose aria-label said gunb.ai on a gunbc tool surface) is replaced by the text wordmark, the h1 carries the PAGE name alone so it never restates the wordmark, and both toggles are server-rendered with visible content and an accessible name — the theme toggle with its parse-time-true initial state ('theme · auto': no data-theme exists until the client program runs, so prefers-color-scheme governs, which IS auto), the sound toggle with its name only (its state has no parse-time truth; see gunbc.roadmap_page.sound_toggle_placement_note). Second the SHAPE of the assertion: the former whole-header byte pin asserted the accidental composition — element order and adjacency that nobody decided — so it redded on any reorder while proving nothing semantic. Each assertion below is now ONE claim (wordmark exists; page-name h1 exists; each control is labeled before JavaScript). Header composition is deliberately NOT pinned: the A1 list layout is a provisional renderer, per the PR's own scope statement."
 
+// The /roadmap fold over the authority's own multi-parent rows (the shared subtree fixture): the page
+// chrome and the row markup are claims about the fold, so they read a projection holding real rows
+// rather than paying for every row of the whole authority.
+fn authority_subtree_page_html() -> HtmlEmitResult {
+  try_serialize_html_source(node: fx_authority_subtree_roadmap_page(ids: fx_multi_parent_ids()))
+}
+
 test fn witness_authority_serializes_with_structure() -> Bool {
-  match authority_page_html() {
+  match authority_subtree_page_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       string_contains(s: h, pattern: "<span class=\"wordmark\">gunbc</span>")
@@ -95,7 +104,7 @@ test fn witness_authority_serializes_with_structure() -> Bool {
 
 // A3 routine-state collapse flip: the former positive pin 'class="status status-' asserted that SOME chip serialized, which an all-open focused page satisfies only by rendering the routine default as permanent chrome. The decided rule (lifecycle_chip_renders) hides exactly the open default, so the discriminating page pins are the NEGATIVE — an open chip serialized anywhere is the collapse failing — plus taskbar presence for the structural claim; the review/done chips keep their own positive pins on constructed fixtures (witness_merged_pr_is_review_evidence_not_acceptance).
 test fn witness_authority_page_preserves_multi_parent_dependencies() -> Bool {
-  match authority_page_html() {
+  match authority_subtree_page_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       string_contains(s: h, pattern: "dependencies (namespace-v2-import-completion, declaration-identity-switchover, namespace-semantic-waves, v1-interpreter-delete)")
@@ -177,8 +186,13 @@ test fn witness_finish_line_variants_render_from_fixture() -> Bool {
 
 data daily_leads_operational_note: String = "The A1 placement wall (presentation recon, operator-signed 2026-08-01): the daily workspace's declared archetype is Operational (gunbc.design.archetype dashboard_archetype), so / may not open with the four strategic finish-line claims — the full narrative block lives on /roadmap only. The 'of 4' magnitude was structural, not a live-population transcription. SUPERSEDED 2026-09-28 by the owner ruling retiring the v1-exit framing from the workspace header: the one-line strip now carries only the readiness count ('N ready now'), and the program view's name reads 'workspace'."
 
+// The / fold over the authority's live project and its root (the shared subtree fixture).
+fn live_project_daily_html() -> HtmlEmitResult {
+  try_serialize_html_source(node: fx_authority_subtree_daily_page(ids: fx_live_project_ids()))
+}
+
 test fn witness_daily_leads_operational_not_narrative() -> Bool {
-  match try_serialize_html_source(node: gunbc.roadmap_page.roadmap_daily_workspace_page_for_authority()) {
+  match live_project_daily_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       string_contains(s: h, pattern: "class=\"program-progress\"")
@@ -1304,7 +1318,7 @@ fn fx_chain_top_project_view() -> gunbc.roadmap_presentation.ProjectTreeView {
     Absent => fx_project_tree_view(auto_open: false)
     Present { value: top } =>
       gunbc.roadmap_presentation.project_tree_view(
-        row: top, rows: rows, edges: edges, members: [], depth: 1, fuel: count(rows), memberships: fixture_nesting_relation(edges: edges))
+        row: top, rows: rows, edges: edges, members: [], depth: 1, fuel: count(rows), memberships: membership_index(memberships: fixture_nesting_relation(edges: edges)))
   }
 }
 
@@ -1674,50 +1688,22 @@ fn fx_shell_subtree_ids() -> List<String> {
   concat(["gunbc-project-root", "debt-payoff", "dp-m2-shell-residue-retired", "shell-typed-invocation"], fx_shell_task_ids())
 }
 
-// The arc's ids as a set, built once, so narrowing the declared rows reads one lookup per row.
-fn fx_shell_id_set() -> Map<String, Bool> {
-  let empty: Map<String, Bool> = empty_map()
-  fold(fx_shell_subtree_ids(), init: empty, f: (acc, i) => map_insert(m: acc, key: i, value: true))
-}
-
-fn fx_shell_id_in(ids: Map<String, Bool>, id: String) -> Bool {
-  match map_lookup(m: ids, key: id) { Present { value: _ } => true  Absent => false }
-}
-
-fn fx_shell_subtree_nodes(doc: RoadmapDocument) -> List<RoadmapNode> {
-  let ids = fx_shell_id_set()
-  gunbc.roadmap_spawner.doc_all_nodes(doc: doc) |> filter(rn => fx_shell_id_in(ids: ids, id: rn.node as String))
-}
-
-fn fx_shell_subtree_edges(doc: RoadmapDocument) -> List<RoadmapEdge> {
-  let ids = fx_shell_id_set()
-  gunbc.roadmap_spawner.doc_all_edges(doc: doc) |> filter(e => fx_shell_id_in(ids: ids, id: e.child as String) && fx_shell_id_in(ids: ids, id: e.parent as String))
-}
-
-// The shell arc's rows and edges as the authority declares them. None of the arc is accepted, so the
-// projected authority carries these same rows; reading the declared rows narrows to the arc without
-// projecting the whole acceptance history (~141k steps) for every render.
+// The shell arc's rows and edges as the authority declares them (the shared subtree fixture). None
+// of the arc is accepted, so the projected authority carries these same rows; reading the declared
+// rows narrows to the arc without projecting the whole acceptance history for every render.
 fn fx_shell_subtree_doc() -> RoadmapDocument {
-  let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [ RoadmapSection {
-    title: "declared",
-    elements: [ section_group(label: "", nodes: gunbc.roadmap_authority.declared_roadmap_nodes(), edges: gunbc.roadmap_authority.declared_roadmap_edges()) ],
-  } ] }
-  RoadmapDocument { preamble: [], lead_lanes: [], sections: [ RoadmapSection {
-    title: "Shell",
-    elements: [ section_group(label: "", nodes: fx_shell_subtree_nodes(doc: doc), edges: fx_shell_subtree_edges(doc: doc)) ],
-  } ] }
+  fx_authority_subtree_doc(ids: fx_shell_subtree_ids(), title: "Shell")
 }
 
 fn fx_shell_live_rows(refused: Bool, doc: RoadmapDocument) -> List<gunbc.roadmap_presentation.WorkRowView> {
   let nodes = gunbc.roadmap_spawner.doc_all_nodes(doc: doc)
   let edges = gunbc.roadmap_spawner.doc_all_edges(doc: doc)
   let ctx = gunbc.roadmap_page.page_launch_context(doc: doc, merged: [], launch: dispatch_doc_standing())
-  let lineage = gunbc.roadmap.roadmap_lineage.lineage_index(nodes: nodes)
-  let fuel = count(nodes) + 1
+  let graph = gunbc.roadmap_presentation.row_graph(nodes: nodes, edges: edges)
   map(nodes, rn => {
     let is_live = (rn.node as String) == "shell-dag-cron-entry-line-builder"
     gunbc.roadmap_presentation.work_row_view_in(
-      rn: rn, index: lineage, fuel: fuel, nodes: nodes, edges: edges, merged: [],
+      rn: rn, graph: graph, merged: [],
       activity: if is_live {
         if refused {
           gunbc.roadmap_presentation.activity_view_from_parts(
@@ -2494,7 +2480,7 @@ test fn witness_issue_history_tab_renders_event_history_newest_first() -> Bool {
 // row): vm-service is declared in the authority with members, so the not-ready filter keeps it, and
 // it renders exactly once with its headline and its fleet owner on the row's data-search.
 test fn witness_a_live_project_renders_on_the_issue_table() -> Bool {
-  match try_serialize_html_source(node: roadmap_daily_workspace_page_for_authority()) {
+  match live_project_daily_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       let table = table_region(html: h)
