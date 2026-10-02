@@ -650,10 +650,10 @@ fn run_product_receipt_stage(txn: String, manifest_identity: String, entry: Stri
         cause: ManifestNotProduced,
         consumed: b2_consumed
       )
-    ManifestUnobserved { cause: _ } =>
+    ManifestUnobserved { cause: c } =>
       stage_refused(
         boundary: ManifestPopulationAdmitted,
-        cause: ManifestUnobservable { cause: manifest_unobserved_cause },
+        cause: ManifestUnobservable { cause: c },
         consumed: b2_consumed
       )
     ManifestObserved { content: _ } =>

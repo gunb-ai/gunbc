@@ -8,10 +8,10 @@ import tools.opaque_realization_census {
   EmittedByThisRun, OpaqueCensusUnestablished, census_compiler_binary_unestablished, census_stage_text
 }
 import tools.host_prelude { WitnessBinArtifactNotExecutable, WitnessBinArtifactEmpty }
-import std.types { FilePath }
 import extdeps.filesystem.filesystem_io {
   FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate,
-  FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused, FilesystemEstablishedAbsence,
+  FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
+  filesystem_listing_observation, filesystem_file_observation, filesystem_read_outcome,
 }
 import v2.std.optional { Absent, Present }
 import v2.std.logic { Bool }
@@ -152,16 +152,30 @@ test fn witness_first_recorded_fault_is_the_one_carried() -> Bool {
 // POSITIVE CONTROL: an established absence -- a listing that succeeded and did not name the file --
 // is the one shape that still answers unresolved, because that is a location genuinely looked at.
 test fn witness_established_candidate_absence_still_answers_unresolved() -> Bool {
-  let scan = declaration_candidate_scan_then_with(
-    acc: DeclarationScanUnresolved { attempted: "dag/x.dag", unobserved: none },
-    o: FilesystemFileAbsent(
-      FilesystemEstablishedAbsence { directory: "dag" as FilePath, name: "x.dag" },
-    ),
-    name: "X",
+  // The established absence is MINTED, never written: FilesystemEstablishedAbsence is
+  // sole_constructor and constructible only inside the interface module, so the fixture derives
+  // the observation from a listed directory whose entries omit the candidate's name.
+  let listing = filesystem_listing_observation(directory: "dag", success: true, entries: "", error: "")
+  match filesystem_file_observation(
+    listing: listing,
+    name: "x.dag",
     path: "dag/x.dag",
-  )
-  match declaration_standing_from_scan(scan: scan) {
-    DeclarationSourceUnresolved { attempted: a } => a == "dag/x.dag"
+    read: filesystem_read_outcome(
+      content: "",
+      success: false,
+      error: "not read: the listing did not name the entry",
+    ),
+  ) {
+    FilesystemFileAbsent(a) =>
+      match declaration_candidate_scan_then_with(
+        acc: DeclarationScanUnresolved { attempted: "dag/x.dag", unobserved: none },
+        o: FilesystemFileAbsent(a),
+        name: "X",
+        path: "dag/x.dag",
+      ) {
+        DeclarationSourceUnresolved { attempted: att } => att == "dag/x.dag"
+        _ => false
+      }
     _ => false
   }
 }
