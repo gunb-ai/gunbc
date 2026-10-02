@@ -43,6 +43,7 @@ module gunbc.scm.repository_load
 // names as authority substitution.
 
 import std.types { List, String }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.filesystem.filesystem_io {
   FilesystemReadOutcome,
   FilesystemReadSucceeded,

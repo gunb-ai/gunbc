@@ -1,6 +1,7 @@
 module gunbc.harness.harness_turn
 
 import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import std.measure { TokenCount, token_count_value, Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.languages.json.emit {
