@@ -451,34 +451,38 @@ fn typed_collect_wildcard_arms(
     rel: &str,
     walk: &mut TypedFallbackArmWalk,
 ) {
-    if let ExprData::ExprMatch = node.expr_data.as_ref() {
-        let arms = match_arm_nodes(node.clone());
-        if arms.iter().any(cla_is_wildcard_arm) {
-            let closedness = typed_scrutinee_closedness(&match_scrutinee(node.clone()), env);
-            if closedness == TypedScrutineeClosedness::Undetermined {
-                walk.undetermined_sites.push(format!("{rel}::{decl}"));
-            }
-            let closed = closedness == TypedScrutineeClosedness::Closed;
-            for (arm_idx, arm) in arms.iter().enumerate() {
-                if !cla_is_wildcard_arm(arm) {
-                    continue;
+    // An explicit worklist, not native recursion: a typed body's depth is corpus-shaped, and the
+    // floor runs this walk on the main thread (gunbc.recurring_failure_mode class of #10610).
+    // Visit order is immaterial: the caller sorts `facts` and `undetermined_sites`.
+    let mut pending: Vec<&Rc<Node>> = vec![node];
+    while let Some(node) = pending.pop() {
+        if let ExprData::ExprMatch = node.expr_data.as_ref() {
+            let arms = match_arm_nodes(node.clone());
+            if arms.iter().any(cla_is_wildcard_arm) {
+                let closedness = typed_scrutinee_closedness(&match_scrutinee(node.clone()), env);
+                if closedness == TypedScrutineeClosedness::Undetermined {
+                    walk.undetermined_sites.push(format!("{rel}::{decl}"));
                 }
-                // DeclaredInterim needs a typed arm-to-FrontierRow join the host does not have;
-                // it stays false here exactly as the parse-level fac walk leaves it.
-                let class = fac_classify_arm(&arm_body(arm.clone()), si, closed, false);
-                walk.facts.push(FallbackArmCensusFactRaw {
-                    site: format!("{rel}::{decl}#arm{arm_idx}"),
-                    fn_name: decl.to_string(),
-                    rel_path: rel.to_string(),
-                    class: class.to_string(),
-                    owning_lane: fac_owning_lane(rel).to_string(),
-                    closed_coproduct_scrutinee: closed,
-                });
+                let closed = closedness == TypedScrutineeClosedness::Closed;
+                for (arm_idx, arm) in arms.iter().enumerate() {
+                    if !cla_is_wildcard_arm(arm) {
+                        continue;
+                    }
+                    // DeclaredInterim needs a typed arm-to-FrontierRow join the host does not have;
+                    // it stays false here exactly as the parse-level fac walk leaves it.
+                    let class = fac_classify_arm(&arm_body(arm.clone()), si, closed, false);
+                    walk.facts.push(FallbackArmCensusFactRaw {
+                        site: format!("{rel}::{decl}#arm{arm_idx}"),
+                        fn_name: decl.to_string(),
+                        rel_path: rel.to_string(),
+                        class: class.to_string(),
+                        owning_lane: fac_owning_lane(rel).to_string(),
+                        closed_coproduct_scrutinee: closed,
+                    });
+                }
             }
         }
-    }
-    for child in node.children.iter() {
-        typed_collect_wildcard_arms(child, si, env, decl, rel, walk);
+        pending.extend(node.children.iter());
     }
 }
 
