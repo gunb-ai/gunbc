@@ -10,7 +10,7 @@ import std.effect_grant { Envelope, HandlerBinding, Read, Write, CoveredBy, NoCo
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, UriScheme, Http, Https, Tftp, File, Ftp, Javascript, Data, Vbscript, Mailto }
 import v2.std.operation_argv { OperationRef }
-import v2.std.optional { Absent, Optional, Present }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import extdeps.ietf.http_semantics { HttpMethod, HttpStatusClass, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, CONNECT, TRACE }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -463,13 +463,13 @@ fn rest_binding_field_key(field: RestBindingField) -> String {
 }
 
 fn rest_binding_field_of_key(key: String) -> Optional<RestBindingField> {
-  if key == "method" { Present { value: RestMethod } }
-  else if key == "path" { Present { value: RestPath } }
-  else if key == "query" { Present { value: RestQuery } }
-  else if key == "headers" { Present { value: RestHeaders } }
-  else if key == "body" { Present { value: RestBody } }
-  else if key == "tls" { Present { value: RestTls } }
-  else if key == "auth_basic" { Present { value: RestAuthBasic } }
-  else if key == "response_format" { Present { value: RestResponseFormat } }
-  else { Absent }
+  if key == "method" { optional_present(value: RestMethod) }
+  else if key == "path" { optional_present(value: RestPath) }
+  else if key == "query" { optional_present(value: RestQuery) }
+  else if key == "headers" { optional_present(value: RestHeaders) }
+  else if key == "body" { optional_present(value: RestBody) }
+  else if key == "tls" { optional_present(value: RestTls) }
+  else if key == "auth_basic" { optional_present(value: RestAuthBasic) }
+  else if key == "response_format" { optional_present(value: RestResponseFormat) }
+  else { optional_absent() }
 }
