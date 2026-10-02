@@ -1119,6 +1119,7 @@ fn declaration_reference_body_marked(target: Node) -> Bool {
   match resolved_reference_body_kind(target: target) {
     MarkedReference { kind: DeclarationReferenceKind } => true
     MarkedReference { kind: ParameterReferenceKind } => false
+    MarkedReference { kind: LexicalReferenceKind } => false
     NotMarkedReference => false
   }
 }
