@@ -2300,6 +2300,7 @@ fn target_model_canonical_operation_wire_child_declared_type(wire: Node, edge: E
       } else {
         optional_present(value: symbol_kernel_type_node())
       }
+    StructuralLabel { label: _ } => optional_absent()
     Positional => optional_absent()
   }
 }
