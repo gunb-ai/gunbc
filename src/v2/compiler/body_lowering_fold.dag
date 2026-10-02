@@ -711,26 +711,29 @@ fn body_term_wrapper_optional(n: Node) -> Optional<BodyTermWrapper> {
           Absent => optional_absent()
           Present { value: e } =>
             match e.label {
-              StructuralLabel { label: structural } =>
-                match structural {
-                  CoreMarker { marker: marker } =>
-                    match marker {
-                      BodyTermLoweredEdge { seal: seal } =>
-                        match body_term_lowered_shape_of(id: body_term_seal_shape(seal: seal)) {
-                          Absent => optional_absent()
-                          Present { value: shape } => optional_present(value: BodyTermWrapper { node: e.target, shape: shape })
-                        }
-                      _ => optional_absent()
+              StructuralLabel { label: CoreMarker { marker: marker } } =>
+                match marker {
+                  BodyTermLoweredEdge { seal: seal } =>
+                    match body_term_lowered_shape_of(id: body_term_seal_shape(seal: seal)) {
+                      Absent => optional_absent()
+                      Present { value: shape } => optional_present(value: BodyTermWrapper { node: e.target, shape: shape })
                     }
                   _ => optional_absent()
                 }
-              _ => optional_absent()
+              StructuralLabel { label: ProductionEdge { language: _, edge: _ } } => optional_absent()
+              Authored { name: _ } => optional_absent()
+              Positional => optional_absent()
             }
         }
       } else {
         optional_absent()
       }
-    _ => optional_absent()
+    TypeNode { connective: Atom { identity: _ } } => optional_absent()
+    TypeNode { connective: Disj } => optional_absent()
+    TypeNode { connective: Arrow } => optional_absent()
+    TypeNode { connective: Cardinality } => optional_absent()
+    TypeNode { connective: Instantiation } => optional_absent()
+    ComputationNode { behavior: _ } => optional_absent()
   }
 }
 
@@ -829,7 +832,11 @@ fn body_term_is_leaf(n: Node) -> Bool {
         false
       }
     TypeNode { connective: Conj } => length(xs: n.children) == 0
-    _ => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
@@ -5753,7 +5760,9 @@ fn body_lower_postfix_projection_step(repeat_elem: Node) -> Optional<Node> {
 fn body_lower_dotted_head_atom_optional(node: Node) -> Optional<Node> {
   match body_term_of(node: node) {
     Accepted { value: Lowered { node: inner, shape: _ }, diagnostics: _ } => body_lower_dotted_head_raw_atom_optional(node: inner)
-    _ => body_lower_dotted_head_raw_atom_optional(node: node)
+    Accepted { value: RawParse { node: raw }, diagnostics: _ } => body_lower_dotted_head_raw_atom_optional(node: raw)
+    Accepted { value: RawLeaf { node: leaf }, diagnostics: _ } => body_lower_dotted_head_raw_atom_optional(node: leaf)
+    Rejected { diagnostics: _ } => optional_absent()
   }
 }
 
@@ -8803,7 +8812,12 @@ fn body_lowering_match_spine_identity_absent_dispatch_holds() -> Bool {
         match body_lower_fold_identity_absent(node: fixture) {
           Rejected { diagnostics: _ } => true
           Accepted { value: dispatched, diagnostics: _ } =>
-            (match body_term_of(node: dispatched) { Accepted { value: Lowered { node: _, shape: _ }, diagnostics: _ } => true  _ => false }) || dispatched != reduced
+            (match body_term_of(node: dispatched) {
+              Accepted { value: Lowered { node: _, shape: _ }, diagnostics: _ } => true
+              Accepted { value: RawParse { node: _ }, diagnostics: _ } => false
+              Accepted { value: RawLeaf { node: _ }, diagnostics: _ } => false
+              Rejected { diagnostics: _ } => false
+            }) || dispatched != reduced
         }
     }
   }
@@ -8841,7 +8855,9 @@ fn body_lower_postfix_lowered_primary_optional(captured: Node) -> Optional<Node>
       if is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: pair.right)) {
         match body_term_of(node: pair.left) {
           Accepted { value: Lowered { node: lowered, shape: _ }, diagnostics: _ } => optional_present(value: lowered)
-          _ => optional_absent()
+          Accepted { value: RawParse { node: _ }, diagnostics: _ } => optional_absent()
+          Accepted { value: RawLeaf { node: _ }, diagnostics: _ } => optional_absent()
+          Rejected { diagnostics: _ } => optional_absent()
         }
       } else {
         optional_absent()
@@ -9664,7 +9680,11 @@ fn body_lower_eq_type_decl_rhs(shell: Node, type_name: Symbol, rhs: Node, type_p
       } else {
         outcome_accepted(value: body_lower_type_decl_member(shell: shell, type_name: type_name, body: rhs, type_params: type_params))
       }
-    _ => body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
+    TypeNode { connective: Atom { identity: _ } } => body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
+    TypeNode { connective: Arrow } => body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
+    TypeNode { connective: Cardinality } => body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
+    TypeNode { connective: Instantiation } => body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
+    ComputationNode { behavior: _ } => body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
   }
 }
 
