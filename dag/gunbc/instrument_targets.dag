@@ -246,10 +246,13 @@ fn v2_native_frontier_label() -> Label {
 // (v2.compiler.compile native_census_cause_groups_add) with the head kept as a member field. It is
 // THE route to that census: the binary's `census` / `census-resolve` verbs remain only as this row's
 // realization and are not a second documented peer route, which is the --self-host precedent this
-// file states for `//gunbc/instruments:self-host` (DESIGN section 3, Building & checks). The
-// observation holds when the emitted fold reports that the groups partition every reported row;
-// a broken partition is an observation that did not hold, and a run that printed no terminal is
-// the subject unreached.
+// file states for `//gunbc/instruments:self-host` (DESIGN section 3, Building & checks).
+// IT IS A REPORT, AND ITS VERDICT SAYS ONLY THAT: a census that completed is held, and a run that
+// printed no complete terminal is the subject unreached. It has NO did-not-hold arm on purpose. A
+// partition check (members summed over groups == rows reported) was tried and withdrawn in review
+// 74324: every row reaches a group through the same call that counts it, so its red was not
+// authorable in a real run -- a decoration by DESIGN section 4b. The grouping's discriminating red
+// lives where it is authorable, in v2.test.claim.native_census.whole_tree_census_resolve.
 fn v2_native_census_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "v2-native-census" } }
 }

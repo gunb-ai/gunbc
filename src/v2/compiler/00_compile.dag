@@ -3733,22 +3733,6 @@ fn native_census_cause_group_rows(groups: NativeCensusCauseGroups) -> List<Nativ
   )
 }
 
-// THE PARTITION, CHECKED BY IDENTITY COUNT ON BOTH SIDES. Every row the census reported is a member
-// of exactly one group, so the members summed over the groups equal the rows the driver counted as
-// it reported them. A group dropped or a row filed twice breaks the equality; the terminal line
-// carries the verdict and the instrument reads it rather than recomputing it.
-fn native_census_cause_group_member_total(groups: NativeCensusCauseGroups) -> Int {
-  fold_list(
-    xs: native_census_cause_group_rows(groups: groups),
-    empty: 0,
-    cons: fn(n, g) { n + length(xs: g.members) }
-  )
-}
-
-fn native_census_cause_partition_holds(groups: NativeCensusCauseGroups, reported_rows: Int) -> Bool {
-  native_census_cause_group_member_total(groups: groups) == reported_rows
-}
-
 // THE LIVE-VERDICT CONTROLS, EXECUTED BY THE SAME ROUTE AS EVERY MEMBER. They sit outside the
 // universe prefix, so discovery enrols nothing for them and the authority's own declaration is
 // what names them; a verdict is Absent exactly when the route could not produce one, which is the

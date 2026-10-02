@@ -1143,21 +1143,18 @@ fn run_v2_native_frontier(source_roots: &[String]) -> InvocationOutcome {
     }
 }
 
-/// THE V2-NATIVE CENSUS PRODUCER. The partition verdict is the emitted fold's
-/// (`v2.compiler.compile` `native_census_cause_partition_holds`); this arm maps it to a termination.
-/// A census whose run never completed is the subject unreached, never a held observation.
+/// THE V2-NATIVE CENSUS PRODUCER. A report: a completed census is held, a run that did not complete
+/// is the subject unreached, and there is deliberately no did-not-hold arm because no red of the
+/// census is authorable in a real run (review 74324; `gunbc.instrument_targets`
+/// `v2_native_census_label`).
 fn run_v2_native_census(source_roots: &[String]) -> InvocationOutcome {
     match cli_run::run_v2_native_census(source_roots) {
         Ok(run) => InvocationOutcome {
-            termination: if run.partition_holds {
-                Termination::ObservationHeld
-            } else {
-                Termination::ObservationDidNotHold
-            },
+            termination: Termination::ObservationHeld,
             message: format!(
-                "v2-native-census: modules={} file_refusals={} residual_rows={} cause_groups={} \
-                 partition_holds={}; the rows grouped by fatal reason are the cause_group lines above",
-                run.modules, run.file_refusals, run.residual_rows, run.cause_groups, run.partition_holds
+                "v2-native-census: modules={} file_refusals={} residual_rows={} cause_groups={}; \
+                 the rows grouped by fatal reason are the cause_group lines above",
+                run.modules, run.file_refusals, run.residual_rows, run.cause_groups
             ),
         },
         Err(cause) => InvocationOutcome {

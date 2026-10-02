@@ -19,7 +19,6 @@ import v2.compiler.compile {
   native_census_cause_groups_empty,
   native_census_cause_groups_from_file_refusals,
   native_census_cause_group_rows,
-  native_census_cause_partition_holds,
   native_lane_file_refusal_index,
   native_test_context_from_ingest
 }
@@ -498,7 +497,6 @@ test fn census_cause_groups_key_on_fatal_not_head_holds() -> Bool {
           && fold_list(xs: listed, empty: true, cons: fn(acc, g) {
             fold_list(xs: g.members, empty: acc, cons: fn(acc2, m) { acc2 && m.head_reason == ^resolve_unbound_name_is_declared_elsewhere })
           })
-          && native_census_cause_partition_holds(groups: groups, reported_rows: length(xs: rows))
       }
   }
 }
@@ -507,7 +505,7 @@ test fn census_cause_groups_key_on_fatal_not_head_holds() -> Bool {
 // discriminates at one interface) because the boundary under test is the grouping, and the real
 // front end's production of a head-distinct file refusal is the poison specimen above. Three rows
 // share ONE head and carry TWO fatals: grouped by head they are one group of three, grouped by fatal
-// two groups of two and one. First-appearance order is the fatal's, and the partition holds.
+// two groups of two and one.
 fn census_supplied_file_refusal(path: Symbol, fatal: Symbol) -> NativeTestFileRefusal {
   NativeTestFileRefusal {
     path: path,
@@ -529,6 +527,4 @@ test fn census_file_refusals_group_under_fatal_not_shared_head_holds() -> Bool {
     && census_cause_group_of(groups: listed, reason: ^tokenize_lex_e0_source_not_exhausted) == 2
     && census_cause_group_of(groups: listed, reason: ^parse_unexpected_token) == 1
     && census_cause_group_of(groups: listed, reason: ^parse_grammar_choice_overlap_residue) == 0
-    && native_census_cause_partition_holds(groups: groups, reported_rows: 3)
-    && !native_census_cause_partition_holds(groups: groups, reported_rows: 4)
 }

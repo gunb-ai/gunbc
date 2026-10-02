@@ -2350,10 +2350,9 @@ pub fn run_v2_native_frontier(
 }
 
 /// THE NATIVE CENSUS, AS THE EMITTED BINARY REPORTED IT. The grouping and the partition verdict are
-/// decided inside the binary by `v2.compiler.compile` `native_census_cause_partition_holds`; the
-/// host carries the terminal marker's words and decides nothing about them.
+/// decided inside the binary (`v2.compiler.compile` `native_census_cause_groups_add`); the host
+/// carries the terminal marker's counts and decides nothing about them.
 pub struct NativeCensusRun {
-    pub partition_holds: bool,
     pub cause_groups: u64,
     pub file_refusals: u64,
     pub residual_rows: u64,
@@ -2409,12 +2408,6 @@ pub fn run_v2_native_census(source_roots: &[String]) -> Result<NativeCensusRun, 
         })
     };
     Ok(NativeCensusRun {
-        partition_holds: terminal
-            .get("partition_holds")
-            .and_then(|v| v.as_bool())
-            .ok_or_else(|| {
-                format!("V2-NATIVE-CENSUS REFUSAL cause=TerminalFieldMissing — no partition_holds: {terminal}")
-            })?,
         cause_groups: need_u64("cause_groups")?,
         file_refusals: need_u64("file_refusals")?,
         residual_rows: need_u64("residual_rows")?,
