@@ -68,6 +68,7 @@ import v2.lens.registry {
 }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data lens_registry_v0_required_ids: List<LensIdV0> = [
