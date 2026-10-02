@@ -108,16 +108,12 @@ impl NatSubtraction {
     }
 }
 
-pub fn nat_difference_of_ordered(minuend: Nat, subtrahend: Nat) -> Nat {
-    v1_rt::int_sub(minuend.clone(), subtrahend.clone())
-}
-
 pub fn nat_sub(a: Nat, b: Nat) -> Rc<NatSubtraction> {
     if (b.clone() > a.clone()) {
         Rc::new(NatSubtraction::NatSubtrahendExceedsMinuend)
     } else {
         Rc::new(NatSubtraction::NatDifference {
-            value: nat_difference_of_ordered(a.clone(), b.clone()),
+            value: v1_rt::int_sub(a.clone(), b.clone()),
         })
     }
 }
