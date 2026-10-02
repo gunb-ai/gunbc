@@ -1122,6 +1122,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.normalize.service_spine.ss_repeated_service_refused",
   "v2.test.claim.normalize.service_spine.ss_scope_control_admitted",
   "v2.test.claim.normalize.service_spine.ss_scope_leak_refused",
+  "v2.test.claim.normalize.service_spine.ss_boundary_index",
   "v2.test.claim.binder_default_judgment.bdj_inhabiting_inferred",
   "v2.test.claim.binder_default_judgment.bdj_not_inhabiting_inferred",
   "v2.test.claim.binder_default_judgment.bdj_outer_value_inferred",

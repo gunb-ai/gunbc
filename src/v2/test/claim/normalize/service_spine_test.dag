@@ -4,12 +4,12 @@ import v2.compiler.reference_conservation_admission { conservation_subject_of_te
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
 import v2.compiler.normalized_tree { normalized_tree_roots_to_binding_sources }
 import v2.test.claim.type_param_binder_frame { tpb_accepts, tpb_assemble }
-import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_lookup }
+import v2.std.symbol_index { LexicalAmbiguous, LexicalHit, LexicalUnbound, SymbolIndex, empty_symbol_index, symbol_index_lexical_lookup, symbol_index_lookup }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme }
-import v2.std.optional { Absent, Present }
+import v2.std.optional { Absent, Optional, Present }
 import v2.std.text { String }
 import std.algebra { Cons, Empty, FreeMonoid }
 
@@ -93,4 +93,58 @@ fn ss_scope_leak_refused() -> Bool {
 
 test fn a_merged_namespace_body_grants_no_scope_holds() -> Bool {
   ss_scope_control_admitted() && ss_scope_leak_refused()
+}
+
+// A SERVICE NAMESPACE IS A LOOKUP BOUNDARY (v2.std.symbol_index NamespaceBodyDeclared; the operator's
+// nesting ban). The index is filled from a really normalized module, once (WARM), and the claims ask
+// the unqualified walk (symbol_index_lexical_lookup) from inside `s.F.Run`: a bare sibling segment `E`
+// and a bare enclosing segment `s` are unbound, while their qualified paths stay indexed; the module's
+// own `k` still binds bare from the same position, so the walk ascends past the boundary rather than
+// stopping. The recursive case: from inside `s.a.x.Run`, neither `y` (a sibling under s.a) nor `a`
+// binds bare, and `s.a.y` stays indexed.
+data boundary_source: String = "module p\n\ndata k: Int = 1\n\nservice s.F {\n  operation Run {}\n}\n\nservice s.E {\n  operation Get {}\n}\n\nservice s.a.x {\n  operation Run {}\n}\n\nservice s.a.y {\n  operation Get {}\n}\n"
+
+fn ss_boundary_index() -> Optional<SymbolIndex> {
+  match conservation_subject_of_text(path: "probe_service_spine.dag", text: boundary_source).normalized {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: tree, diagnostics: _ } =>
+      Present { value: symbol_index_fill_module_roots(index: empty_symbol_index(), roots: normalized_tree_roots_to_binding_sources(roots: Cons { head: tree, tail: Empty })) }
+  }
+}
+
+fn ss_path(segments: FreeMonoid<String>) -> FreeMonoid<Symbol> {
+  Cons { head: ^p, tail: segments |> map(s => symbol_intern_lexeme(lexeme: s)) }
+}
+
+fn ss_binds_bare(index: SymbolIndex, from: FreeMonoid<String>, name: String) -> Bool {
+  match symbol_index_lexical_lookup(index: index, position: ss_path(segments: from), name: symbol_intern_lexeme(lexeme: name)) {
+    LexicalHit { node: _, path: _ } => true
+    LexicalAmbiguous { candidates: _ } => false
+    LexicalUnbound => false
+  }
+}
+
+fn ss_indexed(index: SymbolIndex, segments: FreeMonoid<String>) -> Bool {
+  match symbol_index_lookup(index: index, qualified_path: ss_path(segments: segments)) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn ss_boundary_holds(index: SymbolIndex) -> Bool {
+  !ss_binds_bare(index: index, from: ["s", "F", "Run"], name: "E")
+    && !ss_binds_bare(index: index, from: ["s", "F", "Run"], name: "s")
+    && ss_indexed(index: index, segments: ["s", "E"])
+    && ss_indexed(index: index, segments: ["s"])
+    && ss_binds_bare(index: index, from: ["s", "F", "Run"], name: "k")
+    && !ss_binds_bare(index: index, from: ["s", "a", "x", "Run"], name: "y")
+    && !ss_binds_bare(index: index, from: ["s", "a", "x", "Run"], name: "a")
+    && ss_indexed(index: index, segments: ["s", "a", "y"])
+}
+
+test fn a_service_namespace_is_a_lookup_boundary_holds() -> Bool {
+  match ss_boundary_index() {
+    Present { value: index } => ss_boundary_holds(index: index)
+    Absent => false
+  }
 }
