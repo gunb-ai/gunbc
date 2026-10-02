@@ -3,7 +3,7 @@ module gunbc.spark.serving_promotion
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import v2.std.optional { Present, Absent }
-import std.measure { BasisPoint, basis_point, basis_point_count }
+import std.measure { BasisPoint, basis_point, basis_point_count, Second, second_count }
 import v2.std.algebra { length }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.spark.serving_performance_subject { ServingPerformanceSubject, serving_subject_key }
@@ -76,7 +76,8 @@ type WorkloadCalibrationReceipt {
   subject_key: String
   trace_digest: NonEmptyStr
   run_id: NonEmptyStr
-  accepted_turns_per_hour: Nat?
+  accepted_turns: Nat?
+  observation_window: Second?
   sustained_concurrency: Nat
   preemptions: Nat?
   engine_restarts: Nat?
@@ -84,19 +85,30 @@ type WorkloadCalibrationReceipt {
   evidence: NonEmptyStr
 }
 
-// AN UNOBSERVED COUNT IS NOT ZERO. A producer that did not read preemptions, restarts or OOM events
-// leaves them absent, and the fold names each as missing rather than reading absence as a clean run.
-fn calibration_count_missing(name: String, n: Nat?) -> List<NonEmptyStr> {
-  match n {
-    Absent => [join(["workload calibration: ", name, " was not observed in this run"], "") as NonEmptyStr]
-    Present { value: _ } => []
+// AN UNOBSERVED COUNT IS NOT ZERO, AND THE TYPE KEEPS IT THAT WAY (review 74153): the three counts
+// are matched together and read only in the arm where every one is Present, so there is no default
+// to fall back on and no ordering of branches to rely on.
+type CalibrationCounts
+  = CalibrationCountsObserved { preemptions: Nat, engine_restarts: Nat, out_of_memory_events: Nat }
+  | CalibrationCountsMissing { missing: List<NonEmptyStr> }
+
+fn calibration_counts(r: WorkloadCalibrationReceipt) -> CalibrationCounts {
+  match r.preemptions {
+    Absent => CalibrationCountsMissing { missing: concat(["workload calibration: preemptions was not observed in this run" as NonEmptyStr], calibration_other_counts_missing(r: r)) }
+    Present { value: p } => match r.engine_restarts {
+      Absent => CalibrationCountsMissing { missing: concat(["workload calibration: engine restarts was not observed in this run" as NonEmptyStr], match r.out_of_memory_events { Absent => ["workload calibration: OOM events was not observed in this run" as NonEmptyStr]  Present { value: _ } => [] }) }
+      Present { value: e } => match r.out_of_memory_events {
+        Absent => CalibrationCountsMissing { missing: ["workload calibration: OOM events was not observed in this run" as NonEmptyStr] }
+        Present { value: o } => CalibrationCountsObserved { preemptions: p, engine_restarts: e, out_of_memory_events: o }
+      }
+    }
   }
 }
 
-// ONLY READ AFTER calibration_count_missing HAS CONFIRMED EVERY COUNT PRESENT, so its Absent arm is
-// never the answer to a question the fold asks.
-fn observed_count(n: Nat?) -> Nat {
-  match n { Absent => 0  Present { value: v } => v }
+fn calibration_other_counts_missing(r: WorkloadCalibrationReceipt) -> List<NonEmptyStr> {
+  concat(
+    match r.engine_restarts { Absent => ["workload calibration: engine restarts was not observed in this run" as NonEmptyStr]  Present { value: _ } => [] },
+    match r.out_of_memory_events { Absent => ["workload calibration: OOM events was not observed in this run" as NonEmptyStr]  Present { value: _ } => [] })
 }
 
 type ServingPromotionEvidence {
@@ -270,12 +282,14 @@ fn calibration_missing(key: String, c: WorkloadCalibrationReceipt?, incumbent_ke
     Absent => ["workload calibration: no receipt on the real trace for this subject" as NonEmptyStr]
     Present { value: r } =>
       if r.subject_key != key { ["workload calibration: the receipt names another subject" as NonEmptyStr] }
-      else if length(concat(calibration_count_missing(name: "OOM events", n: r.out_of_memory_events), concat(calibration_count_missing(name: "engine restarts", n: r.engine_restarts), calibration_count_missing(name: "preemptions", n: r.preemptions)))) > 0 {
-        concat(calibration_count_missing(name: "OOM events", n: r.out_of_memory_events), concat(calibration_count_missing(name: "engine restarts", n: r.engine_restarts), calibration_count_missing(name: "preemptions", n: r.preemptions)))
-      } else if observed_count(n: r.out_of_memory_events) > 0 || observed_count(n: r.engine_restarts) > 0 {
-        [join(["workload calibration: OOM events or engine restarts in run ", r.run_id as String], "") as NonEmptyStr]
-      } else if policy.require_zero_preemptions && observed_count(n: r.preemptions) > 0 {
-        [join(["workload calibration: preemptions in run ", r.run_id as String], "") as NonEmptyStr]
+      else {
+       match calibration_counts(r: r) {
+        CalibrationCountsMissing { missing: ms } => ms
+        CalibrationCountsObserved { preemptions: pre, engine_restarts: restarts, out_of_memory_events: ooms } =>
+      if ooms > 0 || restarts > 0 {
+        [join(["workload calibration: ", to_string(ooms), " OOM event(s) and ", to_string(restarts), " engine restart(s) in run ", r.run_id as String], "") as NonEmptyStr]
+      } else if policy.require_zero_preemptions && pre > 0 {
+        [join(["workload calibration: ", to_string(pre), " preemption(s) in run ", r.run_id as String], "") as NonEmptyStr]
       } else {
         match incumbent {
           Absent => ["workload calibration: no incumbent receipt on the same trace to compare against" as NonEmptyStr]
@@ -287,20 +301,31 @@ fn calibration_missing(key: String, c: WorkloadCalibrationReceipt?, incumbent_ke
               ["workload calibration: the incumbent was measured on a different trace" as NonEmptyStr]
             } else if !policy.require_goodput_at_least_incumbent { [] }
             else {
-              match r.accepted_turns_per_hour {
-                Absent => ["workload calibration: this subject's accepted turns/hour was not measured" as NonEmptyStr]
+              match r.accepted_turns {
+                Absent => ["workload calibration: this subject's accepted turns were not counted" as NonEmptyStr]
                 Present { value: mine } =>
-                  match i.accepted_turns_per_hour {
-                    Absent => ["workload calibration: the incumbent's accepted turns/hour was not measured" as NonEmptyStr]
+                  match i.accepted_turns {
+                    Absent => ["workload calibration: the incumbent's accepted turns were not counted" as NonEmptyStr]
                     Present { value: theirs } =>
-                      if mine < theirs {
-                        [join(["workload calibration: ", to_string(mine), " accepted turns/hour is below the incumbent's ", to_string(theirs)], "") as NonEmptyStr]
-                      } else { [] }
+                      match r.observation_window {
+                        Absent => ["workload calibration: this subject's observation window was not recorded" as NonEmptyStr]
+                        Present { value: wm } => match i.observation_window {
+                          Absent => ["workload calibration: the incumbent's observation window was not recorded" as NonEmptyStr]
+                          Present { value: wt } =>
+                            if second_count(s: wm) == 0 || second_count(s: wt) == 0 {
+                              ["workload calibration: a zero-length observation window carries no rate" as NonEmptyStr]
+                            } else if mine * second_count(s: wt) < theirs * second_count(s: wm) {
+                              [join(["workload calibration: ", to_string(mine), " accepted turns in ", to_string(second_count(s: wm)), "s is a lower rate than the incumbent's ", to_string(theirs), " in ", to_string(second_count(s: wt)), "s"], "") as NonEmptyStr]
+                            } else { [] }
+                        }
+                      }
                   }
               }
             }
             }
         }
+      }
+       }
       }
   }
 }
