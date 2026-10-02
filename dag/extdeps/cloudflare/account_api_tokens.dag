@@ -1,4 +1,5 @@
 module extdeps.cloudflare.account_api_tokens
+import std.resources { Network }
 
 // THE DECLARING MODULE IS NAMED, NOT A MODULE THAT MERELY MENTIONS THE SPELLING. std.types does not
 // declare String -- std.string_type does (type String = FreeMonoid<Char>) -- so importing it from
@@ -15,7 +16,6 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.transports.rest { RestOutcome }
 import extdeps.cloudflare.client_v4 {
-import std.resources { Network }
   cloudflare_client_v4_base,
   CloudflareApiError
 }

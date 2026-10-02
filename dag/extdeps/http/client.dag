@@ -1,4 +1,5 @@
 module extdeps.http.client
+import std.resources { Network }
 
 import std.types { NonEmptyStr, Bool, List, Unit, Int }
 import std.string_type { String }
@@ -6,7 +7,6 @@ import std.measure { Second, second_count }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tools.curl {
-import std.resources { Network }
   curl_localhost_connect_timeout,
   curl_localhost_max_time,
 }

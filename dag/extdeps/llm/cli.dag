@@ -1,4 +1,5 @@
 module extdeps.llm.cli
+import std.resources { Network }
 
 import extdeps.tools.env { env_path_resolved_program }
 import std.algebra { trim }
@@ -8,7 +9,6 @@ import std.string_type { String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.languages.json.grammar {
-import std.resources { Network }
   JsonTextParseResult, JsonTextParseOk, JsonTextParseFail,
   json_text_skip_ws,
   json_text_starts_with_at,

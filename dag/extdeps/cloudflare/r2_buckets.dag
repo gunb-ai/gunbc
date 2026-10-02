@@ -1,4 +1,5 @@
 module extdeps.cloudflare.r2_buckets
+import std.resources { Network }
 
 import std.types { NonEmptyStr, String, List, Secret, HttpStatus }
 import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
@@ -12,7 +13,6 @@ import extdeps.cloudflare.client_v4 {
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.cloudflare.r2 {
-import std.resources { Network }
   r2_create_bucket_authority,
   r2_get_bucket_authority,
   r2_error_codes_authority,
