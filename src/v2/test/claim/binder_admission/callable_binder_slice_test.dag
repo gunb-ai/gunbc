@@ -1,7 +1,10 @@
 module v2.test.claim.binder_admission.callable_binder_slice
 
 import v2.compiler.resolve {
-  LexicalFrame,
+  LexicalBinding,
+  frame_binders_add,
+  frame_binders_empty,
+  lexical_frame,
   NotDeclaring,
   BinderAdmission,
   BinderDuplicateInFrame,
@@ -11,7 +14,7 @@ import v2.compiler.resolve {
   Scope,
   ScopeFrame,
   ScopeRoot,
-  add_arrow_domain_named_params,
+  arrow_domain_frame_binders,
   admit_value_binders,
   empty_canonical_symbol_set,
   empty_namespace,
@@ -41,9 +44,9 @@ import v2.std.node {
   TypeNode,
 
 }
-import v2.std.optional { Absent, Present }
+import v2.std.optional { Absent, Present, optional_absent }
 import v2.std.logic { Bool }
-import std.occurrence_identity { OccurrenceSynthetic }
+import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
 
 // THE CALLABLE-BINDER SLICE, READ AT ONE INTERFACE EACH, WITH SUPPLIED NODES. Every claim here
 // constructs the node it asks about. None assembles source, resolves a corpus or runs infer: the
@@ -110,7 +113,7 @@ fn cbs_admits(locals: Map<Symbol, Symbol>, name: Symbol) -> Bool {
 }
 
 fn cbs_arrow_locals() -> Map<Symbol, Symbol> {
-  add_arrow_domain_named_params(n: cbs_fn_literal_shaped_arrow(), acc: empty_map())
+  arrow_domain_frame_binders(n: cbs_fn_literal_shaped_arrow()).locals
 }
 
 // (1) THE ARROW PATH ADMITS BOTH BINDERS. So resolve's binder model is not the defect: a callable
@@ -128,7 +131,7 @@ test fn cbs_the_arrow_path_admits_no_undeclared_name_holds() -> Bool {
 
 // (3) THE FOLD SEAM ADMITS NEITHER BINDER -- THE DISCRIMINATING RED FOR THIS SLICE. The step literal
 // is destructured into an iteration body and ONE carrier symbol (v2.compiler.fold_lowering
-// fold_call_seam_from_step), and the seam it builds is a Loop, not an Arrow. add_arrow_domain_named_params
+// fold_call_seam_from_step), and the seam it builds is a Loop, not an Arrow. arrow_domain_frame_binders
 // answers the empty map for it because it is not an Arrow at all, and resolve harvests binders in
 // exactly two places -- an Arrow's domain and a Bind's atom -- with NO loop-carrier harvester. So the
 // body's `found` reaches the bare-name census and refuses as declared in several modules.
@@ -137,10 +140,9 @@ test fn cbs_the_arrow_path_admits_no_undeclared_name_holds() -> Bool {
 // constructor and loop carriers go through the one binder-admission operation, the seam admits its
 // binders and this row must be rewritten to assert that, not deleted (DESIGN section 4b(4)).
 test fn cbs_the_fold_seam_admits_no_binder_today_holds() -> Bool {
-  let seam_locals = add_arrow_domain_named_params(
-    n: cbs_carrier_loop(body: cbs_atom(id: ^step_body), carrier: ^found),
-    acc: empty_map()
-  )
+  let seam_locals = arrow_domain_frame_binders(
+    n: cbs_carrier_loop(body: cbs_atom(id: ^step_body), carrier: ^found)
+  ).locals
   !cbs_admits(locals: seam_locals, name: ^found)
     && !cbs_admits(locals: seam_locals, name: ^e)
 }
@@ -166,8 +168,24 @@ fn cbs_root_scope_declaring(name: Symbol) -> Scope {
   }
 }
 
+// A Lexical frame as resolve builds one (v2.compiler.resolve lexical_frame over frame_binders_add): the name
+// is both a local and a recorded binding, so a use it answers is minted as a lexical reference rather than
+// refused as unrecorded.
 fn cbs_frame_binding(name: Symbol) -> Scope {
-  ScopeFrame { locals: map_insert(empty_map(), name, name), outer: cbs_root_scope(), kind: LexicalFrame { binders: empty_map() } }
+  lexical_frame(
+    fb: frame_binders_add(
+      fb: frame_binders_empty(),
+      name: name,
+      binding: LexicalBinding { binder_site: OccurrenceMinted { id: OccurrenceId { value: 1 } }, declared: optional_absent() }
+    ),
+    outer: cbs_root_scope()
+  )
+}
+
+// A use with a MINTED occurrence: a lexical reference is keyed by its own occurrence, and a synthetic one
+// refuses as unkeyed (resolve_lexical_reference), which would answer for a different reason than row (9)'s.
+fn cbs_minted_atom(id: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: id } }, children: [], occurrence_id: OccurrenceMinted { id: OccurrenceId { value: 2 } } }
 }
 
 fn cbs_admitted_has(a: BinderAdmission, name: Symbol) -> Bool {
@@ -278,7 +296,7 @@ test fn cbs_a_bare_loop_does_not_bind_its_carrier_holds() -> Bool {
 test fn cbs_a_loop_carrier_bound_above_resolves_holds() -> Bool {
   match resolve_node_walk(
     ctx: cbs_ctx(scope: cbs_frame_binding(name: ^found)),
-    n: cbs_carrier_loop(body: cbs_atom(id: ^found), carrier: ^found)
+    n: cbs_carrier_loop(body: cbs_minted_atom(id: ^found), carrier: ^found)
   ) {
     ResolveWalkAccepted { value: _, diagnostics: _, lexical: _ } => true
     ResolveWalkRefused { first: _, rest: _, observation: _ } => false

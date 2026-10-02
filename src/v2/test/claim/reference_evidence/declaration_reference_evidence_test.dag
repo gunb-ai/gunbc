@@ -495,7 +495,7 @@ fn dre_imported_reference_source() -> Outcome<ResolvedTree> {
 // named "a resolved-declaration index over every resolved module root ... minted by resolve beside the
 // per-module carrier", and that is what v2.compiler.resolve resolved_tree_of now receives: the closure's
 // resolved roots, folded through the existing single-root door, assembled by v2.compiler.name_resolve
-// closure_resolved_roots. The fact stayed resolve's to own, as this row said it must.
+// closure_declarations_demand. The fact stayed resolve's to own, as this row said it must.
 //
 // DESIGN section 4b(4) IS WHY THIS DID NOT RETIRE. An expecting-red probe that greens when its wall lands
 // flips to a permanent regression control; it does not disappear, because the climb's evidence is what keeps

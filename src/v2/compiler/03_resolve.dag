@@ -262,13 +262,13 @@ fn resolved_declarations_of(root: Node) -> SymbolIndex {
 fn resolved_tree_of(
   root: Node,
   symbol_index: SymbolIndex,
-  closure_roots: FreeMonoid<Node>,
+  closure_declarations: SymbolIndex,
   lexical: List<LexicalBindingEntry>
 ) -> ResolvedTree {
   ResolvedTree {
     root: root,
     symbol_index: symbol_index,
-    resolved_declarations: resolved_declarations_over(roots: closure_roots, subject: root),
+    resolved_declarations: resolved_declarations_over(closure: closure_declarations, subject: root),
     lexical_bindings: fold(lexical, init: empty_map(), f: fn(m, e) { map_insert(m, e.reference, e.binding) })
   }
 }
@@ -284,36 +284,17 @@ fn resolved_tree_lexical_binding(tree: ResolvedTree, reference: Node) -> Optiona
   }
 }
 
-// ONE FILL, FOLDED OVER EVERY RESOLVED ROOT, rather than a new multi-root door or a merge of two indexes.
-// symbol_index_fill_module_declarations is already the single-root door and keys every declaration at its
-// OWN module's qualified name -- its header states that no other root can write those paths -- so folding it
-// is total and order-independent, and no index-union authority needs to exist. A root whose module name does
-// not resolve contributes nothing, which is that function's existing behaviour and not a new drop.
+// THE CLOSURE INDEX IS PRODUCED ONCE PER CONTEXT (v2.compiler.name_resolve closure_declarations_demand) and
+// only the SUBJECT is filled here. symbol_index_fill_module_declarations keys every declaration at its OWN
+// module's qualified name, so filling the subject over the closure index is total and order-independent.
 //
-// RECORD AND RESOURCE PAYLOAD MARKS ARE NOT CARRIED HERE, AND THAT IS INHERITED RATHER THAN CHOSEN. The
-// fill takes record_declarations and resource_declarations carriers captured at normalize, and resolved_declarations_of passed Empty for it before
-// this change; the fold passes Empty for every provider root for the same reason -- a resolved Node does not
-// carry the normalize-time record roster, and inventing one here would be a second authority for a fact
-// v2.compiler.normalize owns. The consequence is precise and bounded: v2.std.symbol_index
-// symbol_index_declared_payload_at answers Absent for a RECORD in this index, so a reader that asks it would
-// take a record for a binder, exactly as that fill's own header warns. The projection path reads through
-// symbol_index_lookup and is unaffected, which is why the cross-module control passes. A reader that needs
-// the payload KIND from the closure index must be given the roster first; it must not be inferred from a
-// lookup hit.
-//
-// THE SUBJECT IS FOLDED LAST AND UNCONDITIONALLY. It is normally already a member of closure_roots, but a
-// caller that holds no closure -- the per-module native door, before its accumulation is threaded -- passes
-// an empty list, and this still answers exactly what it answered before: the subject's own declarations. So
-// the change cannot take a capability away from a caller that has not yet been given the closure.
-fn resolved_declarations_over(roots: FreeMonoid<Node>, subject: Node) -> SymbolIndex {
+// THE SUBJECT IS FILLED UNCONDITIONALLY. It is normally already in the closure index, but a caller that holds
+// no closure passes empty_symbol_index(), and this still answers exactly what it answered before: the
+// subject's own declarations. So the change cannot take a capability away from a caller that has not yet been
+// given the closure.
+fn resolved_declarations_over(closure: SymbolIndex, subject: Node) -> SymbolIndex {
   symbol_index_fill_module_declarations(
-    index: fold_list(
-      xs: roots,
-      empty: empty_symbol_index(),
-      cons: fn(acc, r) {
-        symbol_index_fill_module_declarations(index: acc, root: r, record_declarations: Empty, resource_declarations: Empty)
-      }
-    ),
+    index: closure,
     root: subject,
     record_declarations: Empty,
     resource_declarations: Empty
@@ -526,7 +507,8 @@ fn arrow_domain_binder_name_list(n: Node) -> List<Symbol> {
         FirstPositionalFound { target: domain } => conj_named_binder_name_list(root: domain)
         FirstPositionalAbsent => []
       }
-    _ => []
+    TypeNode { connective: _ } => []
+    ComputationNode { behavior: _ } => []
   }
 }
 
@@ -539,7 +521,8 @@ fn conj_named_binder_name_list(root: Node) -> List<Symbol> {
           Absent => acc
         }
       })
-    _ => []
+    TypeNode { connective: _ } => []
+    ComputationNode { behavior: _ } => []
   }
 }
 
@@ -559,7 +542,8 @@ fn pattern_binder_name_list(ctx: ResolveContext, pat: Node) -> List<Symbol> {
             } else {
               list_snoc_item(xs: acc, item: id)
             }
-          _ => concat(acc, pattern_binder_name_list(ctx: ctx, pat: e.target))
+          TypeNode { connective: _ } => concat(acc, pattern_binder_name_list(ctx: ctx, pat: e.target))
+          ComputationNode { behavior: _ } => concat(acc, pattern_binder_name_list(ctx: ctx, pat: e.target))
         }
       })
   }
@@ -578,7 +562,8 @@ fn bind_binder_name_list(n: Node) -> List<Symbol> {
       } else {
         []
       }
-    _ => []
+    TypeNode { connective: _ } => []
+    ComputationNode { behavior: _ } => []
   }
 }
 
@@ -589,7 +574,8 @@ fn atom_name_list(root: Node) -> List<Symbol> {
       init: fn(n0) {
         match n0.kind {
           TypeNode { connective: Atom { identity: sym } } => [sym]
-          _ => []
+          TypeNode { connective: _ } => []
+          ComputationNode { behavior: _ } => []
         }
       },
       step: fn(acc, _e, child) { concat(acc, child) }
@@ -1401,7 +1387,9 @@ fn resolve_bound_head_projection(
                   rejected: diagnostics_singleton(d: unbound_symbol_diagnostic(n: n))
                 )
               }
-            Present { value: base } =>
+            Present { value: Rejected { diagnostics: r } } =>
+              Rejected { diagnostics: rejected_with_pending(pending: pending, rejected: r) }
+            Present { value: Accepted { value: base, diagnostics: _ } } =>
               outcome_with_diagnostics(
                 value: fold_list(
                   xs: field_segments,
@@ -1432,25 +1420,49 @@ fn resolve_bound_head_projection(
 // the path never having been this function's subject at all; the later receipt established the second. Its
 // deletion is therefore a correctness repair on this function's own contract, claiming nothing about the
 // eight.
-fn resolve_projection_base(ctx: ResolveContext, head_segment: Node) -> Optional<Node> {
+//
+// A NAMED FN'S PARAMETER AS THE HEAD IS THE SAME PATH-KEYED REFERENCE IT IS ANYWHERE ELSE. A ParameterFrame
+// answers through resolve_frame_bound_reference, the one route that mints parameter_reference_node, so infer
+// grounds the receiver through the resolved declarations exactly as it grounds a bare use of that parameter
+// (v2.compiler.infer infer_parameter_reference_facts). A bare atom here was typed only by the scope search
+// that main deleted, so it would leave every such receiver underived. A Lexical or type-parameter head stays
+// the canonical atom: minting a lexical reference here would need its binding recorded, and this Outcome<Node>
+// route carries no lexical entries, so it would refuse as unrecorded at infer. DECLARED FRONTIER, TRIGGER
+// NAMING THE CAPABILITY: the projection route carries LexicalBindingEntry beside its node, SUFFICIENT FOR a
+// let, match-arm or lambda binder to be a typed projection receiver.
+fn resolve_projection_base(ctx: ResolveContext, head_segment: Node) -> Optional<Outcome<Node>> {
   match head_segment.kind {
     TypeNode { connective: Atom { identity: name } } =>
       match lookup_chain(s: ctx.scope, name: name) {
         Rejected { diagnostics: _ } => optional_absent()
         Accepted { value: found, diagnostics: _ } =>
           match found {
+            BoundInFrame { canonical: canonical, kind: ParameterFrame { arrow_path: arrow_path } } =>
+              optional_present(value: match resolve_frame_bound_reference(
+                ctx: ctx,
+                n: head_segment,
+                canonical: canonical,
+                kind: ParameterFrame { arrow_path: arrow_path },
+                pending: None
+              ) {
+                Accepted { value: atom, diagnostics: d } => Accepted { value: atom.node, diagnostics: d }
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+              })
             BoundInFrame { canonical: canonical, kind: _ } =>
-              optional_present(
-                value: canonical_atom(identity: canonical, occurrence_id: head_segment.occurrence_id)
-              )
+              optional_present(value: Accepted {
+                value: canonical_atom(identity: canonical, occurrence_id: head_segment.occurrence_id),
+                diagnostics: None
+              })
             BoundAtRoot { canonical: canonical } =>
-              optional_present(
-                value: canonical_atom(identity: canonical, occurrence_id: head_segment.occurrence_id)
-              )
+              optional_present(value: Accepted {
+                value: canonical_atom(identity: canonical, occurrence_id: head_segment.occurrence_id),
+                diagnostics: None
+              })
             ScopeUnbound => optional_absent()
           }
       }
-    _ => optional_absent()
+    TypeNode { connective: _ } => optional_absent()
+    ComputationNode { behavior: _ } => optional_absent()
   }
 }
 
@@ -2117,12 +2129,12 @@ fn resolve_walk_outcome(w: ResolveNodeWalk) -> Outcome<Node> {
 fn resolved_tree_outcome(
   w: ResolveNodeWalk,
   symbol_index: SymbolIndex,
-  closure_roots: FreeMonoid<Node>
+  closure_declarations: SymbolIndex
 ) -> Outcome<ResolvedTree> {
   match w {
     ResolveWalkAccepted { value: v, diagnostics: d, lexical: l } =>
       Accepted {
-        value: resolved_tree_of(root: v, symbol_index: symbol_index, closure_roots: closure_roots, lexical: l),
+        value: resolved_tree_of(root: v, symbol_index: symbol_index, closure_declarations: closure_declarations, lexical: l),
         diagnostics: d
       }
     ResolveWalkRefused { first: f, rest: _, observation: _ } => Rejected { diagnostics: f }
@@ -3921,7 +3933,7 @@ fn resolve_with_namespace_policy(
       policy: policy
     ),
     symbol_index: namespace.symbol_index,
-    closure_roots: []
+    closure_declarations: empty_symbol_index()
   )
 }
 

@@ -1338,6 +1338,14 @@ fn eval_lexical_reference(node: Node, label: Symbol, environment: EvaluationEnvi
 // accepted program reaches this arm. DECLARED FRONTIER, TRIGGER NAMING THE CAPABILITY: gunbc#12506's
 // named-call route evaluates a declared fn body over resolver output, SUFFICIENT FOR eval to key
 // parameters by QualifiedName with this refusal arm deleted.
+//
+// THE REFERENCE CARRIES ITS OWN KEY, so the body looks the actual up under the path the call bound it
+// at -- the same key eval_parameter_binding_key produced, which is why that constructor is the only
+// place either side derives one. The refusal that stood here answered for EVERY parameter reference,
+// which was honest while no route evaluated a declared body over resolver output and became a wall
+// against the capability once one did. It does not disappear: a reference whose path the environment
+// does not hold still refuses with the same reason, so a wrong path or an unbound parameter is still
+// a located refusal and only a BOUND one now executes.
 fn eval_type_node_atom(
   node: Node,
   interpretation: InterpretationAlgebra,
@@ -1351,13 +1359,6 @@ fn eval_type_node_atom(
     Absent =>
   match parameter_reference_path_optional(node: node) {
     Present { value: path } =>
-      // THE REFERENCE CARRIES ITS OWN KEY, so the body looks the actual up under the path the call bound it
-      // at -- the same key eval_parameter_binding_key produced, which is why that constructor is the only
-      // place either side derives one. The refusal that stood here answered for EVERY parameter reference,
-      // which was honest while no route evaluated a declared body over resolver output and became a wall
-      // against the capability once one did. It does not disappear: a reference whose path the environment
-      // does not hold still refuses with the same reason, so a wrong path or an unbound parameter is still
-      // a located refusal and only a BOUND one now executes.
       match environment.bindings.lookup(eval_parameter_binding_key(parameter_path: path)) {
         Present { value: v } => Accepted { value: v, diagnostics: None }
         Absent =>
@@ -1849,6 +1850,10 @@ fn eval_callee_body_refusal_reason(form: ArrowBodyForm) -> Symbol {
 // declaration is not an Arrow with an admissible body. Neither arm falls through to the primitive
 // table, where a reference would be looked up by a name it does not have and reported as a missing
 // primitive rather than as the declaration it actually names.
+// THE CALLEE'S OWN DECLARING PATH, read off the reference the call carries rather than
+// re-resolved: eval is a consumer of resolution's answer here, never a second naming
+// authority. A callee that is not a declaration reference (a lambda) yields Absent and
+// its formals stay on the lexical route.
 fn eval_transform_node(
   node: Node,
   args: List<RuntimeValue>,
@@ -1889,10 +1894,6 @@ fn eval_transform_node(
                       environment: environment,
                       bind: interpretation.bind,
                       node: node,
-                      // THE CALLEE'S OWN DECLARING PATH, read off the reference the call carries rather than
-                      // re-resolved: eval is a consumer of resolution's answer here, never a second naming
-                      // authority. A callee that is not a declaration reference (a lambda) yields Absent and
-                      // its formals stay on the lexical route.
                       callee_path: declaration_reference_path_optional(node: callee_edge.target)
                     ),
                     f: fn(call_environment) {
@@ -2919,6 +2920,16 @@ fn eval_runtime_node_via_data_flow_fold(
   eval_fold_state_value(state: folded)
 }
 
+// A PARAMETER REFERENCE IS A LEAF HERE, NOT A STRUCTURE TO WALK. Its carrier is a marked Conj whose child
+// is the encoded declaring path (v2.std.qualified_name parameter_reference_node), so letting the data-flow
+// fold see it descends into that path and demands value-grounding for the internal representation of a
+// parameter identity -- the same defect this module already fixed for DECLARATION references, recorded at
+// eval_fold_is_callee_reference_edge, and the reason its regression control exists.
+//
+// IT RESOLVES THROUGH THE SAME KEY THE CALL BOUND IT AT, so eval_parameter_binding_key stays the only
+// place either side derives a key. A reference whose path the environment does not hold still refuses with
+// ^eval_rejected_parameter_reference_unbound, which is now a statement about a MISSING BINDING rather than
+// about the body's form.
 fn eval_runtime_node(
   node: Node,
   tree: InferredTree,
@@ -2927,16 +2938,6 @@ fn eval_runtime_node(
   runtime: V4EvaluatorRuntime,
   effect_io: EffectIoEvalContext
 ) -> Outcome<RuntimeValue> {
-  // A PARAMETER REFERENCE IS A LEAF HERE, NOT A STRUCTURE TO WALK. Its carrier is a marked Conj whose child
-  // is the encoded declaring path (v2.std.qualified_name parameter_reference_node), so letting the data-flow
-  // fold see it descends into that path and demands value-grounding for the internal representation of a
-  // parameter identity -- the same defect this module already fixed for DECLARATION references, recorded at
-  // eval_fold_is_callee_reference_edge, and the reason its regression control exists.
-  //
-  // IT RESOLVES THROUGH THE SAME KEY THE CALL BOUND IT AT, so eval_parameter_binding_key stays the only
-  // place either side derives a key. A reference whose path the environment does not hold still refuses with
-  // ^eval_rejected_parameter_reference_unbound, which is now a statement about a MISSING BINDING rather than
-  // about the body's form.
   if eval_parameter_reference_is_value(node: node) {
     eval_parameter_reference_value(node: node, environment: environment)
   } else if eval_runtime_node_is_control_transfer(node: node) {

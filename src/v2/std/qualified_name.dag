@@ -300,7 +300,8 @@ fn qualified_name_spine_segment_nodes(root: Node) -> Optional<List<Node>> {
       } else {
         optional_absent()
       }
-    _ => optional_absent()
+    TypeNode { connective: _ } => optional_absent()
+    ComputationNode { behavior: _ } => optional_absent()
   }
 }
 
