@@ -1810,16 +1810,21 @@ pub fn classify_binary_inputs(
     inputs: &[String],
     workspace: &std::path::Path,
     built_at: std::time::SystemTime,
-) -> Vec<BinaryInput> {
+) -> Result<Vec<BinaryInput>, String> {
+    // NO BUILD ROOT IS A REFUSAL, NOT A SKIPPED CHECK (review 74282). If no input names the
+    // crate manifest, the checkout the binary was built from is unknown, and judging the
+    // remaining inputs by mtime alone would answer `Fresh` for a binary another worktree built.
     let build_root = inputs
         .iter()
         .find(|p| p.ends_with("/src/v1/stage0/Cargo.toml"))
-        .map(|p| p.trim_end_matches("/src/v1/stage0/Cargo.toml").to_string());
+        .map(|p| p.trim_end_matches("/src/v1/stage0/Cargo.toml").to_string())
+        .ok_or_else(|| {
+            "its dep-info names no src/v1/stage0/Cargo.toml, so the checkout it was built from is unknown"
+                .to_string()
+        })?;
     let mut out = Vec::new();
-    if let Some(root) = &build_root {
-        if std::path::Path::new(root) != workspace {
-            out.push(BinaryInput::OutsideWorktree(root.clone()));
-        }
+    if std::path::Path::new(&build_root) != workspace {
+        out.push(BinaryInput::OutsideWorktree(build_root.clone()));
     }
     for input in inputs {
         if input.contains("/.git/") {
@@ -1832,7 +1837,7 @@ pub fn classify_binary_inputs(
         };
         out.push(classified);
     }
-    out
+    Ok(out)
 }
 
 /// The effectful half: read the running binary's dep-info and stat its inputs. Every failure is
@@ -1856,11 +1861,7 @@ fn observe_binary_inputs() -> BinaryInputObservation {
         let text = std::fs::read_to_string(&dep_info_path)
             .map_err(|e| format!("cannot read dep-info {}: {e}", dep_info_path.display()))?;
         let inputs = dep_info_inputs(&text)?;
-        Ok::<_, String>(classify_binary_inputs(
-            &inputs,
-            &cli_run::process_workspace_root(),
-            built_at,
-        ))
+        classify_binary_inputs(&inputs, &cli_run::process_workspace_root(), built_at)
     })();
     match observed {
         Ok(inputs) => BinaryInputObservation::Observed { binary, inputs },
@@ -2822,7 +2823,7 @@ mod binary_freshness_tests {
         );
         let inputs = dep_info_inputs(&text).unwrap();
         assert_eq!(inputs.len(), 5);
-        let classified = classify_binary_inputs(&inputs, &ws, built_at);
+        let classified = classify_binary_inputs(&inputs, &ws, built_at).unwrap();
         assert_eq!(
             classified.len(),
             4,
@@ -2833,11 +2834,19 @@ mod binary_freshness_tests {
         assert!(classified.contains(&BinaryInput::Missing(
             ws.join("gone.rs").display().to_string()
         )));
-        let elsewhere = classify_binary_inputs(&inputs, &dir.join("other"), built_at);
+        let elsewhere = classify_binary_inputs(&inputs, &dir.join("other"), built_at).unwrap();
         assert_eq!(
             elsewhere[0],
             BinaryInput::OutsideWorktree(ws.display().to_string())
         );
+        // NO MANIFEST, NO VERDICT: dep-info without the crate's Cargo.toml refuses rather than
+        // judging the other inputs by mtime alone (review 74282's silent-Fresh case).
+        let no_manifest = dep_info_inputs(&format!(
+            "/t/gunbc: {}\n",
+            old.display().to_string().replace(' ', "\\ ")
+        ))
+        .unwrap();
+        assert!(classify_binary_inputs(&no_manifest, &dir.join("other"), built_at).is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
