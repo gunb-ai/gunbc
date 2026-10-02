@@ -99,7 +99,7 @@ type CargoArtifactHit
 // two artifact messages naming one target means the stream describes a situation
 // this decode has no way to settle, and picking either reports a guess as an
 // observation. CargoArtifactExecutablePathEmpty exists because FilePath is String
-// where non_empty, so an empty path cannot become one — it refuses by name instead
+// where string_non_empty, so an empty path cannot become one — it refuses by name instead
 // of being cast into a carrier that would reject it anyway.
 type CargoArtifactSelection
   = CargoArtifactSelected { executable: FilePath }

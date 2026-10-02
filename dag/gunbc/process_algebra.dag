@@ -2,7 +2,7 @@ module gunbc.process_algebra
 
 import std.algebra { FreeMonoid, FreeSemigroup }
 import std.effects { OperationEffect }
-import std.types { Map, NonEmptyStr, Timestamp }
+import std.types { Map, NonEmptyStr, Timestamp, brand, range }
 
 type ProcessNodeId = NonEmptyStr where brand("ProcessNodeId")
 type ProcessSessionId = NonEmptyStr where brand("ProcessSessionId")
