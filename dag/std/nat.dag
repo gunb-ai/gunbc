@@ -140,6 +140,7 @@ data nat_semiring: CommutativeSemiring<Nat> = CommutativeSemiring {
   one: Succ { prev: Zero }
 }
 
+// AN ASCENDING RUN OF NATURALS IS ONE CONCEPT AND THIS IS ITS ONLY AUTHORITY. It lives beside Nat
 // rather than beside any consumer because the run is a fact about the naturals, not about runner
 // slots or DRAM channels; two consumers had each open-coded it as a bucket over hardcoded literal
 // lists, and both buckets were stranded at the widths their author happened to enumerate.

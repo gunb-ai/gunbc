@@ -489,6 +489,14 @@ fn variant_arm_is_declared_in_coproduct(
     false
 }
 
+fn kernel_raw_payload_constructor(name: &str, parent: Option<&String>) -> bool {
+    match name.rsplit('.').next().unwrap_or(name) {
+        "Present" | "Absent" | "Some" | "None" => parent_enum_is(parent, "Optional"),
+        "Holds" | "Violates" => parent_enum_is(parent, "Witness"),
+        _ => false,
+    }
+}
+
 fn parent_enum_is(parent: Option<&String>, expected_last: &str) -> bool {
     parent.is_some_and(|p| qualified_last_segment(p.clone()) == expected_last)
 }
@@ -7815,12 +7823,14 @@ fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
             .find_map(|arm| match &*arm_pattern(arm.clone()) {
                 // The optional and witness carriers ARE matched against a raw integer payload
                 // (their value-or-Null representation), so their constructors are not this case.
-                MatchPattern::VariantPattern { name, .. }
-                    if !matches!(
-                        name.rsplit('.').next().unwrap_or(name.as_str()),
-                        "Present" | "Absent" | "Some" | "None" | "Holds" | "Violates"
-                    ) =>
-                {
+                // The exemption is keyed on the pattern's PARENT carrier, the same key match_pattern's
+                // raw-unwrap arms use to accept such a payload, so it admits exactly the patterns those
+                // arms answer; a user coproduct with a variant spelled Some or Holds still refuses
+                // (review 73985). A DeclarationRef on the pattern is the next rung; see the seed-growth
+                // row gunbc.kernel_grounding_interpreter_seed_growth.
+                MatchPattern::VariantPattern {
+                    name, parent_enum, ..
+                } if !kernel_raw_payload_constructor(name, parent_enum.as_ref()) => {
                     Some(name.to_string())
                 }
                 _ => None,
