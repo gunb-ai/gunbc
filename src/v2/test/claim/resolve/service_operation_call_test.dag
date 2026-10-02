@@ -3,7 +3,8 @@ module v2.test.claim.resolve.service_operation_call
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.compiler.resolve { Namespace, NotDeclaring, ResolveContext, empty_canonical_symbol_set, resolve_node, scope_from_namespace }
-import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_root, symbol_index_fill_module_roots }
+import v2.std.namespace_alias { AliasBindingRow, ModuleBindingSource }
 import v2.extdeps.languages.dag { dag_grammar_atom, dag_language_model_surface_empty_prelude, dag_named_edge, namespace_graft_namespace_body_node }
 import v2.std.algebra { fold_list_node }
 import v2.std.arrow_signature { declared_signature }
@@ -137,4 +138,76 @@ test fn a_module_that_does_not_import_the_service_cannot_reach_it_RED() -> Bool 
 
 test fn a_module_nested_under_the_service_module_gets_no_implicit_scope_RED() -> Bool {
   !soc_resolves(at: "t.svc.inner", reference: "s.F.Run")
+}
+
+// AN IMPORTING MODULE REACHES THE SERVICE THROUGH ITS IMPORT ROW. The caller module t.caller carries the
+// binding row a whole-module `import t.svc` contributes for the namespace `s` it declares (s -> t.svc.s),
+// and the index is filled by the real multi-root route, symbol_index_fill_module_roots, which binds import
+// rows to a fixed point after every root's declarations. From t.caller, `s.F.Run` then resolves; the paired
+// RED is the identical caller with no row. This is the route a service-prefix change can drop (an imported
+// service prefix must keep binding), held here at the resolve boundary. Capturing the row from a parsed
+// `import` is the normalize capture's fact, not this claim's.
+fn soc_caller_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(name: ^dag_surface_module_header, target: dag_grammar_atom(id: ^dag_surface_module_header)),
+      dag_named_edge(name: ^dag_surface_module_header_qualified_name, target: soc_spine(dotted: "t.caller"))
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn soc_index_with_caller(rows: FreeMonoid<AliasBindingRow>) -> SymbolIndex {
+  symbol_index_fill_module_roots(
+    index: empty_symbol_index(),
+    roots: Cons {
+      head: ModuleBindingSource { root: soc_service_root(), import_bindings: Empty, record_declarations: Empty, resource_declarations: Empty },
+      tail: Cons {
+        head: ModuleBindingSource { root: soc_caller_root(), import_bindings: rows, record_declarations: Empty, resource_declarations: Empty },
+        tail: Empty
+      }
+    }
+  )
+}
+
+fn soc_resolves_in(index: SymbolIndex, at: String, reference: String) -> Bool {
+  let module_qn = qualified_name_from_dotted_string(dotted: at)
+  let namespace = Namespace {
+    bindings: empty_map(),
+    canonical_symbols: empty_canonical_symbol_set(),
+    symbol_index: index,
+    module_qn: module_qn,
+    test_code: test_code_index_empty(),
+    declared_in: module_qn,
+    imported_origins: empty_map()
+  }
+  match resolve_node(
+    ctx: ResolveContext {
+      scope: scope_from_namespace(namespace: namespace),
+      type_scope: scope_from_namespace(namespace: namespace),
+      namespace: namespace,
+      policy: NamespaceOnlyY,
+      position: module_qn,
+      lm: dag_language_model_surface_empty_prelude(),
+      under_module_root: false,
+      declaring: NotDeclaring
+    },
+    n: soc_spine(dotted: reference)
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn an_importing_module_calls_a_service_operation_holds() -> Bool {
+  soc_resolves_in(
+    index: soc_index_with_caller(rows: Cons { head: AliasBindingRow { binding: ^s, target: qualified_name_from_dotted_string(dotted: "t.svc.s") }, tail: Empty }),
+    at: "t.caller",
+    reference: "s.F.Run"
+  )
+}
+
+test fn the_same_caller_without_the_import_row_cannot_reach_it_RED() -> Bool {
+  !soc_resolves_in(index: soc_index_with_caller(rows: Empty), at: "t.caller", reference: "s.F.Run")
 }
