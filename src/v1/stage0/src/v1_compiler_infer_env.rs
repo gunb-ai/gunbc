@@ -706,6 +706,46 @@ pub fn surface_declarers_in_reach(
     }
 }
 
+pub fn surface_name_has_one_declarer(view: Rc<AncestryView>, name: String) -> bool {
+    match v1_rt::map_get(&view.kernel.clone(), name.clone()) {
+        Some(_) => false,
+        std::option::Option::None => {
+            match v1_rt::map_get(&view.pool.clone().exporters.clone(), name.clone()) {
+                Some(paths) => (paths.clone().len() as i64) == 1,
+                std::option::Option::None => false,
+            }
+        }
+    }
+}
+
+pub fn surface_single_exporter_binding(
+    view: Rc<AncestryView>,
+    name: String,
+) -> Option<Rc<TypeBinding>> {
+    match v1_rt::map_get(&view.pool.clone().exporters.clone(), name.clone()) {
+        std::option::Option::None => std::option::Option::None,
+        Some(paths) => match paths.clone().get(0).cloned() {
+            std::option::Option::None => std::option::Option::None,
+            Some(path) => {
+                if path == view.module_path {
+                    std::option::Option::None
+                } else {
+                    match v1_rt::map_get(&view.pool.clone().surfaces.clone(), path.clone()) {
+                        std::option::Option::None => std::option::Option::None,
+                        Some(exporter) => {
+                            if reach_has(view.reach.clone(), exporter.ordinal.clone()) {
+                                v1_rt::map_get(&exporter.own.clone(), name.clone())
+                            } else {
+                                std::option::Option::None
+                            }
+                        }
+                    }
+                }
+            }
+        },
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SurfaceForkWalk {
     pub winner: Option<Rc<TypeBinding>>,
@@ -805,7 +845,10 @@ pub fn ancestry_lookup(view: Rc<AncestryView>, name: String) -> Option<Rc<TypeBi
     match v1_rt::map_get(&view.rewrites.clone(), name.clone()) {
         Some(b) => Some(b.clone()),
         std::option::Option::None => {
-            if surface_has(
+            if surface_name_has_one_declarer(view.clone(), name.clone()) {
+                crate::phase_cpu::count("ancestry_lookup_single_exporter");
+                surface_single_exporter_binding(view.clone(), name.clone())
+            } else if surface_has(
                 view.pool.clone(),
                 view.kernel.clone(),
                 view.module_path.clone(),

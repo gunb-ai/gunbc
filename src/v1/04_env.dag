@@ -402,9 +402,48 @@ fn ancestry_lookup(view: AncestryView, name: String) -> TypeBinding? {
   match map_get(view.rewrites, name) {
     Present { value: b } => Present { value: b }
     Absent =>
-      if surface_has(pool: view.pool, kernel: view.kernel, module_path: view.module_path, reach: view.reach, name: name) {
+      if surface_name_has_one_declarer(view: view, name: name) {
+        surface_single_exporter_binding(view: view, name: name)
+      } else if surface_has(pool: view.pool, kernel: view.kernel, module_path: view.module_path, reach: view.reach, name: name) {
         ancestry_winner(pool: view.pool, kernel: view.kernel, imports: view.imports, name: name)
       } else { none }
+  }
+}
+
+// THE FAST PATH THE REPRESENTATION WAS DESIGNED WITH ("The winner", fast path): a name with exactly
+// one exporter in the pool and no kernel binding has one source, so every surface that carries it
+// carries that exporter's own binding, and the union's descent can only end there. Its answer is
+// therefore FINAL: own(E)[n] when E is in the closure, and absent otherwise (E outside the closure, or
+// E the module itself, whose own names are read before the ancestry). The descent is reserved for the
+// names that can actually disagree: multi-exporter and kernel names.
+fn surface_name_has_one_declarer(view: AncestryView, name: String) -> Bool {
+  match map_get(view.kernel, name) {
+    Present { value: _ } => false
+    Absent =>
+      match map_get(view.pool.exporters, name) {
+        Present { value: paths } => count(paths) == 1
+        Absent => false
+      }
+  }
+}
+
+fn surface_single_exporter_binding(view: AncestryView, name: String) -> TypeBinding? {
+  match map_get(view.pool.exporters, name) {
+    Absent => none
+    Present { value: paths } =>
+      match get(paths, 0) {
+        Absent => none
+        Present { value: path } =>
+          if path == view.module_path {
+            none
+          } else {
+            match map_get(view.pool.surfaces, path) {
+              Absent => none
+              Present { value: exporter } =>
+                if reach_has(reach: view.reach, ordinal: exporter.ordinal) { map_get(exporter.own, name) } else { none }
+            }
+          }
+      }
   }
 }
 
