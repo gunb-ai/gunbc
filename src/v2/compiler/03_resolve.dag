@@ -262,13 +262,13 @@ fn resolved_declarations_of(root: Node) -> SymbolIndex {
 fn resolved_tree_of(
   root: Node,
   symbol_index: SymbolIndex,
-  closure_roots: FreeMonoid<Node>,
+  closure_declarations: SymbolIndex,
   lexical: List<LexicalBindingEntry>
 ) -> ResolvedTree {
   ResolvedTree {
     root: root,
     symbol_index: symbol_index,
-    resolved_declarations: resolved_declarations_over(roots: closure_roots, subject: root),
+    resolved_declarations: resolved_declarations_over(closure: closure_declarations, subject: root),
     lexical_bindings: fold(lexical, init: empty_map(), f: fn(m, e) { map_insert(m, e.reference, e.binding) })
   }
 }
@@ -284,36 +284,17 @@ fn resolved_tree_lexical_binding(tree: ResolvedTree, reference: Node) -> Optiona
   }
 }
 
-// ONE FILL, FOLDED OVER EVERY RESOLVED ROOT, rather than a new multi-root door or a merge of two indexes.
-// symbol_index_fill_module_declarations is already the single-root door and keys every declaration at its
-// OWN module's qualified name -- its header states that no other root can write those paths -- so folding it
-// is total and order-independent, and no index-union authority needs to exist. A root whose module name does
-// not resolve contributes nothing, which is that function's existing behaviour and not a new drop.
+// THE CLOSURE INDEX IS PRODUCED ONCE PER CONTEXT (v2.compiler.name_resolve closure_declarations_demand) and
+// only the SUBJECT is filled here. symbol_index_fill_module_declarations keys every declaration at its OWN
+// module's qualified name, so filling the subject over the closure index is total and order-independent.
 //
-// RECORD AND RESOURCE PAYLOAD MARKS ARE NOT CARRIED HERE, AND THAT IS INHERITED RATHER THAN CHOSEN. The
-// fill takes record_declarations and resource_declarations carriers captured at normalize, and resolved_declarations_of passed Empty for it before
-// this change; the fold passes Empty for every provider root for the same reason -- a resolved Node does not
-// carry the normalize-time record roster, and inventing one here would be a second authority for a fact
-// v2.compiler.normalize owns. The consequence is precise and bounded: v2.std.symbol_index
-// symbol_index_declared_payload_at answers Absent for a RECORD in this index, so a reader that asks it would
-// take a record for a binder, exactly as that fill's own header warns. The projection path reads through
-// symbol_index_lookup and is unaffected, which is why the cross-module control passes. A reader that needs
-// the payload KIND from the closure index must be given the roster first; it must not be inferred from a
-// lookup hit.
-//
-// THE SUBJECT IS FOLDED LAST AND UNCONDITIONALLY. It is normally already a member of closure_roots, but a
-// caller that holds no closure -- the per-module native door, before its accumulation is threaded -- passes
-// an empty list, and this still answers exactly what it answered before: the subject's own declarations. So
-// the change cannot take a capability away from a caller that has not yet been given the closure.
-fn resolved_declarations_over(roots: FreeMonoid<Node>, subject: Node) -> SymbolIndex {
+// THE SUBJECT IS FILLED UNCONDITIONALLY. It is normally already in the closure index, but a caller that holds
+// no closure passes empty_symbol_index(), and this still answers exactly what it answered before: the
+// subject's own declarations. So the change cannot take a capability away from a caller that has not yet been
+// given the closure.
+fn resolved_declarations_over(closure: SymbolIndex, subject: Node) -> SymbolIndex {
   symbol_index_fill_module_declarations(
-    index: fold_list(
-      xs: roots,
-      empty: empty_symbol_index(),
-      cons: fn(acc, r) {
-        symbol_index_fill_module_declarations(index: acc, root: r, record_declarations: Empty, resource_declarations: Empty)
-      }
-    ),
+    index: closure,
     root: subject,
     record_declarations: Empty,
     resource_declarations: Empty
@@ -2142,12 +2123,12 @@ fn resolve_walk_outcome(w: ResolveNodeWalk) -> Outcome<Node> {
 fn resolved_tree_outcome(
   w: ResolveNodeWalk,
   symbol_index: SymbolIndex,
-  closure_roots: FreeMonoid<Node>
+  closure_declarations: SymbolIndex
 ) -> Outcome<ResolvedTree> {
   match w {
     ResolveWalkAccepted { value: v, diagnostics: d, lexical: l } =>
       Accepted {
-        value: resolved_tree_of(root: v, symbol_index: symbol_index, closure_roots: closure_roots, lexical: l),
+        value: resolved_tree_of(root: v, symbol_index: symbol_index, closure_declarations: closure_declarations, lexical: l),
         diagnostics: d
       }
     ResolveWalkRefused { first: f, rest: _, observation: _ } => Rejected { diagnostics: f }
@@ -3946,7 +3927,7 @@ fn resolve_with_namespace_policy(
       policy: policy
     ),
     symbol_index: namespace.symbol_index,
-    closure_roots: []
+    closure_declarations: empty_symbol_index()
   )
 }
 

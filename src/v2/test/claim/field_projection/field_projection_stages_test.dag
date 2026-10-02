@@ -700,7 +700,7 @@ test fn fps_a_cross_module_record_projection_infers_holds() -> Bool {
 // FIELDS". This row exists because the arm it exercises would otherwise have no authorable red. The
 // honesty split gave ReceiverDeclarationUnavailable its own reason, and the closure index then made the
 // ordinary cross-module case SUCCEED -- so the only remaining way to reach the arm is a provider whose
-// declarations never enter the index. v2.compiler.name_resolve closure_resolved_roots drops a root that
+// declarations never enter the index. v2.compiler.name_resolve closure_declarations_demand drops a root that
 // fails to resolve, which is exactly that condition, and this fixture produces it with a provider carrying
 // an unresolvable body beside the record the consumer projects.
 //
