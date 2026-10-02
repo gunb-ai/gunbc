@@ -1840,32 +1840,104 @@ pub fn classify_binary_inputs(
     Ok(out)
 }
 
-/// The effectful half: read the running binary's dep-info and stat its inputs. Every failure is
-/// `DepInfoUnreadable`, which refuses -- never a pass because the question could not be asked.
-fn observe_binary_inputs() -> BinaryInputObservation {
-    let exe = match std::env::current_exe() {
-        Ok(exe) => exe,
-        Err(e) => {
-            return BinaryInputObservation::DepInfoUnreadable {
-                binary: "<current_exe unreadable>".to_string(),
-                reason: e.to_string(),
-            }
+/// THE ANCHOR IS WHEN COMPILATION STARTED, NOT WHEN THE BINARY WAS LINKED. An input edited after
+/// rustc read it but before the link finished is older than the binary and newer than the
+/// compile, so comparing against the binary's mtime would answer `Fresh` where cargo rebuilds
+/// (calm-boar-904's objection on #13007). Cargo's own comparator is the unit's fingerprint
+/// dep-info, `.fingerprint/<pkg>-<hash>/dep-bin-<name>`, whose mtime it rewinds to build start.
+///
+/// THE UNIT IS DERIVED, NOT SEARCHED FOR BY NAME. The uplifted executable is a hard link to
+/// `deps/<name>-<hash>`; that file is found by inode, its `<hash>` names exactly one fingerprint
+/// directory, and `dep-bin-<name>` in it is the anchor. Many fingerprint directories carry
+/// `dep-bin-gunbc` (one per past build configuration), so picking by name or by newest mtime
+/// would be a guess. Every break in the chain -- no hard-link twin, two twins, zero or several
+/// fingerprint directories -- is an error, which refuses.
+pub fn build_start_anchor(exe: &std::path::Path) -> Result<std::time::SystemTime, String> {
+    use std::os::unix::fs::MetadataExt;
+    let profile_dir = exe
+        .parent()
+        .ok_or_else(|| format!("{} has no parent directory", exe.display()))?;
+    let name = exe
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| format!("{} has no file name", exe.display()))?;
+    let inode = std::fs::metadata(exe)
+        .map_err(|e| format!("cannot stat {}: {e}", exe.display()))?
+        .ino();
+    let deps = profile_dir.join("deps");
+    let prefix = format!("{name}-");
+    let twins: Vec<String> = std::fs::read_dir(&deps)
+        .map_err(|e| format!("cannot list {}: {e}", deps.display()))?
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.metadata().map(|m| m.ino() == inode).unwrap_or(false))
+        .filter_map(|entry| entry.file_name().to_str().map(str::to_string))
+        .filter(|file| file.starts_with(&prefix) && !file.ends_with(".d"))
+        .collect();
+    let hash = match twins.as_slice() {
+        [one] => one[prefix.len()..].to_string(),
+        _ => {
+            return Err(format!(
+                "the binary has {} hard-link twins under {}, so the compile unit that built it is unknown",
+                twins.len(),
+                deps.display()
+            ))
         }
     };
+    let fingerprint = profile_dir.join(".fingerprint");
+    let suffix = format!("-{hash}");
+    let units: Vec<std::path::PathBuf> = std::fs::read_dir(&fingerprint)
+        .map_err(|e| format!("cannot list {}: {e}", fingerprint.display()))?
+        .filter_map(|entry| entry.ok().map(|e| e.path()))
+        .filter(|path| {
+            path.file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.ends_with(&suffix))
+                .unwrap_or(false)
+        })
+        .collect();
+    let unit = match units.as_slice() {
+        [one] => one.join(format!("dep-bin-{name}")),
+        _ => {
+            return Err(format!(
+                "{} fingerprint units end in {suffix}, so the build-start anchor is unknown",
+                units.len()
+            ))
+        }
+    };
+    std::fs::metadata(&unit)
+        .and_then(|m| m.modified())
+        .map_err(|e| format!("cannot read the build-start anchor {}: {e}", unit.display()))
+}
+
+/// The effectful half: read the binary's dep-info, anchor at build start, and stat its inputs.
+/// Every failure is `DepInfoUnreadable`, which refuses -- never a pass because the question could
+/// not be asked.
+pub fn observe_binary_inputs_of(
+    exe: &std::path::Path,
+    workspace: &std::path::Path,
+) -> BinaryInputObservation {
     let binary = exe.display().to_string();
     let dep_info_path = exe.with_extension("d");
     let observed = (|| {
-        let built_at = std::fs::metadata(&exe)
-            .and_then(|m| m.modified())
-            .map_err(|e| format!("cannot read the binary's mtime: {e}"))?;
+        let build_start = build_start_anchor(exe)?;
         let text = std::fs::read_to_string(&dep_info_path)
             .map_err(|e| format!("cannot read dep-info {}: {e}", dep_info_path.display()))?;
         let inputs = dep_info_inputs(&text)?;
-        classify_binary_inputs(&inputs, &cli_run::process_workspace_root(), built_at)
+        classify_binary_inputs(&inputs, workspace, build_start)
     })();
     match observed {
         Ok(inputs) => BinaryInputObservation::Observed { binary, inputs },
         Err(reason) => BinaryInputObservation::DepInfoUnreadable { binary, reason },
+    }
+}
+
+fn observe_binary_inputs() -> BinaryInputObservation {
+    match std::env::current_exe() {
+        Ok(exe) => observe_binary_inputs_of(&exe, &cli_run::process_workspace_root()),
+        Err(e) => BinaryInputObservation::DepInfoUnreadable {
+            binary: "<current_exe unreadable>".to_string(),
+            reason: e.to_string(),
+        },
     }
 }
 
@@ -2847,6 +2919,81 @@ mod binary_freshness_tests {
         ))
         .unwrap();
         assert!(classify_binary_inputs(&no_manifest, &dir.join("other"), built_at).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// THE MID-BUILD EDIT (calm-boar-904): build_start < input_mtime < binary_mtime must be
+    /// StaleBinary. Against the binary's mtime it read Fresh. Laid out as cargo lays it out: an
+    /// uplifted binary hard-linked to deps/<name>-<hash>, and .fingerprint/<pkg>-<hash>/dep-bin-<name>
+    /// stamped at build start. A decoy unit with the same file name and a later stamp must not be
+    /// chosen, because only the hash names the unit.
+    #[test]
+    fn an_input_edited_during_the_build_is_stale() {
+        use std::time::{Duration, SystemTime};
+        let dir = std::env::temp_dir().join(format!("anchor-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let ws = dir.join("ws");
+        let release = dir.join("target/release");
+        std::fs::create_dir_all(ws.join("src/v1/stage0")).unwrap();
+        std::fs::create_dir_all(release.join("deps")).unwrap();
+        std::fs::create_dir_all(release.join(".fingerprint/pkg-abc123")).unwrap();
+        std::fs::create_dir_all(release.join(".fingerprint/pkg-decoy99")).unwrap();
+        let t0 = SystemTime::now() - Duration::from_secs(100);
+        let stamp = |path: &std::path::Path, at: SystemTime| {
+            std::fs::File::options()
+                .write(true)
+                .open(path)
+                .unwrap()
+                .set_modified(at)
+                .unwrap();
+        };
+        let start = release.join(".fingerprint/pkg-abc123/dep-bin-gunbc");
+        std::fs::write(&start, "").unwrap();
+        stamp(&start, t0);
+        let decoy = release.join(".fingerprint/pkg-decoy99/dep-bin-gunbc");
+        std::fs::write(&decoy, "").unwrap();
+        stamp(&decoy, t0 + Duration::from_secs(80));
+        let manifest = ws.join("src/v1/stage0/Cargo.toml");
+        std::fs::write(&manifest, "").unwrap();
+        stamp(&manifest, t0 - Duration::from_secs(10));
+        let edited = ws.join("edited.rs");
+        std::fs::write(&edited, "").unwrap();
+        stamp(&edited, t0 + Duration::from_secs(30));
+        let linked = release.join("deps/gunbc-abc123");
+        std::fs::write(&linked, "bin").unwrap();
+        stamp(&linked, t0 + Duration::from_secs(60));
+        let exe = release.join("gunbc");
+        std::fs::hard_link(&linked, &exe).unwrap();
+        std::fs::write(
+            release.join("gunbc.d"),
+            format!(
+                "{}: {} {}\n",
+                exe.display(),
+                manifest.display(),
+                edited.display()
+            ),
+        )
+        .unwrap();
+        assert_eq!(build_start_anchor(&exe).unwrap(), t0);
+        match assess_binary_freshness(&observe_binary_inputs_of(&exe, &ws)) {
+            BinaryFreshness::Stale { input, .. } => assert_eq!(input, edited.display().to_string()),
+            other => panic!("a mid-build edit must be stale: {other:?}"),
+        }
+        // THE OLD ANCHOR, FOR CONTRAST: against the binary's own mtime the same tree reads fresh.
+        let at_link = std::fs::metadata(&exe).unwrap().modified().unwrap();
+        let inputs =
+            dep_info_inputs(&std::fs::read_to_string(release.join("gunbc.d")).unwrap()).unwrap();
+        assert!(matches!(
+            assess_binary_freshness(&BinaryInputObservation::Observed {
+                binary: "b".into(),
+                inputs: classify_binary_inputs(&inputs, &ws, at_link).unwrap()
+            }),
+            BinaryFreshness::Fresh { .. }
+        ));
+        // A copied binary has no hard-link twin: undecided, not fresh.
+        let copied = release.join("copied");
+        std::fs::copy(&linked, &copied).unwrap();
+        assert!(build_start_anchor(&copied).is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

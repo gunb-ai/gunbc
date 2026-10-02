@@ -282,8 +282,11 @@ fn invocation_refusal_rendered(cause: TargetInvocationRefusal) -> String {
 // after every unrelated commit, which teaches people to route around the check
 // (calm-boar-904's ruling on #13007).
 //
-// The comparison is cargo's own rule, an input newer than the binary. So a refusal here means
-// exactly "cargo build would rebuild". It is NOT content-exact: an input whose mtime moved
+// The comparison is cargo's own rule: an input newer than the BUILD START, read from the unit's
+// fingerprint dep-info, which cargo rewinds to when compilation began. The binary's own mtime is
+// the wrong anchor: an input edited after rustc read it but before the link finished is older
+// than the binary and was never compiled. So a refusal here means exactly "cargo build would
+// rebuild". It is NOT content-exact: an input whose mtime moved
 // without its bytes changing refuses too, as cargo would rebuild. A content-exact check needs a
 // digest recorded AFTER the compile that writes dep-info, which no in-tree build hook can do.
 //
