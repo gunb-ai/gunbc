@@ -1,6 +1,7 @@
 module gunbc.action_use_admission
 
 import std.types { Bool, Int, List, NonEmptyStr, String, commit_sha_text_holds }
+import extdeps.github.expressions { Expression, ExpressionContext, Github, Inputs, ContextAccess, LogicalOr, LogicalAnd, interpolate, serialize_expression }
 import extdeps.external_authority { ExternalAuthority }
 import v2.std.optional { Present, Absent }
 import extdeps.languages.yaml.ingest { ingest_yaml_source, IngestedYaml, YamlIngestRejected }
@@ -296,6 +297,124 @@ fn workflow_action_uses_refusal_reason(workflow_module: String, refusals: List<W
   ], "")
 }
 
+// A CHECKOUT NAMES A COMMIT, NEVER A MOVING REF. A job that checks out `github.ref` gets whatever the
+// branch points at WHEN ITS RUNNER PICKS IT UP, so two jobs of one run can build two trees; the
+// release-bins ConsumerSourceTreeMismatch refusal caught exactly that on fleet-converge (runs
+// 36764203649, 36766990321). The ref is an extdeps.github.expressions Expression, so the rule is a
+// fold over the upstream grammar's own tree, not a second reading of its text:
+//   LogicalOr      -- either operand may be the value: both are read. The left falls through on an
+//                     empty result, so it is read as having a fallback.
+//   LogicalAnd     -- the left is a CONDITION; the value is the right. A falsy condition yields a
+//                     non-commit value, so an And is admitted only where an enclosing Or falls
+//                     through past it.
+//   ContextAccess  -- an ALLOWLIST: a commit context (github.sha, github.event.pull_request.head.sha)
+//                     or a dispatch input declared as a revision.
+//   anything else  -- refused: a literal, a function call, a comparison as a value, any other path.
+// So a branch-valued operand in front of a sha tail (`github.head_ref || github.sha`) refuses,
+// because `||` picks the first non-empty operand.
+// Residue, outside the model: a revision input is caller-supplied text, and a caller who types a
+// branch name into it gets that branch.
+data checkout_revision_inputs: List<String> = ["expected_revision", "head_sha", "expected_healed_sha"]
+
+fn checkout_names_a_revision_input(name: String) -> Bool {
+  fold(checkout_revision_inputs, init: false, f: fn(acc, n) { acc || n == name })
+}
+
+fn checkout_context_names_a_commit(context: ExpressionContext, path: List<String>) -> Bool {
+  let dotted = join(path, ".")
+  match context {
+    Github =>
+      dotted == "sha" || dotted == "event.pull_request.head.sha"
+        || fold(checkout_revision_inputs, init: false, f: fn(acc, n) { acc || dotted == concat("event.inputs.", n) })
+    Inputs => checkout_names_a_revision_input(name: dotted)
+    _ => false
+  }
+}
+
+// The value terms of `ref` that do not name a commit, each rendered for the refusal reason.
+fn checkout_ref_value_refusals(ref_expression: Expression, falls_through: Bool) -> List<String> {
+  match ref_expression {
+    LogicalOr { left: l, right: r } =>
+      concat(checkout_ref_value_refusals(ref_expression: l, falls_through: true), checkout_ref_value_refusals(ref_expression: r, falls_through: falls_through))
+    LogicalAnd { left: _, right: r } =>
+      if falls_through { checkout_ref_value_refusals(ref_expression: r, falls_through: falls_through) }
+      else { [concat(serialize_expression(expression: ref_expression), " (a condition with no fallback yields a non-commit value)")] }
+    ContextAccess { context: c, path: p } =>
+      if checkout_context_names_a_commit(context: c, path: p) { [] } else { [serialize_expression(expression: ref_expression)] }
+    _ => [serialize_expression(expression: ref_expression)]
+  }
+}
+
+fn checkout_ref_admitted(ref_expression: Expression) -> Bool {
+  (checkout_ref_value_refusals(ref_expression: ref_expression, falls_through: false) |> count) == 0
+}
+
+// THE ONE SPELLING OF A CHECKOUT's `ref`. Emitters build the with-entry here from their Expression,
+// so the text in the workflow is the Expression's rendering and nothing else.
+fn checkout_ref_entry(ref_expression: Expression) -> YamlKeyValue {
+  YamlKeyValue { key: "ref", value: YamlString { value: interpolate(expression: ref_expression) } }
+}
+
+type WorkflowCheckoutRefRefusal {
+  job_id: String
+  ref_text: String
+  cause: String
+}
+
+type WorkflowCheckoutRefsAdmission
+  = WorkflowCheckoutRefsAdmitted
+  | WorkflowCheckoutRefsRefused { refusals: List<WorkflowCheckoutRefRefusal> }
+
+fn checkout_ref_text_is_declared(text: String, declared: List<Expression>) -> Bool {
+  fold(declared, init: false, f: fn(acc, e) { acc || interpolate(expression: e) == text })
+}
+
+fn checkout_with_ref_refusals(job_id: String, with: List<YamlKeyValue>, declared: List<Expression>) -> List<WorkflowCheckoutRefRefusal> {
+  fold(with, init: [], f: fn(acc, e) {
+    if e.key == "ref" {
+      match e.value {
+        YamlString { value: t } =>
+          if checkout_ref_text_is_declared(text: t, declared: declared) { acc }
+          else { concat(acc, [WorkflowCheckoutRefRefusal { job_id: job_id, ref_text: t, cause: "not the rendering of any checkout ref Expression the workflow declares (build it with checkout_ref_entry)" }]) }
+        _ => concat(acc, [WorkflowCheckoutRefRefusal { job_id: job_id, ref_text: "<a non-string ref>", cause: "not an Expression rendering" }])
+      }
+    } else { acc }
+  })
+}
+
+fn step_checkout_ref_refusals(job_id: String, step: Step, declared: List<Expression>) -> List<WorkflowCheckoutRefRefusal> {
+  match step {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => []
+    UsesStep { name: _, id: _, uses: u, with: w, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      if u.owner == checkout_action.owner && u.repo == checkout_action.repo {
+        match w { Present { value: ws } => checkout_with_ref_refusals(job_id: job_id, with: ws, declared: declared)  _ => [] }
+      } else { [] }
+  }
+}
+
+// Two walls, one admission: every declared ref Expression names a commit (the fold above), and every
+// checkout `ref` in the workflow is the rendering of a declared one (an identity join on the rendered
+// text -- no text is parsed). A checkout with no `ref` fetches the event sha and is admitted.
+fn admit_workflow_checkout_refs(workflow: Workflow, declared: List<Expression>) -> WorkflowCheckoutRefsAdmission {
+  let declared_refusals = fold(declared, init: [], f: fn(acc, e) {
+    concat(acc, map(checkout_ref_value_refusals(ref_expression: e, falls_through: false), t => WorkflowCheckoutRefRefusal {
+      job_id: "<declared>", ref_text: interpolate(expression: e), cause: concat("a value term does not name a commit: ", t),
+    }))
+  })
+  let step_refusals = fold(workflow.jobs, init: [], f: fn(acc, job) {
+    fold(job.steps, init: acc, f: fn(acc2, step) { concat(acc2, step_checkout_ref_refusals(job_id: job.id, step: step, declared: declared)) })
+  })
+  let refusals = concat(declared_refusals, step_refusals)
+  if (refusals |> count) == 0 { WorkflowCheckoutRefsAdmitted } else { WorkflowCheckoutRefsRefused { refusals: refusals } }
+}
+
+fn workflow_checkout_refs_refusal_reason(workflow_module: String, refusals: List<WorkflowCheckoutRefRefusal>) -> String {
+  join([
+    "REFUSED ", workflow_module, ": a checkout ref can resolve to something other than a commit, so a job that waits in the runner queue can build a different tree than its siblings (gunbc.action_use_admission admit_workflow_checkout_refs). No workflow yaml was emitted. ",
+    join(fold(refusals, init: [], f: fn(acc, r) { concat(acc, [join(["job ", r.job_id, ": ref ", r.ref_text, ": ", r.cause], "")]) }), "; "),
+  ], "")
+}
+
 // ---------------------------------------------------------------------------------------------
 // ROUTE 2: A REALIZED WORKFLOW FILE, whoever wrote it
 // ---------------------------------------------------------------------------------------------
@@ -336,10 +455,20 @@ fn realized_workflow_reading(path: String, source: String) -> RealizedWorkflowRe
               YamlKeyPresent { value: jobs } =>
                 match jobs {
                   YamlMapping { entries: job_entries } => realized_jobs_reading(path: path, jobs: job_entries)
-                  _ => RealizedWorkflowUnreadable { workflow_path: path, reason: "the top-level `jobs` is not a mapping" }
+                  YamlNull => RealizedWorkflowUnreadable { workflow_path: path, reason: "the top-level `jobs` is not a mapping" }
+                  YamlBool { value: _ } => RealizedWorkflowUnreadable { workflow_path: path, reason: "the top-level `jobs` is not a mapping" }
+                  YamlInt { lexeme: _ } => RealizedWorkflowUnreadable { workflow_path: path, reason: "the top-level `jobs` is not a mapping" }
+                  YamlFloat { lexeme: _ } => RealizedWorkflowUnreadable { workflow_path: path, reason: "the top-level `jobs` is not a mapping" }
+                  YamlString { value: _ } => RealizedWorkflowUnreadable { workflow_path: path, reason: "the top-level `jobs` is not a mapping" }
+                  YamlSequence { elements: _ } => RealizedWorkflowUnreadable { workflow_path: path, reason: "the top-level `jobs` is not a mapping" }
                 }
             }
-          _ => RealizedWorkflowUnreadable { workflow_path: path, reason: "the workflow document is not a mapping" }
+          YamlNull => RealizedWorkflowUnreadable { workflow_path: path, reason: "the workflow document is not a mapping" }
+          YamlBool { value: _ } => RealizedWorkflowUnreadable { workflow_path: path, reason: "the workflow document is not a mapping" }
+          YamlInt { lexeme: _ } => RealizedWorkflowUnreadable { workflow_path: path, reason: "the workflow document is not a mapping" }
+          YamlFloat { lexeme: _ } => RealizedWorkflowUnreadable { workflow_path: path, reason: "the workflow document is not a mapping" }
+          YamlString { value: _ } => RealizedWorkflowUnreadable { workflow_path: path, reason: "the workflow document is not a mapping" }
+          YamlSequence { elements: _ } => RealizedWorkflowUnreadable { workflow_path: path, reason: "the workflow document is not a mapping" }
         }
     }
   }
@@ -369,7 +498,12 @@ fn realized_use_read(path: String, job_id: String, site: ActionUseSite, where_: 
       } else {
         RealizedUseFound { found: RealizedActionUse { workflow_path: path, job_id: job_id, site: site, uses_text: t } }
       }
-    _ => RealizedUseRefused { reason: join(["job ", job_id, ": ", where_, " `uses` is not a string"], "") }
+    YamlNull => RealizedUseRefused { reason: join(["job ", job_id, ": ", where_, " `uses` is not a string"], "") }
+    YamlBool { value: _ } => RealizedUseRefused { reason: join(["job ", job_id, ": ", where_, " `uses` is not a string"], "") }
+    YamlInt { lexeme: _ } => RealizedUseRefused { reason: join(["job ", job_id, ": ", where_, " `uses` is not a string"], "") }
+    YamlFloat { lexeme: _ } => RealizedUseRefused { reason: join(["job ", job_id, ": ", where_, " `uses` is not a string"], "") }
+    YamlSequence { elements: _ } => RealizedUseRefused { reason: join(["job ", job_id, ": ", where_, " `uses` is not a string"], "") }
+    YamlMapping { entries: _ } => RealizedUseRefused { reason: join(["job ", job_id, ": ", where_, " `uses` is not a string"], "") }
   }
 }
 
@@ -380,7 +514,12 @@ fn realized_step_reads(path: String, job_id: String, step: YamlValue) -> List<Re
         YamlKeyAbsent => []
         YamlKeyPresent { value: v } => [realized_use_read(path: path, job_id: job_id, site: StepActionUse, where_: "a step", v: v)]
       }
-    _ => [RealizedUseRefused { reason: join(["job ", job_id, ": a step is not a mapping"], "") }]
+    YamlNull => [RealizedUseRefused { reason: join(["job ", job_id, ": a step is not a mapping"], "") }]
+    YamlBool { value: _ } => [RealizedUseRefused { reason: join(["job ", job_id, ": a step is not a mapping"], "") }]
+    YamlInt { lexeme: _ } => [RealizedUseRefused { reason: join(["job ", job_id, ": a step is not a mapping"], "") }]
+    YamlFloat { lexeme: _ } => [RealizedUseRefused { reason: join(["job ", job_id, ": a step is not a mapping"], "") }]
+    YamlString { value: _ } => [RealizedUseRefused { reason: join(["job ", job_id, ": a step is not a mapping"], "") }]
+    YamlSequence { elements: _ } => [RealizedUseRefused { reason: join(["job ", job_id, ": a step is not a mapping"], "") }]
   }
 }
 
@@ -397,11 +536,21 @@ fn realized_job_reads(path: String, job_id: String, job: YamlValue) -> List<Real
         YamlKeyPresent { value: steps } =>
           match steps {
             YamlSequence { elements: els } => concat(job_use, flat_map(els, st => realized_step_reads(path: path, job_id: job_id, step: st)))
-            _ => concat(job_use, [RealizedUseRefused { reason: join(["job ", job_id, ": `steps` is not a sequence"], "") }])
+            YamlNull => concat(job_use, [RealizedUseRefused { reason: join(["job ", job_id, ": `steps` is not a sequence"], "") }])
+            YamlBool { value: _ } => concat(job_use, [RealizedUseRefused { reason: join(["job ", job_id, ": `steps` is not a sequence"], "") }])
+            YamlInt { lexeme: _ } => concat(job_use, [RealizedUseRefused { reason: join(["job ", job_id, ": `steps` is not a sequence"], "") }])
+            YamlFloat { lexeme: _ } => concat(job_use, [RealizedUseRefused { reason: join(["job ", job_id, ": `steps` is not a sequence"], "") }])
+            YamlString { value: _ } => concat(job_use, [RealizedUseRefused { reason: join(["job ", job_id, ": `steps` is not a sequence"], "") }])
+            YamlMapping { entries: _ } => concat(job_use, [RealizedUseRefused { reason: join(["job ", job_id, ": `steps` is not a sequence"], "") }])
           }
       }
     }
-    _ => [RealizedUseRefused { reason: join(["job ", job_id, " is not a mapping"], "") }]
+    YamlNull => [RealizedUseRefused { reason: join(["job ", job_id, " is not a mapping"], "") }]
+    YamlBool { value: _ } => [RealizedUseRefused { reason: join(["job ", job_id, " is not a mapping"], "") }]
+    YamlInt { lexeme: _ } => [RealizedUseRefused { reason: join(["job ", job_id, " is not a mapping"], "") }]
+    YamlFloat { lexeme: _ } => [RealizedUseRefused { reason: join(["job ", job_id, " is not a mapping"], "") }]
+    YamlString { value: _ } => [RealizedUseRefused { reason: join(["job ", job_id, " is not a mapping"], "") }]
+    YamlSequence { elements: _ } => [RealizedUseRefused { reason: join(["job ", job_id, " is not a mapping"], "") }]
   }
 }
 

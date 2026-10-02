@@ -1,0 +1,35 @@
+module gunbc.fabric_door_socket_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the hand Rust the fabric door's unix socket adds to v1_compiler.cli_run
+// (requested by review 72010 on gunbc#12482). It closes a declared §4b drop,
+// gunbc.rung_drop fabric_storage_append_principal_unrefused, whose local-writer half needs a peer the
+// KERNEL attests: that is a socket option read on an accepted connection, which only the host that
+// accepts the connection can perform. The listener is the seed's `gunbc serve` (retained host CLI,
+// std.compiler_entry RetainedHostCliKernel), so the accept loop and its peer read live beside it.
+//
+// WHAT DECIDES NOTHING HERE. The seed hands the handler the peer's account name as a value and
+// stops: which peer is the proxy, which accounts are rostered and every refusal are .dag
+// (gunbc.fabric_writer_roster fabric_door_principal_of, fabric_door_writer_admission_over). An
+// unresolvable peer is dropped at accept, before any request exists -- no host-side admission.
+//
+// HAND-ITEM DELTA: +6 citable declarations (serve_handler_args added by the peer_user repair, gunbc#12627) in v1_compiler.cli_run (a trait, an enum, a record and two
+// free functions) and one test module of three tests; the two impl blocks and the listener's two
+// methods are not citable declarations and are named here rather than omitted.
+data fabric_door_socket_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "ServeConnection", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "ServeListener", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "ServeBoundAddress", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "serve_bind", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "serve_peer_user", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "serve_handler_args", field: WholeDeclaration }
+  ],
+  reason: "Binding a unix socket, reading SO_PEERCRED from an accepted connection and resolving its uid are operations no .dag fold can perform: they are host facts about a live connection, in the same class as the argv read and status set the native CLI's rendered main keeps. serve_bind generalizes the one TCP bind the seed already had to a TCP-or-socket listener (refusing to replace any non-socket file); serve_peer_user reads the peer and returns its account name as a value; ServeConnection/ServeListener/ServeBoundAddress let the existing request parse and response write run unchanged over either stream. The fabric door's admission consumes peer_user in .dag; nothing here decides.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete all six when `serve` is a verb of the v2-native CLI door (v2.cli.compile_cli) and its accept loop and peer read are bound as a modeled host effect (an extdeps socket interface with an attested-peer operation) the rendered main realizes -- at which point this listener is emitted rather than hand-authored, and the TCP arm dissolves with it.",
+  current_boundary: "Confined to handle_serve's listener and accept loop in v1_compiler.cli_run: every other serve behavior (liveness route, budget arming, handler call, response write) is unchanged byte for byte except that it reads the connection through ServeConnection. A TCP listener passes an empty peer_user, which the fabric door refuses (DoorUnattested); only the --unix-socket arm attests. Tests: cli_run serve_unix_socket_door_tests."
+}

@@ -8,7 +8,7 @@ import extdeps.github.actions_jit_runner {
   JitRunnerConfigRequest, JitRunnerName, JitRunnerGroupId, JitRunnerLabel, JitWorkFolder,
 }
 import gunbc.runner_group_restriction_observation {
-  MicrovmRunnerGroupStanding, RunnerGroupRestrictedToShakedownWorkflow, RunnerGroupRestrictionRefused,
+  MicrovmRunnerGroupStanding, RunnerGroupRestrictedToWorkflow, RunnerGroupRestrictionRefused,
   RunnerGroupRestrictionRefusal,
 }
 import gunbc.runner.runner_jit_admission {
@@ -134,7 +134,7 @@ fn plan_jit_mint(
           match runner_group {
             RunnerGroupRestrictionRefused { name: n, cause: c } =>
               JitMintRefusedRunnerGroupUnrestricted { group: n, cause: c }
-            RunnerGroupRestrictedToShakedownWorkflow { restriction: r } =>
+            RunnerGroupRestrictedToWorkflow { restriction: r } =>
               JitMintAuthorized {
                 attempt: attempt,
                 request: jit_config_request_for(attempt: attempt, runner_group_id: r.group),

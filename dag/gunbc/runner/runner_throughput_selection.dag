@@ -4,10 +4,8 @@ import std.types { NonEmptyStr }
 import product.placement_supply { HostIdentity }
 import product.fabric.work { ExecutionRequirements }
 import product.fabric.supply { SupplierOffer }
-import gunbc.runner_slot_allocation {
-  RunnerSlotDesired, RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded,
-  gunbc_floor_minimum_viable_armed_budget, gunbc_runner_cores_per_slot,
-}
+import gunbc.runner_slot_allocation { gunbc_floor_minimum_viable_armed_budget, gunbc_runner_cores_per_slot }
+import gunbc.runner_slot_desired { RunnerSlotDesired, RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded }
 import gunbc.fleet_host_budget {
   FleetHostPlan, FleetHostPlanDerived, FleetHostPlanUnsound,
   HostAllocationVerdict, HostAllocationConserves, HostAllocationOversubscribed, HostAllocationUnchargeable,
@@ -16,7 +14,7 @@ import gunbc.fabric_executor_class { ExecutorSanction }
 import v2.workflow.floor_eval_step_calibration { EvalStepCalibration }
 import gunbc.runner_throughput_qualification {
   SelectedRunnerQualification, SelectedSlot, SelectedHostAllocation, HostAllocationAdmitted, HostAllocationRefused,
-  SlotQuotaThreads, FloorWorkloadPin, WorkspaceBacking, SamplingPolicy, PhaseCeilings,
+  SlotQuotaThreads, FloorWorkloadPin, SelectedRunnerRuntime, WorkspaceBacking, SamplingPolicy, PhaseCeilings,
 }
 
 // THE SELECTION IS THE FLEET'S ACT, AND THIS IS WHERE THE FLEET'S AUTHORITIES ARE CONSUMED.
@@ -91,6 +89,7 @@ fn select_runner_qualification<P>(
   executor_sanction: ExecutorSanction,
   requirements: ExecutionRequirements,
   workload: FloorWorkloadPin,
+  runtime: SelectedRunnerRuntime,
   plan: FleetHostPlan,
   allocation: HostAllocationVerdict,
   slot: RunnerSlotDesired,
@@ -107,6 +106,7 @@ fn select_runner_qualification<P>(
       host: host,
       requirements: requirements,
       workload: workload,
+      runtime: runtime,
       host_allocation: selected_host_allocation(plan: plan, allocation: allocation),
       slot: selected_slot(desired: slot, unit: unit),
       workspace: workspace,

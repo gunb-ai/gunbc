@@ -1,0 +1,267 @@
+module gunbc.machine_intake_mtcollins1_census_image_publish
+
+import std.types { Bool, NonEmptyStr, String }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import v2.std.optional { Present }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.gnu_coreutils { mktemp_directory_command, rm_recursive_force_one_file_system_command }
+import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput, UbuntuSeededInstallMediaBuilt, seeded_install_media_build_key }
+import extdeps.provisioning.ubuntu_seeded_install_media_remaster { SeededInstallMediaStageOutcome, SeededInstallMediaStaged, SeededInstallMediaStageRefused, seeded_install_media_stage }
+import gunbc.host_command_binding {
+  host_file_write_text,
+  CommandHost, FleetSshCommandHost, HostTransportKind, host_run, host_transport_kind,
+  ScratchOutcome, ScratchAcquired, ScratchNotAcquired, CreationNotRequested,
+  scratch_acquisition_of, scratch_removal_of, scratch_removed, render_scratch_outcome,
+}
+import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
+import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_boot_export_dir, mtcollins1_boot_export_host_target }
+import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
+import gunbc.machine_intake_mtcollins1_census_member_readback {
+  CensusMemberReadback, census_member_readings_on, census_member_verdict, census_member_readback_holds, render_census_member_readback,
+}
+import gunbc.machine_intake_mtcollins1_census_image {
+  mtcollins1_census_image, mtcollins1_census_pinned_image, Mtcollins1CensusImage,
+  Mtcollins1CensusImageDerived, Mtcollins1CensusImageRefused, mtcollins1_census_image_stock_path,
+}
+import gunbc.seeded_install_media_publish {
+  BmcExportBoundary, SeededImagePublication, SeededImagePublished, SeededImageAlreadyPublished, SeededImagePublicationRefused, SeededImagePublishedRecordNotWritten,
+  SeededImageResolution, SeededImageUnobservable, publish_seeded_image, resolve_seeded_image,
+}
+
+// THE CENSUS IMAGE IS BUILT WHERE IT IS SERVED -- on srv2, into srv2's /srv/bmc -- and the build runs
+// OVER FLEET SSH from whichever runner the dispatch names, because srv2 has had no runner slot since
+// 2026-09-19 (fleet-converge run 36347413355, host=srv2, queued since 2026-09-27 20:16 against a
+// runner that does not exist). It is the SAME publication fold every seeded image uses
+// (gunbc.seeded_install_media_publish), realized on srv2 through gunbc.host_command_binding
+// FleetSshCommandHost; the srv2-runner realization this replaces had no other consumer and was retired.
+//
+// ONE PRECONDITION BEFORE ANY PUBLISH: THE srv2-SIDE REGRESSION. The pinned-input derivation
+// (mtcollins1_census_pinned_image) is rebuilt on srv2 into a scratch directory -- nothing is published --
+// and must (a) equal the hermetic receipt built elsewhere as another user, and (b) carry the stock
+// medium's kernel and initrd. The first dispatch of this route (run 36519408507) compared against the
+// pre-hermetic pinned image instead and diverged, because that image baked in its build user; the
+// builder now pins every mapped member's owner, group and mode (gunbc.recurring_failure_mode
+// a_derivation_key_that_does_not_pin_bytes_across_build_hosts). A divergence stops the run.
+
+data census_regression_prefix: String = "/var/tmp/gunbc-mtcollins1-census-regress."
+
+data census_regression_template: NonEmptyStr = "/var/tmp/gunbc-mtcollins1-census-regress.XXXXXXXX"
+
+// THE HERMETIC RECEIPT THE srv2 REBUILD MUST REPRODUCE. The pinned-input derivation
+// (mtcollins1_census_pinned_image, build key bf916c060d072e72 under builder revision
+// xorriso-replay-pinned-dates-and-attributes/2) built through this fold on LocalCommandHost in a session
+// container as uid 1000, 2026-09-29 (session zesty-newt-134): output sha256
+// eb23f1746e33cab008317a604d6f27527579d44db95923cbcf351290ecb90a0d, every mapped member recorded
+// 0:0. The same inputs replayed by hand with the same pins as uid 1000 AND under fakeroot as uid 0 gave
+// that same digest, so the build user no longer reaches the bytes. The srv2 rebuild runs as another
+// user on another host; equality with this receipt is the cross-host hermeticity the key now claims.
+// The earlier pinned image 30ca88d4... is no target: it baked in its build user (gunbc-fleet) and no
+// hermetic recipe reproduces that.
+data mtcollins1_census_hermetic_pinned_rebuild_digest: NonEmptyStr = "eb23f1746e33cab008317a604d6f27527579d44db95923cbcf351290ecb90a0d"
+
+// TWO CHECKS, both on srv2, both before any publish: (a) the pinned-input rebuild equals the hermetic
+// receipt; (b) the rebuilt image's kernel and initrd equal the stock medium's, read out of the rebuilt
+// image in the same scratch directory by the member readback's own comparison
+// (gunbc.machine_intake_mtcollins1_census_member_readback census_member_readings_on / census_member_verdict),
+// with grub.cfg as that comparison's in-run control.
+type CensusRegression
+  = RegressionReproduced { build_key: NonEmptyStr, digest: NonEmptyStr, chain: CensusMemberReadback, build_work: ScratchOutcome, scratch: ScratchOutcome }
+  | RegressionDiverged { build_key: NonEmptyStr, expected: NonEmptyStr, observed: NonEmptyStr, build_work: ScratchOutcome, scratch: ScratchOutcome }
+  | RegressionUnbuilt { reason: String, build_work: ScratchOutcome, scratch: ScratchOutcome }
+  | RegressionNotApplicable { reason: String }
+
+fn census_regression_holds(r: CensusRegression) -> Bool {
+  match r {
+    RegressionReproduced { build_key: _, digest: _, chain: c, build_work: w, scratch: s } =>
+      census_member_readback_holds(readback: c) && scratch_removed(o: w) && scratch_removed(o: s)
+    RegressionDiverged { build_key: _, expected: _, observed: _, build_work: _, scratch: _ } => false
+    RegressionUnbuilt { reason: _, build_work: _, scratch: _ } => false
+    RegressionNotApplicable { reason: _ } => false
+  }
+}
+
+// The judgment over one staged rebuild, the boot-chain comparison read from it (consulted only when the
+// digest matched), and the two directories' ends.
+fn census_regression_of(build_key: NonEmptyStr, expected: NonEmptyStr, staged: SeededInstallMediaStageOutcome, chain: fn(NonEmptyStr) -> CensusMemberReadback, scratch: ScratchOutcome) -> CensusRegression {
+  match staged {
+    SeededInstallMediaStageRefused { reason: r, work: w } => RegressionUnbuilt { reason: r as String, build_work: w, scratch: scratch }
+    SeededInstallMediaStaged { staging_path: path, output_digest: d, work: w } =>
+      if (d as String) == (expected as String) {
+        RegressionReproduced { build_key: build_key, digest: d, chain: chain(path), build_work: w, scratch: scratch }
+      } else {
+        RegressionDiverged { build_key: build_key, expected: expected, observed: d, build_work: w, scratch: scratch }
+      }
+  }
+}
+
+fn census_srv2_regression(host: CommandHost, pinned: UbuntuSeededInstallMediaBuildInput, expected: NonEmptyStr) -> CensusRegression {
+  let kind = host_transport_kind(host: host)
+  let key = seeded_install_media_build_key(input: pinned)
+  let stock_path = mtcollins1_census_image_stock_path()
+  match scratch_acquisition_of(kind: kind, prefix: census_regression_prefix, leg: host_run(host: host, command: mktemp_directory_command(template: census_regression_template))) {
+    ScratchNotAcquired { outcome: o } => RegressionUnbuilt { reason: "no scratch directory for the rebuild", build_work: CreationNotRequested, scratch: o }
+    ScratchAcquired { dir: dir } => {
+      let staged = seeded_install_media_stage(
+        host: host,
+        input: pinned,
+        stock_path: stock_path,
+        staging_path: concat(dir as String, "/pinned-rebuild.iso") as NonEmptyStr,
+      )
+      let judged = census_regression_of(
+        build_key: key,
+        expected: expected,
+        staged: staged,
+        chain: rebuilt => census_member_verdict(
+          stock_iso: noble_numbat_2404_3_live_server_arm64.content_sha256,
+          census_iso: expected,
+          readings: census_member_readings_on(host: host, dir: dir, stock_path: stock_path, census_path: rebuilt),
+        ),
+        scratch: CreationNotRequested,
+      )
+      census_regression_with_scratch(r: judged, scratch: scratch_removal_of(kind: kind, dir: dir, leg: host_run(host: host, command: rm_recursive_force_one_file_system_command(path: dir as String))))
+    }
+  }
+}
+
+// The scratch directory is removed after the comparison has read out of it; its end replaces the
+// placeholder the judgment carried.
+fn census_regression_with_scratch(r: CensusRegression, scratch: ScratchOutcome) -> CensusRegression {
+  match r {
+    RegressionReproduced { build_key: k, digest: d, chain: c, build_work: w, scratch: _ } => RegressionReproduced { build_key: k, digest: d, chain: c, build_work: w, scratch: scratch }
+    RegressionDiverged { build_key: k, expected: e, observed: o, build_work: w, scratch: _ } => RegressionDiverged { build_key: k, expected: e, observed: o, build_work: w, scratch: scratch }
+    RegressionUnbuilt { reason: why, build_work: w, scratch: _ } => RegressionUnbuilt { reason: why, build_work: w, scratch: scratch }
+    RegressionNotApplicable { reason: why } => RegressionNotApplicable { reason: why }
+  }
+}
+
+fn census_regression_on(host: CommandHost) -> CensusRegression {
+  match mtcollins1_census_pinned_image {
+    Mtcollins1CensusImageRefused { reason: r } => RegressionNotApplicable { reason: concat("the pinned census derivation does not render: ", r) }
+    Mtcollins1CensusImageDerived { input: pinned } => census_srv2_regression(host: host, pinned: pinned, expected: mtcollins1_census_hermetic_pinned_rebuild_digest)
+  }
+}
+
+fn render_census_regression(r: CensusRegression) -> String {
+  match r {
+    RegressionReproduced { build_key: k, digest: d, chain: c, build_work: w, scratch: s } =>
+      concat("regression=reproduced\nregression_build_key=", k as String, "\nregression_digest=", d as String, "\n",
+        "regression_boot_chain:\n", render_census_member_readback(readback: c),
+        render_scratch_outcome(label: "regression_build_work", prefix: "", o: w), render_scratch_outcome(label: "regression_scratch", prefix: census_regression_prefix, o: s))
+    RegressionDiverged { build_key: k, expected: e, observed: o, build_work: w, scratch: s } =>
+      concat("regression=DIVERGED\nregression_build_key=", k as String, "\nregression_expected=", e as String, "\nregression_observed=", o as String, "\n",
+        render_scratch_outcome(label: "regression_build_work", prefix: "", o: w), render_scratch_outcome(label: "regression_scratch", prefix: census_regression_prefix, o: s))
+    RegressionUnbuilt { reason: why, build_work: w, scratch: s } =>
+      concat("regression=unbuilt\nregression_reason=", why, "\n",
+        render_scratch_outcome(label: "regression_build_work", prefix: "", o: w), render_scratch_outcome(label: "regression_scratch", prefix: census_regression_prefix, o: s))
+    RegressionNotApplicable { reason: why } => concat("regression=not_applicable\nregression_reason=", why, "\n")
+  }
+}
+
+// ---- the publication, gated on the regression ----
+
+type CensusPublishAttempt
+  = CensusPublishStoppedAtRegression { regression: CensusRegression }
+  | CensusPublishRan { regression: CensusRegression, publication: SeededImagePublication }
+
+fn census_publish_attempt_holds(a: CensusPublishAttempt) -> Bool {
+  match a {
+    CensusPublishStoppedAtRegression { regression: _ } => false
+    CensusPublishRan { regression: _, publication: p } =>
+      match p {
+        SeededImageAlreadyPublished { built: _, path: _ } => true
+        SeededImagePublished { built: _, path: _, work: w, staging_residue: residue } =>
+          scratch_removed(o: w) && match residue { Absent => true Present { value: _ } => false }
+        SeededImagePublicationRefused { reason: _, work: _ } => false
+        SeededImagePublishedRecordNotWritten { built: _, path: _, work: _, staging_residue: _, record: _ } => false
+      }
+  }
+}
+
+// THE COMPOSITION THE PRODUCER RUNS, over a regression and the publication it gates: the publication
+// is consulted only when the regression holds.
+fn census_publish_attempt_of(regression: CensusRegression, publish: fn(Bool) -> SeededImagePublication) -> CensusPublishAttempt {
+  if census_regression_holds(r: regression) {
+    CensusPublishRan { regression: regression, publication: publish(true) }
+  } else {
+    CensusPublishStoppedAtRegression { regression: regression }
+  }
+}
+
+fn census_image_publication_on(host: CommandHost) -> SeededImagePublication {
+  match mtcollins1_census_image {
+    Mtcollins1CensusImageRefused { reason: r } =>
+      SeededImagePublicationRefused { reason: concat("the mtcollins1 census image has no derivation: ", r), work: CreationNotRequested }
+    Mtcollins1CensusImageDerived { input: i } =>
+      publish_seeded_image(host: host, input: i, stock_path: mtcollins1_census_image_stock_path(), boundary: BmcExportBoundary { export_dir: mtcollins1_boot_export_dir })
+  }
+}
+
+// DECLARED FRONTIER, unchanged in meaning: stage 0D's boot-run binding resolves the census image
+// before the approval-gated boot. Reachable from no entry point until that binding lands and calls it.
+fn mtcollins1_census_image_resolve(host: CommandHost) -> SeededImageResolution {
+  match mtcollins1_census_image {
+    Mtcollins1CensusImageRefused { reason: r } =>
+      SeededImageUnobservable { reason: concat("the mtcollins1 census image has no derivation: ", r) }
+    Mtcollins1CensusImageDerived { input: i } =>
+      resolve_seeded_image(host: host, input: i, dir: mtcollins1_boot_export_dir)
+  }
+}
+
+data mtcollins1_census_image_receipt_path: String = "target/mtcollins1-census-image.txt"
+
+// THE RECEIPT: the regression, then -- only if it held -- the published name and measured digest,
+// with the build's work directory and any staging residue. It is the publication-time fact the repin
+// authors into the boot medium row, and does not stand in for the boot-time readback.
+fn render_census_publication(p: SeededImagePublication) -> String {
+  match p {
+    SeededImagePublished { built: b, path: path, work: w, staging_residue: residue } =>
+      concat(render_built(built: b, path: path), render_scratch_outcome(label: "build_work", prefix: "", o: w),
+        match residue { Absent => "" Present { value: r } => concat("staging_residue=", r, "\n") })
+    SeededImageAlreadyPublished { built: b, path: path } => concat("already_published=true\n", render_built(built: b, path: path))
+    SeededImagePublicationRefused { reason: r, work: w } => concat("publication=refused\npublication_reason=", r, "\n", render_scratch_outcome(label: "build_work", prefix: "", o: w))
+    SeededImagePublishedRecordNotWritten { built: b, path: path, work: w, staging_residue: residue, record: rec } =>
+      concat(render_built(built: b, path: path), "derivation_record=", host_file_write_text(w: rec), "\n", render_scratch_outcome(label: "build_work", prefix: "", o: w),
+        match residue { Absent => "" Present { value: r } => concat("staging_residue=", r, "\n") })
+  }
+}
+
+fn render_built(built: UbuntuSeededInstallMediaBuilt, path: NonEmptyStr) -> String {
+  concat(
+    "image_name=", built.image_name as String, "\n",
+    "output_digest=", built.output_digest as String, "\n",
+    "build_key=", built.build_key as String, "\n",
+    "published_path=", path as String, "\n",
+  )
+}
+
+fn render_census_publish_attempt(a: CensusPublishAttempt) -> String {
+  match a {
+    CensusPublishStoppedAtRegression { regression: r } => concat(render_census_regression(r: r), "publication=not attempted: the srv2 regression did not hold\n")
+    CensusPublishRan { regression: r, publication: p } => concat(render_census_regression(r: r), render_census_publication(p: p))
+  }
+}
+
+data mtcollins1_census_publish_attempt_raw: String = "mtcollins1-census-image-publish"
+
+// CONSUMPTION (DESIGN §3c): invoked by the fleet-converge mode mtcollins1_census_image_publish, which
+// consumes the fleet SSH key and runs on any runner (gunbc.fleet_converge_workflow, gunbc.ci_spec).
+// The receipt is written whatever the outcome and uploaded by the step that follows.
+fn mtcollins1_census_image_publish_wet() -> ProcessExit {
+  let attempt = match prepare_fleet_ssh_agent_context(attempt_raw: mtcollins1_census_publish_attempt_raw) {
+    FleetSshContextRefused { cause: c } =>
+      CensusPublishStoppedAtRegression { regression: RegressionNotApplicable { reason: concat("no fleet SSH context: ", c) } }
+    FleetSshContextReady { context: context, receipt: _ } => {
+      let host = FleetSshCommandHost { target: mtcollins1_boot_export_host_target(), context: context }
+      census_publish_attempt_of(regression: census_regression_on(host: host), publish: _ => census_image_publication_on(host: host))
+    }
+  }
+  let rendered = render_census_publish_attempt(a: attempt)
+  let written = Filesystem.Write(path: mtcollins1_census_image_receipt_path, content: rendered)
+  if written.success == false {
+    exit_failure(reason: concat("mtcollins1 census image: the receipt could not be written: ", written.error, "\n", rendered))
+  } else if census_publish_attempt_holds(a: attempt) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("mtcollins1 census image publication did not hold:\n", rendered))
+  }
+}

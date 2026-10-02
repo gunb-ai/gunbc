@@ -682,7 +682,9 @@ pub fn function_value_target(
                     crate::v1_std_core::authored_name_at(source_indices.clone(), texpr.clone()),
                 ),
                 VarBindingKind::LocalValueBinding => std::option::Option::None,
-                VarBindingKind::VariantValueBinding { .. } => std::option::Option::None,
+                VarBindingKind::VariantValueBinding { parent_enum: _, .. } => {
+                    std::option::Option::None
+                }
                 VarBindingKind::MatchBoundBinding => std::option::Option::None,
                 VarBindingKind::ServiceValueBinding => std::option::Option::None,
             },
@@ -1690,7 +1692,9 @@ pub fn var_binding_kind_name(value: Rc<VarBindingKind>) -> String {
     match (*value.clone()).clone() {
         VarBindingKind::LocalValueBinding => "LocalValueBinding".to_string(),
         VarBindingKind::FunctionValueBinding => "FunctionValueBinding".to_string(),
-        VarBindingKind::VariantValueBinding { .. } => "VariantValueBinding".to_string(),
+        VarBindingKind::VariantValueBinding { parent_enum: _, .. } => {
+            "VariantValueBinding".to_string()
+        }
         VarBindingKind::MatchBoundBinding => "MatchBoundBinding".to_string(),
         VarBindingKind::ServiceValueBinding => "ServiceValueBinding".to_string(),
     }
@@ -2476,14 +2480,15 @@ pub fn serialize_expr_data(
                                     ),
                                 ),
                                 match (*inner.clone()).clone() {
-                                    VarBindingKind::VariantValueBinding { parent_enum, .. } => {
-                                        v1_rt::concat(
-                                            ", \"parent_enum\": ".to_string(),
-                                            crate::v1_compiler_dag_collect_support::json_quote(
-                                                parent_enum.clone(),
-                                            ),
-                                        )
-                                    }
+                                    VarBindingKind::VariantValueBinding {
+                                        parent_enum: parent_enum,
+                                        ..
+                                    } => v1_rt::concat(
+                                        ", \"parent_enum\": ".to_string(),
+                                        crate::v1_compiler_dag_collect_support::json_quote(
+                                            parent_enum.clone(),
+                                        ),
+                                    ),
                                     _ => "".to_string(),
                                 },
                             ),
@@ -3704,6 +3709,7 @@ pub fn census_heads_node(
         match_pattern: std::option::Option::None,
         module_item_kind: node.module_item_kind.clone(),
         declaration_marker: node.declaration_marker.clone(),
+        declaration: node.declaration.clone(),
         expr_data: Rc::new(ExprData::NoExprData),
     })
 }

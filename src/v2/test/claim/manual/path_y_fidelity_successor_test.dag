@@ -2,16 +2,16 @@ module v2.test.manual.path_y_fidelity_successor
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn path_y_core_expr() -> Expression {
-  LogicalOr {
-    left: LogicalOr {
+fn path_y_core_expr() -> extdeps.github.expressions.Expression {
+  extdeps.github.expressions.LogicalOr {
+    left: extdeps.github.expressions.LogicalOr {
       left: extdeps.github.expressions.FunctionCall {
-        function: HashFiles,
-        args: [ StringLiteral { value: "Cargo.lock" }, StringLiteral { value: "Cargo.toml" } ],
+        function: extdeps.github.expressions.HashFiles,
+        args: [ extdeps.github.expressions.StringLiteral { value: "Cargo.lock" }, extdeps.github.expressions.StringLiteral { value: "Cargo.toml" } ],
       },
-      right: ContextAccess { context: Github, path: ["event", "number"] },
+      right: extdeps.github.expressions.ContextAccess { context: extdeps.github.expressions.Github, path: ["event", "number"] },
     },
-    right: ContextAccess { context: Runner, path: ["os"] },
+    right: extdeps.github.expressions.ContextAccess { context: extdeps.github.expressions.Runner, path: ["os"] },
   }
 }
 
@@ -53,7 +53,7 @@ fn gha_roundtrip_fidelity_matches_target_quotient() -> Bool {
 }
 
 fn gha_core_advertises_target_quotient_fidelity() -> Bool {
-  match ingest_expression(src: serialize_expression(expression: path_y_core_expr())) {
+  match extdeps.github.expressions.ingest_expression(src: extdeps.github.expressions.serialize_expression(expression: path_y_core_expr())) {
     Present { value: v } =>
       match gha_expression_core_roundtrip_fidelity() {
         Accepted { value: fidelity, diagnostics: _ } => {

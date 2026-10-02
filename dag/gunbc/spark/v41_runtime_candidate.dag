@@ -2,7 +2,7 @@ module gunbc.spark.v41_runtime_candidate
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.nat { Nat }
-import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, declaration_ref_eq }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, declaration_ref_eq, TypeParameter }
 import std.content_hash { ContentHash, Sha256Digest, content_hash_atom, serialize_content_hash, sha256_hex_digest }
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
 import std.measure { hardware_thread_count_value, byte_size_count }
@@ -514,6 +514,7 @@ fn v41_decl_field_wire(f: DeclField) -> String {
   match f {
     WholeDeclaration => "*"
     NamedField { field_name: n } => n as String
+    TypeParameter { name: t } => concat("<", concat(t as String, ">"))
   }
 }
 
@@ -683,9 +684,11 @@ fn v41_candidate_standing(c: V41CandidateInputs, readback: V41StoreReadback) -> 
     standing: match readback {
       V41StoreReadbackRefused { defects: rd } => match standing {
         V41CandidateRefused { defects: d } => V41CandidateRefused { defects: concat(d, rd) }
-        _ => V41CandidateRefused { defects: rd }
+        V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: _ } => V41CandidateRefused { defects: rd }
+        V41CandidateUnestablished { obligations: _ } => V41CandidateRefused { defects: rd }
       }
-      _ => standing
+      V41StoreReadbackVerified { host: _, observed_at: _, samples: _ } => standing
+      V41StoreReadbackUnread { obligation: _ } => standing
     },
     derivation: V41DerivationEvidence { row_store_readback: readback },
   }
@@ -881,7 +884,47 @@ fn v41_storage_backed_patch_population() -> V41PatchPopulation {
             Present { value: hook_digest } =>
               match v41_engine_patch(path: v41_engram_storage_hook_path, applies_to: vllm_d2d649e6_revision, sha256_hex: hook_digest.hex as String, purpose: "binding of the file-backed overlay in engram.py: FileBackedParallelEngramEmbedding for every Engram layer when the launch names a row-store manifest" as NonEmptyStr) {
                 Absent => V41PatchesUnestablished { obligation: "DigestFile of the engram.py import member was not a sha256 digest" as NonEmptyStr }
-                Present { value: hook } => V41PatchesObserved { patches: [overlay, hook], partition: PartitionByLaunchConfiguration }
+                Present { value: hook } => v41_with_sm120_members(engram: [overlay, hook])
+              }
+          }
+      }
+  }
+}
+
+// THE SM120 MEMBERS. The population is the image's whole patch list, applied in order, and these two
+// follow the Engram pair; neither touches a file the Engram members touch.
+//   1. The SWA cache's page size. vllm/models/deepseek_v4_1/attention.py constructs DeepseekV4SWACache
+//      with the literal block_size=32 (V4 passes the SWA cache's own default, 64). FlashInfer's SM120 DSv4
+//      decode kernel is instantiated for 64-token pages only (flashinfer.mla._sparse_mla_sm120
+//      _DECODE_DSV4_PAGE_BLOCK_SIZE) and every call with 64 or fewer query tokens must take it, with the
+//      SWA cache as its primary pool -- so on this tree every decode step is refused, whatever its topk.
+//      No engine argument reaches that literal. The member lifts it to a class attribute,
+//      swa_block_size, default 32, and DeepseekV4FlashInferSM120Attention sets 64: the other platform
+//      classes keep the page they had.
+//   2. The control. It creates vllm.models.deepseek_v4_1.nvidia.sm120_decode_shape_selftest, which takes a
+//      rank's own engine argv, builds the ModelConfig vLLM's serve parser derives from it, and calls
+//      FlashInfer's DSv4 entry point at every shape with 64 or fewer query tokens that rank reaches, every
+//      deciding figure read off the installed tree. Its consumer is the launch's pre-staging gate,
+//      gunbc.spark.v41_group_a_launch v41_sm120_gate, which runs it on each rank's host in the image
+//      over that rank's argv and stops the launch on anything short of SELFTEST PASS. The member applies
+//      alone to the unpatched tree, which is how its RED was taken (fleet-converge 36857198484: refused
+//      unpatched; refused at 1152 without the text-only request; passed with both).
+data v41_sm120_swa_page_patch_path: NonEmptyStr = "dag/gunbc/spark/patches/d2d649e6/sm120_swa_page_block_size.patch" as NonEmptyStr
+data v41_sm120_decode_selftest_patch_path: NonEmptyStr = "dag/gunbc/spark/patches/d2d649e6/sm120_decode_shape_selftest.patch" as NonEmptyStr
+
+fn v41_with_sm120_members(engram: List<V41EnginePatch>) -> V41PatchPopulation {
+  match v41_digest_declared_patch(path: v41_sm120_swa_page_patch_path) {
+    Absent => V41PatchesUnestablished { obligation: "DigestFile could not read the SM120 SWA page member at dag/gunbc/spark/patches/d2d649e6/sm120_swa_page_block_size.patch" as NonEmptyStr }
+    Present { value: page_digest } =>
+      match v41_engine_patch(path: v41_sm120_swa_page_patch_path, applies_to: vllm_d2d649e6_revision, sha256_hex: page_digest.hex as String, purpose: "SM120 SWA cache page of 64 tokens: DeepseekV4FlashInferSM120Attention.swa_block_size, the only page FlashInfer's SM120 DSv4 decode kernel takes" as NonEmptyStr) {
+        Absent => V41PatchesUnestablished { obligation: "DigestFile of the SM120 SWA page member was not a sha256 digest" as NonEmptyStr }
+        Present { value: page } =>
+          match v41_digest_declared_patch(path: v41_sm120_decode_selftest_patch_path) {
+            Absent => V41PatchesUnestablished { obligation: "DigestFile could not read the SM120 decode-shape self-test member at dag/gunbc/spark/patches/d2d649e6/sm120_decode_shape_selftest.patch" as NonEmptyStr }
+            Present { value: test_digest } =>
+              match v41_engine_patch(path: v41_sm120_decode_selftest_patch_path, applies_to: vllm_d2d649e6_revision, sha256_hex: test_digest.hex as String, purpose: "SM120 decode-shape self-test: FlashInfer's DSv4 entry point at the TP4 launch's decode and short-prefill shapes" as NonEmptyStr) {
+                Absent => V41PatchesUnestablished { obligation: "DigestFile of the SM120 self-test member was not a sha256 digest" as NonEmptyStr }
+                Present { value: control } => V41PatchesObserved { patches: concat(engram, [page, control]), partition: PartitionByLaunchConfiguration }
               }
           }
       }

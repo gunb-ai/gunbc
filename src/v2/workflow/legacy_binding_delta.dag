@@ -8,6 +8,7 @@ import std.occurrence_identity {
   NodeOccurrenceIdentity,
   OccurrenceSynthetic,
   OccurrenceMinted,
+  OccurrencePending,
   OccurrenceProjected,
   scoped_occurrence_ref_in_scope
 }
@@ -106,18 +107,29 @@ type InsertionProvenanceDerivation
   = InsertionEntryDerived { entry: ProjectionProvenanceEntry }
   | NotAnInsertion { target: ScopedOccurrenceRef }
   | InsertionCauseLost { target_scope: Fnv1a64Structural }
+  | InsertionOccurrenceUnallocated { target_scope: Fnv1a64Structural, caused_by: OccurrenceId }
 
+// A PROJECTED OCCURRENCE WHOSE CAUSE IS IN THE TARGET'S OWN SCOPE IS NOT AN INSERTION. It is a same-graph
+// lowering member (std.occurrence_identity alloc_projected_occurrence): its cause is authored in
+// the graph it lives in, so it relates to the base exactly as that cause does and yields no
+// insertion row. Only a cause in a foreign scope is a projector insertion.
 fn insertion_provenance_entry(
   target_scope: Fnv1a64Structural,
   identity: NodeOccurrenceIdentity
 ) -> InsertionProvenanceDerivation {
   match identity {
     OccurrenceProjected { id: id, caused_by: caused_by } =>
-      InsertionEntryDerived {
-        entry: ProjectedAsInsertion {
+      if scoped_occurrence_ref_in_scope(occurrence_ref: caused_by, scope: target_scope) {
+        NotAnInsertion {
           target: ScopedOccurrenceRef { scope: target_scope, occurrence: id },
-          caused_by: caused_by,
-        },
+        }
+      } else {
+        InsertionEntryDerived {
+          entry: ProjectedAsInsertion {
+            target: ScopedOccurrenceRef { scope: target_scope, occurrence: id },
+            caused_by: caused_by,
+          },
+        }
       }
     OccurrenceMinted { id: id } =>
       NotAnInsertion {
@@ -125,6 +137,8 @@ fn insertion_provenance_entry(
       }
     OccurrenceSynthetic =>
       InsertionCauseLost { target_scope: target_scope }
+    OccurrencePending { caused_by: caused_by } =>
+      InsertionOccurrenceUnallocated { target_scope: target_scope, caused_by: caused_by }
   }
 }
 

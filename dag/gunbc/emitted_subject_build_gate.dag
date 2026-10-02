@@ -22,10 +22,10 @@ import gunbc.instrument_targets { self_host_label, v2_native_cli_label }
 // WHAT ITS RED DISCRIMINATES THAT NO EXISTING REQUIRED LANE DOES, which is the question
 // gunbc.compiler_gate_workflow's roster header requires an author to answer before proposing a
 // lane. Every required lane today reads the corpus through the INTERPRETER or through the SEED's
-// own Rust: the floor evaluates witnesses, the clippy lane lints hand-written and stage0-mirrored
-// Rust, the compiler lane builds the seed binary. NOTHING ON THE MERGE PATH EMITS A V2 CLOSURE AND
-// COMPILES THE RESULT. So a defect that is invisible under evaluation and fatal under emission
-// reaches main green. That is not a hypothesis: `gunbc.recurring_failure_mode`
+// own Rust: the floor evaluates witnesses, the generated lane lints hand-written and stage0-mirrored
+// Rust and regenerates the stage0 mirrors, and both build the seed binary. NOTHING ON THE MERGE
+// PATH EMITS A V2 CLOSURE AND COMPILES THE RESULT. So a defect that is invisible under evaluation
+// and fatal under emission reaches main green. That is not a hypothesis: `gunbc.recurring_failure_mode`
 // `bounded_natural_arithmetic_evaluated_as_unbounded_int` records it in as many words -- rows over
 // `UInt8` typecheck and their witnesses evaluate, "their emitted Rust is produced by nothing on the
 // merge path" -- and BOTH retained subjects refused on it at once, because `std.integer` is in every
@@ -181,13 +181,12 @@ fn emitted_subject_build_retirement_clause(row: EmittedSubjectBuildRow) -> Strin
 // THE ONE ROW TO EDIT WHEN MAIN SELF-HOSTS AGAIN. Flipping it to `EmitBuildExpectedGreen` deletes
 // the notice from every future run; leaving it stale keeps printing a reassurance for a red that
 // is no longer expected, which is why the type has only two arms and no "probably fine" middle.
-data emit_build_standing: NativeEmitBuildStanding = EmitBuildExpectedRed {
-  known_signature: EmittedBuildSignature {
-    error_code: "E0573",
-    symbol: "PointerWidth",
-    emitted_path: "src/std_integer.rs",
-  }
-}
+//
+// RETIRED 2026-09-27 (operator ruling): the retirement condition held on main 5bfe79be45c -- both
+// instruments exited zero on srv1 (neat-boar-16, MemoryMax=45G), and the lane's own merge_group runs
+// were green on the hosted runner (e.g. run 36344502292, job 108690877383, tested tree 12ab6d1439a).
+// The E0573 PointerWidth at src/std_integer.rs signature is no longer expected.
+data emit_build_standing: NativeEmitBuildStanding = EmitBuildExpectedGreen
 
 // THE LINES A LANE READS WHEN IT CLICKS THE RED X. Rendered from the standing row above AND from
 // whether the lane blocks -- a SUPPLIED Bool, because that fact's one home is the lane row in

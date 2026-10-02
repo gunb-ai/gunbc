@@ -22,7 +22,6 @@ import v2.std.algebra {
 }
 import std.algebra { list_snoc_item }
 import v2.std.collection { Absent, List, Present }
-import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.data_index {
   DataInitDecl,
   data_init_decl_facts_live,
@@ -60,7 +59,8 @@ import v2.std.node {
   NodeFold,
   Positional,
   Symbol,
-  fold_node
+  fold_node,
+  symbol_lexeme,
 }
 import v2.std.text { String, string_eq }
 
@@ -227,25 +227,36 @@ fn flows_from_sink_call(
   let sink = sink_kind_for_callee(callee_text: callee_text)
   match sink {
     UnknownHostEffectSink => empty_flow_list
-    _ =>
-      match list_head(xs: args) {
-        HeadFound { value: arg } =>
-          let text = symbol_lexeme(sym: arg)
-          let path = path_literal_from_lexeme(
-            text: text,
-            param_names: param_names,
-            data_inits: data_inits
-          )
-          [
-            EffectReachFlow {
-              sink: sink,
-              path_literal: path,
-              init_literal_fp: ""
-            }
-          ]
-        HeadAbsent =>
-          [EffectReachFlow { sink: sink, path_literal: "", init_literal_fp: "" }]
-      }
+    FilesystemReadSink => flows_from_sink_call_known(sink: sink, args: args, param_names: param_names, data_inits: data_inits)
+    WitnessBinRunSink => flows_from_sink_call_known(sink: sink, args: args, param_names: param_names, data_inits: data_inits)
+    ShellExecRunSink => flows_from_sink_call_known(sink: sink, args: args, param_names: param_names, data_inits: data_inits)
+    GunbcCompileEntrySink => flows_from_sink_call_known(sink: sink, args: args, param_names: param_names, data_inits: data_inits)
+  }
+}
+
+fn flows_from_sink_call_known(
+  sink: HostEffectSinkKind,
+  args: List<Symbol>,
+  param_names: List<String>,
+  data_inits: List<DataInitDecl>
+) -> List<EffectReachFlow> {
+  match list_head(xs: args) {
+    HeadFound { value: arg } =>
+      let text = symbol_lexeme(sym: arg)
+      let path = path_literal_from_lexeme(
+        text: text,
+        param_names: param_names,
+        data_inits: data_inits
+      )
+      [
+        EffectReachFlow {
+          sink: sink,
+          path_literal: path,
+          init_literal_fp: ""
+        }
+      ]
+    HeadAbsent =>
+      [EffectReachFlow { sink: sink, path_literal: "", init_literal_fp: "" }]
   }
 }
 

@@ -1,0 +1,70 @@
+module test.claim.module_graph.demand_closure_agreement_witness
+
+import std.algebra { FreeMonoid }
+import v2.std.algebra { contains, for_all }
+import v2.std.text { String, string_eq }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.lens.module_graph {
+  dependency_closure,
+  dependency_closure_live_excluding,
+  dependency_resolution_facts_live,
+  module_declaration_facts_live
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE DEMAND WALK ANSWERS WHAT THE CORPUS WALK ANSWERED, AT ONE INTERFACE. v2.lens.module_graph
+// dependency_closure_live_excluding now expands from the entry through the keyed edge read instead of
+// folding every module's edges into an adjacency first. The subject is that walk, so the pool is a
+// SUPPLIED fixture (DESIGN section 3: a witness discriminates at one interface) where the reference --
+// dependency_closure over the population read's edges and declaration census, the fold the walk
+// replaced -- is as cheap as the walk itself. The fixture carries each edge law the walk must keep:
+// a chain (entry -> mid -> leaf), a diamond (mid and leaf both reach shared, so visited tracking must
+// absorb it once), an import of a module the pool does not declare (std.types, which contributes no
+// path), an EXCLUDED importer (excluded/gate, reached as a target but whose own edges are dropped, so
+// behind_gate stays out), and an island that imports into the closure but is never reached from it.
+// The REAL corpus is exercised by test.claim.module_graph.import_closure_live, which runs the same walk
+// (import_closure_live delegates to dependency_closure_live_excluding) from a real entry over real
+// production modules. The broker witness this line used to cite does not exist.
+data fixture_roots: List<String> = ["dag/test/fixture/demand_closure"]
+
+data fixture_exclude: List<String> = ["/excluded/"]
+
+data fixture_entry: String = "dag/test/fixture/demand_closure/entry.dag"
+
+data expected_closure: FreeMonoid<String> = [
+  "dag/test/fixture/demand_closure/entry.dag",
+  "dag/test/fixture/demand_closure/mid.dag",
+  "dag/test/fixture/demand_closure/excluded/gate.dag",
+  "dag/test/fixture/demand_closure/leaf.dag",
+  "dag/test/fixture/demand_closure/shared.dag"
+]
+
+fn same_set(a: FreeMonoid<String>, b: FreeMonoid<String>) -> Bool {
+  for_all(xs: a, predicate: fn(x) { contains(xs: b, item: x, eq: string_eq) })
+    && for_all(xs: b, predicate: fn(x) { contains(xs: a, item: x, eq: string_eq) })
+    && length(a) == length(b)
+}
+
+fn corpus_walk_closure() -> FreeMonoid<String> {
+  dependency_closure(
+    entry_path: fixture_entry,
+    edges: dependency_resolution_facts_live(pool_roots: fixture_roots, importer_roots: fixture_roots, exclude_substrings: fixture_exclude),
+    nodes: module_declaration_facts_live(pool_roots: fixture_roots)
+  )
+}
+
+fn demand_walk_closure() -> FreeMonoid<String> {
+  dependency_closure_live_excluding(entry_path: fixture_entry, pool_roots: fixture_roots, exclude_substrings: fixture_exclude)
+}
+
+// The demand walk reaches exactly the declared closure: the chain, the diamond once, the excluded
+// gate as a target, and neither the module behind the gate nor the island.
+test fn the_demand_walk_reaches_exactly_the_fixture_closure() -> Bool {
+  same_set(a: demand_walk_closure(), b: expected_closure)
+}
+
+// And it agrees with the adjacency fold it replaced, on the same pool and exclusions.
+test fn the_demand_walk_agrees_with_the_corpus_walk() -> Bool {
+  same_set(a: demand_walk_closure(), b: corpus_walk_closure())
+}

@@ -47,7 +47,13 @@ import extdeps.communication.medium { Lossless, Medium }
 // gunbc.recurring_failure_mode.type_decl_field_decl_block_not_named_at_graft -- so the
 // incidental field is gone rather than the fixture standing on a silent drop.)
 
-data collision_module_source: String = "module v2.test.collision\n\nimport v2.std.logic { Bool }\n\ntest fn real_test() -> Bool { true }\n"
+// The module also carries `data default_shade: Shade = Light`, which lowers to a nullary Arrow whose
+// body is a resolved declaration reference. Eval admits a module only if its whole tree is well
+// formed, so this row is the real-route control for v2.std.node DeclarationReferenceBody: with that
+// arm deleted the reference reads as a record construct, the module fails well_formed, and
+// real_test is refused eval_rejected_invalid_node instead of passing (the native lane canary,
+// 2026-09-26).
+data collision_module_source: String = "module v2.test.collision\n\nimport v2.std.logic { Bool }\n\ntype Shade = Light | Dark\n\ndata default_shade: Shade = Light\n\ntest fn real_test() -> Bool { true }\n"
 
 data collision_sibling_source: String = "module v2.test.collision_sibling\n\nimport v2.std.logic { Bool }\n\ntest fn shared_name() -> Bool { true }\n"
 
@@ -96,7 +102,7 @@ fn collision_resolved() -> Outcome<ResolvedTree> {
   match native_test_context_from_ingest(ingest: [collision_read(), collision_sibling_read()]) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: context, diagnostics: _ } =>
-      native_test_resolve_module(context: context, module: collision_module())
+      native_test_resolve_module(context: context, module: collision_module()).resolved
   }
 }
 
@@ -172,9 +178,7 @@ test fn shared_root_validation_refusal_stays_at_prepare_for_each_identity() -> B
     Rejected { diagnostics: _ } => false
     Accepted { value: roots, diagnostics: _ } =>
       let context = NativeTestContext {
-        resolution: resolution_context(lm: dag_language_model_surface_empty_prelude(), roots: roots),
-        index: source_root_index_empty(),
-        active_roots: [],
+        resolution: resolution_context(lm: dag_language_model_surface_empty_prelude(), roots: roots, index: source_root_index_empty(), active_roots: [], policy: v2.std.resolution_policy.default_name_resolution_policy()),
         file_refusals: []
       }
       match native_lane_module_resolution(
@@ -185,7 +189,7 @@ test fn shared_root_validation_refusal_stays_at_prepare_for_each_identity() -> B
           path: ^native_decl_selection_collision_cu,
           declarations: ["real_test"]
         }
-      ) {
+      ).resolution {
         NativeLaneModuleResolved { resolved: _ } => false
         NativeLaneModuleContextRowsDecided { rows: _ } => false
         NativeLaneModuleResolveRowsDecided { rows: rows } =>

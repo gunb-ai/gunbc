@@ -3,7 +3,6 @@ module v2.test.claim.body_lowering.atom_body_discriminator_helpers
 import v2.compiler.reference_conservation_admission { conserved_normalize_of_text, no_explained_drops }
 import v2.std.algebra { any }
 import std.algebra { list_snoc_item }
-import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node {
@@ -20,7 +19,8 @@ import v2.std.node {
   Transform,
   TypeNode,
   UnsupportedArrowBody,
-  classify_arrow_body_form
+  classify_arrow_body_form,
+  symbol_lexeme,
 }
 import v2.test.claim.body_lowering.arrow_body_form_semantic_helpers {
   classify_arrow_body_form_red_no_computation_body,
@@ -148,7 +148,8 @@ fn atom_body_discriminator_walk_spine_to_body(captured: Node) -> Node {
       } else {
         captured
       }
-    _ => captured
+    TypeNode { connective: _ } => captured
+    ComputationNode { behavior: _ } => captured
   }
 }
 
@@ -168,7 +169,8 @@ fn atom_body_discriminator_top_level_arrow_lexeme_optional(edge: Edge) -> Option
       match edge.target.kind {
         TypeNode { connective: Arrow } =>
           optional_present(value: symbol_lexeme(sym: sym))
-        _ => Absent
+        TypeNode { connective: _ } => Absent
+        ComputationNode { behavior: _ } => Absent
       }
     Positional => Absent
   }
@@ -183,7 +185,8 @@ fn atom_body_discriminator_observed_top_level_arrow_lexemes(root: Node) -> List<
           Present { value: lexeme } => list_snoc_item(xs: acc, item: lexeme)
         }
       })
-    _ => []
+    TypeNode { connective: _ } => []
+    ComputationNode { behavior: _ } => []
   }
 }
 
@@ -200,7 +203,8 @@ fn atom_body_discriminator_top_level_named_arrow(root: Node, fn_lexeme: String) 
                   true =>
                     match edge.target.kind {
                       TypeNode { connective: Arrow } => optional_present(value: edge.target)
-                      _ => Absent
+                      TypeNode { connective: _ } => Absent
+                      ComputationNode { behavior: _ } => Absent
                     }
                   false => Absent
                 }
@@ -208,7 +212,8 @@ fn atom_body_discriminator_top_level_named_arrow(root: Node, fn_lexeme: String) 
             }
         }
       })
-    _ => Absent
+    TypeNode { connective: _ } => Absent
+    ComputationNode { behavior: _ } => Absent
   }
 }
 
@@ -301,7 +306,8 @@ fn atom_body_discriminator_named_binding_count(domain: Node) -> Int {
           Positional => count
         }
       })
-    _ => 0
+    TypeNode { connective: _ } => 0
+    ComputationNode { behavior: _ } => 0
   }
 }
 
@@ -313,7 +319,8 @@ fn atom_body_discriminator_parameter_count(arrow: Node) -> Optional<Int> {
           optional_present(value: atom_body_discriminator_named_binding_count(domain: domain))
         Absent => Absent
       }
-    _ => Absent
+    TypeNode { connective: _ } => Absent
+    ComputationNode { behavior: _ } => Absent
   }
 }
 

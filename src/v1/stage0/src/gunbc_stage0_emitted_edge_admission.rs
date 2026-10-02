@@ -175,7 +175,7 @@ pub fn stage0_package_reachable(
             )
             .iter()
             .cloned()
-            .fold(Rc::new(vec![]), |acc: _, p: String| {
+            .fold(Rc::new(vec![]), |acc: Rc<Vec<String>>, p: String| {
                 if {
                     let mut __found = false;
                     for a in acc.iter().cloned() {

@@ -8,6 +8,8 @@ import std.types { GitRef, FilePath }
 import extdeps.git
 import v2.workflow.floor_unimported_bare_provider_debt_roster {
   UnimportedBareProviderRowView,
+  Retired,
+  RelocatedOutOfSourceRoots,
   unimported_bare_provider_roster_rows,
 }
 
@@ -119,22 +121,38 @@ fn unimported_bare_provider_row_standing(
   is_checked: Bool,
   is_carried: Bool,
 ) -> List<String> {
+  let relocation_not_done = match r.standing {
+    Retired { cause: RelocatedOutOfSourceRoots { to: _ } } => exists
+    _ => false
+  }
   if r.active && !exists {
     ["ActiveDebtOnAbsentFile " + r.identity + " -- the file is gone; retire the row as FileDeleted"]
   } else {
     if r.file_deleted && exists {
       ["RetiredFileDeletedButPresent " + r.identity]
     } else {
-      if r.imports_fixed && !exists {
-        ["RetiredImportsFixedButFileAbsent " + r.identity + " -- the cause is FileDeleted"]
+      if relocation_not_done {
+        ["RetiredRelocatedButPresent " + r.identity + " -- the file still sits under a source root; the relocation did not happen"]
       } else {
-        if r.active && is_checked && !is_carried {
-          ["RosterStale " + r.identity + " -- the file no longer carries this pair; retire it as ImportsFixed"]
+        if r.imports_fixed && !exists {
+          ["RetiredImportsFixedButFileAbsent " + r.identity + " -- the cause is FileDeleted"]
         } else {
-          if r.imports_fixed && is_checked && is_carried {
-            ["RetiredImportsFixedButCarried " + r.identity]
+          if r.not_a_reference && !exists {
+            ["RetiredNotAReferenceButFileAbsent " + r.identity + " -- the cause is FileDeleted"]
           } else {
-            []
+            if r.active && is_checked && !is_carried {
+              ["RosterStale " + r.identity + " -- the file no longer carries this pair; retire it as ImportsFixed"]
+            } else {
+              if r.imports_fixed && is_checked && is_carried {
+                ["RetiredImportsFixedButCarried " + r.identity]
+              } else {
+                if r.not_a_reference && is_checked && is_carried {
+                  ["RetiredNotAReferenceButCarried " + r.identity]
+                } else {
+                  []
+                }
+              }
+            }
           }
         }
       }
@@ -143,7 +161,8 @@ fn unimported_bare_provider_row_standing(
 }
 
 // The roster against the tree. `present_files` are the roster's files that exist; `checked_files`
-// are the files whose pairs the host derived (the route's own files plus every ImportsFixed file),
+// are the files whose pairs the host derived (the route's own files plus every ImportsFixed or
+// NotAReference file),
 // and `carried` the identities those files carry. `route_carried` is the subset carried by the
 // ROUTE's files (touched, or entry): only those can be unrostered. An ImportsFixed file is
 // re-derived to hold its retirement true, not to hold a file nobody touched to the rule -- a new
