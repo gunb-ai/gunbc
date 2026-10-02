@@ -5,6 +5,7 @@ import std.nat { Nat }
 import v2.std.optional { Present, Absent }
 import std.measure { BasisPoint, basis_point, basis_point_count }
 import v2.std.algebra { length }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.spark.serving_performance_subject { ServingPerformanceSubject, serving_subject_key }
 import gunbc.spark.serving_compatibility { CompatibilityAdmission, AdmitsNormalServing, AdmitsBoundedExperimentOnly, AdmitsNothing }
 import gunbc.spark.arm_memory_fit {
@@ -47,6 +48,19 @@ data serving_promotion_policy: ServingPromotionPolicy = ServingPromotionPolicy {
   require_goodput_at_least_incumbent: true,
   require_zero_preemptions: true,
 }
+
+// ── WHO PRODUCES THE RECEIPTS: A DECLARED FRONTIER, NOT A CLAIM (review 74125) ───────────────────
+//
+// In this change the fold and the launch wall CONSUME the receipts; nothing PRODUCES a quality or a
+// calibration receipt yet, so every caller passes no_promotion_receipts and every subject's standing is
+// a measurement serve. That costs no admission that existed before -- no production path plans
+// ArmNormalServing through the memory wall (Group B renders and relaunches as ArmBoundedExperiment,
+// V4.1 plans as one), and every subject's memory fit is unestablished, which already refused normal
+// serving at the memory gate -- but it means normal serving is restored for a subject only by these
+// producers, named here with what each must be sufficient for.
+data serving_promotion_quality_producer_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: an agentic acceptance-set run against a launched subject that records each attempt as gunbc.econ.llm_attempt_receipt LlmAttemptReceipt and folds them into a QualityReceipt whose subject_key is gunbc.spark.serving_performance_subject serving_subject_key of the subject that served them, together with the incumbent's QualityReceipt on the same acceptance_set. SUFFICIENT FOR: a launch's promotion_receipts carries a quality receipt that names that subject, so serving_promotion_standing can judge quality against the incumbent rather than report it missing." as NonEmptyStr)
+
+data serving_promotion_calibration_producer_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: a trace-replay run through gunbc.spark.serving_load_runner (deforking cut 6, the shared runner and workload subject) against a launched subject, reading preemptions, engine restarts, OOM events and accepted turns per hour from the engine and the harness, and folding them into a WorkloadCalibrationReceipt keyed by that subject's serving_subject_key and the trace digest; for DeepSeek V4.1 the Group A wet staircase's V41CapacityReport projected through gunbc.spark.v41_capacity_measurement v41_calibration_receipt is the same receipt, reached when that launch passes it as its promotion_receipts. SUFFICIENT FOR: a launch's promotion_receipts carries a calibration receipt that names that subject and the incumbent's on the same trace, so serving_promotion_standing can judge goodput and stability rather than report them missing." as NonEmptyStr)
 
 // ── THE SUBJECT-BOUND RECEIPTS ────────────────────────────────────────────────────────────────────
 type QualityReceipt {
