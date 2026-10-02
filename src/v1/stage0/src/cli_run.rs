@@ -47408,12 +47408,20 @@ mod pr2_whole_tree_differential_probe {
             root.join("src/v2").to_string_lossy().into_owned(),
         ];
         let corpus = super::read_source_corpus_once(&roots);
-        let subject = super::assemble_prepared_subject_from_corpus(
-            &corpus,
-            &super::required_floor_runner::floor_prepared_subject_exclusions(),
-            None,
-        )
-        .expect("subject assembles");
+        // A fixed SUBJECT for same-runner timing: the floor exclusions plus any comma-separated path
+        // substrings in GUNBC_PROBE_EXCLUDE (identical across arms; refusals it causes are reported
+        // in the counted blocked set like any other).
+        let mut exclusions = super::required_floor_runner::floor_prepared_subject_exclusions();
+        if let Ok(extra) = std::env::var("GUNBC_PROBE_EXCLUDE") {
+            exclusions.extend(
+                extra
+                    .split(',')
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string),
+            );
+        }
+        let subject = super::assemble_prepared_subject_from_corpus(&corpus, &exclusions, None)
+            .expect("subject assembles");
         let sources = subject.sources.clone();
         eprintln!(
             "[phase-cpu-subject] modules={} digest={}",
