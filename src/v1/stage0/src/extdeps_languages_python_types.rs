@@ -2,10 +2,14 @@
 // Source module: extdeps.languages.python.types
 
 use self::PythonTypeKind::*;
-pub use crate::extdeps_external_authority::ExternalAuthority;
+pub use crate::extdeps_external_authority::{
+    ExternalAuthority, ExternalModelScope, ExternalSubjectRef,
+};
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::std_coercion::{CallableRepr, CastRule, CastSyntax, InhabitantDecl, TypeCheckpoint};
+use crate::std_decl_ref::DeclField::WholeDeclaration;
+pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -25,6 +29,25 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
             };
         }
     CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+}
+
+pub fn extdeps_model_scope() -> Rc<ExternalModelScope> {
+    thread_local! {
+            static CACHED: Rc<ExternalModelScope> = {
+                Rc::new(ExternalModelScope {
+        subject: Rc::new(ExternalSubjectRef {
+        declaration: Rc::new(DeclarationRef {
+        module_path: "extdeps.languages.python.types".to_string(),
+        decl_name: "PythonTypeKind".to_string(),
+        field: Rc::new(DeclField::WholeDeclaration),
+    }),
+    }),
+        first_citation: extdeps_external_authority_anchor(),
+        further_citations: Rc::new(vec![]),
+    })
+            };
+        }
+    CACHED.with(|c: &Rc<ExternalModelScope>| c.clone())
 }
 
 pub fn python_type_checkpoints() -> Rc<Vec<Rc<TypeCheckpoint>>> {

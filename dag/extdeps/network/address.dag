@@ -5,12 +5,22 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
 import extdeps.network.ipv6 { Ipv6Address, ipv6_is_loopback }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https,
     locator: "www.iana.org/assignments/address-family-numbers/address-family-numbers.xhtml",
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.network.address", decl_name: "IpAddress", field: WholeDeclaration
+  } },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 // An IP address is v4 OR v6 (RFC 791 / RFC 4291) — the honestly CLOSED coproduct over the two

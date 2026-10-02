@@ -10,12 +10,22 @@ import extdeps.tools.socat { socat_cli_tool }
 import extdeps.tools.websocat { websocat_cli_tool }
 import std.disposition { Disposition, Terminal }
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "github.com/openbmc/jsnbd"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.bmc.webui.nbd_proxy_serve", decl_name: "NbdProxyServeTransportIntent", field: WholeDeclaration
+  } },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 data bmcweb_session_token_env_ref: NonEmptyStr = concat("$", "BMCWEB_SESSION_TOKEN") as NonEmptyStr
