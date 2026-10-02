@@ -1,0 +1,18 @@
+module tools.cursor_only
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex_rules }
+import v2.std.compilers.lexing { ModeledLexRules }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+fn main(input_path: String, marker_path: String) -> ProcessExit {
+ let source = Filesystem.Read(path: input_path)
+ if !source.success { exit_failure(reason: "input unreadable") } else {
+  match tokenize(text: source.content, file: ^comparison, rules: ModeledLexRules { root: dag_lex_rules() }) {
+   v2.std.diagnostic.Rejected { diagnostics: _ } => exit_failure(reason: "tokenization rejected")
+   v2.std.diagnostic.Accepted { value: tokens, diagnostics: _ } => {
+    let written = Filesystem.Write(path: marker_path, content: "accepted")
+    if written.success { ExitSuccess } else { exit_failure(reason: "marker write failed") }
+   }
+  }
+ }
+}

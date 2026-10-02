@@ -1,0 +1,23 @@
+[
+  {
+    "path": "target/cursor-samples/emit-16k.dag",
+    "bytes": 16142,
+    "sha256": "a010f65112b00f692234554f37bd1e42c49ecd48f7559081da957f1a80349b26"
+  },
+  {
+    "path": "target/cursor-samples/emit-32k.dag",
+    "bytes": 32710,
+    "sha256": "33618ffc5d04c3f59211210c1ffef0c8b6142416b6e007bbe69a62207c0d3548"
+  },
+  {
+    "path": "target/cursor-samples/emit-64k.dag",
+    "bytes": 64561,
+    "sha256": "d9ff1da7a3f86bacc159b04200897bfef92f8943ba15f8caaff2e05eb1c8a800"
+  },
+  {
+    "path": "target/cursor-samples/fleet-full.dag",
+    "bytes": 137314,
+    "sha256": "83cffcb99fc4b8566d66f29988a7ea3be4254b1247ad19486d5980e8d0634186",
+    "revision": "359661af2d7"
+  }
+]
