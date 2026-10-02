@@ -36,6 +36,8 @@ data soc_service_source: String = "module t.svc\n\nservice s.F {\n  operation Ru
 
 data soc_caller_source: String = "module t.caller\n\nimport t.svc { s }\n\nfn run_it() { s.F.Run() }\n\nfn get_it() { s.E.Get() }\n"
 
+data soc_absolute_source: String = "module t.absolute\n\nfn run_it() { t.svc.s.F.Run() }\n"
+
 data soc_wrong_op_source: String = "module t.wrong\n\nimport t.svc { s }\n\nfn missing() { s.F.Get() }\n"
 
 data soc_unimported_source: String = "module t.other\n\nfn run_it() { s.F.Run() }\n"
@@ -109,5 +111,29 @@ test fn a_module_nested_under_the_service_module_gets_no_implicit_scope_RED() ->
   match soc_resolve(subject_source: soc_nested_source, subject_id: ^soc_nested_read, subject_path: "src/v2/test/fixture/service_operation_call/inner.dag", subject: "t.svc.inner") {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
+  }
+}
+
+// DIAGNOSTIC SPLIT of the positive above: each probe answers one question, so a red names its own cause
+// (whether the importing module resolves at all; whether a fully qualified call resolves; whether either
+// carries the reference). Folded back into the positive once the route is green.
+test fn probe_the_importing_caller_resolves() -> Bool {
+  match soc_resolve(subject_source: soc_caller_source, subject_id: ^soc_caller_read, subject_path: "src/v2/test/fixture/service_operation_call/caller.dag", subject: "t.caller") {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+  }
+}
+
+test fn probe_a_fully_qualified_call_resolves_to_the_operation_path() -> Bool {
+  match soc_resolve(subject_source: soc_absolute_source, subject_id: ^soc_absolute_read, subject_path: "src/v2/test/fixture/service_operation_call/absolute.dag", subject: "t.absolute") {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: resolved, diagnostics: _ } => soc_references_path(root: resolved.root, dotted: "t.svc.s.F.Run")
+  }
+}
+
+test fn probe_a_fully_qualified_call_resolves() -> Bool {
+  match soc_resolve(subject_source: soc_absolute_source, subject_id: ^soc_absolute_read, subject_path: "src/v2/test/fixture/service_operation_call/absolute.dag", subject: "t.absolute") {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
   }
 }
