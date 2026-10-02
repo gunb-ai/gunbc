@@ -28,6 +28,7 @@ import v2.extdeps.languages.dag {
   DagCanonicalBoolLiteral,
   DagCanonicalIntLiteral,
   DagCanonicalSymbolLiteral,
+  DagCanonicalStringLiteral,
   DagCanonicalLiteral,
   dag_binding_denotation,
   dag_canonical_literal_from_node,
@@ -133,6 +134,7 @@ import v2.std.diagnostic {
 }
 import v2.std.logic { Bool }
 import v2.std.node {
+  host_text_type_node,
   symbol_type_node,
   Arrow,
   Atom,
@@ -1163,6 +1165,7 @@ fn infer_literal_type_binding(literal: DagCanonicalLiteral) -> Symbol {
     DagCanonicalBoolLiteral { value: _ } => ^bool_node_symbol
     DagCanonicalIntLiteral { magnitude: _ } => ^dag_binding_type_int
     DagCanonicalSymbolLiteral { symbol: _ } => ^symbol_node_symbol
+    DagCanonicalStringLiteral { value: _ } => ^string_node_symbol
   }
 }
 
@@ -1382,6 +1385,8 @@ fn infer_match_bool_arm_body_type(
       infer_branch_operand_resolved_type(node: body_target, facts: body_facts)
     Accepted { value: DagCanonicalSymbolLiteral { symbol: _ }, diagnostics: _ } =>
       infer_branch_operand_resolved_type(node: body_target, facts: body_facts)
+    Accepted { value: DagCanonicalStringLiteral { value: _ }, diagnostics: _ } =>
+      infer_branch_operand_resolved_type(node: body_target, facts: body_facts)
     Rejected { diagnostics: _ } =>
       infer_branch_operand_resolved_type(node: body_target, facts: body_facts)
   }
@@ -1578,6 +1583,8 @@ fn infer_bool_literal_pattern_classify(pattern: Node) -> InferBoolLiteralPattern
     Accepted { value: DagCanonicalIntLiteral { magnitude: _ }, diagnostics: _ } =>
       InferBoolLiteralPatternOther
     Accepted { value: DagCanonicalSymbolLiteral { symbol: _ }, diagnostics: _ } =>
+      InferBoolLiteralPatternOther
+    Accepted { value: DagCanonicalStringLiteral { value: _ }, diagnostics: _ } =>
       InferBoolLiteralPatternOther
     Rejected { diagnostics: _ } => InferBoolLiteralPatternOther
   }
@@ -3344,6 +3351,7 @@ fn infer_gather_failed_non_empty(acc: InferGatherFoldAcc) -> NonEmptyDiagnostics
 type InferLiteralPayload
   = InferIntMagnitudePayload
   | InferSymbolNamePayload
+  | InferStringValuePayload
   | InferNotALiteralPayload
 
 fn infer_literal_edge_payload(parent: Node, edge: Edge) -> InferLiteralPayload {
@@ -3361,6 +3369,12 @@ fn infer_literal_edge_payload(parent: Node, edge: Edge) -> InferLiteralPayload {
         Positional => InferNotALiteralPayload
       }
     Accepted { value: DagCanonicalBoolLiteral { value: _ }, diagnostics: _ } => InferNotALiteralPayload
+    Accepted { value: DagCanonicalStringLiteral { value: _ }, diagnostics: _ } =>
+      match edge.label {
+        Named { name: field } =>
+          if field == ^string_literal_value_field { InferStringValuePayload } else { InferNotALiteralPayload }
+        Positional => InferNotALiteralPayload
+      }
     Rejected { diagnostics: _ } => InferNotALiteralPayload
   }
 }
@@ -3439,6 +3453,12 @@ fn infer_literal_payload_member_type(family: InferLiteralPayload, member: Node) 
       match member.kind {
         TypeNode { connective: Atom { identity: _ } } =>
           if length(xs: member.children) == 0 { optional_present(value: symbol_type_node()) } else { optional_absent() }
+        _ => optional_absent()
+      }
+    InferStringValuePayload =>
+      match member.kind {
+        TypeNode { connective: Atom { identity: _ } } =>
+          if length(xs: member.children) == 0 { optional_present(value: host_text_type_node()) } else { optional_absent() }
         _ => optional_absent()
       }
     InferNotALiteralPayload => optional_absent()
