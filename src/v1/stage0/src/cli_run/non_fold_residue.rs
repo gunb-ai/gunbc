@@ -84,39 +84,6 @@ use crate::v1_std_core::{
 };
 use serde::Serialize;
 
-pub fn non_fold_residue_wildcard_red_fixture_holds() -> bool {
-    let fixture = vec![(
-        "m.dag".to_string(),
-        "module m\ntype Mode = A | B | C\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    _ => false\n  }\n}\n"
-            .to_string(),
-    )];
-    nfr_residue_sites(&fixture).contains(&"m.dag::f".to_string())
-}
-
-pub fn non_fold_residue_total_fold_green_fixture_holds() -> bool {
-    let fixture = vec![(
-        "m.dag".to_string(),
-        "module m\ntype Mode = A | B | C\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    B => false\n    C => false\n  }\n}\n"
-            .to_string(),
-    )];
-    !nfr_residue_sites(&fixture).contains(&"m.dag::f".to_string())
-}
-
-pub fn non_fold_residue_roster_red_fixture_holds() -> bool {
-    !non_fold_residue_site_is_rostered("synthetic/unrostered_site.dag::would_fail")
-}
-
-pub fn non_fold_residue_synthetic_unrostered_red_holds() -> bool {
-    let fixture = vec![(
-        "synthetic_red_fixture.dag".to_string(),
-        "module synthetic_red_fixture\ntype Mode = A | B | C\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    _ => false\n  }\n}\n"
-            .to_string(),
-    )];
-    let sites = nfr_residue_sites(&fixture);
-    let site = "synthetic_red_fixture.dag::f";
-    sites.contains(&site.to_string()) && !non_fold_residue_site_is_rostered(site)
-}
-
 /// Project the path site keys out of the typed `non_fold_residue_frontier` rows of the
 /// `gunbc.non_fold_residue` authority SOURCE TEXT via the real front-end — the roster's
 /// re-home off this file's former `NON_FOLD_RESIDUE_ROSTER` const (group-of-units ruling,
@@ -294,40 +261,11 @@ pub(crate) fn non_fold_residue_roster_set() -> &'static std::collections::BTreeS
 
 pub fn non_fold_residue_closed_coproduct_type_names() -> &'static std::collections::BTreeSet<String>
 {
-    &nfr_build_report().closed_coproduct_names
-}
-
-pub fn non_fold_residue_count() -> i64 {
-    nfr_build_report().sites.len() as i64
-}
-
-pub fn non_fold_residue_unrostered_count() -> i64 {
-    let roster = non_fold_residue_roster_set();
-    nfr_build_report()
-        .sites
-        .iter()
-        .filter(|s| !roster.contains(s.as_str()))
-        .count() as i64
+    nfr_closed_coproduct_name_set()
 }
 
 pub fn non_fold_residue_site_is_rostered(site: &str) -> bool {
     non_fold_residue_roster_set().contains(site)
-}
-
-pub fn non_fold_residue_stale_roster_count() -> i64 {
-    let live: std::collections::BTreeSet<&str> = nfr_build_report()
-        .sites
-        .iter()
-        .map(|s| s.as_str())
-        .collect();
-    non_fold_residue_roster_entries()
-        .iter()
-        .filter(|s| !live.contains(s.as_str()))
-        .count() as i64
-}
-
-pub fn non_fold_residue_coproduct_universe_count() -> i64 {
-    nfr_build_report().coproduct_universe as i64
 }
 
 // ---------------------------------------------------------------------------
@@ -338,8 +276,8 @@ pub fn non_fold_residue_coproduct_universe_count() -> i64 {
 // `v1.compiler.infer_patterns` `constructor_roster_for` is the classification
 // `check_match_exhaustiveness` itself consults, over the module's own `type_env`. So a local
 // binding, a field projection or a call is classified exactly like a parameter -- the population
-// the parameter-keyed text scan (`nfr_residue_sites`, still the `--lib` receipt until this walk
-// covers the corpus on the merge path) cannot see by construction.
+// the deleted parameter-keyed text scan could not see by construction. This walk is the one site
+// authority: the floor runs it per diff, and the whole-corpus census below derives the roster.
 //
 // The required floor runs it DIFF-SCOPED over the graph its strict preparation already typed
 // (`non_fold_residue_diff_verdict`): no second compile. What that scope cannot see is declared,
@@ -451,34 +389,38 @@ fn typed_collect_wildcard_arms(
     rel: &str,
     walk: &mut TypedFallbackArmWalk,
 ) {
-    if let ExprData::ExprMatch = node.expr_data.as_ref() {
-        let arms = match_arm_nodes(node.clone());
-        if arms.iter().any(cla_is_wildcard_arm) {
-            let closedness = typed_scrutinee_closedness(&match_scrutinee(node.clone()), env);
-            if closedness == TypedScrutineeClosedness::Undetermined {
-                walk.undetermined_sites.push(format!("{rel}::{decl}"));
-            }
-            let closed = closedness == TypedScrutineeClosedness::Closed;
-            for (arm_idx, arm) in arms.iter().enumerate() {
-                if !cla_is_wildcard_arm(arm) {
-                    continue;
+    // An explicit worklist, not native recursion: a typed body's depth is corpus-shaped, and the
+    // floor runs this walk on the main thread (gunbc.recurring_failure_mode class of #10610).
+    // Visit order is immaterial: the caller sorts `facts` and `undetermined_sites`.
+    let mut pending: Vec<&Rc<Node>> = vec![node];
+    while let Some(node) = pending.pop() {
+        if let ExprData::ExprMatch = node.expr_data.as_ref() {
+            let arms = match_arm_nodes(node.clone());
+            if arms.iter().any(cla_is_wildcard_arm) {
+                let closedness = typed_scrutinee_closedness(&match_scrutinee(node.clone()), env);
+                if closedness == TypedScrutineeClosedness::Undetermined {
+                    walk.undetermined_sites.push(format!("{rel}::{decl}"));
                 }
-                // DeclaredInterim needs a typed arm-to-FrontierRow join the host does not have;
-                // it stays false here exactly as the parse-level fac walk leaves it.
-                let class = fac_classify_arm(&arm_body(arm.clone()), si, closed, false);
-                walk.facts.push(FallbackArmCensusFactRaw {
-                    site: format!("{rel}::{decl}#arm{arm_idx}"),
-                    fn_name: decl.to_string(),
-                    rel_path: rel.to_string(),
-                    class: class.to_string(),
-                    owning_lane: fac_owning_lane(rel).to_string(),
-                    closed_coproduct_scrutinee: closed,
-                });
+                let closed = closedness == TypedScrutineeClosedness::Closed;
+                for (arm_idx, arm) in arms.iter().enumerate() {
+                    if !cla_is_wildcard_arm(arm) {
+                        continue;
+                    }
+                    // DeclaredInterim needs a typed arm-to-FrontierRow join the host does not have;
+                    // it stays false here exactly as the parse-level fac walk leaves it.
+                    let class = fac_classify_arm(&arm_body(arm.clone()), si, closed, false);
+                    walk.facts.push(FallbackArmCensusFactRaw {
+                        site: format!("{rel}::{decl}#arm{arm_idx}"),
+                        fn_name: decl.to_string(),
+                        rel_path: rel.to_string(),
+                        class: class.to_string(),
+                        owning_lane: fac_owning_lane(rel).to_string(),
+                        closed_coproduct_scrutinee: closed,
+                    });
+                }
             }
         }
-    }
-    for child in node.children.iter() {
-        typed_collect_wildcard_arms(child, si, env, decl, rel, walk);
+        pending.extend(node.children.iter());
     }
 }
 
@@ -501,6 +443,11 @@ pub(crate) fn non_fold_residue_roster_diff_with(
     path_exists: &dyn Fn(&str) -> bool,
 ) -> (Vec<String>, Vec<String>) {
     let live = walk.non_fold_residue_sites();
+    // A ROSTERED UNDETERMINED SITE IS NOT STALE. The diff verdict refuses an undetermined
+    // scrutinee unless a row names it (`undetermined_unrostered`), so such a row is one the walk
+    // itself demands; judging it stale because it is not a closed-coproduct site made both
+    // dispositions refuse, and any change touching the module could never pass.
+    let undetermined: BTreeSet<&str> = walk.undetermined_sites.iter().map(|s| s.as_str()).collect();
     let rostered: BTreeSet<&str> = roster_rows.iter().map(|r| r.as_str()).collect();
     let unrostered = live
         .iter()
@@ -511,7 +458,10 @@ pub(crate) fn non_fold_residue_roster_diff_with(
         .iter()
         .filter(|e| {
             let path = e.split("::").next().unwrap_or("");
-            !path_exists(path) || (walk.covered_paths.contains(path) && !live.contains(e.as_str()))
+            !path_exists(path)
+                || (walk.covered_paths.contains(path)
+                    && !live.contains(e.as_str())
+                    && !undetermined.contains(e.as_str()))
         })
         .cloned()
         .collect();
@@ -762,7 +712,7 @@ mod nfr_typed_tests {
         );
     }
 
-    // THE WIDENING'S DISCRIMINATING REDS: the parameter-keyed text scan cannot see either
+    // THE WIDENING'S DISCRIMINATING REDS: the deleted parameter-keyed text scan could see neither
     // (receipts: gunbc.live_deploy.fleet_request replacement_is_foreign's local `from`,
     // release_member_changed).
     #[test]
@@ -771,11 +721,6 @@ mod nfr_typed_tests {
         assert!(
             got.contains("m.dag::f"),
             "local-binding scrutinee must be flagged; got {got:?}"
-        );
-        assert!(
-            !nfr_residue_sites(&[("m.dag".to_string(), "module m\ntype Mode = A | B | C\nfn pick() -> Mode { B }\nfn f() -> Bool {\n  let from = pick()\n  match from {\n    A => true\n    _ => false\n  }\n}\n".to_string())])
-                .contains(&"m.dag::f".to_string()),
-            "the text scan is expected to MISS this site; if it now sees it, the widening's premise moved"
         );
     }
 
@@ -871,6 +816,28 @@ mod nfr_typed_tests {
         assert!(
             kept.is_empty(),
             "an existing, unscoped row is not judged stale (positive control)"
+        );
+    }
+
+    // CONTROL 3b -- a row naming an UNDETERMINED site is the disposition the verdict demands, so it
+    // is not stale; the same row over a covered path with no wildcard at all still is.
+    #[test]
+    fn rostered_undetermined_site_is_not_stale() {
+        let mut walk = TypedFallbackArmWalk::default();
+        walk.covered_paths.insert("u.dag".to_string());
+        walk.undetermined_sites.push("u.dag::f".to_string());
+        let (unrostered, stale) =
+            non_fold_residue_roster_diff_with(&walk, &rows(&["u.dag::f"]), &|_| true);
+        assert!(unrostered.is_empty());
+        assert!(
+            stale.is_empty(),
+            "a rostered undetermined site must not be stale; got {stale:?}"
+        );
+        let (_, stale) = non_fold_residue_roster_diff_with(&walk, &rows(&["u.dag::g"]), &|_| true);
+        assert_eq!(
+            stale,
+            rows(&["u.dag::g"]),
+            "a row for a non-site in the same covered module stays stale (red control)"
         );
     }
 
@@ -985,6 +952,78 @@ mod nfr_typed_tests {
             vec!["a.dag::f".to_string()],
             "in scope and unrostered must refuse"
         );
+    }
+
+    /// Discriminating control for the stack class of #10610 on the floor's own call: a body that
+    /// is a `NFR_DEEP_BODY_DEPTH`-term `+` chain (a left-nested binary tree in the typed graph),
+    /// typed on a large-stack thread (typing is not the subject), then judged by
+    /// `non_fold_residue_diff_verdict` on an 8 MiB thread -- the Linux main-thread size the
+    /// required floor runs it on. Measured on the natively recursive walk: 12,000 terms complete,
+    /// 20,000 abort with a stack overflow (the red gunbc#12526's floor hit); the worklist
+    /// completes at both and still reports the module's residue.
+    #[test]
+    fn deep_body_is_judged_on_a_main_thread_sized_stack() {
+        const NFR_DEEP_BODY_DEPTH: usize = 20_000;
+        let mut src = String::from(
+            "module m\ntype Mode = A | B | C\nfn g(x: Mode) -> Int {\n  match x {\n    A => 1\n    _ => 0\n  }\n}\nfn f(x: Mode) -> Int {\n  g(x: x)",
+        );
+        for _ in 1..NFR_DEEP_BODY_DEPTH {
+            src.push_str(" + 1");
+        }
+        src.push_str("\n}\n");
+        std::thread::scope(|scope| {
+            let typed = std::thread::Builder::new()
+                .stack_size(1 << 30)
+                .spawn_scoped(scope, || {
+                    let sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
+                        vec![Rc::new(v1_compiler_compile::SourceFile {
+                            path: "m.dag".to_string(),
+                            content: src.clone(),
+                        })];
+                    let resolved =
+                        v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
+                    let blocking = v1_compiler_compile::interpreter_blocking_diagnostic_messages(
+                        resolved.diagnostics.clone(),
+                    );
+                    assert!(
+                        blocking.is_empty(),
+                        "deep fixture did not type: {blocking:?}"
+                    );
+                    let graph = resolved
+                        .graph
+                        .clone()
+                        .expect("deep fixture produced no graph");
+                    let scoped: BTreeSet<String> = ["m".to_string()].into_iter().collect();
+                    // The typed graph is `Rc`-shared and so not `Send`; this thread blocks on the
+                    // join below and touches none of it meanwhile, so exactly one thread uses it
+                    // at a time.
+                    struct HandOff<T>(T);
+                    unsafe impl<T> Send for HandOff<T> {}
+                    let handed = HandOff((&graph, &resolved.source_indices, &scoped));
+                    let judged = std::thread::scope(|inner| {
+                        std::thread::Builder::new()
+                            .stack_size(8 * 1024 * 1024)
+                            .spawn_scoped(inner, move || {
+                                let handed = handed;
+                                let (graph, indices, scoped) = handed.0;
+                                non_fold_residue_diff_verdict(graph, indices, scoped, &[])
+                                    .walk
+                                    .non_fold_residue_sites()
+                            })
+                            .expect("spawn main-sized thread")
+                            .join()
+                            .expect("verdict thread panicked")
+                    });
+                    judged
+                })
+                .expect("spawn typing thread")
+                .join()
+                .expect("typing thread panicked");
+            assert!(
+                typed.contains("m.dag::g"),
+                "the walk must complete the deep module and report its residue; got {typed:?}"
+            );
+        });
     }
 }
 
