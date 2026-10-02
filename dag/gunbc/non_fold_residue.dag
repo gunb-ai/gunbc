@@ -1097,6 +1097,8 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "src/v2/lens/text_string_importer_census.dag::position_is_unresolved" }, reason: nfr_reason_landed_after_census_unit_lane_nonblocking, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/action_use_admission.dag::checkout_context_names_a_commit" }, reason: nfr_reason_landed_after_census_unit_lane_nonblocking, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/action_use_admission.dag::checkout_ref_value_refusals" }, reason: nfr_reason_landed_after_census_unit_lane_nonblocking, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "src/v2/compiler/02_parse.dag::parse_sequence_capture" }, reason: nfr_reason_landed_after_census_unit_lane_nonblocking, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "src/v2/std/grammar.dag::grammar_emit_sequence" }, reason: nfr_reason_landed_after_census_unit_lane_nonblocking, dissolution: nfr_dissolve_owning_fold },
 ]
 
 fn non_fold_residue_frontier_units() -> List<String> {
