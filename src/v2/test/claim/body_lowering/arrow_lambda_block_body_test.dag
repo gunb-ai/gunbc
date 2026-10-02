@@ -1,0 +1,78 @@
+module v2.test.claim.body_lowering.arrow_lambda_block_body
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.language_model { LanguageModel }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { symbol_lexeme }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A BLOCK-BODIED ARROW LAMBDA HAS A BLOCK BODY. v2.compiler.fold_lowering fv_expr_parts read every
+// `=> ...` body as an expression, so a `{ .. }` body reached body lowering as an opaque block_expr and
+// refused as body_lowering_reason_function_value_body_unread -- the native route's prepare wall for
+// src/v2/std/node.dag (the fold step in allocate_pending_occurrences) and dag/extdeps/uri_path.dag
+// (path_param_value). The block is the grammar's fn_body, the same production a fn literal carries,
+// so the reader now answers FunctionLiteralBlockBody for it and both consumers take the fn-literal arm.
+//
+// The fn-literal and expression-bodied claims are the controls: they normalized before the change and
+// must still, so a regression in the shared fn_body arm or in the expression arm reds them, not only
+// the subject.
+//
+// THE NATIVE ROUTE'S OWN STAGES, tokenize -> parse -> normalize, and nothing above them. The
+// reference-conservation harness (body_lowering_normalize_outcome) is the wrong instrument here: the
+// fold seam desugars the `fold` call head away by design, so it refuses every fold fixture as
+// conservation_reason_dropped_reference whatever the step's body is, and the claims would not
+// discriminate the body reader at all. The answer is ACCEPTED or the FATAL reason, the last link,
+// which is the cause that refused.
+data claim_cached_lm: LanguageModel = dag_language_model()
+
+fn normalize_outcome(src: String) -> String {
+  let lm = claim_cached_lm
+  match tokenize(text: src, file: ^arrow_lambda_block_body_subject, rules: lm.lex) {
+    Rejected { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+        Accepted { value: a, diagnostics: _ } =>
+          match normalize(parse_tree: a.tree) {
+            Rejected { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+            Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+          }
+      }
+  }
+}
+
+data src_fold_step_arrow_block: String = "module m.t\nfn t(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: (acc, x) => {\n    acc + x\n  })\n}\n"
+
+data src_fold_step_arrow_block_let_record: String = "module m.t\ntype P {\n  total: Int\n  count: Int\n}\nfn t(xs: List<Int>) -> P {\n  fold(xs, init: P { total: 0, count: 0 }, f: (acc, x) => {\n    let next = acc.total + x\n    P {\n      total: next,\n      count: acc.count + 1,\n    }\n  })\n}\n"
+
+data src_value_arrow_block: String = "module m.t\nfn apply(g: fn(Int) -> Int, v: Int) -> Int {\n  g(v)\n}\nfn t(v: Int) -> Int {\n  apply(g: a => {\n    a + 1\n  }, v: v)\n}\n"
+
+data src_fold_step_fn_literal_block: String = "module m.t\nfn t(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    acc + x\n  })\n}\n"
+
+data src_fold_step_arrow_expr: String = "module m.t\nfn t(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: (acc, x) => acc + x)\n}\n"
+
+test fn fold_step_arrow_block_body_lowers_holds() -> Bool {
+  normalize_outcome(src: src_fold_step_arrow_block) == "ACCEPTED"
+}
+
+test fn fold_step_arrow_block_with_let_and_record_lowers_holds() -> Bool {
+  normalize_outcome(src: src_fold_step_arrow_block_let_record) == "ACCEPTED"
+}
+
+test fn value_position_arrow_block_body_lowers_holds() -> Bool {
+  normalize_outcome(src: src_value_arrow_block) == "ACCEPTED"
+}
+
+test fn fold_step_fn_literal_block_control_holds() -> Bool {
+  normalize_outcome(src: src_fold_step_fn_literal_block) == "ACCEPTED"
+}
+
+test fn fold_step_arrow_expression_body_control_holds() -> Bool {
+  normalize_outcome(src: src_fold_step_arrow_expr) == "ACCEPTED"
+}
