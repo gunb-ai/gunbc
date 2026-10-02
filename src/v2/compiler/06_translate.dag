@@ -176,7 +176,8 @@ import v2.std.arrow_signature {
 }
 import v2.std.qualified_name {
   declaration_reference_path_optional,
-  parameter_reference_path_optional
+  parameter_reference_path_optional,
+  lexical_reference_label_optional
 }
 import v2.std.optional {
   Absent,
@@ -632,6 +633,16 @@ fn coerce_grounded_node(
 fn translate_parameter_reference_in_type_expression_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: ^translate_parameter_reference_in_type_expression,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// A LEXICAL REFERENCE IS LIKEWISE A VALUE: a `let`, arm or lambda binder is never in the type-role
+// frame, and reading its marked Conj by connective would emit it as an empty record.
+fn translate_lexical_reference_in_type_expression_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^translate_lexical_reference_in_type_expression,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -1297,6 +1308,10 @@ fn translate_algebra(
         Present { value: _ } =>
           outcome_rejected(translate_parameter_reference_in_type_expression_diagnostic(node: n))
         Absent =>
+      match lexical_reference_label_optional(node: n) {
+        Present { value: _ } =>
+          outcome_rejected(translate_lexical_reference_in_type_expression_diagnostic(node: n))
+        Absent =>
       match n.kind {
         TypeNode { connective: connective } =>
           match connective {
@@ -1349,6 +1364,7 @@ fn translate_algebra(
           }
         ComputationNode { behavior: _ } =>
           outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: n))
+      }
       }
       }
       }

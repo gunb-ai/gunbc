@@ -27,7 +27,7 @@ import v2.std.optional {
 }
 import v2.std.logic { Bool }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
-import v2.std.node { Atom, Conj, Edge, EdgeLabel, Named, Node, NodeFold, Positional, Symbol, TypeNode, DeclarationReferenceKind, MarkedReference, NotMarkedReference, ParameterReferenceKind, ResolvedReferenceKind, fold_node, resolved_reference_kind_marker, resolved_reference_body_kind, node_synthetic, node_with_occurrence_id, symbol_eq, symbol_intern_lexeme, symbol_lexeme }
+import v2.std.node { Atom, Conj, Edge, EdgeLabel, Named, Node, NodeFold, Positional, Symbol, TypeNode, DeclarationReferenceKind, LexicalReferenceKind, MarkedReference, NotMarkedReference, ParameterReferenceKind, ResolvedReferenceKind, fold_node, resolved_reference_kind_marker, resolved_reference_body_kind, node_synthetic, node_with_occurrence_id, symbol_eq, symbol_intern_lexeme, symbol_lexeme }
 import v2.std.text { String }
 
 type QualifiedName = FreeMonoid<Symbol>
@@ -443,6 +443,36 @@ fn declaration_reference_node(qn: QualifiedName, occurrence_id: NodeOccurrenceId
 // resolve_frame_bound_reference, which verifies the path against the symbol index first).
 fn parameter_reference_node(qn: QualifiedName, occurrence_id: NodeOccurrenceIdentity) -> Node {
   resolved_reference_node_of_kind(kind: ParameterReferenceKind, qn: qn, occurrence_id: occurrence_id)
+}
+
+// THE ONE PRODUCER OF A LEXICAL REFERENCE (consumed by v2.compiler.resolve
+// resolve_lexical_reference_keyed, which records the binder that answered it in
+// ResolvedTree.lexical_bindings under this node's occurrence). Its one child is the local's label, a
+// synthetic atom, so the reference's occurrence stays on the marker node alone.
+fn lexical_reference_node(label: Symbol, occurrence_id: NodeOccurrenceIdentity) -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: resolved_reference_kind_marker(kind: LexicalReferenceKind) },
+        target: node_synthetic(kind: TypeNode { connective: Atom { identity: label } }, children: [])
+      },
+    ],
+    occurrence_id: occurrence_id
+  )
+}
+
+// A LEXICAL REFERENCE READS AS ITS LOCAL'S LABEL OR AS NOTHING, keyed on the marker like its siblings;
+// a declaration or parameter reference answers Absent here.
+fn lexical_reference_label_optional(node: Node) -> Optional<Symbol> {
+  match resolved_reference_spine_optional(node: node, kind: LexicalReferenceKind) {
+    Present { value: label_atom } =>
+      match label_atom.kind {
+        TypeNode { connective: Atom { identity: label } } => optional_present(value: label)
+        _ => optional_absent()
+      }
+    Absent => optional_absent()
+  }
 }
 
 fn resolved_reference_node_of_kind(kind: ResolvedReferenceKind, qn: QualifiedName, occurrence_id: NodeOccurrenceIdentity) -> Node {
