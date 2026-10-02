@@ -14,7 +14,7 @@ import v2.std.collection { list_at_optional }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.communication.medium { Medium }
 import v2.std.diagnostic { Accepted, Rejected, Outcome, Diagnostic, NonEmptyDiagnostics, Textual }
-import v2.std.node { Node, Edge, TypeNode, Arrow, Conj, Authored, Symbol, node_synthetic, symbol_lexeme }
+import v2.std.node { Node, Edge, TypeNode, Arrow, Conj, Authored, StructuralLabel, Positional, Symbol, node_synthetic, symbol_lexeme }
 import v2.std.optional { Optional, Present, Absent }
 import v2.std.algebra { fold_list, length }
 import std.algebra { Cons, Empty }
@@ -149,6 +149,7 @@ fn collect_arrows(root: Node, acc: List<Node>) -> List<Node> {
             )])
           Absent => inner
         }
+      StructuralLabel { label: _ } => inner
       Positional => inner
     }
   })
@@ -254,6 +255,7 @@ fn decl_edges_named(root: Node, fn_name: Symbol, acc: List<Node>) -> List<Node> 
             Absent => inner
           }
         } else { inner }
+      StructuralLabel { label: _ } => inner
       Positional => inner
     }
   })

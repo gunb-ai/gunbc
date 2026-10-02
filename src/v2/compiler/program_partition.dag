@@ -73,6 +73,7 @@ import v2.std.node {
   Disj,
   Edge,
   Authored,
+  StructuralLabel,
   Node,
   Symbol,
   Transform,
@@ -185,6 +186,7 @@ fn partition_collect_user_semantic_type_edge(
           )
         Absent => acc
       }
+    StructuralLabel { label: _ } => acc
     Positional => acc
   }
 }
