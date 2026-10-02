@@ -2854,8 +2854,8 @@ fn parse_single_predicate(tokens: TokenStream, ctx: ParseContext) -> PredResult 
     }
   EatUnchanged { tokens: __eu } =>
     match pred_name {
-      "non_empty" =>
-        parsed_predicate_result(tokens: tokens, ctx: ctx, build: (value_identity, predicate_identity) => make_field_init_node(occurrence_identity: predicate_identity, name: "non_empty", value: make_expr_node(occurrence_identity: value_identity, expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span))
+      "string_non_empty" =>
+        parsed_predicate_result(tokens: tokens, ctx: ctx, build: (value_identity, predicate_identity) => make_field_init_node(occurrence_identity: predicate_identity, name: "string_non_empty", value: make_expr_node(occurrence_identity: value_identity, expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span))
       _ =>
         parsed_predicate_result(tokens: tokens, ctx: ctx, build: (value_identity, predicate_identity) => make_field_init_node(occurrence_identity: predicate_identity, name: pred_name, value: make_expr_node(occurrence_identity: value_identity, expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span))
     }

@@ -1,6 +1,6 @@
 module extdeps.dhcp.v4
 
-import std.types { NonEmptyStr, String, Bool }
+import std.types { NonEmptyStr, String, Bool, brand }
 import std.nat { Nat }
 import std.measure { Second, second, second_count }
 import std.error_primitives { Result, Ok, Err }

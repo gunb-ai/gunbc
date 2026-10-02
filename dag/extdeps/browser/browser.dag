@@ -2,7 +2,7 @@ module extdeps.browser
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.types { Bool, FilePath, Int, String }
+import std.types { Bool, FilePath, Int, String, brand }
 // NON-PRECEDENT — DO NOT COPY THIS MODULE'S SHAPE FOR NEW BROWSER-PRODUCT MODELING (operator
 // verdict on gunbc#7556; DESIGN §3 'External upstream decomposition'). This module conflates three
 // independently governed things into one authority: the Playwright automation interface (its anchor

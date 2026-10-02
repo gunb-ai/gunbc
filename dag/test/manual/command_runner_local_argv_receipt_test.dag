@@ -123,7 +123,7 @@ test fn zero_exit_printing_nothing_is_absent_not_refused() -> Bool {
 // builder compiles against.
 //
 // THE CLIMB IS MEASURED, NOT ASSUMED, AND THE MEASUREMENT IS THE PART WORTH KEEPING. `program` is
-// NonEmptyStr, which std.types declares as `String where non_empty` -- a REFINEMENT, not a mint -- so
+// NonEmptyStr, which std.types declares as `String where string_non_empty` -- a REFINEMENT, not a mint -- so
 // the climb is real only if that predicate is enforced at CONSTRUCTION. A type name is not safety
 // (DESIGN section 4b: a brand or Validated<T> is cosmetic until construction enforces the
 // distinction). Run against a freshly built gunbc on 2026-08-22, one discriminating pair, same file
