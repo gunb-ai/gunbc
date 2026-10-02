@@ -203,12 +203,15 @@ fn params_conj_evidence_seen(inferred: InferredTree) -> Bool {
 // 2026-10-01: it read `conjs == 4` and went red at gunbc#12766 (bisected), which made each named-fn
 // parameter reference a path-keyed reference carrier, a Conj under ^<parameter-reference>, so the body
 // `x + y` now carries two products the count did not name. A count copied from the tree would have
-// absorbed them; the names say which products appeared.
+// absorbed them; the names say which products appeared. gunbc#12923 (a binder's target is a binder
+// node, XL-2 PR2b-3) then added one `<binder-type>` product per parameter, named here the same way.
 data product_introduction_expected_conjs: List<String> = [
   "[grammar_production_identity_node_projection=dag_surface_module][grammar_production_captured_node_projection=y]",
   "[add_probe=y]",
   "[grammar_production_identity_node_projection=namespace_graft_module_body][add=y]",
   "[x=dag_binding_type_int][y=dag_binding_type_int]",
+  "[<binder-type>=dag_binding_type_int]",
+  "[<binder-type>=dag_binding_type_int]",
   "[<parameter-reference>=x]",
   "[<parameter-reference>=y]",
 ]
