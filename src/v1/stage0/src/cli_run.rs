@@ -47297,6 +47297,58 @@ mod pr2_whole_tree_differential_probe {
             .filter(|m| !blocked.contains(&m.type_env.module_path))
             .cloned()
             .collect();
+        // FORK-CANDIDATE EQUALITY: the deleted pool-wide filter (every multi-exporter or kernel-exported
+        // name, kept when its exporters inside the closure plus the kernel reach two) against
+        // closure_contested_names, per module, over the final pool. Probe-only reconstruction.
+        if std::env::var_os("GUNBC_FORK_CANDIDATE_EQUALITY").is_some() {
+            use crate::v1_compiler_infer_env as env;
+            let (mut equal, mut differ) = (0usize, 0usize);
+            for m in digested.iter() {
+                let view = m.type_env.ancestry.clone();
+                let pool = view.pool.clone();
+                let reach = env::surface_reach_of(view.imports.clone(), pool.clone());
+                let mut old: Vec<String> = Vec::new();
+                let mut names: std::collections::BTreeSet<String> =
+                    pool.multi_exporters.keys().cloned().collect();
+                for k in view.kernel.keys() {
+                    if pool.exporters.contains_key(k) {
+                        names.insert(k.clone());
+                    }
+                }
+                for n in names {
+                    let mut c = if view.kernel.contains_key(&n) { 1 } else { 0 };
+                    if let Some(paths) = pool.exporters.get(&n) {
+                        for p in paths.iter() {
+                            if let Some(e) = pool.surfaces.get(p) {
+                                if env::reach_has(reach.clone(), e.ordinal) {
+                                    c += 1;
+                                }
+                            }
+                        }
+                    }
+                    if c >= 2 {
+                        old.push(n);
+                    }
+                }
+                let new: Vec<String> =
+                    env::closure_contested_names(pool.clone(), view.kernel.clone(), reach.clone())
+                        .iter()
+                        .cloned()
+                        .collect();
+                if old == new {
+                    equal += 1;
+                } else {
+                    differ += 1;
+                    eprintln!(
+                        "[fork-candidate-differ] module={} old={} new={}",
+                        m.type_env.module_path,
+                        old.len(),
+                        new.len()
+                    );
+                }
+            }
+            eprintln!("[fork-candidate-equality] equal={equal} differ={differ}");
+        }
         super::ancestry_digest_census(&std::rc::Rc::new(digested.iter().cloned().collect()));
         eprintln!(
             "[ancestry-digest-done] graph_modules={} digested={} blocked={}",
