@@ -432,6 +432,38 @@ fn fold_node_topdown<A,R>(n: Node, ctx: A, algebra: NodeFoldTopDown<A,R>) -> R {
   })
 }
 
+// A CHILD WHOSE INFERENCE DEPENDS ON A SIBLING'S SETTLED RESULT. fold_node carries results only from
+// child to parent, and fold_node_topdown carries context only from parent to child: its child_context
+// sees the parent node, the inherited context and the edge, never what an earlier sibling synthesized.
+// So neither algebra expresses "fold the dependency child, derive a scoped context from its result, then
+// fold the dependent child under it" (gunbc.recurring_failure_mode
+// infer_child_context_cannot_depend_on_a_sibling_result). This algebra does: child_context also receives
+// the parent's accumulator AFTER the children already folded, and `first` schedules the dependency
+// children ahead of the rest.
+// THE SCHEDULE IS A PARTITION, SO IT IS A PERMUTATION BY CONSTRUCTION. `first` selects which edges are
+// folded before the others, each part keeping its authored order; no schedule can drop, duplicate or
+// invent an edge, so there is nothing to validate. With `first` false everywhere and a child_context that
+// ignores the accumulator, this is fold_node_topdown exactly.
+type NodeFoldDependent<A,R> {
+  init: fn(Node, A) -> R
+  first: fn(Node, Edge) -> Bool
+  child_context: fn(Node, A, R, Edge) -> A
+  step: fn(R, Edge, R) -> R
+}
+
+fn node_fold_dependent_schedule<A,R>(n: Node, algebra: NodeFoldDependent<A,R>) -> List<Edge> {
+  concat(
+    fold(n.children, init: [], f: fn(acc, e) { if algebra.first(n, e) { list_snoc_item(xs: acc, item: e) } else { acc } }),
+    fold(n.children, init: [], f: fn(acc, e) { if algebra.first(n, e) { acc } else { list_snoc_item(xs: acc, item: e) } })
+  )
+}
+
+fn fold_node_dependent<A,R>(n: Node, ctx: A, algebra: NodeFoldDependent<A,R>) -> R {
+  fold(node_fold_dependent_schedule(n: n, algebra: algebra), init: algebra.init(n, ctx), f: fn(acc, e) {
+    algebra.step(acc, e, fold_node_dependent(n: e.target, ctx: algebra.child_context(n, ctx, acc, e), algebra: algebra))
+  })
+}
+
 type EdgeDiscipline
   = NoEdges
   | LabeledEdges

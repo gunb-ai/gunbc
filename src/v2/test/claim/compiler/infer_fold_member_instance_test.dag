@@ -1,0 +1,313 @@
+module v2.test.claim.compiler.infer_fold_member_instance
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer { infer, infer_entries_for_tree, inferred_facts_resolved_type, lookup_inferred_facts_in_entries }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.witness { Holds, Violates }
+import v2.test.claim.body_let_annotation { bla_assemble_with_peers, bla_q_artifact, bla_r_artifact, bla_source }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, CorrectionNotModeled, Diagnostic, Locus, NodeLocus, Outcome, Rejected, Unavailable, Some, diagnostics_has_reason, diagnostics_fatal, diagnostics_fatal_reason, diagnostics_singleton, node_locus }
+import v2.std.node_query { binder_type_label, declared_field_from_edge }
+import std.algebra { list_snoc_item }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import std.process { ExitFailure, ExitSuccess, ProcessExit }
+import v2.std.node { Arrow, Atom, Bind, Branch, Cardinality, Conj, Disj, EdgeLabel, Instantiation, Match, Named, NodeKind, Positional, Transform, TypeNode, Value, ComputationNode, Edge, Found, Loop, Node, Symbol, node_with_occurrence_id, loop_domain_value_target, node_subtree_nodes }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE PEERS RESTATE THE REAL DECLARATIONS, as v2.test.claim.body_let_annotation
+// bla_structural_string_peers does: v2.std.collection List<T> is std.algebra FreeMonoid<T>, and the
+// one-module ingest cannot otherwise bind List.
+fn fmi_list_peers() -> List<DagSourceReadWitness> {
+  [
+    bla_source(src: "module v2.std.collection\n\nimport std.algebra { FreeMonoid }\n\ntype List<T> = std.algebra.FreeMonoid<T>\n", artifact: bla_q_artifact, cu: ^body_let_annotation_q_cu),
+    bla_source(src: "module std.algebra\n\ntype FreeMonoid<T> = | Empty | Cons { head: T, tail: FreeMonoid<T> }\n", artifact: bla_r_artifact, cu: ^body_let_annotation_r_cu)
+  ]
+}
+
+fn fmi_assemble(src: String) -> Outcome<ResolvedTree> {
+  bla_assemble_with_peers(p_src: src, peers: fmi_list_peers())
+}
+
+fn fmi_infer(src: String) -> Outcome<Bool> {
+  match fmi_assemble(src: src) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: tree, diagnostics: _ } => fmi_infer_tree(tree: tree)
+  }
+}
+
+fn fmi_infer_tree(tree: ResolvedTree) -> Outcome<Bool> {
+  match infer(tree: tree) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: _, diagnostics: d } => Accepted { value: true, diagnostics: d }
+  }
+}
+
+data fmi_record_fold: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Bool {\n  fold(xs, init: false, f: fn(found, e) { found || e.target == 0 })\n}\n"
+
+data fmi_undeclared_field_fold: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Bool {\n  fold(xs, init: false, f: fn(found, e) { found || e.nope == 0 })\n}\n"
+
+
+fn fmi_reason(o: Outcome<Bool>) -> Symbol {
+  match o {
+    Accepted { value: _, diagnostics: _ } => ^accepted
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+  }
+}
+
+fn fmi_probe_record() -> Symbol { fmi_reason(o: fmi_infer(src: fmi_record_fold)) }
+fn fmi_probe_undeclared() -> Symbol { fmi_reason(o: fmi_infer(src: fmi_undeclared_field_fold)) }
+fn fmi_probe_incompatible() -> Symbol { fmi_reason(o: fmi_infer_with_member_formal_authored()) }
+
+data fmi_no_projection_fold: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Bool {\n  fold(xs, init: false, f: fn(found, e) { found })\n}\n"
+
+fn fmi_probe_domain_type() -> Optional<Node> {
+  match fmi_assemble(src: fmi_no_projection_fold) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer_entries_for_tree(tree: tree) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: entries, diagnostics: _ } =>
+          fold(node_subtree_nodes(root: tree.root), init: Absent, f: fn(acc, n) {
+            match n.kind {
+              ComputationNode { behavior: Loop } =>
+                match loop_domain_value_target(children: n.children) {
+                  Found { target: d } =>
+                    match lookup_inferred_facts_in_entries(entries: entries, key: d) {
+                      Present { value: facts } =>
+                        match inferred_facts_resolved_type(facts: facts) {
+                          Holds { value: t } => Present { value: t }
+                          Violates { diagnostic: _ } => acc
+                        }
+                      Absent => acc
+                    }
+                  _ => acc
+                }
+              _ => acc
+            }
+          })
+      }
+  }
+}
+
+fn fmi_locus(o: Outcome<Bool>) -> Optional<Locus> {
+  match o {
+    Accepted { value: _, diagnostics: _ } => Absent
+    Rejected { diagnostics: d } => Present { value: diagnostics_fatal(d: d).at }
+  }
+}
+
+fn fmi_probe_record_locus() -> Optional<Locus> { fmi_locus(o: fmi_infer(src: fmi_record_fold)) }
+
+fn fmi_kind_text(k: NodeKind) -> String {
+  match k {
+    TypeNode { connective: Atom { identity: id } } => id as String
+    TypeNode { connective: Conj } => "Conj"
+    TypeNode { connective: Disj } => "Disj"
+    TypeNode { connective: Arrow } => "Arrow"
+    TypeNode { connective: Cardinality } => "Card"
+    TypeNode { connective: Instantiation } => "Inst"
+    ComputationNode { behavior: Value } => "Value"
+    ComputationNode { behavior: Transform } => "Transform"
+    ComputationNode { behavior: Branch } => "Branch"
+    ComputationNode { behavior: Loop } => "Loop"
+    ComputationNode { behavior: Bind } => "Bind"
+    ComputationNode { behavior: Match } => "Match"
+  }
+}
+
+fn fmi_edge_text(l: EdgeLabel) -> String {
+  match l {
+    Named { name: s } => concat(s as String, "=")
+    Positional => ""
+  }
+}
+
+fn fmi_render(n: Node) -> String {
+  fold(n.children, init: concat(fmi_kind_text(k: n.kind), "("), f: fn(acc, e) {
+    concat(concat(concat(acc, fmi_edge_text(l: e.label)), fmi_render(n: e.target)), " ")
+  })
+}
+
+fn fmi_render_domain() -> String {
+  match fmi_probe_domain_type() {
+    Present { value: t } => fmi_render(n: t)
+    Absent => "absent"
+  }
+}
+
+fn fmi_render_locus(o: Outcome<Bool>) -> String {
+  match o {
+    Accepted { value: _, diagnostics: _ } => "accepted"
+    Rejected { diagnostics: d } =>
+      match diagnostics_fatal(d: d).at {
+        NodeLocus { anchor: a } => fmi_render(n: a.at)
+        _ => "non-node locus"
+      }
+  }
+}
+
+fn fmi_render_record_locus() -> String { fmi_render_locus(o: fmi_infer(src: fmi_record_fold)) }
+
+fn fmi_all_reasons(o: Outcome<Bool>) -> String {
+  match o {
+    Accepted { value: _, diagnostics: _ } => "accepted"
+    Rejected { diagnostics: d } =>
+      fold(d.tail, init: d.head.reason as String, f: fn(acc, x) { concat(concat(acc, " | "), x.reason as String) })
+  }
+}
+
+fn fmi_reasons_record() -> String { fmi_all_reasons(o: fmi_infer(src: fmi_record_fold)) }
+fn fmi_reasons_noproj() -> String { fmi_all_reasons(o: fmi_infer(src: fmi_no_projection_fold)) }
+
+fn fmi_render_resolved_root() -> String {
+  match fmi_assemble(src: fmi_no_projection_fold) {
+    Rejected { diagnostics: _ } => "rejected"
+    Accepted { value: tree, diagnostics: _ } => fmi_render(n: tree.root)
+  }
+}
+
+// (1) A FOLD OVER A COLLECTION OF RECORDS PERMITS e.target: no diagnostic anywhere in the outcome refuses
+// the projection, where the unrepaired walk refused it infer_reason_projection_receiver_declares_no_fields
+// (`e` typed as its bare fresh variable). Asserted over the WHOLE chain rather than as an Accepted outcome
+// because the fixture's step Arrow still refuses infer_grounding_not_derived -- a separate, named link that
+// is the next wall, refused identically on the base -- and this control must not change verdict when it
+// lands. The mutation red: delete the domain-to-step frame join in v2.compiler.infer
+// infer_gather_child_context and this control refuses again.
+test fn fmi_fold_member_projects_a_declared_field() -> Bool {
+  match fmi_assemble(src: fmi_record_fold) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      fmi_no_projection_refusal(o: fmi_infer_tree(tree: tree))
+  }
+}
+
+fn fmi_no_projection_refusal(o: Outcome<Bool>) -> Bool {
+  !fmi_has_reason(o: o, reason: ^infer_reason_projection_receiver_declares_no_fields)
+    && !fmi_has_reason(o: o, reason: ^infer_reason_field_not_declared_on_receiver)
+    && !fmi_has_reason(o: o, reason: ^infer_reason_projection_receiver_declaration_unavailable)
+}
+
+fn fmi_has_reason(o: Outcome<Bool>, reason: Symbol) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: d } => diagnostics_has_reason(d: d, reason: reason)
+    Rejected { diagnostics: d } => diagnostics_has_reason(d: Some { diagnostics: d }, reason: reason)
+  }
+}
+
+// (2) THE SAME FOLD WITH AN UNDECLARED FIELD REFUSES AT THAT FIELD.
+test fn fmi_fold_member_undeclared_field_refuses() -> Bool {
+  fmi_reason(o: fmi_infer(src: fmi_undeclared_field_fold)) == ^infer_reason_field_not_declared_on_receiver
+}
+
+// (3) A STEP FORMAL INCOMPATIBLE WITH THE DOMAIN ELEMENT REFUSES.
+test fn fmi_fold_member_incompatible_formal_refuses() -> Bool {
+  fmi_reason(o: fmi_infer_with_member_formal_authored()) == ^application_argument_does_not_inhabit
+}
+
+// (3) IS SUPPLIED AT THE RESOLVE -> INFER BOUNDARY, because its red is not authorable in source: a typed
+// lambda formal (`fn(found: Bool, e: Int)`, `(found: Bool, e: Int) =>`) refuses at parse with
+// parse_g0_tokens_remain. The supplied tree is the REAL producer's output for fmi_record_fold -- the
+// inhabitance claim for this boundary is control (1), which runs it -- with the member formal's declared
+// type rewritten from its fresh variable to the record field's own `Int`, i.e. an authored formal the
+// member Pair does not inhabit. The refusal is charged at the step root, before any use of `e` is read.
+fn fmi_member_formal_type(root: Node, name: Symbol) -> Optional<Node> {
+  fold(node_subtree_nodes(root: root), init: optional_absent(), f: fn(acc, n) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        fold(n.children, init: optional_absent(), f: fn(inner, e) {
+          match inner {
+            Present { value: _ } => inner
+            Absent =>
+              match e.label {
+                Named { name: label } =>
+                  if label == name {
+                    match declared_field_from_edge(e: e) {
+                      Present { value: field } => optional_present(value: field.type_node)
+                      Absent => optional_absent()
+                    }
+                  } else {
+                    optional_absent()
+                  }
+                Positional => optional_absent()
+              }
+          }
+        })
+    }
+  })
+}
+
+fn fmi_replace_atom(n: Node, from: Symbol, to: Node) -> Node {
+  Node {
+    kind: n.kind,
+    children: fold(n.children, init: [], f: fn(acc, e) {
+      list_snoc_item(xs: acc, item: Edge { label: e.label, target: fmi_replace_binder_type(e: e, from: from, to: to) })
+    }),
+    occurrence_id: n.occurrence_id
+  }
+}
+
+// Only a <binder-type> member is rewritten: the variable's own entry in <type-parameters> stays, so the
+// tree stays well-formed and the formal simply stops being declared as that variable.
+fn fmi_replace_binder_type(e: Edge, from: Symbol, to: Node) -> Node {
+  match e.label {
+    Named { name: label } =>
+      if label == binder_type_label() {
+        match e.target.kind {
+          TypeNode { connective: Atom { identity: id } } =>
+            if id == from { node_with_occurrence_id(kind: to.kind, children: to.children, occurrence_id: e.target.occurrence_id) } else { e.target }
+          _ => fmi_replace_atom(n: e.target, from: from, to: to)
+        }
+      } else {
+        fmi_replace_atom(n: e.target, from: from, to: to)
+      }
+    Positional => fmi_replace_atom(n: e.target, from: from, to: to)
+  }
+}
+
+fn fmi_infer_with_member_formal_authored() -> Outcome<Bool> {
+  match fmi_assemble(src: fmi_record_fold) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: tree, diagnostics: _ } =>
+      match fmi_member_formal_type(root: tree.root, name: ^e) {
+        Absent => Rejected { diagnostics: diagnostics_singleton(d: fmi_fixture_shape_diagnostic(at: tree.root)) }
+        Present { value: fresh } =>
+          match fmi_member_formal_type(root: tree.root, name: ^target) {
+            Absent => Rejected { diagnostics: diagnostics_singleton(d: fmi_fixture_shape_diagnostic(at: tree.root)) }
+            Present { value: int_type } =>
+              match fresh.kind {
+                TypeNode { connective: Atom { identity: variable } } =>
+                  match infer(tree: ResolvedTree {
+                    root: fmi_replace_atom(n: tree.root, from: variable, to: int_type),
+                    symbol_index: tree.symbol_index,
+                    resolved_declarations: tree.resolved_declarations,
+                    lexical_bindings: tree.lexical_bindings
+                  }) {
+                    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+                    Accepted { value: _, diagnostics: d } => Accepted { value: true, diagnostics: d }
+                  }
+                _ => Rejected { diagnostics: diagnostics_singleton(d: fmi_fixture_shape_diagnostic(at: fresh)) }
+              }
+          }
+      }
+  }
+}
+
+fn fmi_fixture_shape_diagnostic(at: Node) -> Diagnostic {
+  Diagnostic { reason: ^fmi_fixture_shape_unexpected, at: node_locus(node: at), correction: Unavailable { reason: CorrectionNotModeled } }
+}
+
+fn fmi_scratch_all() -> ProcessExit {
+  if !fmi_fold_member_projects_a_declared_field() {
+    ExitFailure { code: 1, reason: "c1" }
+  } else if !fmi_fold_member_undeclared_field_refuses() {
+    ExitFailure { code: 2, reason: "c2" }
+  } else if !fmi_fold_member_incompatible_formal_refuses() {
+    ExitFailure { code: 3, reason: "c3" }
+  } else {
+    ExitSuccess
+  }
+}
