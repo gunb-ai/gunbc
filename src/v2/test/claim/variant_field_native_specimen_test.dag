@@ -13,7 +13,7 @@ import v2.std.node {
   Conj,
   Disj,
   Edge,
-  Named,
+  Authored,
   Node,
   Symbol,
   TypeNode,
@@ -83,7 +83,7 @@ fn vfb_module_root(qn_spine: Node) -> Node {
 
 fn vfb_type_with_variants(type_sym: Symbol) -> Edge {
   Edge {
-    label: Named { name: type_sym },
+    label: Authored { name: type_sym },
     target: node_synthetic(
       kind: TypeNode { connective: Disj },
       children: [
@@ -96,7 +96,7 @@ fn vfb_type_with_variants(type_sym: Symbol) -> Edge {
 
 fn vfb_variant_arm_edge(variant_sym: Symbol) -> Edge {
   Edge {
-    label: Named { name: variant_sym },
+    label: Authored { name: variant_sym },
     target: node_synthetic(
       kind: TypeNode { connective: Atom { identity: variant_sym } },
       children: []
