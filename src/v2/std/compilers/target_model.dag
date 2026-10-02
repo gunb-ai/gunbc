@@ -12826,7 +12826,7 @@ fn target_use_site_ownership_catalog_lookup_step(
     TargetUseSiteOwnershipCatalogInvalid => TargetUseSiteOwnershipCatalogInvalid
     TargetUseSiteOwnershipCatalogMissing =>
       match edge.label {
-    Named { name: display_name } =>
+    Authored { name: display_name } =>
       target_use_site_ownership_catalog_lookup_step_for_row(
         acc: acc,
         row_node: edge.target,
@@ -12834,6 +12834,7 @@ fn target_use_site_ownership_catalog_lookup_step(
         source_carrier: source_carrier,
         use_site: use_site
       )
+    StructuralLabel { label: _ } => TargetUseSiteOwnershipCatalogInvalid
     Positional =>
       target_use_site_ownership_catalog_lookup_step_for_row(
         acc: acc,
@@ -12845,7 +12846,7 @@ fn target_use_site_ownership_catalog_lookup_step(
       }
     TargetUseSiteOwnershipCatalogUnique { row: _ } =>
       match edge.label {
-    Named { name: display_name } =>
+    Authored { name: display_name } =>
       target_use_site_ownership_catalog_lookup_step_for_row(
         acc: acc,
         row_node: edge.target,
@@ -12853,6 +12854,7 @@ fn target_use_site_ownership_catalog_lookup_step(
         source_carrier: source_carrier,
         use_site: use_site
       )
+    StructuralLabel { label: _ } => TargetUseSiteOwnershipCatalogInvalid
     Positional =>
       target_use_site_ownership_catalog_lookup_step_for_row(
         acc: acc,
@@ -12864,7 +12866,7 @@ fn target_use_site_ownership_catalog_lookup_step(
       }
     TargetUseSiteOwnershipCatalogAmbiguous =>
       match edge.label {
-    Named { name: display_name } =>
+    Authored { name: display_name } =>
       target_use_site_ownership_catalog_lookup_step_for_row(
         acc: acc,
         row_node: edge.target,
@@ -12872,6 +12874,7 @@ fn target_use_site_ownership_catalog_lookup_step(
         source_carrier: source_carrier,
         use_site: use_site
       )
+    StructuralLabel { label: _ } => TargetUseSiteOwnershipCatalogInvalid
     Positional =>
       target_use_site_ownership_catalog_lookup_step_for_row(
         acc: acc,
