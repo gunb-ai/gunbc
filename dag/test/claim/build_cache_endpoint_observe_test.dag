@@ -2,12 +2,13 @@ module test.claim.build_cache_endpoint_observe
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.build_cache_instance { ProcessIdentity }
-import extdeps.systemd.unit_file { systemd_unit_file_lines, SliceUnitFile, NotInstallable }
+import extdeps.systemd.unit_file { systemd_unit_file_lines }
 import v2.std.algebra { filter }
+import extdeps.exec.command { ArgvCommand, argv_words }
 import gunbc.host_effect_realize {
-  compile_pool_slice_install_body,
-  compile_pool_stage_directory_line,
-  compile_pool_stage_trap_line,
+  compile_pool_slice_install_staging,
+  CompilePoolInstallReady,
+  CompilePoolInstallRefused,
 }
 import std.materialization_ladder { string_list_contains }
 
@@ -686,45 +687,88 @@ test fn witness_holder_argv_cannot_regress_to_the_bracket_form() -> Bool {
 // THE COMPILE-POOL SLICE INSTALL CARRIES NO SHELL PROGRAM. The managed cgroup slice reaches its
 // host through a transport; this claim projects that transport's surface as text and asserts it
 // contains no shell programming word: no `set -euo pipefail` preamble, no `mktemp` staging, no
-// `trap` cleanup, no command substitution `$(`, no `rm -rf`, no `printf`, no `export`. The
-// property is identity-stable across the shell-to-dag migration
+// `trap` cleanup, no command substitution `$(`, no `rm -rf`, no `printf`, no `export`, no
+// `sh -c`, no `bash -`. The property is identity-stable across the shell-to-dag migration
 // (docs/plans/shell-to-dag-residual-census-and-arc-completion.md 4): on the retained-shell side
 // the surface WAS the script body `compile_pool_slice_install_body` assembled from
 // `compile_pool_stage_directory_line` and `compile_pool_stage_trap_line` -- the two authored lines
 // that body's own comment names as the only shell left -- and it was exactly the forbidden words,
-// so the claim fails and is enrolled expected-red in v2.workflow.floor_expected_red while the
-// script is the transport (receipt in that commit: FAIL here, this module's pre-existing claims
-// PASS). The migration lands the install as a typed staging fold: unit bytes cross as stdin data
-// to dd, a sudo install -m moves them into /etc/systemd/system, sudo systemctl daemon-reload and
-// start follow, and the staged sibling is discarded -- an argv list per op, no script anywhere.
-// This module is the witness home because the compile-pool slice is the write half of the same
-// build-cache domain whose observation half these fixtures already decode. Only the SURFACE
-// PROJECTION changes with the transport; the property and the forbidden-word list do not.
+// so the claim failed and was enrolled expected-red in v2.workflow.floor_expected_red while the
+// script was the transport (receipt in the enrollment commit: FAIL here, this module's
+// pre-existing hermetic claims PASS). The migration lands the install as a typed staging fold over
+// run_argv_over_host_effect_transport: unit bytes cross as STDIN DATA to dd, a sudo install -m
+// moves them into /etc/systemd/system, sudo systemctl daemon-reload and start follow, and the
+// staged sibling is discarded -- an argv list per operation, no script anywhere. Only the SURFACE
+// PROJECTION changed with the transport; the property and the forbidden-word list did not. This
+// module is the witness home because the compile-pool slice is the write half of the same
+// build-cache domain whose observation half these fixtures already decode.
 data compile_pool_install_forbidden_shell_words: List<String> = [
-  "set -euo pipefail", "mktemp", "trap ", "$(", "rm -rf", "printf", "export ",
+  "set -euo pipefail", "mktemp", "trap ", "$(", "rm -rf", "printf", "export ", "sh -c", "bash -",
 ]
 
-fn compile_pool_slice_install_shell_text() -> String {
-  join(
-    concat(
-      [compile_pool_stage_directory_line(), compile_pool_stage_trap_line()],
-      [
-        compile_pool_slice_install_body(
-          slice_unit: "gunbc-compile-pool.slice" as NonEmptyStr,
-          slice_unit_file: SliceUnitFile { unit: [], slice: [], install: NotInstallable },
-        ),
-      ],
-    ),
-    "\n",
-  )
+// argv_words names the program first -- the full vector execve takes -- so this is the command
+// exactly as the transport will spell it, no word doubled.
+fn compile_pool_install_operation_text(command: ArgvCommand) -> String {
+  join(argv_words(command: command), " ")
+}
+
+fn compile_pool_slice_install_surface_text() -> String {
+  match compile_pool_slice_install_staging(slice_unit: "gunbc-compile-pool.slice" as NonEmptyStr) {
+    CompilePoolInstallReady { stage_write: w, install: i, daemon_reload: r, start: s, discard_stage: d } =>
+      join(
+        [
+          compile_pool_install_operation_text(command: w),
+          compile_pool_install_operation_text(command: i),
+          compile_pool_install_operation_text(command: r),
+          compile_pool_install_operation_text(command: s),
+          compile_pool_install_operation_text(command: d),
+        ],
+        "\n",
+      )
+    CompilePoolInstallRefused { reason: _ } => "staging refused"
+  }
 }
 
 test fn compile_pool_slice_install_surface_carries_no_shell_control_word() -> Bool {
-  let surface = compile_pool_slice_install_shell_text()
+  let surface = compile_pool_slice_install_surface_text()
   count(
     filter(
       xs: compile_pool_install_forbidden_shell_words,
       predicate: fn(word) { string_contains(s: surface, pattern: word) },
     ),
   ) == 0
+}
+
+// POSITIVE CONTROL: the fold preserves what the script did, not just what it stopped doing. The
+// staged path is the destination's SIBLING (one directory, so the privileged install never crosses
+// a filesystem boundary) and is named consistently by the write's target, the install's source and
+// the discard's path; the install carries mode 0644 and the real destination; the start names the
+// declared unit; and every privileged op crosses /usr/bin/sudo -n -- absolute path and
+// non-interactive, the elevation posture extdeps.sudo.elevation owns.
+test fn compile_pool_install_staging_preserves_install_semantics() -> Bool {
+  match compile_pool_slice_install_staging(slice_unit: "gunbc-compile-pool.slice" as NonEmptyStr) {
+    CompilePoolInstallReady { stage_write: w, install: i, daemon_reload: r, start: s, discard_stage: d } => {
+      let staged = "/etc/systemd/system/gunbc-compile-pool.slice.gunbc-stage"
+      let dest = "/etc/systemd/system/gunbc-compile-pool.slice"
+      argv_words(command: w) == ["dd", concat("of=", staged), "status=none"]
+        && argv_words(command: i)
+        == ["/usr/bin/sudo", "-n", "install", "-m", "0644", staged, dest]
+        && argv_words(command: r) == ["/usr/bin/sudo", "-n", "systemctl", "daemon-reload"]
+        && argv_words(command: s)
+        == ["/usr/bin/sudo", "-n", "systemctl", "start", "gunbc-compile-pool.slice"]
+        && argv_words(command: d) == ["rm", "-f", staged]
+    }
+    CompilePoolInstallRefused { reason: _ } => false
+  }
+}
+
+// A unit name carrying '/' is refused AT STAGING, before any operation exists to run: the fold
+// names every operation before the first one runs, so a refused fold names no operation at all --
+// the property the shell body could only approximate by refusing mid-script, after mktemp had
+// already run.
+test fn compile_pool_install_staging_refuses_a_path_unit_name_before_any_operation() -> Bool {
+  match compile_pool_slice_install_staging(slice_unit: "../escape.slice" as NonEmptyStr) {
+    CompilePoolInstallRefused { reason: r } => string_contains(s: r, pattern: "carries '/'")
+    CompilePoolInstallReady { stage_write: _, install: _, daemon_reload: _, start: _, discard_stage: _ } => false
+  }
 }

@@ -138,6 +138,7 @@ fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "readlink_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rm_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rmdir_program"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "dd_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "timeout_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "true_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "whoami_program"),
