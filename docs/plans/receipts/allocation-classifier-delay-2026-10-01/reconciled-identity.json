@@ -1,0 +1,19 @@
+{
+  "head": "76d986bab966a9fe935126e370552e46f15fe87f",
+  "main": "b76ac274c4bd2118b3457516c6a19b9ded020e9d",
+  "binaries": {
+    "gunbc": "71e09d85f1b2c182d01b913bd81b0cedd1bb33ac998399eb2c9e14fbbfedafcb",
+    "claim_executor": "b82c73545c5ddd2d2a801f8053e6ab7f61c3189e3236e2bf162c556f1353eafe"
+  },
+  "old_compiler_stage_exit": 124,
+  "old_compiler_tokenization_marker_present": false,
+  "build_exit": 0,
+  "build_memory_max": "12G",
+  "test_memory_max": "6G",
+  "swap_max": 0,
+  "classifier_controls_exit": 0,
+  "classifier_controls_passed": 17,
+  "benchmark_exit": 124,
+  "benchmark_timeout_seconds": 600,
+  "benchmark_input_sha256": "6ec26ed02124102dbf511a4bd75875beb80c33e1cbe610a769a72a2191361353"
+}

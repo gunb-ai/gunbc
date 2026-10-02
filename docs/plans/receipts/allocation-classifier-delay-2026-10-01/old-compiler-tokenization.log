@@ -1,0 +1,24 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-executor-isolated
+✓ typecheck v2.std.compilers.target_model done in 26 seconds
+[pre-entry] phase=workspace_discovery ms=3 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=6 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=1396 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=0 scale=tree
+[pre-entry] phase=pool_census_parse ms=147 scale=tree
+[pre-entry] phase=closure_name_census_build ms=186 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=5 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=18 scale=closure
+[pre-entry] phase=closure_load ms=1910 scale=closure
+[pre-entry] phase=closure_parse ms=1625 scale=closure
+[pre-entry] phase=closure_resolve ms=56 scale=closure
+[pre-entry] phase=closure_normalize ms=309 scale=closure
+[pre-entry] phase=closure_typecheck ms=34442 scale=closure
+[pre-entry] phase=closure_parent_envs ms=1 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=25 scale=closure
+[pre-entry] phase=closure_ownership ms=266 scale=closure
+[pre-entry] phase=reconcile_pool_qualified_fill ms=197 scale=tree
+[pre-entry] phase=reconcile_root_bare_underlay ms=173 scale=tree
+[pre-entry] phase=reconcile_root_variant_base ms=20 scale=tree
+[pre-entry] phase=resolve_entry_graph_inclusive ms=42522 scale=closure
+[pre-entry] population pool_modules=120 closure_files=120
+[pre-entry] process_cpu user_ms=41899 sys_ms=501 max_rss_kib=877568

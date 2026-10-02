@@ -20,7 +20,27 @@ All 17 focused classifier controls passed with exit 0 over a byte-identical
 621b46ed699db2d4a90a11a688d2c030a04272fd76e37d463b5ae0ac9f6f5113
 under 6 GiB/no swap.
 
-The real-file benchmark is pending in the local scope
-allocation-cost-debt-lazy-benchmark, bounded to 25 minutes and 6 GiB/no swap.
-Its log is /tmp/allocation-cost-debt-lazy-benchmark.log. No speed improvement
-or fresh integrated pass is claimed yet.
+The real-file benchmark timed out with exit 124 at its 25-minute bound under
+6 GiB/no swap. Its log is /tmp/allocation-cost-debt-lazy-benchmark.log. The
+lazy-resolution repair did not establish adequate performance or an integrated pass.
+
+On October 2, main was reconciled through b76ac274c4bd2118b3457516c6a19b9ded020e9d
+without conflicts. This includes upstream #12927 (8318e08374e), which avoids
+constructing unused list/string tails in wildcard Cons patterns used by the lexer.
+A fresh compiler build and same-input qualification are required before attributing
+any performance improvement to that change.
+
+The reconciled compiler built successfully in 7m04s under 12 GiB/no swap.
+All 17 classifier controls passed (exit 0) under 6 GiB/no swap. Binary identities
+are in reconciled-identity.json. The old-compiler stage probe exited 124 after
+10 minutes before its post-tokenization marker was written: declaration scanning
+was not reached. The reconciled real-file benchmark is separately bounded to
+10 minutes; its terminal result must be recorded before claiming sufficient speed.
+
+The reconciled same-input benchmark timed out after 10 minutes (exit 124).
+This shorter bound does not establish whether it is faster than the earlier
+25-minute timeout; neither produced a complete classification verdict. No
+sufficient speed improvement or integrated qualification is established.
+The input SHA256 is recorded in reconciled-identity.json. Further work must
+attribute and reduce the modeled tokenizer/interpreter cost before another
+full CI run; no limits, verdict requirements, or witness populations were relaxed.
