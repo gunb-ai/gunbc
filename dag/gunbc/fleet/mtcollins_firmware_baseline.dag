@@ -1,0 +1,258 @@
+module gunbc.fleet.mtcollins_firmware_baseline
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.interval { degenerate_interval }
+import std.pareto { AxisReading, ParetoEntry, SelectionAxis, HigherIsBetter }
+import std.decision {
+  DecisionVariable, ContextParameter, DecisionConstraint, ObjectiveTerm, ObjectiveMeasure,
+  ChoiceDomain, DecisionSubject, DecisionRegion, DecisionAssessment,
+  VariesAlong, RelationOtherwiseEstablished,
+  ConstraintDisposition, ConstraintSatisfied, ParameterDisposition, ParameterBound,
+  PhysicalModelEstablished, CausalModelEstablished, FleetObservedCoupling,
+  HardConstraint, SelectionPolicy, UniqueSurvivorRequired,
+  RealizationSelectionResult, SelectedWithin, SelectionReceipt,
+  select_realization,
+}
+import v2.std.optional { Present, Absent }
+import extdeps.external_authority { CitedToAuthority }
+import extdeps.firmware.types {
+  FirmwareReleaseRow, FirmwareTarget, FirmwareSemanticVersion,
+  HostBios, ScpFirmware,
+  firmware_target_eq, firmware_semantic_version_eq, firmware_semantic_version_at_least,
+}
+import extdeps.ampere.mt_collins_firmware_release {
+  mt_collins_bmc_0_45_3_hpm, mt_collins_bios_0acod014_hpm, mt_collins_scp_2_10_hpm, mt_collins_mb_cpld_v06_hpm,
+  mt_collins_bios_scp_pairs, mt_collins_interop_requirements, mt_collins_firmware_delivery_authority,
+  BiosScpPair, InteropRequirement,
+}
+
+// ── WHICH FIRMWARE BASELINE mtcollins1 SHOULD RUN: a §3d selection, ahead of the convergence ──────
+//
+// The convergence in gunbc.fleet.mtcollins_firmware_converge does not choose what to install; it is
+// handed a desired baseline and converges toward it (DESIGN §3d). Choosing it is this module, and it is
+// std.decision.select_realization over a field of candidate baselines -- not a hand-picked row -- so
+// that the laws the vendor stated are HARD CONSTRAINTS that exclude a candidate before dominance:
+//
+//   bios_scp_paired   BIOS release note 1, "The BIOS Reference code version and the SCP F/W version
+//                     should be matched": the candidate's BIOS and SCP must be a pair in
+//                     extdeps.ampere.mt_collins_firmware_release mt_collins_bios_scp_pairs.
+//   interop_met       every InteropRequirement whose trigger the candidate meets is met by the
+//                     candidate itself (BMC 0.45.3 needs a Basic-Auth BIOS, 0ACOD014 or later).
+//   every_target_once a baseline names each of the four targets exactly once: the vendor's order is
+//                     one set, and a baseline that omits SCP cannot be checked against its BIOS.
+//
+// THE FOUR STEPS ARE ONE SET. On 2026-10-02 the operator first skipped the MB CPLD and then flashed it
+// (v04 -> v06): the vendor's order is four steps, the CPLD image is active only after its AC cycle, and a
+// host booted between steps runs a combination the vendor never shipped. So the baseline names all four,
+// and the convergence admits no boot attempt until every step has grounded.
+//
+// TODAY THE FIELD HAS ONE MEMBER, and that is the honest size of it: one delivery exists. The fold is
+// still the authority, because the next delivery adds a candidate rather than editing a row, and the
+// constraints are executed against every candidate a witness supplies (the mismatched-pair RED).
+
+type FirmwareBaseline {
+  identity: DeclarationRef
+  label: NonEmptyStr
+  releases: List<FirmwareReleaseRow>
+}
+
+data baseline_ampere_ticket_7426_delivery: FirmwareBaseline = FirmwareBaseline {
+  identity: decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_baseline", decl_name: "baseline_ampere_ticket_7426_delivery"),
+  label: "Ampere ticket #7426 delivery: BMC 0.45.3, BIOS 0ACOD014, SCP 2.10, MB CPLD V06",
+  releases: [mt_collins_bmc_0_45_3_hpm, mt_collins_bios_0acod014_hpm, mt_collins_scp_2_10_hpm, mt_collins_mb_cpld_v06_hpm],
+}
+
+data mtcollins1_baseline_candidates: List<FirmwareBaseline> = [baseline_ampere_ticket_7426_delivery]
+
+fn baseline_release_for(b: FirmwareBaseline, t: FirmwareTarget) -> FirmwareReleaseRow? {
+  (filter(b.releases, r => firmware_target_eq(a: r.target, b: t))).first()
+}
+
+fn baseline_version_for(b: FirmwareBaseline, t: FirmwareTarget) -> FirmwareSemanticVersion? {
+  match baseline_release_for(b: b, t: t) {
+    Absent => Absent
+    Present { value: r } => Present { value: r.version }
+  }
+}
+
+fn bios_scp_is_a_pair(bios: FirmwareSemanticVersion, scp: FirmwareSemanticVersion) -> Bool {
+  any(mt_collins_bios_scp_pairs, p => firmware_semantic_version_eq(a: p.bios, b: bios) && firmware_semantic_version_eq(a: p.scp, b: scp))
+}
+
+fn baseline_bios_scp_paired(b: FirmwareBaseline) -> Bool {
+  match baseline_version_for(b: b, t: HostBios) {
+    Absent => false
+    Present { value: bios } =>
+      match baseline_version_for(b: b, t: ScpFirmware) {
+        Absent => false
+        Present { value: scp } => bios_scp_is_a_pair(bios: bios, scp: scp)
+      }
+  }
+}
+
+fn interop_requirement_met(b: FirmwareBaseline, req: InteropRequirement) -> Bool {
+  match baseline_version_for(b: b, t: req.when_target) {
+    Absent => true
+    Present { value: v } =>
+      if firmware_semantic_version_at_least(observed: v, minimum: req.at_least) {
+        match baseline_version_for(b: b, t: req.requires_target) {
+          Absent => false
+          Present { value: w } => firmware_semantic_version_at_least(observed: w, minimum: req.requires_at_least)
+        }
+      } else {
+        true
+      }
+  }
+}
+
+fn baseline_bios_scp_present(b: FirmwareBaseline) -> Bool {
+  match baseline_release_for(b: b, t: HostBios) {
+    Absent => false
+    Present { value: _ } =>
+      match baseline_release_for(b: b, t: ScpFirmware) {
+        Absent => false
+        Present { value: _ } => true
+      }
+  }
+}
+
+fn baseline_names_each_target_once(b: FirmwareBaseline) -> Bool {
+  list_length(b.releases) == 4 && baseline_bios_scp_present(b: b) && all(b.releases, r => list_length(filter(b.releases, s => firmware_target_eq(a: s.target, b: r.target))) == 1)
+}
+
+// ── The std.decision closure ──────────────────────────────────────────────────────────────────
+data ax_bios_scp_paired: DeclarationRef = decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_baseline", decl_name: "ax_bios_scp_paired")
+data ax_interop_met: DeclarationRef = decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_baseline", decl_name: "ax_interop_met")
+data ax_every_target_once: DeclarationRef = decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_baseline", decl_name: "ax_every_target_once")
+
+data baseline_axes: List<SelectionAxis> = [
+  SelectionAxis { identity: ax_bios_scp_paired, goal: HigherIsBetter },
+  SelectionAxis { identity: ax_interop_met, goal: HigherIsBetter },
+  SelectionAxis { identity: ax_every_target_once, goal: HigherIsBetter },
+]
+
+data constraint_bios_scp_paired: DeclarationRef = decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_baseline", decl_name: "constraint_bios_scp_paired")
+data constraint_interop_met: DeclarationRef = decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_baseline", decl_name: "constraint_interop_met")
+data constraint_every_target_once: DeclarationRef = decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_baseline", decl_name: "constraint_every_target_once")
+data baseline_constraint_authority: DeclarationRef = decl_ref(module_path: "extdeps.ampere.mt_collins_firmware_release", decl_name: "mt_collins_bios_scp_pairs")
+
+data baseline_hard_constraints: List<HardConstraint> = [
+  HardConstraint { identity: constraint_bios_scp_paired, axis: ax_bios_scp_paired, bound_micro: 1 },
+  HardConstraint { identity: constraint_interop_met, axis: ax_interop_met, bound_micro: 1 },
+  HardConstraint { identity: constraint_every_target_once, axis: ax_every_target_once, bound_micro: 1 },
+]
+
+fn gate(passes: Bool) -> Int {
+  if passes { 1 } else { 0 }
+}
+
+fn reading(axis: DeclarationRef, v: Int) -> AxisReading {
+  AxisReading { axis: axis, interval_micro: degenerate_interval(point: v) }
+}
+
+fn baseline_entry(b: FirmwareBaseline) -> ParetoEntry {
+  ParetoEntry {
+    identity: b.identity,
+    display_label: b.label,
+    readings: [
+      reading(axis: ax_bios_scp_paired, v: gate(passes: baseline_bios_scp_paired(b: b))),
+      reading(axis: ax_interop_met, v: gate(passes: all(mt_collins_interop_requirements, req => interop_requirement_met(b: b, req: req)))),
+      reading(axis: ax_every_target_once, v: gate(passes: baseline_names_each_target_once(b: b))),
+    ],
+    missing_inputs: [],
+  }
+}
+
+data baseline_subject_question: NonEmptyStr = "which firmware baseline mtcollins1 converges toward" as NonEmptyStr
+data baseline_evidence: NonEmptyStr = "Candidates are built only from extdeps.ampere.mt_collins_firmware_release rows, whose .hpm digests were measured 2026-10-02 from the ticket #7426 bundles; constraints are the vendor's BIOS release note 1 and BMC 0.45.3 release note." as NonEmptyStr
+data id_subject: DeclarationRef = decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_baseline", decl_name: "baseline_subject_question")
+data id_field: DeclarationRef = decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_baseline", decl_name: "mtcollins1_baseline_candidates")
+data id_evidence: DeclarationRef = decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_baseline", decl_name: "baseline_evidence")
+data id_policy: DeclarationRef = decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_baseline", decl_name: "baseline_policy")
+data id_var: DeclarationRef = decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_baseline", decl_name: "var_baseline")
+data id_term: DeclarationRef = decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_baseline", decl_name: "term_vendor_compatibility")
+data id_region: DeclarationRef = decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_baseline", decl_name: "baseline_region")
+data id_objective: DeclarationRef = decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_baseline", decl_name: "baseline_objective")
+data id_domain: DeclarationRef = decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_baseline", decl_name: "baseline_domain")
+data id_param_board: DeclarationRef = decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_baseline", decl_name: "param_board")
+
+data var_baseline: DecisionVariable = DecisionVariable { identity: id_var }
+data term_vendor_compatibility: ObjectiveTerm = ObjectiveTerm {
+  identity: id_term,
+  ground: CitedToAuthority { authority: mt_collins_firmware_delivery_authority },
+}
+data baseline_region: DecisionRegion = DecisionRegion { identity: id_region }
+data baseline_objective: ObjectiveMeasure = ObjectiveMeasure { identity: id_objective, goal: HigherIsBetter, terms: [term_vendor_compatibility] }
+data baseline_domain: ChoiceDomain = ChoiceDomain { identity: id_domain, variables: [var_baseline] }
+data baseline_policy: SelectionPolicy = UniqueSurvivorRequired { identity: id_policy }
+data param_board: ContextParameter = ContextParameter { identity: id_param_board }
+
+fn baseline_assessment() -> DecisionAssessment {
+  DecisionAssessment {
+    subject: DecisionSubject {
+      identity: id_subject,
+      question: baseline_subject_question,
+      parameters: [param_board],
+      constraints: map(baseline_hard_constraints, c => DecisionConstraint { identity: c.identity }),
+      objective: baseline_objective,
+      choice_domain: baseline_domain,
+    },
+    sensitivities: [
+      VariesAlong {
+        term: id_term,
+        variable: id_var,
+        region: baseline_region,
+        relation: RelationOtherwiseEstablished {
+          note: "vendor compatibility is decided by the pairing and interoperation rows of each candidate, not ordered by any enumeration of candidates" as NonEmptyStr,
+        },
+        coupling: CitedToAuthority { authority: mt_collins_firmware_delivery_authority },
+      },
+    ],
+    constraints: map(baseline_hard_constraints, c =>
+      ConstraintSatisfied {
+        constraint: c.identity,
+        evidence: "a gate at 1 applied to every candidate before dominance" as NonEmptyStr,
+      }),
+    parameters: [ParameterBound { parameter: id_param_board, evidence: "AmpereMtCollins (mtcollins1)" as NonEmptyStr }],
+    selected_candidate: Absent,
+    term_drops: [],
+    physical_model: PhysicalModelEstablished { terms: [id_term] },
+    causal_model: CausalModelEstablished {
+      couplings: [
+        FleetObservedCoupling { receipt: id_evidence, term: id_term, variable: id_var, subject: id_subject },
+      ],
+    },
+  }
+}
+
+// The result: a selected baseline with its receipt, or std.decision's own result carried unchanged so
+// no arm (needs evidence, needs policy, no feasible candidate) is re-spelled or collapsed here.
+type FirmwareBaselineSelection
+  = BaselineSelected { baseline: FirmwareBaseline, receipt: SelectionReceipt }
+  | BaselineUndecided { result: RealizationSelectionResult<ParetoEntry> }
+
+fn select_firmware_baseline(field: List<FirmwareBaseline>) -> FirmwareBaselineSelection {
+  let result = select_realization(
+    assessment: baseline_assessment(),
+    candidate_field_identity: id_field,
+    field: map(field, b => baseline_entry(b: b)),
+    axes: baseline_axes,
+    constraints: baseline_hard_constraints,
+    constraint_authority: baseline_constraint_authority,
+    policy: baseline_policy,
+    evidence_snapshot: id_evidence,
+  )
+  match result {
+    SelectedWithin { candidate: c, receipt: r } =>
+      match (filter(field, b => declaration_ref_eq(a: b.identity, b: c.identity))).first() {
+        Present { value: b } => BaselineSelected { baseline: b, receipt: r }
+        Absent => BaselineUndecided { result: result }
+      }
+    _ => BaselineUndecided { result: result }
+  }
+}
+
+fn select_mtcollins1_baseline() -> FirmwareBaselineSelection {
+  select_firmware_baseline(field: mtcollins1_baseline_candidates)
+}
