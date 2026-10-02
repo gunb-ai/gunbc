@@ -621,7 +621,8 @@ fn realization_arm_member_count_conforms(arm: Node) -> Bool {
   match named_edge_target_lookup(children: arm.children, name: realization_arm_doc_label()) {
     Found { target: doc } =>
       (count(arm.children) == 3) && node_is_string_literal(n: doc)
-    _ => count(arm.children) == 2
+    Ambiguous => false
+    Absent => count(arm.children) == 2
   }
 }
 

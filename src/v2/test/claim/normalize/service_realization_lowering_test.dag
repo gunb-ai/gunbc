@@ -20,7 +20,7 @@ import v2.std.optional { Absent, Optional, Present, optional_absent, optional_pr
 import v2.std.collection { List }
 import v2.std.list_introduction { list_introduction_elements_optional }
 import v2.std.text { String }
-import v2.std.node { Found, Node, Symbol, named_edge_target_lookup, symbol_intern_lexeme }
+import v2.std.node { Ambiguous, Found, Node, Symbol, named_edge_target_lookup, symbol_intern_lexeme }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -54,7 +54,8 @@ fn srl_shared_prefix() -> Outcome<CensusTree> { srl_census(text: srl_shared_pref
 fn srl_child(n: Node, name: Symbol) -> Optional<Node> {
   match named_edge_target_lookup(children: n.children, name: name) {
     Found { target: t } => optional_present(value: t)
-    _ => optional_absent()
+    Ambiguous => optional_absent()
+    Absent => optional_absent()
   }
 }
 
