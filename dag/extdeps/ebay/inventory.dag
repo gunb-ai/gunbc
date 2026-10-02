@@ -9,6 +9,7 @@ import extdeps.ebay.ebay { production_api_base, MarketplaceEnum }
 import extdeps.ebay.errors { EbayErrorShape }
 import extdeps.ebay.ebay_contracts { condition_wire_contract, format_type_wire_contract }
 import extdeps.ietf.http_semantics { HttpMethod }
+import std.resources { Network }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -321,6 +322,7 @@ service ebay.Inventory {
   }
 
   operation CreateOrReplaceInventoryItem {
+    requires Network
     input {
       access_token: Secret
       sku: NonEmptyStr
@@ -349,6 +351,7 @@ service ebay.Inventory {
   }
 
   operation GetInventoryItem {
+    requires Network
     input {
       access_token: Secret
       sku: NonEmptyStr
@@ -370,6 +373,7 @@ service ebay.Inventory {
   }
 
   operation GetInventoryItems {
+    requires Network
     input {
       access_token: Secret
       limit: Int = default_inventory_items_limit
@@ -394,6 +398,7 @@ service ebay.Inventory {
   }
 
   operation CreateOffer {
+    requires Network
     input {
       access_token: Secret
       content_language: NonEmptyStr
@@ -419,6 +424,7 @@ service ebay.Inventory {
   }
 
   operation GetOffers {
+    requires Network
     input {
       access_token: Secret
       sku: NonEmptyStr
@@ -442,6 +448,7 @@ service ebay.Inventory {
   }
 
   operation PublishOffer {
+    requires Network
     input {
       access_token: Secret
       offer_id: NonEmptyStr

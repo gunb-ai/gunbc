@@ -9,6 +9,7 @@ import std.measure { Percent, percent }
 import std.types { Bool, CommitSha, Email, FilePath, GitRef, Int, List, NonEmptyStr, Seconds, Timestamp, Unit }
 import std.string_type { String }
 import v2.std.algebra { length, skip }
+import std.resources { Network }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -1120,6 +1121,7 @@ service git.Core {
   }
 
   operation LsRemoteHeads {
+    requires Network
     input { remote: String }
     output {
       advertised: List<String> from "stdout_lines"
@@ -1359,6 +1361,7 @@ service git.Core {
   }
 
   operation FetchNoTags {
+    requires Network
     input { remote: String, ref: String, stall_deadline_seconds: Seconds }
     output {
       success: Bool from "exit_success"
@@ -1373,6 +1376,7 @@ service git.Core {
   }
 
   operation FetchPrune {
+    requires Network
     input { remote: String }
     output {
       success: Bool from "exit_success"
@@ -1567,6 +1571,7 @@ service git.Core {
   }
 
   operation LsRemoteRefInRepo {
+    requires Network
     input { repo: FilePath, remote: String, ref_name: String }
     output {
       advertised: String from "stdout"
@@ -1589,6 +1594,7 @@ service git.Core {
   }
 
   operation FetchForcedRefInRepo {
+    requires Network
     input { repo: FilePath, remote: String, refspec: String }
     output {
       exit_code: Int from "exit_code"
@@ -1599,6 +1605,7 @@ service git.Core {
   }
 
   operation FetchForcedRefInRepoTrustingSource {
+    requires Network
     input { repo: FilePath, remote: String, refspec: String, upload_pack: String }
     output {
       exit_code: Int from "exit_code"
@@ -1609,6 +1616,7 @@ service git.Core {
   }
 
   operation PushForcedRefInRepo {
+    requires Network
     input { repo: FilePath, remote: String, refspec: String }
     output {
       exit_code: Int from "exit_code"
@@ -1619,6 +1627,7 @@ service git.Core {
   }
 
   operation PushRefInRepo {
+    requires Network
     input { repo: FilePath, remote: String, refspec: String }
     output {
       exit_code: Int from "exit_code"
@@ -1628,6 +1637,7 @@ service git.Core {
     transport shell { argv: ["git", "-C", "{repo}", "push", "--quiet", "{remote}", "{refspec}"] }
   }
   operation PushRefWithLeaseInRepo {
+    requires Network
     input { repo: FilePath, remote: String, refspec: String, lease: String }
     output {
       exit_code: Int from "exit_code"
