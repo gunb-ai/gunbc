@@ -8,6 +8,7 @@ import std.disposition { ConstructionMechanism, SingleAuthority }
 import extdeps.shell
 import extdeps.exec.command { ArgvCommand }
 import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.gnu_coreutils { cp_command, rm_force_command, timeout_command, coreutils_timeout_expired_exit_code }
 import extdeps.virtualization.firecracker {
   FirecrackerVmConfig, firecracker_release_aarch64,
