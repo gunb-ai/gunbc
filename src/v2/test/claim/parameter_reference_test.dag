@@ -469,3 +469,20 @@ test fn pr_parameter_grounds_through_the_index_holds() -> Bool {
     Absent => false
   }
 }
+
+// (C) AN ORDINARY NAMED CALL WITH A POSITIONAL DEFICIT STILL REFUSES. The where-predicate frontier
+// (v2.compiler.infer infer_where_predicate_set_edge) leaves only predicate calls unjudged; this is the
+// discriminating control that the frontier did not widen to every named call. Asserted by reason, so a
+// program refused for an unrelated cause cannot satisfy it.
+data pr_named_call_deficit_source: String = "module p\n\nfn g(x: Int) -> Int {\n  x\n}\n\nfn u() -> Int {\n  g()\n}\n"
+
+test fn pr_ordinary_named_call_deficit_still_refuses_holds() -> Bool {
+  match pr_assemble(src: pr_named_call_deficit_source) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer_and_discharge(tree: resolved) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^application_positional_deficit
+      }
+  }
+}

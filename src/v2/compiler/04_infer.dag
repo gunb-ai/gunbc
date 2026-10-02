@@ -110,7 +110,8 @@ import v2.std.inhabitance {
   position_let_annotation,
   position_direct_call_argument,
   undecidable_argument_type_not_derived,
-  undecidable_formal_unresolved
+  undecidable_formal_unresolved,
+  undecidable_where_predicate_subject_unmodelled
 }
 import v2.std.diagnostic {
   Diagnostic,
@@ -1652,7 +1653,8 @@ fn infer_conj_named_type_for_binding(domain: Node, binding: Symbol) -> Optional<
 // coercion_cast_crossing (an explicit cast's declared-carrier widening) and, through
 // infer_judge_declared_position, to v2.std.inhabitance declared_type_inhabitance (the same one-step
 // widening at every declared position: argument, return, field and let). .where_clause is a DECLARED
-// FRONTIER, not yet consumed: its consumer is the literal-into-refinement cast arm of work item
+// FRONTIER, not yet consumed (and the predicate CALLS inside it are walked unjudged and counted under the
+// same frontier: infer_where_predicate_set_edge): its consumer is the literal-into-refinement cast arm of work item
 // adhoc-032c89dc-138 (deep-bee-18), which projects it into resolve's where-predicate bindings. That arm
 // lands with the next-rung trigger of gunbc.recurring_failure_mode as_cast_has_no_lowered_form
 // (v2.std.coercion deciding a refinement's predicate on the cast operand); it must refuse on Absent
@@ -4687,6 +4689,56 @@ fn infer_disj_is_named_sum(n: Node) -> Bool {
 // constructor's fields; the match row reads it from the arm, and it is never judged as the
 // construction it is shaped like. The same edge is outside v2.std.type_binder
 // node_inferred_subtree_nodes.
+// A WHERE-REFINEMENT'S PREDICATE CALLS ARE NOT JUDGED AS APPLICATIONS, AND EACH ONE SAYS SO. A predicate
+// call (v2.compiler.body_lowering_fold body_lower_kept_where_clause) applies its declaration to the REFINED
+// VALUE, which the clause never writes: `type Pos = Int where positive` lowers to a zero-argument call of
+// `positive(x: Int)`. Judged as an ordinary named call through application_binding_plan it refuses
+// application_positional_deficit on every refinement, and judged with the subject supplied it needs a slot no
+// carrier has: which formal is the subject is stated only as an annotation in std.types, and `brand` takes no
+// subject at all. So this is the SAME declared frontier RefinementDeclaration.where_clause carries -- the
+// where clause is not yet consumed by infer -- extended to the calls inside it, not a second one.
+//
+// IT IS NOT A RUNG DROP. Before named calls were judged at all, a predicate call was accepted unjudged along
+// with every other named call; what this arm keeps is that single shape at that rung, while every other named
+// call stays judged (a positional deficit still refuses: v2.test.claim.parameter_reference_test
+// pr_ordinary_named_call_deficit_still_refuses). IT IS LOUD, NOT SILENT: each predicate call emits
+// inhabitance_undecidable_where_predicate_subject_unmodelled at its own locus, so the population is counted by
+// execution over any compiled corpus rather than transcribed here. NEXT TRIGGER, NAMING THE CAPABILITY: the
+// where-predicate declaration model carries a typed subject slot (and a typed no-subject disposition for
+// `brand`), SUFFICIENT FOR infer to judge each predicate call with the refined carrier as its implicit first
+// actual -- then this arm is deleted and the calls go through infer_application_argument_inhabitance.
+fn infer_where_predicate_set_edge(parent: Node, edge: Edge) -> Bool {
+  match edge.label {
+    Positional => false
+    Named { name: label } =>
+      if label == ^grammar_production_captured_node_projection {
+        match find_named_child(root: parent, name: ^grammar_production_identity_node_projection) {
+          Accepted { value: identity, diagnostics: _ } =>
+            match identity.kind {
+              TypeNode { connective: Atom { identity: emitted } } => emitted == ^dag_surface_where_refinement_clause
+              _ => false
+            }
+          Rejected { diagnostics: _ } => false
+        }
+      } else {
+        false
+      }
+  }
+}
+
+fn infer_where_predicate_calls_unjudged(set: Node) -> Diagnostics {
+  fold(set.children, init: None, f: fn(acc, e) {
+    diagnostics_merge(
+      outer: acc,
+      inner: Some {
+        diagnostics: diagnostics_singleton(
+          d: inhabitance_undecidable_diagnostic(application: e.target, reason: undecidable_where_predicate_subject_unmodelled())
+        )
+      }
+    )
+  })
+}
+
 fn infer_gather_fold_step(
   acc: InferGatherFoldAcc,
   edge: Edge,
@@ -4706,6 +4758,15 @@ fn infer_gather_fold_step(
       acc: acc,
       merged_entries: acc.entries,
       merged_pending: acc.pending,
+      partials: partials,
+      kinds: kinds,
+      resolved: resolved
+    )
+  } else if infer_where_predicate_set_edge(parent: acc.node, edge: edge) {
+    infer_gather_fold_step_merged(
+      acc: acc,
+      merged_entries: acc.entries,
+      merged_pending: diagnostics_merge(outer: acc.pending, inner: infer_where_predicate_calls_unjudged(set: edge.target)),
       partials: partials,
       kinds: kinds,
       resolved: resolved
