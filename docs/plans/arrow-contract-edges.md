@@ -10,7 +10,7 @@ An Arrow may carry three optional **contract edges**. The first two (effect clai
 | --- | --- | --- | --- |
 | `^arrow_effect_claims_edge` | NONEMPTY Conj of self-named childless Atoms, no label twice (no claims has one form: the absent edge) | `std.effects` `EffectClaim` (`ReadonlyClaim`, `IdempotentClaim`), new here | `readonly`, `idempotent` |
 | `^arrow_execution_mode_claim_edge` | one childless Atom | `std.execution_mode` `ExecutionMode` (existing) | `hermetic` (only `Hermetic` is claimable) |
-| `^arrow_resource_requirements_edge` | NONEMPTY Conj, one Named edge per member (label = spelling, target = type reference); no requirements has one form, the absent edge | the open set of `resource` declarations, checked at resolution (`v2.std.symbol_index` `symbol_index_declares_resource_at`) | any declared resource, each at most once by resolved declaration |
+| `^arrow_resource_requirements_edge` | one of THREE declared forms: a NONEMPTY Conj, one Named edge per member (label = spelling, target = type reference); the childless Atom `^requirements_declared_none` (`requires none`); the childless Atom `^requirements_opaque` (`requires opaque`). An ABSENT edge is an undeclared operation, read as Undecided (see the reversal below) | the open set of `resource` declarations, checked at resolution (`v2.std.symbol_index` `symbol_index_declares_resource_at`) | any declared resource, each at most once by resolved declaration |
 
 `hermetic` is kept off the effect claims: it says where the Arrow may run, not what its effect does. The surface `OperationModifier` stays one syntax vocabulary (`v2.extdeps.languages.dag` `dag_grammar_op_modifier_expr`), and lowering (PR2c) projects each arm to its home.
 
@@ -77,3 +77,13 @@ Per the ruling, a default belongs to the binder and not to its type. One binder 
 ## Third edge: resource requirements (D13 step a)
 
 `^arrow_resource_requirements_edge` (`v2.std.node` `arrow_resource_requirements_label`) is the operation's declared `requires R, ..` (`v2.extdeps.languages.dag` `dag_grammar_op_requires_expr`), lowered by `v2.compiler.body_lowering_fold` `body_lower_operation_requires`. Its target is a nonempty Conj with one Named edge per member: the label is the member's spelling, and the target is its type reference. Unlike the two claim edges, it names DECLARATIONS from an open set, so `v2.compiler.resolve` walks it and checks each member against `v2.std.symbol_index` `symbol_index_declares_resource_at`. It is the first producer of any contract edge, so the pipeline reader arms above landed with it, for all three edges. Controls: `v2.test.claim.normalize.operation_requires_edge`.
+
+### Reversal: an absent requirements edge is UNDECLARED, not "none" (D13 ruling B)
+
+**This reverses #12911**, where "no requirements has one form, the absent edge". D13 step (b) derives a function's demand from the operations it calls. Under the old reading, every operation nobody audited, and every one added later, would silently read as requiring nothing. That is the fail-open default DESIGN section 5 forbids, so the lane owner ruled it out (option B). Every operation now declares one of three forms, all on this one edge, with no second carrier:
+
+- `requires R, ..`: the named resources, checked at resolution as above.
+- `requires none`: **no requirement in the audited vocabulary.** Today that vocabulary is `Network` only (the D13 Network audit, `docs/plans/d13-network-audit.md`). It is not a claim about Filesystem, Clock or Entropy: their demand derives from direct capability calls and is never authored. When the audited vocabulary grows, the meaning of `none` grows with it, and the rows are re-audited.
+- `requires opaque`: the operation's demand is decided by runtime values (a generic exec, `shell.exec Run`, `systemd-run`, a runtime-program runner), so a caller's derived demand is **Undecided**, a located refusal at the uses-wall, never empty.
+
+An operation with no clause carries no edge. Step (b) reads that as **Undecided**, exactly like `opaque`, so silence can never mint "none". The grammar (`dag_grammar_op_requires_expr`) makes `none` and `opaque` whole clauses: a member after either refuses. The v1 seed carries the same three forms (`v1.compiler.parse` `operation_requires_declaration`: `RequiresUndeclared | RequiresNone | RequiresOpaque | RequiresResources`). Controls: `v2.test.claim.normalize.operation_requires_edge` and `test.claim.v1_operation_requires_parse_witness_test`.
