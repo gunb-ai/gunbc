@@ -43,19 +43,51 @@ fn vllm_kv_backend_wire(b: VllmKvBackend) -> NonEmptyStr {
 
 type VllmIndexerKind = | DsaSparseIndexer
 
+// THE RUNTIME A ROW AND A SUBJECT ARE ABOUT (review on #12976): an upstream row answers for one source
+// revision, an observed row for one built image, and a subject names the image it asks about together
+// with the source that image was built from. A row answers only for its own runtime -- a fact read at
+// one revision, or observed on one build, says nothing about another.
+type KvRuntime sole_constructor {
+  image: NonEmptyStr?
+  source: VllmSourceRevision
+}
+
+fn kv_runtime(image: NonEmptyStr?, source: VllmSourceRevision) -> KvRuntime {
+  KvRuntime { image: image, source: source }
+}
+
+type KvRowRuntime
+  = RowAtSourceRevision { revision: VllmSourceRevision }
+  | RowOnBuild { image: NonEmptyStr }
+
+fn kv_same_revision(a: VllmSourceRevision, b: VllmSourceRevision) -> Bool {
+  (a.repository as String) == (b.repository as String) && (a.full_revision as String) == (b.full_revision as String)
+}
+
+fn kv_row_applies(row: KvRowRuntime, runtime: KvRuntime) -> Bool {
+  match row {
+    RowAtSourceRevision { revision: r } => kv_same_revision(a: r, b: runtime.source)
+    RowOnBuild { image: i } => match runtime.image {
+      Absent => false
+      Present { value: mine } => (mine as String) == (i as String)
+    }
+  }
+}
+
 type KvCapabilityBasis
   = KvBasisUpstreamSource { revision: VllmSourceRevision, locator: NonEmptyStr }
   | KvBasisObservedOnBuild { build: NonEmptyStr, observation: NonEmptyStr }
 
 type KvMainDtypeRow sole_constructor {
   backend: VllmKvBackend
+  runtime: KvRowRuntime
   device_major: Nat
   admitted: List<VllmKvCacheDtypeRequest>
   basis: KvCapabilityBasis
 }
 
-fn kv_main_dtype_row(backend: VllmKvBackend, device_major: Nat, admitted: List<VllmKvCacheDtypeRequest>, basis: KvCapabilityBasis) -> KvMainDtypeRow {
-  KvMainDtypeRow { backend: backend, device_major: device_major, admitted: admitted, basis: basis }
+fn kv_main_dtype_row(backend: VllmKvBackend, runtime: KvRowRuntime, device_major: Nat, admitted: List<VllmKvCacheDtypeRequest>, basis: KvCapabilityBasis) -> KvMainDtypeRow {
+  KvMainDtypeRow { backend: backend, runtime: runtime, device_major: device_major, admitted: admitted, basis: basis }
 }
 
 // ── THE UPSTREAM ROWS ───────────────────────────────────────────────────────────────────────────
@@ -70,6 +102,7 @@ data v41_flashinfer_sparse_locator: NonEmptyStr = "vllm/models/deepseek_v4_1/nvi
 
 data deepseek_v4_sparse_mla_sm12_row: KvMainDtypeRow = kv_main_dtype_row(
   backend: DeepseekV4FlashInferMlaSparse,
+  runtime: RowAtSourceRevision { revision: vllm_deepseek_v4_1_sm12_revision },
   device_major: 12,
   admitted: [KvFp8, KvFp8E4m3, KvFp8DsMla],
   basis: KvBasisUpstreamSource { revision: vllm_deepseek_v4_1_sm12_revision, locator: v41_flashinfer_sparse_locator },
@@ -77,6 +110,7 @@ data deepseek_v4_sparse_mla_sm12_row: KvMainDtypeRow = kv_main_dtype_row(
 
 data deepseek_v4_sparse_mla_sm10_row: KvMainDtypeRow = kv_main_dtype_row(
   backend: DeepseekV4FlashInferMlaSparse,
+  runtime: RowAtSourceRevision { revision: vllm_deepseek_v4_1_sm12_revision },
   device_major: 10,
   admitted: [KvAuto, KvBf16, KvFp8, KvFp8E4m3],
   basis: KvBasisUpstreamSource { revision: vllm_deepseek_v4_1_sm12_revision, locator: v41_flashinfer_sparse_locator },
@@ -98,6 +132,7 @@ data dsa_indexer_basis: KvCapabilityBasis = KvBasisUpstreamSource {
 // ── THE VERDICT ─────────────────────────────────────────────────────────────────────────────────
 type KvCapabilitySubject {
   backend: VllmKvBackend
+  runtime: KvRuntime
   device_major: Nat
   main: VllmKvCacheDtypeRequest
   indexer_kind: VllmIndexerKind?
@@ -115,11 +150,11 @@ fn kv_request_in(admitted: List<VllmKvCacheDtypeRequest>, r: VllmKvCacheDtypeReq
 
 // ONE ROW PER KEY. Two rows for one (backend, major) is two authorities for one fact, and answering
 // from the first would hide the second; the join refuses to answer instead.
-fn main_dtype_rows_for(rows: List<KvMainDtypeRow>, backend: VllmKvBackend, device_major: Nat) -> List<KvMainDtypeRow> {
-  filter(rows, r => (vllm_kv_backend_wire(b: r.backend) as String) == (vllm_kv_backend_wire(b: backend) as String) && r.device_major == device_major)
+fn main_dtype_rows_for(rows: List<KvMainDtypeRow>, backend: VllmKvBackend, runtime: KvRuntime, device_major: Nat) -> List<KvMainDtypeRow> {
+  filter(rows, r => (vllm_kv_backend_wire(b: r.backend) as String) == (vllm_kv_backend_wire(b: backend) as String) && r.device_major == device_major && kv_row_applies(row: r.runtime, runtime: runtime))
 }
 
-fn indexer_verdict(kind: VllmIndexerKind?, indexer: VllmIndexerKvDtypeRequest, device_major: Nat) -> KvCapabilityVerdict {
+fn indexer_verdict(kind: VllmIndexerKind?, indexer: VllmIndexerKvDtypeRequest, runtime: KvRuntime, device_major: Nat) -> KvCapabilityVerdict {
   match kind {
     Absent =>
       match indexer {
@@ -132,9 +167,13 @@ fn indexer_verdict(kind: VllmIndexerKind?, indexer: VllmIndexerKvDtypeRequest, d
     Present { value: k } =>
       match k {
         DsaSparseIndexer =>
-          match indexer {
-            IndexerKvDtypeOmitted => KvCombinationAdmitted { bases: [dsa_indexer_basis] }
-            IndexerKvDtypeExplicit { dtype: d } => dsa_indexer_dtype_verdict(d: d, device_major: device_major)
+          if !kv_same_revision(a: vllm_source_revision_read, b: runtime.source) {
+            KvCombinationUnanswered { obligation: join(["the DSA indexer rule was read at ", vllm_source_revision_read.full_revision as String, " and this runtime is built from ", runtime.source.full_revision as String, ": read dsa_indexer_uses_fp4 at that revision"], "") as NonEmptyStr }
+          } else {
+            match indexer {
+              IndexerKvDtypeOmitted => KvCombinationAdmitted { bases: [dsa_indexer_basis] }
+              IndexerKvDtypeExplicit { dtype: d } => dsa_indexer_dtype_verdict(d: d, device_major: device_major)
+            }
           }
       }
   }
@@ -168,12 +207,12 @@ fn dsa_indexer_outside_set(d: VllmIndexerKvDtype) -> KvCapabilityVerdict {
 // THE JOIN. `rows` is the caller's full roster: the upstream rows above plus whatever the observing
 // layer has established for the builds it runs, so one function answers for every model.
 fn kv_capability_verdict(subject: KvCapabilitySubject, rows: List<KvMainDtypeRow>) -> KvCapabilityVerdict {
-  let matches = main_dtype_rows_for(rows: rows, backend: subject.backend, device_major: subject.device_major)
+  let matches = main_dtype_rows_for(rows: rows, backend: subject.backend, runtime: subject.runtime, device_major: subject.device_major)
   if count(matches) == 0 {
     KvCombinationUnanswered { obligation: join([
       "no row states which KV dtypes ", vllm_kv_backend_wire(b: subject.backend) as String,
-      " admits on device major ", to_string(subject.device_major),
-      ": read the backend's supports_combination at the pinned revision, or observe a launch on that build",
+      " admits on device major ", to_string(subject.device_major), " for runtime ", subject.runtime.source.full_revision as String,
+      ": read the backend's supports_combination at that revision, or observe a launch on that build",
     ], "") as NonEmptyStr }
   } else if count(matches) > 1 {
     KvCombinationUnanswered { obligation: join([
@@ -194,7 +233,7 @@ fn kv_capability_verdict(subject: KvCapabilitySubject, rows: List<KvMainDtypeRow
             basis: row.basis,
           }
         } else {
-          match indexer_verdict(kind: subject.indexer_kind, indexer: subject.indexer, device_major: subject.device_major) {
+          match indexer_verdict(kind: subject.indexer_kind, indexer: subject.indexer, runtime: subject.runtime, device_major: subject.device_major) {
             KvCombinationAdmitted { bases: bs } => KvCombinationAdmitted { bases: concat([row.basis], bs) }
             KvCombinationRefused { cause: c, basis: b } => KvCombinationRefused { cause: c, basis: b }
             KvCombinationUnanswered { obligation: o } => KvCombinationUnanswered { obligation: o }
