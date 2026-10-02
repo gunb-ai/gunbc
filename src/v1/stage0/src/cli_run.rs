@@ -173,9 +173,9 @@ pub(crate) use emit_host::*;
 pub use emit_host::{
     builtin_function_registry_keys, compile_dag_call_form_leaf_guard,
     compile_dag_callsite_resolved_call_edges, compile_dag_importer_resolved_call_edges,
-    compile_dag_multi_module_fixture, compile_dag_primitive_call_edges,
-    compile_dag_reference_occurrence_binding_census, emit_module_storage_binding_manifest,
-    emit_source_root_ingest_manifest,
+    compile_dag_multi_module_fixture, compile_dag_operation_requires,
+    compile_dag_primitive_call_edges, compile_dag_reference_occurrence_binding_census,
+    emit_module_storage_binding_manifest, emit_source_root_ingest_manifest,
 };
 pub use emit_host::{
     compile_dag_diagnostic_census_memo_counts, compile_dag_rust_emit_check_memo_counts,
@@ -9598,6 +9598,86 @@ fn admit_pool_bare_references(index: &MultiEntryIndex) -> Result<(), String> {
     verdict
 }
 
+/// THE WHOLE-POOL NAME CENSUS'S ENTRY FOR ONE NAME, computed over the modules that declare it.
+///
+/// `build_symbol_index_census_raw_nodes` keys every bare, alias and service entry by a declared
+/// name, and every count that gates an entry (variant and item multiplicity) counts declarations
+/// of that same name. So the pool census's entry for `name` depends only on the modules that
+/// declare `name`, and building the census over exactly those modules yields the same entry --
+/// the question the bare loader asks, without the whole pool. The modules are located by the
+/// heads name index (`ReferencePoolNames::decl_index`, items plus the variants of `Disj` types,
+/// the same declarations the census folds). The claim is checked for every name of the live pool
+/// by `entry_resolve::pool_census_for_name_differential`.
+fn pool_census_for_name(index: &MultiEntryIndex, name: &str) -> Result<Rc<SymbolIndex>, String> {
+    let started = std::time::Instant::now();
+    #[cfg(test)]
+    PER_NAME_CENSUS_DISTINCT.with(|d| {
+        d.borrow_mut().insert(name.to_string());
+    });
+    let census = pool_census_for_name_uncounted(index, name);
+    resolve_stage_slot_add(|st| {
+        st.bare_per_name_census_calls += 1;
+        st.bare_per_name_census += started.elapsed().as_nanos();
+    });
+    census
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Distinct names `pool_census_for_name` was asked about on this thread: with the call count
+    /// in `ResolveStageNanos`, the repetition a shared answer would remove.
+    pub(crate) static PER_NAME_CENSUS_DISTINCT: RefCell<std::collections::HashSet<String>> =
+        RefCell::new(std::collections::HashSet::new());
+}
+
+/// `module` with only the items that declare `name`: an item named `name`, or a `Disj` type
+/// definition one of whose variants is named `name`.
+fn module_pruned_to_declarations_of(module: &Rc<Node>, name: &str) -> Rc<Node> {
+    use crate::v1_compiler_emit_core_support::is_type_def_item;
+    use crate::v1_std_core::Connective;
+    let children: im::Vector<Rc<Node>> = module
+        .children
+        .iter()
+        .filter(|item| {
+            item.name == name
+                || (is_type_def_item((*item).clone())
+                    && item.connective == Connective::Disj
+                    && item.children.iter().any(|v| v.name == name))
+        })
+        .cloned()
+        .collect();
+    Rc::new(Node {
+        children: Rc::new(children),
+        ..(**module).clone()
+    })
+}
+
+fn pool_census_for_name_uncounted(
+    index: &MultiEntryIndex,
+    name: &str,
+) -> Result<Rc<SymbolIndex>, String> {
+    let pool = pool_parse(index)?;
+    let names = entry_resolve::reference_pool_names_for_index(index)?;
+    let Some(modules) = names.decl_index.get(name) else {
+        return Ok(crate::v1_compiler_infer_env::empty_symbol_index());
+    };
+    // Each declaring module contributes only the items that DECLARE `name` -- an item of that
+    // name, or a `Disj` type with a variant of that name (the same declarations
+    // `collect_module_decl_names` indexes). Every entry, count and gate for `name` reads those
+    // items and no others, so the census over the pruned modules has the same entry for `name`,
+    // at a cost in the name's declarations rather than in the declaring modules' size.
+    let nodes: im::Vector<Rc<Node>> = modules
+        .iter()
+        .filter_map(|m| index.source_files.get(m))
+        .filter_map(|sf| pool.position_by_file.get(&sf.path))
+        .map(|&i| module_pruned_to_declarations_of(&pool.nodes_by_file[i].1, name))
+        .collect();
+    Ok(v1_compiler_infer::build_symbol_index_census_raw_nodes(
+        Rc::new(nodes),
+        pool.combined_si.clone(),
+    ))
+}
+
 /// One resolver, two consumers: admission discards selected providers, and a demanded
 /// edge row expands them. Candidate classification remains `closure_bare_disposition`,
 /// which consumes `v1.compiler.infer_env::global_bare_chain_candidates`.
@@ -9822,11 +9902,43 @@ fn visit_bare_reference_providers(
         // Carrying the provenance costs nothing (the arms already know it) and makes the
         // existing `GUNBC_BARE_PULL_TRACE` line answer "how was this resolved", not only
         // "what did it resolve to".
+        // NO WHOLE-POOL CENSUS. A name the file's own tree census does not answer used to be asked
+        // of the WHOLE-POOL census, built in full by the first such demand -- DESIGN §5's
+        // absorbing fallback (not knowing the answer gets answered with the superset). What that
+        // question actually depends on is the pool census's entry for THIS NAME, and that entry is
+        // a function of the modules that declare the name alone (`pool_census_for_name`). So the
+        // same answer is computed over exactly those modules. Where it names a provider, the old
+        // route silently pulled a module from another source tree; that is now a typed, located
+        // refusal telling the author to write the reference qualified. Where it names none, nothing changes.
+        // Measured before the change by the live fallback census: 13 such pulls in 5 files on the
+        // real pool, one of them a builtin `get` bound to an unrelated `fn get`
+        // (`gunbc.recurring_failure_mode.a_pool_fallback_provider_shadows_a_builtin`).
         let (target_module, resolution_arm, census_state) = match resolve_in(&census)? {
             (Some(m), state) => (Some(m), "scoped", state),
-            (None, _) => {
-                let (m, state) = resolve_in(&census_for(None)?)?;
-                (m, "pool-fallback", state)
+            // A BUILTIN the tree does not declare is the builtin: no other tree's function of the
+            // same name is a provider for it (`builtin_signature` is the builtin authority).
+            (None, state)
+                if !service_head
+                    && crate::v1_compiler_infer_method::builtin_signature(name.clone())
+                        .is_some() =>
+            {
+                (None, "builtin", state)
+            }
+            (None, state) => {
+                let (provider, _) = resolve_in(&pool_census_for_name(index, &name)?)?;
+                // A provider that is a test row was never pulled (the loader skips test rows
+                // below), so it is not a cross-tree dependency and does not refuse.
+                if let Some((provider, false)) = provider {
+                    return Err(format!(
+                        "bare_reference_closure: CrossTreeBareReference -- bare reference \
+                         '{name}' in '{file_rel}' is not provided by this file's source tree \
+                         ({root}); only '{provider}', outside it, provides it. A reference \
+                         across source trees is written qualified, as `{provider}.{name}` \
+                         (an `import` would also stop every other bare reference in this \
+                         file from being followed)."
+                    ));
+                }
+                (None, "scoped", state)
             }
         };
         let Some((module_path, is_test_row)) = target_module else {
@@ -13216,6 +13328,9 @@ pub struct MultiEntryIndex {
     /// newline indexes) — the shared input of the qualified fill and the per-tree
     /// bare layers below. Entry-independent, built once per process.
     pool_parse: RefCell<Option<Rc<PoolParse>>>,
+    /// The heads name index over `pool_parse` (`entry_resolve::reference_pool_names_for_index`):
+    /// a fact of this index, demanded per out-of-tree bare name, so derived once here.
+    reference_pool_names: RefCell<Option<Rc<entry_resolve::ReferencePoolNames>>>,
     /// Whole-pool QUALIFIED-ONLY census layer (entries keyed by qualified name;
     /// empty global_bare/services), built once per process and underlaid beneath
     /// each entry's closure census (namespace-resolution-design.md §7.5: "fill =
@@ -13553,6 +13668,7 @@ pub fn drop_private_term_for_test(index: &MultiEntryIndex, term: &str) -> bool {
         "normalize_diag_cache" => index.normalize_diag_cache.borrow_mut().clear(),
         "ownership_diag_cache" => index.ownership_diag_cache.borrow_mut().clear(),
         "pool_parse" => *index.pool_parse.borrow_mut() = None,
+        "reference_pool_names" => *index.reference_pool_names.borrow_mut() = None,
         "pool_qualified_fill" => *index.pool_qualified_fill.borrow_mut() = None,
         "tree_bare_census" => index.tree_bare_census.borrow_mut().clear(),
         "pool_bare_census" => *index.pool_bare_census.borrow_mut() = None,
@@ -13615,6 +13731,7 @@ pub fn drop_attributable_terms_for_test() -> &'static [&'static str] {
         "typed_module_cache",
         "parse_cache",
         "pool_parse",
+        "reference_pool_names",
         "both_closure_edges",
         "closure_name_censuses",
         "bare_reference_admission",
@@ -13725,6 +13842,9 @@ pub(crate) fn multi_entry_index_sharing_control(
 struct PoolParse {
     /// Workspace-relative file path → census-head module node.
     nodes_by_file: Vec<(String, Rc<Node>)>,
+    /// Position of each file in `nodes_by_file`, so a reader that wants a few named files
+    /// (`pool_census_for_name`) finds them without walking the pool.
+    position_by_file: std::collections::HashMap<String, usize>,
     combined_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 }
 
@@ -15756,6 +15876,9 @@ pub struct ResolveStageNanos {
     pub edge_index_bare_candidates: u128,
     pub edge_index_bare_name_universe: u128,
     pub edge_index_bare_resolve_loop: u128,
+    /// `pool_census_for_name`: the out-of-tree question per bare name -- calls and their time.
+    pub bare_per_name_census_calls: u128,
+    pub bare_per_name_census: u128,
     /// `Rc::new` + hand-off of the finished index.
     pub edge_index_publish: u128,
     /// `build_both_closure_edge_index` (memoized on the index; nonzero here is the first build).
@@ -15817,6 +15940,8 @@ impl ResolveStageNanos {
         self.edge_index_bare_candidates += other.edge_index_bare_candidates;
         self.edge_index_bare_name_universe += other.edge_index_bare_name_universe;
         self.edge_index_bare_resolve_loop += other.edge_index_bare_resolve_loop;
+        self.bare_per_name_census_calls += other.bare_per_name_census_calls;
+        self.bare_per_name_census += other.bare_per_name_census;
         self.edge_index_publish += other.edge_index_publish;
         self.load_pool_reference_closure += other.load_pool_reference_closure;
         self.load_fixpoint_rounds += other.load_fixpoint_rounds;
@@ -15935,6 +16060,8 @@ thread_local! {
             edge_index_bare_candidates: 0,
             edge_index_bare_name_universe: 0,
             edge_index_bare_resolve_loop: 0,
+            bare_per_name_census_calls: 0,
+            bare_per_name_census: 0,
             edge_index_publish: 0,
             load_bare_edge_index: 0,
             load_bare_path_lookup: 0,
@@ -17347,8 +17474,14 @@ fn pool_parse(index: &MultiEntryIndex) -> Result<Rc<PoolParse>, String> {
         combined_si.insert(file.clone(), nl_index);
         nodes_by_file.push((file, module));
     }
+    let position_by_file = nodes_by_file
+        .iter()
+        .enumerate()
+        .map(|(i, (file, _))| (file.clone(), i))
+        .collect();
     let parsed = Rc::new(PoolParse {
         nodes_by_file,
+        position_by_file,
         combined_si: Rc::new(combined_si),
     });
     pre_entry_phase::record(
@@ -20148,16 +20281,41 @@ pub fn partition_cost_debt_roster<'a>(
                     CostDebtRosterStanding::WithholdOverriddenForChangedVerdict
                 }
                 Some(RequiredFloorDisposition::DeclinedOutsideGateClosure)
-                | Some(RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. }) => {
-                    CostDebtRosterStanding::OutsideThisRunsUniverse
+                | Some(RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. })
+                | Some(RequiredFloorDisposition::DeclinedNoCiWetLane { .. })
+                | Some(RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery {
+                    ..
+                }) => CostDebtRosterStanding::OutsideThisRunsUniverse,
+                Some(RequiredFloorDisposition::Planned)
+                | Some(RequiredFloorDisposition::DeclinedLongModule { .. })
+                | Some(RequiredFloorDisposition::DeclinedFixtureMember { .. })
+                | Some(RequiredFloorDisposition::DeclinedOutsideRequiredGate) => {
+                    CostDebtRosterStanding::DeclaredButNotWithheld
                 }
-                Some(_) => CostDebtRosterStanding::DeclaredButNotWithheld,
             };
             (q, standing)
         })
         .collect();
     rows.sort_unstable_by(|a, b| a.0.cmp(b.0));
     rows
+}
+
+/// WHETHER A DISPOSITION IS THE COST-DEBT WITHHOLD, as an exhaustive match: a new arm states
+/// whether it withholds rather than defaulting to "not cost debt"
+/// (`gunbc.recurring_failure_mode.a_new_decision_arm_the_downstream_join_does_not_admit`).
+fn disposition_is_a_cost_debt_withhold(disposition: &RequiredFloorDisposition) -> bool {
+    match disposition {
+        RequiredFloorDisposition::DeclinedCostDebt => true,
+        RequiredFloorDisposition::Planned
+        | RequiredFloorDisposition::PlannedAsChangedWitness
+        | RequiredFloorDisposition::DeclinedLongModule { .. }
+        | RequiredFloorDisposition::DeclinedFixtureMember { .. }
+        | RequiredFloorDisposition::DeclinedOutsideRequiredGate
+        | RequiredFloorDisposition::DeclinedOutsideGateClosure
+        | RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. }
+        | RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery { .. }
+        | RequiredFloorDisposition::DeclinedNoCiWetLane { .. } => false,
+    }
 }
 
 /// The execution-accounting set and the disposition projection must name the SAME identities.
@@ -20178,15 +20336,14 @@ pub fn reconcile_withheld_against_dispositions<'a>(
         .iter()
         .map(|q| q.as_str())
         .filter(|q| {
-            !matches!(
-                dispositions.get(*q),
-                Some(RequiredFloorDisposition::DeclinedCostDebt)
-            )
+            !dispositions
+                .get(*q)
+                .is_some_and(disposition_is_a_cost_debt_withhold)
         })
         .collect();
     let mut dispositioned_without_withhold: Vec<&str> = dispositions
         .iter()
-        .filter(|(_, d)| matches!(d, RequiredFloorDisposition::DeclinedCostDebt))
+        .filter(|(_, d)| disposition_is_a_cost_debt_withhold(d))
         .map(|(q, _)| q.as_str())
         .filter(|q| !withheld.contains(*q))
         .collect();
@@ -44683,7 +44840,7 @@ const REQUIRED_FLOOR_POLICY_MODULE: &str = "v2.workflow.required_floor";
 /// its own call site. `v2.workflow.floor_naming_hygiene` is reached through the producer's
 /// import closure rather than asked directly: the barren-sidecar question the runner used to
 /// put to it is one arm of the producer's per-file fold.
-const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 6] = [
+const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 7] = [
     REQUIRED_FLOOR_POLICY_MODULE,
     "v2.workflow.floor_discovery_producer",
     "gunbc.output_policy",
@@ -44702,6 +44859,12 @@ const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 6] = [
     // policy module for it would require the import to run the other way -- a cycle, which DESIGN
     // section 4 makes the import graph's one structural prohibition.
     "v2.workflow.floor_enrolment_margin",
+    // The terminal ledger's wire grammar (`render_terminal_ledger`, via `publish_terminal_ledger`).
+    // Enrolled so the ledger renders in a frame of the ONE prepared subject rather than through a
+    // second strict typecheck of its closure beside it: the closure is the floor's own authorities,
+    // already prepared, and a fresh resolve at publication duplicated that production while the
+    // subject was still resident (a std-root edit widened it past the leaf, gunbc#12846).
+    "v2.workflow.floor_terminal_ledger_wire",
 ];
 
 /// THE REQUIRED FLOOR, AS ONE ATTEMPT.
@@ -45953,6 +46116,40 @@ mod required_floor_disposition_and_storage_agreement_law {
             standing_of(&rows, "m.no_row"),
             Some(CostDebtRosterStanding::Undeclared),
             "no disposition means undeclared, even for an identity another structure calls withheld"
+        );
+    }
+
+    /// THE TWO CHANGED-SELECTION DECLINES ARE OUTSIDE THIS RUN'S UNIVERSE, as
+    /// `v2.workflow.required_floor` `cost_debt_roster_standing` maps them. The seed's former
+    /// `Some(_)` catch-all classed both as `DeclaredButNotWithheld` and refused a rostered identity
+    /// that the changed sublane declined; red on that arm, green on the named one.
+    #[test]
+    fn changed_selection_declines_are_outside_this_runs_universe() {
+        let roster = ident_set(&["m.wet", "m.outside"]);
+        let dispositions = disp_map(&[
+            (
+                "m.wet",
+                RequiredFloorDisposition::DeclinedNoCiWetLane {
+                    pattern: "wet_witness_test.dag".to_string(),
+                },
+            ),
+            (
+                "m.outside",
+                RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery {
+                    module_path: "m".to_string(),
+                },
+            ),
+        ]);
+
+        let rows = partition_cost_debt_roster(&roster, &dispositions);
+
+        assert_eq!(
+            standing_of(&rows, "m.wet"),
+            Some(CostDebtRosterStanding::OutsideThisRunsUniverse)
+        );
+        assert_eq!(
+            standing_of(&rows, "m.outside"),
+            Some(CostDebtRosterStanding::OutsideThisRunsUniverse)
         );
     }
 

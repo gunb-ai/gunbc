@@ -420,11 +420,18 @@ fn produced_decl_param_segment_tokens(
     ProducedParamType =>
       match declared_field_from_edge(e: edge) {
         Present { value: binder } =>
-          produced_decl_type_ref_tokens(
-            token_class: rows.type_ref_token_class,
-            type_node: binder.type_node,
-            type_binding: type_binding
-          )
+          match binder.default {
+            Present { value: default } =>
+              outcome_rejected(
+                d: produced_decl_render_diagnostic(reason: ^produced_decl_render_param_default_unrealized, node: default)
+              )
+            Absent =>
+              produced_decl_type_ref_tokens(
+                token_class: rows.type_ref_token_class,
+                type_node: binder.type_node,
+                type_binding: type_binding
+              )
+          }
         Absent =>
           outcome_rejected(
             d: produced_decl_render_diagnostic(
@@ -620,7 +627,13 @@ fn produced_decl_function_type_param_tokens(
   edge: Edge,
   type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<List<ConcreteSyntaxToken>> {
-  produced_decl_type_ref_tokens(token_class: rows.type_ref_token_class, type_node: member_edge_type_node(e: edge), type_binding: type_binding)
+  match member_edge_type_node(e: edge) {
+    Present { value: t } => produced_decl_type_ref_tokens(token_class: rows.type_ref_token_class, type_node: t, type_binding: type_binding)
+    Absent =>
+      outcome_rejected(
+        d: produced_decl_render_diagnostic(reason: ^produced_decl_render_param_unnamed, node: edge.target)
+      )
+  }
 }
 
 fn produced_decl_function_type_params_tokens(

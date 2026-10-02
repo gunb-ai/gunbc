@@ -162,12 +162,7 @@ data known_frontier_causes: List<CauseOwnership> = [
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "a `pattern` declaration shares the one fn_decl production but v1 admits it only without generic params and with a block body (dag syntax dag_item_forms: has_type_params false, body_kind BlockBody); a pattern-headed declaration writing generic params or an `= expr` body refuses located at what it wrote (v2.compiler.body_lowering_fold body_lower_pattern_form_refusal_optional). This is a fidelity wall, not a frontier: it retires only if the grammar can express the narrower pattern form without changing the fn_decl spine depth the positional readers walk, so the form becomes unwritable rather than refused"
   },
-  CauseOwnership {
-    cause: ^body_lowering_reason_default_value_unmodeled,
-    grain: FatalGrain,
-    lane: SharedSelfHostCriticalPath,
-    flip_trigger: "a default value (`= expr`) on a fn or pattern parameter or on a record field parses as the one default_value production and refuses located at it (v2.compiler.body_lowering_fold body_lower_param_default_refusal_optional, body_lower_field_decl_block_payload), because nothing on a lowered parameter or field can carry it. Flips when the one binder representation carrying an optional default, shared by fn params, service io fields and record fields, lowers every default onto its binder, so the reason has no producer (gunbc.recurring_failure_mode default_value_has_no_carrier)"
-  },
+
   CauseOwnership {
     cause: ^body_lowering_reason_parameter_refinement_unmodeled,
     grain: FatalGrain,
@@ -389,6 +384,19 @@ data known_frontier_causes: List<CauseOwnership> = [
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "v2.compiler.04_infer types a Match only through infer_match_bool, which admits a Bool or Int scrutinee and refuses every other scrutinee type here -- so a match over a declared coproduct (variant-pattern arms, e.g. `match c { Deterministic => .. NonDeterministic { source: _ } => .. }`) has no infer row at all. Same one-match-carrier frontier as infer_match_shape_invalid, observed at the scrutinee instead of the arm. Flips when infer types a Match whose scrutinee is a named sum (arms joined to its alternatives, exhaustiveness over them) and the count zeroes. That capability is built and in flight: gunbc#12641 (v2 infer types a match over a declared, generic coproduct and its arm binders) merged onto lane/reference-evidence-consumer and reaches main with gunbc#12506; its landing is the expected flip, confirmed only by a native-route run whose count for this cause is zero. Observed at fatal grain at PREPARE on native-route member rows at main 55e78f40e9a over dag + src/v2: 6 v2.test.* members, all in v2.test.claim.determinism_contract_test (det_is_deterministic's match on Determinism); not among the unowned causes gunbc#12626 measured at 1457bd81d00, so newly reachable as that module cleared resolve"
+  },
+
+  CauseOwnership {
+    cause: ^infer_binder_default_generic_unmodeled,
+    grain: FatalGrain,
+    lane: MigrationOwned,
+    flip_trigger: "a generic declaration -- an Arrow or a type declaration with type parameters -- carries a binder with a default, and a default is judged without its declaration's type parameters in scope (v2.compiler.infer infer_binder_default_check), where a default typed by one would be InhabitanceUndecidable and advisory-accepted; so v2.compiler.infer infer_generic_default_refusal refuses it at the default. Flips when a default is judged with its declaring type parameters in scope (a parent-aware judgment), so a generic default derives or refuses on its own merits"
+  },
+  CauseOwnership {
+    cause: ^named_child_not_a_binder,
+    grain: FatalGrain,
+    lane: MigrationOwned,
+    flip_trigger: "a domain or payload member read for its type (v2.std.node_query find_binder_type) is a Named edge whose target is not a binder node: a hand-built name-to-type edge the binder builder did not make. Not a frontier to retire but a wall: it refuses for as long as such an edge can be written, and stays as the regression control once the Arrow-domain wall (v2.std.type_binder arrow_domain_members_are_binders) refuses every one upstream"
   }
 ]
 

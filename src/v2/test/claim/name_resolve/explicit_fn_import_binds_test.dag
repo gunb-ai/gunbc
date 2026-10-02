@@ -90,10 +90,10 @@ fn efib_verdicts() -> Optional<EfibVerdicts> {
       {
         let index = native_lane_file_refusal_index(refusals: context.file_refusals)
         optional_present(value: EfibVerdicts {
-          refused_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.efib.refused_user", path: ^efib_refused_user),
-          undeclared_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.efib.undeclared_user", path: ^efib_undeclared_user),
-          user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.efib.user", path: ^efib_user),
-          rival_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.efib.rival_user", path: ^efib_rival_user)
+          refused_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.efib.refused_user", path: ^efib_refused_user).verdict,
+          undeclared_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.efib.undeclared_user", path: ^efib_undeclared_user).verdict,
+          user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.efib.user", path: ^efib_user).verdict,
+          rival_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.efib.rival_user", path: ^efib_rival_user).verdict
         })
       }
   }

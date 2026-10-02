@@ -1,4 +1,5 @@
 module extdeps.cloudflare.account_api_tokens
+import std.resources { Network }
 
 // `String` HERE IS THE KERNEL STRING, UNIMPORTED, BECAUSE THE VALUES ARE HOST TEXT. This module
 // used to import std.string_type { String } (type String = FreeMonoid<Char>, a code-point
@@ -433,6 +434,7 @@ service cloudflare.AccountTokens {
   }
 
   operation ListPermissionGroupsRaw {
+    requires Network
     input {
       auth_token: Secret
       account_id: String
@@ -454,6 +456,7 @@ service cloudflare.AccountTokens {
   }
 
   operation ListPermissionGroups {
+    requires Network
     input {
       auth_token: Secret
       account_id: String
@@ -476,6 +479,7 @@ service cloudflare.AccountTokens {
   }
 
   operation Create {
+    requires Network
     input {
       auth_token: Secret
       account_id: String
@@ -513,6 +517,7 @@ service cloudflare.AccountTokens {
   }
 
   operation List {
+    requires Network
     input {
       auth_token: Secret
       account_id: String
@@ -535,6 +540,7 @@ service cloudflare.AccountTokens {
   }
 
   operation Delete {
+    requires Network
     input {
       auth_token: Secret
       account_id: String

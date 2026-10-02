@@ -13,6 +13,7 @@ import gunbc.rust_item_scan {
   AttributionOutOfRange,
   RustFileScanned,
   RustFileScanRefused,
+  RustMacroRegion,
   attribute_scanned_line,
   rust_item_kind_keyword_mapping_is_total,
   scan_item_keys,
@@ -32,7 +33,19 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // items in one diff, recorded in gunbc.bare_reference_scanner_admission).
 data fixture_ordinary_source: String = "use std::fmt;\nuse std::io::Write;\n\npub struct Thing {\n    field: u32,\n}\n\n/// doc line\n#[derive(Debug)]\npub enum Mood {\n    Calm,\n    Loud,\n}\n\npub fn free_function(x: u32) -> u32 {\n    x + 1\n}\n\nimpl std::fmt::Display for Mood {\n    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n        write!(f, \"mood\")\n    }\n}\n\nmod inner_tests {\n    use super::*;\n\n    fn helper() -> bool {\n        true\n    }\n}\n"
 
-data fixture_raw_string_reaching_column_zero: String = "pub fn fixture_text() -> &'static str {\n    r#\"\nfn phantom_item() -> u32 {\n    1\n}\n\"#\n}\n"
+data fixture_raw_string_reaching_column_zero: String = "pub fn fixture_text() -> u32 {\n    let src = r#\"\nfn phantom_item() -> u32 {\n    1\n}\n\"#;\n    src.len() as u32\n}\n\npub fn after_the_body_literal() -> u32 {\n    1\n}\n"
+
+data fixture_ordinary_string_reaching_column_zero: String = "pub fn fixture_text() -> &'static str {\n    \"\nfn phantom_item() -> u32 {\n}\n\"\n}\n"
+
+data fixture_continued_initializer: String = "static SKIPS: std::sync::atomic::AtomicUsize =\n    std::sync::atomic::AtomicUsize::new(0);\n\nfn record_skip() {\n    SKIPS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);\n}\n"
+
+data fixture_continued_string_literal: String = "const SRC: &str =\n    \"module m\\n\\n\\\n}\\n\\\n     fn tail() {}\\n\";\n\nfn after_the_string() -> u32 {\n    1\n}\n"
+
+data fixture_trailing_comment_after_a_declaration: String = "const PART_LEN: usize = 8 + 16; // offset, digest\nconst HEADER_LEN: usize =\n    PART_LEN * 3;\n\nfn uses_the_url() -> &'static str {\n    \"https://example.invalid/a\"\n}\n"
+
+data fixture_header_swallowed_by_an_open_item: String = "pub fn fixture_text() -> &'static str {\n    \"\nfn phantom() -> u32 { 1 }\n\"\n}\n"
+
+data fixture_extern_block: String = "extern \"C\" {\n    fn getrusage(who: i32) -> i32;\n}\n"
 
 data fixture_header_opened_raw_string: String = "pub const FIXTURE_SRC: &str = r#\"\nfn phantom_item() -> u32 {\n    1\n}\n\"#;\n\npub fn after_the_literal() -> u32 {\n    1\n}\n"
 
@@ -154,20 +167,176 @@ test fn an_unrecognized_structural_line_refuses() -> Bool {
 // source as text and counted `fn phantom_item` inside a raw string literal as a Rust item, nine
 // times in one diff.
 //
-// This fixture opens its literal inside a function BODY, which is the shape the reader tracks
-// least: the opening delimiter never appears on an item header, so the literal's text arrives at a
-// scope boundary unannounced. The reader has no arm that admits it -- what the text is not, is a
-// recognized structural line -- so the file refuses rather than reporting an item nobody wrote.
-// Refusing is the honest answer here and is what the change observation turns into a line-stop.
-test fn source_inside_a_raw_string_literal_mints_no_item() -> Bool {
+// This fixture opens its literal inside a function BODY -- `let src = r#"` -- which is how every
+// witness binary in the seed plants a .dag fixture, and it was the shape the reader did not track:
+// the literal's own column-zero `}` (line 5) closed the fn early and its `"#;` then refused the
+// file, which is what put interp_recorded_fixture_witness.rs out of gunbc#12886's census. An item
+// ends at its own closing brace and a brace inside a literal is not one, so four facts are required
+// together: the file scans; the fn spans its true extent through the literal to its real close; the
+// declaration planted inside the literal is not an item; and a changed line inside the literal,
+// INCLUDING the `"#;` line at the item's own indent, attributes to the fn that owns the literal.
+// That last is the red for reading a body literal's terminator as the item's close, which a
+// header-opened constant's `"#;` legitimately is.
+test fn a_body_opened_raw_string_is_skipped_whole_and_its_lines_attribute_to_the_owning_fn() -> Bool {
   match scan_rust_source(
     repo_path: "src/v1/stage0/src/probe.rs",
     content: fixture_raw_string_reaching_column_zero
   ) {
-    RustFileScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => true
-    RustFileScanned { repo_path: _, items: items, macro_regions: _, line_count: _ } =>
-      !key_present(keys: scan_item_keys(items: items), key: "src/v1/stage0/src/probe.rs::fn::phantom_item")
-        && false
+    RustFileScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => false
+    RustFileScanned { repo_path: _, items: items, macro_regions: macro_regions, line_count: line_count } => {
+      let keys = scan_item_keys(items: items)
+      key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::fn::fixture_text")
+        && key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::fn::after_the_body_literal")
+        && !key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::fn::phantom_item")
+        && length(xs: items) == 2
+        && fixture_line_attributes_to(
+          items: items,
+          macro_regions: macro_regions,
+          line_count: line_count,
+          line: 5,
+          key: "src/v1/stage0/src/probe.rs::fn::fixture_text"
+        )
+        && fixture_line_attributes_to(
+          items: items,
+          macro_regions: macro_regions,
+          line_count: line_count,
+          line: 6,
+          key: "src/v1/stage0/src/probe.rs::fn::fixture_text"
+        )
+        && fixture_line_attributes_to(
+          items: items,
+          macro_regions: macro_regions,
+          line_count: line_count,
+          line: 7,
+          key: "src/v1/stage0/src/probe.rs::fn::fixture_text"
+        )
+    }
+  }
+}
+
+fn fixture_line_attributes_to(
+  items: List<RustItemIdentity>,
+  macro_regions: List<RustMacroRegion>,
+  line_count: Int,
+  line: Int,
+  key: String
+) -> Bool {
+  match attribute_scanned_line(items: items, macro_regions: macro_regions, line_count: line_count, line: line) {
+    AttributedToItem { item_key: k } => k == key
+    AttributedToFileLevel => false
+    AttributedToUnnamedMacroBlock { macro_name: _, line: _ } => false
+    AttributionOutOfRange { line: _, line_count: _ } => false
+  }
+}
+
+// AN EXPRESSION-BODIED ITEM ENDS AT ITS OWN SEMICOLON EVEN WHEN rustfmt CONTINUES IT A LINE DOWN.
+// `static NAME: T =` broken before its initializer puts the closing `;` at the continuation indent;
+// a reader that asked only the item's own indent kept the static open, and the fn after it was
+// swallowed until that fn's `}` -- never an item, and an edit to it attributed to the static. That
+// was cli_run.rs `static PROVIDER_BOOTSTRAP_STORE_SKIPS` over `fn record_provider_bootstrap_store_skip`,
+// a silent mis-attribution rather than a refusal. Line 5 is inside the fn and must say so.
+test fn a_continued_static_initializer_ends_at_its_semicolon_and_the_next_fn_is_an_item() -> Bool {
+  match scan_rust_source(repo_path: "src/v1/stage0/src/probe.rs", content: fixture_continued_initializer) {
+    RustFileScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => false
+    RustFileScanned { repo_path: _, items: items, macro_regions: macro_regions, line_count: line_count } =>
+      length(xs: items) == 2
+        && fixture_line_attributes_to(
+          items: items,
+          macro_regions: macro_regions,
+          line_count: line_count,
+          line: 2,
+          key: "src/v1/stage0/src/probe.rs::static::SKIPS"
+        )
+        && fixture_line_attributes_to(
+          items: items,
+          macro_regions: macro_regions,
+          line_count: line_count,
+          line: 5,
+          key: "src/v1/stage0/src/probe.rs::fn::record_skip"
+        )
+  }
+}
+
+// A LINE AFTER A BACKSLASH IS STRING TEXT AT WHATEVER INDENT ITS AUTHOR CHOSE. The fixture's const
+// carries an ordinary string continued with `\`: a continued line that is exactly `}` at column
+// zero (line 3), Rust-looking text at column five (line 4), and the `";` that ends the literal and the
+// declaration. None of it is structure, the const ends at that `;`, and the fn after it is found.
+test fn a_string_continued_with_a_backslash_is_text_and_the_const_ends_at_its_semicolon() -> Bool {
+  match scan_rust_source(repo_path: "src/v1/stage0/src/probe.rs", content: fixture_continued_string_literal) {
+    RustFileScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => false
+    RustFileScanned { repo_path: _, items: items, macro_regions: macro_regions, line_count: line_count } => {
+      let keys = scan_item_keys(items: items)
+      length(xs: items) == 2
+        && key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::fn::after_the_string")
+        && !key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::fn::tail")
+        && fixture_line_attributes_to(
+          items: items,
+          macro_regions: macro_regions,
+          line_count: line_count,
+          line: 3,
+          key: "src/v1/stage0/src/probe.rs::const::SRC"
+        )
+    }
+  }
+}
+
+// A TRAILING COMMENT DOES NOT HOLD A DECLARATION OPEN. `const PART_LEN: usize = 8 + 16; // ...` ends
+// at its semicolon; read to the comment's last character it stayed open and swallowed the const
+// after it, silently (resolved_graph_cache.rs PART_DESCRIPTOR_LEN over V3_HEADER_LEN). Three items,
+// each where it really is: line 2 belongs to HEADER_LEN and not to PART_LEN.
+test fn a_trailing_comment_does_not_hold_a_declaration_open() -> Bool {
+  match scan_rust_source(repo_path: "src/v1/stage0/src/probe.rs", content: fixture_trailing_comment_after_a_declaration) {
+    RustFileScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => false
+    RustFileScanned { repo_path: _, items: items, macro_regions: macro_regions, line_count: line_count } =>
+      length(xs: items) == 3
+        && fixture_line_attributes_to(
+          items: items,
+          macro_regions: macro_regions,
+          line_count: line_count,
+          line: 2,
+          key: "src/v1/stage0/src/probe.rs::const::HEADER_LEN"
+        )
+  }
+}
+
+// AN ITEM HEADER AT THE OPEN ITEM'S OWN INDENT REFUSES; IT IS NEVER READ AS BODY. This is the guard
+// that makes the swallow class structural rather than a bug-by-bug hunt (gunbc.recurring_failure_mode
+// census_instrument_silently_drops_items): whatever leaves an item open past its end -- a continued
+// initializer, a trailing comment, an ordinary multi-line string -- next meets a sibling header at
+// the open item's own indent, and a header there is not something an item's body contains. Before
+// the guard the fixture's line 3 was silently body of fixture_text and `phantom` simply did not
+// exist; now the file stops at line 3.
+test fn an_item_header_at_the_open_items_own_indent_refuses_rather_than_being_swallowed() -> Bool {
+  match scan_rust_source(repo_path: "src/v1/stage0/src/probe.rs", content: fixture_header_swallowed_by_an_open_item) {
+    RustFileScanRefused { repo_path: _, line: line, line_text: _, detail: _ } => line == 3
+    RustFileScanned { repo_path: _, items: _, macro_regions: _, line_count: _ } => false
+  }
+}
+
+// THE RAW-STRING REPAIR IS NOT A CATCH-ALL FOR LITERALS. An ORDINARY string continued across lines
+// carries no self-describing terminator this reader can recover without a lexer, so it is not
+// tracked, and the file refuses. It now refuses at line 3, the literal's `fn phantom_item` header at
+// the open fn's own indent, rather than at line 5 after the literal's `}` had already closed the fn
+// early: the header guard stops the line at the first sibling header. Refusing is the named
+// residual, and this arm is what keeps the repair from having quietly become "skip anything that
+// looks like a literal".
+test fn an_ordinary_string_reaching_column_zero_still_refuses() -> Bool {
+  match scan_rust_source(
+    repo_path: "src/v1/stage0/src/probe.rs",
+    content: fixture_ordinary_string_reaching_column_zero
+  ) {
+    RustFileScanRefused { repo_path: _, line: line, line_text: _, detail: _ } => line == 3
+    RustFileScanned { repo_path: _, items: _, macro_regions: _, line_count: _ } => false
+  }
+}
+
+// AN UNRELATED UNSCANNABLE CONSTRUCT STILL REFUSES. `extern "C" { ... }` declares foreign items the
+// grammar authority carries no form for (src/v1/stage0/src/phase_profile.rs carries one), and
+// nothing in the literal repair reaches it.
+test fn an_extern_block_still_refuses() -> Bool {
+  match scan_rust_source(repo_path: "src/v1/stage0/src/probe.rs", content: fixture_extern_block) {
+    RustFileScanRefused { repo_path: _, line: line, line_text: _, detail: _ } => line == 1
+    RustFileScanned { repo_path: _, items: _, macro_regions: _, line_count: _ } => false
   }
 }
 

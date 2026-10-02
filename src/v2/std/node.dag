@@ -4,16 +4,14 @@ import std.algebra { Cons, Empty, list_snoc_item }
 import v2.std.optional { Present }
 import std.occurrence_identity {
   NodeOccurrenceIdentity,
-  OccurrenceAllocatorSnapshot,
   OccurrenceId,
+  OccurrenceIdAllocator,
   OccurrenceMinted,
+  OccurrencePending,
   OccurrenceProjected,
   OccurrenceSynthetic,
-  ProjectedOccurrenceDerivation,
-  ProjectedOccurrenceDerived,
-  ProjectedOrdinalOutOfRange,
-  ProjectedSourceNotAuthoredInSnapshot,
-  derive_projected_occurrence,
+  ScopedOccurrenceAllocator,
+  alloc_projected_occurrence,
   occurrence_identity_in_image_of,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -27,7 +25,26 @@ import std.content_hash {
 }
 
 type Symbol
+
+// THE KERNEL HOST-TEXT TYPE, declared beside Symbol (the v2 kernel-types home, neat-boar-16's ruling
+// on #12549's successor). It is NOT v2.std.text String, which is the structural FreeMonoid<Char>:
+// the two are distinct representations, and a host-text value reaches the structural carrier only
+// through the declared unfold (gunbc.structural_realization_bindings literal_homomorphism_rows,
+// UnicodeScalarSequenceUnfold) or refuses. v2.extdeps.languages.dag binds the spelling `String` to
+// this declaration only where no other declaration of the spelling is visible.
+type String
 type Hash = Fnv1a64Structural
+
+// THE VALUE TYPE OF HOST TEXT, as a node: what a string literal is typed as, and what the unbound
+// spelling `String` binds to. This module declares the kernel String, so it owns its type node, as
+// it does symbol_type_node for Symbol.
+fn host_text_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^string_node_symbol } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
 
 // THE VALUE TYPE OF A SYMBOL, as a node: what a symbol literal (`^x`) is typed as and what an
 // annotation naming Symbol binds to. This module declares Symbol, so it owns its type node, as
@@ -163,12 +180,12 @@ fn node_rebuild(n: Node, children: List<Edge>) -> Node {
 // arrow, order transform, head spine and every parameter label all carried the declaration's id,
 // and every occurrence-keyed fact over them was ambiguous. The rule is therefore: this helper marks
 // a node as a MEMBER of its source's image, and the builder that returns the image root closes the
-// image with `project_image_occurrences`, which keeps OccurrenceMinted on that root alone and gives
-// every other member OccurrenceProjected with the source as its cause (std.occurrence_identity
-// derive_projected_occurrence). A tree that still holds two nodes with one minted id is an unclosed
-// image. RUNG, HONESTLY: until the producer cut lands, this is the stated rule and nothing enforces
-// it; the cut adds the admission wall that refuses a duplicated minted id, and that wall's red (an
-// image root with its closing pass removed) is the evidence the rule holds.
+// image with `close_lowered_image`, which keeps OccurrenceMinted on that root alone and marks every
+// other member OccurrencePending with the source as its cause; normalization then allocates each
+// pending member an OccurrenceProjected id from the graph's one allocator
+// (`allocate_pending_occurrences`). A tree that still holds two nodes with one minted id is an unclosed
+// image, and v2.compiler.normalized_tree admission refuses it as a duplicated minted occurrence,
+// located at the second node; its red control is an image builder with its close removed.
 //
 // THE SOURCE'S IDENTITY IS TAKEN WHOLE, including OccurrenceSynthetic. Lowering a node that had no
 // authored origin produces nodes that still have none, and closing such an image changes nothing --
@@ -182,92 +199,153 @@ fn node_lowered_from(kind: NodeKind, children: List<Edge>, source: Node) -> Node
   )
 }
 
-type ImageOccurrenceProjection
-  = ImageOccurrencesProjected { root: Node }
-  | ImageRootIsAlreadyProjected { observed: NodeOccurrenceIdentity }
-  | ImageDerivationRefused { refusal: ProjectedOccurrenceDerivation }
-
-type ImageOccurrenceWalk
-  = ImageWalkAt { node: Node, next_ordinal: Int }
-  | ImageWalkRefused { refusal: ProjectedOccurrenceDerivation }
-
-type ImageEdgesWalk
-  = ImageEdgesAt { edges: List<Edge>, next_ordinal: Int }
-  | ImageEdgesRefused { refusal: ProjectedOccurrenceDerivation }
-
-// Closes the image whose root the builder names. The root keeps the source's OccurrenceMinted; every
-// other member of that source's image, in pre-order, is renumbered k = 1, 2, ... and projected.
-// Nodes carrying any other occurrence (a sub-image of a different source) and synthetic nodes are
-// untouched, though their subtrees are still walked. Renumbering covers members already projected
-// from this source, so applying the pass to an image that contains a closed same-source image
-// yields the same tree as a single application: the ordinal is one authority over the whole image.
-fn project_image_occurrences(
-  root: Node,
-  snapshot: OccurrenceAllocatorSnapshot
-) -> ImageOccurrenceProjection {
+// A BUILDER CLOSES ITS IMAGE AT THE ROOT IT NAMES, PURELY. The root keeps the source's
+// OccurrenceMinted; every other member still minted with that source, anywhere beneath it through
+// members and synthetic nodes, is marked OccurrencePending { caused_by: source }. No id is allocated
+// here, so no builder threads allocator state; allocate_pending_occurrences does that once, after
+// normalization.
+//
+// WHAT THE WALK ENTERS. It descends through members of this image and through synthetic nodes, and
+// it stops at a node that carries ANOTHER occurrence: that subtree was lowered for a different source
+// and is that source's image to close. So closing costs the image, not the tree beneath it. A member
+// hidden below another source's node is not reached and stays minted -- and the duplicate-minted
+// admission wall refuses it loudly rather than anything here repairing it silently.
+//
+// IDEMPOTENT. A member already pending from this source is left as it is, so closing an image that
+// contains an already-closed same-source image marks nothing twice. A root with no minted source
+// (synthetic, or already pending or projected) has no image to close and is returned unchanged.
+fn close_lowered_image(root: Node) -> Node {
   match root.occurrence_id {
-    OccurrenceSynthetic => ImageOccurrencesProjected { root: root }
-    OccurrenceProjected { id: _, caused_by: _ } =>
-      ImageRootIsAlreadyProjected { observed: root.occurrence_id }
-    OccurrenceMinted { id: source } =>
-      match project_image_edges(edges: root.children, source: source, snapshot: snapshot, next_ordinal: 1) {
-        ImageEdgesRefused { refusal: refusal } => ImageDerivationRefused { refusal: refusal }
-        ImageEdgesAt { edges: edges, next_ordinal: _ } =>
-          ImageOccurrencesProjected { root: node_rebuild(n: root, children: edges) }
+    OccurrenceMinted { id: source } => node_rebuild(n: root, children: close_image_edges(edges: root.children, source: source))
+    OccurrenceSynthetic => root
+    OccurrencePending { caused_by: _ } => root
+    OccurrenceProjected { id: _, caused_by: _ } => root
+  }
+}
+
+// FOR A BUILDER WHOSE RETURNED NODE IS SYNTHETIC. Some lowerings (a postfix chain ending in a call or
+// a cast) return a synthetic node that stands for no authored text, with the source's members
+// beneath it. The builder still names its source, so closing starts at each topmost member of that
+// source under synthetic nodes and closes it as a root. Two sibling topmost members therefore both
+// keep OccurrenceMinted, and the duplicate-minted admission wall refuses them; nothing here chooses
+// between them.
+fn close_lowered_image_of(root: Node, source: Node) -> Node {
+  match source.occurrence_id {
+    OccurrenceMinted { id: id } => close_lowered_image_under(node: root, source: id)
+    OccurrenceSynthetic => root
+    OccurrencePending { caused_by: _ } => root
+    OccurrenceProjected { id: _, caused_by: _ } => root
+  }
+}
+
+fn close_lowered_image_under(node: Node, source: OccurrenceId) -> Node {
+  match node.occurrence_id {
+    OccurrenceSynthetic =>
+      node_rebuild(n: node, children: map(node.children, e => Edge { label: e.label, target: close_lowered_image_under(node: e.target, source: source) }))
+    OccurrenceMinted { id: id } => if id.value == source.value { close_lowered_image(root: node) } else { node }
+    OccurrencePending { caused_by: _ } => node
+    OccurrenceProjected { id: _, caused_by: _ } => node
+  }
+}
+
+fn close_image_member(node: Node, source: OccurrenceId) -> Node {
+  match node.occurrence_id {
+    OccurrenceSynthetic => node_rebuild(n: node, children: close_image_edges(edges: node.children, source: source))
+    OccurrenceMinted { id: id } =>
+      if id.value == source.value {
+        node_with_occurrence_id(
+          kind: node.kind,
+          children: close_image_edges(edges: node.children, source: source),
+          occurrence_id: OccurrencePending { caused_by: source },
+        )
+      } else {
+        node
       }
+    OccurrencePending { caused_by: _ } =>
+      if occurrence_identity_in_image_of(identity: node.occurrence_id, source: source) {
+        node_rebuild(n: node, children: close_image_edges(edges: node.children, source: source))
+      } else {
+        node
+      }
+    OccurrenceProjected { id: _, caused_by: _ } => node
   }
 }
 
-fn project_image_member(
-  node: Node,
-  source: OccurrenceId,
-  snapshot: OccurrenceAllocatorSnapshot,
-  next_ordinal: Int
-) -> ImageOccurrenceWalk {
-  if occurrence_identity_in_image_of(identity: node.occurrence_id, source: source, snapshot: snapshot) {
-    match derive_projected_occurrence(snapshot: snapshot, source: source, ordinal: next_ordinal) {
-      ProjectedOccurrenceDerived { identity: identity } =>
-        match project_image_edges(edges: node.children, source: source, snapshot: snapshot, next_ordinal: next_ordinal + 1) {
-          ImageEdgesRefused { refusal: refusal } => ImageWalkRefused { refusal: refusal }
-          ImageEdgesAt { edges: edges, next_ordinal: after } =>
-            ImageWalkAt {
-              node: node_with_occurrence_id(kind: node.kind, children: edges, occurrence_id: identity),
-              next_ordinal: after,
-            }
-        }
-      ProjectedSourceNotAuthoredInSnapshot { source: s, bound: b } =>
-        ImageWalkRefused { refusal: ProjectedSourceNotAuthoredInSnapshot { source: s, bound: b } }
-      ProjectedOrdinalOutOfRange { source: s, ordinal: o } =>
-        ImageWalkRefused { refusal: ProjectedOrdinalOutOfRange { source: s, ordinal: o } }
-    }
-  } else {
-    match project_image_edges(edges: node.children, source: source, snapshot: snapshot, next_ordinal: next_ordinal) {
-      ImageEdgesRefused { refusal: refusal } => ImageWalkRefused { refusal: refusal }
-      ImageEdgesAt { edges: edges, next_ordinal: after } =>
-        ImageWalkAt { node: node_rebuild(n: node, children: edges), next_ordinal: after }
-    }
-  }
+fn close_image_edges(edges: List<Edge>, source: OccurrenceId) -> List<Edge> {
+  map(edges, e => Edge { label: e.label, target: close_image_member(node: e.target, source: source) })
 }
 
-fn project_image_edges(
-  edges: List<Edge>,
-  source: OccurrenceId,
-  snapshot: OccurrenceAllocatorSnapshot,
-  next_ordinal: Int
-) -> ImageEdgesWalk {
-  fold(
-    edges,
-    init: ImageEdgesAt { edges: [], next_ordinal: next_ordinal },
-    f: (acc, e) => match acc {
-      ImageEdgesRefused { refusal: _ } => acc
-      ImageEdgesAt { edges: done, next_ordinal: k } =>
-        match project_image_member(node: e.target, source: source, snapshot: snapshot, next_ordinal: k) {
-          ImageWalkRefused { refusal: refusal } => ImageEdgesRefused { refusal: refusal }
-          ImageWalkAt { node: child, next_ordinal: after } =>
-            ImageEdgesAt { edges: list_snoc_item(xs: done, item: Edge { label: e.label, target: child }), next_ordinal: after }
-        }
+// THE ONE ALLOCATION PASS, run once over a normalized tree. It visits the whole tree in pre-order,
+// which is the canonical order, and converts each OccurrencePending member into OccurrenceProjected
+// with an id from the graph's allocator and its cause stated in that allocator's scope. It never
+// mints, never touches a Minted or Synthetic node, and allocates nothing on a tree with no pending
+// member, so running it twice changes nothing the second time.
+type PendingOccurrenceAllocation {
+  root: Node
+  allocator: ScopedOccurrenceAllocator
+}
+
+fn allocate_pending_occurrences(
+  root: Node,
+  allocator: ScopedOccurrenceAllocator
+) -> PendingOccurrenceAllocation {
+  let here = allocate_pending_here(identity: root.occurrence_id, allocator: allocator)
+  let walked = fold(
+    root.children,
+    init: PendingEdgesAllocation { edges: [], allocator: here.allocator },
+    f: (acc, e) => {
+      let child = allocate_pending_occurrences(root: e.target, allocator: acc.allocator)
+      PendingEdgesAllocation {
+        edges: list_snoc_item(xs: acc.edges, item: Edge { label: e.label, target: child.root }),
+        allocator: child.allocator,
+      }
     },
   )
+  PendingOccurrenceAllocation {
+    root: node_with_occurrence_id(kind: root.kind, children: walked.edges, occurrence_id: here.identity),
+    allocator: walked.allocator,
+  }
+}
+
+// THE FIRST ID NO NODE IN THIS TREE CARRIES: one past the highest minted or projected id, so an
+// allocator seeded here cannot reuse an id the tree holds. For a tree normalized on its own; an
+// ingest that threads its allocator across files passes that allocator instead.
+fn node_occurrence_allocator_after(root: Node) -> OccurrenceIdAllocator {
+  OccurrenceIdAllocator { next_id: node_occurrence_id_ceiling(node: root, floor: 0) }
+}
+
+fn node_occurrence_id_ceiling(node: Node, floor: Int) -> Int {
+  let here = match node.occurrence_id {
+    OccurrenceMinted { id: id } => if id.value + 1 > floor { id.value + 1 } else { floor }
+    OccurrenceProjected { id: id, caused_by: _ } => if id.value + 1 > floor { id.value + 1 } else { floor }
+    OccurrencePending { caused_by: _ } => floor
+    OccurrenceSynthetic => floor
+  }
+  fold(node.children, init: here, f: (acc, e) => node_occurrence_id_ceiling(node: e.target, floor: acc))
+}
+
+type PendingNodeAllocation {
+  identity: NodeOccurrenceIdentity
+  allocator: ScopedOccurrenceAllocator
+}
+
+fn allocate_pending_here(
+  identity: NodeOccurrenceIdentity,
+  allocator: ScopedOccurrenceAllocator
+) -> PendingNodeAllocation {
+  match identity {
+    OccurrencePending { caused_by: source } =>
+      let allocated = alloc_projected_occurrence(allocator: allocator, source: source)
+      PendingNodeAllocation { identity: allocated.identity, allocator: allocated.allocator }
+    OccurrenceSynthetic => PendingNodeAllocation { identity: identity, allocator: allocator }
+    OccurrenceMinted { id: _ } => PendingNodeAllocation { identity: identity, allocator: allocator }
+    OccurrenceProjected { id: _, caused_by: _ } => PendingNodeAllocation { identity: identity, allocator: allocator }
+  }
+}
+
+type PendingEdgesAllocation {
+  edges: List<Edge>
+  allocator: ScopedOccurrenceAllocator
 }
 
 fn node_synthetic(kind: NodeKind, children: List<Edge>) -> Node {
@@ -548,9 +626,23 @@ data arrow_signature_order_label: EdgeLabel = Named { name: ^arrow_signature_ord
 data arrow_effect_claims_label: EdgeLabel = Named { name: ^arrow_effect_claims_edge }
 data arrow_execution_mode_claim_label: EdgeLabel = Named { name: ^arrow_execution_mode_claim_edge }
 
+// THE THIRD CONTRACT EDGE, an operation's declared RESOURCE REQUIREMENTS (D13 step a,
+// docs/plans/arrow-contract-edges.md): `requires Network` on an opaque operation, whose requirement
+// cannot be derived from a body because it has none. Its target is a nonempty Conj of references to
+// `resource` declarations. Unlike the claims and mode edges it names DECLARATIONS, an open set, so its
+// members are resolved: v2.compiler.resolve walks it in the Arrow's OUTER scope (a requirement may not
+// see the operation's parameters) and refuses a member that does not resolve to a declared resource
+// (v2.std.symbol_index symbol_index_declares_resource_at) or that repeats one. Like the other two it is
+// metadata to every value reader: v2.compiler.infer and v2.std.type_binder node_inferred_subtree_nodes
+// skip every arrow_named_edge_is_contract edge.
+data arrow_resource_requirements_label: EdgeLabel = Named { name: ^arrow_resource_requirements_edge }
+
 fn arrow_named_edge_is_contract(e: Edge) -> Bool {
-  (edge_label_of(e: e) == arrow_effect_claims_label) || (edge_label_of(e: e) == arrow_execution_mode_claim_label)
+  (edge_label_of(e: e) == arrow_effect_claims_label)
+    || (edge_label_of(e: e) == arrow_execution_mode_claim_label)
+    || (edge_label_of(e: e) == arrow_resource_requirements_label)
 }
+
 
 // The Arrow named edges that are not binders: its body, its declared order and its contract edges.
 // The one predicate every count of an Arrow's binders reads (here and v2.std.type_binder
@@ -587,6 +679,7 @@ fn arrow_signature_edges_conform(children: List<Edge>) -> Bool {
   && arrow_signature_order_conforms(children: children)
   && (name_occurrences(name: ^arrow_effect_claims_edge, children: children) <= 1)
   && (name_occurrences(name: ^arrow_execution_mode_claim_edge, children: children) <= 1)
+  && (name_occurrences(name: ^arrow_resource_requirements_edge, children: children) <= 1)
   && fold(children, init: true, f: fn(acc, e) {
     match e.label {
       Positional => acc
@@ -669,16 +762,38 @@ fn symbol_list_reverse(xs: List<Symbol>) -> List<Symbol> {
 // a disagreement has no producer there; this wall refuses one built anywhere else -- a missing, an
 // extra, or a repeated label. The comparison sorts both sides once and walks them together, so it is
 // O(n log n) rather than a scan per label. The stored domain is NOT assumed sorted: lowering keeps
-// its authored sequence, and only canonicalization sorts. An Arrow with no order edge is well formed;
-// positional binding refuses against it, and never falls back to label order.
+// its authored sequence, and only canonicalization sorts. An Arrow with no order edge is well formed
+// only when its domain binds no name (arrow_domain_binds_a_name); positional binding never falls back
+// to label order.
 fn arrow_signature_order_conforms(children: List<Edge>) -> Bool {
   match arrow_signature_order_read(children: children) {
-    OrderAbsent => true
+    OrderAbsent => !arrow_domain_binds_a_name(children: children)
     OrderUnreadable => false
     OrderLabels { labels: labels } =>
       match arrow_domain_binder_labels(children: children) {
         DomainBinderLabels { labels: binders } => symbols_are_one_distinct_set(a: labels, b: binders)
         DomainBinderLabelsUnreadable => false
+      }
+  }
+}
+
+// A DOMAIN THAT BINDS A NAME OWES ITS DECLARED ORDER (A4, reversing #12361's "an Arrow with no order
+// edge is well formed"). Since Program P (gunbc#12625) there is one Arrow encoding: a Named edge in the
+// domain -- the first POSITIONAL child, a Conj -- IS a parameter binder, and a binder's position is
+// carried only by ^arrow_signature_order_edge (content hashing sorts the Conj, so f(a, b) and f(b, a)
+// would otherwise be one identity). So an Arrow whose domain binds any name and carries no order edge
+// has no admitted meaning and is ill formed here, at Node admission, rather than refused later at
+// binding time. A domain that binds no name -- a positional type, an empty product -- owes no order.
+// THE ONE ANSWER to "does this Arrow's domain bind a name": v2.compiler.resolve scopes an Arrow's
+// parameters exactly when this holds (arrow_domain_has_named_bindings delegates here), so admission and
+// scoping cannot disagree. An Atom domain is a TYPE, not a binder, under the one encoding.
+fn arrow_domain_binds_a_name(children: List<Edge>) -> Bool {
+  match arrow_first_positional_target(children: children) {
+    FirstPositionalAbsent => false
+    FirstPositionalFound { target: domain } =>
+      match domain.kind {
+        TypeNode { connective: Conj } => fold(domain.children, init: false, f: fn(acc, e) { acc || is_named(e: e) })
+        _ => false
       }
   }
 }

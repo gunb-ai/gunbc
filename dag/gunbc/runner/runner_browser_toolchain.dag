@@ -73,6 +73,14 @@ import gunbc.runner_microvm_host_ready {
   microvm_host_binding_wet, MicrovmHostBound, MicrovmHostBindingRefused, microvm_host_binding_refusal_text,
 }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import v2.std.node { Node }
+import gunbc.runner_unit { runner_unit_dropin_path }
+import gunbc.runner_unit_file { runner_host_browser_ready_labels_dropin_text, RunnerUnitText, RunnerUnitTextRefused }
+import gunbc.shell_command_text { shell_command_intent, shell_privileged_command_intent, shell_command_text_of_stmts }
+import gunbc.retained_shell_script { retained_srvn }
+import gunbc.host_effect_realize { run_shell_transport, ShellExecObserved }
+import extdeps.systemd.systemctl { systemctl_daemon_reload_argv }
+import v2.extdeps.languages.bash_build { bash_build_pipe, bash_build_with_redir_to_file, bash_build_word_lit }
 
 // THE DECLARED HEADLESS-BROWSER TOOLCHAIN OF A FLEET RUNNER, ITS CONVERGE, AND THE ONE PLACE A
 // CONSUMER READS IT FROM. gunbc.machine_intake_mtcollins1_kvm_still drives the MegaRAC KVM viewer
@@ -1206,6 +1214,95 @@ fn superseded_trees_text(r: SupersededTrees) -> String {
   }
 }
 
+// ── BROWSER READINESS: THIS CONVERGE GRANTS THE HOST'S gunbc-browser-ready LABEL, AND NOTHING ELSE DOES ──
+//
+// The label (gunbc.runner_registration_labels gunbc_browser_ready_label) is a template drop-in that
+// replaces LABELS_JSON for every runner on the host with the host's set plus the label. It is
+// written when this converge's readback holds and REMOVED when it does not, so the label is a
+// reading of the host's toolchain standing at its last converge, never a declaration. Once every
+// host in the floor's pool reads ready, the floor's runs-on names it (a separate change, ordered
+// after the converge, because a runs-on naming a label no runner carries queues every floor), and a
+// runner whose toolchain is absent can no longer take the floor's real-Chromium wet claims.
+data browser_ready_labels_dropin_path: NonEmptyStr = runner_unit_dropin_path(file_name: "85-browser-ready-labels.conf" as NonEmptyStr)
+
+type BrowserReadyLabelsPlan
+  = BrowserReadyLabelsPlanned { script: String }
+  | BrowserReadyLabelsUnrenderable { cause: String }
+
+// Both plans are one modeled program under set -e: a failed write stops it, and the verdict sees it.
+fn browser_ready_labels_grant_plan(host: HostIdentity) -> BrowserReadyLabelsPlan {
+  match runner_host_browser_ready_labels_dropin_text(host: host) {
+    RunnerUnitTextRefused { reason: r } => BrowserReadyLabelsUnrenderable { cause: r as String }
+    RunnerUnitText { text: content } =>
+      BrowserReadyLabelsPlanned {
+        script: shell_command_text_of_stmts(stmts: [
+          shell_command_intent(words: ["set", "-e"]),
+          bash_build_pipe(
+            left: shell_command_intent(words: ["printf", "%s", content]),
+            right: bash_build_with_redir_to_file(
+              inner: shell_privileged_command_intent(argv: ["tee", browser_ready_labels_dropin_path as String]),
+              path: bash_build_word_lit(text: "/dev/null"),
+            ),
+          ),
+          shell_privileged_command_intent(argv: systemctl_daemon_reload_argv()),
+        ]),
+      }
+  }
+}
+
+fn browser_ready_labels_revoke_plan() -> BrowserReadyLabelsPlan {
+  BrowserReadyLabelsPlanned {
+    script: shell_command_text_of_stmts(stmts: [
+      shell_command_intent(words: ["set", "-e"]),
+      shell_privileged_command_intent(argv: ["rm", "-f", browser_ready_labels_dropin_path as String]),
+      shell_privileged_command_intent(argv: systemctl_daemon_reload_argv()),
+    ]),
+  }
+}
+
+type BrowserReadyLabelsOutcome
+  = BrowserReadyLabelsGranted
+  | BrowserReadyLabelsRevoked
+  | BrowserReadyLabelsFailed { cause: String }
+
+fn browser_ready_labels_outcome_text(o: BrowserReadyLabelsOutcome) -> String {
+  match o {
+    BrowserReadyLabelsGranted => "browser_ready_label=granted"
+    BrowserReadyLabelsRevoked => "browser_ready_label=revoked"
+    BrowserReadyLabelsFailed { cause: c } => concat("browser_ready_label=failed cause=", c)
+  }
+}
+
+// A REVOKE IS THE RIGHT LABEL ACTION AND STILL A FAILED CONVERGE: the toolchain did not become ready,
+// which the converge's own verdict reports. Only a grant on a ready toolchain leaves the host
+// floor-ready.
+fn browser_ready_labels_outcome_holds(o: BrowserReadyLabelsOutcome, ready: Bool) -> Bool {
+  match o {
+    BrowserReadyLabelsGranted => ready
+    BrowserReadyLabelsRevoked => !ready
+    BrowserReadyLabelsFailed { cause: _ } => false
+  }
+}
+
+fn browser_ready_labels_converge_wet(host: NonEmptyStr, ready: Bool, transport: HostEffectTransport) -> BrowserReadyLabelsOutcome {
+  let plan = if ready { browser_ready_labels_grant_plan(host: (host as String) as HostIdentity) } else { browser_ready_labels_revoke_plan() }
+  match plan {
+    BrowserReadyLabelsUnrenderable { cause: c } =>
+      BrowserReadyLabelsFailed { cause: concat("the readiness labels drop-in does not render: ", c) }
+    BrowserReadyLabelsPlanned { script: body } => {
+      let observed = run_shell_transport(
+        script: retained_srvn(body: body, reason: "browser readiness label grant/revoke: template drop-in write and daemon-reload over the administrator edge" as NonEmptyStr),
+        transport: transport,
+      )
+      if observed.success {
+        if ready { BrowserReadyLabelsGranted } else { BrowserReadyLabelsRevoked }
+      } else {
+        BrowserReadyLabelsFailed { cause: join(["exit=", to_string(observed.exit_code), " ", observed.stderr], "") }
+      }
+    }
+  }
+}
+
 data runner_browser_toolchain_converge_attempt_raw: String = "runner-browser-toolchain-converge-ci"
 
 data runner_browser_toolchain_converge_receipt_path: String = "target/runner-browser-toolchain-converge-receipt.txt"
@@ -1251,6 +1348,7 @@ fn runner_browser_toolchain_converge_ci_wet() -> ProcessExit
                 none
               }
               let ready = match standing { Present { value: st } => runner_browser_toolchain_ready(s: st)  Absent => false }
+              let labels = browser_ready_labels_converge_wet(host: host, ready: ready, transport: browser_toolchain_admin_transport(host: host, context: context))
               let retirement_text = superseded_trees_text(r: observe_superseded_trees_wet(location: location))
               let readback_text = match standing {
                 Present { value: st } => runner_browser_toolchain_standing_text(s: st)
@@ -1265,11 +1363,12 @@ fn runner_browser_toolchain_converge_ci_wet() -> ProcessExit
                 toolchain_placement_text(p: placement), "\n",
                 readback_text, "\n",
                 retirement_text, "\n",
+                browser_ready_labels_outcome_text(o: labels), "\n",
               ], "")
               let w = Filesystem.Write(path: runner_browser_toolchain_converge_receipt_path, content: body)
               if w.success == false {
                 exit_failure(reason: join(["runner_browser_toolchain_converge: receipt write failed: ", w.error, "\n", body], ""))
-              } else if apt_ok && toolchain_placement_holds(p: placement) && ready {
+              } else if apt_ok && toolchain_placement_holds(p: placement) && ready && browser_ready_labels_outcome_holds(o: labels, ready: ready) {
                 ExitSuccess
               } else {
                 exit_failure(reason: body)

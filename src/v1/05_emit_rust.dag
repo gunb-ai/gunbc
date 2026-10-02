@@ -406,9 +406,10 @@ fn render_rust_arrow_type_in_scope(n: Node, generic_param_names: List<String>, s
 // declaring module denotes the kernel post-#9813, which the host-carrier arm ahead of this one
 // answers. SCOPE: keyed to
 // the String spelling because String is the kernel-named STRUCTURAL text carrier with a measured
-// error population; std.integer Int and std.float Float realize NATIVELY via
-// numeric_realization_declaring_modules, so peeling them would render the algebra structure
-// against i64 values -- their field-position rendering is a separate class with its own evidence.
+// error population; std.integer Int realizes NATIVELY via numeric_realization_declaring_modules
+// and kernel Float (no .dag declaration since the Float de-fork) via its kernel checkpoint row, so
+// peeling them would render algebra structure against i64/f64 values -- their field-position
+// rendering is a separate class with its own evidence.
 fn rust_overlayless_alias_leaf_requires_peel(env: TypeEnv, n: Node) -> Bool {
   let name = authored_name_at(source_indices: env.source_indices, node: n)
   n.connective == NoConnective
@@ -646,6 +647,25 @@ fn rust_opaque_kernel_alias_carrier(name: String) -> String? {
     Present { value: coerce_primitive_type(decision: type_realization_decision(target: Rust, dag_name: name, provenance: DeclarationIdentityAbsent), dag_name: name) }
   } else {
     none
+  }
+}
+
+// AN OPAQUE DECLARATION WITH AN EXACT REALIZATION ROW IS REALIZED BY THAT ROW, not by a phantom
+// struct. gunbc.rust_source_type_bindings keys its rows by declaration, and the phantom struct
+// ignored them: v2.std.node String (the kernel host text, gunbc#12760) was emitted as
+// `pub struct String(PhantomData)`, so the kernel's bare `String` render inside that module meant
+// the struct (E0308 at symbol_lexeme). The rule is general and declaration-keyed. Any opaque
+// declaration with a row takes the kernel-alias route: `pub type X = <row spelling>`.
+// rust_exact_binding_spelling renders an ambiguous row, or a row with no realization, as a located
+// compile_error!, so there is no silent choice. The phantom struct stays only where no row exists.
+// Ruled by deep-bee-18 (2026-09-30); admitted under gunbc.v1_maintenance_standing v1_seed_standing
+// because it serves the v2 self-host (the emitted compiler closure must build).
+fn rust_opaque_declaration_has_exact_row(module_path: String, name: String) -> Bool {
+  match rust_lookup_exact_binding(source: Present { value: decl_ref(module_path: module_path, decl_name: name) }) {
+    ExactBindingAbsent => false
+    ExactSourceIdentityUnavailable { cause: _ } => false
+    ResolvedExactBinding { binding: _ } => true
+    ExactBindingAmbiguous { candidate_count: _ } => true
   }
 }
 
@@ -6367,7 +6387,7 @@ fn type_item_has_rust_nominal_shell_authority(item: Node, item_text: String, mod
   } else if is_type_alias_item(item: item, source_indices: source_indices) {
     true
   } else if is_type_decl_item(item: item, source_indices: source_indices) {
-    if (item.params |> count) == 0 && rust_opaque_kernel_alias_type_eligible(name: item_text) {
+    if (item.params |> count) == 0 && (rust_opaque_kernel_alias_type_eligible(name: item_text) || rust_opaque_declaration_has_exact_row(module_path: module_name, name: item_text)) {
       true
     } else if (item.params |> count) > 0 {
       if is_parametric_opaque_type_decl_item(item: item, source_indices: source_indices) {
@@ -7409,7 +7429,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
         emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: data_items, module_items: module_items, imports: imports)
       } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
 
-        if (item.params |> count) == 0 && rust_opaque_kernel_alias_type_eligible(name: item_text) {
+        if (item.params |> count) == 0 && (rust_opaque_kernel_alias_type_eligible(name: item_text) || rust_opaque_declaration_has_exact_row(module_path: module_name, name: item_text)) {
           rust_opaque_kernel_alias_type_decl(name: item_text, module_path: module_name)
         } else if is_zero_param_self_referential_opaque_decl(item: item, source_indices: env.source_indices) {
           emit_zero_param_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, item_text), source_indices: env.source_indices)
@@ -7434,7 +7454,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
           }
         }
       } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
-        if (item.params |> count) == 0 && rust_opaque_kernel_alias_type_eligible(name: item_text) {
+        if (item.params |> count) == 0 && (rust_opaque_kernel_alias_type_eligible(name: item_text) || rust_opaque_declaration_has_exact_row(module_path: module_name, name: item_text)) {
           rust_opaque_kernel_alias_type_decl(name: item_text, module_path: module_name)
         } else {
 
@@ -16929,6 +16949,7 @@ fn emitted_crate_dependency_lines(demand: EmittedCrateDependencyDemand) -> List<
     emit_cargo_dep(name: "unicode-properties", version: "0.1", features: ["emoji"]),
     emit_cargo_dep(name: "serde", version: "1", features: ["derive", "rc"]),
     emit_cargo_dep(name: "serde_json", version: "1", features: []),
+    emit_cargo_dep(name: "libc", version: "0.2", features: []),
     emit_cargo_dep(name: "stacker", version: "0.1", features: []),
     emit_cargo_dep(name: "lazy_static", version: "1", features: []),
     emit_cargo_dep(name: "ureq", version: "2", features: ["json"])
@@ -17676,7 +17697,8 @@ fn emit_native_cli_driver_main_rs(crate_name: String, pipeline_module: String) -
 // v2.compiler.compile `native_driver_parse`, which decides the verb, every argv refusal and its
 // status; the literal mode comparisons this main used to render are deleted),
 // the executor binding for the modeled source-root acquisition,
-// the monotonic clock (`Instant::now`, `Instant::elapsed`), the `/proc` memory reading
+// the clocks (the thread CPU reading behind `cpu_mark`, which the partition is judged on, and the
+// monotonic `Instant` read around the run as a wall observation), the `/proc` memory reading
 // (`proc_status_kib`), the stdout/stderr writes and the exit status. Nothing in `.dag` can perform
 // these; they shrink only to the extent that each becomes a modeled host operation the emitter
 // renders a call to, rather than a body it authors.
@@ -17732,6 +17754,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    native_demand_prepare_nanos, native_demand_prepare_samples,", "\n",
       "    native_demand_prepare_ok, native_demand_prepare_refused,", "\n",
       "    native_demand_scheduling_nanos,", "\n",
+      "    native_demand_occurrence_census_lines, native_demand_occurrence_census_nanos,", "\n",
       "    native_demand_run_demand_count, native_demand_run_readiness_derivations,", "\n",
       "    native_demand_run_receipt_lines, native_demand_run_rows,", "\n",
       "    native_demand_observation_progressed,", "\n",
@@ -17742,7 +17765,8 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    program_assembly_measured_outcome, program_assembly_memo_hits,", "\n",
       "    program_assembly_memo_lookup_calls, program_assembly_memo_misses,", "\n",
       "    program_assembly_allocator_next, program_assembly_measured_alloc,", "\n",
-      "    program_assembly_phase_normalize,", "\n",
+      "    program_assembly_phase_normalize_seeded, program_assembly_normalized_outcome,", "\n",
+      "    program_assembly_normalized_alloc, program_assembly_ingest_scope_outcome,", "\n",
       "    program_assembly_phase_parse_measured_seeded,", "\n",
       "    program_assembly_phase_token_count, program_assembly_phase_tokenize,", "\n",
       "\};", "\n",
@@ -17766,6 +17790,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    NativeDriverExclusiveRowKey,", "\n",
       "\};", "\n",
       "use ", crate_name, "::std_measure::\{nanosecond, nanosecond_count\};", "\n",
+      "use ", crate_name, "::v1_rt::observed_thread_cpu_nanos;", "\n",
       "\n",
       emit_host_source_root_read_rs(crate_name: crate_name),
       "fn host_fact(facts: &std::collections::HashMap<String, String>, key: &str) -> String \{", "\n",
@@ -17917,7 +17942,11 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    let ingest = Rc::new(im::vector::Vector::from(reads));", "\n",
       "    let load_nanos = span_nanos(load_started);", "\n",
       "    let context_started = Instant::now();", "\n",
-      "    let context = match &*native_test_context_from_ingest(ingest.clone()) \{", "\n",
+      "    // MUTABLE BECAUSE IT IS THREADED: each module's resolution returns the context it ended", "\n",
+      "    // with, carrying the module namespace provider (v2.compiler.name_resolve ResolutionContext", "\n",
+      "    // namespaces), and the next module is resolved over that one -- a namespace is produced at", "\n",
+      "    // most once per ingest only for a loop that binds what it gets back.", "\n",
+      "    let mut context = match &*native_test_context_from_ingest(ingest.clone()) \{", "\n",
       "        Outcome::Accepted \{ value, .. \} => value.clone(),", "\n",
       "        Outcome::Rejected \{ diagnostics \} => \{", "\n",
       "            eprintln!(\"CONTEXT-REFUSED: \{diagnostics:#?\}\");", "\n",
@@ -17943,11 +17972,13 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    let mut residual_rows: u64 = 0;", "\n",
       "    for entry in modules.iter() \{", "\n",
       "        let resolve_started = Instant::now();", "\n",
-      "        let outcome = native_census_module_resolution(", "\n",
+      "        let step = native_census_module_resolution(", "\n",
       "            context.clone(),", "\n",
       "            refusal_index.clone(),", "\n",
       "            entry.clone(),", "\n",
       "        );", "\n",
+      "        context = step.context.clone();", "\n",
+      "        let outcome = step.outcome.clone();", "\n",
       "        let module_resolve_nanos = span_nanos(resolve_started);", "\n",
       "        let outcome_label = match &*outcome \{", "\n",
       "            NativeCensusModuleOutcome::NativeCensusModuleFileRefused => \{", "\n",
@@ -18043,6 +18074,34 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    \}", "\n",
       "\}", "\n",
       "", "\n",
+      "// THE PARTITION IS JUDGED ON THREAD CPU, AND THIS IS ITS SPAN (std.realization_measurement", "\n",
+      "// ObserveThreadCpuAtSubject; extdeps.posix.clock_gettime ClockThreadCputimeId). The law", "\n",
+      "// native_driver_cost_account enforces is that the phases partition the DRIVER'S OWN WORK. A", "\n",
+      "// wall span also holds every interval the host descheduled this thread -- another tenant's", "\n",
+      "// build, page-fault service, a lock wait -- none of which any phase performed, so on a wall", "\n",
+      "// clock that time fell into the residual and the verdict tracked host load -- the same subject", "\n",
+      "// reconciled on a quiet runner and refused on a contended one. The thread", "\n",
+      "// CPU clock advances only while this thread runs, so the residual is uninstrumented driver", "\n",
+      "// work and nothing else. The wall is still read once, around the whole run, and printed as an", "\n",
+      "// observation; it is never an input to the verdict. The driver is single-threaded, so the", "\n",
+      "// thread clock is the driver's whole CPU. An unsupported clock refuses inside the runtime", "\n",
+      "// read; there is no wall fallback.", "\n",
+      "#[derive(Clone, Copy)]", "\n",
+      "struct CpuMark(u128);", "\n",
+      "", "\n",
+      "fn cpu_mark() -> CpuMark \{", "\n",
+      "    CpuMark(observed_thread_cpu_nanos(String::new()) as u128)", "\n",
+      "\}", "\n",
+      "", "\n",
+      "fn cpu_span_nanos(started: CpuMark) -> u128 \{", "\n",
+      "    let finished = cpu_mark();", "\n",
+      "    if finished.0 < started.0 \{", "\n",
+      "        eprintln!(\"REFUSED: the thread CPU clock went backwards between two reads, so no span is measurable\");", "\n",
+      "        std::process::exit(2);", "\n",
+      "    \}", "\n",
+      "    finished.0 - started.0", "\n",
+      "\}", "\n",
+      "", "\n",
       "// A SPAN THAT DOES NOT FIT REFUSES RATHER THAN SATURATING (review 64474 control). This was", "\n",
       "// i64::try_from(n).unwrap_or(i64::MAX), which turns a failed conversion into a FIGURE -- and a", "\n",
       "// fabricated figure on a receipt is the state DESIGN section 5 forbids outright, whether the", "\n",
@@ -18086,8 +18145,10 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    None", "\n",
       "\}", "\n",
       "", "\n",
-      "// ONE CLOCK, AND IT IS THE MONOTONIC ONE (review 64474). Every exclusive phase span and the", "\n",
-      "// parent span are read from Instant, so the partition compares readings from a single source.", "\n",
+      "// ONE CLOCK FOR THE VERDICT, AND IT IS THE THREAD CPU ONE (see cpu_span_nanos). Every exclusive", "\n",
+      "// phase span and the parent span are read from it, so the partition compares readings from a", "\n",
+      "// single source; the wall Instant around the run is an observation only. The history below is", "\n",
+      "// why one source matters (review 64474), and it applied to the monotonic clock first.", "\n",
       "// They were split before this: the parent came from Instant while the phase spans came from", "\n",
       "// SystemTime, which is the wall clock and is free to step backwards under NTP or an operator", "\n",
       "// adjustment. A step between two phase reads could then push the exclusive sum past a parent", "\n",
@@ -18105,7 +18166,8 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "// because the hazard it named cannot arise on this clock -- production handling dissolves on", "\n",
       "// the climb (DESIGN section 4b(4)); no evidence is retired here, since that arm had none.", "\n",
       "fn run_adjudication(facts_path: &str, pattern: Rc<TargetPattern>, source_roots: &[String]) \{", "\n",
-      "    let driver_start = Instant::now();", "\n",
+      "    let driver_start = cpu_mark();", "\n",
+      "    let driver_wall_start = Instant::now();", "\n",
       "    // A MISSING GITHUB_SHA IS ABSENT, NOT \"local\" (review 64181). The receipt line carries this", "\n",
       "    // as the tree the measurement describes; the literal \"local\" is a plausible identity that", "\n",
       "    // no reader can distinguish from a tree actually named local.", "\n",
@@ -18114,7 +18176,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "", "\n",
       "    // the load row: reading the declared roots off disk. Its own exclusive row rather than a", "\n",
       "    // field on another phase, so the IO is never mixed into a fold's number.", "\n",
-      "    let load_started = Instant::now();", "\n",
+      "    let load_started = cpu_mark();", "\n",
       "    if source_roots.is_empty() \{", "\n",
       "        eprintln!(\"REFUSED: no source roots given\");", "\n",
       "        std::process::exit(2);", "\n",
@@ -18122,12 +18184,12 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    let reads = read_ingest(source_roots);", "\n",
       "    let corpus_reads = reads.len();", "\n",
       "    let ingest = Rc::new(im::vector::Vector::from(reads));", "\n",
-      "    let load_nanos = span_nanos(load_started);", "\n",
+      "    let load_nanos = cpu_span_nanos(load_started);", "\n",
       "", "\n",
       "    // universe_derivation: the floor's own per-file discovery fold plus the module-header and", "\n",
       "    // import scans, over EVERY read -- discovery is a corpus-wide question -- and then the", "\n",
       "    // import closure of the universe's modules, which is all the front end is given.", "\n",
-      "    let universe_started = Instant::now();", "\n",
+      "    let universe_started = cpu_mark();", "\n",
       "    let source_facts = native_lane_source_facts(ingest.clone());", "\n",
       "    // The universe is derived FROM THE FACTS ALREADY BOUND, not from the ingest again:", "\n",
       "    // the ingest-taking entry would re-run the whole-corpus discovery fold the line above", "\n",
@@ -18176,7 +18238,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "            std::process::exit(1);", "\n",
       "        \}", "\n",
       "    \}", "\n",
-      "    let universe_nanos = span_nanos(universe_started);", "\n",
+      "    let universe_nanos = cpu_span_nanos(universe_started);", "\n",
       "", "\n",
       "    // the context row: the front-end fold over the CLOSURE only, entered ONE PHASE AT A TIME.", "\n",
       "    // The driver owns the clock, so it is the only place a phase span can be read; the phases", "\n",
@@ -18196,7 +18258,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    // fold), not a green check. Reordering these calls or dropping the merge that", "\n",
       "    // program_assembly_phase_parse_measured_seeded performs would change the context with", "\n",
       "    // nothing red.", "\n",
-      "    let context_started = Instant::now();", "\n",
+      "    let context_started = cpu_mark();", "\n",
       "    // THE ONCE-PER-FOLD INVARIANT IS PAID ONCE, HERE, AND CARRIED INTO EVERY FILE. A second", "\n",
       "    // dag_language_model() or prepare_grammar() call inside the loop would re-introduce at the", "\n",
       "    // realization layer exactly the per-file recompute the fold hoisted out.", "\n",
@@ -18207,7 +18269,17 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "            std::process::exit(1);", "\n",
       "        \}", "\n",
       "    \};", "\n",
-      "    let front_end_nanos = span_nanos(context_started);", "\n",
+      "    let front_end_nanos = cpu_span_nanos(context_started);", "\n",
+      "    // THE INGEST'S OCCURRENCE SCOPE, computed once: every projected occurrence the loop's", "\n",
+      "    // normalize allocates states its cause in it (v2.compiler.program_assembly", "\n",
+      "    // program_assembly_ingest_scope).", "\n",
+      "    let ingest_scope = match &*program_assembly_ingest_scope_outcome(closure_ingest.clone()) \{", "\n",
+      "        Outcome::Accepted \{ value, .. \} => value.clone(),", "\n",
+      "        Outcome::Rejected \{ diagnostics \} => \{", "\n",
+      "            eprintln!(\"CONTEXT-REFUSED: \{diagnostics:#?\}\");", "\n",
+      "            std::process::exit(1);", "\n",
+      "        \}", "\n",
+      "    \};", "\n",
       "    let mut context_state = native_test_context_state_empty();", "\n",
       "    let mut tokenize_nanos: u128 = 0;", "\n",
       "    let mut parse_nanos: u128 = 0;", "\n",
@@ -18221,14 +18293,14 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    let mut byte_total: u64 = 0;", "\n",
       "    let mut context_file_samples: Vec<u128> = Vec::new();", "\n",
       "    for read in closure_ingest.iter() \{", "\n",
-      "        let file_started = Instant::now();", "\n",
-      "        let tokenize_started = Instant::now();", "\n",
+      "        let file_started = cpu_mark();", "\n",
+      "        let tokenize_started = cpu_mark();", "\n",
       "        let tokens = program_assembly_phase_tokenize(read.clone(), front_end.lm.clone());", "\n",
-      "        let file_tokenize_nanos = span_nanos(tokenize_started);", "\n",
+      "        let file_tokenize_nanos = cpu_span_nanos(tokenize_started);", "\n",
       "        // The COUNT the time is read against: a span alone cannot separate a large file from a", "\n",
       "        // per-file constant. Counted outside every phase span so it prices none of them.", "\n",
       "        let file_tokens = program_assembly_phase_token_count(tokens.clone());", "\n",
-      "        let parse_started = Instant::now();", "\n",
+      "        let parse_started = cpu_mark();", "\n",
       "        // SEEDED FROM THE MARK THE CONTEXT HAS REACHED, because this loop IS a source graph:", "\n",
       "        // std.occurrence_identity occurrence_identity_scope_law requires one allocator threaded", "\n",
       "        // across every parsed source, and a per-file reset makes two files' occurrence #N the", "\n",
@@ -18245,7 +18317,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "            (*front_end.residue).clone(),", "\n",
       "            file_seed.clone(),", "\n",
       "        );", "\n",
-      "        let file_parse_nanos = span_nanos(parse_started);", "\n",
+      "        let file_parse_nanos = cpu_span_nanos(parse_started);", "\n",
       "        // The memo accounting rides BESIDE the outcome, so it reports on a refusal too --", "\n",
       "        // which is the expensive case this instrument exists to read. Counted outside every", "\n",
       "        // phase span so it prices none of them.", "\n",
@@ -18258,18 +18330,22 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        // mark the attempt reached is not recoverable. See the precondition on", "\n",
       "        // v2.compiler.compile native_test_context_absorb.", "\n",
       "        let file_alloc = program_assembly_measured_alloc(measured.clone(), file_seed);", "\n",
-      "        let file_alloc_reported = file_alloc.clone();", "\n",
       "        let parsed = program_assembly_measured_outcome(measured);", "\n",
-      "        let normalize_started = Instant::now();", "\n",
-      "        let root = program_assembly_phase_normalize(parsed.clone());", "\n",
-      "        let file_normalize_nanos = span_nanos(normalize_started);", "\n",
+      "        let normalize_started = cpu_mark();", "\n",
+      "        // NORMALIZE ADVANCES THE ALLOCATOR: lowering allocates every image member an id, so the", "\n",
+      "        // next file seeds from the mark normalize reached, not the one parse reached.", "\n",
+      "        let normalized = program_assembly_phase_normalize_seeded(parsed.clone(), file_alloc.clone(), ingest_scope.clone());", "\n",
+      "        let root = program_assembly_normalized_outcome(normalized.clone());", "\n",
+      "        let file_alloc = program_assembly_normalized_alloc(normalized);", "\n",
+      "        let file_alloc_reported = file_alloc.clone();", "\n",
+      "        let file_normalize_nanos = cpu_span_nanos(normalize_started);", "\n",
       "        // qualified-name read plus source-root index insertion: the half of the per-file step", "\n",
       "        // that is not the front end, timed separately because a quadratic accumulator would", "\n",
       "        // live here and nowhere else in this loop.", "\n",
-      "        let absorb_started = Instant::now();", "\n",
+      "        let absorb_started = cpu_mark();", "\n",
       "        context_state = native_test_context_absorb(context_state.clone(), read.clone(), root.clone(), file_alloc);", "\n",
-      "        let file_absorb_nanos = span_nanos(absorb_started);", "\n",
-      "        let file_nanos = span_nanos(file_started);", "\n",
+      "        let file_absorb_nanos = cpu_span_nanos(absorb_started);", "\n",
+      "        let file_nanos = cpu_span_nanos(file_started);", "\n",
       "        tokenize_nanos += file_tokenize_nanos;", "\n",
       "        parse_nanos += file_parse_nanos;", "\n",
       "        normalize_nanos += file_normalize_nanos;", "\n",
@@ -18310,7 +18386,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        );", "\n",
       "    \}", "\n",
       "    let context = native_test_context_finish(context_state, front_end.clone(), closure_ingest.clone());", "\n",
-      "    let context_nanos = span_nanos(context_started);", "\n",
+      "    let context_nanos = cpu_span_nanos(context_started);", "\n",
       "    context_file_samples.sort_unstable();", "\n",
       "    let context_phase_sum = front_end_nanos + tokenize_nanos + parse_nanos + normalize_nanos + absorb_nanos;", "\n",
       "    eprintln!(", "\n",
@@ -18392,35 +18468,59 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    // THE DRIVER'S OWN INPUT CONSTRUCTION, charged to prepare as it was before the engine landed:", "\n",
       "    // it runs before any demand and is not the scheduler's bookkeeping, which the engine measures", "\n",
       "    // for itself.", "\n",
-      "    let tested_tree_started = Instant::now();", "\n",
+      "    let tested_tree_started = cpu_mark();", "\n",
       "    let tested_tree_input = native_demand_tested_tree_input(head.clone().unwrap_or_default());", "\n",
-      "    prepare_total_nanos += span_nanos(tested_tree_started);", "\n",
+      "    prepare_total_nanos += cpu_span_nanos(tested_tree_started);", "\n",
       "    // ONE CALL. The driver does not drain the graph, does not decide readiness and does not", "\n",
       "    // classify a demand's stage -- those are the engine's and the plan's decisions, and a", "\n",
       "    // rendered-main loop that made them was a second consumer of the engine's admission", "\n",
       "    // vocabulary living in generated Rust, where no .dag check reaches.", "\n",
       "    //", "\n",
       "    // IT USED TO HOLD A LOOP FOR THE CLOCK, AND THAT REASON WAS WRONG. Each step now takes", "\n",
-      "    // its own span through observed_monotonic_nanos -- an ordinary builtin with no resource", "\n",
-      "    // requirement, modelled by std.realization_measurement as ObserveElapsedAtSubject's", "\n",
+      "    // its own span through observed_thread_cpu_nanos -- an ordinary builtin with no resource", "\n",
+      "    // requirement, modelled by std.realization_measurement as ObserveThreadCpuAtSubject's", "\n",
       "    // realization seam -- so the exclusive prepare and eval rows survive with the spans taken", "\n",
       "    // where the work is instead of around it.", "\n",
+      "    // THE ENGINE CALL IS ONE MEASURED SPAN (std.compiler_entry ExclusiveDemandScheduling). Its", "\n",
+      "    // demand windows are the prepare and eval rows; everything else the call spends is the", "\n",
+      "    // scheduler's, including the work between the engine's own bookkeeping spans that no row", "\n",
+      "    // timed when this row was the sum of those spans.", "\n",
+      "    let schedule_started = cpu_mark();", "\n",
       "    let run = native_demand_schedule_universe(", "\n",
       "        universe.modules.clone(),", "\n",
       "        context.clone(),", "\n",
       "        refusal_index.clone(),", "\n",
       "        tested_tree_input.clone(),", "\n",
       "    );", "\n",
+      "    let schedule_span_nanos = cpu_span_nanos(schedule_started);", "\n",
+      "    // driver_collection: the driver's own work after the engine returned -- rows into the", "\n",
+      "    // population, the samples, the counters. Named for what it is, not folded into scheduling.", "\n",
+      "    let collection_started = cpu_mark();", "\n",
       "    for row in native_demand_run_rows(run.clone()).iter() \{", "\n",
       "        population.push(row.clone());", "\n",
       "    \}", "\n",
-      "    prepare_total_nanos += native_demand_prepare_nanos(run.clone()).max(0) as u128;", "\n",
-      "    evaluate_total_nanos += native_demand_eval_nanos(run.clone()).max(0) as u128;", "\n",
-      "    // THE SCHEDULER'S OWN COST, READ AND NOT DERIVED. The engine measures its own bookkeeping where", "\n",
-      "    // that work happens -- plan construction, ready selection, binding lookup, settlement and row", "\n",
-      "    // collection -- and those spans are disjoint from each demand's own window by construction, so", "\n",
-      "    // this row overlaps neither prepare nor eval. The driver reports the reading.", "\n",
-      "    let demand_scheduling_nanos = native_demand_scheduling_nanos(run.clone()).max(0) as u128;", "\n",
+      "    let engine_prepare_nanos = native_demand_prepare_nanos(run.clone()).max(0) as u128;", "\n",
+      "    let engine_eval_nanos = native_demand_eval_nanos(run.clone()).max(0) as u128;", "\n",
+      "    // OBSERVATION ONLY (v2.compiler.compile native_demand_occurrence_census_lines): the census is its", "\n",
+      "    // own demand kind, so its cost is the engine-reported ExclusiveOccurrenceCensus row, not a host span.", "\n",
+      "    let occurrence_census_nanos = native_demand_occurrence_census_nanos(run.clone()).max(0) as u128;", "\n",
+      "    prepare_total_nanos += engine_prepare_nanos;", "\n",
+      "    evaluate_total_nanos += engine_eval_nanos;", "\n",
+      "    // The engine's own bookkeeping sum stays an observation on the schedule line; it is not the row.", "\n",
+      "    let engine_bookkeeping_nanos = native_demand_scheduling_nanos(run.clone()).max(0) as u128;", "\n",
+      "    // Every demand window the engine attributes -- prepare, eval and the occurrence census -- is a row", "\n",
+      "    // of its own, so the scheduling row is the call span minus all three. Leaving the census out would", "\n",
+      "    // count its windows twice. An engine that attributed more than its call took is incoherent; refuse", "\n",
+      "    // rather than clamp the scheduling row to zero.", "\n",
+      "    let attributed_in_call = engine_prepare_nanos + engine_eval_nanos + occurrence_census_nanos;", "\n",
+      "    if attributed_in_call > schedule_span_nanos \{", "\n",
+      "        eprintln!(\"REFUSED: native driver cost OverAttributed inside the engine call \{{ attributed_nanos: {}, schedule_span_nanos: {} \}}\", attributed_in_call, schedule_span_nanos);", "\n",
+      "        std::process::exit(1);", "\n",
+      "    \}", "\n",
+      "    let demand_scheduling_nanos = schedule_span_nanos - attributed_in_call;", "\n",
+      "    for line in native_demand_occurrence_census_lines(run.clone(), universe.modules.len() as i64).iter() \{", "\n",
+      "        eprintln!(\"\{\}\", line);", "\n",
+      "    \}", "\n",
       "    for n in native_demand_prepare_samples(run.clone()).iter() \{", "\n",
       "        prepare_samples.push((*n).max(0) as u128);", "\n",
       "    \}", "\n",
@@ -18429,6 +18529,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    \}", "\n",
       "    let prepare_ok: u64 = native_demand_prepare_ok(run.clone()).max(0) as u64;", "\n",
       "    let prepare_refused: u64 = native_demand_prepare_refused(run.clone()).max(0) as u64;", "\n",
+      "    let driver_collection_nanos = cpu_span_nanos(collection_started);", "\n",
       "    // THE DRIVER REFUSES A RUN WHOSE CLOCK NEVER ADVANCED rather than reporting its zeros. A", "\n",
       "    // realization whose body returns a constant zero leaves every transition CLASSIFIED and", "\n",
       "    // VALIDLY OBSERVED, so completeness answers true over totals that are all zero, and the", "\n",
@@ -18446,21 +18547,23 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    // naming the demand key and the state it settled into. It is the schedule's receipt and it is", "\n",
       "    // deliberately not the population: two runs agreeing on rows while disagreeing on order is a", "\n",
       "    // real difference, and a receipt that carried only rows could not report it.", "\n",
-      "    let relay_started = Instant::now();", "\n",
+      "    let relay_started = cpu_mark();", "\n",
       "    for line in native_demand_run_receipt_lines(run.clone()).iter() \{", "\n",
       "        eprintln!(\"[native-demand-transition] \{\}\", line);", "\n",
       "    \}", "\n",
       "    eprintln!(", "\n",
-      "        \"[native-demand-schedule] demands=\{\} admitted=\{\} readiness_derivations=\{\}\",", "\n",
+      "        \"[native-demand-schedule] demands=\{\} admitted=\{\} readiness_derivations=\{\} schedule_span_nanos=\{\} engine_bookkeeping_nanos=\{\}\",", "\n",
       "        native_demand_run_demand_count(run.clone()),", "\n",
       "        native_demand_run_transition_count(run.clone()),", "\n",
       "        native_demand_run_readiness_derivations(run.clone()),", "\n",
+      "        schedule_span_nanos,", "\n",
+      "        engine_bookkeeping_nanos,", "\n",
       "    );", "\n",
-      "    relay_emit_nanos += span_nanos(relay_started);", "\n",
+      "    relay_emit_nanos += cpu_span_nanos(relay_started);", "\n",
       "", "\n",
       "    // receipt_admission: minting the receipt and evaluating the authority's admission and summary", "\n",
       "    // over it. The controls are executed here because they are receipt inputs, not universe members.", "\n",
-      "    let admission_started = Instant::now();", "\n",
+      "    let admission_started = cpu_mark();", "\n",
       "    let receipt = native_lane_receipt(", "\n",
       "        context.clone(),", "\n",
       "        universe.clone(),", "\n",
@@ -18481,7 +18584,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    // the receipt, the row that span already names.", "\n",
       "    let frontier = native_frontier_verdict(receipt.clone(), admission.clone(), pattern.clone());", "\n",
       "    let frontier_word = native_frontier_verdict_word(frontier.clone());", "\n",
-      "    let admission_nanos = span_nanos(admission_started);", "\n",
+      "    let admission_nanos = cpu_span_nanos(admission_started);", "\n",
       "", "\n",
       "", "\n",
       "    // row_serialization: SERIALIZING THE OBSERVATIONS AND WRITING THEM, MEASURED (review", "\n",
@@ -18490,7 +18593,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    // no other row covers -- eval is the identity fold and nothing else. It is TIMED, never", "\n",
       "    // derived as parent minus the others: a row defined as the remainder would force the", "\n",
       "    // residual to zero and make the tolerance arm unfireable by construction.", "\n",
-      "    let serialization_started = Instant::now();", "\n",
+      "    let serialization_started = cpu_mark();", "\n",
       "    for refusal in receipt.file_refusals.iter() \{", "\n",
       "        println!(\"{}\", serde_json::json!(\{ \"file_refusal\": refusal \}));", "\n",
       "    \}", "\n",
@@ -18517,7 +18620,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    for line in native_frontier_proposal_file_lines(receipt.clone(), frontier.clone()).iter() \{", "\n",
       "        eprintln!(\"[native-frontier-roster] {}\", line);", "\n",
       "    \}", "\n",
-      "    let row_serialization_nanos = span_nanos(serialization_started);", "\n",
+      "    let row_serialization_nanos = cpu_span_nanos(serialization_started);", "\n",
       "", "\n",
       "    // THE PARTITION, THROUGH THE ONE LAW. The rows are the row set std.compiler_entry owns and", "\n",
       "    // verdict is native_driver_cost_account over them -- not a second reconcile. The two rows", "\n",
@@ -18526,7 +18629,8 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    // either is caught here rather than by a check of its own.", "\n",
       "    prepare_samples.sort_unstable();", "\n",
       "    eval_samples.sort_unstable();", "\n",
-      "    let parent_span_nanos = span_nanos(driver_start);", "\n",
+      "    let parent_span_nanos = cpu_span_nanos(driver_start);", "\n",
+      "    let parent_wall_nanos = span_nanos(driver_wall_start);", "\n",
       "    // THE DRIVER IS EXHAUSTIVE OVER THE KEY WITH NO WILDCARD, deliberately: a row added to", "\n",
       "    // std.compiler_entry makes THIS match refuse to compile until the driver says what", "\n",
       "    // measures it. A wildcard here would answer zero for a span nobody wired up, which is", "\n",
@@ -18541,6 +18645,8 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        NativeDriverExclusiveRowKey::ExclusiveReceiptAdmission => nanosecond(native_cost_i64(admission_nanos)),", "\n",
       "        NativeDriverExclusiveRowKey::ExclusiveRowSerialization => nanosecond(native_cost_i64(row_serialization_nanos)),", "\n",
       "        NativeDriverExclusiveRowKey::ExclusiveDemandScheduling => nanosecond(native_cost_i64(demand_scheduling_nanos)),", "\n",
+      "        NativeDriverExclusiveRowKey::ExclusiveDriverCollection => nanosecond(native_cost_i64(driver_collection_nanos)),", "\n",
+      "        NativeDriverExclusiveRowKey::ExclusiveOccurrenceCensus => nanosecond(native_cost_i64(occurrence_census_nanos)),", "\n",
       "        NativeDriverExclusiveRowKey::ExclusiveModuleRelease => nanosecond(native_cost_i64(module_release_nanos)),", "\n",
       "        NativeDriverExclusiveRowKey::ExclusiveRelayEmit => nanosecond(native_cost_i64(relay_emit_nanos)),", "\n",
       "    \});", "\n",
@@ -18579,14 +18685,15 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    // tolerance before row_serialization was a measured row, which is what put that row on", "\n",
       "    // the type rather than a wider tolerance on this arm.", "\n",
       "    eprintln!(\"[native-cost-partition] {}\", serde_json::json!(\{", "\n",
-      "        \"basis\": \"native_driver_wall\",", "\n",
-      "        \"basis_note\": \"single-threaded SourceRootEvalDriver wall; exclusive rows partition parent_span_nanos\",", "\n",
+      "        \"basis\": \"native_driver_thread_cpu\",", "\n",
+      "        \"basis_note\": \"single-threaded SourceRootEvalDriver thread CPU (CLOCK_THREAD_CPUTIME_ID); exclusive rows partition parent_span_nanos; parent_wall_nanos is an observation, never judged\",", "\n",
       "        \"producer\": \"std.compiler_entry.SourceRootEvalDriver\",", "\n",
       "        \"head\": head,", "\n",
       "        \"mode\": \"adjudicate\",", "\n",
       "        \"verdict\": verdict,", "\n",
       "        \"tolerance_nanos\": tolerance_nanos,", "\n",
       "        \"parent_span_nanos\": parent_span_nanos,", "\n",
+      "        \"parent_wall_nanos\": parent_wall_nanos,", "\n",
       "        \"exclusive\": exclusive.rows.iter().map(|r| (", "\n",
       "            native_driver_exclusive_row_name(r.key.clone()),", "\n",
       "            serde_json::json!(r.nanos),", "\n",
