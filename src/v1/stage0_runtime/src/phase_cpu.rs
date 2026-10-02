@@ -39,14 +39,20 @@ pub fn guard(label: &'static str) -> Guard {
 impl Drop for Guard {
     fn drop(&mut self) {
         let now = thread_cpu_nanos();
-        SLOTS.with(|s| {
+        let calls = SLOTS.with(|s| {
             let mut s = s.borrow_mut();
             let slot = s.entry(self.0).or_default();
             slot.depth -= 1;
             if slot.depth == 0 {
                 slot.total += now.saturating_sub(slot.start);
             }
+            slot.calls
         });
+        // Progress snapshots at equal module counts, so two arms compare at the same point even
+        // when one cannot finish inside the runner's cap.
+        if self.0 == "typecheck_module" && calls % 500 == 0 {
+            report(&format!("progress-{calls}"));
+        }
     }
 }
 
