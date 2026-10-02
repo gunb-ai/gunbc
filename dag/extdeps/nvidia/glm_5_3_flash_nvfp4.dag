@@ -50,8 +50,8 @@ data glm_5_3_flash_nvfp4_manifest: HubCheckpointManifest = hub_checkpoint_manife
 )
 
 // THE QUANTIZATION AS ITS OWN CONFIG STATES IT (config.json quantization_config and hf_quant_config.json
-// at the pin): ModelOpt, NVFP4 weights in groups of 16, the KV cache in FP8, BF16 for the layers in its
-// ignore list (lm_head, embeddings, the first layers' attention, MoE gates, the MTP layer).
+// at the pin): ModelOpt (quant_method, read by the checkpoint row) with NVFP4 weights in groups of 16,
+// and the KV cache in FP8 (kv_cache_quant_algo, read by gunbc.spark.serving_arm checkpoint_launch_policy,
+// which refuses any other scheme for this checkpoint).
 data glm_5_3_flash_nvfp4_quant_method: NonEmptyStr = "modelopt" as NonEmptyStr
-data glm_5_3_flash_nvfp4_quant_algo: NonEmptyStr = "NVFP4" as NonEmptyStr
 data glm_5_3_flash_nvfp4_kv_cache_quant_algo: NonEmptyStr = "FP8" as NonEmptyStr
