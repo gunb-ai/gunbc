@@ -47231,26 +47231,78 @@ mod multi_entry_index_sharing_control_tests {
 
 #[cfg(test)]
 mod pr2_whole_tree_differential_probe {
-    /// PR-2's whole-tree differential: strict-prepare every module under the source roots, then
-    /// print the per-module ancestry digest (fork rows are printed by the assembly loop on the way).
-    /// Armed by GUNBC_ANCESTRY_DIGEST; run with --ignored on a host with a bound memory leaf.
+    /// PR-2's whole-tree differential AND its phase-CPU attribution (calm-pike-525).
+    /// The resolve is NOT gated: a blocking diagnostic no longer stops the probe. Every module the
+    /// graph carries is digested EXCEPT those owning a blocking diagnostic, which are reported as a
+    /// counted, named set. A graph-less compile is a loud cannot-tell, never a vacuous pass.
+    /// Armed by GUNBC_ANCESTRY_DIGEST; run with --ignored.
     #[test]
     #[ignore]
     fn whole_tree_ancestry_digest() {
+        use std::collections::BTreeSet;
         let root = super::workspace_root();
         let roots = vec![
             root.join("dag").to_string_lossy().into_owned(),
             root.join("src/v2").to_string_lossy().into_owned(),
         ];
-        let (prepared, _) = super::prepare_repository_once(
-            &roots,
+        let corpus = super::read_source_corpus_once(&roots);
+        let subject = super::assemble_prepared_subject_from_corpus(
+            &corpus,
             &super::required_floor_runner::floor_prepared_subject_exclusions(),
+            None,
         )
-        .expect("whole tree prepares");
-        super::ancestry_digest_census(&prepared.graph.modules);
+        .expect("subject assembles");
+        let sources = subject.sources.clone();
         eprintln!(
-            "[ancestry-digest-done] modules={}",
-            prepared.graph.modules.len()
+            "[phase-cpu-subject] modules={} digest={}",
+            sources.len(),
+            subject.subject_digest
+        );
+        crate::phase_cpu::reset();
+        let cpu0 = crate::v1_interpreter::thread_cpu_nanos();
+        let wall0 = std::time::Instant::now();
+        let result =
+            crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(sources.into()));
+        let cpu_ms = (crate::v1_interpreter::thread_cpu_nanos() - cpu0) / 1_000_000;
+        eprintln!(
+            "[phase-cpu-total] resolve_thread_cpu_ms={cpu_ms} wall_ms={}",
+            wall0.elapsed().as_millis()
+        );
+        crate::phase_cpu::report("resolve");
+        let mut blocked: BTreeSet<String> = BTreeSet::new();
+        let mut blocking = 0usize;
+        for d in result.diagnostics.iter() {
+            if super::is_resolve_typecheck_blocking(
+                d.diagnostic.clone(),
+                super::ResolveTypecheckGate::Strict,
+            ) {
+                blocking += 1;
+                blocked.insert(d.module_name.clone());
+            }
+        }
+        eprintln!(
+            "[ancestry-digest-blocked] blocking_diagnostics={blocking} blocked_modules={}",
+            blocked.len()
+        );
+        for m in &blocked {
+            eprintln!("[ancestry-digest-blocked-module] {m}");
+        }
+        let graph = result
+            .graph
+            .clone()
+            .expect("CANNOT-TELL: the resolve produced no graph, so no module can be digested");
+        let digested: Vec<_> = graph
+            .modules
+            .iter()
+            .filter(|m| !blocked.contains(&m.type_env.module_path))
+            .cloned()
+            .collect();
+        super::ancestry_digest_census(&std::rc::Rc::new(digested.iter().cloned().collect()));
+        eprintln!(
+            "[ancestry-digest-done] graph_modules={} digested={} blocked={}",
+            graph.modules.len(),
+            digested.len(),
+            blocked.len()
         );
     }
 }
