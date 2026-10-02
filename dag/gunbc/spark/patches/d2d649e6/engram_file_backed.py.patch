@@ -3,7 +3,7 @@ new file mode 100644
 index 0000000..ed3e6e0
 --- /dev/null
 +++ b/vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py
-@@ -0,0 +1,774 @@
+@@ -0,0 +1,790 @@
 +# File-backed Engram storage for vLLM d2d649e674c75425d2d6975c87eb89fd4d55fff8.
 +#
 +# THIS IS A BACKING SWAP, NOT NEW PREFETCH MACHINERY. Upstream
@@ -77,6 +77,11 @@ index 0000000..ed3e6e0
 +
 +class EngramPageCacheResident(RuntimeError):
 +    pass
++
++
++# Bounded retry of the post-verify page-cache release (see _verify_and_release).
++_RELEASE_ATTEMPTS = 5
++_RELEASE_PAUSE_S = 0.2
 +
 +
 +class EngramRowOffsetMisaligned(RuntimeError):
@@ -226,8 +231,19 @@ index 0000000..ed3e6e0
 +        if head != self.expected.magic:
 +            raise EngramRowStoreIdentityMismatch("row-store MAGIC mismatch")
 +        after_verify = resident_bytes(self._fd, verified)
-+        os.posix_fadvise(self._fd, 0, verified, os.POSIX_FADV_DONTNEED)
-+        after_release = resident_bytes(self._fd, verified)
++        # POSIX_FADV_DONTNEED is advisory: pages still in flight from the hash pass's
++        # readahead can survive one call (srv8, 2026-10-02: 135168 of 25345200678 bytes
++        # left, the rank refused and the four-rank launch hung). The release is
++        # retried a bounded number of times with a short pause; residue that
++        # survives every attempt still refuses, and the receipt records the count.
++        after_release = after_verify
++        attempts = 0
++        while attempts < _RELEASE_ATTEMPTS and (attempts == 0 or after_release != 0):
++            if attempts > 0:
++                time.sleep(_RELEASE_PAUSE_S)
++            os.posix_fadvise(self._fd, 0, verified, os.POSIX_FADV_DONTNEED)
++            after_release = resident_bytes(self._fd, verified)
++            attempts += 1
 +        receipt = EngramStoreOpenReceipt(
 +            store_bytes=store,
 +            verified_bytes=verified,
@@ -237,7 +253,7 @@ index 0000000..ed3e6e0
 +        if after_release != 0:
 +            raise EngramPageCacheResident(
 +                f"{self.path}: {after_release} of {verified} verified bytes remain "
-+                f"page-cache resident after POSIX_FADV_DONTNEED; receipt {receipt}"
++                f"page-cache resident after {attempts} POSIX_FADV_DONTNEED attempts; receipt {receipt}"
 +            )
 +        return receipt
 +
