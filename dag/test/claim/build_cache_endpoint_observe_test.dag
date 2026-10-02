@@ -694,8 +694,12 @@ test fn witness_holder_argv_cannot_regress_to_the_bracket_form() -> Bool {
 // `compile_pool_stage_directory_line` and `compile_pool_stage_trap_line` -- the two authored lines
 // that body's own comment names as the only shell left -- and it was exactly the forbidden words,
 // so the claim failed and was enrolled expected-red in v2.workflow.floor_expected_red while the
-// script was the transport (receipt in the enrollment commit: FAIL here, this module's
-// pre-existing hermetic claims PASS). The migration lands the install as a typed staging fold over
+// script was the transport (enrollment commit 34e1e75c862: FAIL here, this module's pre-existing
+// hermetic claims PASS). This diff's staging commit greens the probe and withdraws that enrollment
+// in the same motion: DESIGN 4b(4) -- an expecting-red probe that greens when its wall lands flips
+// to a permanent regression control (this test stays enrolled here, green), while its expected-red
+// listing, whose claim was that the probe fails, does not outlive its red, so no v2.workflow
+// listing for it remains. The migration lands the install as a typed staging fold over
 // run_argv_over_host_effect_transport: unit bytes cross as STDIN DATA to dd, a sudo install -m
 // moves them into /etc/systemd/system, sudo systemctl daemon-reload and start follow, and the
 // staged sibling is discarded -- an argv list per operation, no script anywhere. Only the SURFACE
