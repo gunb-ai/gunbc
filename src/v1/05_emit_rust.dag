@@ -17732,7 +17732,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "use ", crate_name, "::gunbc_witness_v2_native_route::\{NativeRouteEmittedBuild, NativeRouteMalformedControl, NativeRouteOldRouteControl\};", "\n",
       "use ", crate_name, "::", pipeline_mod, "::\{", "\n",
       "    native_census_module_completeness, native_census_module_resolution, native_census_modules,", "\n",
-      "    native_census_residual_rows,", "\n",
+      "    native_census_residual_rows, native_demand_census_output,", "\n",
       "    native_lane_controls, native_lane_file_refusal_index,", "\n",
       "    native_lane_closure_ingest, native_lane_closure_modules, native_lane_closure_round_budget,", "\n",
       "    native_lane_ingest_matches_closure, native_lane_ingest_receipt, native_lane_receipt,", "\n",
