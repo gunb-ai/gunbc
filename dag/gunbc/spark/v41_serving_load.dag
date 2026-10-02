@@ -139,7 +139,6 @@ fn v41_serving_load_live_subject() -> ServingPerformanceSubject {
     runtime_image_reference: render_oci_content_digest_wire(d: image.config) as NonEmptyStr,
     topology: FourSparkTp4,
     profile: v41_group_a_profile(shape: shape),
-    speculative: none,
     collective_transport: none,
   )
 }
