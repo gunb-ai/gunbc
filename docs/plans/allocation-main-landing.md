@@ -10,13 +10,13 @@ Audit: 2026-10-02. Main: `1a013596270`. Existing integration checkpoint: `e7c442
 | #12505 | codex/allocation-vertical | main | Stale parent; conflicts with main |
 | #12691 | codex/workspace-commissioning-production | codex/allocation-vertical | Child includes both the parent feature work and repeated main merges |
 
-The child contains 279 commits beyond its parent. Of those, 163 are already ancestors of current main. Against main the child has 116 unique commits (including merges), and main has two commits absent from that checkpoint. Its actual net main diff is still 792 files, 50,350 additions and 3,008 deletions; 415 changed files under docs/plans account for 16,835 additions. Reducing the commit count alone would not make this a small source review.
+The child contains 279 commits beyond its parent. Of those, 229 are already ancestors of current main; the other 50 are the child-specific history. Against main the child has 116 unique commits (including the 66 inherited from its parent and merges), and main has two commits absent from that checkpoint. Its actual net main diff is still 792 files, 50,350 additions and 3,008 deletions; 415 changed files under docs/plans account for 16,835 additions. Reducing the commit count alone would not make this a small source review.
 
 `codex/allocation-main-landing` merges the two newer main commits into the integration in an isolated worktree. The merge was clean. The original three PRs and their reviews have not been rewritten, closed, merged, or retargeted.
 
 ## Concrete first extraction
 
-`codex/compiler-qualification-main` starts directly at current main and contains only the compiler qualification prerequisite: stable-source lexer cursor, per-file classification sharing, native/transition fixtures, and service-prefix admission repair. The HTTP hunks from cli_run.rs are deliberately excluded. The extraction is one source commit, 20 files, 1,056 additions and 191 deletions, with a hash manifest. Original qualification evidence remains scoped to its original revision; this branch requires its own checks.
+[PR #13000](https://github.com/gunb-ai/gunbc/pull/13000), `codex/compiler-qualification-main`, starts directly at current main and contains only the compiler qualification prerequisite: stable-source lexer cursor, per-file classification sharing, native/transition fixtures, and service-prefix admission repair. The HTTP hunks from cli_run.rs are deliberately excluded. The extraction is one source commit, 20 files, 1,056 additions and 191 deletions, with a hash manifest. Original qualification evidence remains scoped to its original revision; this branch requires its own checks.
 
 ## Remaining review units
 
