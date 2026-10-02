@@ -843,7 +843,7 @@ fn dag_grammar_generic_params_expr() -> GrammarExpr {
 // writes it; a parameter with neither falls to the last arm, whose shape is exactly the one every parameter
 // reader already reads. Neither lowers yet: v2.compiler.body_lowering_fold refuses the fn at the
 // clause (body_lowering_reason_parameter_refinement_unmodeled) or at the default
-// (body_lowering_reason_default_value_unmodeled) rather than reading the type and dropping either.
+// (and a default, since XL-2 PR2c-ii, lowers onto the parameter's binder) rather than reading the type and dropping the refinement.
 fn dag_grammar_typed_param_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_typed_param_head_expr(
@@ -1129,10 +1129,9 @@ fn dag_grammar_io_field_decl_expr() -> GrammarExpr {
 
 // A DEFAULT VALUE (`= expr`) IS ONE PRODUCTION, shared by every position v1 admits one: a fn or
 // pattern parameter, a service io field and a record field (v1 02_parse parse_param / parse_field).
-// One production means one shape for the one carrier that will read it (a binder carrying an
-// optional default); until then every position refuses at it, as
-// body_lowering_reason_default_value_unmodeled (gunbc.recurring_failure_mode
-// default_value_has_no_carrier).
+// One production means one shape for the one carrier that reads it: the binder node, which carries an
+// optional default (v2.std.node_query binder_node_parts). Every position lowers it onto its binder
+// (v2.compiler.body_lowering_fold body_lower_binder_edge_read; XL-2 PR2c-ii).
 fn dag_grammar_default_value_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_eq),
