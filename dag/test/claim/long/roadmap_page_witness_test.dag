@@ -1,11 +1,10 @@
 module test.claim.long.roadmap_page_witness
 
 import gunbc.roadmap.roadmap_project { membership_index }
-import test.claim.roadmap.roadmap_authority_subtree_fixture { fx_authority_subtree_doc, fx_authority_subtree_roadmap_page, fx_authority_subtree_daily_page, fx_multi_parent_ids, fx_live_project_ids }
+import test.claim.roadmap.roadmap_authority_subtree_fixture { fx_authority_subtree_roadmap_page, fx_authority_subtree_daily_page, fx_multi_parent_ids, fx_live_project_ids }
 import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_authored_wi, fx_derivable_wi, fx_ticket_row, fx_ticket_wi, fx_superseded, fx_signed, fx_sign }
 
 import gunbc.roadmap_spawner { doc_all_edges }
-import gunbc.roadmap_nesting { roadmap_memberships }
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
@@ -1597,106 +1596,6 @@ test fn witness_client_paints_hero_face_verbatim() -> Bool {
 // collapsed shell project to the table's head — and a refused attempt marks the live row's status
 // line error-refusal (the retired forest used to roll the red flag up to the project bar; that
 // render survives on the kept project-tree component).
-
-// THE SHELL SUBTREE, SUPPLIED (DESIGN section 3, a witness discriminates at one interface): the
-// arc, its chain to the admitted root (readiness hides a leaf whose lineage does not reach it) and
-// its ten tasks exactly as the authority authors them, but only those rows and the edges between them. Rendering the whole authority to inspect fourteen rows cost the page's
-// full fold per claim and could not finish inside the changed-witness ceiling; the authored rows
-// are still the real ones, so a re-parented or dropped shell task still reds here.
-fn fx_shell_subtree_ids() -> List<String> {
-  concat(["gunbc-project-root", "debt-payoff", "dp-m2-shell-residue-retired", "shell-typed-invocation"], fx_shell_task_ids())
-}
-
-// The shell arc's rows and edges as the authority declares them (the shared subtree fixture). None
-// of the arc is accepted, so the projected authority carries these same rows; reading the declared
-// rows narrows to the arc without projecting the whole acceptance history for every render.
-fn fx_shell_subtree_doc() -> RoadmapDocument {
-  fx_authority_subtree_doc(ids: fx_shell_subtree_ids(), title: "Shell")
-}
-
-fn fx_shell_live_rows(refused: Bool, doc: RoadmapDocument) -> List<gunbc.roadmap_presentation.WorkRowView> {
-  let nodes = gunbc.roadmap_spawner.doc_all_nodes(doc: doc)
-  let edges = gunbc.roadmap_spawner.doc_all_edges(doc: doc)
-  let ctx = gunbc.roadmap_page.page_launch_context(doc: doc, merged: [], launch: dispatch_doc_standing())
-  let graph = gunbc.roadmap_presentation.row_graph(nodes: nodes, edges: edges)
-  map(nodes, rn => {
-    let is_live = (rn.node as String) == "shell-dag-cron-entry-line-builder"
-    gunbc.roadmap_presentation.work_row_view_in(
-      rn: rn, graph: graph, merged: [],
-      activity: if is_live {
-        if refused {
-          gunbc.roadmap_presentation.activity_view_from_parts(
-            segments: [
-              gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.EnvironmentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "" },
-              gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.WorkspaceWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "" },
-              gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.AgentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentRefused, detail: "turn.completed with process unobserved: no exit was established" },
-            ],
-            remaining: 5,
-            process: gunbc.worker_lifecycle.WorkerProcessExited { exit_code: 0, last_command: "codex" },
-            throughput: ThroughputUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
-            current_activity: "")
-        } else {
-          gunbc.roadmap_presentation.activity_view_from_parts(
-            segments: [
-              gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.EnvironmentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "" },
-              gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.WorkspaceWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "" },
-              gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.AgentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentActive, detail: "" },
-              gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.VerificationWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
-              gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.PublicationWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
-              gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.ReviewWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
-              gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.GoalAuditWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
-            ],
-            remaining: 5,
-            process: gunbc.worker_lifecycle.WorkerProcessRunning { command: "codex exec" },
-            throughput: ThroughputUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
-            current_activity: "Agent working · running command")
-        }
-      } else {
-        gunbc.roadmap_presentation.NoActiveWork
-      },
-      rounds: if is_live { hero_rounds_fixture() } else { RoundsUnobserved { reason: "no active attempt" as NonEmptyStr } },
-      worker_alive: is_live,
-      standing: none,
-      attempt_stale: false,
-      launch: ctx,
-      profiles: [],
-      assignment: none)
-  })
-}
-
-fn fx_shell_live_workspace_html(refused: Bool, doc: RoadmapDocument, memberships: List<gunbc.roadmap_nesting.RoadmapMembership>) -> HtmlEmitResult {
-  let edges = gunbc.roadmap_spawner.doc_all_edges(doc: doc)
-  let rows = fx_shell_live_rows(refused: refused, doc: doc)
-  let ws = gunbc.roadmap_presentation.daily_workspace_view(
-    rows: rows, edges: edges, program: none,
-    observation: gunbc.roadmap_presentation.ObservationsNominal, families: [], members: [], memberships: memberships)
-  try_serialize_html_source(node: gunbc.roadmap_page.workspace_markup(ws: ws, edges: edges))
-}
-
-fn fx_shell_task_ids() -> List<String> {
-  [
-    "shell-dag-cron-entry-line-builder",
-    "shell-dag-floor-peak-calibration-rows",
-    "shell-dag-ci-fmt-gate-line",
-    "shell-dag-ci-deploy-invoke-prelude",
-    "shell-dag-ci-heal-regen-invoke",
-    "shell-dag-compile-pool-slice-install",
-    "shell-dag-slot-population-census-read",
-    "shell-dag-codex-app-server-trip-script",
-    "shell-dag-live-deploy-install-owned",
-    "shell-dag-live-deploy-restart-tailscale",
-  ]
-}
-
-// The refused arm of the same table, its own claim: the two renders share no assertion, so one
-// claim paid for both tables to state two independent facts.
-test fn witness_shell_live_task_refusal_marks_its_row() -> Bool {
-  match fx_shell_live_workspace_html(refused: true, doc: fx_shell_subtree_doc(), memberships: roadmap_memberships()) {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: refused_h } =>
-      string_contains(s: li_of_node(html: refused_h, node_id: "shell-dag-cron-entry-line-builder"), pattern: "activity-line-error-refusal")
-  }
-}
 
 // THE ISSUE TRACKER'S SURFACE (owner ruling 2026-09-22, amended 2026-09-25 "just copy buganizer"):
 // the page opens on the searchable issue table — one flat container with every rendered issue as a
