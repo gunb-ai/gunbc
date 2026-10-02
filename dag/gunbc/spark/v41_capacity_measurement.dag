@@ -918,7 +918,9 @@ fn v41_capacity_wire(c: V41Capacity) -> String {
 // sustained concurrency is their MINIMUM -- and states what the report does not observe: accepted
 // turns per hour, preemptions, restarts and OOM events are absent, so the promotion fold names them
 // missing rather than reading the report as a clean run. The measurement serve itself is not gated on
-// the report (that would be circular); it runs as a bounded experiment.
+// the report (that would be circular); it runs as a bounded experiment. Its route into a launch's
+// promotion receipts is a declared frontier, not yet a call: gunbc.spark.serving_promotion
+// serving_promotion_calibration_producer_frontier names the trigger.
 fn v41_capacity_at(c: V41Capacity) -> Nat? {
   match c {
     CapacityAt { concurrency: n } => Present { value: n }
