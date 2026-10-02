@@ -13,7 +13,7 @@ import v2.lens.registry {
   MetaExecConfinement,
   IdenticalVariantPayload, InertCarrier, IntentLinearity, InterfaceSummary,
   LanguagesConsumerCensus, LeafModelVerification, LifecycleCarrier, LiveReadClassification,
-  MachineShape, MockTotality, MutationAdequacy, NonFoldResidue, ProductionQualificationOriginProbe,
+  MachineShape, MockTotality, MutationAdequacy, ProductionQualificationOriginProbe,
   RealizationVocabularyContainment, RosterRegistry, ScheduleLens, SimulatedRelationship, StructuralSimilarity,
   Subsumption, Synthesis, TestMigrationDebt, UnitModeling, Vacuity, Visibility, WiringLiveness,
   WitnessCostLocality, Determinism, UnusedParameters, StructuralResolution, TableDecisionTree,
@@ -504,14 +504,6 @@ fn lens_module_gate_surface_for_lens_id(id: LensIdV0, module: String) -> LensInv
       projection: ProjectionNodeDag,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyReport,
-      admission: GenuinelyNewInvariant
-    }
-    NonFoldResidue => LensInvariantSurface {
-      module: module,
-      lens_id: id,
-      projection: ProjectionImportGraph,
-      verdict_authority: VerdictLensVerdict,
-      remedy: RemedyDelete,
       admission: GenuinelyNewInvariant
     }
     MetaExecConfinement => LensInvariantSurface {

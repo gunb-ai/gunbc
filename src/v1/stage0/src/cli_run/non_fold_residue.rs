@@ -84,39 +84,6 @@ use crate::v1_std_core::{
 };
 use serde::Serialize;
 
-pub fn non_fold_residue_wildcard_red_fixture_holds() -> bool {
-    let fixture = vec![(
-        "m.dag".to_string(),
-        "module m\ntype Mode = A | B | C\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    _ => false\n  }\n}\n"
-            .to_string(),
-    )];
-    nfr_residue_sites(&fixture).contains(&"m.dag::f".to_string())
-}
-
-pub fn non_fold_residue_total_fold_green_fixture_holds() -> bool {
-    let fixture = vec![(
-        "m.dag".to_string(),
-        "module m\ntype Mode = A | B | C\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    B => false\n    C => false\n  }\n}\n"
-            .to_string(),
-    )];
-    !nfr_residue_sites(&fixture).contains(&"m.dag::f".to_string())
-}
-
-pub fn non_fold_residue_roster_red_fixture_holds() -> bool {
-    !non_fold_residue_site_is_rostered("synthetic/unrostered_site.dag::would_fail")
-}
-
-pub fn non_fold_residue_synthetic_unrostered_red_holds() -> bool {
-    let fixture = vec![(
-        "synthetic_red_fixture.dag".to_string(),
-        "module synthetic_red_fixture\ntype Mode = A | B | C\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    _ => false\n  }\n}\n"
-            .to_string(),
-    )];
-    let sites = nfr_residue_sites(&fixture);
-    let site = "synthetic_red_fixture.dag::f";
-    sites.contains(&site.to_string()) && !non_fold_residue_site_is_rostered(site)
-}
-
 /// Project the path site keys out of the typed `non_fold_residue_frontier` rows of the
 /// `gunbc.non_fold_residue` authority SOURCE TEXT via the real front-end — the roster's
 /// re-home off this file's former `NON_FOLD_RESIDUE_ROSTER` const (group-of-units ruling,
@@ -294,40 +261,11 @@ pub(crate) fn non_fold_residue_roster_set() -> &'static std::collections::BTreeS
 
 pub fn non_fold_residue_closed_coproduct_type_names() -> &'static std::collections::BTreeSet<String>
 {
-    &nfr_build_report().closed_coproduct_names
-}
-
-pub fn non_fold_residue_count() -> i64 {
-    nfr_build_report().sites.len() as i64
-}
-
-pub fn non_fold_residue_unrostered_count() -> i64 {
-    let roster = non_fold_residue_roster_set();
-    nfr_build_report()
-        .sites
-        .iter()
-        .filter(|s| !roster.contains(s.as_str()))
-        .count() as i64
+    nfr_closed_coproduct_name_set()
 }
 
 pub fn non_fold_residue_site_is_rostered(site: &str) -> bool {
     non_fold_residue_roster_set().contains(site)
-}
-
-pub fn non_fold_residue_stale_roster_count() -> i64 {
-    let live: std::collections::BTreeSet<&str> = nfr_build_report()
-        .sites
-        .iter()
-        .map(|s| s.as_str())
-        .collect();
-    non_fold_residue_roster_entries()
-        .iter()
-        .filter(|s| !live.contains(s.as_str()))
-        .count() as i64
-}
-
-pub fn non_fold_residue_coproduct_universe_count() -> i64 {
-    nfr_build_report().coproduct_universe as i64
 }
 
 // ---------------------------------------------------------------------------
@@ -338,8 +276,8 @@ pub fn non_fold_residue_coproduct_universe_count() -> i64 {
 // `v1.compiler.infer_patterns` `constructor_roster_for` is the classification
 // `check_match_exhaustiveness` itself consults, over the module's own `type_env`. So a local
 // binding, a field projection or a call is classified exactly like a parameter -- the population
-// the parameter-keyed text scan (`nfr_residue_sites`, still the `--lib` receipt until this walk
-// covers the corpus on the merge path) cannot see by construction.
+// the deleted parameter-keyed text scan could not see by construction. This walk is the one site
+// authority: the floor runs it per diff, and the whole-corpus census below derives the roster.
 //
 // The required floor runs it DIFF-SCOPED over the graph its strict preparation already typed
 // (`non_fold_residue_diff_verdict`): no second compile. What that scope cannot see is declared,
@@ -501,6 +439,11 @@ pub(crate) fn non_fold_residue_roster_diff_with(
     path_exists: &dyn Fn(&str) -> bool,
 ) -> (Vec<String>, Vec<String>) {
     let live = walk.non_fold_residue_sites();
+    // A ROSTERED UNDETERMINED SITE IS NOT STALE. The diff verdict refuses an undetermined
+    // scrutinee unless a row names it (`undetermined_unrostered`), so such a row is one the walk
+    // itself demands; judging it stale because it is not a closed-coproduct site made both
+    // dispositions refuse, and any change touching the module could never pass.
+    let undetermined: BTreeSet<&str> = walk.undetermined_sites.iter().map(|s| s.as_str()).collect();
     let rostered: BTreeSet<&str> = roster_rows.iter().map(|r| r.as_str()).collect();
     let unrostered = live
         .iter()
@@ -511,7 +454,10 @@ pub(crate) fn non_fold_residue_roster_diff_with(
         .iter()
         .filter(|e| {
             let path = e.split("::").next().unwrap_or("");
-            !path_exists(path) || (walk.covered_paths.contains(path) && !live.contains(e.as_str()))
+            !path_exists(path)
+                || (walk.covered_paths.contains(path)
+                    && !live.contains(e.as_str())
+                    && !undetermined.contains(e.as_str()))
         })
         .cloned()
         .collect();
@@ -762,7 +708,7 @@ mod nfr_typed_tests {
         );
     }
 
-    // THE WIDENING'S DISCRIMINATING REDS: the parameter-keyed text scan cannot see either
+    // THE WIDENING'S DISCRIMINATING REDS: the deleted parameter-keyed text scan could see neither
     // (receipts: gunbc.live_deploy.fleet_request replacement_is_foreign's local `from`,
     // release_member_changed).
     #[test]
@@ -771,11 +717,6 @@ mod nfr_typed_tests {
         assert!(
             got.contains("m.dag::f"),
             "local-binding scrutinee must be flagged; got {got:?}"
-        );
-        assert!(
-            !nfr_residue_sites(&[("m.dag".to_string(), "module m\ntype Mode = A | B | C\nfn pick() -> Mode { B }\nfn f() -> Bool {\n  let from = pick()\n  match from {\n    A => true\n    _ => false\n  }\n}\n".to_string())])
-                .contains(&"m.dag::f".to_string()),
-            "the text scan is expected to MISS this site; if it now sees it, the widening's premise moved"
         );
     }
 
@@ -871,6 +812,28 @@ mod nfr_typed_tests {
         assert!(
             kept.is_empty(),
             "an existing, unscoped row is not judged stale (positive control)"
+        );
+    }
+
+    // CONTROL 3b -- a row naming an UNDETERMINED site is the disposition the verdict demands, so it
+    // is not stale; the same row over a covered path with no wildcard at all still is.
+    #[test]
+    fn rostered_undetermined_site_is_not_stale() {
+        let mut walk = TypedFallbackArmWalk::default();
+        walk.covered_paths.insert("u.dag".to_string());
+        walk.undetermined_sites.push("u.dag::f".to_string());
+        let (unrostered, stale) =
+            non_fold_residue_roster_diff_with(&walk, &rows(&["u.dag::f"]), &|_| true);
+        assert!(unrostered.is_empty());
+        assert!(
+            stale.is_empty(),
+            "a rostered undetermined site must not be stale; got {stale:?}"
+        );
+        let (_, stale) = non_fold_residue_roster_diff_with(&walk, &rows(&["u.dag::g"]), &|_| true);
+        assert_eq!(
+            stale,
+            rows(&["u.dag::g"]),
+            "a row for a non-site in the same covered module stays stale (red control)"
         );
     }
 
