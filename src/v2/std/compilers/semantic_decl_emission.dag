@@ -356,7 +356,10 @@ fn semantic_decl_lex_rule_rows_from_catalog(catalog: Node) -> Outcome<List<Node>
               match edge.label {
                 Positional =>
                   outcome_accepted(value: list_snoc_item(xs: acc, item: edge.target))
-                Named { name: _ } =>
+                Authored { name: _ } =>
+                  outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: catalog)
+                  )
+                StructuralLabel { label: _ } =>
                   outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: catalog)
                   )
               }
@@ -486,7 +489,10 @@ fn semantic_decl_binding_spelling_rows_from_catalog(catalog: Node) -> Outcome<Li
                       outcome_accepted(value: list_snoc_item(xs: acc, item: row))
                     }
                   )
-                Named { name: _ } =>
+                Authored { name: _ } =>
+                  outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: catalog)
+                  )
+                StructuralLabel { label: _ } =>
                   outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: catalog)
                   )
               }
@@ -838,7 +844,10 @@ fn semantic_decl_decoration_lines_from_catalog(catalog: Node) -> Outcome<List<Ta
                       outcome_accepted(value: list_snoc_item(xs: acc, item: line))
                     }
                   )
-                Named { name: _ } =>
+                Authored { name: _ } =>
+                  outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: catalog)
+                  )
+                StructuralLabel { label: _ } =>
                   outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: catalog)
                   )
               }
@@ -947,7 +956,10 @@ fn semantic_decl_coproduct_decoration_rules_from_catalog(
                       outcome_accepted(value: list_snoc_item(xs: acc, item: rule))
                     }
                   )
-                Named { name: _ } =>
+                Authored { name: _ } =>
+                  outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: catalog)
+                  )
+                StructuralLabel { label: _ } =>
                   outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: catalog)
                   )
               }
