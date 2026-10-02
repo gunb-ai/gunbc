@@ -990,6 +990,78 @@ mod nfr_typed_tests {
             "in scope and unrostered must refuse"
         );
     }
+
+    /// Discriminating control for the stack class of #10610 on the floor's own call: a body that
+    /// is a `NFR_DEEP_BODY_DEPTH`-term `+` chain (a left-nested binary tree in the typed graph),
+    /// typed on a large-stack thread (typing is not the subject), then judged by
+    /// `non_fold_residue_diff_verdict` on an 8 MiB thread -- the Linux main-thread size the
+    /// required floor runs it on. Measured on the natively recursive walk: 12,000 terms complete,
+    /// 20,000 abort with a stack overflow (the red gunbc#12526's floor hit); the worklist
+    /// completes at both and still reports the module's residue.
+    #[test]
+    fn deep_body_is_judged_on_a_main_thread_sized_stack() {
+        const NFR_DEEP_BODY_DEPTH: usize = 20_000;
+        let mut src = String::from(
+            "module m\ntype Mode = A | B | C\nfn g(x: Mode) -> Int {\n  match x {\n    A => 1\n    _ => 0\n  }\n}\nfn f(x: Mode) -> Int {\n  g(x: x)",
+        );
+        for _ in 1..NFR_DEEP_BODY_DEPTH {
+            src.push_str(" + 1");
+        }
+        src.push_str("\n}\n");
+        std::thread::scope(|scope| {
+            let typed = std::thread::Builder::new()
+                .stack_size(1 << 30)
+                .spawn_scoped(scope, || {
+                    let sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
+                        vec![Rc::new(v1_compiler_compile::SourceFile {
+                            path: "m.dag".to_string(),
+                            content: src.clone(),
+                        })];
+                    let resolved =
+                        v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
+                    let blocking = v1_compiler_compile::interpreter_blocking_diagnostic_messages(
+                        resolved.diagnostics.clone(),
+                    );
+                    assert!(
+                        blocking.is_empty(),
+                        "deep fixture did not type: {blocking:?}"
+                    );
+                    let graph = resolved
+                        .graph
+                        .clone()
+                        .expect("deep fixture produced no graph");
+                    let scoped: BTreeSet<String> = ["m".to_string()].into_iter().collect();
+                    // The typed graph is `Rc`-shared and so not `Send`; this thread blocks on the
+                    // join below and touches none of it meanwhile, so exactly one thread uses it
+                    // at a time.
+                    struct HandOff<T>(T);
+                    unsafe impl<T> Send for HandOff<T> {}
+                    let handed = HandOff((&graph, &resolved.source_indices, &scoped));
+                    let judged = std::thread::scope(|inner| {
+                        std::thread::Builder::new()
+                            .stack_size(8 * 1024 * 1024)
+                            .spawn_scoped(inner, move || {
+                                let handed = handed;
+                                let (graph, indices, scoped) = handed.0;
+                                non_fold_residue_diff_verdict(graph, indices, scoped, &[])
+                                    .walk
+                                    .non_fold_residue_sites()
+                            })
+                            .expect("spawn main-sized thread")
+                            .join()
+                            .expect("verdict thread panicked")
+                    });
+                    judged
+                })
+                .expect("spawn typing thread")
+                .join()
+                .expect("typing thread panicked");
+            assert!(
+                typed.contains("m.dag::g"),
+                "the walk must complete the deep module and report its residue; got {typed:?}"
+            );
+        });
+    }
 }
 
 /// THE ONE-TIME WHOLE-CORPUS TYPED CENSUS behind the widened roster: every module under the source
