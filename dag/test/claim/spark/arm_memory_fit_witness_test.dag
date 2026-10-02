@@ -19,7 +19,7 @@ import extdeps.vllm.kv_layout {
   cold_admission_bytes, AdmissionByteCostBytes, AdmissionByteCostUnestablished,
 }
 import gunbc.spark.serving_arm {
-  model_launch_policy,
+  glm53_native_launch_policy,
   Glm53NativeFp8, Glm53Exl3_205, GunbcGlm53NopeDerivedGb10, Gitcommit90Sm121Exl3,
   SingleSparkTp1, SparkPairTp2, FourSparkTp4, EightSparkTp8,
   glm_native_initial_profile, glm_native_concurrent_profile,
@@ -102,7 +102,7 @@ import gunbc.spark.arm_memory_experiment_observed {
   glm_checkpoint_index_mtp_layer_indices, glm_checkpoint_index_routed_experts_per_layer,
   glm_checkpoint_index_census_holds, glm_checkpoint_projection_pending_obligation,
   glm_checkpoint_projection_census_holds, glm_checkpoint_projection_per_rank_bytes,
-  glm_checkpoint_projection_visual_bytes, glm_checkpoint_config_architectures,
+  glm_checkpoint_projection_visual_bytes,
   arm_experiment_kvplan_v2_2026_09_26_loader_transient_plan,
   arm_experiment_kvplan_v2_2026_09_26_fragmentation_churn_plan,
   arm_experiment_kvplan_v2_2026_09_26_loader_runbook,
@@ -119,7 +119,7 @@ import gunbc.spark.arm_memory_experiment_observed {
   ArmPlacementExpertSplit, ArmPlacementReplicated,
   arm_checkpoint_classify, arm_checkpoint_placement_rank_figures, arm_checkpoint_placement_conserved,
 }
-import extdeps.zhipu.glm_5_3_flash { Glm53FlashHybridShape, glm_5_3_flash_hybrid_shape, glm_5_3_flash_native_manifest }
+import extdeps.zhipu.glm_5_3_flash { Glm53FlashHybridShape, glm_5_3_flash_hybrid_shape, glm_5_3_flash_native_manifest, glm_5_3_flash_architecture_class }
 import extdeps.vllm.kv_layout { MambaState, KPoolIndex }
 import extdeps.vllm.sparse_prefill_transient {
   sparse_indexer_prefill_logits_cap_bytes, flashinfer_sparse_workspace_bytes,
@@ -244,7 +244,7 @@ fn fx_shrunk_intent() -> ServingCapacityIntent {
 fn fx_derived_profile() -> ServingLaunchProfile {
   profile_for_envelope(
     envelope: envelope_at_cold_floor(cold: fx_shrunk_intent()),
-    policy: model_launch_policy(kv_cache_dtype: KvFp8, indexer_kv_dtype: IndexerKvDtypeOmitted, engram: EngramConfigOmitted, modality: ModalityOmitted),
+    policy: glm53_native_launch_policy,
     decided_gpu_memory_basis_points: basis_point(count: 8400),
     serve_port: 30000,
     served_alias: "glm-5.3-flash" as NonEmptyStr,
@@ -298,7 +298,6 @@ fn fx_deductions() -> ArmSupplyDeductions {
 // count, which is not a valid rank index.
 test fn w_the_production_tuple_is_unestablished_with_named_obligations() -> Bool {
   match arm_memory_fit_subject_for_launch(
-    checkpoint: Glm53NativeFp8,
     runtime: GunbcGlm53NopeDerivedGb10,
     topology: FourSparkTp4,
     profile: w_restoration_profile(),
@@ -320,13 +319,13 @@ test fn w_the_production_tuple_is_unestablished_with_named_obligations() -> Bool
 
 test fn w_fewer_ranks_refuse_by_the_aggregate_argument_without_naming_a_rank() -> Bool {
   let tp1 = verdict_for(subject_mint: arm_memory_fit_subject_for_launch(
-    checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10,
+    runtime: GunbcGlm53NopeDerivedGb10,
     topology: SingleSparkTp1, profile: glm_native_initial_profile))
   let tp2 = verdict_for(subject_mint: arm_memory_fit_subject_for_launch(
-    checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10,
+    runtime: GunbcGlm53NopeDerivedGb10,
     topology: SparkPairTp2, profile: glm_native_initial_profile))
   let tp8 = verdict_for(subject_mint: arm_memory_fit_subject_for_launch(
-    checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10,
+    runtime: GunbcGlm53NopeDerivedGb10,
     topology: EightSparkTp8, profile: glm_native_initial_profile))
   (match tp1 {
     Present { value: ArmMemoryFitRefused { rank: r, phase: p, demand_lower: d, supply_upper: _, cause: c } } =>
@@ -1358,7 +1357,7 @@ fn fx_wet_intent() -> ServingCapacityIntent {
 fn fx_wet_profile() -> ServingLaunchProfile {
   profile_for_envelope(
     envelope: envelope_at_cold_floor(cold: fx_wet_intent()),
-    policy: model_launch_policy(kv_cache_dtype: KvFp8, indexer_kv_dtype: IndexerKvDtypeOmitted, engram: EngramConfigOmitted, modality: ModalityOmitted),
+    policy: glm53_native_launch_policy,
     decided_gpu_memory_basis_points: basis_point(count: 8567),
     serve_port: 30000,
     served_alias: "glm-5.3-flash" as NonEmptyStr,
@@ -1961,7 +1960,7 @@ fn w_bundle_reported_capacity_and_candidate_hold() -> Bool {
 // target at the same configuration -- as evidence, discharging nothing.
 test fn w_tp4_receipt_on_tp2_refused_and_static_terms_transfer_to_262k() -> Bool {
   (match memory_proof_subject_for_launch(
-    checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10,
+    runtime: GunbcGlm53NopeDerivedGb10,
     topology: SparkPairTp2, profile: w_restoration_profile(),
     launch_generation: "group-b/pair-probe" as NonEmptyStr) {
     MemoryProofSubjectRefused { cause: _ } => false
@@ -2014,11 +2013,11 @@ fn fx_262k_subject() -> MemoryProofSubject? {
     ServingCapacityIntentRefused { cause: _ } => none
     ServingCapacityIntentAdmitted { intent: intent } =>
       match memory_proof_subject_for_launch(
-        checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10,
+        runtime: GunbcGlm53NopeDerivedGb10,
         topology: FourSparkTp4,
         profile: profile_for_envelope(
           envelope: envelope_at_cold_floor(cold: intent),
-          policy: model_launch_policy(kv_cache_dtype: KvFp8, indexer_kv_dtype: IndexerKvDtypeOmitted, engram: EngramConfigOmitted, modality: ModalityOmitted),
+          policy: glm53_native_launch_policy,
           decided_gpu_memory_basis_points: basis_point(count: 8567),
           serve_port: 30000,
           served_alias: "glm-5.3-flash" as NonEmptyStr,
@@ -2075,7 +2074,7 @@ test fn w_cache_proved_plus_prefill_open_is_proved_beside_unestablished() -> Boo
     seats: 6, at: token_count(count: 262144),
     supplies: fx_cache_supplies(blocks: 2000000, arena_bytes: 21474836480), rank_count: 4)
   let arm = verdict_for(subject_mint: arm_memory_fit_subject_for_launch(
-    checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10,
+    runtime: GunbcGlm53NopeDerivedGb10,
     topology: FourSparkTp4, profile: w_restoration_profile()))
   (match cache {
     CacheFitProved { limiting_rank: _, seats: s, length: _, blocks_per_seat: _, blocks_used: bu, blocks_reserved: _, hard_ceiling: _, block_equivalent_bytes: be } =>
@@ -2401,7 +2400,7 @@ fn fx_launch_wall_intent() -> ServingCapacityIntent {
 fn fx_launch_wall_profile() -> ServingLaunchProfile {
   profile_for_envelope(
     envelope: envelope_at_cold_floor(cold: fx_launch_wall_intent()),
-    policy: model_launch_policy(kv_cache_dtype: KvFp8, indexer_kv_dtype: IndexerKvDtypeOmitted, engram: EngramConfigOmitted, modality: ModalityOmitted),
+    policy: glm53_native_launch_policy,
     decided_gpu_memory_basis_points: basis_point(count: 8567),
     serve_port: 30000,
     served_alias: "glm-5.3-flash" as NonEmptyStr,
@@ -2824,7 +2823,7 @@ test fn w_the_projection_places_evenly_and_the_residue_pins_the_composite_spread
 }
 
 test fn w_the_vision_tower_loads_cited_from_the_config() -> Bool {
-  glm_checkpoint_config_architectures == "Glm5NextForConditionalGeneration"
+  glm_5_3_flash_architecture_class == "Glm5NextForConditionalGeneration"
     && byte_size_count(b: glm_checkpoint_projection_visual_bytes()) < byte_size_count(b: glm_checkpoint_projection_replicated_bytes())
     && string_contains(s: glm_checkpoint_projection_pending_obligation() as String, pattern: "shard headers")
 }

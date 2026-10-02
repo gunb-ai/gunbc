@@ -657,7 +657,9 @@ fn scheduler_admission_runtime_refusal(profile: ServingLaunchProfile, rrow: Serv
 
 fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, intent: ArmIntent, profile: ServingLaunchProfile, deployment_env: List<DockerEnvAssignment>, container: ArmContainerIdentity) -> ArmLaunchPlan {
   let subject = launch_compatibility_subject(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, profile: profile)
-  if measured_subject_refuses(subject: subject) {
+  if !(profile.checkpoint == checkpoint) {
+    ArmLaunchRefused { cause: "the launch profile was derived from another checkpoint's launch policy than the arm deploys: a profile carries the checkpoint its policy row names, and the arm's assignment must be that checkpoint" as NonEmptyStr }
+  } else if measured_subject_refuses(subject: subject) {
     ArmLaunchRefused { cause: measured_refusal_cause(subject: subject) }
   } else {
   match intent_refusal(admission: measured_admission_for(subject: subject), intent: intent) {
@@ -731,7 +733,7 @@ fn plan_arm_launch_under_memory_fit(checkpoint: ServingCheckpoint, runtime: Serv
   match plan_arm_launch_for(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, intent: intent, profile: profile, deployment_env: deployment_env, container: container) {
     ArmLaunchRefused { cause: c } => ArmLaunchRefused { cause: c }
     ArmLaunchPlanned { lines: ls, master: m } =>
-      match arm_memory_fit_subject_for_launch(checkpoint: checkpoint, runtime: runtime, topology: topology, profile: profile) {
+      match arm_memory_fit_subject_for_launch(runtime: runtime, topology: topology, profile: profile) {
         ArmMemorySubjectRefused { cause: c } => ArmLaunchRefused { cause: c }
         ArmMemorySubjectReady { subject: mem_subject } => {
           let verdict = arm_memory_fit_verdict(subject: mem_subject)
@@ -773,7 +775,7 @@ fn normal_serving_promotion_refusal(intent: ArmIntent, checkpoint: ServingCheckp
             Absent => Present { value: "no runtime row, so no promotion subject derives" as NonEmptyStr }
             Present { value: rrow } => {
               let subject = serving_subject_for_launch(
-                checkpoint: checkpoint, checkpoint_revision: Present { value: crow.revision }, runtime: runtime,
+                checkpoint_revision: Present { value: crow.revision }, runtime: runtime,
                 runtime_image_reference: runtime_artifact_wire(a: rrow.artifact), topology: topology, profile: profile,
                 collective_transport: none)
               let compat = measured_admission_for(subject: launch_compatibility_subject(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, profile: profile))

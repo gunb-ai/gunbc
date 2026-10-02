@@ -26,6 +26,14 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // rather than a second name for the same subject.
 data glm_5_3_flash_model_id: NonEmptyStr = "zai-org/GLM-5.3-Flash" as NonEmptyStr
 
+// THE ARCHITECTURE CLASS IS THE STRING A RUNTIME'S REGISTRY IS ASKED FOR, as extdeps.zhipu.glm_5_3
+// glm_5_3_architecture_class is for the full model. Every Flash checkpoint row -- native and each
+// quantization of it -- reads THIS declaration rather than a spelling of its own. It is the sole entry of
+// `architectures` in the native checkpoint's config.json (the GLM4V-pattern multimodal wrapper, so the
+// engine builds the visual tower; gunbc.spark.arm_memory_experiment_observed
+// glm_checkpoint_projection_visual_bytes prices that tower from the same reading).
+data glm_5_3_flash_architecture_class: NonEmptyStr = "Glm5NextForConditionalGeneration" as NonEmptyStr
+
 // THE CONTEXT CEILING AND THE EVALUATED DEPTH ARE TWO FACTS, and carrying only the first is how a
 // ceiling gets read as a capability -- the same distinction deepseek_v4 draws between its 1M scaled
 // ceiling and its 64K native window. The model card states a 1,048,576-token input context; its
