@@ -6,11 +6,12 @@ import std.measure { token_count, basis_point, gibibyte_count }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { length }
 import extdeps.vllm.engine_args { PrefixCachingExplicit, VllmKvCacheDtypeRequest, KvNvfp4, IndexerKvDtypeOmitted }
+import extdeps.vllm.source_build { vllm_8d09804_sm121_recipe }
 import extdeps.vllm.kv_dtype_capability {
-  kv_capability_verdict, KvCapabilitySubject, FlashInferMlaSparseSm120, DsaSparseIndexer, upstream_kv_main_dtype_rows,
+  kv_runtime, kv_capability_verdict, KvCapabilitySubject, FlashInferMlaSparseSm120, DsaSparseIndexer, upstream_kv_main_dtype_rows,
   KvCombinationAdmitted, KvCombinationRefused, KvCombinationUnanswered,
 }
-import gunbc.spark.serving_arm {
+import gunbc.spark.serving_arm { GlmNativeEngineDerived8d09804, glm_native_engine_build_image,
   ServingCheckpoint, Glm53FlashNvidiaNvfp4, Glm53NativeFp8, GunbcGlm53DerivedKvplanV2Gb10, FourSparkTp4,
   ServingLaunchProfile, checkpoint_launch_policy, serving_checkpoint_row, glm_derived_flashinfer_sm120_row,
 }
@@ -51,7 +52,7 @@ test fn w_the_fp4_checkpoint_derives_a_profile_a_subject_a_fit_subject_and_a_pro
       let subject = serving_subject_for_launch(
         checkpoint: Glm53FlashNvidiaNvfp4, checkpoint_revision: Present { value: "da920bb0b9f4a06727223a349e55468e38352348" as NonEmptyStr },
         runtime: GunbcGlm53DerivedKvplanV2Gb10, runtime_image_reference: "fixture@sha256:0" as NonEmptyStr,
-        topology: FourSparkTp4, profile: p, speculative: none, collective_transport: none)
+        topology: FourSparkTp4, profile: p, collective_transport: none)
       (serving_subject_axis_value(s: subject, a: AxisWeightQuantization) as String) == "modelopt"
         && (match arm_memory_fit_subject_for_launch(checkpoint: Glm53FlashNvidiaNvfp4, runtime: GunbcGlm53DerivedKvplanV2Gb10, topology: FourSparkTp4, profile: p) {
           ArmMemorySubjectRefused { cause: _ } => false
@@ -85,7 +86,7 @@ test fn w_the_fp4_checkpoint_carries_fewer_weight_bytes_than_the_native_one() ->
 // refused -- the red the policy's own row cannot reach by comparing a string with itself.
 fn w_kv_admitted(main: VllmKvCacheDtypeRequest) -> Bool {
   match kv_capability_verdict(
-    subject: KvCapabilitySubject { backend: FlashInferMlaSparseSm120, device_major: 12, main: main, indexer_kind: Present { value: DsaSparseIndexer }, indexer: IndexerKvDtypeOmitted },
+    subject: KvCapabilitySubject { backend: FlashInferMlaSparseSm120, runtime: kv_runtime(image: Present { value: glm_native_engine_build_image(build: GlmNativeEngineDerived8d09804) }, source: vllm_8d09804_sm121_recipe.source), device_major: 12, main: main, indexer_kind: Present { value: DsaSparseIndexer }, indexer: IndexerKvDtypeOmitted },
     rows: concat(upstream_kv_main_dtype_rows, [glm_derived_flashinfer_sm120_row])) {
     KvCombinationAdmitted { bases: _ } => true
     KvCombinationRefused { cause: _, basis: _ } => false
