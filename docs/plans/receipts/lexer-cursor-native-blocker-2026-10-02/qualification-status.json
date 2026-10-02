@@ -1,0 +1,17 @@
+{
+  "source_commit": "23ae77b15e4",
+  "focused_controls_passed": 29,
+  "classifier_controls_passed": 17,
+  "original_three_identity_benchmark_exit": 0,
+  "full_file_cursor_tokenization_seconds": 27.92,
+  "full_file_tokens": 12072,
+  "sample_equivalence": "16/32/64 KiB passed",
+  "full_file_equivalence": "reference did not finish before 600-second bound; sample exit 124",
+  "native": "emission passed; generated Rust build exit 101 with 11 bool/Bool E0308 errors",
+  "memory_max_gib": 6,
+  "swap_max": 0,
+  "required_floor": "not run",
+  "deployment": "not run",
+  "qualification": "HOLD: native build and full-file reference equivalence unresolved",
+  "timing_caveat": "Concurrent bounded local tests; not a same-base whole-floor speedup claim"
+}
