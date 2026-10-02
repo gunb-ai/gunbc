@@ -1256,6 +1256,11 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "src/v2/compiler/body_lowering_fold.dag::body_lower_where_leaf_atom_optional" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "src/v2/compiler/body_lowering_fold.dag::body_lower_where_predicate" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "src/v2/std/qualified_name.dag::lexical_reference_label_optional" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "dag/gunbc/scm/object_table_json.dag::decode_named_label" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "src/v2/std/compilers/target_model.dag::target_value_semantics_carrier_snoc" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "src/v2/std/node.dag::loop_edge_contributes_to_iteration_fold" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "src/v2/std/node.dag::match_arm_node_conforms" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "src/v2/std/node_query.dag::field_projection_edge_field_optional" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
 ]
 
 fn non_fold_residue_frontier_units() -> List<String> {
