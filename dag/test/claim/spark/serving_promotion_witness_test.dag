@@ -62,6 +62,7 @@ fn fx_evidence(memory: ArmMemoryFitVerdict, quality: QualityReceipt?, calibratio
     } },
     quality: quality,
     calibration: calibration,
+    incumbent_subject_key: Present { value: "incumbent" },
     incumbent_quality: Present { value: fx_quality(key: "incumbent", accepted: 80, parse_failures: 2) },
     incumbent_calibration: Present { value: fx_calibration(key: "incumbent", turns: 100, preemptions: Present { value: 0 }) },
   }
@@ -147,10 +148,28 @@ test fn w_an_unestablished_fit_is_a_measurement_serve_and_a_refused_fit_is_refus
 test fn w_a_subject_with_nothing_produced_names_every_missing_receipt() -> Bool {
   match serving_promotion_standing(subject: fx_subject, policy: serving_promotion_policy, evidence: ServingPromotionEvidence {
     compatibility: AdmitsBoundedExperimentOnly, memory: none, cache: none, quality: none, calibration: none,
-    incumbent_quality: none, incumbent_calibration: none,
+    incumbent_subject_key: none, incumbent_quality: none, incumbent_calibration: none,
   }) {
     PromotionMeasurementServeOnly { missing: ms } => length(ms) == 5
     PromotionAdmitsNormalServing => false
     PromotionRefused { cause: _ } => false
   }
+}
+
+// THE INCUMBENT MUST BE ANOTHER, NAMED SUBJECT (review 74140): the candidate's own receipts passed as the
+// baseline, or an incumbent receipt for a subject other than the named incumbent, cannot promote.
+fn fx_self_baseline() -> ServingPromotionEvidence {
+  let q = fx_quality(key: fx_key(), accepted: 80, parse_failures: 2)
+  let c = fx_calibration(key: fx_key(), turns: 120, preemptions: Present { value: 0 })
+  ServingPromotionEvidence {
+    compatibility: AdmitsNormalServing, memory: Present { value: fx_proved },
+    cache: fx_evidence(memory: fx_proved, quality: none, calibration: none).cache,
+    quality: Present { value: q }, calibration: Present { value: c },
+    incumbent_subject_key: Present { value: fx_key() },
+    incumbent_quality: Present { value: q }, incumbent_calibration: Present { value: c },
+  }
+}
+
+test fn w_the_candidate_cannot_be_its_own_incumbent() -> Bool {
+  w_missing_count(e: fx_self_baseline()) == 2
 }

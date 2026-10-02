@@ -56,7 +56,7 @@ import gunbc.spark.serving_arm {
 }
 import gunbc.spark.serving_promotion {
   ServingPromotionReceipts, serving_promotion_standing, promotion_evidence, serving_promotion_policy,
-  PromotionAdmitsNormalServing, PromotionRefused, PromotionMeasurementServeOnly,
+  PromotionAdmitsNormalServing, PromotionRefused, PromotionMeasurementServeOnly, promotion_standing_text,
 }
 import gunbc.spark.serving_performance_subject { serving_subject_for_launch }
 import gunbc.spark.arm_memory_fit {
@@ -750,11 +750,11 @@ fn normal_serving_promotion_refusal(intent: ArmIntent, checkpoint: ServingCheckp
                 runtime_image_reference: runtime_artifact_wire(a: rrow.artifact), topology: topology, profile: profile,
                 speculative: none, collective_transport: none)
               let compat = measured_admission_for(subject: launch_compatibility_subject(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, profile: profile))
-              match serving_promotion_standing(subject: subject, evidence: promotion_evidence(compatibility: compat, memory: verdict, receipts: receipts), policy: serving_promotion_policy) {
+              let standing = serving_promotion_standing(subject: subject, evidence: promotion_evidence(compatibility: compat, memory: verdict, receipts: receipts), policy: serving_promotion_policy)
+              match standing {
                 PromotionAdmitsNormalServing => none
-                PromotionRefused { cause: c } => Present { value: c }
-                PromotionMeasurementServeOnly { missing: ms } =>
-                  Present { value: join(["normal serving needs this subject's own receipts; missing: ", join(map(ms, x => x as String), "; ")], "") as NonEmptyStr }
+                PromotionRefused { cause: _ } => Present { value: promotion_standing_text(st: standing) as NonEmptyStr }
+                PromotionMeasurementServeOnly { missing: _ } => Present { value: promotion_standing_text(st: standing) as NonEmptyStr }
               }
             }
           }
