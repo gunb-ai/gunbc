@@ -52,8 +52,8 @@ fn operation_ref_label(at: OperationRef) -> String {
 // The identity of one declared operation input. Every place this module names an input -- a
 // binding, a refusal cause, a declared-input row, a template hole -- carries this type, so a hole
 // and a binding compare as one identity rather than as two spellings (DESIGN 3).
-// operation_argv_bind_text / operation_argv_bind_text_list are the one documented point that mints
-// it from a String.
+// In production, operation_argv_bind_text / operation_argv_bind_text_list are the only places that
+// mint it from a String; a fixture may cast a literal with `as OperationInputName` directly.
 type OperationInputName = String where brand("OperationInputName")
 
 type OperationInputValue
