@@ -396,6 +396,12 @@ data known_frontier_causes: List<CauseOwnership> = [
     grain: FatalGrain,
     lane: MigrationOwned,
     flip_trigger: "a domain or payload member read for its type (v2.std.node_query find_binder_type) is a Named edge whose target is not a binder node: a hand-built name-to-type edge the binder builder did not make. Not a frontier to retire but a wall: it refuses for as long as such an edge can be written, and stays as the regression control once the Arrow-domain wall (v2.std.type_binder arrow_domain_members_are_binders) refuses every one upstream"
+  },
+  CauseOwnership {
+    cause: ^body_lowering_reason_operation_modifier_repeated,
+    grain: FatalGrain,
+    lane: MigrationOwned,
+    flip_trigger: "an operation declares one effect claim twice (`readonly` twice) or two execution-mode claims, so its contract edges would carry a duplicate; v2.compiler.body_lowering_fold body_lower_operation_modifier refuses at the repeated modifier. Not a frontier to retire but a wall over authored input: it stays for as long as a modifier can be written twice, as the regression control for the claims carrying no duplicate"
   }
 ]
 

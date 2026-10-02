@@ -81,6 +81,7 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  arrow_named_edge_is_contract,
   content_hash,
   fold_node,
   node_rebuild,
@@ -348,20 +349,38 @@ fn translate_derived_parent_underived_child_gate(
   }
 }
 
+// AN ARROW'S CONTRACT EDGES ARE METADATA, NOT TRANSLATED VALUES (v2.std.node
+// arrow_named_edge_is_contract; docs/plans/arrow-contract-edges.md). Their targets -- effect claims,
+// execution mode, resource requirements -- are never inferred (v2.compiler.infer skips them), so they
+// carry no grounding to require; gating them would refuse every operation once a missing-facts lookup
+// stops being the compatibility accept. The walk therefore skips a contract edge under an Arrow, and
+// only there: the same label elsewhere is not a contract edge and is gated like any child.
+fn translate_edge_is_arrow_contract(parent: Node, edge: Edge) -> Bool {
+  match parent.kind {
+    TypeNode { connective: Arrow } => arrow_named_edge_is_contract(e: edge)
+    _ => false
+  }
+}
+
 fn translate_grounding_derived_gate_subtree(
   tree: InferredTree,
   root: Node
 ) -> Outcome<GroundingGatePassed> {
-  fold_list(
-    xs: node_subtree_nodes(root: root),
-    empty: outcome_accepted(GroundingGatePassed {}),
-    cons: fn(acc, n) {
-      bind_outcome(
-        o: acc,
-        f: fn(_) {
-          translate_grounding_derived_gate(tree: tree, node: n)
-        }
-      )
+  bind_outcome(
+    o: translate_grounding_derived_gate(tree: tree, node: root),
+    f: fn(_) {
+      fold(root.children, init: outcome_accepted(GroundingGatePassed {}), f: fn(acc, e) {
+        bind_outcome(
+          o: acc,
+          f: fn(_) {
+            if translate_edge_is_arrow_contract(parent: root, edge: e) {
+              outcome_accepted(GroundingGatePassed {})
+            } else {
+              translate_grounding_derived_gate_subtree(tree: tree, root: e.target)
+            }
+          }
+        )
+      })
     }
   )
 }

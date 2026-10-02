@@ -38,9 +38,15 @@ fn effect_claim_label(claim: EffectClaim) -> Symbol {
 // Only Hermetic is a claimable mode: `hermetic` declares that an operation is admissible on the
 // hermetic route, and no surface spelling claims Wet or Record. The match is exhaustive, so a mode
 // added to std.execution_mode must be decided here, claimable or not.
+// The one spelling of the claimable mode's label: the projection of std.execution_mode Hermetic, read by
+// execution_mode_claims_label and by the lowering that emits the claim.
+fn hermetic_claim_label() -> Symbol {
+  symbol_intern_lexeme(lexeme: "hermetic")
+}
+
 fn execution_mode_claims_label(mode: ExecutionMode, label: Symbol) -> Bool {
   match mode {
-    Hermetic => label == symbol_intern_lexeme(lexeme: "hermetic")
+    Hermetic => label == hermetic_claim_label()
     Wet => false
     Record => false
   }
