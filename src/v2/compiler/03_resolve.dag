@@ -18,6 +18,9 @@ import v2.extdeps.languages.dag {
   dag_string_literal_value_optional,
   dag_kernel_type_binding_optional,
   dag_kernel_type_declaration_binding_optional,
+  dag_kernel_type_foreign_declaration,
+  ForeignDeclarationBinds,
+  ForeignDeclarationRefuses,
   dag_node_is_float_literal_atom,
   dag_node_is_int_literal_atom,
   dag_symbol_literal_name_optional,
@@ -1145,10 +1148,18 @@ type KernelTypeReading
 fn resolve_kernel_type_reading(identity: Symbol, path: QualifiedName, declared_here: Bool) -> KernelTypeReading {
   match dag_kernel_type_binding_optional(sym: identity) {
     Absent => NotAKernelTypeReading
-    Present { value: _ } =>
+    Present { value: spelled } =>
       match dag_kernel_type_declaration_binding_optional(path: path) {
         Present { value: canonical } => KernelTypeBinding { canonical: canonical }
-        Absent => if declared_here { NotAKernelTypeReading } else { KernelSpellingForeignDeclaration }
+        Absent =>
+          if declared_here {
+            NotAKernelTypeReading
+          } else {
+            match dag_kernel_type_foreign_declaration(canonical: spelled) {
+              ForeignDeclarationRefuses => KernelSpellingForeignDeclaration
+              ForeignDeclarationBinds => NotAKernelTypeReading
+            }
+          }
       }
   }
 }
@@ -2972,6 +2983,17 @@ fn resolve_binder_part(type_ctx: ResolveContext, default_ctx: ResolveContext, pa
 // resource declarations), at most once by resolved declaration. A member naming anything else, or a
 // declaration a second spelling already named, refuses at that member.
 fn resolve_arrow_resource_requirements(ctx: ResolveContext, requirements: Node) -> ResolveNodeWalk {
+  match requirements.kind {
+    TypeNode { connective: Atom { identity: _ } } =>
+      ResolveWalkAccepted { value: requirements, diagnostics: None }
+    _ => resolve_arrow_resource_requirement_members(ctx: ctx, requirements: requirements)
+  }
+}
+
+// `requires none` and `requires opaque` are declared words, not references, so the Atom forms are
+// carried unwalked (v2.std.arrow_contract has already checked their identity); only the member Conj
+// names declarations.
+fn resolve_arrow_resource_requirement_members(ctx: ResolveContext, requirements: Node) -> ResolveNodeWalk {
   match resolve_node_walk(ctx: ctx, n: requirements) {
     ResolveWalkRefused { first: f, rest: rs, observation: o } => ResolveWalkRefused { first: f, rest: rs, observation: o }
     ResolveWalkAccepted { value: resolved, diagnostics: d } =>

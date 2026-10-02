@@ -2046,6 +2046,7 @@ fn typed_graph_exclusive_bytes_over(
     let mut readings = Vec::new();
     for (class, r) in &raw {
         let counts = [
+            r.members as u64,
             r.modules as u64,
             r.in_use_all,
             r.in_use_after_class,
@@ -2067,6 +2068,7 @@ fn typed_graph_exclusive_bytes_over(
             };
         };
         let names = [
+            "members",
             "modules",
             "in_use_all",
             "in_use_after_class",

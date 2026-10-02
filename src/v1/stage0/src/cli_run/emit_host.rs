@@ -1941,8 +1941,9 @@ pub(crate) fn compile_dag_rust_emit_check_memo_key(
 /// THE PARSED `requires` MEMBERS OF ONE OPERATION, as the seed parser carried them (D13 step b0).
 /// Parses the supplied source with the seed's own tokenizer and parser, finds the named service
 /// and operation, and reads the members through the one .dag reader,
-/// `v1.compiler.parse` `operation_requires_members` -- whose production consumer is D13 step (c) --
-/// returning each member's type spelling in authored order. A parse error, a missing service or a
+/// `v1.compiler.parse` `operation_requires_declaration` -- whose production consumer is D13 step (c) --
+/// returning the declared form first (`undeclared`, `none`, `opaque` or `resources`) and, for
+/// `resources`, each member's type spelling in authored order. A parse error, a missing service or a
 /// missing operation REFUSES with a located message; it never answers an empty list for a source
 /// it could not read.
 pub fn compile_dag_operation_requires(
@@ -1988,11 +1989,18 @@ pub fn compile_dag_operation_requires(
         .ok_or_else(|| {
             format!("compile_dag_operation_requires: no operation `{operation}` in `{service}`")
         })?;
+    use crate::v1_compiler_parse::OperationRequiresDeclaration::*;
     Ok(
-        crate::v1_compiler_parse::operation_requires_members(op.clone(), source_indices)
-            .iter()
-            .map(|member| member.name.to_string())
-            .collect(),
+        match crate::v1_compiler_parse::operation_requires_declaration(op.clone(), source_indices)
+            .as_ref()
+        {
+            RequiresUndeclared => vec!["undeclared".to_string()],
+            RequiresNone => vec!["none".to_string()],
+            RequiresOpaque => vec!["opaque".to_string()],
+            RequiresResources { members } => std::iter::once("resources".to_string())
+                .chain(members.iter().map(|member| member.name.to_string()))
+                .collect(),
+        },
     )
 }
 
