@@ -185,16 +185,31 @@ test fn cont_empty_eq_fn_decl_refuses_holds() -> Bool {
 // section 3 names as a fixture passing after the world it was built against moved. The isolating row is
 // not retained, because it answered its question once and would otherwise stand as one more
 // over-margin witness for a split that is now known.
-test fn cont_braced_fn_decl_survives_normalize_holds() -> Bool {
+// EACH SOURCE'S PARSE-THEN-NORMALIZE RUNS ONCE, in a nullary producer the floor serves WARM
+// (v2.workflow.floor_pure_producer_share): a grammar-prepared parse plus normalize is more than one claim's
+// new-witness budget, and each row inspects only the Bool the chain decides.
+fn cont_braced_survives_normalize() -> Bool {
   cont_normalize_has_arrow_body(parsed: cont_braced_parsed())
 }
 
-test fn cont_expression_bodied_fn_decl_survives_normalize_holds() -> Bool {
+fn cont_expression_bodied_survives_normalize() -> Bool {
   cont_normalize_has_arrow_body(parsed: cont_expression_bodied_parsed())
 }
 
-test fn cont_expression_bodied_literal_fn_decl_survives_normalize_holds() -> Bool {
+fn cont_expression_bodied_literal_survives_normalize() -> Bool {
   cont_normalize_has_arrow_body(parsed: cont_expression_bodied_literal_parsed())
+}
+
+test fn cont_braced_fn_decl_survives_normalize_holds() -> Bool {
+  cont_braced_survives_normalize()
+}
+
+test fn cont_expression_bodied_fn_decl_survives_normalize_holds() -> Bool {
+  cont_expression_bodied_survives_normalize()
+}
+
+test fn cont_expression_bodied_literal_fn_decl_survives_normalize_holds() -> Bool {
+  cont_expression_bodied_literal_survives_normalize()
 }
 
 // THE RECURSIVE FOLD'S NEGATIVE CONTROL, which the subject does not carry. Every row above answers
