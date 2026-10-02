@@ -92,3 +92,20 @@ test fn requires_none_followed_by_a_member_refuses() -> Bool {
     "src/requires_none_member.rs"
   )
 }
+
+// ONE CLAUSE PER OPERATION (review 73995). Two clauses could otherwise say both "none" and a resource, and
+// a reader of the merged members would answer one of them silently. A second clause refuses at parse,
+// whichever words it carries.
+test fn a_second_requires_clause_after_none_refuses() -> Bool {
+  !compiles(
+    "module requires_twice_none\nservice requires_twice_none.S {\n  operation Op {\n    requires none\n    requires Net\n    output { ok: Bool }\n  }\n}\n",
+    "src/requires_twice_none.rs"
+  )
+}
+
+test fn a_second_requires_clause_after_opaque_refuses() -> Bool {
+  !compiles(
+    "module requires_twice_opaque\nservice requires_twice_opaque.S {\n  operation Op {\n    requires opaque\n    requires Net\n    output { ok: Bool }\n  }\n}\n",
+    "src/requires_twice_opaque.rs"
+  )
+}

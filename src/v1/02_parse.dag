@@ -3988,6 +3988,8 @@ fn parse_op_body_entries(
           if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, tokens: r.tokens, ctx: r.ctx, err: r.err } }
           parse_op_body_entries(tokens: r.tokens, ctx: r.ctx, inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: r.responses, mock_props: mock_props)
         } else if id == "requires" {
+          let prior_requires = modifier_props |> filter(p => p.name == "requires") |> count
+          if prior_requires > 0 { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: "an operation declares `requires` once: a second clause would let one declaration say both none and a resource", span: span) } } }
           let r = parse_op_requires_clause(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, span: span)
           if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, tokens: r.tokens, ctx: r.ctx, err: r.err } }
           parse_op_body_entries(tokens: r.tokens, ctx: r.ctx, inputs: inputs, outputs: outputs, modifier_props: concat(modifier_props, r.properties), transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
@@ -4140,7 +4142,9 @@ fn parse_exit_entries_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node
 // reader tells the forms apart by the value's shape. (A property's name is read back from the source
 // at its name span (v1.std.core authored_name_at), so a differently named marker spanned on the
 // `requires` token would read back as `requires`; one name, one span, is the honest carrier.) A member
-// after either word refuses, so a clause cannot both declare nothing and name a resource. Anything else is the member
+// after either word refuses, so a clause cannot both declare nothing and name a resource; and a SECOND
+// `requires` clause refuses in parse_op_body_entries, as v2 refuses it at lowering
+// (body_lowering_reason_operation_requires_repeated), so two clauses cannot say it either. Anything else is the member
 // list below. The word is matched by its TEXT, whatever shape the lexer gave it (`none` is a v1 keyword
 // literal, `opaque` an identifier).
 fn parse_op_requires_clause(tokens: TokenStream, ctx: ParseContext, span: SourceSpan) -> ModsResult {
