@@ -1,7 +1,6 @@
 module gunbc.harness.harness_turn
 
 import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
-import extdeps.filesystem.filesystem_io { Filesystem }
 import std.measure { TokenCount, token_count_value, Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.languages.json.emit {
@@ -18,7 +17,7 @@ import extdeps.clock { ClockUnixMillisRead, ClockUnixMillisObserved, ClockUnixMi
 import extdeps.http.client
 import extdeps.git.inspect
 import extdeps.filesystem.filesystem_io
-import extdeps.filesystem.filesystem_io {
+import extdeps.filesystem.filesystem_io { Filesystem,
   filesystem_listing_observation, filesystem_entry_presence,
   FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused,
 }

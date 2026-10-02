@@ -238,15 +238,11 @@ fn lenses_self_apply_or_exempt_holds(receipts: List<EnrollmentDiscoveryReceipt>)
   for_all(xs: receipts, predicate: fn(r) { receipt_self_ok(r: r) })
 }
 
-fn non_empty_string(s: String) -> Bool {
-  !(s == "")
-}
-
 fn intent_admissible(i: StandingIntent) -> Bool {
   i.recurring
     && i.receiptable
-    && non_empty_string(s: i.displaced_cost)
-    && non_empty_string(s: i.mechanism_class)
+    && non_empty(xs: i.displaced_cost)
+    && non_empty(xs: i.mechanism_class)
     && non_empty(xs: i.desired_scope.roots)
 }
 

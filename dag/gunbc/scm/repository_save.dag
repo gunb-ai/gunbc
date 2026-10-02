@@ -42,9 +42,8 @@ module gunbc.scm.repository_save
 // decide it on their behalf.
 
 import std.types { String, Int }
-import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.filesystem.filesystem_io
-import extdeps.filesystem.filesystem_io { FilesystemEstablishedAbsence, filesystem_established_absence_path }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemEstablishedAbsence, filesystem_established_absence_path }
 import extdeps.languages.json.emit { serialize_json }
 import std.measure { ByteSize, byte_size }
 import std.checked_arithmetic { nat_magnitude }

@@ -1,6 +1,6 @@
 module product.printed_chassis.measurement
 
-import std.types { Bool, Int, List, NonEmptyStr }
+import std.types { Bool, Int, List, NonEmptyStr, brand }
 import std.measure { Millimeter }
 import std.claim_evidence { EvidenceLink, InferenceRuleId }
 import product.spatial_dimension { LengthInterval, length_uncertainty_admissible }
