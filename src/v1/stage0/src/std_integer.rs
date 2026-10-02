@@ -12,6 +12,7 @@ pub use crate::std_machine_constraints::PointerWidth;
 pub use crate::std_machine_constraints::{Compose, MachineWidth};
 pub use crate::std_measure::{bit_width, bit_width_count, bits_per_byte};
 pub use crate::std_nat::Nat;
+pub use crate::std_types::gt_zero;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;

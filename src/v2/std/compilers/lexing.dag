@@ -25,7 +25,7 @@ import std.content_hash { Fnv1a64Structural }
 import v2.std.integer { integer_int_content_digest }
 import v2.std.node_shape { stamp_node_shape_synthetic, type_shape }
 import v2.std.text { Char, String }
-import std.unicode.types { unicode_char_code_point }
+import std.unicode.char_class { unicode_char_code_point }
 
 type Lexeme = String
 
