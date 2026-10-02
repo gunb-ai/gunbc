@@ -2,9 +2,9 @@ module v2.compiler.service_realization
 
 import std.fidelity { TransportClass, LocalDirect, ShellLocal, FileBoundary, RestNetwork, InterfaceStub, Unknown }
 import extdeps.ietf.http_semantics { HttpStatusClass, Informational, Successful, Redirection, ClientError, ServerError, http_status_class_digit }
-import extdeps.transports.shell { ShellArgv, shell_binding_field_key, shell_binding_field_of_key, shell_exit_nonzero_spelling, shell_output_channel_of_key }
-import extdeps.transports.rest { rest_binding_field_of_key }
-import extdeps.transports.file { file_binding_field_of_key, file_output_channel_of_key }
+import extdeps.transports.shell_declared { ShellArgv, shell_binding_field_key, shell_binding_field_of_key, shell_exit_nonzero_spelling, shell_output_channel_of_key }
+import extdeps.transports.rest_declared { rest_binding_field_of_key }
+import extdeps.transports.file_declared { file_binding_field_of_key, file_output_channel_of_key }
 import v2.extdeps.languages.dag { dag_int_literal_magnitude_int_from_node, dag_string_literal_value_optional }
 import std.types { http_status_of }
 import v2.std.operation_argv { ArgvEmpty, ArgvExpressionUnsupported, ArgvRefusalCause, BindingMalformed, ExecutablePositionNotLiteral, UndeclaredInputBound }
@@ -20,6 +20,7 @@ import v2.std.service_realization_labels {
   realization_projection_label,
   realization_arm_pattern_label,
   realization_arm_payload_label,
+  realization_arm_doc_label,
   realization_status_code_label
 }
 import v2.std.collection { List }
@@ -524,7 +525,7 @@ fn realization_arms_walk_initial() -> RealizationArmsWalk {
   RealizationArmsWalk { seen: Empty, refusal: optional_absent() }
 }
 
-// An arm is a Positional CONJ of exactly { <arm-pattern>, <arm-payload> }: a Named arm or any other
+// An arm is a Positional CONJ of { <arm-pattern>, <arm-payload>, <arm-doc>? }: a Named arm or any other
 // connective refuses as malformed before its members are read.
 fn realization_arm_step(kind: DeclaredTransport, acc: RealizationArmsWalk, arm: Edge) -> RealizationArmsWalk {
   match arm.label {
@@ -549,12 +550,28 @@ fn realization_conj_arm_step(kind: DeclaredTransport, acc: RealizationArmsWalk, 
       } else {
         match named_edge_target_lookup(children: arm.children, name: realization_arm_payload_label()) {
           Found { target: _ } =>
-            if count(arm.children) == 2 { RealizationArmsWalk { seen: list_snoc_item(xs: acc.seen, item: pat), refusal: optional_absent() } }
+            if realization_arm_member_count_conforms(arm: arm) { RealizationArmsWalk { seen: list_snoc_item(xs: acc.seen, item: pat), refusal: optional_absent() } }
             else { realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm) }
           _ => realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm)
         }
       }
     _ => realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm)
+  }
+}
+
+// An arm carries its pattern and payload and, at most, one <arm-doc> string literal (the authored doc).
+fn realization_arm_member_count_conforms(arm: Node) -> Bool {
+  match named_edge_target_lookup(children: arm.children, name: realization_arm_doc_label()) {
+    Found { target: doc } =>
+      (count(arm.children) == 3) && node_is_string_literal(n: doc)
+    _ => count(arm.children) == 2
+  }
+}
+
+fn node_is_string_literal(n: Node) -> Bool {
+  match dag_string_literal_value_optional(node: n) {
+    Present { value: _ } => true
+    Absent => false
   }
 }
 
