@@ -747,20 +747,22 @@ test fn compile_pool_slice_install_surface_carries_no_shell_control_word() -> Bo
 // staged path is the destination's SIBLING (one directory, so the privileged install never crosses
 // a filesystem boundary) and is named consistently by the write's target, the install's source and
 // the discard's path; the install carries mode 0644 and the real destination; the start names the
-// declared unit; and every privileged op crosses /usr/bin/sudo -n -- absolute path and
-// non-interactive, the elevation posture extdeps.sudo.elevation owns.
+// declared unit; and every op crosses /usr/bin/sudo -n -- absolute path and non-interactive, the
+// elevation posture extdeps.sudo.elevation owns -- because all five touch the root-owned staging
+// directory or the systemd unit state it becomes (review 74182's catch: the earlier pin let the
+// write and the discard run unelevated, runnable as argv and refused by every real host).
 test fn compile_pool_install_staging_preserves_install_semantics() -> Bool {
   match compile_pool_slice_install_staging(slice_unit: "gunbc-compile-pool.slice" as NonEmptyStr) {
     CompilePoolInstallReady { stage_write: w, install: i, daemon_reload: r, start: s, discard_stage: d } => {
       let staged = "/etc/systemd/system/gunbc-compile-pool.slice.gunbc-stage"
       let dest = "/etc/systemd/system/gunbc-compile-pool.slice"
-      argv_words(command: w) == ["dd", concat("of=", staged), "status=none"]
+      argv_words(command: w) == ["/usr/bin/sudo", "-n", "dd", concat("of=", staged), "status=none"]
         && argv_words(command: i)
         == ["/usr/bin/sudo", "-n", "install", "-m", "0644", staged, dest]
         && argv_words(command: r) == ["/usr/bin/sudo", "-n", "systemctl", "daemon-reload"]
         && argv_words(command: s)
         == ["/usr/bin/sudo", "-n", "systemctl", "start", "gunbc-compile-pool.slice"]
-        && argv_words(command: d) == ["rm", "-f", staged]
+        && argv_words(command: d) == ["/usr/bin/sudo", "-n", "rm", "-f", staged]
     }
     CompilePoolInstallRefused { reason: _ } => false
   }

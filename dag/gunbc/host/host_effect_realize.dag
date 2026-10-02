@@ -5399,8 +5399,11 @@ fn compile_pool_slice_system_path(slice_unit: NonEmptyStr) -> String {
 }
 
 // THE STAGING FOLD. The install is five typed operations derived entirely before the first one runs,
-// each built by the extdeps builder that owns its tool's flags: the unit bytes cross as STDIN DATA to
-// dd (of= truncates and overwrites the staged sibling; status=none keeps dd's statistics line out of
+// each built by the extdeps builder that owns its tool's flags. EVERY op that touches
+// /etc/systemd/system elevates through /usr/bin/sudo -n, dd and the discard included: the staged
+// sibling lives in that root-owned directory and the invoking principal is not root (the reviewer's
+// catch, review 74182 -- the shape was dry-witnessable and still unrunnable). The unit bytes cross
+// as STDIN DATA to sudo dd (of= truncates and overwrites the staged sibling; status=none keeps dd's statistics line out of
 // the command log; tee is refused for the reason recorded at gunbc.typed_remote_file_write -- it
 // echoes the bytes into their own log); a sudo install -m 0644 moves them into /etc/systemd/system
 // (install(1) rather than mv because owner-at-creation means the wrongly-owned intermediate state has
@@ -5410,7 +5413,7 @@ fn compile_pool_slice_system_path(slice_unit: NonEmptyStr) -> String {
 // restarting the compile pool would terminate the compilers it exists to hold, which is the opposite
 // of converging it. `start` on an already-active slice re-applies the unit's resource directives and
 // kills nothing. The discard rm -f of the staged sibling runs in BOTH arms -- the idempotent
-// counterpart of the EXIT trap the shell body used to carry.
+// counterpart of the EXIT trap the shell body used to carry, elevated like the write it undoes.
 //
 // THE STAGED PATH IS A SIBLING OF THE DESTINATION, NOT A MKTEMP. `dest ++ .gunbc-stage` makes the
 // whole op list DERIVABLE BEFORE ANYTHING RUNS -- a dry witness can name every argv and the order the
@@ -5456,11 +5459,11 @@ fn compile_pool_slice_install_staging(slice_unit: NonEmptyStr) -> CompilePoolIns
     let dest = compile_pool_slice_system_path(slice_unit: slice_unit)
     let staged = concat(dest, compile_pool_slice_stage_suffix)
     CompilePoolInstallReady {
-      stage_write: dd_overwrite_path_command(path: staged),
+      stage_write: sudo_elevate_command(command: argv_words(command: dd_overwrite_path_command(path: staged))),
       install: sudo_elevate_command(command: coreutils_install_file_argv(mode: compile_pool_slice_file_mode, source: staged, dest: dest)),
       daemon_reload: extdeps.systemd.systemctl.systemctl_daemon_reload_command(),
       start: systemctl_start_command(unit: slice_unit),
-      discard_stage: rm_force_command(path: staged),
+      discard_stage: sudo_elevate_command(command: argv_words(command: rm_force_command(path: staged))),
     }
   }
 }
