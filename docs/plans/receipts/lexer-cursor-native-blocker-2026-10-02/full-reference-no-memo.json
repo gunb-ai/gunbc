@@ -1,0 +1,12 @@
+{
+  "exit": 124,
+  "timeout_seconds": 600,
+  "memory_max_gib": 6,
+  "swap_max": 0,
+  "GUNBC_EVAL_MEMO": "0",
+  "production_configuration_changed": false,
+  "cursor_completed": true,
+  "full_equivalence": "unproved: reference half did not complete",
+  "performance_claim": false,
+  "input_sha256": "83cffcb99fc4b8566d66f29988a7ea3be4254b1247ad19486d5980e8d0634186"
+}
