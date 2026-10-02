@@ -13,10 +13,38 @@ when the position consuming it declares the instantiation. That happens for a ph
 (`Ph<T> { n: Int }`), or for a parameter that occurs only in a field whose value is itself such a
 construct (`Two<T> { a: Ph<T>, b: T }`).
 
-The controls are the three claims in
-`v2.test.claim.compiler.infer_expected_type_record_instantiation_witness_test`. They are enrolled
-expected-red (`v2.workflow.floor_expected_red` `floor_expected_red_chunk_infer_checking_mode`), and
-this work is done when all three pass unchanged.
+The controls are the two claims in
+`v2.test.claim.compiler.infer_expected_type_record_instantiation_witness_test`, enrolled
+expected-red (`v2.workflow.floor_expected_red` `floor_expected_red_chunk_infer_checking_mode`),
+plus the discriminating refusal below, which this work ENROLLS when it lands. It is done when all
+three pass.
+
+The refusal is not enrolled expected-red today because, while it is red, infer does not refuse the
+program and runs the whole member, which costs about 75.8k eval steps against the 72.3k floor
+budget for a new witness. Once checking mode refuses at the field, the same claim stops early and
+fits. Its specimen, to enroll with this work as `etr_a_field_value_disagreeing_with_the_contexts_instance_refuses_holds`:
+
+```
+module v2.test.etr_two_bad
+
+import v2.std.logic { Bool }
+
+type Ph<T> {
+  n: Int
+}
+
+type Two<T> {
+  a: Ph<T>
+  b: T
+}
+
+data t: Two<Bool> = Two { a: Ph { n: 1 }, b: 3 }
+```
+
+Infer only the `data` member `t` (handed the module's own indexes) and require a refusal with
+`record_field_value_does_not_inhabit` at `b`. The nested `a: Ph<T>` must stay: it is what leaves
+`T` fixed only by the context, so the claim discriminates checking mode rather than plain
+field-value instantiation.
 
 ## The rule that shapes everything: deliver before deciding, never revise
 
@@ -96,7 +124,8 @@ context is computed. Reading the record declaration is a guarded index lookup
 
 ## Evidence when built
 
-- The three enrolled controls pass unchanged and leave `floor_expected_red` in the same change, as
+- The two enrolled controls pass unchanged and leave `floor_expected_red` in the same change, and the
+  refusal above is enrolled green, as
   that roster's monotone arm requires.
 - Existing record-construct, declared-return, application-argument and optional-at-required
   witnesses stay green.
