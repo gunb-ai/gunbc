@@ -1,0 +1,90 @@
+{
+  "controls": [
+    {
+      "log": "target/cursor-control-results/v2.test.tokenize.byte_range_octet_unit.log",
+      "passed": [
+        "PASS refusal_locus_is_the_octet_offset_after_multibyte_scalars_holds",
+        "PASS token_extent_counts_octets_holds"
+      ]
+    },
+    {
+      "log": "target/cursor-control-results/v2.test.tokenize.annotation_channel.log",
+      "passed": [
+        "PASS annotation_rule_routes_to_the_annotation_arm",
+        "PASS walk_captures_the_annotation",
+        "PASS semantic_tokens_are_unchanged_by_the_annotation",
+        "PASS leading_and_trailing_placements_differ",
+        "PASS annotation_at_eof_is_still_captured",
+        "PASS zero_width_annotation_rule_refuses_rather_than_looping",
+        "PASS source_without_annotations_captures_none",
+        "PASS lex_walk_projection_drops_annotations_but_keeps_tokens",
+        "PASS token_ending_on_a_fresh_indented_line_makes_the_next_annotation_leading",
+        "PASS token_ending_with_semantic_text_on_its_line_makes_the_next_annotation_trailing"
+      ]
+    },
+    {
+      "log": "target/cursor-control-results/v2.test.tokenize.string_literal_raw_newline.log",
+      "passed": [
+        "PASS string_literal_with_raw_newline_lexes_holds",
+        "PASS escaped_newline_in_string_still_lexes_holds",
+        "PASS em_dash_in_identifier_position_still_refuses_holds",
+        "PASS unterminated_string_locus_covers_the_opening_quote_holds"
+      ]
+    },
+    {
+      "log": "target/cursor-control-results/v2.test.compiler.pipeline.tokenize_stage.log",
+      "passed": [
+        "PASS pipeline_tokenize_add_relationship_green",
+        "PASS pipeline_tokenize_pick_relationship_green"
+      ]
+    },
+    {
+      "log": "target/cursor-control-results/v2.test.tokenize.lex_match_thunk_claims.log",
+      "passed": [
+        "PASS lex_match_thunk_claims_holds"
+      ]
+    },
+    {
+      "log": "target/cursor-control-results/v2.test.tokenize.source_text_ingress.log",
+      "passed": [
+        "PASS source_text_ingress_converts_at_scalar_grain",
+        "PASS source_text_ingress_accepts_host_text_at_the_public_boundary"
+      ]
+    },
+    {
+      "log": "target/cursor-control-results/v2.test.tokenize.lex_rule_dispatch.log",
+      "passed": [
+        "PASS lex_rule_dispatch_agrees_with_trying_every_rule"
+      ]
+    },
+    {
+      "log": "target/cursor-control-results/v2.test.claim.collection.list_at_equivalence.log",
+      "passed": [
+        "PASS list_at_reads_every_in_range_index_on_both_routes",
+        "PASS list_at_answers_absent_outside_the_list_on_both_routes",
+        "PASS list_at_on_the_empty_list_is_absent_on_both_routes"
+      ]
+    },
+    {
+      "log": "/tmp/lexer-cursor-smoke.log",
+      "passed": [
+        "PASS tokens_without_a_comment_start_at_their_offsets",
+        "PASS a_token_after_a_line_comment_starts_at_its_offset",
+        "PASS a_token_after_a_bare_line_comment_starts_at_its_offset",
+        "PASS a_line_comment_captures_its_own_text_and_extent"
+      ]
+    }
+  ],
+  "total_passes": 29,
+  "source_sha256": {
+    "src/v2/compiler/01_tokenize.dag": "6739c2ad5fde93e8604a0add1436ac5f3476add3c0ed56fa36d48772834a2812",
+    "src/v2/test/compiler/pipeline/tokenize_stage_test.dag": "66be18fbc1da47119ea5b84e0d3d9ae30d9b85c9bef11cd3c7ce26a44f72ac57",
+    "src/v2/test/claim/tokenize/lex_rule_dispatch_test.dag": "0b6577a79e1c3b7882d1711135f3629232cf8dac52f050337f7fd497962d1bb8",
+    "src/v2/test/claim/tokenize/lex_match_thunk_claims_test.dag": "c9faacd262a30c27153a65219982f8ecf479d0682a20c1afbdcae785ffd6b038"
+  },
+  "memory_max_gib": 6,
+  "swap_max": 0,
+  "full_file_equivalence": "pending",
+  "classifier_17": "pending",
+  "native": "blocked"
+}
