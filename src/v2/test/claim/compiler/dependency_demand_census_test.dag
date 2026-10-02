@@ -2,7 +2,8 @@ module v2.test.claim.compiler.dependency_demand_census
 
 import std.algebra { Cons, Empty }
 import extdeps.communication.medium { Lossless, Medium }
-import v2.compiler.compile { NativeTestContext, native_demand_census_report, native_test_context_from_ingest }
+import v2.compiler.compile { native_demand_census_report }
+import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
 import v2.compiler.dependency_demand { OpaqueOperationCalled }
 import v2.compiler.dependency_demand_census {
   CensusEqual,
@@ -15,13 +16,13 @@ import v2.compiler.dependency_demand_census {
   UnobservedModuleResolveRefused,
   demand_census_conserved,
   demand_census_deletable_rows,
-  demand_census_filesystem_agreeing
+  demand_census_out_of_vocabulary_agreeing
 }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.std.algebra { fold_list, length }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal }
 import v2.std.integer { Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
@@ -164,23 +165,23 @@ test fn only_equal_network_rows_are_deletable_and_filesystem_is_counted_apart_ho
   match ddc_report() {
     Rejected { diagnostics: _ } => false
     Accepted { value: r, diagnostics: _ } =>
-      (demand_census_deletable_rows(rows: r.rows) == 2) && (demand_census_filesystem_agreeing(rows: r.rows) == 1)
+      (demand_census_deletable_rows(r: r) == 2) && (demand_census_out_of_vocabulary_agreeing(r: r, resource: qualified_name_from_dotted_string(dotted: "std.resources.Filesystem")) == 1)
   }
 }
 
-// THE PRODUCTION CONTROL: the elision is the census route's alone. The production fold over the SAME
-// ingest still refuses the uses module at the clause (v2.compiler.body_lowering_fold
-// body_lower_fn_uses_refusal_optional), so nothing outside the census lowers a uses fn. Read by this
-// one claim only, and not shared: a context carries closures, which the cross-claim store refuses.
-fn ddc_production_context() -> Outcome<NativeTestContext> {
-  native_test_context_from_ingest(ingest: ddc_ingest)
+// THE PRODUCTION CONTROL: the elision is the census route's alone. Production lowering of the SAME
+// t.app source still refuses at the clause (v2.compiler.body_lowering_fold
+// body_lower_fn_uses_refusal_optional), so nothing outside the census lowers a uses fn. The outcome is
+// computed once as a nullary Bool enrolled WARM in v2.workflow.floor_pure_producer_share, through the
+// same single-source front end v2.test.claim.parse.uses_clause reads; building the whole four-module
+// context for one refusal was over the new-witness budget.
+fn ddc_app_production_refuses_at_the_clause() -> Bool {
+  match conservation_subject_of_text(path: "dag/t/app.dag", text: ddc_app_source).normalized {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal(d: d).reason == ^body_lowering_reason_uses_clause_unmodeled
+  }
 }
 
 test fn production_lowering_of_the_same_fns_still_refuses_at_the_clause_holds() -> Bool {
-  match ddc_production_context() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: c, diagnostics: _ } =>
-      (length(xs: c.file_refusals) == 2)
-        && fold_list(xs: c.file_refusals, empty: true, cons: fn(all, f) { all && (f.fatal_reason == ^body_lowering_reason_uses_clause_unmodeled) })
-  }
+  ddc_app_production_refuses_at_the_clause()
 }
