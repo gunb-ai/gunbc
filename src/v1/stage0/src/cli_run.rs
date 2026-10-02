@@ -29552,8 +29552,8 @@ mod module_grain_affected_equivalence_tests {
         import_resolution_facts_call_count_for_test, make_eval_context,
         module_declaration_facts_call_count_for_test, module_graph_facts_build_count_for_test,
         peak_rss_vhwm_bytes, reset_import_resolution_facts_call_counts_for_test,
-        reset_module_graph_facts_build_count_for_test, resolve_entry_with_index,
-        resolve_entry_with_index, workspace_root, ModuleGraphFactsLive, MultiEntryIndex,
+        reset_module_graph_facts_build_count_for_test, resolve_entry_with_index, workspace_root,
+        ModuleGraphFactsLive, MultiEntryIndex,
     };
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     use std::collections::HashSet;
