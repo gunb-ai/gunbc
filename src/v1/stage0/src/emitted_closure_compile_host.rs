@@ -169,7 +169,98 @@ pub enum CargoVerdict {
         /// can be NAMED where it refuses. A bare count was all the self-host and v2-native-cli
         /// instruments had, and a count that made the step exit 1 printed no cause (DESIGN §5).
         warning_headers: Vec<String>,
+        /// The FIRST `error` diagnostic on the whole stderr and the ` --> file:line:col` locus
+        /// under it, independent of any attribution symbol. `probe_line` answers "did the fault
+        /// I planted refuse"; this answers "what refused at all", which is the question a
+        /// build that was meant to be green poses. Without it the self-host instrument printed
+        /// `diagnostic=unattributed` and a 20-line tail that began after the cause.
+        /// Boxed so the variant stays the size it was (clippy `large_enum_variant`).
+        first_error: Option<Box<RustcErrorLocus>>,
     },
+}
+
+/// One rustc error header and the source position rustc placed under it. `file`/`line`/`col`
+/// are rustc's own ` --> ` span, typed so a reader can open the retained probe root at it;
+/// a header with no span (a cargo-level `error: could not compile`) keeps `locus: None`
+/// rather than borrowing a later diagnostic's position.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RustcErrorLocus {
+    pub header: String,
+    pub locus: Option<RustcSpan>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RustcSpan {
+    pub file: String,
+    pub line: u32,
+    pub col: u32,
+}
+
+/// The first `error` header on stderr, skipping cargo's trailing summary headers (`error: could
+/// not compile`, `error: aborting due to`), with the span rustc printed under THAT header. The
+/// span is read only until the next header line, so it cannot be another diagnostic's.
+pub fn first_rustc_error(stderr: &str) -> Option<RustcErrorLocus> {
+    let is_summary = |h: &str| {
+        h.starts_with("error: could not compile") || h.starts_with("error: aborting due to")
+    };
+    let mut lines = stderr.lines().map(str::trim).peekable();
+    let mut fallback: Option<RustcErrorLocus> = None;
+    while let Some(line) = lines.next() {
+        if !line.starts_with("error") {
+            continue;
+        }
+        let header = line.to_string();
+        let mut locus = None;
+        while let Some(next) = lines.peek() {
+            if next.starts_with("error") || next.starts_with("warning") {
+                break;
+            }
+            let next = lines.next().unwrap_or_default();
+            if let Some(span) = next.strip_prefix("--> ") {
+                locus = parse_rustc_span(span);
+                break;
+            }
+        }
+        let found = RustcErrorLocus { header, locus };
+        if is_summary(&found.header) {
+            fallback.get_or_insert(found);
+            continue;
+        }
+        return Some(found);
+    }
+    fallback
+}
+
+fn parse_rustc_span(span: &str) -> Option<RustcSpan> {
+    let mut parts = span.trim().rsplitn(3, ':');
+    let col = parts.next()?.parse().ok()?;
+    let line = parts.next()?.parse().ok()?;
+    let file = parts.next()?.to_string();
+    Some(RustcSpan { file, line, col })
+}
+
+/// `header @ file:line:col`, or `header @ no-span`, or `none` when stderr carried no error.
+pub fn rustc_error_locus_render(first: Option<&RustcErrorLocus>) -> String {
+    match first {
+        None => "none".to_string(),
+        Some(RustcErrorLocus {
+            header,
+            locus: Some(s),
+        }) => {
+            format!("{header} @ {}:{}:{}", s.file, s.line, s.col)
+        }
+        Some(RustcErrorLocus {
+            header,
+            locus: None,
+        }) => format!("{header} @ no-span"),
+    }
+}
+
+pub fn cargo_verdict_first_error(verdict: &CargoVerdict) -> Option<&RustcErrorLocus> {
+    match verdict {
+        CargoVerdict::Completed { first_error, .. } => first_error.as_deref(),
+        _ => None,
+    }
 }
 
 /// Only a completed, zero-status run compiled; every other arm, including never launched, is a
@@ -206,8 +297,10 @@ pub fn cargo_verdict_summary(verdict: &CargoVerdict) -> String {
             probe_diagnostic,
             warning_count: _,
             warning_headers: _,
+            first_error,
         } => format!(
-            "Completed status={status} diagnostic={} line={} stderr_tail={stderr_tail}",
+            "Completed status={status} first_error={} diagnostic={} line={} stderr_tail={stderr_tail}",
+            rustc_error_locus_render(first_error.as_deref()),
             probe_diagnostic.as_deref().unwrap_or("unattributed"),
             probe_line.as_deref().unwrap_or("unattributed"),
         ),
@@ -661,7 +754,7 @@ impl std::ops::Deref for PrivateProbeRoot {
 /// Distinguishes two roots created by one process within one clock tick.
 static PROBE_ROOT_SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-fn create_private_probe_root(base: &Path) -> Result<PrivateProbeRoot, String> {
+pub(crate) fn create_private_probe_root(base: &Path) -> Result<PrivateProbeRoot, String> {
     std::fs::create_dir_all(base).map_err(|e| {
         format!(
             "could not create the probe root's base {} ({e})",
@@ -1094,6 +1187,7 @@ pub(crate) fn run_cargo(
                     probe_diagnostic,
                     warning_count: warning_header_count(&stderr),
                     warning_headers: warning_header_lines(&stderr),
+                    first_error: first_rustc_error(&stderr).map(Box::new),
                 }
             }
         },
@@ -2419,6 +2513,7 @@ mod tests {
             probe_diagnostic: None,
             warning_count: 0,
             warning_headers: Vec::new(),
+            first_error: None,
         };
         match unattributed_fault_refusal(&red) {
             MutationVerdict::NotDiscriminating { detail } => assert!(
@@ -2567,6 +2662,55 @@ mod tests {
         assert_eq!(warning_header_count(""), 0);
     }
 
+    /// THE SELF-HOST CASE: an E0308 in an emitted module that names no probe symbol, followed by
+    /// more than 20 lines of other output, so the old summary printed `diagnostic=unattributed`
+    /// with a tail that began after the cause. The first error and its span must survive both.
+    #[test]
+    fn the_first_rustc_error_is_located_even_when_unattributed_and_off_the_tail() {
+        let mut stderr = String::from(
+            "   Compiling v2_compile v0.1.0\n\
+             warning: unused variable: `x`\n --> src/a.rs:1:5\n\
+             error[E0308]: mismatched types\n   --> src/v2_compiler_resolve.rs:4120:17\n\
+             |\n4120 |     foo(bar)\n",
+        );
+        for i in 0..40 {
+            stderr.push_str(&format!("note: filler {i}\n"));
+        }
+        stderr.push_str("error[E0425]: cannot find value `y`\n --> src/b.rs:9:1\n");
+        stderr.push_str("error: could not compile `v2_compile` due to 2 previous errors\n");
+        let first = first_rustc_error(&stderr).expect("an error was on stderr");
+        assert_eq!(first.header, "error[E0308]: mismatched types");
+        assert_eq!(
+            first.locus,
+            Some(RustcSpan {
+                file: "src/v2_compiler_resolve.rs".to_string(),
+                line: 4120,
+                col: 17
+            })
+        );
+        assert_eq!(
+            attributed_diagnostic(&stderr, MUTATION_PROBE_SYMBOL),
+            (None, None),
+            "the control's premise: the attribution scan alone says nothing here"
+        );
+        let verdict = CargoVerdict::Completed {
+            status: 101,
+            stderr_tail: String::new(),
+            probe_line: None,
+            probe_diagnostic: None,
+            warning_count: 1,
+            warning_headers: Vec::new(),
+            first_error: Some(Box::new(first)),
+        };
+        assert!(cargo_verdict_summary(&verdict).contains(
+            "first_error=error[E0308]: mismatched types @ src/v2_compiler_resolve.rs:4120:17"
+        ));
+        // Only cargo's summary header: kept, but with no span invented for it.
+        let only_summary = first_rustc_error("error: could not compile `p`\n").unwrap();
+        assert_eq!(only_summary.locus, None);
+        assert_eq!(first_rustc_error("warning: x\n --> src/a.rs:1:1\n"), None);
+    }
+
     #[test]
     fn cargo_verdict_summary_renders_the_diagnostic_a_non_zero_run_already_holds() {
         let attributed = CargoVerdict::Completed {
@@ -2576,6 +2720,7 @@ mod tests {
             probe_diagnostic: Some("error[E0308]: mismatched types".to_string()),
             warning_count: 0,
             warning_headers: Vec::new(),
+            first_error: None,
         };
         let summary = cargo_verdict_summary(&attributed);
         assert!(
@@ -2593,6 +2738,7 @@ mod tests {
             probe_diagnostic: None,
             warning_count: 0,
             warning_headers: Vec::new(),
+            first_error: None,
         };
         let summary = cargo_verdict_summary(&unattributed);
         assert!(
@@ -2607,6 +2753,7 @@ mod tests {
             probe_diagnostic: None,
             warning_count: 0,
             warning_headers: Vec::new(),
+            first_error: None,
         };
         assert_eq!(cargo_verdict_summary(&green), "Completed status=0");
     }
@@ -3060,6 +3207,7 @@ error: could not compile `probe` (lib) due to 1 previous error
                 probe_diagnostic: diagnostic.map(|value| value.to_string()),
                 warning_count: 0,
                 warning_headers: Vec::new(),
+                first_error: None,
             },
         };
         let pair_with = |diagnostic: Option<&str>| FixtureDiscrimination {
@@ -3092,6 +3240,7 @@ error: could not compile `probe` (lib) due to 1 previous error
             probe_diagnostic: None,
             warning_count: 0,
             warning_headers: Vec::new(),
+            first_error: None,
         };
         for mutation in [
             MutationVerdict::NotAttempted {
