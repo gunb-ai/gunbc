@@ -2,7 +2,8 @@ module extdeps.browser
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.types { Bool, FilePath, Int, String }
+import std.types { Bool, FilePath, Int, String, brand }
+import std.resources { Network }
 // NON-PRECEDENT — DO NOT COPY THIS MODULE'S SHAPE FOR NEW BROWSER-PRODUCT MODELING (operator
 // verdict on gunbc#7556; DESIGN §3 'External upstream decomposition'). This module conflates three
 // independently governed things into one authority: the Playwright automation interface (its anchor
@@ -51,6 +52,7 @@ service browser.Context {
 service browser.Page {
 
   operation Goto {
+    requires Network
 
     input { url: String, wait_until: String = "domcontentloaded" }
     output { final_url: String from "stdout" }

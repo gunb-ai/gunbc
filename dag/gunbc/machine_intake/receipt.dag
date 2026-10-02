@@ -1,6 +1,6 @@
 module gunbc.machine_intake_receipt
 
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length, brand }
 import std.content_hash {
   content_hash_equal,
   ContentHash,

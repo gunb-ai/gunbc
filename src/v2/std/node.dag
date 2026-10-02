@@ -25,7 +25,26 @@ import std.content_hash {
 }
 
 type Symbol
+
+// THE KERNEL HOST-TEXT TYPE, declared beside Symbol (the v2 kernel-types home, neat-boar-16's ruling
+// on #12549's successor). It is NOT v2.std.text String, which is the structural FreeMonoid<Char>:
+// the two are distinct representations, and a host-text value reaches the structural carrier only
+// through the declared unfold (gunbc.structural_realization_bindings literal_homomorphism_rows,
+// UnicodeScalarSequenceUnfold) or refuses. v2.extdeps.languages.dag binds the spelling `String` to
+// this declaration only where no other declaration of the spelling is visible.
+type String
 type Hash = Fnv1a64Structural
+
+// THE VALUE TYPE OF HOST TEXT, as a node: what a string literal is typed as, and what the unbound
+// spelling `String` binds to. This module declares the kernel String, so it owns its type node, as
+// it does symbol_type_node for Symbol.
+fn host_text_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^string_node_symbol } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
 
 // THE VALUE TYPE OF A SYMBOL, as a node: what a symbol literal (`^x`) is typed as and what an
 // annotation naming Symbol binds to. This module declares Symbol, so it owns its type node, as
@@ -927,6 +946,7 @@ type ArrowBodyForm
   | RecordConstructBody
   | DeclarationReferenceBody
   | ParameterReferenceBody
+  | LexicalReferenceBody
   | ComputationBody { behavior: Behavior }
   | FunctionValueBody
   | UnsupportedArrowBody
@@ -986,16 +1006,31 @@ fn parameter_reference_marker() -> Symbol {
   parameter_reference_marker_symbol
 }
 
+// A REFERENCE TO A LEXICAL BINDER IS THE SAME CARRIER UNDER A THIRD MARKER. v2.compiler.resolve mints
+// it from a LexicalFrame -- a `let`, a match-arm pattern binder, a lambda's parameter -- whose binder
+// is not a declaration and has no declaring path. Its one child is the local's label, a synthetic
+// atom, so the reference's own occurrence stays on the marker node alone; which binder answered it is
+// recorded by resolve in v2.compiler.resolve ResolvedTree.lexical_bindings under that occurrence, keyed
+// to the binder's SITE (std.occurrence_identity), so a reader never searches scope again. It pulls no
+// module into the reference closure and a target spells its label as a local.
+data lexical_reference_marker_symbol: Symbol = symbol_intern_lexeme(lexeme: "<lexical-reference>")
+
+fn lexical_reference_marker() -> Symbol {
+  lexical_reference_marker_symbol
+}
+
 // WHICH REFERENCE A MARKER DENOTES, AS A CLOSED VARIANT. Every reader of a resolved reference asks
 // this, never the marker symbol, so a third marker is a new arm every reader must place.
 type ResolvedReferenceKind
   = DeclarationReferenceKind
   | ParameterReferenceKind
+  | LexicalReferenceKind
 
 fn resolved_reference_kind_marker(kind: ResolvedReferenceKind) -> Symbol {
   match kind {
     DeclarationReferenceKind => declaration_reference_marker()
     ParameterReferenceKind => parameter_reference_marker()
+    LexicalReferenceKind => lexical_reference_marker()
   }
 }
 
@@ -1008,6 +1043,8 @@ fn resolved_reference_kind_of_label(label: Symbol) -> ResolvedReferenceMarking {
     MarkedReference { kind: DeclarationReferenceKind }
   } else if symbol_eq(a: label, b: parameter_reference_marker()) {
     MarkedReference { kind: ParameterReferenceKind }
+  } else if symbol_eq(a: label, b: lexical_reference_marker()) {
+    MarkedReference { kind: LexicalReferenceKind }
   } else {
     NotMarkedReference
   }
@@ -1084,6 +1121,7 @@ fn classify_arrow_body_form(target: Node) -> ArrowBodyForm {
       match resolved_reference_body_kind(target: target) {
         MarkedReference { kind: DeclarationReferenceKind } => DeclarationReferenceBody
         MarkedReference { kind: ParameterReferenceKind } => ParameterReferenceBody
+        MarkedReference { kind: LexicalReferenceKind } => LexicalReferenceBody
         NotMarkedReference => RecordConstructBody
       }
     TypeNode { connective: Arrow } => FunctionValueBody
@@ -1099,6 +1137,7 @@ fn arrow_body_admits_eval_entry(form: ArrowBodyForm) -> Bool {
     RecordConstructBody => false
     DeclarationReferenceBody => false
     ParameterReferenceBody => false
+    LexicalReferenceBody => true
     FunctionValueBody => false
     ComputationBody { behavior: Value } => false
     ComputationBody { behavior: Transform } => true
@@ -1189,6 +1228,7 @@ fn arrow_body_target_is_valid_realization(target: Node) -> Bool {
     RecordConstructBody => arrow_body_record_construct_conforms(node: target)
     DeclarationReferenceBody => true
     ParameterReferenceBody => true
+    LexicalReferenceBody => true
     DirectAtomBody => true
     FunctionValueBody => true
     ComputationBody { behavior: _ } => true

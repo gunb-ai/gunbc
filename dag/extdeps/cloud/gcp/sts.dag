@@ -4,7 +4,9 @@ module extdeps.cloud.gcp.sts
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.types { Int, NonEmptyStr, Secret }
+import std.string_type { String }
 import extdeps.ietf.http_semantics { GET, POST }
+import std.resources { Network }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -47,6 +49,7 @@ service gcp.STS {
   }
 
   operation Exchange {
+    requires Network
     input {
       subject_token: Secret
       audience: NonEmptyStr
@@ -72,6 +75,7 @@ service gcp.STS {
 service github.OIDC {
 
   operation GetToken {
+    requires Network
     input {
       audience: NonEmptyStr
       request_url: String
@@ -93,6 +97,7 @@ service gcp.Metadata {
   config { endpoint: "http://metadata.google.internal" }
 
   operation GetIdentityToken {
+    requires Network
     input { audience: NonEmptyStr }
     output { subject_token: Secret }
 

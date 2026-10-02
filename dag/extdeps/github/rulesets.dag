@@ -8,6 +8,7 @@ import extdeps.uri { Uri, Https }
 import std.credentials { EnvVar }
 import std.measure { Minute, minute, minute_count, MergeQueueEntryCount, merge_queue_entry_count, merge_queue_entry_count_value }
 import v2.std.collection { Absent, Present }
+import std.resources { Network }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -702,6 +703,7 @@ service github.Rulesets {
   }
 
   operation List {
+    requires Network
     input {
       auth_token: Secret
       owner: String
@@ -728,6 +730,7 @@ service github.Rulesets {
   }
 
   operation Get {
+    requires Network
     input {
       auth_token: Secret
       owner: String
@@ -760,6 +763,7 @@ service github.Rulesets {
   }
 
   operation Update {
+    requires Network
     input {
       auth_token: Secret
       owner: String

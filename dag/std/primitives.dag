@@ -641,6 +641,7 @@ fn builtin_registry_surface_names() -> List<String> {
     "trace_mark",
     "observed_peak_resident_bytes",
     "observed_monotonic_nanos",
+    "observed_thread_cpu_nanos",
     "string_contains",
     "length",
     "starts_with",

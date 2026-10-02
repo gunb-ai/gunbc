@@ -781,6 +781,15 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     })]),
         returns: int_type(),
     }));
+                __m.insert("observed_thread_cpu_nanos".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![Rc::new(BuiltinParam {
+        name: "label".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    })]),
+        returns: int_type(),
+    }));
                 __m.insert("string_contains".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "s".to_string(),
