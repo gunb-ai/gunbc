@@ -122,7 +122,13 @@ type TextRepresentation = HostText | CodePointSequence | NotText | TextRepresent
 
 // TextRepresentationUnidentified: the node's declaration could not be read by identity (no declaring
 // span in the global index, no resolvable qualified name, an alias chain that cycles or exceeds its
-// bound). It is never read as NotText: a text boundary refuses a value it cannot identify.
+// bound). It is never read as NotText, and it is not refused either: a boundary where one side is
+// unidentified is UNJUDGED by the text wall. text_representations_cross answers false for it, the
+// wall adds no verdict, base type compatibility decides exactly as before, and the site emits only
+// the non-blocking TextRepresentationUnidentifiedAtBoundary advisory, located. That population is
+// the declared drop gunbc.rung_drop text_boundary_identity_wall, whose restoration trigger is the
+// capability: the resolver records declaration identity on every type reference; zero unidentified
+// in the self-host and dag closures.
 
 // WHICH STATE A TYPE REFERENCE IS IN WHEN ITS DECLARATION IS ASKED FOR -- the split of the one arm
 // the reference-site read used to answer for two states. v1.std.core type_reference_provenance

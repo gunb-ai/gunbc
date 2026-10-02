@@ -7447,8 +7447,10 @@ fn expression_is_uppercase_constructor_reference(n: Node, source_indices: Map<St
 // destination only when that destination's literal homomorphism is the Unicode scalar sequence
 // unfold (gunbc.structural_realization_bindings literal_homomorphism_rows UnicodeScalarSequenceUnfold,
 // asked through literal_boundary_elaboration exactly as a string literal at the same boundary asks
-// it). A destination with no such row keeps the value as it was and the crossing then refuses at
-// the argument judgment; no second conversion table exists for values.
+// it). A destination with no such row keeps the value as it was; an IDENTIFIED crossing then refuses
+// at the argument judgment, and one with an unidentified side stays unjudged by the text wall (base
+// compatibility decides; gunbc.rung_drop text_boundary_identity_wall). No second conversion table
+// exists for values.
 fn destination_declares_scalar_sequence_unfold(destination_type: Node, scope: InferScope) -> Bool {
   match literal_boundary_elaboration(lit: LitStr { value: "" }, expected: Present { value: destination_type }, scope: scope) {
     LiteralBoundaryElaborated { elaboration: e, destination_type: _ } =>
