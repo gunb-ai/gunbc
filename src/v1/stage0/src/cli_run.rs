@@ -47253,6 +47253,10 @@ mod pr2_whole_tree_differential_probe {
             wall0.elapsed().as_millis()
         );
         v1_stage0_v1_infer::phase_cpu::report("resolve");
+        eprintln!(
+            "[phase-cpu-peak] maxrss_kb={}",
+            v1_stage0_v1_infer::phase_cpu::maxrss_kb()
+        );
         let mut blocked: BTreeSet<String> = BTreeSet::new();
         let mut blocking = 0usize;
         for d in result.diagnostics.iter() {
