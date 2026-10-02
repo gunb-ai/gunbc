@@ -523,7 +523,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/gunbc/fleet/fleet_show_effective_read.dag", name: "systemctl_show_property_read", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/fleet/fleet_show_effective_read.dag", name: "systemd_memory_max_property", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/fleet/org_actions_inspection.dag", name: "github.CliOrgRunnerGroups", standing: Retired { cause: ImportsFixed } },
-  UnimportedBareProviderDisposition { file: "dag/gunbc/fleet/organization_runner_roster_read.dag", name: "get", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/gunbc/fleet/organization_runner_roster_read.dag", name: "get", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/floor/incremental_floor_authority.dag", name: "any", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/floor/incremental_floor_authority.dag", name: "filter", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/floor_cost_distribution.dag", name: "any", standing: ActiveDebt },
