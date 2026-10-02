@@ -3,6 +3,7 @@ import std.resources { Network }
 
 import std.types { NonEmptyStr, String, List, Secret, Int, Bool, Json }
 import v2.std.optional { Present, Absent }
+import v2.std.algebra { skip }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -158,7 +159,7 @@ fn r2_lifecycle_rule_line(rule: R2LifecycleRule) -> String {
 }
 
 fn r2_lifecycle_rules_canonical(rules: List<R2LifecycleRule>) -> String {
-  join(sort(map(rules, r => r2_lifecycle_rule_line(rule: r))), "\n")
+  join(map(sort_by(rules, fn(r) { r.id as String }), r => r2_lifecycle_rule_line(rule: r)), "\n")
 }
 
 // ── READING THE RULE SET BACK ───────────────────────────────────────────────────────────────────
@@ -261,7 +262,7 @@ fn lifecycle_rules_of(elements: List<JsonValue>, acc: List<R2LifecycleRule>) -> 
     Present { value: e } =>
       match lifecycle_rule_of(rule: e) {
         Absent => R2LifecycleRulesUnmodeled { cause: concat("the bucket holds a lifecycle rule this model does not describe: ", serialize_json(v: e)) as NonEmptyStr }
-        Present { value: r } => lifecycle_rules_of(elements: drop(elements, 1), acc: concat(acc, [r]))
+        Present { value: r } => lifecycle_rules_of(elements: skip(xs: elements, n: 1), acc: concat(acc, [r]))
       }
   }
 }
