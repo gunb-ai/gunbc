@@ -2,16 +2,15 @@ module v2.std.compilers.lexing
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Empty, list_snoc_item }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.source_annotation { AnnotationPlacement, LeadingAfterLineIndent, TrailingAfterSemanticToken }
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import v2.std.algebra { fold_list, length, skip }
 import v2.std.collection {
   List,
   Map,
   empty_map,
   list_at_optional,
-  map_insert
+  map_insert,
+  map_lookup
 }
 import v2.std.optional {
   Absent,
@@ -20,9 +19,12 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.node { Atom, Conj, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, combine_hash, symbol_identity_digest }
+import std.content_hash { Fnv1a64Structural }
+import v2.std.integer { integer_int_content_digest }
 import v2.std.node_shape { stamp_node_shape_synthetic, type_shape }
 import v2.std.text { Char, String }
+import std.unicode.types { unicode_char_code_point }
 
 type Lexeme = String
 
@@ -150,17 +152,85 @@ type Token {
   end: Int
 }
 
+// THE STREAM CARRIES ITS LAYOUT, RECORDED BY THE LEXER AS IT READS THE SOURCE. A token's
+// `start`/`end` say THAT two tokens have a gap between them, not what the gap holds, and the grammar
+// sometimes needs to know (a `-` that begins a new line after a complete operand is ambiguous
+// between infix and prefix, and the seed refuses it: v1.compiler.parse
+// is_ambiguous_prefix_infix_newline_boundary). The source text stays the ONE authority for that
+// fact: nothing about layout is stored on a Token or as a token of its own. `StreamLayout` is the
+// set of tokens that have a line break in the gap before them, keyed by each token's start to the
+// octet where that gap begins (the end of the token before it) -- ONE representation of the set, whose
+// value is a fact about the gap rather than a placeholder. It is recorded in the tokenizer's own walk
+// (v2.compiler.tokenize lex_walk_step), the one place the source is read, through the two builders
+// below, so there is no second pass over the source and a layout question is a lookup. A line feed
+// counts when it is in a gap -- in trivia or an annotation between tokens -- never inside a token (a
+// multi-line string). `digest` summarizes exactly the recorded entries, folded as each is recorded, so
+// the parse memo key covers layout without a lookup per token. A stream built from tokens alone
+// (fixtures) carries no layout, and a layout question on it answers `LineBreakUnknownWithoutSource`
+// -- never an assumed single line.
+type StreamLayout {
+  line_break_before: Map<Int, Int>
+  digest: Fnv1a64Structural
+}
+
 type TokenStream {
   all: List<Token>
   pos: Int
+  layout: Optional<StreamLayout>
 }
 
 fn token_stream_new(all: List<Token>) -> TokenStream {
-  TokenStream { all: all, pos: 0 }
+  TokenStream { all: all, pos: 0, layout: optional_absent() }
+}
+
+// The tokenizer's constructor: the tokens together with the layout recorded while they were lexed.
+fn token_stream_lexed(all: List<Token>, layout: StreamLayout) -> TokenStream {
+  TokenStream { all: all, pos: 0, layout: optional_present(value: layout) }
 }
 
 fn token_stream_empty() -> TokenStream {
-  TokenStream { all: Empty, pos: 0 }
+  TokenStream { all: Empty, pos: 0, layout: optional_absent() }
+}
+
+fn token_stream_layout(stream: TokenStream) -> Optional<StreamLayout> {
+  stream.layout
+}
+
+type LineBreakAnswer
+  = LineBreakInGap
+  | NoLineBreakInGap
+  | LineBreakUnknownWithoutSource
+
+fn stream_layout_empty() -> StreamLayout {
+  StreamLayout { line_break_before: empty_map(), digest: symbol_identity_digest(sym: ^stream_layout_digest_nil) }
+}
+
+// The token starting at octet `token_start` has a line break in its gap, which began at `gap_start`.
+fn stream_layout_with_break(layout: StreamLayout, token_start: Int, gap_start: Int) -> StreamLayout {
+  StreamLayout {
+    line_break_before: map_insert(m: layout.line_break_before, key: token_start, value: gap_start),
+    digest: combine_hash(a: layout.digest, b: combine_hash(a: integer_int_content_digest(value: token_start), b: integer_int_content_digest(value: gap_start)))
+  }
+}
+
+// Whether a lexeme (trivia or annotation text between tokens) holds a line feed, U+000A.
+fn lexeme_has_line_feed(lexeme: v2.std.text.String) -> Bool {
+  fold_list(xs: lexeme, empty: false, cons: fn(acc, c) { acc || (unicode_char_code_point(c: c) == 10) })
+}
+
+// THE NAMED DERIVATION, READ AT THE POINT OF USE: is there a line break in the source between the
+// token before the one starting at octet `token_start` and that token? A stream without layout
+// cannot answer. `token_start` is always a start of one of the stream's own tokens (the parser asks
+// only about the token it is at), so a start the lexer did not record is a token with no break before it.
+fn token_stream_line_break_before(layout: Optional<StreamLayout>, token_start: Int) -> LineBreakAnswer {
+  match layout {
+    Absent => LineBreakUnknownWithoutSource
+    Present { value: l } =>
+      match map_lookup(m: l.line_break_before, key: token_start) {
+        Absent => NoLineBreakInGap
+        Present { value: _ } => LineBreakInGap
+      }
+  }
 }
 
 fn token_stream_position(stream: TokenStream) -> Int {
@@ -188,7 +258,7 @@ fn token_stream_get(stream: TokenStream, offset: Int) -> Optional<Token> {
 }
 
 fn token_stream_advance(stream: TokenStream, n: Int) -> TokenStream {
-  TokenStream { all: stream.all, pos: stream.pos + n }
+  TokenStream { all: stream.all, pos: stream.pos + n, layout: stream.layout }
 }
 
 // AnnotationPlacement is NOT declared here. It is the language-agnostic concept and its authority
@@ -373,19 +443,3 @@ fn lex_rules_to_node(rules: LexRules) -> Node {
   }
 }
 
-fn symbol_intern_lexeme(lexeme: Lexeme) -> Symbol {
-  symbol_intern_lexeme(lexeme: lexeme)
-}
-
-data symbol_lexeme_host_disposition: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "v2.std.compilers.lexing",
-    decl_name: "symbol_lexeme",
-    field: WholeDeclaration
-  }
-}
-
-fn symbol_lexeme(sym: Symbol) -> String {
-  symbol_lexeme(sym: sym)
-}

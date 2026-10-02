@@ -25,7 +25,7 @@ use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
 pub use crate::std_occurrence_identity::occurrence_id_eq;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::{
-    OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic,
+    OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic,
 };
 pub use crate::std_occurrence_identity::{NodeOccurrenceIdentity, OccurrenceId};
 use crate::std_syntax::AlgebraFieldKind::*;
@@ -6090,6 +6090,7 @@ pub fn occurrence_identity_id(identity: Rc<NodeOccurrenceIdentity>) -> Option<Oc
     match (*identity.clone()).clone() {
         NodeOccurrenceIdentity::OccurrenceMinted { id: id, .. } => Some(id.clone()),
         NodeOccurrenceIdentity::OccurrenceProjected { id, .. } => Some(id.clone()),
+        NodeOccurrenceIdentity::OccurrencePending { caused_by: _, .. } => std::option::Option::None,
         NodeOccurrenceIdentity::OccurrenceSynthetic => std::option::Option::None,
     }
 }

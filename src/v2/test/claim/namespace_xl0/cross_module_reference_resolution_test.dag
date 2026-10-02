@@ -1,10 +1,11 @@
 module v2.test.claim.namespace_xl0.cross_module_reference_resolution
 
+import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.name_resolve {
   Admission,
   ResolutionSubject,
   resolution_context,
-  resolve_with_admission_context_policy
+  resolve_in_context
 }
 import v2.std.cross_tree.resolution { source_root_index_empty }
 import v2.std.resolution_policy { default_name_resolution_policy }
@@ -70,7 +71,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // is the discriminating red: it fails against a resolver that mints the leaf and holds against one
 // that carries the declaring path.
 //
-// WHAT RESOLVES HERE IS THE SUBJECT ROOT ALONE. v2.compiler.name_resolve resolve_with_admission_context_policy
+// WHAT RESOLVES HERE IS THE SUBJECT ROOT ALONE. v2.compiler.name_resolve resolve_in_context
 // resolves the module the Admission names and consults the other ingested roots only through the
 // symbol index, so three consumer modules can share ONE ingest and each claim selects its subject.
 // That is what lets one warm producer serve every row: the parse-and-normalize of twelve inline
@@ -261,76 +262,73 @@ fn xl0r_admission(subject: String) -> Admission {
 // So each subject's resolution is a NULLARY WARM PRODUCER (one per subject, enrolled in
 // v2.workflow.floor_pure_producer_share beside the ingest), executed by the floor's preparation --
 // the real path, run once, refused loudly there if it cannot run -- and the rows below read the
-// Outcome<Node> it produced. This is the shape v2.compiler.self_host.direct_rust_door_fixture
+// Outcome<ResolvedTree> it produced. This is the shape v2.compiler.self_host.direct_rust_door_fixture
 // direct_rust_door_specimen_resolved already inhabits for a resolved specimen. The values are
 // Nodes and located diagnostics, portable to the bottom.
-fn xl0r_resolve_subject(subject: String) -> Outcome<Node> {
+fn xl0r_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
   match xl0r_fixture_normalized() {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: roots, diagnostics: _ } =>
-      resolve_with_admission_context_policy(
-        context: resolution_context(lm: dag_language_model(), roots: roots),
-        admission: xl0r_admission(subject: subject),
-        index: source_root_index_empty(),
-        active_roots: Empty,
-        policy: default_name_resolution_policy()
-      )
+      resolve_in_context(
+        context: resolution_context(lm: dag_language_model(), roots: roots, index: source_root_index_empty(), active_roots: Empty, policy: default_name_resolution_policy()),
+        admission: xl0r_admission(subject: subject)
+      ).resolved
   }
 }
 
-fn xl0r_resolved_local_consumer() -> Outcome<Node> {
+fn xl0r_resolved_local_consumer() -> Outcome<ResolvedTree> {
   xl0r_resolve_subject(subject: "v2.test.xl0r_local_consumer")
 }
 
-fn xl0r_resolved_declared_consumer() -> Outcome<Node> {
+fn xl0r_resolved_declared_consumer() -> Outcome<ResolvedTree> {
   xl0r_resolve_subject(subject: "v2.test.xl0r_declared_consumer")
 }
 
-fn xl0r_resolved_undeclared_consumer() -> Outcome<Node> {
+fn xl0r_resolved_undeclared_consumer() -> Outcome<ResolvedTree> {
   xl0r_resolve_subject(subject: "v2.test.xl0r_undeclared_consumer")
 }
 
-fn xl0r_resolved_data_target_consumer() -> Outcome<Node> {
+fn xl0r_resolved_data_target_consumer() -> Outcome<ResolvedTree> {
   xl0r_resolve_subject(subject: "v2.test.xl0r_data_target_consumer")
 }
 
-fn xl0r_resolved_field_access_consumer() -> Outcome<Node> {
+fn xl0r_resolved_field_access_consumer() -> Outcome<ResolvedTree> {
   xl0r_resolve_subject(subject: "v2.test.xl0r_field_access_consumer")
 }
 
-fn xl0r_resolved_method_call_consumer() -> Outcome<Node> {
+fn xl0r_resolved_method_call_consumer() -> Outcome<ResolvedTree> {
   xl0r_resolve_subject(subject: "v2.test.xl0r_method_call_consumer")
 }
 
-fn xl0r_resolved_shadowing_consumer() -> Outcome<Node> {
+fn xl0r_resolved_shadowing_consumer() -> Outcome<ResolvedTree> {
   xl0r_resolve_subject(subject: "v2.test.xl0r_shadowing_consumer")
 }
 
-fn xl0r_resolved_consumer_a() -> Outcome<Node> {
+fn xl0r_resolved_consumer_a() -> Outcome<ResolvedTree> {
   xl0r_resolve_subject(subject: "v2.test.xl0r_consumer_a")
 }
 
-fn xl0r_resolved_consumer_b() -> Outcome<Node> {
+fn xl0r_resolved_consumer_b() -> Outcome<ResolvedTree> {
   xl0r_resolve_subject(subject: "v2.test.xl0r_consumer_b")
 }
 
-fn xl0r_resolved_import_consumer_a() -> Outcome<Node> {
+fn xl0r_resolved_import_consumer_a() -> Outcome<ResolvedTree> {
   xl0r_resolve_subject(subject: "v2.test.xl0r_import_consumer_a")
 }
 
-fn xl0r_resolved_import_consumer_b() -> Outcome<Node> {
+fn xl0r_resolved_import_consumer_b() -> Outcome<ResolvedTree> {
   xl0r_resolve_subject(subject: "v2.test.xl0r_import_consumer_b")
 }
 
-fn xl0r_resolved_relay_consumer() -> Outcome<Node> {
+fn xl0r_resolved_relay_consumer() -> Outcome<ResolvedTree> {
   xl0r_resolve_subject(subject: "v2.test.xl0r_relay_consumer")
 }
 
-fn xl0r_resolved_imported_param_type_consumer() -> Outcome<Node> {
+fn xl0r_resolved_imported_param_type_consumer() -> Outcome<ResolvedTree> {
   xl0r_resolve_subject(subject: "v2.test.xl0r_imported_param_type_consumer")
 }
 
-fn xl0r_resolved_unimported_param_type_consumer() -> Outcome<Node> {
+fn xl0r_resolved_unimported_param_type_consumer() -> Outcome<ResolvedTree> {
   xl0r_resolve_subject(subject: "v2.test.xl0r_unimported_param_type_consumer")
 }
 
@@ -352,11 +350,11 @@ fn xl0r_qualified_name_eq(a: QualifiedName, b: QualifiedName) -> Bool {
   a == b
 }
 
-fn xl0r_resolved_carries_reference(o: Outcome<Node>, dotted: String) -> Bool {
+fn xl0r_resolved_carries_reference(o: Outcome<ResolvedTree>, dotted: String) -> Bool {
   match o {
     Accepted { value: root, diagnostics: _ } =>
       contains(
-        xs: xl0r_resolved_reference_paths(root: root),
+        xs: xl0r_resolved_reference_paths(root: root.root),
         item: qualified_name_from_dotted_string(dotted: dotted),
         eq: xl0r_qualified_name_eq
       )

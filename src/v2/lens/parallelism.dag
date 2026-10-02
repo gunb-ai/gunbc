@@ -156,7 +156,9 @@ fn parallelism_first_unresolved_coupling_diagnostic(fact: ParallelismFact) -> Op
       left: acc,
       right: match dep.classification {
         UnresolvedCoupling { diagnostic: d } => optional_present(value: d)
-        _ => optional_absent()
+        DataDependent => optional_absent()
+        EffectCoupled => optional_absent()
+        BarrierCoupled => optional_absent()
       }
     )
   })

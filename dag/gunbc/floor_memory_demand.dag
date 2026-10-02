@@ -1,6 +1,6 @@
 module gunbc.floor_memory_demand
 
-import std.types { Bool, Int, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.checked_arithmetic { nat_magnitude }
@@ -11,6 +11,7 @@ import extdeps.linux.cgroup_v2_memory {
   CgroupMemoryLimitUnparseable,
   parse_cgroup_memory_limit,
 }
+import gunbc.floor_demand { FloorBeatReading, FloorPhaseAttribution, floor_phase_attribution }
 
 // WHAT THIS MODULE IS FOR, AND WHY IT IS NOT A SECOND HOME FOR A NUMBER.
 //
@@ -327,4 +328,13 @@ fn qualify_floor_memory_from_readings(
       },
     )
   }
+}
+
+// THE SAME RUN, READ BY PHASE. The qualification above says whether the whole-run peak is a
+// demand; this says which phase held what, over the beats the measured child printed while this
+// instrument supervised it. Two readings of one run, so neither needs a second run to be joined
+// to the other. The fold is `gunbc.floor_demand`'s, beside the held-set rule it reuses; this entry
+// only admits it to the instrument's closure.
+fn floor_phase_attribution_from_readings(readings: List<FloorBeatReading>) -> FloorPhaseAttribution {
+  floor_phase_attribution(readings: readings)
 }

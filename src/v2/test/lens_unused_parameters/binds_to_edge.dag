@@ -73,7 +73,7 @@ fn unused_parameters_binds_to_edge_claim_holds() -> Bool {
   match unused_parameters_binds_to_edge_claim.actual {
     Holds { value: actual } =>
       use_classification_fact_eq(a: actual, b: unused_parameters_binds_to_edge_claim.expected)
-    _ => false
+    Violates { diagnostic: _ } => false
   }
 }
 

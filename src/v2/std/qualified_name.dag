@@ -25,9 +25,8 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
-import v2.std.node { Atom, Conj, Edge, EdgeLabel, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node, node_synthetic, node_with_occurrence_id, symbol_eq }
+import v2.std.node { Atom, Conj, Edge, EdgeLabel, Named, Node, NodeFold, Positional, Symbol, TypeNode, DeclarationReferenceKind, MarkedReference, NotMarkedReference, ParameterReferenceKind, ResolvedReferenceKind, fold_node, resolved_reference_kind_marker, resolved_reference_body_kind, node_synthetic, node_with_occurrence_id, symbol_eq, symbol_intern_lexeme, symbol_lexeme }
 import v2.std.text { String }
 
 type QualifiedName = FreeMonoid<Symbol>
@@ -316,28 +315,27 @@ fn qualified_name_spine_of_atoms(atoms: FreeMonoid<Node>, occurrence_id: NodeOcc
   node_with_occurrence_id(kind: spine.kind, children: spine.children, occurrence_id: occurrence_id)
 }
 
-// A DECLARATION REFERENCE IS MARKED, NOT RECOGNISED BY SHAPE. The spine above is a cons list, and a
-// cons list is not only a path: an integer literal lowers to the same list of digit atoms
-// (v2.std.integer, FreeMonoid<DecimalDigit>), so a reader keyed on the spine shape read the literal
-// 606060 as the "path" integer_tag_digit_6.integer_tag_digit_0... (gunbc.recurring_failure_mode
-// declaration_reference_recognised_by_a_shape_a_literal_also_has). The resolver therefore mints the
-// reference as a one-edge Conj whose only label is this marker, over the spine. The marker's lexeme
-// is not an identifier in the dag grammar, so no authored record field, binder or name can carry it:
-// a record literal lowers to a Conj whose labels are the author's field identifiers, and this label
-// is none of them. Only a producer that calls declaration_reference_node writes it.
-fn declaration_reference_marker() -> Symbol {
-  symbol_intern_lexeme(lexeme: "<declaration-reference>")
-}
-
+// The marker is v2.std.node declaration_reference_marker, beside the node kinds it labels, so
+// v2.std.node well_formed can hold an arrow body to it (gunbc#12377).
 // THE ONE PRODUCER OF THE MARKED CARRIER (consumed by v2.compiler.resolve resolved_reference_node).
 // The occurrence stays on the marker node alone, which is the node that stands where the reference
 // stood; the spine under it is synthetic, so one source occurrence is carried by exactly one node.
 fn declaration_reference_node(qn: QualifiedName, occurrence_id: NodeOccurrenceIdentity) -> Node {
+  resolved_reference_node_of_kind(kind: DeclarationReferenceKind, qn: qn, occurrence_id: occurrence_id)
+}
+
+// THE ONE PRODUCER OF A PARAMETER REFERENCE (consumed by v2.compiler.resolve
+// resolve_frame_bound_reference, which verifies the path against the symbol index first).
+fn parameter_reference_node(qn: QualifiedName, occurrence_id: NodeOccurrenceIdentity) -> Node {
+  resolved_reference_node_of_kind(kind: ParameterReferenceKind, qn: qn, occurrence_id: occurrence_id)
+}
+
+fn resolved_reference_node_of_kind(kind: ResolvedReferenceKind, qn: QualifiedName, occurrence_id: NodeOccurrenceIdentity) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: declaration_reference_marker() },
+        label: Named { name: resolved_reference_kind_marker(kind: kind) },
         target: qualified_name_spine_node(qn: qn, occurrence_id: OccurrenceSynthetic)
       },
     ],
@@ -349,30 +347,30 @@ fn declaration_reference_node(qn: QualifiedName, occurrence_id: NodeOccurrenceId
 // spine shape: a bare spine -- an authored dotted mention before resolution, an integer literal,
 // any other cons list -- answers Absent. Under the marker, a spine whose fold refuses is a malformed
 // node, not a reference, and also answers Absent so that the consumer's own arm decides it.
-fn declaration_reference_spine_optional(node: Node) -> Optional<Node> {
-  match node.kind {
-    TypeNode { connective: Conj } =>
-      if count(node.children) == 1 {
-        fold(node.children, init: optional_absent(), f: fn(acc, edge) {
-          match edge.label {
-            Named { name: label } =>
-              if symbol_eq(a: label, b: declaration_reference_marker()) {
-                optional_present(value: edge.target)
-              } else {
-                acc
-              }
-            _ => acc
-          }
-        })
+fn resolved_reference_spine_optional(node: Node, kind: ResolvedReferenceKind) -> Optional<Node> {
+  match resolved_reference_body_kind(target: node) {
+    MarkedReference { kind: found } =>
+      if found == kind {
+        fold(node.children, init: optional_absent(), f: fn(acc, edge) { optional_present(value: edge.target) })
       } else {
         optional_absent()
       }
-    _ => optional_absent()
+    NotMarkedReference => optional_absent()
   }
 }
 
 fn declaration_reference_path_optional(node: Node) -> Optional<QualifiedName> {
-  match declaration_reference_spine_optional(node: node) {
+  resolved_reference_path_optional(node: node, kind: DeclarationReferenceKind)
+}
+
+// A PARAMETER REFERENCE READS AS ITS DECLARING PATH <fn path>.<label> OR AS NOTHING, under the same
+// rules as a declaration reference; a declaration reference answers Absent here and vice versa.
+fn parameter_reference_path_optional(node: Node) -> Optional<QualifiedName> {
+  resolved_reference_path_optional(node: node, kind: ParameterReferenceKind)
+}
+
+fn resolved_reference_path_optional(node: Node, kind: ResolvedReferenceKind) -> Optional<QualifiedName> {
+  match resolved_reference_spine_optional(node: node, kind: kind) {
     Present { value: spine } =>
       if qualified_name_spine_shape_present(root: spine) {
         match qualified_name_from_node(root: spine) {

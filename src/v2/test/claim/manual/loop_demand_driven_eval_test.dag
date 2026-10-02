@@ -1,4 +1,5 @@
 module v2.test.manual.loop_demand_driven_eval
+import v2.std.arrow_signature { declared_signature }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.eval {
   EvalContext,
@@ -282,20 +283,15 @@ fn loop_eval_pick_call(callee: Node) -> Node {
 }
 
 fn loop_eval_arrow_with_body(body: Node) -> Node {
+  let signature = declared_signature(params: [], source: loop_eval_i64())
   Node {
     kind: TypeNode { connective: Arrow },
     occurrence_id: OccurrenceSynthetic,
     children: [
-      Edge {
-        label: Positional,
-        target: Node {
-          kind: TypeNode { connective: Conj },
-          occurrence_id: OccurrenceSynthetic,
-          children: []
-        }
-      },
+      signature.domain,
       Edge { label: Positional, target: loop_eval_i64() },
       Edge { label: Positional, target: loop_eval_i64() },
+      signature.order,
       Edge { label: Named { name: ^arrow_body_edge }, target: body }
     ]
   }

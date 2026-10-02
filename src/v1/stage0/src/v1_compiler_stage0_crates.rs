@@ -435,6 +435,13 @@ pub fn stage0_foundation_runtime_dependencies() -> Rc<Vec<Rc<CargoDependency>>> 
             }),
         }),
         Rc::new(CargoDependency {
+            name: "libc".to_string(),
+            source: Rc::new(CargoDepSource::RegistryDep {
+                version: "0.2".to_string(),
+                features: Rc::new(vec![]),
+            }),
+        }),
+        Rc::new(CargoDependency {
             name: "serde".to_string(),
             source: Rc::new(CargoDepSource::RegistryDep {
                 version: "1".to_string(),

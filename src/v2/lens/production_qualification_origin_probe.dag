@@ -21,7 +21,6 @@ import v2.std.collection {
   List,
   Present
 }
-import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.diagnostic { Diagnostic }
 import v2.std.fn_index {
   CalleeScan,
@@ -40,6 +39,8 @@ import v2.std.node {
   Positional,
   TypeNode,
   fold_node,
+  symbol_intern_lexeme,
+  symbol_lexeme,
 }
 import v2.std.text { String, string_eq }
 

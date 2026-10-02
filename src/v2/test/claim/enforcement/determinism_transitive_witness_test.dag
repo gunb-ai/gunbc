@@ -20,9 +20,9 @@ import v2.std.node {
   Node,
   Positional,
   Transform,
-  TypeNode
+  TypeNode,
+  symbol_intern_lexeme,
 }
-import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.text { String }
 

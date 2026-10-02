@@ -171,15 +171,39 @@ pub fn collect_typed_service_calls_into(
 pub enum CalleeEdge {
     ResolvedCallee {
         identity: Rc<DeclaredCallableIdentity>,
+        call_site: Rc<SourceSpan>,
     },
     PrimitiveCallee,
-    FunctionValueCallee,
+    FunctionValueCallee {
+        call_site: Rc<SourceSpan>,
+    },
     LocalBindingCallee {
         name: String,
+        call_site: Rc<SourceSpan>,
     },
     UnresolvedCallee {
         spelling: String,
+        call_site: Rc<SourceSpan>,
     },
+}
+impl CalleeEdge {
+    pub fn call_site(&self) -> Rc<SourceSpan> {
+        match self {
+            CalleeEdge::ResolvedCallee {
+                call_site: __val, ..
+            } => __val.clone(),
+            CalleeEdge::PrimitiveCallee => panic!("no call_site on unit variant"),
+            CalleeEdge::FunctionValueCallee {
+                call_site: __val, ..
+            } => __val.clone(),
+            CalleeEdge::LocalBindingCallee {
+                call_site: __val, ..
+            } => __val.clone(),
+            CalleeEdge::UnresolvedCallee {
+                call_site: __val, ..
+            } => __val.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -188,11 +212,20 @@ pub struct CalleeAccum {
     pub result: Rc<Vec<Rc<CalleeEdge>>>,
 }
 
-pub fn callee_edge_of_semantics(cs: Option<Rc<CallSemantics>>, spelling: String) -> Rc<CalleeEdge> {
+pub fn callee_edge_of_semantics(
+    cs: Option<Rc<CallSemantics>>,
+    spelling: String,
+    call_site: Rc<SourceSpan>,
+) -> Rc<CalleeEdge> {
     match cs.clone().as_deref().cloned() {
-        Some(CallSemantics::FunctionValueCallSemantics) => Rc::new(CalleeEdge::FunctionValueCallee),
+        Some(CallSemantics::FunctionValueCallSemantics) => {
+            Rc::new(CalleeEdge::FunctionValueCallee {
+                call_site: call_site.clone(),
+            })
+        }
         std::option::Option::None => Rc::new(CalleeEdge::UnresolvedCallee {
             spelling: spelling.clone(),
+            call_site: call_site.clone(),
         }),
         _ => match (*crate::v1_std_core::call_semantics_target(cs.clone())).clone() {
             CallTargetIdentity::SourceDeclarationCall {
@@ -204,14 +237,19 @@ pub fn callee_edge_of_semantics(cs: Option<Rc<CallSemantics>>, spelling: String)
                     owner_module_path: owner.clone(),
                     decl_name: decl.clone(),
                 }),
+                call_site: call_site.clone(),
             }),
             CallTargetIdentity::RuntimePrimitiveCall { .. } => Rc::new(CalleeEdge::PrimitiveCallee),
             CallTargetIdentity::LocallyBoundCall { name: n, .. } => {
-                Rc::new(CalleeEdge::LocalBindingCallee { name: n.clone() })
+                Rc::new(CalleeEdge::LocalBindingCallee {
+                    name: n.clone(),
+                    call_site: call_site.clone(),
+                })
             }
             CallTargetIdentity::CallableTargetUndetermined => {
                 Rc::new(CalleeEdge::UnresolvedCallee {
                     spelling: spelling.clone(),
+                    call_site: call_site.clone(),
                 })
             }
         },
@@ -235,20 +273,16 @@ impl CalleeEdgeDedup {
 
 pub fn callee_edge_dedup_key(edge: Rc<CalleeEdge>) -> Rc<CalleeEdgeDedup> {
     match (*edge.clone()).clone() {
-        CalleeEdge::ResolvedCallee {
-            identity: identity, ..
-        } => Rc::new(CalleeEdgeDedup::Tracked {
+        CalleeEdge::ResolvedCallee { identity, .. } => Rc::new(CalleeEdgeDedup::Tracked {
             key: v1_rt::concat(
                 "d:".to_string(),
                 crate::v1_std_core::callable_identity(identity.clone()),
             ),
         }),
-        CalleeEdge::UnresolvedCallee {
-            spelling: spelling, ..
-        } => Rc::new(CalleeEdgeDedup::Tracked {
+        CalleeEdge::UnresolvedCallee { spelling, .. } => Rc::new(CalleeEdgeDedup::Tracked {
             key: v1_rt::concat("u:".to_string(), spelling.clone()),
         }),
-        CalleeEdge::FunctionValueCallee => Rc::new(CalleeEdgeDedup::Tracked {
+        CalleeEdge::FunctionValueCallee { call_site: _, .. } => Rc::new(CalleeEdgeDedup::Tracked {
             key: "v:".to_string(),
         }),
         CalleeEdge::LocalBindingCallee { name: n, .. } => Rc::new(CalleeEdgeDedup::Tracked {
@@ -271,6 +305,7 @@ pub fn collect_callee_edges_into(
                 let edge = callee_edge_of_semantics(
                     cs.clone(),
                     crate::v1_std_core::expr_call_func_at(texpr.clone(), source_indices.clone()),
+                    texpr.span.clone(),
                 );
                 match (*callee_edge_dedup_key(edge.clone())).clone() {
                     CalleeEdgeDedup::NotTracked => acc.clone(),
@@ -435,17 +470,16 @@ pub fn expand_transitive_services_once(
                                                         }
                                                     },
                                                     CalleeEdge::PrimitiveCallee => Rc::new(vec![]),
-                                                    CalleeEdge::FunctionValueCallee => {
+                                                    CalleeEdge::FunctionValueCallee {
+                                                        call_site: _,
+                                                        ..
+                                                    } => Rc::new(vec![]),
+                                                    CalleeEdge::LocalBindingCallee { .. } => {
                                                         Rc::new(vec![])
                                                     }
-                                                    CalleeEdge::LocalBindingCallee {
-                                                        name: _,
-                                                        ..
-                                                    } => Rc::new(vec![]),
-                                                    CalleeEdge::UnresolvedCallee {
-                                                        spelling: _,
-                                                        ..
-                                                    } => Rc::new(vec![]),
+                                                    CalleeEdge::UnresolvedCallee { .. } => {
+                                                        Rc::new(vec![])
+                                                    }
                                                 })
                                                 .iter()
                                                 .cloned(),
@@ -536,6 +570,7 @@ pub enum EffectIncompleteness {
     UnresolvedCalleeEdge {
         item_identity: Rc<DeclaredCallableIdentity>,
         spelling: String,
+        call_site: Rc<SourceSpan>,
     },
     ExpansionBudgetExhausted {
         remaining_delta: i64,
@@ -543,13 +578,16 @@ pub enum EffectIncompleteness {
     ResolvedCalleeRegistryRowAbsent {
         caller: Rc<DeclaredCallableIdentity>,
         callee: Rc<DeclaredCallableIdentity>,
+        call_site: Rc<SourceSpan>,
     },
     FunctionValueEffectsUnresolved {
         caller: Rc<DeclaredCallableIdentity>,
+        call_site: Rc<SourceSpan>,
     },
     LocalBindingEffectsUnresolved {
         caller: Rc<DeclaredCallableIdentity>,
         name: String,
+        call_site: Rc<SourceSpan>,
     },
 }
 
@@ -570,20 +608,23 @@ pub fn unresolved_callee_edges(
                                     __result.extend(
                                         (*match (*edge.clone()).clone() {
                                             CalleeEdge::UnresolvedCallee {
-                                                spelling: spelling,
+                                                spelling,
+                                                call_site,
                                                 ..
                                             } => Rc::new(vec![Rc::new(
                                                 EffectIncompleteness::UnresolvedCalleeEdge {
                                                     item_identity: entry.item_identity.clone(),
                                                     spelling: spelling.clone(),
+                                                    call_site: call_site.clone(),
                                                 },
                                             )]),
-                                            CalleeEdge::ResolvedCallee { identity: _, .. } => {
-                                                Rc::new(vec![])
-                                            }
+                                            CalleeEdge::ResolvedCallee { .. } => Rc::new(vec![]),
                                             CalleeEdge::PrimitiveCallee => Rc::new(vec![]),
-                                            CalleeEdge::FunctionValueCallee => Rc::new(vec![]),
-                                            CalleeEdge::LocalBindingCallee { name: _, .. } => {
+                                            CalleeEdge::FunctionValueCallee {
+                                                call_site: _,
+                                                ..
+                                            } => Rc::new(vec![]),
+                                            CalleeEdge::LocalBindingCallee { .. } => {
                                                 Rc::new(vec![])
                                             }
                                         })
@@ -620,22 +661,25 @@ pub fn unjoinable_callee_edges(
         Rc::new(vec![])
     } else {
         Rc::new({ let mut __result = Vec::new(); for edge in entry.called.clone().iter().cloned() { __result.extend((*match (*edge.clone()).clone() {
-    CalleeEdge::ResolvedCallee { identity: callee_identity, .. } => match v1_rt::map_get(&registry, crate::v1_std_core::callable_identity(callee_identity.clone())) {
+    CalleeEdge::ResolvedCallee { identity: callee_identity, call_site, .. } => match v1_rt::map_get(&registry, crate::v1_std_core::callable_identity(callee_identity.clone())) {
     Some(_) => Rc::new(vec![]),
     std::option::Option::None => Rc::new(vec![Rc::new(EffectIncompleteness::ResolvedCalleeRegistryRowAbsent {
     caller: entry.item_identity.clone(),
     callee: callee_identity.clone(),
+    call_site: call_site.clone(),
 })]),
 },
-    CalleeEdge::FunctionValueCallee => Rc::new(vec![Rc::new(EffectIncompleteness::FunctionValueEffectsUnresolved {
+    CalleeEdge::FunctionValueCallee { call_site: call_site, .. } => Rc::new(vec![Rc::new(EffectIncompleteness::FunctionValueEffectsUnresolved {
     caller: entry.item_identity.clone(),
+    call_site: call_site.clone(),
 })]),
-    CalleeEdge::LocalBindingCallee { name: n, .. } => Rc::new(vec![Rc::new(EffectIncompleteness::LocalBindingEffectsUnresolved {
+    CalleeEdge::LocalBindingCallee { name: n, call_site, .. } => Rc::new(vec![Rc::new(EffectIncompleteness::LocalBindingEffectsUnresolved {
     caller: entry.item_identity.clone(),
     name: n.clone(),
+    call_site: call_site.clone(),
 })]),
     CalleeEdge::PrimitiveCallee => Rc::new(vec![]),
-    CalleeEdge::UnresolvedCallee { spelling: _, .. } => Rc::new(vec![]),
+    CalleeEdge::UnresolvedCallee { .. } => Rc::new(vec![]),
 }).iter().cloned()); } __result })
     },
 }).iter().cloned()); } __result })).iter().cloned());
@@ -855,6 +899,7 @@ pub fn check_service_method_call_node(
                                                 module_item_kind:
                                                     ParsedModuleItemKind::NotAModuleItem,
                                                 declaration_marker: DeclarationMarker::Unmarked,
+                                                declaration: std::option::Option::None,
                                                 expr_data: Rc::new(ExprData::NoExprData),
                                                 ident: None,
                                             }));
@@ -875,6 +920,7 @@ pub fn check_service_method_call_node(
                                     match_pattern: std::option::Option::None,
                                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                                     declaration_marker: DeclarationMarker::Unmarked,
+                                    declaration: std::option::Option::None,
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
                                 }),

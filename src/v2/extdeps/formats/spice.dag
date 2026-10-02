@@ -522,7 +522,10 @@ fn spice_emit_ngspice(netlist: SpiceNetlist) -> String {
         } else {
           match stmt {
             DeckDirective { directive: Tran { tstep: _, tstop: _ } } => true
-            _ => false
+            DeckComponent { component: _ } => false
+            DeckModelCard { model: _ } => false
+            DeckSubcircuit { definition: _ } => false
+            DeckDirective { directive: _ } => false
           }
         }
       }

@@ -39,8 +39,11 @@ type TargetProducer
   | PrimitiveEgressCensusDagProducer
   | PrimitiveEgressCensusSeedProducer
   | FloorMemoryQualificationProducer
+  | TypedGraphExclusiveBytesProducer
+  | TypedGraphExclusiveBytesFloorSubjectProducer
   | RequiredLaneResolutionCensusProducer
   | BareReferenceChannelOutcomeProducer
+  | SelfHostBehavioralEquivalenceProducer
   | NativeClaimProgramProducer { entry: String }
 
 type TargetBinding {

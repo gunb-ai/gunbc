@@ -1,5 +1,6 @@
 module v2.extdeps.languages.python
 import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.arrow_signature { anonymous_signature_arrow }
 import v2.std.language_model { LanguageModel }
 
 import std.algebra { Empty, BooleanAlgebra, list_append, list_snoc_item }
@@ -101,11 +102,7 @@ import v2.std.node {
   TypeNode,
 }
 import v2.std.logic { bool_boolean_algebra }
-import v2.std.algebra {
-  approximate_field_node,
-  boolean_algebra_node,
-  ordered_ring_node
-}
+import v2.std.algebra_structure_signature { approximate_field_node, boolean_algebra_node, ordered_ring_node }
 import v2.std.text { String }
 
 type PythonSingletonKind
@@ -918,46 +915,12 @@ fn python_selection_policy_node() -> Node {
 }
 
 fn python_emitted_add_fn_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [
-      Edge { label: Positional, target: python_int_inhabitant_node() },
-      Edge { label: Positional, target: python_int_inhabitant_node() },
-      Edge { label: Positional, target: python_int_inhabitant_node() }
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
+  anonymous_signature_arrow(domain_types: [python_int_inhabitant_node(), python_int_inhabitant_node()], codomain: python_int_inhabitant_node(), source: python_int_inhabitant_node())
 }
 
 fn python_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
 
   concrete_syntax_token_to_node(token: token)
-}
-
-fn python_serialize_source_children() -> List<Edge> {
-  list_append(
-    left: [
-      python_named_edge(name: ^serialize_source_field_source_text, target: python_inhabitant_atom(id: ^python_source_literal)),
-      python_named_edge(name: ^serialize_source_field_source_grammar, target: python_inhabitant_atom(id: ^python_production_fn_add))
-    ],
-    right: [
-      python_named_edge(
-        name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
-          tokens: python_concrete_tokens(),
-          token_to_node: python_concrete_token_node
-        )
-      )
-    ]
-  )
-}
-
-fn python_serialize_source_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: python_serialize_source_children(),
-    occurrence_id: OccurrenceSynthetic
-}
 }
 
 fn python_formal_rhs_from_token_classes() -> List<FormalGrammarSymbol> {
@@ -1189,8 +1152,7 @@ fn python_target_model_node() -> Node {
     children: [
       python_named_edge(name: ^target_model_edge_selection_policy, target: python_selection_policy_node()),
       python_named_edge(name: ^target_model_edge_declared_inhabitants, target: python_add_declared_inhabitants_root()),
-      python_named_edge(name: ^target_model_edge_translation_rules, target: python_translation_rules_node()),
-      python_named_edge(name: ^target_model_edge_serialize_source, target: python_serialize_source_node())
+      python_named_edge(name: ^target_model_edge_translation_rules, target: python_translation_rules_node())
     ],
     occurrence_id: OccurrenceSynthetic
 }

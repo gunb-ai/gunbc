@@ -1,0 +1,59 @@
+module v2.test.claim.parse.uses_clause
+
+import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
+import v2.extdeps.languages.dag { parse_production_emitted_identity_optional }
+import v2.std.diagnostic { Accepted, NodeLocus, Rejected, diagnostics_fatal }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.optional { Absent, Present }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A FN MAY DECLARE v1's `uses` CLAUSE (v2.extdeps.languages.dag dag_grammar_uses_clause_expr). It
+// PARSES; it does not lower: v2 has no carrier for a fn's resource requirement, so normalize refuses
+// the fn located at the clause (body_lowering_reason_uses_clause_unmodeled,
+// gunbc.recurring_failure_mode uses_clause_has_no_carrier) rather than lowering it without the
+// requirement.
+data uses_source: String = "module probe.uses\n\nfn fetch(n: Int) -> Int\n  uses net: Network, fs: Filesystem\n  = n\n"
+
+// Each outcome is computed ONCE as a nullary value, enrolled WARM in
+// v2.workflow.floor_pure_producer_share, and each claim reads it (a claim that parsed its own source
+// is over the new-witness eval-step budget).
+fn uses_parsed() -> Bool {
+  match conservation_subject_of_text(path: "probe_uses.dag", text: uses_source).parsed {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// The normalize refusal's reason, and whether it is anchored at the clause. A lowering refusal is a
+// NodeLocus (v2.std.diagnostic node_locus), so "located at the clause" means its anchor IS the
+// uses_clause production shell, not the fn around it.
+type UsesRefusal {
+  is_unmodeled: Bool
+  at_clause: Bool
+}
+
+fn uses_refusal() -> UsesRefusal {
+  match conservation_subject_of_text(path: "probe_uses.dag", text: uses_source).normalized {
+    Accepted { value: _, diagnostics: _ } => UsesRefusal { is_unmodeled: false, at_clause: false }
+    Rejected { diagnostics: d } =>
+      UsesRefusal {
+        is_unmodeled: diagnostics_fatal(d: d).reason == ^body_lowering_reason_uses_clause_unmodeled,
+        at_clause: match diagnostics_fatal(d: d).at {
+          NodeLocus { anchor: a } =>
+            match parse_production_emitted_identity_optional(node: a.at) {
+              Present { value: id } => id == ^dag_surface_uses_clause
+              Absent => false
+            }
+          _ => false
+        }
+      }
+  }
+}
+
+test fn a_fn_with_a_uses_clause_parses_holds() -> Bool { uses_parsed() }
+
+test fn a_fn_with_a_uses_clause_refuses_at_the_clause_holds() -> Bool { uses_refusal().is_unmodeled }
+
+test fn the_uses_refusal_is_located_at_the_clause_holds() -> Bool { uses_refusal().at_clause }

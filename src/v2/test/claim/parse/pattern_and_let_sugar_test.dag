@@ -1,0 +1,99 @@
+module v2.test.claim.parse.pattern_and_let_sugar
+
+import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
+import v2.extdeps.languages.dag { parse_production_emitted_identity_optional }
+import v2.std.diagnostic { Accepted, NodeLocus, Rejected, diagnostics_fatal }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Hash, content_hash }
+import v2.std.optional { Absent, Optional, Present }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// v1's `pattern` IS A FN AND ITS `node x: e` / `x = e` ARE A LET (v2.extdeps.languages.dag
+// dag_grammar_fn_decl_head_expr, dag_grammar_let_sugar_expr). Each spelling must lower to the
+// IDENTICAL normalized tree as its plain form -- one lowering, not a second one that happens to agree
+// on a sample -- so each claim compares whole normalized trees by content hash, over sources that
+// differ only in the spelling. A pattern that declares a `uses` clause still refuses at the clause.
+fn normalized_hash(tag: String, text: String) -> Optional<Hash> {
+  match conservation_subject_of_text(path: "probe_" + tag + ".dag", text: text).normalized {
+    Accepted { value: tree, diagnostics: _ } => Present { value: content_hash(n: tree.root) }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn same_tree(a: Optional<Hash>, b: Optional<Hash>) -> Bool {
+  match a {
+    Absent => false
+    Present { value: x } =>
+      match b {
+        Absent => false
+        Present { value: y } => x == y
+      }
+  }
+}
+
+data fn_source: String = "module probe.sugar\n\nfn pick(n: Int) -> Int {\n  let x = n\n  x\n}\n"
+data pattern_source: String = "module probe.sugar\n\npattern pick(n: Int) -> Int {\n  let x = n\n  x\n}\n"
+data node_colon_source: String = "module probe.sugar\n\nfn pick(n: Int) -> Int {\n  node x: n\n  x\n}\n"
+data node_eq_source: String = "module probe.sugar\n\nfn pick(n: Int) -> Int {\n  node x = n\n  x\n}\n"
+data bare_assign_source: String = "module probe.sugar\n\nfn pick(n: Int) -> Int {\n  x = n\n  x\n}\n"
+data pattern_generic_source: String = "module probe.sugar\n\npattern pick<T>(n: T) -> T {\n  n\n}\n"
+data pattern_eq_body_source: String = "module probe.sugar\n\npattern pick(n: Int) -> Int = n\n"
+data pattern_uses_source: String = "module probe.sugar\n\npattern fetch(n: Int) -> Int\n  uses net: Network\n{\n  n\n}\n"
+
+// Each outcome is computed ONCE as a nullary value, enrolled WARM in
+// v2.workflow.floor_pure_producer_share, and each claim reads it.
+fn fn_tree() -> Optional<Hash> { normalized_hash(tag: "fn", text: fn_source) }
+fn pattern_tree() -> Optional<Hash> { normalized_hash(tag: "pattern", text: pattern_source) }
+fn node_colon_tree() -> Optional<Hash> { normalized_hash(tag: "node_colon", text: node_colon_source) }
+fn node_eq_tree() -> Optional<Hash> { normalized_hash(tag: "node_eq", text: node_eq_source) }
+fn bare_assign_tree() -> Optional<Hash> { normalized_hash(tag: "bare_assign", text: bare_assign_source) }
+
+fn pattern_uses_refused_as_unmodeled() -> Bool {
+  match conservation_subject_of_text(path: "probe_pattern_uses.dag", text: pattern_uses_source).normalized {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal(d: d).reason == ^body_lowering_reason_uses_clause_unmodeled
+  }
+}
+
+// v1 admits a pattern only WITHOUT generic params and WITH a block body (dag syntax dag_item_forms),
+// so a pattern written either other way refuses with body_lowering_reason_pattern_form_not_admitted
+// rather than lowering as the fn its production would otherwise make it; the generic form is
+// anchored at the generic_params it wrote.
+fn pattern_generic_refused_at_generics() -> Bool {
+  match conservation_subject_of_text(path: "probe_pattern_generic.dag", text: pattern_generic_source).normalized {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      diagnostics_fatal(d: d).reason == ^body_lowering_reason_pattern_form_not_admitted
+        && match diagnostics_fatal(d: d).at {
+             NodeLocus { anchor: a } =>
+               match parse_production_emitted_identity_optional(node: a.at) {
+                 Present { value: id } => id == ^dag_surface_generic_params
+                 Absent => false
+               }
+             _ => false
+           }
+  }
+}
+
+fn pattern_eq_body_refused() -> Bool {
+  match conservation_subject_of_text(path: "probe_pattern_eq_body.dag", text: pattern_eq_body_source).normalized {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal(d: d).reason == ^body_lowering_reason_pattern_form_not_admitted
+  }
+}
+
+test fn a_generic_pattern_refuses_at_its_generic_params_holds() -> Bool { pattern_generic_refused_at_generics() }
+
+test fn a_pattern_with_an_expression_body_refuses_holds() -> Bool { pattern_eq_body_refused() }
+
+test fn a_pattern_lowers_to_the_identical_tree_as_its_fn_holds() -> Bool { same_tree(a: pattern_tree(), b: fn_tree()) }
+
+test fn node_colon_lowers_identically_to_let_holds() -> Bool { same_tree(a: node_colon_tree(), b: fn_tree()) }
+
+test fn node_eq_lowers_identically_to_let_holds() -> Bool { same_tree(a: node_eq_tree(), b: fn_tree()) }
+
+test fn a_bare_assignment_lowers_identically_to_let_holds() -> Bool { same_tree(a: bare_assign_tree(), b: fn_tree()) }
+
+test fn a_pattern_with_a_uses_clause_still_refuses_at_the_clause_holds() -> Bool { pattern_uses_refused_as_unmodeled() }

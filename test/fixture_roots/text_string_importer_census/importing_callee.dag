@@ -1,0 +1,5 @@
+module fixture.text_string_importer_census.importing_callee
+import v2.std.text { String }
+fn take_ambiguous(t: String) -> Int {
+  1
+}

@@ -3,10 +3,6 @@ module v2.std.logic
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.types { Bool }
 import std.algebra { BooleanAlgebra, BoundedLattice, Lattice }
-import v2.std.algebra {
-  boolean_algebra_node,
-  boolean_algebra_type_node
-}
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 
 type BoolWidthFact {}
@@ -89,10 +85,4 @@ fn bool_primitive_facts_node(facts: BoolPrimitiveFacts) -> Node {
 }
 }
 
-fn bool_boolean_algebra_type_node() -> Node {
-  boolean_algebra_type_node(inhabitant: bool_node())
-}
 
-fn bool_boolean_algebra_node() -> Node {
-  boolean_algebra_node(inhabitant: bool_node())
-}

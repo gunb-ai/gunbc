@@ -353,13 +353,15 @@ fn complexity_contract_subjects_partition_legacy_mixed_row() -> Bool {
 fn complexity_derived_kernel_boundary_is_wall_after_grounding() -> Bool {
   match complexity_derived_kernel_boundary.class {
     WallAfterGrounding { dissolves_to: _ } => true
-    _ => false
+    WallNow { mechanism: _, authority: _ } => false
+    OutsideModeledGuarantee { boundary: _ } => false
   }
 }
 
 fn complexity_optimality_boundary_is_outside_modeled_guarantee() -> Bool {
   match complexity_optimality_boundary.class {
     OutsideModeledGuarantee { boundary: _ } => true
-    _ => false
+    WallNow { mechanism: _, authority: _ } => false
+    WallAfterGrounding { dissolves_to: _ } => false
   }
 }

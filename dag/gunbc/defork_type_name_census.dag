@@ -194,8 +194,8 @@ data defork_census_rows: List<SharedTypeNameRow> = [
     names: ["String"],
     reading: AuthoredResolutionReading {
       dag_side: "`= FreeMonoid<Char>` → `std.algebra` `FreeMonoid`, `std.types` `Char`",
-      v2_side: "same referents",
-      class: "one concept, two declarations (duplicate)"
+      v2_side: "`v2.std.text` `String`: same referents; `v2.std.node` `String`: opaque kernel host text (gunbc#12760), a different type under the same name, bound only where no other String declaration is visible",
+      class: "the structural pair is one concept, two declarations (duplicate); the v2.std.node host-text String is a distinct concept, not a third copy (gunbc.recurring_failure_mode carrier_by_spelling)"
     },
     disposition: ForkAwaitingRuling { question: "seed kernel name — out of scope for the wave" }
   },

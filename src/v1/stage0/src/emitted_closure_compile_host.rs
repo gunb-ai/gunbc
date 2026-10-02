@@ -165,6 +165,10 @@ pub enum CargoVerdict {
         probe_line: Option<String>,
         probe_diagnostic: Option<String>,
         warning_count: usize,
+        /// The `warning` header lines themselves, in stderr order, so a non-zero `warning_count`
+        /// can be NAMED where it refuses. A bare count was all the self-host and v2-native-cli
+        /// instruments had, and a count that made the step exit 1 printed no cause (DESIGN §5).
+        warning_headers: Vec<String>,
     },
 }
 
@@ -201,6 +205,7 @@ pub fn cargo_verdict_summary(verdict: &CargoVerdict) -> String {
             probe_line,
             probe_diagnostic,
             warning_count: _,
+            warning_headers: _,
         } => format!(
             "Completed status={status} diagnostic={} line={} stderr_tail={stderr_tail}",
             probe_diagnostic.as_deref().unwrap_or("unattributed"),
@@ -846,10 +851,18 @@ fn attributed_diagnostic(
 /// `attributed_diagnostic` reads (a trimmed line starting with `warning`). Pure, for the same
 /// reason: the count is receipt content and its scan must be testable without a toolchain.
 fn warning_header_count(stderr: &str) -> usize {
+    warning_header_lines(stderr).len()
+}
+
+/// The lines `warning_header_count` counts, by the one predicate, so the count and the lines a
+/// refusal prints cannot disagree.
+fn warning_header_lines(stderr: &str) -> Vec<String> {
     stderr
         .lines()
-        .filter(|line| line.trim().starts_with("warning"))
-        .count()
+        .map(str::trim)
+        .filter(|line| line.starts_with("warning"))
+        .map(str::to_string)
+        .collect()
 }
 
 /// The exact cargo invocation `run_cargo` spawns for a probe crate, as receipt content: the
@@ -1080,6 +1093,7 @@ pub(crate) fn run_cargo(
                     probe_line,
                     probe_diagnostic,
                     warning_count: warning_header_count(&stderr),
+                    warning_headers: warning_header_lines(&stderr),
                 }
             }
         },
@@ -2404,6 +2418,7 @@ mod tests {
             probe_line: None,
             probe_diagnostic: None,
             warning_count: 0,
+            warning_headers: Vec::new(),
         };
         match unattributed_fault_refusal(&red) {
             MutationVerdict::NotDiscriminating { detail } => assert!(
@@ -2560,6 +2575,7 @@ mod tests {
             probe_line: Some("--> src/fixture.rs:1:1".to_string()),
             probe_diagnostic: Some("error[E0308]: mismatched types".to_string()),
             warning_count: 0,
+            warning_headers: Vec::new(),
         };
         let summary = cargo_verdict_summary(&attributed);
         assert!(
@@ -2576,6 +2592,7 @@ mod tests {
             probe_line: None,
             probe_diagnostic: None,
             warning_count: 0,
+            warning_headers: Vec::new(),
         };
         let summary = cargo_verdict_summary(&unattributed);
         assert!(
@@ -2589,6 +2606,7 @@ mod tests {
             probe_line: None,
             probe_diagnostic: None,
             warning_count: 0,
+            warning_headers: Vec::new(),
         };
         assert_eq!(cargo_verdict_summary(&green), "Completed status=0");
     }
@@ -3041,6 +3059,7 @@ error: could not compile `probe` (lib) due to 1 previous error
                 probe_line: Some("--> src/fixture_probe.rs:13:5".to_string()),
                 probe_diagnostic: diagnostic.map(|value| value.to_string()),
                 warning_count: 0,
+                warning_headers: Vec::new(),
             },
         };
         let pair_with = |diagnostic: Option<&str>| FixtureDiscrimination {
@@ -3072,6 +3091,7 @@ error: could not compile `probe` (lib) due to 1 previous error
             probe_line: None,
             probe_diagnostic: None,
             warning_count: 0,
+            warning_headers: Vec::new(),
         };
         for mutation in [
             MutationVerdict::NotAttempted {

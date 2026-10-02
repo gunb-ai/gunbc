@@ -1,0 +1,19 @@
+module std.resource_contract
+
+// THE CLOSED VALUES A `resource` DECLARATION'S `kind:` AND `mode:` ENTRIES TAKE. Homed in their own
+// import-free module rather than in std.resources because the v2 compiler reads them
+// (v2.std.resource_declaration) and the compiler's closure is emitted to Rust: importing std.resources
+// would pull std.filesystem, std.measure and the rest of its imports into that closure for two enums.
+// std.resources imports them, so a declaration there names them in scope.
+
+// These are the homes the v2 lowering reads a declaration's entries against
+// (v2.compiler.body_lowering_fold body_lower_resource_decl), so an unknown value refuses at its entry
+// instead of riding as an unclassified name. A Capability is held and used; an Observation is read
+// from the world without being held (Clock, Entropy).
+type ResourceKind
+  = Capability
+  | Observation
+
+type ResourceMode
+  = Read
+  | ReadWrite

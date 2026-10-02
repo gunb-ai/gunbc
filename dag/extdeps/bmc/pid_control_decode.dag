@@ -151,14 +151,15 @@ fn select_member(container: JsonValue, path: DocumentPath, field: NonEmptyStr) -
     MemberSelectionRefused { refusal: FieldNotAnObject { path: path, field: field } }
   } else {
     let hits = members_named(value: container, key: field as String)
-    if hits.length() == 0 {
-      MemberSelectionRefused { refusal: FieldAbsent { path: path, field: field } }
-    } else if hits.length() > 1 {
+    if hits.length() > 1 {
       MemberSelectionRefused {
         refusal: FieldDuplicated { path: path, field: field, occurrences: hits.length() },
       }
     } else {
-      MemberSelected { value: hits.first() }
+      match hits.first() {
+        Present { value: hit } => MemberSelected { value: hit }
+        Absent => MemberSelectionRefused { refusal: FieldAbsent { path: path, field: field } }
+      }
     }
   }
 }
@@ -351,10 +352,11 @@ fn decode_curve_side(container: JsonValue, path: DocumentPath, side: CurveSide) 
 // split between the language-semantics question and the type-conformance half that is below floor
 // regardless of how the first is answered. What is claimed HERE is only the local fact: the rename
 // to `magnitude` is a workaround, and no compiler guarantee is claimed by this module.
-fn indexed_decimal_value_at(entries: List<IndexedDecimal>, index: Int) -> ExactDecimal {
-  let matched = indexed_decimal_entries_with(entries: entries, index: index)
-  let entry = matched.first()
-  entry.magnitude
+fn indexed_decimal_value_at(entries: List<IndexedDecimal>, index: Int) -> ExactDecimal? {
+  match indexed_decimal_entries_with(entries: entries, index: index).first() {
+    Present { value: entry } => Present { value: entry.magnitude }
+    Absent => none
+  }
 }
 
 type CurveDecode
@@ -375,23 +377,41 @@ type CurveDecode
 fn curve_join(path: DocumentPath, readings: List<IndexedDecimal>, outputs: List<IndexedDecimal>) -> CurveDecode {
   let unpaired_reading = filter(readings, r => indexed_decimal_entries_with(entries: outputs, index: r.index).length() == 0)
   let unpaired_output = filter(outputs, o => indexed_decimal_entries_with(entries: readings, index: o.index).length() == 0)
-  if unpaired_reading.length() > 0 {
-    CurveRefused { refusal: CurveReadingWithoutOutput { path: path, index: unpaired_reading.first().index } }
-  } else if unpaired_output.length() > 0 {
-    CurveRefused { refusal: CurveOutputWithoutReading { path: path, index: unpaired_output.first().index } }
-  } else {
-    CurveDecoded {
-      points: sort_by(
-        map(readings, r =>
-          DemandCurvePoint {
-            index: r.index,
-            reading: decimal_celsius(value: r.magnitude),
-            output: zone_demand_value(value: indexed_decimal_value_at(entries: outputs, index: r.index)),
+  match unpaired_reading.first() {
+    Present { value: reading } =>
+      CurveRefused { refusal: CurveReadingWithoutOutput { path: path, index: reading.index } }
+    Absent =>
+      match unpaired_output.first() {
+        Present { value: unpaired } =>
+          CurveRefused { refusal: CurveOutputWithoutReading { path: path, index: unpaired.index } }
+        Absent => {
+          let joined = fold(
+            readings,
+            init: CurveDecoded { points: [] },
+            f: (acc, r) =>
+              match acc {
+                CurveDecoded { points } =>
+                  match indexed_decimal_value_at(entries: outputs, index: r.index) {
+                    Present { value: output_value } => {
+                      let point: DemandCurvePoint = DemandCurvePoint {
+                        index: r.index,
+                        reading: decimal_celsius(value: r.magnitude),
+                        output: zone_demand_value(value: output_value),
+                      }
+                      CurveDecoded { points: points.append(point) }
+                    }
+                    Absent =>
+                      CurveRefused { refusal: CurveReadingWithoutOutput { path: path, index: r.index } }
+                  }
+                other => acc
+              },
+          )
+          match joined {
+            CurveDecoded { points } => CurveDecoded { points: sort_by(points, point => point.index) }
+            other => joined
           }
-        ),
-        point => point.index,
-      ),
-    }
+        }
+      }
   }
 }
 
@@ -1394,16 +1414,18 @@ fn decode_program(document: JsonValue) -> ProgramDecode {
                           )
                           let broken = first_unconserved(partitions: partitions)
                           let broken_arrays = first_unconserved_array(partitions: element_partitions)
-                          if broken.length() > 0 {
-                            ProgramMembersNotConserved { verdict: broken.first() }
-                          } else if broken_arrays.length() > 0 {
-                            ProgramMembersNotConserved { verdict: broken_arrays.first() }
-                          } else {
-                            ProgramDecoded {
-                              program: BmcFanControlProgram { sensors: sensors, zones: zones },
-                              partitions: partitions,
-                              element_partitions: element_partitions,
-                            }
+                          match broken.first() {
+                            Present { value: verdict } => ProgramMembersNotConserved { verdict: verdict }
+                            Absent =>
+                              match broken_arrays.first() {
+                                Present { value: verdict } => ProgramMembersNotConserved { verdict: verdict }
+                                Absent =>
+                                  ProgramDecoded {
+                                    program: BmcFanControlProgram { sensors: sensors, zones: zones },
+                                    partitions: partitions,
+                                    element_partitions: element_partitions,
+                                  }
+                              }
                           }
                         }
                       }

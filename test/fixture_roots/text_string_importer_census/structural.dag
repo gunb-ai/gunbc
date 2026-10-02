@@ -1,0 +1,5 @@
+module fixture.text_string_importer_census.structural
+import v2.std.text { String, string_is_empty }
+fn blank(s: String) -> Bool {
+  string_is_empty(s: s)
+}

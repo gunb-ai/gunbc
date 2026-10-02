@@ -32,6 +32,7 @@ fn claim_verdict_cause_atom(identity: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: identity } }, children: [])
 }
 
+// Deliberately hand-built shape with no producer: the retired positional-types Arrow [T1..Tn, U] (Program P), with a Disj body.
 fn claim_verdict_cause_ill_formed() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Arrow },

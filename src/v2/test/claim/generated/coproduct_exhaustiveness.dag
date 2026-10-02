@@ -19,6 +19,7 @@ import v2.std.verification {
   GeneratedAnchorKey,
   GeneratedClaimAnchor,
   GeneratedCoproductExhaustiveness,
+  ManualClaimAnchor,
   TestClaim,
   test_claim_anchor,
   test_claim_input
@@ -56,7 +57,8 @@ fn witness_coproduct_exhaustiveness_generated_anchor() -> Bool {
     Accepted { value: claim, diagnostics: _ } =>
       match test_claim_anchor(c: claim) {
         GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { coproduct_type: _, omitted_variant: _ } } => true
-        _ => false
+        GeneratedClaimAnchor { generated_anchor: _ } => false
+        ManualClaimAnchor { manual_anchor: _ } => false
       }
     Rejected { diagnostics: _ } => false
   }

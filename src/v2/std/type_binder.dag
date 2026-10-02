@@ -1,11 +1,20 @@
 module v2.std.type_binder
 
-import v2.std.compilers.lexing { symbol_intern_lexeme }
-import std.algebra { Empty, list_snoc_item }
+import std.algebra { Cons, Empty, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.optional { Optional, Present, Absent, optional_present, optional_absent }
+import v2.std.arrow_contract { arrow_contract_conforms }
+import v2.std.node_query { binder_node_parts }
 import v2.std.node {
+  arrow_named_edge_is_non_binder,
+  arrow_first_positional_target,
+  FirstPositionalFound,
+  FirstPositionalAbsent,
+  NotMarkedReference,
+  resolved_reference_body_kind,
   Arrow,
+  Atom,
+  Instantiation,
   Behavior,
   Bind,
   ComputationNode,
@@ -17,9 +26,13 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
+  match_arm_pattern_edge,
+  arrow_signature_order_label,
+  arrow_named_edge_is_contract,
   node_subtree_nodes,
   node_synthetic,
-  type_binder_conj_conforms
+  type_binder_conj_conforms,
+  symbol_intern_lexeme,
 }
 
 // THE EDGE THAT CARRIES A DECLARATION'S TYPE PARAMETERS. One label for one concept: `fn f<T>` carries
@@ -91,23 +104,25 @@ fn type_decl_wrapper(binders: Node, member: Node) -> Node {
   )
 }
 
-// THE ONE UNWRAP, TYPED. Only a generic declaration is wrapped -- a non-generic one keeps its member
-// as its target, unchanged -- so a reader of a declaration target has two cases, and this function is
-// the only place they are told apart: no reader pattern-matches the raw wrapper. Consumed by
-// v2.compiler.symbol_index_fill (which indexes the member, never the wrapper) and
-// v2.std.compilers.semantic_decl_emission (which refuses a generic declaration).
+// THE ONE UNWRAP, TYPED. A reader of a declaration target has four cases, and this function is the
+// only place they are told apart: no reader pattern-matches the raw wrapper. Consumed by
+// v2.compiler.symbol_index_fill (which indexes a member, never a wrapper) and
+// v2.std.compilers.semantic_decl_emission (which renders a plain member and refuses the rest).
 //
-// THREE GENERIC SHAPES, TOLD APART BY EDGE LABEL AND NEVER BY A TARGET'S KIND: a member
-// (<type-body>), an aliased type expression (<type-alias>, type_alias_wrapper), and a bodyless
-// declaration carrying its binders alone (type_opaque_wrapper). THIS VIEW IS THE ONLY PLACE A READER
-// MAY TELL A LOWERED GENERIC ALIAS FROM A PLAIN ONE: a plain alias or plain bodyless declaration is
-// still its parse shell (PlainTypeDecl), so 'alias' has two representations until
-// gunbc.recurring_failure_mode plain_type_alias_left_as_a_parse_shell_in_v2 is discharged, and no other
-// reader pattern-matches either.
+// FOUR SHAPES, TOLD APART BY EDGE LABEL AND NEVER BY A TARGET'S KIND: a generic member
+// (<type-body>, type_decl_wrapper), an aliased type expression (<type-alias>, type_alias_wrapper), a
+// bodyless declaration carrying its binders alone (type_opaque_wrapper), and a non-generic member --
+// a record or coproduct -- which is its own target. THE ALIAS AND OPAQUE ARMS ARE CARDINALITY-NEUTRAL:
+// every alias and every bodyless declaration is wrapped, and its binder Conj may be empty
+// (v2.compiler.body_lowering_fold body_lower_decl_binders), so `TypeAlias` means "this name aliases
+// that type expression", never "this declaration is generic". A reader that needs to know whether a
+// declaration binds parameters asks the binders, not the arm. Before this, a plain alias or plain
+// bodyless declaration was left as its parse shell and fell into PlainTypeDecl
+// (gunbc.recurring_failure_mode plain_type_alias_left_as_a_parse_shell_in_v2); that producer is gone.
 type TypeDeclView
   = GenericTypeDecl { binders: Node, member: Node }
-  | GenericTypeAlias { binders: Node, aliased: Node }
-  | GenericOpaqueTypeDecl { binders: Node }
+  | TypeAlias { binders: Node, aliased: Node }
+  | OpaqueTypeDecl { binders: Node }
   | PlainTypeDecl { member: Node }
 
 // `type List<T> = std.algebra.FreeMonoid<T>` lowers its declaration edge to
@@ -168,17 +183,56 @@ fn type_decl_view(target: Node) -> TypeDeclView {
       member: type_decl_wrapper_target(wrapper: target, pick: fn(e) { edge_is_type_body(e: e) })
     }
   } else if type_alias_wrapper_is(n: target) {
-    GenericTypeAlias {
+    TypeAlias {
       binders: type_decl_wrapper_target(wrapper: target, pick: fn(e) { edge_is_type_params(e: e) }),
       aliased: type_decl_wrapper_target(wrapper: target, pick: fn(e) { edge_is_type_alias(e: e) })
     }
   } else if type_opaque_wrapper_is(n: target) {
-    GenericOpaqueTypeDecl {
+    OpaqueTypeDecl {
       binders: type_decl_wrapper_target(wrapper: target, pick: fn(e) { edge_is_type_params(e: e) })
     }
   } else {
     PlainTypeDecl { member: target }
   }
+}
+
+// A DECLARATION'S BINDER EDGE: the <type-parameters> edge of a type-declaration wrapper -- a generic
+// member, an alias or an opaque declaration, as type_decl_view classifies the parent -- never the same
+// marker on an Arrow. It carries names the binder authority checks and resolve scopes, not values, so
+// v2.compiler.infer does not derive its subtree (infer_declaration_binder_edge asks THIS predicate).
+fn declaration_binder_edge(parent: Node, edge: Edge) -> Bool {
+  edge_is_type_params(e: edge)
+    && match type_decl_view(target: parent) {
+      PlainTypeDecl { member: _ } => false
+      GenericTypeDecl { binders: _, member: _ } => true
+      TypeAlias { binders: _, aliased: _ } => true
+      OpaqueTypeDecl { binders: _ } => true
+    }
+}
+
+// THE NODES INFER DERIVES FACTS FOR: every node of the subtree except those under an Arrow's declared
+// order edge (arrow_signature_order_label, parameter LABELS), under a declaration's binder edge
+// (declaration_binder_edge, binder NAMES) and under a match arm's pattern edge
+// (v2.std.node match_arm_pattern_edge, a binding form). v2.compiler.infer declines both subtrees and carries each as
+// its parent's own evidence. Every stage that asks infer for a node's facts --
+// v2.compiler.program_partition's closure, a census over derived products -- walks THIS set, so none
+// demands facts infer was never asked to produce. It lives here, not in v2.std.node, because the binder
+// edge's marker is this module's fact (v2.std.node cannot intern it). Before the binder edge was
+// excluded, a module declaring an alias, a bodyless declaration or a generic declaration refused at the
+// partition closure as partition_facts_miss on its binder nodes.
+// A RESOLVED REFERENCE IS ONE TERM: the qualified-name cells under a <declaration-reference> or
+// <parameter-reference> marker (v2.std.qualified_name resolved_reference_node_of_kind) name where the
+// referent is declared, so they are not subterms. They are synthetic and alike across every reference
+// to one path, so entered as facts they collide as one key carrying different facts
+// (infer_facts_key_conflict). v2.compiler.infer's gather skips the same cells by the same accessor.
+fn node_inferred_subtree_nodes(root: Node) -> List<Node> {
+  fold(root.children, init: [root], f: fn(acc, e) {
+    if (e.label == arrow_signature_order_label) || arrow_named_edge_is_contract(e: e) || declaration_binder_edge(parent: root, edge: e) || match_arm_pattern_edge(parent: root, edge: e) || (resolved_reference_body_kind(target: root) != NotMarkedReference) {
+      acc
+    } else {
+      concat(acc, node_inferred_subtree_nodes(root: e.target))
+    }
+  })
 }
 
 fn type_decl_wrapper_target(wrapper: Node, pick: fn(Edge) -> Bool) -> Node {
@@ -284,31 +338,48 @@ fn type_annotation_optional(n: Node) -> Optional<Node> {
   }
 }
 
-// WHICH MARKER A BEHAVIOR ADMITS. v2.std.node admits at most one Named edge on a Transform or Bind
-// by SHAPE (PositionalPlusOneNamedEdges); this is the label half, and it is asked of those two
-// behaviors ONLY: a Transform's cast target, a Bind's let annotation. Every other behavior's Named
-// edges -- a Loop's bound and carrier -- are owned by its own v2.std.node edge discipline
-// (loop_behavior_edges_conform), and a second, blanket rule here refusing labels that authority
-// requires would fork it.
-fn behavior_marker_optional(b: Behavior) -> Optional<Symbol> {
-  match b {
-    Transform => optional_present(value: cast_target_marker())
-    Bind => optional_present(value: type_annotation_marker())
-    _ => optional_absent()
-  }
-}
-
-fn computation_named_labels_conform(n: Node, b: Behavior) -> Bool {
+// A BIND'S NAMED EDGE IS ITS LET ANNOTATION AND NOTHING ELSE: every Named edge on a Bind carries the
+// <type-annotation> marker, and v2.std.node's shape for a Bind (PositionalPlusOneNamedEdges) makes that
+// at most one, wherever it stands.
+fn bind_named_labels_conform(n: Node) -> Bool {
   fold(n.children, init: true, f: fn(acc, e) {
     match e.label {
       Positional => acc
+      Named { name: sym } => acc && (sym == type_annotation_marker())
+    }
+  })
+}
+
+// WHICH NAMED LABELS A BEHAVIOR ADMITS. v2.std.node states the SHAPE of a Transform's children
+// (positional_prefix_then_labeled_conform: positional first, then distinct Named edges); this is the
+// label half for a Transform, and bind_named_labels_conform is it for a Bind. A Transform is one of two forms and never both: a CAST, whose
+// one Named edge is the <cast-target> marker, or an APPLICATION, whose Named edges are named actuals
+// labelled by the callee's parameter names (v2.compiler.body_lowering_fold body_lower_call_arg_edge).
+// A Transform carrying the marker beside any other Named edge mixes the two and refuses here. Whether
+// an application's label names a parameter is a binding question, decided against the callee's
+// domain -- an unknown label refuses at infer (v2.std.arrow_signature application_binding_plan,
+// application_argument_label_unknown) -- so no Accepted program holds a foreign label either way. Every
+// other behavior's Named edges -- a Loop's bound and carrier -- are owned by its own v2.std.node edge
+// discipline (loop_behavior_edges_conform), and a second, blanket rule here refusing labels that
+// authority requires would fork it.
+type TransformLabelWalk {
+  markers: Int
+  actuals: Int
+}
+
+fn transform_named_labels_conform(n: Node) -> Bool {
+  let walk = fold(n.children, init: TransformLabelWalk { markers: 0, actuals: 0 }, f: fn(acc, e) {
+    match e.label {
+      Positional => acc
       Named { name: sym } =>
-        acc && match behavior_marker_optional(b: b) {
-          Present { value: marker } => sym == marker
-          Absent => false
+        if sym == cast_target_marker() {
+          TransformLabelWalk { markers: acc.markers + 1, actuals: acc.actuals }
+        } else {
+          TransformLabelWalk { markers: acc.markers, actuals: acc.actuals + 1 }
         }
     }
   })
+  (walk.markers == 0) || ((walk.markers == 1) && (walk.actuals == 0))
 }
 
 // WHERE THE MARKERS MAY STAND, stated over the whole tree. Which wrapper a node is, is decided ONCE,
@@ -327,15 +398,15 @@ fn type_binder_node_conforms(n: Node) -> Bool {
   })
   let params_ok = (params == 0) || ((params == 1) && marker_targets_conform(n: n))
   match n.kind {
-    TypeNode { connective: Arrow } => params_ok && (bodies == 0) && arrow_named_labels_conform(n: n)
-    ComputationNode { behavior: Transform } => (params == 0) && (bodies == 0) && computation_named_labels_conform(n: n, b: Transform)
-    ComputationNode { behavior: Bind } => (params == 0) && (bodies == 0) && computation_named_labels_conform(n: n, b: Bind)
+    TypeNode { connective: Arrow } => params_ok && (bodies == 0) && arrow_named_labels_conform(n: n) && arrow_contract_conforms(children: n.children) && arrow_domain_members_are_binders(n: n)
+    ComputationNode { behavior: Transform } => (params == 0) && (bodies == 0) && transform_named_labels_conform(n: n)
+    ComputationNode { behavior: Bind } => (params == 0) && (bodies == 0) && bind_named_labels_conform(n: n)
     _ =>
       match type_decl_view(target: n) {
         PlainTypeDecl { member: _ } => (params == 0) && (bodies == 0)
         GenericTypeDecl { binders: _, member: _ } => params_ok
-        GenericTypeAlias { binders: _, aliased: _ } => params_ok
-        GenericOpaqueTypeDecl { binders: _ } => params_ok
+        TypeAlias { binders: _, aliased: _ } => params_ok
+        OpaqueTypeDecl { binders: _ } => params_ok
       }
   }
 }
@@ -346,15 +417,118 @@ fn marker_targets_conform(n: Node) -> Bool {
   })
 }
 
+// THE BINDER WALL (XL-2 PR2b-3): every Named member of an Arrow's domain is a binder node (v2.std.node_query
+// binder_node_parts), built by binder_edge, binder_edge_with_default or binder_relabelled. A hand-built
+// name-to-type edge refuses here, at the Arrow, rather than being read as a parameter typed by its raw
+// target. The binder readers refuse such a member too (declared_field_from_edge answers Absent), so a
+// record payload this wall does not reach still fails closed at its first reader.
+fn arrow_domain_members_are_binders(n: Node) -> Bool {
+  match arrow_first_positional_target(children: n.children) {
+    FirstPositionalFound { target: domain } =>
+      fold(domain.children, init: true, f: fn(acc, e) { acc && arrow_domain_member_is_binder(e: e) })
+    FirstPositionalAbsent => true
+  }
+}
+
+fn arrow_domain_member_is_binder(e: Edge) -> Bool {
+  match e.label {
+    Positional => true
+    Named { name: _ } =>
+      match binder_node_parts(n: e.target) {
+        Present { value: _ } => true
+        Absent => false
+      }
+  }
+}
+
 fn arrow_named_labels_conform(n: Node) -> Bool {
   fold(n.children, init: true, f: fn(acc, e) {
     match e.label {
       Positional => acc
-      Named { name: sym } => acc && ((sym == ^arrow_body_edge) || (sym == ^arrow_signature_order_edge) || (sym == type_params_marker()))
+      Named { name: sym } => acc && (arrow_named_edge_is_non_binder(e: e) || (sym == type_params_marker()))
     }
   })
 }
 
 fn type_binder_labels_conform(root: Node) -> Bool {
   fold(node_subtree_nodes(root: root), init: true, f: fn(acc, n) { acc && type_binder_node_conforms(n: n) })
+}
+
+// The first node whose labels do not conform, so a refusal is located at it rather than at the root
+// (a cast marker beside named actuals is refused at that Transform).
+fn type_binder_first_mislabelled(root: Node) -> Optional<Node> {
+  fold(node_subtree_nodes(root: root), init: optional_absent(), f: fn(acc, n) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if type_binder_node_conforms(n: n) { acc } else { optional_present(value: n) }
+    }
+  })
+}
+
+// WHETHER AN ALIAS DECLARATION IS A PURE RENAMING, decided once, on the declaration
+// (docs/plans/anonymous-record-literal-design.md, section Pure-renaming aliases). `type A<p1..pn> = H<p1..pn>` -- the aliased expression is a head applied
+// to exactly the alias's own binders, in declared order, or `type A = H` with none -- denotes H with
+// the same arguments in the same positions, so a reader that follows it substitutes nothing. Every
+// other declaration is not a renaming: a reordering, constant or partially applied alias, a
+// generic record, a plain type. v2.std.symbol_index records the answer when it records the
+// declaration, and readers take it from there rather than re-deriving it at each use.
+type AliasRenaming
+  = PureRenamingOf { head: Symbol }
+  | NotARenaming
+
+fn type_alias_renaming(target: Node) -> AliasRenaming {
+  match type_decl_view(target: target) {
+    TypeAlias { binders: binders, aliased: aliased } =>
+      type_alias_renaming_of(binders: binder_conj_names(conj: binders), aliased: aliased)
+    _ => NotARenaming
+  }
+}
+
+fn type_alias_renaming_of(binders: List<Symbol>, aliased: Node) -> AliasRenaming {
+  match aliased.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if count(binders) == 0 { PureRenamingOf { head: id } } else { NotARenaming }
+    TypeNode { connective: Instantiation } =>
+      let scan = type_binder_instantiation_scan(n: aliased)
+      match scan.head {
+        Present { value: head } =>
+          if scan.args_are_atoms && (scan.arg_ids == binders) { PureRenamingOf { head: head } } else { NotARenaming }
+        Absent => NotARenaming
+      }
+    _ => NotARenaming
+  }
+}
+
+// An instantiation read once, positionally: its head atom (if the head is one), the identities of
+// its argument atoms in order, and whether every argument is an atom.
+type TypeBinderInstantiationScan {
+  seen: Int
+  head: Optional<Symbol>
+  arg_ids: List<Symbol>
+  args_are_atoms: Bool
+}
+
+fn type_binder_instantiation_scan(n: Node) -> TypeBinderInstantiationScan {
+  fold(n.children, init: TypeBinderInstantiationScan { seen: 0, head: optional_absent(), arg_ids: Empty, args_are_atoms: true }, f: fn(acc, e) {
+    match e.label {
+      Positional =>
+        let id = type_binder_atom_identity_optional(n: e.target)
+        if acc.seen == 0 {
+          TypeBinderInstantiationScan { seen: 1, head: id, arg_ids: acc.arg_ids, args_are_atoms: acc.args_are_atoms }
+        } else {
+          match id {
+            Present { value: a } => TypeBinderInstantiationScan { seen: acc.seen + 1, head: acc.head, arg_ids: list_snoc_item(xs: acc.arg_ids, item: a), args_are_atoms: acc.args_are_atoms }
+            Absent => TypeBinderInstantiationScan { seen: acc.seen + 1, head: acc.head, arg_ids: acc.arg_ids, args_are_atoms: false }
+          }
+        }
+      _ => acc
+    }
+  })
+}
+
+fn type_binder_atom_identity_optional(n: Node) -> Optional<Symbol> {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+    _ => optional_absent()
+  }
 }

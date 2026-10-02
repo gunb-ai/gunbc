@@ -1,0 +1,151 @@
+module v2.test.claim.body_lowering.reify_operand_refusal
+
+import v2.compiler.body_lowering_fold { body_lower_reify_arrow_body }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model, parse_production_emitted_identity_optional }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Atom, Branch, ComputationNode, Edge, Node, Positional, Symbol, Transform, TypeNode, node_synthetic }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE REIFY ROUTE CARRIES AN OPERAND'S REFUSAL; IT NEVER READS IT AS ABSENT.
+//
+// THE SUBJECT IS ONE INTERFACE: v2.compiler.body_lowering_fold body_lower_reify_arrow_body, over a
+// Transform (an argument edge) and a Branch (a target edge). Its input is SUPPLIED: a binary
+// expression is tokenized and parsed, and its raw binary_expr node is placed as the operand. The real
+// path reaches reify only with lowered targets, so this is the boundary's own contract, and the
+// lowering routes keep their own witnesses (the pairing of DESIGN section 3).
+//
+// THE RED ON MAIN (gunbc.recurring_failure_mode lowering_accessor_collapses_a_sequence_operand, the
+// reify route #12615 named): for `a + g(p: { })` the operand reader refuses -- the empty block argument
+// is a statement spine with no head, statement_spine_headless -- and the reify route mapped that
+// refusal to Absent. As a Transform argument the refusal fell through to the shell reader and surfaced
+// as unsupported_form at the operand -- the cause replaced; as a Branch target it was KEPT AS IF READ
+// and the Branch was Accepted with an unlowered operand in it. Both now refuse with the operand's own
+// cause. `a + b` is the control: it reads whole and reifies on both sides.
+//
+// THE SPECIMEN MOVED ONCE: it was `a + ^s`, refusing caret_symbol_not_lowered, until MQ-1 PR-2
+// (gunbc#12420) gave the caret a lowered form and that operand stopped refusing. A refusal specimen is
+// only as good as the refusal it stands on, so this one stands on an empty block argument, which no
+// planned form lowers.
+
+type RorVerdict
+  = RorAccepted
+  | RorRefused { reason: Symbol }
+  | RorUnread
+
+type RorVerdicts {
+  refused_transform: RorVerdict
+  refused_branch: RorVerdict
+  read_transform: RorVerdict
+  read_branch: RorVerdict
+}
+
+fn ror_first_binary(root: Node) -> Optional<Node> {
+  let own = match parse_production_emitted_identity_optional(node: root) {
+    Present { value: e } => if e == ^dag_surface_binary_expr { optional_present(value: root) } else { optional_absent() }
+    Absent => optional_absent()
+  }
+  match own {
+    Present { value: _ } => own
+    Absent => fold(root.children, init: optional_absent(), f: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => ror_first_binary(root: e.target)
+      }
+    })
+  }
+}
+
+fn ror_operand(expr: String) -> Optional<Node> {
+  let lm = dag_language_model()
+  match tokenize(text: "module m\n\nfn f(a: Int, b: Int) -> Int \{ " + expr + " }\n", file: ^ror_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: artifact, diagnostics: _ } => ror_first_binary(root: artifact.tree)
+      }
+  }
+}
+
+fn ror_head() -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: ^ror_head } }, children: [])
+}
+
+fn ror_reify(body: Node) -> RorVerdict {
+  match body_lower_reify_arrow_body(body: body) {
+    Accepted { value: _, diagnostics: _ } => RorAccepted
+    Rejected { diagnostics: d } => RorRefused { reason: diagnostics_fatal_reason(d: d) }
+  }
+}
+
+fn ror_transform(operand: Optional<Node>) -> RorVerdict {
+  match operand {
+    Absent => RorUnread
+    Present { value: o } =>
+      ror_reify(body: node_synthetic(kind: ComputationNode { behavior: Transform }, children: [
+        Edge { label: Positional, target: ror_head() },
+        Edge { label: Positional, target: o }
+      ]))
+  }
+}
+
+fn ror_branch(operand: Optional<Node>) -> RorVerdict {
+  match operand {
+    Absent => RorUnread
+    Present { value: o } =>
+      ror_reify(body: node_synthetic(kind: ComputationNode { behavior: Branch }, children: [
+        Edge { label: Positional, target: ror_head() },
+        Edge { label: Positional, target: o },
+        Edge { label: Positional, target: ror_head() }
+      ]))
+  }
+}
+
+// ONE FRONT END FOR EVERY CLAIM, enrolled WARM in v2.workflow.floor_pure_producer_share: the stored
+// value is four verdicts, no Node and no closure.
+fn ror_verdicts() -> RorVerdicts {
+  let refused = ror_operand(expr: "a + g(p: \{ })")
+  let read = ror_operand(expr: "a + b")
+  RorVerdicts {
+    refused_transform: ror_transform(operand: refused),
+    refused_branch: ror_branch(operand: refused),
+    read_transform: ror_transform(operand: read),
+    read_branch: ror_branch(operand: read)
+  }
+}
+
+fn ror_refuses_with_the_operands_cause(v: RorVerdict) -> Bool {
+  match v {
+    RorRefused { reason: r } => r == ^body_lowering_reason_statement_spine_headless
+    _ => false
+  }
+}
+
+fn ror_accepted(v: RorVerdict) -> Bool {
+  match v {
+    RorAccepted => true
+    _ => false
+  }
+}
+
+test fn a_refused_transform_argument_refuses_with_the_operands_own_cause() -> Bool {
+  ror_refuses_with_the_operands_cause(v: ror_verdicts().refused_transform)
+}
+
+test fn a_refused_branch_target_refuses_with_the_operands_own_cause() -> Bool {
+  ror_refuses_with_the_operands_cause(v: ror_verdicts().refused_branch)
+}
+
+test fn a_read_transform_argument_reifies() -> Bool {
+  ror_accepted(v: ror_verdicts().read_transform)
+}
+
+test fn a_read_branch_target_reifies() -> Bool {
+  ror_accepted(v: ror_verdicts().read_branch)
+}

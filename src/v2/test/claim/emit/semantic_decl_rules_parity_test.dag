@@ -1,5 +1,6 @@
 module v2.test.emit.semantic_decl_rules_parity_test
 
+import v2.compiler.emit_semantic_decl { produced_type_binding }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.target_serialize { grammar_relation_row_for_emitted, grammar_relation_row_tokens_root }
 import v2.extdeps.languages.rust {
@@ -48,7 +49,8 @@ test fn emission_rules_match_rust_rules_for_generic_surface() -> Bool {
         projection: emission.surface,
         name: ^Bool,
         params: Empty,
-        coproduct: bool_coproduct()
+        coproduct: bool_coproduct(),
+        type_binding: produced_type_binding(target: rust_semantic_decl_target_model_staging())
       ) {
         Accepted { value: surface, diagnostics: _ } =>
           tokens_for_rules(surface: surface, rules: emission.enum_translation_rules)

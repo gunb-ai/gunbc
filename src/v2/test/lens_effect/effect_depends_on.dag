@@ -116,7 +116,7 @@ fn effect_depends_on_claim_holds() -> Bool {
         ),
         b: effect_depends_on_claim.expected
       )
-    _ => false
+    Holds { value: _ } => false
   }
 }
 

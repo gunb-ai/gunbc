@@ -2,6 +2,7 @@ module test.claim.spark.v41_capacity_measurement_witness
 
 import v2.std.algebra { filter }
 import v2.std.collection { list_at_optional }
+import std.staircase { StaircaseStopped, StaircaseCompleted }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure {
@@ -33,7 +34,7 @@ import gunbc.spark.v41_capacity_measurement {
   V41ProbeCell, V41ProbeReading, V41ProbeRankReading, ProbeWarm, TouchCounterUnavailable, EngramLookupObserved,
   v41_touch_counter_frontier, v41_judge_probe, ProbeRefused, ProbeWorkingSetResident, ProbeWorkingSetFaulted,
   V41CapacityPolicy, PolicyOperatorSigned, PolicyProposed, V41TtftGate, v41_capacity_policy, V41StaircaseStepReading, v41_run_staircase,
-  V41PolicyStanding, StaircaseStopped, StaircaseCompleted, StaircaseRefused, StopKvPreemption, StopReadingMissing,
+  V41PolicyStanding, V41StaircaseRun, V41StaircasePolicyUnsigned, V41StaircaseRan, StopKvPreemption, StopReadingMissing,
   StopSuperlinearRefault, StopPsiFullSustained, StopNvmeLatency, StopSloBreach, V41ResidencyPhase,
   V41Capacity, CapacityAt, CapacityBelowFirstStep, CapacityRefused, v41_capacity_wire,
   v41_kv_admission_capacity, v41_engram_resident_capacity, v41_sla_capacity, v41_capacity_report,
@@ -383,9 +384,8 @@ fn w_step_ttft(c: Nat, ttft: Nat) -> V41StaircaseStepReading {
 
 test fn the_staircase_refuses_while_the_policy_is_an_unsigned_proposal() -> Bool {
   match v41_run_staircase(policy: PolicyProposed { proposal: w_policy(gate_context: 32768), reasons: "fixture" as NonEmptyStr }, run_id: "run-1" as NonEmptyStr, steps: map([1, 2, 4, 6, 8, 12, 16], c => w_step(c: c, preemptions: 0))) {
-    StaircaseRefused { cause: _ } => true
-    StaircaseCompleted { last_sustained: _ } => false
-    StaircaseStopped { last_sustained: _, stop: _ } => false
+    V41StaircasePolicyUnsigned { cause: _ } => true
+    V41StaircaseRan { outcome: _ } => false
   }
 }
 
@@ -396,14 +396,16 @@ test fn the_staircase_refuses_while_the_policy_is_an_unsigned_proposal() -> Bool
 test fn the_signed_policy_records_ttft_at_262k_without_stopping_on_it() -> Bool {
   let steps = map([1, 2, 4, 6, 8, 12, 16], c => w_step_ttft(c: c, ttft: 120000))
   let signed = match v41_run_staircase(policy: v41_capacity_policy, run_id: "run-1" as NonEmptyStr, steps: steps) {
-    StaircaseCompleted { last_sustained: l } => l == 16
-    StaircaseStopped { last_sustained: _, stop: _ } => false
-    StaircaseRefused { cause: _ } => false
+    V41StaircaseRan { outcome: StaircaseCompleted { last_sustained: l } } => l == 16
+    V41StaircaseRan { outcome: StaircaseStopped { last_sustained: _, stop: _ } } => false
+    V41StaircaseRan { outcome: StaircaseRefused { refusal: _ } } => false
+    V41StaircasePolicyUnsigned { cause: _ } => false
   }
   let covering = match v41_run_staircase(policy: PolicyOperatorSigned { policy: w_policy(gate_context: 262144), ruling: "fixture" as NonEmptyStr }, run_id: "run-1" as NonEmptyStr, steps: steps) {
-    StaircaseStopped { last_sustained: l, stop: st } => match l { Absent => true  Present { value: _ } => false } && match st { StopSloBreach { concurrency: c, which: w, observed: _ } => c == 1 && (w as String) == "ttft"  StopKvPreemption { concurrency: _, preemptions: _ } => false  StopSuperlinearRefault { concurrency: _, per_request: _, previous_per_request: _ } => false  StopPsiFullSustained { concurrency: _, stalled: _, window: _ } => false  StopNvmeLatency { concurrency: _, mean_read_await: _ } => false  StopReadingMissing { concurrency: _, cause: _ } => false }
-    StaircaseCompleted { last_sustained: _ } => false
-    StaircaseRefused { cause: _ } => false
+    V41StaircaseRan { outcome: StaircaseStopped { last_sustained: l, stop: st } } => match l { Absent => true  Present { value: _ } => false } && match st { StopSloBreach { concurrency: c, which: w, observed: _ } => c == 1 && (w as String) == "ttft"  StopKvPreemption { concurrency: _, preemptions: _ } => false  StopSuperlinearRefault { concurrency: _, per_request: _, previous_per_request: _ } => false  StopPsiFullSustained { concurrency: _, stalled: _, window: _ } => false  StopNvmeLatency { concurrency: _, mean_read_await: _ } => false  StopReadingMissing { concurrency: _, cause: _ } => false }
+    V41StaircaseRan { outcome: StaircaseCompleted { last_sustained: _ } } => false
+    V41StaircaseRan { outcome: StaircaseRefused { refusal: _ } } => false
+    V41StaircasePolicyUnsigned { cause: _ } => false
   }
   signed && covering
 }
@@ -412,9 +414,10 @@ test fn the_staircase_stops_at_the_first_kv_preemption() -> Bool {
   let steps = [w_step(c: 1, preemptions: 0), w_step(c: 2, preemptions: 0), w_step(c: 4, preemptions: 0), w_step(c: 6, preemptions: 0), w_step(c: 8, preemptions: 3), w_step(c: 12, preemptions: 9)]
   let o = v41_run_staircase(policy: w_signed(), run_id: "run-1" as NonEmptyStr, steps: steps)
   let stopped_at_8 = match o {
-    StaircaseStopped { last_sustained: _, stop: s } => match s { StopKvPreemption { concurrency: c, preemptions: p } => c == 8 && p == 3  StopReadingMissing { concurrency: _, cause: _ } => false  StopSuperlinearRefault { concurrency: _, per_request: _, previous_per_request: _ } => false  StopPsiFullSustained { concurrency: _, stalled: _, window: _ } => false  StopNvmeLatency { concurrency: _, mean_read_await: _ } => false  StopSloBreach { concurrency: _, which: _, observed: _ } => false }
-    StaircaseCompleted { last_sustained: _ } => false
-    StaircaseRefused { cause: _ } => false
+    V41StaircaseRan { outcome: StaircaseStopped { last_sustained: _, stop: s } } => match s { StopKvPreemption { concurrency: c, preemptions: p } => c == 8 && p == 3  StopReadingMissing { concurrency: _, cause: _ } => false  StopSuperlinearRefault { concurrency: _, per_request: _, previous_per_request: _ } => false  StopPsiFullSustained { concurrency: _, stalled: _, window: _ } => false  StopNvmeLatency { concurrency: _, mean_read_await: _ } => false  StopSloBreach { concurrency: _, which: _, observed: _ } => false }
+    V41StaircaseRan { outcome: StaircaseCompleted { last_sustained: _ } } => false
+    V41StaircaseRan { outcome: StaircaseRefused { refusal: _ } } => false
+    V41StaircasePolicyUnsigned { cause: _ } => false
   }
   stopped_at_8 && v41_capacity_wire(c: v41_sla_capacity(o: o)) == "x6"
 }

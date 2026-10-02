@@ -434,12 +434,14 @@ fn effect_io_pure_roundtrip_through_store(
                 RuntimeValueEqualityUnavailable { reason: r } =>
                   Violates { diagnostic: effect_io_pure_equality_undecided_diagnostic(reason: r) }
               }
-            _ => Holds { value: false }
+            Accepted { value: _, diagnostics: _ } => Holds { value: false }
+            Rejected { diagnostics: _ } => Holds { value: false }
           }
         RuntimeValuesDiffer => Holds { value: false }
         RuntimeValueEqualityUnavailable { reason: r } =>
           Violates { diagnostic: effect_io_pure_equality_undecided_diagnostic(reason: r) }
       }
-    _ => Holds { value: false }
+    Accepted { value: _, diagnostics: _ } => Holds { value: false }
+    Rejected { diagnostics: _ } => Holds { value: false }
   }
 }

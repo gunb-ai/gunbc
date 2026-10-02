@@ -148,7 +148,8 @@ fn mandatory_tag_subtree_atoms(n: Node) -> List<Symbol> {
       init: fn(n0) {
         match n0.kind {
           TypeNode { connective: Atom { identity: s } } => [s]
-          _ => []
+          TypeNode { connective: _ } => []
+          ComputationNode { behavior: _ } => []
         }
       },
       step: fn(acc, _edge, child) { concat(acc, child) }

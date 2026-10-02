@@ -3,7 +3,7 @@ module gunbc.srv3_boot_once_cd
 import std.measure { Second, second }
 import extdeps.bmc.http
 import std.scoped_authorization { ScopedAuthorization }
-import std.types { Timestamp }
+import std.types { FilePath, Timestamp }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.workflow_escalation {
   workflow_destructive_step_refusal_reason

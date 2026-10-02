@@ -1,0 +1,153 @@
+module v2.test.parse.block_expr_as_binary_operand_parse
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.optional { Absent, Optional, Present }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Branch, ComputationNode, Match, Node, NodeKind, Symbol }
+import v2.std.node_query { find_arrow_body_child }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DEFECT THESE ARMS DISCRIMINATE, AND WHY IT IS AN ORDERING FACT RATHER THAN A MISSING FORM.
+//
+// `dag_grammar_expr_expr` is an ordered choice whose first alternatives are `match_expr`,
+// `if_expr` and `loop_expr`, with `binary_expr` last. `dag_grammar_primary_expr_core` ALREADY
+// reaches all three of those same productions as its final alternatives, so a block-shaped
+// expression is a legal binary operand by construction. The ordering is what denies it: given
+// `match a { ... } && b`, the `expr` choice commits to `match_expr`, that production succeeds
+// having consumed the match alone, and the `&& b` that follows reaches no production -- the parse
+// ends with tokens remaining. Nothing about the operand is unrepresentable; the alternative that
+// could represent it is never offered.
+//
+// WHY THE RED IS AUTHORABLE HERE (DESIGN 4b, the top-rung question). The forbidden state is a
+// source text the accepted corpus cannot contain, because a module spelling it does not parse --
+// so no corpus fixture could carry it. It is perfectly representable as SOURCE HANDED TO THE
+// PARSER, which is what these arms do: the grammar under judgment is the live
+// `dag_prepared_grammar`, not a mirror of it, and the text is a value.
+//
+// WHAT EACH ARM ESTABLISHES, so a later reader does not mistake the set for one claim:
+//   - the two REDs are the defect, one per block form (`match` and `if`) heading a binary chain;
+//     before the reorder both are Rejected and both arms fail.
+//   - `bare_match_still_parses` and `bare_if_still_parses` are the controls that make the reorder
+//     a repair rather than a trade: a block form standing alone as a whole expression, which is
+//     how nearly every such expression in the corpus is written, must keep parsing.
+//   - `ordinary_binary_still_parses` holds the other side: an operand that was never block-shaped
+//     is unaffected.
+// A change that satisfied the REDs by making block forms parse ONLY as binary operands would take
+// the controls red, which is the discrimination the pair exists to provide.
+
+fn g_tokenize_parse(text: String, file: Symbol) -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      bind_outcome(
+        o: tokenize(text: text, file: file, rules: dag_lex()),
+        f: fn(token_stream) {
+          match parse_module_prepared(
+            tokens: token_stream,
+            prepared: prepared,
+            validation_residue: residue
+          ) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } =>
+              Accepted { value: artifact.tree, diagnostics: d }
+          }
+        }
+      )
+  }
+}
+
+fn g_parse_accepted(text: String, file: Symbol) -> Bool {
+  match g_tokenize_parse(text: text, file: file) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// The shape read from a real refusing site: `dag/gunbc/fleet/fleet_fan_wiring_witness.dag` closes
+// one match and opens the next as the right operand of `&&`.
+data match_as_binary_operand_source: String = "module probe.match_binary\n\nfn f(a: Int) -> Bool {\n  match a {\n    _ => true\n  } && true\n}\n"
+
+data if_as_binary_operand_source: String = "module probe.if_binary\n\nfn f(a: Bool) -> Bool {\n  if a {\n    true\n  } else {\n    false\n  } && true\n}\n"
+
+data bare_match_source: String = "module probe.bare_match\n\nfn f(a: Int) -> Bool {\n  match a {\n    _ => true\n  }\n}\n"
+
+data bare_if_source: String = "module probe.bare_if\n\nfn f(a: Bool) -> Bool {\n  if a {\n    true\n  } else {\n    false\n  }\n}\n"
+
+data ordinary_binary_source: String = "module probe.ordinary_binary\n\nfn f(a: Bool) -> Bool {\n  a && true\n}\n"
+
+// THE TREE-SHAPE CONTROL #11911 LEFT OPEN. After the reorder a bare `match` / `if` is reached as
+// binary_expr -> primary_expr_core -> match_expr / if_expr rather than straight from `expr`, so its
+// PARSE path changes by construction. What must not change is what it LOWERS to: the fn's arrow body
+// is still the Match (or Branch) construct itself, not a pass-through wrapper around it and not a
+// retained shell. Both hold before and after the reorder; they go red if routing a bare block form
+// through binary_expr ever wraps or retains it.
+fn arrow_body_kind(root: Node) -> Optional<NodeKind> {
+  match find_arrow_body_child(root: root) {
+    Accepted { value: body, diagnostics: _ } => Present { value: body.kind }
+    Rejected { diagnostics: _ } =>
+      fold(root.children, init: Absent, f: fn(found, e) {
+        match found {
+          Present { value: _ } => found
+          Absent => arrow_body_kind(root: e.target)
+        }
+      })
+  }
+}
+
+fn normalized_arrow_body_kind(text: String, file: Symbol) -> Optional<NodeKind> {
+  match g_tokenize_parse(text: text, file: file) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: tree, diagnostics: _ } =>
+      match normalize(parse_tree: tree) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: normalized, diagnostics: _ } => arrow_body_kind(root: normalized.root)
+      }
+  }
+}
+
+// Each outcome is computed ONCE as a nullary value, enrolled WARM in
+// v2.workflow.floor_pure_producer_share, and each claim reads it: a claim that parsed its own source
+// is over the new-witness eval-step budget.
+fn match_heading_chain_parsed() -> Bool { g_parse_accepted(text: match_as_binary_operand_source, file: ^probe_match_binary) }
+
+fn if_heading_chain_parsed() -> Bool { g_parse_accepted(text: if_as_binary_operand_source, file: ^probe_if_binary) }
+
+fn bare_match_parsed() -> Bool { g_parse_accepted(text: bare_match_source, file: ^probe_bare_match) }
+
+fn bare_if_parsed() -> Bool { g_parse_accepted(text: bare_if_source, file: ^probe_bare_if) }
+
+fn ordinary_binary_parsed() -> Bool { g_parse_accepted(text: ordinary_binary_source, file: ^probe_ordinary_binary) }
+
+fn bare_match_body_is_match() -> Bool {
+  match normalized_arrow_body_kind(text: bare_match_source, file: ^probe_bare_match) {
+    Present { value: ComputationNode { behavior: Match } } => true
+    _ => false
+  }
+}
+
+fn bare_if_body_is_branch() -> Bool {
+  match normalized_arrow_body_kind(text: bare_if_source, file: ^probe_bare_if) {
+    Present { value: ComputationNode { behavior: Branch } } => true
+    _ => false
+  }
+}
+
+test fn match_heading_a_binary_chain_parses_holds() -> Bool { match_heading_chain_parsed() }
+
+test fn if_heading_a_binary_chain_parses_holds() -> Bool { if_heading_chain_parsed() }
+
+test fn bare_match_still_parses_holds() -> Bool { bare_match_parsed() }
+
+test fn bare_if_still_parses_holds() -> Bool { bare_if_parsed() }
+
+test fn ordinary_binary_still_parses_holds() -> Bool { ordinary_binary_parsed() }
+
+test fn a_bare_match_still_lowers_to_the_match_itself_holds() -> Bool { bare_match_body_is_match() }
+
+test fn a_bare_if_still_lowers_to_the_branch_itself_holds() -> Bool { bare_if_body_is_branch() }

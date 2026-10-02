@@ -1,7 +1,7 @@
 module v1.compiler.infer
 
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
-import std.types { SourceSpan, NonEmptyStr, container_param_name, container_template_algebra, kernel_type_set, is_kernel_type }
+import std.types { SourceSpan, NonEmptyStr, container_param_name, container_template_algebra, container_template_alias_algebra, is_container_type, kernel_type_set, is_kernel_type }
 import std.content_hash {
   ContentHash,
   Fnv1a64Structural,
@@ -9,7 +9,7 @@ import std.content_hash {
 }
 import extdeps.container.oci.digest { oci_other_digest_algorithm, oci_other_digest_encoded }
 import std.syntax { Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce, BinOp, LitStr, LitInt, LitBool, LiteralValue }
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.target_representation { VariantParentIdentity, VariantParentIdentified, VariantParentUnrecovered, VariantParentDeclaration, VariantParentKernelType }
 import std.kernel_type_name { kernel_type_name, KernelTypeNameAdmitted, NotAKernelTypeName }
 import std.operator_realization { OperandDeclaration }
@@ -19,7 +19,7 @@ import std.literal_elaboration {
   elaborate_literal_at, literal_source_kind_of, literal_elaboration_refusal_message
 }
 import gunbc.structural_realization_bindings { literal_homomorphism_rows }
-import std.coercion { dag_can_cast, is_dag_cast_domain_type, dag_cast_requires_proof, SubtractionRefinementAmbiguous, KernelMinted }
+import std.coercion { dag_can_cast, is_dag_cast_domain_type, dag_cast_requires_proof, SubtractionRefinementAmbiguous, KernelMinted, CorpusDeclared, DeclarationIdentityAbsent }
 import v1.compiler.type_head_exposure {
   TypeHeadView, KernelScalarHead, ApplicationHead, ProductHead, CoproductHead, CallableHead,
   TypeHeadExposure, ExposedTypeHead, OpaqueTypeHead, StuckTypeHead, MalformedApplicationHead,
@@ -132,7 +132,7 @@ import v1.compiler.infer_env {
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, census_declaration_type_env, declaration_substitution_basis, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
-  lookup_binding_by_name, lookup_binding_on_chain, binding_declares_name, type_reference_declaration_ref, declaration_ref_of_type_node, type_reference_declaration, declaration_provenance_of_ref,
+  lookup_binding_by_name, lookup_binding_on_chain, binding_declares_name, type_reference_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref,
   listed_import_required_bare_call_blocked,
   effective_visible_binding, unit_variant_index_shadow_insert,
   build_unit_variant_index, UnitVariantContribution
@@ -163,9 +163,9 @@ import std.termination {
   proportional_divisor_from_int_at_least_two,
   OneStep
 }
-import std.algebra { CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons, carrier_container_equality_rows }
+import std.algebra { CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons, carrier_container_equality_rows, kernel_carrier_admits_numeral }
 import v1.compiler.infer_resolve {
-  resolve_node, resolve_node_bounded, resolve_item_types, fn_type_param_names, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
+  resolve_node, resolve_node_bounded, resolve_item_types, reference_with_declaration, fn_type_param_names, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
   resolve_generic_use_decl,
   is_user_generic_use_site,
   NodeResolveResult, ItemResolveResult
@@ -439,7 +439,7 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
             else if titem.body != none && (titem.params |> count == 0) && titem.transport == none && titem.connective == NoConnective && titem.inferred != none {
               InferScopeComponents {
                 svc_registry: acc.svc_registry,
-                svc_locals: map_insert(acc.svc_locals, authored_name_at(source_indices: env.source_indices, node: titem), TypeBinding { name: authored_name_at(source_indices: env.source_indices, node: titem), resolved: resolved_type(n: titem), provenance: SubValueUnknown })
+                svc_locals: map_insert(acc.svc_locals, authored_name_at(source_indices: env.source_indices, node: titem), TypeBinding { name: authored_name_at(source_indices: env.source_indices, node: titem), resolved: resolved_type(n: titem), provenance: SubValueUnknown, alias_rhs: none })
               }
             }
             else {
@@ -461,7 +461,7 @@ fn nominal_leaf_type(name: String) -> Node {
 }
 
 fn nominal_type_binding(name: String) -> TypeBinding {
-  TypeBinding { name: name, resolved: nominal_leaf_type(name: name), provenance: SubValueUnknown }
+  TypeBinding { name: name, resolved: nominal_leaf_type(name: name), provenance: SubValueUnknown, alias_rhs: none }
 }
 
 type FieldRecursionResult {
@@ -552,7 +552,7 @@ fn nominal_ref_node(name: String, span: SourceSpan, ident_span: SourceSpan?) -> 
     occurrence_identity: OccurrenceSynthetic, name: name, span: span, ident_span: ident_span, children: [],
     connective: NoConnective, params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
-    type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData
+    type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
   }
   Node {
     occurrence_identity: OccurrenceSynthetic, name: name, span: span, ident_span: ident_span, children: [],
@@ -560,7 +560,7 @@ fn nominal_ref_node(name: String, span: SourceSpan, ident_span: SourceSpan?) -> 
     inferred: Present { value: Resolved { node: declared_leaf } },
     return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
-    type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData
+    type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
   }
 }
 
@@ -598,7 +598,7 @@ fn namespace_alias_binding_for_target(
   TypeBinding {
     name: authored_name_at(source_indices: source_indices, node: item),
     resolved: target_node,
-    provenance: SubValueUnknown
+    provenance: SubValueUnknown, alias_rhs: none
   }
 }
 
@@ -765,6 +765,79 @@ fn variant_parent_identity_of(owner: Node?, scope: InferScope) -> VariantParentI
           }
       }
   }
+}
+
+// THE EXPECTED COPRODUCT ELECTS A BARE VARIANT SPELLING FIRST (neat-boar-16 ruling, 2026-10-01). A
+// value-position spelling S checked against a Required expected type whose expansion is a coproduct
+// declaring an arm S is THAT coproduct's arm: the expected type's declaration decides, over every
+// table the module builds by spelling. Before this, election read scope.locals first, so `Absent`
+// at a position declared ConvergeVerdict elected whichever owner the spelling table held -- the
+// kernel Optional when the closure saw two user coproducts declaring Absent -- and the declared
+// type could only confirm that choice, never correct it (variant_reference_inferred_node). A lexical
+// value binding of the same spelling (a let or parameter) still binds lexically: only a name the
+// scope does not bind as a value is elected here. An Optional-cardinality expected type does not
+// decide: its own level is Optional, whose arms are Absent and Present.
+fn expected_decided_variant_value(texpr: Node, name: String, decided: Node, expected: Node?, scope: InferScope) -> InferResult {
+  let decided_name = authored_name_at(source_indices: scope.type_env.source_indices, node: decided)
+  InferResult {
+    typed: make_named_expr_node(
+      occurrence_identity: texpr.occurrence_identity,
+      name: name,
+      expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: decided_name, parent_identity: variant_parent_identity_of(owner: Present { value: decided }, scope: scope) } } },
+      children: [],
+      inferred: Present { value: Resolved { node: variant_reference_inferred_node(expected: expected, name: name, owner_name: decided_name, scope: scope, fallback: decided) } },
+      span: texpr.span,
+      name_span: texpr.span
+    ),
+    diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: texpr.span, owner: Present { value: decided })
+  }
+}
+
+fn kernel_spelling_ambiguous_and_unbound(name: String, scope: InferScope) -> Bool {
+  (map_get(scope.locals, name) == none) && ((kernel_variant_owner_candidates(env: scope.type_env, name: name) |> count) > 1)
+}
+
+// A COPRODUCT ARM REACHED ONLY THROUGH THE GLOBAL BINDING LOOKUP IS REFUSED, NEVER TYPED AS A VALUE.
+// The arm is not in the module's variant scope (no own declaration, direct import, or deciding expected
+// type elected it), so the reference has no elected owner; typing it as a plain variable stamps no
+// VariantValueBinding and the interpreter answers NoSuchVariable at run time for a program the checker
+// accepted -- the silent wrong answer this refusal replaces, located at the reference.
+fn binding_names_a_coproduct_arm(binding: TypeBinding, name: String, scope: InferScope) -> Bool {
+  match lookup_type_for(env: scope.type_env, node: binding.resolved) {
+    Present { value: owner } =>
+      (owner.connective == Disj) && has_child_named(n: owner, name: name, source_indices: scope.type_env.source_indices)
+    Absent => false
+  }
+}
+
+fn variant_outside_declared_scope_refusal(name: String, span: SourceSpan, scope: InferScope) -> InferResult {
+  InferResult {
+    typed: semantic_expr_error_node(message: concat("variant '", name, "' has no owner in this module's scope"), span: span),
+    diagnostics: [inference_error(
+      message: concat("variant '", name, "' is not in this module's declared scope: no own coproduct, direct import, or expected coproduct declares it"),
+      span: span,
+      module_name: scope.module_name
+    )]
+  }
+}
+
+fn name_binds_a_lexical_value(name: String, scope: InferScope) -> Bool {
+  match map_get(scope.locals, name) {
+    Present { value: _ } => lookup_variant_parent_enum(scope: scope, name: name) == none
+    Absent => false
+  }
+}
+
+fn expected_deciding_variant_owner(expected: Node?, name: String, scope: InferScope) -> Node? {
+  if !name_binds_a_lexical_value(name: name, scope: scope) {
+    match expected {
+      Present { value: exp } =>
+        if (exp.return_cardinality == Required) {
+          expected_variant_owner_instantiation(expected: expected, name: name, scope: scope)
+        } else { kernel_optional_owner_declaring(env: scope.type_env, name: name) }
+      Absent => none
+    }
+  } else { none }
 }
 
 fn variant_owner_node(scope: InferScope, name: String) -> Node? {
@@ -1326,8 +1399,11 @@ fn collect_explicit_return_values(n: Node) -> List<Node> {
 fn explicit_return_conformance_diags(declared: Node, body_typed: Node, scope: InferScope) -> List<ErrorNode> {
   collect_explicit_return_values(n: body_typed)
     |> flat_map(returned => declared_type_conformance_diags(
+         position: PositionDeclaredReturn,
+         subject: "",
          declared: declared,
          produced: expression_value_type(e: returned),
+         produced_by: returned,
          span: returned.span,
          scope: scope))
 }
@@ -1495,11 +1571,18 @@ fn declared_type_kernel_inhabitance_mismatch_here_or_at_element(
 // set -- so this is consumption of the existing authority at a second declared-type position,
 // not a new relation (gunbc.recurring_failure_mode declared_type_wall_keyed_on_the_value_being_a_kernel,
 // specimen four).
-fn declared_type_conformance_diags(declared: Node, produced: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
+fn declared_type_conformance_diags(position: DeclaredTypePosition, subject: String, declared: Node, produced: Node, produced_by: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
   let si = scope.type_env.source_indices
   let both_ground = conformance_ground_type(n: declared, source_indices: si)
     && conformance_ground_type(n: produced, source_indices: si)
-  if declared_type_kernel_inhabitance_mismatch_here_or_at_element(
+  let cardinality_diags = optional_at_required_value_obligation_diags(
+    obligation: DeclaredTypeObligation {
+      position: position, subject: subject, declared: declared, produced: produced, span: span
+    },
+    produced_by: produced_by,
+    scope: scope)
+  if (cardinality_diags |> count) > 0 { cardinality_diags }
+  else if declared_type_kernel_inhabitance_mismatch_here_or_at_element(
       declared: declared, produced: produced, scope: scope) {
     [type_mismatch_error(
       expected: node_type_shape(n: declared, source_indices: si),
@@ -1510,6 +1593,15 @@ fn declared_type_conformance_diags(declared: Node, produced: Node, span: SourceS
   }
   else if nominal_product_inhabitance_refusal(
       declared: declared, produced: produced, scope: scope) != none {
+    [type_mismatch_error(
+      expected: node_type_shape(n: declared, source_indices: si),
+      got: node_type_shape(n: produced, source_indices: si),
+      span: span,
+      module_name: scope.module_name
+    )]
+  }
+  else if nominal_coproduct_applied_argument_conflict(
+      declared: declared, produced: produced, scope: scope) {
     [type_mismatch_error(
       expected: node_type_shape(n: declared, source_indices: si),
       got: node_type_shape(n: produced, source_indices: si),
@@ -1796,14 +1888,23 @@ fn field_substitution_carrier(sf: Node, source_indices: Map<String, NewlineIndex
 // This is why the fabricated value was worse than a refusal (DESIGN section 5): error_type is a
 // plausible-looking Node, so it substituted silently and the loss surfaced stages later as an
 // unresolvable method on a receiver nobody could point back to a declaration.
+//
+// A VARIANT IS INSTANTIATED BY ITS OWNER'S EXPECTED TYPE THROUGH THE SAME SUBSTITUTION. The expected
+// type names the coproduct (`Attempt<Int, Bad>`) while the literal names one of its variants
+// (`Refused { cause: .. }`), so the name test above answered none for every variant and its fields
+// stayed on the template -- `cause: E` -- although the owner's parameters were in hand. The owner's
+// params are substituted into the constructed variant's fields by the one substitution the product
+// path already uses; the variant is selected by its last segment, the same selection the presence
+// roster makes. ONLY AN APPLICATION IS READ AS ONE: an expected DECLARATION node (a coproduct reached
+// as a fold accumulator's type, say) also has children, but they are its variants, and reading them
+// as type arguments bound `T` to the variant `Ok` -- `expected 'Coproduct(Result)', got 'String'`.
+// An application carries no connective; a declaration carries Disj or Conj.
 fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: InferScope) -> List<Node>? {
   match type_name {
     Present { value: tn } =>
       match expected {
         Present { value: exp } =>
-          if type_name_compatible(a: authored_name_at(source_indices: scope.type_env.source_indices, node: exp), b: tn) == false {
-            none
-          } else if exp.children |> count == 0 {
+          if exp.children |> count == 0 || exp.connective != NoConnective {
             none
           } else {
             match lookup_type_for(env: scope.type_env, node: exp) {
@@ -1811,26 +1912,40 @@ fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: In
                 if (decl.params |> count) != (exp.children |> count) {
                   none
                 } else {
-                  let subst = fold(decl.params |> enumerate, init: empty_map(), f: (acc, pair) =>
-                    let slot = authored_name_at(source_indices: scope.type_env.source_indices, node: pair.second)
-                    match exp.children |> skip(pair.first) |> first {
-                      Present { value: arg } => map_insert(acc, slot, child_type_node(ch: arg))
-                      Absent => acc
+                  let si = scope.type_env.source_indices
+                  let names_the_declaration = type_name_compatible(a: authored_name_at(source_indices: si, node: exp), b: tn)
+                  let constructed_variant = if (names_the_declaration || decl.connective != Disj) { none } else {
+                    decl.children |> filter(v => authored_name_at(source_indices: si, node: v) == qualified_last_segment(name: tn)) |> first
+                  }
+                  let template_fields_opt = if names_the_declaration { Present { value: decl.children } } else {
+                    match constructed_variant {
+                      Present { value: variant_node } => Present { value: variant_node.children }
+                      Absent => none
                     }
-                  )
-                  let template_fields = decl.children
-                  Present { value: template_fields |> map(sf =>
-                    Node {
-                      occurrence_identity: OccurrenceSynthetic, name: sf.name, span: sf.span, ident_span: sf.ident_span,
-                      children: sf.children, connective: sf.connective, params: sf.params,
-                      inferred: Present { value: Resolved { node: substitute_generics(n: field_substitution_carrier(sf: sf, source_indices: scope.type_env.source_indices), subst: subst, source_indices: scope.type_env.source_indices) } },
-                      return_cardinality: sf.return_cardinality, uses: sf.uses, body: sf.body,
-                      transport: sf.transport, properties: sf.properties,
-                      type_annotation: sf.type_annotation, is_self_recursive: sf.is_self_recursive,
-                      has_non_tail_self_call: sf.has_non_tail_self_call, match_pattern: sf.match_pattern,
-                      module_item_kind: sf.module_item_kind, declaration_marker: sf.declaration_marker, expr_data: sf.expr_data
-                    }
-                  ) }
+                  }
+                  match template_fields_opt {
+                    Absent => none
+                    Present { value: template_fields } =>
+                      let subst = fold(decl.params |> enumerate, init: empty_map(), f: (acc, pair) =>
+                        let slot = authored_name_at(source_indices: si, node: pair.second)
+                        match exp.children |> skip(pair.first) |> first {
+                          Present { value: arg } => map_insert(acc, slot, child_type_node(ch: arg))
+                          Absent => acc
+                        }
+                      )
+                      Present { value: template_fields |> map(sf =>
+                        Node {
+                          occurrence_identity: OccurrenceSynthetic, name: sf.name, span: sf.span, ident_span: sf.ident_span,
+                          children: sf.children, connective: sf.connective, params: sf.params,
+                          inferred: Present { value: Resolved { node: substitute_generics(n: field_substitution_carrier(sf: sf, source_indices: si), subst: subst, source_indices: si) } },
+                          return_cardinality: sf.return_cardinality, uses: sf.uses, body: sf.body,
+                          transport: sf.transport, properties: sf.properties,
+                          type_annotation: sf.type_annotation, is_self_recursive: sf.is_self_recursive,
+                          has_non_tail_self_call: sf.has_non_tail_self_call, match_pattern: sf.match_pattern,
+                          module_item_kind: sf.module_item_kind, declaration_marker: sf.declaration_marker, declaration: sf.declaration, expr_data: sf.expr_data
+                        }
+                      ) }
+                  }
                 }
               Absent => none
             }
@@ -2918,17 +3033,15 @@ fn list_literal_optional_member_diags(typed_elements: List<Node>, scope: InferSc
     Present { value: head } =>
       let head_type = resolved_type(n: head)
       flat_map(typed_elements |> skip(1), te =>
-        if optional_produced_at_required_declared(declared: head_type, produced: resolved_type(n: te), scope: scope) {
-          [make_error_node(
-            diagnostic: DeclaredTypeNotInhabited {
-              position: declared_type_position_label(position: PositionListElement, subject: ""),
-              expected: obligation_type_shape(n: head_type, source_indices: scope.type_env.source_indices),
-              got: obligation_type_shape(n: resolved_type(n: te), source_indices: scope.type_env.source_indices),
-              span: te.span
-            },
-            module_name: scope.module_name
-          )]
-        } else { [] }
+        optional_at_required_obligation_diags(
+          obligation: DeclaredTypeObligation {
+            position: PositionListElement,
+            subject: "",
+            declared: head_type,
+            produced: resolved_type(n: te),
+            span: te.span
+          },
+          scope: scope)
       )
     Absent => []
   }
@@ -3004,6 +3117,13 @@ fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: Typ
     formal_name_override: "", depth: 0)
 }
 
+// The produced side is peeled to its where-refinement base exactly as the declared side is, so a
+// refinement of a kernel (`"x" as NonEmptyStr`) is judged as the kernel it is represented by, not
+// admitted because its NAME is not kernel (gunbc#12695: host text reached v2.std.text string_split
+// at a FreeSemigroup<Char> needle). The peel is withheld where the formal carries OPTIONALITY:
+// there the produced node is the payload of a `Present` introduction standing for the Optional
+// carrier -- the two-representation gap declared_type_kernel_inhabitance_mismatch excludes on the
+// same ground -- and peeling it refused correct rows (gunbc.contributor_onboarding_path, measured).
 fn kernel_value_declared_type_mismatch_bounded(
   formal: Node,
   actual: Node,
@@ -3012,11 +3132,14 @@ fn kernel_value_declared_type_mismatch_bounded(
   formal_name_override: String,
   depth: Int
 ) -> Bool {
-  if formal.connective == Arrow || actual.connective == Arrow || (actual.children |> count) > 0 {
+  let formal_carries_optional = formal.return_cardinality == CardOptional
+    || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: formal)) == "Optional"
+  let actual_base = if formal_carries_optional { actual } else { peel_where_refinement_base(ty: actual, type_env: type_env) }
+  if formal.connective == Arrow || actual.connective == Arrow || (actual_base.children |> count) > 0 {
     false
   } else {
     let formal_base = peel_where_refinement_base(ty: formal, type_env: type_env)
-    let actual_name = authored_name_at(source_indices: source_indices, node: actual)
+    let actual_name = authored_name_at(source_indices: source_indices, node: actual_base)
     if is_kernel_type(name: actual_name) == false || actual_name == "Unit" {
       false
     } else {
@@ -3025,7 +3148,7 @@ fn kernel_value_declared_type_mismatch_bounded(
       } else { formal_name_override }
       if formal_name == "" || qualified_last_segment(name: formal_name) == qualified_last_segment(name: actual_name) || dag_can_cast(source_type: actual_name, target_type: formal_name) {
         false
-      } else if structural_carrier_template_name(n: formal_base, source_indices: source_indices) == structural_carrier_template_name(n: actual, source_indices: source_indices) {
+      } else if structural_carrier_template_name(n: formal_base, source_indices: source_indices) == structural_carrier_template_name(n: actual_base, source_indices: source_indices) {
         false
       } else {
         if is_kernel_type(name: formal_name) {
@@ -3342,6 +3465,28 @@ fn application_type_name_identity(
   }
 }
 
+// THE SAME PEEL, ANSWERED AS A DECLARATION. application_type_name_identity answers a leaf
+// SPELLING, and two declarations that share a spelling then read as one type: a module declaring its
+// own `type FreeMonoid<T> { .. }` had its record admitted at a List<Int> formal, because List peels
+// to std.algebra's FreeMonoid and both leaves read "FreeMonoid". When both sides name a declaration,
+// the declarations decide; the spelling stays the answer only where no declaration is recoverable.
+fn application_type_name_declaration(
+  type_name: String,
+  type_env: TypeEnv,
+  module_name: String,
+  source_indices: Map<String, NewlineIndex>
+) -> DeclarationRef? {
+  match lookup_type_by_name(env: type_env, name: type_name) {
+    Present { value: decl } =>
+      let peeled = match decl.inferred {
+        Present { value: Resolved { node: target } } => peel_nominal_alias_identity(n: target, env: type_env, module_name: module_name)
+        _ => peel_nominal_alias_identity(n: decl, env: type_env, module_name: module_name)
+      }
+      type_reference_declaration_ref(n: peeled, source_indices: source_indices, env: type_env)
+    Absent => none
+  }
+}
+
 fn structured_application_structural_type_name(
   type_name: String,
   scope: InferScope
@@ -3377,6 +3522,10 @@ fn structured_application_lit_is_declared_optional_variant(
   }
 }
 
+// Two spellings of ONE declaration (`NonEmptyStr` and the census-qualified `std.types.NonEmptyStr`)
+// agree by the declaration each spelling names, read before any peel: the peel reaches a refinement's
+// body, which names no declaration, and the spelling-keyed alias relation that used to bridge the pair
+// is now keyed on identity (same_declaration).
 fn application_type_names_compatible(
   formal_name: String,
   lit_name: String,
@@ -3393,7 +3542,35 @@ fn application_type_names_compatible(
       type_name: formal_name, type_env: type_env, module_name: module_name, source_indices: source_indices)
     let lit_identity = application_type_name_identity(
       type_name: lit_name, type_env: type_env, module_name: module_name, source_indices: source_indices)
-    if formal_identity == lit_identity {
+    let same_declaration = match lookup_type_by_name(env: type_env, name: formal_name) {
+      Present { value: formal_item } =>
+        match lookup_type_by_name(env: type_env, name: lit_name) {
+          Present { value: lit_item } =>
+            match declaration_ref_of_declaration_node(decl: formal_item, source_indices: source_indices, env: type_env) {
+              Present { value: formal_item_ref } =>
+                match declaration_ref_of_declaration_node(decl: lit_item, source_indices: source_indices, env: type_env) {
+                  Present { value: lit_item_ref } => declaration_ref_eq(a: formal_item_ref, b: lit_item_ref)
+                  Absent => false
+                }
+              Absent => false
+            }
+          Absent => false
+        }
+      Absent => false
+    }
+    let same_identity = if same_declaration { true } else {
+      match application_type_name_declaration(
+        type_name: formal_name, type_env: type_env, module_name: module_name, source_indices: source_indices) {
+        Present { value: formal_decl } =>
+          match application_type_name_declaration(
+            type_name: lit_name, type_env: type_env, module_name: module_name, source_indices: source_indices) {
+            Present { value: lit_decl } => declaration_ref_eq(a: formal_decl, b: lit_decl)
+            Absent => formal_identity == lit_identity
+          }
+        Absent => formal_identity == lit_identity
+      }
+    }
+    if same_identity {
       true
     } else if dag_can_cast(source_type: lit_name, target_type: formal_name) {
       true
@@ -3412,6 +3589,23 @@ fn application_type_names_compatible(
   }
 }
 
+// THE TRANSPARENT-ALIAS HEAD RELATION IS KEYED ON DECLARATIONS, NOT SPELLINGS. It used to ask
+// peel_nominal_alias_identity for the alias's target name, but that peel exists to KEEP the brand:
+// it returns the structural body stamped with the alias's own authored identity, so the name it
+// yields is the alias again and the relation answered false for every alias whose body is not a
+// kernel primitive. A record literal handed to a formal declared through such an alias -- `type
+// TokenThroughput = FieldOfFractions<Nat>` receiving `FieldOfFractions { .. }`, and equally `type
+// A = SomeRecord` receiving `SomeRecord { .. }` -- was then refused at the head as a mismatch
+// between an alias and its own body. The alias's target is not re-derived from its leaf: a leaf
+// read in the judging scope admitted a same-leaf record declared by ANOTHER module (measured), and
+// DESIGN section 4 keys compatibility on the declaration a position resolves to. So the relation
+// reads the DeclarationRef that resolve wrote on the alias item's right-hand side head, in the
+// alias's own scope (v1.compiler.infer alias_rhs_reference, through the one writer
+// v1.compiler.infer_resolve reference_with_declaration), and compares it with the declaration the other side resolves to. An alias whose head
+// carries no identity (a kernel spelling, today) is not read: no agreement, fail-closed. This is a
+// HEAD relation, like every name comparison application_type_names_compatible makes: an applied
+// right-hand side contributes its constructor, and its arguments are judged where the nodes are.
+// The chase is over identities and bounded, so an alias cycle stops rather than recursing.
 fn type_name_transparently_aliases_to(
   alias_name: String,
   target_name: String,
@@ -3420,18 +3614,66 @@ fn type_name_transparently_aliases_to(
   source_indices: Map<String, NewlineIndex>
 ) -> Bool {
   match lookup_type_by_name(env: type_env, name: alias_name) {
-    Present { value: decl } =>
-      let peeled = peel_nominal_alias_identity(n: decl, env: type_env, module_name: module_name)
-      let peeled_name = authored_name_at(source_indices: source_indices, node: peeled)
-      if peeled_name == alias_name {
-        false
-      } else if peeled_name == target_name {
-        true
-      } else {
-        type_name_transparently_aliases_to(
-          alias_name: peeled_name, target_name: target_name, type_env: type_env, module_name: module_name, source_indices: source_indices)
-      }
     Absent => false
+    Present { value: alias_decl } =>
+      match application_type_name_declaration(type_name: target_name, type_env: type_env, module_name: module_name, source_indices: source_indices) {
+        Absent => false
+        Present { value: target_ref } =>
+          match alias_rhs_head_declaration(decl: alias_decl, type_env: type_env) {
+            Absent => false
+            Present { value: head } => alias_head_chase_reaches(head: head, target: target_ref, type_env: type_env, fuel: 16)
+          }
+      }
+  }
+}
+
+fn alias_head_chase_reaches(head: DeclarationRef, target: DeclarationRef, type_env: TypeEnv, fuel: Int) -> Bool {
+  if declaration_ref_eq(a: head, b: target) {
+    true
+  } else if fuel <= 0 {
+    false
+  } else {
+    match alias_item_rhs_head(item_ref: head, type_env: type_env) {
+      Present { value: next } => alias_head_chase_reaches(head: next, target: target, type_env: type_env, fuel: fuel - 1)
+      Absent => false
+    }
+  }
+}
+
+// The alias's own declaration item, found by the identity minted from the declaration node's span --
+// not by its spelling -- and the identity its right-hand side head was resolved to.
+fn alias_rhs_head_declaration(decl: Node, type_env: TypeEnv) -> DeclarationRef? {
+  match declaration_ref_of_declaration_node(decl: decl, source_indices: type_env.source_indices, env: type_env) {
+    Present { value: alias_ref } => alias_item_rhs_head(item_ref: alias_ref, type_env: type_env)
+    Absent => none
+  }
+}
+
+// THE ALIAS'S RHS HEAD, READ FROM THE REFERENCE THAT NAMES IT (quiet-gull-780 ruling B). The alias's
+// declaring module env is found by EXACT module path (the alias's own DeclarationRef): this module's env
+// when the alias is local, else a direct-import parent env. Its binding retains the RHS reference
+// (TypeBinding.alias_rhs), whose Node.declaration the one writer set in the alias's own scope. Nothing
+// here re-resolves a spelling, consults the census-built symbol index (pre-resolve, and qualified by the
+// non-hermetic global_bare_owner_module), or asks which module happens to declare a leaf name. An alias
+// declared outside the module and its direct imports, or a head with no recorded identity, answers none,
+// and every caller refuses on none.
+fn alias_item_rhs_head(item_ref: DeclarationRef, type_env: TypeEnv) -> DeclarationRef? {
+  let declaring = if type_env.module_path == (item_ref.module_path as String) {
+    Present { value: type_env }
+  } else {
+    type_env.parents |> filter(p => p.module_path == (item_ref.module_path as String)) |> first
+  }
+  match declaring {
+    Absent => none
+    Present { value: env } =>
+      match map_get(env.str_bindings, item_ref.decl_name as String) {
+        Absent => none
+        Present { value: binding } =>
+          match binding.alias_rhs {
+            Present { value: rhs } => rhs.declaration
+            Absent => none
+          }
+      }
   }
 }
 
@@ -3650,15 +3892,27 @@ fn foreign_concrete_coproduct_where_parent_required(
 // was produced; declared_type_inhabitance is the single relation that decides; the position
 // travels with the obligation so the diagnostic can locate the refusal without the decision
 // procedure forking per position.
-// THREE OF THE TWELVE ARE WIRED. THE OTHER NINE ARE DECLARED HERE AND PRODUCE NOTHING YET, AND
-// THAT IS STATED AS A COUNT RATHER THAN LEFT TO BE DISCOVERED FROM THE ABSENCE OF CALLERS.
-// Measured by construction site, not by reading: PositionDirectCallArgument,
-// PositionListElement, and PositionGenericTypeArgument are the only three members CONSTRUCTED
-// anywhere -- every other member occurs solely in declared_type_position_label's match, which
-// renders a name and judges nothing. So this coproduct is today an OBLIGATION VOCABULARY, of
-// which three positions have a producer.
+// THREE OF THE TWELVE RUN THE WHOLE RELATION, FOUR MORE RUN ITS CARDINALITY VERDICT, AND FIVE
+// PRODUCE NOTHING. That is stated as a count rather than left to be discovered from the absence of
+// callers, and the three grades are different facts that one word ("wired") may not hold.
 //
-// WHY THAT IS NOT AN UNDECIDABLE ARM AND MUST NEVER BE FILED AS ONE: an unwired position is a
+// WHOLE RELATION (declared_type_obligation_diags): PositionDirectCallArgument, PositionListElement,
+// PositionGenericTypeArgument, and PositionCondition (a position outside the twelve: an if
+// condition or match-arm guard, declared Bool by the grammar rather than by an annotation).
+//
+// CARDINALITY VERDICT ONLY (optional_at_required_obligation_diags): PositionRecordLiteralField,
+// PositionDeclaredReturn, PositionLetAnnotation, PositionDataInitializer. Each builds the same
+// DeclaredTypeObligation and is refused when an optional stands where a required value is declared;
+// the relation's other arms are NOT consulted there, because those seams already carry their own
+// older chains (declared_type_conformance_diags, the record-literal field chain) whose agreement
+// with this relation has not been measured on the corpus. So at these four the honest claim is one
+// verdict judged, not the position judged.
+//
+// NO PRODUCER: PositionMapValue, PositionVariantPayload, PositionCastTarget,
+// PositionParameterDefault, PositionCallableReturn. These occur solely in
+// declared_type_position_label's match, which renders a name and judges nothing.
+//
+// WHY AN UNPRODUCED POSITION IS NOT AN UNDECIDABLE ARM AND MUST NEVER BE FILED AS ONE: it is a
 // MISSING OBLIGATION PRODUCER, not a fact the model cannot settle. It is absent from the census
 // rather than present with a verdict -- so it produces no diagnostic, blocking or advisory, and
 // nothing in the corpus is red on its account. Recording these as expected-red rows would be
@@ -3666,18 +3920,13 @@ fn foreign_concrete_coproduct_where_parent_required(
 // InhabitanceUndecidable would report "we did not look" as "it cannot be decided", which is the
 // same inflation aimed at this relation's own self-description.
 //
-// NEXT-RUNG TRIGGER, one per position and all the same shape: a producer at that grammar seam
-// that builds a DeclaredTypeObligation and hands it to declared_type_obligation_diags. The
-// decision procedure is already shared and position-agnostic, so wiring one is authoring a
-// construction site, never extending this relation -- which is the whole point of the carrier
-// and is why the residual nine cost a call each rather than a rule each.
-//
-// THE NINE AWAITING A PRODUCER: PositionRecordLiteralField, PositionMapValue,
-// PositionDataInitializer, PositionDeclaredReturn, PositionLetAnnotation, PositionVariantPayload,
-// PositionCastTarget, PositionParameterDefault, PositionCallableReturn. Wiring any of them is a
-// discriminating RED at that seam plus an accepted positive control, per 4b(1). Until then this
-// carrier's honest claim is THREE POSITIONS JUDGED, nine declared -- and any statement that it
-// judges "every grammar type position" is false.
+// NEXT-RUNG TRIGGERS. For the five: a producer at that grammar seam that builds a
+// DeclaredTypeObligation. For the four: the seam's older chain is measured against
+// declared_type_inhabitance on the corpus and replaced by declared_type_obligation_diags, which
+// deletes both that chain and optional_at_required_obligation_diags' call there. The decision
+// procedure is already shared and position-agnostic, so either step is authoring a construction
+// site, never extending this relation. Any statement that the carrier judges "every grammar type
+// position" is false until both lists above are empty.
 type DeclaredTypePosition
   = PositionRecordLiteralField
   | PositionListElement
@@ -3691,6 +3940,7 @@ type DeclaredTypePosition
   | PositionParameterDefault
   | PositionCallableReturn
   | PositionDirectCallArgument
+  | PositionCondition
 
 type DeclaredTypeObligation {
   position: DeclaredTypePosition
@@ -3729,12 +3979,16 @@ type InhabitanceVerdict
 
 fn declared_type_position_label(position: DeclaredTypePosition, subject: String) -> String {
   match position {
-    PositionRecordLiteralField => "record literal field"
+    PositionRecordLiteralField =>
+      if subject == "" { "record literal field" }
+      else { concat("record literal field '", subject, "'") }
     PositionListElement => "list element"
     PositionMapValue => "map value"
     PositionDataInitializer => "data initializer"
     PositionDeclaredReturn => "declared return"
-    PositionLetAnnotation => "let annotation"
+    PositionLetAnnotation =>
+      if subject == "" { "let annotation" }
+      else { concat("let annotation for '", subject, "'") }
     PositionVariantPayload => "variant payload"
     PositionGenericTypeArgument => "generic type argument"
     PositionCastTarget => "cast target"
@@ -3743,6 +3997,7 @@ fn declared_type_position_label(position: DeclaredTypePosition, subject: String)
     PositionDirectCallArgument =>
       if subject == "" { "direct call argument" }
       else { concat("direct call argument for parameter '", subject, "'") }
+    PositionCondition => subject
   }
 }
 
@@ -3941,6 +4196,14 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
   let source_indices = scope.type_env.source_indices
   let declared_name = authored_name_at(source_indices: source_indices, node: declared)
   let produced_name = authored_name_at(source_indices: source_indices, node: produced)
+  let carrier_verdict = if is_container_type(name: declared_name)
+    && !is_container_type(name: qualified_last_segment(name: produced_name))
+    && (produced.connective == Disj || produced.connective == Conj) {
+    kernel_container_carrier_verdict(
+      formal: declared,
+      owner: type_reference_declaration_ref(n: produced, source_indices: source_indices, env: scope.type_env),
+      scope: scope)
+  } else { none }
   let either_optional = declared.return_cardinality == CardOptional || produced.return_cardinality == CardOptional
   let declared_is_generic = (declared.params |> count) > 0 || match declared.inferred {
     Present { value: TypeVariable { id: _ } } => true
@@ -3956,6 +4219,10 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
     InhabitanceUndecidable { reason: UndecidableFormalUnresolved }
   } else if produced_name == "" {
     InhabitanceUndecidable { reason: UndecidableProducedIdentityErased }
+  } else if carrier_verdict == Present { value: true } {
+    Inhabits
+  } else if carrier_verdict == Present { value: false } {
+    InhabitanceRefused { reason: RefusedDistinctProductConstructor }
   } else if declared_realizes_as_kernel_numeric(
       declared: declared, produced: produced, source_indices: source_indices) {
     Inhabits
@@ -4000,6 +4267,7 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
 // producing `id-Present { value: ... }`. Refusal requires the declared side to be ESTABLISHED
 // Required and non-generic: a type variable may be instantiated at an Optional, and an unresolved
 // or erased declared identity is not a Required fact, so those stay with their own arms.
+//
 fn optional_produced_at_required_declared(declared: Node, produced: Node, scope: InferScope) -> Bool {
   let source_indices = scope.type_env.source_indices
   let declared_name = authored_name_at(source_indices: source_indices, node: declared)
@@ -4022,6 +4290,69 @@ fn optional_produced_at_required_declared(declared: Node, produced: Node, scope:
     && !type_node_is_callable(n: declared)
     && !type_node_is_callable(n: produced)
     && !direct_call_formal_has_unbound_type_variable(n: declared)
+}
+
+// THE CARDINALITY VERDICT AT A POSITION WHOSE FULL RELATION IS NOT YET CONSULTED. A position either
+// hands its obligation to declared_type_obligation_diags (every arm of the relation) or, where the
+// other arms have not been measured against the corpus at that seam, hands it here and receives the
+// ONE verdict that is decided from cardinality alone. It is the same predicate
+// declared_type_inhabitance consults first, the same obligation carrier, the same diagnostic and the
+// same rendering, so a position moving from this producer to the full one changes which arms run
+// and nothing about how an optional at a required position is decided or reported. Before this, the
+// record-literal field, declared-return, let-annotation and data-initializer seams compared the two
+// types through node_type_compatible, which reads the type name and not return_cardinality, so
+// `Rec { code: parse_int(s) }` for `code: Int` was admitted with no row (review 73175 on
+// gunbc#12677). node_type_compatible is left cardinality-blind on purpose: it is an undirected
+// relation also asked of branch pairs and of the lift direction, and optional-into-required is a
+// DIRECTED fact about a declared position, which is what the obligation carries.
+//
+// AN INDEX ACCESS IS NOT JUDGED HERE, AND THAT IS A DECLARED RESIDUAL. v1.compiler.infer_access
+// check_index_access_node types `xs[i]` as optional, while the Rust realization of an index is the
+// bare element: the type and the realization disagree about the very fact this verdict reads, so
+// the optionality of an index value is not established across the two acceptance paths. The seed
+// itself stands on that disagreement -- v1.tokenize source_code_point and code_point_at return
+// `chars[pos]` at a declared `-> Int`, and the note on code_point_at says return-position checking
+// would red them. It did: the second-generation regeneration refused on exactly those two sites.
+// Eliminating the optional with a match there would author an elimination the Rust realization
+// cannot satisfy, so the repair is the reconciliation that note names (the index realizes as an
+// optional, or types as the element), not a rewrite of its consumers. Until then a value whose
+// tail expression is an index access produces no cardinality obligation at these four positions.
+// The direct-call argument and list-element positions are untouched by this: they run the whole
+// relation and keep whatever they decided before.
+fn expr_value_is_index_access(e: Node) -> Bool {
+  match e.expr_data {
+    ExprIndex => true
+    ExprLet =>
+      match let_body(texpr: e) {
+        Present { value: body } => expr_value_is_index_access(e: body)
+        Absent => false
+      }
+    ExprBlock =>
+      match e.children |> last {
+        Present { value: tail } => expr_value_is_index_access(e: tail)
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+fn optional_at_required_value_obligation_diags(obligation: DeclaredTypeObligation, produced_by: Node, scope: InferScope) -> List<ErrorNode> {
+  if expr_value_is_index_access(e: produced_by) { [] }
+  else { optional_at_required_obligation_diags(obligation: obligation, scope: scope) }
+}
+
+fn optional_at_required_obligation_diags(obligation: DeclaredTypeObligation, scope: InferScope) -> List<ErrorNode> {
+  if optional_produced_at_required_declared(declared: obligation.declared, produced: obligation.produced, scope: scope) {
+    [make_error_node(
+      diagnostic: DeclaredTypeNotInhabited {
+        position: declared_type_position_label(position: obligation.position, subject: obligation.subject),
+        expected: obligation_type_shape(n: obligation.declared, source_indices: scope.type_env.source_indices),
+        got: obligation_type_shape(n: obligation.produced, source_indices: scope.type_env.source_indices),
+        span: obligation.span
+      },
+      module_name: scope.module_name
+    )]
+  } else { [] }
 }
 
 // COLLECTION DISJOINTNESS IS A RELATION BETWEEN THE TWO SIDES, NOT A PROPERTY OF ONE OF THEM.
@@ -4172,7 +4503,13 @@ fn coproduct_at_record_declared_type(declared: Node, produced: Node, scope: Infe
 // kernel-backed -- a REALIZATION fact answering a TYPING question. It fails closed on unknown
 // identity and is measured behaviour-preserving against main, so it is not unsound; it is
 // UNDER-SPECIFIC, and it grants literal syntax module-wide permission to inhabit anything whose
-// implementation eventually mentions a numeric carrier. The durable model is an
+// implementation eventually mentions a numeric carrier.
+// THE KERNEL ARM IS KEYED ON THE CARRIER'S ALGEBRA, NOT ON BEING MINTED. It used to answer every
+// kernel mint through provenance_realizes_natively, so an Int reached Bool and String declared
+// positions as Inhabits -- `x if 5` and `fn f() -> Bool { 1 }` typechecked (gunbc.recurring_failure_mode
+// numeral_admitted_at_every_kernel_declared_type). Both sides now read std.algebra
+// kernel_carrier_admits_numeral, so the numeric family has one home and a Bool or String declared
+// type falls through to the judgments below, which refuse it. The durable model is an
 // expected-type-directed literal introduction judgment -- a type admits a numeral because it
 // SUPPLIES one, not because its module realizes natively. Do not build on this predicate.
 fn declared_realizes_as_kernel_numeric(
@@ -4181,11 +4518,14 @@ fn declared_realizes_as_kernel_numeric(
   source_indices: Map<String, NewlineIndex>
 ) -> Bool {
   let produced_name = authored_name_at(source_indices: source_indices, node: produced)
-  let produced_is_kernel_numeric = produced_name == "Int" || produced_name == "Float"
-  if produced_is_kernel_numeric == false {
+  if kernel_carrier_admits_numeral(name: produced_name) == false {
     false
   } else {
-    provenance_realizes_natively(p: type_reference_provenance(n: declared))
+    match type_reference_provenance(n: declared) {
+      KernelMinted { minted_name: nm } => kernel_carrier_admits_numeral(name: nm)
+      CorpusDeclared { decl_file: f } => provenance_realizes_natively(p: CorpusDeclared { decl_file: f })
+      DeclarationIdentityAbsent => false
+    }
   }
 }
 
@@ -4317,6 +4657,102 @@ fn nominal_product_head_name_if_declared_product(name: String, scope: InferScope
         n: decl, env: scope.type_env, module_name: scope.module_name)
       if peeled.connective == Conj && (peeled.children |> count) > 0 { name } else { "" }
     Absent => ""
+  }
+}
+
+// THE GENERIC-COPRODUCT HALF OF THE INHABITANCE DEFECT, filed beside
+// nominal_product_inhabitance_refusal and closed here by consuming the same authorities. A fn
+// declared `-> Outcome<Node>` whose body produced `Outcome<ResolvedTree>` fell through every arm
+// above -- the product arm abstains on a coproduct head, the payload arm on a generic one -- and
+// reached the ground-only fallback, which admits every non-ground pair; so the argument was never
+// compared (gunbc#12432: ~35 helpers). The constructor test is the product arm's own
+// (nominal_product_head_names_agree), and the argument test is applied_type_arguments_conflict,
+// the same fail-open per-argument relation: a type variable, an optional, a callable or a nested
+// application argument is never read as a disagreement. Only two applications of one declared
+// coproduct constructor whose resolved arguments are both established and differ refuse.
+fn nominal_coproduct_applied_argument_conflict(
+  declared: Node,
+  produced: Node,
+  scope: InferScope
+) -> Bool {
+  let declared_head = nominal_coproduct_application_head_name(n: declared, scope: scope)
+  let produced_head = nominal_coproduct_application_head_name(n: produced, scope: scope)
+  if declared_head == "" || produced_head == "" {
+    false
+  } else if nominal_product_head_names_agree(
+      declared_name: declared_head, produced_name: produced_head, scope: scope) == false {
+    false
+  } else if (declared.children |> count) == 0 || (declared.children |> count) != (produced.children |> count) {
+    false
+  } else {
+    coproduct_applied_type_arguments_conflict_scan(
+      declared_args: declared.children, produced_args: produced.children, scope: scope)
+  }
+}
+
+// A PRODUCED `Unit` ARGUMENT IS NOT AN ESTABLISHED IDENTITY at this arm, and the whole-corpus
+// differential is what showed it. Five correct sites refused on the first cut, every one with Unit
+// or an empty name standing in the produced argument vector where the call site had no evidence
+// for that parameter: `outcome_accepted(Lossless)` read as Outcome<Unit> under a declared
+// Outcome<DecodeFidelity>, and `assess_by_deviations(.., deviations: [])` read its unconstrained
+// parameters as Unit under a declared GoalAssessment<.., RegistrationDeviation, .., Never>. The seed's
+// call-site generic solve answers Unit for a parameter it did not solve, so Unit there is the
+// absence of evidence, not a type -- the same reading kernel_value_declared_type_mismatch already
+// takes when it exits on an actual named Unit. It is judged per argument, so the other arguments
+// of the same application are still compared. The narrowing is stated: a genuinely Unit-typed
+// argument against a different declared one is admitted here until call-site generic solving
+// stops answering Unit for an unsolved parameter
+// (gunbc.recurring_failure_mode.generic_coproduct_argument_unjudged_at_declared_return).
+fn coproduct_applied_type_arguments_conflict_scan(
+  declared_args: List<Node>,
+  produced_args: List<Node>,
+  scope: InferScope
+) -> Bool {
+  match declared_args |> first {
+    Present { value: d } =>
+      match produced_args |> first {
+        Present { value: p } =>
+          let produced_name = authored_name_at(
+            source_indices: scope.type_env.source_indices, node: child_type_node(ch: p))
+          if produced_name != "Unit"
+            && applied_type_argument_conflicts(declared_arg: d, produced_arg: p, scope: scope) {
+            true
+          } else {
+            coproduct_applied_type_arguments_conflict_scan(
+              declared_args: declared_args |> skip(1),
+              produced_args: produced_args |> skip(1),
+              scope: scope)
+          }
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn nominal_coproduct_application_head_name(n: Node, scope: InferScope) -> String {
+  let source_indices = scope.type_env.source_indices
+  let name = authored_name_at(source_indices: source_indices, node: n)
+  if name == "" || n.return_cardinality == CardOptional || type_node_is_callable(n: n)
+    || is_kernel_type(name: name)
+    || qualified_last_segment(name: name) == "Optional"
+    || (n.children |> count) == 0
+    || node_is_element_collection(n: n, source_indices: source_indices)
+    || node_is_keyed_collection(n: n, source_indices: source_indices) {
+    ""
+  } else {
+    match expected_type_head_exposure(formal: n, scope: scope) {
+      ExposedTypeHead { view: ApplicationHead { constructor_identity: _, argument_identities: _ } } =>
+        let representative = transparent_alias_representative(
+          index: scope.type_env.symbol_index, name: name)
+        match lookup_type_by_name(env: scope.type_env, name: representative) {
+          Present { value: decl } =>
+            let peeled = peel_nominal_alias_identity(
+              n: decl, env: scope.type_env, module_name: scope.module_name)
+            if peeled.connective == Disj { name } else { "" }
+          Absent => ""
+        }
+      _ => ""
+    }
   }
 }
 
@@ -4515,6 +4951,21 @@ fn obligation_type_shape(n: Node, source_indices: Map<String, NewlineIndex>) -> 
   }
 }
 
+// A CONDITION IS A DECLARED-TYPE POSITION WHOSE DECLARED TYPE IS Bool. An if condition and a
+// match-arm guard were inferred with no expected type and judged by nothing, so any value passed as
+// a condition (`x if 5`, `if 1 { .. }`: gunbc.recurring_failure_mode
+// condition_position_unjudged_against_bool). The obligation is the same carrier every other position
+// builds, decided by the whole relation, so a condition inherits every arm the relation owns rather
+// than a condition-specific test. `label` names which condition, for the located refusal.
+fn condition_obligation_diags(label: String, typed: Node, scope: InferScope) -> List<ErrorNode> {
+  declared_type_obligation_diags(
+    obligation: DeclaredTypeObligation {
+      position: PositionCondition, subject: label, declared: bool_type,
+      produced: resolved_type(n: typed), span: typed.span
+    },
+    scope: scope)
+}
+
 fn declared_type_obligation_diags(obligation: DeclaredTypeObligation, scope: InferScope) -> List<ErrorNode> {
   match declared_type_inhabitance(obligation: obligation, scope: scope) {
     Inhabits => []
@@ -4624,6 +5075,89 @@ fn structured_application_site_type_mismatch(
 // namespace and can make both compatibility operands equal by construction. `formal` retains the
 // authored declaration spelling for optional-variant structure; `formal_peeled` is the conformance
 // established while the callee TypeEnv was available.
+// ONE TYPE, ITS CONSTRUCTORS BY DECLARATION (operator ruling 2026-09-29: std.types
+// `List<element> = FreeMonoid<element>` is one type, so `Empty {}` and `Cons {..}` are values of
+// List<T>; realization is emission's, never a checker refusal). The kernel container spellings
+// List/Set/Map name the carriers std.algebra declares, and those carriers' declarations supply the
+// container's constructors. The join is by DECLARATION IDENTITY, never by spelling: a module that
+// declares its own `FreeMonoid` owns a different declaration and its values stay refused at a List
+// formal. The declaring module is written once here because std.algebra and std.types cannot
+// import std.decl_ref without a cycle; it dissolves when the resolver records a DeclarationRef on
+// every type reference (the resolver-identity item), which also retires the spelling-keyed
+// container predicates this PR's body enumerates.
+data kernel_container_carrier_module: String = "std.algebra"
+
+// The declaration a formal type denotes: a kernel container spelling's std.algebra carrier, or the
+// declaration its alias resolves to (application_type_name_declaration, the same peel the
+// application-site identity uses).
+fn structured_formal_carrier_declaration(formal_peeled: Node, scope: InferScope) -> DeclarationRef? {
+  let source_indices = scope.type_env.source_indices
+  let name = authored_name_at(source_indices: source_indices, node: formal_peeled)
+  if is_container_type(name: name) {
+    match container_template_alias_algebra(name: name) {
+      Present { value: carrier } => Present { value: decl_ref(module_path: kernel_container_carrier_module, decl_name: carrier) }
+      Absent => none
+    }
+  } else {
+    application_type_name_declaration(
+      type_name: name, type_env: scope.type_env, module_name: scope.module_name, source_indices: source_indices)
+  }
+}
+
+// The declaration a record literal's constructor belongs to: its variant owner (a coproduct arm)
+// or, for a product carrier, the record declaration it names.
+fn structured_literal_owner_declaration(lit_name: String, scope: InferScope) -> DeclarationRef? {
+  let owner = match variant_owner_node(scope: scope, name: lit_name) {
+    Present { value: o } => Present { value: o }
+    Absent => lookup_type_by_name(env: scope.type_env, name: lit_name)
+  }
+  match owner {
+    Present { value: o } => declaration_ref_of_type_node(rt: o, source_indices: scope.type_env.source_indices, env: scope.type_env)
+    Absent => none
+  }
+}
+
+fn structured_literal_constructs_formal_carrier(formal_peeled: Node, lit_name: String, scope: InferScope) -> Bool {
+  match structured_formal_carrier_declaration(formal_peeled: formal_peeled, scope: scope) {
+    Present { value: formal_decl } =>
+      match structured_literal_owner_declaration(lit_name: lit_name, scope: scope) {
+        Present { value: owner_decl } => declaration_ref_eq(a: formal_decl, b: owner_decl)
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// A KERNEL CONTAINER FORMAL IS DECIDED BY IDENTITY BEFORE ANY SPELLING IS COMPARED. When the formal
+// is a kernel container spelling (List/Set/Map) and the literal's owning declaration is recoverable,
+// the literal is a value of the container exactly when that owner IS the container's std.algebra
+// carrier declaration. Equal leaf spellings never stand in: a module's own `type FreeMonoid<T> {..}`
+// owns a different declaration and is refused at List<Int>. Absent when the formal is not a kernel
+// container or the owner cannot be recovered, so the existing route decides as before.
+fn structured_kernel_container_identity_verdict(formal_peeled: Node, lit_name: String, scope: InferScope) -> Bool? {
+  kernel_container_carrier_verdict(
+    formal: formal_peeled,
+    owner: structured_literal_owner_declaration(lit_name: lit_name, scope: scope),
+    scope: scope)
+}
+
+// THE ONE DECISION BOTH SEAMS ASK (the record-literal application site and the declared-type
+// obligation): is this owning declaration the kernel container's std.algebra carrier? Present only
+// when the formal is a kernel container spelling AND the owner is recoverable; the answer is then
+// identity alone. Absent leaves the calling seam's existing route to decide.
+fn kernel_container_carrier_verdict(formal: Node, owner: DeclarationRef?, scope: InferScope) -> Bool? {
+  let name = authored_name_at(source_indices: scope.type_env.source_indices, node: formal)
+  if !is_container_type(name: name) { return none }
+  match structured_formal_carrier_declaration(formal_peeled: formal, scope: scope) {
+    Present { value: carrier } =>
+      match owner {
+        Present { value: o } => Present { value: declaration_ref_eq(a: carrier, b: o) }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
 fn structured_application_site_type_mismatch_with_peeled(
   formal: Node,
   formal_peeled: Node,
@@ -4644,6 +5178,9 @@ fn structured_application_site_type_mismatch_with_peeled(
           let formal_structural = formal_structural_name
           match record_lit_type_name_at(texpr: actual_expr, source_indices: source_indices) {
             Present { value: lit_name } =>
+              match structured_kernel_container_identity_verdict(formal_peeled: formal_peeled, lit_name: lit_name, scope: scope) {
+                Present { value: admitted } => !admitted
+                Absent =>
               if application_type_names_compatible(
                 formal_name: formal_name, lit_name: lit_name,
                 type_env: scope.type_env, module_name: scope.module_name, source_indices: source_indices) {
@@ -4707,7 +5244,9 @@ fn structured_application_site_type_mismatch_with_peeled(
                       _ => false
                     }
                   Absent =>
-                    if is_kernel_type(name: formal_name) {
+                    if structured_literal_constructs_formal_carrier(formal_peeled: formal_peeled, lit_name: lit_name, scope: scope) {
+                      false
+                    } else if is_kernel_type(name: formal_name) {
                       match lookup_type_by_name(env: scope.type_env, name: lit_name) {
                         Present { value: lit_decl } =>
                           lit_decl.connective == Conj || lit_decl.connective == Disj
@@ -4723,6 +5262,7 @@ fn structured_application_site_type_mismatch_with_peeled(
                       false
                     }
                 }
+              }
               }
               }
             Absent => false
@@ -5455,7 +5995,7 @@ fn lambda_arrow_param(lambda_param: Node) -> Node {
     inferred: Present { value: Resolved { node: param_type } },
     return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
-    type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData
+    type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
   }
 }
 
@@ -6364,7 +6904,7 @@ fn optional_cast_diags(
 }
 
 fn type_variable_node(id: String) -> Node {
-  Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData }
+  Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
 }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
@@ -6401,7 +6941,7 @@ type PatternParentReading {
   identity: VariantParentIdentity
 }
 
-fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: PatternSubject, scope: InferScope) -> MatchPattern {
+fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: PatternSubject, site: SourceSpan, scope: InferScope) -> MatchPattern {
   match pattern {
     VariantPattern { name: variant_name, parent_enum: _, field_bindings: bindings, parent_identity: _ } =>
       let resolved_scrut = resolve_pattern_subject(scope: scope, scrutinee_subject: scrutinee_subject)
@@ -6429,12 +6969,12 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
       let inferred_parent = parent_reading.parent_enum
       let parent_identity = parent_reading.identity
       let annotated_variant_name = variant_name
-      let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: variant_name, module_name: scope.module_name, env: scope.type_env, field_binding_count: bindings |> count)
+      let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: variant_name, site: site, module_name: scope.module_name, env: scope.type_env, field_binding_count: bindings |> count)
       let variant_subject = lookup_result_subject(result: variant_lookup)
       let annotated_bindings = bindings |> map(binding =>
         let field_lookup = lookup_field_in_variant(variant: variant_subject, field_name: field_binding_name_at(n: binding, source_indices: scope.type_env.source_indices), module_name: scope.module_name, source_indices: scope.type_env.source_indices)
         let field_subject = lookup_result_subject(result: field_lookup)
-        make_field_binding_node(occurrence_identity: binding.occurrence_identity, field_name: field_binding_name_at(n: binding, source_indices: scope.type_env.source_indices), binding: annotate_pattern_parent_enums(pattern: field_binding_pattern(n: binding), scrutinee_subject: field_subject, scope: scope), span: binding.span, name_span: node_name_span(n: binding))
+        make_field_binding_node(occurrence_identity: binding.occurrence_identity, field_name: field_binding_name_at(n: binding, source_indices: scope.type_env.source_indices), binding: annotate_pattern_parent_enums(pattern: field_binding_pattern(n: binding), scrutinee_subject: field_subject, site: binding.span, scope: scope), span: binding.span, name_span: node_name_span(n: binding))
       )
       match inferred_parent {
         Present { value: parent_name } =>
@@ -6474,7 +7014,7 @@ fn present_arms_over_unresolved_scrutinee(arms: List<Node>, span: SourceSpan, mo
 
 fn build_params_scope(scope: InferScope, params: List<Node>) -> InferScope {
   let new_locals = fold(params, init: scope.locals, f: (acc, p) =>
-    map_insert(acc, param_node_name_at(n: p, source_indices: scope.type_env.source_indices), TypeBinding { name: param_node_name_at(n: p, source_indices: scope.type_env.source_indices), resolved: param_node_type_expr(n: p), provenance: PreservedValue })
+    map_insert(acc, param_node_name_at(n: p, source_indices: scope.type_env.source_indices), TypeBinding { name: param_node_name_at(n: p, source_indices: scope.type_env.source_indices), resolved: param_node_type_expr(n: p), provenance: PreservedValue, alias_rhs: none })
   )
   let new_body_locals = fold(params, init: scope.body_locals, f: (acc, p) =>
     map_insert(acc, param_node_name_at(n: p, source_indices: scope.type_env.source_indices), true)
@@ -6518,7 +7058,7 @@ fn extend_scope(scope: InferScope, name: String, resolved: Node, provenance: Sub
   InferScope {
     type_env: scope.type_env,
     func_env: scope.func_env,
-    locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved, provenance: provenance }),
+    locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved, provenance: provenance, alias_rhs: none }),
     body_locals: map_insert(scope.body_locals, name, true),
     match_bound_names: scope.match_bound_names,
     module_name: scope.module_name,
@@ -6535,7 +7075,7 @@ fn extend_scope_match_bound(scope: InferScope, name: String, resolved: Node, pro
   InferScope {
     type_env: scope.type_env,
     func_env: scope.func_env,
-    locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved, provenance: provenance }),
+    locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved, provenance: provenance, alias_rhs: none }),
     body_locals: map_insert(scope.body_locals, name, true),
     match_bound_names: map_insert(scope.match_bound_names, name, true),
     module_name: scope.module_name,
@@ -6550,7 +7090,7 @@ fn extend_scope_match_bound(scope: InferScope, name: String, resolved: Node, pro
 
 fn extend_scope_with_params(scope: InferScope, params: List<String>) -> InferScope {
   let new_locals = fold(params, init: scope.locals, f: (acc, p) =>
-    map_insert(acc, p, TypeBinding { name: p, resolved: type_variable_node(id: "lambda_param"), provenance: SubValueUnknown })
+    map_insert(acc, p, TypeBinding { name: p, resolved: type_variable_node(id: "lambda_param"), provenance: SubValueUnknown, alias_rhs: none })
   )
   let new_body_locals = fold(params, init: scope.body_locals, f: (acc, p) =>
     map_insert(acc, p, true)
@@ -6607,14 +7147,14 @@ fn derive_field_provenance(scope: InferScope, scrutinee_provenance: SubValueRela
   }
 }
 
-fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scrutinee_subject: PatternSubject, scrutinee_provenance: SubValueRelation) -> PatternScopeResult {
+fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scrutinee_subject: PatternSubject, site: SourceSpan, scrutinee_provenance: SubValueRelation) -> PatternScopeResult {
   match pattern {
     Bind { declaration: declaration } => PatternScopeResult { scope: extend_scope_match_bound(scope: scope, name: declaration.name, resolved: pattern_binding_type(subject: scrutinee_subject), provenance: scrutinee_provenance), diagnostics: [] }
     Wildcard => PatternScopeResult { scope: scope, diagnostics: [] }
     LitPattern { value: _ } => PatternScopeResult { scope: scope, diagnostics: [] }
     VariantPattern { name: vname, parent_enum: _, field_bindings: bindings, parent_identity: _ } =>
       let resolved_scrut = resolve_pattern_subject(scope: scope, scrutinee_subject: scrutinee_subject)
-      let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: vname, module_name: scope.module_name, env: scope.type_env, field_binding_count: bindings |> count)
+      let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: vname, site: site, module_name: scope.module_name, env: scope.type_env, field_binding_count: bindings |> count)
       let variant_subject = lookup_result_subject(result: variant_lookup)
       let variant_diags = variant_lookup.diagnostics
       fold(bindings, init: PatternScopeResult { scope: scope, diagnostics: variant_diags }, f: (acc, fb) =>
@@ -6630,7 +7170,7 @@ fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scru
             diagnostics: concat(acc.diagnostics, field_lookup.diagnostics)
           }
           _ =>
-            let nested = extend_scope_with_pattern_node(scope: acc.scope, pattern: fb_pattern, scrutinee_subject: field_subject, scrutinee_provenance: field_provenance)
+            let nested = extend_scope_with_pattern_node(scope: acc.scope, pattern: fb_pattern, scrutinee_subject: field_subject, site: fb.span, scrutinee_provenance: field_provenance)
             PatternScopeResult {
               scope: nested.scope,
               diagnostics: concat(acc.diagnostics, concat(field_lookup.diagnostics, nested.diagnostics))
@@ -6638,6 +7178,21 @@ fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scru
         }
       )
   }
+}
+
+// AN UNAPPLIED GENERIC ACCUMULATOR IS UNDER-RESOLVED, THOUGH is_fully_resolved SAYS OTHERWISE. A
+// nullary constructor of a generic declaration -- `Empty` of `FreeMonoid<T>` -- types as the
+// declaration's expansion: a Disj (or Conj) whose children are its variants (or fields), not its
+// type arguments, still carrying its declared params. That shape reads as fully resolved, so
+// `fold(xs, init: Empty, f: ..)` kept the bare `FreeMonoid` as its accumulator although the step's
+// return names `FreeMonoid<Item>`, and every later read of an element fell back to the algebra
+// placeholder that types the element as the container itself (gunbc.recurring_failure_mode
+// unapplied_generic_accumulator_types_element_as_container). The refinement from the step's return
+// already exists at the fold call; this is the fact it was missing. STRUCTURAL ONLY -- declared
+// params on an expansion -- so it adds no spelling-keyed identity decision beside those
+// gunbc.recurring_failure_mode generic_identity_decided_by_spelling rosters.
+fn fold_accumulator_is_unapplied_generic(n: Node) -> Bool {
+  (n.params |> count) > 0 && (n.connective == Disj || n.connective == Conj)
 }
 
 fn method_name_is(opt: String?, expected: String) -> Bool {
@@ -6682,6 +7237,14 @@ fn derive_element_provenance(coll_expr: Node, elem_type: Node, scope: InferScope
   }
 }
 
+// THE STEP FUNCTION RETURNS THE ACCUMULATOR, and the callable handed to the lambda says so. It
+// carried its parameter types and NO return, so infer_expr's lambda arm found no declared return
+// and inferred the body with no expected type: a generic constructor built in the body -- the
+// `Err { value: e } => Err { value: e }` re-wrap every early-exit fold carries -- was left
+// uninstantiated although the accumulator type fixes it (measured with an ANNOTATED init, so the
+// accumulator type was fully known). The lambda arm still admits the return as the body's
+// expected type only when it is established and fully resolved, so an accumulator whose own
+// type is unknown expects nothing, as before.
 fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fold_info: ArgInferResult?, fold_acc_type: Node, element_type: Node, elem_provenance: SubValueRelation, arg_contract: DeclaredArgContract, scope: InferScope) -> List<ArgInferResult> {
   let is_fold = method_name_is(opt: method_name, expected: "fold")
   method_args |> enumerate |> map(idx_pair =>
@@ -6700,10 +7263,10 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
       ]
       let fold_callable = Node {
         occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [],
-        connective: NoConnective, params: fold_params, inferred: none,
+        connective: NoConnective, params: fold_params, inferred: Present { value: Resolved { node: fold_acc_type } },
         return_cardinality: Required, uses: [], body: none, transport: none,
         properties: [], type_annotation: none, is_self_recursive: false,
-        has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData
+        has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
       }
       let lam_value = arg_value(n: a)
       let prov_map = match elem_provenance {
@@ -7097,7 +7660,7 @@ fn elaborated_expr_node(name: String, expr_data: ExprData, children: List<Node>,
     params: [], inferred: Present { value: Resolved { node: destination_type } }, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
-    has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: expr_data
+    has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: expr_data
   }
 }
 
@@ -7263,6 +7826,13 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       match constructor_reference_admission_unshadowed(callee_name: name, span: span, scope: scope) {
         Present { value: refusal } => refusal
         Absent =>
+      match expected_deciding_variant_owner(expected: expected, name: name, scope: scope) {
+        Present { value: decided } =>
+          expected_decided_variant_value(texpr: texpr, name: name, decided: decided, expected: expected, scope: scope)
+        Absent =>
+      if kernel_spelling_ambiguous_and_unbound(name: name, scope: scope) {
+        ambiguous_reference_refusal(name: name, candidates: kernel_variant_owner_candidates(env: scope.type_env, name: name), span: span, scope: scope)
+      } else {
       match map_get(scope.locals, name) {
         Present { value: binding } =>
           let scope_parent = lookup_variant_parent_enum(scope: scope, name: name)
@@ -7376,6 +7946,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                               ),
                               diagnostics: [make_error_node(diagnostic: TypeParameterInValuePosition { name: name, span: span }, module_name: scope.module_name)]
                             }
+                          } else if binding_names_a_coproduct_arm(binding: gbinding, name: name, scope: scope) {
+                            variant_outside_declared_scope_refusal(name: name, span: span, scope: scope)
                           } else {
                           let binding_kind = infer_var_binding_kind(scope: scope, name: name)
                           InferResult {
@@ -7433,6 +8005,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   }
               }
           }
+      }
+      }
       }
       }
 
@@ -7760,6 +8334,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           Absent => internal_expr_error_node(message: "method bridge missing receiver", span: span)
         }
         let call_acc_is_under_resolved = !is_fully_resolved(n: call_fold_acc_type, source_indices: scope.type_env.source_indices)
+          || fold_accumulator_is_unapplied_generic(n: call_fold_acc_type)
         let refined_call_fold_acc_type = if call_fold_info != none && call_acc_is_under_resolved {
           match typed_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
             Present { value: lambda_arg } => resolved_type(n: arg_value(n: lambda_arg))
@@ -7828,7 +8403,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               body: receiver.body, transport: receiver.transport,
               properties: receiver.properties, type_annotation: receiver.type_annotation,
               is_self_recursive: receiver.is_self_recursive, has_non_tail_self_call: receiver.has_non_tail_self_call,
-              match_pattern: receiver.match_pattern, module_item_kind: receiver.module_item_kind, declaration_marker: receiver.declaration_marker, expr_data: receiver.expr_data
+              match_pattern: receiver.match_pattern, module_item_kind: receiver.module_item_kind, declaration_marker: receiver.declaration_marker, declaration: receiver.declaration, expr_data: receiver.expr_data
             }
           } else { receiver }
           let remaining_arg_nodes = remaining |> map(ta => make_arg_node(occurrence_identity: ta.occurrence_identity, name: arg_name_at(n: ta, source_indices: scope.type_env.source_indices), value: arg_value(n: ta), span: span, name_span: span))
@@ -8029,7 +8604,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               diagnostics: arg_diags
             }
           } else {
-          match infer_variant_constructor_call(occurrence_identity: texpr.occurrence_identity, func_name: func_name, call_args: call_args, span: span, name_span: node_name_span(n: texpr), scope: scope) {
+          match infer_variant_constructor_call(occurrence_identity: texpr.occurrence_identity, func_name: func_name, call_args: call_args, span: span, name_span: node_name_span(n: texpr), scope: scope, expected: expected) {
             Present { value: ctor_result } => ctor_result
             Absent =>
               let type_match = lookup_type_by_name(env: scope.type_env, name: func_name)
@@ -8214,8 +8789,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             scrutinee_type: scrut_rt, arm_pattern: arm_pat, arm_index: arm_pair.first, absent_arm_index: absent_arm_index) {
           pattern_subject_from_node(n: with_required_cardinality(n: scrut_rt))
         } else { scrut_subject }
-        let typed_pattern = annotate_pattern_parent_enums(pattern: arm_pat, scrutinee_subject: arm_subject, scope: scope)
-        let pattern_result = extend_scope_with_pattern_node(scope: scope, pattern: typed_pattern, scrutinee_subject: arm_subject, scrutinee_provenance: scrut_provenance)
+        let typed_pattern = annotate_pattern_parent_enums(pattern: arm_pat, scrutinee_subject: arm_subject, site: arm_node.span, scope: scope)
+        let pattern_result = extend_scope_with_pattern_node(scope: scope, pattern: typed_pattern, scrutinee_subject: arm_subject, site: arm_node.span, scrutinee_provenance: scrut_provenance)
         let arm_scope = pattern_result.scope
         let pattern_diags = pattern_result.diagnostics
         let guard_result = if arm_g != none {
@@ -8230,7 +8805,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           Present { value: gr } => gr
           Absent => InferResult { typed: arm_b, diagnostics: [] }
         }
-        let guard_diags = if guard_result != none { guard_unwrapped.diagnostics } else { [] }
+        let guard_diags = if guard_result != none { concat(guard_unwrapped.diagnostics, condition_obligation_diags(label: "match-arm guard", typed: guard_unwrapped.typed, scope: arm_scope)) } else { [] }
         ArmInferResult {
           typed_arm: make_arm_node(occurrence_identity: arm_node.occurrence_identity,
             pattern: typed_pattern,
@@ -8272,8 +8847,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             let arm_pat = arm_pattern(n: arm_node)
             let arm_g = arm_guard(n: arm_node)
             let arm_b = arm_body(n: arm_node)
-            let typed_pattern = annotate_pattern_parent_enums(pattern: arm_pat, scrutinee_subject: scrut_subject, scope: scope)
-            let pattern_result = extend_scope_with_pattern_node(scope: scope, pattern: typed_pattern, scrutinee_subject: scrut_subject, scrutinee_provenance: scrut_provenance)
+            let typed_pattern = annotate_pattern_parent_enums(pattern: arm_pat, scrutinee_subject: scrut_subject, site: arm_node.span, scope: scope)
+            let pattern_result = extend_scope_with_pattern_node(scope: scope, pattern: typed_pattern, scrutinee_subject: scrut_subject, site: arm_node.span, scrutinee_provenance: scrut_provenance)
             let arm_scope = pattern_result.scope
             let pattern_diags = pattern_result.diagnostics
             let guard_result = if arm_g != none {
@@ -8286,7 +8861,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               Present { value: gr } => gr
               Absent => InferResult { typed: arm_b, diagnostics: [] }
             }
-            let guard_diags = if guard_result != none { guard_unwrapped.diagnostics } else { [] }
+            let guard_diags = if guard_result != none { concat(guard_unwrapped.diagnostics, condition_obligation_diags(label: "match-arm guard", typed: guard_unwrapped.typed, scope: arm_scope)) } else { [] }
             ArmInferResult {
               typed_arm: make_arm_node(occurrence_identity: arm_node.occurrence_identity,
                 pattern: typed_pattern,
@@ -8348,7 +8923,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let else_expr = if_else_branch(texpr: texpr)
       let cond_result = infer_expr(texpr: cond, scope: scope, expected: none)
       let cond_typed = cond_result.typed
-      let cond_diags = cond_result.diagnostics
+      let cond_diags = concat(cond_result.diagnostics, condition_obligation_diags(label: "if condition", typed: cond_typed, scope: scope))
       let then_result = infer_expr(texpr: then_expr, scope: scope, expected: expected)
       let then_typed = then_result.typed
       let then_diags = then_result.diagnostics
@@ -8426,8 +9001,11 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Present { value: declared } =>
           let produced_value_type = expression_value_type(e: val_typed)
           let conformance = declared_type_conformance_diags(
+            position: PositionLetAnnotation,
+            subject: let_name,
             declared: declared,
             produced: produced_value_type,
+            produced_by: val_typed,
             span: val_expr.span,
             scope: scope)
           if (conformance |> count) > 0 { conformance }
@@ -8664,7 +9242,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           return_cardinality: pn.return_cardinality, uses: pn.uses, body: pn.body,
           transport: pn.transport, properties: pn.properties, type_annotation: pn.type_annotation,
           is_self_recursive: pn.is_self_recursive, has_non_tail_self_call: pn.has_non_tail_self_call,
-          match_pattern: pn.match_pattern, module_item_kind: pn.module_item_kind, declaration_marker: pn.declaration_marker, expr_data: pn.expr_data
+          match_pattern: pn.match_pattern, module_item_kind: pn.module_item_kind, declaration_marker: pn.declaration_marker, declaration: pn.declaration, expr_data: pn.expr_data
         }
       )
       let lam_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity,
@@ -8905,7 +9483,16 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
   }
 }
 
-fn infer_variant_constructor_call(occurrence_identity: NodeOccurrenceIdentity, func_name: String, call_args: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope) -> InferResult? {
+// A POSITIONAL VARIANT CONSTRUCTION IS A RECORD LITERAL WITH ONE FIELD, AND IT KEEPS ITS CONTEXT. The
+// call is rewritten to `V { 0: payload }` and inferred as a record literal, and that rewrite passed
+// `expected: none`, discarding whatever the call site expected. The literal therefore never found its
+// variant through the expected owner, its payload field had no declared type to expect, and a generic
+// payload -- `QuotedPerSecond(MoneyRate { .. })`, where MoneyRate<P> is a phantom parameter the
+// payload's declared type fixes -- was inferred with nothing to instantiate it from, although the
+// named-field spelling of the same shape instantiated it. The call's expected type is now carried
+// through; when there is none and the owner declares no type parameters, the owner itself IS the
+// fully determined type of the construction and is supplied as the expectation.
+fn infer_variant_constructor_call(occurrence_identity: NodeOccurrenceIdentity, func_name: String, call_args: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult? {
   match lookup_variant_parent_enum(scope: scope, name: func_name) {
     Absent => none
     Present { value: parent_enum } =>
@@ -8943,7 +9530,7 @@ fn infer_variant_constructor_call(occurrence_identity: NodeOccurrenceIdentity, f
                             span: span,
                             name_span: name_span,
                             scope: scope,
-                            expected: none
+                            expected: if (expected == none && (parent_node.params |> count) == 0) { Present { value: parent_node } } else { expected }
                           ) }
                       }
                     Absent => none
@@ -9466,6 +10053,78 @@ fn infer_map_literal(occurrence_identity: NodeOccurrenceIdentity, map_node: Node
   }
 }
 
+// AN EXPECTED TYPE SPELLED THROUGH A PARAMETERIZED ALIAS IS THE SAME EXPECTED TYPE. Every seam that
+// reads an instantiation out of a record literal's expected type -- record_lit_instantiated_fields,
+// the variant and owner lookups -- matches the expected node's NAME against the constructed
+// declaration. `type ProbeNames<X> = ProbeList<X>` spells `ProbeList<String>` as `ProbeNames<String>`,
+// so the name never matched, the literal's fields were never instantiated, and a nested field literal
+// (the `Empty {}` closing a `Cons` chain in a row declared `-> List<String>`, where List<T> =
+// FreeMonoid<T>) was inferred with NO expected type although its declaration states it. Peeling the
+// alias here, with its type arguments substituted by the alias-chain seam that already owns that
+// relation (alias_chain_target_after_args), hands every downstream seam the application it can
+// match. Only a parameterized alias applied to arguments is peeled: a nominal type, a record or
+// coproduct declaration, and a bare name pass through unchanged. The fuel bounds a cyclic alias
+// chain; exhausting it answers the last peeled node, which is still a correct spelling.
+fn record_lit_expected_through_generic_alias(expected: Node?, scope: InferScope, fuel: Int) -> Node? {
+  match expected {
+    Absent => none
+    Present { value: exp } =>
+      if fuel <= 0 || exp.connective != NoConnective || (exp.children |> count) == 0 {
+        expected
+      } else {
+        match lookup_type_by_name(env: scope.type_env, name: authored_name_at(source_indices: scope.type_env.source_indices, node: exp)) {
+          Absent => expected
+          Present { value: decl } =>
+            let is_parameterized_alias = (decl.params |> count) > 0 && decl.inferred != none && (decl.children |> count) == 0 && decl.connective == NoConnective
+            if is_parameterized_alias {
+              let peeled = alias_chain_target_after_args(target: decl, carrier: exp, env: scope.type_env)
+              let peeled_with_cardinality = if (exp.return_cardinality == CardOptional) { with_optional_cardinality(n: peeled) } else { peeled }
+              record_lit_expected_through_generic_alias(expected: Present { value: peeled_with_cardinality }, scope: scope, fuel: fuel - 1)
+            } else {
+              match transparent_alias_application_at_head(exp: exp, decl: decl, scope: scope) {
+                Present { value: at_head } =>
+                  record_lit_expected_through_generic_alias(expected: Present { value: at_head }, scope: scope, fuel: fuel - 1)
+                Absent => expected
+              }
+            }
+        }
+      }
+  }
+}
+
+// A NON-PARAMETERIZED ALIAS OF AN APPLICATION IS THE SAME EXPECTED TYPE TOO. `type TokenThroughput
+// = FieldOfFractions<Nat>` reaches this seam as the resolved application stamped with the alias's
+// authored identity (with_authored_identity: the alias's ident_span over `FieldOfFractions<Nat>`'s
+// structure and arguments), so every seam downstream looked the declaration up by the alias's name,
+// found the zero-parameter alias, failed the arity test, and left the literal's fields on the
+// template -- `num: R` -- judging nothing. The application is re-pointed at its head declaration's
+// identity, the head identified by the declaration resolve wrote on the alias's right-hand side (alias_rhs_head_declaration), found by that identity rather than by spelling,
+// so the literal is instantiated at `R = Nat` exactly as if the application had been spelled
+// directly. The arguments are not touched; only which declaration the node names.
+fn transparent_alias_application_at_head(exp: Node, decl: Node, scope: InferScope) -> Node? {
+  match alias_rhs_head_declaration(decl: decl, type_env: scope.type_env) {
+    Absent => none
+    Present { value: head } =>
+      match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: concat(head.module_path as String, ".", head.decl_name as String)) {
+        Present { value: head_decl } =>
+          if (head_decl.params |> count) != (exp.children |> count) {
+            none
+          } else {
+            Present { value: Node {
+              occurrence_identity: exp.occurrence_identity, name: exp.name, ident: exp.ident, span: exp.span, ident_span: head_decl.ident_span,
+              children: exp.children, connective: exp.connective, params: exp.params,
+              inferred: exp.inferred, return_cardinality: exp.return_cardinality,
+              uses: exp.uses, body: exp.body, transport: exp.transport,
+              properties: exp.properties, type_annotation: exp.type_annotation,
+              is_self_recursive: exp.is_self_recursive, has_non_tail_self_call: exp.has_non_tail_self_call,
+              match_pattern: exp.match_pattern, module_item_kind: exp.module_item_kind, declaration_marker: exp.declaration_marker, declaration: exp.declaration, expr_data: exp.expr_data
+            } }
+          }
+        Absent => none
+      }
+  }
+}
+
 fn infer_record_lit(occurrence_identity: NodeOccurrenceIdentity, type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult {
   match map_literal_expected_keyed_node(type_name: type_name, expected: expected, scope: scope) {
     Present { value: map_node } =>
@@ -9478,8 +10137,70 @@ fn infer_record_lit(occurrence_identity: NodeOccurrenceIdentity, type_name: Stri
         span: span,
         name_span: name_span,
         scope: scope,
-        expected: expected
+        expected: record_lit_expected_through_generic_alias(expected: expected, scope: scope, fuel: 8)
       )
+  }
+}
+
+// A FIELD TYPE THAT MENTIONS ITS OWNER'S UNBOUND PARAMETERS IS NOT AN EXPECTATION. When a generic
+// literal's owner is not instantiated, its template field `inner: Inner<S>` still names the owner's
+// own S, which is bound to nothing at this site. Handed down as the nested literal's expected type it
+// instantiates that literal at the parameter NAME -- `value: S` -- and a real value is then judged
+// against a type that does not exist (`expected 'Primitive(S)', got 'Product(Rec)'`). Each such
+// parameter is substituted with a TYPE VARIABLE, never dropped with the application around it: in
+// `inner: Inner<Int, S>` the `Int` is determined independently of S, and dropping the whole
+// expectation because S occurs erased the concrete judgment of every field Inner types with its first
+// parameter (review 5338860646). The variable is what the field check already skips as unbound, so
+// the known positions are judged and the unknown one is not judged as the name `S`. A bare `S` field
+// becomes a bare variable and expects nothing, as before.
+fn type_node_mentions_any_name(n: Node, names: List<String>, source_indices: Map<String, NewlineIndex>, fuel: Int) -> Bool {
+  if fuel <= 0 || (names |> count) == 0 {
+    false
+  } else {
+    let own = authored_name_at(source_indices: source_indices, node: n)
+    let own_variable = match n.inferred {
+      Present { value: TypeVariable { id: id } } => names |> any(g => g == id)
+      _ => false
+    }
+    let inner = match n.inferred {
+      Present { value: Resolved { node: rt } } => type_node_mentions_any_name(n: rt, names: names, source_indices: source_indices, fuel: fuel - 1)
+      _ => false
+    }
+    own_variable
+      || (n.children |> count == 0 && n.connective == NoConnective && (names |> any(g => g == own)))
+      || inner
+      || (n.children |> any(c => type_node_mentions_any_name(n: c, names: names, source_indices: source_indices, fuel: fuel - 1)))
+      || (n.params |> any(c => type_node_mentions_any_name(n: c, names: names, source_indices: source_indices, fuel: fuel - 1)))
+  }
+}
+
+// `Present { value: v }` UNDER AN EXPECTED `T?` EXPECTS `T` FOR ITS VALUE. Optional's constructor is
+// special-cased everywhere else in this stage (is_present_ctor types the literal from its value), and
+// the one direction it was never given is the downward one: the expected optional reached the literal
+// and stopped, so a generic constructor built as the value -- `Present { value: Refused { .. } }`
+// returned from a fn declared `-> Attempt<A, B>?` -- was inferred with no expected type although
+// the declaration states its instantiation. The element is the expected node with its optional
+// cardinality removed. Only an expected that IS optional is read; anything else answers none and
+// the declared-field route below decides as before. ONLY A CONSTRUCTION RECEIVES IT, which is the
+// population this exists for and the one measured clean. A collection literal or a call carries its
+// own expected-type handling, and handing it the peeled element refused two correct sites in the v1
+// seed (`Present { value: fold(.., init: empty_map(), ..) }` under `Map<String, Node>?`, and
+// `Present { value: [] }` in an if-chain) as not a keyed collection / not a collection. That the
+// peeled node does not read as the container there is an open finding, not a settled one; it was
+// not reproduced outside the seed.
+fn present_value_expected_from_optional(type_name: String, field_name: String, value: Node, expected: Node?) -> Node? {
+  let value_is_construction = match value.expr_data {
+    ExprRecordLit { parent_enum: _ } => true
+    _ => false
+  }
+  if type_name != "Present" || field_name != "value" || value_is_construction == false {
+    none
+  } else {
+    match expected {
+      Present { value: exp } =>
+        if (exp.return_cardinality == CardOptional) { Present { value: with_required_cardinality(n: exp) } } else { none }
+      Absent => none
+    }
   }
 }
 
@@ -9627,6 +10348,19 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
           module_name: scope.module_name
         ))
     }
+  let uninstantiated_owner_param_names = if instantiated_struct_fields != none { [] } else {
+    let owner_for_params = match presence_variant_owner {
+      Present { value: owner } => Present { value: owner }
+      Absent => lookup_type_by_name(env: scope.type_env, name: tn_str)
+    }
+    match owner_for_params {
+      Present { value: owner } => owner.params |> map(p => authored_name_at(source_indices: scope.type_env.source_indices, node: p))
+      Absent => []
+    }
+  }
+  let unbound_owner_param_variables = fold(uninstantiated_owner_param_names, init: empty_map(), f: (acc, g) =>
+    map_insert(acc, g, type_variable_node(id: g))
+  )
   let fi_infer_results = map(field_inits, fi =>
     let fi_name = field_init_node_name_at(n: fi, source_indices: scope.type_env.source_indices)
 
@@ -9649,21 +10383,28 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
       Absent => none
     }
     let field_conformance_type = match field_declared_type {
-      Present { value: ft } => match presence_variant_owner {
+      Present { value: ft } => if instantiated_struct_fields != none { ft } else { match presence_variant_owner {
         Present { value: owner } => stamp_field_type_from_decl_params(field_type: ft, serving_decl: owner, source_indices: scope.type_env.source_indices)
         Absent => match lookup_type_by_name(env: scope.type_env, name: tn_str) {
           Present { value: owner } => stamp_field_type_from_decl_params(field_type: ft, serving_decl: owner, source_indices: scope.type_env.source_indices)
           Absent => ft
         }
-      }
+      } }
       Absent => error_type
     }
-    let field_expected = match field_declared_type {
-      Present { value: ft } =>
-        if ft.ident_span != none || type_node_is_callable(n: ft) || ft.return_cardinality == CardOptional || field_type_is_optional_coproduct(ft: ft, env: scope.type_env) {
-          Present { value: ft }
-        } else { none }
-      Absent => none
+    let field_expected = match present_value_expected_from_optional(type_name: tn_str, field_name: fi_name, value: field_init_node_value(n: fi), expected: expected) {
+      Present { value: element } => Present { value: element }
+      Absent =>
+        match field_declared_type {
+          Present { value: declared_ft } =>
+            let ft = if instantiated_struct_fields == none && type_node_mentions_any_name(n: declared_ft, names: uninstantiated_owner_param_names, source_indices: scope.type_env.source_indices, fuel: 16) {
+              substitute_generics(n: declared_ft, subst: unbound_owner_param_variables, source_indices: scope.type_env.source_indices)
+            } else { declared_ft }
+            if ft.ident_span != none || type_node_is_callable(n: ft) || ft.return_cardinality == CardOptional || field_type_is_optional_coproduct(ft: ft, env: scope.type_env) {
+              Present { value: ft }
+            } else { none }
+          Absent => none
+        }
     }
     let ar = infer_expr(texpr: field_init_node_value(n: fi), scope: scope, expected: field_expected)
     let ar_typed = ar.typed
@@ -9671,8 +10412,24 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     let field_type_diags = match field_declared_type {
       Present { value: expected_node } =>
         let got_node = resolved_type(n: ar_typed)
+        let field_cardinality_diags = if direct_call_formal_has_unbound_type_variable(n: field_conformance_type) {
+          []
+        } else {
+          optional_at_required_value_obligation_diags(
+            obligation: DeclaredTypeObligation {
+              position: PositionRecordLiteralField,
+              subject: fi_name,
+              declared: expected_node,
+              produced: got_node,
+              span: ar_typed.span
+            },
+            produced_by: ar_typed,
+            scope: scope)
+        }
         if direct_call_formal_has_unbound_type_variable(n: field_conformance_type) {
           []
+        } else if (field_cardinality_diags |> count) > 0 {
+          field_cardinality_diags
         } else if node_type_compatible(
           left: expected_node, right: got_node, source_indices: scope.type_env.source_indices) {
           []
@@ -9767,14 +10524,14 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
         occurrence_identity: OccurrenceSynthetic, name: field_init_node_name_at(n: fir.typed_field, source_indices: scope.type_env.source_indices), span: fir.typed_field.span, ident_span: fir.typed_field.ident_span,
         children: [], connective: NoConnective,
                params: [], inferred: fir.infer_result.typed.inferred, return_cardinality: Required, uses: [],
-        body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData
+        body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
       }
     )
     let anon_node = Node {
       occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none,
       children: child_nodes, connective: Conj,
            params: [], inferred: none, return_cardinality: Required, uses: [],
-      body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData
+      body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
     }
     let typed_field_nodes = typed_fields
     let texpr = make_expr_node(occurrence_identity: occurrence_identity, expr_data: ExprRecordLit { parent_enum: none }, children: typed_field_nodes, inferred: Present { value: Resolved { node: anon_node } }, span: span)
@@ -9786,7 +10543,11 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     let type_lookup = lookup_type_by_name(env: scope.type_env, name: type_name.value)
     let owner_from_locals = local_coproduct_owner_from_locals(scope: scope, name: type_name.value)
     let owner_from_variant_node = variant_owner_node(scope: scope, name: type_name.value)
-    let local_variant_parent = match lookup_variant_parent_enum(scope: scope, name: type_name.value) {
+    let expected_decided_owner = expected_deciding_variant_owner(expected: expected, name: type_name.value, scope: scope)
+    let local_variant_parent = match expected_decided_owner {
+      Present { value: decided } => Present { value: authored_name_at(source_indices: scope.type_env.source_indices, node: decided) }
+      Absent =>
+    match lookup_variant_parent_enum(scope: scope, name: type_name.value) {
       Present { value: p } => Present { value: p }
       Absent =>
         match owner_from_variant_node {
@@ -9794,7 +10555,11 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
           Absent => record_lit_parent_enum_from_expected(type_name: type_name.value, expected: expected, scope: scope)
         }
     }
-    let effective_lookup = match type_lookup {
+    }
+    let effective_lookup = match expected_decided_owner {
+      Present { value: decided } => Present { value: decided }
+      Absent =>
+    match type_lookup {
       Present { value: _ } => type_lookup
       Absent =>
         let local_lookup = lookup_in_scope(locals: scope.locals, name: type_name.value)
@@ -9807,6 +10572,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
               Absent => Absent
             }
         }
+    }
     }
     let variant_lookup_resolved = match effective_lookup {
       Present { value: tn } => tn
@@ -10912,7 +11678,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         is_self_recursive: body.is_self_recursive,
         has_non_tail_self_call: body.has_non_tail_self_call,
         match_pattern: body.match_pattern,
-        module_item_kind: body.module_item_kind, declaration_marker: body.declaration_marker, expr_data: ExprCall { call_semantics: cs, descent_evidence: Present { value: evidence } }
+        module_item_kind: body.module_item_kind, declaration_marker: body.declaration_marker, declaration: body.declaration, expr_data: ExprCall { call_semantics: cs, descent_evidence: Present { value: evidence } }
       }
     ExprMatch =>
       let scrut = match_scrutinee(texpr: body)
@@ -11102,7 +11868,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         properties: body.properties, type_annotation: body.type_annotation,
         is_self_recursive: body.is_self_recursive,
         has_non_tail_self_call: body.has_non_tail_self_call,
-        match_pattern: body.match_pattern, module_item_kind: body.module_item_kind, declaration_marker: body.declaration_marker, expr_data: body.expr_data
+        match_pattern: body.match_pattern, module_item_kind: body.module_item_kind, declaration_marker: body.declaration_marker, declaration: body.declaration, expr_data: body.expr_data
       }
     ExprLet =>
       let val = let_value(texpr: body)
@@ -11127,7 +11893,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             param_order: ctx.param_order, type_env: ctx.type_env,
             sub_value_vars: map_insert(ctx.sub_value_vars, binding_name, rel),
             size_aliases: inner_size_aliases,
-            scope_locals: map_insert(ctx.scope_locals, binding_name, TypeBinding { name: binding_name, resolved: resolved_type(n: val), provenance: rel }),
+            scope_locals: map_insert(ctx.scope_locals, binding_name, TypeBinding { name: binding_name, resolved: resolved_type(n: val), provenance: rel, alias_rhs: none }),
             func_env: ctx.func_env,
             per_field_vars: inner_per_field,
             body_locals: map_insert(ctx.body_locals, binding_name, true)
@@ -11137,7 +11903,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             fn_name: ctx.fn_name, param_names: ctx.param_names, param_order: ctx.param_order, type_env: ctx.type_env,
             sub_value_vars: ctx.sub_value_vars,
             size_aliases: inner_size_aliases,
-            scope_locals: map_insert(ctx.scope_locals, binding_name, TypeBinding { name: binding_name, resolved: resolved_type(n: val), provenance: SubValueUnknown }),
+            scope_locals: map_insert(ctx.scope_locals, binding_name, TypeBinding { name: binding_name, resolved: resolved_type(n: val), provenance: SubValueUnknown, alias_rhs: none }),
             func_env: ctx.func_env,
             per_field_vars: inner_per_field,
             body_locals: map_insert(ctx.body_locals, binding_name, true)
@@ -11156,7 +11922,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         properties: body.properties, type_annotation: body.type_annotation,
         is_self_recursive: body.is_self_recursive,
         has_non_tail_self_call: body.has_non_tail_self_call,
-        match_pattern: body.match_pattern, module_item_kind: body.module_item_kind, declaration_marker: body.declaration_marker, expr_data: body.expr_data
+        match_pattern: body.match_pattern, module_item_kind: body.module_item_kind, declaration_marker: body.declaration_marker, declaration: body.declaration, expr_data: body.expr_data
       }
     ExprBlock =>
       let threaded = body.children |> fold(init: BlockAnnotateAcc { ctx: ctx, children: [] }, f: (acc, child) =>
@@ -11184,7 +11950,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   param_order: acc.ctx.param_order, type_env: acc.ctx.type_env,
                   sub_value_vars: map_insert(acc.ctx.sub_value_vars, bname, rel),
                   size_aliases: new_sa,
-                  scope_locals: map_insert(acc.ctx.scope_locals, bname, TypeBinding { name: bname, resolved: resolved_type(n: val), provenance: rel }),
+                  scope_locals: map_insert(acc.ctx.scope_locals, bname, TypeBinding { name: bname, resolved: resolved_type(n: val), provenance: rel, alias_rhs: none }),
                   func_env: acc.ctx.func_env,
                   per_field_vars: acc.ctx.per_field_vars,
                   body_locals: map_insert(acc.ctx.body_locals, bname, true)
@@ -11194,7 +11960,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   fn_name: acc.ctx.fn_name, param_names: acc.ctx.param_names, param_order: acc.ctx.param_order, type_env: acc.ctx.type_env,
                   sub_value_vars: acc.ctx.sub_value_vars,
                   size_aliases: new_sa,
-                  scope_locals: map_insert(acc.ctx.scope_locals, bname, TypeBinding { name: bname, resolved: resolved_type(n: val), provenance: SubValueUnknown }),
+                  scope_locals: map_insert(acc.ctx.scope_locals, bname, TypeBinding { name: bname, resolved: resolved_type(n: val), provenance: SubValueUnknown, alias_rhs: none }),
                   func_env: acc.ctx.func_env,
                   per_field_vars: acc.ctx.per_field_vars,
                   body_locals: map_insert(acc.ctx.body_locals, bname, true)
@@ -11212,7 +11978,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         properties: body.properties, type_annotation: body.type_annotation,
         is_self_recursive: body.is_self_recursive,
         has_non_tail_self_call: body.has_non_tail_self_call,
-        match_pattern: body.match_pattern, module_item_kind: body.module_item_kind, declaration_marker: body.declaration_marker, expr_data: body.expr_data
+        match_pattern: body.match_pattern, module_item_kind: body.module_item_kind, declaration_marker: body.declaration_marker, declaration: body.declaration, expr_data: body.expr_data
       }
     ExprMethodCall { method_semantics: ms } =>
       let mname = expr_method_name_at(texpr: body, source_indices: ctx.type_env.source_indices)
@@ -11325,7 +12091,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
           properties: body.properties, type_annotation: body.type_annotation,
           is_self_recursive: body.is_self_recursive,
           has_non_tail_self_call: body.has_non_tail_self_call,
-          match_pattern: body.match_pattern, module_item_kind: body.module_item_kind, declaration_marker: body.declaration_marker, expr_data: body.expr_data
+          match_pattern: body.match_pattern, module_item_kind: body.module_item_kind, declaration_marker: body.declaration_marker, declaration: body.declaration, expr_data: body.expr_data
         }
       } else {
         map_children(node: body, transform: child => annotate_descent(body: child, ctx: ctx))
@@ -11371,7 +12137,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         properties: body.properties, type_annotation: body.type_annotation,
         is_self_recursive: body.is_self_recursive,
         has_non_tail_self_call: body.has_non_tail_self_call,
-        match_pattern: body.match_pattern, module_item_kind: body.module_item_kind, declaration_marker: body.declaration_marker, expr_data: body.expr_data
+        match_pattern: body.match_pattern, module_item_kind: body.module_item_kind, declaration_marker: body.declaration_marker, declaration: body.declaration, expr_data: body.expr_data
       }
     _ =>
       map_children(node: body, transform: child => annotate_descent(body: child, ctx: ctx))
@@ -12117,7 +12883,7 @@ fn infer_property_values(props: List<Node>, scope: InferScope) -> InferPropertie
         uses: p.uses, body: p.body, transport: p.transport, properties: p.properties,
         type_annotation: p.type_annotation, is_self_recursive: p.is_self_recursive,
         has_non_tail_self_call: p.has_non_tail_self_call, match_pattern: p.match_pattern,
-        module_item_kind: p.module_item_kind, declaration_marker: p.declaration_marker, expr_data: p.expr_data
+        module_item_kind: p.module_item_kind, declaration_marker: p.declaration_marker, declaration: p.declaration, expr_data: p.expr_data
       },
       diagnostics: val_result.diagnostics
     }
@@ -12226,7 +12992,7 @@ fn infer_service_config_properties(props: List<Node>, scope: InferScope) -> Infe
             uses: p.uses, body: p.body, transport: p.transport, properties: p.properties,
             type_annotation: p.type_annotation, is_self_recursive: p.is_self_recursive,
             has_non_tail_self_call: p.has_non_tail_self_call, match_pattern: p.match_pattern,
-            module_item_kind: p.module_item_kind, declaration_marker: p.declaration_marker, expr_data: p.expr_data
+            module_item_kind: p.module_item_kind, declaration_marker: p.declaration_marker, declaration: p.declaration, expr_data: p.expr_data
           },
           diagnostics: val_result.diagnostics
         }
@@ -12265,7 +13031,7 @@ fn infer_transport_node(transport: Node?, scope: InferScope) -> InferTransportRe
           uses: t.uses, body: t.body, transport: t.transport, properties: prop_result.props,
           type_annotation: t.type_annotation, is_self_recursive: t.is_self_recursive,
           has_non_tail_self_call: t.has_non_tail_self_call, match_pattern: t.match_pattern,
-          module_item_kind: t.module_item_kind, declaration_marker: t.declaration_marker, expr_data: t.expr_data
+          module_item_kind: t.module_item_kind, declaration_marker: t.declaration_marker, declaration: t.declaration, expr_data: t.expr_data
         } },
         diagnostics: prop_result.diagnostics
       }
@@ -12290,7 +13056,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
         inferred: Present { value: Resolved { node: unit_type } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
         connective: item.connective, transport: typed_transport,
                properties: typed_properties, type_annotation: typed_anno,
-        is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, expr_data: NoExprData
+        is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
       },
       diagnostics: concat(transport_diags, props_diags)
     }
@@ -12322,7 +13088,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     let inferred_ret = if item.inferred != none { item.inferred } else { body_typed.inferred }
     let return_conformance_diags = if item.inferred != none {
       concat(
-        declared_type_conformance_diags(declared: declared_return_type_node(item: item), produced: resolved_type(n: body_typed), span: item.body.value.span, scope: scope),
+        declared_type_conformance_diags(position: PositionDeclaredReturn, subject: "", declared: declared_return_type_node(item: item), produced: resolved_type(n: body_typed), produced_by: body_typed, span: item.body.value.span, scope: scope),
         explicit_return_conformance_diags(declared: declared_return_type_node(item: item), body_typed: body_typed, scope: scope))
     } else { [] }
 
@@ -12338,7 +13104,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
                properties: typed_properties, type_annotation: typed_anno,
         is_self_recursive: is_recursive,
         has_non_tail_self_call: expr_has_non_tail_self_call(texpr: body_typed, fn_name: authored_name_at(source_indices: scope.type_env.source_indices, node: item), in_tail: true, source_indices: scope.type_env.source_indices),
-        match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, expr_data: NoExprData
+        match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
       },
       diagnostics: concat(transport_diags, props_diags, concat(body_diags, return_conformance_diags))
     }
@@ -12350,7 +13116,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     let val_diags = if item.type_annotation != none {
       concat(
         val_result.diagnostics,
-        declared_type_conformance_diags(declared: item.type_annotation.value, produced: expression_value_type(e: val_typed), span: item.body.value.span, scope: scope)
+        declared_type_conformance_diags(position: PositionDataInitializer, subject: "", declared: item.type_annotation.value, produced: expression_value_type(e: val_typed), produced_by: val_typed, span: item.body.value.span, scope: scope)
       )
     } else { val_result.diagnostics }
     let inferred_ret = if item.type_annotation != none { Present { value: Resolved { node: item.type_annotation.value } } } else { val_typed.inferred }
@@ -12360,7 +13126,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
         inferred: inferred_ret, return_cardinality: item.return_cardinality, uses: [], body: Present { value: val_typed },
         connective: NoConnective, transport: typed_transport,
                properties: typed_properties, type_annotation: typed_anno,
-        is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, expr_data: NoExprData
+        is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
       },
       diagnostics: concat(transport_diags, props_diags, val_diags)
     }
@@ -12372,7 +13138,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
         inferred: if item.inferred != none { item.inferred } else { Present { value: Resolved { node: unit_type } } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
         connective: NoConnective, transport: typed_transport,
                properties: typed_properties, type_annotation: typed_anno,
-        is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, expr_data: NoExprData
+        is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
       },
       diagnostics: concat(transport_diags, props_diags)
     }
@@ -12384,7 +13150,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
         inferred: if item.inferred != none { item.inferred } else { Present { value: Resolved { node: unit_type } } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
         connective: item.connective, transport: typed_transport,
                properties: typed_properties, type_annotation: typed_anno,
-        is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, expr_data: NoExprData
+        is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
       },
       diagnostics: concat(transport_diags, props_diags)
     }
@@ -12611,7 +13377,7 @@ fn substitute_generics_apply(n: Node, subst: Map<String, Node>, source_indices: 
   match n.inferred {
     Present { value: TypeVariable { id: tv_id } } =>
       match map_get(subst, tv_id) {
-        Present { value: c } => if type_node_label(n: c, source_indices: source_indices) == tv_id { n } else { c }
+        Present { value: c } => if type_node_label(n: c, source_indices: source_indices) == tv_id { n } else { preserve_outer_optional_cardinality(outer: n, inner: c) }
         Absent => n
       }
     _ =>
@@ -12619,7 +13385,7 @@ fn substitute_generics_apply(n: Node, subst: Map<String, Node>, source_indices: 
   let is_bare = n.children |> count == 0 && n.connective == NoConnective && n.params |> count == 0
   if is_bare {
     match map_get(subst, nm) {
-      Present { value: c } => c
+      Present { value: c } => preserve_outer_optional_cardinality(outer: n, inner: c)
       Absent => n
     }
   } else {
@@ -12645,7 +13411,7 @@ fn substitute_generics_apply(n: Node, subst: Map<String, Node>, source_indices: 
         return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport,
         properties: n.properties, type_annotation: n.type_annotation,
         is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call,
-        match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, expr_data: n.expr_data
+        match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data
       }
     }
   }
@@ -12711,28 +13477,89 @@ fn union_parent_type_env_caches(
   }
 }
 
+// THE KERNEL TIER ELECTS ONLY AN UNAMBIGUOUS SPELLING. Each kernel coproduct arm binds to its owner
+// where no other kernel coproduct declares the same spelling; a spelling two kernel coproducts declare
+// binds to NEITHER (no first-wins by name order), and a reference to it refuses AmbiguousReference
+// naming both (kernel_variant_owner_candidates, read at the reference).
 fn kernel_coproduct_variant_locals(env: TypeEnv) -> Map<String, TypeBinding> {
   match env.parents |> last {
     Present { value: kernel } =>
-      fold(
-        kernel.bindings |> map_values |> sort_by(b => b.name),
-        init: empty_map(),
-        f: (acc, binding) =>
-          let is_coproduct = binding.resolved.connective == Disj
-          if is_coproduct {
-            fold(binding.resolved.children, init: acc, f: (vacc, child) =>
-              let child_name = authored_name_at(source_indices: env.source_indices, node: child)
-              match map_get(vacc, child_name) {
-                Present { value: _prev } => vacc
-                Absent => map_insert(vacc, child_name, TypeBinding { name: child_name, resolved: binding.resolved, provenance: SubValueUnknown })
+      let owners = kernel_arm_owner_bindings(env: env, bindings: kernel.bindings |> map_values |> sort_by(b => b.name))
+      fold(owners |> map_keys, init: empty_map(), f: (acc, arm) =>
+        match map_get(owners, arm) {
+          Present { value: bindings } =>
+            if (bindings |> count) == 1 {
+              match bindings |> first {
+                Present { value: b } => map_insert(acc, arm, TypeBinding { name: arm, resolved: b.resolved, provenance: SubValueUnknown, alias_rhs: none })
+                Absent => acc
               }
-            )
-          } else { acc }
+            } else { acc }
+          Absent => acc
+        }
       )
     Absent => empty_map()
   }
 }
 
+// Every kernel coproduct arm spelling, with the distinct kernel coproduct bindings that declare it.
+fn kernel_arm_owner_bindings(env: TypeEnv, bindings: List<TypeBinding>) -> Map<String, List<TypeBinding>> {
+  fold(bindings, init: empty_map(), f: (acc, binding) =>
+    if (binding.resolved.connective == Disj) {
+      fold(binding.resolved.children, init: acc, f: (vacc, child) =>
+        kernel_arm_owner_add(owners: vacc, arm: authored_name_at(source_indices: env.source_indices, node: child), binding: binding)
+      )
+    } else { acc }
+  )
+}
+
+fn kernel_arm_owner_add(owners: Map<String, List<TypeBinding>>, arm: String, binding: TypeBinding) -> Map<String, List<TypeBinding>> {
+  match map_get(owners, arm) {
+    Present { value: seen } =>
+      if (seen |> any(b => b.resolved == binding.resolved)) { owners } else { map_insert(owners, arm, concat(seen, [binding])) }
+    Absent => map_insert(owners, arm, [binding])
+  }
+}
+
+// AN OPTIONAL-CARDINALITY EXPECTED TYPE DECIDES THE OPTIONAL'S OWN ARMS. At a `T?` position the
+// expected type's own level is the kernel Optional coproduct, so a bare Absent or Present there is
+// Optional's arm -- whatever user coproducts the closure also declares with that spelling. Any other
+// spelling at a `T?` position is not decided here (it is the inner T's arm, reached by coercion).
+fn kernel_optional_owner_declaring(env: TypeEnv, name: String) -> Node? {
+  match env.parents |> last {
+    Present { value: kernel } =>
+      match map_get(kernel.str_bindings, "Optional") {
+        Present { value: binding } =>
+          if (binding.resolved.connective == Disj)
+            && has_child_named(n: binding.resolved, name: name, source_indices: env.source_indices) {
+            Present { value: binding.resolved }
+          } else { none }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
+// The distinct kernel coproducts declaring an arm spelled `name`, by authored owner name.
+fn kernel_variant_owner_candidates(env: TypeEnv, name: String) -> List<String> {
+  match env.parents |> last {
+    Present { value: kernel } =>
+      fold(kernel.bindings |> map_values |> sort_by(b => b.name), init: [], f: (acc, binding) =>
+        if (binding.resolved.connective == Disj)
+          && has_child_named(n: binding.resolved, name: name, source_indices: env.source_indices) {
+          let owner = authored_name_at(source_indices: env.source_indices, node: binding.resolved)
+          if (acc |> any(o => o == owner)) { acc } else { concat(acc, [owner]) }
+        } else { acc }
+      )
+    Absent => []
+  }
+}
+
+// THE KERNEL ARM NEVER FILLS A SPELLING THE CLOSURE FINDS AMBIGUOUS. The closure-wide tier drops a
+// spelling two corpus declarations claim (GlobalBareAmbiguousBinding), and the kernel used to fill
+// that hole -- so `Absent`, declared by two user coproducts, elected the kernel Optional's Absent
+// with no diagnostic. Now that spelling stays unbound here; a reference to it is decided by its
+// expected type (expected_deciding_variant_owner) or refuses AmbiguousReference naming the
+// candidates (the ExprVar unbound arm, global_bare_strict_ambiguity_candidates).
 fn merge_kernel_variant_locals_low_priority(
   env: TypeEnv,
   locals: Map<String, TypeBinding>
@@ -12742,9 +13569,11 @@ fn merge_kernel_variant_locals_low_priority(
     match map_get(acc, variant_name) {
       Present { value: _ } => acc
       Absent =>
+        if ((global_bare_strict_ambiguity_candidates(env: env, name: variant_name) |> count) > 0) { acc } else {
         match map_get(kernel_locals, variant_name) {
           Present { value: binding } => map_insert(acc, variant_name, binding)
           Absent => acc
+        }
         }
     }
   )
@@ -12992,39 +13821,39 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
       connective: item.connective, params: item.params, inferred: none,
       return_cardinality: item.return_cardinality,
       uses: [], body: none, transport: none, properties: item.properties,
-      type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, expr_data: NoExprData
+      type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
     }
-    Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown } }
+    Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown, alias_rhs: none } }
   } else if item.body != none && item.transport == none {
     let fn_node = Node {
       occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: [],
       connective: NoConnective, params: item.params, inferred: item.inferred,
       return_cardinality: item.return_cardinality,
       uses: item.uses, body: none, transport: none, properties: item.properties,
-      type_annotation: item.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, expr_data: NoExprData
+      type_annotation: item.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
     }
-    Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: fn_node, provenance: SubValueUnknown } }
+    Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: fn_node, provenance: SubValueUnknown, alias_rhs: none } }
   } else if item.inferred != none && item.params |> count == 0 && item.body == none {
     let alias_node = Node {
       occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: [],
       connective: NoConnective, params: [], inferred: item.inferred,
       return_cardinality: item.return_cardinality,
       uses: [], body: none, transport: none, properties: [],
-      type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, expr_data: NoExprData
+      type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
     }
-    Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: alias_node, provenance: SubValueUnknown } }
+    Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: alias_node, provenance: SubValueUnknown, alias_rhs: none } }
   } else if item.transport == none && item.children |> count > 0 {
     let ref_node = nominal_ref_node(name: authored_name_at(source_indices: source_indices, node: item), span: item.span, ident_span: item.ident_span)
-    Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: ref_node, provenance: SubValueUnknown } }
+    Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: ref_node, provenance: SubValueUnknown, alias_rhs: none } }
   } else if item.params |> count > 0 && item.connective == NoConnective && item.body == none && item.transport == none {
     let bare_node = Node {
       occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: [],
       connective: NoConnective, params: item.params, inferred: item.inferred,
       return_cardinality: item.return_cardinality,
       uses: [], body: none, transport: none, properties: [],
-      type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, expr_data: NoExprData
+      type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
     }
-    Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: bare_node, provenance: SubValueUnknown } }
+    Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: bare_node, provenance: SubValueUnknown, alias_rhs: none } }
   } else if item.properties |> count > 0 && item.connective == NoConnective && item.transport == none && item.inferred == none && item.params |> count == 0 {
     Present { value: nominal_type_binding(name: authored_name_at(source_indices: source_indices, node: item)) }
   } else {
@@ -13183,7 +14012,7 @@ fn symbol_index_insert_unique_disj_variant_aliases(
                     binding: TypeBinding {
                       name: vname,
                       resolved: item,
-                      provenance: SubValueUnknown
+                      provenance: SubValueUnknown, alias_rhs: none
                     }
                   )
                   }
@@ -13568,7 +14397,7 @@ fn census_qualify_sig_return_binding(binding: TypeBinding, module_path: String, 
   TypeBinding {
     name: binding.name,
     resolved: node_with_inferred(n: node, inferred: qualify_borrowed_inferred(inferred: node.inferred, owner_module_path: module_path, env: env, excluded: empty_map())),
-    provenance: binding.provenance
+    provenance: binding.provenance, alias_rhs: binding.alias_rhs
   }
 }
 
@@ -13584,7 +14413,7 @@ fn census_upgrade_sig_binding(binding: TypeBinding, module_path: String, census:
           TypeBinding {
             name: binding.name,
             resolved: node_with_inferred(n: node, inferred: Present { value: Resolved { node: preserved } }),
-            provenance: binding.provenance
+            provenance: binding.provenance, alias_rhs: binding.alias_rhs
           }
         } else { binding }
       _ => binding
@@ -13636,7 +14465,7 @@ fn census_upgrade_type_decl_binding(binding: TypeBinding, module_path: String, c
   TypeBinding {
     name: binding.name,
     resolved: qualify_decl_reference_positions(n: node, owner_module_path: module_path, env: env, excluded: excluded),
-    provenance: binding.provenance
+    provenance: binding.provenance, alias_rhs: binding.alias_rhs
   }
 }
 
@@ -13651,7 +14480,7 @@ fn census_qualify_leaf_binding(binding: TypeBinding, module_path: String, census
   TypeBinding {
     name: binding.name,
     resolved: node_with_inferred(n: node, inferred: qualify_borrowed_inferred(inferred: node.inferred, owner_module_path: module_path, env: env, excluded: excluded)),
-    provenance: binding.provenance
+    provenance: binding.provenance, alias_rhs: binding.alias_rhs
   }
 }
 
@@ -13700,21 +14529,20 @@ fn census_upgrade_service_item(item: Node, module_path: String, census: SymbolIn
   node_with_children(n: item, children: ops2)
 }
 
-fn census_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
-  let entry_keys = sorted_map_keys(index.entries)
-  let entries2 = fold(entry_keys, init: index.entries, f: (acc, k) =>
-    match map_get(index.entries, k) {
-      Present { value: node } =>
-        let upgraded = census_upgrade_binding(
-          binding: TypeBinding { name: qualified_last_segment(name: k), resolved: node, provenance: SubValueUnknown },
-          module_path: qualified_all_but_last(name: k),
-          census: index,
-          source_indices: source_indices
-        )
-        if upgraded.resolved == node { acc } else { map_insert(acc, k, upgraded.resolved) }
-      Absent => acc
-    }
-  )
+// THE BARE-FILL UNDERLAY'S UPGRADE: `global_bare` and `services` with resolved signatures, `entries`
+// left as the raw census. It is what a per-tree underlay is read for: `symbol_index_with_bare_fill`
+// takes the tree's `global_bare`, `services`, alias reps and exposures and keeps the CLOSURE's
+// `entries`, so upgrading the tree's entries produced a value no consumer read. Every upgrade below
+// reads the RAW `index` (entries included), never an upgraded one, so each bare and service value
+// is exactly the one `census_with_resolved_fn_sigs` produces.
+//
+// DECLARED FRONTIER: the bare upgrade here is still eager over every bare name of the tree, while
+// a closure's typecheck reads only the names it looks up. Scoping it to those demands needs a
+// demand identity for "this lookup, in this closure" -- the demand-identity carriers of
+// docs/plans/demand-engine-program.md (M1). Until that capability exists, no key of `global_bare`
+// can be marked undemanded without either a lazy cell or a new refusal arm in frozen v1 semantics,
+// both ruled out; this stays eager.
+fn census_bare_fill_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
   let bare_keys = sorted_map_keys(index.global_bare)
   let global2 = fold(bare_keys, init: index.global_bare, f: (acc, k) =>
     match map_get(index.global_bare, k) {
@@ -13739,7 +14567,26 @@ fn census_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, 
       Absent => acc
     }
   )
-  SymbolIndex { entries: entries2, global_bare: global2, services: services2, transparent_alias_rep: index.transparent_alias_rep, type_head_exposures: index.type_head_exposures }
+  SymbolIndex { entries: index.entries, global_bare: global2, services: services2, transparent_alias_rep: index.transparent_alias_rep, type_head_exposures: index.type_head_exposures }
+}
+
+fn census_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
+  let entry_keys = sorted_map_keys(index.entries)
+  let entries2 = fold(entry_keys, init: index.entries, f: (acc, k) =>
+    match map_get(index.entries, k) {
+      Present { value: node } =>
+        let upgraded = census_upgrade_binding(
+          binding: TypeBinding { name: qualified_last_segment(name: k), resolved: node, provenance: SubValueUnknown, alias_rhs: none },
+          module_path: qualified_all_but_last(name: k),
+          census: index,
+          source_indices: source_indices
+        )
+        if upgraded.resolved == node { acc } else { map_insert(acc, k, upgraded.resolved) }
+      Absent => acc
+    }
+  )
+  let fill = census_bare_fill_with_resolved_fn_sigs(index: index, source_indices: source_indices)
+  SymbolIndex { entries: entries2, global_bare: fill.global_bare, services: fill.services, transparent_alias_rep: fill.transparent_alias_rep, type_head_exposures: fill.type_head_exposures }
 }
 
 fn build_symbol_index_census(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
@@ -13871,9 +14718,9 @@ type AncestryPrecedence {
 // bcp_foreign_coproduct_where_bool_required_must_refuse). One constructor serves every
 // kernel-environment producer, so the fact cannot fork (review 57892).
 fn kernel_bool_type_node() -> Node {
-  let kernel_true_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "True", span: kernel_span(name: "True"), ident_span: Present { value: kernel_span(name: "True") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData }
-  let kernel_false_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "False", span: kernel_span(name: "False"), ident_span: Present { value: kernel_span(name: "False") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData }
-  Node { occurrence_identity: OccurrenceSynthetic, name: "Bool", span: kernel_span(name: "Bool"), ident_span: Present { value: kernel_span(name: "Bool") }, children: [kernel_true_variant, kernel_false_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData }
+  let kernel_true_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "True", span: kernel_span(name: "True"), ident_span: Present { value: kernel_span(name: "True") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  let kernel_false_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "False", span: kernel_span(name: "False"), ident_span: Present { value: kernel_span(name: "False") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  Node { occurrence_identity: OccurrenceSynthetic, name: "Bool", span: kernel_span(name: "Bool"), ident_span: Present { value: kernel_span(name: "Bool") }, children: [kernel_true_variant, kernel_false_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
 }
 
 // THE PRECEDENCE IS PRODUCED ONCE, HERE, AND NOWHERE DOWNSTREAM. Both type-env builders consume
@@ -13938,22 +14785,22 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     init: empty_map(),
     f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, TypeBinding {
       name: name,
-      resolved: Node { occurrence_identity: OccurrenceSynthetic, name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData },
-      provenance: SubValueUnknown
+      resolved: Node { occurrence_identity: OccurrenceSynthetic, name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
+      provenance: SubValueUnknown, alias_rhs: none
     })
   )
   let unit_span = kernel_span(name: "Unit")
   let kernel_bindings = map_insert(kernel_bindings_base, intern(table: intern_table, s: "Unit").id, TypeBinding {
     name: "Unit",
-    resolved: Node { occurrence_identity: OccurrenceSynthetic, name: "Unit", span: unit_span, ident_span: Present { value: unit_span }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData },
-    provenance: SubValueUnknown
+    resolved: Node { occurrence_identity: OccurrenceSynthetic, name: "Unit", span: unit_span, ident_span: Present { value: unit_span }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
+    provenance: SubValueUnknown, alias_rhs: none
   })
-  let present_value_field = Node { occurrence_identity: OccurrenceSynthetic, name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: "present_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData }
-  let present_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData }
-  let absent_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData }
-  let kernel_optional = Node { occurrence_identity: OccurrenceSynthetic, name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData }
-  let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
-  let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Bool").id, TypeBinding { name: "Bool", resolved: kernel_bool_type_node(), provenance: SubValueUnknown })
+  let present_value_field = Node { occurrence_identity: OccurrenceSynthetic, name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: "present_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  let present_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  let absent_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  let kernel_optional = Node { occurrence_identity: OccurrenceSynthetic, name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown, alias_rhs: none })
+  let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Bool").id, TypeBinding { name: "Bool", resolved: kernel_bool_type_node(), provenance: SubValueUnknown, alias_rhs: none })
 
   let node_fields = inductive_fields_list_to_map(fields: compiler_inductive_fields)
   let kernel_recursive_types = map_keys(compiler_recursive_types) |> map(name => intern(table: intern_table, s: name).id)
@@ -14117,14 +14964,14 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let kernel_bindings = fold(
     map_keys(kernel_type_set),
     init: empty_map(),
-    f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, TypeBinding { name: name, resolved: Node { occurrence_identity: OccurrenceSynthetic, name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData }, provenance: SubValueUnknown })
+    f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, TypeBinding { name: name, resolved: Node { occurrence_identity: OccurrenceSynthetic, name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }, provenance: SubValueUnknown, alias_rhs: none })
   )
-  let present_value_field = Node { occurrence_identity: OccurrenceSynthetic, name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: "present_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData }
-  let present_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData }
-  let absent_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData }
-  let kernel_optional = Node { occurrence_identity: OccurrenceSynthetic, name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData }
-  let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
-  let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Bool").id, TypeBinding { name: "Bool", resolved: kernel_bool_type_node(), provenance: SubValueUnknown })
+  let present_value_field = Node { occurrence_identity: OccurrenceSynthetic, name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: "present_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  let present_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  let absent_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  let kernel_optional = Node { occurrence_identity: OccurrenceSynthetic, name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown, alias_rhs: none })
+  let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Bool").id, TypeBinding { name: "Bool", resolved: kernel_bool_type_node(), provenance: SubValueUnknown, alias_rhs: none })
   let kernel_str_bindings = str_bindings_from_bindings(bindings: kernel_bindings)
   let kernel = TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: kernel_str_bindings, ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index(), unit_variant_index: build_unit_variant_index(str_bindings: kernel_str_bindings, parents: [], source_indices: source_indices), unit_variant_index_observed: true }
 
@@ -14143,14 +14990,14 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
     let item_ident = intern(table: intern_table, s: authored_name_at(source_indices: source_indices, node: item)).id
     let has_structure = item.connective != NoConnective
     if has_structure {
-      let type_node = Node { occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: item.children, connective: item.connective, params: [], inferred: none, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, expr_data: NoExprData }
-      map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown })
+      let type_node = Node { occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: item.children, connective: item.connective, params: [], inferred: none, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData }
+      map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown, alias_rhs: none })
     } else if item.inferred != none && item.params |> count == 0 && item.body == none {
-      let alias_node = Node { occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: [], connective: NoConnective, params: [], inferred: item.inferred, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, expr_data: NoExprData }
-      map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: alias_node, provenance: SubValueUnknown })
+      let alias_node = Node { occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: [], connective: NoConnective, params: [], inferred: item.inferred, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData }
+      map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: alias_node, provenance: SubValueUnknown, alias_rhs: none })
     } else if item.transport == none && item.children |> count > 0 {
       let ref_node = nominal_ref_node(name: authored_name_at(source_indices: source_indices, node: item), span: item.span, ident_span: item.ident_span)
-      map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: ref_node, provenance: SubValueUnknown })
+      map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: ref_node, provenance: SubValueUnknown, alias_rhs: none })
     } else if item.properties |> count > 0 && item.connective == NoConnective && item.transport == none && item.inferred == none && item.params |> count == 0 {
       map_insert(acc, item_ident, nominal_type_binding(name: authored_name_at(source_indices: source_indices, node: item)))
     } else {
@@ -14418,7 +15265,7 @@ fn insert_variant_owner_checked(state: VariantFoldState, arm_name: String, owner
       }
     Absent =>
       VariantFoldState {
-        locals: map_insert(state.locals, arm_name, TypeBinding { name: arm_name, resolved: owner, provenance: SubValueUnknown }),
+        locals: map_insert(state.locals, arm_name, TypeBinding { name: arm_name, resolved: owner, provenance: SubValueUnknown, alias_rhs: none }),
         collision_errors: state.collision_errors
       }
   }
@@ -14461,6 +15308,16 @@ fn build_local_variants(items: List<Node>, source_indices: Map<String, NewlineIn
 // (kernel spans compute the same name in both arms; non-kernel misses fall back to node.name in
 // both), and the census owners all live in closure files, so eligibility is unchanged.
 
+// THE CLOSURE-WIDE TIER IS THE STAND-IN FOR THE MODULE'S DECLARED SCOPE, NOT A SECOND SCOPE (neat-boar-16
+// ruling B, 2026-10-01). A bare variant elects first by its expected coproduct
+// (expected_deciding_variant_owner), then from own coproducts and direct imports, then from this
+// closure-unique tier, then the kernel where nothing above declares the spelling and the closure does
+// not find it ambiguous (merge_kernel_variant_locals_low_priority). This tier lets a module bind an arm
+// it never imported, which the ruled declared scope (own module plus explicit imports) does not admit;
+// it stands until quiet-hawk-702's Node.declaration cut installs that scope as
+// v1.compiler.infer build_ancestry_precedence, and that cut DELETES this tier and its threading
+// outright rather than keeping it beside the new scope. The election site above is a named consumer of
+// that definition.
 fn merge_global_bare_variant_locals(
   state: VariantFoldState,
   global_variant_base: Map<String, TypeBinding>
@@ -14484,7 +15341,7 @@ fn build_global_bare_variant_locals(
       Present { value: GlobalBareUniqueBinding { module_path: _, binding: binding } } =>
         let owner = binding.resolved
         if owner.connective == Disj && has_child_named(n: owner, name: name, source_indices: source_indices) {
-          map_insert(acc, name, TypeBinding { name: name, resolved: owner, provenance: SubValueUnknown })
+          map_insert(acc, name, TypeBinding { name: name, resolved: owner, provenance: SubValueUnknown, alias_rhs: none })
         } else {
           acc
         }
@@ -14873,7 +15730,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
 
   let data_locals = fold(ctx.resolved_items, init: ctx.locals, f: (acc, item) =>
     if item.body != none && item.params |> count == 0 && item.inferred == none && item.type_annotation != none {
-      map_insert(acc, authored_name_at(source_indices: source_indices, node: item), TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: item.type_annotation.value, provenance: SubValueUnknown })
+      map_insert(acc, authored_name_at(source_indices: source_indices, node: item), TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: item.type_annotation.value, provenance: SubValueUnknown, alias_rhs: none })
     } else {
       acc
     }
@@ -14915,7 +15772,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
         properties: item.properties, type_annotation: item.type_annotation,
         is_self_recursive: item.is_self_recursive,
         has_non_tail_self_call: item.has_non_tail_self_call,
-        match_pattern: item.match_pattern, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, expr_data: item.expr_data
+        match_pattern: item.match_pattern, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: item.expr_data
       }
     } else { item }
   )
@@ -14985,6 +15842,26 @@ fn bindings_accum_insert(acc: BindingsAccum, ident: Int, updated_binding: TypeBi
   }
 }
 
+// THE ALIAS'S RIGHT-HAND-SIDE REFERENCE, RETAINED ON ITS ENV BINDING (quiet-gull-780 ruling B). A
+// transparent alias item (`type A = B`, `type A = B<C>`: a bare, required, unannotated item whose
+// `inferred` is its authored RHS) keeps that RHS reference node, with the head's identity written by
+// the one writer in THIS module's env, the alias's declaring scope. Every other binding answers none.
+// The resolved binding itself is unchanged; this is the reference a reader asks "what does the alias
+// name", so nothing downstream re-resolves the spelling.
+fn alias_rhs_reference(pre: Node, env: TypeEnv) -> Node? {
+  if pre.connective != NoConnective || (pre.params |> count) > 0 || pre.type_annotation != none
+    || (pre.children |> count) > 0 || pre.return_cardinality != Required {
+    none
+  } else {
+    match pre.inferred {
+      Present { value: Resolved { node: rhs } } =>
+        if rhs.connective != NoConnective || rhs.return_cardinality != Required || rhs.type_annotation != none { none }
+        else { Present { value: reference_with_declaration(n: rhs, env: env) } }
+      _ => none
+    }
+  }
+}
+
 fn resolve_env_bindings(env: TypeEnv, module_name: String, local_names: Map<Int, Bool>, deps_map: Map<String, List<String>>) -> EnvResolveResult {
   let remaining = map(
     filter(env.bindings |> map_values, b => map_contains_key(local_names, intern(table: env.intern_table, s: b.name).id)),
@@ -15024,7 +15901,7 @@ fn topo_resolve_types(
           let result = resolve_node(n: pre, env: env, module_name: module_name)
           let resolved = preserve_nominal_brand_on_resolve(
             identity: pre, structural: result.resolved, brand_name: binding.name, source_indices: env.source_indices)
-          let updated_binding = TypeBinding { name: name, resolved: resolved, provenance: SubValueUnknown }
+          let updated_binding = TypeBinding { name: name, resolved: resolved, provenance: SubValueUnknown, alias_rhs: alias_rhs_reference(pre: pre, env: env) }
           bindings_accum_insert(acc: acc, ident: ident, updated_binding: updated_binding, parents: env.parents, source_indices: env.source_indices, result_diagnostics: result.diagnostics)
         Absent => acc
       }
@@ -15043,7 +15920,7 @@ fn topo_resolve_types(
         let result = resolve_node(n: pre, env: env, module_name: module_name)
         let resolved = preserve_nominal_brand_on_resolve(
           identity: pre, structural: result.resolved, brand_name: binding.name, source_indices: env.source_indices)
-        let updated_binding = TypeBinding { name: name, resolved: resolved, provenance: SubValueUnknown }
+        let updated_binding = TypeBinding { name: name, resolved: resolved, provenance: SubValueUnknown, alias_rhs: alias_rhs_reference(pre: pre, env: env) }
         bindings_accum_insert(acc: acc, ident: ident, updated_binding: updated_binding, parents: env.parents, source_indices: env.source_indices, result_diagnostics: result.diagnostics)
       Absent => acc
     }
@@ -15201,10 +16078,10 @@ fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, inte
 fn effect_incompleteness_diagnostics(causes: List<EffectIncompleteness>) -> List<ErrorNode> {
   causes |> map(reason =>
     match reason {
-      UnresolvedCalleeEdge { item_identity: item_identity, spelling: spelling } =>
+      UnresolvedCalleeEdge { item_identity: item_identity, spelling: spelling, call_site: call_site } =>
         inference_error(
           message: concat("effect summary incomplete: call to '", spelling, "' in ", callable_identity(id: item_identity), " has no established callee identity, so its effects cannot be joined"),
-          span: no_span(),
+          span: call_site,
           module_name: item_identity.owner_module_path
         )
       ExpansionBudgetExhausted { remaining_delta: _ } =>
@@ -15213,20 +16090,20 @@ fn effect_incompleteness_diagnostics(causes: List<EffectIncompleteness>) -> List
           span: no_span(),
           module_name: ""
         )
-      ResolvedCalleeRegistryRowAbsent { caller: caller, callee: callee } =>
+      ResolvedCalleeRegistryRowAbsent { caller: caller, callee: callee, call_site: call_site } =>
         inference_error(
           message: concat("effect summary incomplete: ", callable_identity(id: caller), " calls ", callable_identity(id: callee), ", whose identity is established but names no registry row, so the join contributed nothing and the caller's summary omits whatever that callee does"),
-          span: no_span(),
+          span: call_site,
           module_name: caller.owner_module_path
         )
-      FunctionValueEffectsUnresolved { caller: caller } =>
+      FunctionValueEffectsUnresolved { caller: caller, call_site: call_site } =>
         make_error_node(
-          diagnostic: EffectSummaryIncompleteAtFunctionValue { caller: callable_identity(id: caller), span: no_span() },
+          diagnostic: EffectSummaryIncompleteAtFunctionValue { caller: callable_identity(id: caller), span: call_site },
           module_name: caller.owner_module_path
         )
-      LocalBindingEffectsUnresolved { caller: caller, name: name } =>
+      LocalBindingEffectsUnresolved { caller: caller, name: name, call_site: call_site } =>
         make_error_node(
-          diagnostic: EffectSummaryIncompleteAtLocalBinding { caller: callable_identity(id: caller), name: name, span: no_span() },
+          diagnostic: EffectSummaryIncompleteAtLocalBinding { caller: callable_identity(id: caller), name: name, span: call_site },
           module_name: caller.owner_module_path
         )
     }
@@ -15619,22 +16496,22 @@ fn compiler_kernel_type_env(source_indices: Map<String, NewlineIndex>, intern_ta
     init: empty_map(),
     f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, TypeBinding {
       name: name,
-      resolved: Node { occurrence_identity: OccurrenceSynthetic, name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData },
-      provenance: SubValueUnknown
+      resolved: Node { occurrence_identity: OccurrenceSynthetic, name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
+      provenance: SubValueUnknown, alias_rhs: none
     })
   )
   let unit_span = kernel_span(name: "Unit")
   let kernel_bindings = map_insert(kernel_bindings_base, intern(table: intern_table, s: "Unit").id, TypeBinding {
     name: "Unit",
-    resolved: Node { occurrence_identity: OccurrenceSynthetic, name: "Unit", span: unit_span, ident_span: Present { value: unit_span }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData },
-    provenance: SubValueUnknown
+    resolved: Node { occurrence_identity: OccurrenceSynthetic, name: "Unit", span: unit_span, ident_span: Present { value: unit_span }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
+    provenance: SubValueUnknown, alias_rhs: none
   })
-  let present_value_field = Node { occurrence_identity: OccurrenceSynthetic, name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: "present_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData }
-  let present_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData }
-  let absent_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData }
-  let kernel_optional = Node { occurrence_identity: OccurrenceSynthetic, name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData }
-  let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
-  let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Bool").id, TypeBinding { name: "Bool", resolved: kernel_bool_type_node(), provenance: SubValueUnknown })
+  let present_value_field = Node { occurrence_identity: OccurrenceSynthetic, name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: "present_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  let present_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  let absent_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  let kernel_optional = Node { occurrence_identity: OccurrenceSynthetic, name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown, alias_rhs: none })
+  let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Bool").id, TypeBinding { name: "Bool", resolved: kernel_bool_type_node(), provenance: SubValueUnknown, alias_rhs: none })
   let node_fields = inductive_fields_list_to_map(fields: compiler_inductive_fields)
   let kernel_recursive_types = map_keys(compiler_recursive_types) |> map(name => intern(table: intern_table, s: name).id)
   let kernel_recursive_type_set = fold(map_keys(compiler_recursive_types), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
@@ -15736,11 +16613,10 @@ fn reconcile_with_census_extra(graph: ModuleGraph, source_indices: Map<String, N
   let modules = rewire_type_env_parent_links(modules: typed.modules, source_indices: source_indices)
   let modules = rewire_type_env_import_str_binding_identity(modules: modules, source_indices: source_indices)
   let modules = rewire_func_env_parent_links(modules: modules, source_indices: source_indices)
-  let emit_info = build_emit_graph_info(modules: modules, registry: typed.item_registry)
   ResolvedGraph {
     modules: modules,
     item_registry: typed.item_registry,
+    item_leaf_owner_modules: leaf_owner_modules_from_registry(registry: typed.item_registry),
     diagnostics: typed.diagnostics,
-    emit_graph_info: emit_info,
   }
 }

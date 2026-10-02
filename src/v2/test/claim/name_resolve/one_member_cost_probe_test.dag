@@ -6,7 +6,7 @@ import v2.compiler.name_resolve {
   ResolutionSubject,
   resolve_with_admission
 }
-import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree, no_import_bindings, no_record_declarations}
+import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree, no_import_bindings, no_type_declaration_kinds }
 import v2.std.declaration_marker { test_marker_channel_empty }
 import v2.compiler.parse { parse_module }
 import v2.compiler.resolve { ResolvedTree }
@@ -22,7 +22,7 @@ import v2.extdeps.languages.dag {
 }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list_node }
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected, bind_outcome, outcome_accepted }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason, outcome_accepted }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.text { String }
@@ -71,7 +71,7 @@ fn probe_one_member_qn() -> QualifiedName {
 
 fn probe_roots_for_export(export_sym: Symbol) -> Outcome<FreeMonoid<NormalizedTree>> {
   bind_outcome(
-    o: admit_normalized_tree(import_bindings: no_import_bindings(), record_declarations: no_record_declarations(), 
+    o: admit_normalized_tree(import_bindings: no_import_bindings(), type_declaration_kinds: no_type_declaration_kinds(), 
       test_markers: test_marker_channel_empty(),
       root: probe_one_member_root_export(export_sym: export_sym),
       diagnostics: None
@@ -103,7 +103,7 @@ fn probe_resolve(roots: FreeMonoid<NormalizedTree>) -> Outcome<ResolvedTree> {
   )
 }
 
-fn probe_resolved_export_identity(tree: ResolvedTree, wanted: Symbol) -> Bool {
+fn probe_resolved_export_identity(tree: Node, wanted: Symbol) -> Bool {
   match tree.kind {
     TypeNode { connective: Atom { identity: id } } => id == wanted
     _ =>
@@ -114,12 +114,12 @@ fn probe_resolved_export_identity(tree: ResolvedTree, wanted: Symbol) -> Bool {
 }
 
 test fn one_member_module_resolves_under_full_language_model() -> Bool {
-  probe_with_export_roots(export_sym: ^dag_c3_surface_sugar_service, f: fn(roots) {
+  probe_with_export_roots(export_sym: ^dag_token_ident, f: fn(roots) {
     match probe_resolve(roots: roots) {
       Accepted { value: resolved, diagnostics: _ } =>
         probe_resolved_export_identity(
-          tree: resolved,
-          wanted: ^dag_c3_surface_sugar_service
+          tree: resolved.root,
+          wanted: ^dag_token_ident
         )
       Rejected { diagnostics: _ } => false
     }
@@ -136,7 +136,7 @@ test fn one_member_uncanonical_export_still_refuses() -> Bool {
 }
 
 test fn one_member_missing_subject_still_refuses() -> Bool {
-  probe_with_export_roots(export_sym: ^dag_c3_surface_sugar_service, f: fn(roots) {
+  probe_with_export_roots(export_sym: ^dag_token_ident, f: fn(roots) {
     match resolve_with_admission(
       lm: dag_language_model(),
       roots: roots,
@@ -154,7 +154,7 @@ test fn one_member_missing_subject_still_refuses() -> Bool {
 }
 
 test fn empty_prelude_service_atom_still_refuses() -> Bool {
-  probe_with_export_roots(export_sym: ^dag_c3_surface_sugar_service, f: fn(roots) {
+  probe_with_export_roots(export_sym: ^dag_token_ident, f: fn(roots) {
     match resolve_with_admission(
       lm: dag_language_model_surface_empty_prelude(),
       roots: roots,
@@ -171,7 +171,7 @@ test fn empty_prelude_service_atom_still_refuses() -> Bool {
 
 test fn language_model_carries_its_canonical_symbols() -> Bool {
   let lm = dag_language_model()
-  lm.canonical_symbols.member(^dag_c3_surface_sugar_service)
+  lm.canonical_symbols.member(^dag_token_ident)
     && !lm.canonical_symbols.member(^probe_uncanonical_export)
 }
 
@@ -193,6 +193,38 @@ test fn tokenize_parse_one_member_does_not_run_resolve() -> Bool {
 }
 
 test fn dag_canonical_symbols_keep_prelude_and_reject_uncanonical() -> Bool {
-  dag_canonical_symbols().member(^dag_c3_surface_sugar_service)
+  dag_canonical_symbols().member(^dag_token_ident)
     && !dag_canonical_symbols().member(^probe_uncanonical_export)
+}
+
+// A GRAMMAR TERMINAL SPELLING IS NOT A RESOLVABLE NAME. `node` is a contextual-keyword terminal of
+// the dag grammar (the `node x = e` let sugar); parse consumes it there and nothing mints it as a
+// body atom. When the canonical set carried every grammar-encoding atom, an unbound `node`
+// reference resolved, Accepted and silent, to that atom. It must refuse as unresolved, like any
+// other missing name. RED if grammar_carried_symbol_map is put back in dag_canonical_symbol_map.
+test fn one_member_grammar_terminal_spelling_refuses_unresolved() -> Bool {
+  probe_with_export_roots(export_sym: ^node, f: fn(roots) {
+    match probe_resolve(roots: roots) {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol
+    }
+  })
+}
+
+// THE POSITIVE CONTROL: a keyword constant reaches a body as its lex token class (`true` as
+// dag_token_kw_true) and still resolves to the kernel atom.
+test fn one_member_keyword_constant_still_resolves() -> Bool {
+  probe_with_export_roots(export_sym: ^dag_token_kw_true, f: fn(roots) {
+    match probe_resolve(roots: roots) {
+      Accepted { value: resolved, diagnostics: _ } =>
+        probe_resolved_export_identity(tree: resolved.root, wanted: ^dag_token_kw_true)
+      Rejected { diagnostics: _ } => false
+    }
+  })
+}
+
+test fn dag_canonical_symbols_hold_token_classes_not_grammar_terminals() -> Bool {
+  dag_canonical_symbols().member(^dag_token_kw_true)
+    && !dag_canonical_symbols().member(^node)
+    && !dag_canonical_symbols().member(^dag_production_expr)
 }

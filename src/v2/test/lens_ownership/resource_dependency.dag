@@ -80,7 +80,7 @@ fn ownership_resource_dependency_claim_holds() -> Bool {
         ),
         b: ownership_resource_dependency_claim.expected
       )
-    _ => false
+    Holds { value: _ } => false
   }
 }
 

@@ -45,7 +45,8 @@ fn owned_other_init_is_illegal_unified_claim_arm(r: OwnedDataDeclRecord) -> Bool
     OwnedOtherInit { resolved: d } =>
       resolved_decl_is_bool_witness_claim_arm(d: d)
         || resolved_decl_is_node_corpus_arm(d: d)
-    _ => false
+    OwnedBoolWitnessClaimInit { witness_entry: _, witness_function: _ } => false
+    OwnedNodeCorpusInit => false
   }
 }
 

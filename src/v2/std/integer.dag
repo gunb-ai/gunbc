@@ -33,6 +33,7 @@ import v2.std.machine {
 }
 import v2.std.nat { Nat, Zero, Succ, NatQuotient, nat_div_rem_by_succ }
 import v2.std.text { Char, CharAbsent, CharFound, String, string_head, string_tail }
+import std.bit { Word64 }
 type Int = GroupCompletion<Nat>
 type UInt = Nat
 type Compose<carrier, dimension>
@@ -831,6 +832,16 @@ fn integer_range_endpoint_node(endpoint: IntegerRangeEndpoint) -> Node {
     IntegerRangeInclusiveMin => integer_inhabitant_atom(id: ^integer_tag_range_inclusive_min)
     IntegerRangeInclusiveMax => integer_inhabitant_atom(id: ^integer_tag_range_inclusive_max)
   }
+}
+
+// THE INT VALUE TYPE, AS A NODE. This module owns what `Int` denotes, exactly as v2.std.logic
+// bool_node owns what `Bool` denotes: a language's binding join (v2.extdeps.languages.dag
+// dag_binding_denotation) points here, and every consumer of an Int value's type -- infer's
+// literal, add and branch rules, the evaluator's primitive type -- reads this one node. Its atom
+// identity keeps the spelling `dag_binding_type_int` it carried before the authority moved here;
+// that is the identity every consumer compares against, so renaming it is a separate migration.
+fn integer_int_type_node() -> Node {
+  integer_inhabitant_atom(id: ^dag_binding_type_int)
 }
 
 // THE TYPES OF A DECIMAL MAGNITUDE'S NODE ENCODING, AS NODES. integer_decimal_magnitude_node encodes

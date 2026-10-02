@@ -1,0 +1,27 @@
+module gunbc.operation_requires_query_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the hand Rust that exposes the seed parser's carried `requires` members
+// to the floor (D13 step b0). The reader itself is .dag -- v1.compiler.parse
+// operation_requires_declaration, whose production consumer is D13 step (c) -- and this host producer only
+// parses one supplied source with the seed's own tokenizer and parser and hands the named operation to
+// that reader; it re-derives nothing.
+//
+// PURPOSE (gunbc.v1_maintenance_standing v1_seed_standing). The seed compiles the corpus, so it must
+// parse and CARRY the `requires` member v2 already admits before any extdeps operation can declare the
+// resources it reaches. Acceptance alone does not show the members are carried: a parser that read and
+// dropped them would compile the same sources. No existing compile_dag_* query exposes a parsed node's
+// properties, and a floor claim cannot import v1.compiler.parse (its source roots are dag and src/v2),
+// so the carry is observed through this query (lane ruling, gunbc#12937 review gap 2).
+data operation_requires_query_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "compile_dag_operation_requires", field: WholeDeclaration },
+  ],
+  reason: "test.claim.v1_operation_requires_parse_witness_test must show that the seed parser carries each `requires` member of an operation as a type expression, in order. That is a fact of the seed's parsed operation node, which no substrate fold can read: the claim's source roots cannot import v1.compiler.parse, and no existing query exposes node properties. compile_dag_operation_requires tokenizes and parses one supplied source with the seed's own tokenizer and parser, finds the named service and operation, and returns the member spellings read through v1.compiler.parse operation_requires_declaration. A parse error, a missing service or a missing operation is a typed refusal, never an empty list.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete this producer when D13 step (c) consumes operation_requires_declaration in production AND the v1 parser's operation node is observable to the floor through an existing query (or the v2 operation Arrow's ^arrow_resource_requirements_edge is the one carrier the seed also reads), so the carry is checked on the production route rather than through this exposure.",
+  current_boundary: "Reachable only as a .dag free-call. It parses the one source it is given, reads nothing from disk, writes nothing, and substitutes no value for a source it could not read."
+}

@@ -71,6 +71,7 @@ test fn add_body_operand_order_differs() -> Bool {
   canonical != swapped
 }
 
+// Deliberately hand-built shape with no producer: the retired positional-types Arrow [T1..Tn, U] (Program P).
 fn add_body_arrow_with_atom_body_rejects() -> Bool {
   let arrow = node_synthetic(
     kind: TypeNode { connective: Arrow },

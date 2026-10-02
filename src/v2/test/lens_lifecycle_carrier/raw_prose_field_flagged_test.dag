@@ -13,6 +13,7 @@ import v2.std.node {
   TypeNode,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node_query { binder_edge }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -38,10 +39,10 @@ data dissolution_condition_leaf_target: Node = Node {
 data raw_dissolve_on_field_input: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Named { name: ^dissolve_on },
-      target: string_leaf_target
-    }
+    binder_edge(
+      name: ^dissolve_on,
+      type_node: string_leaf_target
+    )
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -50,10 +51,10 @@ data raw_dissolve_on_field_input: Node = Node {
 data raw_dissolution_trigger_nonempty_input: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Named { name: ^dissolution_trigger },
-      target: nonempty_str_leaf_target
-    }
+    binder_edge(
+      name: ^dissolution_trigger,
+      type_node: nonempty_str_leaf_target
+    )
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -62,10 +63,10 @@ data raw_dissolution_trigger_nonempty_input: Node = Node {
 data typed_dissolution_field_input: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Named { name: ^dissolution },
-      target: dissolution_condition_leaf_target
-    }
+    binder_edge(
+      name: ^dissolution,
+      type_node: dissolution_condition_leaf_target
+    )
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -76,10 +77,10 @@ data typed_dissolution_field_input: Node = Node {
 data ordinary_string_field_input: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Named { name: ^reason },
-      target: string_leaf_target
-    }
+    binder_edge(
+      name: ^reason,
+      type_node: string_leaf_target
+    )
   ],
   occurrence_id: OccurrenceSynthetic
 }

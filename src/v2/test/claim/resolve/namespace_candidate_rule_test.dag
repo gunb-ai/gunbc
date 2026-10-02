@@ -316,7 +316,7 @@ fn ncr_outcome_in(
             context: context,
             refusal_index: index,
             entry: entry
-          )
+          ).outcome
         )
       } else {
         acc

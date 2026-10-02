@@ -170,7 +170,7 @@ fn ct_dag_same_tree_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
         root: ct_module_root(
           qn_spine: ct_qn_node(seg: ^ct_dag_peer_seg),
           export_sym: ^ct_dag_imported_decl,
-          export_atom: ^dag_c3_surface_sugar_service
+          export_atom: ^dag_token_ident
         )
       ),
       tail: Empty
@@ -212,7 +212,7 @@ fn ct_v2_same_tree_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
             segments: Cons { head: ^v2, tail: Cons { head: ^ct_v2_peer_seg, tail: Empty } }
           ),
           export_sym: ^ct_v2_imported_decl,
-          export_atom: ^dag_c3_surface_sugar_service
+          export_atom: ^dag_token_ident
         )
       ),
       tail: Empty
@@ -252,7 +252,7 @@ fn ct_cross_tree_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
         root: ct_module_root(
           qn_spine: ct_qn_node(seg: ^ct_cross_dag_target_seg),
           export_sym: ^ct_cross_dag_export_sym,
-          export_atom: ^dag_c3_surface_sugar_service
+          export_atom: ^dag_token_ident
         )
       ),
       tail: Empty
@@ -306,7 +306,7 @@ fn ct_dag_to_v2_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
             segments: Cons { head: ^v2, tail: Cons { head: ^std, tail: Empty } }
           ),
           export_sym: ^ct_inv_v2_export_sym,
-          export_atom: ^dag_c3_surface_sugar_service
+          export_atom: ^dag_token_ident
         )
       ),
       tail: Empty
