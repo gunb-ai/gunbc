@@ -50,18 +50,6 @@ fn nat_min(a: Nat, b: Nat) -> Nat {
   if a < b { a } else { b }
 }
 
-fn is_zero(n: Nat) -> Bool {
-  n == 0
-}
-
-fn nat_lte(a: Nat, b: Nat) -> Bool {
-  a <= b
-}
-
-fn nat_gte(a: Nat, b: Nat) -> Bool {
-  a >= b
-}
-
 // TRUNCATED SUBTRACTION (monus) WITH A TYPED UNDERFLOW OUTCOME. The naturals are not closed under
 // subtraction; a - b for b > a has no answer here and says so as its own arm, never a wrapped or
 // fabricated Zero.

@@ -26,7 +26,7 @@ import v2.std.algebra { fold_list, non_empty_append, non_empty_singleton }
 import v2.std.collection { List }
 import v2.std.diagnostic { Locus, textual_whole_file_locus }
 import v2.std.logic { Bool }
-import std.nat { Nat, Succ, Zero, nat_add, nat_cata, nat_lte, nat_mul, nat_max }
+import std.nat { Nat, Succ, Zero, nat_add, nat_cata, nat_mul, nat_max }
 import v2.std.optional { Absent, Optional, Present, optional_present }
 
 // The subject of this module is SEMANTIC work, not hardware time: a CostExpr together with a
@@ -338,7 +338,7 @@ fn evaluate_cost_log(
   argument: SizeExpr,
   env: CostValuationEnv
 ) -> CostEvaluation {
-  if nat_lte(a: base, b: Succ { prev: Zero }) {
+  if base <= Succ { prev: Zero } {
     refuse(
       cause: ExpressionRefused {
         cause: InvalidLogBase {

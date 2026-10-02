@@ -2243,7 +2243,7 @@ fn ct_std_nat_realization_agreement_test() -> String {
     "        assert_eq!(seventeen, 17, \"numerals and arithmetic are the integers they denote\");\n",
     "        assert_eq!(crate::std_nat::nat_cata(three, 10i64, |acc: i64| acc + 7), 31, \"the eliminator applies its step once per successor\");\n",
     "        assert_eq!(crate::std_nat::nat_cata(0, 10i64, |acc: i64| acc + 7), 10, \"the eliminator over zero is its zero case\");\n",
-    "        assert!(crate::std_nat::is_zero(0) && !crate::std_nat::is_zero(three));\n",
+    "        assert!(three != 0);\n",
     "        assert!(matches!(&*crate::std_nat::nat_sub(seventeen, three), NatSubtraction::NatDifference \{ value \} if *value == 14));\n",
     "        assert!(matches!(&*crate::std_nat::nat_sub(three, seventeen), NatSubtraction::NatSubtrahendExceedsMinuend));\n",
     "        assert!(matches!(&*crate::std_nat::nat_div_rem(seventeen, 5), NatDivision::NatQuotientRemainder \{ quotient, remainder \} if *quotient == 3 && *remainder == 2));\n",

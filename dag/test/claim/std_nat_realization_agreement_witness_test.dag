@@ -3,7 +3,7 @@ module test.claim.std_nat_realization_agreement_witness_test
 import std.types { Bool, Int }
 import std.nat {
   Nat, Zero, Succ,
-  nat_cata, nat_add, nat_mul, nat_sub, nat_div_rem, nat_div_rem_by_succ, is_zero,
+  nat_cata, nat_add, nat_mul, nat_sub, nat_div_rem, nat_div_rem_by_succ,
   NatDifference, NatSubtrahendExceedsMinuend, NatQuotientRemainder, NatDivisionByZero
 }
 
@@ -23,7 +23,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // WHAT EACH ROW EXERCISES IN THE REALIZATION: nat_cata is a constructor match with a predecessor
 // binder under a tail call; nat_div_rem matches its divisor's constructors and rebuilds a successor;
-// nat_sub crosses a difference back into the naturals; is_zero and the numerals are constructors
+// nat_sub crosses a difference back into the naturals; zero and the numerals are constructors
 // folded to literals.
 
 fn agreement_three() -> Nat { Succ { prev: Succ { prev: Succ { prev: Zero } } } }
@@ -36,7 +36,7 @@ test fn w_the_eliminator_applies_its_step_once_per_successor() -> Bool {
 }
 
 test fn w_numerals_and_arithmetic_are_the_integers_they_denote() -> Bool {
-  agreement_three() == 3 && agreement_seventeen() == 17 && is_zero(n: Zero) && !is_zero(n: agreement_three())
+  agreement_three() == 3 && agreement_seventeen() == 17 && Zero == 0 && agreement_three() != 0
 }
 
 test fn w_subtraction_answers_a_difference_or_its_underflow() -> Bool {
