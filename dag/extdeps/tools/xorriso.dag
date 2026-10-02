@@ -30,6 +30,7 @@ data xorriso_cli_tool: CliTool = CliTool {
 
 service xorriso.Iso {
   operation BuildIso {
+    requires none
     input { volume_id: NonEmptyStr, output_path: NonEmptyStr, source_dir: NonEmptyStr }
     output { success: Bool from "exit_success" }
     transport shell {

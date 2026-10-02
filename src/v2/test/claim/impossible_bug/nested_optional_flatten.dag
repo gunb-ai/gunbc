@@ -11,7 +11,7 @@ import v2.std.diagnostic {
   Suggested,
   diagnostics_singleton
 }
-import v2.std.node { Edge, Named, Node, Positional, Symbol, TypeNode, Atom, Cardinality }
+import v2.std.node { Edge, Authored, Node, Positional, Symbol, TypeNode, Atom, Cardinality }
 import v2.std.verification {
   ManualAnchorAbsent,
   TestClaim,

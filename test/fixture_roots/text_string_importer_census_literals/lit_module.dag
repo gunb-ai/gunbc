@@ -1,0 +1,36 @@
+module fixture.tsil.lit_module
+import v2.std.text { String, string_is_empty }
+import fixture.tsil.lit_callee { take, take_s, Box }
+type Rec {
+  name: String
+  n: Int
+}
+data a: String = "a"
+data q: v2.std.text.String = "q"
+fn ret() -> String {
+  "r"
+}
+fn arm(b: Bool) -> String {
+  match b {
+    true => "t"
+    false => "f"
+  }
+}
+fn rec() -> Rec {
+  Rec { name: "n", n: 1 }
+}
+fn boxed() -> Box {
+  Box { label: "b" }
+}
+fn arg() -> Int {
+  take(t: "k")
+}
+fn arg2() -> Int {
+  take_s(t: "s")
+}
+fn pos() -> Int {
+  take("p")
+}
+fn str_op() -> Bool {
+  string_is_empty(s: "e")
+}

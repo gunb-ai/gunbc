@@ -1,0 +1,92 @@
+module std.derived_type_origin
+
+import std.types { Bool }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, TypeParameter, declaration_ref_eq }
+
+// THE ORIGIN A TYPE NODE CARRIES WHEN A COMPILER STAGE BUILDS IT, named by the constructor that
+// builds it and never reconstructed from the node's shape. Model:
+// docs/plans/derived-node-identity-design.md. It is std.decl_ref's identity carried through
+// derivation, plus the two arms a DeclarationRef cannot express: a kernel container's element
+// position, and a constructor that could not name an origin. It is not an occurrence identity
+// (std.occurrence_identity answers which AUTHORED occurrence; a built node has none) and not a site
+// key (v2.compiler.inferred_tree InferSite answers which site of one tree a fact is about).
+//
+// CONSUMERS, stated per DESIGN section 3c. Today: test.claim.derived_type_origin_witness_test, which
+// executes laws L1-L4 over supplied origins. Production: v1.compiler.infer unify_generics and
+// substitute_generics_apply, together with that function's self-binding guard. They read
+// generic_identity_of and self_binding_of in place of the spellings they compare today
+// (gunbc.recurring_failure_mode generic_identity_decided_by_spelling). That is a DECLARED FRONTIER.
+// Its trigger is step 2 of docs/plans/derived-node-identity-design.md, the infer implementation
+// across the node-copying paths, which starts after eager-newt-412's facts work lands its last stage.
+//
+// Every identity here is a reference, never a spelling: `container` is the DeclarationRef of the
+// carrier's declaration (std.algebra FreeMonoid, FinitePowerSet, PartialFunction, ...), which the
+// floor's citation phase checks resolves; `position` is the element slot as a Nat, so a negative slot
+// has no constructor; `constructor` is the DeclarationRef of the function that built the node; and
+// `cause` is a closed set of reasons.
+type DerivedTypeOrigin
+  = CarriedDeclaration { declaration: DeclarationRef }
+  | ParameterBinding { parameter: DeclarationRef }
+  | KernelElementPosition { container: DeclarationRef, position: Nat }
+  | DerivationRefused { constructor: DeclarationRef, cause: DerivationRefusalCause }
+
+// WHY A CONSTRUCTOR COULD NOT NAME AN ORIGIN. Closed, one arm per reason the model in
+// docs/plans/derived-node-identity-design.md section 3 names; a new reason is a new arm, never
+// free text. InputCarriesNoOrigin: the node the constructor copied had no origin to carry (law L1
+// has nothing to preserve). SignatureReadBeforeBinderMarking: the constructor read a signature
+// representation built before v1.compiler.resolve binder_marked_type marked it (that section's
+// first bet).
+type DerivationRefusalCause
+  = InputCarriesNoOrigin
+  | SignatureReadBeforeBinderMarking
+
+// WHETHER A NODE IS A GENERIC PARAMETER, decided from its origin alone. The three arms are distinct
+// facts: a refusal is neither a parameter nor a concrete type, and a consumer reaching it refuses
+// (law L4) rather than reading either answer.
+type GenericIdentityVerdict
+  = IsGenericParameter { parameter: DeclarationRef }
+  | NotAGenericParameter
+  | GenericIdentityRefused { constructor: DeclarationRef, cause: DerivationRefusalCause }
+
+// L1, copy: a constructor that rebuilds a node from another carries its input's origin unchanged.
+fn derived_origin_copy(input: DerivedTypeOrigin) -> DerivedTypeOrigin {
+  input
+}
+
+// The generic-identity reading. Only a carried TypeParameter declaration is a generic parameter.
+// A ParameterBinding names the parameter a substituted node STANDS IN FOR; the node itself is the
+// binding, so it is not that parameter. A kernel element position is never a parameter whatever it
+// is spelled (L3), and spelling is not an input to this function at all (L2).
+fn generic_identity_of(origin: DerivedTypeOrigin) -> GenericIdentityVerdict {
+  match origin {
+    CarriedDeclaration { declaration: d } =>
+      match d.field {
+        TypeParameter { name: _ } => IsGenericParameter { parameter: d }
+        WholeDeclaration => NotAGenericParameter
+        NamedField { field_name: _ } => NotAGenericParameter
+      }
+    ParameterBinding { parameter: _ } => NotAGenericParameter
+    KernelElementPosition { container: _, position: _ } => NotAGenericParameter
+    DerivationRefused { constructor: c, cause: why } => GenericIdentityRefused { constructor: c, cause: why }
+  }
+}
+
+// A SELF-BINDING IS IDENTITY EQUALITY. Binding parameter p to a node is a self-binding exactly when
+// that node IS p -- the same owner, declaration and parameter name -- never when it is only spelled
+// like p. Two owners' parameters that share a name are different parameters. A binding whose origin
+// could not be derived is neither answer: it reaches the caller as SelfBindingRefused (law L4), so a
+// substitution built on this verdict refuses instead of treating it as "not a self-binding".
+type SelfBindingVerdict
+  = SelfBinding
+  | NotSelfBinding
+  | SelfBindingRefused { constructor: DeclarationRef, cause: DerivationRefusalCause }
+
+fn self_binding_of(parameter: DeclarationRef, binding: DerivedTypeOrigin) -> SelfBindingVerdict {
+  match generic_identity_of(origin: binding) {
+    IsGenericParameter { parameter: q } =>
+      if declaration_ref_eq(a: parameter, b: q) { SelfBinding } else { NotSelfBinding }
+    NotAGenericParameter => NotSelfBinding
+    GenericIdentityRefused { constructor: c, cause: why } => SelfBindingRefused { constructor: c, cause: why }
+  }
+}

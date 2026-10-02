@@ -1,6 +1,14 @@
 module v2.test.lens_structural_resolution.unresolved_infer_witness
+
+import v2.std.dependency { DependencyView }
+
+import v2.test.lens_structural_resolution.claim_carrier { LensStructuralResolutionClaim }
+
+import v2.std.node { Authored }
 import v2.std.collection { Map, optional_absent, optional_present }
 import v2.std.optional { Optional, Absent, Present }
+import v2.std.dependency { BindsTo, ClassifiedDependencyView, DependencyView }
+import v2.test.lens_structural_resolution.claim_carrier { LensStructuralResolutionClaim, lens_structural_resolution_actual }
 
 
 data sr_infer_claim_hash: Hash = sr_infer_claim_hash
@@ -18,7 +26,7 @@ data sr_infer_use: Node = sr_infer_claim_atom(s: ^sr_infer_use_symbol)
 data sr_infer_decl: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Named { name: ^dependency_binds_to_edge }, target: sr_infer_use }
+    Edge { label: Authored { name: ^dependency_binds_to_edge }, target: sr_infer_use }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -79,7 +87,7 @@ fn unresolved_infer_witness_claim_holds() -> Bool {
     Holds { value: actual } =>
       fact_eq(a: actual, b: unresolved_infer_witness_claim.expected)
         && fact_single_dependency_projects_status(fact: actual, expected: FactsLookupMiss)
-    _ => false
+    Violates { diagnostic: _ } => false
   }
 }
 

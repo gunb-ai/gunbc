@@ -25,9 +25,10 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
+  StructuralLabel,
   Symbol,
   TypeNode,
   arrow_body_target_lookup,
@@ -79,12 +80,15 @@ fn arrow_domain_param_nodes(arrow: Node) -> List<Node> {
                     Absent => a
                   }
                 })
-              _ => acc
+              ComputationNode { behavior: _ } => acc
+              TypeNode { connective: _ } => acc
             }
-          Named { name: _ } => acc
+          Authored { name: _ } => acc
+          StructuralLabel { label: _ } => acc
         }
       })
-    _ => Empty
+    ComputationNode { behavior: _ } => Empty
+    TypeNode { connective: _ } => Empty
   }
 }
 

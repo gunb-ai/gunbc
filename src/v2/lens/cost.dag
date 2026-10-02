@@ -40,7 +40,7 @@ import v2.std.node {
   CostEdgeNotPriced,
   CostEdgePricedOnce,
   cost_edge_role,
-  Named,
+  Authored,
   Node,
   NodeFold,
   Symbol,
@@ -328,7 +328,7 @@ fn nat_dominates(a: v2.std.nat.Nat, b: v2.std.nat.Nat) -> Bool {
   match v2.std.nat.nat_compare(a: a, b: b) {
     Greater => true
     Equal => true
-    _ => false
+    Less => false
   }
 }
 

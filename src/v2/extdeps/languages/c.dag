@@ -148,7 +148,7 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -453,7 +453,8 @@ fn c_type_atoms_by_value_in_node(node: Node) -> List<Symbol> {
               }
             })
         })
-    _ => []
+    TypeNode { connective: _ } => []
+    ComputationNode { behavior: _ } => []
   }
 }
 
@@ -905,7 +906,7 @@ fn c_atom(id: Symbol) -> Node {
 }
 
 fn c_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn c_concrete_tokens() -> List<ConcreteSyntaxToken> {
@@ -1214,7 +1215,7 @@ fn c_lex_rules() -> List<LexRule> {
 }
 
 fn c_lex() -> LexRules {
-  ModeledLexRules { root: LexRuleSet { rules: c_lex_rules() } }
+  ModeledLexRules { root: LexRuleSet { rules: c_lex_rules(), modes: [] } }
 }
 
 fn c_emit_host_runtime_primitive_type_node() -> Node {

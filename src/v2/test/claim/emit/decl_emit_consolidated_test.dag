@@ -68,7 +68,7 @@ fn dc_variant_block(variants: List<Node>) -> Node {
 }
 
 fn dc_named_edge(name: String, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn dc_coproduct_variant_edge_nullary(name: String) -> Edge {

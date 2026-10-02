@@ -18,7 +18,7 @@ data loop_iteration_floor_input: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
     Edge { label: Positional, target: loop_iteration_floor_body },
-    Edge { label: Named { name: ^loop_bound_edge }, target: loop_iteration_floor_measure }
+    Edge { label: core_edge_label(marker: LoopBoundEdge), target: loop_iteration_floor_measure }
   ],
   occurrence_id: OccurrenceSynthetic
 }

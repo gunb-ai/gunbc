@@ -34,7 +34,7 @@ import v2.std.node {
   ComputationNode,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -42,6 +42,8 @@ import v2.std.node {
   TypeNode,
   Value,
   node_synthetic,
+  ArrowBodyEdge,
+  core_edge,
 }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.witness { Violates, Witness }
@@ -62,7 +64,7 @@ fn rust_call_type_atom(id: Symbol) -> Node {
 }
 
 fn rust_call_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn rust_call_positional(target: Node) -> Edge {
@@ -105,8 +107,7 @@ fn rust_call_closure_arrow(left_operand: Symbol, right_operand: Symbol) -> Node 
       signature.domain,
       rust_call_positional(target: rust_call_type_atom(id: ^dag_binding_type_int)),
       signature.order,
-      rust_call_named_edge(
-        name: ^arrow_body_edge,
+      core_edge(marker: ArrowBodyEdge,
         target: node_synthetic(
           kind: ComputationNode { behavior: Transform },
           children: [
@@ -141,8 +142,7 @@ fn rust_call_fold_arrow(closure: Node) -> Node {
       rust_call_positional(target: rust_call_type_atom(id: ^dag_binding_type_int)),
       rust_call_positional(target: rust_call_type_atom(id: ^dag_binding_type_int)),
       signature.order,
-      rust_call_named_edge(
-        name: ^arrow_body_edge,
+      core_edge(marker: ArrowBodyEdge,
         target: rust_call_fold_body(closure: closure)
       )
     ]
@@ -187,8 +187,7 @@ fn rust_call_helper_arrow() -> Node {
       rust_call_positional(target: rust_call_type_atom(id: ^dag_binding_type_int)),
       rust_call_positional(target: rust_call_type_atom(id: ^dag_binding_type_int)),
       signature.order,
-      rust_call_named_edge(
-        name: ^arrow_body_edge,
+      core_edge(marker: ArrowBodyEdge,
         target: rust_call_helper_body()
       )
     ]
