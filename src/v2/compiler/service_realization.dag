@@ -7,6 +7,18 @@ import extdeps.transports.rest { rest_binding_field_of_key }
 import extdeps.transports.file { file_binding_field_of_key, file_output_channel_of_key }
 import v2.extdeps.languages.dag { dag_node_is_int_literal_atom, dag_string_literal_value_optional }
 import std.algebra { Cons, Empty, list_snoc_item }
+import v2.std.service_realization_labels {
+  realization_root_label,
+  realization_config_label,
+  realization_transport_label,
+  realization_transport_kind_label,
+  realization_status_arms_label,
+  realization_mock_arms_label,
+  realization_projection_label,
+  realization_arm_pattern_label,
+  realization_arm_payload_label,
+  realization_status_code_label
+}
 import v2.std.collection { List }
 import v2.std.diagnostic { Diagnostic, ExternalContractUnknown, Unavailable, node_locus }
 import v2.std.logic { Bool }
@@ -57,16 +69,6 @@ import v2.std.node {
 // (v2.compiler.body_lowering_fold body_lower_service_decl), which emits the sibling and runs this wall on
 // it. TRIGGER: 3b lands. If 3b is abandoned the sibling's labels and this wall are deleted.
 
-fn realization_root_label() -> Symbol { symbol_intern_lexeme(lexeme: "<realization>") }
-fn realization_config_label() -> Symbol { symbol_intern_lexeme(lexeme: "<realization-config>") }
-fn realization_transport_label() -> Symbol { symbol_intern_lexeme(lexeme: "<realization-transport>") }
-fn realization_transport_kind_label() -> Symbol { symbol_intern_lexeme(lexeme: "<transport-kind>") }
-fn realization_status_arms_label() -> Symbol { symbol_intern_lexeme(lexeme: "<status-arms>") }
-fn realization_mock_arms_label() -> Symbol { symbol_intern_lexeme(lexeme: "<mock-arms>") }
-fn realization_projection_label() -> Symbol { symbol_intern_lexeme(lexeme: "<projection>") }
-fn realization_arm_pattern_label() -> Symbol { symbol_intern_lexeme(lexeme: "<arm-pattern>") }
-fn realization_arm_payload_label() -> Symbol { symbol_intern_lexeme(lexeme: "<arm-payload>") }
-fn realization_status_code_label() -> Symbol { symbol_intern_lexeme(lexeme: "<status-code>") }
 
 // THE TRANSPORT KIND IS std.fidelity TransportClass, spelled by the surface keyword the grammar admits
 // (v2.extdeps.languages.dag dag_grammar_transport_kind_expr). The match is exhaustive, so a class added

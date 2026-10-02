@@ -1,16 +1,15 @@
 module v2.test.claim.service_realization_conformance
 
-import v2.compiler.service_realization {
-  RealizationRefusal,
+import v2.compiler.service_realization { RealizationRefusal, service_realization_refusal }
+import v2.std.service_realization_labels {
+  realization_root_label,
+  realization_transport_label,
+  realization_transport_kind_label,
+  realization_status_arms_label,
+  realization_projection_label,
   realization_arm_pattern_label,
   realization_arm_payload_label,
-  realization_projection_label,
-  realization_root_label,
-  realization_status_arms_label,
-  realization_status_code_label,
-  realization_transport_kind_label,
-  realization_transport_label,
-  service_realization_refusal
+  realization_status_code_label
 }
 import v2.compiler.symbol_index_fill { symbol_index_fill_containment_node }
 import v2.extdeps.languages.dag { dag_int_literal_node_from_lexeme, dag_string_literal_node }

@@ -1,6 +1,6 @@
 module v2.compiler.symbol_index_fill
 
-import v2.compiler.service_realization { realization_root_label }
+import v2.std.service_realization_labels { realization_root_label }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.algebra { Empty, FreeMonoid, list_append, list_snoc_item }
