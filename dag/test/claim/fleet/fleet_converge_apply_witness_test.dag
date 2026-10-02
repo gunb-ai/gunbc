@@ -60,12 +60,8 @@ test fn witness_emit_artifact_carriers_name_bash_emit_scaffolds() -> Bool {
     Scaffold { dissolves_to: _, bind: _ } => false
   }
     && match thin_invocation_argv_carrier_scaffold {
-      Scaffold {
-        dissolves_to: RealizationDispatch,
-        bind: DeclarationRef { module_path: m, decl_name: d, field: WholeDeclaration },
-      } =>
-        m == "gunbc.fleet_converge_apply" && d == "fleet_converge_thin_invocation"
-      _ => false
+      Terminal { reason: _ } => true
+      Scaffold { dissolves_to: _, bind: _ } => false
     }
 }
 
@@ -77,5 +73,70 @@ test fn witness_emit_artifact_transport_rejects_shell_command() -> Bool {
       invocation: fleet_converge_thin_invocation(host: operator_host_srv3),
     }
   ))
+}
+
+// THE FRESH-STANDUP LEG DISPATCHES THE TYPED THIN RUN. With an emitted (empty-script) bootstrap
+// fragment, the EmitArtifactThenThinRun leg realizes exactly as the LocalShell leg does — the same
+// in-process dispatch, the same reconciliation, the same reason — instead of the blanket
+// Unimplemented refusal the thin_invocation_argv_carrier_scaffold used to hold it with. Paired
+// control: a hand-spelled bootstrap literal refuses with the located hand-script marker, so the
+// leg cannot be walked back into a shell-text surface by feeding it a script.
+fn witness_reconciliation_failure_reason(r: Reconciliation<HostEffectIntent, HostEffectEvidence>) -> String? {
+  match r {
+    Converged { evidence: _, applied: _ } => none
+    NotConverged { reason: why, applied: _ } => Present { value: why }
+  }
+}
+
+test fn witness_emit_artifact_transport_dispatches_the_typed_thin_run() -> Bool {
+  match fleet_compute_host_for_identity(identity: operator_host_srv3) {
+    Absent => false
+    Present { value: h } => {
+      let effect = ConvergePlan { policy: fixture_srv3_host_converge() }
+      let emitted = host_effect_apply(
+        target: HostOs { node: h },
+        effect: effect,
+        evidence: host_effect_identity_evidence,
+        transport: EmitArtifactThenThinRun {
+          bootstrap: BootstrapFragment { script: "" },
+          invocation: fleet_converge_thin_invocation(host: operator_host_srv3),
+        },
+      )
+      let local = host_effect_apply(
+        target: HostOs { node: h },
+        effect: effect,
+        evidence: host_effect_identity_evidence,
+        transport: LocalShell,
+      )
+      let hand_script = host_effect_apply(
+        target: HostOs { node: h },
+        effect: effect,
+        evidence: host_effect_identity_evidence,
+        transport: EmitArtifactThenThinRun {
+          bootstrap: BootstrapFragment { script: "true" },
+          invocation: fleet_converge_thin_invocation(host: operator_host_srv3),
+        },
+      )
+      witness_reconciliation_failure_reason(r: emitted) == witness_reconciliation_failure_reason(r: local)
+        && match witness_reconciliation_failure_reason(r: hand_script) {
+          Present { value: why } => string_contains(s: why, pattern: "not an admitted artifact")
+          Absent => false
+        }
+    }
+  }
+}
+
+// THE BIND NAMES SEMANTICS, THE SHAPE HAS ONE HOME. The thin invocation's argv is the program word
+// plus the words of the ONE `gunbc converge` shape authority — not a hand-spelled flag list at the
+// bind. Spelled against the expected tokens so a reordered or dropped flag at the authority shows
+// up here as a paired disagreement rather than passing silently.
+test fn witness_thin_invocation_argv_derives_from_the_converge_shape_authority() -> Bool {
+  let expected = ["gunbc", "converge", "--host", operator_host_srv3 as String]
+  fleet_converge_thin_invocation(host: operator_host_srv3).argv == expected
+    && fleet_converge_thin_invocation(host: operator_host_srv3).argv
+    == concat(
+      [gunbc_bin_name],
+      invocation_words_bare(words: gunbc_converge_invocation_words(host: operator_host_srv3 as String))
+    )
 }
 

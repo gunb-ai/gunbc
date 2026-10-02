@@ -30,7 +30,7 @@ import v2.std.node {
   FunctionValueBody,
   Loop,
   Match,
-  Named,
+  Authored,
   Node,
   Positional,
   RecordConstructBody,
@@ -44,9 +44,12 @@ import v2.std.node {
   classify_arrow_body_form,
   node_synthetic,
   well_formed,
+  ArrowBodyEdge,
+  core_edge_label,
 }
 import v2.std.qualified_name { declaration_reference_node }
 import v2.std.optional { Absent, Optional, Present, optional_present }
+import v2.std.node_query { binder_edge }
 import v2.test.claim.body_lowering.arrow_body_form_semantic_helpers {
   ArrowBodyFormAdmissionProduction,
   ArrowBodyFormAdmissionRedNoComputationBody,
@@ -89,7 +92,7 @@ fn arrow_body_form_fixture_arrow_with_body(body: Node) -> Node {
       Edge { label: Positional, target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_return) },
       Edge { label: Positional, target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_return) },
       signature.order,
-      Edge { label: Named { name: ^arrow_body_edge }, target: body }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body }
     ]
   )
 }
@@ -99,10 +102,10 @@ fn arrow_body_form_id_arrow_fixture() -> Node {
     domain: node_synthetic(
       kind: TypeNode { connective: Conj },
       children: [
-        Edge {
-          label: Named { name: ^dag_binding_param_x },
-          target: dag_type_atom_node(identity: dag_int_type_binding())
-        }
+        binder_edge(
+          name: ^dag_binding_param_x,
+          type_node: dag_type_atom_node(identity: dag_int_type_binding())
+        )
       ]
     ),
     return_type_binding: dag_int_type_binding(),
@@ -180,7 +183,7 @@ test fn arrow_body_form_classify_record_construct_holds() -> Bool {
       kind: TypeNode { connective: Conj },
       children: [
         Edge {
-          label: Named { name: ^arrow_body_form_record_field },
+          label: Authored { name: ^arrow_body_form_record_field },
           target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_record_value)
         }
       ]
@@ -416,7 +419,7 @@ fn abf_reference_shaped_record() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^abf_authored_field },
+        label: Authored { name: ^abf_authored_field },
         target: node_synthetic(kind: TypeNode { connective: Conj }, children: [])
       }
     ]

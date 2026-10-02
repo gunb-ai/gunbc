@@ -237,6 +237,16 @@ fn derive_op_effect(
   }
 }
 
+// AN OPERATION'S DECLARED EFFECT CLAIM: the effect arms of the surface operation modifier
+// (`readonly`, `idempotent`). This is the one authority for which effect claims exist. A lowered
+// Arrow carries them on v2.std.node CoreEdgeLabel ArrowEffectClaimsEdge, spelled through
+// v2.std.arrow_contract effect_claim_label, and check_modifier_vs_derivation judges whether a claim
+// agrees with the derived EffectShape. `hermetic` is not an effect claim: it is a std.execution_mode
+// ExecutionMode claim, carried on its own edge (XL-2 ruling 2026-10-01).
+type EffectClaim
+  = ReadonlyClaim
+  | IdempotentClaim
+
 type ModifierAgreement
   = Agrees
   | Disagrees          { reason: String }

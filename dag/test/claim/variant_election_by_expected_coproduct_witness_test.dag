@@ -1,0 +1,89 @@
+module test.claim.variant_election_by_expected_coproduct_witness_test
+
+import test.fixture.variant_election_v { v_label }
+import test.fixture.variant_election_w { w_label }
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count,
+}
+
+// A BARE VARIANT IN VALUE POSITION IS ELECTED BY THE EXPECTED COPRODUCT'S DECLARATION, NEVER BY ITS
+// SPELLING (neat-boar-16 ruling, 2026-10-01). The authority is v1.compiler.infer
+// expected_deciding_variant_owner: a Required expected type whose expansion declares the arm elects
+// that arm, over every table the module builds by spelling. Without an expected type the spelling is
+// elected from the module's declared scope (own coproducts plus direct imports), then the kernel
+// arms where nothing in that scope declares it; a spelling two owners claim within one tier refuses
+// (VariantCollision at the declared tier, AmbiguousReference at the kernel tier).
+//
+// THE DEFECT THIS CLOSES (shape of gunbc.host.host_converge ConvergeVerdict beside std.upsert_decision
+// ObservationVerdict, reproduced on two test.fixture providers): `Absent` passed to a VerdictV parameter,
+// in a module that sees VerdictV and VerdictW (both declare Absent) without importing either type, was
+// elected to the kernel Optional's Absent -- the closure-wide spelling tier dropped the ambiguous
+// name and the kernel filled it -- and the wall gunbc#12791 added then refused it as an Optional at a
+// Required position. #12791 shipped a predicate exclusion for those sites; this change reverts it,
+// so row (1) is RED without the election and GREEN with it.
+//
+// THE ORACLE NAMES THE CLASS AND THE ROUTE: row (1) counts blocking DeclaredTypeNotInhabited rows
+// AND asserts the emitted constructor, so a refusal for another reason or an emission through
+// Optional cannot satisfy it. -1 on the not-runnable arm keeps could-not-measure out of both arms.
+//
+// dissolve-on: none -- permanent regression control per DESIGN 4b(4).
+
+fn blocking_count(source: String, class: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: class)))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+fn expected_decides_source() -> String {
+  "module vex.expected\n\nimport std.types { String }\nimport test.fixture.variant_election_v { v_label }\nimport test.fixture.variant_election_w { w_label }\n\nfn probe() -> String {\n  v_label(v: Absent)\n}\n"
+}
+
+// (1) THE EXPECTED COPRODUCT DECIDES: Absent at a VerdictV parameter is VerdictV's arm.
+test fn a_bare_variant_at_a_declared_coproduct_parameter_is_that_coproducts_arm() -> Bool {
+  blocking_count(source: expected_decides_source(), class: "DeclaredTypeNotInhabited") == 0
+    && compile_dag_rust_emit_check(
+      expected_decides_source(),
+      "src/vex_expected.rs",
+      ["VerdictV::Absent"],
+      ["None"]
+    )
+}
+
+// (2) WITHIN THE DECLARED TIER, TWO OWNERS OF ONE SPELLING REFUSE: importing both verdict coproducts
+// into one module is a VariantCollision, located -- no first-wins.
+fn within_tier_source() -> String {
+  "module vex.collide\n\nimport std.types { String }\nimport test.fixture.variant_election_v { VerdictV }\nimport test.fixture.variant_election_w { VerdictW }\n\nfn probe(v: VerdictV) -> String {\n  \"x\"\n}\n"
+}
+
+test fn two_owners_of_one_spelling_in_the_declared_scope_refuse() -> Bool {
+  blocking_count(source: within_tier_source(), class: "VariantCollision") >= 1
+}
+
+// (3) POSITIVE CONTROL: nothing in the declared scope declares Absent and the expected type is
+// optional, so the kernel arm applies and emits the host none.
+fn kernel_arm_source() -> String {
+  "module vex.kernel\n\nimport std.types { Int }\n\nfn probe() -> Int? {\n  Absent\n}\n"
+}
+
+test fn the_kernel_arm_applies_where_no_declared_owner_exists() -> Bool {
+  compile_dag_rust_emit_check(
+    kernel_arm_source(),
+    "src/vex_kernel.rs",
+    ["None"],
+    ["VerdictV"]
+  )
+}
+
+// (4) THE REAL ROUTE, BY EXECUTION: this module imports only the two labelling functions, so each bare
+// Absent below is decided by its parameter's coproduct. Elected to the kernel Optional instead, this
+// module refuses to compile (an Optional at a Required parameter); elected to the wrong provider, the
+// interpreter answers the other label.
+test fn each_bare_absent_is_its_parameters_arm_by_execution() -> Bool {
+  v_label(v: Absent) == "v-absent" && w_label(v: Absent) == "w-absent"
+}

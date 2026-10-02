@@ -15,7 +15,7 @@ pub use crate::std_occurrence_identity::{NodeOccurrenceIdentity, OccurrenceTrans
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_emit_info::EmitGraphInfo;
 pub use crate::v1_compiler_infer_env::empty_type_env_cache;
-pub use crate::v1_compiler_infer_env::{SurfaceImport, TypeEnv, TypeEnvCache};
+pub use crate::v1_compiler_infer_env::{TypeEnv, TypeEnvCache};
 pub use crate::v1_compiler_infer_sigs::ResolvedFuncEnv;
 pub use crate::v1_compiler_infer_types::child_type_node;
 use crate::v1_rt;
@@ -123,7 +123,6 @@ pub struct ModuleInterface {
     pub summary: Rc<InterfaceSummary>,
     pub env: Rc<TypeEnv>,
     pub cache: Rc<TypeEnvCache>,
-    pub surface_imports: Rc<Vec<Rc<SurfaceImport>>>,
 }
 
 pub fn typed_module_interface_body_dual_field_dissolution_trigger() -> Rc<DissolutionCondition> {

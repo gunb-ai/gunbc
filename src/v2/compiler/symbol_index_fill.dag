@@ -9,6 +9,7 @@ import v2.std.collection {
   empty_map,
   map_insert
 }
+import v2.std.node_query { binder_node_parts }
 import v2.std.optional {
   Absent,
   Optional,
@@ -25,13 +26,15 @@ import v2.std.node {
   Edge,
   FirstPositionalAbsent,
   FirstPositionalFound,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
   TypeNode,
   arrow_first_positional_target,
-  node_subtree_nodes
+  node_subtree_nodes,
+  StructuralLabel,
+  label_sort_key,
 }
 import v2.std.qualified_name { QualifiedName, qualified_name_snoc }
 import v2.std.symbol_index {
@@ -43,6 +46,7 @@ import v2.std.symbol_index {
   symbol_index_insert,
   symbol_index_lookup,
   symbol_index_mark_declared_payload,
+  symbol_index_mark_declared_resource,
   symbol_index_mark_declared_type_params
 }
 import v2.std.namespace_alias { ModuleBindingSource, PendingBinding }
@@ -103,46 +107,67 @@ fn symbol_index_declared(target: Node) -> SymbolIndexDeclared {
   }
 }
 
+// A labeled child declares a binding at path.segment and its members below it.
+fn symbol_index_fill_declared_child(index: SymbolIndex, path: QualifiedName, segment: Symbol, edge: Edge) -> SymbolIndex {
+  let child_path = qualified_name_snoc(qn: path, segment: segment)
+  let declared = symbol_index_declared(target: symbol_index_binder_type_or_target(target: edge.target))
+  let with_binding = symbol_index_mark_declared_type_params(
+    index: symbol_index_insert(
+      index: index,
+      qualified_path: child_path,
+      resolved: declared.bound
+    ),
+    qualified_path: child_path,
+    params: declared.type_params
+  )
+  match declared.members {
+    Present { value: member } =>
+      symbol_index_fill_containment_node(
+        index: with_binding,
+        path: child_path,
+        node: member
+      )
+    Absent => with_binding
+  }
+}
+
+// A BINDER IS INDEXED AT ITS TYPE (XL-2 PR2b-3). A parameter's or field's edge targets a binder node
+// (v2.std.node_query binder_node_parts), which identifies itself by its own labels; the path binds the
+// binder's declared type, and an inline record type's fields are indexed under it as before. The binder
+// node is never itself indexed as a record, so its BinderTypeEdge and BinderDefaultEdge never become
+// path segments. Any other target is indexed as it is.
+fn symbol_index_binder_type_or_target(target: Node) -> Node {
+  match binder_node_parts(n: target) {
+    Present { value: parts } => parts.type_node
+    Absent => target
+  }
+}
+
 fn symbol_index_fill_containment_edge(
   index: SymbolIndex,
   path: QualifiedName,
   edge: Edge
 ) -> SymbolIndex {
   match edge.label {
-    Named { name: sym } =>
-      if dag_surface_module_header_metadata_edge(name: sym) {
-        symbol_index_fill_containment_node(
-          index: index,
-          path: path,
-          node: edge.target
-        )
-      } else if parse_tree_projection_edge(name: sym) {
+    StructuralLabel { label: _ } =>
+      if dag_surface_module_header_metadata_edge(e: edge) {
         symbol_index_fill_containment_node(
           index: index,
           path: path,
           node: edge.target
         )
       } else {
-        let child_path = qualified_name_snoc(qn: path, segment: sym)
-        let declared = symbol_index_declared(target: edge.target)
-        let with_binding = symbol_index_mark_declared_type_params(
-          index: symbol_index_insert(
-            index: index,
-            qualified_path: child_path,
-            resolved: declared.bound
-          ),
-          qualified_path: child_path,
-          params: declared.type_params
+        symbol_index_fill_declared_child(index: index, path: path, segment: label_sort_key(label: edge.label), edge: edge)
+      }
+    Authored { name: sym } =>
+      if parse_tree_projection_edge(name: sym) {
+        symbol_index_fill_containment_node(
+          index: index,
+          path: path,
+          node: edge.target
         )
-        match declared.members {
-          Present { value: member } =>
-            symbol_index_fill_containment_node(
-              index: with_binding,
-              path: child_path,
-              node: member
-            )
-          Absent => with_binding
-        }
+      } else {
+        symbol_index_fill_declared_child(index: index, path: path, segment: sym, edge: edge)
       }
     Positional =>
       symbol_index_fill_containment_node(
@@ -187,7 +212,8 @@ fn symbol_index_fill_containment_node(
     TypeNode { connective: Disj } =>
       fold(node.children, init: index, f: fn(acc, edge) {
         match edge.label {
-          Named { name: sym } =>
+          StructuralLabel { label: _ } => acc
+          Authored { name: sym } =>
             let variant_path = qualified_name_snoc(qn: path, segment: sym)
             let with_variant = symbol_index_mark_declared_payload(
               index: symbol_index_insert(
@@ -249,7 +275,8 @@ fn disj_variant_counts_in_module(root: Node) -> Map<Symbol, Int> {
         TypeNode { connective: Disj } =>
           fold(n.children, init: counts, f: fn(c, e) {
             match e.label {
-              Named { name: sym } =>
+              StructuralLabel { label: _ } => c
+              Authored { name: sym } =>
                 map_insert(
                   m: c,
                   key: sym,
@@ -398,7 +425,8 @@ fn symbol_index_fill_unique_variant_aliases(
         TypeNode { connective: Disj } =>
           fold(n.children, init: acc, f: fn(a2, e) {
             match e.label {
-              Named { name: sym } =>
+              StructuralLabel { label: _ } => a2
+              Authored { name: sym } =>
                 if disj_variant_count_of(counts: counts, sym: sym) == 1 {
                   symbol_index_mark_declared_payload(
                     index: symbol_index_insert(
@@ -439,11 +467,13 @@ fn symbol_index_fill_unique_variant_aliases(
 fn symbol_index_fill_module_declarations(
   index: SymbolIndex,
   root: Node,
-  record_declarations: FreeMonoid<Symbol>
+  record_declarations: FreeMonoid<Symbol>,
+  resource_declarations: FreeMonoid<Symbol>
 ) -> SymbolIndex {
   match qualified_name_from_module_node(root: root) {
     Accepted { value: module_qn, diagnostics: _ } =>
-      fold_list(
+      symbol_index_fill_resource_marks(
+        index: fold_list(
         xs: record_declarations,
         empty: symbol_index_fill_unique_variant_aliases(
           index: symbol_index_fill_containment_node(
@@ -461,9 +491,29 @@ fn symbol_index_fill_module_declarations(
             kind: RecordTypePayload
           )
         }
+      ),
+        module_qn: module_qn,
+        resource_declarations: resource_declarations
       )
     Rejected { diagnostics: _ } => index
   }
+}
+
+// A RESOURCE IS MARKED FROM THE CARRIER, AS A RECORD IS, by the module's own name: a lowered resource
+// has a service's Conj shape, so the containment walk cannot tell it apart (v2.compiler.body_lowering_fold
+// DeclaredResource). Its path is the containment path the walk already inserted.
+fn symbol_index_fill_resource_marks(
+  index: SymbolIndex,
+  module_qn: QualifiedName,
+  resource_declarations: FreeMonoid<Symbol>
+) -> SymbolIndex {
+  fold_list(
+    xs: resource_declarations,
+    empty: index,
+    cons: fn(acc, name) {
+      symbol_index_mark_declared_resource(index: acc, qualified_path: qualified_name_snoc(qn: module_qn, segment: name))
+    }
+  )
 }
 
 // THE SINGLE-ROOT DOOR: DECLARATIONS, RECORDS, AND THE ALIAS ROWS STILL IN THE TREE -- NO IMPORT
@@ -481,7 +531,8 @@ fn symbol_index_fill_module_declarations(
 fn symbol_index_fill_module_root(
   index: SymbolIndex,
   root: Node,
-  record_declarations: FreeMonoid<Symbol>
+  record_declarations: FreeMonoid<Symbol>,
+  resource_declarations: FreeMonoid<Symbol>
 ) -> SymbolIndex {
   match qualified_name_from_module_node(root: root) {
     Accepted { value: module_qn, diagnostics: _ } =>
@@ -489,7 +540,8 @@ fn symbol_index_fill_module_root(
         index: symbol_index_fill_module_declarations(
           index: index,
           root: root,
-          record_declarations: record_declarations
+          record_declarations: record_declarations,
+          resource_declarations: resource_declarations
         ),
         module_qn: module_qn,
         root: root
@@ -525,7 +577,8 @@ fn symbol_index_fill_module_roots(
         symbol_index_fill_module_declarations(
           index: acc,
           root: tree.root,
-          record_declarations: tree.record_declarations
+          record_declarations: tree.record_declarations,
+          resource_declarations: tree.resource_declarations
         )
       }
     ),

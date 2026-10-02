@@ -65,7 +65,8 @@ So the fork is `dag_binding_denotation` returning the record. The model:
   one more row of the same join, not a special case.
 - **The literal rules consume it** instead of minting their own nodes: an Int literal's type is
   `dag_binding_denotation(^dag_binding_type_int)`, a Bool literal's is
-  `dag_binding_denotation(^dag_binding_type_bool)`. `infer_branch_int_binding_type_node`
+  `dag_binding_denotation(^bool_node_symbol)` (bool_node's own identity since gunbc#12785, which
+  derives every kernel row from `dag_kernel_value_type_roster` and deleted the second Bool name). `infer_branch_int_binding_type_node`
   deletes. (The evaluator's `v2_eval_int_type_node` is the runtime's own copy of that node, and
   is left to a later cut; it is equal by structure today.)
 - **A type-expression atom's OWN grounding is its kind**, not its denotation:

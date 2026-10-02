@@ -61,6 +61,7 @@ import v2.std.node {
   Symbol,
   fold_node,
   symbol_lexeme,
+  Authored, StructuralLabel,
 }
 import v2.std.text { String, string_eq }
 
@@ -196,8 +197,9 @@ fn path_literal_from_lexeme(
 fn positional_child_targets(node: Node) -> List<Node> {
   fold(node.children, init: empty_node_list, f: fn(acc, e) {
     match e.label {
+      StructuralLabel { label: _ } => acc
       Positional => list_snoc_item(xs: acc, item: e.target)
-      Named { name: _ } => acc
+      Authored { name: _ } => acc
     }
   })
 }
@@ -227,25 +229,36 @@ fn flows_from_sink_call(
   let sink = sink_kind_for_callee(callee_text: callee_text)
   match sink {
     UnknownHostEffectSink => empty_flow_list
-    _ =>
-      match list_head(xs: args) {
-        HeadFound { value: arg } =>
-          let text = symbol_lexeme(sym: arg)
-          let path = path_literal_from_lexeme(
-            text: text,
-            param_names: param_names,
-            data_inits: data_inits
-          )
-          [
-            EffectReachFlow {
-              sink: sink,
-              path_literal: path,
-              init_literal_fp: ""
-            }
-          ]
-        HeadAbsent =>
-          [EffectReachFlow { sink: sink, path_literal: "", init_literal_fp: "" }]
-      }
+    FilesystemReadSink => flows_from_sink_call_known(sink: sink, args: args, param_names: param_names, data_inits: data_inits)
+    WitnessBinRunSink => flows_from_sink_call_known(sink: sink, args: args, param_names: param_names, data_inits: data_inits)
+    ShellExecRunSink => flows_from_sink_call_known(sink: sink, args: args, param_names: param_names, data_inits: data_inits)
+    GunbcCompileEntrySink => flows_from_sink_call_known(sink: sink, args: args, param_names: param_names, data_inits: data_inits)
+  }
+}
+
+fn flows_from_sink_call_known(
+  sink: HostEffectSinkKind,
+  args: List<Symbol>,
+  param_names: List<String>,
+  data_inits: List<DataInitDecl>
+) -> List<EffectReachFlow> {
+  match list_head(xs: args) {
+    HeadFound { value: arg } =>
+      let text = symbol_lexeme(sym: arg)
+      let path = path_literal_from_lexeme(
+        text: text,
+        param_names: param_names,
+        data_inits: data_inits
+      )
+      [
+        EffectReachFlow {
+          sink: sink,
+          path_literal: path,
+          init_literal_fp: ""
+        }
+      ]
+    HeadAbsent =>
+      [EffectReachFlow { sink: sink, path_literal: "", init_literal_fp: "" }]
   }
 }
 

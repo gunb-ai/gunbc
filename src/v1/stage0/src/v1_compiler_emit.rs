@@ -25,7 +25,7 @@ use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
 pub use crate::std_occurrence_identity::occurrence_id_eq;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::{
-    OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic,
+    OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic,
 };
 pub use crate::std_occurrence_identity::{NodeOccurrenceIdentity, OccurrenceId};
 use crate::std_syntax::AlgebraFieldKind::*;
@@ -63,9 +63,7 @@ use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling::{
 pub use crate::v1_compiler_infer_emit_info::{DataVariantWireSpelling, EmitGraphInfo, TypeSummary};
 use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 pub use crate::v1_compiler_infer_env::UnitVariantContribution;
-pub use crate::v1_compiler_infer_env::{
-    authored_name, empty_ancestry_view, empty_symbol_index, lookup_type_for,
-};
+pub use crate::v1_compiler_infer_env::{authored_name, empty_symbol_index, lookup_type_for};
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_items::{item_is_effectful_callee, item_resource_names};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
@@ -363,10 +361,7 @@ pub fn emit_simple_expr(
                                 binding_kind: bk, ..
                             } => match bk.clone().as_deref().cloned() {
                                 Some(VarBindingKind::MatchBoundBinding) => false,
-                                Some(VarBindingKind::VariantValueBinding {
-                                    parent_enum: _,
-                                    ..
-                                }) => false,
+                                Some(VarBindingKind::VariantValueBinding { .. }) => false,
                                 _ => true,
                             },
                             _ => false,
@@ -594,7 +589,7 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
             module_path: "".to_string(),
             bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
             str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-            ancestry: crate::v1_compiler_infer_env::empty_ancestry_view(),
+            ancestry_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
             parents: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
@@ -6095,6 +6090,7 @@ pub fn occurrence_identity_id(identity: Rc<NodeOccurrenceIdentity>) -> Option<Oc
     match (*identity.clone()).clone() {
         NodeOccurrenceIdentity::OccurrenceMinted { id: id, .. } => Some(id.clone()),
         NodeOccurrenceIdentity::OccurrenceProjected { id, .. } => Some(id.clone()),
+        NodeOccurrenceIdentity::OccurrencePending { caused_by: _, .. } => std::option::Option::None,
         NodeOccurrenceIdentity::OccurrenceSynthetic => std::option::Option::None,
     }
 }

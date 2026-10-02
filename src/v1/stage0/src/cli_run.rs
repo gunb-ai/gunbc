@@ -173,9 +173,9 @@ pub(crate) use emit_host::*;
 pub use emit_host::{
     builtin_function_registry_keys, compile_dag_call_form_leaf_guard,
     compile_dag_callsite_resolved_call_edges, compile_dag_importer_resolved_call_edges,
-    compile_dag_multi_module_fixture, compile_dag_primitive_call_edges,
-    compile_dag_reference_occurrence_binding_census, emit_module_storage_binding_manifest,
-    emit_source_root_ingest_manifest,
+    compile_dag_multi_module_fixture, compile_dag_operation_requires,
+    compile_dag_primitive_call_edges, compile_dag_reference_occurrence_binding_census,
+    emit_module_storage_binding_manifest, emit_source_root_ingest_manifest,
 };
 pub use emit_host::{
     compile_dag_diagnostic_census_memo_counts, compile_dag_rust_emit_check_memo_counts,
@@ -787,7 +787,7 @@ fn project_roadmap_acceptance_event_history_from_authority_text_inner(
     let result = v1_interpreter::run_in_context(&ctx, "roadmap_acceptance_event_history", true);
 
     match result {
-        Ok(v1_interpreter::Value::List(events)) => {
+        Ok(v1_interpreter::Value::List(ref events)) => {
             let mut events: Vec<v1_interpreter::Value> = events.iter().cloned().collect();
             if let Some(witness_ctx) = remap_ctx {
                 match roadmap_acceptance_history_carrier::serialize_roadmap_acceptance_events_to_jsonl(
@@ -4719,7 +4719,9 @@ pub fn source_path_for_module_path(module_path: String) -> String {
 }
 
 pub fn free_monoid_symbol_value_to_dotted_string(value: &v1_interpreter::Value) -> String {
-    v1_interpreter::free_monoid_symbol_value_to_dotted_string(value)
+    crate::v1_interpreter::value_depth_guarded(|| {
+        v1_interpreter::free_monoid_symbol_value_to_dotted_string(value)
+    })
 }
 
 pub fn free_monoid_symbol_value_from_dotted_string(
@@ -7274,7 +7276,7 @@ mod live_read_carrier_home_roster_drift_gate_tests {
         })
         .unwrap_or_else(|e| panic!("eval live_read_carrier_homes_v0: {e}"))
         .unwrap_or_else(|| panic!("live_read_carrier_homes_v0 not found as a data item"));
-        let Value::List(items) = val else {
+        let Value::List(ref items) = val else {
             panic!("live_read_carrier_homes_v0 is not a List: {val:?}");
         };
         items
@@ -9596,6 +9598,86 @@ fn admit_pool_bare_references(index: &MultiEntryIndex) -> Result<(), String> {
     verdict
 }
 
+/// THE WHOLE-POOL NAME CENSUS'S ENTRY FOR ONE NAME, computed over the modules that declare it.
+///
+/// `build_symbol_index_census_raw_nodes` keys every bare, alias and service entry by a declared
+/// name, and every count that gates an entry (variant and item multiplicity) counts declarations
+/// of that same name. So the pool census's entry for `name` depends only on the modules that
+/// declare `name`, and building the census over exactly those modules yields the same entry --
+/// the question the bare loader asks, without the whole pool. The modules are located by the
+/// heads name index (`ReferencePoolNames::decl_index`, items plus the variants of `Disj` types,
+/// the same declarations the census folds). The claim is checked for every name of the live pool
+/// by `entry_resolve::pool_census_for_name_differential`.
+fn pool_census_for_name(index: &MultiEntryIndex, name: &str) -> Result<Rc<SymbolIndex>, String> {
+    let started = std::time::Instant::now();
+    #[cfg(test)]
+    PER_NAME_CENSUS_DISTINCT.with(|d| {
+        d.borrow_mut().insert(name.to_string());
+    });
+    let census = pool_census_for_name_uncounted(index, name);
+    resolve_stage_slot_add(|st| {
+        st.bare_per_name_census_calls += 1;
+        st.bare_per_name_census += started.elapsed().as_nanos();
+    });
+    census
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Distinct names `pool_census_for_name` was asked about on this thread: with the call count
+    /// in `ResolveStageNanos`, the repetition a shared answer would remove.
+    pub(crate) static PER_NAME_CENSUS_DISTINCT: RefCell<std::collections::HashSet<String>> =
+        RefCell::new(std::collections::HashSet::new());
+}
+
+/// `module` with only the items that declare `name`: an item named `name`, or a `Disj` type
+/// definition one of whose variants is named `name`.
+fn module_pruned_to_declarations_of(module: &Rc<Node>, name: &str) -> Rc<Node> {
+    use crate::v1_compiler_emit_core_support::is_type_def_item;
+    use crate::v1_std_core::Connective;
+    let children: im::Vector<Rc<Node>> = module
+        .children
+        .iter()
+        .filter(|item| {
+            item.name == name
+                || (is_type_def_item((*item).clone())
+                    && item.connective == Connective::Disj
+                    && item.children.iter().any(|v| v.name == name))
+        })
+        .cloned()
+        .collect();
+    Rc::new(Node {
+        children: Rc::new(children),
+        ..(**module).clone()
+    })
+}
+
+fn pool_census_for_name_uncounted(
+    index: &MultiEntryIndex,
+    name: &str,
+) -> Result<Rc<SymbolIndex>, String> {
+    let pool = pool_parse(index)?;
+    let names = entry_resolve::reference_pool_names_for_index(index)?;
+    let Some(modules) = names.decl_index.get(name) else {
+        return Ok(crate::v1_compiler_infer_env::empty_symbol_index());
+    };
+    // Each declaring module contributes only the items that DECLARE `name` -- an item of that
+    // name, or a `Disj` type with a variant of that name (the same declarations
+    // `collect_module_decl_names` indexes). Every entry, count and gate for `name` reads those
+    // items and no others, so the census over the pruned modules has the same entry for `name`,
+    // at a cost in the name's declarations rather than in the declaring modules' size.
+    let nodes: im::Vector<Rc<Node>> = modules
+        .iter()
+        .filter_map(|m| index.source_files.get(m))
+        .filter_map(|sf| pool.position_by_file.get(&sf.path))
+        .map(|&i| module_pruned_to_declarations_of(&pool.nodes_by_file[i].1, name))
+        .collect();
+    Ok(v1_compiler_infer::build_symbol_index_census_raw_nodes(
+        Rc::new(nodes),
+        pool.combined_si.clone(),
+    ))
+}
+
 /// One resolver, two consumers: admission discards selected providers, and a demanded
 /// edge row expands them. Candidate classification remains `closure_bare_disposition`,
 /// which consumes `v1.compiler.infer_env::global_bare_chain_candidates`.
@@ -9820,11 +9902,43 @@ fn visit_bare_reference_providers(
         // Carrying the provenance costs nothing (the arms already know it) and makes the
         // existing `GUNBC_BARE_PULL_TRACE` line answer "how was this resolved", not only
         // "what did it resolve to".
+        // NO WHOLE-POOL CENSUS. A name the file's own tree census does not answer used to be asked
+        // of the WHOLE-POOL census, built in full by the first such demand -- DESIGN §5's
+        // absorbing fallback (not knowing the answer gets answered with the superset). What that
+        // question actually depends on is the pool census's entry for THIS NAME, and that entry is
+        // a function of the modules that declare the name alone (`pool_census_for_name`). So the
+        // same answer is computed over exactly those modules. Where it names a provider, the old
+        // route silently pulled a module from another source tree; that is now a typed, located
+        // refusal telling the author to write the reference qualified. Where it names none, nothing changes.
+        // Measured before the change by the live fallback census: 13 such pulls in 5 files on the
+        // real pool, one of them a builtin `get` bound to an unrelated `fn get`
+        // (`gunbc.recurring_failure_mode.a_pool_fallback_provider_shadows_a_builtin`).
         let (target_module, resolution_arm, census_state) = match resolve_in(&census)? {
             (Some(m), state) => (Some(m), "scoped", state),
-            (None, _) => {
-                let (m, state) = resolve_in(&census_for(None)?)?;
-                (m, "pool-fallback", state)
+            // A BUILTIN the tree does not declare is the builtin: no other tree's function of the
+            // same name is a provider for it (`builtin_signature` is the builtin authority).
+            (None, state)
+                if !service_head
+                    && crate::v1_compiler_infer_method::builtin_signature(name.clone())
+                        .is_some() =>
+            {
+                (None, "builtin", state)
+            }
+            (None, state) => {
+                let (provider, _) = resolve_in(&pool_census_for_name(index, &name)?)?;
+                // A provider that is a test row was never pulled (the loader skips test rows
+                // below), so it is not a cross-tree dependency and does not refuse.
+                if let Some((provider, false)) = provider {
+                    return Err(format!(
+                        "bare_reference_closure: CrossTreeBareReference -- bare reference \
+                         '{name}' in '{file_rel}' is not provided by this file's source tree \
+                         ({root}); only '{provider}', outside it, provides it. A reference \
+                         across source trees is written qualified, as `{provider}.{name}` \
+                         (an `import` would also stop every other bare reference in this \
+                         file from being followed)."
+                    ));
+                }
+                (None, "scoped", state)
             }
         };
         let Some((module_path, is_test_row)) = target_module else {
@@ -11444,6 +11558,7 @@ pub enum WitnessRuntimeCause {
     TypeError,
     CrossRepresentationEquality,
     StringRealizationStraddle,
+    VariantRealizationRefused,
     PoolRootContributesNothing,
     PatternMatchFailure,
     /// A REST response value did not inhabit its declared coproduct (see
@@ -11482,6 +11597,7 @@ impl WitnessRuntimeCause {
             WitnessRuntimeCause::TypeError => "type-error",
             WitnessRuntimeCause::CrossRepresentationEquality => "cross-representation-equality",
             WitnessRuntimeCause::StringRealizationStraddle => "string-realization-straddle",
+            WitnessRuntimeCause::VariantRealizationRefused => "variant-realization-refused",
             WitnessRuntimeCause::PoolRootContributesNothing => "pool-root-contributes-nothing",
             WitnessRuntimeCause::PatternMatchFailure => "pattern-match-failure",
             WitnessRuntimeCause::RestResponseUndecodable => "rest-response-undecodable",
@@ -11518,8 +11634,12 @@ impl WitnessRuntimeCause {
                 WitnessRuntimeCause::CrossRepresentationEquality
             }
             E::StringRealizationStraddle { .. } => WitnessRuntimeCause::StringRealizationStraddle,
+            E::VariantRealizationRefused { .. } => WitnessRuntimeCause::VariantRealizationRefused,
             E::PoolRootContributesNothing { .. } => WitnessRuntimeCause::PoolRootContributesNothing,
             E::PatternMatchFailure { .. } => WitnessRuntimeCause::PatternMatchFailure,
+            // A non-Bool guard is a type error at a located site; the variant carries the location,
+            // the cause token classifies it with its kind.
+            E::MatchGuardNotBool { .. } => WitnessRuntimeCause::TypeError,
             E::RestResponseUndecodable { .. } => WitnessRuntimeCause::RestResponseUndecodable,
             E::DivisionByZero => WitnessRuntimeCause::DivisionByZero,
             E::IntegerOverflow { .. } => WitnessRuntimeCause::IntegerOverflow,
@@ -13211,6 +13331,9 @@ pub struct MultiEntryIndex {
     /// newline indexes) — the shared input of the qualified fill and the per-tree
     /// bare layers below. Entry-independent, built once per process.
     pool_parse: RefCell<Option<Rc<PoolParse>>>,
+    /// The heads name index over `pool_parse` (`entry_resolve::reference_pool_names_for_index`):
+    /// a fact of this index, demanded per out-of-tree bare name, so derived once here.
+    reference_pool_names: RefCell<Option<Rc<entry_resolve::ReferencePoolNames>>>,
     /// Whole-pool QUALIFIED-ONLY census layer (entries keyed by qualified name;
     /// empty global_bare/services), built once per process and underlaid beneath
     /// each entry's closure census (namespace-resolution-design.md §7.5: "fill =
@@ -13548,6 +13671,7 @@ pub fn drop_private_term_for_test(index: &MultiEntryIndex, term: &str) -> bool {
         "normalize_diag_cache" => index.normalize_diag_cache.borrow_mut().clear(),
         "ownership_diag_cache" => index.ownership_diag_cache.borrow_mut().clear(),
         "pool_parse" => *index.pool_parse.borrow_mut() = None,
+        "reference_pool_names" => *index.reference_pool_names.borrow_mut() = None,
         "pool_qualified_fill" => *index.pool_qualified_fill.borrow_mut() = None,
         "tree_bare_census" => index.tree_bare_census.borrow_mut().clear(),
         "pool_bare_census" => *index.pool_bare_census.borrow_mut() = None,
@@ -13610,6 +13734,7 @@ pub fn drop_attributable_terms_for_test() -> &'static [&'static str] {
         "typed_module_cache",
         "parse_cache",
         "pool_parse",
+        "reference_pool_names",
         "both_closure_edges",
         "closure_name_censuses",
         "bare_reference_admission",
@@ -13720,6 +13845,9 @@ pub(crate) fn multi_entry_index_sharing_control(
 struct PoolParse {
     /// Workspace-relative file path → census-head module node.
     nodes_by_file: Vec<(String, Rc<Node>)>,
+    /// Position of each file in `nodes_by_file`, so a reader that wants a few named files
+    /// (`pool_census_for_name`) finds them without walking the pool.
+    position_by_file: std::collections::HashMap<String, usize>,
     combined_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 }
 
@@ -15751,6 +15879,9 @@ pub struct ResolveStageNanos {
     pub edge_index_bare_candidates: u128,
     pub edge_index_bare_name_universe: u128,
     pub edge_index_bare_resolve_loop: u128,
+    /// `pool_census_for_name`: the out-of-tree question per bare name -- calls and their time.
+    pub bare_per_name_census_calls: u128,
+    pub bare_per_name_census: u128,
     /// `Rc::new` + hand-off of the finished index.
     pub edge_index_publish: u128,
     /// `build_both_closure_edge_index` (memoized on the index; nonzero here is the first build).
@@ -15812,6 +15943,8 @@ impl ResolveStageNanos {
         self.edge_index_bare_candidates += other.edge_index_bare_candidates;
         self.edge_index_bare_name_universe += other.edge_index_bare_name_universe;
         self.edge_index_bare_resolve_loop += other.edge_index_bare_resolve_loop;
+        self.bare_per_name_census_calls += other.bare_per_name_census_calls;
+        self.bare_per_name_census += other.bare_per_name_census;
         self.edge_index_publish += other.edge_index_publish;
         self.load_pool_reference_closure += other.load_pool_reference_closure;
         self.load_fixpoint_rounds += other.load_fixpoint_rounds;
@@ -15930,6 +16063,8 @@ thread_local! {
             edge_index_bare_candidates: 0,
             edge_index_bare_name_universe: 0,
             edge_index_bare_resolve_loop: 0,
+            bare_per_name_census_calls: 0,
+            bare_per_name_census: 0,
             edge_index_publish: 0,
             load_bare_edge_index: 0,
             load_bare_path_lookup: 0,
@@ -17342,8 +17477,14 @@ fn pool_parse(index: &MultiEntryIndex) -> Result<Rc<PoolParse>, String> {
         combined_si.insert(file.clone(), nl_index);
         nodes_by_file.push((file, module));
     }
+    let position_by_file = nodes_by_file
+        .iter()
+        .enumerate()
+        .map(|(i, (file, _))| (file.clone(), i))
+        .collect();
     let parsed = Rc::new(PoolParse {
         nodes_by_file,
+        position_by_file,
         combined_si: Rc::new(combined_si),
     });
     pre_entry_phase::record(
@@ -17743,10 +17884,6 @@ fn reconcile_with_typed_cache(
     index: &MultiEntryIndex,
 ) -> Result<Rc<ResolvedGraph>, String> {
     let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
-    // The import-union surface pool, admitted module by module exactly as the modeled realize loop
-    // (`v1.compiler.infer` `realize_module`) admits it: a module is typechecked against the pool of
-    // the modules before it, then admitted.
-    let mut surface_pool = crate::v1_compiler_infer_env::empty_surface_pool();
     let mut diag_chunks: Vec<Rc<im::Vector<Rc<ErrorNode>>>> = Vec::new();
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
         v1_rt::rc_empty_map();
@@ -17982,7 +18119,6 @@ fn reconcile_with_typed_cache(
                                 let computed = v1_compiler_infer::typecheck_module(
                                     resolved.clone(),
                                     module_index.clone(),
-                                    surface_pool.clone(),
                                     variant_surfaces.clone(),
                                     source_indices.clone(),
                                     intern_table.clone(),
@@ -18041,13 +18177,6 @@ fn reconcile_with_typed_cache(
                 );
                 variant_surfaces =
                     v1_rt::rc_map_insert(variant_surfaces, typed_path.clone(), variant_surface);
-                surface_pool = crate::v1_compiler_infer_env::surface_pool_admit(
-                    surface_pool,
-                    typed_path.clone(),
-                    typed.interface.env.str_bindings.clone(),
-                    typed.interface.surface_imports.clone(),
-                    typed.type_env.ancestry.contested.clone(),
-                );
                 module_index = v1_rt::rc_map_insert(module_index, typed_path, typed.clone());
                 dispatched[slot] = Some((parent_diags, tc_result));
                 resolve_stage_slot_add(|s| {
@@ -18298,7 +18427,7 @@ fn render_batch_summary_line(
     )
     .ok()?;
     match out {
-        Value::Str(s) => Some(s.to_string()),
+        Value::Str(ref s) => Some(s.to_string()),
         _ => None,
     }
 }
@@ -19600,7 +19729,7 @@ pub fn run_witness_verdict_diagnostic(
     function: &str,
 ) -> String {
     match v1_interpreter::run_in_context(ctx, function, false) {
-        Ok(Value::Str(s)) => s.to_string(),
+        Ok(Value::Str(ref s)) => s.to_string(),
         Ok(other) => format!(
             "witness_verdict_diagnostic_refused: {function} returned {}, expected String",
             ctx.format_value(&other)
@@ -19706,7 +19835,7 @@ fn eval_census_string_fn(
 ) -> Result<String, String> {
     let args = [(Some("entry".to_string()), str_value(entry.to_string()))];
     match v1_interpreter::run_in_context_with_args(ctx, fn_name, &args, false) {
-        Ok(Value::Str(s)) => Ok(s.to_string()),
+        Ok(Value::Str(ref s)) => Ok(s.to_string()),
         Ok(other) => Err(format!(
             "{fn_name}({entry:?}) returned {}, expected String",
             ctx.format_value(&other)
@@ -20155,16 +20284,41 @@ pub fn partition_cost_debt_roster<'a>(
                     CostDebtRosterStanding::WithholdOverriddenForChangedVerdict
                 }
                 Some(RequiredFloorDisposition::DeclinedOutsideGateClosure)
-                | Some(RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. }) => {
-                    CostDebtRosterStanding::OutsideThisRunsUniverse
+                | Some(RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. })
+                | Some(RequiredFloorDisposition::DeclinedNoCiWetLane { .. })
+                | Some(RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery {
+                    ..
+                }) => CostDebtRosterStanding::OutsideThisRunsUniverse,
+                Some(RequiredFloorDisposition::Planned)
+                | Some(RequiredFloorDisposition::DeclinedLongModule { .. })
+                | Some(RequiredFloorDisposition::DeclinedFixtureMember { .. })
+                | Some(RequiredFloorDisposition::DeclinedOutsideRequiredGate) => {
+                    CostDebtRosterStanding::DeclaredButNotWithheld
                 }
-                Some(_) => CostDebtRosterStanding::DeclaredButNotWithheld,
             };
             (q, standing)
         })
         .collect();
     rows.sort_unstable_by(|a, b| a.0.cmp(b.0));
     rows
+}
+
+/// WHETHER A DISPOSITION IS THE COST-DEBT WITHHOLD, as an exhaustive match: a new arm states
+/// whether it withholds rather than defaulting to "not cost debt"
+/// (`gunbc.recurring_failure_mode.a_new_decision_arm_the_downstream_join_does_not_admit`).
+fn disposition_is_a_cost_debt_withhold(disposition: &RequiredFloorDisposition) -> bool {
+    match disposition {
+        RequiredFloorDisposition::DeclinedCostDebt => true,
+        RequiredFloorDisposition::Planned
+        | RequiredFloorDisposition::PlannedAsChangedWitness
+        | RequiredFloorDisposition::DeclinedLongModule { .. }
+        | RequiredFloorDisposition::DeclinedFixtureMember { .. }
+        | RequiredFloorDisposition::DeclinedOutsideRequiredGate
+        | RequiredFloorDisposition::DeclinedOutsideGateClosure
+        | RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. }
+        | RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery { .. }
+        | RequiredFloorDisposition::DeclinedNoCiWetLane { .. } => false,
+    }
 }
 
 /// The execution-accounting set and the disposition projection must name the SAME identities.
@@ -20185,15 +20339,14 @@ pub fn reconcile_withheld_against_dispositions<'a>(
         .iter()
         .map(|q| q.as_str())
         .filter(|q| {
-            !matches!(
-                dispositions.get(*q),
-                Some(RequiredFloorDisposition::DeclinedCostDebt)
-            )
+            !dispositions
+                .get(*q)
+                .is_some_and(disposition_is_a_cost_debt_withhold)
         })
         .collect();
     let mut dispositioned_without_withhold: Vec<&str> = dispositions
         .iter()
-        .filter(|(_, d)| matches!(d, RequiredFloorDisposition::DeclinedCostDebt))
+        .filter(|(_, d)| disposition_is_a_cost_debt_withhold(d))
         .map(|(q, _)| q.as_str())
         .filter(|q| !withheld.contains(*q))
         .collect();
@@ -21219,7 +21372,7 @@ impl ScopedRunObservation {
             false,
         )
         .map_err(|e| format!("scoped run timing receipt failed: {e}"))?;
-        let Value::Variant { fields, .. } = receipt else {
+        let Value::Variant { ref fields, .. } = receipt else {
             return Err("scoped run timing receipt returned non-typed value".to_string());
         };
         let decode = |name: &str| -> Result<u128, String> {
@@ -23016,6 +23169,7 @@ mod closure_bare_disposition_tests {
                 name: decl_name.to_string(),
                 resolved: node,
                 provenance: Rc::new(crate::std_induction::SubValueRelation::PreservedValue),
+                alias_rhs: None,
             }),
         })
     }
@@ -24328,7 +24482,7 @@ pub fn project_witness_cost_receipt(
         .map_err(|e| format!("[witness-row-cost] REFUSED: authored projector failed: {e}"))?;
         let Value::Variant {
             variant_name,
-            fields,
+            ref fields,
             ..
         } = projection
         else {
@@ -26690,23 +26844,25 @@ fn collect_node_values(
     ctx: &v1_interpreter::InterpContext,
     out: &mut Vec<v1_interpreter::Value>,
 ) {
-    if value_is_node(val, ctx) {
-        out.push(val.clone());
-    }
-    match val {
-        v1_interpreter::Value::Record { fields, .. }
-        | v1_interpreter::Value::Variant { fields, .. } => {
-            for (_, v) in fields.iter() {
-                collect_node_values(v, ctx, out);
-            }
+    crate::v1_interpreter::value_depth_guarded(|| {
+        if value_is_node(val, ctx) {
+            out.push(val.clone());
         }
-        v1_interpreter::Value::List(items) => {
-            for v in items.iter() {
-                collect_node_values(v, ctx, out);
+        match val {
+            v1_interpreter::Value::Record { fields, .. }
+            | v1_interpreter::Value::Variant { fields, .. } => {
+                for (_, v) in fields.iter() {
+                    collect_node_values(v, ctx, out);
+                }
             }
+            v1_interpreter::Value::List(items) => {
+                for v in items.iter() {
+                    collect_node_values(v, ctx, out);
+                }
+            }
+            _ => {}
         }
-        _ => {}
-    }
+    })
 }
 
 fn call_test_claim_fn_bool(
@@ -27504,7 +27660,7 @@ mod effect_reach_host_sink_markers_drift_gate_tests {
         .unwrap_or_else(|| {
             panic!("effect_reach_host_sink_callee_symbols_v0 not found as a data item")
         });
-        let Value::List(items) = val else {
+        let Value::List(ref items) = val else {
             panic!("effect_reach_host_sink_callee_symbols_v0 is not a List: {val:?}");
         };
         items
@@ -28004,7 +28160,7 @@ pub fn emit_realize_advisory_for_rows(source_roots: &[String], rows: &[Discovery
                 &args,
                 false,
             ) {
-                Ok(Value::Record { fields, .. }) => {
+                Ok(Value::Record { ref fields, .. }) => {
                     let width = match realize_ctx.field(&fields, "width") {
                         Some(Value::Int(w)) => *w,
                         _ => -1,
@@ -35369,64 +35525,15 @@ fn nfr_parse_params(s: &str) -> std::collections::BTreeMap<String, String> {
     out
 }
 
-fn nfr_residue_sites(files: &[(String, String)]) -> Vec<String> {
-    let coproducts = nfr_closed_coproduct_names(files);
-    let mut out: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    for (rel, content) in files {
-        if is_test_dag(rel) {
-            continue;
-        }
-        let src = nfr_strip_comments(content);
-        for sig in nfr_parse_fns(&src) {
-            for (mi, _) in sig.body.match_indices("match ") {
-                if mi > 0 && nfr_is_ident_byte(sig.body.as_bytes()[mi - 1]) {
-                    continue;
-                }
-                let after = mi + "match ".len();
-                let Some(brace_rel) = sig.body[after..].find('{') else {
-                    continue;
-                };
-                let scrut = sig.body[after..after + brace_rel].trim();
-                if !nfr_is_ident(scrut) {
-                    continue;
-                }
-                let Some(ty) = sig.params.get(scrut) else {
-                    continue;
-                };
-                if !coproducts.contains(ty) {
-                    continue;
-                }
-                let body_bytes = sig.body.as_bytes();
-                let brace_abs = after + brace_rel;
-                let Some(close) = nfr_matching_brace(body_bytes, brace_abs) else {
-                    continue;
-                };
-                let body = &sig.body[brace_abs + 1..close];
-                if nfr_has_top_level_wildcard_arm(body) {
-                    out.insert(format!("{}::{}", rel, sig.name));
-                }
-            }
-        }
-    }
-    out.into_iter().collect()
-}
-
-struct NonFoldReport {
-    sites: Vec<String>,
-    coproduct_universe: usize,
-    closed_coproduct_names: std::collections::BTreeSet<String>,
-}
-
-fn nfr_build_report() -> &'static NonFoldReport {
-    static REPORT: std::sync::OnceLock<NonFoldReport> = std::sync::OnceLock::new();
-    shared_fill::once(&REPORT, "non_fold_residue", "corpus", || {
-        let files = corpus_dag_files();
-        let closed_coproduct_names = nfr_closed_coproduct_names(&files);
-        NonFoldReport {
-            sites: nfr_residue_sites(&files),
-            coproduct_universe: closed_coproduct_names.len(),
-            closed_coproduct_names,
-        }
+/// The closed-coproduct type names of the corpus, read from `type` declarations' text. The
+/// parameter-keyed site scan that once shared this set was deleted with its census roster
+/// (DESIGN §3 replacement: the typed walk `typed_fallback_arm_walk` is the one site authority);
+/// the complexity-linearity audit and the fallback-arm census still key on these names.
+fn nfr_closed_coproduct_name_set() -> &'static std::collections::BTreeSet<String> {
+    static NAMES: std::sync::OnceLock<std::collections::BTreeSet<String>> =
+        std::sync::OnceLock::new();
+    shared_fill::once(&NAMES, "non_fold_residue", "closed_coproduct_names", || {
+        nfr_closed_coproduct_names(&corpus_dag_files())
     })
 }
 
@@ -35451,130 +35558,6 @@ mod nfr_tests {
         assert!(cps.contains("Mode"));
         assert!(!cps.contains("Rec"));
         assert!(!cps.contains("Alias"));
-    }
-
-    #[test]
-    fn red_control_wildcard_over_closed_coproduct_is_residue() {
-        let f = files(&[(
-            "m.dag",
-            "module m\ntype Mode = A | B | C\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    _ => false\n  }\n}\n",
-        )]);
-        let sites = nfr_residue_sites(&f);
-        assert!(
-            sites.contains(&"m.dag::f".to_string()),
-            "a wildcard over a closed-coproduct param must be flagged; got {sites:?}"
-        );
-    }
-
-    #[test]
-    fn green_control_total_fold_is_not_residue() {
-        let f = files(&[(
-            "m.dag",
-            "module m\ntype Mode = A | B | C\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    B => false\n    C => false\n  }\n}\n",
-        )]);
-        let sites = nfr_residue_sites(&f);
-        assert!(
-            !sites.contains(&"m.dag::f".to_string()),
-            "an exhaustive match (no wildcard) must NOT be flagged; got {sites:?}"
-        );
-    }
-
-    #[test]
-    fn nfr_roster_receipt() {
-        let live: std::collections::BTreeSet<&str> = nfr_build_report()
-            .sites
-            .iter()
-            .map(|s| s.as_str())
-            .collect();
-        // POPULATION BOUND (rung honesty, DESIGN §4b(1)): the census scans matches whose scrutinee
-        // is a closed-coproduct PARAMETER; a match on a local binding or a field is not scanned, so
-        // this receipt's green covers that population only (bound stated on the roster's
-        // registration in gunbc.roster_registry).
-        eprintln!(
-            "nfr_roster_receipt (scope: parameter-scrutinee matches only): unrostered={} stale={} live={}",
-            non_fold_residue_unrostered_count(),
-            non_fold_residue_stale_roster_count(),
-            live.len()
-        );
-        let unrostered: Vec<&String> = nfr_build_report()
-            .sites
-            .iter()
-            .filter(|site| !non_fold_residue_site_is_rostered(site))
-            .collect();
-        for site in &unrostered {
-            eprintln!("unrostered live site: {site}");
-        }
-        let stale: Vec<&String> = non_fold_residue_roster_entries()
-            .iter()
-            .filter(|entry| !live.contains(entry.as_str()))
-            .collect();
-        for entry in &stale {
-            eprintln!("stale roster entry: {entry}");
-        }
-        assert!(unrostered.is_empty(), "unrostered: {unrostered:?}");
-        assert!(stale.is_empty(), "stale roster: {stale:?}");
-    }
-
-    #[test]
-    fn green_control_wildcard_over_open_domain_is_not_residue() {
-        let f = files(&[(
-            "m.dag",
-            "module m\ntype Mode = A | B\nfn g(s: String) -> Bool {\n  match s {\n    \"y\" => true\n    _ => false\n  }\n}\n",
-        )]);
-        let sites = nfr_residue_sites(&f);
-        assert!(
-            !sites.contains(&"m.dag::g".to_string()),
-            "a wildcard over an open/primitive domain must NOT be flagged; got {sites:?}"
-        );
-    }
-
-    #[test]
-    fn green_control_field_placeholder_underscore_is_not_a_wildcard_arm() {
-        let f = files(&[(
-            "m.dag",
-            "module m\ntype Mode = A { v: Int } | B { v: Int }\nfn f(x: Mode) -> Int {\n  match x {\n    A { v: _ } => 1\n    B { v: _ } => 2\n  }\n}\n",
-        )]);
-        let sites = nfr_residue_sites(&f);
-        assert!(
-            !sites.contains(&"m.dag::f".to_string()),
-            "field-placeholder `_` is not a wildcard arm; got {sites:?}"
-        );
-    }
-
-    #[test]
-    fn nested_match_wildcard_is_attributed_to_its_own_match() {
-        let f = files(&[(
-            "m.dag",
-            "module m\ntype Mode = A | B\nfn eq(a: Mode, b: Mode) -> Bool {\n  match a {\n    A => match b { A => true _ => false }\n    B => match b { B => true _ => false }\n  }\n}\n",
-        )]);
-        let sites = nfr_residue_sites(&f);
-        assert!(sites.contains(&"m.dag::eq".to_string()));
-    }
-
-    #[test]
-    fn green_control_wildcard_and_slashes_inside_string_literal_are_ignored() {
-        let f = files(&[(
-            "m.dag",
-            "module m\ntype Mode = A | B\nfn f(x: Mode) -> String {\n  match x {\n    A => \"see https://x/y and _ => z\"\n    B => \"b\"\n  }\n}\n",
-        )]);
-        let sites = nfr_residue_sites(&f);
-        assert!(
-            !sites.contains(&"m.dag::f".to_string()),
-            "`_ =>`/`//` inside a string literal must not be read as code; got {sites:?}"
-        );
-    }
-
-    #[test]
-    fn red_control_real_wildcard_survives_an_in_string_decoy() {
-        let f = files(&[(
-            "m.dag",
-            "module m\ntype Mode = A | B | C\nfn f(x: Mode) -> String {\n  match x {\n    A => \"see https://x/y and _ => z\"\n    _ => \"rest\"\n  }\n}\n",
-        )]);
-        let sites = nfr_residue_sites(&f);
-        assert!(
-            sites.contains(&"m.dag::f".to_string()),
-            "a real wildcard arm must still be flagged despite an in-string decoy; got {sites:?}"
-        );
     }
 
     #[test]
@@ -36298,29 +36281,32 @@ fn fac_walk_body_marks(
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
     marks: &mut FacBodyMarks,
 ) {
-    match node.expr_data.as_ref() {
-        ExprData::ExprCall { .. } => {
-            let fname = expr_call_func_at(node.clone(), si.clone());
-            if fac_name_is_refuse(&fname) {
-                marks.refuses = true;
+    // Explicit worklist: body depth is corpus-shaped (the #10610 class), and the marks are
+    // order-insensitive booleans.
+    let mut pending: Vec<&Rc<Node>> = vec![node];
+    while let Some(node) = pending.pop() {
+        match node.expr_data.as_ref() {
+            ExprData::ExprCall { .. } => {
+                let fname = expr_call_func_at(node.clone(), si.clone());
+                if fac_name_is_refuse(&fname) {
+                    marks.refuses = true;
+                }
+                if fac_name_is_answer(&fname) {
+                    marks.answers = true;
+                }
             }
-            if fac_name_is_answer(&fname) {
-                marks.answers = true;
+            ExprData::ExprVar { binding_kind: _ } => {
+                let name = authored_name_at(si.clone(), node.clone());
+                if fac_name_is_refuse(&name) {
+                    marks.refuses = true;
+                }
+                if fac_name_is_answer(&name) {
+                    marks.answers = true;
+                }
             }
+            _ => {}
         }
-        ExprData::ExprVar { binding_kind: _ } => {
-            let name = authored_name_at(si.clone(), node.clone());
-            if fac_name_is_refuse(&name) {
-                marks.refuses = true;
-            }
-            if fac_name_is_answer(&name) {
-                marks.answers = true;
-            }
-        }
-        _ => {}
-    }
-    for child in node.children.iter() {
-        fac_walk_body_marks(child, si, marks);
+        pending.extend(node.children.iter());
     }
 }
 
@@ -40281,103 +40267,123 @@ pub fn value_to_wire_json(
     val: &v1_interpreter::Value,
     ctx: &v1_interpreter::InterpContext,
 ) -> WireSerializeResult<serde_json::Value> {
-    match val {
-        // `T?` is std Optional, whose wire shape is the payload itself: Present encodes its
-        // `value`, Absent encodes as null, which a record field omits (proto3 JSON / serde's
-        // `Option`). Routing it through the coproduct policy emitted `{"_variant":"Present",
-        // "value":...}`, which Google's IAM setIamPolicy refuses at policy.bindings[].condition.
-        v1_interpreter::Value::Variant {
-            type_name,
-            variant_name,
-            fields,
-        } if wire_resolve_sym(ctx, *type_name) == "Optional" => {
-            match wire_resolve_sym(ctx, *variant_name).as_str() {
-                "Absent" => Ok(serde_json::Value::Null),
-                "Present" => match fields
-                    .iter()
-                    .find(|(k, _)| wire_resolve_sym(ctx, *k) == "value")
-                {
-                    Some((_, v)) => value_to_wire_json(v, ctx),
-                    None => Err("Optional.Present carries no `value` field".to_string()),
-                },
-                other => Err(format!("Optional has no variant `{other}`")),
-            }
-        }
-        v1_interpreter::Value::Variant {
-            type_name,
-            variant_name,
-            fields,
-        } => serialize_variant_to_wire_json(
-            &wire_resolve_sym(ctx, *type_name),
-            &wire_resolve_sym(ctx, *variant_name),
-            fields,
-            ctx,
-        ),
-        v1_interpreter::Value::Null => Ok(serde_json::Value::Null),
-        v1_interpreter::Value::Bool(b) => Ok(serde_json::Value::Bool(*b)),
-        v1_interpreter::Value::Int(n) => Ok(serde_json::json!(*n)),
-        v1_interpreter::Value::Float(f) => Ok(serde_json::json!(*f)),
-        Value::Str(s) => {
-            if s.starts_with('[') || s.starts_with('{') {
-                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(s) {
-                    return Ok(parsed);
+    crate::v1_interpreter::value_depth_guarded(|| {
+        match val {
+            // `T?` is std Optional, whose wire shape is the payload itself: Present encodes its
+            // `value`, Absent encodes as null, which a record field omits (proto3 JSON / serde's
+            // `Option`). Routing it through the coproduct policy emitted `{"_variant":"Present",
+            // "value":...}`, which Google's IAM setIamPolicy refuses at policy.bindings[].condition.
+            v1_interpreter::Value::Variant {
+                type_name,
+                variant_name,
+                fields,
+            } if wire_resolve_sym(ctx, *type_name) == "Optional" => {
+                match wire_resolve_sym(ctx, *variant_name).as_str() {
+                    "Absent" => Ok(serde_json::Value::Null),
+                    "Present" => match fields
+                        .iter()
+                        .find(|(k, _)| wire_resolve_sym(ctx, *k) == "value")
+                    {
+                        Some((_, v)) => value_to_wire_json(v, ctx),
+                        None => Err("Optional.Present carries no `value` field".to_string()),
+                    },
+                    other => Err(format!("Optional has no variant `{other}`")),
                 }
             }
-            Ok(serde_json::Value::String(s.to_string()))
-        }
-        v1_interpreter::Value::List(items) => {
-            let mut arr = Vec::with_capacity(items.len());
-            for item in items.iter() {
-                arr.push(value_to_wire_json(item, ctx)?);
+            v1_interpreter::Value::Variant {
+                type_name,
+                variant_name,
+                fields,
+            } => serialize_variant_to_wire_json(
+                &wire_resolve_sym(ctx, *type_name),
+                &wire_resolve_sym(ctx, *variant_name),
+                fields,
+                ctx,
+            ),
+            v1_interpreter::Value::Null => Ok(serde_json::Value::Null),
+            v1_interpreter::Value::Bool(b) => Ok(serde_json::Value::Bool(*b)),
+            v1_interpreter::Value::Int(n) => Ok(serde_json::json!(*n)),
+            v1_interpreter::Value::Float(f) => Ok(serde_json::json!(*f)),
+            Value::Str(s) => {
+                if s.starts_with('[') || s.starts_with('{') {
+                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(s) {
+                        // An inlined JSON string counts at its own depth, and refuses here rather
+                        // than handing the reader a document deeper than it reads.
+                        let _inlined = crate::v1_interpreter::claim_json_nesting(
+                            crate::v1_interpreter::json_container_depth(&parsed),
+                            "",
+                        )?;
+                        return Ok(parsed);
+                    }
+                }
+                Ok(serde_json::Value::String(s.to_string()))
             }
-            Ok(serde_json::Value::Array(arr))
-        }
-        v1_interpreter::Value::Set(members) => Ok(serde_json::Value::Array(
-            members
-                .iter()
-                .map(|s| serde_json::Value::String(s.clone()))
-                .collect(),
-        )),
-        v1_interpreter::Value::Map(m) => {
-            let mut obj = serde_json::Map::new();
-            for (k, v) in m.iter() {
-                let key = match k.value_ref() {
-                    Value::Str(s) => s.to_string(),
-                    other => {
-                        return Err(format!(
+            v1_interpreter::Value::List(items) => {
+                let _array = crate::v1_interpreter::claim_json_nesting(1, "")?;
+                let mut arr = Vec::with_capacity(items.len());
+                for (i, item) in items.iter().enumerate() {
+                    let _at = crate::v1_interpreter::claim_json_nesting(0, &format!("[{i}]"))?;
+                    arr.push(value_to_wire_json(item, ctx)?);
+                }
+                Ok(serde_json::Value::Array(arr))
+            }
+            v1_interpreter::Value::Set(members) => {
+                let _array = crate::v1_interpreter::claim_json_nesting(1, "[]")?;
+                Ok(serde_json::Value::Array(
+                    members
+                        .iter()
+                        .map(|s| serde_json::Value::String(s.clone()))
+                        .collect(),
+                ))
+            }
+            v1_interpreter::Value::Map(m) => {
+                let _object = crate::v1_interpreter::claim_json_nesting(1, "")?;
+                let mut obj = serde_json::Map::new();
+                for (k, v) in m.iter() {
+                    let key = match k.value_ref() {
+                        Value::Str(s) => s.to_string(),
+                        other => {
+                            return Err(format!(
                             "cannot serialize map with non-string key to JSON (got {other:?} key)"
                         ))
-                    }
-                };
-                obj.insert(key, value_to_wire_json(v, ctx)?);
-            }
-            Ok(serde_json::Value::Object(obj))
-        }
-        v1_interpreter::Value::Record { type_name, fields } => {
-            let record_type = wire_resolve_sym(ctx, *type_name);
-            let mut obj = serde_json::Map::new();
-            for (k, v) in fields.iter() {
-                let encoded = value_to_wire_json(v, ctx)?;
-                if encoded.is_null() {
-                    continue;
+                        }
+                    };
+                    let _at = crate::v1_interpreter::claim_json_nesting(0, &format!(".{key}"))?;
+                    obj.insert(key, value_to_wire_json(v, ctx)?);
                 }
-                let key = v1_interpreter::record_field_wire_key(
-                    ctx,
-                    &record_type,
-                    &wire_resolve_sym(ctx, *k),
-                );
-                obj.insert(key, encoded);
+                Ok(serde_json::Value::Object(obj))
             }
-            Ok(serde_json::Value::Object(obj))
+            v1_interpreter::Value::Record { type_name, fields } => {
+                let record_type = wire_resolve_sym(ctx, *type_name);
+                let _object = crate::v1_interpreter::claim_json_nesting(1, "")?;
+                let mut obj = serde_json::Map::new();
+                for (k, v) in fields.iter() {
+                    let _at = crate::v1_interpreter::claim_json_nesting(
+                        0,
+                        &format!(".{}", wire_resolve_sym(ctx, *k)),
+                    )?;
+                    let encoded = value_to_wire_json(v, ctx)?;
+                    if encoded.is_null() {
+                        continue;
+                    }
+                    let key = v1_interpreter::record_field_wire_key(
+                        ctx,
+                        &record_type,
+                        &wire_resolve_sym(ctx, *k),
+                    );
+                    obj.insert(key, encoded);
+                }
+                Ok(serde_json::Value::Object(obj))
+            }
+            v1_interpreter::Value::Unit => Ok(serde_json::Value::Null),
+            v1_interpreter::Value::Closure { .. } => {
+                Ok(serde_json::Value::String("<closure>".to_string()))
+            }
+            v1_interpreter::Value::Fn { node } => {
+                Ok(serde_json::Value::String(format!("<fn {}>", node.name)))
+            }
         }
-        v1_interpreter::Value::Unit => Ok(serde_json::Value::Null),
-        v1_interpreter::Value::Closure { .. } => {
-            Ok(serde_json::Value::String("<closure>".to_string()))
-        }
-        v1_interpreter::Value::Fn { node } => {
-            Ok(serde_json::Value::String(format!("<fn {}>", node.name)))
-        }
-    }
+    })
 }
 
 fn serialize_variant_to_wire_json(
@@ -40419,13 +40425,16 @@ fn serialize_variant_to_wire_json(
             .ok_or_else(|| {
                 format!("no wire tag for internally-tagged variant {type_name}::{variant_name}")
             })?;
+        let _object = crate::v1_interpreter::claim_json_nesting(1, "")?;
         let mut obj = serde_json::Map::new();
         obj.insert(tag_field, serde_json::Value::String(wire_tag));
         for (k, v) in fields.iter() {
             if matches!(v, v1_interpreter::Value::Null) {
                 continue;
             }
-            obj.insert(wire_resolve_sym(ctx, *k), value_to_wire_json(v, ctx)?);
+            let name = wire_resolve_sym(ctx, *k);
+            let _at = crate::v1_interpreter::claim_json_nesting(0, &format!(".{name}"))?;
+            obj.insert(name, value_to_wire_json(v, ctx)?);
         }
         return Ok(serde_json::Value::Object(obj));
     }
@@ -40433,13 +40442,16 @@ fn serialize_variant_to_wire_json(
     let tag_key = policy_serde_tag_field(policy.clone()).unwrap_or_else(|| "_variant".to_string());
     let default_tag = data_path_wire_variant_tag(variant_name.to_string(), policy.clone())
         .ok_or_else(|| format!("no wire tag for variant {type_name}::{variant_name}"))?;
+    let _object = crate::v1_interpreter::claim_json_nesting(1, "")?;
     let mut obj = serde_json::Map::new();
     obj.insert(tag_key, serde_json::Value::String(default_tag));
     for (k, v) in fields.iter() {
         if matches!(v, v1_interpreter::Value::Null) {
             continue;
         }
-        obj.insert(wire_resolve_sym(ctx, *k), value_to_wire_json(v, ctx)?);
+        let name = wire_resolve_sym(ctx, *k);
+        let _at = crate::v1_interpreter::claim_json_nesting(0, &format!(".{name}"))?;
+        obj.insert(name, value_to_wire_json(v, ctx)?);
     }
     Ok(serde_json::Value::Object(obj))
 }
@@ -40458,12 +40470,15 @@ fn serialize_untagged_variant(
         0 => Ok(serde_json::Value::Null),
         1 => Ok(values.remove(0)),
         _ => {
+            let _object = crate::v1_interpreter::claim_json_nesting(1, "")?;
             let mut obj = serde_json::Map::new();
             for (k, v) in fields.iter() {
                 if matches!(v, v1_interpreter::Value::Null) {
                     continue;
                 }
-                obj.insert(wire_resolve_sym(ctx, *k), value_to_wire_json(v, ctx)?);
+                let name = wire_resolve_sym(ctx, *k);
+                let _at = crate::v1_interpreter::claim_json_nesting(0, &format!(".{name}"))?;
+                obj.insert(name, value_to_wire_json(v, ctx)?);
             }
             Ok(serde_json::Value::Object(obj))
         }
@@ -40985,6 +41000,7 @@ mod peel_alias_fixpoint_termination {
                 provenance: std::rc::Rc::new(
                     crate::std_induction::SubValueRelation::SubValueUnknown,
                 ),
+                alias_rhs: None,
             });
             let global_bare = crate::v1_rt::rc_map_insert(
                 crate::v1_rt::rc_empty_map(),
@@ -41007,7 +41023,7 @@ mod peel_alias_fixpoint_termination {
                 module_path: "".to_string(),
                 bindings: crate::v1_rt::rc_empty_map(),
                 str_bindings: crate::v1_rt::rc_empty_map(),
-                ancestry: crate::v1_compiler_infer_env::empty_ancestry_view(),
+                ancestry_str_bindings: crate::v1_rt::rc_empty_map(),
                 parents: std::rc::Rc::new(im::vector![]),
                 recursive_types: std::rc::Rc::new(im::vector![]),
                 recursive_type_set: crate::v1_rt::rc_empty_map(),
@@ -44646,7 +44662,7 @@ const REQUIRED_FLOOR_POLICY_MODULE: &str = "v2.workflow.required_floor";
 /// its own call site. `v2.workflow.floor_naming_hygiene` is reached through the producer's
 /// import closure rather than asked directly: the barren-sidecar question the runner used to
 /// put to it is one arm of the producer's per-file fold.
-const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 6] = [
+const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 7] = [
     REQUIRED_FLOOR_POLICY_MODULE,
     "v2.workflow.floor_discovery_producer",
     "gunbc.output_policy",
@@ -44665,6 +44681,12 @@ const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 6] = [
     // policy module for it would require the import to run the other way -- a cycle, which DESIGN
     // section 4 makes the import graph's one structural prohibition.
     "v2.workflow.floor_enrolment_margin",
+    // The terminal ledger's wire grammar (`render_terminal_ledger`, via `publish_terminal_ledger`).
+    // Enrolled so the ledger renders in a frame of the ONE prepared subject rather than through a
+    // second strict typecheck of its closure beside it: the closure is the floor's own authorities,
+    // already prepared, and a fresh resolve at publication duplicated that production while the
+    // subject was still resident (a std-root edit widened it past the leaf, gunbc#12846).
+    "v2.workflow.floor_terminal_ledger_wire",
 ];
 
 /// THE REQUIRED FLOOR, AS ONE ATTEMPT.
@@ -45072,7 +45094,7 @@ mod heartbeat_tests {
         )
         .ok()?;
         match out {
-            Value::Str(s) => Some(s.to_string()),
+            Value::Str(ref s) => Some(s.to_string()),
             _ => None,
         }
     }
@@ -45919,6 +45941,40 @@ mod required_floor_disposition_and_storage_agreement_law {
         );
     }
 
+    /// THE TWO CHANGED-SELECTION DECLINES ARE OUTSIDE THIS RUN'S UNIVERSE, as
+    /// `v2.workflow.required_floor` `cost_debt_roster_standing` maps them. The seed's former
+    /// `Some(_)` catch-all classed both as `DeclaredButNotWithheld` and refused a rostered identity
+    /// that the changed sublane declined; red on that arm, green on the named one.
+    #[test]
+    fn changed_selection_declines_are_outside_this_runs_universe() {
+        let roster = ident_set(&["m.wet", "m.outside"]);
+        let dispositions = disp_map(&[
+            (
+                "m.wet",
+                RequiredFloorDisposition::DeclinedNoCiWetLane {
+                    pattern: "wet_witness_test.dag".to_string(),
+                },
+            ),
+            (
+                "m.outside",
+                RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery {
+                    module_path: "m".to_string(),
+                },
+            ),
+        ]);
+
+        let rows = partition_cost_debt_roster(&roster, &dispositions);
+
+        assert_eq!(
+            standing_of(&rows, "m.wet"),
+            Some(CostDebtRosterStanding::OutsideThisRunsUniverse)
+        );
+        assert_eq!(
+            standing_of(&rows, "m.outside"),
+            Some(CostDebtRosterStanding::OutsideThisRunsUniverse)
+        );
+    }
+
     /// Only `DeclinedCostDebt` is debt. A declared identity carrying any other disposition was
     /// offered and not withheld, so it refuses — the pre-existing stale arm, preserved.
     #[test]
@@ -46374,7 +46430,8 @@ pub(crate) use emitted_closure_compile_host::{
     fixture_closure_summary, fixture_discrimination_passed, fixture_discrimination_report,
     run_append_concat_form_discrimination, run_argv_word_list_splice_discrimination,
     run_empty_map_turbofish_discrimination, run_fixture_closure_discrimination,
-    run_function_value_adapter_discrimination, run_nested_refinement_cast_discrimination,
+    run_function_value_adapter_discrimination, run_local_true_false_coproduct_discrimination,
+    run_native_bool_variant_discrimination, run_nested_refinement_cast_discrimination,
     run_phantom_marker_identity_discrimination, run_shell_projection_arity_discrimination,
     FixtureClosureOutcome,
 };
@@ -47133,140 +47190,45 @@ mod multi_entry_index_sharing_control_tests {
     }
 }
 
-/// PERMANENT CONTROLS FOR THE IMPORT UNION'S DERIVED VIEW (PR-2 of
-/// docs/plans/type-env-single-authority-design.md), one per defect the regen caught while it was
-/// built. Both drive the generated `v1.compiler.infer_env` and `v1.compiler.infer` functions
-/// directly over a pool built by `surface_pool_admit`, the one admission the compiler uses.
 #[cfg(test)]
-mod surface_view_controls {
-    use crate::v1_compiler_infer::view_over_pool;
-    use crate::v1_compiler_infer_env::{
-        ancestry_lookup, empty_surface_pool, surface_contested_walk, surface_pool_admit,
-        surface_reach_of, AncestryView, SurfaceImport, SurfacePool, TypeBinding,
-    };
-    use im::Vector;
+mod collect_node_values_depth_tests {
+    //! cli_run's private recursive Value walker, driven at the depth of
+    //! v1_interpreter value_depth_walker_tests (which carries the reasoning).
     use std::rc::Rc;
 
-    fn binding(name: &str) -> Rc<TypeBinding> {
-        Rc::new(TypeBinding {
-            name: name.to_string(),
-            resolved: crate::v1_compiler_infer::kernel_bool_type_node(),
-            provenance: Rc::new(crate::std_induction::SubValueRelation::SubValueUnknown),
-        })
-    }
+    use im::{vector as im_vec, HashMap};
 
-    fn own(names: &[&str]) -> Rc<im::HashMap<String, Rc<TypeBinding>>> {
-        Rc::new(names.iter().map(|n| (n.to_string(), binding(n))).collect())
-    }
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_interpreter::{ExecutionMode, InterpContext, Value};
 
-    fn imports(paths: &[&str]) -> Rc<Vector<Rc<SurfaceImport>>> {
-        Rc::new(
-            paths
-                .iter()
-                .map(|p| {
-                    Rc::new(SurfaceImport {
-                        module_path: p.to_string(),
-                        is_all: false,
-                        specific_names: Rc::new(Vector::new()),
-                    })
-                })
-                .collect(),
-        )
-    }
-
-    // A contested name's winner is produced once per module by the production walk, so a module is
-    // admitted with the table that walk computes over the pool as it stood, exactly as the realize
-    // loop admits it.
-    fn contested(
-        over: &[&str],
-        pool: &Rc<SurfacePool>,
-    ) -> Rc<im::HashMap<String, Rc<TypeBinding>>> {
-        surface_contested_walk(pool.clone(), Rc::new(im::HashMap::new()), imports(over))
-            .table
-            .clone()
-    }
-
-    fn admit(
-        pool: Rc<SurfacePool>,
-        module: String,
-        own_names: &[&str],
-        over: &[&str],
-    ) -> Rc<SurfacePool> {
-        let table = contested(over, &pool);
-        surface_pool_admit(pool, module, own(own_names), imports(over), table)
-    }
-
-    fn view(module: &str, over: &[&str], pool: Rc<SurfacePool>) -> Rc<AncestryView> {
-        let imports = imports(over);
-        Rc::new(AncestryView {
-            module_path: module.to_string(),
-            reach: surface_reach_of(imports.clone(), pool.clone()),
-            contested: contested(over, &pool),
-            imports,
-            kernel: Rc::new(im::HashMap::new()),
-            rewrites: Rc::new(im::HashMap::new()),
-            pool,
-        })
-    }
-
-    /// THE DESCENT IS ONE PATH. A diamond lattice 40 levels deep, two modules per level each
-    /// importing both of the level below, with the name exported at the bottom by two modules
-    /// (so it has two exporters and takes the union walk). A descent that branched into every
-    /// import holding the name would take about 2^40 steps; the one-path descent takes about
-    /// 2 x 40. The watchdog turns a hang into a red.
     #[test]
-    fn a_diamond_lattice_lookup_is_linear_in_depth() {
-        let (tx, rx) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            let mut pool = empty_surface_pool();
-            pool = admit(pool, "a0".into(), &["X"], &[]);
-            pool = admit(pool, "b0".into(), &["X"], &[]);
-            for level in 1..40 {
-                let below = [format!("a{}", level - 1), format!("b{}", level - 1)];
-                let below: Vec<&str> = below.iter().map(String::as_str).collect();
-                pool = admit(pool, format!("a{level}"), &[], &below);
-                pool = admit(pool, format!("b{level}"), &[], &below);
-            }
-            let found = ancestry_lookup(view("top", &["a39", "b39"], pool), "X".into()).is_some();
-            let _ = tx.send(found);
-        });
-        let found = rx.recv_timeout(std::time::Duration::from_secs(10)).expect(
-            "the lookup did not finish in 10s: the descent branches instead of following one path",
-        );
-        assert!(found);
-    }
-
-    /// RE-POINTING A VIEW RECOMPUTES ITS CLOSURE. Two pools admit the same modules in a different
-    /// order, so their ordinals differ. A view built over pool 1 and re-pointed at pool 2 through
-    /// `view_over_pool` must still find a name its closure exports; the same view carrying pool 1's
-    /// bitset over pool 2 must not (that is the stale-bitset defect, and this arm shows the control
-    /// discriminates it).
-    #[test]
-    fn a_view_repointed_across_pools_recomputes_its_closure() {
-        let admit = |order: &[&str]| {
-            let mut pool = empty_surface_pool();
-            for m in order {
-                let (own_names, over): (&[&str], &[&str]) = match *m {
-                    "a" => (&["FromA"], &[]),
-                    "b" => (&["FromB"], &[]),
-                    _ => (&[], &["a"]),
-                };
-                pool = admit(pool, m.to_string(), own_names, over);
-            }
-            pool
+    fn a_deep_chain_is_walked_for_node_values() {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
         };
-        let pool1 = admit(&["a", "b", "c"]);
-        let pool2 = admit(&["b", "a", "c"]);
-        let built = view("d", &["c"], pool1);
-        let repointed = view_over_pool(built.clone(), pool2.clone());
-        assert!(ancestry_lookup(repointed, "FromA".into()).is_some());
-        let stale = Rc::new(AncestryView {
-            pool: pool2,
-            ..(*built).clone()
-        });
-        assert!(
-            ancestry_lookup(stale, "FromA".into()).is_none(),
-            "a carried-over bitset happened to agree; the control would not discriminate"
+        let ctx = InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic);
+        let (chain, link, end, next) = (
+            ctx.sym("Chain"),
+            ctx.sym("Link"),
+            ctx.sym("End"),
+            ctx.sym("next"),
         );
+        let mut value = Value::Variant {
+            type_name: chain,
+            variant_name: end,
+            fields: Rc::new(vec![]),
+        };
+        for _ in 0..262_144 {
+            value = Value::Variant {
+                type_name: chain,
+                variant_name: link,
+                fields: Rc::new(vec![(next, value)]),
+            };
+        }
+        let mut out = Vec::new();
+        super::collect_node_values(&value, &ctx, &mut out);
     }
 }

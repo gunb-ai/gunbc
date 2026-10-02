@@ -1360,6 +1360,55 @@ mod compiler_tests {
         );
     }
 
+    /// THE ARMS OF A NATIVELY REALIZED COPRODUCT, JUDGED BY RUSTC, AND THE IDENTITY CONTROL BESIDE IT.
+    ///
+    /// The subject is `v1.compiler.emit_rust` `rust_native_variant_spelling`: an arm of a
+    /// coproduct that realizes natively (std.types Bool over Rust `bool`) is spelled as the
+    /// carrier value its declaration-keyed row names, in value, pattern and nested-pattern
+    /// position. The first pair's control is that fixture and must COMPILE; before the rows it
+    /// emitted `Bool::True` against a `bool` and rustc refused it. The second pair's control is a
+    /// module-local coproduct whose arms are spelled True/False, which has no row and must keep its own enum -- the
+    /// evidence that the rows are keyed on identity rather than on the spelling. Both reds are
+    /// the route's own adjudicated red.
+    ///
+    /// #[ignore] AND WHY, on the same terms as the pairs beside it: each pair spawns cargo and
+    /// compiles two emitted crates. It is RUNNABLE ON DEMAND -- `cargo test --release -p
+    /// v1-compiler --lib native_bool_variant_fixture_closure_discrimination -- --ignored`. No CI
+    /// path invokes it (gunbc.rung_drop rust_unit_tests_off_the_merge_path); the emitted-bytes
+    /// half that does run on the floor is test.claim.native_variant_realization_witness_test.
+    #[test]
+    #[ignore]
+    fn native_bool_variant_fixture_closure_discrimination() {
+        let probe_root = crate::cli_run::local_emit_compile_probe_root().unwrap();
+        for (label, pair) in [
+            (
+                "native-bool-variant",
+                crate::cli_run::run_native_bool_variant_discrimination(&probe_root),
+            ),
+            (
+                "local-true-false-coproduct",
+                crate::cli_run::run_local_true_false_coproduct_discrimination(&probe_root),
+            ),
+        ] {
+            for line in crate::cli_run::fixture_discrimination_report(&pair) {
+                eprintln!("{} {}", label, line);
+            }
+            assert!(
+                crate::cli_run::fixture_closure_reached_rustc(&pair.red),
+                "{}: the red arm never reached a rustc verdict: {}",
+                label,
+                crate::cli_run::fixture_closure_summary(&pair.red)
+            );
+            assert!(
+                crate::cli_run::fixture_discrimination_passed(&pair),
+                "{}: the control must COMPILE and the route red must still be refused by rustc in its own module; control={} red={}",
+                label,
+                crate::cli_run::fixture_closure_summary(&pair.green),
+                crate::cli_run::fixture_closure_summary(&pair.red)
+            );
+        }
+    }
+
     /// THE PHANTOM-MARKER POSITION PAIR, JUDGED BY RUSTC, THROUGH THE FIXTURE-CLOSURE ROUTE.
     ///
     /// NOT THE BROAD-VERSUS-POSITIONAL CLASSIFIER DISCRIMINATOR. That one's arms are two
@@ -2786,7 +2835,7 @@ mod compiler_tests {
                 // that only proves the refusal stopped is indistinguishable from
                 // deleting the wall.
                 let peel_src = |call: &str| {
-                    format!("module peel\ntype Tight = String where non_empty\nfn f(s: Tight) -> Int {{ s |> {} }}\n", call)
+                    format!("module peel\ntype Tight = String where string_non_empty\nfn f(s: Tight) -> Int {{ s |> {} }}\n", call)
                 };
                 let peel_green = compile_one("peel_green.dag", peel_src("count"));
                 assert!(
@@ -4556,7 +4605,7 @@ mod compiler_tests {
 
     // White-box witnesses for gunbc#12132: the measured compile's binding authority consumes the
     // resolver's exact-one judgment (lookup_unit_variant_phantom_type), not bare key presence.
-    // str_bindings and the ancestry view are EMPTY, so the first arm cannot intercept and only the
+    // str_bindings and ancestry_str_bindings are EMPTY, so the first arm cannot intercept and only the
     // contribution map decides. One test per case, so each reading fails on its own. The census claims
     // beside these cannot discriminate the two readings: the resolver and emitter refuse those leaves
     // before the measure runs.
@@ -5991,16 +6040,11 @@ mod compiler_tests {
                     eprint!("  {:>35} ({:>3} items) ... ", name, item_count);
 
                     let module_index = std::rc::Rc::new(mi_raw.clone());
-                    let pool = crate::v1_compiler_infer::surface_pool_from_index(
-                        module_index.clone(),
-                        source_indices.clone(),
-                    );
 
                     let t_unres = Instant::now();
                     let _unres = crate::v1_compiler_infer::build_type_env_unresolved(
                         resolved.clone(),
                         module_index.clone(),
-                        pool.clone(),
                         source_indices.clone(),
                         intern_table.clone(),
                     );
@@ -6027,7 +6071,6 @@ mod compiler_tests {
                     let env_result = crate::v1_compiler_infer::build_type_env(
                         resolved.clone(),
                         module_index.clone(),
-                        pool.clone(),
                         source_indices.clone(),
                         intern_table.clone(),
                         crate::v1_compiler_infer_env::empty_symbol_index(),
@@ -6065,7 +6108,6 @@ mod compiler_tests {
                     let tc_result = crate::v1_compiler_infer::typecheck_module(
                         resolved.clone(),
                         module_index.clone(),
-                        pool.clone(),
                         variant_surfaces.clone(),
                         source_indices.clone(),
                         intern_table.clone(),

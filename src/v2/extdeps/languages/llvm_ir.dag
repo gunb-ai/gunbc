@@ -51,7 +51,7 @@ import v2.std.model_core {
   ModelCoreFactAxisWidth
 }
 import v2.std.nat { Nat }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode }
 
 type FloatKind
   = HalfFloat
@@ -492,7 +492,18 @@ fn block_successors(t: Terminator) -> List<Symbol> {
 fn block_well_formed(b: BasicBlock) -> Bool {
   match b.terminator {
     CatchSwitch { result: _, parent_pad: _, handlers: _, unwind: _ } => count(b.body) == 0
-    _ => true
+    RetVoid => true
+    RetValue { value: _ } => true
+    UnconditionalBr { target: _ } => true
+    ConditionalBr { condition: _, if_true: _, if_false: _ } => true
+    Switch { value: _, default_target: _, cases: _ } => true
+    IndirectBr { address: _, possible_targets: _ } => true
+    Unreachable => true
+    Invoke { callee: _, arguments: _, result: _, normal_target: _, unwind_target: _ } => true
+    CallBr { callee: _, arguments: _, result: _, fallthrough: _, indirect_targets: _ } => true
+    Resume { value: _ } => true
+    CleanupRet { cleanup_pad: _, unwind: _ } => true
+    CatchRet { catch_pad: _, successor: _ } => true
   }
 }
 
@@ -616,19 +627,19 @@ fn llvm_integer_facts_node(facts: LlvmIntegerPrimitiveFacts) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
+        label: Authored { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
         target: llvm_inhabitant_atom(id: facts.surface_spelling)
       },
       Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisWidth {}) },
+        label: Authored { name: discriminant(v: ModelCoreFactAxisWidth {}) },
         target: llvm_integer_bits_node(bits: facts.bits)
       },
       Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
+        label: Authored { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
         target: llvm_inhabitant_atom(id: ^llvm_repr_sign_agnostic_integer)
       },
       Edge {
-        label: Named { name: ^llvm_facts_field_std_projection },
+        label: Authored { name: ^llvm_facts_field_std_projection },
         target: llvm_inhabitant_atom(id: facts.std_projection)
       }
     ],
@@ -641,15 +652,15 @@ fn llvm_float_facts_node(facts: LlvmFloatPrimitiveFacts) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
+        label: Authored { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
         target: llvm_inhabitant_atom(id: facts.surface_spelling)
       },
       Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
+        label: Authored { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
         target: llvm_float_kind_node(kind: facts.kind)
       },
       Edge {
-        label: Named { name: ^llvm_facts_field_std_projection },
+        label: Authored { name: ^llvm_facts_field_std_projection },
         target: llvm_inhabitant_atom(id: facts.std_projection)
       }
     ],
@@ -776,7 +787,8 @@ fn llvm_lex() -> LexRules {
         llvm_lex_token(token_class: ^llvm_token_rparen, pattern: LiteralPattern { text: ")" }),
         llvm_lex_token(token_class: ^llvm_token_lbrace, pattern: LiteralPattern { text: "{" }),
         llvm_lex_token(token_class: ^llvm_token_rbrace, pattern: LiteralPattern { text: "}" })
-      ]
+      ],
+      modes: []
     }
   }
 }

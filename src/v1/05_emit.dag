@@ -1,6 +1,6 @@
 module v1.compiler.emit
 
-import std.occurrence_identity { OccurrenceSynthetic, OccurrenceMinted, OccurrenceProjected, OccurrenceId, NodeOccurrenceIdentity, occurrence_id_eq }
+import std.occurrence_identity { OccurrenceSynthetic, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceId, NodeOccurrenceIdentity, occurrence_id_eq }
 
 import std.coercion { TypeRealizationDecision }
 
@@ -189,7 +189,7 @@ fn emit_simple_expr(expr: Node, target: RenderTarget, source_indices: Map<String
         let base_is_fn = match b.expr_data {
           ExprVar { binding_kind: bk } => match bk {
             Present { value: MatchBoundBinding } => false
-            Present { value: VariantValueBinding { parent_enum: _ } } => false
+            Present { value: VariantValueBinding { parent_enum: _, parent_identity: _ } } => false
             _ => true
           }
           _ => false
@@ -2914,7 +2914,7 @@ fn extract_string_interp_parts(expr: Node) -> List<StringPart> {
 }
 
 // WHY AN ACCEPTED CAST CAN HAVE NOTHING FOR THE HOST TO DO, AND WHY THAT IS DECIDED ON STRUCTURE.
-// `type NonEmptyStr = String where non_empty` and `type PathSegment = NonEmptyStr where
+// `type NonEmptyStr = String where string_non_empty` and `type PathSegment = NonEmptyStr where
 // brand("PathSegment")` are three .dag types over ONE host carrier: each of them emits as the
 // target's String. A source cast between any two of them changes which accepted .dag type the value
 // inhabits and asks the target for no operation whatsoever, so the emission is the operand
@@ -3010,6 +3010,7 @@ fn occurrence_identity_id(identity: NodeOccurrenceIdentity) -> OccurrenceId? {
   match identity {
     OccurrenceMinted { id: id } => Present { value: id }
     OccurrenceProjected { id: id, caused_by: _ } => Present { value: id }
+    OccurrencePending { caused_by: _ } => none
     OccurrenceSynthetic => none
   }
 }
@@ -3595,7 +3596,7 @@ fn emit_unified_pattern(pattern: MatchPattern, target: RenderTarget, source_indi
   match pattern {
     Bind { declaration: declaration } => emit_ident(name: declaration.name, target: target)
     LitPattern { value: v } => emit_literal(value: v, target: target)
-    VariantPattern { name: n, parent_enum: pe, field_bindings: fbs } =>
+    VariantPattern { name: n, parent_enum: pe, field_bindings: fbs, parent_identity: _ } =>
       emit_unified_variant_pattern(name: n, parent_enum: pe, field_bindings: fbs, target: target, source_indices: source_indices)
     Wildcard => "_"
   }
@@ -3673,7 +3674,7 @@ fn emit_arm_guard(arm: Node, target: RenderTarget, render_guard_expr: fn(Node) -
 
 fn emit_go_match_arm_bindings(arm: Node, indent_level: Int, source_indices: Map<String, NewlineIndex>) -> String {
   match arm_pattern(n: arm) {
-    VariantPattern { name: _, parent_enum: _, field_bindings: fbs } =>
+    VariantPattern { name: _, parent_enum: _, field_bindings: fbs, parent_identity: _ } =>
       if fbs |> count == 0 { "" } else {
         fbs |> map(fb => concat(make_indent(level: indent_level), emit_ident(name: field_binding_name_at(n: fb, source_indices: source_indices), target: Go), " := __gunbcMatch.", emit_export_ident(name: field_binding_name_at(n: fb, source_indices: source_indices), target: Go), "\n")) |> join(separator: "")
       }

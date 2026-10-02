@@ -1,0 +1,40 @@
+module test.probe.alias_head_identity_accepts_probe
+
+// THIS MODULE MUST RESOLVE CLEAN AT EVERY SITE BELOW (test.claim.alias_head_identity_probe_witness_test
+// enrolls it as the accepted control). A transparent alias of a record receives its own body's literal
+// and value, and a transparent alias of an application receives that application's literal: each
+// head agrees by the DeclarationRef resolve wrote on the alias's right-hand side, in the alias's own
+// scope. Before that identity reached v1 infer, `non_generic_alias_peels` was refused at the head.
+import std.algebra { FieldOfFractions }
+import std.nat { Nat }
+import std.integer { Int }
+
+type Tp = FieldOfFractions<Nat>
+
+type WrScratchRec { x: Int }
+
+type WrScratchRecAlias = WrScratchRec
+
+fn floor_of(t: Tp) -> Nat {
+  t.num
+}
+
+fn px(p: WrScratchRecAlias) -> Int {
+  p.x
+}
+
+fn non_generic_alias_peels() -> Int {
+  px(p: WrScratchRec { x: 1 })
+}
+
+fn mk_rec() -> WrScratchRec {
+  WrScratchRec { x: 1 }
+}
+
+fn non_generic_alias_value() -> Int {
+  px(p: mk_rec())
+}
+
+fn nat_literal_into_generic_alias() -> Nat {
+  floor_of(t: FieldOfFractions { num: 1, denom: 2 })
+}

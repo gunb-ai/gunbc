@@ -107,7 +107,7 @@ fn expect_pool_roots(
     let mut out = Vec::new();
     for item in items {
         match item {
-            Value::Str(s) => out.push(s.to_string()),
+            Value::Str(ref s) => out.push(s.to_string()),
             other => {
                 return Err(InterpError::TypeError {
                     msg: format!("{what} expects `{param}: List<String>`, got element {other:?}"),
@@ -188,7 +188,7 @@ fn edge_named(ctx: &InterpContext, name: &str, target: Value) -> Value {
                 ctx.sym("label"),
                 Value::Variant {
                     type_name: ctx.sym("EdgeLabel"),
-                    variant_name: ctx.sym("Named"),
+                    variant_name: ctx.sym("Authored"),
                     fields: Rc::new(vec![(ctx.sym("name"), str_value(name.to_string()))]),
                 },
             ),
@@ -1216,17 +1216,19 @@ fn hoist_call_arg_string_literal_edges(
     node: &Rc<Node>,
     edges: &mut Vec<Value>,
 ) {
-    if let Some(literal_edge) = marshal_string_literal_atom(ctx, node) {
-        edges.push(literal_edge);
-        return;
-    }
-    if let Some(child0) = node.children.first() {
-        if let Some(literal_edge) = marshal_string_literal_atom(ctx, child0) {
+    crate::v1_interpreter::value_depth_guarded(|| {
+        if let Some(literal_edge) = marshal_string_literal_atom(ctx, node) {
             edges.push(literal_edge);
-        } else {
-            hoist_call_arg_string_literal_edges(ctx, child0, edges);
+            return;
         }
-    }
+        if let Some(child0) = node.children.first() {
+            if let Some(literal_edge) = marshal_string_literal_atom(ctx, child0) {
+                edges.push(literal_edge);
+            } else {
+                hoist_call_arg_string_literal_edges(ctx, child0, edges);
+            }
+        }
+    })
 }
 
 fn should_emit_nullary_variant_value_atom(binding_kind: Option<&Rc<VarBindingKind>>) -> bool {
@@ -2506,6 +2508,9 @@ mod parse_only_uppercase_variant_regression_tests {
             Rc::new(ExprData::ExprVar {
                 binding_kind: Some(Rc::new(VarBindingKind::VariantValueBinding {
                     parent_enum: "Parent".to_string(),
+                    parent_identity: Rc::new(
+                        crate::std_target_representation::VariantParentIdentity::VariantParentBeforeInference,
+                    ),
                 })),
             }),
             empty_node_list(),
@@ -2668,7 +2673,7 @@ mod parse_only_uppercase_variant_regression_tests {
 
     fn first_child_target(ctx: &InterpContext, skel: &Value) -> Option<Value> {
         match field(ctx, skel, "children") {
-            Some(Value::List(items)) => items
+            Some(Value::List(ref items)) => items
                 .iter()
                 .next()
                 .and_then(|edge| field(ctx, edge, "target")),

@@ -343,7 +343,7 @@ fn empty_type_env() -> Rc<TypeEnv> {
         str_bindings: Rc::new(im::HashMap::new()),
         unit_variant_index: Rc::new(im::HashMap::new()),
         unit_variant_index_observed: false,
-        ancestry: v1_compiler::v1_compiler_infer_env::empty_ancestry_view(),
+        ancestry_str_bindings: Rc::new(im::HashMap::new()),
         parents: Rc::new(vec![]),
         recursive_types: Rc::new(vec![]),
         recursive_type_set: Rc::new(im::HashMap::new()),
@@ -413,6 +413,9 @@ fn variant_arm(name: &str) -> Rc<Node> {
             name: name.to_string(),
             parent_enum: None,
             field_bindings: Rc::new(vec![]),
+            parent_identity: Rc::new(
+                v1_compiler::std_target_representation::VariantParentIdentity::VariantParentBeforeInference,
+            ),
         }),
         None,
         unit_expr(),
@@ -932,6 +935,9 @@ fn optional_present_absent_patterns_keep_canonical_names() {
             name: "Present".to_string(),
             parent_enum: None,
             field_bindings: Rc::new(vec![]),
+            parent_identity: Rc::new(
+                v1_compiler::std_target_representation::VariantParentIdentity::VariantParentBeforeInference,
+            ),
         }),
         subject.clone(),
         zero_span(),
@@ -942,6 +948,9 @@ fn optional_present_absent_patterns_keep_canonical_names() {
             name: "Absent".to_string(),
             parent_enum: None,
             field_bindings: Rc::new(vec![]),
+            parent_identity: Rc::new(
+                v1_compiler::std_target_representation::VariantParentIdentity::VariantParentBeforeInference,
+            ),
         }),
         subject,
         zero_span(),
@@ -1090,6 +1099,9 @@ fn real_optional_coproduct_preserves_present_absent_pattern_names() {
             name: "Present".to_string(),
             parent_enum: None,
             field_bindings: Rc::new(vec![]),
+            parent_identity: Rc::new(
+                v1_compiler::std_target_representation::VariantParentIdentity::VariantParentBeforeInference,
+            ),
         }),
         subject,
         zero_span(),
@@ -1114,7 +1126,7 @@ fn optional_match_exhaustiveness_reports_missing_absent() {
             str_bindings: Rc::new(im::HashMap::new()),
             unit_variant_index: Rc::new(im::HashMap::new()),
             unit_variant_index_observed: false,
-            ancestry: v1_compiler::v1_compiler_infer_env::empty_ancestry_view(),
+            ancestry_str_bindings: Rc::new(im::HashMap::new()),
             parents: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: Rc::new(im::HashMap::new()),
@@ -1145,7 +1157,7 @@ fn optional_match_exhaustiveness_rejects_some_and_none() {
             str_bindings: Rc::new(im::HashMap::new()),
             unit_variant_index: Rc::new(im::HashMap::new()),
             unit_variant_index_observed: false,
-            ancestry: v1_compiler::v1_compiler_infer_env::empty_ancestry_view(),
+            ancestry_str_bindings: Rc::new(im::HashMap::new()),
             parents: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: Rc::new(im::HashMap::new()),
@@ -1176,7 +1188,7 @@ fn optional_match_exhaustiveness_accepts_present_and_absent() {
             str_bindings: Rc::new(im::HashMap::new()),
             unit_variant_index: Rc::new(im::HashMap::new()),
             unit_variant_index_observed: false,
-            ancestry: v1_compiler::v1_compiler_infer_env::empty_ancestry_view(),
+            ancestry_str_bindings: Rc::new(im::HashMap::new()),
             parents: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: Rc::new(im::HashMap::new()),
@@ -1307,6 +1319,7 @@ fn resolve_node_uses_node_name_for_lookup() {
         name: "User".to_string(),
         resolved: leaf_node("User".to_string()),
         provenance: Rc::new(SubValueRelation::SubValueUnknown),
+        alias_rhs: None,
     });
     let env = Rc::new(TypeEnv {
         module_path: "".to_string(),
@@ -1318,7 +1331,7 @@ fn resolve_node_uses_node_name_for_lookup() {
         str_bindings: Rc::new(im::HashMap::from_iter([("User".to_string(), user_binding)])),
         unit_variant_index: Rc::new(im::HashMap::new()),
         unit_variant_index_observed: false,
-        ancestry: v1_compiler::v1_compiler_infer_env::empty_ancestry_view(),
+        ancestry_str_bindings: Rc::new(im::HashMap::new()),
         parents: Rc::new(vec![]),
         recursive_types: Rc::new(vec![]),
         recursive_type_set: Rc::new(im::HashMap::new()),
@@ -2047,6 +2060,7 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
         name: "Box".to_string(),
         resolved: box_decl.clone(),
         provenance: Rc::new(SubValueRelation::SubValueUnknown),
+        alias_rhs: None,
     });
     let env = Rc::new(TypeEnv {
         module_path: "".to_string(),
@@ -2058,7 +2072,7 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
         str_bindings: Rc::new(im::HashMap::from_iter([("Box".to_string(), box_binding)])),
         unit_variant_index: Rc::new(im::HashMap::new()),
         unit_variant_index_observed: false,
-        ancestry: v1_compiler::v1_compiler_infer_env::empty_ancestry_view(),
+        ancestry_str_bindings: Rc::new(im::HashMap::new()),
         parents: Rc::new(vec![]),
         recursive_types: Rc::new(vec![]),
         recursive_type_set: Rc::new(im::HashMap::new()),
@@ -2143,6 +2157,7 @@ fn call_target_agreeing_scope_maps_are_locally_bound() {
             name: "real_callee".to_string(),
             resolved: leaf_node("Int".to_string()),
             provenance: Rc::new(v1_compiler::std_induction::SubValueRelation::PreservedValue),
+            alias_rhs: None,
         }),
     );
     let scope = Rc::new(InferScope {

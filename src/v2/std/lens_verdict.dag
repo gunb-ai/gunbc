@@ -1,6 +1,6 @@
 module v2.std.lens_verdict
 
-import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic }
+import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
 import v2.std.algebra { fold_list }
 import v2.std.diagnostic {
   ByteRange,
@@ -126,6 +126,8 @@ fn lens_verdict_node_occurrence_text(node: Node) -> String {
       concat("<node occurrence #", concat(integer_int_to_decimal_string(value: id.value), concat(atom, ">")))
     OccurrenceProjected { id: id, caused_by: _ } =>
       concat("<projected node occurrence #", concat(integer_int_to_decimal_string(value: id.value), concat(atom, ">")))
+    OccurrencePending { caused_by: cause } =>
+      concat("<pending node occurrence caused by #", concat(integer_int_to_decimal_string(value: cause.value), concat(atom, ">")))
   }
 }
 

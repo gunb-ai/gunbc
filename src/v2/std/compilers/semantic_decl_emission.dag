@@ -67,13 +67,13 @@ import v2.std.node {
   Conj,
   Disj,
   Edge,
-  Named,
+  Authored, StructuralLabel,
   Node,
   Positional,
   Symbol,
   TypeNode,
 }
-import v2.std.node_query { find_named_child }
+import v2.std.node_query { declared_field_from_edge, find_named_child }
 import v2.std.type_binder { OpaqueTypeDecl, TypeAlias, GenericTypeDecl, PlainTypeDecl, type_decl_view }
 import v2.std.text { Char, CharAbsent, CharFound, String, string_head, string_tail }
 import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
@@ -381,7 +381,7 @@ fn semantic_decl_lex_rules_from_rows(rows: List<Node>) -> Outcome<LexRules> {
     ),
     f: fn(rules) {
       outcome_accepted(
-        value: ModeledLexRules { root: LexRuleSet { rules: rules } }
+        value: ModeledLexRules { root: LexRuleSet { rules: rules, modes: [] } }
       )
     }
   )
@@ -1476,32 +1476,41 @@ fn target_semantic_decl_field_surface_from_edge(
   projection: TargetSemanticDeclSurfaceProjection,
   type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<Node> {
-  match edge.label {
-    Named { name: fname } =>
-      match edge.target.kind {
+  match declared_field_from_edge(e: edge) {
+    Present { value: binder } =>
+      match binder.default {
+        Present { value: default } =>
+          outcome_rejected(d: Diagnostic {
+            reason: ^target_semantic_decl_field_default_unrealized,
+            at: node_locus(node: default),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          })
+        Absent =>
+      match binder.type_node.kind {
         TypeNode { connective: Atom { identity: tid } } =>
           if projection.field_type_permit_only_int && tid != ^Int {
             outcome_rejected(d: Diagnostic {
                   reason: ^target_semantic_decl_field_type_primitive_unsupported,
-                  at: node_locus(node: edge.target),
+                  at: node_locus(node: binder.type_node),
                   correction: Unavailable { reason: ExternalContractUnknown }
                 })
           } else {
-            target_semantic_decl_field_surface_resolved(name: fname, type_node: edge.target, projection: projection, type_binding: type_binding)
+            target_semantic_decl_field_surface_resolved(name: binder.name, type_node: binder.type_node, projection: projection, type_binding: type_binding)
           }
         _ =>
-          match declaration_reference_path_optional(node: edge.target) {
+          match declaration_reference_path_optional(node: binder.type_node) {
             Present { value: _ } =>
-              target_semantic_decl_field_surface_resolved(name: fname, type_node: edge.target, projection: projection, type_binding: type_binding)
+              target_semantic_decl_field_surface_resolved(name: binder.name, type_node: binder.type_node, projection: projection, type_binding: type_binding)
             Absent =>
               outcome_rejected(d: Diagnostic {
                 reason: ^target_semantic_decl_field_type_not_atom,
-                at: node_locus(node: edge.target),
+                at: node_locus(node: binder.type_node),
                 correction: Unavailable { reason: ExternalContractUnknown }
               })
           }
       }
-    Positional =>
+      }
+    Absent =>
       outcome_rejected(d: Diagnostic {
             reason: ^target_semantic_decl_field_not_named,
             at: node_locus(node: edge.target),
@@ -1975,7 +1984,7 @@ fn target_semantic_decl_tagged_union_variant_surface_from_edge(
   type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<Node> {
   match edge.label {
-    Named { name: vname } =>
+    Authored { name: vname } =>
       if coproduct_variant_edge_has_payload(edge: edge) {
         bind_outcome(
           o: target_semantic_decl_field_surfaces(
@@ -1995,6 +2004,12 @@ fn target_semantic_decl_tagged_union_variant_surface_from_edge(
       } else {
         outcome_accepted(value: target_semantic_decl_surface_variant_nullary(name: vname))
       }
+    StructuralLabel { label: _ } =>
+      outcome_rejected(d: Diagnostic {
+            reason: ^target_semantic_decl_variant_not_named,
+            at: node_locus(node: edge.target),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          })
     Positional =>
       outcome_rejected(d: Diagnostic {
             reason: ^target_semantic_decl_variant_not_named,
@@ -2038,7 +2053,7 @@ fn target_semantic_decl_variant_surface_from_edge(
   type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<Node> {
   match edge.label {
-    Named { name: vname } =>
+    Authored { name: vname } =>
       if coproduct_variant_edge_has_payload(edge: edge) {
         bind_outcome(
           o: target_semantic_decl_field_surfaces(
@@ -2055,6 +2070,12 @@ fn target_semantic_decl_variant_surface_from_edge(
       } else {
         outcome_accepted(value: target_semantic_decl_surface_variant_nullary(name: vname))
       }
+    StructuralLabel { label: _ } =>
+      outcome_rejected(d: Diagnostic {
+            reason: ^target_semantic_decl_variant_not_named,
+            at: node_locus(node: edge.target),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          })
     Positional =>
       outcome_rejected(d: Diagnostic {
             reason: ^target_semantic_decl_variant_not_named,

@@ -36,6 +36,7 @@ import gunbc.machine_intake_mtcollins1_kvm_still {
   KvmInstant, KvmJournalEvent, KvmJournalRendered, KvmJournalRenderRefused, kvm_journal_line,
   KvmJournalConnectionRequested, KvmJournalConnectionOpen, KvmJournalEstablished, KvmJournalStill,
   KvmJournalStopRequested, KvmJournalSessionRelease, KvmJournalBrowserClose, KvmJournalStopped,
+  KvmJournalRefused, KvmNoFrame,
 }
 
 // THE DRY REALIZATION OF ONE mtcollins1 BOOT ATTEMPT'S WHOLE EFFECT DEMAND. The scenario world
@@ -483,8 +484,14 @@ fn operation_input_list(call: OperationCall, name: String) -> List<String>? {
 }
 
 // kvm_observer_launch_in's operands end the node command: base URL, user, credential path, dir,
-// attempt, cadence, frame wait, periodic limit, playwright module.
-data kvm_observer_operand_count: Int = 9
+// attempt, cadence, frame wait, periodic limit, playwright module, viewer feature-list path.
+data kvm_observer_operand_count: Int = 10
+
+// THE VIEWER READS ITS FEATURE LIST UNGUARDED (KVM probe run 36788605665): the healthy viewer reaches
+// established only when the feature-list operand names a file the launch wrote; without one the vendor's
+// viewer throws in its KVM view's initialize() and never opens /kvm, which the observer journals as a
+// refusal for want of a frame.
+data kvm_observer_features_operand: Int = 9
 
 fn kvm_operand(command: List<String>, i: Int) -> String {
   match command.skip(n: count(command) - kvm_observer_operand_count + i).first() { Present { value: v } => v Absent => "" }
@@ -511,11 +518,17 @@ fn owned_launch_handler(w: MtCollins1BootWorld, call: OperationCall) -> Operatio
           Present { value: at } => {
             let dir = kvm_operand(command: command, i: 3)
             let p = ModeledProcess { pid: w.worker.next_pid, start_time: start_ticks(w: w, now: call.now), comm: "node", cmdline: join(command, " "), capture_path: "", diagnostic_path: "", alive: true }
-            let journal = kvm_lines(events: [
-              KvmJournalConnectionRequested { at: at },
-              KvmJournalConnectionOpen { at: at, gen: kvm_observer_generation },
-              KvmJournalEstablished { at: at, host: concat("\"", concat(url_host(base_url: kvm_operand(command: command, i: 0)), "\"")), session: w.screen.session, attempt: kvm_operand(command: command, i: 4), gen: kvm_observer_generation },
-            ])
+            let features = kvm_operand(command: command, i: kvm_observer_features_operand)
+            let seeded = features != "" && match fs_file(fs: w.fs, path: features) { Present { value: _ } => true  Absent => false }
+            let journal = if seeded {
+              kvm_lines(events: [
+                KvmJournalConnectionRequested { at: at },
+                KvmJournalConnectionOpen { at: at, gen: kvm_observer_generation },
+                KvmJournalEstablished { at: at, host: concat("\"", concat(url_host(base_url: kvm_operand(command: command, i: 0)), "\"")), session: w.screen.session, attempt: kvm_operand(command: command, i: 4), gen: kvm_observer_generation },
+              ])
+            } else {
+              kvm_lines(events: [KvmJournalRefused { at: at, refusal: KvmNoFrame { detail: "\"the viewer was opened without its feature list\"" } }])
+            }
             match journal {
               KvmModeledRefused { event_word: word, would_write: line } => OperationHarnessFault { reason: concat("kvm_journal_line refused the modeled ", concat(word, concat(" line: ", line))) as NonEmptyStr }
               KvmModeledRendered { text: t } => {
