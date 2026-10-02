@@ -579,6 +579,27 @@ fn sandbox_page() -> Fragment {
 // a claim about the gallery or the live instances does not pay for a stylesheet it never reads.
 // sandbox_page passes sandbox_css(); a claim about the stylesheet reads sandbox_css directly.
 fn sandbox_page_with_stylesheet(stylesheet: String) -> Fragment {
+  sandbox_page_with(stylesheet: stylesheet, sections: sandbox_sections())
+}
+
+// The sandbox's sections, in page order: the register at every depth, then every component in
+// every state.
+fn sandbox_sections() -> List<Fragment> {
+  [
+    round_strip_lab_section(),
+    instrument_labs_section(),
+    roles_section(),
+    scales_section(),
+    gallery_section(),
+    live_section(),
+    work_row_fixture_section(),
+    family_fixture_section(),
+  ]
+}
+
+// The page fold over supplied sections: the header, the auditioner bar, the sections and the client
+// asset. A claim about one section reads it through this fold without building the other seven.
+fn sandbox_page_with(stylesheet: String, sections: List<Fragment>) -> Fragment {
   Element {
     tag: "html",
     attributes: [],
@@ -596,16 +617,7 @@ fn sandbox_page_with_stylesheet(stylesheet: String) -> Fragment {
               attr(name: "type", value: "button" ),
             ], []) ],
           map(workspace_band_paints(), p => band_chip(key: p.key)))),
-        el_class("main", "sandbox", [
-          round_strip_lab_section(),
-          instrument_labs_section(),
-          roles_section(),
-          scales_section(),
-          gallery_section(),
-          live_section(),
-          work_row_fixture_section(),
-          family_fixture_section(),
-        ]),
+        el_class("main", "sandbox", sections),
         Element {
           tag: "script",
           attributes: [
