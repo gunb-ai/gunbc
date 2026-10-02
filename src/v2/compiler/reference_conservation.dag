@@ -19,7 +19,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.std.algebra { fold_list, length }
 import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
-import v2.std.compilers.lexing { ModeledLexRules, TokenRule, TriviaRule, AnnotationRule, VoidLexRules }
+import v2.std.compilers.lexing { ModeledLexRules, VoidLexRules, lex_rule_set_token_class_map }
 import v2.std.diagnostic {
   Accepted,
   ByteRange,
@@ -290,18 +290,7 @@ fn authored_atom_from_identity(
 fn declared_token_classes(lm: LanguageModel) -> Map<Symbol, Bool> {
   match lm.lex {
     VoidLexRules => empty_map()
-    ModeledLexRules { root: rule_set } =>
-      fold_list(
-        xs: rule_set.rules,
-        empty: empty_map(),
-        cons: fn(acc, rule) {
-          match rule {
-            TokenRule { token_class: c, pattern: _ } => map_insert(m: acc, key: c, value: true)
-            TriviaRule { pattern: _ } => acc
-            AnnotationRule { annotation_class: _, pattern: _ } => acc
-          }
-        }
-      )
+    ModeledLexRules { root: rule_set } => lex_rule_set_token_class_map(rules: rule_set)
   }
 }
 

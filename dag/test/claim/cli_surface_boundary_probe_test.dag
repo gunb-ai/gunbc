@@ -44,7 +44,8 @@ fn probe_lex_rules() -> ModeledLexRules {
         TokenRule { token_class: ^probe_dash_option, pattern: LiteralPattern { text: "--color" } },
         TokenRule { token_class: ^probe_equals, pattern: LiteralPattern { text: "=" } },
         TokenRule { token_class: ^probe_value, pattern: LiteralPattern { text: "never" } },
-      ]
+      ],
+      modes: []
     }
   }
 }
