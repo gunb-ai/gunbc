@@ -19,7 +19,8 @@ import v2.std.node {
   symbol_intern_lexeme
 }
 
-// THE VOCABULARY OF AN ARROW'S CONTRACT EDGES (XL-2 PR2a; docs/plans/arrow-contract-edges.md).
+// THE VOCABULARY OF AN ARROW'S CONTRACT EDGES (the resource-requirements edge's vocabulary is the open
+// set of declared resources, checked at resolution; see arrow_resource_requirements_edge_target_reads) (XL-2 PR2a; docs/plans/arrow-contract-edges.md).
 // v2.std.node owns the edges' structure (at most one each, never a binder). This module checks their
 // TARGETS against the vocabularies' homes: std.effects EffectClaim for ^arrow_effect_claims_edge and
 // std.execution_mode ExecutionMode for ^arrow_execution_mode_claim_edge. Each label is the PROJECTION
@@ -37,9 +38,15 @@ fn effect_claim_label(claim: EffectClaim) -> Symbol {
 // Only Hermetic is a claimable mode: `hermetic` declares that an operation is admissible on the
 // hermetic route, and no surface spelling claims Wet or Record. The match is exhaustive, so a mode
 // added to std.execution_mode must be decided here, claimable or not.
+// The one spelling of the claimable mode's label: the projection of std.execution_mode Hermetic, read by
+// execution_mode_claims_label and by the lowering that emits the claim.
+fn hermetic_claim_label() -> Symbol {
+  symbol_intern_lexeme(lexeme: "hermetic")
+}
+
 fn execution_mode_claims_label(mode: ExecutionMode, label: Symbol) -> Bool {
   match mode {
-    Hermetic => label == symbol_intern_lexeme(lexeme: "hermetic")
+    Hermetic => label == hermetic_claim_label()
     Wet => false
     Record => false
   }
@@ -100,7 +107,29 @@ fn arrow_execution_mode_claim_target_conforms(mode: Node) -> Bool {
 // Every contract edge an Arrow carries reads in its home vocabulary. How many of each it may carry is
 // v2.std.node arrow_signature_edges_conform's fact; a second edge refuses there.
 fn arrow_contract_conforms(children: List<Edge>) -> Bool {
-  arrow_effect_claims_edge_target_reads(children: children) && arrow_execution_mode_edge_target_reads(children: children)
+  arrow_effect_claims_edge_target_reads(children: children)
+    && arrow_execution_mode_edge_target_reads(children: children)
+    && arrow_resource_requirements_edge_target_reads(children: children)
+}
+
+// The resource-requirements target before resolution, one of THREE declared states (D13 ruling B): a
+// NONEMPTY Conj of resource references, whose members the Conj discipline holds named and distinct;
+// the childless Atom ^requirements_declared_none (`requires none`); or the childless Atom
+// ^requirements_opaque (`requires opaque`). An ABSENT edge is not a fourth state of this target: it is
+// an undeclared operation, which D13 step (b) reads as Undecided. Whether each
+// member names a declared resource, and whether two spellings name one, are facts of resolution
+// (v2.compiler.resolve), not of this pre-resolve wall.
+fn arrow_resource_requirements_edge_target_reads(children: List<Edge>) -> Bool {
+  match named_edge_target_lookup(children: children, name: ^arrow_resource_requirements_edge) {
+    Found { target: requirements } =>
+      match requirements.kind {
+        TypeNode { connective: Conj } => count(requirements.children) > 0
+        TypeNode { connective: Atom { identity: id } } =>
+          ((id == ^requirements_declared_none) || (id == ^requirements_opaque)) && (count(requirements.children) == 0)
+        _ => false
+      }
+    _ => true
+  }
 }
 
 fn arrow_effect_claims_edge_target_reads(children: List<Edge>) -> Bool {

@@ -52,14 +52,18 @@ import v2.test.manual.infer_ground_add { fixture_add_resolved_tree }
 fn pipeline_find_arrow_in_module(root: Node) -> Optional<Node> {
   match root.kind {
     TypeNode { connective: Arrow } => Present { value: root }
-    _ =>
-      fold(root.children, init: Absent, f: fn(acc, e) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => pipeline_find_arrow_in_module(root: e.target)
-        }
-      })
+    TypeNode { connective: _ } => pipeline_find_arrow_in_module_children(root: root)
+    ComputationNode { behavior: _ } => pipeline_find_arrow_in_module_children(root: root)
   }
+}
+
+fn pipeline_find_arrow_in_module_children(root: Node) -> Optional<Node> {
+  fold(root.children, init: Absent, f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => pipeline_find_arrow_in_module(root: e.target)
+    }
+  })
 }
 
 fn pipeline_arrow_body_has_behavior(root: Node, wanted: Behavior) -> Bool {
@@ -70,7 +74,7 @@ fn pipeline_arrow_body_has_behavior(root: Node, wanted: Behavior) -> Bool {
         Accepted { value: body, diagnostics: _ } =>
           match body.kind {
             ComputationNode { behavior: b } => b == wanted
-            _ => false
+            TypeNode { connective: _ } => false
           }
         Rejected { diagnostics: _ } => false
       }

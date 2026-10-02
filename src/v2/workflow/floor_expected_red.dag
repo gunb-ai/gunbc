@@ -365,12 +365,17 @@ fn floor_expected_red_chunk_04() -> List<String> {
      Cons { head: "test.claim.namespace_reference_derived_closure_acceptance.witness_namespace_reference_derived_closure_closing_contract_holds", tail: Cons { head: "test.claim.non_fold_residue_witness.non_fold_residue_clean_holds", tail: Cons { head: "test.claim.observation_raw_print_retirement_acceptance_test.observation_emit_frontier_is_zero", tail: Cons { head: "test.claim.operation_admit_callers_inert_witness.operation_form_admission_refuses_unadmitted_caller", tail:           Empty {} } } } }
 }
 
-// shell-typed-invocation's acceptance oracle: red until the USB gadget setup renders as described
-// operations (test.claim.shell.shell_typed_invocation_witness_test carries the reason). Its previous
-// home, test.claim.shell_to_dag_stub_witness_test, was deleted while the node's contract still named
-// it, so the first dispatched attempt (2026-09-06) could not be verified at all.
+// shell-typed-invocation's acceptance oracle. It was RED until the node's slice landed (2026-09-29):
+// the USB gadget setup now acts through typed commands -- each ConfigfsOp maps to an ArgvCommand
+// minted through a cited builder, to a typed attribute write, or to a typed refusal -- and the
+// assembled shell script is deleted, so the witness GREENS and this row left the roster by the
+// roster's own removal path: the counted un-quarantine, not a silent pass. Per DESIGN section
+// 4b(4) the greened probe itself does NOT retire; it stays enrolled as the permanent regression
+// control, now gating green instead of held red. Its previous home,
+// test.claim.shell_to_dag_stub_witness_test, was deleted while the node's contract still named it,
+// so the first dispatched attempt (2026-09-06) could not be verified at all.
 fn floor_expected_red_chunk_05() -> List<String> {
-  Cons { head: "test.claim.shell.shell_typed_invocation_witness_test.usb_gadget_setup_emits_no_shell_control_word", tail: Empty {} }
+  Empty {}
 }
 
 fn floor_expected_red_chunk_06() -> List<String> {
@@ -1178,7 +1183,7 @@ fn floor_expected_red_chunk_infer_checking_mode() -> List<String> {
 }
 
 fn floor_expected_red_chunks() -> List<List<String>> {
-  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_loaded_carrier_body_receipt(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Cons { head: floor_expected_red_chunk_emitted_add_algebra_ref_ungrounded(), tail: Cons { head: floor_expected_red_chunk_infer_checking_mode(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } }  }
+  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_loaded_carrier_body_receipt(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Cons { head: floor_expected_red_chunk_emitted_add_algebra_ref_ungrounded(), tail: Cons { head: floor_expected_red_chunk_infer_checking_mode(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } }   }
 }
 
 // Mock-totality's 21 expected-red rows were stale-quarantined by the explicit-import closure in

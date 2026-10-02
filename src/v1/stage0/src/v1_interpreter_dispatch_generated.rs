@@ -59,6 +59,7 @@ pub enum EvalBuiltinArm {
     FreeCallAtomIdentityHash,
     FreeCallObservedPeakResidentBytes,
     FreeCallObservedMonotonicNanos,
+    FreeCallObservedThreadCpuNanos,
     FreeCallHashCombine,
     FreeCallFilesystemRead,
     FreeCallToolchainHomeInterferenceProbe,
@@ -112,6 +113,7 @@ pub enum EvalBuiltinArm {
     FreeCallCompileDagImporterResolvedCallEdges,
     FreeCallCompileDagCallsiteResolvedCallEdges,
     FreeCallBuiltinFunctionRegistryKeys,
+    FreeCallCompileDagOperationRequires,
     FreeCallCompileDagPrimitiveCallEdges,
     FreeCallSourceRootIngestModuleIdentities,
     FreeCallRequiredFloorNominalSubjectModuleIdentities,
@@ -213,6 +215,7 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "atom_identity_hash" => Some(EvalBuiltinArm::FreeCallAtomIdentityHash),
         "observed_peak_resident_bytes" => Some(EvalBuiltinArm::FreeCallObservedPeakResidentBytes),
         "observed_monotonic_nanos" => Some(EvalBuiltinArm::FreeCallObservedMonotonicNanos),
+        "observed_thread_cpu_nanos" => Some(EvalBuiltinArm::FreeCallObservedThreadCpuNanos),
         "hash_combine" => Some(EvalBuiltinArm::FreeCallHashCombine),
         "filesystem_read" => Some(EvalBuiltinArm::FreeCallFilesystemRead),
         "toolchain_home_interference_probe" => Some(EvalBuiltinArm::FreeCallToolchainHomeInterferenceProbe),
@@ -266,6 +269,7 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "compile_dag_importer_resolved_call_edges" => Some(EvalBuiltinArm::FreeCallCompileDagImporterResolvedCallEdges),
         "compile_dag_callsite_resolved_call_edges" => Some(EvalBuiltinArm::FreeCallCompileDagCallsiteResolvedCallEdges),
         "builtin_function_registry_keys" => Some(EvalBuiltinArm::FreeCallBuiltinFunctionRegistryKeys),
+        "compile_dag_operation_requires" => Some(EvalBuiltinArm::FreeCallCompileDagOperationRequires),
         "compile_dag_primitive_call_edges" => Some(EvalBuiltinArm::FreeCallCompileDagPrimitiveCallEdges),
         "source_root_ingest_module_identities" => Some(EvalBuiltinArm::FreeCallSourceRootIngestModuleIdentities),
         "required_floor_nominal_subject_module_identities" => Some(EvalBuiltinArm::FreeCallRequiredFloorNominalSubjectModuleIdentities),
@@ -365,6 +369,7 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.atom_identity_hash") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallAtomIdentityHash };
     ("free_call.observed_peak_resident_bytes") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallObservedPeakResidentBytes };
     ("free_call.observed_monotonic_nanos") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallObservedMonotonicNanos };
+    ("free_call.observed_thread_cpu_nanos") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallObservedThreadCpuNanos };
     ("free_call.hash_combine") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallHashCombine };
     ("free_call.filesystem_read") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallFilesystemRead };
     ("free_call.toolchain_home_interference_probe") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallToolchainHomeInterferenceProbe };
@@ -418,6 +423,7 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.compile_dag_importer_resolved_call_edges") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagImporterResolvedCallEdges };
     ("free_call.compile_dag_callsite_resolved_call_edges") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagCallsiteResolvedCallEdges };
     ("free_call.builtin_function_registry_keys") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallBuiltinFunctionRegistryKeys };
+    ("free_call.compile_dag_operation_requires") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagOperationRequires };
     ("free_call.compile_dag_primitive_call_edges") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagPrimitiveCallEdges };
     ("free_call.source_root_ingest_module_identities") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallSourceRootIngestModuleIdentities };
     ("free_call.required_floor_nominal_subject_module_identities") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallRequiredFloorNominalSubjectModuleIdentities };
@@ -709,6 +715,7 @@ pub enum TryV2StdCollectionMapPrimitiveGroundingArm {
     MapGroundingEmptyMap,
     MapGroundingMapInsert,
     MapGroundingLookup,
+    MapGroundingListAt,
 }
 
 #[rustfmt::skip]
@@ -720,6 +727,8 @@ pub fn lookup_try_v2_std_collection_map_primitive_grounding(spelling: &str) -> O
         "map_insert_primitive_delegate" => Some(TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingMapInsert),
         "map_lookup_primitive_delegate" => Some(TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingLookup),
         "map_lookup" => Some(TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingLookup),
+        "list_at_primitive_delegate" => Some(TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingListAt),
+        "list_at_optional" => Some(TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingListAt),
         _ => None,
     }
 }
@@ -729,6 +738,7 @@ macro_rules! try_v2_std_collection_map_primitive_grounding_arm {
     ("map_grounding.empty_map") => { $crate::v1_interpreter_dispatch_generated::TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingEmptyMap };
     ("map_grounding.map_insert") => { $crate::v1_interpreter_dispatch_generated::TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingMapInsert };
     ("map_grounding.lookup") => { $crate::v1_interpreter_dispatch_generated::TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingLookup };
+    ("map_grounding.list_at") => { $crate::v1_interpreter_dispatch_generated::TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingListAt };
 }
 #[rustfmt::skip]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

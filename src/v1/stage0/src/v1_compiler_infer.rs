@@ -15,12 +15,15 @@ pub use crate::extdeps_container_oci_digest::{
     oci_other_digest_algorithm, oci_other_digest_encoded,
 };
 pub use crate::gunbc_structural_realization_bindings::literal_homomorphism_rows;
-pub use crate::std_algebra::carrier_container_equality_rows;
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
+pub use crate::std_algebra::{carrier_container_equality_rows, kernel_carrier_admits_numeral};
 pub use crate::std_algebra::{CollectionSizeEffect, FreeMonoid};
-pub use crate::std_coercion::SubtractionRefinement;
 use crate::std_coercion::SubtractionRefinement::SubtractionRefinementAmbiguous;
+use crate::std_coercion::TypeDeclarationProvenance::{
+    CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
+};
 pub use crate::std_coercion::{dag_can_cast, dag_cast_requires_proof, is_dag_cast_domain_type};
+pub use crate::std_coercion::{SubtractionRefinement, TypeDeclarationProvenance};
 pub use crate::std_computation::ShrinkFactor;
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
 use crate::std_content_hash::ContentHash::*;
@@ -3188,7 +3191,7 @@ pub fn where_refinement_predicates_equivalent(
 }
 
 pub fn where_predicate_guaranteed_min_length(pred_name: String) -> Option<i64> {
-    if (pred_name.clone() == "non_empty".to_string()) {
+    if (pred_name.clone() == "string_non_empty".to_string()) {
         Some(1)
     } else {
         if (pred_name.clone() == "lower_hex_16".to_string()) {
@@ -3212,7 +3215,7 @@ pub fn where_predicate_guaranteed_min_length(pred_name: String) -> Option<i64> {
 }
 
 pub fn where_predicate_required_min_length(pred_name: String) -> Option<i64> {
-    if (pred_name.clone() == "non_empty".to_string()) {
+    if (pred_name.clone() == "string_non_empty".to_string()) {
         Some(1)
     } else {
         std::option::Option::None
@@ -3341,7 +3344,7 @@ pub fn where_refinement_is_int_literal_predicate(pred_name: String) -> bool {
 }
 
 pub fn where_refinement_is_string_literal_predicate(pred_name: String) -> bool {
-    (((((((pred_name.clone() == "non_empty".to_string())
+    (((((((pred_name.clone() == "string_non_empty".to_string())
         || (pred_name.clone() == "lower_hex_64".to_string()))
         || (pred_name.clone() == "lower_hex_40".to_string()))
         || (pred_name.clone() == "lower_hex_128".to_string()))
@@ -3362,7 +3365,7 @@ pub fn where_refinement_is_deferred_predicate(pred_name: String) -> bool {
 }
 
 pub fn decidable_where_string_predicate_holds(pred_name: String, value: String) -> Option<bool> {
-    if (pred_name.clone() == "non_empty".to_string()) {
+    if (pred_name.clone() == "string_non_empty".to_string()) {
         Some((v1_rt::string_length(&value) > 0))
     } else {
         if (pred_name.clone() == "lower_hex_64".to_string()) {
@@ -5531,6 +5534,7 @@ pub enum DeclaredTypePosition {
     PositionParameterDefault,
     PositionCallableReturn,
     PositionDirectCallArgument,
+    PositionCondition,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -5624,6 +5628,7 @@ pub fn declared_type_position_label(position: DeclaredTypePosition, subject: Str
                 )
             }
         }
+        DeclaredTypePosition::PositionCondition => subject.clone(),
     }
 }
 
@@ -6212,14 +6217,22 @@ pub fn declared_realizes_as_kernel_numeric(
     {
         let produced_name =
             crate::v1_std_core::authored_name_at(source_indices.clone(), produced.clone());
-        let produced_is_kernel_numeric = ((produced_name.clone() == "Int".to_string())
-            || (produced_name.clone() == "Float".to_string()));
-        if (produced_is_kernel_numeric.clone() == false) {
+        if (crate::std_algebra::kernel_carrier_admits_numeral(produced_name.clone()) == false) {
             false
         } else {
-            crate::v1_compiler_coercion::provenance_realizes_natively(
-                crate::v1_std_core::type_reference_provenance(declared.clone()),
-            )
+            match (*crate::v1_std_core::type_reference_provenance(declared.clone())).clone() {
+                TypeDeclarationProvenance::KernelMinted {
+                    minted_name: nm, ..
+                } => crate::std_algebra::kernel_carrier_admits_numeral(nm.clone()),
+                TypeDeclarationProvenance::CorpusDeclared { decl_file: f, .. } => {
+                    crate::v1_compiler_coercion::provenance_realizes_natively(Rc::new(
+                        TypeDeclarationProvenance::CorpusDeclared {
+                            decl_file: f.clone(),
+                        },
+                    ))
+                }
+                TypeDeclarationProvenance::DeclarationIdentityAbsent => false,
+            }
         }
     }
 }
@@ -6695,6 +6708,23 @@ pub fn obligation_type_shape(
             shape.clone()
         }
     }
+}
+
+pub fn condition_obligation_diags(
+    label: String,
+    typed: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    declared_type_obligation_diags(
+        Rc::new(DeclaredTypeObligation {
+            position: DeclaredTypePosition::PositionCondition,
+            subject: label.clone(),
+            declared: bool_type(),
+            produced: crate::v1_compiler_infer_types::resolved_type(typed.clone()),
+            span: typed.span.clone(),
+        }),
+        scope.clone(),
+    )
 }
 
 pub fn declared_type_obligation_diags(
@@ -9685,7 +9715,7 @@ pub fn method_existence_wall_note() -> String {
 pub fn where_refinement_receiver_peel_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "A where-refinement type is a Conj carrying its base as its single child and its predicates in type_annotation, and resolve_method_receiver_type SHORT-CIRCUITS on connective == Conj — it treats any product as already-structural and returns it untouched. So NonEmptyStr, declared `String where non_empty`, reached method lookup as Product(NonEmptyStr) and String's algebra profile was never consulted: `.length()` on a branded string had no surface to resolve against and no surface to prove absence against either, which put 12 correct corpus sites (8 in extdeps.filesystem.linux, 4 across gunbc.design) in the wall's undecided residue. This peel is the fix, and the FIRST version of it was a §3 violation that this note asserted its way past — worth recording, because the note is where the defect actually lived. It hand-rolled a second recursive walker over the Conj/annotation/single-child shape and then CLAIMED, in this sentence, that the refinement chain had one traversal authority and the peel was its second consumer. Both walkers independently encoded the shape test, the lookup_type_for base resolution and the recursion, so they could drift apart silently; the prose asserted the property instead of the code establishing it (codex review 45410). WHY THESE READ NODE STORAGE DIRECTLY, since it is asked and the answer is not a per-function one: they are 2 of the 589 direct Node-storage reads in this file (579 of them on origin/main), which is the v1 seed's pervasive and only idiom — the seed IS the traversal, the stage that walks the tree so that later stages need not. There is no canonical query or fold surface reachable from here: fold_node and node_query live in src/v2/std, no v1 seed module imports v2 at all, and v1 COMPILES v2, so routing v1 inference through v2's fold inverts the bootstrap rather than tidying it. DESIGN's fold_node line is scoped to the 7 v2 stages and is a DRY example within v2, not a rule binding the seed. So the disposition here is the SEED'S disposition, the same trigger the hand-Rust receipt carries — the v1 seed shrinks to zero at v2 self-host and these dissolve with it — and attaching a separate per-function trigger to 2 reads while 587 identical reads beside them carry none would be a fabricated bound, describing separable work that does not exist (codex review 45570). The repair is the extraction the claim described: where_refinement_chain is the one walk, it yields the refinement chain from the surface alias down to its ground base, and it has exactly two consumers — type_where_refinement_predicates_transitive flat_maps the immediate predicates over the chain, and peel_where_refinement_base takes its last link. The shape test itself is is_where_refinement_type, held once. Now there is one traversal authority, and it is one because the code says so. It runs only where the wall was already about to refuse or admit, so no previously-resolving call changes meaning; tier0 keeps first claim on the unpeeled receiver, which is what preserves a method declared on the brand itself. The consequence that matters is not that 12 sites went green — it is that they became DECIDABLE IN BOTH DIRECTIONS: once the peeled receiver is kernel-profiled, a method genuinely absent from String now refuses as MethodNotFound instead of resting in the frontier. Widening what the wall can decide is the only move that shrinks the frontier without either fabricating a success or fabricating a refusal.".to_string()
+            "A where-refinement type is a Conj carrying its base as its single child and its predicates in type_annotation, and resolve_method_receiver_type SHORT-CIRCUITS on connective == Conj — it treats any product as already-structural and returns it untouched. So NonEmptyStr, declared `String where string_non_empty`, reached method lookup as Product(NonEmptyStr) and String's algebra profile was never consulted: `.length()` on a branded string had no surface to resolve against and no surface to prove absence against either, which put 12 correct corpus sites (8 in extdeps.filesystem.linux, 4 across gunbc.design) in the wall's undecided residue. This peel is the fix, and the FIRST version of it was a §3 violation that this note asserted its way past — worth recording, because the note is where the defect actually lived. It hand-rolled a second recursive walker over the Conj/annotation/single-child shape and then CLAIMED, in this sentence, that the refinement chain had one traversal authority and the peel was its second consumer. Both walkers independently encoded the shape test, the lookup_type_for base resolution and the recursion, so they could drift apart silently; the prose asserted the property instead of the code establishing it (codex review 45410). WHY THESE READ NODE STORAGE DIRECTLY, since it is asked and the answer is not a per-function one: they are 2 of the 589 direct Node-storage reads in this file (579 of them on origin/main), which is the v1 seed's pervasive and only idiom — the seed IS the traversal, the stage that walks the tree so that later stages need not. There is no canonical query or fold surface reachable from here: fold_node and node_query live in src/v2/std, no v1 seed module imports v2 at all, and v1 COMPILES v2, so routing v1 inference through v2's fold inverts the bootstrap rather than tidying it. DESIGN's fold_node line is scoped to the 7 v2 stages and is a DRY example within v2, not a rule binding the seed. So the disposition here is the SEED'S disposition, the same trigger the hand-Rust receipt carries — the v1 seed shrinks to zero at v2 self-host and these dissolve with it — and attaching a separate per-function trigger to 2 reads while 587 identical reads beside them carry none would be a fabricated bound, describing separable work that does not exist (codex review 45570). The repair is the extraction the claim described: where_refinement_chain is the one walk, it yields the refinement chain from the surface alias down to its ground base, and it has exactly two consumers — type_where_refinement_predicates_transitive flat_maps the immediate predicates over the chain, and peel_where_refinement_base takes its last link. The shape test itself is is_where_refinement_type, held once. Now there is one traversal authority, and it is one because the code says so. It runs only where the wall was already about to refuse or admit, so no previously-resolving call changes meaning; tier0 keeps first claim on the unpeeled receiver, which is what preserves a method declared on the brand itself. The consequence that matters is not that 12 sites went green — it is that they became DECIDABLE IN BOTH DIRECTIONS: once the peeled receiver is kernel-profiled, a method genuinely absent from String now refuses as MethodNotFound instead of resting in the frontier. Widening what the wall can decide is the only move that shrinks the frontier without either fabricating a success or fabricating a refusal.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -10643,6 +10673,12 @@ pub fn extend_scope_with_pattern_node(
             }
         }
     })
+}
+
+pub fn fold_accumulator_is_unapplied_generic(n: Rc<Node>) -> bool {
+    (((n.params.clone().len() as i64) > 0)
+        && ((n.connective.clone() == Connective::Disj)
+            || (n.connective.clone() == Connective::Conj)))
 }
 
 pub fn method_name_is(opt: Option<String>, expected: String) -> bool {
@@ -12654,10 +12690,12 @@ Rc::new(InferResult {
                                     ),
                                 };
                                 let call_acc_is_under_resolved =
-                                    !crate::v1_compiler_infer_types::is_fully_resolved(
+                                    (!crate::v1_compiler_infer_types::is_fully_resolved(
                                         call_fold_acc_type.clone(),
                                         scope.type_env.clone().source_indices.clone(),
-                                    );
+                                    ) || fold_accumulator_is_unapplied_generic(
+                                        call_fold_acc_type.clone(),
+                                    ));
                                 let refined_call_fold_acc_type = if ((call_fold_info.clone()
                                     != std::option::Option::None)
                                     && call_acc_is_under_resolved.clone())
@@ -13521,7 +13559,14 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                             }),
                         };
                         let guard_diags = if (guard_result.clone() != std::option::Option::None) {
-                            guard_unwrapped.diagnostics.clone()
+                            v1_rt::concat(
+                                guard_unwrapped.diagnostics.clone(),
+                                condition_obligation_diags(
+                                    "match-arm guard".to_string(),
+                                    guard_unwrapped.typed.clone(),
+                                    arm_scope.clone(),
+                                ),
+                            )
                         } else {
                             Rc::new(vec![])
                         };
@@ -13705,7 +13750,14 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                         let guard_diags = if (guard_result.clone()
                                             != std::option::Option::None)
                                         {
-                                            guard_unwrapped.diagnostics.clone()
+                                            v1_rt::concat(
+                                                guard_unwrapped.diagnostics.clone(),
+                                                condition_obligation_diags(
+                                                    "match-arm guard".to_string(),
+                                                    guard_unwrapped.typed.clone(),
+                                                    arm_scope.clone(),
+                                                ),
+                                            )
                                         } else {
                                             Rc::new(vec![])
                                         };
@@ -13843,7 +13895,14 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
             let else_expr = crate::v1_std_core::if_else_branch(texpr.clone());
             let cond_result = infer_expr(cond.clone(), scope.clone(), std::option::Option::None);
             let cond_typed = cond_result.typed.clone();
-            let cond_diags = cond_result.diagnostics.clone();
+            let cond_diags = v1_rt::concat(
+                cond_result.diagnostics.clone(),
+                condition_obligation_diags(
+                    "if condition".to_string(),
+                    cond_typed.clone(),
+                    scope.clone(),
+                ),
+            );
             let then_result = infer_expr(then_expr.clone(), scope.clone(), expected.clone());
             let then_typed = then_result.typed.clone();
             let then_diags = then_result.diagnostics.clone();
@@ -30172,6 +30231,8 @@ pub struct PositionParameterDefault;
 pub struct PositionCallableReturn;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PositionDirectCallArgument;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PositionCondition;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct UndecidableGenericFormal;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

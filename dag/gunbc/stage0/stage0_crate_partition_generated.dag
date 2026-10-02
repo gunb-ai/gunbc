@@ -62,6 +62,7 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "std_graph",
         "extdeps_uri",
         "extdeps_external_authority",
+        "extdeps_posix_clock_gettime",
         "extdeps_ietf_http_semantics",
         "std_process_termination",
         "std_primitive_projection",

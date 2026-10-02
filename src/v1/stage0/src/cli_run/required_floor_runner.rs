@@ -872,6 +872,53 @@ pub(crate) fn cost_debt_changed_witness_ceiling(
     Ok((edit, budget))
 }
 
+/// One file's content at the resolved diff base (`v2.workflow.floor_diff_observe`
+/// `floor_run_base_file_read`): `Ok(None)` when the base does not carry the path, `Err` when the
+/// listing or show refused -- a refusal is never read as an absent or empty file.
+pub(crate) fn floor_base_file_read(path: &str) -> Result<Option<String>, String> {
+    use v1_interpreter::Value;
+    let comparison = floor_diff_comparison_readout()?;
+    let roots = default_source_roots();
+    let entry = "src/v2/workflow/floor_diff_observe.dag";
+    let (graph, indices) = resolve_entry_graph_shared(&roots, entry)
+        .map_err(|e| format!("floor_diff_observe resolve: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let args = [
+        (Some("base".to_string()), str_value(comparison.base())),
+        (Some("path".to_string()), str_value(path)),
+    ];
+    let result =
+        v1_interpreter::run_in_context_with_args(&ctx, "floor_run_base_file_read", &args, false)
+            .map_err(|e| format!("floor_run_base_file_read: {e}"))?;
+    match &result {
+        Value::Variant { variant_name, .. } if ctx.sym_eq(*variant_name, "BaseFileAbsent") => {
+            Ok(None)
+        }
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "BaseFileRead") => match ctx.field(fields, "content") {
+            Some(Value::Str(c)) => Ok(Some(c.to_string())),
+            _ => Err("BaseFileRead missing `content`".to_string()),
+        },
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "BaseFileReadRefused") => {
+            match ctx.field(fields, "reason") {
+                Some(Value::Str(r)) => Err(format!("base read of {path} refused: {r}")),
+                _ => Err(format!("base read of {path} refused (no reason)")),
+            }
+        }
+        other => Err(format!(
+            "floor_run_base_file_read returned an unexpected value: {}",
+            ctx.format_value(other)
+        )),
+    }
+}
+
 /// Names of `test fn` / `test data` declarations at the resolved diff base, per path.
 /// Authority: `v2.workflow.floor_diff_observe` `floor_run_base_test_decl_census`. A refused
 /// census is an observation failure and never becomes an empty map.
@@ -2764,7 +2811,17 @@ pub(crate) fn enrolment_margin_standing_for(
     match enrolment_gate_execution_disposition(identity, dispositions) {
         Some(crate::cli_run::RequiredFloorDisposition::Planned)
         | Some(crate::cli_run::RequiredFloorDisposition::PlannedAsChangedWitness) => {}
-        Some(other) => {
+        // Named, not caught: a new arm must state whether the margin gate runs for it.
+        Some(
+            other @ (crate::cli_run::RequiredFloorDisposition::DeclinedLongModule { .. }
+            | crate::cli_run::RequiredFloorDisposition::DeclinedFixtureMember { .. }
+            | crate::cli_run::RequiredFloorDisposition::DeclinedOutsideRequiredGate
+            | crate::cli_run::RequiredFloorDisposition::DeclinedCostDebt
+            | crate::cli_run::RequiredFloorDisposition::DeclinedOutsideGateClosure
+            | crate::cli_run::RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. }
+            | crate::cli_run::RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery { .. }
+            | crate::cli_run::RequiredFloorDisposition::DeclinedNoCiWetLane { .. }),
+        ) => {
             return EnrolmentMarginStanding::OutsideThisRunsExecution {
                 disposition: required_floor_disposition_label(other).to_string(),
             };
@@ -3341,7 +3398,17 @@ pub(crate) fn changed_witness_projection_rows(
             // population it belongs to. It is discharged by making the identity reachable or by
             // declaring it unreachable — never by a rerun, which is the only affordance one
             // undifferentiated cause can offer.
-            Some(declined) => ChangedWitnessProjectionRow {
+            Some(
+                declined @ (RequiredFloorDisposition::DeclinedLongModule { .. }
+                | RequiredFloorDisposition::DeclinedFixtureMember { .. }
+                | RequiredFloorDisposition::DeclinedOutsideRequiredGate
+                | RequiredFloorDisposition::DeclinedCostDebt
+                | RequiredFloorDisposition::DeclinedOutsideGateClosure
+                | RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. }
+                | RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery {
+                    ..
+                }),
+            ) => ChangedWitnessProjectionRow {
                 identity: identity.clone(),
                 cost: None,
                 standing: "declined",
@@ -7800,6 +7867,25 @@ pub fn run_required_floor(
             }
         }
     }
+    // A ROW-ONLY ROSTER EDIT names subjects the diff never touched: the typed non-fold-residue
+    // check can only judge a row whose subject module is PREPARED, so the subjects of rows the diff
+    // added or deleted become seeds here (read at the floor's own diff base; an unreadable base
+    // roster refuses, never narrows the scope).
+    let nfr_row_subjects: Vec<crate::cli_run::NonFoldResidueRowSubject> = match &compile_subject {
+        Some(subject)
+            if subject
+                .touched_modules
+                .iter()
+                .any(|m| m == "gunbc.non_fold_residue") =>
+        {
+            crate::cli_run::non_fold_residue_changed_row_subjects().map_err(|e| {
+                format!("REQUIRED-FLOOR REFUSAL cause=NonFoldResidueRosterBaseUnreadable {e}")
+            })?
+        }
+        _ => Vec::new(),
+    };
+    let nfr_row_subject_modules =
+        crate::cli_run::non_fold_residue_row_subject_seeds(&nfr_row_subjects);
     // THE CHECKER IS A DEPENDENCY OF EVERY MODULE IT JUDGES (`v2.workflow.floor_subject_seed`
     // `SeedCheckerSourceChanged`, decided by `checker_subject_rule`). When the diff names a file
     // the running checker was compiled from, every admitted module is seeded into Strict
@@ -7900,6 +7986,7 @@ pub fn run_required_floor(
             .flat_map(|subject| subject.touched_modules.iter().cloned()),
     )
     .chain(interface_consumer_seeds.iter().cloned())
+    .chain(nfr_row_subject_modules.iter().cloned())
     .collect();
     // The strict resolve's graph is attributed by bytes where the floor frees it (entry_resolve
     // `typed_graph_byte_attribution`); armed here so no other resolve caller pays or prints it.
@@ -8250,6 +8337,94 @@ pub fn run_required_floor(
          modules_excluded={} digest={}",
         prepare_ms, prepared.modules_resolved, prepared.modules_excluded, prepared.subject_digest
     );
+    // THE NON-FOLD-RESIDUE ROSTER, TYPED AND DIFF-SCOPED, over the graph just prepared -- no
+    // second compile. Scope: the touched modules and the planned interface consumers, both already
+    // seeds of this subject. A local run with no diff observation evaluates nothing and says so.
+    match &compile_subject {
+        None => eprintln!(
+            "[floor-phase] phase=non-fold-residue-diff state=not-evaluated -- no diff observation \
+             on this run, so no scope"
+        ),
+        Some(subject) => {
+            let scoped: BTreeSet<String> = subject
+                .touched_modules
+                .iter()
+                .chain(interface_consumer_seeds.iter())
+                .chain(nfr_row_subject_modules.iter())
+                .cloned()
+                .collect();
+            let verdict = crate::cli_run::non_fold_residue_diff_verdict(
+                &prepared.graph,
+                &prepared.source_indices,
+                &scoped,
+                &nfr_row_subjects,
+            );
+            eprintln!(
+                "[floor-phase] phase=non-fold-residue-diff state=completed scoped_modules={} \
+                 typed_modules={} wildcard_arms={} residue_sites={} unrostered={} stale={} \
+                 scoped_but_untyped={} undetermined_scrutinees={} residual=gunbc.recurring_failure_mode.non_fold_residue_diff_scope_misses_an_untouched_flip",
+                verdict.scoped_modules,
+                verdict.walk.covered_modules.len(),
+                verdict.walk.facts.len(),
+                verdict.walk.non_fold_residue_sites().len(),
+                verdict.unrostered.len(),
+                verdict.stale.len(),
+                verdict.scoped_but_untyped.len(),
+                verdict.walk.undetermined_sites.len(),
+            );
+            for module in &verdict.scoped_but_untyped {
+                eprintln!(
+                    "[floor-plan] NonFoldResidueScopedModuleUntyped module_path={module} -- in the \
+                     diff scope but not in the prepared graph (excluded or outside the roots, as \
+                     the seed lines above say); its residue is not judged on this run"
+                );
+            }
+            for site in &verdict.walk.undetermined_sites {
+                eprintln!(
+                    "[floor-plan] NonFoldResidueScrutineeTypeUndetermined site={site} -- a wildcard \
+                     arm whose scrutinee carries no resolved inferred type; refuses unless the site \
+                     carries its own roster row"
+                );
+            }
+            if !verdict.unrostered.is_empty()
+                || !verdict.stale.is_empty()
+                || !verdict.undetermined_unrostered.is_empty()
+                || !verdict.row_subjects_untyped.is_empty()
+            {
+                let mut lines: Vec<String> = verdict
+                    .unrostered
+                    .iter()
+                    .map(|s| format!("  unrostered live site: {s}"))
+                    .collect();
+                lines.extend(
+                    verdict
+                        .stale
+                        .iter()
+                        .map(|s| format!("  stale roster entry: {s}")),
+                );
+                lines.extend(verdict.row_subjects_untyped.iter().map(|m| {
+                    format!("  changed roster row's subject not judged at its exact path: {m}")
+                }));
+                lines.extend(
+                    verdict
+                        .undetermined_unrostered
+                        .iter()
+                        .map(|s| format!("  undetermined scrutinee type, no row of its own: {s}")),
+                );
+                return Err(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=NonFoldResidueRosterDiverged unrostered={} \
+                     stale={} undetermined={} -- a wildcard arm whose scrutinee's inferred type is a closed \
+                     coproduct needs its own row (reason + dissolution) in \
+                     gunbc.non_fold_residue non_fold_residue_frontier, and a row whose site no \
+                     longer carries one deletes:\n{}",
+                    verdict.unrostered.len(),
+                    verdict.stale.len(),
+                    verdict.undetermined_unrostered.len(),
+                    lines.join("\n")
+                ));
+            }
+        }
+    }
     // WHERE PREPARATION'S WALL AND POPULATION GO: `compile.reconcile`, measured 2026-08-16.
     //
     // No dump is emitted here, and that is the finding rather than an omission. A
@@ -9429,34 +9604,74 @@ pub fn run_required_floor(
     // projection actually marked for changed execution. A missing, foreign, or duplicated row
     // cannot be repaired by the aggregate counts coincidentally agreeing.
     changed_witness_sublane_join(&changed_witness_expected, &disposition_rows)?;
-    // ONE PRODUCER FOR THE COUNTS: the joined row population, folded once per arm.
-    let disposition_count = |select: fn(&RequiredFloorDisposition) -> bool| {
-        disposition_rows
-            .iter()
-            .filter(|row| select(&row.disposition))
-            .count()
-    };
+    // A DECLINED CHANGED WITNESS DOES NOT EXECUTE, so the reverse roster joins must not expect it
+    // to. `suppress_withheld` keeps every changed witness in the expected-red, route-gap and
+    // non-verdict rosters on the premise that the changed sublane runs it; a `DeclinedNoCiWetLane`
+    // decline falsifies that premise for its identity, and left in a roster it reads as "renamed,
+    // deleted, or declined -- delete the row" against a row that is only dormant for this run. It
+    // is removed with its own suppression ground, so the expected-red report still names it.
+    let declined_no_ci_wet_lane: HashSet<String> = disposition_rows
+        .iter()
+        .filter(|row| suppresses_a_changed_witness_enrollment(&row.disposition))
+        .map(|row| row.identity.clone())
+        .collect();
+    let suppress_declined_no_ci_wet_lane =
+        |roster: &mut HashSet<String>, name: &str| -> Vec<(String, SuppressionGround)> {
+            let mut removed: Vec<String> = roster
+                .iter()
+                .filter(|identity| declined_no_ci_wet_lane.contains(*identity))
+                .cloned()
+                .collect();
+            removed.sort();
+            roster.retain(|identity| !declined_no_ci_wet_lane.contains(identity));
+            if !removed.is_empty() {
+                eprintln!(
+                    "[floor-changed-witness] {name}: {} enrolled identity(ies) suppressed because \
+                     the changed-witness sublane declined them as declared BinWitnessWet rows; \
+                     their enrollment is dormant, not deleted",
+                    removed.len()
+                );
+            }
+            removed
+                .into_iter()
+                .map(|identity| (identity, SuppressionGround::DeclinedNoCiWetLane))
+                .collect()
+        };
+    // ONE PRODUCER FOR THE COUNTS: the joined row population, folded once, every arm NAMED so a
+    // new disposition does not compile here until it states which count it joins
+    // (`gunbc.recurring_failure_mode.a_new_decision_arm_the_downstream_join_does_not_admit`).
     let declared_identities = declared_identity_set.len();
-    let long_declined =
-        disposition_count(|d| matches!(d, RequiredFloorDisposition::DeclinedLongModule { .. }));
-    let fixture_declined =
-        disposition_count(|d| matches!(d, RequiredFloorDisposition::DeclinedFixtureMember { .. }));
-    let outside_gate_declined =
-        disposition_count(|d| matches!(d, RequiredFloorDisposition::DeclinedOutsideRequiredGate));
-    let cost_debt_declined =
-        disposition_count(|d| matches!(d, RequiredFloorDisposition::DeclinedCostDebt));
-    let gate_closure_declined =
-        disposition_count(|d| matches!(d, RequiredFloorDisposition::DeclinedOutsideGateClosure));
-    let discovery_excluded_declined = disposition_count(|d| {
-        matches!(
-            d,
-            RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. }
-        )
-    });
+    let mut long_declined = 0usize;
+    let mut fixture_declined = 0usize;
+    let mut outside_gate_declined = 0usize;
+    let mut cost_debt_declined = 0usize;
+    let mut gate_closure_declined = 0usize;
+    let mut discovery_excluded_declined = 0usize;
+    let mut no_ci_wet_lane_declined = 0usize;
+    let mut changed_outside_discovery_declined = 0usize;
+    for row in &disposition_rows {
+        match &row.disposition {
+            RequiredFloorDisposition::Planned
+            | RequiredFloorDisposition::PlannedAsChangedWitness => {}
+            RequiredFloorDisposition::DeclinedLongModule { .. } => long_declined += 1,
+            RequiredFloorDisposition::DeclinedFixtureMember { .. } => fixture_declined += 1,
+            RequiredFloorDisposition::DeclinedOutsideRequiredGate => outside_gate_declined += 1,
+            RequiredFloorDisposition::DeclinedCostDebt => cost_debt_declined += 1,
+            RequiredFloorDisposition::DeclinedOutsideGateClosure => gate_closure_declined += 1,
+            RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. } => {
+                discovery_excluded_declined += 1
+            }
+            RequiredFloorDisposition::DeclinedNoCiWetLane { .. } => no_ci_wet_lane_declined += 1,
+            RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery { .. } => {
+                changed_outside_discovery_declined += 1
+            }
+        }
+    }
     eprintln!(
         "[floor-phase] phase=site-projection state=completed wall_ms={} declared={} sites={} \
          files={} claims={} declined_long={} declined_fixture={} declined_outside_gate={} \
-         declined_gate_closure={} declined_discovery_excluded={} declined_cost_debt={}",
+         declined_gate_closure={} declined_discovery_excluded={} declined_cost_debt={} \
+         declined_no_ci_wet_lane={} declined_changed_outside_discovery={}",
         projection_started.elapsed().as_millis(),
         declared_identities,
         sites_offered,
@@ -9467,7 +9682,9 @@ pub fn run_required_floor(
         outside_gate_declined,
         gate_closure_declined,
         discovery_excluded_declined,
-        cost_debt_declined
+        cost_debt_declined,
+        no_ci_wet_lane_declined,
+        changed_outside_discovery_declined
     );
 
     // THE COST-DEBT ROSTER'S STANDING, JOINED AGAINST THE DECLARED UNIVERSE RATHER THAN AGAINST
@@ -9644,7 +9861,12 @@ pub fn run_required_floor(
         out
     };
     let mut expected_red_roster = expected_red_roster;
-    let expected_red_suppressed = suppress_withheld(&mut expected_red_roster, "floor_expected_red");
+    let mut expected_red_suppressed =
+        suppress_withheld(&mut expected_red_roster, "floor_expected_red");
+    expected_red_suppressed.extend(suppress_declined_no_ci_wet_lane(
+        &mut expected_red_roster,
+        "floor_expected_red",
+    ));
     eprintln!(
         "[floor-known-red] roster carries {} enrolled identity(ies)",
         expected_red_roster.len()
@@ -9699,6 +9921,7 @@ pub fn run_required_floor(
     };
     let mut route_gap_roster = route_gap_roster;
     let _ = suppress_withheld(&mut route_gap_roster, "floor_route_gap");
+    let _ = suppress_declined_no_ci_wet_lane(&mut route_gap_roster, "floor_route_gap");
     eprintln!(
         "[floor-route-gap] roster carries {} enrolled identity(ies)",
         route_gap_roster.len()
@@ -9896,6 +10119,7 @@ pub fn run_required_floor(
     };
     let mut non_verdict_roster = non_verdict_roster;
     let _ = suppress_withheld(&mut non_verdict_roster, "floor_non_verdict");
+    let _ = suppress_declined_no_ci_wet_lane(&mut non_verdict_roster, "floor_non_verdict");
     eprintln!(
         "[floor-non-verdict] roster carries {} enrolled identity(ies)",
         non_verdict_roster.len()
@@ -11812,8 +12036,29 @@ pub fn run_required_floor(
         };
         let seed_rows: Vec<terminal_ledger_publish::SeedLedgerRow> =
             terminal_rows.iter().map(seed_ledger_row).collect();
+        // THE LEDGER RENDERS IN A FRAME OF THE PREPARED SUBJECT, not through a second strict
+        // typecheck of its grammar's closure beside the still-resident subject: the wire module is
+        // a runtime authority seed of the subject (`REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES`), so
+        // the one preparation already holds everything it reads.
+        let framing = std::time::Instant::now();
+        let ledger_frame = floor_authority_frame(
+            &prepared,
+            terminal_ledger_publish::TERMINAL_LEDGER_WIRE_MODULE,
+        )
+        .map_err(|why| {
+            format!(
+                "REQUIRED-FLOOR REFUSAL cause=TerminalLedgerWireOutsidePreparedSubject \
+                         module={} -- the ledger grammar is a declared closure seed and must be in \
+                         every required-floor subject: {why}",
+                terminal_ledger_publish::TERMINAL_LEDGER_WIRE_MODULE
+            )
+        })?;
+        eprintln!(
+            "[floor-phase] phase=terminal-ledger-frame state=completed frame_ms={}",
+            framing.elapsed().as_millis()
+        );
         match terminal_ledger_publish::publish_terminal_ledger(
-            source_roots,
+            &ledger_frame,
             snapshot_wire,
             &prepared.subject_digest,
             terminal_ledger_publish::TERMINAL_LEDGER_PATH,
@@ -17108,6 +17353,27 @@ fn decides_a_changed_selection(disposition: &RequiredFloorDisposition) -> bool {
         RequiredFloorDisposition::PlannedAsChangedWitness
         | RequiredFloorDisposition::DeclinedNoCiWetLane { .. } => true,
         RequiredFloorDisposition::Planned
+        | RequiredFloorDisposition::DeclinedLongModule { .. }
+        | RequiredFloorDisposition::DeclinedFixtureMember { .. }
+        | RequiredFloorDisposition::DeclinedOutsideRequiredGate
+        | RequiredFloorDisposition::DeclinedCostDebt
+        | RequiredFloorDisposition::DeclinedOutsideGateClosure
+        | RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. }
+        | RequiredFloorDisposition::DeclinedChangedWitnessOutsideDiscovery { .. } => false,
+    }
+}
+
+/// WHICH DISPOSITIONS SUPPRESS A CHANGED WITNESS'S ROSTER ENROLLMENT for this run, as an EXHAUSTIVE
+/// match for the same reason as `decides_a_changed_selection`: a new arm states whether the reverse
+/// roster joins may still expect its identity to execute. `DeclinedNoCiWetLane` is the one decline of
+/// a discovered, selected identity; `DeclinedChangedWitnessOutsideDiscovery` names an identity no
+/// site discovered, which no roster enrollment can reach through the fold, and every other arm
+/// either executes or is suppressed earlier by `suppress_withheld`.
+fn suppresses_a_changed_witness_enrollment(disposition: &RequiredFloorDisposition) -> bool {
+    match disposition {
+        RequiredFloorDisposition::DeclinedNoCiWetLane { .. } => true,
+        RequiredFloorDisposition::Planned
+        | RequiredFloorDisposition::PlannedAsChangedWitness
         | RequiredFloorDisposition::DeclinedLongModule { .. }
         | RequiredFloorDisposition::DeclinedFixtureMember { .. }
         | RequiredFloorDisposition::DeclinedOutsideRequiredGate

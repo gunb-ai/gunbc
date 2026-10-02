@@ -48,7 +48,7 @@ import gunbc.host_effect {
   HostEffectIntent, HostEffectEvidence, ShellEffectApplied, ConvergePlanApplied,
   ToolchainHomeInterferenceDiscriminated,
   HostEffectTransport, LocalShell, SshShell, FleetSsh,
-  EmitArtifactThenThinRun, BootstrapFragment,
+  EmitArtifactThenThinRun, BootstrapFragment, bootstrap_fragment_carries_hand_script,
   host_effect_drive, host_effect_identity_evidence, host_effect_read_evidence,
 }
 import extdeps.dns.domain_name { DnsLabel }
@@ -3588,12 +3588,16 @@ fn realize_converge_in_process(host_converge: HostConverge, intent: HostEffectIn
 
 fn realize_converge_on_host(host_converge: HostConverge, transport: HostEffectTransport, intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match transport {
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+    EmitArtifactThenThinRun { bootstrap: b, invocation: _ } =>
       match gunbc_apply_mode_for_host(host: host_converge.identity) {
         FreshStandup =>
-          NotConverged {
-            reason: "host_effect_apply: EmitArtifactThenThinRun fresh-standup bootstrap+thin-run is fail-closed Unimplemented until thin_invocation_argv_carrier_scaffold dissolves (steady-state typed argv dispatch for ThinInvocation.argv; bootstrap_fragment_script_carrier_scaffold is already Terminal).",
-            applied: intent,
+          if bootstrap_fragment_carries_hand_script(f: b) {
+            NotConverged {
+              reason: "host_effect_apply: a hand-spelled BootstrapFragment.script is not an admitted artifact — the fresh-standup bootstrap route is the Terminal emit(intent,Bash) lane (bootstrap_fragment_script_carrier_scaffold), and thin_invocation_argv_carrier_scaffold is Terminal since the thin run dispatches through the gunbc converge invocation-shape authority; this leg realizes only with an emitted (empty-script) bootstrap fragment.",
+              applied: intent,
+            }
+          } else {
+            realize_converge_in_process(host_converge: host_converge, intent: intent)
           }
         ExistingHostQuiescentReload =>
           realize_converge_in_process(host_converge: host_converge, intent: intent)

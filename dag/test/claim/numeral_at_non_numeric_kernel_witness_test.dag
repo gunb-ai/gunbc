@@ -1,0 +1,228 @@
+module test.claim.numeral_at_non_numeric_kernel_witness_test
+
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count,
+}
+import std.algebra {
+  kernel_carrier_admits_numeral,
+  algebra_profile_admits_numeral,
+  OrderedRingProfile,
+  ApproximateFieldProfile,
+  BooleanAlgebraProfile,
+  FreeMonoidScalarProfile,
+  FreeMonoidCollectionProfile,
+}
+
+// A NUMERAL INHABITS A DECLARED KERNEL TYPE ONLY WHEN THAT TYPE ADMITS A NUMERAL (DESIGN 4b floor:
+// values inhabit declared types; DESIGN 4: a Bool literal is not an Int literal, no implicit route).
+// Class row: gunbc.recurring_failure_mode.numeral_admitted_at_every_kernel_declared_type.
+// Before the repair v1.compiler.infer declared_realizes_as_kernel_numeric answered Inhabits for an
+// Int or Float at ANY kernel-minted declared type. At the positions below the older kernel chain
+// already refused the pair, so these REDs pin that the state stays refused; the REDs that were
+// silent on main are the condition REDs at the end of this file.
+//
+// Each RED is one source with exactly one candidate site and asserts at least one blocking refusal
+// of the two classes below. The positive control at the end of the file carries every admitted pair
+// one term away from a RED, so a blanket refusal of literals or conditions goes red there.
+//
+// dissolve-on: none -- permanent regression control per DESIGN 4b(4).
+
+// TWO CLASSES REFUSE THIS STATE, AND WHICH ONE DEPENDS ON THE POSITION -- measured, not assumed.
+// At the record field, declared return, call argument and list element the older kernel chain
+// (v1.compiler.infer kernel_value_declared_type_mismatch) already refused an Int at Bool as a
+// TypeMismatch on main, masking the relation's wrong Inhabits; at the call argument and list element
+// the relation now refuses as well (DeclaredTypeNotInhabited). At a condition only the relation
+// judges. So the oracle counts blocking rows of EITHER class: a RED needs at least one, and a
+// control needs zero of both, which keeps -1 (not runnable) out of both arms.
+fn not_inhabited_blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "DeclaredTypeNotInhabited")))
+        + census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "TypeMismatch")))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+fn nkt_field_bool_source() -> String {
+  "module nkt.field_bool\n\nimport std.types { Int, Float, Bool, String }\n\ntype Flag { on: Bool }\n\ntype Label { text: String }\n\ntype Count { n: Int }\n\ntype Ratio { r: Float }\n\nfn take_b(b: Bool) -> Bool {\n  b\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_i(i: Int) -> Int {\n  i\n}\n\nfn take_f(f: Float) -> Float {\n  f\n}\n\nfn probe() -> Flag {\n  Flag { on: 1 }\n}\n"
+}
+
+test fn an_int_literal_at_a_bool_record_field_must_refuse() -> Bool {
+  not_inhabited_blocking_count(source: nkt_field_bool_source()) >= 1
+}
+
+fn nkt_arg_bool_source() -> String {
+  "module nkt.arg_bool\n\nimport std.types { Int, Float, Bool, String }\n\ntype Flag { on: Bool }\n\ntype Label { text: String }\n\ntype Count { n: Int }\n\ntype Ratio { r: Float }\n\nfn take_b(b: Bool) -> Bool {\n  b\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_i(i: Int) -> Int {\n  i\n}\n\nfn take_f(f: Float) -> Float {\n  f\n}\n\nfn probe() -> Bool {\n  take_b(b: 1)\n}\n"
+}
+
+test fn an_int_literal_at_a_bool_call_argument_must_refuse() -> Bool {
+  not_inhabited_blocking_count(source: nkt_arg_bool_source()) >= 1
+}
+
+fn nkt_ret_bool_source() -> String {
+  "module nkt.ret_bool\n\nimport std.types { Int, Float, Bool, String }\n\ntype Flag { on: Bool }\n\ntype Label { text: String }\n\ntype Count { n: Int }\n\ntype Ratio { r: Float }\n\nfn take_b(b: Bool) -> Bool {\n  b\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_i(i: Int) -> Int {\n  i\n}\n\nfn take_f(f: Float) -> Float {\n  f\n}\n\nfn probe() -> Bool {\n  1\n}\n"
+}
+
+test fn an_int_literal_at_a_bool_declared_return_must_refuse() -> Bool {
+  not_inhabited_blocking_count(source: nkt_ret_bool_source()) >= 1
+}
+
+fn nkt_field_string_source() -> String {
+  "module nkt.field_string\n\nimport std.types { Int, Float, Bool, String }\n\ntype Flag { on: Bool }\n\ntype Label { text: String }\n\ntype Count { n: Int }\n\ntype Ratio { r: Float }\n\nfn take_b(b: Bool) -> Bool {\n  b\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_i(i: Int) -> Int {\n  i\n}\n\nfn take_f(f: Float) -> Float {\n  f\n}\n\nfn probe() -> Label {\n  Label { text: 1 }\n}\n"
+}
+
+test fn an_int_literal_at_a_string_record_field_must_refuse() -> Bool {
+  not_inhabited_blocking_count(source: nkt_field_string_source()) >= 1
+}
+
+fn nkt_arg_string_source() -> String {
+  "module nkt.arg_string\n\nimport std.types { Int, Float, Bool, String }\n\ntype Flag { on: Bool }\n\ntype Label { text: String }\n\ntype Count { n: Int }\n\ntype Ratio { r: Float }\n\nfn take_b(b: Bool) -> Bool {\n  b\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_i(i: Int) -> Int {\n  i\n}\n\nfn take_f(f: Float) -> Float {\n  f\n}\n\nfn probe() -> String {\n  take_s(s: 1)\n}\n"
+}
+
+test fn an_int_literal_at_a_string_call_argument_must_refuse() -> Bool {
+  not_inhabited_blocking_count(source: nkt_arg_string_source()) >= 1
+}
+
+fn nkt_ret_string_source() -> String {
+  "module nkt.ret_string\n\nimport std.types { Int, Float, Bool, String }\n\ntype Flag { on: Bool }\n\ntype Label { text: String }\n\ntype Count { n: Int }\n\ntype Ratio { r: Float }\n\nfn take_b(b: Bool) -> Bool {\n  b\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_i(i: Int) -> Int {\n  i\n}\n\nfn take_f(f: Float) -> Float {\n  f\n}\n\nfn probe() -> String {\n  1\n}\n"
+}
+
+test fn an_int_literal_at_a_string_declared_return_must_refuse() -> Bool {
+  not_inhabited_blocking_count(source: nkt_ret_string_source()) >= 1
+}
+
+fn nkt_float_ret_bool_source() -> String {
+  "module nkt.float_ret_bool\n\nimport std.types { Int, Float, Bool, String }\n\ntype Flag { on: Bool }\n\ntype Label { text: String }\n\ntype Count { n: Int }\n\ntype Ratio { r: Float }\n\nfn take_b(b: Bool) -> Bool {\n  b\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\nfn take_i(i: Int) -> Int {\n  i\n}\n\nfn take_f(f: Float) -> Float {\n  f\n}\n\nfn probe() -> Bool {\n  1.5\n}\n"
+}
+
+test fn a_float_literal_at_a_bool_declared_return_must_refuse() -> Bool {
+  not_inhabited_blocking_count(source: nkt_float_ret_bool_source()) >= 1
+}
+
+// THE CONDITION POSITION (gunbc.recurring_failure_mode.condition_position_unjudged_against_bool):
+// a match-arm guard and an if condition are declared Bool by the grammar and judged by the same
+// relation. The guard RED is the shape gunbc#12814 found (`x if 5`).
+
+fn nkt_guard_int_source() -> String {
+  "module nkt.guard_int\n\nimport std.types { Int, Bool }\n\nfn probe(n: Int) -> Int {\n  match n {\n    x if 5 => 1\n    _ => 2\n  }\n}\n"
+}
+
+test fn an_int_literal_as_a_match_arm_guard_must_refuse() -> Bool {
+  not_inhabited_blocking_count(source: nkt_guard_int_source()) >= 1
+}
+
+fn nkt_if_int_source() -> String {
+  "module nkt.if_int\n\nimport std.types { Int, Bool }\n\nfn probe(n: Int) -> Int {\n  if 1 { n } else { 0 }\n}\n"
+}
+
+test fn an_int_literal_as_an_if_condition_must_refuse() -> Bool {
+  not_inhabited_blocking_count(source: nkt_if_int_source()) >= 1
+}
+
+// WHICH CLAIM DISCRIMINATES WHICH CHANGE. The field/argument/return REDs above were already red on
+// main (the older kernel chain's TypeMismatch), so they pin the state and do not discriminate the
+// relation repair. The condition REDs were green on main; they discriminate the condition wiring
+// AND the relation repair jointly, since a wired condition over the unrepaired relation answered
+// Inhabits. The claims below separate the relation repair on its own:
+//
+// (a) THE RELATION'S OWN CLASS ON THE REAL PATH. DeclaredTypeNotInhabited is emitted only by
+// declared_type_obligation_diags, so counting that class alone cannot be satisfied by the older
+// chain's TypeMismatch -- the mask cannot hide a regression here. On main these counted 0.
+// The record field and declared return are NOT listed: those seams run only the relation's
+// cardinality verdict (the DeclaredTypeObligation note in v1.compiler.infer), so the relation's
+// numeral arm is not consulted there at all.
+//
+// (b) SUPPLIED VALUES AT THE KEYING INTERFACE. The carrier-profile keying is called directly, one
+// answer per profile row the corpus spells.
+
+fn relation_refusal_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "DeclaredTypeNotInhabited")))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+test fn the_relation_itself_refuses_an_int_at_a_bool_call_argument() -> Bool {
+  relation_refusal_count(source: nkt_arg_bool_source()) >= 1
+}
+
+test fn the_relation_itself_refuses_an_int_at_a_string_call_argument() -> Bool {
+  relation_refusal_count(source: nkt_arg_string_source()) >= 1
+}
+
+fn nkt_list_bool_source() -> String {
+  "module nkt.list_bool\n\nimport std.types { Int, Bool, List }\n\nfn take_l(xs: List<Bool>) -> Int {\n  xs |> count\n}\n\nfn probe() -> Int {\n  take_l(xs: [1])\n}\n"
+}
+
+test fn the_relation_itself_refuses_an_int_list_element_at_a_bool_list() -> Bool {
+  relation_refusal_count(source: nkt_list_bool_source()) >= 1
+}
+
+test fn numeral_admitting_kernel_carriers_are_int_and_float() -> Bool {
+  kernel_carrier_admits_numeral(name: "Int")
+    && kernel_carrier_admits_numeral(name: "Float")
+}
+
+test fn bool_string_and_unknown_names_admit_no_numeral() -> Bool {
+  !kernel_carrier_admits_numeral(name: "Bool")
+    && !kernel_carrier_admits_numeral(name: "String")
+    && !kernel_carrier_admits_numeral(name: "Json")
+    && !kernel_carrier_admits_numeral(name: "")
+}
+
+test fn only_ring_and_field_profiles_admit_a_numeral() -> Bool {
+  algebra_profile_admits_numeral(profile: OrderedRingProfile)
+    && algebra_profile_admits_numeral(profile: ApproximateFieldProfile)
+    && !algebra_profile_admits_numeral(profile: BooleanAlgebraProfile)
+    && !algebra_profile_admits_numeral(profile: FreeMonoidScalarProfile)
+    && !algebra_profile_admits_numeral(profile: FreeMonoidCollectionProfile)
+}
+
+// TWO GUARD REDS FROM bright-owl-402 (the superseded gunbc#12829). A String guard reaches no numeral
+// arm, so it isolates the guard WIRING: if condition_obligation_diags stopped being called, nothing
+// else holds it red. The parentheses are load-bearing -- a bare `x if s =>` parses `s => 1` as a
+// lambda and refuses as a ParseError, which discriminates nothing. A non-literal Int guard isolates
+// the relation from literal elaboration: a repair that reached only literals would leave it green.
+
+fn nkt_guard_string_source() -> String {
+  "module nkt.guard_string\n\nimport std.types { Int, String }\n\nfn probe(n: Int, s: String) -> Int {\n  match n {\n    x if (s) => 1\n    _ => 2\n  }\n}\n"
+}
+
+test fn a_string_match_arm_guard_must_refuse() -> Bool {
+  relation_refusal_count(source: nkt_guard_string_source()) == 1
+}
+
+fn nkt_guard_int_value_source() -> String {
+  "module nkt.guard_int_value\n\nimport std.types { Int, Bool }\n\nfn probe(n: Int) -> Int {\n  match n {\n    x if x + 1 => 1\n    _ => 2\n  }\n}\n"
+}
+
+test fn a_non_literal_int_match_arm_guard_must_refuse() -> Bool {
+  relation_refusal_count(source: nkt_guard_int_value_source()) >= 1
+}
+
+// ONE POSITIVE CONTROL, EVERY POSITION. Each control asserts the same fact -- zero refusals of either
+// class and a clean Rust emission -- and a clean compile runs the whole pipeline (about 16 s each,
+// measured, against about 0.3 s for a refusing source), so ten separate controls paid ten full
+// compiles for one assertion. This source carries every admitted pair at once: an Int literal at an
+// Int record field, call argument and declared return; a Float literal at the same three; a Bool
+// literal at a Bool return; a Bool match-arm guard; a Bool if condition. The numeric kernel types
+// admitted today are exactly Int and Float (std.algebra kernel_carrier_admits_numeral, claimed
+// directly above). A refusal of any one of them turns this control red.
+fn nkt_admitted_source() -> String {
+  "module nkt.admitted\n\nimport std.types { Int, Float, Bool }\n\ntype Count { n: Int }\n\ntype Ratio { r: Float }\n\nfn take_i(i: Int) -> Int {\n  i\n}\n\nfn take_f(f: Float) -> Float {\n  f\n}\n\nfn field_int() -> Count {\n  Count { n: 1 }\n}\n\nfn arg_int() -> Int {\n  take_i(i: 1)\n}\n\nfn ret_int() -> Int {\n  1\n}\n\nfn field_float() -> Ratio {\n  Ratio { r: 1.5 }\n}\n\nfn arg_float() -> Float {\n  take_f(f: 1.5)\n}\n\nfn ret_float() -> Float {\n  1.5\n}\n\nfn ret_bool() -> Bool {\n  true\n}\n\nfn guard_bool(n: Int) -> Int {\n  match n {\n    x if x > 10 => 1\n    _ => 2\n  }\n}\n\nfn if_bool(n: Int) -> Int {\n  if n > 1 { n } else { 0 }\n}\n"
+}
+
+test fn every_admitted_numeral_and_bool_condition_still_compiles() -> Bool {
+  not_inhabited_blocking_count(source: nkt_admitted_source()) == 0
+    && compile_dag_rust_emit_check(
+      nkt_admitted_source(),
+      "src/nkt_admitted.rs",
+      [],
+      []
+    )
+}

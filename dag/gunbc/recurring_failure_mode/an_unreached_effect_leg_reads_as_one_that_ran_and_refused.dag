@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.an_unreached_effect_leg_reads_as_one_that_ran_and_refused
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data an_unreached_effect_leg_reads_as_one_that_ran_and_refused: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_unreached_effect_leg_reads_as_one_that_ran_and_refused" as NonEmptyStr,
+
+  receipts: [
+    "**an unreached effect leg reads as one that ran and refused** (a remote effect whose transport never reached the host -- ssh could not connect, so no remote shell began -- is reported with the same value as a leg whose script ran and refused, so the caller can neither retry the first without retrying the second nor resume the leftovers the first one strands).",
+
+    "INVALID STATE: gunbc.spark.pair_serving_apply SparkPairHostApplyOutcome had two arms, Applied and Failed, and every non-zero session result became Failed. ssh(1)'s own 255 (extdeps.ssh.session ssh_client_error_exit_status) was folded into the script's refusal exits.",
+
+    "HARM: fleet-converge run 36918167575 (2026-10-01, mode spark_v41_group_a_launch). One leg to srv7 timed out over Wi-Fi (`ssh: connect to host 192.168.1.232 port 22: Connection timed out`), the whole four-host transaction rolled back, the rollback leg to srv7 timed out too, and srv7 kept `.gunbc-had-no-unit` and `.gunbc-transaction`. Every later run refused at preflight until a human deleted them. A transient link loss cost a full arm abort plus a manual intervention.",
+
+    "DISTINGUISHING FACTS: whether a remote shell reported BEGINNING. gunbc.spark.pair_serving_apply spark_pair_leg_payload wraps every privileged script to print a began-line before its first effect and its own exit after its last; spark_pair_leg_outcome_of reads Unreached only when neither line arrived AND ssh exited 255. A began-line with no exit line is a script that RAN to an unknown point and is Failed, never retried. stderr text is not the discriminator (gunbc.command_runner ssh_exit_255_conflation_dissolution rejects stderr-sniffing).",
+
+    "RESIDUE, STATED: a connection lost after the shell started but before its began-line crossed also reads Unreached. gunbc.spark.native_serving_apply therefore retries only idempotent stages: preflight and the front door read, preserve/commit/rollback are no-ops where this transaction's desired state already holds, and apply's unconditional restart is the module's declared epoch semantics.",
+
+    "RUNG: found at 1 (mitigatable -- a human could read the log and delete the files). Now 2 for the native serving arm: witnesses in dag/test/claim/spark/native_serving_resumable_apply_witness_test.dag pin the reading, the bounded retry (spark_native_unreached_leg_attempt_budget) and the leftover decision (spark_native_leftover_decision) with discriminating reds. CEILING 3: an outcome type every remote-effect leg must produce, so no consumer can match a leg result without facing the Unreached arm. NEXT-RUNG TRIGGER: the other SshSessionExecResult consumers that fold 255 into a refusal (gunbc.spark.model_snapshot_materialize spark_remote_run, gunbc.host_command_binding host_command_outcome_of's Unconfirmed arm) consuming one shared in-band leg reading, SUFFICIENT FOR no remote-effect consumer in the corpus to construct a ran-and-refused value from a leg that never began.",
+  ],
+
+  evidence: [],
+}
