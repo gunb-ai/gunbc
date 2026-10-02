@@ -1,5 +1,7 @@
 module v2.test.claim.emit.module_member_emission
 
+import v2.extdeps.languages.dag { dag_surface_edge_label }
+
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.emit_produced { emit_module_member }
 import v2.compiler.body_lowering_fold { DeclaredRefinement }
@@ -13,7 +15,7 @@ import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, node_synthetic, symbol_lexeme }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, node_synthetic, symbol_lexeme }
 import v2.std.optional { Absent, Present }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.text { String }
@@ -156,12 +158,12 @@ test fn a_where_refinement_emits_its_transparent_alias_on_the_production_route_h
 // partner is the route row above, which reaches the same arm for real.
 fn member_emission_supplied_refinement() -> String {
   let member = Edge {
-    label: Named { name: ^Pos },
+    label: Authored { name: ^Pos },
     target: node_synthetic(
       kind: TypeNode { connective: Conj },
       children: [
-        Edge { label: Named { name: ^dag_surface_type_expr }, target: node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } }, children: []) },
-        Edge { label: Named { name: ^dag_surface_where_refinement_clause }, target: node_synthetic(kind: TypeNode { connective: Atom { identity: ^positive } }, children: []) }
+        Edge { label: Authored { name: ^dag_surface_type_expr }, target: node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } }, children: []) },
+        Edge { label: dag_surface_edge_label(edge: ^dag_surface_where_refinement_clause), target: node_synthetic(kind: TypeNode { connective: Atom { identity: ^positive } }, children: []) }
       ]
     )
   }

@@ -483,7 +483,12 @@ test fn witness_unreadable_merge_base_carrier_parse_refuses_prior_observation() 
   }
 }
 
-test fn witness_missing_carrier_prevents_silent_empty_authority_projection() -> Bool {
+// THE CONJUNCTION SPLIT (DESIGN section 3): one claim carried two independent cases of the same
+// producer through one budget — the refused shape over an unreadable carrier and the projected
+// shape over a valid one — so roadmap_authority_projection executed twice per frame and both
+// bills landed on one identity. Each case is now its own claim at its own boundary; the producer
+// still executes exactly once per claim, and the file's coverage is unchanged.
+test fn witness_unreadable_carrier_refuses_with_a_located_detail() -> Bool {
   let history = load_roadmap_acceptance_event_history_from_carrier_text(
     text: unreadable_carrier_text_fixture,
   )
@@ -492,33 +497,36 @@ test fn witness_missing_carrier_prevents_silent_empty_authority_projection() -> 
       string_contains(s: detail, pattern: "line 1:")
     RoadmapAuthorityProjected { doc: _, accepted: _, withheld: _ } => false
   }
-    && match roadmap_authority_projection(history: load_roadmap_acceptance_event_history_from_carrier_text(text: receipt_continuity_acceptance_carrier_fixture_text)) {
-      RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } => count(doc_all_nodes(doc: doc)) > 0
-      RoadmapAuthorityProjectionRefused { detail: _ } => false
-    }
 }
 
-test fn witness_dispatch_never_presents_empty_frontier_on_authority_refusal() -> Bool {
-  let refused = RoadmapAuthorityProjectionRefused { detail: "fixture planted projection refusal" }
-  let projected = RoadmapAuthorityProjected {
-    doc: RoadmapDocument { preamble: [], lead_lanes: [], sections: [] },
-    accepted: [],
-    withheld: [],
+test fn witness_valid_carrier_projects_a_nonempty_document() -> Bool {
+  match roadmap_authority_projection(history: load_roadmap_acceptance_event_history_from_carrier_text(text: receipt_continuity_acceptance_carrier_fixture_text)) {
+    RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } => count(doc_all_nodes(doc: doc)) > 0
+    RoadmapAuthorityProjectionRefused { detail: _ } => false
   }
+}
+
+// SPLIT THE SAME WAY (DESIGN section 3): the refusal arm and the projected arm are independent
+// cases of roadmap_dispatch_file_content_for_projection over planted fixtures; one claim paid both
+// renders per frame. Two claims, one render each, coverage unchanged.
+test fn witness_dispatch_refusal_arm_hides_the_brief_template() -> Bool {
+  let refused = RoadmapAuthorityProjectionRefused { detail: "fixture planted projection refusal" }
   let refused_dispatch = roadmap_dispatch_file_content_for_projection(proj: refused)
   string_contains(s: refused_dispatch, pattern: "fixture planted projection refusal")
     && string_contains(s: refused_dispatch, pattern: "\"refused\": true")
     && !string_contains(s: refused_dispatch, pattern: "\"brief_template\": ")
-    && match projected {
-      RoadmapAuthorityProjected { doc: _, accepted: _, withheld: _ } => {
-        let dispatch = roadmap_dispatch_file_content_for_projection(proj: projected)
-        string_contains(s: dispatch, pattern: "\"brief_template\": ")
-          && string_contains(s: dispatch, pattern: "\"dispatch\": ")
-          && string_contains(s: dispatch, pattern: "\"schema\": \"roadmap-dispatch/v2\"")
-          && !string_contains(s: dispatch, pattern: "\"refused\": true")
-      }
-      RoadmapAuthorityProjectionRefused { detail: _ } => false
-    }
+}
+
+test fn witness_dispatch_projected_arm_presents_the_dispatch_schema() -> Bool {
+  let dispatch = roadmap_dispatch_file_content_for_projection(proj: RoadmapAuthorityProjected {
+    doc: RoadmapDocument { preamble: [], lead_lanes: [], sections: [] },
+    accepted: [],
+    withheld: [],
+  })
+  string_contains(s: dispatch, pattern: "\"brief_template\": ")
+    && string_contains(s: dispatch, pattern: "\"dispatch\": ")
+    && string_contains(s: dispatch, pattern: "\"schema\": \"roadmap-dispatch/v2\"")
+    && !string_contains(s: dispatch, pattern: "\"refused\": true")
 }
 
 // A receipt built here rather than projected from the carrier fixture, so the discriminating pair

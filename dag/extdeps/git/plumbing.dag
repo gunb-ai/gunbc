@@ -139,6 +139,7 @@ fn git_commit_parents_argv(parents: GitCommitParents) -> List<String> {
 // (gunbc.recurring_failure_mode identity_hashed_from_a_shared_mutable_path).
 service git.Plumbing {
   operation HashObjectWrite {
+    requires opaque
     input { address: GitRepositoryAddress, path: FilePath }
     output {
       oid: String from "stdout"
@@ -149,6 +150,7 @@ service git.Plumbing {
   }
 
   operation HashObjectWriteStdin {
+    requires none
     input { address: GitRepositoryAddress, content: String }
     output {
       oid: String from "stdout"
@@ -162,6 +164,7 @@ service git.Plumbing {
   }
 
   operation HashObjectStdinNoWrite {
+    requires none
     input { content: String }
     output {
       oid: String from "stdout"
@@ -176,6 +179,7 @@ service git.Plumbing {
   }
 
   operation CatFileBlob {
+    requires opaque
     input { address: GitRepositoryAddress, object: String }
     output {
       content: String from "stdout"
@@ -187,6 +191,7 @@ service git.Plumbing {
   }
 
   operation CatFileExists {
+    requires opaque
     input { address: GitRepositoryAddress, object: String }
     output {
       exit_code: Int from "exit_code"
@@ -197,6 +202,7 @@ service git.Plumbing {
   }
 
   operation CatFileSize {
+    requires opaque
     input { address: GitRepositoryAddress, object: String }
     output {
       size: String from "stdout"
@@ -208,6 +214,7 @@ service git.Plumbing {
   }
 
   operation UnpackObject {
+    requires opaque
     input { address: GitRepositoryAddress, object: String }
     output {
       path: String from "stdout"
@@ -218,6 +225,7 @@ service git.Plumbing {
   }
 
   operation ReadTreeIntoIndex {
+    requires opaque
     input { address: GitRepositoryAddress, index: FilePath, treeish: String }
     output {
       exit_code: Int from "exit_code"
@@ -227,6 +235,7 @@ service git.Plumbing {
   }
 
   operation ReadTreeIntoIndexPrefixed {
+    requires opaque
     input { address: GitRepositoryAddress, index: FilePath, prefix: String, treeish: String }
     output {
       exit_code: Int from "exit_code"
@@ -236,6 +245,7 @@ service git.Plumbing {
   }
 
   operation AddAllIntoIndex {
+    requires opaque
     input { address: GitRepositoryAddress, index: FilePath }
     output {
       exit_code: Int from "exit_code"
@@ -245,6 +255,7 @@ service git.Plumbing {
   }
 
   operation UpdateIndexCacheInfo {
+    requires opaque
     input { address: GitRepositoryAddress, index: FilePath, mode: String, oid: String, path: String }
     output {
       exit_code: Int from "exit_code"
@@ -254,6 +265,7 @@ service git.Plumbing {
   }
 
   operation WriteTreeFromIndex {
+    requires opaque
     input { address: GitRepositoryAddress, index: FilePath }
     output {
       tree: String from "stdout"
@@ -264,6 +276,7 @@ service git.Plumbing {
   }
 
   operation CheckoutIndexToPrefix {
+    requires opaque
     input { address: GitRepositoryAddress, index: FilePath, prefix: String }
     output {
       exit_code: Int from "exit_code"
@@ -273,6 +286,7 @@ service git.Plumbing {
   }
 
   operation CommitTree {
+    requires opaque
     input { address: GitRepositoryAddress, tree: String, parents: GitCommitParents, message: String }
     output {
       commit: String from "stdout"
@@ -283,6 +297,7 @@ service git.Plumbing {
   }
 
   operation InitAt {
+    requires none
     input { address: GitRepositoryAddress, path: FilePath }
     output {
       exit_code: Int from "exit_code"
@@ -292,6 +307,7 @@ service git.Plumbing {
   }
 
   operation InitBareAt {
+    requires none
     input { address: GitRepositoryAddress, path: FilePath }
     output {
       exit_code: Int from "exit_code"
@@ -301,6 +317,7 @@ service git.Plumbing {
   }
 
   operation ObserveRef {
+    requires opaque
     input { address: GitRepositoryAddress, ref_name: String }
     output {
       revision: String from "stdout"
@@ -312,6 +329,7 @@ service git.Plumbing {
   }
 
   operation CreateRefIfAbsent {
+    requires opaque
     input { address: GitRepositoryAddress, ref_name: String, new: String }
     output {
       exit_code: Int from "exit_code"
@@ -321,6 +339,7 @@ service git.Plumbing {
   }
 
   operation AdvanceRefIfExpected {
+    requires opaque
     input { address: GitRepositoryAddress, ref_name: String, new: String, expected_old: String }
     output {
       exit_code: Int from "exit_code"
@@ -330,6 +349,7 @@ service git.Plumbing {
   }
 
   operation DeleteRefIfExpected {
+    requires opaque
     input { address: GitRepositoryAddress, ref_name: String, expected_old: String }
     output {
       exit_code: Int from "exit_code"

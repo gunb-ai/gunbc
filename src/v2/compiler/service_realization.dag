@@ -39,7 +39,8 @@ import v2.std.node {
   Edge,
   Found,
   Instantiation,
-  Named,
+  Authored,
+  StructuralLabel,
   Node,
   Positional,
   Symbol,
@@ -275,7 +276,8 @@ fn realization_first_refusal(acc: Optional<RealizationRefusal>, next: fn() -> Op
 
 fn named_label(e: Edge) -> Optional<Symbol> {
   match e.label {
-    Named { name: n } => optional_present(value: n)
+    Authored { name: n } => optional_present(value: n)
+    StructuralLabel { label: _ } => optional_absent()
     Positional => optional_absent()
   }
 }
@@ -315,7 +317,8 @@ fn positional_walk_step(acc: PositionalWalk, e: Edge) -> PositionalWalk {
       if acc.seen == 0 { PositionalWalk { seen: 1, first: optional_present(value: e.target), second: acc.second } }
       else if acc.seen == 1 { PositionalWalk { seen: 2, first: acc.first, second: optional_present(value: e.target) } }
       else { PositionalWalk { seen: acc.seen + 1, first: acc.first, second: acc.second } }
-    Named { name: _ } => acc
+    Authored { name: _ } => acc
+    StructuralLabel { label: _ } => acc
   }
 }
 
@@ -325,7 +328,8 @@ fn symbol_list_empty() -> List<Symbol> {
 
 fn edge_name_step(acc: List<Symbol>, e: Edge) -> List<Symbol> {
   match e.label {
-    Named { name: n } => list_snoc_item(xs: acc, item: n)
+    Authored { name: n } => list_snoc_item(xs: acc, item: n)
+    StructuralLabel { label: _ } => acc
     Positional => acc
   }
 }
@@ -351,7 +355,8 @@ fn service_realization_refusal(interface: Node, realization: Node) -> Optional<R
 fn realization_leaf_member_refusal(interface: Node, member: Edge) -> Optional<RealizationRefusal> {
   match member.label {
     Positional => realization_refusal(reason: ^service_realization_member_unknown, at: member.target)
-    Named { name: n } =>
+    StructuralLabel { label: _ } => realization_refusal(reason: ^service_realization_member_unknown, at: member.target)
+    Authored { name: n } =>
       if n == realization_config_label() {
         realization_config_refusal(config: member.target)
       } else {
@@ -604,7 +609,8 @@ fn realization_arms_walk_initial() -> RealizationArmsWalk {
 // connective refuses as malformed before its members are read.
 fn realization_arm_step(kind: DeclaredTransport, acc: RealizationArmsWalk, arm: Edge) -> RealizationArmsWalk {
   match arm.label {
-    Named { name: _ } => realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm.target)
+    Authored { name: _ } => realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm.target)
+    StructuralLabel { label: _ } => realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm.target)
     Positional =>
       if node_is_conj(n: arm.target) { realization_conj_arm_step(kind: kind, acc: acc, arm: arm.target) }
       else { realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm.target) }
