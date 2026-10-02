@@ -217,3 +217,14 @@ test fn w_a_watermark_at_or_above_unity_is_unresolvable() -> Bool {
     SchedulerAdmissionResolved { full_input_admission: _, full_input_origin: _, watermark: _, watermark_origin: _ } => false
   }
 }
+
+// EVERY ENVELOPE PASSES THE ARGUMENT VALIDATOR, AT AND ABOVE THE FLOOR (review on #12975): a watermark of
+// 1.0 is outside upstream's [0.0, 1.0) and refuses here, even at a floor ceiling, rather than at init.
+test fn w_an_out_of_range_watermark_refuses_the_envelope_even_at_the_floor() -> Bool {
+  match w_cold_eight() {
+    Absent => false
+    Present { value: cold } =>
+      !w_admits(cold: cold, hard: 8, admission: w_gate(full: w_on(), watermark: w_wm(bp: 10000)))
+        && !w_admits(cold: cold, hard: 14, admission: w_gate(full: w_on(), watermark: w_wm(bp: 10000)))
+  }
+}
