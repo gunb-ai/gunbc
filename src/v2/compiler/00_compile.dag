@@ -4975,3 +4975,13 @@ fn native_demand_transition_line(run: NativeDemandRun, t: NativeDemandTransition
 fn native_demand_run_receipt_lines(run: NativeDemandRun) -> List<String> {
   list_map(xs: run.transitions, f: fn(t) { native_demand_transition_line(run: run, t: t) })
 }
+
+// THROWAWAY (do not merge): a deliberate emit-only break for gunbc#13018's discriminating red.
+type Bool = True | False
+
+fn throwaway_emit_red(a: Bool) -> Bool {
+  match a {
+    True => False
+    False => True
+  }
+}
