@@ -888,6 +888,17 @@ fn required_gate_prefixes() -> List<String> {
 // imports were already in it), with preparation wall and runner peak inside run-to-run noise. The census module declares SubstrateInputsOnly; the join test declares no
 // disposition and supplies its nodes, edges and rows. The instrument is this floor's own
 // gate-closure and floor-cgroup lines.
+//
+// THE TEST-REFERENCE WALL WITNESS (roadmap node test-reference-discipline-remainder). The reds of
+// `test.claim.test_reference_wall_witness` are the ledger's enforcement evidence: unledgered
+// test-to-test references refuse (TestCodeReferenced), observed-versus-declared drift refuses
+// (TestCodeReferenceBudgetMismatch), and a discharged-but-unpaid-down row refuses. They were
+// authored and then executed by NO lane -- the module matches no family prefix, which is the
+// srv1/deep-ferret class again: evidence written, never run, reds reaching main unnoticed. Admitted
+// at exact module grain, not a `test.claim.test_reference_wall_` family, which would sweep nothing
+// in today but would silently widen if a sibling is ever planted. Its claims run through the census
+// probe over planted fixture sources (no live-tree read, SubstrateInputsOnly in spirit -- the
+// fixture sources are supplied strings), priced at NewWitnessTier.
 fn required_gate_authored_modules() -> List<String> {
   [
     "test.claim.runner_capacity_plan_witness",
@@ -904,6 +915,7 @@ fn required_gate_authored_modules() -> List<String> {
     "test.claim.deleted_lanes_countable_witness_test",
     "test.claim.discovery_census_witness",
     "v2.test.claim.effect_demand.effect_demand_floor_join_test",
+    "test.claim.test_reference_wall_witness",
   ]
 }
 
