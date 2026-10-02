@@ -1672,6 +1672,68 @@ fn required_ci_measurement_bound_steps() -> List<WitnessFloorBoundStep> {
   ]
 }
 
+// THE FLOOR'S FIVE TSV ARTIFACTS, ONE LIST BOUND BY EVERY JOB THAT RUNS THE FLOOR. The floor
+// writes each file under the env var its job sets (the *_path rows above); these steps collect
+// them. They are one function rather than an inline block because the fleet floor job in
+// gunbc.compiler_gate_workflow re-binds the measurement rows from here and, while these were
+// inline, did not re-bind them -- so after the floor moved into that job the claim-cost and
+// cross-claim artifacts stopped being uploaded and gunbc.floor_cost_distribution_instrument lost
+// its input with no step refusing. One list means a job cannot take the receipt and drop the TSVs.
+fn witness_floor_tsv_upload_bound_steps() -> List<WitnessFloorBoundStep> {
+  [
+    WitnessFloorBoundStep {
+      step: witness_floor_tsv_upload_step(
+        step_name: "Upload the floor's admission roster",
+        artifact_name: required_floor_disposition_artifact_name,
+        path: required_floor_disposition_path,
+        condition: witness_floor_precondition()
+      ),
+      role: capability_neutral,
+      step_name: "Upload the floor's admission roster",
+    },
+    WitnessFloorBoundStep {
+      step: witness_floor_tsv_upload_step(
+        step_name: "Upload the expected-red roster join",
+        artifact_name: expected_red_roster_join_artifact_name,
+        path: expected_red_roster_join_path,
+        condition: witness_floor_precondition()
+      ),
+      role: capability_neutral,
+      step_name: "Upload the expected-red roster join",
+    },
+    WitnessFloorBoundStep {
+      step: witness_floor_tsv_upload_step(
+        step_name: "Upload the long-home storage agreement",
+        artifact_name: long_home_storage_agreement_artifact_name,
+        path: long_home_storage_agreement_path,
+        condition: witness_floor_precondition()
+      ),
+      role: capability_neutral,
+      step_name: "Upload the long-home storage agreement",
+    },
+    WitnessFloorBoundStep {
+      step: witness_floor_tsv_upload_step(
+        step_name: "Upload the floor's per-claim cost receipt",
+        artifact_name: required_floor_claim_cost_artifact_name,
+        path: required_floor_claim_cost_path,
+        condition: witness_floor_precondition()
+      ),
+      role: capability_neutral,
+      step_name: "Upload the floor's per-claim cost receipt",
+    },
+    WitnessFloorBoundStep {
+      step: witness_floor_tsv_upload_step(
+        step_name: "Upload the floor's cross-claim demand census",
+        artifact_name: required_floor_cross_claim_demand_artifact_name,
+        path: required_floor_cross_claim_demand_path,
+        condition: witness_floor_precondition()
+      ),
+      role: capability_neutral,
+      step_name: "Upload the floor's cross-claim demand census",
+    },
+  ]
+}
+
 fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
   append(
     prepared_bound_steps(build_script: witness_floor_build_script()),
@@ -1686,58 +1748,7 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
         role: consumes_only(capabilities: [RustfmtCapability]),
         step_name: "All witnesses (one prepared subject, one fold)",
       },
-    ], concat(required_ci_measurement_bound_steps(), concat([
-      WitnessFloorBoundStep {
-        step: witness_floor_tsv_upload_step(
-          step_name: "Upload the floor's admission roster",
-          artifact_name: required_floor_disposition_artifact_name,
-          path: required_floor_disposition_path,
-          condition: witness_floor_precondition()
-        ),
-        role: capability_neutral,
-        step_name: "Upload the floor's admission roster",
-      },
-      WitnessFloorBoundStep {
-        step: witness_floor_tsv_upload_step(
-          step_name: "Upload the expected-red roster join",
-          artifact_name: expected_red_roster_join_artifact_name,
-          path: expected_red_roster_join_path,
-          condition: witness_floor_precondition()
-        ),
-        role: capability_neutral,
-        step_name: "Upload the expected-red roster join",
-      },
-      WitnessFloorBoundStep {
-        step: witness_floor_tsv_upload_step(
-          step_name: "Upload the long-home storage agreement",
-          artifact_name: long_home_storage_agreement_artifact_name,
-          path: long_home_storage_agreement_path,
-          condition: witness_floor_precondition()
-        ),
-        role: capability_neutral,
-        step_name: "Upload the long-home storage agreement",
-      },
-      WitnessFloorBoundStep {
-        step: witness_floor_tsv_upload_step(
-          step_name: "Upload the floor's per-claim cost receipt",
-          artifact_name: required_floor_claim_cost_artifact_name,
-          path: required_floor_claim_cost_path,
-          condition: witness_floor_precondition()
-        ),
-        role: capability_neutral,
-        step_name: "Upload the floor's per-claim cost receipt",
-      },
-      WitnessFloorBoundStep {
-        step: witness_floor_tsv_upload_step(
-          step_name: "Upload the floor's cross-claim demand census",
-          artifact_name: required_floor_cross_claim_demand_artifact_name,
-          path: required_floor_cross_claim_demand_path,
-          condition: witness_floor_precondition()
-        ),
-        role: capability_neutral,
-        step_name: "Upload the floor's cross-claim demand census",
-      },
-    ], concat(floor_attempt_receipt_bound_steps(), [
+    ], concat(required_ci_measurement_bound_steps(), concat(witness_floor_tsv_upload_bound_steps(), concat(floor_attempt_receipt_bound_steps(), [
       WitnessFloorBoundStep {
         step: witness_toolchain_filesystem_end_probe_step(),
         role: capability_neutral,
