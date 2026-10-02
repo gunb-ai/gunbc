@@ -112,7 +112,7 @@ pub use crate::v1_compiler_infer_env::{
     merge_type_env_cache, merge_type_env_cache_guarded, node_with_children, node_with_inferred,
     overlay_skips_kernel_name, put_inductive_field, put_inductive_field_cross,
     qualified_all_but_last, qualify_borrowed_inferred, qualify_borrowed_type_names,
-    qualify_decl_reference_positions, str_bindings_from_bindings, surface_fork_rows,
+    qualify_decl_reference_positions, str_bindings_from_bindings, surface_contested_walk,
     surface_pool_admit, surface_reach_of, symbol_index_insert, symbol_index_insert_decl,
     symbol_index_insert_service, symbol_index_lookup, type_reference_declaration,
     type_reference_declaration_ref, unit_variant_index_shadow_insert,
@@ -25184,6 +25184,11 @@ pub fn build_ancestry_precedence(
 ) -> Rc<AncestryPrecedence> {
     {
         let imports = surface_imports_of(resolved_imports.clone());
+        let contested = crate::v1_compiler_infer_env::surface_contested_walk(
+            pool.clone(),
+            kernel_str_bindings.clone(),
+            imports.clone(),
+        );
         Rc::new(AncestryPrecedence {
             cache: crate::v1_compiler_infer_env::merge_type_env_cache(
                 union_parent_type_env_caches(resolved_imports.clone(), parent_index.clone()),
@@ -25198,13 +25203,10 @@ pub fn build_ancestry_precedence(
                 ),
                 kernel: kernel_str_bindings.clone(),
                 rewrites: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+                contested: contested.table.clone(),
                 pool: pool.clone(),
             }),
-            conflicts: crate::v1_compiler_infer_env::surface_fork_rows(
-                pool.clone(),
-                kernel_str_bindings.clone(),
-                imports.clone(),
-            ),
+            conflicts: contested.rows.clone(),
         })
     }
 }
@@ -27952,6 +27954,7 @@ pub fn surface_pool_admit_with_parents(
                         path.clone(),
                         typed.interface.clone().env.clone().str_bindings.clone(),
                         imports.clone(),
+                        typed.type_env.clone().ancestry.clone().contested.clone(),
                     )
                 }
             },
@@ -28779,6 +28782,7 @@ pub fn realize_module(
                             typed_path.clone(),
                             typed.interface.clone().env.clone().str_bindings.clone(),
                             surface_imports_of(resolved.resolved_imports.clone()),
+                            typed.type_env.clone().ancestry.clone().contested.clone(),
                         ),
                         variant_surfaces: v1_rt::rc_map_insert(
                             dep_state.variant_surfaces.clone(),

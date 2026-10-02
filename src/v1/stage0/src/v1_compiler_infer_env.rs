@@ -88,6 +88,7 @@ pub struct ModuleSurface {
     pub own: Rc<HashMap<String, Rc<TypeBinding>>>,
     pub imports: Rc<Vec<Rc<SurfaceImport>>>,
     pub reach: Rc<Vec<i64>>,
+    pub contested: Rc<HashMap<String, Rc<TypeBinding>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -106,6 +107,7 @@ pub struct AncestryView {
     pub reach: Rc<Vec<i64>>,
     pub kernel: Rc<HashMap<String, Rc<TypeBinding>>>,
     pub rewrites: Rc<HashMap<String, Rc<TypeBinding>>>,
+    pub contested: Rc<HashMap<String, Rc<TypeBinding>>>,
     pub pool: Rc<SurfacePool>,
 }
 
@@ -126,6 +128,7 @@ pub fn empty_ancestry_view() -> Rc<AncestryView> {
         reach: Rc::new(vec![]),
         kernel: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
         rewrites: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+        contested: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
         pool: empty_surface_pool(),
     })
 }
@@ -326,6 +329,7 @@ pub fn surface_pool_admit(
     module_path: String,
     own: Rc<HashMap<String, Rc<TypeBinding>>>,
     imports: Rc<Vec<Rc<SurfaceImport>>>,
+    contested: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<SurfacePool> {
     {
         let surface = Rc::new(ModuleSurface {
@@ -334,6 +338,7 @@ pub fn surface_pool_admit(
             own: own.clone(),
             imports: imports.clone(),
             reach: surface_reach_of(imports.clone(), pool.clone()),
+            contested: contested.clone(),
         });
         let exporters = Rc::new(v1_rt::map_keys(&own)).iter().cloned().fold(
             pool.exporters.clone(),
@@ -441,86 +446,33 @@ pub fn surface_import_selects(
     }
 }
 
-pub fn ancestry_winner(
+pub fn direct_overlay_winner(
     pool: Rc<SurfacePool>,
-    kernel: Rc<HashMap<String, Rc<TypeBinding>>>,
     imports: Rc<Vec<Rc<SurfaceImport>>>,
     name: String,
 ) -> Option<Rc<TypeBinding>> {
-    {
-        let direct = if overlay_skips_kernel_name(name.clone()) {
-            std::option::Option::None
-        } else {
-            imports.iter().cloned().fold(
-                std::option::Option::None,
-                |acc: _, imp: Rc<SurfaceImport>| match v1_rt::map_get(
-                    &pool.surfaces.clone(),
-                    imp.module_path.clone(),
-                ) {
-                    Some(parent) => {
-                        if surface_import_selects(imp.clone(), parent.own.clone(), name.clone()) {
-                            match v1_rt::map_get(&parent.own.clone(), name.clone()) {
-                                Some(b) => Some(b.clone()),
-                                std::option::Option::None => acc.clone(),
-                            }
-                        } else {
-                            acc.clone()
-                        }
-                    }
-                    std::option::Option::None => acc.clone(),
-                },
-            )
-        };
-        match direct.clone() {
-            Some(b) => Some(b.clone()),
-            std::option::Option::None => match v1_rt::map_get(&kernel, name.clone()) {
-                Some(b) => Some(b.clone()),
-                std::option::Option::None => surface_union_winner(
-                    pool.clone(),
-                    kernel.clone(),
-                    imports.clone(),
-                    name.clone(),
-                ),
-            },
-        }
-    }
-}
-
-pub fn surface_union_winner(
-    pool: Rc<SurfacePool>,
-    kernel: Rc<HashMap<String, Rc<TypeBinding>>>,
-    imports: Rc<Vec<Rc<SurfaceImport>>>,
-    name: String,
-) -> Option<Rc<TypeBinding>> {
-    {
-        let last = imports.iter().cloned().fold(
+    if overlay_skips_kernel_name(name.clone()) {
+        std::option::Option::None
+    } else {
+        imports.iter().cloned().fold(
             std::option::Option::None,
             |acc: _, imp: Rc<SurfaceImport>| match v1_rt::map_get(
                 &pool.surfaces.clone(),
                 imp.module_path.clone(),
             ) {
                 Some(parent) => {
-                    if surface_has(
-                        pool.clone(),
-                        kernel.clone(),
-                        parent.module_path.clone(),
-                        parent.reach.clone(),
-                        name.clone(),
-                    ) {
-                        Some(parent.clone())
+                    if surface_import_selects(imp.clone(), parent.own.clone(), name.clone()) {
+                        match v1_rt::map_get(&parent.own.clone(), name.clone()) {
+                            Some(b) => Some(b.clone()),
+                            std::option::Option::None => acc.clone(),
+                        }
                     } else {
                         acc.clone()
                     }
                 }
                 std::option::Option::None => acc.clone(),
             },
-        );
-        match last.clone() {
-            Some(parent) => {
-                surface_value(pool.clone(), kernel.clone(), parent.clone(), name.clone())
-            }
-            std::option::Option::None => std::option::Option::None,
-        }
+        )
     }
 }
 
@@ -543,111 +495,198 @@ pub fn surface_value(
         {
             ClosureDeclarer::ClosureDeclarerSole { binding: b, .. } => Some(b.clone()),
             ClosureDeclarer::ClosureDeclarerNone => std::option::Option::None,
-            ClosureDeclarer::ClosureDeclarerContested => ancestry_winner(
-                pool.clone(),
-                kernel.clone(),
-                surface.imports.clone(),
-                name.clone(),
-            ),
+            ClosureDeclarer::ClosureDeclarerKernelOnly => v1_rt::map_get(&kernel, name.clone()),
+            ClosureDeclarer::ClosureDeclarerContested => {
+                v1_rt::map_get(&surface.contested.clone(), name.clone())
+            }
         },
     }
 }
 
-pub fn surface_fork_rows(
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ContestedWalk {
+    pub rows: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
+    pub table: Rc<HashMap<String, Rc<TypeBinding>>>,
+}
+
+pub fn surface_contested_walk(
     pool: Rc<SurfacePool>,
     kernel: Rc<HashMap<String, Rc<TypeBinding>>>,
     imports: Rc<Vec<Rc<SurfaceImport>>>,
-) -> Rc<Vec<Rc<TypeEnvCacheMergeConflict>>> {
+) -> Rc<ContestedWalk> {
     {
         let reach = surface_reach_of(imports.clone(), pool.clone());
-        let forkable = closure_contested_names(pool.clone(), kernel.clone(), reach.clone());
-        let rows = Rc::new({
-            let mut __result = Vec::new();
-            for name in forkable.iter().cloned() {
-                __result.extend((*{
-            let walked = imports.iter().cloned().fold(Rc::new(SurfaceForkWalk {
-    winner: std::option::Option::None,
-    rows: Rc::new(vec![]),
-}), |state: Rc<SurfaceForkWalk>, imp: Rc<SurfaceImport>| match v1_rt::map_get(&pool.surfaces.clone(), imp.module_path.clone()) {
-    std::option::Option::None => state.clone(),
-    Some(parent) => if surface_has(pool.clone(), kernel.clone(), parent.module_path.clone(), parent.reach.clone(), name.clone()) {
-                match surface_value(pool.clone(), kernel.clone(), parent.clone(), name.clone()) {
-    std::option::Option::None => state.clone(),
-    Some(incoming) => match state.winner.clone() {
-    std::option::Option::None => Rc::new(SurfaceForkWalk {
-    winner: Some(incoming.clone()),
-    rows: state.rows.clone(),
-}),
-    Some(existing) => if binding_same_authority(existing.clone(), incoming.clone()) {
-                    state.clone()
-                } else {
+        let contested = closure_contested_names(pool.clone(), kernel.clone(), reach.clone());
+        let walked = contested.iter().cloned().fold(
+            Rc::new(ContestedWalk {
+                rows: Rc::new(vec![]),
+                table: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+            }),
+            |acc: Rc<ContestedWalk>, name: String| {
+                let walk = imports.iter().cloned().fold(
                     Rc::new(SurfaceForkWalk {
-    winner: Some(incoming.clone()),
-    rows: v1_rt::rc_list_push(state.rows.clone(), Rc::new(TypeEnvCacheMergeConflict {
-    name: name.clone(),
-    import_path: imp.module_path.clone(),
-    existing_site: existing.resolved.clone().span.clone().file.clone(),
-    incoming_site: incoming.resolved.clone().span.clone().file.clone(),
-    span: incoming.resolved.clone().span.clone(),
-    same_tree: (source_tree_of(existing.resolved.clone().span.clone().file.clone()) == source_tree_of(incoming.resolved.clone().span.clone().file.clone())),
-})),
-})
-                },
-},
-}
-            } else {
-                state.clone()
+                        winner: std::option::Option::None,
+                        last: std::option::Option::None,
+                        rows: Rc::new(vec![]),
+                    }),
+                    |state: Rc<SurfaceForkWalk>, imp: Rc<SurfaceImport>| match v1_rt::map_get(
+                        &pool.surfaces.clone(),
+                        imp.module_path.clone(),
+                    ) {
+                        std::option::Option::None => state.clone(),
+                        Some(parent) => {
+                            if surface_has(
+                                pool.clone(),
+                                kernel.clone(),
+                                parent.module_path.clone(),
+                                parent.reach.clone(),
+                                name.clone(),
+                            ) {
+                                match surface_value(
+                                    pool.clone(),
+                                    kernel.clone(),
+                                    parent.clone(),
+                                    name.clone(),
+                                ) {
+                                    std::option::Option::None => state.clone(),
+                                    Some(incoming) => match state.winner.clone() {
+                                        std::option::Option::None => Rc::new(SurfaceForkWalk {
+                                            winner: Some(incoming.clone()),
+                                            last: Some(incoming.clone()),
+                                            rows: state.rows.clone(),
+                                        }),
+                                        Some(existing) => {
+                                            if binding_same_authority(
+                                                existing.clone(),
+                                                incoming.clone(),
+                                            ) {
+                                                Rc::new(SurfaceForkWalk {
+                                                    winner: state.winner.clone(),
+                                                    last: Some(incoming.clone()),
+                                                    rows: state.rows.clone(),
+                                                })
+                                            } else {
+                                                Rc::new(SurfaceForkWalk {
+                                                    winner: Some(incoming.clone()),
+                                                    last: Some(incoming.clone()),
+                                                    rows: v1_rt::rc_list_push(
+                                                        state.rows.clone(),
+                                                        Rc::new(TypeEnvCacheMergeConflict {
+                                                            name: name.clone(),
+                                                            import_path: imp.module_path.clone(),
+                                                            existing_site: existing
+                                                                .resolved
+                                                                .clone()
+                                                                .span
+                                                                .clone()
+                                                                .file
+                                                                .clone(),
+                                                            incoming_site: incoming
+                                                                .resolved
+                                                                .clone()
+                                                                .span
+                                                                .clone()
+                                                                .file
+                                                                .clone(),
+                                                            span: incoming
+                                                                .resolved
+                                                                .clone()
+                                                                .span
+                                                                .clone(),
+                                                            same_tree: (source_tree_of(
+                                                                existing
+                                                                    .resolved
+                                                                    .clone()
+                                                                    .span
+                                                                    .clone()
+                                                                    .file
+                                                                    .clone(),
+                                                            ) == source_tree_of(
+                                                                incoming
+                                                                    .resolved
+                                                                    .clone()
+                                                                    .span
+                                                                    .clone()
+                                                                    .file
+                                                                    .clone(),
+                                                            )),
+                                                        }),
+                                                    ),
+                                                })
+                                            }
+                                        }
+                                    },
+                                }
+                            } else {
+                                state.clone()
+                            }
+                        }
+                    },
+                );
+                let winner =
+                    match direct_overlay_winner(pool.clone(), imports.clone(), name.clone()) {
+                        Some(b) => Some(b.clone()),
+                        std::option::Option::None => match v1_rt::map_get(&kernel, name.clone()) {
+                            Some(b) => Some(b.clone()),
+                            std::option::Option::None => walk.last.clone(),
+                        },
+                    };
+                Rc::new(ContestedWalk {
+                    rows: v1_rt::concat(acc.rows.clone(), walk.rows.clone()),
+                    table: match winner.clone() {
+                        Some(b) => v1_rt::rc_map_insert(acc.table.clone(), name.clone(), b.clone()),
+                        std::option::Option::None => acc.table.clone(),
+                    },
+                })
             },
-});
-walked.rows.clone()
-}).iter().cloned());
-            }
-            __result
-        });
-        Rc::new({
-            let mut __sorted: Vec<_> = rows.iter().cloned().collect();
-            __sorted.sort_by(
-                |a: &Rc<TypeEnvCacheMergeConflict>, b: &Rc<TypeEnvCacheMergeConflict>| {
-                    let __ka = (|r: Rc<TypeEnvCacheMergeConflict>| {
-                        v1_rt::concat(
+        );
+        Rc::new(ContestedWalk {
+            rows: Rc::new({
+                let mut __sorted: Vec<_> = walked.rows.clone().iter().cloned().collect();
+                __sorted.sort_by(
+                    |a: &Rc<TypeEnvCacheMergeConflict>, b: &Rc<TypeEnvCacheMergeConflict>| {
+                        let __ka = (|r: Rc<TypeEnvCacheMergeConflict>| {
                             v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat(
                                         v1_rt::concat(
-                                            v1_rt::concat(r.name.clone(), " | ".to_string()),
-                                            r.import_path.clone(),
+                                            v1_rt::concat(
+                                                v1_rt::concat(r.name.clone(), " | ".to_string()),
+                                                r.import_path.clone(),
+                                            ),
+                                            " | ".to_string(),
                                         ),
-                                        " | ".to_string(),
+                                        r.existing_site.clone(),
                                     ),
-                                    r.existing_site.clone(),
+                                    " | ".to_string(),
                                 ),
-                                " | ".to_string(),
-                            ),
-                            r.incoming_site.clone(),
-                        )
-                    })(a.clone());
-                    let __kb = (|r: Rc<TypeEnvCacheMergeConflict>| {
-                        v1_rt::concat(
+                                r.incoming_site.clone(),
+                            )
+                        })(a.clone());
+                        let __kb = (|r: Rc<TypeEnvCacheMergeConflict>| {
                             v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat(
                                         v1_rt::concat(
-                                            v1_rt::concat(r.name.clone(), " | ".to_string()),
-                                            r.import_path.clone(),
+                                            v1_rt::concat(
+                                                v1_rt::concat(r.name.clone(), " | ".to_string()),
+                                                r.import_path.clone(),
+                                            ),
+                                            " | ".to_string(),
                                         ),
-                                        " | ".to_string(),
+                                        r.existing_site.clone(),
                                     ),
-                                    r.existing_site.clone(),
+                                    " | ".to_string(),
                                 ),
-                                " | ".to_string(),
-                            ),
-                            r.incoming_site.clone(),
-                        )
-                    })(b.clone());
-                    __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
-                },
-            );
-            __sorted
+                                r.incoming_site.clone(),
+                            )
+                        })(b.clone());
+                        __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+                    },
+                );
+                __sorted
+            }),
+            table: walked.table.clone(),
         })
     }
 }
@@ -745,6 +784,7 @@ pub fn closure_contested_names(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SurfaceForkWalk {
     pub winner: Option<Rc<TypeBinding>>,
+    pub last: Option<Rc<TypeBinding>>,
     pub rows: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
 }
 
@@ -849,23 +889,11 @@ pub fn ancestry_lookup(view: Rc<AncestryView>, name: String) -> Option<Rc<TypeBi
         {
             ClosureDeclarer::ClosureDeclarerSole { binding: b, .. } => Some(b.clone()),
             ClosureDeclarer::ClosureDeclarerNone => std::option::Option::None,
+            ClosureDeclarer::ClosureDeclarerKernelOnly => {
+                v1_rt::map_get(&view.kernel.clone(), name.clone())
+            }
             ClosureDeclarer::ClosureDeclarerContested => {
-                if surface_has(
-                    view.pool.clone(),
-                    view.kernel.clone(),
-                    view.module_path.clone(),
-                    view.reach.clone(),
-                    name.clone(),
-                ) {
-                    ancestry_winner(
-                        view.pool.clone(),
-                        view.kernel.clone(),
-                        view.imports.clone(),
-                        name.clone(),
-                    )
-                } else {
-                    std::option::Option::None
-                }
+                v1_rt::map_get(&view.contested.clone(), name.clone())
             }
         },
     }
@@ -876,6 +904,7 @@ pub fn ancestry_lookup(view: Rc<AncestryView>, name: String) -> Option<Rc<TypeBi
 pub enum ClosureDeclarer {
     ClosureDeclarerSole { binding: Rc<TypeBinding> },
     ClosureDeclarerNone,
+    ClosureDeclarerKernelOnly,
     ClosureDeclarerContested,
 }
 impl ClosureDeclarer {
@@ -883,6 +912,7 @@ impl ClosureDeclarer {
         match self {
             ClosureDeclarer::ClosureDeclarerSole { binding: __val, .. } => __val.clone(),
             ClosureDeclarer::ClosureDeclarerNone => panic!("no binding on unit variant"),
+            ClosureDeclarer::ClosureDeclarerKernelOnly => panic!("no binding on unit variant"),
             ClosureDeclarer::ClosureDeclarerContested => panic!("no binding on unit variant"),
         }
     }
@@ -901,36 +931,47 @@ pub fn closure_sole_declarer(
     reach: Rc<Vec<i64>>,
     name: String,
 ) -> Rc<ClosureDeclarer> {
-    match v1_rt::map_get(&kernel, name.clone()) {
-        Some(_) => Rc::new(ClosureDeclarer::ClosureDeclarerContested),
-        std::option::Option::None => match v1_rt::map_get(&pool.exporters.clone(), name.clone()) {
-            std::option::Option::None => Rc::new(ClosureDeclarer::ClosureDeclarerNone),
-            Some(paths) => {
-                let tally = paths.iter().cloned().fold(
-                    Rc::new(ClosureDeclarerTally {
-                        count: 0,
-                        binding: std::option::Option::None,
-                    }),
-                    |acc: Rc<ClosureDeclarerTally>, p: String| {
-                        if (p.clone() == module_path.clone()) {
-                            acc.clone()
-                        } else {
-                            match v1_rt::map_get(&pool.surfaces.clone(), p.clone()) {
-                                Some(e) => {
-                                    if reach_has(reach.clone(), e.ordinal.clone()) {
-                                        Rc::new(ClosureDeclarerTally {
-                                            count: v1_rt::int_add(acc.count.clone(), 1),
-                                            binding: v1_rt::map_get(&e.own.clone(), name.clone()),
-                                        })
-                                    } else {
-                                        acc.clone()
-                                    }
+    {
+        let tally = match v1_rt::map_get(&pool.exporters.clone(), name.clone()) {
+            std::option::Option::None => Rc::new(ClosureDeclarerTally {
+                count: 0,
+                binding: std::option::Option::None,
+            }),
+            Some(paths) => paths.iter().cloned().fold(
+                Rc::new(ClosureDeclarerTally {
+                    count: 0,
+                    binding: std::option::Option::None,
+                }),
+                |acc: Rc<ClosureDeclarerTally>, p: String| {
+                    if (p.clone() == module_path.clone()) {
+                        acc.clone()
+                    } else {
+                        match v1_rt::map_get(&pool.surfaces.clone(), p.clone()) {
+                            Some(e) => {
+                                if reach_has(reach.clone(), e.ordinal.clone()) {
+                                    Rc::new(ClosureDeclarerTally {
+                                        count: v1_rt::int_add(acc.count.clone(), 1),
+                                        binding: v1_rt::map_get(&e.own.clone(), name.clone()),
+                                    })
+                                } else {
+                                    acc.clone()
                                 }
-                                std::option::Option::None => acc.clone(),
                             }
+                            std::option::Option::None => acc.clone(),
                         }
-                    },
-                );
+                    }
+                },
+            ),
+        };
+        match v1_rt::map_get(&kernel, name.clone()) {
+            Some(_) => {
+                if (tally.count.clone() == 0) {
+                    Rc::new(ClosureDeclarer::ClosureDeclarerKernelOnly)
+                } else {
+                    Rc::new(ClosureDeclarer::ClosureDeclarerContested)
+                }
+            }
+            std::option::Option::None => {
                 if (tally.count.clone() == 0) {
                     Rc::new(ClosureDeclarer::ClosureDeclarerNone)
                 } else {
@@ -948,7 +989,7 @@ pub fn closure_sole_declarer(
                     }
                 }
             }
-        },
+        }
     }
 }
 

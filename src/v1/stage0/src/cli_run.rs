@@ -18046,6 +18046,7 @@ fn reconcile_with_typed_cache(
                     typed_path.clone(),
                     typed.interface.env.str_bindings.clone(),
                     typed.interface.surface_imports.clone(),
+                    typed.type_env.ancestry.contested.clone(),
                 );
                 module_index = v1_rt::rc_map_insert(module_index, typed_path, typed.clone());
                 dispatched[slot] = Some((parent_diags, tc_result));
@@ -47140,8 +47141,8 @@ mod multi_entry_index_sharing_control_tests {
 mod surface_view_controls {
     use crate::v1_compiler_infer::view_over_pool;
     use crate::v1_compiler_infer_env::{
-        ancestry_lookup, empty_surface_pool, surface_pool_admit, surface_reach_of, AncestryView,
-        SurfaceImport, SurfacePool, TypeBinding,
+        ancestry_lookup, empty_surface_pool, surface_contested_walk, surface_pool_admit,
+        surface_reach_of, AncestryView, SurfaceImport, SurfacePool, TypeBinding,
     };
     use im::Vector;
     use std::rc::Rc;
@@ -47173,11 +47174,34 @@ mod surface_view_controls {
         )
     }
 
+    // A contested name's winner is produced once per module by the production walk, so a module is
+    // admitted with the table that walk computes over the pool as it stood, exactly as the realize
+    // loop admits it.
+    fn contested(
+        over: &[&str],
+        pool: &Rc<SurfacePool>,
+    ) -> Rc<im::HashMap<String, Rc<TypeBinding>>> {
+        surface_contested_walk(pool.clone(), Rc::new(im::HashMap::new()), imports(over))
+            .table
+            .clone()
+    }
+
+    fn admit(
+        pool: Rc<SurfacePool>,
+        module: String,
+        own_names: &[&str],
+        over: &[&str],
+    ) -> Rc<SurfacePool> {
+        let table = contested(over, &pool);
+        surface_pool_admit(pool, module, own(own_names), imports(over), table)
+    }
+
     fn view(module: &str, over: &[&str], pool: Rc<SurfacePool>) -> Rc<AncestryView> {
         let imports = imports(over);
         Rc::new(AncestryView {
             module_path: module.to_string(),
             reach: surface_reach_of(imports.clone(), pool.clone()),
+            contested: contested(over, &pool),
             imports,
             kernel: Rc::new(im::HashMap::new()),
             rewrites: Rc::new(im::HashMap::new()),
@@ -47195,13 +47219,13 @@ mod surface_view_controls {
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             let mut pool = empty_surface_pool();
-            pool = surface_pool_admit(pool, "a0".into(), own(&["X"]), imports(&[]));
-            pool = surface_pool_admit(pool, "b0".into(), own(&["X"]), imports(&[]));
+            pool = admit(pool, "a0".into(), &["X"], &[]);
+            pool = admit(pool, "b0".into(), &["X"], &[]);
             for level in 1..40 {
                 let below = [format!("a{}", level - 1), format!("b{}", level - 1)];
                 let below: Vec<&str> = below.iter().map(String::as_str).collect();
-                pool = surface_pool_admit(pool, format!("a{level}"), own(&[]), imports(&below));
-                pool = surface_pool_admit(pool, format!("b{level}"), own(&[]), imports(&below));
+                pool = admit(pool, format!("a{level}"), &[], &below);
+                pool = admit(pool, format!("b{level}"), &[], &below);
             }
             let found = ancestry_lookup(view("top", &["a39", "b39"], pool), "X".into()).is_some();
             let _ = tx.send(found);
@@ -47227,7 +47251,7 @@ mod surface_view_controls {
                     "b" => (&["FromB"], &[]),
                     _ => (&[], &["a"]),
                 };
-                pool = surface_pool_admit(pool, m.to_string(), own(own_names), imports(over));
+                pool = admit(pool, m.to_string(), own_names, over);
             }
             pool
         };
