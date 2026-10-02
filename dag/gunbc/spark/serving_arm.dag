@@ -21,7 +21,7 @@ import extdeps.vllm.kv_dtype_capability {
   KvCombinationAdmitted, KvCombinationRefused, KvCombinationUnanswered,
 }
 import extdeps.nvidia.glm_5_3_flash_nvfp4 { glm_5_3_flash_nvfp4_hub_repo, glm_5_3_flash_nvfp4_manifest, glm_5_3_flash_nvfp4_quant_method, glm_5_3_flash_nvfp4_kv_cache_dtype }
-import extdeps.zhipu.glm_5_3_flash {
+import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_architecture_class,
   glm_5_3_flash_native_manifest, glm_5_3_flash_vllm_integration_commit, glm_5_3_flash_mla_pe_dim,
 }
 import extdeps.vllm.kv_cache { vllm_fp8_ds_mla_required_pe_dim, vllm_fp8_ds_mla_kernel_admits_pe_dim }
@@ -314,7 +314,7 @@ data glm53_exl3_205_row: ServingCheckpointRow = ServingCheckpointRow {
   repo: HubRepoId { kind: HubModelRepo, path: "turboderp/GLM-5.3-Flash-exl3" as NonEmptyStr },
   revision: "51058cd551c7e570d87bd32a4adee720edce2349" as NonEmptyStr,
   placement: LocalDirectoryPlacement { host_path: join([spark_models_root as String, "/glm53-flash-exl3-2.05"], "") as NonEmptyStr },
-  architecture: "Glm5NextForConditionalGeneration" as NonEmptyStr,
+  architecture: glm_5_3_flash_architecture_class,
   weight_gib: gibibyte(count: 80),
   quantization: QuantizationSpelledOnArgv { wire: "exl3" as NonEmptyStr },
   parsers: glm_5_3_flash_vllm_parsers,
@@ -327,7 +327,7 @@ data glm53_native_fp8_row: ServingCheckpointRow = ServingCheckpointRow {
   repo: HubRepoId { kind: HubModelRepo, path: "zai-org/GLM-5.3-Flash" as NonEmptyStr },
   revision: glm_5_3_flash_native_manifest.revision,
   placement: HubCachePlacement { cache_root: spark_hub_cache_root },
-  architecture: "Glm5NextForConditionalGeneration" as NonEmptyStr,
+  architecture: glm_5_3_flash_architecture_class,
   weight_gib: hub_checkpoint_manifest_gibibytes(m: glm_5_3_flash_native_manifest),
   quantization: QuantizationResolvedFromCheckpointConfig { wire: "fp8" as NonEmptyStr, because: "the checkpoint's own config.json carries quant_method fp8 together with its weight_block_size and a 1509-entry modules_to_not_convert list; passing --quantization fp8 overrides that structure with a bare scheme name, so the launch says nothing and the engine reads the checkpoint" as NonEmptyStr },
   parsers: glm_5_3_flash_vllm_parsers,
@@ -345,7 +345,7 @@ data glm53_flash_nvidia_nvfp4_row: ServingCheckpointRow = ServingCheckpointRow {
   repo: glm_5_3_flash_nvfp4_hub_repo,
   revision: glm_5_3_flash_nvfp4_manifest.revision,
   placement: HubCachePlacement { cache_root: spark_hub_cache_root },
-  architecture: "Glm5NextForConditionalGeneration" as NonEmptyStr,
+  architecture: glm_5_3_flash_architecture_class,
   weight_gib: hub_checkpoint_manifest_gibibytes(m: glm_5_3_flash_nvfp4_manifest),
   quantization: QuantizationResolvedFromCheckpointConfig { wire: glm_5_3_flash_nvfp4_quant_method, because: "the checkpoint's own config.json carries quant_method modelopt with quant_algo NVFP4, group size 16, an FP8 kv_cache_scheme and its ignore list; a --quantization flag would replace that structure with a bare scheme name, so the launch says nothing and the engine reads the checkpoint" as NonEmptyStr },
   parsers: glm_5_3_flash_vllm_parsers,
