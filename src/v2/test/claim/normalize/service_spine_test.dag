@@ -155,7 +155,10 @@ test fn a_service_namespace_is_a_lookup_boundary_holds() -> Bool {
 // the symbol index, so the index-walk control above cannot see a leak there. Each program below is
 // assembled for real (tpb_assemble, the ingest-to-resolved-tree route), once, WARM. From inside
 // `s.F.Run`, a bare `s` (the enclosing prefix) and a bare `E` (the sibling service) refuse as unbound;
-// the module's own `K` binds bare from the same position; and the qualified `s.E.Get` resolves.
+// the module's own `K` binds bare from the same position; and the module-qualified `p.s.E.Get` resolves
+// while `p.s.E.Nope` refuses as unbound, so the qualified path is resolved and not merely tolerated. A
+// path that starts at the prefix (`s.E.Get`) resolves its head bare, which is exactly the lookup the
+// ban removes, so it refuses too.
 fn ss_route_source(param_type: String) -> String {
   concat("module p\n\ntype K = Int\n\nservice s.F {\n  operation Run {\n    input { x: ", concat(param_type, " }\n  }\n}\n\nservice s.E {\n  operation Get {}\n}\n"))
 }
@@ -173,7 +176,11 @@ fn ss_route_module_name() -> Outcome<ResolvedTree> {
 }
 
 fn ss_route_qualified() -> Outcome<ResolvedTree> {
-  tpb_assemble(src: ss_route_source(param_type: "s.E.Get"))
+  tpb_assemble(src: ss_route_source(param_type: "p.s.E.Get"))
+}
+
+fn ss_route_qualified_missing() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: ss_route_source(param_type: "p.s.E.Nope"))
 }
 
 test fn a_service_namespace_does_not_bind_bare_on_the_resolve_route_holds() -> Bool {
@@ -181,4 +188,5 @@ test fn a_service_namespace_does_not_bind_bare_on_the_resolve_route_holds() -> B
     && tpb_refuses_with(o: ss_route_bare_sibling(), reason: ^resolve_reason_unbound_symbol)
     && tpb_accepts(o: ss_route_module_name())
     && tpb_accepts(o: ss_route_qualified())
+    && tpb_refuses_with(o: ss_route_qualified_missing(), reason: ^resolve_reason_unbound_symbol)
 }
