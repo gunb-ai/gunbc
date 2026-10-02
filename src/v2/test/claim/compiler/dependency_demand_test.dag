@@ -1,7 +1,7 @@
 module v2.test.claim.compiler.dependency_demand
 
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.compiler.dependency_demand { CalleeOutsideClosure, DemandDidNotSettle, dependency_demand_of_bounded, DemandDerived, DemandUndecided, DependencyDemand, DependencyDemandRow, FunctionFact, FunctionValueCalled, OpaqueOperationCalled, OperationFact, RequiresNone, RequiresOpaque, RequiresResources, RequiresUndeclared, UndeclaredOperationCalled, dependency_demand_of, demand_equal }
+import v2.compiler.dependency_demand { CalleeOutsideClosure, resource_set_empty, resource_set_of, DemandDidNotSettle, dependency_demand_of_bounded, DemandDerived, DemandUndecided, DependencyDemand, DependencyDemandRow, FunctionFact, FunctionValueCalled, OpaqueOperationCalled, OperationFact, RequiresNone, RequiresOpaque, RequiresResources, RequiresUndeclared, UndeclaredOperationCalled, dependency_demand_of, demand_equal }
 import v2.std.algebra { fold_list, length }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
@@ -39,7 +39,7 @@ fn demand_for(rows: List<DependencyDemandRow>, path: String) -> DependencyDemand
 }
 
 fn is_network(d: DependencyDemand) -> Bool {
-  demand_equal(left: d, right: DemandDerived { resources: [net()] })
+  demand_equal(left: d, right: DemandDerived { resources: resource_set_of(paths: [net()]) })
 }
 
 test fn an_operation_requiring_network_derives_network_holds() -> Bool {
@@ -65,7 +65,7 @@ test fn a_cycle_settles_on_the_union_holds() -> Bool {
 
 test fn a_none_only_fn_derives_the_empty_demand_holds() -> Bool {
   let rows = dependency_demand_of(functions: [plain(path: "m.f", callees: [q(dotted: "m.Clock.Now")])], operations: ops())
-  demand_equal(left: demand_for(rows: rows, path: "m.f"), right: DemandDerived { resources: [] })
+  demand_equal(left: demand_for(rows: rows, path: "m.f"), right: DemandDerived { resources: resource_set_empty() })
 }
 
 test fn an_opaque_operation_is_undecided_by_its_cause_RED() -> Bool {

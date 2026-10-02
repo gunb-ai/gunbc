@@ -54,7 +54,7 @@ type UndecidedCause
   | DemandDidNotSettle { function: QualifiedName }
 
 type DependencyDemand
-  = DemandDerived { resources: List<QualifiedName> }
+  = DemandDerived { resources: ResourceSet }
   | DemandUndecided { cause: UndecidedCause }
 
 type DependencyDemandRow {
@@ -62,14 +62,45 @@ type DependencyDemandRow {
   demand: DependencyDemand
 }
 
-fn path_in(path: QualifiedName, paths: List<QualifiedName>) -> Bool {
-  fold_list(xs: paths, empty: false, cons: fn(found, p) { found || (p == path) })
+// A SET OF RESOURCE DECLARATION PATHS, keyed for membership and kept in first-insertion order for
+// enumeration. Union and equality are O(n log n) through the index; a list scanned per member made
+// both quadratic, and this reducer runs over the whole closure, once per call edge per round
+// (DESIGN section 6, bare minimum cost; review 74173 of gunbc#12985).
+type ResourceSet {
+  members: List<QualifiedName>
+  index: Map<QualifiedName, Bool>
+  size: Int
 }
 
-fn union_paths(left: List<QualifiedName>, right: List<QualifiedName>) -> List<QualifiedName> {
-  fold_list(xs: right, empty: left, cons: fn(acc, p) {
-    if path_in(path: p, paths: acc) { acc } else { list_snoc_item(xs: acc, item: p) }
-  })
+fn resource_set_empty() -> ResourceSet {
+  ResourceSet { members: Empty, index: empty_map(), size: 0 }
+}
+
+fn resource_set_has(set: ResourceSet, path: QualifiedName) -> Bool {
+  match map_lookup(m: set.index, key: path) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn resource_set_add(set: ResourceSet, path: QualifiedName) -> ResourceSet {
+  if resource_set_has(set: set, path: path) {
+    set
+  } else {
+    ResourceSet { members: list_snoc_item(xs: set.members, item: path), index: map_insert(m: set.index, key: path, value: true), size: set.size + 1 }
+  }
+}
+
+fn resource_set_of(paths: List<QualifiedName>) -> ResourceSet {
+  fold_list(xs: paths, empty: resource_set_empty(), cons: fn(acc, p) { resource_set_add(set: acc, path: p) })
+}
+
+fn resource_set_union(left: ResourceSet, right: ResourceSet) -> ResourceSet {
+  fold_list(xs: right.members, empty: left, cons: fn(acc, p) { resource_set_add(set: acc, path: p) })
+}
+
+fn resource_set_equal(left: ResourceSet, right: ResourceSet) -> Bool {
+  (left.size == right.size) && fold_list(xs: left.members, empty: true, cons: fn(all, p) { all && resource_set_has(set: right, path: p) })
 }
 
 // THE CAUSE ORDER, so the join of two undecided demands is a function of the two causes and not of the
@@ -152,15 +183,15 @@ fn demand_join(order: DemandCauseOrder, left: DependencyDemand, right: Dependenc
     DemandDerived { resources: l } =>
       match right {
         DemandUndecided { cause: c } => DemandUndecided { cause: c }
-        DemandDerived { resources: r } => DemandDerived { resources: union_paths(left: l, right: r) }
+        DemandDerived { resources: r } => DemandDerived { resources: resource_set_union(left: l, right: r) }
       }
   }
 }
 
 fn demand_of_operation(operation: QualifiedName, requirement: RequirementClass) -> DependencyDemand {
   match requirement {
-    RequiresResources { resources: rs } => DemandDerived { resources: rs }
-    RequiresNone => DemandDerived { resources: Empty }
+    RequiresResources { resources: rs } => DemandDerived { resources: resource_set_of(paths: rs) }
+    RequiresNone => DemandDerived { resources: resource_set_empty() }
     RequiresOpaque => DemandUndecided { cause: OpaqueOperationCalled { operation: operation } }
     RequiresUndeclared => DemandUndecided { cause: UndeclaredOperationCalled { operation: operation } }
   }
@@ -170,27 +201,23 @@ fn operation_table(operations: List<OperationFact>) -> Map<QualifiedName, Requir
   fold_list(xs: operations, empty: empty_map(), cons: fn(m, o) { map_insert(m: m, key: o.path, value: o.requirement) })
 }
 
-fn function_paths(functions: List<FunctionFact>) -> List<QualifiedName> {
-  fold_list(xs: functions, empty: Empty, cons: fn(acc, f) { list_snoc_item(xs: acc, item: f.path) })
-}
-
 // ONE ROUND: each fn's demand recomputed from the operations it calls and its callees' demand in
-// `current`. A callee that is neither an operation nor a fn of the closure is undecided.
+// `current`, which holds an entry for every fn of the closure from the first round on, so it is also
+// the membership test: a callee that is neither an operation nor a key of `current` is undecided.
 fn demand_round(
   order: DemandCauseOrder,
   functions: List<FunctionFact>,
   ops: Map<QualifiedName, RequirementClass>,
-  fn_paths: List<QualifiedName>,
   current: Map<QualifiedName, DependencyDemand>
 ) -> Map<QualifiedName, DependencyDemand> {
   fold_list(xs: functions, empty: empty_map(), cons: fn(m, f) {
     let seed = if f.calls_function_value {
       DemandUndecided { cause: FunctionValueCalled { function: f.path } }
     } else {
-      DemandDerived { resources: Empty }
+      DemandDerived { resources: resource_set_empty() }
     }
     let demand = fold_list(xs: f.callees, empty: seed, cons: fn(acc, callee) {
-      demand_join(order: order, left: acc, right: callee_demand(callee: callee, ops: ops, fn_paths: fn_paths, current: current))
+      demand_join(order: order, left: acc, right: callee_demand(callee: callee, ops: ops, current: current))
     })
     map_insert(m: m, key: f.path, value: demand)
   })
@@ -199,19 +226,14 @@ fn demand_round(
 fn callee_demand(
   callee: QualifiedName,
   ops: Map<QualifiedName, RequirementClass>,
-  fn_paths: List<QualifiedName>,
   current: Map<QualifiedName, DependencyDemand>
 ) -> DependencyDemand {
   match map_lookup(m: ops, key: callee) {
     Present { value: requirement } => demand_of_operation(operation: callee, requirement: requirement)
     Absent =>
-      if path_in(path: callee, paths: fn_paths) {
-        match map_lookup(m: current, key: callee) {
-          Present { value: d } => d
-          Absent => DemandDerived { resources: Empty }
-        }
-      } else {
-        DemandUndecided { cause: CalleeOutsideClosure { callee: callee } }
+      match map_lookup(m: current, key: callee) {
+        Present { value: d } => d
+        Absent => DemandUndecided { cause: CalleeOutsideClosure { callee: callee } }
       }
   }
 }
@@ -255,7 +277,7 @@ fn demand_equal(left: DependencyDemand, right: DependencyDemand) -> Bool {
     DemandDerived { resources: l } =>
       match right {
         DemandUndecided { cause: _ } => false
-        DemandDerived { resources: r } => (length(xs: l) == length(xs: r)) && fold_list(xs: l, empty: true, cons: fn(all, p) { all && path_in(path: p, paths: r) })
+        DemandDerived { resources: r } => resource_set_equal(left: l, right: r)
       }
   }
 }
@@ -276,9 +298,8 @@ fn dependency_demand_of(functions: List<FunctionFact>, operations: List<Operatio
 fn dependency_demand_of_bounded(functions: List<FunctionFact>, operations: List<OperationFact>, rounds: Int) -> List<DependencyDemandRow> {
   let order = demand_cause_order(functions: functions, operations: operations)
   let ops = operation_table(operations: operations)
-  let fn_paths = function_paths(functions: functions)
-  let start = fold_list(xs: functions, empty: empty_map(), cons: fn(m, f) { map_insert(m: m, key: f.path, value: DemandDerived { resources: Empty }) })
-  let settled = demand_fixed_point(order: order, functions: functions, ops: ops, fn_paths: fn_paths, current: start, remaining: rounds)
+  let start = fold_list(xs: functions, empty: empty_map(), cons: fn(m, f) { map_insert(m: m, key: f.path, value: DemandDerived { resources: resource_set_empty() }) })
+  let settled = demand_fixed_point(order: order, functions: functions, ops: ops, current: start, remaining: rounds)
   fold_list(xs: functions, empty: Empty, cons: fn(acc, f) {
     list_snoc_item(xs: acc, item: DependencyDemandRow { function: f.path, demand: demand_row_value(table: settled, function: f.path) })
   })
@@ -299,19 +320,18 @@ fn demand_fixed_point(
   order: DemandCauseOrder,
   functions: List<FunctionFact>,
   ops: Map<QualifiedName, RequirementClass>,
-  fn_paths: List<QualifiedName>,
   current: Map<QualifiedName, DependencyDemand>,
   remaining: Int
 ) -> Optional<Map<QualifiedName, DependencyDemand>> {
   if remaining <= 0 {
     optional_absent()
   } else {
-    let next = demand_round(order: order, functions: functions, ops: ops, fn_paths: fn_paths, current: current)
+    let next = demand_round(order: order, functions: functions, ops: ops, current: current)
     let same = demand_tables_equal(functions: functions, left: current, right: next)
     if same {
       optional_present(value: next)
     } else {
-      demand_fixed_point(order: order, functions: functions, ops: ops, fn_paths: fn_paths, current: next, remaining: remaining - 1)
+      demand_fixed_point(order: order, functions: functions, ops: ops, current: next, remaining: remaining - 1)
     }
   }
 }
