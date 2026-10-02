@@ -165,9 +165,10 @@ data nfr_reason_concurrent_divergence_repair_policy: String = "repair-policy dis
 
 data nfr_dissolve_concurrent_divergence_repair_policy: DissolutionCondition = unbound_dissolution(description: "GeneratedArtifact carries a declared concurrent-append property per artifact (the ledger-shaped projections that several lanes extend between merges), concurrent_divergence_repair folds over that property instead of over the variant list, the shared arm becomes a named case rather than a wildcard, and this row deletes.")
 
-// The census these rows answer covers only matches whose scrutinee is a closed-coproduct
-// PARAMETER; its population bound is stated on this roster's registration in
-// gunbc.roster_registry, so an empty delta is not a claim about every closed-coproduct wildcard.
+// The census these rows answer covers the TYPED population: every match whose scrutinee's
+// inferred type is a closed coproduct, in every non-test module the checker types. A module
+// carrying a blocking diagnostic is uncounted; that bound is stated on this roster's registration
+// in gunbc.roster_registry, so an empty delta is not a claim about every closed-coproduct wildcard.
 data nfr_reason_typed_census_ca5ed1724b: String = "a top-level wildcard arm over a closed coproduct found by the whole-corpus TYPED census at main ca5ed1724b (#12610's joint landing; nfr_whole_corpus_typed_census, srv1, 2026-10-02). The typed walk keys on the scrutinee's inferred type, so it sees the local-binding, field and call scrutinees the deleted parameter-keyed scan never could; these sites predate the walk and are un-migrated modeling (DESIGN §6), rostered so the ratchet arms at unrostered=0"
 
 data nfr_reason_typed_census_undetermined_node_kind: String = "the v1 checker leaves this match's scrutinee untyped -- a .kind read on a v2.std.node Node -- so the typed census reported it undetermined; read by hand the scrutinee is NodeKind = TypeNode | ComputationNode, a closed coproduct, and the wildcard arm answers for the constructors and connectives the match does not name, which is non-fold residue. Rostered on that reading: a bet the re-census confirms once the checker types the field"
