@@ -404,7 +404,7 @@ fn ingested_root_child_labels(path: String) -> String {
       fold(r.children, init: "", f: fn(acc, e) {
         match e.label {
           Named { name: n } => join([acc, "|N:", symbol_lexeme(n)], "")
-          _ => join([acc, "|P"], "")
+          Positional => join([acc, "|P"], "")
         }
       })
   }

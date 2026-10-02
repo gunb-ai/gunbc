@@ -440,11 +440,17 @@ test fn matched_user_type_position_mention_reaches_the_census_today() -> Bool {
   }
 }
 
-test fn matched_imported_kernel_type_position_is_absent_from_the_census_today() -> Bool {
+// FLIPPED 2026-10-01 (DESIGN 4b(4)): enrolled as "is absent today", found RED on main (measured at
+// c2ab4458d2 and abcb48293f) with nothing having re-stated it -- the imported kernel type `Bool` in
+// parameter-type position now reaches the census as one authored spelling, beside `value_only`.
+// Attributed (read from source, not bisected) to gunbc#12598, which reads the param binder role
+// through body lowering's readers, so a parameter type reaches the census by the route every other
+// type position takes. Permanent control: deleting that route makes it red.
+test fn matched_imported_kernel_type_position_reaches_the_census_holds() -> Bool {
   match matched_census() {
     Present { value: census } =>
       authored_is(census: census, spelling: "value_only")
-        && !authored_is(census: census, spelling: "Bool")
+        && authored_is(census: census, spelling: "Bool")
     Absent => false
   }
 }

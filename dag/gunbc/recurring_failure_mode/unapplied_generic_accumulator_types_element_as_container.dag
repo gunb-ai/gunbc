@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.unapplied_generic_accumulator_types_element_as_container
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data unapplied_generic_accumulator_types_element_as_container: RecurringFailureMode = RecurringFailureMode {
+  identity: "unapplied_generic_accumulator_types_element_as_container" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a value of a generic container reaches an algebra receiver typed as the container's UNAPPLIED declaration -- the `FreeMonoid` expansion (a Disj whose children are its variants, still carrying params [T]) -- although the element type is fixed by authored facts at that site. v1.compiler.infer_types algebra_child_or_placeholder then reads the argument positionally off the expansion, and for a coproduct the position holds a variant, so the ELEMENT IS TYPED AS THE CONTAINER. The advisory AlgebraApplicationEvidenceUnavailable is raised, but the mistyped element flows on.",
+
+    "HARM, measured on main 7af52ea7e2 with an entry compile of a scratch probe: `let carried = fold(xs, init: Empty, f: fn(acc, e) { list_snoc_item(xs: acc, item: e) })` then `fold(carried, init: 0, f: fn(acc, t) { acc + t.v })` raises the advisory AND refuses `no field 'v' on type 'FreeMonoid'` -- a false refusal of correct code. Where nothing reads a field the same mistyping is SILENT: src/v2/std/type_binder.dag type_param_names folds over a `carried` built exactly this way and its `t` is typed as the container. The annotated twin (`let carried: List<Item> = ...`) is clean in both respects, which is the evidence that the argument was present and dropped, not absent.",
+
+    "DISTINGUISHING FACTS. Two producers drop the argument, and they are different links. (1) FOLD ACCUMULATOR: the fold call's existing refinement of the accumulator from the step's return (v1.compiler.infer refined_call_fold_acc_type) fires only when is_fully_resolved says the accumulator is under-resolved, and an unapplied generic expansion reads as fully resolved. (2) VARIANT LITERAL: `Cons { head: c.head, tail: c.tail }` with no expected type is typed by infer_record_lit_structural as the parent's declaration, uninstantiated from its field values. Live site: dag/gunbc/spark/host_commitment.dag spark_commitment_causes_text. Not distinguishing: whether the class is bisectable to a recent landing -- both live sites already fire at 1f1feb26d2 (#12240, 2026-09-25), and the census surfaced the class only once an earlier census refusal stopped masking it.",
+
+    "RUNG FOUND AT: outside the ladder for the silent element mistyping (counted only as a non-blocking advisory, and the advisory's own note said the evidence did not exist). RUNG NOW: producer (1) is repaired at its link -- fold_accumulator_is_unapplied_generic makes the existing refinement fire -- and its red and control are enrolled in test.claim.unapplied_generic_accumulator_witness_test, so on that path the mistyping is structurally guaranteed absent for the measured shape. Producer (2) is unchanged and stays outside the ladder at one live site; the class's minimum across paths is therefore still outside the ladder, and this row says so rather than citing the repaired path.",
+
+    "CEILING: structurally guaranteed (the argument is decidable from authored facts at every measured site). NEXT-RUNG TRIGGER, named as the capability: a coproduct-variant record literal produces a nominal application carrying its inferred type arguments (the grounding gunbc.guarantee_stall.algebra_expansion_positional_argument_stall names), whose construction is derived-node identity step 2 (gunbc.recurring_failure_mode generic_identity_decided_by_spelling), because instantiating the literal mints an applied type node and minting one by parameter name is the spelling-keyed construction that step retires. SUFFICIENT FOR: host_commitment's `Cons { .. }` receiver to carry its argument, so AlgebraApplicationEvidenceUnavailable fires at zero corpus sites.",
+
+    "ADJACENT AND NOT THIS CLASS, recorded because the review control asked for it and it did not hold: a fold whose `init` is an APPLIED `List<A>` and whose step pushes a `B`, or whose result is declared `List<B>`, is ADMITTED on main and on this change alike. That is a missing conformance judgment between the step's return and the accumulator, not a dropped argument; this change does not alter its verdict (the refinement fires only for an unapplied accumulator, so an applied binding is never overwritten), and it is not repaired here.",
+  ],
+
+  evidence: [],
+}

@@ -87,6 +87,7 @@ type SymbolIndex {
   declared_payloads: Map<QualifiedName, DeclaredPayloadKind>
   renaming_aliases: Map<QualifiedName, Symbol>
   declared_type_params: Map<QualifiedName, List<Symbol>>
+  declared_resources: Map<QualifiedName, ResourceDeclared>
 }
 
 // WHICH KIND OF DECLARED PAYLOAD A PATH DENOTES, stored as the map's value so the map cannot hold a
@@ -99,6 +100,19 @@ type DeclaredPayloadKind
   = VariantArmPayload
   | RecordTypePayload
 
+// A PATH THAT DECLARES A `resource`, stored as the map's value for the reason DeclaredPayloadKind is:
+// a Map<QualifiedName, Bool> could record false and a presence read would still answer resource, so
+// every value this type has IS a resource declaration. It is an empty record, not a one-variant
+// coproduct: `type T = V` spells an alias to a type named V. It is not a DeclaredPayloadKind arm, because
+// that map answers "is this path a constructor payload" (v2.compiler.resolve
+// resolve_path_is_declared_payload) and a resource is not one. Written by v2.compiler.symbol_index_fill
+// from the captured resource names (ModuleBindingSource resource_declarations); read through
+// symbol_index_declares_resource_at.
+// CONSUMER: v2.compiler.resolve resolve_arrow_resource_requirements, which refuses an operation's
+// `requires` member that does not resolve to a path marked here (D13 step a). That route's controls are
+// v2.test.claim.normalize.operation_requires_edge.
+type ResourceDeclared {}
+
 fn empty_symbol_index() -> SymbolIndex {
   SymbolIndex {
     entries: empty_map(),
@@ -106,7 +120,8 @@ fn empty_symbol_index() -> SymbolIndex {
     bound_declarings: empty_map(),
     declared_payloads: empty_map(),
     renaming_aliases: empty_map(),
-    declared_type_params: empty_map()
+    declared_type_params: empty_map(),
+    declared_resources: empty_map()
   }
 }
 
@@ -183,7 +198,8 @@ fn symbol_index_track_global_bare(
               bound_declarings: index.bound_declarings,
               declared_payloads: index.declared_payloads,
               renaming_aliases: index.renaming_aliases,
-              declared_type_params: index.declared_type_params
+              declared_type_params: index.declared_type_params,
+              declared_resources: index.declared_resources
             }
           Present { value: GlobalBareUnique { node: existing, path: existing_path } } =>
             if existing_path == qualified_path && existing == resolved {
@@ -201,7 +217,8 @@ fn symbol_index_track_global_bare(
                 bound_declarings: index.bound_declarings,
                 declared_payloads: index.declared_payloads,
                 renaming_aliases: index.renaming_aliases,
-                declared_type_params: index.declared_type_params
+                declared_type_params: index.declared_type_params,
+                declared_resources: index.declared_resources
               }
             }
           Absent =>
@@ -215,7 +232,8 @@ fn symbol_index_track_global_bare(
               bound_declarings: index.bound_declarings,
               declared_payloads: index.declared_payloads,
               renaming_aliases: index.renaming_aliases,
-              declared_type_params: index.declared_type_params
+              declared_type_params: index.declared_type_params,
+              declared_resources: index.declared_resources
             }
         }
         Rejected { diagnostics: _ } => index
@@ -244,7 +262,8 @@ fn symbol_index_insert(index: SymbolIndex, qualified_path: QualifiedName, resolv
       PureRenamingOf { head: head } => map_insert(m: index.renaming_aliases, key: qualified_path, value: head)
       NotARenaming => index.renaming_aliases
     },
-    declared_type_params: index.declared_type_params
+    declared_type_params: index.declared_type_params,
+    declared_resources: index.declared_resources
   }
   symbol_index_track_global_bare(
     index: with_entry,
@@ -272,7 +291,8 @@ fn symbol_index_mark_declared_payload(index: SymbolIndex, qualified_path: Qualif
     bound_declarings: index.bound_declarings,
     declared_payloads: map_insert(m: index.declared_payloads, key: qualified_path, value: kind),
     renaming_aliases: index.renaming_aliases,
-    declared_type_params: index.declared_type_params
+    declared_type_params: index.declared_type_params,
+    declared_resources: index.declared_resources
   }
 }
 
@@ -294,6 +314,25 @@ fn symbol_index_declared_payload_at(index: SymbolIndex, qualified_path: Qualifie
 // dispatches on that view records it here. Consumer: v2.compiler.infer's coproduct match, which
 // instantiates a matched variant's field types at the scrutinee's type arguments. A path with no row
 // declares no parameters; a non-generic declaration writes none.
+fn symbol_index_mark_declared_resource(index: SymbolIndex, qualified_path: QualifiedName) -> SymbolIndex {
+  SymbolIndex {
+    entries: index.entries,
+    global_bare: index.global_bare,
+    bound_declarings: index.bound_declarings,
+    declared_payloads: index.declared_payloads,
+    renaming_aliases: index.renaming_aliases,
+    declared_type_params: index.declared_type_params,
+    declared_resources: map_insert(m: index.declared_resources, key: qualified_path, value: ResourceDeclared {})
+  }
+}
+
+fn symbol_index_declares_resource_at(index: SymbolIndex, qualified_path: QualifiedName) -> Bool {
+  match map_lookup(m: index.declared_resources, key: qualified_path) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
 fn symbol_index_mark_declared_type_params(index: SymbolIndex, qualified_path: QualifiedName, params: List<Symbol>) -> SymbolIndex {
   SymbolIndex {
     entries: index.entries,
@@ -301,7 +340,8 @@ fn symbol_index_mark_declared_type_params(index: SymbolIndex, qualified_path: Qu
     bound_declarings: index.bound_declarings,
     declared_payloads: index.declared_payloads,
     renaming_aliases: index.renaming_aliases,
-    declared_type_params: map_insert(m: index.declared_type_params, key: qualified_path, value: params)
+    declared_type_params: map_insert(m: index.declared_type_params, key: qualified_path, value: params),
+    declared_resources: index.declared_resources
   }
 }
 
@@ -419,7 +459,8 @@ fn symbol_index_bind_at(
       ),
       declared_payloads: index.declared_payloads,
       renaming_aliases: index.renaming_aliases,
-      declared_type_params: index.declared_type_params
+      declared_type_params: index.declared_type_params,
+      declared_resources: index.declared_resources
     }
     if is_empty(xs: prior) {
       SymbolIndex {
@@ -428,7 +469,8 @@ fn symbol_index_bind_at(
         bound_declarings: recorded.bound_declarings,
         declared_payloads: recorded.declared_payloads,
         renaming_aliases: recorded.renaming_aliases,
-        declared_type_params: recorded.declared_type_params
+        declared_type_params: recorded.declared_type_params,
+        declared_resources: recorded.declared_resources
       }
     } else {
       recorded

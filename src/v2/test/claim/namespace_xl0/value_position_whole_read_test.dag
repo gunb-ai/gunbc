@@ -224,7 +224,7 @@ fn vpw_verdict_in(context: NativeTestContext, module_name: String) -> VpwVerdict
             context: context,
             refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
             entry: entry
-          )
+          ).outcome
         )
       } else {
         acc
