@@ -47420,8 +47420,36 @@ mod pr2_whole_tree_differential_probe {
                     .map(str::to_string),
             );
         }
-        let subject = super::assemble_prepared_subject_from_corpus(&corpus, &exclusions, None)
-            .expect("subject assembles");
+        // The subject is CLOSED under importers: the assembler refuses an exclusion that orphans a
+        // retained importer and names each one, so those importers join the exclusions until it admits
+        // the subject. The added set is printed; it is a function of the corpus, identical in every arm.
+        let mut closed: Vec<String> = Vec::new();
+        let subject = loop {
+            match super::assemble_prepared_subject_from_corpus(&corpus, &exclusions, None) {
+                Err(e) if e.contains("ExclusionOrphansImporter") && closed.len() < 200 => {
+                    let orphaned: Vec<String> = e
+                        .lines()
+                        .filter_map(|l| {
+                            l.trim()
+                                .split_once(" imports '")
+                                .map(|(path, _)| path.to_string())
+                        })
+                        .filter(|path| !exclusions.contains(path))
+                        .collect();
+                    assert!(
+                        !orphaned.is_empty(),
+                        "the refusal named no importer to close over: {e}"
+                    );
+                    for path in orphaned {
+                        eprintln!("[phase-cpu-subject-closure] excluded importer {path}");
+                        closed.push(path.clone());
+                        exclusions.push(path);
+                    }
+                }
+                other => break other,
+            }
+        }
+        .expect("subject assembles");
         let sources = subject.sources.clone();
         eprintln!(
             "[phase-cpu-subject] modules={} digest={}",
