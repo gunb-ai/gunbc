@@ -115,6 +115,8 @@ import v2.std.symbol_index {
   symbol_index_renaming_alias_at
 }
 import v2.std.node {
+  MapLiteralEntriesEdge,
+  labeled_core_is,
   named_edges,
   positional_child_count,
   positional_edges,
@@ -126,7 +128,7 @@ import v2.std.node {
   Disj,
   Edge,
   Match,
-  Named,
+  Authored,
   Node,
   NodeFold,
   Positional,
@@ -140,28 +142,32 @@ import v2.std.node {
   loop_edge_role,
   symbol_intern_lexeme,
   symbol_lexeme,
-  match_arm_body,
-  match_arm_pattern,
   arrow_domain_binds_a_name,
   arrow_first_positional_target,
-  arrow_signature_order_label,
-  arrow_resource_requirements_label,
   arrow_named_edge_is_contract,
+  ArrowResourceRequirementsEdge,
   FirstPositionalAbsent,
   FirstPositionalFound,
   edge_label_of,
   node_with_occurrence_id,
-  construct_tag_marker,
   Instantiation,
   symbol_eq,
   symbol_lexeme,
   labeled_named_is,
   well_formed,
+  MatchArmPatternEdge,
+  ArrowSignatureOrderEdge,
+  edge_is_core,
+  StructuralLabel,
+  label_sort_key,
+  labeled_named_is,
+  ConstructTagEdge,
+  ArrowBodyEdge,
+  BinderDefaultEdge,
 }
 import v2.std.type_binder { GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names }
 import v2.std.node_query {
-  binder_default_label,
-  binder_node_label,
+  binder_node_edge,
   binder_node_parts,
   declared_field_from_edge,
   member_edge_type_node,
@@ -178,7 +184,8 @@ import v2.std.node_query {
   node_positional_child_targets,
   find_named_child,
   is_wildcard_pattern,
-  pattern_wildcard_name
+  pattern_wildcard_name,
+  find_core_child,
 }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
@@ -190,7 +197,6 @@ import v2.std.map_introduction {
   MapLiteralEntriesNone,
   MapLiteralEntriesPresent,
   map_literal_entries,
-  map_literal_entries_label,
   lower_map_introduction,
   map_introduction_duplicate_key,
   map_introduction_expected_head_is_map
@@ -376,7 +382,8 @@ fn empty_canonical_symbol_set() -> PointwisePower<Symbol> {
 
 fn try_edge_declared_binding(e: Edge) -> DeclaredBinding? {
   match e.label {
-    Named { name: sym } => optional_present(value: DeclaredBinding { name: sym })
+    Authored { name: sym } => optional_present(value: DeclaredBinding { name: sym })
+    StructuralLabel { label: _ } => optional_absent()
     Positional => optional_absent()
   }
 }
@@ -648,13 +655,23 @@ fn resolve_ctx_with_declaring(ctx: ResolveContext, declaring: DeclaringPosition)
 // ONE NAMED EDGE'S STEP, AS THE FILL TAKES IT (v2.compiler.symbol_index_fill
 // symbol_index_fill_containment_edge): metadata and projection edges keep the path, every other
 // label extends it.
-fn resolve_declaring_across_named_edge(declaring: DeclaringPosition, name: Symbol) -> DeclaringPosition {
+fn resolve_declaring_across_named_edge(declaring: DeclaringPosition, e: Edge) -> DeclaringPosition {
   match declaring {
     DeclaringAt { path: path } =>
-      if dag_surface_module_header_metadata_edge(name: name) || parse_tree_projection_edge(name: name) || binder_node_label(name: name) {
-        declaring
-      } else {
-        DeclaringAt { path: qualified_name_snoc(qn: path, segment: name) }
+      match e.label {
+        StructuralLabel { label: _ } =>
+          if dag_surface_module_header_metadata_edge(e: e) || binder_node_edge(e: e) {
+            declaring
+          } else {
+            DeclaringAt { path: qualified_name_snoc(qn: path, segment: label_sort_key(label: e.label)) }
+          }
+        Authored { name: name } =>
+          if parse_tree_projection_edge(name: name) {
+            declaring
+          } else {
+            DeclaringAt { path: qualified_name_snoc(qn: path, segment: name) }
+          }
+        Positional => declaring
       }
     DeclaringInSpine { path: _, body: _ } => declaring
     NotDeclaring => declaring
@@ -1841,12 +1858,13 @@ fn resolve_transform_children(
           } else {
             resolve_node_walk(ctx: ctx, n: e.target)
           }
-        Named { name: _ } =>
+        StructuralLabel { label: _ } =>
           if edge_is_cast_target(e: e) {
             resolve_type_role_target(ctx: ctx, target: e.target)
           } else {
             resolve_node_walk(ctx: ctx, n: e.target)
           }
+        Authored { name: _ } => resolve_node_walk(ctx: ctx, n: e.target)
       }
     )
   }))
@@ -2018,7 +2036,7 @@ fn resolve_pattern_node_walk(ctx: ResolveContext, pat: Node) -> ResolveNodeWalk 
 }
 
 // A CONSTRUCT RESOLVES ITS TAG AS A REFERENCE AND ITS FIELDS AS THEIR ROLE DEMANDS. The tag edge
-// (v2.std.node construct_tag_marker) targets the constructor's authored path; it is resolved here,
+// (v2.std.node CoreEdgeLabel ConstructTagEdge) targets the constructor's authored path; it is resolved here,
 // once, for a construction and a pattern alike, and the field edges are walked by the caller's
 // own rule (a value field as an ordinary child, a pattern field as a sub-pattern). The marker label
 // is a role, not a declaration segment, so it never extends the lookup position.
@@ -2050,14 +2068,10 @@ fn resolve_construct_walk_with_tag(
     ResolveWalkRefused { first: _, rest: _, observation: _ } => Absent
   }
   child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
-    match e.label {
-      Named { name: label } =>
-        if symbol_eq(a: label, b: construct_tag_marker()) {
-          child_walk_step(w: acc, e: e, r: tag)
-        } else {
-          child_walk_step(w: acc, e: e, r: field(e, tag_path))
-        }
-      Positional => child_walk_step(w: acc, e: e, r: field(e, tag_path))
+    if edge_is_core(e: e, marker: ConstructTagEdge) {
+      child_walk_step(w: acc, e: e, r: tag)
+    } else {
+      child_walk_step(w: acc, e: e, r: field(e, tag_path))
     }
   }))
 }
@@ -2292,7 +2306,7 @@ fn resolve_map_first_name_keyed_item(items: List<Edge>) -> Optional<Node> {
   fold(items, init: optional_absent(), f: fn(acc, e) {
     match acc {
       Present { value: _ } => acc
-      Absent => if labeled_named_is(x: e, label_of: edge_label_of, wanted: map_literal_entries_label()) { optional_absent() } else { optional_present(value: e.target) }
+      Absent => if labeled_core_is(x: e, label_of: edge_label_of, wanted: MapLiteralEntriesEdge) { optional_absent() } else { optional_present(value: e.target) }
     }
   })
 }
@@ -2428,12 +2442,13 @@ fn resolve_map_entry_walk(ctx: ResolveContext, entry: Node, value_x: ResolveExpe
       child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None, lexical: [] })
     } else {
       match e.label {
-        Named { name: nm } =>
+        Authored { name: nm } =>
           if symbol_eq(a: nm, b: ^value) {
             child_walk_step(w: acc, e: e, r: resolve_expected_edge(ctx: ctx, e: e, x: value_x))
           } else {
             child_walk_step(w: acc, e: e, r: resolve_child_edge(ctx: ctx, e: e))
           }
+        StructuralLabel { label: _ } => child_walk_step(w: acc, e: e, r: resolve_child_edge(ctx: ctx, e: e))
         Positional => child_walk_step(w: acc, e: e, r: resolve_child_edge(ctx: ctx, e: e))
       }
     }
@@ -2456,8 +2471,9 @@ fn resolve_record_field_edge(ctx: ResolveContext, e: Edge, record: Optional<Qual
     Absent => resolve_child_edge(ctx: ctx, e: e)
     Present { value: path } =>
       match e.label {
+        StructuralLabel { label: _ } => resolve_child_edge(ctx: ctx, e: e)
         Positional => resolve_child_edge(ctx: ctx, e: e)
-        Named { name: field } =>
+        Authored { name: field } =>
           match resolve_record_field_type_optional(ctx: ctx, record: path, field: field) {
             Absent => resolve_child_edge(ctx: ctx, e: e)
             Present { value: t } =>
@@ -2593,7 +2609,7 @@ fn resolve_construct_tag_not_a_constructor(reference: Node) -> Outcome<Node> {
 }
 
 fn resolve_match_arm_walk(ctx: ResolveContext, arm: Node) -> ResolveNodeWalk {
-  match find_named_child(root: arm, name: match_arm_pattern) {
+  match find_core_child(root: arm, marker: MatchArmPatternEdge) {
     Rejected { diagnostics: _ } => resolve_children_homogeneous_scope(ctx: ctx, n: arm)
     Accepted { value: pat, diagnostics: _ } =>
       let arm_ctx = resolve_ctx_with_scope(
@@ -2604,14 +2620,10 @@ fn resolve_match_arm_walk(ctx: ResolveContext, arm: Node) -> ResolveNodeWalk {
         child_walk_step(
           w: acc,
           e: e,
-          r: match e.label {
-            Named { name: label } =>
-              if label == match_arm_pattern {
-                resolve_pattern_node_walk(ctx: arm_ctx, pat: e.target)
-              } else {
-                resolve_node_walk(ctx: arm_ctx, n: e.target)
-              }
-            Positional => resolve_node_walk(ctx: arm_ctx, n: e.target)
+          r: if edge_is_core(e: e, marker: MatchArmPatternEdge) {
+            resolve_pattern_node_walk(ctx: arm_ctx, pat: e.target)
+          } else {
+            resolve_node_walk(ctx: arm_ctx, n: e.target)
           }
         )
       }))
@@ -2903,28 +2915,23 @@ fn resolve_where_refinement_clause(ctx: ResolveContext, n: Node) -> ResolveNodeW
       w: acc,
       e: e,
       r: match e.label {
-        Named { name: sym } =>
+        Authored { name: sym } =>
           if sym == ^grammar_production_captured_node_projection {
             resolve_where_predicate_set(ctx: ctx, set: e.target)
           } else {
             ResolveWalkAccepted { value: e.target, diagnostics: None, lexical: [] }
           }
+        StructuralLabel { label: _ } => ResolveWalkAccepted { value: e.target, diagnostics: None, lexical: [] }
         Positional => resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: e.target)))
       }
     )
   }))
 }
 
-fn resolve_preserve_module_root_named_edge(name: Symbol, target: Node) -> Bool {
-  if dag_surface_module_header_metadata_edge(name: name) {
-    true
-  } else if dag_resolve_preserve_module_metadata_subtree(node: target) {
-    true
-  } else if name == ^grammar_production_identity_node_projection {
-    true
-  } else {
-    false
-  }
+fn resolve_preserve_module_root_named_edge(e: Edge) -> Bool {
+  dag_surface_module_header_metadata_edge(e: e)
+    || dag_resolve_preserve_module_metadata_subtree(node: e.target)
+    || labeled_named_is(x: e, label_of: edge_label_of, wanted: ^grammar_production_identity_node_projection)
 }
 
 
@@ -2935,23 +2942,8 @@ fn resolve_child_edge(
   e: Edge
 ) -> ResolveNodeWalk {
   match e.label {
-    Named { name: sym } =>
-      if ctx.under_module_root
-        && resolve_preserve_module_root_named_edge(name: sym, target: e.target) {
-        ResolveWalkAccepted { value: e.target, diagnostics: None, lexical: [] }
-      } else {
-        let child_ctx = if ctx.under_module_root
-          && !dag_surface_module_header_metadata_edge(name: sym)
-          && !binder_node_label(name: sym) {
-          resolve_ctx_snoc_position(ctx: ctx, segment: sym)
-        } else {
-          ctx
-        }
-        resolve_node_walk(
-          ctx: resolve_ctx_with_declaring(ctx: child_ctx, declaring: resolve_declaring_across_named_edge(declaring: ctx.declaring, name: sym)),
-          n: e.target
-        )
-      }
+    Authored { name: _ } => resolve_labeled_child_edge(ctx: ctx, e: e)
+    StructuralLabel { label: _ } => resolve_labeled_child_edge(ctx: ctx, e: e)
     Positional =>
       if ctx.under_module_root
         && dag_resolve_preserve_module_metadata_subtree(node: e.target) {
@@ -2959,6 +2951,24 @@ fn resolve_child_edge(
       } else {
         resolve_node_walk(ctx: ctx, n: e.target)
       }
+  }
+}
+
+// A labeled edge under the module root extends the lexical position by the label's scope segment
+// (label_sort_key), except a preserved metadata edge, which is accepted as its own target.
+fn resolve_labeled_child_edge(ctx: ResolveContext, e: Edge) -> ResolveNodeWalk {
+  if ctx.under_module_root && resolve_preserve_module_root_named_edge(e: e) {
+    ResolveWalkAccepted { value: e.target, diagnostics: None, lexical: [] }
+  } else {
+    let child_ctx = if ctx.under_module_root && !dag_surface_module_header_metadata_edge(e: e) && !binder_node_edge(e: e) {
+      resolve_ctx_snoc_position(ctx: ctx, segment: label_sort_key(label: e.label))
+    } else {
+      ctx
+    }
+    resolve_node_walk(
+      ctx: resolve_ctx_with_declaring(ctx: child_ctx, declaring: resolve_declaring_across_named_edge(declaring: ctx.declaring, e: e)),
+      n: e.target
+    )
   }
 }
 
@@ -3112,10 +3122,7 @@ fn resolve_arrow_body_or_named_edge(ctx: ResolveContext, arrow: Node, e: Edge) -
 }
 
 fn resolve_edge_is_arrow_body(e: Edge) -> Bool {
-  match e.label {
-    Named { name: sym } => symbol_eq(a: sym, b: ^arrow_body_edge)
-    Positional => false
-  }
+  edge_is_core(e: e, marker: ArrowBodyEdge)
 }
 
 fn resolve_node_consumes_expectation(n: Node) -> Bool {
@@ -3156,12 +3163,12 @@ fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node
   let inner_ctx = resolve_ctx_leaving_containment(ctx: ctx)
   child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
     match e.label {
-      Named { name: _ } =>
+      StructuralLabel { label: _ } =>
         if edge_is_type_params(e: e) {
           child_walk_step(w: acc, e: e, r: resolve_type_params_conj(ctx: outer_ctx, conj: e.target))
-        } else if (edge_label_of(e: e) == arrow_signature_order_label) {
+        } else if edge_is_core(e: e, marker: ArrowSignatureOrderEdge) {
           child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None, lexical: [] })
-        } else if (edge_label_of(e: e) == arrow_resource_requirements_label) {
+        } else if edge_is_core(e: e, marker: ArrowResourceRequirementsEdge) {
           child_walk_step(w: acc, e: e, r: resolve_arrow_resource_requirements(ctx: resolve_ctx_with_scope(ctx: inner_ctx, scope: scope_type), requirements: e.target))
         } else if arrow_named_edge_is_contract(e: e) {
           child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None, lexical: [] })
@@ -3176,6 +3183,12 @@ fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node
             )
           )
         }
+      Authored { name: _ } =>
+        child_walk_step(
+          w: acc,
+          e: e,
+          r: resolve_node_walk(ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope_body), n: e.target)
+        )
       Positional =>
         if acc.ordinal == 0 {
           child_walk_step(
@@ -3225,14 +3238,10 @@ fn resolve_arrow_domain_member(type_ctx: ResolveContext, default_ctx: ResolveCon
 }
 
 fn resolve_binder_part(type_ctx: ResolveContext, default_ctx: ResolveContext, part: Edge) -> ResolveNodeWalk {
-  match part.label {
-    Named { name: sym } =>
-      if sym == binder_default_label() {
-        resolve_node_walk(ctx: default_ctx, n: part.target)
-      } else {
-        resolve_node_walk(ctx: type_ctx, n: part.target)
-      }
-    Positional => resolve_node_walk(ctx: type_ctx, n: part.target)
+  if edge_is_core(e: part, marker: BinderDefaultEdge) {
+    resolve_node_walk(ctx: default_ctx, n: part.target)
+  } else {
+    resolve_node_walk(ctx: type_ctx, n: part.target)
   }
 }
 

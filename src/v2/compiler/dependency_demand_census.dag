@@ -45,7 +45,7 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { grammar_empty_node }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
-import v2.std.node { Arrow, Atom, Bind, Branch, Cardinality, ComputationNode, Conj, Disj, Edge, Instantiation, Loop, Match, Named, Node, Positional, Symbol, Transform, TypeNode, Value, node_rebuild }
+import v2.std.node { Arrow, ArrowResourceRequirementsEdge, Atom, Authored, Bind, Branch, Cardinality, ComputationNode, Conj, CoreEdgeLabel, Disj, Edge, Instantiation, Loop, Match, Node, Positional, StructuralLabel, Symbol, Transform, TypeNode, Value, edge_is_core, label_sort_key, node_rebuild }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, parameter_reference_path_optional, qualified_name_snoc, qualified_name_to_dotted_string }
 import v2.std.symbol_index { SymbolIndex, symbol_index_declares_resource_at, symbol_index_lookup }
@@ -252,9 +252,9 @@ fn demand_fact_is_value_call(node: Node, resolved: ResolvedTree) -> Bool {
 }
 
 fn demand_fact_callee_is_value(children: List<Edge>, resolved: ResolvedTree) -> Bool {
-  match children {
-    Empty => false
-    Cons { head: e, tail: _ } => demand_fact_node_is_function_value(callee: e.target, resolved: resolved)
+  match first(children) {
+    Present { value: e } => demand_fact_node_is_function_value(callee: e.target, resolved: resolved)
+    Absent => false
   }
 }
 
@@ -285,28 +285,39 @@ fn demand_fact_node_is_function_value(callee: Node, resolved: ResolvedTree) -> B
   }
 }
 
+// Each arm is symbol_index_fill_containment_edge's own: a header-metadata structural edge is not
+// walked (it names the module, not a mention), a parse-projection authored edge is descended without
+// extending the position, and every other labelled edge extends it by the segment the index keys on
+// (label_sort_key for a structural label, the authored name otherwise).
 fn demand_fact_edge(w: DemandFactWalk, position: QualifiedName, edge: Edge, resolved: ResolvedTree) -> DemandFactWalk {
   match edge.label {
     Positional => demand_fact_node(w: w, position: position, node: edge.target, resolved: resolved)
-    Named { name: sym } =>
-      if dag_surface_module_header_metadata_edge(name: sym) {
+    StructuralLabel { label: _ } =>
+      if dag_surface_module_header_metadata_edge(e: edge) {
         w
-      } else if parse_tree_projection_edge(name: sym) {
+      } else {
+        demand_fact_labelled_child(w: w, child: qualified_name_snoc(qn: position, segment: label_sort_key(label: edge.label)), edge: edge, resolved: resolved)
+      }
+    Authored { name: sym } =>
+      if parse_tree_projection_edge(name: sym) {
         demand_fact_node(w: w, position: position, node: edge.target, resolved: resolved)
       } else {
-        let child = qualified_name_snoc(qn: position, segment: sym)
-        match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: child) {
-          Absent => demand_fact_node(w: w, position: child, node: edge.target, resolved: resolved)
-          Present { value: _ } => demand_fact_declaration(w: w, path: child, node: edge.target, resolved: resolved)
-        }
+        demand_fact_labelled_child(w: w, child: qualified_name_snoc(qn: position, segment: sym), edge: edge, resolved: resolved)
       }
+  }
+}
+
+fn demand_fact_labelled_child(w: DemandFactWalk, child: QualifiedName, edge: Edge, resolved: ResolvedTree) -> DemandFactWalk {
+  match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: child) {
+    Absent => demand_fact_node(w: w, position: child, node: edge.target, resolved: resolved)
+    Present { value: _ } => demand_fact_declaration(w: w, path: child, node: edge.target, resolved: resolved)
   }
 }
 
 // THREE KINDS OF DECLARATION, decided in this order. (1) A declaration at or under a declared
 // resource -- the resource itself or one of its capabilities -- demands that resource: a direct
 // capability call is a reference to it. (2) An Arrow with no body edge is an operation, and its
-// requirement is read from its ^arrow_resource_requirements_edge; an absent edge is undeclared
+// requirement is read from its ArrowResourceRequirementsEdge core edge; an absent edge is undeclared
 // (D13 ruling B). (3) Anything else -- a fn, a data row, a type -- demands what its subtree refers to.
 fn demand_fact_declaration(w: DemandFactWalk, path: QualifiedName, node: Node, resolved: ResolvedTree) -> DemandFactWalk {
   match demand_census_resource_prefix(index: resolved.symbol_index, path: path) {
@@ -371,18 +382,15 @@ fn demand_census_resource_prefix(index: SymbolIndex, path: QualifiedName) -> Opt
   scanned.declared
 }
 
-// The edge a contract label names. v2.std.node arrow_signature_edges_conform admits at most one of each
-// on an Arrow, so the first is the only one. (v2.std.node named_edge_target_lookup answers the same
-// question; its third arm is spelled Absent, which this module's Optional matches already bind.)
-fn demand_census_edge_target(children: List<Edge>, name: Symbol) -> Optional<Node> {
+// The edge a core contract marker names, through v2.std.node edge_is_core. v2.std.node
+// arrow_signature_edges_conform admits at most one of each on an Arrow, so the first is the only one.
+// (v2.std.node core_edge_target_lookup answers the same question; its third arm is spelled Absent,
+// which this module's Optional matches already bind.)
+fn demand_census_edge_target(children: List<Edge>, marker: CoreEdgeLabel) -> Optional<Node> {
   fold(children, init: optional_absent(), f: fn(acc, e) {
     match acc {
       Present { value: _ } => acc
-      Absent =>
-        match e.label {
-          Named { name: sym } => if sym == name { optional_present(value: e.target) } else { acc }
-          Positional => acc
-        }
+      Absent => if edge_is_core(e: e, marker: marker) { optional_present(value: e.target) } else { acc }
     }
   })
 }
@@ -425,7 +433,7 @@ fn demand_census_requirement_members(t: Node) -> RequirementClass {
 // references, or no edge at all (undeclared). Any other shape is refused by the pre-resolve wall
 // (v2.std.arrow_contract arrow_resource_requirements_edge_target_reads), so it reads as undeclared.
 fn demand_census_requirement(arrow: Node) -> RequirementClass {
-  match demand_census_edge_target(children: arrow.children, name: ^arrow_resource_requirements_edge) {
+  match demand_census_edge_target(children: arrow.children, marker: ArrowResourceRequirementsEdge) {
     Absent => RequiresUndeclared
     Present { value: t } =>
       match t.kind {

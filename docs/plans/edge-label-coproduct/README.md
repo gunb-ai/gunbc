@@ -1,6 +1,6 @@
 # Typed EdgeLabel coproduct — model proposal (step 1 of 2)
 
-Status: MODEL PR for neat-boar-16's review. No `.dag` changes; the cut (step 2) lands root-first only after this model is approved.
+Status: model approved and landed (gunbc#12473). Step 2, the cut, is the follow-up PR from quiet-koi-814; its scope was ruled by gentle-koi-724 (see "Step 2 as landed" below).
 Climb on record: `gunbc.recurring_failure_mode` `behavior_named_edge_label_validated_not_constructed` (the next-rung trigger names "edge labels ... a closed coproduct owned by `v2.std.node`"). No parallel RFM row is filed. The text-matching readers below are a second instance of that class, and the step-2 PR adds their evidence to that row.
 
 ## Defect
@@ -84,3 +84,14 @@ Every declaration below lands in the step-2 cut together with its consumers. Non
 2. The real structural labels still route (positive control over the real ingest path).
 3. A mutation that re-keys a reader on text makes the control red.
 4. Gating: base-vs-head over shape consumers, neat-boar-16's srv1 per-file native census, and self-host.
+
+## Step 2 as landed
+
+Arm names differ from the sketch above because `.dag` names are corpus-global and `Structural`, `Production` and `Core`-prefixed spellings already name other types: the arms are `Authored { name }`, `StructuralLabel { label: StructuralEdgeLabel }` and `Positional`, with `StructuralEdgeLabel = CoreMarker { marker: CoreEdgeLabel } | ProductionEdge { language, edge }`.
+
+- **Root first.** `Named { name: Symbol }` was deleted and every site renamed to `Authored` in the same change; the compiler's exhaustiveness refusals were the census of every reader that had to decide what a structural edge means at its site.
+- **Converted, every minter and reader:** the core markers (arrow body and signature order; loop bound, carrier and domain; match arm pattern and body; cast target, type annotation, type params, type body, type alias; declaration reference; field projection base and field) and the dag surface productions the four readers need (module header and its qualified name, where-refinement clause, import decl, import block, import decl block, import decl qualified name). `v2.std.node` `Path` steps and `ReferenceSite.position` carry whole labels.
+- **Deviation, stated:** the positional-payload field `"0"` stays Authored. It is consumed as `DeclaredField.name` like every authored field, so making it a marker would fork the field-name authority.
+- **Frontier:** grammar-emitted labels no converted reader matches stay on the Authored arm. The population (by minting declaration) and the capability trigger are recorded on `gunbc.recurring_failure_mode` `behavior_named_edge_label_validated_not_constructed`.
+- **Identity:** an authored label keeps the tag every Named edge had, so only nodes holding a structural label change identity. The two pinned vectors in `test.claim.node_hash_protocol_witness` that carry converted labels were re-derived by an independent reference implementation that first reproduced their previous values.
+- **Coordination:** the construct tag (#12714) landed first, so this cut converted it to `ConstructTagEdge`. `^loop_realized_declaration_edge` (#12550) is not on main; whichever lands second adds its arm.

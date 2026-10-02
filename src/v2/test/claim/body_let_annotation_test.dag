@@ -34,7 +34,7 @@ import v2.std.diagnostic {
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { host_text_type_node, symbol_type_node, named_edges, positional_edges, Atom, Bind, ComputationNode, Edge, Named, Node, Positional, Symbol, TypeNode, content_hash, node_subtree_nodes, node_synthetic }
+import v2.std.node { host_text_type_node, symbol_type_node, named_edges, positional_edges, Atom, Bind, ComputationNode, Edge, Authored, Node, Positional, Symbol, TypeNode, content_hash, node_subtree_nodes, node_synthetic }
 import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.std.type_binder { cast_target_edge, edge_is_type_annotation, type_annotation_edge, type_annotation_optional, type_binder_labels_conform }
 import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
@@ -211,7 +211,7 @@ fn bla_judged_at_the_let_position(d: NonEmptyDiagnostics) -> Bool {
     Suggested { node: n } =>
       fold(n.children, init: false, f: fn(acc, e) {
         acc || match e.label {
-          Named { name: nm } => nm == ^position_let_annotation
+          Authored { name: nm } => nm == ^position_let_annotation
           _ => false
         }
       })
