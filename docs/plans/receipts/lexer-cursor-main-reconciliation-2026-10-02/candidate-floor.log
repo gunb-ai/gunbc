@@ -1,0 +1,8 @@
+memory-cgroup-bind: not requested
+required-ci: lane=witnesses
+required-ci: phase generated-artifact ROUTED to lane build (not this job)
+required-ci: phase regen-fixed-point ROUTED to lane build (not this job)
+[floor-cgroup] when=seam-lane-roster seam=lane-roster unix_ms=1790947767390 swap_current=0 events_local=[low,0,high,0,max,0,oom,0,oom_kill,0,oom_group_kill,0] pressure=[some,avg10=0.00,avg60=0.00,avg300=0.00,total=0,full,avg10=0.00,avg60=0.00,avg300=0.00,total=0] procs=[367923:timeout:1704,367929:time:1160,367931:claim_executor:4348,367967:gunbc:1820]
+[floor-cgroup] when=seam-lane-roster stat_level=/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/run-r131d913d2a96413e979fc206d87b2bf4.scope seam=lane-roster stall_per_min=na current=2052096 memory_stat=[anon,0,file,0,shmem,0,unevictable,0,slab_unreclaimable,0,slab_reclaimable,0,kernel_stack,0,pagetables,0,percpu,0,sock,0,file_dirty,0]
+[floor-heap] seam=lane-roster in_use=15344 free=119824 mmapped=0 arena=135168 resolve_store_entries=0 shared_index=[empty,empty]
+[floor-seam-cpu] seam=lane-roster thread_cpu_ms=6

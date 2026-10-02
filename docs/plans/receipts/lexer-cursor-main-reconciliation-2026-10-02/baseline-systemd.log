@@ -1,0 +1,4 @@
+Oct 02 13:31:27 srv2 systemd[3570]: Started run-r418fa8c8a6b648769ad1f4e9f2dc1f63.scope - /usr/bin/env MALLOC_ARENA_MAX=2 GUNBC_CI_DIFF_BASE=3756d624604 GUNBC_CI_DIFF_HEAD=3756d624604 timeout --kill-after=5s 5400 /usr/bin/time -v /home/briansrls/scratch-wt/lexer-cursor-integrated/target/cursor-whole-floor/bin/claim_executor --required-ci --source-root dag --source-root src/v2 --required-lane witnesses --measurement-receipt target/cursor-whole-floor/measurement.json.
+Oct 02 13:32:17 srv2 systemd[3570]: run-r418fa8c8a6b648769ad1f4e9f2dc1f63.scope: A process of this unit has been killed by the OOM killer.
+Oct 02 13:32:18 srv2 systemd[3570]: run-r418fa8c8a6b648769ad1f4e9f2dc1f63.scope: Failed with result 'oom-kill'.
+Oct 02 13:32:18 srv2 systemd[3570]: run-r418fa8c8a6b648769ad1f4e9f2dc1f63.scope: Consumed 1min 41.411s CPU time.

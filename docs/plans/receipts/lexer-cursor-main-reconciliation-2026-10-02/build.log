@@ -1,0 +1,9 @@
+    Blocking waiting for file lock on artifact directory
+   Compiling v1-stage0-runtime v0.1.0 (/home/briansrls/scratch-wt/lexer-cursor-integrated/src/v1/stage0_runtime)
+   Compiling v1-compiler v0.1.0 (/home/briansrls/scratch-wt/lexer-cursor-integrated/src/v1/stage0)
+   Compiling v1-stage0-std-core v0.1.0 (/home/briansrls/scratch-wt/lexer-cursor-integrated/src/v1/stage0_std_core)
+   Compiling v1-stage0-std-surface v0.1.0 (/home/briansrls/scratch-wt/lexer-cursor-integrated/src/v1/stage0_std_surface)
+   Compiling v1-stage0-extdeps-languages v0.1.0 (/home/briansrls/scratch-wt/lexer-cursor-integrated/src/v1/stage0_extdeps_languages)
+   Compiling v1-stage0-v1-artifact v0.1.0 (/home/briansrls/scratch-wt/lexer-cursor-integrated/src/v1/stage0_v1_artifact)
+   Compiling v1-stage0-v1-infer v0.1.0 (/home/briansrls/scratch-wt/lexer-cursor-integrated/src/v1/stage0_v1_infer)
+    Finished `release` profile [optimized] target(s) in 10m 31s
