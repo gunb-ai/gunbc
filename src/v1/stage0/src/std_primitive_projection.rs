@@ -119,6 +119,15 @@ pub fn primitive_lookup() -> Rc<PrimitiveIdentity> {
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
 }
 
+pub fn primitive_get() -> Rc<PrimitiveIdentity> {
+    thread_local! {
+        static CACHED: Rc<PrimitiveIdentity> = {
+            primitive_identity_slug("get".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
+}
+
 pub fn primitive_empty_map() -> Rc<PrimitiveIdentity> {
     thread_local! {
         static CACHED: Rc<PrimitiveIdentity> = {
@@ -245,15 +254,6 @@ pub fn primitive_pure_dag_seam_unreachable() -> Rc<PrimitiveIdentity> {
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
 }
 
-pub fn primitive_to_string() -> Rc<PrimitiveIdentity> {
-    thread_local! {
-        static CACHED: Rc<PrimitiveIdentity> = {
-            primitive_identity_slug("to_string".to_string())
-        };
-    }
-    CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
-}
-
 pub fn symbol_lexeme_seam_disposition_note() -> String {
     thread_local! {
         static CACHED: String = {
@@ -339,6 +339,12 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(
+            primitive_get(),
+            "v2.std.collection".to_string(),
+            "list_at_primitive_delegate".to_string(),
+            Rc::new(ProjectionFidelity::HostRealizedSeam),
+        ),
+        primitive_projection_row(
             primitive_symbol_lexeme(),
             "v2.std.node".to_string(),
             "symbol_lexeme".to_string(),
@@ -390,6 +396,12 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
             primitive_lookup(),
             "v2.std.collection".to_string(),
             "map_lookup".to_string(),
+            Rc::new(ProjectionFidelity::ModeledProjection),
+        ),
+        primitive_projection_row(
+            primitive_get(),
+            "v2.std.collection".to_string(),
+            "list_at_optional".to_string(),
             Rc::new(ProjectionFidelity::ModeledProjection),
         ),
         primitive_projection_row(

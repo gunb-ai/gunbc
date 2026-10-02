@@ -9874,6 +9874,7 @@ macro_rules! v1_map_grounding_arms {
             arm "map_grounding.empty_map" { "empty_map_primitive_delegate" | "empty_map" } => "empty_map",
             arm "map_grounding.map_insert" { "map_insert_primitive_delegate" | "map_insert" } => "map_insert",
             arm "map_grounding.lookup" { "map_lookup_primitive_delegate" | "map_lookup" } => "lookup",
+            arm "map_grounding.list_at" { "list_at_primitive_delegate" | "list_at_optional" } => "get",
         }
     };
 }
@@ -9930,6 +9931,55 @@ fn is_v2_std_collection_map_grounded_fn(ctx: &InterpContext, fn_node: &Rc<Node>)
         .is_some_and(|info| info.module_name == V2_STD_COLLECTION_MODULE)
 }
 
+/// THE `get` PRIMITIVE'S TOTAL PROJECTION (`v2.std.collection` `list_at_optional`). A native list is
+/// indexed on its persistent carrier, `log n` as `std.primitives` `get_contract` declares; an index
+/// outside the list, negative included, is `Absent`. The raw `get` builtin keeps its `Null` miss for
+/// its v1 callers, which is why this does not route through it: a `Null` element and a miss would be
+/// one value there. A value that is not a free-monoid list refuses typed.
+fn list_at_as_optional(
+    args: &[(Option<String>, Value)],
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let (list, index) = match args {
+        [(_, list), (_, index)] => (list, index),
+        _ => {
+            return Err(InterpError::TypeError {
+                msg: format!(
+                    "{V2_STD_COLLECTION_MODULE}.list_at_optional expects (xs, index), got {} argument(s)",
+                    args.len()
+                ),
+            })
+        }
+    };
+    let index = expect_int(Some(index), "list_at_optional")?;
+    let found = match list {
+        Value::List(items) => {
+            if index < 0 {
+                None
+            } else {
+                items.get(index as usize).cloned()
+            }
+        }
+        other => {
+            let items = free_monoid_to_vec(other).ok_or_else(|| InterpError::TypeError {
+                msg: format!(
+                    "{V2_STD_COLLECTION_MODULE}.list_at_optional expects a list, got {}",
+                    other.type_label()
+                ),
+            })?;
+            if index < 0 {
+                None
+            } else {
+                items.get(index as usize).cloned()
+            }
+        }
+    };
+    Ok(match found {
+        Some(v) => optional_present(v, ctx),
+        None => optional_absent(ctx),
+    })
+}
+
 fn try_v2_std_collection_map_primitive_grounding(
     ctx: &InterpContext,
     fn_node: &Rc<Node>,
@@ -9940,6 +9990,9 @@ fn try_v2_std_collection_map_primitive_grounding(
     }
     let grounded_name = fn_node.name.as_str();
     let builtin_name = v1_map_grounding_arms!(v1_map_grounding_dispatch, grounded_name);
+    if builtin_name == "get" {
+        return Some(list_at_as_optional(args, ctx));
+    }
     match eval_builtin(builtin_name, args, ctx) {
         Ok(Some(v)) => Some(Ok(v)),
         Ok(None) => Some(Err(InterpError::TypeError {
