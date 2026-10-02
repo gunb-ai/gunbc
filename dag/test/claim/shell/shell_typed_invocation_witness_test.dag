@@ -1,39 +1,483 @@
 module test.claim.shell.shell_typed_invocation_witness_test
 
-import std.types { Bool, String, List }
-import extdeps.linux.usb_gadget { ConfigfsOp, ConfigfsMkdir, ConfigfsWriteAttr, ConfigfsSymlink, ConfigfsRemoveLink, ConfigfsRmdir }
-import gunbc.bmc_virtual_media { srv4_vm_gadget_setup_ops, srv4_vm_gadget_setup_script }
+import std.types { Bool, String, List, Int, NonEmptyStr, list_length }
+import v2.std.optional { Present, Absent }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
+import extdeps.linux.usb_gadget {
+  UsbGadget,
+  MassStorageLun,
+  ConfigfsOp,
+  ConfigfsMkdir,
+  ConfigfsWriteAttr,
+  ConfigfsLinkFunction,
+  ConfigfsUnlinkFunction,
+  ConfigfsRmdir,
+  ConfigfsStaging,
+  ConfigfsStagingReady,
+  ConfigfsStagingRefused,
+  ConfigfsPreparedLinkFunction,
+  ConfigfsPathVerdict,
+  ConfigfsPathInside,
+  ConfigfsPathEscaped,
+  ConfigfsPathOutside,
+  ConfigfsNameVerdict,
+  ConfigfsNameWellFormed,
+  ConfigfsNameNotASegment,
+  configfs_staging_of,
+  configfs_path_verdict,
+  configfs_name_verdict,
+  usb_gadget_dir,
+  usb_gadget_setup_ops,
+  usb_gadget_teardown_ops,
+}
+import gunbc.bmc_virtual_media {
+  srv4_vm_gadget,
+  srv4_vm_gadget_setup_ops,
+  srv4_vm_gadget_setup_display,
+  srv4_vm_gadget_teardown_display,
+}
 
-// THE ACCEPTANCE ORACLE FOR shell-typed-invocation, RED BY DESIGN UNTIL THE NODE IS DONE. The node's
+// THE ACCEPTANCE ORACLE FOR shell-typed-invocation, GREEN SINCE THE NODE'S SLICE LANDED. The node's
 // bar is that callers say which operation and which arguments and nobody hands over shell text; the
-// specimen the node's own note names is the USB gadget setup, whose script today prefixes `set -e`
-// and joins rendered lines carrying `2>/dev/null || true`. Those are shell control words, and this
-// witness reads the rendered setup for the srv4 virtual-media gadget (an authored fixture, not a live
-// observation) and refuses while any is present. It is enrolled in v2.workflow.floor_expected_red so
-// the required floor holds it as known red rather than as a failure; the transition red -> green IS
-// the work, and when it lands the row leaves that roster by the roster's own removal path.
+// specimen the node's own note names is the USB gadget setup, whose script once prefixed `set -e`
+// and joined rendered lines carrying `2>/dev/null || true`. The setup now acts through a staged
+// result (the ops fold into one typed staging: the prepared operations, or the WHOLE setup refused
+// -- review 38602, finding 1), so this witness reads the described form's DISPLAY of the srv4
+// virtual-media gadget fixture (an authored fixture, not a live observation), gates the refusal at
+// the staging grain, and refuses while any shell control word is present.
 //
-// WHAT THE WORKER MAY CHANGE HERE: if the surface this reads (`srv4_vm_gadget_setup_script`) is
-// deleted by the work, this witness is re-pointed at the described form's rendering of the same
-// fixture; its NAME and its claim do not change, because the node's contract names the function.
+// WHAT THIS MODULE IS, AFTER THE REVIEW AGAINST a28daf4844: the DOMAIN side of the witness split.
+// Everything here reads the semantic authority (ConfigfsOp, the verdicts, the staged result) and
+// the render boundary's output as a WHOLE for the shell-word discipline the roadmap contract pins
+// -- no argv type is imported, no argument position is inspected, and no rendered string is
+// searched for anything except a shell control word or the refusal prefix. The TOOL-REALIZATION
+// side (which builder each prepared op lowers to, and what its argv fields carry) is asserted in
+// dag/test/claim/bmc/bmc_virtual_media_witness_test.dag, over the argv fields, without a rendered
+// string.
+//
+// PER DESIGN SECTION 4b(4) THE GREENED PROBE DOES NOT RETIRE: the enrollment row left
+// v2.workflow.floor_expected_red by the roster's own removal path in the same change, and this
+// witness stays enrolled as the permanent regression control -- the red it would go is exactly the
+// regression it guards against (shell text creeping back into the instruction).
+//
+// WHAT THE WORKER MAY CHANGE HERE: if the surface these read (`srv4_vm_gadget_setup_display`,
+// `srv4_vm_gadget_teardown_display`) moves again, the oracles are re-pointed at the same fixture's
+// new described rendering; their NAMES and claims do not change, because the node's contract
+// (roadmap_authority shell_typed_invocation_execution_contract) names the function.
 
 data shell_control_words: List<String> = ["set -e", "||", "&&", ";", "2>/dev/null"]
 
+// THE ORACLE MUST TELL A REFUSAL FROM A SUCCESS. A refused staging renders as `refused: …` lines
+// (configfs_staging_display), and those carry no shell control word — so an all-refused fixture
+// (say the gadget's config_root changed away from the gadget tree) would otherwise green this
+// oracle while the setup would act on nothing. The red below is the refusal-discrimination clause
+// the dashboard review against fb46893 asked for (artifact /api/reviews/72447/artifacts/stdout.log):
+// the rendered form must be the staging's command listing, never its refusal. The route itself is
+// asserted in the typed tests below, which match ConfigfsStagingReady and fail on Refused for the
+// same fixture.
 test fn usb_gadget_setup_emits_no_shell_control_word() -> Bool {
-  let rendered = srv4_vm_gadget_setup_script()
-  rendered != "" && !any(shell_control_words, w => string_contains(s: rendered, pattern: w))
+  let rendered = srv4_vm_gadget_setup_display()
+  rendered != ""
+    && !starts_with(s: rendered, prefix: "refused: ")
+    && !any(shell_control_words, w => string_contains(s: rendered, pattern: w))
 }
 
-// POSITIVE CONTROL, green today and after: the setup is a list of typed configfs operations over the
-// gadget's own configfs directory, so the red above is about the RENDERING and not about the ops.
+// THE TEARDOWN RENDERS UNDER THE SAME DISCIPLINE (review 38602, findings 1 and 3): the teardown
+// stages as commands too, and its display -- read off the same srv4 fixture -- carries no shell
+// control word either, and is the command listing rather than a refusal. This is the consumer the
+// rmdir absence frontier fronts: the described teardown exists and is gated here until the
+// host-effect lane's transport realization takes over the already-removed outcome.
+test fn usb_gadget_teardown_emits_no_shell_control_word() -> Bool {
+  let rendered = srv4_vm_gadget_teardown_display()
+  rendered != ""
+    && !starts_with(s: rendered, prefix: "refused: ")
+    && !any(shell_control_words, w => string_contains(s: rendered, pattern: w))
+}
+
+// ---- TYPED GATES OVER THE STAGED RESULT ----
+
+fn staging_reason(staging: ConfigfsStaging) -> String {
+  match staging {
+    ConfigfsStagingRefused { reason: r } => r as String
+    ConfigfsStagingReady { operations: _ } => ""
+  }
+}
+
+fn staging_ready(staging: ConfigfsStaging) -> Bool {
+  match staging {
+    ConfigfsStagingReady { operations: _ } => true
+    ConfigfsStagingRefused { reason: _ } => false
+  }
+}
+
+fn staging_ready_count(staging: ConfigfsStaging) -> Int {
+  match staging {
+    ConfigfsStagingReady { operations: os } => list_length(items: os)
+    ConfigfsStagingRefused { reason: _ } => 0
+  }
+}
+
+fn is_link_op(op: ConfigfsOp) -> Bool {
+  match op {
+    ConfigfsLinkFunction { function: _, configuration: _ } => true
+    ConfigfsUnlinkFunction { function: _, configuration: _ } => true
+    ConfigfsMkdir { path: _ } => false
+    ConfigfsWriteAttr { path: _, value: _ } => false
+    ConfigfsRmdir { path: _ } => false
+  }
+}
+
+fn path_verdict_inside(g: UsbGadget, p: NonEmptyStr) -> Bool {
+  match configfs_path_verdict(gadget: g, path: p) {
+    ConfigfsPathInside { path: _ } => true
+    ConfigfsPathEscaped { path: _ } => false
+    ConfigfsPathOutside { path: _ } => false
+  }
+}
+
+// ONE VALIDATOR PER ARM: path-carrying ops must validate INSIDE the gadget; the link ops carry
+// names, whose containment is structural (staging derives the endpoints) and whose faults are the
+// name-guard tests below.
+fn op_validates_inside(g: UsbGadget, op: ConfigfsOp) -> Bool {
+  match op {
+    ConfigfsMkdir { path: p } => path_verdict_inside(g: g, p: p)
+    ConfigfsWriteAttr { path: p, value: _ } => path_verdict_inside(g: g, p: p)
+    ConfigfsRmdir { path: p } => path_verdict_inside(g: g, p: p)
+    ConfigfsLinkFunction { function: _, configuration: _ } => true
+    ConfigfsUnlinkFunction { function: _, configuration: _ } => true
+  }
+}
+
+// THE DISCRIMINATING REFUSAL FIXTURE (review 38602, finding 1; carried through the rework): the
+// staged setup refuses AS A WHOLE, and a refusal mints nothing runnable. Each refusal names a
+// DIFFERENT fault and the reasons are distinct, so a consumer cannot mistake one for another:
+//   - a path outside the configfs mount refuses with the outside-mount reason;
+//   - a path that carries the mount prefix but escapes the gadget directory -- a `..` segment, or
+//     a sibling gadget under the same mount (review on a28daf4844, finding 1: the old
+//     starts_with guard admitted both) -- refuses with the escape reason;
+//   - a link name that is not one well-formed segment refuses with the name reason;
+//   - the same bad op mixed into an otherwise-good staging refuses the WHOLE staging -- the good
+//     op's command is not observable beside a refusal;
+//   - the good staging alone mints its one prepared op, so the refusals above are about the
+//     arguments, not about staging itself.
+test fn bad_arguments_refuse_the_whole_staging_before_any_command_acts() -> Bool {
+  let g = srv4_vm_gadget()
+  let outside = configfs_staging_of(gadget: g, ops: [ConfigfsMkdir { path: "/etc" }])
+  let attr_outside = configfs_staging_of(gadget: g, ops: [ConfigfsWriteAttr { path: "/etc/passwd", value: "x" }])
+  let dot_escape = configfs_staging_of(gadget: g, ops: [ConfigfsMkdir {
+    path: "/sys/kernel/config/usb_gadget/gunbcvm/../elsewhere",
+  }])
+  let sibling = configfs_staging_of(gadget: g, ops: [ConfigfsMkdir {
+    path: "/sys/kernel/config/usb_gadget/othergadget",
+  }])
+  let bad_name = configfs_staging_of(gadget: g, ops: [ConfigfsLinkFunction {
+    function: "mass/storage.0",
+    configuration: "c.1",
+  }])
+  let mixed = configfs_staging_of(gadget: g, ops: [
+    ConfigfsMkdir { path: "/sys/kernel/config/usb_gadget/gunbcvm" },
+    ConfigfsMkdir { path: "/etc" },
+  ])
+  let good = configfs_staging_of(gadget: g, ops: [ConfigfsMkdir {
+    path: "/sys/kernel/config/usb_gadget/gunbcvm",
+  }])
+  let outside_reason = staging_reason(staging: outside)
+  let escape_reason = staging_reason(staging: dot_escape)
+  let sibling_reason = staging_reason(staging: sibling)
+  let name_reason = staging_reason(staging: bad_name)
+  !staging_ready(staging: outside)
+    && string_contains(s: outside_reason, pattern: "/etc")
+    && !staging_ready(staging: attr_outside)
+    && string_contains(s: staging_reason(staging: attr_outside), pattern: "/etc/passwd")
+    && !staging_ready(staging: dot_escape)
+    && string_contains(s: escape_reason, pattern: "escapes")
+    && !staging_ready(staging: sibling)
+    && string_contains(s: sibling_reason, pattern: "othergadget")
+    && outside_reason != escape_reason
+    && !staging_ready(staging: bad_name)
+    && string_contains(s: name_reason, pattern: "well-formed")
+    && name_reason != outside_reason
+    && name_reason != escape_reason
+    && !staging_ready(staging: mixed)
+    && staging_ready_count(staging: good) == 1
+}
+
+// THE LINK OPERATIONS CARRY NAMES, NOT PATHS (review on a28daf4844, finding 2): the old
+// ConfigfsSymlink accepted any target string -- `/dev/nbd0` was this fixture's positive -- so an
+// argv shape that cannot represent "link functions/<f> into configs/<c>" could pass as the op.
+// The prepared form has no target field to mis-author: both endpoints are DERIVED from the
+// gadget's own record, so "this gadget's function, into this gadget's configuration, of the same
+// gadget" is a CONSTRUCTION that cannot be written wrong rather than a guard that can be passed.
+test fn link_function_relates_this_gadgets_function_to_this_gadgets_configuration() -> Bool {
+  let g = srv4_vm_gadget()
+  let gd = usb_gadget_dir(gadget: g)
+  let staged = configfs_staging_of(gadget: g, ops: [ConfigfsLinkFunction {
+    function: "mass_storage.0",
+    configuration: "c.1",
+  }])
+  match staged {
+    ConfigfsStagingReady { operations: os } =>
+      list_length(items: os) == 1
+        && all(os, op => match op.disposition {
+          ConfigfsPreparedLinkFunction { gadget_dir: d, function: f, configuration: c } =>
+            (d as String) == (gd as String) && f == "mass_storage.0" && c == "c.1"
+          _ => false
+        })
+    ConfigfsStagingRefused { reason: _ } => false
+  }
+}
+
+// THE NAME GUARD IS THE WHOLE REFUSAL SURFACE the old directory-spelling check covered: a name
+// that is not a single well-formed segment would aim the DERIVED endpoint outside the gadget tree
+// exactly as a hand-written path would, so staging refuses it before anything is prepared. A slash
+// and a dot segment refuse here with the same name reason; the EMPTY name is refused one rung
+// earlier still -- the type checker declines to author it as a NonEmptyStr at all, so that fault
+// cannot enter the estate to be staged.
+test fn link_names_that_are_not_single_segments_refuse_the_staging() -> Bool {
+  let g = srv4_vm_gadget()
+  let slash = configfs_staging_of(gadget: g, ops: [ConfigfsLinkFunction {
+    function: "mass/storage.0",
+    configuration: "c.1",
+  }])
+  let dotdot = configfs_staging_of(gadget: g, ops: [ConfigfsLinkFunction {
+    function: "mass_storage.0",
+    configuration: "../c.1",
+  }])
+  let named = configfs_name_verdict(name: "mass_storage.0")
+  !staging_ready(staging: slash)
+    && !staging_ready(staging: dotdot)
+    && string_contains(s: staging_reason(staging: slash), pattern: "well-formed")
+    && match named {
+      ConfigfsNameWellFormed { name: n } => (n as String) == "mass_storage.0"
+      ConfigfsNameNotASegment { name: _ } => false
+    }
+}
+
+// POSITIVE CONTROL, green today and after: the setup is a list of typed configfs operations whose
+// path-carrying arms all validate INSIDE the fixture gadget's own directory, and whose link arm
+// carries well-formed names -- so the refusals above are about the arguments, not about the ops.
+// The old probe string-matched `/sys/kernel/config/usb_gadget/` on every op's path fields; the
+// containment verdict is the modeled form of the same fact (review 38602, finding 3's home).
 test fn usb_gadget_setup_is_typed_configfs_ops_under_the_gadget_root() -> Bool {
+  let g = srv4_vm_gadget()
   let ops = srv4_vm_gadget_setup_ops()
-  count(ops) > 0
-    && all(ops, op => match op {
-      ConfigfsMkdir { path } => string_contains(s: path as String, pattern: "/sys/kernel/config/usb_gadget/")
-      ConfigfsWriteAttr { path, value: _ } => string_contains(s: path as String, pattern: "/sys/kernel/config/usb_gadget/")
-      ConfigfsSymlink { target: _, link } => string_contains(s: link as String, pattern: "/sys/kernel/config/usb_gadget/")
-      ConfigfsRemoveLink { link } => string_contains(s: link as String, pattern: "/sys/kernel/config/usb_gadget/")
-      ConfigfsRmdir { path } => string_contains(s: path as String, pattern: "/sys/kernel/config/usb_gadget/")
-    })
+  list_length(items: ops) == 16
+    && all(ops, op => op_validates_inside(g: g, op: op))
+    && count(filter(ops, op => match op {
+      ConfigfsLinkFunction { function: f, configuration: c } =>
+        match configfs_name_verdict(name: f) {
+          ConfigfsNameWellFormed { name: _ } =>
+            match configfs_name_verdict(name: c) {
+              ConfigfsNameWellFormed { name: _ } => true
+              ConfigfsNameNotASegment { name: _ } => false
+            }
+          ConfigfsNameNotASegment { name: _ } => false
+        }
+      _ => false
+    })) == 1
+}
+
+// THE MOUNT IS A MODELED INPUT (review on a28daf4844, finding 1: the deleted data row hard-coded
+// `/sys/kernel/config/usb_gadget/` while the gadget record carries `config_root`): a fixture
+// gadget whose config_root is a different -- equally permitted -- configfs mount stages READY,
+// because the containment verdict is taken against the gadget's OWN record, not against a
+// hard-coded root. The gadget's name spelling is the consumer's literal again (review
+// 5360078848 at a00c5f6a83): the name field is a plain NonEmptyStr and the segment law is taken
+// by acceptance at the staging mint, so this fixture carries the spelling directly.
+fn alternate_mount_fixture() -> UsbGadget {
+  UsbGadget {
+    config_root: "/mnt/configfs/usb_gadget",
+    name: "gunbcvm",
+    id_vendor: "0x1d6b",
+    id_product: "0x0104",
+    manufacturer: "gunbc",
+    product: "gunbc-virtual-media",
+    serial: "srv4-0001",
+    config_label: "c.1",
+    lun: MassStorageLun {
+      backing_device: "/dev/nbd0",
+      cdrom: false,
+      read_only: true,
+      removable: true,
+    },
+    udc: "1e6a0000.usb-vhub:p3",
+  }
+}
+
+test fn gadget_stages_against_its_own_mount_not_a_hard_coded_root() -> Bool {
+  let g = alternate_mount_fixture()
+  let ops = usb_gadget_setup_ops(gadget: g)
+  let staged = configfs_staging_of(gadget: g, ops: ops)
+  string_contains(s: usb_gadget_dir(gadget: g) as String, pattern: "/mnt/configfs/usb_gadget/")
+    && staging_ready(staging: staged)
+    && staging_ready_count(staging: staged) == 16
+    && all(ops, op => op_validates_inside(g: g, op: op))
+    && !staging_ready(staging: configfs_staging_of(gadget: g, ops: [ConfigfsMkdir {
+      path: "/sys/kernel/config/usb_gadget/gunbcvm",
+    }]))
+}
+
+// THE TEARDOWN'S AUTHORED ORDER, gated over the typed list the fold walks (review 38602,
+// findings 1 and 3): the FIRST act is the empty UDC write -- the gadget unregisters before
+// anything under its tree is removed -- the SECOND is the mass-storage unlink, and every act after
+// is a configfs rmdir, five of them, innermost first, each validating INSIDE the gadget directory.
+// The old probe pinned this order on the DISPLAY's first line; the fold over the authored ops pins
+// it on the semantics, which the display only narrates.
+type TeardownPhase
+  = PhaseAwaitDetach
+  | PhaseAwaitUnlink
+  | PhaseRemovingDirs
+  | PhaseBroken
+
+fn is_empty_udc_write(op: ConfigfsOp) -> Bool {
+  match op {
+    ConfigfsWriteAttr { path: p, value: v } => string_contains(s: p as String, pattern: "/UDC") && v == ""
+    ConfigfsMkdir { path: _ } => false
+    ConfigfsLinkFunction { function: _, configuration: _ } => false
+    ConfigfsUnlinkFunction { function: _, configuration: _ } => false
+    ConfigfsRmdir { path: _ } => false
+  }
+}
+
+fn is_mass_storage_unlink(op: ConfigfsOp) -> Bool {
+  match op {
+    ConfigfsUnlinkFunction { function: f, configuration: _ } => f == "mass_storage.0"
+    ConfigfsWriteAttr { path: _, value: _ } => false
+    ConfigfsMkdir { path: _ } => false
+    ConfigfsLinkFunction { function: _, configuration: _ } => false
+    ConfigfsRmdir { path: _ } => false
+  }
+}
+
+fn is_rmdir_op(op: ConfigfsOp) -> Bool {
+  match op {
+    ConfigfsRmdir { path: _ } => true
+    ConfigfsWriteAttr { path: _, value: _ } => false
+    ConfigfsMkdir { path: _ } => false
+    ConfigfsLinkFunction { function: _, configuration: _ } => false
+    ConfigfsUnlinkFunction { function: _, configuration: _ } => false
+  }
+}
+
+fn teardown_phase_after(phase: TeardownPhase, op: ConfigfsOp) -> TeardownPhase {
+  match phase {
+    PhaseAwaitDetach => if is_empty_udc_write(op: op) { PhaseAwaitUnlink } else { PhaseBroken }
+    PhaseAwaitUnlink => if is_mass_storage_unlink(op: op) { PhaseRemovingDirs } else { PhaseBroken }
+    PhaseRemovingDirs => if is_rmdir_op(op: op) { PhaseRemovingDirs } else { PhaseBroken }
+    PhaseBroken => PhaseBroken
+  }
+}
+
+fn teardown_walks_detach_unlink_then_rmdirs(ops: List<ConfigfsOp>) -> Bool {
+  match fold(ops, init: PhaseAwaitDetach, f: (acc, op) => teardown_phase_after(phase: acc, op: op)) {
+    PhaseRemovingDirs => true
+    PhaseAwaitDetach => false
+    PhaseAwaitUnlink => false
+    PhaseBroken => false
+  }
+}
+
+test fn usb_gadget_teardown_walks_detach_unlink_then_five_rmdirs_inside_the_gadget() -> Bool {
+  let g = srv4_vm_gadget()
+  let gd = usb_gadget_dir(gadget: g) as String
+  let ops = usb_gadget_teardown_ops(gadget: g)
+  list_length(items: ops) == 7
+    && teardown_walks_detach_unlink_then_rmdirs(ops: ops)
+    && count(filter(ops, op => is_rmdir_op(op: op))) == 5
+    && count(filter(ops, op => is_empty_udc_write(op: op))) == 1
+    && count(filter(ops, op => is_mass_storage_unlink(op: op))) == 1
+    && all(ops, op => op_validates_inside(g: g, op: op))
+    && count(filter(ops, op => match op {
+      ConfigfsRmdir { path: p } => (p as String) == gd
+      _ => false
+    })) == 1
+}
+
+// ---- THE CROSS-MODULE NEGATIVE CONTROLS AND THE PRODUCTION-ROUTE NAME CONTROL (review at
+// 51c4ca9e3e blocker 1; reviews 5360078848 and 5360613023) ----
+
+// The typed tests above prove the honest route works; they do not prove the bypasses are
+// unwritable. Two RED probes compile FOREIGN module sources through the guarantee probe corpus
+// -- the same harness dag/test/claim/operation_admit_callers_inert_witness_test.dag uses: the
+// hand-authored prepared value (refused by the sole_constructor seal) and the direct call to the
+// prepared mint (refused by the admit_callers wall). A third control runs the production route
+// itself over both name spellings. The sources are compiled as DATA, not as modules of this
+// tree: a bypass that resolved would refuse inside the probe's own compilation, never in this
+// file. Sealed-value custody, construction-route custody, and name content are three different
+// laws; each control distinguishes its own, and the integration pair beside it distinguishes the
+// route behavior end to end.
+
+// The exact spelling the review sketched: a foreign module authors the prepared link by hand --
+// public disposition, a gadget_dir it chose -- and hands it straight to the realization,
+// skipping both verdicts. The wrapper is a sole_constructor declared in
+// extdeps.linux.usb_gadget, so the foreign record literal is a SoleConstructorViolation: a
+// staged fact stays something only staging can mint.
+data prepared_op_bypass_probe_source: String = "module probe.prepared_op_bypass\nimport extdeps.linux.usb_gadget { ConfigfsPreparedOp, ConfigfsPreparedLinkFunction, ConfigfsOpCommand, configfs_prepared_realization }\n\ndata probe_bypass_prepared: ConfigfsPreparedOp = ConfigfsPreparedOp {\n  disposition: ConfigfsPreparedLinkFunction {\n    gadget_dir: \"/sys/kernel/config/usb_gadget/gunbcvm\",\n    function: \"mass_storage.0\",\n    configuration: \"c.1\",\n  },\n}\n\nfn probe_bypass_run(op: ConfigfsPreparedOp) -> ConfigfsOpCommand {\n  configfs_prepared_realization(op: op)\n}\n"
+
+fn bypass_probe_census(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+test fn foreign_module_cannot_hand_author_a_prepared_op_to_the_realization() -> Bool {
+  match census_blocking_count_for_class(
+    census: bypass_probe_census(source: prepared_op_bypass_probe_source),
+    wanted: "SoleConstructorViolation"
+  ) {
+    Present { value: n } => n >= 1
+    Absent => false
+  }
+}
+
+// THE DISCRIMINATING CONTROL FOR THE CALL WALL (review 5360613023 at e1bbd12223): a foreign
+// module imports the mint itself -- not the staging fold -- and calls it directly with the
+// slash-named gadget. Inside the direct call, `configfs_path_verdict` would compare the authored
+// path against the same slash-derived directory and classify it inside; the refusal is therefore
+// the CALL WALL, not the content law: the direct call is a `ConstructorCallAdmissionRefused` at
+// resolve time. The route-level pair below stays as the integration control; the wall probe
+// distinguishes custody of the construction route, which no content control can.
+data direct_mint_call_probe_source: String = "module probe.direct_mint_call\nimport extdeps.linux.usb_gadget { UsbGadget, MassStorageLun, ConfigfsMkdir, ConfigfsStaging, configfs_op_prepared }\n\nfn unadmitted_direct_mint() -> ConfigfsStaging {\n  configfs_op_prepared(\n    gadget: UsbGadget {\n      config_root: \"/sys/kernel/config/usb_gadget\",\n      name: \"a/b\",\n      id_vendor: \"0x1d6b\",\n      id_product: \"0x0104\",\n      manufacturer: \"gunbc\",\n      product: \"gunbc-virtual-media\",\n      serial: \"srv4-0001\",\n      config_label: \"c.1\",\n      lun: MassStorageLun {\n        backing_device: \"/dev/nbd0\",\n        cdrom: false,\n        read_only: true,\n        removable: true,\n      },\n      udc: \"1e6a0000.usb-vhub:p3\",\n    },\n    op: ConfigfsMkdir { path: \"/sys/kernel/config/usb_gadget/a/b\" },\n  )\n}\n"
+
+test fn foreign_module_cannot_call_the_prepared_mint_directly() -> Bool {
+  match census_blocking_count_for_class(
+    census: bypass_probe_census(source: direct_mint_call_probe_source),
+    wanted: "ConstructorCallAdmissionRefused"
+  ) {
+    Present { value: n } => n >= 1
+    Absent => false
+  }
+}
+
+// THE PRODUCTION ROUTE IS THE NAME LAW'S CONTROL (review 5360078848 at a00c5f6a83): a slash
+// spelling authors a gadget fine -- the field is a NonEmptyStr and the consumer owns its
+// literal -- and the paired control runs BOTH spellings through the SAME preparation route
+// staging uses in production. The slash-named gadget stages REFUSED with the distinct
+// gadget-name reason; the estate's own name stages READY with the identical sixteen operations
+// on the identical route. This distinguishes the segment law by acceptance, which the
+// foreign-construction probe alone cannot: that probe distinguishes module ownership, not
+// valid versus invalid content.
+test fn gadget_name_segment_law_refuses_slash_and_stages_the_estate_name_ready_on_the_production_route() -> Bool {
+  let slash_gadget = UsbGadget {
+    config_root: "/sys/kernel/config/usb_gadget",
+    name: "a/b",
+    id_vendor: "0x1d6b",
+    id_product: "0x0104",
+    manufacturer: "gunbc",
+    product: "gunbc-virtual-media",
+    serial: "srv4-0001",
+    config_label: "c.1",
+    lun: MassStorageLun {
+      backing_device: "/dev/nbd0",
+      cdrom: false,
+      read_only: true,
+      removable: true,
+    },
+    udc: "1e6a0000.usb-vhub:p3",
+  }
+  let slash_staged = configfs_staging_of(gadget: slash_gadget, ops: usb_gadget_setup_ops(gadget: slash_gadget))
+  let ready_staged = configfs_staging_of(gadget: srv4_vm_gadget(), ops: usb_gadget_setup_ops(gadget: srv4_vm_gadget()))
+  !staging_ready(staging: slash_staged)
+    && string_contains(s: staging_reason(staging: slash_staged), pattern: "well-formed configfs path segment")
+    && staging_ready(staging: ready_staged)
+    && staging_ready_count(staging: ready_staged) == 16
 }

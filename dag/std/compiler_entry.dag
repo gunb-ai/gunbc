@@ -270,6 +270,7 @@ type NativeDriverExclusiveRowKey
   | ExclusiveModuleRelease
   | ExclusiveRelayEmit
   | ExclusiveDemandScheduling
+  | ExclusiveOccurrenceCensus
 
 // THE ROSTER IS THE ONE PLACE A ROW IS ADDED, and it is the residual this reshape does not close.
 // A key absent here is absent from every constructed collection, from the sum and from the
@@ -288,6 +289,7 @@ fn native_driver_exclusive_row_keys() -> List<NativeDriverExclusiveRowKey> {
     ExclusiveModuleRelease,
     ExclusiveRelayEmit,
     ExclusiveDemandScheduling,
+    ExclusiveOccurrenceCensus,
   ]
 }
 
@@ -306,6 +308,7 @@ fn native_driver_exclusive_row_name(key: NativeDriverExclusiveRowKey) -> String 
     ExclusiveModuleRelease => "module_release"
     ExclusiveRelayEmit => "relay_emit"
     ExclusiveDemandScheduling => "demand_scheduling"
+    ExclusiveOccurrenceCensus => "occurrence_census"
   }
 }
 

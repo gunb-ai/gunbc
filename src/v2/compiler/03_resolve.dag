@@ -1,7 +1,7 @@
 module v2.compiler.resolve
 import v2.std.language_model { LanguageModel }
 
-import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_resource_declarations }
 import v2.compiler.namespace_graft { namespace_graft_module_body_optional }
 import v2.std.declaration_marker {
   ReachesNoTestCode,
@@ -102,6 +102,7 @@ import v2.std.symbol_index {
   RecordTypePayload,
   VariantArmPayload,
   symbol_index_declared_payload_at,
+  symbol_index_declares_resource_at,
   symbol_index_global_unique_lookup,
   symbol_index_declaring_path_of,
   symbol_index_lexical_lookup,
@@ -138,6 +139,8 @@ import v2.std.node {
   arrow_domain_binds_a_name,
   arrow_first_positional_target,
   arrow_signature_order_label,
+  arrow_resource_requirements_label,
+  arrow_named_edge_is_contract,
   FirstPositionalAbsent,
   FirstPositionalFound,
   edge_label_of,
@@ -151,6 +154,9 @@ import v2.std.node {
 }
 import v2.std.type_binder { GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names }
 import v2.std.node_query {
+  binder_default_label,
+  binder_node_label,
+  binder_node_parts,
   declared_field_from_edge,
   NamedChildAmbiguous,
   NamedChildFound,
@@ -426,7 +432,7 @@ fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace
   Namespace {
     bindings: bindings,
     canonical_symbols: lm.canonical_symbols,
-    symbol_index: symbol_index_fill_module_declarations(index: empty_symbol_index(), root: tree.root, record_declarations: Empty, resource_declarations: Empty),
+    symbol_index: symbol_index_fill_module_declarations(index: empty_symbol_index(), root: tree.root, record_declarations: Empty, resource_declarations: normalized_tree_resource_declarations(t: tree)),
     module_qn: Empty,
     test_code: test_code_index_add_module(
       index: test_code_index_empty(),
@@ -567,7 +573,7 @@ fn resolve_ctx_with_declaring(ctx: ResolveContext, declaring: DeclaringPosition)
 fn resolve_declaring_across_named_edge(declaring: DeclaringPosition, name: Symbol) -> DeclaringPosition {
   match declaring {
     DeclaringAt { path: path } =>
-      if dag_surface_module_header_metadata_edge(name: name) || parse_tree_projection_edge(name: name) {
+      if dag_surface_module_header_metadata_edge(name: name) || parse_tree_projection_edge(name: name) || binder_node_label(name: name) {
         declaring
       } else {
         DeclaringAt { path: qualified_name_snoc(qn: path, segment: name) }
@@ -2656,7 +2662,8 @@ fn resolve_child_edge(
         ResolveWalkAccepted { value: e.target, diagnostics: None }
       } else {
         let child_ctx = if ctx.under_module_root
-          && !dag_surface_module_header_metadata_edge(name: sym) {
+          && !dag_surface_module_header_metadata_edge(name: sym)
+          && !binder_node_label(name: sym) {
           resolve_ctx_snoc_position(ctx: ctx, segment: sym)
         } else {
           ctx
@@ -2880,6 +2887,10 @@ fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node
           child_walk_step(w: acc, e: e, r: resolve_type_params_conj(ctx: outer_ctx, conj: e.target))
         } else if (edge_label_of(e: e) == arrow_signature_order_label) {
           child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None })
+        } else if (edge_label_of(e: e) == arrow_resource_requirements_label) {
+          child_walk_step(w: acc, e: e, r: resolve_arrow_resource_requirements(ctx: resolve_ctx_with_scope(ctx: inner_ctx, scope: scope_type), requirements: e.target))
+        } else if arrow_named_edge_is_contract(e: e) {
+          child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None })
         } else {
           child_walk_step(
             w: acc,
@@ -2892,19 +2903,131 @@ fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node
           )
         }
       Positional =>
-        child_walk_step(
-          w: acc,
-          e: e,
-          r: resolve_node_walk(
-            ctx: resolve_ctx_with_scope(
-              ctx: inner_ctx,
-              scope: if acc.ordinal == 0 { scope_type } else { scope_codomain }
-            ),
-            n: e.target
+        if acc.ordinal == 0 {
+          child_walk_step(
+            w: acc,
+            e: e,
+            r: resolve_arrow_domain_walk(
+              type_ctx: resolve_ctx_with_scope(ctx: inner_ctx, scope: scope_type),
+              default_ctx: inner_ctx,
+              domain: e.target
+            )
           )
-        )
+        } else {
+          child_walk_step(
+            w: acc,
+            e: e,
+            r: resolve_node_walk(ctx: resolve_ctx_with_scope(ctx: inner_ctx, scope: scope_codomain), n: e.target)
+          )
+        }
     }
   }))
+}
+
+// AN ARROW'S DOMAIN: each binder's TYPE resolves in the Arrow's type-parameter frame (type_ctx), as the
+// whole domain did; each binder's DEFAULT (v2.std.node_query binder_node_parts) resolves in the
+// ENCLOSING value scope (default_ctx: the Arrow's own context, before its parameters), with the
+// type-parameter frame only as its type_scope. So a default sees an outer value, never a sibling
+// parameter, and a type parameter's spelling is not a value it can bind (XL-2 PR2c-ii, side-chat review
+// on #12948). A domain member that is not a binder node walks in type_ctx exactly as before.
+fn resolve_arrow_domain_walk(type_ctx: ResolveContext, default_ctx: ResolveContext, domain: Node) -> ResolveNodeWalk {
+  match domain.kind {
+    TypeNode { connective: Conj } =>
+      child_walk_node(n: domain, w: fold(domain.children, init: child_walk_init(), f: fn(acc, e) {
+        child_walk_step(w: acc, e: e, r: resolve_arrow_domain_member(type_ctx: type_ctx, default_ctx: default_ctx, member: e.target))
+      }))
+    _ => resolve_node_walk(ctx: type_ctx, n: domain)
+  }
+}
+
+fn resolve_arrow_domain_member(type_ctx: ResolveContext, default_ctx: ResolveContext, member: Node) -> ResolveNodeWalk {
+  match binder_node_parts(n: member) {
+    Absent => resolve_node_walk(ctx: type_ctx, n: member)
+    Present { value: _ } =>
+      child_walk_node(n: member, w: fold(member.children, init: child_walk_init(), f: fn(acc, be) {
+        child_walk_step(w: acc, e: be, r: resolve_binder_part(type_ctx: type_ctx, default_ctx: default_ctx, part: be))
+      }))
+  }
+}
+
+fn resolve_binder_part(type_ctx: ResolveContext, default_ctx: ResolveContext, part: Edge) -> ResolveNodeWalk {
+  match part.label {
+    Named { name: sym } =>
+      if sym == binder_default_label() {
+        resolve_node_walk(ctx: default_ctx, n: part.target)
+      } else {
+        resolve_node_walk(ctx: type_ctx, n: part.target)
+      }
+    Positional => resolve_node_walk(ctx: type_ctx, n: part.target)
+  }
+}
+
+// AN ARROW'S CONTRACT EDGES ARE NOT VALUES (v2.std.node arrow_named_edge_is_contract). The effect-claims
+// and execution-mode edges hold self-named atoms of a closed vocabulary that v2.std.arrow_contract has
+// already checked; they are carried unwalked, like the declared order. The resource-requirements edge
+// alone holds REFERENCES (`requires Network`), so it is walked -- in the Arrow's type scope, which sees
+// its type parameters and not its value parameters, because a requirement is a fact about the
+// operation, never about an argument -- and each member must then name a declared resource
+// (v2.std.symbol_index symbol_index_declares_resource_at, marked from the normalize-captured
+// resource declarations), at most once by resolved declaration. A member naming anything else, or a
+// declaration a second spelling already named, refuses at that member.
+fn resolve_arrow_resource_requirements(ctx: ResolveContext, requirements: Node) -> ResolveNodeWalk {
+  match requirements.kind {
+    TypeNode { connective: Atom { identity: _ } } =>
+      ResolveWalkAccepted { value: requirements, diagnostics: None }
+    _ => resolve_arrow_resource_requirement_members(ctx: ctx, requirements: requirements)
+  }
+}
+
+// `requires none` and `requires opaque` are declared words, not references, so the Atom forms are
+// carried unwalked (v2.std.arrow_contract has already checked their identity); only the member Conj
+// names declarations.
+fn resolve_arrow_resource_requirement_members(ctx: ResolveContext, requirements: Node) -> ResolveNodeWalk {
+  match resolve_node_walk(ctx: ctx, n: requirements) {
+    ResolveWalkRefused { first: f, rest: rs, observation: o } => ResolveWalkRefused { first: f, rest: rs, observation: o }
+    ResolveWalkAccepted { value: resolved, diagnostics: d } =>
+      match resolve_requirement_member_refusal_optional(index: ctx.namespace.symbol_index, members: resolved.children) {
+        Present { value: refusal } => resolve_walk_refused_one(chain: diagnostics_singleton(d: refusal))
+        Absent => ResolveWalkAccepted { value: resolved, diagnostics: d }
+      }
+  }
+}
+
+type ResolveRequirementScan {
+  seen: List<QualifiedName>
+  refusal: Optional<Diagnostic>
+}
+
+// THE REQUIREMENT DECISION, over the resolved members and the index alone: it reads nothing else of the
+// resolution context, so it takes nothing else, and its refusals can be exercised at this interface
+// with supplied members (v2.test.claim.normalize.operation_requires_edge) while the full route stays
+// exercised by that module's resolving claims.
+fn resolve_requirement_member_refusal_optional(index: SymbolIndex, members: List<Edge>) -> Optional<Diagnostic> {
+  fold(members, init: ResolveRequirementScan { seen: Empty, refusal: optional_absent() }, f: fn(acc, e) {
+    match acc.refusal {
+      Present { value: _ } => acc
+      Absent =>
+        match declaration_reference_path_optional(node: e.target) {
+          Absent => ResolveRequirementScan { seen: acc.seen, refusal: optional_present(value: resolve_requirement_diagnostic(reason: ^resolve_reason_requirement_not_a_resource, n: e.target)) }
+          Present { value: path } =>
+            if !symbol_index_declares_resource_at(index: index, qualified_path: path) {
+              ResolveRequirementScan { seen: acc.seen, refusal: optional_present(value: resolve_requirement_diagnostic(reason: ^resolve_reason_requirement_not_a_resource, n: e.target)) }
+            } else if fold(acc.seen, init: false, f: fn(found, p) { found || (p == path) }) {
+              ResolveRequirementScan { seen: acc.seen, refusal: optional_present(value: resolve_requirement_diagnostic(reason: ^resolve_reason_requirement_repeated, n: e.target)) }
+            } else {
+              ResolveRequirementScan { seen: list_snoc_item(xs: acc.seen, item: path), refusal: optional_absent() }
+            }
+        }
+    }
+  }).refusal
+}
+
+fn resolve_requirement_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
 }
 
 fn resolve_bind_binder_target(t: Node) -> ResolveNodeWalk {
