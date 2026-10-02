@@ -2,7 +2,7 @@ module v2.test.claim.emit.realized_closure_parameter_order
 
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.arrow_signature { declared_signature }
+import v2.std.arrow_signature { ArrowParameterOrderMalformed, arrow_declared_parameter_order, declared_signature }
 import v2.std.compilers.target_model { arrow_domain_binder_names, realized_closure_ordered_params }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -117,9 +117,19 @@ test fn the_canonical_domain_stored_order_is_not_the_declared_order() -> Bool {
   !rcp_is_z_then_a(xs: arrow_domain_binder_names(arrow: rcp_canonical_domain(arrow: rcp_closure())))
 }
 
+// A CLOSURE WHOSE DOMAIN BINDS NAMES BUT CARRIES NO ORDER EDGE IS ILL FORMED (A4, gunbc#12770): the
+// declared-order read answers Malformed at the admission wall (v2.std.node
+// arrow_signature_edges_conform), and the closure realization refuses with the malformed reason --
+// earlier than the order-ABSENT refusal it reached before A4. The claim pins the wall's answer and
+// the typed refusal, and still reds if the order-less closure is ever realized.
 test fn a_closure_with_named_parameters_and_no_order_refuses_typed() -> Bool {
-  match realized_closure_ordered_params(closure: rcp_without_order(arrow: rcp_closure())) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^target_value_expr_reason_closure_parameter_order_absent
+  let stripped = rcp_without_order(arrow: rcp_closure())
+  match arrow_declared_parameter_order(arrow: stripped) {
+    ArrowParameterOrderMalformed =>
+      match realized_closure_ordered_params(closure: stripped) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^target_value_expr_reason_closure_parameter_order_malformed
+      }
+    _ => false
   }
 }

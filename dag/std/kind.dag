@@ -6,7 +6,7 @@ import v2.std.collection { empty_map, map_insert, map_lookup }
 import std.types { Map, List }
 import v2.std.node { Atom, Node, Symbol, TypeNode, arrow_signature_order_edge }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup }
-import v2.std.optional { Optional }
+import v2.std.optional { Optional, optional_absent, optional_present }
 
 // THE KIND OF A TYPE-LEVEL NODE, AT ONE LEVEL (Type_0 only, no universe tower). A node that DENOTES
 // a type -- the Int inhabitant, a fn Arrow between inhabitants -- has a type too, and that type is
@@ -48,6 +48,20 @@ fn kind_node(kind: Kind) -> Node {
 //   - TypeDenotationKind: every other member -- the records themselves, their subject atoms, and
 //     composites built from records (e.g. a fn Arrow whose positions are records).
 // A node that is not a member of the roster has no kind here (Absent).
+
+// WHICH KIND A NODE DENOTES, read back through this module's own mint (kind_node), never by a second
+// spelling of the kind atoms. A consumer that must decide whether a type is GROUNDED asks this: a kind
+// node is grounded because this module is its declared authority (v2.compiler.infer
+// algebra_ref_is_grounded), exactly as a structural type is grounded by its formation.
+fn kind_denoted_by_node(n: Node) -> Optional<Kind> {
+  if n == kind_node(kind: TypeDenotationKind) {
+    optional_present(value: TypeDenotationKind)
+  } else if n == kind_node(kind: TypeFactKind) {
+    optional_present(value: TypeFactKind)
+  } else {
+    optional_absent()
+  }
+}
 
 // THE ROSTER-KIND INDEX, DERIVED ONCE PER ROSTER AND KEYED BY THE NODE. A member's kind is a fact
 // about the ROSTER, not about the node that asks: it is fixed when the roster is declared, so it is

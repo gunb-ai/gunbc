@@ -1479,6 +1479,14 @@ fn target_semantic_decl_field_surface_from_edge(
 ) -> Outcome<Node> {
   match declared_field_from_edge(e: edge) {
     Present { value: binder } =>
+      match binder.default {
+        Present { value: default } =>
+          outcome_rejected(d: Diagnostic {
+            reason: ^target_semantic_decl_field_default_unrealized,
+            at: node_locus(node: default),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          })
+        Absent =>
       match binder.type_node.kind {
         TypeNode { connective: Atom { identity: tid } } =>
           if projection.field_type_permit_only_int && tid != ^Int {
@@ -1501,6 +1509,7 @@ fn target_semantic_decl_field_surface_from_edge(
                 correction: Unavailable { reason: ExternalContractUnknown }
               })
           }
+      }
       }
     Absent =>
       outcome_rejected(d: Diagnostic {

@@ -92,6 +92,7 @@ import std.cache_identity {
 }
 import std.materialization_ladder { DemandNature }
 import v2.compiler.program_assembly {
+  program_assembly_ingest_scope_outcome,
   program_assembly_read_to_normalized_root_seeded,
   assemble_program_from_ingest,
   program_assembly_fold_ingest,
@@ -160,7 +161,7 @@ import v2.lens.fact_density { fact_density_hollow_alias_gate }
 import v2.lens.unit_modeling { unit_modeling_gate }
 import v2.lens.lifecycle_carrier { lifecycle_carrier_gate }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
-import std.content_hash { content_hash_of_value, serialize_content_hash }
+import std.content_hash { Fnv1a64Structural, content_hash_of_value, serialize_content_hash }
 import std.types { NonEmptyStr, List }
 import std.algebra { Cons, Empty, FreeMonoid, trim, list_append, list_snoc_item }
 import v2.std.algebra { any, contains, fold_list, is_empty, length, list_find_first, list_reverse }
@@ -1422,14 +1423,16 @@ fn native_test_context_fold_step(
   read: DagSourceReadWitness,
   lm: LanguageModel,
   prepared: PreparedGrammar,
-  residue: Diagnostics
+  residue: Diagnostics,
+  scope: Fnv1a64Structural
 ) -> NativeTestContextFoldState {
   let result = program_assembly_read_to_normalized_root_seeded(
     read: read,
     lm: lm,
     prepared: prepared,
     residue: residue,
-    seed: state.alloc
+    seed: state.alloc,
+    scope: scope
   )
   native_test_context_absorb(
     state: state,
@@ -1501,6 +1504,7 @@ fn native_test_context_from_ingest(ingest: SourceRootIngest) -> Outcome<NativeTe
   bind_outcome(
     o: native_test_front_end_prepare(),
     f: fn(front) {
+      bind_outcome(o: program_assembly_ingest_scope_outcome(ingest: ingest), f: fn(scope) {
       outcome_accepted(value: native_test_context_finish(
         state: fold_list(
           xs: ingest,
@@ -1511,13 +1515,15 @@ fn native_test_context_from_ingest(ingest: SourceRootIngest) -> Outcome<NativeTe
               read: read,
               lm: front.lm,
               prepared: front.prepared,
-              residue: front.residue
+              residue: front.residue,
+              scope: scope
             )
           }
         ),
         front: front,
         ingest: ingest
       ))
+      })
     }
   )
 }
@@ -4366,6 +4372,12 @@ fn native_demand_execute(
 // other way an observation can fail. Conversion saturation inside the runtime body is a separate
 // rule and stays there: v1.runtime_rust clamps u128 nanoseconds into the substrate Int, which is a
 // representational ceiling rather than a reversed pair.
+//
+// THE READINGS ARE THREAD CPU, NOT WALL (std.realization_measurement ObserveThreadCpuAtSubject). These
+// spans are members of the driver's exclusive partition (std.compiler_entry native_driver_cost_account),
+// whose law is that the phases partition the driver's OWN work; a wall span also carries every
+// interval the host descheduled the thread, which made the verdict a function of host load. The
+// monotonicity argument above holds unchanged on the thread CPU clock -- it only advances.
 type ElapsedObservation
   = ElapsedObserved { nanos: Int }
   | ElapsedObservationInvalid { start: Int, finish: Int }
@@ -4400,12 +4412,12 @@ fn native_demand_step(
   refusal_index: Map<Symbol, NativeTestFileRefusal>,
   compiler: DeclaredInput
 ) -> NativeDemandRun {
-  let lookup_started = observed_monotonic_nanos("native-demand-binding-lookup-start")
+  let lookup_started = observed_thread_cpu_nanos("native-demand-binding-lookup-start")
   match native_demand_binding(plan: plan, id: identity) {
     Absent => run
     Present { value: subject } =>
-      let lookup_finished = observed_monotonic_nanos("native-demand-binding-lookup-finish")
-      let started = observed_monotonic_nanos("native-demand-step-start")
+      let lookup_finished = observed_thread_cpu_nanos("native-demand-binding-lookup-finish")
+      let started = observed_thread_cpu_nanos("native-demand-step-start")
       let settled = native_demand_execute(
         run: run,
         subject: subject,
@@ -4413,12 +4425,12 @@ fn native_demand_step(
         refusal_index: refusal_index,
         compiler: compiler
       )
-      let finished = observed_monotonic_nanos("native-demand-step-finish")
+      let finished = observed_thread_cpu_nanos("native-demand-step-finish")
       let elapsed = elapsed_observation(start: started, finish: finished)
-      let settle_started = observed_monotonic_nanos("native-demand-settle-start")
+      let settle_started = observed_thread_cpu_nanos("native-demand-settle-start")
       let settled_engine = demand_engine_settle(e: run.engine, id: identity, state: settled)
       let collected_rows = native_demand_collect_rows(rows: run.rows, settled: settled)
-      let settle_finished = observed_monotonic_nanos("native-demand-settle-finish")
+      let settle_finished = observed_thread_cpu_nanos("native-demand-settle-finish")
       NativeDemandRun {
         engine: settled_engine,
         transitions: list_snoc_item(
@@ -4454,9 +4466,9 @@ fn native_demand_drain(
   if fuel <= 0 {
     run
   } else {
-    let select_started = observed_monotonic_nanos("native-demand-select-start")
+    let select_started = observed_thread_cpu_nanos("native-demand-select-start")
     let admission = native_demand_next(run: run, seats: 1)
-    let select_finished = observed_monotonic_nanos("native-demand-select-finish")
+    let select_finished = observed_thread_cpu_nanos("native-demand-select-finish")
     let selected = native_demand_run_with_scheduling_nanos(
       run: run,
       nanos: native_demand_bookkeeping_nanos(start: select_started, finish: select_finished)
@@ -4541,9 +4553,9 @@ fn native_demand_schedule_universe(
   refusal_index: Map<Symbol, NativeTestFileRefusal>,
   compiler: DeclaredInput
 ) -> NativeDemandRun {
-  let plan_started = observed_monotonic_nanos("native-demand-plan-start")
+  let plan_started = observed_thread_cpu_nanos("native-demand-plan-start")
   let plan = native_demand_plan(modules: modules, compiler: compiler)
-  let plan_finished = observed_monotonic_nanos("native-demand-plan-finish")
+  let plan_finished = observed_thread_cpu_nanos("native-demand-plan-finish")
   native_demand_drain(
     run: native_demand_run_with_scheduling_nanos(
       run: native_demand_run_empty(plan: plan),

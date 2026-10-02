@@ -683,8 +683,11 @@ fn value_hash(v: &Value) -> u64 {
                 fields,
             } => {
                 7u8.hash(&mut h);
-                type_name.hash(&mut h);
-                variant_name.hash(&mut h);
+                // By SPELLING, never `Symbol`'s pointer `Hash`: this hash keys recorded-fixture
+                // replay across runs (recorded_fixture content_hash_service_inputs), and an address
+                // is a fact about one process.
+                type_name.0.hash(&mut h);
+                variant_name.0.hash(&mut h);
                 hash_fields_commutative(fields).hash(&mut h);
             }
             Value::Map(m) => {
@@ -1667,6 +1670,84 @@ enum PortableValue {
     },
 }
 
+/// A TOTAL ORDER over portable values that depends only on their content: variant rank, then
+/// payload; symbols by spelling, floats by IEEE 754-2019 §5.10 totalOrder (`f64::total_cmp`),
+/// sequences lexicographically. Used to put map
+/// entries in one order in every process.
+fn portable_value_cmp(a: &PortableValue, b: &PortableValue) -> std::cmp::Ordering {
+    fn rank(v: &PortableValue) -> u8 {
+        match v {
+            PortableValue::Null => 0,
+            PortableValue::Unit => 1,
+            PortableValue::Bool(_) => 2,
+            PortableValue::Int(_) => 3,
+            PortableValue::Float(_) => 4,
+            PortableValue::Str(_) => 5,
+            PortableValue::List(_) => 6,
+            PortableValue::Map(_) => 7,
+            PortableValue::Set(_) => 8,
+            PortableValue::Record { .. } => 9,
+            PortableValue::Variant { .. } => 10,
+        }
+    }
+    fn seq<T>(
+        xs: &[T],
+        ys: &[T],
+        cmp: impl Fn(&T, &T) -> std::cmp::Ordering,
+    ) -> std::cmp::Ordering {
+        for (x, y) in xs.iter().zip(ys) {
+            let o = cmp(x, y);
+            if o != std::cmp::Ordering::Equal {
+                return o;
+            }
+        }
+        xs.len().cmp(&ys.len())
+    }
+    let fields = |x: &[(Symbol, PortableValue)], y: &[(Symbol, PortableValue)]| {
+        seq(x, y, |(n, v), (m, w)| {
+            n.0.cmp(m.0).then_with(|| portable_value_cmp(v, w))
+        })
+    };
+    match (a, b) {
+        (PortableValue::Bool(x), PortableValue::Bool(y)) => x.cmp(y),
+        (PortableValue::Int(x), PortableValue::Int(y)) => x.cmp(y),
+        (PortableValue::Float(x), PortableValue::Float(y)) => x.total_cmp(y),
+        (PortableValue::Str(x), PortableValue::Str(y)) => x.as_ref().cmp(y.as_ref()),
+        (PortableValue::List(x), PortableValue::List(y)) => seq(x, y, portable_value_cmp),
+        (PortableValue::Map(x), PortableValue::Map(y)) => seq(x, y, |(k, v), (l, w)| {
+            portable_value_cmp(k, l).then_with(|| portable_value_cmp(v, w))
+        }),
+        (PortableValue::Set(x), PortableValue::Set(y)) => x.iter().cmp(y.iter()),
+        (
+            PortableValue::Record {
+                type_name: t,
+                fields: f,
+            },
+            PortableValue::Record {
+                type_name: u,
+                fields: g,
+            },
+        ) => t.0.cmp(u.0).then_with(|| fields(f, g)),
+        (
+            PortableValue::Variant {
+                type_name: t,
+                variant_name: v,
+                fields: f,
+            },
+            PortableValue::Variant {
+                type_name: u,
+                variant_name: w,
+                fields: g,
+            },
+        ) => {
+            t.0.cmp(u.0)
+                .then_with(|| v.0.cmp(w.0))
+                .then_with(|| fields(f, g))
+        }
+        _ => rank(a).cmp(&rank(b)),
+    }
+}
+
 /// Structural equality over portable values — the cross-claim tier's verification relation.
 /// `Fn` compares by shared-graph identity (the same relation the memo key uses); floats by
 /// bits, so a NaN-carrying argument row still verifies against itself.
@@ -1789,6 +1870,10 @@ fn portable_value_from_ctx_at(
                         descend!(".<map-value>".to_string(), v),
                     ));
                 }
+                // CANONICAL ENTRY ORDER. `HamtMap` iterates in its per-process `RandomState` order,
+                // which is a fact about the process and not the value; the portable form is what
+                // crosses a process boundary and is content-keyed, so its order is the keys' own.
+                out.sort_by(|(a, _), (b, _)| portable_value_cmp(a, b));
                 PortableValue::Map(out)
             }
             Value::Set(members) => PortableValue::Set(members.clone()),
@@ -6725,20 +6810,39 @@ mod budgeted_cpu_clock_tests {
     }
 }
 
-pub fn thread_cpu_nanos() -> u128 {
+/// The one read of the calling thread's CPU clock (extdeps.posix.clock_gettime
+/// ClockThreadCputimeId), FALLIBLE: POSIX makes the clock an option, so its absence is an error
+/// the caller must decide about, never a number. `thread_cpu_nanos` below is the budget clock's
+/// lenient view of this read; `observed_thread_cpu_nanos` refuses on the error arm.
+pub fn thread_cpu_nanos_checked() -> std::io::Result<u128> {
     #[cfg(unix)]
     {
         let mut ts = libc::timespec {
             tv_sec: 0,
             tv_nsec: 0,
         };
-        // SAFETY: `ts` is a valid, owned timespec; CLOCK_THREAD_CPUTIME_ID is always supported
-        // on linux/macos. rc != 0 (unreachable there) falls through to 0.
+        // SAFETY: `ts` is a valid, owned timespec written once by clock_gettime.
         let rc = unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut ts) };
         if rc == 0 {
-            return (ts.tv_sec as u128) * 1_000_000_000 + (ts.tv_nsec as u128);
+            return Ok((ts.tv_sec as u128) * 1_000_000_000 + (ts.tv_nsec as u128));
         }
-        0
+        Err(std::io::Error::last_os_error())
+    }
+    #[cfg(not(unix))]
+    {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "CLOCK_THREAD_CPUTIME_ID is a POSIX clock",
+        ))
+    }
+}
+
+pub fn thread_cpu_nanos() -> u128 {
+    #[cfg(unix)]
+    {
+        // CLOCK_THREAD_CPUTIME_ID is supported on linux/macos; the error arm (unreachable
+        // there) falls through to 0 for the budget clock.
+        thread_cpu_nanos_checked().unwrap_or(0)
     }
     #[cfg(not(unix))]
     {
@@ -22062,6 +22166,23 @@ macro_rules! v1_builtin_arms {
                 }),
             },
 
+            // ObserveThreadCpuAtSubject realization seam: the calling thread's CPU time
+            // (extdeps.posix.clock_gettime ClockThreadCputimeId). An unsupported clock refuses;
+            // the monotonic wall is never substituted for it.
+            arm "free_call.observed_thread_cpu_nanos" { "observed_thread_cpu_nanos" } => match $positional.as_slice() {
+                [Value::Str(_boundary)] => match thread_cpu_nanos_checked() {
+                    Ok(nanos) => Ok(Some(Value::Int(nanos.min(i64::MAX as u128) as i64))),
+                    Err(cause) => Err(InterpError::TypeError {
+                        msg: format!(
+                            "observed_thread_cpu_nanos: clock_gettime(CLOCK_THREAD_CPUTIME_ID) unavailable on this host ({cause}); refusing rather than substituting the wall"
+                        ),
+                    }),
+                },
+                _ => Err(InterpError::TypeError {
+                    msg: "observed_thread_cpu_nanos takes exactly one boundary label".to_string(),
+                }),
+            },
+
             arm "free_call.hash_combine" { "hash_combine" } => match $positional.as_slice() {
                 [Value::Str(a), Value::Str(b)] if $positional.len() == 2 => {
                     if !v1_rt::is_hash_digest(a) || !v1_rt::is_hash_digest(b) {
@@ -22888,6 +23009,18 @@ macro_rules! v1_builtin_arms {
                         .map(str_value)
                         .collect::<Vec<_>>(),
                 )))
+            },
+
+            arm "free_call.compile_dag_operation_requires" { "compile_dag_operation_requires" } => {
+                let source = expect_str($positional.first().copied(), $name)?;
+                let service = expect_str($positional.get(1).copied(), $name)?;
+                let operation = expect_str($positional.get(2).copied(), $name)?;
+                match crate::cli_run::compile_dag_operation_requires(&source, &service, &operation) {
+                    Ok(members) => Ok(Some(list_value(
+                        members.into_iter().map(str_value).collect::<Vec<_>>(),
+                    ))),
+                    Err(msg) => Err(InterpError::TypeError { msg }),
+                }
             },
 
             arm "free_call.compile_dag_primitive_call_edges" { "compile_dag_primitive_call_edges" } => {
@@ -28294,5 +28427,102 @@ mod value_depth_walker_tests {
         );
         let deeper = list_value(vec![value]);
         assert!(crate::cli_run::value_to_wire_json(&deeper, &ctx).is_err());
+    }
+}
+
+#[cfg(test)]
+mod portable_canonical_order_tests {
+    use super::*;
+    use im::vector as im_vec;
+
+    /// The value both processes build: a map whose HAMT iteration order follows the process's
+    /// `RandomState`, with variant-bearing values.
+    fn subject_digest() -> String {
+        let mut entries = HamtMap::new();
+        for i in 0..64 {
+            let key = CanonKey::new(str_value(format!("k{i:02}"))).expect("str key");
+            entries = entries.update(
+                key,
+                Value::Variant {
+                    type_name: Symbol("T"),
+                    variant_name: Symbol("V"),
+                    fields: Rc::new(vec![(Symbol("n"), Value::Int(i))]),
+                },
+            );
+        }
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+        };
+        let ctx = InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic);
+        let portable = portable_value_from_ctx(&ctx, &map_value(entries)).expect("portable");
+        portable_value_digest(&portable)
+    }
+
+    const CHILD: &str = "GUNBC_PORTABLE_ORDER_CHILD";
+
+    #[test]
+    fn portable_map_digest_is_equal_across_two_processes() {
+        if std::env::var_os(CHILD).is_some() {
+            println!("DIGEST={}", subject_digest());
+            return;
+        }
+        let run = || {
+            let out = std::process::Command::new(std::env::current_exe().expect("test exe"))
+                .args([
+                    "--exact",
+                    "v1_interpreter::portable_canonical_order_tests::portable_map_digest_is_equal_across_two_processes",
+                    "--nocapture",
+                    "--test-threads=1",
+                ])
+                .env(CHILD, "1")
+                .output()
+                .expect("child process");
+            let text = String::from_utf8_lossy(&out.stdout).to_string();
+            text.lines()
+                .find_map(|l| l.split("DIGEST=").nth(1).map(|d| d.trim().to_string()))
+                .unwrap_or_else(|| panic!("child printed no digest: {text}"))
+        };
+        let (first, second) = (run(), run());
+        assert_eq!(
+            first, second,
+            "two processes digested one map-bearing value differently"
+        );
+    }
+
+    #[test]
+    fn floats_order_by_ieee_total_order() {
+        let ordered = [-2.0f64, -1.0, -0.0, 0.0, 1.0, 2.0];
+        for w in ordered.windows(2) {
+            assert_eq!(
+                portable_value_cmp(&PortableValue::Float(w[0]), &PortableValue::Float(w[1])),
+                std::cmp::Ordering::Less,
+                "{} must order before {}",
+                w[0],
+                w[1]
+            );
+        }
+    }
+
+    #[test]
+    fn value_hash_of_a_variant_depends_on_spelling_not_address() {
+        // Two distinct allocations of one spelling: what two processes' canonical tables are.
+        let t1: &'static str = Box::leak("T".to_string().into_boxed_str());
+        let t2: &'static str = Box::leak("T".to_string().into_boxed_str());
+        assert!(!std::ptr::eq(t1, t2));
+        let v = |t: &'static str| Value::Variant {
+            type_name: Symbol(t),
+            variant_name: Symbol("V"),
+            fields: Rc::new(vec![]),
+        };
+        assert_eq!(value_hash(&v(t1)), value_hash(&v(t2)));
+        let other = Value::Variant {
+            type_name: Symbol("U"),
+            variant_name: Symbol("V"),
+            fields: Rc::new(vec![]),
+        };
+        assert_ne!(value_hash(&v(t1)), value_hash(&other));
     }
 }
