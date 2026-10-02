@@ -1690,7 +1690,6 @@ fn eval_callee_body_refusal_reason(form: ArrowBodyForm) -> Symbol {
     RecordConstructBody => ^eval_rejected_unsupported_callee
     DeclarationReferenceBody => ^eval_rejected_unsupported_callee
     ParameterReferenceBody => ^eval_rejected_parameter_reference_unbound
-    LexicalReferenceBody => ^eval_rejected_unsupported_callee
     ComputationBody { behavior: _ } => ^eval_rejected_unsupported_callee
     UnsupportedArrowBody => ^eval_rejected_unsupported_callee
   }

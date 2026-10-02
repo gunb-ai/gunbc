@@ -831,7 +831,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/gunbc/srv3/srv3_host_effect_apply.dag", name: "srv3_nbd_proxy_serve_host_effect", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/srv3/srv3_host_effect_apply.dag", name: "srv3_os_install_actuator_selection", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/srv3/srv3_host_effect_apply.dag", name: "srv3_seeded_install_media_resolve", standing: ActiveDebt },
-  UnimportedBareProviderDisposition { file: "dag/gunbc/srv3/srv3_os_install_diagnostic.dag", name: "get", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/gunbc/srv3/srv3_os_install_diagnostic.dag", name: "get", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/stage0/stage0_emitted_edge_admission.dag", name: "any", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/stage0/stage0_emitted_edge_admission.dag", name: "filter", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/stage0/stage0_partition_package_graph.dag", name: "filter", standing: Retired { cause: NotAReference } },
