@@ -63,6 +63,8 @@ fn shell_output_channel_of_key(key: String) -> ShellOutputChannel? {
 // extdeps.process.posix_exit). An exit status is an integer, never an HTTP status: a `5xx` class has
 // no meaning here and is refused, not coerced. `nonzero` is the seed's spelling for every status but
 // exit_code_success (v1.compiler.emit_rust renders it as the wildcard after the zero arm).
+// Decoded from a lowered exit arm by v2.compiler.service_realization shell_exit_pattern_of, the wall's only
+// reading of a shell status pattern.
 type ShellExitPattern
   = ShellExitCode { code: Int }
   | ShellExitNonzero

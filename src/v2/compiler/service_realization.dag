@@ -2,8 +2,8 @@ module v2.compiler.service_realization
 
 import std.fidelity { TransportClass, LocalDirect, ShellLocal, FileBoundary, RestNetwork, InterfaceStub, Unknown }
 import extdeps.ietf.http_semantics { HttpStatusClass, Informational, Successful, Redirection, ClientError, ServerError, http_status_class_digit }
-import extdeps.transports.shell { ShellArgv, shell_binding_field_key, shell_binding_field_of_key, shell_exit_nonzero_spelling, shell_output_channel_of_key }
-import extdeps.transports.rest { rest_binding_field_of_key }
+import extdeps.transports.shell { ShellArgv, ShellExitCode, ShellExitNonzero, ShellExitPattern, shell_binding_field_key, shell_binding_field_of_key, shell_exit_nonzero_spelling, shell_output_channel_of_key }
+import extdeps.transports.rest { RestResponseStatus, RestStatusClass, RestStatusCode, rest_binding_field_of_key }
 import extdeps.transports.file { file_binding_field_of_key, file_output_channel_of_key }
 import v2.extdeps.languages.dag { dag_int_literal_magnitude_int_from_node, dag_string_literal_value_optional }
 import std.types { http_status_of }
@@ -139,12 +139,13 @@ fn http_status_class_label(class: HttpStatusClass) -> Symbol {
   symbol_intern_lexeme(lexeme: concat(to_string(http_status_class_digit(class: class)), "xx"))
 }
 
-fn http_status_class_label_is_admitted(label: Symbol) -> Bool {
-  (label == http_status_class_label(class: Informational))
-    || (label == http_status_class_label(class: Successful))
-    || (label == http_status_class_label(class: Redirection))
-    || (label == http_status_class_label(class: ClientError))
-    || (label == http_status_class_label(class: ServerError))
+fn http_status_class_of_label(label: Symbol) -> Optional<HttpStatusClass> {
+  if label == http_status_class_label(class: Informational) { optional_present(value: Informational) }
+  else if label == http_status_class_label(class: Successful) { optional_present(value: Successful) }
+  else if label == http_status_class_label(class: Redirection) { optional_present(value: Redirection) }
+  else if label == http_status_class_label(class: ClientError) { optional_present(value: ClientError) }
+  else if label == http_status_class_label(class: ServerError) { optional_present(value: ServerError) }
+  else { optional_absent() }
 }
 
 // THE NODE SHAPES THIS WALL DISTINGUISHES, read by one exhaustive match over v2.std.node NodeKind and
@@ -174,58 +175,77 @@ fn realization_connective_shape(c: Connective) -> RealizationNodeShape {
   }
 }
 
-// A STATUS PATTERN reads in its transport's vocabulary only. An exact code is a Conj carrying one int
-// literal; a class (`5xx`) is a self-identified Atom and belongs to rest; `nonzero` is a self-identified
-// Atom and belongs to shell's exit status. An HTTP class never matches an exit status, and `nonzero`
-// never matches a response: each is refused at the pattern, not coerced.
+// A STATUS PATTERN IS DECODED INTO ITS TRANSPORT'S OWN TYPE, and admitted only when it decodes: shell
+// into extdeps.transports.shell ShellExitPattern, rest into extdeps.transports.rest RestResponseStatus. The
+// decoded value is the single reading of the pattern (DESIGN section 5: derive, do not re-check). An exact
+// code is a Conj carrying one int literal, read by the dag language's own int reader. On shell it is an
+// exit status on its own integer route (extdeps.process.posix_exit), never an HTTP type; on rest it is
+// admitted only through std.types http_status_of, so 99 and 600 do not decode. A class (`5xx`) is a
+// self-identified Atom that decodes only on rest, to extdeps.ietf.http_semantics HttpStatusClass;
+// `nonzero` is a self-identified Atom that decodes only on shell. The file transport observes no status.
+// A pattern that does not decode refuses at the pattern (service_realization_status_pattern_not_of_transport).
 fn status_pattern_conforms(kind: DeclaredTransport, pat: Node) -> Bool {
+  match kind {
+    DeclaredShell => match shell_exit_pattern_of(pat: pat) { Present { value: _ } => true  Absent => false }
+    DeclaredRest => match rest_response_status_of(pat: pat) { Present { value: _ } => true  Absent => false }
+    DeclaredFile => false
+  }
+}
+
+fn shell_exit_pattern_of(pat: Node) -> Optional<ShellExitPattern> {
   match realization_node_shape(n: pat) {
     ShapeAtom { identity: id } =>
-      (count(pat.children) == 0) && status_atom_is_of_transport(kind: kind, id: id)
+      if (count(pat.children) == 0) && (id == symbol_intern_lexeme(lexeme: shell_exit_nonzero_spelling)) { optional_present(value: ShellExitNonzero) }
+      else { optional_absent() }
     ShapeConj =>
-      (count(pat.children) == 1) && status_code_is_of_transport(kind: kind, pat: pat)
-    ShapeArrow => false
-    ShapeOther => false
-  }
-}
-
-fn status_atom_is_of_transport(kind: DeclaredTransport, id: Symbol) -> Bool {
-  match kind {
-    DeclaredShell => id == symbol_intern_lexeme(lexeme: shell_exit_nonzero_spelling)
-    DeclaredRest => http_status_class_label_is_admitted(label: id)
-    DeclaredFile => false
-  }
-}
-
-// An exact code is an int literal, decoded by the dag language's own int reader. Shell reads it as an
-// exit status on its own route (an integer, extdeps.process.posix_exit), never through an HTTP type. Rest
-// admits it only through std.types http_status_of, the one admission fold for an Int that claims to be an
-// HttpStatus, so 99 and 600 refuse at the pattern. The file transport observes no status, so no code arm
-// is admitted on it.
-fn status_code_is_of_transport(kind: DeclaredTransport, pat: Node) -> Bool {
-  match named_edge_target_lookup(children: pat.children, name: realization_status_code_label()) {
-    Found { target: code } =>
-      match dag_int_literal_magnitude_int_from_node(node: code) {
-        Accepted { value: n, diagnostics: _ } => status_int_is_of_transport(kind: kind, n: n)
-        Rejected { diagnostics: _ } => false
+      match status_code_int_optional(pat: pat) {
+        Present { value: n } => optional_present(value: ShellExitCode { code: n })
+        Absent => optional_absent()
       }
-    Ambiguous => false
-    Absent => false
+    ShapeArrow => optional_absent()
+    ShapeOther => optional_absent()
   }
 }
 
-fn status_int_is_of_transport(kind: DeclaredTransport, n: Int) -> Bool {
-  match kind {
-    DeclaredShell => true
-    DeclaredRest => http_status_admits(n: n)
-    DeclaredFile => false
+fn rest_response_status_of(pat: Node) -> Optional<RestResponseStatus> {
+  match realization_node_shape(n: pat) {
+    ShapeAtom { identity: id } =>
+      if count(pat.children) == 0 {
+        match http_status_class_of_label(label: id) {
+          Present { value: class } => optional_present(value: RestStatusClass { class: class })
+          Absent => optional_absent()
+        }
+      } else {
+        optional_absent()
+      }
+    ShapeConj =>
+      match status_code_int_optional(pat: pat) {
+        Present { value: n } =>
+          match http_status_of(n: n) {
+            Present { value: status } => optional_present(value: RestStatusCode { status: status })
+            Absent => optional_absent()
+          }
+        Absent => optional_absent()
+      }
+    ShapeArrow => optional_absent()
+    ShapeOther => optional_absent()
   }
 }
 
-fn http_status_admits(n: Int) -> Bool {
-  match http_status_of(n: n) {
-    Present { value: _ } => true
-    Absent => false
+// The exact code a { <status-code> -> int literal } Conj carries, when it carries exactly that.
+fn status_code_int_optional(pat: Node) -> Optional<Int> {
+  if count(pat.children) != 1 {
+    optional_absent()
+  } else {
+    match named_edge_target_lookup(children: pat.children, name: realization_status_code_label()) {
+      Found { target: code } =>
+        match dag_int_literal_magnitude_int_from_node(node: code) {
+          Accepted { value: n, diagnostics: _ } => optional_present(value: n)
+          Rejected { diagnostics: _ } => optional_absent()
+        }
+      Ambiguous => optional_absent()
+      Absent => optional_absent()
+    }
   }
 }
 

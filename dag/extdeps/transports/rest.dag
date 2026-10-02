@@ -429,6 +429,8 @@ data rest_target_form_dissolve_on: DissolutionCondition = unbound_dissolution(de
 // referenced here rather than re-coined, so an arm carries either an exact code or the class whose
 // leading digit it spells. A named pattern (`nonzero`) belongs to the shell's exit status and is
 // refused here, not read as a code.
+// Decoded from a lowered response arm by v2.compiler.service_realization rest_response_status_of, the
+// wall's only reading of a rest status pattern.
 type RestResponseStatus
   = RestStatusCode { status: HttpStatus }
   | RestStatusClass { class: HttpStatusClass }
