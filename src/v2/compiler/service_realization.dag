@@ -524,26 +524,37 @@ fn realization_arms_walk_initial() -> RealizationArmsWalk {
   RealizationArmsWalk { seen: Empty, refusal: optional_absent() }
 }
 
+// An arm is a Positional CONJ of exactly { <arm-pattern>, <arm-payload> }: a Named arm or any other
+// connective refuses as malformed before its members are read.
 fn realization_arm_step(kind: DeclaredTransport, acc: RealizationArmsWalk, arm: Edge) -> RealizationArmsWalk {
   match arm.label {
-    Named { name: _ } => RealizationArmsWalk { seen: acc.seen, refusal: realization_refusal(reason: ^service_realization_arm_malformed, at: arm.target) }
+    Named { name: _ } => realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm.target)
     Positional =>
-      match named_edge_target_lookup(children: arm.target.children, name: realization_arm_pattern_label()) {
-        Found { target: pat } =>
-          if !status_pattern_conforms(kind: kind, pat: pat) {
-            RealizationArmsWalk { seen: acc.seen, refusal: realization_refusal(reason: ^service_realization_status_pattern_not_of_transport, at: pat) }
-          } else if fold(acc.seen, init: false, f: fn(found, p) { found || (content_hash(n: p) == content_hash(n: pat)) }) {
-            RealizationArmsWalk { seen: acc.seen, refusal: realization_refusal(reason: ^service_realization_status_pattern_repeated, at: pat) }
-          } else {
-            match named_edge_target_lookup(children: arm.target.children, name: realization_arm_payload_label()) {
-              Found { target: _ } =>
-                if count(arm.target.children) == 2 { RealizationArmsWalk { seen: list_snoc_item(xs: acc.seen, item: pat), refusal: optional_absent() } }
-                else { RealizationArmsWalk { seen: acc.seen, refusal: realization_refusal(reason: ^service_realization_arm_malformed, at: arm.target) } }
-              _ => RealizationArmsWalk { seen: acc.seen, refusal: realization_refusal(reason: ^service_realization_arm_malformed, at: arm.target) }
-            }
-          }
-        _ => RealizationArmsWalk { seen: acc.seen, refusal: realization_refusal(reason: ^service_realization_arm_malformed, at: arm.target) }
+      if node_is_conj(n: arm.target) { realization_conj_arm_step(kind: kind, acc: acc, arm: arm.target) }
+      else { realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm.target) }
+  }
+}
+
+fn realization_arms_walk_refused(acc: RealizationArmsWalk, reason: Symbol, at: Node) -> RealizationArmsWalk {
+  RealizationArmsWalk { seen: acc.seen, refusal: realization_refusal(reason: reason, at: at) }
+}
+
+fn realization_conj_arm_step(kind: DeclaredTransport, acc: RealizationArmsWalk, arm: Node) -> RealizationArmsWalk {
+  match named_edge_target_lookup(children: arm.children, name: realization_arm_pattern_label()) {
+    Found { target: pat } =>
+      if !status_pattern_conforms(kind: kind, pat: pat) {
+        realization_arms_walk_refused(acc: acc, reason: ^service_realization_status_pattern_not_of_transport, at: pat)
+      } else if fold(acc.seen, init: false, f: fn(found, p) { found || (content_hash(n: p) == content_hash(n: pat)) }) {
+        realization_arms_walk_refused(acc: acc, reason: ^service_realization_status_pattern_repeated, at: pat)
+      } else {
+        match named_edge_target_lookup(children: arm.children, name: realization_arm_payload_label()) {
+          Found { target: _ } =>
+            if count(arm.children) == 2 { RealizationArmsWalk { seen: list_snoc_item(xs: acc.seen, item: pat), refusal: optional_absent() } }
+            else { realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm) }
+          _ => realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm)
+        }
       }
+    _ => realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm)
   }
 }
 

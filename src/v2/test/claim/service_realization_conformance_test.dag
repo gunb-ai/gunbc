@@ -28,7 +28,7 @@ import v2.std.collection { List }
 import v2.std.text { String }
 import std.algebra { Cons, Empty }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode, node_synthetic, symbol_intern_lexeme }
+import v2.std.node { Atom, Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode, node_synthetic, symbol_intern_lexeme }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -331,4 +331,20 @@ test fn each_remaining_refusal_has_its_red_holds() -> Bool {
     && sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_conj(children: [sr_shell_transport(), sr_arms(arms: [Edge { label: Positional, target: sr_conj(children: [sr_named(name: realization_arm_pattern_label(), target: sr_code(lexeme: "0"))]) }])])), reason: ^service_realization_arm_malformed)
     && sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_conj(children: [sr_shell_transport(), sr_named(name: realization_projection_label(), target: sr_conj(children: Empty))])), reason: ^service_realization_projection_empty)
     && sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_conj(children: [sr_shell_transport(), sr_named(name: realization_projection_label(), target: sr_conj(children: [sr_named(name: ^out, target: sr_int(lexeme: "1"))]))])), reason: ^service_realization_wire_key_not_a_string)
+}
+
+// An arm is a Conj: the same pattern and payload under a Disj refuse as a malformed arm, while the
+// equivalent Conj arm is admitted.
+fn sr_arm_under(connective_conj: Bool) -> Edge {
+  let members = [sr_named(name: realization_arm_pattern_label(), target: sr_code(lexeme: "0")), sr_named(name: realization_arm_payload_label(), target: sr_atom(id: ^Unit))]
+  if connective_conj {
+    Edge { label: Positional, target: sr_conj(children: members) }
+  } else {
+    Edge { label: Positional, target: node_synthetic(kind: TypeNode { connective: Disj }, children: members) }
+  }
+}
+
+test fn an_arm_that_is_not_a_conj_refuses_holds() -> Bool {
+  sr_admitted(realization: sr_leaf(op: ^Run, entry: sr_conj(children: [sr_shell_transport(), sr_arms(arms: [sr_arm_under(connective_conj: true)])])))
+    && sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_conj(children: [sr_shell_transport(), sr_arms(arms: [sr_arm_under(connective_conj: false)])])), reason: ^service_realization_arm_malformed)
 }
