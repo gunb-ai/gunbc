@@ -9,6 +9,7 @@ import std.types { Bool, Int, List, Map, NonEmptyStr, Secret, String }
 import extdeps.transports.rest { RestOutcome }
 import extdeps.transports.rest { RestOutcome }
 import extdeps.ietf.http_semantics { POST }
+import std.resources { Network }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -68,6 +69,7 @@ service gcp.IamAdmin {
   }
 
   operation CreateServiceAccount {
+    requires Network
     input {
       access_token: Secret
       project_id: GcpProjectId
@@ -97,6 +99,7 @@ service gcp.IamAdmin {
   }
 
   operation GetServiceAccountIamPolicy {
+    requires Network
     input {
       access_token: Secret
       project_id: GcpProjectId
@@ -122,6 +125,7 @@ service gcp.IamAdmin {
   }
 
   operation GetServiceAccount {
+    requires Network
     input { access_token: Secret, project_id: GcpProjectId, sa_email: ServiceAccountEmail }
     output { email: ServiceAccountEmail, sa_name: String from "name", outcome: RestOutcome }
     readonly
@@ -140,6 +144,7 @@ service gcp.IamAdmin {
   }
 
   operation SetServiceAccountIamPolicy {
+    requires Network
     input {
       access_token: Secret
       project_id: GcpProjectId
@@ -166,6 +171,7 @@ service gcp.IamAdmin {
   }
 
   operation CreateWorkloadIdentityPool {
+    requires Network
     input {
       access_token: Secret
       project_id: GcpProjectId
@@ -192,6 +198,7 @@ service gcp.IamAdmin {
   }
 
   operation CreateWorkloadIdentityPoolProvider {
+    requires Network
     input {
       access_token: Secret
       project_id: GcpProjectId
@@ -225,6 +232,7 @@ service gcp.IamAdmin {
   }
 
   operation GetWorkloadIdentityPool {
+    requires Network
     input { access_token: Secret, project_id: GcpProjectId, pool_id: NonEmptyStr }
     output { pool_name: String from "name", display_name: String? from "displayName", disabled: Bool?, state: String?, outcome: RestOutcome }
     readonly
@@ -243,6 +251,7 @@ service gcp.IamAdmin {
   }
 
   operation ListWorkloadIdentityPoolProviders {
+    requires Network
     input { access_token: Secret, project_id: GcpProjectId, pool_id: NonEmptyStr }
     output { providers: List<WifProviderWire>? from "workloadIdentityPoolProviders", outcome: RestOutcome }
     readonly

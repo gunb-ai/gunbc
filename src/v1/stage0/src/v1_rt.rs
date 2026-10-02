@@ -692,26 +692,7 @@ pub fn map_keys<K: Clone, V>(m: &HashMap<K, V>) -> Vec<K> {
     m.keys().cloned().collect()
 }
 
-// THE EMITTED ORDERING-KEY ADMISSION: the counterpart of the interpreter's admit_emitted_ord_keys.
-// Only String, i64 and bool (and their aliases) are admitted, because on exactly those kinds the
-// native Ord IS the canonical content order (std.algebra TotalOrder). Any other key type -- a
-// derived-Ord record or enum (declaration order), or f64 (no total Ord) -- fails to compile here,
-// at the call, rather than sorting in an order the interpreter would not produce.
-#[diagnostic::on_unimplemented(
-    message = "EMIT REFUSED: `{Self}` is not an admitted ordering key; sorted_map_keys and sort_by admit only String, Int and Bool keys, whose order is the canonical content order in both realizations",
-    label = "ordering key of a type with no canonical emitted order"
-)]
-pub trait CanonicalOrdKey: Ord {}
-impl CanonicalOrdKey for String {}
-impl CanonicalOrdKey for RcStr {}
-impl CanonicalOrdKey for i64 {}
-impl CanonicalOrdKey for bool {}
-
-pub fn canonical_key_cmp<K: CanonicalOrdKey>(a: &K, b: &K) -> std::cmp::Ordering {
-    a.cmp(b)
-}
-
-pub fn sorted_map_keys<K: CanonicalOrdKey + Clone, V>(m: &HashMap<K, V>) -> Vec<K> {
+pub fn sorted_map_keys<K: Ord + Clone, V>(m: &HashMap<K, V>) -> Vec<K> {
     let mut keys = map_keys(m);
     keys.sort();
     keys
@@ -1450,6 +1431,32 @@ pub fn observed_monotonic_nanos(_label: String) -> i64 {
     } else {
         nanos as i64
     }
+}
+
+/// THE EMITTED REALIZATION OF std.realization_measurement ObserveThreadCpuAtSubject.
+///
+/// The calling thread's CPU time (extdeps.posix.clock_gettime ClockThreadCputimeId): it advances
+/// only while this thread executes, so a span read on it is the thread's own work and never an
+/// interval the host took the thread away. The label plays the same anti-memoization role as
+/// observed_monotonic_nanos's and is never identity material.
+///
+/// A HOST WITHOUT THE CLOCK REFUSES THE PROCESS. POSIX makes CLOCK_THREAD_CPUTIME_ID an option;
+/// answering with the monotonic wall instead would put host load back into every verdict read
+/// on this clock, and answering zero would make every span vanish. Neither is a reading.
+pub fn observed_thread_cpu_nanos(_label: String) -> i64 {
+    let mut ts = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    // SAFETY: clock_gettime writes one timespec through a pointer to a live local.
+    let rc = unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut ts) };
+    if rc != 0 {
+        eprintln!("REFUSED: clock_gettime(CLOCK_THREAD_CPUTIME_ID) is unavailable on this host ({}); no thread CPU span is measurable and the wall is not substituted", std::io::Error::last_os_error());
+        std::process::exit(2);
+    }
+    (ts.tv_sec as i64)
+        .saturating_mul(1_000_000_000)
+        .saturating_add(ts.tv_nsec as i64)
 }
 
 fn int_relu(x: i64) -> i64 {

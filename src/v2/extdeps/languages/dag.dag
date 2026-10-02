@@ -101,6 +101,7 @@ import v2.std.compilers.lexing {
   lex_rule_set_token_class_member,
 }
 import v2.std.node {
+  host_text_type_node,
   symbol_lexeme,
   construct_tag_marker,
   symbol_type_node,
@@ -2352,10 +2353,23 @@ fn dag_grammar_op_modifier_expr() -> GrammarExpr {
 // names it, and resolution reads it through the same type references. Lowered by
 // v2.compiler.body_lowering_fold body_lower_operation_requires onto the operation Arrow's
 // ^arrow_resource_requirements_edge.
+// THREE DECLARED FORMS, ONE CLAUSE (D13 ruling B: an operation's demand is never read from silence).
+// `requires none` declares no requirement in the audited vocabulary; `requires opaque` declares that the
+// operation's demand is decided by runtime values (a generic exec), so a caller's demand is Undecided;
+// `requires R, ..` names the resources. The two words are their own productions because a literal
+// terminal stamps its token CLASS, not its word, so only the production's emitted identity can say
+// which word was written; an exact word is chosen over the any-identifier type list, so a resource
+// cannot be named `none` or `opaque`.
 fn dag_grammar_op_requires_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "requires")),
-    right: dag_grammar_comma_list_expr(item: dag_grammar_nonterminal(production: ^dag_production_type_expr))
+    right: dag_grammar_choice(
+      left: dag_grammar_nonterminal(production: ^dag_production_op_requires_none),
+      right: dag_grammar_choice(
+        left: dag_grammar_nonterminal(production: ^dag_production_op_requires_opaque),
+        right: dag_grammar_comma_list_expr(item: dag_grammar_nonterminal(production: ^dag_production_type_expr))
+      )
+    )
   )
 }
 
@@ -3024,6 +3038,16 @@ fn dag_grammar_root() -> GrammarRoot {
     expression: dag_grammar_op_modifier_expr(),
     emitted: ^dag_surface_op_modifier
   )
+  let op_requires_none = dag_grammar_production(
+    name: ^dag_production_op_requires_none,
+    expression: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "none")),
+    emitted: ^dag_surface_op_requires_none
+  )
+  let op_requires_opaque = dag_grammar_production(
+    name: ^dag_production_op_requires_opaque,
+    expression: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "opaque")),
+    emitted: ^dag_surface_op_requires_opaque
+  )
   let op_requires = dag_grammar_production(
     name: ^dag_production_op_requires,
     expression: dag_grammar_op_requires_expr(),
@@ -3290,6 +3314,8 @@ fn dag_grammar_root() -> GrammarRoot {
       output_block,
       op_modifier,
       op_requires,
+      op_requires_none,
+      op_requires_opaque,
       exit_block,
       response_block,
       mock_response_block,
@@ -4003,14 +4029,20 @@ fn dag_add_param_binding_ids() -> List<Symbol> {
 //
 // A kernel type with NO value-type node in a v2 std authority has no row: there is nothing for one
 // to point at. Float, Secret, Json, Unit and Bytes (std.types kernel_type_set) are in that state,
-// each rostered under gunbc.recurring_failure_mode with its node as the trigger. String is not a
-// kernel atom in v2 at all: v2.std.text String is FreeMonoid<Char> (DESIGN section 4, the text
-// ruling).
+// each rostered under gunbc.recurring_failure_mode with its node as the trigger. STRING IS A KERNEL TYPE
+// BY ITS OWN DECLARATION (gunbc#12760): v2.std.node String, the opaque host text, with
+// host_text_type_node. It is NOT v2.std.text String, which is the structural FreeMonoid<Char>
+// (DESIGN section 4, the text ruling). Its row is the one whose foreign_declaration is
+// ForeignDeclarationBinds: String is the one kernel spelling the corpus also declares with another
+// meaning, so a String declaration the author reached binds that declaration and the host text
+// applies only where none is visible (neat-boar-16, decision A). Every other row refuses a foreign
+// declaration of its spelling.
 type KernelValueType {
   value_type: Node
   spelling: Optional<String>
   declarations: List<QualifiedName>
   converges_on: Optional<QualifiedName>
+  foreign_declaration: KernelSpellingForeignDeclaration
 }
 
 data dag_kernel_value_type_roster: List<KernelValueType> = [
@@ -4022,6 +4054,7 @@ data dag_kernel_value_type_roster: List<KernelValueType> = [
       qualified_name_from_dotted_string(dotted: "std.integer.Int")
     ],
     converges_on: optional_absent()
+    foreign_declaration: ForeignDeclarationRefuses
   },
   KernelValueType {
     value_type: bool_node(),
@@ -4031,24 +4064,35 @@ data dag_kernel_value_type_roster: List<KernelValueType> = [
       qualified_name_from_dotted_string(dotted: "std.types.Bool")
     ],
     converges_on: optional_absent()
+    foreign_declaration: ForeignDeclarationRefuses
   },
   KernelValueType {
     value_type: symbol_type_node(),
     spelling: optional_present(value: "Symbol"),
     declarations: [qualified_name_from_dotted_string(dotted: "v2.std.node.Symbol")],
     converges_on: optional_absent()
+    foreign_declaration: ForeignDeclarationRefuses
+  },
+  KernelValueType {
+    value_type: host_text_type_node(),
+    spelling: optional_present(value: "String"),
+    declarations: [qualified_name_from_dotted_string(dotted: "v2.std.node.String")],
+    converges_on: optional_absent(),
+    foreign_declaration: ForeignDeclarationBinds
   },
   KernelValueType {
     value_type: symbol_kernel_type_node(),
     spelling: optional_absent(),
     declarations: [],
     converges_on: optional_present(value: qualified_name_from_dotted_string(dotted: "v2.std.node.Symbol"))
+    foreign_declaration: ForeignDeclarationRefuses
   },
   KernelValueType {
     value_type: char_kernel_type_node(),
     spelling: optional_absent(),
     declarations: [],
     converges_on: optional_present(value: qualified_name_from_dotted_string(dotted: "std.types.Char"))
+    foreign_declaration: ForeignDeclarationRefuses
   }
 ]
 
@@ -4116,11 +4160,30 @@ fn dag_kernel_type_binding_optional(sym: Symbol) -> Optional<Symbol> {
   )
 }
 
+// WHAT ANOTHER DECLARATION OF A KERNEL SPELLING MEANS. For Int, Bool and Symbol the corpus has no
+// second meaning, so a foreign declaration of the spelling is a capture hazard and refuses
+// (v2.compiler.resolve resolve_kernel_type_reading). String is the one kernel spelling the corpus
+// already declares with a DIFFERENT meaning: v2.std.text and std.string_type declare the structural
+// FreeMonoid<Char>, deliberately, and hundreds of modules import it. So a String declaration the
+// author reached binds THAT declaration, and the kernel host text applies only where none is visible
+// (neat-boar-16's ruling, decision A). Representation is decided by declaration identity, never by
+// the spelling.
+type KernelSpellingForeignDeclaration
+  = ForeignDeclarationRefuses
+  | ForeignDeclarationBinds
+
+fn dag_kernel_type_foreign_declaration(canonical: Symbol) -> KernelSpellingForeignDeclaration {
+  match dag_kernel_value_type_first(select: fn(_row, binding) { canonical == binding }) {
+    Present { value: row } => row.foreign_declaration
+    Absent => ForeignDeclarationRefuses
+  }
+}
+
 // THE KERNEL SPELLING OF THE TYPE A STRING LITERAL DENOTES: host text, the kernel `String`
 // (DESIGN section 4, Ruling 3; ruling neat-boar-16: an unimported String denotes the kernel text
 // binding, never std.string_type). It is admitted as a key type only where the kernel table above
-// binds it, which it does not yet (the deep-bee-18 lane adds it); a `String` that resolves to a
-// declaration is a different type. Consumed by v2.compiler.resolve's map arm (the key-kind rule).
+// binds it, which it does since gunbc#12760 (v2.std.node String, host_text_type_node); a `String`
+// that resolves to a declaration is a different type. Consumed by v2.compiler.resolve's map arm (the key-kind rule).
 fn dag_kernel_string_type_spelling(sym: Symbol) -> Bool {
   symbol_lexeme(sym: sym) == "String"
 }
@@ -4773,6 +4836,7 @@ type DagCanonicalLiteral
   = DagCanonicalBoolLiteral { value: Bool }
   | DagCanonicalIntLiteral { magnitude: Int }
   | DagCanonicalSymbolLiteral { symbol: Symbol }
+  | DagCanonicalStringLiteral { value: Symbol }
 
 fn dag_canonical_literal_shape_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
@@ -4787,7 +4851,9 @@ fn dag_canonical_literal_shape_diagnostic(node: Node) -> Diagnostic {
 // of publishing sibling is_* predicates over Node storage. Bool literals admit exactly the
 // childless true/false atoms. Int literals admit exactly one named, decodable magnitude child.
 // Symbol literals admit exactly the caret atom with one named name payload (dag_symbol_literal_node)
-// whose terminal carries an identity; the symbol is that identity.
+// whose terminal carries an identity; the symbol is that identity. String literals admit the
+// string-literal atom with its one named decoded-value payload (dag_string_literal_node, #12759); the
+// value is that payload's interned identity. A payload-less string-literal atom is malformed.
 // Every other shape is a typed refusal.
 
 fn dag_canonical_literal_from_node(node: Node) -> Outcome<DagCanonicalLiteral> {
@@ -4798,7 +4864,12 @@ fn dag_canonical_literal_from_node(node: Node) -> Outcome<DagCanonicalLiteral> {
         Absent => outcome_rejected(dag_canonical_literal_shape_diagnostic(node: node))
       }
     Absent =>
-      if dag_node_is_kw_true_atom(node: node) && (length(xs: node.children) == 0) {
+      if node_atom_identity_optional(node: node) == optional_present(value: ^dag_token_string_literal) {
+        match dag_string_literal_value_symbol_optional(node: node) {
+          Present { value: v } => outcome_accepted(value: DagCanonicalStringLiteral { value: v })
+          Absent => outcome_rejected(dag_canonical_literal_shape_diagnostic(node: node))
+        }
+      } else if dag_node_is_kw_true_atom(node: node) && (length(xs: node.children) == 0) {
         outcome_accepted(value: DagCanonicalBoolLiteral { value: true })
       } else if dag_node_is_kw_false_atom(node: node) && (length(xs: node.children) == 0) {
         outcome_accepted(value: DagCanonicalBoolLiteral { value: false })

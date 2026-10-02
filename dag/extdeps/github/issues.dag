@@ -9,6 +9,8 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import extdeps.github.github_contracts { issue_state_wire_contract }
+import std.resources { Network }
+import extdeps.ietf.http_semantics { GET, PATCH, POST }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -166,6 +168,7 @@ service github.Issues {
   }
 
   operation ListForRepoRaw {
+    requires Network
     input {
       auth_token: Secret
       owner: String
@@ -193,6 +196,7 @@ service github.Issues {
   }
 
   operation Create {
+    requires Network
     input {
       auth_token: Secret
       owner: String
@@ -221,6 +225,7 @@ service github.Issues {
   }
 
   operation Update {
+    requires Network
     input {
       auth_token: Secret
       owner: String
@@ -250,6 +255,7 @@ service github.Issues {
   }
 
   operation CreateComment {
+    requires Network
     input {
       auth_token: Secret
       owner: String

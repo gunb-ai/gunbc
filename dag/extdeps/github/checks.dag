@@ -12,6 +12,8 @@ import extdeps.github.checks_contracts {
   check_conclusion_wire_contract,
 }
 import v2.std.collection { Absent, Present }
+import std.resources { Network }
+import extdeps.ietf.http_semantics { GET, PATCH, POST }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -142,6 +144,7 @@ service github.Checks {
   }
 
   operation ListForRef {
+    requires Network
     input {
       auth_token: Secret
       owner: String
@@ -167,6 +170,7 @@ service github.Checks {
   }
 
   operation CreateRun {
+    requires Network
     input {
       auth_token: Secret
       owner: String
@@ -202,6 +206,7 @@ service github.Checks {
   }
 
   operation UpdateRun {
+    requires Network
     input {
       auth_token: Secret
       owner: String
