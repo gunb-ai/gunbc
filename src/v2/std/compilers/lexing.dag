@@ -1,7 +1,7 @@
 module v2.std.compilers.lexing
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.algebra { Empty, list_snoc_item }
+import std.algebra { Empty, list_append, list_snoc_item }
 import std.source_annotation { AnnotationPlacement, LeadingAfterLineIndent, TrailingAfterSemanticToken }
 import v2.std.algebra { fold_list, length, skip }
 import v2.std.collection {
@@ -96,24 +96,25 @@ type LexRule
   | TriviaRule { pattern: LexPattern }
   | AnnotationRule { annotation_class: Symbol, pattern: LexPattern }
   | ModeTransitionTokenRule { token_class: Symbol, pattern: LexPattern, transition: LexModeTransition }
-  | LexModeDeclaration { mode: Symbol, rules: List<LexRule> }
 
 // LEXICAL MODES, modeled on ANTLR 4 lexer modes (The Definitive ANTLR 4 Reference, section 12.3:
 // `mode NAME;` groups the rules after it, and a rule's `-> pushMode(NAME)` / `-> popMode` commands
-// move a stack of modes). The rule set's own rules are the default mode. A LexModeDeclaration names
-// one further mode and lists its rules in full; modes do not inherit, so a mode that wants the
+// move a stack of modes). A rule set's `rules` are the default mode; each LexMode in `modes` names
+// one further mode and lists its rules in full. Modes do not inherit, so a mode that wants the
 // default rules lists them, which a language composes with list_append rather than restating. A
 // ModeTransitionTokenRule emits its token and then moves the stack.
+//
+// A mode is a field of the rule SET, never a kind of rule, so a mode declared inside a mode and a
+// "rule" with no pattern have no constructor (DESIGN section 4b: the invalid state is unwritable,
+// not refused). The one declaration defect left writable is two modes sharing a name, which a list
+// cannot exclude; it is refused before any text is walked (lex_rule_set_mode_refusal).
 //
 // This is what a nested lexical context needs and a regular pattern cannot give: a string that
 // interpolates an expression lexes as a template-head token, then the expression's ORDINARY tokens
 // in a pushed mode, then a template-middle or -tail token that pops back. Brace depth inside that
-// expression is the stack's depth, not a counter scanned out of text.
-//
-// The walk refuses, located, every state the stack can reach that has no meaning (01_tokenize):
-// pushing an undeclared mode, popping the default mode, and reaching end of input with a mode still
-// pushed. Declaration well-formedness is refused before the walk: a declaration nested inside a mode
-// and two declarations of one mode name are both refused (lex_rule_set_mode_refusal).
+// expression is the stack's depth, not a counter scanned out of text. The walk refuses, located,
+// every stack state that has no meaning (01_tokenize): pushing an undeclared mode, popping the
+// default mode, and reaching end of input with a mode still pushed.
 type LexModeTransition
   = PushLexMode { mode: Symbol }
   | PopLexMode
@@ -123,58 +124,18 @@ type LexMode {
   rules: List<LexRule>
 }
 
-// Why a rule set's mode declarations cannot be walked. Absent from lex_rule_set_mode_refusal means
-// the declarations are well formed.
 type LexModeDeclarationRefusal
   = LexModeDeclaredTwice { mode: Symbol }
-  | LexModeDeclaredInsideMode { mode: Symbol }
-
-// The modes a rule set declares, in declaration order. Only the default mode's rule list declares
-// modes; a declaration inside a mode is a refusal (lex_rule_set_mode_refusal), not a mode.
-fn lex_rule_set_modes(rules: LexRuleSet) -> List<LexMode> {
-  fold_list(
-    xs: rules.rules,
-    empty: Empty,
-    cons: fn(acc, rule) {
-      match rule {
-        LexModeDeclaration { mode: m, rules: rs } => list_snoc_item(xs: acc, item: LexMode { mode: m, rules: rs })
-        TokenRule { token_class: _, pattern: _ } => acc
-        TriviaRule { pattern: _ } => acc
-        AnnotationRule { annotation_class: _, pattern: _ } => acc
-        ModeTransitionTokenRule { token_class: _, pattern: _, transition: _ } => acc
-      }
-    }
-  )
-}
-
-fn lex_mode_nested_declaration(mode: LexMode) -> Optional<LexModeDeclarationRefusal> {
-  fold_list(
-    xs: mode.rules,
-    empty: optional_absent(),
-    cons: fn(acc, rule) {
-      match acc {
-        Present { value: _ } => acc
-        Absent =>
-          match rule {
-            LexModeDeclaration { mode: inner, rules: _ } => optional_present(value: LexModeDeclaredInsideMode { mode: inner })
-            TokenRule { token_class: _, pattern: _ } => acc
-            TriviaRule { pattern: _ } => acc
-            AnnotationRule { annotation_class: _, pattern: _ } => acc
-            ModeTransitionTokenRule { token_class: _, pattern: _, transition: _ } => acc
-          }
-      }
-    }
-  )
-}
 
 type LexModeCheck {
   seen: Map<Symbol, Bool>
   refusal: Optional<LexModeDeclarationRefusal>
 }
 
+// Absent when every mode name is declared once.
 fn lex_rule_set_mode_refusal(rules: LexRuleSet) -> Optional<LexModeDeclarationRefusal> {
   let checked = fold_list(
-    xs: lex_rule_set_modes(rules: rules),
+    xs: rules.modes,
     empty: LexModeCheck { seen: empty_map(), refusal: optional_absent() },
     cons: fn(acc, mode) {
       match acc.refusal {
@@ -182,7 +143,7 @@ fn lex_rule_set_mode_refusal(rules: LexRuleSet) -> Optional<LexModeDeclarationRe
         Absent =>
           match map_lookup(m: acc.seen, key: mode.mode) {
             Present { value: _ } => LexModeCheck { seen: acc.seen, refusal: optional_present(value: LexModeDeclaredTwice { mode: mode.mode }) }
-            Absent => LexModeCheck { seen: map_insert(m: acc.seen, key: mode.mode, value: true), refusal: lex_mode_nested_declaration(mode: mode) }
+            Absent => LexModeCheck { seen: map_insert(m: acc.seen, key: mode.mode, value: true), refusal: optional_absent() }
           }
       }
     }
@@ -190,24 +151,14 @@ fn lex_rule_set_mode_refusal(rules: LexRuleSet) -> Optional<LexModeDeclarationRe
   checked.refusal
 }
 
-// Every matching rule the set carries, in every mode: the default mode's rules, then each declared
-// mode's, declarations themselves omitted. A question about the rule set's VOCABULARY -- which token
-// classes it lexes, how a class is spelled -- is asked over this, because a class lexed only inside a
-// mode is still a class the language has.
+// Every rule the set carries, in every mode: the default mode's rules, then each mode's. A question
+// about the rule set's VOCABULARY -- which token classes it lexes, how a class is spelled -- is asked
+// over this, because a class lexed only inside a mode is still a class the language has.
 fn lex_rule_set_matching_rules(rules: LexRuleSet) -> List<LexRule> {
   fold_list(
-    xs: rules.rules,
-    empty: Empty,
-    cons: fn(acc, rule) {
-      match rule {
-        LexModeDeclaration { mode: _, rules: rs } =>
-          fold_list(xs: rs, empty: acc, cons: fn(inner, r) { list_snoc_item(xs: inner, item: r) })
-        TokenRule { token_class: _, pattern: _ } => list_snoc_item(xs: acc, item: rule)
-        TriviaRule { pattern: _ } => list_snoc_item(xs: acc, item: rule)
-        AnnotationRule { annotation_class: _, pattern: _ } => list_snoc_item(xs: acc, item: rule)
-        ModeTransitionTokenRule { token_class: _, pattern: _, transition: _ } => list_snoc_item(xs: acc, item: rule)
-      }
-    }
+    xs: rules.modes,
+    empty: rules.rules,
+    cons: fn(acc, mode) { list_append(left: acc, right: mode.rules) }
   )
 }
 
@@ -219,12 +170,12 @@ fn lex_rule_token_class_optional(rule: LexRule) -> Optional<Symbol> {
     ModeTransitionTokenRule { token_class: c, pattern: _, transition: _ } => optional_present(value: c)
     TriviaRule { pattern: _ } => optional_absent()
     AnnotationRule { annotation_class: _, pattern: _ } => optional_absent()
-    LexModeDeclaration { mode: _, rules: _ } => optional_absent()
   }
 }
 
 type LexRuleSet {
   rules: List<LexRule>
+  modes: List<LexMode>
 }
 
 type LexRules
@@ -262,7 +213,8 @@ fn phrase_to_lex_rule_set(p: LexicalPhrase) -> LexRuleSet {
           }
         )
       }
-    )
+    ),
+    modes: []
   }
 }
 
@@ -495,7 +447,6 @@ fn lex_rule_keyword_class_member(rule: LexRule, token_class: Symbol) -> Bool {
     ModeTransitionTokenRule { token_class: c, pattern: p, transition: _ } => (c == token_class) && lex_pattern_is_keyword(pattern: p)
     TriviaRule { pattern: _ } => false
     AnnotationRule { annotation_class: _, pattern: _ } => false
-    LexModeDeclaration { mode: _, rules: _ } => false
   }
 }
 

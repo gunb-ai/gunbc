@@ -124,7 +124,8 @@ fn hostname_set_cli_lex_rules() -> ModeledLexRules {
           token_class: ^hostnamectl_set_hostname_subcommand,
           pattern: LiteralPattern { text: hostnamectl_set_hostname_verb as String }
         }
-      ]
+      ],
+      modes: []
     }
   }
 }

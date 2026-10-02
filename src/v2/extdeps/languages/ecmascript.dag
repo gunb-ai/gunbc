@@ -1017,7 +1017,8 @@ fn ecmascript_lex_rules() -> LexRuleSet {
       ecmascript_lex_rule(token_class: ^ecmascript_token_rbrace, text: "}"),
       ecmascript_lex_rule(token_class: ^ecmascript_token_comma, text: ", "),
       ecmascript_lex_rule(token_class: ^ecmascript_token_semicolon, text: ";")
-    ]
+    ],
+    modes: []
   }
 }
 

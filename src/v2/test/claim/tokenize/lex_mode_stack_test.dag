@@ -9,7 +9,7 @@ import v2.std.compilers.lexing {
   CharPattern,
   IdentContinueChar,
   IdentStartChar,
-  LexModeDeclaration,
+  LexMode,
   LexRule,
   LexRuleSet,
   LiteralPattern,
@@ -62,9 +62,9 @@ fn modal_rules() -> LexRuleSet {
     rules: [
       space_rule(),
       ident_rule(),
-      ModeTransitionTokenRule { token_class: ^m_open, pattern: LiteralPattern { text: "<{" }, transition: PushLexMode { mode: ^m_hole } },
-      LexModeDeclaration { mode: ^m_hole, rules: hole_rules() }
-    ]
+      ModeTransitionTokenRule { token_class: ^m_open, pattern: LiteralPattern { text: "<{" }, transition: PushLexMode { mode: ^m_hole } }
+    ],
+    modes: [LexMode { mode: ^m_hole, rules: hole_rules() }]
   }
 }
 
@@ -133,7 +133,8 @@ test fn a_pop_in_the_default_mode_refuses_holds() -> Bool {
       space_rule(),
       ident_rule(),
       ModeTransitionTokenRule { token_class: ^m_close, pattern: LiteralPattern { text: "}>" }, transition: PopLexMode }
-    ]
+    ],
+    modes: []
   }
   let r = refusal_of(rules: rules, src: "a }>")
   (r.reason == ^tokenize_lex_e3_mode_pop_at_default) && (r.start == 2) && (r.end == 4)
@@ -145,7 +146,8 @@ test fn a_push_to_an_undeclared_mode_refuses_holds() -> Bool {
     rules: [
       space_rule(),
       ModeTransitionTokenRule { token_class: ^m_open, pattern: LiteralPattern { text: "<{" }, transition: PushLexMode { mode: ^m_nowhere } }
-    ]
+    ],
+    modes: []
   }
   refusal_of(rules: rules, src: " <{").reason == ^tokenize_lex_e2_mode_undeclared
 }
@@ -154,24 +156,15 @@ test fn a_push_to_an_undeclared_mode_refuses_holds() -> Bool {
 test fn a_mode_declared_twice_refuses_holds() -> Bool {
   let rules = LexRuleSet {
     rules: [
-      ident_rule(),
-      LexModeDeclaration { mode: ^m_hole, rules: hole_rules() },
-      LexModeDeclaration { mode: ^m_hole, rules: hole_rules() }
-    ]
+      ident_rule()
+    ],
+    modes: [LexMode { mode: ^m_hole, rules: hole_rules() }, LexMode { mode: ^m_hole, rules: hole_rules() }]
   }
   refusal_of(rules: rules, src: "a").reason == ^tokenize_lex_e5_mode_declared_twice
 }
 
-// RED: a declaration inside a mode is refused; modes are declared only in the default rule list.
-test fn a_mode_declared_inside_a_mode_refuses_holds() -> Bool {
-  let rules = LexRuleSet {
-    rules: [
-      ident_rule(),
-      LexModeDeclaration { mode: ^m_hole, rules: [ident_rule(), LexModeDeclaration { mode: ^m_inner, rules: [] }] }
-    ]
-  }
-  refusal_of(rules: rules, src: "a").reason == ^tokenize_lex_e5_mode_declared_inside_mode
-}
+// A mode declared inside a mode has no witness here because it has no constructor: LexMode's rules
+// are LexRules, and a mode is not a LexRule (DESIGN section 4b, structurally impossible).
 
 // NotFollowedByPattern: `{` is a token only when an identifier start does NOT follow it, and it
 // consumes nothing beyond the brace. The control is the same rule refusing `{a`.
@@ -183,7 +176,8 @@ fn literal_brace_rules() -> LexRuleSet {
         token_class: ^m_literal_brace,
         pattern: SequencePattern { left: CharPattern { char: 123 }, right: NotFollowedByPattern { element: CharClassPattern { class: IdentStartChar } } }
       }
-    ]
+    ],
+    modes: []
   }
 }
 

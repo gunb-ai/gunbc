@@ -26,15 +26,12 @@ import v2.std.compilers.lexing {
   LexRuleSet,
   LexRules,
   LexMode,
-  LexModeDeclaration,
-  LexModeDeclaredInsideMode,
   LexModeDeclaredTwice,
   LexModeDeclarationRefusal,
   LexModeTransition,
   ModeTransitionTokenRule,
   PopLexMode,
   PushLexMode,
-  lex_rule_set_modes,
   lex_rule_set_mode_refusal,
   LineCommentTextChar,
   ModeledLexRules,
@@ -119,7 +116,6 @@ fn tokenize_lex_e4_mode_unterminated_diagnostic(at: Locus) -> Diagnostic {
 fn lex_mode_declaration_refusal_reason(refusal: LexModeDeclarationRefusal) -> Symbol {
   match refusal {
     LexModeDeclaredTwice { mode: _ } => ^tokenize_lex_e5_mode_declared_twice
-    LexModeDeclaredInsideMode { mode: _ } => ^tokenize_lex_e5_mode_declared_inside_mode
   }
 }
 
@@ -221,15 +217,12 @@ type DelimitedState {
   failed: Bool
 }
 
-// A declaration is not a matcher: it carries a mode's rules, and those are compiled into that mode's
-// dispatch (lex_mode_dispatches), never into the enclosing one.
-fn lex_rule_pattern(rule: LexRule) -> Optional<LexPattern> {
+fn lex_rule_pattern(rule: LexRule) -> LexPattern {
   match rule {
-    TokenRule { token_class: _, pattern: p } => optional_present(value: p)
-    TriviaRule { pattern: p } => optional_present(value: p)
-    AnnotationRule { annotation_class: _, pattern: p } => optional_present(value: p)
-    ModeTransitionTokenRule { token_class: _, pattern: p, transition: _ } => optional_present(value: p)
-    LexModeDeclaration { mode: _, rules: _ } => optional_absent()
+    TokenRule { token_class: _, pattern: p } => p
+    TriviaRule { pattern: p } => p
+    AnnotationRule { annotation_class: _, pattern: p } => p
+    ModeTransitionTokenRule { token_class: _, pattern: p, transition: _ } => p
   }
 }
 
@@ -630,7 +623,6 @@ fn lex_try_compiled(compiled: CompiledLexRule, source: v2.std.text.String) -> Le
           LexRuleAnnotation { class: class, lexeme: lexeme, remaining: remaining }
         ModeTransitionTokenRule { token_class: class, pattern: _, transition: t } =>
           LexRuleModalToken { class: class, lexeme: lexeme, remaining: remaining, transition: t }
-        LexModeDeclaration { mode: _, rules: _ } => LexRuleNoMatch
       }
   }
 }
@@ -645,21 +637,17 @@ fn lex_compile_rules(rules: List<LexRule>) -> List<CompiledLexRule> {
     xs: rules,
     empty: LexCompileAcc { reversed: Empty, next_index: 0 },
     cons: fn(acc, rule) {
-      match lex_rule_pattern(rule: rule) {
-        Absent => acc
-        Present { value: rule_pattern } =>
-          LexCompileAcc {
-            reversed: Cons {
-              head: CompiledLexRule {
-                rule: rule,
-                thunk: lex_rule_thunk(pattern: rule_pattern),
-                index: acc.next_index,
-                first: lex_pattern_first(pattern: rule_pattern)
-              },
-              tail: acc.reversed
-            },
-            next_index: acc.next_index + 1
-          }
+      LexCompileAcc {
+        reversed: Cons {
+          head: CompiledLexRule {
+            rule: rule,
+            thunk: lex_rule_thunk(pattern: lex_rule_pattern(rule: rule)),
+            index: acc.next_index,
+            first: lex_pattern_first(pattern: lex_rule_pattern(rule: rule))
+          },
+          tail: acc.reversed
+        },
+        next_index: acc.next_index + 1
       }
     }
   )
@@ -667,19 +655,15 @@ fn lex_compile_rules(rules: List<LexRule>) -> List<CompiledLexRule> {
 }
 
 fn lex_try_rule(rule: LexRule, source: v2.std.text.String) -> LexRuleApply {
-  match lex_rule_pattern(rule: rule) {
-    Absent => LexRuleNoMatch
-    Present { value: rule_pattern } =>
-      lex_try_compiled(
-        compiled: CompiledLexRule {
-          rule: rule,
-          thunk: lex_rule_thunk(pattern: rule_pattern),
-          index: 0,
-          first: lex_pattern_first(pattern: rule_pattern)
-        },
-        source: source
-      )
-  }
+  lex_try_compiled(
+    compiled: CompiledLexRule {
+      rule: rule,
+      thunk: lex_rule_thunk(pattern: lex_rule_pattern(rule: rule)),
+      index: 0,
+      first: lex_pattern_first(pattern: lex_rule_pattern(rule: rule))
+    },
+    source: source
+  )
 }
 
 fn lex_rule_apply_lexeme_length(apply: LexRuleApply) -> Int {
@@ -768,7 +752,7 @@ type LexWalkModeFault
 
 fn lex_mode_dispatches(rules: LexRuleSet) -> Map<Symbol, LexRuleDispatch> {
   fold_list(
-    xs: lex_rule_set_modes(rules: rules),
+    xs: rules.modes,
     empty: empty_map(),
     cons: fn(acc, mode) { map_insert(m: acc, key: mode.mode, value: lex_rule_dispatch(compiled_rules: lex_compile_rules(rules: mode.rules))) }
   )

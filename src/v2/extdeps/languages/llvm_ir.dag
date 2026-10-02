@@ -787,7 +787,8 @@ fn llvm_lex() -> LexRules {
         llvm_lex_token(token_class: ^llvm_token_rparen, pattern: LiteralPattern { text: ")" }),
         llvm_lex_token(token_class: ^llvm_token_lbrace, pattern: LiteralPattern { text: "{" }),
         llvm_lex_token(token_class: ^llvm_token_rbrace, pattern: LiteralPattern { text: "}" })
-      ]
+      ],
+      modes: []
     }
   }
 }

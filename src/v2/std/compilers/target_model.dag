@@ -77,7 +77,6 @@ import v2.std.compilers.lexing {
   ModeledLexRules,
   TokenRule,
   ModeTransitionTokenRule,
-  LexModeDeclaration,
   NotFollowedByPattern,
   lex_rule_set_matching_rules,
   lex_rule_token_class_optional,
@@ -1194,7 +1193,6 @@ fn lex_rule_fixed_spelling(rule: LexRule, token_class: Symbol) -> Optional<Strin
       }
     TriviaRule { pattern: _ } => optional_absent()
     AnnotationRule { annotation_class: _, pattern: _ } => optional_absent()
-    LexModeDeclaration { mode: _, rules: _ } => optional_absent()
   }
 }
 

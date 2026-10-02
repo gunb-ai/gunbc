@@ -48,7 +48,8 @@ fn test_rules() -> LexRuleSet {
       AnnotationRule { annotation_class: ^line_comment, pattern: annotation_pattern() },
       TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
       TokenRule { token_class: ^ident, pattern: OneOrMorePattern { element: CharClassPattern { class: IdentContinueChar } } }
-    ]
+    ],
+    modes: []
   }
 }
 
@@ -125,7 +126,7 @@ test fn zero_width_annotation_rule_refuses_rather_than_looping() -> Bool {
   match lex_walk_artifact(
     source: "a",
     file: ^probe,
-    rules: LexRuleSet { rules: [ AnnotationRule { annotation_class: ^empty_ann, pattern: EmptyPattern } ] }
+    rules: LexRuleSet { rules: [ AnnotationRule { annotation_class: ^empty_ann, pattern: EmptyPattern } ], modes: [] }
   ) {
     v2.std.diagnostic.Rejected { diagnostics: _ } => true
     v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
@@ -157,7 +158,8 @@ fn line_spanning_rules(token_text: String) -> LexRuleSet {
     rules: [
       AnnotationRule { annotation_class: ^line_comment, pattern: annotation_pattern() },
       TokenRule { token_class: ^spanning, pattern: LiteralPattern { text: token_text } }
-    ]
+    ],
+    modes: []
   }
 }
 
