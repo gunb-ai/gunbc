@@ -6,6 +6,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.github.github { default_api_base, GitHubUser, User, UserType }
 import extdeps.transports.rest { RestOutcome, RestOk }
+import std.resources { Network }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -59,6 +60,7 @@ service github.Users {
   }
 
   operation GetAuthenticatedUser {
+    requires Network
     input {
       auth_token: Secret
     }

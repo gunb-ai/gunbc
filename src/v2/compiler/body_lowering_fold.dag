@@ -9722,10 +9722,25 @@ fn body_lower_operation_member(acc: Outcome<BodyLowerOperationAcc>, member: Node
 // ill-formed here; a member's IDENTITY is its resolved declaration, which v2.compiler.resolve checks is
 // a declared resource and is not repeated under another spelling. A member that is not a readable type
 // expression refuses at the member.
+// `requires none` and `requires opaque` lower to a single childless Atom on the same edge, so the one
+// carrier has three declared states (v2.std.node arrow_resource_requirements_label); an operation with
+// no clause carries no edge, which D13 step (b) reads as Undecided, never as none.
 fn body_lower_operation_requires(shell: Node) -> Outcome<Node> {
   match parse_production_captured_child_optional(node: shell) {
     Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_operation_requires_unread, n: shell))
     Present { value: captured } =>
+      match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_op_requires_none) {
+        Present { value: word } => outcome_accepted(value: node_with_occurrence_id(kind: TypeNode { connective: Atom { identity: ^requirements_declared_none } }, children: [], occurrence_id: word.occurrence_id))
+        Absent =>
+          match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_op_requires_opaque) {
+            Present { value: word } => outcome_accepted(value: node_with_occurrence_id(kind: TypeNode { connective: Atom { identity: ^requirements_opaque } }, children: [], occurrence_id: word.occurrence_id))
+            Absent => body_lower_operation_requires_members(shell: shell, captured: captured)
+          }
+      }
+  }
+}
+
+fn body_lower_operation_requires_members(shell: Node, captured: Node) -> Outcome<Node> {
       bind_outcome(
         o: fold(body_lower_service_member_shells(root: captured), init: outcome_accepted(value: Empty), f: fn(acc, member) {
           bind_outcome(o: acc, f: fn(edges) {
@@ -9752,7 +9767,6 @@ fn body_lower_operation_requires(shell: Node) -> Outcome<Node> {
           }
         }
       )
-  }
 }
 
 // A member's spelling as written, read off the LOWERED type node rather than re-searched in the

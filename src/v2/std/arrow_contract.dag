@@ -111,8 +111,11 @@ fn arrow_contract_conforms(children: List<Edge>) -> Bool {
     && arrow_resource_requirements_edge_target_reads(children: children)
 }
 
-// The resource-requirements target before resolution: a NONEMPTY Conj (no requirements has one form,
-// the absent edge), whose members the Conj discipline already holds named and distinct. Whether each
+// The resource-requirements target before resolution, one of THREE declared states (D13 ruling B): a
+// NONEMPTY Conj of resource references, whose members the Conj discipline holds named and distinct;
+// the childless Atom ^requirements_declared_none (`requires none`); or the childless Atom
+// ^requirements_opaque (`requires opaque`). An ABSENT edge is not a fourth state of this target: it is
+// an undeclared operation, which D13 step (b) reads as Undecided. Whether each
 // member names a declared resource, and whether two spellings name one, are facts of resolution
 // (v2.compiler.resolve), not of this pre-resolve wall.
 fn arrow_resource_requirements_edge_target_reads(children: List<Edge>) -> Bool {
@@ -120,6 +123,8 @@ fn arrow_resource_requirements_edge_target_reads(children: List<Edge>) -> Bool {
     Found { target: requirements } =>
       match requirements.kind {
         TypeNode { connective: Conj } => count(requirements.children) > 0
+        TypeNode { connective: Atom { identity: id } } =>
+          ((id == ^requirements_declared_none) || (id == ^requirements_opaque)) && (count(requirements.children) == 0)
         _ => false
       }
     _ => true
