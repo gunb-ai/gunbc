@@ -27,8 +27,8 @@ import v2.compiler.dependency_demand {
   resource_set_of,
   ResourceSet
 }
-import v2.compiler.resolve { ResolveContext, ResolvedTree, resolve_node, resolved_tree_lexical_binding }
-import v2.compiler.eval { eval_node_is_arrow }
+import v2.compiler.resolve { ResolveContext, ResolvedTree, resolve_node }
+import v2.compiler.eval { eval_node_is_arrow, eval_transform_has_callee_reference }
 import v2.std.node_query { find_arrow_body_child }
 import v2.compiler.parse { parse_tree_projection_edge }
 import v2.extdeps.languages.dag {
@@ -45,9 +45,9 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { grammar_empty_node }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
-import v2.std.node { Arrow, ArrowResourceRequirementsEdge, Atom, Authored, Bind, Branch, Cardinality, ComputationNode, Conj, CoreEdgeLabel, Disj, Edge, Instantiation, Loop, Match, Node, Positional, StructuralLabel, Symbol, Transform, TypeNode, Value, edge_is_core, label_sort_key, node_rebuild }
+import v2.std.node { Arrow, ArrowResourceRequirementsEdge, Atom, Authored, Cardinality, ComputationNode, Conj, CoreEdgeLabel, Disj, Edge, Instantiation, Node, Positional, StructuralLabel, Symbol, TypeNode, edge_is_core, label_sort_key, node_rebuild }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, parameter_reference_path_optional, qualified_name_snoc, qualified_name_to_dotted_string }
+import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, lexical_reference_label_optional, qualified_name_snoc, qualified_name_to_dotted_string }
 import v2.std.symbol_index { SymbolIndex, symbol_index_declares_resource_at, symbol_index_lookup }
 import v2.std.text { String }
 
@@ -223,65 +223,33 @@ fn demand_fact_node(w: DemandFactWalk, position: QualifiedName, node: Node, reso
 }
 
 // A CALL THROUGH A FUNCTION VALUE HAS NO STATIC CALLEE, so its demand is undecided (review of
-// gunbc#12992: hard-coding `false` made FunctionValueCalled unreachable on the real route). A call is a
-// Transform whose first positional child is the callee (v2.compiler.body_lowering_fold
-// body_lower_transform_call). Its callee is a static declaration when it is a declaration reference, and
-// a kernel operator when it is a bare canonical Atom; a parameter reference, a lexically bound local
-// (v2.compiler.resolve resolved_tree_lexical_binding) or any compound callee is a function value.
+// gunbc#12992: hard-coding `false` made FunctionValueCalled unreachable on the real route). WHICH
+// TRANSFORM IS A CALL is the evaluator's own decision, v2.compiler.eval eval_transform_has_callee_reference
+// -- a Transform also carries blocks, casts and lowered operators, so reading every Transform's first
+// child as a callee flagged a block ending in a parameter as a call. Of the callees eval admits, an
+// Atom is a kernel operator and an Arrow an inline lambda whose body this walk reads anyway; a lexical
+// reference (v2.std.qualified_name lexical_reference_label_optional) names a local or parameter whose
+// value is only known at run time, and that is the function-value call.
 fn demand_fact_note_call(w: DemandFactWalk, node: Node, resolved: ResolvedTree) -> DemandFactWalk {
-  if demand_fact_is_value_call(node: node, resolved: resolved) {
+  if demand_fact_is_value_call(node: node) {
     DemandFactWalk { functions: w.functions, operations: w.operations, audited: w.audited, current: w.current, value_call: true }
   } else {
     w
   }
 }
 
-fn demand_fact_is_value_call(node: Node, resolved: ResolvedTree) -> Bool {
-  match node.kind {
-    TypeNode { connective: _ } => false
-    ComputationNode { behavior: b } =>
-      match b {
-        Transform => demand_fact_callee_is_value(children: node.children, resolved: resolved)
-        Value => false
-        Branch => false
-        Loop => false
-        Bind => false
-        Match => false
-      }
-  }
-}
-
-fn demand_fact_callee_is_value(children: List<Edge>, resolved: ResolvedTree) -> Bool {
-  match first(children) {
-    Present { value: e } => demand_fact_node_is_function_value(callee: e.target, resolved: resolved)
-    Absent => false
-  }
-}
-
-fn demand_fact_node_is_function_value(callee: Node, resolved: ResolvedTree) -> Bool {
-  match declaration_reference_path_optional(node: callee) {
-    Present { value: _ } => false
-    Absent =>
-      match parameter_reference_path_optional(node: callee) {
-        Present { value: _ } => true
-        Absent =>
-          match resolved_tree_lexical_binding(tree: resolved, reference: callee) {
-            Present { value: _ } => true
-            Absent =>
-              match callee.kind {
-                TypeNode { connective: c } =>
-                  match c {
-                    Atom { identity: _ } => false
-                    Conj => true
-                    Disj => true
-                    Arrow => true
-                    Cardinality => true
-                    Instantiation => true
-                  }
-                ComputationNode { behavior: _ } => true
-              }
-          }
-      }
+fn demand_fact_is_value_call(node: Node) -> Bool {
+  if eval_transform_has_callee_reference(node: node) {
+    match first(node.children) {
+      Present { value: e } =>
+        match lexical_reference_label_optional(node: e.target) {
+          Present { value: _ } => true
+          Absent => false
+        }
+      Absent => false
+    }
+  } else {
+    false
   }
 }
 
