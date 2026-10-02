@@ -80,19 +80,18 @@ fn filesystem_path_decomposition(path: String) -> FilesystemPathDecomposition {
       cause: "the path operand is a bare entry name with no directory operand to list",
     }
   } else if length(parent_parts) == 1 && starts_with(s: path, prefix: "/") {
-    // The operand is "/<name>": its only separator is the root separator, so the directory operand
-    // is the root itself, not the empty string that joining the nothing before it would yield.
     FilesystemPathDecomposed { directory: "/", name: name }
   } else {
     FilesystemPathDecomposed { directory: join(parent_parts, "/"), name: name }
   }
 }
 
+// THE UNDECOMPOSABLE REFUSAL CARRIES NO SUBJECT FIELDS. The operand was refused before any
+// filesystem call ran, so no directory and no entry name was ever established to carry in the arm's
+// fields -- they are empty because no subject was ever named, and the cause is the whole refusal.
 fn filesystem_file_observation_of_path(path: String) -> FilesystemFileObservation {
   match filesystem_path_decomposition(path: path) {
     FilesystemPathUndecomposable { cause: cause } =>
-      // The operand was refused before any filesystem call ran, so no directory and no entry name
-      // was ever established to carry in the arm's fields; the cause is the whole refusal.
       FilesystemFileSubjectRefused { directory: "", name: "", cause: cause }
     FilesystemPathDecomposed { directory: directory, name: name } => {
       let listing = Filesystem.List(path: directory)
