@@ -268,16 +268,31 @@ fn arm_launch_experiment_runtime(launch: ArmNodeLaunch) -> ArmExperimentRuntime 
 
 // A NORMAL-SERVING UNIT CARRIES NO RUNTIME BOUND, so it never needs one derived: only a bounded
 // experiment asks, and only it can be refused for want of one.
-fn arm_unit_runtime_for(intent: ArmIntent, launch: ArmNodeLaunch) -> ArmExperimentRuntime {
+// A UNIT'S LIFETIME IS ONE OF THREE FACTS, AND "NO BOUND" IS ONE OF THEM, NOT A ZERO. A normal-serving unit
+// is persistent -- it has no runtime bound to carry, and spelling that as a 0-second bound would be a
+// fabricated value systemd reads as unbounded (RuntimeMaxSec=0) if it were ever rendered (review 74213).
+type ArmUnitLifetime
+  = ArmUnitPersistent
+  | ArmUnitBounded { bound: Second }
+
+type ArmUnitLifetimeStanding
+  = ArmUnitLifetimeDerived { lifetime: ArmUnitLifetime }
+  | ArmUnitLifetimeUnderivable { cause: NonEmptyStr }
+
+fn arm_unit_lifetime_for(intent: ArmIntent, launch: ArmNodeLaunch) -> ArmUnitLifetimeStanding {
   match intent {
-    ArmNormalServing => ArmExperimentRuntimeBound { bound: second(count: 0) }
-    ArmBoundedExperiment => arm_launch_experiment_runtime(launch: launch)
+    ArmNormalServing => ArmUnitLifetimeDerived { lifetime: ArmUnitPersistent }
+    ArmBoundedExperiment =>
+      match arm_launch_experiment_runtime(launch: launch) {
+        ArmExperimentRuntimeBound { bound: b } => ArmUnitLifetimeDerived { lifetime: ArmUnitBounded { bound: b } }
+        ArmExperimentRuntimeUnderivable { cause: c } => ArmUnitLifetimeUnderivable { cause: c }
+      }
   }
 }
 
-fn arm_service_directives(intent: ArmIntent, launch: ArmNodeLaunch, run_line: NonEmptyStr, log_path: NonEmptyStr, experiment_runtime: Second) -> List<SystemdServiceDirective> {
-  match intent {
-    ArmNormalServing => [
+fn arm_service_directives(lifetime: ArmUnitLifetime, launch: ArmNodeLaunch, run_line: NonEmptyStr, log_path: NonEmptyStr) -> List<SystemdServiceDirective> {
+  match lifetime {
+    ArmUnitPersistent => [
       ServiceType { mode: SimpleMode },
       ExecStartPre { command: join(["-/usr/bin/docker rm -f ", launch.container.name as String], "") as NonEmptyStr },
       ExecStart { command: run_line },
@@ -288,7 +303,7 @@ fn arm_service_directives(intent: ArmIntent, launch: ArmNodeLaunch, run_line: No
       ServiceStandardOutput { stream: OutputAppendFile { path: log_path } },
       ServiceStandardError { stream: OutputAppendFile { path: log_path } },
     ]
-    ArmBoundedExperiment => [
+    ArmUnitBounded { bound: experiment_runtime } => [
       ServiceType { mode: SimpleMode },
       ExecStartPre { command: join(["-/usr/bin/docker rm -f ", launch.container.name as String], "") as NonEmptyStr },
       ExecStart { command: run_line },
@@ -322,17 +337,17 @@ fn arm_host_unit_file_for(intent: ArmIntent, launch: ArmNodeLaunch, units: ArmUn
       match glm_native_exec_line(words: words) {
         Absent => GlmNativeUnitRenderRefused { unit_name: unit_name, cause: "the container line is not a plain argv: a rendered word carries whitespace or a quote, which this render does not model" as NonEmptyStr }
         Present { value: run_line } =>
-          match arm_unit_runtime_for(intent: intent, launch: launch) {
-            ArmExperimentRuntimeUnderivable { cause: c } => GlmNativeUnitRenderRefused {
+          match arm_unit_lifetime_for(intent: intent, launch: launch) {
+            ArmUnitLifetimeUnderivable { cause: c } => GlmNativeUnitRenderRefused {
               unit_name: unit_name,
               cause: join(["the bounded experiment's runtime bound cannot be derived from this launch: ", c as String], "") as NonEmptyStr,
             }
-            ArmExperimentRuntimeBound { bound: rt } =>
+            ArmUnitLifetimeDerived { lifetime: lifetime } =>
               GlmNativeUnitRendered {
                 unit_name: unit_name,
                 text: serialize_systemd_unit_file(file: ServiceUnitFile {
                   unit: arm_unit_directives(intent: intent, units: units, launch: launch, served_alias: served_alias),
-                  service: arm_service_directives(intent: intent, launch: launch, run_line: run_line, log_path: log_path, experiment_runtime: rt),
+                  service: arm_service_directives(lifetime: lifetime, launch: launch, run_line: run_line, log_path: log_path),
                   install: arm_install_section(intent: intent),
                 }),
               }

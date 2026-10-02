@@ -89,7 +89,7 @@ type QualityReceipt {
 
 type WorkloadCalibrationReceipt {
   subject_key: ServingSubjectKey
-  trace_digest: NonEmptyStr
+  trace_digest: ContentHash
   run_id: NonEmptyStr
   accepted_turns: Nat?
   observation_window: Second?
@@ -361,7 +361,7 @@ fn calibration_against_incumbent(key: ServingSubjectKey, r: WorkloadCalibrationR
       match incumbent_defect(key: key, incumbent_key: incumbent_key, receipt_key: i.subject_key, what: "workload calibration") {
         Present { value: d } => [d]
         Absent =>
-          if (i.trace_digest as String) != (r.trace_digest as String) {
+          if !content_hash_equal(left: i.trace_digest, right: r.trace_digest) {
             ["workload calibration: the incumbent was measured on a different trace" as NonEmptyStr]
           } else if !policy.require_goodput_at_least_incumbent { [] }
           else {
