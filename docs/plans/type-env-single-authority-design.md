@@ -785,3 +785,54 @@ Derivation, for that decision:
 - recurrence: every typecheck occurrence of a contested name within one module;
 - least common ancestor: that module's typecheck;
 - retention: the module's `TypeEnv`.
+
+### Ruling and the contested-name table (calm-boar-904, 2026-10-02)
+**The ruling admitted the table, with three conditions.**
+- It must be sharing at the least common ancestor: one producer per identity, with the derivation written
+  beside it.
+- Receipts are required for BEFORE, for PR-2+#13008, and for PR-2+#13008+table.
+- The predicted collapse must be stated before the run. If the table does not bring PR-2 to BEFORE or
+  below, that is reported, not tuned.
+
+**The table** is on `calm-pike-525/pr2-lookup-closure-grain` (#13008).
+- `surface_contested_walk` produces the fork ledger and each contested name's winner in one walk. The
+  derivation is beside it: identity (view, name), completeness, least common ancestor, retention, single
+  producer.
+- `ancestry_winner` and `surface_union_winner` are deleted.
+- The regen fixed point holds, and both `surface_view_controls` pass.
+
+**Instrument.** The same probe, run on branches `calm-pike-525/pr2-cpu-before`, `pr2-receipt` and
+`pr2-receipt-table`.
+- **Timing.** All three arms were built on ONE BuildBuddy runner and run interleaved. Two runners, in
+  counter-order (B R T, then T R B), give the two repetitions. This was forced by the 1-hour cap of the
+  BuildBuddy free tier: a 65-minute run was killed at 1h0m.
+- **Subject (timing figures only).** `GUNBC_PROBE_EXCLUDE=dag/test/,src/v2/test/`. This is the whole tree
+  WITHOUT THE TEST TREES, closed under importers using the assembler's own `ExclusionOrphansImporter`
+  refusal, which added 5 importers. That leaves 4,111 modules, with none blocked.
+- **Equality.** It is whole-tree (7,135 modules) and host-independent.
+
+**Equality, the table arm against PR-2+#13008, over the whole tree.**
+- All 7,135 ancestry digests are equal.
+- All 7,135 per-module fork-row digests are equal, 78,665 rows in each arm.
+- Fork-candidate equality: 7,135 equal, 0 differ.
+
+**Host-independent counts on the subject, identical on both runners.**
+- `lookup_binding_on_chain` demand is equal in all arms.
+- `ancestry_winner` goes from 19.3M to 0.
+- `surface_has` goes from 110.2M to 0.97M.
+
+**Predictions against the outcome.**
+- Overall, "the table does not reach BEFORE; the residual is the rewire's enumeration": HIT. Total resolve
+  CPU against BEFORE is 1.05x and 1.19x on the two runners. PR-2+#13008 was 1.29x and 1.35x.
+- P-a, "the typecheck residual collapses to noise": PARTIAL. Typecheck including env construction is at
+  BEFORE on both runners, because env construction falls below BEFORE. Typecheck excluding env remains
+  about 10% above BEFORE: the closure-declarer classification still walks each name's exporter list.
+- P-b, "the fork walk drops by about half": HIT, and larger. It drops by about two-thirds.
+- P-c, "the rewire falls only by its lookup share, and ancestry_names stays": HIT. The rewire pass is the
+  residual. It is above BEFORE on both runners and is the noisiest phase. `ancestry_names` holds roughly
+  level.
+- Peak RSS is about 3% below BEFORE in both repetitions.
+
+**What remains is not in the table's scope.** It is the rewire pass re-enumerating `ancestry_names` for
+every module, which BEFORE read off a materialized map, plus the per-lookup exporter-list walk in the
+classification. Per the ruling, the remaining residual is reported, not tuned.
