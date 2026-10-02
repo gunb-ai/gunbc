@@ -121,7 +121,7 @@ import v1.compiler.infer_env {
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
   is_type_variable_name, overlay_skips_kernel_name,
   SurfaceImport, SurfacePool, AncestryView, empty_surface_pool, empty_ancestry_view, surface_pool_admit,
-  surface_reach_of, surface_fork_rows, ancestry_lookup, ancestry_names,
+  surface_reach_of, surface_contested_walk, ancestry_lookup, ancestry_names,
   merge_type_env_cache_guarded, TypeEnvCacheMergeConflict,
   str_bindings_from_bindings,
   is_recursive_type, is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for,
@@ -13183,7 +13183,7 @@ fn type_env_cache_from_bindings(
 
 // The import union of the caches' remaining maps (deps, cycle names, variant locals). The binding
 // union is no longer materialized here: the AncestryView derives it, and the fork ledger comes from
-// surface_fork_rows over the same pool.
+// surface_contested_walk over the same pool.
 fn union_parent_type_env_caches(
   resolved_imports: List<ResolvedImport>,
   parent_index: Map<String, TypedModule>
@@ -14354,6 +14354,7 @@ fn kernel_bool_type_node() -> Node {
 // lost by ancestry occupancy, resolution by accident rather than by the declared precedence.
 fn build_ancestry_precedence(module_path: String, resolved_imports: List<ResolvedImport>, parent_index: Map<String, TypedModule>, pool: SurfacePool, kernel_cache: TypeEnvCache, kernel_str_bindings: Map<String, TypeBinding>) -> AncestryPrecedence {
   let imports = surface_imports_of(resolved_imports: resolved_imports)
+  let contested = surface_contested_walk(pool: pool, kernel: kernel_str_bindings, imports: imports)
   AncestryPrecedence {
     cache: merge_type_env_cache(base: union_parent_type_env_caches(resolved_imports: resolved_imports, parent_index: parent_index), overlay: kernel_cache),
     ancestry: AncestryView {
@@ -14362,9 +14363,10 @@ fn build_ancestry_precedence(module_path: String, resolved_imports: List<Resolve
       reach: surface_reach_of(imports: imports, pool: pool),
       kernel: kernel_str_bindings,
       rewrites: empty_map(),
+      contested: contested.table,
       pool: pool
     },
-    conflicts: surface_fork_rows(pool: pool, kernel: kernel_str_bindings, imports: imports)
+    conflicts: contested.rows
   }
 }
 
@@ -15450,7 +15452,7 @@ fn surface_pool_admit_with_parents(pool: SurfacePool, path: String, parent_index
           let with_parents = fold(imports, init: pool, f: (p, imp) =>
             surface_pool_admit_with_parents(pool: p, path: imp.module_path, parent_index: parent_index, source_indices: source_indices)
           )
-          surface_pool_admit(pool: with_parents, module_path: path, own: typed.interface.env.str_bindings, imports: imports)
+          surface_pool_admit(pool: with_parents, module_path: path, own: typed.interface.env.str_bindings, imports: imports, contested: typed.type_env.ancestry.contested)
       }
   }
 }
@@ -15823,7 +15825,7 @@ fn realize_module(
           let typed_path = authored_name_at(source_indices: source_indices, node: typed.module)
           RealizeState {
             module_index: map_insert(dep_state.module_index, typed_path, typed),
-            pool: surface_pool_admit(pool: dep_state.pool, module_path: typed_path, own: typed.interface.env.str_bindings, imports: surface_imports_of(resolved_imports: resolved.resolved_imports)),
+            pool: surface_pool_admit(pool: dep_state.pool, module_path: typed_path, own: typed.interface.env.str_bindings, imports: surface_imports_of(resolved_imports: resolved.resolved_imports), contested: typed.type_env.ancestry.contested),
             variant_surfaces: map_insert(
               dep_state.variant_surfaces,
               typed_path,

@@ -58,6 +58,7 @@ type ModuleSurface {
   own: Map<String, TypeBinding>
   imports: List<SurfaceImport>
   reach: List<Int>
+  contested: Map<String, TypeBinding>
 }
 
 // THE ONE AUTHORITY FOR "WHO EXPORTS n": exporters is derived from own entries by
@@ -76,6 +77,7 @@ type AncestryView {
   reach: List<Int>
   kernel: Map<String, TypeBinding>
   rewrites: Map<String, TypeBinding>
+  contested: Map<String, TypeBinding>
   pool: SurfacePool
 }
 
@@ -84,7 +86,7 @@ fn empty_surface_pool() -> SurfacePool {
 }
 
 fn empty_ancestry_view() -> AncestryView {
-  AncestryView { module_path: "", imports: [], reach: [], kernel: empty_map(), rewrites: empty_map(), pool: empty_surface_pool() }
+  AncestryView { module_path: "", imports: [], reach: [], kernel: empty_map(), rewrites: empty_map(), contested: empty_map(), pool: empty_surface_pool() }
 }
 
 // The names the direct-selected overlay never takes from an import: kernel and container types and
@@ -178,13 +180,14 @@ fn surface_reach_of(imports: List<SurfaceImport>, pool: SurfacePool) -> List<Int
 
 // ADMITS ONE MODULE INTO THE POOL: its surface (own bindings, imports, closure) and its own names
 // into the exporter index. This is the only writer of `exporters`.
-fn surface_pool_admit(pool: SurfacePool, module_path: String, own: Map<String, TypeBinding>, imports: List<SurfaceImport>) -> SurfacePool {
+fn surface_pool_admit(pool: SurfacePool, module_path: String, own: Map<String, TypeBinding>, imports: List<SurfaceImport>, contested: Map<String, TypeBinding>) -> SurfacePool {
   let surface = ModuleSurface {
     module_path: module_path,
     ordinal: pool.next_ordinal,
     own: own,
     imports: imports,
-    reach: surface_reach_of(imports: imports, pool: pool)
+    reach: surface_reach_of(imports: imports, pool: pool),
+    contested: contested
   }
   let exporters = fold(own |> map_keys, init: pool.exporters, f: (acc, name) =>
     match map_get(acc, name) {
@@ -237,15 +240,10 @@ fn surface_import_selects(imp: SurfaceImport, own: Map<String, TypeBinding>, nam
   }
 }
 
-// THE WINNER for `name` at a module with these imports, closure and kernel: the binding the
-// materialized ancestry map carried. Steps, in the fold's own precedence:
-//   1. unless the direct overlay skips the name (overlay_skips_kernel_name), the LAST direct import
-//      selecting it from its own surface -> that binding;
-//   2. a kernel name -> the kernel binding (the kernel overlays the whole union);
-//   3. the LAST import whose surface holds the name (presence lemma) -> that import's surface value,
-//      which is its own binding or, recursively, its ancestry winner.
-fn ancestry_winner(pool: SurfacePool, kernel: Map<String, TypeBinding>, imports: List<SurfaceImport>, name: String) -> TypeBinding? {
-  let direct = if overlay_skips_kernel_name(name: name) {
+// THE DIRECT-SELECTED OVERLAY: the LAST direct import selecting `name` from its own surface, unless
+// the overlay skips the name (overlay_skips_kernel_name). It outranks the kernel and the union.
+fn direct_overlay_winner(pool: SurfacePool, imports: List<SurfaceImport>, name: String) -> TypeBinding? {
+  if overlay_skips_kernel_name(name: name) {
     none
   } else {
     fold(imports, init: none, f: (acc, imp) =>
@@ -261,38 +259,11 @@ fn ancestry_winner(pool: SurfacePool, kernel: Map<String, TypeBinding>, imports:
       }
     )
   }
-  match direct {
-    Present { value: b } => Present { value: b }
-    Absent =>
-      match map_get(kernel, name) {
-        Present { value: b } => Present { value: b }
-        Absent => surface_union_winner(pool: pool, kernel: kernel, imports: imports, name: name)
-      }
-  }
-}
-
-// ONE DESCENT. The union's winner is the LAST import whose surface holds the name, so that import is
-// located by the presence test alone (arithmetic over the closure bitset) and only it is descended
-// into. Descending into every import that holds the name and keeping the last would branch at each
-// level, which is exponential in depth over a diamond-shaped import graph.
-fn surface_union_winner(pool: SurfacePool, kernel: Map<String, TypeBinding>, imports: List<SurfaceImport>, name: String) -> TypeBinding? {
-  let last = fold(imports, init: none, f: (acc, imp) =>
-    match map_get(pool.surfaces, imp.module_path) {
-      Present { value: parent } =>
-        if surface_has(pool: pool, kernel: kernel, module_path: parent.module_path, reach: parent.reach, name: name) {
-          Present { value: parent }
-        } else { acc }
-      Absent => acc
-    }
-  )
-  match last {
-    Present { value: parent } => surface_value(pool: pool, kernel: kernel, surface: parent, name: name)
-    Absent => none
-  }
 }
 
 // What an importer reads from `surface` for `name`: own first (map_merge(ancestry, own)), then the
-// surface's own ancestry winner. Importers never see a module's rewire overlay.
+// surface's ancestry winner. Importers never see a module's rewire overlay. A contested name's winner
+// was produced once, when the surface's own module was typechecked, and is read from its table.
 fn surface_value(pool: SurfacePool, kernel: Map<String, TypeBinding>, surface: ModuleSurface, name: String) -> TypeBinding? {
   match map_get(surface.own, name) {
     Present { value: b } => Present { value: b }
@@ -300,22 +271,42 @@ fn surface_value(pool: SurfacePool, kernel: Map<String, TypeBinding>, surface: M
       match closure_sole_declarer(pool: pool, kernel: kernel, module_path: surface.module_path, reach: surface.reach, name: name) {
         ClosureDeclarerSole { binding: b } => Present { value: b }
         ClosureDeclarerNone => none
-        ClosureDeclarerContested => ancestry_winner(pool: pool, kernel: kernel, imports: surface.imports, name: name)
+        ClosureDeclarerKernelOnly => map_get(kernel, name)
+        ClosureDeclarerContested => map_get(surface.contested, name)
       }
   }
 }
 
-// THE FORK LEDGER, derived from the same rule. The materialized union recorded a row wherever a
-// later import's surface carried a name with a DIFFERENT authority (binding_same_authority) than the
-// winner accumulated from the imports before it. A name with one non-kernel exporter has one authority
-// in every surface, so only names the pool has seen exported twice, or exported over a kernel name,
-// can fork. Rows are returned in the one canonical order: their content fields, byte-lexicographic
-// (name, import_path, existing_site, incoming_site), the order a portable record of them takes.
-fn surface_fork_rows(pool: SurfacePool, kernel: Map<String, TypeBinding>, imports: List<SurfaceImport>) -> List<TypeEnvCacheMergeConflict> {
+// THE CONTESTED-NAME TABLE AND THE FORK LEDGER, ONE PRODUCTION (DESIGN 2: share the first value at the
+// least common ancestor of its demands).
+//   Identity: (this module's view, name). The winner is a function of the view's imports and their
+//     selection data, the kernel, and the surfaces of the modules in the closure: own bindings, and
+//     their own tables, which were fixed when those modules were typechecked and are admitted to the
+//     pool before this one. The rewire overlay is excluded, because it is consulted before the table
+//     and importers never see it. Every input of the materialized union's answer is therefore in the
+//     identity, and nothing outside it can change the answer.
+//   Recurrence: every typecheck occurrence of a contested name in this module, plus every descent into
+//     this module from an importer.
+//   Least common ancestor: this module's build_type_env, where the fork walk already visits every
+//     contested name once, in import order.
+//   Retention: the module's TypeEnv (AncestryView.contested), and its pool surface for importers.
+//   One producer: this walk is the only writer of a contested winner. ancestry_lookup and
+//     surface_value only read it, and the per-lookup descent it replaces is deleted.
+// A contested name has two or more declarers in the closure, or a kernel binding plus one declarer
+// (closure_contested_names). Its winner follows the fold's precedence: the direct-selected overlay,
+// then the kernel, then the union's winner. The union's winner is the value of the LAST import whose
+// surface holds the name. A fork row is recorded wherever an import's surface value has a different
+// authority than the winner accumulated so far. Rows are in the one canonical order.
+type ContestedWalk {
+  rows: List<TypeEnvCacheMergeConflict>
+  table: Map<String, TypeBinding>
+}
+
+fn surface_contested_walk(pool: SurfacePool, kernel: Map<String, TypeBinding>, imports: List<SurfaceImport>) -> ContestedWalk {
   let reach = surface_reach_of(imports: imports, pool: pool)
-  let forkable = closure_contested_names(pool: pool, kernel: kernel, reach: reach)
-  let rows = flat_map(forkable, name =>
-    let walked = fold(imports, init: SurfaceForkWalk { winner: none, rows: [] }, f: (state, imp) =>
+  let contested = closure_contested_names(pool: pool, kernel: kernel, reach: reach)
+  let walked = fold(contested, init: ContestedWalk { rows: [], table: empty_map() }, f: (acc, name) =>
+    let walk = fold(imports, init: SurfaceForkWalk { winner: none, last: none, rows: [] }, f: (state, imp) =>
       match map_get(pool.surfaces, imp.module_path) {
         Absent => state
         Present { value: parent } =>
@@ -324,13 +315,14 @@ fn surface_fork_rows(pool: SurfacePool, kernel: Map<String, TypeBinding>, import
               Absent => state
               Present { value: incoming } =>
                 match state.winner {
-                  Absent => SurfaceForkWalk { winner: Present { value: incoming }, rows: state.rows }
+                  Absent => SurfaceForkWalk { winner: Present { value: incoming }, last: Present { value: incoming }, rows: state.rows }
                   Present { value: existing } =>
                     if binding_same_authority(a: existing, b: incoming) {
-                      state
+                      SurfaceForkWalk { winner: state.winner, last: Present { value: incoming }, rows: state.rows }
                     } else {
                       SurfaceForkWalk {
                         winner: Present { value: incoming },
+                        last: Present { value: incoming },
                         rows: state.rows |> list_push(TypeEnvCacheMergeConflict { name: name, import_path: imp.module_path, existing_site: existing.resolved.span.file, incoming_site: incoming.resolved.span.file, span: incoming.resolved.span, same_tree: source_tree_of(file: existing.resolved.span.file) == source_tree_of(file: incoming.resolved.span.file) })
                       }
                     }
@@ -339,43 +331,31 @@ fn surface_fork_rows(pool: SurfacePool, kernel: Map<String, TypeBinding>, import
           } else { state }
       }
     )
-    walked.rows
-  )
-  rows |> sort_by(r => concat(r.name, " | ", r.import_path, " | ", r.existing_site, " | ", r.incoming_site))
-}
-
-// THE NAMES THAT CAN FORK AT A MODULE, counted from the CLOSURE'S declarations. A row needs two
-// declarers of the name inside the closure (the kernel counts as one), so only a name some closure
-// module declares can qualify, and its in-closure declarer count is exactly the number of closure
-// modules whose own bindings carry it. Enumerating the pool's multi-exporter names instead and walking
-// each one's whole exporter list costs the POOL's homonyms at every module, which grows with the tree
-// rather than with the closure. Sorted, for the ledger's one canonical order.
-fn closure_contested_names(pool: SurfacePool, kernel: Map<String, TypeBinding>, reach: List<Int>) -> List<String> {
-  let tally = fold(enumerate(reach), init: empty_map(), f: (acc, pair) =>
-    fold(reach_word_ordinals(word: pair.second, base: pair.first * 32), init: acc, f: (acc2, ordinal) =>
-      match map_get(pool.by_ordinal, ordinal) {
-        Absent => acc2
-        Present { value: path } =>
-          match map_get(pool.surfaces, path) {
-            Absent => acc2
-            Present { value: surface } =>
-              fold(surface.own |> map_keys, init: acc2, f: (acc3, n) =>
-                if map_has(pool.multi_exporters, n) || map_has(kernel, n) {
-                  match map_get(acc3, n) {
-                    Present { value: c } => map_insert(acc3, n, c + 1)
-                    Absent => map_insert(acc3, n, if map_has(kernel, n) { 2 } else { 1 })
-                  }
-                } else { acc3 }
-              )
-          }
+    let winner = match direct_overlay_winner(pool: pool, imports: imports, name: name) {
+      Present { value: b } => Present { value: b }
+      Absent =>
+        match map_get(kernel, name) {
+          Present { value: b } => Present { value: b }
+          Absent => walk.last
+        }
+    }
+    ContestedWalk {
+      rows: concat(acc.rows, walk.rows),
+      table: match winner {
+        Present { value: b } => map_insert(acc.table, name, b)
+        Absent => acc.table
       }
-    )
+    }
   )
-  sorted_map_keys(tally) |> filter(n => match map_get(tally, n) { Present { value: c } => c >= 2  Absent => false })
+  ContestedWalk {
+    rows: walked.rows |> sort_by(r => concat(r.name, " | ", r.import_path, " | ", r.existing_site, " | ", r.incoming_site)),
+    table: walked.table
+  }
 }
 
 type SurfaceForkWalk {
   winner: TypeBinding?
+  last: TypeBinding?
   rows: List<TypeEnvCacheMergeConflict>
 }
 
@@ -417,10 +397,8 @@ fn ancestry_lookup(view: AncestryView, name: String) -> TypeBinding? {
       match closure_sole_declarer(pool: view.pool, kernel: view.kernel, module_path: view.module_path, reach: view.reach, name: name) {
         ClosureDeclarerSole { binding: b } => Present { value: b }
         ClosureDeclarerNone => none
-        ClosureDeclarerContested =>
-          if surface_has(pool: view.pool, kernel: view.kernel, module_path: view.module_path, reach: view.reach, name: name) {
-            ancestry_winner(pool: view.pool, kernel: view.kernel, imports: view.imports, name: name)
-          } else { none }
+        ClosureDeclarerKernelOnly => map_get(view.kernel, name)
+        ClosureDeclarerContested => map_get(view.contested, name)
       }
   }
 }
@@ -431,10 +409,13 @@ fn ancestry_lookup(view: AncestryView, name: String) -> TypeBinding? {
 // contested; the presence lemma and the fold reach only the closure. With exactly one declarer E in the
 // closure (E not the module itself) and no kernel binding, every surface carrying the name carries
 // own(E)[n], so that is the answer. With none, the ancestry does not carry the name. Only a name with two
-// or more declarers in the closure, or a kernel name, is descended.
+// or more declarers in the closure, or a kernel name with a declarer in the closure, is contested; its winner is read from the
+// module's contested-name table (surface_contested_walk). A kernel name with no declarer in the closure
+// is the kernel binding.
 type ClosureDeclarer
   = ClosureDeclarerSole { binding: TypeBinding }
   | ClosureDeclarerNone
+  | ClosureDeclarerKernelOnly
   | ClosureDeclarerContested
 
 type ClosureDeclarerTally {
@@ -443,35 +424,36 @@ type ClosureDeclarerTally {
 }
 
 fn closure_sole_declarer(pool: SurfacePool, kernel: Map<String, TypeBinding>, module_path: String, reach: List<Int>, name: String) -> ClosureDeclarer {
-  match map_get(kernel, name) {
-    Present { value: _ } => ClosureDeclarerContested
-    Absent =>
-      match map_get(pool.exporters, name) {
-        Absent => ClosureDeclarerNone
-        Present { value: paths } =>
-          let tally = fold(paths, init: ClosureDeclarerTally { count: 0, binding: none }, f: (acc, p) =>
-            if p == module_path {
-              acc
-            } else {
-              match map_get(pool.surfaces, p) {
-                Present { value: e } =>
-                  if reach_has(reach: reach, ordinal: e.ordinal) {
-                    ClosureDeclarerTally { count: acc.count + 1, binding: map_get(e.own, name) }
-                  } else { acc }
-                Absent => acc
-              }
-            }
-          )
-          if tally.count == 0 {
-            ClosureDeclarerNone
-          } else if tally.count == 1 {
-            match tally.binding {
-              Present { value: b } => ClosureDeclarerSole { binding: b }
-              Absent => ClosureDeclarerNone
-            }
-          } else {
-            ClosureDeclarerContested
+  let tally = match map_get(pool.exporters, name) {
+    Absent => ClosureDeclarerTally { count: 0, binding: none }
+    Present { value: paths } =>
+      fold(paths, init: ClosureDeclarerTally { count: 0, binding: none }, f: (acc, p) =>
+        if p == module_path {
+          acc
+        } else {
+          match map_get(pool.surfaces, p) {
+            Present { value: e } =>
+              if reach_has(reach: reach, ordinal: e.ordinal) {
+                ClosureDeclarerTally { count: acc.count + 1, binding: map_get(e.own, name) }
+              } else { acc }
+            Absent => acc
           }
+        }
+      )
+  }
+  match map_get(kernel, name) {
+    Present { value: _ } =>
+      if tally.count == 0 { ClosureDeclarerKernelOnly } else { ClosureDeclarerContested }
+    Absent =>
+      if tally.count == 0 {
+        ClosureDeclarerNone
+      } else if tally.count == 1 {
+        match tally.binding {
+          Present { value: b } => ClosureDeclarerSole { binding: b }
+          Absent => ClosureDeclarerNone
+        }
+      } else {
+        ClosureDeclarerContested
       }
   }
 }
