@@ -992,10 +992,12 @@ pub fn code_point(c: String) -> i64 {
 // replaces cost ~155M interpreted steps over the 104 MB project envelope (~40 minutes at the
 // measured interpreter constant), which was the read's wall once every quadratic above it was
 // gone. The escape set is RFC 8259 section 7 exactly, so review 45642's refusal (an unknown
-// escape refuses before a value is built) holds at native speed; \u decodes through
-// from_code_point's OWN semantics — a code point char::from_u32 cannot hold (a lone surrogate)
-// becomes the empty string there, and this kernel does not diverge from it. The caller owns the
-// span: this kernel takes the already-scanned body and answers the decoded value or None.
+// escape refuses before a value is built) holds at native speed. A \u high surrogate must be
+// followed by a \u low surrogate and the pair decodes to its one scalar (RFC 8259 section 7);
+// an unpaired surrogate of either half refuses. It used to decode through from_code_point,
+// whose empty string for a surrogate dropped every non-BMP character silently (DESIGN 5).
+// The caller owns the span: this kernel takes the already-scanned body and answers the
+// decoded value or None.
 pub fn json_unescape_checked(s: &str) -> Option<String> {
     if !s.contains('\\') {
         return Some(s.to_string());
@@ -1017,20 +1019,34 @@ pub fn json_unescape_checked(s: &str) -> Option<String> {
             Some('r') => out.push('\r'),
             Some('t') => out.push('\t'),
             Some('u') => {
-                let mut h = String::with_capacity(4);
-                for _ in 0..4 {
-                    match chars.next() {
-                        Some(d) if d.is_ascii_hexdigit() => h.push(d),
-                        _ => return None,
+                let cp = json_unescape_hex4(&mut chars)?;
+                if (0xD800..=0xDBFF).contains(&cp) {
+                    if chars.next() != Some('\\') || chars.next() != Some('u') {
+                        return None;
                     }
+                    let lo = json_unescape_hex4(&mut chars)?;
+                    if !(0xDC00..=0xDFFF).contains(&lo) {
+                        return None;
+                    }
+                    out.push(char::from_u32(
+                        0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00),
+                    )?);
+                } else {
+                    out.push(char::from_u32(cp)?);
                 }
-                let cp = i64::from_str_radix(&h, 16).ok()?;
-                out.push_str(&from_code_point(cp));
             }
             _ => return None,
         }
     }
     Some(out)
+}
+
+fn json_unescape_hex4(chars: &mut std::str::Chars<'_>) -> Option<u32> {
+    let mut v: u32 = 0;
+    for _ in 0..4 {
+        v = v * 16 + chars.next()?.to_digit(16)?;
+    }
+    Some(v)
 }
 
 pub fn from_code_point(cp: i64) -> String {
