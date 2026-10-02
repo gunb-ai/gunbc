@@ -872,5 +872,3 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     clippy::all
 )]
 mod compiler_tests;
-
-pub mod phase_cpu;

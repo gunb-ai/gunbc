@@ -47242,7 +47242,7 @@ mod pr2_whole_tree_differential_probe {
             sources.len(),
             subject.subject_digest
         );
-        crate::phase_cpu::reset();
+        v1_stage0_runtime::phase_cpu::reset();
         let cpu0 = crate::v1_interpreter::thread_cpu_nanos();
         let wall0 = std::time::Instant::now();
         let result =
@@ -47252,7 +47252,7 @@ mod pr2_whole_tree_differential_probe {
             "[phase-cpu-total] resolve_thread_cpu_ms={cpu_ms} wall_ms={}",
             wall0.elapsed().as_millis()
         );
-        crate::phase_cpu::report("resolve");
+        v1_stage0_runtime::phase_cpu::report("resolve");
         let mut blocked: BTreeSet<String> = BTreeSet::new();
         let mut blocking = 0usize;
         for d in result.diagnostics.iter() {

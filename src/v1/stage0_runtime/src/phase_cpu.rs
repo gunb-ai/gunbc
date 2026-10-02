@@ -23,7 +23,7 @@ thread_local! {
 pub struct Guard(&'static str);
 
 pub fn guard(label: &'static str) -> Guard {
-    let now = crate::v1_interpreter::thread_cpu_nanos();
+    let now = thread_cpu_nanos();
     SLOTS.with(|s| {
         let mut s = s.borrow_mut();
         let slot = s.entry(label).or_default();
@@ -38,7 +38,7 @@ pub fn guard(label: &'static str) -> Guard {
 
 impl Drop for Guard {
     fn drop(&mut self) {
-        let now = crate::v1_interpreter::thread_cpu_nanos();
+        let now = thread_cpu_nanos();
         SLOTS.with(|s| {
             let mut s = s.borrow_mut();
             let slot = s.entry(self.0).or_default();
@@ -68,4 +68,26 @@ pub fn report(tag: &str) {
 
 pub fn reset() {
     SLOTS.with(|s| s.borrow_mut().clear());
+}
+
+#[repr(C)]
+struct Timespec {
+    tv_sec: i64,
+    tv_nsec: i64,
+}
+extern "C" {
+    fn clock_gettime(clk: i32, ts: *mut Timespec) -> i32;
+}
+/// CLOCK_THREAD_CPUTIME_ID on linux.
+pub fn thread_cpu_nanos() -> u128 {
+    let mut ts = Timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    // SAFETY: ts is owned and valid; the call only writes it.
+    if unsafe { clock_gettime(3, &mut ts) } == 0 {
+        (ts.tv_sec as u128) * 1_000_000_000 + ts.tv_nsec as u128
+    } else {
+        0
+    }
 }
