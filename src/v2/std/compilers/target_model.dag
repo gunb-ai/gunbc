@@ -410,8 +410,15 @@ fn produced_decl_param_segment_tokens(
       outcome_accepted(value: [FixedToken { token_class: tc }])
     ProducedParamName { token_class: tc } =>
       match edge.label {
-        Named { name: pname } =>
+        Authored { name: pname } =>
           outcome_accepted(value: [BoundToken { token_class: tc, binding: pname }])
+        StructuralLabel { label: _ } =>
+          outcome_rejected(
+            d: produced_decl_render_diagnostic(
+              reason: ^produced_decl_render_param_unnamed,
+              node: edge.target
+            )
+          )
         Positional =>
           outcome_rejected(
             d: produced_decl_render_diagnostic(
@@ -1959,7 +1966,7 @@ fn target_model_canonical_operation_atom_field_from_wire(
         Present { value: _ } => acc
         Absent =>
           match edge.label {
-            Named { name: n } =>
+            Authored { name: n } =>
               if n == field_name {
                 match edge.target.kind {
                   TypeNode { connective: Atom { identity: id } } =>
@@ -1969,6 +1976,7 @@ fn target_model_canonical_operation_atom_field_from_wire(
               } else {
                 acc
               }
+            StructuralLabel { label: _ } => acc
             Positional => acc
           }
       }
