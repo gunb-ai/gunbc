@@ -20,6 +20,7 @@ module std.judgment_contract
 // declaration that needs one of those belongs in the provider above, and the direction of that
 // dependency is the whole point: meaning does not import storage.
 
+import std.coercion { unicode_scalar_unfold }
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import v2.std.algebra { skip }
 import std.materialization_ladder { DemandNature }
@@ -180,7 +181,7 @@ fn length_prefixed_encode(s: String) -> String {
 
 
 fn length_prefixed_decode(s: String) -> LengthPrefixedField? {
-  let cs = chars(s: s)
+  let cs = unicode_scalar_unfold(s: s)
   let scan = cs |> fold(
     init: LengthPrefixedScan { i: 0, hit: none },
     f: (st, c) =>
@@ -205,7 +206,7 @@ fn length_prefixed_decode(s: String) -> LengthPrefixedField? {
           if n < 0 {
             none
           } else {
-            let after_cs = chars(s: after)
+            let after_cs = unicode_scalar_unfold(s: after)
             if (after_cs |> count()) < n {
               none
             } else {

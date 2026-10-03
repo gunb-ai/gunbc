@@ -1,5 +1,6 @@
 module v2.extdeps.formats.sql_target
 
+import std.coercion { unicode_scalar_unfold }
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.extdeps.languages.dag { dag_named_edge }
@@ -202,7 +203,7 @@ fn sql_make_bound_tokens_target_model(
 fn sql_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: chars(s: text) }
+    pattern: LiteralPattern { text: unicode_scalar_unfold(s: text) }
   }
 }
 

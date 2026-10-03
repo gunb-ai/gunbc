@@ -1,5 +1,6 @@
 module extdeps.github.expressions
 
+import std.coercion { unicode_scalar_unfold }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.communication.medium { Lossless }
@@ -191,11 +192,11 @@ fn dot_form_leading_code_point(c: Int) -> Bool {
 // and this is the one place where the predicate and the production agree exactly rather than the
 // predicate being the narrower canonical choice.
 fn path_segment_takes_dot_form(segment: String) -> Bool {
-  match segment.chars().first() {
+  match unicode_scalar_unfold(s: segment).first() {
     Absent => false
     Present { value: lead } =>
       dot_form_leading_code_point(c: lead)
-        && all(segment.chars(), c => dot_form_code_point(c: c))
+        && all(unicode_scalar_unfold(s: segment), c => dot_form_code_point(c: c))
   }
 }
 

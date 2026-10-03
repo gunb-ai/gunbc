@@ -1,5 +1,6 @@
 module extdeps.needrestart
 
+import std.coercion { unicode_scalar_unfold }
 import std.types { String, NonEmptyStr, List, Bool, Int }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -110,7 +111,7 @@ fn needrestart_unit_name_char_allowed(cp: Int) -> Bool {
 fn needrestart_unit_name_prefix(raw: String) -> NeedrestartUnitNamePrefixAdmission {
   if raw == "" {
     NeedrestartUnitNamePrefixRefused { cause: "needrestart unit-name prefix is empty, which would match every service" as NonEmptyStr }
-  } else if fold(chars(s: raw), init: true, f: (ok, cp) => ok && needrestart_unit_name_char_allowed(cp: cp)) {
+  } else if fold(unicode_scalar_unfold(s: raw), init: true, f: (ok, cp) => ok && needrestart_unit_name_char_allowed(cp: cp)) {
     NeedrestartUnitNamePrefixAdmitted { prefix: NeedrestartUnitNamePrefix { prefix: raw as NonEmptyStr } }
   } else {
     NeedrestartUnitNamePrefixRefused {
@@ -129,7 +130,7 @@ fn needrestart_perl_quotemeta_code_point(cp: Int) -> String {
 }
 
 fn needrestart_unit_name_prefix_regex(prefix: NeedrestartUnitNamePrefix) -> String {
-  join(["qr(^", join(map(chars(s: prefix.prefix as String), cp => needrestart_perl_quotemeta_code_point(cp: cp)), ""), ")"], "")
+  join(["qr(^", join(map(unicode_scalar_unfold(s: prefix.prefix as String), cp => needrestart_perl_quotemeta_code_point(cp: cp)), ""), ")"], "")
 }
 
 type NeedrestartServiceSelectionOverride {

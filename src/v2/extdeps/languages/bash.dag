@@ -1,5 +1,6 @@
 module v2.extdeps.languages.bash
 
+import std.coercion { unicode_scalar_unfold }
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty, FreeMonoid }
@@ -700,7 +701,7 @@ fn bash_binding_spellings() -> Map<Symbol, String> {
 // re-spelling the encoding here.
 
 fn bash_posix_single_quote_escapes() -> List<EmitSpellingEscape> {
-  [EmitSpellingEscape { from: chars(s: posix_single_quote_delimiter), to: chars(s: posix_single_quote_escape_encoding) }]
+  [EmitSpellingEscape { from: unicode_scalar_unfold(s: posix_single_quote_delimiter), to: unicode_scalar_unfold(s: posix_single_quote_escape_encoding) }]
 }
 
 fn bash_posix_single_quote_transform(prefix: String) -> TokenClassEmitTransform {

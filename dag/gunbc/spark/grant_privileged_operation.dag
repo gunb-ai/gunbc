@@ -1,5 +1,6 @@
 module gunbc.spark.grant_privileged_operation
 
+import std.coercion { unicode_scalar_unfold }
 import std.types { String, NonEmptyStr, List, Bool, Int }
 import product.placement_supply { HostIdentity }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_secret_resource, secret_ref_version_resource, secret_ref_access_url }
@@ -377,7 +378,7 @@ fn classify_credential_read(
     BootstrapCredentialNotMaterialized {
       cause: "the materialized credential file is empty, which is a failed materialization and never a blank password" as NonEmptyStr,
     }
-  } else if credential_carries_line_break(code_points: chars(s: content)) {
+  } else if credential_carries_line_break(code_points: unicode_scalar_unfold(s: content)) {
     BootstrapCredentialNotMaterialized {
       cause: "the materialized credential carries a line break, and sudo -S reads only the first line of stdin as the password; this lane will not strip it, because the enrolled bytes are the credential and delivering a truncated one would authenticate as something other than what is enrolled" as NonEmptyStr,
     }

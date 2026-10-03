@@ -1,5 +1,6 @@
 module gunbc.machine_intake_pre_os_bringup_verdict
 
+import std.coercion { unicode_scalar_unfold }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { ByteSize }
 import std.content_hash { ContentHash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, compare_content_hash }
@@ -176,7 +177,7 @@ fn line_carries_marker(line: String, marker: NonEmptyStr) -> Bool {
         Absent => false
         Present { value: suffix } => {
           let code = trim(suffix)
-          code.length() == 8 && all(chars(s: code), cp => any(base16_digit_rows, digit => code_point(digit.lower) == cp || code_point(digit.upper) == cp))
+          code.length() == 8 && all(unicode_scalar_unfold(s: code), cp => any(base16_digit_rows, digit => code_point(digit.lower) == cp || code_point(digit.upper) == cp))
         }
       }
   }

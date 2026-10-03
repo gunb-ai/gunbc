@@ -1,5 +1,6 @@
 module extdeps.network.mac
 
+import std.coercion { unicode_scalar_unfold }
 import std.types { Int, String, Bool, NonEmptyStr, List, list_length }
 import std.integer { UInt8, qualified_octet_members }
 import extdeps.external_authority { ExternalAuthority }
@@ -186,7 +187,7 @@ fn parse_mac_octet_at(parts: List<String>, position: Int) -> MacOctetResult {
   match parts |> get(position) {
     Absent => MacOctetErr { error: MacWrongOctetCount { observed_count: list_length(items: parts) } }
     Present { value: raw } => {
-      let points = chars(s: raw)
+      let points = unicode_scalar_unfold(s: raw)
       if list_length(items: points) != 2 {
         MacOctetErr {
           error: MacOctetWrongWidth { position: position, raw: raw, observed_width: list_length(items: points) },

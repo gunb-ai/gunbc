@@ -1,5 +1,6 @@
 module gunbc.heal_publication_boundary
 
+import std.coercion { unicode_scalar_unfold }
 import std.types { NonEmptyStr, String, List, Int, Bool, CommitSha }
 import v2.std.optional { Present, Absent }
 import std.algebra { trim }
@@ -636,7 +637,7 @@ fn head_ref_code_point_addressable(cp: Int) -> Bool {
 
 fn head_ref_is_addressable(head_ref: String) -> Bool {
   string_length(s: head_ref) > 0
-    && all(chars(s: head_ref), cp => head_ref_code_point_addressable(cp: cp))
+    && all(unicode_scalar_unfold(s: head_ref), cp => head_ref_code_point_addressable(cp: cp))
     && !string_contains(s: head_ref, pattern: "..")
 }
 

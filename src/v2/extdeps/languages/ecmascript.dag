@@ -1,4 +1,5 @@
 module v2.extdeps.languages.ecmascript
+import std.coercion { unicode_scalar_unfold }
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.arrow_signature { anonymous_signature_arrow }
@@ -930,7 +931,7 @@ fn ecmascript_target_model() -> TargetModel {
 }
 
 fn ecmascript_lex_rule(token_class: Symbol, text: String) -> LexRule {
-  TokenRule { token_class: token_class, pattern: LiteralPattern { text: chars(s: text) } }
+  TokenRule { token_class: token_class, pattern: LiteralPattern { text: unicode_scalar_unfold(s: text) } }
 }
 
 fn ecmascript_ident_lex_pattern() -> LexPattern {

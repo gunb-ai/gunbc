@@ -1,5 +1,6 @@
 module extdeps.languages.toml.emit
 
+import std.coercion { unicode_scalar_unfold }
 import std.types { Bool, String, List, Int }
 import v2.std.collection { list_at_optional }
 import v2.std.algebra { list_head, skip, HeadFound, HeadAbsent }
@@ -39,7 +40,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // does not always own, so refusing at construction would move the failure to every call site
 // rather than removing it.
 fn toml_escape_basic_string(s: String) -> String {
-  chars(s: toml_escape_short_forms(s: s)) |> map(toml_escape_remaining_control) |> join(separator: "")
+  unicode_scalar_unfold(s: toml_escape_short_forms(s: s)) |> map(toml_escape_remaining_control) |> join(separator: "")
 }
 
 fn toml_escape_short_forms(s: String) -> String {
@@ -95,7 +96,7 @@ fn toml_char_is_bare_key(p: Int) -> Bool {
 }
 
 fn toml_key_is_bare(key: String) -> Bool {
-  let cs = chars(s: key)
+  let cs = unicode_scalar_unfold(s: key)
   ((cs |> count) > 0) && ((cs |> filter(p => !toml_char_is_bare_key(p: p)) |> count) == 0)
 }
 
@@ -141,7 +142,7 @@ fn toml_render_pair(kv: TomlKeyValue) -> String {
 // lines, `one\rtwo` becomes one line carrying literal `\u000D`.
 fn toml_comment_lines(text: String) -> List<String> {
   split(s: replace(s: text, from: "\r\n", to: "\n"), delimiter: "\n")
-    |> map(line => chars(s: line) |> map(toml_comment_char) |> join(separator: ""))
+    |> map(line => unicode_scalar_unfold(s: line) |> map(toml_comment_char) |> join(separator: ""))
 }
 
 // TAB IS THE ONE CONTROL A COMMENT ADMITS; everything else defers to the escaper above rather than

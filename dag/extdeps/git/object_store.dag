@@ -1,5 +1,6 @@
 module extdeps.git.object_store
 
+import std.coercion { unicode_scalar_unfold }
 import std.algebra { Cons, trim }
 
 import std.types { NonEmptyStr, Bytes, Map, brand, range }
@@ -1939,9 +1940,9 @@ fn git_decode_object_id_text(
         observed: text.length(),
       }
     }
-  } else if !all(chars(s: text), cp => base16_is_digit_code_point(cp: cp)) {
+  } else if !all(unicode_scalar_unfold(s: text), cp => base16_is_digit_code_point(cp: cp)) {
     GitObjectIdTextRefused { cause: GitObjectIdTextNonHexadecimal }
-  } else if any(chars(s: text), cp => base16_is_upper_digit_code_point(cp: cp)) {
+  } else if any(unicode_scalar_unfold(s: text), cp => base16_is_upper_digit_code_point(cp: cp)) {
     GitObjectIdTextRefused { cause: GitObjectIdTextNonCanonicalUppercase }
   } else {
     match format {

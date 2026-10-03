@@ -1,5 +1,6 @@
 module v2.extdeps.languages.rust_test
 
+import std.coercion { unicode_scalar_unfold }
 import v2.extdeps.languages.rust_native_driver { RustEmitHostFamilyMember, rust_family_main_suffix }
 import v2.std.node { ArrowBodyEdge, core_edge_label, Authored, StructuralLabel }
 
@@ -3742,8 +3743,8 @@ fn rust_emit_directive_message_spellings(d: EmitDirective) -> Map<Symbol, String
 
 fn rust_string_literal_escapes() -> List<EmitSpellingEscape> {
   [
-    EmitSpellingEscape { from: chars(s: "\\"), to: chars(s: "\\\\") },
-    EmitSpellingEscape { from: chars(s: "\""), to: chars(s: "\\\"") }
+    EmitSpellingEscape { from: unicode_scalar_unfold(s: "\\"), to: unicode_scalar_unfold(s: "\\\\") },
+    EmitSpellingEscape { from: unicode_scalar_unfold(s: "\""), to: unicode_scalar_unfold(s: "\\\"") }
   ]
 }
 

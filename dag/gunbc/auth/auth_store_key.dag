@@ -1,5 +1,6 @@
 module gunbc.auth.auth_store_key
 
+import std.coercion { unicode_scalar_unfold }
 import std.types { String, NonEmptyStr, Bool, Int }
 
 // THE ONE SHAPE AN EXTERNALLY SUPPLIED IDENTIFIER MAY HAVE BEFORE IT NAMES A FILE. A login
@@ -25,7 +26,7 @@ fn auth_store_key_code_point_admitted(cp: Int) -> Bool {
 }
 
 fn auth_store_key_of(raw: String) -> AuthStoreKey? {
-  if raw == "" || string_length(s: raw) > auth_store_key_max_length || !all(raw |> chars, cp => auth_store_key_code_point_admitted(cp: cp)) {
+  if raw == "" || string_length(s: raw) > auth_store_key_max_length || !all(unicode_scalar_unfold(s: raw), cp => auth_store_key_code_point_admitted(cp: cp)) {
     none
   } else {
     Present { value: AuthStoreKey { value: raw as NonEmptyStr } }

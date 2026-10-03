@@ -1,5 +1,6 @@
 module extdeps.unicode.display
 
+import std.coercion { unicode_scalar_unfold }
 import extdeps.unicode.blocks { zero_width_blocks, zero_width_codepoints, wide_blocks }
 import std.unicode.types {
   DisplayWidth,
@@ -34,13 +35,13 @@ fn char_width(c: Char) -> Int {
 }
 
 fn string_display_width(s: String) -> Int {
-  let char_list = chars(s)
+  let char_list = unicode_scalar_unfold(s: s)
   let widths = char_list |> map(c => char_width(c: c))
   widths |> fold(init: 0, f: fn(acc, w) { acc + w })
 }
 
 fn truncate_text(text: String, max_width: Int) -> String {
-  let char_list = chars(text)
+  let char_list = unicode_scalar_unfold(s: text)
   let state = fold(char_list,
     init: { result: "", used: 0 },
     f: (acc, c) => if acc.used + char_width(c: c) > max_width {

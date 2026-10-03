@@ -1,5 +1,6 @@
 module gunbc.instruments.native_crypto_vectors
 
+import std.coercion { unicode_scalar_unfold }
 import std.types { Int, List, String, Bool }
 import v2.std.algebra { filter }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
@@ -48,7 +49,7 @@ type NativeCryptoCase {
 }
 
 fn ascii_octets(s: String) -> List<Int> {
-  s |> chars
+  unicode_scalar_unfold(s: s)
 }
 
 fn octets_hex(octets: List<Int>) -> String {

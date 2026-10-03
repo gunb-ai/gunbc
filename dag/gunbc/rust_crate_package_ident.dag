@@ -1,5 +1,6 @@
 module gunbc.rust_crate_package_ident
 
+import std.coercion { unicode_scalar_unfold }
 import std.types { List, String, Bool, NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.dissolution { DissolutionCondition, retires_dissolution }
@@ -64,7 +65,7 @@ fn rust_crate_package_ident(package_name: String) -> PackageIdentOutcome {
   if package_name == "" {
     PackageIdentRefused { cause: PackageNameNotIdentSafe { package_name: package_name } }
   } else {
-    if chars(package_name) |> all(c => chars(package_ident_alphabet) |> any(a => a == c)) {
+    if unicode_scalar_unfold(s: package_name) |> all(c => unicode_scalar_unfold(s: package_ident_alphabet) |> any(a => a == c)) {
       if package_ident_forbidden_leading |> any(p => starts_with(s: package_name, prefix: p)) {
         PackageIdentRefused { cause: PackageIdentNotLeadable { package_name: package_name } }
       } else {

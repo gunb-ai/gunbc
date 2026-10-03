@@ -1,5 +1,6 @@
 module gunbc.spark.serving_rank_observe
 
+import std.coercion { unicode_scalar_unfold }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.algebra { trim }
@@ -412,7 +413,7 @@ type ContainerIncarnationId sole_constructor {
 }
 
 fn container_incarnation_id(id: String) -> ContainerIncarnationId? {
-  let cps = chars(s: id)
+  let cps = unicode_scalar_unfold(s: id)
   let n = count(cps)
   if (n == 12 || n == 64) && all(cps, cp => (cp >= 48 && cp <= 57) || (cp >= 97 && cp <= 102)) {
     Present { value: ContainerIncarnationId { id: id as NonEmptyStr } }

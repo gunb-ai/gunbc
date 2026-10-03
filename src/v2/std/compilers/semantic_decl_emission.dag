@@ -1,5 +1,6 @@
 module v2.std.compilers.semantic_decl_emission
 
+import std.coercion { unicode_scalar_unfold }
 import std.types { List }
 import v2.std.optional { Present, Absent }
 import v2.std.qualified_name { declaration_reference_path_optional }
@@ -148,7 +149,7 @@ fn semantic_decl_emission_bundle_malformed_diagnostic(bundle: Node) -> Diagnosti
 // is a missing conversion at one site.
 fn semantic_decl_string_to_bundle_node(s: String) -> Node {
   fold_list(
-    xs: chars(s: s),
+    xs: unicode_scalar_unfold(s: s),
     empty: target_model_type_atom_node(identity: ^free_monoid_variant_empty),
     cons: fn(tail, c) {
       target_model_type_conj_node(
@@ -299,7 +300,7 @@ fn decode_semantic_decl_lex_rule_row(row: Node) -> Outcome<LexRule> {
                     outcome_accepted(
                       value: TokenRule {
                         token_class: token_class,
-                        pattern: LiteralPattern { text: chars(s: text) }
+                        pattern: LiteralPattern { text: unicode_scalar_unfold(s: text) }
                       }
                     )
                   }

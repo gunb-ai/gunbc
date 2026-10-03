@@ -1,5 +1,6 @@
 module gunbc.roadmap.roadmap_event_carrier
 
+import std.coercion { unicode_scalar_unfold }
 import std.types { String, Int, Bool, List, NonEmptyStr, FilePath, GitRef }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.algebra { trim }
@@ -208,7 +209,7 @@ fn roadmap_event_append(layout: RoadmapEventCarrierLayout, event: RoadmapEvent, 
 
 fn roadmap_operation_identity_valid(operation: String) -> Bool {
   string_length(s: operation) > 0 && string_length(s: operation) <= 128
-    && all(operation |> chars, cp => (cp >= 48 && cp <= 57) || (cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122) || cp == 45 || cp == 95)
+    && all(unicode_scalar_unfold(s: operation), cp => (cp >= 48 && cp <= 57) || (cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122) || cp == 45 || cp == 95)
 }
 
 fn roadmap_event_operation_path(event: RoadmapEvent, operation: String) -> String {

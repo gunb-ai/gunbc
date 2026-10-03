@@ -1,5 +1,6 @@
 module extdeps.prometheus.client
 
+import std.coercion { unicode_scalar_unfold }
 import std.types { NonEmptyStr, String, Int, Bool }
 import std.decimal { ExactDecimal, ExactDecimalAdmitted, ExactDecimalScaleRefused, admit_exact_decimal, decimal_pow10 }
 import std.checked_arithmetic { checked_int_multiply, CheckedIntReady, CheckedIntOverflow }
@@ -156,7 +157,7 @@ fn prometheus_scan_step(acc: SampleLexemeScan, ch: String) -> SampleLexemeScan {
 }
 
 fn prometheus_scan_lexeme(body: String) -> SampleLexemeScan {
-  fold(chars(body), init: SampleLexemeScan { mantissa_digits: "", fraction_digits: 0, exponent_text: "", exponent_sign_negative: false, in_fraction: false, in_exponent: false, ok: true }, f: (acc, cp) =>
+  fold(unicode_scalar_unfold(s: body), init: SampleLexemeScan { mantissa_digits: "", fraction_digits: 0, exponent_text: "", exponent_sign_negative: false, in_fraction: false, in_exponent: false, ok: true }, f: (acc, cp) =>
     prometheus_scan_step(acc: acc, ch: from_code_point(cp: cp)))
 }
 

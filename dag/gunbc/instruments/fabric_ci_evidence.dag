@@ -1,5 +1,6 @@
 module tools.fabric_ci_evidence
 
+import std.coercion { unicode_scalar_unfold }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import v2.std.optional { Present, Absent }
@@ -57,7 +58,7 @@ fn fabric_ci_hex_scalar(cp: Int) -> String {
 }
 
 fn fabric_ci_evidence_wire(value: NonEmptyStr) -> String {
-  fold(chars(value as String), init: fabric_ci_evidence_wire_prefix as String, f: fn(acc, cp) {
+  fold(unicode_scalar_unfold(s: value as String), init: fabric_ci_evidence_wire_prefix as String, f: fn(acc, cp) {
     concat(acc, fabric_ci_hex_scalar(cp: cp))
   })
 }

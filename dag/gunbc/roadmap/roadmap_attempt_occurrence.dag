@@ -1,5 +1,6 @@
 module gunbc.roadmap.roadmap_attempt_occurrence
 
+import std.coercion { unicode_scalar_unfold }
 import std.types { String, Int, Bool, List, NonEmptyStr }
 import gunbc.worker_lifecycle { WorkerProcessEvidence, WorkerProcessAbsent, WorkerProcessRunning, WorkerProcessExited, WorkerProcessUnobserved }
 
@@ -84,7 +85,7 @@ data occurrence_supervisor_unit_prefix: String = "gunbc-supervisor-"
 
 fn occurrence_hex16(s: String) -> Bool {
   string_length(s: s) == 16
-    && all(chars(s: s), c => (c >= 48 && c <= 57) || (c >= 97 && c <= 102))
+    && all(unicode_scalar_unfold(s: s), c => (c >= 48 && c <= 57) || (c >= 97 && c <= 102))
 }
 
 // A node id itself carries dashes, so the attempt key is split from the RIGHT: it is the last

@@ -1,5 +1,6 @@
 module gunbc.spark.native_serving_apply
 
+import std.coercion { unicode_scalar_unfold }
 import std.types { String, Bool, List, NonEmptyStr, Secret, FilePath, Port }
 import std.algebra { trim }
 import v2.std.algebra { zip_map, list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
@@ -500,8 +501,8 @@ fn spark_native_transaction_identity(at: String) -> SparkNativeTransactionIdenti
     NativeTransactionIdentityUnread { cause: join(["the executor's kernel nonce at ", spark_native_nonce_path, " could not be read, so this transaction has no identity to lock with: ", r.error], "") }
   } else {
     let nonce = trim(s: r.content)
-    if count(chars(s: nonce)) != 36 {
-      NativeTransactionIdentityUnread { cause: join(["the executor's kernel nonce did not read as a canonical UUID (", to_string(count(chars(s: nonce))), " characters), and a transaction identity that is not unique is not an ownership proof"], "") }
+    if count(unicode_scalar_unfold(s: nonce)) != 36 {
+      NativeTransactionIdentityUnread { cause: join(["the executor's kernel nonce did not read as a canonical UUID (", to_string(count(unicode_scalar_unfold(s: nonce))), " characters), and a transaction identity that is not unique is not an ownership proof"], "") }
     } else {
       NativeTransactionIdentified { id: join([at, "/", nonce], "") }
     }

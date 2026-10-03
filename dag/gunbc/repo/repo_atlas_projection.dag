@@ -1,5 +1,6 @@
 module gunbc.repo_atlas_projection
 
+import std.coercion { unicode_scalar_unfold }
 import std.content_hash { content_hash_atom }
 import v2.lens.module_graph { ModuleDeclarationFact, map_lookup_where_rejected_unreachable }
 import v2.std.collection { Map, empty_map, map_insert }
@@ -58,8 +59,7 @@ data repo_atlas_hex_projection_note: String = "This decodes a BOUNDED PREFIX of 
 Twelve digits, not sixteen: sixteen hex digits reach 1.8e19 and overflow a 64-bit integer, so the widest safe prefix is fifteen. Twelve gives 2.8e14 distinct values against 3392 cells — modulo bias is below one part in 10^10 and the arithmetic cannot overflow."
 
 fn atlas_hex_prefix_value(hex: String, digits: Int) -> Int {
-  substring(s: hex, start: 0, end: digits)
-    |> chars
+  unicode_scalar_unfold(s: substring(s: hex, start: 0, end: digits))
     |> fold(init: 0, f: (acc, cp) => acc * 16 + atlas_hex_digit_value(cp: cp))
 }
 

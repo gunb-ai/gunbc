@@ -1,5 +1,6 @@
 module extdeps.systemd
 
+import std.coercion { unicode_scalar_unfold }
 import std.types { NonEmptyStr, String, Int }
 import std.types { list_length }
 import std.algebra { trim }
@@ -217,7 +218,7 @@ fn systemd_time_span_unit_usec(unit: String) -> Nat? {
 }
 
 fn systemd_time_span_split(part: String) -> SystemdTimeSpanPart? {
-  let scan = fold(chars(s: part), init: 0, f: (n, c) =>
+  let scan = fold(unicode_scalar_unfold(s: part), init: 0, f: (n, c) =>
     if n < 0 { n } else if c >= 48 && c <= 57 { n + 1 } else { 0 - n - 1 })
   let digits = if scan < 0 { 0 - scan - 1 } else { scan }
   if digits == 0 {

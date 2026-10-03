@@ -1,5 +1,6 @@
 module extdeps.languages.xml.read
 
+import std.coercion { unicode_scalar_unfold }
 import std.types { String, Int, Bool, List }
 import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
@@ -25,7 +26,7 @@ fn xml_has(s: String, i: Int, prefix: String) -> Bool {
   i >= 0 && i + string_length(s: prefix) <= string_length(s: s) && substring(s: s, start: i, end: i + string_length(s: prefix)) == prefix
 }
 fn xml_valid_character(c: String) -> Bool {
-  all(c |> chars, cp => cp == 9 || cp == 10 || cp == 13 || (cp >= 32 && cp <= 55295) || (cp >= 57344 && cp <= 65533) || (cp >= 65536 && cp <= 1114111))
+  all(unicode_scalar_unfold(s: c), cp => cp == 9 || cp == 10 || cp == 13 || (cp >= 32 && cp <= 55295) || (cp >= 57344 && cp <= 65533) || (cp >= 65536 && cp <= 1114111))
 }
 fn xml_space(c: String) -> Bool { c == " " || c == "\t" || c == "\r" || c == "\n" }
 fn xml_skip(s: String, i: Int) -> Int {

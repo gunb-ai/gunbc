@@ -1,5 +1,6 @@
 module gunbc.machine_intake_sel_stimulus_listener
 
+import std.coercion { unicode_scalar_unfold }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
@@ -22,7 +23,7 @@ fn sel_lines(text: String) -> List<String> {
 
 fn sel_record_id(text: String) -> Int? {
   if text.length() == 0 || text.length() > 4 { none } else {
-    fold(chars(s: text), init: Present { value: 0 }, f: (acc, cp) => match acc {
+    fold(unicode_scalar_unfold(s: text), init: Present { value: 0 }, f: (acc, cp) => match acc {
       Absent => none
       Present { value: n } => match filter(base16_digit_rows, row => code_point(row.lower) == cp || code_point(row.upper) == cp).first() {
         Absent => none

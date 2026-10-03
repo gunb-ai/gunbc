@@ -1,5 +1,6 @@
 module gunbc.roadmap_auth_routes
 
+import std.coercion { unicode_scalar_unfold }
 import gunbc.auth.login_browser_binding { auth_login_browser_binding, auth_login_browser_admitted, auth_login_browser_cookie }
 
 import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid, request_authentication_evidence_of_standing }
@@ -114,7 +115,7 @@ fn auth_hex_step(state: AuthHexFold, cp: Int) -> AuthHexFold {
 }
 
 fn auth_hex_bytes(hex: String) -> List<UInt8>? {
-  match fold(hex |> chars, init: AuthHexEven { octets_reversed: [] }, f: (state, cp) => auth_hex_step(state: state, cp: cp)) {
+  match fold(unicode_scalar_unfold(s: hex), init: AuthHexEven { octets_reversed: [] }, f: (state, cp) => auth_hex_step(state: state, cp: cp)) {
     AuthHexEven { octets_reversed: acc } => Present { value: reverse(acc) }
     AuthHexOdd { octets_reversed: _, high: _ } => none
     AuthHexRefused => none

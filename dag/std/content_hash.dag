@@ -1,5 +1,6 @@
 module std.content_hash
 
+import std.coercion { unicode_scalar_unfold }
 import std.types { NonEmptyStr, String, Bool }
 
 // CRYPTOGRAPHIC CARRIER WALL (reviews 45441/45460/45496; same law as extdeps.git.object_store
@@ -73,7 +74,7 @@ fn content_hash_is_lower_hex_code_point(cp: Int) -> Bool {
 }
 
 fn content_hash_validate_lower_hex_syntax(text: String) -> Bool {
-  text |> chars |> all(c => content_hash_is_lower_hex_code_point(cp: c))
+  unicode_scalar_unfold(s: text) |> all(c => content_hash_is_lower_hex_code_point(cp: c))
 }
 
 fn content_hash_validate_lower_hex_length(text: String, expected_hex_digits: Int) -> Bool {

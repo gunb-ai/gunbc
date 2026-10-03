@@ -1,5 +1,6 @@
 module extdeps.numeric.base16
 
+import std.coercion { unicode_scalar_unfold }
 import std.types { Int, String, List, Bool }
 import std.integer { QualifiedOctets, qualified_octets, qualified_octet_members }
 import extdeps.external_authority { ExternalAuthority }
@@ -191,7 +192,7 @@ fn base16_digit_value_at(cp: Int) -> Int? {
 // is capped at fifteen so the value stays inside Int; a consumer that needs a wider field is a
 // different operation (base16_decode_lower yields octets).
 fn base16_word_value(word: String, max_digits: Int) -> Int? {
-  let cps = word |> chars
+  let cps = unicode_scalar_unfold(s: word)
   if length(cps) == 0 || length(cps) > max_digits || max_digits > 15 { none } else {
     fold(cps, init: Present { value: 0 }, f: (acc, cp) =>
       match acc {

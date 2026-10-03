@@ -1,5 +1,6 @@
 module v2.extdeps.languages.gha_workflow_yaml_fold
 
+import std.coercion { unicode_scalar_unfold }
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import extdeps.languages.yaml.emit { emit_inline_scalar_text }
@@ -677,7 +678,7 @@ fn gha_fold_translation_rules_node_for_emitted(
 fn gha_fold_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: chars(s: text) }
+    pattern: LiteralPattern { text: unicode_scalar_unfold(s: text) }
   }
 }
 

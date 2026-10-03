@@ -1,5 +1,6 @@
 module gunbc.auth.mac_keyring
 
+import std.coercion { unicode_scalar_unfold }
 import std.types { String, NonEmptyStr, Secret, Int, Bool }
 import extdeps.numeric.base16 { base16_is_lower_digit_code_point }
 import extdeps.crypto.mac { MacKey, MacKeyId, MacSuite, HmacSha256, mac_key_material_hex_length }
@@ -28,7 +29,7 @@ type ApprovalKeyringRead
   | ApprovalKeyringRefused { cause: ApprovalKeyringRefusal }
 
 fn is_lower_hex(s: String) -> Bool {
-  all(s.chars(), cp => base16_is_lower_digit_code_point(cp: cp))
+  all(unicode_scalar_unfold(s: s), cp => base16_is_lower_digit_code_point(cp: cp))
 }
 
 // THE MATERIAL IS 64 LOWERCASE HEX DIGITS AND NOTHING ELSE; a trailing newline from an editor is

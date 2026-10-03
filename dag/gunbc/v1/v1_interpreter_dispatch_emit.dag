@@ -1,5 +1,6 @@
 module gunbc.v1_interpreter_dispatch_emit
 
+import std.coercion { unicode_scalar_unfold }
 import std.types { List }
 import extdeps.languages.rust.string_literal { escape_rust_cooked_string_literal_body }
 
@@ -27,7 +28,7 @@ fn to_upper_char(ch: Int) -> String {
 }
 
 fn capitalize_first(s: String) -> String {
-  let chars_list = s |> chars
+  let chars_list = unicode_scalar_unfold(s: s)
   if count(chars_list) == 0 {
     ""
   } else {

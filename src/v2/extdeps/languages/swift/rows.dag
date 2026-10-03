@@ -1,5 +1,6 @@
 module v2.extdeps.languages.swift.rows
 
+import std.coercion { unicode_scalar_unfold }
 import std.types { String, List, Bool, Int }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.optional { Optional, Present, Absent }
@@ -294,7 +295,7 @@ fn swift_row_productions() -> List<FormalProduction> {
 
 // ── The target: fixed token spellings, the line token, the indent unit ──────────────────────
 fn swr_lex(c: Symbol, text: String) -> LexRule {
-  TokenRule { token_class: c, pattern: LiteralPattern { text: chars(s: text) } }
+  TokenRule { token_class: c, pattern: LiteralPattern { text: unicode_scalar_unfold(s: text) } }
 }
 
 fn swift_row_lex() -> LexRules {
@@ -590,7 +591,7 @@ fn swl_escape_scalar(cp: Int) -> String {
 }
 
 fn swl_escape_text(s: String) -> String {
-  fold(chars(s: s), init: "", f: (acc, cp) => concat(acc, swl_escape_scalar(cp: cp)))
+  fold(unicode_scalar_unfold(s: s), init: "", f: (acc, cp) => concat(acc, swl_escape_scalar(cp: cp)))
 }
 
 fn swl_segments(d: SwiftStringLiteralDelimiter, segments: List<SwiftStringSegment>) -> Node {

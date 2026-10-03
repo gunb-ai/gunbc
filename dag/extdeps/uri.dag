@@ -1,5 +1,6 @@
 module extdeps.uri
 
+import std.coercion { unicode_scalar_unfold }
 import std.algebra { trim }
 
 import std.types { NonEmptyStr }
@@ -469,7 +470,7 @@ fn uri_percent_encode_code_point(cp: Int) -> UriPercentEncodeComponent {
 }
 
 fn uri_percent_encode_component(value: NonEmptyStr) -> UriPercentEncodeComponent {
-  uri_percent_encode_code_points(code_points: (value as String) |> chars)
+  uri_percent_encode_code_points(code_points: unicode_scalar_unfold(s: value as String))
 }
 
 fn uri_percent_encode_scalar_fragment(cp: Int) -> UriPercentEncodeFoldState {
@@ -629,7 +630,7 @@ fn uri_percent_decode_step(state: UriPercentDecodeFold, cp: Int) -> UriPercentDe
 }
 
 fn uri_percent_decode_component(value: String) -> UriPercentDecodeComponent {
-  match fold(value |> chars, init: UriDecodeText { out: [], utf8: UriUtf8Idle }, f: (state, cp) => uri_percent_decode_step(state: state, cp: cp)) {
+  match fold(unicode_scalar_unfold(s: value), init: UriDecodeText { out: [], utf8: UriUtf8Idle }, f: (state, cp) => uri_percent_decode_step(state: state, cp: cp)) {
     UriDecodeRefused { cause: c } => UriPercentComponentDecodeRefused { cause: c }
     UriDecodeAfterPercent { out: _, utf8: _ } => UriPercentComponentDecodeRefused { cause: UriPercentDecodeTruncatedEscape }
     UriDecodeAfterHighNibble { out: _, utf8: _, high: _ } => UriPercentComponentDecodeRefused { cause: UriPercentDecodeTruncatedEscape }
