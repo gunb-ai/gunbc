@@ -1,0 +1,101 @@
+module test.claim.filesystem_link_create_new_wet_witness
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemLinkCreateNew, FilesystemLinked, FilesystemLinkTargetOccupied, FilesystemLinkCrossDevice,
+  FilesystemLinkRefused, FilesystemLinkKindUnrecognized, FilesystemNotFound,
+  filesystem_link_create_new,
+}
+import std.types { Bool, String }
+
+// Controls for Filesystem.LinkCreateNew. The three wet controls reach the host through a throwaway
+// /tmp/gunbc_link.* directory and remove it; the classifier controls are hermetic. A REAL
+// cross-device link needs two filesystems the runner may not have, so the cross-device arm is
+// pinned here at the classifier (the host answers ErrorKind::CrossesDevices -> "cross_device" in
+// v1_interpreter io_error_kind_name and the emitted file_io_error_kind, one mapping each side), not
+// by real execution; that gap is the price of not guessing the runner's mount table.
+
+fn link_outcome(source: String, path: String) -> FilesystemLinkCreateNew {
+  let l = Filesystem.LinkCreateNew(source: source, path: path)
+  filesystem_link_create_new(source: source, path: path, success: l.success, error: l.error, error_kind: l.error_kind)
+}
+
+fn fresh_dir() -> String {
+  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_link.XXXXXX").path
+}
+
+// A link publishes the source's bytes under the new name, and the source stays where it was.
+test fn a_link_publishes_the_source_bytes_and_keeps_the_source_by_real_execution() -> Bool {
+  let d = fresh_dir()
+  let source = concat(d, "/staged")
+  let target = concat(d, "/published")
+  let staged = Filesystem.WriteCreateNew(path: source, content: "binary-ish bytes")
+  let linked = match link_outcome(source: source, path: target) {
+    FilesystemLinked { path: p } => p == target
+    FilesystemLinkTargetOccupied { path: _ } => false
+    FilesystemLinkCrossDevice { source: _, path: _ } => false
+    FilesystemLinkRefused { path: _, kind: _, error: _ } => false
+    FilesystemLinkKindUnrecognized { path: _, observed: _, error: _ } => false
+  }
+  let read = Filesystem.Read(path: target)
+  let source_kept = Filesystem.Read(path: source).success
+  let removed = shell.Remove.RecursiveForce(path: d)
+  staged.success && linked && read.success && read.content == "binary-ish bytes" && source_kept && removed.success
+}
+
+// Create-only: an existing target refuses as occupied and keeps its own bytes.
+test fn an_existing_target_refuses_as_occupied_and_is_unchanged_by_real_execution() -> Bool {
+  let d = fresh_dir()
+  let source = concat(d, "/staged")
+  let target = concat(d, "/published")
+  let staged = Filesystem.WriteCreateNew(path: source, content: "new")
+  let prior = Filesystem.WriteCreateNew(path: target, content: "prior")
+  let occupied = match link_outcome(source: source, path: target) {
+    FilesystemLinkTargetOccupied { path: p } => p == target
+    FilesystemLinked { path: _ } => false
+    FilesystemLinkCrossDevice { source: _, path: _ } => false
+    FilesystemLinkRefused { path: _, kind: _, error: _ } => false
+    FilesystemLinkKindUnrecognized { path: _, observed: _, error: _ } => false
+  }
+  let kept = Filesystem.Read(path: target).content == "prior"
+  let removed = shell.Remove.RecursiveForce(path: d)
+  staged.success && prior.success && occupied && kept && removed.success
+}
+
+// A missing source refuses with the host's not-found kind; nothing appears at the target.
+test fn a_missing_source_refuses_as_not_found_by_real_execution() -> Bool {
+  let d = fresh_dir()
+  let target = concat(d, "/published")
+  let refused = match link_outcome(source: concat(d, "/absent"), path: target) {
+    FilesystemLinkRefused { path: _, kind: k, error: _ } => match k { FilesystemNotFound => true _ => false }
+    FilesystemLinked { path: _ } => false
+    FilesystemLinkTargetOccupied { path: _ } => false
+    FilesystemLinkCrossDevice { source: _, path: _ } => false
+    FilesystemLinkKindUnrecognized { path: _, observed: _, error: _ } => false
+  }
+  let nothing = !Filesystem.Read(path: target).success
+  let removed = shell.Remove.RecursiveForce(path: d)
+  refused && nothing && removed.success
+}
+
+// The classifier: a cross-device refusal is its own arm, never a generic refusal and never a copy.
+test fn a_cross_device_kind_classifies_as_cross_device() -> Bool {
+  match filesystem_link_create_new(source: "/a/src", path: "/b/dst", success: false, error: "Invalid cross-device link", error_kind: "cross_device") {
+    FilesystemLinkCrossDevice { source: s, path: p } => s == "/a/src" && p == "/b/dst"
+    FilesystemLinked { path: _ } => false
+    FilesystemLinkTargetOccupied { path: _ } => false
+    FilesystemLinkRefused { path: _, kind: _, error: _ } => false
+    FilesystemLinkKindUnrecognized { path: _, observed: _, error: _ } => false
+  }
+}
+
+test fn an_unknown_kind_is_unrecognized_not_folded_into_a_refusal() -> Bool {
+  match filesystem_link_create_new(source: "/a", path: "/b", success: false, error: "?", error_kind: "teleported") {
+    FilesystemLinkKindUnrecognized { path: _, observed: o, error: _ } => o == "teleported"
+    FilesystemLinked { path: _ } => false
+    FilesystemLinkTargetOccupied { path: _ } => false
+    FilesystemLinkCrossDevice { source: _, path: _ } => false
+    FilesystemLinkRefused { path: _, kind: _, error: _ } => false
+  }
+}
