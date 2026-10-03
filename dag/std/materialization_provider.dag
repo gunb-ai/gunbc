@@ -1631,8 +1631,8 @@ fn provider_admit(
 // requiring the parse tree AND its diagnostics; typecheck = source content + direct-import
 // interface digests + compiler identity (the typed_module_key facts, cited in
 // extdeps.realization.reconcile_in_process), requiring the interface AND its diagnostics;
-// resolve-closure = closure content + compiler identity (the resolved_graph_cache subject_digest
-// facts, cited in extdeps.realization.resolved_graph), requiring graph, source indices, AND the
+// resolve-closure = closure content + compiler identity (the v1_compiler.closure_identity
+// subject_digest_for_closure facts), requiring graph, source indices, AND the
 // compile-clean diagnostic union. Declared-input ORDER is fixed by request_declared_inputs, so the
 // canonical-order duty request_key depends on is discharged by the fold rather than owed to the
 // caller. Separate constructor functions were DELETED with the record shape (codex review 44175): a
