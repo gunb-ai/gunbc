@@ -12,6 +12,7 @@ import std.decision {
   PhysicalModelEstablished, CausalModelEstablished, FleetObservedCoupling,
   HardConstraint, SelectionPolicy, UniqueSurvivorRequired,
   RealizationSelectionResult, SelectedWithin, SelectionReceipt,
+  CandidateFieldUnestablished, NoFeasibleRealization, SelectionNeedsEvidence, SelectionNeedsPolicy, RealizationSelectionRefused,
   select_realization,
 }
 import v2.std.optional { Present, Absent }
@@ -96,9 +97,13 @@ fn interop_requirement_met(b: FirmwareBaseline, req: InteropRequirement) -> Bool
     Absent => true
     Present { value: v } =>
       if firmware_semantic_version_at_least(observed: v, minimum: req.at_least) {
-        match baseline_version_for(b: b, t: req.requires_target) {
+        match baseline_release_for(b: b, t: req.requires_target) {
           Absent => false
-          Present { value: w } => firmware_semantic_version_at_least(observed: w, minimum: req.requires_at_least)
+          Present { value: w } =>
+            match w.image_digest {
+              Absent => false
+              Present { value: d } => any(req.requires_one_of, k => k.hex == d.hex)
+            }
         }
       } else {
         true
@@ -249,7 +254,11 @@ fn select_firmware_baseline(field: List<FirmwareBaseline>) -> FirmwareBaselineSe
         Present { value: b } => BaselineSelected { baseline: b, receipt: r }
         Absent => BaselineUndecided { result: result }
       }
-    _ => BaselineUndecided { result: result }
+    CandidateFieldUnestablished { causes: _ } => BaselineUndecided { result: result }
+    NoFeasibleRealization { causes: _, scope: _ } => BaselineUndecided { result: result }
+    SelectionNeedsEvidence { needs: _ } => BaselineUndecided { result: result }
+    SelectionNeedsPolicy { survivors: _ } => BaselineUndecided { result: result }
+    RealizationSelectionRefused { defects: _ } => BaselineUndecided { result: result }
   }
 }
 

@@ -1,6 +1,7 @@
 module test.claim.mtcollins_firmware_converge_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
+import std.measure { second, second_count }
 import v2.std.optional { Present, Absent }
 import std.upsert_decision { Apply }
 import extdeps.crypto.hash { Digest, sha256_digest }
@@ -12,6 +13,7 @@ import extdeps.firmware.types {
 }
 import extdeps.ampere.mt_collins_firmware_release {
   mt_collins_bmc_0_45_3_hpm, mt_collins_bios_0acod014_hpm, mt_collins_scp_2_10_hpm, mt_collins_mb_cpld_v06_hpm,
+  mt_collins_interop_requirements,
 }
 import gunbc.ensure { EnsureObservation, EnsureObserved }
 import gunbc.auth.authorization_pattern_selection { PatternSelected }
@@ -20,7 +22,12 @@ import gunbc.machine_intake_bmc_secure {
   PublishedCredentialRetired, observed_bmc_credential_rotation, derive_bmc_secure,
 }
 import gunbc.machine_intake_phase { DevelopmentAndTest, intake_qualification_policy }
-import gunbc.machine_intake_boot_outcome { HostBootObservation, HostReachedUefi, PostDdrProgressLost, ResetInitiatorUnobserved }
+import gunbc.machine_intake_boot_outcome { HostBootObservation, HostReachedUefi, mtcollins1_post_firmware_set_boot_2026_10_03 }
+import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { SelSnapshotReading, SelSnapshotRead, SelSnapshotNotTaken }
+import gunbc.machine_intake_mtcollins1_socket1_investigation_observation {
+  MtCollins1SocketCpu, ProductionPart, mtcollins1_socket_cpus, mtcollins1_cpu_report_2026_09_23,
+}
+import gunbc.machine_intake_mtcollins1_smpro_observation { SmproWordRead, SmproNotSent, SmproProbeRaw }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
 import gunbc.machine_intake_mtcollins1_bmc_secure_observation {
   mtcollins1_intake_subject, mtcollins1_bmc_secure_standing, mtcollins1_managed_credential,
@@ -30,7 +37,7 @@ import gunbc.machine_intake_mtcollins1_bmc_secure_observation {
 }
 import gunbc.fleet.mtcollins_firmware_baseline {
   FirmwareBaseline, BaselineSelected, BaselineUndecided,
-  baseline_ampere_ticket_7426_delivery, select_firmware_baseline, select_mtcollins1_baseline,
+  baseline_ampere_ticket_7426_delivery, select_firmware_baseline, select_mtcollins1_baseline, interop_requirement_met,
 }
 import gunbc.fleet.mtcollins_firmware_converge {
   MtCollinsFirmwareWorld, InstalledVersionReading, FlashStepRecord, AcPowerCycleWitness,
@@ -44,6 +51,9 @@ import gunbc.fleet.mtcollins_firmware_converge {
   FirmwareConvergenceRefusal, BaselineBiosScpUnpaired, HostNotPoweredOff, StepOutOfOrder,
   ImageDigestMismatch, HpmUpgradeRefused, BmcNotAnsweringAfterFlash, AcPowerCycleTooShort, ReadbackMismatch,
   converge_firmware, dry_realize,
+  RollbackImageReading, RollbackImageRetained, RollbackImageUnavailable,
+  FirmwareSelSnapshotDue, CpuSiliconSupportUnstated, NoRollbackImageRetained, RollbackImageNotTheInstalledVersion,
+  SelSnapshotNotTakenBeforeStep, scp_readback_of,
 }
 
 // SUPPLIED WORLDS, ONE INTERFACE. Every claim here hands converge_firmware a constructed world and step
@@ -63,17 +73,57 @@ fn reading(t: FirmwareTarget, version: FirmwareSemanticVersion) -> InstalledVers
 // eager-gull-22): hpm check APP 0.32, console BIOS 0ACOC017 (projected 0.17.0, which ORDERS ABOVE the
 // baseline's 0.14.0 -- so a fold comparing by order instead of equality would skip the BIOS step), SCP FW
 // 1.08, MB CPLD V04 (hpm check `4.00`).
-fn world_before(power_off: Bool) -> MtCollinsFirmwareWorld {
+data installed_before: List<InstalledVersionReading> = [
+  reading(t: BmcController, version: v(major: 0, minor: 32, patch: 0)),
+  reading(t: HostBios, version: v(major: 0, minor: 17, patch: 0)),
+  reading(t: ScpFirmware, version: v(major: 1, minor: 8, patch: 0)),
+  reading(t: MainboardCpld, version: v(major: 4, minor: 0, patch: 0)),
+]
+
+// SUPPLIED pre-flight: two production parts and every pre-update image retained -- the world the
+// pre-flight ADMITS. mtcollins1 as it really stood (an ES part, no 0ACOC017 image) is world_as_it_stood.
+fn production_cpus() -> List<MtCollins1SocketCpu> {
+  [
+    MtCollins1SocketCpu { socket: 0, issue: ProductionPart, provenance: "supplied", report: mtcollins1_cpu_report_2026_09_23 },
+    MtCollins1SocketCpu { socket: 1, issue: ProductionPart, provenance: "supplied", report: mtcollins1_cpu_report_2026_09_23 },
+  ]
+}
+
+fn kept(t: FirmwareTarget, version: FirmwareSemanticVersion) -> RollbackImageReading {
+  RollbackImageRetained { target: t, version: version, digest: wrong_digest }
+}
+
+fn all_rollbacks_kept() -> List<RollbackImageReading> {
+  [
+    kept(t: BmcController, version: v(major: 0, minor: 32, patch: 0)),
+    kept(t: HostBios, version: v(major: 0, minor: 17, patch: 0)),
+    kept(t: ScpFirmware, version: v(major: 1, minor: 8, patch: 0)),
+    kept(t: MainboardCpld, version: v(major: 4, minor: 0, patch: 0)),
+  ]
+}
+
+fn sel_read() -> SelSnapshotReading? {
+  Present { value: SelSnapshotRead { raw: "1 | 10/02/2026 | 22:01:00 | System Event | Timestamp Clock Sync", at: "2026-10-02T22:01:00Z" } }
+}
+
+fn world_with(power_off: Bool, cpus: List<MtCollins1SocketCpu>, rollbacks: List<RollbackImageReading>, sel: SelSnapshotReading?) -> MtCollinsFirmwareWorld {
   MtCollinsFirmwareWorld {
     host_power: if power_off { HostPoweredOff } else { HostPoweredOn },
     bmc: BmcAnswering,
-    installed: [
-      reading(t: BmcController, version: v(major: 0, minor: 32, patch: 0)),
-      reading(t: HostBios, version: v(major: 0, minor: 17, patch: 0)),
-      reading(t: ScpFirmware, version: v(major: 1, minor: 8, patch: 0)),
-      reading(t: MainboardCpld, version: v(major: 4, minor: 0, patch: 0)),
-    ],
+    installed: installed_before,
+    cpus: cpus,
+    rollback_images: rollbacks,
+    sel_snapshot: sel,
   }
+}
+
+fn world_before(power_off: Bool) -> MtCollinsFirmwareWorld {
+  world_with(power_off: power_off, cpus: production_cpus(), rollbacks: all_rollbacks_kept(), sel: sel_read())
+}
+
+// INHABITANCE of the pre-flight's real inputs: mtcollins1's recorded socket CPUs (socket 0 an ES part).
+fn world_as_it_stood() -> MtCollinsFirmwareWorld {
+  world_with(power_off: true, cpus: mtcollins1_socket_cpus, rollbacks: all_rollbacks_kept(), sel: sel_read())
 }
 
 fn world_at_baseline() -> MtCollinsFirmwareWorld {
@@ -86,6 +136,9 @@ fn world_at_baseline() -> MtCollinsFirmwareWorld {
       reading(t: ScpFirmware, version: v(major: 2, minor: 10, patch: 0)),
       reading(t: MainboardCpld, version: v(major: 6, minor: 0, patch: 0)),
     ],
+    cpus: production_cpus(),
+    rollback_images: [],
+    sel_snapshot: Absent,
   }
 }
 
@@ -99,7 +152,7 @@ fn digest_of(r: FirmwareReleaseRow) -> Digest {
 data wrong_digest: Digest = sha256_digest(hex: "1111111111111111111111111111111111111111111111111111111111111111")
 
 fn good_ac_cycle() -> AcPowerCycleWitness? {
-  Present { value: AcPowerCycleWitness { ac_off_seconds: 15, witnessed_by: "operator" } }
+  Present { value: AcPowerCycleWitness { ac_off: second(count: 15), witnessed_by: "operator" } }
 }
 
 // A RE-ESTABLISHED CREDENTIAL, MINTED BY THE REAL PRODUCER. The standing is sealed, so the only way to
@@ -391,8 +444,8 @@ test fn pre_flash_standing_does_not_reestablish() -> Bool {
 }
 
 test fn short_ac_cycle_refuses() -> Bool {
-  match refusal_of(verdict: run(world: world_before(power_off: true), records: [bmc_record(digest: digest_of(r: mt_collins_bmc_0_45_3_hpm), ac: Present { value: AcPowerCycleWitness { ac_off_seconds: 3, witnessed_by: "operator" } }, readback: v(major: 0, minor: 45, patch: 3))])) {
-    Present { value: c } => match c { AcPowerCycleTooShort { target: _, observed_seconds: s, minimum_seconds: m } => s == 3 && m == 10  _ => false }
+  match refusal_of(verdict: run(world: world_before(power_off: true), records: [bmc_record(digest: digest_of(r: mt_collins_bmc_0_45_3_hpm), ac: Present { value: AcPowerCycleWitness { ac_off: second(count: 3), witnessed_by: "operator" } }, readback: v(major: 0, minor: 45, patch: 3))])) {
+    Present { value: c } => match c { AcPowerCycleTooShort { target: _, observed: s, minimum: m } => second_count(s: s) == 3 && second_count(s: m) == 10  _ => false }
     Absent => false
   }
 }
@@ -418,8 +471,9 @@ test fn dry_scp_step_renders_no_bank_select() -> Bool {
     baseline: baseline_ampere_ticket_7426_delivery, world: world_before(power_off: true), records: [bmc_good, step_good(t: HostBios, r: mt_collins_bios_0acod014_hpm)],
     image_path: "/srv/fw/altra_scp_signed_2.10.20230126.hpm", bmc_host: "mtcollins1-bmc", username: "admin", password_file: "/run/bmc.pw",
   ))
-  list_length(lines) == 3
+  list_length(lines) == 2
     && any(lines, l => l == "ipmitool -I lanplus -H mtcollins1-bmc -U admin -f /run/bmc.pw -z 8196 hpm upgrade /srv/fw/altra_scp_signed_2.10.20230126.hpm force")
+    && !any(lines, l => contains(l, "hpm check"))
     && !any(lines, l => contains(l, "raw 0x3c"))
 }
 
@@ -456,8 +510,8 @@ test fn whole_set_reaching_uefi_converges() -> Bool {
 
 // RED, the 2026-10-02 observation: progress lost after DRAM at 0x1a0a, S5 then a cold start, initiator unobserved.
 test fn post_ddr_progress_lost_after_the_set_refuses() -> Bool {
-  match refusal_of(verdict: run_booted(world: world_before(power_off: true), records: whole_set(), boot: Present { value: PostDdrProgressLost { last_checkpoint: "0x1a0a", cold_starts_observed: 4, initiator: ResetInitiatorUnobserved } })) {
-    Present { value: c } => match c { BootProgressLostAfterFirmwareSet { last_checkpoint: _, cold_starts_observed: n, initiator: _ } => n == 4  _ => false }
+  match refusal_of(verdict: run_booted(world: world_before(power_off: true), records: whole_set(), boot: Present { value: mtcollins1_post_firmware_set_boot_2026_10_03 })) {
+    Present { value: c } => match c { BootProgressLostAfterFirmwareSet { last_checkpoint: k, soc_silent_seconds: q, initiator: _ } => k == 6666 && q == 22  _ => false }
     Absent => false
   }
 }
@@ -479,4 +533,101 @@ test fn dry_realization_renders_nothing_when_refused() -> Bool {
     baseline: baseline_ampere_ticket_7426_delivery, world: world_before(power_off: false), records: [],
     image_path: "/srv/fw/x.hpm", bmc_host: "mtcollins1-bmc", username: "admin", password_file: "/run/bmc.pw",
   )) == 0
+}
+
+// ── Facts 3 and 7: the SEL snapshot and the pre-flight ─────────────────────────────────────────
+// RED: a BMC step with no SEL snapshot is not due; the snapshot is.
+test fn bmc_step_without_sel_snapshot_asks_for_it() -> Bool {
+  match run(world: world_with(power_off: true, cpus: production_cpus(), rollbacks: all_rollbacks_kept(), sel: Absent), records: []) {
+    FirmwareSelSnapshotDue { before: t } => firmware_target_eq(a: t, b: BmcController)
+    _ => false
+  }
+}
+
+test fn bmc_step_with_untaken_sel_snapshot_refuses() -> Bool {
+  match refusal_of(verdict: run(world: world_with(power_off: true, cpus: production_cpus(), rollbacks: all_rollbacks_kept(), sel: Present { value: SelSnapshotNotTaken { reason: "skipped" } }), records: [])) {
+    Present { value: c } => match c { SelSnapshotNotTakenBeforeStep { target: _, reason: _ } => true  _ => false }
+    Absent => false
+  }
+}
+
+// The SEL gate is the BMC's alone: BIOS is due with no snapshot once BMC has grounded.
+test fn bios_step_needs_no_sel_snapshot() -> Bool {
+  is_due(verdict: run(world: world_with(power_off: true, cpus: production_cpus(), rollbacks: all_rollbacks_kept(), sel: Absent), records: [bmc_good]), t: HostBios)
+}
+
+// RED + INHABITANCE: mtcollins1's real socket table (socket 0 an engineering sample) refuses before any step.
+test fn engineering_sample_cpu_refuses_preflight() -> Bool {
+  match refusal_of(verdict: run(world: world_as_it_stood(), records: [])) {
+    Present { value: c } => match c { CpuSiliconSupportUnstated { socket: s, bios_family: _ } => s == 0  _ => false }
+    Absent => false
+  }
+}
+
+// RED, fact 7: no 0ACOC017 image was kept, so the BIOS step refuses after BMC grounds.
+test fn bios_without_rollback_image_refuses() -> Bool {
+  let rollbacks = [
+    kept(t: BmcController, version: v(major: 0, minor: 32, patch: 0)),
+    RollbackImageUnavailable { target: HostBios, reason: "no 0ACOC017 image was retained" },
+  ]
+  match refusal_of(verdict: run(world: world_with(power_off: true, cpus: production_cpus(), rollbacks: rollbacks, sel: sel_read()), records: [bmc_good])) {
+    Present { value: c } => match c { NoRollbackImageRetained { target: t, reason: _ } => firmware_target_eq(a: t, b: HostBios)  _ => false }
+    Absent => false
+  }
+}
+
+test fn rollback_image_of_another_version_refuses() -> Bool {
+  match refusal_of(verdict: run(world: world_with(power_off: true, cpus: production_cpus(), rollbacks: [kept(t: BmcController, version: v(major: 0, minor: 30, patch: 0))], sel: sel_read()), records: [])) {
+    Present { value: c } => match c { RollbackImageNotTheInstalledVersion { target: _ } => true  _ => false }
+    Absent => false
+  }
+}
+
+// ── Fact 1: the SCP is read from SMpro register 0x01, low byte major, high byte minor ───────────
+fn smpro_raw() -> SmproProbeRaw {
+  SmproProbeRaw { sequence: 0, socket: 0, register: "SCP_VERSION", request: "raw 0x06 0x52", at: "2026-10-03T00:00:00Z", exit_code: 0, stdout: "", stderr: "" }
+}
+
+fn observed_is(o: EnsureObservation<FirmwareSemanticVersion>, major: Int, minor: Int) -> Bool {
+  match o {
+    EnsureObserved { evidence: x } => x.major == major && x.minor == minor
+    _ => false
+  }
+}
+
+test fn scp_readback_decodes_the_smpro_words() -> Bool {
+  observed_is(o: scp_readback_of(o: SmproWordRead { raw: smpro_raw(), word: 2049 }), major: 1, minor: 8)
+    && observed_is(o: scp_readback_of(o: SmproWordRead { raw: smpro_raw(), word: 2562 }), major: 2, minor: 10)
+}
+
+test fn scp_readback_unsent_is_not_a_version() -> Bool {
+  match scp_readback_of(o: SmproNotSent { socket: 0, register: "SCP_VERSION", reason: "control read failed" }) {
+    EnsureObserved { evidence: _ } => false
+    _ => true
+  }
+}
+
+// RED (review 74383): the shipped BIOS 0ACOC017 beside BMC 0.45.3. Its triple 0.17.0 orders ABOVE
+// 0ACOD014's 0.14.0, so an ordered check would pass it; it lacks Basic Auth and is not in the set.
+data bios_0acoc017_row: FirmwareReleaseRow = FirmwareReleaseRow {
+  board: mt_collins_bios_0acod014_hpm.board, target: HostBios, version: v(major: 0, minor: 17, patch: 0),
+  released_on: mt_collins_bios_0acod014_hpm.released_on, image_kind: mt_collins_bios_0acod014_hpm.image_kind,
+  image_uri: mt_collins_bios_0acod014_hpm.image_uri, image_bytes: mt_collins_bios_0acod014_hpm.image_bytes,
+  image_digest: Absent, release_notes: "0ACOC017 as shipped on mtcollins1; no image retained",
+  prerequisite: mt_collins_bios_0acod014_hpm.prerequisite, authority: mt_collins_bios_0acod014_hpm.authority,
+}
+
+fn interop_met(b: FirmwareBaseline) -> Bool {
+  all(mt_collins_interop_requirements, req => interop_requirement_met(b: b, req: req))
+}
+
+// Isolated on the interop predicate, because the pairing constraint would also exclude this baseline
+// and a selection-level RED could not tell which wall fired.
+test fn bmc_0_45_3_beside_0acoc017_fails_basic_auth_interop() -> Bool {
+  let b = FirmwareBaseline {
+    identity: baseline_ampere_ticket_7426_delivery.identity,
+    label: "BMC 0.45.3 beside BIOS 0ACOC017",
+    releases: [mt_collins_bmc_0_45_3_hpm, bios_0acoc017_row, mt_collins_scp_2_10_hpm, mt_collins_mb_cpld_v06_hpm],
+  }
+  !interop_met(b: b) && interop_met(b: baseline_ampere_ticket_7426_delivery)
 }

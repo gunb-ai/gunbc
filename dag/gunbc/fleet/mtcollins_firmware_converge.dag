@@ -17,8 +17,8 @@ import extdeps.firmware.types {
   firmware_target_eq, firmware_semantic_version_eq,
 }
 import extdeps.ampere.mt_collins_firmware_release {
-  MtCollinsHpmStepProcedure,
-  mt_collins_vendor_upgrade_order, mt_collins_hpm_procedures, mt_collins_minimum_ac_off_seconds,
+  MtCollinsHpmStepProcedure, BiosSiliconSupportStatement, mt_collins_0acod_silicon_support,
+  mt_collins_vendor_upgrade_order, mt_collins_hpm_procedures, mt_collins_minimum_ac_off,
 }
 import gunbc.ensure {
   EnsureMayApply, EnsureObservation, EnsureObserved, EnsureAbsent, EnsureInaccessible,
@@ -39,6 +39,15 @@ import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_manag
 import gunbc.machine_intake_boot_outcome {
   HostBootObservation, HostReachedUefi, PostDdrProgressLost, HostBootUnobservable, ResetInitiator,
 }
+import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
+  SelSnapshotReading, SelSnapshotRead, SelSnapshotUnread, SelSnapshotNotTaken,
+}
+import gunbc.machine_intake_mtcollins1_socket1_investigation_observation {
+  MtCollins1SocketCpu, EngineeringSample, ProductionPart,
+}
+import std.nat { Nat }
+import std.measure { Second, second_count, byte_size_count }
+import gunbc.machine_intake_mtcollins1_smpro_observation { SmproProbeOutcome, smpro_outcome_word, smpro_outcome_text }
 import gunbc.fleet.mtcollins_firmware_baseline {
   FirmwareBaseline, baseline_release_for, bios_scp_is_a_pair,
 }
@@ -141,6 +150,77 @@ data mtcollins1_factory_credential_reprovision_effect: PrivilegedEffect = Privil
   witness_discharge: NoWitnessDischarge,
 }
 
+// A BMC REFLASH ALSO CLEARS THE SEL (mtcollins1, 2026-10-02: the event log was empty after 0.32 ->
+// 0.45.3). The SEL is the only record of what the host did before the flash, so a step that clears it is
+// not due until a snapshot has been READ: the convergence returns FirmwareSelSnapshotDue first, and an
+// unread or untaken snapshot refuses. The snapshot carrier is the boot diagnostic bundle's, not a second one.
+type SelEffect
+  = PreservesSel
+  | ClearsSel
+
+fn sel_effect_of(t: FirmwareTarget) -> SelEffect {
+  match t {
+    BmcController => ClearsSel
+    HostBios => PreservesSel
+    ScpFirmware => PreservesSel
+    MainboardCpld => PreservesSel
+  }
+}
+
+// WHERE EACH TARGET'S VERSION IS READ (mtcollins1, 2026-10-02/03). hpm check reports BMC, BIOS (0ACOD014
+// as 0.14) and the MB CPLD (4.00 -> 6.00, the new image only after the AC cycle), but its SCP row
+// (BOOTFW) read 0.00 before and after, so the SCP is read from SMpro register 0x01 instead. A readback
+// taken from the route that cannot see the target would be a reading of nothing.
+type VersionReadbackRoute
+  = HpmCheckComponent { component: NonEmptyStr }
+  | SmproVersionRegister { offset: Int }
+
+fn readback_route_of(t: FirmwareTarget) -> VersionReadbackRoute {
+  match t {
+    BmcController => HpmCheckComponent { component: "APP" }
+    HostBios => HpmCheckComponent { component: "BIOS" }
+    ScpFirmware => SmproVersionRegister { offset: 1 }
+    MainboardCpld => HpmCheckComponent { component: "MB CPLD" }
+  }
+}
+
+// SMpro register 0x01 carries the SCP version as minor in the high byte, major in the low byte:
+// 0x0801 read 1.08 before the update and 0x0a02 read 2.10 after it.
+fn scp_version_of_smpro_word(word: Int) -> FirmwareSemanticVersion {
+  FirmwareSemanticVersion { major: word % 256, minor: word / 256, patch: 0 }
+}
+
+// The SCP readback, from the SMpro probe the boot diagnostics already realize: a word read is a version,
+// and every other outcome is an inaccessible observation carrying the probe's own text, never a guess.
+fn scp_readback_of(o: SmproProbeOutcome) -> EnsureObservation<FirmwareSemanticVersion> {
+  match smpro_outcome_word(o: o) {
+    Present { value: w } => EnsureObserved { evidence: scp_version_of_smpro_word(word: w) }
+    Absent => EnsureInaccessible { reason: smpro_outcome_text(o: o) }
+  }
+}
+
+// ── The pre-flight the manual run lacked (fact 7, learned the hard way) ─────────────────────────
+// A step is not due until (a) every installed CPU is silicon the target BIOS family STATES it supports,
+// and (b) the image now installed on that target is retained, so the step can be undone. On mtcollins1
+// socket 0 is an engineering sample, which the 0ACOD notes never mention, and no 0ACOC017 image was kept.
+type RollbackImageReading
+  = RollbackImageRetained { target: FirmwareTarget, version: FirmwareSemanticVersion, digest: Digest }
+  | RollbackImageUnavailable { target: FirmwareTarget, reason: NonEmptyStr }
+
+fn rollback_target(r: RollbackImageReading) -> FirmwareTarget {
+  match r {
+    RollbackImageRetained { target: t, version: _, digest: _ } => t
+    RollbackImageUnavailable { target: t, reason: _ } => t
+  }
+}
+
+fn silicon_stated(statement: BiosSiliconSupportStatement, cpu: MtCollins1SocketCpu) -> Bool {
+  match cpu.issue {
+    ProductionPart => true
+    EngineeringSample => statement.engineering_samples_stated
+  }
+}
+
 type InstalledVersionReading {
   target: FirmwareTarget
   reading: EnsureObservation<FirmwareSemanticVersion>
@@ -150,6 +230,9 @@ type MtCollinsFirmwareWorld {
   host_power: HostPowerReading
   bmc: BmcAnswer
   installed: List<InstalledVersionReading>
+  cpus: List<MtCollins1SocketCpu>
+  rollback_images: List<RollbackImageReading>
+  sel_snapshot: SelSnapshotReading?
 }
 
 // WHAT THE HOST DID WHEN IT FIRST BOOTED AFTER THE SET is the only observation that says the set worked,
@@ -157,10 +240,10 @@ type MtCollinsFirmwareWorld {
 // investigation read the same classification. Reaching UEFI grounds the set; PostDdrProgressLost refuses.
 
 // The witnessed AC power cycle. It is an operator-attested record: the substrate cannot see a power
-// cord, which is why selecting HumanOnlyStep was the honest answer. ac_off_seconds is what the
+// cord, which is why selecting HumanOnlyStep was the honest answer. ac_off is what the
 // operator observed, and the vendor minimum is checked against it.
 type AcPowerCycleWitness {
-  ac_off_seconds: Int
+  ac_off: Second
   witnessed_by: NonEmptyStr
 }
 
@@ -199,15 +282,21 @@ type FirmwareConvergenceRefusal
   | RedfishRoleNotRestored { target: FirmwareTarget, detail: NonEmptyStr }
   | CredentialEpochNotAdvancedPastFlash { target: FirmwareTarget, invalidated_epoch: Int, observed_epoch: Int }
   | StepDuringFactoryCredentialWindow { attempted: FirmwareTarget, window_opened_by: FirmwareTarget }
-  | AcPowerCycleTooShort { target: FirmwareTarget, observed_seconds: Int, minimum_seconds: Int }
+  | AcPowerCycleTooShort { target: FirmwareTarget, observed: Second, minimum: Second }
   | ReadbackMismatch { target: FirmwareTarget, reason: String }
   | AcCycleNotAHumanStep { target: FirmwareTarget }
-  | BootProgressLostAfterFirmwareSet { last_checkpoint: NonEmptyStr, cold_starts_observed: Int, initiator: ResetInitiator }
+  | BootProgressLostAfterFirmwareSet { last_checkpoint: Int, soc_silent_seconds: Int, initiator: ResetInitiator }
+  | CpuSiliconSupportUnstated { socket: Nat, bios_family: NonEmptyStr }
+  | NoRollbackImageRetained { target: FirmwareTarget, reason: NonEmptyStr }
+  | RollbackImageNotTheInstalledVersion { target: FirmwareTarget }
+  | SelSnapshotUnreadBeforeStep { target: FirmwareTarget }
+  | SelSnapshotNotTakenBeforeStep { target: FirmwareTarget, reason: NonEmptyStr }
   | BootOutcomeUnobservable { reason: NonEmptyStr }
 
 type FirmwareConvergenceVerdict
   = FirmwareBaselineConverged
   | FirmwareBootReadbackDue
+  | FirmwareSelSnapshotDue { before: FirmwareTarget }
   | FirmwareStepDue { target: FirmwareTarget, decision: UpsertDecision<FirmwareFlashStep> }
   | FirmwareCredentialReprovisionDue { after: FirmwareTarget, invalidated: ManagedCredentialReference, factory_use: AuthorizationPatternSelection }
   | FirmwareAwaitingHumanStep { after: FirmwareTarget, step: HumanIntervention, receipt: SelectionReceipt }
@@ -218,7 +307,7 @@ data mtcollins1_ac_power_cycle_step: HumanIntervention = HumanIntervention {
   identity: "mtcollins1_ac_power_cycle_after_firmware_step",
   frequency: DeviceOnce,
   subject: "mtcollins1 AC input power, after each HPM firmware step",
-  instruction: "Remove AC power from both PSUs for at least 10 seconds, restore it, then record an AcPowerCycleWitness with the seconds observed.",
+  instruction: "Remove AC power from both PSUs for at least 10 seconds, restore it, then record an AcPowerCycleWitness with the time observed.",
   completion_evidence: DischargedAt {
     evidence: decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_converge", decl_name: "AcPowerCycleWitness"),
   },
@@ -370,8 +459,8 @@ fn executed_step_verdict(
                 match rec.ac_cycle {
                   Absent => Present { value: await_ac_cycle(target: t) }
                   Present { value: w } =>
-                    if w.ac_off_seconds < mt_collins_minimum_ac_off_seconds {
-                      Present { value: refused(cause: AcPowerCycleTooShort { target: t, observed_seconds: w.ac_off_seconds, minimum_seconds: mt_collins_minimum_ac_off_seconds }) }
+                    if second_count(s: w.ac_off) < second_count(s: mt_collins_minimum_ac_off) {
+                      Present { value: refused(cause: AcPowerCycleTooShort { target: t, observed: w.ac_off, minimum: mt_collins_minimum_ac_off }) }
                     } else {
                       match rec.readback {
                         Absent => Present { value: refused(cause: ReadbackMismatch { target: t, reason: "no readback was recorded after the AC power cycle" }) }
@@ -433,9 +522,49 @@ fn pending_step_verdict(
                 HostPoweredOff =>
                   match world.bmc {
                     BmcNotAnswering { reason: why } => Present { value: refused(cause: BmcNotAnsweringBeforeStep { target: t, reason: why }) }
-                    BmcAnswering => Present { value: FirmwareStepDue { target: t, decision: Apply { plan: step } } }
+                    BmcAnswering =>
+                      match preflight_refusal(t: t, world: world, before: before) {
+                        Present { value: cause } => Present { value: refused(cause: cause) }
+                        Absent => sel_gate(t: t, world: world, step: step)
+                      }
                   }
               }
+          }
+      }
+  }
+}
+
+// Silicon first (it concerns the whole set), then this target's rollback image.
+fn preflight_refusal(t: FirmwareTarget, world: MtCollinsFirmwareWorld, before: EnsureObservation<FirmwareSemanticVersion>) -> FirmwareConvergenceRefusal? {
+  match (filter(world.cpus, c => !silicon_stated(statement: mt_collins_0acod_silicon_support, cpu: c))).first() {
+    Present { value: cpu } => Present { value: CpuSiliconSupportUnstated { socket: cpu.socket, bios_family: mt_collins_0acod_silicon_support.bios_family } }
+    Absent =>
+      match (filter(world.rollback_images, r => firmware_target_eq(a: rollback_target(r: r), b: t))).first() {
+        Absent => Present { value: NoRollbackImageRetained { target: t, reason: "no rollback image reading was supplied for this target" } }
+        Present { value: r } =>
+          match r {
+            RollbackImageUnavailable { target: _, reason: why } => Present { value: NoRollbackImageRetained { target: t, reason: why } }
+            RollbackImageRetained { target: _, version: kept, digest: _ } =>
+              match reading_satisfies(reading: before, desired: kept) {
+                true => Absent
+                false => Present { value: RollbackImageNotTheInstalledVersion { target: t } }
+              }
+          }
+      }
+  }
+}
+
+fn sel_gate(t: FirmwareTarget, world: MtCollinsFirmwareWorld, step: FirmwareFlashStep) -> FirmwareConvergenceVerdict? {
+  match sel_effect_of(t: t) {
+    PreservesSel => Present { value: FirmwareStepDue { target: t, decision: Apply { plan: step } } }
+    ClearsSel =>
+      match world.sel_snapshot {
+        Absent => Present { value: FirmwareSelSnapshotDue { before: t } }
+        Present { value: snap } =>
+          match snap {
+            SelSnapshotRead { raw: _, at: _ } => Present { value: FirmwareStepDue { target: t, decision: Apply { plan: step } } }
+            SelSnapshotUnread { cause: _ } => Present { value: refused(cause: SelSnapshotUnreadBeforeStep { target: t }) }
+            SelSnapshotNotTaken { reason: why } => Present { value: refused(cause: SelSnapshotNotTakenBeforeStep { target: t, reason: why }) }
           }
       }
   }
@@ -478,7 +607,7 @@ fn boot_verdict(records: List<FlashStepRecord>, boot: HostBootObservation?) -> F
         Present { value: o } =>
           match o {
             HostReachedUefi => FirmwareBaselineConverged
-            PostDdrProgressLost { last_checkpoint: c, cold_starts_observed: n, initiator: i } => refused(cause: BootProgressLostAfterFirmwareSet { last_checkpoint: c, cold_starts_observed: n, initiator: i })
+            PostDdrProgressLost { last_checkpoint: c, soc_silent_seconds: q, chassis_power_on_while_silent: _, next_cycle_logged_s5_and_system_restart: _, watchdog: _, initiator: i } => refused(cause: BootProgressLostAfterFirmwareSet { last_checkpoint: c, soc_silent_seconds: q, initiator: i })
             HostBootUnobservable { reason: r } => refused(cause: BootOutcomeUnobservable { reason: r })
           }
       }
@@ -518,6 +647,8 @@ fn ipmitool_prefix(bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: 
   ["ipmitool", "-I", "lanplus", "-H", bmc_host as String, "-U", username as String, "-f", password_file as String]
 }
 
+// The readback is rendered only on the route that can see the target; the SMpro route is realized by
+// gunbc.machine_intake_mtcollins1_smpro_observation and read back through scp_readback_of.
 fn dry_step_commands(
   step: FirmwareFlashStep,
   image_path: NonEmptyStr,
@@ -526,11 +657,14 @@ fn dry_step_commands(
   password_file: NonEmptyStr,
 ) -> List<List<String>> {
   let prefix = ipmitool_prefix(bmc_host: bmc_host, username: username, password_file: password_file)
-  [
+  let flash = [
     concat(prefix, ["chassis", "status"]),
-    concat(prefix, ["-z", step.procedure.upload_block_bytes as String, "hpm", "upgrade", image_path as String, "force"]),
-    concat(prefix, ["hpm", "check"]),
+    concat(prefix, ["-z", byte_size_count(b: step.procedure.upload_block) as String, "hpm", "upgrade", image_path as String, "force"]),
   ]
+  match readback_route_of(t: step.procedure.firmware_release.target) {
+    HpmCheckComponent { component: _ } => concat(flash, [concat(prefix, ["hpm", "check"])])
+    SmproVersionRegister { offset: _ } => flash
+  }
 }
 
 // The dry realization's single entry: decide, and if a step is due render its commands. Anything else
@@ -553,6 +687,7 @@ fn dry_realize(
       }
     FirmwareBaselineConverged => []
     FirmwareBootReadbackDue => []
+    FirmwareSelSnapshotDue { before: _ } => []
     FirmwareAwaitingHumanStep { after: _, step: _, receipt: _ } => []
     FirmwareCredentialReprovisionDue { after: _, invalidated: _, factory_use: _ } => []
     FirmwareConvergenceRefused { cause: _ } => []

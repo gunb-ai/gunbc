@@ -1,25 +1,49 @@
 module gunbc.machine_intake_boot_outcome
 
-import std.types { Int, NonEmptyStr }
+import std.types { Bool, Int, NonEmptyStr }
 
 // WHAT ONE BOOT SHOWED, classified once for every reader: the firmware convergence's post-set readback
 // (gunbc.fleet.mtcollins_firmware_converge), the boot run, and the mtcollins1 socket-1 investigation. A
-// fact about a boot lives at the boot-observation layer so each of those imports it instead of
-// declaring its own spelling.
+// fact about a boot lives at the boot-observation layer, beside gunbc.machine_intake_mtcollins1_boot_milestone,
+// so each of those imports it instead of declaring its own spelling.
 //
-// Reaching UEFI is success. The failure seen on mtcollins1 on 2026-10-02 (after BMC 0.45.3 +
-// BIOS 0ACOD014 + SCP 2.10, session eager-gull-22) is classified PostDdrProgressLost: POST reached
-// checkpoint 0x1a0a after DRAM training, then the host went to S5 soft-off and started cold, so the
-// next pass trained again -- and nothing logged an error code or named what initiated the reset. 0x1a0a
-// is NOT a normal restart point: the 2026-09-13 two-socket boot passed 0x1a0a -> 0x1a0b in one pass,
-// and a single restart there appeared only in old-firmware one-socket boots. So a loss of progress
-// there is a typed failure, never `still booting`, and the unknown initiator stays unknown.
+// Reaching UEFI is success. The failure seen on mtcollins1 on 2026-10-02/03, after the whole vendor set
+// (BMC 0.45.3, BIOS 0ACOD014, SCP 2.10, MB CPLD V06), is PostDdrProgressLost: POST reached checkpoint
+// 0x00001a0a after DRAM training; then the whole SoC went silent for about 22 s with chassis power still
+// ON; then the NEXT cycle's start logged CPU0_ACPI_State S5 and System Restart; nothing named the
+// initiator. The BMC's IPMI watchdog was stopped with no action set, so it is not the initiator.
+// 0x1a0a is NOT a normal warm-reset point: the 2026-09-13 two-socket boot went 0x1a0a -> 0x1a0b in one
+// pass. So a loss of progress there is a typed failure, never `still booting`, and the unknown initiator
+// stays unknown. Evidence: srv1 ~/mtc-fw/capture-20261003T003536Z (SHA256SUMS inside).
 type ResetInitiator
   = ResetInitiatorUnobserved
   | ResetInitiatorObserved { initiator: NonEmptyStr }
 
+// What the BMC's IPMI watchdog was doing across the lost cycle: the watchdog is a candidate initiator
+// only while it is armed with an action, so the observation carries its state rather than an opinion.
+type BmcWatchdogDisposition
+  = WatchdogStoppedNoAction
+  | WatchdogArmed { action: NonEmptyStr }
+  | WatchdogUnobserved { reason: NonEmptyStr }
+
 type HostBootObservation
   = HostReachedUefi
-  | PostDdrProgressLost { last_checkpoint: NonEmptyStr, cold_starts_observed: Int, initiator: ResetInitiator }
+  | PostDdrProgressLost {
+      last_checkpoint: Int,
+      soc_silent_seconds: Int,
+      chassis_power_on_while_silent: Bool,
+      next_cycle_logged_s5_and_system_restart: Bool,
+      watchdog: BmcWatchdogDisposition,
+      initiator: ResetInitiator,
+    }
   | HostBootUnobservable { reason: NonEmptyStr }
 
+// The 2026-10-03 observation itself (last_checkpoint 6666 = 0x00001a0a; the substrate has no hex literal), so the convergence witness and any later reader cite one row.
+data mtcollins1_post_firmware_set_boot_2026_10_03: HostBootObservation = PostDdrProgressLost {
+  last_checkpoint: 6666,
+  soc_silent_seconds: 22,
+  chassis_power_on_while_silent: true,
+  next_cycle_logged_s5_and_system_restart: true,
+  watchdog: WatchdogStoppedNoAction,
+  initiator: ResetInitiatorUnobserved,
+}

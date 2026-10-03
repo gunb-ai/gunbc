@@ -1,9 +1,9 @@
 module extdeps.ampere.mt_collins_firmware_release
 
 import std.types { Int, NonEmptyStr, List }
-import std.measure { byte_size }
+import std.measure { ByteSize, byte_size, Second, second }
+import extdeps.crypto.hash { Digest, sha256_digest }
 import v2.std.optional { Present }
-import extdeps.crypto.hash { sha256_digest }
 import extdeps.boards.types { AmpereMtCollins }
 import extdeps.firmware.types {
   FirmwareReleaseRow, FirmwareTarget, FirmwareSemanticVersion,
@@ -97,20 +97,21 @@ data mt_collins_mb_cpld_v06_hpm: FirmwareReleaseRow = FirmwareReleaseRow {
   authority: mt_collins_firmware_delivery_authority,
 }
 
-// ── THE VENDOR PROCEDURE (System_FW_Upgrade_Guide.txt and the SOP_*_HPM_Out-Band / SOP_SCP_Out-Band
-// documents in the BMC bundle). These are Foxconn's statements, so they are upstream facts here;
+// ── THE VENDOR PROCEDURE (System_FW_Upgrade_Guide.txt and the SOP_BMC_HPM_Out-Band, SOP_BIOS_HPM_Out-Band
+// and SOP_SCP_Out-Band documents in the BMC bundle). The MB CPLD step's facts are NOT taken from its SOP:
+// they are what the 2026-10-02 manual run on mtcollins1 did and observed. These are Foxconn's statements, so they are upstream facts here;
 // whether a fleet FOLLOWS them is gunbc's policy and is decided there.
 //
 // THE RECOMMENDED ORDER is "1) BMC 2) BIOS 3) SCP 4) MB CPLD". A list, because the order is the fact.
 data mt_collins_vendor_upgrade_order: List<FirmwareTarget> = [BmcController, HostBios, ScpFirmware, MainboardCpld]
 
-// THE PER-STEP CONDITIONS THE SOPs STATE, read from the four out-of-band SOP PDFs on 2026-10-02. Each
-// first confirms the host is powered off (`chassis power off`, `chassis status`); each runs
+// THE PER-STEP CONDITIONS THE BMC, BIOS AND SCP SOPs STATE, read 2026-10-02; the MB CPLD row carries the
+// block size and the AC-cycle activation the manual run used and observed. Each SOP first confirms the host is powered off (`chassis power off`, `chassis status`); each runs
 // `hpm upgrade <file> force` with an upload block size of 30000 for the BMC and MB CPLD and 8196 for
 // BIOS and SCP, and answers a Y/y confirmation; each ends "AC power cycle the system by removing power
 // from the server for at least 10 seconds". The MB CPLD image becomes active only after that AC cycle.
 //
-// THE SCP SOP'S BANK SELECT IS NOT CARRIED, because it does not work: the SOP first sends OEM command
+// THE SCP SOP'S BANK SELECT IS THE SOP'S INSTRUCTION AND IS NOT CARRIED, because it does not work: the SOP first sends OEM command
 // `raw 0x3c 0x0B` with 0x00 (primary) or 0x02 (secondary), and BMC 0.45.3 REFUSES it with completion
 // code 0xc9 (mtcollins1, 2026-10-02). The upgrade that followed wrote the default image and the SMpro
 // version register r0x01 read 0x0a02 (2.10) afterwards. A procedure row that told a realization to send
@@ -119,16 +120,16 @@ data mt_collins_vendor_upgrade_order: List<FirmwareTarget> = [BmcController, Hos
 // verb, taken as a typo for the line every sibling SOP prints.
 type MtCollinsHpmStepProcedure {
   firmware_release: FirmwareReleaseRow
-  upload_block_bytes: Int
+  upload_block: ByteSize
 }
 
-data mt_collins_minimum_ac_off_seconds: Int = 10
+data mt_collins_minimum_ac_off: Second = second(count: 10)
 
 data mt_collins_hpm_procedures: List<MtCollinsHpmStepProcedure> = [
-  MtCollinsHpmStepProcedure { firmware_release: mt_collins_bmc_0_45_3_hpm, upload_block_bytes: 30000 },
-  MtCollinsHpmStepProcedure { firmware_release: mt_collins_bios_0acod014_hpm, upload_block_bytes: 8196 },
-  MtCollinsHpmStepProcedure { firmware_release: mt_collins_scp_2_10_hpm, upload_block_bytes: 8196 },
-  MtCollinsHpmStepProcedure { firmware_release: mt_collins_mb_cpld_v06_hpm, upload_block_bytes: 30000 },
+  MtCollinsHpmStepProcedure { firmware_release: mt_collins_bmc_0_45_3_hpm, upload_block: byte_size(count: 30000) },
+  MtCollinsHpmStepProcedure { firmware_release: mt_collins_bios_0acod014_hpm, upload_block: byte_size(count: 8196) },
+  MtCollinsHpmStepProcedure { firmware_release: mt_collins_scp_2_10_hpm, upload_block: byte_size(count: 8196) },
+  MtCollinsHpmStepProcedure { firmware_release: mt_collins_mb_cpld_v06_hpm, upload_block: byte_size(count: 30000) },
 ]
 
 // ── WHICH BIOS AND SCP VERSIONS ARE A PAIR. BIOS release note 1: "The BIOS Reference code version and
@@ -151,11 +152,15 @@ data mt_collins_bios_scp_pairs: List<BiosScpPair> = [
 // BIOS which support 'Basic Auth' feature, otherwise Redfish communication between BMC and BIOS will
 // not function." The BIOS that adds it is 0ACOD014 (change list 1). This is an interoperation
 // requirement between two running images, not a flash prerequisite: the BMC flashes fine without it.
+// requires_one_of is a SET OF RELEASES, joined by image digest, never a version bound: BIOS triples do
+// not order across families (0ACOC017 projects ABOVE 0ACOD014 and lacks Basic Auth), so the only honest
+// question is membership in the releases the vendor states support the feature. A release not in the
+// set -- including any of an unknown family -- does not meet it.
 type InteropRequirement {
   when_target: FirmwareTarget
   at_least: FirmwareSemanticVersion
   requires_target: FirmwareTarget
-  requires_at_least: FirmwareSemanticVersion
+  requires_one_of: List<Digest>
   consequence: NonEmptyStr
 }
 
@@ -164,7 +169,25 @@ data mt_collins_interop_requirements: List<InteropRequirement> = [
     when_target: BmcController,
     at_least: firmware_semantic_version(major: 0, minor: 45, patch: 3),
     requires_target: HostBios,
-    requires_at_least: firmware_semantic_version(major: 0, minor: 14, patch: 0),
+    requires_one_of: [sha256_digest(hex: "e250802973e2301a8773de8f59163ac5aa36b17ff37f8b19cddcd88f27eecb2e")],
     consequence: "Redfish over the BMC-BIOS HTTP-over-USB host interface does not function; WebUI and Redfish lose host inventory.",
   },
 ]
+
+// ── WHICH SILICON THE BIOS FAMILY STATES IT SUPPORTS. The 0ACOD release notes say from 0ACOD006 on that
+// the BIOS "supports Altra and Altra Max"; they say nothing about engineering-sample parts. Both halves
+// are the vendor's statement: the named production lines are stated, and an engineering sample is
+// UNSTATED -- not unsupported, not supported. A consumer may not read the silence as either (§4d).
+type BiosSiliconSupportStatement {
+  bios_family: NonEmptyStr
+  from_build: NonEmptyStr
+  stated_production_lines: List<NonEmptyStr>
+  engineering_samples_stated: Bool
+}
+
+data mt_collins_0acod_silicon_support: BiosSiliconSupportStatement = BiosSiliconSupportStatement {
+  bios_family: "0ACOD",
+  from_build: "0ACOD006",
+  stated_production_lines: ["Altra", "Altra Max"],
+  engineering_samples_stated: false,
+}
