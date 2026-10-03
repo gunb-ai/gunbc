@@ -1862,15 +1862,17 @@ fn dag_grammar_match_arm_stmt_body_expr() -> GrammarExpr {
   )
 }
 
+// AN ARM BODY IS ONE PRODUCTION: a statement sequence of one or more statements. An expression
+// body is the one-statement case, so it is not a second alternative: offered beside the statement
+// body, the two shared every expression-led input and the choice picked the expression. The arm
+// body lowers through body_lower_stmt_spine (v2.compiler.body_lowering_fold
+// body_lower_match_arm_body_lowered), whose last statement is the value, exactly as a fn body's.
 fn dag_grammar_match_arm_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_nonterminal(production: ^dag_production_pattern),
     right: dag_grammar_sequence(
       left: dag_grammar_terminal(token_class: ^dag_token_fat_arrow),
-      right: dag_grammar_choice(
-        left: dag_grammar_nonterminal(production: ^dag_production_expr),
-        right: dag_grammar_nonterminal(production: ^dag_production_match_arm_stmt_body)
-      )
+      right: dag_grammar_nonterminal(production: ^dag_production_match_arm_stmt_body)
     )
   )
 }
