@@ -1,6 +1,7 @@
 module test.claim.cloudflare_r2_origin_mint_run
 
 import std.types { String, NonEmptyStr, Bool, Secret }
+import v2.std.collection { map_get }
 import extdeps.cloudflare.account_api_tokens {
   CreatedAccountToken, CreateAccountTokenRequest, TokenActive,
 }
