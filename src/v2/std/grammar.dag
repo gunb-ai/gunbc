@@ -48,11 +48,12 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
   TypeNode,
+  StructuralLabel,
 }
 import v2.std.node_shape { stamp_node_shape_synthetic, type_shape }
 import v2.std.compilers.target_model {
@@ -240,6 +241,7 @@ type GrammarExpr
   | Expect { element: GrammarExpr, reason: ParseRefusalReason }
   | RefuseOnMatch { element: GrammarExpr, reason: ParseRefusalReason }
   | AfterLineBreak { element: GrammarExpr }
+  | NotPredicate { element: GrammarExpr }
 
 // A PRODUCTION WHOSE MATCH IS A REFUSAL. `RefuseOnMatch { element, reason }` parses `element` and,
 // where it MATCHES, refuses the whole parse with `reason`, located at the first token of the match:
@@ -268,6 +270,18 @@ fn grammar_expr_after_line_break(element: GrammarExpr) -> GrammarExpr {
 // Ordered choice and backtracking are untouched, so wrapping any row in `Expect` changes no
 // accepted tree. `reason` is not free text: it is a variant of the parse stage's closed
 // `v2.std.parse_refusal_reason` `ParseRefusalReason`, so an unknown reason cannot be written.
+// THE PEG NOT-PREDICATE `!e` (Ford, "Parsing Expression Grammars: A Recognition-Based Syntactic
+// Foundation", POPL 2004, section 3.1). `NotPredicate { element }` succeeds WITHOUT CONSUMING INPUT
+// exactly where `element` fails at that position, and fails where it matches. It derives no tree:
+// standing alone it captures the empty capture, and as one side of a Sequence it captures nothing,
+// so the sequence captures its other side (v2.compiler.parse parse_expr_sequence and
+// grammar_emit_sequence read that one rule in both directions). Backward it emits no terminal and
+// refuses nothing. The and-predicate `&e` is NOT a second variant: Ford derives it as `!!e`, and
+// `NotPredicate { element: NotPredicate { element: e } }` is exactly that.
+fn grammar_expr_not_predicate(element: GrammarExpr) -> GrammarExpr {
+  NotPredicate { element: element }
+}
+
 fn grammar_expr_expect(element: GrammarExpr, reason: ParseRefusalReason) -> GrammarExpr {
   Expect { element: element, reason: reason }
 }
@@ -323,6 +337,7 @@ type GrammarExprFold<R> {
   expect: fn(R, ParseRefusalReason) -> R
   refuse_on_match: fn(R, ParseRefusalReason) -> R
   after_line_break: fn(R) -> R
+  not_predicate: fn(R) -> R
 }
 
 fn fold_grammar_expr<R>(expr: GrammarExpr, algebra: GrammarExprFold<R>) -> R {
@@ -352,6 +367,8 @@ fn fold_grammar_expr<R>(expr: GrammarExpr, algebra: GrammarExprFold<R>) -> R {
       algebra.refuse_on_match(fold_grammar_expr(expr: element, algebra: algebra), reason)
     AfterLineBreak { element: element } =>
       algebra.after_line_break(fold_grammar_expr(expr: element, algebra: algebra))
+    NotPredicate { element: element } =>
+      algebra.not_predicate(fold_grammar_expr(expr: element, algebra: algebra))
   }
 }
 
@@ -429,7 +446,7 @@ fn grammar_atom(identity: Symbol) -> Node {
 
 fn grammar_named_edge(name: Symbol, target: Node) -> Edge {
   Edge {
-    label: Named { name: name },
+    label: Authored { name: name },
     target: target
   }
 }
@@ -817,7 +834,8 @@ fn formal_rhs_from_node(node: Node) -> Witness<List<FormalGrammarSymbol>> {
                       }
                     Violates { diagnostic: d } => Violates { diagnostic: d }
                   }
-                Named { name: _ } => acc
+                Authored { name: _ } => acc
+                StructuralLabel { label: _ } => acc
               }
           }
         }
@@ -926,13 +944,14 @@ fn grammar_relation_rules_formal_productions_from_rows(rules: Node) -> Outcome<L
         init: outcome_accepted(value: Empty),
         f: fn(acc, edge) {
           match edge.label {
-            Named { name: n } =>
+            Authored { name: n } =>
               if n == ^grammar_relation_rules_formal_productions {
                 acc
               } else {
                 grammar_relation_rules_formal_productions_step(acc: acc, row: edge.target)
               }
             Positional => acc
+            StructuralLabel { label: _ } => acc
           }
         }
       )
@@ -988,7 +1007,8 @@ fn formal_productions_from_catalog_node(node: Node) -> Outcome<List<FormalProduc
                       )
                     Violates { diagnostic: d } => outcome_rejected(d)
                   }
-                Named { name: _ } => outcome_accepted(value: productions)
+                Authored { name: _ } => outcome_accepted(value: productions)
+                StructuralLabel { label: _ } => outcome_accepted(value: productions)
               }
             }
           )
@@ -1133,7 +1153,8 @@ fn conj_positional_children(parent: Node) -> List<Node> {
         f: fn(acc, edge) {
           match edge.label {
             Positional => list_snoc_item(xs: acc, item: edge.target)
-            Named { name: _ } => acc
+            Authored { name: _ } => acc
+            StructuralLabel { label: _ } => acc
           }
         }
       )
@@ -2321,6 +2342,11 @@ fn grammar_expr_to_node(expr: GrammarExpr) -> Node {
         grammar_expr_node(children: [
           grammar_named_edge(name: ^grammar_after_line_break_element_node_projection, target: element_node)
         ])
+      },
+      not_predicate: fn(element_node) {
+        grammar_expr_node(children: [
+          grammar_named_edge(name: ^grammar_not_predicate_element_node_projection, target: element_node)
+        ])
       }
     }
   )
@@ -2871,7 +2897,7 @@ fn grammar_relation_row_reverse_parse_selection(rules: Node, emitted: Node) -> O
             init: BackwardRowNone,
             f: fn(acc, edge) {
               match edge.label {
-                Named { name: n } =>
+                Authored { name: n } =>
                   if n == ^grammar_relation_rules_formal_productions {
                     acc
                   } else {
@@ -2883,6 +2909,7 @@ fn grammar_relation_row_reverse_parse_selection(rules: Node, emitted: Node) -> O
                     )
                   }
                 Positional => acc
+                StructuralLabel { label: _ } => acc
               }
             }
           ) {
@@ -2946,7 +2973,7 @@ fn grammar_relation_row_forward_select(
         init: GrammarRelationForwardRowNone,
         f: fn(acc, e) {
           match e.label {
-            Named { name: n } =>
+            Authored { name: n } =>
               if grammar_relation_forward_row_select_skip_catalog_edge(name: n) {
                 acc
               } else {
@@ -2957,6 +2984,7 @@ fn grammar_relation_row_forward_select(
                 )
               }
             Positional => acc
+            StructuralLabel { label: _ } => acc
           }
         }
       )
@@ -3077,12 +3105,17 @@ fn grammar_node_carries_surface_identity(node: Node, surface_identity: Symbol) -
           acc
         } else {
           match e.label {
-            Named { name: n } =>
+            Authored { name: n } =>
               (n == surface_identity)
                 || grammar_node_carries_surface_identity(
                   node: e.target,
                   surface_identity: surface_identity
                 )
+            StructuralLabel { label: _ } =>
+              grammar_node_carries_surface_identity(
+                node: e.target,
+                surface_identity: surface_identity
+              )
             Positional =>
               grammar_node_carries_surface_identity(
                 node: e.target,
@@ -3292,7 +3325,20 @@ fn grammar_emit_literal_terminal(token_class: Symbol, lexeme: Symbol, node: Node
   }
 }
 
+// A predicate side of a sequence captured nothing (grammar_expr_not_predicate), so the whole node is
+// the other side's capture.
 fn grammar_emit_sequence(index: GrammarEmitIndex, left: GrammarExpr, right: GrammarExpr, node: Node) -> GrammarEmitWalk {
+  match left {
+    NotPredicate { element: _ } => grammar_emit_expr(index: index, expr: right, node: node)
+    _ =>
+      match right {
+        NotPredicate { element: _ } => grammar_emit_expr(index: index, expr: left, node: node)
+        _ => grammar_emit_sequence_pair(index: index, left: left, right: right, node: node)
+      }
+  }
+}
+
+fn grammar_emit_sequence_pair(index: GrammarEmitIndex, left: GrammarExpr, right: GrammarExpr, node: Node) -> GrammarEmitWalk {
   match named_child_lookup(root: node, name: ^grammar_sequence_left_node_projection) {
     NamedChildMissing => grammar_emit_mismatch(reason: ^grammar_emit_sequence_shape_mismatch, at: node)
     NamedChildAmbiguous => grammar_emit_projection_ambiguous(at: node)
@@ -3349,6 +3395,7 @@ fn grammar_emit_expr(index: GrammarEmitIndex, expr: GrammarExpr, node: Node) -> 
     Expect { element: e, reason: _ } => grammar_emit_expr(index: index, expr: e, node: node)
     RefuseOnMatch { element: _, reason: _ } => grammar_emit_mismatch(reason: ^grammar_emit_refuse_on_match_derives_no_tree, at: node)
     AfterLineBreak { element: e } => grammar_emit_after_line_break(index: index, element: e, node: node)
+    NotPredicate { element: _ } => GrammarEmitWalked { terminals: [] }
   }
 }
 

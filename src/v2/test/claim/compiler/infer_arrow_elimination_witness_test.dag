@@ -18,7 +18,7 @@ import v2.std.logic { Bool, bool_node }
 import v2.std.optional { Absent, Present }
 import v2.std.runtime { RuntimeValue }
 import v2.std.witness { Holds, Violates }
-import v2.std.node { ComputationNode, Conj, Edge, Named, Node, Positional, Symbol, Transform, TypeNode, node_synthetic }
+import v2.std.node { ComputationNode, Conj, Edge, Authored, Node, Positional, Symbol, Transform, TypeNode, node_synthetic }
 import v2.std.node_query { binder_edge }
 
 fn ae_domain() -> Node {

@@ -35,7 +35,7 @@ import v2.std.node {
   ComputationNode,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Symbol,
   Transform,
@@ -108,8 +108,8 @@ fn dotted_fixture_seq(left: Node, right: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^grammar_sequence_left_node_projection }, target: left },
-      Edge { label: Named { name: ^grammar_sequence_right_node_projection }, target: right }
+      Edge { label: Authored { name: ^grammar_sequence_left_node_projection }, target: left },
+      Edge { label: Authored { name: ^grammar_sequence_right_node_projection }, target: right }
     ]
   )
 }
@@ -177,7 +177,7 @@ fn dotted_fixture_shell(captured: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^grammar_production_captured_node_projection }, target: captured }
+      Edge { label: Authored { name: ^grammar_production_captured_node_projection }, target: captured }
     ]
   )
 }

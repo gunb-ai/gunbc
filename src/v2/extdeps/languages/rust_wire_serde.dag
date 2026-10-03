@@ -107,7 +107,8 @@ fn rust_ws_lex_rules() -> LexRuleSet {
         token_class: ^rust_ws_token_enum_review_event_body,
         text: rust_ws_review_event_body_golden
       )
-    ]
+    ],
+    modes: []
   }
 }
 

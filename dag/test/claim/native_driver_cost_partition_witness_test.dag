@@ -15,6 +15,7 @@ import std.compiler_entry {
   ExclusiveModuleRelease,
   ExclusiveRelayEmit,
   ExclusiveDemandScheduling,
+  ExclusiveDriverCollection,
   ExclusiveOccurrenceCensus,
   NativeDriverCostOverAttributed,
   NativeDriverCostReconciled,
@@ -45,6 +46,7 @@ fn sample_exclusive_rows() -> NativeDriverExclusiveRows {
       ExclusiveModuleRelease => nanosecond(count: 1009)
       ExclusiveRelayEmit => nanosecond(count: 10007)
       ExclusiveDemandScheduling => nanosecond(count: 7000003)
+      ExclusiveDriverCollection => nanosecond(count: 20011)
       ExclusiveOccurrenceCensus => nanosecond(count: 0)
     }
   })
@@ -63,7 +65,7 @@ fn sample_exclusive_rows() -> NativeDriverExclusiveRows {
 // fails here, rather than silently dropping that phase's time into the remainder.
 test fn exclusive_sum_is_every_row_the_law_folds() -> Bool {
   native_driver_exclusive_sum(rows: sample_exclusive_rows())
-    == nanosecond(count: 3440619021437)
+    == nanosecond(count: 3440619041448)
 }
 
 test fn a_parent_that_covers_the_exclusive_rows_within_tolerance_reconciles() -> Bool {
@@ -93,6 +95,7 @@ test fn exclusive_rows_past_the_parent_are_over_attributed() -> Bool {
         ExclusiveModuleRelease => nanosecond(count: 0)
         ExclusiveRelayEmit => nanosecond(count: 0)
         ExclusiveDemandScheduling => nanosecond(count: 0)
+        ExclusiveDriverCollection => nanosecond(count: 0)
         ExclusiveOccurrenceCensus => nanosecond(count: 0)
       }
     }),
@@ -120,6 +123,7 @@ test fn a_remainder_past_tolerance_is_not_a_partition() -> Bool {
         ExclusiveModuleRelease => nanosecond(count: 0)
         ExclusiveRelayEmit => nanosecond(count: 0)
         ExclusiveDemandScheduling => nanosecond(count: 0)
+        ExclusiveDriverCollection => nanosecond(count: 0)
         ExclusiveOccurrenceCensus => nanosecond(count: 0)
       }
     }),
@@ -165,6 +169,7 @@ test fn an_over_attribution_routed_through_demand_scheduling_is_the_same_refusal
         ExclusiveModuleRelease => nanosecond(count: 0)
         ExclusiveRelayEmit => nanosecond(count: 0)
         ExclusiveDemandScheduling => nanosecond(count: 80)
+        ExclusiveDriverCollection => nanosecond(count: 0)
         ExclusiveOccurrenceCensus => nanosecond(count: 0)
       }
     }),
@@ -192,6 +197,7 @@ test fn an_over_attribution_routed_through_universe_derivation_is_the_same_refus
         ExclusiveModuleRelease => nanosecond(count: 0)
         ExclusiveRelayEmit => nanosecond(count: 0)
         ExclusiveDemandScheduling => nanosecond(count: 0)
+        ExclusiveDriverCollection => nanosecond(count: 0)
         ExclusiveOccurrenceCensus => nanosecond(count: 0)
       }
     }),
@@ -219,6 +225,7 @@ test fn an_over_attribution_routed_through_receipt_admission_is_the_same_refusal
         ExclusiveModuleRelease => nanosecond(count: 0)
         ExclusiveRelayEmit => nanosecond(count: 0)
         ExclusiveDemandScheduling => nanosecond(count: 0)
+        ExclusiveDriverCollection => nanosecond(count: 0)
         ExclusiveOccurrenceCensus => nanosecond(count: 0)
       }
     }),
@@ -251,6 +258,7 @@ test fn a_driver_handed_its_universe_reconciles_with_the_phases_it_does_not_have
         ExclusiveModuleRelease => nanosecond(count: 0)
         ExclusiveRelayEmit => nanosecond(count: 0)
         ExclusiveDemandScheduling => nanosecond(count: 0)
+        ExclusiveDriverCollection => nanosecond(count: 0)
         ExclusiveOccurrenceCensus => nanosecond(count: 0)
       }
     }),
@@ -277,6 +285,7 @@ test fn a_driver_that_derives_its_universe_reconciles_over_the_same_law() -> Boo
         ExclusiveModuleRelease => nanosecond(count: 0)
         ExclusiveRelayEmit => nanosecond(count: 0)
         ExclusiveDemandScheduling => nanosecond(count: 0)
+        ExclusiveDriverCollection => nanosecond(count: 0)
         ExclusiveOccurrenceCensus => nanosecond(count: 0)
       }
     }),
@@ -345,6 +354,7 @@ fn serialization_sample_rows_measured() -> NativeDriverExclusiveRows {
       ExclusiveModuleRelease => nanosecond(count: 0)
       ExclusiveRelayEmit => nanosecond(count: 0)
       ExclusiveDemandScheduling => nanosecond(count: 0)
+      ExclusiveDriverCollection => nanosecond(count: 0)
       ExclusiveOccurrenceCensus => nanosecond(count: 0)
     }
   })
@@ -363,6 +373,7 @@ fn serialization_sample_rows_dropped() -> NativeDriverExclusiveRows {
       ExclusiveModuleRelease => nanosecond(count: 0)
       ExclusiveRelayEmit => nanosecond(count: 0)
       ExclusiveDemandScheduling => nanosecond(count: 0)
+      ExclusiveDriverCollection => nanosecond(count: 0)
       ExclusiveOccurrenceCensus => nanosecond(count: 0)
     }
   })

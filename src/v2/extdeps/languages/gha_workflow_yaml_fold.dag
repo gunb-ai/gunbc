@@ -700,7 +700,8 @@ fn gha_fold_lex_rules() -> LexRuleSet {
       gha_fold_lex_rule(token_class: ^gha_token_yaml_job_trailing_newline, text: "\n"),
       gha_fold_lex_rule(token_class: ^gha_fold_prod_kind_tag, text: gha_fold_prod_kind_sentinel),
       gha_fold_lex_rule(token_class: ^gha_fold_scalar_kind, text: gha_fold_scalar_kind_sentinel)
-    ]
+    ],
+    modes: []
   }
 }
 

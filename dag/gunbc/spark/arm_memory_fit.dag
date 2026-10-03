@@ -560,7 +560,9 @@ fn arm_memory_fit_subject(
                       deductions: deductions,
                     } }
                 }
-              _ => ArmMemorySubjectRefused { cause: "unreachable: checkpoint_total_span mints an interval or refuses" as NonEmptyStr }
+              ComponentBoundExact { bytes: _, how: _ } => ArmMemorySubjectRefused { cause: "unreachable: checkpoint_total_span mints an interval or refuses" as NonEmptyStr }
+              ComponentBoundCeiling { bytes: _, receipt: _ } => ArmMemorySubjectRefused { cause: "unreachable: checkpoint_total_span mints an interval or refuses" as NonEmptyStr }
+              ComponentBoundOpen { obligation: _ } => ArmMemorySubjectRefused { cause: "unreachable: checkpoint_total_span mints an interval or refuses" as NonEmptyStr }
             }
         }
     }
@@ -608,7 +610,9 @@ fn arm_memory_fit_subject_with_rank_demands(
                       deductions: deductions,
                     } }
                 }
-              _ => ArmMemorySubjectRefused { cause: "unreachable: checkpoint_total_span mints an interval or refuses" as NonEmptyStr }
+              ComponentBoundExact { bytes: _, how: _ } => ArmMemorySubjectRefused { cause: "unreachable: checkpoint_total_span mints an interval or refuses" as NonEmptyStr }
+              ComponentBoundCeiling { bytes: _, receipt: _ } => ArmMemorySubjectRefused { cause: "unreachable: checkpoint_total_span mints an interval or refuses" as NonEmptyStr }
+              ComponentBoundOpen { obligation: _ } => ArmMemorySubjectRefused { cause: "unreachable: checkpoint_total_span mints an interval or refuses" as NonEmptyStr }
             }
         }
     }
@@ -2052,7 +2056,13 @@ fn arm_admit_wet_binding(binding: ArmWetReceiptBinding, target: MemoryProofSubje
           cause: "a negative component observation is an attribution refusal and travels only with its own mechanism: it binds to graph-capture and refuses every other term, because an unattributable interval cannot be placed on a mechanism it was not read from" as NonEmptyStr,
         }
       }
-    _ => arm_admit_wet_binding_subject_wall(binding: binding, target: target)
+    ArmWetDerivedExact { bytes: _, derivation: _ } => arm_admit_wet_binding_subject_wall(binding: binding, target: target)
+    ArmWetDerivedConservativeInterval { lower: _, upper: _, derivation: _ } => arm_admit_wet_binding_subject_wall(binding: binding, target: target)
+    ArmWetMeasuredUpperBound { bytes: _, receipt: _ } => arm_admit_wet_binding_subject_wall(binding: binding, target: target)
+    ArmWetObservedInterval { lower: _, upper: _, receipt: _ } => arm_admit_wet_binding_subject_wall(binding: binding, target: target)
+    ArmWetObservationOnly { bytes: _, receipt: _, why: _ } => arm_admit_wet_binding_subject_wall(binding: binding, target: target)
+    ArmWetCompositeObservation { bytes: _, receipt: _, why: _ } => arm_admit_wet_binding_subject_wall(binding: binding, target: target)
+    ArmWetModelFalsified { component: _, predicted: _, observed_bytes: _, receipt: _ } => arm_admit_wet_binding_subject_wall(binding: binding, target: target)
   }
 }
 
@@ -2189,21 +2199,29 @@ fn cache_roster_obligations(layout: ResolvedKvLayout, shape: Glm53FlashHybridSha
   } else {
     let kda_ok = any(layout.groups, g => match g.kind {
       MambaState => attention_layer_count_value(c: g.layer_count) == shape.kda_linear_attention_layers
-      _ => false
+      FullAttention => false
+      SlidingWindowAttention { window: _ } => false
+      KPoolIndex { pool_every: _ } => false
     })
     let sparse_ok = any(layout.groups, g => match g.kind {
       FullAttention => attention_layer_count_value(c: g.layer_count) == shape.sparse_attention_layers
-      _ => false
+      SlidingWindowAttention { window: _ } => false
+      MambaState => false
+      KPoolIndex { pool_every: _ } => false
     })
     let kpool_ok = any(layout.groups, g => match g.kind {
       KPoolIndex { pool_every: p } => token_count_value(t: p) == shape.index_kpool
-      _ => false
+      FullAttention => false
+      SlidingWindowAttention { window: _ } => false
+      MambaState => false
     })
     let kpool_other = first(filter(layout.groups, g => match g.kind {
       KPoolIndex { pool_every: p } => token_count_value(t: p) != shape.index_kpool
-      _ => false
+      FullAttention => false
+      SlidingWindowAttention { window: _ } => false
+      MambaState => false
     }))
-    let mamba_count = count(filter(layout.groups, g => match g.kind { MambaState => true  _ => false }))
+    let mamba_count = count(filter(layout.groups, g => match g.kind { MambaState => true  FullAttention => false  SlidingWindowAttention { window: _ } => false  KPoolIndex { pool_every: _ } => false }))
     concat(
       match kda_ok {
         true => [] as List<NonEmptyStr>
@@ -2391,21 +2409,27 @@ fn cache_fit_proved_corner(supplies: List<ArmRankCacheSupply>, blocks_per_seat: 
 fn cache_plan_mamba_entries(plan: ResolvedKvAllocationPlan) -> Nat {
   fold(plan.groups, init: 0, f: (acc, g) => match g.kind {
     MambaState => acc + length(g.layer_identities)
-    _ => acc
+    FullAttention => acc
+    SlidingWindowAttention { window: _ } => acc
+    KPoolIndex { pool_every: _ } => acc
   })
 }
 
 fn cache_plan_windowed_entries(plan: ResolvedKvAllocationPlan) -> Nat {
   fold(plan.groups, init: 0, f: (acc, g) => match g.kind {
     SlidingWindowAttention { window: _ } => acc + length(g.layer_identities)
-    _ => acc
+    FullAttention => acc
+    MambaState => acc
+    KPoolIndex { pool_every: _ } => acc
   })
 }
 
 fn cache_plan_full_attention_identities_with(plan: ResolvedKvAllocationPlan, suffix: String) -> Nat {
   fold(plan.groups, init: 0, f: (acc, g) => match g.kind {
     FullAttention => acc + length(filter(g.layer_identities, id => string_contains(s: id as String, pattern: suffix)))
-    _ => acc
+    SlidingWindowAttention { window: _ } => acc
+    MambaState => acc
+    KPoolIndex { pool_every: _ } => acc
   })
 }
 

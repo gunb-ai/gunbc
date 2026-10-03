@@ -1176,7 +1176,7 @@ fn converged_evidence_of(
       removals_applied: removals,
       required_contexts: map(observed_required_checks(standing: st), c => c.context),
       enforcement: ruleset_enforcement_wire_label(e: e),
-      reader_cannot_bypass: match b { ThisReaderCannotBypass => true _ => false },
+      reader_cannot_bypass: match b { ThisReaderCannotBypass => true ThisReaderCanBypassPullRequestsOnly => false ThisReaderCanBypassAlways => false UnrecognizedReaderBypassStanding { raw: _ } => false },
     }
   }
 }
