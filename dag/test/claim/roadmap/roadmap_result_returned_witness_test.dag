@@ -68,8 +68,8 @@ fn rr_claim(node: RoadmapNodeId) -> RoadmapEventEnvelope {
   rr_claim_by(node: node, requester: rr_alice(), parent: none, at: "t1")
 }
 
-fn rr_result(node: RoadmapNodeId, attempt: String, claim: RoadmapEventId, return_to: EventPrincipal, outcome: AttemptResultOutcome, parent: RoadmapEventId, at: String) -> RoadmapEventEnvelope {
-  rr_ev(node: node, kind: ResultReturned { attempt: attempt as NonEmptyStr, claim: claim, return_to: return_to, outcome: outcome }, parent: Present { value: parent }, author: rr_fabric(), at: at)
+fn rr_result(node: RoadmapNodeId, attempt: String, claim: RoadmapEventId, outcome: AttemptResultOutcome, parent: RoadmapEventId, at: String) -> RoadmapEventEnvelope {
+  rr_ev(node: node, kind: ResultReturned { attempt: attempt as NonEmptyStr, claim: claim, outcome: outcome }, parent: Present { value: parent }, author: rr_fabric(), at: at)
 }
 
 fn rr_published() -> AttemptResultOutcome {
@@ -149,8 +149,8 @@ test fn a_retryable_state_that_resolves_yields_exactly_the_final_result() -> Boo
   let early_publication = rr_standing_is_pending(handoff: HandoffBlockedOnPublication { head_sha: "52c56a8", cause: "the publication observation was refused" })
   let early_verdict = rr_standing_is_pending(handoff: HandoffEvidenceRefused { reason: "the verification receipt for this head is unreadable" })
   let later_published = match attempt_result_standing(handoff: HandoffPublished { head_sha: "52c56a8", pr_number: 12210, url: "https://github.com/gunb-ai/gunbc/pull/12210" }) {
-    AttemptResultTerminal { outcome } => match result_return_decision(node: rr_node(), attempt_key: rr_attempt, claim: claim.id, return_to: rr_alice(), outcome: outcome, node_envelopes: [claim], recorded_at: "t3") {
-      ResultReturnAppend { event } => event.kind == ResultReturned { attempt: rr_attempt as NonEmptyStr, claim: claim.id, return_to: rr_alice(), outcome: rr_published() }
+    AttemptResultTerminal { outcome } => match result_return_decision(node: rr_node(), attempt_key: rr_attempt, claim: claim.id, outcome: outcome, node_envelopes: [claim], recorded_at: "t3") {
+      ResultReturnAppend { event } => event.kind == ResultReturned { attempt: rr_attempt as NonEmptyStr, claim: claim.id, outcome: rr_published() }
       ResultAlreadyReturned { id: _ } => false
       ResultReturnRefused { reason: _ } => false
     }
@@ -247,9 +247,10 @@ test fn a_later_claim_or_release_does_not_change_the_attempts_requester() -> Boo
   let released = rr_ev(node: rr_node(), kind: Released, parent: Present { value: c1.id }, author: rr_alice(), at: "t2")
   let after_second_claim = rr_joined_to(join: result_request_join(binding: rr_bound(claim: c1.id), node_envelopes: [c1, c2]), claim: c1.id, principal: rr_alice())
   let after_release = rr_joined_to(join: result_request_join(binding: rr_bound(claim: c1.id), node_envelopes: [c1, released]), claim: c1.id, principal: rr_alice())
-  let appended_to_alice = match result_return_decision(node: rr_node(), attempt_key: rr_attempt, claim: c1.id, return_to: rr_alice(), outcome: rr_published(), node_envelopes: [c1, c2], recorded_at: "t3") {
+  let appended_to_alice = match result_return_decision(node: rr_node(), attempt_key: rr_attempt, claim: c1.id, outcome: rr_published(), node_envelopes: [c1, c2], recorded_at: "t3") {
     ResultReturnAppend { event } =>
-      event.kind == ResultReturned { attempt: rr_attempt as NonEmptyStr, claim: c1.id, return_to: rr_alice(), outcome: rr_published() }
+      event.kind == ResultReturned { attempt: rr_attempt as NonEmptyStr, claim: c1.id, outcome: rr_published() }
+        && rr_joined_to(join: result_request_join(binding: rr_bound(claim: c1.id), node_envelopes: [c1, c2, roadmap_event_envelope(e: event)]), claim: c1.id, principal: rr_alice())
         && event_principal_label(p: event.author) == "principal:gunbc/workflows/fabric"
         && (match event.parent { Present { value: p } => (p as String) == (c2.id as String)  Absent => false })
     ResultAlreadyReturned { id: _ } => false
@@ -296,29 +297,29 @@ test fn an_attempt_naming_a_missing_foreign_or_non_claim_event_cannot_be_joined(
 
 // CONTROL 4 AND THE ONE-RESULT RULE: IDEMPOTENCE COMPARES THE BINDING AS WELL AS THE OUTCOME, AND
 // ANYTHING ELSE IS REFUSED. The identical result already on the history is already returned and
-// names its event. The same outcome under a DIFFERENT claim, a different outcome under the same
-// claim, and a different return_to are each refused -- no second result is derived -- and the
-// carrier's own admission refuses the same events were a writer to try.
+// names its event. The same outcome under a DIFFERENT claim and a different outcome under the same
+// claim are each refused -- no second result is derived -- and the carrier's own admission refuses
+// a second result, and a result for a claim the history does not carry, were a writer to try.
 test fn an_answered_attempt_is_already_returned_only_for_the_same_binding_and_outcome() -> Bool {
   let c1 = rr_claim_by(node: rr_node(), requester: rr_alice(), parent: none, at: "t1")
   let c2 = rr_claim_by(node: rr_node(), requester: rr_bob(), parent: Present { value: c1.id }, at: "t2")
-  let failed = rr_result(node: rr_node(), attempt: rr_attempt, claim: c1.id, return_to: rr_alice(), outcome: rr_failed(), parent: c2.id, at: "t3")
+  let failed = rr_result(node: rr_node(), attempt: rr_attempt, claim: c1.id, outcome: rr_failed(), parent: c2.id, at: "t3")
   let history = [c1, c2, failed]
-  let same = match result_return_decision(node: rr_node(), attempt_key: rr_attempt, claim: c1.id, return_to: rr_alice(), outcome: rr_failed(), node_envelopes: history, recorded_at: "t4") {
+  let same = match result_return_decision(node: rr_node(), attempt_key: rr_attempt, claim: c1.id, outcome: rr_failed(), node_envelopes: history, recorded_at: "t4") {
     ResultAlreadyReturned { id } => (id as String) == (failed.id as String)
     ResultReturnAppend { event: _ } => false
     ResultReturnRefused { reason: _ } => false
   }
-  let other_claim = rr_decision_refuses_second(d: result_return_decision(node: rr_node(), attempt_key: rr_attempt, claim: c2.id, return_to: rr_bob(), outcome: rr_failed(), node_envelopes: history, recorded_at: "t4"))
-  let other_outcome = rr_decision_refuses_second(d: result_return_decision(node: rr_node(), attempt_key: rr_attempt, claim: c1.id, return_to: rr_alice(), outcome: rr_published(), node_envelopes: history, recorded_at: "t4"))
-  let other_recipient = rr_decision_refuses_second(d: result_return_decision(node: rr_node(), attempt_key: rr_attempt, claim: c1.id, return_to: rr_bob(), outcome: rr_failed(), node_envelopes: history, recorded_at: "t4"))
-  let carrier_refuses = !roadmap_event_admitted_after(envs: history, event: RoadmapEvent { node: rr_node(), author: rr_fabric(), parent: Present { value: failed.id }, kind: ResultReturned { attempt: rr_attempt as NonEmptyStr, claim: c1.id, return_to: rr_alice(), outcome: rr_published() }, recorded_at: "t4" })
-  let another_attempt_appends = match result_return_decision(node: rr_node(), attempt_key: "0ther0ther0ther00", claim: c2.id, return_to: rr_bob(), outcome: rr_failed(), node_envelopes: history, recorded_at: "t4") {
+  let other_claim = rr_decision_refuses_second(d: result_return_decision(node: rr_node(), attempt_key: rr_attempt, claim: c2.id, outcome: rr_failed(), node_envelopes: history, recorded_at: "t4"))
+  let other_outcome = rr_decision_refuses_second(d: result_return_decision(node: rr_node(), attempt_key: rr_attempt, claim: c1.id, outcome: rr_published(), node_envelopes: history, recorded_at: "t4"))
+  let carrier_refuses = !roadmap_event_admitted_after(envs: history, event: RoadmapEvent { node: rr_node(), author: rr_fabric(), parent: Present { value: failed.id }, kind: ResultReturned { attempt: rr_attempt as NonEmptyStr, claim: c1.id, outcome: rr_published() }, recorded_at: "t4" })
+  let unjoined_refused_by_carrier = !roadmap_event_admitted_after(envs: [c1, c2], event: RoadmapEvent { node: rr_node(), author: rr_fabric(), parent: Present { value: c2.id }, kind: ResultReturned { attempt: rr_attempt as NonEmptyStr, claim: "0000000000000000" as RoadmapEventId, outcome: rr_published() }, recorded_at: "t4" })
+  let another_attempt_appends = match result_return_decision(node: rr_node(), attempt_key: "0ther0ther0ther00", claim: c2.id, outcome: rr_failed(), node_envelopes: history, recorded_at: "t4") {
     ResultReturnAppend { event } => match event.parent { Present { value: p } => (p as String) == (failed.id as String)  Absent => false }
     ResultAlreadyReturned { id: _ } => false
     ResultReturnRefused { reason: _ } => false
   }
-  same && other_claim && other_outcome && other_recipient && carrier_refuses && another_attempt_appends
+  same && other_claim && other_outcome && carrier_refuses && unjoined_refused_by_carrier && another_attempt_appends
 }
 
 fn rr_decision_refuses_second(d: ResultReturnDecision) -> Bool {
@@ -335,12 +336,12 @@ test fn a_forked_history_or_a_keyless_attempt_refuses_the_write() -> Bool {
   let claim = rr_claim(node: rr_node())
   let left = rr_ev(node: rr_node(), kind: Progress { note: "left" as NonEmptyStr }, parent: Present { value: claim.id }, author: rr_fabric(), at: "t2")
   let right = rr_ev(node: rr_node(), kind: Progress { note: "right" as NonEmptyStr }, parent: Present { value: claim.id }, author: rr_fabric(), at: "t2")
-  let forked = match result_return_decision(node: rr_node(), attempt_key: rr_attempt, claim: claim.id, return_to: rr_alice(), outcome: rr_published(), node_envelopes: [claim, left, right], recorded_at: "t3") {
+  let forked = match result_return_decision(node: rr_node(), attempt_key: rr_attempt, claim: claim.id, outcome: rr_published(), node_envelopes: [claim, left, right], recorded_at: "t3") {
     ResultReturnRefused { reason } => string_contains(s: reason, pattern: "forked history")
     ResultReturnAppend { event: _ } => false
     ResultAlreadyReturned { id: _ } => false
   }
-  let keyless = match result_return_decision(node: rr_node(), attempt_key: "", claim: claim.id, return_to: rr_alice(), outcome: rr_published(), node_envelopes: [claim], recorded_at: "t3") {
+  let keyless = match result_return_decision(node: rr_node(), attempt_key: "", claim: claim.id, outcome: rr_published(), node_envelopes: [claim], recorded_at: "t3") {
     ResultReturnRefused { reason } => string_contains(s: reason, pattern: "no key")
     ResultReturnAppend { event: _ } => false
     ResultAlreadyReturned { id: _ } => false
@@ -358,7 +359,7 @@ test fn a_superseded_attempt_stays_eligible_until_its_result_is_on_the_log() -> 
   let keyless = DispatchAttemptRef { node_id: "result-returned-node" as NonEmptyStr, branch: "dispatch/result-returned-node" as NonEmptyStr, attempt_key: "" }
   let claim = rr_claim(node: rr_node())
   let before = result_return_open_attempts(attempts: [k2, k, keyless], envelopes: [claim])
-  let delivered = rr_result(node: rr_node(), attempt: rr_attempt, claim: claim.id, return_to: rr_alice(), outcome: rr_failed(), parent: claim.id, at: "t2")
+  let delivered = rr_result(node: rr_node(), attempt: rr_attempt, claim: claim.id, outcome: rr_failed(), parent: claim.id, at: "t2")
   let after = result_return_open_attempts(attempts: [k2, k, keyless], envelopes: [claim, delivered])
   count(before) == 2
     && any(before, a => a.attempt_key == rr_attempt)
@@ -373,7 +374,7 @@ test fn a_superseded_attempt_stays_eligible_until_its_result_is_on_the_log() -> 
 test fn the_reader_observes_the_attempts_result_joined_to_its_claim() -> Bool {
   let c1 = rr_claim_by(node: rr_node(), requester: rr_alice(), parent: none, at: "t1")
   let c2 = rr_claim_by(node: rr_node(), requester: rr_bob(), parent: Present { value: c1.id }, at: "t2")
-  let published = rr_result(node: rr_node(), attempt: rr_attempt, claim: c1.id, return_to: rr_alice(), outcome: rr_published(), parent: c2.id, at: "2026-10-03T08:00:00Z")
+  let published = rr_result(node: rr_node(), attempt: rr_attempt, claim: c1.id, outcome: rr_published(), parent: c2.id, at: "2026-10-03T08:00:00Z")
   match result_returned_observation_of(read: AllEventsRead { envelopes: [c2, published, c1] }, attempt_key: rr_attempt) {
     ResultReturnedObserved { node, event, claim, return_to, outcome, recorded_at } =>
       (node as String) == (rr_node() as String)
@@ -393,7 +394,7 @@ test fn the_reader_observes_the_attempts_result_joined_to_its_claim() -> Bool {
 // attempt -- never the other attempt's result and never a default outcome.
 test fn a_log_without_this_attempts_result_reads_as_not_returned() -> Bool {
   let claim = rr_claim(node: rr_node())
-  let other = rr_result(node: rr_node(), attempt: "0ther0ther0ther00", claim: claim.id, return_to: rr_alice(), outcome: rr_published(), parent: claim.id, at: "t2")
+  let other = rr_result(node: rr_node(), attempt: "0ther0ther0ther00", claim: claim.id, outcome: rr_published(), parent: claim.id, at: "t2")
   all([[claim, other], [claim], []], envelopes => match result_returned_observation_of(read: AllEventsRead { envelopes: envelopes }, attempt_key: rr_attempt) {
     ResultNotReturned { attempt_key } => attempt_key == rr_attempt
     ResultReturnedObserved { node: _, event: _, claim: _, return_to: _, outcome: _, recorded_at: _ } => false
@@ -413,24 +414,21 @@ fn rr_unobserved_at(o: ResultReturnedObservation, step: String) -> Bool {
 
 // THE READER'S REFUSALS, each distinct from absence and from each other: an unreadable log; a forked
 // issue history; two results for one attempt (which the carrier does not admit, and which the
-// reader does not paper over by picking one); a result whose claim the history does not carry; a
-// result naming a principal its claim does not return to; one attempt answered on two issues; an
-// empty key.
+// reader does not paper over by picking one); a result whose claim the history does not carry
+// (which the carrier does not admit either); one attempt answered on two issues; an empty key.
 test fn an_unreadable_forked_duplicated_or_misjoined_result_refuses_rather_than_answering() -> Bool {
   let claim = rr_claim(node: rr_node())
-  let result = rr_result(node: rr_node(), attempt: rr_attempt, claim: claim.id, return_to: rr_alice(), outcome: rr_published(), parent: claim.id, at: "t2")
+  let result = rr_result(node: rr_node(), attempt: rr_attempt, claim: claim.id, outcome: rr_published(), parent: claim.id, at: "t2")
   let unreadable = rr_unobserved_at(o: result_returned_observation_of(read: AllEventsReadRefused { step: "sync/fetch", reason: "exit 128" }, attempt_key: rr_attempt), step: "events/sync/fetch")
   let sibling = rr_ev(node: rr_node(), kind: Progress { note: "a writer who never saw the result" as NonEmptyStr }, parent: Present { value: claim.id }, author: rr_alice(), at: "t2")
   let forked = rr_unobserved_at(o: result_returned_observation_of(read: AllEventsRead { envelopes: [claim, result, sibling] }, attempt_key: rr_attempt), step: "history")
-  let second = rr_result(node: rr_node(), attempt: rr_attempt, claim: claim.id, return_to: rr_alice(), outcome: rr_failed(), parent: result.id, at: "t3")
+  let second = rr_result(node: rr_node(), attempt: rr_attempt, claim: claim.id, outcome: rr_failed(), parent: result.id, at: "t3")
   let duplicated = rr_unobserved_at(o: result_returned_observation_of(read: AllEventsRead { envelopes: [claim, result, second] }, attempt_key: rr_attempt), step: "result-duplicate")
-  let orphan = rr_result(node: rr_node(), attempt: rr_attempt, claim: "0000000000000000" as RoadmapEventId, return_to: rr_alice(), outcome: rr_published(), parent: claim.id, at: "t2")
+  let orphan = rr_result(node: rr_node(), attempt: rr_attempt, claim: "0000000000000000" as RoadmapEventId, outcome: rr_published(), parent: claim.id, at: "t2")
   let claimless = rr_unobserved_at(o: result_returned_observation_of(read: AllEventsRead { envelopes: [claim, orphan] }, attempt_key: rr_attempt), step: "claim")
-  let wrong = rr_result(node: rr_node(), attempt: rr_attempt, claim: claim.id, return_to: rr_bob(), outcome: rr_published(), parent: claim.id, at: "t2")
-  let misaddressed = rr_unobserved_at(o: result_returned_observation_of(read: AllEventsRead { envelopes: [claim, wrong] }, attempt_key: rr_attempt), step: "claim")
   let elsewhere = "result-returned-other-node" as RoadmapNodeId
   let claim_elsewhere = rr_claim(node: elsewhere)
-  let result_elsewhere = rr_result(node: elsewhere, attempt: rr_attempt, claim: claim_elsewhere.id, return_to: rr_alice(), outcome: rr_failed(), parent: claim_elsewhere.id, at: "t2")
+  let result_elsewhere = rr_result(node: elsewhere, attempt: rr_attempt, claim: claim_elsewhere.id, outcome: rr_failed(), parent: claim_elsewhere.id, at: "t2")
   let ambiguous = match result_returned_observation_of(read: AllEventsRead { envelopes: [claim, result, claim_elsewhere, result_elsewhere] }, attempt_key: rr_attempt) {
     ResultReturnedAmbiguous { attempt_key: _, nodes } => count(nodes) == 2
     ResultReturnedObserved { node: _, event: _, claim: _, return_to: _, outcome: _, recorded_at: _ } => false
@@ -438,7 +436,7 @@ test fn an_unreadable_forked_duplicated_or_misjoined_result_refuses_rather_than_
     ResultReturnedUnobserved { step: _, reason: _ } => false
   }
   let keyless = rr_unobserved_at(o: result_returned_observation_of(read: AllEventsRead { envelopes: [claim, result] }, attempt_key: ""), step: "attempt-key")
-  unreadable && forked && duplicated && claimless && misaddressed && ambiguous && keyless
+  unreadable && forked && duplicated && claimless && ambiguous && keyless
 }
 
 // THE ROUTE OVER ITS PURE LINKS, WITH THE CARRIER'S OWN CODEC IN THE MIDDLE. The binding the launch
@@ -456,12 +454,12 @@ test fn a_bound_attempts_result_reaches_its_requester_through_the_carrier_decode
     ResultRequestNone { reason: _ } => false
     ResultRequestUnjoinable { reason: _ } => false
     ResultRequestUnreadable { reason: _ } => false
-    ResultRequestJoined { claim, return_to } =>
+    ResultRequestJoined { claim, return_to: _ } =>
       match attempt_result_standing(handoff: HandoffVerificationFailed { head_sha: "52c56a8", verdict_key: "validation-failed" }) {
         AttemptResultPending { handoff: _ } => false
         AttemptResultUnstatable { reason: _ } => false
         AttemptResultTerminal { outcome } =>
-          match result_return_decision(node: rr_node(), attempt_key: rr_attempt, claim: claim, return_to: return_to, outcome: outcome, node_envelopes: [c1, c2], recorded_at: "2026-10-03T10:00:00Z") {
+          match result_return_decision(node: rr_node(), attempt_key: rr_attempt, claim: claim, outcome: outcome, node_envelopes: [c1, c2], recorded_at: "2026-10-03T10:00:00Z") {
             ResultAlreadyReturned { id: _ } => false
             ResultReturnRefused { reason: _ } => false
             ResultReturnAppend { event } => {

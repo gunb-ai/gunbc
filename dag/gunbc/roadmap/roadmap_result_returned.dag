@@ -130,7 +130,7 @@ fn result_claim_join(node_envelopes: List<RoadmapEventEnvelope>, claim: RoadmapE
         CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => ResultRequestUnjoinable { reason: join(["the attempt is bound to event ", claim as String, ", which is not a claim"], "") }
         CommentEdited { comment: _, body: _ } => ResultRequestUnjoinable { reason: join(["the attempt is bound to event ", claim as String, ", which is not a claim"], "") }
         CommentDeleted { comment: _ } => ResultRequestUnjoinable { reason: join(["the attempt is bound to event ", claim as String, ", which is not a claim"], "") }
-        ResultReturned { attempt: _, claim: _, return_to: _, outcome: _ } => ResultRequestUnjoinable { reason: join(["the attempt is bound to event ", claim as String, ", which is not a claim"], "") }
+        ResultReturned { attempt: _, claim: _, outcome: _ } => ResultRequestUnjoinable { reason: join(["the attempt is bound to event ", claim as String, ", which is not a claim"], "") }
       }
   }
 }
@@ -146,10 +146,10 @@ fn result_request_join(binding: AttemptRequestBindingRead, node_envelopes: List<
 }
 
 // THE WRITE DECISION, PURE, OVER THE NODE'S HISTORY AS READ AND THE JOINED REQUEST. An attempt has
-// ONE final result. If the history carries none for the attempt, the result is appended, addressed
-// to the bound claim's return_to, authored by the workflow principal, chained on the single head.
-// If it carries exactly the event this decision would write -- same attempt, same claim, same
-// return_to, same outcome -- it is already returned and nothing is written. If it carries a result
+// ONE final result. If the history carries none for the attempt, the result is appended, naming the
+// bound claim, authored by the workflow principal, chained on the single head. If it carries
+// exactly the event this decision would write -- same attempt, same claim, same outcome -- it is
+// already returned and nothing is written. If it carries a result
 // that differs in ANY of those, the decision refuses: a second answer for one attempt is the thing
 // that must not exist, and deriving one means either the first was not final or the binding moved,
 // both of which someone has to look at. A forked or incomplete history refuses, because appending
@@ -163,7 +163,6 @@ fn result_return_decision(
   node: RoadmapNodeId,
   attempt_key: String,
   claim: RoadmapEventId,
-  return_to: EventPrincipal,
   outcome: AttemptResultOutcome,
   node_envelopes: List<RoadmapEventEnvelope>,
   recorded_at: String,
@@ -174,7 +173,7 @@ fn result_return_decision(
     match result_history_refusal(node_envelopes: node_envelopes) {
       Present { value: why } => ResultReturnRefused { reason: join(["the issue history cannot take a result: ", why], "") }
       Absent => {
-        let wanted = ResultReturned { attempt: attempt_key as NonEmptyStr, claim: claim, return_to: return_to, outcome: outcome }
+        let wanted = ResultReturned { attempt: attempt_key as NonEmptyStr, claim: claim, outcome: outcome }
         let existing = roadmap_results_for_attempt(envs: node_envelopes, attempt: attempt_key)
         match existing.first() {
           Present { value: prior } =>
@@ -189,7 +188,6 @@ fn result_return_decision(
                 node: node,
                 attempt: attempt_key as NonEmptyStr,
                 claim: claim,
-                return_to: return_to,
                 outcome: outcome,
                 author: EventPrincipalAuthenticated { ref: fabric_workflow_principal },
                 parent: match roadmap_event_heads(envs: node_envelopes).first() { Present { value: h } => Present { value: h.id }  Absent => none },
@@ -232,7 +230,6 @@ fn result_return_for_progress(
   layout: RoadmapEventCarrierLayout,
   progress: WorkflowAttemptProgress,
   claim: RoadmapEventId,
-  return_to: EventPrincipal,
   node_envelopes: List<RoadmapEventEnvelope>,
   recorded_at: String,
 ) -> ResultReturnOutcome {
@@ -246,7 +243,6 @@ fn result_return_for_progress(
         node: progress.node_id as NonEmptyStr as RoadmapNodeId,
         attempt_key: progress.attempt_key,
         claim: claim,
-        return_to: return_to,
         outcome: outcome,
         node_envelopes: node_envelopes,
         recorded_at: recorded_at,
@@ -288,12 +284,11 @@ fn result_return_attempt(
     ResultRequestNone { reason } => ResultReturnNoRequest { node_id: node_id, attempt_key: attempt.attempt_key, reason: reason }
     ResultRequestUnjoinable { reason } => ResultReturnUnjoinable { node_id: node_id, attempt_key: attempt.attempt_key, reason: reason }
     ResultRequestUnreadable { reason } => ResultReturnFailed { node_id: node_id, attempt_key: attempt.attempt_key, step: "request-binding", reason: reason }
-    ResultRequestJoined { claim, return_to } =>
+    ResultRequestJoined { claim, return_to: _ } =>
       result_return_for_progress(
         layout: layout,
         progress: workflow_attempt_progress(evidence: belt_workflow_attempt_evidence_for_key(instance: instance, panes: panes, attempt: attempt, current_key: attempt.attempt_key)),
         claim: claim,
-        return_to: return_to,
         node_envelopes: node_envelopes,
         recorded_at: recorded_at,
       )
@@ -391,7 +386,7 @@ fn result_return_pass_exit(pass: ResultReturnPass) -> ProcessExit {
 // Ambiguous is one attempt key answered on more than one issue, which no attempt can be.
 // Unobserved is everything that is neither: a log that could not be read, a history that cannot be
 // ordered, more than one result for the attempt, or a result whose claim the history does not
-// carry or whose principal that claim does not name -- each named by its step.
+// carry -- each named by its step.
 type ResultReturnedObservation
   = ResultReturnedObserved { node: RoadmapNodeId, event: RoadmapEventId, claim: RoadmapEventId, return_to: EventPrincipal, outcome: AttemptResultOutcome, recorded_at: String }
   | ResultNotReturned { attempt_key: String }
@@ -402,19 +397,15 @@ fn result_distinct_nodes(envelopes: List<RoadmapEventEnvelope>) -> List<String> 
   fold(envelopes, init: [], f: (acc, e) => if any(acc, n => n == (e.event.node as String)) { acc } else { concat(acc, [e.event.node as String]) })
 }
 
-// The result event re-joined to its claim: the reader does not take the event's return_to on its
-// word, it requires the claim the event names to be a Claimed on the same history stating the
-// same principal.
+// The result event joined to its claim: the event carries no principal, so the return_to the reader
+// answers with IS the claim's, and a result whose claim the history does not carry as a Claimed has
+// no recipient to report.
 fn result_returned_observation_of_envelope(env: RoadmapEventEnvelope, node_envelopes: List<RoadmapEventEnvelope>) -> ResultReturnedObservation {
   match env.event.kind {
-    ResultReturned { attempt: _, claim, return_to, outcome } =>
+    ResultReturned { attempt: _, claim, outcome } =>
       match result_claim_join(node_envelopes: node_envelopes, claim: claim) {
-        ResultRequestJoined { claim: joined, return_to: claimed } =>
-          if claimed == return_to {
-            ResultReturnedObserved { node: env.event.node, event: env.id, claim: joined, return_to: return_to, outcome: outcome, recorded_at: env.event.recorded_at }
-          } else {
-            ResultReturnedUnobserved { step: "claim", reason: join(["the result names ", event_principal_label(p: return_to), " but its claim ", claim as String, " returns to ", event_principal_label(p: claimed)], "") }
-          }
+        ResultRequestJoined { claim: joined, return_to } =>
+          ResultReturnedObserved { node: env.event.node, event: env.id, claim: joined, return_to: return_to, outcome: outcome, recorded_at: env.event.recorded_at }
         ResultRequestUnjoinable { reason } => ResultReturnedUnobserved { step: "claim", reason: reason }
         ResultRequestNone { reason } => ResultReturnedUnobserved { step: "claim", reason: reason }
         ResultRequestUnreadable { reason } => ResultReturnedUnobserved { step: "claim", reason: reason }

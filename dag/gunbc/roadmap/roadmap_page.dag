@@ -15,7 +15,7 @@ import gunbc.roadmap.roadmap_event_log {
   EventPrincipal, EventPrincipalAuthenticated, LegacyEmailPrincipal, event_principal_label,
   IssueComment, IssueAssignmentProjection, roadmap_issue_comments, roadmap_issue_assignment, issue_comment_anchor,
   ResultReturned, AttemptResultOutcome, ResultPublished, ResultVerificationFailed, ResultHandedBack,
-  attempt_result_outcome_word, attempt_result_outcome_text,
+  attempt_result_outcome_word, attempt_result_outcome_text, roadmap_claim_return_to, RoadmapEventId,
 }
 import gunbc.principal_projection {
   PrincipalRef, principal_ref_label, principal_ref_parse_label, principal_ref_eq,
@@ -1947,8 +1947,8 @@ fn issue_event_payload(env: RoadmapEventEnvelope) -> String {
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => "comment created"
     CommentEdited { comment: _, body: _ } => "comment edited"
     CommentDeleted { comment: _ } => "comment deleted"
-    ResultReturned { attempt, claim: _, return_to, outcome } =>
-      join(["result of attempt ", attempt as String, " returned to ", event_principal_label(p: return_to), ": ", attempt_result_outcome_text(o: outcome)], "")
+    ResultReturned { attempt, claim, outcome } =>
+      join(["result of attempt ", attempt as String, " for claim ", claim as String, ": ", attempt_result_outcome_text(o: outcome)], "")
   }
 }
 
@@ -2105,7 +2105,7 @@ type IssueStreamEntry
 
 fn issue_stream_entries(envs: List<RoadmapEventEnvelope>) -> List<IssueStreamEntry> {
   let comments = map(roadmap_issue_comments(envs: envs), c => StreamComment { comment: c })
-  let publications = map(filter(envs, e => match e.event.kind { ResultReturned { attempt: _, claim: _, return_to: _, outcome: _ } => true  Claimed { assignee: _, return_to: _ } => false  Released => false  Progress { note: _ } => false  Blocked { reason: _ } => false  HandedBack { reason: _ } => false  ReceiptReferenced { obligation: _, address: _, verdict: _ } => false  CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false  CommentEdited { comment: _, body: _ } => false  CommentDeleted { comment: _ } => false }), e => StreamPublication { env: e })
+  let publications = map(filter(envs, e => match e.event.kind { ResultReturned { attempt: _, claim: _, outcome: _ } => true  Claimed { assignee: _, return_to: _ } => false  Released => false  Progress { note: _ } => false  Blocked { reason: _ } => false  HandedBack { reason: _ } => false  ReceiptReferenced { obligation: _, address: _, verdict: _ } => false  CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false  CommentEdited { comment: _, body: _ } => false  CommentDeleted { comment: _ } => false }), e => StreamPublication { env: e })
   issue_entries_sort_ascending(concat(comments, publications))
 }
 
@@ -2163,7 +2163,7 @@ fn roadmap_comments_of(entries: List<IssueStreamEntry>) -> List<IssueComment> {
 // principal the result names — the durable event is the comment; nothing is synthesized twice.
 fn issue_publication_entry_row_node(node_id: String, envs: List<RoadmapEventEnvelope>, env: RoadmapEventEnvelope, profiles: List<PrincipalProfile>) -> Fragment {
   match env.event.kind {
-    ResultReturned { attempt, claim: _, return_to, outcome } =>
+    ResultReturned { attempt, claim, outcome } =>
       let display = event_principal_display_with_profile(p: env.event.author, profiles: profiles)
       el_attrs("div", [
         attr(name: "class", value: "issue-comment issue-publication" ),
@@ -2179,7 +2179,7 @@ fn issue_publication_entry_row_node(node_id: String, envs: List<RoadmapEventEnve
               [ el_class("span", "issue-comment-at", [ txt(env.event.recorded_at) ]) ],
               [ el_class("span", "issue-comment-detail", [ txt(display.detail) ]) ]))),
           el_class("div", "issue-comment-body", [
-            txt(issue_result_entry_sentence(outcome: outcome, return_to: event_principal_display_with_profile(p: return_to, profiles: profiles).name)),
+            txt(issue_result_entry_sentence(outcome: outcome, return_to: issue_result_return_to_name(envs: envs, claim: claim, profiles: profiles))),
           ]),
         ]),
       ])
@@ -2204,7 +2204,17 @@ fn issue_publication_entry_row_node(node_id: String, envs: List<RoadmapEventEnve
   }
 }
 
-// THE ENTRY'S SENTENCE, one per outcome, naming the principal the event itself records: a published
+// THE NAME OF THE PRINCIPAL A RESULT RETURNS TO, read from the claim the result names in the same
+// history. The carrier admits no result whose claim the history lacks, so the absent arm is a
+// history this page was handed incomplete, and it says so rather than naming anyone.
+fn issue_result_return_to_name(envs: List<RoadmapEventEnvelope>, claim: RoadmapEventId, profiles: List<PrincipalProfile>) -> String {
+  match roadmap_claim_return_to(envs: envs, claim: claim) {
+    Present { value: return_to } => event_principal_display_with_profile(p: return_to, profiles: profiles).name
+    Absent => "the requester of a claim this history does not carry"
+  }
+}
+
+// THE ENTRY'S SENTENCE, one per outcome, naming the principal its claim returns to: a published
 // result says who it was reassigned to for merge; every other outcome says who the answer was
 // returned to, because the holder did not move.
 fn issue_result_entry_sentence(outcome: AttemptResultOutcome, return_to: String) -> String {

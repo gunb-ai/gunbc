@@ -112,14 +112,16 @@ type RoadmapEventKind
   | CommentCreated { comment: NonEmptyStr, body: NonEmptyStr, visibility: NonEmptyStr, parent_comment: NonEmptyStr? }
   | CommentEdited { comment: NonEmptyStr, body: NonEmptyStr }
   | CommentDeleted { comment: NonEmptyStr }
-  | ResultReturned { attempt: NonEmptyStr, claim: RoadmapEventId, return_to: EventPrincipal, outcome: AttemptResultOutcome }
+  | ResultReturned { attempt: NonEmptyStr, claim: RoadmapEventId, outcome: AttemptResultOutcome }
 
 // THE RESULT A REQUESTER IS OWED, ONE ARM PER WAY AN ATTEMPT FINALLY ENDS (operator ruling
 // 2026-10-03, the dogfood vertical's result-returned stage). The requester who assigned the issue
 // used to learn the answer only by reading the dashboard; the belt now states it on the issue's own
 // history as ONE event per attempt: the attempt, the Claimed event the attempt was launched under
-// (the request's identity), the principal that claim says the work comes back to, and what the
-// attempt came to. The arms are FINAL arms of gunbc.roadmap.roadmap_submission
+// (the request's identity), and what the attempt came to. WHO THE RESULT RETURNS TO IS NOT ON THE
+// EVENT: it is the return_to of the claim the event names, read from that claim wherever it is
+// needed (roadmap_claim_return_to), so the recipient has one home and a result cannot name a
+// principal its claim does not. The arms are FINAL arms of gunbc.roadmap.roadmap_submission
 // CandidateHandoffState and no second classification: published carries the pull request and the
 // exact head it offers; a failed verification carries the head it judged and the verdict; handed
 // back carries the worker's own declaration that it ended without a candidate. A state the belt
@@ -129,9 +131,7 @@ type RoadmapEventKind
 // THIS KIND REPLACES PublicationObserved RATHER THAN SITTING BESIDE IT. That kind had a fold step
 // and a page row and no writer anywhere, so no publication was ever stated on a log; a published
 // result is the same fact with the attempt and the request it lacked, and two kinds for one fact
-// would be the fork. return_to is the bound claim's own return_to, copied at write so the fold's
-// handoff reads it without a second pass; the reader re-joins it to the claim and refuses a result
-// whose principal the claim does not name.
+// would be the fork.
 type AttemptResultOutcome
   = ResultPublished { pr: NonEmptyStr, head: NonEmptyStr }
   | ResultVerificationFailed { head: NonEmptyStr, cause: NonEmptyStr }
@@ -195,7 +195,7 @@ fn roadmap_event_kind_word(k: RoadmapEventKind) -> String {
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => "comment_created"
     CommentEdited { comment: _, body: _ } => "comment_edited"
     CommentDeleted { comment: _ } => "comment_deleted"
-    ResultReturned { attempt: _, claim: _, return_to: _, outcome: _ } => "result_returned"
+    ResultReturned { attempt: _, claim: _, outcome: _ } => "result_returned"
   }
 }
 
@@ -245,10 +245,9 @@ fn roadmap_event_kind_members_for(k: RoadmapEventKind, schema: String) -> List<J
       ] } else { [
         json_kv(key: "comment", value: json_string(s: comment as String)),
       ] }
-    ResultReturned { attempt, claim, return_to, outcome } => concat([
+    ResultReturned { attempt, claim, outcome } => concat([
       json_kv(key: "attempt", value: json_string(s: attempt as String)),
       json_kv(key: "claim", value: json_string(s: claim as String)),
-      json_kv(key: "return_to", value: json_string(s: event_principal_label(p: return_to))),
       json_kv(key: "outcome", value: json_string(s: attempt_result_outcome_word(o: outcome))),
     ], attempt_result_outcome_members(o: outcome))
   }
@@ -420,17 +419,9 @@ fn roadmap_event_kind_decode(doc: JsonValue, word: String, schema: String, autho
         match event_member_nonempty(doc: doc, key: "claim") {
           Absent => none
           Present { value: claim } =>
-            match event_member_nonempty(doc: doc, key: "return_to") {
+            match attempt_result_outcome_decode(doc: doc) {
               Absent => none
-              Present { value: r } =>
-                match event_principal_decode(schema: schema, s: r) {
-                  Absent => none
-                  Present { value: return_to } =>
-                    match attempt_result_outcome_decode(doc: doc) {
-                      Absent => none
-                      Present { value: outcome } => Present { value: ResultReturned { attempt: attempt, claim: claim as RoadmapEventId, return_to: return_to, outcome: outcome } }
-                    }
-                }
+              Present { value: outcome } => Present { value: ResultReturned { attempt: attempt, claim: claim as RoadmapEventId, outcome: outcome } }
             }
         }
     }
@@ -590,9 +581,10 @@ fn roadmap_event_chain(envs: List<RoadmapEventEnvelope>, head: RoadmapEventEnvel
 // Claimed step replaces the holder, so the NEWEST Claimed wins by construction, never by clock.
 // THE FOLD'S ACC carries the return_to the handoff needs: the standing alone cannot answer
 // "who does the published work come back to" — that principal is recorded on the latest Claimed
-// and rides the acc; a published ResultReturned names the principal it was addressed to itself, and
-// only that outcome moves the holder -- a failed, refused or handed-back attempt is an answer on the
-// history, not a reassignment.
+// and rides the acc; a published ResultReturned hands the issue to the return_to of the CLAIM it
+// names (read from that claim in the same history, so the step takes the history), and only that
+// outcome moves the holder -- a failed or handed-back attempt is an answer on the history, not a
+// reassignment.
 type RoadmapStandingAcc {
   standing: RoadmapNodeStanding
   assignment: IssueAssignmentProjection
@@ -604,7 +596,7 @@ fn roadmap_standing_acc_empty() -> RoadmapStandingAcc {
 
 // One transition authority produces progress and ownership together. Progress/blocked/handback
 // authors are actors, not implicit assignees. Only explicit assignment transitions change holder.
-fn roadmap_standing_step_acc(acc: RoadmapStandingAcc, env: RoadmapEventEnvelope) -> RoadmapStandingAcc {
+fn roadmap_standing_step_acc(acc: RoadmapStandingAcc, env: RoadmapEventEnvelope, envs: List<RoadmapEventEnvelope>) -> RoadmapStandingAcc {
   let e = env.event
   match e.kind {
     Claimed { assignee, return_to } => RoadmapStandingAcc {
@@ -614,9 +606,12 @@ fn roadmap_standing_step_acc(acc: RoadmapStandingAcc, env: RoadmapEventEnvelope)
     Progress { note } => RoadmapStandingAcc { standing: NodeInProgress { by: e.author, last_note: note }, assignment: acc.assignment }
     Blocked { reason } => RoadmapStandingAcc { standing: NodeBlocked { by: e.author, reason: reason }, assignment: acc.assignment }
     HandedBack { reason } => RoadmapStandingAcc { standing: NodeHandedBack { by: e.author, reason: reason }, assignment: acc.assignment }
-    ResultReturned { attempt: _, claim: _, return_to, outcome } => match outcome {
-      ResultPublished { pr, head } => RoadmapStandingAcc { standing: NodeReadyForReview { by: return_to, pr: pr, head: head },
-        assignment: IssueAssignmentProjection { holder: Present { value: return_to }, return_to: acc.assignment.return_to } }
+    ResultReturned { attempt: _, claim, outcome } => match outcome {
+      ResultPublished { pr, head } => match roadmap_claim_return_to(envs: envs, claim: claim) {
+        Present { value: return_to } => RoadmapStandingAcc { standing: NodeReadyForReview { by: return_to, pr: pr, head: head },
+          assignment: IssueAssignmentProjection { holder: Present { value: return_to }, return_to: acc.assignment.return_to } }
+        Absent => acc
+      }
       ResultVerificationFailed { head: _, cause: _ } => acc
       ResultHandedBack { reason: _ } => acc
     }
@@ -637,7 +632,7 @@ fn roadmap_issue_state(envs: List<RoadmapEventEnvelope>) -> RoadmapStandingAcc {
     else if count(heads) != 1 { RoadmapStandingAcc { standing: NodeForked { heads: map(heads, h => h.id) }, assignment: roadmap_assignment_empty() } }
     else { match heads.first() {
       Absent => roadmap_standing_acc_empty()
-      Present { value: head } => fold(roadmap_event_chain(envs: envs, head: head, budget: count(envs)), init: roadmap_standing_acc_empty(), f: (acc, env) => roadmap_standing_step_acc(acc: acc, env: env))
+      Present { value: head } => fold(roadmap_event_chain(envs: envs, head: head, budget: count(envs)), init: roadmap_standing_acc_empty(), f: (acc, env) => roadmap_standing_step_acc(acc: acc, env: env, envs: envs))
     } }
   }
 }
@@ -721,7 +716,7 @@ fn roadmap_recent_claimed_assignees(envs: List<RoadmapEventEnvelope>) -> List<Ev
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false
     CommentEdited { comment: _, body: _ } => false
     CommentDeleted { comment: _ } => false
-    ResultReturned { attempt: _, claim: _, return_to: _, outcome: _ } => false
+    ResultReturned { attempt: _, claim: _, outcome: _ } => false
   })
   roadmap_event_principal_dedup(map(roadmap_events_newest_first(envs: claimed), e => match e.event.kind {
     Claimed { assignee, return_to: _ } => assignee
@@ -733,7 +728,7 @@ fn roadmap_recent_claimed_assignees(envs: List<RoadmapEventEnvelope>) -> List<Ev
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
     CommentEdited { comment: _, body: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
     CommentDeleted { comment: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
-    ResultReturned { attempt: _, claim: _, return_to: _, outcome: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
+    ResultReturned { attempt: _, claim: _, outcome: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
   }))
 }
 
@@ -847,7 +842,7 @@ fn roadmap_issue_comments_of_chain(chain: List<RoadmapEventEnvelope>) -> List<Is
     Blocked { reason: _ } => acc
     HandedBack { reason: _ } => acc
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => acc
-    ResultReturned { attempt: _, claim: _, return_to: _, outcome: _ } => acc
+    ResultReturned { attempt: _, claim: _, outcome: _ } => acc
   })
 }
 
@@ -881,7 +876,7 @@ fn roadmap_comment_created_key_present(envs: List<RoadmapEventEnvelope>, comment
     CommentCreated { comment: c, body: _, visibility: _, parent_comment: _ } => (c as String) == (comment as String)
     CommentEdited { comment: _, body: _ } => false
     CommentDeleted { comment: _ } => false
-    ResultReturned { attempt: _, claim: _, return_to: _, outcome: _ } => false
+    ResultReturned { attempt: _, claim: _, outcome: _ } => false
     Claimed { assignee: _, return_to: _ } => false
     Released => false
     Progress { note: _ } => false
@@ -905,7 +900,7 @@ fn roadmap_comment_retry_present(envs: List<RoadmapEventEnvelope>, author: Event
         })
     CommentEdited { comment: _, body: _ } => false
     CommentDeleted { comment: _ } => false
-    ResultReturned { attempt: _, claim: _, return_to: _, outcome: _ } => false
+    ResultReturned { attempt: _, claim: _, outcome: _ } => false
     Claimed { assignee: _, return_to: _ } => false
     Released => false
     Progress { note: _ } => false
@@ -924,15 +919,15 @@ fn issue_comment_anchor(ordinal: Int) -> String {
 // THE RESULT EVENT, the one constructor the belt's result-return pass appends
 // (gunbc.roadmap.roadmap_result_returned result_return_decision): authored by the workflow
 // principal, chained on the head the pass read, content-addressed like every event.
-fn roadmap_result_returned_event(node: RoadmapNodeId, attempt: NonEmptyStr, claim: RoadmapEventId, return_to: EventPrincipal, outcome: AttemptResultOutcome, author: EventPrincipal, parent: RoadmapEventId?, recorded_at: String) -> RoadmapEvent {
-  RoadmapEvent { node: node, author: author, parent: parent, kind: ResultReturned { attempt: attempt, claim: claim, return_to: return_to, outcome: outcome }, recorded_at: recorded_at }
+fn roadmap_result_returned_event(node: RoadmapNodeId, attempt: NonEmptyStr, claim: RoadmapEventId, outcome: AttemptResultOutcome, author: EventPrincipal, parent: RoadmapEventId?, recorded_at: String) -> RoadmapEvent {
+  RoadmapEvent { node: node, author: author, parent: parent, kind: ResultReturned { attempt: attempt, claim: claim, outcome: outcome }, recorded_at: recorded_at }
 }
 
 // THE RESULTS A HISTORY ALREADY CARRIES FOR ONE ATTEMPT, in the order given. An attempt has one
 // final result, so this is empty or a single event on any log the carrier admitted.
 fn roadmap_results_for_attempt(envs: List<RoadmapEventEnvelope>, attempt: String) -> List<RoadmapEventEnvelope> {
   filter(envs, e => match e.event.kind {
-    ResultReturned { attempt: a, claim: _, return_to: _, outcome: _ } => (a as String) == attempt
+    ResultReturned { attempt: a, claim: _, outcome: _ } => (a as String) == attempt
     Claimed { assignee: _, return_to: _ } => false
     Released => false
     Progress { note: _ } => false
@@ -945,14 +940,41 @@ fn roadmap_results_for_attempt(envs: List<RoadmapEventEnvelope>, attempt: String
   })
 }
 
-// ONE FINAL RESULT PER ATTEMPT, AT THE APPEND. A result is an answer, not a revision: an event that
-// would be a SECOND ResultReturned for an attempt the history already answered is not admitted,
-// whatever it says. The carrier asks this of every append (roadmap_event_append_private), so the
-// rule holds for any writer and not only for the pass that knows to check first. Every other kind
-// is admitted here and judged by the carrier's revision check alone.
+// THE PRINCIPAL A CLAIM RETURNS TO, read from the claim itself: the event with this id on this
+// history, if it is a Claimed. An id the history does not carry, or one that names another kind of
+// event, returns none -- there is no principal to read.
+fn roadmap_claim_return_to(envs: List<RoadmapEventEnvelope>, claim: RoadmapEventId) -> EventPrincipal? {
+  match filter(envs, e => (e.id as String) == (claim as String)).first() {
+    Absent => none
+    Present { value: env } =>
+      match env.event.kind {
+        Claimed { assignee: _, return_to } => Present { value: return_to }
+        Released => none
+        Progress { note: _ } => none
+        Blocked { reason: _ } => none
+        HandedBack { reason: _ } => none
+        ReceiptReferenced { obligation: _, address: _, verdict: _ } => none
+        CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => none
+        CommentEdited { comment: _, body: _ } => none
+        CommentDeleted { comment: _ } => none
+        ResultReturned { attempt: _, claim: _, outcome: _ } => none
+      }
+  }
+}
+
+// ONE FINAL RESULT PER ATTEMPT, ANSWERING A CLAIM THE HISTORY CARRIES, AT THE APPEND. A result is
+// an answer, not a revision: an event that would be a SECOND ResultReturned for an attempt the
+// history already answered is not admitted, whatever it says. And a result answers a request: one
+// naming a claim that is not a Claimed on this same history is not admitted either, so no result
+// can be written whose recipient cannot be read. The carrier asks this of every append
+// (roadmap_event_append_private), so both rules hold for any writer and not only for the pass that
+// knows to check first. Every other kind is admitted here and judged by the carrier's revision
+// check alone.
 fn roadmap_event_admitted_after(envs: List<RoadmapEventEnvelope>, event: RoadmapEvent) -> Bool {
   match event.kind {
-    ResultReturned { attempt, claim: _, return_to: _, outcome: _ } => count(roadmap_results_for_attempt(envs: envs, attempt: attempt as String)) == 0
+    ResultReturned { attempt, claim, outcome: _ } =>
+      count(roadmap_results_for_attempt(envs: envs, attempt: attempt as String)) == 0
+        && (match roadmap_claim_return_to(envs: envs, claim: claim) { Present { value: _ } => true  Absent => false })
     Claimed { assignee: _, return_to: _ } => true
     Released => true
     Progress { note: _ } => true
@@ -995,7 +1017,7 @@ fn roadmap_claim_scan_step(acc: RoadmapClaimScan, env: RoadmapEventEnvelope) -> 
       CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => acc
       CommentEdited { comment: _, body: _ } => acc
       CommentDeleted { comment: _ } => acc
-      ResultReturned { attempt: _, claim: _, return_to: _, outcome: _ } => acc
+      ResultReturned { attempt: _, claim: _, outcome: _ } => acc
     }
   }
 }

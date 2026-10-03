@@ -2342,7 +2342,7 @@ fn fx_handoff_events() -> List<gunbc.roadmap.roadmap_event_log.RoadmapEventEnvel
       node: "issue-detail-specimen" as gunbc.roadmap_model.RoadmapNodeId,
       author: fixture_fabric_principal(),
       parent: Present { value: "ho-1" as gunbc.roadmap.roadmap_event_log.RoadmapEventId },
-      kind: gunbc.roadmap.roadmap_event_log.ResultReturned { attempt: "feedfacefeedface" as NonEmptyStr, claim: "ho-1" as gunbc.roadmap.roadmap_event_log.RoadmapEventId, return_to: fixture_human_principal(), outcome: gunbc.roadmap.roadmap_event_log.ResultPublished { pr: "gunb-ai/gunbc#12210" as NonEmptyStr, head: "52c56a8" as NonEmptyStr } },
+      kind: gunbc.roadmap.roadmap_event_log.ResultReturned { attempt: "feedfacefeedface" as NonEmptyStr, claim: "ho-1" as gunbc.roadmap.roadmap_event_log.RoadmapEventId, outcome: gunbc.roadmap.roadmap_event_log.ResultPublished { pr: "gunb-ai/gunbc#12210" as NonEmptyStr, head: "52c56a8" as NonEmptyStr } },
       recorded_at: "2026-09-25T11:00:00Z",
     },
   }
@@ -2383,7 +2383,7 @@ test fn witness_issue_failed_verification_result_renders_without_a_merge_handoff
       node: "issue-detail-specimen" as gunbc.roadmap_model.RoadmapNodeId,
       author: fixture_fabric_principal(),
       parent: Present { value: "rr-1" as gunbc.roadmap.roadmap_event_log.RoadmapEventId },
-      kind: gunbc.roadmap.roadmap_event_log.ResultReturned { attempt: "feedfacefeedface" as NonEmptyStr, claim: "rr-1" as gunbc.roadmap.roadmap_event_log.RoadmapEventId, return_to: fixture_human_principal(), outcome: gunbc.roadmap.roadmap_event_log.ResultVerificationFailed { head: "52c56a8" as NonEmptyStr, cause: "verdict validation-failed" as NonEmptyStr } },
+      kind: gunbc.roadmap.roadmap_event_log.ResultReturned { attempt: "feedfacefeedface" as NonEmptyStr, claim: "rr-1" as gunbc.roadmap.roadmap_event_log.RoadmapEventId, outcome: gunbc.roadmap.roadmap_event_log.ResultVerificationFailed { head: "52c56a8" as NonEmptyStr, cause: "verdict validation-failed" as NonEmptyStr } },
       recorded_at: "2026-09-25T11:00:00Z",
     },
   }
@@ -2662,7 +2662,7 @@ test fn witness_issue_detail_rail_and_comments_render_the_profile_identity() -> 
       node: "issue-detail-specimen" as gunbc.roadmap_model.RoadmapNodeId,
       author: fixture_fabric_principal(),
       parent: Present { value: "prof-ho-1" as gunbc.roadmap.roadmap_event_log.RoadmapEventId },
-      kind: gunbc.roadmap.roadmap_event_log.ResultReturned { attempt: "feedfacefeedface" as NonEmptyStr, claim: "prof-ho-1" as gunbc.roadmap.roadmap_event_log.RoadmapEventId, return_to: fixture_human_principal(), outcome: gunbc.roadmap.roadmap_event_log.ResultPublished { pr: "gunb-ai/gunbc#12210" as NonEmptyStr, head: "52c56a8" as NonEmptyStr } },
+      kind: gunbc.roadmap.roadmap_event_log.ResultReturned { attempt: "feedfacefeedface" as NonEmptyStr, claim: "prof-ho-1" as gunbc.roadmap.roadmap_event_log.RoadmapEventId, outcome: gunbc.roadmap.roadmap_event_log.ResultPublished { pr: "gunb-ai/gunbc#12210" as NonEmptyStr, head: "52c56a8" as NonEmptyStr } },
       recorded_at: "2026-09-25T11:00:00Z",
     },
   }
