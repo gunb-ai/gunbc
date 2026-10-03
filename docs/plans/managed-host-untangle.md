@@ -87,14 +87,24 @@ Restating any of that as loose `baseboard` / `bmc_stack` / `credential` fields w
 module gunbc.managed_host
 type ManagedHost {
   host: HostIdentity                       // gunbc.fleet_intent_network, the sole naming authority
-  subject: MachineIntakeSubject            // explicit host <-> intake-subject binding
   access: BmcAccessObservationStanding     // endpoint and observed identity (baseboard, BMC family)
   capability_row: BmcFirmwareReleaseCapabilityRow  // the pair oob_boot_handoff_admission consumes today
   secure: BmcSecureStanding                // managed credential: account, role, SecretRef, epoch
   unit_hold: ResetUnitHold                 // moved here from host_reset_subject_roster
 }
 fn managed_hosts() -> List<ManagedHost>
+fn managed_host_binding(h: ManagedHost) -> ManagedHostBindingStanding   // THE join; effectful consumers read only this
 ```
+
+**The seam is a join, not a bundle** (side-chat review, 2026-10-03). There are two invariants.
+
+1. **One joined standing.** The subject is derived from `secure.subject` and never stored again. `managed_host_binding` refuses, with a typed and located cause, unless all three hold:
+   - `access` is observed;
+   - the observed endpoint equals the `BmcSecured` endpoint;
+   - the secured subject's unit is bound to the row's `host`.
+
+   Every effectful consumer (reset, boot, hold) reads the credential and the endpoint only through the bound result. Without the join, unit A's secured account could be used against unit B's controller. The discriminating RED uses a secure standing for endpoint A and an access observation for endpoint B.
+2. **Operation admission includes the operation's policy.** A host is a member of an operation's roster only if that operation's policy is decided for it. For reset, one reset-specific authority takes the bound `ManagedHost` plus the reset boot selection and produces an admitted reset subject. The roster lists exactly those hosts, and `gunbc.host_reset_return_run` consumes the selection from that admitted subject with no second lookup. The RED is a capable host with no reset selection, which must be absent from the roster. Every later cut that adds an operation (boot, hold) follows the same shape.
 
 Rules for the record:
 
