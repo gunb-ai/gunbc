@@ -422,7 +422,7 @@ fn codex_tmux_command_shape_holds(
   codex_executable: String,
 ) -> Bool {
   match cmds.session_container {
-    SystemdUnitContainer { run: _ } => false
+    SystemdUnitContainer { plan: _ } => false
     TmuxSessionContainer { spawn, default_shell: _, remain_on_exit: _, event_pipe: _, provider_start } =>
       codex_tmux_arm_shape_holds(spawn: spawn, provider_start: provider_start, codex_executable: codex_executable)
   }
@@ -476,7 +476,7 @@ test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
 
 fn lab_instance_command_shape_holds(commands: DispatchSpawnCommands, lab: HostDashboardInstance) -> Bool {
   match commands.session_container {
-    SystemdUnitContainer { run: _ } => false
+    SystemdUnitContainer { plan: _ } => false
     TmuxSessionContainer { spawn, default_shell: _, remain_on_exit: _, event_pipe, provider_start } =>
       lab_instance_tmux_shape_holds(commands: commands, lab: lab, spawn: spawn, event_pipe: event_pipe, provider_start: provider_start)
   }
