@@ -19,11 +19,31 @@ import gunbc.machine_intake_mtcollins1_smpro_error_reading {
   SmproErrorWindow,
   mtcollins1_smpro_error_windows, mtcollins1_smpro_error_reads_20261003,
 }
-import gunbc.machine_intake_mtcollins1_smpro_observation {
-  SmproProbeRaw, SmproProbeOutcome, smpro_probe_outcome, mtcollins1_smpro_findings, mtcollins1_smpro_dossier_text,
+import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_site }
+import gunbc.machine_intake_ampere_smpro_observation {
+  SmproProbeRaw, SmproProbeOutcome, smpro_probe_outcome, smpro_pass_findings, smpro_pass_dossier_text,
+  SmproPassObservation, SmproSiteAdmitted, SmproSiteRefused, smpro_pass_observation_fixture,
 }
+import gunbc.fleet_intent_network { operator_host_mtcollins1 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUPPLIED OUTCOMES, RENDERED AGAINST mtcollins1's REAL ADMITTED SITE. A refused site yields no
+// observation, and every claim below then fails on the marker rather than passing on an empty fold.
+fn observed(outcomes: List<SmproProbeOutcome>) -> SmproPassObservation? {
+  match mtcollins1_smpro_site() {
+    SmproSiteAdmitted { site: s } => Present { value: smpro_pass_observation_fixture(host: operator_host_mtcollins1, site: s, outcomes: outcomes) }
+    SmproSiteRefused { cause: _ } => none
+  }
+}
+
+fn findings_of(outcomes: List<SmproProbeOutcome>) -> List<String> {
+  match observed(outcomes: outcomes) { Present { value: o } => smpro_pass_findings(obs: o) Absent => ["FIXTURE SITE REFUSED"] }
+}
+
+fn dossier_of(outcomes: List<SmproProbeOutcome>) -> String {
+  match observed(outcomes: outcomes) { Present { value: o } => smpro_pass_dossier_text(obs: o) Absent => "FIXTURE SITE REFUSED" }
+}
 
 // ── field predicates ────────────────────────────────────────────────────────────────────────────
 
@@ -227,12 +247,12 @@ fn pmpro_words(socket: Int, info_hi: String) -> List<SmproProbeOutcome> {
 }
 
 test fn a_pending_pmpro_record_is_a_finding_naming_the_decode() -> Bool {
-  let f = mtcollins1_smpro_findings(outcomes: concat(pmpro_words(socket: 1, info_hi: "22 44"), [read_ok(socket: 1, reg: smpro_gpi_ras_err_reg, stdout: "00 02")]))
+  let f = findings_of(outcomes: concat(pmpro_words(socket: 1, info_hi: "22 44"), [read_ok(socket: 1, reg: smpro_gpi_ras_err_reg, stdout: "00 02")]))
   any(f, x => starts_with(s: x, prefix: "SMpro socket 1: PMpro error: ERR_CCIX_RCA_LINKUP_FAIL (116) at CCIX initialization (68), ENTER"))
 }
 
 test fn red_without_a_gpi_read_the_finding_says_ungated() -> Bool {
-  let f = mtcollins1_smpro_findings(outcomes: pmpro_words(socket: 1, info_hi: "22 44"))
+  let f = findings_of(outcomes: pmpro_words(socket: 1, info_hi: "22 44"))
   any(f, x => starts_with(s: x, prefix: "SMpro socket 1: PMpro UNGATED (GPI_RAS_ERR not read in this window) error: ERR_CCIX_RCA_LINKUP_FAIL (116)"))
     && !any(f, x => starts_with(s: x, prefix: "SMpro socket 1: PMpro error:"))
 }
@@ -240,6 +260,6 @@ test fn red_without_a_gpi_read_the_finding_says_ungated() -> Bool {
 test fn red_a_missing_info_word_decodes_nothing_and_says_why() -> Bool {
   let os = pmpro_words(socket: 1, info_hi: "22 44")
   let without_hi = concat(os.take(n: 3), os.skip(n: 4))
-  !any(mtcollins1_smpro_findings(outcomes: without_hi), x => contains(x, "ERR_CCIX"))
-    && contains(mtcollins1_smpro_dossier_text(outcomes: without_hi), "SMpro socket 1: PMpro records UNAVAILABLE (ERR_PMPRO_INFO_HI was not probed)")
+  !any(findings_of(outcomes: without_hi), x => contains(x, "ERR_CCIX"))
+    && contains(dossier_of(outcomes: without_hi), "SMpro socket 1: PMpro records UNAVAILABLE (ERR_PMPRO_INFO_HI was not probed)")
 }
