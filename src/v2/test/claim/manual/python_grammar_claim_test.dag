@@ -52,10 +52,11 @@ fn python_grammar_parse_fixture() -> Outcome<ParseTree> {
   }
 }
 
-// ROUTE CONTROL for the suite production on real python source: a three-statement body
-// (assignment, if, return) lexes with python_lex and parses through python_production_fn_def,
-// so the suite's statement-then-repetition shape is executed past its first statement.
-data python_multi_statement_suite_text: String = "def f(x):\n    y = x + 1\n    if y > 1:\n        return y\n    return x"
+// ROUTE CONTROL for the suite production on real python source: a two-statement body
+// (assignment, return) lexes with python_lex and parses through python_production_fn_def, so the
+// suite's repetition is executed past its first statement. Two statements is the least input
+// that reaches the repetition; a longer body adds parse cost without adding a route.
+data python_multi_statement_suite_text: String = "def f(x):\n    y = x\n    return y"
 
 // The discriminating red: a suite is one or more statements, so a def whose body is empty refuses.
 data python_empty_suite_text: String = "def f(x):\n    "
