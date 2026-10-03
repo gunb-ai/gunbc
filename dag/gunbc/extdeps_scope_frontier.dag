@@ -273,6 +273,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/ampere/oem_sel.dag",
   "dag/extdeps/ampere/smpro_register.dag",
   "dag/extdeps/ampere/smpro_internal_error.dag",
+  "dag/extdeps/ampere/nvparam.dag",
   "dag/extdeps/ampere/mt_collins_product_brief/subject.dag",
   "dag/extdeps/ampere/mt_collins_product_brief/memory_population.dag",
   "dag/extdeps/ampere/mt_collins_getting_started_guide/subject.dag",

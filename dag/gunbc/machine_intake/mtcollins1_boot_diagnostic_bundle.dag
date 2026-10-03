@@ -49,6 +49,7 @@ import gunbc.machine_intake_ampere_dram_console_observation {
   AmpereDramConsoleObservation, ampere_dram_console_observation, ampere_dram_console_text,
 }
 import gunbc.machine_intake_kernel_module_decompression_observation { KernelModuleDecompressionObservation, kernel_module_decompression_observation, kernel_module_decompression_text }
+import gunbc.machine_intake_ampere_nvparam_console_observation { NvParamConsoleObservation, ampere_nvparam_console_observation, ampere_nvparam_console_text }
 import gunbc.machine_intake_ampere_checkpoint_console_observation {
   AmpereCheckpointConsoleObservation, AmpereCheckpointRelation, AmpereCheckpointReference,
   ampere_checkpoint_console_observation, ampere_checkpoint_relation, ampere_checkpoint_relation_unread, ampere_checkpoint_console_text, ampere_checkpoint_relation_text,
@@ -377,7 +378,7 @@ type InventoryReading {
 // those bytes would under-count multi-byte console output. The size is taken before the content is
 // read, so a capture over the bound is reported without being loaded.
 type ConsoleReading
-  = ConsoleRetained { path: NonEmptyStr, size: ByteSize, lines: Int, firmware: FirmwareConsoleReport, firmware_error_lines: Int, capture_digest: Sha256FileDigest, dram: AmpereDramConsoleObservation, checkpoints: AmpereCheckpointConsoleObservation, checkpoint_relations: List<AmpereCheckpointRelation>, milestones: ConsoleMilestoneObservation, sockets: AmpereSocketConsoleObservation, against_reference: AmpereSocketReferenceComparison, loader: GrubConsoleReport, linux: LinuxBootConsoleObservation, modules: KernelModuleDecompressionObservation }
+  = ConsoleRetained { path: NonEmptyStr, size: ByteSize, lines: Int, firmware: FirmwareConsoleReport, firmware_error_lines: Int, capture_digest: Sha256FileDigest, dram: AmpereDramConsoleObservation, checkpoints: AmpereCheckpointConsoleObservation, checkpoint_relations: List<AmpereCheckpointRelation>, milestones: ConsoleMilestoneObservation, sockets: AmpereSocketConsoleObservation, against_reference: AmpereSocketReferenceComparison, loader: GrubConsoleReport, linux: LinuxBootConsoleObservation, modules: KernelModuleDecompressionObservation, nvparam: NvParamConsoleObservation }
   | ConsoleExceedsBound { path: NonEmptyStr, size: ByteSize, bound: ByteSize }
   | ConsoleNotRetained { path: NonEmptyStr }
   | ConsoleUnread { path: NonEmptyStr, detail: String }
@@ -1353,7 +1354,7 @@ fn handoff_standing(h: MtCollins1HandoffMedia) -> PowerOnHandoff {
 
 fn console_evidence(c: ConsoleReading) -> ConsoleEvidence {
   match c {
-    ConsoleRetained { path: _, size: _, lines: _, firmware: f, firmware_error_lines: e, capture_digest: dg, dram: d, checkpoints: cp, checkpoint_relations: rs, milestones: ms, sockets: o, against_reference: _, loader: g, linux: l, modules: m } =>
+    ConsoleRetained { path: _, size: _, lines: _, firmware: f, firmware_error_lines: e, capture_digest: dg, dram: d, checkpoints: cp, checkpoint_relations: rs, milestones: ms, sockets: o, against_reference: _, loader: g, linux: l, modules: m, nvparam: _ } =>
       ConsoleRead { capture: dg, firmware: f, firmware_error_lines: e, dram: d, checkpoints: cp, relations: rs, milestones: ms, sockets: o, loader: g, linux: l, modules: m }
     _ => ConsoleNotRead
   }
@@ -1370,7 +1371,7 @@ fn sel_evidence(delta: SelDeltaReading) -> SelEvidence {
 // ── COVERAGE: one standing per carrier, never a host statement ─────────────────────────────────
 fn console_coverage(c: ConsoleReading) -> CarrierStanding {
   match c {
-    ConsoleRetained { path: _, size: _, lines: n, firmware: _, firmware_error_lines: _, capture_digest: _, dram: _, checkpoints: _, checkpoint_relations: _, milestones: _, sockets: _, against_reference: _, loader: _, linux: _, modules: _ } =>
+    ConsoleRetained { path: _, size: _, lines: n, firmware: _, firmware_error_lines: _, capture_digest: _, dram: _, checkpoints: _, checkpoint_relations: _, milestones: _, sockets: _, against_reference: _, loader: _, linux: _, modules: _, nvparam: _ } =>
       if n == 0 { CarrierReadEmpty } else { CarrierRead }
     ConsoleExceedsBound { path: p, size: _, bound: _ } => CarrierPartial { detail: concat("capture ", p as String, " is over the byte bound and was not read") as NonEmptyStr }
     ConsoleNotRetained { path: p } => CarrierNotTaken { reason: concat("capture ", p as String, " is not retained with this artifact") as NonEmptyStr }
@@ -1673,8 +1674,8 @@ fn grub_report_text(report: GrubConsoleReport) -> String {
 
 fn console_text(c: ConsoleReading) -> String {
   match c {
-    ConsoleRetained { path: p, size: b, lines: n, firmware: f, firmware_error_lines: e, capture_digest: _, dram: d, checkpoints: cp, checkpoint_relations: rs, milestones: ms, sockets: o, against_reference: cmp, loader: g, linux: l, modules: m } =>
-      concat("capture ", p as String, " retained in this artifact: ", to_string(byte_size_count(b: b)), " bytes (stat), ", to_string(n), " line(s), within the ", to_string(byte_size_count(b: mtcollins1_boot_console_bound)), "-byte bound; ", firmware_report_text(report: f), "; ", to_string(e), " firmware error line(s)\n", ampere_dram_console_text(observation: d, expected_sockets: mtcollins1_census_sockets()), "\n-- checkpoints --\n", ampere_checkpoint_console_text(o: cp), "\n", if count(rs) == 0 { "no checkpoint relation" } else { join(map(rs, r => ampere_checkpoint_relation_text(r: r)), "\n") }, "\n-- milestones --\n", if count(ms.sightings) == 0 { "none" } else { join(map(ms.sightings, x => console_milestone_sighting_text(s: x)), "\n") }, "\n", ampere_socket_console_text(o: o), ampere_socket_reference_comparison_text(c: cmp), "\n-- loader and linux --\n", grub_report_text(report: g), "\n", linux_boot_console_text(o: l), "\n", kernel_module_decompression_text(o: m))
+    ConsoleRetained { path: p, size: b, lines: n, firmware: f, firmware_error_lines: e, capture_digest: _, dram: d, checkpoints: cp, checkpoint_relations: rs, milestones: ms, sockets: o, against_reference: cmp, loader: g, linux: l, modules: m, nvparam: nv } =>
+      concat("capture ", p as String, " retained in this artifact: ", to_string(byte_size_count(b: b)), " bytes (stat), ", to_string(n), " line(s), within the ", to_string(byte_size_count(b: mtcollins1_boot_console_bound)), "-byte bound; ", firmware_report_text(report: f), "; ", to_string(e), " firmware error line(s)\n", ampere_dram_console_text(observation: d, expected_sockets: mtcollins1_census_sockets()), "\n-- checkpoints --\n", ampere_checkpoint_console_text(o: cp), "\n", if count(rs) == 0 { "no checkpoint relation" } else { join(map(rs, r => ampere_checkpoint_relation_text(r: r)), "\n") }, "\n-- milestones --\n", if count(ms.sightings) == 0 { "none" } else { join(map(ms.sightings, x => console_milestone_sighting_text(s: x)), "\n") }, "\n", ampere_socket_console_text(o: o), ampere_socket_reference_comparison_text(c: cmp), "\n-- loader and linux --\n", grub_report_text(report: g), "\n", linux_boot_console_text(o: l), "\n", kernel_module_decompression_text(o: m), "\n", ampere_nvparam_console_text(o: nv))
     ConsoleExceedsBound { path: p, size: b, bound: bound } =>
       concat("capture ", p as String, " is ", to_string(byte_size_count(b: b)), " bytes (stat), OVER the ", to_string(byte_size_count(b: bound)), "-byte bound; the collector does not truncate, so the artifact carries it whole")
     ConsoleNotRetained { path: p } =>
@@ -2406,6 +2407,7 @@ fn mtcollins1_boot_console_reading(path: String, size: ByteSize, capture: String
       loader: grub_console_report(lines: lines),
       linux: linux_boot_console_observation(lines: lines),
       modules: kernel_module_decompression_observation(lines: lines),
+      nvparam: ampere_nvparam_console_observation(lines: lines),
     }
   }
 }
