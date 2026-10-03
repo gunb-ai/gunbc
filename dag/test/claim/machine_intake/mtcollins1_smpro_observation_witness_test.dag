@@ -16,10 +16,17 @@ import extdeps.ampere.scp_diagnostic { DdrTraining, DdrInitialization, Operating
 import gunbc.machine_intake_mtcollins1_smpro_observation {
   mtcollins1_smpro_socket_stage, CurrentStageEstablished, ReportedStageUnavailable,
   SmproProbeRaw, SmproProbeOutcome, SmproWordRead, SmproControllerRefused, SmproTransportFailed, SmproResponseMalformed, SmproNotSent,
-  smpro_probe_outcome, smpro_control_refusal, smpro_request_text, mtcollins1_smpro_findings, mtcollins1_smpro_dossier_text,
+  smpro_probe_outcome, smpro_control_refusal, smpro_request_text, mtcollins1_smpro_dossier_text,
   mtcollins1_smpro_probe_count, mtcollins1_smpro_read_order, mtcollins1_smpro_sequenced, mtcollins1_smpro_plan, SmproTarget,
 }
-import extdeps.ampere.smpro_register { SmproRegister }
+import extdeps.ampere.smpro_register { SmproRegister, SmproBootProgressRead, SmproBootProgressRefused }
+import gunbc.machine_intake_mtcollins1_power_on_account {
+  PowerOnAccount, PowerOnEvidence, AttemptConfigurationReceipt, SmproPassEvidence, SocketProgressAccount,
+  HandoffPoweredOn, ConsoleNotRead, SelEventsNotRead, WatchdogUnobserved,
+  ExpectedSockets, StimulusRequestNotRecorded, StimulusApplicationNotRecorded, PopulationNotRecorded, FirmwareReadbacksNotRecorded,
+  ProgressRead, ProgressNotRead, SmproReportedFailure, SmproPairRefused,
+  mtcollins1_power_on_account,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -120,20 +127,53 @@ fn socket_reads_at(socket: Int, current: String, bootstage: String) -> List<Smpr
   ]
 }
 
-test fn socket_one_failing_ddr_training_beside_a_booted_socket_zero_is_named() -> Bool {
-  let f = mtcollins1_smpro_findings(outcomes: concat(socket_reads(socket: 0, bootstage: "09 02"), socket_reads(socket: 1, bootstage: "04 03")))
-  count(f) == 2 && any(f, x => starts_with(s: x, prefix: "SMpro socket 1:") && contains(x, "BOOTSTAGE DDR training report status, failed"))
-    && any(f, x => starts_with(s: x, prefix: "SMpro socket 0:") && contains(x, "BOOTSTAGE OS booting, completed without error"))
+// WHAT A PASS MEANS FOR THE MACHINE is the power-on account's (gunbc.machine_intake_mtcollins1_power_on_account):
+// these claims supply one pass to it and read each socket's progress and the stated errors. The
+// receipt is supplied with nothing recorded, so the claims say nothing about configuration.
+fn receipt() -> AttemptConfigurationReceipt {
+  AttemptConfigurationReceipt {
+    subject: "mtcollins1", attempt: "witness", expected: ExpectedSockets { sockets: [0, 1], source: "witness" },
+    requested: StimulusRequestNotRecorded { reason: "witness" }, applied: StimulusApplicationNotRecorded { reason: "witness" },
+    cpus: PopulationNotRecorded { reason: "witness" }, dimms: PopulationNotRecorded { reason: "witness" }, firmware: FirmwareReadbacksNotRecorded { reason: "witness" },
+  }
 }
 
-test fn two_sockets_at_the_same_stage_add_no_finding() -> Bool {
-  count(mtcollins1_smpro_findings(outcomes: concat(socket_reads(socket: 0, bootstage: "09 02"), socket_reads(socket: 1, bootstage: "09 02")))) == 0
+fn account_of(outcomes: List<SmproProbeOutcome>) -> PowerOnAccount {
+  mtcollins1_power_on_account(e: PowerOnEvidence {
+    configuration: receipt(), handoff: HandoffPoweredOn,
+    smpro: [SmproPassEvidence { label: "pass", outcomes: outcomes }],
+    console: ConsoleNotRead, sel: SelEventsNotRead, watchdog: WatchdogUnobserved { reason: "witness" },
+    bmc_anomalies: [], census_ended: false, coverage: [],
+  })
+}
+
+fn progress_of(a: PowerOnAccount, socket: Int) -> SocketProgressAccount? {
+  filter(a.socket_progress, p => p.socket == socket).first()
+}
+
+fn current_code(a: PowerOnAccount, socket: Int) -> Int {
+  match progress_of(a: a, socket: socket) {
+    Present { value: p } => match p.reading { ProgressRead { cur_bootstage_word: c, bootstage_word: _, progress: _ } => c % 256 ProgressNotRead { reason: _ } => 0 - 1 }
+    Absent => 0 - 1
+  }
+}
+
+test fn socket_one_failing_ddr_training_beside_a_booted_socket_zero_is_named() -> Bool {
+  let a = account_of(outcomes: concat(socket_reads(socket: 0, bootstage: "09 02"), socket_reads(socket: 1, bootstage: "04 03")))
+  any(a.errors, x => match x.error { SmproReportedFailure { socket: k, pass: _, cur_bootstage_word: _, bootstage_word: r } => k == 1 && r == 1027 _ => false })
+    && !any(a.errors, x => match x.error { SmproReportedFailure { socket: k, pass: _, cur_bootstage_word: _, bootstage_word: _ } => k == 0 _ => false })
+}
+
+test fn two_sockets_at_the_same_stage_add_nothing() -> Bool {
+  let a = account_of(outcomes: concat(socket_reads(socket: 0, bootstage: "09 02"), socket_reads(socket: 1, bootstage: "09 02")))
+  count(a.errors) == 0 && !any(a.open, q => match q.question { SmproPairRefused { socket: _, pass: _ } => true _ => false })
 }
 
 test fn socket_one_unreadable_beside_a_read_socket_zero_is_named() -> Bool {
   let s1 = [smpro_probe_outcome(raw: raw(socket: 1, register: smpro_manufacturer_id_reg.name, exit_code: 1, stdout: "", stderr: nak_stderr))]
-  let f = mtcollins1_smpro_findings(outcomes: concat(socket_reads(socket: 0, bootstage: "09 02"), s1))
-  any(f, x => contains(x, "SMpro socket 1: CUR_BOOTSTAGE UNAVAILABLE"))
+  let a = account_of(outcomes: concat(socket_reads(socket: 0, bootstage: "09 02"), s1))
+  current_code(a: a, socket: 0) == 9
+    && (match progress_of(a: a, socket: 1) { Present { value: p } => (match p.reading { ProgressNotRead { reason: r } => contains(r as String, "CUR_BOOTSTAGE") _ => false }) Absent => false })
 }
 
 // THE DOSSIER EXISTS WHEN NOTHING WAS ANSWERED.
@@ -141,7 +181,7 @@ test fn a_pass_where_nothing_was_sent_still_renders_every_socket() -> Bool {
   let os = [SmproNotSent { socket: 0, register: smpro_bootstage_reg.name, reason: "socket 0 control: MANUFACTURER_ID TRANSPORT FAILED" }, SmproNotSent { socket: 1, register: smpro_bootstage_reg.name, reason: "socket 0 control did not establish the transport" }]
   let t = mtcollins1_smpro_dossier_text(outcomes: os)
   contains(t, "SMpro socket 0: CUR_BOOTSTAGE UNAVAILABLE") && contains(t, "SMpro socket 1: CUR_BOOTSTAGE UNAVAILABLE") && contains(t, "(no request sent)")
-    && count(mtcollins1_smpro_findings(outcomes: os)) == 0
+    && count(account_of(outcomes: os).errors) == 0
 }
 
 // ── THE ORDER IS ENFORCED BY THE FOLD (the production fold, with a supplied read) ───────────────
@@ -211,9 +251,8 @@ test fn a_failed_socket_zero_control_sends_nothing_further() -> Bool {
 
 // Same reported BOOTSTAGE on both sockets, different CURRENT stage: that is a difference.
 test fn a_differing_current_stage_with_the_same_bootstage_is_named() -> Bool {
-  let f = mtcollins1_smpro_findings(outcomes: concat(socket_reads_at(socket: 0, current: "00 09", bootstage: "03 01"), socket_reads_at(socket: 1, current: "00 03", bootstage: "03 01")))
-  count(f) == 2 && any(f, x => starts_with(s: x, prefix: "SMpro socket 1: CUR_BOOTSTAGE DDR initialization"))
-    && any(f, x => starts_with(s: x, prefix: "SMpro socket 0: CUR_BOOTSTAGE OS booting"))
+  let a = account_of(outcomes: concat(socket_reads_at(socket: 0, current: "00 09", bootstage: "03 01"), socket_reads_at(socket: 1, current: "00 03", bootstage: "03 01")))
+  current_code(a: a, socket: 0) == 9 && current_code(a: a, socket: 1) == 3
 }
 
 // A CUR_BOOTSTAGE that read survives a BOOTSTAGE that did not.
