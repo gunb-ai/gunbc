@@ -283,7 +283,9 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 // drive gunbc.roadmap_session_placement session_placement_settle_pass_at over a slot store, records
 // directory and file-store ledger the witness creates with shell.Mktemp.DirWithTemplate -- real
 // compare-and-set generations, real file writes, a release proposed against a real (empty) partition
-// -- with no repository, network, cargo, remote host or install media. The floor planned all five at
+// -- with no repository, network, cargo, remote host or install media. Every control that claims a
+// release charges a REAL seat first (compute_reserve_against) and counts only ComputeReleased; the two
+// post-gate controls (2026-10-03, ruling at c6d50f1) were added by the same rule. The floor planned all five at
 // 31d11075e96 and the hermetic route reached none of them (route_gap, 'the hermetic route has no arm
 // for DirWithTemplate'); a changed witness ending in a route gap is admitted only with a wet terminal
 // joined. The file's exclusion row is gunbc.ci.ci_layer_roots excl_local_repo_wet_tempdir_write_reason.
@@ -456,6 +458,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.session_placement_wet_witness", function: "a_foreign_placement_record_cannot_release_another_attempts_grant" },
       entry: "dag/test/claim/roadmap/session_placement_wet_witness_test.dag",
       function: "a_foreign_placement_record_cannot_release_another_attempts_grant",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.session_placement_wet_witness", function: "a_post_gate_failure_with_a_live_or_unreadable_unit_keeps_the_real_seat" },
+      entry: "dag/test/claim/roadmap/session_placement_wet_witness_test.dag",
+      function: "a_post_gate_failure_with_a_live_or_unreadable_unit_keeps_the_real_seat",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.session_placement_wet_witness", function: "a_post_gate_failure_with_an_ended_unit_returns_the_real_seat_from_the_current_generation" },
+      entry: "dag/test/claim/roadmap/session_placement_wet_witness_test.dag",
+      function: "a_post_gate_failure_with_an_ended_unit_returns_the_real_seat_from_the_current_generation",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

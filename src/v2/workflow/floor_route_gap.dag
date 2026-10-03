@@ -1978,7 +1978,9 @@ fn floor_route_gap_expectation_chunk_29() -> List<FloorRouteGapExpectation> {
 // shell.Mktemp.DirWithTemplate first, which declares no mock_response, so the nominal floor refuses
 // there and each identity is held; the local-repo wet schedule carries every one of them (all five
 // observed=passed on the wet lane at df5f85a4959). OBSERVED, not predicted: the floor at df5f85a4959
-// reported exactly these five as unenrolled ROUTE-GAPs. As with chunk 22, the discovery exclusion
+// reported the first five as unenrolled ROUTE-GAPs. The two post-gate controls (ruling at c6d50f1)
+// are added BY PREDICTION, the chunk-22 departure stated rather than hidden: each one's first effect is
+// fresh_dir, which is DirWithTemplate unconditionally, so neither can reach its subject hermetically. As with chunk 22, the discovery exclusion
 // does not cover a run that CHANGES the file, so this roster plus the wet terminal is what holds for
 // such a run; an identity that stops gapping arrives as STALE-ROUTE-GAP and wants its row deleted.
 fn floor_route_gap_expectation_chunk_32() -> List<FloorRouteGapExpectation> {
@@ -1992,8 +1994,12 @@ fn floor_route_gap_expectation_chunk_32() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.roadmap.session_placement_wet_witness.a_slot_with_no_placement_record_is_kept_in_window_and_released_after", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.roadmap.session_placement_wet_witness.an_unreadable_slot_keeps_its_seat_and_writes_a_note", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.session_placement_wet_witness.a_post_gate_failure_with_a_live_or_unreadable_unit_keeps_the_real_seat", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.session_placement_wet_witness.a_post_gate_failure_with_an_ended_unit_returns_the_real_seat_from_the_current_generation", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Empty {}
-  }  }  }  }  }
+  }  }  }  }  }  }  }
 }
 
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {

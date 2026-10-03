@@ -8,6 +8,11 @@ import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
 import product.capacity.event_chain { PartitionId }
 import gunbc.fabric_storage_client { FabricStorageLocalFiles }
 import gunbc.fabric_storage_file_store { fabric_storage_file_root }
+import gunbc.compute.host_capacity {
+  ComputeCapacitySubject, compute_reserve_against, compute_capacity_store, compute_release_on,
+  ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
+  ComputeRelease, ComputeReleased, ComputeNothingToRelease, ComputeReleaseRefused,
+}
 import gunbc.compute.work_class_grant { WorkClassAgentSession, GrantAtCeiling, ClassUnmeasured }
 import gunbc.compute.work_provider_local { compute_layout, compute_unit_properties }
 import gunbc.compute.attempt_lifecycle {
@@ -26,6 +31,7 @@ import gunbc.roadmap_session_placement {
   SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign,
   SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable,
   session_placement_observation_of, session_placement_observe_at,
+  SessionAbandonment, session_placement_abandon_at,
   SessionSettleDecision, SettleTerminateAndRelease, SettleReleaseOnly, SettleKeep, SettleDone, session_settle_decide,
   SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_placement_settle_pass_at,
   SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused,
@@ -56,14 +62,57 @@ fn fresh_dir(tag: String) -> String {
   shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_g5_", tag, ".XXXXXX"], "")).path
 }
 
+// THE LEDGER IS REAL AND THE SEAT IS REAL (side-chat ruling on #13074 at c6d50f1): every control
+// that claims a release first charges the attempt's own reference through the production seam,
+// gunbc.compute.host_capacity compute_reserve_against, over a file-store ledger in the witness's own
+// directory, and counts a release only when the ledger answers ComputeReleased -- an empty partition
+// answering NothingToRelease or a refusal can never read as a returned seat.
+fn subject_at(dir: String) -> ComputeCapacitySubject {
+  ComputeCapacitySubject {
+    root: join([dir, "/capacity"], "") as NonEmptyStr,
+    partition: "session-memory-g5-witness" as NonEmptyStr as PartitionId,
+    appropriation: kibibyte(count: 1048576),
+    request: kibibyte(count: 1024),
+  }
+}
+
 fn stores_at(dir: String) -> SessionPlacementStores {
   SessionPlacementStores {
     slots_root: dir as NonEmptyStr,
     records_dir: dir,
-    store: FabricStorageLocalFiles { root: fabric_storage_file_root(root: join([dir, "/ledger"], "") as NonEmptyStr) },
-    partition: "session-memory-srv2" as NonEmptyStr as PartitionId,
+    store: compute_capacity_store(subject: subject_at(dir: dir)),
+    partition: subject_at(dir: dir).partition,
   }
 }
+
+fn reserve_real(dir: String) -> LeaseGrant? {
+  match compute_reserve_against(subject: subject_at(dir: dir), reference: unit_a() as NonEmptyStr, term_seconds: 14400, total: kibibyte(count: 1073741824), available: kibibyte(count: 1073741824)) {
+    ComputeReserved { grant, partition: _, amount: _, store: _ } => Present { value: grant }
+    ComputeCapacityFull { wire: _ } => none
+    ComputeHostBelowFloor { requested: _, available: _ } => none
+    ComputeReservationRefused { detail: _ } => none
+  }
+}
+
+// THE LEDGER STILL HOLDS THE REFERENCE iff a release proposed now returns it. Destructive, so it is
+// each control's LAST read.
+fn ledger_still_holds(dir: String) -> Bool {
+  match compute_release_on(store: compute_capacity_store(subject: subject_at(dir: dir)), partition: subject_at(dir: dir).partition, appropriation: kibibyte(count: 0), reference: unit_a() as NonEmptyStr, reason: "witness probe") {
+    ComputeReleased { partition: _, reference: _, reason: _ } => true
+    ComputeNothingToRelease { detail: _ } => false
+    ComputeReleaseRefused { detail: _ } => false
+  }
+}
+
+fn ledger_returned(r: ComputeRelease?) -> Bool {
+  match r {
+    Present { value: ComputeReleased { partition: _, reference: _, reason: _ } } => true
+    Present { value: ComputeNothingToRelease { detail: _ } } => false
+    Present { value: ComputeReleaseRefused { detail: _ } } => false
+    Absent => false
+  }
+}
+
 
 fn grant_for(node_id: String, attempt_key: String, slot: AttemptRecord) -> SessionPlacementGrant {
   SessionPlacementGrant {
@@ -83,6 +132,15 @@ fn grant_for(node_id: String, attempt_key: String, slot: AttemptRecord) -> Sessi
     store: FabricStorageLocalFiles { root: fabric_storage_file_root(root: "/state/capacity" as NonEmptyStr) },
     slot: slot,
     slot_generation: cas_generation_first(),
+  }
+}
+
+fn real_grant(dir: String, lease: LeaseGrant, slot: AttemptRecord, generation: CasGeneration) -> SessionPlacementGrant {
+  SessionPlacementGrant {
+    node_id: node_a, attempt_key: key_a, unit: unit_a() as NonEmptyStr, lease: lease,
+    partition: subject_at(dir: dir).partition, amount: kibibyte(count: 1024),
+    class_grant: GrantAtCeiling { class: WorkClassAgentSession, amount: kibibyte(count: 1024), reason: ClassUnmeasured },
+    store: compute_capacity_store(subject: subject_at(dir: dir)), slot: slot, slot_generation: generation,
   }
 }
 
@@ -141,7 +199,11 @@ fn settlement_of(p: SessionSettlePass) -> SessionSettlement {
 
 fn released_unit(s: SessionSettlement) -> String {
   match s {
-    SessionSettlementReleaseAttempted { unit, freed: _, detail: _ } => unit
+    SessionSettlementReleaseAttempted { unit, freed, detail: _ } => match freed {
+      ComputeReleased { partition: _, reference: _, reason: _ } => unit
+      ComputeNothingToRelease { detail: _ } => ""
+      ComputeReleaseRefused { detail: _ } => ""
+    }
     SessionSettlementKept { unit: _, why: _ } => ""
     SessionSettlementDone { unit: _, why: _ } => ""
     SessionSettlementRefused { unit: _, detail: _ } => ""
@@ -197,12 +259,13 @@ fn release_text(dir: String) -> String {
 test fn a_slot_with_no_placement_record_is_kept_in_window_and_released_after() -> Bool {
   let dir = fresh_dir(tag: "c1")
   let stores = stores_at(dir: dir)
+  let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
   let rec = slot_a(opened: 1000)
   let opened = opened_ok(dir: dir, rec: rec)
   let early = settlement_of(p: session_placement_settle_pass_at(stores: stores, host: host, lifecycle_of: lifecycle_absent, now: rec.launch_deadline - 1))
   let late = settlement_of(p: session_placement_settle_pass_at(stores: stores, host: host, lifecycle_of: lifecycle_absent, now: rec.launch_deadline + 1))
   let rel = release_text(dir: dir)
-  opened && kept(s: early) && released_unit(s: late) == unit_a() && slot_is_terminal(dir: dir)
+  charged && opened && kept(s: early) && released_unit(s: late) == unit_a() && slot_is_terminal(dir: dir)
     && string_contains(s: rel, pattern: unit_a()) && !string_contains(s: rel, pattern: "\"grant\"")
 }
 
@@ -223,6 +286,7 @@ test fn an_unreadable_slot_keeps_its_seat_and_writes_a_note() -> Bool {
 test fn a_recorded_placement_whose_unit_never_started_is_released_bound_to_its_grant() -> Bool {
   let dir = fresh_dir(tag: "c3")
   let stores = stores_at(dir: dir)
+  let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
   let rec = slot_a(opened: 1000)
   let opened = opened_ok(dir: dir, rec: rec)
   let wrote = session_placement_record_write(stores: stores, host: host, grant: grant_for(node_id: node_a, attempt_key: key_a, slot: rec), unit_properties: ["MemoryMax=8589934592"])
@@ -237,8 +301,8 @@ test fn a_recorded_placement_whose_unit_never_started_is_released_bound_to_its_g
       })
         && (match returned {
           SessionReleased { reason: _, detail: _ } => true
-          SessionReleaseNothingHeld { reason: _, detail: _ } => true
-          SessionReleaseRefused { reason: _, detail: _ } => true
+          SessionReleaseNothingHeld { reason: _, detail: _ } => false
+          SessionReleaseRefused { reason: _, detail: _ } => false
           SessionReleaseNotRecorded { path: _ } => false
           SessionReleaseUnreadable { path: _, detail: _ } => false
         })
@@ -246,7 +310,7 @@ test fn a_recorded_placement_whose_unit_never_started_is_released_bound_to_its_g
     SessionPlacementUnreadable { unit: _, detail: _ } => false
     SessionPlacementForeign { unit: _, detail: _ } => false
   }
-  opened && released_unit(s: s) == unit_a() && bound
+  charged && opened && released_unit(s: s) == unit_a() && bound
 }
 
 // CONTROL 4, UNIT START -> CONTROLLER TERMINATION: a Launching slot is kept while its unit runs and
@@ -254,10 +318,11 @@ test fn a_recorded_placement_whose_unit_never_started_is_released_bound_to_its_g
 test fn a_launched_session_is_kept_while_running_and_released_when_ended() -> Bool {
   let dir = fresh_dir(tag: "c4")
   let stores = stores_at(dir: dir)
+  let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
   let launched = launched_ok(dir: dir, rec: slot_a(opened: 1000))
   let running = settlement_of(p: session_placement_settle_pass_at(stores: stores, host: host, lifecycle_of: lifecycle_running, now: 99999))
   let ended = settlement_of(p: session_placement_settle_pass_at(stores: stores, host: host, lifecycle_of: lifecycle_absent, now: 99999))
-  launched && kept(s: running) && released_unit(s: ended) == unit_a() && slot_is_terminal(dir: dir)
+  charged && launched && kept(s: running) && released_unit(s: ended) == unit_a() && slot_is_terminal(dir: dir)
 }
 
 // FINDING 3, WET NEGATIVE: attempt B's placement record planted at attempt A's path, A's unit absent.
@@ -266,6 +331,7 @@ test fn a_launched_session_is_kept_while_running_and_released_when_ended() -> Bo
 test fn a_foreign_placement_record_cannot_release_another_attempts_grant() -> Bool {
   let dir = fresh_dir(tag: "f3")
   let stores = stores_at(dir: dir)
+  let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
   let launched = launched_ok(dir: dir, rec: slot_a(opened: 1000))
   let planted_b = Filesystem.Write(path: join([dir, "/", rec_name()], ""), content: record_bytes(node_id: node_b, attempt_key: key_b))
   let reads_foreign = match session_placement_observe_at(stores: stores, host: host, node_id: node_a, attempt_key: key_a) {
@@ -276,7 +342,80 @@ test fn a_foreign_placement_record_cannot_release_another_attempts_grant() -> Bo
   }
   let s = settlement_of(p: session_placement_settle_pass_at(stores: stores, host: host, lifecycle_of: lifecycle_absent, now: 99999))
   let rel = release_text(dir: dir)
-  launched && planted_b.success && reads_foreign && released_unit(s: s) == unit_a()
+  charged && launched && planted_b.success && reads_foreign && released_unit(s: s) == unit_a()
     && string_contains(s: rel, pattern: unit_a()) && !string_contains(s: rel, pattern: unit_b()) && !string_contains(s: rel, pattern: "\"grant\"")
 }
 
+
+// ── THE POST-GATE FAILURE (side-chat ruling on #13074 at c6d50f1) ──────────────────────────────
+//
+// The production sequence the ruling named: a REAL reservation, the slot opened Reserved at G1, the
+// launch gate advancing it to Launching at G2, and the unit start failing -- after which the spawn
+// wrapper calls session_placement_abandon with the grant it held BEFORE the gate, i.e. at G1. These
+// controls call session_placement_abandon_at with exactly that stale grant (the same function the
+// wrapper reaches, with the unit observation planted), and read the ledger afterwards.
+fn launched_with_real_seat(dir: String) -> SessionPlacementGrant? {
+  match reserve_real(dir: dir) {
+    Absent => none
+    Present { value: lease } => {
+      let rec = slot_a(opened: 1000)
+      match attempt_open(root: dir as NonEmptyStr, record: rec) {
+        AttemptAdvanced { state: _, generation: g1 } =>
+          match attempt_begin_launch(root: dir as NonEmptyStr, record: rec, expected: g1) {
+            AttemptAdvanced { state: _, generation: _ } => Present { value: real_grant(dir: dir, lease: lease, slot: rec, generation: g1) }
+            AttemptLostRace { expected: _, observed: _ } => none
+            AttemptTransitionRefused { detail: _ } => none
+          }
+        AttemptLostRace { expected: _, observed: _ } => none
+        AttemptTransitionRefused { detail: _ } => none
+      }
+    }
+  }
+}
+
+fn slot_is_launching(dir: String) -> Bool {
+  match attempt_slot_read(root: dir as NonEmptyStr, reference: unit_a() as NonEmptyStr) {
+    AttemptSlotHeld { record, generation: _ } => match record.state { AttemptLaunching => true  AttemptReserved => false  AttemptTerminal { verdict: _, detail: _ } => false }
+    AttemptSlotAbsent => false
+    AttemptSlotUnreadable { detail: _ } => false
+  }
+}
+
+fn lifecycle_unreadable(u: NonEmptyStr) -> UnitLifecycle { UnitLifecycleUnknown { detail: "systemctl --user show refused" } }
+
+// DISCRIMINATING RED: with the unit ACTIVE, and again with it UNREADABLE, the stale-generation abandon
+// releases NOTHING -- the slot stays Launching and the ledger still holds the reference. (At c6d50f1
+// this released the seat: the G1 close lost and compute_release_on ran anyway.)
+test fn a_post_gate_failure_with_a_live_or_unreadable_unit_keeps_the_real_seat() -> Bool {
+  let dir_active = fresh_dir(tag: "pa")
+  let active = match launched_with_real_seat(dir: dir_active) {
+    Absent => false
+    Present { value: stale } => {
+      let a = session_placement_abandon_at(stores: stores_at(dir: dir_active), grant: stale, reason: "harness-unit-start failed", lifecycle_of: lifecycle_running)
+      (match a.freed { Absent => true  Present { value: _ } => false }) && slot_is_launching(dir: dir_active) && ledger_still_holds(dir: dir_active)
+    }
+  }
+  let dir_unknown = fresh_dir(tag: "pu")
+  let unknown = match launched_with_real_seat(dir: dir_unknown) {
+    Absent => false
+    Present { value: stale } => {
+      let a = session_placement_abandon_at(stores: stores_at(dir: dir_unknown), grant: stale, reason: "harness-unit-start failed", lifecycle_of: lifecycle_unreadable)
+      (match a.freed { Absent => true  Present { value: _ } => false }) && slot_is_launching(dir: dir_unknown) && ledger_still_holds(dir: dir_unknown)
+    }
+  }
+  active && unknown
+}
+
+// POSITIVE CONTROL ON THE SAME ROUTE: with the unit ENDED (absent, or finished), the stale-generation
+// abandon re-reads the slot, closes it from G2, and the ledger reports ComputeReleased -- not
+// NothingToRelease, not a refusal -- after which nothing is left to return.
+test fn a_post_gate_failure_with_an_ended_unit_returns_the_real_seat_from_the_current_generation() -> Bool {
+  let dir = fresh_dir(tag: "pe")
+  match launched_with_real_seat(dir: dir) {
+    Absent => false
+    Present { value: stale } => {
+      let a = session_placement_abandon_at(stores: stores_at(dir: dir), grant: stale, reason: "harness-unit-start failed", lifecycle_of: lifecycle_absent)
+      ledger_returned(r: a.freed) && slot_is_terminal(dir: dir) && !ledger_still_holds(dir: dir)
+    }
+  }
+}

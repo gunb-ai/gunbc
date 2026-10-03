@@ -317,21 +317,84 @@ fn session_placement_begin_launch(stores: SessionPlacementStores, grant: Session
   }
 }
 
-// A SPAWN THAT DID NOT HAPPEN CLOSES ITS SLOT AND RETURNS ITS SEAT, in that order, and writes the
-// release record. The returned sentence names all three outcomes. If the slot close loses (settlement
-// already closed it), the release is still proposed: release is idempotent on the ledger, and the
-// grant this process holds is the one being returned.
-fn session_placement_abandon(stores: SessionPlacementStores, grant: SessionPlacementGrant, reason: NonEmptyStr) -> String {
-  let closed = attempt_terminate(root: stores.slots_root, record: grant.slot, expected: grant.slot_generation, verdict: AttemptRecovered, detail: reason as String)
+// A SPAWN THAT DID NOT HAPPEN RETURNS ITS SEAT ONLY THROUGH A SLOT TRANSITION THAT COMMITTED
+// (side-chat ruling on #13074 at c6d50f1). The caller may hold a STALE generation: the launch gate
+// advances the slot Reserved -> Launching inside the container step, so a unit-start failure arrives
+// here with the pre-launch generation. So:
+//   - termination from the supplied generation commits -> release;
+//   - it loses -> re-read the slot, and
+//       Terminal  -> settlement already closed it; an idempotent release is allowed,
+//       Reserved  -> terminate at the generation read, release only if that commits,
+//       Launching -> observe the unit: ENDED terminates at the generation read and releases;
+//                    ACTIVE or UNREADABLE keeps the charge (the launcher failing is not authoritative
+//                    unit absence -- the transient unit is retained precisely so its state can be
+//                    read), and the settlement pass releases it once the unit is observed ended,
+//       unreadable, absent or mis-bound slot -> keep the charge.
+// compute_release_on is NEVER reached merely because an attempted close lost.
+type SessionAbandonment {
+  freed: ComputeRelease?
+  detail: String
+}
+
+fn session_abandon_release(stores: SessionPlacementStores, grant: SessionPlacementGrant, reason: NonEmptyStr, closed: String) -> SessionAbandonment {
   let freed = compute_release_on(store: grant.store, partition: grant.partition, appropriation: kibibyte(count: 0), reference: grant.lease.reference, reason: reason)
   let write = session_placement_release_write(
     records_dir: stores.records_dir, node_id: grant.node_id, attempt_key: grant.attempt_key,
     grant_binding: Present { value: SessionGrantBinding { grant_identity: grant.lease.fence.grant as String, fence_generation: grant.lease.fence.generation } },
     reason: reason, freed: freed)
-  join([
-    "session slot ", attempt_transition_wire(t: closed), "; session placement ", session_release_outcome_wire(r: freed), ": ", session_release_detail(r: freed),
-    session_write_note(w: write),
-  ], "")
+  SessionAbandonment {
+    freed: Present { value: freed },
+    detail: join(["session slot ", closed, "; session placement ", session_release_outcome_wire(r: freed), ": ", session_release_detail(r: freed), session_write_note(w: write)], ""),
+  }
+}
+
+fn session_abandon_kept(why: String) -> SessionAbandonment {
+  SessionAbandonment { freed: none, detail: join(["session placement KEPT: ", why], "") }
+}
+
+fn session_abandon_terminate_then_release(stores: SessionPlacementStores, grant: SessionPlacementGrant, record: AttemptRecord, generation: CasGeneration, reason: NonEmptyStr, why: String) -> SessionAbandonment {
+  match attempt_terminate(root: stores.slots_root, record: record, expected: generation, verdict: AttemptRecovered, detail: join([reason as String, "; ", why], "")) {
+    AttemptAdvanced { state: s, generation: _ } => session_abandon_release(stores: stores, grant: grant, reason: reason, closed: join(["closed (", attempt_state_wire(s: s), ") after re-reading: ", why], ""))
+    AttemptLostRace { expected: e, observed: o } => session_abandon_kept(why: join(["the slot moved again (expected ", e, ", found ", o, "); the settlement pass decides it from the store"], ""))
+    AttemptTransitionRefused { detail: d } => session_abandon_kept(why: join(["the slot would not take the terminal generation: ", d], ""))
+  }
+}
+
+fn session_placement_abandon_at(stores: SessionPlacementStores, grant: SessionPlacementGrant, reason: NonEmptyStr, lifecycle_of: fn(NonEmptyStr) -> UnitLifecycle) -> SessionAbandonment {
+  match attempt_terminate(root: stores.slots_root, record: grant.slot, expected: grant.slot_generation, verdict: AttemptRecovered, detail: reason as String) {
+    AttemptAdvanced { state: s, generation: _ } => session_abandon_release(stores: stores, grant: grant, reason: reason, closed: join(["closed (", attempt_state_wire(s: s), ")"], ""))
+    AttemptTransitionRefused { detail: d } => session_abandon_kept(why: join(["the slot would not take the terminal generation (", d, "); the settlement pass decides it from the store"], ""))
+    AttemptLostRace { expected: _, observed: _ } =>
+      match attempt_slot_read(root: stores.slots_root, reference: grant.unit) {
+        AttemptSlotUnreadable { detail } => session_abandon_kept(why: join(["the slot close lost and the slot is now unreadable: ", detail], ""))
+        AttemptSlotAbsent => session_abandon_kept(why: "the slot close lost and no slot is held under this unit")
+        AttemptSlotHeld { record: rec, generation: g } => {
+          let mismatch = session_slot_binding_mismatch(record: rec, node_id: grant.node_id, attempt_key: grant.attempt_key)
+          if mismatch != "" {
+            session_abandon_kept(why: join(["the slot re-read is not this attempt's (", mismatch, ")"], ""))
+          } else {
+            match rec.state {
+              AttemptTerminal { verdict: _, detail: d } => session_abandon_release(stores: stores, grant: grant, reason: reason, closed: join(["already closed (", d, ")"], ""))
+              AttemptReserved => session_abandon_terminate_then_release(stores: stores, grant: grant, record: rec, generation: g, reason: reason, why: "the slot is still Reserved")
+              AttemptLaunching => {
+                let lifecycle = lifecycle_of(grant.unit)
+                match lifecycle {
+                  UnitTerminatedSuccess { detail: _ } => session_abandon_terminate_then_release(stores: stores, grant: grant, record: rec, generation: g, reason: reason, why: join(["the unit is ", unit_lifecycle_wire(u: lifecycle)], ""))
+                  UnitTerminatedFailure { detail: _ } => session_abandon_terminate_then_release(stores: stores, grant: grant, record: rec, generation: g, reason: reason, why: join(["the unit is ", unit_lifecycle_wire(u: lifecycle)], ""))
+                  UnitTerminatedCauseUnknown { detail: _ } => session_abandon_terminate_then_release(stores: stores, grant: grant, record: rec, generation: g, reason: reason, why: join(["the unit is ", unit_lifecycle_wire(u: lifecycle)], ""))
+                  UnitStillRunning { detail: _ } => session_abandon_kept(why: join(["the slot is Launching and the unit is ", unit_lifecycle_wire(u: lifecycle), "; the settlement pass releases it once the unit is observed ended"], ""))
+                  UnitLifecycleUnknown { detail: _ } => session_abandon_kept(why: join(["the slot is Launching and the unit is ", unit_lifecycle_wire(u: lifecycle), "; the settlement pass releases it once the unit is observed ended"], ""))
+                }
+              }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn session_placement_abandon(stores: SessionPlacementStores, grant: SessionPlacementGrant, reason: NonEmptyStr) -> String {
+  (session_placement_abandon_at(stores: stores, grant: grant, reason: reason, lifecycle_of: session_observe_unit_lifecycle)).detail
 }
 
 // ── THE DURABLE PLACEMENT RECORD ───────────────────────────────────────────────────────────────
