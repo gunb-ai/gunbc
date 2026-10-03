@@ -1,0 +1,7 @@
+module aca.c
+
+fn sealed_mint(n: Int) -> Int
+  admit_callers: [decl_ref(module_path: "aca.c", decl_name: "listed_caller")]
+  = n + 1
+
+fn listed_caller(n: Int) -> Int = sealed_mint(n: n)

@@ -1,0 +1,13 @@
+module acprobe.sealed_probe
+
+import std.types { NonEmptyStr }
+
+fn mint(n: Int) -> Int
+  admit_callers: [decl_ref(module_path: acprobe.sealed_probe, decl_name: listed_caller)]
+  = n + 1
+
+fn listed_caller(n: Int) -> Int = mint(n: n)
+
+fn outside_caller(n: Int) -> Int = mint(n: n)
+
+data wrapper: Int = mint(n: 3)

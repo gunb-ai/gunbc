@@ -1,0 +1,130 @@
+module aca.dbg
+
+// SCRATCH DEBUG INSTRUMENT (deleted before commit). Wall-stage fns live in
+// /tmp/aca_dbg_with_wall_fns.dag.bak until the item-2 stash pops (they import stashed names).
+
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
+import v2.compiler.normalized_tree { no_record_declarations, no_resource_declarations }
+import v2.extdeps.languages.dag { dag_grammar_atom, dag_surface_edge_label, qualified_name_from_module_node }
+import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_candidates_at }
+import v2.std.qualified_name { qualified_name_from_dotted_string, qualified_name_snoc, qualified_name_to_dotted_string }
+import v2.std.node { Edge, Node, Symbol, TypeNode, Authored, node_synthetic }
+import v2.std.algebra { fold_list, fold_list_node }
+import v2.std.text { String }
+import v2.std.diagnostic { Accepted, Rejected, Outcome }
+import std.process { ProcessExit, exit_failure }
+import v2.workflow.body_lowering_retention_census { diagnostic_ledger_render }
+
+// ---- vfb specimen probe: which stage drops the specimen? ----
+
+fn vfbp_qn_spine(segments: FreeMonoid<Symbol>) -> Node {
+  fold_list_node(
+    xs: segments,
+    item_node: fn(sym) {
+      node_synthetic(
+        kind: TypeNode { connective: Atom { identity: sym } },
+        children: []
+      )
+    }
+  )
+}
+
+fn vfbp_variant_arm_edge(variant_sym: Symbol) -> Edge {
+  Edge {
+    label: Authored { name: variant_sym },
+    target: node_synthetic(
+      kind: TypeNode { connective: Atom { identity: variant_sym } },
+      children: []
+    )
+  }
+}
+
+fn vfbp_type_with_variants(type_sym: Symbol) -> Edge {
+  Edge {
+    label: Authored { name: type_sym },
+    target: node_synthetic(
+      kind: TypeNode { connective: Disj },
+      children: [
+        vfbp_variant_arm_edge(variant_sym: ^Yes),
+        vfbp_variant_arm_edge(variant_sym: ^No)
+      ]
+    )
+  }
+}
+
+fn vfbp_module_root(qn_spine: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: dag_surface_edge_label(edge: ^dag_surface_module_header),
+        target: dag_grammar_atom(id: ^dag_surface_module_header)
+      },
+      Edge {
+        label: dag_surface_edge_label(edge: ^dag_surface_module_header_qualified_name),
+        target: qn_spine
+      },
+      vfbp_type_with_variants(type_sym: ^Mood)
+    ]
+  )
+}
+
+data vfbp_module_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(
+  dotted: "v2.test.variant_field_binding_specimen"
+)
+
+data vfbp_root: Node = vfbp_module_root(qn_spine: vfbp_qn_spine(segments: vfbp_module_qn))
+
+fn vfbp_qn_verdict() -> ProcessExit {
+  match qualified_name_from_module_node(root: vfbp_root) {
+    Rejected { diagnostics: d } => exit_failure(reason: "QN_REFUSED " + diagnostic_ledger_render(ds: d))
+    Accepted { value: qn, diagnostics: _ } => exit_failure(reason: "QN_OK " + qualified_name_to_dotted_string(qn: qn))
+  }
+}
+
+fn vfbp_index() -> SymbolIndex {
+  symbol_index_fill_module_root(
+    index: empty_symbol_index(),
+    root: vfbp_root,
+    record_declarations: no_record_declarations(),
+    resource_declarations: no_resource_declarations()
+  )
+}
+
+fn vfbp_candidates_text() -> String {
+  fold_list(
+    xs: symbol_index_candidates_at(
+      index: vfbp_index(),
+      position: vfbp_module_qn,
+      name: ^Mood
+    ),
+    empty: "CANDIDATES_EMPTY",
+    cons: fn(acc, candidate) {
+      let one = "CAND " + qualified_name_to_dotted_string(qn: candidate.path)
+      if acc == "CANDIDATES_EMPTY" { one } else { acc + " | " + one }
+    }
+  )
+}
+
+fn vfbp_candidates() -> ProcessExit {
+  exit_failure(reason: vfbp_candidates_text())
+}
+
+fn vfbp_variant_candidates_text() -> String {
+  fold_list(
+    xs: symbol_index_candidates_at(
+      index: vfbp_index(),
+      position: qualified_name_snoc(qn: vfbp_module_qn, segment: ^Mood),
+      name: ^Yes
+    ),
+    empty: "VARIANT_CANDIDATES_EMPTY",
+    cons: fn(acc, candidate) {
+      let one = "VCAND " + qualified_name_to_dotted_string(qn: candidate.path)
+      if acc == "VARIANT_CANDIDATES_EMPTY" { one } else { acc + " | " + one }
+    }
+  )
+}
+
+fn vfbp_variant_candidates() -> ProcessExit {
+  exit_failure(reason: vfbp_variant_candidates_text())
+}
