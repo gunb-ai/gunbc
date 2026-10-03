@@ -9747,7 +9747,28 @@ fn visit_bare_reference_providers(
         .iter()
         .map(String::as_str)
         .filter(|h| !candidates.names.contains(*h))
-        .filter(|h| v1_rt::map_get(&census.services, (*h).to_string()).is_none())
+        .filter(|h| {
+            // A namespace head need not itself be a service key: github.Api.Get
+            // resolves through github.Api. Keep the bare obligation if ANY use of
+            // that head has no service prefix, including a separate member access.
+            let prefix = format!("{h}.");
+            let mut chains = candidates
+                .dotted_chains
+                .iter()
+                .filter(|chain| chain.starts_with(&prefix))
+                .peekable();
+            chains.peek().is_none()
+                || chains.any(|chain| {
+                    let mut key = String::new();
+                    !chain.split('.').any(|segment| {
+                        if !key.is_empty() {
+                            key.push('.');
+                        }
+                        key.push_str(segment);
+                        v1_rt::map_get(&census.services, key.clone()).is_some()
+                    })
+                })
+        })
         .map(|h| h.to_string())
         .collect();
     let all_names: Vec<(String, bool)> = candidates
@@ -10268,6 +10289,52 @@ mod closure_edge_demand_tests {
         );
     }
 
+    #[test]
+    fn qualified_service_prefix_does_not_pull_an_unrelated_bare_helper() {
+        let service = "module svc.api\nservice github.Api {\n operation Get {\n input { id: Int }\n output { id: Int from \"id\" }\n readonly\n transport rest { method: GET, path: \"/x\" }\n }\n}\n";
+        let helper = "module helper\nfn github(value: Int) -> Int { value }\n";
+        for (extra, should_pull_helper) in [
+            ("", false),
+            ("fn bare() -> Int { github(value: 1) }\n", true),
+            ("fn member() -> Int { github.other }\n", true),
+        ] {
+            let consumer = format!(
+                "module svc.consumer\nimport svc.api\nfn run() -> Int {{ github.Api.Get(id: 1) }}\n{extra}"
+            );
+            let fixture = Fixture::new(&[
+                ("api.dag", service),
+                ("helper.dag", helper),
+                ("consumer.dag", &consumer),
+            ]);
+            let index = fixture.index();
+            let found =
+                unimported_bare_providers(&index.source_files["svc.consumer"], &index).unwrap();
+            assert_eq!(
+                found
+                    .iter()
+                    .any(|row| row.name == "github" && row.provider_module == "helper"),
+                should_pull_helper,
+                "extra={extra:?}: {found:?}"
+            );
+        }
+        // Resolving the service prefix must still demand the service's own import.
+        let fixture = Fixture::new(&[
+            ("api.dag", service),
+            ("helper.dag", helper),
+            ("other.dag", "module other\ndata value: Int = 1\n"),
+            ("consumer.dag", "module svc.consumer\nimport other { value }\nfn run() -> Int { github.Api.Get(id: 1) }\n"),
+        ]);
+        let index = fixture.index();
+        let found = unimported_bare_providers(&index.source_files["svc.consumer"], &index).unwrap();
+        assert!(
+            found
+                .iter()
+                .any(|row| row.name == "github.Api" && row.provider_module == "svc.api"),
+            "{found:?}"
+        );
+        assert!(!found.iter().any(|row| row.name == "github"), "{found:?}");
+    }
+
     /// THE ORIGINAL NON-CLOSURE AMBIGUITY SPECIMEN, KEPT, with its entry-local outcome paired with
     /// the mandatory global refusal (#12419 decision 5857893764). An entry whose closure never
     /// reaches the ambiguous consumer is admitted; the whole-pool demand -- the required floor's
@@ -10450,6 +10517,11 @@ mod closure_edge_demand_tests {
                 .is_some_and(|f| f.contains("bypassed")),
             "a judgment of OTHER roots is not a judgment of these"
         );
+        // The twin is a separate qualification subject, not a second resident
+        // production pool. Preserve the cross-root bypass check above, then end
+        // the bad subject's index lifetime before evaluating the clean subject.
+        drop(index);
+        reset_process_shared_index_for_test();
         let ok = run_required_bare_reference_admission(&twin_roots).unwrap();
         assert!(ok.contains("judged=2 pool=2"), "{ok}");
         assert_eq!(
@@ -28065,142 +28137,6 @@ fn entry_touches_rerun_frontier(
         }
     }
     Ok(!saw_claim)
-}
-
-/// P4 advisory-first (witness-realization plan): marshal an `Option<i64>` into the
-/// `.dag` `Int?` (Optional) `Value` the modeled `realize_advisory` expects.
-fn realize_advisory_optional_int(
-    ctx: &v1_interpreter::InterpContext,
-    v: Option<i64>,
-) -> v1_interpreter::Value {
-    use std::rc::Rc;
-    use v1_interpreter::Value;
-    match v {
-        Some(n) => Value::Variant {
-            type_name: ctx.sym("Optional"),
-            variant_name: ctx.sym("Present"),
-            fields: Rc::new(vec![(ctx.sym("value"), Value::Int(n))]),
-        },
-        None => Value::Variant {
-            type_name: ctx.sym("Optional"),
-            variant_name: ctx.sym("Absent"),
-            fields: Rc::new(vec![]),
-        },
-    }
-}
-
-/// P4 advisory-first: for each discovery witness, DERIVE its space bound
-/// (`ComplexityReport.function_space_bytes` at an empty size-env — a closed
-/// witness has no free size-vars) and log the memory-packed width `std.realize_pack`
-/// would schedule, alongside the live `MemoryGovernor` admission. This changes NO
-/// scheduling — it proves the derived bounds are sound on the real corpus before
-/// the governor is demoted (§5). The packing LAW stays modeled: `realize_advisory`
-/// is interpreted through the bridge, never reimplemented in Rust (§2). Gated by
-/// `GUNBC_REALIZE_ADVISORY`.
-pub fn emit_realize_advisory_for_rows(source_roots: &[String], rows: &[DiscoveryRow]) {
-    use v1_interpreter::Value;
-    // The witness graphs don't import std.realize_pack, so interpret the law in its
-    // own ctx, built once.
-    let realize_ctx = match resolve_entry_graph(source_roots, "dag/std/realize_pack.dag") {
-        Ok((g, idx)) => make_eval_context(&g, idx, v1_interpreter::ExecutionMode::Hermetic),
-        Err(e) => {
-            eprintln!("[realize-advisory] disabled: cannot load std.realize_pack: {e}");
-            return;
-        }
-    };
-    // Host planning ceiling: the SAME single authority the MemoryGovernor schedules against.
-    // It is the minimum of an optional env request and observed cgroup lines; an env-only
-    // declaration is unverified and unreadable to consumers. Unreadable -> the
-    // modeled law refuses (BudgetRefused), never a fabricated width.
-    let (budget_opt, budget_source) = crate::memory_governor::read_host_budget_bytes();
-    let budget_bytes: Option<i64> = budget_opt.map(|b| b as i64);
-    let independence: i64 = std::thread::available_parallelism()
-        .map(|n| n.get() as i64)
-        .unwrap_or(1);
-    // Group by entry so each entry resolves + analyzes once.
-    let mut by_entry: std::collections::BTreeMap<String, Vec<String>> =
-        std::collections::BTreeMap::new();
-    for r in rows {
-        by_entry
-            .entry(r.entry.clone())
-            .or_default()
-            .push(r.function.clone());
-    }
-    let (mut derivable, mut unknown) = (0usize, 0usize);
-    for (entry, functions) in &by_entry {
-        let (graph, source_indices) = match resolve_entry_graph(source_roots, entry) {
-            Ok(p) => p,
-            Err(_) => continue,
-        };
-        let report =
-            v1_compiler_compile::run_complexity_analysis(graph.clone(), source_indices.clone());
-        for function in functions {
-            let derived: Option<i64> = report.function_space_bytes.get(function).copied();
-            if derived.is_some() {
-                derivable += 1;
-            } else {
-                unknown += 1;
-            }
-            let args = vec![
-                (
-                    Some("derived_bytes".to_string()),
-                    realize_advisory_optional_int(&realize_ctx, derived),
-                ),
-                (
-                    Some("budget_bytes".to_string()),
-                    realize_advisory_optional_int(&realize_ctx, budget_bytes),
-                ),
-                (
-                    Some("independence_width".to_string()),
-                    Value::Int(independence),
-                ),
-            ];
-            match v1_interpreter::run_in_context_with_args(
-                &realize_ctx,
-                "realize_advisory",
-                &args,
-                false,
-            ) {
-                Ok(Value::Record { ref fields, .. }) => {
-                    let width = match realize_ctx.field(&fields, "width") {
-                        Some(Value::Int(w)) => *w,
-                        _ => -1,
-                    };
-                    let verdict = match realize_ctx.field(&fields, "verdict") {
-                        Some(Value::Str(s)) => s.to_string(),
-                        _ => String::new(),
-                    };
-                    let db = derived
-                        .map(|d| d.to_string())
-                        .unwrap_or_else(|| "unknown".to_string());
-                    let bb = budget_bytes
-                        .map(|b| b.to_string())
-                        .unwrap_or_else(|| "unreadable".to_string());
-                    eprintln!(
-                        "[realize-advisory] entry={entry} fn={function} derived_bytes={db} \
-                         budget={bb} independence={independence} predicted_width={width} verdict={verdict}"
-                    );
-                }
-                Ok(_) => eprintln!(
-                    "[realize-advisory] entry={entry} fn={function} — bridge returned non-record"
-                ),
-                Err(e) => {
-                    eprintln!("[realize-advisory] entry={entry} fn={function} — bridge error: {e}")
-                }
-            }
-        }
-    }
-    eprintln!(
-        "[realize-advisory] summary: {} function(s), {} with a derived bound, \
-         {} unknown (maturation reserve); budget={} source={}",
-        derivable + unknown,
-        derivable,
-        unknown,
-        budget_bytes
-            .map(|b| b.to_string())
-            .unwrap_or_else(|| "unreadable".to_string()),
-        budget_source,
-    );
 }
 
 /// Discovery per-phase wall totals (CI floor endgame D4 — the lever-1 re-diagnosis

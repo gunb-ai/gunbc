@@ -47,8 +47,6 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 data witness_runtime_cause_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [
     DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "WitnessRuntimeCause", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "token", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "of_interp_error", field: WholeDeclaration }
   ],
   reason: "The projection from v1_interpreter::InterpError to a cause cannot leave the seed, because InterpError is a seed type and the substrate has no representation of a Rust enum raised inside the interpreter. The modeled half DID move: the coproduct and its tokens are gunbc.observation_ci_render CiWitnessRuntimeCause and ci_witness_runtime_cause_token, and WitnessRuntimeCause is their mirror under an executed byte-equality parity test, exactly as CiWitnessVerdict already was. So these three items are the seam, not the vocabulary.\n\nENUMERATED RATHER THAN COUNTED. `token` and `of_interp_error` are impl methods on the new enum and are cited as their own rows because gunbc.class_b_import_closure_overlay's receipt sets that precedent; no Display impl or trait method is involved, so the citable count and the real count are both three.\n\nDeclared even though nothing would have caught it: gunbc.seed_growth_admission's G1 join is not enrolled (diff populations absent until rust_item_host_observation), so this roster is honest only if authors add rows they were not asked for.",
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,

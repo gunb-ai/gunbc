@@ -1,0 +1,23 @@
+module gunbc.emitted_build_failure_retention_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data emitted_build_failure_retention_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.native_lane_runner",
+      decl_name: "emitted_build_failed_refusal",
+      field: WholeDeclaration
+    }
+  ],
+
+  reason: "The EmittedCompilerBuildFailed refusal, made readable. It retains the run's PrivateProbeRoot (dropping it deleted the emitted sources the first error names) and prints the first rustc error's typed locus (emitted_closure_compile_host RustcErrorLocus) beside the retained path. It decides nothing about the build: cargo_verdict_compiled already refused. It lives in the host because the probe root and the cargo verdict are host values today.",
+
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+
+  trigger: "Delete this declaration when emitting and building the self-host and v2-native-cli closures is driven by an emitted driver rather than prepare_emitted_compiler_for_entry, SUFFICIENT FOR a failed build under gunbc test //gunbc/instruments:self-host to keep its emitted sources and report the first rustc error with file:line:col with no hand-authored refusal.",
+
+  current_boundary: "src/v1/stage0/src/cli_run/native_lane_runner.rs emitted_build_failed_refusal, called once from prepare_emitted_compiler_for_entry when the emitted crate does not compile, behind gunbc test //gunbc/instruments:self-host and //gunbc/instruments:v2-native-cli"
+}

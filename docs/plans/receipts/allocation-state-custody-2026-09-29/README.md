@@ -23,7 +23,7 @@ older-binary test and both branch-local full-root test/emission runs exited 137.
 Byte-identical dependency-only runs also exited 137: 1746 modules for custody
 controls, 2110 for the standard registry emitter. The latter reached some
 transitive typechecking but neither produced a qualification result or workflow
-output. No memory limit was increased. Receipt JSON records the exact binary.
+output. No memory limit was increased.
 
 PR #12580 remains draft and unqualified for installation. The superseded PR run
 36510800728 was cancelled and supplies no qualification. The explicitly dispatched
