@@ -326,24 +326,63 @@ fn algebra_inhabitance_field_declaration(inhabitance: Node, field: Symbol) -> Al
       match named_child_lookup(root: inhabitance, name: ^algebra_edge) {
         NamedChildMissing => InhabitanceMalformed { cause: ^algebra_inhabitance_algebra_edge_missing }
         NamedChildAmbiguous => InhabitanceMalformed { cause: ^algebra_inhabitance_algebra_edge_ambiguous }
-        NamedChildFound { target: algebra } =>
-          if algebra_structure_declares_field(structure: algebra, field: field) { FieldDeclared } else { FieldNotDeclared }
+        NamedChildFound { target: algebra } => algebra_structure_field_declaration(structure: algebra, field: field)
       }
   }
 }
 
-fn algebra_structure_declares_field(structure: Node, field: Symbol) -> Bool {
-  fold(structure.children, init: false, f: fn(acc, e) {
-    acc || match e.label {
-      Authored { name: name } =>
-        name == field || (algebra_field_composes_a_structure(name: name) && match binder_node_parts(n: e.target) {
-          Present { value: parts } => algebra_structure_declares_field(structure: parts.type_node, field: field)
-          Absent => false
-        })
-      StructuralLabel { label: _ } => false
-      Positional => false
-    }
-  })
+// THE STRUCTURE IS READ AS WHAT IT MUST BE, AND ANY OTHER SHAPE IS MALFORMED -- never a plausible answer. A
+// structure is a Conj whose every child is an Authored BINDER; a field is declared only by a binder (a matching
+// name on a non-binder edge is malformed, not declared); a composing field must carry a structure (a composing
+// binder over an atom is malformed, not a structure lacking the field). Declared and Malformed both stop the
+// read: the first is the answer, the second makes every answer from this node untrustworthy.
+fn algebra_structure_field_declaration(structure: Node, field: Symbol) -> AlgebraFieldDeclaration {
+  if !algebra_node_is_conj(n: structure) {
+    InhabitanceMalformed { cause: ^algebra_structure_not_a_conj }
+  } else {
+    fold(structure.children, init: FieldNotDeclared, f: fn(acc, e) {
+      match acc {
+        FieldDeclared => acc
+        InhabitanceMalformed { cause: _ } => acc
+        FieldNotDeclared => algebra_structure_edge_field_declaration(e: e, field: field)
+      }
+    })
+  }
+}
+
+fn algebra_structure_edge_field_declaration(e: Edge, field: Symbol) -> AlgebraFieldDeclaration {
+  match e.label {
+    Authored { name: name } =>
+      match binder_node_parts(n: e.target) {
+        Absent => InhabitanceMalformed { cause: ^algebra_structure_field_not_a_binder }
+        Present { value: parts } =>
+          if name == field {
+            FieldDeclared
+          } else if algebra_field_composes_a_structure(name: name) {
+            if algebra_node_is_conj(n: parts.type_node) {
+              algebra_structure_field_declaration(structure: parts.type_node, field: field)
+            } else {
+              InhabitanceMalformed { cause: ^algebra_composing_field_not_a_structure }
+            }
+          } else {
+            FieldNotDeclared
+          }
+      }
+    StructuralLabel { label: _ } => InhabitanceMalformed { cause: ^algebra_structure_edge_not_authored }
+    Positional => InhabitanceMalformed { cause: ^algebra_structure_edge_not_authored }
+  }
+}
+
+fn algebra_node_is_conj(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Conj } => true
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
+  }
 }
 
 fn algebra_field_composes_a_structure(name: Symbol) -> Bool {

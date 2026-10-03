@@ -115,3 +115,36 @@ test fn dai_composing_fields_are_the_structure_typed_binders() -> Bool {
     && !dai_contains(xs: algebra_structure_composing_fields, x: ^lattice_field_join)
     && !dai_contains(xs: algebra_structure_composing_fields, x: ^ordered_ring_field_compare)
 }
+
+// A FIELD EDGE THAT IS NOT A BINDER IS MALFORMED, EVEN WHEN ITS NAME IS THE ONE ASKED FOR: an ^ring_field_add
+// edge whose target is a bare atom is not a declared field, so the reader may not answer FieldDeclared from the
+// name alone.
+test fn dai_a_matching_name_on_a_non_binder_is_malformed() -> Bool {
+  let carrier = bool_node()
+  let structure = Node {
+    kind: TypeNode { connective: Conj },
+    children: [Edge { label: Authored { name: ^ring_field_add }, target: carrier }],
+    occurrence_id: OccurrenceSynthetic
+  }
+  dai_is_malformed(d: algebra_inhabitance_field_declaration(inhabitance: algebra_inhabitance_node(algebra: structure, inhabitant: carrier), field: ^ring_field_add))
+}
+
+// A COMPOSING FIELD MUST CARRY A STRUCTURE: an ^ordered_ring_field_ring binder whose type is an atom composes
+// nothing, so a field it should have supplied is MALFORMED rather than NotDeclared.
+test fn dai_a_composing_field_over_a_non_structure_is_malformed() -> Bool {
+  let carrier = bool_node()
+  let structure = Node {
+    kind: TypeNode { connective: Conj },
+    children: [binder_edge(name: ^ordered_ring_field_ring, type_node: carrier)],
+    occurrence_id: OccurrenceSynthetic
+  }
+  dai_is_malformed(d: algebra_inhabitance_field_declaration(inhabitance: algebra_inhabitance_node(algebra: structure, inhabitant: carrier), field: ^ring_field_add))
+}
+
+fn dai_is_malformed(d: AlgebraFieldDeclaration) -> Bool {
+  match d {
+    FieldDeclared => false
+    FieldNotDeclared => false
+    InhabitanceMalformed { cause: _ } => true
+  }
+}
