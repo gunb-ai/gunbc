@@ -3892,11 +3892,6 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       dispatch: dispatchable(),
       parent: in_project(project: "namespace-unique-on-chain", contribution: "Name resolution is unique on the chain only when imports bind and producers are bounded; this row closes one of those gaps."),
     ),
-    // HANDBACK DELIVERED 2026-10-03, ANSWER: DELETE. One cold/warm receipt (BuildBuddy, 65 GB runner,
-    // 5-entry claim_batch) showed the armed store exceeding 720 s against ~150 s unarmed and writing
-    // ~7.3 GB in two entries; the store, its arming switch, its cli_run call sites and the
-    // floor_materialization provider row were deleted in that change. This row stays until the
-    // operator accepts that receipt; there is no store left for a worker to measure.
     roadmap_node(
       identity: "rn_HPHX9GMDAXMMWWYGB6ZCSCYDWJ",
       id: "typed-store-cold-warm-measurement",
