@@ -244,7 +244,9 @@ fn v2_native_frontier_label() -> Label {
 
 // THE NATIVE CENSUS INSTRUMENT: the emitted compiler's `census-resolve` verb over the self-host
 // corpus, every front-end and resolve refusal GROUPED BY THE FATAL REASON
-// (v2.compiler.compile native_census_cause_groups_add) with the head kept as a member field. It is
+// (v2.compiler.compile native_census_cause_groups_add) with the head kept as a member field. An
+// import cascade is collapsed to its root (census C): each cascaded module is one member under the
+// root's reason, and the roots are ranked by closure fan-out (native_census_roots_ranked). It is
 // THE route to that census: the binary's `census` / `census-resolve` verbs remain only as this row's
 // realization and are not a second documented peer route, which is the --self-host precedent this
 // file states for `//gunbc/instruments:self-host` (DESIGN section 3, Building & checks).
