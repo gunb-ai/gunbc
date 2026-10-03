@@ -47365,7 +47365,7 @@ mod warm_route_bytes_probe {
                     Ok(())
                 }
             }
-            for m in graph.modules.iter() {
+            for (mi, m) in graph.modules.iter().enumerate() {
                 let mut seen: std::collections::HashSet<
                     *const crate::v1_compiler_infer_env::TypeEnv,
                 > = Default::default();
@@ -47380,8 +47380,9 @@ mod warm_route_bytes_probe {
                 let mut whole = Count(0);
                 let _ = serde_json::to_writer(&mut whole, &**m);
                 eprintln!(
-                    "[m6] label={label} module={} reachable_envs={} direct_parents={} type_env_bytes={} typed_module_bytes={}",
-                    m.name,
+                    "[m6] label={label} module_index={} items={} reachable_envs={} direct_parents={} type_env_bytes={} typed_module_bytes={}",
+                    mi,
+                    m.items.len(),
                     seen.len(),
                     m.type_env.parents.len(),
                     env_only.0,
