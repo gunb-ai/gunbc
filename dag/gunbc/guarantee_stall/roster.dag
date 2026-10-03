@@ -68,6 +68,8 @@ import gunbc.guarantee_stall.information_retrieval_transport_cannot_report_statu
 import gunbc.guarantee_stall.module_cited_only_in_annotation_prose_stall { module_cited_only_in_annotation_prose_stall }
 import gunbc.guarantee_stall.joint_claim_join_private_corpus_unindexed_stall { joint_claim_join_private_corpus_unindexed_stall }
 import gunbc.guarantee_stall.coercion_two_algebras_answer_one_question_stall { coercion_two_algebras_answer_one_question_stall }
+import gunbc.guarantee_stall.text_carrier_render_not_keyed_on_identity_stall { text_carrier_render_not_keyed_on_identity_stall }
+import gunbc.guarantee_stall.free_semigroup_text_crossing_decided_by_spelling_stall { free_semigroup_text_crossing_decided_by_spelling_stall }
 import gunbc.guarantee_stall.emitted_inline_crate_path_edges_unreturned_stall { emitted_inline_crate_path_edges_unreturned_stall }
 
 // THE COHORT PROVENANCE NOTES BELOW WERE AUTHORED WHEN EVERY ROW SAT IN ONE FILE, and they are
@@ -231,6 +233,8 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   pci_address_rendering_equivalence_stall,
   fabric_purpose_handover_registration_unobserved_stall,
   coercion_two_algebras_answer_one_question_stall,
+  text_carrier_render_not_keyed_on_identity_stall,
+  free_semigroup_text_crossing_decided_by_spelling_stall,
   emitted_inline_crate_path_edges_unreturned_stall,
   test_reference_ledger_typed_census_stall,
 ]

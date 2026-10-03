@@ -64,8 +64,41 @@ fn w_present_binding_in_the_string_literal_reemission() -> Bool {
   )
 }
 
+// HOST STRING ORDER IS CODE-POINT ORDER, asserted rather than assumed, because callers rely on it
+// (extdeps.git.enumeration, gunbc.guarantee_probe_corpus, gunbc.fabric.fabric_cell_observe and
+// fabric_cell_converge order with `<` on the kernel String and state CODE-POINT order). The
+// interpreter compares Str by Rust str ordering and the emitted Rust by String's Ord; both are
+// bytewise over UTF-8, and UTF-8 preserves scalar order. The discriminating pair is U+FFFD against
+// U+10000: code-point order puts U+FFFD first, while a UTF-16 code-unit order would put the
+// surrogate-encoded U+10000 (0xD800 ...) first. U+D7FF / U+E000 straddle the surrogate gap, and
+// "z" / U+E9 is the ordinary Latin-1 case.
+fn w_host_string_order_is_code_point_order_in_the_interpreter() -> Bool {
+  "z" < "\u{e9}"
+    && "\u{fffd}" < "\u{10000}"
+    && !("\u{10000}" < "\u{fffd}")
+    && "\u{d7ff}" < "\u{e000}"
+    && "\u{e9}" < "\u{fffd}"
+}
+
+fn w_non_ascii_string_ordering_realizes_on_the_host_string() -> Bool {
+  compile_dag_rust_emit_check(
+    "module sordna\n\nfn before(a: String) -> Bool {\n  a < \"\\u{10000}\"\n}\n",
+    "src/sordna.rs",
+    ["a.clone() <"],
+    ["compile_error!", ".chars()"]
+  )
+}
+
 test fn string_ordering_realizes_on_the_host_string() -> Bool {
   w_string_ordering_realizes_on_the_host_string()
+}
+
+test fn host_string_order_is_code_point_order_in_the_interpreter() -> Bool {
+  w_host_string_order_is_code_point_order_in_the_interpreter()
+}
+
+test fn non_ascii_string_ordering_realizes_on_the_host_string() -> Bool {
+  w_non_ascii_string_ordering_realizes_on_the_host_string()
 }
 
 test fn optional_string_ordering_refuses_at_emission() -> Bool {

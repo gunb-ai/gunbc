@@ -2,10 +2,12 @@ module test.claim.roadmap_provider_events_witness_test
 
 import std.types { Bool, String, Int }
 import std.measure { character_count, character_count_value }
+import gunbc.harness.harness_turn { harness_event_placement_waiting }
 import gunbc.roadmap_provider_events {
   CodexEventsParsed,
   CodexEventsRefused,
   ProviderRunning,
+  ProviderAwaitingSeat,
   ProviderCompleted,
   ProviderFailed,
   ProviderBudgetSpent,
@@ -308,4 +310,45 @@ test fn agent_report_declares_truncation_from_original_length() -> Bool {
 test fn agent_report_does_not_disturb_the_item_type_anchor() -> Bool {
   string_contains(s: projection_filter_text(), pattern: "\"item\":{\"type\":item_type,\"message\":agent_report}")
     && string_contains(s: projection_filter_text(), pattern: "\"item\":{\"type\":item_type}")
+}
+
+// A WORKER WAITING IN LINE FOR A SEAT IS READ AS WAITING, NOT AS A TURN THAT NEVER STARTED. The line
+// is the harness's own producer (gunbc.harness.harness_turn harness_event_placement_waiting), so the
+// pair below is the real producer into the real reader: the reason it was refused a seat reaches the
+// dashboard detail, and the wait counter with it. Before the arm existed the line classified as an
+// unknown event type and the whole stream was refused.
+fn waiting_line(wait: Int, reason: String) -> String {
+  concat(harness_event_placement_waiting(wait: wait, wait_cap: 1440, reason: reason), "\n")
+}
+
+test fn a_placement_wait_is_awaiting_seat_with_its_reason() -> Bool {
+  match provider_execution_state(parsed: parse_codex_jsonl(text: waiting_line(wait: 2, reason: "group-b: the engine reports 12 occupant(s)"))) {
+    ProviderAwaitingSeat { detail } =>
+      string_contains(s: detail, pattern: "group-b: the engine reports 12 occupant(s)")
+        && string_contains(s: detail, pattern: "wait 2 of 1440")
+    _ => false
+  }
+}
+
+test fn a_placement_wait_is_labelled_awaiting_seat_and_carries_its_detail() -> Bool {
+  let state = provider_execution_state(parsed: parse_codex_jsonl(text: waiting_line(wait: 1, reason: "group-a unavailable")))
+  provider_execution_state_label(state: state) == "awaiting_seat"
+    && string_contains(s: provider_execution_detail(state: state), pattern: "group-a unavailable")
+}
+
+// The wait is not sticky: once placed, the first provider event moves the attempt on.
+test fn a_placed_turn_leaves_the_wait_behind() -> Bool {
+  match provider_execution_state(parsed: parse_codex_jsonl(text: join([
+    waiting_line(wait: 1, reason: "busy"),
+    "{\"type\":\"turn.started\"}\n",
+  ], ""))) {
+    ProviderRunning { activity: _ } => true
+    _ => false
+  }
+}
+
+// And it is pinned through the projector: an unknown type is projected to {"type"} alone, which
+// would deliver the wait with its reason stripped.
+test fn the_projector_keeps_the_wait_reason() -> Bool {
+  string_contains(s: projection_filter_text(), pattern: "elif $type == \"turn.placement_waiting\" then {\"type\":$type,\"wait\":(.wait | num),\"wait_cap\":(.wait_cap | num),\"reason\":(.reason | bounded_text)}")
 }

@@ -28,7 +28,7 @@ import gunbc.spark.serving_arm {
 import gunbc.spark.serving_capacity_intent {
   ServingCapacityIntent, serving_capacity_intent, uniform_cold_seats,
   intent_for_launch_profile, intent_max_active_sequences, intent_max_single_sequence_tokens,
-  intent_max_total_resident_tokens, profile_for_intent,
+  intent_max_total_resident_tokens, profile_for_envelope, envelope_at_cold_floor,
   ServingCapacityIntentAdmitted, ServingCapacityIntentRefused,
 }
 import gunbc.spark.pair_serving_capacity_floor {
@@ -240,8 +240,8 @@ fn fx_shrunk_intent() -> ServingCapacityIntent {
 // the experiment plan and the subject mint use -- the join under test is between THIS derivation
 // and the subject, not between two independently authored values.
 fn fx_derived_profile() -> ServingLaunchProfile {
-  profile_for_intent(
-    intent: fx_shrunk_intent(),
+  profile_for_envelope(
+    envelope: envelope_at_cold_floor(cold: fx_shrunk_intent()),
     decided_gpu_memory_basis_points: basis_point(count: 8400),
     kv_cache_dtype: KvFp8,
     serve_port: 30000,
@@ -1356,8 +1356,8 @@ fn fx_wet_intent() -> ServingCapacityIntent {
 }
 
 fn fx_wet_profile() -> ServingLaunchProfile {
-  profile_for_intent(
-    intent: fx_wet_intent(),
+  profile_for_envelope(
+    envelope: envelope_at_cold_floor(cold: fx_wet_intent()),
     decided_gpu_memory_basis_points: basis_point(count: 8567),
     kv_cache_dtype: KvFp8,
     serve_port: 30000,
@@ -2018,8 +2018,8 @@ fn fx_262k_subject() -> MemoryProofSubject? {
       match memory_proof_subject_for_launch(
         checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10,
         topology: FourSparkTp4,
-        profile: profile_for_intent(
-          intent: intent,
+        profile: profile_for_envelope(
+          envelope: envelope_at_cold_floor(cold: intent),
           decided_gpu_memory_basis_points: basis_point(count: 8567),
           kv_cache_dtype: KvFp8,
           serve_port: 30000,
@@ -2403,8 +2403,8 @@ fn fx_launch_wall_intent() -> ServingCapacityIntent {
 }
 
 fn fx_launch_wall_profile() -> ServingLaunchProfile {
-  profile_for_intent(
-    intent: fx_launch_wall_intent(),
+  profile_for_envelope(
+    envelope: envelope_at_cold_floor(cold: fx_launch_wall_intent()),
     decided_gpu_memory_basis_points: basis_point(count: 8567),
     kv_cache_dtype: KvFp8,
     serve_port: 30000,

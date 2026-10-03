@@ -1,7 +1,6 @@
 module gunbc.machine_intake_mtcollins1_census_qemu_toolchain
 
 import std.types { Bool, List, NonEmptyStr, FilePath }
-import std.string_type { String }
 import std.algebra { list_append, trim }
 import std.content_hash { content_hash_atom }
 import v2.std.orchestration { EnvBinding, EnvSet }
