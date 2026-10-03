@@ -135,8 +135,11 @@ type CliSurface sole_constructor { arguments: List<CliArgument> }
 // (session/witty-wren-554), gunbc.codex_app_server_press.codex_press_account_trip_invocation,
 // which holds the bundled Codex executable's projected path and the CODEX_HOME binding as argv
 // words riding shell.Exec.RunArgvStdin; and the same date's gunbc.host_effect_realize
-// run_argv_over_host_effect_transport / run_argv_stdin_over_host_effect_transport, which carry the
-// host-effect staging fold's extdeps-built commands over shell.Exec.RunArgv and RunArgvStdin. It
+// run_argv_parameters_of, the pure decomposition both host-effect transport runners delegate to --
+// it carries the host-effect staging fold's extdeps-built commands over shell.Exec.RunArgv and
+// RunArgvStdin, and it is the ONLY host_effect_realize caller (the two runner fns themselves
+// stopped calling this fold directly when the split was factored, so their entries left the list
+// with the move: the roster names real callers, no more, no fewer). It
 // is enumerable on the fingers of one hand today, which
 // is what makes the restriction honest rather than aspirational. Adding another is an edit to
 // this list in the
@@ -155,11 +158,7 @@ fn cli_surface_of_literal_words(words: List<String>) -> CliSurface
     ),
     decl_ref(
       module_path: "gunbc.host_effect_realize",
-      decl_name: "run_argv_over_host_effect_transport",
-    ),
-    decl_ref(
-      module_path: "gunbc.host_effect_realize",
-      decl_name: "run_argv_stdin_over_host_effect_transport",
+      decl_name: "run_argv_parameters_of",
     ),
   ]
   = CliSurface {
