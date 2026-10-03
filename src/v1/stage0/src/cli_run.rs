@@ -10829,6 +10829,64 @@ mod closure_edge_demand_tests {
     }
 
     #[test]
+    fn entry_preparation_covers_the_closure_union_and_leaves_refusals_to_their_entry() {
+        let fixture = Fixture::new(&[
+            (
+                "a.dag",
+                "module entry_a\nimport chain.provider { first }\nfn main() -> Int { first() }\n",
+            ),
+            ("b.dag", "module entry_b\nfn main() -> Int { next() }\n"),
+            (
+                "provider.dag",
+                "module chain.provider\nfn first() -> Int { next() }\n",
+            ),
+            ("tail.dag", "module chain.tail\nfn next() -> Int { 1 }\n"),
+            (
+                "unrelated.dag",
+                "module unrelated\nfn unused() -> Int { 1 }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let entry = |file: &str| fixture.0.join(file).to_string_lossy().into_owned();
+        let entries = [entry("a.dag"), entry("b.dag"), entry("absent.dag")];
+        let warm = warm_bare_reference_edge_index_for_entries(&index, &entries).unwrap();
+        assert!(matches!(
+            warm.observation.provenance,
+            SharedBuildProvenance::BuiltByPreparation
+        ));
+        assert_eq!(
+            (warm.entries, warm.entries_refused, warm.pool_files),
+            (3, 1, 5)
+        );
+        let rows: BTreeSet<_> = index
+            .both_closure_edges
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .ref_out
+            .keys()
+            .cloned()
+            .collect();
+        let union: BTreeSet<_> = entries[..2]
+            .iter()
+            .flat_map(|e| load_sources_for_entry_with_pool(&index, e).unwrap())
+            .map(|s| workspace_relative_repo_path(&s.path))
+            .collect();
+        assert_eq!(rows, union);
+        assert_eq!(warm.observation.source_files, 4);
+        assert!(!rows.iter().any(|file| file.ends_with("unrelated.dag")));
+        // The refused entry still refuses at its owner.
+        assert!(load_sources_for_entry_with_pool(&index, &entries[2]).is_err());
+        assert!(matches!(
+            warm_bare_reference_edge_index_for_entries(&index, &entries[..2])
+                .unwrap()
+                .observation
+                .provenance,
+            SharedBuildProvenance::AlreadyWarmOnEntry { .. }
+        ));
+    }
+
+    #[test]
     fn decomposition_releases_production_name_censuses_and_admission() {
         let fixture = Fixture::new(&[(
             "entry.dag",
@@ -11075,6 +11133,93 @@ pub fn warm_bare_reference_edge_index(
         source_files: index.source_files.len(),
         bare_eligible: edges.bare_scan_eligible.len(),
         provenance,
+    })
+}
+
+/// The preparation of a run whose subject is a NAMED SET OF ENTRIES, not the tree.
+pub struct EntryClosureEdgeWarm {
+    /// `source_files` is the edge rows the index holds after this preparation -- the union of the
+    /// requested entries' closures -- which is the same quantity the whole-pool warm reports (there
+    /// every pool file has a row, so the two readings coincide exactly when the subject is the tree).
+    pub observation: SharedBuildObservation,
+    pub entries: usize,
+    /// Entries whose loader refused. The refusal is NOT answered here: the entry's own resolve
+    /// reaches the same loader, refuses identically, and reports it against that entry.
+    pub entries_refused: usize,
+    pub pool_files: usize,
+}
+
+/// Edge-index preparation for an entry-subject run: the per-file judgment
+/// (`build_both_closure_edge_index`) demanded over the union of the requested entries' closures,
+/// through the same loader fixpoint each entry's resolve runs (`load_sources_for_entry_with_pool`).
+///
+/// `warm_bare_reference_edge_index` asks the whole-pool question because the floor's claims
+/// collectively consume the pool. A run over named entries has no such consumer: every row outside
+/// the closure union is produced for nobody (DESIGN §2 -- authored duplication of nothing, so it is
+/// deleted, not cached). The preparation still exists, at this narrower subject, for the reason the
+/// whole-pool one does: the shared rows are attributed to the run rather than to whichever entry
+/// resolves first.
+pub fn warm_bare_reference_edge_index_for_entries(
+    index: &MultiEntryIndex,
+    entries: &[String],
+) -> Result<EntryClosureEdgeWarm, String> {
+    let provenance = if !entries.is_empty()
+        && entries.iter().all(|entry| {
+            index
+                .entry_closure_sources
+                .borrow()
+                .contains_key(&workspace_relative_entry_path(entry))
+        }) {
+        SharedBuildProvenance::AlreadyWarmOnEntry {
+            triggered_by: "a-site-ahead-of-entry-preparation",
+        }
+    } else {
+        SharedBuildProvenance::BuiltByPreparation
+    };
+    let rss_before = current_rss_bytes().unwrap_or(0);
+    let cpu_before = v1_interpreter::thread_cpu_nanos();
+    let wall_before = std::time::Instant::now();
+    let mut entries_refused = 0usize;
+    for entry in entries {
+        if load_sources_for_entry_with_pool(index, entry).is_err() {
+            entries_refused += 1;
+        }
+    }
+    let edges = index.both_closure_edges.borrow().clone();
+    let (source_files, bare_eligible) = match &edges {
+        Some(edges) => {
+            // The same reconciliation demand the whole-pool preparation keeps, over the roots the
+            // demanded rows actually reach.
+            let roots: BTreeSet<_> = edges
+                .bare_scan_eligible
+                .iter()
+                .filter_map(|file| source_tree_root_of(&index.source_roots, file))
+                .collect();
+            for root in roots {
+                tree_bare_census_for_root(index, &root)?;
+            }
+            (edges.ref_out.len(), edges.bare_scan_eligible.len())
+        }
+        None => (0, 0),
+    };
+    let wall_ms = wall_before.elapsed().as_millis() as u64;
+    let cpu_ms =
+        ((v1_interpreter::thread_cpu_nanos().saturating_sub(cpu_before)) / 1_000_000) as u64;
+    let rss_growth_bytes = current_rss_bytes()
+        .unwrap_or(rss_before)
+        .saturating_sub(rss_before);
+    Ok(EntryClosureEdgeWarm {
+        observation: SharedBuildObservation {
+            cpu_ms,
+            wall_ms,
+            rss_growth_bytes,
+            source_files,
+            bare_eligible,
+            provenance,
+        },
+        entries: entries.len(),
+        entries_refused,
+        pool_files: index.source_files.len(),
     })
 }
 
@@ -15850,12 +15995,10 @@ pub struct ResolveStageNanos {
     /// `expand_transitive_services` (monotone fixpoint over every bodied item, under a bound
     /// derived from the registry rather than a chosen pass count).
     pub assembly_services: u128,
-    /// The three `rewire_*` passes (type-env parents, import-str identity, func-env parents).
+    /// The two `rewire_*` passes (type-env parents, func-env parents).
     pub assembly_rewire: u128,
     /// `rewire_type_env_parent_links` alone.
     pub assembly_rewire_type_env: u128,
-    /// `rewire_type_env_import_str_binding_identity` alone.
-    pub assembly_rewire_import_str: u128,
     /// `rewire_func_env_parent_links` alone.
     pub assembly_rewire_func_env: u128,
     /// `corpus_has_v1_seed_source_indices` + `build_emit_graph_info`.
@@ -15990,7 +16133,6 @@ impl ResolveStageNanos {
         self.assembly_services += other.assembly_services;
         self.assembly_rewire += other.assembly_rewire;
         self.assembly_rewire_type_env += other.assembly_rewire_type_env;
-        self.assembly_rewire_import_str += other.assembly_rewire_import_str;
         self.assembly_rewire_func_env += other.assembly_rewire_func_env;
         self.assembly_emit_info += other.assembly_emit_info;
         self.load_reference_scan += other.load_reference_scan;
@@ -16051,7 +16193,6 @@ impl ResolveStageNanos {
             + self.assembly_registry
             + self.assembly_services
             + self.assembly_rewire_type_env
-            + self.assembly_rewire_import_str
             + self.assembly_rewire_func_env
             + self.assembly_emit_info
     }
@@ -16076,7 +16217,6 @@ impl ResolveStageNanos {
             + self.assembly_registry
             + self.assembly_services
             + self.assembly_rewire_type_env
-            + self.assembly_rewire_import_str
             + self.assembly_rewire_func_env
             + self.assembly_emit_info
     }
@@ -16108,7 +16248,6 @@ thread_local! {
             assembly_services: 0,
             assembly_rewire: 0,
             assembly_rewire_type_env: 0,
-            assembly_rewire_import_str: 0,
             assembly_rewire_func_env: 0,
             assembly_emit_info: 0,
             load_reference_scan: 0,
@@ -16508,10 +16647,6 @@ pub fn exclusive_cost_partition_from(
         CostPartitionRow {
             name: "assembly_rewire_type_env",
             nanos: st.assembly_rewire_type_env,
-        },
-        CostPartitionRow {
-            name: "assembly_rewire_import_str",
-            nanos: st.assembly_rewire_import_str,
         },
         CostPartitionRow {
             name: "assembly_rewire_func_env",
@@ -17272,14 +17407,6 @@ fn finish_resolved_graph_assembly(
     let modules =
         v1_compiler_infer::rewire_type_env_parent_links(modules.clone(), source_indices.clone());
     resolve_stage_slot_add(|s| s.assembly_rewire_type_env += rewire_started.elapsed().as_nanos());
-    let rewire2_started = std::time::Instant::now();
-    let modules = v1_compiler_infer::rewire_type_env_import_str_binding_identity(
-        modules.clone(),
-        source_indices.clone(),
-    );
-    resolve_stage_slot_add(|s| {
-        s.assembly_rewire_import_str += rewire2_started.elapsed().as_nanos()
-    });
     let rewire3_started = std::time::Instant::now();
     let modules =
         v1_compiler_infer::rewire_func_env_parent_links(modules.clone(), source_indices.clone());
@@ -41646,18 +41773,17 @@ mod exclusive_cost_partition_law {
 
     #[test]
     fn rewire_sub_rows_are_exclusive_and_total_is_observation_only() {
-        // The three non-overlapping passes enter the partition directly. Their enclosing
+        // The two non-overlapping passes enter the partition directly. Their enclosing
         // timer remains available on the text receipt but cannot become a quoted share.
         let st = ResolveStageNanos {
-            assembly_rewire: 300,
+            assembly_rewire: 150,
             assembly_rewire_type_env: 100,
-            assembly_rewire_import_str: 150,
             assembly_rewire_func_env: 50,
             ..ResolveStageNanos::default()
         };
         let p = exclusive_cost_partition_from(&st, "test_basis", 1_000, 1, 0, Vec::new());
-        assert_eq!(p.sum_exclusive_nanos(), 300);
-        assert_eq!(p.remainder_nanos, 700);
+        assert_eq!(p.sum_exclusive_nanos(), 150);
+        assert_eq!(p.remainder_nanos, 850);
 
         assert_eq!(p.share_of_parent("assembly_rewire"), None);
         assert_eq!(
@@ -41666,14 +41792,14 @@ mod exclusive_cost_partition_law {
                 .filter(|r| r.name.starts_with("assembly_rewire_"))
                 .map(|r| r.nanos)
                 .sum::<u128>(),
-            300
+            150
         );
 
         // The invariant that actually matters, over every inclusive row from every parent:
         // an inclusive row is contained in some other row (exclusive, or another inclusive
         // row -- `load_bare_*` nest under `load_bare_reference_closure`, which nests under
         // `load`), and is therefore already counted there. `sum_exclusive_nanos` above is
-        // 300, not 600, which is the double-count this control exists to catch.
+        // 150, not 300, which is the double-count this control exists to catch.
         let exclusive_names: Vec<&str> = p.exclusive.iter().map(|r| r.name).collect();
         let inclusive_names: Vec<&str> = p.inclusive.iter().map(|r| r.name).collect();
         for row in &p.inclusive {
