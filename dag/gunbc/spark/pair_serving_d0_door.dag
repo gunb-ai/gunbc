@@ -1,5 +1,6 @@
 module gunbc.spark.pair_serving_d0_door
 
+import std.content_hash { serialize_content_hash }
 import gunbc.auth.standing_operator_grant { standing_grant_authorization, StandingOperatorGrant }
 import extdeps.git
 import gunbc.output_policy { ExpectSuccess }
@@ -27,7 +28,7 @@ import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, obse
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, parse_fabric_group, fabric_group_hosts, fabric_group_wire }
 import gunbc.spark.pair_serving_authority_log { current_pair_serving_authority }
 import gunbc.spark.pair_serving_d0 {
-  d0_standing_grant_for,
+  d0_standing_grant_for, D0GrantRowProof, D0GrantRowUnproven, D0GrantRowApproved, d0_freeze_filing_with, parse_d0_frozen_filing, sha256_of_text,
   D0Subject, D0SuspendForSuccessor, D0ReleaseToFleet, d0_dispatch, d0_store_write_wall_standing,
   d0_read_filing, D0FilingAbsent, D0FilingAt, D0FilingUnreadable,
   d0_freeze_filing, D0FilingFrozen, D0FilingAlreadyHeld, D0FilingFreezeRefused,
@@ -114,6 +115,19 @@ type D0RunKind
   | D0RunRefused { reason: String }
 
 fn d0_run_kind(store: FabricStorageBinding, g: FabricGroup, escalation_id: NonEmptyStr, transaction: NonEmptyStr, execution_revision: NonEmptyStr) -> D0RunKind {
+  d0_run_kind_with(store: store, g: g, escalation_id: escalation_id, transaction: transaction, execution_revision: execution_revision, fresh_proof: D0GrantRowUnproven)
+}
+
+// A FRESH START FREEZES THE GRANT-ROW PROOF it was admitted with, and only for a request the grant covers;
+// every other filing is frozen exactly as before.
+fn d0_fresh_proof_for(request: AuthorizationRequest<D0Subject>, fresh_proof: D0GrantRowProof) -> D0GrantRowProof {
+  match d0_standing_grant_for(request: request) {
+    Absent => D0GrantRowUnproven
+    Present { value: _ } => fresh_proof
+  }
+}
+
+fn d0_run_kind_with(store: FabricStorageBinding, g: FabricGroup, escalation_id: NonEmptyStr, transaction: NonEmptyStr, execution_revision: NonEmptyStr, fresh_proof: D0GrantRowProof) -> D0RunKind {
   match d0_read_filing(store: store, escalation_id: escalation_id) {
     D0FilingUnreadable { reason: r } => D0RunRefused { reason: join(["the filing under this escalation could not be read: ", r as String], "") }
     D0FilingAt { text: t } =>
@@ -129,7 +143,7 @@ fn d0_run_kind(store: FabricStorageBinding, g: FabricGroup, escalation_id: NonEm
           match d0_request_intent_text(request: request, group: g, transaction: transaction) {
             Absent => D0RunRefused { reason: "the consent's scope has no wire, so no intent can be stated over it (std.scoped_authorization intent_frame_head refused)" }
             Present { value: intent_text } =>
-          match d0_freeze_filing(store: store, escalation_id: escalation_id, intent_text: intent_text, execution_revision: execution_revision) {
+          match d0_freeze_filing_with(store: store, escalation_id: escalation_id, intent_text: intent_text, execution_revision: execution_revision, proof: d0_fresh_proof_for(request: request, fresh_proof: fresh_proof)) {
             D0FilingFreezeRefused { reason: r } => D0RunRefused { reason: r as String }
             D0FilingFrozen => D0FirstRun { request: request }
             D0FilingAlreadyHeld { text: t } =>
@@ -184,16 +198,20 @@ fn d0_absent_claim_step(read: ApprovalStandingRead, request: AuthorizationReques
 // THE STANDING-GRANT ROSTER AND ITS COVERAGE LIVE IN gunbc.spark.pair_serving_d0 (d0_standing_grants,
 // d0_standing_grant_for), because the authorization binding there must name the grant's lifecycle.
 
-// THE STANDING GRANT IS HONORED ONLY AS THE OPERATOR MERGED IT (review 74677; ruling of valiant-crab-775,
-// 2026-10-03). DESIGN §5: approval is external to the diff. The external act is the operator's merge of the
-// grant row to main, so the door reads the grant's carrier file twice -- the bytes this run executes, and the
-// bytes origin/main holds (git show, the checkout fetches every ref) -- and honors a covering grant only when
-// they are byte-identical. Before main has the row, or when a branch has edited it, the grant is not honored
-// and the request takes the broker path, which refuses unless the broker answers. Any read that fails is
-// "not on main", never a pass.
-// THE ACCEPTED RESIDUAL RISK, stated plainly: branch code still INTERPRETS the operator-merged row (the
-// coverage fold and this gate run from the dispatched revision). In this dev environment, under the
-// operator's blanket Group A permission, that is accepted; the row's content is what the operator approved.
+// THE STANDING GRANT IS HONORED ONLY AS THE OPERATOR MERGED IT (review 74677; rulings of valiant-crab-775,
+// 2026-10-03). DESIGN §5: approval is external to the diff, and the external act is the operator's merge of
+// the grant row to main. That is a FRESH-START admission fact (side-chat review of #13102): the first run reads
+// the grant's carrier file it executes and `git show origin/main:` of the same path, and only when they are
+// byte-identical does it freeze the row's digest into the filing (D0GrantRowApproved). Before main has the
+// row, or when a branch has edited it, or when either read fails, nothing is frozen and the request takes the
+// broker path, which refuses unless the broker answers.
+// A RERUN NEVER CONSULTS CURRENT MAIN. It resumes from the frozen proof: the grant is honored only when the
+// row this run executes digests to the frozen digest. So a later change to the row on main -- even an
+// unrelated edit -- cannot strand a lifecycle that has claimed, written its pending state, or released; and a
+// rerun whose branch edited the row after the approval is refused the grant.
+// THE ACCEPTED RESIDUAL RISK, stated plainly: branch code still INTERPRETS the approved row (the coverage
+// fold and this gate run from the dispatched revision). In this dev environment, under the operator's blanket
+// Group A permission, that is accepted; the row's content is what the operator approved.
 type StandingGrantRowStanding
   = StandingGrantRowOnMain
   | StandingGrantRowNotOnMain { cause: String }
@@ -213,30 +231,75 @@ fn standing_grant_row_judged(executed: String, executed_read: Bool, on_main: Str
   }
 }
 
-fn standing_grant_row_standing() -> StandingGrantRowStanding {
-  let mine = Filesystem.Read(path: standing_grant_row_path)
-  let main = git.Core.Show(ref: standing_grant_main_ref as GitRef, path: standing_grant_row_path, expect: ExpectSuccess)
-  standing_grant_row_judged(executed: mine.content, executed_read: mine.success, on_main: main.content, main_read: main.success, main_stderr: main.stderr)
-}
+// THE ROW THIS RUN EXECUTES, read once and digested once: the fresh proof and the rerun's check both use it.
+type ExecutedGrantRow
+  = ExecutedGrantRowRead { content: String, digest: NonEmptyStr }
+  | ExecutedGrantRowUnread { cause: String }
 
-fn d0_honored_standing_grant(request: AuthorizationRequest<D0Subject>, row: StandingGrantRowStanding) -> StandingOperatorGrant? {
-  match row {
-    StandingGrantRowNotOnMain { cause: _ } => none
-    StandingGrantRowOnMain => d0_standing_grant_for(request: request)
+fn executed_grant_row() -> ExecutedGrantRow {
+  let mine = Filesystem.Read(path: standing_grant_row_path)
+  if !mine.success {
+    ExecutedGrantRowUnread { cause: join(["the grant row this run executes could not be read at ", standing_grant_row_path, ": ", mine.error], "") }
+  } else {
+    match sha256_of_text(text: mine.content) {
+      Absent => ExecutedGrantRowUnread { cause: "the grant row this run executes could not be digested" }
+      Present { value: h } => ExecutedGrantRowRead { content: mine.content, digest: serialize_content_hash(hash: h) as NonEmptyStr }
+    }
   }
 }
 
-fn d0_gate(store: FabricStorageBinding, kind: D0RunKind, transaction: NonEmptyStr, expires: Timestamp, issued: Timestamp, row: StandingGrantRowStanding) -> D0DoorGate
+// THE FRESH-START PROOF: the executed row against origin/main, read now.
+fn fresh_grant_row_proof(executed: ExecutedGrantRow) -> D0GrantRowProof {
+  match executed {
+    ExecutedGrantRowUnread { cause: _ } => D0GrantRowUnproven
+    ExecutedGrantRowRead { content: c, digest: d } => {
+      let main = git.Core.Show(ref: standing_grant_main_ref as GitRef, path: standing_grant_row_path, expect: ExpectSuccess)
+      match standing_grant_row_judged(executed: c, executed_read: true, on_main: main.content, main_read: main.success, main_stderr: main.stderr) {
+        StandingGrantRowNotOnMain { cause: _ } => D0GrantRowUnproven
+        StandingGrantRowOnMain => D0GrantRowApproved { row_digest: d }
+      }
+    }
+  }
+}
+
+// THE PROOF THE LIFECYCLE WAS FROZEN WITH, read back from its filing.
+fn d0_filed_grant_proof(store: FabricStorageBinding, escalation_id: NonEmptyStr) -> D0GrantRowProof {
+  match d0_read_filing(store: store, escalation_id: escalation_id) {
+    D0FilingAt { text: t } =>
+      match parse_d0_frozen_filing(text: t) {
+        Present { value: f } => f.grant_proof
+        Absent => D0GrantRowUnproven
+      }
+    D0FilingAbsent => D0GrantRowUnproven
+    D0FilingUnreadable { reason: _ } => D0GrantRowUnproven
+  }
+}
+
+// HONORED EXACTLY WHEN the lifecycle's frozen proof names a digest and the row this run executes has that
+// digest, and the grant covers the request. Current main is not an input.
+fn d0_honored_standing_grant(request: AuthorizationRequest<D0Subject>, frozen: D0GrantRowProof, executed: ExecutedGrantRow) -> StandingOperatorGrant? {
+  match frozen {
+    D0GrantRowUnproven => none
+    D0GrantRowApproved { row_digest: d } =>
+      match executed {
+        ExecutedGrantRowUnread { cause: _ } => none
+        ExecutedGrantRowRead { content: _, digest: mine } =>
+          if (mine as String) == (d as String) { d0_standing_grant_for(request: request) } else { none }
+      }
+  }
+}
+
+fn d0_gate(store: FabricStorageBinding, kind: D0RunKind, transaction: NonEmptyStr, expires: Timestamp, issued: Timestamp, frozen: D0GrantRowProof, executed: ExecutedGrantRow) -> D0DoorGate
 {
   match kind {
     D0RunRefused { reason: r } => D0DoorRefused { reason: r }
     D0FirstRun { request: request } =>
-      match d0_honored_standing_grant(request: request, row: row) {
+      match d0_honored_standing_grant(request: request, frozen: frozen, executed: executed) {
         Present { value: g } => D0DoorAdmitted { authorization: standing_grant_authorization(g: g, request: request, issued: issued, expires: expires) }
         Absent => d0_file_and_poll(request: request, issued: issued, expires: expires)
       }
     D0Rerun { request: request } =>
-      match d0_honored_standing_grant(request: request, row: row) {
+      match d0_honored_standing_grant(request: request, frozen: frozen, executed: executed) {
         Present { value: g } => D0DoorAdmitted { authorization: standing_grant_authorization(g: g, request: request, issued: issued, expires: expires) }
         Absent => d0_gate_rerun_by_broker(store: store, request: request, transaction: transaction, expires: expires, issued: issued)
       }
@@ -303,8 +366,10 @@ fn pair_serving_d0_wet(group: String, transaction: String, authorization: String
         HostStoreResolved { store: store, executor: _ } =>
       match approval_instant_now() {
         Absent => refuse(reason: "clock unreadable; cannot mint an approval window")
-        Present { value: issued } =>
-          match d0_gate(store: store, kind: d0_run_kind(store: store, g: g, escalation_id: authorization as NonEmptyStr, transaction: transaction as NonEmptyStr, execution_revision: execution_revision as NonEmptyStr), transaction: transaction as NonEmptyStr, expires: approval_expires_at(issued: issued, window: d0_approval_window()), issued: issued, row: standing_grant_row_standing()) {
+        Present { value: issued } => {
+          let executed_row = executed_grant_row()
+          let run_kind = d0_run_kind_with(store: store, g: g, escalation_id: authorization as NonEmptyStr, transaction: transaction as NonEmptyStr, execution_revision: execution_revision as NonEmptyStr, fresh_proof: fresh_grant_row_proof(executed: executed_row))
+          match d0_gate(store: store, kind: run_kind, transaction: transaction as NonEmptyStr, expires: approval_expires_at(issued: issued, window: d0_approval_window()), issued: issued, frozen: d0_filed_grant_proof(store: store, escalation_id: authorization as NonEmptyStr), executed: executed_row) {
             D0DoorRefused { reason: r } => refuse(reason: r)
             D0DoorAdmitted { authorization: scoped } =>
               match approval_instant_now() {
@@ -317,6 +382,7 @@ fn pair_serving_d0_wet(group: String, transaction: String, authorization: String
                   }
               }
           }
+        }
       }
       }
       }
