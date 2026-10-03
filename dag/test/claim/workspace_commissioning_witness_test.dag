@@ -1,0 +1,65 @@
+module test.claim.workspace_commissioning_witness_test
+
+import std.types { Bool, NonEmptyStr }
+import std.measure { hardware_thread_count }
+import gunbc.workspace_commissioning {
+  workspace_commissioning_admit, WorkspaceCommissioningUnapproved, WorkspaceCommissioningAuthorizedPlan,
+  WorkspacePriorPurposeWithdrawn, WorkspacePriorPurposeActive,
+  WorkspaceNoPriorObligations, WorkspaceObligationHistoryUnreadable,
+  WorkspaceCommissioningReady, WorkspaceCommissioningRefused,
+}
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import product.placement_supply { HostIdentity }
+import gunbc.runner_slot_allocation { gunbc_microvm_shakedown_slot_memory_max }
+import gunbc.fleet_host_budget { HostAllocationConserves }
+import product.fabric.sanitation { required_sanitation_facts, SlotScopedNetwork, FactConfirmed }
+import gunbc.runner_microvm_cell_readiness { WriteCommissioned, apply_cell_readiness_write, WriteAccepted }
+
+fn commissioning_test_slot() -> RunnerSlotIdentity { RunnerSlotIdentity { host: "srv1" as HostIdentity, slot_index: 13 } }
+
+test fn missing_stores_never_supply_commissioning_authority() -> Bool {
+  match workspace_commissioning_admit(slot: commissioning_test_slot(), authority: WorkspaceCommissioningUnapproved,
+    budget: HostAllocationConserves, cpu_budget: hardware_thread_count(count: 4), attempt_envelope: gunbc_microvm_shakedown_slot_memory_max,
+    prior_purpose: WorkspacePriorPurposeWithdrawn, obligations: WorkspaceNoPriorObligations { settled_generation: 0 },
+    sanitation: map(required_sanitation_facts(scope: SlotScopedNetwork), f => FactConfirmed { fact: f })) {
+    WorkspaceCommissioningRefused { reason: _ } => true other => false
+  }
+}
+
+test fn commissioning_authority_cannot_erase_unreadable_obligations() -> Bool {
+  let slot = commissioning_test_slot()
+  match workspace_commissioning_admit(slot: slot, authority: WorkspaceCommissioningAuthorizedPlan { slot: slot, plan_hash: "fixture-plan" as NonEmptyStr },
+    budget: HostAllocationConserves, cpu_budget: hardware_thread_count(count: 4), attempt_envelope: gunbc_microvm_shakedown_slot_memory_max,
+    prior_purpose: WorkspacePriorPurposeWithdrawn, obligations: WorkspaceObligationHistoryUnreadable { reason: "lost store" },
+    sanitation: map(required_sanitation_facts(scope: SlotScopedNetwork), f => FactConfirmed { fact: f })) {
+    WorkspaceCommissioningRefused { reason: _ } => true other => false
+  }
+}
+
+test fn competing_purpose_prevents_commissioning() -> Bool {
+  let slot = commissioning_test_slot()
+  match workspace_commissioning_admit(slot: slot, authority: WorkspaceCommissioningAuthorizedPlan { slot: slot, plan_hash: "fixture-plan" as NonEmptyStr },
+    budget: HostAllocationConserves, cpu_budget: hardware_thread_count(count: 4), attempt_envelope: gunbc_microvm_shakedown_slot_memory_max,
+    prior_purpose: WorkspacePriorPurposeActive, obligations: WorkspaceNoPriorObligations { settled_generation: 0 },
+    sanitation: map(required_sanitation_facts(scope: SlotScopedNetwork), f => FactConfirmed { fact: f })) {
+    WorkspaceCommissioningRefused { reason: _ } => true other => false
+  }
+}
+
+// A fixture supplies every observation; production must read them and satisfy the existing effect authorization pattern.
+test fn initial_readiness_cannot_overwrite_existing_history() -> Bool {
+  let slot = commissioning_test_slot()
+  match workspace_commissioning_admit(slot: slot, authority: WorkspaceCommissioningAuthorizedPlan { slot: slot, plan_hash: "fixture-plan" as NonEmptyStr },
+    budget: HostAllocationConserves, cpu_budget: hardware_thread_count(count: 4), attempt_envelope: gunbc_microvm_shakedown_slot_memory_max,
+    prior_purpose: WorkspacePriorPurposeWithdrawn, obligations: WorkspaceNoPriorObligations { settled_generation: 0 },
+    sanitation: map(required_sanitation_facts(scope: SlotScopedNetwork), f => FactConfirmed { fact: f })) {
+    WorkspaceCommissioningReady { commissioned: admitted } => {
+      let write = WriteCommissioned { permit: admitted.initial_readiness }
+      match apply_cell_readiness_write(records: [], write: write) {
+        WriteAccepted { records: initial } => match apply_cell_readiness_write(records: initial, write: write) { WriteAccepted { records: _ } => false other => true }
+        other => false
+      }
+    }
+    other => false
+  }
+}

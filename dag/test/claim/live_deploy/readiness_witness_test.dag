@@ -63,7 +63,7 @@ import gunbc.roadmap_site_healthz_validate {
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { Fnv1a64Structural }
-import gunbc.live_deploy.candidate { CandidateRelease }
+import gunbc.live_deploy.candidate_identity { CandidateRelease }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

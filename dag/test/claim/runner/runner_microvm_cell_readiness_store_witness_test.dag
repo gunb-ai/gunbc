@@ -1,9 +1,11 @@
 module test.claim.runner.runner_microvm_cell_readiness_store_witness_test
 
+import gunbc.runner_microvm_cell_readiness { GitHubRunnerWorkload, WorkspaceWorkload, in_flight_attempt_same }
+
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.nat { Nat }
 import gunbc.build_cache_instance { RunnerSlotIdentity, HostIdentity }
-import gunbc.runner_microvm_attempt {
+import gunbc.runner_microvm_attempt_identity {
   MicroVmAttempt, microvm_attempt, MicroVmAttemptAccepted, MicroVmAttemptRefused,
 }
 import product.fabric.sanitation {
@@ -16,7 +18,7 @@ import gunbc.runner_microvm_cell_readiness {
   CellReadinessRecord, CellAttemptInFlight, CellSettled, InFlightAttempt,
 }
 import gunbc.runner_microvm_cell_readiness_store {
-  Decoded, DecodeOk, DecodeRefused,
+  Decoded, DecodeOk, DecodeRefused, encode_attempt, decode_attempt,
   encode_record_document, decode_store_documents, decode_record_document,
   CellRecordPath, CellRecordAt, CellRecordNameRefused, cell_record_path,
   cell_of_record_filename, filename_body_disagreement,
@@ -67,7 +69,7 @@ fn witness_in_flight() -> InFlightAttempt? {
         value: InFlightAttempt {
           attempt: a,
           invocation_id: "inv-aaaa" as NonEmptyStr,
-          jit_registration_id: "reg-1234" as NonEmptyStr,
+          workload: GitHubRunnerWorkload { registration_id: "reg-1234" as NonEmptyStr },
           credential_device_path: witness_device_path,
         },
       }
@@ -325,5 +327,24 @@ fn root_owned(uid: String, mode: String) -> Bool {
         StoreNotRootOwned { owner_uid: _, mode: _ } => false
       }
     OwnershipUnread { reason: _ } => false
+  }
+}
+
+// Recovery of a workspace preserves its actual bootstrap subjects without a GitHub registration.
+test fn workspace_inflight_roundtrip_needs_no_github_registration() -> Bool {
+  match witness_attempt() {
+    Absent => false
+    Present { value: owned_attempt } => {
+      let original = InFlightAttempt {
+        attempt: owned_attempt,
+        invocation_id: "controller-workspace",
+        workload: WorkspaceWorkload { bootstrap_identity: "workspace", image_identity: "image", lease_expires_unix: 1790553600 },
+        credential_device_path: "/attempt/bootstrap.bin",
+      }
+      match decode_attempt(v: encode_attempt(a: original)) {
+        DecodeOk { value: restored } => in_flight_attempt_same(a: original, b: restored) && restored.credential_device_path == original.credential_device_path
+        _ => false
+      }
+    }
   }
 }

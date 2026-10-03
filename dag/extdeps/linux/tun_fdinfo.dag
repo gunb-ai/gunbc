@@ -1,0 +1,41 @@
+module extdeps.linux.tun_fdinfo
+
+import std.types { String, NonEmptyStr, Bool, Unit, Int }
+import std.algebra { trim }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "github.com/torvalds/linux/blob/master/drivers/net/tun.c" }
+}
+
+// tun_chr_show_fdinfo emits iff:<interface>; carrier state alone does not prove no holder.
+// Read twice as root and check kernel attached queues via ETHTOOL_GCHANNELS. Single-queue
+// mode excludes detached queues; multi-queue refuses. Kernel queue count also detects file
+// references held by io_uring/SCM_RIGHTS rather than installed process FDs. Denied reads refuse.
+service tun.LinuxTun {
+  operation ObserveHolders {
+    input { tap: NonEmptyStr }
+    output { value: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["/usr/bin/python3", "-c", "import os, sys, ctypes, socket\nname = sys.argv[1]\nif os.geteuid() != 0 or not name or any(c not in \"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-\" for c in name):\n    print(\"unreadable\"); sys.exit(1)\nif not os.path.isfile(\"/sys/class/net/\" + name + \"/tun_flags\"):\n    print(\"missing\"); sys.exit(0)\ndef attached_queues():\n    with open(\"/sys/class/net/\" + name + \"/tun_flags\") as stream:\n        flags = int(stream.read().strip(), 16)\n    if flags & 0x0100:\n        raise ValueError(\"multi-queue disabled references are not observable here\")\n    channels = (ctypes.c_uint32 * 9)()\n    channels[0] = 0x0000003c\n    class Ifreq(ctypes.Structure):\n        _fields_ = [(\"name\", ctypes.c_char * 16), (\"data\", ctypes.c_void_p), (\"padding\", ctypes.c_byte * 16)]\n    request = Ifreq()\n    request.name = name.encode(\"ascii\")\n    request.data = ctypes.addressof(channels)\n    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as control:\n        libc = ctypes.CDLL(None, use_errno=True)\n        if libc.ioctl(control.fileno(), 0x8946, ctypes.byref(request)) != 0:\n            raise OSError(ctypes.get_errno(), \"ETHTOOL_GCHANNELS failed\")\n    return channels[8]\ntry:\n    before_queues = attached_queues()\n    holders = set()\n    for iteration in range(2):\n        for pid in os.listdir(\"/proc\"):\n            if not pid.isdecimal(): continue\n            taskroot = \"/proc/\" + pid + \"/task\"\n            try:\n                threads = os.listdir(taskroot)\n            except FileNotFoundError:\n                continue\n            for tid in threads:\n                base = taskroot + \"/\" + tid + \"/fdinfo\"\n                try:\n                    descriptors = os.listdir(base)\n                except FileNotFoundError:\n                    if os.path.exists(taskroot + \"/\" + tid): raise\n                    continue\n                for fd in descriptors:\n                    try:\n                        with open(base + \"/\" + fd) as stream: content = stream.read()\n                    except FileNotFoundError:\n                        continue\n                    for line in content.splitlines():\n                        if line.startswith(\"iff:\") and line.split(\":\",1)[1].strip() == name:\n                            holders.add((pid,tid,fd))\n    print(\"holders=\" + str(max(len(holders), before_queues, attached_queues())))\nexcept (OSError, ValueError):\n    print(\"unreadable\"); sys.exit(1)\n", "{tap}"] }
+    exit { 0 => Unit nonzero => String "TUN descriptor census unavailable" }
+    mock_response { 1 => { value: "unreadable", success: false } "no fabricated host descriptor census" }
+  }
+}
+
+// The process result must affirm an exact nonnegative count; missing or malformed is not zero.
+type TunDescriptorCensus
+  = TunDescriptorCount { count: Int }
+  | TunInterfaceMissing
+  | TunDescriptorUnreadable
+
+fn tun_descriptor_census(success: Bool, value: String) -> TunDescriptorCensus {
+  if !success { TunDescriptorUnreadable }
+  else if trim(s: value) == "missing" { TunInterfaceMissing }
+  else if !starts_with(s: trim(s: value), prefix: "holders=") { TunDescriptorUnreadable }
+  else { match parse_int(s: substring(s: trim(s: value), start: 8, end: string_length(s: trim(s: value)))) {
+    Present { value: holders } => if holders >= 0 { TunDescriptorCount { count: holders } } else { TunDescriptorUnreadable }
+    Absent => TunDescriptorUnreadable
+  } }
+}
