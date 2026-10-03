@@ -45,18 +45,6 @@ fn ccr_loops(tree: ResolvedTree) -> List<Node> {
   })
 }
 
-// The declaration the one Loop of a lowered source realizes, as a dotted path.
-fn ccr_realized_path(src: String) -> Optional<String> {
-  match fmi_assemble(src: src) {
-    Rejected { diagnostics: _ } => optional_absent()
-    Accepted { value: tree, diagnostics: _ } =>
-      match ccr_loops(tree: tree) {
-        Cons { head: l, tail: Empty } => ccr_loop_realized_path(l: l)
-        _ => optional_absent()
-      }
-  }
-}
-
 fn ccr_loop_realized_path(l: Node) -> Optional<String> {
   match loop_realized_declaration_target(children: l.children) {
     Found { target: realized } =>
@@ -68,47 +56,95 @@ fn ccr_loop_realized_path(l: Node) -> Optional<String> {
   }
 }
 
-fn ccr_realizes(src: String, row: String) -> Bool {
-  match ccr_realized_path(src: src) {
-    Present { value: path } => path == row
-    Absent => false
+fn ccr_tree_realizes(tree: ResolvedTree, row: String) -> Bool {
+  match ccr_loops(tree: tree) {
+    Cons { head: l, tail: Empty } =>
+      match ccr_loop_realized_path(l: l) {
+        Present { value: path } => path == row
+        Absent => false
+      }
+    _ => false
   }
 }
 
-// (1) MAP OVER RECORDS READS A FIELD: the callback's binder `e` is the step's member formal, typed by the
-// domain element Pair, so `e.target` projects a declared field and infer raises no projection refusal.
-test fn ccr_map_over_records_reads_a_field() -> Bool {
-  match fmi_assemble(src: ccr_map_records) {
+fn ccr_assembled_realizes(src: String, row: String) -> Bool {
+  match fmi_assemble(src: src) {
     Rejected { diagnostics: _ } => false
-    Accepted { value: tree, diagnostics: _ } => fmi_no_projection_refusal(o: fmi_infer_tree(tree: tree))
+    Accepted { value: tree, diagnostics: _ } => ccr_tree_realizes(tree: tree, row: row)
   }
 }
 
-// (2) A BAD FIELD REFUSES AT THE FIELD: the same map projecting a field Pair does not declare.
-test fn ccr_map_undeclared_field_refuses_at_the_field() -> Bool {
-  fmi_reason(o: fmi_infer(src: ccr_map_undeclared_field)) == ^infer_reason_field_not_declared_on_receiver
+fn ccr_step_accumulator_label(step: Node) -> Optional<Symbol> {
+  match arrow_declared_parameter_order(arrow: step) {
+    ArrowParameterOrderDeclared { labels: labels } => list_at_optional(xs: labels, index: 0)
+    ArrowParameterOrderAbsent => optional_absent()
+    ArrowParameterOrderMalformed => optional_absent()
+  }
 }
 
-// (3) THE HEAD BINDS TO ITS OWN ROW, for every realized callback operation and for the piped spelling.
-test fn ccr_map_head_binds_its_row() -> Bool {
-  ccr_realizes(src: ccr_map_records, row: "std.algebra.collection_map_shape")
+fn ccr_tree_map_step_conses(tree: ResolvedTree) -> Bool {
+  match ccr_loops(tree: tree) {
+    Cons { head: l, tail: Empty } =>
+      match fold_loop_step(loop_node: l) {
+        Absent => false
+        Present { value: step } =>
+          match ccr_step_accumulator_label(step: step) {
+            Absent => false
+            Present { value: accumulator } =>
+              match fold_step_body_node(step: step) {
+                Absent => false
+                Present { value: body } =>
+                  match find_named_child(root: body, name: ^tail) {
+                    Rejected { diagnostics: _ } => false
+                    Accepted { value: tail, diagnostics: _ } =>
+                      match lexical_reference_label_optional(node: tail) {
+                        Present { value: label } => label == accumulator
+                        Absent => false
+                      }
+                  }
+              }
+          }
+      }
+    _ => false
+  }
 }
 
-test fn ccr_piped_map_head_binds_its_row() -> Bool {
-  ccr_realizes(src: ccr_map_piped, row: "std.algebra.collection_map_shape")
+// EACH FIXTURE PROGRAM IS ASSEMBLED ONCE, by a NULLARY producer enrolled in
+// v2.workflow.floor_pure_producer_share floor_cross_claim_pure_producers_warm: source assembly is the real
+// route these claims must exercise (the producer IS that route), and it dominates every claim, so it is paid
+// once in floor preparation and each claim reads the DECIDED, portable value. Claims over one program share
+// its producer.
+type CcrMapRecordsReading {
+  reads_field: Bool
+  binds_row: Bool
+  step_conses: Bool
 }
 
-test fn ccr_all_head_binds_its_row() -> Bool {
-  ccr_realizes(src: ccr_all_records, row: "std.algebra.collection_all_shape")
+fn ccr_map_records_reading() -> CcrMapRecordsReading {
+  match fmi_assemble(src: ccr_map_records) {
+    Rejected { diagnostics: _ } => CcrMapRecordsReading { reads_field: false, binds_row: false, step_conses: false }
+    Accepted { value: tree, diagnostics: _ } =>
+      CcrMapRecordsReading {
+        reads_field: fmi_no_projection_refusal(o: fmi_infer_tree(tree: tree)),
+        binds_row: ccr_tree_realizes(tree: tree, row: "std.algebra.collection_map_shape"),
+        step_conses: ccr_tree_map_step_conses(tree: tree)
+      }
+  }
 }
 
-// (3b) A HEAD A CORPUS DECLARATION BINDS STAYS AN ORDINARY CALL. filter and any are NOT realized,
-// because v2.std.algebra declares ordinary fns of those names and lowering classifies a head by spelling;
-// a realized row would lower such a call to a Loop that resolve refuses as shadowed
-// (gunbc.recurring_failure_mode collection_callback_operation_unrealized_in_v2_lowering). The guard: a
-// module declaring its own `any` and calling it positionally assembles, and lowers to no Loop. Adding
-// any's row to v2.compiler.fold_lowering collection_roster_rows makes this control red.
-test fn ccr_declared_any_stays_an_ordinary_call() -> Bool {
+fn ccr_map_undeclared_field_reason() -> Symbol {
+  fmi_reason(o: fmi_infer(src: ccr_map_undeclared_field))
+}
+
+fn ccr_piped_map_binds_its_row() -> Bool {
+  ccr_assembled_realizes(src: ccr_map_piped, row: "std.algebra.collection_map_shape")
+}
+
+fn ccr_all_binds_its_row() -> Bool {
+  ccr_assembled_realizes(src: ccr_all_records, row: "std.algebra.collection_all_shape")
+}
+
+fn ccr_declared_any_lowers_no_loop() -> Bool {
   match fmi_assemble(src: ccr_declared_any) {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
@@ -119,47 +155,47 @@ test fn ccr_declared_any_stays_an_ordinary_call() -> Bool {
   }
 }
 
+// (1) MAP OVER RECORDS READS A FIELD: the callback's binder `e` is the step's member formal, typed by the
+// domain element Pair, so `e.target` projects a declared field and infer raises no projection refusal.
+test fn ccr_map_over_records_reads_a_field() -> Bool {
+  ccr_map_records_reading().reads_field
+}
+
+// (2) A BAD FIELD REFUSES AT THE FIELD: the same map projecting a field Pair does not declare.
+test fn ccr_map_undeclared_field_refuses_at_the_field() -> Bool {
+  ccr_map_undeclared_field_reason() == ^infer_reason_field_not_declared_on_receiver
+}
+
+// (3) THE HEAD BINDS TO ITS OWN ROW, for every realized callback operation and for the piped spelling.
+test fn ccr_map_head_binds_its_row() -> Bool {
+  ccr_map_records_reading().binds_row
+}
+
+test fn ccr_piped_map_head_binds_its_row() -> Bool {
+  ccr_piped_map_binds_its_row()
+}
+
+// all's body joins through &&, which infer does not yet derive (a separate frontier), so this control
+// asserts the binding and lowering, not infer acceptance.
+test fn ccr_all_head_binds_its_row() -> Bool {
+  ccr_all_binds_its_row()
+}
+
+// (3b) A HEAD A CORPUS DECLARATION BINDS STAYS AN ORDINARY CALL. filter and any are NOT realized,
+// because v2.std.algebra declares ordinary fns of those names and lowering classifies a head by spelling;
+// a realized row would lower such a call to a Loop that resolve refuses as shadowed
+// (gunbc.recurring_failure_mode collection_callback_operation_unrealized_in_v2_lowering). The guard: a
+// module declaring its own `any` and calling it positionally assembles, and lowers to no Loop. Adding
+// any's row to v2.compiler.fold_lowering collection_roster_rows makes this control red.
+test fn ccr_declared_any_stays_an_ordinary_call() -> Bool {
+  ccr_declared_any_lowers_no_loop()
+}
+
 // (4) THE STRUCTURAL COST CONTROL: map's synthesized step body is a construct whose `tail` is the step's
 // OWN accumulator formal (declared position 0) -- one cell consed onto the carrier, O(1) per member, never
 // a snoc or append over it. This is the control that measures THIS lowering: no executor reads a
 // fold-realized Loop's encoding today (gunbc.recurring_failure_mode
 // fold_realized_loop_carries_no_iteration_direction), so an eval_steps figure measures the seed path.
-fn ccr_step_accumulator_label(step: Node) -> Optional<Symbol> {
-  match arrow_declared_parameter_order(arrow: step) {
-    ArrowParameterOrderDeclared { labels: labels } => list_at_optional(xs: labels, index: 0)
-    ArrowParameterOrderAbsent => optional_absent()
-    ArrowParameterOrderMalformed => optional_absent()
-  }
-}
-
 test fn ccr_map_step_conses_onto_its_accumulator() -> Bool {
-  match fmi_assemble(src: ccr_map_records) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: tree, diagnostics: _ } =>
-      match ccr_loops(tree: tree) {
-        Cons { head: l, tail: Empty } =>
-          match fold_loop_step(loop_node: l) {
-            Absent => false
-            Present { value: step } =>
-              match ccr_step_accumulator_label(step: step) {
-                Absent => false
-                Present { value: accumulator } =>
-                  match fold_step_body_node(step: step) {
-                    Absent => false
-                    Present { value: body } =>
-                      match find_named_child(root: body, name: ^tail) {
-                        Rejected { diagnostics: _ } => false
-                        Accepted { value: tail, diagnostics: _ } =>
-                          match lexical_reference_label_optional(node: tail) {
-                            Present { value: label } => label == accumulator
-                            Absent => false
-                          }
-                      }
-                  }
-              }
-          }
-        _ => false
-      }
-  }
+  ccr_map_records_reading().step_conses
 }
-
