@@ -762,7 +762,10 @@ import v2.std.collection { List }
 // ceiling arithmetic above: one front end is more than one claim's budget. gunbc#12506 added two rows on
 // their own sources (a let hiding a parameter refuses; an ordinary named call with a positional deficit
 // refuses), each read through a nullary producer answering the decided reason Symbol, WARM for the same
-// arithmetic. The same change's v2.test.claim.parse.expression_bodied_continuation reads each source's
+// arithmetic. The same program's lexical-route reads (pr_program_lexical_reads, a list of labels and recorded
+// bindings) were nullary but unlisted, so the first claim to read them paid the whole front end (633k steps on
+// run 37083779039); WARM beside the other two. namespace_xl0's two receiver rows read infer's refusal reason
+// through xl0r_*_infer_reason over the warm resolved fixtures, WARM because infer is past the budget. The same change's v2.test.claim.parse.expression_bodied_continuation reads each source's
 // parse-then-normalize verdict through one nullary Bool producer per source, WARM because a prepared parse plus
 // normalize is past one claim's budget.
 // v2.test.claim.field_projection.field_projection_stages (gunbc#12506, twenty rows refused
@@ -799,6 +802,7 @@ import v2.std.collection { List }
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.parameter_reference.pr_program_parameter_paths",
   "v2.test.claim.parameter_reference.pr_program_grounding",
+  "v2.test.claim.parameter_reference.pr_program_lexical_reads",
   "v2.test.claim.parameter_reference.pr_let_shadowing_reason",
   "v2.test.claim.parameter_reference.pr_named_call_deficit_reason",
   "v2.test.claim.parse.expression_bodied_continuation.cont_braced_survives_normalize",
@@ -1369,6 +1373,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_consumer_a",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_consumer_b",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_method_call_consumer",
+  "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_field_access_infer_reason",
+  "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_method_call_infer_reason",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_import_consumer_a",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_import_consumer_b",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_relay_consumer",
