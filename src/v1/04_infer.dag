@@ -17345,11 +17345,11 @@ fn reconcile(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, inte
   reconcile_with_census_extra(graph: graph, source_indices: source_indices, intern_table: intern_table, census_fill_modules: [], census_si: source_indices)
 }
 
+// Every view is re-pointed at the graph's ONE surface pool BEFORE the parent links are built. The
+// parent environments those links copy then already read that pool, and no module keeps the pool as
+// it stood when that module was typechecked.
 fn reconcile_with_census_extra(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, census_fill_modules: List<Node>, census_si: Map<String, NewlineIndex>) -> ResolvedGraph {
   let typed = typecheck_with_census_extra(graph: graph, source_indices: source_indices, intern_table: intern_table, census_fill_modules: census_fill_modules, census_si: census_si)
-  // Every view is re-pointed at the graph's ONE pool BEFORE the parent links are built, so the
-  // parent environments those links copy already read that pool and no module retains the pool as it
-  // stood when it was typechecked.
   let modules = modules_with_final_surface_pool(modules: typed.modules, source_indices: source_indices)
   let modules = rewire_type_env_parent_links(modules: modules, source_indices: source_indices)
   let modules = rewire_func_env_parent_links(modules: modules, source_indices: source_indices)
