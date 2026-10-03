@@ -1,0 +1,262 @@
+module test.claim.machine_intake.mtcollins1_power_on_account_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import v2.std.optional { Present }
+import extdeps.crypto.hash { sha256_digest }
+import extdeps.tools.sha256sum { Sha256FileDigest }
+import extdeps.bootloader.grub { grub_console_report }
+import extdeps.ampere.smpro_register { smpro_manufacturer_id_reg, smpro_cur_bootstage_reg, smpro_bootstage_reg, smpro_gpi_ras_err_reg,
+  smpro_err_pmpro_type_reg, smpro_err_pmpro_info_lo_reg, smpro_err_pmpro_info_hi_reg, smpro_err_pmpro_data_lo_reg, smpro_err_pmpro_data_hi_reg,
+  smpro_warn_pmpro_info_lo_reg, smpro_warn_pmpro_info_hi_reg, SmproRegister, SmproBootProgressRefused }
+import gunbc.machine_intake_mtcollins1_smpro_observation { SmproProbeRaw, SmproProbeOutcome, smpro_probe_outcome }
+import gunbc.machine_intake_pre_os_bringup_verdict { firmware_console_report }
+import gunbc.machine_intake_ampere_dram_console_observation { ampere_dram_console_observation }
+import gunbc.machine_intake_ampere_checkpoint_console_observation {
+  AmpereCheckpointRelation, AmpereCheckpointToken, ReferenceContinues, ampere_checkpoint_console_observation,
+}
+import gunbc.machine_intake_mtcollins1_console_milestone_observation { mtcollins1_console_milestones, UefiConsolePromptObserved, FirmwareSummaryObserved }
+import gunbc.machine_intake_ampere_socket_console_observation { ampere_socket_console_observation }
+import gunbc.machine_intake_linux_boot_console_observation { linux_boot_console_observation, EfiLoadError }
+import gunbc.machine_intake_kernel_module_decompression_observation { kernel_module_decompression_observation }
+import gunbc.machine_intake_mtcollins1_power_on_account {
+  PowerOnAccount, PowerOnEvidence, AttemptConfigurationReceipt, ConsoleEvidence, ConsoleRead, ConsoleNotRead, SmproPassEvidence,
+  HandoffPoweredOn, HandoffNotConfirmed, SelEventsNotRead, WatchdogUnobserved,
+  StimulusRequestNotRecorded, StimulusApplicationNotRecorded, PopulationNotRecorded, PopulationOperatorAttested, FirmwareReadbacksNotRecorded, SlotRow,
+  CarrierCoverage, SolConsole, CarrierReadEmpty,
+  ReachedCensus, StoppedWithStatedFailure, RestartedRepeatedly, StoppedWithoutRestart, HostEndingNotEstablished,
+  ResetCauseUnobserved, CadenceCounted, OpenedByPowerOn, NoConsoleSpan, SpanBound,
+  KernelStub, Kernel, KernelPanic, SecondaryJoin, InitrdLoadFailedByStub, PendingErrorRecord, SocketNotJoined, ActiveSocketsBelowExpected,
+  RetryStatePersistence, ResetCauseNotPubliclyReadable, CheckpointMeaningNotPubliclyModeled, SmproPairRefused,
+  ConfigurationNotRecorded, ConfiguredDimmPopulation, CarrierNotRead,
+  BootReachedUefiAfterSet, BootProgressLostAfterSet, ProgressRead,
+  mtcollins1_power_on_account, mtcollins1_power_on_account_text, firmware_set_boot_readback,
+}
+import gunbc.machine_intake_host_capture_envelope { HostCaptureLiveStream, host_capture_lines }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUPPLIED FIXTURES (DESIGN section 3, a witness discriminates at one interface). The account's inputs
+// are constructed here: console readings by running the real readers over EXACT BYTES of real
+// captures, and the opaque checkpoint relation supplied as a value -- its production from a reference
+// capture is held by power_on_console_readers_witness_test, and the whole bundle route by
+// mtcollins1_boot_diagnostic_bundle_witness_test's inhabitance claim.
+// branch mtcollins1-captures-2026-10-03, mtcollins1/step1-j1j17-20261003T042447Z/sol.raw
+// (sha256 6f33812ce2af74aacf9deba90931aa9144b1ba974532ae9e890b90a57c5900c1), lines 138-205;
+// excerpt sha256 edbcaabead8194544201251f9a8a5eb26ba3dfbb8da1caec9627487f260d153d.
+data step1_last_two_cycles: String = "NOTICE:  DRAM FW version 220414\r\nCP: 0ff00900\r\nMEMC param:\r\n  mcu_enable_mask = 00000001 [default: 000000ff]\r\nMCU param:\r\n  ecc_en = 00000002 [default: 00000001]\r\nDRAM populated DIMMs:\r\n  SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK    \r\nCP: 3ff00100\r\nCP: 3ff00200\r\nCP: 00f01902\r\nCP: 0ff00a00\r\nCP: 0ff00b01\r\nCP: 00f01901\r\nCP: 00f01904\r\nCP: 00f02901\r\nCP: 00f01905\r\nCP: 00f02902\r\nCP: 00f02903\r\nCP: 00f02904\r\nCP: 00f01907\r\nCP: 00f01906\r\nCP: 00f01908\r\nCP: 00f01909\r\nCP: 0ff00b02\r\nCP: 0ff00c00\r\nCP: 3ff00300\r\nCP: 00001a02\r\nCP: 00001a03\r\nCP: 00001a04\r\nCP: 00001a05\r\nCP: 00f01a07\r\nCP: 00001a09\r\nCP: 00001a0a\r\nNOTICE:  DRAM FW version 220414\r\nCP: 0ff00900\r\nMEMC param:\r\n  mcu_enable_mask = 00000001 [default: 000000ff]\r\nMCU param:\r\n  ecc_en = 00000002 [default: 00000001]\r\nDRAM populated DIMMs:\r\n  SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK    \r\nCP: 3ff00100\r\nCP: 3ff00200\r\nCP: 00f01902\r\nCP: 0ff00a00\r\nCP: 0ff00b01\r\nCP: 00f01901\r\nCP: 00f01904\r\nCP: 00f02901\r\nCP: 00f01905\r\nCP: 00f02902\r\nCP: 00f02903\r\nCP: 00f02904\r\nCP: 00f01907\r\nCP: 00f01906\r\nCP: 00f01908\r\nCP: 00f01909\r\nCP: 0ff00b02\r\nCP: 0ff00c00\r\nCP: 3ff00300\r\nCP: 00001a02\r\nCP: 00001a03\r\nCP: 00001a04\r\nCP: 00001a05\r\nCP: 00f01a07\r\nCP: 00001a09\r\nCP: 00001a0a\r\n"
+
+// run 37069907299, artifact mtcollins1-boot-receipts, file mtcollins1-boot-sol.capture (sha256
+// bfddc9ff3856bbdba500ee6b03571634a5b080588796c18c1b007ecc16361bf9), lines 1-115: a first DRAM pass
+// that stopped after 00001a0a, a second that went on to the firmware summary (1 active socket);
+// excerpt sha256 4fed2ee92d07ff4d6a34d28395c95ef13cf7a7ff03a2ed6598758398ba28c33d.
+data run_37069907299_firmware: String = "[SOL Session operational.  Use ~? for help]\nCheckpoint B4\r\n\0NOTICE:  DRAM FW version 210525\r\nCP: 0ff00900\r\nMEMC param:\r\n  mcu_enable_mask = 00000001 [default: 000000ff]\r\nMCU param:\r\n  ecc_en = 00000002 [default: 00000001]\r\nDRAM populated DIMMs:\r\n  SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK    \r\nCP: 3ff00100\r\nCP: 3ff00200\r\nCP: 00f01902\r\nCP: 0ff00a00\r\nCP: 0ff00b01\r\nCP: 00f01901\r\nCP: 00f01904\r\nCP: 00f02901\r\nCP: 00f01905\r\nCP: 00f02902\r\nCP: 00f02903\r\nCP: 00f02904\r\nCP: 00f01907\r\nCP: 00f01906\r\nCP: 00f01908\r\nCP: 00f01909\r\nCP: 0ff00b02\r\nCP: 0ff00c00\r\nCP: 3ff00300\r\nCP: 00001a02\r\nCP: 00001a03\r\nCP: 00001a04\r\nCP: 00001a05\r\nCP: 00f01a07\r\nCP: 00001a09\r\nCP: 00001a0a\r\nNOTICE:  DRAM FW version 210525\r\nCP: 0ff00900\r\nMEMC param:\r\n  mcu_enable_mask = 00000001 [default: 000000ff]\r\nMCU param:\r\n  ecc_en = 00000002 [default: 00000001]\r\nDRAM populated DIMMs:\r\n  SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK    \r\nCP: 3ff00100\r\nCP: 3ff00200\r\nCP: 00f01902\r\nCP: 0ff00a00\r\nCP: 0ff00b01\r\nCP: 00f01901\r\nCP: 00f01904\r\nCP: 00f02901\r\nCP: 00f01905\r\nCP: 00f02902\r\nCP: 00f02903\r\nCP: 00f02904\r\nCP: 00f01907\r\nCP: 00f01906\r\nCP: 00f01908\r\nCP: 00f01909\r\nCP: 0ff00b02\r\nCP: 0ff00c00\r\nCP: 3ff00300\r\nCP: 00001a02\r\nCP: 00001a03\r\nCP: 00001a04\r\nCP: 00001a05\r\nCP: 00f01a07\r\nCP: 00001a09\r\nCP: 00001a0a\r\nCP: 00001a0b\r\nCP: 00001a0c\r\nCP: 00001a0c\r\nCP: 3ff00400\r\nCP: 0ff01000\r\nCP: 0ff01101\r\nDRAM ECC Initialization: [6] [ ==>                  ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [12] [ ===>                 ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [18] [ ====>                ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [25] [ ======>              ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [31] [ =======>             ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [37] [ ========>            ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [43] [ =========>           ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [50] [ ===========>         ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [56] [ ============>        ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [62] [ =============>       ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [68] [ ==============>      ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [75] [ ================>    ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [81] [ =================>   ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [87] [ ==================>  ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [93] [ ===================> ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [100] [ ==================== ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\r\nCP: 0ff01200\r\nCP: 3ff00800\r\nDRAM memory regions:\r\n  Node[0] Region[0]: 0x000080000000 - 0x0000bfffffff \r\n  Node[0] Region[1]: 0x080000000000 - 0x08007fffffff \r\n  Node[0] Region[2]: 0x0800c0000000 - 0x0803ffffffff \r\nDRAM: 16GB DDR4 2666 SYMBOL ECC\r\nCheckpoint 2F\r\nCheckpoint 2E\r\nCheckpoint 31\r\nCheckpoint 32\r\nUEFI RC version: 1.08\r\nSCP FW version    : 1.08\r\nSCP FW build date : 20210825\r\nFailsafe status                 : 0\r\nReset status                    : 3\r\nCPU info\r\n    CPU ID                      : 413FD0C1\r\n    CPU Clock                   : 2800 MHz\r\n    Number of active sockets    : 1\r\n    Number of active cores      : 80\r\n    Socket[0]: Core voltage     : 1065\r\n    Socket[0]: SCU ProductID    : A10001\r\n    Socket[0]: Max cores        : 80\r\n    Socket[0]: Warranty         : 0\r\n    Socket[0]: Subnuma          : 0\r\n    Socket[0]: RC disable mask  : 0\r\n    Socket[0]: AVS enabled      : 1\r\n    Socket[0]: AVS voltage      : 1027\r\nSOC info\r\n    DDR Frequency               : 2666 MHz\r\n    Socket[0]: Soc voltage      : 750\r\n    Socket[0]: DIMM1 voltage    : 1235\r\n    Socket[0]: DIMM2 voltage    : 1235\r\n    PCP Clock                   : 1550 MHz\r\n    SOC Clock                   : 2000 MHz\r\n    SYS Clock                   : 400 MHz\r\n    AHB Clock                   : 200 MHz\r\n"
+
+// the same file, lines 421-431: GRUB, the EFI stub's initrd EFI_LOAD_ERROR, the kernel banner;
+// excerpt sha256 a9a2bd3a9cbc6a31b55ea910915aa7a195212175d22fc845afdad3b2aac13349.
+data run_37069907299_loader_and_stub: String = "\x1b[0;37;40m\x1b[0;30;40m\x1b[2J\x1b[1;1H\x1b[0;37;40m\x1b[2;30HGNU GRUB  version 2.12\n\r\n\r\x1b[1;37;40m\x1b[4;2H/----------------------------------------------------------------------------\\\x1b[5;2H|\x1b[5;79H|\x1b[6;2H|\x1b[6;79H|\x1b[7;2H|\x1b[7;79H|\x1b[8;2H|\x1b[8;79H|\x1b[9;2H|\x1b[9;79H|\x1b[10;2H|\x1b[10;79H|\x1b[11;2H|\x1b[11;79H|\x1b[12;2H|\x1b[12;79H|\x1b[13;2H|\x1b[13;79H|\x1b[14;2H|\x1b[14;79H|\x1b[15;2H|\x1b[15;79H|\x1b[16;2H|\x1b[16;79H|\x1b[17;2H|\x1b[17;79H|\x1b[18;2H\\----------------------------------------------------------------------------/\x1b[19;2H\x1b[20;2H\x1b[0;37;40m     Use the ^ and v keys to select which entry is highlighted.          \n\r      Press enter to boot the selected OS, `e' to edit the commands       \n\r      before booting or `c' for a command-line.                           \x1b[5;80H \x1b[0;30;47m\x1b[5;3H*Try or Install Ubuntu Server                                               \x1b[1;37;40m\x1b[5;78H\x1b[0;37;40m\x1b[1;37;40m\x1b[6;3H Ubuntu Server with the HWE kernel                                          \x1b[6;78H\x1b[0;37;40m\x1b[1;37;40m\x1b[7;3H Boot from next volume                                                      \x1b[7;78H\x1b[0;37;40m\x1b[1;37;40m\x1b[8;3H UEFI Firmware Settings                                                     \x1b[8;78H\x1b[0;37;40m\x1b[1;37;40m\x1b[9;3H                                                                            \x1b[9;78H\x1b[0;37;40m\x1b[1;37;40m\x1b[10;3H                                                                            \x1b[10;78H\x1b[0;37;40m\x1b[1;37;40m\x1b[11;3H                                                                            \x1b[11;78H\x1b[0;37;40m\x1b[1;37;40m\x1b[12;3H                                                                            \x1b[12;78H\x1b[0;37;40m\x1b[1;37;40m\x1b[13;3H                                                                            \x1b[13;78H\x1b[0;37;40m\x1b[1;37;40m\x1b[14;3H                                                                            \x1b[14;78H\x1b[0;37;40m\x1b[1;37;40m\x1b[15;3H                                                                            \x1b[15;78H\x1b[0;37;40m\x1b[1;37;40m\x1b[16;3H                                                                            \x1b[16;78H\x1b[0;37;40m\x1b[1;37;40m\x1b[17;3H                                                                            \x1b[17;78H\x1b[0;37;40m\x1b[17;80H \x1b[5;78H\x1b[23;1H   The highlighted entry will be executed automatically in 30s.                \x1b[5;78H\x1b[23;1H   The highlighted entry will be executed automatically in 29s.                \x1b[5;78H\x1b[23;1H   The highlighted entry will be executed automatically in 28s.                \x1b[5;78H\x1b[23;1H   The highlighted entry will be executed automatically in 27s.                \x1b[5;78H\x1b[23;1H   The highlighted entry will be executed automatically in 26s.                \x1b[5;78H\x1b[23;1H   The highlighted entry will be executed automatically in 25s.                \x1b[5;78H\x1b[23;1H   The highlighted entry will be executed automatically in 24s.                \x1b[5;78H\x1b[23;1H   The highlighted entry will be executed automatically in 23s.                \x1b[5;78H\x1b[23;1H   The highlighted entry will be executed automatically in 22s.                \x1b[5;78H\x1b[23;1H   The highlighted entry will be executed automatically in 21s.                \x1b[5;78H\x1b[23;1H   The highlighted entry will be executed automatically in 20s.                \x1b[5;78H\x1b[23;1H   The highlighted entry will be executed automatically in 19s.                \x1b[5;78H\x1b[23;1H   The highlighted entry will be executed automatically in 18s.                \x1b[5;78H\x1b[23;1H   The highlighted entry will be executed automatically in 17s.                \x1b[5;78H\x1b[23;1H   The highlighted entry will be executed automatically in 16s.                \x1b[5;78H\x1b[23;1H   The highlighted entry will be executed automatically in 15s.                \x1b[5;78H\x1b[23;1H   The highlighted entry will be executed automatically in 14s.                \x1b[5;78H\x1b[23;1H   The highlighted entry will be executed automatically in 13s.                \x1b[5;78H\x1b[23;1H   The highlighted entry will be executed automatically in 12s.                \x1b[5;78H\x1b[23;1H   The highlighted entry will be executed automatically in 11s.                \x1b[5;78H\x1b[23;1H   The highlighted entry will be executed automatically in 10s.                \x1b[5;78H\x1b[23;1H   The highlighted entry will be executed automatically in 9s.                 \x1b[5;78H\x1b[23;1H   The highlighted entry will be executed automatically in 8s.                 \x1b[5;78H\x1b[23;1H   The highlighted entry will be executed automatically in 7s.                 \x1b[5;78H\x1b[23;1H   The highlighted entry will be executed automatically in 6s.                 \x1b[5;78H\x1b[23;1H   The highlighted entry will be executed automatically in 5s.                 \x1b[5;78H\x1b[23;1H   The highlighted entry will be executed automatically in 4s.                 \x1b[5;78H\x1b[23;1H   The highlighted entry will be executed automatically in 3s.                 \x1b[5;78H\x1b[23;1H   The highlighted entry will be executed automatically in 2s.                 \x1b[5;78H\x1b[23;1H   The highlighted entry will be executed automatically in 1s.                 \x1b[5;78H\x1b[23;1H   The highlighted entry will be executed automatically in 0s.                 \x1b[5;78H\x1b[0;30;40m\x1b[2J\x1b[1;1H\x1b[0;37;40m\x1b[0;30;40m\x1b[2J\x1b[1;1H\x1b[0;37;40mEFI stub: Booting Linux Kernel...\r\nEFI stub: WARNING: Working around broken SetVirtualAddressMap()\r\nEFI stub: ERROR: Failed to load initrd: 0x8000000000000001\r\nEFI stub: Generating empty DTB\r\nEFI stub: Exiting boot services...\r\n[    0.000000] Booting Linux on physical CPU 0x0000120000 [0x413fd0c1]\r\n[    0.000000] Linux version 6.8.0-71-generic (buildd@bos03-arm64-036) (aarch64-linux-gnu-gcc-13 (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0, GNU ld (GNU Binutils for Ubuntu) 2.42) #71-Ubuntu SMP PREEMPT_DYNAMIC Tue Jul 22 16:44:45 UTC 2025 (Ubuntu 6.8.0-71.71-generic 6.8.12)\r\n"
+
+// the same file, line 1879: the kernel's panic after the missing initrd; excerpt sha256 a602607e3bd95133ca09a71f3d24f3227cf4fd92e33bd108be22bf11b3848e51.
+data run_37069907299_panic: String = "[    9.962666] Kernel panic - not syncing: VFS: Unable to mount root fs on unknown-block(0,0)\r\n"
+
+fn lines_of(text: String) -> List<String> {
+  host_capture_lines(capture: HostCaptureLiveStream { text: text })
+}
+
+data no_digest: Sha256FileDigest = Sha256FileDigest { digest: sha256_digest(hex: "6f33812ce2af74aacf9deba90931aa9144b1ba974532ae9e890b90a57c5900c1") }
+
+// The relation the bundle derives for step 1's last span against the census reference (supplied; see above).
+fn step1_relation(span: Int) -> AmpereCheckpointRelation {
+  AmpereCheckpointRelation {
+    span: span, capture: no_digest, last: AmpereCheckpointToken { digits: "00001a0a" },
+    reference_path: "artifacts/bmc/mtcollins1-hw-census-sol.log", reference_digest: no_digest,
+    reference_firmware: "the vendor firmware set installed before the 2026-10-02 update", reference_configuration: "two sockets, sixteen DIMMs",
+    continuation: ReferenceContinues { next: AmpereCheckpointToken { digits: "14001a0a" }, remaining: 91, occurrences: 1 },
+  }
+}
+
+fn console_of(lines: List<String>, relations: List<AmpereCheckpointRelation>) -> ConsoleEvidence {
+  ConsoleRead {
+    capture: no_digest, firmware: firmware_console_report(lines: lines), firmware_error_lines: 0,
+    dram: ampere_dram_console_observation(lines: lines), checkpoints: ampere_checkpoint_console_observation(lines: lines), relations: relations,
+    milestones: mtcollins1_console_milestones(lines: lines), sockets: ampere_socket_console_observation(lines: lines),
+    loader: grub_console_report(lines: lines), linux: linux_boot_console_observation(lines: lines), modules: kernel_module_decompression_observation(lines: lines),
+  }
+}
+
+fn receipt() -> AttemptConfigurationReceipt {
+  AttemptConfigurationReceipt {
+    subject: "mtcollins1", attempt: "witness", expected_sockets: [0, 1],
+    requested: StimulusRequestNotRecorded { reason: "witness" }, applied: StimulusApplicationNotRecorded { reason: "witness" },
+    cpus: PopulationNotRecorded { reason: "witness" }, dimms: PopulationNotRecorded { reason: "witness" }, firmware: FirmwareReadbacksNotRecorded { reason: "witness" },
+  }
+}
+
+fn raw(socket: Int, reg: SmproRegister, stdout: String) -> SmproProbeOutcome {
+  smpro_probe_outcome(raw: SmproProbeRaw { sequence: 0, socket: socket, register: reg.name, request: "r", at: "2026-10-03T04:25:00Z", exit_code: 0, stdout: stdout, stderr: "" })
+}
+
+// THE 2026-10-03 LOOP's SMpro pass (eager-gull-22's synchronized capture): socket 0 CUR_BOOTSTAGE 0x0002
+// with BOOTSTAGE 0x0201; socket 1 CUR_BOOTSTAGE 0x0001 with BOOTSTAGE 0x03ff, a refused pair.
+fn loop_pass() -> List<SmproPassEvidence> {
+  [SmproPassEvidence { label: "power-on", outcomes: [
+    raw(socket: 0, reg: smpro_manufacturer_id_reg, stdout: "cd 3a"), raw(socket: 0, reg: smpro_cur_bootstage_reg, stdout: "00 02"), raw(socket: 0, reg: smpro_bootstage_reg, stdout: "02 01"),
+    raw(socket: 1, reg: smpro_manufacturer_id_reg, stdout: "cd 3a"), raw(socket: 1, reg: smpro_cur_bootstage_reg, stdout: "00 01"), raw(socket: 1, reg: smpro_bootstage_reg, stdout: "03 ff"),
+  ] }]
+}
+
+// Socket 0's GPI-pending CCIX record as #13058 decodes it (smpro-err-20261003T005609Z: 0x7E = 0x0002,
+// 0xA6 = 0x0074, 0xA7 = 0x2244).
+fn ccix_pass() -> List<SmproPassEvidence> {
+  [SmproPassEvidence { label: "census", outcomes: [
+    raw(socket: 0, reg: smpro_manufacturer_id_reg, stdout: "cd 3a"), raw(socket: 0, reg: smpro_gpi_ras_err_reg, stdout: "00 02"),
+    raw(socket: 0, reg: smpro_err_pmpro_type_reg, stdout: "00 02"), raw(socket: 0, reg: smpro_err_pmpro_info_hi_reg, stdout: "22 44"),
+    raw(socket: 0, reg: smpro_err_pmpro_info_lo_reg, stdout: "00 74"), raw(socket: 0, reg: smpro_err_pmpro_data_hi_reg, stdout: "00 00"),
+    raw(socket: 0, reg: smpro_err_pmpro_data_lo_reg, stdout: "00 00"), raw(socket: 0, reg: smpro_warn_pmpro_info_hi_reg, stdout: "00 00"),
+    raw(socket: 0, reg: smpro_warn_pmpro_info_lo_reg, stdout: "00 00"),
+  ] }]
+}
+
+fn evidence(console: ConsoleEvidence, smpro: List<SmproPassEvidence>, census_ended: Bool) -> PowerOnEvidence {
+  PowerOnEvidence {
+    configuration: receipt(), handoff: HandoffPoweredOn, smpro: smpro, console: console, sel: SelEventsNotRead,
+    watchdog: WatchdogUnobserved { reason: "witness" }, bmc_anomalies: [], census_ended: census_ended, coverage: [],
+  }
+}
+
+fn step1_account() -> PowerOnAccount {
+  let lines = lines_of(text: step1_last_two_cycles)
+  mtcollins1_power_on_account(e: evidence(console: console_of(lines: lines, relations: [step1_relation(span: 1)]), smpro: loop_pass(), census_ended: false))
+}
+
+// ── THE NEW-FIRMWARE LOOP ─────────────────────────────────────────────────────────────────────
+
+test fn the_step1_loop_is_a_repeated_restart_ending_after_an_opaque_token() -> Bool {
+  match step1_account().ending {
+    RestartedRepeatedly { cycles: n, last_cycle_ended_after: r, cadence: c, console_errors: k, sel_restarts: _, watchdog: _, reset_cause: rc } =>
+      n == 2 && k == 0
+        && (match r { Present { value: rel } => (rel.last.digits as String) == "00001a0a" Absent => false })
+        && (match c { CadenceCounted { cycles: m } => m == 2 _ => false })
+        && (match rc { ResetCauseUnobserved { searched: _ } => true _ => false })
+    _ => false
+  }
+}
+
+test fn the_loop_leaves_retry_state_reset_cause_and_meaning_open() -> Bool {
+  let a = step1_account()
+  any(a.open, q => match q.question { RetryStatePersistence => true _ => false })
+    && any(a.open, q => match q.question { ResetCauseNotPubliclyReadable => true _ => false })
+    && any(a.open, q => match q.question { CheckpointMeaningNotPubliclyModeled => true _ => false })
+}
+
+// LAW 5: the refused pair is evidence on the join subject and an open question, never a stage.
+test fn socket_ones_refused_pair_is_an_open_question_on_the_join() -> Bool {
+  let a = step1_account()
+  any(a.open, q => match q.question { SmproPairRefused { socket: k, pass: _ } => k == 1 && (match q.subject { SecondaryJoin => true _ => false }) _ => false })
+    && any(a.socket_progress, p => p.socket == 1 && (match p.reading { ProgressRead { cur_bootstage_word: _, bootstage_word: _, progress: g } => (match g { SmproBootProgressRefused { cur_bootstage_word: c, bootstage_word: r } => c == 1 && r == 1023 _ => false }) _ => false }))
+}
+
+// LAW 4: mutating the last token changes only the relation; the ending's kind and cycle count stand.
+test fn a_different_last_token_changes_only_the_relation() -> Bool {
+  let lines = lines_of(text: step1_last_two_cycles)
+  let other = AmpereCheckpointRelation { span: 1, capture: no_digest, last: AmpereCheckpointToken { digits: "00001a09" }, reference_path: "r", reference_digest: no_digest, reference_firmware: "f", reference_configuration: "c", continuation: ReferenceContinues { next: AmpereCheckpointToken { digits: "00001a0a" }, remaining: 1, occurrences: 1 } }
+  match mtcollins1_power_on_account(e: evidence(console: console_of(lines: lines, relations: [other]), smpro: loop_pass(), census_ended: false)).ending {
+    RestartedRepeatedly { cycles: n, last_cycle_ended_after: r, cadence: _, console_errors: _, sel_restarts: _, watchdog: _, reset_cause: _ } =>
+      n == 2 && (match r { Present { value: rel } => (rel.last.digits as String) == "00001a09" Absent => false })
+    _ => false
+  }
+}
+
+// ── LAW 2: CYCLES ARE PRESERVED, AND PROGRESS AFTER A RESTART IS NOT A LOOP ──────────────────
+
+fn old_firmware_account(census_ended: Bool) -> PowerOnAccount {
+  let lines = concat(lines_of(text: run_37069907299_firmware), concat(lines_of(text: run_37069907299_loader_and_stub), lines_of(text: run_37069907299_panic)))
+  mtcollins1_power_on_account(e: evidence(console: console_of(lines: lines, relations: []), smpro: [], census_ended: census_ended))
+}
+
+test fn the_old_firmware_first_cycle_stops_and_the_second_reaches_uefi() -> Bool {
+  let a = old_firmware_account(census_ended: false)
+  count(a.cycles) == 2
+    && (match a.cycles.first() { Present { value: c } => !any(c.milestones, m => match m.milestone { FirmwareSummaryObserved => true _ => false }) Absent => false })
+    && (match a.cycles.last() { Present { value: c } => any(c.milestones, m => match m.milestone { FirmwareSummaryObserved => true _ => false }) Absent => false })
+}
+
+// The stub's initrd failure led to the kernel's panic: the attempt stopped at the panic, and the
+// initrd failure stays among the errors as what led there.
+test fn an_initrd_failure_then_a_panic_ends_at_the_kernel_with_both_errors_kept() -> Bool {
+  let a = old_firmware_account(census_ended: false)
+  (match a.ending { StoppedWithStatedFailure { subject: s, error: e } => (match s { Kernel => true _ => false }) && (match e { KernelPanic { reason: _ } => true _ => false }) _ => false })
+    && any(a.errors, x => match x.error { InitrdLoadFailedByStub { status: st } => (match st { EfiLoadError => true _ => false }) _ => false })
+}
+
+test fn the_readback_finds_uefi_in_cycle_two_and_carries_the_ending() -> Bool {
+  match firmware_set_boot_readback(a: old_firmware_account(census_ended: false)) {
+    BootReachedUefiAfterSet { cycle: c, milestone: _, ending: e, degradations: _, account: _ } => c == 2 && (match e { StoppedWithStatedFailure { subject: _, error: _ } => true _ => false })
+    _ => false
+  }
+}
+
+test fn the_step1_readback_is_progress_lost() -> Bool {
+  match firmware_set_boot_readback(a: step1_account()) { BootProgressLostAfterSet { ending: _, last_relation: r, account: _ } => (match r { Present { value: _ } => true Absent => false }) _ => false }
+}
+
+// ── LAW 1: REACHING THE CENSUS IS ORTHOGONAL TO ERRORS ───────────────────────────────────────
+
+test fn a_pending_ccix_record_and_a_one_socket_census_reach_the_census_degraded() -> Bool {
+  let a = mtcollins1_power_on_account(e: evidence(console: console_of(lines: lines_of(text: run_37069907299_firmware), relations: []), smpro: ccix_pass(), census_ended: true))
+  (match a.ending { ReachedCensus => true _ => false })
+    && any(a.degradations, d => match d { PendingErrorRecord { socket: k, processor: _, record: _ } => k == 0 _ => false })
+    && any(a.degradations, d => match d { ActiveSocketsBelowExpected { active: n, expected: x } => n == 1 && x == 2 _ => false })
+    && any(a.degradations, d => match d { SocketNotJoined { outcome: _ } => true _ => false })
+}
+
+// ── LAW 3: COVERAGE NEVER CHOOSES THE ENDING ─────────────────────────────────────────────────
+
+test fn an_empty_sol_beside_a_census_end_marker_is_reached_census_with_a_gap() -> Bool {
+  let a = mtcollins1_power_on_account(e: PowerOnEvidence {
+    configuration: receipt(), handoff: HandoffPoweredOn, smpro: [], console: console_of(lines: [], relations: []), sel: SelEventsNotRead,
+    watchdog: WatchdogUnobserved { reason: "witness" }, bmc_anomalies: [], census_ended: true,
+    coverage: [CarrierCoverage { carrier: SolConsole, standing: CarrierReadEmpty }],
+  })
+  (match a.ending { ReachedCensus => true _ => false })
+    && any(a.open, q => match q.question { CarrierNotRead { carrier: c } => (match c { SolConsole => true _ => false }) _ => false })
+}
+
+// ── LAW 7: A CYCLE EXISTS WITHOUT DRAM ───────────────────────────────────────────────────────
+
+test fn power_on_and_smpro_progress_without_a_banner_is_one_partial_cycle() -> Bool {
+  let a = mtcollins1_power_on_account(e: evidence(console: ConsoleNotRead, smpro: loop_pass(), census_ended: false))
+  count(a.cycles) == 1
+    && (match a.cycles.first() { Present { value: c } => (match c.boundary { OpenedByPowerOn => true _ => false }) && (match c.console { NoConsoleSpan => true _ => false }) Absent => false })
+    && (match a.ending { StoppedWithoutRestart { last_milestone: m, ended_after: _, console_errors: _, restarts_before: n } => n == 0 && (match m { Absent => true Present { value: _ } => false }) _ => false })
+}
+
+test fn with_nothing_read_the_host_ending_is_not_established() -> Bool {
+  let a = mtcollins1_power_on_account(e: PowerOnEvidence {
+    configuration: receipt(), handoff: HandoffNotConfirmed { reason: "witness" }, smpro: [], console: ConsoleNotRead, sel: SelEventsNotRead,
+    watchdog: WatchdogUnobserved { reason: "witness" }, bmc_anomalies: [], census_ended: false, coverage: [],
+  })
+  count(a.cycles) == 0 && (match a.ending { HostEndingNotEstablished => true _ => false })
+}
+
+// ── LAW 6: CONFIGURATION QUESTIONS NEED THE RECEIPT ──────────────────────────────────────────
+
+test fn an_unrecorded_dimm_population_is_an_open_question_and_an_attested_one_is_not() -> Bool {
+  let lines = lines_of(text: step1_last_two_cycles)
+  let unrecorded = mtcollins1_power_on_account(e: evidence(console: console_of(lines: lines, relations: []), smpro: [], census_ended: false))
+  let r = receipt()
+  let attested = mtcollins1_power_on_account(e: PowerOnEvidence {
+    configuration: AttemptConfigurationReceipt { subject: r.subject, attempt: r.attempt, expected_sockets: r.expected_sockets, requested: r.requested, applied: r.applied, cpus: r.cpus,
+      dimms: PopulationOperatorAttested { rows: [SlotRow { label: "J1", populated: true }, SlotRow { label: "J17", populated: true }], receipt: "witness inspection" }, firmware: r.firmware },
+    handoff: HandoffPoweredOn, smpro: [], console: console_of(lines: lines, relations: []), sel: SelEventsNotRead,
+    watchdog: WatchdogUnobserved { reason: "witness" }, bmc_anomalies: [], census_ended: false, coverage: [],
+  })
+  any(unrecorded.open, q => match q.question { ConfigurationNotRecorded { field: f } => (match f { ConfiguredDimmPopulation => true _ => false }) _ => false })
+    && !any(attested.open, q => match q.question { ConfigurationNotRecorded { field: f } => (match f { ConfiguredDimmPopulation => true _ => false }) _ => false })
+}
+
+test fn the_rendering_names_the_ending_and_the_open_questions() -> Bool {
+  let t = mtcollins1_power_on_account_text(a: step1_account())
+  contains(t, "restarted repeatedly: 2 cycle(s)") && contains(t, "ended after token 00001a0a")
+    && contains(t, "does any failsafe or retry state survive the reset?")
+}
