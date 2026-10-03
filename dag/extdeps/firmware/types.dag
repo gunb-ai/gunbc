@@ -368,18 +368,3 @@ fn firmware_release_applicability(
       }
   }
 }
-
-// Equality over the closed target sum, here on the sum rather than per consumer so a consumer that
-// joins a reading to a release by target does not re-spell the four-by-four table.
-fn firmware_target_eq(a: FirmwareTarget, b: FirmwareTarget) -> Bool {
-  match a {
-    BmcController => match b { BmcController => true  HostBios => false  ScpFirmware => false  MainboardCpld => false }
-    HostBios => match b { BmcController => false  HostBios => true  ScpFirmware => false  MainboardCpld => false }
-    ScpFirmware => match b { BmcController => false  HostBios => false  ScpFirmware => true  MainboardCpld => false }
-    MainboardCpld => match b { BmcController => false  HostBios => false  ScpFirmware => false  MainboardCpld => true }
-  }
-}
-
-fn firmware_semantic_version_eq(a: FirmwareSemanticVersion, b: FirmwareSemanticVersion) -> Bool {
-  firmware_semantic_version_at_least(observed: a, minimum: b) && firmware_semantic_version_at_least(observed: b, minimum: a)
-}

@@ -9,7 +9,7 @@ import extdeps.standards.picmg_hpm1 { HpmUpgradeCompleted, HpmUpgradeFailed, Hpm
 import extdeps.firmware.types {
   FirmwareReleaseRow, FirmwareTarget, FirmwareSemanticVersion,
   BmcController, HostBios, ScpFirmware, MainboardCpld,
-  firmware_semantic_version, firmware_target_eq,
+  firmware_semantic_version,
 }
 import extdeps.ampere.mt_collins_firmware_release {
   mt_collins_bmc_0_45_3_hpm, mt_collins_bios_0acod014_hpm, mt_collins_scp_2_10_hpm, mt_collins_mb_cpld_v06_hpm,
@@ -268,19 +268,9 @@ fn rights_receipt(endpoint: BmcControllerEndpoint, account: NonEmptyStr, at: Epo
 fn is_right(o: ManagedAccountRight?, x: ManagedAccountRight) -> Bool {
   match o {
     Absent => false
-    Present { value: y } => same_right(a: x, b: y)
+    Present { value: y } => (x == y)
   }
 }
-
-fn same_right(a: ManagedAccountRight, b: ManagedAccountRight) -> Bool {
-  match a {
-    IpmiAdministratorOnLanChannel { channel: x } => match b { IpmiAdministratorOnLanChannel { channel: y } => x == y  _ => false }
-    RedfishSessionRight => match b { RedfishSessionRight => true  _ => false }
-    KvmRight => match b { KvmRight => true  _ => false }
-    _ => false
-  }
-}
-
 fn good_rights() -> ManagedRightsReceipt {
   rights_receipt(endpoint: mtcollins1_endpoint, account: mtcollins1_managed_credential.account, at: mtcollins1_managed_probe_at, withheld: Absent, drop: Absent)
 }
@@ -386,7 +376,7 @@ fn smpro_raw() -> SmproProbeRaw {
 
 fn is_due(verdict: FirmwareConvergenceVerdict, t: FirmwareTarget) -> Bool {
   match verdict {
-    FirmwareStepDue { target: d, decision: _ } => firmware_target_eq(a: d, b: t)
+    FirmwareStepDue { target: d, decision: _ } => (d == t)
     _ => false
   }
 }
@@ -449,21 +439,21 @@ test fn convergence_refuses_an_unpaired_baseline_handed_in_directly() -> Bool {
 // RED (review on ff66edd): a direct baseline without the BMC or the CPLD is refused, not skipped.
 test fn convergence_refuses_a_baseline_without_the_bmc() -> Bool {
   match admission_of(verdict: run_full(w: shape(power_off: true), baseline: baseline_of(label: "no BMC", releases: [mt_collins_bios_0acod014_hpm, mt_collins_scp_2_10_hpm, mt_collins_mb_cpld_v06_hpm]), records: [], boot: Absent)) {
-    Present { value: a } => match a { BaselineMissingTarget { target: t } => firmware_target_eq(a: t, b: BmcController)  _ => false }
+    Present { value: a } => match a { BaselineMissingTarget { target: t } => (t == BmcController)  _ => false }
     Absent => false
   }
 }
 
 test fn convergence_refuses_a_baseline_without_the_cpld() -> Bool {
   match admission_of(verdict: run_full(w: shape(power_off: true), baseline: baseline_of(label: "no CPLD", releases: [mt_collins_bmc_0_45_3_hpm, mt_collins_bios_0acod014_hpm, mt_collins_scp_2_10_hpm]), records: [], boot: Absent)) {
-    Present { value: a } => match a { BaselineMissingTarget { target: t } => firmware_target_eq(a: t, b: MainboardCpld)  _ => false }
+    Present { value: a } => match a { BaselineMissingTarget { target: t } => (t == MainboardCpld)  _ => false }
     Absent => false
   }
 }
 
 test fn convergence_refuses_a_duplicated_target() -> Bool {
   match admission_of(verdict: run_full(w: shape(power_off: true), baseline: baseline_of(label: "two BMC rows", releases: [mt_collins_bmc_0_45_3_hpm, mt_collins_bmc_0_45_3_hpm, mt_collins_bios_0acod014_hpm, mt_collins_scp_2_10_hpm, mt_collins_mb_cpld_v06_hpm]), records: [], boot: Absent)) {
-    Present { value: a } => match a { BaselineDuplicateTarget { target: t } => firmware_target_eq(a: t, b: BmcController)  _ => false }
+    Present { value: a } => match a { BaselineDuplicateTarget { target: t } => (t == BmcController)  _ => false }
     Absent => false
   }
 }
@@ -482,7 +472,7 @@ fn bios_014_unknown_digest() -> FirmwareReleaseRow {
 // RED (review on ff66edd): pairing passes, Basic-Auth interop fails, and convergence refuses it directly.
 test fn convergence_refuses_a_paired_but_interop_invalid_baseline() -> Bool {
   match admission_of(verdict: run_full(w: shape(power_off: true), baseline: baseline_of(label: "paired, not Basic-Auth", releases: [mt_collins_bmc_0_45_3_hpm, bios_014_unknown_digest(), mt_collins_scp_2_10_hpm, mt_collins_mb_cpld_v06_hpm]), records: [], boot: Absent)) {
-    Present { value: a } => match a { BaselineInteropUnmet { when_target: w, requires_target: q } => firmware_target_eq(a: w, b: BmcController) && firmware_target_eq(a: q, b: HostBios)  _ => false }
+    Present { value: a } => match a { BaselineInteropUnmet { when_target: w, requires_target: q } => (w == BmcController) && (q == HostBios)  _ => false }
     Absent => false
   }
 }
@@ -522,7 +512,7 @@ test fn host_at_baseline_is_converged() -> Bool {
 test fn flashed_bmc_without_ac_cycle_waits_for_the_human_step() -> Bool {
   let b = bmc_shape()
   match run(w: shape(power_off: true), records: [record(t: BmcController, r: RecordShape { pre: b.pre, completed_at: b.completed_at, digest: b.digest, credential: b.credential, ac: Absent, readback: b.readback })]) {
-    FirmwareAwaitingHumanStep { after: t, step: s, receipt: _ } => firmware_target_eq(a: t, b: BmcController) && s.identity as String == "mtcollins1_ac_power_cycle_after_firmware_step"
+    FirmwareAwaitingHumanStep { after: t, step: s, receipt: _ } => (t == BmcController) && s.identity as String == "mtcollins1_ac_power_cycle_after_firmware_step"
     _ => false
   }
 }
@@ -556,7 +546,7 @@ test fn out_of_order_step_refuses() -> Bool {
   match refusal_of(verdict: run(w: shape(power_off: true), records: [step_good(t: HostBios, r: mt_collins_bios_0acod014_hpm)])) {
     Present { value: c } =>
       match c {
-        StepOutOfOrder { attempted: a, unconverged_predecessor: p } => firmware_target_eq(a: a, b: HostBios) && firmware_target_eq(a: p, b: BmcController)
+        StepOutOfOrder { attempted: a, unconverged_predecessor: p } => (a == HostBios) && (p == BmcController)
         _ => false
       }
     Absent => false
@@ -611,7 +601,7 @@ fn bmc_with_pre(pre: PreFlashReceipt) -> FlashStepRecord {
 // RED: four otherwise valid records, the BMC one flashed with the host ON, must not converge.
 test fn step_executed_with_the_host_on_refuses() -> Bool {
   match refusal_of(verdict: run(w: shape(power_off: true), records: [bmc_with_pre(pre: pre_flash(t: BmcController, off: false, sel: bmc_sel())), step_good(t: HostBios, r: mt_collins_bios_0acod014_hpm), step_good(t: ScpFirmware, r: mt_collins_scp_2_10_hpm), step_good(t: MainboardCpld, r: mt_collins_mb_cpld_v06_hpm)])) {
-    Present { value: c } => match c { HostNotPoweredOffWhenFlashed { target: t } => firmware_target_eq(a: t, b: BmcController)  _ => false }
+    Present { value: c } => match c { HostNotPoweredOffWhenFlashed { target: t } => (t == BmcController)  _ => false }
     Absent => false
   }
 }
@@ -642,7 +632,7 @@ test fn step_started_before_its_predecessor_completed_refuses() -> Bool {
     credential_after: early.credential_after, ac_cycle: early.ac_cycle, readback: early.readback,
   }
   match refusal_of(verdict: run(w: shape(power_off: true), records: [bmc_good(), bios_early])) {
-    Present { value: c } => match c { StepStartedBeforePredecessorCompleted { target: t, predecessor: p } => firmware_target_eq(a: t, b: HostBios) && firmware_target_eq(a: p, b: BmcController)  _ => false }
+    Present { value: c } => match c { StepStartedBeforePredecessorCompleted { target: t, predecessor: p } => (t == HostBios) && (p == BmcController)  _ => false }
     Absent => false
   }
 }
@@ -652,7 +642,7 @@ test fn step_started_before_its_predecessor_completed_refuses() -> Bool {
 test fn bmc_flash_opens_the_factory_credential_window() -> Bool {
   match run(w: shape(power_off: true), records: [bmc_with_credential(c: Absent)]) {
     FirmwareCredentialReprovisionDue { after: t, invalidated: m, factory_use: u } =>
-      firmware_target_eq(a: t, b: BmcController) && m.credential_epoch == 1
+      (t == BmcController) && m.credential_epoch == 1
         && match u { PatternSelected { pattern: _, receipt: _ } => true  _ => false }
     _ => false
   }
@@ -660,7 +650,7 @@ test fn bmc_flash_opens_the_factory_credential_window() -> Bool {
 
 test fn step_inside_the_factory_credential_window_refuses() -> Bool {
   match refusal_of(verdict: run(w: shape(power_off: true), records: [bmc_with_credential(c: Absent), step_good(t: HostBios, r: mt_collins_bios_0acod014_hpm)])) {
-    Present { value: c } => match c { StepDuringFactoryCredentialWindow { attempted: a, window_opened_by: _ } => firmware_target_eq(a: a, b: HostBios)  _ => false }
+    Present { value: c } => match c { StepDuringFactoryCredentialWindow { attempted: a, window_opened_by: _ } => (a == HostBios)  _ => false }
     Absent => false
   }
 }
@@ -737,7 +727,7 @@ fn run_with_rights(rights: ManagedRightsReceipt) -> FirmwareConvergenceVerdict {
 // RED, the 2026-10-03 standing: Redfish still refused (401) after the IPMI and web restore.
 test fn redfish_still_refused_after_reprovision_refuses() -> Bool {
   match refusal_of(verdict: run_with_rights(rights: rights_receipt(endpoint: mtcollins1_endpoint, account: mtcollins1_managed_credential.account, at: mtcollins1_managed_probe_at, withheld: Present { value: RedfishSessionRight }, drop: Absent))) {
-    Present { value: c } => match c { ManagedRightNotRestored { target: _, right: r, detail: _ } => same_right(a: r, b: RedfishSessionRight)  _ => false }
+    Present { value: c } => match c { ManagedRightNotRestored { target: _, right: r, detail: _ } => (r == RedfishSessionRight)  _ => false }
     Absent => false
   }
 }
@@ -745,7 +735,7 @@ test fn redfish_still_refused_after_reprovision_refuses() -> Bool {
 // RED, the 2026-10-03 reset: administrator left on LAN channel 1 only -- channel 7 not granted refuses.
 test fn admin_missing_on_lan_channel_7_refuses() -> Bool {
   match refusal_of(verdict: run_with_rights(rights: rights_receipt(endpoint: mtcollins1_endpoint, account: mtcollins1_managed_credential.account, at: mtcollins1_managed_probe_at, withheld: Present { value: IpmiAdministratorOnLanChannel { channel: 7 } }, drop: Absent))) {
-    Present { value: c } => match c { ManagedRightNotRestored { target: _, right: r, detail: _ } => same_right(a: r, b: IpmiAdministratorOnLanChannel { channel: 7 })  _ => false }
+    Present { value: c } => match c { ManagedRightNotRestored { target: _, right: r, detail: _ } => (r == IpmiAdministratorOnLanChannel { channel: 7 })  _ => false }
     Absent => false
   }
 }
@@ -753,7 +743,7 @@ test fn admin_missing_on_lan_channel_7_refuses() -> Bool {
 // RED: a receipt that never read KVM is missing evidence, not a grant.
 test fn kvm_right_absent_from_the_receipt_refuses() -> Bool {
   match refusal_of(verdict: run_with_rights(rights: rights_receipt(endpoint: mtcollins1_endpoint, account: mtcollins1_managed_credential.account, at: mtcollins1_managed_probe_at, withheld: Absent, drop: Present { value: KvmRight }))) {
-    Present { value: c } => match c { ManagedRightMissingFromReceipt { target: _, right: r } => same_right(a: r, b: KvmRight)  _ => false }
+    Present { value: c } => match c { ManagedRightMissingFromReceipt { target: _, right: r } => (r == KvmRight)  _ => false }
     Absent => false
   }
 }
@@ -845,7 +835,7 @@ test fn whole_set_grounded_asks_for_the_boot_readback() -> Bool {
 test fn whole_set_reaching_uefi_converges_naming_the_uncited_scp_decode() -> Bool {
   match run_booted(w: shape(power_off: true), records: whole_set(), boot: Present { value: HostReachedUefi }) {
     FirmwareBaselineConverged { uncited_readbacks: u } =>
-      list_length(u) == 1 && any(u, x => firmware_target_eq(a: x.target, b: ScpFirmware))
+      list_length(u) == 1 && any(u, x => (x.target == ScpFirmware))
     _ => false
   }
 }
@@ -871,7 +861,7 @@ fn shape_sel(sel: SelCapture?) -> WorldShape {
 
 test fn bmc_step_without_sel_snapshot_asks_for_it() -> Bool {
   match run(w: shape_sel(sel: Absent), records: []) {
-    FirmwareSelSnapshotDue { before: t } => firmware_target_eq(a: t, b: BmcController)
+    FirmwareSelSnapshotDue { before: t } => (t == BmcController)
     _ => false
   }
 }
@@ -926,7 +916,7 @@ test fn no_bios_rollback_means_the_bmc_step_is_not_due() -> Bool {
     kept(t: MainboardCpld, version: v(major: 4, minor: 0, patch: 0)),
   ]
   match refusal_of(verdict: run(w: shape_pre(cpus: production_cpus(), rollbacks: rollbacks, installed: installed_before), records: [])) {
-    Present { value: c } => match c { NoRollbackImageRetained { target: t, reason: _ } => firmware_target_eq(a: t, b: HostBios)  _ => false }
+    Present { value: c } => match c { NoRollbackImageRetained { target: t, reason: _ } => (t == HostBios)  _ => false }
     Absent => false
   }
 }
@@ -939,7 +929,7 @@ test fn rollback_image_of_another_version_refuses() -> Bool {
     kept(t: MainboardCpld, version: v(major: 4, minor: 0, patch: 0)),
   ]
   match refusal_of(verdict: run(w: shape_pre(cpus: production_cpus(), rollbacks: rollbacks, installed: installed_before), records: [])) {
-    Present { value: c } => match c { RollbackImageNotTheInstalledVersion { target: t } => firmware_target_eq(a: t, b: BmcController)  _ => false }
+    Present { value: c } => match c { RollbackImageNotTheInstalledVersion { target: t } => (t == BmcController)  _ => false }
     Absent => false
   }
 }
@@ -948,7 +938,7 @@ test fn rollback_image_of_another_version_refuses() -> Bool {
 test fn duplicated_installed_reading_refuses() -> Bool {
   let installed = concat(installed_before, [reading(t: HostBios, version: v(major: 0, minor: 14, patch: 0))])
   match refusal_of(verdict: run(w: shape_pre(cpus: production_cpus(), rollbacks: all_rollbacks_kept(), installed: installed), records: [])) {
-    Present { value: c } => match c { DuplicateInstalledReading { target: t } => firmware_target_eq(a: t, b: HostBios)  _ => false }
+    Present { value: c } => match c { DuplicateInstalledReading { target: t } => (t == HostBios)  _ => false }
     Absent => false
   }
 }

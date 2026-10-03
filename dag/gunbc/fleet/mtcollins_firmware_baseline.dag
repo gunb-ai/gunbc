@@ -19,8 +19,7 @@ import v2.std.optional { Present, Absent }
 import extdeps.external_authority { CitedToAuthority }
 import extdeps.firmware.types {
   FirmwareReleaseRow, FirmwareTarget, FirmwareSemanticVersion,
-  HostBios, ScpFirmware,
-  firmware_target_eq, firmware_semantic_version_eq, firmware_semantic_version_at_least,
+  HostBios, ScpFirmware, firmware_semantic_version_at_least,
 }
 import extdeps.ampere.mt_collins_firmware_release {
   mt_collins_bmc_0_45_3_hpm, mt_collins_bios_0acod014_hpm, mt_collins_scp_2_10_hpm, mt_collins_mb_cpld_v06_hpm,
@@ -68,7 +67,7 @@ data baseline_ampere_ticket_7426_delivery: FirmwareBaseline = FirmwareBaseline {
 data mtcollins1_baseline_candidates: List<FirmwareBaseline> = [baseline_ampere_ticket_7426_delivery]
 
 fn baseline_release_for(b: FirmwareBaseline, t: FirmwareTarget) -> FirmwareReleaseRow? {
-  (filter(b.releases, r => firmware_target_eq(a: r.target, b: t))).first()
+  (filter(b.releases, r => (r.target == t))).first()
 }
 
 fn baseline_version_for(b: FirmwareBaseline, t: FirmwareTarget) -> FirmwareSemanticVersion? {
@@ -79,7 +78,7 @@ fn baseline_version_for(b: FirmwareBaseline, t: FirmwareTarget) -> FirmwareSeman
 }
 
 fn bios_scp_is_a_pair(bios: FirmwareSemanticVersion, scp: FirmwareSemanticVersion) -> Bool {
-  any(mt_collins_bios_scp_pairs, p => firmware_semantic_version_eq(a: p.bios, b: bios) && firmware_semantic_version_eq(a: p.scp, b: scp))
+  any(mt_collins_bios_scp_pairs, p => (p.bios == bios) && (p.scp == scp))
 }
 
 fn interop_requirement_met(b: FirmwareBaseline, req: InteropRequirement) -> Bool {
@@ -122,7 +121,7 @@ fn baseline_target_refusal(b: FirmwareBaseline) -> BaselineAdmissionRefusal? {
     match acc {
       Present { value: _ } => acc
       Absent =>
-        match list_length(filter(b.releases, r => firmware_target_eq(a: r.target, b: t))) {
+        match list_length(filter(b.releases, r => (r.target == t))) {
           0 => Present { value: BaselineMissingTarget { target: t } }
           1 => Absent
           _ => Present { value: BaselineDuplicateTarget { target: t } }

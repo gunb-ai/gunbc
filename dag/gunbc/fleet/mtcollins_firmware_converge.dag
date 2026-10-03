@@ -14,7 +14,6 @@ import extdeps.standards.picmg_hpm1 {
 import extdeps.firmware.types {
   FirmwareReleaseRow, FirmwareTarget, FirmwareSemanticVersion,
   BmcController, HostBios, ScpFirmware, MainboardCpld,
-  firmware_target_eq, firmware_semantic_version_eq,
 }
 import extdeps.ampere.mt_collins_firmware_release {
   MtCollinsHpmStepProcedure, BiosSiliconSupportStatement, mt_collins_0acod_silicon_support,
@@ -22,7 +21,7 @@ import extdeps.ampere.mt_collins_firmware_release {
   mt_collins_mb_cpld_v06_hpm,
 }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
-import extdeps.bmc.types { RedfishAccountRole, AccountRoleAdministrator, AccountRoleOperator, AccountRoleReadOnly }
+import extdeps.bmc.types { RedfishAccountRole }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited }
 import extdeps.standards.picmg_hpm1 { extdeps_external_authority_anchor }
@@ -201,18 +200,6 @@ type BmcCredentialReestablishment {
   rights: ManagedRightsReceipt
   remote_media: RemoteMediaReceipt
 }
-
-fn managed_right_eq(a: ManagedAccountRight, b: ManagedAccountRight) -> Bool {
-  match a {
-    IpmiAdministratorOnLanChannel { channel: x } => match b { IpmiAdministratorOnLanChannel { channel: y } => x == y  SolPayloadRight => false  KvmRight => false  VirtualMediaRight => false  WebLoginRight => false  RedfishSessionRight => false }
-    SolPayloadRight => match b { IpmiAdministratorOnLanChannel { channel: _ } => false  SolPayloadRight => true  KvmRight => false  VirtualMediaRight => false  WebLoginRight => false  RedfishSessionRight => false }
-    KvmRight => match b { IpmiAdministratorOnLanChannel { channel: _ } => false  SolPayloadRight => false  KvmRight => true  VirtualMediaRight => false  WebLoginRight => false  RedfishSessionRight => false }
-    VirtualMediaRight => match b { IpmiAdministratorOnLanChannel { channel: _ } => false  SolPayloadRight => false  KvmRight => false  VirtualMediaRight => true  WebLoginRight => false  RedfishSessionRight => false }
-    WebLoginRight => match b { IpmiAdministratorOnLanChannel { channel: _ } => false  SolPayloadRight => false  KvmRight => false  VirtualMediaRight => false  WebLoginRight => true  RedfishSessionRight => false }
-    RedfishSessionRight => match b { IpmiAdministratorOnLanChannel { channel: _ } => false  SolPayloadRight => false  KvmRight => false  VirtualMediaRight => false  WebLoginRight => false  RedfishSessionRight => true }
-  }
-}
-
 type BmcCredentialEffect
   = PreservesBmcCredential
   | InvalidatesBmcCredential { observed: NonEmptyStr }
@@ -227,22 +214,13 @@ fn credential_effect_of(t: FirmwareTarget) -> BmcCredentialEffect {
     MainboardCpld => PreservesBmcCredential
   }
 }
-
-fn account_role_eq(a: RedfishAccountRole, b: RedfishAccountRole) -> Bool {
-  match a {
-    AccountRoleAdministrator => match b { AccountRoleAdministrator => true  AccountRoleOperator => false  AccountRoleReadOnly => false }
-    AccountRoleOperator => match b { AccountRoleAdministrator => false  AccountRoleOperator => true  AccountRoleReadOnly => false }
-    AccountRoleReadOnly => match b { AccountRoleAdministrator => false  AccountRoleOperator => false  AccountRoleReadOnly => true }
-  }
-}
-
 fn secret_ref_same(a: SecretRef, b: SecretRef) -> Bool {
   (a.project as String) == (b.project as String) && a.secret == b.secret && a.version == b.version
 }
 
 // Same account, role and SecretRef: the identity of the managed credential apart from its epoch.
 fn same_managed_account(a: ManagedCredentialReference, b: ManagedCredentialReference) -> Bool {
-  a.account == b.account && account_role_eq(a: a.role, b: b.role) && secret_ref_same(a: a.secret, b: b.secret)
+  a.account == b.account && (a.role == b.role) && secret_ref_same(a: a.secret, b: b.secret)
 }
 
 data mtcollins1_factory_credential_reprovision_effect: PrivilegedEffect = PrivilegedEffect {
@@ -531,15 +509,15 @@ data mtcollins1_observed_mb_cpld_procedure: MtCollinsHpmStepProcedure = MtCollin
 }
 
 fn procedure_for(t: FirmwareTarget) -> MtCollinsHpmStepProcedure? {
-  (filter(concat(mt_collins_hpm_procedures, [mtcollins1_observed_mb_cpld_procedure]), p => firmware_target_eq(a: p.firmware_release.target, b: t))).first()
+  (filter(concat(mt_collins_hpm_procedures, [mtcollins1_observed_mb_cpld_procedure]), p => (p.firmware_release.target == t))).first()
 }
 
 fn record_for(records: List<FlashStepRecord>, t: FirmwareTarget) -> FlashStepRecord? {
-  (filter(records, r => firmware_target_eq(a: r.target, b: t))).first()
+  (filter(records, r => (r.target == t))).first()
 }
 
 fn installed_reading(world: MtCollinsFirmwareWorld, t: FirmwareTarget) -> EnsureObservation<FirmwareSemanticVersion> {
-  match (filter(world.installed, i => firmware_target_eq(a: i.target, b: t))).first() {
+  match (filter(world.installed, i => (i.target == t))).first() {
     Present { value: i } => i.reading
     Absent => EnsureInaccessible { reason: "no installed-version reading was supplied for this target" }
   }
@@ -547,7 +525,7 @@ fn installed_reading(world: MtCollinsFirmwareWorld, t: FirmwareTarget) -> Ensure
 
 fn reading_satisfies(reading: EnsureObservation<FirmwareSemanticVersion>, desired: FirmwareSemanticVersion) -> Bool {
   match reading {
-    EnsureObserved { evidence: v } => firmware_semantic_version_eq(a: v, b: desired)
+    EnsureObserved { evidence: v } => (v == desired)
     EnsureAbsent { reason: _ } => false
     EnsureInaccessible { reason: _ } => false
   }
@@ -570,7 +548,7 @@ fn step_for(p: MtCollinsHpmStepProcedure) -> FirmwareFlashStep {
 // The rights half: a receipt from this endpoint, for the managed account, observed after the flash, in
 // which every required right reads granted exactly once.
 fn right_refusal(t: FirmwareTarget, receipt: ManagedRightsReceipt, right: ManagedAccountRight) -> FirmwareConvergenceRefusal? {
-  let readings = filter(receipt.rights, x => managed_right_eq(a: x.right, b: right))
+  let readings = filter(receipt.rights, x => (x.right == right))
   match list_length(readings) {
     0 => Present { value: ManagedRightMissingFromReceipt { target: t, right: right } }
     1 =>
@@ -839,15 +817,15 @@ fn pending_step_verdict(
 // missing, the BMC step is not due either. Missing evidence is never success -- an empty or short CPU
 // inventory refuses, and a duplicated installed or rollback reading refuses rather than taking the first.
 fn count_installed(world: MtCollinsFirmwareWorld, t: FirmwareTarget) -> Int {
-  list_length(filter(world.installed, i => firmware_target_eq(a: i.target, b: t)))
+  list_length(filter(world.installed, i => (i.target == t)))
 }
 
 fn count_rollback(world: MtCollinsFirmwareWorld, t: FirmwareTarget) -> Int {
-  list_length(filter(world.rollback_images, r => firmware_target_eq(a: rollback_target(r: r), b: t)))
+  list_length(filter(world.rollback_images, r => (rollback_target(r: r) == t)))
 }
 
 fn count_records(records: List<FlashStepRecord>, t: FirmwareTarget) -> Int {
-  list_length(filter(records, r => firmware_target_eq(a: r.target, b: t)))
+  list_length(filter(records, r => (r.target == t)))
 }
 
 fn silicon_refusal(world: MtCollinsFirmwareWorld) -> FirmwareConvergenceRefusal? {
@@ -887,7 +865,7 @@ fn rollback_refusal(world: MtCollinsFirmwareWorld, t: FirmwareTarget) -> Firmwar
   match count_rollback(world: world, t: t) > 1 {
     true => Present { value: DuplicateRollbackReading { target: t } }
     false =>
-    match (filter(world.rollback_images, r => firmware_target_eq(a: rollback_target(r: r), b: t))).first() {
+    match (filter(world.rollback_images, r => (rollback_target(r: r) == t))).first() {
       Absent => Present { value: NoRollbackImageRetained { target: t, reason: "no rollback image reading was supplied for this target" } }
       Present { value: r } =>
         match r {
@@ -949,7 +927,7 @@ fn sel_gate(t: FirmwareTarget, world: MtCollinsFirmwareWorld, step: FirmwareFlas
 
 fn order_position(t: FirmwareTarget) -> Int {
   fold(enumerate(mt_collins_vendor_upgrade_order), init: -1, f: (acc, e) =>
-    if firmware_target_eq(a: e.second, b: t) { e.first } else { acc })
+    if (e.second == t) { e.first } else { acc })
 }
 
 fn records_after(records: List<FlashStepRecord>, t: FirmwareTarget) -> List<FlashStepRecord> {
