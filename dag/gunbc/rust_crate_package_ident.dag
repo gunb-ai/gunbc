@@ -4,6 +4,7 @@ import std.types { List, String, Bool, NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.dissolution { DissolutionCondition, retires_dissolution }
 import extdeps.languages.rust.emit { rust_reserved }
+import v2.std.optional { Optional, Present, Absent }
 
 // THE PACKAGE-NAME-TO-RUST-IDENTIFIER PROJECTION, WITH THE TWO REFUSALS IT OWES.
 //
