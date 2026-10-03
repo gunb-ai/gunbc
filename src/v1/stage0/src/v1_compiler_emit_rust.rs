@@ -38692,12 +38692,41 @@ pub fn emit_capability_method(
         } else {
             v1_rt::concat("&self, ".to_string(), params_str.clone())
         };
-        let ret = render_rust_type(
-            crate::v1_compiler_infer_types::resolved_type(cap_node.clone()),
-            shared_types.clone(),
-            env.source_indices.clone(),
-            crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
-        );
+        let out = crate::v1_compiler_infer_types::resolved_type(cap_node.clone());
+        let ret = if ((out.connective.clone() == Connective::Conj)
+            && (out.ident_span.clone() == std::option::Option::None))
+        {
+            v1_rt::concat(
+                v1_rt::concat(
+                    "(".to_string(),
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for f in out.children.clone().iter().cloned() {
+                            __result.push(render_rust_fn_sig_type(
+                                crate::v1_compiler_infer_types::child_type_node(f.clone()),
+                                Rc::new(vec![]),
+                                shared_types.clone(),
+                                env.source_indices.clone(),
+                                v1_rt::rc_empty_map::<String, String>(),
+                                env.clone(),
+                            ));
+                        }
+                        __result
+                    })
+                    .join(&", ".to_string()),
+                ),
+                ")".to_string(),
+            )
+        } else {
+            render_rust_fn_sig_type(
+                out.clone(),
+                Rc::new(vec![]),
+                shared_types.clone(),
+                env.source_indices.clone(),
+                v1_rt::rc_empty_map::<String, String>(),
+                env.clone(),
+            )
+        };
         let items = rust_items();
         v1_rt::concat(
             v1_rt::concat(
