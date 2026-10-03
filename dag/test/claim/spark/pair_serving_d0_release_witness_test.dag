@@ -23,7 +23,8 @@ import gunbc.spark.pair_serving_authority {
 }
 import std.scoped_authorization { OperatorGrant, AttemptIdentity, ClaimedBy, authorization_scope_eq, parse_intent_scopes, AuthorizationRequest, authorize, AuthorizationPermitted, AuthorizationRefused }
 import gunbc.spark.pair_serving_d0 { d0_standing_grant_for, d0_binding_text }
-import gunbc.spark.pair_serving_d0_door { standing_grant_row_judged, d0_honored_standing_grant, StandingGrantRowOnMain, StandingGrantRowNotOnMain }
+import gunbc.spark.pair_serving_d0_door { standing_grant_row_judged, d0_honored_standing_grant, StandingGrantRowOnMain, StandingGrantRowNotOnMain, ExecutedGrantRowRead, ExecutedGrantRowUnread }
+import gunbc.spark.pair_serving_d0 { D0GrantRowApproved, D0GrantRowUnproven, d0_frozen_filing_text_with, parse_d0_frozen_filing }
 import gunbc.auth.standing_operator_grant { group_a_dev_standing_grant, standing_grant_covers, standing_grant_authorization, StandingArmLaunch }
 import gunbc.spark.pair_serving_d0 {
   D0Subject, D0SuspendForSuccessor, D0ReleaseToFleet, RankVacancyReading, RankOccupancyReading, D0Observation,
@@ -399,10 +400,22 @@ test fn rw_the_grant_row_is_honored_only_when_byte_identical_to_main() -> Bool {
     && (match standing_grant_row_judged(executed: "", executed_read: false, on_main: "row", main_read: true, main_stderr: "") { StandingGrantRowOnMain => false  StandingGrantRowNotOnMain { cause: _ } => true })
 }
 
-test fn rw_a_covered_release_is_not_honored_off_main() -> Bool {
+test fn rw_a_covered_release_is_honored_only_under_a_matching_frozen_proof() -> Bool {
   rw_with(scenario: fn(h) {
     let req = rw_release_request(group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), h: h)
-    (match d0_honored_standing_grant(request: req, row: StandingGrantRowOnMain) { Present { value: _ } => true  Absent => false })
-      && (match d0_honored_standing_grant(request: req, row: StandingGrantRowNotOnMain { cause: "witness" }) { Present { value: _ } => false  Absent => true })
+    let row = ExecutedGrantRowRead { content: "row", digest: "sha256:aa" as NonEmptyStr }
+    (match d0_honored_standing_grant(request: req, frozen: D0GrantRowApproved { row_digest: "sha256:aa" as NonEmptyStr }, executed: row) { Present { value: _ } => true  Absent => false })
+      && (match d0_honored_standing_grant(request: req, frozen: D0GrantRowUnproven, executed: row) { Present { value: _ } => false  Absent => true })
+      && (match d0_honored_standing_grant(request: req, frozen: D0GrantRowApproved { row_digest: "sha256:bb" as NonEmptyStr }, executed: row) { Present { value: _ } => false  Absent => true })
+      && (match d0_honored_standing_grant(request: req, frozen: D0GrantRowApproved { row_digest: "sha256:aa" as NonEmptyStr }, executed: ExecutedGrantRowUnread { cause: "witness" }) { Present { value: _ } => false  Absent => true })
   })
+}
+
+// THE FILING CARRIES THE PROOF AND ROUND-TRIPS; WITHOUT ONE IT IS BYTE-IDENTICAL TO BEFORE.
+test fn rw_the_frozen_filing_round_trips_its_grant_proof() -> Bool {
+  let with_proof = d0_frozen_filing_text_with(intent_text: "a=b\n", execution_revision: "aaaa" as NonEmptyStr, proof: D0GrantRowApproved { row_digest: "sha256:aa" as NonEmptyStr })
+  let without = d0_frozen_filing_text_with(intent_text: "a=b\n", execution_revision: "aaaa" as NonEmptyStr, proof: D0GrantRowUnproven)
+  without == "a=b\nexecution_revision=aaaa\n"
+    && (match parse_d0_frozen_filing(text: with_proof) { Present { value: f } => match f.grant_proof { D0GrantRowApproved { row_digest: d } => (d as String) == "sha256:aa" && (f.execution_revision as String) == "aaaa"  D0GrantRowUnproven => false }  Absent => false })
+    && (match parse_d0_frozen_filing(text: without) { Present { value: f } => match f.grant_proof { D0GrantRowUnproven => true  D0GrantRowApproved { row_digest: _ } => false }  Absent => false })
 }
