@@ -1,5 +1,6 @@
 module v2.extdeps.languages.bash_orch_tier2
 
+import std.types { List }
 import v2.std.compilers.lexing { LexRules, phrase, phrase_to_lex_rules, span }
 import v2.std.compilers.target_model {
   BoundToken,
@@ -7,7 +8,7 @@ import v2.std.compilers.target_model {
   FixedToken,
   TargetModel
 }
-import v2.std.collection { List, Map, empty_map, map_insert }
+import v2.std.collection { Map, empty_map, map_insert }
 import v2.std.node { Node, Symbol }
 import v2.std.text { String }
 import v2.extdeps.languages.bash {

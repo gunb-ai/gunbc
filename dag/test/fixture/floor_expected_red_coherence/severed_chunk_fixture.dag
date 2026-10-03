@@ -1,8 +1,8 @@
 module test.fixture.floor_expected_red_coherence.severed_chunk_fixture
 
+import std.types { List }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { list_flat_map }
-import v2.std.collection { List }
 import v2.std.text { String }
 
 // Mimics floor_expected_red.dag's chunk/aggregator shape at fixture scale: several

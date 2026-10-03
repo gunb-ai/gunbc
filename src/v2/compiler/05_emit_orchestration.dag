@@ -1,5 +1,6 @@
 module v2.compiler.emit_orchestration
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
@@ -112,8 +113,8 @@ import v2.std.orchestration {
 import std.algebra { FreeMonoid }
 import extdeps.posix.shell_command_language { posix_name_ok }
 import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent, is_empty, length }
+import std.types { List }
 import v2.std.collection {
-  List,
   Map,
   empty_map,
   map_insert,
