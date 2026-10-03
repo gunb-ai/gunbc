@@ -94,6 +94,7 @@ import extdeps.realization.materialization_store_local {
 }
 import std.fabric_blob { FabricBlobReading, fabric_blob_reading_path }
 import gunbc.compute.work_request {
+  work_refusal_detail,
   WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, CargoRelease, CargoDebug,
   WorkToolchainIdentity, work_toolchain_observed, rustc_verbose_host_triple, work_default_build, work_default_bins,
   gunbc_binary_name, work_binary_declared_path, work_declared_outputs,
@@ -1117,29 +1118,6 @@ fn compute_attempt_retries_at_ceiling(grant: WorkClassGrant, attempt: ComputeAtt
   !work_class_grant_is_ceiling(g: grant) && compute_summary_is_oom_kill(summary: attempt.summary)
 }
 
-fn compute_run_granted(
-  instance: HostDashboardInstance,
-  materialization: ComputeMaterialization,
-  commit: String,
-  layout: ComputeLayout,
-  identity: String,
-  subject: WorkSubject,
-  op: WorkOperation,
-  dependency: ComputeDependency,
-  grant: WorkClassGrant,
-  reference: NonEmptyStr,
-  reservation: ComputeReservation,
-) -> ProvideResult {
-  match compute_open_attempt(layout: layout, identity: identity, reference: reference, granted: work_class_grant_amount(g: grant)) {
-    AttemptGateRefused { detail: d } =>
-      compute_refused_before_launch(identity: identity, subject: subject, op: op, layout: layout, reservation: reservation, detail: d)
-    AttemptGateReady { record: rec, generation: g } =>
-      compute_run_opened(
-        instance: instance, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op,
-        dependency: dependency, grant: grant, reference: reference, reservation: reservation,
-        opened: AttemptGateReady { record: rec, generation: g })
-  }
-}
 
 // THE FIRST ATTEMPT IS SETTLED IN ITS OWN SLOT BEFORE THE RETRY OPENS ONE. The retry is a new
 // attempt under compute_ceiling_retry_reference, so it has its own slot and must be opened and
@@ -1182,19 +1160,26 @@ fn compute_run_opened(
         layout: layout, gate: attempt.gate,
         verdict: AttemptWorkEnded { ending: work_outcome_ending_of(o: attempt.outcome) },
         detail: join(["grant exceeded (oom-kill); ", compute_release_wire(r: returned), "; retried at the ceiling as ", retry_reference as String], ""))
-      let retry_reservation = compute_reserve(instance: instance, reference: retry_reference, term_seconds: compute_reservation_term_seconds, request: ceiling)
       provide_result_with_host_record(
-        r: match retry_reservation {
-          ComputeCapacityFull { wire: w } =>
-            compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: HostComputeCapacityFull { wire: w })
-          ComputeHostBelowFloor { requested: rq, available: av } =>
-            compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: HostBelowMemoryFloor { requested: rq, available: av })
-          ComputeReservationRefused { detail: d } =>
-            compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: ComputeCapacityLedgerUnavailable { detail: d })
-          ComputeReserved { grant: _, partition: _, amount: _, store: _ } =>
-            compute_run_ceiling_retry(
-              instance: instance, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op,
-              dependency: dependency, grant: retry_grant, reference: retry_reference, reservation: retry_reservation)
+        r: match compute_open_attempt(layout: layout, identity: identity, reference: retry_reference, granted: ceiling) {
+          AttemptGateRefused { detail: d } =>
+            compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: StoreUnavailable { detail: join(["the retry's attempt slot could not be opened, so nothing was reserved: ", d], "") })
+          AttemptGateReady { record: rec, generation: g } => {
+            let retry_opened = AttemptGateReady { record: rec, generation: g }
+            let retry_reservation = compute_reserve(instance: instance, reference: retry_reference, term_seconds: compute_reservation_term_seconds, request: ceiling)
+            match retry_reservation {
+              ComputeCapacityFull { wire: w } =>
+                compute_refused_after_open(instance: instance, identity: identity, subject: subject, op: op, layout: layout, opened: retry_opened, cause: HostComputeCapacityFull { wire: w })
+              ComputeHostBelowFloor { requested: rq, available: av } =>
+                compute_refused_after_open(instance: instance, identity: identity, subject: subject, op: op, layout: layout, opened: retry_opened, cause: HostBelowMemoryFloor { requested: rq, available: av })
+              ComputeReservationRefused { detail: d } =>
+                compute_refused_after_open(instance: instance, identity: identity, subject: subject, op: op, layout: layout, opened: retry_opened, cause: ComputeCapacityLedgerUnavailable { detail: d })
+              ComputeReserved { grant: _, partition: _, amount: _, store: _ } =>
+                compute_run_ceiling_retry(
+                  instance: instance, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op,
+                  dependency: dependency, grant: retry_grant, reference: retry_reference, reservation: retry_reservation, opened: retry_opened)
+            }
+          }
         },
         carried: attempt_settlement_host_record(s: first_closed))
     }
@@ -1216,8 +1201,9 @@ fn compute_run_ceiling_retry(
   grant: WorkClassGrant,
   reference: NonEmptyStr,
   reservation: ComputeReservation,
+  opened: AttemptGate,
 ) -> ProvideResult {
-  match compute_open_attempt(layout: layout, identity: identity, reference: reference, granted: work_class_grant_amount(g: grant)) {
+  match opened {
     AttemptGateRefused { detail: d } =>
       compute_refused_before_launch(identity: identity, subject: subject, op: op, layout: layout, reservation: reservation, detail: d)
     AttemptGateReady { record: rec, generation: g } => {
@@ -2029,6 +2015,11 @@ fn compute_provide_produce(
   }
 }
 
+// SLOT FIRST, THEN THE LEDGER (conforming to gunbc.roadmap_session_placement, ruling on #13074). The
+// attempt slot names the seat before the seat exists: a crash between the two then leaves an open
+// slot with no reservation -- which recovery settles from the slot alone -- never a held reservation
+// no slot names, which nothing in the corpus can find. A reservation refused after the slot opened
+// closes that slot, and a close that fails rides out as a host-record loss beside the refusal.
 fn compute_reserve_and_run(
   instance: HostDashboardInstance,
   materialization: ComputeMaterialization,
@@ -2041,19 +2032,60 @@ fn compute_reserve_and_run(
 ) -> ProvideResult {
   let reference = compute_reservation_reference(identity: identity)
   let grant = work_class_grant(class: work_class_of(op: op), rows: work_class_grant_rows, ceiling: compute_memory_ceiling(instance: instance))
+  match compute_open_attempt(layout: layout, identity: identity, reference: reference, granted: work_class_grant_amount(g: grant)) {
+    AttemptGateRefused { detail: d } =>
+      compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: StoreUnavailable { detail: join(["the attempt slot could not be opened, so nothing was reserved: ", d], "") })
+    AttemptGateReady { record: rec, generation: g } =>
+      compute_reserve_opened(
+        instance: instance, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op,
+        dependency: dependency, grant: grant, reference: reference, opened: AttemptGateReady { record: rec, generation: g })
+  }
+}
+
+// THE RESERVATION, TAKEN UNDER AN OPEN SLOT. Each refusal closes the slot before reporting.
+fn compute_reserve_opened(
+  instance: HostDashboardInstance,
+  materialization: ComputeMaterialization,
+  commit: String,
+  layout: ComputeLayout,
+  identity: String,
+  subject: WorkSubject,
+  op: WorkOperation,
+  dependency: ComputeDependency,
+  grant: WorkClassGrant,
+  reference: NonEmptyStr,
+  opened: AttemptGate,
+) -> ProvideResult {
   let reservation = compute_reserve(instance: instance, reference: reference, term_seconds: compute_reservation_term_seconds, request: work_class_grant_amount(g: grant))
   match reservation {
     ComputeCapacityFull { wire: w } =>
-      compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: HostComputeCapacityFull { wire: w })
+      compute_refused_after_open(instance: instance, identity: identity, subject: subject, op: op, layout: layout, opened: opened, cause: HostComputeCapacityFull { wire: w })
     ComputeHostBelowFloor { requested: rq, available: av } =>
-      compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: HostBelowMemoryFloor { requested: rq, available: av })
+      compute_refused_after_open(instance: instance, identity: identity, subject: subject, op: op, layout: layout, opened: opened, cause: HostBelowMemoryFloor { requested: rq, available: av })
     ComputeReservationRefused { detail: d } =>
-      compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: ComputeCapacityLedgerUnavailable { detail: d })
+      compute_refused_after_open(instance: instance, identity: identity, subject: subject, op: op, layout: layout, opened: opened, cause: ComputeCapacityLedgerUnavailable { detail: d })
     ComputeReserved { grant: _, partition: _, amount: _, store: _ } =>
-      compute_run_granted(
+      compute_run_opened(
         instance: instance, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op,
-        dependency: dependency, grant: grant, reference: reference, reservation: reservation)
+        dependency: dependency, grant: grant, reference: reference, reservation: reservation, opened: opened)
   }
+}
+
+// A REFUSED RESERVATION CLOSES THE SLOT IT WAS TAKEN UNDER, then reports as a request that holds
+// nothing. The close's own failure is a host-record fact beside the refusal, never a second verdict.
+fn compute_refused_after_open(
+  instance: HostDashboardInstance,
+  identity: String,
+  subject: WorkSubject,
+  op: WorkOperation,
+  layout: ComputeLayout,
+  opened: AttemptGate,
+  cause: WorkInfrastructureRefusal,
+) -> ProvideResult {
+  let closed = compute_settle_attempt(layout: layout, gate: opened, verdict: AttemptRecovered, detail: join(["reservation refused: ", work_refusal_detail(r: cause)], ""))
+  provide_result_with_host_record(
+    r: compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: cause),
+    carried: attempt_settlement_host_record(s: closed))
 }
 
 
@@ -2089,7 +2121,7 @@ fn compute_reservation_reference(identity: String) -> NonEmptyStr {
 // THE REPAIR IS CONSTRUCTION, NOT PRECISION. A finer clock would narrow the window and leave the
 // class writable; deriving the retry's reference FROM the first one makes the collision
 // unexpressible, and it needs no clock at all. Exactly one ceiling retry is permitted per attempt
-// (compute_run_granted refuses a second), so one discriminator is sufficient rather than a counter.
+// (compute_run_ceiling_retry never retries again), so one discriminator is sufficient rather than a counter.
 data compute_retry_reference_discriminator: String = "#ceiling-retry"
 
 fn compute_ceiling_retry_reference(reference: NonEmptyStr) -> NonEmptyStr {

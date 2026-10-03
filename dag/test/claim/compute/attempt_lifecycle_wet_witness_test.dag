@@ -7,7 +7,7 @@ import std.algebra { trim }
 import std.measure { kibibyte, kibibyte_count }
 import std.durable_compare_and_set { CasGeneration, cas_generation_count, cas_generation_first }
 import gunbc.compute.work_provider_local {
-  ComputeLayout, ComputeMaterialization, ComputeRecomputed, NoComputeDependency, ComputeMemoized,
+  ComputeLayout, ComputeMaterialization, ComputeRecomputed, compute_open_attempt, compute_refused_after_open, NoComputeDependency, ComputeMemoized,
   compute_store_commit, ComputeCommitted, ComputeCommitNotOwed, ComputeCommitRefused,
   compute_store_read, ComputeStoreServed, ComputeStoreAbsent, ComputeStoreRefused, ComputeStoreNotConsulted,
   compute_dependency_read, ComputeDependencyResolved, ComputeDependencyRefused, VerifiedBuildBinaries,
@@ -15,7 +15,7 @@ import gunbc.compute.work_provider_local {
   AttemptSettlement, AttemptSettled, AttemptNotSettled, AttemptUnsettleable,
   compute_settle_attempt, compute_attempt_settlement_wire, attempt_settlement_host_record,
   host_record_was_written,
-  ProvideResult, ProvideFresh, ProvideAttached, compute_run_ceiling_retry, compute_ceiling_retry_reference,
+  ProvideResult, ProvideFresh, ProvideAttached, compute_ceiling_retry_reference,
 }
 import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.compute.host_capacity { ComputeReservationRefused }
@@ -24,6 +24,7 @@ import std.materialization_store_grant { DurableHostVolumeRoot, WitnessScratchRo
 import gunbc.compute.work_class_grant { work_class_grant, work_class_grant_rows, work_class_of }
 import extdeps.git.object_store { git_object_id_from_untagged_hex }
 import gunbc.compute.work_request {
+  ComputeCapacityLedgerUnavailable,
   ExactTree, work_default_build, WorkToolchainIdentity, work_toolchain_observed, WorkOutput, WorkSucceeded, work_outcome_wire,
   WorkEnding, WorkEndedSucceeded, WorkEndedFailed, WorkEndedRefusedByInfrastructure, WorkEndedCancelled, WorkEndedOutputMismatch,
 }
@@ -399,34 +400,43 @@ fn fixture_toolchain() -> WorkToolchainIdentity {
   )
 }
 
+// SLOT FIRST, THEN THE LEDGER (ruling on #13074). A slot already held under the retry's reference
+// refuses the open, and the reservation is reachable only from an open that succeeded -- so a held
+// slot can never leave a reservation behind. RED against a provider that reserves before opening.
 test fn the_ceiling_retry_opens_its_own_attempt_and_a_held_slot_refuses_it_before_spawn() -> Bool {
   let root = fresh_root()
   let layout = layout_at(root: root)
   let retry_reference = compute_ceiling_retry_reference(reference: "attempt-first" as NonEmptyStr)
   let squatter = record_for(reference: retry_reference as String)
   let held = attempt_open(root: root as NonEmptyStr, record: squatter)
-  let op = work_default_build()
-  let tree = match git_object_id_from_untagged_hex(hex: "0000000000000000000000000000000000000000") { Present { value: oid } => oid  Absent => "0000000000000000000000000000000000000000" }
-  let r = compute_run_ceiling_retry(
-    instance: srv1_live_dashboard_instance(),
-    materialization: ComputeMaterialization {
-      root: DurableHostVolumeRoot,
-      request: ComputeWorkRequest { subject: ExactTree { tree: tree }, operation: op, toolchain: fixture_toolchain() },
-      plan: ComputeRecomputed { verdict: "fixture: the retry's refusal is reached before any store decision" },
-    },
-    commit: "0000000000000000000000000000000000000000", layout: layout,
-    identity: "abcdef0123456789", subject: ExactTree { tree: tree }, op: op, dependency: NoComputeDependency,
-    grant: work_class_grant(class: work_class_of(op: op), rows: work_class_grant_rows, ceiling: kibibyte(count: 27262976)),
-    reference: retry_reference, reservation: ComputeReservationRefused { detail: "fixture: no ledger" })
+  let opened = compute_open_attempt(layout: layout, identity: "abcdef0123456789", reference: retry_reference, granted: kibibyte(count: 27262976))
   let after = attempt_slot_read(root: root as NonEmptyStr, reference: retry_reference)
   attempt_transition_advanced(t: held)
-    && (match r {
-      ProvideFresh { outcome: _, document: doc, host_record: _ } =>
-        string_contains(s: doc, pattern: "opening the attempt") && string_contains(s: doc, pattern: "no seat to return")
-      ProvideAttached { identity: _, ending: _, document: _, host_record: _ } => false
-    })
+    && (match opened { AttemptGateRefused { detail: d } => string_contains(s: d, pattern: "opening the attempt")  AttemptGateReady { record: _, generation: _ } => false })
     && generation_of(r: after) == 1
     && state_word_of(r: after) == attempt_state_wire(s: AttemptReserved)
+}
+
+// A RESERVATION REFUSED UNDER AN OPEN SLOT CLOSES THE SLOT. RED against a refusal arm that reports and
+// leaves the slot reserved, which recovery would later have to settle with no reservation to find.
+test fn a_refused_reservation_closes_the_slot_it_was_taken_under() -> Bool {
+  let root = fresh_root()
+  let layout = ComputeLayout {
+    root: root, work_dir: root, checkout: root, out_dir: root,
+    leases_dir: root, lease_path: join([root, "/lease"], ""), staging_dir: root, target_dir: root,
+    log_path: join([root, "/log"], ""), consumption_path: join([root, "/consumption"], ""),
+    attempts_dir: root,
+  }
+  let reference = "attempt-refused" as NonEmptyStr
+  let opened = compute_open_attempt(layout: layout, identity: "abcdef0123456789", reference: reference, granted: kibibyte(count: 1048576))
+  let tree = match git_object_id_from_untagged_hex(hex: "0000000000000000000000000000000000000000") { Present { value: oid } => oid  Absent => "0000000000000000000000000000000000000000" }
+  let r = compute_refused_after_open(
+    instance: srv1_live_dashboard_instance(), identity: "abcdef0123456789", subject: ExactTree { tree: tree }, op: work_default_build(),
+    layout: layout, opened: opened, cause: ComputeCapacityLedgerUnavailable { detail: "fixture: ledger refused" })
+  let after = attempt_slot_read(root: root as NonEmptyStr, reference: reference)
+  (match opened { AttemptGateReady { record: _, generation: _ } => true  AttemptGateRefused { detail: _ } => false })
+    && (match r { ProvideFresh { outcome: _, document: doc, host_record: _ } => string_contains(s: doc, pattern: "fixture: ledger refused")  ProvideAttached { identity: _, ending: _, document: _, host_record: _ } => false })
+    && string_contains(s: state_word_of(r: after), pattern: "terminal:")
 }
 
 // THE REAL ROUTE, ONCE (DESIGN section 3 pairing obligation for the pure decisions in

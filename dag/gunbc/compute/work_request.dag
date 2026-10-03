@@ -233,7 +233,7 @@ type WorkOutcome
 // WorkFailed { exit_code: 137 } tells the caller to fix its code when the remedy is a larger
 // reservation. The arm is reached only when no larger reservation remains -- a grant below the
 // ceiling that is exceeded retries at the ceiling first (gunbc.compute.work_provider_local
-// compute_run_granted), and that retry is counted per class.
+// compute_run_opened), and that retry is counted per class.
 type WorkInfrastructureRefusal
   = ProducerInFlight { lease_path: String }
   | HostComputeCapacityFull { wire: String }
