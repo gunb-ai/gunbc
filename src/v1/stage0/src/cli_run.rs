@@ -11576,12 +11576,12 @@ pub enum WitnessRuntimeCause {
     ShellOutputLimitExceeded,
     ShellSpawnRefused,
     CallContractMismatch,
-    /// An admitted cross-claim producer was the active subject when the unchanged CPU safety
-    /// ceiling fired. The token makes the prospective-fill population countable without
-    /// treating first-touch order as intrinsic claim cost.
     /// A fixture compile instrument refused to answer (`FixtureRenderRefusal`): the read path
     /// was not emitted by a clean compile, or the closure held no fixture module.
     FixtureRenderRefused,
+    /// An admitted cross-claim producer was the active subject when the unchanged CPU safety
+    /// ceiling fired. The token makes the prospective-fill population countable without
+    /// treating first-touch order as intrinsic claim cost.
     FillBudgetExceeded,
     /// An `InterpError` with its own `ClaimOutcome` arm reached the untyped classifier anyway.
     /// Loud rather than absorbed: this is a defect in the mapping above, and a run that produces
