@@ -798,3 +798,40 @@ PR-2 merged with main.
 - (ii) means re-scope to a+b+c and measure that against the gate.
 - (i) means withdraw.
 - (iii) means fix the new holders first.
+
+### Is the floor's whole-closure reconcile demanded? (C2 of `floor-time-attribution-2026-10-02.md`; chain read at main, 2026-10-03)
+`compile.reconcile` is `reconcile_with_census_extra`. That is the whole typecheck
+(`typecheck_with_census_extra`) plus the three rewire passes. A resolved `ModuleGraph` carries no
+per-module environment, registry or inferred type. Every planned-claim category reads facts that only
+reconcile produces:
+- **Claim evaluation, wet lanes, enrolment, and the discovery and authority frames.** All of them go
+  through `claim_scope_for_with_memos` into the interpreter.
+  - The scope's closure IS `func_env.parents`.
+  - The interpreter's dispatch guards read `item_registry`.
+  - Evaluation reads the typed `items`: `.inferred` on match scrutinees, map literals, and op return
+    types, plus the `ground_kernel_views` folds.
+  - The coproduct fallback (`resolve_coproduct_type_node`) reads `type_env`.
+- **The non-fold-residue verdict** reads the typed `items` and `type_env` of the touched, interface-consumer
+  and NFR-row modules.
+
+So no planned claim can run on a resolved-only closure. Reconcile is demanded, not redundant, and
+the C2 repair class "delete redundant demand" does not apply to it as a whole.
+
+**The whole-closure strict verdict is itself a floor deliverable.** A blocking type diagnostic anywhere in
+the prepared closure refuses the floor (`resolved_graph_from_sources`, Strict gate). `checker_module_seeds`
+widens preparation for typechecking alone ("Claim planning does not read this: only preparation widens").
+The judged identities are printed for required CI.
+
+**The only narrowing left.** It would typecheck only the union of the planned scopes, the NFR scope and
+the authority frames, and stop typechecking the closure modules that no claim reaches (gate-prefix
+modules with no witness, checker-change seeds). That gives up the whole-closure strict verdict, which is
+a safety property. It is therefore a declared §4b(3) rung drop that needs an explicit ruling, not a
+demand cut. Nothing in the code or docs has ruled on it. The size of that population has not been
+counted: it is `prepared.graph.modules` minus the union of `claim_scope_for` modules over the planned
+claims, the wet lane and the authority frames.
+
+**Where reconcile's time can honestly go down: its interior.** The floor runner's own comment
+(`required_floor_runner.rs`, "RECONCILE'S INTERIOR") records that over half of reconcile's wall time
+allocates nothing, and that which of its six operations owns which region is unattributed. That is a
+cost-shape question inside a demanded computation, and the next attribution step there is per-operation
+trace marks in `04_infer.dag`.
