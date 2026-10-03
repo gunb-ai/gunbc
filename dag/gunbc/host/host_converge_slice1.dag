@@ -33,7 +33,7 @@ import gunbc.runner_slot_allocation {
 import gunbc.host_converge {
   ConvergeKnob,
   ConvergeVerdict,
-  VerdictConverged,
+  VerdictConverged, VerdictAbsent,
   Drifted,
   ConvergePolicy,
   ConvergePolicyDerived,
