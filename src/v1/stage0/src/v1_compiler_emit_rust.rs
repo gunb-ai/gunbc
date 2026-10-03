@@ -66,8 +66,8 @@ pub use crate::gunbc_stage0_partition_package_graph::stage0_partition_row_is_mod
 pub use crate::gunbc_structural_realization_bindings::{
     kernel_grounding_rows, structural_connective_rows, structural_ordering_rows,
 };
+pub use crate::std_algebra::trim;
 pub use crate::std_algebra::AlgebraFieldTemplate;
-pub use crate::std_algebra::{is_collection_filter_template, trim};
 use crate::std_coercion::TypeDeclarationProvenance::{
     CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
 };
@@ -292,8 +292,8 @@ use crate::v1_std_core::CallTargetIdentity::{
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
     AmbiguousAnonymousRecordLiteral, AmbiguousReference, EffectfulSelfRecursionUnrealized,
-    EmissionConstructUnprojectable, InternalError, ReferenceDerivedImportExportUnproven,
-    ReferenceDerivedImportProviderUnknown, UnlistedImportUse,
+    InternalError, ReferenceDerivedImportExportUnproven, ReferenceDerivedImportProviderUnknown,
+    UnlistedImportUse,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::DeclarationMarker::Unmarked;
@@ -319,7 +319,6 @@ use crate::v1_std_core::ParsedModuleItemKind::{
 };
 use crate::v1_std_core::StringPart::{Interpolation, Text};
 use crate::v1_std_core::UnaryOpKind::Neg;
-use crate::v1_std_core::UnprojectableConstruct::FilterInBranchCondition;
 use crate::v1_std_core::VarBindingKind::{
     FunctionValueBinding, LocalValueBinding, MatchBoundBinding, VariantValueBinding,
 };
@@ -353,7 +352,7 @@ pub use crate::v1_std_core::{
     DeclarationMarker, DeclaredCallableIdentity, ErrorNode, ExprData, FieldAccessStyle,
     FieldSummary, FieldValueShape, InferredNode, LeafOwner, MatchPattern, MethodSemantics,
     NewlineIndex, Node, ParsedModuleItemKind, ResolvedCallFormal, StringPart, TextFile,
-    UnaryOpKind, UnprojectableConstruct, VarBindingKind,
+    UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -11239,167 +11238,12 @@ pub fn emit_module_full(
                     v1_rt::concat(merged_import_lines.clone(), uncovered_svc_imports.clone()),
                 ),
             ),
-            module_refusals: v1_rt::concat(
-                reference_derived_row_diagnostics(reference_plan.rows.clone(), m.span.clone()),
-                module_projection_refusals(
-                    typed_module.items.clone(),
-                    crate::v1_compiler_infer_env::authored_name(scope.type_env.clone(), m.clone()),
-                ),
+            module_refusals: reference_derived_row_diagnostics(
+                reference_plan.rows.clone(),
+                m.span.clone(),
             ),
         })
     }
-}
-
-pub fn module_projection_refusals(
-    items: Rc<Vec<Rc<Node>>>,
-    module_name: String,
-) -> Rc<Vec<Rc<ErrorNode>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for item in items.iter().cloned() {
-            __result.extend(
-                (*collect_unprojectable_construct_refusals(item.clone(), module_name.clone()))
-                    .iter()
-                    .cloned(),
-            );
-        }
-        __result
-    })
-}
-
-pub fn collect_unprojectable_construct_refusals(
-    n: Rc<Node>,
-    module_name: String,
-) -> Rc<Vec<Rc<ErrorNode>>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let here = match (*n.expr_data.clone()).clone() {
-            ExprData::ExprIf => collect_filter_in_guard_refusals(
-                crate::v1_std_core::if_condition(n.clone()),
-                module_name.clone(),
-            ),
-            _ => Rc::new(vec![]),
-        };
-        let from_children = match (*n.expr_data.clone()).clone() {
-            ExprData::ExprIf => v1_rt::concat(
-                v1_rt::concat(
-                    collect_unprojectable_construct_refusals(
-                        crate::v1_std_core::if_condition(n.clone()),
-                        module_name.clone(),
-                    ),
-                    collect_unprojectable_construct_refusals(
-                        crate::v1_std_core::if_then_branch(n.clone()),
-                        module_name.clone(),
-                    ),
-                ),
-                match crate::v1_std_core::if_else_branch(n.clone()) {
-                    Some(e) => {
-                        collect_unprojectable_construct_refusals(e.clone(), module_name.clone())
-                    }
-                    std::option::Option::None => Rc::new(vec![]),
-                },
-            ),
-            _ => Rc::new({
-                let mut __result = Vec::new();
-                for c in n.children.clone().iter().cloned() {
-                    __result.extend(
-                        (*collect_unprojectable_construct_refusals(c.clone(), module_name.clone()))
-                            .iter()
-                            .cloned(),
-                    );
-                }
-                __result
-            }),
-        };
-        let from_body = match n.body.clone() {
-            Some(b) => collect_unprojectable_construct_refusals(b.clone(), module_name.clone()),
-            std::option::Option::None => Rc::new(vec![]),
-        };
-        v1_rt::concat(
-            v1_rt::concat(here.clone(), from_children.clone()),
-            from_body.clone(),
-        )
-    })
-}
-
-pub fn collect_filter_in_guard_refusals(
-    n: Rc<Node>,
-    module_name: String,
-) -> Rc<Vec<Rc<ErrorNode>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for call in collect_filter_method_calls(n.clone()).iter().cloned() {
-            __result.push(crate::v1_std_core::make_error_node(
-                Rc::new(CompilerDiagnostic::EmissionConstructUnprojectable {
-                    construct: UnprojectableConstruct::FilterInBranchCondition {},
-                    span: call.span.clone(),
-                }),
-                module_name.clone(),
-            ));
-        }
-        __result
-    })
-}
-
-pub fn is_algebra_filter_method(method_semantics: Option<Rc<MethodSemantics>>) -> bool {
-    if (method_semantics.clone() != std::option::Option::None) {
-        match (*method_semantics.clone().unwrap()).clone() {
-            MethodSemantics::AlgebraMethodSemantics {
-                algebra_template: t,
-                ..
-            } => match t.clone() {
-                Some(tmpl) => crate::std_algebra::is_collection_filter_template(tmpl.clone()),
-                std::option::Option::None => false,
-            },
-            _ => false,
-        }
-    } else {
-        false
-    }
-}
-
-pub fn collect_filter_method_calls(n: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match (*n.expr_data.clone()).clone() {
-            ExprData::ExprIf => Rc::new(vec![]),
-            ExprData::ExprMethodCall {
-                method_semantics: method_semantics,
-                ..
-            } => v1_rt::concat(
-                v1_rt::concat(
-                    if is_algebra_filter_method(method_semantics.clone()) {
-                        Rc::new(vec![n.clone()])
-                    } else {
-                        Rc::new(vec![])
-                    },
-                    Rc::new({
-                        let mut __result = Vec::new();
-                        for c in n.children.clone().iter().cloned() {
-                            __result
-                                .extend((*collect_filter_method_calls(c.clone())).iter().cloned());
-                        }
-                        __result
-                    }),
-                ),
-                match n.body.clone() {
-                    Some(b) => collect_filter_method_calls(b.clone()),
-                    std::option::Option::None => Rc::new(vec![]),
-                },
-            ),
-            _ => v1_rt::concat(
-                Rc::new({
-                    let mut __result = Vec::new();
-                    for c in n.children.clone().iter().cloned() {
-                        __result.extend((*collect_filter_method_calls(c.clone())).iter().cloned());
-                    }
-                    __result
-                }),
-                match n.body.clone() {
-                    Some(b) => collect_filter_method_calls(b.clone()),
-                    std::option::Option::None => Rc::new(vec![]),
-                },
-            ),
-        }
-    })
 }
 
 pub fn emit_import_name(
