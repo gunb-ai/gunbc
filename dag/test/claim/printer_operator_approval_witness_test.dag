@@ -3,6 +3,8 @@ module test.claim.printer_operator_approval_witness_test
 import extdeps.shell.exec { ProcessObservation }
 import extdeps.tools.mosquitto_pub { mosquitto_pub_help_observation_admitted }
 
+import test.claim.approval_request_client_witness_test { submit_and_status_urls_follow_the_writer_cutover }
+
 import std.types { Bool }
 import gunbc.fleet.printer_operator_approval { print_request, report_allows_start }
 import gunbc.fleet_asset_identity { printer_01, printer_02 }
@@ -39,4 +41,9 @@ test fn help_exit_one_needs_the_actual_supported_version_banner() -> Bool {
   }) &&
   !mosquitto_pub_help_observation_admitted(observation: ProcessObservation { exit_code: 1, stdout: "", stderr: "failed" }) &&
   !mosquitto_pub_help_observation_admitted(observation: ProcessObservation { exit_code: 2, stdout: "mosquitto_pub version 2.0.18", stderr: "" })
+}
+
+
+test fn approval_submission_follows_the_store_writer() -> Bool {
+  submit_and_status_urls_follow_the_writer_cutover()
 }

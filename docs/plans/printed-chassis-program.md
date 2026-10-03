@@ -192,8 +192,17 @@ settings: PLA, 220 °C nozzle, 65 °C textured bed, 0.20 mm layers, 2 mm outer b
 `28a8700489cf908edb9ed59c0aa871fe6903b4d558c3b64de6a7636af701580e`.
 
 The isolated srv1 execution directory is `/home/briansrls/print-run-2026-10-03`; credentials live
-only in its owner-only private directory and are not repository artifacts. The first approval run
-and second slice are pending at this record. No physical start or RUNNING observation is claimed.
+only in owner-only private staging files and are not repository artifacts. Holes 4–5 also sliced
+and passed the same checks: 15 layers, 13m48s, 3.67 g, SHA-256
+`a8f434e80014b6a316d30665b372bd0df3e858a68a2ff04a5fe4f50031d68535`.
+
+The shared approval client now follows the declared writer cutover to the approval broker on
+8085; the old roadmap endpoint refused writes as designed. Both requests were filed and reached
+approval polling. Four operator-route witnesses passed, including all three writer postures.
+Fresh read-only reports showed printer-01 IDLE/error 0 and printer-02 IDLE/error 83902511.
+Both reported PLA in AMS tray 0 (physical slot 1), while the existing start command selects the
+external spool. Execution is held before upload pending confirmation of filament feed and the
+printer-02 screen error. No start marker, physical start, or RUNNING observation is claimed.
 
 ### Local preparation environment
 
