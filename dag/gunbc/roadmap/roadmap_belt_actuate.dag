@@ -11069,6 +11069,23 @@ fn belt_verification_segment(progress: WorkflowAttemptProgress) -> WorkflowSegme
   })
 }
 
+fn belt_publication_segment(progress: WorkflowAttemptProgress) -> WorkflowSegment? {
+  fold(progress.segments, init: none, f: (acc, s) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent =>
+      match s.kind {
+        PublicationWorkflowSegment => Present { value: s }
+        EnvironmentWorkflowSegment => none
+        WorkspaceWorkflowSegment => none
+        AgentWorkflowSegment => none
+        SubmissionWorkflowSegment => none
+        VerificationWorkflowSegment => none
+        ReviewWorkflowSegment => none
+        GoalAuditWorkflowSegment => none
+      }
+  })
+}
+
 fn belt_verification_presentation_detail(
   progress: WorkflowAttemptProgress,
   tick_read: BeltTickReceiptRead,

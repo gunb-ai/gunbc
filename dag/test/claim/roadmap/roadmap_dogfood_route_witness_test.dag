@@ -1,98 +1,99 @@
 module test.claim.roadmap_dogfood_route_witness_test
 
-import std.types { Bool, String, Int, List }
+import std.types { Bool, String, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.roadmap_workflow_stage {
   WorkflowSegment, VerificationWorkflowSegment,
   WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete, WorkflowSegmentFailed,
 }
 import gunbc.roadmap_dogfood_route {
-  DogfoodStage, DogfoodRequest, DogfoodImmutableSubject, DogfoodSharedComputation, DogfoodPlacementGrant,
-  DogfoodIsolatedExecution, DogfoodDurableResult, DogfoodMetering, DogfoodCleanup, DogfoodResultReturned,
-  DogfoodCandidatePublished, DogfoodIndependentReview,
-  DogfoodStageReading, StageEstablished, StageOwed, StageRefused,
-  DogfoodRouteReceipt, DogfoodRouteComplete, DogfoodRouteIncomplete, DogfoodRouteReadingsMalformed,
-  dogfood_route_stages, dogfood_route_receipt, dogfood_reading_from_segment, dogfood_stage_wire,
+  DogfoodStage, DogfoodStageReading, StageEstablished, StageOwed, StageRefused,
+  DogfoodStageReadings, DogfoodRouteReceipt, DogfoodRouteComplete, DogfoodRouteIncomplete,
+  dogfood_route_receipt, dogfood_reading_from_segment, dogfood_stage_wire,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// The receipt's two interfaces, with supplied values: the fold over a reading set, and the reading
-// of one workflow segment. The real producer route -- srv2's attempt records through the belt's
-// workflow projection -- is exercised by the acceptance function itself
-// (gunbc.roadmap_dogfood_route dogfood_route_acceptance_holds), which the roadmap row binds.
-fn established_all() -> List<DogfoodStageReading> {
-  map(dogfood_route_stages, s => StageEstablished { stage: s, evidence: join(["planted ", dogfood_stage_wire(stage: s)], "") })
+// The receipt's two interfaces, with supplied values: the fold over the eleven stage readings, and
+// the reading of one workflow segment. The real producer route -- srv2's attempt records through the
+// belt's workflow projection -- is exercised by the acceptance function itself
+// (gunbc.roadmap_dogfood_route dogfood_route_acceptance_holds), which the roadmap row binds. A stage
+// missing or read twice has no constructor (DogfoodStageReadings is a product), so it has no claim.
+fn est(what: String) -> DogfoodStageReading {
+  StageEstablished { evidence: join(["planted ", what], "") }
 }
 
-fn replacing(readings: List<DogfoodStageReading>, stage: DogfoodStage, with: DogfoodStageReading) -> List<DogfoodStageReading> {
-  map(readings, r => match r {
-    StageEstablished { stage: s, evidence: _ } => if dogfood_stage_wire(stage: s) == dogfood_stage_wire(stage: stage) { with } else { r }
-    StageOwed { stage: _, owed_by: _ } => r
-    StageRefused { stage: _, reason: _ } => r
-  })
-}
-
-fn without(readings: List<DogfoodStageReading>, stage: DogfoodStage) -> List<DogfoodStageReading> {
-  filter(readings, r => match r {
-    StageEstablished { stage: s, evidence: _ } => dogfood_stage_wire(stage: s) != dogfood_stage_wire(stage: stage)
-    StageOwed { stage: _, owed_by: _ } => true
-    StageRefused { stage: _, reason: _ } => true
-  })
+fn all_established() -> DogfoodStageReadings {
+  DogfoodStageReadings {
+    request: est(what: "request"),
+    immutable_subject: est(what: "subject"),
+    shared_computation: est(what: "computation"),
+    placement_grant: est(what: "grant"),
+    isolated_execution: est(what: "execution"),
+    durable_result: est(what: "result"),
+    metering: est(what: "metering"),
+    cleanup: est(what: "cleanup"),
+    result_returned: est(what: "returned"),
+    candidate_published: est(what: "published"),
+    independent_review: est(what: "review"),
+  }
 }
 
 fn wires(stages: List<DogfoodStage>) -> String {
   join(map(stages, s => dogfood_stage_wire(stage: s)), ",")
 }
 
-test fn the_route_has_eleven_stages_in_route_order() -> Bool {
-  wires(stages: dogfood_route_stages) == "request,immutable-subject,shared-computation,placement-grant,isolated-execution,durable-result,metering,cleanup,result-returned,candidate-published,independent-review"
-}
-
 // Positive control: every stage established is the start receipt.
 test fn every_stage_established_is_complete() -> Bool {
-  match dogfood_route_receipt(attempt_key: "a1", readings: established_all()) {
+  match dogfood_route_receipt(attempt_key: "a1", readings: all_established()) {
     DogfoodRouteComplete { attempt_key, readings: _ } => attempt_key == "a1"
     DogfoodRouteIncomplete { attempt_key: _, owed: _, refused: _, readings: _ } => false
-    DogfoodRouteReadingsMalformed { attempt_key: _, missing: _, duplicated: _ } => false
   }
 }
 
 // One owed stage is enough to withhold the receipt, and the gap is named.
 test fn one_owed_stage_is_incomplete_and_named() -> Bool {
-  let readings = replacing(readings: established_all(), stage: DogfoodMetering, with: StageOwed { stage: DogfoodMetering, owed_by: "G3" })
+  let r = all_established()
+  let readings = DogfoodStageReadings {
+    request: r.request, immutable_subject: r.immutable_subject, shared_computation: r.shared_computation,
+    placement_grant: r.placement_grant, isolated_execution: r.isolated_execution, durable_result: r.durable_result,
+    metering: StageOwed { owed_by: "G3" },
+    cleanup: r.cleanup, result_returned: r.result_returned, candidate_published: r.candidate_published,
+    independent_review: r.independent_review,
+  }
   match dogfood_route_receipt(attempt_key: "a1", readings: readings) {
     DogfoodRouteIncomplete { attempt_key: _, owed, refused, readings: _ } => wires(stages: owed) == "metering" && length(refused) == 0
     DogfoodRouteComplete { attempt_key: _, readings: _ } => false
-    DogfoodRouteReadingsMalformed { attempt_key: _, missing: _, duplicated: _ } => false
   }
 }
 
 test fn one_refused_stage_is_incomplete_and_named() -> Bool {
-  let readings = replacing(readings: established_all(), stage: DogfoodIndependentReview, with: StageRefused { stage: DogfoodIndependentReview, reason: "changes requested" })
+  let r = all_established()
+  let readings = DogfoodStageReadings {
+    request: r.request, immutable_subject: r.immutable_subject, shared_computation: r.shared_computation,
+    placement_grant: r.placement_grant, isolated_execution: r.isolated_execution, durable_result: r.durable_result,
+    metering: r.metering, cleanup: r.cleanup, result_returned: r.result_returned, candidate_published: r.candidate_published,
+    independent_review: StageRefused { reason: "changes requested" },
+  }
   match dogfood_route_receipt(attempt_key: "a1", readings: readings) {
     DogfoodRouteIncomplete { attempt_key: _, owed, refused, readings: _ } => length(owed) == 0 && wires(stages: refused) == "independent-review"
     DogfoodRouteComplete { attempt_key: _, readings: _ } => false
-    DogfoodRouteReadingsMalformed { attempt_key: _, missing: _, duplicated: _ } => false
   }
 }
 
-// Completeness is an identity join: a dropped stage is not judged on the ten that remain.
-test fn a_missing_stage_is_malformed_not_complete() -> Bool {
-  match dogfood_route_receipt(attempt_key: "a1", readings: without(readings: established_all(), stage: DogfoodCleanup)) {
-    DogfoodRouteReadingsMalformed { attempt_key: _, missing, duplicated } => wires(stages: missing) == "cleanup" && length(duplicated) == 0
-    DogfoodRouteComplete { attempt_key: _, readings: _ } => false
-    DogfoodRouteIncomplete { attempt_key: _, owed: _, refused: _, readings: _ } => false
+// Gaps are reported in route order, owed and refused apart.
+test fn gaps_are_named_in_route_order() -> Bool {
+  let r = all_established()
+  let readings = DogfoodStageReadings {
+    request: StageOwed { owed_by: "G4" }, immutable_subject: r.immutable_subject, shared_computation: StageOwed { owed_by: "G1" },
+    placement_grant: r.placement_grant, isolated_execution: r.isolated_execution, durable_result: StageRefused { reason: "red" },
+    metering: r.metering, cleanup: r.cleanup, result_returned: StageOwed { owed_by: "G4" }, candidate_published: r.candidate_published,
+    independent_review: r.independent_review,
   }
-}
-
-// And a stage read twice is not judged on whichever reading came first.
-test fn a_duplicated_stage_is_malformed_not_complete() -> Bool {
-  let doubled = concat(established_all(), [StageEstablished { stage: DogfoodRequest, evidence: "again" }])
-  match dogfood_route_receipt(attempt_key: "a1", readings: doubled) {
-    DogfoodRouteReadingsMalformed { attempt_key: _, missing, duplicated } => length(missing) == 0 && wires(stages: duplicated) == "request"
+  match dogfood_route_receipt(attempt_key: "a1", readings: readings) {
+    DogfoodRouteIncomplete { attempt_key: _, owed, refused, readings: _ } =>
+      wires(stages: owed) == "request,shared-computation,result-returned" && wires(stages: refused) == "durable-result"
     DogfoodRouteComplete { attempt_key: _, readings: _ } => false
-    DogfoodRouteIncomplete { attempt_key: _, owed: _, refused: _, readings: _ } => false
   }
 }
 
@@ -106,29 +107,29 @@ fn segment(state: String) -> WorkflowSegment {
 
 // A segment establishes its stage only when Complete; not-yet-reached is owed; a failed record refuses.
 test fn a_segment_establishes_only_when_complete() -> Bool {
-  (match dogfood_reading_from_segment(stage: DogfoodDurableResult, segment: Present { value: segment(state: "complete") }) {
-    StageEstablished { stage: _, evidence } => evidence == "planted complete"
-    StageOwed { stage: _, owed_by: _ } => false
-    StageRefused { stage: _, reason: _ } => false
+  (match dogfood_reading_from_segment(segment: Present { value: segment(state: "complete") }) {
+    StageEstablished { evidence } => evidence == "planted complete"
+    StageOwed { owed_by: _ } => false
+    StageRefused { reason: _ } => false
   })
-    && (match dogfood_reading_from_segment(stage: DogfoodDurableResult, segment: Present { value: segment(state: "pending") }) {
-      StageOwed { stage: _, owed_by: _ } => true
-      StageEstablished { stage: _, evidence: _ } => false
-      StageRefused { stage: _, reason: _ } => false
+    && (match dogfood_reading_from_segment(segment: Present { value: segment(state: "pending") }) {
+      StageOwed { owed_by: _ } => true
+      StageEstablished { evidence: _ } => false
+      StageRefused { reason: _ } => false
     })
-    && (match dogfood_reading_from_segment(stage: DogfoodDurableResult, segment: Present { value: segment(state: "failed") }) {
-      StageRefused { stage: _, reason } => reason == "planted failed"
-      StageEstablished { stage: _, evidence: _ } => false
-      StageOwed { stage: _, owed_by: _ } => false
+    && (match dogfood_reading_from_segment(segment: Present { value: segment(state: "failed") }) {
+      StageRefused { reason } => reason == "planted failed"
+      StageEstablished { evidence: _ } => false
+      StageOwed { owed_by: _ } => false
     })
 }
 
 // An absent segment is not an absent stage: the projection always carries every segment, so its
 // absence is a record defect and refuses.
 test fn an_absent_segment_refuses() -> Bool {
-  match dogfood_reading_from_segment(stage: DogfoodRequest, segment: none) {
-    StageRefused { stage: _, reason: _ } => true
-    StageEstablished { stage: _, evidence: _ } => false
-    StageOwed { stage: _, owed_by: _ } => false
+  match dogfood_reading_from_segment(segment: none) {
+    StageRefused { reason: _ } => true
+    StageEstablished { evidence: _ } => false
+    StageOwed { owed_by: _ } => false
   }
 }
