@@ -70,8 +70,10 @@ pub(crate) enum CallSiteDemandRow {
     Closed {
         producer: String,
         argument_preimage: String,
-        /// The distinct planned claims reaching this identity, `module.function`.
+        /// The distinct DECLARED claims reaching this identity, `module.function`.
         claims: Vec<String>,
+        /// How many of `claims` this run plans.
+        planned_claims: u64,
         sites: Vec<String>,
     },
     Unadmissible {
@@ -120,6 +122,8 @@ struct IdentityCell {
     last_claim: usize,
     /// The claim indices counted in `claims`, in planning order.
     claim_indices: Vec<usize>,
+    /// How many of them are planned (index below the planned count).
+    planned: u64,
     sites: BTreeSet<SiteKey>,
 }
 
@@ -156,9 +160,12 @@ impl<'a> CallSiteDemandObserver<'a> {
     /// Fold every planned claim's reach into the aggregated `.dag` rows. `claims` are
     /// `(module_path, function)`; a claim whose declaration the prepared subject does not carry
     /// contributes nothing and is returned in the second component, so the caller can refuse.
+    /// `claims[..planned]` are this run's planned claims; the rest are the other claims declared
+    /// in the prepared subject. Every one contributes demand; `planned_claims` counts the first kind.
     pub(crate) fn observe(
         &mut self,
         claims: &[(String, String)],
+        planned: usize,
     ) -> (Vec<CallSiteDemandRow>, Vec<String>) {
         let mut closed: BTreeMap<(String, String), IdentityCell> = BTreeMap::new();
         let mut open: BTreeMap<CallSiteDemandCause, IdentityCell> = BTreeMap::new();
@@ -193,6 +200,9 @@ impl<'a> CallSiteDemandObserver<'a> {
                         cell.last_claim = claim_number;
                         cell.claims += 1;
                         cell.claim_indices.push(index);
+                        if index < planned {
+                            cell.planned += 1;
+                        }
                     }
                     cell.sites.insert(site.clone());
                 }
@@ -209,6 +219,7 @@ impl<'a> CallSiteDemandObserver<'a> {
                         .iter()
                         .map(|i| format!("{}.{}", claims[*i].0, claims[*i].1))
                         .collect(),
+                    planned_claims: cell.planned,
                     sites: cell.sites.iter().map(render_site).collect(),
                 },
             )
@@ -555,7 +566,7 @@ mod tests {
             .iter()
             .map(|c| ("fixture.n7".to_string(), c.to_string()))
             .collect();
-        let (rows, unresolved) = observer.observe(&planned);
+        let (rows, unresolved) = observer.observe(&planned, planned.len());
         assert!(
             unresolved.is_empty(),
             "every fixture claim resolves: {unresolved:?}; indexed={:?}; modules={:?}; diagnostics={}",
@@ -616,6 +627,32 @@ mod tests {
             closed_claims(&rows, "fixture.n7.assemble", "module p"),
             Some(1)
         );
+    }
+
+    // DECLARED DEMAND, PLANNED COUNT: with claim_b declared but not planned, the shared fixture is
+    // still reached by two declared claims, and exactly one of them is planned.
+    #[test]
+    fn declared_unplanned_claims_count_as_demand_and_are_not_counted_planned() {
+        let (graph, indices) = graph_of(&[("workspace/src/n7.dag", FIXTURE)]);
+        let mut observer = CallSiteDemandObserver::new(&graph, indices);
+        let population: Vec<(String, String)> = ["claim_a", "claim_b"]
+            .iter()
+            .map(|c| ("fixture.n7".to_string(), c.to_string()))
+            .collect();
+        let (rows, _) = observer.observe(&population, 1);
+        let row = rows.iter().find_map(|r| match r {
+            CallSiteDemandRow::Closed {
+                producer,
+                argument_preimage,
+                claims,
+                planned_claims,
+                ..
+            } if producer == "fixture.n7.assemble" && argument_preimage.contains("module p") => {
+                Some((claims.len(), *planned_claims))
+            }
+            _ => None,
+        });
+        assert_eq!(row, Some((2, 1)), "{rows:?}");
     }
 
     // NEVER WIDEN: a call whose argument is the enclosing function's parameter has no closed

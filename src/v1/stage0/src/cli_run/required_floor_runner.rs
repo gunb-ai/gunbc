@@ -6719,6 +6719,7 @@ pub(crate) fn install_pure_producer_share(
 pub(crate) fn derive_and_install_cross_claim_share(
     prepared: &PreparedRepository,
     claims: &[RequiredFloorClaim],
+    declared: &[(String, String)],
 ) -> Result<Vec<(String, SharedBuildObservation)>, String> {
     use super::claim_call_site_demand::{
         CallSiteDemandObserver, CallSiteDemandRow, CLOSED_ARGUMENT_NORMALIZER,
@@ -6726,13 +6727,30 @@ pub(crate) fn derive_and_install_cross_claim_share(
     use v1_interpreter::Value;
     const MODULE: &str = "v2.workflow.floor_pure_producer_share";
     let started = std::time::Instant::now();
-    let planned: Vec<(String, String)> = claims
+    let mut population: Vec<(String, String)> = claims
         .iter()
         .map(|c| (c.module_path.clone(), c.function.clone()))
         .collect();
+    let planned_count = population.len();
     let mut observer =
         CallSiteDemandObserver::new(&prepared.graph, prepared.source_indices.clone());
-    let (rows, unresolved) = observer.observe(&planned);
+    // THE DECLARED POPULATION: every other claim declared in a module the prepared subject carries.
+    // Recurrence is judged over it (so a claim's budget does not depend on which other claims a diff
+    // plans); a declared claim whose module is outside the subject cannot be walked and is counted.
+    let planned_set: std::collections::HashSet<(String, String)> =
+        population.iter().cloned().collect();
+    let mut declared_outside_subject = 0usize;
+    for d in declared {
+        if planned_set.contains(d) {
+            continue;
+        }
+        if observer.decl(&d.0, &d.1).is_some() {
+            population.push(d.clone());
+        } else {
+            declared_outside_subject += 1;
+        }
+    }
+    let (rows, unresolved) = observer.observe(&population, planned_count);
     if !unresolved.is_empty() {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=CallSiteDemandClaimUnresolved claims=[{}] -- a planned \
@@ -6766,6 +6784,7 @@ pub(crate) fn derive_and_install_cross_claim_share(
                 producer,
                 argument_preimage,
                 claims,
+                planned_claims,
                 sites,
             } => Value::Variant {
                 type_name: sym("CallSiteDemandObservation"),
@@ -6788,6 +6807,7 @@ pub(crate) fn derive_and_install_cross_claim_share(
                         sym("claims"),
                         list_value_from_vec(claims.iter().map(str_value).collect()),
                     ),
+                    (sym("planned_claims"), Value::Int(*planned_claims as i64)),
                     (
                         sym("sites"),
                         list_value_from_vec(sites.iter().map(str_value).collect()),
@@ -6977,9 +6997,11 @@ pub(crate) fn derive_and_install_cross_claim_share(
     }
     eprintln!(
         "[floor-phase] phase=cross-claim-share-derivation state=completed planned_claims={} \
+         declared_claims_observed={} declared_outside_subject={declared_outside_subject} \
          closed_identities={closed_rows} admitted={} admitted_sites={} declined=[{}] \
          unadmissible=[{}] observe_ms={observe_ms} derive_ms={derive_ms}",
         claims.len(),
+        population.len(),
         admitted.len(),
         sites.len(),
         decline_counts
@@ -10559,7 +10581,17 @@ pub fn run_required_floor(
     floor_seam("cross-claim-share-derivation");
     // The derived warms are shared builds like every preparation warm, so they answer to the same
     // three preparation limits; they run here only because their demand is the planned claims.
-    for (which, warm) in &derive_and_install_cross_claim_share(&prepared, &claims)? {
+    let declared_claims: Vec<(String, String)> = files
+        .iter()
+        .flat_map(|f| {
+            f.functions
+                .iter()
+                .map(move |function| (f.module_path.clone(), function.clone()))
+        })
+        .collect();
+    for (which, warm) in
+        &derive_and_install_cross_claim_share(&prepared, &claims, &declared_claims)?
+    {
         if warm.cpu_ms > preparation_cpu_limit_ms
             || warm.wall_ms > preparation_wall_limit_ms
             || warm.rss_growth_bytes > preparation_rss_growth_limit_bytes

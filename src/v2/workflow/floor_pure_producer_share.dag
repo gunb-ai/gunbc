@@ -100,9 +100,18 @@ type CallSiteDemandCause
   | CallShapeUnread
 
 // `producer` is the callee's qualified declaration; `argument_preimage` the canonical normalized
-// argument row; `claims` the DISTINCT planned claims whose reach contains a site of this identity
-// (each becomes one ladder demand at its claim frame); `sites` those sites as
-// `<file>:<start>-<end>` byte spans, which is what the seed admits.
+// argument row; `claims` the DISTINCT claims DECLARED in the prepared subject whose reach contains
+// a site of this identity (each becomes one ladder demand at its claim frame); `planned_claims`
+// how many of those this run plans; `sites` those sites as `<file>:<start>-<end>` byte spans, which
+// is what the seed admits.
+//
+// WHY DECLARED AND NOT PLANNED (sharp-raven-357, 2026-10-03): recurrence is a fact about the
+// declared subject, not about which claims a diff happens to plan. Counting only planned claims
+// made a claim's budget depend on which OTHER claims the diff planned -- a producer two declared
+// claims share was shared on a whole-corpus run and charged in full to the one claim a narrow PR
+// planned, so the same claim passed on main and failed on the PR. Counting declared claims makes
+// each claim's budget deterministic. Warming only what a PLANNED claim reaches keeps the run's own
+// demand minimal: an obligation no planned claim can discharge in this run is not filled here.
 // An unadmissible row aggregates every site sharing one cause: `claims` counts distinct planned
 // claims reaching any of them, `sites` counts the sites.
 type CallSiteDemandObservation
@@ -111,6 +120,7 @@ type CallSiteDemandObservation
       argument_preimage: String
       identity: ComputationIdentity
       claims: List<String>
+      planned_claims: Int
       sites: List<String>
     }
   | UnadmissibleCallSiteDemand {
@@ -205,6 +215,7 @@ type DerivedShareRow {
 // identity facts the ladder cannot see; the ladder then decides whether a carry is owed.
 type ShareDerivationDecline
   = DemandedByOneClaim
+  | ReachedByNoPlannedClaim
   | IdentityGradeNotShareable
   | RefusedByMeasurement
   | CarriedInputProducer
@@ -255,11 +266,14 @@ fn closed_demand_decline(
   argument_preimage: String,
   identity: ComputationIdentity,
   claims: List<String>,
+  planned_claims: Int,
   refused_names: List<String>,
   carried_names: List<String>
 ) -> List<ShareDerivationDecline> {
   if identity_permits_share(ci: identity) == false {
     [IdentityGradeNotShareable]
+  } else if planned_claims == 0 {
+    [ReachedByNoPlannedClaim]
   } else if any(xs: refused_names, predicate: fn(r) { r == producer }) {
     [RefusedByMeasurement]
   } else if any(xs: carried_names, predicate: fn(c) { c == producer }) {
@@ -278,8 +292,8 @@ fn derived_share_rows_for(
   carried_names: List<String>
 ) -> List<DerivedShareRow> {
   match observation {
-    ClosedCallSiteDemand { producer: p, argument_preimage: a, identity: i, claims: c, sites: s } =>
-      if length(xs: closed_demand_decline(producer: p, argument_preimage: a, identity: i, claims: c, refused_names: refused_names, carried_names: carried_names)) == 0 {
+    ClosedCallSiteDemand { producer: p, argument_preimage: a, identity: i, claims: c, planned_claims: n, sites: s } =>
+      if length(xs: closed_demand_decline(producer: p, argument_preimage: a, identity: i, claims: c, planned_claims: n, refused_names: refused_names, carried_names: carried_names)) == 0 {
         [DerivedShareRow { producer: p, argument_preimage: a, identity: share_ladder_identity(producer: p, argument_preimage: a), claims: length(xs: c), sites: s }]
       } else {
         []
@@ -294,9 +308,9 @@ fn declined_share_rows_for(
   carried_names: List<String>
 ) -> List<DeclinedShareRow> {
   match observation {
-    ClosedCallSiteDemand { producer: p, argument_preimage: a, identity: i, claims: c, sites: _ } =>
+    ClosedCallSiteDemand { producer: p, argument_preimage: a, identity: i, claims: c, planned_claims: n, sites: _ } =>
       list_map(
-        xs: closed_demand_decline(producer: p, argument_preimage: a, identity: i, claims: c, refused_names: refused_names, carried_names: carried_names),
+        xs: closed_demand_decline(producer: p, argument_preimage: a, identity: i, claims: c, planned_claims: n, refused_names: refused_names, carried_names: carried_names),
         f: fn(d) { DeclinedShareRow { producer: p, argument_preimage: a, decline: d } }
       )
     UnadmissibleCallSiteDemand { cause: _, claims: _, sites: _ } => []
@@ -305,7 +319,7 @@ fn declined_share_rows_for(
 
 fn unadmissible_counts_for(observation: CallSiteDemandObservation) -> List<UnadmissibleDemandCount> {
   match observation {
-    ClosedCallSiteDemand { producer: _, argument_preimage: _, identity: _, claims: _, sites: _ } => []
+    ClosedCallSiteDemand { producer: _, argument_preimage: _, identity: _, claims: _, planned_claims: _, sites: _ } => []
     UnadmissibleCallSiteDemand { cause: k, claims: c, sites: n } =>
       [UnadmissibleDemandCount { cause: k, claims: c, sites: n }]
   }
@@ -360,7 +374,7 @@ fn floor_cross_claim_share_derivation(
 fn closed_observation_count(observations: List<CallSiteDemandObservation>) -> Int {
   length(xs: filter(xs: observations, predicate: fn(o) {
     match o {
-      ClosedCallSiteDemand { producer: _, argument_preimage: _, identity: _, claims: _, sites: _ } => true
+      ClosedCallSiteDemand { producer: _, argument_preimage: _, identity: _, claims: _, planned_claims: _, sites: _ } => true
       UnadmissibleCallSiteDemand { cause: _, claims: _, sites: _ } => false
     }
   }))

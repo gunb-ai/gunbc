@@ -13,7 +13,7 @@ import v2.workflow.floor_pure_producer_share {
   CallSiteDemandObservation, ClosedCallSiteDemand, UnadmissibleCallSiteDemand,
   CallSiteDemandCause, ArgumentNotClosedConstant, CalleeDeclaresEffects,
   CrossClaimShareDerivation, DeclinedShareRow,
-  ShareDerivationDecline, DemandedByOneClaim, IdentityGradeNotShareable, RefusedByMeasurement, CarriedInputProducer,
+  ShareDerivationDecline, DemandedByOneClaim, ReachedByNoPlannedClaim, IdentityGradeNotShareable, RefusedByMeasurement, CarriedInputProducer,
   LadderOwesNoCarry,
   derive_cross_claim_share, floor_cross_claim_share_derivation,
   cross_claim_share_derivation_reconciles, derived_share_producers
@@ -69,6 +69,7 @@ fn probe_closed(producer: String, claims: Int) -> CallSiteDemandObservation {
     argument_preimage: "(src: \"module text\")",
     identity: probe_identity(),
     claims: probe_claim_names(claims: claims),
+    planned_claims: 1,
     sites: ["v2/test/probe.dag:10-40"]
   }
 }
@@ -90,6 +91,7 @@ fn decline_tag(decline: ShareDerivationDecline) -> String {
   match decline {
     DemandedByOneClaim => "DemandedByOneClaim"
     IdentityGradeNotShareable => "IdentityGradeNotShareable"
+    ReachedByNoPlannedClaim => "ReachedByNoPlannedClaim"
     RefusedByMeasurement => "RefusedByMeasurement"
     CarriedInputProducer => "CarriedInputProducer"
     LadderOwesNoCarry { verdict: _ } => "LadderOwesNoCarry"
@@ -118,6 +120,30 @@ test fn a_closed_identity_one_claim_demands_is_declined_and_named() -> Bool {
     && declined_as(d: d, producer: "v2.probe.n7.probe_assemble", decline: DemandedByOneClaim)
 }
 
+// DECLARED DEMAND DECIDES THE OBLIGATION; PLANNED REACH DECIDES THE WARM. The pair varies only how
+// many of the declaring claims this run plans: two declared claims with one planned is admitted
+// (the budget of the planned claim is the same as on a run planning both), and two declared claims
+// with none planned is declined, because nothing in this run would consume the fill.
+test fn two_declared_claims_with_one_planned_is_admitted() -> Bool {
+  let d = probe_derive(observations: [probe_closed(producer: "v2.probe.n7.probe_assemble", claims: 2)])
+  length(xs: d.admitted) == 1
+}
+
+test fn declared_demand_no_planned_claim_reaches_is_declined_and_named() -> Bool {
+  let d = probe_derive(observations: [
+    ClosedCallSiteDemand {
+      producer: "v2.probe.n7.probe_unplanned",
+      argument_preimage: "()",
+      identity: probe_identity(),
+      claims: probe_claim_names(claims: 4),
+      planned_claims: 0,
+      sites: ["v2/test/probe.dag:70-80"]
+    }
+  ])
+  (length(xs: d.admitted) == 0)
+    && declined_as(d: d, producer: "v2.probe.n7.probe_unplanned", decline: ReachedByNoPlannedClaim)
+}
+
 // A MEASURED REFUSAL OUTRANKS DEMAND. The producer is demanded by many claims and still declined,
 // naming the refusal -- the literal re-proposal path of the refused-candidate class, now closed by
 // construction rather than by a collision wall over an authored roster.
@@ -143,6 +169,7 @@ test fn an_identity_of_unknown_grade_is_declined() -> Bool {
       argument_preimage: "()",
       identity: IdentityUnknown { cause: MissingConcept { detail: "authored fixture" } },
       claims: probe_claim_names(claims: 3),
+      planned_claims: 3,
       sites: ["v2/test/probe.dag:50-60"]
     }
   ])
