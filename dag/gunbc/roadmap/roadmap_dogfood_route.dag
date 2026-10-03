@@ -2,7 +2,8 @@ module gunbc.roadmap_dogfood_route
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import gunbc.roadmap_workflow_stage {
-  WorkflowSegment,
+  WorkflowSegment, workflow_segment_of_kind,
+  SubmissionWorkflowSegment, PublicationWorkflowSegment, ReviewWorkflowSegment,
   WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete, WorkflowSegmentFailed,
   WorkflowSegmentRefused, WorkflowSegmentStopped,
 }
@@ -11,7 +12,6 @@ import gunbc.roadmap_dashboard_instance { HostDashboardInstance, srv2_deploy_das
 import gunbc.roadmap_belt_actuate {
   BeltWorkflowAttempts, WorkflowAttemptsObserved, WorkflowAttemptsRefused,
   belt_workflow_attempts_observe_for_instance,
-  belt_verification_segment, belt_publication_segment, belt_review_segment,
 }
 
 // THE DOGFOOD ROUTE, AS ONE ACCEPTANCE CASE (operator ruling 2026-10-03). A request enters the
@@ -119,9 +119,11 @@ fn dogfood_route_receipt(attempt_key: String, readings: DogfoodStageReadings) ->
 
 // ── READING THE STAGES THE ROUTE ALREADY RECORDS ────────────────────────────────────────────────
 //
-// A stage with its own durable record today is read off that record's workflow segment, selected
-// by the belt's own selectors (gunbc.roadmap_belt_actuate), the same projection the dashboard and
-// the continuation decision read -- so this adds no second reader. Complete establishes; Pending or
+// A stage with its own durable record today is read off that record's workflow segment, selected by
+// gunbc.roadmap_workflow_stage workflow_segment_of_kind -- the same projection the dashboard and the
+// continuation decision read, so this adds no second reader. Durable result is the SUBMISSION
+// segment: the worker's candidate captured and committed at the head, which is the attempt's
+// result, not verification's verdict on it. Complete establishes; Pending or
 // Active is owed by the attempt itself (not reached yet); Failed, Refused or Stopped is the record
 // saying the stage did not hold. An absent segment is a record defect and refuses.
 fn dogfood_reading_from_segment(segment: WorkflowSegment?) -> DogfoodStageReading {
@@ -169,12 +171,12 @@ fn dogfood_route_readings(progress: WorkflowAttemptProgress) -> DogfoodStageRead
     shared_computation: StageOwed { owed_by: dogfood_owed_shared_computation },
     placement_grant: StageOwed { owed_by: dogfood_owed_placement_grant },
     isolated_execution: StageOwed { owed_by: dogfood_owed_isolated_execution },
-    durable_result: dogfood_reading_from_segment(segment: belt_verification_segment(progress: progress)),
+    durable_result: dogfood_reading_from_segment(segment: workflow_segment_of_kind(segments: progress.segments, kind: SubmissionWorkflowSegment)),
     metering: StageOwed { owed_by: dogfood_owed_metering },
     cleanup: StageOwed { owed_by: dogfood_owed_cleanup },
     result_returned: StageOwed { owed_by: dogfood_owed_result_returned },
-    candidate_published: dogfood_reading_from_segment(segment: belt_publication_segment(progress: progress)),
-    independent_review: dogfood_reading_from_segment(segment: belt_review_segment(progress: progress)),
+    candidate_published: dogfood_reading_from_segment(segment: workflow_segment_of_kind(segments: progress.segments, kind: PublicationWorkflowSegment)),
+    independent_review: dogfood_reading_from_segment(segment: workflow_segment_of_kind(segments: progress.segments, kind: ReviewWorkflowSegment)),
   }
 }
 
