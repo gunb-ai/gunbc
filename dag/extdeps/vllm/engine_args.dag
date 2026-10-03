@@ -7,7 +7,6 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_1967a5627 }
-import v2.std.algebra { filter }
 
 // VLLM'S ENGINE ARGUMENTS AS THE UPSTREAM SHAPE, held apart from extdeps.vllm.server because that
 // module owns the SERVED ROUTES and this one owns what the engine is LAUNCHED with. Both cite the
@@ -743,8 +742,8 @@ type VllmFullInputAdmissionRead
   | FullInputAdmissionReadConflict { cause: NonEmptyStr }
 
 fn vllm_argv_full_input_admission(argv: List<String>) -> VllmFullInputAdmissionRead {
-  let on = count(filter(argv, w => w == vllm_scheduler_reserve_full_isl_flag))
-  let off = count(filter(argv, w => w == vllm_no_scheduler_reserve_full_isl_flag))
+  let on = fold(argv, init: 0, f: (acc, w) => if w == vllm_scheduler_reserve_full_isl_flag { acc + 1 } else { acc })
+  let off = fold(argv, init: 0, f: (acc, w) => if w == vllm_no_scheduler_reserve_full_isl_flag { acc + 1 } else { acc })
   if on + off > 1 {
     FullInputAdmissionReadConflict { cause: join([
       "the argv carries ", vllm_scheduler_reserve_full_isl_flag, " ", to_string(on), " times and ",
