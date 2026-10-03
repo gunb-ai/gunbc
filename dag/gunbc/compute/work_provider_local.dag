@@ -307,6 +307,9 @@ fn provide_result_document(r: ProvideResult) -> String {
 // The command an operation runs inside the unit. Build runs the host's cargo; compile and claims run
 // the binaries the SAME subject's build produced (dependency_store is that build's store dir), so a
 // worker never checks its .dag with a compiler built from a different tree.
+// THE MODE IS ALWAYS SPELLED. claim_batch defaults to hermetic, so leaving the flag off for a wet
+// request ran it hermetic while its identity said wet -- the key and the realization answering two
+// different questions. Both arms now name their mode, so the run is the operation the key describes.
 fn compute_command_argv(instance: HostDashboardInstance, layout: ComputeLayout, op: WorkOperation, dependency_store: String) -> List<String> {
   match op {
     BuildGunbcBinaries { profile, bins } =>
@@ -323,7 +326,7 @@ fn compute_command_argv(instance: HostDashboardInstance, layout: ComputeLayout, 
         [join([dependency_store, "/claim_batch"], ""),
          "--source-root", join([layout.checkout, "/dag"], ""), "--source-root", join([layout.checkout, "/src/v2"], ""),
          "--entry", join([layout.checkout, "/", entry as String], ""), "--functions", functions as String],
-        if hermetic { ["--hermetic"] } else { [] },
+        if hermetic { ["--hermetic"] } else { ["--wet"] },
       )
   }
 }

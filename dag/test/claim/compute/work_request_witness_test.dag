@@ -37,7 +37,7 @@ import std.measure { byte_size }
 import gunbc.compute.work_provider_local {
   compute_work_identity, compute_materialization_plan, ComputeMaterializationPlanned, ComputeMaterializationRefused,
   ComputeMemoized, ComputeRecomputed, compute_store_read_decide, ComputeStoreServed, ComputeStoreAbsent, ComputeStoreRefused,
-  ComputeStoreNotConsulted, compute_operation_env,
+  ComputeStoreNotConsulted, compute_operation_env, compute_command_argv,
 }
 import std.materialization_object { StoreLookupMiss, StoreLookupRefused, StoreLookupObjectMalformed }
 import std.content_hash { content_hash_tagged_structural }
@@ -538,4 +538,14 @@ test fn the_claim_window_keys_apart_and_binds_the_unit_environment() -> Bool {
     && key(subject: subject, op: windowed(w: w1), rustc: "rustc 1.90.0") == key(subject: subject, op: windowed(w: w1_moved), rustc: "rustc 1.90.0")
     && compute_operation_env(op: windowed(w: w1)) == ["GUNBC_DIFF_WINDOW_PATH=/v/one.json"]
     && count(compute_operation_env(op: work_default_build())) == 0
+}
+
+// THE RUNNER IS TOLD THE MODE THE KEY SAYS. claim_batch defaults to hermetic, so a wet request that
+// spelled no flag ran hermetic under a wet identity. RED against an argv that omits --wet.
+test fn a_claim_run_names_its_mode_in_both_directions() -> Bool {
+  let layout = compute_layout(instance: srv1_live_dashboard_instance(), identity_hex: "abc")
+  let wet = compute_command_argv(instance: srv1_live_dashboard_instance(), layout: layout, op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: false, window: none }, dependency_store: "/s")
+  let hermetic = compute_command_argv(instance: srv1_live_dashboard_instance(), layout: layout, op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true, window: none }, dependency_store: "/s")
+  any(wet, a => a == "--wet") && !any(wet, a => a == "--hermetic")
+    && any(hermetic, a => a == "--hermetic") && !any(hermetic, a => a == "--wet")
 }
