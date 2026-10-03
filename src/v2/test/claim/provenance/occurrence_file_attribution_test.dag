@@ -21,6 +21,7 @@ import v2.cli.compile_cli {
   CliRunRefused,
   CliTargetRust,
   CliUsageRefused,
+  CliDifferentialReported,
   v2_cli_run
 }
 import v2.std.algebra { list_reverse, list_starts_with }
@@ -282,6 +283,7 @@ fn door_probe_cli_detail() -> String {
     CliRunRefused { reason: _, detail: detail } => detail
     CliCensusRefused { reason: _, detail: detail, text: _ } => detail
     CliUsageRefused { reason: _, detail: detail } => detail
+    CliDifferentialReported { text: _, observed: _, detail: detail } => detail
   }
 }
 
