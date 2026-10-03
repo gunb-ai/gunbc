@@ -47162,3 +47162,56 @@ mod collect_node_values_depth_tests {
         super::collect_node_values(&value, &ctx, &mut out);
     }
 }
+
+#[cfg(test)]
+mod stale4_probe {
+    //! PROBE (calm-pike-525): every bare reference the unimported-bare-provider gate visits in four
+    //! files, with its provider, closure membership and the non-declaration predicate. Run --ignored.
+    use super::*;
+
+    #[test]
+    #[ignore]
+    fn stale4() {
+        let roots = vec!["dag".to_string(), "src/v2".to_string()];
+        let index = super::process_shared_index(&roots);
+        let want = [
+            ("dag/extdeps/languages/yaml/types.dag", "get"),
+            ("dag/gunbc/emit_diagnostic_observation.dag", "get"),
+            ("dag/gunbc/systemd_property_directive_overlap.dag", "User"),
+            ("src/v2/test/manual/ownership_movable_test.dag", "Read"),
+        ];
+        for (_m, sf) in index.source_files.iter() {
+            let file = workspace_relative_repo_path(&sf.path);
+            let Some((_, nm)) = want.iter().find(|(f, _)| *f == file) else {
+                continue;
+            };
+            let closure: HashSet<String> =
+                import_closure_live_paths_with_facts(&sf.path, &index.module_graph_facts)
+                    .iter()
+                    .map(|p| workspace_relative_repo_path(p))
+                    .collect();
+            let mut visited = false;
+            let r = visit_bare_reference_providers(
+                sf,
+                &index,
+                |root| closure_name_census(&index, root),
+                |name, module, provider| {
+                    if name == *nm {
+                        visited = true;
+                        eprintln!(
+                            "[s4] {file} {name} provider={provider} module={module} in_closure={} pred={}",
+                            provider == file || closure.contains(provider),
+                            crate::v1_compiler_infer_method::bare_call_has_non_declaration_binding(name.to_string())
+                        );
+                    }
+                    Ok(())
+                },
+            );
+            eprintln!(
+                "[s4] {file} {nm} visited={visited} visit_ok={} imports={}",
+                r.is_ok(),
+                source_declares_import_lines(&sf.content)
+            );
+        }
+    }
+}
