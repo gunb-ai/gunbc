@@ -202,7 +202,7 @@ fn node_http_hex_digit_at(cps: List<Int>, index: Int) -> Int? {
 }
 
 fn node_http_serve_port_seed(workdir: NonEmptyStr) -> Int? {
-  let cps = content_hash_atom(value: workdir).digest |> chars
+  let cps = content_hash_atom(value: workdir).digest as String |> chars
   let n = length(xs: cps)
   if n < 3 { none } else {
     match node_http_hex_digit_at(cps: cps, index: n - 3) {
