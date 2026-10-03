@@ -3567,6 +3567,59 @@ fn native_census_module_resolution(
   }
 }
 
+// THE census-infer SUBJECT: ONE MODULE RESOLVED, THEN INFERRED. Shared by two folds, by agreement
+// (docs/plans/census-part-2-inference-design.md section 2a; the nominal-type plan's M0,
+// docs/plans/nominal-type-declaration-plan.md section 2): census part 2 reads the refused arm, one row
+// per chain; gunbc.instruments.type_declaration_use_census reads the resolved tree on BOTH infer arms
+// (declarations are resolve-level facts) and the inferred tree on the accepted one. It is the same
+// per-module infer the adjudicating lane demands (native_test_infer_resolved), so there is one infer
+// walk, not two. Unlike native_census_module_resolution it HOLDS the module's trees -- the folds need
+// them -- for the duration of one call; the loop keeps none of them past it.
+type NativeInferCensusOutcome
+  = NativeInferCensusFileRefused
+  | NativeInferCensusResolveRefused {
+      first: NonEmptyDiagnostics
+      rest: List<NonEmptyDiagnostics>
+      observation: ObservationCompleteness
+    }
+  | NativeInferCensusInferred { resolved: ResolvedTree, inferred: InferredTree }
+  | NativeInferCensusInferRefused { resolved: ResolvedTree, chain: NonEmptyDiagnostics }
+
+type NativeInferCensusStep {
+  outcome: NativeInferCensusOutcome
+  context: NativeTestContext
+}
+
+fn native_census_module_inference(
+  context: NativeTestContext,
+  refusal_index: Map<Symbol, NativeTestFileRefusal>,
+  entry: NativeCensusModule
+) -> NativeInferCensusStep {
+  let step = native_module_resolve_verdict(
+    context: context,
+    refusal_index: refusal_index,
+    module: entry.module,
+    path: entry.path
+  )
+  NativeInferCensusStep {
+    outcome: match step.verdict {
+      NativeModuleResolveFileRefused { refusal: _ } => NativeInferCensusFileRefused
+      NativeModuleResolveImportTargetFileRefused { target: _, first: f, rest: r, observation: o } =>
+        NativeInferCensusResolveRefused { first: f, rest: r, observation: o }
+      NativeModuleResolveRefused { first: f, rest: r, observation: o } =>
+        NativeInferCensusResolveRefused { first: f, rest: r, observation: o }
+      NativeModuleResolveAccepted { resolved: resolved } =>
+        match native_test_infer_resolved(module: qualified_name_from_dotted_string(dotted: entry.module), resolved: resolved) {
+          Accepted { value: prepared, diagnostics: _ } =>
+            NativeInferCensusInferred { resolved: resolved, inferred: prepared.inferred }
+          Rejected { diagnostics: d } =>
+            NativeInferCensusInferRefused { resolved: resolved, chain: d }
+        }
+    },
+    context: step.context
+  }
+}
+
 // WHETHER THE CENSUS OBSERVED EVERY OCCURRENCE OF A MODULE, AS A TYPED ANSWER. A file the context
 // refused never reached resolve, so its occurrence completeness is UNAVAILABLE -- not complete with
 // zero residual, which is what a missing row would otherwise read as. A resolved module was walked
