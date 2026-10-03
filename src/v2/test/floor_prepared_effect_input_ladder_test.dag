@@ -2,12 +2,13 @@ module v2.test.floor_prepared_effect_input_ladder
 
 import v2.workflow.floor_prepared_effect_input_ladder {
   carried_input_identities, carried_input_verdicts_after_the_carry,
-  carried_input_verdicts_before_the_carry, cross_claim_tier_retention,
+  carried_input_verdicts_before_the_carry,
   every_carried_identity_is_a_single_demand_after_the_carry,
   every_carried_identity_is_authored_duplication_before_the_carry,
   the_minimized_demand_graph_is_green, prepared_effect_input_provider
 }
 import v2.workflow.floor_pure_producer_share {
+  cross_claim_tier_retention,
   carried_input_rows_without_a_prepared_input, floor_cross_claim_carried_input_warm_rows,
   floor_cross_claim_prepared_effect_inputs
 }

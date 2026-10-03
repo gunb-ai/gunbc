@@ -14,6 +14,7 @@ import v2.workflow.floor_pure_producer_share {
   CallSiteDemandCause, ArgumentNotClosedConstant, CalleeDeclaresEffects,
   CrossClaimShareDerivation, DeclinedShareRow,
   ShareDerivationDecline, DemandedByOneClaim, IdentityGradeNotShareable, RefusedByMeasurement, CarriedInputProducer,
+  LadderOwesNoCarry,
   derive_cross_claim_share, floor_cross_claim_share_derivation,
   cross_claim_share_derivation_reconciles, derived_share_producers
 }
@@ -53,12 +54,21 @@ fn probe_identity() -> ComputationIdentity {
   NormalizedIdentical { normalizer: "authored fixture" }
 }
 
+// `claims` distinct planned claims, named so each is one ladder demand at its own claim frame.
+fn probe_claim_names(claims: Int) -> List<String> {
+  if claims <= 0 {
+    []
+  } else {
+    concat(probe_claim_names(claims: claims - 1), [concat("v2.test.probe.claim_", to_string(claims))])
+  }
+}
+
 fn probe_closed(producer: String, claims: Int) -> CallSiteDemandObservation {
   ClosedCallSiteDemand {
     producer: producer,
     argument_preimage: "(src: \"module text\")",
     identity: probe_identity(),
-    claims: claims,
+    claims: probe_claim_names(claims: claims),
     sites: ["v2/test/probe.dag:10-40"]
   }
 }
@@ -82,6 +92,7 @@ fn decline_tag(decline: ShareDerivationDecline) -> String {
     IdentityGradeNotShareable => "IdentityGradeNotShareable"
     RefusedByMeasurement => "RefusedByMeasurement"
     CarriedInputProducer => "CarriedInputProducer"
+    LadderOwesNoCarry { verdict: _ } => "LadderOwesNoCarry"
   }
 }
 
@@ -91,8 +102,9 @@ fn declined_as(d: CrossClaimShareDerivation, producer: String, decline: ShareDer
 }
 
 // THE DISCRIMINATING PAIR: one closed identity, varied ONLY in how many planned claims demand it.
-// Two claims is the reuse obligation DESIGN section 2 names, so it is admitted; one claim has no
-// least common ancestor above itself, so it is declined and named. A fold admitting every closed
+// Two claims put the obligation's least common ancestor at the shared-state preparation frame, so
+// std.materialization_ladder judges AuthoredDuplication and the carry is owed: admitted. One claim
+// is AcceptedSingleRecompute: declined and named. A fold admitting every closed
 // row passes the first and reds the second; a fold admitting nothing reds the first.
 test fn a_closed_identity_two_claims_demand_is_admitted() -> Bool {
   let d = probe_derive(observations: [probe_closed(producer: "v2.probe.n7.probe_assemble", claims: 2)])
@@ -130,7 +142,7 @@ test fn an_identity_of_unknown_grade_is_declined() -> Bool {
       producer: "v2.probe.n7.probe_unknown",
       argument_preimage: "()",
       identity: IdentityUnknown { cause: MissingConcept { detail: "authored fixture" } },
-      claims: 3,
+      claims: probe_claim_names(claims: 3),
       sites: ["v2/test/probe.dag:50-60"]
     }
   ])

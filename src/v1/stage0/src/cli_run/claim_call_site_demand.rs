@@ -70,7 +70,8 @@ pub(crate) enum CallSiteDemandRow {
     Closed {
         producer: String,
         argument_preimage: String,
-        claims: u64,
+        /// The distinct planned claims reaching this identity, `module.function`.
+        claims: Vec<String>,
         sites: Vec<String>,
     },
     Unadmissible {
@@ -117,6 +118,8 @@ pub(crate) struct CallSiteDemandObserver<'a> {
 struct IdentityCell {
     claims: u64,
     last_claim: usize,
+    /// The claim indices counted in `claims`, in planning order.
+    claim_indices: Vec<usize>,
     sites: BTreeSet<SiteKey>,
 }
 
@@ -189,6 +192,7 @@ impl<'a> CallSiteDemandObserver<'a> {
                     if cell.last_claim != claim_number {
                         cell.last_claim = claim_number;
                         cell.claims += 1;
+                        cell.claim_indices.push(index);
                     }
                     cell.sites.insert(site.clone());
                 }
@@ -200,7 +204,11 @@ impl<'a> CallSiteDemandObserver<'a> {
                 |((producer, argument_preimage), cell)| CallSiteDemandRow::Closed {
                     producer,
                     argument_preimage,
-                    claims: cell.claims,
+                    claims: cell
+                        .claim_indices
+                        .iter()
+                        .map(|i| format!("{}.{}", claims[*i].0, claims[*i].1))
+                        .collect(),
                     sites: cell.sites.iter().map(render_site).collect(),
                 },
             )
@@ -569,7 +577,9 @@ mod tests {
                 argument_preimage,
                 claims,
                 ..
-            } if p == producer && argument_preimage.contains(preimage_contains) => Some(*claims),
+            } if p == producer && argument_preimage.contains(preimage_contains) => {
+                Some(claims.len() as u64)
+            }
             _ => None,
         })
     }

@@ -6784,7 +6784,10 @@ pub(crate) fn derive_and_install_cross_claim_share(
                             )]),
                         },
                     ),
-                    (sym("claims"), Value::Int(*claims as i64)),
+                    (
+                        sym("claims"),
+                        list_value_from_vec(claims.iter().map(str_value).collect()),
+                    ),
                     (
                         sym("sites"),
                         list_value_from_vec(sites.iter().map(str_value).collect()),

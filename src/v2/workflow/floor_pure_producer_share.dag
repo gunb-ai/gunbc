@@ -2,6 +2,19 @@ module v2.workflow.floor_pure_producer_share
 
 import v2.std.collection { List }
 import std.computation_identity { ComputationIdentity, identity_permits_share }
+import std.cache_interface {
+  ByteCapacity, CapacityBounded, ExactLimit, ProviderRetention, ReleasedAtProviderScopeExit,
+  RefuseNewStore
+}
+import std.materialization_ladder {
+  CacheProvider, ContentKeyed, CoversIdentities, Frame, FrameDemand, IsolatedChildrenFrame,
+  LadderVerdict, MemoTier, PureComputation, SharedStateFrame, group_verdict,
+  AuthoredDuplication, DeadComputation, Discharged, RefusedNoProvider, RefusedScopeTooNarrow,
+  RefusedExistenceKeyed, RefusedRetentionUnbounded, RefusedRetentionUnobserved,
+  RefusedUnmodeledWorldRead, ExemptFreshEffect, AcceptedBelowCostFloor, AcceptedSingleRecompute,
+  AcceptedEffectIsTheUse, RefusedNatureConflict
+}
+import std.measure { byte_size }
 import v2.std.algebra { list_flat_map, list_map }
 
 // THE CROSS-CLAIM PURE-PRODUCER SHARE -- which pure computations the required floor may fill
@@ -87,8 +100,9 @@ type CallSiteDemandCause
   | CallShapeUnread
 
 // `producer` is the callee's qualified declaration; `argument_preimage` the canonical normalized
-// argument row; `claims` the number of DISTINCT planned claims whose reach contains a site of this
-// identity; `sites` those sites as `<file>:<start>-<end>` byte spans, which is what the seed admits.
+// argument row; `claims` the DISTINCT planned claims whose reach contains a site of this identity
+// (each becomes one ladder demand at its claim frame); `sites` those sites as
+// `<file>:<start>-<end>` byte spans, which is what the seed admits.
 // An unadmissible row aggregates every site sharing one cause: `claims` counts distinct planned
 // claims reaching any of them, `sites` counts the sites.
 type CallSiteDemandObservation
@@ -96,7 +110,7 @@ type CallSiteDemandObservation
       producer: String
       argument_preimage: String
       identity: ComputationIdentity
-      claims: Int
+      claims: List<String>
       sites: List<String>
     }
   | UnadmissibleCallSiteDemand {
@@ -107,21 +121,94 @@ type CallSiteDemandObservation
 
 // ── THE DECISION ──────────────────────────────────────────────────────────────────────────
 
+// THE FRAME PATH, and each frame's kind is a fact about the floor's own execution rather than a
+// label. Preparation is a SHARED-STATE frame: one process, one prepared subject, and the carried
+// value is bound in it. A claim is an ISOLATED-CHILDREN frame because the floor builds a fresh
+// evaluation frame per claim deliberately — one witness must not contaminate the next — which is
+// exactly why the eval-frame memo dies at every claim boundary and why the obligation LCA is
+// preparation rather than any claim.
+fn floor_preparation_frame() -> Frame {
+  Frame { name: "required-floor-preparation", kind: SharedStateFrame }
+}
+
+fn floor_claim_frame(name: String) -> Frame {
+  Frame { name: name, kind: IsolatedChildrenFrame }
+}
+
+fn floor_claim_site(name: String) -> List<Frame> {
+  [floor_preparation_frame(), floor_claim_frame(name: name)]
+}
+
+// THE PROVIDER: the cross-claim pure-producer tier, described as it actually behaves.
+//
+// scope      — the preparation frame, which is the least common visible ancestor of the claims.
+// coverage   — the identities a caller admits (the derived rows below, or the carried-input rows)
+//              and nothing else, never every pure call.
+// tier       — MemoTier { ContentKeyed }: an in-process store whose key is the resolved fn node
+//              plus the portable argument row, and the carried value IS that argument row.
+// retention  — released when the prepared subject is cleared, with the exact 256 MiB ceiling the
+//              tier enforces at publication and RefuseNewStore as its at-capacity disposition
+//              (an over-budget producer recomputes per claim as if never enrolled).
+fn cross_claim_tier_retention() -> ProviderRetention {
+  ProviderRetention {
+    release_policy: ReleasedAtProviderScopeExit,
+    capacity: CapacityBounded {
+      limit: ByteCapacity { limit: ExactLimit { value: byte_size(count: 268435456) } },
+      at_capacity: RefuseNewStore
+    }
+  }
+}
+
+fn cross_claim_share_provider(identities: List<String>) -> CacheProvider {
+  CacheProvider {
+    id: "floor-cross-claim-pure-share",
+    scope: [floor_preparation_frame()],
+    coverage: CoversIdentities { identities: identities },
+    tier: MemoTier { keying: ContentKeyed },
+    retention: cross_claim_tier_retention()
+  }
+}
+
+// THE LADDER JUDGMENT FOR ONE CLOSED IDENTITY (std.materialization_ladder, the structural
+// authority DESIGN section 2 names). Each demanding planned claim is one FrameDemand at its claim
+// frame under preparation. Two or more claims put the obligation's least common ancestor at the
+// SHARED-STATE preparation frame, which the ladder judges AuthoredDuplication: the repair is to
+// carry the first value to preparation, and the derived warm is that carry. One claim is
+// AcceptedSingleRecompute. The ladder identity is the full computation identity: producer plus
+// canonical argument preimage.
+fn share_ladder_identity(producer: String, argument_preimage: String) -> String {
+  concat(producer, concat(" ", argument_preimage))
+}
+
+fn closed_demand_ladder_verdict(identity: String, claims: List<String>) -> LadderVerdict {
+  group_verdict(
+    identity: identity,
+    group: list_map(xs: claims, f: fn(c) {
+      FrameDemand { identity: identity, site: floor_claim_site(name: c), nature: PureComputation }
+    }),
+    providers: [cross_claim_share_provider(identities: [identity])],
+    cost_floor_exempt: []
+  )
+}
+
 type DerivedShareRow {
   producer: String
   argument_preimage: String
+  identity: String
   claims: Int
   sites: List<String>
 }
 
-// Why a CLOSED identity is still not admitted. The four arms are the whole decision, so every
-// closed row lands in exactly one of `admitted` or one of these, and the counts reconcile against
-// the observation population (`cross_claim_share_derivation_reconciles`).
+// Why a CLOSED identity is still not admitted. Every closed row lands in exactly one of `admitted`
+// or one of these, and the counts reconcile against the observation population
+// (`cross_claim_share_derivation_reconciles`). The three gates come first because they are
+// identity facts the ladder cannot see; the ladder then decides whether a carry is owed.
 type ShareDerivationDecline
   = DemandedByOneClaim
   | IdentityGradeNotShareable
   | RefusedByMeasurement
   | CarriedInputProducer
+  | LadderOwesNoCarry { verdict: LadderVerdict }
 
 type DeclinedShareRow {
   producer: String
@@ -141,10 +228,33 @@ type CrossClaimShareDerivation {
   unadmissible: List<UnadmissibleDemandCount>
 }
 
+// The ladder verdict's consequence for admission: AuthoredDuplication owes the carry, so the row
+// is admitted (empty list); a single recompute is a one-claim demand; every other verdict owes no
+// carry and is carried on the decline so the floor names it.
+fn ladder_decline(verdict: LadderVerdict) -> List<ShareDerivationDecline> {
+  match verdict {
+    AuthoredDuplication { identity: _, lca: _, site_count: _ } => []
+    AcceptedSingleRecompute { identity: _ } => [DemandedByOneClaim]
+    DeadComputation { identity: _ } => [LadderOwesNoCarry { verdict: verdict }]
+    Discharged { identity: _, lca: _, provider_id: _ } => [LadderOwesNoCarry { verdict: verdict }]
+    RefusedNoProvider { identity: _, lca: _ } => [LadderOwesNoCarry { verdict: verdict }]
+    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => [LadderOwesNoCarry { verdict: verdict }]
+    RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => [LadderOwesNoCarry { verdict: verdict }]
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => [LadderOwesNoCarry { verdict: verdict }]
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => [LadderOwesNoCarry { verdict: verdict }]
+    RefusedUnmodeledWorldRead { identity: _, lca: _ } => [LadderOwesNoCarry { verdict: verdict }]
+    ExemptFreshEffect { identity: _ } => [LadderOwesNoCarry { verdict: verdict }]
+    AcceptedBelowCostFloor { identity: _ } => [LadderOwesNoCarry { verdict: verdict }]
+    AcceptedEffectIsTheUse { identity: _ } => [LadderOwesNoCarry { verdict: verdict }]
+    RefusedNatureConflict { identity: _ } => [LadderOwesNoCarry { verdict: verdict }]
+  }
+}
+
 fn closed_demand_decline(
   producer: String,
+  argument_preimage: String,
   identity: ComputationIdentity,
-  claims: Int,
+  claims: List<String>,
   refused_names: List<String>,
   carried_names: List<String>
 ) -> List<ShareDerivationDecline> {
@@ -154,10 +264,11 @@ fn closed_demand_decline(
     [RefusedByMeasurement]
   } else if any(xs: carried_names, predicate: fn(c) { c == producer }) {
     [CarriedInputProducer]
-  } else if claims < 2 {
-    [DemandedByOneClaim]
   } else {
-    []
+    ladder_decline(verdict: closed_demand_ladder_verdict(
+      identity: share_ladder_identity(producer: producer, argument_preimage: argument_preimage),
+      claims: claims
+    ))
   }
 }
 
@@ -168,8 +279,8 @@ fn derived_share_rows_for(
 ) -> List<DerivedShareRow> {
   match observation {
     ClosedCallSiteDemand { producer: p, argument_preimage: a, identity: i, claims: c, sites: s } =>
-      if length(xs: closed_demand_decline(producer: p, identity: i, claims: c, refused_names: refused_names, carried_names: carried_names)) == 0 {
-        [DerivedShareRow { producer: p, argument_preimage: a, claims: c, sites: s }]
+      if length(xs: closed_demand_decline(producer: p, argument_preimage: a, identity: i, claims: c, refused_names: refused_names, carried_names: carried_names)) == 0 {
+        [DerivedShareRow { producer: p, argument_preimage: a, identity: share_ladder_identity(producer: p, argument_preimage: a), claims: length(xs: c), sites: s }]
       } else {
         []
       }
@@ -185,7 +296,7 @@ fn declined_share_rows_for(
   match observation {
     ClosedCallSiteDemand { producer: p, argument_preimage: a, identity: i, claims: c, sites: _ } =>
       list_map(
-        xs: closed_demand_decline(producer: p, identity: i, claims: c, refused_names: refused_names, carried_names: carried_names),
+        xs: closed_demand_decline(producer: p, argument_preimage: a, identity: i, claims: c, refused_names: refused_names, carried_names: carried_names),
         f: fn(d) { DeclinedShareRow { producer: p, argument_preimage: a, decline: d } }
       )
     UnadmissibleCallSiteDemand { cause: _, claims: _, sites: _ } => []
@@ -216,8 +327,12 @@ fn derive_cross_claim_share(
   }
 }
 
-// THE COST FLOOR: DESIGN section 2's "unavoidable recurrence may explicitly recompute below the
-// cost floor". An admitted identity whose isolated warm performs fewer evaluator steps than this is
+// THE COST FLOOR: DESIGN section 2's economic realization, chosen only after the ladder has ruled a
+// carry lawful ("only after both hold does section 6 choose the economically optimal realization").
+// It is NOT the ladder's AcceptedBelowCostFloor exemption, which the ladder applies only below an
+// isolated least common ancestor; at the shared-state preparation frame the ladder owes the carry
+// whatever it costs, so the floor is a policy of the BOUNDED provider about which carried values to
+// retain. An admitted identity whose isolated warm performs fewer evaluator steps than this is
 // not retained: a store costs a key, a byte budget share and an entry in a bounded population, and
 // below this line the recomputation it saves is smaller than what it occupies. MEASURED REASON for
 // it existing (run 37089182924, the first derived run): 2807 of 2919 admitted identities warmed in
