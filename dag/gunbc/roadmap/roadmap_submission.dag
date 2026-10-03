@@ -21,7 +21,7 @@ import extdeps.languages.json.parse {
 import gunbc.roadmap_provider_events {
   ProviderExecutionState,
   ProviderNotStarted,
-  ProviderStarting,
+  ProviderStarting, ProviderAwaitingSeat,
   ProviderRunning,
   ProviderCompleted,
   ProviderFailed,
@@ -547,6 +547,7 @@ fn candidate_handoff_state(
   match provider {
     ProviderNotStarted => HandoffAwaitingWorker
     ProviderStarting { activity: _ } => HandoffAwaitingWorker
+    ProviderAwaitingSeat { detail: _ } => HandoffAwaitingWorker
     ProviderRunning { activity: _ } => HandoffAwaitingWorker
     ProviderEventsRefused { activity: _, detail: _ } => HandoffAwaitingWorker
     ProviderCompleted { activity: _ } =>
