@@ -2041,6 +2041,8 @@ struct CrossClaimPureMemo {
     /// portable walk is a sound estimator of what the retained value holds. The ACTUAL byte bound review
     /// 57446's F2 demanded: the entry cap bounded bucket count while each value was unbounded.
     bytes: usize,
+    /// Derived-share fills declined below the declared cost floor (recomputed, not retained).
+    below_cost_floor: u64,
     /// Stores refused because the value failed TOTAL reification (`ServeCacheValueNotPortable`).
     /// Counted, and the most recent refusal is retained for the warm path's diagnostics.
     unportable_refusals: u64,
@@ -2156,11 +2158,6 @@ thread_local! {
     /// judged closed -- stays outside the tier.
     static CROSS_CLAIM_SITE_GATED: RefCell<std::collections::HashSet<usize>> =
         RefCell::new(std::collections::HashSet::new());
-    /// While a derived call-site warm runs, the ONE producer it may store. Nested admitted calls
-    /// inside the warm are recomputed rather than stored, so a warm retains exactly its own value
-    /// and its measured cost is its own (an entry is never spent on a nested identity whose own
-    /// warm has not yet been judged against the cost floor).
-    static CROSS_CLAIM_WARM_ONLY: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
     /// The admitted call sites of site-gated producers, as `(file, start, end)` byte spans.
     static CROSS_CLAIM_ADMITTED_SITES: RefCell<std::collections::HashSet<(String, i64, i64)>> =
         RefCell::new(std::collections::HashSet::new());
@@ -2176,6 +2173,8 @@ pub fn clear_cross_claim_pure_memos() {
     CROSS_CLAIM_PURE_ROSTER.with(|r| r.borrow_mut().clear());
     CROSS_CLAIM_SITE_GATED.with(|g| g.borrow_mut().clear());
     CROSS_CLAIM_ADMITTED_SITES.with(|a| a.borrow_mut().clear());
+    CROSS_CLAIM_COST_FLOOR_STEPS.with(|c| c.set(0));
+    CROSS_CLAIM_IN_FLIGHT_WALL_CAP_NANOS.with(|c| c.set(0));
     CROSS_CLAIM_SHARE_OBSERVER.with(|o| *o.borrow_mut() = None);
     // The prepared effect inputs are tier state too, and for the sharpest reason: a carry that
     // outlived its subject would serve a later, differently-prepared evaluation a value acquired
@@ -2254,6 +2253,11 @@ pub fn install_cross_claim_share_observer(observer: Option<CrossClaimShareObserv
     CROSS_CLAIM_SHARE_OBSERVER.with(|o| *o.borrow_mut() = observer);
 }
 
+/// Derived-share fills declined below the cost floor on this thread — receipt fodder only.
+pub fn cross_claim_below_cost_floor_count() -> u64 {
+    CROSS_CLAIM_PURE_MEMO.with(|m| m.borrow().below_cost_floor)
+}
+
 /// (stores, overflow) for the cross-claim tier on this thread — receipt fodder only.
 pub fn cross_claim_pure_memo_counts() -> (usize, u64) {
     CROSS_CLAIM_PURE_MEMO.with(|m| {
@@ -2297,6 +2301,7 @@ thread_local! {
 struct CrossClaimFillFrame {
     producer: String,
     cpu_started: u128,
+    wall_started: Instant,
     steps_started: u64,
     stored_children_cpu: u128,
     stored_children_wall: u128,
@@ -2322,6 +2327,7 @@ impl CrossClaimFillGuard {
             s.borrow_mut().push(CrossClaimFillFrame {
                 producer: func_name.to_string(),
                 cpu_started,
+                wall_started: Instant::now(),
                 steps_started,
                 stored_children_cpu: 0,
                 stored_children_wall: 0,
@@ -2357,6 +2363,7 @@ impl Drop for CrossClaimFillGuard {
             .unwrap_or(CrossClaimFillFrame {
                 producer: self.func_name.clone(),
                 cpu_started: self.cpu_started,
+                wall_started: self.wall_started,
                 steps_started: self.steps_started,
                 stored_children_cpu: 0,
                 stored_children_wall: 0,
@@ -2514,6 +2521,9 @@ pub enum CrossClaimStoreOutcome {
     RefusedEntryCap,
     /// Landing the entry would push retention past `CROSS_CLAIM_PURE_MEMO_BYTE_BUDGET`.
     RefusedByteBudget,
+    /// A derived share's fill performed fewer evaluator steps than the declared cost floor, so the
+    /// value is recomputed rather than retained (DESIGN section 2's economic realization).
+    RefusedBelowCostFloor,
 }
 
 impl CrossClaimStoreOutcome {
@@ -2546,6 +2556,7 @@ impl CrossClaimStoreOutcome {
             CrossClaimStoreOutcome::RefusedValueNotPortable(_) => "ServeCacheValueNotPortable",
             CrossClaimStoreOutcome::RefusedEntryCap => "EntryCapReached",
             CrossClaimStoreOutcome::RefusedByteBudget => "ByteBudgetExceeded",
+            CrossClaimStoreOutcome::RefusedBelowCostFloor => "BelowCostFloor",
         }
     }
 }
@@ -2561,9 +2572,15 @@ fn store_cross_claim_pure_memo(
     if !cross_claim_pure_admitted(fn_node, func_name) {
         return CrossClaimStoreOutcome::NotAdmitted;
     }
-    if let Some(only) = CROSS_CLAIM_WARM_ONLY.with(|w| w.get()) {
-        if only != Rc::as_ptr(fn_node) as usize {
-            return CrossClaimStoreOutcome::NotAdmitted;
+    // THE COST FLOOR, applied to a derived producer's fill at the moment it would be retained: the
+    // guard measured the fill's evaluator steps, so the decision rests on this fill's own work.
+    if let Some(guard) = fill_guard {
+        let floor = CROSS_CLAIM_COST_FLOOR_STEPS.with(|c| c.get());
+        let gated =
+            CROSS_CLAIM_SITE_GATED.with(|g| g.borrow().contains(&(Rc::as_ptr(fn_node) as usize)));
+        if gated && evaluator_steps().wrapping_sub(guard.steps_started) < floor {
+            CROSS_CLAIM_PURE_MEMO.with(|m| m.borrow_mut().below_cost_floor += 1);
+            return CrossClaimStoreOutcome::RefusedBelowCostFloor;
         }
     }
     // The same substitution the lookup makes, in the same place in the fold, so a warm and a
@@ -2654,94 +2671,6 @@ pub fn take_cross_claim_store_digest(func_name: &str) -> Option<String> {
     CROSS_CLAIM_LAST_STORE_DIGEST.with(|d| match d.borrow_mut().take() {
         Some((name, digest)) if name == func_name => Some(digest),
         _ => None,
-    })
-}
-
-/// Why a derived call-site warm stored nothing it could serve. Typed apart so the floor counts
-/// each cause: a dispatched effect means the value depends on an input the key cannot see, an
-/// evaluation failure means the call is not computable in isolation (a refusal fixture, say), and
-/// a store the tier declined carries its own outcome.
-#[derive(Debug)]
-pub enum CallSiteWarmRefusal {
-    DispatchedEffect {
-        effects: u64,
-    },
-    /// The warm performed fewer evaluator steps than the declared cost floor, so the value is not
-    /// retained: below the floor, recomputing is the admitted realization (DESIGN section 2).
-    BelowCostFloor {
-        steps: u64,
-    },
-    EvaluationFailed(String),
-    NotStored(CrossClaimStoreOutcome),
-}
-
-impl CallSiteWarmRefusal {
-    pub fn cause(&self) -> String {
-        match self {
-            CallSiteWarmRefusal::DispatchedEffect { effects } => {
-                format!("DispatchedEffect(effects={effects})")
-            }
-            CallSiteWarmRefusal::BelowCostFloor { .. } => "BelowCostFloor".to_string(),
-            CallSiteWarmRefusal::EvaluationFailed(_) => "EvaluationFailed".to_string(),
-            CallSiteWarmRefusal::NotStored(outcome) => outcome.cause().to_string(),
-        }
-    }
-}
-
-/// Warm ONE admitted call site of a derived producer in `ctx` (a frame over the site's module):
-/// evaluate the site's closed arguments with no lexical bindings, call the producer, and publish
-/// through the ordinary store under the same fill guard a claim-time fill holds, so the fill lands
-/// in the shared-fill ledger outside the fold. `fn_node` must be the node the frame resolves the
-/// callee to, which is the identity the tier keys on.
-pub fn warm_cross_claim_call_site(
-    ctx: &InterpContext,
-    fn_node: &Rc<Node>,
-    call_node: &Rc<Node>,
-    cost_floor_steps: u64,
-) -> Result<CrossClaimStoreOutcome, CallSiteWarmRefusal> {
-    with_active_ctx(ctx, || {
-        let func_name = fn_node.name.clone();
-        let env = Env::empty();
-        let effects_before = ctx.effect_dispatch_count.get();
-        let args: Vec<(Option<String>, Value)> = call_node
-            .children
-            .iter()
-            .filter(|arg_node| !arg_node.children.is_empty())
-            .map(|arg_node| {
-                let name = arg_name_at(arg_node.clone(), ctx.si());
-                let val = with_lexical_base_env(&env, || {
-                    eval_expr(&arg_value(arg_node.clone()), &env, ctx)
-                })?;
-                Ok((name, val))
-            })
-            .collect::<InterpResult<_>>()
-            .map_err(|e| CallSiteWarmRefusal::EvaluationFailed(format!("{func_name}: {e}")))?;
-        let guard = CrossClaimFillGuard::enter(&func_name);
-        let steps_before = evaluator_steps();
-        let previous_only =
-            CROSS_CLAIM_WARM_ONLY.with(|w| w.replace(Some(Rc::as_ptr(fn_node) as usize)));
-        let value = with_lexical_base_env(&env, || call_function(ctx, fn_node, &args, &env));
-        CROSS_CLAIM_WARM_ONLY.with(|w| w.set(previous_only));
-        let value = value
-            .map_err(|e| CallSiteWarmRefusal::EvaluationFailed(format!("{func_name}: {e}")))?;
-        let steps = evaluator_steps().wrapping_sub(steps_before);
-        let effects = ctx
-            .effect_dispatch_count
-            .get()
-            .saturating_sub(effects_before);
-        if effects != 0 {
-            return Err(CallSiteWarmRefusal::DispatchedEffect { effects });
-        }
-        if steps < cost_floor_steps {
-            return Err(CallSiteWarmRefusal::BelowCostFloor { steps });
-        }
-        let outcome =
-            store_cross_claim_pure_memo(ctx, fn_node, &func_name, &args, &value, Some(&guard));
-        if outcome.is_servable() {
-            Ok(outcome)
-        } else {
-            Err(CallSiteWarmRefusal::NotStored(outcome))
-        }
     })
 }
 
@@ -3736,6 +3665,82 @@ mod cross_claim_memo_tests {
                 other => panic!("field '{name}' must resolve via fields_get, got {other:?}"),
             }
         }
+    }
+
+    // THE COST FLOOR IS APPLIED AT RETENTION, TO THE FILL'S OWN STEPS. The pair varies only the
+    // floor: the same derived producer's fill is declined below it and stored at zero.
+    #[test]
+    fn a_derived_fill_below_the_cost_floor_is_declined_and_one_above_is_stored() {
+        use super::{
+            install_cross_claim_cost_floor_steps, install_cross_claim_derived_share,
+            store_cross_claim_pure_memo, CrossClaimFillGuard, CrossClaimStoreOutcome,
+        };
+        super::clear_cross_claim_pure_memos();
+        let ctx = fresh_ctx();
+        let derived = make_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            Rc::new(ExprData::NoExprData),
+            Rc::new(im_vec![]),
+            None,
+            no_span(),
+        );
+        install_cross_claim_derived_share([derived.clone()], std::collections::HashSet::new());
+        install_cross_claim_cost_floor_steps(u64::MAX);
+        let guard = CrossClaimFillGuard::enter("tm_cheap");
+        let below = store_cross_claim_pure_memo(
+            &ctx,
+            &derived,
+            "tm_cheap",
+            &[],
+            &Value::Int(1),
+            Some(&guard),
+        );
+        drop(guard);
+        assert_eq!(below, CrossClaimStoreOutcome::RefusedBelowCostFloor);
+        assert_eq!(super::cross_claim_below_cost_floor_count(), 1);
+        install_cross_claim_cost_floor_steps(0);
+        let guard = CrossClaimFillGuard::enter("tm_cheap");
+        let stored = store_cross_claim_pure_memo(
+            &ctx,
+            &derived,
+            "tm_cheap",
+            &[],
+            &Value::Int(1),
+            Some(&guard),
+        );
+        drop(guard);
+        assert_eq!(stored, CrossClaimStoreOutcome::Stored);
+        super::clear_cross_claim_pure_memos();
+    }
+
+    // AN IN-FLIGHT FILL'S WALL IS EXCUSED ONLY UP TO THE CAP, AND NOTHING WITHOUT ONE.
+    #[test]
+    fn in_flight_fill_wall_is_excused_up_to_the_cap_and_not_without_one() {
+        use super::{
+            in_flight_cross_claim_fill_wall_nanos, install_cross_claim_in_flight_wall_cap_ms,
+            CrossClaimFillGuard,
+        };
+        super::clear_cross_claim_pure_memos();
+        let guard = CrossClaimFillGuard::enter("tm_slow");
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        assert_eq!(
+            in_flight_cross_claim_fill_wall_nanos(),
+            0,
+            "no cap installed, nothing excused"
+        );
+        install_cross_claim_in_flight_wall_cap_ms(1);
+        let excused = in_flight_cross_claim_fill_wall_nanos();
+        assert_eq!(
+            excused, 1_000_000,
+            "a 5ms fill against a 1ms cap is excused exactly the cap"
+        );
+        drop(guard);
+        assert_eq!(
+            in_flight_cross_claim_fill_wall_nanos(),
+            0,
+            "no fill in flight, nothing excused"
+        );
+        super::clear_cross_claim_pure_memos();
     }
 
     // THE SITE GATE OF THE DERIVED SHARE. A derived producer is admitted at the call sites the
@@ -6067,7 +6072,11 @@ impl InterpContext {
         let fill_since =
             crate::cli_run::shared_artifact_fill_wall_nanos().saturating_sub(fill_at_arm);
         Some((
-            start.elapsed().as_nanos().saturating_sub(fill_since),
+            start
+                .elapsed()
+                .as_nanos()
+                .saturating_sub(fill_since)
+                .saturating_sub(in_flight_cross_claim_fill_wall_nanos()),
             budget_ms,
         ))
     }
@@ -6830,6 +6839,48 @@ pub fn record_shared_artifact_fill_cpu_nanos(nanos: u128) {
 /// The running fill total for this thread.
 pub fn shared_artifact_fill_cpu_nanos() -> u128 {
     SHARED_ARTIFACT_FILL_CPU_NANOS.with(|c| c.get())
+}
+
+thread_local! {
+    /// The most wall time an IN-FLIGHT admitted fill may be excused from a claim's wall deadline.
+    /// Zero (the default) excuses nothing. The floor installs its preparation wall safety limit,
+    /// so a fill a claim performs on first touch is bounded exactly as a preparation build is,
+    /// and a runaway fill still interrupts.
+    static CROSS_CLAIM_IN_FLIGHT_WALL_CAP_NANOS: std::cell::Cell<u128> = const { std::cell::Cell::new(0) };
+    /// The declared cost floor (evaluator steps) below which a derived share's fill is not
+    /// retained. Zero (the default) retains every admitted fill.
+    static CROSS_CLAIM_COST_FLOOR_STEPS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// Install the in-flight fill wall cap (see `CROSS_CLAIM_IN_FLIGHT_WALL_CAP_NANOS`).
+pub fn install_cross_claim_in_flight_wall_cap_ms(cap_ms: u64) {
+    CROSS_CLAIM_IN_FLIGHT_WALL_CAP_NANOS.with(|c| c.set(u128::from(cap_ms) * 1_000_000));
+}
+
+/// Install the derived share's cost floor (see `CROSS_CLAIM_COST_FLOOR_STEPS`).
+pub fn install_cross_claim_cost_floor_steps(steps: u64) {
+    CROSS_CLAIM_COST_FLOOR_STEPS.with(|c| c.set(steps));
+}
+
+/// Wall time the outermost in-flight admitted fill has run, less its stored children (already
+/// netted when they completed), capped at the installed cap. This is the wall-clock sibling of
+/// `in_flight_cross_claim_fill`: a claim that first-touches a shared fill is not charged the
+/// fill's wall while it runs, exactly as it is not charged it once it completes.
+fn in_flight_cross_claim_fill_wall_nanos() -> u128 {
+    let cap = CROSS_CLAIM_IN_FLIGHT_WALL_CAP_NANOS.with(|c| c.get());
+    if cap == 0 {
+        return 0;
+    }
+    CROSS_CLAIM_FILL_FRAMES.with(|frames| {
+        frames.borrow().first().map_or(0, |outermost| {
+            outermost
+                .wall_started
+                .elapsed()
+                .as_nanos()
+                .saturating_sub(outermost.stored_children_wall)
+                .min(cap)
+        })
+    })
 }
 
 fn in_flight_cross_claim_fill(raw_cpu_nanos: u128) -> Option<(String, u128)> {

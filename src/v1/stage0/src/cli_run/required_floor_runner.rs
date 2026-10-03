@@ -6731,20 +6731,16 @@ pub(crate) fn install_pure_producer_share(
 /// The seed observes (`claim_call_site_demand`, one realization of the `.dag` row type
 /// `CallSiteDemandObservation`) and `v2.workflow.floor_pure_producer_share`
 /// `floor_cross_claim_share_derivation` decides; the seed then admits the decided rows at their call
-/// sites, and WARMS each admitted row once at one of its sites in that site's module frame, so its
-/// fill lands outside the fold -- a claim's wall deadline nets only completed fills, so a fill left
-/// to the first toucher could be interrupted mid-flight and re-paid by every claim. The returned
-/// observations are adjudicated against the preparation limits by the caller. A warm the tier
-/// cannot store (an effect, a call that does not evaluate in isolation, a declined store) is
-/// counted under its cause and the site stays admitted: a claim evaluating it computes exactly
-/// what it would have without the share. Every arm refuses: a planned claim the prepared subject does not carry, a fold
+/// sites. There is no warm: the first planned claim that evaluates an admitted site fills it (see the
+/// install note at the end of this function). Every arm refuses: a planned claim the prepared subject does not carry, a fold
 /// that does not evaluate or decode, a partition that does not reconcile, and an admitted producer
 /// with no declaration node or an unparseable site.
 pub(crate) fn derive_and_install_cross_claim_share(
     prepared: &PreparedRepository,
     claims: &[RequiredFloorClaim],
     declared: &[(String, String)],
-) -> Result<Vec<(String, SharedBuildObservation)>, String> {
+    in_flight_wall_cap_ms: u64,
+) -> Result<(), String> {
     use super::claim_call_site_demand::{
         CallSiteDemandObserver, CallSiteDemandRow, CLOSED_ARGUMENT_NORMALIZER,
     };
@@ -6925,19 +6921,6 @@ pub(crate) fn derive_and_install_cross_claim_share(
     let mut nodes = Vec::new();
     let mut sites: std::collections::HashSet<(String, i64, i64)> = std::collections::HashSet::new();
     let mut admitted_qualified = Vec::new();
-    // (producer, producer node, its admitted sites), for the post-warm re-install.
-    let mut admitted_rows: Vec<(
-        String,
-        std::rc::Rc<crate::v1_std_core::Node>,
-        Vec<(String, i64, i64)>,
-    )> = Vec::new();
-    // (site module, producer, producer node, call node) -- one warm per admitted row.
-    let mut warm_plan: Vec<(
-        String,
-        String,
-        std::rc::Rc<crate::v1_std_core::Node>,
-        std::rc::Rc<crate::v1_std_core::Node>,
-    )> = Vec::new();
     for row in &admitted {
         let Value::Record { fields: r, .. } = row else {
             return Err(malformed("an admitted row is not a DerivedShareRow record"));
@@ -6958,7 +6941,6 @@ pub(crate) fn derive_and_install_cross_claim_share(
             .field(r, "sites")
             .and_then(|v| v1_interpreter::list_value_items(ctx, v))
             .ok_or_else(|| malformed("an admitted row has no `sites` list"))?;
-        let mut sites_of_row: Vec<(String, i64, i64)> = Vec::new();
         for site in &row_sites {
             let Value::Str(text) = site else {
                 return Err(malformed("a site is not a String"));
@@ -6972,7 +6954,6 @@ pub(crate) fn derive_and_install_cross_claim_share(
                     "site `{text}` is not <file>:<start>-<end>"
                 )));
             };
-            sites_of_row.push(key.clone());
             sites.insert(key);
         }
         eprintln!(
@@ -6980,19 +6961,6 @@ pub(crate) fn derive_and_install_cross_claim_share(
              argument_preimage={preimage}",
             row_sites.len()
         );
-        let first_site = sites_of_row
-            .first()
-            .cloned()
-            .ok_or_else(|| malformed(&format!("admitted producer `{producer}` carries no site")))?;
-        let (site_module, call) = observer.site_node(&first_site).cloned().ok_or_else(|| {
-            format!(
-                "REQUIRED-FLOOR REFUSAL cause=DerivedShareSiteUnobserved producer={producer} \
-                 site={} -- the derivation admitted a site this run's observer never read",
-                super::claim_call_site_demand::render_site(&first_site)
-            )
-        })?;
-        warm_plan.push((site_module, producer.clone(), node.clone(), call));
-        admitted_rows.push((producer.clone(), node.clone(), sites_of_row.clone()));
         admitted_qualified.push(producer);
         nodes.push(node);
     }
@@ -7050,7 +7018,14 @@ pub(crate) fn derive_and_install_cross_claim_share(
             roster.admitted_qualified.extend(admitted_qualified);
         }
     });
-    // THE WARM, grouped by site module so each module is framed once.
+    // NO WARM. An admitted site fills on the FIRST planned claim that actually evaluates it, so a
+    // site the static reach over-approximates costs nothing, and no frame is built just to measure
+    // a value (the first derived runs built one frame per site module -- 169 -- to warm 2523
+    // identities and then discarded 2404 below the floor). The fill's evaluator steps are netted
+    // from the paying claim's budget by the existing fill guard, so budgets stay deterministic; its
+    // wall is excused from the claim's wall deadline while in flight, capped at the preparation
+    // wall safety limit, so a runaway fill still interrupts; and the cost floor is applied to the
+    // fill's own measured steps at the moment it would be retained.
     let cost_floor_steps = match v1_interpreter::run_in_context(
         ctx,
         &format!("{MODULE}.floor_cross_claim_share_cost_floor_eval_steps"),
@@ -7068,96 +7043,13 @@ pub(crate) fn derive_and_install_cross_claim_share(
             ))
         }
     };
-    warm_plan.sort_by(|a, b| (&a.0, &a.1).cmp(&(&b.0, &b.1)));
-    // Which admitted rows are retained after their warm: only these stay admitted, so a site whose
-    // warm declined (below the floor, not storable) is not stored at claim time either.
-    let mut kept_producers: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut observations = Vec::new();
-    let mut declined_warms: std::collections::BTreeMap<String, usize> =
-        std::collections::BTreeMap::new();
-    let mut framed: Option<(String, v1_interpreter::InterpContext)> = None;
-    for (site_module, producer, node, call) in &warm_plan {
-        if framed
-            .as_ref()
-            .map(|(m, _)| m != site_module)
-            .unwrap_or(true)
-        {
-            // Drop the previous module's frame before building the next: one resident at a time.
-            drop(framed.take());
-            let frame = floor_authority_frame(prepared, site_module).map_err(|why| {
-                format!(
-                    "REQUIRED-FLOOR REFUSAL cause=DerivedShareSiteModuleUnframed \
-                     module={site_module} producer={producer} -- {why}"
-                )
-            })?;
-            framed = Some((site_module.clone(), frame));
-        }
-        let frame = &framed.as_ref().expect("framed above").1;
-        match frame.lookup_fn_node(producer) {
-            Some(resolved) if std::rc::Rc::ptr_eq(&resolved, node) => {}
-            _ => {
-                return Err(format!(
-                    "REQUIRED-FLOOR REFUSAL cause=PureProducerShareFrameLookupDiverges \
-                     producer={producer} module={site_module} -- the site's module frame resolves \
-                     the producer to a different declaration than admission read from the prepared \
-                     graph, so the admitted identity is not the one a claim would evaluate"
-                ));
-            }
-        }
-        let (warm, observation) = observe_shared_build(false, "floor-preparation", || {
-            v1_interpreter::warm_cross_claim_call_site(frame, node, call, cost_floor_steps)
-        });
-        let disposition = match &warm {
-            Ok(outcome) => {
-                kept_producers.insert(producer.clone());
-                outcome.cause().to_string()
-            }
-            Err(refusal) => {
-                *declined_warms.entry(refusal.cause()).or_default() += 1;
-                refusal.cause()
-            }
-        };
-        eprintln!(
-            "[cross-claim-share-warm] producer={producer} module={site_module} \
-             disposition={disposition} cpu_ms={} wall_ms={} rss_growth_bytes={}",
-            observation.cpu_ms, observation.wall_ms, observation.rss_growth_bytes
-        );
-        observations.push((
-            format!("CrossClaimDerivedShareWarm/{producer}"),
-            observation,
-        ));
-    }
-    drop(framed);
-    // RE-INSTALL WITH THE RETAINED ROWS ONLY (replacing the derivation installed for the warm).
-    let mut kept_nodes = Vec::new();
-    let mut kept_sites: std::collections::HashSet<(String, i64, i64)> =
-        std::collections::HashSet::new();
-    for (producer, node, row_sites) in &admitted_rows {
-        if kept_producers.contains(producer) {
-            kept_nodes.push(node.clone());
-            kept_sites.extend(row_sites.iter().cloned());
-        }
-    }
-    let retained = kept_nodes.len();
-    v1_interpreter::install_cross_claim_derived_share(kept_nodes, kept_sites);
-    PURE_PRODUCER_SHARE_ROSTER.with(|r| {
-        if let Some(roster) = r.borrow_mut().as_mut() {
-            roster.admitted_qualified.retain(|q| {
-                !admitted_rows.iter().any(|(p, _, _)| p == q) || kept_producers.contains(q)
-            });
-        }
-    });
+    v1_interpreter::install_cross_claim_cost_floor_steps(cost_floor_steps);
+    v1_interpreter::install_cross_claim_in_flight_wall_cap_ms(in_flight_wall_cap_ms);
     eprintln!(
-        "[floor-phase] phase=cross-claim-share-warm state=completed warmed={} retained={retained} \
-         cost_floor_eval_steps={cost_floor_steps} not_stored=[{}]",
-        warm_plan.len(),
-        declined_warms
-            .iter()
-            .map(|(k, v)| format!("{k}={v}"))
-            .collect::<Vec<_>>()
-            .join(",")
+        "[floor-phase] phase=cross-claim-share-install state=completed \
+         cost_floor_eval_steps={cost_floor_steps} in_flight_wall_cap_ms={in_flight_wall_cap_ms}"
     );
-    Ok(observations)
+    Ok(())
 }
 
 /// One row of `v2.workflow.floor_pure_producer_share.floor_cross_claim_refused_candidates`:
@@ -10642,24 +10534,12 @@ pub fn run_required_floor(
                 .map(move |function| (f.module_path.clone(), function.clone()))
         })
         .collect();
-    for (which, warm) in
-        &derive_and_install_cross_claim_share(&prepared, &claims, &declared_claims)?
-    {
-        if warm.cpu_ms > preparation_cpu_limit_ms
-            || warm.wall_ms > preparation_wall_limit_ms
-            || warm.rss_growth_bytes > preparation_rss_growth_limit_bytes
-        {
-            return Err(format!(
-                "REQUIRED-FLOOR REFUSAL cause=FloorPreparationRefused phase={which} \
-                 observed_cpu_ms={} observed_wall_ms={} observed_rss_growth_bytes={} \
-                 cpu_limit_ms={preparation_cpu_limit_ms} wall_limit_ms={preparation_wall_limit_ms} \
-                 rss_growth_limit_bytes={preparation_rss_growth_limit_bytes} -- a derived \
-                 cross-claim share warm exceeded the preparation limits (v2.workflow.required_floor); \
-                 no claim executed",
-                warm.cpu_ms, warm.wall_ms, warm.rss_growth_bytes,
-            ));
-        }
-    }
+    derive_and_install_cross_claim_share(
+        &prepared,
+        &claims,
+        &declared_claims,
+        preparation_wall_limit_ms,
+    )?;
     let mut outcome = RequiredFloorOutcome {
         subject_digest: prepared.subject_digest.clone(),
         modules_resolved: prepared.modules_resolved,

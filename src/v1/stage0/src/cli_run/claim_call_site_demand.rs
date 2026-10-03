@@ -111,8 +111,6 @@ enum SiteFact {
 struct DeclFacts {
     reads: Vec<(String, String)>,
     sites: Vec<(SiteKey, SiteFact)>,
-    /// Each closed site's call node, so an admitted site can be warmed in its module's frame.
-    closed_nodes: Vec<(SiteKey, Rc<Node>)>,
 }
 
 /// The observation over one prepared subject. Declarations are read lazily and each body is
@@ -122,7 +120,6 @@ pub(crate) struct CallSiteDemandObserver<'a> {
     source_indices: Rc<SourceIndices>,
     decls: HashMap<(String, String), Rc<Node>>,
     facts: HashMap<(String, String), Rc<DeclFacts>>,
-    site_nodes: HashMap<SiteKey, (String, Rc<Node>)>,
     open_producers: Vec<(String, CallSiteDemandCause, u64, u64)>,
 }
 
@@ -153,7 +150,6 @@ impl<'a> CallSiteDemandObserver<'a> {
             source_indices,
             decls,
             facts: HashMap::new(),
-            site_nodes: HashMap::new(),
             open_producers: Vec::new(),
         }
     }
@@ -163,14 +159,6 @@ impl<'a> CallSiteDemandObserver<'a> {
         self.decls.get(&(module_path.to_string(), name.to_string()))
     }
 
-    /// The module and call node of a closed site this observer read, for warming it.
-    pub(crate) fn site_node(&self, site: &SiteKey) -> Option<&(String, Rc<Node>)> {
-        self.site_nodes.get(site)
-    }
-
-    /// Fold every planned claim's reach into the aggregated `.dag` rows. `claims` are
-    /// `(module_path, function)`; a claim whose declaration the prepared subject does not carry
-    /// contributes nothing and is returned in the second component, so the caller can refuse.
     /// `claims[..planned]` are this run's planned claims; the rest are the other claims declared
     /// in the prepared subject. Every one contributes demand; `planned_claims` counts the first kind.
     pub(crate) fn observe(
@@ -277,10 +265,6 @@ impl<'a> CallSiteDemandObserver<'a> {
         }
         let node = self.decls.get(decl)?.clone();
         let facts = Rc::new(self.read_declaration(&decl.0, &node));
-        for (site, call) in &facts.closed_nodes {
-            self.site_nodes
-                .insert(site.clone(), (decl.0.clone(), call.clone()));
-        }
         self.facts.insert(decl.clone(), facts.clone());
         Some(facts)
     }
@@ -404,7 +388,6 @@ impl<'a> CallSiteDemandObserver<'a> {
         }
         let mut reads: BTreeSet<(String, String)> = BTreeSet::new();
         let mut sites: Vec<(SiteKey, SiteFact)> = Vec::new();
-        let mut closed_nodes: Vec<(SiteKey, Rc<Node>)> = Vec::new();
         for n in &nodes {
             match n.expr_data.as_ref() {
                 ExprData::ExprCall { .. } => {
@@ -424,9 +407,6 @@ impl<'a> CallSiteDemandObserver<'a> {
                     };
                     if let Some(t) = &target {
                         reads.insert(t.clone());
-                    }
-                    if matches!(fact, SiteFact::Closed { .. }) {
-                        closed_nodes.push((site_key_of(n), n.clone()));
                     }
                     sites.push((site_key_of(n), fact));
                 }
@@ -452,7 +432,6 @@ impl<'a> CallSiteDemandObserver<'a> {
         DeclFacts {
             reads: reads.into_iter().collect(),
             sites,
-            closed_nodes,
         }
     }
 
