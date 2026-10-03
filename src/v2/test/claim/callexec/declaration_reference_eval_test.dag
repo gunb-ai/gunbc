@@ -46,15 +46,16 @@ import v2.std.node {
   fold_node
 }
 import v2.std.node_query { node_positional_child_targets }
-import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
-import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
+import v2.test.lens_common.infer_fixture {
+  ClaimParam,
+  claim_int_literal,
+  claim_minted,
+  claim_minted_atom,
+  claim_resolved_call_tree,
+  claim_resolved_tree_without_declarations
+}
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.qualified_name { declaration_reference_node }
-import v2.compiler.body_lowering_fold { body_lower_callable_arrow }
-import v2.std.arrow_signature { declared_signature }
-import v2.std.node_query { binder_edge }
-import v2.extdeps.languages.dag { dag_int_literal_node_from_lexeme }
-import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_insert }
-import v2.std.collection { empty_map }
 import v2.std.diagnostic { outcome_accepted }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.collection { List, list_at_optional }
@@ -326,124 +327,50 @@ fn cref_source_reading() -> CrefReading {
 // REAL producers on every row, so each row still discriminates: a dispatch that answered a constant, ignored
 // its argument or confused two Bool bodies goes red where it went red before.
 //
-// THE TREES ARE BUILT BY THE PRODUCTION CONSTRUCTORS, so a change to an encoding reaches them the way it
-// reaches the real path: v2.compiler.body_lowering_fold body_lower_callable_arrow assembles every Arrow
-// (the one assembler lowering itself uses), v2.std.arrow_signature declared_signature mints the domain and
-// order, v2.std.qualified_name declaration_reference_node and parameter_reference_node mint the references,
-// v2.extdeps.languages.dag dag_int_literal_fixture_node the literals, and v2.std.symbol_index
-// symbol_index_insert the resolved-declaration entry infer's denotation reads. The shape mirrors what
-// cref_source's real front end emits -- module members as Authored edges, the call a Transform whose first
-// positional child is the declaration reference and whose actuals are Authored edges -- and the inhabitance
-// rows above are what make that a reading rather than a guess.
-// EVERY AUTHORED POSITION CARRIES ITS OWN MINTED OCCURRENCE, as the real front end's do. Infer keys its
-// facts by node, so two synthetic type atoms of one spelling are ONE key, and a codomain atom that is
-// structurally equal to the type infer derives for it is refused as grounding_evidence_is_source
-// (v2.std.constraints canonical_grounding_from_derived_type) -- measured on the first draft of these
-// trees, which used OccurrenceSynthetic throughout. Each position gets a distinct id from cref_m.
-fn cref_m(n: Int) -> NodeOccurrenceIdentity {
-  OccurrenceMinted { id: OccurrenceId { value: n } }
+// THE TREES ARE BUILT BY v2.test.lens_common.infer_fixture claim_resolved_call_tree, whose header states
+// the production constructors it uses and the shape it mirrors. cref_source's real front end emits that
+// shape -- the inhabitance rows above are what make each supplied tree a reading rather than a guess.
+fn cref_int_type() -> Node {
+  claim_minted_atom(identity: ^dag_binding_type_int, n: 3)
 }
 
-fn cref_atom(identity: Symbol, n: Int) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: identity } }, children: [], occurrence_id: cref_m(n: n) }
+fn cref_only_arg() -> List<ClaimParam> {
+  [ClaimParam { name: ^only_arg, type_node: cref_int_type() }]
 }
 
-fn cref_int_type(n: Int) -> Node {
-  cref_atom(identity: ^dag_binding_type_int, n: n)
-}
-
-// A literal the language's own constructor builds; a refused lexeme becomes an atom eval cannot read as an
-// Int, so the row that depends on it goes red rather than passing on a fabricated value.
-fn cref_int_literal(lexeme: String, n: Int) -> Node {
-  match dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: cref_m(n: n)) {
-    Accepted { value: literal, diagnostics: _ } => literal
-    Rejected { diagnostics: _ } => cref_atom(identity: ^cref_literal_refused, n: n)
-  }
-}
-
-fn cref_arrow(site: Int, params: List<Edge>, codomain: Node, body: Node) -> Node {
-  let source = cref_atom(identity: ^cref_supplied_site, n: site)
-  let signature = declared_signature(params: params, source: source)
-  body_lower_callable_arrow(
-    source: source,
-    domain: signature.domain,
-    codomain: codomain,
-    order_edge: signature.order,
-    type_param_edges: [],
-    body: optional_present(value: body)
-  )
-}
-
-fn cref_only_arg() -> List<Edge> {
-  [binder_edge(name: ^only_arg, type_node: cref_int_type(n: 3))]
-}
-
-// A PARAMETER REFERENCE IS GROUNDED THROUGH THE RESOLVED-DECLARATION INDEX, keyed by the callee's path
-// extended by the parameter's name (v2.compiler.infer infer_parameter_reference_facts), so each declared
-// parameter's type is entered there exactly as resolve enters it; a reference to an unindexed parameter
-// refuses with infer_reason_parameter_reference_not_indexed, which is what the first draft hit.
-fn cref_parameter_entries(index: SymbolIndex, callee: Symbol, params: List<Edge>) -> SymbolIndex {
-  fold(params, init: index, f: fn(acc, e) {
-    match e.label {
-      Authored { name: param } => symbol_index_insert(index: acc, qualified_path: [^p, callee, param], resolved: cref_int_type(n: 3))
-      _ => acc
-    }
-  })
-}
-
-// One callee declaration at p.<callee>, and the single call to it beside it. The call stands at the module
-// root rather than inside a consumer function: the consumer's own signature is not any row's subject, and
-// typing it was a second Arrow's inference paid by every row.
-fn cref_supplied(callee: Symbol, params: List<Edge>, codomain: Symbol, body: Node, actuals: List<Edge>) -> Outcome<ResolvedTree> {
-  let declaration = cref_arrow(site: 1, params: params, codomain: cref_atom(identity: codomain, n: 2), body: body)
-  let call = Node {
-    kind: ComputationNode { behavior: Transform },
-    children: Cons {
-      head: Edge { label: Positional, target: declaration_reference_node(qn: [^p, callee], occurrence_id: cref_m(n: 21)) },
-      tail: actuals
-    },
-    occurrence_id: OccurrenceSynthetic
-  }
-  outcome_accepted(value: ResolvedTree {
-    root: Node {
-      kind: TypeNode { connective: Conj },
-      children: [
-        Edge { label: Authored { name: callee }, target: declaration },
-        Edge { label: Authored { name: ^consumer }, target: call }
-      ],
-      occurrence_id: OccurrenceSynthetic
-    },
-    symbol_index: empty_symbol_index(),
-    resolved_declarations: cref_parameter_entries(
-      index: symbol_index_insert(index: empty_symbol_index(), qualified_path: [^p, callee], resolved: declaration),
-      callee: callee,
-      params: params
-    ),
-    lexical_bindings: empty_map()
-  })
+fn cref_supplied(callee: Symbol, params: List<ClaimParam>, codomain: Symbol, body: Node, actuals: List<Edge>) -> Outcome<ResolvedTree> {
+  outcome_accepted(value: claim_resolved_call_tree(
+    callee_path: [^p, callee],
+    callee: callee,
+    params: params,
+    codomain: claim_minted_atom(identity: codomain, n: 2),
+    body: body,
+    actuals: actuals,
+    reference_site: 21
+  ))
 }
 
 fn cref_actual(lexeme: String) -> List<Edge> {
-  [Edge { label: Authored { name: ^only_arg }, target: cref_int_literal(lexeme: lexeme, n: 23) }]
+  [Edge { label: Authored { name: ^only_arg }, target: claim_int_literal(lexeme: lexeme, n: 23) }]
 }
 
 fn cref_zero_arg_reading() -> CrefReading {
   cref_reading(
-    o: cref_supplied(callee: ^callee, params: [], codomain: ^dag_binding_type_int, body: cref_int_literal(lexeme: "7", n: 4), actuals: []),
+    o: cref_supplied(callee: ^callee, params: [], codomain: ^dag_binding_type_int, body: claim_int_literal(lexeme: "7", n: 4), actuals: []),
     name: ^callee
   )
 }
 
 fn cref_one_arg_constant_body_reading() -> CrefReading {
   cref_reading(
-    o: cref_supplied(callee: ^callee, params: cref_only_arg(), codomain: ^dag_binding_type_int, body: cref_int_literal(lexeme: "7", n: 4), actuals: cref_actual(lexeme: "3")),
+    o: cref_supplied(callee: ^callee, params: cref_only_arg(), codomain: ^dag_binding_type_int, body: claim_int_literal(lexeme: "7", n: 4), actuals: cref_actual(lexeme: "3")),
     name: ^callee
   )
 }
 
 fn cref_bool_reading(callee: Symbol, body: Symbol) -> CrefReading {
   cref_reading(
-    o: cref_supplied(callee: callee, params: cref_only_arg(), codomain: ^bool_node_symbol, body: cref_atom(identity: body, n: 4), actuals: cref_actual(lexeme: "3")),
+    o: cref_supplied(callee: callee, params: cref_only_arg(), codomain: ^bool_node_symbol, body: claim_minted_atom(identity: body, n: 4), actuals: cref_actual(lexeme: "3")),
     name: callee
   )
 }
@@ -456,7 +383,7 @@ fn cref_identity_reading(lexeme: String) -> CrefReading {
       callee: ^identity,
       params: cref_only_arg(),
       codomain: ^dag_binding_type_int,
-      body: parameter_reference_node(qn: [^p, ^identity, ^only_arg], occurrence_id: cref_m(n: 4)),
+      body: parameter_reference_node(qn: [^p, ^identity, ^only_arg], occurrence_id: claim_minted(n: 4)),
       actuals: cref_actual(lexeme: lexeme)
     ),
     name: ^identity
