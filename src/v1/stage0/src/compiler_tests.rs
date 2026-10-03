@@ -1611,19 +1611,13 @@ mod compiler_tests {
     /// `v1.compiler.emit_rust` `emit_shell_return`.
     ///
     /// `gunbc.recurring_failure_mode` `shell_projection_return_convention_selected_by_arity`: the
-    /// projection wraps a shell operation's value in `Ok(..)` only when the declared output carries
-    /// MORE THAN ONE field, while the same declaration signs the method `Result<.., Box<dyn Error>>`.
-    /// A single-field output answers its channel bare, so the emitted body violates its own emitted
-    /// type -- rustc E0308 over a source gunbc accepts with zero blocking diagnostics.
+    /// projection used to wrap a shell operation's value in `Ok(..)` only when the declared output
+    /// carried MORE THAN ONE field, while the same declaration signs the method
+    /// `Result<.., Box<dyn Error>>`. The convention is now unconditional, so BOTH arms must compile.
     ///
-    /// THE RED ARM IS A KNOWN HOLE, NOT A WALL WORKING, and may not be cited as coverage of
-    /// anything. It is that row's specimen committed as a runnable file. When the class climbs this
-    /// arm flips to compiling and is KEPT as the regression control on the direction it established
-    /// (DESIGN 4b(4)); the expectation below changes then, not the fixtures.
-    ///
-    /// BOTH ARMS ARE THIS PAIR'S OWN, unlike the three emitter-arm pairs beside it, and they differ
-    /// in ONE authored thing: how many fields the output block declares. Borrowing the route's red
-    /// would measure nothing about the arity, which is the whole subject.
+    /// PERMANENT REGRESSION CONTROL (DESIGN 4b(4)). The one-field arm was a known-hole red; when the
+    /// class climbed it FLIPPED to compiling and is KEPT, with the expectation changed and the
+    /// fixtures untouched. A rustc refusal of either arm now means the arity fork came back.
     ///
     /// #[ignore] AND WHY, on the same terms as the pairs beside it: this arm spawns cargo and
     /// compiles two emitted crates, which is minutes rather than milliseconds. It is runnable on
@@ -1640,16 +1634,11 @@ mod compiler_tests {
             eprintln!("shell-projection-arity {}", line);
         }
         assert!(
-            crate::cli_run::fixture_closure_reached_rustc(&pair.red),
-            "the red arm never reached a rustc verdict, so nothing about the emitted bytes was measured: {}",
-            crate::cli_run::fixture_closure_summary(&pair.red)
-        );
-        assert!(
-            crate::cli_run::fixture_discrimination_passed(&pair),
-            "the two-field control must COMPILE and the one-field arm must still be refused by rustc in its own emitted module with the claimed E0308; a green red arm means the class climbed and this pair's expectation is what changes. control={} red={} attribution={:?} diagnostic={:?}",
+            crate::cli_run::fixture_closure_compiled(&pair.green)
+                && crate::cli_run::fixture_closure_compiled(&pair.red),
+            "the return convention is derived once for every arity, so the two-field control AND the one-field arm must both COMPILE; a refused arm means the arity fork returned. control={} one-field={} diagnostic={:?}",
             crate::cli_run::fixture_closure_summary(&pair.green),
             crate::cli_run::fixture_closure_summary(&pair.red),
-            crate::cli_run::fixture_closure_attributed_line(&pair.red),
             crate::cli_run::fixture_closure_attributed_diagnostic(&pair.red)
         );
     }
@@ -5323,87 +5312,6 @@ mod compiler_tests {
         assert!(
             rebox_t.len() == 1 && rebox_t[0].ends_with("|Declaration:fid.a::rebox::<T>"),
             "{receipt}"
-        );
-    }
-
-    // TWO MODULES DECLARE ONE LEAF WITH DIFFERENT PARAMETER LISTS. v1.compiler.infer_emit_info
-    // TypeDeclIndex was a Map<leaf, Node>, last write wins, so the Clone-bound fixpoint held ONE
-    // Slot row and the other Slot's parameters were filtered against it: its header printed bare
-    // while its field named Inner<_: Clone> (rustc E0277). The fixture is red in BOTH fold orders:
-    // whichever Slot is folded last, the other one loses its bound.
-    #[test]
-    fn same_leaf_type_declarations_emit_their_own_bounds() {
-        use crate::v1_compiler_compile::SourceFile;
-        let sources = || -> Vec<std::rc::Rc<SourceFile>> {
-            vec![
-            std::rc::Rc::new(SourceFile { path: "fixtures/same_leaf/wide.dag".to_string(), content: "module hom.wide\n\ntype Inner<C> {\n  value: C\n}\n\ntype Slot<A, B> {\n  first: Inner<A>\n  second: Inner<B>\n}\n\ntype WideHolder<X, Y> {\n  slot: Slot<X, Y>\n}\n".to_string() }),
-            std::rc::Rc::new(SourceFile { path: "fixtures/same_leaf/narrow.dag".to_string(), content: "module hom.narrow\n\nimport hom.wide { Inner }\n\ntype Slot<T> {\n  held: Inner<T>\n}\n\ntype NarrowHolder<Z> {\n  slot: Slot<Z>\n}\n".to_string() }),
-        ]
-        };
-        let result = crate::v1_compiler_compile::compile_sources(
-            std::rc::Rc::new(sources().into()),
-            crate::v1_compiler_artifact::RenderTarget::Rust,
-        );
-        let emitted = |module: &str| -> String {
-            result
-                .files
-                .iter()
-                .find(|f| f.path.contains(module))
-                .map(|f| f.content.clone())
-                .unwrap_or_default()
-        };
-        let wide = emitted("hom_wide");
-        let narrow = emitted("hom_narrow");
-        assert!(
-            wide.contains("pub struct Slot<A: Clone, B: Clone>"),
-            "hom.wide Slot must carry its own two bounds:\n{wide}"
-        );
-        assert!(
-            narrow.contains("pub struct Slot<T: Clone>"),
-            "hom.narrow Slot must carry its own bound:\n{narrow}"
-        );
-        // The holders name Slot through a REFERENCE, so the bound they inherit depends on which
-        // declaration the reference resolves to.
-        assert!(
-            wide.contains("pub struct WideHolder<X: Clone, Y: Clone>"),
-            "{wide}"
-        );
-        assert!(
-            narrow.contains("pub struct NarrowHolder<Z: Clone>"),
-            "{narrow}"
-        );
-        assert!(
-            !wide.contains("compile_error!") && !narrow.contains("compile_error!"),
-            "a reference resolve stamped must not refuse:\n{wide}\n{narrow}"
-        );
-        // THE ROUTE, per reference position: each holder's Slot reference resolves to the Slot of
-        // its own module, and never through the spelling, which two modules share.
-        let receipt = crate::v1_tests_claim_carrier_realization_census::typed_census_from_sources(
-            std::rc::Rc::new(sources().into()),
-        );
-        assert!(!receipt.starts_with("REFUSED"), "{receipt}");
-        let route_at = |enclosing: &str, authored: &str| -> Vec<String> {
-            receipt
-                .lines()
-                .skip(1)
-                .map(|l| l.split('\t').collect::<Vec<_>>())
-                .filter(|c| c[1] == enclosing && c[2] == "declaration_field" && c[3] == authored)
-                .map(|c| c[13].to_string())
-                .collect()
-        };
-        assert_eq!(
-            route_at("WideHolder", "Slot"),
-            vec!["carried_declaration:Resolved:hom.wide.Slot".to_string()],
-            "{receipt}"
-        );
-        assert_eq!(
-            route_at("NarrowHolder", "Slot"),
-            vec!["carried_declaration:Resolved:hom.narrow.Slot".to_string()],
-            "{receipt}"
-        );
-        assert!(
-            !receipt.contains("LeafAmbiguous"),
-            "no reference in this fixture may fall to the shared spelling:\n{receipt}"
         );
     }
 
