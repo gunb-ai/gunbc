@@ -41,7 +41,8 @@ import v2.compiler.self_host.generation {
 }
 import extdeps.git { TreeObj }
 import extdeps.git.object_store { git_object_type_wire_name }
-import gunbc.ci_release_bins { ci_floor_required_artifact_names }
+import gunbc.ci_release_bins { ci_floor_required_artifact_names, ci_floor_invoked_bins }
+import gunbc.repo_self_build { repo_self_build_command }
 import gunbc.ci_spec { ci_release_build_line, ci_release_bins_archive_name }
 
 // THE RELEASE-BINS PACK IS A CONTENT-ADDRESSED MATERIALIZATION, KEYED BEFORE IT IS BUILT (operator
@@ -145,6 +146,38 @@ fn release_bins_download_path_expression() -> String {
   join(["${{ runner.temp }}/", release_bins_download_dir], "")
 }
 data release_bins_key_kind: String = "gunbc.fleet_release_bins"
+
+// A PRODUCT IS AN EXACT ROSTER AND THE ONE BUILD LINE THAT PRODUCES IT, and the key, the pack and its
+// verification are emitted per product. Two rosters are two products under two keys -- the roster and
+// the build line are both preimage lines, so a two-binary pack can never answer a lookup for the
+// sixteen-binary one or the reverse -- while the emitters, the refusals and the verification are one
+// authority for both. The kind names which product a preimage is; the build line is the very text
+// the producing job runs (the fleet build job's ci_release_build_line, the floor's
+// gunbc.repo_self_build repo_self_build_command), so the key names the build that actually ran.
+type ReleaseBinsProduct {
+  kind: String
+  roster: List<String>
+  build_line: String
+}
+
+// THE FLEET PACK: every enrolled release binary, built by fleet-converge's build job.
+fn fleet_release_bins_product() -> ReleaseBinsProduct {
+  ReleaseBinsProduct { kind: release_bins_key_kind, roster: ci_floor_required_artifact_names(), build_line: ci_release_build_line() }
+}
+
+// THE COMPILER PAIR: the two binaries the required floor builds anyway (gunbc.ci_release_bins
+// ci_floor_invoked_bins, which gunbc.witness_floor_workflow witness_floor_required_bins is), with the
+// floor's own build line -- the same roster row and the same build function the floor's build step
+// consumes, so the key names the build the floor ran. It is the product the merge queue produces
+// as a candidate, fleet-desired publishes, and hw boot consumes -- none of which needs the other
+// fourteen binaries.
+fn compiler_pair_release_product() -> ReleaseBinsProduct {
+  ReleaseBinsProduct {
+    kind: "gunbc.compiler_pair_release_bins",
+    roster: ci_floor_invoked_bins,
+    build_line: repo_self_build_command(bins: ci_floor_invoked_bins),
+  }
+}
 data release_bins_admitted_producer_ref: String = "refs/heads/main"
 
 // Step ids bound once, consumed by the steps that carry them AND by every expression that reads
@@ -225,12 +258,12 @@ fn append_line(file_var: String, line: Node) -> Node {
   )
 }
 
-fn release_bins_roster_text() -> String {
-  join(ci_floor_required_artifact_names(), " ")
+fn release_bins_roster_text(product: ReleaseBinsProduct) -> String {
+  join(product.roster, " ")
 }
 
-fn release_bins_roster_lines() -> String {
-  fold(ci_floor_required_artifact_names(), init: "", f: (acc, name) => join([acc, name, "\n"], ""))
+fn release_bins_roster_lines(product: ReleaseBinsProduct) -> String {
+  fold(product.roster, init: "", f: (acc, name) => join([acc, name, "\n"], ""))
 }
 
 // EVERY WAY THE MATERIALIZATION REFUSES, as one closed type: a refusal the job prints is one of these
@@ -555,7 +588,7 @@ fn axis_reads(axis: GenerationAxis) -> List<Node> {
   }
 }
 
-fn axis_line(axis: GenerationAxis) -> List<Node> {
+fn axis_line(axis: GenerationAxis, product: ReleaseBinsProduct) -> List<Node> {
   match axis {
     SourceClosureAxis => [cmd(ws: [lit(t: "printf"), lit(t: "source_closure=%s\\n"), var(n: "SOURCE_CLOSURE")])]
     ToolchainAxis => [cmd(ws: [lit(t: "printf"), lit(t: "toolchain=%s\\n"), var(n: "AXIS_TOOLCHAIN")])]
@@ -564,24 +597,24 @@ fn axis_line(axis: GenerationAxis) -> List<Node> {
     BuildConfigurationAxis => [cmd(ws: [
       lit(t: "printf"),
       lit(t: "build_configuration=%s;embedded_build_identity=%s;environment=%s;roster=%s\\n"),
-      lit(t: ci_release_build_line()), var(n: "SOURCE_CLOSURE"), words(ws: [lit(t: "sha256:"), var(n: "AXIS_ENVIRONMENT_DIGEST")]),
-      lit(t: release_bins_roster_text()),
+      lit(t: product.build_line), var(n: "SOURCE_CLOSURE"), words(ws: [lit(t: "sha256:"), var(n: "AXIS_ENVIRONMENT_DIGEST")]),
+      lit(t: release_bins_roster_text(product: product)),
     ])]
     RequiredLensContractAxis => [cmdl(ls: ["printf", "required_lens_contract=none (a seed cargo build admits no lens contract)\\n"])]
     MaterializedArtifactAxis => []
   }
 }
 
-fn preimage_statements() -> List<Node> {
+fn preimage_statements(product: ReleaseBinsProduct) -> List<Node> {
   concat(
     fold(generation_axes, init: [], f: (acc, axis) => concat(acc, axis_reads(axis: axis))),
     [bash_build_with_redir_to_file(
       inner: bash_build_subshell_from_stmts(stmts: concat(
         [
-          cmdl(ls: ["printf", "kind=%s\\n", release_bins_key_kind]),
+          cmdl(ls: ["printf", "kind=%s\\n", product.kind]),
           cmdl(ls: ["printf", "address=sha256 scope=cross_run\\n"]),
         ],
-        fold(generation_axes, init: [], f: (acc, axis) => concat(acc, axis_line(axis: axis))),
+        fold(generation_axes, init: [], f: (acc, axis) => concat(acc, axis_line(axis: axis, product: product))),
       )),
       path: var(n: "EXPECTED"),
     )],
@@ -687,9 +720,9 @@ fn key_matches(digest_var: String) -> Node {
   test_words(ws: [words(ws: [lit(t: release_bins_key_prefix), var(n: digest_var)]), lit(t: "="), var(n: "RELEASE_BINS_KEY")])
 }
 
-fn roster_file_statement() -> Node {
+fn roster_file_statement(product: ReleaseBinsProduct) -> Node {
   bash_build_with_redir_to_file(
-    inner: cmdl(ls: ["printf", "%s", release_bins_roster_lines()]),
+    inner: cmdl(ls: ["printf", "%s", release_bins_roster_lines(product: product)]),
     path: temp(file: "release-bins.roster"),
   )
 }
@@ -705,26 +738,26 @@ fn roster_file_statement() -> Node {
 // second, unchecked time.
 data release_bins_manifest_record_pattern: String = "^[0-9a-f]{64}  [A-Za-z0-9_]+$"
 
-fn release_bins_member_types_expected() -> String {
-  fold(ci_floor_required_artifact_names(), init: "", f: (acc, name) => join([acc, name, ":regular file:1\n"], ""))
+fn release_bins_member_types_expected(product: ReleaseBinsProduct) -> String {
+  fold(product.roster, init: "", f: (acc, name) => join([acc, name, ":regular file:1\n"], ""))
 }
 
 fn in_dir(dir: Node, command: Node) -> Node {
   bash_build_subshell_from_stmts(stmts: [bash_build_and_then(left: cmd(ws: [lit(t: "cd"), dir]), right: command)])
 }
 
-fn release_bins_roster_words() -> List<Node> {
-  map(ci_floor_required_artifact_names(), n => lit(t: n))
+fn release_bins_roster_words(product: ReleaseBinsProduct) -> List<Node> {
+  map(product.roster, n => lit(t: n))
 }
 
 // EVERY MEMBER IN ONE PASS: stat reports each roster member's type and link count, and the whole
 // report must equal the expected one (every member `regular file:1`); find lists any regular file
 // without the owner-execute bit, and the list must be empty. Promotion is one rm and one cp of the
 // roster names from the verified directory.
-fn release_bins_member_checks(site: ReleaseBinsVerifySite, dir: Node) -> List<Node> {
+fn release_bins_member_checks(site: ReleaseBinsVerifySite, dir: Node, product: ReleaseBinsProduct) -> List<Node> {
   [
-    bash_build_with_redir_to_file(inner: cmdl(ls: ["printf", "%s", release_bins_member_types_expected()]), path: temp(file: "member-types.expected")),
-    produce_to(file: "member-types.out", command: in_dir(dir: dir, command: cmd(ws: concat([lit(t: "stat"), lit(t: "-c"), lit(t: "%n:%F:%h")], release_bins_roster_words())))),
+    bash_build_with_redir_to_file(inner: cmdl(ls: ["printf", "%s", release_bins_member_types_expected(product: product)]), path: temp(file: "member-types.expected")),
+    produce_to(file: "member-types.out", command: in_dir(dir: dir, command: cmd(ws: concat([lit(t: "stat"), lit(t: "-c"), lit(t: "%n:%F:%h")], release_bins_roster_words(product: product))))),
     bash_build_or_else(
       left: cmd(ws: [lit(t: "cmp"), lit(t: "-s"), temp(file: "member-types.out"), temp(file: "member-types.expected")]),
       right: bash_build_subshell_from_stmts(stmts: [
@@ -740,18 +773,18 @@ fn release_bins_member_checks(site: ReleaseBinsVerifySite, dir: Node) -> List<No
   ]
 }
 
-fn release_bins_promote_all(dir: Node) -> List<Node> {
+fn release_bins_promote_all(dir: Node, product: ReleaseBinsProduct) -> List<Node> {
   [
     cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), rooted(file: "target/release")]),
-    in_dir(dir: rooted(file: "target/release"), command: cmd(ws: concat([lit(t: "rm"), lit(t: "-f")], release_bins_roster_words()))),
-    in_dir(dir: dir, command: cmd(ws: concat(concat([lit(t: "cp"), lit(t: "-p")], release_bins_roster_words()), [rooted(file: "target/release/")]))),
+    in_dir(dir: rooted(file: "target/release"), command: cmd(ws: concat([lit(t: "rm"), lit(t: "-f")], release_bins_roster_words(product: product)))),
+    in_dir(dir: dir, command: cmd(ws: concat(concat([lit(t: "cp"), lit(t: "-p")], release_bins_roster_words(product: product)), [rooted(file: "target/release/")]))),
   ]
 }
 
-fn release_bins_verify_pack(site: ReleaseBinsVerifySite, archive: Node, manifest: Node, dir: Node) -> List<Node> {
+fn release_bins_verify_pack(site: ReleaseBinsVerifySite, archive: Node, manifest: Node, dir: Node, product: ReleaseBinsProduct) -> List<Node> {
   seq(parts: [
     [
-      roster_file_statement(),
+      roster_file_statement(product: product),
       produce_to(file: "pack-listing.out", command: cmd(ws: [lit(t: "tar"), lit(t: "-tzf"), archive])),
       or_refuse(check: cmd(ws: [lit(t: "cmp"), lit(t: "-s"), temp(file: "pack-listing.out"), temp(file: "release-bins.roster")]), r: PackListingNotRoster { site: site }),
       produce_to(file: "manifest-names.out", command: cmd(ws: [lit(t: "cut"), lit(t: "-c"), lit(t: "67-"), manifest])),
@@ -764,7 +797,7 @@ fn release_bins_verify_pack(site: ReleaseBinsVerifySite, archive: Node, manifest
       cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), dir]),
       cmd(ws: [lit(t: "tar"), lit(t: "-xzf"), archive, lit(t: "-C"), dir, lit(t: "--no-same-owner")]),
     ],
-    release_bins_member_checks(site: site, dir: dir),
+    release_bins_member_checks(site: site, dir: dir, product: product),
     [
       or_refuse(
         check: bash_build_subshell_from_stmts(stmts: [bash_build_and_then(
@@ -774,7 +807,7 @@ fn release_bins_verify_pack(site: ReleaseBinsVerifySite, archive: Node, manifest
         r: MemberDigestMismatch { site: site },
       ),
     ],
-    release_bins_promote_all(dir: dir),
+    release_bins_promote_all(dir: dir, product: product),
     [cmd(ws: [lit(t: "rm"), lit(t: "-rf"), dir])],
   ])
 }
@@ -785,7 +818,7 @@ fn entry_files() -> List<String> {
 
 // KEY: recompute the preimage into RUNNER_TEMP (outside anything a restore can write), address it,
 // bind the embedded build identity, and empty the staging directory.
-fn release_bins_key_statements() -> List<Node> {
+fn release_bins_key_statements(product: ReleaseBinsProduct) -> List<Node> {
   if !release_bins_key_family_admitted() {
     [refuse(r: AddressFamilyNotAdmitted)]
   } else {
@@ -796,7 +829,7 @@ fn release_bins_key_statements() -> List<Node> {
         or_refuse(check: test_words(ws: [lit(t: "-z"), var(n: "DIRTY")]), r: SourceTreeDirty),
       ], concat(concat(release_bins_environment_statements(), release_bins_ancestor_statements()), source_closure_statements())),
       concat(
-        concat([bash_build_assign(name: "EXPECTED", value: temp(file: join([release_bins_preimage_name, ".expected"], "")))], preimage_statements()),
+        concat([bash_build_assign(name: "EXPECTED", value: temp(file: join([release_bins_preimage_name, ".expected"], "")))], preimage_statements(product: product)),
         concat(digest_of(name: "PREIMAGE_DIGEST", path: var(n: "EXPECTED")), [
           bash_build_assign(name: "KEY", value: words(ws: [lit(t: release_bins_key_prefix), var(n: "PREIMAGE_DIGEST")])),
           cmd(ws: [lit(t: "rm"), lit(t: "-rf"), rooted(file: release_bins_staging_dir)]),
@@ -998,7 +1031,7 @@ fn release_bins_lookup_statements() -> List<Node> {
 
 // OUTCOME: join the lookup's standing with the transport's exactness, verify a reuse candidate
 // completely BEFORE any restored byte executes, and publish the outcome.
-fn release_bins_outcome_statements() -> List<Node> {
+fn release_bins_outcome_statements(product: ReleaseBinsProduct) -> List<Node> {
   concat(
     concat(
       [
@@ -1025,6 +1058,7 @@ fn release_bins_outcome_statements() -> List<Node> {
         archive: staged(file: ci_release_bins_archive_name),
         manifest: staged(file: release_bins_manifest_name),
         dir: staged(file: "unpacked"),
+        product: product,
       ), [
         cmd(ws: [lit(t: "echo"), lit(t: "release-bins: stored pack verified and promoted")]),
       ]]),
@@ -1039,7 +1073,7 @@ fn release_bins_outcome_statements() -> List<Node> {
 // PACK (build outcomes only): the manifest is taken from target/release after the build step's own
 // verification, the preimage is this run's, and all three land in staging, which is both the upload
 // source and the path actions/cache publishes.
-fn release_bins_pack_statements() -> List<Node> {
+fn release_bins_pack_statements(product: ReleaseBinsProduct) -> List<Node> {
   concat(
     [
       root_statement(),
@@ -1048,13 +1082,13 @@ fn release_bins_pack_statements() -> List<Node> {
       bash_build_with_redir_to_file(
         inner: bash_build_subshell_from_stmts(stmts: [bash_build_and_then(
           left: cmd(ws: [lit(t: "cd"), rooted(file: "target/release")]),
-          right: cmd(ws: concat([lit(t: "sha256sum")], map(ci_floor_required_artifact_names(), n => lit(t: n)))),
+          right: cmd(ws: concat([lit(t: "sha256sum")], map(product.roster, n => lit(t: n)))),
         )]),
         path: staged(file: release_bins_manifest_name),
       ),
       cmd(ws: concat(
         [lit(t: "tar"), lit(t: "-czf"), staged(file: ci_release_bins_archive_name), lit(t: "-C"), rooted(file: "target/release")],
-        map(ci_floor_required_artifact_names(), n => lit(t: n)),
+        map(product.roster, n => lit(t: n)),
       )),
       cmd(ws: [lit(t: "cp"), temp(file: join([release_bins_preimage_name, ".expected"], "")), staged(file: release_bins_preimage_name)]),
     ],
@@ -1065,7 +1099,7 @@ fn release_bins_pack_statements() -> List<Node> {
 // CONSUMER: a downstream job holds the key its build job published and refuses, before executing
 // anything it downloaded, a pack whose preimage hashes elsewhere, names another source tree, or whose
 // members do not match the manifest.
-fn release_bins_consumer_statements() -> List<Node> {
+fn release_bins_consumer_statements(product: ReleaseBinsProduct) -> List<Node> {
   concat(
     concat(
       [
@@ -1092,10 +1126,11 @@ fn release_bins_consumer_statements() -> List<Node> {
         archive: downloaded(file: ci_release_bins_archive_name),
         manifest: downloaded(file: release_bins_manifest_name),
         dir: temp(file: "release-bins-check"),
+        product: product,
       ), [
         cmd(ws: concat(
           [rooted(file: "target/release/claim_executor"), lit(t: "--verify-build-artifacts")],
-          map(ci_floor_required_artifact_names(), m => rooted(file: join(["target/release/", m], ""))),
+          map(product.roster, m => rooted(file: join(["target/release/", m], ""))),
         )),
       ]]),
     ),
@@ -1147,20 +1182,26 @@ fn release_bins_script_accepted(outcome: Outcome<String>) -> Bool {
   }
 }
 
-fn release_bins_key_script() -> String { release_bins_script_text(outcome: release_bins_emitted(statements: release_bins_key_statements())) }
+fn release_bins_key_script_for(product: ReleaseBinsProduct) -> String { release_bins_script_text(outcome: release_bins_emitted(statements: release_bins_key_statements(product: product))) }
+fn release_bins_outcome_script_for(product: ReleaseBinsProduct) -> String { release_bins_script_text(outcome: release_bins_emitted(statements: release_bins_outcome_statements(product: product))) }
+fn release_bins_pack_manifest_script_for(product: ReleaseBinsProduct) -> String { release_bins_script_text(outcome: release_bins_emitted(statements: release_bins_pack_statements(product: product))) }
+fn release_bins_consumer_key_check_script_for(product: ReleaseBinsProduct) -> String { release_bins_script_text(outcome: release_bins_emitted(statements: release_bins_consumer_statements(product: product))) }
+
+// THE FLEET PACK'S SCRIPTS, the product gunbc.fleet_converge_workflow's build job produces.
+fn release_bins_key_script() -> String { release_bins_key_script_for(product: fleet_release_bins_product()) }
 fn release_bins_lookup_script() -> String { release_bins_script_text(outcome: release_bins_emitted(statements: release_bins_lookup_statements())) }
-fn release_bins_outcome_script() -> String { release_bins_script_text(outcome: release_bins_emitted(statements: release_bins_outcome_statements())) }
-fn release_bins_pack_manifest_script() -> String { release_bins_script_text(outcome: release_bins_emitted(statements: release_bins_pack_statements())) }
-fn release_bins_consumer_key_check_script() -> String { release_bins_script_text(outcome: release_bins_emitted(statements: release_bins_consumer_statements())) }
+fn release_bins_outcome_script() -> String { release_bins_outcome_script_for(product: fleet_release_bins_product()) }
+fn release_bins_pack_manifest_script() -> String { release_bins_pack_manifest_script_for(product: fleet_release_bins_product()) }
+fn release_bins_consumer_key_check_script() -> String { release_bins_consumer_key_check_script_for(product: fleet_release_bins_product()) }
 
 fn release_bins_scripts_admitted() -> Bool {
   release_bins_lookup_plans_admitted() && fold(
     [
-      release_bins_script_accepted(outcome: release_bins_emitted(statements: release_bins_key_statements())),
+      release_bins_script_accepted(outcome: release_bins_emitted(statements: release_bins_key_statements(product: fleet_release_bins_product()))),
       release_bins_script_accepted(outcome: release_bins_emitted(statements: release_bins_lookup_statements())),
-      release_bins_script_accepted(outcome: release_bins_emitted(statements: release_bins_outcome_statements())),
-      release_bins_script_accepted(outcome: release_bins_emitted(statements: release_bins_pack_statements())),
-      release_bins_script_accepted(outcome: release_bins_emitted(statements: release_bins_consumer_statements())),
+      release_bins_script_accepted(outcome: release_bins_emitted(statements: release_bins_outcome_statements(product: fleet_release_bins_product()))),
+      release_bins_script_accepted(outcome: release_bins_emitted(statements: release_bins_pack_statements(product: fleet_release_bins_product()))),
+      release_bins_script_accepted(outcome: release_bins_emitted(statements: release_bins_consumer_statements(product: fleet_release_bins_product()))),
     ],
     init: true,
     f: (acc, b) => acc && b,
