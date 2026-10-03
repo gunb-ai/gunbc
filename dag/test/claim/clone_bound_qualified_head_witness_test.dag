@@ -7,8 +7,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // A QUALIFIED GENERIC HEAD LOST ITS CLONE BOUNDS, AND THE EMITTER SAID SO.
 //
-// Clone-bound derivation reads a field's head with authored_name_at and looks it up in
-// type_decl_items and in the bounds map. Both are keyed on BARE declared names. A qualified
+// Clone-bound derivation read a field's head with authored_name_at and looked it up in
+// type_decl_items and in the bounds map, both then keyed on BARE declared names. A qualified
 // spelling therefore matched nothing, no parameter was found to need a bound, and the emitted
 // struct lost the `K: Clone, V: Clone` that KeyedRow requires -- so the generated Rust does not
 // compile, at a type whose own declaration carries the bounds.
@@ -19,11 +19,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // that: a repair that produced the right bounds while still emitting the refusal would be a
 // different bug wearing this one's green.
 //
-// SCOPE, deliberately narrow. Only the two sites that decide CLONE BOUNDS are peeled --
-// v1_type_expr_clone_undecided_head and v1_type_expr_wf_needs_clone_param -- because both feed a
-// bare-keyed map and the leaf is the key they want. Sites in the same file that compare against a
-// GENERIC PARAMETER NAME are NOT touched: a type parameter is never qualified, so peeling there
-// would be an edit with no reachable red, and a sweep is not a repair.
+// WHERE THE PEEL LIVES NOW. The index is keyed on the declaration (v1.compiler.infer_emit_info
+// TypeDeclIndex), and every reader reaches it through resolve_type_decl_routed: the identity
+// resolve recorded on the reference first, and the leaf of the authored spelling only as its last,
+// interim arm. So the peel is one step of one resolution rather than an edit at two sites. Sites
+// that compare against a GENERIC PARAMETER NAME are still untouched: a type parameter is never
+// qualified.
 
 fn bare_head_emits_clone_bounds() -> Bool {
   compile_dag_rust_emit_check(
@@ -66,16 +67,13 @@ fn an_unresolvable_qualified_head_still_refuses() -> Bool {
   )
 }
 
-// THE RESIDUAL, MEASURED RATHER THAN ASSERTED. Peeling to the leaf means an UNRESOLVABLE qualifier
-// whose leaf collides with a declared name binds that declaration. That is not a collapse this
-// change creates: type_decl_items (04_emit_info add_emit_item_summary) is keyed on the BARE
-// declared name across the whole closure, so the same collision is already reachable from a bare
-// spelling, and peeling a bare name is the identity. The two arms below are the discriminator --
-// measured together, both green: the bare spelling and the nonsense qualifier bind the SAME local
-// declaration, so after the peel the two spellings are indistinguishable, which is exactly the
-// property the repair was for. Verifying the qualifier instead would need the module index, which
-// this predicate does not receive and which no fact in scope substitutes for; that is the class's
-// next-rung trigger and it belongs to qualifier resolution, not to Clone-bound derivation.
+// THE RESIDUAL, MEASURED RATHER THAN ASSERTED. On the spelling arm, an UNRESOLVABLE qualifier
+// whose leaf is declared by exactly ONE module of the closure binds that declaration: the arm reads
+// the leaf and never the qualifier. The two arms below are the discriminator -- measured together,
+// both green: the bare spelling and the nonsense qualifier bind the SAME local declaration. A leaf
+// TWO modules declare does not bind on that arm at all; it refuses (TypeDeclLeafAmbiguous), so the
+// residual is confined to a sole declarer. Verifying the qualifier belongs to resolve, whose stamp
+// (Node.declaration) is the arm that makes this one unreachable.
 fn a_bare_head_binds_the_local_declaration() -> Bool {
   compile_dag_rust_emit_check(
     "module probe_collide_bare\n\ntype LocalRow<K, V> {\n  k: K\n  v: V\n}\n\ntype HolderA<K, V> {\n  row: LocalRow<K, V>\n}\n",
