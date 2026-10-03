@@ -237,9 +237,11 @@ type ArtifactRequest
 // Required outputs: the outcome document (the ending and its identity), the run log (a build whose
 // log was dropped is not the build that ran), and the declared-outputs part: the MANIFEST of what
 // the operation declared (each declared path with its blob identity), empty for the checking
-// operations. It is a reference, not the built bytes -- whether the binaries themselves live in the
-// shared per-host store, under their own budget, or only by reference is the materialization
-// authority's ruling, and nothing in this key depends on that answer. DECLARED FRONTIER (DESIGN section 3c): the cutover that serves and commits
+// operations. The built bytes are NOT a part of this artifact. Per the materialization authority's
+// ruling (royal-moth-86, 2026-10-03), host-local binaries realize in the bounded per-host store under
+// this family's OWN byte budget, so they cannot evict other families' entries, and cross-host binaries
+// travel through std.fabric_blob, never the local store. Both are realizations of the manifest's blob
+// identities, and nothing in this key depends on which one serves them. DECLARED FRONTIER (DESIGN section 3c): the cutover that serves and commits
 // this family through extdeps.realization.materialization_store_local and deletes the provider's
 // private ComputeLayout store lands on the BOUNDED store (quick-gull-60's C1), never on the unbounded
 // one; until then the family's executing consumer is the provider's identity, which IS this key.
