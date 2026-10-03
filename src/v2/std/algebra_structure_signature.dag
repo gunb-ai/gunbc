@@ -4,7 +4,8 @@ import v2.std.algebra { algebra_empty_conj }
 import v2.std.arrow_signature { anonymous_signature_arrow }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, binder_edge, binder_node_parts, named_child_lookup }
 import v2.std.logic { bool_node }
-import v2.std.node { Atom, Conj, Disj, Edge, Authored, Node, Positional, StructuralLabel, Symbol, TypeNode }
+import v2.std.node { Arrow, Atom, Cardinality, ComputationNode, Conj, Disj, Edge, Authored, Instantiation, Node, Positional, StructuralLabel, Symbol, TypeNode }
+import std.algebra { list_snoc_item }
 import v2.std.collection { List }
 import v2.std.optional { Absent, Present }
 
@@ -266,29 +267,47 @@ fn algebra_inhabitance_node(algebra: Node, inhabitant: Node) -> Node {
 }
 }
 
-// THE BINDERS THROUGH WHICH ONE STRUCTURE COMPOSES ANOTHER, declared once beside the constructors that build
-// them: each names a binder whose type is another structure's *_type_node (ordered_ring's ^ordered_ring_field_ring
-// is a ring; ring's ^ring_field_add is an abelian group). Every other binder is an OPERATION (an Arrow) or a
-// fixpoint, and is never a structure to enter. Composition is therefore read from this declaration, never
-// guessed from a node's shape -- a carrier that is itself a record is not mistaken for a sub-structure.
-// v2.test.claim.dag_algebra_inhabitance holds this list equal to the constructors' structure-typed binders.
-data algebra_structure_composing_fields: List<Symbol> = [
-  ^abelian_group_field_group,
-  ^boolean_algebra_field_bounded_lattice,
-  ^bounded_lattice_field_lattice,
-  ^commutative_monoid_field_monoid,
-  ^commutative_ring_field_ring,
-  ^commutative_semiring_field_semiring,
-  ^field_field_commutative_ring,
-  ^group_field_monoid,
-  ^monoid_field_semigroup,
-  ^ordered_ring_field_ring,
-  ^ring_field_add,
-  ^ring_field_mul,
-  ^semigroup_field_magma,
-  ^semiring_field_add,
-  ^semiring_field_mul
-]
+// THE BINDERS THROUGH WHICH ONE STRUCTURE COMPOSES ANOTHER, DERIVED from the constructors rather than restated:
+// each structure signature is built over an ATOM probe carrier -- which no structure can be mistaken for -- and a
+// binder whose type is itself a structure (a Conj) is a composing field (ordered_ring's ^ordered_ring_field_ring,
+// ring's ^ring_field_add). Every other binder is an operation (an Arrow) or the carrier. Deciding composition by a
+// field's NAME from this derived set, never by the shape of the node at hand, keeps a record-shaped carrier from
+// being taken for a sub-structure. The constructor roster below is the one place the structure set is listed.
+fn algebra_structure_signatures_over(carrier: Node) -> List<Node> {
+  [magma_type_node(inhabitant: carrier), semigroup_type_node(inhabitant: carrier), monoid_type_node(inhabitant: carrier),
+   commutative_monoid_type_node(inhabitant: carrier), group_type_node(inhabitant: carrier), abelian_group_type_node(inhabitant: carrier),
+   semiring_type_node(inhabitant: carrier), commutative_semiring_type_node(inhabitant: carrier), ring_type_node(inhabitant: carrier),
+   commutative_ring_type_node(inhabitant: carrier), ordered_ring_type_node(inhabitant: carrier), field_type_node(inhabitant: carrier),
+   approximate_field_type_node(inhabitant: carrier), lattice_type_node(inhabitant: carrier), bounded_lattice_type_node(inhabitant: carrier),
+   boolean_algebra_type_node(inhabitant: carrier), equivalence_type_node(inhabitant: carrier)]
+}
+
+data algebra_structure_composing_fields: List<Symbol> = algebra_structure_typed_binders(structures: algebra_structure_signatures_over(carrier: Node { kind: TypeNode { connective: Atom { identity: ^algebra_signature_probe_carrier } }, children: [], occurrence_id: OccurrenceSynthetic }))
+
+fn algebra_structure_typed_binders(structures: List<Node>) -> List<Symbol> {
+  fold(structures, init: [], f: fn(acc, structure) {
+    fold(structure.children, init: acc, f: fn(inner, e) {
+      match e.label {
+        Authored { name: name } =>
+          match binder_node_parts(n: e.target) {
+            Present { value: parts } =>
+              match parts.type_node.kind {
+                TypeNode { connective: Conj } => list_snoc_item(xs: inner, item: name)
+                TypeNode { connective: Atom { identity: _ } } => inner
+                TypeNode { connective: Disj } => inner
+                TypeNode { connective: Arrow } => inner
+                TypeNode { connective: Cardinality } => inner
+                TypeNode { connective: Instantiation } => inner
+                ComputationNode { behavior: _ } => inner
+              }
+            Absent => inner
+          }
+        StructuralLabel { label: _ } => inner
+        Positional => inner
+      }
+    })
+  })
+}
 
 // WHETHER AN INHABITANCE'S STRUCTURE DECLARES AN OPERATION FIELD -- typed, so a malformed inhabitance node is
 // never mistaken for a structure that lacks the field (DESIGN section 5: no fabricated plausible answer). A
