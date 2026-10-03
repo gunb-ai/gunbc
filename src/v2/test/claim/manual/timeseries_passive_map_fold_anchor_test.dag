@@ -1,7 +1,7 @@
 module v2.test.manual.timeseries_passive_map_fold_anchor
 
+import std.types { List }
 import std.algebra { Cons, Empty }
-import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, Rejected }
 import std.nat { Zero }
 import v2.std.timeseries_signal {

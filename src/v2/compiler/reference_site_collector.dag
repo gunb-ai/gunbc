@@ -1,6 +1,6 @@
 module v2.compiler.reference_site_collector
 
-import v2.std.collection { List }
+import std.types { List }
 
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import v2.std.algebra { fold_list, is_empty, list_map }

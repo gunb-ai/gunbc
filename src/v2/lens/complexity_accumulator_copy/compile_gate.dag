@@ -1,12 +1,12 @@
 module v2.lens.complexity_accumulator_copy.compile_gate
 
+import std.types { List }
 import std.algebra { Cons, Empty }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SubstrateMandatoryTag }
 import v2.lens.complexity_accumulator_copy { Finding, Poly2Suspect, Unclassifiable }
 import v2.lens.complexity_accumulator_copy.analyze { accumulator_copy_findings, finding_is_suspect }
 import v2.std.algebra { list_reverse }
-import v2.std.collection { List }
 import v2.std.diagnostic {
   Diagnostic,
   Diagnostics,

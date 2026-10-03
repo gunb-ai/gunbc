@@ -1,5 +1,6 @@
 module v2.lens.effect_reach
 
+import std.types { List }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
 import v2.lens.module_graph { path_matches_touched }
@@ -21,7 +22,7 @@ import v2.std.algebra {
   TailAbsent
 }
 import std.algebra { list_snoc_item }
-import v2.std.collection { Absent, List, Present }
+import v2.std.collection { Absent, Present }
 import v2.std.data_index {
   DataInitDecl,
   data_init_decl_facts_live,

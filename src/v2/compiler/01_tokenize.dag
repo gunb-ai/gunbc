@@ -1,6 +1,7 @@
 module v2.compiler.tokenize
 
-import v2.std.collection { List, Map, empty_map, map_insert, map_lookup, list_at_optional }
+import std.types { List }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup, list_at_optional }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.diagnostic { Accepted, ByteRange, Diagnostic, ExternalContractUnknown, Locus, None, Outcome, Rejected, Textual, Unavailable, UserInputBoundary, WholeFile, diagnostics_singleton }
 import v2.std.node { Symbol }

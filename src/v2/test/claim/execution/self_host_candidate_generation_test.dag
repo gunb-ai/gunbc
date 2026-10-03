@@ -1,14 +1,12 @@
 module v2.test.execution.self_host_candidate_generation
 
+import std.types { List }
 import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.self_host.candidate_generation {
   generate_translate_self_emit_candidate
 }
 import v2.compiler.translate { translate_diagnostic_reason_from_symbol, translate_diagnostic_reason_roster, translate_diagnostic_reason_symbol, translate_diagnostic_reason_variants }
 import v2.compiler.target_serialize { target_serialize_source_from_model, TargetBundleDuplicateEdge, TargetBundleMalformed, TranslateDiagnosticReason }
-import v2.std.collection {
-  List
-}
 import v2.std.optional {
   Absent,
   Optional,

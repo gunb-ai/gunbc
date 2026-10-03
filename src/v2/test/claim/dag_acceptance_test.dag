@@ -1,6 +1,6 @@
 module v2.test.claim.dag_acceptance
 
-import v2.std.collection { List }
+import std.types { List }
 import std.algebra { FreeSemigroup }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure { millisecond }

@@ -1,5 +1,6 @@
 module tools.self_host_curated_seed_linked_harness
 
+import std.types { List }
 
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -9,7 +10,6 @@ import extdeps.git.inspect
 import extdeps.gunbc
 import std.logic { Bool }
 import v2.std.algebra { fold_list, length }
-import v2.std.collection { List }
 import v2.std.text { String }
 import tools.emitted_crate_harness_manifest {
   derive_harness_manifest_in_place,

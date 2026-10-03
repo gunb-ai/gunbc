@@ -25,7 +25,8 @@ import v2.std.qualified_name { declaration_reference_path_optional, qualified_na
 import v2.std.map_introduction { MapIntroductionKeyRepeated, MapIntroductionKeysDistinct, map_introduction_duplicate_key, map_introduction_head_path }
 import v2.std.algebra { length }
 import v2.std.text { String }
-import v2.std.collection { List, list_at_optional }
+import std.types { List }
+import v2.std.collection { list_at_optional }
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import extdeps.communication.medium { Lossless, Medium }
 

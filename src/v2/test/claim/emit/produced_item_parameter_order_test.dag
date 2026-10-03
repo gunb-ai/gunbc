@@ -1,6 +1,7 @@
 module v2.test.claim.emit.produced_item_parameter_order
 
-import v2.std.collection { Absent, List, Present, list_at_optional }
+import std.types { List }
+import v2.std.collection { Absent, Present, list_at_optional }
 import v2.std.arrow_signature { ArrowParameterOrderMalformed, arrow_declared_parameter_order, declared_signature }
 import v2.std.compilers.target_model { ProducedDeclSignatureSubject, arrow_domain_binder_names, produced_decl_subject_from_name_and_arrow }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }

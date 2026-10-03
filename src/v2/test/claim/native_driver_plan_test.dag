@@ -1,8 +1,8 @@
 module v2.test.claim.native_driver_plan
 
+import std.types { List }
 import v2.std.text { String }
 import v2.std.algebra { length }
-import v2.std.collection { List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.process { ExitFailure, ExitSuccess }
 import extdeps.bazel.target_pattern { render_target_pattern }

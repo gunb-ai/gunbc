@@ -2,8 +2,8 @@ module std.kind
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.algebra { filter, fold_list, list_flat_map }
-import v2.std.collection { List, empty_map, map_insert, map_lookup }
-import std.types { Map }
+import v2.std.collection { empty_map, map_insert, map_lookup }
+import std.types { Map, List }
 import v2.std.node { Atom, Node, Symbol, TypeNode, arrow_signature_order_edge }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup }
 import v2.std.optional { Optional, optional_absent, optional_present }

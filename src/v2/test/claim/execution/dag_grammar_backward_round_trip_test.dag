@@ -5,7 +5,7 @@ import gunbc.instruments.dag_emit_real_grammar_round_trips { dag_round_trip_pars
 import v2.extdeps.languages.dag { dag_emit_parse_tree, dag_emit_parse_tree_with_root, dag_grammar_root }
 import std.algebra { list_snoc_item }
 import v2.std.algebra { length }
-import v2.std.collection { List }
+import std.types { List }
 import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected, bind_outcome, node_locus, outcome_accepted }
 import v2.std.fn_index { non_empty_diagnostics_list }
 import v2.std.grammar { GrammarProduction, GrammarRoot, Sequence, grammar_atom, grammar_emit_parse_tree, grammar_expr_terminal, node_atom_identity_optional }
