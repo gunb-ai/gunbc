@@ -776,14 +776,17 @@ fn group_arm_host_observation(ctx: SparkMaterializeContext, h: HostIdentity) -> 
   ], "")
 }
 
-// THE CHECKPOINTS' HOST-VISIBLE BYTES, read-only: `du` of each GLM checkpoint's Hub-cache repo directory on
+// THE CHECKPOINTS' HOST-VISIBLE BYTES, read-only. This hf keeps completed files in a HUB-LEVEL store
+// (hub/blobs/<xx>/<sha256>) and the model directory holds only links to it plus the in-flight .incomplete
+// files (valiant-crab-775's reading on srv7, 2026-10-03), so the model directory alone SHRINKS as files
+// complete. The reading is the snapshot dereferenced (completed bytes) plus the .incomplete partials, on
 // the host, so a fetch in progress is seen growing on the HOST (not only inside a container), and a restarted
 // fetch is seen keeping what it had.
 fn checkpoint_cache_bytes_lines(ctx: SparkMaterializeContext) -> String {
   join(map([Glm53NativeFp8, Glm53FlashNvidiaNvfp4], c => match serving_checkpoint_row(c: c) {
     Absent => ""
     Present { value: row } =>
-      observe_leg(ctx: ctx, what: join(["host cache bytes of ", serving_checkpoint_wire(c: c) as String], ""), argv: ["du", "-sb", hub_repo_cache_directory(cache_root: spark_hub_cache_root, repo: row.repo) as String])
+      observe_leg(ctx: ctx, what: join(["host cache bytes of ", serving_checkpoint_wire(c: c) as String, " (completed files dereferenced; then in-flight partials)"], ""), argv: ["sh", "-c", "du -sbL \"$1\"/snapshots 2>/dev/null; find \"$1\"/blobs -name '*.incomplete' -printf '%s\\n' 2>/dev/null | awk '{s+=$1} END {print s+0, \"bytes in .incomplete\"}'", "sh", hub_repo_cache_directory(cache_root: spark_hub_cache_root, repo: row.repo) as String])
   }), "")
 }
 
