@@ -26,7 +26,7 @@ import gunbc.fabric_allocation_store_substrate {
   allocation_store_directory_absent,
 }
 import gunbc.fabric_cell_effect { CellSubstrateRootOwned, CellAttemptWriterOwned }
-import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.fleet_host_identity { operator_host_srv3 }
 import gunbc.fleet_converge_plan {
   fleet_converge_allocation_store_plan_artifact,
   FabricAllocationStoreOnly,

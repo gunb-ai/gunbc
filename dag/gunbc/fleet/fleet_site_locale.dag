@@ -20,7 +20,7 @@ import std.types { NonEmptyStr, Bool, List, Int }
 // was worth exactly zero as evidence.
 import product.placement_supply { HostIdentity, SiteIdentity }
 import gunbc.fleet_physical_inventory { operator_site }
-import gunbc.fleet_intent_network { operator_host_srv4, operator_host_srv5, operator_host_srv6 }
+import gunbc.fleet_host_identity { operator_host_srv4, operator_host_srv5, operator_host_srv6 }
 import gunbc.spark.dgx_procurement {
   DgxSparkRouterBinding,
   SlotAssigned,

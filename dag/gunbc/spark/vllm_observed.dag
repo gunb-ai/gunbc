@@ -13,7 +13,7 @@ import extdeps.languages.json.number {
 }
 import product.placement_supply { HostIdentity }
 import std.measure { TokenCount, token_count, token_count_value, BasisPoint, basis_point, basis_point_count, basis_point_unity_count }
-import gunbc.fleet_intent_network { operator_host_srv6 }
+import gunbc.fleet_host_identity { operator_host_srv6 }
 import extdeps.vllm.server {
   VllmRoute,
   VllmRoutePopulation,

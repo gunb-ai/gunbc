@@ -12,7 +12,7 @@ import extdeps.systemd { Active }
 import extdeps.nvidia.system_management_interface { UsedMemoryReported }
 import extdeps.linux.proc_net_tcp { TcpSocketRow }
 import gunbc.compute.host_occupancy { HostOccupancyRead, HostOccupancyUnread, ServingUnitActive, GpuComputeProcess }
-import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
+import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_hosts }
 import gunbc.rung_drop { Standing, Retired }
 import gunbc.spark.pair_serving_realization { spark_pair_head_unit_name, spark_pair_worker_unit_name }

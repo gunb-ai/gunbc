@@ -6,7 +6,7 @@ import std.measure { Millisecond, millisecond, TokenCount, token_count, ByteSize
 import std.interval { IntervalConstruction, OrderedClosedInterval, closed_interval, interval_high }
 import product.placement_supply { HostIdentity }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
-import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
+import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6 }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }
 
 // THE FIRST PAIR AS IT ACTUALLY RUNS, READ ON 2026-09-05 FROM THE HOSTS, NOT FROM THE DESIRED ROW.

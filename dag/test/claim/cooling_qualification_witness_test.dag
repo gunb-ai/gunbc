@@ -26,7 +26,7 @@ import gunbc.fleet_physical_inventory {
   cooler_srv3,
   installed_cooling_realizations,
 }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
 import product.cooling_qualification {
   CoolingCatalogCompatible,
   CoolingCatalogRefused,

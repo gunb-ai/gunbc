@@ -3,9 +3,7 @@ module test.claim.session_residency_witness
 import std.logic { Bool }
 import std.types { String, List }
 import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network {
-  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
-}
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import gunbc.session_residency {
   SessionResidency,
   HostsInteractiveSessions,

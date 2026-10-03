@@ -33,11 +33,7 @@ import gunbc.bmc_fan_projection {
 }
 import gunbc.fleet_bmc_state { srv4_bmc_fan_projection_capability }
 import gunbc.fleet_bmc_observation { srv4_bmc_fan_converged_policy_observation }
-import gunbc.fleet_intent_network {
-  operator_host_srv1,
-  operator_host_srv3,
-  operator_host_srv4,
-}
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 
 // THE HOSTS I RECONFIGURED BY HAND MUST REFUSE ACTUATION. This is the conjunct that makes the
 // interlock real rather than declared: it fails the moment someone marks srv3 or srv4 adopted.

@@ -16,8 +16,8 @@ import std.types { Bool, String, Int }
 import std.measure { byte_size, byte_size_count }
 import gunbc.fleet_intent_network {
   HostIdentity,
-  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import gunbc.session_reservation_policy {
   SessionReservationBytesResolution,
   ReservationBytes, ReservationBytesNotApplicable, ReservationBytesUnestablished,

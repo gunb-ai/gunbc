@@ -97,7 +97,7 @@ import gunbc.host_converge {
 }
 import gunbc.runner_connectivity_recovery { recovery_runner_slot_unit_name }
 import gunbc.host_runner_memory_cap_verify { runner_memory_cap_probe_unit }
-import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
 
 // Every subject below is a modeled value constructed in this file -- no host is read, so the floor
 // may fold these without a live tree. Omitting this row would have the fail-closed default treat

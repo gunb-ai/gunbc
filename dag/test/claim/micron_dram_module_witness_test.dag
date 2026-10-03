@@ -45,7 +45,7 @@ import product.installed_bom_reconcile {
   ObservedDimmSlot,
   dimm_reconcile_verdict,
 }
-import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

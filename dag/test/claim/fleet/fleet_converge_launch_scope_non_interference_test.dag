@@ -15,7 +15,7 @@ import gunbc.compile_diagnostic_census {
 import gunbc.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
 import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction, runner_unit_standings_unobserved_no_transaction }
 import gunbc.runner_slot_provision { RunnerSlotMember, runner_slot_member_from_instance_name }
-import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.fleet_host_identity { operator_host_srv3 }
 import gunbc.fleet_converge_plan {
   FleetConvergeRequest,
   FullHostConverge,

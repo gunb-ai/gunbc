@@ -6,7 +6,7 @@ import gunbc.host_effect { EmitArtifactThenThinRun, BootstrapFragment, ThinInvoc
 import gunbc.host_effect_realize { observe_slot_population_over_host_effect_transport }
 import gunbc.runner_slot_population_census { SlotCensus, CensusRefused, slot_census_from_command_outcome }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

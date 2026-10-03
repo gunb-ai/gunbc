@@ -40,7 +40,7 @@ import gunbc.durable_exclusive_hold_file_store {
 }
 import gunbc.actions_run_binding { actions_variable_trimmed }
 import std.decl_ref { decl_ref }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_mtcollins1 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_mtcollins1 }
 
 // ── THE INTERLOCK THE PER-RUN APPROVAL WAS PROVIDING WITHOUT SAYING SO ────────────────────────
 //

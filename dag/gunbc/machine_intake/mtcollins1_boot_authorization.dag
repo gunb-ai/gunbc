@@ -7,7 +7,7 @@ import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_st
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_image_name }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_cdrom_selection }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
-import gunbc.fleet_intent_network { operator_host_srv2 }
+import gunbc.fleet_host_identity { operator_host_srv2 }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
 
 // THE BOOT SUBJECT: what one Mt. Collins boot attaches, selects and power-cycles. It was the signed

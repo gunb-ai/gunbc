@@ -1,7 +1,7 @@
 module gunbc.fleet_install_transport_observations
 
 import std.types { List }
-import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.fleet_host_identity { operator_host_srv3 }
 import gunbc.install_transport_qualification {
   ConfigfsMounted,
   NbdClientPresent,

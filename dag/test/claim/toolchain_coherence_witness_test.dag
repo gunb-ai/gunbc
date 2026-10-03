@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.content_hash { as_content_hash_structural, content_hash_atom }
 import extdeps.realization.emit_on_demand_host { ObservedToolIdentity }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.toolchain_coherence {
   ToolchainSpawn,
   ToolchainCoherence,

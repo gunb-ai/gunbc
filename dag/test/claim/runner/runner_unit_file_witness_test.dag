@@ -37,7 +37,7 @@ import gunbc.runner_host_deploy {
   admitted_deploy_for,
   RunnerHostDeploy }
 import gunbc.host_converge { gunbc_runner_jobserver_default_fifo, gunbc_runner_jobserver_service }
-import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.fleet_host_identity { operator_host_srv3 }
 import gunbc.fleet_posix_accounts {
   fleet_posix_ci_runner_user,
   fleet_ci_runner_reported_contradiction,

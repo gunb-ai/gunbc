@@ -19,7 +19,7 @@ import std.upsert_decision {
 }
 import extdeps.bmc.types { BootOverrideModeLegacy, BootOverrideModeUefi }
 import gunbc.os_install_deduction { SubiquityStorageScreen }
-import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.fleet_host_identity { operator_host_srv3 }
 import gunbc.host_standup {
   host_standup_spine,
   Prefix,

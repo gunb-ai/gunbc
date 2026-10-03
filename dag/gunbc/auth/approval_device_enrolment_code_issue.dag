@@ -14,7 +14,7 @@ import gunbc.live_deploy.slice_bounds { approval_broker_slice_memory_max, approv
 import extdeps.tools.env { env_prefixed_argv }
 import v2.std.orchestration { EnvSet }
 import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
-import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.actions_run_binding {
   actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name,
   read_expected_revision, ExpectedRevisionPresent, ExpectedRevisionAbsent,

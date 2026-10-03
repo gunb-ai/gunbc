@@ -3,9 +3,7 @@ module gunbc.spark.group_b_node_qualification
 import std.types { List, NonEmptyStr, String }
 import std.measure { ByteSize, Bandwidth, Nanosecond, gibibyte, gibibyte_to_byte_size, nanosecond, byte_size }
 import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network {
-  operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12,
-}
+import gunbc.fleet_host_identity { operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
 import extdeps.ethernet.link_mode { ieee_100gbase_cr2, ieee_50gbase_cr2 }
 import extdeps.storage.types { PcieLink, Gen5 }
 import product.fabric.identity { FabricIdentity, OfferKey }

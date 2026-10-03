@@ -13,7 +13,7 @@ import gunbc.hostname_read {
   HostnameShortCaptureRefused,
 }
 import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.ci_fleet { srv1_offer, ComputeOffer }
 import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }

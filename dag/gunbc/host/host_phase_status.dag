@@ -35,7 +35,7 @@ import gunbc.membership_reconcile {
   membership_write_count,
 }
 import gunbc.ownership { Ownership, Owned }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv5, operator_host_srv6 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv5, operator_host_srv6 }
 import product.placement_supply { HostIdentity }
 import std.measure { millisecond }
 

@@ -3,7 +3,7 @@ module test.claim.runner_replace_incarnation_seam_witness
 import std.logic { Bool }
 import std.types { String }
 import gunbc.fleet_intent { srv3_host }
-import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.fleet_host_identity { operator_host_srv3 }
 import gunbc.runner_incarnation {
   LocalRunnerSlotIncarnation,
   runner_slot_incarnation,

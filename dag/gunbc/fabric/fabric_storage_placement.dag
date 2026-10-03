@@ -4,7 +4,8 @@ import gunbc.fabric_storage_address { fabric_storage_route_prefix, fabric_storag
 
 import std.types { String, NonEmptyStr, FilePath, Int, Bool, Port, List }
 import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network { operator_host_srv1, fleet_intent_network }
+import gunbc.fleet_intent_network { fleet_intent_network }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_fabric_storage_root, srv1_live_dashboard_instance, dashboard_instance_child }
 import std.effect_grant { Read, Write, Execute }
 import gunbc.ownership { Ensured }

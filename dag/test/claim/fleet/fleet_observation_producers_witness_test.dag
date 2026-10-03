@@ -30,9 +30,7 @@ import gunbc.build_cache_instance {
   EndpointObservationUnavailable,
   ServerPlacementUnknown,
 }
-import gunbc.fleet_intent_network {
-  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
-}
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import gunbc.host_phase_status { fleet_subsumption_hosts }
 import std.upsert_decision { UnknownRefused }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

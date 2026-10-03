@@ -119,7 +119,7 @@ import gunbc.auth.managed_host_boot_federation {
   ManagedHostBootFederationStanding, BootFederationProvisioned, BootFederationUnprovisioned,
   boot_federation_for, boot_federation_provider_resource,
 }
-import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.auth.ci_app_key_rotation {
   app_key_version_env_name,
   app_key_verify_record_env_name,

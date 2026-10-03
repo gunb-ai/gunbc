@@ -57,15 +57,7 @@ import gunbc.fleet_lifecycle_observation {
 import extdeps.dhcp.v4 { MacAddress, StaticDhcpReservation, Active }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseRow }
-import gunbc.fleet_intent_network {
-  operator_host_srv5, operator_host_srv6, operator_host_srv3,
-  operator_host_srv7,
-  operator_host_srv8,
-  operator_host_srv9,
-  operator_host_srv10,
-  operator_host_srv11,
-  operator_host_srv12,
-}
+import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6, operator_host_srv3, operator_host_srv7, operator_host_srv8, operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
 import gunbc.spark.dgx_procurement {
   dgx_spark_procurement_intent,
   dgx_spark_router_bindings,

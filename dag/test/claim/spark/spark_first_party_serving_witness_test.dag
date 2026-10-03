@@ -29,7 +29,7 @@ import gunbc.spark.vllm_serving_launch {
 import gunbc.spark.serving_offer { spark_serving_incarnation_unobserved_obligation }
 import std.measure { token_count }
 import v2.std.optional { Present, Absent }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv5, operator_host_srv6 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv5, operator_host_srv6 }
 import gunbc.spark.pair_serving_realization {
   spark_pair_model_path_in_container, spark_pair_desired_snapshot,
 }

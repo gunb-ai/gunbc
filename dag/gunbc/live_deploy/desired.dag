@@ -15,8 +15,8 @@ import gunbc.fleet_intent { srv2_host }
 import gunbc.fleet_intent_network {
   srv2_tailscale_endpoint,
   fleet_intent_network,
-  operator_host_srv2,
 }
+import gunbc.fleet_host_identity { operator_host_srv2 }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
   srv1_live_dashboard_instance,

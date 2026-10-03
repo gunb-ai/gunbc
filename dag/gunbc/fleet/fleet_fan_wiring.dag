@@ -21,12 +21,7 @@ import gunbc.fleet_fan_tach_expectation {
   srv3_fan_tach_expectation,
   srv4_fan_tach_expectation,
 }
-import gunbc.fleet_intent_network {
-  operator_host_srv1,
-  operator_host_srv2,
-  operator_host_srv3,
-  operator_host_srv4,
-}
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 
 // THREE POPULATIONS, NOT ONE, AND THIS MODULE IS THE MIDDLE ONE.
 //

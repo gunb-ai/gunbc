@@ -7,12 +7,7 @@ import gunbc.provider_account {
   codex_account_state_root,
   codex_roadmap_account_selection,
 }
-import gunbc.fleet_intent_network {
-  operator_host_srv1,
-  operator_host_srv2,
-  operator_host_srv3,
-  operator_host_srv4,
-}
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import gunbc.codex_runtime_paths {
   srv1_codex_runtime_release_root,
   codex_bundled_executable_at_current_link,

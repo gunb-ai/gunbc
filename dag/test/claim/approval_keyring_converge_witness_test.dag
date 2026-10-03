@@ -13,7 +13,7 @@ import gunbc.auth.approval_keyring_converge {
   keyring_mkdir_argv, store_root_mkdir_argv, claim_store_root_mkdir_argv,
   ntfy_group_admit_argv, roadmap_unit_restart_argv,
 }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

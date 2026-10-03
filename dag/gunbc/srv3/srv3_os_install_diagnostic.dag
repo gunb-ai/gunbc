@@ -30,7 +30,7 @@ import extdeps.dhcp.v4 {
   Active,
 }
 import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseTable }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
 import gunbc.network_identity_subsumption {
   network_identity_subsumes_fleet_slot,
   lease_table_has_os_up_subsumption,
