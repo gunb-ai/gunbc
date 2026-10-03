@@ -231,6 +231,44 @@ type ResolvedTree {
   symbol_index: SymbolIndex
   resolved_declarations: SymbolIndex
   lexical_bindings: Map<OccurrenceId, LexicalBinding>
+  unavailable_providers: List<ClosureProviderRefusal>
+}
+
+// A CLOSURE ROOT WHOSE OWN RESOLVE REFUSED, AND WHY. v2.compiler.name_resolve closure_declarations_demand
+// resolves every root in the closure to fill the index inference reads; a root that refuses contributes no
+// declarations, and until this carrier that absence was SILENT -- a receiver typed by one of its records
+// refused as a bare lookup miss (infer_reason_projection_receiver_declaration_unavailable) with nothing to
+// say the provider never resolved, so the provider's real defect never ranked (DESIGN section 5, the
+// absorbing fallback's signal loss). The roster rides on the tree so every lookup miss can name its cause.
+type ClosureProviderRefusal {
+  module: QualifiedName
+  refusal: NonEmptyDiagnostics
+}
+
+// THE ONE READ every closure-index miss consults: the refused provider whose module path is a prefix of
+// the missed declaration's path, if any. A miss with no refused provider over it stays the bare miss.
+fn resolved_tree_unavailable_provider(tree: ResolvedTree, path: QualifiedName) -> Optional<ClosureProviderRefusal> {
+  fold(tree.unavailable_providers, init: optional_absent(), f: fn(acc, p) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if qualified_name_is_proper_prefix(prefix: p.module, path: path) { optional_present(value: p) } else { acc }
+    }
+  })
+}
+
+fn qualified_name_is_proper_prefix(prefix: QualifiedName, path: QualifiedName) -> Bool {
+  match prefix {
+    Empty =>
+      match path {
+        Empty => false
+        Cons { head: _, tail: _ } => true
+      }
+    Cons { head: ph, tail: pt } =>
+      match path {
+        Empty => false
+        Cons { head: h, tail: t } => ph == h && qualified_name_is_proper_prefix(prefix: pt, path: t)
+      }
+  }
 }
 
 // The resolved root's declarations, by the same module fold the pre-resolve index uses: the module's
@@ -263,13 +301,15 @@ fn resolved_tree_of(
   root: Node,
   symbol_index: SymbolIndex,
   closure_declarations: SymbolIndex,
+  unavailable_providers: List<ClosureProviderRefusal>,
   lexical: List<LexicalBindingEntry>
 ) -> ResolvedTree {
   ResolvedTree {
     root: root,
     symbol_index: symbol_index,
     resolved_declarations: resolved_declarations_over(closure: closure_declarations, subject: root),
-    lexical_bindings: fold(lexical, init: empty_map(), f: fn(m, e) { map_insert(m, e.reference, e.binding) })
+    lexical_bindings: fold(lexical, init: empty_map(), f: fn(m, e) { map_insert(m, e.reference, e.binding) }),
+    unavailable_providers: unavailable_providers
   }
 }
 
@@ -2130,12 +2170,13 @@ fn resolve_walk_outcome(w: ResolveNodeWalk) -> Outcome<Node> {
 fn resolved_tree_outcome(
   w: ResolveNodeWalk,
   symbol_index: SymbolIndex,
-  closure_declarations: SymbolIndex
+  closure_declarations: SymbolIndex,
+  unavailable_providers: List<ClosureProviderRefusal>
 ) -> Outcome<ResolvedTree> {
   match w {
     ResolveWalkAccepted { value: v, diagnostics: d, lexical: l } =>
       Accepted {
-        value: resolved_tree_of(root: v, symbol_index: symbol_index, closure_declarations: closure_declarations, lexical: l),
+        value: resolved_tree_of(root: v, symbol_index: symbol_index, closure_declarations: closure_declarations, unavailable_providers: unavailable_providers, lexical: l),
         diagnostics: d
       }
     ResolveWalkRefused { first: f, rest: _, observation: _ } => Rejected { diagnostics: f }
@@ -3934,7 +3975,8 @@ fn resolve_with_namespace_policy(
       policy: policy
     ),
     symbol_index: namespace.symbol_index,
-    closure_declarations: empty_symbol_index()
+    closure_declarations: empty_symbol_index(),
+    unavailable_providers: []
   )
 }
 

@@ -15,7 +15,7 @@ import v2.std.compilers.target_model {
   canonical_operation_wire_matches_operation,
   target_model_canonical_operation_member_declared_type
 }
-import v2.compiler.resolve { ResolvedTree, resolved_tree_lexical_binding }
+import v2.compiler.resolve { ResolvedTree, resolved_tree_lexical_binding, resolved_tree_unavailable_provider }
 import v2.compiler.inferred_tree {
   DerivedGrounding,
   GroundingNotDerived,
@@ -1139,8 +1139,8 @@ fn infer_field_projection_facts(
               )
             ReceiverTypeNotADeclaration =>
               outcome_rejected(infer_receiver_declares_no_fields_diagnostic(node: node))
-            ReceiverDeclarationUnavailable { path: _ } =>
-              outcome_rejected(infer_receiver_declaration_unavailable_diagnostic(node: node))
+            ReceiverDeclarationUnavailable { path: path } =>
+              Rejected { diagnostics: infer_closure_miss_refusal(resolved: resolved, path: path, miss: infer_receiver_declaration_unavailable_diagnostic(node: node)) }
             ReceiverPayload { payload: payload } =>
               match declared_field_named(payload: payload, name: projection.field) {
                 Present { value: declared } =>
@@ -1256,6 +1256,21 @@ fn infer_receiver_declaration_unavailable_diagnostic(node: Node) -> Diagnostic {
   }
 }
 
+// A CLOSURE-INDEX MISS CARRIES ITS PROVIDER'S REFUSAL. When the missed declaration's module is a closure root
+// whose own resolve refused (v2.compiler.resolve resolved_tree_unavailable_provider), that refusal chain is
+// the miss's cause and travels with it: ahead of the miss when the miss refuses, as advisories when it only
+// leaves a fact on the counted frontier. Without a refused provider the miss is exactly what it was.
+fn infer_closure_miss_cause(resolved: ResolvedTree, path: QualifiedName) -> Diagnostics {
+  match resolved_tree_unavailable_provider(tree: resolved, path: path) {
+    Present { value: provider } => Some { diagnostics: provider.refusal }
+    Absent => None
+  }
+}
+
+fn infer_closure_miss_refusal(resolved: ResolvedTree, path: QualifiedName, miss: Diagnostic) -> NonEmptyDiagnostics {
+  rejected_with_pending(pending: infer_closure_miss_cause(resolved: resolved, path: path), rejected: diagnostics_singleton(d: miss))
+}
+
 fn infer_receiver_declares_no_fields_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: ^infer_reason_projection_receiver_declares_no_fields,
@@ -1365,7 +1380,10 @@ fn infer_declaration_reference_facts(
     Present { value: path } =>
       match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: path) {
         Absent =>
-          inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
+          bind_outcome_accepted(
+            od: infer_closure_miss_cause(resolved: resolved, path: path),
+            inner: inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
+          )
         Present { value: declared } =>
           match infer_declaration_callable_evidence(declared: declared) {
             Absent =>

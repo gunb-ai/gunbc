@@ -191,7 +191,8 @@ fn fmi_infer_with_member_formal_authored() -> Outcome<Bool> {
                     root: fmi_replace_atom(n: tree.root, from: variable, to: int_type),
                     symbol_index: tree.symbol_index,
                     resolved_declarations: tree.resolved_declarations,
-                    lexical_bindings: tree.lexical_bindings
+                    lexical_bindings: tree.lexical_bindings,
+                    unavailable_providers: tree.unavailable_providers
                   }) {
                     Rejected { diagnostics: d } => Rejected { diagnostics: d }
                     Accepted { value: _, diagnostics: d } => Accepted { value: true, diagnostics: d }
