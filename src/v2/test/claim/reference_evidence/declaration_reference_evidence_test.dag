@@ -21,7 +21,10 @@ import v2.std.node { Node, NodeFold, TypeNode, Atom, Arrow, ComputationNode, Tra
 import v2.std.node_query { find_named_child, node_positional_child_targets }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.collection { list_at_optional }
-import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional }
+import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, parameter_reference_node }
+import v2.test.lens_common.infer_fixture { ClaimParam, claim_int_literal, claim_minted, claim_minted_atom, claim_resolved_call_tree }
+import v2.std.diagnostic { outcome_accepted }
+import v2.std.node { Authored, Edge }
 
 // THE REFERENCE-EVIDENCE BOUNDARY. A reference to a corpus declaration reaches
 // v2.compiler.infer's `infer_node_facts` as a declaration-reference Conj. No arm handles it: it falls
@@ -186,6 +189,37 @@ fn dre_reading(o: Outcome<ResolvedTree>, wanted: Symbol) -> DreReading {
   }
 }
 
+// SUPPLIED AT INFER'S BOUNDARY (DESIGN section 3). The rows that read these ask what infer establishes about
+// ONE call to ONE declaration whose shape is given -- a Bool return, an argument the declared parameter does
+// not admit, a parameter type that names nothing -- and none of them is about how authored text reaches that
+// shape. Assembling source for each cost 270-350k eval steps (gunbc#12506's floor), nearly all of it
+// lowering. The tree is v2.test.lens_common.infer_fixture claim_resolved_call_tree, built by the production
+// constructors; infer is the REAL producer, so each row keeps its red. The real-path rows over authored
+// source (dre_reference_reading, read by the reference and named-call rows) are the inhabitance this file
+// owes for that boundary.
+fn dre_int_type() -> Node {
+  claim_minted_atom(identity: ^dag_binding_type_int, n: 3)
+}
+
+fn dre_only_arg(type_node: Node) -> List<ClaimParam> {
+  [ClaimParam { name: ^only_arg, type_node: type_node }]
+}
+
+fn dre_supplied_reading(callee: Symbol, params: List<ClaimParam>, codomain: Node, body: Node, actual: Node) -> DreReading {
+  dre_reading(
+    o: outcome_accepted(value: claim_resolved_call_tree(
+      callee_path: [^p, callee],
+      callee: callee,
+      params: params,
+      codomain: codomain,
+      body: body,
+      actuals: [Edge { label: Authored { name: ^only_arg }, target: actual }],
+      reference_site: 21
+    )),
+    wanted: callee
+  )
+}
+
 fn dre_labels_are_exactly(labels: Optional<List<Symbol>>, wanted: Symbol) -> Bool {
   match labels {
     Absent => false
@@ -267,9 +301,6 @@ test fn dre_a_named_call_is_grounded_holds() -> Bool {
 // callee's value -- not that equality types. An Int-returning call compared with `==` would couple this
 // first execution proof to the equality operation, which has its own typing rule and its own unproven
 // standing; a Bool-returning call is its own assertion.
-fn dre_execution_source() -> Outcome<ResolvedTree> {
-  dre_assemble(src: "module p\n\nfn truth(only_arg: Int) -> Bool {\n  true\n}\n\nfn consumer(y: Int) -> Bool {\n  truth(only_arg: y)\n}\n")
-}
 
 // A BOOL-RETURNING CALL DOES NOT GROUND, AND THAT IS A SEPARATE BOUNDARY FROM THIS REPAIR. Measured
 // three ways on this base: an Int-returning call grounds; a Bool-returning call with a literal body
@@ -280,7 +311,13 @@ fn dre_execution_source() -> Outcome<ResolvedTree> {
 // and NOT diagnosed further here: which binding symbol a Bool return actually carries is the next
 // question, and answering it is a separate change from this one.
 fn dre_execution_reading() -> DreReading {
-  dre_reading(o: dre_execution_source(), wanted: ^truth)
+  dre_supplied_reading(
+    callee: ^truth,
+    params: dre_only_arg(type_node: dre_int_type()),
+    codomain: claim_minted_atom(identity: ^bool_node_symbol, n: 2),
+    body: claim_minted_atom(identity: ^dag_token_kw_true, n: 4),
+    actual: claim_int_literal(lexeme: "3", n: 23)
+  )
 }
 
 test fn dre_a_named_call_to_a_bool_fn_is_grounded_holds() -> Bool {
@@ -413,33 +450,46 @@ fn dre_file(src: String, id: Symbol) -> DagSourceReadWitness {
 // UNRESOLVED SIGNATURE: readable shape, unavailable type evidence. The parameter's declared type names
 // nothing, so the signature's structure reads while its meaning does not. A permissive fallback would
 // ground this; it must stay underived.
-fn dre_unresolved_signature_source() -> Outcome<ResolvedTree> {
-  dre_assemble(src: "module p\n\nfn opaque(only_arg: Nonexistent) -> Int {\n  1\n}\n\nfn consumer(y: Int) -> Int {\n  opaque(only_arg: y)\n}\n")
-}
 
 fn dre_unresolved_signature_reading() -> DreReading {
-  dre_reading(o: dre_unresolved_signature_source(), wanted: ^opaque)
+  dre_supplied_reading(
+    callee: ^opaque,
+    params: dre_only_arg(type_node: declaration_reference_node(qn: [^p, ^Nonexistent], occurrence_id: claim_minted(n: 3))),
+    codomain: dre_int_type(),
+    body: claim_int_literal(lexeme: "1", n: 4),
+    actual: claim_int_literal(lexeme: "3", n: 23)
+  )
 }
 
+// THE REFUSAL IS INFER'S, AND THE ROW NOW SAYS SO. Over authored source this program refused at RESOLVE
+// (resolve_reason_unbound_symbol on `Nonexistent`), so infer never saw it and the row was green whatever
+// infer would have done -- a vacuous red. Supplied at infer's boundary, a signature whose parameter type is
+// a reference naming no declaration reaches infer, and infer refuses rather than grounding it; the row
+// asserts that route as well as the absent contract.
 test fn dre_an_unresolved_signature_does_not_ground_holds() -> Bool {
   match dre_unresolved_signature_reading().domain_labels {
-    Absent => true
+    Absent => dre_unresolved_signature_reading().infer_refuses
     Present { value: _ } => false
   }
 }
 
 // INVALID ARGUMENT: a Bool passed where the declared parameter is Int. The call must not ground on a
 // contract its argument does not satisfy.
-fn dre_invalid_argument_source() -> Outcome<ResolvedTree> {
-  dre_assemble(src: "module p\n\nfn wants_int(only_arg: Int) -> Int {\n  only_arg\n}\n\nfn consumer(y: Bool) -> Int {\n  wants_int(only_arg: y)\n}\n")
-}
 
 fn dre_invalid_argument_reading() -> DreReading {
-  dre_reading(o: dre_invalid_argument_source(), wanted: ^wants_int)
+  dre_supplied_reading(
+    callee: ^wants_int,
+    params: dre_only_arg(type_node: dre_int_type()),
+    codomain: dre_int_type(),
+    body: parameter_reference_node(qn: [^p, ^wants_int, ^only_arg], occurrence_id: claim_minted(n: 4)),
+    actual: claim_minted_atom(identity: ^dag_token_kw_true, n: 23)
+  )
 }
 
+// AND THE REFUSAL IS INFER'S, as it is on the real path over authored source: the row asserts the route,
+// so a tree that stopped reaching infer cannot hold it.
 test fn dre_an_invalid_argument_call_does_not_ground_holds() -> Bool {
-  dre_invalid_argument_reading().call_grounded == false
+  (dre_invalid_argument_reading().call_grounded == false) && dre_invalid_argument_reading().infer_refuses
 }
 
 // IMPORTED REFERENCE, AND THE QUALIFIED IDENTITY DISCRIMINATOR. The same mechanism across a module
