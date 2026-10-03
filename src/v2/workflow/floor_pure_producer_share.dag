@@ -700,6 +700,11 @@ import v2.std.collection { List }
 // resolution context and no closure. adhoc-68dc5afb-a90 changed lcr_index, so the file's identities
 // read as changed and each claim was judged at ~210,000 eval steps against the 72,300 new-witness
 // budget, almost all of it the ingest the claims are not about.
+// THE CENSUS CASCADE ROWS ARE THE census_probe_outcomes GROUND AGAIN: test.claim.native_census
+// .cascade_root_fan_out drives native_test_context_from_ingest and the census folds once per shape
+// (a three-file chain and a four-file diamond), and each claim reads one CascadeCensus -- counts
+// and census member rows (Symbols, qualified names, Ints), no resolution context, no closure. WARM
+// because one front end is more than one claim's budget.
 // THE XL-2 REHEARSAL CONTROL ROW IS THE census_probe_outcomes GROUND AGAIN: test.claim
 // .namespace_xl2_rehearsal_census drives native_test_context_from_ingest once per field of
 // Xl2ControlRuns (read the type for the roster, not a count here) over two- and three-specimen ingests, and its
@@ -956,6 +961,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.emit.int_literal_form_unwired_located.int_literal_probe_table",
   "v2.test.claim.native_route.native_refusal_detail.ndp_resolutions",
   "v2.test.claim.native_census.whole_tree_census_resolve.census_probe_outcomes",
+  "v2.test.claim.native_census.cascade_root_fan_out.cascade_linear_census",
+  "v2.test.claim.native_census.cascade_root_fan_out.cascade_diamond_census",
   "v2.test.native_decl_selection.collision_resolved",
   "v2.test.name_resolve.explicit_fn_import_binds.efib_verdicts",
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
