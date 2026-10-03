@@ -22,9 +22,12 @@ import v2.std.node_query { find_named_child, node_positional_child_targets }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.collection { list_at_optional }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, parameter_reference_node }
-import v2.test.lens_common.infer_fixture { ClaimParam, claim_int_literal, claim_minted, claim_minted_atom, claim_resolved_call_tree }
+import v2.test.lens_common.infer_fixture { ClaimParam, ClaimRecord, claim_callable_arrow, claim_int_literal, claim_minted, claim_minted_atom, claim_record_declaration, claim_resolved_call_tree }
+import v2.test.lens_common.resolve_fixture { ClaimLoweredModule, ClaimLoweredParam, claim_lowered_atom, claim_lowered_function, claim_lowered_record, claim_resolve_lowered }
+import v2.std.symbol_index { symbol_index_insert }
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.diagnostic { outcome_accepted }
-import v2.std.node { Authored, Edge }
+import v2.std.node { Authored, Edge, Positional }
 
 // THE REFERENCE-EVIDENCE BOUNDARY. A reference to a corpus declaration reaches
 // v2.compiler.infer's `infer_node_facts` as a declaration-reference Conj. No arm handles it: it falls
@@ -251,12 +254,135 @@ test fn dre_a_reference_grounds_to_its_declarations_contract_holds() -> Bool {
 // `consumer` denotes p.shared. A leaf-keyed lookup can answer either; the declaring path answers only
 // one. This control is SPECIFIED but not yet QUALIFIED as an identity-collapse detector: that claim
 // requires the forced-collapse mutation to turn it red, which is exercised separately.
-fn dre_same_leaf_source() -> Outcome<ResolvedTree> {
-  dre_assemble(src: "module p\n\nfn shared(alpha: Int) -> Int {\n  alpha\n}\n\ntype Wrap {\n  shared: Int\n}\n\nfn consumer(y: Int) -> Int {\n  shared(alpha: y)\n}\n")
+// SPLIT AT RESOLVE -> INFER, BOUND BY ONE NAMED VALUE (DESIGN section 3; operator ruling on this lane). The
+// property spans two stages: RESOLVE picks which declaration the use of `shared` denotes, and INFER grounds
+// the use to that declaration's contract. Executing both over authored text cost 409k eval steps, and even
+// resolve plus infer over a supplied lowered module is ~115k, so the claim is split at the stage boundary,
+// and the two halves are joined by dre_same_leaf_resolved, a NAMED resolved shape:
+//   * the resolve row runs REAL resolve over the supplied lowered module and asserts its output EQUALS that
+//     named shape where infer reads it -- the use's declaring path, and the declarations indexed at p.shared
+//     and p.Wrap -- compared structurally, provenance aside (v2.compiler.infer
+//     infer_type_equal_ignoring_provenance);
+//   * the infer row runs REAL infer over EXACTLY that named shape and asserts the use grounds to alpha.
+// So the resolve row proves the producer emits the shape, the infer row proves the consumer handles it, and
+// the join is entailed rather than designed: a supplied shape that drifted from resolve's output reds the
+// resolve row. Each half has its own red: a resolve that picked p.Wrap.shared fails the path equality, and
+// an infer that read by leaf fails the label read.
+fn dre_lowered_same_leaf_module() -> ClaimLoweredModule {
+  ClaimLoweredModule {
+    module: [^p],
+    members: [
+      Edge {
+        label: Authored { name: ^shared },
+        target: claim_lowered_function(
+          site: 20,
+          params: [ClaimLoweredParam { name: ^alpha, type_node: claim_lowered_atom(identity: ^Int, n: 21) }],
+          codomain: claim_lowered_atom(identity: ^Int, n: 22),
+          body: claim_lowered_atom(identity: ^alpha, n: 23)
+        )
+      },
+      Edge { label: Authored { name: ^Wrap }, target: claim_lowered_record(fields: [ClaimLoweredParam { name: ^shared, type_node: claim_lowered_atom(identity: ^Int, n: 11) }], site: 10) },
+      Edge {
+        label: Authored { name: ^consumer },
+        target: claim_lowered_function(
+          site: 30,
+          params: [ClaimLoweredParam { name: ^y, type_node: claim_lowered_atom(identity: ^Int, n: 31) }],
+          codomain: claim_lowered_atom(identity: ^Int, n: 32),
+          body: Node {
+            kind: ComputationNode { behavior: Transform },
+            children: [
+              Edge { label: Positional, target: claim_lowered_atom(identity: ^shared, n: 33) },
+              Edge { label: Authored { name: ^alpha }, target: claim_lowered_atom(identity: ^y, n: 34) }
+            ],
+            occurrence_id: OccurrenceSynthetic
+          }
+        )
+      }
+    ],
+    records: [^Wrap],
+    imports: []
+  }
+}
+
+// THE NAMED RESOLVED SHAPE BOTH HALVES SHARE: `shared` as resolve emits it (its parameter use a parameter
+// reference, its types the canonical bindings), Wrap as a record whose field `shared` is an Int, and one call
+// to p.shared.
+fn dre_same_leaf_shared_declaration() -> Node {
+  claim_callable_arrow(
+    site: 1,
+    params: dre_only_alpha(),
+    codomain: dre_int_type(),
+    body: parameter_reference_node(qn: [^p, ^shared, ^alpha], occurrence_id: claim_minted(n: 4))
+  )
+}
+
+fn dre_only_alpha() -> List<ClaimParam> {
+  [ClaimParam { name: ^alpha, type_node: dre_int_type() }]
+}
+
+fn dre_same_leaf_wrap_declaration() -> Node {
+  claim_record_declaration(r: ClaimRecord { path: [^p, ^Wrap], fields: [ClaimParam { name: ^shared, type_node: dre_int_type() }], site: 40 })
+}
+
+fn dre_same_leaf_resolved() -> ResolvedTree {
+  let call = claim_resolved_call_tree(
+    callee_path: [^p, ^shared],
+    callee: ^shared,
+    params: dre_only_alpha(),
+    codomain: dre_int_type(),
+    body: parameter_reference_node(qn: [^p, ^shared, ^alpha], occurrence_id: claim_minted(n: 4)),
+    actuals: [Edge { label: Authored { name: ^alpha }, target: claim_int_literal(lexeme: "3", n: 23) }],
+    reference_site: 21
+  )
+  ResolvedTree {
+    root: call.root,
+    symbol_index: call.symbol_index,
+    resolved_declarations: symbol_index_insert(index: call.resolved_declarations, qualified_path: [^p, ^Wrap], resolved: dre_same_leaf_wrap_declaration()),
+    lexical_bindings: call.lexical_bindings
+  }
+}
+
+fn dre_declared_equal(a: ResolvedTree, b: ResolvedTree, path: QualifiedName) -> Bool {
+  match symbol_index_lookup(index: a.resolved_declarations, qualified_path: path) {
+    Absent => false
+    Present { value: x } =>
+      match symbol_index_lookup(index: b.resolved_declarations, qualified_path: path) {
+        Absent => false
+        Present { value: y } => infer_type_equal_ignoring_provenance(a: x, b: y)
+      }
+  }
+}
+
+// The use's declaring path: exactly one use of `shared` in the resolved root, read through the production
+// reader v2.std.qualified_name declaration_reference_path_optional.
+fn dre_single_use_path(root: Node, wanted: Symbol) -> Optional<QualifiedName> {
+  match dre_uses_of(root: root, wanted: wanted) {
+    Cons { head: use_node, tail: rest } =>
+      match rest {
+        Empty => declaration_reference_path_optional(node: use_node)
+        Cons { head: _, tail: _ } => optional_absent()
+      }
+    Empty => optional_absent()
+  }
+}
+
+fn dre_same_leaf_resolve_matches_the_named_shape() -> Bool {
+  match claim_resolve_lowered(modules: [dre_lowered_same_leaf_module()], subject: [^p]) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: real, diagnostics: _ } =>
+      (dre_single_use_path(root: real.root, wanted: ^shared) == optional_present(value: [^p, ^shared]))
+        && (dre_single_use_path(root: dre_same_leaf_resolved().root, wanted: ^shared) == optional_present(value: [^p, ^shared]))
+        && dre_declared_equal(a: real, b: dre_same_leaf_resolved(), path: [^p, ^shared])
+        && dre_declared_equal(a: real, b: dre_same_leaf_resolved(), path: [^p, ^Wrap])
+  }
+}
+
+test fn dre_a_same_leaf_reference_resolves_to_its_own_declaration_holds() -> Bool {
+  dre_same_leaf_resolve_matches_the_named_shape()
 }
 
 fn dre_same_leaf_reading() -> DreReading {
-  dre_reading(o: dre_same_leaf_source(), wanted: ^shared)
+  dre_reading(o: outcome_accepted(value: dre_same_leaf_resolved()), wanted: ^shared)
 }
 
 test fn dre_a_same_leaf_reference_gets_its_own_declarations_contract_holds() -> Bool {
