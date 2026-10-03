@@ -3288,7 +3288,9 @@ fn native_import_target_attribution(context: NativeTestContext, module: Qualifie
           fold_list(xs: context.file_refusals, empty: NativeImportTargetsAdmitted, cons: fn(found, refusal) {
             match found {
               NativeImportTargetRefused { target: _ } => found
-              _ =>
+              NativeImportTargetsUnreadable { reason: _ } => found
+              NativeImportTargetNotAsked => found
+              NativeImportTargetsAdmitted =>
                 match refusal.module {
                   Absent => found
                   Present { value: refused_module } =>
@@ -3347,7 +3349,9 @@ fn native_module_resolve_verdict(
             verdict: match attribution {
               NativeImportTargetRefused { target: target } =>
                 NativeModuleResolveImportTargetFileRefused { target: target, first: f, rest: r, observation: o }
-              _ => NativeModuleResolveRefused { first: f, rest: r, observation: o }
+              NativeImportTargetsAdmitted => NativeModuleResolveRefused { first: f, rest: r, observation: o }
+              NativeImportTargetsUnreadable { reason: _ } => NativeModuleResolveRefused { first: f, rest: r, observation: o }
+              NativeImportTargetNotAsked => NativeModuleResolveRefused { first: f, rest: r, observation: o }
             },
             context: step.context,
             import_attribution: attribution
@@ -3967,6 +3971,20 @@ fn native_census_cause_groups_add_cascade_member(
   }
 }
 
+fn native_census_cause_groups_add_chains(
+  groups: NativeCensusCauseGroups,
+  entry: NativeCensusModule,
+  first: NonEmptyDiagnostics,
+  rest: List<NonEmptyDiagnostics>,
+  cascade: NativeCensusCascade
+) -> NativeCensusCauseGroups {
+  fold_list(
+    xs: native_census_residual_rows(entry: entry, first: first, rest: rest),
+    empty: groups,
+    cons: fn(acc, row) { native_census_cause_groups_add_residual(groups: acc, cascade: cascade, row: row) }
+  )
+}
+
 // ONE CENSUS MODULE'S CONTRIBUTION TO THE GROUPS, decided here rather than in the emitted main: a
 // cascade member is filed once under its root; any other resolve refusal files every chain.
 fn native_census_cause_groups_add_module(
@@ -3979,14 +3997,12 @@ fn native_census_cause_groups_add_module(
       match step.cascade {
         NativeCensusCascadeMemberOf { root: root, root_reason: root_reason } =>
           native_census_cause_groups_add_cascade_member(groups: groups, entry: entry, root: root, root_reason: root_reason)
-        _ =>
-          fold_list(
-            xs: native_census_residual_rows(entry: entry, first: f, rest: r),
-            empty: groups,
-            cons: fn(acc, row) { native_census_cause_groups_add_residual(groups: acc, cascade: step.cascade, row: row) }
-          )
+        NativeCensusCascadeNone => native_census_cause_groups_add_chains(groups: groups, entry: entry, first: f, rest: r, cascade: step.cascade)
+        NativeCensusCascadeUnattributed { reason: _ } => native_census_cause_groups_add_chains(groups: groups, entry: entry, first: f, rest: r, cascade: step.cascade)
+        NativeCensusCascadeRoot { closure_fan_out: _, resolve_refused_importers: _ } => native_census_cause_groups_add_chains(groups: groups, entry: entry, first: f, rest: r, cascade: step.cascade)
       }
-    _ => groups
+    NativeCensusModuleFileRefused => groups
+    NativeCensusModuleResolved => groups
   }
 }
 
@@ -4023,7 +4039,9 @@ fn native_census_cause_member_read(groups: NativeCensusCauseGroups, member: Nati
           }
         }
       }
-    _ => member
+    NativeCensusCascadeNone => member
+    NativeCensusCascadeMemberOf { root: _, root_reason: _ } => member
+    NativeCensusCascadeUnattributed { reason: _ } => member
   }
 }
 
@@ -4086,7 +4104,9 @@ fn native_census_roots_ranked(rows: List<NativeCensusCauseGroup>) -> List<Native
                   unavailable: b.unavailable
                 }
             }
-          _ => b
+          NativeCensusCascadeNone => b
+          NativeCensusCascadeMemberOf { root: _, root_reason: _ } => b
+          NativeCensusCascadeUnattributed { reason: _ } => b
         }
       })
     }

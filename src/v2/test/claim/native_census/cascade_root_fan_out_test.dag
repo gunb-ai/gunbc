@@ -2,6 +2,8 @@ module v2.test.claim.native_census.cascade_root_fan_out
 
 import v2.compiler.compile {
   NativeCensusCascadeMemberOf,
+  NativeCensusCascadeNone,
+  NativeCensusCascadeUnattributed,
   NativeCensusCascadeRoot,
   NativeCensusCauseMember,
   NativeCensusClosureFanOutCounted,
@@ -115,7 +117,9 @@ fn cascade_census(ingest: SourceRootIngest) -> CascadeCensus {
             fold_list(xs: g.members, empty: n, cons: fn(k, m) {
               match m.cascade {
                 NativeCensusCascadeMemberOf { root: _, root_reason: _ } => k
-                _ => k + 1
+                NativeCensusCascadeNone => k + 1
+                NativeCensusCascadeUnattributed { reason: _ } => k + 1
+                NativeCensusCascadeRoot { closure_fan_out: _, resolve_refused_importers: _ } => k + 1
               }
             })
           }),
@@ -124,7 +128,9 @@ fn cascade_census(ingest: SourceRootIngest) -> CascadeCensus {
             fold_list(xs: g.members, empty: n, cons: fn(k, m) {
               match m.cascade {
                 NativeCensusCascadeMemberOf { root: r, root_reason: _ } => if r == ^census_cascade_a_cu { k + 1 } else { k }
-                _ => k
+                NativeCensusCascadeNone => k
+                NativeCensusCascadeUnattributed { reason: _ } => k
+                NativeCensusCascadeRoot { closure_fan_out: _, resolve_refused_importers: _ } => k
               }
             })
           })
@@ -154,7 +160,9 @@ fn cascade_single_root_is_a(roots: List<NativeCensusCauseMember>, fan_out: Int, 
                 Present { value: k } => k == observed
               }
           }
-        _ => false
+        NativeCensusCascadeNone => false
+        NativeCensusCascadeMemberOf { root: _, root_reason: _ } => false
+        NativeCensusCascadeUnattributed { reason: _ } => false
       }
   }
 }
