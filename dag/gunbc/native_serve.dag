@@ -1,6 +1,7 @@
 module gunbc.native_serve
 
 import std.types { Int, List, String, Bool, CommitSha }
+import std.measure { ByteSize, byte_size, byte_size_count, Millisecond, millisecond, millisecond_count }
 import std.algebra { Cons, Empty, trim }
 import extdeps.http.server { ServeWireResponse }
 import gunbc.running_release_identity { release_revision_text_valid }
@@ -47,11 +48,12 @@ import gunbc.serve_liveness { serve_liveness_path, serve_liveness_document }
 // contract and a peer_user argument the main passes only on that arm.
 data native_serve_unix_socket_frontier_trigger: String = "a second NativeServeDriver consumer needs a kernel-attested peer (peer_user)"
 
-// The seed's limits, carried as values. They are the seed's numbers because the served programs
-// were written against them; a change to either is a change to every served program's contract.
-data native_serve_head_limit_bytes: Int = 16384
-data native_serve_body_limit_bytes: Int = 1048576
-data native_serve_read_timeout_ms: Int = 10000
+// The seed's limits, carried as values in the units std.measure owns. They are the seed's numbers
+// because the served programs were written against them; a change to either is a change to every
+// served program's contract.
+data native_serve_head_limit: ByteSize = byte_size(count: 16384)
+data native_serve_body_limit: ByteSize = byte_size(count: 1048576)
+data native_serve_read_timeout: Millisecond = millisecond(count: 10000)
 
 // The identity header is extdeps.tailscale.identity's fact (the header Tailscale Serve sets), read
 // from there rather than restated; Content-Length is RFC 9110 section 8.6's.
@@ -64,9 +66,9 @@ type NativeServeContract {
   host: String
   port: Int
   release_revision: CommitSha
-  head_limit_bytes: Int
-  body_limit_bytes: Int
-  read_timeout_ms: Int
+  head_limit: ByteSize
+  body_limit: ByteSize
+  read_timeout: Millisecond
 }
 
 // A refused start binds nothing: the main prints the reason and exits 2 before any listener exists,
@@ -75,36 +77,38 @@ type NativeServeStart
   = NativeServeListen { contract: NativeServeContract }
   | NativeServeStartRefused { reason: String }
 
-type NativeServeArgs {
-  host: String
-  port: String
-  release_revision: String
-  refused: String
-}
+// THE ARGV FOLD'S STATE IS A SUM, so "refused" and "still reading" cannot both hold, and a flag not
+// yet seen is Absent rather than an empty string standing for absence.
+type NativeServeArgs
+  = NativeServeArgsReading { host: String?, port: String?, release_revision: String? }
+  | NativeServeArgsRefused { reason: String }
 
-data native_serve_args_empty: NativeServeArgs = NativeServeArgs { host: "", port: "", release_revision: "", refused: "" }
+data native_serve_args_empty: NativeServeArgs = NativeServeArgsReading { host: none, port: none, release_revision: none }
 
-fn native_serve_args_set(a: NativeServeArgs, flag: String, value: String) -> NativeServeArgs {
+fn native_serve_args_set(host: String?, port: String?, release_revision: String?, flag: String, value: String) -> NativeServeArgs {
   if flag == "--host" {
-    NativeServeArgs { host: value, port: a.port, release_revision: a.release_revision, refused: a.refused }
+    NativeServeArgsReading { host: value, port: port, release_revision: release_revision }
   } else if flag == "--port" {
-    NativeServeArgs { host: a.host, port: value, release_revision: a.release_revision, refused: a.refused }
+    NativeServeArgsReading { host: host, port: value, release_revision: release_revision }
   } else if flag == "--release-revision" {
-    NativeServeArgs { host: a.host, port: a.port, release_revision: value, refused: a.refused }
+    NativeServeArgsReading { host: host, port: port, release_revision: value }
   } else {
-    NativeServeArgs { host: a.host, port: a.port, release_revision: a.release_revision, refused: concat("unknown flag ", flag) }
+    NativeServeArgsRefused { reason: concat("unknown flag ", flag) }
   }
 }
 
 fn native_serve_args_fold(argv: List<String>, acc: NativeServeArgs) -> NativeServeArgs {
-  match argv {
-    Empty => acc
-    Cons { head: flag, tail: rest } =>
-      match rest {
-        Empty => NativeServeArgs { host: acc.host, port: acc.port, release_revision: acc.release_revision, refused: concat("flag without a value: ", flag) }
-        Cons { head: value, tail: more } =>
-          let next = native_serve_args_set(a: acc, flag: flag, value: value)
-          if next.refused != "" { next } else { native_serve_args_fold(argv: more, acc: next) }
+  match acc {
+    NativeServeArgsRefused { reason: _ } => acc
+    NativeServeArgsReading { host: host, port: port, release_revision: revision } =>
+      match argv {
+        Empty => acc
+        Cons { head: flag, tail: rest } =>
+          match rest {
+            Empty => NativeServeArgsRefused { reason: concat("flag without a value: ", flag) }
+            Cons { head: value, tail: more } =>
+              native_serve_args_fold(argv: more, acc: native_serve_args_set(host: host, port: port, release_revision: revision, flag: flag, value: value))
+          }
       }
   }
 }
@@ -113,30 +117,49 @@ fn native_serve_usage() -> String {
   "usage: --host <addr> --port <0-65535> --release-revision <40 lowercase hex>"
 }
 
-fn native_serve_start_from(a: NativeServeArgs) -> NativeServeStart {
-  if a.refused != "" {
-    NativeServeStartRefused { reason: concat(a.refused, concat("; ", native_serve_usage())) }
-  } else if a.host == "" || a.port == "" || a.release_revision == "" {
-    NativeServeStartRefused { reason: concat("--host, --port and --release-revision are all required; ", native_serve_usage()) }
-  } else if !release_revision_text_valid(text: a.release_revision) {
-    NativeServeStartRefused { reason: concat("--release-revision must be exactly 40 lowercase hex digits (a git object name); got [", concat(a.release_revision, "]")) }
+fn native_serve_missing() -> NativeServeStart {
+  NativeServeStartRefused { reason: concat("--host, --port and --release-revision are all required; ", native_serve_usage()) }
+}
+
+fn native_serve_start_with(host: String, port: String, revision: String) -> NativeServeStart {
+  if !release_revision_text_valid(text: revision) {
+    NativeServeStartRefused { reason: concat("--release-revision must be exactly 40 lowercase hex digits (a git object name); got [", concat(revision, "]")) }
   } else {
-    match parse_int(s: a.port) {
+    match parse_int(s: port) {
       Present { value: p } =>
         if p < 0 || p > 65535 {
-          NativeServeStartRefused { reason: concat("--port out of range: ", a.port) }
+          NativeServeStartRefused { reason: concat("--port out of range: ", port) }
         } else {
           NativeServeListen { contract: NativeServeContract {
-            host: a.host,
+            host: host,
             port: p,
-            release_revision: a.release_revision as CommitSha,
-            head_limit_bytes: native_serve_head_limit_bytes,
-            body_limit_bytes: native_serve_body_limit_bytes,
-            read_timeout_ms: native_serve_read_timeout_ms,
+            release_revision: revision as CommitSha,
+            head_limit: native_serve_head_limit,
+            body_limit: native_serve_body_limit,
+            read_timeout: native_serve_read_timeout,
           } }
         }
-      Absent => NativeServeStartRefused { reason: concat("--port is not an integer: ", a.port) }
+      Absent => NativeServeStartRefused { reason: concat("--port is not an integer: ", port) }
     }
+  }
+}
+
+fn native_serve_start_from(a: NativeServeArgs) -> NativeServeStart {
+  match a {
+    NativeServeArgsRefused { reason: r } => NativeServeStartRefused { reason: concat(r, concat("; ", native_serve_usage())) }
+    NativeServeArgsReading { host: h, port: p, release_revision: r } =>
+      match h {
+        Absent => native_serve_missing()
+        Present { value: host } =>
+          match p {
+            Absent => native_serve_missing()
+            Present { value: port } =>
+              match r {
+                Absent => native_serve_missing()
+                Present { value: revision } => native_serve_start_with(host: host, port: port, revision: revision)
+              }
+          }
+      }
   }
 }
 
@@ -149,9 +172,9 @@ fn native_serve_start(argv: List<String>) -> NativeServeStart {
 fn native_serve_announcement(c: NativeServeContract, bound_host: String, bound_port: Int) -> String {
   concat("native-serve listening on ", concat(bound_host, concat(":", concat(to_string(value: bound_port),
     concat(" release_revision=", concat(c.release_revision as String,
-      concat(" head_limit_bytes=", concat(to_string(value: c.head_limit_bytes),
-        concat(" body_limit_bytes=", concat(to_string(value: c.body_limit_bytes),
-          concat(" read_timeout_ms=", to_string(value: c.read_timeout_ms))))))))))))
+      concat(" head_limit_bytes=", concat(to_string(value: byte_size_count(b: c.head_limit)),
+        concat(" body_limit_bytes=", concat(to_string(value: byte_size_count(b: c.body_limit)),
+          concat(" read_timeout_ms=", to_string(value: millisecond_count(m: c.read_timeout)))))))))))))
 }
 
 // ── FRAMING: THE HEAD THE MAIN READ, JUDGED HERE ─────────────────────────────────────────────
@@ -284,7 +307,7 @@ fn native_serve_frame(contract: NativeServeContract, request_line: String, heade
           } else {
             match native_serve_headers(lines: header_lines, acc: []) {
               NativeServeHeadersRefused { reason: r } => native_serve_bad_request(reason: r)
-              NativeServeHeadersRead { fields: fields } => native_serve_frame_fields(method: method, target: target, fields: fields, body_limit: contract.body_limit_bytes)
+              NativeServeHeadersRead { fields: fields } => native_serve_frame_fields(method: method, target: target, fields: fields, body_limit: byte_size_count(b: contract.body_limit))
             }
           }
         Empty => native_serve_bad_request(reason: "missing request target")
