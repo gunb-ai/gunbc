@@ -5246,6 +5246,24 @@ fn belt_workflow_attempt_evidence_for_ref(
   }
 }
 
+// THE ATTEMPT-VARYING RECORDS OF ONE NAMED ATTEMPT, addressed by its key -- the one place the
+// evidence builder's admission, provider-event and spawn-failure reads are named, so a witness can
+// establish that a historical attempt's reads name that attempt and never the node's current
+// projection.
+type BeltAttemptRecordPaths {
+  admission: String
+  events: String
+  spawn_failure: String
+}
+
+fn belt_attempt_record_paths(instance: HostDashboardInstance, node_id: gunbc.roadmap_model.RoadmapNodeId, attempt_key: String) -> BeltAttemptRecordPaths {
+  BeltAttemptRecordPaths {
+    admission: dispatch_attempt_admission_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+    events: dispatch_attempt_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+    spawn_failure: dispatch_attempt_spawn_failure_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+  }
+}
+
 // THE EVIDENCE OF ONE NAMED ATTEMPT. belt_workflow_attempt_evidence_for_ref resolves the node's
 // CURRENT attempt through its state pointer and then reads it here; a reader of attempt HISTORY
 // (gunbc.roadmap_dogfood_route) names the attempt by its own key and reads it here directly, so
@@ -5261,16 +5279,10 @@ fn belt_workflow_attempt_evidence_for_key(
   current_key: String,
 ) -> WorkflowAttemptEvidence {
   let node_id = attempt.node_id as gunbc.roadmap_model.RoadmapNodeId
-  let admission = Filesystem.Read(
-    path: dispatch_attempt_admission_path_for_instance(instance: instance, node_id: node_id, attempt_key: current_key),
-  )
-  let events = belt_provider_event_projection_observe_at(
-    instance: instance,
-    events_path: dispatch_attempt_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: current_key),
-  )
-  let spawn_failure = Filesystem.Read(
-    path: dispatch_attempt_spawn_failure_path_for_instance(instance: instance, node_id: node_id, attempt_key: current_key),
-  )
+  let paths = belt_attempt_record_paths(instance: instance, node_id: node_id, attempt_key: current_key)
+  let admission = Filesystem.Read(path: paths.admission)
+  let events = belt_provider_event_projection_observe_at(instance: instance, events_path: paths.events)
+  let spawn_failure = Filesystem.Read(path: paths.spawn_failure)
   let branch = dispatch_branch_name(
     node_id: node_id,
     attempt_key: current_key,
