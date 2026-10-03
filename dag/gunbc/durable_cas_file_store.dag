@@ -964,9 +964,18 @@ fn cas_compare_and_set_outcome(
 // A delete the host refuses is REPORTED in the write's receipt and counted there -- the commit has
 // already happened and is the answer -- and the next committed write retries the same names, so a
 // transient refusal does not grow the slot past the next successful reclamation.
+// The host's own refusal text, carried verbatim: Filesystem.Delete answers success and error but no
+// error kind, so the text is the most this receipt can say and it is never replaced by a summary.
 type CasGenerationReclaimFailure {
   generation: CasGeneration
-  detail: String
+  host_error: String
+}
+
+// One delete, observed once: the receipt is split from these, never re-derived by searching.
+type CasGenerationDeleteAttempt {
+  generation: CasGeneration
+  success: Bool
+  error: String
 }
 
 type CasWindowReclamation
@@ -986,11 +995,12 @@ fn cas_reclaim_below(root: NonEmptyStr, key: NonEmptyStr, window: CasGenerationW
     CasWindowGenerationsUnlisted { cause: c } => CasReclamationUnlisted { cause: c }
     CasWindowGenerationsListed { generations: gs } => {
       let floor = cas_generation_count(g: head) - window.k
-      let doomed = gs |> filter(g => cas_generation_count(g: g) <= floor)
-      let removed = doomed |> filter(g => Filesystem.Delete(path: cas_file_slot_path(root: root, key: key, generation: g)).success)
-      let failed = doomed
-        |> filter(g => !(removed |> any(r => cas_generation_count(g: r) == cas_generation_count(g: g))))
-        |> map(g => CasGenerationReclaimFailure { generation: g, detail: "delete refused by the host" })
+      let attempts = gs |> filter(g => cas_generation_count(g: g) <= floor) |> map(g => {
+        let d = Filesystem.Delete(path: cas_file_slot_path(root: root, key: key, generation: g))
+        CasGenerationDeleteAttempt { generation: g, success: d.success, error: d.error }
+      })
+      let removed = attempts |> filter(t => t.success) |> map(t => t.generation)
+      let failed = attempts |> filter(t => !t.success) |> map(t => CasGenerationReclaimFailure { generation: t.generation, host_error: t.error })
       if count(failed) == 0 { CasReclaimed { removed: removed } } else { CasReclamationIncomplete { removed: removed, failed: failed } }
     }
   }
