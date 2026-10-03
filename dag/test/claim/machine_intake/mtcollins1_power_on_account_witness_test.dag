@@ -25,7 +25,7 @@ import gunbc.machine_intake_kernel_module_decompression_observation { kernel_mod
 import gunbc.machine_intake_mtcollins1_power_on_account {
   PowerOnAccount, PowerOnEvidence, AttemptConfigurationReceipt, ConsoleEvidence, ConsoleRead, ConsoleNotRead, SmproPassEvidence,
   HandoffPoweredOn, HandoffNotConfirmed, SelEventsRead, SelEventsNotRead, WatchdogUnobserved,
-  ExpectedSockets, ExpectedTopologyNotRecorded, ConfiguredExpectedTopology, ConsoleSpansUnbound, OpenedBySelRestart, SpanBindingAmbiguous,
+  ExpectedSockets, ExpectedTopologyNotRecorded, ConfiguredExpectedTopology, ConsoleSpansUnbound, BootBoundaryAmbiguous, OpenedBySelRestart, SpanBindingAmbiguous,
   MilestoneEvidence, SmproWarningAccount,
   StimulusRequestNotRecorded, StimulusApplicationNotRecorded, PopulationNotRecorded, PopulationOperatorAttested, FirmwareReadbacksNotRecorded, SlotRow,
   CarrierCoverage, SolConsole, CarrierReadEmpty,
@@ -134,6 +134,12 @@ data run_37069907299_restart: SelWindowEvent = SelWindowEvent { record_id: 3115,
 
 data step1_restart: SelWindowEvent = SelWindowEvent { record_id: 59, bmc_clock_rendering: "10/02/2026 07:32:52 PM UTC", kind: BootRestart { offset: SystemRestart } }
 
+// Step 1's row 37, the "System Restart" before row 3b: after a confirmed power-on with no power-up
+// record, the first such row is ambiguous (it may be the power-on's own boot) and 3b is a distinct reset.
+data step1_first_restart: SelWindowEvent = SelWindowEvent { record_id: 55, bmc_clock_rendering: "10/02/2026 07:32:27 PM UTC", kind: BootRestart { offset: SystemRestart } }
+
+data step1_restarts: List<SelWindowEvent> = [step1_first_restart, step1_restart]
+
 fn evidence(console: ConsoleEvidence, smpro: List<SmproPassEvidence>, census_ended: Bool) -> PowerOnEvidence {
   evidence_with(console: console, smpro: smpro, census_ended: census_ended, sel: [])
 }
@@ -147,7 +153,7 @@ fn evidence_with(console: ConsoleEvidence, smpro: List<SmproPassEvidence>, censu
 
 fn step1_account() -> PowerOnAccount {
   let lines = lines_of(text: step1_last_two_cycles)
-  mtcollins1_power_on_account(e: evidence_with(console: console_of(lines: lines, relations: [step1_relation(span: 1)]), smpro: loop_pass(), census_ended: false, sel: [step1_restart]))
+  mtcollins1_power_on_account(e: evidence_with(console: console_of(lines: lines, relations: [step1_relation(span: 1)]), smpro: loop_pass(), census_ended: false, sel: step1_restarts))
 }
 
 // ── THE NEW-FIRMWARE LOOP ─────────────────────────────────────────────────────────────────────
@@ -181,7 +187,7 @@ test fn socket_ones_refused_pair_is_an_open_question_on_the_join() -> Bool {
 test fn a_different_last_token_changes_only_the_relation() -> Bool {
   let lines = lines_of(text: step1_last_two_cycles)
   let other = AmpereCheckpointRelation { span: 1, capture: no_digest, last: AmpereCheckpointToken { digits: "00001a09" }, reference_path: "r", reference_digest: no_digest, reference_firmware: "f", reference_configuration: "c", continuation: ReferenceContinues { next: AmpereCheckpointToken { digits: "00001a0a" }, remaining: 1, occurrences: 1 } }
-  match mtcollins1_power_on_account(e: evidence_with(console: console_of(lines: lines, relations: [other]), smpro: loop_pass(), census_ended: false, sel: [step1_restart])).ending {
+  match mtcollins1_power_on_account(e: evidence_with(console: console_of(lines: lines, relations: [other]), smpro: loop_pass(), census_ended: false, sel: step1_restarts)).ending {
     RestartedRepeatedly { cycles: n, last_cycle_ended_after: r, cadence: _, console_errors: _, sel_restarts: _, watchdog: _, reset_cause: _ } =>
       n == 2 && (match r { Present { value: rel } => (rel.last.digits as String) == "00001a09" Absent => false })
     _ => false
@@ -268,7 +274,7 @@ test fn an_unrecorded_dimm_population_is_an_open_question_and_an_attested_one_is
   let r = receipt()
   let attested = mtcollins1_power_on_account(e: PowerOnEvidence {
     configuration: AttemptConfigurationReceipt { subject: r.subject, attempt: r.attempt, expected: r.expected, requested: r.requested, applied: r.applied, cpus: r.cpus,
-      dimms: PopulationOperatorAttested { rows: [SlotRow { label: "J1", populated: true }, SlotRow { label: "J17", populated: true }], receipt: "witness inspection" }, firmware: r.firmware },
+      dimms: PopulationOperatorAttested { rows: [SlotRow { label: "J1", socket: 0, populated: true }, SlotRow { label: "J17", socket: 0, populated: true }], receipt: "witness inspection" }, firmware: r.firmware },
     handoff: HandoffPoweredOn, smpro: [], console: console_of(lines: lines, relations: []), sel: SelEventsNotRead,
     watchdog: WatchdogUnobserved { reason: "witness" }, bmc_anomalies: [], census_ended: false, coverage: [],
   })
@@ -293,10 +299,12 @@ test fn two_banners_without_a_reset_are_one_cycle_with_unbound_spans() -> Bool {
 }
 
 test fn the_same_console_plus_one_typed_reset_is_two_bound_cycles() -> Bool {
-  let a = mtcollins1_power_on_account(e: evidence_with(console: console_of(lines: lines_of(text: step1_last_two_cycles), relations: []), smpro: [], census_ended: false, sel: [step1_restart]))
-  count(a.cycles) == 2
-    && (match a.cycles.last() { Present { value: c } => (match c.boundary { OpenedBySelRestart { record: r } => r.record_id == 59 _ => false }) Absent => false })
-    && !any(a.open, q => match q.question { ConsoleSpansUnbound { spans: _, cycles: _ } => true _ => false })
+  let lines = lines_of(text: run_37069907299_firmware)
+  let without = mtcollins1_power_on_account(e: evidence(console: console_of(lines: lines, relations: []), smpro: [], census_ended: false))
+  let with = mtcollins1_power_on_account(e: evidence_with(console: console_of(lines: lines, relations: []), smpro: [], census_ended: false, sel: [run_37069907299_power_up, run_37069907299_restart]))
+  count(without.cycles) == 1 && count(with.cycles) == 2
+    && (match with.cycles.last() { Present { value: c } => (match c.boundary { OpenedBySelRestart { record: r } => r.record_id == 3115 _ => false }) Absent => false })
+    && !any(with.open, q => match q.question { ConsoleSpansUnbound { spans: _, cycles: _ } => true _ => false })
 }
 
 // A power-up record and the confirmed power-on are ONE boundary.
@@ -329,7 +337,7 @@ test fn a_receipt_expecting_one_socket_is_not_degraded_by_one_active_socket() ->
 
 test fn a_cycle_one_panic_then_a_reset_and_a_stable_uefi_shell_is_not_ended_by_the_panic() -> Bool {
   let lines = concat(["NOTICE:  DRAM FW version 210525", "CP: 0ff00900"], concat(lines_of(text: run_37069907299_panic), ["NOTICE:  DRAM FW version 220414", "CP: 0ff00900", "UEFI Interactive Shell v2.2"]))
-  let a = mtcollins1_power_on_account(e: evidence_with(console: console_of(lines: lines, relations: []), smpro: [], census_ended: false, sel: [step1_restart]))
+  let a = mtcollins1_power_on_account(e: evidence_with(console: console_of(lines: lines, relations: []), smpro: [], census_ended: false, sel: step1_restarts))
   (match a.ending { StoppedWithoutRestart { last_milestone: m, ended_after: _, console_errors: _, restarts_before: n } => n == 1 && (match m { Present { value: x } => (match x.sighting.milestone { UefiShellObserved => true _ => false }) Absent => false }) _ => false })
     && any(a.errors, x => (match x.error { KernelPanic { reason: _ } => true _ => false }) && (match x.cycle { Present { value: k } => k == 1 Absent => false }))
 }
@@ -363,7 +371,7 @@ test fn the_same_line_from_two_captures_stays_two_facts() -> Bool {
   let m2 = flat_map(mtcollins1_power_on_account(e: evidence(console: c2, smpro: [], census_ended: false)).cycles, c => c.milestones)
   match m1.last() {
     Present { value: a } => match m2.last() {
-      Present { value: b } => (a.sighting.line as String) == (b.sighting.line as String) && digest_hex(d: a.capture) != digest_hex(d: b.capture) && contains(a.reader as String, "mtcollins1_console_milestones")
+      Present { value: b } => (a.sighting.line as String) == (b.sighting.line as String) && digest_hex(d: a.capture) != digest_hex(d: b.capture) && (a.reader.decl_name as String) == "mtcollins1_console_milestones"
       Absent => false
     }
     Absent => false
@@ -372,4 +380,25 @@ test fn the_same_line_from_two_captures_stays_two_facts() -> Bool {
 
 fn digest_hex(d: Sha256FileDigest) -> String {
   match d { Sha256FileDigest { digest: x } => x.hex as String Sha256FileDigestUnavailable { path: _, reason: r } => r }
+}
+
+// ── THE AMBIGUOUS FIRST RESTART (side-chat review of 21630c5) ────────────────────────────────
+
+// A confirmed power-on, no power-up record, and a first "System Restart": the record may be the
+// power-on's own boot, so it opens no cycle -- never a second cycle, never a repeated-restart ending.
+test fn a_first_restart_after_power_on_without_a_power_up_record_is_ambiguous() -> Bool {
+  let a = mtcollins1_power_on_account(e: evidence_with(console: console_of(lines: lines_of(text: step1_last_two_cycles), relations: []), smpro: [], census_ended: false, sel: [step1_first_restart]))
+  count(a.cycles) == 1
+    && any(a.open, q => match q.question { BootBoundaryAmbiguous { record_id: r } => r == 55 _ => false })
+    && (match a.ending { RestartedRepeatedly { cycles: _, last_cycle_ended_after: _, cadence: _, console_errors: _, sel_restarts: _, watchdog: _, reset_cause: _ } => false _ => true })
+}
+
+// ── EVERY PANIC IS ITS OWN ERROR, IN ITS OWN CYCLE ──────────────────────────────────────────
+
+test fn two_panics_in_two_cycles_are_two_errors_and_the_second_ends_the_attempt() -> Bool {
+  let lines = ["NOTICE:  DRAM FW version 220414", "[    9.1] Kernel panic - not syncing: first", "NOTICE:  DRAM FW version 220414", "[    9.2] Kernel panic - not syncing: second"]
+  let a = mtcollins1_power_on_account(e: evidence_with(console: console_of(lines: lines, relations: []), smpro: [], census_ended: false, sel: step1_restarts))
+  any(a.errors, x => (match x.error { KernelPanic { reason: r } => (r as String) == "first" _ => false }) && (match x.cycle { Present { value: k } => k == 1 Absent => false }))
+    && any(a.errors, x => (match x.error { KernelPanic { reason: r } => (r as String) == "second" _ => false }) && (match x.cycle { Present { value: k } => k == 2 Absent => false }))
+    && (match a.ending { StoppedWithStatedFailure { subject: _, error: e } => (match e { KernelPanic { reason: r } => (r as String) == "second" _ => false }) _ => false })
 }

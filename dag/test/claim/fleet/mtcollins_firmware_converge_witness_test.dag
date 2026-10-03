@@ -929,9 +929,11 @@ test fn whole_set_grounded_asks_for_the_boot_readback() -> Bool {
 // excerpt sha256 edbcaabead8194544201251f9a8a5eb26ba3dfbb8da1caec9627487f260d153d.
 data step1_last_two_cycles: String = "NOTICE:  DRAM FW version 220414\r\nCP: 0ff00900\r\nMEMC param:\r\n  mcu_enable_mask = 00000001 [default: 000000ff]\r\nMCU param:\r\n  ecc_en = 00000002 [default: 00000001]\r\nDRAM populated DIMMs:\r\n  SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK    \r\nCP: 3ff00100\r\nCP: 3ff00200\r\nCP: 00f01902\r\nCP: 0ff00a00\r\nCP: 0ff00b01\r\nCP: 00f01901\r\nCP: 00f01904\r\nCP: 00f02901\r\nCP: 00f01905\r\nCP: 00f02902\r\nCP: 00f02903\r\nCP: 00f02904\r\nCP: 00f01907\r\nCP: 00f01906\r\nCP: 00f01908\r\nCP: 00f01909\r\nCP: 0ff00b02\r\nCP: 0ff00c00\r\nCP: 3ff00300\r\nCP: 00001a02\r\nCP: 00001a03\r\nCP: 00001a04\r\nCP: 00001a05\r\nCP: 00f01a07\r\nCP: 00001a09\r\nCP: 00001a0a\r\nNOTICE:  DRAM FW version 220414\r\nCP: 0ff00900\r\nMEMC param:\r\n  mcu_enable_mask = 00000001 [default: 000000ff]\r\nMCU param:\r\n  ecc_en = 00000002 [default: 00000001]\r\nDRAM populated DIMMs:\r\n  SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK    \r\nCP: 3ff00100\r\nCP: 3ff00200\r\nCP: 00f01902\r\nCP: 0ff00a00\r\nCP: 0ff00b01\r\nCP: 00f01901\r\nCP: 00f01904\r\nCP: 00f02901\r\nCP: 00f01905\r\nCP: 00f02902\r\nCP: 00f02903\r\nCP: 00f02904\r\nCP: 00f01907\r\nCP: 00f01906\r\nCP: 00f01908\r\nCP: 00f01909\r\nCP: 0ff00b02\r\nCP: 0ff00c00\r\nCP: 3ff00300\r\nCP: 00001a02\r\nCP: 00001a03\r\nCP: 00001a04\r\nCP: 00001a05\r\nCP: 00f01a07\r\nCP: 00001a09\r\nCP: 00001a0a\r\n"
 
-// Two real "System Restart" rows of the step-1 loop (sel-after.txt, rows 37 and 3b), as the SEL reader
-// types them: the typed reset evidence that opens the cycles after the power-on.
+// Real "System Restart" rows of the step-1 loop (sel-after.txt), as the SEL reader types them.
+// After a confirmed power-on with no power-up record, the first such row is ambiguous (it may be the
+// power-on's own boot) and opens no cycle; each later one is a distinct reset (rows 33, 37, 3b).
 data loop_restarts: List<SelWindowEvent> = [
+  SelWindowEvent { record_id: 51, bmc_clock_rendering: "10/02/2026 07:32:01 PM UTC", kind: BootRestart { offset: SystemRestart } },
   SelWindowEvent { record_id: 55, bmc_clock_rendering: "10/02/2026 07:32:27 PM UTC", kind: BootRestart { offset: SystemRestart } },
   SelWindowEvent { record_id: 59, bmc_clock_rendering: "10/02/2026 07:32:52 PM UTC", kind: BootRestart { offset: SystemRestart } },
 ]
@@ -976,7 +978,7 @@ test fn whole_set_reaching_uefi_converges_naming_the_uncited_scp_decode() -> Boo
 // RED, the 2026-10-03 loop, derived from its capture: the set did not reach UEFI and the host restarted
 // repeatedly, so convergence refuses with the account's own ending.
 test fn the_2026_10_03_loop_after_the_set_refuses_with_the_derived_ending() -> Bool {
-  match refusal_of(verdict: run_booted(w: shape(power_off: true), records: whole_set(), boot: readback_over(lines: host_capture_lines(capture: HostCaptureLiveStream { text: step1_last_two_cycles }), restarts: loop_restarts.take(n: 1)))) {
+  match refusal_of(verdict: run_booted(w: shape(power_off: true), records: whole_set(), boot: readback_over(lines: host_capture_lines(capture: HostCaptureLiveStream { text: step1_last_two_cycles }), restarts: loop_restarts.take(n: 2)))) {
     Present { value: c } => match c { BootProgressLostAfterFirmwareSet { ending: e, last_relation: _ } => (match e { RestartedRepeatedly { cycles: n, last_cycle_ended_after: _, cadence: _, console_errors: k, sel_restarts: _, watchdog: _, reset_cause: _ } => n == 2 && k == 0 _ => false }) _ => false }
     Absent => false
   }

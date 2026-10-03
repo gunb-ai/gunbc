@@ -29,7 +29,7 @@ import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   SdrCacheDumped, SdrCacheUnread, SdrCacheNotTaken, SensorsRead, SensorsNotTaken, SmproProbed, SmproNotTaken,
   BmcUnreachable, BmcTimeout, BmcAuthRefused, BmcHttpRefused, BmcSessionUnestablished,
   bmc_curl_read_cause, bmc_ipmitool_read_cause, inventory_not_taken,
-  mtcollins1_boot_findings, harness_finding_text, processor_anomalies, mtcollins1_attempt_configuration_receipt, mtcollins1_boot_bundle_text, mtcollins1_boot_outcome_with_findings,
+  mtcollins1_boot_findings, harness_finding_text, processor_anomalies, memory_anomalies, mtcollins1_attempt_configuration_receipt, mtcollins1_boot_bundle_text, mtcollins1_boot_outcome_with_findings,
   mtcollins1_boot_console_reading, ReferenceCaptureRead, ConsoleRetained, ConsoleNotRetained, ConsoleExceedsBound, mtcollins1_boot_console_bound,
   AttemptRunId, AttemptIdentityUnavailable, BmcDeadlineReached, BmcCollectionIncomplete,
   CollectionComplete, CollectionRefused, redfish_collection_assembly, redfish_budget_refusal, member_not_reached,
@@ -44,7 +44,7 @@ import std.measure { byte_size, byte_size_count, second_count }
 import extdeps.bmc.ipmi_sdr { sdr_decode_lines }
 import extdeps.ampere.smpro_register { smpro_manufacturer_id_reg, smpro_bootstage_reg, smpro_cur_bootstage_reg, smpro_gpi_ras_err_reg, smpro_err_pmpro_type_reg }
 import gunbc.machine_intake_mtcollins1_smpro_observation { SmproProbeRaw, smpro_probe_outcome, mtcollins1_smpro_read_order }
-import gunbc.machine_intake_mtcollins1_power_on_account { AttemptConfigurationReceipt, ExpectedSockets, ProcessorsListedBelowSockets, StoppedWithoutRestart, SmproErrorRegisters, SmproRegisters, CarrierRead, CarrierRefused, CarrierPartial, mtcollins1_power_on_account_notes }
+import gunbc.machine_intake_mtcollins1_power_on_account { AttemptConfigurationReceipt, ExpectedSockets, ProcessorsListedBelowSockets, BmcAnomaly, MemoryAbsentOnSocket, SlotRow, PopulationOperatorAttested, StoppedWithoutRestart, SmproErrorRegisters, SmproRegisters, CarrierRead, CarrierRefused, CarrierPartial, mtcollins1_power_on_account_notes }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -357,13 +357,29 @@ test fn a_receipt_expecting_two_sockets_finds_one_listed_processor_short() -> Bo
   any(processor_anomalies(processors: MembersRead { members: processors_socket0_only() }, receipt: expecting), a => match a { ProcessorsListedBelowSockets { listed: l, expected: x } => l == 1 && x == 2 _ => false })
 }
 
-test fn socket1_absent_slots_are_named_by_socket() -> Bool {
-  any_contains(xs: found(bundle: bundle_socket1_absent()), pattern: "BMC reports 1 of 1 socket-1 Memory member(s) State=Absent")
+// ABSENT MEMBERS ARE JUDGED AGAINST THE RECEIPT'S POPULATION (law 6): with the production receipt
+// (nothing recorded) the socket-1 member reading Absent mints nothing; a receipt recording that slot
+// populated makes it an anomaly, and one recording it unpopulated does not.
+fn receipt_with_rows(rows: List<SlotRow>) -> AttemptConfigurationReceipt {
+  let r = mtcollins1_attempt_configuration_receipt(attempt: AttemptRunId { run_id: "witness" })
+  AttemptConfigurationReceipt { subject: r.subject, attempt: r.attempt, expected: r.expected, requested: r.requested, applied: r.applied, cpus: r.cpus,
+    dimms: PopulationOperatorAttested { rows: rows, receipt: "witness inspection" }, firmware: r.firmware }
+}
+
+fn socket1_absent_kind(xs: List<BmcAnomaly>) -> Bool {
+  any(xs, a => match a { MemoryAbsentOnSocket { socket: k, absent: _, members: _ } => k == 1 _ => false })
+}
+
+test fn an_absent_member_is_an_anomaly_only_against_a_recorded_population() -> Bool {
+  let members = MembersRead { members: concat(parsed_memory(body: memory_member_present_fixture), socket1_absent_members()) }
+  !any_contains(xs: found(bundle: bundle_socket1_absent()), pattern: "socket-1 Memory member(s) State=Absent")
+    && socket1_absent_kind(xs: memory_anomalies(memory: members, receipt: receipt_with_rows(rows: [SlotRow { label: "DIMM 1", socket: 1, populated: true }])))
+    && !socket1_absent_kind(xs: memory_anomalies(memory: members, receipt: receipt_with_rows(rows: [SlotRow { label: "DIMM 1", socket: 1, populated: false }])))
 }
 
 test fn the_findings_reach_the_one_line_refusal() -> Bool {
   match mtcollins1_boot_outcome_with_findings(outcome: exit_failure(reason: "mtcollins1 boot: host qualification REFUSED"), findings: mtcollins1_boot_findings(bundle: bundle_socket1_absent())) {
-    ExitFailure { code: _, reason: r } => contains(r, "mtcollins1 boot: host qualification REFUSED | power-on account: ") && contains(r, "socket-1 Memory member(s) State=Absent")
+    ExitFailure { code: _, reason: r } => contains(r, "mtcollins1 boot: host qualification REFUSED | power-on account: ") && contains(r, "sensor CPU1_CPU_VCORE status ns")
     ExitSuccess => false
   }
 }

@@ -67,7 +67,7 @@ import gunbc.machine_intake_mtcollins1_power_on_account {
   PowerOnHandoff, HandoffPoweredOn, HandoffNotConfirmed, SelEvidence, SelEventsRead, SelEventsNotRead,
   WatchdogUnobserved, ExpectedSockets, ExpectedTopologyNotRecorded, StimulusRequestNotRecorded,
   PopulationLiveObserved, PopulationOperatorAttested, PopulationConflicted, SlotRow, StimulusApplicationNotRecorded, PopulationNotRecorded, FirmwareReadbacksNotRecorded,
-  ProcessorsListedBelowSockets, ProcessorNotNominal, MemoryListedBelowSlots, MemoryAbsentOnSocket, MemoryNotNominal, SelHardwareEvent,
+  ProcessorsListedBelowSockets, ProcessorNotNominal, ProcessorAbsentOnExpectedSocket, MemoryListedBelowSlots, MemoryAbsentOnSocket, MemoryNotNominal, SelHardwareEvent,
   mtcollins1_power_on_account, mtcollins1_power_on_account_text, mtcollins1_power_on_account_notes,
 }
 import gunbc.machine_intake_ampere_socket_console_observation {
@@ -685,7 +685,8 @@ fn media_attach_harness(record: MtCollins1MediaAttachRecord) -> List<HarnessFind
         Absent =>
           match res.session_release {
             SessionReleased => []
-            _ => [MediaAttachSessionHeld { record: record }]
+            SessionReleaseRefused { detail: _ } => [MediaAttachSessionHeld { record: record }]
+            SessionReleaseNotAttempted => [MediaAttachSessionHeld { record: record }]
           }
       }
   }
@@ -751,7 +752,9 @@ fn handoff_media_harness(h: MtCollins1HandoffMedia) -> List<HarnessFinding> {
       concat(match hc { HandoffConfirmed => []  HandoffAttemptedUnconfirmed { reason: _ } => [HandoffUnconfirmed { handoff: h }] },
       match presentation_still_served(result: a) {
         PresentationStillReady => []
-        _ => [PresentationAfterHandoff { look: a }]
+        PresentationReadyButSessionHeld { held: _ } => [PresentationAfterHandoff { look: a }]
+        PresentationNoLongerReady { reason: _ } => [PresentationAfterHandoff { look: a }]
+        PresentationUnobserved { reason: _ } => [PresentationAfterHandoff { look: a }]
       })
   }
 }
@@ -1119,9 +1122,9 @@ fn smpro_text(s: SmproReading) -> String {
   }
 }
 
-fn sensor_anomalies(s: SensorReading) -> List<BmcAnomaly> {
+fn sensor_anomalies(s: SensorReading, receipt: AttemptConfigurationReceipt) -> List<BmcAnomaly> {
   match s {
-    SensorsRead { lines: ls, at: _ } => mtcollins1_sensor_anomalies(lines: ls, sockets: mtcollins1_census_sockets())
+    SensorsRead { lines: ls, at: _ } => mtcollins1_sensor_anomalies(lines: ls, sockets: mtcollins1_census_sockets(), expected: expected_socket_list(receipt: receipt))
     SensorsUnread { cause: _ } => []
     SensorsNotTaken { reason: _ } => []
   }
@@ -1193,10 +1196,36 @@ fn state_is_absent(state: RedfishResourceState) -> Bool {
   }
 }
 
-fn socket_absent_anomaly(ms: List<RedfishMemoryMember>, socket: Int) -> List<BmcAnomaly> {
+// ABSENCE IS JUDGED AGAINST THE RECEIPT'S POPULATION (law 6): an absent member on a socket is an
+// anomaly only when the receipt records more populated slots on that socket than the BMC shows present.
+// An explicitly unpopulated slot reading Absent is the expected state; with no recorded population,
+// absence judges nothing.
+fn socket_absent_anomaly(ms: List<RedfishMemoryMember>, socket: Int, rows: List<SlotRow>) -> List<BmcAnomaly> {
   let on = filter(ms, m => memory_socket_key(m: m) == socket)
   let absent = count(filter(on, m => state_is_absent(state: m.status.state)))
-  if absent == 0 || socket < 0 { [] } else { [MemoryAbsentOnSocket { socket: socket, absent: absent, members: count(on) }] }
+  let populated = count(filter(rows, r => r.socket == socket && r.populated))
+  if absent == 0 || socket < 0 || count(on) - absent >= populated { [] } else { [MemoryAbsentOnSocket { socket: socket, absent: absent, members: count(on) }] }
+}
+
+fn recorded_slot_rows(receipt: AttemptConfigurationReceipt) -> List<SlotRow>? {
+  match receipt.dimms {
+    PopulationLiveObserved { rows: rs, source: _ } => Present { value: rs }
+    PopulationOperatorAttested { rows: rs, receipt: _ } => Present { value: rs }
+    PopulationConflicted { readings: _ } => none
+    PopulationNotRecorded { reason: _ } => none
+  }
+}
+
+fn expected_socket_list(receipt: AttemptConfigurationReceipt) -> List<Int>? {
+  match receipt.expected { ExpectedSockets { sockets: ks, source: _ } => Present { value: ks } ExpectedTopologyNotRecorded { reason: _ } => none }
+}
+
+// "CPU 1", "Socket 1": the trailing number of the BMC's own socket rendering, or none.
+fn processor_socket_number(p: RedfishProcessorMember) -> Int? {
+  match p.socket {
+    Absent => none
+    Present { value: t } => match filter(split(s: trim(t), delimiter: " "), x => x != "").last() { Absent => none Present { value: tok } => parse_int(s: tok) }
+  }
 }
 
 fn memory_label(m: RedfishMemoryMember) -> String {
@@ -1221,7 +1250,12 @@ fn processor_anomalies(processors: MembersReading<RedfishProcessorMember>, recei
         ExpectedSockets { sockets: ks, source: _ } => if count(ps) < count(ks) { [ProcessorsListedBelowSockets { listed: count(ps), expected: count(ks) }] } else { [] }
         ExpectedTopologyNotRecorded { reason: _ } => []
       }
-      concat(short, map(filter(ps, p => state_is_down(state: p.status.state) || health_is_bad(health: p.status.health)), p => ProcessorNotNominal { member: p }))
+      let unhealthy = map(filter(ps, p => health_is_bad(health: p.status.health) || (state_is_down(state: p.status.state) && !state_is_absent(state: p.status.state))), p => ProcessorNotNominal { member: p })
+      let absent = flat_map(filter(ps, p => state_is_absent(state: p.status.state) && !health_is_bad(health: p.status.health)), p => match processor_socket_number(p: p) {
+        Absent => []
+        Present { value: k } => match expected_socket_list(receipt: receipt) { Present { value: ks } => if any(ks, j => j == k) { [ProcessorAbsentOnExpectedSocket { member: p, socket: k }] } else { [] } Absent => [] }
+      })
+      concat(short, concat(unhealthy, absent))
     }
     MembersUnread { cause: _ } => []
     MembersNotTaken { reason: _ } => []
@@ -1239,7 +1273,8 @@ fn memory_anomalies(memory: MembersReading<RedfishMemoryMember>, receipt: Attemp
       }
       let sockets = distinct_ints(xs: map(ms, m => memory_socket_key(m: m)))
       let bad = map(filter(ms, m => (state_is_down(state: m.status.state) && !state_is_absent(state: m.status.state)) || health_is_bad(health: m.status.health)), m => MemoryNotNominal { member: m })
-      concat(short, concat(flat_map(sockets, k => socket_absent_anomaly(ms: ms, socket: k)), bad))
+      let absent = match recorded_slot_rows(receipt: receipt) { Present { value: rows } => flat_map(sockets, k => socket_absent_anomaly(ms: ms, socket: k, rows: rows)) Absent => [] }
+      concat(short, concat(absent, bad))
     }
     MembersUnread { cause: _ } => []
     MembersNotTaken { reason: _ } => []
@@ -1374,7 +1409,10 @@ fn console_evidence(c: ConsoleReading) -> ConsoleEvidence {
   match c {
     ConsoleRetained { path: _, size: _, lines: _, firmware: f, firmware_error_lines: e, capture_digest: dg, dram: d, checkpoints: cp, checkpoint_relations: rs, milestones: ms, sockets: o, against_reference: _, loader: g, linux: l, modules: m, nvparam: _ } =>
       ConsoleRead { capture: dg, firmware: f, firmware_error_lines: e, dram: d, checkpoints: cp, relations: rs, milestones: ms, sockets: o, loader: g, linux: l, modules: m }
-    _ => ConsoleNotRead
+    ConsoleExceedsBound { path: _, size: _, bound: _ } => ConsoleNotRead
+    ConsoleNotRetained { path: _ } => ConsoleNotRead
+    ConsoleUnread { path: _, detail: _ } => ConsoleNotRead
+    ConsoleNotConfigured => ConsoleNotRead
   }
 }
 
@@ -1457,7 +1495,9 @@ fn chassis_coverage(p: PowerAfterAttempt) -> CarrierStanding {
   match p {
     PowerAfterUnobserved { observation: _ } => CarrierRefused { cause: "the post-attempt chassis read did not answer" }
     PowerAfterNotTaken { reason: r } => CarrierNotTaken { reason: r }
-    _ => CarrierRead
+    PoweredOffAfterCensusEnd => CarrierRead
+    PoweredOffWithoutCensusEnd => CarrierRead
+    PoweredOnAfterAttempt => CarrierRead
   }
 }
 
@@ -1535,7 +1575,7 @@ fn mtcollins1_boot_evidence(bundle: MtCollins1BootDiagnosticBundle) -> PowerOnEv
     console: console_evidence(c: bundle.console),
     sel: sel_evidence(delta: delta),
     watchdog: WatchdogUnobserved { reason: "the boot run does not read the BMC's IPMI watchdog" },
-    bmc_anomalies: concat(processor_anomalies(processors: bundle.inventory.processors, receipt: receipt), concat(memory_anomalies(memory: bundle.inventory.memory, receipt: receipt), concat(sensor_anomalies(s: bundle.sensors), sel_hardware_anomalies(delta: delta)))),
+    bmc_anomalies: concat(processor_anomalies(processors: bundle.inventory.processors, receipt: receipt), concat(memory_anomalies(memory: bundle.inventory.memory, receipt: receipt), concat(sensor_anomalies(s: bundle.sensors, receipt: receipt), sel_hardware_anomalies(delta: delta)))),
     census_ended: bundle.run.census_ended,
     coverage: mtcollins1_boot_coverage(bundle: bundle),
   }
@@ -1577,14 +1617,16 @@ fn harness_finding_text(f: HarnessFinding) -> String {
     }
     HandoffWithheldAtRecheck { handoff: h } => match h {
       HandoffMediaWithheldAtRecheck { before: b } => concat("media was ready at the gate but the pre-handoff recheck did not admit it, so no boot-device or power write was made: ", recheck_text(v: presentation_still_served(result: b)))
-      _ => "the pre-handoff recheck withheld the handoff"
+      HandoffMediaNotReached { reason: _ } => "the pre-handoff recheck withheld the handoff"
+      HandoffMediaAttempted { before: _, handoff: _, after: _ } => "the pre-handoff recheck withheld the handoff"
     }
     HandoffUnconfirmed { handoff: h } => match h {
       HandoffMediaAttempted { before: _, handoff: hc, after: _ } => match hc {
         HandoffAttemptedUnconfirmed { reason: r } => concat("the boot-device and power handoff was attempted and not confirmed: ", r)
         HandoffConfirmed => "the boot-device and power handoff was confirmed"
       }
-      _ => "the boot-device and power handoff was not attempted"
+      HandoffMediaNotReached { reason: _ } => "the boot-device and power handoff was not attempted"
+      HandoffMediaWithheldAtRecheck { before: _ } => "the boot-device and power handoff was not attempted"
     }
     PresentationAfterHandoff { look: a } => match presentation_still_served(result: a) {
       PresentationStillReady => "after the handoff the presentation was still served"
@@ -1595,7 +1637,10 @@ fn harness_finding_text(f: HarnessFinding) -> String {
     OverrideNotConsumed { consumption: c } => match c {
       OverrideStillPendingAfterAttempt => "the one-shot boot override was still pending after the attempt: the host did not boot through it"
       OverridePendingBeforeAttempt => "a boot override matching this attempt's was already pending before it was set, so its consumption cannot be attributed to this attempt"
-      _ => override_consumption_text(c: c)
+      OverrideConsumedByCensusBoot => override_consumption_text(c: c)
+      OverrideNoLongerPendingAfterAttempt => override_consumption_text(c: c)
+      OverrideNotHandedOff { reason: _ } => override_consumption_text(c: c)
+      OverrideConsumptionUnread { reason: _ } => override_consumption_text(c: c)
     }
     HostPoweredOffWithoutCensusEnd => "the host was powered off after the attempt without the census END marker"
     CredentialMayRemain => "the per-attempt Redfish netrc could not be removed; credential material may remain on the runner"

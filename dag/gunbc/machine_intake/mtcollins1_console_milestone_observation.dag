@@ -64,8 +64,8 @@ type ConsoleMilestoneSighting {
 // the span index it is in after each line, so a milestone and a checkpoint token in one span are in
 // one span by construction, whatever rule that reader uses for the span before the first banner.
 // WHERE A STATED FAILURE WAS PRINTED. The whole-capture readers (pre_os firmware statements, GRUB, the
-// EFI stub, the kernel, module decompression) decide WHAT a failure is; this reader records only the
-// LINE and SPAN each kind was first printed on, using those modules' own markers and predicates, so
+// EFI stub, the kernel, module decompression) decide WHAT a failure is; this reader records EVERY line
+// of each kind, with its index and span, using those modules' own markers and predicates, so
 // the power-on account can bind the failure to a cycle. A failure line is never a milestone.
 type ConsoleFailureLine
   = FirmwareErrorStatementLine
@@ -76,9 +76,11 @@ type ConsoleFailureLine
 
 type ConsoleFailureSighting {
   kind: ConsoleFailureLine
+  line: NonEmptyStr
   line_index: Int
   span: Int
 }
+
 
 type ConsoleMilestoneObservation {
   sightings: List<ConsoleMilestoneSighting>
@@ -126,7 +128,7 @@ fn milestone_fold_step(acc: MilestoneFold, raw: String) -> MilestoneFold {
   }
   let failed = match failure_kind_of(line: line) {
     Absent => acc.failures
-    Present { value: k } => concat(acc.failures, [ConsoleFailureSighting { kind: k, line_index: acc.index, span: spans.current.index }])
+    Present { value: k } => concat(acc.failures, [ConsoleFailureSighting { kind: k, line: line as NonEmptyStr, line_index: acc.index, span: spans.current.index }])
   }
   MilestoneFold { index: acc.index + 1, spans: spans, sightings: seen, failures: failed }
 }

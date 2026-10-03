@@ -57,16 +57,20 @@ fn mtcollins1_socket_unstructured_lines(lines: List<SdrLineResult>, socket: Int)
 
 
 // PER SOCKET, TWO KINDS OF ANOMALY. A socket sensor whose status is not "ok" is carried as the tool
-// printed it ("ns" is no reading), decoded or not; and a socket with NO sensor in the table at all is
-// its own anomaly. Either on socket 1 beside a clean socket 0 is what the socket-1 investigation
+// printed it ("ns" is no reading), decoded or not, for every socket the board's sensor names cover;
+// and a socket with NO sensor in the table at all is an anomaly ONLY when the attempt's receipt
+// EXPECTS that socket -- with its CPU removed, an empty socket's missing sensors are the expected
+// state, and with no recorded expectation absence judges nothing (law 6). Either on socket 1 beside a clean socket 0 is what the socket-1 investigation
 // asked the BMC for (gunbc.machine_intake_mtcollins1_socket1_investigation_observation
 // mtcollins1_socket1_open_hypotheses, the VRM row). No status or reading is interpreted further; the
 // power-on fold (gunbc.machine_intake_mtcollins1_power_on_account) places them on the chassis power-on stage.
-fn mtcollins1_sensor_anomalies(lines: List<SdrLineResult>, sockets: List<Int>) -> List<BmcAnomaly> {
+fn mtcollins1_sensor_anomalies(lines: List<SdrLineResult>, sockets: List<Int>, expected: List<Int>?) -> List<BmcAnomaly> {
   flat_map(sockets, k => {
     let decoded = mtcollins1_socket_sensor_lines(lines: lines, socket: k)
     let discrete = mtcollins1_socket_unstructured_lines(lines: lines, socket: k)
-    if count(decoded) == 0 && count(discrete) == 0 { [SocketSensorsAbsent { socket: k }] } else {
+    if count(decoded) == 0 && count(discrete) == 0 {
+      match expected { Present { value: ks } => if any(ks, j => j == k) { [SocketSensorsAbsent { socket: k }] } else { [] } Absent => [] }
+    } else {
       concat(map(filter(decoded, l => (l.status as String) != "ok"), l => SensorNotNominal { line: l }),
         map(filter(discrete, t => pipe_field(text: t, index: 2) != "ok" && t != ""), t => SensorLineWithoutReadingNotNominal { text: t as NonEmptyStr }))
     }

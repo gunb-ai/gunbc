@@ -45,7 +45,7 @@ import gunbc.machine_intake_bmc_secure {
 }
 import gunbc.machine_intake_mtcollins1_power_on_account {
   FirmwareSetBootReadback, BootReachedUefiAfterSet, BootProgressLostAfterSet, BootReadbackUnobservable,
-  HostEnding, RestartedRepeatedly,
+  HostEnding, RestartedRepeatedly, ReachedCensus, StoppedWithStatedFailure, StoppedWithoutRestart, HostEndingNotEstablished,
 }
 import gunbc.machine_intake_ampere_checkpoint_console_observation { AmpereCheckpointRelation }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
@@ -1094,7 +1094,10 @@ fn boot_verdict(records: List<FlashStepRecord>, boot: FirmwareSetBootReadback?) 
           match o {
             BootReachedUefiAfterSet { cycle: c, milestone: _, ending: e, degradations: _, account: _ } => match e {
               RestartedRepeatedly { cycles: _, last_cycle_ended_after: _, cadence: _, console_errors: _, sel_restarts: _, watchdog: _, reset_cause: _ } => refused(cause: BootReachedUefiThenRestartedRepeatedly { cycle: c, ending: e })
-              _ => FirmwareBaselineConverged { uncited_readbacks: uncited_readbacks(records: records) }
+              ReachedCensus => FirmwareBaselineConverged { uncited_readbacks: uncited_readbacks(records: records) }
+              StoppedWithStatedFailure { subject: _, error: _ } => FirmwareBaselineConverged { uncited_readbacks: uncited_readbacks(records: records) }
+              StoppedWithoutRestart { last_milestone: _, ended_after: _, console_errors: _, restarts_before: _ } => FirmwareBaselineConverged { uncited_readbacks: uncited_readbacks(records: records) }
+              HostEndingNotEstablished => FirmwareBaselineConverged { uncited_readbacks: uncited_readbacks(records: records) }
             }
             BootProgressLostAfterSet { ending: e, last_relation: r, account: _ } => refused(cause: BootProgressLostAfterFirmwareSet { ending: e, last_relation: r })
             BootReadbackUnobservable { account: _ } => refused(cause: BootOutcomeUnobservable { reason: "the power-on account establishes neither a UEFI milestone nor a lost-progress ending" })
