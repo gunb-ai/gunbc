@@ -30,9 +30,10 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // neither diagnostic. Without it, a wall that refused every use of the leaf would score identically
 // on the reds.
 //
-// PATH SCOPE (DESIGN 4b): source -> .dag acceptance on the seed route only. admit_callers is
-// parsed and discarded on the native route (gunbc.rung_drop admit_callers_discarded_on_the_native_route),
-// so this wall does not hold there, and nothing here claims it does. It also holds only over what a
+// PATH SCOPE (DESIGN 4b): source -> .dag acceptance on the seed route only. The native route
+// enforces admit_callers too (v2.compiler.construction_confinement; the retired drop gunbc.rung_drop
+// admit_callers_discarded_on_the_native_route), but this witness measures the seed route and claims
+// nothing about the native one. It also holds only over what a
 // run compiles: a new uncataloged mint in a module no required closure reaches is refused whenever
 // that module is next compiled, not on the pull request that adds it.
 
