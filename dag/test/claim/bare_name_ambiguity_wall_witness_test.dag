@@ -237,7 +237,36 @@ test fn the_refusal_carries_a_pasteable_import_line() -> Bool {
   )
 }
 
-// ROW 6 -- A SERVICE EXIT ARM NAMES A TYPE, NOT A VALUE. `0 => Unit` and `nonzero => String "..."`
+// ROW 7 -- A KERNEL SPELLING IS NEVER CONTESTED. Both claimants declare `String` beside their
+// pullers and the reader uses `String` bare in value position, as service declarations do. The
+// kernel String binds the substrate, not either declarer (cli_run is_substrate_vocabulary, read by
+// claim_scope_for_with_memos since gunbc.rung_drop text_boundary_identity_wall deleted the 71
+// std.string_type imports that used to hide this). The read is a service exit arm's `String`, the
+// shape the floor refused in 39 extdeps modules. MUST NOT REFUSE; without that skip the wall
+// refuses this manifest as AmbiguousBareNameRead.
+data amb_kernel_x_source: String = "module amb\n\nfn only_amb() -> Int {\n  1\n}\n\ntype String = Int\n"
+data amb_kernel_y_source: String = "module elsewhere.y\n\nfn only_elsewhere() -> Int {\n  2\n}\n\ntype String = Int\n"
+data amb_kernel_user_source: String = "module amb.user\n\nservice probe.Svc {\n  operation Run {\n    input { a: Int }\n    output { r: Int from \"r\" }\n    transport shell { argv: [\"true\"] }\n    exit {\n      0 => Unit\n      nonzero => String \"failed\"\n    }\n    mock_response {\n      0 => { r: 1 } \"ok\"\n    }\n  }\n}\n\nfn pull() -> Int {\n  only_amb() + only_elsewhere()\n}\n"
+
+fn amb_kernel_scope() -> ClaimScopeFixtureOutcome {
+  claim_scope_fixture(
+    MultiModuleCompileFixture {
+      sources: [
+        fixture_source("amb.dag", amb_kernel_x_source),
+        fixture_source("elsewhere/y.dag", amb_kernel_y_source),
+        fixture_source("amb/user.dag", amb_kernel_user_source)
+      ],
+      entry: "amb/user.dag"
+    },
+    "amb.user"
+  )
+}
+
+test fn a_kernel_spelling_declared_twice_is_not_contested() -> Bool {
+  claim_scope_was_accepted(o: amb_kernel_scope())
+}
+
+// ROW 8 -- A SERVICE EXIT ARM NAMES A TYPE, NOT A VALUE. `0 => Unit` and `nonzero => String "..."`
 // are parsed by `parse_type_expr`; v1.compiler.parse `parse_exit_entries_acc` used to re-mint that
 // type as a free `ExprVar`, so the classifier counted a TYPE read as a value read and this wall
 // refused the kernel `Unit` whenever two reachable modules declared the spelling (the corpus pair

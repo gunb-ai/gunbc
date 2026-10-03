@@ -175,6 +175,9 @@ data nfr_reason_typed_census_undetermined_node_kind: String = "the v1 checker le
 
 data nfr_reason_landed_after_typed_census: String = "a top-level wildcard arm over a closed coproduct that landed on main after the ca5ed1724b typed census, while that census's roster was still in review (#12980); the floor's diff-scoped typed walk named it on the roster PR's own run. Un-migrated modeling (DESIGN §6), rostered so the ratchet stays armed at unrostered=0"
 
+data nfr_reason_eval_projection_receiver_not_aggregate: String = "field projection at eval: RuntimeAggregate is the one RuntimeValue variant that carries named fields, and every other variant refuses with the same located eval_rejected_projection_receiver_not_aggregate; enumerating them would clone one refusal arm per variant. Landed with gunbc#12506's field-projection eval route; declared at landing so the ratchet arms with the code"
+
+data nfr_dissolve_eval_projection_receiver_not_aggregate: DissolutionCondition = unbound_dissolution(description: "RuntimeValue exposes a typed field-bearing projection (derived from its declaration, dag/std/algebra) so eval reads fields without a per-variant match, and this row deletes")
 
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/fabric_control_plane_live_probe.dag::fci1_slot_prestate_equal" }, reason: nfr_reason_fci1_prestate_equal, dissolution: nfr_dissolve_fci1_prestate_equal },
@@ -1266,7 +1269,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/emit_copy_qualification_transport.dag::result_at" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/emit_copy_qualification_transport.dag::runtime_for_case" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/emit_host_transport.dag::c_emit_host_green_holds" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/extdeps_scope_placement_gate.dag::diff_added_paths_observation" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/fabric_control_plane_live_probe.dag::fci1_assert_cell_admitted" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/fabric_control_plane_live_probe.dag::fci1_assert_exact_absent_to_free_control" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/fabric_control_plane_live_probe.dag::fci1_assert_exact_free_to_free_control" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
@@ -1290,7 +1292,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/frontier_ingestion_probe.dag::take_census_over" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/frontier_ingestion_probe.dag::verify_roster" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/json_parse_ladder.dag::weight_map_members" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/merge_admission_walk.dag::merge_target_refresh" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/native_app_attest.dag::chain_untrusted" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/native_app_attest.dag::counter_refusal_is" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/publication_publisher.dag::newly_public_subject_receipt_refusal" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
@@ -1460,13 +1461,13 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "dag/gunbc/spark/pair_serving_authority_log.dag::placement_fold_step" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/spark/pair_serving_authority_log.dag::preparation_consumption" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/spark/pair_serving_authority_log.dag::preparation_is_pending" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "dag/gunbc/spark/pair_serving_d0.dag::d0_decide" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "dag/gunbc/spark/pair_serving_d0.dag::d0_decide_suspend" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/spark/pair_serving_d0.dag::d0_dispatch" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/spark/pair_serving_d0.dag::d0_settle_admitted_over" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/spark/pair_serving_d0.dag::d0_transaction" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/spark/pair_serving_d0.dag::fabric_storage_append_principal_unrefused_trigger" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/spark/pair_serving_d0.dag::reconcile_occupancy" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "dag/gunbc/spark/pair_serving_d0_door.dag::d0_gate" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "dag/gunbc/spark/pair_serving_d0_door.dag::d0_gate_rerun_by_broker" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/spark/vllm_observed.dag::vllm_models_data_standing" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/spark/vllm_observed.dag::vllm_models_entry_id" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/spark/vllm_observed.dag::vllm_models_route_standing_from_entry" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
@@ -1934,6 +1935,11 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "src/v2/compiler/body_lowering_fold.dag::body_lower_where_leaf_atom_optional" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "src/v2/compiler/body_lowering_fold.dag::body_lower_where_predicate" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "src/v2/std/qualified_name.dag::lexical_reference_label_optional" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow {
+    subject: PathSubject { path: "src/v2/compiler/05_eval.dag::eval_field_projection_of_receiver" },
+    reason: nfr_reason_eval_projection_receiver_not_aggregate,
+    dissolution: nfr_dissolve_eval_projection_receiver_not_aggregate,
+  },
 ]
 
 fn non_fold_residue_frontier_units() -> List<String> {
