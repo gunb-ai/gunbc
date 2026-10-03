@@ -1,6 +1,7 @@
 module v2.extdeps.languages.dag
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
-import v2.std.model_core { bool_model_core }
+import v2.std.model_core { AlgebraInhabitanceDecl, bool_model_core }
+import v2.std.algebra_structure_signature { boolean_algebra_node, ordered_ring_node }
 import v2.std.language_model { LanguageModel }
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured, TargetEmitHostRuntimeRow }
@@ -221,7 +222,7 @@ import v2.std.integer {
 import v2.std.text { String }
 import extdeps.numeric.base16 { base16_digit_rows }
 import std.unicode.types { unicode_scalar }
-import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_from_node, qualified_name_snoc }
+import v2.std.qualified_name { QualifiedName, declaration_reference_node, qualified_name_from_dotted_string, qualified_name_from_node, qualified_name_snoc }
 import v2.std.namespace_alias { AliasBindingRow }
 import v2.extdeps.languages.fidelity {
   DeclaredNormalized,
@@ -4192,6 +4193,42 @@ data dag_kernel_value_type_roster: List<KernelValueType> = [
     foreign_declaration: ForeignDeclarationRefuses
   }
 ]
+
+// THE DAG LANGUAGE'S PRIMITIVES IN THE STRUCTURE-SIGNATURE WORLD, as every other language model states its
+// own (v2.extdeps.languages.rust rust_integer_algebra_inhabitance, rust_bool_algebra_inhabitance; swift,
+// java, lean, cpp, python likewise): the kernel Int inhabits the ordered ring and the kernel Bool the boolean
+// algebra, each over its kernel value-type node from dag_kernel_value_type_roster. An operator names its field
+// in THIS vocabulary (v2.std.compilers.target_model canonical_operation_op_add is ^ring_field_add, op_or is
+// ^lattice_field_join), so a reader asking whether a type carries an operator's field asks these rows.
+// THE FACT IS NOT RESTATED: each row's WITNESS is a reference to the std value that already IS the
+// inhabitance -- v2.std.integer int_ordered_ring: OrderedRing<Int> and v2.std.logic bool_boolean_algebra:
+// BooleanAlgebra<Bool> -- the same way v2.extdeps.languages.cpp cpp_bool_grounding cites the latter. That the
+// std.algebra record (add/mul/join) and the signature node (^ring_field_add, ..) are two representations of one
+// structure with no declared mapping is gunbc.recurring_failure_mode
+// algebra_structure_has_two_representations_with_no_declared_mapping, not resolved here.
+// CONSUMER: the v2 infer algebra-operator arm (the Bool join and Int add through one route), landing in the
+// change stacked on this one; until then these rows are a declared frontier read by that change alone.
+fn dag_int_algebra_inhabitance() -> AlgebraInhabitanceDecl {
+  let inhabitant = integer_int_type_node()
+  AlgebraInhabitanceDecl {
+    algebra: ordered_ring_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "v2.std.integer.int_ordered_ring"), occurrence_id: OccurrenceSynthetic)
+  }
+}
+
+fn dag_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
+  let inhabitant = bool_node()
+  AlgebraInhabitanceDecl {
+    algebra: boolean_algebra_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "v2.std.logic.bool_boolean_algebra"), occurrence_id: OccurrenceSynthetic)
+  }
+}
+
+fn dag_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  [dag_int_algebra_inhabitance(), dag_bool_algebra_inhabitance()]
+}
 
 fn dag_kernel_value_type_binding(row: KernelValueType) -> Optional<Symbol> {
   match row.value_type.kind {
