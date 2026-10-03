@@ -3,6 +3,7 @@ module extdeps.ampere.nvparam
 import v2.std.algebra { filter }
 import v2.std.collection { empty_map, map_insert, map_lookup }
 import std.types { Int, List, Map, NonEmptyStr, String }
+import std.measure { ByteSize, byte_size }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.optional { Present }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -56,7 +57,7 @@ type NvParamKey {
 
 // NVPARAM_SIZE (Silicon/Ampere/AmpereAltraPkg/Include/Library/NVParamLib.h `#define NVPARAM_SIZE 0x8`):
 // the stride between keys, under the header's own name.
-data nvparam_size: Int = 8
+data nvparam_size: ByteSize = byte_size(count: 8)
 
 // Each region's first and last key, as the header defines them: NV_PREBOOT_PARAM_START 0x0000 and
 // NV_PREBOOT_PARAM_MAX (86 * 8) + start; NV_MANU_PARAM_START 0x4000 and NV_MANU_PARAM_MAX (66 * 8) +
