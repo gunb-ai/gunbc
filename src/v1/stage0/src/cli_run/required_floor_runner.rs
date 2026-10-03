@@ -13133,12 +13133,20 @@ mod pure_producer_share_tests {
                     .expect("verdict"),
                 vec!["RosterRemovedIdentity dag/b.dag#g (was ActiveDebt)".to_string()]
             );
+            // A FILE DELETION IS TERMINAL (#12787, v2.workflow.floor_unimported_bare_provider_debt):
+            // a retired row may move to FileDeleted, but no retirement may move off it.
             assert_eq!(
                 judge
                     .judge_edit(&read(roster(&a_fixed)), &read(roster(&a_deleted)))
                     .expect("verdict"),
+                Vec::<String>::new()
+            );
+            assert_eq!(
+                judge
+                    .judge_edit(&read(roster(&a_deleted)), &read(roster(&a_fixed)))
+                    .expect("verdict"),
                 vec![
-                "RosterRetirementChanged dag/a.dag#f (Retired ImportsFixed -> Retired FileDeleted)"
+                "RosterRetirementChanged dag/a.dag#f (Retired FileDeleted -> Retired ImportsFixed)"
                     .to_string()
             ]
             );
