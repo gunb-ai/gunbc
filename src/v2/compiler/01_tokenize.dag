@@ -972,7 +972,7 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 annotations: Cons {
                   head: UnboundSourceAnnotation {
                     annotation_class: class,
-                    lexeme: chars_to_string(chars: lexeme, start: 0, end: length(xs: lexeme)),
+                    lexeme: lexeme,
                     placement: placement_from_line_prefix(indent_only: acc.line_prefix_indent_only),
                     file: acc.file,
                     start: acc.pos,
@@ -1032,7 +1032,7 @@ fn lex_walk_emit_token(acc: LexWalkAcc, class: Symbol, lexeme: v2.std.text.Strin
         tokens: Cons {
           head: Token {
             class: class,
-            lexeme: chars_to_string(chars: lexeme, start: 0, end: length(xs: lexeme)),
+            lexeme: lexeme,
             file: acc.file,
             start: acc.pos,
             end: acc.pos + lexeme_utf8_octet_count(lexeme: lexeme)

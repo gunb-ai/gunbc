@@ -1184,7 +1184,7 @@ fn python_target_model() -> TargetModel {
 }
 
 fn python_lex_rule(token_class: Symbol, text: String) -> LexRule {
-  TokenRule { token_class: token_class, pattern: LiteralPattern { text: chars(s: text) } }
+  TokenRule { token_class: token_class, pattern: LiteralPattern { text: text } }
 }
 
 fn python_ident_lex_pattern() -> LexPattern {

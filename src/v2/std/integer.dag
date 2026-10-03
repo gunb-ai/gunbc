@@ -1179,7 +1179,7 @@ fn integer_string_to_decimal_digits_step(
 }
 
 fn integer_string_to_decimal_digits_optional(s: String) -> Optional<FreeMonoid<DecimalDigit>> {
-  integer_string_to_decimal_digits_step(s: chars(s: s), acc: Empty)
+  integer_string_to_decimal_digits_step(s: s, acc: Empty)
 }
 
 fn integer_decimal_nonzero_magnitude_to_int(m: DecimalNonZeroMagnitude) -> Int {
