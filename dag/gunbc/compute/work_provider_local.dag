@@ -1519,7 +1519,7 @@ data compute_stuck_reservation_remedy: String = "THE REMEDY IS compute_recover_c
 // decision.
 fn compute_read_stored_outcome(materialization: ComputeMaterialization) -> ComputeStoreRead {
   match materialization.plan {
-    ComputeMemoized => compute_store_read(req: materialization.request)
+    ComputeMemoized => compute_store_read(root: materialization.root, req: materialization.request)
     ComputeRecomputed { verdict: _ } => ComputeStoreNotConsulted
   }
 }
@@ -1623,6 +1623,7 @@ type ComputeMaterializationJudgment
   | ComputeMaterializationRefused { detail: String }
 
 type ComputeMaterialization {
+  root: MaterializationStoreRoot
   request: ArtifactRequest
   plan: ComputeMaterializationPlan
 }
@@ -1698,15 +1699,15 @@ type ComputeStoreOpen
 
 // Initialization is idempotent (an existing marker opens as the store it names), so opening and
 // initializing are one call; a missing root refuses, it is never created elsewhere.
-fn compute_store_open() -> ComputeStoreOpen {
-  match local_store_initialize(root: compute_store_root, instance_label: "gunbc-compute" as NonEmptyStr) {
+fn compute_store_open(root: MaterializationStoreRoot) -> ComputeStoreOpen {
+  match local_store_initialize(root: root, instance_label: "gunbc-compute" as NonEmptyStr) {
     LocalStoreInitializationRefused { root_path, cause } => ComputeStoreOpenRefused { detail: join(["the materialization store at ", root_path, " could not be initialized: ", compute_store_unavailable_detail(c: cause)], "") }
     LocalStoreInitialized { opening } => ComputeStoreOpened { opening: opening }
   }
 }
 
-fn compute_store_read(req: ArtifactRequest) -> ComputeStoreRead {
-  match compute_store_open() {
+fn compute_store_read(root: MaterializationStoreRoot, req: ArtifactRequest) -> ComputeStoreRead {
+  match compute_store_open(root: root) {
     ComputeStoreOpenRefused { detail } => ComputeStoreRefused { detail: detail }
     ComputeStoreOpened { opening } =>
       match opening {
@@ -1764,7 +1765,7 @@ fn compute_store_commit(materialization: ComputeMaterialization, layout: Compute
           if !log.success {
             ComputeCommitRefused { detail: join(["the run log at ", layout.log_path, " could not be read, and a record without its log is not the run that happened: ", log.error], "") }
           } else {
-            match compute_store_open() {
+            match compute_store_open(root: materialization.root) {
               ComputeStoreOpenRefused { detail } => ComputeCommitRefused { detail: detail }
               ComputeStoreOpened { opening } =>
                 match opening {
@@ -1817,8 +1818,8 @@ type ComputeDependencyRead
   = ComputeDependencyResolved { dependency: ComputeDependency }
   | ComputeDependencyRefused { detail: String }
 
-fn compute_dependency_read(build: ArtifactRequest) -> ComputeDependencyRead {
-  match compute_store_open() {
+fn compute_dependency_read(root: MaterializationStoreRoot, build: ArtifactRequest) -> ComputeDependencyRead {
+  match compute_store_open(root: root) {
     ComputeStoreOpenRefused { detail } => ComputeDependencyRefused { detail: detail }
     ComputeStoreOpened { opening } =>
       match opening {
@@ -1924,7 +1925,7 @@ fn compute_provide_leaf(
     ComputeMaterializationRefused { detail } =>
       compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: detail } }, subject: subject, op: op)
     ComputeMaterializationPlanned { plan } => {
-      let materialization = ComputeMaterialization { request: request, plan: plan }
+      let materialization = ComputeMaterialization { root: compute_store_root, request: request, plan: plan }
       match compute_read_stored_outcome(materialization: materialization) {
         ComputeStoreServed { ending, identity: stored_identity, document } =>
           ProvideAttached { identity: stored_identity, ending: ending, document: document, host_record: HostRecordWritten }
@@ -2295,7 +2296,7 @@ fn compute_provide_dependent(instance: HostDashboardInstance, commit: String, su
   if provide_result_succeeded(r: build) {
     let build_identity = provide_result_identity(r: build)
     let identity = compute_work_identity(subject: subject, op: op, toolchain: toolchain)
-    match compute_dependency_read(build: ComputeWorkRequest { subject: subject, operation: work_default_build(), toolchain: toolchain }) {
+    match compute_dependency_read(root: compute_store_root, build: ComputeWorkRequest { subject: subject, operation: work_default_build(), toolchain: toolchain }) {
       ComputeDependencyRefused { detail } =>
         provide_result_with_host_record(
           r: compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: DependencyNotSucceeded { dependency_identity: build_identity, ending: join(["succeeded, but ", detail], "") } }, subject: subject, op: op),
