@@ -114,11 +114,11 @@ thread_local! {
         const { std::cell::Cell::new(std::time::Duration::ZERO) };
 }
 
-/// The lexing and the heads parse are demanded by whichever walk reaches a file first, so they are
-/// recorded HERE, at the producer, as their own `[pre-entry]` rows. Timed at the first demander
+/// The lexing, the newline index and the heads parse are demanded by whichever walk reaches a file
+/// first, so they are recorded HERE, at the producer, as their own `[pre-entry]` rows. Timed at the first demander
 /// instead, they were reported under that demander's name: the module path index is built inside
-/// the import-edge facts, so `graph_facts_import_edges` carried the whole pool's lexing and heads
-/// parse while its own work is a line scan.
+/// the import-edge facts, so `graph_facts_import_edges` carried the whole pool's acquisition and
+/// heads parse while its own work is a line scan.
 fn attribute(row: &'static str, elapsed: std::time::Duration) {
     super::pre_entry_phase::record(row, super::pre_entry_phase::PhaseScale::Tree, elapsed);
     ATTRIBUTED.with(|a| a.set(a.get() + elapsed));
@@ -145,8 +145,10 @@ fn acquire(file: &str, content: &str) -> Rc<Acquired> {
         file.to_string(),
         crate::extdeps_languages_dag_syntax::dag_parse_environment(),
     );
-    let newline_index = build_newline_index(file.to_string(), content.to_string());
     attribute("pool_source_tokenize", lex_started.elapsed());
+    let newline_started = std::time::Instant::now();
+    let newline_index = build_newline_index(file.to_string(), content.to_string());
+    attribute("pool_source_newline_index", newline_started.elapsed());
     let acquired = Rc::new(Acquired {
         content: Rc::new(content.to_string()),
         artifact,

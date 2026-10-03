@@ -361,9 +361,10 @@ pub(crate) fn build_module_graph_facts_live_uncached(
     //
     // Import-bearing files emit no reference edges at all (see `reference_resolution_facts` pass 2),
     // so on an un-stripped file the union is a no-op and the graph is byte-identical to before.
-    // THREE ROWS, EACH NET OF THE OTHERS. The import-edge facts are the module path index's first
-    // demander, and that index is the first demander of every pool file's lexing and heads parse
-    // (`pool_acquire`, which records those two as their own rows). So the index is forced here on
+    // FIVE ROWS, EACH NET OF THE OTHERS. The import-edge facts are the module path index's first
+    // demander, and that index is the first demander of every pool file's lexing, newline index
+    // and heads parse (`pool_acquire`, which records those three as `pool_source_tokenize`,
+    // `pool_source_newline_index` and `pool_heads_parse`). So the index is forced here on
     // the key the facts read it under and timed net of the acquisitions it forces, and the facts
     // row is what remains: the walk, the read and the import-line scan.
     let acquired_before = super::pool_acquire::attributed();
