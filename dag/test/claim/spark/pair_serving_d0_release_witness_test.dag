@@ -321,7 +321,7 @@ fn rw_permitted(req: AuthorizationRequest<D0Subject>, issued: String, expires: S
   }
 }
 
-data rw_standing_basis: D0AuthorizationBasis = D0BasisStandingGrant { identity: "group-a-dev-standing-grant-2026-10-03" as NonEmptyStr }
+data rw_standing_basis: D0AuthorizationBasis = D0BasisStandingGrant { identity: group_a_dev_standing_grant.identity }
 
 fn rw_two_runs(h: ContentHash, f: fn(String, String) -> Bool) -> Bool {
   let req = rw_release_request(group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), h: h)
@@ -340,7 +340,7 @@ fn rw_two_runs(h: ContentHash, f: fn(String, String) -> Bool) -> Bool {
 test fn rw_a_standing_release_binds_one_lifecycle_across_windows() -> Bool {
   rw_with(scenario: fn(h) {
     rw_two_runs(h: h, f: fn(a, b) {
-      a == b && string_contains(s: a, pattern: "standing_grant=group-a-dev-standing-grant-2026-10-03") && !string_contains(s: a, pattern: "expires_at=")
+      a == b && string_contains(s: a, pattern: join(["standing_grant=", group_a_dev_standing_grant.identity as String], "")) && !string_contains(s: a, pattern: "expires_at=")
     })
   })
 }

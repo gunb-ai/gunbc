@@ -5,7 +5,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import v2.std.optional { Present, Absent }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import product.capacity.event_chain { EventId }
-import gunbc.auth.standing_operator_grant { standing_grant_covers, StandingHostEffectRecover }
+import gunbc.auth.standing_operator_grant { StandingOperatorGrant, standing_grant_covers, StandingHostEffectRecover }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, fabric_group_of_host, fabric_group_wire }
 import gunbc.spark.pair_serving_d0 { d0_standing_grants }
 import gunbc.spark.pair_serving_d0_door { StandingGrantRowStanding, StandingGrantRowOnMain, StandingGrantRowNotOnMain, fresh_grant_row_standing }
@@ -59,30 +59,46 @@ fn recover_claim_selection(host: HostIdentity, effects: List<HostEffectRecord>) 
   }
 }
 
-fn recover_grant_covers(host: HostIdentity, host_group: FabricGroup) -> Bool {
-  any(d0_standing_grants, standing => standing_grant_covers(g: standing, group: host_group, effect: StandingHostEffectRecover, hosts: [host]))
+// THE COVERING GRANT ITSELF, not a yes/no: its identity is what the release records as its authority, so the
+// provenance is read from the grant that covered rather than restated (review 74852).
+fn recover_covering_grant(host: HostIdentity, host_group: FabricGroup) -> StandingOperatorGrant? {
+  first(filter(d0_standing_grants, standing => standing_grant_covers(g: standing, group: host_group, effect: StandingHostEffectRecover, hosts: [host])))
 }
 
-fn recover_authority_causes(host: HostIdentity, row: StandingGrantRowStanding) -> List<String> {
+type RecoverAuthority
+  = RecoverAuthorizedBy { grant: StandingOperatorGrant }
+  | RecoverUnauthorized { cause: String }
+
+fn recover_authority(host: HostIdentity, row: StandingGrantRowStanding) -> RecoverAuthority {
   match row {
-    StandingGrantRowNotOnMain { cause: c } => [join(["the standing grant is not honored: ", c], "")]
+    StandingGrantRowNotOnMain { cause: c } => RecoverUnauthorized { cause: join(["the standing grant is not honored: ", c], "") }
     StandingGrantRowOnMain =>
       match fabric_group_of_host(host: host) {
-        Absent => [join([host as String, " is in no fabric group, so no grant can cover it"], "")]
+        Absent => RecoverUnauthorized { cause: join([host as String, " is in no fabric group, so no grant can cover it"], "") }
         Present { value: host_group } =>
-          if recover_grant_covers(host: host, host_group: host_group) { [] as List<String> }
-          else { [join(["no standing grant covers recovering a host-effect claim on ", host as String, " (", fabric_group_wire(g: host_group) as String, ")"], "")] }
+          match recover_covering_grant(host: host, host_group: host_group) {
+            Present { value: covering } => RecoverAuthorizedBy { grant: covering }
+            Absent => RecoverUnauthorized { cause: join(["no standing grant covers recovering a host-effect claim on ", host as String, " (", fabric_group_wire(g: host_group) as String, ")"], "") }
+          }
       }
   }
 }
 
+fn recover_authority_causes(host: HostIdentity, row: StandingGrantRowStanding) -> List<String> {
+  match recover_authority(host: host, row: row) {
+    RecoverAuthorizedBy { grant: _ } => [] as List<String>
+    RecoverUnauthorized { cause: c } => [c]
+  }
+}
+
 fn recover_receipt(r: HostEffectRecord, run_id: NonEmptyStr, standing: ClaimantStanding) -> NonEmptyStr {
-  join(["fleet-converge run ", run_id as String, " under the Group A standing grant: claim ", r.id as String, " (", r.purpose as String, ") recorded by ", r.executor as String, " at ", to_string(r.recorded_at), " for a ", to_string(second_count(s: r.term)), " term; claimant declared ", claimant_standing_wire(c: standing)], "") as NonEmptyStr
+  join(["fleet-converge run ", run_id as String, " under the covering standing grant: claim ", r.id as String, " (", r.purpose as String, ") recorded by ", r.executor as String, " at ", to_string(r.recorded_at), " for a ", to_string(second_count(s: r.term)), " term; claimant declared ", claimant_standing_wire(c: standing)], "") as NonEmptyStr
 }
 
 fn standing_host_effect_recover_over(host: HostIdentity, standing: ClaimantStanding, run_id: NonEmptyStr, row: StandingGrantRowStanding, run: fn(List<String>) -> ArgvRun, store: FabricStorageBinding, executor: NonEmptyStr, at: EpochSecs) -> ProcessExit {
-  let causes = recover_authority_causes(host: host, row: row)
-  if length(causes) != 0 { exit_failure(reason: join(causes, "; ")) } else {
+  match recover_authority(host: host, row: row) {
+    RecoverUnauthorized { cause: c } => exit_failure(reason: c)
+    RecoverAuthorizedBy { grant: covering } =>
     match placement_read(store: store) {
       PlacementUnread { step: st, reason: why } => exit_failure(reason: join(["the host-placement partition could not be read at ", st, ", so no claim is selected: ", why], ""))
       PlacementReadAt { head: _, effects: effs, preparations: _ } =>
@@ -92,7 +108,7 @@ fn standing_host_effect_recover_over(host: HostIdentity, standing: ClaimantStand
           RecoverClaimSelected { record: r } =>
             match settle_host_effect_over(
               handle: HostEffectHandle { host: host, residue: r.residue, claim: r.id },
-              provenance: RecoveryAuthorized { claim: r.id, claimant: standing, authorized_by: "group-a-dev-standing-grant-2026-10-03" as NonEmptyStr, receipt: recover_receipt(r: r, run_id: run_id, standing: standing) },
+              provenance: RecoveryAuthorized { claim: r.id, claimant: standing, authorized_by: covering.identity, receipt: recover_receipt(r: r, run_id: run_id, standing: standing) },
               run: run, store: store, executor: executor, at: at,
             ) {
               HostEffectStillHeld { cause: c } => exit_failure(reason: c)
@@ -108,7 +124,10 @@ fn standing_host_effect_recover_over(host: HostIdentity, standing: ClaimantStand
   }
 }
 
-// THE DISPATCHED ENTRY. SPARK_CONVERGE_TARGET names the host (one, never all); the claimant's disposition
+// THE DISPATCHED ENTRY. DECLARED FRONTIER (review 74852, DESIGN §3c): its caller is the fleet-converge
+// mode `spark_host_effect_recover` (gunbc.fleet.fleet_converge_workflow), added in gunbc#13040, which is
+// stacked on this change; this PR lands the authority and the witnessed fold the mode will dispatch.
+// TRIGGER: #13040 merging this change and adding that mode; until then nothing invokes it. SPARK_CONVERGE_TARGET names the host (one, never all); the claimant's disposition
 // is the closed input GUNBC_HOST_EFFECT_CLAIMANT (terminated | abandoned); the run's own id is the receipt's
 // anchor. The executor is the host-placement store's host, as for the operator-run recovery.
 data standing_recover_claimant_env: NonEmptyStr = "GUNBC_HOST_EFFECT_CLAIMANT" as NonEmptyStr
