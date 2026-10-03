@@ -868,7 +868,11 @@ fn kvm_observer_release_unit_hold(host: HostIdentity, run_id: NonEmptyStr) -> Pr
   }
 }
 
-fn kvm_observer_release_on_store_host(executor: UnitHoldStoreExecutor, run_id: NonEmptyStr) -> ProbeHoldReleaseOutcome {
+fn kvm_observer_release_on_store_host(executor: UnitHoldStoreExecutor, run_id: NonEmptyStr) -> ProbeHoldReleaseOutcome
+  admit_callers: [
+    decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "kvm_observer_release_unit_hold"),
+  ]
+{
   let key = executor.subject.key
   match probe_hold_release_decision(observed: observe_file_hold(root: unit_hold_store_root, key: key), run_id: run_id) {
     ProbeHoldFreeNoop => ProbeHoldAlreadyFree
@@ -980,11 +984,7 @@ fn maintenance_hold_take(host: String) -> ProcessExit {
     return exit_failure(reason: "maintenance hold: no host named; pass --arg host=<managed host>")
   }
   match admit_maintenance_hold_in(hosts: managed_hosts(), host: trim(s: host) as NonEmptyStr) {
-    MaintenanceHoldAdmitted { hold: h } =>
-      match unit_hold_store_executor(subject: h.subject) {
-        UnitHoldNotOnStoreHost { reason: r } => exit_failure(reason: concat("maintenance hold: ", r as String))
-        UnitHoldOnStoreHost { executor: e } => maintenance_hold_take_admitted(hold: h, executor: e)
-      }
+    MaintenanceHoldAdmitted { hold: h } => maintenance_hold_take_admitted(hold: h)
     MaintenanceHoldHostRefused { admission: a } => exit_failure(reason: maintenance_hold_admission_refusal(admission: MaintenanceHoldHostRefused { admission: a }))
     MaintenanceHoldNoReasonVariable { host: x } => exit_failure(reason: maintenance_hold_admission_refusal(admission: MaintenanceHoldNoReasonVariable { host: x }))
   }
@@ -994,22 +994,36 @@ fn maintenance_hold_label(hold: AdmittedMaintenanceHold) -> String {
   concat("maintenance hold on ", hold.subject.key as String)
 }
 
-// THE REASON IS READ AND THE STORE TOUCHED ONLY HERE, and this takes the executor carrier: a process
-// that is not on the store host has no value to call it with, so it refuses before either.
-fn maintenance_hold_take_admitted(hold: AdmittedMaintenanceHold, executor: UnitHoldStoreExecutor) -> ProcessExit {
+// THE EXECUTOR IS DERIVED HERE FROM THE HOLD'S OWN SUBJECT, NEVER SUPPLIED BESIDE IT. A function taking
+// an admitted hold and an executor as two arguments could be handed hold A with an executor minted for
+// subject B on the same store host, and would then write B's slot under A's reason. So neither helper
+// below has an executor parameter: each mints it from hold.subject, and the slot key every store call
+// uses is that executor's own subject's. Both are sealed to their entry. A process that is not on the
+// store host refuses in the first arm, before the reason is read or the store touched.
+fn maintenance_hold_take_admitted(hold: AdmittedMaintenanceHold) -> ProcessExit
+  admit_callers: [
+    decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "maintenance_hold_take"),
+  ]
+{
   let label = maintenance_hold_label(hold: hold)
-  let reason = actions_variable_trimmed(name: hold.reason_env)
-  if reason == "" {
-    return exit_failure(reason: concat(hold.reason_env as String, " is unset; a maintenance hold names why the unit is held"))
-  }
-  match file_hold_acquire(root: unit_hold_store_root, slot_key: executor.subject.key, requested_owner: operator_maintenance_owner(reason: reason as NonEmptyStr)) {
-    FileHoldAcquired { slot_key: _, owner: _, generation: _ } => ExitSuccess
-    FileHoldOccupied { slot_key: _, holder: h, generation: _ } =>
-      exit_failure(reason: join([label, ": unit already held by ", h as String], ""))
-    FileHoldAcquireLost { slot_key: _ } => exit_failure(reason: concat(label, ": lost the race; re-run"))
-    FileHoldAcquireStoreUnavailable { slot_key: _, cause: _ } => exit_failure(reason: concat(label, ": store unavailable; the unit is NOT held"))
-    FileHoldSlotUndecodable { slot_key: _, generation: _, detail: d } => exit_failure(reason: join([label, ": slot undecodable: ", d as String], ""))
-    FileHoldKeyNotSlotAddressable { slot_key: _ } => exit_failure(reason: concat(label, ": key not slot-addressable"))
+  match unit_hold_store_executor(subject: hold.subject) {
+    UnitHoldNotOnStoreHost { reason: r } => exit_failure(reason: concat("maintenance hold: ", r as String))
+    UnitHoldOnStoreHost { executor: e } => {
+      let reason = actions_variable_trimmed(name: hold.reason_env)
+      if reason == "" {
+        exit_failure(reason: concat(hold.reason_env as String, " is unset; a maintenance hold names why the unit is held"))
+      } else {
+        match file_hold_acquire(root: unit_hold_store_root, slot_key: e.subject.key, requested_owner: operator_maintenance_owner(reason: reason as NonEmptyStr)) {
+          FileHoldAcquired { slot_key: _, owner: _, generation: _ } => ExitSuccess
+          FileHoldOccupied { slot_key: _, holder: h, generation: _ } =>
+            exit_failure(reason: join([label, ": unit already held by ", h as String], ""))
+          FileHoldAcquireLost { slot_key: _ } => exit_failure(reason: concat(label, ": lost the race; re-run"))
+          FileHoldAcquireStoreUnavailable { slot_key: _, cause: _ } => exit_failure(reason: concat(label, ": store unavailable; the unit is NOT held"))
+          FileHoldSlotUndecodable { slot_key: _, generation: _, detail: d } => exit_failure(reason: join([label, ": slot undecodable: ", d as String], ""))
+          FileHoldKeyNotSlotAddressable { slot_key: _ } => exit_failure(reason: concat(label, ": key not slot-addressable"))
+        }
+      }
+    }
   }
 }
 
@@ -1020,18 +1034,32 @@ fn maintenance_hold_release(host: String) -> ProcessExit {
     return exit_failure(reason: "maintenance hold: no host named; pass --arg host=<managed host>")
   }
   match admit_maintenance_hold_in(hosts: managed_hosts(), host: trim(s: host) as NonEmptyStr) {
-    MaintenanceHoldAdmitted { hold: h } =>
-      match unit_hold_store_executor(subject: h.subject) {
-        UnitHoldNotOnStoreHost { reason: r } => exit_failure(reason: concat("maintenance hold: ", r as String))
-        UnitHoldOnStoreHost { executor: e } => maintenance_hold_release_admitted(hold: h, executor: e)
-      }
+    MaintenanceHoldAdmitted { hold: h } => maintenance_hold_release_admitted(hold: h)
     MaintenanceHoldHostRefused { admission: a } => exit_failure(reason: maintenance_hold_admission_refusal(admission: MaintenanceHoldHostRefused { admission: a }))
     MaintenanceHoldNoReasonVariable { host: x } => exit_failure(reason: maintenance_hold_admission_refusal(admission: MaintenanceHoldNoReasonVariable { host: x }))
   }
 }
 
-fn maintenance_hold_release_admitted(hold: AdmittedMaintenanceHold, executor: UnitHoldStoreExecutor) -> ProcessExit {
-  let label = maintenance_hold_label(hold: hold)
+fn maintenance_hold_release_admitted(hold: AdmittedMaintenanceHold) -> ProcessExit
+  admit_callers: [
+    decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "maintenance_hold_release"),
+  ]
+{
+  match unit_hold_store_executor(subject: hold.subject) {
+    UnitHoldNotOnStoreHost { reason: r } => exit_failure(reason: concat("maintenance hold: ", r as String))
+    UnitHoldOnStoreHost { executor: e } => maintenance_hold_release_on_store_host(executor: e)
+  }
+}
+
+// The release needs no maintenance policy beyond the admission its caller passed, so it takes the
+// executor alone: the slot it reads and frees, and the name it prints, are that executor's subject's.
+// Sealed to the helper above.
+fn maintenance_hold_release_on_store_host(executor: UnitHoldStoreExecutor) -> ProcessExit
+  admit_callers: [
+    decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "maintenance_hold_release_admitted"),
+  ]
+{
+  let label = concat("maintenance hold on ", executor.subject.key as String)
   match observe_file_hold(root: unit_hold_store_root, key: executor.subject.key) {
     HoldSlotAbsent => exit_failure(reason: concat(label, ": no hold was ever taken"))
     HoldSlotFree { generation: _, released_by: b } => exit_failure(reason: join([label, ": already free (released by ", b as String, ")"], ""))
