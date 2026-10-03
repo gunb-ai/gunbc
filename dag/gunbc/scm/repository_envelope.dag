@@ -3476,6 +3476,7 @@ type RepositoryDocumentProtocol
   = RepositoryProtocolRetiredFormat { found: String }
   | RepositoryProtocolUnrecognizedFormat { found: String }
   | RepositoryProtocolUnrecognizedIdentityRule { found: String }
+  | RepositoryProtocolIndexHasNoObjectRoster { found: String }
   | RepositoryProtocolNotAProtocolRefusal
 
 fn repository_document_protocol(cause: RepositoryDecodeRefusal) -> RepositoryDocumentProtocol {
@@ -3487,7 +3488,7 @@ fn repository_document_protocol(cause: RepositoryDecodeRefusal) -> RepositoryDoc
     RepositoryDecodeObjectTableRefused { cause: _ } => RepositoryProtocolNotAProtocolRefusal
     RepositoryShardedIndexIsNotWhole { found: _ } => RepositoryProtocolNotAProtocolRefusal
     RepositoryShardNotDecodable { detail: _ } => RepositoryProtocolNotAProtocolRefusal
-    RepositoryIndexHasNoObjectRoster { found: _ } => RepositoryProtocolNotAProtocolRefusal
+    RepositoryIndexHasNoObjectRoster { found: f } => RepositoryProtocolIndexHasNoObjectRoster { found: f }
     RepositoryObjectRosterMalformed { detail: _ } => RepositoryProtocolNotAProtocolRefusal
     RepositoryMemberReadRefused { cause: _ } => RepositoryProtocolNotAProtocolRefusal
     RepositoryCommitRootReferenceUnresolved { reference: _ } => RepositoryProtocolNotAProtocolRefusal
