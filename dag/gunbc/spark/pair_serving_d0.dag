@@ -1910,7 +1910,13 @@ fn d0_single_lifecycle_admits(group: FabricGroup, escalation_id: NonEmptyStr) ->
 // msg_eb268a0a): the Group A release-to-fleet, whose escalation is the release row's
 // (gunbc.spark.pair_serving_d0_authorization d0_release_requests). Same terms: Group A only, that one
 // lifecycle and its reruns, refused once the row retires.
-data d0_release_lifecycle_escalation_id: NonEmptyStr = "d0-group-a-release-glm53-2026-10-03" as NonEmptyStr
+// THE ID MOVED ONCE, AND WHY: the first lifecycle under "d0-group-a-release-glm53-2026-10-03" froze its
+// filing at revision 593e333 and then could not reach the approval broker on srv1 (fleet-converge run
+// 37096004282: no claim taken, no authority write). A frozen filing refuses every other revision, so that
+// lifecycle can never finish once the door changes; it is inert, and the release runs as a new lifecycle
+// under this id, admitted by the operator's standing Group A ruling (gunbc.auth.standing_operator_grant
+// group_a_dev_standing_grant, 2026-10-03) on the same single-lifecycle terms.
+data d0_release_lifecycle_escalation_id: NonEmptyStr = "d0-group-a-release-glm53-standing-2026-10-03" as NonEmptyStr
 
 fn d0_single_lifecycle_admits_under(standing: RungDropStanding, group: FabricGroup, escalation_id: NonEmptyStr) -> Bool {
   match standing {

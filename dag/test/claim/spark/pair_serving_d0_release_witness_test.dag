@@ -4,7 +4,7 @@ import std.logic { Bool }
 import std.types { String, NonEmptyStr, List }
 import std.nat { Nat }
 import v2.std.optional { Present, Absent }
-import std.measure { kibibyte, mebibyte }
+import std.measure { kibibyte, mebibyte, second }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, content_hash_equal }
 import std.temporal_effect { HeldLease, held_lease, LeaseEpoch, LeaseRunningExpected }
 import product.placement_supply { HostIdentity }
@@ -13,7 +13,7 @@ import extdeps.nvidia.system_management_interface { UsedMemoryReported }
 import extdeps.linux.proc_net_tcp { TcpSocketRow }
 import gunbc.compute.host_occupancy { HostOccupancyRead, HostOccupancyUnread, ServingUnitActive, GpuComputeProcess }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
-import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB, fabric_group_hosts }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_hosts }
 import gunbc.rung_drop { Standing, Retired }
 import gunbc.spark.pair_serving_realization { spark_pair_head_unit_name, spark_pair_worker_unit_name }
 import gunbc.spark.pair_incumbent_identity { DeclaredPairRealizationUnavailable }
@@ -21,7 +21,9 @@ import gunbc.spark.released_baseline { QuiescentReservedBaseline }
 import gunbc.spark.pair_serving_authority {
   PairServingGroupAuthority, PairServingActive, ReleasedToFleet, FencedRefusal, PairRealizationUnestablished, pair_serving_committed_hosts,
 }
-import std.scoped_authorization { OperatorGrant, AttemptIdentity, ClaimedBy, authorization_scope_eq, parse_intent_scopes }
+import std.scoped_authorization { OperatorGrant, AttemptIdentity, ClaimedBy, authorization_scope_eq, parse_intent_scopes, AuthorizationRequest, authorize, AuthorizationPermitted, AuthorizationRefused }
+import gunbc.spark.pair_serving_d0_door { d0_standing_grant_for }
+import gunbc.auth.standing_operator_grant { group_a_dev_standing_grant, standing_grant_covers, standing_grant_authorization, StandingImageProduce }
 import gunbc.spark.pair_serving_d0 {
   D0Subject, D0SuspendForSuccessor, D0ReleaseToFleet, RankVacancyReading, RankOccupancyReading, D0Observation,
   IncumbentReading, IncumbentDidNotAnswer, IncumbentAnsweredUnread, IncumbentRouteUnread,
@@ -223,7 +225,7 @@ test fn rw_a_release_intent_round_trips_under_the_release_scope() -> Bool {
 // THE RELEASE IS REQUESTED BY ITS ROW: the row's escalation yields a release subject for Group A, any
 // other escalation the suspension for the keyed successor.
 test fn rw_the_approved_release_row_names_group_a_and_its_escalation() -> Bool {
-  match d0_release_row_for(group: FabricGroupA, escalation_id: "d0-group-a-release-glm53-2026-10-03" as NonEmptyStr) {
+  match d0_release_row_for(group: FabricGroupA, escalation_id: d0_release_lifecycle_escalation_id) {
     Absent => false
     Present { value: r } => string_contains(s: r.approval as String, pattern: "operator approval 2026-10-03")
   }
@@ -237,4 +239,63 @@ test fn rw_the_store_wall_admits_only_the_ruled_release_lifecycle() -> Bool {
     && !d0_single_lifecycle_admits_under(standing: Standing, group: FabricGroupA, escalation_id: "d0-group-a-something-else" as NonEmptyStr)
     && !d0_single_lifecycle_admits_under(standing: Standing, group: FabricGroupB, escalation_id: d0_release_lifecycle_escalation_id)
     && !d0_single_lifecycle_admits_under(standing: Retired { trigger_fired: "witness" as NonEmptyStr }, group: FabricGroupA, escalation_id: d0_release_lifecycle_escalation_id)
+}
+
+// ── THE STANDING OPERATOR GRANT (gunbc.auth.standing_operator_grant) ────────────────────────────────
+
+fn rw_release_request(group: FabricGroup, hosts: List<HostIdentity>, h: ContentHash) -> AuthorizationRequest<D0Subject> {
+  AuthorizationRequest {
+    escalation_id: d0_release_lifecycle_escalation_id,
+    scopes: [d0_release_scope()],
+    subject: D0Subject { group: group, hosts: hosts, operation: D0ReleaseToFleet { cause: "witness cause" as NonEmptyStr, approval: "witness approval" as NonEmptyStr } },
+    purpose: "witness release" as NonEmptyStr,
+    attempt: "tx-rel" as AttemptIdentity,
+    intent_hash: h,
+    destructive: true,
+  }
+}
+
+// THE POSITIVE CONTROL: a Group A release over srv5-srv8 is admitted under the standing grant, and the
+// grant it mints is permitted by std.scoped_authorization authorize over that exact request.
+test fn rw_a_group_a_release_is_admitted_under_the_standing_grant() -> Bool {
+  rw_with(scenario: fn(h) {
+    let req = rw_release_request(group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), h: h)
+    match d0_standing_grant_for(request: req) {
+      Absent => false
+      Present { value: g } =>
+        match authorize(authorization: standing_grant_authorization(g: g, request: req, issued: "2026-10-03T05:10:00Z", expires: "2026-10-03T05:40:00Z"), request: req, observed_at: "2026-10-03T05:11:00Z") {
+          AuthorizationPermitted { grant: _ } => true
+          AuthorizationRefused { cause: _ } => false
+        }
+    }
+  })
+}
+
+// THE SAME REQUEST FOR GROUP B IS NOT COVERED: it goes to the broker, and refuses without it.
+test fn rw_the_same_release_for_group_b_is_not_covered() -> Bool {
+  rw_with(scenario: fn(h) {
+    match d0_standing_grant_for(request: rw_release_request(group: FabricGroupB, hosts: fabric_group_hosts(g: FabricGroupB), h: h)) {
+      Present { value: _ } => false
+      Absent => true
+    }
+  })
+}
+
+// AN EFFECT OUTSIDE THE SCOPE IS NOT COVERED: a host outside srv5-srv8, and a suspension (an effect the
+// grant does not name) both fall back to the broker.
+test fn rw_an_effect_outside_the_scope_is_not_covered() -> Bool {
+  rw_with(scenario: fn(h) {
+    let foreign_host = match d0_standing_grant_for(request: rw_release_request(group: FabricGroupA, hosts: concat(fabric_group_hosts(g: FabricGroupA), ["srv9" as HostIdentity]), h: h)) { Present { value: _ } => false  Absent => true }
+    let suspend = AuthorizationRequest {
+      escalation_id: d0_release_lifecycle_escalation_id,
+      scopes: [d0_required_scope()],
+      subject: D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), operation: D0SuspendForSuccessor { successor: h, cleanup: QuiescentReservedBaseline, term: second(count: 1000) } },
+      purpose: "witness suspend" as NonEmptyStr,
+      attempt: "tx-rel" as AttemptIdentity,
+      intent_hash: h,
+      destructive: true,
+    }
+    foreign_host && match d0_standing_grant_for(request: suspend) { Present { value: _ } => false  Absent => true }
+      && !standing_grant_covers(g: group_a_dev_standing_grant, group: FabricGroupA, effect: StandingImageProduce, hosts: [] as List<HostIdentity>)
+  })
 }
