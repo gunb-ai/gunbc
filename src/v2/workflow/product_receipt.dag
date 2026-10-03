@@ -121,7 +121,7 @@ type BoundaryRefusalCause
   | ManifestSourceReadFailed
   | IngestRowShortfall
   | AdmissionReasonUnrecognized { reason: String }
-  | EmitterRejected { causes: List<DiagnosticCauseTally> }
+  | EmitterRejected { causes: List<DiagnosticCauseTally>, advisories: List<DiagnosticCauseTally> }
   | EmittedHardRefusalsPresent { count: Int }
   | AssemblyRefused
   | EmittedCargoManifestUnreadable
@@ -218,12 +218,18 @@ fn boundary_refusal_cause_label(cause: BoundaryRefusalCause) -> String {
     IngestRowShortfall => "ingest row shortfall"
     AdmissionReasonUnrecognized { reason: reason } =>
       concat("the admission authority refused for a reason this receipt does not model: ", reason)
-    EmitterRejected { causes: causes } =>
+    EmitterRejected { causes: causes, advisories: advisories } =>
       concat(
-        "emitter refused -- diagnostics below are ONE MODULE'S, not the closure's, count: ",
+        "emitter refused -- diagnostics below are ONE MODULE'S, not the closure's, fatal causes: ",
         concat(
           to_string(diagnostic_tally_total(tally: causes)),
-          diagnostic_tally_render(tally: causes)
+          concat(
+            diagnostic_tally_render(tally: causes),
+            concat(
+              "; advisories carried (not causes): ",
+              concat(to_string(diagnostic_tally_total(tally: advisories)), diagnostic_tally_render(tally: advisories))
+            )
+          )
         )
       )
     EmittedHardRefusalsPresent { count: count } =>

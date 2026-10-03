@@ -1,0 +1,52 @@
+module v2.test.claim.advisories.fatal_first_readers
+
+import v2.workflow.compile_door_ledger { DoorLedgerRow, DoorRefused, all_refused_causes_attributed }
+import v2.workflow.realization_attempt { first_located_cause }
+import v2.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  NonEmptyDiagnostics,
+  Unavailable,
+  invariant_port_locus
+}
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+
+// Advisories step 2: a chain's cause is its FATAL element (the last), never its head. These claims
+// supply chains at each reader's interface (DESIGN section 3) rather than running a front end.
+
+fn residue_headed_chain(fatal: Symbol) -> NonEmptyDiagnostics {
+  NonEmptyDiagnostics {
+    head: Diagnostic {
+      reason: ^parse_grammar_choice_overlap_residue,
+      at: invariant_port_locus(port: ^fatal_first_readers, invariant: ^parse_grammar_choice_overlap_residue),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    },
+    tail: [
+      Diagnostic {
+        reason: fatal,
+        at: invariant_port_locus(port: ^fatal_first_readers, invariant: fatal),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      }
+    ]
+  }
+}
+
+// THE PROGRAM'S RED CONTROL AT THE REALIZATION SWEEP. Two refusals share the overlap residue as
+// their head and differ in their fatal cause; the exact cause must be each one's fatal.
+test fn realization_cause_is_each_chains_fatal_under_a_shared_residue_head_holds() -> Bool {
+  (first_located_cause(ds: residue_headed_chain(fatal: ^normalize_rejected)) == ^normalize_rejected)
+    && (first_located_cause(ds: residue_headed_chain(fatal: ^resolve_reason_unbound_symbol)) == ^resolve_reason_unbound_symbol)
+}
+
+// THE DOOR HISTOGRAM IS ATTRIBUTED AT FATAL GRAIN. A refused row whose cause is owned only at
+// FatalGrain (body_lowering_reason_call_argument_unread has no HeadGrain row) is attributed; the
+// head-grain lookup refused it. An unowned cause still is not.
+test fn door_ledger_attributes_a_fatal_grain_only_cause_holds() -> Bool {
+  all_refused_causes_attributed(rows: [
+    DoorLedgerRow { module_path: "a.dag", outcome: DoorRefused { reason: ^body_lowering_reason_call_argument_unread } }
+  ])
+    && !all_refused_causes_attributed(rows: [
+      DoorLedgerRow { module_path: "b.dag", outcome: DoorRefused { reason: ^fatal_first_readers_unowned_cause } }
+    ])
+}

@@ -13,7 +13,7 @@ import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.collection { list_at_optional }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.communication.medium { Medium }
-import v2.std.diagnostic { Accepted, Rejected, Outcome, Diagnostic, NonEmptyDiagnostics, Textual }
+import v2.std.diagnostic { Accepted, Rejected, Outcome, Diagnostic, NonEmptyDiagnostics, Textual, diagnostics_fatal, diagnostics_fatal_reason }
 import v2.std.node { Node, Edge, TypeNode, Arrow, Conj, Authored, Symbol, node_synthetic, symbol_lexeme }
 import v2.std.optional { Optional, Present, Absent }
 import v2.std.algebra { fold_list, length }
@@ -70,15 +70,10 @@ type EntryRealizationAttempt {
   standing: RealizationAttemptStanding
 }
 
+// The exact cause is the chain's FATAL element (its last), never its head: an advisory prepended
+// to the refusal (the grammar overlap residue heads every module's chain) only rode along.
 fn first_located_cause(ds: NonEmptyDiagnostics) -> Symbol {
-  let residue = ^parse_grammar_choice_overlap_residue
-  if !(ds.head.reason == residue) {
-    ds.head.reason
-  } else {
-    fold_list(xs: ds.tail, empty: ds.head.reason, cons: fn(acc, d) {
-      if (acc == residue) && !(d.reason == residue) { d.reason } else { acc }
-    })
-  }
+  diagnostics_fatal_reason(d: ds)
 }
 
 fn attempt_refused(entry: String, phase: RealizationPhase, cause: Symbol) -> EntryRealizationAttempt {
@@ -93,8 +88,10 @@ fn attempt_refused_at(entry: String, phase: RealizationPhase, cause: Symbol, loc
   }
 }
 
+// The file is the FATAL element's when its locus names one; otherwise the first file any element
+// of the chain names, so a cause located only by port does not lose the file the chain recorded.
 fn first_located_file(ds: NonEmptyDiagnostics) -> String {
-  let head_file = match ds.head.at {
+  let head_file = match diagnostics_fatal(d: ds).at {
     Textual { file: f, extent: _ } => symbol_lexeme(sym: f)
     _ => ""
   }

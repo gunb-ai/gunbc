@@ -124,11 +124,14 @@ test fn grammar_coverage_dag_tree_receipt_by_execution() -> Bool {
     && (receipt.rejected_count == 0)
 }
 
+// The reason is the rejection's FATAL cause. These two v1 files used to report the grammar overlap
+// residue, the advisory that heads every module's chain; their parse actually stops on leftover
+// tokens.
 test fn grammar_coverage_v1_core_file_reject_locus_by_execution() -> Bool {
   grammar_coverage_file_reject_locus_matches(
     receipt: grammar_coverage_file_receipt(rel_path: "src/v1/00_core.dag"),
     stage: "parse",
-    reason: ^parse_grammar_choice_overlap_residue
+    reason: ^parse_g0_tokens_remain
   )
 }
 
@@ -136,7 +139,7 @@ test fn grammar_coverage_v1_tokenize_file_reject_locus_by_execution() -> Bool {
   grammar_coverage_file_reject_locus_matches(
     receipt: grammar_coverage_file_receipt(rel_path: "src/v1/01_tokenize.dag"),
     stage: "parse",
-    reason: ^parse_grammar_choice_overlap_residue
+    reason: ^parse_g0_tokens_remain
   )
 }
 
@@ -145,7 +148,7 @@ test fn grammar_coverage_v1_rejected_rows_identity_by_execution() -> Bool {
   grammar_coverage_rejected_row_present(
     rows: receipt.rejected_rows,
     stage: "parse",
-    reason: ^parse_grammar_choice_overlap_residue
+    reason: ^parse_g0_tokens_remain
   )
     && (grammar_coverage_rejected_row_count_sum(rows: receipt.rejected_rows) == 2)
 }

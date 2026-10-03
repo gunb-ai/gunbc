@@ -193,7 +193,8 @@ import v2.std.diagnostic {
   diagnostics_singleton,
   outcome_accepted,
   outcome_rejected,
-  outcome_with_diagnostics
+  outcome_with_diagnostics,
+  diagnostics_fatal
 }
 import v2.std.node { Arrow, Atom, ComputationNode, Edge, Node, NodeFold, NodeKind, Positional, Symbol, TypeNode, fold_node, symbol_intern_lexeme, symbol_lexeme, Authored, StructuralLabel }
 import v2.compiler.inferred_tree { AuthoredOccurrenceCollision, authored_occurrence_collisions }
@@ -780,7 +781,7 @@ fn apply_compile_lens_introspect(
       outcome_with_diagnostics(value: w, diagnostics: od)
     Rejected { diagnostics: d } =>
       outcome_with_diagnostics(
-        value: witness_violates(diagnostic: d.head),
+        value: witness_violates(diagnostic: diagnostics_fatal(d: d)),
         diagnostics: Some { diagnostics: d }
       )
   }

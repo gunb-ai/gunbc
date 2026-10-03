@@ -8,7 +8,7 @@ import v2.lens.coverage { dedupe_snoc }
 import v2.std.algebra { fold_list, length }
 import std.algebra { list_append }
 import v2.std.collection { List }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol, symbol_identity_digest }
@@ -136,15 +136,15 @@ fn grammar_coverage_ingest_source_text(
   let lm = dag_language_model()
   match tokenize(text: source_text, file: file, rules: lm.lex) {
     Rejected { diagnostics: d } =>
-      ParseRejected { stage: "tokenize", reason: d.head.reason }
+      ParseRejected { stage: "tokenize", reason: diagnostics_fatal_reason(d: d) }
     Accepted { value: ts, diagnostics: _ } =>
       match parse_module(tokens: ts, grammar: lm.grammar) {
         Rejected { diagnostics: d } =>
-          ParseRejected { stage: "parse", reason: d.head.reason }
+          ParseRejected { stage: "parse", reason: diagnostics_fatal_reason(d: d) }
         Accepted { value: artifact, diagnostics: _ } =>
           match v2.compiler.normalize.normalize(parse_tree: artifact.tree) {
             Rejected { diagnostics: d } =>
-              ParseRejected { stage: "normalize", reason: d.head.reason }
+              ParseRejected { stage: "normalize", reason: diagnostics_fatal_reason(d: d) }
             Accepted { value: _, diagnostics: _ } =>
               ParsedClean
           }

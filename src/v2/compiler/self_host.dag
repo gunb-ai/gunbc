@@ -15,7 +15,8 @@ import v2.std.diagnostic {
   Rejected,
   Unavailable,
   diagnostics_singleton,
-  outcome_accepted
+  outcome_accepted,
+  diagnostics_fatal
 }
 import v2.std.find_witness {
   CandidateSet,
@@ -307,7 +308,7 @@ fn stage_emission_equality(
         }
       }
     Rejected { diagnostics: d } =>
-      Violates { diagnostic: d.head }
+      Violates { diagnostic: diagnostics_fatal(d: d) }
   }
 }
 
