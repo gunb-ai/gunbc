@@ -131,26 +131,29 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::{
     GlobalBareAmbiguousBinding, GlobalBareUniqueBinding,
 };
 pub use crate::v1_compiler_infer_env::{
-    bare_name_miss_diagnostic, binding_declares_name, build_unit_variant_index,
-    census_declaration_type_env, declaration_node_of_ref, declaration_provenance_of_ref,
-    declaration_ref_of_declaration_node, declaration_ref_of_type_node,
-    declaration_substitution_basis, effective_visible_binding, empty_symbol_index,
-    empty_type_env_cache, env_with_type_variable_bindings, global_bare_is_ambiguous,
+    ancestry_lookup, ancestry_names, bare_name_miss_diagnostic, binding_declares_name,
+    build_unit_variant_index, census_declaration_type_env, declaration_node_of_ref,
+    declaration_provenance_of_ref, declaration_ref_of_declaration_node,
+    declaration_ref_of_type_node, declaration_substitution_basis, effective_visible_binding,
+    empty_ancestry_view, empty_surface_pool, empty_symbol_index, empty_type_env_cache,
+    env_with_type_variable_bindings, global_bare_is_ambiguous,
     global_bare_strict_ambiguity_candidates, inductive_fields_for, inductive_fields_list_to_map,
-    is_recursive_type, is_recursive_type_by_name, listed_import_required_bare_call_blocked,
-    lookup_binding_by_name, lookup_binding_on_chain, lookup_type, lookup_type_by_name,
-    lookup_type_for, merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded,
-    node_with_children, node_with_inferred, put_inductive_field, put_inductive_field_cross,
+    is_recursive_type, is_recursive_type_by_name, is_type_variable_name,
+    listed_import_required_bare_call_blocked, lookup_binding_by_name, lookup_binding_on_chain,
+    lookup_type, lookup_type_by_name, lookup_type_for, merge_inductive_fields,
+    merge_type_env_cache, merge_type_env_cache_guarded, node_with_children, node_with_inferred,
+    overlay_skips_kernel_name, put_inductive_field, put_inductive_field_cross,
     qualified_all_but_last, qualify_borrowed_inferred, qualify_borrowed_type_names,
-    qualify_decl_reference_positions, str_bindings_from_bindings, symbol_index_insert,
-    symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
-    text_crossing_by_identity, text_representation_by_identity, text_representation_is_text_arm,
+    qualify_decl_reference_positions, str_bindings_from_bindings, surface_contested_walk,
+    surface_pool_admit, surface_reach_of, symbol_index_insert, symbol_index_insert_decl,
+    symbol_index_insert_service, symbol_index_lookup, text_crossing_by_identity,
+    text_representation_by_identity, text_representation_is_text_arm,
     text_representation_is_unidentified, text_representations_cross, type_reference_declaration,
     type_reference_declaration_ref, unit_variant_index_shadow_insert,
 };
 pub use crate::v1_compiler_infer_env::{
-    GlobalBareCandidate, GlobalBareLookupState, GuardedTypeEnvCacheMerge, ServiceCensusEntry,
-    SymbolIndex, TypeBinding, TypeEnv, TypeEnvCache, TypeEnvCacheMergeConflict,
+    AncestryView, GlobalBareCandidate, GlobalBareLookupState, ServiceCensusEntry, SurfaceImport,
+    SurfacePool, SymbolIndex, TypeBinding, TypeEnv, TypeEnvCache, TypeEnvCacheMergeConflict,
     UnitVariantContribution,
 };
 use crate::v1_compiler_infer_items::ItemKind::{
@@ -16002,7 +16005,8 @@ pub fn record_field_type_is_unresolved_param(
                             }
                             __found
                         };
-                        let conv = is_type_variable_name(fname.clone());
+                        let conv =
+                            crate::v1_compiler_infer_env::is_type_variable_name(fname.clone());
                         (in_params.clone() || conv.clone())
                     }
                 }
@@ -23258,13 +23262,6 @@ pub fn infer_items(
     })
 }
 
-pub fn is_type_variable_name(name: String) -> bool {
-    (((((name.clone() == "T".to_string()) || (name.clone() == "K".to_string()))
-        || (name.clone() == "V".to_string()))
-        || (name.clone() == "MappedElement".to_string()))
-        || (name.clone() == "FoldAccumulator".to_string()))
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ArgGenericFoldState {
     pub results: Rc<Vec<Rc<ArgInferResult>>>,
@@ -23881,12 +23878,6 @@ pub fn type_env_cache_from_bindings(
     cycle_set_str: Rc<HashMap<String, bool>>,
 ) -> Rc<TypeEnvCache> {
     {
-        let str_bindings = Rc::new(v1_rt::map_values(&bindings)).iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-            |acc: Rc<HashMap<String, Rc<TypeBinding>>>, b: Rc<TypeBinding>| {
-                v1_rt::rc_map_insert(acc, b.name.clone(), b.clone())
-            },
-        );
         let deps_map = Rc::new(v1_rt::map_values(&bindings)).iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
             |acc: Rc<HashMap<String, Rc<Vec<String>>>>, b: Rc<TypeBinding>| {
@@ -23899,33 +23890,23 @@ pub fn type_env_cache_from_bindings(
         );
         Rc::new(TypeEnvCache {
             deps_map: deps_map.clone(),
-            str_bindings: str_bindings.clone(),
             cycle_set_str: cycle_set_str.clone(),
             variant_locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
         })
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ParentCacheRow {
-    pub import_path: String,
-    pub cache: Rc<TypeEnvCache>,
-}
-
 pub fn union_parent_type_env_caches(
     resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
-) -> Rc<GuardedTypeEnvCacheMerge> {
+) -> Rc<TypeEnvCache> {
     {
         let parent_caches = Rc::new({
             let mut __result = Vec::new();
             for imp in resolved_imports.iter().cloned() {
                 __result.extend(
                     (*match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
-                        Some(parent) => Rc::new(vec![Rc::new(ParentCacheRow {
-                            import_path: imp.module_path.clone(),
-                            cache: parent.interface.clone().cache.clone(),
-                        })]),
+                        Some(parent) => Rc::new(vec![parent.interface.clone().cache.clone()]),
                         std::option::Option::None => Rc::new(vec![]),
                     })
                     .iter()
@@ -23935,10 +23916,7 @@ pub fn union_parent_type_env_caches(
             __result
         });
         match parent_caches.clone().first().cloned() {
-            std::option::Option::None => Rc::new(GuardedTypeEnvCacheMerge {
-                cache: crate::v1_compiler_infer_env::empty_type_env_cache(),
-                conflicts: Rc::new(vec![]),
-            }),
+            std::option::Option::None => crate::v1_compiler_infer_env::empty_type_env_cache(),
             Some(head) => Rc::new(
                 parent_caches
                     .clone()
@@ -23950,17 +23928,9 @@ pub fn union_parent_type_env_caches(
             .iter()
             .cloned()
             .fold(
-                Rc::new(GuardedTypeEnvCacheMerge {
-                    cache: head.cache.clone(),
-                    conflicts: Rc::new(vec![]),
-                }),
-                |acc: Rc<GuardedTypeEnvCacheMerge>, row: Rc<ParentCacheRow>| {
-                    crate::v1_compiler_infer_env::merge_type_env_cache_guarded(
-                        acc.cache.clone(),
-                        row.cache.clone(),
-                        row.import_path.clone(),
-                        acc.conflicts.clone(),
-                    )
+                head.clone(),
+                |acc: Rc<TypeEnvCache>, cache: Rc<TypeEnvCache>| {
+                    crate::v1_compiler_infer_env::merge_type_env_cache_guarded(acc, cache.clone())
                 },
             ),
         }
@@ -24197,7 +24167,7 @@ pub fn type_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) -> Rc<T
                             parent_env.intern_table.clone(),
                             ident.clone(),
                         );
-                        if is_type_variable_name(name.clone()) {
+                        if crate::v1_compiler_infer_env::is_type_variable_name(name.clone()) {
                             acc.clone()
                         } else {
                             match v1_rt::map_get(&parent_env.bindings.clone(), ident.clone()) {
@@ -24217,7 +24187,7 @@ pub fn type_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) -> Rc<T
                 .fold(
                     v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
                     |acc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| {
-                        if is_type_variable_name(name.clone()) {
+                        if crate::v1_compiler_infer_env::is_type_variable_name(name.clone()) {
                             acc.clone()
                         } else {
                             match v1_rt::map_get(&parent_env.str_bindings.clone(), name.clone()) {
@@ -24229,30 +24199,6 @@ pub fn type_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) -> Rc<T
                         }
                     },
                 );
-            let filtered_ancestry =
-                Rc::new(v1_rt::map_keys(&parent_env.ancestry_str_bindings.clone()))
-                    .iter()
-                    .cloned()
-                    .fold(
-                        v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-                        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| {
-                            if is_type_variable_name(name.clone()) {
-                                acc.clone()
-                            } else {
-                                match v1_rt::map_get(
-                                    &parent_env.ancestry_str_bindings.clone(),
-                                    name.clone(),
-                                ) {
-                                    Some(binding) => v1_rt::rc_map_insert(
-                                        acc.clone(),
-                                        name.clone(),
-                                        binding.clone(),
-                                    ),
-                                    std::option::Option::None => acc.clone(),
-                                }
-                            }
-                        },
-                    );
             let rebuilt_index = crate::v1_compiler_infer_env::build_unit_variant_index(
                 filtered_str.clone(),
                 parent_env.parents.clone(),
@@ -24262,7 +24208,7 @@ pub fn type_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) -> Rc<T
                 module_path: module_path.clone(),
                 bindings: filtered.clone(),
                 str_bindings: filtered_str.clone(),
-                ancestry_str_bindings: filtered_ancestry.clone(),
+                ancestry: parent_env.ancestry.clone(),
                 parents: parent_env.parents.clone(),
                 recursive_types: parent_env.recursive_types.clone(),
                 recursive_type_set: parent_env.recursive_type_set.clone(),
@@ -24293,7 +24239,7 @@ pub fn interface_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) ->
             module_path: module_path.clone(),
             bindings: filtered.bindings.clone(),
             str_bindings: filtered.str_bindings.clone(),
-            ancestry_str_bindings: filtered.ancestry_str_bindings.clone(),
+            ancestry: filtered.ancestry.clone(),
             parents: Rc::new(vec![]),
             recursive_types: filtered.recursive_types.clone(),
             recursive_type_set: filtered.recursive_type_set.clone(),
@@ -24320,7 +24266,7 @@ pub fn interface_env_surface(env: Rc<TypeEnv>) -> Rc<TypeEnv> {
             module_path: env.module_path.clone(),
             bindings: env.bindings.clone(),
             str_bindings: env.str_bindings.clone(),
-            ancestry_str_bindings: env.ancestry_str_bindings.clone(),
+            ancestry: env.ancestry.clone(),
             parents: Rc::new(vec![]),
             recursive_types: env.recursive_types.clone(),
             recursive_type_set: env.recursive_type_set.clone(),
@@ -24339,7 +24285,6 @@ pub fn interface_env_surface(env: Rc<TypeEnv>) -> Rc<TypeEnv> {
 pub fn interface_cache_from_module(cache: Rc<TypeEnvCache>) -> Rc<TypeEnvCache> {
     Rc::new(TypeEnvCache {
         deps_map: cache.deps_map.clone(),
-        str_bindings: cache.str_bindings.clone(),
         cycle_set_str: cache.cycle_set_str.clone(),
         variant_locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
     })
@@ -24466,6 +24411,7 @@ pub fn build_module_interface(
     module: Rc<Node>,
     env: Rc<TypeEnv>,
     cache: Rc<TypeEnvCache>,
+    surface_imports: Rc<Vec<Rc<SurfaceImport>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<ModuleInterface> {
     {
@@ -24481,6 +24427,7 @@ pub fn build_module_interface(
             }),
             env: interface_env_surface(env.clone()),
             cache: interface_cache_from_module(cache.clone()),
+            surface_imports: surface_imports.clone(),
         })
     }
 }
@@ -24869,32 +24816,84 @@ pub fn symbol_index_insert_unique_disj_variant_aliases(
 ) -> Rc<SymbolIndex> {
     {
         let counts = disj_variant_name_counts(items.clone(), source_indices.clone());
-        items.iter().cloned().fold(index.clone(), |acc: Rc<SymbolIndex>, item: Rc<Node>| match item.connective.clone() {
-    Connective::Disj => {
-            let tname = crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
-item.children.clone().iter().cloned().fold(acc.clone(), |a2: Rc<SymbolIndex>, child: Rc<Node>| {
-                let vname = crate::v1_std_core::authored_name_at(source_indices.clone(), child.clone());
-let a2_qualified = crate::v1_compiler_infer_env::symbol_index_insert(a2, v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(module_path.clone(), ".".to_string()), tname.clone()), ".".to_string()), vname.clone()), item.clone());
-match v1_rt::map_get(&counts, vname.clone()) {
-    Some(1) => match v1_rt::map_get(&corpus_variant_counts, vname.clone()) {
-    Some(1) => if ((v1_rt::map_get(&corpus_item_counts, vname.clone()) != std::option::Option::None) || overlay_skips_kernel_name(vname.clone())) {
-                    crate::v1_compiler_infer_env::symbol_index_insert(a2_qualified.clone(), v1_rt::concat(v1_rt::concat(module_path.clone(), ".".to_string()), vname.clone()), item.clone())
-                } else {
-                    crate::v1_compiler_infer_env::symbol_index_insert_decl(a2_qualified.clone(), module_path.clone(), Rc::new(TypeBinding {
-    name: vname.clone(),
-    resolved: item.clone(),
-    provenance: Rc::new(SubValueRelation::SubValueUnknown),
-    alias_rhs: std::option::Option::None,
-}))
-                },
-    _ => crate::v1_compiler_infer_env::symbol_index_insert(a2_qualified.clone(), v1_rt::concat(v1_rt::concat(module_path.clone(), ".".to_string()), vname.clone()), item.clone()),
-},
-    _ => a2_qualified.clone(),
-}
-})
-},
-    _ => acc.clone(),
-})
+        items.iter().cloned().fold(
+            index.clone(),
+            |acc: Rc<SymbolIndex>, item: Rc<Node>| match item.connective.clone() {
+                Connective::Disj => {
+                    let tname =
+                        crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
+                    item.children.clone().iter().cloned().fold(
+                        acc.clone(),
+                        |a2: Rc<SymbolIndex>, child: Rc<Node>| {
+                            let vname = crate::v1_std_core::authored_name_at(
+                                source_indices.clone(),
+                                child.clone(),
+                            );
+                            let a2_qualified = crate::v1_compiler_infer_env::symbol_index_insert(
+                                a2,
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(module_path.clone(), ".".to_string()),
+                                            tname.clone(),
+                                        ),
+                                        ".".to_string(),
+                                    ),
+                                    vname.clone(),
+                                ),
+                                item.clone(),
+                            );
+                            match v1_rt::map_get(&counts, vname.clone()) {
+                                Some(1) => match v1_rt::map_get(
+                                    &corpus_variant_counts,
+                                    vname.clone(),
+                                ) {
+                                    Some(1) => if ((v1_rt::map_get(
+                                        &corpus_item_counts,
+                                        vname.clone(),
+                                    ) != std::option::Option::None)
+                                        || crate::v1_compiler_infer_env::overlay_skips_kernel_name(
+                                            vname.clone(),
+                                        )) {
+                                        crate::v1_compiler_infer_env::symbol_index_insert(
+                                            a2_qualified.clone(),
+                                            v1_rt::concat(
+                                                v1_rt::concat(module_path.clone(), ".".to_string()),
+                                                vname.clone(),
+                                            ),
+                                            item.clone(),
+                                        )
+                                    } else {
+                                        crate::v1_compiler_infer_env::symbol_index_insert_decl(
+                                            a2_qualified.clone(),
+                                            module_path.clone(),
+                                            Rc::new(TypeBinding {
+                                                name: vname.clone(),
+                                                resolved: item.clone(),
+                                                provenance: Rc::new(
+                                                    SubValueRelation::SubValueUnknown,
+                                                ),
+                                                alias_rhs: std::option::Option::None,
+                                            }),
+                                        )
+                                    },
+                                    _ => crate::v1_compiler_infer_env::symbol_index_insert(
+                                        a2_qualified.clone(),
+                                        v1_rt::concat(
+                                            v1_rt::concat(module_path.clone(), ".".to_string()),
+                                            vname.clone(),
+                                        ),
+                                        item.clone(),
+                                    ),
+                                },
+                                _ => a2_qualified.clone(),
+                            }
+                        },
+                    )
+                }
+                _ => acc.clone(),
+            },
+        )
     }
 }
 
@@ -26157,75 +26156,10 @@ pub fn direct_import_export_precedence_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn overlay_skips_kernel_name(name: String) -> bool {
-    (((((crate::std_types::is_kernel_type(name.clone())
-        || crate::std_types::is_container_type(name.clone()))
-        || (name.clone() == "Unit".to_string()))
-        || (name.clone() == "Optional".to_string()))
-        || (name.clone() == "Present".to_string()))
-        || (name.clone() == "Absent".to_string()))
-}
-
-pub fn overlay_direct_import_exports(
-    ancestry_str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
-    resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
-    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
-) -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    resolved_imports.iter().cloned().fold(
-        ancestry_str_bindings.clone(),
-        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, imp: Rc<ResolvedImport>| match v1_rt::map_get(
-            &parent_index,
-            imp.module_path.clone(),
-        ) {
-            Some(typed_parent) => {
-                let export_surface = interface_env_for_import(
-                    imp.module_path.clone(),
-                    typed_parent.interface.clone().env.clone(),
-                );
-                let selected = if imp.is_all.clone() {
-                    Rc::new({
-                        let mut __result = Vec::new();
-                        for name in Rc::new(v1_rt::map_keys(&export_surface.str_bindings.clone()))
-                            .iter()
-                            .cloned()
-                        {
-                            if (is_type_variable_name(name.clone()) == false) {
-                                __result.push(name);
-                            }
-                        }
-                        __result
-                    })
-                } else {
-                    imp.specific_names.clone()
-                };
-                selected.iter().cloned().fold(
-                    acc.clone(),
-                    |bacc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| {
-                        if overlay_skips_kernel_name(name.clone()) {
-                            bacc.clone()
-                        } else {
-                            match v1_rt::map_get(&export_surface.str_bindings.clone(), name.clone())
-                            {
-                                Some(binding) => v1_rt::rc_map_insert(
-                                    bacc.clone(),
-                                    name.clone(),
-                                    binding.clone(),
-                                ),
-                                std::option::Option::None => bacc.clone(),
-                            }
-                        }
-                    },
-                )
-            }
-            std::option::Option::None => acc.clone(),
-        },
-    )
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AncestryPrecedence {
     pub cache: Rc<TypeEnvCache>,
-    pub ancestry_str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
+    pub ancestry: Rc<AncestryView>,
     pub conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
 }
 
@@ -26310,25 +26244,38 @@ pub fn kernel_bool_type_node() -> Rc<Node> {
 }
 
 pub fn build_ancestry_precedence(
+    module_path: String,
     resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    pool: Rc<SurfacePool>,
     kernel_cache: Rc<TypeEnvCache>,
+    kernel_str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<AncestryPrecedence> {
     {
-        let import_union =
-            union_parent_type_env_caches(resolved_imports.clone(), parent_index.clone());
-        let with_kernel = crate::v1_compiler_infer_env::merge_type_env_cache(
-            import_union.cache.clone(),
-            kernel_cache.clone(),
+        let imports = surface_imports_of(resolved_imports.clone());
+        let contested = crate::v1_compiler_infer_env::surface_contested_walk(
+            pool.clone(),
+            kernel_str_bindings.clone(),
+            imports.clone(),
         );
         Rc::new(AncestryPrecedence {
-            cache: with_kernel.clone(),
-            ancestry_str_bindings: overlay_direct_import_exports(
-                with_kernel.str_bindings.clone(),
-                resolved_imports.clone(),
-                parent_index.clone(),
+            cache: crate::v1_compiler_infer_env::merge_type_env_cache(
+                union_parent_type_env_caches(resolved_imports.clone(), parent_index.clone()),
+                kernel_cache.clone(),
             ),
-            conflicts: import_union.conflicts.clone(),
+            ancestry: Rc::new(AncestryView {
+                module_path: module_path.clone(),
+                imports: imports.clone(),
+                reach: crate::v1_compiler_infer_env::surface_reach_of(
+                    imports.clone(),
+                    pool.clone(),
+                ),
+                kernel: kernel_str_bindings.clone(),
+                rewrites: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+                contested: contested.table.clone(),
+                pool: pool.clone(),
+            }),
+            conflicts: contested.rows.clone(),
         })
     }
 }
@@ -26336,6 +26283,7 @@ pub fn build_ancestry_precedence(
 pub fn build_type_env(
     module: Rc<ResolvedModule>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    pool: Rc<SurfacePool>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     symbol_index: Rc<SymbolIndex>,
@@ -26634,7 +26582,7 @@ pub fn build_type_env(
             module_path: "".to_string(),
             bindings: kernel_bindings.clone(),
             str_bindings: kernel_str_bindings.clone(),
-            ancestry_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+            ancestry: crate::v1_compiler_infer_env::empty_ancestry_view(),
             parents: Rc::new(vec![]),
             recursive_types: kernel_recursive_types.clone(),
             recursive_type_set: kernel_recursive_type_set.clone(),
@@ -26843,9 +26791,12 @@ pub fn build_type_env(
             compiler_recursive_name_set(),
         );
         let ancestry_precedence = build_ancestry_precedence(
+            module_name_str.clone(),
             module.resolved_imports.clone(),
             parent_index.clone(),
+            pool.clone(),
             kernel_cache.clone(),
+            kernel_str_bindings.clone(),
         );
         let ancestry_cache = ancestry_precedence.cache.clone();
         let binding_forks = ancestry_precedence.conflicts.clone();
@@ -26958,7 +26909,7 @@ pub fn build_type_env(
             parent_inductive_fields.clone(),
             local_inductive_fields.clone(),
         );
-        let ancestry_str_bindings = ancestry_precedence.ancestry_str_bindings.clone();
+        let ancestry = ancestry_precedence.ancestry.clone();
         let svn_local = Rc::new(v1_rt::map_keys(&local_str_bindings))
             .iter()
             .cloned()
@@ -27024,15 +26975,11 @@ pub fn build_type_env(
                                     )
                                 },
                             );
-                            Rc::new(v1_rt::map_keys(
-                                &parent_mod
-                                    .interface
+                            crate::v1_compiler_infer_env::ancestry_names(Rc::new(AncestryView {
+                                pool: pool.clone(),
+                                ..(*parent_mod.interface.clone().env.clone().ancestry.clone())
                                     .clone()
-                                    .env
-                                    .clone()
-                                    .ancestry_str_bindings
-                                    .clone(),
-                            ))
+                            }))
                             .iter()
                             .cloned()
                             .fold(
@@ -27093,7 +27040,7 @@ pub fn build_type_env(
             module_path: module_name_str.clone(),
             bindings: all_local_bindings.clone(),
             str_bindings: local_str_bindings.clone(),
-            ancestry_str_bindings: ancestry_str_bindings.clone(),
+            ancestry: ancestry.clone(),
             parents: scope_parents.clone(),
             recursive_types: cycle_set.clone(),
             recursive_type_set: cross_type_set.clone(),
@@ -27118,7 +27065,7 @@ pub fn build_type_env(
             module_path: module_name_str.clone(),
             bindings: resolved_env_out.bindings.clone(),
             str_bindings: resolved_env_out.str_bindings.clone(),
-            ancestry_str_bindings: resolved_env_out.ancestry_str_bindings.clone(),
+            ancestry: resolved_env_out.ancestry.clone(),
             parents: scope_parents.clone(),
             recursive_types: resolved_env_out.recursive_types.clone(),
             recursive_type_set: resolved_env_out.recursive_type_set.clone(),
@@ -27131,13 +27078,8 @@ pub fn build_type_env(
             unit_variant_index: resolved_env_out.unit_variant_index.clone(),
             unit_variant_index_observed: resolved_env_out.unit_variant_index_observed.clone(),
         });
-        let cache_str_bindings = v1_rt::rc_map_merge(
-            final_env.ancestry_str_bindings.clone(),
-            final_env.str_bindings.clone(),
-        );
         let type_env_cache = Rc::new(TypeEnvCache {
             deps_map: all_deps_map.clone(),
-            str_bindings: cache_str_bindings.clone(),
             cycle_set_str: cycle_set_str.clone(),
             variant_locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
         });
@@ -27156,6 +27098,7 @@ pub fn build_type_env(
 pub fn build_type_env_unresolved(
     module: Rc<ResolvedModule>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    pool: Rc<SurfacePool>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<BuildTypeEnvResult> {
@@ -27346,7 +27289,7 @@ pub fn build_type_env_unresolved(
             module_path: "".to_string(),
             bindings: kernel_bindings.clone(),
             str_bindings: kernel_str_bindings.clone(),
-            ancestry_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+            ancestry: crate::v1_compiler_infer_env::empty_ancestry_view(),
             parents: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
@@ -27555,9 +27498,12 @@ pub fn build_type_env_unresolved(
             compiler_recursive_name_set(),
         );
         let ancestry_precedence = build_ancestry_precedence(
+            module_name_str.clone(),
             module.resolved_imports.clone(),
             parent_index.clone(),
+            pool.clone(),
             kernel_cache.clone(),
+            kernel_str_bindings.clone(),
         );
         let ancestry_cache = ancestry_precedence.cache.clone();
         let local_deps_map = Rc::new(v1_rt::map_values(&local_bindings))
@@ -27669,9 +27615,7 @@ pub fn build_type_env_unresolved(
             parent_inductive_fields.clone(),
             local_inductive_fields.clone(),
         );
-        let ancestry_str_bindings = ancestry_precedence.ancestry_str_bindings.clone();
-        let visible_str_bindings =
-            v1_rt::rc_map_merge(ancestry_str_bindings.clone(), local_str_bindings.clone());
+        let ancestry = ancestry_precedence.ancestry.clone();
         let module_variant_index = crate::v1_compiler_infer_env::build_unit_variant_index(
             local_str_bindings.clone(),
             scope_parents.clone(),
@@ -27681,7 +27625,7 @@ pub fn build_type_env_unresolved(
             module_path: module_name_str.clone(),
             bindings: local_bindings.clone(),
             str_bindings: local_str_bindings.clone(),
-            ancestry_str_bindings: ancestry_str_bindings.clone(),
+            ancestry: ancestry.clone(),
             parents: scope_parents.clone(),
             recursive_types: cycle_set.clone(),
             recursive_type_set: cross_type_set.clone(),
@@ -27696,7 +27640,6 @@ pub fn build_type_env_unresolved(
         });
         let type_env_cache = Rc::new(TypeEnvCache {
             deps_map: all_deps_map.clone(),
-            str_bindings: visible_str_bindings.clone(),
             cycle_set_str: cycle_set_str.clone(),
             variant_locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
         });
@@ -30173,6 +30116,7 @@ pub fn ground_kernel_views(
 pub fn typecheck_module(
     resolved: Rc<ResolvedModule>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    pool: Rc<SurfacePool>,
     variant_surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
@@ -30183,6 +30127,7 @@ pub fn typecheck_module(
         let env_result = build_type_env(
             resolved.clone(),
             parent_index.clone(),
+            pool.clone(),
             source_indices.clone(),
             intern_table.clone(),
             symbol_index.clone(),
@@ -30216,6 +30161,7 @@ pub fn typecheck_module(
                         resolved.module.clone(),
                         env.clone(),
                         env_cache.clone(),
+                        surface_imports_of(resolved.resolved_imports.clone()),
                         source_indices.clone(),
                     ),
                     func_env: Rc::new(ResolvedFuncEnv {
@@ -30374,7 +30320,6 @@ pub fn typecheck_module(
         );
         let module_type_env_cache = Rc::new(TypeEnvCache {
             deps_map: env_cache.deps_map.clone(),
-            str_bindings: env_cache.str_bindings.clone(),
             cycle_set_str: env_cache.cycle_set_str.clone(),
             variant_locals: ctx.variant_locals.clone(),
         });
@@ -30401,6 +30346,7 @@ pub fn typecheck_module(
                     typed_module.clone(),
                     env.clone(),
                     module_type_env_cache.clone(),
+                    surface_imports_of(resolved.resolved_imports.clone()),
                     source_indices.clone(),
                 ),
                 func_env: updated_func_env.clone(),
@@ -30431,6 +30377,79 @@ pub fn typecheck_module(
     }
 }
 
+pub fn surface_imports_of(
+    resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
+) -> Rc<Vec<Rc<SurfaceImport>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for imp in resolved_imports.iter().cloned() {
+            __result.push(Rc::new(SurfaceImport {
+                module_path: imp.module_path.clone(),
+                is_all: imp.is_all.clone(),
+                specific_names: imp.specific_names.clone(),
+            }));
+        }
+        __result
+    })
+}
+
+pub fn surface_pool_from_index(
+    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<SurfacePool> {
+    Rc::new(v1_rt::sorted_map_keys(&parent_index))
+        .iter()
+        .cloned()
+        .fold(
+            crate::v1_compiler_infer_env::empty_surface_pool(),
+            |pool: Rc<SurfacePool>, path: String| {
+                surface_pool_admit_with_parents(
+                    pool,
+                    path.clone(),
+                    parent_index.clone(),
+                    source_indices.clone(),
+                )
+            },
+        )
+}
+
+pub fn surface_pool_admit_with_parents(
+    pool: Rc<SurfacePool>,
+    path: String,
+    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<SurfacePool> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match v1_rt::map_get(&pool.surfaces.clone(), path.clone()) {
+            Some(_) => pool.clone(),
+            std::option::Option::None => match v1_rt::map_get(&parent_index, path.clone()) {
+                std::option::Option::None => pool.clone(),
+                Some(typed) => {
+                    let imports = typed.interface.clone().surface_imports.clone();
+                    let with_parents = imports.iter().cloned().fold(
+                        pool.clone(),
+                        |p: Rc<SurfacePool>, imp: Rc<SurfaceImport>| {
+                            surface_pool_admit_with_parents(
+                                p,
+                                imp.module_path.clone(),
+                                parent_index.clone(),
+                                source_indices.clone(),
+                            )
+                        },
+                    );
+                    crate::v1_compiler_infer_env::surface_pool_admit(
+                        with_parents.clone(),
+                        path.clone(),
+                        typed.interface.clone().env.clone().str_bindings.clone(),
+                        imports.clone(),
+                        typed.type_env.clone().ancestry.clone().contested.clone(),
+                    )
+                }
+            },
+        }
+    })
+}
+
 pub fn typecheck_module_isolated(
     resolved: Rc<ResolvedModule>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
@@ -30440,6 +30459,7 @@ pub fn typecheck_module_isolated(
     typecheck_module(
         resolved.clone(),
         parent_index.clone(),
+        surface_pool_from_index(parent_index.clone(), source_indices.clone()),
         v1_rt::rc_empty_map::<String, Rc<VariantExportSurface>>(),
         source_indices.clone(),
         intern_table.clone(),
@@ -30674,7 +30694,7 @@ bindings_accum_insert(acc.clone(), ident.clone(), updated_binding.clone(), env.p
                         module_path: env.module_path.clone(),
                         bindings: stuck_accum.bindings.clone(),
                         str_bindings: stuck_accum.str_bindings.clone(),
-                        ancestry_str_bindings: env.ancestry_str_bindings.clone(),
+                        ancestry: env.ancestry.clone(),
                         parents: env.parents.clone(),
                         recursive_types: env.recursive_types.clone(),
                         recursive_type_set: env.recursive_type_set.clone(),
@@ -30762,7 +30782,7 @@ bindings_accum_insert(acc.clone(), ident.clone(), updated_binding.clone(), env.p
                 module_path: env.module_path.clone(),
                 bindings: ready_accum.bindings.clone(),
                 str_bindings: ready_accum.str_bindings.clone(),
-                ancestry_str_bindings: env.ancestry_str_bindings.clone(),
+                ancestry: env.ancestry.clone(),
                 parents: env.parents.clone(),
                 recursive_types: env.recursive_types.clone(),
                 recursive_type_set: env.recursive_type_set.clone(),
@@ -31168,6 +31188,7 @@ pub fn seed_kernel_intern_table(intern_table: Rc<InternTable>) -> Rc<InternTable
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RealizeState {
     pub module_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    pub pool: Rc<SurfacePool>,
     pub variant_surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub diags_by_name: Rc<HashMap<String, Rc<Vec<Rc<ErrorNode>>>>>,
@@ -31242,6 +31263,7 @@ pub fn typecheck_with_census_extra(
         let state = graph.modules.clone().iter().cloned().fold(
             Rc::new(RealizeState {
                 module_index: v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
+                pool: crate::v1_compiler_infer_env::empty_surface_pool(),
                 variant_surfaces: v1_rt::rc_empty_map::<String, Rc<VariantExportSurface>>(),
                 item_registry: v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
                 diags_by_name: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<ErrorNode>>>>(),
@@ -31366,6 +31388,7 @@ pub fn realize_module(
                     let tc_result = typecheck_module(
                         resolved.clone(),
                         dep_state.module_index.clone(),
+                        dep_state.pool.clone(),
                         dep_state.variant_surfaces.clone(),
                         source_indices.clone(),
                         intern_table.clone(),
@@ -31382,6 +31405,13 @@ pub fn realize_module(
                             dep_state.module_index.clone(),
                             typed_path.clone(),
                             typed.clone(),
+                        ),
+                        pool: crate::v1_compiler_infer_env::surface_pool_admit(
+                            dep_state.pool.clone(),
+                            typed_path.clone(),
+                            typed.interface.clone().env.clone().str_bindings.clone(),
+                            surface_imports_of(resolved.resolved_imports.clone()),
+                            typed.type_env.clone().ancestry.clone().contested.clone(),
                         ),
                         variant_surfaces: v1_rt::rc_map_insert(
                             dep_state.variant_surfaces.clone(),
@@ -31416,6 +31446,74 @@ pub fn import_module_path_at(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     crate::v1_std_core::authored_name_at(source_indices.clone(), imp.clone())
+}
+
+pub fn modules_with_final_surface_pool(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<TypedModule>>> {
+    {
+        let index = modules.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
+            |acc: Rc<HashMap<String, Rc<TypedModule>>>, m: Rc<TypedModule>| {
+                v1_rt::rc_map_insert(acc, m.type_env.clone().module_path.clone(), m.clone())
+            },
+        );
+        let pool = surface_pool_from_index(index.clone(), source_indices.clone());
+        Rc::new({
+            let mut __result = Vec::new();
+            for m in modules.iter().cloned() {
+                __result.push(typed_module_with_surface_pool(m.clone(), pool.clone()));
+            }
+            __result
+        })
+    }
+}
+
+pub fn modules_without_surface_pools(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+) -> Rc<Vec<Rc<TypedModule>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for m in modules.iter().cloned() {
+            __result.push(typed_module_with_surface_pool(
+                m.clone(),
+                crate::v1_compiler_infer_env::empty_surface_pool(),
+            ));
+        }
+        __result
+    })
+}
+
+pub fn typed_module_with_surface_pool(
+    m: Rc<TypedModule>,
+    pool: Rc<SurfacePool>,
+) -> Rc<TypedModule> {
+    Rc::new(TypedModule {
+        type_env: Rc::new(TypeEnv {
+            ancestry: view_over_pool(m.type_env.clone().ancestry.clone(), pool.clone()),
+            ..(*m.type_env.clone()).clone()
+        }),
+        interface: Rc::new(ModuleInterface {
+            env: Rc::new(TypeEnv {
+                ancestry: view_over_pool(
+                    m.interface.clone().env.clone().ancestry.clone(),
+                    pool.clone(),
+                ),
+                ..(*m.interface.clone().env.clone()).clone()
+            }),
+            ..(*m.interface.clone()).clone()
+        }),
+        ..(*m.clone()).clone()
+    })
+}
+
+pub fn view_over_pool(view: Rc<AncestryView>, pool: Rc<SurfacePool>) -> Rc<AncestryView> {
+    Rc::new(AncestryView {
+        pool: pool.clone(),
+        reach: crate::v1_compiler_infer_env::surface_reach_of(view.imports.clone(), pool.clone()),
+        ..(*view.clone()).clone()
+    })
 }
 
 pub fn compiler_kernel_type_env(
@@ -31663,7 +31761,7 @@ pub fn compiler_kernel_type_env(
             module_path: "".to_string(),
             bindings: kernel_bindings.clone(),
             str_bindings: kernel_str_bindings.clone(),
-            ancestry_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+            ancestry: crate::v1_compiler_infer_env::empty_ancestry_view(),
             parents: Rc::new(vec![]),
             recursive_types: kernel_recursive_types.clone(),
             recursive_type_set: kernel_recursive_type_set.clone(),
@@ -31776,7 +31874,7 @@ pub fn rewire_type_env_parent_links(
                             module_path: m.type_env.clone().module_path.clone(),
                             bindings: m.type_env.clone().bindings.clone(),
                             str_bindings: m.type_env.clone().str_bindings.clone(),
-                            ancestry_str_bindings: m.type_env.clone().ancestry_str_bindings.clone(),
+                            ancestry: m.type_env.clone().ancestry.clone(),
                             parents: rewired_parents.clone(),
                             recursive_types: m.type_env.clone().recursive_types.clone(),
                             recursive_type_set: m.type_env.clone().recursive_type_set.clone(),
@@ -31902,7 +32000,9 @@ pub fn reconcile_with_census_extra(
             census_fill_modules.clone(),
             census_si.clone(),
         );
-        let modules = rewire_type_env_parent_links(typed.modules.clone(), source_indices.clone());
+        let modules =
+            modules_with_final_surface_pool(typed.modules.clone(), source_indices.clone());
+        let modules = rewire_type_env_parent_links(modules.clone(), source_indices.clone());
         let modules = rewire_func_env_parent_links(modules.clone(), source_indices.clone());
         Rc::new(ResolvedGraph {
             modules: modules.clone(),

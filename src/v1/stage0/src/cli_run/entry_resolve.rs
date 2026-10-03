@@ -2330,11 +2330,11 @@ pub(crate) fn floor_retention_census(
         }
     }
     let mut tallies: Vec<FieldTally> = [
-        "tec.str_bindings",
+        "te.ancestry.pool.surfaces",
         "tec.deps_map",
         "tec.variant_locals",
         "te.str_bindings",
-        "te.ancestry_str_bindings",
+        "te.ancestry.rewrites",
         "te.bindings",
         "te.source_visible_names",
         "te.inductive_fields",
@@ -2360,11 +2360,11 @@ pub(crate) fn floor_retention_census(
             }
             module_paths.insert(m.type_env.module_path.clone());
             let (te, tec) = (&m.type_env, &m.type_env_cache);
-            tallies[0].add(&tec.str_bindings, tec.str_bindings.len());
+            tallies[0].add(&te.ancestry.pool.surfaces, te.ancestry.pool.surfaces.len());
             tallies[1].add(&tec.deps_map, tec.deps_map.len());
             tallies[2].add(&tec.variant_locals, tec.variant_locals.len());
             tallies[3].add(&te.str_bindings, te.str_bindings.len());
-            tallies[4].add(&te.ancestry_str_bindings, te.ancestry_str_bindings.len());
+            tallies[4].add(&te.ancestry.rewrites, te.ancestry.rewrites.len());
             tallies[5].add(&te.bindings, te.bindings.len());
             tallies[6].add(&te.source_visible_names, te.source_visible_names.len());
             tallies[7].add(&te.inductive_fields, te.inductive_fields.len());
@@ -2446,7 +2446,8 @@ pub(crate) fn floor_retention_census(
     }
 }
 
-/// One copy's wiring at identity grain: the module node, each type binding's resolved node, each
+/// One copy's wiring at identity grain: the module node, each type binding's resolved node, the
+/// ancestry view (rewire overlay, closure bitset and import order), each
 /// parent environment's module, each function signature, and each parent function environment's
 /// name -- the facts a rewire decides -- each folded to one hash so copies compare component-wise.
 fn wiring_identity(m: &crate::v1_compiler_infer_items::TypedModule) -> [u64; 6] {
@@ -2473,9 +2474,24 @@ fn wiring_identity(m: &crate::v1_compiler_infer_items::TypedModule) -> [u64; 6] 
                 ),
         ),
         fold(
-            te.ancestry_str_bindings
+            te.ancestry
+                .rewrites
                 .iter()
-                .map(|(k, b)| (k.clone(), Rc::as_ptr(&b.resolved) as usize)),
+                .map(|(k, b)| (k.clone(), Rc::as_ptr(&b.resolved) as usize))
+                .chain(
+                    te.ancestry
+                        .reach
+                        .iter()
+                        .enumerate()
+                        .map(|(i, w)| (format!("reach#{i}"), *w as usize)),
+                )
+                .chain(
+                    te.ancestry
+                        .imports
+                        .iter()
+                        .enumerate()
+                        .map(|(i, imp)| (imp.module_path.clone(), i)),
+                ),
         ),
         fold(
             te.parents
@@ -3928,7 +3944,7 @@ pub(crate) fn typed_graph_byte_attribution(
         match Rc::try_unwrap(m) {
             Ok(m) => {
                 te_str.push(m.type_env.str_bindings.clone());
-                te_anc.push(m.type_env.ancestry_str_bindings.clone());
+                te_anc.push(m.type_env.ancestry.clone());
                 te_bind.push(m.type_env.bindings.clone());
                 te_vis.push(m.type_env.source_visible_names.clone());
                 te_ind.push(m.type_env.inductive_fields.clone());
@@ -3958,7 +3974,7 @@ pub(crate) fn typed_graph_byte_attribution(
         }};
     }
     drop_class!("type_env_shells", shells);
-    drop_class!("te.ancestry_str_bindings", te_anc);
+    drop_class!("te.ancestry", te_anc);
     drop_class!("te.str_bindings", te_str);
     drop_class!("te.bindings", te_bind);
     drop_class!("te.source_visible_names", te_vis);
@@ -4470,7 +4486,10 @@ pub(crate) fn typed_module_class_exclusive_bytes(
     let module_count = modules.len();
     let ancestry_entries: u64 = modules
         .iter()
-        .map(|m| m.type_env.ancestry_str_bindings.len() as u64)
+        // The ancestry is a derived view (PR-2): its entries are the names it carries, enumerated.
+        .map(|m| {
+            crate::v1_compiler_infer_env::ancestry_names(m.type_env.ancestry.clone()).len() as u64
+        })
         .sum();
     let own_entries: u64 = modules
         .iter()
