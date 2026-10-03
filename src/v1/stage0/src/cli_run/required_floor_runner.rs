@@ -2303,9 +2303,18 @@ impl UnimportedBareProviderRosterReading {
                     ))
                 }
             };
+            let binds_without_declaration = match ctx.field(fields, "binds_without_declaration") {
+                Some(v1_interpreter::Value::Bool(b)) => *b,
+                other => {
+                    return Err(format!(
+                        "{function}: row `binds_without_declaration` is not a Bool ({})",
+                        floor_value_shape(other)
+                    ))
+                }
+            };
             rows.push(RosterRow {
                 file,
-                rechecked: imports_fixed || not_a_reference,
+                rechecked: imports_fixed || not_a_reference || binds_without_declaration,
             });
         }
         Ok(Self {
