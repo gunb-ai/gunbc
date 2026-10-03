@@ -1079,3 +1079,20 @@ it still requires an explicit complete state/error report and cleans the private
 Correction at 22:12 UTC: the operator reports printer-02 still shows SD card “error” in
 settings despite clearing print_error. Stop its after-format attempt before actuation and
 prioritize printer-01. A zero print_error is not proof of usable storage.
+
+### Printer-01 start observed by operator
+
+At approximately 22:15 UTC the full-snapshot gate admitted printer-01 and its holes 3–4
+project uploaded successfully. MQTT publication did not return PUBACK. The operator then
+confirmed the machine was heating or calibrating. The publisher had already exited with
+connection-lost code 7 and cleaned its credential/CA directories before termination was attempted.
+The transport outcome is UNKNOWN; the batch marker is retained and no start replay is permitted.
+This is operator-observed preparation, not yet a telemetry-confirmed extrusion or completed print.
+The selected feed is AMS physical slot 1; slice estimate 19m22s. Printer-02 remains held for
+SD-card settings error, despite its zero print_error report.
+
+At 22:19 UTC a fresh authenticated snapshot confirmed printer-01 `RUNNING`, `print_error=0`,
+and subtask name `gunbc-28a8700489cf908edb9ed59c0aa871fe6903b4d558c3b64de6a7636af701580e.3mf`.
+It reported 4%, 18 minutes remaining, layer 0/15 (preparation), nozzle 176 °C and bed 62 °C.
+This reconciles the unknown MQTT transport result with observed execution of the intended gauge;
+it does not establish completed extrusion or a finished part. No duplicate start was sent.
