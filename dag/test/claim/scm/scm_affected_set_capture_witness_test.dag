@@ -12,7 +12,7 @@ module test.claim.scm.scm_affected_set_capture_witness_test
 // its real-path inhabitance is the measurement over a copy of srv2's projects store, which the PR
 // names by its instrument.
 
-import std.types { Bool, String, Int, List, NonEmptyStr }
+import std.types { Bool, String, Int, List, NonEmptyStr, Map }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.minted_identity { MintedIdAllocator }
 import extdeps.languages.json.emit { serialize_json, JsonValue }
@@ -30,8 +30,10 @@ import gunbc.scm.object_store {
   store_path_unique_manifest, UniqueManifestStored, UniqueManifestLocatorCollision,
   RosteredObject, CorpusManifestKind, AuthoredSourceKind,
   rostered_entry_source_refusal, CorpusEntrySourceIsCorpusManifest, CorpusEntrySourceMissing,
-  store_object_count,
+  store_object_count, store_rostered_rows, store_rostered_shards,
 }
+import std.content_hash { fnv1a64_structural_hex_digest }
+import v2.std.collection { map_lookup }
 import gunbc.scm.object_shard_json { shard_partition, shard_identity_of, shard_members_of, shard_batch_size }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope, RepositoryCommit, commit_at_reference, empty_repository,
@@ -58,10 +60,48 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// LARGE: more than two sealed source batches, so a whole read would be three source shards plus the
-// manifest's, while the capture's demand is the manifest's alone.
-data planted_large_files: Int = 1100
-data planted_small_files: Int = 40
+// THE REAL REPOSITORY IS SMALL AND THE MASS IS SUPPLIED (DESIGN section 3, a witness discriminates at
+// one interface). The claims are about the READ PLAN, whose inputs are the roster and the commit
+// table; building a thousand-file repository through the production verbs per claim measured ~1.8M
+// eval steps and taught nothing the plan does not already see. So a small repository is built for
+// real (its manifest, sources and commits are what the reader returns), and the repository's mass is
+// supplied as roster rows -- persisted objects in shards the plan must NEVER ask for. The real-path
+// inhabitance of the reader is the measurement over a copy of srv2's projects store
+// (gunbc.scm.repository_convert scm_capture_demand_cli), named in the PR.
+data planted_files: Int = 6
+data planted_mass: Int = 300
+data planted_mass_batch: Int = 100
+
+fn planted_mass_hex(i: Int) -> String {
+  let digits = join(["0000000000000000", to_string(i + 1)], "")
+  substring(s: digits, start: string_length(s: digits) - 16, end: string_length(s: digits))
+}
+
+type PlantedMassAcc { rows: Map<String, RosteredObject>, shards: List<String>, shard_seen: Map<String, Bool> }
+
+// k persisted sources the real repository never names, in shards of planted_mass_batch rows each.
+fn with_planted_mass(indexed: RepositoryEnvelope, k: Int) -> RepositoryEnvelope {
+  let acc = fold(planted_indices(n: k, i: 0, acc: []), init: PlantedMassAcc { rows: rows_by_digest(rows: store_rostered_rows(store: indexed.store)), shards: [], shard_seen: empty_map() }, f: fn(acc, i) {
+    match fnv1a64_structural_hex_digest(hex: planted_mass_hex(i: i)) {
+      Absent => acc
+      Present { value: identity } => {
+        let shard = join(["planted-mass-", to_string(i / planted_mass_batch)], "")
+        PlantedMassAcc {
+          rows: map_insert(acc.rows, identity.digest as String, RosteredObject { identity: identity, kind: AuthoredSourceKind, shard: shard }),
+          shards: match map_lookup(m: acc.shard_seen, key: shard) { Present { value: _ } => acc.shards Absent => concat(acc.shards, [shard]) },
+          shard_seen: map_insert(acc.shard_seen, shard, true),
+        }
+      }
+    }
+  })
+  RepositoryEnvelope {
+    store: rostered_store(rostered: acc.rows, shards: concat(store_rostered_shards(store: indexed.store), acc.shards)),
+    commits: indexed.commits,
+    commit_allocator: indexed.commit_allocator,
+    checked_out: indexed.checked_out,
+    staged: indexed.staged,
+  }
+}
 
 fn planted_text(i: Int) -> String {
   join(["module planted.file_", to_string(i), "\n// planted body ", to_string(i), "\n"], "")
@@ -177,7 +217,7 @@ fn demanded_objects_read(whole: RepositoryEnvelope, repo: RepositoryEnvelope, id
 }
 
 test fn an_indexed_load_holds_no_object_and_rosters_every_one() -> Bool {
-  match planted_base(n: planted_large_files) {
+  match planted_base(n: planted_files) {
     Absent => false
     Present { value: whole } =>
       match indexed_of(whole: whole) {
@@ -190,35 +230,26 @@ test fn an_indexed_load_holds_no_object_and_rosters_every_one() -> Bool {
   }
 }
 
-// THE COST SHAPE: the capture's demand on history is ONE shard -- the base manifest's singleton --
-// at 40 files and at 1,100 files alike, while the repository's shard population grows with it.
+// THE COST SHAPE: the capture's demand on history is ONE shard holding ONE object -- the base
+// manifest's singleton -- for the real repository alone and for the same repository carrying 300 more
+// persisted objects in three more shards. The demand does not move with the repository.
 test fn the_capture_demand_is_one_manifest_shard_at_any_repository_size() -> Bool {
-  match planted_base(n: planted_large_files) {
+  match planted_base(n: planted_files) {
     Absent => false
-    Present { value: large } =>
-      match planted_base(n: planted_small_files) {
+    Present { value: whole } =>
+      match indexed_of(whole: whole) {
         Absent => false
-        Present { value: small } =>
-          match indexed_of(whole: large) {
+        Present { value: small } => {
+          let large = with_planted_mass(indexed: small, k: planted_mass)
+          match base_root_of(repo: small) {
             Absent => false
-            Present { value: large_indexed } =>
-              match indexed_of(whole: small) {
-                Absent => false
-                Present { value: small_indexed } =>
-                  match base_root_of(repo: large_indexed) {
-                    Absent => false
-                    Present { value: large_root } =>
-                      match base_root_of(repo: small_indexed) {
-                        Absent => false
-                        Present { value: small_root } =>
-                          demand_shard_count(repo: large_indexed, identities: [large_root]) == 1
-                            && demand_shard_count(repo: small_indexed, identities: [small_root]) == 1
-                            && demanded_objects_read(whole: large, repo: large_indexed, identities: [large_root]) == 1
-                            && count(shard_partition(objects: large.store.objects)) == 4
-                      }
-                  }
-              }
+            Present { value: root } =>
+              demand_shard_count(repo: small, identities: [root]) == 1
+                && demand_shard_count(repo: large, identities: [root]) == 1
+                && demanded_objects_read(whole: whole, repo: large, identities: [root]) == 1
+                && count(store_rostered_shards(store: large.store)) == count(store_rostered_shards(store: small.store)) + 3
           }
+        }
       }
   }
 }
@@ -226,16 +257,17 @@ test fn the_capture_demand_is_one_manifest_shard_at_any_repository_size() -> Boo
 // THE CAPTURE, END TO END OVER THE PARTIAL STORE, COUNTED BY THE READER. One path re-bound to new
 // bytes (never held: no read) and one re-bound to bytes another path already holds (held: its batch
 // shard is read, once, so the identity law can compare). The reader is asked for exactly two of the
-// repository's four shards; the commit is minted with completeness answered from the roster for the
-// 1,098 untouched entries; and the append-only re-index rosters exactly the two new objects in two
-// new shards while carrying every old shard forward unrewritten.
+// repository's five shards and never for a mass shard; the commit is minted with completeness
+// answered from the roster for the untouched entries; and the append-only re-index rosters exactly
+// the two new objects in two new shards while carrying every old row and shard forward.
 test fn a_capture_over_a_planted_repository_reads_only_the_affected_shards() -> Bool {
-  match planted_base(n: planted_large_files) {
+  match planted_base(n: planted_files) {
     Absent => false
     Present { value: whole } =>
       match indexed_of(whole: whole) {
         Absent => false
-        Present { value: indexed } =>
+        Present { value: small } => {
+          let indexed = with_planted_mass(indexed: small, k: planted_mass)
           match base_root_of(repo: indexed) {
             Absent => false
             Present { value: root } => {
@@ -244,15 +276,48 @@ test fn a_capture_over_a_planted_repository_reads_only_the_affected_shards() -> 
                 ObjectDemandUnderivable { identity: _ } => false
                 ObjectDemandPlanned { shards, wanted } =>
                   count(shards) == 2
+                    && count(store_rostered_shards(store: indexed.store)) == 5
                     && match materialize_planned(store: indexed.store, wanted: wanted, contents: planted_read(whole: whole, digests: shards)) {
                       ObjectMaterializationRefused { detail: _ } => false
-                      ObjectsMaterialized { store: resident, read_shards } =>
-                        read_shards == shards
-                          && capture_mints_and_appends(indexed: indexed, resident: resident, root: root, old_shards: count(indexed.store.rostered_shards), old_objects: store_object_count(store: whole.store))
+                      ObjectsMaterialized { store: _, read_shards } => read_shards == shards
                     }
               }
             }
           }
+        }
+      }
+  }
+}
+
+// THE MINT AND THE APPEND OVER THE PARTIAL STORE, split from the read claim above so each stays one
+// interface: given the materialized base manifest and the re-bound source (the same two shards the
+// read plan named), the commit mints with completeness answered from the roster for the untouched
+// entries, and the append-only re-index rosters exactly the two new objects in two new shards while
+// carrying every old row and shard forward.
+test fn a_capture_over_a_partial_store_mints_and_appends_only_the_new_objects() -> Bool {
+  match planted_base(n: planted_files) {
+    Absent => false
+    Present { value: whole } =>
+      match indexed_of(whole: whole) {
+        Absent => false
+        Present { value: small } => {
+          let indexed = with_planted_mass(indexed: small, k: planted_mass)
+          match base_root_of(repo: indexed) {
+            Absent => false
+            Present { value: root } => {
+              let reverted = scm_object_identity(object: authored_source_object(text: planted_text(i: 3)))
+              match object_demand(store: indexed.store, identities: [root, reverted]) {
+                ObjectDemandUnderivable { identity: _ } => false
+                ObjectDemandPlanned { shards, wanted } =>
+                  match materialize_planned(store: indexed.store, wanted: wanted, contents: planted_read(whole: whole, digests: shards)) {
+                    ObjectMaterializationRefused { detail: _ } => false
+                    ObjectsMaterialized { store: resident, read_shards: _ } =>
+                      capture_mints_and_appends(indexed: indexed, resident: resident, root: root, old_shards: count(store_rostered_shards(store: indexed.store)), old_objects: count(store_rostered_rows(store: indexed.store)))
+                  }
+              }
+            }
+          }
+        }
       }
   }
 }
@@ -273,7 +338,7 @@ fn capture_mints_and_appends(indexed: RepositoryEnvelope, resident: ObjectStore,
                 store: with_revert,
                 unique: path_unique_with_path_bound(
                   unique: path_unique_with_path_bound(unique: path_unique_of_record(base: base_record), path: planted_path(i: 0), source: authored_source_target_of(reference: changed)),
-                  path: planted_path(i: 7),
+                  path: planted_path(i: 5),
                   source: authored_source_target_of(reference: restored),
                 ),
               ) {
@@ -323,7 +388,7 @@ fn appended_index_rosters_exactly_the_new_objects(minted: RepositoryEnvelope, ol
 // AN UNDERIVABLE DEMAND REFUSES; IT NEVER WIDENS. An identity the store neither holds nor rosters
 // names no shard, and the plan refuses with that identity rather than reading every shard to look.
 test fn an_identity_neither_resident_nor_rostered_refuses_the_demand() -> Bool {
-  match planted_base(n: planted_small_files) {
+  match planted_base(n: planted_files) {
     Absent => false
     Present { value: whole } =>
       match indexed_of(whole: whole) {
@@ -342,7 +407,7 @@ test fn an_identity_neither_resident_nor_rostered_refuses_the_demand() -> Bool {
 // A PARTIAL STORE CANNOT BE WRITTEN WHOLE: the whole-store encoder would roster away every object the
 // store does not hold, so it refuses, typed; the append-only encoder is the only route.
 test fn the_whole_store_encoder_refuses_a_partial_store() -> Bool {
-  match planted_base(n: planted_small_files) {
+  match planted_base(n: planted_files) {
     Absent => false
     Present { value: whole } =>
       match indexed_of(whole: whole) {
@@ -360,7 +425,7 @@ test fn the_whole_store_encoder_refuses_a_partial_store() -> Bool {
 // A v7 INDEX CARRIES NO OBJECT ROSTER, AND THE INDEXED LOAD REFUSES IT BY NAME rather than falling
 // back to decoding every shard: the committed v7 fixture refuses as RepositoryIndexHasNoObjectRoster.
 test fn a_v7_index_refuses_the_indexed_load_as_rosterless() -> Bool {
-  let decoded_absent = match planted_base(n: planted_small_files) {
+  let decoded_absent = match planted_base(n: planted_files) {
     Absent => false
     Present { value: whole } =>
       match decode_repository_v7_index(v: encode_repository_v7(repo: whole)) {
@@ -409,7 +474,7 @@ test fn completeness_answers_from_the_roster_by_kind() -> Bool {
 // THE WHOLE LOAD CHECKS THE ROSTER AGAINST THE SHARDS: a roster placing an object in a different
 // shard than the one holding it is caught there, the one route that reads every shard.
 test fn a_roster_disagreeing_with_its_shard_is_caught_by_the_whole_load() -> Bool {
-  match planted_base(n: planted_small_files) {
+  match planted_base(n: planted_files) {
     Absent => false
     Present { value: whole } =>
       match whole.store.objects.first() {
