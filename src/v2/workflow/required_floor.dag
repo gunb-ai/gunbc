@@ -899,6 +899,11 @@ fn required_gate_prefixes() -> List<String> {
 // in today but would silently widen if a sibling is ever planted. Its claims run through the census
 // probe over planted fixture sources (no live-tree read, SubstrateInputsOnly in spirit -- the
 // fixture sources are supplied strings), priced at NewWitnessTier.
+// THE SEED-GROWTH ADMISSION WITNESS (operator ruling, escalation msg_341a9785, approved
+// 2026-10-03). `test.claim.seed_growth_admission_witness` carries the seed-growth roster's
+// duplicate-key and well-formed checks and the addition/staleness join; it matched no family prefix,
+// so those reds executed on no merge lane. Admitted at exact module grain for the same reason as the
+// test-reference wall: a family prefix would silently widen to any future sibling.
 fn required_gate_authored_modules() -> List<String> {
   [
     "test.claim.runner_capacity_plan_witness",
@@ -916,6 +921,7 @@ fn required_gate_authored_modules() -> List<String> {
     "test.claim.discovery_census_witness",
     "v2.test.claim.effect_demand.effect_demand_floor_join_test",
     "test.claim.test_reference_wall_witness",
+    "test.claim.seed_growth_admission_witness",
   ]
 }
 
