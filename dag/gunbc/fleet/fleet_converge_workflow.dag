@@ -4041,9 +4041,19 @@ type FleetConvergeJobEdge { id: NonEmptyStr, needs: List<String> }
 
 data fleet_converge_release_bins_job_id: NonEmptyStr = "build" as NonEmptyStr
 
-// EVERY JOB THAT TOUCHES A HOST WAITS FOR THE RELEASE BINARIES, and `build` is the one that
-// produces them, so it is the only row whose needs are empty. A row added here with no edge is
-// visible as exactly that rather than buried in a builder.
+// A HOST-TOUCHING JOB GETS ITS BINARIES FROM EXACTLY ONE OF TWO PLACES: the `build` job's verified
+// sixteen-binary pack (its edge needs `build`), or the compiler pair it builds itself from its own
+// checkout (its edge needs nothing, and it is rostered HERE). The rule the edge roster exists for --
+// no job runs whatever binaries were lying on the host -- holds either way; what is refused is an
+// empty edge that is not rostered, and a rostered job whose steps do not build the pair
+// (test.claim.workflow_dispatch_input). The boot is the one such job: it runs only gunbc.
+data fleet_converge_in_job_compiler_pair_jobs: List<String> = [fleet_converge_mode_job_id(mode: MtCollins1Boot) as String]
+
+// EVERY JOB THAT TOUCHES A HOST HAS A DECLARED SOURCE FOR ITS BINARIES: it waits for `build`, the
+// producer of the release pack, or it is rostered in fleet_converge_in_job_compiler_pair_jobs and
+// builds the compiler pair itself. `build` and the rostered jobs are the only rows whose needs are
+// empty. A row added here with no edge and no roster entry is visible as exactly that rather than
+// buried in a builder.
 data fleet_converge_job_edges: List<FleetConvergeJobEdge> = [
   FleetConvergeJobEdge { id: fleet_converge_release_bins_job_id, needs: [] },
   FleetConvergeJobEdge { id: fleet_converge_shared_job_id, needs: [fleet_converge_release_bins_job_id as String] },
