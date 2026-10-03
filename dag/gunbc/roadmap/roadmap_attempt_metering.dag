@@ -3,7 +3,7 @@ module gunbc.roadmap_attempt_metering
 import std.types { Bool, Int, List, NonEmptyStr, String, EpochSecs }
 import std.algebra { trim }
 import extdeps.languages.json.emit {
-  JsonValue, JsonString, JsonArray, JsonKeyValue, json_kv, json_int, json_string, json_object, json_array, serialize_json,
+  JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, JsonKeyValue, json_kv, json_int, json_string, json_object, json_array, serialize_json,
 }
 import extdeps.languages.json.parse {
   JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
@@ -14,7 +14,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemFileSubjectRefused, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
   filesystem_file_observation, filesystem_listing_observation, filesystem_read_outcome, filesystem_listing_entry_names,
 }
-import gunbc.harness.harness_wire { IntRead, harness_member_int, harness_int_read_gap }
+import gunbc.harness.harness_wire { IntRead, IntAbsent, IntDuplicated, IntNotAnObject, IntNotANumber, IntNotAnInteger, harness_member_int, harness_int_read_gap }
 import gunbc.harness.harness_throughput {
   HarnessRoundLedger, RoundsObserved, RoundsUnobserved, harness_round_ledger_from_events,
 }
@@ -315,7 +315,11 @@ fn metering_member_text(doc: JsonValue, key: String) -> MemberTextRead {
     JsonMemberFound { value: v } =>
       match v {
         JsonString { value: s } => if trim(s) == "" { MemberTextGap { cause: join(["'", key, "' is empty"], "") } } else { MemberText { value: s } }
-        _ => MemberTextGap { cause: join(["'", key, "' is not a string"], "") }
+        JsonNull => MemberTextGap { cause: join(["'", key, "' is not a string"], "") }
+        JsonBool { value: _ } => MemberTextGap { cause: join(["'", key, "' is not a string"], "") }
+        JsonNumber { lexeme: _ } => MemberTextGap { cause: join(["'", key, "' is not a string"], "") }
+        JsonArray { elements: _ } => MemberTextGap { cause: join(["'", key, "' is not a string"], "") }
+        JsonObject { members: _ } => MemberTextGap { cause: join(["'", key, "' is not a string"], "") }
       }
     JsonMemberAbsent => MemberTextGap { cause: join(["'", key, "' is missing"], "") }
     JsonMemberDuplicated { count: _ } => MemberTextGap { cause: join(["'", key, "' is duplicated"], "") }
@@ -330,7 +334,11 @@ type MemberIntRead
 fn metering_member_int(doc: JsonValue, key: String) -> MemberIntRead {
   match harness_member_int(doc: doc, key: key) {
     IntRead { value: n } => MemberInt { value: n }
-    other => MemberIntGap { cause: harness_int_read_gap(key: key, read: other) }
+    IntAbsent => MemberIntGap { cause: harness_int_read_gap(key: key, read: IntAbsent) }
+    IntDuplicated => MemberIntGap { cause: harness_int_read_gap(key: key, read: IntDuplicated) }
+    IntNotAnObject => MemberIntGap { cause: harness_int_read_gap(key: key, read: IntNotAnObject) }
+    IntNotANumber => MemberIntGap { cause: harness_int_read_gap(key: key, read: IntNotANumber) }
+    IntNotAnInteger { lexeme: lx } => MemberIntGap { cause: harness_int_read_gap(key: key, read: IntNotAnInteger { lexeme: lx }) }
   }
 }
 
@@ -343,7 +351,11 @@ fn metering_member_array(doc: JsonValue, key: String) -> MemberArrayRead {
     JsonMemberFound { value: v } =>
       match v {
         JsonArray { elements: es } => MemberArray { elements: es }
-        _ => MemberArrayGap { cause: join(["'", key, "' is not an array"], "") }
+        JsonNull => MemberArrayGap { cause: join(["'", key, "' is not an array"], "") }
+        JsonBool { value: _ } => MemberArrayGap { cause: join(["'", key, "' is not an array"], "") }
+        JsonNumber { lexeme: _ } => MemberArrayGap { cause: join(["'", key, "' is not an array"], "") }
+        JsonString { value: _ } => MemberArrayGap { cause: join(["'", key, "' is not an array"], "") }
+        JsonObject { members: _ } => MemberArrayGap { cause: join(["'", key, "' is not an array"], "") }
       }
     JsonMemberAbsent => MemberArrayGap { cause: join(["'", key, "' is missing"], "") }
     JsonMemberDuplicated { count: _ } => MemberArrayGap { cause: join(["'", key, "' is duplicated"], "") }
@@ -479,7 +491,9 @@ fn compute_usage_decode(doc: JsonValue) -> RowDecode<ComputeUsage> {
             RowUndecodable { cause: join(["unknown compute state ", st], "") }
           }
       }
-    _ => RowUndecodable { cause: "the 'compute' member is missing or duplicated" }
+    JsonMemberAbsent => RowUndecodable { cause: "the 'compute' member is missing" }
+    JsonMemberDuplicated { count: _ } => RowUndecodable { cause: "the 'compute' member is duplicated" }
+    JsonMemberNotAnObject => RowUndecodable { cause: "the metering record is not a JSON object" }
   }
 }
 
@@ -619,7 +633,8 @@ fn metering_role_tokens_read(s: RoleStream) -> RoleTokens {
 fn metering_role_seat_read(instance: HostDashboardInstance, s: RoleStream) -> SeatHeld {
   match metering_read_beside(dir: s.dir, name: s.events_name) {
     OptionalFileAbsent => SeatPointerAbsent { role: s.role }
-    _ =>
+    OptionalFileRefused { cause: c } => SeatRefused { role: s.role, cause: c }
+    OptionalFileContent { content: _ } =>
       match metering_read_beside(dir: s.dir, name: harness_seat_pointer_path(events_path: s.events_name)) {
         OptionalFileAbsent => SeatPointerAbsent { role: s.role }
         OptionalFileRefused { cause: c } => SeatRefused { role: s.role, cause: c }
@@ -680,13 +695,10 @@ fn metering_record_for_attempt(instance: HostDashboardInstance, node_id: Roadmap
     metered_at: metered_at,
     roles: map(streams, s => metering_role_tokens_read(s: s)),
     seats: flat_map(streams, s =>
-      match metering_role_seat_read(instance: instance, s: s) {
-        SeatPointerAbsent { role: _ } =>
-          match metering_role_tokens_read(s: s) {
-            RoleStreamAbsent { role: _ } => [] as List<SeatHeld>
-            _ => [SeatPointerAbsent { role: s.role }]
-          }
-        h => [h]
+      match metering_read_beside(dir: s.dir, name: s.events_name) {
+        OptionalFileAbsent => [] as List<SeatHeld>
+        OptionalFileRefused { cause: _ } => [metering_role_seat_read(instance: instance, s: s)]
+        OptionalFileContent { content: _ } => [metering_role_seat_read(instance: instance, s: s)]
       }),
     compute: ComputeNotAttributable { reason: compute_not_attributable_reason },
   }
