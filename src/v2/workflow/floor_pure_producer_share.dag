@@ -66,17 +66,25 @@ import v2.std.algebra { list_flat_map, list_map }
 // Why a reached call site carries no closed computation identity. CLOSED: a new reason is a new
 // arm, so the seed cannot mint an unclassified one.
 //   CalleeUnresolved          -- the site's callee is not a resolved source declaration (a
-//                                runtime primitive, a locally bound function value, an
-//                                undetermined target): nothing to key a fill on.
+//                                runtime primitive, an undetermined target): nothing to key a
+//                                fill on.
+//   CalleeIsAValue            -- the site calls a function VALUE (a parameter, a let, a lambda):
+//                                the callee is whatever the value is at run time, so the site
+//                                has no static identity.
 //   CalleeDeclaresEffects     -- the callee declares effect uses; its value depends on the world,
 //                                which the key cannot represent (carried inputs are their own row kind).
 //   ArgumentNotClosedConstant -- some argument mentions a binder of the enclosing declaration or
 //                                an expression form the normalizer does not admit, so the argument
 //                                row is not fixed before the claim runs.
+//   CallShapeUnread           -- the observer could not read the site at all. Counted rather than
+//                                skipped or crashed: a nonzero count is a defect in the observer
+//                                with a located population, never a silent hole in the demand.
 type CallSiteDemandCause
   = CalleeUnresolved
+  | CalleeIsAValue
   | CalleeDeclaresEffects
   | ArgumentNotClosedConstant
+  | CallShapeUnread
 
 // `producer` is the callee's qualified declaration; `argument_preimage` the canonical normalized
 // argument row; `claims` the number of DISTINCT planned claims whose reach contains a site of this

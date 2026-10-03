@@ -42,14 +42,18 @@ use crate::v1_std_core::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum CallSiteDemandCause {
     CalleeUnresolved,
+    CalleeIsAValue,
     CalleeDeclaresEffects,
     ArgumentNotClosedConstant,
+    CallShapeUnread,
 }
 
 impl CallSiteDemandCause {
     pub(crate) fn variant(self) -> &'static str {
         match self {
             CallSiteDemandCause::CalleeUnresolved => "CalleeUnresolved",
+            CallSiteDemandCause::CalleeIsAValue => "CalleeIsAValue",
+            CallSiteDemandCause::CallShapeUnread => "CallShapeUnread",
             CallSiteDemandCause::CalleeDeclaresEffects => "CalleeDeclaresEffects",
             CallSiteDemandCause::ArgumentNotClosedConstant => "ArgumentNotClosedConstant",
         }
@@ -266,36 +270,54 @@ impl<'a> CallSiteDemandObserver<'a> {
         }
     }
 
-    fn call_target(&self, module: &str, call: &Rc<Node>) -> Option<(String, String)> {
+    /// The static callee of a call site, or the typed reason there is none.
+    fn call_target(
+        &self,
+        module: &str,
+        call: &Rc<Node>,
+    ) -> Result<(String, String), CallSiteDemandCause> {
+        use crate::v1_std_core::CallSemantics;
         if let ExprData::ExprCall {
             call_semantics: Some(semantics),
             ..
         } = call.expr_data.as_ref()
         {
-            // A call through a function VALUE has no static target: its callee is whatever the
-            // value is at run time, so the site is unresolved (and `target()` has no arm for it).
-            if matches!(
-                semantics.as_ref(),
-                crate::v1_std_core::CallSemantics::FunctionValueCallSemantics
-            ) {
-                return None;
-            }
-            match semantics.target().as_ref() {
+            // Matched EXHAUSTIVELY on the semantics rather than through `target()`, which has no
+            // arm for a function-value call: a new call shape is then a compile error here, not a
+            // run-time panic in the floor.
+            let target = match semantics.as_ref() {
+                CallSemantics::FunctionValueCallSemantics => {
+                    return Err(CallSiteDemandCause::CalleeIsAValue)
+                }
+                CallSemantics::PlainCallSemantics { target }
+                | CallSemantics::ResolvedDirectCallSemantics { target, .. }
+                | CallSemantics::LookupCallSemantics { target } => target.clone(),
+            };
+            match target.as_ref() {
                 CallTargetIdentity::SourceDeclarationCall {
                     owner_module_path,
                     decl_name,
                 } => {
                     let key = (owner_module_path.clone(), decl_name.clone());
-                    return self.decls.contains_key(&key).then_some(key);
+                    return if self.decls.contains_key(&key) {
+                        Ok(key)
+                    } else {
+                        Err(CallSiteDemandCause::CalleeUnresolved)
+                    };
                 }
-                CallTargetIdentity::RuntimePrimitiveCall { .. }
-                | CallTargetIdentity::LocallyBoundCall { .. } => return None,
+                CallTargetIdentity::LocallyBoundCall { .. } => {
+                    return Err(CallSiteDemandCause::CalleeIsAValue)
+                }
+                CallTargetIdentity::RuntimePrimitiveCall { .. } => {
+                    return Err(CallSiteDemandCause::CalleeUnresolved)
+                }
                 CallTargetIdentity::CallableTargetUndetermined => {}
             }
         }
         let spelling =
             crate::v1_std_core::expr_call_func_at(call.clone(), self.source_indices.clone());
         self.resolve(module, &spelling)
+            .ok_or(CallSiteDemandCause::CalleeUnresolved)
     }
 
     fn read_declaration(&self, module: &str, decl: &Rc<Node>) -> DeclFacts {
@@ -331,11 +353,23 @@ impl<'a> CallSiteDemandObserver<'a> {
         for n in &nodes {
             match n.expr_data.as_ref() {
                 ExprData::ExprCall { .. } => {
-                    let target = self.call_target(module, n);
+                    // NO CALL SHAPE MAY STOP THE FLOOR OR VANISH: a panic while reading one site
+                    // becomes that site's typed, counted cause.
+                    let read = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        let target = self.call_target(module, n);
+                        let fact = self.site_fact(module, n, target.clone(), &binders);
+                        (target.ok(), fact)
+                    }));
+                    let (target, fact) = match read {
+                        Ok(read) => read,
+                        Err(_) => (
+                            None,
+                            SiteFact::Unadmissible(CallSiteDemandCause::CallShapeUnread),
+                        ),
+                    };
                     if let Some(t) = &target {
                         reads.insert(t.clone());
                     }
-                    let fact = self.site_fact(module, n, target, &binders);
                     if matches!(fact, SiteFact::Closed { .. }) {
                         closed_nodes.push((site_key_of(n), n.clone()));
                     }
@@ -371,11 +405,12 @@ impl<'a> CallSiteDemandObserver<'a> {
         &self,
         module: &str,
         call: &Rc<Node>,
-        target: Option<(String, String)>,
+        target: Result<(String, String), CallSiteDemandCause>,
         binders: &HashSet<String>,
     ) -> SiteFact {
-        let Some(target) = target else {
-            return SiteFact::Unadmissible(CallSiteDemandCause::CalleeUnresolved);
+        let target = match target {
+            Ok(t) => t,
+            Err(cause) => return SiteFact::Unadmissible(cause),
         };
         if self
             .decls
@@ -450,7 +485,7 @@ impl<'a> CallSiteDemandObserver<'a> {
                 }
             }
             ExprData::ExprCall { .. } => {
-                let target = self.call_target(module, expr)?;
+                let target = self.call_target(module, expr).ok()?;
                 if self.decls.get(&target).is_some_and(|c| !c.uses.is_empty()) {
                     return None;
                 }
@@ -496,7 +531,10 @@ mod tests {
          fn claim_b() -> Bool { shared() == shared() }\n\
          fn claim_c() -> Bool { assemble(src: \"module own\") == 3 }\n\
          fn claim_d() -> Bool { from_param(text: \"x\") == 3 }\n\
-         fn claim_e() -> Bool { reading_helper() == \"\" }\n";
+         fn claim_e() -> Bool { reading_helper() == \"\" }\n\
+         fn apply(f: fn(Int) -> Int) -> Int { f(1) }\n\
+         fn inc(n: Int) -> Int { n }\n\
+         fn claim_f() -> Bool { apply(f: inc) == 1 }\n";
 
     fn observe(claims: &[&str]) -> Vec<CallSiteDemandRow> {
         observe_source(FIXTURE, claims)
@@ -582,6 +620,27 @@ mod tests {
         assert!(
             closed_claims(&rows, "fixture.n7.assemble", "text").is_none(),
             "no closed identity may be minted over a parameter: {rows:?}"
+        );
+    }
+
+    // THE FUNCTION-VALUE CONTROL (the shape that panicked floor run 37083945879): a call through a
+    // parameter of function type is counted under its own cause, the walk does not panic, and the
+    // rest of the claim's reach is still observed (the `apply(f: inc)` site is closed).
+    #[test]
+    fn a_function_value_call_is_counted_as_a_value_callee_never_a_panic() {
+        let rows = observe(&["claim_f"]);
+        assert!(
+            has_cause(&rows, CallSiteDemandCause::CalleeIsAValue)
+                || has_cause(&rows, CallSiteDemandCause::CalleeUnresolved),
+            "the f(1) site must be counted under a callee cause: {rows:?}"
+        );
+        assert!(
+            !has_cause(&rows, CallSiteDemandCause::CallShapeUnread),
+            "a function-value call is a recognised shape, not an unread one: {rows:?}"
+        );
+        assert!(
+            closed_claims(&rows, "fixture.n7.apply", "ref:fixture.n7.inc").is_some(),
+            "the closed apply(f: inc) site is still observed: {rows:?}"
         );
     }
 
