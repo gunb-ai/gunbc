@@ -6871,6 +6871,12 @@ pub(crate) fn derive_and_install_cross_claim_share(
     let mut nodes = Vec::new();
     let mut sites: std::collections::HashSet<(String, i64, i64)> = std::collections::HashSet::new();
     let mut admitted_qualified = Vec::new();
+    // (producer, producer node, its admitted sites), for the post-warm re-install.
+    let mut admitted_rows: Vec<(
+        String,
+        std::rc::Rc<crate::v1_std_core::Node>,
+        Vec<(String, i64, i64)>,
+    )> = Vec::new();
     // (site module, producer, producer node, call node) -- one warm per admitted row.
     let mut warm_plan: Vec<(
         String,
@@ -6932,6 +6938,7 @@ pub(crate) fn derive_and_install_cross_claim_share(
             )
         })?;
         warm_plan.push((site_module, producer.clone(), node.clone(), call));
+        admitted_rows.push((producer.clone(), node.clone(), sites_of_row.clone()));
         admitted_qualified.push(producer);
         nodes.push(node);
     }
@@ -6986,7 +6993,27 @@ pub(crate) fn derive_and_install_cross_claim_share(
         }
     });
     // THE WARM, grouped by site module so each module is framed once.
+    let cost_floor_steps = match v1_interpreter::run_in_context(
+        ctx,
+        &format!("{MODULE}.floor_cross_claim_share_cost_floor_eval_steps"),
+        false,
+    ) {
+        Ok(Value::Int(n)) if n > 0 => n as u64,
+        other => {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=CrossClaimShareCostFloorUnreadable -- \
+                 floor_cross_claim_share_cost_floor_eval_steps must be a positive Int, got {}",
+                match other {
+                    Ok(v) => ctx.format_value(&v),
+                    Err(e) => e.to_string(),
+                }
+            ))
+        }
+    };
     warm_plan.sort_by(|a, b| (&a.0, &a.1).cmp(&(&b.0, &b.1)));
+    // Which admitted rows are retained after their warm: only these stay admitted, so a site whose
+    // warm declined (below the floor, not storable) is not stored at claim time either.
+    let mut kept_producers: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut observations = Vec::new();
     let mut declined_warms: std::collections::BTreeMap<String, usize> =
         std::collections::BTreeMap::new();
@@ -7020,10 +7047,13 @@ pub(crate) fn derive_and_install_cross_claim_share(
             }
         }
         let (warm, observation) = observe_shared_build(false, "floor-preparation", || {
-            v1_interpreter::warm_cross_claim_call_site(frame, node, call)
+            v1_interpreter::warm_cross_claim_call_site(frame, node, call, cost_floor_steps)
         });
         let disposition = match &warm {
-            Ok(outcome) => outcome.cause().to_string(),
+            Ok(outcome) => {
+                kept_producers.insert(producer.clone());
+                outcome.cause().to_string()
+            }
             Err(refusal) => {
                 *declined_warms.entry(refusal.cause()).or_default() += 1;
                 refusal.cause()
@@ -7040,9 +7070,28 @@ pub(crate) fn derive_and_install_cross_claim_share(
         ));
     }
     drop(framed);
+    // RE-INSTALL WITH THE RETAINED ROWS ONLY (replacing the derivation installed for the warm).
+    let mut kept_nodes = Vec::new();
+    let mut kept_sites: std::collections::HashSet<(String, i64, i64)> =
+        std::collections::HashSet::new();
+    for (producer, node, row_sites) in &admitted_rows {
+        if kept_producers.contains(producer) {
+            kept_nodes.push(node.clone());
+            kept_sites.extend(row_sites.iter().cloned());
+        }
+    }
+    let retained = kept_nodes.len();
+    v1_interpreter::install_cross_claim_derived_share(kept_nodes, kept_sites);
+    PURE_PRODUCER_SHARE_ROSTER.with(|r| {
+        if let Some(roster) = r.borrow_mut().as_mut() {
+            roster.admitted_qualified.retain(|q| {
+                !admitted_rows.iter().any(|(p, _, _)| p == q) || kept_producers.contains(q)
+            });
+        }
+    });
     eprintln!(
-        "[floor-phase] phase=cross-claim-share-warm state=completed warmed={} \
-         not_stored=[{}]",
+        "[floor-phase] phase=cross-claim-share-warm state=completed warmed={} retained={retained} \
+         cost_floor_eval_steps={cost_floor_steps} not_stored=[{}]",
         warm_plan.len(),
         declined_warms
             .iter()

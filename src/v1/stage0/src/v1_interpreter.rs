@@ -2148,6 +2148,11 @@ thread_local! {
     /// judged closed -- stays outside the tier.
     static CROSS_CLAIM_SITE_GATED: RefCell<std::collections::HashSet<usize>> =
         RefCell::new(std::collections::HashSet::new());
+    /// While a derived call-site warm runs, the ONE producer it may store. Nested admitted calls
+    /// inside the warm are recomputed rather than stored, so a warm retains exactly its own value
+    /// and its measured cost is its own (an entry is never spent on a nested identity whose own
+    /// warm has not yet been judged against the cost floor).
+    static CROSS_CLAIM_WARM_ONLY: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
     /// The admitted call sites of site-gated producers, as `(file, start, end)` byte spans.
     static CROSS_CLAIM_ADMITTED_SITES: RefCell<std::collections::HashSet<(String, i64, i64)>> =
         RefCell::new(std::collections::HashSet::new());
@@ -2198,8 +2203,16 @@ pub fn install_cross_claim_derived_share<I: IntoIterator<Item = Rc<Node>>>(
     sites: std::collections::HashSet<(String, i64, i64)>,
 ) {
     let nodes: Vec<Rc<Node>> = nodes.into_iter().collect();
+    // REPLACES the previous derivation rather than adding to it: a producer dropped from the
+    // derived set must leave the roster too, or it would remain admitted with no site gate --
+    // admitted everywhere, the widening this gate exists to prevent.
+    let previous: Vec<usize> =
+        CROSS_CLAIM_SITE_GATED.with(|g| g.borrow().iter().copied().collect());
     CROSS_CLAIM_PURE_ROSTER.with(|r| {
         let mut r = r.borrow_mut();
+        for ptr in &previous {
+            r.remove(ptr);
+        }
         for node in &nodes {
             r.insert(Rc::as_ptr(node) as usize);
         }
@@ -2540,6 +2553,11 @@ fn store_cross_claim_pure_memo(
     if !cross_claim_pure_admitted(fn_node, func_name) {
         return CrossClaimStoreOutcome::NotAdmitted;
     }
+    if let Some(only) = CROSS_CLAIM_WARM_ONLY.with(|w| w.get()) {
+        if only != Rc::as_ptr(fn_node) as usize {
+            return CrossClaimStoreOutcome::NotAdmitted;
+        }
+    }
     // The same substitution the lookup makes, in the same place in the fold, so a warm and a
     // serve cannot disagree about what the key represents.
     let carried_key_args = cross_claim_key_args(fn_node, args);
@@ -2637,7 +2655,14 @@ pub fn take_cross_claim_store_digest(func_name: &str) -> Option<String> {
 /// a store the tier declined carries its own outcome.
 #[derive(Debug)]
 pub enum CallSiteWarmRefusal {
-    DispatchedEffect { effects: u64 },
+    DispatchedEffect {
+        effects: u64,
+    },
+    /// The warm performed fewer evaluator steps than the declared cost floor, so the value is not
+    /// retained: below the floor, recomputing is the admitted realization (DESIGN section 2).
+    BelowCostFloor {
+        steps: u64,
+    },
     EvaluationFailed(String),
     NotStored(CrossClaimStoreOutcome),
 }
@@ -2648,6 +2673,7 @@ impl CallSiteWarmRefusal {
             CallSiteWarmRefusal::DispatchedEffect { effects } => {
                 format!("DispatchedEffect(effects={effects})")
             }
+            CallSiteWarmRefusal::BelowCostFloor { .. } => "BelowCostFloor".to_string(),
             CallSiteWarmRefusal::EvaluationFailed(_) => "EvaluationFailed".to_string(),
             CallSiteWarmRefusal::NotStored(outcome) => outcome.cause().to_string(),
         }
@@ -2663,6 +2689,7 @@ pub fn warm_cross_claim_call_site(
     ctx: &InterpContext,
     fn_node: &Rc<Node>,
     call_node: &Rc<Node>,
+    cost_floor_steps: u64,
 ) -> Result<CrossClaimStoreOutcome, CallSiteWarmRefusal> {
     with_active_ctx(ctx, || {
         let func_name = fn_node.name.clone();
@@ -2682,14 +2709,23 @@ pub fn warm_cross_claim_call_site(
             .collect::<InterpResult<_>>()
             .map_err(|e| CallSiteWarmRefusal::EvaluationFailed(format!("{func_name}: {e}")))?;
         let guard = CrossClaimFillGuard::enter(&func_name);
-        let value = with_lexical_base_env(&env, || call_function(ctx, fn_node, &args, &env))
+        let steps_before = evaluator_steps();
+        let previous_only =
+            CROSS_CLAIM_WARM_ONLY.with(|w| w.replace(Some(Rc::as_ptr(fn_node) as usize)));
+        let value = with_lexical_base_env(&env, || call_function(ctx, fn_node, &args, &env));
+        CROSS_CLAIM_WARM_ONLY.with(|w| w.set(previous_only));
+        let value = value
             .map_err(|e| CallSiteWarmRefusal::EvaluationFailed(format!("{func_name}: {e}")))?;
+        let steps = evaluator_steps().wrapping_sub(steps_before);
         let effects = ctx
             .effect_dispatch_count
             .get()
             .saturating_sub(effects_before);
         if effects != 0 {
             return Err(CallSiteWarmRefusal::DispatchedEffect { effects });
+        }
+        if steps < cost_floor_steps {
+            return Err(CallSiteWarmRefusal::BelowCostFloor { steps });
         }
         let outcome =
             store_cross_claim_pure_memo(ctx, fn_node, &func_name, &args, &value, Some(&guard));

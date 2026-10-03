@@ -216,6 +216,21 @@ fn derive_cross_claim_share(
   }
 }
 
+// THE COST FLOOR: DESIGN section 2's "unavoidable recurrence may explicitly recompute below the
+// cost floor". An admitted identity whose isolated warm performs fewer evaluator steps than this is
+// not retained: a store costs a key, a byte budget share and an entry in a bounded population, and
+// below this line the recomputation it saves is smaller than what it occupies. MEASURED REASON for
+// it existing (run 37089182924, the first derived run): 2807 of 2919 admitted identities warmed in
+// under 5ms, and retaining all of them exhausted the tier's entry cap so that every identity a
+// claim actually needed (each costing seconds) was refused a store. The value is declared policy in
+// eval steps -- the floor's own deterministic unit -- set at about seven percent of the new-witness
+// claim budget (v2.workflow.required_floor claim_eval_step_budget_for_identity), so a share below it
+// cannot be what moves a claim across that budget. The seed applies it to the warm's measured steps
+// and counts every identity it declines (`BelowCostFloor`).
+fn floor_cross_claim_share_cost_floor_eval_steps() -> Int {
+  5000
+}
+
 // The live derivation, over the refused and carried rows this file declares. The seed calls this.
 fn floor_cross_claim_share_derivation(
   observations: List<CallSiteDemandObservation>
