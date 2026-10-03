@@ -16,11 +16,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // dag_grammar_block_literal_head_expr, dag_grammar_empty_block_body_expr,
 // dag_grammar_arrow_lambda_name_head_expr). `= {}` is the empty brace literal (operator ruling
 // 2026-10-03, A): no block. `A => {}` is an empty arm block: the empty_block_body production.
-// `(a, b) => a` is an arrow lambda; `(a)` is a grouped expression and no lambda.
-data bhr_empty_literal_source: String = "module probe.bhr_lit\ndata d: Map<String, Int> = {}\n"
-data bhr_empty_arm_source: String = "module probe.bhr_arm\nfn f(b: Bool) -> Int {\n  match b {\n    true => {}\n    false => 1\n  }\n}\n"
-data bhr_lambda_source: String = "module probe.bhr_lam\nfn f() -> Int {\n  g((a, b) => a)\n}\n"
-data bhr_group_source: String = "module probe.bhr_grp\nfn f(a: Int) -> Int {\n  (a)\n}\n"
+// `(a, b) => a` is an arrow lambda; `(a)` is a grouped expression and no lambda. Each claim pays ONE
+// parse of the smallest module that reaches its route: a single data declaration.
+data bhr_empty_literal_source: String = "module p\ndata d: M = {}\n"
+data bhr_empty_arm_source: String = "module p\ndata d: I = match b { t => {} }\n"
+data bhr_lambda_source: String = "module p\ndata d: I = g((a, b) => a)\n"
+data bhr_group_source: String = "module p\ndata d: I = (a)\n"
 
 fn bhr_parse(text: String, file: Symbol) -> Outcome<Node> {
   match dag_prepared_grammar() {
@@ -55,8 +56,12 @@ fn bhr_route(text: String, file: Symbol, emitted: Symbol, times: Int) -> Bool {
 }
 
 test fn empty_braces_as_a_value_take_the_brace_literal_route() -> Bool {
-  bhr_route(text: bhr_empty_literal_source, file: ^bhr_lit, emitted: ^dag_surface_block_expr, times: 0)
-    && bhr_route(text: bhr_empty_literal_source, file: ^bhr_lit, emitted: ^dag_surface_empty_block_body, times: 0)
+  match bhr_parse(text: bhr_empty_literal_source, file: ^bhr_lit) {
+    Accepted { value: tree, diagnostics: _ } =>
+      bhr_count(root: tree, emitted: ^dag_surface_block_expr) == 0
+        && bhr_count(root: tree, emitted: ^dag_surface_empty_block_body) == 0
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 test fn empty_braces_as_an_arm_body_take_the_empty_block_route() -> Bool {

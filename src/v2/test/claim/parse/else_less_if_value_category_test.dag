@@ -1,7 +1,10 @@
 module v2.test.parse.else_less_if_value_category
 
-import v2.compiler.body_lowering_fold { body_lower_else_less_if_parts_optional }
-import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.body_lowering_fold {
+  body_lower_admitted_guard_optional,
+  body_lower_else_less_if_parts_optional,
+  body_lower_if_expr
+}
 import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.tokenize { tokenize }
@@ -10,25 +13,27 @@ import v2.std.diagnostic { Accepted, DeclarationLocus, InvariantPortLocus, Locus
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
-import v2.std.optional { Absent, Present }
-import v2.test.parse.supplied_token_stream_support { supplied_parsed_normalize }
+import v2.std.optional { Absent, Optional, Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // AN ELSE-LESS `if` PARSES ONE WAY AND HAS NO VALUE (operator ruling 2026-10-03, for this case
-// only; v2.extdeps.languages.dag dag_grammar_if_expr_expr). The three controls the ruling names:
-// the statement-position guard is accepted; the same `if` where a value is owed refuses as
-// body_lowering_reason_else_less_if_unlowered, located at that `if`; and both inputs parse to the
-// one if_expr route with its else slot empty -- the route, not only the verdict.
-data elif_guard_source: String = "module probe.elif_guard\nfn f(x: Int) -> Int {\n  if x == 0 { return 1 }\n  x\n}\n"
-data elif_value_source: String = "module probe.elif_value\nfn f(x: Int) -> Int {\n  let y = if x == 0 { 1 }\n  y\n}\n"
+// only; v2.extdeps.languages.dag dag_grammar_if_expr_expr). The ruling's controls, each at ONE
+// interface and paying ONE parse (DESIGN section 3, the witness rule): both inputs parse to the one
+// else-less if_expr route; at statement position the guard reader admits it; where a value is owed
+// the if reader refuses it as body_lowering_reason_else_less_if_unlowered, located at the `if`. The
+// readers are handed the parsed node rather than reached through a whole normalize. The real path is
+// executed by v2.test.parse.closure_parse_batch_two an_early_return_guard_parses_and_lowers_holds
+// (a guard specimen normalized end to end), which is the pairing this file's supplied nodes owe.
+data elif_guard_source: String = "module p\nfn f(x: Int) -> Int {\n  if x == 0 { return 1 }\n  x\n}\n"
+data elif_value_source: String = "module p\nfn f(c: Bool) -> Int {\n  let y = if c { 1 }\n  y\n}\n"
 
-fn elif_parse(text: String, file: Symbol) -> Outcome<Node> {
+fn elif_parse(text: String) -> Outcome<Node> {
   match dag_prepared_grammar() {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: prepared, diagnostics: residue } =>
       bind_outcome(
-        o: tokenize(text: text, file: file, rules: dag_lex()),
+        o: tokenize(text: text, file: ^elif_probe, rules: dag_lex()),
         f: fn(token_stream) {
           match parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -39,18 +44,21 @@ fn elif_parse(text: String, file: Symbol) -> Outcome<Node> {
   }
 }
 
-fn elif_is_else_less_if(node: Node) -> Bool {
+fn elif_emitted(node: Node) -> Symbol {
   match parse_production_emitted_identity_optional(node: node) {
-    Present { value: id } =>
-      if id == ^dag_surface_if_expr {
-        match body_lower_else_less_if_parts_optional(if_shell: node) {
-          Present { value: _ } => true
-          Absent => false
-        }
-      } else {
-        false
-      }
-    Absent => false
+    Present { value: id } => id
+    Absent => ^elif_no_production
+  }
+}
+
+fn elif_is_else_less_if(node: Node) -> Bool {
+  if elif_emitted(node: node) == ^dag_surface_if_expr {
+    match body_lower_else_less_if_parts_optional(if_shell: node) {
+      Present { value: _ } => true
+      Absent => false
+    }
+  } else {
+    false
   }
 }
 
@@ -59,21 +67,25 @@ fn elif_count_else_less_ifs(root: Node) -> Int {
   fold(root.children, init: here, f: fn(acc, e) { acc + elif_count_else_less_ifs(root: e.target) })
 }
 
-fn elif_parses_to_one_else_less_if(text: String, file: Symbol) -> Bool {
-  match elif_parse(text: text, file: file) {
-    Accepted { value: tree, diagnostics: _ } => elif_count_else_less_ifs(root: tree) == 1
-    Rejected { diagnostics: _ } => false
+// The first node, in pre-order, that `pick` admits.
+fn elif_first(root: Node, pick: fn(Node) -> Bool) -> Optional<Node> {
+  if pick(root) {
+    Present { value: root }
+  } else {
+    fold(root.children, init: elif_none(), f: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => elif_first(root: e.target, pick: pick)
+      }
+    })
   }
 }
 
-test fn statement_guard_and_value_if_each_parse_to_one_else_less_if_route() -> Bool {
-  elif_parses_to_one_else_less_if(text: elif_guard_source, file: ^elif_guard)
-    && elif_parses_to_one_else_less_if(text: elif_value_source, file: ^elif_value)
-}
+fn elif_none() -> Optional<Node> { Absent }
 
-test fn statement_position_guard_is_accepted() -> Bool {
-  match supplied_parsed_normalize(parsed: elif_parse(text: elif_guard_source, file: ^elif_guard)) {
-    Accepted { value: _, diagnostics: _ } => true
+fn elif_parses_to_one_else_less_if(text: String) -> Bool {
+  match elif_parse(text: text) {
+    Accepted { value: tree, diagnostics: _ } => elif_count_else_less_ifs(root: tree) == 1
     Rejected { diagnostics: _ } => false
   }
 }
@@ -88,11 +100,43 @@ fn elif_locus_is_the_if(at: Locus) -> Bool {
   }
 }
 
+test fn statement_guard_parses_to_one_else_less_if_route() -> Bool {
+  elif_parses_to_one_else_less_if(text: elif_guard_source)
+}
+
+test fn value_if_parses_to_one_else_less_if_route() -> Bool {
+  elif_parses_to_one_else_less_if(text: elif_value_source)
+}
+
+// The statement whose whole expression is the else-less `if` is an admitted guard.
+test fn statement_position_guard_is_admitted() -> Bool {
+  match elif_parse(text: elif_guard_source) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match elif_first(root: tree, pick: fn(n) { elif_emitted(node: n) == ^dag_surface_stmt }) {
+        Absent => false
+        Present { value: stmt } =>
+          match body_lower_admitted_guard_optional(stmt: stmt) {
+            Present { value: _ } => true
+            Absent => false
+          }
+      }
+  }
+}
+
 test fn value_position_else_less_if_refuses_at_the_if() -> Bool {
-  match supplied_parsed_normalize(parsed: elif_parse(text: elif_value_source, file: ^elif_value)) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } =>
-      let fatal = diagnostics_fatal(d: d)
-      fatal.reason == ^body_lowering_reason_else_less_if_unlowered && elif_locus_is_the_if(at: fatal.at)
+  match elif_parse(text: elif_value_source) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match elif_first(root: tree, pick: fn(n) { elif_is_else_less_if(node: n) }) {
+        Absent => false
+        Present { value: if_shell } =>
+          match body_lower_if_expr(shell: if_shell) {
+            Accepted { value: _, diagnostics: _ } => false
+            Rejected { diagnostics: d } =>
+              let fatal = diagnostics_fatal(d: d)
+              fatal.reason == ^body_lowering_reason_else_less_if_unlowered && elif_locus_is_the_if(at: fatal.at)
+          }
+      }
   }
 }
