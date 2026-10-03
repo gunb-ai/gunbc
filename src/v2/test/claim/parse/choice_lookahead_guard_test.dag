@@ -106,6 +106,31 @@ test fn guard_covering_neither_side_keeps_the_short_row() -> Bool {
   clg_short_rows(guard: clg_seq(left: clg_tok(c: ^clg_a), right: clg_tok(c: ^clg_x))) == 1
 }
 
+// A THREE-TOKEN HEAD IS PROVED BY ITS OWN GUARD'S DEPTH. `a b c | !(a b c) a b (c | d)` shares `a b`
+// at the base depth; only the guard's own length reads the third token, so the covering guard clears
+// the row and the near miss `!(a b d)` keeps it.
+fn clg_deep_rows(guard: GrammarExpr) -> Int {
+  grammar_choice_ambiguity_count(
+    root: clg_root(
+      choice: Choice {
+        left: clg_seq(left: clg_tok(c: ^clg_a), right: clg_seq(left: clg_tok(c: ^clg_b), right: clg_tok(c: ^clg_c))),
+        right: clg_seq(
+          left: NotPredicate { element: guard },
+          right: clg_seq(left: clg_tok(c: ^clg_a), right: clg_seq(left: clg_tok(c: ^clg_b), right: Optional { element: clg_tok(c: ^clg_c) }))
+        )
+      }
+    )
+  )
+}
+
+test fn three_token_guard_is_read_at_its_own_depth() -> Bool {
+  clg_deep_rows(guard: clg_seq(left: clg_tok(c: ^clg_a), right: clg_seq(left: clg_tok(c: ^clg_b), right: clg_tok(c: ^clg_c)))) == 0
+}
+
+test fn three_token_near_miss_guard_keeps_the_row() -> Bool {
+  clg_deep_rows(guard: clg_seq(left: clg_tok(c: ^clg_a), right: clg_seq(left: clg_tok(c: ^clg_b), right: clg_tok(c: ^clg_d)))) == 1
+}
+
 // The k=1 word shape (op_requires): 'none' | 'opaque' | !('none' | 'opaque') ident.
 fn clg_words_guarded(guard: GrammarExpr) -> Int {
   grammar_choice_ambiguity_count(
@@ -129,7 +154,7 @@ test fn guard_missing_one_word_keeps_that_row() -> Bool {
   clg_words_guarded(guard: clg_word(w: ^clg_none)) == 1
 }
 
-// THE ROUTE ON REAL INPUT, for a row the k=2 proof removed with no guard: `stmt`'s `return` head
+// THE ROUTE ON REAL INPUT, for a row the lookahead proof removed with no guard: `stmt`'s `return` head
 // against let_sugar's bare `name = e`, whose name admits the keyword. `=` begins no expression, so
 // `return 1` and `return = 1` start alike only for one token. Each must take its own alternative:
 // the return statement carries no let_expr, the bare assignment is one.
