@@ -190,8 +190,8 @@ The column differences, once verified on the second platform, are the onboarding
 
 ## 8. Review questions
 
-- **R1.** #13041's `HostBootObservation`: land it, then cut it over (E), or have #13041 consume `BootEnding` directly?
-- **R2.** Is a public `CP:` reader that treats words as opaque values, compared against self-observed reference sequences, inside the public/private line? I believe yes, because the words and their order are our own console observations and no field is decoded.
+- **R1 (working answer, from eager-gull-22, pending side chat).** #13041 lands first, and slice E absorbs `PostDdrProgressLost` into `ResetWithObservedCadence`. Original question: #13041's `HostBootObservation`: land it, then cut it over (E), or have #13041 consume `BootEnding` directly?
+- **R2 (working answer, from eager-gull-22, pending side chat).** Yes, the opaque `CP:` reader is public. Original question: is a public `CP:` reader that treats words as opaque values, compared against self-observed reference sequences, inside the public/private line? I believe yes, because the words and their order are our own console observations and no field is decoded.
 - **R3 (resolved by review, 2026-10-03).** `InterSocketLink` owns the socket 1 pair and the CCIX record, as a finding independent of the DDR stall (law 4).
 - **Naming (deliberate departure from the proposal).** The operator's session proposed `ResetByPlatformWatchdog`. The plan names the arm `ResetWithObservedCadence`, because a public arm named for a watchdog asserts the restart mechanism. That mechanism is disassembly-derived and private, and the public evidence shows only the cadence (§4d). A private fold may refine it.
 - **R4 (resolved).** Reset cause is an explicit slot, `ResetCauseUnobserved` today. Retry-state survival is a typed open question. "No stated failure" is grounded in an observed zero-error-line count.
