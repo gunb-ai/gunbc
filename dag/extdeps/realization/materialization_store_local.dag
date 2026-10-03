@@ -17,6 +17,7 @@ import extdeps.filesystem.filesystem_io {
 import std.decimal { decimal_digits_only }
 import std.checked_arithmetic { int_inclusive_max }
 import v2.std.algebra { skip }
+import v2.std.collection { empty_map, map_lookup, map_insert }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed, CatalogCasContentEncoding }
@@ -530,7 +531,7 @@ fn local_store_index_of(store: ArtifactStore, names: List<String>, doomed: List<
   LocalStoreIndex {
     next_ordinal: store.next_ordinal,
     doomed: doomed,
-    rows: store.rows |> fold(init: [], f: (acc, row) => match map_get(by_key, serialize_content_hash(hash: row.key) as String) {
+    rows: store.rows |> fold(init: [], f: (acc, row) => match map_lookup(by_key, serialize_content_hash(hash: row.key) as String) {
       Absent => acc
       Present { value: n } => acc |> list_push(LocalStoreIndexRow { name: n, bytes: row.artifact_bytes, ordinal: row.last_use_ordinal })
     })
