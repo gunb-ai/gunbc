@@ -315,6 +315,7 @@ type ReleaseBinsRefusal
   | ConsumerPreimageKeyMismatch
   | ConsumerSourceTreeMismatch
   | BuildDiagnosticsMissing { file: String }
+  | ConsumerProductKindMismatch { kind: String }
 
 fn release_bins_refusal_name(refusal: ReleaseBinsRefusal) -> String {
   match refusal {
@@ -344,6 +345,7 @@ fn release_bins_refusal_name(refusal: ReleaseBinsRefusal) -> String {
     ConsumerPreimageKeyMismatch => "ConsumerPreimageKeyMismatch"
     ConsumerSourceTreeMismatch => "ConsumerSourceTreeMismatch"
     BuildDiagnosticsMissing { file: _ } => "BuildDiagnosticsMissing"
+    ConsumerProductKindMismatch { kind: _ } => "ConsumerProductKindMismatch"
   }
 }
 
@@ -374,6 +376,7 @@ fn release_bins_refusal_message(refusal: ReleaseBinsRefusal) -> String {
     ConsumerFileMissing { file: f } => join(["the release-bins artifact is missing ", f], "")
     ConsumerPreimageKeyMismatch => "the downloaded preimage does not hash to the build job's key"
     ConsumerSourceTreeMismatch => "the pack was keyed on a different source tree than this job's checkout"
+    ConsumerProductKindMismatch { kind: k } => join(["the pack's preimage does not name the product kind ", k, " this consumer asked for; it is another product's pack"], "")
     BuildDiagnosticsMissing { file: f } => join(["the product requires the build log ", f, " as a pack member and the build step left none; a pack without its diagnostics is incomplete, not smaller"], "")
   }
 }
@@ -1251,7 +1254,7 @@ fn release_bins_canonical_consumer_statements(product: ReleaseBinsProduct) -> Li
       cmd(ws: [lit(t: "tar"), lit(t: "-xf"), var(n: "FABRIC_BLOB_OUT"), lit(t: "-C"), temp(file: release_bins_canonical_dir), lit(t: "--no-same-owner")]),
       or_refuse(
         check: cmd(ws: [lit(t: "grep"), lit(t: "-qxF"), lit(t: join(["kind=", product.kind], "")), canonical(file: release_bins_preimage_name)]),
-        r: ConsumerPreimageKeyMismatch,
+        r: ConsumerProductKindMismatch { kind: product.kind },
       ),
     ],
     source_closure_statements(),
