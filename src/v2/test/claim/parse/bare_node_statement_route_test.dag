@@ -58,7 +58,7 @@ fn bns_route(text: String, file: Symbol, lets: Int) -> Bool {
 }
 
 // THE THREE ROUTES, FROM ONE PARSE OF EACH SOURCE. Nullary and pure, enrolled WARM in
-// v2.workflow.floor_pure_producer_share: each claim reads its stored Bool.
+// the floor (identity sent to royal-deer-478 under the warm-row freeze): each claim reads its stored Bool.
 type BnsVerdicts {
   arm_before_arm: Bool
   node_before_if: Bool
