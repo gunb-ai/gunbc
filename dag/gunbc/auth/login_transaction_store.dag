@@ -15,6 +15,7 @@ module gunbc.auth.login_transaction_store
 // expired document is no one's to retry), and an expired transaction refuses the callback
 // before any code exchange.
 
+import gunbc.auth.auth_store_key { AuthStoreKey, auth_store_key_of }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Timestamp }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
@@ -49,12 +50,14 @@ fn login_transaction_store_layout_for_instance(instance: HostDashboardInstance) 
   }
 }
 
-fn login_transaction_file_name(state: NonEmptyStr) -> String {
-  join([state as String, login_transaction_file_suffix], "")
+// A path is built only from an AuthStoreKey (gunbc.auth.auth_store_key): a request-supplied state
+// that is not one cannot name a file under the store.
+fn login_transaction_file_name(key: AuthStoreKey) -> String {
+  join([key.value as String, login_transaction_file_suffix], "")
 }
 
-fn login_transaction_file_path(layout: LoginTransactionStoreLayout, state: NonEmptyStr) -> String {
-  join([layout.root as String, "/", login_transaction_file_name(state: state)], "")
+fn login_transaction_file_path(layout: LoginTransactionStoreLayout, key: AuthStoreKey) -> String {
+  join([layout.root as String, "/", login_transaction_file_name(key: key)], "")
 }
 
 // ── The transaction file codec ─────────────────────────────────────────────────────────────────
@@ -200,8 +203,15 @@ type LoginTransactionStoreSave
   | LoginTransactionSaveRefused { step: String, reason: String }
 
 fn login_transaction_store_save(layout: LoginTransactionStoreLayout, transaction: OidcLoginTransaction) -> LoginTransactionStoreSave {
+  match auth_store_key_of(raw: transaction.state as String) {
+    Absent => LoginTransactionSaveRefused { step: "key", reason: "the transaction state is not a store key ([A-Za-z0-9_-], at most 128)" }
+    Present { value: key } => login_transaction_store_save_keyed(layout: layout, key: key, transaction: transaction)
+  }
+}
+
+fn login_transaction_store_save_keyed(layout: LoginTransactionStoreLayout, key: AuthStoreKey, transaction: OidcLoginTransaction) -> LoginTransactionStoreSave {
   let written = Filesystem.WriteOwnerOnly(
-    path: login_transaction_file_path(layout: layout, state: transaction.state),
+    path: login_transaction_file_path(layout: layout, key: key),
     content: login_transaction_json(transaction: transaction),
   )
   if written.success {
@@ -217,9 +227,19 @@ type LoginTransactionStoreLookup
   | LoginTransactionStoreUnread { state: NonEmptyStr, detail: String }
   | LoginTransactionStoreEntryMalformed { state: NonEmptyStr, detail: String }
 
+// A state that is not a store key names no transaction: it cannot have been minted, so it is Unknown
+// without any filesystem read.
 fn login_transaction_store_lookup(layout: LoginTransactionStoreLayout, state: NonEmptyStr) -> LoginTransactionStoreLookup {
-  let name = login_transaction_file_name(state: state)
-  let path = login_transaction_file_path(layout: layout, state: state)
+  match auth_store_key_of(raw: state as String) {
+    Absent => LoginTransactionStoreUnknown { state: state }
+    Present { value: key } => login_transaction_store_lookup_keyed(layout: layout, key: key)
+  }
+}
+
+fn login_transaction_store_lookup_keyed(layout: LoginTransactionStoreLayout, key: AuthStoreKey) -> LoginTransactionStoreLookup {
+  let state = key.value
+  let name = login_transaction_file_name(key: key)
+  let path = login_transaction_file_path(layout: layout, key: key)
   let listing_result = Filesystem.List(path: layout.root as String)
   let listing = filesystem_listing_observation(
     directory: layout.root as String,
@@ -257,7 +277,15 @@ type LoginTransactionStoreDelete
   | LoginTransactionDeleteRefused { state: NonEmptyStr, detail: String }
 
 fn login_transaction_store_delete(layout: LoginTransactionStoreLayout, state: NonEmptyStr) -> LoginTransactionStoreDelete {
-  let name = login_transaction_file_name(state: state)
+  match auth_store_key_of(raw: state as String) {
+    Absent => LoginTransactionDeleteRefused { state: state, detail: "the transaction state is not a store key; nothing outside the store is touched" }
+    Present { value: key } => login_transaction_store_delete_keyed(layout: layout, key: key)
+  }
+}
+
+fn login_transaction_store_delete_keyed(layout: LoginTransactionStoreLayout, key: AuthStoreKey) -> LoginTransactionStoreDelete {
+  let state = key.value
+  let name = login_transaction_file_name(key: key)
   let listing_result = Filesystem.List(path: layout.root as String)
   let listing = filesystem_listing_observation(
     directory: layout.root as String,
@@ -269,9 +297,9 @@ fn login_transaction_store_delete(layout: LoginTransactionStoreLayout, state: No
     FilesystemEntryAbsent(absence) =>
       LoginTransactionNothingToDelete { state: absence.name as NonEmptyStr }
     FilesystemEntryListed { directory: _, name: _ } =>
-      let won = Filesystem.WriteCreateNewWithMode(path: concat(login_transaction_file_path(layout: layout, state: state), ".consumed"), content: "consumed", mode: 384)
+      let won = Filesystem.WriteCreateNewWithMode(path: concat(login_transaction_file_path(layout: layout, key: key), ".consumed"), content: "consumed", mode: 384)
       if !won.success { LoginTransactionDeleteRefused { state: state, detail: "transaction consumption already won or its durable claim failed" } }
-      else { let deleted = Filesystem.Delete(path: login_transaction_file_path(layout: layout, state: state))
+      else { let deleted = Filesystem.Delete(path: login_transaction_file_path(layout: layout, key: key))
       if deleted.success {
         LoginTransactionDeleted { state: state }
       } else {

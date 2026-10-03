@@ -8,7 +8,7 @@ import extdeps.vllm.engine_args {
   VllmSchedulerAdmissionRequest, FullInputAdmissionOmitted, FullInputAdmissionExplicit,
   KvWatermarkOmitted, KvWatermarkExplicit, vllm_scheduler_admission_omitted, IndexerKvDtypeOmitted, vllm_scheduler_admission_defect,
 }
-import gunbc.spark.serving_arm { ServingLaunchProfile, serving_launch_profile }
+import gunbc.spark.serving_arm { ServingLaunchProfile, serving_launch_profile, ModelLaunchPolicy }
 import v2.std.algebra { length }
 
 // ── THE SERVICE OBLIGATION IS A SEAT POPULATION, NOT A POOL SIZE ────────────────────────────────
@@ -240,28 +240,24 @@ fn envelope_above_floor(e: SchedulerEnvelope) -> Bool {
 // landing is the trigger, and until it does no production path compares plan and container on these fields.
 fn profile_for_envelope(
   envelope: SchedulerEnvelope,
+  policy: ModelLaunchPolicy,
   decided_gpu_memory_basis_points: BasisPoint,
-  kv_cache_dtype: VllmKvCacheDtypeRequest,
   serve_port: Port,
   served_alias: NonEmptyStr,
   prefix_caching: VllmPrefixCachingRequest,
-  engram: VllmEngramConfigRequest,
-  modality: VllmModalityRequest,
 ) -> ServingLaunchProfile {
   serving_launch_profile(
+    policy: policy,
     max_model_len: intent_max_single_sequence_tokens(i: envelope.cold),
     max_num_batched_tokens: envelope.cold.max_batched_tokens,
     max_num_seqs: envelope.hard_max_num_seqs,
     guaranteed_cold_seqs: intent_max_active_sequences(i: envelope.cold),
     decided_gpu_memory_basis_points: decided_gpu_memory_basis_points,
-    kv_cache_dtype: kv_cache_dtype,
     serve_port: serve_port,
     served_alias: served_alias,
     prefix_caching: prefix_caching,
-    engram: engram,
-    modality: modality,
     scheduler_admission: envelope.admission,
-    indexer_kv_dtype: IndexerKvDtypeOmitted)
+  )
 }
 
 // ── THE WORKLOAD A LAUNCH PROFILE OWES, DERIVED THE SAME WAY ────────────────────────────────────

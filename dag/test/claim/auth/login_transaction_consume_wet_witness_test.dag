@@ -4,6 +4,7 @@ import std.types { String, Bool, FilePath }
 import extdeps.auth.oidc { OidcLoginTransaction, OidcPkceCodeVerifier, RelativeReturnPath }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.auth.auth_store_key { auth_store_key_of }
 import gunbc.auth.login_transaction_store { LoginTransactionStoreLayout, login_transaction_store_save, login_transaction_store_delete, login_transaction_store_lookup, login_transaction_file_path, LoginTransactionSaved, LoginTransactionSaveRefused, LoginTransactionDeleted, LoginTransactionNothingToDelete, LoginTransactionDeleteRefused, LoginTransactionStoreFound, LoginTransactionStoreUnknown, LoginTransactionStoreUnread, LoginTransactionStoreEntryMalformed }
 
 // THE ATOMIC CONSUME OVER REAL FILES. Exclusivity is a property of the filesystem's create-new
@@ -46,7 +47,10 @@ test fn a_consumer_that_loses_the_create_new_claim_refuses_and_deletes_nothing()
     match login_transaction_store_save(layout: layout, transaction: transaction) {
       LoginTransactionSaveRefused { step: _, reason: _ } => false
       LoginTransactionSaved { state: _ } => {
-        let planted = Filesystem.WriteCreateNewWithMode(path: concat(login_transaction_file_path(layout: layout, state: transaction.state), ".consumed"), content: "consumed", mode: 384)
+        match auth_store_key_of(raw: transaction.state as String) {
+          Absent => false
+          Present { value: key } => {
+        let planted = Filesystem.WriteCreateNewWithMode(path: concat(login_transaction_file_path(layout: layout, key: key), ".consumed"), content: "consumed", mode: 384)
         planted.success && match login_transaction_store_delete(layout: layout, state: transaction.state) {
           LoginTransactionDeleteRefused { state: _, detail: _ } =>
             match login_transaction_store_lookup(layout: layout, state: transaction.state) {
@@ -57,6 +61,8 @@ test fn a_consumer_that_loses_the_create_new_claim_refuses_and_deletes_nothing()
             }
           LoginTransactionDeleted { state: _ } => false
           LoginTransactionNothingToDelete { state: _ } => false
+        }
+          }
         }
       }
     }
