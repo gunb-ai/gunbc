@@ -36,7 +36,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.compiler.parse { parse_tree_projection_edge }
 import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
-import v2.std.algebra { any, fold_list, length, skip }
+import v2.std.algebra { any, fold_list, length, list_find_first, skip }
 import v2.std.collection {
   Map,
   PointwisePower,
@@ -197,6 +197,8 @@ import v2.std.node_query {
   NotAConstruct,
   construct_tag_optional,
   field_projection_node,
+  construct_tag_path_optional,
+  declared_field_named,
   node_positional_child_targets,
   find_named_child,
   is_wildcard_pattern,
@@ -2598,12 +2600,98 @@ fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: FrameBinders) ->
             } else {
               frame_binders_add(fb: m, name: id, binding: LexicalBinding {
                 binder_site: e.target.occurrence_id,
-                declared: optional_absent()
+                declared: resolve_pattern_binder_declared_type(ctx: ctx, pat: pat, field: e)
               })
             }
           _ => resolve_pattern_binders(ctx: ctx, pat: e.target, acc: m)
         }
       })
+  }
+}
+
+// A PATTERN BINDER'S TYPE IS THE VARIANT FIELD IT CAPTURES (v2.compiler.body_lowering_fold
+// body_lower_field_decl_optional). The arm the pattern's tag names declares the field -- positional
+// "0" and named alike, one grammar -- and the binder's declared type is that field's type node, so
+// the body's reference derives from its binding (v2.compiler.infer infer_lexical_reference_facts)
+// instead of staying on the frontier with the match spine. A tag that names no declared arm, or a
+// field the arm does not declare, leaves the binder untyped exactly as before: the match row judges
+// the pattern against the scrutinee's coproduct and refuses the mismatch at the arm row.
+fn resolve_pattern_binder_declared_type(ctx: ResolveContext, pat: Node, field: Edge) -> Optional<Node> {
+  match resolve_pattern_tag_declared_payload_path_optional(ctx: ctx, pat: pat) {
+    Absent => optional_absent()
+    Present { value: arm_path } =>
+      match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: arm_path) {
+        Absent => optional_absent()
+        Present { value: payload } =>
+          match field.label {
+            Authored { name: field_name } =>
+              match declared_field_named(payload: payload, name: field_name) {
+                Present { value: f } => optional_present(value: f.type_node)
+                Absent => optional_absent()
+              }
+            _ => optional_absent()
+          }
+      }
+  }
+}
+
+// The declared arm a pattern's tag names, read BEFORE the walk (the binders mint first, so a
+// refused pattern never leaves the body under an invented scope). A one-segment tag looks up
+// lexically exactly as resolve_pattern_atom_names_constructor does; a qualified tag looks up
+// absolutely; only a candidate the declared-payload authority answers for names an arm.
+fn resolve_pattern_tag_declared_payload_path_optional(ctx: ResolveContext, pat: Node) -> Optional<QualifiedName> {
+  match construct_tag_path_optional(n: pat) {
+    Absent => optional_absent()
+    Present { value: path } =>
+      match path {
+        Cons { head: only, tail: Empty } => resolve_declared_payload_path_lookup(ctx: ctx, name: only)
+        _ =>
+          match list_find_first(
+            xs: symbol_index_absolute_candidates(index: ctx.namespace.symbol_index, qualified_path: path),
+            predicate: fn(p) { resolve_path_is_declared_payload(ctx: ctx, path: p) }
+          ) {
+            Present { value: candidate } => optional_present(value: candidate)
+            Absent => optional_absent()
+          }
+      }
+  }
+}
+
+fn resolve_declared_payload_path_lookup(ctx: ResolveContext, name: Symbol) -> Optional<QualifiedName> {
+  match symbol_index_lexical_lookup(
+    index: ctx.namespace.symbol_index,
+    position: symbol_index_lookup_position(ctx: ctx),
+    name: name
+  ) {
+    LexicalHit { node: _, path: path } =>
+      if resolve_path_is_declared_payload(ctx: ctx, path: path) {
+        optional_present(value: path)
+      } else {
+        optional_absent()
+      }
+    LexicalAmbiguous { candidates: candidates } =>
+      resolve_first_declared_payload_path(ctx: ctx, paths: list_map(xs: candidates, f: fn(c) { c.path }))
+    LexicalUnbound =>
+      match symbol_index_global_unique_lookup(index: ctx.namespace.symbol_index, name: name) {
+        GlobalBareHit { node: _, path: path } =>
+          if resolve_path_is_declared_payload(ctx: ctx, path: path) {
+            optional_present(value: path)
+          } else {
+            optional_absent()
+          }
+        GlobalBareLookupAmbiguous { paths: paths } => resolve_first_declared_payload_path(ctx: ctx, paths: paths)
+        GlobalBareLookupUnbound => optional_absent()
+      }
+  }
+}
+
+fn resolve_first_declared_payload_path(ctx: ResolveContext, paths: List<QualifiedName>) -> Optional<QualifiedName> {
+  match list_find_first(
+    xs: paths,
+    predicate: fn(p) { resolve_path_is_declared_payload(ctx: ctx, path: p) }
+  ) {
+    Present { value: p } => optional_present(value: p)
+    Absent => optional_absent()
   }
 }
 
