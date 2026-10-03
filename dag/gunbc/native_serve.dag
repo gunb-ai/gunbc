@@ -3,7 +3,7 @@ module gunbc.native_serve
 import std.types { Int, List, String, Bool, CommitSha }
 import std.measure { ByteSize, byte_size, byte_size_count, Millisecond, millisecond, millisecond_count }
 import std.algebra { Cons, Empty, trim }
-import extdeps.http.server { ServeWireResponse }
+import extdeps.http.server { ServeWireResponse, ServeWireHeader, serve_wire_header_name_label }
 import gunbc.running_release_identity { release_revision_text_valid }
 import extdeps.tailscale.identity { tailscale_user_login_header }
 import gunbc.serve_liveness { serve_liveness_path, serve_liveness_document }
@@ -199,6 +199,7 @@ fn native_serve_bad_request(reason: String) -> NativeServeFrame {
     status: 400,
     content_type_label: native_serve_text_plain,
     body: concat("bad request: ", concat(reason, "\n")),
+    headers: [],
   } }
 }
 
@@ -319,7 +320,7 @@ fn native_serve_frame(contract: NativeServeContract, request_line: String, heade
 // The refusal the main writes when the head outgrew its limit or the bytes were not text: the
 // main observes those (it is the one counting bytes), and this fold says what they mean.
 fn native_serve_read_refused(reason: String) -> ServeWireResponse {
-  ServeWireResponse { status: 400, content_type_label: native_serve_text_plain, body: concat("bad request: ", concat(reason, "\n")) }
+  ServeWireResponse { status: 400, content_type_label: native_serve_text_plain, body: concat("bad request: ", concat(reason, "\n")), headers: [] }
 }
 
 // ── ROUTING BEFORE THE HANDLER ──────────────────────────────────────────────────────────────
@@ -337,6 +338,7 @@ fn native_serve_route(contract: NativeServeContract, head: NativeServeRequestHea
       status: 200,
       content_type_label: native_serve_application_json,
       body: serve_liveness_document(revision: contract.release_revision, entry_function: entry_function, bound_host: bound_host, bound_port: bound_port),
+      headers: [],
     } }
   } else {
     NativeServeToHandler
@@ -346,3 +348,54 @@ fn native_serve_route(contract: NativeServeContract, head: NativeServeRequestHea
 // The name the rendered main calls; one name for every NativeServeDriver entry, so the liveness
 // document's entry_function member is this literal rather than whatever the main was told.
 data native_serve_handler_name: String = "native_serve_handle"
+
+// ── WHAT LEAVES THE PROCESS ─────────────────────────────────────────────────────────────────
+// Every response the main writes passes here first, whoever produced it. The status must be an
+// HTTP status (RFC 9110 section 15: three digits, 100-599) and every header value must be free of
+// CR, LF and NUL, because a value is handler data and one carrying a line break would split the
+// header block. The seed makes the same two checks in hand Rust after evaluation; here they are a
+// fold, and a response that fails them is answered as a typed 500 naming why, never written.
+// Header NAMES need no check: ServeWireHeaderName is closed, and its spelling is
+// extdeps.http.server serve_wire_header_name_label's, so the framing headers the main writes
+// itself (Content-Type, Content-Length, Connection) cannot be set by a handler.
+type NativeServeOutgoing {
+  status: Int
+  content_type_label: String
+  header_lines: List<String>
+  body: String
+}
+
+fn native_serve_value_is_field_safe(value: String) -> Bool {
+  (split(s: value, delimiter: "\r") |> count) == 1
+    && (split(s: value, delimiter: "\n") |> count) == 1
+    && (split(s: value, delimiter: from_code_point(0)) |> count) == 1
+}
+
+fn native_serve_unwritable(reason: String) -> NativeServeOutgoing {
+  NativeServeOutgoing {
+    status: 500,
+    content_type_label: native_serve_text_plain,
+    header_lines: [],
+    body: concat("the handler's response cannot be written: ", concat(reason, "\n")),
+  }
+}
+
+fn native_serve_header_line(h: ServeWireHeader) -> String {
+  concat(serve_wire_header_name_label(name: h.name), concat(": ", h.value))
+}
+
+fn native_serve_outgoing(r: ServeWireResponse) -> NativeServeOutgoing {
+  let unsafe_headers = r.headers |> filter(h => !native_serve_value_is_field_safe(value: h.value))
+  if r.status < 100 || r.status > 599 {
+    native_serve_unwritable(reason: concat("status ", concat(to_string(value: r.status), " is not an HTTP status")))
+  } else if (unsafe_headers |> count) > 0 {
+    native_serve_unwritable(reason: "a header value carries CR, LF or NUL")
+  } else {
+    NativeServeOutgoing {
+      status: r.status,
+      content_type_label: r.content_type_label,
+      header_lines: r.headers |> map(h => native_serve_header_line(h: h)),
+      body: r.body,
+    }
+  }
+}

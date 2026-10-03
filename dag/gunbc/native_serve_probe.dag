@@ -37,6 +37,7 @@ fn native_serve_probe_refused_revision() -> String {
 type NativeServeExpect
   = ExpectBody { status: Int, body: String }
   | ExpectStatus { status: Int }
+  | ExpectHeader { status: Int, line: String }
   | ExpectLiveness
 
 type NativeServeProbeCase {
@@ -83,6 +84,16 @@ fn native_serve_probe_cases() -> List<NativeServeProbeCase> {
       expect: ExpectStatus { status: 400 },
     },
     NativeServeProbeCase {
+      identity: "handler_header_is_written_as_a_typed_field",
+      request: "GET /redirect HTTP/1.1\r\n\r\n",
+      expect: ExpectHeader { status: 303, line: "Location: /hello" },
+    },
+    NativeServeProbeCase {
+      identity: "door_refuses_to_write_a_header_value_carrying_crlf",
+      request: "GET /split-header HTTP/1.1\r\n\r\n",
+      expect: ExpectBody { status: 500, body: "the handler's response cannot be written: a header value carries CR, LF or NUL\n" },
+    },
+    NativeServeProbeCase {
       identity: "liveness_is_answered_before_the_handler_and_names_the_release",
       request: "GET /livez HTTP/1.1\r\n\r\n",
       expect: ExpectLiveness,
@@ -97,6 +108,7 @@ fn native_serve_probe_requests() -> List<String> {
 
 type NativeServeWire {
   status: Int
+  head_lines: List<String>
   body: String
 }
 
@@ -109,7 +121,7 @@ fn native_serve_wire_parse(response: String) -> NativeServeWire? {
         ""
       }
       match parse_int(s: status_text) {
-        Present { value: status } => NativeServeWire { status: status, body: join(rest, "\r\n\r\n") }
+        Present { value: status } => NativeServeWire { status: status, head_lines: split(s: head, delimiter: "\r\n"), body: join(rest, "\r\n\r\n") }
         Absent => none
       }
     Empty => none
@@ -144,6 +156,10 @@ fn native_serve_case_failure(c: NativeServeProbeCase, response: String) -> Strin
         ExpectBody { status: s, body: b } =>
           if w.status != s { concat(c.identity, concat(": status ", to_string(value: w.status))) }
           else if w.body != b { concat(c.identity, concat(": body [", concat(w.body, "]"))) }
+          else { "" }
+        ExpectHeader { status: s, line: l } =>
+          if w.status != s { concat(c.identity, concat(": status ", to_string(value: w.status))) }
+          else if (w.head_lines |> filter(x => x == l) |> count) != 1 { concat(c.identity, concat(": no header line [", concat(l, "]"))) }
           else { "" }
         ExpectStatus { status: s } =>
           if w.status != s { concat(c.identity, concat(": status ", to_string(value: w.status))) } else { "" }
