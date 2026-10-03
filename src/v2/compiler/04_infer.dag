@@ -43,7 +43,9 @@ import v2.extdeps.languages.dag {
   dag_canonical_literal_from_node,
   dag_declared_inhabitants_root,
   dag_declared_inhabitants_subject_field,
-  dag_grammar_production_member_declared_type
+  dag_grammar_production_member_declared_type,
+  parse_production_captured_child_optional,
+  qualified_name_from_module_node
 }
 import v2.extdeps.languages.python {
   python_declared_inhabitants_root,
@@ -70,11 +72,11 @@ import std.optional {
   optional_present
 }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_to_dotted_string, lexical_reference_label_optional, parameter_reference_path_optional }
-import v2.std.node_query { BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, declared_field_from_edge, find_labeled_child }
+import v2.std.node_query { BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, construct_tag_path_optional, declared_field_from_edge, find_labeled_child, find_named_child }
 import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_lookup }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.compiler.fold_lowering { FoldMemberFormal, RosterSignatureLookup, NotARosterPrimitiveCallRow, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_signature_at, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_member_formal }
-import v2.std.node { LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, Ambiguous, Found, NotMarkedReference, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_signature_order_edge, match_arm_pattern_edge, resolved_reference_body_kind, edge_label_of, MatchArmBodyEdge, MatchArmPatternEdge, production_edge_label }
+import v2.std.node { LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, Found, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_signature_order_edge, core_edge_target_lookup, edge_label_of, fold_node_topdown, match_arm_pattern_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, production_edge_label, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.arrow_signature {
   ApplicationBindingRefused,
@@ -6476,7 +6478,10 @@ fn infer_malformed_tree_diagnostic(n: Node) -> Diagnostic {
 }
 
 fn infer_well_formed(tree: ResolvedTree) -> Outcome<ObligatedInferredTree> {
-  match infer_entries_for_tree(tree: tree) {
+  match infer_caller_admission_diags(tree: tree) {
+    Some { diagnostics: ned } => Rejected { diagnostics: ned }
+    None =>
+      match infer_entries_for_tree(tree: tree) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: entries, diagnostics: d } =>
       match facts_map_from_entries(entries: entries) {
@@ -6491,5 +6496,336 @@ fn infer_well_formed(tree: ResolvedTree) -> Outcome<ObligatedInferredTree> {
             diagnostics: diagnostics_merge(outer: d, inner: md)
           }
       }
+    }
+  }
+}
+
+// ===================================================================
+// CALLER ADMISSION — the admit_callers wall.
+//
+// Restoration of gunbc.rung_drop admit_callers_discarded_on_the_native_route: a v2 stage (this
+// one) now checks caller admission on the native route from the fn's declared admit_callers
+// list, refusing a call from a declaration outside it. The clause was parsed by the v2 grammar
+// and carried onto the Arrow by v2.compiler.body_lowering_fold body_lower_fn_admit_clause_edges
+// — the carrier added together with this consumer, as that drop's trigger requires.
+//
+// THE SEMANTICS ARE THE SEED'S, copied symbol for symbol from v1's wall
+// (src/v1/stage0/src/v1_compiler_infer.rs constructor_call_admission_diags, gated by
+// constructor_reference_admission_enforced() -> true):
+//   - a permitted caller is named by a decl_ref(module_path: "...", decl_name: "...") entry;
+//     an entry that cannot be read as that call refuses (v1 AdmitCallersEntryNotDeclRef) rather
+//     than shrinking the roster silently;
+//   - the caller's coords are its enclosing declaration's (module, name) — v1's
+//     caller_decl_coords read the enclosing fn scope; here the enclosing module member, keyed in
+//     infer_admission_child_context — and membership is v1's decl_ref_coords_equal;
+//   - a call under no declaration has no caller coords and refuses (v1's None arm, the recorded
+//     behavior of gunbc.recurring_failure_mode
+//     admit_callers_names_no_caller_for_a_data_declaration);
+//   - no same-module or test-module exemption exists in the seed and none is added here: the
+//     corpus's forged-proof probe modules are negative fixtures whose compile refusal is the
+//     designed and enrolled behavior (measured, ruling C of lively-ram-153, 2026-10-02: all five
+//     dag/test/probe modules refuse under the v1 seed with ConstructorCallAdmissionRefused among
+//     their blocking errors).
+// ===================================================================
+
+// THE ADMITTED CALLER'S COORDS, AS THE CLAUSE AUTHORS THEM: the declaring module's dotted
+// spelling and the declaration's name, both as interned lexemes.
+type InferAdmitCallerCoords {
+  module_path: Symbol
+  decl_name: Symbol
+}
+
+type InferAdmissionCtx {
+  caller: Optional<InferAdmitCallerCoords>
+  module_symbol: Symbol
+}
+
+type InferAdmitEntry
+  = AdmitEntryCoords { coords: InferAdmitCallerCoords }
+  | AdmitEntryUninterpretable
+
+// ONE ENTRY OF THE LIST, READ OR REFUSED. The authored call `decl_ref(module_path: M,
+// decl_name: D)` reads through the construct readers: the tag names decl_ref, the named field
+// edges carry the two string atoms. Anything else is uninterpretable and refuses at the entry —
+// an entry that cannot be interpreted would otherwise be dropped, silently shrinking the
+// permitted-caller roster below what was authored.
+fn infer_admit_entry_interpret(entry: Node) -> InferAdmitEntry {
+  match construct_tag_path_optional(n: entry) {
+    Absent => AdmitEntryUninterpretable
+    Present { value: tag_path } =>
+      match qualified_name_last_segment(qn: tag_path) {
+        Absent => AdmitEntryUninterpretable
+        Present { value: leaf } =>
+          if !symbol_eq(a: leaf, b: ^decl_ref) {
+            AdmitEntryUninterpretable
+          } else {
+            match infer_admit_entry_field_symbol(entry: entry, field: ^module_path) {
+              Absent => AdmitEntryUninterpretable
+              Present { value: module_path } =>
+                match infer_admit_entry_field_symbol(entry: entry, field: ^decl_name) {
+                  Absent => AdmitEntryUninterpretable
+                  Present { value: decl_name } =>
+                    AdmitEntryCoords {
+                      coords: InferAdmitCallerCoords { module_path: module_path, decl_name: decl_name }
+                    }
+                }
+            }
+          }
+      }
+  }
+}
+
+// THE ONE NAMED FIELD'S STRING VALUE, as an interned lexeme.
+fn infer_admit_entry_field_symbol(entry: Node, field: Symbol) -> Optional<Symbol> {
+  fold(construct_field_edges(n: entry), init: optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match e.label {
+          Named { name: label } =>
+            if symbol_eq(a: label, b: field) {
+              infer_admit_atom_identity(node: e.target)
+            } else {
+              optional_absent()
+            }
+          Positional => optional_absent()
+        }
+    }
+  })
+}
+
+fn infer_admit_atom_identity(node: Node) -> Optional<Symbol> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+    _ => optional_absent()
+  }
+}
+
+// THE ENTRIES OF A PRESERVED admit_callers CLAUSE. POSITIONAL READER: the spine is
+// v2.extdeps.languages.dag dag_grammar_admit_callers_clause_expr — from the clause's captured
+// sequence, three right projections reach the entry sequence; its left is the first entry and its
+// right's left is the repeat capture whose left holds each further entry beside its comma. Adding
+// or reordering a constituent there is a change to this reader's contract and not a local grammar
+// edit. The walk mirrors v2.compiler.body_lowering_fold
+// body_lower_collect_typed_param_slots (the same parse-shape walk over a comma list).
+fn infer_admit_entries_from_clause_sequence(sequence_capture: Node) -> List<Node> {
+  match body_infer_projection_child(node: sequence_capture, name: ^grammar_sequence_left_node_projection) {
+    Absent => []
+    Present { value: first_entry } =>
+      match body_infer_projection_child(node: sequence_capture, name: ^grammar_sequence_right_node_projection) {
+        Absent => [first_entry]
+        Present { value: outer_right } =>
+          match body_infer_projection_child(node: outer_right, name: ^grammar_sequence_left_node_projection) {
+            Absent => [first_entry]
+            Present { value: repeat_capture } =>
+              list_snoc_item(
+                xs: infer_admit_entries_from_repeat_tail(repeat_capture: repeat_capture),
+                item: first_entry
+              )
+          }
+      }
+  }
+}
+
+fn infer_admit_entries_from_repeat_tail(repeat_capture: Node) -> List<Node> {
+  if is_empty_conj_root_infer(n: repeat_capture) {
+    []
+  } else {
+    match body_infer_projection_child(node: repeat_capture, name: ^grammar_sequence_left_node_projection) {
+      Absent => []
+      Present { value: head_sequence } =>
+        match body_infer_projection_child(node: head_sequence, name: ^grammar_sequence_right_node_projection) {
+          Absent => []
+          Present { value: entry } =>
+            match body_infer_projection_child(node: repeat_capture, name: ^grammar_sequence_right_node_projection) {
+              Absent => [entry]
+              Present { value: tail } =>
+                list_snoc_item(xs: infer_admit_entries_from_repeat_tail(repeat_capture: tail), item: entry)
+            }
+        }
+    }
+  }
+}
+
+fn body_infer_projection_child(node: Node, name: Symbol) -> Optional<Node> {
+  match find_named_child(root: node, name: name) {
+    Accepted { value: child, diagnostics: _ } => Present { value: child }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+// THE CLAUSE'S ENTRIES, reached from the clause shell the carrier put on the Arrow.
+fn infer_admit_clause_entries_optional(clause: Node) -> Optional<List<Node>> {
+  match parse_production_captured_child_optional(node: clause) {
+    Absent => Absent
+    Present { value: captured } => Present { value: infer_admit_entries_from_clause_sequence(sequence_capture: captured) }
+  }
+}
+
+// IS_EMPTY CONJ ROOT — the repeat-tail terminator, as body_lowering reads it.
+fn is_empty_conj_root_infer(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Conj } => length(xs: n.children) == 0
+    _ => false
+  }
+}
+
+// EVERY DIAGNOSTIC THE LIST CARRIES, folded into the stage's Diagnostics carrier.
+fn infer_admission_diags_of(ds: List<Diagnostic>) -> Diagnostics {
+  fold(ds, init: None, f: fn(acc, d) {
+    diagnostics_merge(
+      outer: acc,
+      inner: Some { diagnostics: NonEmptyDiagnostics { head: d, tail: [] } }
+    )
+  })
+}
+
+// ONE APPLICATION'S VERDICT UNDER `caller`. Only a callee whose Arrow carries the admit edge is
+// judged; every other call is outside this wall.
+fn infer_caller_admission_application_diags(
+  application: Node,
+  caller: Optional<InferAdmitCallerCoords>,
+  module_symbol: Symbol
+) -> Diagnostics {
+  match infer_application_callee_arrow(node: application) {
+    Absent => None
+    Present { value: arrow } =>
+      match core_edge_target_lookup(children: arrow.children, marker: AdmitCallersEdge) {
+        Ambiguous => None
+        Absent => None
+        Found { target: clause } =>
+          match infer_admit_clause_entries_optional(clause: clause) {
+            Absent => infer_admission_diags_of([
+              Diagnostic {
+                reason: ^infer_reason_admit_callers_entries_unreadable,
+                at: node_locus(node: application),
+                correction: Unavailable { reason: UserInputBoundary }
+              }
+            ])
+            Present { value: entries } =>
+              match caller {
+                Absent => infer_admission_diags_of([
+                  Diagnostic {
+                    reason: ^infer_reason_caller_admission_caller_unkeyed,
+                    at: node_locus(node: application),
+                    correction: Unavailable { reason: UserInputBoundary }
+                  }
+                ])
+                Present { value: coords } =>
+                  infer_admission_judge_entries(
+                    application: application,
+                    entries: entries,
+                    caller: coords,
+                    module_symbol: module_symbol
+                  )
+              }
+          }
+      }
+  }
+}
+
+type InferAdmitJudgement {
+  matched: Bool
+  diags: List<Diagnostic>
+}
+
+// EVERY ENTRY PLACED, THEN THE LIST'S VERDICT: uninterpretable entries refuse beside whatever
+// they sit with; the call refuses when no entry names its caller (v1: ConstructorCallAdmissionRefused).
+fn infer_admission_judge_entries(
+  application: Node,
+  entries: List<Node>,
+  caller: InferAdmitCallerCoords,
+  module_symbol: Symbol
+) -> Diagnostics {
+  let j = fold(entries, init: InferAdmitJudgement { matched: false, diags: [] }, f: fn(acc, entry) {
+    match infer_admit_entry_interpret(entry: entry) {
+      AdmitEntryUninterpretable =>
+        InferAdmitJudgement {
+          matched: acc.matched,
+          diags: list_snoc_item(
+            xs: acc.diags,
+            item: Diagnostic {
+              reason: ^infer_reason_admit_callers_entry_not_decl_ref,
+              at: node_locus(node: entry),
+              correction: Unavailable { reason: UserInputBoundary }
+            }
+          )
+        }
+      AdmitEntryCoords { coords: coords } =>
+        if symbol_eq(a: coords.module_path, b: module_symbol) && symbol_eq(a: coords.decl_name, b: caller.decl_name) {
+          InferAdmitJudgement { matched: true, diags: acc.diags }
+        } else {
+          acc
+        }
+    }
+  })
+  if j.matched {
+    infer_admission_diags_of(ds: j.diags)
+  } else {
+    infer_admission_diags_of(ds: list_snoc_item(
+      xs: j.diags,
+      item: Diagnostic {
+        reason: ^infer_reason_caller_admission_refused,
+        at: node_locus(node: application),
+        correction: Unavailable { reason: UserInputBoundary }
+      }
+    ))
+  }
+}
+
+// DESCENT KEYING. The module root's children are the declaration member wraps — a one-edge Conj
+// whose named edge is the declaration's name targeting its Arrow
+// (v2.compiler.body_lowering_fold body_lower_fn_decl_named_member_wrap) — so an edge whose target
+// is such a wrap keys the calls below it to that declaration. Descending into anything else keeps
+// the enclosing caller.
+fn infer_admission_child_context(self: Node, ctx: InferAdmissionCtx, edge: Edge) -> InferAdmissionCtx {
+  match edge.target.kind {
+    TypeNode { connective: Conj } =>
+      match first(xs: edge.target.children) {
+        Present { value: e } =>
+          match e.label {
+            Named { name: member_name } =>
+              if length(xs: edge.target.children) == 1 {
+                match e.target.kind {
+                  TypeNode { connective: Arrow } =>
+                    InferAdmissionCtx {
+                      caller: Present {
+                        value: InferAdmitCallerCoords { module_path: ctx.module_symbol, decl_name: member_name }
+                      },
+                      module_symbol: ctx.module_symbol
+                    }
+                  _ => ctx
+                }
+              } else {
+                ctx
+              }
+            Positional => ctx
+          }
+        Absent => ctx
+      }
+    _ => ctx
+  }
+}
+
+// THE WALL, over the whole resolved tree, top-down so each application is judged under the
+// declaration it sits in.
+fn infer_caller_admission_diags(tree: ResolvedTree) -> Diagnostics {
+  match qualified_name_from_module_node(root: tree.root) {
+    Rejected { diagnostics: _ } => None
+    Accepted { value: module_qn, diagnostics: _ } =>
+      fold_node_topdown(
+        n: tree.root,
+        ctx: InferAdmissionCtx {
+          caller: Absent,
+          module_symbol: symbol_intern_lexeme(lexeme: qualified_name_to_dotted_string(qn: module_qn))
+        },
+        algebra: NodeFoldTopDown {
+          init: fn(self, ctx) {
+            infer_caller_admission_application_diags(application: self, caller: ctx.caller, module_symbol: ctx.module_symbol)
+          },
+          child_context: fn(self, ctx, edge) { infer_admission_child_context(self: self, ctx: ctx, edge: edge) },
+          step: fn(acc, _edge, sub) { diagnostics_merge(outer: acc, inner: sub) }
+        }
+      )
   }
 }

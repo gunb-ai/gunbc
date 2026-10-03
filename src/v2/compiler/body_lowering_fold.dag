@@ -143,6 +143,7 @@ import v2.std.node {
   ArrowSignatureOrderEdge,
   ArrowExecutionModeClaimEdge,
   ArrowResourceRequirementsEdge,
+  AdmitCallersEdge,
   MapLiteralEntryEdge,
   MapLiteralEntriesEdge,
   MatchArmScopeExitEdge,
@@ -4502,7 +4503,6 @@ fn body_lower_data_decl_to_member(shell: Node) -> Outcome<BodyLowering> {
 // Atoms, in declared order: arity 0 is the empty introduction, arity 1 a singleton. It is the ONE
 // place positional binding reads parameter order (v2.std.node arrow_declared_parameter_order).
 // Resolve does not walk it (v2.compiler.resolve resolve_arrow_node): its atoms are labels, not
-// references, so a parameter spelled like a name in scope cannot bind through it.
 //
 // THE ONE CALLABLE ARROW. A lambda is surface sugar over the same Arrow a named `fn` declares, so the
 // child LAYOUT of a callable Arrow -- which children exist, in which order, under which labels -- is
@@ -4558,15 +4558,15 @@ fn body_lower_callable_arrow(
     )
   ))
 }
-
 fn body_lower_fn_decl_arrow(shell: Node, sig: BodyLowerFnSignature, body: Optional<Node>) -> Node {
+
   body_lower_fn_decl_named_member_wrap(
     arrow: body_lower_callable_arrow(
       source: shell,
       domain: Edge { label: Positional, target: sig.domain },
       codomain: sig.return_type,
       order_edge: signature_order_edge(order: sig.order, source: shell),
-      type_param_edges: body_lower_fn_decl_type_params_edges(sig: sig),
+      type_param_edges: list_append(left: body_lower_fn_decl_type_params_edges(sig: sig), right: body_lower_fn_admit_clause_edges(shell: shell)),
       body: match body {
         Absent => optional_absent()
         Present { value: b } =>
@@ -4576,6 +4576,24 @@ fn body_lower_fn_decl_arrow(shell: Node, sig: BodyLowerFnSignature, body: Option
     fn_name: sig.fn_name,
     source: shell
   )
+}
+
+// THE ADMIT_CALLERS CARRIER. A fn declaration's preserved admit_callers clause shell rides the
+// lowered Arrow under the core marker edge AdmitCallersEdge, so a consumer downstream reads the
+// declared permitted callers off the same node resolution hands an application's operator. This is
+// the half of the restoration gunbc.rung_drop admit_callers_discarded_on_the_native_route names:
+// the carrier is added TOGETHER WITH its consumer (v2.compiler.infer infer_caller_admission_diags),
+// because carrying the list with nothing reading it does not retire that row.
+fn body_lower_fn_admit_clause_edges(shell: Node) -> List<Edge> {
+  match body_lower_unwrap_captured(shell: shell) {
+    Absent => []
+    Present { value: captured } =>
+      match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_admit_callers_clause) {
+        Absent => []
+        Present { value: clause } =>
+          [core_edge(marker: AdmitCallersEdge, target: clause)]
+      }
+  }
 }
 
 // CENSUS GRADE: THE SIGNATURE, NEVER THE BODY. A module outside the compiled closure is read only for
