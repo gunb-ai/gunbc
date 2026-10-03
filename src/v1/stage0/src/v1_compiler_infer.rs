@@ -31284,6 +31284,11 @@ pub fn rewire_type_env_import_str_binding_identity(
     modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypedModule>>> {
+    // PROBE: simulate deleting the pass (the identity is left exactly as typecheck or decode made it).
+    if std::env::var_os("GUNBC_PROBE_SKIP_IDENTITY_REWIRE").is_some() {
+        crate::phase_cpu::count("census.pass_skipped");
+        return modules;
+    }
     let _phase_cpu_guard = crate::phase_cpu::guard("rewire_type_env_import_str_binding_identity");
     {
         let export_indexes = build_export_indexes(modules.clone(), source_indices.clone());

@@ -47172,6 +47172,83 @@ mod reconcile_interior_probe {
         }
     }
 
+    /// M1: the rewrite census at a WHOLE-TREE fresh compile (dag + src/v2, floor exclusions).
+    #[test]
+    #[ignore]
+    fn identity_rewire_census_whole_tree() {
+        use v1_stage0_v1_infer::phase_cpu;
+        let roots = vec!["dag".to_string(), "src/v2".to_string()];
+        let corpus = super::read_source_corpus_once(&roots);
+        let subject = super::assemble_prepared_subject_from_corpus(
+            &corpus,
+            &super::required_floor_runner::floor_prepared_subject_exclusions(),
+            None,
+        )
+        .expect("whole-tree subject assembles");
+        eprintln!("[m1-subject] modules={}", subject.sources.len());
+        phase_cpu::reset();
+        let result = v1_compiler_compile::compile_to_resolved(Rc::new(subject.sources.into()));
+        phase_cpu::report("m1");
+        eprintln!(
+            "[m1-done] graph={}",
+            result.graph.as_ref().map(|g| g.modules.len()).unwrap_or(0)
+        );
+    }
+
+    /// M2: the WARM route. The floor subject is resolved through the indexed path, which assembles from
+    /// typed snapshots. Run it once cold with GUNBC_TYPED_STORE_PERSIST set (this populates the
+    /// store), then in fresh processes warm. Each warm process prints the rewrite census for the
+    /// decoded-copy route and the live heap with the assembled graph held. Run warm with and without
+    /// GUNBC_PROBE_SKIP_IDENTITY_REWIRE to compare decoded copies against re-shared bindings.
+    #[test]
+    #[ignore]
+    fn identity_rewire_warm_route() {
+        use v1_stage0_v1_infer::phase_cpu;
+        let roots = vec!["dag".to_string(), "src/v2".to_string()];
+        let corpus = super::read_source_corpus_once(&roots);
+        let gate_entry_index = super::build_multi_entry_index(&roots);
+        let seeds = super::required_floor_runner::required_floor_nominal_subject_seeds_from_corpus(
+            &corpus,
+            &gate_entry_index,
+        )
+        .expect("nominal floor seeds");
+        let module_seeds =
+            super::required_floor_runner::required_floor_nominal_closure_module_seeds(
+                &seeds.required_gate_authored_modules,
+                &seeds.local_repo_wet_schedule_rows,
+            );
+        let subject = super::assemble_prepared_subject_from_corpus(
+            &corpus,
+            &super::required_floor_runner::floor_prepared_subject_exclusions(),
+            Some((
+                &gate_entry_index,
+                &seeds.required_gate_prefixes,
+                &module_seeds,
+            )),
+        )
+        .expect("floor subject assembles");
+        drop(gate_entry_index);
+        let index = super::process_shared_index(&roots);
+        let n = subject.sources.len();
+        phase_cpu::reset();
+        let (graph, _si, _diags) = super::resolved_graph_from_sources_with_index(
+            &index,
+            subject.sources,
+            super::ResolveTypecheckGate::Strict,
+            "identity-rewire-warm-route",
+            super::ResolvedGraphMemoShare::Ephemeral,
+        )
+        .expect("indexed resolve");
+        drop(corpus);
+        phase_cpu::report("m2");
+        eprintln!(
+            "[m2-done] subject={n} graph={} heap_in_use_with_graph={} skip={}",
+            graph.modules.len(),
+            heap_in_use(),
+            std::env::var_os("GUNBC_PROBE_SKIP_IDENTITY_REWIRE").is_some()
+        );
+    }
+
     fn heap_in_use() -> i128 {
         // SAFETY: mallinfo2 reads allocator bookkeeping and changes nothing.
         let mi = unsafe { libc::mallinfo2() };
