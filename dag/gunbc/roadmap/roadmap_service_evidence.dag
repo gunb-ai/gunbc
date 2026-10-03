@@ -1,0 +1,473 @@
+module gunbc.roadmap_service_evidence
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import extdeps.filesystem.filesystem_io {
+  FilesystemFileObservation, FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
+}
+import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
+import extdeps.languages.json.emit { JsonValue, serialize_json, json_object, json_kv, json_string, json_int, json_array }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
+import std.content_hash { content_hash_of_value }
+import std.materialization_provider { wire_content_hash_to_hex }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.roadmap_dispatch_actuator { dispatch_attempt_launch_path_for_instance }
+import std.measure { Kibibyte, kibibyte_count }
+import gunbc.roadmap_session_placement {
+  SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign,
+  SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign,
+  session_placement_observe_for_attempt,
+}
+import gunbc.roadmap_launch_admission {
+  attempt_launch_record_of_json, AttemptLaunchBound, AttemptLaunchUnbound, AttemptLaunchUnreadable,
+  launch_identity_node_id_text, launch_identity_instance_text, launch_identity_revision_hex,
+}
+
+// THE SERVICE EVIDENCE RECEIPT (roadmap node service-evidence-capture). One joined reading per
+// attempt over every field the node lists, bound to ONE attempt of ONE node on ONE dashboard
+// instance. It is a PURE JOIN COMPUTED ON READ, never a stored copy: each joined reader's own
+// record is already durable in attempt state, so persisting the join would give those facts a
+// second home (DESIGN §2/§3), and a write on an early tick would freeze fields that mature later
+// (ruling relayed by bold-bee-114, 2026-10-03). The immutable artifact is the dogfood START receipt
+// (gunbc.roadmap_dogfood_route, gunbc#13077), which pins this receipt's digest and per-field
+// standing once, when the start is recorded.
+//
+// THE SHAPE (side-chat NO-LAND ruling on c8b743d, relayed by bold-bee-114):
+//   1. the effectful boundary BINDS the attempt from its durable launch record (which names the
+//      node, the dashboard instance and the attempt) and GATHERS one typed input per reader, once
+//      per attempt;
+//   2. the receipt is that binding and that bundle, nothing else -- it carries no reading, so no
+//      reading can be written into it;
+//   3. every field's reading is DERIVED from the bundle into one closed product
+//      (ServiceEvidenceReadings, 21 named fields), which the wire and the closing contract both
+//      read. An Observed reading exists only as the projection of a landed reader's typed
+//      observation (today G5, gunbc.roadmap_session_placement); every other reader is pending.
+//   The ordered view (service_evidence_entries) is WITNESSED against the node's list, not
+//   structurally guaranteed: the language has no record-member iteration (rung 2).
+
+// ── 1. THE ATTEMPT BINDING ──
+// Admitted only when the attempt's launch record (gunbc.roadmap_launch_admission
+// AttemptLaunchRecordDecode) names the expected node, the expected dashboard instance AND the
+// expected attempt. A legacy record that carries no attempt key is unbound and refuses: it cannot
+// say which attempt it belongs to, and such attempts never qualify for the dogfood clock.
+type AttemptBinding {
+  instance_id: NonEmptyStr
+  node_id: NonEmptyStr
+  attempt_key: NonEmptyStr
+  revision_hex: NonEmptyStr
+}
+
+type AttemptBindingOutcome
+  = AttemptBound { binding: AttemptBinding }
+  | AttemptUnlaunched
+  | AttemptBindingRefused { reason: String }
+
+fn file_refusal(o: FilesystemFileObservation, what: String) -> String? {
+  match o {
+    FilesystemFileRead { path: _, content: _ } => none
+    FilesystemFileAbsent(_) => Present { value: join([what, " is absent"], "") }
+    FilesystemFileIndeterminate { cause } => Present { value: join([what, ": ", cause], "") }
+    FilesystemFileObservationsDisagree { path: _, cause } => Present { value: join([what, ": ", cause], "") }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause } => Present { value: join([what, ": ", cause], "") }
+  }
+}
+
+fn file_content(o: FilesystemFileObservation) -> String {
+  match o {
+    FilesystemFileRead { path: _, content } => content
+    FilesystemFileAbsent(_) => ""
+    FilesystemFileIndeterminate { cause: _ } => ""
+    FilesystemFileObservationsDisagree { path: _, cause: _ } => ""
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: _ } => ""
+  }
+}
+
+fn launch_is_absent(o: FilesystemFileObservation) -> Bool {
+  match o {
+    FilesystemFileAbsent(_) => true
+    FilesystemFileRead { path: _, content: _ } => false
+    FilesystemFileIndeterminate { cause: _ } => false
+    FilesystemFileObservationsDisagree { path: _, cause: _ } => false
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: _ } => false
+  }
+}
+
+fn names_attempt(recorded: NonEmptyStr, attempt_key: String) -> Bool {
+  (recorded as String) == attempt_key
+}
+
+fn service_evidence_bind_attempt(
+  instance_id: String,
+  node_id: String,
+  attempt_key: String,
+  launch: FilesystemFileObservation,
+) -> AttemptBindingOutcome {
+  if instance_id == "" { AttemptBindingRefused { reason: "instance_id is empty" } }
+  else if node_id == "" { AttemptBindingRefused { reason: "node_id is empty" } }
+  else if attempt_key == "" { AttemptBindingRefused { reason: "attempt_key is empty" } }
+  else if launch_is_absent(o: launch) { AttemptUnlaunched }
+  else {
+    match file_refusal(o: launch, what: "the attempt's launch record") {
+      Present { value: why } => AttemptBindingRefused { reason: why }
+      Absent =>
+        match parse_json_document(s: file_content(o: launch)) {
+          JsonDocumentUnreadable { gap: _ } => AttemptBindingRefused { reason: "the attempt's launch record is not a JSON document" }
+          JsonDocumentParsed { value: doc } =>
+            match attempt_launch_record_of_json(doc: doc) {
+              AttemptLaunchUnreadable { reason } => AttemptBindingRefused { reason: reason }
+              AttemptLaunchUnbound { identity: _ } => AttemptBindingRefused { reason: "the attempt's launch record carries no attempt key, so it cannot be bound to this attempt" }
+              AttemptLaunchBound { identity, attempt_key: recorded } =>
+                if launch_identity_node_id_text(id: identity) != node_id {
+                  AttemptBindingRefused { reason: join(["the launch record at this attempt's path names node ", launch_identity_node_id_text(id: identity)], "") }
+                } else if launch_identity_instance_text(id: identity) != instance_id {
+                  AttemptBindingRefused { reason: join(["the launch record at this attempt's path names instance ", launch_identity_instance_text(id: identity)], "") }
+                } else if !names_attempt(recorded: recorded, attempt_key: attempt_key) {
+                  AttemptBindingRefused { reason: join(["the launch record at this attempt's path names attempt ", recorded as String], "") }
+                } else {
+                  AttemptBound { binding: AttemptBinding {
+                    instance_id: instance_id as NonEmptyStr,
+                    node_id: node_id as NonEmptyStr,
+                    attempt_key: attempt_key as NonEmptyStr,
+                    revision_hex: launch_identity_revision_hex(id: identity) as NonEmptyStr,
+                  } }
+                }
+            }
+        }
+    }
+  }
+}
+
+// ── 2. THE READERS AND THEIR TYPED INPUTS ──
+// The closed reader vocabulary. Readers are compared by variant; the citation is wire output only.
+type ServiceEvidenceReader
+  = MeteringReader
+  | SessionPlacementReader
+  | SharedComputationReader
+  | ResultReturnedReader
+
+fn service_evidence_reader_wire(r: ServiceEvidenceReader) -> String {
+  match r {
+    MeteringReader => "gunbc.roadmap_attempt_metering metering_observe_for_attempt"
+    SessionPlacementReader => "gunbc.roadmap_session_placement session_placement_observe_for_attempt"
+    SharedComputationReader => "gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt"
+    ResultReturnedReader => "gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt"
+  }
+}
+
+// ONE INPUT PER LANDED READER. A reader on main is a member of the bundle carrying that reader's
+// own typed observation, gathered once per attempt; its fields are derived from NAMED members of that
+// observation, re-checking the observation's (node, attempt) against the binding. A reader not yet on
+// main has NO member: its fields are derived as owed to it (pending_reader_owed), and its pull
+// request is derived from the reader (reader_pending_pr), so nothing a caller supplies can reach the
+// canonical wire for it. No member carries a bare value, so no field can be observed without its
+// reader's record. When a pending reader lands, its change adds its member exactly as G5's below.
+type SessionPlacementInput = SessionPlacementRead { observation: SessionPlacementObservation }
+
+type ServiceEvidenceInputs {
+  session_placement: SessionPlacementInput
+}
+
+fn reader_pending_pr(r: ServiceEvidenceReader) -> Int {
+  match r {
+    MeteringReader => 13073
+    SessionPlacementReader => 13074
+    SharedComputationReader => 13097
+    ResultReturnedReader => 13075
+  }
+}
+
+// The effectful gather, once per bound attempt: every landed reader is called exactly once.
+fn service_evidence_inputs_for_attempt(instance: HostDashboardInstance, binding: AttemptBinding) -> ServiceEvidenceInputs {
+  ServiceEvidenceInputs {
+    session_placement: SessionPlacementRead { observation: session_placement_observe_for_attempt(instance: instance, node_id: binding.node_id as String, attempt_key: binding.attempt_key as String) },
+  }
+}
+
+// ── THE RECEIPT: the binding and the bundle, and no reading ──
+type ServiceEvidenceReceipt {
+  binding: AttemptBinding
+  inputs: ServiceEvidenceInputs
+}
+
+// ── 3. THE CLOSED PER-FIELD READING, derived; there is no default and no zero ──
+// PendingReader: the reader is not on main (its PR is derived, reader_pending_pr).
+// ReaderRecordAbsent: the reader is on main and has written nothing for this attempt yet.
+// UnbuiltProducer: no producer exists anywhere; the named node owns building it.
+type ServiceEvidenceProducer
+  = PendingReader { reader: ServiceEvidenceReader }
+  | ReaderRecordAbsent { reader: ServiceEvidenceReader }
+  | UnbuiltProducer { owner_node: String }
+
+type ServiceEvidenceReading
+  = EvidenceObserved { value: String, source: ServiceEvidenceReader }
+  | EvidenceOwed { producer: ServiceEvidenceProducer }
+  | EvidenceRefused { reason: NonEmptyStr }
+
+fn pending_reader_owed(reader: ServiceEvidenceReader) -> ServiceEvidenceReading {
+  EvidenceOwed { producer: PendingReader { reader: reader } }
+}
+
+fn refused_reading(reason: String) -> ServiceEvidenceReading {
+  if reason == "" { EvidenceRefused { reason: "the reader refused without a reason" as NonEmptyStr } }
+  else { EvidenceRefused { reason: reason as NonEmptyStr } }
+}
+
+// G5 (gunbc.roadmap_session_placement). What its grant record ESTABLISHES, and nothing else:
+//   placement        -- host, capacity partition and unit of the granted session;
+//   workload_class   -- the work-class grant the session was admitted under;
+//   resource_request -- the amount the grant admitted (the request as granted).
+// It does not establish wait time (no request-enqueued instant is recorded) or seat utilization (no
+// usage against the grant is recorded); those stay owed to this node (service_evidence_readings).
+// Every arm is mapped: Absent and a slot with no grant record yet are owed to G5 at runtime;
+// Unreadable, Foreign, an unreadable or foreign grant, and a record naming another (node, attempt)
+// than the binding are refused. None of them can produce an observed reading.
+type SessionPlacementFact = PlacementFact | WorkloadClassFact | ResourceRequestFact
+
+fn session_placement_fact_value(fact: SessionPlacementFact, host: String, partition: String, unit: String, class_grant: String, amount: Kibibyte) -> String {
+  match fact {
+    PlacementFact => join(["host ", host, ", partition ", partition, ", unit ", unit], "")
+    WorkloadClassFact => class_grant
+    ResourceRequestFact => join([to_string(kibibyte_count(k: amount)), " KiB granted"], "")
+  }
+}
+
+fn session_placement_reading(i: SessionPlacementInput, binding: AttemptBinding, fact: SessionPlacementFact) -> ServiceEvidenceReading {
+  match i {
+    SessionPlacementRead { observation } =>
+      match observation {
+        SessionPlacementAbsent { unit: _ } => EvidenceOwed { producer: ReaderRecordAbsent { reader: SessionPlacementReader } }
+        SessionPlacementUnreadable { unit: _, detail } => refused_reading(reason: join(["the session placement is unreadable: ", detail], ""))
+        SessionPlacementForeign { unit: _, detail } => refused_reading(reason: join(["the session placement is not this attempt's: ", detail], ""))
+        SessionPlacementObserved { slot: _, grant, returned: _ } =>
+          match grant {
+            SessionGrantNotRecorded { path: _ } => EvidenceOwed { producer: ReaderRecordAbsent { reader: SessionPlacementReader } }
+            SessionGrantUnreadable { path: _, detail } => refused_reading(reason: join(["the session grant record is unreadable: ", detail], ""))
+            SessionGrantForeign { path: _, detail } => refused_reading(reason: join(["the session grant record is not this attempt's: ", detail], ""))
+            SessionGrantRecorded { record } =>
+              if record.node_id != (binding.node_id as String) || record.attempt_key != (binding.attempt_key as String) {
+                refused_reading(reason: join(["the session grant record names ", record.node_id, " attempt ", record.attempt_key, ", not the bound attempt"], ""))
+              } else {
+                EvidenceObserved {
+                  value: session_placement_fact_value(fact: fact, host: record.host, partition: record.partition, unit: record.unit, class_grant: record.class_grant, amount: record.amount),
+                  source: SessionPlacementReader,
+                }
+              }
+          }
+      }
+  }
+}
+
+// A field with no producer anywhere yet is owed to the node that owns building it. Where no other
+// node owns it, that is this node, whose later slices build it.
+fn owed_to(owner_node: String) -> ServiceEvidenceReading {
+  EvidenceOwed { producer: UnbuiltProducer { owner_node: owner_node } }
+}
+
+// THE POPULATION: exactly the node's 21 fields, one named member each. A record literal must set
+// every member exactly once, so the population is checked by the compiler, not by a count.
+type ServiceEvidenceReadings {
+  workload_class: ServiceEvidenceReading
+  resource_request: ServiceEvidenceReading
+  wait_time: ServiceEvidenceReading
+  execution_time: ServiceEvidenceReading
+  completion_time: ServiceEvidenceReading
+  cache_hits: ServiceEvidenceReading
+  cache_misses: ServiceEvidenceReading
+  cache_shared_misses: ServiceEvidenceReading
+  cache_corrupt_hit_refusals: ServiceEvidenceReading
+  placement: ServiceEvidenceReading
+  seat_utilization: ServiceEvidenceReading
+  artifact_bytes: ServiceEvidenceReading
+  egress: ServiceEvidenceReading
+  failure_attribution: ServiceEvidenceReading
+  recovery_action: ServiceEvidenceReading
+  operator_intervention_time: ServiceEvidenceReading
+  hardware_health: ServiceEvidenceReading
+  billable_usage: ServiceEvidenceReading
+  billable_credits: ServiceEvidenceReading
+  workspace_recovery_point: ServiceEvidenceReading
+  workspace_recovery_time: ServiceEvidenceReading
+}
+
+// THE ONE SOURCE AUTHORITY PER FIELD: which input (and so which reader) or which owning node.
+fn service_evidence_readings(r: ServiceEvidenceReceipt) -> ServiceEvidenceReadings {
+  let i = r.inputs
+  ServiceEvidenceReadings {
+    workload_class: session_placement_reading(i: i.session_placement, binding: r.binding, fact: WorkloadClassFact),
+    resource_request: session_placement_reading(i: i.session_placement, binding: r.binding, fact: ResourceRequestFact),
+    wait_time: owed_to(owner_node: "service-evidence-capture"),
+    execution_time: pending_reader_owed(reader: MeteringReader),
+    completion_time: pending_reader_owed(reader: ResultReturnedReader),
+    cache_hits: pending_reader_owed(reader: SharedComputationReader),
+    cache_misses: pending_reader_owed(reader: SharedComputationReader),
+    cache_shared_misses: pending_reader_owed(reader: SharedComputationReader),
+    cache_corrupt_hit_refusals: pending_reader_owed(reader: SharedComputationReader),
+    placement: session_placement_reading(i: i.session_placement, binding: r.binding, fact: PlacementFact),
+    seat_utilization: owed_to(owner_node: "service-evidence-capture"),
+    artifact_bytes: pending_reader_owed(reader: SharedComputationReader),
+    egress: owed_to(owner_node: "service-evidence-capture"),
+    failure_attribution: pending_reader_owed(reader: ResultReturnedReader),
+    recovery_action: owed_to(owner_node: "service-evidence-capture"),
+    operator_intervention_time: owed_to(owner_node: "service-evidence-capture"),
+    hardware_health: owed_to(owner_node: "fleet-health-0-live-receipt"),
+    billable_usage: pending_reader_owed(reader: MeteringReader),
+    billable_credits: owed_to(owner_node: "failure-billing-outcomes"),
+    workspace_recovery_point: owed_to(owner_node: "fabric-storage"),
+    workspace_recovery_time: owed_to(owner_node: "fabric-storage"),
+  }
+}
+
+// THE ONE ORDERED VIEW of the product, read by the wire AND the closing contract (no second list).
+// The language has no record-member iteration, so this enumeration is the one place a member could
+// be repeated or dropped; the witness compares its names, by identity and in order, against the
+// node's list, and a count-preserving duplicate-plus-omission is its discriminating red (rung 2).
+type ServiceEvidenceEntry {
+  field: String
+  reading: ServiceEvidenceReading
+}
+
+fn entry(field: String, reading: ServiceEvidenceReading) -> ServiceEvidenceEntry {
+  ServiceEvidenceEntry { field: field, reading: reading }
+}
+
+fn service_evidence_entries(r: ServiceEvidenceReadings) -> List<ServiceEvidenceEntry> {
+  [
+    entry(field: "workload_class", reading: r.workload_class),
+    entry(field: "resource_request", reading: r.resource_request),
+    entry(field: "wait_time", reading: r.wait_time),
+    entry(field: "execution_time", reading: r.execution_time),
+    entry(field: "completion_time", reading: r.completion_time),
+    entry(field: "cache_hits", reading: r.cache_hits),
+    entry(field: "cache_misses", reading: r.cache_misses),
+    entry(field: "cache_shared_misses", reading: r.cache_shared_misses),
+    entry(field: "cache_corrupt_hit_refusals", reading: r.cache_corrupt_hit_refusals),
+    entry(field: "placement", reading: r.placement),
+    entry(field: "seat_utilization", reading: r.seat_utilization),
+    entry(field: "artifact_bytes", reading: r.artifact_bytes),
+    entry(field: "egress", reading: r.egress),
+    entry(field: "failure_attribution", reading: r.failure_attribution),
+    entry(field: "recovery_action", reading: r.recovery_action),
+    entry(field: "operator_intervention_time", reading: r.operator_intervention_time),
+    entry(field: "hardware_health", reading: r.hardware_health),
+    entry(field: "billable_usage", reading: r.billable_usage),
+    entry(field: "billable_credits", reading: r.billable_credits),
+    entry(field: "workspace_recovery_point", reading: r.workspace_recovery_point),
+    entry(field: "workspace_recovery_time", reading: r.workspace_recovery_time),
+  ]
+}
+
+// ── THE OBSERVATION the dogfood start receipt requires ──
+type ServiceEvidenceObservation
+  = ServiceEvidenceJoined { receipt: ServiceEvidenceReceipt }
+  | ServiceEvidenceAttemptUnlaunched
+  | ServiceEvidenceRefused { reason: String }
+
+fn service_evidence_observe_for_attempt(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> ServiceEvidenceObservation {
+  match service_evidence_bind_attempt(
+    instance_id: instance.instance_id as String,
+    node_id: node_id as String,
+    attempt_key: attempt_key,
+    launch: filesystem_file_observation_of_path(path: dispatch_attempt_launch_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)),
+  ) {
+    AttemptUnlaunched => ServiceEvidenceAttemptUnlaunched
+    AttemptBindingRefused { reason } => ServiceEvidenceRefused { reason: reason }
+    AttemptBound { binding } =>
+      ServiceEvidenceJoined { receipt: ServiceEvidenceReceipt { binding: binding, inputs: service_evidence_inputs_for_attempt(instance: instance, binding: binding) } }
+  }
+}
+
+// ── THE CANONICAL WIRE AND ITS DIGEST, what the start receipt pins ──
+// The wire is a function of the receipt (binding + inputs) only: a reading built by hand is not an
+// input to it, so it cannot be serialized or pinned as service evidence.
+fn service_evidence_producer_json(p: ServiceEvidenceProducer) -> JsonValue {
+  match p {
+    PendingReader { reader } => json_object([
+      json_kv(key: "kind", value: json_string(s: "pending_reader")),
+      json_kv(key: "reader", value: json_string(s: service_evidence_reader_wire(r: reader))),
+      json_kv(key: "pr", value: json_int(n: reader_pending_pr(r: reader))),
+    ])
+    ReaderRecordAbsent { reader } => json_object([
+      json_kv(key: "kind", value: json_string(s: "reader_record_absent")),
+      json_kv(key: "reader", value: json_string(s: service_evidence_reader_wire(r: reader))),
+    ])
+    UnbuiltProducer { owner_node } => json_object([
+      json_kv(key: "kind", value: json_string(s: "unbuilt_producer")),
+      json_kv(key: "owner_node", value: json_string(s: owner_node)),
+    ])
+  }
+}
+
+fn service_evidence_entry_json(x: ServiceEvidenceEntry) -> JsonValue {
+  let field = json_kv(key: "field", value: json_string(s: x.field))
+  match x.reading {
+    EvidenceObserved { value, source } => json_object([field,
+      json_kv(key: "standing", value: json_string(s: "observed")),
+      json_kv(key: "value", value: json_string(s: value)),
+      json_kv(key: "source", value: json_string(s: service_evidence_reader_wire(r: source))),
+    ])
+    EvidenceOwed { producer } => json_object([field,
+      json_kv(key: "standing", value: json_string(s: "owed")),
+      json_kv(key: "producer", value: service_evidence_producer_json(p: producer)),
+    ])
+    EvidenceRefused { reason } => json_object([field,
+      json_kv(key: "standing", value: json_string(s: "refused")),
+      json_kv(key: "reason", value: json_string(s: reason as String)),
+    ])
+  }
+}
+
+data service_evidence_receipt_schema: String = "service-evidence-receipt/v1"
+
+fn service_evidence_receipt_wire(r: ServiceEvidenceReceipt) -> String {
+  serialize_json(v: json_object([
+    json_kv(key: "schema", value: json_string(s: service_evidence_receipt_schema)),
+    json_kv(key: "instance_id", value: json_string(s: r.binding.instance_id as String)),
+    json_kv(key: "node_id", value: json_string(s: r.binding.node_id as String)),
+    json_kv(key: "attempt_key", value: json_string(s: r.binding.attempt_key as String)),
+    json_kv(key: "launch_revision", value: json_string(s: r.binding.revision_hex as String)),
+    json_kv(key: "fields", value: json_array(map(service_evidence_entries(r: service_evidence_readings(r: r)), x => service_evidence_entry_json(x: x)))),
+  ]))
+}
+
+fn service_evidence_receipt_digest(r: ServiceEvidenceReceipt) -> String {
+  wire_content_hash_to_hex(hash: content_hash_of_value(value: service_evidence_receipt_wire(r: r) as NonEmptyStr))
+}
+
+// ── THE NODE'S CLOSING CONTRACT (roadmap node service-evidence-capture) ──
+//
+// The node closes when EVERY FIELD HAS A LANDED SOURCE: no field is owed to a reader that is not on
+// main or to a producer that does not exist. Runtime standings of a landed reader (its record not yet
+// written, or refused for one attempt) are facts about one attempt, not about the node's capability,
+// so they do not hold the node open. The predicate is evaluated over a probe receipt whose landed
+// readers report no record (the weakest runtime standing), so it measures sources and nothing else.
+// Read from the same ordered view as the wire. RED today: 18 of 21 fields are unsourced (G5 sources 3).
+fn service_evidence_unsourced_fields(r: ServiceEvidenceReadings) -> List<String> {
+  map(filter(service_evidence_entries(r: r), x => match x.reading {
+    EvidenceObserved { value: _, source: _ } => false
+    EvidenceRefused { reason: _ } => false
+    EvidenceOwed { producer } => match producer {
+      PendingReader { reader: _ } => true
+      UnbuiltProducer { owner_node: _ } => true
+      ReaderRecordAbsent { reader: _ } => false
+    }
+  }), x => x.field)
+}
+
+fn service_evidence_closing_probe() -> ServiceEvidenceReceipt {
+  ServiceEvidenceReceipt {
+    binding: AttemptBinding {
+      instance_id: "closing-contract-probe" as NonEmptyStr,
+      node_id: "service-evidence-capture" as NonEmptyStr,
+      attempt_key: "closing-contract-probe" as NonEmptyStr,
+      revision_hex: "0000000000000000000000000000000000000000" as NonEmptyStr,
+    },
+    inputs: ServiceEvidenceInputs {
+      session_placement: SessionPlacementRead { observation: SessionPlacementAbsent { unit: "closing-contract-probe" } },
+    },
+  }
+}
+
+fn service_evidence_capture_acceptance_holds() -> Bool {
+  count(service_evidence_unsourced_fields(r: service_evidence_readings(r: service_evidence_closing_probe()))) == 0
+}

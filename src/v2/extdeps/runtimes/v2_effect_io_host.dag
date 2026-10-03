@@ -1,5 +1,6 @@
 module v2.extdeps.runtimes.v2_effect_io_host
 
+import std.types { List }
 import v2.extdeps.file_system { Filesystem, ModeledFileEffects }
 import v2.extdeps.runtimes.v2_effect_io_pure {
   EffectIoFixtureStore,
@@ -30,7 +31,7 @@ import std.effect_grant {
   CoveringGrant, CoveredBy, NoCoveringGrant, covering_grant,
 }
 import std.access { Permit, Deny }
-import v2.std.collection { Absent, List, Map }
+import v2.std.collection { Absent, Map }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
