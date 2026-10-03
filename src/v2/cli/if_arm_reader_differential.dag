@@ -27,7 +27,7 @@ import v2.extdeps.languages.dag {
   parse_production_emitted_identity_optional
 }
 import v2.std.algebra { fold_list, length, list_reverse }
-import v2.std.diagnostic { Accepted, Diagnostics, NonEmptyDiagnostics, Rejected, Textual, ByteRange, WholeFile, bind_outcome, diagnostics_fatal_reason }
+import v2.std.diagnostic { Accepted, Diagnostics, NonEmptyDiagnostics, Rejected, Textual, NodeLocus, SourcePortLocus, InvariantPortLocus, DeclarationLocus, ByteRange, WholeFile, bind_outcome, diagnostics_fatal_reason }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.integer { integer_int_to_decimal_string }
 import v2.std.node { Node, Symbol, is_empty_conj_root, symbol_lexeme }
@@ -343,7 +343,10 @@ fn iard_location(node: Node, spans: SpanIndex, source: String) -> String {
                   )
                 WholeFile => "<whole file>"
               }
-            _ => "<non-textual locus>"
+            NodeLocus { anchor: _ } => "<non-textual locus>"
+            SourcePortLocus { anchor: _, file: _, extent: _ } => "<non-textual locus>"
+            InvariantPortLocus { anchor: _, invariant: _ } => "<non-textual locus>"
+            DeclarationLocus { declaration: _ } => "<non-textual locus>"
           }
       }
   }
@@ -380,7 +383,10 @@ fn iard_arm_differs(c: IardArmComparison) -> Bool {
   match c {
     IardArmAgree => false
     IardArmBothAbsent => false
-    _ => true
+    IardArmDiffer { old: _, new: _ } => true
+    IardArmOldOnly { old: _ } => true
+    IardArmNewOnly { new: _ } => true
+    IardArmUnidentified => true
   }
 }
 
@@ -402,7 +408,9 @@ fn iard_arm_detail(c: IardArmComparison, spans: SpanIndex, source: String) -> St
              concat(" new_at=[", concat(iard_location(node: n, spans: spans, source: source), "]")))
     IardArmOldOnly { old: o } => concat(" old_at=[", concat(iard_location(node: o, spans: spans, source: source), "]"))
     IardArmNewOnly { new: n } => concat(" new_at=[", concat(iard_location(node: n, spans: spans, source: source), "]"))
-    _ => ""
+    IardArmAgree => ""
+    IardArmBothAbsent => ""
+    IardArmUnidentified => ""
   }
 }
 
