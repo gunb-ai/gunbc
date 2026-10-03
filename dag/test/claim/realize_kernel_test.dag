@@ -87,8 +87,7 @@ test fn witness_miss_recomputes() -> Bool {
 test fn witness_corrupt_hit_refuses_never_recomputes() -> Bool {
   match realize_route(lookup: RejectedHit { reason: ContentDigestMismatch }) {
     Refuse { reason: HitRefused { reason: ContentDigestMismatch } } => true
-    Recompute { reason: _ } => false
-    Reuse { receipt: _ } => false
+    _ => false
   }
 }
 
