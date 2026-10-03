@@ -12,6 +12,7 @@ import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_vers
 import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, ProposeDeny, approval_capability_signing_input }
 import gunbc.auth.approval_broker { SubmissionAdmission, SubmissionAdmitted, SubmissionRequesterNotEnrolled, SubmissionAuthorityNotPermittedForRequester, admit_submission, BrokerApproved, BrokerDenied }
 import gunbc.auth.approval_notification { approval_notification }
+import gunbc.auth.approval_ntfy_publish
 import gunbc.auth.approval_broker_endpoint { approval_broker_base_url, approval_broker_confirm_path_prefix }
 import std.algebra { trim }
 import gunbc.auth.approval_status_wire {

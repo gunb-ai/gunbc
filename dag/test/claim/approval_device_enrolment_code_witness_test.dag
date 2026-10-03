@@ -13,7 +13,7 @@ import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
 import extdeps.ntfy.ntfy { ntfy_publish_outcome_of, ntfy_publish_acceptance }
 import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import gunbc.auth.approval_request_submission { PublisherTokenLoaded, PublisherTokenUnavailable, NotificationAttempted }
-import gunbc.auth.approval_ntfy_deployment { hermetic_ntfy_publish_message_id }
+import gunbc.auth.approval_ntfy_publish { hermetic_ntfy_publish_message_id }
 import gunbc.auth.approval_device_redemption { observe_enrolment_slot, EnrolmentCodeUnspent }
 import extdeps.shell
 import gunbc.auth.approval_notification { approval_ntfy_topic }
