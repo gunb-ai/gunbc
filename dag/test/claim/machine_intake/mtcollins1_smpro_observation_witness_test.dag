@@ -16,7 +16,7 @@ import gunbc.machine_intake_mtcollins1_smpro_observation {
   mtcollins1_smpro_socket_stage, CurrentStageEstablished, ReportedStageUnavailable,
   SmproProbeRaw, SmproProbeOutcome, SmproWordRead, SmproControllerRefused, SmproTransportFailed, SmproResponseMalformed, SmproNotSent,
   smpro_probe_outcome, smpro_control_refusal, smpro_request_text, mtcollins1_smpro_findings, mtcollins1_smpro_dossier_text,
-  mtcollins1_smpro_probe_count, mtcollins1_smpro_sequenced, mtcollins1_smpro_plan, SmproTarget,
+  mtcollins1_smpro_probe_count, mtcollins1_smpro_read_order, mtcollins1_smpro_sequenced, mtcollins1_smpro_plan, SmproTarget,
 }
 import extdeps.ampere.smpro_register { SmproRegister }
 
@@ -54,8 +54,8 @@ test fn the_bootstage_request_writes_the_register_and_the_size() -> Bool {
   (smpro_request_text(bus: 5, slave: 158, reg: 176) as String) == "raw 0x06 0x52 0x05 0x9e 0x02 0xb0 0x02"
 }
 
-test fn the_plan_is_five_registers_on_two_sockets() -> Bool {
-  mtcollins1_smpro_probe_count() == 10
+test fn the_plan_is_every_ordered_register_on_two_sockets() -> Bool {
+  mtcollins1_smpro_probe_count() == 2 * count(mtcollins1_smpro_read_order) && count(mtcollins1_smpro_read_order) == 24
 }
 
 // ── one transport result -> one typed outcome ───────────────────────────────────────────────────
@@ -165,14 +165,30 @@ fn register_of(o: SmproProbeOutcome) -> String {
   match o { SmproWordRead { raw: r, word: _ } => r.register as String SmproNotSent { socket: _, register: g, reason: _ } => g as String _ => "" }
 }
 
+type SequenceWalk {
+  next: Int
+  ok: Bool
+}
+
+// Each outcome's sequence equals its position: 0, 1, 2, ... with no gap or repeat.
+fn sequences_are_positions(os: List<SmproProbeOutcome>) -> Bool {
+  fold(os, init: SequenceWalk { next: 0, ok: true }, f: (acc, o) => SequenceWalk { next: acc.next + 1, ok: acc.ok && sequence_of(o: o) == acc.next }).ok
+}
+
 test fn every_read_is_issued_after_all_earlier_probes_have_outcomes() -> Bool {
   let os = mtcollins1_smpro_sequenced(plan: mtcollins1_smpro_plan(), read: (t, reg, n) => scripted_read(t: t, reg: reg, n: n))
-  count(os) == 10 && join(map(os, o => to_string(sequence_of(o: o))), ",") == "0,1,2,3,4,5,6,7,8,9"
+  count(os) == mtcollins1_smpro_probe_count() && sequences_are_positions(os: os)
 }
 
 test fn bootstage_is_last_on_each_socket_and_the_control_first() -> Bool {
   let os = mtcollins1_smpro_sequenced(plan: mtcollins1_smpro_plan(), read: (t, reg, n) => scripted_read(t: t, reg: reg, n: n))
-  join(map(os, o => register_of(o: o)), ",") == "MANUFACTURER_ID_REG,CUR_BOOTSTAGE,BOOTSTAGE_LO,BOOTSTAGE_HI,BOOTSTAGE,MANUFACTURER_ID_REG,CUR_BOOTSTAGE,BOOTSTAGE_LO,BOOTSTAGE_HI,BOOTSTAGE"
+  let per = count(mtcollins1_smpro_read_order)
+  let names = map(os, o => register_of(o: o))
+  count(names) == 2 * per
+    && (match names.first() { Present { value: x } => x == "MANUFACTURER_ID_REG" Absent => false })
+    && (match names.skip(n: per - 1).first() { Present { value: x } => x == "BOOTSTAGE" Absent => false })
+    && (match names.skip(n: per).first() { Present { value: x } => x == "MANUFACTURER_ID_REG" Absent => false })
+    && (match names.skip(n: 2 * per - 1).first() { Present { value: x } => x == "BOOTSTAGE" Absent => false })
 }
 
 // A plan listed out of order is refused by the gate rather than executed out of order: a
@@ -187,7 +203,7 @@ test fn a_register_ahead_of_its_control_is_not_sent() -> Bool {
 // The socket-0 control gates socket 1 through the folded outcome, not through a separate call.
 test fn a_failed_socket_zero_control_sends_nothing_further() -> Bool {
   let os = mtcollins1_smpro_sequenced(plan: mtcollins1_smpro_plan(), read: (t, reg, n) => smpro_probe_outcome(raw: SmproProbeRaw { sequence: n, socket: t.socket, register: reg.name, request: "r", at: "t", exit_code: 1, stdout: "", stderr: nak_stderr }))
-  count(os) == 10 && count(filter(os, o => match o { SmproNotSent { socket: _, register: _, reason: _ } => true _ => false })) == 9
+  count(os) == mtcollins1_smpro_probe_count() && count(filter(os, o => match o { SmproNotSent { socket: _, register: _, reason: _ } => true _ => false })) == mtcollins1_smpro_probe_count() - 1
 }
 
 // ── CUR_BOOTSTAGE AND BOOTSTAGE ARE INDEPENDENT READINGS ───────────────────────────────────────
