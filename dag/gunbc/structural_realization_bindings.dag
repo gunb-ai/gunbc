@@ -3,6 +3,7 @@ module gunbc.structural_realization_bindings
 import std.types { List, String, Bool, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.literal_elaboration { LiteralHomomorphism, LiteralSourceKind, KernelIntLiteral, KernelBoolLiteral, KernelStringLiteral, LiteralUnfolding, PeanoUnfold, BooleanUnfold, UnicodeScalarSequenceUnfold, KernelGrounding }
+import std.coercion { ConversionPlan, UnfoldPhase, InverseUnfoldPhase }
 import std.operator_realization { StructuralOrderingBinding, StructuralConnectiveBinding }
 
 // THE CORPUS'S HALF OF LITERAL ELABORATION AND OPERATOR REALIZATION (std.literal_elaboration,
@@ -75,6 +76,30 @@ data literal_homomorphism_rows: List<LiteralHomomorphism> = [
     destination: decl_ref(module_path: "std.algebra", decl_name: "FreeMonoid"),
     element: Present { value: decl_ref(module_path: "std.types", decl_name: "Char") },
     producer: UnicodeScalarSequenceUnfold
+  }
+]
+
+// THE CORPUS'S NAMED CONVERSION PLANS (std.coercion ConversionPlan), beside the literal rows whose
+// routes they apply to values. Host text is the kernel std.types String; the code-point sequence
+// is std.algebra FreeMonoid over std.types Char, the same post-peel key the literal row above uses.
+// unicode_scalar_unfold is the value form of that row's UnicodeScalarSequenceUnfold;
+// unicode_scalar_fold is its inverse, lawful by the bijection std.coercion states.
+data conversion_plan_rows: List<ConversionPlan> = [
+  ConversionPlan {
+    identity: "unicode_scalar_unfold" as NonEmptyStr,
+    source: decl_ref(module_path: "std.types", decl_name: "String"),
+    source_element: Absent,
+    target: decl_ref(module_path: "std.algebra", decl_name: "FreeMonoid"),
+    target_element: Present { value: decl_ref(module_path: "std.types", decl_name: "Char") },
+    phases: [UnfoldPhase { producer: UnicodeScalarSequenceUnfold }]
+  },
+  ConversionPlan {
+    identity: "unicode_scalar_fold" as NonEmptyStr,
+    source: decl_ref(module_path: "std.algebra", decl_name: "FreeMonoid"),
+    source_element: Present { value: decl_ref(module_path: "std.types", decl_name: "Char") },
+    target: decl_ref(module_path: "std.types", decl_name: "String"),
+    target_element: Absent,
+    phases: [InverseUnfoldPhase { producer: UnicodeScalarSequenceUnfold }]
   }
 ]
 
