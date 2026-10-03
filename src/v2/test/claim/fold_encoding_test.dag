@@ -1,5 +1,6 @@
 module v2.test.claim.fold_encoding
 
+import std.algebra { Empty }
 import v2.std.anonymous_binder { is_fold_carrier_binder }
 import v2.compiler.reference_conservation_admission { conserved_normalize_of_text, no_explained_drops }
 import v2.extdeps.languages.dag { qualified_name_from_module_node }

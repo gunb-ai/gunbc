@@ -13,7 +13,7 @@ import gunbc.roadmap_serve {
   BeltPublishHandler,
   IssueDetailPageHandler, IssueAssignHandler, IssueCommentHandler, IssueAssignmentContextHandler,
   serve_issue_assignment_context_over,
-  AuthSessionHandler,
+  AuthSessionHandler, AuthLoginHandler, AuthGoogleCallbackHandler, AuthLogoutHandler,
   roadmap_serve_route_table_build,
   roadmap_serve_route_specs,
   roadmap_serve_own_route_specs,
@@ -923,11 +923,11 @@ fn witness_auth_session_without_picture() -> AuthenticatedSession {
   }
 }
 
-// THE SESSION ROUTE IS SERVED AND THE LOGIN ROUTES ARE NOT: the OIDC login, callback and
-// logout routes moved to a follow-up (their redirect and Set-Cookie answers need a socket
-// runtime that writes response headers, which this revision's seed does not), so each path
-// selects no route rather than reaching a handler whose headers would be dropped.
-test fn the_session_route_is_served_and_the_login_routes_are_not() -> Bool {
+// THE SESSION AND LOGIN ROUTES ARE SERVED, EACH BY ITS OWN HANDLER: the OIDC login, callback and
+// logout routes land with the seed's response-header transport (cli_run serve_write_response
+// writes the handler's Location and Set-Cookie lines), so each path selects its handler rather
+// than no route. RED if a login path stops selecting, or selects another handler.
+test fn the_session_and_login_routes_select_their_handlers() -> Bool {
   match roadmap_serve_route_table_build() {
     ServedRouteTableBuildRefused { raw: _, segment: _, reason: _ } => false
     ServedRouteTableBuilt { table: t } =>
@@ -936,15 +936,15 @@ test fn the_session_route_is_served_and_the_login_routes_are_not() -> Bool {
         _ => false
       }
         && match serve_select_route(table: t, method: GET, path: "/auth/login") {
-          NoRouteMatched => true
+          SelectedDynamic { handler: AuthLoginHandler, params: _ } => true
           _ => false
         }
         && match serve_select_route(table: t, method: GET, path: "/auth/google/callback") {
-          NoRouteMatched => true
+          SelectedDynamic { handler: AuthGoogleCallbackHandler, params: _ } => true
           _ => false
         }
         && match serve_select_route(table: t, method: POST, path: "/auth/logout") {
-          NoRouteMatched => true
+          SelectedDynamic { handler: AuthLogoutHandler, params: _ } => true
           _ => false
         }
   }

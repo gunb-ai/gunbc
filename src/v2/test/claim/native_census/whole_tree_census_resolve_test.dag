@@ -519,7 +519,8 @@ fn census_supplied_file_refusal(path: Symbol, fatal: Symbol) -> NativeTestFileRe
     path: path,
     module: optional_absent(),
     head_reason: ^parse_grammar_choice_overlap_residue,
-    fatal_reason: fatal
+    fatal_reason: fatal,
+    chain: []
   }
 }
 

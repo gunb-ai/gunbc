@@ -1,5 +1,9 @@
 module gunbc.auth.gcp_iam_converge_run
 
+import gunbc.auth.approval_run_identity
+
+import gunbc.auth.approved_gcp_access { approved_gcp_access_for_request, ApprovedGcpAccessReady, ApprovedGcpAccessRefused }
+
 import std.types { Int, List, NonEmptyStr, String, Secret, Bool, Timestamp }
 import std.measure { Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
@@ -86,18 +90,11 @@ fn converge_token() -> Secret? {
 // the run id alone would let attempt 2 of an identical diff find attempt 1's approval under the same
 // escalation id. Both parts are required and both must be decimal; anything else refuses.
 fn attempt_identity_of(run_id: String, run_attempt: String) -> AttemptIdentity? {
-  if run_id != "" && run_attempt != "" && decimal_digits_only(s: run_id) && decimal_digits_only(s: run_attempt) {
-    Present { value: join(["run-", run_id, "-attempt-", run_attempt], "") as AttemptIdentity }
-  } else {
-    none
-  }
+  gunbc.auth.approval_run_identity.attempt_identity_of(run_id: run_id, run_attempt: run_attempt)
 }
 
 fn run_attempt() -> AttemptIdentity? {
-  attempt_identity_of(
-    run_id: actions_variable_trimmed(name: github_run_id_variable_name as NonEmptyStr),
-    run_attempt: actions_variable_trimmed(name: github_run_attempt_variable_name as NonEmptyStr),
-  )
+  gunbc.auth.approval_run_identity.run_attempt()
 }
 
 // THE ONE ADMISSION FOLD, used before the approval output is published AND before any effect
@@ -186,30 +183,15 @@ fn readback_converged(observe: Secret) -> ProcessExit
 // different revision and refuses; an approval past its execute_by refuses. Then EXACTLY the approved
 // effects are executed (gunbc.auth.gcp_iam_converge execute_approved_estate): request.subject is the
 // approved diff, because its revision is the approved one.
-fn apply_under_recorded_approval(request: AuthorizationRequest<GcpIamEstateDiff>, observe: Secret) -> ProcessExit
-{
-  match approval_instant_now() {
-    Absent => exit_failure(reason: "gcp iam converge: clock unreadable; the approval cannot be re-admitted")
-    Present { value: now } =>
-      match approval_standing_read(escalation_id: request.escalation_id, expires_at: approval_expires_at(issued: now, window: second(count: 1))) {
-        StandingClockUnreadable => exit_failure(reason: "gcp iam converge: clock unreadable at the recorded-approval read")
-        StandingReadAt { standing: s, observed_at: at } =>
-          match gcp_iam_converge_admission(poll: s, request: request, observed_at: at) {
-            GateRefused { cause: c } => exit_failure(reason: concat("gcp iam converge: no live approval for the diff as it stands now; nothing applied: ", approval_refusal_text(cause: c)))
-            GateAdmitted { authorization: _ } =>
-              match converge_token() {
-                Absent => exit_failure(reason: concat("gcp iam converge: approved, but no iam-converge token reached this step; nothing applied (", concat(iam_converge_token_env as String, " unset)")))
-                Present { value: t } => {
-                  let refused = execute_approved_estate(d: request.subject, token: t)
-                  if refused != "" {
-                    exit_failure(reason: concat("gcp iam converge: an approved effect refused; nothing after it was applied: ", refused))
-                  } else {
-                    readback_converged(observe: observe)
-                  }
-                }
-              }
-          }
-      }
+fn apply_under_recorded_approval(request: AuthorizationRequest<GcpIamEstateDiff>, observe: Secret) -> ProcessExit {
+  match approved_gcp_access_for_request(request: request, token_variable: iam_converge_token_env) {
+    ApprovedGcpAccessRefused { reason } => exit_failure(reason: concat("gcp iam converge: ", reason))
+    ApprovedGcpAccessReady { authorization: _, token } => {
+      let refused = execute_approved_estate(d: request.subject, token: token)
+      if refused != "" {
+        exit_failure(reason: concat("gcp iam converge: an approved effect refused; nothing after it was applied: ", refused))
+      } else { readback_converged(observe: observe) }
+    }
   }
 }
 
