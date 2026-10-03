@@ -3719,15 +3719,18 @@ fn native_census_cause_groups_from_file_refusals(refusals: FreeMonoid<NativeTest
   )
 }
 
+// `order` IS NEWEST-FIRST, so consing each group onto the accumulator while walking it yields
+// first-appearance order in one pass: no snoc onto a cons list, and no reverse of the order
+// (review 74382; DESIGN section 6 bare minimum cost).
 fn native_census_cause_group_rows(groups: NativeCensusCauseGroups) -> List<NativeCensusCauseGroup> {
   fold_list(
-    xs: list_reverse(xs: groups.order),
+    xs: groups.order,
     empty: Empty,
     cons: fn(acc, reason) {
       match map_lookup(groups.by_reason, reason) {
         Absent => acc
         Present { value: members } =>
-          list_snoc_item(xs: acc, item: NativeCensusCauseGroup { fatal_reason: reason, members: list_reverse(xs: members) })
+          Cons { head: NativeCensusCauseGroup { fatal_reason: reason, members: list_reverse(xs: members) }, tail: acc }
       }
     }
   )

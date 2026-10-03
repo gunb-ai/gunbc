@@ -505,7 +505,15 @@ test fn census_cause_groups_key_on_fatal_not_head_holds() -> Bool {
 // discriminates at one interface) because the boundary under test is the grouping, and the real
 // front end's production of a head-distinct file refusal is the poison specimen above. Three rows
 // share ONE head and carry TWO fatals: grouped by head they are one group of three, grouped by fatal
-// two groups of two and one.
+// two groups of two and one. Groups are in first-appearance order, so the tokenize group, first
+// seen on row a, leads; a fold that inverted the order is red here.
+fn census_first_group_reason(groups: List<NativeCensusCauseGroup>) -> Symbol {
+  match groups {
+    Empty => ^census_no_group
+    Cons { head: g, tail: _ } => g.fatal_reason
+  }
+}
+
 fn census_supplied_file_refusal(path: Symbol, fatal: Symbol) -> NativeTestFileRefusal {
   NativeTestFileRefusal {
     path: path,
@@ -527,4 +535,5 @@ test fn census_file_refusals_group_under_fatal_not_shared_head_holds() -> Bool {
     && census_cause_group_of(groups: listed, reason: ^tokenize_lex_e0_source_not_exhausted) == 2
     && census_cause_group_of(groups: listed, reason: ^parse_unexpected_token) == 1
     && census_cause_group_of(groups: listed, reason: ^parse_grammar_choice_overlap_residue) == 0
+    && census_first_group_reason(groups: listed) == ^tokenize_lex_e0_source_not_exhausted
 }
