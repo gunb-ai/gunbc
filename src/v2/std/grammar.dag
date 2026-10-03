@@ -1,5 +1,6 @@
 module v2.std.grammar
 
+import std.types { List }
 import v2.std.parse_refusal_reason { ParseRefusalReason, parse_refusal_reason_symbol }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty, list_append, list_snoc_item }
