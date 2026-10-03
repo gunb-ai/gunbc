@@ -207,7 +207,7 @@ fn maybe_snoc_site_row(
 fn node_contains_atom_text(node: Node, wanted: String) -> Bool {
   any(
     xs: atom_identities_in_node(node: node),
-    predicate: fn(sym) { string_eq(a: symbol_lexeme(sym: sym), b: wanted) }
+    predicate: fn(sym) { symbol_lexeme(sym: sym) == wanted }
   )
 }
 
@@ -264,7 +264,7 @@ fn decl_callee_refusals(decl: FnArrowDecl) -> List<Diagnostic> {
 fn decl_contains_atom(decl: FnArrowDecl, atom: String) -> Bool {
   any(
     xs: atom_identities_in_subtree(node: decl.output),
-    predicate: fn(sym) { string_eq(a: symbol_lexeme(sym: sym), b: atom) }
+    predicate: fn(sym) { symbol_lexeme(sym: sym) == atom }
   )
 }
 
