@@ -662,7 +662,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     claims: [
       SingleClaimFillDebtClaim { claim: "single_statement_body_unchanged_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "statement_let_chain_lowers_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "statement_let_then_reference_lowers_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "statement_let_then_reference_lowers_holds", standing: RetiredFillDebt { disposition: BecameSharedByDemand } },
       SingleClaimFillDebtClaim { claim: "typed_statement_let_lowers_with_its_annotation_carried_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "unbound_statement_prefix_refuses_holds", standing: ActiveFillDebt }
     ]
