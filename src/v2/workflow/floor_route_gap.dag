@@ -2023,6 +2023,7 @@ fn floor_route_gap_expectation_chunk_33() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.fabric.fabric_state_namespace_wet_witness.witness_public_head_cannot_alias_private_state_object", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Empty {} } } } }
+}
 
 // test.claim.roadmap.roadmap_dogfood_route_wet_witness (gunbc#13077): every claim builds a fresh
 // instance layout under shell.Mktemp.DirWithTemplate, which declares no mock_response, so the nominal
