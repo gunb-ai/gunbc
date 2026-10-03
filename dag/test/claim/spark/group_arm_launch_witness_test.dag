@@ -5,7 +5,7 @@ import std.content_hash { ContentHash }
 import v2.std.optional { Present, Absent }
 import std.measure { token_count, kibibyte, mebibyte, basis_point }
 import extdeps.systemd { Active }
-import extdeps.vllm.engine_args { FullInputAdmissionExplicit, KvWatermarkExplicit, VllmSchedulerAdmissionRequest }
+import extdeps.vllm.engine_args { FullInputAdmissionExplicit, FullInputAdmissionOmitted, KvWatermarkExplicit, KvWatermarkOmitted, VllmSchedulerAdmissionRequest }
 import gunbc.compute.host_occupancy { HostUnoccupied, HostOccupiedBy, ServingUnitActive, GpuComputeProcess }
 import extdeps.nvidia.system_management_interface { UsedMemoryReported }
 import product.placement_supply { HostIdentity }
@@ -19,14 +19,14 @@ import gunbc.spark.group_arm_launch {
 }
 import gunbc.spark.glm53_arm_staircase {
   Glm53StaircaseStep, Glm53Fp8Step, Glm53Nvfp4Step, Fp8Seats8, Fp8Seats24, Nvfp4Seats32,
-  SupersedePreviousStep, SupersedeHandedOverServe,
+  SupersedePreviousStep,
   glm53_staircase_steps, glm53_step_wire, glm53_step_of_wire, glm53_step_ceiling, glm53_step_profile, glm53_step_inputs,
   glm53_staircase_cold_intent, glm53_staircase_scheduler_admission, glm53_staircase_units,
-  glm53_step_dry_plan, glm53_previous_step_incumbent,
+  glm53_previous_step_incumbent,
 }
 import gunbc.spark.arm_group_launch_dispatch {
   arm_group_of_word, ArmGroupNamed, ArmGroupWordRefused,
-  arm_group_launch_select, ArmGroupLaunchSelected, ArmGroupLaunchSelectionRefused, ArmV41GroupA, ArmGlm53GroupAStep,
+  arm_group_launch_select, ArmGroupLaunchSelection, ArmGroupLaunchSelected, ArmGroupLaunchSelectionRefused, ArmV41GroupA, ArmGlm53GroupAStep,
 }
 import gunbc.spark.v41_group_a_launch { v41_arm_plan }
 import test.claim.spark.v41_group_a_launch_witness { with_w_plan, w_suspended_for }
@@ -53,8 +53,8 @@ test fn w_every_step_keeps_the_cold_floor_and_carries_its_own_ceiling() -> Bool 
       p.guaranteed_cold_seqs == 8
         && p.max_num_seqs == glm53_step_ceiling(s: s)
         && p.max_model_len == token_count(count: 262144)
-        && match p.scheduler_admission.full_input_admission { FullInputAdmissionExplicit { enabled: e } => e  _ => false }
-        && match p.scheduler_admission.kv_watermark { KvWatermarkExplicit { fraction: _ } => true  _ => false }
+        && match p.scheduler_admission.full_input_admission { FullInputAdmissionExplicit { enabled: e } => e  FullInputAdmissionOmitted => false }
+        && match p.scheduler_admission.kv_watermark { KvWatermarkExplicit { fraction: _ } => true  KvWatermarkOmitted => false }
   })
 }
 
@@ -122,16 +122,6 @@ test fn w_the_glm_fp8_eight_seat_step_takes_the_one_path_and_refuses_on_its_unpi
       }
     }
   })
-}
-
-// THE HANDED-OVER SERVE IS AN UNRESOLVED INPUT UNTIL IT IS RECORDED AS UNITS ON HOSTS: the plan says so
-// rather than discovering one.
-test fn w_an_unrecorded_handed_over_serve_refuses_as_unresolved() -> Bool {
-  let d = glm53_step_dry_plan(s: Glm53Fp8Step { step: Fp8Seats8 }, choice: SupersedeHandedOverServe)
-  match d.admission {
-    GroupArmLaunchAdmitted => false
-    GroupArmLaunchAdmissionRefused { causes: c } => any(c, x => string_contains(s: x, pattern: "the declared incumbent is unresolved"))
-  }
 }
 
 // AN UNPINNED RUNTIME HAS NO SUCCESSOR KEY: the GLM derived build's row is PinnedElsewhere, per host.
@@ -244,13 +234,34 @@ test fn w_the_previous_step_is_this_arms_own_units() -> Bool {
 
 // ── THE DISPATCH: CLOSED INPUTS, AND V4.1 TAKES NONE OF THE STAIRCASE'S ───────────────────────
 
+fn w_selected_v41(s: ArmGroupLaunchSelection) -> Bool {
+  match s {
+    ArmGroupLaunchSelected { choice: c } => match c { ArmV41GroupA => true  ArmGlm53GroupAStep { step: _, incumbent: _ } => false }
+    ArmGroupLaunchSelectionRefused { cause: _ } => false
+  }
+}
+
+fn w_selected_glm_step(s: ArmGroupLaunchSelection, wire: String) -> Bool {
+  match s {
+    ArmGroupLaunchSelected { choice: c } => match c { ArmV41GroupA => false  ArmGlm53GroupAStep { step: st, incumbent: _ } => (glm53_step_wire(s: st) as String) == wire }
+    ArmGroupLaunchSelectionRefused { cause: _ } => false
+  }
+}
+
+fn w_refused(s: ArmGroupLaunchSelection) -> Bool {
+  match s {
+    ArmGroupLaunchSelected { choice: _ } => false
+    ArmGroupLaunchSelectionRefused { cause: _ } => true
+  }
+}
+
 test fn w_the_dispatch_selects_only_from_closed_vocabularies() -> Bool {
-  match arm_group_launch_select(arm: "v41-group-a", step: "", incumbent: "") { ArmGroupLaunchSelected { choice: ArmV41GroupA } => true  _ => false }
-    && match arm_group_launch_select(arm: "v41-group-a", step: "fp8-8", incumbent: "") { ArmGroupLaunchSelectionRefused { cause: _ } => true  _ => false }
-    && match arm_group_launch_select(arm: "glm53-group-a", step: "fp8-12", incumbent: "previous-step") { ArmGroupLaunchSelected { choice: ArmGlm53GroupAStep { step: s, incumbent: _ } } => (glm53_step_wire(s: s) as String) == "fp8-12"  _ => false }
-    && match arm_group_launch_select(arm: "glm53-group-a", step: "fp8-13", incumbent: "previous-step") { ArmGroupLaunchSelectionRefused { cause: _ } => true  _ => false }
-    && match arm_group_launch_select(arm: "glm53-group-a", step: "fp8-12", incumbent: "whatever-runs") { ArmGroupLaunchSelectionRefused { cause: _ } => true  _ => false }
-    && match arm_group_launch_select(arm: "glm53-group-b", step: "fp8-12", incumbent: "none") { ArmGroupLaunchSelectionRefused { cause: _ } => true  _ => false }
+  w_selected_v41(s: arm_group_launch_select(arm: "v41-group-a", step: "", incumbent: ""))
+    && w_refused(s: arm_group_launch_select(arm: "v41-group-a", step: "fp8-8", incumbent: ""))
+    && w_selected_glm_step(s: arm_group_launch_select(arm: "glm53-group-a", step: "fp8-12", incumbent: "previous-step"), wire: "fp8-12")
+    && w_refused(s: arm_group_launch_select(arm: "glm53-group-a", step: "fp8-13", incumbent: "previous-step"))
+    && w_refused(s: arm_group_launch_select(arm: "glm53-group-a", step: "fp8-12", incumbent: "whatever-runs"))
+    && w_refused(s: arm_group_launch_select(arm: "glm53-group-b", step: "fp8-12", incumbent: "none"))
 }
 
 // THE OBSERVE NEEDS ONLY THE ARM: a GLM observe with no step is admitted, an unknown arm is not.

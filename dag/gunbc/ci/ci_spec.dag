@@ -13,6 +13,7 @@ import gunbc.spark.v41_row_store_encode_run { v41_encode_run_receipt_path }
 import gunbc.spark.v41_row_store_readback_run { v41_readback_run_receipt_path }
 import gunbc.spark.v41_engram_differential_run { v41_differential_receipt_path }
 import gunbc.spark.v41_runtime_image_converge { v41_distribution_receipt_path }
+import gunbc.spark.runtime_image_produce_dispatch { runtime_image_produce_receipt_path }
 import gunbc.spark.arm_group_launch_dispatch { arm_group_launch_plan_path, arm_group_launch_receipt_path, arm_group_observe_receipt_path }
 import gunbc.spark.v41_serving_load { v41_serving_load_receipt_path }
 import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
@@ -1067,9 +1068,9 @@ data gunbc_ci_spark_runtime_image_probe_target: GunbcRunStepTarget = GunbcRunSte
 // and admits that digest against the candidate. It needs this job's prelude for the same reason the
 // probe does -- docker's socket on a Spark is root-owned and the managed executor is in no docker
 // group -- and it is the only step in this job that can occupy a host for hours.
-data gunbc_ci_spark_v41_runtime_image_build_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/spark/v41_runtime_image_converge.dag",
-  function: "v41_runtime_image_produce_ci_wet",
+data gunbc_ci_spark_runtime_image_produce_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/runtime_image_produce_dispatch.dag",
+  function: "runtime_image_produce_ci_wet",
 }
 
 // THE DISTRIBUTION OF THAT PRODUCED IMAGE TO ANOTHER GROUP A SPARK: save on the host the production
@@ -2894,14 +2895,14 @@ fn gunbc_ci_spark_v41_serving_load_invoke() -> String {
   )
 }
 
-fn gunbc_ci_spark_v41_runtime_image_build_invoke() -> String {
+fn gunbc_ci_spark_runtime_image_produce_invoke() -> String {
   gunbc_run_step_script_with_prelude(
     prelude: gunbc_ci_spark_grant_install_credential_prelude(),
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_spark_v41_runtime_image_build_target.entry,
-    function: gunbc_ci_spark_v41_runtime_image_build_target.function,
+    entry: gunbc_ci_spark_runtime_image_produce_target.entry,
+    function: gunbc_ci_spark_runtime_image_produce_target.function,
     claim_run: false,
-    receipt_rel: "target/v41-runtime-image-produce-receipt.txt"
+    receipt_rel: runtime_image_produce_receipt_path
   )
 }
 

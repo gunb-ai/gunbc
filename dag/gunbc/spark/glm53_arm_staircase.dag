@@ -224,15 +224,17 @@ fn glm53_step_inputs(s: Glm53StaircaseStep) -> GroupArmLaunchInputs? {
 // ── THE DECLARED INCUMBENT, PER STEP ──────────────────────────────────────────────────────────
 //
 // STEP N > 1 SUPERSEDES STEP N - 1, WHICH IS THIS ARM'S OWN TWO UNITS ON GROUP A's FOUR HOSTS
-// (approved by valiant-crab-775, 2026-10-02). The first step supersedes the serve handed over by
-// snappy-bat-66 on .225, whose units and hosts are a handover fact this source does not have yet: until
-// it is recorded here as rows, the first step's incumbent is UNRESOLVED and the launch refuses rather
-// than guessing or discovering one.
+// (approved by valiant-crab-775, 2026-10-02). THE FIRST STEP SUPERSEDES NOTHING, AND THAT IS A READING,
+// NOT AN ASSUMPTION: the serve snappy-bat-66 handed over on .225 could not be described by its launcher
+// (archived), so Group A's occupancy was read instead -- fleet-converge run 37087495838 (mode
+// spark_arm_group_observe, 2026-10-03) found no running container and no GPU compute process on any of
+// srv5, srv6, srv7 or srv8, and no serving unit beyond the system's own. There is nothing to declare.
+// If a serve appears before the first step runs, it is an undeclared occupant and the admission
+// refuses on it, exactly as for any other.
 type Glm53StepIncumbent
   = Glm53IncumbentResolved { incumbent: ArmDeclaredIncumbent }
-  | Glm53IncumbentUnresolved { cause: String }
 
-type Glm53IncumbentChoice = SupersedeHandedOverServe | SupersedePreviousStep | SupersedeNothing
+type Glm53IncumbentChoice = SupersedePreviousStep | SupersedeNothing
 
 fn glm53_previous_step_incumbent(lines_hosts: List<HostIdentity>) -> ArmDeclaredIncumbent {
   IncumbentDeclared {
@@ -247,19 +249,17 @@ fn glm53_step_incumbent(choice: Glm53IncumbentChoice, hosts: List<HostIdentity>)
   match choice {
     SupersedeNothing => Glm53IncumbentResolved { incumbent: NoIncumbentDeclared }
     SupersedePreviousStep => Glm53IncumbentResolved { incumbent: glm53_previous_step_incumbent(lines_hosts: hosts) }
-    SupersedeHandedOverServe => Glm53IncumbentUnresolved { cause: "the serve snappy-bat-66 handed over on Group A (glm-5.3-flash, cold 8, head .225) is not yet recorded here as units on hosts; it is an unresolved input, and a container with no unit could not be superseded at all" }
   }
 }
 
 fn glm53_incumbent_choice_wire(c: Glm53IncumbentChoice) -> NonEmptyStr {
   match c {
-    SupersedeHandedOverServe => "handed-over-serve" as NonEmptyStr
     SupersedePreviousStep => "previous-step" as NonEmptyStr
     SupersedeNothing => "none" as NonEmptyStr
   }
 }
 
-data glm53_incumbent_choices: List<Glm53IncumbentChoice> = [SupersedeHandedOverServe, SupersedePreviousStep, SupersedeNothing]
+data glm53_incumbent_choices: List<Glm53IncumbentChoice> = [SupersedePreviousStep, SupersedeNothing]
 
 fn glm53_incumbent_choice_of_wire(word: String) -> Glm53IncumbentChoice? {
   first(filter(glm53_incumbent_choices, c => (glm53_incumbent_choice_wire(c: c) as String) == word))
@@ -301,10 +301,6 @@ fn glm53_step_dry_plan(s: Glm53StaircaseStep, choice: Glm53IncumbentChoice) -> A
     Present { value: inputs } => {
       let plan = group_arm_launch_plan(inputs: inputs)
       match glm53_step_incumbent(choice: choice, hosts: group_arm_plan_hosts(p: plan)) {
-        Glm53IncumbentUnresolved { cause: c } => {
-          let admission = GroupArmLaunchAdmissionRefused { causes: [join(["the declared incumbent is unresolved: ", c], "")] }
-          ArmDryPlan { report: glm53_step_report(s: s, inputs: inputs, plan: plan, incumbent: NoIncumbentDeclared, admission: admission), admission: admission }
-        }
         Glm53IncumbentResolved { incumbent: incumbent } => {
           let admission = group_arm_launch_admission_live(group: FabricGroupA, purpose: inputs.purpose, plan: plan, successor: group_arm_row_successor(inputs: inputs), arm_causes: [], occupancy: group_arm_dry_run_occupancy(group: FabricGroupA), incumbent: incumbent)
           ArmDryPlan { report: glm53_step_report(s: s, inputs: inputs, plan: plan, incumbent: incumbent, admission: admission), admission: admission }
@@ -321,8 +317,6 @@ fn glm53_step_session(s: Glm53StaircaseStep, choice: Glm53IncumbentChoice, now_w
       let plan = group_arm_launch_plan(inputs: inputs)
       let hosts = group_arm_plan_hosts(p: plan)
       match glm53_step_incumbent(choice: choice, hosts: hosts) {
-        Glm53IncumbentUnresolved { cause: c } =>
-          SparkBuildHostWork { receipt: join(["NOT LAUNCHED: the declared incumbent is unresolved: ", c, "; no host was touched\n"], ""), converged: false }
         Glm53IncumbentResolved { incumbent: incumbent } => {
           let occupancy = group_arm_read_occupancy(ctx: ctx, hosts: hosts, units: inputs.units, incumbent: incumbent, need: group_arm_memory_need(gpu_memory_utilization: inputs.profile.decided_gpu_memory_basis_points))
           let admission = group_arm_launch_admission_live(group: FabricGroupA, purpose: inputs.purpose, plan: plan, successor: group_arm_row_successor(inputs: inputs), arm_causes: [], occupancy: occupancy, incumbent: incumbent)

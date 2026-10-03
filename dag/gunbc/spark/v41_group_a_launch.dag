@@ -31,7 +31,7 @@ import gunbc.spark.v41_runtime_candidate { V41CandidateStanding, V41CandidateKey
 import gunbc.spark.v41_runtime_image_converge { V41ProducedImageHeld, v41_production_produced_image, v41_produced_image_subject, V41ProbeJoinedToProducedImage, V41ProbeDescribesAnotherImage, V41ProbeIdentityUnreadable, V41ProbeIdentityNotRead, v41_probe_identity_join, v41_probe_identity_line }
 import gunbc.spark.v41_runtime_image_probe { V41ProbeOutcome, V41ProbeRead, V41ProbeRefused, v41_probe_image_in_place }
 import gunbc.spark.vllm_runtime_image_build { VllmImageDistributionSubject, VllmImageTargetRead, VllmImageTargetHolds, VllmImageTargetNeeds, VllmImageTargetRefused, vllm_image_target_read, vllm_image_target_ctx, with_spark_build_host, SparkBuildHostWork, SparkBuildHostRefused, SparkBuildHostRan }
-import gunbc.spark.runtime_architecture_registry_reading { vllm_registry_instrument }
+import gunbc.spark.runtime_architecture_registry_reading { vllm_registry_instrument, registry_dump_architectures, registry_dump_count }
 import gunbc.spark.v41_engram_row_store { v41_row_store_spec, v41_live_head_sizes, V41RowStoreSpecAdmitted, V41RowStoreSpecRefused, v41_published_store_readings }
 import gunbc.spark.v41_engram_store_manifest { V41EngramStoreManifest, V41StoreManifestDerived, V41StoreManifestRefused, v41_engram_store_manifest }
 import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_engram, deepseek_v4_1_flash_engram_sharded_entries }
@@ -571,22 +571,6 @@ fn v41_group_a_dry_plan() -> ArmDryPlan {
 // (gunbc.spark.v41_runtime_image_converge v41_probe_identity_join), the count line must be present and
 // positive, and the REGISTERED lines must number exactly that count; anything else is no reading, and
 // the arm wall then refuses with its own cause.
-fn v41_registered_architectures(stdout: String) -> List<NonEmptyStr> {
-  flat_map(split(stdout, "\n"), l => {
-    let t = trim(s: l)
-    if starts_with(s: t, prefix: "REGISTERED ") && length(t) > 11 { [substring(s: t, start: 11, end: length(t)) as NonEmptyStr] } else { [] as List<NonEmptyStr> }
-  })
-}
-
-fn v41_registry_count(stdout: String) -> Int? {
-  first(flat_map(split(stdout, "\n"), l => {
-    let t = trim(s: l)
-    if starts_with(s: t, prefix: "REGISTRY_COUNT ") {
-      match parse_int(s: substring(s: t, start: 15, end: length(t))) { Present { value: n } => [n]  Absent => [] as List<Int> }
-    } else { [] as List<Int> }
-  }))
-}
-
 fn v41_registry_reading_of(probe: V41ProbeOutcome, image: V41ProducedImageHeld, host: HostIdentity, observed_at: String) -> ArchitectureRegistryReading? {
   match v41_probe_identity_join(produced: image.config, o: probe) {
     V41ProbeDescribesAnotherImage { produced: _, observed: _ } => none
@@ -596,8 +580,8 @@ fn v41_registry_reading_of(probe: V41ProbeOutcome, image: V41ProducedImageHeld, 
       match probe {
         V41ProbeRefused { step: _, cause: _ } => none
         V41ProbeRead { reference: _, observed_config_id: _, stdout: out, readings: _ } => {
-          let archs = v41_registered_architectures(stdout: out)
-          match v41_registry_count(stdout: out) {
+          let archs = registry_dump_architectures(stdout: out)
+          match registry_dump_count(stdout: out) {
             Absent => none
             Present { value: n } =>
               if n <= 0 || length(archs) != n {

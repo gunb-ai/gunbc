@@ -1,0 +1,83 @@
+module gunbc.spark.group_image_produce
+
+import std.types { String, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import v2.std.optional { Present, Absent }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet_multi_principal_probe { spark_converge_target_selection, SparkConvergeTargetSingle, SparkConvergeTargetAllObserveOnly, SparkConvergeTargetRefused }
+import gunbc.spark.fabric_switch_observed { FabricGroup }
+import gunbc.spark.serving_subject { PairServingUnitOn }
+import gunbc.spark.host_occupancy_admission { admit_spark_host_unoccupied, spark_ctx_argv_run }
+import gunbc.spark.host_commitment { HostEffectClaimLanded, HostEffectClaimNotLanded, admit_host_held_by_subject, claim_host_effect_live, release_host_effect_live }
+import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext }
+import gunbc.spark.vllm_runtime_image_build {
+  SparkBuildHostWork, with_spark_build_host, SparkBuildHostRefused, SparkBuildHostRan,
+  vllm_build_host_effect_term, vllm_build_host_purpose, vllm_build_host_residue, vllm_build_host_memory_need,
+}
+
+// ── ONE ENTRY FOR PRODUCING A RUNTIME IMAGE ON A FABRIC GROUP'S HOST (deforking cut 8c) ─────────
+//
+// gunbc.spark.v41_runtime_image_converge v41_runtime_image_produce_ci_wet was this body with V4.1's build
+// inlined, and the GLM kvplan image needs exactly the same entry: the session host named by
+// SPARK_CONVERGE_TARGET (unset refuses -- a build occupies one host for hours), admitted because the
+// group's serving subject HOLDS it (gunbc.spark.host_commitment admit_host_held_by_subject; the unplaced
+// relation refuses every Group A host by design), the host-effect claim of a source build so two builds
+// never share a box, the occupancy admission, the privileged session, and the receipt. What differs
+// between images is only the work done inside the session, so that is the one parameter.
+type GroupImageProduction {
+  title: NonEmptyStr
+  group: FabricGroup
+  attempt_raw: String
+  identity_file_name: NonEmptyStr
+  produce: fn(SshTarget, FleetSshExecutionContext, SparkMaterializeContext) -> SparkBuildHostWork
+}
+
+fn group_image_produce_wet(p: GroupImageProduction, receipt_path: String) -> ProcessExit
+{
+  let now = clock_now_probed_at()
+  match spark_converge_target_selection(execute_apply: true) {
+    SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
+    SparkConvergeTargetAllObserveOnly =>
+      exit_failure(reason: "SPARK_CONVERGE_TARGET is unset: producing an image occupies one host for hours, so it refuses rather than choosing one")
+    SparkConvergeTargetSingle { host: build_host } =>
+      match admit_host_held_by_subject(raw: build_host, subject: PairServingUnitOn { group: p.group }) {
+        Present { value: why } => exit_failure(reason: why)
+        Absent =>
+          match claim_host_effect_live(host: build_host, term: vllm_build_host_effect_term, purpose: vllm_build_host_purpose, residue: vllm_build_host_residue()) {
+            HostEffectClaimNotLanded { cause: why } => exit_failure(reason: why as String)
+            HostEffectClaimLanded { handle: handle } =>
+              release_host_effect_live(handle: Present { value: handle }, exit: {
+                match with_spark_build_host(
+                  host: build_host,
+                  attempt_raw: p.attempt_raw,
+                  identity_file_name: p.identity_file_name,
+                  use: fn(target, context, ctx) {
+                    match admit_spark_host_unoccupied(run: spark_ctx_argv_run(ctx: ctx), host: build_host, purpose: vllm_build_host_purpose, need: vllm_build_host_memory_need) {
+                      Present { value: why } => SparkBuildHostWork { receipt: join(["refused-before-run: ", why, "\n"], ""), converged: false }
+                      Absent => p.produce(target, context, ctx)
+                    }
+                  },
+                ) {
+                  SparkBuildHostRefused { cause: c } => exit_failure(reason: c)
+                  SparkBuildHostRan { work: work, endpoint: endpoint, executor: executor, trust_receipt: trust_receipt } => {
+                    let body = join([
+                      join([p.title as String, " probed_at=", probed_at_word(reading: now) as String, " host=", build_host as String, " endpoint=", endpoint as String, " executor=", executor, "\n"], ""),
+                      trust_receipt,
+                      work.receipt,
+                    ], "")
+                    let w = Filesystem.Write(path: receipt_path, content: body)
+                    if !w.success {
+                      exit_failure(reason: join([p.title as String, " receipt write failed: ", w.error], ""))
+                    } else if work.converged {
+                      ExitSuccess
+                    } else {
+                      exit_failure(reason: join([p.title as String, " was not produced:\n", body], ""))
+                    }
+                  }
+                }})
+          }
+      }
+  }
+}

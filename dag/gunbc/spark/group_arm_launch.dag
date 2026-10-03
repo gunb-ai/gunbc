@@ -303,15 +303,6 @@ fn group_arm_host_causes(group: FabricGroup, hosts: List<HostIdentity>, held: Li
   })
 }
 
-fn occupants_of(a: HostOccupancyAdmission) -> List<HostOccupant> {
-  match a {
-    HostOccupiedBy { occupant: o, others: rest, gpu_used: _ } => concat([o], rest)
-    HostUnoccupied { available: _ } => [] as List<HostOccupant>
-    HostMemoryShort { available: _, need: _ } => [] as List<HostOccupant>
-    HostOccupancyNotRead { cause: _ } => [] as List<HostOccupant>
-  }
-}
-
 fn active_unit_named(occupants: List<HostOccupant>, unit: NonEmptyStr) -> Bool {
   any(occupants, o => match o {
     ServingUnitActive { unit: u, state: Active } => (u as String) == (unit as String)
@@ -320,23 +311,26 @@ fn active_unit_named(occupants: List<HostOccupant>, unit: NonEmptyStr) -> Bool {
   })
 }
 
+fn group_arm_incumbent_host_judged(purpose: String, h: HostIdentity, declared: List<NonEmptyStr>, occupants: List<HostOccupant>) -> List<String> {
+  let not_running = flat_map(declared, u => if active_unit_named(occupants: occupants, unit: u) { [] as List<String> } else {
+    [join([h as String, ": the declared incumbent ", u as String, " is not read back active, so it is not the serve this launch was told it supersedes; ", purpose, " is not admitted"], "")]
+  })
+  let undeclared = flat_map(occupants, o => match o {
+    ServingUnitActive { unit: u, state: _ } =>
+      if any(declared, d => (d as String) == (u as String)) { [] as List<String> } else {
+        [join([h as String, " is occupied by an undeclared serving unit (", host_occupant_wire(o: o), "), so ", purpose, " is not admitted"], "")]
+      }
+    GpuComputeProcess { pid: _, process_name: _, used: _ } => [] as List<String>
+  })
+  concat(not_running, undeclared)
+}
+
 fn group_arm_incumbent_host_causes(purpose: String, h: HostIdentity, declared: List<NonEmptyStr>, a: HostOccupancyAdmission) -> List<String> {
   match a {
     HostOccupancyNotRead { cause: c } => [join([h as String, " could not be read for occupancy, so its declared incumbent was not read back and ", purpose, " is not admitted: ", c], "")]
-    _ => {
-      let occupants = occupants_of(a: a)
-      let not_running = flat_map(declared, u => if active_unit_named(occupants: occupants, unit: u) { [] as List<String> } else {
-        [join([h as String, ": the declared incumbent ", u as String, " is not read back active, so it is not the serve this launch was told it supersedes; ", purpose, " is not admitted"], "")]
-      })
-      let undeclared = flat_map(occupants, o => match o {
-        ServingUnitActive { unit: u, state: _ } =>
-          if any(declared, d => (d as String) == (u as String)) { [] as List<String> } else {
-            [join([h as String, " is occupied by an undeclared serving unit (", host_occupant_wire(o: o), "), so ", purpose, " is not admitted"], "")]
-          }
-        GpuComputeProcess { pid: _, process_name: _, used: _ } => [] as List<String>
-      })
-      concat(not_running, undeclared)
-    }
+    HostOccupiedBy { occupant: o, others: rest, gpu_used: _ } => group_arm_incumbent_host_judged(purpose: purpose, h: h, declared: declared, occupants: concat([o], rest))
+    HostUnoccupied { available: _ } => group_arm_incumbent_host_judged(purpose: purpose, h: h, declared: declared, occupants: [] as List<HostOccupant>)
+    HostMemoryShort { available: _, need: _ } => group_arm_incumbent_host_judged(purpose: purpose, h: h, declared: declared, occupants: [] as List<HostOccupant>)
   }
 }
 
