@@ -11,7 +11,7 @@ import extdeps.ampere.smpro_register {
   smpro_err_pmpro_data_lo_reg, smpro_err_pmpro_data_hi_reg,
 }
 import extdeps.ampere.smpro_internal_error { SmproInternalRecord, SmproRecordGate, SmproProcessorPmpro, smpro_internal_error_of, smpro_record_gate }
-import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_targets }
+import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_site }
 
 // ONE RAW SMpro ERROR-REGISTER READING FROM mtcollins1, 2026-10-03, AS RECEIVED: the operator's
 // hand-run read-only pass during the boot loop (eager-gull-22 msg_12ab1f39), before the collector in
@@ -116,7 +116,7 @@ fn last_of(rs: List<SmproRawRegisterRead>) -> SmproRawRegisterRead? {
 
 // The socket a slave byte addresses, from the collector's own target table.
 fn socket_of_slave(slave_byte: Int) -> Int? {
-  match filter(mtcollins1_smpro_targets, t => match master_write_read_slave_byte(seven_bit_address: t.seven_bit_address) { Present { value: b } => b == slave_byte Absent => false }).first() {
+  match filter(mtcollins1_smpro_site.targets, t => match master_write_read_slave_byte(seven_bit_address: t.seven_bit_address) { Present { value: b } => b == slave_byte Absent => false }).first() {
     Present { value: t } => Present { value: t.socket }
     Absent => none
   }

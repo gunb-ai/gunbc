@@ -1,4 +1,4 @@
-module test.claim.machine_intake.mtcollins1_smpro_observation_witness_test
+module test.claim.machine_intake.ampere_smpro_observation_witness_test
 
 import v2.std.algebra { filter, any }
 import std.types { Bool, Int, List, NonEmptyStr, String }
@@ -13,11 +13,12 @@ import extdeps.ampere.smpro_register {
   smpro_bootstage_of, smpro_manufacturer_id_reg, smpro_bootstage_reg, smpro_cur_bootstage_reg,
 }
 import extdeps.ampere.scp_diagnostic { DdrTraining, DdrInitialization, OperatingSystem, Completed, Failed }
-import gunbc.machine_intake_mtcollins1_smpro_observation {
-  mtcollins1_smpro_socket_stage, CurrentStageEstablished, ReportedStageUnavailable,
+import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_site }
+import gunbc.machine_intake_ampere_smpro_observation {
+  smpro_socket_stage, CurrentStageEstablished, ReportedStageUnavailable,
   SmproProbeRaw, SmproProbeOutcome, SmproWordRead, SmproControllerRefused, SmproTransportFailed, SmproResponseMalformed, SmproNotSent,
-  smpro_probe_outcome, smpro_control_refusal, smpro_request_text, mtcollins1_smpro_findings, mtcollins1_smpro_dossier_text,
-  mtcollins1_smpro_probe_count, mtcollins1_smpro_read_order, mtcollins1_smpro_sequenced, mtcollins1_smpro_plan, SmproTarget,
+  smpro_probe_outcome, smpro_control_refusal, smpro_request_text, smpro_pass_findings, smpro_pass_dossier_text,
+  smpro_pass_probe_count, smpro_pass_read_order, smpro_pass_sequenced, smpro_pass_plan, SmproTarget,
 }
 import extdeps.ampere.smpro_register { SmproRegister }
 
@@ -56,7 +57,7 @@ test fn the_bootstage_request_writes_the_register_and_the_size() -> Bool {
 }
 
 test fn the_plan_is_every_ordered_register_on_two_sockets() -> Bool {
-  mtcollins1_smpro_probe_count() == 2 * count(mtcollins1_smpro_read_order) && count(mtcollins1_smpro_read_order) == 24
+  smpro_pass_probe_count(site: mtcollins1_smpro_site) == 2 * count(smpro_pass_read_order) && count(smpro_pass_read_order) == 24
 }
 
 // ── one transport result -> one typed outcome ───────────────────────────────────────────────────
@@ -121,27 +122,27 @@ fn socket_reads_at(socket: Int, current: String, bootstage: String) -> List<Smpr
 }
 
 test fn socket_one_failing_ddr_training_beside_a_booted_socket_zero_is_named() -> Bool {
-  let f = mtcollins1_smpro_findings(outcomes: concat(socket_reads(socket: 0, bootstage: "09 02"), socket_reads(socket: 1, bootstage: "04 03")))
+  let f = smpro_pass_findings(site: mtcollins1_smpro_site, outcomes: concat(socket_reads(socket: 0, bootstage: "09 02"), socket_reads(socket: 1, bootstage: "04 03")))
   count(f) == 2 && any(f, x => starts_with(s: x, prefix: "SMpro socket 1:") && contains(x, "BOOTSTAGE DDR training report status, failed"))
     && any(f, x => starts_with(s: x, prefix: "SMpro socket 0:") && contains(x, "BOOTSTAGE OS booting, completed without error"))
 }
 
 test fn two_sockets_at_the_same_stage_add_no_finding() -> Bool {
-  count(mtcollins1_smpro_findings(outcomes: concat(socket_reads(socket: 0, bootstage: "09 02"), socket_reads(socket: 1, bootstage: "09 02")))) == 0
+  count(smpro_pass_findings(site: mtcollins1_smpro_site, outcomes: concat(socket_reads(socket: 0, bootstage: "09 02"), socket_reads(socket: 1, bootstage: "09 02")))) == 0
 }
 
 test fn socket_one_unreadable_beside_a_read_socket_zero_is_named() -> Bool {
   let s1 = [smpro_probe_outcome(raw: raw(socket: 1, register: smpro_manufacturer_id_reg.name, exit_code: 1, stdout: "", stderr: nak_stderr))]
-  let f = mtcollins1_smpro_findings(outcomes: concat(socket_reads(socket: 0, bootstage: "09 02"), s1))
+  let f = smpro_pass_findings(site: mtcollins1_smpro_site, outcomes: concat(socket_reads(socket: 0, bootstage: "09 02"), s1))
   any(f, x => contains(x, "SMpro socket 1: CUR_BOOTSTAGE UNAVAILABLE"))
 }
 
 // THE DOSSIER EXISTS WHEN NOTHING WAS ANSWERED.
 test fn a_pass_where_nothing_was_sent_still_renders_every_socket() -> Bool {
   let os = [SmproNotSent { socket: 0, register: smpro_bootstage_reg.name, reason: "socket 0 control: MANUFACTURER_ID TRANSPORT FAILED" }, SmproNotSent { socket: 1, register: smpro_bootstage_reg.name, reason: "socket 0 control did not establish the transport" }]
-  let t = mtcollins1_smpro_dossier_text(outcomes: os)
+  let t = smpro_pass_dossier_text(site: mtcollins1_smpro_site, outcomes: os)
   contains(t, "SMpro socket 0: CUR_BOOTSTAGE UNAVAILABLE") && contains(t, "SMpro socket 1: CUR_BOOTSTAGE UNAVAILABLE") && contains(t, "(no request sent)")
-    && count(mtcollins1_smpro_findings(outcomes: os)) == 0
+    && count(smpro_pass_findings(site: mtcollins1_smpro_site, outcomes: os)) == 0
 }
 
 // ── THE ORDER IS ENFORCED BY THE FOLD (the production fold, with a supplied read) ───────────────
@@ -177,13 +178,13 @@ fn sequences_are_positions(os: List<SmproProbeOutcome>) -> Bool {
 }
 
 test fn every_read_is_issued_after_all_earlier_probes_have_outcomes() -> Bool {
-  let os = mtcollins1_smpro_sequenced(plan: mtcollins1_smpro_plan(), read: (t, reg, n) => scripted_read(t: t, reg: reg, n: n))
-  count(os) == mtcollins1_smpro_probe_count() && sequences_are_positions(os: os)
+  let os = smpro_pass_sequenced(plan: smpro_pass_plan(site: mtcollins1_smpro_site), read: (t, reg, n) => scripted_read(t: t, reg: reg, n: n))
+  count(os) == smpro_pass_probe_count(site: mtcollins1_smpro_site) && sequences_are_positions(os: os)
 }
 
 test fn bootstage_is_last_on_each_socket_and_the_control_first() -> Bool {
-  let os = mtcollins1_smpro_sequenced(plan: mtcollins1_smpro_plan(), read: (t, reg, n) => scripted_read(t: t, reg: reg, n: n))
-  let per = count(mtcollins1_smpro_read_order)
+  let os = smpro_pass_sequenced(plan: smpro_pass_plan(site: mtcollins1_smpro_site), read: (t, reg, n) => scripted_read(t: t, reg: reg, n: n))
+  let per = count(smpro_pass_read_order)
   let names = map(os, o => register_of(o: o))
   count(names) == 2 * per
     && (match names.first() { Present { value: x } => x == "MANUFACTURER_ID_REG" Absent => false })
@@ -195,23 +196,23 @@ test fn bootstage_is_last_on_each_socket_and_the_control_first() -> Bool {
 // A plan listed out of order is refused by the gate rather than executed out of order: a
 // boot-progress register placed BEFORE its socket's control is NOT SENT.
 test fn a_register_ahead_of_its_control_is_not_sent() -> Bool {
-  let plan = mtcollins1_smpro_plan()
+  let plan = smpro_pass_plan(site: mtcollins1_smpro_site)
   let reordered = concat(plan.skip(n: 4).take(n: 1), concat(plan.take(n: 4), plan.skip(n: 5)))
-  let os = mtcollins1_smpro_sequenced(plan: reordered, read: (t, reg, n) => scripted_read(t: t, reg: reg, n: n))
+  let os = smpro_pass_sequenced(plan: reordered, read: (t, reg, n) => scripted_read(t: t, reg: reg, n: n))
   match os.first() { Present { value: SmproNotSent { socket: 0, register: _, reason: _ } } => true _ => false }
 }
 
 // The socket-0 control gates socket 1 through the folded outcome, not through a separate call.
 test fn a_failed_socket_zero_control_sends_nothing_further() -> Bool {
-  let os = mtcollins1_smpro_sequenced(plan: mtcollins1_smpro_plan(), read: (t, reg, n) => smpro_probe_outcome(raw: SmproProbeRaw { sequence: n, socket: t.socket, register: reg.name, request: "r", at: "t", exit_code: 1, stdout: "", stderr: nak_stderr }))
-  count(os) == mtcollins1_smpro_probe_count() && count(filter(os, o => match o { SmproNotSent { socket: _, register: _, reason: _ } => true _ => false })) == mtcollins1_smpro_probe_count() - 1
+  let os = smpro_pass_sequenced(plan: smpro_pass_plan(site: mtcollins1_smpro_site), read: (t, reg, n) => smpro_probe_outcome(raw: SmproProbeRaw { sequence: n, socket: t.socket, register: reg.name, request: "r", at: "t", exit_code: 1, stdout: "", stderr: nak_stderr }))
+  count(os) == smpro_pass_probe_count(site: mtcollins1_smpro_site) && count(filter(os, o => match o { SmproNotSent { socket: _, register: _, reason: _ } => true _ => false })) == smpro_pass_probe_count(site: mtcollins1_smpro_site) - 1
 }
 
 // ── CUR_BOOTSTAGE AND BOOTSTAGE ARE INDEPENDENT READINGS ───────────────────────────────────────
 
 // Same reported BOOTSTAGE on both sockets, different CURRENT stage: that is a difference.
 test fn a_differing_current_stage_with_the_same_bootstage_is_named() -> Bool {
-  let f = mtcollins1_smpro_findings(outcomes: concat(socket_reads_at(socket: 0, current: "00 09", bootstage: "03 01"), socket_reads_at(socket: 1, current: "00 03", bootstage: "03 01")))
+  let f = smpro_pass_findings(site: mtcollins1_smpro_site, outcomes: concat(socket_reads_at(socket: 0, current: "00 09", bootstage: "03 01"), socket_reads_at(socket: 1, current: "00 03", bootstage: "03 01")))
   count(f) == 2 && any(f, x => starts_with(s: x, prefix: "SMpro socket 1: CUR_BOOTSTAGE DDR initialization"))
     && any(f, x => starts_with(s: x, prefix: "SMpro socket 0: CUR_BOOTSTAGE OS booting"))
 }
@@ -223,7 +224,7 @@ test fn the_current_stage_stands_when_bootstage_fails() -> Bool {
     read_ok(socket: 1, register: smpro_cur_bootstage_reg.name, stdout: "00 04"),
     smpro_probe_outcome(raw: raw(socket: 1, register: smpro_bootstage_reg.name, exit_code: 124, stdout: "", stderr: "")),
   ]
-  let st = mtcollins1_smpro_socket_stage(outcomes: os, socket: 1)
+  let st = smpro_socket_stage(outcomes: os, socket: 1)
   (match st.current { CurrentStageEstablished { stage: SmproStageDefined { stage: DdrTraining } } => true _ => false })
     && (match st.reported { ReportedStageUnavailable { reason: why } => contains(why, "TRANSPORT FAILED") _ => false })
 }

@@ -19,10 +19,11 @@ import gunbc.machine_intake_oob_boot_handoff { BootReadbackConfirmed, boot_readb
 import extdeps.bmc.http
 import extdeps.bmc.ipmi_sel { FirmwareError, FirmwareHang, FirmwareProgress }
 import extdeps.bmc.ipmi_sdr { SdrLineResult, sdr_decode_lines }
-import gunbc.machine_intake_mtcollins1_smpro_observation {
+import gunbc.machine_intake_ampere_smpro_observation {
   SmproProbeOutcome, SmproWordRead, SmproControllerRefused, SmproTransportFailed, SmproResponseMalformed,
-  mtcollins1_smpro_probe_count, mtcollins1_smpro_dossier_text, mtcollins1_smpro_findings,
+  smpro_pass_probe_count, smpro_pass_dossier_text, smpro_pass_findings,
 }
+import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_site }
 import gunbc.machine_intake_mtcollins1_bmc_sensor_observation { mtcollins1_sensor_findings, mtcollins1_sensor_table_text }
 import extdeps.bmc.redfish_memory_inventory {
   RedfishMemoryMember, RedfishProcessorMember, RedfishResourceStatus, RedfishMemoryLocation,
@@ -393,7 +394,7 @@ data mtcollins1_boot_retained_artifact_prefix: String = "artifacts/mtcollins1-bo
 // pass right after the handoff observed power on (gunbc.machine_intake_oob_boot_handoff
 // BootControlIssued now carries an observed transition, not an exit code) and a second the first
 // time a poll saw the census envelope open. Both are read-only and fold-sequenced exactly as the
-// post-attempt pass (mtcollins1_smpro_sequenced).
+// post-attempt pass (gunbc.machine_intake_ampere_smpro_observation smpro_pass_sequenced).
 //
 // WHETHER THE OVERRIDE WAS CONSUMED BY THIS ATTEMPT. The IPMI boot override is one-shot: the
 // controller clears boot parameter 5's valid flag when a boot consumes it, and on its own timeout.
@@ -1100,12 +1101,12 @@ fn console_findings(c: ConsoleReading) -> List<String> {
 }
 
 fn smpro_findings(s: SmproReading) -> List<String> {
-  match s { SmproProbed { outcomes: os } => mtcollins1_smpro_findings(outcomes: os) SmproNotTaken { reason: _ } => [] }
+  match s { SmproProbed { outcomes: os } => smpro_pass_findings(site: mtcollins1_smpro_site, outcomes: os) SmproNotTaken { reason: _ } => [] }
 }
 
 fn smpro_text(s: SmproReading) -> String {
   match s {
-    SmproProbed { outcomes: os } => mtcollins1_smpro_dossier_text(outcomes: os)
+    SmproProbed { outcomes: os } => smpro_pass_dossier_text(site: mtcollins1_smpro_site, outcomes: os)
     SmproNotTaken { reason: why } => concat("NOT TAKEN: ", why as String)
   }
 }
@@ -1519,12 +1520,12 @@ data mtcollins1_boot_redfish_read_deadline: Second = second(count: 15)
 
 // The two SEL snapshots, the one SDR dump, the one sensor read and every SMpro probe the post-attempt
 // pass can send
-// (gunbc.machine_intake_mtcollins1_smpro_observation mtcollins1_smpro_probe_count) each run under
+// (gunbc.machine_intake_ampere_smpro_observation smpro_pass_probe_count) each run under
 // the same coreutils bound. The reads taken under the unit hold -- the two in-run SMpro passes, the
 // two boot parameter 5 reads and the final-power poll -- are paid inside the actuation, and their
 // allowance is gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_in_run_smpro_allowance.
 fn mtcollins1_boot_ipmi_read_count() -> Int {
-  4 + mtcollins1_smpro_probe_count()
+  4 + smpro_pass_probe_count(site: mtcollins1_smpro_site)
 }
 
 data mtcollins1_boot_redfish_read_budget: Int = 48
