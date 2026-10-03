@@ -335,3 +335,101 @@ fn dag_can_cast(source_type: String, target_type: String) -> Bool {
 fn is_dag_cast_domain_type(name: String) -> Bool {
   dag_cast_rules |> any(r => r.from_type == name || r.to_type == name)
 }
+
+// NAMED CONVERSION PLANS (DESIGN section 4, operator ruling 2026-09-26: an author crosses a
+// representation boundary implicit coercion refuses ONLY by selecting a named conversion plan, and
+// every phase of it stays represented). A plan joins the two authorities that already exist rather
+// than minting a third: the explicit-cast surface above (which says a re-typing is legal, keyed on
+// spellings, and names no route) and std.literal_elaboration LiteralUnfolding (the declared routes,
+// until now applied to literals only). Each phase cites a declared route; nothing in a plan is
+// free text, so a realization reads which route to run and never decides whether the crossing is
+// legal. Endpoints are DECLARATIONS, keyed exactly as literal_homomorphism_rows key theirs, so an
+// alias or a foreign caller's re-resolved spelling presents the same key after the peel.
+//
+// The inverse of an unfold is lawful because every LiteralUnfolding is a bijection onto its
+// carrier: the Unicode scalar unfold maps host text to FreeMonoid<std.types.Char> one scalar per
+// element, and std.types Char is branded unicode_scalar, so every sequence folds back to exactly
+// one host text. A future unfold that is not injective must not receive an inverse row.
+//
+// Phase chaining is NOT judged here: every plan row today has one phase, so whether consecutive
+// phases' endpoints meet has no row that could exercise it. A multi-phase row is the trigger for
+// adding that judgment.
+type ConversionPhase
+  = UnfoldPhase { producer: LiteralUnfolding }
+  | InverseUnfoldPhase { producer: LiteralUnfolding }
+
+type ConversionPlan {
+  identity: NonEmptyStr
+  source: DeclarationRef
+  source_element: DeclarationRef?
+  target: DeclarationRef
+  target_element: DeclarationRef?
+  phases: List<ConversionPhase>
+}
+
+// What a crossing site that names a plan is answered with. Only ConversionPlanAdmitted admits;
+// every other arm is a located refusal at the site that named the plan. A crossing that names NO
+// plan never reaches this judgment and is refused by the text wall as before.
+type ConversionPlanJudgment
+  = ConversionPlanAdmitted { plan: ConversionPlan }
+  | ConversionPlanAbsent { identity: String }
+  | ConversionPlanAmbiguous { identity: String, row_count: Int }
+  | ConversionPlanEndpointMismatch { plan: ConversionPlan }
+  | ConversionPlanHasNoPhase { identity: String }
+
+fn conversion_plan_element_eq(a: DeclarationRef?, b: DeclarationRef?) -> Bool {
+  match a {
+    Present { value: ae } =>
+      match b {
+        Present { value: be } => declaration_ref_eq(a: ae, b: be)
+        Absent => false
+      }
+    Absent => match b { Present { value: _ } => false  Absent => true }
+  }
+}
+
+fn conversion_plan_endpoints_match(
+  plan: ConversionPlan,
+  source: DeclarationRef,
+  source_element: DeclarationRef?,
+  target: DeclarationRef,
+  target_element: DeclarationRef?
+) -> Bool {
+  declaration_ref_eq(a: plan.source, b: source)
+    && conversion_plan_element_eq(a: plan.source_element, b: source_element)
+    && declaration_ref_eq(a: plan.target, b: target)
+    && conversion_plan_element_eq(a: plan.target_element, b: target_element)
+}
+
+// The site presents the plan identity it named and the two declarations it resolved (already
+// peeled, as for literal elaboration). Zero or several rows under the identity refuse rather than
+// pick; a found plan whose endpoints are not the site's refuses rather than being reread in the
+// other direction (the inverse is its own row).
+fn judge_conversion_plan(
+  rows: List<ConversionPlan>,
+  identity: String,
+  source: DeclarationRef,
+  source_element: DeclarationRef?,
+  target: DeclarationRef,
+  target_element: DeclarationRef?
+) -> ConversionPlanJudgment {
+  let named = rows |> filter(r => r.identity == identity)
+  let n = named |> count
+  if n == 0 {
+    ConversionPlanAbsent { identity: identity }
+  } else if n > 1 {
+    ConversionPlanAmbiguous { identity: identity, row_count: n }
+  } else {
+    match named |> first {
+      Absent => ConversionPlanAbsent { identity: identity }
+      Present { value: plan } =>
+        if (plan.phases |> count) == 0 {
+          ConversionPlanHasNoPhase { identity: identity }
+        } else if conversion_plan_endpoints_match(plan: plan, source: source, source_element: source_element, target: target, target_element: target_element) {
+          ConversionPlanAdmitted { plan: plan }
+        } else {
+          ConversionPlanEndpointMismatch { plan: plan }
+        }
+    }
+  }
+}
