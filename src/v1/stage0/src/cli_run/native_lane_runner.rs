@@ -686,7 +686,53 @@ fn materialize_malformed_specimen(workspace: &Path) -> Result<String, String> {
 /// census run's only consumed output.
 struct NativeFileRefusalObserved {
     path: String,
+    /// The FIRST diagnostic of the file's chain -- often an advisory that rode along (the
+    /// grammar-construction residue `parse_grammar_choice_overlap_residue` heads every file,
+    /// clean ones included). Carried so the summary can show it AS the head, beside the cause,
+    /// rather than leaving a reader to mistake it for one.
+    head_reason: String,
     fatal_reason: String,
+}
+
+/// THE REFUSED FILES, NAMED, WITH THE CHAIN STRUCTURED. The summary used to carry
+/// `file_refusals=N` and nothing else, so each identity lived only in driver-rows.jsonl, and a
+/// reader who grepped reasons there saw the chain HEAD (identical on every file) far more often
+/// than the cause -- 209 heads to 1 cause in one run, read three times as the cause. Here the
+/// fatal cause leads each line and the head is printed only as `head=` when it differs, after a
+/// grouped tally of FATAL causes, which is the population a causal account is about.
+fn native_file_refusal_summary(refusals: &[NativeFileRefusalObserved]) -> String {
+    // First-seen order, one map probe per refusal (DESIGN §6 bare minimum cost: no linear
+    // scan per row, whatever the cause count is today).
+    let mut slot: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    let mut by_cause: Vec<(&str, usize)> = Vec::new();
+    for refusal in refusals {
+        let cause = refusal.fatal_reason.as_str();
+        match slot.get(cause) {
+            Some(&i) => by_cause[i].1 += 1,
+            None => {
+                slot.insert(cause, by_cause.len());
+                by_cause.push((cause, 1));
+            }
+        }
+    }
+    let mut out = format!(
+        "v2-native-route: refused files={} distinct_fatal_causes={}",
+        refusals.len(),
+        by_cause.len()
+    );
+    for (cause, n) in &by_cause {
+        out.push_str(&format!("\n  fatal_cause {n}x {cause}"));
+    }
+    for refusal in refusals {
+        out.push_str(&format!(
+            "\n  refused {} fatal={}",
+            refusal.path, refusal.fatal_reason
+        ));
+        if refusal.head_reason != refusal.fatal_reason {
+            out.push_str(&format!(" head(advisory)={}", refusal.head_reason));
+        }
+    }
+    out
 }
 
 /// The spawned run's terminal marker, decoded. THE MARKER IS THE VERDICT SURFACE: the binary
@@ -879,12 +925,17 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
                 .get("path")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| format!("file refusal carries no path: {line}"))?;
+            let head_reason = refusal
+                .get("head_reason")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| format!("file refusal carries no head_reason: {line}"))?;
             let fatal_reason = refusal
                 .get("fatal_reason")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| format!("file refusal carries no fatal_reason: {line}"))?;
             file_refusals.push(NativeFileRefusalObserved {
                 path: path.to_string(),
+                head_reason: head_reason.to_string(),
                 fatal_reason: fatal_reason.to_string(),
             });
             continue;
@@ -2503,6 +2554,9 @@ fn run_required_v2_native_inner(
         "v2-native-route: universe={} population={} file_refusals={}",
         run.terminal.universe, run.terminal.rows, run.terminal.file_refusals
     );
+    if !run.file_refusals.is_empty() {
+        eprintln!("{}", native_file_refusal_summary(&run.file_refusals));
+    }
 
     // REALIZATION TELEMETRY, ON ITS OWN LINE AND ON NO RECEIPT FIELD: this host process's peak
     // RSS and current RSS (process-scoped -- the emitted binary and the rustc children cargo
@@ -2542,6 +2596,82 @@ fn run_required_v2_native_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A HEAD SHARED BY EVERY FILE IS NOT THE CAUSE. The old summary was `file_refusals=2` and
+    /// named neither file; this control reds on any rendering that drops a path, leads with the
+    /// head, or tallies heads instead of fatal causes.
+    #[test]
+    fn the_refusal_summary_names_each_file_and_leads_with_the_fatal_cause() {
+        let row = |path: &str, head: &str, fatal: &str| NativeFileRefusalObserved {
+            path: path.to_string(),
+            head_reason: head.to_string(),
+            fatal_reason: fatal.to_string(),
+        };
+        let summary = native_file_refusal_summary(&[
+            row(
+                "a.dag",
+                "parse_grammar_choice_overlap_residue",
+                "parse_g0_tokens_remain",
+            ),
+            row(
+                "b.dag",
+                "parse_grammar_choice_overlap_residue",
+                "body_lowering_reason_x",
+            ),
+            row("c.dag", "parse_g0_tokens_remain", "parse_g0_tokens_remain"),
+        ]);
+        assert!(
+            summary.contains("refused files=3 distinct_fatal_causes=2"),
+            "{summary}"
+        );
+        assert!(
+            summary.contains("fatal_cause 2x parse_g0_tokens_remain"),
+            "{summary}"
+        );
+        assert!(
+            summary.contains("fatal_cause 1x body_lowering_reason_x"),
+            "{summary}"
+        );
+        assert!(!summary.contains("fatal_cause 2x parse_grammar_choice_overlap_residue"));
+        // EVERY SUPPLIED FILE, EXACTLY ONCE, AS ITS WHOLE LINE. Asserting a and c alone let a
+        // rendering that dropped b pass (review on #13005); the expected line is derived per row,
+        // so the head appears only where it differs from the cause.
+        let expected = [
+            "  refused a.dag fatal=parse_g0_tokens_remain head(advisory)=parse_grammar_choice_overlap_residue",
+            "  refused b.dag fatal=body_lowering_reason_x head(advisory)=parse_grammar_choice_overlap_residue",
+            "  refused c.dag fatal=parse_g0_tokens_remain",
+        ];
+        assert_eq!(
+            each_line_exactly_once(&summary, &expected),
+            Ok(()),
+            "{summary}"
+        );
+        // THE MUTATIONS THE CHECK MUST RED ON: b's line dropped, and a's line duplicated.
+        let dropped_b: String = summary
+            .lines()
+            .filter(|l| !l.contains("refused b.dag"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert_eq!(
+            each_line_exactly_once(&dropped_b, &expected),
+            Err(format!("{} appears 0 times", expected[1]))
+        );
+        let doubled_a = format!("{summary}\n{}", expected[0]);
+        assert_eq!(
+            each_line_exactly_once(&doubled_a, &expected),
+            Err(format!("{} appears 2 times", expected[0]))
+        );
+    }
+
+    fn each_line_exactly_once(summary: &str, expected: &[&str]) -> Result<(), String> {
+        for line in expected {
+            let n = summary.lines().filter(|l| l == line).count();
+            if n != 1 {
+                return Err(format!("{line} appears {n} times"));
+            }
+        }
+        Ok(())
+    }
 
     /// A FAILED BUILD'S ROOT OUTLIVES THE REFUSAL. Before this, the root dropped on the `Err`
     /// return and the emitted sources the error names were deleted; the control reds there

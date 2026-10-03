@@ -1,0 +1,24 @@
+module gunbc.guarantee_stall.text_carrier_render_not_keyed_on_identity_stall
+
+import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+
+data text_carrier_render_not_keyed_on_identity_stall: GuaranteeStall = GuaranteeStall {
+  subject: "Two authorities answer whether a type is host text. The checker decides it by DECLARATION IDENTITY (v1.compiler.infer_env text_representation_by_identity, gunbc.rung_drop text_boundary_identity_wall); the Rust renderer decides which carrier to emit by the authored spelling plus kernel provenance (v1.compiler.emit_rust is_host_text_carrier_type). Nothing forces the two answers to agree: on the self-host path a disagreement surfaces only as a rustc type mismatch in the emitted-crate build, and on any other emission nothing observes it. Nothing fell -- the renderer was provenance-keyed before the checker climbed -- so this is a stall below its ceiling, not a drop (review 72772).",
+  current: Mitigatable,
+  ceiling: StructurallyImpossible,
+  blocker: AwaitsOneGrounding { grounding: "the Rust render paths carry the TypeEnv the checker judged with; four of the deciding paths (v1.compiler.emit_rust render_rust_type, render_rust_type_without_applied_binding, rust_operand_realization_of_type, data_def_annotation_is_named_refinement) take no env, so they cannot ask the identity classifier" },
+  population: BoundedPopulation { members: [
+    "v1.compiler.infer_env.text_representation_by_identity",
+    "v1.compiler.emit_rust.is_host_text_carrier_type",
+    "v1.compiler.emit_rust.render_rust_type",
+    "v1.compiler.emit_rust.render_rust_applied_type",
+    "v1.compiler.emit_rust.render_rust_decl_type",
+    "v1.compiler.emit_rust.render_rust_fn_sig_type",
+    "v1.compiler.emit_rust.render_rust_type_with_applied_binding_in_scope",
+    "v1.compiler.emit_rust.render_rust_type_without_applied_binding",
+    "v1.compiler.emit_rust.rust_operand_realization_of_type",
+    "v1.compiler.emit_rust.data_def_annotation_is_named_refinement"
+  ] },
+  next_rung_trigger: climbs_when(capability: "every Rust render path that chooses a text carrier reads v1.compiler.infer_env text_representation_by_identity through the TypeEnv it was checked in, SUFFICIENT FOR is_host_text_carrier_type to be deleted with no fallback arm: an unidentified type refuses at render rather than defaulting to a carrier, which in turn needs gunbc.rung_drop text_boundary_identity_wall's resolver trigger (declaration identity on every type reference). Routing only the renderers that already hold an env does not retire this row.")
+}

@@ -9724,7 +9724,28 @@ fn visit_bare_reference_providers(
         .iter()
         .map(String::as_str)
         .filter(|h| !candidates.names.contains(*h))
-        .filter(|h| v1_rt::map_get(&census.services, (*h).to_string()).is_none())
+        .filter(|h| {
+            // A namespace head need not itself be a service key: github.Api.Get
+            // resolves through github.Api. Keep the bare obligation if ANY use of
+            // that head has no service prefix, including a separate member access.
+            let prefix = format!("{h}.");
+            let mut chains = candidates
+                .dotted_chains
+                .iter()
+                .filter(|chain| chain.starts_with(&prefix))
+                .peekable();
+            chains.peek().is_none()
+                || chains.any(|chain| {
+                    let mut key = String::new();
+                    !chain.split('.').any(|segment| {
+                        if !key.is_empty() {
+                            key.push('.');
+                        }
+                        key.push_str(segment);
+                        v1_rt::map_get(&census.services, key.clone()).is_some()
+                    })
+                })
+        })
         .map(|h| h.to_string())
         .collect();
     let all_names: Vec<(String, bool)> = candidates
@@ -10245,6 +10266,52 @@ mod closure_edge_demand_tests {
         );
     }
 
+    #[test]
+    fn qualified_service_prefix_does_not_pull_an_unrelated_bare_helper() {
+        let service = "module svc.api\nservice github.Api {\n operation Get {\n input { id: Int }\n output { id: Int from \"id\" }\n readonly\n transport rest { method: GET, path: \"/x\" }\n }\n}\n";
+        let helper = "module helper\nfn github(value: Int) -> Int { value }\n";
+        for (extra, should_pull_helper) in [
+            ("", false),
+            ("fn bare() -> Int { github(value: 1) }\n", true),
+            ("fn member() -> Int { github.other }\n", true),
+        ] {
+            let consumer = format!(
+                "module svc.consumer\nimport svc.api\nfn run() -> Int {{ github.Api.Get(id: 1) }}\n{extra}"
+            );
+            let fixture = Fixture::new(&[
+                ("api.dag", service),
+                ("helper.dag", helper),
+                ("consumer.dag", &consumer),
+            ]);
+            let index = fixture.index();
+            let found =
+                unimported_bare_providers(&index.source_files["svc.consumer"], &index).unwrap();
+            assert_eq!(
+                found
+                    .iter()
+                    .any(|row| row.name == "github" && row.provider_module == "helper"),
+                should_pull_helper,
+                "extra={extra:?}: {found:?}"
+            );
+        }
+        // Resolving the service prefix must still demand the service's own import.
+        let fixture = Fixture::new(&[
+            ("api.dag", service),
+            ("helper.dag", helper),
+            ("other.dag", "module other\ndata value: Int = 1\n"),
+            ("consumer.dag", "module svc.consumer\nimport other { value }\nfn run() -> Int { github.Api.Get(id: 1) }\n"),
+        ]);
+        let index = fixture.index();
+        let found = unimported_bare_providers(&index.source_files["svc.consumer"], &index).unwrap();
+        assert!(
+            found
+                .iter()
+                .any(|row| row.name == "github.Api" && row.provider_module == "svc.api"),
+            "{found:?}"
+        );
+        assert!(!found.iter().any(|row| row.name == "github"), "{found:?}");
+    }
+
     /// THE ORIGINAL NON-CLOSURE AMBIGUITY SPECIMEN, KEPT, with its entry-local outcome paired with
     /// the mandatory global refusal (#12419 decision 5857893764). An entry whose closure never
     /// reaches the ambiguous consumer is admitted; the whole-pool demand -- the required floor's
@@ -10427,6 +10494,11 @@ mod closure_edge_demand_tests {
                 .is_some_and(|f| f.contains("bypassed")),
             "a judgment of OTHER roots is not a judgment of these"
         );
+        // The twin is a separate qualification subject, not a second resident
+        // production pool. Preserve the cross-root bypass check above, then end
+        // the bad subject's index lifetime before evaluating the clean subject.
+        drop(index);
+        reset_process_shared_index_for_test();
         let ok = run_required_bare_reference_admission(&twin_roots).unwrap();
         assert!(ok.contains("judged=2 pool=2"), "{ok}");
         assert_eq!(
@@ -10735,6 +10807,64 @@ mod closure_edge_demand_tests {
     }
 
     #[test]
+    fn entry_preparation_covers_the_closure_union_and_leaves_refusals_to_their_entry() {
+        let fixture = Fixture::new(&[
+            (
+                "a.dag",
+                "module entry_a\nimport chain.provider { first }\nfn main() -> Int { first() }\n",
+            ),
+            ("b.dag", "module entry_b\nfn main() -> Int { next() }\n"),
+            (
+                "provider.dag",
+                "module chain.provider\nfn first() -> Int { next() }\n",
+            ),
+            ("tail.dag", "module chain.tail\nfn next() -> Int { 1 }\n"),
+            (
+                "unrelated.dag",
+                "module unrelated\nfn unused() -> Int { 1 }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let entry = |file: &str| fixture.0.join(file).to_string_lossy().into_owned();
+        let entries = [entry("a.dag"), entry("b.dag"), entry("absent.dag")];
+        let warm = warm_bare_reference_edge_index_for_entries(&index, &entries).unwrap();
+        assert!(matches!(
+            warm.observation.provenance,
+            SharedBuildProvenance::BuiltByPreparation
+        ));
+        assert_eq!(
+            (warm.entries, warm.entries_refused, warm.pool_files),
+            (3, 1, 5)
+        );
+        let rows: BTreeSet<_> = index
+            .both_closure_edges
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .ref_out
+            .keys()
+            .cloned()
+            .collect();
+        let union: BTreeSet<_> = entries[..2]
+            .iter()
+            .flat_map(|e| load_sources_for_entry_with_pool(&index, e).unwrap())
+            .map(|s| workspace_relative_repo_path(&s.path))
+            .collect();
+        assert_eq!(rows, union);
+        assert_eq!(warm.observation.source_files, 4);
+        assert!(!rows.iter().any(|file| file.ends_with("unrelated.dag")));
+        // The refused entry still refuses at its owner.
+        assert!(load_sources_for_entry_with_pool(&index, &entries[2]).is_err());
+        assert!(matches!(
+            warm_bare_reference_edge_index_for_entries(&index, &entries[..2])
+                .unwrap()
+                .observation
+                .provenance,
+            SharedBuildProvenance::AlreadyWarmOnEntry { .. }
+        ));
+    }
+
+    #[test]
     fn decomposition_releases_production_name_censuses_and_admission() {
         let fixture = Fixture::new(&[(
             "entry.dag",
@@ -10981,6 +11111,93 @@ pub fn warm_bare_reference_edge_index(
         source_files: index.source_files.len(),
         bare_eligible: edges.bare_scan_eligible.len(),
         provenance,
+    })
+}
+
+/// The preparation of a run whose subject is a NAMED SET OF ENTRIES, not the tree.
+pub struct EntryClosureEdgeWarm {
+    /// `source_files` is the edge rows the index holds after this preparation -- the union of the
+    /// requested entries' closures -- which is the same quantity the whole-pool warm reports (there
+    /// every pool file has a row, so the two readings coincide exactly when the subject is the tree).
+    pub observation: SharedBuildObservation,
+    pub entries: usize,
+    /// Entries whose loader refused. The refusal is NOT answered here: the entry's own resolve
+    /// reaches the same loader, refuses identically, and reports it against that entry.
+    pub entries_refused: usize,
+    pub pool_files: usize,
+}
+
+/// Edge-index preparation for an entry-subject run: the per-file judgment
+/// (`build_both_closure_edge_index`) demanded over the union of the requested entries' closures,
+/// through the same loader fixpoint each entry's resolve runs (`load_sources_for_entry_with_pool`).
+///
+/// `warm_bare_reference_edge_index` asks the whole-pool question because the floor's claims
+/// collectively consume the pool. A run over named entries has no such consumer: every row outside
+/// the closure union is produced for nobody (DESIGN §2 -- authored duplication of nothing, so it is
+/// deleted, not cached). The preparation still exists, at this narrower subject, for the reason the
+/// whole-pool one does: the shared rows are attributed to the run rather than to whichever entry
+/// resolves first.
+pub fn warm_bare_reference_edge_index_for_entries(
+    index: &MultiEntryIndex,
+    entries: &[String],
+) -> Result<EntryClosureEdgeWarm, String> {
+    let provenance = if !entries.is_empty()
+        && entries.iter().all(|entry| {
+            index
+                .entry_closure_sources
+                .borrow()
+                .contains_key(&workspace_relative_entry_path(entry))
+        }) {
+        SharedBuildProvenance::AlreadyWarmOnEntry {
+            triggered_by: "a-site-ahead-of-entry-preparation",
+        }
+    } else {
+        SharedBuildProvenance::BuiltByPreparation
+    };
+    let rss_before = current_rss_bytes().unwrap_or(0);
+    let cpu_before = v1_interpreter::thread_cpu_nanos();
+    let wall_before = std::time::Instant::now();
+    let mut entries_refused = 0usize;
+    for entry in entries {
+        if load_sources_for_entry_with_pool(index, entry).is_err() {
+            entries_refused += 1;
+        }
+    }
+    let edges = index.both_closure_edges.borrow().clone();
+    let (source_files, bare_eligible) = match &edges {
+        Some(edges) => {
+            // The same reconciliation demand the whole-pool preparation keeps, over the roots the
+            // demanded rows actually reach.
+            let roots: BTreeSet<_> = edges
+                .bare_scan_eligible
+                .iter()
+                .filter_map(|file| source_tree_root_of(&index.source_roots, file))
+                .collect();
+            for root in roots {
+                tree_bare_census_for_root(index, &root)?;
+            }
+            (edges.ref_out.len(), edges.bare_scan_eligible.len())
+        }
+        None => (0, 0),
+    };
+    let wall_ms = wall_before.elapsed().as_millis() as u64;
+    let cpu_ms =
+        ((v1_interpreter::thread_cpu_nanos().saturating_sub(cpu_before)) / 1_000_000) as u64;
+    let rss_growth_bytes = current_rss_bytes()
+        .unwrap_or(rss_before)
+        .saturating_sub(rss_before);
+    Ok(EntryClosureEdgeWarm {
+        observation: SharedBuildObservation {
+            cpu_ms,
+            wall_ms,
+            rss_growth_bytes,
+            source_files,
+            bare_eligible,
+            provenance,
+        },
+        entries: entries.len(),
+        entries_refused,
+        pool_files: index.source_files.len(),
     })
 }
 
@@ -43499,6 +43716,17 @@ fn claim_scope_for_with_memos(
             };
             let site_file = module.module.span.file.as_str();
             for name in refs.iter() {
+                // A kernel or container spelling binds the substrate, never a declaring module
+                // (`is_substrate_vocabulary`, the one rule every bare-name producer reads), so two
+                // corpus modules declaring `String` do not make a bare `String` contested. This
+                // held by accident while some import in each scope named one of the declarers;
+                // gunbc.rung_drop text_boundary_identity_wall deleted 71 such imports. Not redundant
+                // with the parse fix that carries a service exit arm's type as a type: bare `String`
+                // reads outside exit arms remain (measured: the floor refused gunbc.output_policy at
+                // 4 sites, e.g. extdeps.github.issues, with this skip removed).
+                if is_substrate_vocabulary(name) {
+                    continue;
+                }
                 let Some(claimants) = ambiguous.get(name) else {
                     continue;
                 };

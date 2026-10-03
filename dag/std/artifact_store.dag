@@ -17,6 +17,7 @@ import std.cache_interface {
   ReleasedAtProviderScopeExit,
   ReleasedNever,
   ReleasedManually,
+  ReleasedAfterInterval,
   CapacityPolicy,
   CapacityUnbounded,
   CapacityBounded,
@@ -118,9 +119,11 @@ type ArtifactStore {
 // a wrong UNIT means this provider is the wrong cache for a byte-budgeted
 // store; an unresolved value means the deriving authority has to run first; an
 // unobserved one needs a citation; an unsupported at-capacity action means the
-// LRU realization below is not what that provider does.
+// LRU realization below is not what that provider does; a timed release means
+// the provider reclaims by age, which this store has no clock to honour.
 type StoreRefusalCause
   = ProviderScopeReleased
+  | ProviderTimedReleaseUnrealized
   | ProviderCapacityUnbounded
   | ProviderCapacityUnobserved
   | CapacityUnitMismatch
@@ -147,6 +150,7 @@ fn store_over_provider(provider: CacheProvider) -> StoreConstruction {
     ReleasedAtProviderScopeExit => store_refused(provider: provider, cause: ProviderScopeReleased)
     ReleasedNever => store_from_capacity(provider: provider, c: provider.retention.capacity)
     ReleasedManually => store_from_capacity(provider: provider, c: provider.retention.capacity)
+    ReleasedAfterInterval { after_write: _ } => store_refused(provider: provider, cause: ProviderTimedReleaseUnrealized)
   }
 }
 
