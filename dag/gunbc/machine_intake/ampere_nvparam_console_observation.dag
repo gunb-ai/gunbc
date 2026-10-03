@@ -1,0 +1,147 @@
+module gunbc.machine_intake_ampere_nvparam_console_observation
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { trim }
+import v2.std.optional { Present }
+import extdeps.languages.json.parse { json_hex_nibble }
+import extdeps.ampere.nvparam {
+  NvParamRegion, NvPreboot, NvManufacturing, NvUser, NvBoard,
+  NvParamKeyReading, NvParamKeyDefined, NvParamKeyUndefined, nvparam_key_of, nvparam_key_text,
+}
+import gunbc.machine_intake_ampere_dram_console_observation { ampere_dram_console_line }
+
+// THE NVPARAM DUMP A BOOT PRINTS, READ INTO NAMED SETTINGS. The firmware's PrintNVRAM
+// (edk2-platforms@2170c80c Silicon/Ampere/AmpereAltraPkg/Drivers/DebugInfoPei/DebugInfoPei.c) walks
+// each region and, for every key NVParamGet answers, prints a section header once --
+// "Pre-boot Configuration Setting:", "Manufacturer Configuration Setting:", "User Configuration
+// Setting:", "Board Configuration Setting:" -- then one row per key in the format
+// "    %04X: 0x%X (%d)\n": the key in hex, the value in hex, the value in decimal.
+//
+// The KEY's name comes from extdeps.ampere.nvparam (NVParamDef.h); a key the header does not define
+// stays its number. What a VALUE means is not stated by any public source and is not decoded.
+//
+// A ROW IS READ ONLY INSIDE A SECTION, and a section ends at any line that is not a row, so an
+// unrelated indented line elsewhere in a capture is never taken for a setting. A row whose hex and
+// decimal renderings disagree, or whose key lies outside the section's region, is MALFORMED and
+// kept as its text, never coerced.
+
+type NvParamSetting {
+  region: NvParamRegion
+  key: NvParamKeyReading
+  value: Int
+}
+
+type NvParamMalformedRow {
+  region: NvParamRegion
+  line: String
+  reason: NonEmptyStr
+}
+
+type NvParamConsoleObservation {
+  settings: List<NvParamSetting>
+  malformed: List<NvParamMalformedRow>
+}
+
+fn nvparam_section_of(line: String) -> NvParamRegion? {
+  let t = trim(line)
+  if t == "Pre-boot Configuration Setting:" { Present { value: NvPreboot } }
+  else if t == "Manufacturer Configuration Setting:" { Present { value: NvManufacturing } }
+  else if t == "User Configuration Setting:" { Present { value: NvUser } }
+  else if t == "Board Configuration Setting:" { Present { value: NvBoard } }
+  else { none }
+}
+
+fn nvparam_region_base(r: NvParamRegion) -> Int {
+  match r { NvPreboot => 0 NvManufacturing => 16384 NvUser => 32768 NvBoard => 49152 }
+}
+
+// Hex digits of any nonzero length, through the corpus's one hex-nibble authority.
+fn hex_of(text: String) -> Int? {
+  if text.length() == 0 { none } else {
+    let values = map(chars(s: text), c => json_hex_nibble(c: c))
+    if any(values, v => v < 0) { none } else { Present { value: fold(values, init: 0, f: (acc, v) => acc * 16 + v) } }
+  }
+}
+
+// "    KKKK: 0xV (D)" -> (key, value), or why it is not one.
+type NvParamRowRead
+  = NvParamRowParsed { key: Int, value: Int }
+  | NvParamRowRejected { reason: NonEmptyStr }
+  | NvParamNotARow
+
+fn nvparam_row_of(line: String) -> NvParamRowRead {
+  if !starts_with(s: line, prefix: "    ") { NvParamNotARow } else {
+    let parts = split(s: trim(line), delimiter: ": 0x")
+    if count(parts) != 2 { NvParamNotARow } else {
+      let key_text = match parts.first() { Present { value: k } => k Absent => "" }
+      let rest = match parts.skip(n: 1).first() { Present { value: r } => r Absent => "" }
+      let value_parts = split(s: rest, delimiter: " (")
+      let hex_text = match value_parts.first() { Present { value: h } => h Absent => "" }
+      let dec_text = match value_parts.skip(n: 1).first() { Present { value: d } => join(split(s: d, delimiter: ")"), "") Absent => "" }
+      match hex_of(text: key_text) {
+        Absent => NvParamNotARow
+        Present { value: key } => match hex_of(text: hex_text) {
+          Absent => NvParamRowRejected { reason: "the value is not hex" }
+          Present { value: v } => match parse_int(s: dec_text) {
+            Absent => NvParamRowRejected { reason: "the decimal rendering is missing or not a number" }
+            Present { value: d } => if d == v || d + 4294967296 == v { NvParamRowParsed { key: key, value: v } }
+              else { NvParamRowRejected { reason: "the hex and decimal renderings disagree" } }
+          }
+        }
+      }
+    }
+  }
+}
+
+type NvParamReadState {
+  section: NvParamRegion?
+  observation: NvParamConsoleObservation
+}
+
+fn with_setting(o: NvParamConsoleObservation, s: NvParamSetting) -> NvParamConsoleObservation {
+  NvParamConsoleObservation { settings: concat(o.settings, [s]), malformed: o.malformed }
+}
+
+fn with_malformed(o: NvParamConsoleObservation, m: NvParamMalformedRow) -> NvParamConsoleObservation {
+  NvParamConsoleObservation { settings: o.settings, malformed: concat(o.malformed, [m]) }
+}
+
+fn nvparam_read_step(state: NvParamReadState, raw: String) -> NvParamReadState {
+  let line = ampere_dram_console_line(raw: raw)
+  match nvparam_section_of(line: line) {
+    Present { value: r } => NvParamReadState { section: Present { value: r }, observation: state.observation }
+    Absent => match state.section {
+      Absent => state
+      Present { value: region } => match nvparam_row_of(line: line) {
+        NvParamNotARow => NvParamReadState { section: none, observation: state.observation }
+        NvParamRowRejected { reason: why } => NvParamReadState { section: state.section, observation: with_malformed(o: state.observation, m: NvParamMalformedRow { region: region, line: line, reason: why }) }
+        NvParamRowParsed { key: k, value: v } => {
+          let base = nvparam_region_base(r: region)
+          if k < base || k >= base + 16384 {
+            NvParamReadState { section: state.section, observation: with_malformed(o: state.observation, m: NvParamMalformedRow { region: region, line: line, reason: "the key lies outside this section's region" }) }
+          } else {
+            NvParamReadState { section: state.section, observation: with_setting(o: state.observation, s: NvParamSetting { region: region, key: nvparam_key_of(key: k), value: v }) }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn ampere_nvparam_console_observation(lines: List<String>) -> NvParamConsoleObservation {
+  let none_set: List<NvParamSetting> = []
+  let none_bad: List<NvParamMalformedRow> = []
+  fold(lines, init: NvParamReadState { section: none, observation: NvParamConsoleObservation { settings: none_set, malformed: none_bad } }, f: (s, l) => nvparam_read_step(state: s, raw: l)).observation
+}
+
+fn nvparam_setting_text(s: NvParamSetting) -> String {
+  concat(nvparam_key_text(r: s.key), " = ", to_string(s.value))
+}
+
+// The value a dump reported for one named key, if the dump carried it.
+fn nvparam_setting_named(o: NvParamConsoleObservation, name: String) -> Int? {
+  match filter(o.settings, s => match s.key { NvParamKeyDefined { key: k } => (k.name as String) == name NvParamKeyUndefined { key: _ } => false }).first() {
+    Present { value: s } => Present { value: s.value }
+    Absent => none
+  }
+}
