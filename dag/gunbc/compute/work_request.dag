@@ -133,12 +133,13 @@ fn work_toolchain_observed(rustc_version: NonEmptyStr, cache_release: NonEmptySt
 // (gunbc.compute.work_provider_local compute_work_identity). This module keeps the work VOCABULARY;
 // the materialization contract owns the key.
 
-// One returned output: the declared path, the blob identity of its bytes (git's blob object id, a
-// content hash the same authority every subject already uses), and where the store holds it.
+// One returned output: the declared path and the blob identity of its bytes (git's blob object id, a
+// content hash the same authority every subject already uses). WHERE the bytes are held is not a
+// field: it is a fact of one realization (the store's verified reading), and a location inside the
+// committed record would make the record differ by where it was stored.
 type WorkOutput {
   declared: String
   blob: String
-  store_path: String
 }
 
 // THE FIVE ENDINGS, and only five (compute-exact-work-contract's red control: a machine that killed
@@ -274,7 +275,6 @@ fn work_output_json(o: WorkOutput) -> JsonValue {
   json_object(members: [
     json_kv(key: "declared", value: json_string(s: o.declared)),
     json_kv(key: "blob", value: json_string(s: o.blob)),
-    json_kv(key: "store_path", value: json_string(s: o.store_path)),
   ])
 }
 
