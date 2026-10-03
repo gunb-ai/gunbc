@@ -634,6 +634,10 @@ import v2.std.collection { List }
 // THE XL-2 LET-IN CAST ROW: v2.test.claim.body_cast_node bcn_let_in_value_cast_verdict assembles one
 // inline module through the production route and stores one Bool (the lowered body carries exactly
 // one cast node with its target), portable because it holds no Node and no closure.
+// THE dag BIND BLOCK-SCOPED ROW: v2.test.emit.dag_bind_let_block_scoped dbl_verdicts parses five emitted
+// token sequences once each and stores five Bool verdicts; each claim that paid its own parse measured
+// over the new-witness budget on the floor runs of #13099 (eval steps 72-105k). Portable because it
+// holds only Bools.
 // THE XL-2 IF-ARM AND STATEMENT-SPINE ROW IS THE SAME GROUND AT THIRTEEN SPECIMENS:
 // v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal iasl_outcomes drives one front
 // end over thirteen inline modules and stores one verdict arm per module, portable for the same reason.
@@ -893,6 +897,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal.cav_outcomes",
   "v2.test.claim.normalize.authored_marker_spelling.ams_verdicts",
   "v2.test.claim.body_lowering.caret_symbol_value_lowering.csv_verdicts",
+  "v2.test.emit.dag_bind_let_block_scoped.dbl_verdicts",
   "v2.test.parse.type_decl_modifier_g0_parse_probe.caret_tree_atom_identities",
   "v2.test.claim.body_lowering.string_literal_value_lowering.slv_verdicts",
   "v2.test.claim.body_cast_node.bcn_let_in_value_cast_verdict",
