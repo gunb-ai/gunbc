@@ -5,12 +5,10 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // PR-2 ledger receipt: the door_real_module_probe frontier receipts re-pinned THROUGH the AuditOnly
 // ledger machinery — one typed counted row per subject path, shared module-graph census, per-row
 // import closure fed into the door ingest, aggregated into the cause histogram (the burn-down
-// list). Two DISTINCT correctly-attributed frontier causes over one real affected set:
-// std.determinism reds at parse_grammar_choice_overlap_residue (the packaged parse() fork the
-// admission pre-parse uses — determinism.dag's DeterminismAxis coproduct, added by #6551
-// Determinism Phase A, trips the known grammar-choice-overlap residue that parse() rejects and
-// parse_production tolerates; MigrationOwned, dissolves with the packaged/parse_production
-// reconciliation); std.error_primitives and std.bit both red at resolve_reason_unbound_symbol
+// list). Frontier causes over one real affected set. std.determinism's former pin,
+// parse_grammar_choice_overlap_residue, went with the reason itself: grammar validation now
+// refuses every overlap, so no parse carries it. std.error_primitives and std.bit both red at
+// resolve_reason_unbound_symbol
 // (generics / shared self-host critical path). resolve_ambiguous_export zeroed by the
 // NamespaceOnlyY default (#6546 subject admit_named_exports skip). FRONTIER MOVE (2026-07-14):
 // determinism previously redded at fact_density_hollow_alias_locus (a lens cause); #6551's
@@ -44,7 +42,6 @@ test fn ledger_cause_histogram_over_mixed_affected_set() -> Bool {
   ledger_refused_count(rows: rows) == 3
     && ledger_all_compiled(rows: rows) == false
     && all_refused_causes_attributed(rows: rows) == true
-    && ledger_cause_count(rows: rows, reason: ^parse_grammar_choice_overlap_residue) == 1
     && ledger_cause_count(rows: rows, reason: ^resolve_reason_unbound_symbol) == 2
     && ledger_cause_count(rows: rows, reason: ^resolve_ambiguous_export) == 0
     && ledger_cause_count(rows: rows, reason: ^fact_density_hollow_alias_locus) == 0
