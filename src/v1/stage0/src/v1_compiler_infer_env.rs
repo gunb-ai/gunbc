@@ -2788,6 +2788,13 @@ pub fn declaration_provenance_of_ref(
     d: Rc<DeclarationRef>,
     env: Rc<TypeEnv>,
 ) -> Rc<TypeDeclarationProvenance> {
+    match declaration_node_of_ref(d.clone(), env.clone()) {
+        Some(decl) => crate::v1_std_core::declaration_provenance_of(decl.clone()),
+        std::option::Option::None => Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent),
+    }
+}
+
+pub fn declaration_node_of_ref(d: Rc<DeclarationRef>, env: Rc<TypeEnv>) -> Option<Rc<Node>> {
     {
         let want_name = d.decl_name.clone();
         let want_module = d.module_path.clone();
@@ -2804,9 +2811,9 @@ pub fn declaration_provenance_of_ref(
                 ..
             }) => {
                 if (mp.clone() == want_module.clone()) {
-                    crate::v1_std_core::declaration_provenance_of(b.resolved.clone())
+                    Some(b.resolved.clone())
                 } else {
-                    Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
+                    std::option::Option::None
                 }
             }
             Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
@@ -2823,16 +2830,10 @@ pub fn declaration_provenance_of_ref(
             .first()
             .cloned()
             {
-                Some(c) => crate::v1_std_core::declaration_provenance_of(
-                    c.binding.clone().resolved.clone(),
-                ),
-                std::option::Option::None => {
-                    Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
-                }
+                Some(c) => Some(c.binding.clone().resolved.clone()),
+                std::option::Option::None => std::option::Option::None,
             },
-            std::option::Option::None => {
-                Rc::new(TypeDeclarationProvenance::DeclarationIdentityAbsent)
-            }
+            std::option::Option::None => std::option::Option::None,
         }
     }
 }

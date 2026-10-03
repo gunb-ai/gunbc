@@ -1,0 +1,36 @@
+module gunbc.roadmap.roadmap_centering
+
+import std.types { String, List, Bool, NonEmptyStr }
+import gunbc.roadmap_model { RoadmapNode }
+
+// CENTERING IS A DISPATCH PREREQUISITE, SUPPLIED — NEVER DERIVED BY THE WORKER (operator ruling,
+// 2026-09-19). The first live harness experiment dispatched a closing-contract task whose worker
+// finished green but spent 23 of its 40 tool rounds orienting: learning how tests run, where
+// witness files live, what a planted input is, and what the authority-row edit looks like. That
+// orientation is one fact per node plus one shared preamble, and re-deriving it per attempt is
+// §2's duplicated work wearing a brief's clothes. Two carriers hold it:
+//
+// - dispatch_centering_preamble, authored ONCE here, prepended to every dispatched brief exactly
+//   once by gunbc.roadmap_dispatch_actuator (the join site per brief assembly, so "exactly once" is
+//   construction, and a witness counts occurrences);
+// - the node's own centering field (gunbc.roadmap_model RoadmapNode centering), the near-complete
+//   plan: exact target files, the exemplar to imitate, the expected oracle shape, the acceptance
+//   command pattern.
+//
+// THE PLAN LIVES ON THE ROW (operator ruling, 2026-09-30). It used to live in a roster here keyed
+// by node id (declared_node_centerings), which let a row exist with its plan somewhere else and
+// read "no roster row" the same as "not yet planned". The roster is deleted; an absent centering
+// is one of the facts gunbc.roadmap.roadmap_readiness names when a node is not ready, and a derived
+// closing-contract task carries its target's plan (gunbc.roadmap_authority closing_contract_task_for).
+
+data dispatch_centering_preamble: String = "Centering (supplied, not to be re-derived; your standing contract — the tool, the capabilities held and withheld, and the completion terms — is in the system prompt and is not repeated here). HOW TO TEST is not restated here: the system prompt derives it (gunbc.harness.harness_guidance IterateNarrowThenAccept), and a second spelling here would be a second authority for it. FILE STRUCTURE: witnesses live under dag/test/claim/<area>/, one file per subject; line 1 declares the module mirroring the path (dag/test/claim/closing/foo_witness_test.dag declares `module test.claim.closing.foo_witness_test`), and the file carries `data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly` beside its imports. Write one test fn per clause of the node's bar, each discriminating on a PLANTED input — a fixture constructed in the file, never a count or value copied from the live tree — and keep one positive control beside the refusals. Match the subject's closed verdict type exhaustively: the refusing arm by name, every other arm false. THE EXEMPLAR to imitate is dag/test/claim/closing/ci_executed_coverage_receipt_closing_contract_witness_test.dag (proven passing on the real acceptance path); the exemplar of the authority-row edit that binds a node to its witness is the row `id: \"shell-dag-cron-entry-line-builder\"` in dag/gunbc/roadmap/roadmap_authority.dag (its roadmap_node(...) call passes execution: gunbc_claim_execution_contract(entry:, function:)). A centering plan for THIS node follows the brief's node fields; it is the plan — execute it, and stop and return if a fact it names is absent from the tree rather than improvising around it."
+
+// The brief renderer's spelling of the centering: the plan when present, and a loud marker when
+// not. A brief carrying the marker is never a dispatchable one -- readiness refuses first -- so the
+// marker exists for preview renders, and it names the missing fact rather than mimicking a plan.
+fn node_centering_plan_text(node: RoadmapNode) -> String {
+  match node.centering {
+    Present { value: plan } => plan as String
+    Absent => "NO CENTERING PLAN IS DECLARED FOR THIS NODE — the node is not ready (missing centering) until its row carries one."
+  }
+}
