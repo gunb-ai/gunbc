@@ -18,6 +18,7 @@ module gunbc.auth.session_store
 // filesystem_listing_observation discipline): "the read failed" and "the store holds no such
 // session" are different facts, and only the second mints an Unknown standing.
 
+import gunbc.auth.auth_store_key { AuthStoreKey, auth_store_key_of }
 import std.types { String, NonEmptyStr, Bool, Int, List, FilePath, Timestamp, Email }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
@@ -66,12 +67,14 @@ fn session_store_layout_for_instance(instance: HostDashboardInstance) -> Session
   }
 }
 
-fn session_store_file_name(session_id: NonEmptyStr) -> String {
-  join([session_id as String, session_store_file_suffix], "")
+// A path is built only from an AuthStoreKey (gunbc.auth.auth_store_key): a session id read from a
+// Cookie header that is not one cannot name a file under the store.
+fn session_store_file_name(key: AuthStoreKey) -> String {
+  join([key.value as String, session_store_file_suffix], "")
 }
 
-fn session_store_file_path(layout: SessionStoreLayout, session_id: NonEmptyStr) -> String {
-  join([layout.root as String, "/", session_store_file_name(session_id: session_id)], "")
+fn session_store_file_path(layout: SessionStoreLayout, key: AuthStoreKey) -> String {
+  join([layout.root as String, "/", session_store_file_name(key: key)], "")
 }
 
 // ── The session file codec ─────────────────────────────────────────────────────────────────────
@@ -391,7 +394,14 @@ type SessionStoreSave
 // reuses an id), so existence-check-and-create buys nothing the draw does not already give; the
 // refusal arms carry the host's own words.
 fn session_store_save(layout: SessionStoreLayout, session: AuthenticatedSession) -> SessionStoreSave {
-  let path = session_store_file_path(layout: layout, session_id: session.session_id)
+  match auth_store_key_of(raw: session.session_id as String) {
+    Absent => SessionStoreSaveRefused { step: "key", reason: "the session id is not a store key ([A-Za-z0-9_-], at most 128)" }
+    Present { value: key } => session_store_save_keyed(layout: layout, key: key, session: session)
+  }
+}
+
+fn session_store_save_keyed(layout: SessionStoreLayout, key: AuthStoreKey, session: AuthenticatedSession) -> SessionStoreSave {
+  let path = session_store_file_path(layout: layout, key: key)
   let written = Filesystem.WriteOwnerOnly(path: path, content: authenticated_session_json(session: session))
   if written.success {
     SessionStoreSaved { session_id: session.session_id }
@@ -411,9 +421,19 @@ type SessionStoreLookup
 // listed and would not read", and "no such file is listed" are three answers that keep their
 // remedies. The id lands in every refusal so a located cause can name the session a request
 // claimed.
+// A session id that is not a store key names no session: it cannot have been minted, so it is
+// Unknown without any filesystem read.
 fn session_store_lookup(layout: SessionStoreLayout, session_id: NonEmptyStr) -> SessionStoreLookup {
-  let name = session_store_file_name(session_id: session_id)
-  let path = session_store_file_path(layout: layout, session_id: session_id)
+  match auth_store_key_of(raw: session_id as String) {
+    Absent => SessionStoreUnknown { session_id: session_id }
+    Present { value: key } => session_store_lookup_keyed(layout: layout, key: key)
+  }
+}
+
+fn session_store_lookup_keyed(layout: SessionStoreLayout, key: AuthStoreKey) -> SessionStoreLookup {
+  let session_id = key.value
+  let name = session_store_file_name(key: key)
+  let path = session_store_file_path(layout: layout, key: key)
   let listing_result = Filesystem.List(path: layout.root as String)
   let listing = filesystem_listing_observation(
     directory: layout.root as String,
@@ -456,7 +476,15 @@ type SessionStoreDelete
 // the listing, never from the delete's failure — and a listing that could not be taken refuses
 // the delete rather than guessing.
 fn session_store_delete(layout: SessionStoreLayout, session_id: NonEmptyStr) -> SessionStoreDelete {
-  let name = session_store_file_name(session_id: session_id)
+  match auth_store_key_of(raw: session_id as String) {
+    Absent => SessionStoreDeleteRefused { session_id: session_id, detail: "the session id is not a store key; nothing outside the store is touched" }
+    Present { value: key } => session_store_delete_keyed(layout: layout, key: key)
+  }
+}
+
+fn session_store_delete_keyed(layout: SessionStoreLayout, key: AuthStoreKey) -> SessionStoreDelete {
+  let session_id = key.value
+  let name = session_store_file_name(key: key)
   let listing_result = Filesystem.List(path: layout.root as String)
   let listing = filesystem_listing_observation(
     directory: layout.root as String,
@@ -468,7 +496,7 @@ fn session_store_delete(layout: SessionStoreLayout, session_id: NonEmptyStr) -> 
     FilesystemEntryAbsent(absence) =>
       SessionStoreNothingToDelete { session_id: absence.name as NonEmptyStr }
     FilesystemEntryListed { directory: _, name: _ } =>
-      let deleted = Filesystem.Delete(path: session_store_file_path(layout: layout, session_id: session_id))
+      let deleted = Filesystem.Delete(path: session_store_file_path(layout: layout, key: key))
       if deleted.success {
         SessionStoreDeleted { session_id: session_id }
       } else {
@@ -619,11 +647,16 @@ fn session_store_purge_execute(layout: SessionStoreLayout, targets: List<NonEmpt
   match targets.first() {
     Absent => SessionStorePurged { deleted: deleted }
     Present { value: target } =>
-      let deleted_result = Filesystem.Delete(path: session_store_file_path(layout: layout, session_id: target))
-      if deleted_result.success {
-        session_store_purge_execute(layout: layout, targets: targets.skip(n: 1), deleted: deleted + 1)
-      } else {
-        SessionStorePurgeRefused { step: join(["delete ", target as String], ""), reason: deleted_result.error }
+      match auth_store_key_of(raw: target as String) {
+        Absent => SessionStorePurgeRefused { step: join(["delete ", target as String], ""), reason: "a listed session entry is not a store key; refusing rather than deleting outside the store" }
+        Present { value: key } => {
+          let deleted_result = Filesystem.Delete(path: session_store_file_path(layout: layout, key: key))
+          if deleted_result.success {
+            session_store_purge_execute(layout: layout, targets: targets.skip(n: 1), deleted: deleted + 1)
+          } else {
+            SessionStorePurgeRefused { step: join(["delete ", target as String], ""), reason: deleted_result.error }
+          }
+        }
       }
   }
 }

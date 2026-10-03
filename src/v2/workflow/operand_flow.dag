@@ -1,7 +1,7 @@
 module v2.workflow.operand_flow
 
+import std.types { List }
 import v2.std.algebra { list_map }
-import v2.std.collection { List }
 import v2.std.dependency {
   DependencyKind,
   DependencyKindClassifier,

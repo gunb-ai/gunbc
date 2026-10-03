@@ -1,5 +1,6 @@
 module v2.test.claim.occurrence_role.occurrence_role
 
+import std.types { List }
 import std.occurrence_identity { CallableOccurrence, DeclarationRole, FieldOccurrence, LexicalValueOccurrence, OccurrenceCategory, OccurrenceRole, ReferenceRole, TypeOccurrence }
 import v2.compiler.occurrence_role {
   NameProductionRow,
@@ -22,7 +23,7 @@ import v2.test.claim.namespace_xl0.reference_conservation { conservation_subject
 import v2.extdeps.languages.dag { dag_grammar_root }
 import std.algebra { Empty }
 import v2.std.algebra { fold_list, length, list_snoc_item }
-import v2.std.collection { List, Map, map_lookup }
+import v2.std.collection { Map, map_lookup }
 import v2.std.optional { Absent, Present }
 import v2.std.node { Atom, Conj, Edge, Authored, Node, TypeNode, node_with_occurrence_id, symbol_intern_lexeme }
 import std.occurrence_identity { OccurrenceSynthetic }
