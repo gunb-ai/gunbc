@@ -1,0 +1,83 @@
+module extdeps.http.form_urlencoded
+
+import std.types { String, List, Bool, Int }
+import std.integer { UInt8 }
+import std.bytes { utf8_encode_bytes, bytes_octets }
+import std.encoding { utf8_decode_octets }
+import v2.std.algebra { any, filter }
+
+// WHATWG URL, application/x-www-form-urlencoded: split pairs before decoding, plus means space,
+// percent escapes decode exactly once. This admission refuses malformed escapes/UTF-8 and duplicate
+// fields rather than selecting an ambiguous command. https://url.spec.whatwg.org/#urlencoded-parsing
+// Empty and absent fields remain distinct. CRLF and field-looking lines inside values are data.
+type FormField { name: String, value: String }
+type FormRead = FormDecoded { fields: List<FormField> } | FormRefused { reason: String }
+type FormOctets = FormOctetsDecoded { octets: List<UInt8> } | FormOctetsRefused
+
+fn form_hex(o: UInt8) -> Int? {
+  if o >= 48 && o <= 57 { Present { value: (o as Int) - 48 } }
+  else if o >= 65 && o <= 70 { Present { value: (o as Int) - 55 } }
+  else if o >= 97 && o <= 102 { Present { value: (o as Int) - 87 } }
+  else { none }
+}
+
+fn form_unescape(octets: List<UInt8>, acc: List<UInt8>) -> FormOctets {
+  match octets.first() {
+    Absent => FormOctetsDecoded { octets: acc }
+    Present { value: head } => if head == 43 { form_unescape(octets: octets.skip(n: 1), acc: concat(acc, [32])) }
+      else if head != 37 { form_unescape(octets: octets.skip(n: 1), acc: concat(acc, [head])) }
+      else { match octets.skip(n: 1).first() {
+        Absent => FormOctetsRefused
+        Present { value: h } => match octets.skip(n: 2).first() {
+          Absent => FormOctetsRefused
+          Present { value: l } => match form_hex(o: h) {
+            Absent => FormOctetsRefused
+            Present { value: high } => match form_hex(o: l) {
+              Absent => FormOctetsRefused
+              Present { value: low } => form_unescape(octets: octets.skip(n: 3), acc: concat(acc, [high * 16 + low]))
+            }
+          }
+        }
+      } }
+  }
+}
+
+fn form_component(wire: String) -> String? {
+  match form_unescape(octets: bytes_octets(b: utf8_encode_bytes(s: wire)), acc: []) {
+    FormOctetsRefused => none
+    FormOctetsDecoded { octets } => match utf8_decode_octets(octets: octets) {
+      Absent => none
+      Present { value: scalars } => Present { value: join(map(scalars, cp => from_code_point(cp: cp)), "") }
+    }
+  }
+}
+
+fn form_decode(wire: String) -> FormRead {
+  let parts: List<String> = filter(split(s: wire, delimiter: "&"), part => part != "")
+  fold(parts, init: FormDecoded { fields: [] }, f: (state, part) => match state {
+    FormRefused { reason } => FormRefused { reason: reason }
+    FormDecoded { fields } => {
+      let pieces = split(s: part, delimiter: "=")
+      let name_wire = match pieces.first() { Present { value: first } => first Absent => "" }
+      let value_wire = join(pieces.skip(n: 1), "=")
+      match form_component(wire: name_wire) {
+        Absent => FormRefused { reason: "invalid encoded form name" }
+        Present { value: name } => if any(fields, field => field.name == name) { FormRefused { reason: "duplicate form field" } }
+          else { match form_component(wire: value_wire) {
+            Absent => FormRefused { reason: "invalid encoded form value" }
+            Present { value } => FormDecoded { fields: concat(fields, [FormField { name: name, value: value }]) }
+          } }
+      }
+    }
+  })
+}
+
+fn form_field(form: FormRead, name: String) -> String? {
+  match form {
+    FormRefused { reason: _ } => none
+    FormDecoded { fields } => match filter(fields, field => field.name == name).first() {
+      Absent => none
+      Present { value: field } => Present { value: field.value }
+    }
+  }
+}

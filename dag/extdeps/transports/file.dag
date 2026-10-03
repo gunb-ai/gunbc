@@ -36,3 +36,38 @@ type FileExchangeObservation
 fn file_observation_byte_count(bytes: ByteSize) -> Int {
   byte_size_count(b: bytes) as Int
 }
+
+// WHAT AN OPERATION'S `from "key"` NAMES ON THE FILE TRANSPORT (XL-2 PR3a): one channel of the file
+// result. The v2 home of the vocabulary the seed reads as v1.compiler.emit FileResultChannel and
+// file_result_channel_of_key, transcribed arm for arm and key for key (aliases included).
+// The same stated cross-generation divergence, recorded in
+// gunbc.recurring_failure_mode vocabulary_held_in_both_the_frozen_seed_and_v2.
+type FileOutputChannel
+  = FileSuccess
+  | FileByteCount
+  | FilePath
+  | FileError
+  | FileErrorKind
+  | FileContent
+
+fn file_output_channel_of_key(key: String) -> FileOutputChannel? {
+  if key == "write_success" || key == "read_success" || key == "delete_success" || key == "list_success" || key == "success" { Present { value: FileSuccess } }
+  else if key == "bytes_written" || key == "bytes" || key == "byte_count" { Present { value: FileByteCount } }
+  else if key == "path" { Present { value: FilePath } }
+  else if key == "error" { Present { value: FileError } }
+  else if key == "error_kind" { Present { value: FileErrorKind } }
+  else if key == "content" || key == "entries" { Present { value: FileContent } }
+  else { none }
+}
+
+// THE FIELDS A `transport file { .. }` BLOCK DECLARES: the operation's declared request, not
+// FileTransportConfig (the host's base path). Corpus at authoring time: path 8, verb 5.
+type FileBindingField
+  = FileBindingPath
+  | FileBindingVerb
+
+fn file_binding_field_of_key(key: String) -> FileBindingField? {
+  if key == "path" { Present { value: FileBindingPath } }
+  else if key == "verb" { Present { value: FileBindingVerb } }
+  else { none }
+}
