@@ -351,9 +351,11 @@ fn is_dag_cast_domain_type(name: String) -> Bool {
 // element, and std.types Char is branded unicode_scalar, so every sequence folds back to exactly
 // one host text. A future unfold that is not injective must not receive an inverse row.
 //
-// Phase chaining is NOT judged here: every plan row today has one phase, so whether consecutive
-// phases' endpoints meet has no row that could exercise it. A multi-phase row is the trigger for
-// adding that judgment.
+// A PLAN HAS EXACTLY ONE PHASE BY CONSTRUCTION. Every row today is one declared route, so a plan
+// with no phase is not a state to refuse but a state with no constructor (DESIGN section 5,
+// construction over validation). A composite plan -- several phases whose consecutive endpoints must
+// meet -- is the trigger for a non-empty phase sequence and the judgment of its chaining; neither
+// exists until a row needs it.
 type ConversionPhase
   = UnfoldPhase { producer: LiteralUnfolding }
   | InverseUnfoldPhase { producer: LiteralUnfolding }
@@ -372,7 +374,7 @@ type ConversionPlan {
   route: DeclarationRef
   source: ConversionEndpoint
   target: ConversionEndpoint
-  phases: List<ConversionPhase>
+  phase: ConversionPhase
 }
 
 // HOW A SITE NAMES A PLAN (operator ruling O5, 2026-10-03, applied by sharp-raven-357): with no
@@ -389,7 +391,6 @@ type ConversionPlanJudgment
   | ConversionPlanAbsent { route: DeclarationRef }
   | ConversionPlanAmbiguous { route: DeclarationRef, row_count: Int }
   | ConversionPlanEndpointMismatch { plan: ConversionPlan }
-  | ConversionPlanHasNoPhase { route: DeclarationRef }
   | ConversionPlanEndpointNotText { source: TextRepresentation, target: TextRepresentation }
 
 fn conversion_plan_element_eq(a: DeclarationRef?, b: DeclarationRef?) -> Bool {
@@ -438,9 +439,7 @@ fn judge_conversion_plan(
     match named |> first {
       Absent => ConversionPlanAbsent { route: route }
       Present { value: plan } =>
-        if (plan.phases |> count) == 0 {
-          ConversionPlanHasNoPhase { route: route }
-        } else if conversion_endpoint_eq(a: plan.source, b: source) && conversion_endpoint_eq(a: plan.target, b: target) {
+        if conversion_endpoint_eq(a: plan.source, b: source) && conversion_endpoint_eq(a: plan.target, b: target) {
           ConversionPlanAdmitted { plan: plan }
         } else {
           ConversionPlanEndpointMismatch { plan: plan }
@@ -449,6 +448,16 @@ fn judge_conversion_plan(
   }
 }
 
+// CONSUMER, A DECLARED FRONTIER (DESIGN section 3c). The judgment's consumer is the KERNEL-CROSSING
+// WALL in v1.compiler.infer: a call to the kernel scalar reader or writer (chars / chars_to_string)
+// is admitted only inside a function whose declaration a conversion_plan_rows row names as its route,
+// judged here against the two text readings at that kernel call; everywhere else it refuses with
+// TextCrossingHasNoImplicitRoute naming the route to call. calm-boar-904 ruled that wall the LAST
+// step of the text-boundary lane, so it lands with no backlog: its trigger is that every kernel
+// chars / chars_to_string caller outside the two route functions has been switched to a route call
+// or rostered with a typed reason. Until then the route functions are admitted by their signatures
+// alone and nothing on the acceptance path runs this judgment.
+//
 // THE CROSSING SITE'S HALF, AS THE CHECKER WILL ASK IT. The checker already classifies each side of a
 // boundary by declaration identity (v1.compiler.infer text_representation_by_identity, the same
 // reading text_crossing_by_identity refuses bare crossings with); a site that names a plan presents
