@@ -701,7 +701,7 @@ fn host_reset_return_wet() -> ProcessExit
                   UnitHoldRefused { reason: r } =>
                     host_reset_return_preflight_exit(
                       refusal: UnitHeldForMaintenance { subject: subject, reason: r },
-                      remedy: "the unit is held (maintenance or another run); nothing was written to its controller",
+                      remedy: "the unit hold was not acquired: it is held (maintenance or another run), or this runner was not observed on the hold store's host; nothing was written to its controller",
                     )
                   UnitHeld { proof: p } =>
                     unit_hold_release(
