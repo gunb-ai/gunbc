@@ -23,7 +23,7 @@ import gunbc.spark.pair_serving_authority {
 }
 import std.scoped_authorization { OperatorGrant, AttemptIdentity, ClaimedBy, authorization_scope_eq, parse_intent_scopes, AuthorizationRequest, authorize, AuthorizationPermitted, AuthorizationRefused }
 import gunbc.spark.pair_serving_d0_door { d0_standing_grant_for }
-import gunbc.auth.standing_operator_grant { group_a_dev_standing_grant, standing_grant_covers, standing_grant_authorization, StandingImageProduce }
+import gunbc.auth.standing_operator_grant { group_a_dev_standing_grant, standing_grant_covers, standing_grant_authorization, StandingArmLaunch }
 import gunbc.spark.pair_serving_d0 {
   D0Subject, D0SuspendForSuccessor, D0ReleaseToFleet, RankVacancyReading, RankOccupancyReading, D0Observation,
   IncumbentReading, IncumbentDidNotAnswer, IncumbentAnsweredUnread, IncumbentRouteUnread,
@@ -296,6 +296,6 @@ test fn rw_an_effect_outside_the_scope_is_not_covered() -> Bool {
       destructive: true,
     }
     foreign_host && match d0_standing_grant_for(request: suspend) { Present { value: _ } => false  Absent => true }
-      && !standing_grant_covers(g: group_a_dev_standing_grant, group: FabricGroupA, effect: StandingImageProduce, hosts: [] as List<HostIdentity>)
+      && !standing_grant_covers(g: group_a_dev_standing_grant, group: FabricGroupA, effect: StandingArmLaunch, hosts: [] as List<HostIdentity>)
   })
 }
