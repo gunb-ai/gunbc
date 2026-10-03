@@ -1,5 +1,6 @@
 module extdeps.llm.anthropic_rest
 
+import extdeps.ietf.http_semantics { POST }
 import extdeps.llm.anthropic_messages_api {
   AnthropicChatMessage,
   AnthropicMessages200Body,

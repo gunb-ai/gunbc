@@ -276,7 +276,8 @@ fn fabric_storage_unwire_advance(text: String) -> FabricHeadAdvance {
           "advanced" =>
             match decode_reading(ws: concat(["at"], r.words |> skip(n: 2)), i: 0) {
               Present { value: FabricHeadAt { object: o, generation: g } } => FabricHeadAdvanced { object: o, generation: g }
-              _ => FabricHeadAdvanceRefused { fault: undecodable(line: r.line) }
+              Absent => FabricHeadAdvanceRefused { fault: undecodable(line: r.line) }
+              Present { value: _ } => FabricHeadAdvanceRefused { fault: undecodable(line: r.line) }
             }
           "moved" =>
             match decode_expectation(ws: r.words, i: 2) {

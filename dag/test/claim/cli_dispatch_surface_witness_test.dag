@@ -1,5 +1,6 @@
 module test.claim.cli_dispatch_surface
 
+import v2.std.live_tree { LiveTreeDisposition }
 import gunbc.cli_dispatch_surface {
   dispatch_local_binding_names,
   gunbc_cli_dispatch_executor_binding_prefix

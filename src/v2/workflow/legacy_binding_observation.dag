@@ -118,7 +118,7 @@ type LegacyBindingObservation<O> {
 // observation that defines its denominator as "whatever I could answer" is complete by
 // construction and says nothing.
 fn expected_reference_occurrence_ids(transport: ValidatedOccurrenceTransport) -> List<Int> {
-  map_keys(transport.references_by_id)
+  sorted_map_keys(transport.references_by_id)
 }
 
 fn observed_occurrence_ids<O>(observation: LegacyBindingObservation<O>) -> List<Int> {

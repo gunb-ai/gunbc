@@ -85,6 +85,11 @@ fn list_introduction_elements_optional(node: Node) -> Optional<List<Node>> {
       } else {
         optional_absent()
       }
-    _ => optional_absent()
+    TypeNode { connective: _ } => optional_absent()
+    ComputationNode { behavior: Value } => optional_absent()
+    ComputationNode { behavior: Branch } => optional_absent()
+    ComputationNode { behavior: Loop } => optional_absent()
+    ComputationNode { behavior: Bind } => optional_absent()
+    ComputationNode { behavior: Match } => optional_absent()
   }
 }

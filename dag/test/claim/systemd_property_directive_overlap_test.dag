@@ -1,5 +1,6 @@
 module test.claim.systemd_property_directive_overlap
 
+import v2.std.live_tree { LiveTreeDisposition }
 import gunbc.systemd_property_directive_overlap {
   systemd_property_writability,
   systemd_property_is_settable,

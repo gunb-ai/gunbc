@@ -147,9 +147,9 @@ fn derive_gross_margin_ratio_from_facts(
     Present { value: rev } =>
       match filed_amount(fact: gross_profit) {
         Present { value: gp } => derive_gross_margin_ratio(revenue: rev, gross_profit: gp)
-        _ => none
+        Absent => none
       }
-    _ => none
+    Absent => none
   }
 }
 

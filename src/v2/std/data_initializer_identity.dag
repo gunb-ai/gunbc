@@ -19,7 +19,12 @@ fn projection_kind_lexeme_optional(node: Node) -> Optional<String> {
   match node.kind {
     TypeNode { connective: Atom { identity: sym } } =>
       optional_present(value: symbol_lexeme(sym: sym))
-    _ => optional_absent()
+    TypeNode { connective: Conj } => optional_absent()
+    TypeNode { connective: Disj } => optional_absent()
+    TypeNode { connective: Arrow } => optional_absent()
+    TypeNode { connective: Cardinality } => optional_absent()
+    TypeNode { connective: Instantiation } => optional_absent()
+    ComputationNode { behavior: _ } => optional_absent()
   }
 }
 

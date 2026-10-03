@@ -1,5 +1,6 @@
 module v2.test.claim.body_lowering.declaration_structure_preserved
 
+import v2.std.live_tree { LiveTreeDisposition }
 import v2.compiler.reference_conservation_admission {
   conservation_subject_of_text,
   conserved_normalize,

@@ -1,6 +1,7 @@
 module gunbc.rust_item_scan
 
 import extdeps.languages.rust.syntax { rust_item_forms }
+import extdeps.rust.std_thread_local { thread_local_declared_item_keyword, thread_local_macro_name }
 import std.syntax { ExprBody }
 import std.decimal { decimal_digit_char }
 import gunbc.rust_item_identity {
@@ -63,9 +64,11 @@ import v2.std.algebra { any, filter, fold_list, length, list_map }
 // past its first line and a reader that met the continuation at a scope boundary would refuse most
 // of the population it exists to census. A macro block additionally records its REGION: the grammar
 // authority carries no macro item form, so a declaration made by a macro cannot be named here, and
-// a changed line inside one is reported UNATTRIBUTED rather than file-level, because a static added
-// inside thread_local! is hand-Rust growth and file-level is the answer that would admit it
-// silently.
+// a changed line inside one is reported UNATTRIBUTED rather than file-level, because a declaration
+// added inside a macro is hand-Rust growth and file-level is the answer that would admit it
+// silently. ONE MACRO IS THE EXCEPTION, BY UPSTREAM CITATION RATHER THAN BY THIS READER'S CHOICE:
+// extdeps.rust.std_thread_local records that std's thread_local! body is a sequence of `static`
+// declarations, so its block is a scope whose statics are named items of the enclosing module.
 
 // THE RECOGNIZER'S PRECONDITION IS A REPOSITORY FACT, NOT AN ASSUMPTION. Extents are decided by
 // scope depth: a scope opened at indent 4*d contains structural lines at indent 4*(d+1), and closes
@@ -106,6 +109,7 @@ type RustScanScope
   | UseScope { start_line: Int }
   | AttributeScope { start_line: Int }
   | MacroScope { macro_name: String, start_line: Int }
+  | ThreadLocalScope { start_line: Int }
   | ImplScope { impl_subject: String, start_line: Int }
   | ItemScope {
       kind: RustItemKind,
@@ -119,14 +123,19 @@ type RustScanScope
 
 // A MACRO INVOCATION'S BLOCK IS AN EXTENT WITH NO ITEM, AND A CHANGE INSIDE IT IS UNATTRIBUTED.
 //
-// `thread_local! { static … }` and `macro_rules! name { … }` declare real things, and this reader
-// cannot name them: the grammar authority carries no macro item form, and inventing one here would
-// be the second roster this module exists not to author. Recognizing the EXTENT keeps the file
-// scannable -- cli_run.rs itself carries a thread_local! block, and refusing the whole file for it
-// would put the most important subject of the census permanently out of reach. Reporting a change
-// inside it as file-level would be the fail-open: a static added inside thread_local! is hand-Rust
-// growth. So the region is recorded, a changed line inside it is UNATTRIBUTED, and the admission
-// join stops the line. Named ceiling, not silence.
+// `macro_rules! name { … }` and `lazy_static! { … }` declare real things, and this reader cannot
+// name them: the grammar authority carries no macro item form, and inventing one here would be the
+// second roster this module exists not to author. Recognizing the EXTENT keeps the file scannable.
+// Reporting a change inside it as file-level would be the fail-open: a declaration added inside a
+// macro is hand-Rust growth. So the region is recorded, a changed line inside it is UNATTRIBUTED,
+// and the admission join stops the line. Named ceiling, not silence.
+//
+// THREAD_LOCAL! IS NOT A MACRO REGION, because its grammar is an upstream fact rather than a guess:
+// std documents its body as "any number of static declarations", each with optional attributes and
+// visibility (extdeps.rust.std_thread_local, cited at the pinned 1.93.0 docs). ThreadLocalScope
+// admits exactly those lines -- a `static` header, an attribute, a comment -- and refuses anything
+// else, so a static added inside it is an ADDED item by name, and a body the citation does not
+// describe still stops the line. Every other macro stays at the ceiling above.
 type RustMacroRegion {
   macro_name: String
   start_line: Int
@@ -526,6 +535,7 @@ fn scan_top_raw_terminator(scopes: List<RustScanScope>) -> String {
         UseScope { start_line: _ } => ""
         AttributeScope { start_line: _ } => ""
         MacroScope { macro_name: _, start_line: _ } => ""
+        ThreadLocalScope { start_line: _ } => ""
       }
     }
   )
@@ -559,6 +569,7 @@ fn scan_top_raw_opened_on_header(scopes: List<RustScanScope>) -> Bool {
         UseScope { start_line: _ } => false
         AttributeScope { start_line: _ } => false
         MacroScope { macro_name: _, start_line: _ } => false
+        ThreadLocalScope { start_line: _ } => false
       }
     }
   )
@@ -592,6 +603,7 @@ fn scan_top_initializer_continued(scopes: List<RustScanScope>) -> Bool {
         UseScope { start_line: _ } => false
         AttributeScope { start_line: _ } => false
         MacroScope { macro_name: _, start_line: _ } => false
+        ThreadLocalScope { start_line: _ } => false
       }
     }
   )
@@ -644,6 +656,7 @@ fn scan_state_with_raw(state: RustScanState, raw: String) -> RustScanState {
         UseScope { start_line: _ } => state
         AttributeScope { start_line: _ } => state
         MacroScope { macro_name: _, start_line: _ } => state
+        ThreadLocalScope { start_line: _ } => state
       }
     }
   )
@@ -668,6 +681,7 @@ fn scope_start_line(scope: RustScanScope) -> Int {
     UseScope { start_line: n } => n
     AttributeScope { start_line: n } => n
     MacroScope { macro_name: _, start_line: n } => n
+    ThreadLocalScope { start_line: n } => n
     ImplScope { impl_subject: _, start_line: n } => n
     ItemScope {
       kind: _,
@@ -714,6 +728,7 @@ fn scan_enclosing_module_path(scopes: List<RustScanScope>) -> String {
         UseScope { start_line: _ } => acc
         AttributeScope { start_line: _ } => acc
         MacroScope { macro_name: _, start_line: _ } => acc
+        ThreadLocalScope { start_line: _ } => acc
         ItemScope {
           kind: _,
           item_name: _,
@@ -739,6 +754,7 @@ fn scan_enclosing_impl_subject(scopes: List<RustScanScope>) -> String {
         UseScope { start_line: _ } => acc
         AttributeScope { start_line: _ } => acc
         MacroScope { macro_name: _, start_line: _ } => acc
+        ThreadLocalScope { start_line: _ } => acc
         ItemScope {
           kind: _,
           item_name: _,
@@ -820,6 +836,7 @@ fn scan_item_of_scope(
     UseScope { start_line: _ } => state.items
     AttributeScope { start_line: _ } => state.items
     MacroScope { macro_name: _, start_line: _ } => state.items
+    ThreadLocalScope { start_line: _ } => state.items
     ModuleScope { module_name: name, start_line: start } =>
       list_snoc_item(
         xs: state.items,
@@ -892,6 +909,7 @@ fn scan_state_with_macro_region(state: RustScanState, scope: RustScanScope) -> R
         refusal_detail: state.refusal_detail,
         continues_string: state.continues_string
       }
+    ThreadLocalScope { start_line: _ } => state
     UseScope { start_line: _ } => state
     AttributeScope { start_line: _ } => state
     ModuleScope { module_name: _, start_line: _ } => state
@@ -1028,6 +1046,7 @@ fn scan_scope_is_item(scopes: List<RustScanScope>) -> Bool {
         UseScope { start_line: _ } => false
         AttributeScope { start_line: _ } => false
         MacroScope { macro_name: _, start_line: _ } => false
+        ThreadLocalScope { start_line: _ } => false
       }
     }
   )
@@ -1069,6 +1088,7 @@ fn scan_top_scope_kind(scopes: List<RustScanScope>) -> String {
         UseScope { start_line: _ } => "use"
         AttributeScope { start_line: _ } => "attribute"
         MacroScope { macro_name: _, start_line: _ } => "macro"
+        ThreadLocalScope { start_line: _ } => "thread_local"
         ModuleScope { module_name: _, start_line: _ } => "module"
         ImplScope { impl_subject: _, start_line: _ } => "impl"
         ItemScope {
@@ -1147,6 +1167,7 @@ fn scan_top_item_is_expression_bodied(scopes: List<RustScanScope>) -> Bool {
         UseScope { start_line: _ } => false
         AttributeScope { start_line: _ } => false
         MacroScope { macro_name: _, start_line: _ } => false
+        ThreadLocalScope { start_line: _ } => false
       }
     }
   )
@@ -1245,6 +1266,16 @@ fn scan_step(state: RustScanState, text: String) -> RustScanState {
           )
         )
       }
+    } else if scan_top_scope_kind(scopes: state.scopes) == "thread_local"
+      && !line_is_attribute_or_comment(text: text)
+      && leading_ident(s: peeled_item_head(text: text)) != thread_local_declared_item_keyword {
+      scan_state_advance(
+        state: scan_state_refuse(
+          state: state,
+          text: text,
+          detail: "a thread_local! body line is neither a static declaration, an attribute nor a comment"
+        )
+      )
     } else if line_is_attribute_or_comment(text: text) {
       let attaching = scan_state_of(
         state: state,
@@ -1276,6 +1307,39 @@ fn scan_step(state: RustScanState, text: String) -> RustScanState {
             state: state,
             items: state.items,
             scopes: list_snoc_item(xs: state.scopes, item: UseScope { start_line: state.line_number }),
+            attach_start: 0
+          )
+        )
+      }
+    } else if line_opens_macro_invocation(text: text)
+      && leading_ident(s: trim(s: text)) == thread_local_macro_name {
+      if head_closes_on_its_own_line(text: text) {
+        scan_state_advance(
+          state: scan_state_refuse(
+            state: state,
+            text: text,
+            detail: "a one-line thread_local! invocation is not split into its static declarations"
+          )
+        )
+      } else if !rust_keyword_is_item_form(word: thread_local_declared_item_keyword) {
+        scan_state_advance(
+          state: scan_state_refuse(
+            state: state,
+            text: text,
+            detail: "thread_local!'s declared item keyword is not an item form the rust grammar authority names"
+          )
+        )
+      } else {
+        scan_state_advance(
+          state: scan_state_of(
+            state: state,
+            items: state.items,
+            scopes: list_snoc_item(
+              xs: state.scopes,
+              item: ThreadLocalScope {
+                start_line: if state.attach_start > 0 { state.attach_start } else { state.line_number }
+              }
+            ),
             attach_start: 0
           )
         )

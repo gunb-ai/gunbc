@@ -407,7 +407,7 @@ fn report_outcome(function: &str, outcome: ClaimOutcome, any_failed: &mut bool) 
             );
             *any_failed = true;
         }
-        ClaimOutcome::RuntimeError { cause, message } => {
+        ClaimOutcome::RuntimeError { cause, message, .. } => {
             println!(
                 "FAIL {} (runtime error [{}]: {})",
                 function,

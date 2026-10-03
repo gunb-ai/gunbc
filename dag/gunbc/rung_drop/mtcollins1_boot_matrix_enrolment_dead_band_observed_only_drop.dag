@@ -1,4 +1,4 @@
-module gunbc.rung_drop.mtcollins1_boot_matrix_enrolment_dead_band_observed_only
+module gunbc.rung_drop.mtcollins1_boot_matrix_enrolment_dead_band_observed_only_drop
 
 import std.types { NonEmptyStr, List, String }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }

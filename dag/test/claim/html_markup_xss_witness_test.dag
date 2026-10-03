@@ -1,5 +1,6 @@
 module test.claim.html_markup_xss_witness
 
+import v2.std.live_tree { LiveTreeDisposition }
 import std.markup { Fragment, Element, FragmentText, attr, escape_url }
 import extdeps.uri_validation {
   validate_href,

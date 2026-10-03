@@ -1,4 +1,5 @@
 module v2.lens.fact_cardinality
+import v2.lens.common.construction_justification { ConstructionJustification }
 import v2.std.text { string_eq }
 
 

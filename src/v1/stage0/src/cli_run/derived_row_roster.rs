@@ -1,15 +1,25 @@
-//! Derived membership for `gunbc.recurring_failure_mode.roster`.
+//! Derived membership for the one-row-per-file ledgers: `gunbc.recurring_failure_mode.roster`
+//! and `gunbc.rung_drop.roster` (`DERIVED_ROW_ROSTERS`).
 //!
-//! Row files under `dag/gunbc/recurring_failure_mode/` are the authority. A hand-appended
-//! roster list is a second authoring of the same membership.
+//! Row files under each row directory are the authority. A hand-appended roster list is a second
+//! authoring of the same membership -- the rung-drop list was one until it was cut over to this
+//! fold, and a drop absent from it was absent from `docs/design-rung-drops.md`.
+//!
+//! MEMBERSHIP IS SELECTED BY DECLARED TYPE, NOT BY DIRECTORY ALONE. A sibling file is a member
+//! exactly when it declares the row under its own stem with the ledger's row type
+//! (`data <stem>: <RowType> =`), so a helper module that lives beside the rows
+//! (`gunbc.rung_drop.shared_capability`, `gunbc.rung_drop.standing`) is not rostered. That
+//! selector is a line-shape read and NOT the authority on what was declared: the parse join in
+//! `rostered_row_join` reads the compiled declaration population, and a `RowType` row the selector
+//! missed refuses there as `DeclaredNotRostered`. The two disagree only loudly.
 //!
 //! THIS IS NOT CALLED FROM EVERY DIRECTORY WALK. It is invoked from the collect sites
 //! (`collect_dag_files_result`, `collect_dag_files_tolerant`, `main.rs` `collect_dag_files`,
 //! `compiler_tests` `collect_dag_recursive`) and from `run_dag_parse_sweep`, which is the
-//! required-CI parse phase. That last site is load-bearing: three modules import
-//! `gunbc.recurring_failure_mode.roster` (`gunbc.design_ledgers`, `gunbc.ledger_row_coherence`,
-//! `test.claim.generated_artifact_merge_driver_real_execution_witness`), and the parse join reads
-//! that module from the sweep index. A checkout with no committed roster must derive it before the
+//! required-CI parse phase. That last site is load-bearing: modules import each roster
+//! (`gunbc.design_ledgers`, `gunbc.ledger_row_coherence`, and for rung drops
+//! `gunbc.rung_drop.standing` and its readers), and the parse join reads that module from the
+//! sweep index. A checkout with no committed roster must derive it before the
 //! sweep lists `.dag` files, or the join reports `RosterModuleAbsent` on the intended steady
 //! state. The collect sites are convenience for other compilers; they are not the merge-path
 //! writer.
@@ -30,45 +40,60 @@ use std::io;
 use std::path::Path;
 
 pub const ROSTER_BASENAME: &str = "roster.dag";
-/// Module path of the row files; `ROW_DIR_REL` is this spelling with `/` for `.`.
-pub const ROW_MODULE: &str = "gunbc.recurring_failure_mode";
-/// Module path of the DERIVED roster itself: `ROW_MODULE` plus the `ROSTER_BASENAME` stem.
-///
-/// ONE SPELLING, BECAUSE `rostered_row_join` LOOKS THIS MODULE UP BY NAME. `ENROLLED_ROW_TYPES`
-/// carries the roster's module identity and `run_rostered_row_join` resolves it with
-/// `index_get(index, enrolled.roster_module)`, against the module header `render_roster` WRITES.
-/// Those two are the speller pair that must agree (DESIGN section 3).
-///
-/// A DIVERGENCE FAILS CLOSED: the lookup misses and raises the typed, located
-/// `RosterModuleAbsent` finding, and the run goes red naming the module. The cost of a second
-/// spelling is a confusing refusal about a module that appears to exist, not a silent one.
-///
-/// NOT THE NAMESPACE WAVE. `run_required_wave_admission` finds this file by PATH --
-/// `is_derived_roster_path` and `roster_root_prefix`, both composed from `ROW_DIR_REL` and
-/// `ROSTER_BASENAME` -- and never reads this constant. An earlier version of this comment said
-/// the const was consumed by "the namespace wave's base reconstruction"; that is false, and the
-/// note stays so the next reader does not re-derive it from the diff.
-///
-/// It cannot be `concat!` of its parts because `ROW_MODULE` is a `const` and not a literal token,
-/// so the composition is ASSERTED by `the_roster_module_is_the_row_module_plus_the_roster_stem`
-/// rather than constructed.
-///
-/// THAT ASSERTION IS NOT A WALL, AND THE RUNG IS 1 -- MITIGATION. The test is `#[cfg(test)]`
-/// under `repo_self_test_command`, which no CI step runs: the 2026-09-04 runner-capacity ruling
-/// deleted the `rust-unit-tests` job and its loss stands as `gunbc.rung_drop`
-/// `rust_unit_tests_off_the_merge_path`. The required clippy lane COMPILES this test and executes
-/// it never -- DESIGN "Building & checks": "the test targets are compiled by the clippy step and
-/// run by nobody" -- and a rename of either part still typechecks, so nothing on the acceptance
-/// path goes red for it.
-///
-/// Next-rung trigger: the parts composable in a const context, which makes a second spelling
-/// unconstructible rather than assert-checked -- rung 4, not 2, because it removes the
-/// constructor instead of adding an executing check. Restoring an executing unit-test lane
-/// reaches only rung 2 and is the weaker of the two.
-pub const ROSTER_MODULE: &str = "gunbc.recurring_failure_mode.roster";
-pub const ROW_DIR_REL: &str = "gunbc/recurring_failure_mode";
 
-/// Is `rel` the DERIVED roster itself, under any sweep root?
+/// One ledger whose membership is the set of row files in one directory.
+///
+/// `row_dir_rel` is `row_module` with `/` for `.`, and `roster_module` is `row_module` plus the
+/// `ROSTER_BASENAME` stem; both compositions are asserted by
+/// `the_roster_module_is_the_row_module_plus_the_roster_stem` and
+/// `row_dir_is_the_modeled_module_home_not_a_bare_folder_name` rather than constructed, because
+/// `concat!` takes literal tokens and these are consts.
+///
+/// ONE SPELLING, BECAUSE `rostered_row_join` LOOKS THE ROSTER MODULE UP BY NAME.
+/// `ENROLLED_ROW_TYPES` carries each roster's module identity from this table and
+/// `run_rostered_row_join` resolves it with `index_get(index, enrolled.roster_module)` against the
+/// module header `render_roster` WRITES. A divergence fails closed as the typed, located
+/// `RosterModuleAbsent` finding.
+///
+/// THOSE ASSERTIONS ARE NOT A WALL, AND THE RUNG IS 1 -- MITIGATION. They are `#[cfg(test)]` under
+/// `repo_self_test_command`, which no CI step runs (`gunbc.rung_drop`
+/// `rust_unit_tests_off_the_merge_path`). Next-rung trigger: the parts composable in a const
+/// context, which makes a second spelling unconstructible rather than assert-checked.
+pub struct DerivedRowRoster {
+    pub row_module: &'static str,
+    pub row_dir_rel: &'static str,
+    pub row_type: &'static str,
+    pub roster_module: &'static str,
+    pub roster_declaration: &'static str,
+}
+
+pub const RECURRING_FAILURE_MODE: DerivedRowRoster = DerivedRowRoster {
+    row_module: "gunbc.recurring_failure_mode",
+    row_dir_rel: "gunbc/recurring_failure_mode",
+    row_type: "RecurringFailureMode",
+    roster_module: "gunbc.recurring_failure_mode.roster",
+    roster_declaration: "recurring_failure_mode_roster",
+};
+
+pub const RUNG_DROP: DerivedRowRoster = DerivedRowRoster {
+    row_module: "gunbc.rung_drop",
+    row_dir_rel: "gunbc/rung_drop",
+    row_type: "RungDrop",
+    roster_module: "gunbc.rung_drop.roster",
+    roster_declaration: "rung_drop_roster",
+};
+
+pub const DERIVED_ROW_ROSTERS: [&DerivedRowRoster; 2] = [&RECURRING_FAILURE_MODE, &RUNG_DROP];
+
+/// The failure-mode ledger's parts, read by `rostered_row_join`'s file-to-roster join, which is
+/// specific to that ledger: its directory holds rows only, so every file must be a member. The
+/// rung-drop directory also holds helper modules, so for it the type-selected membership and the
+/// parse join's `DeclaredNotRostered` are the whole check.
+pub const ROW_MODULE: &str = RECURRING_FAILURE_MODE.row_module;
+pub const ROSTER_MODULE: &str = RECURRING_FAILURE_MODE.roster_module;
+pub const ROW_DIR_REL: &str = RECURRING_FAILURE_MODE.row_dir_rel;
+
+/// Which derived roster, if any, `rel` IS -- under any sweep root.
 ///
 /// THE ROSTER HAS NO BASE SIDE IN A DIFF, WHICH IS THE WHOLE REASON THIS PREDICATE EXISTS.
 /// The file is gitignored and written on the read path, so it never appears in
@@ -79,30 +104,43 @@ pub const ROW_DIR_REL: &str = "gunbc/recurring_failure_mode";
 /// authorship discriminator answered false and an ordinary append classified
 /// `NewPoolCoincidenceResolution` — a pool coincidence, caused elsewhere, for a name the roster
 /// itself imports. Every future append would have blocked identically.
+fn derived_roster_at(rel: &str) -> Option<(&'static DerivedRowRoster, &str)> {
+    DERIVED_ROW_ROSTERS.iter().find_map(|roster| {
+        let suffix = format!("/{}/{ROSTER_BASENAME}", roster.row_dir_rel);
+        rel.strip_suffix(&suffix).map(|root| (*roster, root))
+    })
+}
+
 pub fn is_derived_roster_path(rel: &str) -> bool {
-    rel.ends_with(&format!("/{ROW_DIR_REL}/{ROSTER_BASENAME}"))
+    derived_roster_at(rel).is_some()
 }
 
 /// The sweep-root prefix of a derived roster path: `dag/gunbc/recurring_failure_mode/roster.dag`
 /// -> `dag`. `None` when `rel` is not a roster path.
 pub fn roster_root_prefix(rel: &str) -> Option<&str> {
-    let suffix = format!("/{ROW_DIR_REL}/{ROSTER_BASENAME}");
-    rel.strip_suffix(&suffix)
+    derived_roster_at(rel).map(|(_, root)| root)
 }
 
-/// The roster this row directory would derive from an ARBITRARY path listing rather than from
-/// the filesystem — the base tree's answer, rendered by the SAME function the writer uses, so
-/// there is one authority for the roster's bytes and not a second reconstruction beside it.
+/// The roster that `roster_rel` would derive from an ARBITRARY path listing rather than from the
+/// filesystem — the base tree's answer, rendered by the SAME function the writer uses, so there is
+/// one authority for the roster's bytes and not a second reconstruction beside it.
 ///
-/// `paths` is a repo-relative listing (`git ls-tree -r --name-only <base>`); `root` is the sweep
-/// root the roster lives under. Returns `None` when the base tree carries NO row files there:
-/// that is the roster module being genuinely absent at the base, which is a different state from
-/// a present empty list and must not be fabricated as one.
+/// `paths` is a repo-relative listing (`git ls-tree -r --name-only <base>`) and `read` returns a
+/// listed file's content at that same revision, because membership is selected by declared type
+/// and a stem alone does not say whether its file declares a row. Returns `Ok(None)` when
+/// `roster_rel` is not a derived roster or the listing carries NO row files there: that is the
+/// roster module being genuinely absent at the base, which is a different state from a present
+/// empty list and must not be fabricated as one. A failed read refuses rather than shortening the
+/// list.
 pub fn roster_from_path_listing<'a>(
+    roster_rel: &str,
     paths: impl IntoIterator<Item = &'a str>,
-    root: &str,
-) -> Option<String> {
-    let dir = format!("{root}/{ROW_DIR_REL}/");
+    read: impl Fn(&str) -> Result<String, String>,
+) -> Result<Option<String>, String> {
+    let Some((roster, root)) = derived_roster_at(roster_rel) else {
+        return Ok(None);
+    };
+    let dir = format!("{root}/{}/", roster.row_dir_rel);
     let mut names: Vec<String> = Vec::new();
     for rel in paths {
         let Some(rest) = rel.strip_prefix(&dir) else {
@@ -117,39 +155,46 @@ pub fn roster_from_path_listing<'a>(
         if stem == "roster" {
             continue;
         }
-        names.push(stem.to_string());
+        if declares_row(&read(rel)?, stem, roster.row_type) {
+            names.push(stem.to_string());
+        }
     }
     if names.is_empty() {
-        return None;
+        return Ok(None);
     }
     names.sort();
-    Some(render_roster(&names))
+    Ok(Some(render_roster(roster, &names)))
 }
 
-pub fn is_recurring_failure_mode_row_dir(dir: &Path) -> bool {
-    dir.ends_with(Path::new(ROW_DIR_REL))
+/// Does `source` declare its own stem as a row of `row_type`: `data <stem>: <row_type> =`.
+fn declares_row(source: &str, stem: &str, row_type: &str) -> bool {
+    let head = format!("data {stem}: {row_type} =");
+    source.lines().any(|line| line.starts_with(&head))
+}
+
+fn row_dir_roster(dir: &Path) -> Option<&'static DerivedRowRoster> {
+    DERIVED_ROW_ROSTERS
+        .iter()
+        .copied()
+        .find(|roster| dir.ends_with(Path::new(roster.row_dir_rel)))
 }
 
 pub fn ensure_if_row_dir(dir: &Path) -> io::Result<()> {
-    if is_recurring_failure_mode_row_dir(dir) {
-        ensure_derived_recurring_failure_mode_roster(dir)
-    } else {
-        Ok(())
+    match row_dir_roster(dir) {
+        Some(roster) => ensure_derived_roster(roster, dir),
+        None => Ok(()),
     }
 }
 
 pub fn ensure_if_row_dir_or_panic(dir: &Path) {
     if let Err(e) = ensure_if_row_dir(dir) {
-        panic!(
-            "failed to derive recurring_failure_mode roster in {:?}: {}",
-            dir, e
-        );
+        panic!("failed to derive row roster in {:?}: {}", dir, e);
     }
 }
 
-pub fn ensure_derived_recurring_failure_mode_roster(dir: &Path) -> io::Result<()> {
-    let names = row_stems(dir)?;
-    let body = render_roster(&names);
+pub fn ensure_derived_roster(roster: &DerivedRowRoster, dir: &Path) -> io::Result<()> {
+    let names = row_stems(roster, dir)?;
+    let body = render_roster(roster, &names);
     let path = dir.join(ROSTER_BASENAME);
     match fs::read(&path) {
         Ok(existing) if existing == body.as_bytes() => Ok(()),
@@ -177,7 +222,7 @@ fn write_atomically(path: &Path, body: &[u8]) -> io::Result<()> {
     }
 }
 
-fn row_stems(dir: &Path) -> io::Result<Vec<String>> {
+fn row_stems(roster: &DerivedRowRoster, dir: &Path) -> io::Result<Vec<String>> {
     let mut names = Vec::new();
     let entries = fs::read_dir(dir)?;
     for entry in entries {
@@ -192,8 +237,8 @@ fn row_stems(dir: &Path) -> io::Result<Vec<String>> {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
                     format!(
-                        "recurring_failure_mode row file {:?} has a non-utf8 stem; refusing to derive a shortened roster",
-                        path
+                        "{} row file {:?} has a non-utf8 stem; refusing to derive a shortened roster",
+                        roster.row_module, path
                     ),
                 ));
             }
@@ -201,33 +246,39 @@ fn row_stems(dir: &Path) -> io::Result<Vec<String>> {
         if stem == "roster" {
             continue;
         }
-        names.push(stem.to_string());
+        if declares_row(&fs::read_to_string(&path)?, stem, roster.row_type) {
+            names.push(stem.to_string());
+        }
     }
     names.sort();
     Ok(names)
 }
 
-pub fn render_roster(names: &[String]) -> String {
+pub fn render_roster(roster: &DerivedRowRoster, names: &[String]) -> String {
+    let DerivedRowRoster {
+        row_module,
+        row_type,
+        roster_module,
+        roster_declaration,
+        ..
+    } = roster;
     let mut out = format!(
-        "module {ROSTER_MODULE}\n\
+        "module {roster_module}\n\
          \n\
-         // DERIVED from sibling RecurringFailureMode row files. Do not hand-edit.\n\
-         // Membership is the directory; order is the sorted filename stem, which is the\n\
-         // declaration name. An append is a new file in this directory, never an edit here.\n\
+         // DERIVED from sibling files declaring a {row_type} row under their own stem. Do not\n\
+         // hand-edit. Membership is the directory filtered by declared type; order is the sorted\n\
+         // filename stem, which is the declaration name. An append is a new file in this\n\
+         // directory, never an edit here.\n\
          \n\
          import std.types {{ List }}\n\
-         import {ROW_MODULE} {{ RecurringFailureMode }}\n"
+         import {row_module} {{ {row_type} }}\n"
     );
     for name in names {
-        out.push_str("import ");
-        out.push_str(ROW_MODULE);
-        out.push_str(".");
-        out.push_str(name);
-        out.push_str(" { ");
-        out.push_str(name);
-        out.push_str(" }\n");
+        out.push_str(&format!("import {row_module}.{name} {{ {name} }}\n"));
     }
-    out.push_str("\ndata recurring_failure_mode_roster: List<RecurringFailureMode> = [\n");
+    out.push_str(&format!(
+        "\ndata {roster_declaration}: List<{row_type}> = [\n"
+    ));
     for name in names {
         out.push_str("  ");
         out.push_str(name);
@@ -239,35 +290,50 @@ pub fn render_roster(names: &[String]) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::{DERIVED_ROW_ROSTERS, RECURRING_FAILURE_MODE, RUNG_DROP};
+
+    /// A base-tree reader over an in-memory listing; an unlisted path is a read fault.
+    fn reader<'a>(files: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Result<String, String> + 'a {
+        move |rel| {
+            files
+                .iter()
+                .find(|(p, _)| *p == rel)
+                .map(|(_, c)| c.to_string())
+                .ok_or_else(|| format!("no such file {rel}"))
+        }
+    }
+
     #[test]
     fn the_roster_module_is_the_row_module_plus_the_roster_stem() {
-        // THE COMPOSITION THE CONST CANNOT EXPRESS. `ROSTER_MODULE` is a literal because
-        // `concat!` takes literal tokens and `ROW_MODULE` is a const; this asserts the relation
-        // the literal stands for, so renaming either part reds here rather than silently
-        // handing the row join a name it will fail to resolve.
-        assert_eq!(
-            super::ROSTER_MODULE,
-            format!(
-                "{}.{}",
-                super::ROW_MODULE,
-                super::ROSTER_BASENAME.trim_end_matches(".dag")
-            ),
-            "the derived roster's module is its row module plus the roster file's stem"
-        );
+        // THE COMPOSITION THE CONST CANNOT EXPRESS, asserted per ledger, so renaming either part
+        // reds here rather than silently handing the row join a name it will fail to resolve.
+        for roster in DERIVED_ROW_ROSTERS {
+            assert_eq!(
+                roster.roster_module,
+                format!(
+                    "{}.{}",
+                    roster.row_module,
+                    super::ROSTER_BASENAME.trim_end_matches(".dag")
+                ),
+                "the derived roster's module is its row module plus the roster file's stem"
+            );
+        }
     }
 
     #[test]
     fn absent_is_not_an_empty_list_render_of_no_names_is_a_present_empty_literal() {
-        let body = super::render_roster(&[]);
+        let body = super::render_roster(&RECURRING_FAILURE_MODE, &[]);
         assert!(
-            // THE LITERAL IS THE POINT: an oracle built from `ROSTER_MODULE` would assert
-            // `render_roster` against the same const `render_roster` renders from, so it could
-            // not fail on a wrong module name -- `measure() == measure()` (DESIGN section 5).
-            // This spelling is an INDEPENDENT referent and must stay hand-written.
+            // THE LITERAL IS THE POINT: an oracle built from the table would assert
+            // `render_roster` against the same const it renders from -- `measure() == measure()`
+            // (DESIGN section 5). These spellings are INDEPENDENT referents.
             body.contains("module gunbc.recurring_failure_mode.roster"),
             "absence of members is a present module with an empty list, not a missing module"
         );
         assert!(body.contains("= [\n]\n"));
+        let body = super::render_roster(&RUNG_DROP, &[]);
+        assert!(body.contains("module gunbc.rung_drop.roster"));
+        assert!(body.contains("data rung_drop_roster: List<RungDrop> = [\n]\n"));
     }
 
     #[test]
@@ -277,14 +343,29 @@ mod tests {
         // directory exists and is empty. Fabricating the second from the first would give every
         // name in the head roster a base side to be compared against.
         assert_eq!(
-            super::roster_from_path_listing(["dag/gunbc/other/thing.dag"], "dag"),
-            None
+            super::roster_from_path_listing(
+                "dag/gunbc/recurring_failure_mode/roster.dag",
+                ["dag/gunbc/other/thing.dag"],
+                reader(&[]),
+            ),
+            Ok(None)
         );
     }
 
     #[test]
     fn the_base_side_is_the_base_listing_not_the_head_directory() {
+        let files = [
+            (
+                "dag/gunbc/recurring_failure_mode/beta.dag",
+                "module x\n\ndata beta: RecurringFailureMode = RecurringFailureMode {\n}\n",
+            ),
+            (
+                "dag/gunbc/recurring_failure_mode/alpha.dag",
+                "module x\n\ndata alpha: RecurringFailureMode = RecurringFailureMode {\n}\n",
+            ),
+        ];
         let body = super::roster_from_path_listing(
+            "dag/gunbc/recurring_failure_mode/roster.dag",
             [
                 "dag/gunbc/recurring_failure_mode/beta.dag",
                 "dag/gunbc/recurring_failure_mode/alpha.dag",
@@ -292,8 +373,9 @@ mod tests {
                 "dag/gunbc/recurring_failure_mode/nested/deep.dag",
                 "dag/gunbc/recurring_failure_mode/notes.md",
             ],
-            "dag",
+            reader(&files),
         )
+        .expect("every listed row file is readable")
         .expect("two row files at the base are a present roster");
         assert!(body.contains("import gunbc.recurring_failure_mode.alpha { alpha }"));
         assert!(body.contains("= [\n  alpha,\n  beta,\n]\n"));
@@ -303,39 +385,73 @@ mod tests {
     }
 
     #[test]
+    fn membership_is_selected_by_declared_row_type_not_by_directory() {
+        // THE CONTROL PAIR the rung-drop cutover exists for: a new drop file with no roster edit
+        // is a member, and a helper module in the same directory is not.
+        let files = [
+            (
+                "dag/gunbc/rung_drop/new_drop.dag",
+                "module gunbc.rung_drop.new_drop\n\ndata new_drop: RungDrop = RungDrop {\n}\n",
+            ),
+            (
+                "dag/gunbc/rung_drop/shared_capability.dag",
+                "module gunbc.rung_drop.shared_capability\n\ndata shared_capabilities: List<SharedCapability> = []\n",
+            ),
+        ];
+        let body = super::roster_from_path_listing(
+            "dag/gunbc/rung_drop/roster.dag",
+            files.iter().map(|(p, _)| *p),
+            reader(&files),
+        )
+        .expect("readable")
+        .expect("one row file is a present roster");
+        assert!(body.contains("import gunbc.rung_drop.new_drop { new_drop }"));
+        assert!(body.contains("data rung_drop_roster: List<RungDrop> = [\n  new_drop,\n]\n"));
+        assert!(!body.contains("shared_capability"));
+    }
+
+    #[test]
+    fn an_unreadable_base_row_refuses_rather_than_shortening_the_roster() {
+        assert!(super::roster_from_path_listing(
+            "dag/gunbc/rung_drop/roster.dag",
+            ["dag/gunbc/rung_drop/a.dag"],
+            reader(&[]),
+        )
+        .is_err());
+    }
+
+    #[test]
     fn a_derived_roster_path_is_recognised_under_any_sweep_root() {
-        assert!(super::is_derived_roster_path(
-            "dag/gunbc/recurring_failure_mode/roster.dag"
-        ));
-        assert_eq!(
-            super::roster_root_prefix("dag/gunbc/recurring_failure_mode/roster.dag"),
-            Some("dag")
-        );
-        assert!(!super::is_derived_roster_path(
-            "dag/gunbc/recurring_failure_mode/some_row.dag"
-        ));
-        assert_eq!(
-            super::roster_root_prefix("dag/gunbc/recurring_failure_mode/some_row.dag"),
-            None
-        );
+        for (roster, row) in [
+            (
+                "dag/gunbc/recurring_failure_mode/roster.dag",
+                "dag/gunbc/recurring_failure_mode/some_row.dag",
+            ),
+            (
+                "dag/gunbc/rung_drop/roster.dag",
+                "dag/gunbc/rung_drop/some_row.dag",
+            ),
+        ] {
+            assert!(super::is_derived_roster_path(roster));
+            assert_eq!(super::roster_root_prefix(roster), Some("dag"));
+            assert!(!super::is_derived_roster_path(row));
+            assert_eq!(super::roster_root_prefix(row), None);
+        }
     }
 
     #[test]
     fn row_dir_is_the_modeled_module_home_not_a_bare_folder_name() {
         use std::path::Path;
-        assert!(super::is_recurring_failure_mode_row_dir(Path::new(
-            "dag/gunbc/recurring_failure_mode"
-        )));
-        assert!(super::is_recurring_failure_mode_row_dir(Path::new(
-            "gunbc/recurring_failure_mode"
-        )));
-        assert!(!super::is_recurring_failure_mode_row_dir(Path::new(
-            "recurring_failure_mode"
-        )));
-        assert_eq!(
-            super::ROW_DIR_REL,
-            super::ROW_MODULE.replace('.', "/"),
-            "directory match is the module path, not a second spelling"
-        );
+        assert!(super::row_dir_roster(Path::new("dag/gunbc/recurring_failure_mode")).is_some());
+        assert!(super::row_dir_roster(Path::new("gunbc/rung_drop")).is_some());
+        assert!(super::row_dir_roster(Path::new("recurring_failure_mode")).is_none());
+        assert!(super::row_dir_roster(Path::new("rung_drop")).is_none());
+        for roster in DERIVED_ROW_ROSTERS {
+            assert_eq!(
+                roster.row_dir_rel,
+                roster.row_module.replace('.', "/"),
+                "directory match is the module path, not a second spelling"
+            );
+        }
     }
 }

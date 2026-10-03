@@ -3553,6 +3553,10 @@ mod live_pool_thread_tests {
     /// builds a new index with a new generation.
     #[test]
     fn two_claims_on_the_live_pool_thread_share_one_index() {
+        // Start from no live pool: an earlier test may have left the live-pool thread holding
+        // ITS fixture pool, and a second pool on that thread is refused at the build site
+        // (SharedIndexSecondResidentPool, #12831).
+        yield_live_pool_before_building_another();
         let (root, roots) = one_module_pool("route");
         let first = {
             let roots = roots.clone();
@@ -3575,6 +3579,10 @@ mod live_pool_thread_tests {
     /// this discriminates is a thread that holds its pool under every later test's own pool.
     #[test]
     fn another_threads_pool_build_releases_the_live_pool() {
+        // Start from no live pool: an earlier test may have left the live-pool thread holding
+        // ITS fixture pool, and a second pool on that thread is refused at the build site
+        // (SharedIndexSecondResidentPool, #12831).
+        yield_live_pool_before_building_another();
         let (root, roots) = one_module_pool("release");
         let (other_root, other_roots) = one_module_pool("release-other");
         let generation = |roots: Vec<String>| {

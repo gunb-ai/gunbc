@@ -183,15 +183,27 @@ fn observe_firmware_file_standing_wet(root: String, file: AavmfFirmwareFile) -> 
 }
 
 fn qemu_standing_ready(s: QemuBinaryStanding) -> Bool {
-  match s { QemuPinnedBuild { banner: _ } => true  _ => false }
+  match s {
+    QemuAbsent { binary: _ } => false
+    QemuPinnedBuild { banner: _ } => true
+    QemuOtherBuild { binary: _ } => false
+  }
 }
 
 fn firmware_standing_ready(s: FirmwareFileStanding) -> Bool {
-  match s { FirmwareFileMatches { path: _ } => true  _ => false }
+  match s {
+    FirmwareFileMatches { path: _ } => true
+    FirmwareFileDiffers { path: _ } => false
+    FirmwareFileUnreadable { path: _ } => false
+  }
 }
 
 fn kvm_standing_ready(k: KvmDeviceStanding) -> Bool {
-  match k { KvmDeviceWritable => true  _ => false }
+  match k {
+    KvmDeviceWritable => true
+    KvmDevicePresentNotWritable => false
+    KvmDeviceAbsent => false
+  }
 }
 
 fn library_standing_ready(l: QemuLibraryStanding) -> Bool {

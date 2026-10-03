@@ -135,25 +135,6 @@ data mt_jade_same_channel_mixing_row: List<MtJadeMixedDimmSupportCell> = [
 
 data mt_jade_mixed_dimm_support_table: List<MtJadeMixedDimmSupportCell> = concat(mt_jade_different_channel_mixing_row, mt_jade_same_channel_mixing_row)
 
-fn mt_jade_dimm_mixing_axis_eq(a: MtJadeDimmMixingAxis, b: MtJadeDimmMixingAxis) -> Bool {
-  match a {
-    DifferentRcd => match b { DifferentRcd => true, DifferentDramDies => false, MixingX4AndX8 => false, DifferentDensity => false, DifferentSpeed => false, DifferentVendor => false, Mixing1rAnd2r => false }
-    DifferentDramDies => match b { DifferentRcd => false, DifferentDramDies => true, MixingX4AndX8 => false, DifferentDensity => false, DifferentSpeed => false, DifferentVendor => false, Mixing1rAnd2r => false }
-    MixingX4AndX8 => match b { DifferentRcd => false, DifferentDramDies => false, MixingX4AndX8 => true, DifferentDensity => false, DifferentSpeed => false, DifferentVendor => false, Mixing1rAnd2r => false }
-    DifferentDensity => match b { DifferentRcd => false, DifferentDramDies => false, MixingX4AndX8 => false, DifferentDensity => true, DifferentSpeed => false, DifferentVendor => false, Mixing1rAnd2r => false }
-    DifferentSpeed => match b { DifferentRcd => false, DifferentDramDies => false, MixingX4AndX8 => false, DifferentDensity => false, DifferentSpeed => true, DifferentVendor => false, Mixing1rAnd2r => false }
-    DifferentVendor => match b { DifferentRcd => false, DifferentDramDies => false, MixingX4AndX8 => false, DifferentDensity => false, DifferentSpeed => false, DifferentVendor => true, Mixing1rAnd2r => false }
-    Mixing1rAnd2r => match b { DifferentRcd => false, DifferentDramDies => false, MixingX4AndX8 => false, DifferentDensity => false, DifferentSpeed => false, DifferentVendor => false, Mixing1rAnd2r => true }
-  }
-}
-
-fn mt_jade_dimm_mixing_placement_eq(a: MtJadeDimmMixingPlacement, b: MtJadeDimmMixingPlacement) -> Bool {
-  match a {
-    DifferentChannel => match b { DifferentChannel => true, SameChannel => false }
-    SameChannel => match b { DifferentChannel => false, SameChannel => true }
-  }
-}
-
 // THE LOOKUP REFUSES RATHER THAN DEFAULTING. A cell this table does not carry is an UNMODELLED
 // CELL, and the honest answer is to say which coordinate was asked for. Returning MixingSupported,
 // MixingNotSupported or MixingUndetermined for a missing cell would each be a fabricated plausible
@@ -174,7 +155,7 @@ type MtJadeMixedDimmSupportOutcome
   | MixedDimmSupportAmbiguous { query: MtJadeMixedDimmSupportQuery }
 
 fn mt_jade_accumulate_mixing_cell(acc: MtJadeMixedDimmSupportOutcome, query: MtJadeMixedDimmSupportQuery, cell: MtJadeMixedDimmSupportCell) -> MtJadeMixedDimmSupportOutcome {
-  if mt_jade_dimm_mixing_placement_eq(a: cell.placement, b: query.placement) && mt_jade_dimm_mixing_axis_eq(a: cell.axis, b: query.axis) {
+  if cell.placement == query.placement && cell.axis == query.axis {
     match acc {
       MixedDimmSupportUnmodelled { query: _ } => MixedDimmSupportResolved { cell: cell }
       MixedDimmSupportResolved { cell: _ } => MixedDimmSupportAmbiguous { query: query }

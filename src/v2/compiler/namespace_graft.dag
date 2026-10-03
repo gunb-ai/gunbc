@@ -127,7 +127,12 @@ fn namespace_graft_is_transparent_sequence_spine(node: Node) -> Bool {
           }
         })
       }
-    _ => false
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
@@ -672,7 +677,12 @@ fn namespace_graft_has_explicit_braced_container(root: Node, first_segment: Symb
             if sym == first_segment {
               match edge.target.kind {
                 TypeNode { connective: Conj } => true
-                _ => false
+                TypeNode { connective: Atom { identity: _ } } => false
+                TypeNode { connective: Disj } => false
+                TypeNode { connective: Arrow } => false
+                TypeNode { connective: Cardinality } => false
+                TypeNode { connective: Instantiation } => false
+                ComputationNode { behavior: _ } => false
               }
             } else {
               false

@@ -50,7 +50,7 @@ pub fn dag_collect_pack_slots(
             __sorted.sort_by(|a: &Rc<DagCollectSlot>, b: &Rc<DagCollectSlot>| {
                 let __ka = (|s: Rc<DagCollectSlot>| s.seq.clone())(a.clone());
                 let __kb = (|s: Rc<DagCollectSlot>| s.seq.clone())(b.clone());
-                __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+                v1_rt::canonical_key_cmp(&__ka, &__kb)
             });
             __sorted
         });
@@ -147,7 +147,7 @@ pub fn dag_node_bag_hash(digests: Rc<Vec<String>>) -> String {
         __sorted.sort_by(|a: &String, b: &String| {
             let __ka = (|d: String| d.clone())(a.clone());
             let __kb = (|d: String| d.clone())(b.clone());
-            __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+            v1_rt::canonical_key_cmp(&__ka, &__kb)
         });
         __sorted
     })

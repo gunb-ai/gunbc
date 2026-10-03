@@ -142,7 +142,10 @@ fn classification_is_authority_for_capability(
 ) -> Bool {
   match c.role {
     AuthorityOf { capability: cap } => cap == capability
-    _ => false
+    HelperOf { capability: _ } => false
+    LegacyHazardOf { hazard: _, of_capability: _ } => false
+    LegacyRealizationOf { realization: _, of_capability: _ } => false
+    DeliberatelyOutOfScope { reason: _ } => false
   }
 }
 

@@ -87,13 +87,13 @@ fn host_knob_standing(host: HostIdentity, receipts: List<ConvergeCliReceipt>) ->
   match mine.first() {
     Present { value: r } => match mine.skip(n: 1).first() {
       Present { value: _ } => KnobNotConverged { host: host, reason: "ambiguous: multiple converge receipts claim this one host identity — a collision to investigate, never a pick" }
-      _ => if converge_cli_receipt_converged(r: r) {
+      Absent => if converge_cli_receipt_converged(r: r) {
         KnobConverged { host: host }
       } else {
         KnobNotConverged { host: host, reason: "converge receipt present but not converged" }
       }
     }
-    _ => KnobUnobserved { host: host }
+    Absent => KnobUnobserved { host: host }
   }
 }
 
@@ -154,7 +154,10 @@ fn fleet_unobserved_cell_count(standings: List<HostConvergenceStanding>) -> Int 
     acc + fold(s.cells, init: 0, f: fn(a, c) {
       match c {
         CellUnobserved { host: _, phase_label: _ } => a + 1
-        _ => a
+        CellConverged { host: _, phase_label: _ } => a
+        CellUnreachable { host: _, phase_label: _ } => a
+        CellDrifted { host: _, phase_label: _ } => a
+        CellConflict { host: _, phase_label: _ } => a
       }
     })
   })

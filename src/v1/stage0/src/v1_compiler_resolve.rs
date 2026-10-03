@@ -230,7 +230,7 @@ pub fn resolve_modules_with_occurrence_transport(
             __sorted.sort_by(|a: &Rc<ResolvedModule>, b: &Rc<ResolvedModule>| {
                 let __ka = (|m: Rc<ResolvedModule>| m.dep_order.clone())(a.clone());
                 let __kb = (|m: Rc<ResolvedModule>| m.dep_order.clone())(b.clone());
-                __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+                v1_rt::canonical_key_cmp(&__ka, &__kb)
             });
             __sorted
         });
@@ -849,7 +849,7 @@ pub fn topological_sort(
             __sorted.sort_by(|a: &String, b: &String| {
                 let __ka = (|name: String| topo_sort_key(name.clone()))(a.clone());
                 let __kb = (|name: String| topo_sort_key(name.clone()))(b.clone());
-                __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+                v1_rt::canonical_key_cmp(&__ka, &__kb)
             });
             __sorted
         });
@@ -1007,7 +1007,7 @@ pub fn kahn_drain(
             __sorted.sort_by(|a: &String, b: &String| {
                 let __ka = (|name: String| name.clone())(a.clone());
                 let __kb = (|name: String| name.clone())(b.clone());
-                __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+                v1_rt::canonical_key_cmp(&__ka, &__kb)
             });
             __sorted
         });

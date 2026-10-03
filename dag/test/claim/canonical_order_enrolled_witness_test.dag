@@ -1,0 +1,63 @@
+module test.claim.canonical_order_enrolled_witness
+
+import std.types { Bool, Int, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.collection { Map, empty_map, map_insert }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ONE-ORDER PROPERTY, ENROLLED (neat-boar-16's condition 1 for gunbc#12925). The canonical content
+// order is realized only by the seed comparator (v1_interpreter canonical_content_cmp; not yet a .dag
+// derivation, see gunbc.portable_value_canonical_order_seed_growth), so these claims are what hold it
+// on the required gate. The Rust controls beside the comparator run on no CI path
+// (gunbc.rung_drop rust_unit_tests_off_the_merge_path), which is why the property is restated here.
+//
+// WHY ONE PROCESS DISCRIMINATES: each map below carries twenty keys inserted out of order, so a
+// rendering or key list in HamtMap RandomState order matches the canonical string with negligible
+// probability on any run. The expected strings are authored, not measured.
+//
+// WHAT IS NOT HERE, AND WHY: the Value-vs-PortableValue carrier differential has no .dag surface
+// (PortableValue is the seed's cross-claim form, unreachable from a claim), so it stays a Rust
+// control; and an interpreter REFUSAL of a record-keyed sort is not observable from a claim, so that
+// red stays the Rust control emitted_ord_admission_refuses_record_keys_and_admits_scalars.
+
+fn scrambled_int_map() -> Map<Int, Int> {
+  [13, 4, 19, 0, 8, 15, 2, 11, 17, 6, 1, 9, 14, 3, 18, 7, 12, 5, 16, 10]
+    |> fold(init: empty_map(), f: (acc, k) => map_insert(acc, k, k * 10))
+}
+
+fn scrambled_str_map() -> Map<String, Int> {
+  ["k13", "k04", "k19", "k00", "k08", "k15", "k02", "k11", "k17", "k06",
+   "k01", "k09", "k14", "k03", "k18", "k07", "k12", "k05", "k16", "k10"]
+    |> fold(init: empty_map(), f: (acc, k) => map_insert(acc, k, 1))
+}
+
+data canonical_int_map_rendering: String = "\{0: 0, 1: 10, 2: 20, 3: 30, 4: 40, 5: 50, 6: 60, 7: 70, 8: 80, 9: 90, 10: 100, 11: 110, 12: 120, 13: 130, 14: 140, 15: 150, 16: 160, 17: 170, 18: 180, 19: 190}"
+
+// Rendering a map is the canonical content order (Display of Value::Map through canonical_entries).
+test fn to_string_renders_a_map_in_canonical_key_order() -> Bool {
+  to_string(scrambled_int_map()) == canonical_int_map_rendering
+}
+
+// Interpolation lowers to the same Display, so it must agree byte for byte.
+test fn interpolation_renders_a_map_in_the_same_order_as_to_string() -> Bool {
+  "{scrambled_int_map()}" == canonical_int_map_rendering
+}
+
+// sorted_map_keys over Int keys is numeric order -- native Ord on i64, which is what the emitted
+// v1_rt::sorted_map_keys uses (CanonicalOrdKey), so the two realizations agree.
+test fn sorted_map_keys_orders_int_keys_as_native_ord() -> Bool {
+  sorted_map_keys(scrambled_int_map())
+    == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+}
+
+test fn sorted_map_keys_orders_string_keys_as_native_ord() -> Bool {
+  sorted_map_keys(scrambled_str_map())
+    == ["k00", "k01", "k02", "k03", "k04", "k05", "k06", "k07", "k08", "k09",
+        "k10", "k11", "k12", "k13", "k14", "k15", "k16", "k17", "k18", "k19"]
+}
+
+// String keys order byte-lexicographically over UTF-8 (native Ord on String): "Z" < "a" < "z" < "é".
+test fn sort_by_orders_string_keys_byte_lexicographically() -> Bool {
+  (["é", "z", "a", "Z"] |> sort_by(s => s)) == ["Z", "a", "z", "é"]
+}

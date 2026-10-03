@@ -98,7 +98,10 @@ fn witness_totality_reds_on_synthetic_orphan() -> Bool {
   match verdict {
     PartitionOrphan { unclaimed_paths: paths } =>
       list_length(items: paths) == 1 && paths.first() == "dag/std/orphan_not_in_roster.dag"
-    _ => false
+    PartitionTotal { module_count: _ } => false
+    PartitionDuplicateClaim { duplicated_paths: _ } => false
+    PartitionSurplusClaim { surplus_paths: _ } => false
+    PartitionGlobUnavailable { stderr: _ } => false
   }
 }
 
@@ -112,7 +115,10 @@ fn witness_totality_reds_on_synthetic_double_claim() -> Bool {
   match verdict {
     PartitionDuplicateClaim { duplicated_paths: paths } =>
       list_length(items: paths) == 1 && paths.first() == "dag/std/logic.dag"
-    _ => false
+    PartitionTotal { module_count: _ } => false
+    PartitionOrphan { unclaimed_paths: _ } => false
+    PartitionSurplusClaim { surplus_paths: _ } => false
+    PartitionGlobUnavailable { stderr: _ } => false
   }
 }
 
@@ -127,7 +133,10 @@ fn witness_totality_reds_on_synthetic_surplus() -> Bool {
   match verdict {
     PartitionSurplusClaim { surplus_paths: paths } =>
       list_length(items: paths) == 1 && paths.first() == "dag/std/phantom_not_in_glob.dag"
-    _ => false
+    PartitionTotal { module_count: _ } => false
+    PartitionOrphan { unclaimed_paths: _ } => false
+    PartitionDuplicateClaim { duplicated_paths: _ } => false
+    PartitionGlobUnavailable { stderr: _ } => false
   }
 }
 
@@ -140,7 +149,10 @@ fn witness_totality_fails_closed_on_glob_failure() -> Bool {
   )
   match verdict {
     PartitionGlobUnavailable { stderr: s } => s == "find: permission denied"
-    _ => false
+    PartitionTotal { module_count: _ } => false
+    PartitionOrphan { unclaimed_paths: _ } => false
+    PartitionDuplicateClaim { duplicated_paths: _ } => false
+    PartitionSurplusClaim { surplus_paths: _ } => false
   }
 }
 
@@ -153,6 +165,9 @@ fn witness_totality_green_when_glob_matches_roster() -> Bool {
   )
   match verdict {
     PartitionTotal { module_count: n } => n == 2
-    _ => false
+    PartitionOrphan { unclaimed_paths: _ } => false
+    PartitionDuplicateClaim { duplicated_paths: _ } => false
+    PartitionSurplusClaim { surplus_paths: _ } => false
+    PartitionGlobUnavailable { stderr: _ } => false
   }
 }

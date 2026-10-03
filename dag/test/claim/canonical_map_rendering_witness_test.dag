@@ -1,0 +1,91 @@
+module test.claim.canonical_map_rendering_witness
+
+import std.types { String, Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.primitive_identity {
+  TraversalOrder,
+  CanonicalOrder,
+  HostUnspecifiedOrder,
+  primitive_identity_for_canonical_name,
+  primitive_traversal_order_for_identity,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// MAP RENDERING HAS ONE ORDER IN THE INTERPRETER AND NO RENDERING IN THE EMITTED RUST
+// (gunbc.recurring_failure_mode host_ordered_collection_reaches_an_emitted_artifact, receipt
+// 2026-10-01). The interpreter half -- two processes, identical bytes -- is enrolled as Rust
+// controls beside the comparator (v1_interpreter canonical_render_order_tests), because the
+// subject is the seed's Display and a second process is what makes per-process order visible.
+// This module carries the two halves a .dag claim can reach: the emitted refusal, and the gate's
+// classification of to_string.
+
+// The emitted realization has no Display for a map, so rendering one is refused at the emitted
+// site, typed, rather than dying in rustc as an untyped E0277 (v1.compiler emit_rust
+// emitted_map_rendering_refusal). The scalar arm is the positive control: the refusal keys on the
+// argument's TYPE, so interpolating an Int must still emit format! and no refusal.
+test fn interpolating_a_map_is_refused_at_the_emitted_site() -> Bool {
+  compile_dag_rust_emit_check(
+    "module cmr_interp\n\nfn show(m: Map<String, Int>) -> String {\n  \"m=\{m}\"\n}\n",
+    "src/cmr_interp.rs",
+    ["EMIT REFUSED: string interpolation renders a Map"],
+    []
+  )
+}
+
+test fn to_string_of_a_map_is_refused_at_the_emitted_site() -> Bool {
+  compile_dag_rust_emit_check(
+    "module cmr_tostr\n\nfn show(m: Map<String, Int>) -> String {\n  to_string(m)\n}\n",
+    "src/cmr_tostr.rs",
+    ["EMIT REFUSED: to_string renders a Map"],
+    []
+  )
+}
+
+test fn interpolating_a_scalar_still_emits_format_and_no_refusal() -> Bool {
+  compile_dag_rust_emit_check(
+    "module cmr_scalar\n\nfn show(n: Int) -> String {\n  \"n=\{n}\"\n}\n",
+    "src/cmr_scalar.rs",
+    ["format!("],
+    ["EMIT REFUSED", "compile_error!"]
+  )
+}
+
+// to_string is CLASSIFIED, through the same route v2.lens.determinism
+// determinism_axis_for_primitive_name reads (canonical name -> identity -> traversal fact). Before
+// this change it joined no identity and was Deterministic by NON-MEMBERSHIP, which answers nothing.
+// map_keys is the discriminating sibling: the same route answers HostUnspecifiedOrder for it.
+fn traversal_order_of(name: String) -> TraversalOrder? {
+  match primitive_identity_for_canonical_name(authored_symbol: name) {
+    Present { value: identity } => primitive_traversal_order_for_identity(identity: identity)
+    Absent => none
+  }
+}
+
+test fn to_string_is_classified_canonical_order_by_the_gate_route() -> Bool {
+  match traversal_order_of(name: "to_string") {
+    Present { value: order } => order == CanonicalOrder
+    Absent => false
+  }
+}
+
+test fn map_keys_is_still_host_unspecified_by_the_same_route() -> Bool {
+  match traversal_order_of(name: "map_keys") {
+    Present { value: order } => order == HostUnspecifiedOrder
+    Absent => false
+  }
+}
+
+// THE EMITTED ORDERING ADMISSION IS ON THE ROUTE. Emitted sort_by compares keys through
+// v1_rt::canonical_key_cmp, whose bound CanonicalOrdKey is implemented only for String, i64 and bool,
+// so a derived-Ord record key or an f64 key fails to compile at the call with an EMIT REFUSED message
+// instead of sorting in an order the interpreter would not produce. The former comparison,
+// partial_cmp(..).unwrap_or(Equal), is the absorbing fallback this replaces and must not return.
+test fn emitted_sort_by_compares_through_the_canonical_key_admission() -> Bool {
+  compile_dag_rust_emit_check(
+    "module cmr_sortby\n\nfn order(xs: List<String>) -> List<String> {\n  xs |> sort_by(s => s)\n}\n",
+    "src/cmr_sortby.rs",
+    ["v1_rt::canonical_key_cmp(&__ka, &__kb)"],
+    ["partial_cmp(&__kb).unwrap_or"]
+  )
+}

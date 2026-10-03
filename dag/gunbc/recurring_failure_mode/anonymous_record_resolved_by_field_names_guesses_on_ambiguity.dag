@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.anonymous_record_resolved_by_field_names_guesses_on_ambiguity
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data anonymous_record_resolved_by_field_names_guesses_on_ambiguity: RecurringFailureMode = RecurringFailureMode {
+  identity: "anonymous_record_resolved_by_field_names_guesses_on_ambiguity" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: an anonymous record literal -- `{ compare: f }` bound to `data x: VersionScheme = ...` -- reaches the Rust emitter with no nominal type on its inferred node, so v1.compiler emit_rust emit_typed_record_lit picks the struct by its FIELD NAMES (find_unique_struct_name_by_fields). When two or more declared structs share those names the lookup returns Absent, and the one-field arm then emitted the BARE FIELD VALUE: `{ compare: f }` became `f`. The declared type the literal was bound to was never consulted. That is DESIGN section 5's absorbing fallback in the emitter: a guess standing where the answer was available, at no warning. The multi-field arm beside it already refused with \"ambiguous anonymous record literal shape; add a nominal type\"; the one-field arm alone fabricated.",
+
+    "RECEIPT, 2026-10-01, node adhoc-77383faf-d07 (jolly-hawk-293, PR #12925). Adding std.algebra TotalOrder<T> { compare } gave a second struct the single field `compare` that extdeps.version VersionScheme already had. The next stage0 regen emitted extdeps_version_semver.rs semver_scheme as `semver_identity_compare` instead of `VersionScheme { compare: Rc::new(semver_identity_compare) }`, and the seed build failed with E0308. It failed LOUDLY only by luck: a bare value of a type that happened to coincide with the field's would have compiled and run wrong. The arm now refuses on two or more candidates; the three VersionScheme literals (semver, git, go) name their type, which is the remedy the refusal states.",
+
+    "RECOGNITION RULE: any emission decision that chooses a nominal type from a STRUCTURAL key -- field names, arity, a shape -- has a population, not an answer, and must say what it does when the population is not exactly one. The tell is an Absent arm that returns something other than a refusal. A NEW declaration elsewhere in the corpus can change the population, so a literal that emitted correctly yesterday changes meaning with no edit to its own module -- which is why it surfaced in a std.algebra change rather than in extdeps.version.",
+
+    "CEILING AND NEXT-RUNG TRIGGER. Found at MITIGATABLE (the fallback ran, wrong output reached rustc). Now MECHANICALLY PREVENTABLE: the one-field arm refuses on ambiguity like the multi-field arm, so an ambiguous literal cannot compile into a guess -- but the refusal fires at rustc as a compile_error!, after emission. CEILING is STRUCTURALLY GUARANTEED, and the trigger is the capability, not an artifact: inference carries a literal's EXPECTED nominal type (the data declaration's annotation, the parameter it is passed to, the field it fills) onto the literal's inferred node, so emit_typed_record_lit resolves the struct from the declaration and never from field names; field-name resolution then exists only for a literal with no expected type, where ambiguity is a typed refusal at typecheck rather than at rustc.",
+  ],
+
+  evidence: [],
+}
