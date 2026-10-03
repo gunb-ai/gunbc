@@ -1523,14 +1523,6 @@ pub fn is_discovery_corpus_advisory_typecheck_diagnostic(d: Rc<CompilerDiagnosti
     }
 }
 
-pub fn is_discovery_corpus_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
-    match (*diagnostic_disposition(d.clone()).gate.clone()).clone() {
-        DiagnosticGateDisposition::GateBlocking => true,
-        DiagnosticGateDisposition::GateAdvisoryTypecheck => false,
-        DiagnosticGateDisposition::GateRenderedUncounted { reason: _, .. } => false,
-    }
-}
-
 pub fn make_error_node(diagnostic: Rc<CompilerDiagnostic>, module_name: String) -> Rc<ErrorNode> {
     Rc::new(ErrorNode {
         diagnostic: diagnostic.clone(),
