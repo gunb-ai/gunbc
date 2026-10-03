@@ -13,7 +13,7 @@ import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep, Bash,
   WorkflowDispatch, DispatchInput, InputChoice,
-  WorkflowPermissions, PermRead, ConcurrencyScalar,
+  WorkflowPermissions, PermRead, ConcurrencySpec, ConcurrencyMappingQueueMax, QueueMaxCancelInProgressFalse,
 }
 import gunbc.action_use_admission {
   upload_artifact_action,
@@ -55,7 +55,7 @@ import v2.extdeps.languages.bash_build {
 //     gunbc.instrument_targets, never a free string, and the input reaches the script only through the
 //     step environment, never by interpolation into the script text.
 //   - an explicit timeout, and a concurrency group so dispatches queue rather than stack on the
-//     shared pool.
+//     shared pool. QUEUE, AND NOT DROP: see instrument_dispatch_concurrency.
 //   - contents: read and nothing else; no token is written to and none is persisted by the checkout.
 //   - the run's revision, run id and the instrument's own output and exit are uploaded as an artifact,
 //     seeded under RUNNER_TEMP before the fallible prelude so every termination uploads one.
@@ -65,6 +65,21 @@ import v2.extdeps.languages.bash_build {
 // runs to reach `gunbc test`, so the two cannot disagree about how the door is built.
 
 data instrument_dispatch_workflow_name: String = "instrument-dispatch"
+
+// ONE RUN AT A TIME ON THE SHARED POOL, AND NO DISPATCH DROPPED. The group used to be the bare
+// scalar form. Under it GitHub keeps ONE pending run per group and cancels the one already waiting
+// when another arrives, with no signal to the lane that dispatched it: on 2026-10-03 a queued
+// behavioral-equivalence run (37114501769) was cancelled before it started because another lane
+// dispatched a different instrument ninety minutes later, and its owner learned of it only by
+// reading the run list. A dispatched run is a receipt someone is waiting on, so losing one silently
+// is a fail-open. The queue-max form keeps every pending run and still serializes them, which is
+// the operator's condition held without the loss. One group for every label, not one per label:
+// per-label groups would let two instruments run on the pool at once, which is the stacking the
+// condition forbids.
+data instrument_dispatch_concurrency: ConcurrencySpec = ConcurrencyMappingQueueMax {
+  group: instrument_dispatch_workflow_name,
+  cancel_in_progress: Present { value: QueueMaxCancelInProgressFalse }
+}
 
 data instrument_dispatch_job_id: String = "instrument"
 
@@ -283,7 +298,7 @@ fn instrument_dispatch_workflow(seed: String, script: String) -> Workflow {
         ]
       }
     ],
-    concurrency: Present { value: ConcurrencyScalar { group: instrument_dispatch_workflow_name } },
+    concurrency: Present { value: instrument_dispatch_concurrency },
     env: none,
     permissions: Present {
       value: WorkflowPermissions {

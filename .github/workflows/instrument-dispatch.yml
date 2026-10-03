@@ -12,7 +12,10 @@ on:
         type: choice
 permissions:
   contents: read
-concurrency: instrument-dispatch
+concurrency:
+  queue: max
+  group: instrument-dispatch
+  cancel-in-progress: false
 jobs:
   instrument:
     runs-on: [self-hosted, linux, arm64]

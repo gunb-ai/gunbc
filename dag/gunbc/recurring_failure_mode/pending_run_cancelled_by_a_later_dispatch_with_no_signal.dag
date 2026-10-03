@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.pending_run_cancelled_by_a_later_dispatch_with_no_signal
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data pending_run_cancelled_by_a_later_dispatch_with_no_signal: RecurringFailureMode = RecurringFailureMode {
+  identity: "pending_run_cancelled_by_a_later_dispatch_with_no_signal" as NonEmptyStr,
+
+  receipts: [
+    "**a workflow serializes its runs with a bare concurrency group, so the platform keeps ONE pending run per group and cancels the one already waiting when another is dispatched -- and the lane that dispatched the cancelled run is told nothing.** INVALID STATE: a dispatched run is a receipt someone is waiting on; under `concurrency: <group>` its pending form can be replaced by any later dispatch from any lane. HARM: the evidence a change is waiting for never exists, and the wait is indistinguishable from a slow queue until someone reads the run list. The remedy that suggests itself, dispatching again, does the same to whoever is now pending. DISTINGUISHING FACTS: the cancelled run has conclusion `cancelled` and ZERO jobs (it never started), which separates it from a run cancelled mid-flight; the group has exactly one in-progress run and the superseding run is the pending one.",
+    "RECEIPT (2026-10-03): instrument-dispatch run 37114501769 (self-host behavioral-equivalence, queued 09:52Z behind the in-progress run 37112143403) was cancelled with no jobs when another lane dispatched a different instrument label at 11:14Z (run 37119024146). The workflow's group was the scalar `instrument-dispatch`. Its owner found the cancellation by listing the workflow's runs.",
+    "PRIOR ART, WHICH IS WHY THE REPAIR IS A ROW AND NOT A MECHANISM: extdeps.github.actions ConcurrencyMappingQueueMax already models GitHub's `queue: max`, grounded by the measurement recorded in the note on gunbc.fleet_desired_admission_workflow fleet_desired_admission_workflow (with the key all four runs completed; without it two of four were cancelled while pending), and gunbc.heal_publisher_workflow adopted it for the stated reason that a cancelled pending entry is a repair silently lost. The dispatch workflow was authored after both and used the scalar form.",
+    "REPAIR: gunbc.instrument_dispatch_workflow instrument_dispatch_concurrency is ConcurrencyMappingQueueMax with cancel-in-progress false, on ONE group for every label, so dispatches still run one at a time on the shared pool and none is dropped. Per-label groups were considered and not taken: they would let two instruments run at once, which the workflow's own operator condition (queue rather than stack) forbids.",
+    "RUNG AND CEILING: mechanically preventable, by the witness test.claim.instruments.instrument_dispatch_workflow_witness_test asserting the queue-max mapping in the generated text. Not structural: the scalar form remains writable for any workflow, and `queue` is an undocumented key whose behaviour is grounded by observation (see the note on ConcurrencySpec), with a pending ceiling read from prose. NEXT-RUNG TRIGGER: a workflow-level rule that a dispatch-triggered workflow carrying a concurrency group must use the queue-max form or declare why dropping a pending run is acceptable, SUFFICIENT FOR the scalar form on a dispatch-only workflow to refuse at generation.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.instrument_dispatch_workflow", decl_name: "instrument_dispatch_concurrency", field: WholeDeclaration },
+    DeclarationRef { module_path: "extdeps.github.actions", decl_name: "ConcurrencySpec", field: WholeDeclaration },
+  ],
+}
