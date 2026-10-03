@@ -1,7 +1,18 @@
 module test.claim.shell.shell_dag_codex_app_server_trip_script_witness_test
 
 import std.types { Bool, String, List, FilePath }
-import gunbc.codex_app_server_press { codex_press_account_trip_script, codex_app_server_initialize_request_line }
+import v2.std.algebra { list_flat_map }
+import v2.std.compilers.cli_surface {
+  process_argv_expansion_surface,
+  cli_surface_arguments,
+  cli_argument_text,
+}
+import extdeps.tools.env { env_path_resolved_program }
+import gunbc.codex_app_server_press {
+  codex_press_account_trip_invocation,
+  codex_press_account_trip_request_lines,
+  codex_app_server_initialize_request_line,
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -30,10 +41,26 @@ data shell_control_words: List<String> = ["set -e", "||", "&&", ";", "2>/dev/nul
 
 data stdio_sentinels: List<String> = ["---GUNBC_EXIT---", "---GUNBC_STDOUT---", "---GUNBC_STDERR---"]
 
+// RE-POINTED under the sanctioned exception above: gunbc#12973 deleted
+// codex_press_account_trip_script; this renders the typed realization of the SAME trip (same
+// executable, same codex_home, same payload) with the projection
+// test.claim.codex_app_server_press_witness_test codex_account_trip_transport_surface_text uses:
+// the env(1) program, the argv words, then the stdin request lines.
 fn trip_surface(codex_home: String) -> String {
-  codex_press_account_trip_script(
+  let invocation = codex_press_account_trip_invocation(
     executable: "/usr/bin/codex" as FilePath,
-    codex_home: codex_home as FilePath
+    codex_home: codex_home as FilePath,
+  )
+  let argument_words: List<String> = list_flat_map(
+    xs: cli_surface_arguments(surface: process_argv_expansion_surface(expansion: invocation)),
+    f: fn(argument) { [cli_argument_text(argument: argument)] },
+  )
+  join(
+    concat(
+      concat([env_path_resolved_program().invocation as String], argument_words),
+      [codex_press_account_trip_request_lines()],
+    ),
+    "\n",
   )
 }
 

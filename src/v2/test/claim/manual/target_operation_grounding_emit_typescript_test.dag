@@ -64,7 +64,8 @@ fn op_grounding_test_lex() -> LexRules {
         ts_lex_rule(token_class: ^op_grounding_token_minus, text: " - "),
         ts_lex_rule(token_class: ^op_grounding_token_lt, text: " < "),
         ts_lex_rule(token_class: ^op_grounding_token_eqeq, text: " == ")
-      ]
+      ],
+      modes: []
     }
   }
 }

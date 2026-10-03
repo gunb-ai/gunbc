@@ -1,6 +1,6 @@
 module std.claim_evidence
 
-import std.types { Bool, List, NonEmptyStr }
+import std.types { Bool, List, NonEmptyStr, brand }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.assurance.claim_evidence {
   sacm_claim_evidence_authority,

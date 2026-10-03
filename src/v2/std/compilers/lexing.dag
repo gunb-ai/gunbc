@@ -1,7 +1,7 @@
 module v2.std.compilers.lexing
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.algebra { Empty, list_snoc_item }
+import std.algebra { Empty, list_append, list_snoc_item }
 import std.source_annotation { AnnotationPlacement, LeadingAfterLineIndent, TrailingAfterSemanticToken }
 import v2.std.algebra { fold_list, length, skip }
 import v2.std.collection {
@@ -25,7 +25,7 @@ import std.content_hash { Fnv1a64Structural }
 import v2.std.integer { integer_int_content_digest }
 import v2.std.node_shape { stamp_node_shape_synthetic, type_shape }
 import v2.std.text { Char, String }
-import std.unicode.types { unicode_char_code_point }
+import std.unicode.char_class { unicode_char_code_point }
 
 type Lexeme = String
 
@@ -74,6 +74,12 @@ type LexPattern
   | RepeatPattern { element: LexPattern }
   | OneOrMorePattern { element: LexPattern }
   | DelimitedPattern { open: LexPattern, body: LexPattern, close: LexPattern }
+  | NotFollowedByPattern { element: LexPattern }
+
+// NotFollowedByPattern is the PEG negative syntactic predicate `!e` (Ford, "Parsing Expression
+// Grammars", POPL 2004): it consumes nothing, and succeeds exactly when `element` fails at the same
+// position. It exists for lookahead decisions a regular pattern cannot express, such as "a `{` that is
+// NOT followed by an identifier start is literal text".
 
 // A lexeme reaches exactly one of three destinations, and the third exists because the other two
 // are both wrong for a comment. TriviaRule consumes text and emits nothing, so a comment routed
@@ -89,9 +95,87 @@ type LexRule
   = TokenRule { token_class: Symbol, pattern: LexPattern }
   | TriviaRule { pattern: LexPattern }
   | AnnotationRule { annotation_class: Symbol, pattern: LexPattern }
+  | ModeTransitionTokenRule { token_class: Symbol, pattern: LexPattern, transition: LexModeTransition }
+
+// LEXICAL MODES, modeled on ANTLR 4 lexer modes (The Definitive ANTLR 4 Reference, section 12.3:
+// `mode NAME;` groups the rules after it, and a rule's `-> pushMode(NAME)` / `-> popMode` commands
+// move a stack of modes). A rule set's `rules` are the default mode; each LexMode in `modes` names
+// one further mode and lists its rules in full. Modes do not inherit, so a mode that wants the
+// default rules lists them, which a language composes with list_append rather than restating. A
+// ModeTransitionTokenRule emits its token and then moves the stack.
+//
+// A mode is a field of the rule SET, never a kind of rule, so a mode declared inside a mode and a
+// "rule" with no pattern have no constructor (DESIGN section 4b: the invalid state is unwritable,
+// not refused). The one declaration defect left writable is two modes sharing a name, which a list
+// cannot exclude; it is refused before any text is walked (lex_rule_set_mode_refusal).
+//
+// This is what a nested lexical context needs and a regular pattern cannot give: a string that
+// interpolates an expression lexes as a template-head token, then the expression's ORDINARY tokens
+// in a pushed mode, then a template-middle or -tail token that pops back. Brace depth inside that
+// expression is the stack's depth, not a counter scanned out of text. The walk refuses, located,
+// every stack state that has no meaning (01_tokenize): pushing an undeclared mode, popping the
+// default mode, and reaching end of input with a mode still pushed.
+type LexModeTransition
+  = PushLexMode { mode: Symbol }
+  | PopLexMode
+
+type LexMode {
+  mode: Symbol
+  rules: List<LexRule>
+}
+
+type LexModeDeclarationRefusal
+  = LexModeDeclaredTwice { mode: Symbol }
+
+type LexModeCheck {
+  seen: Map<Symbol, Bool>
+  refusal: Optional<LexModeDeclarationRefusal>
+}
+
+// Absent when every mode name is declared once.
+fn lex_rule_set_mode_refusal(rules: LexRuleSet) -> Optional<LexModeDeclarationRefusal> {
+  let checked = fold_list(
+    xs: rules.modes,
+    empty: LexModeCheck { seen: empty_map(), refusal: optional_absent() },
+    cons: fn(acc, mode) {
+      match acc.refusal {
+        Present { value: _ } => acc
+        Absent =>
+          match map_lookup(m: acc.seen, key: mode.mode) {
+            Present { value: _ } => LexModeCheck { seen: acc.seen, refusal: optional_present(value: LexModeDeclaredTwice { mode: mode.mode }) }
+            Absent => LexModeCheck { seen: map_insert(m: acc.seen, key: mode.mode, value: true), refusal: optional_absent() }
+          }
+      }
+    }
+  )
+  checked.refusal
+}
+
+// Every rule the set carries, in every mode: the default mode's rules, then each mode's. A question
+// about the rule set's VOCABULARY -- which token classes it lexes, how a class is spelled -- is asked
+// over this, because a class lexed only inside a mode is still a class the language has.
+fn lex_rule_set_matching_rules(rules: LexRuleSet) -> List<LexRule> {
+  fold_list(
+    xs: rules.modes,
+    empty: rules.rules,
+    cons: fn(acc, mode) { list_append(left: acc, right: mode.rules) }
+  )
+}
+
+// The token class a rule emits, for either kind of token rule. Absent for trivia, annotations and
+// declarations.
+fn lex_rule_token_class_optional(rule: LexRule) -> Optional<Symbol> {
+  match rule {
+    TokenRule { token_class: c, pattern: _ } => optional_present(value: c)
+    ModeTransitionTokenRule { token_class: c, pattern: _, transition: _ } => optional_present(value: c)
+    TriviaRule { pattern: _ } => optional_absent()
+    AnnotationRule { annotation_class: _, pattern: _ } => optional_absent()
+  }
+}
 
 type LexRuleSet {
   rules: List<LexRule>
+  modes: List<LexMode>
 }
 
 type LexRules
@@ -129,7 +213,8 @@ fn phrase_to_lex_rule_set(p: LexicalPhrase) -> LexRuleSet {
           }
         )
       }
-    )
+    ),
+    modes: []
   }
 }
 
@@ -300,14 +385,12 @@ fn lex_rule_set_insert_token_classes(
   rules: LexRuleSet
 ) -> Map<Symbol, Bool> {
   fold_list(
-    xs: rules.rules,
+    xs: lex_rule_set_matching_rules(rules: rules),
     empty: m,
     cons: fn(acc, rule) {
-      match rule {
-        TokenRule { token_class: c, pattern: _ } =>
-          map_insert(m: acc, key: c, value: true)
-        TriviaRule { pattern: _ } => acc
-        AnnotationRule { annotation_class: _, pattern: _ } => acc
+      match lex_rule_token_class_optional(rule: rule) {
+        Present { value: c } => map_insert(m: acc, key: c, value: true)
+        Absent => acc
       }
     }
   )
@@ -318,16 +401,15 @@ fn lex_rule_set_token_class_map(rules: LexRuleSet) -> Map<Symbol, Bool> {
 }
 
 fn lex_rule_token_class_member(rule: LexRule, token_class: Symbol) -> Bool {
-  match rule {
-    TokenRule { token_class: c, pattern: _ } => c == token_class
-    TriviaRule { pattern: _ } => false
-    AnnotationRule { annotation_class: _, pattern: _ } => false
+  match lex_rule_token_class_optional(rule: rule) {
+    Present { value: c } => c == token_class
+    Absent => false
   }
 }
 
 fn lex_rule_set_token_class_member(rules: LexRuleSet, token_class: Symbol) -> Bool {
   fold_list(
-    xs: rules.rules,
+    xs: lex_rule_set_matching_rules(rules: rules),
     empty: false,
     cons: fn(acc, rule) {
       acc || lex_rule_token_class_member(rule: rule, token_class: token_class)
@@ -353,7 +435,8 @@ fn lex_pattern_is_keyword(pattern: LexPattern) -> Bool {
       optional: fn(element) { false },
       repeat: fn(element) { false },
       one_or_more: fn(element) { false },
-      delimited: fn(open, body, close) { false }
+      delimited: fn(open, body, close) { false },
+      not_followed_by: fn(element) { false }
     }
   )
 }
@@ -361,6 +444,7 @@ fn lex_pattern_is_keyword(pattern: LexPattern) -> Bool {
 fn lex_rule_keyword_class_member(rule: LexRule, token_class: Symbol) -> Bool {
   match rule {
     TokenRule { token_class: c, pattern: p } => (c == token_class) && lex_pattern_is_keyword(pattern: p)
+    ModeTransitionTokenRule { token_class: c, pattern: p, transition: _ } => (c == token_class) && lex_pattern_is_keyword(pattern: p)
     TriviaRule { pattern: _ } => false
     AnnotationRule { annotation_class: _, pattern: _ } => false
   }
@@ -368,7 +452,7 @@ fn lex_rule_keyword_class_member(rule: LexRule, token_class: Symbol) -> Bool {
 
 fn lex_rule_set_keyword_class_member(rules: LexRuleSet, token_class: Symbol) -> Bool {
   fold_list(
-    xs: rules.rules,
+    xs: lex_rule_set_matching_rules(rules: rules),
     empty: false,
     cons: fn(acc, rule) { acc || lex_rule_keyword_class_member(rule: rule, token_class: token_class) }
   )
@@ -386,6 +470,7 @@ type LexPatternFold<R> {
   repeat:      fn(R) -> R
   one_or_more: fn(R) -> R
   delimited:   fn(R, R, R) -> R
+  not_followed_by: fn(R) -> R
 }
 
 fn fold_lex_pattern<R>(pattern: LexPattern, algebra: LexPatternFold<R>) -> R {
@@ -422,6 +507,8 @@ fn fold_lex_pattern<R>(pattern: LexPattern, algebra: LexPatternFold<R>) -> R {
         fold_lex_pattern(pattern: body, algebra: algebra),
         fold_lex_pattern(pattern: close, algebra: algebra)
       )
+    NotFollowedByPattern { element: element } =>
+      algebra.not_followed_by(fold_lex_pattern(pattern: element, algebra: algebra))
   }
 }
 

@@ -3,6 +3,7 @@ module extdeps.github.actions_runs
 import std.types { Bool, Int, NonEmptyStr, String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.resources { Network }
 
 // THE ACTIONS *RUNS* SURFACE, WHICH IS NOT THE WORKFLOW-SYNTAX SURFACE.
 //
@@ -167,6 +168,7 @@ fn workflow_run_settlement(record: WorkflowRunRecord) -> RunSettlement {
 // The operation is `readonly`: it observes and never mutates a run.
 service github.CliActionsRuns {
   operation ListRunsJson {
+    requires Network
     input {
       repo: NonEmptyStr
       workflow: NonEmptyStr

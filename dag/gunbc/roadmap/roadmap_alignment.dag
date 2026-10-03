@@ -4,9 +4,12 @@ import std.types { String, Int, Bool, List, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.languages.json.emit {
   JsonValue,
+  JsonNull,
+  JsonBool,
   JsonString,
   JsonNumber,
   JsonArray,
+  JsonObject,
   json_string,
   json_int,
   json_array,
@@ -21,10 +24,13 @@ import extdeps.languages.json.parse {
   json_document_gap_text,
   json_object_unique_member,
   JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
 }
 import gunbc.roadmap_nesting { roadmap_roots }
 import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, MemberOf, AdmittedRoot, Closes }
-import gunbc.roadmap_status { TicketLine }
+import gunbc.roadmap_status { TicketLine, DerivableLine, AuthoredLine, PlainLine, SupersededLine }
 import gunbc.roadmap_authority { declared_roadmap_nodes, closing_contract_task_for }
 import gunbc.roadmap.roadmap_lineage {
   LineageWalk,
@@ -32,14 +38,16 @@ import gunbc.roadmap.roadmap_lineage {
   LineageNoParent,
   LineageUndeclared,
   LineageCyclic,
-  lineage_walk,
-  lineage_find,
+  lineage_walk_in,
+  lineage_index,
+  lineage_lookup,
 }
 import gunbc.roadmap.roadmap_attempt_continuation {
   continuation_alignment_l0_pointer,
   continuation_alignment_ask,
 }
 import std.content_hash { content_hash_atom }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 
 // The recursive alignment ladder follows the parent each row declares, never reverse blocking. Each
 // level carries the node's declared ticket structure and the edge's contribution argument.
@@ -96,12 +104,35 @@ type AlignmentLinkProjection
   = LinkProjected { link: AlignmentChainLink }
   | LinkRowUndeclared { node_id: String }
 
-fn alignment_link_project(node_id: String, nodes: List<RoadmapNode>, contribution_to_parent: String) -> AlignmentLinkProjection {
-  let found = nodes |> filter(n => (n.node as String) == node_id)
-  if count(found) != 1 {
+// ONE INDEX PER CHAIN, built once from the rows the chain is resolved over: the first row per id
+// (the lineage walk's own first-match rule, gunbc.roadmap.roadmap_lineage lineage_index) beside how
+// many rows declare that id, so a link still refuses a duplicated or missing id exactly as the
+// per-link filter did, without re-scanning every row for every link.
+type AlignmentIndex {
+  first: Map<String, RoadmapNode>
+  counts: Map<String, Int>
+}
+
+fn alignment_index(nodes: List<RoadmapNode>) -> AlignmentIndex {
+  let empty: Map<String, Int> = empty_map()
+  AlignmentIndex {
+    first: lineage_index(nodes: nodes),
+    counts: fold(nodes, init: empty, f: fn(acc, n) {
+      let k = n.node as String
+      match map_lookup(m: acc, key: k) {
+        Present { value: c } => map_insert(m: acc, key: k, value: c + 1)
+        Absent => map_insert(m: acc, key: k, value: 1)
+      }
+    }),
+  }
+}
+
+fn alignment_link_project(node_id: String, index: AlignmentIndex, contribution_to_parent: String) -> AlignmentLinkProjection {
+  let declared = match map_lookup(m: index.counts, key: node_id) { Present { value: c } => c  Absent => 0 }
+  if declared != 1 {
     LinkRowUndeclared { node_id: node_id }
   } else {
-    match found.first() {
+    match lineage_lookup(index: index.first, id: node_id) {
       Absent => LinkRowUndeclared { node_id: node_id }
       Present { value: node } =>
         match node.line {
@@ -118,7 +149,10 @@ fn alignment_link_project(node_id: String, nodes: List<RoadmapNode>, contributio
                 contribution_to_parent: contribution_to_parent,
               },
             }
-          _ => LinkRowUndeclared { node_id: node_id }
+          DerivableLine { prs: _, title: _, description: _ } => LinkRowUndeclared { node_id: node_id }
+          AuthoredLine { done: _, content: _ } => LinkRowUndeclared { node_id: node_id }
+          PlainLine { content: _ } => LinkRowUndeclared { node_id: node_id }
+          SupersededLine { by: _, content: _ } => LinkRowUndeclared { node_id: node_id }
         }
     }
   }
@@ -126,8 +160,8 @@ fn alignment_link_project(node_id: String, nodes: List<RoadmapNode>, contributio
 
 // THE EDGE'S ARGUMENT a row states for its own parent. A derived closing-contract task stands in
 // its target's place, so it carries the target's argument.
-fn alignment_contribution_of(nodes: List<RoadmapNode>, id: String) -> String {
-  match lineage_find(nodes: nodes, id: id) {
+fn alignment_contribution_of(index: AlignmentIndex, id: String) -> String {
+  match lineage_lookup(index: index.first, id: id) {
     Absent => ""
     Present { value: n } =>
       match n.parent {
@@ -136,7 +170,7 @@ fn alignment_contribution_of(nodes: List<RoadmapNode>, id: String) -> String {
           match p {
             MemberOf { project: _, contribution } => contribution as String
             AdmittedRoot => ""
-            Closes { target } => alignment_contribution_of(nodes: nodes, id: target)
+            Closes { target } => alignment_contribution_of(index: index, id: target)
           }
       }
   }
@@ -146,12 +180,12 @@ type AlignmentLinksBuild
   = AlignmentLinksBuilt { links: List<AlignmentChainLink> }
   | AlignmentLinksRowUndeclared { node_id: String }
 
-fn alignment_links_for_ids(ids: List<String>, nodes: List<RoadmapNode>) -> AlignmentLinksBuild {
+fn alignment_links_for_ids(ids: List<String>, index: AlignmentIndex) -> AlignmentLinksBuild {
   fold(ids, init: AlignmentLinksBuilt { links: [] }, f: fn(acc, id) {
     match acc {
       AlignmentLinksRowUndeclared { node_id } => AlignmentLinksRowUndeclared { node_id: node_id }
       AlignmentLinksBuilt { links } =>
-        match alignment_link_project(node_id: id, nodes: nodes, contribution_to_parent: alignment_contribution_of(nodes: nodes, id: id)) {
+        match alignment_link_project(node_id: id, index: index, contribution_to_parent: alignment_contribution_of(index: index, id: id)) {
           LinkRowUndeclared { node_id } => AlignmentLinksRowUndeclared { node_id: node_id }
           LinkProjected { link } => AlignmentLinksBuilt { links: concat(links, [link]) }
         }
@@ -202,17 +236,22 @@ fn alignment_list_string_at(items: List<String>, index: Int) -> String? {
 // level (the walk already substitutes it), which is what lets a derived closing-contract task
 // resolve alignment instead of refusing as undeclared.
 fn alignment_chain(node_id: String, nodes: List<RoadmapNode>) -> AlignmentChain {
-  match lineage_walk(node_id: node_id, nodes: nodes) {
+  alignment_chain_in(node_id: node_id, index: alignment_index(nodes: nodes), fuel: count(nodes) + 1)
+}
+
+// The chain over an index the caller built once; alignment_chain is this at a fresh index.
+fn alignment_chain_in(node_id: String, index: AlignmentIndex, fuel: Int) -> AlignmentChain {
+  match lineage_walk_in(node_id: node_id, index: index.first, fuel: fuel) {
     LineageCyclic { node_id: at } => AlignmentChainCyclic { node_id: at }
     LineageUndeclared { walked: _, node_id: missing } => AlignmentChainRowUndeclared { node_id: missing }
     LineageNoParent { walked, at } =>
-      match alignment_links_for_ids(ids: walked, nodes: nodes) {
+      match alignment_links_for_ids(ids: walked, index: index) {
         AlignmentLinksRowUndeclared { node_id: missing } => AlignmentChainRowUndeclared { node_id: missing }
         AlignmentLinksBuilt { links } =>
           AlignmentChainUnrooted { walked: alignment_link_list_tail(items: links), at: at }
       }
     LineageRooted { ids } =>
-      match alignment_links_for_ids(ids: ids, nodes: nodes) {
+      match alignment_links_for_ids(ids: ids, index: index) {
         AlignmentLinksRowUndeclared { node_id: missing } => AlignmentChainRowUndeclared { node_id: missing }
         AlignmentLinksBuilt { links } =>
           match links.first() {
@@ -736,7 +775,14 @@ type AlignmentBindingDecode
 fn alignment_binding_member_string(doc: JsonValue, key: String) -> String? {
   match json_object_unique_member(v: doc, key: key) {
     JsonMemberFound { value: JsonString { value: s } } => Present { value: s }
-    _ => none
+    JsonMemberFound { value: JsonNull } => none
+    JsonMemberFound { value: JsonBool { value: _ } } => none
+    JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+    JsonMemberFound { value: JsonArray { elements: _ } } => none
+    JsonMemberFound { value: JsonObject { members: _ } } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -821,27 +867,62 @@ fn alignment_verdict_decode_json(v: JsonValue) -> AlignmentVerdict? {
       } else if kind == "misaligned" {
         match json_object_unique_member(v: v, key: "direction") {
           JsonMemberFound { value: JsonString { value: d } } => Present { value: Misaligned { direction: d } }
-          _ => none
+          JsonMemberFound { value: JsonNull } => none
+          JsonMemberFound { value: JsonBool { value: _ } } => none
+          JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+          JsonMemberFound { value: JsonArray { elements: _ } } => none
+          JsonMemberFound { value: JsonObject { members: _ } } => none
+          JsonMemberAbsent => none
+          JsonMemberDuplicated { count: _ } => none
+          JsonMemberNotAnObject => none
         }
       } else if kind == "extremely-misaligned" {
         match json_object_unique_member(v: v, key: "direction") {
           JsonMemberFound { value: JsonString { value: d } } => Present { value: ExtremelyMisaligned { direction: d } }
-          _ => none
+          JsonMemberFound { value: JsonNull } => none
+          JsonMemberFound { value: JsonBool { value: _ } } => none
+          JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+          JsonMemberFound { value: JsonArray { elements: _ } } => none
+          JsonMemberFound { value: JsonObject { members: _ } } => none
+          JsonMemberAbsent => none
+          JsonMemberDuplicated { count: _ } => none
+          JsonMemberNotAnObject => none
         }
       } else if kind == "catastrophically-misaligned" {
         match json_object_unique_member(v: v, key: "reason") {
           JsonMemberFound { value: JsonString { value: r } } => Present { value: CatastrophicallyMisaligned { reason: r } }
-          _ => none
+          JsonMemberFound { value: JsonNull } => none
+          JsonMemberFound { value: JsonBool { value: _ } } => none
+          JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+          JsonMemberFound { value: JsonArray { elements: _ } } => none
+          JsonMemberFound { value: JsonObject { members: _ } } => none
+          JsonMemberAbsent => none
+          JsonMemberDuplicated { count: _ } => none
+          JsonMemberNotAnObject => none
         }
       } else if kind == "routed-conflict" {
         match json_object_unique_member(v: v, key: "conflict") {
           JsonMemberFound { value: JsonString { value: c } } => Present { value: RoutedConflict { conflict: c } }
-          _ => none
+          JsonMemberFound { value: JsonNull } => none
+          JsonMemberFound { value: JsonBool { value: _ } } => none
+          JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+          JsonMemberFound { value: JsonArray { elements: _ } } => none
+          JsonMemberFound { value: JsonObject { members: _ } } => none
+          JsonMemberAbsent => none
+          JsonMemberDuplicated { count: _ } => none
+          JsonMemberNotAnObject => none
         }
       } else {
         none
       }
-    _ => none
+    JsonMemberFound { value: JsonNull } => none
+    JsonMemberFound { value: JsonBool { value: _ } } => none
+    JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+    JsonMemberFound { value: JsonArray { elements: _ } } => none
+    JsonMemberFound { value: JsonObject { members: _ } } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -864,7 +945,14 @@ type AlignmentCadenceStateDecode
 fn alignment_member_string(doc: JsonValue, key: String) -> String? {
   match json_object_unique_member(v: doc, key: key) {
     JsonMemberFound { value: JsonString { value: s } } => Present { value: s }
-    _ => none
+    JsonMemberFound { value: JsonNull } => none
+    JsonMemberFound { value: JsonBool { value: _ } } => none
+    JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+    JsonMemberFound { value: JsonArray { elements: _ } } => none
+    JsonMemberFound { value: JsonObject { members: _ } } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -879,7 +967,11 @@ fn alignment_member_int_array(doc: JsonValue, key: String) -> List<Int>? {
       } else {
         let parsed = map(elements, e => match e {
           JsonNumber { lexeme: lx } => parse_int(s: lx as String)
-          _ => none
+          JsonNull => none
+          JsonBool { value: _ } => none
+          JsonString { value: _ } => none
+          JsonArray { elements: _ } => none
+          JsonObject { members: _ } => none
         })
         let readable = filter(parsed, n => match n {
           Present { value: _ } => true
@@ -900,7 +992,14 @@ fn alignment_member_int_array(doc: JsonValue, key: String) -> List<Int>? {
           none
         }
       }
-    _ => none
+    JsonMemberFound { value: JsonNull } => none
+    JsonMemberFound { value: JsonBool { value: _ } } => none
+    JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+    JsonMemberFound { value: JsonString { value: _ } } => none
+    JsonMemberFound { value: JsonObject { members: _ } } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -926,7 +1025,14 @@ fn alignment_member_verdict_array(doc: JsonValue, key: String) -> List<Alignment
           none
         }
       }
-    _ => none
+    JsonMemberFound { value: JsonNull } => none
+    JsonMemberFound { value: JsonBool { value: _ } } => none
+    JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+    JsonMemberFound { value: JsonString { value: _ } } => none
+    JsonMemberFound { value: JsonObject { members: _ } } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 

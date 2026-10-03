@@ -110,7 +110,10 @@ fn workspace_admin_console_documentation(control: WorkspaceAdminControl) -> NonE
 fn workspace_admin_read_surface(control: WorkspaceAdminControl) -> WorkspaceAdminReadSurface {
   match control {
     ExternalDirectorySharing => PolicyApiReadSupported { setting_type: "directory.external_directory_sharing", documentation: workspace_policy_settings_documentation }
-    _ => ConsoleReadbackRequired { documentation: workspace_admin_console_documentation(control: control) }
+    OAuthClientRegistration => ConsoleReadbackRequired { documentation: workspace_admin_console_documentation(control: control) }
+    OAuthApplicationAudience => ConsoleReadbackRequired { documentation: workspace_admin_console_documentation(control: control) }
+    OAuthClientAppAccess => ConsoleReadbackRequired { documentation: workspace_admin_console_documentation(control: control) }
+    ProfilePhotoEditing => ConsoleReadbackRequired { documentation: workspace_admin_console_documentation(control: control) }
   }
 }
 

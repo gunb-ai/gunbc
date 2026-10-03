@@ -67,7 +67,7 @@ import extdeps.languages.json.emit {
 import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, JsonDocumentGap,
 }
-import gunbc.scm.json_member { read_string_member, MemberString }
+import gunbc.scm.json_member { read_string_member, MemberString, MemberArray, MemberObject, MemberFailed }
 import gunbc.scm.object_shard_json { shard_roster_of }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
@@ -76,6 +76,9 @@ import gunbc.scm.repository_envelope {
   RepositoryFormatV7,
   RepositoryFormatV6,
   RepositoryFormatV5,
+  RepositoryFormatV4,
+  RepositoryFormatRetiredV3,
+  RepositoryFormatUnknown,
   decode_repository,
   RepositoryDecoded,
   RepositoryDecodeRefused,
@@ -173,7 +176,9 @@ fn repository_convert_format_plan(tag: String, v: JsonValue) -> RepositoryConver
       repository_convert_decode_plan(from_format: tag, v: v)
     RepositoryFormatV5 =>
       repository_convert_decode_plan(from_format: tag, v: v)
-    _ => RepositoryConvertRefusePlan { cause: RepositoryConvertReadVersionRefused { found: tag } }
+    RepositoryFormatV4 => RepositoryConvertRefusePlan { cause: RepositoryConvertReadVersionRefused { found: tag } }
+    RepositoryFormatRetiredV3 => RepositoryConvertRefusePlan { cause: RepositoryConvertReadVersionRefused { found: tag } }
+    RepositoryFormatUnknown { found: _ } => RepositoryConvertRefusePlan { cause: RepositoryConvertReadVersionRefused { found: tag } }
   }
 }
 
@@ -194,7 +199,9 @@ fn repository_convert_decode_plan(from_format: String, v: JsonValue) -> Reposito
 fn repository_convert_plan(v: JsonValue) -> RepositoryConvertPlan {
   match read_string_member(v: v, key: "format") {
     MemberString { value: tag } => repository_convert_format_plan(tag: tag, v: v)
-    _ => RepositoryConvertRefusePlan { cause: RepositoryConvertReadVersionUnreadable }
+    MemberArray { elements: _ } => RepositoryConvertRefusePlan { cause: RepositoryConvertReadVersionUnreadable }
+    MemberObject { value: _ } => RepositoryConvertRefusePlan { cause: RepositoryConvertReadVersionUnreadable }
+    MemberFailed { cause: _ } => RepositoryConvertRefusePlan { cause: RepositoryConvertReadVersionUnreadable }
   }
 }
 
@@ -396,12 +403,19 @@ fn repository_convert_refused_json(cause: RepositoryConvertRefusal) -> JsonValue
   }
 }
 
+fn repository_convert_unread_format_detail(path: String, found: String) -> String {
+  join(["the envelope declares format ", found, ", which this build does not read and will not convert: ", path], "")
+}
+
 fn repository_convert_version_refused_detail(path: String, found: String) -> String {
   match repository_format_of(tag: found) {
     RepositoryFormatV4 =>
       join(["the envelope declares format ", found, ", which this build reads but does not convert (the conversion admits v5 and v6 monoliths): ", path], "")
-    _ =>
-      join(["the envelope declares format ", found, ", which this build does not read and will not convert: ", path], "")
+    RepositoryFormatV7 => repository_convert_unread_format_detail(path: path, found: found)
+    RepositoryFormatV6 => repository_convert_unread_format_detail(path: path, found: found)
+    RepositoryFormatV5 => repository_convert_unread_format_detail(path: path, found: found)
+    RepositoryFormatRetiredV3 => repository_convert_unread_format_detail(path: path, found: found)
+    RepositoryFormatUnknown { found: _ } => repository_convert_unread_format_detail(path: path, found: found)
   }
 }
 

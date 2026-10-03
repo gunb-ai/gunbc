@@ -781,6 +781,15 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     })]),
         returns: int_type(),
     }));
+                __m.insert("observed_thread_cpu_nanos".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![Rc::new(BuiltinParam {
+        name: "label".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    })]),
+        returns: int_type(),
+    }));
                 __m.insert("string_contains".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "s".to_string(),
@@ -1607,22 +1616,6 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         params: Rc::new(vec![]),
         returns: int_type(),
     }));
-                __m.insert("non_fold_residue_count".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![]),
-        returns: int_type(),
-    }));
-                __m.insert("non_fold_residue_unrostered_count".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![]),
-        returns: int_type(),
-    }));
-                __m.insert("non_fold_residue_stale_roster_count".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![]),
-        returns: int_type(),
-    }));
-                __m.insert("non_fold_residue_coproduct_universe_count".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![]),
-        returns: int_type(),
-    }));
                 __m.insert("parse_stage0_cargo_manifest_bins".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "manifest".to_string(),
@@ -1666,22 +1659,6 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: bool_type(),
-    }));
-                __m.insert("non_fold_residue_wildcard_red_fixture_holds".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![]),
-        returns: bool_type(),
-    }));
-                __m.insert("non_fold_residue_total_fold_green_fixture_holds".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![]),
-        returns: bool_type(),
-    }));
-                __m.insert("non_fold_residue_roster_red_fixture_holds".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![]),
-        returns: bool_type(),
-    }));
-                __m.insert("non_fold_residue_synthetic_unrostered_red_holds".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![]),
         returns: bool_type(),
     }));
                 __m.insert("complexity_linearity_syntactic_finding_count".to_string(), Rc::new(BuiltinSignature {

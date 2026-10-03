@@ -11,6 +11,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
 import extdeps.tools { CliTool, SourceApt }
 import extdeps.apt { apt_bin_dir, package_curl }
+import v2.std.algebra { any }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -25,6 +26,18 @@ data curl_cli_tool: CliTool = CliTool {
   program: curl_program(),
   min_version: Present { value: curl_pinned_version },
   installable_via: [SourceApt { package: package_curl, bin_dir: apt_bin_dir }],
+}
+
+// ── EXIT STATUSES: WHICH ONES ARE THE NETWORK ─────────────────────────────────────────────────
+//
+// curl(1) EXIT CODES. The ones that say the far side could not be reached: 6 could not resolve host,
+// 7 failed to connect, 28 operation timeout, 35 TLS/SSL connect error, 52 empty reply from server, 56
+// failure receiving network data. Anything else (22 is an HTTP error under --fail) is the source
+// answering, so a caller must not read it as reachability.
+data curl_unreachable_exit_statuses: List<String> = ["6", "7", "28", "35", "52", "56"]
+
+fn curl_exit_status_is_unreachable(status: String) -> Bool {
+  any(curl_unreachable_exit_statuses, s => s == status)
 }
 
 data curl_localhost_connect_timeout: Second = second(count: 2)
