@@ -4063,8 +4063,9 @@ fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<BodyLowering> {
 
 // THE SIGNATURE OF A FN DECLARATION, READ ONCE FOR BOTH GRADES. The full arm and the census arm build
 // one Arrow from one set of reads; only whether a body edge follows differs. So the reads live here
-// and the Arrow is built by body_lower_fn_decl_arrow -- its ONE child list, with the body edge
-// present or absent -- and "census grade is the same signature" holds
+// and the Arrow is built by body_lower_fn_decl_arrow, which projects this signature onto the one
+// callable-Arrow constructor (body_lower_callable_arrow) with the body edge present or absent, and
+// "census grade is the same signature" holds
 // by construction rather than by two copies staying in step. Absent means a signature this lowering
 // cannot read, which both arms retain as the shell.
 type BodyLowerFnSignature {
@@ -4234,20 +4235,16 @@ fn body_lower_data_decl_to_member(shell: Node) -> Outcome<BodyLowering> {
                                 )
                                 Present { value: data_name } =>
                                   let signature = declared_signature(params: [], source: shell)
-                                  let arrow = close_lowered_image(root: node_lowered_from(
+                                  let arrow = body_lower_callable_arrow(
                                     source: shell,
-                                    kind: TypeNode { connective: Arrow },
-                                    children: [
-                                      signature.domain,
-                                      Edge { label: Positional, target: declared_type },
-                                      Edge { label: Positional, target: declared_type },
-                                      signature.order,
-                                      Edge {
-                                        label: core_edge_label(marker: ArrowBodyEdge),
-                                        target: body_lower_position_function_values(node: reified_body, path: body_lower_unpositioned_path())
-                                      }
-                                    ]
-                                  ))
+                                    domain: signature.domain,
+                                    codomain: declared_type,
+                                    order_edge: signature.order,
+                                    type_param_edges: body_lower_no_type_param_edges(),
+                                    body: optional_present(
+                                      value: body_lower_position_function_values(node: reified_body, path: body_lower_unpositioned_path())
+                                    )
+                                  )
                                   body_lowering_lowered(
                                     o: outcome_with_diagnostics(
                                       value: body_lower_fn_decl_named_member_wrap(
@@ -4276,29 +4273,76 @@ fn body_lower_data_decl_to_member(shell: Node) -> Outcome<BodyLowering> {
 // place positional binding reads parameter order (v2.std.node arrow_declared_parameter_order).
 // Resolve does not walk it (v2.compiler.resolve resolve_arrow_node): its atoms are labels, not
 // references, so a parameter spelled like a name in scope cannot bind through it.
+//
+// THE ONE CALLABLE ARROW. A lambda is surface sugar over the same Arrow a named `fn` declares, so the
+// child LAYOUT of a callable Arrow -- which children exist, in which order, under which labels -- is
+// decided here and nowhere else: the three callables (a named `fn` declaration, a `data` declaration
+// as the nullary case, and a function value written `fn(..) { .. }` or `x => e`) differ only in what
+// they can READ, never in what they build. Before this constructor the layout was authored three
+// times, so a change to it -- notably removing the duplicated codomain below -- was three edits that
+// had to stay in step, and nothing made them.
+//
+// WHAT EACH CALLER STILL DECIDES, because it is a fact about the caller and not about the Arrow: the
+// domain and order edges arrive built, since a declared signature mints both from ONE
+// anonymous-binder pass (v2.std.arrow_signature declared_signature) at the occurrence of the text
+// that spelled the parameters, which is not always this Arrow's own shell; the type-parameter edges
+// arrive as the 0-or-1 list each caller's own type-parameter fact projects to, because a declaration
+// carries the Conj the parse captured while a function value mints one for its elided types; and the
+// body arrives already prepared, because a declaration's lowering is the only place that holds the
+// declaration's body root and can therefore position its fresh type variables
+// (body_lower_position_function_values), while a function value nested inside one is positioned by
+// that same walk from above rather than here. Absent body is the census grade and the signature-only
+// arm, not a callable without one.
+//
+// THE CODOMAIN IS EMITTED TWICE, AS POSITIONAL CHILDREN 1 AND 2. No reader reads an Arrow's
+// positional index 2; it is retained because changing the layout reaches every Arrow reader in the
+// corpus, and that cut is owned by gunbc#12625 (Program P: one Arrow encoding). Its value here is
+// that after this consolidation the duplication has ONE producer, so that cut is one edit.
+fn body_lower_callable_arrow(
+  source: Node,
+  domain: Edge,
+  codomain: Node,
+  order_edge: Edge,
+  type_param_edges: List<Edge>,
+  body: Optional<Node>
+) -> Node {
+  let no_edges: List<Edge> = []
+  let body_edges: List<Edge> = match body {
+    Absent => no_edges
+    Present { value: b } => [Edge { label: core_edge_label(marker: ArrowBodyEdge), target: b }]
+  }
+  close_lowered_image(root: node_lowered_from(
+    source: source,
+    kind: TypeNode { connective: Arrow },
+    children: list_append(
+      left: list_append(
+        left: [
+          domain,
+          Edge { label: Positional, target: codomain },
+          Edge { label: Positional, target: codomain },
+          order_edge
+        ],
+        right: type_param_edges
+      ),
+      right: body_edges
+    )
+  ))
+}
+
 fn body_lower_fn_decl_arrow(shell: Node, sig: BodyLowerFnSignature, body: Optional<Node>) -> Node {
-  let signature = list_append(
-    left: [
-      Edge { label: Positional, target: sig.domain },
-      Edge { label: Positional, target: sig.return_type },
-      Edge { label: Positional, target: sig.return_type },
-      signature_order_edge(order: sig.order, source: shell)
-    ],
-    right: body_lower_fn_decl_type_params_edges(sig: sig)
-  )
   body_lower_fn_decl_named_member_wrap(
-    arrow: close_lowered_image(root: node_lowered_from(
+    arrow: body_lower_callable_arrow(
       source: shell,
-      kind: TypeNode { connective: Arrow },
-      children: match body {
-        Absent => signature
+      domain: Edge { label: Positional, target: sig.domain },
+      codomain: sig.return_type,
+      order_edge: signature_order_edge(order: sig.order, source: shell),
+      type_param_edges: body_lower_fn_decl_type_params_edges(sig: sig),
+      body: match body {
+        Absent => optional_absent()
         Present { value: b } =>
-          list_append(
-            left: signature,
-            right: [Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body_lower_position_function_values(node: b, path: body_lower_unpositioned_path()) }]
-          )
+          optional_present(value: body_lower_position_function_values(node: b, path: body_lower_unpositioned_path()))
       }
-    )),
+    ),
     fn_name: sig.fn_name,
     source: shell
   )
@@ -5123,25 +5167,17 @@ fn body_lower_function_value_arrow(
           [type_params_edge(conj: node_lowered_from(kind: TypeNode { connective: Conj }, children: type_params, source: shell))]
       }
       outcome_with_diagnostics(
-        value: close_lowered_image(root: node_lowered_from(
+        value: body_lower_callable_arrow(
           source: shell,
-          kind: TypeNode { connective: Arrow },
-          children: list_append(
-            left: list_append(
-              left: [
-                Edge {
-                  label: Positional,
-                  target: node_lowered_from(kind: TypeNode { connective: Conj }, children: sig.domain, source: shell)
-                },
-                Edge { label: Positional, target: codomain_node },
-                Edge { label: Positional, target: codomain_node },
-                signature_order_edge(order: sig.order, source: shell)
-              ],
-              right: type_param_edges
-            ),
-            right: [Edge { label: core_edge_label(marker: ArrowBodyEdge), target: reified }]
-          )
-        )),
+          domain: Edge {
+            label: Positional,
+            target: node_lowered_from(kind: TypeNode { connective: Conj }, children: sig.domain, source: shell)
+          },
+          codomain: codomain_node,
+          order_edge: signature_order_edge(order: sig.order, source: shell),
+          type_param_edges: type_param_edges,
+          body: optional_present(value: reified)
+        ),
         diagnostics: bd
       )
   }
