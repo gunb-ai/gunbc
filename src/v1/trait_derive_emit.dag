@@ -11,8 +11,8 @@ import v1.compiler.infer_types { child_type_node, is_coproduct_type, resolved_ty
 import v1.compiler.emit_core_support { unique_strings, is_type_alias_item }
 import v1.compiler.coercion { realized_checkpoint, declaration_realization }
 import v1.compiler.infer_emit_info {
-  TypeDeclIndex, TypeDeclResolution, TypeDeclResolved, TypeDeclLeafAmbiguous, TypeDeclNotDeclared,
-  resolve_type_decl_reference, resolve_type_decl_leaf, type_decl_of_reference
+  TypeDeclIndex, TypeDeclResolution, TypeDeclResolved, TypeDeclLeafAmbiguous, TypeDeclKernelSpellingUndecided, TypeDeclNotDeclared,
+  resolve_type_decl_reference, resolve_type_decl_leaf, type_decl_of_reference, type_decl_identities_of_leaf
 }
 import extdeps.languages.rust.derive_contracts {
   RustVecSupplementalGenericBoundRow,
@@ -307,7 +307,28 @@ fn v1_type_expr_declared_identity(
   match resolve_type_decl_reference(index: type_decl_items, type_expr: type_expr, source_indices: source_indices) {
     TypeDeclResolved { identity: identity, decl: _ } => identity
     TypeDeclLeafAmbiguous { leaf: _ } => ""
+    TypeDeclKernelSpellingUndecided { leaf: _ } => ""
     TypeDeclNotDeclared => ""
+  }
+}
+
+// THE MAP-KEY REQUIREMENT OF A REFERENCE THE INDEX CANNOT PIN TO ONE DECLARATION goes to EVERY
+// declarer of the leaf. That is what the leaf-keyed set did for every reference: the requirement was
+// recorded under the leaf and each same-leaf declaration read it at its own emit site, so this arm
+// preserves the emitted derives rather than choosing a new answer. It over-derives Eq + Hash on a
+// declaration that is not the key (rustc refuses a declaration that cannot derive them) and never
+// under-derives on the one that is. It is the spelling arm's interim answer and dissolves with it
+// (v1.compiler.infer_emit_info type_decl_reference_interim_arms_dissolve_on).
+fn v1_type_expr_map_key_declared_identities(
+  type_expr: Node,
+  type_decl_items: TypeDeclIndex,
+  source_indices: Map<String, NewlineIndex>
+) -> List<String> {
+  match resolve_type_decl_reference(index: type_decl_items, type_expr: type_expr, source_indices: source_indices) {
+    TypeDeclResolved { identity: identity, decl: _ } => [identity]
+    TypeDeclLeafAmbiguous { leaf: leaf } => type_decl_identities_of_leaf(index: type_decl_items, leaf: leaf)
+    TypeDeclKernelSpellingUndecided { leaf: leaf } => type_decl_identities_of_leaf(index: type_decl_items, leaf: leaf)
+    TypeDeclNotDeclared => []
   }
 }
 
@@ -317,7 +338,7 @@ fn v1_type_expr_head_declared_identities(
   source_indices: Map<String, NewlineIndex>
 ) -> List<String> {
   concat(
-    [v1_type_expr_declared_identity(type_expr: type_expr, type_decl_items: type_decl_items, source_indices: source_indices)],
+    v1_type_expr_map_key_declared_identities(type_expr: type_expr, type_decl_items: type_decl_items, source_indices: source_indices),
     type_expr.children |> flat_map(ch =>
       v1_type_expr_head_declared_identities(type_expr: child_type_node(ch: ch), type_decl_items: type_decl_items, source_indices: source_indices)
     )
@@ -409,13 +430,15 @@ fn v1_map_key_required_type_names(
   let scanned = seed_type_exprs |> fold(init: MapKeyRequirementRound { names: empty_set(), added: 0 }, f: (acc, te) =>
     v1_map_key_head_type_exprs(type_expr: te, source_indices: source_indices)
       |> fold(init: acc, f: (inner, key) =>
-        v1_map_key_round_add(round: inner, name: v1_type_expr_declared_identity(type_expr: key, type_decl_items: type_decl_items, source_indices: source_indices))
+        v1_type_expr_map_key_declared_identities(type_expr: key, type_decl_items: type_decl_items, source_indices: source_indices)
+          |> fold(init: inner, f: (deep, identity) => v1_map_key_round_add(round: deep, name: identity))
       )
   )
   let seeded = extra_seed_names |> fold(init: scanned, f: (acc, key_name) =>
     match resolve_type_decl_leaf(index: type_decl_items, leaf: key_name) {
       TypeDeclResolved { identity: identity, decl: _ } => v1_map_key_round_add(round: acc, name: identity)
-      TypeDeclLeafAmbiguous { leaf: _ } => acc
+      TypeDeclLeafAmbiguous { leaf: leaf } => type_decl_identities_of_leaf(index: type_decl_items, leaf: leaf) |> fold(init: acc, f: (inner, identity) => v1_map_key_round_add(round: inner, name: identity))
+      TypeDeclKernelSpellingUndecided { leaf: leaf } => type_decl_identities_of_leaf(index: type_decl_items, leaf: leaf) |> fold(init: acc, f: (inner, identity) => v1_map_key_round_add(round: inner, name: identity))
       TypeDeclNotDeclared => acc
     }
   )
@@ -1413,6 +1436,16 @@ fn v1_type_expr_mentions_param_non_phantom(
               source_indices: source_indices
             )
           )
+        TypeDeclKernelSpellingUndecided { leaf: _ } =>
+          type_expr.children |> any(c =>
+            v1_type_expr_mentions_param_non_phantom(
+              param_name: param_name,
+              type_expr: v1_wf_child_type_node(ch: c, source_indices: source_indices),
+              bounds: bounds,
+              type_decl_items: type_decl_items,
+              source_indices: source_indices
+            )
+          )
         TypeDeclNotDeclared =>
           type_expr.children |> any(c =>
             v1_type_expr_mentions_param_non_phantom(
@@ -1798,6 +1831,16 @@ fn v1_type_expr_clone_impl_needs_param(
             source_indices: source_indices
           )
         )
+      TypeDeclKernelSpellingUndecided { leaf: _ } =>
+        type_expr.children |> any(c =>
+          v1_type_expr_clone_impl_needs_param(
+            param_name: param_name,
+            type_expr: v1_wf_child_type_node(ch: c, source_indices: source_indices),
+            bounds: bounds,
+            type_decl_items: type_decl_items,
+            source_indices: source_indices
+          )
+        )
       TypeDeclNotDeclared =>
         type_expr.children |> any(c =>
           v1_type_expr_clone_impl_needs_param(
@@ -1987,6 +2030,7 @@ fn v1_type_expr_wf_needs_clone_param(
           source_indices: source_indices
         )
       TypeDeclLeafAmbiguous { leaf: _ } => nested
+      TypeDeclKernelSpellingUndecided { leaf: _ } => nested
       TypeDeclNotDeclared => nested
     }
   }
@@ -2138,6 +2182,7 @@ fn v1_type_expr_ambiguous_declared_head(
   match resolve_type_decl_reference(index: type_decl_items, type_expr: type_expr, source_indices: source_indices) {
     TypeDeclLeafAmbiguous { leaf: leaf } => leaf
     TypeDeclResolved { identity: _, decl: _ } => v1_type_expr_components_ambiguous_declared_head(type_expr: type_expr, type_decl_items: type_decl_items, source_indices: source_indices)
+    TypeDeclKernelSpellingUndecided { leaf: _ } => v1_type_expr_components_ambiguous_declared_head(type_expr: type_expr, type_decl_items: type_decl_items, source_indices: source_indices)
     TypeDeclNotDeclared => v1_type_expr_components_ambiguous_declared_head(type_expr: type_expr, type_decl_items: type_decl_items, source_indices: source_indices)
   }
 }
