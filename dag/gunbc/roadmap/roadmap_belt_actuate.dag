@@ -6,6 +6,7 @@ import std.algebra { trim }
 
 import gunbc.output_policy { OutcomeIsData }
 import std.types { String, Int, Bool, List, NonEmptyStr, FilePath, CommitSha, GitRef }
+import gunbc.roadmap_attempt_metering { MeteringPersist, MeteringNotDue, metering_persist_for_attempt }
 import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, node_criteria_digest, node_sizing_derivation }
 import gunbc.roadmap_spawner { SpawnFrontier, spawn_frontier, doc_all_nodes }
 import gunbc.roadmap_status { signoff_accepts, line_ticket, node_title }
@@ -6867,10 +6868,25 @@ fn belt_commit_outcome_persist(
   }
 }
 
+// THE PER-ATTEMPT METERING RECORD (gunbc.roadmap_attempt_metering) is written on every tick once
+// the attempt's worker is terminal, so reviewer, auditor and supervisor rounds and late seat
+// releases that land after that tick are folded into a later rewrite rather than missed.
+fn belt_metering_for_attempt(
+  instance: HostDashboardInstance,
+  progress: WorkflowAttemptProgress,
+) -> MeteringPersist {
+  if belt_attempt_worker_terminal(provider: progress.provider, evidence: progress.process) {
+    metering_persist_for_attempt(instance: instance, node_id: progress.node_id as RoadmapNodeId, attempt_key: progress.attempt_key)
+  } else {
+    MeteringNotDue
+  }
+}
+
 fn belt_commit_attempt_for_instance(
   instance: HostDashboardInstance,
   progress: WorkflowAttemptProgress,
 ) -> BeltCommitOutcome {
+  let _metering = belt_metering_for_attempt(instance: instance, progress: progress)
   belt_commit_outcome_persist(
     instance: instance,
     node_id: progress.node_id,

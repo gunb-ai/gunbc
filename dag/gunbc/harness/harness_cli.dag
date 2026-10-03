@@ -33,7 +33,8 @@ import gunbc.harness.harness_reasoning_wire { HarnessServingUnit }
 import gunbc.serving.turn_admission {
   ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant,
 }
-import gunbc.harness.harness_seat { harness_turn_request,
+import gunbc.harness.harness_seat_pointer { harness_seat_pointer_path, harness_seat_pointer_json }
+import gunbc.harness.harness_seat { harness_turn_request, harness_seat_pointer_of,
   HarnessSeatBinding, HarnessSeatBound, HarnessSeatPending, HarnessSeatRefused, harness_bind_seat,
   HarnessSeatRelease, HarnessSeatReleased, HarnessSeatReleaseRefused, harness_release_seat,
   harness_seat_release_wire, harness_release_held, harness_release_capability,
@@ -649,6 +650,17 @@ fn harness_worker_system_prompt_at(worktree: String, repo_root: String, gunbc_pr
 // each step, so the total wall bound grows with the count rather than being replaced by it.
 data harness_worker_step_budget: Int = harness_round_budget_steps
 
+// THE SEAT THIS PROCESS BOUND, NAMED FOR THE PER-ATTEMPT METERING (gunbc.roadmap_attempt_metering).
+// A failed write is not fatal to the turn: the metering then reads SeatPointerAbsent for this role,
+// a typed gap in the record rather than a zero.
+fn harness_seat_pointer_persist(events_path: String, binding: HarnessSeatBinding) -> Bool {
+  match harness_seat_pointer_of(binding: binding) {
+    Present { value: p } =>
+      Filesystem.Write(path: harness_seat_pointer_path(events_path: events_path), content: harness_seat_pointer_json(pointer: p)).success
+    Absent => false
+  }
+}
+
 // EXIT SAYS WHETHER THE HARNESS COMPLETED A TURN, NOT WHETHER THE TASK WAS DONE. A provider
 // terminal exits zero; every harness refusal exits non-zero with its typed cause. Whether the WORK
 // satisfies the node is decided by the belt's pinned verification against the attempt head, which
@@ -676,6 +688,7 @@ fn harness_worker_cli(
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
     HarnessSeatBound { url, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: bound_model, unit: bound_unit, class: _ } => {
+      let _seat_pointer = harness_seat_pointer_persist(events_path: events_path, binding: binding)
       let outcome = harness_run_turn(
         config: harness_worker_config(
           worktree: worktree as FilePath,
@@ -770,6 +783,7 @@ fn harness_reviewer_cli(
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
     HarnessSeatBound { url, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: bound_model, unit: bound_unit, class: _ } => {
+      let _seat_pointer = harness_seat_pointer_persist(events_path: events_path, binding: binding)
       let outcome = harness_run_turn(
         config: harness_reviewer_config(
           worktree: worktree as FilePath,
@@ -851,6 +865,7 @@ fn harness_auditor_cli(
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
     HarnessSeatBound { url, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: bound_model, unit: bound_unit, class: _ } => {
+      let _seat_pointer = harness_seat_pointer_persist(events_path: events_path, binding: binding)
       let outcome = harness_run_turn(
         config: harness_auditor_config(
           worktree: worktree as FilePath,
@@ -939,6 +954,7 @@ fn harness_supervisor_cli(
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
     HarnessSeatBound { url, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: bound_model, unit: bound_unit, class: _ } => {
+      let _seat_pointer = harness_seat_pointer_persist(events_path: events_path, binding: binding)
       let outcome = harness_run_turn(
         config: harness_supervisor_config(
           worktree: worktree as FilePath,
