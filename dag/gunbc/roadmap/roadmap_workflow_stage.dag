@@ -1,11 +1,13 @@
 module gunbc.roadmap_workflow_stage
 
 import std.types { String, List }
+import std.algebra { trim }
 
 type WorkflowSegmentKind
   = EnvironmentWorkflowSegment
   | WorkspaceWorkflowSegment
   | AgentWorkflowSegment
+  | SubmissionWorkflowSegment
   | VerificationWorkflowSegment
   | PublicationWorkflowSegment
   | ReviewWorkflowSegment
@@ -34,6 +36,7 @@ data roadmap_attempt_workflow_segment_kinds: List<WorkflowSegmentKind> = [
   EnvironmentWorkflowSegment,
   WorkspaceWorkflowSegment,
   AgentWorkflowSegment,
+  SubmissionWorkflowSegment,
   VerificationWorkflowSegment,
   PublicationWorkflowSegment,
   ReviewWorkflowSegment,
@@ -55,6 +58,7 @@ fn workflow_segment_kind_key(kind: WorkflowSegmentKind) -> String {
     EnvironmentWorkflowSegment => "environment"
     WorkspaceWorkflowSegment => "workspace"
     AgentWorkflowSegment => "agent"
+    SubmissionWorkflowSegment => "submission"
     VerificationWorkflowSegment => "verify"
     PublicationWorkflowSegment => "publish"
     ReviewWorkflowSegment => "review"
@@ -67,6 +71,7 @@ fn workflow_segment_kind_label(kind: WorkflowSegmentKind) -> String {
     EnvironmentWorkflowSegment => "Environment"
     WorkspaceWorkflowSegment => "Workspace"
     AgentWorkflowSegment => "Agent"
+    SubmissionWorkflowSegment => "Submission"
     VerificationWorkflowSegment => "Verification"
     PublicationWorkflowSegment => "Publication"
     ReviewWorkflowSegment => "Review"
@@ -79,6 +84,7 @@ fn workflow_segment_kind_short_label(kind: WorkflowSegmentKind) -> String {
     EnvironmentWorkflowSegment => "Env"
     WorkspaceWorkflowSegment => "Worktree"
     AgentWorkflowSegment => "Agent"
+    SubmissionWorkflowSegment => "Submit"
     VerificationWorkflowSegment => "Verify"
     PublicationWorkflowSegment => "Publish"
     ReviewWorkflowSegment => "Review"
@@ -91,6 +97,7 @@ fn workflow_segment_intent_revision(kind: WorkflowSegmentKind) -> String {
     EnvironmentWorkflowSegment => "roadmap-attempt/environment/v1"
     WorkspaceWorkflowSegment => "roadmap-attempt/workspace/v1"
     AgentWorkflowSegment => "roadmap-attempt/agent/v1"
+    SubmissionWorkflowSegment => "roadmap-attempt/submission/v1"
     VerificationWorkflowSegment => "roadmap-attempt/verification/v1"
     PublicationWorkflowSegment => "roadmap-attempt/publication/v1"
     ReviewWorkflowSegment => "roadmap-attempt/review/v1"
@@ -106,5 +113,71 @@ fn workflow_segment_state_key(state: WorkflowSegmentState) -> String {
     WorkflowSegmentFailed => "failed"
     WorkflowSegmentRefused => "refused"
     WorkflowSegmentStopped => "stopped"
+  }
+}
+
+// THE BOUNDED DETAIL PRESENTATION (operator ruling 2026-09-20: the dashboard is a status surface
+// with evidence behind disclosure, never an inline dump). A segment detail is a raw evidence
+// string, and some producers enumerate -- the verification oracle's refusal can name ~98
+// unparseable sources, the review reconciliation joins one clause per criterion lane. Rendered
+// whole, one lane's detail owns the page. The decided bound: an enumerated payload renders as its
+// COUNT, its first excerpt-budget entries, and a pointer to the attempt receipt artifact, which is
+// where the full list legitimately lives -- the receipt content itself is unchanged, only its
+// inline projection is bounded. This fn is the single authority consumed by every realization of a
+// segment detail (the server-rendered ledger, the /workflow.json wire the client paints from, and
+// the presentation seam's located reason), so the realizations cannot drift on the bound.
+//
+// WHAT COUNTS AS AN ENTRY: newline-separated lines when the payload is multi-line (the dump
+// shape); otherwise the producer's " · "-joined clauses when there is more than one (the
+// per-criterion lane shape); otherwise the whole detail. A short detail -- at most the excerpt
+// budget of entries and under the passthrough character budget -- renders untouched, so an
+// ordinary one-sentence reason never pays the bound.
+data workflow_segment_detail_excerpt_budget: Int = 3
+
+data workflow_segment_detail_passthrough_char_budget: Int = 480
+
+data workflow_segment_detail_receipt_pointer: String = "full list in the attempt receipt artifact"
+
+fn workflow_segment_detail_entries(detail: String) -> List<String> {
+  let lines = split(s: detail, delimiter: "\n") |> filter(l => !(trim(s: l) == ""))
+  if count(lines) > 1 {
+    lines
+  } else {
+    let clauses = split(s: detail, delimiter: " · ")
+    if count(clauses) > 1 {
+      clauses
+    } else {
+      [detail]
+    }
+  }
+}
+
+fn workflow_segment_detail_first_entries(entries: List<String>, n: Int) -> List<String> {
+  fold(entries, init: [], f: (acc, e) => if count(acc) < n { concat(acc, [e]) } else { acc })
+}
+
+fn workflow_segment_detail_bounded(detail: String) -> String {
+  let entries = workflow_segment_detail_entries(detail: detail)
+  if count(entries) <= workflow_segment_detail_excerpt_budget && string_length(s: detail) <= workflow_segment_detail_passthrough_char_budget {
+    detail
+  } else {
+    if count(entries) <= workflow_segment_detail_excerpt_budget {
+      join([
+        substring(s: detail, start: 0, end: workflow_segment_detail_passthrough_char_budget),
+        " … — ",
+        workflow_segment_detail_receipt_pointer,
+      ], "")
+    } else {
+      let shown = workflow_segment_detail_first_entries(entries: entries, n: workflow_segment_detail_excerpt_budget)
+      join([
+        join(shown, "\n"),
+        "\n… ",
+        to_string(value: count(entries) - count(shown)),
+        " more of ",
+        to_string(value: count(entries)),
+        " — ",
+        workflow_segment_detail_receipt_pointer,
+      ], "")
+    }
   }
 }

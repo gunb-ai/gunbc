@@ -1,0 +1,56 @@
+module gunbc.roadmap_allocation_client
+
+import std.types { String, List }
+import extdeps.languages.typescript.program {
+  TsExpr, TsStmt, TsProgram, serialize_typescript_program, ts_ident, ts_lit_str, ts_member,
+  ts_call, ts_arrow, ts_block, ts_const, ts_return, ts_expr_stmt, ts_if,
+  ts_prefix, ts_binop, ts_array,
+}
+
+import gunbc.roadmap_component { account_swap_statements, theme_toggle_bind_statements, sound_preamble_statements, sound_toggle_bind_statements }
+
+fn allocation_element(id: String) -> TsExpr {
+  ts_call(callee: ts_member(object: ts_ident(name: "document"), property: "getElementById"), args: [ts_lit_str(value: id)])
+}
+
+fn allocation_value(id: String) -> TsExpr {
+  ts_member(object: allocation_element(id: id), property: "value")
+}
+
+// Browser validation and review affect only a local draft. No fetch, storage, or admission.
+fn allocation_draft_statements() -> List<TsStmt> {
+  [
+      ts_const(name: "allocationForm", value: allocation_element(id: "allocation-draft")),
+      ts_const(name: "allocationReview", value: ts_arrow(params: [], body: ts_block(stmts: [
+        ts_if(cond: ts_prefix(op: "!", expr: ts_call(callee: ts_member(object: ts_ident(name: "allocationForm"), property: "reportValidity"), args: [])), then: ts_block(stmts: [ts_return(expr: none)]), else_stmt: none),
+        ts_expr_stmt(expr: ts_binop(left: ts_member(object: allocation_element(id: "allocation-summary"), property: "textContent"), op: "=", right: ts_call(callee: ts_member(object: ts_array(elements: [
+            ts_lit_str(value: "Draft: "), allocation_value(id: "allocation-cpu"), ts_lit_str(value: " vCPU · "),
+            allocation_value(id: "allocation-memory"), ts_lit_str(value: " GiB RAM · "),
+            allocation_value(id: "allocation-disk"), ts_lit_str(value: " GiB disk · "),
+            allocation_value(id: "allocation-hours"), ts_lit_str(value: " hours. No resources reserved."),
+          ]), property: "join"), args: [ts_lit_str(value: "")]))),
+      ]))),
+      ts_expr_stmt(expr: ts_call(callee: ts_member(object: allocation_element(id: "allocation-review"), property: "addEventListener"), args: [ts_lit_str(value: "click"), ts_ident(name: "allocationReview")])),
+      ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "allocationForm"), property: "addEventListener"), args: [ts_lit_str(value: "submit"), ts_arrow(params: ["event"], body: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "event"), property: "preventDefault"), args: [])),
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "allocationReview"), args: [])),
+      ]))])),
+      ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "allocationForm"), property: "addEventListener"), args: [ts_lit_str(value: "input"), ts_arrow(params: [], body: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_binop(left: ts_member(object: allocation_element(id: "allocation-summary"), property: "textContent"), op: "=", right: ts_lit_str(value: "Size changed. Review your updated draft."))),
+      ]))])),
+  ]
+}
+
+fn allocation_draft_source() -> String {
+  serialize_typescript_program(p: TsProgram { ts_nocheck: false, header_lines: [], statements: allocation_draft_statements() })
+}
+
+// Reuse shared header behavior without workspace observation or workflow polling.
+fn allocation_client_source() -> String {
+  serialize_typescript_program(p: TsProgram {
+    ts_nocheck: false,
+    header_lines: ["Allocation draft and shared account/theme controls; no allocation writes."],
+    statements: concat(sound_preamble_statements(), concat(sound_toggle_bind_statements(),
+      concat(theme_toggle_bind_statements(), concat(account_swap_statements(), allocation_draft_statements())))),
+  })
+}
