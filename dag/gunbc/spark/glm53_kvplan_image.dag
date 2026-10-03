@@ -13,6 +13,10 @@ import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, spark_remote_run, RemoteRan, RemoteUnreachable }
 import gunbc.spark.vllm_runtime_image_build { VllmImageBuilt, VllmImageBuildRefused, converge_vllm_image_for_recipe, vllm_image_receipt_line, SparkBuildHostWork, converge_glm53_kvplan_image, glm53_kvplan_patch_path, glm53_kvplan_package_dir }
 import gunbc.spark.group_image_produce { GroupImageProduction, ProducedImageHeld }
+import gunbc.spark.vllm_runtime_image_build { VllmImageDistributionSubject }
+import extdeps.container.oci.digest { OciSha256Digest }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import product.placement_supply { HostIdentity }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.runtime_architecture_registry_reading { registry_dump_architectures, registry_dump_count }
 
@@ -142,8 +146,19 @@ fn glm53_kvplan_production() -> GroupImageProduction {
 // THE PRODUCED IMAGE'S RECEIPT ROW. Absent until a production run through spark_runtime_image_produce
 // has converged and its receipt (tag, configuration digest, host, run) is transcribed here, citing the
 // run -- the same discipline as gunbc.spark.v41_runtime_image_converge v41_production_produced_image.
-// While Absent the distribution refuses, and the staircase's runtime has no single identity.
+// Recorded from fleet-converge run 37100656092 (srv7, 2026-10-03): its PRODUCED line and the probe
+// inside the configuration digest. The runtime row that names this identity is gunbc.spark.serving_arm
+// glm53_kvplan_v2_group_a_row.
 fn glm53_kvplan_produced_image_held() -> ProducedImageHeld? {
-  none
+  Present { value: ProducedImageHeld {
+    title: "glm53 kvplan-v2 runtime image" as NonEmptyStr,
+    group: FabricGroupA,
+    subject: VllmImageDistributionSubject {
+      tag: "gunbc-vllm-glm53-gb10:kvplan-v2-50ba9aad263fea47" as NonEmptyStr,
+      config: OciSha256Digest(Sha256Digest { hex: "6ef84cd49a68dbefd957bfca36f0ec458ed80f8194def41642e7b37b34ae76fb" as Sha256DigestHex }),
+    },
+    held_on: "srv7" as HostIdentity,
+    receipt_run: "37100656092" as NonEmptyStr,
+  } }
 }
 

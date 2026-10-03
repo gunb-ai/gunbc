@@ -11,7 +11,7 @@ import extdeps.vllm.engine_args { VllmSchedulerAdmissionRequest, FullInputAdmiss
 import product.placement_supply { HostIdentity }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.fabric_serving_assignment { FabricServingAssignment, fabric_serving_assignment_for_launch }
-import gunbc.spark.serving_arm { ArmIntent, ArmBoundedExperiment, ServingLaunchProfile, ModelLaunchPolicy, ServingCheckpoint, Glm53NativeFp8, Glm53FlashNvidiaNvfp4, GunbcGlm53DerivedKvplanV2Gb10, FourSparkTp4, glm53_native_launch_policy, glm53_flash_nvidia_nvfp4_launch_policy }
+import gunbc.spark.serving_arm { ArmIntent, ArmBoundedExperiment, ServingLaunchProfile, ModelLaunchPolicy, ServingCheckpoint, Glm53NativeFp8, Glm53FlashNvidiaNvfp4, GunbcGlm53KvplanV2GroupAProduced, FourSparkTp4, glm53_native_launch_policy, glm53_flash_nvidia_nvfp4_launch_policy }
 import gunbc.spark.serving_capacity_intent { ServingCapacityIntent, ServingCapacityIntentAdmitted, ServingCapacityIntentRefused, uniform_cold_seats, SchedulerEnvelope, SchedulerEnvelopeAdmitted, SchedulerEnvelopeRefused, scheduler_envelope, profile_for_envelope }
 import gunbc.spark.serving_arm_launch { ArmContainerIdentity, glm_native_shm_size }
 import gunbc.spark.native_serving_realization { ArmUnitIdentity }
@@ -199,11 +199,11 @@ data glm53_staircase_container: ArmContainerIdentity = ArmContainerIdentity {
 // wall admits an unproved fit only under this intent.
 data glm53_staircase_intent: ArmIntent = ArmBoundedExperiment
 
-// THE RUNTIME IS THE GLM DERIVED BUILD THE GLM ARM RUNS (gunbc.spark.fabric_serving_assignment
-// glm_group_b_serving_assignment's runtime). See the PR for why it does not yet launch on Group A: its
-// row is pinned elsewhere, per Group B host, so it is neither present on Group A nor a single identity.
+// THE RUNTIME IS THE SAME KVPLAN-V2 BUILD THE GLM ARM RUNS ON GROUP B, PRODUCED ONCE FOR GROUP A
+// (gunbc.spark.serving_arm glm53_kvplan_v2_group_a_row): one content id, moved by digest, so the step has
+// a keyed successor. Group B's per-host row is a different artifact, and a receipt here does not promote it.
 fn glm53_step_assignment(s: Glm53StaircaseStep) -> FabricServingAssignment {
-  fabric_serving_assignment_for_launch(group: FabricGroupA, checkpoint: glm53_step_checkpoint(s: s), runtime: GunbcGlm53DerivedKvplanV2Gb10, topology: FourSparkTp4)
+  fabric_serving_assignment_for_launch(group: FabricGroupA, checkpoint: glm53_step_checkpoint(s: s), runtime: GunbcGlm53KvplanV2GroupAProduced, topology: FourSparkTp4)
 }
 
 fn glm53_step_inputs(s: Glm53StaircaseStep) -> GroupArmLaunchInputs? {

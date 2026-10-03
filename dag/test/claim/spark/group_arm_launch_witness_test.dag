@@ -124,13 +124,20 @@ test fn w_the_glm_fp8_eight_seat_step_takes_the_one_path_and_refuses_on_its_unpi
   })
 }
 
-// AN UNPINNED RUNTIME HAS NO SUCCESSOR KEY: the GLM derived build's row is PinnedElsewhere, per host.
-test fn w_an_unpinned_runtime_has_no_successor_key() -> Bool {
+// THE STAIRCASE'S RUNTIME IS KEYED: the Group A production is pinned by its configuration digest, so
+// every step derives a successor key, and two steps on different checkpoints derive different keys.
+test fn w_the_produced_runtime_keys_every_step() -> Bool {
   match glm53_step_inputs(s: Glm53Fp8Step { step: Fp8Seats24 }) {
     Absent => false
-    Present { value: i } => match group_arm_row_successor(inputs: i) {
-      ArmSuccessorKeyed { key: _ } => false
-      ArmSuccessorUnkeyed { causes: c } => any(c, x => string_contains(s: x, pattern: "unpinned"))
+    Present { value: f } => match glm53_step_inputs(s: Glm53Nvfp4Step { step: Nvfp4Seats8 }) {
+      Absent => false
+      Present { value: n } => match group_arm_row_successor(inputs: f) {
+        ArmSuccessorUnkeyed { causes: _ } => false
+        ArmSuccessorKeyed { key: kf } => match group_arm_row_successor(inputs: n) {
+          ArmSuccessorUnkeyed { causes: _ } => false
+          ArmSuccessorKeyed { key: kn } => !content_hash_equal(left: kf, right: kn)
+        }
+      }
     }
   }
 }
