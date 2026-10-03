@@ -1,5 +1,6 @@
 module gunbc.roadmap_belt_actuate
 
+import gunbc.roadmap.roadmap_attempt_request_binding { attempt_request_binding_record_for_instance, RequestBindingRecorded, RequestBindingWriteFailed }
 import gunbc.roadmap_nesting { roadmap_memberships }
 
 import std.algebra { trim }
@@ -852,7 +853,12 @@ fn belt_attempt_state_initialize_for_instance(
                 node: node,
                 attempt_key: attempt_key,
               ) {
-                SpawnOriginRecorded => AttemptStateInitialized
+                SpawnOriginRecorded =>
+                  match attempt_request_binding_record_for_instance(instance: instance, node_id: node.node, attempt_key: attempt_key) {
+                    RequestBindingRecorded { binding: _ } => AttemptStateInitialized
+                    RequestBindingWriteFailed { detail } =>
+                      AttemptStateInitializationFailed { step: "attempt-request-binding-persist", detail: detail }
+                  }
                 SpawnOriginRecordFailed { step, detail } =>
                   AttemptStateInitializationFailed { step: step, detail: detail }
               }
