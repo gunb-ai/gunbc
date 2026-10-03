@@ -166,22 +166,15 @@ fn param_routes(text: String) -> String {
   }
 }
 
-// `a: Int` takes the bare route: no tail, no default. Its own claim, so the two routes do not share
-// one budget.
+// `a: Int` takes the bare route: no tail, no default.
 test fn a_plain_typed_param_takes_the_bare_route_holds() -> Bool {
   param_routes(text: "(a: Int)") == "a"
 }
 
-// `b: Int = 1` takes the tail route: the parse reaches the default production exactly once. Read
-// at the parse, not through the slot reader, which the plain claim above already exercises -- the
-// reader's default arm is held by the default-value lowering witnesses.
-test fn a_defaulted_typed_param_takes_the_tail_route_holds() -> Bool {
-  match route_parse_at(text: "(b: Int = 1)", production: ^dag_production_param_list) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: tree, diagnostics: _ } =>
-      length(xs: route_shells(n: tree, emitted: ^dag_surface_default_value, acc: [])) == 1
-  }
-}
+// The TAIL route (`b: Int = 1`) is not re-claimed here: v2.test.claim.parse.default_value
+// a_parameter_default_lowers_onto_its_binder_holds already drives a defaulted parameter through this
+// grammar and the real slot reader onto its binder, which it can reach only by the tail route, and a
+// second parse of a default here costs over the new-witness budget for no new subject.
 
 // Which word production a `requires` clause reached: "none", "opaque", or "list" for neither.
 fn requires_route(text: String) -> String {
