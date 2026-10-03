@@ -269,7 +269,7 @@ data defork_census_resolved: List<ResolvedSharedTypeName> = [
   ResolvedSharedTypeName {
     names: ["String"],
     resolution: ResolvedByDeletingDag { reason: "operator-ruled retirement of `std.string_type` `String` (`= FreeMonoid<Char>`), the duplicate of `v2.std.text` `String`. It had zero importers after gunbc#12512 deleted the 81 that used it as host text (XL-0T ruling B), verified by the #12760 literal-site census. `v2.std.text` `String` stays the one structural declaration, and `v2.std.node` `String` is the distinct host-text concept (gunbc.recurring_failure_mode carrier_by_spelling)" },
-    change: 0
+    change: 13089
   },
   ResolvedSharedTypeName {
     names: ["Nat"],
