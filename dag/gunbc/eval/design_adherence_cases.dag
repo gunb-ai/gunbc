@@ -13,6 +13,13 @@ import gunbc.eval.design_adherence {
 // that commit's first parent, and the task is the brief its author was working to -- never the
 // finding. Rows are verified in both directions by gunbc.eval.design_adherence_grader
 // `validate_reference`: the frozen base must fail the case and the reference fix must pass it.
+//
+// WHY ONE LIST AND NOT ONE FILE PER CASE. A directory whose files are the membership (the
+// recurring_failure_mode pattern) is synthesized into a roster module by seed Rust
+// (v1_compiler.cli_run.derived_row_roster); a second such directory would grow the seed, which the
+// v1 purpose test does not admit for an eval harness. The cost is that two lanes appending cases
+// touch one list; the dissolution is that roster mechanism moving to .dag, after which these rows
+// split one file each.
 
 fn sha1(hex: String) -> GitObjectId {
   GitSha1ObjectId { digest: Sha1Digest { hex: hex } }
