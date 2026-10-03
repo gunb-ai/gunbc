@@ -9380,6 +9380,21 @@ pub(crate) struct UnimportedBareProvider {
     pub(crate) provider: String,
 }
 
+/// One file's judgment: the pairs it owes, and the pairs the compiler's non-declaration predicate
+/// suppressed, counted by WHY. `suppressed_kernel_method_only` is the declared COVERAGE FRONTIER: a
+/// kernel-method name is admitted by name because the receiver's type is unknown before typecheck,
+/// so a call on a receiver without that profile is a genuine unresolved call that this gate no
+/// longer reports. Typecheck still refuses it, but only in typed files. The count is printed on every
+/// gate run so its growth is visible. It dissolves when the gate judges post-typecheck call semantics
+/// for typed files, or when method resolution can be receiver-typed before typecheck (calm-boar-904
+/// ruling, gunbc#12951).
+#[derive(Default)]
+pub(crate) struct UnimportedBareProviderJudgment {
+    pub(crate) rows: Vec<UnimportedBareProvider>,
+    pub(crate) suppressed_builtin: usize,
+    pub(crate) suppressed_kernel_method_only: usize,
+}
+
 /// The pairs `UnimportedBareProvider` names for ONE file, derived by the loader's own provider
 /// selection (`visit_bare_reference_providers`) rather than a second scanner, so the check and
 /// the pull can never disagree about which names are bare-pullable. A zero-import file is on the
@@ -9388,8 +9403,15 @@ pub(crate) fn unimported_bare_providers(
     sf: &Rc<v1_compiler_compile::SourceFile>,
     index: &MultiEntryIndex,
 ) -> Result<Vec<UnimportedBareProvider>, String> {
+    Ok(unimported_bare_provider_judgment(sf, index)?.rows)
+}
+
+pub(crate) fn unimported_bare_provider_judgment(
+    sf: &Rc<v1_compiler_compile::SourceFile>,
+    index: &MultiEntryIndex,
+) -> Result<UnimportedBareProviderJudgment, String> {
     if !source_declares_import_lines(&sf.content) {
-        return Ok(Vec::new());
+        return Ok(UnimportedBareProviderJudgment::default());
     }
     let file = workspace_relative_repo_path(&sf.path);
     let closure: HashSet<String> =
@@ -9398,23 +9420,50 @@ pub(crate) fn unimported_bare_providers(
             .map(|p| workspace_relative_repo_path(p))
             .collect();
     let mut out = BTreeSet::new();
+    let (mut suppressed_builtin, mut suppressed_kernel_method_only) = (0usize, 0usize);
     visit_bare_reference_providers(
         sf,
         index,
         |root| closure_name_census(index, root),
         |name, module, provider| {
+            // A name the compiler can bind WITHOUT a declaration (a kernel method, an empty-collection
+            // constructor, a builtin) is not a read of a same-spelled declaration outside this file's
+            // closure: call inference never binds an out-of-scope declarer, and this file's import
+            // lines switch the global-bare fallback off. The predicate is the compiler's own
+            // (`v1.compiler.infer_method` `bare_call_non_declaration_binding`), not a list here, and the
+            // frontier counters are split by its own arms, so they cannot drift from it.
+            // Before it, positional `map_get(m, k)` calls were reported as unimported reads of
+            // v2.std.collection's `map_get`, a different contract, and the refusal told the author
+            // to add the import that would rebind the call to it (gunbc#12951).
             if provider != file && !closure.contains(provider) {
-                out.insert(UnimportedBareProvider {
-                    file: file.clone(),
-                    name: name.to_string(),
-                    provider_module: module.to_string(),
-                    provider: provider.to_string(),
-                });
+                use crate::v1_compiler_infer_method::NonDeclarationBinding as B;
+                match crate::v1_compiler_infer_method::bare_call_non_declaration_binding(
+                    name.to_string(),
+                ) {
+                    B::EmptyCollectionConstructor | B::BuiltinFunction => {
+                        suppressed_builtin += 1;
+                    }
+                    B::KernelMethodOnly => {
+                        suppressed_kernel_method_only += 1;
+                    }
+                    B::DeclarationOnly => {
+                        out.insert(UnimportedBareProvider {
+                            file: file.clone(),
+                            name: name.to_string(),
+                            provider_module: module.to_string(),
+                            provider: provider.to_string(),
+                        });
+                    }
+                }
             }
             Ok(())
         },
     )?;
-    Ok(out.into_iter().collect())
+    Ok(UnimportedBareProviderJudgment {
+        rows: out.into_iter().collect(),
+        suppressed_builtin,
+        suppressed_kernel_method_only,
+    })
 }
 
 /// What the required whole-pool phase's PRODUCER established, recorded by the producer itself.
@@ -10199,6 +10248,58 @@ mod closure_edge_demand_tests {
             },
         )?;
         Ok(providers)
+    }
+
+    /// A BUILTIN CALL IS NOT AN UNIMPORTED READ OF A SAME-SPELLED DECLARATION (gunbc#12951). The
+    /// consumer declares an import, so its bare channel is off. It calls the builtin `map_get(m, k)`
+    /// positionally and `empty_map()`, while a module outside its closure declares functions with
+    /// those spellings. Discriminating RED: before the predicate, both were reported, and the
+    /// refusal advised importing the declarations, which would rebind the calls to a different
+    /// contract. Positive control: a NON-builtin function declared only there and called bare is
+    /// still reported, so the exemption is the compiler's precedence and not a widened list.
+    #[test]
+    fn a_builtin_call_is_not_an_unimported_read_of_a_same_spelled_declaration() {
+        let helper = "module far.helper\n\
+                      fn map_get(store: Int, at: Int) -> Int { store }\n\
+                      fn empty_map(seed: Int) -> Int { seed }\n\
+                      fn far_only(value: Int) -> Int { value }\n";
+        let near = "module near.types\ntype Unused = { id: Int }\n";
+        let consumer = |extra: &str| {
+            format!(
+                "module near.consumer\nimport near.types {{ Unused }}\n\
+                 fn lookup_it(m: Map<String, Int>) -> Int? {{ map_get(m, \"k\") }}\n\
+                 fn fresh() -> Map<String, Int> {{ empty_map() }}\n{extra}"
+            )
+        };
+        let clean = Fixture::new(&[
+            ("consumer.dag", consumer("").as_str()),
+            ("helper.dag", helper),
+            ("near.dag", near),
+        ]);
+        let index = clean.index();
+        let found =
+            unimported_bare_providers(&index.source_files["near.consumer"], &index).unwrap();
+        assert!(
+            found.iter().all(|v| v.name != "map_get" && v.name != "empty_map"),
+            "a builtin call was reported as an unimported read of a same-spelled declaration: {found:?}"
+        );
+        let control = Fixture::new(&[
+            (
+                "consumer.dag",
+                consumer("fn reach() -> Int { far_only(value: 1) }\n").as_str(),
+            ),
+            ("helper.dag", helper),
+            ("near.dag", near),
+        ]);
+        let index = control.index();
+        let found =
+            unimported_bare_providers(&index.source_files["near.consumer"], &index).unwrap();
+        assert!(
+            found
+                .iter()
+                .any(|v| v.name == "far_only" && v.provider_module == "far.helper"),
+            "a genuine unimported bare call to a non-builtin must still be reported: {found:?}"
+        );
     }
 
     /// A service's `response { .. }` clause is grammar structure (`parse_op_body_entries`
