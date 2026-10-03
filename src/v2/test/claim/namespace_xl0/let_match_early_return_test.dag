@@ -11,6 +11,12 @@ import v2.compiler.compile {
   native_lane_file_refusal_index,
   native_test_context_from_ingest
 }
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.collection { List }
+import v2.std.integer { Int }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.std.algebra { fold_list }
 import v2.std.artifact { Artifact, SourceFile }
@@ -19,7 +25,7 @@ import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Symbol }
+import v2.std.node { Node, Symbol, node_subtree_nodes }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import std.algebra { Cons, Empty }
@@ -248,4 +254,70 @@ test fn a_let_match_in_a_fn_value_exits_only_the_fn_value_and_is_accepted() -> B
     LmeOutcomesDecided { ctl: _, rest_und: _, exit_und: _, bind_und: _, nested_ctl: _, multi: _, nontail: _, bind_return: _, lambda_ctl: v } => lme_is_resolved(v: v)
     LmeContextRefused => false
   }
+}
+
+// THE REST APPEARS ONCE. `lme_shape_source` has one binding arm and three returning arms, and the
+// rest of the spine is a call to `lme_rest_marker`; normalize (tokenize -> parse -> normalize, the
+// producers called directly) must ACCEPT it with the marker atom EXACTLY ONCE in the lowered tree --
+// a lowering that copied the rest into each arm would count four -- and with the binding arm's and
+// every returning arm's operands kept (lme_bound_marker, lme_exit_marker three times). On main it
+// refuses as return_not_in_tail_position.
+data lme_shape_source: String = "module v2.test.lme_shape\n\nimport v2.std.integer { Int }\n\ntype LmeS = LmeA { v: Int } | LmeB | LmeC { w: Int } | LmeD\n\nfn lme_probe(s: LmeS, k: Int) -> Int {\n  let x = match s {\n    LmeA { v: v } => lme_bound_marker\n    LmeB => return lme_exit_marker\n    LmeC { w: w } => return lme_exit_marker\n    LmeD => return lme_exit_marker\n  }\n  lme_rest_marker(x: x)\n}\n"
+
+type LmeShape {
+  outcome: Symbol
+  rest: Int
+  bound: Int
+  exits: Int
+}
+
+fn lme_atom_count(nodes: List<Node>, atom: Symbol) -> Int {
+  match nodes {
+    Empty => 0
+    Cons { head: n, tail: rest } =>
+      match node_atom_identity_optional(node: n) {
+        Present { value: id } =>
+          if id == atom { 1 + lme_atom_count(nodes: rest, atom: atom) } else { lme_atom_count(nodes: rest, atom: atom) }
+        Absent => lme_atom_count(nodes: rest, atom: atom)
+      }
+  }
+}
+
+fn lme_shape_marker(marker: Symbol) -> LmeShape {
+  LmeShape { outcome: marker, rest: 0, bound: 0, exits: 0 }
+}
+
+// ONE PRODUCER for the shape claims, enrolled warm in v2.workflow.floor_pure_producer_share; the
+// stored value is four scalars.
+fn lme_shape() -> LmeShape {
+  let lm = dag_language_model()
+  match tokenize(text: lme_shape_source, file: ^let_match_early_return_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => lme_shape_marker(marker: ^lme_tokenize_refused)
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => lme_shape_marker(marker: ^lme_parse_refused)
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: _ } => lme_shape_marker(marker: ^lme_normalize_refused)
+            Accepted { value: normalized, diagnostics: _ } =>
+              let nodes = node_subtree_nodes(root: normalized.root)
+              LmeShape {
+                outcome: ^lme_accepted,
+                rest: lme_atom_count(nodes: nodes, atom: ^lme_rest_marker),
+                bound: lme_atom_count(nodes: nodes, atom: ^lme_bound_marker),
+                exits: lme_atom_count(nodes: nodes, atom: ^lme_exit_marker)
+              }
+          }
+      }
+  }
+}
+
+test fn the_rest_after_a_let_match_appears_exactly_once_in_the_lowered_tree() -> Bool {
+  let shape = lme_shape()
+  (shape.outcome == ^lme_accepted) && (shape.rest == 1)
+}
+
+test fn every_arm_of_a_let_match_keeps_its_operand_in_the_lowered_tree() -> Bool {
+  let shape = lme_shape()
+  (shape.outcome == ^lme_accepted) && (shape.bound == 1) && (shape.exits == 3)
 }
