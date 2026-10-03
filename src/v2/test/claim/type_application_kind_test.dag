@@ -14,7 +14,7 @@ import v2.std.logic { Bool }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.node { Atom, Authored, BinderTypeEdge, Conj, Edge, Node, Positional, StructuralLabel, Symbol, TypeNode, core_edge }
 import v2.std.type_binder { ArgumentInhabitsKind, ArgumentLiteralUnjudged, ArgumentOutsideKind, KindInhabitance, TypeApplicationArityMismatch, TypeApplicationConforms, TypeApplicationKindNotInhabited, type_application_conformance, type_binder_set_children }
-import v2.std.collection { List }
+import std.types { List }
 
 // A TYPE APPLICATION AGAINST ITS DECLARATION'S BINDERS (v2.std.type_binder type_application_conformance,
 // consumed by v2.compiler.resolve resolve_type_application). Each specimen is one inline source over the
