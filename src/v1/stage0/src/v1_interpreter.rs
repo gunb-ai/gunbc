@@ -1336,6 +1336,13 @@ pub enum InterpError {
         marginal_cpu_nanos: u128,
         limit_ms: u64,
     },
+    /// A fixture compile instrument (`compile_dag_rust_emit_check`) refused to answer: the
+    /// typed cause says which arm fired (`cli_run::FixtureRenderRefusal`). Refusing is the
+    /// fail-closed alternative to rendering every module or reading an absent file as `false`.
+    FixtureRenderRefused {
+        instrument: &'static str,
+        refusal: crate::cli_run::FixtureRenderRefusal,
+    },
     /// The fast-lane per-witness eval budget, enforced on THREAD CPU by the cooperative
     /// stride-poll in `eval_expr`. The measured field is named for its clock: this and the
     /// wall-clock budget below are different quantities of one occurrence, and a shared
@@ -1486,6 +1493,10 @@ impl fmt::Display for InterpError {
                  fill_cpu_ns={} marginal_cpu_ns={} limit_ms={}",
                 entry, producer, fill_cpu_nanos, marginal_cpu_nanos, limit_ms
             ),
+            InterpError::FixtureRenderRefused {
+                instrument,
+                refusal,
+            } => write!(f, "{instrument}: {refusal}"),
             InterpError::EvalBudgetExceeded {
                 cpu_ms: elapsed_ms,
                 budget_ms,
@@ -23357,11 +23368,14 @@ macro_rules! v1_builtin_arms {
                 let file_path = expect_str($positional.get(1).copied(), $name)?;
                 let includes = expect_str_list($positional.get(2).copied(), $name)?;
                 let excludes = expect_str_list($positional.get(3).copied(), $name)?;
-                Ok(Some(Value::Bool(
-                    crate::cli_run::compile_dag_rust_emit_check(
-                        &source, &file_path, &includes, &excludes,
-                    ),
-                )))
+                crate::cli_run::compile_dag_rust_emit_check(
+                    &source, &file_path, &includes, &excludes,
+                )
+                .map(|verdict| Some(Value::Bool(verdict)))
+                .map_err(|refusal| InterpError::FixtureRenderRefused {
+                    instrument: "compile_dag_rust_emit_check",
+                    refusal,
+                })
             },
 
             arm "free_call.compile_dag_diagnostic_census" { "compile_dag_diagnostic_census" } => {
