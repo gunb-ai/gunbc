@@ -1220,8 +1220,8 @@ fn lex_rule_fixed_spelling(rule: LexRule, token_class: Symbol) -> Optional<Strin
 
 fn lex_pattern_fixed_spelling(pattern: LexPattern) -> Optional<String> {
   match pattern {
-    LiteralPattern { text: text } => optional_present(value: chars_to_string(chars: text, start: 0, end: length(xs: text)))
-    KeywordPattern { text: text } => optional_present(value: chars_to_string(chars: text, start: 0, end: length(xs: text)))
+    LiteralPattern { text: text } => optional_present(value: text)
+    KeywordPattern { text: text } => optional_present(value: text)
     EmptyPattern => optional_absent()
     CharPattern { char: _ } => optional_absent()
     CharClassPattern { class: _ } => optional_absent()
@@ -1477,8 +1477,8 @@ fn target_layout_token_spelled_flat_diagnostic(token_class: Symbol) -> Diagnosti
 }
 
 fn apply_emit_spelling_quote(prefix: String, open: String, close: String, escapes: List<EmitSpellingEscape>, spelling: String) -> String {
-  let escaped = apply_emit_spelling_escapes(spelling: chars(s: spelling), escapes: escapes)
-  concat(prefix, concat(open, concat(chars_to_string(chars: escaped, start: 0, end: length(xs: escaped)), close)))
+  let escaped = apply_emit_spelling_escapes(spelling: spelling, escapes: escapes)
+  concat(prefix, concat(open, concat(escaped, close)))
 }
 
 fn apply_emit_spelling_transform(

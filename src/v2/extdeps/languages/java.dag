@@ -697,7 +697,7 @@ fn java_target_model() -> TargetModel {
 fn java_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: chars(s: text) }
+    pattern: LiteralPattern { text: text }
   }
 }
 
