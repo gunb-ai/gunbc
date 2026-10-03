@@ -89,6 +89,7 @@ import gunbc.observation_ci_render {
   ci_witness_bazel_target_label,
   ci_shared_fill_row_text,
   ci_shared_fill_total_text,
+  ci_shared_fill_unattributed_text, UnattributedHitOutsideFold, UnattributedHitInClaimWithoutFill,
   ci_human_elapsed,
   HeartbeatSample,
   FloorRunSummary,
@@ -810,6 +811,25 @@ test fn w_shared_fill_total_line_holds() -> Bool {
     shared_fill: millisecond(count: 42000),
     unattributed_hits: 0
   ) == "[floor-shared-fill] TOTAL fills=9 fill_ms=60000 shared_fill_ms=42000 unattributed_hits=0"
+}
+
+// THE PER-KEY UNATTRIBUTED LINE, both frames: the pair varies only the frame, so a renderer that
+// collapsed them back into one aggregate reds here.
+test fn w_shared_fill_unattributed_line_names_frame_phase_and_key() -> Bool {
+  ci_shared_fill_unattributed_text(
+    frame: UnattributedHitOutsideFold,
+    phase: "cross-claim-share-derivation",
+    cache: "cross_claim_pure_share",
+    key: "rust_target_model_staging",
+    hits: 3
+  ) == "[floor-shared-fill-unattributed] frame=outside-fold phase=cross-claim-share-derivation cache=cross_claim_pure_share key=rust_target_model_staging hits=3"
+    && ci_shared_fill_unattributed_text(
+      frame: UnattributedHitInClaimWithoutFill,
+      phase: "claim",
+      cache: "cross_claim_pure_share",
+      key: "prepare_grammar",
+      hits: 40
+    ) == "[floor-shared-fill-unattributed] frame=in-claim-without-fill phase=claim cache=cross_claim_pure_share key=prepare_grammar hits=40"
 }
 
 // THE DISCRIMINATING HALF. The line above would read identically for a fill whose cost really is
