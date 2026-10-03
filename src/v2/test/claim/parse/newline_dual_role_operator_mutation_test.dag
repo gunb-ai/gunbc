@@ -40,13 +40,13 @@ import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
-import v2.test.parse.newline_dual_role_operator_parse {
+import test.claim.parse_test_newline_dual_role_operator {
   newline_minus_after_block_source,
   newline_minus_after_operand_source,
   same_line_minus_source
 }
 
-// THE MUTATION THAT REDS THE NEWLINE-`-` REFUSAL (v2.test.parse.newline_dual_role_operator_parse).
+// THE MUTATION THAT REDS THE NEWLINE-`-` REFUSAL (test.claim.parse_test_newline_dual_role_operator).
 // It rebuilds the live dag grammar with every NewlineBeforeDualRoleOperator RefuseOnMatch arm
 // replaced by a terminal no token carries -- an alternative that can never match -- and asserts that
 // such arms exist. Only that reason is stripped, so the mutant differs from the live grammar in that
@@ -55,7 +55,7 @@ import v2.test.parse.newline_dual_role_operator_parse {
 // is a helper inlined into each operand position of the comparison and equality rows; it is one
 // authored row. Under the mutant the
 // next-line sources parse again (the silent merge into one subtraction is back); under the live
-// grammar they refuse (the controls in v2.test.parse.newline_dual_role_operator_parse). The
+// grammar they refuse (the controls in test.claim.parse_test_newline_dual_role_operator). The
 // same-line form parses under both.
 //
 // THE GRAMMARS ARE SUPPLIED, NOT RE-PREPARED PER CLAIM (DESIGN section 3, a witness discriminates at
@@ -162,11 +162,11 @@ fn nlm_mutant_prepared() -> Outcome<PreparedGrammar> {
 fn accepts_prepared(text: String, file: Symbol, prepared: Outcome<PreparedGrammar>) -> Bool {
   match prepared {
     Rejected { diagnostics: _ } => false
-    Accepted { value: p, diagnostics: residue } =>
+    Accepted { value: p, diagnostics: _ } =>
       match tokenize(text: text, file: file, rules: dag_lex()) {
         Rejected { diagnostics: _ } => false
         Accepted { value: stream, diagnostics: _ } =>
-          match parse_module_prepared(tokens: stream, prepared: p, validation_residue: residue) {
+          match parse_module_prepared(tokens: stream, prepared: p) {
             Accepted { value: _, diagnostics: _ } => true
             Rejected { diagnostics: _ } => false
           }
@@ -178,7 +178,7 @@ test fn witness_the_live_grammar_carries_the_newline_refusal() -> Bool {
   nlm_refusal_arm_census().newline > 0
 }
 
-// The live grammar's refusals are the controls in v2.test.parse.newline_dual_role_operator_parse;
+// The live grammar's refusals are the controls in test.claim.parse_test_newline_dual_role_operator;
 // this module asserts only what they cannot: that the refusal arms are what produce them. One claim
 // per source, so each pays one tokenize and one parse against the supplied mutant.
 test fn witness_without_the_refusal_a_next_line_minus_after_an_operand_merges_RED() -> Bool {

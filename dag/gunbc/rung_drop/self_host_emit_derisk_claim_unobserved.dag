@@ -24,9 +24,8 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // both emit rows FAIL (ownership_miss: cpu=334ms wall=1237ms eval_steps=224878;
 // two_user_types: exit 1). The sibling `self_host_frontier_infer_single_arm_module_holds`
 // also FAIL, so the emit conjunct is not an isolated emit-stage miss. On
-// `6a1e5acfae`, interpreted probes that return the diagnostic reason (head, and
-// `frontier_probe_assemble_located_reason_from_diagnostics` which skips
-// `parse_grammar_choice_overlap_residue`) all printed `resolve_reason_unbound_symbol` for
+// `6a1e5acfae`, interpreted probes that return the diagnostic reason (head, and a located-reason
+// fold that skipped the since-retired grammar overlap residue) all printed `resolve_reason_unbound_symbol` for
 // assemble, infer, and emit of both fixtures. Head and located reason agreed: this is not
 // residue masking. The interpreted claim may consume that skip fold; an emitted closure
 // currently cannot. The probes are not kept: they are not the hold-claim, and a Symbol

@@ -13,7 +13,7 @@ import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.collection { list_at_optional }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.communication.medium { Medium }
-import v2.std.diagnostic { Accepted, Rejected, Outcome, Diagnostic, NonEmptyDiagnostics, Textual }
+import v2.std.diagnostic { Accepted, Rejected, Outcome, Diagnostic, NonEmptyDiagnostics, Textual, diagnostics_fatal_reason }
 import v2.std.node { Node, Edge, TypeNode, Arrow, Conj, Authored, Symbol, node_synthetic, symbol_lexeme }
 import v2.std.optional { Optional, Present, Absent }
 import v2.std.algebra { fold_list, length }
@@ -68,17 +68,6 @@ type EntryRealizationAttempt {
   entry: String
   arrow_count: Int
   standing: RealizationAttemptStanding
-}
-
-fn first_located_cause(ds: NonEmptyDiagnostics) -> Symbol {
-  let residue = ^parse_grammar_choice_overlap_residue
-  if !(ds.head.reason == residue) {
-    ds.head.reason
-  } else {
-    fold_list(xs: ds.tail, empty: ds.head.reason, cons: fn(acc, d) {
-      if (acc == residue) && !(d.reason == residue) { d.reason } else { acc }
-    })
-  }
 }
 
 fn attempt_refused(entry: String, phase: RealizationPhase, cause: Symbol) -> EntryRealizationAttempt {
@@ -150,7 +139,7 @@ fn attempt_entry_source(entry: String, source: String) -> EntryRealizationAttemp
       attempt_refused_at(
         entry: entry,
         phase: PhaseFrontend,
-        cause: first_located_cause(ds: ds),
+        cause: diagnostics_fatal_reason(d: ds),
         located: first_located_file(ds: ds)
       )
     Accepted { value: resolved, diagnostics: _ } => {
@@ -171,7 +160,7 @@ fn attempt_entry_source(entry: String, source: String) -> EntryRealizationAttemp
               arrow_count: length(xs: arrows),
               standing: V2RealizationRefused {
                 phase: PhaseTranslate,
-                exact_cause: first_located_cause(ds: ds),
+                exact_cause: diagnostics_fatal_reason(d: ds),
                 located: first_located_file(ds: ds)
               }
             }
@@ -286,11 +275,11 @@ fn attempt_joined(program: ResolvedTree, fn_name: Symbol, entry: String) -> Entr
       Present { value: decl } =>
         match infer_and_discharge(tree: ResolvedTree { root: decl, symbol_index: program.symbol_index, resolved_declarations: program.resolved_declarations, lexical_bindings: program.lexical_bindings, unavailable_providers: program.unavailable_providers }) {
           Rejected { diagnostics: ds } =>
-            attempt_refused_at(entry: entry, phase: PhaseInfer, cause: first_located_cause(ds: ds), located: first_located_file(ds: ds))
+            attempt_refused_at(entry: entry, phase: PhaseInfer, cause: diagnostics_fatal_reason(d: ds), located: first_located_file(ds: ds))
           Accepted { value: inferred, diagnostics: _ } =>
             match compile_inferred(inferred: inferred, mode: TranslateTo { target: rust_target_model_staging() }) {
               Rejected { diagnostics: ds } =>
-                attempt_refused_at(entry: entry, phase: PhaseTranslate, cause: first_located_cause(ds: ds), located: first_located_file(ds: ds))
+                attempt_refused_at(entry: entry, phase: PhaseTranslate, cause: diagnostics_fatal_reason(d: ds), located: first_located_file(ds: ds))
               Accepted { value: out, diagnostics: _ } =>
                 match out {
                   TranslateResult { source: emitted } =>
@@ -316,7 +305,7 @@ fn attempt_assembled(
 ) -> EntryRealizationAttempt {
   match assemble_program_from_ingest(ingest: ingest, admission: admission, lm: dag_language_model()) {
     Rejected { diagnostics: ds } => {
-      let cause = first_located_cause(ds: ds)
+      let cause = diagnostics_fatal_reason(d: ds)
       attempt_refused_at(entry: entry, phase: phase_for_reason(reason: cause, fallback: PhaseResolve), cause: cause, located: first_located_file(ds: ds))
     }
     Accepted { value: program, diagnostics: _ } =>
@@ -356,7 +345,7 @@ fn attempt_closure_rows(
 ) -> List<EntryRealizationAttempt> {
   match assemble_program_from_ingest(ingest: ingest, admission: admission, lm: dag_language_model()) {
     Rejected { diagnostics: ds } => {
-      let cause = first_located_cause(ds: ds)
+      let cause = diagnostics_fatal_reason(d: ds)
       let phase = phase_for_reason(reason: cause, fallback: PhaseResolve)
       let located = first_located_file(ds: ds)
       fold_list(xs: fn_names, empty: no_attempt_rows(), cons: fn(acc, _name) {

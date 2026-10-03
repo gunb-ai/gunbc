@@ -156,8 +156,8 @@ data identity_module_text: String = "module probe.layout_identity\n\ndata d: Int
 fn identity_parse(stream: TokenStream) -> Outcome<ParseArtifact> {
   match dag_prepared_grammar() {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: prepared, diagnostics: residue } =>
-      parse_module_prepared(tokens: stream, prepared: prepared, validation_residue: residue)
+    Accepted { value: prepared, diagnostics: _ } =>
+      parse_module_prepared(tokens: stream, prepared: prepared)
   }
 }
 

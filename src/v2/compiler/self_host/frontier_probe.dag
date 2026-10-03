@@ -14,9 +14,6 @@ import v2.compiler.name_resolve {
   resolve_diagnostics,
   validate_module_roots
 }
-import v2.compiler.parse {
-  overlap_residue_stage_from_parse_grammar
-}
 import v2.compiler.program_assembly {
   assemble_program_from_ingest,
   program_assembly_fold_ingest,
@@ -24,7 +21,6 @@ import v2.compiler.program_assembly {
   ProgramAssemblyFoldOk
 }
 import v2.compiler.self_host.frontier_probe_assemble_detail {
-  frontier_probe_assemble_located_reason_from_diagnostics,
   frontier_probe_receipt_from_assemble_rejection
 }
 import v2.compiler.self_host.frontier_probe_types {
@@ -704,13 +700,10 @@ fn frontier_probe_emit_from_populated_ingest(
         module_path: module_path,
         diagnostics: d,
         detail: frontier_probe_detail_from_diagnostic(
-          reason: frontier_probe_assemble_located_reason_from_diagnostics(d: d),
+          reason: d.head.reason,
           d: d,
           ingest: ingest,
           admission: admission
-        ),
-        overlap_residue_stage: overlap_residue_stage_from_parse_grammar(
-          grammar: dag_language_model().grammar
         )
       )
     Accepted { value: _, diagnostics: _ } =>

@@ -22,9 +22,7 @@ import v2.std.integer { Int }
 // a general bag of reasons). A rejection is a LIST with two observed positions: the HEAD — what
 // the door ledger's own DoorRefused rows carry, where rejected_with_pending prepends non-fatal
 // advisories — and the FATAL — the last diagnostic, the cause that actually refused. The same
-// symbol can be owned at both grains (parse_grammar_choice_overlap_residue is the native route's
-// head advisory on 876 modules and never its fatal; parse_g0_tokens_remain is the fatal under it
-// and never surfaces at head), and ownership at one grain says NOTHING about the other — the
+// symbol can be owned at both grains (tokenize_lex_e1_unrecognized_char is owned at each), and ownership at one grain says NOTHING about the other — the
 // grains are different observations of the same frontier class. the door ledger's cause_is_attributed keeps its
 // head-grain contract (its rows are head-grain by construction); the fatal-grain lookup
 // is the native route's instrument (gunbc.witness_v2_native_route), derived from the SAME table —
@@ -54,10 +52,8 @@ type CauseOwnership {
 // the same cause is the position that refuses. The FATAL-grain rows were measured 2026-09-09 and
 // 2026-09-10 by the gunbc.witness_v2_native_route census as the LAST diagnostic — the cause that
 // actually refused — through the emitted native binary, at the per-row scope each flip_trigger
-// states. rejected_with_pending prepends the non-fatal overlap residue, so the fatal-grain causes
-// never surface at the head grain the door ledger's own rows count; their ownership lives here at
-// the grain they are observed at, and the native-route census classifies against exactly those
-// rows.
+// states. Their ownership lives here at the grain they are observed at, and the native-route census
+// classifies against exactly those rows.
 
 data known_frontier_causes: List<CauseOwnership> = [
   CauseOwnership {
@@ -79,12 +75,6 @@ data known_frontier_causes: List<CauseOwnership> = [
     flip_trigger: "no per-cause trigger — dissolves by construction at the namespace-only containment flip (admit_named_exports flat-merge replaced by position-distinct containment; nimble-boar-198)"
   },
   CauseOwnership {
-    cause: ^parse_grammar_choice_overlap_residue,
-    grain: HeadGrain,
-    lane: MigrationOwned,
-    flip_trigger: "no per-cause trigger — dissolves by construction at phase-3 import-grammar deletion / grammar-surgery (nimble-boar-198)"
-  },
-  CauseOwnership {
     cause: ^tokenize_lex_e1_unrecognized_char,
     grain: HeadGrain,
     lane: MigrationOwned,
@@ -94,7 +84,7 @@ data known_frontier_causes: List<CauseOwnership> = [
     cause: ^parse_g0_tokens_remain,
     grain: FatalGrain,
     lane: MigrationOwned,
-    flip_trigger: "no per-cause trigger — same grammar-surgery class as parse_grammar_choice_overlap_residue (nimble-boar-198). Measured 2026-09-09 by the gunbc.witness_v2_native_route census as the fatal refusal on 706 real v2.test.* modules through the emitted native binary"
+    flip_trigger: "no per-cause trigger — grammar-surgery class (nimble-boar-198). Measured 2026-09-09 by the gunbc.witness_v2_native_route census as the fatal refusal on 706 real v2.test.* modules through the emitted native binary"
   },
   CauseOwnership {
     cause: ^tokenize_lex_e1_unrecognized_char,

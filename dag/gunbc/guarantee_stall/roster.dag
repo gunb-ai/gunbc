@@ -29,6 +29,7 @@ import gunbc.guarantee_stall.doc_graph_dangling_link_population_stall { doc_grap
 import gunbc.guarantee_stall.enforcement_live_closure_gate_stall { enforcement_live_closure_gate_stall }
 import gunbc.guarantee_stall.mandatory_tag_live_corpus_stall { mandatory_tag_live_corpus_stall }
 import gunbc.guarantee_stall.test_reference_ledger_typed_census_stall { test_reference_ledger_typed_census_stall }
+import gunbc.guarantee_stall.grammar_change_parses_no_real_corpus_file_stall { grammar_change_parses_no_real_corpus_file_stall }
 import gunbc.guarantee_stall.parse_ingest_grammar_relation_stall { parse_ingest_grammar_relation_stall }
 import gunbc.guarantee_stall.required_regen_host_derivation_stall { required_regen_host_derivation_stall }
 import gunbc.guarantee_stall.self_host_hand_authorized_cargo_toml_stall { self_host_hand_authorized_cargo_toml_stall }
@@ -237,6 +238,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   free_semigroup_text_crossing_decided_by_spelling_stall,
   emitted_inline_crate_path_edges_unreturned_stall,
   test_reference_ledger_typed_census_stall,
+  grammar_change_parses_no_real_corpus_file_stall,
 ]
 
 // THE FOUR SUBJECTS RESTORED TO THE ROSTER, PINNED BY IDENTITY SO THEIR LOSS REFUSES.

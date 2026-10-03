@@ -1,0 +1,30 @@
+module gunbc.guarantee_stall.grammar_change_parses_no_real_corpus_file_stall
+
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, UncountedNotEnumerable, climbs_when }
+
+// A §4b(2) STALL, NOT A §4b(3) DROP: no control has ever parsed real corpus files on a grammar
+// change, so nothing fell and there is no previous rung to name (gunbc.rung_drop's own header
+// routes a never-held class here). Declared under sharp-raven-357's ruling of 2026-10-03 on
+// gunbc#13126, after gunbc#13056 broke src/v2/std/node.dag, dag/gunbc/scm/object_store.dag and
+// src/v2/workflow/realization_runner.dag with every merge-gating check green.
+//
+// WHAT HOLDS TODAY. The floor carries route controls on supplied source: one per production the
+// zero-overlap grammar program changed, plus the verbatim broken shapes, in
+// test.claim.parse_test_grammar_program_routes. They catch a regression of those shapes and no
+// other: a grammar change that breaks a real file through a shape no control spells still merges.
+//
+// THE BLOCKER IS COST ON THE INTERPRETED ROUTE, MEASURED (claim_batch, in-session, at gunbc#13126,
+// v2 front end through v2.lens.enforcement.grammar_coverage grammar_coverage_ingest_path): node.dag
+// 19,722,445 eval steps / 60 s, object_store.dag 26,212,148 / 101 s, realization_runner.dag
+// 4,916,631 / 17 s -- 68x to 363x the new-witness budget per file. The native-built parser takes
+// milliseconds, so the climb is the native route gating, not an interpreter ceiling lane (the
+// operator declined a long-test CI lane, so nothing gating would run interpreted whole-file claims).
+data grammar_change_parses_no_real_corpus_file_stall: GuaranteeStall = GuaranteeStall {
+  subject: "A grammar-authority change merges without any control parsing the real corpus files it can affect: today no control parses real corpus files on a grammar change, which is how gunbc#13056 broke src/v2/std/node.dag unseen. Held instead: supplied-source route controls, one per changed production, plus the verbatim broken shapes",
+  current: Mitigatable,
+  ceiling: MechanicallyPreventable,
+  blocker: AwaitsOneGrounding { grounding: "the native-built parser on the merge path: the interpreter takes 17-101 s per file (node.dag 60 s, object_store.dag 101 s, realization_runner.dag 17 s, measured at gunbc#13126) while the native parser takes milliseconds" },
+  population: UncountedNotEnumerable { reason: "the corpus .dag files a grammar-authority change can affect" },
+  next_rung_trigger: climbs_when(capability: "every corpus file is parsed by the native-built parser on every pull request that changes a grammar authority, and a parse refusal blocks the merge.")
+}

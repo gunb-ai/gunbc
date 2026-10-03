@@ -55,7 +55,6 @@ test fn every_pinned_cause_is_attributed_to_its_lane() -> Bool {
   lane_ok_this_lane(cause: ^fact_density_hollow_alias_locus)
     && lane_ok_shared(cause: ^resolve_reason_unbound_symbol)
     && lane_ok_migration(cause: ^resolve_ambiguous_export)
-    && lane_ok_migration(cause: ^parse_grammar_choice_overlap_residue)
 }
 
 test fn unknown_cause_is_fail_closed_unattributed() -> Bool {

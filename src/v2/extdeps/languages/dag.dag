@@ -1220,9 +1220,13 @@ fn dag_grammar_stmt_seq_expr() -> GrammarExpr {
   dag_grammar_repeat(element: dag_grammar_nonterminal(production: ^dag_production_stmt))
 }
 
-// AN EXPRESSION STATEMENT NEVER BEGINS WITH A LET SPELLING. `name =` and `node name` head the two
-// let_sugar forms (dag_grammar_let_sugar_expr) and begin no expression, so the expression
-// alternative is guarded by exactly those heads: the two alternatives are disjoint by construction
+// AN EXPRESSION STATEMENT NEVER BEGINS WITH A LET SPELLING. `name =` and `node name :` / `node name =`
+// head the two let_sugar forms (dag_grammar_let_sugar_expr) and begin no expression, so the
+// expression alternative is guarded by exactly those heads. The node head is all three tokens:
+// a bare `node` statement followed on the next line by a statement that begins with a name (the
+// next match arm, an `if`) begins `node name` too, and it is an expression; a two-token guard
+// refused it while the sugar, lacking its `:` / `=`, refused it as well. So the guard is read at
+// depth three: the two alternatives are disjoint by construction
 // and the choice-overlap proof reads the guard. The guard captures nothing; the statement's tree is
 // the expression's.
 fn dag_grammar_let_sugar_head_expr() -> GrammarExpr {
@@ -1233,7 +1237,13 @@ fn dag_grammar_let_sugar_head_expr() -> GrammarExpr {
     ),
     right: dag_grammar_sequence(
       left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "node")),
-      right: dag_grammar_binding_name_terminal()
+      right: dag_grammar_sequence(
+        left: dag_grammar_binding_name_terminal(),
+        right: dag_grammar_choice(
+          left: dag_grammar_terminal(token_class: ^dag_token_colon),
+          right: dag_grammar_terminal(token_class: ^dag_token_eq)
+        )
+      )
     )
   )
 }

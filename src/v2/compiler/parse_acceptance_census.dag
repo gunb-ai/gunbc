@@ -52,11 +52,11 @@ fn parse_acceptance_census_line(path: String) -> String {
 fn parse_acceptance_of_text(text: String, path: String) -> String {
   match dag_prepared_grammar() {
     Rejected { diagnostics: _ } => "grammar-unprepared"
-    Accepted { value: prepared, diagnostics: residue } =>
+    Accepted { value: prepared, diagnostics: _ } =>
       match tokenize(text: text, file: symbol_intern_lexeme(lexeme: path), rules: dag_lex()) {
         Rejected { diagnostics: d } => "refused " + parse_acceptance_fatal_text(d: d)
         Accepted { value: stream, diagnostics: _ } =>
-          match parse_module_prepared(tokens: stream, prepared: prepared, validation_residue: residue) {
+          match parse_module_prepared(tokens: stream, prepared: prepared) {
             Accepted { value: _, diagnostics: _ } => "accepted"
             Rejected { diagnostics: d } => "refused " + parse_acceptance_fatal_text(d: d)
           }

@@ -47,7 +47,6 @@ import std.algebra { Empty, FreeMonoid, list_snoc_item }
 import v2.std.algebra { fold_list, list_map }
 import v2.std.diagnostic {
   Accepted,
-  Diagnostics,
   NonEmptyDiagnostics,
   Outcome,
   Rejected,
@@ -214,7 +213,6 @@ fn program_assembly_phase_tokenize(
 fn program_assembly_phase_parse_measured_seeded(
   tokens: Outcome<TokenStream>,
   prepared: PreparedGrammar,
-  residue: Diagnostics,
   seed: OccurrenceIdAllocator
 ) -> ParseProductionMeasured {
   match tokens {
@@ -227,7 +225,6 @@ fn program_assembly_phase_parse_measured_seeded(
       let measured = parse_module_prepared_measured_seeded(
         tokens: token_stream,
         prepared: prepared,
-        validation_residue: residue,
         seed: seed
       )
       ParseProductionMeasured {
@@ -373,7 +370,6 @@ fn program_assembly_read_to_normalized_root_seeded(
   read: DagSourceReadWitness,
   lm: LanguageModel,
   prepared: PreparedGrammar,
-  residue: Diagnostics,
   seed: OccurrenceIdAllocator,
   scope: Fnv1a64Structural
 ) -> ProgramAssemblySeededReadResult {
@@ -383,7 +379,6 @@ fn program_assembly_read_to_normalized_root_seeded(
       parse_module_prepared_seeded(
         tokens: token_stream,
         prepared: prepared,
-        validation_residue: residue,
         seed: seed
       )
     }
@@ -439,7 +434,6 @@ fn program_assembly_fold_step(
   read: DagSourceReadWitness,
   lm: LanguageModel,
   prepared: PreparedGrammar,
-  residue: Diagnostics,
   scope: Fnv1a64Structural
 ) -> ProgramAssemblyLocatedFoldState {
   match state {
@@ -450,7 +444,6 @@ fn program_assembly_fold_step(
         read: read,
         lm: lm,
         prepared: prepared,
-        residue: residue,
         seed: seed,
         scope: scope
       )
@@ -535,7 +528,7 @@ fn program_assembly_fold_ingest_located(
       match prepare_grammar(grammar: lm.grammar) {
         Rejected { diagnostics: d } =>
           ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: span_index_empty() }
-        Accepted { value: prepared, diagnostics: residue } =>
+        Accepted { value: prepared, diagnostics: _ } =>
           match program_assembly_ingest_scope(ingest: ingest) {
             SourceRefListDigestNonStructuralRefused { path: _ } =>
               ProgramAssemblyLocatedFoldFailed {
@@ -552,7 +545,7 @@ fn program_assembly_fold_ingest_located(
                   spans: span_index_empty()
                 },
                 cons: fn(state, read) {
-                  program_assembly_fold_step(state: state, read: read, lm: lm, prepared: prepared, residue: residue, scope: scope)
+                  program_assembly_fold_step(state: state, read: read, lm: lm, prepared: prepared, scope: scope)
                 }
               )
           }
