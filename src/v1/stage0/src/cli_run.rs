@@ -26534,6 +26534,12 @@ pub enum DiscoveryWidthPolicy {
 pub(crate) struct FileLineRange {
     start: i64,
     end: i64,
+    /// A zero-width new-side range (`+L,0` under `-U0`): a PURE DELETION whose gap sits between
+    /// new-side lines L and L+1 (`start` = `end` = L+1). It names no surviving line, so
+    /// attribution charges it to a declaration only when the gap falls strictly INSIDE that
+    /// declaration's span; a gap between declarations removed whole declarations, which no
+    /// longer exist to select (`a_pure_deletion_force_runs_its_unchanged_neighbour`).
+    deletion_gap: bool,
 }
 
 fn string_list_from_value(val: &v1_interpreter::Value, field: &str) -> Result<Vec<String>, String> {
@@ -26592,14 +26598,17 @@ fn parse_unified_diff_line_ranges(diff_text: &str) -> HashMap<String, Vec<FileLi
             // L+1 — attribute the single following line, mirroring
             // parse_unified_diff_changed_new_lines (anchoring at L false-fired
             // the module-line refusal for import strips under a module header).
-            let (start, end) = if count <= 0 {
+            let deletion_gap = count <= 0;
+            let (start, end) = if deletion_gap {
                 (start + 1, start + 1)
             } else {
                 (start, start + count - 1)
             };
-            out.entry(file)
-                .or_default()
-                .push(FileLineRange { start, end });
+            out.entry(file).or_default().push(FileLineRange {
+                start,
+                end,
+                deletion_gap,
+            });
         }
     }
     out
@@ -28514,7 +28523,8 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
             ranges.get(file),
             Some(&vec![FileLineRange {
                 start: 101,
-                end: 103
+                end: 103,
+                deletion_gap: false
             }])
         );
     }
@@ -28738,6 +28748,62 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
         std::collections::HashMap::from([(dest.to_string(), content)])
     }
 
+    // A PURE DELETION IS CHARGED BY WHERE ITS GAP LIES (`gunbc.recurring_failure_mode`
+    // `a_pure_deletion_force_runs_its_unchanged_neighbour`). The head file is supplied; the
+    // `-U0` diff removes a whole test fn that sat between `a` and `c`, then (second case) one
+    // line inside `a`. The between-declarations gap must charge NEITHER neighbour -- before the
+    // fix it charged `c`, the line after the gap -- and the interior gap must still charge `a`.
+    fn deletion_gap_sources(path: &str) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::from([(
+            path.to_string(),
+            "module m.gap\n\ntest fn a() -> Bool {\n  true\n}\n\ntest fn c() -> Bool {\n  true\n}\n"
+                .to_string(),
+        )])
+    }
+
+    fn deletion_gap_edited(diff: &str, path: &str) -> HashSet<String> {
+        let index = build_multi_entry_index(&[]);
+        let edits = floor_diff_edits_from_diff_text_with_base_names_and_sources(
+            &index,
+            diff,
+            &std::collections::HashMap::new(),
+            &deletion_gap_sources(path),
+        )
+        .expect("a deletion-only diff must attribute, not refuse");
+        edits
+            .edited_test_fns
+            .iter()
+            .filter(|(file, _)| file == path)
+            .map(|(_, f)| f.clone())
+            .collect()
+    }
+
+    #[test]
+    fn a_deletion_between_declarations_charges_neither_neighbour() {
+        let path = "src/v2/test/claim/gap_fixture_test.dag";
+        let diff = format!(
+            "diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -7,4 +6,0 @@\n-test fn b() -> Bool {{\n-  true\n-}}\n-\n"
+        );
+        assert_eq!(
+            deletion_gap_edited(&diff, path),
+            HashSet::new(),
+            "a whole declaration deleted between `a` and `c` must not select either"
+        );
+    }
+
+    #[test]
+    fn a_deletion_inside_a_declaration_still_charges_it() {
+        let path = "src/v2/test/claim/gap_fixture_test.dag";
+        let diff = format!(
+            "diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -5 +4,0 @@\n-  && false\n"
+        );
+        assert_eq!(
+            deletion_gap_edited(&diff, path),
+            HashSet::from(["a".to_string()]),
+            "a line removed inside `a` edits `a`"
+        );
+    }
+
     // Path-keyed census at the NEW path is empty for a rename. Enrolment must read the
     // SOURCE path or every moved fn is gated as new.
     #[test]
@@ -28881,7 +28947,11 @@ deleted file mode 100644
         let ranges = parse_unified_diff_line_ranges(diff);
         assert_eq!(
             ranges.get(kept),
-            Some(&vec![FileLineRange { start: 9, end: 9 }]),
+            Some(&vec![FileLineRange {
+                start: 9,
+                end: 9,
+                deletion_gap: false
+            }]),
             "deleted-file hunk must not extend the preceding file's ranges"
         );
         assert_eq!(
