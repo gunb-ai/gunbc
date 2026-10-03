@@ -2000,6 +2000,7 @@ fn floor_route_gap_expectation_chunk_32() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.roadmap.session_placement_wet_witness.a_post_gate_failure_with_an_ended_unit_returns_the_real_seat_from_the_current_generation", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Empty {}
   }  }  }  }  }  }  }
+}
 
 // THE ALLOCATION AUTH REAL-FILE CLAIMS (gunbc#13004): the login transaction's create-new consume,
 // the callback hold over a real transaction store, and the private fabric-state namespace. Each
