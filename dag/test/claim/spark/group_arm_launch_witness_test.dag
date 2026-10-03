@@ -1,7 +1,7 @@
 module test.claim.spark.group_arm_launch_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
-import std.content_hash { ContentHash }
+import std.content_hash { ContentHash, content_hash_equal }
 import v2.std.optional { Present, Absent }
 import std.measure { token_count, kibibyte, mebibyte, basis_point }
 import extdeps.systemd { Active }
@@ -9,16 +9,18 @@ import extdeps.vllm.engine_args { FullInputAdmissionExplicit, FullInputAdmission
 import gunbc.compute.host_occupancy { HostUnoccupied, HostOccupiedBy, ServingUnitActive, GpuComputeProcess }
 import extdeps.nvidia.system_management_interface { UsedMemoryReported }
 import product.placement_supply { HostIdentity }
-import gunbc.spark.fabric_switch_observed { FabricGroupA, fabric_group_hosts }
+import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB, fabric_group_hosts }
 import gunbc.spark.serving_capacity_intent { scheduler_envelope, SchedulerEnvelopeAdmitted, SchedulerEnvelopeRefused }
 import gunbc.spark.group_arm_launch {
   GroupArmLaunchPlan, GroupArmLaunchPlanned, GroupArmLaunchRefused, GroupArmHostOccupancy,
   GroupArmLaunchAdmission, GroupArmLaunchAdmitted, GroupArmLaunchAdmissionRefused,
   ArmDeclaredIncumbent, NoIncumbentDeclared, IncumbentDeclared, ArmIncumbentUnit,
   ArmSuccessorKeyed, ArmSuccessorUnkeyed, group_arm_launch_admission, group_arm_read_units, group_arm_row_successor, group_arm_launch_plan,
+  group_arm_released_launch_causes,
 }
+import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, ReleasedToFleet }
 import gunbc.spark.glm53_arm_staircase {
-  Glm53StaircaseStep, Glm53Fp8Step, Glm53Nvfp4Step, Fp8Seats8, Fp8Seats24, Nvfp4Seats32,
+  Glm53StaircaseStep, Glm53Fp8Step, Glm53Nvfp4Step, Fp8Seats8, Fp8Seats24, Nvfp4Seats8, Nvfp4Seats32,
   SupersedePreviousStep,
   glm53_staircase_steps, glm53_step_wire, glm53_step_of_wire, glm53_step_ceiling, glm53_step_profile, glm53_step_inputs,
   glm53_staircase_cold_intent, glm53_staircase_scheduler_admission, glm53_staircase_units,
@@ -97,12 +99,20 @@ test fn w_each_step_launches_its_own_checkpoint() -> Bool {
 //
 // The FP8 eight-seat step's REAL inputs through the REAL planner (group_arm_launch_plan: the arm wall,
 // the memory wall under the bounded-experiment intent, the roster) -- nothing about the plan is
-// supplied. Only the authority is, at the admission's interface, because the live log lives on the
-// fleet. The route is asserted: four rank lines at the step's ceiling over its floor, and an admission
-// that refuses because the GLM runtime has no successor key (its image is pinned only per Group B host)
-// even under a suspension that would admit a keyed arm. The live entry (mode spark_arm_group_launch_plan)
-// is the same fold with the authority read from the log.
-test fn w_the_glm_fp8_eight_seat_step_takes_the_one_path_and_refuses_on_its_unpinned_image() -> Bool {
+// supplied. Only the authority and the occupancy are, at the admission's interface, because the live
+// log and the hosts are on the fleet. The route is asserted: four rank lines at the step's ceiling over
+// its floor, and an admission that ADMITS on Group A released to the fleet, because the committed
+// standing grant covers an arm launch on all four hosts and the produced runtime gives a keyed
+// successor. The live entry (mode spark_arm_group_launch_plan) is the same fold with the authority read.
+fn w_released(h: ContentHash) -> PairServingGroupAuthority {
+  ReleasedToFleet { group: FabricGroupA, release_receipt: h }
+}
+
+fn w_vacant_a() -> List<GroupArmHostOccupancy> {
+  map(fabric_group_hosts(g: FabricGroupA), h => GroupArmHostOccupancy { host: h, admission: HostUnoccupied { available: kibibyte(count: 120000000) } })
+}
+
+test fn w_the_glm_fp8_eight_seat_step_takes_the_one_path_and_admits_on_the_released_group() -> Bool {
   with_w_plan(f: fn(p, rk, ck) {
     match glm53_step_inputs(s: Glm53Fp8Step { step: Fp8Seats8 }) {
       Absent => false
@@ -111,17 +121,37 @@ test fn w_the_glm_fp8_eight_seat_step_takes_the_one_path_and_refuses_on_its_unpi
         GroupArmLaunchPlanned { lines: ls, profile: prof, master_endpoint: _ } => {
           let a = group_arm_launch_admission(
             group: FabricGroupA, purpose: i.purpose, plan: GroupArmLaunchPlanned { lines: ls, profile: prof, master_endpoint: "witness" as NonEmptyStr },
-            authority: Present { value: w_suspended_for(successor: ck, stale: false) },
+            authority: Present { value: w_released(h: ck) },
             successor: group_arm_row_successor(inputs: i), arm_causes: [],
-            held: fabric_group_hosts(g: FabricGroupA), occupancy: w_running(unit: glm53_staircase_units.head_unit_name),
-            incumbent: glm53_previous_step_incumbent(lines_hosts: map(ls, l => l.node.host)))
+            held: fabric_group_hosts(g: FabricGroupA), occupancy: w_vacant_a(),
+            incumbent: NoIncumbentDeclared)
           length(ls) == 4 && prof.max_num_seqs == 8 && prof.guaranteed_cold_seqs == 8
-            && w_refused_with(a: a, fragment: "has no keyed successor realization")
-            && w_refused_with(a: a, fragment: "unpinned")
+            && (match a { GroupArmLaunchAdmitted => true  GroupArmLaunchAdmissionRefused { causes: _ } => false })
         }
       }
     }
   })
+}
+
+// A RELEASED GROUP REFUSES A LAUNCH THE GRANT DOES NOT COVER (ruling of valiant-crab-775, 2026-10-03):
+// one host outside the grant's roster is enough, and a group the grant does not name refuses whatever
+// its hosts. The positive control is the grant's own four hosts. Then the same refusal on the admission
+// route: the real V4.1 plan, whose hosts are Group A's, admitted under Group B's release refuses by the
+// grant cause (and by the host wall), never admits.
+test fn w_a_released_group_refuses_a_launch_the_grant_does_not_cover() -> Bool {
+  let a_hosts = fabric_group_hosts(g: FabricGroupA)
+  length(group_arm_released_launch_causes(group: FabricGroupA, hosts: a_hosts)) == 0
+    && length(group_arm_released_launch_causes(group: FabricGroupA, hosts: concat(a_hosts, ["srv9" as HostIdentity]))) == 1
+    && length(group_arm_released_launch_causes(group: FabricGroupB, hosts: fabric_group_hosts(g: FabricGroupB))) == 1
+    && length(group_arm_released_launch_causes(group: FabricGroupA, hosts: [] as List<HostIdentity>)) == 1
+    && with_w_plan(f: fn(p, rk, ck) {
+      w_refused_with(a: group_arm_launch_admission(
+          group: FabricGroupB, purpose: "witness" as NonEmptyStr, plan: v41_arm_plan(p: p),
+          authority: Present { value: ReleasedToFleet { group: FabricGroupB, release_receipt: ck } },
+          successor: ArmSuccessorKeyed { key: ck }, arm_causes: [],
+          held: fabric_group_hosts(g: FabricGroupB), occupancy: w_vacant_a(), incumbent: NoIncumbentDeclared),
+        fragment: "no standing grant covers an arm launch")
+    })
 }
 
 // THE STAIRCASE'S RUNTIME IS KEYED: the Group A production is pinned by its configuration digest, so

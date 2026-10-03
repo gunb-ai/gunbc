@@ -1,5 +1,7 @@
 module gunbc.spark.group_arm_launch
 
+import gunbc.auth.standing_operator_grant { standing_grant_covers, StandingArmLaunch }
+import gunbc.spark.pair_serving_d0_door { d0_standing_grants }
 import std.types { String, Bool, List, NonEmptyStr }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { zip_map }
@@ -267,22 +269,37 @@ fn content_hash_text(h: ContentHash) -> String {
   serialize_content_hash(hash: h) as String
 }
 
-fn group_arm_authority_causes(group_label: String, authority: PairServingGroupAuthority?, successor: ArmSuccessorStanding) -> List<String> {
+// A RELEASED GROUP ADMITS A LAUNCH ONLY UNDER A STANDING GRANT THAT COVERS IT (operator ruling relayed
+// by valiant-crab-775, 2026-10-03). ReleasedToFleet means no pair-serving suspension exists to launch a
+// successor under, so the authority the launch acts under is the committed standing ruling
+// (gunbc.auth.standing_operator_grant), read from the one roster D0 already consumes
+// (gunbc.spark.pair_serving_d0_door d0_standing_grants). It covers the launch only when a grant names
+// this group, the ArmLaunch effect and EVERY planned host; anything less refuses. The successor must
+// still be keyed, and every other wall (arm, hosts, incumbent, occupancy, memory) still applies.
+fn group_arm_released_launch_causes(group: FabricGroup, hosts: List<HostIdentity>) -> List<String> {
+  if any(d0_standing_grants, g => standing_grant_covers(g: g, group: group, effect: StandingArmLaunch, hosts: hosts)) {
+    [] as List<String>
+  } else {
+    [join([group_label(g: group), " has been released to the fleet and no standing grant covers an arm launch on every planned host (", join(map(hosts, h => h as String), ", "), "); there is no suspension to launch a successor under either"], "")]
+  }
+}
+
+fn group_arm_authority_causes(group: FabricGroup, hosts: List<HostIdentity>, authority: PairServingGroupAuthority?, successor: ArmSuccessorStanding) -> List<String> {
+  let label = group_label(g: group)
   match successor {
     ArmSuccessorUnkeyed { causes: c } => map(c, x => join(["the launching arm has no keyed successor realization: ", x], ""))
     ArmSuccessorKeyed { key: candidate } =>
       match authority {
-        Absent => [join([group_label, " has no serving authority row; absence is not permission"], "")]
+        Absent => [join([label, " has no serving authority row; absence is not permission"], "")]
         Present { value: a } =>
           match a {
             PairServingActive { group: _, exact_realization: _ } =>
-              [join([group_label, "'s serving authority is Active for the incumbent; a successor may launch only under SuspendedForAuthorizedSuccessor"], "")]
+              [join([label, "'s serving authority is Active for the incumbent; a successor may launch only under SuspendedForAuthorizedSuccessor"], "")]
             SuspensionPendingReconciliation { group: _, hosts: _, transaction: _, authorization_binding: _, lease: _ } =>
-              [join([group_label, "'s suspension is still pending reconciliation; D0 has not settled it to an authorized successor"], "")]
+              [join([label, "'s suspension is still pending reconciliation; D0 has not settled it to an authorized successor"], "")]
             FencedRefusal { group: _, hosts: _, cause: c, disposition_authority: _ } =>
-              [join([group_label, " is fenced (", c as String, "); only cleanup may proceed"], "")]
-            ReleasedToFleet { group: _, release_receipt: _ } =>
-              [join([group_label, " has been released to the fleet; there is no suspension to launch a successor under"], "")]
+              [join([label, " is fenced (", c as String, "); only cleanup may proceed"], "")]
+            ReleasedToFleet { group: _, release_receipt: _ } => group_arm_released_launch_causes(group: group, hosts: hosts)
             SuspendedForAuthorizedSuccessor { group: _, hosts: _, authorization: _, exact_candidate_realization: r, lease: _, cleanup: _ } =>
               concat(
                 if pair_serving_successor_may_launch(a: a) { [] as List<String> } else { ["the successor authorization's lease is not running as expected, so it may not START a launch (cleanup still may)"] },
@@ -378,7 +395,7 @@ fn group_arm_launch_admission(
     GroupArmLaunchPlanned { lines: ls, profile: _, master_endpoint: _ } => {
       let hosts = map(ls, l => l.node.host)
       let causes = concat(concat(concat(concat(
-        group_arm_authority_causes(group_label: group_label(g: group), authority: authority, successor: successor),
+        group_arm_authority_causes(group: group, hosts: hosts, authority: authority, successor: successor),
         arm_causes),
         group_arm_host_causes(group: group, hosts: hosts, held: held)),
         group_arm_incumbent_roster_causes(hosts: hosts, incumbent: incumbent)),
