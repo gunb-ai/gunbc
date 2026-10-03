@@ -2185,6 +2185,7 @@ pub fn clear_cross_claim_pure_memos() {
     CROSS_CLAIM_SITE_GATED.with(|g| g.borrow_mut().clear());
     CROSS_CLAIM_ADMITTED_SITES.with(|a| a.borrow_mut().clear());
     CROSS_CLAIM_COST_FLOOR_STEPS.with(|c| c.set(0));
+    CROSS_CLAIM_STORE_DECLINES.with(|d| d.borrow_mut().clear());
     CROSS_CLAIM_IN_FLIGHT_WALL_CAP_NANOS.with(|c| c.set(0));
     CROSS_CLAIM_SHARE_OBSERVER.with(|o| *o.borrow_mut() = None);
     // The prepared effect inputs are tier state too, and for the sharpest reason: a carry that
@@ -2272,6 +2273,35 @@ fn cross_claim_site_admitted(fn_node: &Rc<Node>, call_node: &Node) -> bool {
 /// Install the shared-fill observer for the cross-claim tier. `None` uninstalls.
 pub fn install_cross_claim_share_observer(observer: Option<CrossClaimShareObserver>) {
     CROSS_CLAIM_SHARE_OBSERVER.with(|o| *o.borrow_mut() = observer);
+}
+
+thread_local! {
+    /// Every store the tier DECLINED for an admitted fill, by (producer, cause): the fill ran and
+    /// was not retained, so its cost stayed on the paying claim. Counted here so a claim that pays
+    /// for an admitted identity is explained by the run's own log rather than inferred.
+    static CROSS_CLAIM_STORE_DECLINES: RefCell<std::collections::BTreeMap<(String, &'static str), u64>> =
+        const { RefCell::new(std::collections::BTreeMap::new()) };
+}
+
+/// The declined stores of admitted fills on this thread, as (producer, cause, count).
+pub fn cross_claim_store_declines() -> Vec<(String, &'static str, u64)> {
+    CROSS_CLAIM_STORE_DECLINES.with(|d| {
+        d.borrow()
+            .iter()
+            .map(|((producer, cause), n)| (producer.clone(), *cause, *n))
+            .collect()
+    })
+}
+
+fn note_cross_claim_store_outcome(func_name: &str, outcome: &CrossClaimStoreOutcome) {
+    if outcome.is_servable() || matches!(outcome, CrossClaimStoreOutcome::NotAdmitted) {
+        return;
+    }
+    CROSS_CLAIM_STORE_DECLINES.with(|d| {
+        *d.borrow_mut()
+            .entry((func_name.to_string(), outcome.cause()))
+            .or_insert(0) += 1;
+    });
 }
 
 /// Derived-share fills declined below the cost floor on this thread — receipt fodder only.
@@ -10169,7 +10199,7 @@ fn eval_pure_named_call(
                 // The ordinary call path publishes opportunistically: every outcome,
                 // servable or refused, is already counted inside the store, and this
                 // call recomputes on a refusal exactly as if never enrolled.
-                let _ = store_cross_claim_pure_memo(
+                let outcome = store_cross_claim_pure_memo(
                     ctx,
                     fn_node,
                     func_name,
@@ -10177,6 +10207,7 @@ fn eval_pure_named_call(
                     v,
                     fill_guard.as_ref(),
                 );
+                note_cross_claim_store_outcome(func_name, &outcome);
             }
         }
         return result;
@@ -10192,6 +10223,16 @@ fn eval_pure_named_call(
             // census, which ranks by duration. Recording after the call is what makes the two
             // buckets comparable; the earlier count-only form could name a producer it could
             // never rank.
+            // AN ADMITTED FILL THAT THIS BRANCH NEVER OFFERS TO THE TIER. The recompute ledger
+            // cannot key these arguments, and the function returns below without a cross-claim
+            // store, so the fill stays on the paying claim. Counted under its own cause.
+            if fill_guard.is_some() {
+                CROSS_CLAIM_STORE_DECLINES.with(|d| {
+                    *d.borrow_mut()
+                        .entry((func_name.to_string(), "RecomputeKeyUnavailable"))
+                        .or_insert(0) += 1;
+                });
+            }
             let partial = eval_recompute_partial_key(ctx, fn_node, args);
             let result = call_function(ctx, fn_node, args, env);
             eval_recompute_record_unkeyed(
@@ -10223,8 +10264,9 @@ fn eval_pure_named_call(
     let result = call_function(ctx, fn_node, args, env);
     if let Ok(v) = &result {
         if share_site && ctx.effect_dispatch_count.get() == effects_before {
-            let _ =
+            let outcome =
                 store_cross_claim_pure_memo(ctx, fn_node, func_name, args, v, fill_guard.as_ref());
+            note_cross_claim_store_outcome(func_name, &outcome);
         }
     }
     if memo_on && ctx.effect_dispatch_count.get() == effects_before {

@@ -92,12 +92,12 @@ use crate::v1_std_core::{
     build_newline_index, byte_to_line_col, diagnostic_to_message, diagnostic_to_span,
     empty_intern_table, empty_node_list, expr_call_func_at, expr_method_name_at, expr_var_name_at,
     field_access_base, field_access_field_at, field_init_node_name_at, field_init_node_value,
-    has_child_named, inferred_to_node, intern, is_discovery_corpus_blocking_diagnostic,
-    is_error_diagnostic, is_interpreter_blocking_diagnostic, let_binding_name_at, let_value,
-    make_error_node, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
-    module_items, no_span, param_node_name_at, param_node_type_expr, Cardinality,
-    CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable,
-    MatchPattern, NewlineIndex, Node,
+    has_child_named, inferred_to_node, intern, is_error_diagnostic,
+    is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, make_error_node,
+    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span,
+    param_node_name_at, param_node_type_expr, Cardinality, CompilerDiagnostic, Connective,
+    ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable, MatchPattern, NewlineIndex,
+    Node,
 };
 use serde::Serialize;
 
@@ -181,7 +181,6 @@ pub(crate) fn floor_compile_clean_emit_ok_via_index(
     let (graph, si, compile_clean_diags) = match resolved_graph_from_sources_with_index(
         &index,
         sources,
-        ResolveTypecheckGate::Strict,
         "floor-compile-clean-gate",
         // Ephemeral: the whole-tree aggregate graph must NOT join the process share tier
         // (D0.1) — it would pin every TypedModule in the tree for the process lifetime.
@@ -1467,7 +1466,7 @@ fn changed_and_enrolled_witness_identities_with_index(
     // That is `check_reachable_only_from_an_entry_point_the_context_never_calls`: check_match
     // exhaustiveness is real at `gunbc compile` and silent on a required floor that never
     // resolved the file. Seeding the authored module pulls its both-closure into
-    // `prepare_repository_closure` (`ResolveTypecheckGate::Strict`), which is the same pass.
+    // `prepare_repository_closure` (the strict resolve), which is the same pass.
     floor_seam("diff-touched-module-seeds");
     let (touched_modules, touched_outside_floor_roots, seeded_pairs) =
         module_seeds_from_touched_entry_files(&root, &edits.touched_entry_files, source_roots)?;
@@ -11721,6 +11720,22 @@ pub fn run_required_floor(
     // next claim to touch it pays the same seconds — so a paring decision that reads only the
     // per-row wall time is deciding on an attribution artifact.
     eprint!("{}", shared_fill::report());
+    // WHAT THE TIER DECLINED TO RETAIN. An admitted fill whose store is declined stays on the
+    // claim that paid it; without these lines such a claim reads as over budget for no visible
+    // reason. One line per (producer, cause), then the tier's own totals.
+    for (producer, cause, count) in v1_interpreter::cross_claim_store_declines() {
+        eprintln!(
+            "[cross-claim-share-store-declined] producer={producer} cause={cause} count={count}"
+        );
+    }
+    {
+        let (stores, overflow) = v1_interpreter::cross_claim_pure_memo_counts();
+        eprintln!(
+            "[cross-claim-share-tier] retained_keys={stores} overflow_refusals={overflow} \
+             below_cost_floor={}",
+            v1_interpreter::cross_claim_below_cost_floor_count()
+        );
+    }
     // AND THE LEDGER IS ADJUDICATED, NOT ONLY RENDERED. The lines above are what a paring
     // decision reads; this call is what refuses one. It runs after the render so an operator has
     // the whole ledger in the log above the refusal that cites two of its rows.
@@ -17584,9 +17599,8 @@ mod changed_selections_outside_discovery_mirror_tests {
                 .to_string_lossy()
                 .to_string();
             let index = crate::cli_run::process_shared_index(&roots);
-            let (graph, indices) =
-                crate::cli_run::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
-                    .expect("the shared fixture resolves");
+            let (graph, indices) = crate::cli_run::resolve_entry_with_index(&index, &entry)
+                .expect("the shared fixture resolves");
             let ctx = crate::cli_run::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
             let read = |name: &str| {
                 v1_interpreter::with_active_context(&ctx, || {

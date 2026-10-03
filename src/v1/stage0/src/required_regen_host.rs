@@ -1208,11 +1208,8 @@ fn emitted_tree_packages(
     // and by nothing after it, so the pool is not put in the thread's shared memo, where it
     // would sit beside the round's source-roots index for the life of the thread.
     let index = super::build_multi_entry_index(&roots);
-    let (graph, indices) =
-        super::resolve_entry_with_index_for_discovery_corpus(&index, &entry.to_string_lossy())
-            .map_err(|e| {
-                format!("refusal: the emitted tree's package graph did not resolve: {e}")
-            })?;
+    let (graph, indices) = super::resolve_entry_with_index(&index, &entry.to_string_lossy())
+        .map_err(|e| format!("refusal: the emitted tree's package graph did not resolve: {e}"))?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
     // DECODE IS NOT HAND-WRITTEN: `Value` -> `value_to_wire_json` -> `serde_json::from_value` into
     // the mirror types, the decode authority `namespace_baseline` `decode_environment_value` uses.
@@ -3502,11 +3499,8 @@ impl RegenConvergenceModel {
                 "refusal: convergence transaction model is outside source roots".to_string()
             })?;
         let index = super::process_shared_index(source_roots);
-        let (graph, indices) =
-            super::resolve_entry_with_index_for_discovery_corpus(&index, &entry.to_string_lossy())
-                .map_err(|e| {
-                    format!("refusal: convergence transaction model did not resolve: {e}")
-                })?;
+        let (graph, indices) = super::resolve_entry_with_index(&index, &entry.to_string_lossy())
+            .map_err(|e| format!("refusal: convergence transaction model did not resolve: {e}"))?;
         Ok(Self { graph, indices })
     }
 
@@ -4301,10 +4295,9 @@ fn render_round_cost_receipt(
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     let entry = round_cost_entry(source_roots)?;
     let index = super::process_shared_index(source_roots);
-    let (graph, indices) = super::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
-        .map_err(|e| {
-            format!("refusal: {entry} did not resolve, so the receipt cannot render: {e}")
-        })?;
+    let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
+        format!("refusal: {entry} did not resolve, so the receipt cannot render: {e}")
+    })?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
     // The model's carriers, built in the model's vocabulary: a duration is a
     // `std.measure` Nanosecond (`Measure { count }`) inside `std.observation` Measured, on a
@@ -4500,10 +4493,9 @@ fn partition_rebuild_actuation(
     use crate::v1_interpreter::{self, ExecutionMode};
     let entry = round_cost_entry(source_roots)?;
     let index = super::process_shared_index(source_roots);
-    let (graph, indices) = super::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
-        .map_err(|e| {
-            format!("refusal: {entry} did not resolve, so the rebuild scope has no decider: {e}")
-        })?;
+    let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
+        format!("refusal: {entry} did not resolve, so the rebuild scope has no decider: {e}")
+    })?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
     let call = |function: &str| -> Result<ModelValue, String> {
         let args = vec![
@@ -6335,9 +6327,7 @@ mod regen_round_cost_tests {
             );
             let entry = round_cost_entry(&roots).unwrap();
             let index = super::super::process_shared_index(&roots);
-            let (graph, indices) =
-                super::super::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
-                    .unwrap();
+            let (graph, indices) = super::super::resolve_entry_with_index(&index, &entry).unwrap();
             let ctx = super::super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
             let decision_line = |mirror: &str, shell: &[String]| {
                 let args = vec![
@@ -8050,7 +8040,7 @@ pub fn regen_generation_role_population(
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     let entry = affected_set_entry(source_roots)?;
     let index = super::process_shared_index(source_roots);
-    let (graph, indices) = super::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
+    let (graph, indices) = super::resolve_entry_with_index(&index, &entry)
         .map_err(|e| format!("refusal: {entry} did not resolve for generation roles: {e}"))?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
     let strings = |items: &[String]| {
@@ -8157,10 +8147,9 @@ pub fn render_affected_set_bound(
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     let entry = affected_set_entry(source_roots)?;
     let index = super::process_shared_index(source_roots);
-    let (graph, indices) = super::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
-        .map_err(|e| {
-            format!("refusal: {entry} did not resolve, so the bound cannot answer: {e}")
-        })?;
+    let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
+        format!("refusal: {entry} did not resolve, so the bound cannot answer: {e}")
+    })?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
 
     let reached = regen_reverse_closure_host(edited, edges);
@@ -8313,10 +8302,9 @@ pub fn render_scope_selection(
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     let entry = required_regen_scope_entry(source_roots)?;
     let index = super::process_shared_index(source_roots);
-    let (graph, indices) = super::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
-        .map_err(|e| {
-            format!("refusal: {entry} did not resolve, so the scope cannot answer: {e}")
-        })?;
+    let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
+        format!("refusal: {entry} did not resolve, so the scope cannot answer: {e}")
+    })?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
     let strs = |items: &[String]| {
         let values: Vec<Value> = items.iter().map(str_value).collect();

@@ -1902,12 +1902,12 @@ fn evaluate_owned_item_in(
     let index = super::build_multi_entry_index(&[dag_root.display().to_string()]);
     let entry_display = entry.display().to_string();
     let (graph, indices) =
-        super::resolve_entry_with_index_for_discovery_corpus(&index, &entry_display).map_err(
-            |e| EnvironmentLoadRefusal::ClosureNotEvaluable {
+        super::resolve_entry_with_index(&index, &entry_display).map_err(|e| {
+            EnvironmentLoadRefusal::ClosureNotEvaluable {
                 revision: revision.to_string(),
                 cause: e,
-            },
-        )?;
+            }
+        })?;
     // HERMETIC, NOT WET. A static declaration has no business acquiring permission to perform host
     // effects while it is being decoded; `Wet` here would let a corpus under examination act during
     // examination.
@@ -2039,14 +2039,13 @@ fn closure_paths_of(
 ) -> Result<BTreeSet<String>, EnvironmentLoadRefusal> {
     let root = super::workspace_root();
     let entry = root.join(entry_rel);
-    let (graph, _indices) = super::resolve_entry_with_index_for_discovery_corpus(
-        live.get(),
-        &entry.display().to_string(),
-    )
-    .map_err(|e| EnvironmentLoadRefusal::ClosureNotEvaluable {
-        revision: "live-tree".to_string(),
-        cause: e,
-    })?;
+    let (graph, _indices) =
+        super::resolve_entry_with_index(live.get(), &entry.display().to_string()).map_err(|e| {
+            EnvironmentLoadRefusal::ClosureNotEvaluable {
+                revision: "live-tree".to_string(),
+                cause: e,
+            }
+        })?;
     let mut paths = BTreeSet::new();
     for module in graph.modules.iter() {
         for item in module.items.iter() {
