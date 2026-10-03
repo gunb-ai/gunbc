@@ -3353,8 +3353,14 @@ fn resolve_scope_binds_type_parameter(s: Scope, name: Symbol) -> Bool {
   match lookup_chain(s: s, name: name) {
     Accepted { value: found, diagnostics: _ } =>
       match found {
-        BoundInFrame { canonical: _, kind: TypeParameterFrame } => true
-        _ => false
+        BoundInFrame { canonical: _, kind: k } =>
+          match k {
+            TypeParameterFrame => true
+            ParameterFrame { arrow_path: _ } => false
+            LexicalFrame { binders: _ } => false
+          }
+        BoundAtRoot { canonical: _ } => false
+        ScopeUnbound => false
       }
     Rejected { diagnostics: _ } => false
   }
@@ -3380,12 +3386,15 @@ fn resolve_kind_variant_paths_optional(ctx: ResolveContext, declaration: Qualifi
               optional_present(value: fold(kind_decl.children, init: Empty, f: fn(acc, e) {
                 match e.label {
                   Authored { name: v } => list_snoc_item(xs: acc, item: qualified_name_snoc(qn: kind_path, segment: v))
-                  _ => acc
+                  StructuralLabel { label: _ } => acc
+                  Positional => acc
                 }
               }))
-            _ => optional_absent()
+            TypeNode { connective: _ } => optional_absent()
+            ComputationNode { behavior: _ } => optional_absent()
           }
-        _ => optional_absent()
+        LexicalAmbiguous { candidates: _ } => optional_absent()
+        LexicalUnbound => optional_absent()
       }
   }
 }

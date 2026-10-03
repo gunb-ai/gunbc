@@ -327,7 +327,9 @@ fn type_application_step(acc: TypeApplicationConformance, pa: TypeParamArgument,
             KindUnresolved => TypeApplicationKindUnresolved { argument: pa.argument, kind: kind }
           }
       }
-    _ => acc
+    TypeApplicationArityMismatch { declared: _, supplied: _ } => acc
+    TypeApplicationKindNotInhabited { argument: _, kind: _ } => acc
+    TypeApplicationKindUnresolved { argument: _, kind: _ } => acc
   }
 }
 
