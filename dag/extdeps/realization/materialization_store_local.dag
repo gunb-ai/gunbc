@@ -9,7 +9,12 @@ import extdeps.filesystem.filesystem_io {
   FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused,
   FilesystemCreateKindUnrecognized,
   filesystem_exact_read, filesystem_create_new, filesystem_failure_kind_name,
+  filesystem_listing_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused,
+  FilesystemDirectorySubjectRefused, filesystem_listing_entry_names,
 }
+import std.decimal { decimal_digits_only }
+import std.checked_arithmetic { int_inclusive_max }
+import v2.std.algebra { skip }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed, CatalogCasContentEncoding }
@@ -18,7 +23,11 @@ import std.content_hash { ContentHash, content_hash_of_value }
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
   ReleasedNever,
-  CapacityUnobserved,
+  CapacityBounded,
+  ByteCapacity,
+  ExactLimit,
+  ReplaceExisting,
+  LeastRecentlyUsed,
   ContentAddressLookup,
   WriteOnce,
   MissThenCreate,
@@ -37,13 +46,33 @@ import v2.std.optional { Absent }
 import std.access { Permit, Deny }
 import std.effect_grant { Verb, Read, Write, NamespacePosition }
 import std.filesystem_path_grant { absolute_path_position }
-import std.materialization_ladder { Frame }
+import std.materialization_ladder { Frame, CacheProvider, provider_row, persistent_retention, CoversIdentities, ArtifactTier, ContentKeyed }
+import std.artifact_store {
+  ArtifactStore, ArtifactRow, StoreConstruction, StoreReady, StoreRefusedRetention,
+  store_over_provider, store_put, StorePutOutcome, StorePutAdmitted, StorePutDidNotFit,
+  store_get, StoreHit, StoreMiss, store_bytes_used,
+}
+import std.cache_identity { ArtifactKindId, typed_module_artifact_kind, native_module_verdict_bundle_artifact_kind }
+import std.measure { ByteSize, byte_size, measure_count }
+import std.bytes { utf8_encode_bytes, bytes_octets }
+import std.durable_compare_and_set {
+  cas_attempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused,
+  ExpectSlotAbsent, ExpectSlotGeneration, CasExpectation,
+  CasReadableAbsent, CasReadablePresent, CasObservedReadable, CasObservedUnreadable,
+  cas_unreadable_slot_detail,
+}
+import gunbc.durable_cas_file_store {
+  admit_cas_attempt, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable,
+  file_compare_and_set, observe_cas_slot_state, DefaultAccessCreateOnly,
+  CasSlotRetention, KeepGenerationWindow, cas_generation_window, CasGenerationWindowAdmitted, CasGenerationWindowTooNarrow,
+  CasWindowReclamation, CasReclamationNotCommitted,
+}
 import std.materialization_provider {
-  ArtifactRequest, request_key, evaluation_store_address,
+  ArtifactRequest, request_key, request_kind, evaluation_store_address,
   Admitted, FamilyRefused
 }
 import std.materialization_store_grant {
-  MaterializationStoreRoot,
+  MaterializationStoreRoot, DurableHostVolumeRoot, WitnessScratchRoot,
   MaterializationStoreDurability,
   materialization_store_root_path,
   materialization_store_durability,
@@ -60,6 +89,7 @@ import std.materialization_object {
   StoreLookup, StoreLookupRefused, StoreLookupObjectUnavailable,
   StoreLookupStoreFamilyRefused,
   StoreCommit, StoreCommitRefused, StoreCommitPublishRefused,
+  StoreCommitRefusal, StoreCommitBudgetUndeclared, StoreCommitDidNotFit, StoreCommitOccupancyUnavailable,
   StoreCommitPreparation, StoreCommitPrepared, StoreCommitNotPrepared,
   store_object_name, store_lookup_from_address, store_commit_prepare, store_commit_settle,
 }
@@ -173,7 +203,7 @@ type LocalStoreUnavailableCause
   | LocalStoreMarkerUnavailable { fault: StoreFault }
 
 type LocalStoreOpening
-  = LocalStoreOpened { root: MaterializationStoreRoot, store: OpenedMaterializationStore, durability: MaterializationStoreDurability }
+  = LocalStoreOpened { root: MaterializationStoreRoot, store: OpenedMaterializationStore, durability: MaterializationStoreDurability, sweep: LocalStoreSweep }
   | LocalStoreUnavailable { root_path: String, cause: LocalStoreUnavailableCause }
 
 // PURE: the open decision over the marker read. Hermetic controls call this directly.
@@ -195,7 +225,8 @@ fn local_store_open_decide(root: MaterializationStoreRoot, marker_read: Filesyst
             provider: materialization_store_local_id,
             instance: content_hash_of_value(value: c as NonEmptyStr)
           },
-          durability: materialization_store_durability(root: root)
+          durability: materialization_store_durability(root: root),
+          sweep: LocalStoreSweepNotRun
         }
       } else {
         LocalStoreUnavailable { root_path: root_path, cause: LocalStoreMarkerUnrecognized { marker_path: marker_path } }
@@ -222,10 +253,14 @@ fn local_store_open(root: MaterializationStoreRoot) -> LocalStoreOpening {
         cause: LocalStoreGrantRefused { verb: Read, target: absolute_path_position(path: root_path), frame: materialization_store_frame }
       }
     Permit =>
-      local_store_open_decide(
+      match local_store_open_decide(
         root: root,
         marker_read: local_store_read(path: store_path(root_path: root_path, name: materialization_store_marker_name))
-      )
+      ) {
+        LocalStoreUnavailable { root_path: p, cause: c } => LocalStoreUnavailable { root_path: p, cause: c }
+        LocalStoreOpened { root: r, store: st, durability: d, sweep: _ } =>
+          LocalStoreOpened { root: r, store: st, durability: d, sweep: local_store_sweep(root: r) }
+      }
   }
 }
 
@@ -254,6 +289,398 @@ fn local_store_initialize(root: MaterializationStoreRoot, instance_label: NonEmp
         StoreObjectPublished => LocalStoreInitialized { opening: local_store_open(root: root) }
         StoreObjectOccupied => LocalStoreInitialized { opening: local_store_open(root: root) }
       }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// BOUNDED RETENTION: each request FAMILY has its own declared byte budget inside the one root, and the
+// host ceiling is their declared sum (operator ruling via royal-moth-86, 2026-10-03, after an earlier
+// on-disk cache with no ceiling or cleanup filled the CI runners' disks). The budget is not a number
+// this module enforces by itself: it is a std.materialization_ladder CacheProvider row per family, and
+// the store is CONSTRUCTED from that row by std.artifact_store store_over_provider, which refuses an
+// unbounded or unobserved row and realizes ReplaceExisting { LeastRecentlyUsed } with a fit test
+// before any eviction. So an unbounded family cannot be written here, an artifact larger than its
+// family's budget refuses (StoreCommitDidNotFit) without evicting anything, and no family evicts
+// another's entries -- each family's accounting is its own index.
+//
+// ONE ROOT PER HOST is structural: DurableHostVolumeRoot is a nullary arm naming one path
+// (std.materialization_store_grant materialization_store_durable_root_path), so the host-wide ceiling
+// is local_store_host_ceiling_bytes and nothing else; WitnessScratchRoot is the fixture arm and
+// carries the fixture budgets below.
+
+type LocalStoreFamilyBudget {
+  family: ArtifactKindId
+  budget: ByteSize
+}
+
+// POLICY, NAMED AS POLICY: 4 GiB for typed-module results per host. It is not derived from a
+// measurement -- the only measured predecessor stored closure snapshots of ~3.65 GB each, which is not
+// the per-module grain this store holds -- and its REVISION TRIGGER is the TypecheckModuleRequest
+// consumer (PR C2) measuring real per-module entries on the durable root.
+data local_store_typed_module_budget_policy: ByteSize = byte_size(count: 4294967296)
+
+data local_store_durable_family_budgets: List<LocalStoreFamilyBudget> = [
+  LocalStoreFamilyBudget { family: typed_module_artifact_kind, budget: local_store_typed_module_budget_policy },
+]
+
+// Fixture budgets for WitnessScratchRoot: small enough that a wet witness overruns them in a few
+// commits, so eviction and the fit refusal are reached by execution.
+data local_store_witness_family_budgets: List<LocalStoreFamilyBudget> = [
+  LocalStoreFamilyBudget { family: native_module_verdict_bundle_artifact_kind, budget: byte_size(count: 4096) },
+  LocalStoreFamilyBudget { family: typed_module_artifact_kind, budget: byte_size(count: 4096) },
+]
+
+// The budgets are a fact of the ROOT, derived from it rather than passed in by a caller.
+fn local_store_family_budgets(root: MaterializationStoreRoot) -> List<LocalStoreFamilyBudget> {
+  match root {
+    DurableHostVolumeRoot => local_store_durable_family_budgets
+    WitnessScratchRoot { root: _ } => local_store_witness_family_budgets
+  }
+}
+
+fn local_store_budget_sum(budgets: List<LocalStoreFamilyBudget>) -> ByteSize {
+  byte_size(count: fold(budgets, init: 0, f: (acc, b) => acc + measure_count(m: b.budget)))
+}
+
+// The one host-wide figure: the sum of the durable root's declared family budgets.
+data local_store_host_ceiling_bytes: ByteSize = local_store_budget_sum(budgets: local_store_durable_family_budgets)
+
+fn local_store_family_provider(family: ArtifactKindId, budget: ByteSize) -> CacheProvider {
+  provider_row(
+    id: concat("materialization_store_local:", family as String),
+    scope: [materialization_store_frame],
+    coverage: CoversIdentities { identities: [family as String] },
+    tier: ArtifactTier { keying: ContentKeyed },
+    retention: persistent_retention(capacity: CapacityBounded {
+      limit: ByteCapacity { limit: ExactLimit { value: budget } },
+      at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }
+    })
+  )
+}
+
+fn local_store_family_budget(root: MaterializationStoreRoot, family: ArtifactKindId) -> LocalStoreFamilyBudget? {
+  local_store_family_budgets(root: root) |> filter(b => b.family == family) |> first
+}
+
+// The object's size is its UTF-8 byte count, the same quantity std.materialization_object payload_part
+// puts in a ByteSize -- never string_length, which counts code points.
+fn local_store_object_bytes(object: String) -> ByteSize {
+  byte_size(count: bytes_octets(b: utf8_encode_bytes(s: object)) |> count())
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE OCCUPANCY INDEX: one CAS slot per family in the store root, retained as a generation WINDOW
+// (gunbc.durable_cas_file_store KeepGenerationWindow, k = 2) because its history is not evidence --
+// its only fact is the head. Its canonical, versioned encoding is one header, the next ordinal, and
+// one row per object sorted by name; a slot that does not decode REFUSES as corrupt, never reads as
+// empty (docs/plans/demand-engine-program.md section 2.8, EvaluationIndexCorrupt). The recovery is the
+// operator's: delete the family's occupancy slot files; the next open's sweep then removes every
+// object the empty index no longer names, so a quarantine never leaves unaccounted bytes behind.
+
+data local_store_index_magic: String = "gunbc-store-occupancy v1"
+
+data local_store_index_window_k: Int = 2
+
+fn local_store_index_key(family: ArtifactKindId) -> NonEmptyStr {
+  concat("occupancy-", family as String) as NonEmptyStr
+}
+
+type LocalStoreIndexRow {
+  name: String
+  bytes: Int
+  ordinal: Int
+}
+
+type LocalStoreIndex {
+  next_ordinal: Int
+  rows: List<LocalStoreIndexRow>
+}
+
+type LocalStoreIndexDecode
+  = LocalStoreIndexDecoded { index: LocalStoreIndex }
+  | LocalStoreIndexCorrupt { detail: String }
+
+data local_store_empty_index: LocalStoreIndex = LocalStoreIndex { next_ordinal: 1, rows: [] }
+
+fn local_store_index_row_line(r: LocalStoreIndexRow) -> String {
+  join([r.name, r.bytes as String, r.ordinal as String], " ")
+}
+
+fn local_store_index_encode(index: LocalStoreIndex) -> String {
+  let rows = index.rows |> sort_by(r => r.name)
+  join(concat([local_store_index_magic, concat("next ", index.next_ordinal as String)], rows |> map(r => local_store_index_row_line(r: r))), "\n")
+}
+
+fn local_store_digits_int(s: String) -> Int? {
+  if s == "" || !decimal_digits_only(s: s) { none } else {
+    fold(s |> chars, init: Present { value: 0 }, f: (acc, c) => match acc {
+      Absent => none
+      Present { value: n } => if n > (int_inclusive_max() - (c - 48)) / 10 { none } else { Present { value: n * 10 + (c - 48) } }
+    })
+  }
+}
+
+fn local_store_index_row_decode(line: String) -> LocalStoreIndexRow? {
+  let parts: List<String> = line.split(delimiter: " ")
+  if count(parts) != 3 { none } else {
+    let name = match first(parts) { Present { value: v } => v Absent => "" }
+    let bytes_text = match first(skip(parts, 1)) { Present { value: v } => v Absent => "" }
+    let ordinal_text = match first(skip(parts, 2)) { Present { value: v } => v Absent => "" }
+    match local_store_digits_int(s: bytes_text) {
+      Absent => none
+      Present { value: b } => match local_store_digits_int(s: ordinal_text) {
+        Absent => none
+        Present { value: o } => if name == "" { none } else { Present { value: LocalStoreIndexRow { name: name, bytes: b, ordinal: o } } }
+      }
+    }
+  }
+}
+
+fn local_store_index_decode(content: String) -> LocalStoreIndexDecode {
+  let lines: List<String> = content.split(delimiter: "\n")
+  let magic = match first(lines) { Present { value: v } => v Absent => "" }
+  let next_line = match first(skip(lines, 1)) { Present { value: v } => v Absent => "" }
+  if magic != local_store_index_magic {
+    LocalStoreIndexCorrupt { detail: "the occupancy index does not start with its format header" }
+  } else if !starts_with(s: next_line, prefix: "next ") {
+    LocalStoreIndexCorrupt { detail: "the occupancy index has no next-ordinal line" }
+  } else {
+    match local_store_digits_int(s: substring(s: next_line, start: 5, end: string_length(s: next_line))) {
+      Absent => LocalStoreIndexCorrupt { detail: "the occupancy index's next ordinal is not a number" }
+      Present { value: next } => {
+        let row_lines = skip(lines, 2)
+        let decoded = row_lines |> map(l => local_store_index_row_decode(line: l))
+        if decoded |> any(d => match d { Absent => true Present { value: _ } => false }) {
+          LocalStoreIndexCorrupt { detail: "an occupancy index row does not decode as name, bytes, ordinal" }
+        } else {
+          LocalStoreIndexDecoded {
+            index: LocalStoreIndex {
+              next_ordinal: next,
+              rows: decoded |> fold(init: [], f: (acc, d) => match d { Absent => acc Present { value: r } => acc |> list_push(r) })
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn local_store_row_key(name: String) -> ContentHash {
+  content_hash_of_value(value: name as NonEmptyStr)
+}
+
+// The index as the std.artifact_store fold sees it, with the budget from the family's provider row.
+fn local_store_artifact_store(budget: ByteSize, index: LocalStoreIndex) -> ArtifactStore {
+  ArtifactStore {
+    budget: budget,
+    next_ordinal: index.next_ordinal,
+    rows: index.rows |> map(r => ArtifactRow { key: local_store_row_key(name: r.name), artifact_bytes: byte_size(count: r.bytes), last_use_ordinal: r.ordinal })
+  }
+}
+
+// Back from the fold: each surviving row keeps its name, found through the key it was given.
+fn local_store_index_of(store: ArtifactStore, names: List<String>) -> LocalStoreIndex {
+  LocalStoreIndex {
+    next_ordinal: store.next_ordinal,
+    rows: store.rows |> fold(init: [], f: (acc, row) => match names |> filter(n => local_store_row_key(name: n) == row.key) |> first {
+      Absent => acc
+      Present { value: n } => acc |> list_push(LocalStoreIndexRow { name: n, bytes: measure_count(m: row.artifact_bytes), ordinal: row.last_use_ordinal })
+    })
+  }
+}
+
+fn local_store_index_retention() -> CasSlotRetention? {
+  match cas_generation_window(k: local_store_index_window_k) {
+    CasGenerationWindowAdmitted { window: w } => Present { value: KeepGenerationWindow { window: w } }
+    CasGenerationWindowTooNarrow { k: _ } => none
+  }
+}
+
+type LocalStoreIndexRead
+  = LocalStoreIndexAt { index: LocalStoreIndex, expected: CasExpectation }
+  | LocalStoreIndexUnavailable { cause: String }
+
+fn local_store_read_index(root_path: String, family: ArtifactKindId) -> LocalStoreIndexRead {
+  match local_store_index_retention() {
+    Absent => LocalStoreIndexUnavailable { cause: "the occupancy index window is narrower than its floor" }
+    Present { value: retention } =>
+      match observe_cas_slot_state(root: root_path as NonEmptyStr, key: local_store_index_key(family: family), retention: retention) {
+        CasObservedUnreadable { cause: c } => LocalStoreIndexUnavailable { cause: concat("the occupancy index could not be read: ", cas_unreadable_slot_detail(cause: c)) }
+        CasObservedReadable { readable: r } => match r {
+          CasReadableAbsent => LocalStoreIndexAt { index: local_store_empty_index, expected: ExpectSlotAbsent }
+          CasReadablePresent { version: v } => match local_store_index_decode(content: v.value as String) {
+            LocalStoreIndexCorrupt { detail: d } => LocalStoreIndexUnavailable { cause: concat("the occupancy index is corrupt: ", d) }
+            LocalStoreIndexDecoded { index: i } => LocalStoreIndexAt { index: i, expected: ExpectSlotGeneration { generation: v.generation } }
+          }
+        }
+      }
+  }
+}
+
+type LocalStoreIndexWrite
+  = LocalStoreIndexWritten { reclamation: CasWindowReclamation }
+  | LocalStoreIndexLostRace
+  | LocalStoreIndexWriteRefused { cause: String }
+
+fn local_store_write_index(root_path: String, family: ArtifactKindId, expected: CasExpectation, index: LocalStoreIndex) -> LocalStoreIndexWrite {
+  let content = local_store_index_encode(index: index) as NonEmptyStr
+  match local_store_index_retention() {
+    Absent => LocalStoreIndexWriteRefused { cause: "the occupancy index window is narrower than its floor" }
+    Present { value: retention } =>
+      match admit_cas_attempt(attempt: cas_attempt(key: local_store_index_key(family: family), expected: expected, proposed: content, proposed_content: content_hash_of_value(value: content))) {
+        CasAttemptDigestMismatch { claimed: _, actual: _ } => LocalStoreIndexWriteRefused { cause: "the occupancy index digest did not match its bytes" }
+        CasAttemptDigestIncomparable { claimed: _, actual: _ } => LocalStoreIndexWriteRefused { cause: "the occupancy index digest was incomparable" }
+        CasAttemptKeyNotSlotAddressable { key: _ } => LocalStoreIndexWriteRefused { cause: "the occupancy index key is not slot-addressable" }
+        CasAttemptAdmitted { verified: v } => {
+          let write = file_compare_and_set(root: root_path as NonEmptyStr, publication: DefaultAccessCreateOnly, retention: retention, verified: v)
+          match write.outcome {
+            CasCommitted { committed: _ } => LocalStoreIndexWritten { reclamation: write.reclamation }
+            CasPreconditionFailed { expected: _, observed: _ } => LocalStoreIndexLostRace
+            CasStoreRefused { cause: c } => LocalStoreIndexWriteRefused { cause: "the occupancy index write was refused by the store" }
+          }
+        }
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// RESERVATION: the index row is committed BEFORE the object is published, so every published object
+// is named by its family's index at the instant it appears -- which is what makes the open-time sweep
+// safe against an in-flight writer. A loser of the index CAS re-reads and retries, never overwrites;
+// past the bound it refuses. An object already indexed is not re-reserved (put-if-absent is
+// idempotent), and a reserved row whose publish later fails occupies budget until evicted: bounded,
+// and named in the commit receipt as a refusal, never served.
+
+data local_store_reservation_attempt_bound: Int = 8
+
+type LocalStoreReservation
+  = LocalStoreReserved { evicted: List<String>, reclamation: CasWindowReclamation }
+  | LocalStoreReservationRefused { refusal: StoreCommitRefusal }
+
+fn local_store_reserve(root: MaterializationStoreRoot, family: ArtifactKindId, name: String, bytes: ByteSize, attempt: Int) -> LocalStoreReservation {
+  let root_path = materialization_store_root_path(root: root)
+  if attempt > local_store_reservation_attempt_bound {
+    LocalStoreReservationRefused { refusal: StoreCommitOccupancyUnavailable { cause: "the occupancy index kept moving under concurrent writers past the attempt bound" } }
+  } else {
+    match local_store_family_budget(root: root, family: family) {
+      Absent => LocalStoreReservationRefused { refusal: StoreCommitBudgetUndeclared { family: family } }
+      Present { value: b } =>
+        match store_over_provider(provider: local_store_family_provider(family: family, budget: b.budget)) {
+          StoreRefusedRetention { provider_id: _, declared: _, cause: _ } =>
+            LocalStoreReservationRefused { refusal: StoreCommitOccupancyUnavailable { cause: "the family's provider row does not construct a bounded store" } }
+          StoreReady { store: ready } =>
+            match local_store_read_index(root_path: root_path, family: family) {
+              LocalStoreIndexUnavailable { cause: c } => LocalStoreReservationRefused { refusal: StoreCommitOccupancyUnavailable { cause: c } }
+              LocalStoreIndexAt { index: index, expected: expected } =>
+                if index.rows |> any(r => r.name == name) {
+                  LocalStoreReserved { evicted: [], reclamation: CasReclamationNotCommitted }
+                } else {
+                  match store_put(store: local_store_artifact_store(budget: ready.budget, index: index), key: local_store_row_key(name: name), artifact_bytes: bytes) {
+                    StorePutDidNotFit { artifact_bytes: a, budget: bu } =>
+                      LocalStoreReservationRefused { refusal: StoreCommitDidNotFit { artifact_bytes: a, budget: bu } }
+                    StorePutAdmitted { store: packed, evicted: _ } => {
+                      let names = concat(index.rows |> map(r => r.name), [name])
+                      let next_index = local_store_index_of(store: packed, names: names)
+                      let evicted = index.rows |> filter(r => !(next_index.rows |> any(k => k.name == r.name))) |> map(r => r.name)
+                      match local_store_write_index(root_path: root_path, family: family, expected: expected, index: next_index) {
+                        LocalStoreIndexWritten { reclamation: rc } => LocalStoreReserved { evicted: evicted, reclamation: rc }
+                        LocalStoreIndexLostRace => local_store_reserve(root: root, family: family, name: name, bytes: bytes, attempt: attempt + 1)
+                        LocalStoreIndexWriteRefused { cause: c } => LocalStoreReservationRefused { refusal: StoreCommitOccupancyUnavailable { cause: c } }
+                      }
+                    }
+                  }
+                }
+            }
+        }
+    }
+  }
+}
+
+// Evicted objects are deleted after the index stops naming them; a delete the host refuses leaves an
+// object no index names, which the next open's sweep removes, and is reported in the commit receipt.
+fn local_store_delete_names(root_path: String, names: List<String>) -> List<String> {
+  names |> filter(n => !Filesystem.Delete(path: store_path(root_path: root_path, name: n)).success)
+}
+
+// ---------------------------------------------------------------------------------------------
+// SELF-CLEAN ON OPEN. The listing is taken FIRST and the family indexes are read AFTER it: an object
+// in the listing was published after its reservation, so an index read after the listing names it
+// unless it was since evicted -- in which case deleting it is right. Only this realization's object
+// names (<digest>.materialization.<version>) are candidates; the marker, the index slots and any
+// other file are never touched, nothing is recursed into, and an index that cannot be read stops the
+// sweep (nothing is deleted on a guess).
+
+type LocalStoreSweep
+  = LocalStoreSwept { removed: List<String>, delete_refused: List<String> }
+  | LocalStoreSweepUnavailable { cause: String }
+  // The pure open decision never touches the filesystem, so it reports the sweep as not run; the
+  // effectful local_store_open runs it once the marker has opened the store.
+  | LocalStoreSweepNotRun
+
+fn local_store_is_object_name(name: String) -> Bool {
+  contains(s: name, sub: ".materialization.")
+}
+
+fn local_store_indexed_names(root: MaterializationStoreRoot) -> List<String>? {
+  let root_path = materialization_store_root_path(root: root)
+  fold(local_store_family_budgets(root: root), init: Present { value: [] }, f: (acc, b) => match acc {
+    Absent => none
+    Present { value: names } => match local_store_read_index(root_path: root_path, family: b.family) {
+      LocalStoreIndexUnavailable { cause: _ } => none
+      LocalStoreIndexAt { index: i, expected: _ } => Present { value: concat(names, i.rows |> map(r => r.name)) }
+    }
+  })
+}
+
+fn local_store_sweep(root: MaterializationStoreRoot) -> LocalStoreSweep {
+  let root_path = materialization_store_root_path(root: root)
+  let listing = Filesystem.List(path: root_path)
+  match filesystem_listing_observation(directory: root_path, success: listing.success, entries: listing.entries, error: listing.error) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => LocalStoreSweepUnavailable { cause: c }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => LocalStoreSweepUnavailable { cause: e }
+    FilesystemDirectoryListed(listed) =>
+      match local_store_indexed_names(root: root) {
+        Absent => LocalStoreSweepUnavailable { cause: "a family's occupancy index could not be read, so no object is swept" }
+        Present { value: indexed } => {
+          let orphans = filesystem_listing_entry_names(listing: listed)
+            |> filter(n => local_store_is_object_name(name: n) && !(indexed |> any(i => i == n)))
+          let refused = local_store_delete_names(root_path: root_path, names: orphans)
+          LocalStoreSwept { removed: orphans |> filter(n => !(refused |> any(r => r == n))), delete_refused: refused }
+        }
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// RECENCY IS ADVISORY. A lookup never writes. A process records the names it served ONCE, at the end
+// of its run, as one CAS per family index; losing that CAS, or failing to read the index, only makes
+// the next eviction less precise, so this function cannot fail a lookup or a commit and has no
+// refusal arm -- its outcome is reported and nothing branches on it for correctness.
+
+type LocalStoreRecency
+  = LocalStoreRecencyRecorded { family: ArtifactKindId, bumped: Int }
+  | LocalStoreRecencyNothingToRecord { family: ArtifactKindId }
+  | LocalStoreRecencyLost { family: ArtifactKindId, cause: String }
+
+fn local_store_record_recency(root: MaterializationStoreRoot, family: ArtifactKindId, served: List<String>) -> LocalStoreRecency {
+  let root_path = materialization_store_root_path(root: root)
+  match local_store_read_index(root_path: root_path, family: family) {
+    LocalStoreIndexUnavailable { cause: c } => LocalStoreRecencyLost { family: family, cause: c }
+    LocalStoreIndexAt { index: index, expected: expected } => {
+      let names = index.rows |> map(r => r.name)
+      let hits = served |> filter(n => names |> any(k => k == n))
+      if count(hits) == 0 { LocalStoreRecencyNothingToRecord { family: family } } else {
+        let bumped = fold(hits, init: local_store_artifact_store(budget: byte_size(count: 0), index: index), f: (st, n) => match store_get(store: st, key: local_store_row_key(name: n)) {
+          StoreHit { store: s2, row: _ } => s2
+          StoreMiss { store: s2 } => s2
+        })
+        match local_store_write_index(root_path: root_path, family: family, expected: expected, index: local_store_index_of(store: bumped, names: names)) {
+          LocalStoreIndexWritten { reclamation: _ } => LocalStoreRecencyRecorded { family: family, bumped: count(hits) }
+          LocalStoreIndexLostRace => LocalStoreRecencyLost { family: family, cause: "another writer moved the index first" }
+          LocalStoreIndexWriteRefused { cause: c } => LocalStoreRecencyLost { family: family, cause: c }
+        }
+      }
+    }
   }
 }
 
@@ -288,33 +715,57 @@ fn local_store_lookup(root: MaterializationStoreRoot, store: OpenedMaterializati
   }
 }
 
+// THE COMMIT RECEIPT carries what the bound did beside the store-level commit: the names this commit
+// evicted, the evicted names whose delete the host refused (swept on the next open), and the index
+// slot's own generation reclamation. None of these changes the commit's verdict.
+type LocalStoreCommit {
+  commit: StoreCommit
+  evicted: List<String>
+  eviction_delete_refused: List<String>
+  index_reclamation: CasWindowReclamation
+}
+
+fn local_store_commit_refused(commit: StoreCommit) -> LocalStoreCommit {
+  LocalStoreCommit { commit: commit, evicted: [], eviction_delete_refused: [], index_reclamation: CasReclamationNotCommitted }
+}
+
 fn local_store_commit(
   root: MaterializationStoreRoot,
   store: OpenedMaterializationStore,
   req: ArtifactRequest,
   payloads: List<ArtifactPayload>
-) -> StoreCommit {
+) -> LocalStoreCommit {
   let root_path = materialization_store_root_path(root: root)
   match store_commit_prepare(req: req, payloads: payloads) {
-    StoreCommitNotPrepared { commit: c } => c
+    StoreCommitNotPrepared { commit: c } => local_store_commit_refused(commit: c)
     StoreCommitPrepared { key: k, object_name: name, object: object, offered_digest: offered, offered_result: offered_result } =>
       match materialization_store_admissible(root: root, verb: Write) {
         Deny { refusal: _ } =>
-          StoreCommitRefused {
+          local_store_commit_refused(commit: StoreCommitRefused {
             key: k,
             refusal: StoreCommitPublishRefused { fault: StoreFault { class: StoreFaultUnauthorized, detail: concat("write grant refused for ", root_path) } }
+          })
+        Permit =>
+          match local_store_reserve(root: root, family: request_kind(req: req), name: name, bytes: local_store_object_bytes(object: object), attempt: 1) {
+            LocalStoreReservationRefused { refusal: r } => local_store_commit_refused(commit: StoreCommitRefused { key: k, refusal: r })
+            LocalStoreReserved { evicted: evicted, reclamation: rc } => {
+              let refused = local_store_delete_names(root_path: root_path, names: evicted)
+              let publish = store_publish_observation(create: local_store_create_new(path: store_path(root_path: root_path, name: name), content: object))
+              LocalStoreCommit {
+                commit: store_commit_settle(
+                  store: store,
+                  prepared_key: k,
+                  offered_digest: offered,
+                  offered_result: offered_result,
+                  publish: publish,
+                  read_back: local_store_lookup(root: root, store: store, req: req)
+                ),
+                evicted: evicted,
+                eviction_delete_refused: refused,
+                index_reclamation: rc
+              }
+            }
           }
-        Permit => {
-          let publish = store_publish_observation(create: local_store_create_new(path: store_path(root_path: root_path, name: name), content: object))
-          store_commit_settle(
-            store: store,
-            prepared_key: k,
-            offered_digest: offered,
-            offered_result: offered_result,
-            publish: publish,
-            read_back: local_store_lookup(root: root, store: store, req: req)
-          )
-        }
       }
   }
 }
@@ -329,7 +780,7 @@ type LocalStoreBatchLookup
 fn local_store_lookup_batch(root: MaterializationStoreRoot, reqs: List<ArtifactRequest>) -> LocalStoreBatchLookup {
   match local_store_open(root: root) {
     LocalStoreUnavailable { root_path: p, cause: c } => LocalStoreBatchUnavailable { root_path: p, cause: c }
-    LocalStoreOpened { root: r, store: s, durability: _ } =>
+    LocalStoreOpened { root: r, store: s, durability: _, sweep: _ } =>
       LocalStoreBatchLooked { store: s, lookups: reqs |> map(req => local_store_lookup(root: r, store: s, req: req)) }
   }
 }
@@ -357,7 +808,7 @@ data materialization_store_local_facts: CacheInterfaceCatalogFacts = {
   placement: {
     value_shape: StructuredArtifact
     locality: PerHostFilesystem
-    retention: { release_policy: ReleasedNever, capacity: CapacityUnobserved }
+    retention: { release_policy: ReleasedNever, capacity: CapacityBounded { limit: ByteCapacity { limit: ExactLimit { value: local_store_host_ceiling_bytes } }, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } } }
     atomicity: WriteThenCommit
     auth: FilesystemPerms
     read_latency: LocalDiskUs
@@ -374,7 +825,7 @@ data materialization_store_local_facts: CacheInterfaceCatalogFacts = {
     {
       field: "retention"
       evidence: OperatorObserved {
-        note: "no capacity ceiling or eviction is applied by this realization yet: retention and capacity are owned by std.artifact_store under the provider, and this row stays CapacityUnobserved until that accounting binds to the store"
+        note: "the host-wide ceiling is local_store_host_ceiling_bytes, the declared sum of the durable root's per-family budgets (local_store_durable_family_budgets); each family's store is constructed by std.artifact_store store_over_provider from its own CapacityBounded/ExactLimit/LeastRecentlyUsed provider row, so one family never evicts another's entries and an artifact over its family's budget refuses before any eviction. Occupancy is the family's windowed CAS index slot; recency is advisory and recorded once per process, and losing that write only makes eviction less precise. An open sweeps objects no index names."
         observed_at: Absent
       }
     },
