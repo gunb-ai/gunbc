@@ -2,13 +2,13 @@ module gunbc.machine_intake_mtcollins1_physical_orientation
 
 import std.types { Bool, NonEmptyStr, String, List, list_length }
 import std.nat { Nat }
-import std.measure { gibibyte_count }
+import std.measure { gibibyte_count, millivolt_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.roster_frontier { FrontierRow, DeclSubject }
 import std.dissolution { UnboundDissolution }
 import extdeps.publication { SpecificationDocumentDate }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited }
-import extdeps.ampere.smpro_register { smpro_stage_text, smpro_status_text, smpro_cur_bootstage_of, smpro_bootstage_of }
+import extdeps.ampere.smpro_register { SmproBootProgress, SmproBootProgressRead, SmproBootProgressRefused, smpro_stage_text, smpro_status_text, smpro_cur_bootstage_of, smpro_bootstage_of }
 import extdeps.ampere.mt_collins_product_brief.memory_population {
   MtCollinsChannelConnectorPair, MtCollinsDimmPopulationRow,
   mt_collins_channel_connector_pairs, mt_collins_population_rows,
@@ -38,7 +38,7 @@ import gunbc.machine_intake_mtcollins1_socket1_investigation_observation {
   MtCollins1ChassisEnd, FrontEnd, RearEnd, MtCollins1Viewpoint, ViewpointReported, ViewpointNotYetReported,
   mtcollins1_operator_front_report,
   MtCollins1DiagnosisHypothesis, MtCollins1HypothesisStanding, HypothesisOpen, HypothesisRefutedByStickSwap,
-  HypothesisWeakenedByMatchingCpu0Characteristics, MtCollins1SecondaryStage, SecondaryStageConsistent, SecondaryStageInconsistent,
+  HypothesisWeakenedByMatchingCpu0Characteristics,
   MtCollins1CpuFingerprintComparison, MtCollins1SecondaryJoinReading, MtCollins1SecondaryJoinOutcome, SecondaryJoined, SecondaryJoinTimeout,
   SecondaryJoinUnclassified, MtCollins1SocketTopology, SingleSocket, TwoSocket, secondary_join_outcome, mtcollins1_secondary_join_readings,
   MtCollins1StickSwapReport, MtCollins1StickPlacement, MtCollins1FirmwareSocketSummary, mtcollins1_firmware_socket_summary,
@@ -776,7 +776,7 @@ fn hypothesis_text(h: MtCollins1DiagnosisHypothesis, history: List<MtCollins1Soc
       StickNotCleared => concat("Stick refutation not derivable from the swap report and receipts (unverified): ", h.hypothesis)
     }
     HypothesisWeakenedByMatchingCpu0Characteristics { comparison: c } => if matching_cpu0_characteristics(c: c) {
-        concat(concat(concat(concat(concat(concat("Weakened hypothesis (not refuted): ", h.hypothesis), " Socket 0 reads core "), to_string(c.current_fingerprint.core_voltage_mv)), concat(concat(" mV, AVS ", to_string(c.current_fingerprint.avs_voltage_mv)), concat(" mV, warranty ", to_string(c.current_fingerprint.warranty)))), " in both "), concat(concat(c.current.run, " and the two-socket boot "), concat(c.reference.run, ": matching characteristics, not a unique CPU identity.")))
+        concat(concat(concat(concat(concat(concat("Weakened hypothesis (not refuted): ", h.hypothesis), " Socket 0 reads core "), to_string(millivolt_count(v: c.current_fingerprint.core_voltage))), concat(concat(" mV, AVS ", to_string(millivolt_count(v: c.current_fingerprint.avs_voltage))), concat(" mV, warranty ", to_string(c.current_fingerprint.warranty)))), " in both "), concat(concat(c.current.run, " and the two-socket boot "), concat(c.reference.run, ": matching characteristics, not a unique CPU identity.")))
       } else { concat("Weakening not derivable from the two summaries (unverified): ", h.hypothesis) }
   }
 }
@@ -784,13 +784,13 @@ fn hypothesis_text(h: MtCollins1DiagnosisHypothesis, history: List<MtCollins1Soc
 fn matching_cpu0_characteristics(c: MtCollins1CpuFingerprintComparison) -> Bool {
   let a = c.reference_fingerprint
   let b = c.current_fingerprint
-  c.reference.active_sockets >= 2 && a.socket == b.socket && a.core_voltage_mv == b.core_voltage_mv && a.avs_voltage_mv == b.avs_voltage_mv && a.warranty == b.warranty
+  c.reference.active_sockets >= 2 && a.socket == b.socket && millivolt_count(v: a.core_voltage) == millivolt_count(v: b.core_voltage) && millivolt_count(v: a.avs_voltage) == millivolt_count(v: b.avs_voltage) && a.warranty == b.warranty
 }
 
-fn secondary_stage_text(st: MtCollins1SecondaryStage) -> String {
+fn secondary_stage_text(st: SmproBootProgress) -> String {
   match st {
-    SecondaryStageConsistent { current: c, reported: r } => concat(concat(smpro_stage_text(r: c), " (reported: "), concat(concat(smpro_stage_text(r: r.stage), concat(", ", smpro_status_text(r: r.status))), ")"))
-    SecondaryStageInconsistent { current_word: c, reported_word: r } => concat(concat(concat("inconsistent SMpro pair (current: ", smpro_stage_text(r: smpro_cur_bootstage_of(word: c))), concat("; reported: ", smpro_stage_text(r: smpro_bootstage_of(word: r).stage))), ", reported stage ahead of current)")
+    SmproBootProgressRead { current: c, reported: r } => concat(concat(smpro_stage_text(r: c), " (reported: "), concat(concat(smpro_stage_text(r: r.stage), concat(", ", smpro_status_text(r: r.status))), ")"))
+    SmproBootProgressRefused { cur_bootstage_word: c, bootstage_word: r } => concat(concat(concat("inconsistent SMpro pair (current: ", smpro_stage_text(r: smpro_cur_bootstage_of(word: c))), concat("; reported: ", smpro_stage_text(r: smpro_bootstage_of(word: r).stage))), ", reported stage ahead of current)")
   }
 }
 

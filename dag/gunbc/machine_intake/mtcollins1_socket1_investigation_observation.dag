@@ -2,12 +2,12 @@ module gunbc.machine_intake_mtcollins1_socket1_investigation_observation
 
 import std.types { Bool, Int, NonEmptyStr, List, list_length }
 import std.nat { Nat }
-import std.measure { Gibibyte, gibibyte }
+import std.measure { Gibibyte, gibibyte, Millivolt, millivolt }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.publication { SpecificationDocumentDate }
 import extdeps.external_authority { CitedFigureStanding }
 import extdeps.ampere.mt_collins_getting_started_guide.dimm_layout { MtCollinsDimmFigure }
-import extdeps.ampere.smpro_register { SmproStageReading, SmproBootStage, smpro_cur_bootstage_of, smpro_bootstage_of }
+import extdeps.ampere.smpro_register { SmproBootProgress, smpro_boot_progress_of }
 
 // MT. COLLINS UNIT 1, 2026-09-23: THE SOCKET-1 INVESTIGATION, ONE RECEIPT PER BOOT.
 // This continues the unit's bring-up history rather than starting a second log: the previous
@@ -407,14 +407,9 @@ type MtCollins1SecondaryJoinReading {
   secondary_bootstage_word: Int?
 }
 
-// Socket 1's SMpro stage is the PAIR CUR_BOOTSTAGE / BOOTSTAGE, read together. The Ampere driver
-// (extdeps.ampere.smpro_register's cited smpro-misc boot_progress_show) refuses a pair whose
-// reported stage is ahead of the current one, so such a pair is carried as inconsistent and
-// licenses no "last stage" reading.
-type MtCollins1SecondaryStage
-  = SecondaryStageConsistent { current: SmproStageReading, reported: SmproBootStage }
-  | SecondaryStageInconsistent { current_word: Int, reported_word: Int }
-
+// Socket 1's SMpro stage is the PAIR CUR_BOOTSTAGE / BOOTSTAGE, decoded by the Ampere ABI's own
+// pair rule (extdeps.ampere.smpro_register smpro_boot_progress_of), which refuses a pair whose
+// reported stage is ahead of the current one; a refused pair licenses no "last stage" reading.
 type MtCollins1SocketTopology = SingleSocket | TwoSocket
 
 // SecondaryJoinTimeout is a LIVENESS finding, not a fault record: socket 1 never completed the
@@ -423,7 +418,7 @@ type MtCollins1SocketTopology = SingleSocket | TwoSocket
 type MtCollins1SecondaryJoinOutcome
   = SecondaryJoined { inter_socket_links_reported: Bool }
   | SecondaryJoinTimeout {
-      secondary_last_stage: MtCollins1SecondaryStage
+      secondary_last_stage: SmproBootProgress
       primary_continued_as: MtCollins1SocketTopology
       inter_socket_links_reported: Bool
       secondary_host_checkpoints: List<NonEmptyStr>
@@ -431,11 +426,6 @@ type MtCollins1SecondaryJoinOutcome
   | SecondaryJoinUnclassified { reason: NonEmptyStr }
 
 // Derived, never authored: the stage comes from the raw pair through the Ampere ABI's own decode.
-fn secondary_stage(cur: Int, reported: Int) -> MtCollins1SecondaryStage {
-  if (reported / 256) % 256 > cur % 256 { SecondaryStageInconsistent { current_word: cur, reported_word: reported } }
-  else { SecondaryStageConsistent { current: smpro_cur_bootstage_of(word: cur), reported: smpro_bootstage_of(word: reported) } }
-}
-
 fn secondary_join_outcome(reading: MtCollins1SecondaryJoinReading) -> MtCollins1SecondaryJoinOutcome {
   let links = list_length(items: reading.inter_socket_connection_lines) > 0
   if reading.active_sockets >= 2 { SecondaryJoined { inter_socket_links_reported: links } }
@@ -446,7 +436,7 @@ fn secondary_join_outcome(reading: MtCollins1SecondaryJoinReading) -> MtCollins1
       Present { value: c } => match reading.secondary_bootstage_word {
         Absent => SecondaryJoinUnclassified { reason: "socket 1's SMpro BOOTSTAGE was not read beside CUR_BOOTSTAGE in this boot" }
         Present { value: r } => SecondaryJoinTimeout {
-          secondary_last_stage: secondary_stage(cur: c, reported: r),
+          secondary_last_stage: smpro_boot_progress_of(cur_bootstage_word: c, bootstage_word: r),
           primary_continued_as: SingleSocket,
           inter_socket_links_reported: links,
           secondary_host_checkpoints: reading.secondary_checkpoints,
@@ -499,8 +489,8 @@ data mtcollins1_secondary_join_readings: List<MtCollins1SecondaryJoinReading> = 
 // identity, so they WEAKEN the pairing bet and do not refute it.
 type MtCollins1SocketFingerprint {
   socket: Nat
-  core_voltage_mv: Nat
-  avs_voltage_mv: Nat
+  core_voltage: Millivolt
+  avs_voltage: Millivolt
   warranty: Nat
 }
 
@@ -513,7 +503,7 @@ type MtCollins1CpuFingerprintComparison {
 
 data mtcollins1_cpu0_fingerprint_comparison: MtCollins1CpuFingerprintComparison = MtCollins1CpuFingerprintComparison {
   reference: mtcollins1_secondary_join_reading_reference,
-  reference_fingerprint: MtCollins1SocketFingerprint { socket: 0, core_voltage_mv: 1065, avs_voltage_mv: 1027, warranty: 0 },
+  reference_fingerprint: MtCollins1SocketFingerprint { socket: 0, core_voltage: millivolt(count: 1065), avs_voltage: millivolt(count: 1027), warranty: 0 },
   current: mtcollins1_secondary_join_reading_two_cpus,
-  current_fingerprint: MtCollins1SocketFingerprint { socket: 0, core_voltage_mv: 1065, avs_voltage_mv: 1027, warranty: 0 },
+  current_fingerprint: MtCollins1SocketFingerprint { socket: 0, core_voltage: millivolt(count: 1065), avs_voltage: millivolt(count: 1027), warranty: 0 },
 }

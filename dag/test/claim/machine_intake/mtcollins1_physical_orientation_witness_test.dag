@@ -2,6 +2,8 @@ module test.claim.machine_intake.mtcollins1_physical_orientation_witness
 
 import std.types { Bool, NonEmptyStr, String, List, list_length }
 import std.nat { Nat }
+import std.measure { millivolt }
+import extdeps.ampere.smpro_register { SmproBootProgressRead, SmproBootProgressRefused }
 import extdeps.publication { SpecificationDocumentDate }
 import extdeps.ampere.mt_collins_product_brief.memory_population {
   mt_collins_channel_connector_pairs, mt_collins_population_8_dimms, mt_collins_population_16_dimms,
@@ -36,7 +38,7 @@ import gunbc.machine_intake_mtcollins1_socket1_investigation_observation {
   MtCollins1DiagnosisHypothesis, HypothesisRefutedByStickSwap, MtCollins1StickSwapReport, MtCollins1StickPlacement, mtcollins1_j1_j17_stick_swap,
   MtCollins1SecondaryJoinReading, secondary_join_outcome, SecondaryJoined, SecondaryJoinTimeout, SecondaryJoinUnclassified,
   mtcollins1_secondary_join_reading_two_cpus, mtcollins1_cpu0_fingerprint_comparison, MtCollins1CpuFingerprintComparison, MtCollins1SocketFingerprint,
-  HypothesisWeakenedByMatchingCpu0Characteristics, SecondaryStageConsistent, SecondaryStageInconsistent,
+  HypothesisWeakenedByMatchingCpu0Characteristics,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -472,8 +474,8 @@ test fn w_secondary_join_outcome_and_its_refutations_are_derived() -> Bool {
   let bad = mtcollins1_secondary_join_reading_two_cpus
   let inconsistent = match secondary_join_outcome(reading: bad) {
     SecondaryJoinTimeout { secondary_last_stage: st, primary_continued_as: _, inter_socket_links_reported: l, secondary_host_checkpoints: cps } => !l && list_length(items: cps) == 0 && match st {
-      SecondaryStageInconsistent { current_word: c, reported_word: r } => c == 1 && r == 1023
-      SecondaryStageConsistent { current: _, reported: _ } => false
+      SmproBootProgressRefused { cur_bootstage_word: c, bootstage_word: r } => c == 1 && r == 1023
+      SmproBootProgressRead { current: _, reported: _ } => false
     }
     SecondaryJoined { inter_socket_links_reported: _ } => false
     SecondaryJoinUnclassified { reason: _ } => false
@@ -481,8 +483,8 @@ test fn w_secondary_join_outcome_and_its_refutations_are_derived() -> Bool {
   let ordered = MtCollins1SecondaryJoinReading { run: bad.run, capture_sha256: bad.capture_sha256, smpro_artifact_sha256: bad.smpro_artifact_sha256, active_sockets: 1, inter_socket_connection_lines: [], secondary_checkpoints: [], secondary_cur_bootstage_word: Present { value: 1 }, secondary_bootstage_word: Present { value: 258 } }
   let red_consistent = match secondary_join_outcome(reading: ordered) {
     SecondaryJoinTimeout { secondary_last_stage: st, primary_continued_as: _, inter_socket_links_reported: _, secondary_host_checkpoints: _ } => match st {
-      SecondaryStageConsistent { current: _, reported: _ } => true
-      SecondaryStageInconsistent { current_word: _, reported_word: _ } => false
+      SmproBootProgressRead { current: _, reported: _ } => true
+      SmproBootProgressRefused { cur_bootstage_word: _, bootstage_word: _ } => false
     }
     SecondaryJoined { inter_socket_links_reported: _ } => false
     SecondaryJoinUnclassified { reason: _ } => false
@@ -494,7 +496,7 @@ test fn w_secondary_join_outcome_and_its_refutations_are_derived() -> Bool {
     SecondaryJoinTimeout { secondary_last_stage: _, primary_continued_as: _, inter_socket_links_reported: _, secondary_host_checkpoints: _ } => false
   }
   let c = mtcollins1_cpu0_fingerprint_comparison
-  let other_cpu = MtCollins1CpuFingerprintComparison { reference: c.reference, reference_fingerprint: c.reference_fingerprint, current: c.current, current_fingerprint: MtCollins1SocketFingerprint { socket: 0, core_voltage_mv: 1035, avs_voltage_mv: 996, warranty: 1 } }
+  let other_cpu = MtCollins1CpuFingerprintComparison { reference: c.reference, reference_fingerprint: c.reference_fingerprint, current: c.current, current_fingerprint: MtCollins1SocketFingerprint { socket: 0, core_voltage: millivolt(count: 1035), avs_voltage: millivolt(count: 996), warranty: 1 } }
   let pairing = MtCollins1DiagnosisHypothesis { hypothesis: "x.", discriminator: "y.", standing: HypothesisWeakenedByMatchingCpu0Characteristics { comparison: other_cpu } }
   let rendered = hypothesis_text(h: pairing, history: mtcollins1_socket1_investigation_boots, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs)
   let red_pairing = string_contains(s: rendered, pattern: "unverified") && !string_contains(s: rendered, pattern: "Weakened hypothesis")
