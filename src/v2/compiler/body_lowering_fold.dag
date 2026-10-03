@@ -174,7 +174,7 @@ import v2.std.node {
   core_edge_label,
   edge_is_core,
 }
-import v2.std.type_binder { cast_target_edge, type_alias_wrapper, type_decl_wrapper, type_opaque_wrapper, type_param_names, type_params_edge }
+import v2.std.type_binder { type_binder_set_children, cast_target_edge, type_alias_wrapper, type_decl_wrapper, type_opaque_wrapper, type_param_names, type_params_edge }
 import v2.std.arrow_contract { effect_claim_label, hermetic_claim_label }
 import std.effects { EffectClaim, ReadonlyClaim, IdempotentClaim }
 import v2.std.node_query {
@@ -3202,11 +3202,11 @@ fn body_lower_decl_type_params(captured: Node) -> DeclTypeParams {
                 Absent => TypeParamsUnreadable
                 Present { value: edges } =>
                   TypeParams {
-                    conj: node_lowered_from(
+                    conj: close_lowered_image(root: node_lowered_from(
                       kind: TypeNode { connective: Conj },
-                      children: edges,
+                      children: type_binder_set_children(binders: edges, source: generic_params),
                       source: generic_params
-                    )
+                    ))
                   }
               }
           }
@@ -5228,7 +5228,7 @@ fn body_lower_function_value_arrow(
       let type_param_edges: List<Edge> = match type_params {
         Empty => no_edges
         Cons { head: _, tail: _ } =>
-          [type_params_edge(conj: node_lowered_from(kind: TypeNode { connective: Conj }, children: type_params, source: shell))]
+          [type_params_edge(conj: close_lowered_image(root: node_lowered_from(kind: TypeNode { connective: Conj }, children: type_binder_set_children(binders: type_params, source: shell), source: shell)))]
       }
       outcome_with_diagnostics(
         value: body_lower_callable_arrow(
