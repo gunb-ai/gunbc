@@ -1,0 +1,827 @@
+module v2.lens.argv_word_construction
+
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
+import v2.compiler.parse { grammar_validate_for_parse, parse_production }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.lens.common.source_analysis_standing {
+  LanguageGrammarRejected,
+  LanguageGrammarUnavailable,
+  SourceAnalysisNotEstablishedCause,
+  SourceNormalizationRejected,
+  SourceParseRejected,
+  SourceTokenizationRejected,
+  SourceUnreadable
+}
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { Disposition, Scaffold }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import v2.std.node { Node, Atom, TypeNode, symbol_lexeme }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.algebra { contains, fold_list, length, list_reverse }
+import v2.std.integer { Int, integer_int_to_decimal_string }
+import v2.std.logic { Bool }
+import v2.std.collection { List }
+import std.algebra { Cons, Empty, FreeMonoid }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import std.types { NonEmptyStr }
+import v2.std.optional { Absent, Optional, Present }
+
+// THE TYPED-ARGV CONSTRUCTION CENSUS, AT IDENTITY GRAIN (debt paydown trial, brief of
+// lively-ram-153 to witty-tern-54, 2026-10-03; grain widened by the same parent in reply:
+// data-decl word lists are the same debt and are their own class in the same roster).
+//
+// One layer below the shell-to-dag census (gunbc.doc_graph_roots slug
+// shell-to-dag-residual-census-and-arc-completion), which sees only shell-TEXT sites. This lens
+// sees the layer beneath: command lines hand-assembled from string literals inside pure builders
+// and word-list declarations, where `extdeps.exec.command`'s `ArgvCommand` (sole constructor,
+// admitted builders only) is the typed form the corpus already owns.
+//
+// IT READS THE RAW PARSE TREE, NEVER THE NORMALIZED ONE — the same standing as
+// v2.lens.text_string_importer_census (whose walk mechanics this lens reuses rather than mints a
+// parallel seam; DESIGN 3b). The walk is a pure fold over the pre-order atom stream of
+// `v2.extdeps.languages.dag`'s own grammar: no host builtin was added, no normalized artifact is
+// consulted, and nothing here can change what the corpus compiles to.
+//
+// POPULATION, at identity grain (module_file, decl, decl_kind):
+//   (a) builds argv words from string-literal flags: a declaration whose body/value spells a
+//       string literal whose content starts with "-" (a flag word: "--unit=", "--wait", "--",
+//       "-"...);
+//   (b) returns or accepts List<String> argv where ArgvCommand exists: a fn whose declared return
+//       spells List<String>, or that accepts a List<String> parameter in an argv position (the
+//       parameter's name is in argv_position_names, reviewed against the committed roster);
+//   and, for data declarations only, the List<String> word lists that ARE argv vocabulary (flag
+//       words among their literal elements, or an argv-named flagless list) — classified as their
+//       own kind in the same roster; a List<String> data decl is a ceiling, not a member.
+//
+// SITE CLASS: modules under dag/extdeps are extdeps interface builders; modules under dag/gunbc
+// are workflow call sites. Both classes carry the same debt; only the paying shapes differ.
+//
+// THE ROSTER THAT MAY ONLY SHRINK is committed in dag.gunbc.instruments.argv_word_construction_census
+// and joined through argv_word_construction_gates below: a row whose site no longer resolves
+// refuses the census (pay the debt, delete the row, same change); a live member without a row
+// refuses the census (new string-built argv is refused — adopt the typed form; DESIGN 5: the
+// instrument joins at identity grain, a count is not an oracle).
+
+data argv_word_construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}
+
+data argv_word_construction_batch_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: decl_ref(module_path: "v2.lens.argv_word_construction" as NonEmptyStr, decl_name: "argv_word_construction_batch_scaffold" as NonEmptyStr)
+}
+
+data argv_word_construction_dissolution: DissolutionCondition = unbound_dissolution(description: "the typed-argv roster over dag/extdeps and dag/gunbc is empty for a full recount AND every extdeps interface builder returns extdeps.exec.command ArgvCommand" as NonEmptyStr)
+
+// ------------------------------------------------------------------ facts
+
+// Which declaration kind a fact was read under.
+type ArgvWordsDeclKind
+  = FnDecl
+  | DataDecl
+
+// A string-literal flag word spelled under a declaration, attributed at flush time.
+type FlagWord {
+  decl: String
+  decl_kind: ArgvWordsDeclKind
+  word: String
+}
+
+// A parameter whose spelled type was read, with the declaration it belongs to.
+type ParamType {
+  decl: String
+  param: String
+  spelling: String
+}
+
+// A declared fn return, read at the atom that opens the body (the arrow's spelling flushes there).
+type ReturnHead {
+  decl: String
+  spelling: String
+}
+
+// Everything the walk read about one declaration, before classification.
+type ArgvWordsFact {
+  decl: String
+  decl_kind: ArgvWordsDeclKind
+  flag_words: List<String>
+  return_spelling: String
+  argv_params: List<String>
+  list_string_data: Bool
+}
+
+// A census member at identity grain: one row per (module_file, decl, decl_kind).
+type ArgvWordsSite {
+  module_file: String
+  decl: String
+  decl_kind: ArgvWordsDeclKind
+  site_class: ArgvWordsSiteClass
+  flag_words: List<String>
+  returns_argv_words: Bool
+  argv_word_params: List<String>
+  list_string_data: Bool
+}
+
+type ArgvWordsSiteClass
+  = ExtdepsInterfaceBuilder
+  | WorkflowCallSite
+
+type ArgvWordsSites
+  = ArgvWordsSitesEstablished { sites: List<ArgvWordsSite> }
+  | ArgvWordsSitesRefused { reason: String }
+
+// ------------------------------------------------------------------ the walk
+
+// A pending type spelling: a parameter's type, a declared return (after an arrow), or a
+// declaration annotation. Generic arguments are carried while the window is open so that
+// List<String> spells in full (the text-string census walks spell heads only; the argv census
+// must tell List<String> from List<Int>).
+type SpellingKind
+  = SpellingNone
+  | SpellingOfParameter
+  | SpellingOfArrow
+  | SpellingOfAnnotation
+
+type Walk {
+  w1: String
+  w2: String
+  w3: String
+  w4: String
+  w5: String
+  decl: String
+  pending_decl_name: Bool
+  pending_decl_is_fn: Bool
+  decl_is_fn: Bool
+  pending_literal: String
+  flag_words: FreeMonoid<FlagWord>
+  pending_param: String
+  pending_kind: SpellingKind
+  pending_segments: FreeMonoid<String>
+  generic_depth: Int
+  generic_tokens: FreeMonoid<String>
+  param_types: FreeMonoid<ParamType>
+  arrow_spelling: String
+  return_spelling: String
+  return_heads: FreeMonoid<ReturnHead>
+  annotation_spelling: String
+  data_list_string: FreeMonoid<String>
+}
+
+fn walk_start() -> Walk {
+  Walk {
+    w1: "",
+    w2: "",
+    w3: "",
+    w4: "",
+    w5: "",
+    decl: "",
+    pending_decl_name: false,
+    pending_decl_is_fn: false,
+    decl_is_fn: false,
+    pending_literal: "",
+    flag_words: Empty,
+    pending_param: "",
+    pending_kind: SpellingNone,
+    pending_segments: Empty,
+    generic_depth: 0,
+    generic_tokens: Empty,
+    param_types: Empty,
+    arrow_spelling: "",
+    return_spelling: "",
+    return_heads: Empty,
+    annotation_spelling: "",
+    data_list_string: Empty
+  }
+}
+
+fn str_eq_fn(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn member(xs: FreeMonoid<String>, x: String) -> Bool {
+  contains(xs: xs, item: x, eq: str_eq_fn)
+}
+
+fn is_production_or_token(x: String) -> Bool {
+  starts_with(s: x, prefix: "dag_")
+}
+
+fn is_identifier(x: String) -> Bool {
+  !is_production_or_token(x: x) && !(x == "")
+}
+
+fn is_decl_production(x: String) -> Bool {
+  (x == "dag_surface_fn_decl")
+  || (x == "dag_surface_test_fn_decl")
+  || (x == "dag_surface_data_decl")
+  || (x == "dag_surface_type_decl")
+  || (x == "dag_surface_alias_decl")
+  || (x == "dag_surface_port_decl")
+  || (x == "dag_surface_invariant_decl")
+  || (x == "dag_surface_subject_decl")
+  || (x == "dag_surface_grammar_decl")
+  || (x == "dag_surface_rule_decl")
+}
+
+fn is_fn_decl_production(x: String) -> Bool {
+  (x == "dag_surface_fn_decl") || (x == "dag_surface_test_fn_decl")
+}
+
+fn is_string_literal_token(x: String) -> Bool {
+  x == "dag_token_string_literal"
+}
+
+fn is_type_head(w: Walk, x: String) -> Bool {
+  is_identifier(x: x) && (w.w1 == "dag_surface_qualified_name") && (w.w2 == "dag_surface_type_expr")
+}
+
+fn is_param_type_head(w: Walk, x: String) -> Bool {
+  is_type_head(w: w, x: x) && (w.w3 == "dag_token_colon") && ((w.w5 == "dag_token_lparen") || (w.w5 == "dag_token_comma") || (w.w5 == "dag_surface_param_list"))
+}
+
+fn is_annotation_type_head(w: Walk, x: String) -> Bool {
+  is_type_head(w: w, x: x) && (w.w3 == "dag_token_colon") && ((w.w5 == "dag_token_kw_let") || (w.w5 == "dag_token_kw_data"))
+}
+
+fn is_arrow_type_head(w: Walk, x: String) -> Bool {
+  is_type_head(w: w, x: x) && (w.w3 == "dag_token_arrow")
+}
+
+fn next_decl(w: Walk, x: String) -> String {
+  if x == "dag_surface_top_level_item" { "" } else if w.pending_decl_name && is_identifier(x: x) { x } else { w.decl }
+}
+
+fn next_pending_decl_name(w: Walk, x: String) -> Bool {
+  if x == "dag_surface_top_level_item" { false } else if is_decl_production(x: w.w1) { true } else if is_identifier(x: x) { false } else { w.pending_decl_name }
+}
+
+fn next_pending_decl_is_fn(w: Walk, x: String) -> Bool {
+  if x == "dag_surface_top_level_item" { false } else if is_fn_decl_production(x: x) { true } else if is_decl_production(x: x) { false } else { w.pending_decl_is_fn }
+}
+
+fn next_decl_is_fn(w: Walk, x: String) -> Bool {
+  if x == "dag_surface_top_level_item" { false } else if w.pending_decl_name && is_identifier(x: x) { w.pending_decl_is_fn } else { w.decl_is_fn }
+}
+
+fn decl_kind_of(is_fn: Bool) -> ArgvWordsDeclKind {
+  match is_fn {
+    true => FnDecl
+    false => DataDecl
+  }
+}
+
+// A string literal's CONTENT atom arrives directly after the dag_token_string_literal token; it is
+// the one non-production atom the walk must not read as an identifier. It parks in pending_literal
+// and flushes at the next atom, attributed to the declaration open at flush time.
+fn next_pending_literal(w: Walk, x: String) -> String {
+  if is_string_literal_token(x: x) { "" } else if !(w.pending_literal == "") { w.pending_literal } else { "" }
+}
+
+fn parks_literal(w: Walk, x: String) -> Bool {
+  is_string_literal_token(x: w.w1) && !is_production_or_token(x: x)
+}
+
+fn next_flag_words(w: Walk, x: String) -> FreeMonoid<FlagWord> {
+  let flushed = if (w.pending_literal == "") || x == "" { Empty } else if starts_with(s: w.pending_literal, prefix: "-") {
+    Cons { head: FlagWord { decl: w.decl, decl_kind: decl_kind_of(is_fn: w.decl_is_fn), word: w.pending_literal }, tail: Empty }
+  } else { Empty }
+  if x == "" { w.flag_words } else { fold_list(xs: flushed, empty: w.flag_words, cons: fn(acc, f) { Cons { head: f, tail: acc } }) }
+}
+
+fn starts_pending_spelling(w: Walk, x: String) -> Bool {
+  is_param_type_head(w: w, x: x) || is_annotation_type_head(w: w, x: x) || is_arrow_type_head(w: w, x: x)
+}
+
+// A pending spelling continues through a dotted name and, while a generic window is open, through
+// the identifiers, commas and the closing angle bracket of its argument list.
+fn continues_pending(w: Walk, x: String) -> Bool {
+  if w.pending_param == "" {
+    false
+  } else if x == "dag_token_dot" {
+    true
+  } else if x == "dag_token_lt" {
+    true
+  } else if (w.generic_depth > 0) && ((x == "dag_token_comma") || (x == "dag_token_gt") || is_identifier(x: x)) {
+    true
+  } else {
+    is_identifier(x: x) && (w.w1 == "dag_token_dot")
+  }
+}
+
+fn flushes_pending(w: Walk, x: String) -> Bool {
+  !(w.pending_param == "") && !continues_pending(w: w, x: x)
+}
+
+fn next_pending_param(w: Walk, x: String) -> String {
+  if is_arrow_type_head(w: w, x: x) { "->" } else if starts_pending_spelling(w: w, x: x) { w.w4 } else if continues_pending(w: w, x: x) { w.pending_param } else { "" }
+}
+
+fn next_pending_kind(w: Walk, x: String) -> SpellingKind {
+  if is_param_type_head(w: w, x: x) { SpellingOfParameter } else if is_annotation_type_head(w: w, x: x) { SpellingOfAnnotation } else if is_arrow_type_head(w: w, x: x) { SpellingOfArrow } else { w.pending_kind }
+}
+
+fn next_pending_segments(w: Walk, x: String) -> FreeMonoid<String> {
+  if starts_pending_spelling(w: w, x: x) {
+    Cons { head: x, tail: Empty }
+  } else if continues_pending(w: w, x: x) && (x == "dag_token_lt") {
+    w.pending_segments
+  } else if continues_pending(w: w, x: x) && is_identifier(x: x) && (w.generic_depth > 0) {
+    w.pending_segments
+  } else if continues_pending(w: w, x: x) && is_identifier(x: x) {
+    Cons { head: x, tail: w.pending_segments }
+  } else if continues_pending(w: w, x: x) {
+    w.pending_segments
+  } else {
+    Empty
+  }
+}
+
+fn next_generic_depth(w: Walk, x: String) -> Int {
+  if !(w.pending_param == "") && (x == "dag_token_lt") {
+    1
+  } else if (w.generic_depth > 0) && (x == "dag_token_gt") {
+    0
+  } else {
+    w.generic_depth
+  }
+}
+
+fn next_generic_tokens(w: Walk, x: String) -> FreeMonoid<String> {
+  if (w.generic_depth > 0) && ((x == "dag_token_comma") || is_identifier(x: x)) {
+    Cons { head: x, tail: w.generic_tokens }
+  } else if !(w.pending_param == "") && (x == "dag_token_lt") {
+    Empty
+  } else {
+    w.generic_tokens
+  }
+}
+
+fn dotted(segments_reversed: FreeMonoid<String>) -> String {
+  fold_list(xs: list_reverse(xs: segments_reversed), empty: "", cons: fn(acc, s) { if acc == "" { s } else { concat(concat(acc, "."), s) } })
+}
+
+fn generic_spelling(tokens_reversed: FreeMonoid<String>) -> String {
+  fold_list(xs: list_reverse(xs: tokens_reversed), empty: "", cons: fn(acc, t) { if acc == "" { t } else { concat(concat(acc, ","), t) } })
+}
+
+fn flushed_spelling(w: Walk) -> String {
+  let head = dotted(segments_reversed: w.pending_segments)
+  if w.generic_depth > 0 {
+    concat(concat(head, "<"), concat(generic_spelling(tokens_reversed: w.generic_tokens), ">"))
+  } else {
+    head
+  }
+}
+
+fn next_param_types(w: Walk, x: String) -> FreeMonoid<ParamType> {
+  match w.pending_kind {
+    SpellingOfParameter =>
+      if flushes_pending(w: w, x: x) { Cons { head: ParamType { decl: w.decl, param: w.pending_param, spelling: flushed_spelling(w: w) }, tail: w.param_types } } else { w.param_types }
+    _ => w.param_types
+  }
+}
+
+fn next_arrow_spelling(w: Walk, x: String) -> String {
+  match w.pending_kind {
+    SpellingOfArrow => if flushes_pending(w: w, x: x) { flushed_spelling(w: w) } else { w.arrow_spelling }
+    _ => w.arrow_spelling
+  }
+}
+
+fn next_annotation_spelling(w: Walk, x: String) -> String {
+  match w.pending_kind {
+    SpellingOfAnnotation => if flushes_pending(w: w, x: x) { flushed_spelling(w: w) } else { w.annotation_spelling }
+    _ => w.annotation_spelling
+  }
+}
+
+// The declared return of the fn whose body is open: the arrow's spelling flushes on the very atom
+// that opens the body, so it is read as of this atom.
+fn next_return_heads(w: Walk, x: String) -> FreeMonoid<ReturnHead> {
+  if (x == "dag_surface_fn_body") && (w.return_spelling == "") {
+    Cons { head: ReturnHead { decl: w.decl, spelling: next_arrow_spelling(w: w, x: x) }, tail: w.return_heads }
+  } else {
+    w.return_heads
+  }
+}
+
+fn next_return_spelling(w: Walk, x: String) -> String {
+  if x == "dag_surface_top_level_item" { "" } else if (x == "dag_surface_fn_body") && (w.return_spelling == "") { next_arrow_spelling(w: w, x: x) } else { w.return_spelling }
+}
+
+// A List<String> DATA DECLARATION: the annotation's spelling flushes on the equals sign that opens
+// its value.
+fn next_data_list_string(w: Walk, x: String) -> FreeMonoid<String> {
+  if (x == "dag_token_eq") && !(w.decl == "") && (flushed_spelling(w: w) == "List<String>") {
+    Cons { head: w.decl, tail: w.data_list_string }
+  } else {
+    w.data_list_string
+  }
+}
+
+fn walk_step(w: Walk, x: String) -> Walk {
+  Walk {
+    w1: x,
+    w2: w.w1,
+    w3: w.w2,
+    w4: w.w3,
+    w5: w.w4,
+    decl: next_decl(w: w, x: x),
+    pending_decl_name: next_pending_decl_name(w: w, x: x),
+    pending_decl_is_fn: next_pending_decl_is_fn(w: w, x: x),
+    decl_is_fn: next_decl_is_fn(w: w, x: x),
+    pending_literal: if parks_literal(w: w, x: x) { x } else { next_pending_literal(w: w, x: x) },
+    flag_words: if parks_literal(w: w, x: x) { next_flag_words(w: w, x: "") } else { next_flag_words(w: w, x: x) },
+    pending_param: next_pending_param(w: w, x: x),
+    pending_kind: next_pending_kind(w: w, x: x),
+    pending_segments: next_pending_segments(w: w, x: x),
+    generic_depth: next_generic_depth(w: w, x: x),
+    generic_tokens: next_generic_tokens(w: w, x: x),
+    param_types: next_param_types(w: w, x: x),
+    arrow_spelling: next_arrow_spelling(w: w, x: x),
+    return_spelling: next_return_spelling(w: w, x: x),
+    return_heads: next_return_heads(w: w, x: x),
+    annotation_spelling: next_annotation_spelling(w: w, x: x),
+    data_list_string: next_data_list_string(w: w, x: x)
+  }
+}
+
+// The end of the stream closes the last declaration: the parked literal, if any, flushes.
+fn finish_walk(w: Walk) -> Walk {
+  walk_step(w: walk_step(w: w, x: "dag_surface_end_of_stream"), x: "dag_surface_top_level_item")
+}
+
+fn walk_positioned(atoms: FreeMonoid<PositionedAtom>) -> Walk {
+  finish_walk(w: fold_list(xs: atoms, empty: walk_start(), cons: fn(w, a) { walk_step(w: w, x: a.lexeme) }))
+}
+
+fn walk_atoms(atoms: FreeMonoid<String>) -> Walk {
+  walk_positioned(atoms: fold_list(xs: list_reverse(xs: atoms), empty: Empty, cons: fn(acc, x) { Cons { head: PositionedAtom { lexeme: x }, tail: acc } }))
+}
+
+type PositionedAtom {
+  lexeme: String
+}
+
+// The pre-order atom stream, built by prepending and reversed once (linear).
+fn atoms_reversed(n: Node, acc: FreeMonoid<PositionedAtom>) -> FreeMonoid<PositionedAtom> {
+  let here = match n.kind {
+    TypeNode { connective: c } => match c {
+      Atom { identity: i } => Cons { head: PositionedAtom { lexeme: symbol_lexeme(sym: i) }, tail: acc }
+      _ => acc
+    }
+    _ => acc
+  }
+  fold(n.children, init: here, f: fn(a, e) { atoms_reversed(n: e.target, acc: a) })
+}
+
+fn walk_tree(root: Node) -> Walk {
+  walk_positioned(atoms: list_reverse(xs: atoms_reversed(n: root, acc: Empty)))
+}
+
+// ------------------------------------------------------------------ facts of a walked module
+
+fn flag_words_of(walked: Walk, decl: String, kind: ArgvWordsDeclKind) -> List<String> {
+  let reversed = fold_list(xs: walked.flag_words, empty: Empty, cons: fn(acc, f) {
+    if (f.decl == decl) && decl_kind_matches(a: f.decl_kind, b: kind) { Cons { head: f.word, tail: acc } } else { acc }
+  })
+  fold_list(xs: list_reverse(xs: reversed), empty: Empty, cons: fn(acc, w) { if contains(xs: acc, item: w, eq: str_eq_fn) { acc } else { Cons { head: w, tail: acc } } })
+}
+
+fn decl_kind_matches(a: ArgvWordsDeclKind, b: ArgvWordsDeclKind) -> Bool {
+  match a {
+    FnDecl => match b { FnDecl => true, DataDecl => false }
+    DataDecl => match b { FnDecl => false, DataDecl => true }
+  }
+}
+
+fn argv_params_of(walked: Walk, decl: String) -> List<String> {
+  let reversed = fold_list(xs: walked.param_types, empty: Empty, cons: fn(acc, p) {
+    if (p.decl == decl) && (p.spelling == "List<String>") && member(xs: argv_position_name_rows, x: p.param) { Cons { head: p.param, tail: acc } } else { acc }
+  })
+  fold_list(xs: list_reverse(xs: reversed), empty: Empty, cons: fn(acc, p) { if contains(xs: acc, item: p, eq: str_eq_fn) { acc } else { Cons { head: p, tail: acc } } })
+}
+
+fn return_spelling_of(walked: Walk, decl: String) -> String {
+  fold_list(xs: walked.return_heads, empty: "", cons: fn(acc, r) { if r.decl == decl { r.spelling } else { acc } })
+}
+
+fn is_list_string_data(walked: Walk, decl: String) -> Bool {
+  member(xs: walked.data_list_string, x: decl)
+}
+
+fn distinct_decls(xs: FreeMonoid<String>) -> List<String> {
+  let reversed = fold_list(xs: xs, empty: Empty, cons: fn(acc, d) { if member(xs: acc, x: d) { acc } else { Cons { head: d, tail: acc } } })
+  list_to_string_list(reversed)
+}
+
+fn list_to_string_list(m: FreeMonoid<String>) -> List<String> {
+  fold_list(xs: list_reverse(xs: m), empty: Empty, cons: fn(acc, s) { Cons { head: s, tail: acc } })
+}
+
+// The argv positions a List<String> parameter is read at: the names reviewed against the committed
+// roster at baseline. A parameter outside these names is not argv (a layout, a row of labels) and
+// is not a census member by itself. A List<String> spells as a FreeMonoid, so the rows are the set.
+data argv_position_name_rows: List<String> = ["argv", "command_argv", "command", "command_words", "args", "arguments", "words", "property_argv", "wait_argv", "unit_argv", "extra_argv", "flag_words"]
+
+fn argv_named_data_decl(decl: String) -> Bool {
+  ends_with(s: decl, suffix: "_args") || ends_with(s: decl, suffix: "_argv") || ends_with(s: decl, suffix: "_words")
+}
+
+fn facts_of(walked: Walk) -> List<ArgvWordsFact> {
+  let fn_decls = distinct_decls(fold_list(xs: walked.return_heads, empty: Empty, cons: fn(acc, r) { Cons { head: r.decl, tail: acc } }))
+  let fns = fold_list(xs: fn_decls, empty: Empty, cons: fn(acc, d) {
+    Cons {
+      head: ArgvWordsFact {
+        decl: d,
+        decl_kind: FnDecl,
+        flag_words: flag_words_of(walked: walked, decl: d, kind: FnDecl),
+        return_spelling: return_spelling_of(walked: walked, decl: d),
+        argv_params: argv_params_of(walked: walked, decl: d),
+        list_string_data: false
+      },
+      tail: acc
+    }
+  })
+  let data_decls = distinct_decls(walked.data_list_string)
+  fold_list(xs: data_decls, empty: fns, cons: fn(acc, d) {
+    Cons {
+      head: ArgvWordsFact {
+        decl: d,
+        decl_kind: DataDecl,
+        flag_words: flag_words_of(walked: walked, decl: d, kind: DataDecl),
+        return_spelling: "",
+        argv_params: Empty,
+        list_string_data: true
+      },
+      tail: acc
+    }
+  })
+}
+
+// ------------------------------------------------------------------ sites
+
+fn is_census_member(f: ArgvWordsFact) -> Bool {
+  match f.decl_kind {
+    FnDecl =>
+      !(length(xs: f.flag_words) == 0)
+      || (f.return_spelling == "List<String>")
+      || !(length(xs: f.argv_params) == 0)
+    DataDecl =>
+      !(length(xs: f.flag_words) == 0)
+      || argv_named_data_decl(decl: f.decl)
+  }
+}
+
+fn site_class_of(module_file: String) -> Optional<ArgvWordsSiteClass> {
+  match starts_with(s: module_file, prefix: "dag/extdeps/") {
+    true => Present { value: ExtdepsInterfaceBuilder }
+    false => match starts_with(s: module_file, prefix: "dag/gunbc/") {
+      true => Present { value: WorkflowCallSite }
+      false => Absent
+    }
+  }
+}
+
+fn site_class_name(c: ArgvWordsSiteClass) -> String {
+  match c {
+    ExtdepsInterfaceBuilder => "extdeps_interface_builder"
+    WorkflowCallSite => "workflow_call_site"
+  }
+}
+
+fn decl_kind_name(k: ArgvWordsDeclKind) -> String {
+  match k {
+    FnDecl => "fn"
+    DataDecl => "data"
+  }
+}
+
+// One census row per member declaration of one module. A module outside the two modeled roots is a
+// REFUSAL, never a silent zero: the census counts dag/extdeps and dag/gunbc and says so.
+fn argv_word_construction_sites_of_facts(module_file: String, facts: List<ArgvWordsFact>) -> ArgvWordsSites {
+  match site_class_of(module_file: module_file) {
+    Absent => ArgvWordsSitesRefused { reason: concat("module outside the modeled roots dag/extdeps and dag/gunbc: ", module_file) }
+    Present { value: sc } =>
+      ArgvWordsSitesEstablished {
+        sites: fold_list(xs: facts, empty: Empty, cons: fn(acc, f) {
+          if is_census_member(f: f) {
+            Cons {
+              head: ArgvWordsSite {
+                module_file: module_file,
+                decl: f.decl,
+                decl_kind: f.decl_kind,
+                site_class: sc,
+                flag_words: f.flag_words,
+                returns_argv_words: f.return_spelling == "List<String>",
+                argv_word_params: f.argv_params,
+                list_string_data: f.list_string_data
+              },
+              tail: acc
+            }
+          } else {
+            acc
+          }
+        })
+      }
+  }
+}
+
+// ------------------------------------------------------------------ receipt rows
+
+fn escape_char(s: String, delimiter: String, glue: String) -> String {
+  fold_list(xs: split(s: s, delimiter: delimiter), empty: "", cons: fn(acc, part) { if acc == "" { part } else { concat(concat(acc, glue), part) } })
+}
+
+// Percent-escape the row separators a field could carry, in the standard order: percent first, so
+// the escapes themselves are never re-escaped.
+fn escape_field(s: String) -> String {
+  escape_char(s: escape_char(s: escape_char(s: escape_char(s: s, delimiter: "%", glue: "%25"), delimiter: ",", glue: "%2C"), delimiter: ";", glue: "%3B"), delimiter: "\n", glue: "%0A")
+}
+
+fn join_words(ws: List<String>) -> String {
+  fold_list(xs: ws, empty: "", cons: fn(acc, w) { if acc == "" { escape_field(s: w) } else { concat(concat(acc, ";"), escape_field(s: w)) } })
+}
+
+fn bool_word(b: Bool) -> String {
+  match b {
+    true => "T"
+    false => "F"
+  }
+}
+
+// The site at one identity, if the module's census read produced one.
+fn argv_word_construction_site_named(sites: List<ArgvWordsSite>, module_file: String, decl: String) -> Optional<ArgvWordsSite> {
+  fold_list(xs: sites, empty: Absent, cons: fn(acc, s) {
+    match acc {
+      Absent => match (s.module_file == module_file) && (s.decl == decl) {
+        true => Present { value: s }
+        false => Absent
+      }
+      Present { value: v } => Present { value: v }
+    }
+  })
+}
+
+fn site_line(s: ArgvWordsSite) -> String {
+  let file = concat(escape_field(s: s.module_file), ",")
+  let decl = concat(escape_field(s: s.decl), ",")
+  let kind = concat(decl_kind_name(k: s.decl_kind), ",")
+  let class = concat(site_class_name(c: s.site_class), ",")
+  let flags = concat(join_words(ws: s.flag_words), ",")
+  let ret = concat(bool_word(b: s.returns_argv_words), ",")
+  let params = concat(join_words(ws: s.argv_word_params), ",")
+  concat(concat(concat(concat(concat(concat(concat(file, decl), kind), class), flags), ret), params), concat(bool_word(b: s.list_string_data), "\n"))
+}
+
+fn sites_text(sites: List<ArgvWordsSite>) -> String {
+  fold_list(xs: sites, empty: "", cons: fn(acc, s) { concat(acc, site_line(s: s)) })
+}
+
+// ------------------------------------------------------------------ the raw parse of one module
+
+type RawTreeStanding
+  = RawTreeEstablished { root: Node }
+  | RawTreeNotEstablished { cause: SourceAnalysisNotEstablishedCause }
+
+// The raw parse, without normalize: the same tokenize/validate/parse chain as
+// v2.lens.text_string_importer_census's raw_tree_of_text.
+fn raw_tree_of_text(text: String) -> RawTreeStanding {
+  let lm = dag_language_model()
+  let at = invariant_port_locus(port: ^argv_word_construction_port, invariant: ^argv_word_construction_source_invariant)
+  match lm.grammar {
+    VoidGrammar => RawTreeNotEstablished { cause: LanguageGrammarUnavailable }
+    ModeledGrammar { root: root } =>
+      match grammar_validate_for_parse(root: root, at: at) {
+        Rejected { diagnostics: _ } => RawTreeNotEstablished { cause: LanguageGrammarRejected }
+        Accepted { value: validated, diagnostics: _ } =>
+          match tokenize(text: text, file: ^argv_word_construction_subject, rules: lm.lex) {
+            Rejected { diagnostics: _ } => RawTreeNotEstablished { cause: SourceTokenizationRejected }
+            Accepted { value: stream, diagnostics: _ } =>
+              match parse_production(tokens: token_stream_remaining(stream: stream), validated: validated, production_name: validated.root.start) {
+                Rejected { diagnostics: _ } => RawTreeNotEstablished { cause: SourceParseRejected }
+                Accepted { value: artifact, diagnostics: _ } => RawTreeEstablished { root: artifact.tree }
+              }
+          }
+      }
+  }
+}
+
+// ------------------------------------------------------------------ module entry
+
+type ArgvWordsModuleStanding
+  = ArgvWordsModuleEstablished { path: String, sites: List<ArgvWordsSite> }
+  | ArgvWordsModuleRefused { path: String, reason: String }
+
+// The census read of ONE module file, end to end: read, raw parse, walk, facts, sites. The read
+// folds through filesystem_read_outcome (the module's modeled read fold), so refusal and content
+// cannot be conflated at this site.
+fn argv_word_construction_module_sites(path: String) -> ArgvWordsModuleStanding {
+  let read = Filesystem.Read(path: path)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error: e } => ArgvWordsModuleRefused { path: path, reason: concat("read refused: ", e) }
+    FilesystemReadSucceeded { content: text } =>
+      match raw_tree_of_text(text: text) {
+        RawTreeNotEstablished { cause: c } => ArgvWordsModuleRefused { path: path, reason: concat("raw parse not established: ", source_cause_name(c: c)) }
+        RawTreeEstablished { root: root } =>
+          match argv_word_construction_sites_of_facts(module_file: path, facts: facts_of(walked: walk_tree(root: root))) {
+            ArgvWordsSitesRefused { reason: r } => ArgvWordsModuleRefused { path: path, reason: r }
+            ArgvWordsSitesEstablished { sites: sites } => ArgvWordsModuleEstablished { path: path, sites: sites }
+          }
+      }
+  }
+}
+
+fn source_cause_name(c: SourceAnalysisNotEstablishedCause) -> String {
+  match c {
+    SourceUnreadable => "source unreadable"
+    LanguageGrammarUnavailable => "language grammar unavailable"
+    LanguageGrammarRejected => "language grammar rejected"
+    SourceNormalizationRejected => "source normalization rejected"
+    SourceTokenizationRejected => "source tokenization rejected"
+    SourceParseRejected => "source parse rejected"
+  }
+}
+
+// Phase 2, batched: the census rows of the given module files, appended to `out`, one row per
+// member declaration. Run from outside the repository over the discovered paths; CI's verifier
+// lane owns the corpus-scale recount, the session runner never runs it locally.
+fn argv_word_construction_for_paths(paths: List<String>, out: String) -> ProcessExit {
+  let folded = fold_list(xs: paths, empty: Empty, cons: fn(acc, p) {
+    match argv_word_construction_module_sites(path: p) {
+      ArgvWordsModuleRefused { path: rp, reason: r } => Cons { head: concat(concat(concat("REFUSED\t", rp), "\t"), r), tail: acc }
+      ArgvWordsModuleEstablished { path: _, sites: sites } => fold_list(xs: sites, empty: acc, cons: fn(acc2, s) { Cons { head: site_line(s: s), tail: acc2 } })
+    }
+  })
+  let written = Filesystem.Write(path: out, content: joined(lines_reversed: folded))
+  if written.success { ExitSuccess } else { exit_failure(reason: concat("census write refused: ", written.error)) }
+}
+
+fn joined(lines_reversed: FreeMonoid<String>) -> String {
+  fold_list(xs: list_reverse(xs: lines_reversed), empty: "", cons: fn(acc, l) { concat(acc, l) })
+}
+
+// ------------------------------------------------------------------ the roster gates
+
+// A committed roster row: one census member, at identity grain, with its classification and the
+// disposition note that names what pays it. The roster may only shrink: rows resolve against live
+// sites, live members must be covered, and the population never grows past the committed baseline.
+type ArgvWordsRosterRow {
+  module_file: String
+  decl: String
+  decl_kind: ArgvWordsDeclKind
+  site_class: ArgvWordsSiteClass
+  note: String
+}
+
+fn row_matches_site(r: ArgvWordsRosterRow, s: ArgvWordsSite) -> Bool {
+  (r.module_file == s.module_file) && (r.decl == s.decl) && decl_kind_matches(a: r.decl_kind, b: s.decl_kind)
+}
+
+// Every row must resolve to a live census member: a row whose site was paid without deleting the
+// row refuses, naming the stale identity (DESIGN 5: join at identity grain, never at count).
+fn argv_word_construction_rows_resolve(live: List<ArgvWordsSite>, roster: List<ArgvWordsRosterRow>) -> ProcessExit {
+  match fold_list(xs: roster, empty: Empty, cons: fn(acc, r) {
+    let resolves = fold_list(xs: live, empty: false, cons: fn(acc2, s) { acc2 || row_matches_site(r: r, s: s) })
+    if resolves { acc } else { Cons { head: concat(concat(concat(concat("stale row: ", r.module_file), " "), r.decl), concat(" (", concat(decl_kind_name(k: r.decl_kind), ") was paid without deleting its roster row"))), tail: acc } }
+  }) {
+    Empty => ExitSuccess
+    nonempty => exit_failure(reason: joined(lines_reversed: nonempty))
+  }
+}
+
+// Every live census member must be a roster row: new string-built argv is refused until it adopts
+// the typed form. Enrolling it is not an option while the shrink gate holds.
+fn argv_word_construction_census_covers(live: List<ArgvWordsSite>, roster: List<ArgvWordsRosterRow>) -> ProcessExit {
+  match fold_list(xs: live, empty: Empty, cons: fn(acc, s) {
+    let covered = fold_list(xs: roster, empty: false, cons: fn(acc2, r) { acc2 || row_matches_site(r: r, s: s) })
+    if covered { acc } else { Cons { head: concat(concat(concat(concat("uncovered member: ", s.module_file), " "), s.decl), concat(" (", concat(decl_kind_name(k: s.decl_kind), ") builds argv words without a typed form and without a roster row"))), tail: acc } }
+  }) {
+    Empty => ExitSuccess
+    nonempty => exit_failure(reason: joined(lines_reversed: nonempty))
+  }
+}
+
+// The roster may only shrink: its population never grows past the committed baseline cardinality.
+fn argv_word_construction_roster_shrinks(baseline_population: Int, roster: List<ArgvWordsRosterRow>) -> ProcessExit {
+  let n = length(xs: roster)
+  if n <= baseline_population {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat(concat("the typed-argv roster grew to ", integer_int_to_decimal_string(value: n)), concat(" rows past the committed baseline of ", concat(integer_int_to_decimal_string(value: baseline_population), "; pay string-built argv, do not enroll it"))))
+  }
+}
+
+// The whole contract over one recount: rows resolve, members are covered, the roster has not
+// grown. ExitSuccess is the verdict "within the contract"; a refusal names the offending rows.
+fn argv_word_construction_gates(live: List<ArgvWordsSite>, roster: List<ArgvWordsRosterRow>, baseline_population: Int) -> ProcessExit {
+  let resolved = argv_word_construction_rows_resolve(live: live, roster: roster)
+  match resolved {
+    ExitSuccess => match argv_word_construction_census_covers(live: live, roster: roster) {
+      ExitSuccess => argv_word_construction_roster_shrinks(baseline_population: baseline_population, roster: roster)
+      refused => refused
+    }
+    refused => refused
+  }
+}

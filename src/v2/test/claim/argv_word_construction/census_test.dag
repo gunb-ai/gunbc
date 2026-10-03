@@ -1,0 +1,226 @@
+module v2.test.argv_word_construction.census
+
+// THE TYPED-ARGV CONSTRUCTION CENSUS WITNESS (debt paydown trial, witty-tern-54, 2026-10-03).
+//
+// The instrument is v2.lens.argv_word_construction over the roots dag/extdeps and dag/gunbc; the
+// committed state is gunbc.instruments.argv_word_construction_census. These tests hold the lens's
+// VERDICTS at the identity grain the roster joins at:
+//   - the real-parse route over the committed fixture module (every census signal, once);
+//   - the real-parse route over the trial's specimen, pinned at its pre-cutover state;
+//   - the roster gates on hand-built sites (stale row refuses; uncovered member refuses; the
+//     roster never grows past the baseline).
+
+import v2.lens.argv_word_construction {
+  ArgvWordsRosterRow,
+  ArgvWordsSite,
+  DataDecl,
+  ExtdepsInterfaceBuilder,
+  FnDecl,
+  WorkflowCallSite,
+  ArgvWordsModuleEstablished,
+  ArgvWordsModuleRefused,
+  argv_word_construction_gates,
+  argv_word_construction_module_sites,
+  argv_word_construction_rows_resolve,
+  argv_word_construction_census_covers,
+  argv_word_construction_roster_shrinks,
+  argv_word_construction_site_named
+}
+import gunbc.instruments.argv_word_construction_census {
+  argv_word_construction_census_live,
+  argv_word_construction_census_check_paths,
+  argv_word_construction_census_roster
+}
+import v2.std.algebra { fold_list, length }
+import v2.std.logic { Bool }
+import v2.std.collection { List }
+import v2.std.optional { Absent, Present }
+import std.process { ExitSuccess, ProcessExit, ExitFailure }
+
+// ------------------------------------------------------------------ fixture module route
+
+data fixture_path: String = "test/fixture_roots/argv_word_construction/host_words.dag"
+
+// The fixture is a real parse of a real file: read -> raw parse -> walk -> facts -> sites. If the
+// grammar, the walk, or the classification drifts, this route goes red at the identity grain.
+test fn census_fixture_route_establishes_the_member_sites() -> Bool {
+  match argv_word_construction_module_sites(path: fixture_path) {
+    ArgvWordsModuleEstablished { path: _, sites: sites } =>
+      site_present(sites: sites, module_file: fixture_path, decl: "fixture_wait_flags")
+      && site_present(sites: sites, module_file: fixture_path, decl: "fixture_commit_args")
+      && site_present(sites: sites, module_file: fixture_path, decl: "fixture_transient_unit_argv")
+      && site_present(sites: sites, module_file: fixture_path, decl: "fixture_run_with_properties")
+      && site_absent(sites: sites, module_file: fixture_path, decl: "fixture_layout_rows")
+      && site_absent(sites: sites, module_file: fixture_path, decl: "fixture_label_rows")
+    ArgvWordsModuleRefused { path: _, reason: _ } => false
+  }
+}
+
+// The flag-word data decl carries its flag words; the argv-named flagless list is a member with
+// none; the ceiling List<String> data decl is not a member at all.
+test fn census_fixture_route_classifies_data_decls_at_their_own_kind() -> Bool {
+  match argv_word_construction_module_sites(path: fixture_path) {
+    ArgvWordsModuleEstablished { path: _, sites: sites } =>
+      match argv_word_construction_site_named(sites: sites, module_file: fixture_path, decl: "fixture_wait_flags") {
+        Present { value: s } => (s.decl_kind == DataDecl) && !(length(xs: s.flag_words) == 0)
+        Absent => false
+      }
+      && match argv_word_construction_site_named(sites: sites, module_file: fixture_path, decl: "fixture_commit_args") {
+        Present { value: s } => (s.decl_kind == DataDecl) && (length(xs: s.flag_words) == 0)
+        Absent => false
+      }
+      && site_absent(sites: sites, module_file: fixture_path, decl: "fixture_layout_rows")
+    ArgvWordsModuleRefused { path: _, reason: _ } => false
+  }
+}
+
+// The argv-parameter signal and the List<String> return signal are read at fn grain.
+test fn census_fixture_route_reads_fn_signals() -> Bool {
+  match argv_word_construction_module_sites(path: fixture_path) {
+    ArgvWordsModuleEstablished { path: _, sites: sites } =>
+      match argv_word_construction_site_named(sites: sites, module_file: fixture_path, decl: "fixture_run_with_properties") {
+        Present { value: s } => (s.decl_kind == FnDecl) && (s.returns_argv_words == true) && member_named(xs: s.argv_word_params, x: "property_argv")
+        Absent => false
+      }
+      && match argv_word_construction_site_named(sites: sites, module_file: fixture_path, decl: "fixture_transient_unit_argv") {
+        Present { value: s } => (s.decl_kind == FnDecl) && (s.returns_argv_words == true) && member_named(xs: s.flag_words, x: "--unit=")
+        Absent => false
+      }
+    ArgvWordsModuleRefused { path: _, reason: _ } => false
+  }
+}
+
+// ------------------------------------------------------------------ specimen route
+
+// The trial's specimen, pinned at its PRE-CUTOVER state: the string-built builders are census
+// members today. When the cutover pays them (typed options, one wire projection, ArgvCommand
+// builders, string forms deleted), this test flips WITH the cutover: the members must be gone and
+// the roster row for each must be deleted in the same change.
+data specimen_path: String = "dag/extdeps/systemd/systemd_run.dag"
+
+test fn census_specimen_route_pins_the_pre_cutover_string_forms() -> Bool {
+  match argv_word_construction_module_sites(path: specimen_path) {
+    ArgvWordsModuleEstablished { path: _, sites: sites } =>
+      site_present(sites: sites, module_file: specimen_path, decl: "systemd_run_property_argv")
+      && site_present(sites: sites, module_file: specimen_path, decl: "systemd_run_user_transient_arguments")
+      && site_present(sites: sites, module_file: specimen_path, decl: "systemd_run_transient_unit_argv")
+      && site_present(sites: sites, module_file: specimen_path, decl: "systemd_run_scope_as_account_argv")
+      && site_present(sites: sites, module_file: specimen_path, decl: "systemd_run_transient_wait_unit_argv")
+    ArgvWordsModuleRefused { path: _, reason: _ } => false
+  }
+}
+
+// The specimen is an extdeps module: its members classify as extdeps interface builders, the
+// class that pays by returning ArgvCommand from the tool's own extdeps surface.
+test fn census_specimen_route_classifies_extdeps_builders() -> Bool {
+  match argv_word_construction_module_sites(path: specimen_path) {
+    ArgvWordsModuleEstablished { path: _, sites: sites } =>
+      match argv_word_construction_site_named(sites: sites, module_file: specimen_path, decl: "systemd_run_property_argv") {
+        Present { value: s } => match s.site_class {
+          ExtdepsInterfaceBuilder => true
+          WorkflowCallSite => false
+        }
+        Absent => false
+      }
+    ArgvWordsModuleRefused { path: _, reason: _ } => false
+  }
+}
+
+// A module outside the two modeled roots is a REFUSAL, never a silent zero.
+test fn census_refuses_modules_outside_the_modeled_roots() -> Bool {
+  match argv_word_construction_module_sites(path: "docs/plans/some-note.md") {
+    ArgvWordsModuleEstablished { path: _, sites: _ } => false
+    ArgvWordsModuleRefused { path: _, reason: _ } => true
+  }
+}
+
+// ------------------------------------------------------------------ the roster gates
+
+data gate_file: String = "dag/gunbc/instruments/argv_word_construction_census.dag"
+
+fn live_member(path: String, decl: String) -> ArgvWordsSite {
+  ArgvWordsSite {
+    module_file: path,
+    decl: decl,
+    decl_kind: FnDecl,
+    site_class: WorkflowCallSite,
+    flag_words: ["--wait"],
+    returns_argv_words: false,
+    argv_word_params: Empty,
+    list_string_data: false
+  }
+}
+
+fn roster_row(path: String, decl: String) -> ArgvWordsRosterRow {
+  ArgvWordsRosterRow {
+    module_file: path,
+    decl: decl,
+    decl_kind: FnDecl,
+    site_class: WorkflowCallSite,
+    note: "witness row"
+  }
+}
+
+fn exit_is_success(exit: ProcessExit) -> Bool {
+  match exit {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  }
+}
+
+test fn gate_stale_row_refuses_the_recount() -> Bool {
+  let live = [live_member(path: gate_file, decl: "still_debt")]
+  let roster = [roster_row(path: gate_file, decl: "still_debt"), roster_row(path: gate_file, decl: "paid_but_row_kept")]
+  !exit_is_success(exit: argv_word_construction_rows_resolve(live: live, roster: roster))
+}
+
+test fn gate_uncovered_member_refuses_the_recount() -> Bool {
+  let live = [live_member(path: gate_file, decl: "still_debt"), live_member(path: gate_file, decl: "new_string_built_argv")]
+  let roster = [roster_row(path: gate_file, decl: "still_debt")]
+  !exit_is_success(exit: argv_word_construction_census_covers(live: live, roster: roster))
+}
+
+test fn gate_grown_roster_refuses_the_shrink_contract() -> Bool {
+  let roster = [roster_row(path: gate_file, decl: "one"), roster_row(path: gate_file, decl: "two")]
+  !exit_is_success(exit: argv_word_construction_roster_shrinks(baseline_population: 1, roster: roster))
+}
+
+test fn gate_within_contract_holds() -> Bool {
+  let live = [live_member(path: gate_file, decl: "still_debt")]
+  let roster = [roster_row(path: gate_file, decl: "still_debt")]
+  exit_is_success(exit: argv_word_construction_gates(live: live, roster: roster, baseline_population: 1))
+}
+
+// The committed census holds its own contract on the bounded recount of the fixture and the
+// specimen: per-module reads establish, and the committed roster covers every live member of the
+// two modules. This is the test that goes red the moment a specimen site is paid without deleting
+// its roster row, or a new string-built argv lands in either module without a typed form.
+test fn committed_census_holds_its_own_contract() -> Bool {
+  exit_is_success(exit: argv_word_construction_census_check_paths(paths: [specimen_path, fixture_path]))
+}
+
+// The instrument's own live filter subtracts only what the committed exclusions name.
+test fn instrument_live_filter_keeps_unexcluded_members() -> Bool {
+  let sites = [live_member(path: gate_file, decl: "still_debt")]
+  fold_list(xs: argv_word_construction_census_live(sites: sites), empty: true, cons: fn(acc, s) { acc && (s.decl == "still_debt") })
+}
+
+// ------------------------------------------------------------------ helpers
+
+fn member_named(xs: List<String>, x: String) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(acc, s) { acc || (s == x) })
+}
+
+fn site_present(sites: List<ArgvWordsSite>, module_file: String, decl: String) -> Bool {
+  match argv_word_construction_site_named(sites: sites, module_file: module_file, decl: decl) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn site_absent(sites: List<ArgvWordsSite>, module_file: String, decl: String) -> Bool {
+  match argv_word_construction_site_named(sites: sites, module_file: module_file, decl: decl) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
