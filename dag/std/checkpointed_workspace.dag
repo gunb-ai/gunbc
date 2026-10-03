@@ -262,7 +262,12 @@ fn workspace_coverage_after_commit(first_write_after_snapshot: ObservationInstan
 // The three published numbers' timing spans, kept apart: the internal checkpoint target while dirty,
 // the deadline by which a still-failing commit becomes a declared outage, and the published window.
 // The values are the operator's to ratify from the stage-0 measurement; none is authored here.
-type WorkspaceDurabilityPolicy {
+//
+// THE ORDER target < deadline < window IS CONSTRUCTED, NOT CHECKED. sole_constructor means the one
+// producer is workspace_durability_policy, which refuses any other order, so a policy whose outage
+// precedes its commit attempt, or whose window does not exceed its outage deadline, has no value
+// every consumer below could receive (DESIGN 5: construction over validation).
+type WorkspaceDurabilityPolicy sole_constructor {
   checkpoint_target: Nanosecond
   outage_deadline: Nanosecond
   window: Nanosecond
@@ -272,14 +277,18 @@ type WorkspacePolicyRefusal
   = PolicyTargetNotBeforeDeadline { target: Nanosecond, deadline: Nanosecond }
   | PolicyDeadlineNotBeforeWindow { deadline: Nanosecond, window: Nanosecond }
 
-fn workspace_policy_refusal(policy: WorkspaceDurabilityPolicy) -> WorkspacePolicyRefusal? {
-  if nanosecond_count(n: policy.checkpoint_target) >= nanosecond_count(n: policy.outage_deadline) {
-    Present { value: PolicyTargetNotBeforeDeadline { target: policy.checkpoint_target, deadline: policy.outage_deadline } }
+type WorkspacePolicyAdmission
+  = WorkspacePolicyAdmitted { policy: WorkspaceDurabilityPolicy }
+  | WorkspacePolicyRefused { refusal: WorkspacePolicyRefusal }
+
+fn workspace_durability_policy(checkpoint_target: Nanosecond, outage_deadline: Nanosecond, window: Nanosecond) -> WorkspacePolicyAdmission {
+  if nanosecond_count(n: checkpoint_target) >= nanosecond_count(n: outage_deadline) {
+    WorkspacePolicyRefused { refusal: PolicyTargetNotBeforeDeadline { target: checkpoint_target, deadline: outage_deadline } }
   } else {
-    if nanosecond_count(n: policy.outage_deadline) >= nanosecond_count(n: policy.window) {
-      Present { value: PolicyDeadlineNotBeforeWindow { deadline: policy.outage_deadline, window: policy.window } }
+    if nanosecond_count(n: outage_deadline) >= nanosecond_count(n: window) {
+      WorkspacePolicyRefused { refusal: PolicyDeadlineNotBeforeWindow { deadline: outage_deadline, window: window } }
     } else {
-      none
+      WorkspacePolicyAdmitted { policy: WorkspaceDurabilityPolicy { checkpoint_target: checkpoint_target, outage_deadline: outage_deadline, window: window } }
     }
   }
 }

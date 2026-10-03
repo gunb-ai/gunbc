@@ -20,7 +20,7 @@ import std.checkpointed_workspace {
   WorkspaceStoredEntry, WorkspaceRestoreRevision, WorkspaceRestoreEmpty, workspace_restore_point,
   WorkspaceAge, WorkspaceCoverage, WorkspaceClean, WorkspaceDirty, oldest_uncommitted_write_age, WorkspaceAgeOf, WorkspaceAgeUndefined,
   workspace_coverage_after_write, workspace_coverage_after_commit,
-  WorkspaceDurabilityPolicy, workspace_policy_refusal, PolicyTargetNotBeforeDeadline, PolicyDeadlineNotBeforeWindow,
+  WorkspaceDurabilityPolicy, workspace_durability_policy, WorkspacePolicyAdmission, WorkspacePolicyAdmitted, WorkspacePolicyRefused, PolicyTargetNotBeforeDeadline, PolicyDeadlineNotBeforeWindow,
   WorkspaceWritable, WorkspaceCommitDue, WorkspaceStorageOutage, WorkspaceCoverageUndecidable, workspace_write_standing,
   WorkspaceLossWithinWindow, WorkspaceCompoundFailure, WorkspaceLossUnclassifiable, LostDuringDeclaredOutage, CoverageLapsedBeforeOutage, workspace_loss_classify,
 }
@@ -51,7 +51,10 @@ fn rev1() -> WorkspaceHeadEntry { WorkspaceRevision { writer: epoch(n: 1), paren
 fn ref_of(e: WorkspaceHeadEntry) -> FabricObjectRef { fabric_object_ref_of(object: workspace_head_entry_object(entry: e)) }
 fn fence2() -> WorkspaceHeadEntry { WorkspaceFence { writer: epoch(n: 2), parent: Present { value: ref_of(e: rev1()) } } }
 
-fn policy() -> WorkspaceDurabilityPolicy { WorkspaceDurabilityPolicy { checkpoint_target: secs(n: 10), outage_deadline: secs(n: 45), window: secs(n: 60) } }
+// The witness policy comes through the one constructor; a refusal fails every claim that needs it.
+fn witness_policy() -> WorkspacePolicyAdmission {
+  workspace_durability_policy(checkpoint_target: secs(n: 10), outage_deadline: secs(n: 45), window: secs(n: 60))
+}
 fn stored(e: WorkspaceHeadEntry) -> WorkspaceStoredEntry { WorkspaceStoredEntry { ref: ref_of(e: e), entry: e } }
 
 test fn a_revision_links_its_parent_and_a_first_revision_expects_no_head() -> Bool {
@@ -131,52 +134,67 @@ test fn the_age_is_zero_while_clean_and_starts_at_the_first_pending_write() -> B
 // NO AGE ACROSS CLOCKS OR BACKWARDS IN TIME: the standing refuses to decide rather than reading the
 // workspace as writable, and a loss with no computable age is unclassifiable, never "within window".
 test fn an_age_needs_one_clock_and_forward_time() -> Bool {
+  match witness_policy() {
+    WorkspacePolicyRefused { refusal: _ } => false
+    WorkspacePolicyAdmitted { policy: pol } => {
   let other = ObservationInstant { domain: SharedMonotonic { origin: "fleet" }, basis: WallClock, since_origin: secs(n: 200) }
   let backwards = match oldest_uncommitted_write_age(coverage: WorkspaceDirty { oldest_uncommitted_write_at: at(n: 50) }, now: at(n: 40)) { WorkspaceAgeUndefined { order: InstantAfter } => true  other_arm => false }
-  let crossed = match workspace_write_standing(policy: policy(), workspace: "ops", coverage: WorkspaceDirty { oldest_uncommitted_write_at: at(n: 0) }, now: other) {
+  let crossed = match workspace_write_standing(policy: pol, workspace: "ops", coverage: WorkspaceDirty { oldest_uncommitted_write_at: at(n: 0) }, now: other) {
     WorkspaceCoverageUndecidable { order: InstantIncomparable { left: _, right: _ } } => true
     other_arm => false
   }
-  let unclassified = match workspace_loss_classify(policy: policy(), standing: WorkspaceWritable, coverage: WorkspaceDirty { oldest_uncommitted_write_at: at(n: 50) }, lost_at: at(n: 40)) {
+  let unclassified = match workspace_loss_classify(policy: pol, standing: WorkspaceWritable, coverage: WorkspaceDirty { oldest_uncommitted_write_at: at(n: 50) }, lost_at: at(n: 40)) {
     WorkspaceLossUnclassifiable { order: _ } => true
     other_arm => false
   }
   backwards && crossed && unclassified
+    }
+  }
 }
 
 test fn an_idle_workspace_stays_writable_and_a_stuck_one_declares_an_outage() -> Bool {
-  let idle = match workspace_write_standing(policy: policy(), workspace: "ops", coverage: WorkspaceClean, now: at(n: 100000)) { WorkspaceWritable => true  _ => false }
-  let due = match workspace_write_standing(policy: policy(), workspace: "ops", coverage: WorkspaceDirty { oldest_uncommitted_write_at: at(n: 0) }, now: at(n: 12)) { WorkspaceCommitDue { age: a } => nanosecond_count(n: a) == nanosecond_count(n: secs(n: 12))  _ => false }
-  let fresh = match workspace_write_standing(policy: policy(), workspace: "ops", coverage: WorkspaceDirty { oldest_uncommitted_write_at: at(n: 0) }, now: at(n: 5)) { WorkspaceWritable => true  _ => false }
-  let outage = match workspace_write_standing(policy: policy(), workspace: "ops", coverage: WorkspaceDirty { oldest_uncommitted_write_at: at(n: 0) }, now: at(n: 45)) { WorkspaceStorageOutage { outage: _ } => true  _ => false }
+  match witness_policy() {
+    WorkspacePolicyRefused { refusal: _ } => false
+    WorkspacePolicyAdmitted { policy: pol } => {
+  let idle = match workspace_write_standing(policy: pol, workspace: "ops", coverage: WorkspaceClean, now: at(n: 100000)) { WorkspaceWritable => true  _ => false }
+  let due = match workspace_write_standing(policy: pol, workspace: "ops", coverage: WorkspaceDirty { oldest_uncommitted_write_at: at(n: 0) }, now: at(n: 12)) { WorkspaceCommitDue { age: a } => nanosecond_count(n: a) == nanosecond_count(n: secs(n: 12))  _ => false }
+  let fresh = match workspace_write_standing(policy: pol, workspace: "ops", coverage: WorkspaceDirty { oldest_uncommitted_write_at: at(n: 0) }, now: at(n: 5)) { WorkspaceWritable => true  _ => false }
+  let outage = match workspace_write_standing(policy: pol, workspace: "ops", coverage: WorkspaceDirty { oldest_uncommitted_write_at: at(n: 0) }, now: at(n: 45)) { WorkspaceStorageOutage { outage: _ } => true  _ => false }
   idle && due && fresh && outage
+    }
+  }
 }
 
 test fn loss_during_an_outage_or_past_the_window_is_the_compound_failure() -> Bool {
+  match witness_policy() {
+    WorkspacePolicyRefused { refusal: _ } => false
+    WorkspacePolicyAdmitted { policy: pol } => {
   let d = WorkspaceDirty { oldest_uncommitted_write_at: at(n: 0) }
-  let within = match workspace_loss_classify(policy: policy(), standing: workspace_write_standing(policy: policy(), workspace: "ops", coverage: d, now: at(n: 20)), coverage: d, lost_at: at(n: 20)) {
+  let within = match workspace_loss_classify(policy: pol, standing: workspace_write_standing(policy: pol, workspace: "ops", coverage: d, now: at(n: 20)), coverage: d, lost_at: at(n: 20)) {
     WorkspaceLossWithinWindow { uncovered_age: a } => nanosecond_count(n: a) == nanosecond_count(n: secs(n: 20))
     _ => false
   }
-  let during = match workspace_loss_classify(policy: policy(), standing: workspace_write_standing(policy: policy(), workspace: "ops", coverage: d, now: at(n: 50)), coverage: d, lost_at: at(n: 50)) {
+  let during = match workspace_loss_classify(policy: pol, standing: workspace_write_standing(policy: pol, workspace: "ops", coverage: d, now: at(n: 50)), coverage: d, lost_at: at(n: 50)) {
     WorkspaceCompoundFailure { cause: LostDuringDeclaredOutage { outage: _ } } => true
     _ => false
   }
-  let lapsed = match workspace_loss_classify(policy: policy(), standing: WorkspaceWritable, coverage: d, lost_at: at(n: 70)) {
+  let lapsed = match workspace_loss_classify(policy: pol, standing: WorkspaceWritable, coverage: d, lost_at: at(n: 70)) {
     WorkspaceCompoundFailure { cause: CoverageLapsedBeforeOutage { oldest_uncommitted_write_age: a, window: _ } } => nanosecond_count(n: a) == nanosecond_count(n: secs(n: 70))
     _ => false
   }
   within && during && lapsed
+    }
+  }
 }
 
 test fn a_policy_must_order_target_deadline_and_window() -> Bool {
-  let ok = match workspace_policy_refusal(policy: policy()) { Absent => true  Present { value: _ } => false }
-  let bad_target = match workspace_policy_refusal(policy: WorkspaceDurabilityPolicy { checkpoint_target: secs(n: 50), outage_deadline: secs(n: 45), window: secs(n: 60) }) {
-    Present { value: PolicyTargetNotBeforeDeadline { target: _, deadline: _ } } => true
+  let ok = match workspace_durability_policy(checkpoint_target: secs(n: 10), outage_deadline: secs(n: 45), window: secs(n: 60)) { WorkspacePolicyAdmitted { policy: _ } => true  WorkspacePolicyRefused { refusal: _ } => false }
+  let bad_target = match workspace_durability_policy(checkpoint_target: secs(n: 50), outage_deadline: secs(n: 45), window: secs(n: 60)) {
+    WorkspacePolicyRefused { refusal: PolicyTargetNotBeforeDeadline { target: _, deadline: _ } } => true
     _ => false
   }
-  let bad_window = match workspace_policy_refusal(policy: WorkspaceDurabilityPolicy { checkpoint_target: secs(n: 10), outage_deadline: secs(n: 60), window: secs(n: 60) }) {
-    Present { value: PolicyDeadlineNotBeforeWindow { deadline: _, window: _ } } => true
+  let bad_window = match workspace_durability_policy(checkpoint_target: secs(n: 10), outage_deadline: secs(n: 60), window: secs(n: 60)) {
+    WorkspacePolicyRefused { refusal: PolicyDeadlineNotBeforeWindow { deadline: _, window: _ } } => true
     _ => false
   }
   ok && bad_target && bad_window
