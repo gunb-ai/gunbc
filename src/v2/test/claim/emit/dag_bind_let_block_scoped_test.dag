@@ -1,0 +1,150 @@
+module v2.test.emit.dag_bind_let_block_scoped
+
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag {
+  dag_bind_target_model,
+  dag_lex,
+  dag_value_expression_projection,
+  parse_production_emitted_identity_optional
+}
+import v2.std.compilers.target_model {
+  BoundToken,
+  FixedToken,
+  ConcreteSyntaxToken,
+  bind_let_value_producing_tokens,
+  bound_tokens_source_text,
+  render_target_text
+}
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected, bind_outcome }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra { list_append }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.optional { Absent, Present }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A CORE BIND EMITTED THROUGH THE dag TARGET PARSES BACK AS THE SAME BINDS, AT EXPRESSION POSITION.
+// dag declares no separator (v2.std.compilers.target_model TargetBindLetShape, in_token Absent), so a
+// Bind is emitted block-scoped: `{ let k = (v) { b } }`. The control nests one Bind as the VALUE of
+// another -- the hardest position, inside the group -- emits it with the real emitter
+// (bind_let_value_producing_tokens over dag_value_expression_projection), renders it with the dag
+// target's own spellings, places it where a value is owed (a data initializer) and reparses it with
+// the dag grammar. It must parse, hold exactly two let_expr nodes with one inside the other, and
+// carry no `in`: the text the emitter writes is text the grammar reads, one way.
+fn dbl_token(binding: Symbol) -> List<ConcreteSyntaxToken> {
+  [BoundToken { token_class: ^dag_token_ident, binding: binding }]
+}
+
+fn dbl_bind(value: List<ConcreteSyntaxToken>) -> List<ConcreteSyntaxToken> {
+  dbl_bind_body(value: value, body: dbl_token(binding: ^dag_binding_bind_x))
+}
+
+fn dbl_bind_body(value: List<ConcreteSyntaxToken>, body: List<ConcreteSyntaxToken>) -> List<ConcreteSyntaxToken> {
+  bind_let_value_producing_tokens(
+    projection: dag_value_expression_projection(),
+    key_tokens: dbl_token(binding: ^dag_binding_bind_x),
+    value_tokens: value,
+    body_tokens: body
+  )
+}
+
+fn dbl_nested_text() -> Outcome<String> {
+  dbl_text(tokens: dbl_bind(value: dbl_bind(value: dbl_token(binding: ^dag_binding_pick_lit_one))))
+}
+
+fn dbl_text(tokens: List<ConcreteSyntaxToken>) -> Outcome<String> {
+  let model = dag_bind_target_model()
+  bind_outcome(
+    o: bound_tokens_source_text(
+      tokens: tokens,
+      lex: model.lex,
+      binding_spellings: model.binding_spellings
+    ),
+    f: fn(t) { Accepted { value: render_target_text(t: t), diagnostics: None } }
+  )
+}
+
+fn dbl_parse(text: String) -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      bind_outcome(
+        o: tokenize(text: text, file: ^dbl_probe, rules: dag_lex()),
+        f: fn(token_stream) {
+          match parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }
+          }
+        }
+      )
+  }
+}
+
+fn dbl_is_let(node: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } => id == ^dag_surface_let_expr
+    Absent => false
+  }
+}
+
+fn dbl_count_lets(root: Node) -> Int {
+  let here = if dbl_is_let(node: root) { 1 } else { 0 }
+  fold(root.children, init: here, f: fn(acc, e) { acc + dbl_count_lets(root: e.target) })
+}
+
+// A let with another let somewhere under it.
+fn dbl_has_nested_let(root: Node) -> Bool {
+  if dbl_is_let(node: root) && fold(root.children, init: 0, f: fn(acc, e) { acc + dbl_count_lets(root: e.target) }) == 1 {
+    true
+  } else {
+    fold(root.children, init: false, f: fn(found, e) { found || dbl_has_nested_let(root: e.target) })
+  }
+}
+
+fn dbl_reparses_to_two_nested_lets(text: String) -> Bool {
+  match dbl_parse(text: concat(concat("module p\ndata d: I = ", text), "\n")) {
+    Accepted { value: tree, diagnostics: _ } => dbl_count_lets(root: tree) == 2 && dbl_has_nested_let(root: tree)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// One Bind with the given body, at expression position: it parses, and it holds exactly `lets` let
+// nodes (the binding, plus any the body itself holds) -- the body is read as the body, never
+// absorbed into the value or into a literal.
+fn dbl_body_round_trips(body: List<ConcreteSyntaxToken>, lets: Int) -> Bool {
+  match dbl_text(tokens: dbl_bind_body(value: dbl_token(binding: ^dag_binding_pick_lit_one), body: body)) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: text, diagnostics: _ } =>
+      match dbl_parse(text: concat(concat("module p\ndata d: I = ", text), "\n")) {
+        Accepted { value: tree, diagnostics: _ } => dbl_count_lets(root: tree) == lets
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+test fn a_bare_identifier_body_round_trips() -> Bool {
+  dbl_body_round_trips(body: dbl_token(binding: ^dag_binding_bind_x), lets: 1)
+}
+
+test fn an_empty_brace_literal_body_round_trips() -> Bool {
+  dbl_body_round_trips(body: [FixedToken { token_class: ^dag_token_lbrace }, FixedToken { token_class: ^dag_token_rbrace }], lets: 1)
+}
+
+test fn a_body_starting_with_minus_round_trips() -> Bool {
+  dbl_body_round_trips(body: list_append(left: [FixedToken { token_class: ^dag_token_minus }], right: dbl_token(binding: ^dag_binding_bind_x)), lets: 1)
+}
+
+test fn a_bind_body_round_trips_nested() -> Bool {
+  dbl_body_round_trips(body: dbl_bind(value: dbl_token(binding: ^dag_binding_pick_lit_one)), lets: 2)
+}
+
+test fn nested_bind_emitted_block_scoped_reparses_to_the_same_binds() -> Bool {
+  match dbl_nested_text() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: text, diagnostics: _ } =>
+      !string_contains(s: text, pattern: " in ") && dbl_reparses_to_two_nested_lets(text: text)
+  }
+}
