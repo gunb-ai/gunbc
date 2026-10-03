@@ -3,7 +3,8 @@ module std.checkpointed_workspace
 import std.types { String, NonEmptyStr, Int, Bool, List }
 import v2.std.optional { Present, Absent }
 import std.algebra { Cons, Empty }
-import std.measure { ByteSize, measure_count }
+import std.measure { ByteSize, measure_count, Nanosecond, nanosecond, nanosecond_count, ObservationInstant, InstantOrder, InstantBefore, InstantSame, InstantAfter, InstantIncomparable, compare_instants }
+import std.nat { nat_sub, NatDifference, NatSubtrahendExceedsMinuend }
 import std.fabric_blob { FabricBlobAddress, fabric_blob_object_name }
 import std.fabric_storage {
   FabricObject, FabricObjectRef,
@@ -37,6 +38,17 @@ import std.fabric_storage {
 // FabricObject.links, so a closure read from the head reaches every committed revision in one
 // store-side walk. Chunk addresses live in the body: they name blob-plane objects, which are not
 // metadata-plane objects and so are not links the metadata store may walk (std.fabric_blob).
+//
+// CONSUMERS, A DECLARED FRONTIER (DESIGN 3c). Executed today only by test.claim.std_checkpointed_workspace
+// over supplied values. The real-path consumers are, by name:
+//   * the demo stage-1 restore entry (create, edit, barrier, destroy, recreate), which commits and
+//     restores through std.fabric_storage heads on R2. TRIGGER: gunbc.fabric_storage_r2_head
+//     (gunbc#13088) on main AND a durable workspace bucket placement with minted credentials (the
+//     operator escalation of 2026-10-03). It owes the pairing claim the witness rule demands: one
+//     claim that runs a real head advance and restore, so the supplied-value witnesses stop being the
+//     only execution of this module;
+//   * the control-plane reconciler that publishes WorkspaceFence entries (docs/plans/
+//     workspace-control-plane.md, gunbc#13084). TRIGGER: the same head realization on main.
 
 type WorkspaceWriterEpoch {
   workspace: NonEmptyStr
@@ -148,43 +160,67 @@ fn workspace_commit_classify(writer: WorkspaceWriterEpoch, advance: FabricHeadAd
 // RESTORE SELECTS THE LAST COMMITTED REVISION: walking newest first from the head, skip fences
 // (they commit no content) and take the first revision. A workspace with no revision restores empty;
 // it is never restored from anything but a committed entry, so uncommitted uploads -- chunks put
-// without a head advance -- are never read.
+// without a head advance -- are never read. Each entry travels WITH the ref it was read under, one
+// value, so an entry without its ref (or a ref without its entry) has no representation; the decoded
+// closure read (std.fabric_storage FabricClosureRead, newest first) maps onto this one-to-one.
+type WorkspaceStoredEntry {
+  ref: FabricObjectRef
+  entry: WorkspaceHeadEntry
+}
+
 type WorkspaceRestorePoint
   = WorkspaceRestoreRevision { revision: FabricObjectRef, entries: List<WorkspaceEntry> }
   | WorkspaceRestoreEmpty
 
-fn workspace_restore_point(newest_first: List<WorkspaceHeadEntry>, refs: List<FabricObjectRef>) -> WorkspaceRestorePoint {
+fn workspace_restore_point(newest_first: List<WorkspaceStoredEntry>) -> WorkspaceRestorePoint {
   match newest_first {
     Empty => WorkspaceRestoreEmpty
-    Cons { head: e, tail: rest } => match refs {
-      Empty => WorkspaceRestoreEmpty
-      Cons { head: r, tail: rrest } => match e {
-        WorkspaceRevision { writer: _, parent: _, entries: es } => WorkspaceRestoreRevision { revision: r, entries: es }
-        WorkspaceFence { writer: _, parent: _ } => workspace_restore_point(newest_first: rest, refs: rrest)
-      }
+    Cons { head: s, tail: rest } => match s.entry {
+      WorkspaceRevision { writer: _, parent: _, entries: es } => WorkspaceRestoreRevision { revision: s.ref, entries: es }
+      WorkspaceFence { writer: _, parent: _ } => workspace_restore_point(newest_first: rest)
     }
   }
 }
 
 // ── COVERAGE: THE RECOVERY-POINT INVARIANT IS COVERAGE, NOT FRESHNESS ──────────────────────────
 //
-// Times are seconds on the writer's monotonic clock; only differences are read. Clean means every
-// acknowledged write is in a committed revision. Dirty carries the time of the oldest acknowledged
-// write no committed revision contains, so its age is zero while clean and an idle workspace owes
-// no commit.
+// Instants are std.measure ObservationInstant (a clock domain and basis plus nanoseconds since its
+// origin) and spans are std.measure Nanosecond, the canonical exact elapsed-time carrier. An age is
+// defined only between two instants of ONE clock; across domains, or backwards in time, there is no
+// age, and that is a typed refusal the caller must treat as unable to decide coverage -- never as zero
+// and never as clean. Clean means every acknowledged write is in a committed revision. Dirty carries
+// the instant of the oldest acknowledged write no committed revision contains, so its age is zero
+// while clean and an idle workspace owes no commit.
 type WorkspaceCoverage
   = WorkspaceClean
-  | WorkspaceDirty { oldest_uncommitted_write_at: Int }
+  | WorkspaceDirty { oldest_uncommitted_write_at: ObservationInstant }
 
-fn oldest_uncommitted_write_age(coverage: WorkspaceCoverage, now: Int) -> Int {
+type WorkspaceAge
+  = WorkspaceAgeOf { age: Nanosecond }
+  | WorkspaceAgeUndefined { order: InstantOrder }
+
+fn workspace_age_between(from: ObservationInstant, to: ObservationInstant) -> WorkspaceAge {
+  match compare_instants(a: from, b: to) {
+    InstantIncomparable { left: l, right: r } => WorkspaceAgeUndefined { order: InstantIncomparable { left: l, right: r } }
+    InstantAfter => WorkspaceAgeUndefined { order: InstantAfter }
+    InstantSame => WorkspaceAgeOf { age: nanosecond(count: 0) }
+    InstantBefore =>
+      match nat_sub(a: nanosecond_count(n: to.since_origin), b: nanosecond_count(n: from.since_origin)) {
+        NatDifference { value: d } => WorkspaceAgeOf { age: nanosecond(count: d) }
+        NatSubtrahendExceedsMinuend => WorkspaceAgeUndefined { order: InstantAfter }
+      }
+  }
+}
+
+fn oldest_uncommitted_write_age(coverage: WorkspaceCoverage, now: ObservationInstant) -> WorkspaceAge {
   match coverage {
-    WorkspaceClean => 0
-    WorkspaceDirty { oldest_uncommitted_write_at: t } => now - t
+    WorkspaceClean => WorkspaceAgeOf { age: nanosecond(count: 0) }
+    WorkspaceDirty { oldest_uncommitted_write_at: t } => workspace_age_between(from: t, to: now)
   }
 }
 
 // An acknowledged write starts the age only if none is pending; it never resets an older one.
-fn workspace_coverage_after_write(coverage: WorkspaceCoverage, at: Int) -> WorkspaceCoverage {
+fn workspace_coverage_after_write(coverage: WorkspaceCoverage, at: ObservationInstant) -> WorkspaceCoverage {
   match coverage {
     WorkspaceClean => WorkspaceDirty { oldest_uncommitted_write_at: at }
     WorkspaceDirty { oldest_uncommitted_write_at: t } => WorkspaceDirty { oldest_uncommitted_write_at: t }
@@ -193,36 +229,40 @@ fn workspace_coverage_after_write(coverage: WorkspaceCoverage, at: Int) -> Works
 
 // A commit covers every write acknowledged before its snapshot. Writes acknowledged after the
 // snapshot remain pending, so the age is advanced to the first of them, or cleared.
-fn workspace_coverage_after_commit(first_write_after_snapshot: Int?) -> WorkspaceCoverage {
+fn workspace_coverage_after_commit(first_write_after_snapshot: ObservationInstant?) -> WorkspaceCoverage {
   match first_write_after_snapshot {
     Present { value: t } => WorkspaceDirty { oldest_uncommitted_write_at: t }
     Absent => WorkspaceClean
   }
 }
 
-// The three published numbers' timing pair, kept apart: the internal checkpoint target while dirty,
+// The three published numbers' timing spans, kept apart: the internal checkpoint target while dirty,
 // the deadline by which a still-failing commit becomes a declared outage, and the published window.
 // The values are the operator's to ratify from the stage-0 measurement; none is authored here.
 type WorkspaceDurabilityPolicy {
-  checkpoint_target: Int
-  outage_deadline: Int
-  window: Int
+  checkpoint_target: Nanosecond
+  outage_deadline: Nanosecond
+  window: Nanosecond
 }
 
 type WorkspacePolicyRefusal
-  = PolicyTargetNotBeforeDeadline { target: Int, deadline: Int }
-  | PolicyDeadlineNotBeforeWindow { deadline: Int, window: Int }
+  = PolicyTargetNotBeforeDeadline { target: Nanosecond, deadline: Nanosecond }
+  | PolicyDeadlineNotBeforeWindow { deadline: Nanosecond, window: Nanosecond }
 
 fn workspace_policy_refusal(policy: WorkspaceDurabilityPolicy) -> WorkspacePolicyRefusal? {
-  if policy.checkpoint_target >= policy.outage_deadline {
+  if nanosecond_count(n: policy.checkpoint_target) >= nanosecond_count(n: policy.outage_deadline) {
     Present { value: PolicyTargetNotBeforeDeadline { target: policy.checkpoint_target, deadline: policy.outage_deadline } }
   } else {
-    if policy.outage_deadline >= policy.window {
+    if nanosecond_count(n: policy.outage_deadline) >= nanosecond_count(n: policy.window) {
       Present { value: PolicyDeadlineNotBeforeWindow { deadline: policy.outage_deadline, window: policy.window } }
     } else {
       none
     }
   }
+}
+
+fn at_least(span: Nanosecond, bound: Nanosecond) -> Bool {
+  nanosecond_count(n: span) >= nanosecond_count(n: bound)
 }
 
 // THE DECLARED STORAGE OUTAGE: entered when the oldest pending write reaches the outage deadline
@@ -231,23 +271,30 @@ fn workspace_policy_refusal(policy: WorkspaceDurabilityPolicy) -> WorkspacePolic
 // is why it is declared and receipted rather than silent.
 type DeclaredStorageOutage {
   workspace: NonEmptyStr
-  declared_at: Int
-  oldest_uncommitted_write_at: Int
+  declared_at: ObservationInstant
+  oldest_uncommitted_write_at: ObservationInstant
 }
 
+// A standing whose age cannot be computed (WorkspaceCoverageUndecidable) admits no write: the caller
+// cannot show the pending write is younger than the deadline, so it refuses as the outage would.
 type WorkspaceWriteStanding
   = WorkspaceWritable
-  | WorkspaceCommitDue { age: Int }
+  | WorkspaceCommitDue { age: Nanosecond }
   | WorkspaceStorageOutage { outage: DeclaredStorageOutage }
+  | WorkspaceCoverageUndecidable { order: InstantOrder }
 
-fn workspace_write_standing(policy: WorkspaceDurabilityPolicy, workspace: NonEmptyStr, coverage: WorkspaceCoverage, now: Int) -> WorkspaceWriteStanding {
+fn workspace_write_standing(policy: WorkspaceDurabilityPolicy, workspace: NonEmptyStr, coverage: WorkspaceCoverage, now: ObservationInstant) -> WorkspaceWriteStanding {
   match coverage {
     WorkspaceClean => WorkspaceWritable
     WorkspaceDirty { oldest_uncommitted_write_at: t } =>
-      if now - t >= policy.outage_deadline {
-        WorkspaceStorageOutage { outage: DeclaredStorageOutage { workspace: workspace, declared_at: now, oldest_uncommitted_write_at: t } }
-      } else {
-        if now - t >= policy.checkpoint_target { WorkspaceCommitDue { age: now - t } } else { WorkspaceWritable }
+      match workspace_age_between(from: t, to: now) {
+        WorkspaceAgeUndefined { order: o } => WorkspaceCoverageUndecidable { order: o }
+        WorkspaceAgeOf { age: a } =>
+          if at_least(span: a, bound: policy.outage_deadline) {
+            WorkspaceStorageOutage { outage: DeclaredStorageOutage { workspace: workspace, declared_at: now, oldest_uncommitted_write_at: t } }
+          } else {
+            if at_least(span: a, bound: policy.checkpoint_target) { WorkspaceCommitDue { age: a } } else { WorkspaceWritable }
+          }
       }
   }
 }
@@ -259,24 +306,35 @@ fn workspace_write_standing(policy: WorkspaceDurabilityPolicy, workspace: NonEmp
 // while coverage could not be kept -- during a declared outage, or with a pending write already past
 // the window before one was entered -- is the COMPOUND FAILURE: outside the ordinary guarantee,
 // typed and receipted with its billing disposition (failure-billing-semantics), never reported as an
-// ordinary recovery.
+// ordinary recovery. A loss whose age cannot be computed is not classified as either: it is its own
+// arm, receipted for investigation, because claiming "within window" without an age is the
+// fabricated plausible answer DESIGN 5 forbids.
 type WorkspaceCompoundCause
   = LostDuringDeclaredOutage { outage: DeclaredStorageOutage }
-  | CoverageLapsedBeforeOutage { oldest_uncommitted_write_age: Int, window: Int }
+  | CoverageLapsedBeforeOutage { oldest_uncommitted_write_age: Nanosecond, window: Nanosecond }
 
 type WorkspaceLoss
-  = WorkspaceLossWithinWindow { uncovered_age: Int }
-  | WorkspaceCompoundFailure { cause: WorkspaceCompoundCause, uncovered_age: Int }
+  = WorkspaceLossWithinWindow { uncovered_age: Nanosecond }
+  | WorkspaceCompoundFailure { cause: WorkspaceCompoundCause }
+  | WorkspaceLossUnclassifiable { order: InstantOrder }
 
-fn workspace_loss_classify(policy: WorkspaceDurabilityPolicy, standing: WorkspaceWriteStanding, coverage: WorkspaceCoverage, lost_at: Int) -> WorkspaceLoss {
-  let age = oldest_uncommitted_write_age(coverage: coverage, now: lost_at)
+fn workspace_loss_classify(policy: WorkspaceDurabilityPolicy, standing: WorkspaceWriteStanding, coverage: WorkspaceCoverage, lost_at: ObservationInstant) -> WorkspaceLoss {
   match standing {
-    WorkspaceStorageOutage { outage: o } => WorkspaceCompoundFailure { cause: LostDuringDeclaredOutage { outage: o }, uncovered_age: age }
-    WorkspaceWritable =>
-      if age >= policy.window { WorkspaceCompoundFailure { cause: CoverageLapsedBeforeOutage { oldest_uncommitted_write_age: age, window: policy.window }, uncovered_age: age } }
-      else { WorkspaceLossWithinWindow { uncovered_age: age } }
-    WorkspaceCommitDue { age: _ } =>
-      if age >= policy.window { WorkspaceCompoundFailure { cause: CoverageLapsedBeforeOutage { oldest_uncommitted_write_age: age, window: policy.window }, uncovered_age: age } }
-      else { WorkspaceLossWithinWindow { uncovered_age: age } }
+    WorkspaceStorageOutage { outage: o } => WorkspaceCompoundFailure { cause: LostDuringDeclaredOutage { outage: o } }
+    WorkspaceCoverageUndecidable { order: o } => WorkspaceLossUnclassifiable { order: o }
+    WorkspaceWritable => workspace_loss_by_age(policy: policy, coverage: coverage, lost_at: lost_at)
+    WorkspaceCommitDue { age: _ } => workspace_loss_by_age(policy: policy, coverage: coverage, lost_at: lost_at)
+  }
+}
+
+fn workspace_loss_by_age(policy: WorkspaceDurabilityPolicy, coverage: WorkspaceCoverage, lost_at: ObservationInstant) -> WorkspaceLoss {
+  match oldest_uncommitted_write_age(coverage: coverage, now: lost_at) {
+    WorkspaceAgeUndefined { order: o } => WorkspaceLossUnclassifiable { order: o }
+    WorkspaceAgeOf { age: a } =>
+      if at_least(span: a, bound: policy.window) {
+        WorkspaceCompoundFailure { cause: CoverageLapsedBeforeOutage { oldest_uncommitted_write_age: a, window: policy.window } }
+      } else {
+        WorkspaceLossWithinWindow { uncovered_age: a }
+      }
   }
 }
