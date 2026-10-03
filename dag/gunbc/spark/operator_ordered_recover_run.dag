@@ -1,0 +1,69 @@
+module gunbc.spark.operator_ordered_recover_run
+
+import std.types { String, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import v2.std.optional { Present, Absent }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.fleet_multi_principal_probe { spark_converge_target_selection, SparkConvergeTargetSingle, SparkConvergeTargetAllObserveOnly, SparkConvergeTargetRefused, env_var_nonempty }
+import gunbc.spark.host_effect_quiescence { parse_claimant_standing }
+import gunbc.spark.host_commitment { fleet_argv_run }
+import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
+import gunbc.fabric_event_log_host { HostStoreResolved, HostStoreRefused, event_log_store_for_host, now_epoch_seconds }
+import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
+import gunbc.spark.pair_serving_d0_door { StandingGrantRowOnMain }
+import gunbc.spark.standing_host_effect_recover { standing_host_effect_recover_over, claimant_wire }
+
+// ── THE OPERATOR-ORDERED PRE-MERGE RECOVERY RUN (2026-10-03). NOT FOR MERGE. ────────────────────────────
+//
+// The operator, directly: "can we just do this via the unmerged branch?" -- recover the stale Group A
+// host-effect claims (srv8 5a15d9a4fb268150, srv7 d66e55c35176c445) from the unmerged branch, before #13102
+// lands. The landed rule (gunbc.spark.standing_host_effect_recover standing_host_effect_recover_ci_wet) honors
+// the grant row only when it is byte-identical to origin/main's, which an unmerged row cannot be; this entry is
+// that same fold with the row honored on the operator's direct instruction, standing in for the merge as the
+// outside approval for THIS program only. Everything else is the landed fold unchanged: Group A roster,
+// exactly one live claim derived per run, the typed claimant disposition, a fresh quiescence read of that
+// claim's residue after selection, and the release read back. The revision that ran is recorded on the PR.
+data operator_ordered_recover_receipt_path: String = "target/host-effect-recover-receipt.txt"
+
+fn operator_ordered_recover_ci_wet() -> ProcessExit {
+  let exit = operator_ordered_recover()
+  let body = match exit {
+    ExitSuccess => "recovered: the one live claim on the target was released after a fresh quiescence read and read back absent\n"
+    ExitFailure { code: _, reason: r } => join(["NOT recovered: ", r, "\n"], "")
+  }
+  let w = Filesystem.Write(path: operator_ordered_recover_receipt_path, content: join(["operator-ordered pre-merge recovery (honors the branch grant row on the operator's instruction, 2026-10-03)\n", body], ""))
+  exit
+}
+
+fn operator_ordered_recover() -> ProcessExit {
+  match spark_converge_target_selection(execute_apply: true) {
+    SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
+    SparkConvergeTargetAllObserveOnly => exit_failure(reason: "SPARK_CONVERGE_TARGET is unset: a recovery releases one host's claim, so it names that host")
+    SparkConvergeTargetSingle { host: host } =>
+      match parse_claimant_standing(wire: claimant_wire()) {
+        Absent => exit_failure(reason: "the claimant disposition must be terminated or abandoned")
+        Present { value: standing } =>
+          match env_var_nonempty(name: "GITHUB_RUN_ID" as NonEmptyStr) {
+            Absent => exit_failure(reason: "GITHUB_RUN_ID is unset")
+            Present { value: run_id } =>
+              match observe_executor_reach() {
+                ExecutorReachUnknown { cause: c } => exit_failure(reason: c)
+                ExecutorReachKnown { short_hostname: executor, path: _ } =>
+                  match event_log_store_for_host(short_hostname: executor) {
+                    HostStoreRefused { detail: d } => exit_failure(reason: d)
+                    HostStoreResolved { store: store, executor: _ } =>
+                      match now_epoch_seconds() {
+                        Absent => exit_failure(reason: "the clock could not be read")
+                        Present { value: at } =>
+                          match prepare_fleet_ssh_agent_context(attempt_raw: "host-effect-operator-recover") {
+                            FleetSshContextRefused { cause: c } => exit_failure(reason: c)
+                            FleetSshContextReady { context: context, receipt: _ } =>
+                              standing_host_effect_recover_over(host: host, standing: standing, run_id: run_id as NonEmptyStr, row: StandingGrantRowOnMain, run: fn(argv) { fleet_argv_run(context: context, host: host, argv: argv) }, store: store, executor: executor as NonEmptyStr, at: at)
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
