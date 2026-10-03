@@ -1,0 +1,267 @@
+module gunbc.instruments.type_declaration_use_census
+
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
+import v2.std.algebra { fold_list }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.node {
+  Edge, Authored, StructuralLabel, Positional, Node, Symbol, symbol_lexeme, node_subtree_nodes,
+  TypeNode, ComputationNode, Atom, Conj, Disj, Arrow, Cardinality, Instantiation
+}
+import v2.std.type_binder { GenericTypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, type_decl_view, type_param_names }
+import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_to_dotted_string }
+import v2.std.optional { Optional, Present, Absent }
+import v2.std.grammar { node_atom_identity_optional }
+
+import v2.compiler.infer { RefinementDeclaration, refinement_declaration_of_node }
+import v2.compiler.symbol_index_fill { symbol_index_binder_type_or_target }
+import v2.compiler.body_lowering_fold {
+  DeclaredRecord, DeclaredRefinement, DeclaredResource, DeclaredTypeKind,
+  DeclaredTypeModifiers, NominalOpaqueModifier, SoleConstructorModifier, TypeDeclModifier
+}
+import v2.compiler.emit_produced {
+  ModuleMemberClass, ModuleMemberBodiedArrow, ModuleMemberBodylessArrow, ModuleMemberCoproduct,
+  ModuleMemberRecord, ModuleMemberRefinement, ModuleMemberRecordOrRefinement, ModuleMemberAlias,
+  ModuleMemberOpaque, ModuleMemberGeneric, ModuleMemberUnsupported,
+  module_member_class, module_member_conj_class, module_bodies_in_tree, module_body_member_edges
+}
+
+// THE TYPE-DECLARATION AND CAST CENSUS -- M0 of the nominal-type plan
+// (docs/plans/nominal-type-declaration-plan.md section 2). It reads the RESOLVED tree, never text:
+// this module is the per-module fold, run once per module inside the native driver's census walk
+// (v2.compiler.compile), and the reader that joins the rows across modules. Numbers it produces are a
+// receipt and are not transcribed into committed prose (DESIGN section 6).
+//
+// THIS HALF: every type declaration a module declares, by DECLARATION FORM. The form is decided by the
+// one authority emission uses for the same question (v2.compiler.emit_produced module_member_class),
+// so the census and the emitter cannot disagree about what a member is. A plain Conj the module's
+// captured kinds do not name (ModuleMemberRecordOrRefinement) is UNDECIDED, and an undecided row makes
+// the whole run refuse with no observation -- never a default form. Arrows (fns and `data`, which
+// lowers to a zero-parameter Arrow) are not type declarations and produce no row.
+
+type TypeDeclForm
+  = AliasForm
+  | BodylessForm
+  | CoproductForm { variants: Int }
+  | RecordForm { fields: Int }
+  | RefinementForm
+  | ResourceForm
+  | FormUndecided
+
+type TypeDeclRow {
+  module: String
+  symbol: String
+  generic: Bool
+  form: TypeDeclForm
+  modifiers: FreeMonoid<TypeDeclModifier>
+  base: TypeRefText
+  predicates: FreeMonoid<String>
+}
+
+// A TYPE POSITION, NAMED BY WHAT IT RESOLVES TO: the declaring path of a resolved declaration
+// reference, the kernel atom's own identity where resolve leaves a kernel leaf an atom, or Structural
+// for an applied or composite expression (`List<Int>`), which no single declaration answers. NoBase is
+// a form with no single representation (a coproduct, a multi-field record, a bodyless declaration).
+type TypeRefText
+  = DeclaredRef { path: String }
+  | KernelRef { name: String }
+  | ParamRef { name: String }
+  | StructuralRef
+  | NoBase
+
+fn type_ref_text(n: Node) -> TypeRefText {
+  match declaration_reference_path_optional(node: n) {
+    Present { value: qn } => DeclaredRef { path: qualified_name_to_dotted_string(qn: qn) }
+    Absent =>
+      match node_atom_identity_optional(node: n) {
+        Present { value: id } => KernelRef { name: symbol_lexeme(sym: id) }
+        Absent => StructuralRef
+      }
+  }
+}
+
+// Every declaration a where-clause references, by declaring path -- the predicates and anything
+// they name. `brand` resolves to its declared nominal marker (std.types brand), so a brand-like
+// declaration is told from a checked one by WHICH declaration its clause resolves to, never by
+// the predicate's spelling.
+fn where_clause_references(clause: Node) -> FreeMonoid<String> {
+  fold_list(xs: node_subtree_nodes(root: clause), empty: Empty, cons: fn(acc, n) {
+    match declaration_reference_path_optional(node: n) {
+      Present { value: qn } => list_snoc_item(xs: acc, item: qualified_name_to_dotted_string(qn: qn))
+      Absent => acc
+    }
+  })
+}
+
+type TdcBaseRead {
+  base: TypeRefText
+  predicates: FreeMonoid<String>
+}
+
+fn tdc_no_base() -> TdcBaseRead {
+  TdcBaseRead { base: NoBase, predicates: Empty }
+}
+
+// The single representation a declaration names, where it names one: an alias's aliased type, a
+// refinement's carrier (with its clause's references), a one-field record's field type.
+fn tdc_base_read(form: TypeDeclForm, member: Node) -> TdcBaseRead {
+  match form {
+    AliasForm =>
+      match type_decl_view(target: member) {
+        TypeAlias { binders: _, aliased: a } => TdcBaseRead { base: type_ref_text(n: a), predicates: Empty }
+        GenericTypeDecl { binders: _, member: _ } => tdc_no_base()
+        OpaqueTypeDecl { binders: _ } => tdc_no_base()
+        PlainTypeDecl { member: _ } => tdc_no_base()
+      }
+    RefinementForm =>
+      match refinement_declaration_of_node(decl: member) {
+        Present { value: r } => TdcBaseRead { base: type_ref_text(n: r.carrier), predicates: where_clause_references(clause: r.where_clause) }
+        Absent => tdc_no_base()
+      }
+    RecordForm { fields: f } =>
+      if f == 1 {
+        match first(member.children) {
+          Present { value: e } => TdcBaseRead { base: type_ref_text(n: symbol_index_binder_type_or_target(target: e.target)), predicates: Empty }
+          Absent => tdc_no_base()
+        }
+      } else { tdc_no_base() }
+    BodylessForm => tdc_no_base()
+    CoproductForm { variants: _ } => tdc_no_base()
+    ResourceForm => tdc_no_base()
+    FormUndecided => tdc_no_base()
+  }
+}
+
+fn tdc_modifiers_of(name: Symbol, modifiers: FreeMonoid<DeclaredTypeModifiers>) -> FreeMonoid<TypeDeclModifier> {
+  fold_list(xs: modifiers, empty: Empty, cons: fn(acc, row) {
+    if row.name == name { row.modifiers } else { acc }
+  })
+}
+
+fn tdc_is_resource(name: Symbol, kinds: FreeMonoid<DeclaredTypeKind>) -> Bool {
+  fold_list(xs: kinds, empty: false, cons: fn(acc, k) {
+    match k {
+      DeclaredResource { name: r } => acc || (r == name)
+      DeclaredRecord { name: _ } => acc
+      DeclaredRefinement { name: _ } => acc
+    }
+  })
+}
+
+// The form of a declaration's MEMBER (the plain body, or a generic declaration's body inside its
+// wrapper), by the same class module_member_class gives a plain member.
+fn tdc_member_form(name: Symbol, member: Node, kinds: FreeMonoid<DeclaredTypeKind>) -> TypeDeclForm {
+  match module_member_conj_class(name: name, member: member, kinds: kinds) {
+    ModuleMemberRecord { name: _, record: r } => RecordForm { fields: count(r.children) }
+    ModuleMemberRefinement { name: _, refinement: _ } => RefinementForm
+    ModuleMemberRecordOrRefinement => FormUndecided
+    ModuleMemberUnsupported => if tdc_is_resource(name: name, kinds: kinds) { ResourceForm } else { FormUndecided }
+    ModuleMemberBodiedArrow => FormUndecided
+    ModuleMemberBodylessArrow => FormUndecided
+    ModuleMemberCoproduct { name: _, coproduct: _ } => FormUndecided
+    ModuleMemberAlias => FormUndecided
+    ModuleMemberOpaque => FormUndecided
+    ModuleMemberGeneric => FormUndecided
+  }
+}
+
+fn tdc_generic_form(name: Symbol, target: Node, kinds: FreeMonoid<DeclaredTypeKind>) -> TypeDeclForm {
+  match type_decl_view(target: target) {
+    GenericTypeDecl { binders: _, member: m } =>
+      match m.kind {
+        TypeNode { connective: c } =>
+          match c {
+            Disj => CoproductForm { variants: count(m.children) }
+            Conj => tdc_member_form(name: name, member: m, kinds: kinds)
+            Atom { identity: _ } => FormUndecided
+            Arrow => FormUndecided
+            Cardinality => FormUndecided
+            Instantiation => FormUndecided
+          }
+        ComputationNode { behavior: _ } => FormUndecided
+      }
+    TypeAlias { binders: _, aliased: _ } => FormUndecided
+    OpaqueTypeDecl { binders: _ } => FormUndecided
+    PlainTypeDecl { member: _ } => FormUndecided
+  }
+}
+
+fn tdc_generic_member(target: Node) -> Node {
+  match type_decl_view(target: target) {
+    GenericTypeDecl { binders: _, member: m } => m
+    TypeAlias { binders: _, aliased: _ } => target
+    OpaqueTypeDecl { binders: _ } => target
+    PlainTypeDecl { member: m } => m
+  }
+}
+
+// A generic declaration's base that is one of its OWN binders (`type G<T> = T`) is a parameter,
+// never a kernel type: the binder names resolve leaves as atoms are read back off the declaration.
+fn tdc_base_as_param(read: TdcBaseRead, params: List<Symbol>) -> TdcBaseRead {
+  match read.base {
+    KernelRef { name: n } =>
+      if fold(params, init: false, f: fn(acc, p) { acc || (symbol_lexeme(sym: p) == n) }) {
+        TdcBaseRead { base: ParamRef { name: n }, predicates: read.predicates }
+      } else { read }
+    DeclaredRef { path: _ } => read
+    ParamRef { name: _ } => read
+    StructuralRef => read
+    NoBase => read
+  }
+}
+
+type TdcMemberRead
+  = TdcNotAType
+  | TdcTypeDecl { generic: Bool, form: TypeDeclForm, member: Node }
+
+fn tdc_member_read(name: Symbol, edge: Edge, kinds: FreeMonoid<DeclaredTypeKind>) -> TdcMemberRead {
+  match module_member_class(edge: edge, kinds: kinds) {
+    ModuleMemberBodiedArrow => TdcNotAType
+    ModuleMemberBodylessArrow => TdcNotAType
+    ModuleMemberCoproduct { name: _, coproduct: c } => TdcTypeDecl { generic: false, form: CoproductForm { variants: count(c.children) }, member: c }
+    ModuleMemberRecord { name: _, record: r } => TdcTypeDecl { generic: false, form: RecordForm { fields: count(r.children) }, member: r }
+    ModuleMemberRefinement { name: _, refinement: m } => TdcTypeDecl { generic: false, form: RefinementForm, member: m }
+    ModuleMemberRecordOrRefinement => TdcTypeDecl { generic: false, form: FormUndecided, member: edge.target }
+    ModuleMemberAlias => TdcTypeDecl { generic: false, form: AliasForm, member: edge.target }
+    ModuleMemberOpaque => TdcTypeDecl { generic: false, form: BodylessForm, member: edge.target }
+    ModuleMemberGeneric => TdcTypeDecl { generic: true, form: tdc_generic_form(name: name, target: edge.target, kinds: kinds), member: tdc_generic_member(target: edge.target) }
+    ModuleMemberUnsupported =>
+      if tdc_is_resource(name: name, kinds: kinds) { TdcTypeDecl { generic: false, form: ResourceForm, member: edge.target } } else { TdcNotAType }
+  }
+}
+
+// ONE MODULE'S TYPE-DECLARATION ROWS, in member order. `module` is the module's dotted name as the
+// census walk names it; `kinds` and `modifiers` are that module's NormalizedTree carriers.
+fn type_declaration_rows(
+  module: String,
+  root: Node,
+  kinds: FreeMonoid<DeclaredTypeKind>,
+  modifiers: FreeMonoid<DeclaredTypeModifiers>
+) -> FreeMonoid<TypeDeclRow> {
+  let members = fold(module_bodies_in_tree(node: root, acc: []), init: [], f: fn(acc, b) {
+    concat(acc, module_body_member_edges(body: b))
+  })
+  fold_list(xs: members, empty: Empty, cons: fn(acc, edge) {
+    match edge.label {
+      Authored { name: n } =>
+        match tdc_member_read(name: n, edge: edge, kinds: kinds) {
+          TdcNotAType => acc
+          TdcTypeDecl { generic: g, form: f, member: m } =>
+            let based = tdc_base_as_param(read: tdc_base_read(form: f, member: m), params: type_param_names(n: edge.target))
+            list_snoc_item(xs: acc, item: TypeDeclRow {
+              module: module,
+              symbol: symbol_lexeme(sym: n),
+              generic: g,
+              form: f,
+              modifiers: tdc_modifiers_of(name: n, modifiers: modifiers),
+              base: based.base,
+              predicates: based.predicates
+            })
+        }
+      StructuralLabel { label: _ } => acc
+      Positional => acc
+    }
+  })
+}
