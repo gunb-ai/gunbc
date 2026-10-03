@@ -317,4 +317,6 @@ Slice B fills the `AttemptConfigurationReceipt` fields that slice A records as `
 
 ## 11. Questions
 
-None open. Q1 and Q2 were decided by the side chat on `75f0bd113c` and are encoded in §1, §3 and §5.
+Q1 and Q2 were decided by the side chat on `75f0bd113c` and are encoded in §1, §3 and §5. Q3 (delete `secondary_checkpoints`) and Q4 (add the receipt inputs, as slice B) were decided during slice A (§10a). Open:
+- **Q5.** How the inspection receipt is delivered (§12). Proposed: a committed receipt file named by one fleet-converge dispatch input; the alternative is JSON in the dispatch input itself.
+- **Q6.** Does Q4's ruling cover adding that dispatch input to the fleet-converge workflow surface, or does it need its own operator sign-off?
