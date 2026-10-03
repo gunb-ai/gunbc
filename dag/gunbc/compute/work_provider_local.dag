@@ -64,9 +64,11 @@ import gunbc.compute.host_capacity {
   compute_capacity_subject, compute_capacity_store, compute_release_on,
 }
 import std.measure { kibibyte }
+import std.content_hash { serialize_content_hash }
+import std.materialization_provider { ComputeWorkRequest, request_key }
 import gunbc.compute.work_request {
   WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, CargoRelease, CargoDebug,
-  WorkToolchainIdentity, work_identity, work_identity_hex, work_default_build, work_declared_outputs,
+  WorkToolchainIdentity, work_toolchain_observed, work_default_build, work_declared_outputs,
   DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
   WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, WorkCancelled, WorkOutputMismatch,
   WorkInfrastructureRefusal, ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ComputeCapacityLedgerUnavailable,
@@ -155,7 +157,7 @@ fn compute_observe_toolchain(instance: HostDashboardInstance) -> ToolchainObserv
           if trim(s: rustc_line) == "" || trim(s: cache_line) == "" {
             ToolchainObservationRefused { detail: "rustc or sccache printed an empty version line" }
           } else {
-            ToolchainObserved { toolchain: WorkToolchainIdentity { rustc_version: trim(s: rustc_line) as NonEmptyStr, cache_release: trim(s: cache_line) as NonEmptyStr } }
+            ToolchainObserved { toolchain: work_toolchain_observed(rustc_version: trim(s: rustc_line) as NonEmptyStr, cache_release: trim(s: cache_line) as NonEmptyStr) }
           }
       }
   }
@@ -1478,6 +1480,15 @@ fn compute_lease_drop_record(dropped: LeaseDrop, layout: ComputeLayout) -> HostR
   }
 }
 
+// THE WORK'S IDENTITY IS THE MATERIALIZATION PROVIDER'S KEY, not a second one. It is derived from
+// the ComputeWorkRequest family's judgment contract (std.materialization_provider), so the tree,
+// the operation and the sealed toolchain reading are the only things that move it, and the key a
+// store will be asked for at the cutover is byte-for-byte the name this provider already files the
+// work under.
+fn compute_work_identity(subject: WorkSubject, op: WorkOperation, toolchain: WorkToolchainIdentity) -> String {
+  serialize_content_hash(hash: request_key(req: ComputeWorkRequest { subject: subject, operation: op, toolchain: toolchain })) as String
+}
+
 fn compute_provide_leaf(
   instance: HostDashboardInstance,
   commit: String,
@@ -1486,7 +1497,7 @@ fn compute_provide_leaf(
   toolchain: WorkToolchainIdentity,
   dependency_store: String,
 ) -> ProvideResult {
-  let identity = work_identity_hex(id: work_identity(subject: subject, op: op, toolchain: toolchain))
+  let identity = compute_work_identity(subject: subject, op: op, toolchain: toolchain)
   let layout = compute_layout(instance: instance, identity_hex: identity)
   let attached = compute_read_stored_outcome(layout: layout)
   if stored_outcome_is_success(r: attached) {
@@ -1823,7 +1834,7 @@ fn compute_provide_dependent(instance: HostDashboardInstance, commit: String, su
       r: compute_provide_leaf(instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency_store: compute_layout(instance: instance, identity_hex: build_identity).store_dir),
       carried: provide_result_host_record(r: build))
   } else {
-    let identity = work_identity_hex(id: work_identity(subject: subject, op: op, toolchain: toolchain))
+    let identity = compute_work_identity(subject: subject, op: op, toolchain: toolchain)
     provide_result_with_host_record(
       r: compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: DependencyNotSucceeded { dependency_identity: provide_result_identity(r: build), ending: provide_result_ending(r: build) } }, subject: subject, op: op),
       carried: provide_result_host_record(r: build))

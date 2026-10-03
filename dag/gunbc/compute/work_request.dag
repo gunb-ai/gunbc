@@ -2,7 +2,6 @@ module gunbc.compute.work_request
 
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
 import std.measure { Kibibyte, kibibyte_count }
-import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_tagged_structural }
 import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex }
 import extdeps.languages.json.emit {
   JsonValue, json_object, json_kv, json_string, json_int, json_array, serialize_json,
@@ -97,24 +96,29 @@ fn work_declared_outputs(op: WorkOperation) -> List<DeclaredOutput> {
 // The toolchain half of the identity: the OBSERVED rustc version line and the sccache release the
 // host serves, because the same tree under a different compiler is different work. A provider
 // observes these before computing an identity; it never spells them.
-type WorkToolchainIdentity {
+//
+// SEALED, because it is a RUNNER-READ input to a materialization key (std.materialization_provider
+// ComputeWorkRequest): a key input nobody declared and anybody can author is a caller-asserted key
+// with extra steps, which is the one thing that contract's derivation invariant forbids. The only
+// production mint is the provider's observation fold; the test fixture is admitted by name so the
+// key's discrimination over this axis stays executable.
+type WorkToolchainIdentity sole_constructor {
   rustc_version: NonEmptyStr
   cache_release: NonEmptyStr
 }
 
-fn work_identity(subject: WorkSubject, op: WorkOperation, toolchain: WorkToolchainIdentity) -> Fnv1a64Structural {
-  let tree = match subject { ExactTree { tree } => git_object_id_wire_hex(oid: tree) as String }
-  content_hash_tagged_structural(
-    tag: "gunbc-compute-work-v1" as NonEmptyStr,
-    payload: content_hash_atom(value: join([
-      tree, "|", work_operation_canonical(op: op), "|", toolchain.rustc_version as String, "|", toolchain.cache_release as String,
-    ], "") as NonEmptyStr),
-  )
-}
+fn work_toolchain_observed(rustc_version: NonEmptyStr, cache_release: NonEmptyStr) -> WorkToolchainIdentity
+  admit_callers: [
+    decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_observe_toolchain"),
+    decl_ref(module_path: "test.claim.compute.work_request_witness_test", decl_name: "tc"),
+  ]
+  = WorkToolchainIdentity { rustc_version: rustc_version, cache_release: cache_release }
 
-fn work_identity_hex(id: Fnv1a64Structural) -> String {
-  id.digest as String
-}
+// THERE IS NO work_identity HERE ANY MORE. It was a second key for one computation -- a private
+// tagged hash beside std.materialization_provider's request_key -- and the identity of a compute
+// request is now that provider's derived key over the ComputeWorkRequest family
+// (gunbc.compute.work_provider_local compute_work_identity). This module keeps the work VOCABULARY;
+// the materialization contract owns the key.
 
 // One returned output: the declared path, the blob identity of its bytes (git's blob object id, a
 // content hash the same authority every subject already uses), and where the store holds it.
