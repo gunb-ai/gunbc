@@ -133,7 +133,7 @@ fn runner_unit_memory_max_drifts_against_cap(
   match memory_limit_converge_verdict(observed: read.memory_max, desired: desired_cap) {
     Drifted => true
     VerdictConverged => false
-    Absent => false
+    VerdictAbsent => false
   }
 }
 
@@ -141,7 +141,7 @@ fn runner_unit_swap_max_converged(read: RunnerUnitMemoryLiveRead, target: Conver
   match converge_target_live_verdict(read: read, target: target) {
     Present { value: VerdictConverged } => true
     Present { value: Drifted } => false
-    Present { value: Absent } => false
+    Present { value: VerdictAbsent } => false
     Absent => false
   }
 }
