@@ -778,10 +778,6 @@ import v2.std.collection { List }
 // through xl0r_*_infer_reason over the warm resolved fixtures, WARM because infer is past the budget. The same change's v2.test.claim.parse.expression_bodied_continuation reads each source's
 // parse-then-normalize verdict through one nullary Bool producer per source, WARM because a prepared parse plus
 // normalize is past one claim's budget.
-// v2.test.claim.construction_confinement.construction_confinement (gunbc#13123, four rows refused
-// enrolment_measured_over_margin at ~0.8M eval steps each) reads its two fixture programs through one
-// nullary `cc_*_reading` producer each -- one two-module assemble and one infer answering two Bools and two
-// Ints -- and its four rows share them. WARM: one front end plus infer is past one claim's budget.
 // v2.test.claim.field_projection.field_projection_stages (gunbc#12506, twenty rows refused
 // enrolment_measured_over_margin on run 37071586760) reads each of its fourteen fixture programs through one
 // nullary `fps_*_reading` producer -- one assemble and one infer answering decided Bools, an Optional<Bool>
@@ -827,8 +823,6 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.parse.expression_bodied_continuation.cont_braced_survives_normalize",
   "v2.test.claim.parse.expression_bodied_continuation.cont_expression_bodied_survives_normalize",
   "v2.test.claim.parse.expression_bodied_continuation.cont_expression_bodied_literal_survives_normalize",
-  "v2.test.claim.construction_confinement.construction_confinement.cc_admitted_reading",
-  "v2.test.claim.construction_confinement.construction_confinement.cc_refused_reading",
   "v2.test.claim.field_projection.field_projection_stages.fps_no_projection_reading",
   "v2.test.claim.field_projection.field_projection_stages.fps_valid_field_reading",
   "v2.test.claim.field_projection.field_projection_stages.fps_absent_field_reading",
