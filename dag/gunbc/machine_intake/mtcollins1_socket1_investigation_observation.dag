@@ -508,13 +508,27 @@ data mtcollins1_cpu0_fingerprint_comparison: MtCollins1CpuFingerprintComparison 
 // SOCKET 1 PIN DAMAGE, REPORTED BY THE OPERATOR, 2026-10-03. While removing the socket-1 CPU for the
 // one-socket test, thermal paste fell onto socket 1's pins; cleaning it with a microfiber cloth
 // snagged the pins and probably bent some. From this date a socket-1 failure cannot be told apart
-// from this damage, so any later socket-1 diagnosis must start by inspecting the socket under
-// magnification. Socket 1 has been EMPTY since this removal.
+// from this damage. That consequence is a typed gate, derived from the report's own date and read by
+// the history and hypothesis renderers, not prose. Socket 1 has been EMPTY since this removal.
 type MtCollins1SocketDamageReport {
   socket: Nat
   report: MtCollins1PhysicalFactStanding
   account: NonEmptyStr
-  consequence: NonEmptyStr
+}
+
+// THE GATE THE DAMAGE IMPOSES ON LATER SOCKET EVIDENCE. Evidence about that socket dated after the
+// damage says nothing about the pre-damage fault until the socket has been inspected; a damage
+// report with no date still gates, but from an unknown point.
+type MtCollins1SocketEvidenceGate
+  = SocketEvidenceRequiresInspectionSince { socket: Nat, since: SpecificationDocumentDate }
+  | SocketEvidenceRequiresInspectionUndated { socket: Nat }
+
+fn socket_evidence_gate(damage: MtCollins1SocketDamageReport) -> MtCollins1SocketEvidenceGate {
+  match damage.report {
+    OperatorByEyeReport { observed_on: d, relay: _, method: _ } => SocketEvidenceRequiresInspectionSince { socket: damage.socket, since: d }
+    VendorFigureFact { figure: _, standing: _ } => SocketEvidenceRequiresInspectionUndated { socket: damage.socket }
+    FirmwareTrainedFact { run_id: _, artifact: _, roster_lines: _ } => SocketEvidenceRequiresInspectionUndated { socket: damage.socket }
+  }
 }
 
 data mtcollins1_socket1_pin_damage_report: MtCollins1SocketDamageReport = MtCollins1SocketDamageReport {
@@ -525,5 +539,4 @@ data mtcollins1_socket1_pin_damage_report: MtCollins1SocketDamageReport = MtColl
     method: "Operator's own account of the CPU removal; no magnified inspection has been made.",
   },
   account: "Thermal paste dropped onto the socket-1 pins during CPU removal; a microfiber cloth used to clean it snagged on the pins and probably bent some. The operator judged it not too bad.",
-  consequence: "Socket-1 pins possibly bent from 2026-10-03: any later socket-1 test must inspect the socket first, and a socket-1 failure after this date is not evidence about the pre-damage fault.",
 }
