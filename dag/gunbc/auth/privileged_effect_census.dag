@@ -902,6 +902,21 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: Present { value: fabric_store_write_unverified },
   },
   PrivilegedEffectSite {
+    site: site(module_path: "gunbc.spark.standing_host_effect_recover", decl_name: "standing_host_effect_recover_ci_wet"),
+    effect: PrivilegedEffect {
+      subject: "release a dead lane's host-effect claim on a Group A host under the committed standing grant: exactly one unreleased claim derived from the live partition, a typed claimant disposition, a fresh quiescence read of that claim's residue, and a readback" as NonEmptyStr,
+      frequency: EveryProvision,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: WorkloadIdentityBindable { member: "ghrunner on srv1, the dispatched fleet-converge run's host principal on the placed fabric DB host" as NonEmptyStr },
+      minted_reach: MintsNoCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: fabric_store_write_unverified },
+  },
+  PrivilegedEffectSite {
     site: site(module_path: "gunbc.spark.host_commitment", decl_name: "host_effect_recover_wet"),
     effect: PrivilegedEffect {
       subject: "release a host effect whose lane died, on the host-placement partition of the fabric DB, under an operator-stated receipt" as NonEmptyStr,

@@ -97,7 +97,7 @@ import gunbc.fleet_workflow_steps {
   gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout,
   fleet_host_mutation_concurrency_group_expression,
   fleet_host_mutation_group_prefix,
-  fleet_arm_mutation_group_glm_group_b_native, fleet_arm_mutation_group_deepseek_group_a,
+  fleet_arm_mutation_group_glm_group_b_native, fleet_arm_mutation_group_deepseek_group_a, fleet_subject_mutation_group_approval_device_store,
   checked_job_timeout_minutes,
   JobTimeoutWithinCeiling,
   JobTimeoutExceedsCeiling,
@@ -1180,6 +1180,12 @@ data fleet_converge_spark_native_serving_apply_step_if: String = fleet_converge_
 // executor serialization, the class this projection exists to prevent. The concurrency expression
 // is derived from it.
 //
+// A SUBJECT IS NOT ALWAYS AN ARM: the enrolment-code issue mutates only the approval device store,
+// which no other mode writes, so it carries that store's own group (gunbc.fleet_workflow_steps
+// fleet_subject_mutation_group_approval_device_store) and no longer queues behind -- or is cancelled
+// as a superseded pending by -- the Group A work that shares srv1's key. The keyring converge and the
+// broker install do NOT move: D0 below serialises with them, and that is a reason, not an accident.
+//
 // D0 HAS TWO DOMAINS AND ONE KEY. The door runs on srv1 (the broker is loopback there, the placed
 // fabric store is in process) AND moves Group A's authority and hosts; GitHub admits one group per
 // job, so Group A's arm key IS the srv1 host key: D0 keeps serializing with every srv1 control-plane
@@ -1196,7 +1202,7 @@ data fleet_converge_spark_native_serving_apply_step_if: String = fleet_converge_
 // D0 and the pair apply. `spark_runtime_image_probe` stays in the executor's domain because it is a
 // read: it pulls a pinned image and reports what is inside it, changing nothing on the host.
 type FleetMutationDomain
-  = ArmDomain { group: String }
+  = SubjectDomain { group: String }
   | ExecutorDomain
 
 fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> FleetMutationDomain {
@@ -1216,18 +1222,18 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     MicrovmBootProbe => ExecutorDomain
     SparkGrants => ExecutorDomain
     SparkBootstrap => ExecutorDomain
-    SparkServingApply => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
-    SparkNativeServingApply => ArmDomain { group: fleet_arm_mutation_group_glm_group_b_native }
+    SparkServingApply => SubjectDomain { group: fleet_arm_mutation_group_deepseek_group_a }
+    SparkNativeServingApply => SubjectDomain { group: fleet_arm_mutation_group_glm_group_b_native }
     SparkRuntimeImageProbe => ExecutorDomain
     SparkWirelessLinkConverge => ExecutorDomain
-    SparkV41CheckpointMaterialize => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
-    SparkV41RowStoreEncode => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
-    SparkV41RowStoreReadback => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
-    SparkV41EngramDifferential => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
-    SparkV41RuntimeImageBuild => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
-    SparkV41RuntimeImageDistribute => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
-    SparkV41GroupALaunch => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
-    SparkV41ServingLoad => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
+    SparkV41CheckpointMaterialize => SubjectDomain { group: fleet_arm_mutation_group_deepseek_group_a }
+    SparkV41RowStoreEncode => SubjectDomain { group: fleet_arm_mutation_group_deepseek_group_a }
+    SparkV41RowStoreReadback => SubjectDomain { group: fleet_arm_mutation_group_deepseek_group_a }
+    SparkV41EngramDifferential => SubjectDomain { group: fleet_arm_mutation_group_deepseek_group_a }
+    SparkV41RuntimeImageBuild => SubjectDomain { group: fleet_arm_mutation_group_deepseek_group_a }
+    SparkV41RuntimeImageDistribute => SubjectDomain { group: fleet_arm_mutation_group_deepseek_group_a }
+    SparkV41GroupALaunch => SubjectDomain { group: fleet_arm_mutation_group_deepseek_group_a }
+    SparkV41ServingLoad => SubjectDomain { group: fleet_arm_mutation_group_deepseek_group_a }
     DashboardDeploy => ExecutorDomain
     RlmLaunchDeploymentReceipt => ExecutorDomain
     HostResetReturn => ExecutorDomain
@@ -1247,9 +1253,9 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     R2BucketAdminMint => ExecutorDomain
     R2ObjectWriteMint => ExecutorDomain
     ApprovalKeyringConverge => ExecutorDomain
-    ApprovalDeviceEnrolmentCodeIssue => ExecutorDomain
+    ApprovalDeviceEnrolmentCodeIssue => SubjectDomain { group: fleet_subject_mutation_group_approval_device_store }
     MtCollins1Boot => ExecutorDomain
-    PairServingD0 => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
+    PairServingD0 => SubjectDomain { group: fleet_arm_mutation_group_deepseek_group_a }
     MtCollins1FanObserve => ExecutorDomain
     MtCollins1UiBundleObserve => ExecutorDomain
     MtCollins1KvmObserverObserve => ExecutorDomain
@@ -1268,14 +1274,14 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
 // The group a dispatch lands in, for a mode and the executor it named.
 fn fleet_converge_mutation_group_for(mode: FleetConvergeWorkflowMode, host: String) -> String {
   match fleet_converge_mode_mutation_domain(mode: mode) {
-    ArmDomain { group: g } => g
+    SubjectDomain { group: g } => g
     ExecutorDomain => join([fleet_host_mutation_group_prefix, host], "")
   }
 }
 
 fn fleet_converge_arm_domain_clause(mode: FleetConvergeWorkflowMode) -> String {
   match fleet_converge_mode_mutation_domain(mode: mode) {
-    ArmDomain { group: g } => join(["github.event.inputs.mode == '", fleet_converge_workflow_mode_wire(mode: mode), "' && '", g, "' || "], "")
+    SubjectDomain { group: g } => join(["github.event.inputs.mode == '", fleet_converge_workflow_mode_wire(mode: mode), "' && '", g, "' || "], "")
     ExecutorDomain => ""
   }
 }

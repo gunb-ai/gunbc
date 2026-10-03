@@ -1,11 +1,12 @@
 module test.claim.spark.scheduler_envelope_witness_test
 
 import std.types { Bool, List, String, NonEmptyStr }
+import gunbc.spark.serving_arm { glm53_native_launch_policy }
 import std.nat { Nat }
 import std.measure { token_count, basis_point, basis_point_count }
 import v2.std.optional { Present, Absent }
 import extdeps.vllm.server { vllm_source_revision }
-import extdeps.vllm.engine_args {
+import extdeps.vllm.engine_args { IndexerKvDtypeOmitted,
   VllmSchedulerAdmissionRequest, VllmFullInputAdmissionRequest, VllmKvWatermarkRequest, FullInputAdmissionOmitted, FullInputAdmissionExplicit,
   KvWatermarkOmitted, KvWatermarkExplicit,
   vllm_scheduler_admission_argv,
@@ -120,13 +121,11 @@ test fn w_the_floor_envelope_reproduces_the_pre_split_profile() -> Bool {
       let e = envelope_at_cold_floor(cold: cold)
       let p = profile_for_envelope(
         envelope: e,
+        policy: glm53_native_launch_policy,
         decided_gpu_memory_basis_points: basis_point(count: 8567),
-        kv_cache_dtype: KvFp8,
         serve_port: 30000,
         served_alias: "glm-5.3-flash" as NonEmptyStr,
         prefix_caching: PrefixCachingExplicit { enabled: true },
-        engram: EngramConfigOmitted,
-        modality: ModalityOmitted,
       )
       p.max_num_seqs == 8 && !envelope_above_floor(e: e) && envelope_best_effort_seats(e: e) == 0
       && vllm_scheduler_admission_argv(r: envelope_admission(e: e)) == []
