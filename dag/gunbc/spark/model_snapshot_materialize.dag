@@ -499,6 +499,36 @@ fn spark_transfer_clear(ctx: SparkMaterializeContext, subject: AcquisitionSubjec
   }
 }
 
+// THE TRANSFER'S OWN CANCEL PATH (ruling of valiant-crab-775, 2026-10-03). A detached transfer survives
+// the run that started it, so stopping it is its unit's stop, by the same derived name, followed by a
+// readback: the cancel holds only when the unit then reads as no longer running. A transfer superseded by
+// a rail replica of the same subject is stopped this way, never by hand.
+type SparkTransferCancel
+  = TransferCancelledNothingRunning
+  | TransferCancelled
+  | TransferCancelRefused { cause: String }
+
+fn spark_transfer_cancel(ctx: SparkMaterializeContext, subject: AcquisitionSubject) -> SparkTransferCancel {
+  match spark_transfer_state(ctx: ctx, subject: subject) {
+    TransferStateUnreadable { cause: c } => TransferCancelRefused { cause: join(["the transfer's state could not be read: ", c], "") }
+    TransferAbsent => TransferCancelledNothingRunning
+    TransferExitedClean => TransferCancelledNothingRunning
+    TransferExitedFailed { status: _ } => TransferCancelledNothingRunning
+    TransferRunning =>
+      match spark_remote_run(ctx: ctx, argv: ["systemctl", "stop", spark_transfer_unit_for(subject: subject) as String]) {
+        RemoteUnreachable { cause: c } => TransferCancelRefused { cause: c }
+        RemoteRan { exit_code: _, stdout: _, stderr: _ } =>
+          match spark_transfer_state(ctx: ctx, subject: subject) {
+            TransferRunning => TransferCancelRefused { cause: "the transfer unit still reads as running after its stop" }
+            TransferStateUnreadable { cause: c } => TransferCancelRefused { cause: join(["the transfer's state could not be read back after its stop: ", c], "") }
+            TransferAbsent => TransferCancelled
+            TransferExitedClean => TransferCancelled
+            TransferExitedFailed { status: _ } => TransferCancelled
+          }
+      }
+  }
+}
+
 // THE UNIT FLAG IS ONE WORD, AND AN EXECUTION FOUND THAT IT WAS TWO. This built its argv as
 // `["systemd-run", "--unit=", <name>, ...]` -- the flag and its value as SEPARATE list elements --
 // so systemd-run received an EMPTY unit name and took the name as the command to execute. The live
@@ -728,6 +758,11 @@ type SparkMaterializeOutcome
 // honest standing is that this transport is unbuilt, and a typed refusal says so at the one place a
 // caller could otherwise assume it worked.
 //
+// REALIZED BESIDE THIS ARM, NOT THROUGH IT (2026-10-03): gunbc.spark.snapshot_rail_replica replicates a
+// Hub-cache snapshot over the rail through gunbc.spark.fabric_blob_peer, each file a blob named by the sha256
+// the cache keys it by, with every host-native step in its own leg and the verify in the runtime image -- the
+// source-specific execution split, applied by the caller (gunbc.spark.group_checkpoint_materialize). This
+// role arm stays the wall for any caller that hands a replica role to this one-executor context.
 // DISSOLVE-ON: the source carries its own execution locus -- containerised for Hub, host-native for
 // rail -- so `spark_snapshot_handler` stops applying one executor to every source. That is the source
 // -specific execution split; until it lands, this arm is the wall.

@@ -1,0 +1,43 @@
+module test.claim.spark.snapshot_rail_replica_witness
+
+import std.types { Bool, String, List, NonEmptyStr }
+import v2.std.optional { Present, Absent }
+import gunbc.spark.snapshot_rail_replica { snapshot_entry_of, is_sha256_name, first_failure, snapshot_hub_paths }
+import gunbc.spark.group_checkpoint_materialize { checkpoint_snapshot }
+import gunbc.spark.serving_arm { Glm53NativeFp8 }
+
+// ── THE SNAPSHOT MAP, AT ITS INTERFACE ───────────────────────────────────────────────────────────────
+//
+// One `find -printf '%P\t%l\n'` line per snapshot entry. An LFS shard links into blobs/<sha256>, and that
+// name IS its fabric blob identity; a small non-LFS file links into blobs/<git sha1>, whose sha256 the
+// source reads instead. A line that is not a link into blobs/ is no entry, and the whole map refuses.
+data w_lfs_hex: String = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+test fn an_lfs_shard_is_keyed_by_the_sha256_the_cache_names_it_by() -> Bool {
+  match snapshot_entry_of(line: join(["model-00001-of-00062.safetensors\t../../blobs/", w_lfs_hex], "")) {
+    Absent => false
+    Present { value: e } => (e.rel_path as String) == "model-00001-of-00062.safetensors" && (e.cache_blob as String) == w_lfs_hex && is_sha256_name(name: e.cache_blob as String)
+  }
+}
+
+test fn a_non_lfs_file_is_not_a_sha256_name_and_a_stray_line_is_no_entry() -> Bool {
+  (match snapshot_entry_of(line: "config.json\t../../blobs/9d8f2a1c0b7e6d5f4a3b2c1d0e9f8a7b6c5d4e3f") { Present { value: e } => !is_sha256_name(name: e.cache_blob as String)  Absent => false })
+    && (match snapshot_entry_of(line: "config.json\t/etc/passwd") { Present { value: _ } => false  Absent => true })
+    && (match snapshot_entry_of(line: "no tab here") { Present { value: _ } => false  Absent => true })
+}
+
+test fn the_first_failure_is_the_first_nonempty_cause() -> Bool {
+  (match first_failure(causes: ["", "", ""]) { Absent => true  Present { value: _ } => false })
+    && (match first_failure(causes: ["", "b", "c"]) { Present { value: x } => x == "b"  Absent => false })
+}
+
+// THE GLM FP8 CHECKPOINT IS A HUB-CACHE SNAPSHOT, SO IT HAS THE TWO PATHS THE REPLICA WORKS IN.
+test fn the_glm_fp8_checkpoint_resolves_its_hub_cache_paths() -> Bool {
+  match checkpoint_snapshot(c: Glm53NativeFp8) {
+    Absent => false
+    Present { value: s } => match snapshot_hub_paths(snapshot: s) {
+      Absent => false
+      Present { value: p } => string_contains(s: p.snapshot_dir as String, pattern: "models--zai-org--GLM-5.3-Flash/snapshots/") && string_contains(s: p.snapshot_dir as String, pattern: p.repo_dir as String)
+    }
+  }
+}
