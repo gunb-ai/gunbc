@@ -3539,6 +3539,11 @@ fn bridge_method_name_unified(method_name: String, target: RenderTarget) -> Stri
   apply_naming_case(name: overridden, case_style: spec.bridge_method_case)
 }
 
+// THE FIRST ARGUMENT IS RENDERED ONCE. The caller renders it for the template lookup, and the bridge
+// arm used to render every argument again, the first included. An argument that is itself such a
+// call nests the second rendering, so Go and Python emission cost was 2^depth in first-argument
+// nesting. The bridge arm now reuses the caller's text, which is recurse applied to the same node,
+// so the emitted text is unchanged.
 fn emit_algebra_method_call_unified(method_name: String, receiver: Node, args: List<Node>, target: RenderTarget, first_arg_str: String, recurse: fn(Node) -> String) -> String {
   let spec = language_spec(target: target)
   let recv_str = recurse(receiver)
@@ -3546,7 +3551,10 @@ fn emit_algebra_method_call_unified(method_name: String, receiver: Node, args: L
     Present { value: result } => result
     Absent =>
       let function_name = bridge_method_name_unified(method_name: method_name, target: target)
-      let arg_strs = args |> map(a => recurse(arg_value(n: a)))
+      let arg_strs = match args |> first {
+        Present { value: _ } => concat([first_arg_str], args |> skip(1) |> map(a => recurse(arg_value(n: a))))
+        Absent => []
+      }
       let all_args = concat([recv_str], arg_strs)
       concat(spec.bridge_method_prefix, emit_export_ident(name: function_name, target: target), "(", all_args |> join(separator: ", "), ")")
   }

@@ -11058,7 +11058,6 @@ fn item_forbids_deserialize(item: Node, emit_info: EmitGraphInfo, source_indices
 // seal does not introduce a second way to render a read -- it selects the existing one
 // for a product base. One producer for one fact.
 fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  let base_str = emit_typed_expr_base(texpr: base, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let base_is_anon_record = match base.inferred {
     Present { value: Resolved { node: bt } } =>
       let is_product = is_product_type(n: bt)
@@ -11070,6 +11069,7 @@ fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, re
     if bt.children |> count == 1 {
       emit_typed_expr(texpr: base, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
     } else {
+      let base_str = emit_typed_expr_base(texpr: base, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       let matches = bt.children |> enumerate |> filter(pair => authored_name_at(source_indices: scope.type_env.source_indices, node: pair.second) == field)
       match matches |> first {
         Present { value: m } =>
@@ -11079,6 +11079,7 @@ fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, re
       }
     }
   } else {
+    let base_str = emit_typed_expr_base(texpr: base, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
     let sharing = language_spec(target: Rust).sharing
     match summary {
       Present { value: field_summary } =>
@@ -12904,13 +12905,12 @@ fn emit_rust_sort_by_method_call(receiver: Node, args: List<Node>, registry: Map
 // diagnostic at all. The key function is the semantics; only the closure annotations are optional.
 
 fn emit_rust_map_method_call(receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-  let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let recv_is_optional = match receiver.inferred {
     Present { value: Resolved { node: rt } } => rt.return_cardinality == CardOptional
     _ => false
   }
   if recv_is_optional {
+    let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
     match args |> first {
       Present { value: a } =>
         match arg_value(n: a).expr_data {
@@ -12922,9 +12922,9 @@ fn emit_rust_map_method_call(receiver: Node, args: List<Node>, registry: Map<Str
             let lambda_scope = lambda_scope_from_children(scope: scope, params: ps, param_nodes: arg_value(n: a).children |> skip(1))
             let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
             concat(recv_str, ".map(|", p, "| ", body_str, ")")
-          _ => concat(recv_str, ".map(", first_arg_str, ")")
+          _ => concat(recv_str, ".map(", emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info), ")")
         }
-      Absent => concat(recv_str, ".map(", first_arg_str, ")")
+      Absent => concat(recv_str, ".map(", emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info), ")")
     }
   } else {
     let sharing = language_spec(target: Rust).sharing
@@ -12941,9 +12941,9 @@ fn emit_rust_map_method_call(receiver: Node, args: List<Node>, registry: Map<Str
             let lambda_scope = lambda_scope_from_children(scope: scope, params: ps, param_nodes: arg_value(n: a).children |> skip(1))
             let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
             rust_shared_wrap_ctor(inner_expr: concat("{ let mut __result = Vec::new(); for ", p, " in ", iter_str, " { __result.push(", body_str, "); } __result }"))
-          _ => rust_shared_wrap_ctor(inner_expr: concat(iter_str, ".map(", first_arg_str, ").collect::<Vec<_>>()"))
+          _ => rust_shared_wrap_ctor(inner_expr: concat(iter_str, ".map(", emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info), ").collect::<Vec<_>>()"))
         }
-      Absent => rust_shared_wrap_ctor(inner_expr: concat(iter_str, ".map(", first_arg_str, ").collect::<Vec<_>>()"))
+      Absent => rust_shared_wrap_ctor(inner_expr: concat(iter_str, ".map(", emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info), ").collect::<Vec<_>>()"))
     }
   }
 }
@@ -12951,7 +12951,6 @@ fn emit_rust_map_method_call(receiver: Node, args: List<Node>, registry: Map<Str
 fn emit_rust_higher_order_method(ho_spec: HigherOrderMethodSpec, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let sharing = language_spec(target: Rust).sharing
   let recv_str = emit_typed_iter_owned_receiver(receiver: receiver, downstream: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-  let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let iter_str = apply_type_template1(template: sharing.iter_owned, arg0: recv_str)
   match args |> first {
     Present { value: a } =>
@@ -12968,12 +12967,12 @@ fn emit_rust_higher_order_method(ho_spec: HigherOrderMethodSpec, receiver: Node,
           let raw = apply_named_template(template: ho_spec.inline_template, bindings: bindings)
           if ho_spec.wraps_in_sharing { rust_shared_wrap_ctor(inner_expr: raw) } else { raw }
         _ =>
-          let bindings = seed_bindings(key: "iter", value: iter_str) |> map_insert("arg", first_arg_str)
+          let bindings = seed_bindings(key: "iter", value: iter_str) |> map_insert("arg", emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
           let raw = apply_named_template(template: ho_spec.fn_ref_template, bindings: bindings)
           if ho_spec.wraps_in_sharing { rust_shared_wrap_ctor(inner_expr: raw) } else { raw }
       }
     Absent =>
-      let bindings = seed_bindings(key: "iter", value: iter_str) |> map_insert("arg", first_arg_str)
+      let bindings = seed_bindings(key: "iter", value: iter_str) |> map_insert("arg", emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
       let raw = apply_named_template(template: ho_spec.fn_ref_template, bindings: bindings)
       if ho_spec.wraps_in_sharing { rust_shared_wrap_ctor(inner_expr: raw) } else { raw }
   }
@@ -13123,6 +13122,17 @@ fn rust_unrealized_service_op_refusal(service_name: String, method: String, modu
   concat("panic!(\"unrealized host seam: service op ", service_name, ".", method, " in ", module_name, ": the Rust realization binds a service only through an async fn parameter, and this function declares none\")")
 }
 
+// A SUBTREE IS RENDERED ONLY ON THE ARM THAT CONSUMES THE TEXT, AND ONLY ONCE. The algebra
+// fall-through used to render the receiver and the first argument before asking whether a method
+// template exists. When none does (`replace`, `map_insert`, `list_push`, ...) it discarded both and
+// emit_rust_generic_method_call rendered them again. The plain arm likewise called
+// rust_callable_field_method_call twice, and that call renders the receiver and every argument. A
+// receiver that is itself such a call nests the waste, so emission cost was 2^depth in the call
+// nesting of the source: std.types commit_sha_text_holds, a 16-deep `replace` chain, took 7.4 s
+// to emit against 21 ms for a flat control, and fixture emission grew to 84% of the required
+// floor's claim evaluation. Emitted text is unchanged, because the discarded renderings never
+// reached the output. The class, and the sibling frames repaired with this one, is
+// gunbc.recurring_failure_mode recursive_frame_demands_one_child_twice.
 fn emit_typed_method_call(method_call_node: Node, receiver: Node, method: String, args: List<Node>, result_type: InferredNode?, method_semantics: MethodSemantics?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   if method_semantics != none { match method_semantics.value {
     ServiceMethodSemantics { service_name: svc_name, op_params: op_params } => if !is_typed_service_call_receiver(receiver: receiver, source_indices: scope.type_env.source_indices) {
@@ -13191,14 +13201,14 @@ fn emit_typed_method_call(method_call_node: Node, receiver: Node, method: String
       } else if method_name == "first" {
         emit_rust_first_method_call(receiver: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       } else {
-        let recv_str_raw = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-        let recv_is_optional = resolved_type(n: receiver).return_cardinality == CardOptional
-        let recv_str = if recv_is_optional {
-          concat(recv_str_raw, concat(".expect(\"fail-closed: Optional receiver for method ", concat(method_name, " (empty Optional at runtime)\")")))
-        } else { recv_str_raw }
-        let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
         match map_get(rust_method_templates(), method_name) {
           Present { value: tmpl } =>
+            let recv_str_raw = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+            let recv_is_optional = resolved_type(n: receiver).return_cardinality == CardOptional
+            let recv_str = if recv_is_optional {
+              concat(recv_str_raw, concat(".expect(\"fail-closed: Optional receiver for method ", concat(method_name, " (empty Optional at runtime)\")")))
+            } else { recv_str_raw }
+            let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
             let bindings = seed_bindings(key: "recv", value: recv_str) |> map_insert("arg", first_arg_str)
             let raw = apply_named_template(template: tmpl, bindings: bindings)
             if rust_method_template_result_wraps_in_rc(method_name: method_name) {
@@ -13212,8 +13222,9 @@ fn emit_typed_method_call(method_call_node: Node, receiver: Node, method: String
     }
     }
     PlainMethodSemantics =>
-      if rust_callable_field_method_call(method_name: method, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info) != none {
-        match rust_callable_field_method_call(method_name: method, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info) {
+      let plain_field_call = rust_callable_field_method_call(method_name: method, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+      if plain_field_call != none {
+        match plain_field_call {
           Present { value: field_call } => field_call
           Absent => ""
         }
@@ -13944,28 +13955,30 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
     Present { value: first_arm } => resolved_type(n: arm_body(n: first_arm))
     Absent => type_variable_node(id: "match_result")
   }
-  let arm_strs = emit_typed_match_arm_strs(arms: arms, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, scrut_rt: resolved_type(n: scrutinee))
-  let arms_str = arm_strs |> join(separator: "\n")
-
   let needs_as_str = all_arms_are_string_lit(arms: arms) && arms |> count > 0
   let needs_string_from = has_string_lit_with_bind(arms: arms)
-  if rc_match.needs_rc_option_ref {
-    concat("match ", scrut_str, ".as_ref() {\n", arms_str, "\n}")
-  } else if rc_match.needs_option_deref {
-    concat("match ", scrut_str, ".as_deref()", clone_iterator_suffix(), " {\n", arms_str, "\n}")
-  } else if rc_match.needs_deref {
-    let sharing = language_spec(target: Rust).sharing
-    concat("match ", apply_type_template1(template: sharing.deref_clone, arg0: scrut_str), " {\n", arms_str, "\n}")
-  } else if needs_as_str {
-    concat("match ", scrut_str, ".as_str() {\n", arms_str, "\n}")
-  } else if needs_string_from {
+  let uses_string_from_arms = !rc_match.needs_rc_option_ref && !rc_match.needs_option_deref && !rc_match.needs_deref && !needs_as_str && needs_string_from
+  if uses_string_from_arms {
     let sf_absent_arm_index = match_unguarded_absent_arm_index(arm_nodes: arms)
     let sf_arm_strs = arms |> enumerate |> map(pair => emit_typed_match_arm(arm: pair.second, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: true,
       present_binding: optional_match_arm_sees_present_value(scrutinee_type: resolved_type(n: scrutinee), arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: sf_absent_arm_index)))
     let sf_arms_str = sf_arm_strs |> join(separator: "\n")
     concat("match ", scrut_str, " {\n", sf_arms_str, "\n}")
   } else {
-    concat("match ", scrut_str, " {\n", arms_str, "\n}")
+    let arm_strs = emit_typed_match_arm_strs(arms: arms, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, scrut_rt: resolved_type(n: scrutinee))
+    let arms_str = arm_strs |> join(separator: "\n")
+    if rc_match.needs_rc_option_ref {
+      concat("match ", scrut_str, ".as_ref() {\n", arms_str, "\n}")
+    } else if rc_match.needs_option_deref {
+      concat("match ", scrut_str, ".as_deref()", clone_iterator_suffix(), " {\n", arms_str, "\n}")
+    } else if rc_match.needs_deref {
+      let sharing = language_spec(target: Rust).sharing
+      concat("match ", apply_type_template1(template: sharing.deref_clone, arg0: scrut_str), " {\n", arms_str, "\n}")
+    } else if needs_as_str {
+      concat("match ", scrut_str, ".as_str() {\n", arms_str, "\n}")
+    } else {
+      concat("match ", scrut_str, " {\n", arms_str, "\n}")
+    }
   }
 }
 
