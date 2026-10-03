@@ -166,7 +166,7 @@ import v2.std.node {
 }
 import v2.std.type_binder { GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names }
 import v2.std.node_query {
-  field_projection_field_name,
+  field_projection_edge_field_optional,
   field_projection_optional,
   binder_default_label,
   binder_node_label,
@@ -3524,14 +3524,9 @@ fn arrow_domain_has_named_bindings(n: Node) -> Bool {
 // exactly as for the bound-head projection resolve builds itself.
 fn resolve_value_projection_walk(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
   child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
-    match e.label {
-      Named { name: name } =>
-        if name == field_projection_field_name() {
-          child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None, lexical: [] })
-        } else {
-          child_walk_step(w: acc, e: e, r: resolve_child_edge(ctx: ctx, e: e))
-        }
-      Positional => child_walk_step(w: acc, e: e, r: resolve_child_edge(ctx: ctx, e: e))
+    match field_projection_edge_field_optional(e: e) {
+      Present { value: _ } => child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None, lexical: [] })
+      Absent => child_walk_step(w: acc, e: e, r: resolve_child_edge(ctx: ctx, e: e))
     }
   }))
 }
