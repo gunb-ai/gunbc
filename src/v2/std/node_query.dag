@@ -1119,3 +1119,18 @@ fn repeated_name_edges(children: List<Edge>) -> List<Edge> {
   })
   scanned.repeated
 }
+
+// A CONJ TYPE NODE'S CHILDREN, AS A VALUE: Present for a Conj, Absent for every other connective or a computation.
+// The one place the NodeKind / Connective discrimination for "is this a product" is written; a reader that needs
+// a Conj's members matches this Optional instead of re-enumerating the kinds.
+fn conj_children_optional(n: Node) -> Optional<List<Edge>> {
+  match n.kind {
+    TypeNode { connective: Conj } => Present { value: n.children }
+    TypeNode { connective: Atom { identity: _ } } => Absent
+    TypeNode { connective: Disj } => Absent
+    TypeNode { connective: Arrow } => Absent
+    TypeNode { connective: Cardinality } => Absent
+    TypeNode { connective: Instantiation } => Absent
+    ComputationNode { behavior: _ } => Absent
+  }
+}
