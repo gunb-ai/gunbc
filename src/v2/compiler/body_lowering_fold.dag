@@ -152,6 +152,9 @@ import v2.std.node {
   Cardinality,
   ComputationNode,
   Match,
+  Value,
+  Loop,
+  Bind,
   Conj,
   Edge,
   EdgeLabel,
@@ -8039,8 +8042,7 @@ fn body_lower_let_match_exit_join(plan: BodyLowerLetMatchExit, lowered: Node, at
   if body_lower_let_match_binding_count(plan: plan) != 1 {
     outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_multi_binding_arm_early_return_needs_join_point, n: at))
   } else {
-    match lowered.kind {
-      ComputationNode { behavior: Match } =>
+    if body_lower_is_match_node(node: lowered) {
         match node_positional_child_targets(node: lowered) {
           Empty => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_match_arm_navigation_refused, n: at))
           Cons { head: scrutinee, tail: wires } =>
@@ -8066,8 +8068,26 @@ fn body_lower_let_match_exit_join(plan: BodyLowerLetMatchExit, lowered: Node, at
               bind_outcome(o: joined, f: fn(arms) { outcome_accepted(value: lower_match(scrutinee: scrutinee, arms: arms)) })
             }
         }
-      _ => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_match_arm_navigation_refused, n: at))
+    } else {
+      outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_match_arm_navigation_refused, n: at))
     }
+  }
+}
+
+// Whether a lowered node is a Match computation; every kind is named, so a new behavior or connective
+// is a compile error here rather than a silent no.
+fn body_lower_is_match_node(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: b } =>
+      match b {
+        Match => true
+        Value => false
+        Transform => false
+        Branch => false
+        Loop => false
+        Bind => false
+      }
   }
 }
 
