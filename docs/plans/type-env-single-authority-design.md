@@ -835,3 +835,13 @@ claims, the wet lane and the authority frames.
 allocates nothing, and that which of its six operations owns which region is unattributed. That is a
 cost-shape question inside a demanded computation, and the next attribution step there is per-operation
 trace marks in `04_infer.dag`.
+
+### Outcome: PR-2 is withdrawn (calm-boar-904, 2026-10-03)
+- **The gate became unreachable.** neat-boar-16 measured the rebased PR-2 against main with #13076 on srv1. The figures are with the pinned receipts on #13008. PR-2's saving was well under the 3 GB gate, both in class bytes and in run peak. Answers were unchanged (equal `ancestry_entries`).
+- **Main had already moved.** Main's own `type_env` fell by about the size of the gate between the two baseline pins. That makes the gate unreachable for PR-2 on current main, whatever released the bytes.
+- **Not kept on single-authority grounds.** On main the import union is computed once, by `build_ancestry_precedence`'s fold, and then materialized in several holders. That is one authority, not a DESIGN §3 fork, and PR-2 was justified by memory alone. Its derived view adds a surface pool, closure bitsets, derived views and contested tables that its remaining saving does not pay for.
+- **Pending: which change released main's `type_env` bytes.** The most likely cause is #13076, which deleted the identity rewire. The rewire's per-module rewrite path-copied nearly every ancestry key, which broke the structural sharing between modules' maps. This is to be confirmed by the same instrument at #13076's parent. If it is confirmed, it reverses an earlier reading in this note's ruling section: the rewire's RSS rise was LIVE retention, not transient allocation. The two-versions probe compared against the rewritten maps themselves, which were the cost.
+- **What carries forward:**
+  - the closure-grain classification and the shared contested-name walk, which are on the PR-2 branch (kept as provenance);
+  - the reconcile-interior attribution;
+  - the deletion of the identity rewire, which landed as #13076.
