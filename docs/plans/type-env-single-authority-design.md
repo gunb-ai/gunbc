@@ -855,3 +855,7 @@ trace marks in `04_infer.dag`.
 - **H2 FALSIFIED** (decoded Node trees lose their structural sharing). No graph class shows a warm/cold difference.
 - **What the miss shows.** In BOTH arms, dropping the entry's whole typed graph frees a tiny fraction of the process heap. So the probe measured the wrong population: neither the warm-route delta nor most of the cold heap is held by the entry's graph. What holds it is process-lifetime state beside the graph: the shared index, the persisted-store decode, the resident pools. Both hypotheses shared the premise that the cost sits in the entry's graph, and that premise is what the run refuted.
 - **Next.** Attribute the process-lifetime residency by the same sequential drop, at the same pin and entry: shared-index generations, resident pools, and the typed-store decode. Predictions are stated before that run. Until then the warm-route lead is unattributed, and no repair is proposed.
+- **Residency run (pin `6e25707`): P1 and P2 HIT.**
+  - **P1:** the shared index costs the same cold and warm.
+  - **P2:** the whole warm delta is loaded inside the warm RESOLVE step, and it survives dropping the entry's graph. So it is state the warm resolve route retains for the process lifetime.
+  - **Next (pin `ede7021`, P3/P4 pre-registered):** the typed-store counters, to tell breadth (decoding far beyond the entry closure) from per-decode expansion.
