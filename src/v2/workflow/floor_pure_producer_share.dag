@@ -768,6 +768,11 @@ import v2.std.collection { List }
 // PreparedGrammar is one nullary producer, and the refusal-arm counts over the live grammar are
 // another. A PreparedGrammar is the value dag_prepared_grammar already serves; the census is a record
 // of two Ints. Both WARM: one grammar preparation is more than one claim's budget.
+// THE collection_callback_realization PROGRAMS ARE ASSEMBLED ONCE EACH. Each claim assembled a one-module
+// source through fmi_assemble (and, for two, infer) and inspected one Bool or Symbol, well over the new-witness
+// eval-step cap. The rows now read five nullary producers, one per program -- the map-over-records program's
+// producer, a record of three Bools, serving three rows -- and the others a Symbol and three Bools. WARM: one
+// assembly is more than one claim's budget.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.parameter_reference.pr_program_parameter_paths",
   "v2.test.claim.parameter_reference.pr_program_grounding",
@@ -1326,7 +1331,12 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.declaration_graft_assemble.declaration_graft_record_type_only_assembled",
   "v2.test.claim.declaration_graft_assemble.declaration_graft_flag_and_rec_assembled",
   "v2.test.claim.declaration_graft_assemble.declaration_graft_where_alias_undeclared_carrier_assembled",
-  "v2.test.claim.body_cast_node.bcn_refinement_of_refinement_as_its_carrier"
+  "v2.test.claim.body_cast_node.bcn_refinement_of_refinement_as_its_carrier",
+  "v2.test.claim.compiler.collection_callback_realization.ccr_map_records_reading",
+  "v2.test.claim.compiler.collection_callback_realization.ccr_map_undeclared_field_reason",
+  "v2.test.claim.compiler.collection_callback_realization.ccr_piped_map_binds_its_row",
+  "v2.test.claim.compiler.collection_callback_realization.ccr_all_binds_its_row",
+  "v2.test.claim.compiler.collection_callback_realization.ccr_declared_any_lowers_no_loop"
 ]
 
 // grammar_relation_row_for_emitted HAS NOW BEEN MEASURED ON THE THIRD CONJUNCT, AND IT PASSES.
