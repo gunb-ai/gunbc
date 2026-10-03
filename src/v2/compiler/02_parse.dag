@@ -2367,11 +2367,28 @@ type LookaheadContext {
   nullable_set: List<Symbol>
   first_rows: Map<Symbol, List<FirstKey>>
   honour_guards: Bool
+  follow: Optional<List<FirstKey>>
 }
 
 fn lookahead_context_nested(ctx: LookaheadContext) -> LookaheadContext {
-  LookaheadContext { productions: ctx.productions, nullable_set: ctx.nullable_set, first_rows: ctx.first_rows, honour_guards: false }
+  LookaheadContext { productions: ctx.productions, nullable_set: ctx.nullable_set, first_rows: ctx.first_rows, honour_guards: false, follow: ctx.follow }
 }
+
+// `follow` restricts the token AFTER the site's first one, and only while the walk is still at the
+// site's first position: consuming a token hands it over as the next head and clears it.
+fn lookahead_context_with_follow(ctx: LookaheadContext, follow: Optional<List<FirstKey>>) -> LookaheadContext {
+  LookaheadContext { productions: ctx.productions, nullable_set: ctx.nullable_set, first_rows: ctx.first_rows, honour_guards: ctx.honour_guards, follow: follow }
+}
+
+fn lookahead_context_consumed(ctx: LookaheadContext) -> LookaheadContext {
+  lookahead_context_with_follow(ctx: ctx, follow: Absent)
+}
+
+fn lookahead_head_after(ctx: LookaheadContext, used: Int) -> Optional<List<FirstKey>> {
+  if used == 1 { ctx.follow } else { lookahead_keys_unrestricted() }
+}
+
+fn lookahead_keys_unrestricted() -> Optional<List<FirstKey>> { Absent }
 
 // One position of a prefix: the FirstKey it reads, less the exact words of its class a proved
 // guard removed. `excluded` is empty unless `key` is FirstAnyOfClass.
@@ -2647,7 +2664,7 @@ fn lookahead_extend_one(
       lookahead_prepend(
         keys: prefix.keys,
         guards: prefix.guards,
-        prefixes: lookahead_prefixes(expr: right, depth: depth - used, head_keys: Absent, visiting: std.algebra.Empty, ctx: ctx)
+        prefixes: lookahead_prefixes(expr: right, depth: depth - used, head_keys: lookahead_head_after(ctx: ctx, used: used), visiting: std.algebra.Empty, ctx: lookahead_context_consumed(ctx: ctx))
       )
     }
   } else {
@@ -2710,7 +2727,7 @@ fn lookahead_repeat_one(prefix: LookaheadPrefix, element: GrammarExpr, depth: In
       lookahead_prepend(
         keys: prefix.keys,
         guards: prefix.guards,
-        prefixes: lookahead_repeat(element: element, depth: depth - used, head_keys: Absent, visiting: std.algebra.Empty, ctx: ctx)
+        prefixes: lookahead_repeat(element: element, depth: depth - used, head_keys: lookahead_head_after(ctx: ctx, used: used), visiting: std.algebra.Empty, ctx: lookahead_context_consumed(ctx: ctx))
       )
     } else {
       lookahead_truncated(prefix: prefix)
@@ -3017,7 +3034,7 @@ fn lookahead_alternatives_overlap(
   match lookahead_alternatives_overlap_at(left: left, rest: rest, head_keys: head_keys, depth: base, ctx: ctx) {
     SiteDisjoint => false
     SiteUnknown => true
-    SiteOverlaps { heads: heads } =>
+    SiteOverlaps { heads: heads, follow: follow } =>
       let guarded = fold_list(
         xs: Cons { head: left, tail: rest },
         empty: base,
@@ -3025,10 +3042,10 @@ fn lookahead_alternatives_overlap(
       )
       let depth = lookahead_min_int(a: guarded, b: grammar_choice_lookahead_depth_cap())
       if depth > base {
-        match lookahead_alternatives_overlap_at(left: left, rest: rest, head_keys: heads, depth: depth, ctx: ctx) {
+        match lookahead_alternatives_overlap_at(left: left, rest: rest, head_keys: heads, depth: depth, ctx: lookahead_context_with_follow(ctx: ctx, follow: follow)) {
           SiteDisjoint => false
           SiteUnknown => true
-          SiteOverlaps { heads: _ } => true
+          SiteOverlaps { heads: _, follow: _ } => true
         }
       } else {
         true
@@ -3036,14 +3053,14 @@ fn lookahead_alternatives_overlap(
   }
 }
 
-// A SITE'S READ AT ONE DEPTH, and the first tokens of the prefix pairs that overlapped there. A
-// deeper read is restricted to those tokens: a prefix whose first token begins no overlapping pair
-// cannot overlap at any greater depth, so walking its continuations changes no answer. Measured on
+// A SITE'S READ AT ONE DEPTH, and the first and second tokens of the prefix pairs that overlapped
+// there. A deeper read is restricted to them: a prefix whose first two tokens begin no overlapping
+// pair cannot overlap at any greater depth, so walking its continuations changes no answer. Measured on
 // the dag grammar, restarting the deeper read from the site's whole head set cost most of the
 // grammar's preparation (the `expr` site re-walked every identifier-led binary expression).
 type LookaheadSiteRead
   = SiteDisjoint
-  | SiteOverlaps { heads: List<FirstKey> }
+  | SiteOverlaps { heads: List<FirstKey>, follow: Optional<List<FirstKey>> }
   | SiteUnknown
 
 fn lookahead_max_int(a: Int, b: Int) -> Int { if a > b { a } else { b } }
@@ -3106,16 +3123,16 @@ fn lookahead_alternatives_overlap_at(
 }
 
 fn lookahead_site_read_of(left: List<LookaheadPrefix>, right: List<LookaheadPrefix>) -> LookaheadSiteRead {
-  let heads = fold_list(
+  let acc = fold_list(
     xs: left,
-    empty: grammar_empty_terminal_list(),
+    empty: LookaheadOverlapAcc { heads: grammar_empty_terminal_list(), follow: grammar_empty_terminal_list(), bounded: true },
     cons: fn(outer, l) {
       fold_list(
         xs: right,
         empty: outer,
         cons: fn(inner, r) {
           if lookahead_prefix_pair_overlaps(left: l, right: r) {
-            lookahead_heads_add(heads: lookahead_heads_add(heads: inner, prefix: l), prefix: r)
+            lookahead_overlap_add(acc: lookahead_overlap_add(acc: inner, prefix: l), prefix: r)
           } else {
             inner
           }
@@ -3123,13 +3140,41 @@ fn lookahead_site_read_of(left: List<LookaheadPrefix>, right: List<LookaheadPref
       )
     }
   )
-  if is_empty(xs: heads) { SiteDisjoint } else { SiteOverlaps { heads: heads } }
+  lookahead_site_read_of_acc(acc: acc)
 }
 
-fn lookahead_heads_add(heads: List<FirstKey>, prefix: LookaheadPrefix) -> List<FirstKey> {
-  match list_head(xs: lookahead_prefix_keys(p: prefix)) {
-    HeadFound { value: k } => first_list_union(left: heads, right: Cons { head: lookahead_key_first(key: k), tail: std.algebra.Empty })
-    HeadAbsent => heads
+// The first and second tokens of the overlapping prefixes. A prefix shorter than two leaves the
+// second position unrestricted (`bounded` false): a deeper read may not narrow it.
+type LookaheadOverlapAcc {
+  heads: List<FirstKey>
+  follow: List<FirstKey>
+  bounded: Bool
+}
+
+fn lookahead_site_read_of_acc(acc: LookaheadOverlapAcc) -> LookaheadSiteRead {
+  if is_empty(xs: acc.heads) {
+    SiteDisjoint
+  } else {
+    SiteOverlaps { heads: acc.heads, follow: if acc.bounded { lookahead_keys_restricted(keys: acc.follow) } else { lookahead_keys_unrestricted() } }
+  }
+}
+
+fn lookahead_keys_restricted(keys: List<FirstKey>) -> Optional<List<FirstKey>> { Present { value: keys } }
+
+fn lookahead_overlap_add(acc: LookaheadOverlapAcc, prefix: LookaheadPrefix) -> LookaheadOverlapAcc {
+  let keys = lookahead_prefix_keys(p: prefix)
+  let heads = match list_head(xs: keys) {
+    HeadFound { value: k } => first_list_union(left: acc.heads, right: Cons { head: lookahead_key_first(key: k), tail: std.algebra.Empty })
+    HeadAbsent => acc.heads
+  }
+  match list_at_optional(xs: keys, index: 1) {
+    Present { value: second } =>
+      LookaheadOverlapAcc {
+        heads: heads,
+        follow: first_list_union(left: acc.follow, right: Cons { head: lookahead_key_first(key: second), tail: std.algebra.Empty }),
+        bounded: acc.bounded
+      }
+    Absent => LookaheadOverlapAcc { heads: heads, follow: acc.follow, bounded: false }
   }
 }
 
@@ -3456,7 +3501,7 @@ fn prepare_grammar_expr(
             alts: prepared_alts,
             raw_alts: alts,
             production: production,
-            ctx: LookaheadContext { productions: productions, nullable_set: nullable_set, first_rows: first_rows, honour_guards: true }
+            ctx: LookaheadContext { productions: productions, nullable_set: nullable_set, first_rows: first_rows, honour_guards: true, follow: Absent }
           )
         )
       }
