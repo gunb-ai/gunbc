@@ -358,13 +358,20 @@ type ConversionPhase
   = UnfoldPhase { producer: LiteralUnfolding }
   | InverseUnfoldPhase { producer: LiteralUnfolding }
 
+// A PLAN ENDPOINT IS A CARRIER, AND THE KERNEL'S HOST TEXT IS NOT A CORPUS DECLARATION. The kernel
+// String is minted by the seed with no declaring module (TypeDeclarationProvenance KernelMinted
+// above), so it has no DeclarationRef to cite; a code-point sequence is the corpus declaration
+// std.algebra FreeMonoid over std.types Char, the post-peel key literal_homomorphism_rows uses. Each
+// endpoint therefore names the carrier the way that carrier is actually identified.
+type ConversionEndpoint
+  = KernelMintedCarrier { minted_name: NonEmptyStr }
+  | DeclaredCarrier { declaration: DeclarationRef, element: DeclarationRef? }
+
 type ConversionPlan {
   identity: NonEmptyStr
   route: DeclarationRef
-  source: DeclarationRef
-  source_element: DeclarationRef?
-  target: DeclarationRef
-  target_element: DeclarationRef?
+  source: ConversionEndpoint
+  target: ConversionEndpoint
   phases: List<ConversionPhase>
 }
 
@@ -396,30 +403,30 @@ fn conversion_plan_element_eq(a: DeclarationRef?, b: DeclarationRef?) -> Bool {
   }
 }
 
-fn conversion_plan_endpoints_match(
-  plan: ConversionPlan,
-  source: DeclarationRef,
-  source_element: DeclarationRef?,
-  target: DeclarationRef,
-  target_element: DeclarationRef?
-) -> Bool {
-  declaration_ref_eq(a: plan.source, b: source)
-    && conversion_plan_element_eq(a: plan.source_element, b: source_element)
-    && declaration_ref_eq(a: plan.target, b: target)
-    && conversion_plan_element_eq(a: plan.target_element, b: target_element)
+fn conversion_endpoint_eq(a: ConversionEndpoint, b: ConversionEndpoint) -> Bool {
+  match a {
+    KernelMintedCarrier { minted_name: an } =>
+      match b {
+        KernelMintedCarrier { minted_name: bn } => an == bn
+        DeclaredCarrier { declaration: _, element: _ } => false
+      }
+    DeclaredCarrier { declaration: ad, element: ae } =>
+      match b {
+        KernelMintedCarrier { minted_name: _ } => false
+        DeclaredCarrier { declaration: bd, element: be } => declaration_ref_eq(a: ad, b: bd) && conversion_plan_element_eq(a: ae, b: be)
+      }
+  }
 }
 
-// The site presents the callee it resolved and the two declarations at its boundary (already
-// peeled, as for literal elaboration). Zero or several rows under the identity refuse rather than
-// pick; a found plan whose endpoints are not the site's refuses rather than being reread in the
-// other direction (the inverse is its own row).
+// The site presents the callee it resolved and the two carriers at its boundary (already peeled,
+// as for literal elaboration). Zero or several rows naming the callee refuse rather than pick; a
+// found plan whose endpoints are not the site's refuses rather than being reread in the other
+// direction (the inverse is its own row).
 fn judge_conversion_plan(
   rows: List<ConversionPlan>,
   route: DeclarationRef,
-  source: DeclarationRef,
-  source_element: DeclarationRef?,
-  target: DeclarationRef,
-  target_element: DeclarationRef?
+  source: ConversionEndpoint,
+  target: ConversionEndpoint
 ) -> ConversionPlanJudgment {
   let named = rows |> filter(r => declaration_ref_eq(a: r.route, b: route))
   let n = named |> count
@@ -433,7 +440,7 @@ fn judge_conversion_plan(
       Present { value: plan } =>
         if (plan.phases |> count) == 0 {
           ConversionPlanHasNoPhase { route: route }
-        } else if conversion_plan_endpoints_match(plan: plan, source: source, source_element: source_element, target: target, target_element: target_element) {
+        } else if conversion_endpoint_eq(a: plan.source, b: source) && conversion_endpoint_eq(a: plan.target, b: target) {
           ConversionPlanAdmitted { plan: plan }
         } else {
           ConversionPlanEndpointMismatch { plan: plan }
@@ -446,19 +453,26 @@ fn judge_conversion_plan(
 // boundary by declaration identity (v1.compiler.infer text_representation_by_identity, the same
 // reading text_crossing_by_identity refuses bare crossings with); a site that names a plan presents
 // those two readings here and is judged against the plan rows. Each text representation has exactly
-// one declaration key -- host text is std.types String, a code-point sequence is std.algebra
-// FreeMonoid over std.types Char, the post-peel key literal_homomorphism_rows uses -- so the key is
-// derived from the reading rather than re-read from a spelling. A side that is not text, or whose
-// declaration could not be identified, has no key and refuses: a plan is never selected for a
-// crossing the checker could not identify.
+// one carrier -- host text is the kernel-minted String, a code-point sequence is std.algebra
+// FreeMonoid over std.types Char -- so the endpoint is derived from the reading rather than re-read
+// from a spelling. A side that is not text, or whose declaration could not be identified, has no
+// endpoint and refuses: a plan is never selected for a crossing the checker could not identify.
+fn host_text_endpoint() -> ConversionEndpoint {
+  KernelMintedCarrier { minted_name: "String" as NonEmptyStr }
+}
+
+fn code_point_sequence_endpoint() -> ConversionEndpoint {
+  DeclaredCarrier { declaration: decl_ref(module_path: "std.algebra", decl_name: "FreeMonoid"), element: Present { value: decl_ref(module_path: "std.types", decl_name: "Char") } }
+}
+
 type TextPlanEndpoint
-  = TextPlanEndpointKeyed { declaration: DeclarationRef, element: DeclarationRef? }
+  = TextPlanEndpointKeyed { endpoint: ConversionEndpoint }
   | TextPlanEndpointUnkeyed
 
 fn text_plan_endpoint(rep: TextRepresentation) -> TextPlanEndpoint {
   match rep {
-    HostText => TextPlanEndpointKeyed { declaration: decl_ref(module_path: "std.types", decl_name: "String"), element: Absent }
-    CodePointSequence => TextPlanEndpointKeyed { declaration: decl_ref(module_path: "std.algebra", decl_name: "FreeMonoid"), element: Present { value: decl_ref(module_path: "std.types", decl_name: "Char") } }
+    HostText => TextPlanEndpointKeyed { endpoint: host_text_endpoint() }
+    CodePointSequence => TextPlanEndpointKeyed { endpoint: code_point_sequence_endpoint() }
     NotText => TextPlanEndpointUnkeyed
     TextRepresentationUnidentified => TextPlanEndpointUnkeyed
   }
@@ -472,11 +486,11 @@ fn judge_text_conversion_plan(
 ) -> ConversionPlanJudgment {
   match text_plan_endpoint(rep: source) {
     TextPlanEndpointUnkeyed => ConversionPlanEndpointNotText { source: source, target: target }
-    TextPlanEndpointKeyed { declaration: sd, element: se } =>
+    TextPlanEndpointKeyed { endpoint: se } =>
       match text_plan_endpoint(rep: target) {
         TextPlanEndpointUnkeyed => ConversionPlanEndpointNotText { source: source, target: target }
-        TextPlanEndpointKeyed { declaration: td, element: te } =>
-          judge_conversion_plan(rows: rows, route: route, source: sd, source_element: se, target: td, target_element: te)
+        TextPlanEndpointKeyed { endpoint: te } =>
+          judge_conversion_plan(rows: rows, route: route, source: se, target: te)
       }
   }
 }
