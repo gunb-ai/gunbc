@@ -288,8 +288,14 @@ test fn entries_stream_is_what_tokenize_produces_holds() -> Bool {
 // and stood red on main from #12948 until XL-2 PR3b-i corrected it (re-run against main at 3756d624).
 data default_tail_source: String = "module m\nresource N {\n  kind: Capability\n  mode: Read\n  capability c {\n    output { o: Int = 1 }\n  }\n}\n"
 
+// The census outcome is computed ONCE as a nullary value, enrolled WARM in
+// v2.workflow.floor_pure_producer_share, and the claim reads it.
+fn rdl_default_tail_census() -> Outcome<CensusTree> {
+  census_of_stream(tokens: default_tail_stream())
+}
+
 test fn a_default_tail_lowers_onto_its_binder_holds() -> Bool {
-  match census_of_stream(tokens: default_tail_stream()) {
+  match rdl_default_tail_census() {
     Accepted { value: _, diagnostics: d } => reason_count_is_zero(d: d, reason: ^body_lowering_reason_interface_member_unmodeled)
     Rejected { diagnostics: _ } => false
   }

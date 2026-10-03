@@ -1126,6 +1126,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.compiler.occurrence_role.dag_name_production_emitted_symbols",
   "v2.test.claim.namespace_xl0.reference_conservation.clean_control_subject",
   "v2.test.claim.namespace_xl0.reference_conservation.clean_control_report",
+  "v2.test.claim.namespace_xl0.reference_conservation.refused_normalization_report",
+  "v2.test.claim.normalize.resource_declaration_lowering.rdl_default_tail_census",
   "v2.test.claim.namespace_xl0.reference_conservation.block_second_statement_subject",
   "v2.test.claim.namespace_xl0.reference_conservation.if_arm_call_argument_subject",
   "v2.test.claim.namespace_xl0.reference_conservation.infix_right_operand_subject",
