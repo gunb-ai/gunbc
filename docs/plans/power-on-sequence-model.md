@@ -315,7 +315,23 @@ OperatorAttestedTime { rendering: NonEmptyStr, attested_by: NonEmptyStr }   // a
 ReceiptEvidence { path, digest: Sha256FileDigest, commit }   // the committed file the run read
 ```
 
-**The attempt identity comes from the dispatch, not from the artifact.** The current run's attempt identity is minted outside the receipt: it is the fleet-converge dispatch's existing `transaction_nonce`, which the operator mints and which the run name echoes. Admission runs before any pre-power read or actuation. It joins `receipt.plan.attempt` to that identity, and then consumes the identity once with a compare-and-set on the unit's durable hold store (`std.durable_compare_and_set`, the store the boot run already holds). A second run with the same identity therefore refuses. A valid receipt authored for attempt A cannot be selected by attempt B.
+**The attempt identity comes from the dispatch, not from the artifact.** The current run's attempt identity is minted outside the receipt: it is the fleet-converge dispatch's existing `transaction_nonce`, which the operator mints and which the run name echoes. Admission runs before any pre-power read or actuation and joins `receipt.plan.attempt` to that identity. It then consumes the identity in a **create-once slot**:
+- The slot is keyed by (managed subject, `transaction_nonce`), in its own attempt-admission namespace, separate from the unit hold.
+- `Absent -> Consumed` is the only successful transition, done by compare-and-set against `Absent` (`std.durable_compare_and_set`).
+- No hold release or hold cleanup deletes or rewrites a slot.
+
+So a used identity stays used: it is not blocked by a later one, and it does not block one. A valid receipt authored for attempt A cannot be selected by attempt B, and A cannot be replayed after B.
+
+Controls, each an implementation RED:
+- the first A succeeds;
+- a concurrent or repeated A refuses;
+- B then succeeds;
+- A still refuses after B;
+- releasing the unit hold does not erase A's consumed standing.
+
+Implementation cut obligations:
+- The workflow's `transaction_nonce` description changes from "not consumed by any step" to its admission role.
+- A named receipt with an empty or absent `transaction_nonce` refuses.
 
 The run mints an `AttemptInspectionReceipt` only after every check passes, and each failed check refuses as its own typed cause:
 - the file's digest matches what was read;
@@ -329,7 +345,7 @@ The run mints an `AttemptInspectionReceipt` only after every check passes, and e
 
 **The absent-receipt rule (decided by eager-gull-22).**
 - **No receipt named:** the dispatch input is empty. The boot proceeds with the configuration `NotRecorded` and no topology judgement, as in slice A.
-- **A receipt named but refused:** a missing file, a digest or parse failure, a subject, host, attempt or plan mismatch, a consumed identity, or an attested ordering violation. The boot REFUSES before any pre-power read or actuation, with that typed cause.
+- **A receipt named but refused:** a missing file, a digest or parse failure, an empty `transaction_nonce`, a subject, host, attempt or plan mismatch, a consumed identity, or an attested ordering violation. The boot REFUSES before any pre-power read or actuation, with that typed cause.
 - REDs, one per arm:
   - an empty input reaches actuation with the configuration `NotRecorded`;
   - a valid receipt for attempt A dispatched as attempt B refuses before actuation;
