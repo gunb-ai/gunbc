@@ -126,7 +126,7 @@ test fn an_attempt_id_that_could_leave_its_own_directory_is_refused() -> Bool {
     AttemptSegmentRefused { refusal: AttemptSegmentContainsSeparator { spelling: _ } } => true
     _ => false
   }
-  let alias = match attempt_segment(spelling: "a/../b") {
+  let alias_value = match attempt_segment(spelling: "a/../b") {
     AttemptSegmentRefused { refusal: AttemptSegmentContainsSeparator { spelling: _ } } => true
     _ => false
   }
@@ -138,7 +138,7 @@ test fn an_attempt_id_that_could_leave_its_own_directory_is_refused() -> Bool {
     AttemptSegmentRefused { refusal: AttemptSegmentEmpty } => true
     _ => false
   }
-  parent && here && traversal && alias && absolute && empty
+  parent && here && traversal && alias_value && absolute && empty
 }
 
 // AND AN ORDINARY ID STILL PASSES. Without this the refusal could be satisfied by refusing

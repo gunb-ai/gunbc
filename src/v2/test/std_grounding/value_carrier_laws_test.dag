@@ -30,8 +30,8 @@ test fn sharing_unobservable_list_holds() -> Bool {
 
 test fn sharing_unobservable_map_holds() -> Bool {
   let base = empty_map() |> map_insert("k", 1)
-  let alias = base
-  alias == (empty_map() |> map_insert("k", 1))
+  let alias_value = base
+  alias_value == (empty_map() |> map_insert("k", 1))
 }
 
 test fn map_equality_insert_order_independent_holds() -> Bool {

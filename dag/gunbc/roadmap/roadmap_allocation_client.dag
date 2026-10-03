@@ -22,7 +22,7 @@ fn allocation_draft_statements() -> List<TsStmt> {
   [
       ts_const(name: "allocationForm", value: allocation_element(id: "allocation-draft")),
       ts_const(name: "allocationReview", value: ts_arrow(params: [], body: ts_block(stmts: [
-        ts_if(cond: ts_prefix(op: "!", expr: ts_call(callee: ts_member(object: ts_ident(name: "allocationForm"), property: "reportValidity"), args: [])), then: ts_block(stmts: [ts_return(expr: none)]), else_stmt: none),
+        ts_if(cond: ts_prefix(op: "!", expr: ts_call(callee: ts_member(object: ts_ident(name: "allocationForm"), property: "reportValidity"), args: [])), then_stmt: ts_block(stmts: [ts_return(expr: none)]), else_stmt: none),
         ts_expr_stmt(expr: ts_binop(left: ts_member(object: allocation_element(id: "allocation-summary"), property: "textContent"), op: "=", right: ts_call(callee: ts_member(object: ts_array(elements: [
             ts_lit_str(value: "Draft: "), allocation_value(id: "allocation-cpu"), ts_lit_str(value: " vCPU · "),
             allocation_value(id: "allocation-memory"), ts_lit_str(value: " GiB RAM · "),

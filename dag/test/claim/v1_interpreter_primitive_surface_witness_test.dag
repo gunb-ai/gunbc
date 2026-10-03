@@ -133,11 +133,11 @@ test fn shadow_detector_catches_a_planted_duplicate() -> Bool {
 }
 
 test fn shadow_detector_admits_a_real_alias_pair() -> Bool {
-  let alias = [
+  let alias_value = [
     planted_row(identity: "planted.shared", spelling: "alpha", symbol: "planted_dispatch"),
     planted_row(identity: "planted.shared", spelling: "beta", symbol: "planted_dispatch"),
   ]
-  form_has_no_shadowed_spelling(rows: alias)
+  form_has_no_shadowed_spelling(rows: alias_value)
 }
 
 test fn lookup_is_dispatched_under_more_than_one_site() -> Bool {

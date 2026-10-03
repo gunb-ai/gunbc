@@ -669,8 +669,8 @@ test fn parse_content_hash_refuses_trailing_repeated_prefix() -> Bool {
     Present { value: sha } => {
       let h = as_content_hash_cryptographic(digest: sha)
       let canon = serialize_content_hash(hash: h) as String
-      let alias = concat(canon, "sha256:ignored")
-      match parse_content_hash(wire: alias) {
+      let alias_value = concat(canon, "sha256:ignored")
+      match parse_content_hash(wire: alias_value) {
         Present { value: _ } => false
         Absent =>
           match parse_content_hash(wire: canon) {

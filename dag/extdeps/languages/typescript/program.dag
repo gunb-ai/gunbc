@@ -157,8 +157,8 @@ fn ts_return(expr: TsExpr?) -> TsStmt {
   Return { expr: expr }
 }
 
-fn ts_if(cond: TsExpr, then: TsStmt, else_stmt: TsStmt?) -> TsStmt {
-  If { cond: cond, then: then, else_stmt: else_stmt }
+fn ts_if(cond: TsExpr, then_stmt: TsStmt, else_stmt: TsStmt?) -> TsStmt {
+  If { cond: cond, then: then_stmt, else_stmt: else_stmt }
 }
 
 fn ts_for_of(var_name: String, iterable: TsExpr, body: TsStmt) -> TsStmt {

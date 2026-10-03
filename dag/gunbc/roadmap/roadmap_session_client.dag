@@ -36,7 +36,7 @@ fn session_read_bind_statements() -> List<TsStmt> {
       args: [ts_arrow(params: ["response"], body: ts_block(stmts: [
         ts_if(
           cond: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "response"), property: "ok")),
-          then: ts_block(stmts: [
+          then_stmt: ts_block(stmts: [
             ts_return(expr: Present { value: ts_call(
               callee: ts_member(object: ts_ident(name: "Promise"), property: "reject"),
               args: [ts_new(callee: ts_ident(name: "Error"), args: [ts_lit_str(value: "Session read failed")])]) }),

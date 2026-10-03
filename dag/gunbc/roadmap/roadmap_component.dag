@@ -231,7 +231,7 @@ fn dashboard_instance_fetch_statements() -> List<TsStmt> {
                 right: ts_lit_str(value: "unknown"))),
             ts_if(
               cond: ts_ident(name: "il"),
-              then: ts_block(stmts: [
+              then_stmt: ts_block(stmts: [
                 ts_expr_stmt(expr: ts_binop(
                   left: ts_member(object: ts_ident(name: "il"), property: "textContent"),
                   op: "=",
@@ -271,7 +271,7 @@ fn dashboard_instance_fetch_statements() -> List<TsStmt> {
                 left: ts_ident(name: "posture"),
                 op: "===",
                 right: ts_lit_str(value: "observe-only")),
-              then: ts_block(stmts: [
+              then_stmt: ts_block(stmts: [
                 ts_expr_stmt(expr: ts_call(
                   callee: ts_member(
                     object: ts_call(
@@ -312,7 +312,7 @@ fn dashboard_instance_fetch_statements() -> List<TsStmt> {
           args: [ts_lit_str(value: join([".", dashboard_instance_label_class], ""))])),
         ts_if(
           cond: ts_ident(name: "il"),
-          then: ts_block(stmts: [
+          then_stmt: ts_block(stmts: [
             ts_expr_stmt(expr: ts_binop(
               left: ts_member(object: ts_ident(name: "il"), property: "textContent"),
               op: "=",
@@ -522,12 +522,12 @@ fn js_oscillator_tick_body(s: SoundSpec) -> TsStmt {
   ts_block(stmts: [
     ts_if(
       cond: ts_call(callee: ts_ident(name: js_sound_muted_fn), args: []),
-      then: ts_block(stmts: [ts_return(expr: none)]),
+      then_stmt: ts_block(stmts: [ts_return(expr: none)]),
       else_stmt: none,
     ),
     ts_if(
       cond: ts_prefix(op: "!", expr: ts_ident(name: js_audio_context_var)),
-      then: ts_block(stmts: [
+      then_stmt: ts_block(stmts: [
         ts_expr_stmt(expr: ts_binop(
           left: ts_ident(name: js_audio_context_var),
           op: "=",
@@ -539,7 +539,7 @@ fn js_oscillator_tick_body(s: SoundSpec) -> TsStmt {
     ts_const(name: "play", value: ts_arrow(params: [], body: ts_block(stmts: js_oscillator_schedule_stmts(s: s, decay_s: decay_s)))),
     ts_if(
       cond: ts_binop(left: js_actx_member(name: "state"), op: "===", right: ts_lit_str(value: "running")),
-      then: ts_block(stmts: [
+      then_stmt: ts_block(stmts: [
         ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "play"), args: [])),
         ts_return(expr: none),
       ]),
@@ -834,7 +834,7 @@ fn reason_surface_helper_stmt() -> TsStmt {
   ts_const(name: js_reason_surface_fn, value: ts_arrow(params: ["dt", "source", "text"], body: ts_block(stmts: [
     ts_if(
       cond: ts_prefix(op: "!", expr: ts_ident(name: "dt")),
-      then: ts_block(stmts: [ts_return(expr: none)]),
+      then_stmt: ts_block(stmts: [ts_return(expr: none)]),
       else_stmt: none,
     ),
     ts_let(name: "rl", value: ts_call(
@@ -849,7 +849,7 @@ fn reason_surface_helper_stmt() -> TsStmt {
     )),
     ts_if(
       cond: ts_prefix(op: "!", expr: ts_ident(name: "text")),
-      then: ts_block(stmts: [
+      then_stmt: ts_block(stmts: [
         ts_expr_stmt(expr: ts_binop(
           left: ts_ident(name: "rl"),
           op: "&&",
@@ -860,7 +860,7 @@ fn reason_surface_helper_stmt() -> TsStmt {
     ),
     ts_if(
       cond: ts_prefix(op: "!", expr: ts_ident(name: "rl")),
-      then: ts_block(stmts: [
+      then_stmt: ts_block(stmts: [
         ts_expr_stmt(expr: ts_binop(
           left: ts_ident(name: "rl"),
           op: "=",
@@ -1027,7 +1027,7 @@ fn dispatch_terminal_apply_body() -> TsStmt {
     )),
     ts_if(
       cond: ts_binop(left: ts_ident(name: "band"), op: "===", right: ts_lit_str(value: "loud")),
-      then: ts_block(stmts: [
+      then_stmt: ts_block(stmts: [
         js_classlist_call(method: "add", arg: ts_lit_str(value: dispatch_class_loud)),
       ]),
       else_stmt: none,
@@ -1068,7 +1068,7 @@ fn dispatch_terminal_apply_body() -> TsStmt {
       args: [ts_ident(name: "b")])),
     ts_if(
       cond: ts_binop(left: ts_ident(name: "expandRow"), op: "&&", right: ts_ident(name: "dt")),
-      then: ts_block(stmts: [
+      then_stmt: ts_block(stmts: [
         ts_expr_stmt(expr: ts_binop(
           left: ts_member(object: ts_ident(name: "dt"), property: "open"),
           op: "=",
@@ -1091,7 +1091,7 @@ fn dispatch_terminal_apply_body() -> TsStmt {
       ])),
     ts_if(
       cond: ts_prefix(op: "!", expr: ts_ident(name: "ok")),
-      then: ts_block(stmts: [
+      then_stmt: ts_block(stmts: [
         ts_expr_stmt(expr: ts_call(
           callee: ts_member(object: ts_ident(name: "console"), property: "log"),
           args: [ts_lit_str(value: "dispatch refused"), ts_ident(name: "j")],
@@ -1101,7 +1101,7 @@ fn dispatch_terminal_apply_body() -> TsStmt {
     ),
     ts_if(
       cond: ts_ident(name: "ok"),
-      then: ts_block(stmts: [
+      then_stmt: ts_block(stmts: [
         ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_sessions_observe_fn), args: [])),
         ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_attempts_observe_fn), args: [])),
         ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_refresh_workflow_fn), args: [])),
@@ -1258,7 +1258,7 @@ fn theme_toggle_bind_statements() -> List<TsStmt> {
       ts_const(name: "t", value: ts_call(callee: ts_ident(name: js_theme_choice_fn), args: [])),
       ts_if(
         cond: ts_binop(left: ts_ident(name: "t"), op: "===", right: ts_lit_str(value: theme_toggle_auto_value)),
-        then: ts_block(stmts: [
+        then_stmt: ts_block(stmts: [
           ts_expr_stmt(expr: ts_call(
             callee: ts_member(object: js_document_element(), property: "removeAttribute"),
             args: [ts_lit_str(value: "data-theme")],
@@ -1307,7 +1307,7 @@ fn theme_toggle_bind_statements() -> List<TsStmt> {
             )),
             ts_if(
               cond: ts_binop(left: ts_ident(name: "next"), op: "===", right: ts_lit_str(value: theme_toggle_auto_value)),
-              then: ts_block(stmts: [
+              then_stmt: ts_block(stmts: [
                 ts_expr_stmt(expr: ts_call(
                   callee: ts_member(object: ts_ident(name: "localStorage"), property: "removeItem"),
                   args: [ts_lit_str(value: theme_storage_key)],
@@ -1317,7 +1317,7 @@ fn theme_toggle_bind_statements() -> List<TsStmt> {
             ),
             ts_if(
               cond: ts_binop(left: ts_ident(name: "next"), op: "!==", right: ts_lit_str(value: theme_toggle_auto_value)),
-              then: ts_block(stmts: [
+              then_stmt: ts_block(stmts: [
                 ts_expr_stmt(expr: ts_call(
                   callee: ts_member(object: ts_ident(name: "localStorage"), property: "setItem"),
                   args: [ts_lit_str(value: theme_storage_key), ts_ident(name: "next")],
@@ -1351,7 +1351,7 @@ fn disclosure_bind_statements() -> List<TsStmt> {
         )),
         ts_if(
           cond: ts_prefix(op: "!", expr: ts_ident(name: "m")),
-          then: ts_block(stmts: [ts_return(expr: none)]),
+          then_stmt: ts_block(stmts: [ts_return(expr: none)]),
           else_stmt: none,
         ),
         ts_const(name: "paint", value: ts_arrow(params: [], body: ts_expr_stmt(expr: ts_call(
@@ -1378,7 +1378,7 @@ fn swatch_toggle_bind_statements() -> List<TsStmt> {
       ts_const(name: "t", value: ts_call(callee: ts_ident(name: "gunbcSwatchChoice"), args: [])),
       ts_if(
         cond: ts_binop(left: ts_ident(name: "t"), op: "===", right: ts_lit_str(value: swatch_default_set_value)),
-        then: ts_block(stmts: [
+        then_stmt: ts_block(stmts: [
           ts_expr_stmt(expr: ts_call(
             callee: ts_member(object: js_document_element(), property: "removeAttribute"),
             args: [ts_lit_str(value: "data-swatch-set")],
@@ -1427,7 +1427,7 @@ fn swatch_toggle_bind_statements() -> List<TsStmt> {
             )),
             ts_if(
               cond: ts_binop(left: ts_ident(name: "next"), op: "===", right: ts_lit_str(value: swatch_default_set_value)),
-              then: ts_block(stmts: [
+              then_stmt: ts_block(stmts: [
                 ts_expr_stmt(expr: ts_call(
                   callee: ts_member(object: ts_ident(name: "localStorage"), property: "removeItem"),
                   args: [ts_lit_str(value: swatch_storage_key)],
@@ -1437,7 +1437,7 @@ fn swatch_toggle_bind_statements() -> List<TsStmt> {
             ),
             ts_if(
               cond: ts_binop(left: ts_ident(name: "next"), op: "!==", right: ts_lit_str(value: swatch_default_set_value)),
-              then: ts_block(stmts: [
+              then_stmt: ts_block(stmts: [
                 ts_expr_stmt(expr: ts_call(
                   callee: ts_member(object: ts_ident(name: "localStorage"), property: "setItem"),
                   args: [ts_lit_str(value: swatch_storage_key), ts_ident(name: "next")],
@@ -1501,7 +1501,7 @@ fn observation_complete_stmts(
       right: ts_ident(name: "false"))),
     ts_if(
       cond: ts_ident(name: pending),
-      then: ts_block(stmts: [
+      then_stmt: ts_block(stmts: [
         ts_expr_stmt(expr: ts_binop(
           left: ts_ident(name: pending),
           op: "=",
@@ -1516,7 +1516,7 @@ fn observation_begin_stmts(in_flight: String, pending: String) -> List<TsStmt> {
   [
     ts_if(
       cond: ts_ident(name: in_flight),
-      then: ts_block(stmts: [
+      then_stmt: ts_block(stmts: [
         ts_expr_stmt(expr: ts_binop(
           left: ts_ident(name: pending),
           op: "=",
@@ -1545,7 +1545,7 @@ fn sessions_mark_live_stmts() -> List<TsStmt> {
         args: [ts_lit_str(value: ".dispatch-btn")]))),
     ts_if(
       cond: ts_ident(name: "sb"),
-      then: ts_block(stmts: [
+      then_stmt: ts_block(stmts: [
         ts_expr_stmt(expr: ts_binop(
           left: ts_member(
             object: ts_member(object: ts_ident(name: "sb"), property: "dataset"),
@@ -1566,7 +1566,7 @@ fn sessions_mark_live_stmts() -> List<TsStmt> {
             left: ts_ident(name: "sdt"),
             op: "&&",
             right: ts_prefix(op: "!", expr: ts_ident(name: "sf"))),
-          then: ts_block(stmts: [
+          then_stmt: ts_block(stmts: [
             ts_expr_stmt(expr: ts_binop(
               left: ts_ident(name: "sf"),
               op: "=",
@@ -1613,7 +1613,7 @@ fn sessions_mark_live_stmts() -> List<TsStmt> {
             left: ts_ident(name: "st"),
             op: "&&",
             right: ts_ident(name: "sfx")),
-          then: ts_block(stmts: [
+          then_stmt: ts_block(stmts: [
             ts_expr_stmt(expr: ts_binop(
               left: ts_member(object: ts_ident(name: "st"), property: "textContent"),
               op: "=",
@@ -1641,7 +1641,7 @@ fn sessions_mark_live_stmts() -> List<TsStmt> {
             left: ts_ident(name: "sf"),
             op: "&&",
             right: ts_prefix(op: "!", expr: ts_ident(name: "cc"))),
-          then: ts_block(stmts: [
+          then_stmt: ts_block(stmts: [
             ts_expr_stmt(expr: ts_binop(
               left: ts_ident(name: "cc"),
               op: "=",
@@ -1704,7 +1704,7 @@ fn sessions_mark_live_stmts() -> List<TsStmt> {
                             left: ts_member(object: ts_ident(name: "j"), property: "ok"),
                             op: "===",
                             right: ts_ident(name: "true")),
-                          then: ts_block(stmts: [
+                          then_stmt: ts_block(stmts: [
                             ts_expr_stmt(expr: ts_call(
                               callee: ts_member(
                                 object: ts_member(object: ts_ident(name: "window"), property: "location"),
@@ -1809,7 +1809,7 @@ fn sessions_mark_live_stmts() -> List<TsStmt> {
               left: ts_member(object: ts_ident(name: "sact"), property: "kind"),
               op: "!==",
               right: ts_lit_str(value: "none"))),
-          then: ts_block(stmts: [
+          then_stmt: ts_block(stmts: [
             ts_expr_stmt(expr: ts_binop(
               left: ts_member(
                 object: ts_member(object: ts_ident(name: "cc"), property: "dataset"),
@@ -1882,7 +1882,7 @@ fn sessions_reset_presence_stmt() -> TsStmt {
             object: ts_member(object: ts_ident(name: "pb"), property: "classList"),
             property: "contains"),
           args: [ts_lit_str(value: session_facts_class)]),
-        then: ts_block(stmts: [
+        then_stmt: ts_block(stmts: [
           ts_expr_stmt(expr: ts_call(
             callee: ts_member(object: ts_ident(name: "pb"), property: "remove"),
             args: [])),
@@ -1920,7 +1920,7 @@ fn observe_impact_preamble_statements() -> List<TsStmt> {
         args: [ts_lit_str(value: ".workspace-observation")])),
       ts_if(
         cond: ts_prefix(op: "!", expr: ts_ident(name: "box")),
-        then: ts_block(stmts: [
+        then_stmt: ts_block(stmts: [
           ts_expr_stmt(expr: ts_binop(
             left: ts_ident(name: "box"),
             op: "=",
@@ -1957,7 +1957,7 @@ fn observe_impact_preamble_statements() -> List<TsStmt> {
         args: [ts_lit_str(value: ".observe-impact-detail")])),
       ts_if(
         cond: ts_prefix(op: "!", expr: ts_ident(name: "d")),
-        then: ts_block(stmts: [
+        then_stmt: ts_block(stmts: [
           ts_expr_stmt(expr: ts_binop(
             left: ts_ident(name: "d"),
             op: "=",
@@ -1989,7 +1989,7 @@ fn observe_impact_preamble_statements() -> List<TsStmt> {
       ts_const(name: "box", value: ts_call(
         callee: ts_member(object: ts_ident(name: "document"), property: "querySelector"),
         args: [ts_lit_str(value: ".workspace-observation")])),
-      ts_if(cond: ts_prefix(op: "!", expr: ts_ident(name: "box")), then: ts_return(expr: none), else_stmt: none),
+      ts_if(cond: ts_prefix(op: "!", expr: ts_ident(name: "box")), then_stmt: ts_return(expr: none), else_stmt: none),
       ts_const(name: "n", value: ts_member(
         object: ts_call(
           callee: ts_member(object: ts_ident(name: "box"), property: "querySelectorAll"),
@@ -1999,11 +1999,11 @@ fn observe_impact_preamble_statements() -> List<TsStmt> {
         cond: ts_prefix(op: "!", expr: ts_call(
           callee: ts_member(object: ts_member(object: ts_ident(name: "box"), property: "classList"), property: "contains"),
           args: [ts_lit_str(value: "client-minted")])),
-        then: ts_return(expr: none),
+        then_stmt: ts_return(expr: none),
         else_stmt: none),
       ts_if(
         cond: ts_binop(left: ts_ident(name: "n"), op: "===", right: ts_lit_num(text: "0")),
-        then: ts_block(stmts: [
+        then_stmt: ts_block(stmts: [
           ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "box"), property: "remove"), args: [])),
           ts_return(expr: none),
         ]),
@@ -2038,7 +2038,7 @@ fn observation_refused_banner_stmts(source_class: String) -> List<TsStmt> {
       args: [ts_lit_str(value: concat(".", source_class))])),
     ts_if(
       cond: ts_prefix(op: "!", expr: ts_ident(name: "bn")),
-      then: ts_block(stmts: [
+      then_stmt: ts_block(stmts: [
         ts_expr_stmt(expr: ts_binop(
           left: ts_ident(name: "bn"),
           op: "=",
@@ -2085,7 +2085,7 @@ fn sessions_fetch_effect_statements() -> List<TsStmt> {
           args: [ts_arrow(params: ["sj"], body: ts_block(stmts: concat([
             ts_if(
               cond: ts_member(object: ts_ident(name: "sj"), property: "observe_refused"),
-              then: ts_block(stmts: concat(
+              then_stmt: ts_block(stmts: concat(
                 [
                   ts_const(name: "wireWhy", value: ts_binop(
                     left: ts_member(object: ts_ident(name: "sj"), property: "reason"),
@@ -2149,11 +2149,11 @@ fn attempts_mark_stmts() -> List<TsStmt> {
       right: ts_call(callee: ts_member(object: ts_ident(name: "ar"), property: "querySelector"), args: [ts_lit_str(value: "details.taskbar-inspect")]))),
     ts_if(
       cond: ts_ident(name: "adt"),
-      then: ts_block(stmts: [
+      then_stmt: ts_block(stmts: [
         ts_let(name: "al", value: ts_call(callee: ts_member(object: ts_ident(name: "adt"), property: "querySelector"), args: [ts_lit_str(value: ".dispatch-attempts")])),
         ts_if(
           cond: ts_prefix(op: "!", expr: ts_ident(name: "al")),
-          then: ts_block(stmts: [
+          then_stmt: ts_block(stmts: [
             ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "al"), op: "=", right: ts_call(callee: ts_member(object: ts_ident(name: "document"), property: "createElement"), args: [ts_lit_str(value: "div")]))),
             ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "al"), property: "className"), op: "=", right: ts_lit_str(value: "dispatch-attempts"))),
             ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "al"), property: "textContent"), op: "=", right: ts_lit_str(value: "attempts: "))),
@@ -2189,7 +2189,7 @@ fn attempts_fetch_effect_statements() -> List<TsStmt> {
           args: [ts_arrow(params: ["aj"], body: ts_block(stmts: concat([
             ts_if(
               cond: ts_member(object: ts_ident(name: "aj"), property: "attempts_refused"),
-              then: ts_block(stmts: concat(
+              then_stmt: ts_block(stmts: concat(
                 [
                   ts_const(name: "wireWhy", value: ts_binop(
                     left: ts_member(object: ts_ident(name: "aj"), property: "reason"),
@@ -2573,7 +2573,7 @@ fn inspect_ensure_helper_stmt() -> TsStmt {
     ts_let(name: "stg", value: ts_slot_query(obj: "ib", selector: ".inspect-stages")),
     ts_if(
       cond: ts_prefix(op: "!", expr: ts_ident(name: "stg")),
-      then: ts_block(stmts: [
+      then_stmt: ts_block(stmts: [
         ts_expr_stmt(expr: ts_binop(
           left: ts_ident(name: "stg"),
           op: "=",
@@ -2602,7 +2602,7 @@ fn inspect_ensure_helper_stmt() -> TsStmt {
     ts_let(name: "raw", value: ts_slot_query(obj: "ib", selector: ".inspect-raw")),
     ts_if(
       cond: ts_prefix(op: "!", expr: ts_ident(name: "raw")),
-      then: ts_block(stmts: [
+      then_stmt: ts_block(stmts: [
         ts_expr_stmt(expr: ts_binop(
           left: ts_ident(name: "raw"),
           op: "=",
@@ -2686,7 +2686,7 @@ fn activity_paint_stmts() -> List<TsStmt> {
           left: ts_ident(name: "tb"),
           op: "!==",
           right: ts_ident(name: "wr"))),
-      then: ts_block(stmts: activity_fill_create_stmts()),
+      then_stmt: ts_block(stmts: activity_fill_create_stmts()),
       else_stmt: none),
     ts_expr_stmt(expr: ts_binop(
       left: ts_ident(name: "fl"),
@@ -2703,7 +2703,7 @@ fn activity_paint_stmts() -> List<TsStmt> {
       right: ts_slot_query(obj: "fl", selector: join([".", stage_strip_class], "")))),
     ts_if(
       cond: ts_ident(name: "st"),
-      then: ts_block(stmts: [
+      then_stmt: ts_block(stmts: [
         ts_expr_stmt(expr: ts_binop(
           left: ts_member(object: ts_ident(name: "st"), property: "textContent"),
           op: "=",
@@ -2791,7 +2791,7 @@ fn activity_paint_stmts() -> List<TsStmt> {
       right: ts_slot_query(obj: "wr", selector: "details.taskbar-inspect"))),
     ts_if(
       cond: ts_prefix(op: "!", expr: ts_ident(name: "ins")),
-      then: ts_block(stmts: activity_inspect_create_stmts()),
+      then_stmt: ts_block(stmts: activity_inspect_create_stmts()),
       else_stmt: none),
     ts_const(name: "ib", value: ts_slot_query(obj: "ins", selector: ".inspect-body")),
     ts_expr_stmt(expr: ts_binop(
@@ -2826,7 +2826,7 @@ fn activity_paint_stmts() -> List<TsStmt> {
       right: ts_slot_query(obj: "stg", selector: join([".", activity_ledger_class], "")))),
     ts_if(
       cond: ts_ident(name: "aled"),
-      then: ts_block(stmts: [
+      then_stmt: ts_block(stmts: [
         ts_expr_stmt(expr: ts_binop(
           left: ts_member(object: ts_ident(name: "aled"), property: "textContent"),
           op: "=",
@@ -2936,7 +2936,7 @@ fn activity_paint_stmts() -> List<TsStmt> {
       right: ts_slot_query(obj: "raw", selector: join([".", activity_evidence_class], "")))),
     ts_if(
       cond: ts_ident(name: "aev"),
-      then: ts_block(stmts: [
+      then_stmt: ts_block(stmts: [
         ts_expr_stmt(expr: ts_binop(
           left: ts_member(object: ts_ident(name: "aev"), property: "textContent"),
           op: "=",
@@ -2978,7 +2978,7 @@ fn activity_paint_stmts() -> List<TsStmt> {
               right: ts_lit_str(value: "refused")),
             op: "&&",
             right: ts_member(object: ts_ident(name: "av"), property: "located_reason")),
-          then: ts_block(stmts: [
+          then_stmt: ts_block(stmts: [
             ts_const(name: "lr", value: ts_call(
               callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
               args: [ts_lit_str(value: "div")])),
@@ -3046,7 +3046,7 @@ fn workflow_mark_attempt_stmts() -> List<TsStmt> {
           right: ts_call(
             callee: ts_member(object: ts_ident(name: "wr"), property: "hasAttribute"),
             args: [ts_lit_str(value: "data-summary-only")]))),
-      then: ts_block(stmts: []),
+      then_stmt: ts_block(stmts: []),
       else_stmt: Present { value: ts_block(stmts: activity_paint_stmts()) }),
   ]
 }
@@ -3083,7 +3083,7 @@ fn workflow_fetch_request_statements() -> List<TsStmt> {
                 object: ts_ident(name: "wj"),
                 property: "observe_refused",
               ),
-              then: ts_block(stmts: concat(
+              then_stmt: ts_block(stmts: concat(
                 [
                   ts_const(name: "why", value: ts_binop(
                     left: ts_lit_str(
@@ -3250,7 +3250,7 @@ fn row_selection_bind_statements() -> List<TsStmt> {
         cond: ts_call(
           callee: ts_member(object: ts_member(object: ts_ident(name: "li"), property: "classList"), property: "contains"),
           args: [ts_lit_str(value: row_selected_class)]),
-        then: ts_return(expr: none),
+        then_stmt: ts_return(expr: none),
         else_stmt: none,
       ),
       ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcClearSelection"), args: [])),
@@ -3262,7 +3262,7 @@ fn row_selection_bind_statements() -> List<TsStmt> {
         args: [ts_lit_str(value: ".taskbar .dispatch-btn.action-primary")])),
       ts_if(
         cond: ts_ident(name: "b"),
-        then: ts_expr_stmt(expr: ts_call(
+        then_stmt: ts_expr_stmt(expr: ts_call(
           callee: ts_member(object: ts_member(object: ts_ident(name: "b"), property: "classList"), property: "add"),
           args: [ts_lit_str(value: action_focal_class)])),
         else_stmt: none,
@@ -3277,25 +3277,25 @@ fn row_selection_bind_statements() -> List<TsStmt> {
             left: ts_prefix(op: "!", expr: ts_ident(name: "t")),
             op: "||",
             right: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "t"), property: "closest"))),
-          then: ts_return(expr: none),
+          then_stmt: ts_return(expr: none),
           else_stmt: none,
         ),
         ts_if(
           cond: ts_call(
             callee: ts_member(object: ts_ident(name: "t"), property: "closest"),
             args: [ts_lit_str(value: "summary, button, a, input, select, textarea")]),
-          then: ts_return(expr: none),
+          then_stmt: ts_return(expr: none),
           else_stmt: none,
         ),
         ts_const(name: "li", value: ts_call(
           callee: ts_member(object: ts_ident(name: "t"), property: "closest"),
           args: [ts_lit_str(value: "li.node")])),
-        ts_if(cond: ts_prefix(op: "!", expr: ts_ident(name: "li")), then: ts_return(expr: none), else_stmt: none),
+        ts_if(cond: ts_prefix(op: "!", expr: ts_ident(name: "li")), then_stmt: ts_return(expr: none), else_stmt: none),
         ts_const(name: "was", value: ts_call(
           callee: ts_member(object: ts_member(object: ts_ident(name: "li"), property: "classList"), property: "contains"),
           args: [ts_lit_str(value: row_selected_class)])),
         ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcClearSelection"), args: [])),
-        ts_if(cond: ts_ident(name: "was"), then: ts_return(expr: none), else_stmt: none),
+        ts_if(cond: ts_ident(name: "was"), then_stmt: ts_return(expr: none), else_stmt: none),
         ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcSelectRow"), args: [ts_ident(name: "li")])),
       ]))],
     )),
@@ -3311,14 +3311,14 @@ fn row_selection_bind_statements() -> List<TsStmt> {
               right: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "t"), property: "matches"))),
             op: "||",
             right: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "t"), property: "closest"))),
-          then: ts_return(expr: none),
+          then_stmt: ts_return(expr: none),
           else_stmt: none,
         ),
         ts_if(
           cond: ts_prefix(op: "!", expr: ts_call(
             callee: ts_member(object: ts_ident(name: "t"), property: "matches"),
             args: [ts_lit_str(value: ":focus-visible")])),
-          then: ts_return(expr: none),
+          then_stmt: ts_return(expr: none),
           else_stmt: none,
         ),
         ts_const(name: "li", value: ts_call(
@@ -3326,7 +3326,7 @@ fn row_selection_bind_statements() -> List<TsStmt> {
           args: [ts_lit_str(value: "li.node")])),
         ts_if(
           cond: ts_ident(name: "li"),
-          then: ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcSelectRow"), args: [ts_ident(name: "li")])),
+          then_stmt: ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcSelectRow"), args: [ts_ident(name: "li")])),
           else_stmt: none,
         ),
       ]))],
@@ -3339,7 +3339,7 @@ fn row_selection_bind_statements() -> List<TsStmt> {
             left: ts_member(object: ts_ident(name: "e"), property: "key"),
             op: "===",
             right: ts_lit_str(value: "Escape")),
-          then: ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcClearSelection"), args: [])),
+          then_stmt: ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcClearSelection"), args: [])),
           else_stmt: none,
         ),
         ts_if(
@@ -3353,7 +3353,7 @@ fn row_selection_bind_statements() -> List<TsStmt> {
               left: ts_member(object: ts_ident(name: "e"), property: "key"),
               op: "!==",
               right: ts_lit_str(value: " "))),
-          then: ts_return(expr: none),
+          then_stmt: ts_return(expr: none),
           else_stmt: none,
         ),
         ts_const(name: "t", value: ts_member(object: ts_ident(name: "e"), property: "target")),
@@ -3362,14 +3362,14 @@ fn row_selection_bind_statements() -> List<TsStmt> {
             left: ts_prefix(op: "!", expr: ts_ident(name: "t")),
             op: "||",
             right: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "t"), property: "matches"))),
-          then: ts_return(expr: none),
+          then_stmt: ts_return(expr: none),
           else_stmt: none,
         ),
         ts_if(
           cond: ts_prefix(op: "!", expr: ts_call(
             callee: ts_member(object: ts_ident(name: "t"), property: "matches"),
             args: [ts_lit_str(value: "li.node")])),
-          then: ts_return(expr: none),
+          then_stmt: ts_return(expr: none),
           else_stmt: none,
         ),
         ts_expr_stmt(expr: ts_call(
@@ -3379,7 +3379,7 @@ fn row_selection_bind_statements() -> List<TsStmt> {
           callee: ts_member(object: ts_member(object: ts_ident(name: "t"), property: "classList"), property: "contains"),
           args: [ts_lit_str(value: row_selected_class)])),
         ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcClearSelection"), args: [])),
-        ts_if(cond: ts_ident(name: "was"), then: ts_return(expr: none), else_stmt: none),
+        ts_if(cond: ts_ident(name: "was"), then_stmt: ts_return(expr: none), else_stmt: none),
         ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcSelectRow"), args: [ts_ident(name: "t")])),
       ]))],
     )),
@@ -3572,7 +3572,7 @@ fn account_swap_statements() -> List<TsStmt> {
     ts_const(name: "gunbcAccountSlot", value: account_query_expr(selector: "[data-account-session]")),
     ts_if(
       cond: ts_ident(name: "gunbcAccountSlot"),
-      then: ts_block(stmts: [
+      then_stmt: ts_block(stmts: [
         ts_expr_stmt(expr: ts_call(
         callee: ts_member(
           object: ts_call(
@@ -3583,7 +3583,7 @@ fn account_swap_statements() -> List<TsStmt> {
                   left: ts_binop(left: ts_ident(name: "s"), op: "&&", right: ts_member(object: ts_ident(name: "s"), property: "authenticated")),
                   op: "&&",
                   right: ts_binop(left: ts_member(object: ts_ident(name: "s"), property: "authenticated"), op: "===", right: ts_ident(name: "true"))),
-                then: ts_block(stmts: [
+                then_stmt: ts_block(stmts: [
                   ts_const(name: "gunbcViewer", value: ts_binop(
                     left: ts_binop(
                       left: ts_member(object: ts_ident(name: "s"), property: "name"),
@@ -3611,7 +3611,7 @@ fn account_swap_statements() -> List<TsStmt> {
                     right: ts_ident(name: "gunbcShort"))),
                   ts_if(
                     cond: ts_member(object: ts_ident(name: "s"), property: "picture"),
-                    then: ts_block(stmts: [
+                    then_stmt: ts_block(stmts: [
                       ts_const(name: "gunbcAvatarImg", value: ts_call(
                         callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
                         args: [ts_lit_str(value: "img")])),
@@ -3987,29 +3987,29 @@ fn js_instrument_toggle_class_on(el: String, cls: String, on: TsExpr) -> TsStmt 
 fn instrument_tuner_load_camera_fn_body() -> List<TsStmt> {
   [
     ts_const(name: "w", value: js_local_storage_get(key: camera_storage_key)),
-    ts_if(cond: ts_prefix(op: "!", expr: ts_ident(name: "w")), then: ts_return(expr: none), else_stmt: none),
+    ts_if(cond: ts_prefix(op: "!", expr: ts_ident(name: "w")), then_stmt: ts_return(expr: none), else_stmt: none),
     ts_const(name: "parts", value: ts_call(
       callee: ts_member(object: ts_ident(name: "w"), property: "split"),
       args: [ts_lit_str(value: camera_wire_sep)],
     )),
     ts_if(
       cond: ts_binop(left: ts_member(object: ts_ident(name: "parts"), property: "length"), op: "!==", right: ts_lit_num(text: "3")),
-      then: ts_return(expr: none),
+      then_stmt: ts_return(expr: none),
       else_stmt: none,
     ),
     ts_if(
       cond: js_instrument_wire_index_valid(keys_var: "INSTRUMENT_WIRE_DEPTH_KEYS", parts_var: "parts", index: "0"),
-      then: ts_return(expr: none),
+      then_stmt: ts_return(expr: none),
       else_stmt: none,
     ),
     ts_if(
       cond: js_instrument_wire_index_valid(keys_var: "INSTRUMENT_MODE_KEYS", parts_var: "parts", index: "1"),
-      then: ts_return(expr: none),
+      then_stmt: ts_return(expr: none),
       else_stmt: none,
     ),
     ts_if(
       cond: js_instrument_wire_index_valid(keys_var: "INSTRUMENT_FOCUS_KEYS", parts_var: "parts", index: "2"),
-      then: ts_return(expr: none),
+      then_stmt: ts_return(expr: none),
       else_stmt: none,
     ),
     ts_expr_stmt(expr: ts_binop(left: js_instrument_camera_member(name: "depth"), op: "=", right: ts_index(object: ts_ident(name: "parts"), index: ts_lit_num(text: "0")))),
@@ -4120,7 +4120,7 @@ fn instrument_tuner_step_depth_fn_body() -> List<TsStmt> {
         callee: ts_member(object: ts_ident(name: "INSTRUMENT_DEPTH_KEYS"), property: "indexOf"),
         args: [js_instrument_camera_member(name: "depth")],
       )),
-      ts_if(cond: ts_binop(left: ts_ident(name: "i"), op: "<", right: ts_lit_num(text: "0")), then: ts_return(expr: none), else_stmt: none),
+      ts_if(cond: ts_binop(left: ts_ident(name: "i"), op: "<", right: ts_lit_num(text: "0")), then_stmt: ts_return(expr: none), else_stmt: none),
       ts_if(
         cond: ts_binop(
           left: ts_binop(left: ts_ident(name: "dir"), op: "===", right: ts_lit_str(value: "in")),
@@ -4135,7 +4135,7 @@ fn instrument_tuner_step_depth_fn_body() -> List<TsStmt> {
             ),
           ),
         ),
-        then: ts_expr_stmt(expr: ts_binop(
+        then_stmt: ts_expr_stmt(expr: ts_binop(
           left: js_instrument_camera_member(name: "depth"),
           op: "=",
           right: ts_index(
@@ -4151,7 +4151,7 @@ fn instrument_tuner_step_depth_fn_body() -> List<TsStmt> {
           op: "&&",
           right: ts_binop(left: ts_ident(name: "i"), op: ">", right: ts_lit_num(text: "0")),
         ),
-        then: ts_expr_stmt(expr: ts_binop(
+        then_stmt: ts_expr_stmt(expr: ts_binop(
           left: js_instrument_camera_member(name: "depth"),
           op: "=",
           right: ts_index(
@@ -4163,7 +4163,7 @@ fn instrument_tuner_step_depth_fn_body() -> List<TsStmt> {
       ),
       ts_if(
         cond: ts_binop(left: js_instrument_camera_member(name: "depth"), op: "!==", right: ts_ident(name: "prevDepth")),
-        then: ts_block(stmts: concat(
+        then_stmt: ts_block(stmts: concat(
           instrument_tuner_persist_and_apply_stmts(),
           [ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_tick_fn), args: []))],
         )),
@@ -4194,7 +4194,7 @@ fn instrument_tuner_seek_depth_fn_body() -> List<TsStmt> {
         op: "||",
         right: ts_binop(left: ts_ident(name: "targetIdx"), op: "===", right: ts_ident(name: "currentIdx")),
       ),
-      then: ts_return(expr: none),
+      then_stmt: ts_return(expr: none),
       else_stmt: none,
     ),
     ts_expr_stmt(expr: ts_call(
@@ -4216,7 +4216,7 @@ fn instrument_tuner_select_subject_fn_body() -> List<TsStmt> {
     [
       ts_if(
         cond: ts_binop(left: js_instrument_camera_member(name: "focus"), op: "===", right: ts_ident(name: "key")),
-        then: ts_return(expr: none),
+        then_stmt: ts_return(expr: none),
         else_stmt: none,
       ),
       ts_expr_stmt(expr: ts_binop(left: js_instrument_camera_member(name: "focus"), op: "=", right: ts_ident(name: "key"))),
@@ -4234,7 +4234,7 @@ fn instrument_tuner_toggle_subject_key_stmts() -> List<TsStmt> {
     )),
     ts_if(
       cond: ts_ident(name: "was"),
-      then: ts_block(stmts: concat(
+      then_stmt: ts_block(stmts: concat(
         [ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_instrument_clear_subject_fn), args: []))],
         [ts_return(expr: none)],
       )),
@@ -4266,7 +4266,7 @@ fn instrument_tuner_subject_click_handler_body() -> List<TsStmt> {
           op: "||",
           right: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "t"), property: "closest")),
         ),
-        then: ts_return(expr: none),
+        then_stmt: ts_return(expr: none),
         else_stmt: none,
       ),
       ts_if(
@@ -4274,14 +4274,14 @@ fn instrument_tuner_subject_click_handler_body() -> List<TsStmt> {
           callee: ts_member(object: ts_ident(name: "t"), property: "closest"),
           args: [ts_lit_str(value: "button, a, input, select, textarea")],
         ),
-        then: ts_return(expr: none),
+        then_stmt: ts_return(expr: none),
         else_stmt: none,
       ),
       ts_const(name: "li", value: ts_call(
         callee: ts_member(object: ts_ident(name: "t"), property: "closest"),
         args: [ts_lit_str(value: join(["li.", instrument_subject_class], ""))],
       )),
-      ts_if(cond: ts_prefix(op: "!", expr: ts_ident(name: "li")), then: ts_return(expr: none), else_stmt: none),
+      ts_if(cond: ts_prefix(op: "!", expr: ts_ident(name: "li")), then_stmt: ts_return(expr: none), else_stmt: none),
       ts_const(name: "key", value: ts_call(
         callee: ts_member(object: ts_ident(name: "li"), property: "getAttribute"),
         args: [ts_lit_str(value: "data-subject-key")],
@@ -4300,7 +4300,7 @@ fn instrument_tuner_subject_focus_handler_body() -> List<TsStmt> {
         op: "||",
         right: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "t"), property: "matches")),
       ),
-      then: ts_return(expr: none),
+      then_stmt: ts_return(expr: none),
       else_stmt: none,
     ),
     ts_if(
@@ -4308,7 +4308,7 @@ fn instrument_tuner_subject_focus_handler_body() -> List<TsStmt> {
         callee: ts_member(object: ts_ident(name: "t"), property: "matches"),
         args: [ts_lit_str(value: ":focus-visible")],
       )),
-      then: ts_return(expr: none),
+      then_stmt: ts_return(expr: none),
       else_stmt: none,
     ),
     ts_const(name: "li", value: ts_call(
@@ -4317,7 +4317,7 @@ fn instrument_tuner_subject_focus_handler_body() -> List<TsStmt> {
     )),
     ts_if(
       cond: ts_prefix(op: "!", expr: ts_ident(name: "li")),
-      then: ts_return(expr: none),
+      then_stmt: ts_return(expr: none),
       else_stmt: ts_block(stmts: [
         ts_expr_stmt(expr: ts_call(
           callee: ts_ident(name: js_instrument_select_subject_fn),
@@ -4341,12 +4341,12 @@ fn instrument_tuner_wheel_preamble() -> List<TsStmt> {
       ts_const(name: "raw", value: ts_member(object: ts_ident(name: "e"), property: "deltaY")),
       ts_if(
         cond: ts_binop(left: ts_ident(name: "mode"), op: "===", right: ts_lit_num(text: "1")),
-        then: ts_return(expr: ts_binop(left: ts_ident(name: "raw"), op: "*", right: ts_lit_num(text: "16"))),
+        then_stmt: ts_return(expr: ts_binop(left: ts_ident(name: "raw"), op: "*", right: ts_lit_num(text: "16"))),
         else_stmt: none,
       ),
       ts_if(
         cond: ts_binop(left: ts_ident(name: "mode"), op: "===", right: ts_lit_num(text: "2")),
-        then: ts_return(expr: ts_binop(
+        then_stmt: ts_return(expr: ts_binop(
           left: ts_ident(name: "raw"),
           op: "*",
           right: ts_binop(left: ts_member(object: ts_ident(name: "window"), property: "innerHeight"), op: "||", right: ts_lit_num(text: "800")),
@@ -4362,7 +4362,7 @@ fn instrument_tuner_wheel_preamble() -> List<TsStmt> {
           op: "<",
           right: ts_ident(name: js_instrument_wheel_threshold_const),
         ),
-        then: ts_return(expr: none),
+        then_stmt: ts_return(expr: none),
         else_stmt: none,
       ),
       ts_const(name: "before", value: js_instrument_camera_member(name: "depth")),
@@ -4378,7 +4378,7 @@ fn instrument_tuner_wheel_preamble() -> List<TsStmt> {
       )),
       ts_if(
         cond: ts_binop(left: js_instrument_camera_member(name: "depth"), op: "===", right: ts_ident(name: "before")),
-        then: ts_block(stmts: [
+        then_stmt: ts_block(stmts: [
           ts_expr_stmt(expr: ts_binop(left: ts_ident(name: js_instrument_wheel_travel_var), op: "=", right: ts_lit_num(text: "0"))),
           ts_return(expr: none),
         ]),
@@ -4401,7 +4401,7 @@ fn instrument_tuner_wheel_preamble() -> List<TsStmt> {
         callee: ts_member(object: ts_ident(name: "INSTRUMENT_DEPTH_KEYS"), property: "indexOf"),
         args: [js_instrument_camera_member(name: "depth")],
       )),
-      ts_if(cond: ts_binop(left: ts_ident(name: "i"), op: "<", right: ts_lit_num(text: "0")), then: ts_return(expr: none), else_stmt: none),
+      ts_if(cond: ts_binop(left: ts_ident(name: "i"), op: "<", right: ts_lit_num(text: "0")), then_stmt: ts_return(expr: none), else_stmt: none),
       ts_const(name: "atMax", value: ts_binop(
         left: ts_ident(name: "i"),
         op: ">=",
@@ -4418,7 +4418,7 @@ fn instrument_tuner_wheel_preamble() -> List<TsStmt> {
           op: "&&",
           right: ts_ident(name: "atMax"),
         ),
-        then: ts_return(expr: none),
+        then_stmt: ts_return(expr: none),
         else_stmt: none,
       ),
       ts_if(
@@ -4427,14 +4427,14 @@ fn instrument_tuner_wheel_preamble() -> List<TsStmt> {
           op: "&&",
           right: ts_ident(name: "atMin"),
         ),
-        then: ts_return(expr: none),
+        then_stmt: ts_return(expr: none),
         else_stmt: none,
       ),
       ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "e"), property: "preventDefault"), args: [])),
       ts_expr_stmt(expr: ts_binop(left: ts_ident(name: js_instrument_wheel_travel_var), op: "+=", right: ts_ident(name: "delta"))),
       ts_if(
         cond: ts_ident(name: js_instrument_wheel_timer_var),
-        then: ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "clearTimeout"), args: [ts_ident(name: js_instrument_wheel_timer_var)])),
+        then_stmt: ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "clearTimeout"), args: [ts_ident(name: js_instrument_wheel_timer_var)])),
         else_stmt: none,
       ),
       ts_expr_stmt(expr: ts_binop(
@@ -4558,12 +4558,12 @@ fn instrument_tuner_keydown_bind_stmt() -> TsStmt {
       ts_arrow(params: ["e"], body: ts_block(stmts: [
         ts_if(
           cond: ts_binop(left: ts_member(object: ts_ident(name: "e"), property: "key"), op: "===", right: ts_lit_str(value: "Escape")),
-          then: ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_instrument_clear_subject_fn), args: [])),
+          then_stmt: ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_instrument_clear_subject_fn), args: [])),
           else_stmt: none,
         ),
         ts_if(
           cond: ts_binop(left: ts_member(object: ts_ident(name: "e"), property: "key"), op: "===", right: ts_lit_str(value: "ArrowDown")),
-          then: ts_block(stmts: [
+          then_stmt: ts_block(stmts: [
             ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "e"), property: "preventDefault"), args: [])),
             ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_instrument_step_depth_fn), args: [ts_lit_str(value: "in")])),
           ]),
@@ -4571,7 +4571,7 @@ fn instrument_tuner_keydown_bind_stmt() -> TsStmt {
         ),
         ts_if(
           cond: ts_binop(left: ts_member(object: ts_ident(name: "e"), property: "key"), op: "===", right: ts_lit_str(value: "ArrowUp")),
-          then: ts_block(stmts: [
+          then_stmt: ts_block(stmts: [
             ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "e"), property: "preventDefault"), args: [])),
             ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_instrument_step_depth_fn), args: [ts_lit_str(value: "out")])),
           ]),
@@ -4591,7 +4591,7 @@ fn instrument_tuner_keydown_bind_stmt() -> TsStmt {
               right: ts_lit_str(value: " "),
             ),
           ),
-          then: ts_return(expr: none),
+          then_stmt: ts_return(expr: none),
           else_stmt: none,
         ),
         ts_const(name: "t", value: ts_member(object: ts_ident(name: "e"), property: "target")),
@@ -4601,7 +4601,7 @@ fn instrument_tuner_keydown_bind_stmt() -> TsStmt {
             op: "||",
             right: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "t"), property: "matches")),
           ),
-          then: ts_return(expr: none),
+          then_stmt: ts_return(expr: none),
           else_stmt: none,
         ),
         ts_if(
@@ -4609,7 +4609,7 @@ fn instrument_tuner_keydown_bind_stmt() -> TsStmt {
             callee: ts_member(object: ts_ident(name: "t"), property: "matches"),
             args: [ts_lit_str(value: join(["li.", instrument_subject_class], ""))],
           )),
-          then: ts_return(expr: none),
+          then_stmt: ts_return(expr: none),
           else_stmt: none,
         ),
         ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "e"), property: "preventDefault"), args: [])),
@@ -4619,7 +4619,7 @@ fn instrument_tuner_keydown_bind_stmt() -> TsStmt {
         )),
         ts_if(
           cond: ts_binop(left: js_instrument_camera_member(name: "focus"), op: "===", right: ts_ident(name: "key")),
-          then: ts_block(stmts: concat(
+          then_stmt: ts_block(stmts: concat(
             [ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_instrument_clear_subject_fn), args: []))],
             [ts_return(expr: none)],
           )),
@@ -4768,7 +4768,7 @@ fn js_motion_assign(target: TsExpr, value: TsExpr) -> TsStmt {
 }
 
 fn js_motion_guard(cond: TsExpr) -> TsStmt {
-  ts_if(cond: cond, then: ts_return(expr: none), else_stmt: none)
+  ts_if(cond: cond, then_stmt: ts_return(expr: none), else_stmt: none)
 }
 
 fn js_motion_cat(parts: List<TsExpr>) -> TsExpr {
@@ -4813,7 +4813,7 @@ fn js_motion_any_axis_valued(obj: TsExpr, x: String, y: String, z: String) -> Ts
 fn js_motion_count_if(cond: TsExpr, counter: String) -> TsStmt {
   ts_if(
     cond: cond,
-    then: js_motion_assign(
+    then_stmt: js_motion_assign(
       target: ts_ident(name: counter),
       value: ts_binop(left: ts_ident(name: counter), op: "+", right: ts_lit_num(text: "1")),
     ),
@@ -4933,7 +4933,7 @@ fn motion_play_fn_statement() -> TsStmt {
       )),
       ts_if(
         cond: ts_binop(left: ts_ident(name: js_motion_timer_var), op: "!==", right: ts_ident(name: "null")),
-        then: ts_block(stmts: js_motion_clear_timer_statements()),
+        then_stmt: ts_block(stmts: js_motion_clear_timer_statements()),
         else_stmt: none,
       ),
       ts_const(
@@ -4956,7 +4956,7 @@ fn motion_play_fn_statement() -> TsStmt {
                   op: ">=",
                   right: ts_member(object: ts_ident(name: "frames"), property: "length"),
                 ),
-                then: ts_block(stmts: concat(
+                then_stmt: ts_block(stmts: concat(
                   js_motion_clear_timer_statements(),
                   [ ts_return(expr: none) ],
                 )),
@@ -5074,7 +5074,7 @@ fn motion_devicemotion_probe_statement() -> TsStmt {
     value: ts_arrow(params: [], body: ts_block(stmts: [
       ts_if(
         cond: js_motion_typeof_undefined(name: device_motion_event_interface),
-        then: ts_block(stmts: [
+        then_stmt: ts_block(stmts: [
           js_motion_line_call(
             index: "0",
             text: ts_lit_str(value: join([device_motion_event_interface, " · interface absent in this container"], "")),
@@ -5093,7 +5093,7 @@ fn motion_devicemotion_probe_statement() -> TsStmt {
           op: "===",
           right: ts_lit_str(value: "function"),
         ),
-        then: ts_block(stmts: [
+        then_stmt: ts_block(stmts: [
           ts_expr_stmt(expr: ts_call(
             callee: ts_member(
               object: ts_call(
@@ -5110,7 +5110,7 @@ fn motion_devicemotion_probe_statement() -> TsStmt {
                 args: [ts_arrow(params: ["st"], body: ts_block(stmts: [
                   ts_if(
                     cond: ts_binop(left: ts_ident(name: "st"), op: "===", right: ts_lit_str(value: permission_state_wire(s: PermissionGranted))),
-                    then: ts_block(stmts: [
+                    then_stmt: ts_block(stmts: [
                       ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "listen"), args: [])),
                       ts_return(expr: none),
                     ]),
@@ -5152,7 +5152,7 @@ fn motion_sensor_probe_statement() -> TsStmt {
     value: ts_arrow(params: [], body: ts_block(stmts: [
       ts_if(
         cond: js_motion_typeof_undefined(name: accelerometer_interface_name(i: LinearAccelerationSensor)),
-        then: ts_block(stmts: [
+        then_stmt: ts_block(stmts: [
           js_motion_line_call(
             index: "1",
             text: ts_lit_str(value: join([
@@ -5260,7 +5260,7 @@ fn motion_probe_bind_statements() -> List<TsStmt> {
     motion_probe_bind_statement(),
     ts_if(
       cond: ts_ident(name: "motionProbeBtn"),
-      then: ts_expr_stmt(expr: ts_call(
+      then_stmt: ts_expr_stmt(expr: ts_call(
         callee: ts_member(object: ts_ident(name: "motionProbeBtn"), property: "addEventListener"),
         args: [
           ts_lit_str(value: "click"),

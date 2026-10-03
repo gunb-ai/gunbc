@@ -289,8 +289,8 @@ fn belt_refusal_member_id(a: MemberAction<DispatchMember, DispatchMemberAt>) -> 
   }
 }
 
-fn belt_refusal_ids(as: List<MemberAction<DispatchMember, DispatchMemberAt>>) -> List<String> {
-  as |> map(a => belt_refusal_member_id(a: a))
+fn belt_refusal_ids(actions: List<MemberAction<DispatchMember, DispatchMemberAt>>) -> List<String> {
+  actions |> map(a => belt_refusal_member_id(a: a))
 }
 
 fn belt_reconcile_json_value(
@@ -308,7 +308,7 @@ fn belt_reconcile_json_value(
     json_kv(key: "upserts", value: json_array(elements: belt_member_ids(ms: r.upserts) |> map(id => json_string(s: id)))),
     json_kv(key: "would_teardown", value: json_array(elements: belt_member_ids(ms: r.teardowns) |> map(id => json_string(s: id)))),
     json_kv(key: "refusal_count", value: json_int(n: belt_reconcile_refusal_count(r: r))),
-    json_kv(key: "refused", value: json_array(elements: belt_refusal_ids(as: r.refusals) |> map(id => json_string(s: id)))),
+    json_kv(key: "refused", value: json_array(elements: belt_refusal_ids(actions: r.refusals) |> map(id => json_string(s: id)))),
   ])
 }
 
