@@ -246,6 +246,8 @@ test fn a_passed_through_atom_leaves_the_fold_sealed() -> Bool {
 // (v2.std.node BodyTermLoweredSeal) minted only for the body-lowering mint. A fixture that calls the
 // seal's mint from outside its admitted caller refuses, and so does one that builds the seal record
 // directly; the positive control is that the corpus compiles the real mint (this module resolves).
+// Each fixture is well typed apart from the forgery (the seal carries a LoweredShape arm), so the
+// forgery is the only thing that can refuse.
 fn ulsh_refusals(source: String, wanted: String) -> Int {
   match compile_dag_diagnostic_census(source) {
     CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: wanted))
@@ -253,9 +255,9 @@ fn ulsh_refusals(source: String, wanted: String) -> Int {
   }
 }
 
-data ulsh_forged_mint_call_source: String = "module ulsh_forge_call\nimport v2.std.node { BodyTermLoweredSeal, body_term_lowered_seal }\nfn ulsh_forge() -> BodyTermLoweredSeal = body_term_lowered_seal(shape: ^lowered_operand)\n"
+data ulsh_forged_mint_call_source: String = "module ulsh_forge_call\nimport v2.std.compilers.lowered_shape { LoweredOperand }\nimport v2.std.node { BodyTermLoweredSeal, body_term_lowered_seal }\nfn ulsh_forge() -> BodyTermLoweredSeal = body_term_lowered_seal(shape: LoweredOperand)\n"
 
-data ulsh_forged_record_source: String = "module ulsh_forge_record\nimport v2.std.node { BodyTermLoweredSeal }\nfn ulsh_forge() -> BodyTermLoweredSeal = BodyTermLoweredSeal { shape: ^lowered_operand }\n"
+data ulsh_forged_record_source: String = "module ulsh_forge_record\nimport v2.std.compilers.lowered_shape { LoweredOperand }\nimport v2.std.node { BodyTermLoweredSeal }\nfn ulsh_forge() -> BodyTermLoweredSeal = BodyTermLoweredSeal { shape: LoweredOperand }\n"
 
 test fn a_forged_seal_mint_call_refuses() -> Bool {
   ulsh_refusals(source: ulsh_forged_mint_call_source, wanted: "ConstructorCallAdmissionRefused") >= 1

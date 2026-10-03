@@ -79,6 +79,17 @@ import v2.std.optional {
 import v2.std.compilers.body_lowering {
   BodyTerm,
   Lowered,
+  RawLeaf,
+  RawParse,
+  lower_binary_infix,
+  lower_branch,
+  lower_bind,
+  lower_bind_annotated,
+  lower_loop,
+  lower_match,
+  lower_unary_prefix
+}
+import v2.std.compilers.lowered_shape {
   LoweredBranch,
   LoweredDataDeclaration,
   LoweredFnBody,
@@ -97,16 +108,7 @@ import v2.std.compilers.body_lowering {
   LoweredShape,
   LoweredStatementSequence,
   LoweredTestDeclaration,
-  LoweredTypeDeclaration,
-  RawLeaf,
-  RawParse,
-  lower_binary_infix,
-  lower_branch,
-  lower_bind,
-  lower_bind_annotated,
-  lower_loop,
-  lower_match,
-  lower_unary_prefix
+  LoweredTypeDeclaration
 }
 import v2.std.list_introduction { lower_list_introduction }
 import v2.std.arrow_signature { anonymous_signature_arrow, declared_signature, signature_order_edge }
@@ -607,70 +609,6 @@ fn body_lower_wrapper_retained_shell(shell: Node) -> Outcome<BodyLowering> {
   }
 }
 
-// THE STAGE'S TERM IS READ OFF THE TREE, AND ITS LOWERED ARM IS WRITTEN BY THE PRODUCER (MQ-5).
-// Body lowering is a bottom-up fold over a tree holding raw parse and lowered output at once. Every
-// reader used to ask a hand-kept shape allowlist, body_lower_is_core_substrate, whether a node was
-// lowered, and re-read anything the allowlist missed as raw parse: the parse readers' first-match
-// descents then answered a PART of it (gunbc.recurring_failure_mode
-// lowered_output_reread_as_raw_parse_at_v2_body_lowering, the #12145 class). That allowlist, the
-// unrecognised-shape test beside it and the descendant search body_lower_find_core_substrate_optional
-// are deleted. A producer's result now leaves it inside the stage's Lowered wrapper, minted only by
-// body_term_seal with the producer's own LoweredShape arm (v2.std.compilers.body_lowering), and every
-// reader asks body_term_of, which reads the wrapper back and identifies raw parse POSITIVELY: a
-// composite carrying a grammar projection edge (v2.compiler.parse parse_tree_projection_edge, the
-// roster the parse stage mints), or a childless leaf. A node that is neither wrapped, nor stamped by
-// the parse, nor a childless leaf refuses where it is read, located at it -- it is lowered output no
-// producer declared, and it is never re-read as raw parse.
-//
-// RUNG, HONESTLY (gunbc.rung_drop lowered_term_carried_in_a_wrapper_node, operator approval
-// msg_63aee66e): the wrapper is a Node, so the tag lives in the tree the fold threads but is not a
-// type. The mint is sealed by admit_callers and an enrolled lens refuses the wrapper's edge names
-// anywhere outside the three declarations below that own them; on the native route admit_callers is
-// discarded (gunbc.rung_drop admit_callers_discarded_on_the_native_route), so there the lens is the
-// whole wall. The ceiling is a sealed BodyTerm term tree the fold produces and normalize consumes.
-// The leaf arm is bounded by today's occurrence model: a leaf inherits its source occurrence and has
-// no projection edge, so its provenance is not on it; gunbc#12790 (lowered nodes mint
-// OccurrenceProjected) puts it there.
-fn body_term_lowered_shape_symbol(shape: LoweredShape) -> Symbol {
-  match shape {
-    LoweredOperatorExpression => ^lowered_operator_expression
-    LoweredFunctionValue => ^lowered_function_value
-    LoweredFoldEncoding => ^lowered_fold_encoding
-    LoweredMatch => ^lowered_match
-    LoweredBranch => ^lowered_branch
-    LoweredLoop => ^lowered_loop
-    LoweredLet => ^lowered_let
-    LoweredStatementSequence => ^lowered_statement_sequence
-    LoweredPostfix => ^lowered_postfix
-    LoweredPrimary => ^lowered_primary
-    LoweredFnDeclaration => ^lowered_fn_declaration
-    LoweredTestDeclaration => ^lowered_test_declaration
-    LoweredDataDeclaration => ^lowered_data_declaration
-    LoweredFnBody => ^lowered_fn_body
-    LoweredTypeDeclaration => ^lowered_type_declaration
-    LoweredServiceDeclaration => ^lowered_service_declaration
-    LoweredResourceDeclaration => ^lowered_resource_declaration
-    LoweredOperand => ^lowered_operand
-  }
-}
-
-fn body_term_lowered_shapes() -> List<LoweredShape> {
-  [
-    LoweredOperatorExpression, LoweredFunctionValue, LoweredFoldEncoding, LoweredMatch, LoweredBranch,
-    LoweredLoop, LoweredLet, LoweredStatementSequence, LoweredPostfix, LoweredPrimary,
-    LoweredFnDeclaration, LoweredTestDeclaration, LoweredDataDeclaration, LoweredFnBody,
-    LoweredTypeDeclaration, LoweredServiceDeclaration, LoweredResourceDeclaration, LoweredOperand
-  ]
-}
-
-fn body_term_lowered_shape_of(id: Symbol) -> Optional<LoweredShape> {
-  fold(body_term_lowered_shapes(), init: Absent, f: fn(acc, shape) {
-    match acc {
-      Present { value: _ } => acc
-      Absent => if body_term_lowered_shape_symbol(shape: shape) == id { optional_present(value: shape) } else { optional_absent() }
-    }
-  })
-}
 
 fn body_lower_has_grammar_projection_edge(node: Node) -> Bool {
   fold(node.children, init: false, f: fn(acc, e) {
@@ -697,7 +635,33 @@ fn body_term_edge_named(e: Edge, name: Symbol) -> Bool {
   }
 }
 
-fn body_term_seal_shape(seal: BodyTermLoweredSeal) -> Symbol {
+// THE STAGE'S TERM IS READ OFF THE TREE, AND ITS LOWERED ARM IS WRITTEN BY THE PRODUCER (MQ-5).
+// Body lowering is a bottom-up fold over a tree holding raw parse and lowered output at once. Every
+// reader used to ask a hand-kept shape allowlist, body_lower_is_core_substrate, whether a node was
+// lowered, and re-read anything the allowlist missed as raw parse: the parse readers' first-match
+// descents then answered a PART of it (gunbc.recurring_failure_mode
+// lowered_output_reread_as_raw_parse_at_v2_body_lowering, the #12145 class). That allowlist, the
+// unrecognised-shape test beside it and the descendant search body_lower_find_core_substrate_optional
+// are deleted. A producer's result now leaves it inside the stage's Lowered wrapper, minted only by
+// body_term_seal with the producer's own LoweredShape arm (v2.std.compilers.lowered_shape, carried by the seal itself), and every
+// reader asks body_term_of, which reads the wrapper back and identifies raw parse POSITIVELY: a
+// composite carrying a grammar projection edge (v2.compiler.parse parse_tree_projection_edge, the
+// roster the parse stage mints), or a childless leaf. A node that is neither wrapped, nor stamped by
+// the parse, nor a childless leaf refuses where it is read, located at it -- it is lowered output no
+// producer declared, and it is never re-read as raw parse.
+//
+// RUNG, HONESTLY (gunbc.rung_drop lowered_term_carried_in_a_wrapper_node, operator approval
+// msg_63aee66e; STACK ruling, neat-boar-16): the wrapper is a Node, so the tag lives in the tree the
+// fold threads but is not a type. Its one edge is the v2.std.node core marker BodyTermLoweredEdge,
+// whose BodyTermLoweredSeal is sole_constructor and minted only through body_term_lowered_seal,
+// admit_callers-sealed to body_term_seal, so a lookalike does not compile on the seed and interpreted
+// path (structural). On the native route admit_callers is discarded (gunbc.rung_drop
+// admit_callers_discarded_on_the_native_route), so there the sole construction site is the wall.
+// The ceiling is a sealed BodyTerm term tree the fold produces and normalize consumes. The leaf arm
+// is bounded by today's occurrence model: a leaf inherits its source occurrence and has no
+// projection edge, so its provenance is not on it; gunbc#12790 (lowered nodes mint
+// OccurrenceProjected) puts it there.
+fn body_term_seal_shape(seal: BodyTermLoweredSeal) -> LoweredShape {
   seal.shape
 }
 
@@ -714,10 +678,7 @@ fn body_term_wrapper_optional(n: Node) -> Optional<BodyTermWrapper> {
               StructuralLabel { label: CoreMarker { marker: marker } } =>
                 match marker {
                   BodyTermLoweredEdge { seal: seal } =>
-                    match body_term_lowered_shape_of(id: body_term_seal_shape(seal: seal)) {
-                      Absent => optional_absent()
-                      Present { value: shape } => optional_present(value: BodyTermWrapper { node: e.target, shape: shape })
-                    }
+                    optional_present(value: BodyTermWrapper { node: e.target, shape: body_term_seal_shape(seal: seal) })
                   _ => optional_absent()
                 }
               StructuralLabel { label: ProductionEdge { language: _, edge: _ } } => optional_absent()
@@ -761,7 +722,7 @@ fn body_term_seal(node: Node, shape: LoweredShape) -> Node
         node_lowered_from(
           kind: TypeNode { connective: Conj },
           children: [
-            core_edge(marker: BodyTermLoweredEdge { seal: body_term_lowered_seal(shape: body_term_lowered_shape_symbol(shape: shape)) }, target: node)
+            core_edge(marker: BodyTermLoweredEdge { seal: body_term_lowered_seal(shape: shape) }, target: node)
           ],
           source: node
         )

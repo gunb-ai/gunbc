@@ -1,5 +1,6 @@
 module v2.std.node
 
+import v2.std.compilers.lowered_shape { LoweredShape }
 import std.algebra { Cons, Empty, list_snoc_item }
 import v2.std.optional { Present }
 import std.occurrence_identity {
@@ -188,10 +189,10 @@ type CoreEdgeLabel
 // discarded (gunbc.rung_drop admit_callers_discarded_on_the_native_route), so there the record's
 // sole construction site is the whole wall.
 type BodyTermLoweredSeal sole_constructor {
-  shape: Symbol,
+  shape: LoweredShape,
 }
 
-fn body_term_lowered_seal(shape: Symbol) -> BodyTermLoweredSeal
+fn body_term_lowered_seal(shape: LoweredShape) -> BodyTermLoweredSeal
   admit_callers: [
     decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_term_seal")
   ]
