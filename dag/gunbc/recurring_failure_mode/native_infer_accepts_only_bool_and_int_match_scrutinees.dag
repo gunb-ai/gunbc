@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.native_infer_accepts_only_bool_and_int_match_scrutinees
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data native_infer_accepts_only_bool_and_int_match_scrutinees: RecurringFailureMode = RecurringFailureMode {
+  identity: "native_infer_accepts_only_bool_and_int_match_scrutinees" as NonEmptyStr,
+
+  receipts: [
+    "**the native v2 front end's infer accepts only Bool and Int match scrutinees -- a `match` whose scrutinee's type is a variant (coproduct) refuses its module at prepare with infer_match_scrutinee_not_bool, so variant-field lowering is never reached on the native route** (INVALID STATE: every claim body that would observe variant-field lowering must first match over a variant, and the emitted infer has no path for that scrutinee).",
+    "RECEIPT (2026-10-02, eager-cat-664, head 17fccbf3f62): the first native run over a variant-match test module -- `gunbc test '//v2/test/claim/variant_field_native_binding:all'` with GITHUB_SHA set (seed emit of src/v2/compiler/00_compile.dag, 225 files, closure ae6fb52183d56945c0dedad90047279110c416c3f7ea5dcb6b5a10724ab7cff6; emitted crate built clean under -D warnings, rustc 1.98.1 aarch64; the phase's own discriminating red EMIT_COMPILE_MUTATION_PROBE established; malformed control observed). target/v2-native-lane/driver-rows.jsonl records all four identities of v2.test.claim.variant_field_native_binding (vfb_positional_construction_and_match_round_trip_field_zero, vfb_positional_round_trip_through_a_call_holds, vfb_named_construction_and_match_round_trip_holds, vfb_named_arm_of_a_positional_value_stays_unmatched) as NativeTestRefused at NativeTestStagePrepare, each carrying head reason infer_grounding_not_derived at the claim's own match spine with tail entries inhabitance_undecidable_argument_type_not_derived and infer_match_scrutinee_not_bool. The gate is v2.compiler.04_infer's infer_match_bool: where the scrutinee's resolved type is neither infer_branch_type_is_bool nor infer_branch_type_is_int, it rejects the match with infer_match_scrutinee_not_bool_diagnostic. The same four claims are GREEN on the interpreted floor (gunbc run --claim-run, pool 7223 modules, exit 0).",
+    "HARM, AND THE FLOOR BLINDNESS IS PART OF THE FINDING: the interpreted floor never runs the native front end's infer over test modules -- it evaluates them directly -- so a claim module can be green on the floor and refused on the native route with no floor signal; the floor's green is not evidence about the native infer frontier, and this class was found only by executing the route.",
+    "DISTINGUISHING FACTS. Not match_on_a_call_scrutinee_refused_as_arm_navigation (that refusal is at normalize on the interpreted route because the scrutinee is a CALL expression; here the scrutinee's TYPE -- a variant -- is what the infer gate rejects, on the native route, at prepare). Not the v2 body-lowering match rows (match_arms_after_the_second_are_dropped_at_v2_body_lowering and siblings): the refusal precedes body lowering. Not gunbc.rung_drop.variant_fields_unlowered_on_the_native_route, which records the frontier this refusal BLOCKS; this row records the refusal itself, one class per row.",
+    "RUNG FOUND AT: mitigatable -- typed and loud at prepare, per-identity rows persisted in driver-rows.jsonl with the reason set.",
+    "CEILING: structurally guaranteed. The gate names its own frontier; a coproduct's Disj already carries each alternative's payload (v2.compiler.04_infer's infer_sum_nullary_payload_edge reads a nullary alternative as a childless Conj beside its payload-bearing Named arms), so arm typing from variant payloads is decidable.",
+    "NEXT-RUNG TRIGGER, naming the capability: variant-scrutinee match infer plus payload binder grounding in the emitted front end -- a match whose scrutinee's type is a coproduct accepts at prepare, arm binders ground from the alternative's payload fields, and the four vfb_* round-trip identities pass native prepare (NativeTestPassed rows beside the floor green).",
+  ],
+
+  evidence: [],
+}
