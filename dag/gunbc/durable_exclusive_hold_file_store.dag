@@ -42,7 +42,7 @@ import std.durable_exclusive_hold {
   DurableHoldHolderReport, DurableHoldRecoveryRefusal, HoldRecoveryEligible, HoldRecoveryRefused,
   durable_hold_recovery_assess,
 }
-import gunbc.durable_cas_file_store {
+import gunbc.durable_cas_file_store { KeepAllGenerations,
   DefaultAccessCreateOnly, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
   admit_cas_attempt_for_derived_payload, file_compare_and_set, observe_cas_slot_state,
 }
@@ -136,7 +136,7 @@ fn hold_observation_of_cas(observed: CasSlotObservation<NonEmptyStr>) -> Durable
 }
 
 fn observe_file_hold(root: NonEmptyStr, key: NonEmptyStr) -> DurableHoldObservation {
-  hold_observation_of_cas(observed: observe_cas_slot_state(root: root, key: key))
+  hold_observation_of_cas(observed: observe_cas_slot_state(root: root, key: key, retention: KeepAllGenerations))
 }
 
 // EVERY EFFECTFUL HOLD WRITE IS LIVE READ -> SEALED PLAN -> CAS COMMIT, AND NO
@@ -217,7 +217,7 @@ fn file_hold_acquire_commit(plan: FileHoldAcquirePlan) -> FileHoldAcquireOutcome
   match admit_cas_attempt_for_derived_payload(key: plan.slot_key, expected: plan.expected, proposed: plan.held_payload) {
     DerivedPayloadKeyNotSlotAddressable { key: _ } => FileHoldKeyNotSlotAddressable { slot_key: plan.slot_key }
     DerivedPayloadAdmitted { verified: v } =>
-      match file_compare_and_set(root: plan.root, publication: DefaultAccessCreateOnly, verified: v) {
+      match file_compare_and_set(root: plan.root, publication: DefaultAccessCreateOnly, retention: KeepAllGenerations, verified: v).outcome {
         CasCommitted { committed: c } =>
           FileHoldAcquired { slot_key: plan.slot_key, owner: plan.owner, generation: c.generation }
         CasPreconditionFailed { expected: _, observed: _ } => FileHoldAcquireLost { slot_key: plan.slot_key }
@@ -319,7 +319,7 @@ fn file_hold_release_commit(plan: FileHoldReleasePlan) -> FileHoldReleaseOutcome
   ) {
     DerivedPayloadKeyNotSlotAddressable { key: _ } => FileHoldReleaseKeyNotSlotAddressable { slot_key: plan.slot_key }
     DerivedPayloadAdmitted { verified: v } =>
-      match file_compare_and_set(root: plan.root, publication: DefaultAccessCreateOnly, verified: v) {
+      match file_compare_and_set(root: plan.root, publication: DefaultAccessCreateOnly, retention: KeepAllGenerations, verified: v).outcome {
         CasCommitted { committed: c } => FileHoldReleased { slot_key: plan.slot_key, generation: c.generation }
         CasPreconditionFailed { expected: _, observed: _ } => FileHoldReleaseLost { slot_key: plan.slot_key }
         CasStoreRefused { cause: c } => FileHoldReleaseStoreUnavailable { slot_key: plan.slot_key, cause: c }
