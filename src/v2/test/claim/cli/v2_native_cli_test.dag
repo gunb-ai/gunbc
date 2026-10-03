@@ -18,6 +18,8 @@ import v2.cli.compile_cli {
   CliTargetRust,
   CliTargetSwift,
   CliUsageRefused,
+  CliDifferentialReported,
+  CliIfArmReaderDifferential,
   cli_emit_target_spelling,
   v2_cli_exit,
   v2_cli_parse,
@@ -67,6 +69,7 @@ fn plan_first_root(plan: CliPlan) -> String {
             HeadAbsent => ""
             HeadFound { value: first } => first
           }
+        CliIfArmReaderDifferential { source_roots: _ } => ""
       }
   }
 }
@@ -78,6 +81,8 @@ fn outcome_refusal_reason(outcome: CliRunOutcome) -> Symbol {
     CliUsageRefused { reason: reason, detail: _ } => reason
     CliEmitted { text: _, closure_size: _, refused_count: _, refusal_detail: _ } =>
       ^cli_outcome_was_not_refused
+    CliDifferentialReported { text: _, observed: _, detail: _ } =>
+      ^cli_outcome_was_not_refused
   }
 }
 
@@ -87,6 +92,7 @@ fn outcome_emitted(outcome: CliRunOutcome) -> Bool {
     CliCensusRefused { reason: _, detail: _, text: _ } => false
     CliUsageRefused { reason: _, detail: _ } => false
     CliEmitted { text: _, closure_size: _, refused_count: _, refusal_detail: _ } => true
+    CliDifferentialReported { text: _, observed: _, detail: _ } => false
   }
 }
 
@@ -258,6 +264,7 @@ fn plan_is_target(plan: CliPlan, expected: CliEmitTarget) -> Bool {
       match verb {
         CliEmitClosure { entry: _, source_roots: _, target: target } =>
           cli_emit_target_spelling(t: target) == cli_emit_target_spelling(t: expected)
+        CliIfArmReaderDifferential { source_roots: _ } => false
       }
   }
 }
@@ -469,5 +476,6 @@ test fn a_trailing_token_refusal_locates_its_fatal_in_the_file_holds() -> Bool {
         && string_contains(s: detail, pattern: "parse_g0_tokens_remain @ cli_probe_trailing_cu bytes ")
     CliUsageRefused { reason: _, detail: _ } => false
     CliEmitted { text: _, closure_size: _, refused_count: _, refusal_detail: _ } => false
+    CliDifferentialReported { text: _, observed: _, detail: _ } => false
   }
 }

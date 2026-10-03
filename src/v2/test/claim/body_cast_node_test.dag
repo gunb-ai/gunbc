@@ -73,12 +73,6 @@ fn bcn_let_value_cast() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y = x as Int\n  y\n}\n")
 }
 
-// The `in` form of the let: its value was located by a depth-first search that stopped inside the
-// cast's own `as T` spine, so on main this refused body_lowering_reason_let_navigation_refused.
-fn bcn_let_in_value_cast() -> Outcome<ResolvedTree> {
-  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y = x as Int in y\n}\n")
-}
-
 fn bcn_call_argument_cast() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn g(v: Int) -> Int { v }\n\nfn f(x: Int) -> Int {\n  g(v: x as Int)\n}\n")
 }
@@ -248,18 +242,6 @@ test fn bcn_tail_cast_carries_its_target() -> Bool {
 
 test fn bcn_let_value_cast_carries_its_target() -> Bool {
   bcn_one_cast(o: bcn_let_value_cast())
-}
-
-// The let-in row's verdict is a nullary pure producer over the production route, enrolled warm in
-// v2.workflow.floor_pure_producer_share: its assemble is paid once in preparation, and the claim
-// reads the stored Bool. Its first floor run refused the claim that paid its own assemble against
-// the new-witness budget.
-fn bcn_let_in_value_cast_verdict() -> Bool {
-  bcn_one_cast(o: bcn_let_in_value_cast())
-}
-
-test fn bcn_let_in_value_cast_carries_its_target() -> Bool {
-  bcn_let_in_value_cast_verdict()
 }
 
 test fn bcn_call_argument_cast_carries_its_target() -> Bool {

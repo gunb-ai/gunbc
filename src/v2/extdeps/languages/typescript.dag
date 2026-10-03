@@ -99,6 +99,7 @@ import v2.std.grounding {
 }
 import v2.std.node_query { find_named_child }
 import v2.std.compilers.target_model {
+  target_bind_let_separator_present,
   IntLiteralUnwired,
   ProducedDeclParamSegment,
   ProducedDeclRenderRows,
@@ -656,7 +657,7 @@ fn ts_value_expression_projection_full(
     let_form: TargetBindLetShape {
       let_token: ^ts_token_kw_let,
       assign_token: ^ts_token_eq,
-      in_token: ^ts_token_unwired_bind_in
+      in_token: target_bind_let_separator_present(token: ^ts_token_unwired_bind_in)
     },
     loop_form: TargetLoopShape {
       loop_token: ^ts_token_unwired_loop

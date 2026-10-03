@@ -23,7 +23,7 @@ import v2.extdeps.languages.dag {
   dag_language_model
 }
 import v2.std.compilers.target_model { char_kernel_type_node, symbol_kernel_type_node }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, Some, diagnostics_has_reason }
+import v2.std.diagnostic { diagnostics_fatal_reason, Accepted, Outcome, Rejected, diagnostics_has_reason }
 import v2.std.integer { integer_int_type_node }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { bool_node }
@@ -60,11 +60,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the harness v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test declares.
 // The record-field red is that module's rcf_a_bool_declared_field_value_of_the_wrong_type_refuses_holds.
 //
-// A DECLARED BOOL FORMAL IS A RED THIS ROUTE FIRES: since gunbc#12506 a call's callee reference is
-// typed by its declaration, so an Int at a Bool formal refuses with
-// application_argument_does_not_inhabit (kvr_a_named_calls_bool_formal_holding_an_int_refuses_holds).
-// It replaced the pin kvr_a_named_calls_bool_formal_is_counted_not_judged_holds, which held the
-// earlier counted-not-judged state and went red when #12506 landed, as it was written to.
+// A DECLARED BOOL FORMAL IS NOW A RED THIS ROUTE FIRES. A call's callee is a declaration reference, and
+// since gunbc#12506 infer types it by its declaration, so the application's formals are resolved and a
+// Bool formal holding an Int is judged and refused. The control below pinned the earlier state (accepted
+// with a counted UndecidableFormalUnresolved) and was written to go red exactly then; it is rewritten, as
+// its own note required, to assert the refusal.
 data kvr_return_bad_source: String = "module v2.test.kvr_return_bad\n\nimport std.types { Bool }\n\nfn kvr_f(x: Int) -> Bool { 3 }\n"
 
 data kvr_return_good_source: String = "module v2.test.kvr_return_good\n\nimport std.types { Bool }\n\nfn kvr_f(x: Int) -> Bool { true }\n"
@@ -189,11 +189,10 @@ test fn kvr_a_declared_bool_return_holding_a_bool_is_accepted_and_decided_holds(
   rcf_member_accepted_and_decided(resolved: kvr_resolved_return_good(), member: ^kvr_f)
 }
 
-// THE FORMAL, NOW JUDGED: a named call's Bool formal holding an Int refuses with
-// application_argument_does_not_inhabit, because the callee reference is typed by its declaration
-// (gunbc#12506). The subject is the calling fn's member alone, handed the module's own indexes: the
-// callee's declaration beside it is not what the claim is about, and inferring both is more than
-// one claim's budget on the required floor.
+// THE FORMAL, JUDGED: a named call's Bool formal holding an Int refuses application_argument_does_not_inhabit,
+// because the callee reference is typed by its declaration (gunbc#12506). The subject is the calling fn's
+// member alone, handed the module's own indexes: the callee's declaration beside it is not what the claim is
+// about, and inferring both is more than one claim's budget on the required floor.
 test fn kvr_a_named_calls_bool_formal_holding_an_int_refuses_holds() -> Bool {
   match kvr_resolved_formal() {
     Rejected { diagnostics: _ } => false
@@ -201,8 +200,8 @@ test fn kvr_a_named_calls_bool_formal_holding_an_int_refuses_holds() -> Bool {
       match rcf_member_arrow(root: tree.root, name: ^kvr_g) {
         Absent => false
         Present { value: arrow } =>
-          match infer(tree: ResolvedTree { root: arrow, symbol_index: tree.symbol_index, resolved_declarations: tree.resolved_declarations, lexical_bindings: tree.lexical_bindings }) {
-            Rejected { diagnostics: ds } => diagnostics_has_reason(d: Some { diagnostics: ds }, reason: ^application_argument_does_not_inhabit)
+          match infer(tree: ResolvedTree { root: arrow, symbol_index: tree.symbol_index, resolved_declarations: tree.resolved_declarations, lexical_bindings: tree.lexical_bindings, unavailable_providers: tree.unavailable_providers }) {
+            Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^application_argument_does_not_inhabit
             Accepted { value: _, diagnostics: _ } => false
           }
       }

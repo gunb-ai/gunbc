@@ -88,7 +88,7 @@ import gunbc.roadmap_launch_admission {
   LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved,
   LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNotReady, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
-  LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated,
+  LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated, LaunchNoPlacementGrant,
   launch_refusal_label, launch_refusal_reason,
 }
 import gunbc.roadmap_page {
@@ -454,6 +454,7 @@ fn launch_refusal_http_status(r: LaunchRefusal) -> HttpStatus {
     LaunchRevisionUnobserved { cause: _ } => 503
     LaunchLivenessUnobserved { session_name: _, reason: _ } => 503
     LaunchGateNotEvaluated { gate: _ } => 503
+    LaunchNoPlacementGrant { detail: _ } => 503
   }
 }
 
