@@ -1,7 +1,7 @@
 module v2.test.lens_common.resolve_fixture
 
 import v2.compiler.resolve { ResolvedTree }
-import v2.compiler.name_resolve { Admission, ResolutionSubject, closure_declarations_demand, resolution_context, resolve_with_admission_grounded }
+import v2.compiler.name_resolve { Admission, ClosureDeclarations, ResolutionSubject, closure_declarations_demand, resolution_context, resolve_with_admission_grounded }
 import v2.compiler.resolve { Namespace, NotDeclaring, ResolveContext, ScopeRoot, empty_namespace }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
@@ -210,11 +210,28 @@ fn claim_resolve_context(module: QualifiedName, index: SymbolIndex) -> ResolveCo
 // closure_declarations_demand over a context from the production constructor resolution_context. It walks
 // every root and indexes the declarations of each that resolves, dropping one that refuses -- the step whose
 // output decides whether an imported declaration is retrievable at all.
-fn claim_closure_declarations(modules: List<ClaimLoweredModule>) -> Outcome<SymbolIndex> {
+fn claim_closure(modules: List<ClaimLoweredModule>) -> Outcome<ClosureDeclarations> {
   bind_outcome(o: claim_lowered_trees(modules: modules), f: fn(roots) {
     bind_outcome(
       o: resolution_context(lm: dag_language_model(), roots: roots, index: claim_lowered_index(modules: modules), active_roots: [V2Tree], policy: default_name_resolution_policy()),
-      f: fn(shared) { outcome_accepted(value: closure_declarations_demand(shared: shared).declarations) }
+      f: fn(shared) { outcome_accepted(value: closure_declarations_demand(shared: shared)) }
     )
+  })
+}
+
+fn claim_closure_declarations(modules: List<ClaimLoweredModule>) -> Outcome<SymbolIndex> {
+  bind_outcome(o: claim_closure(modules: modules), f: fn(c) { outcome_accepted(value: c.declarations) })
+}
+
+// The roots the closure REFUSED, as the roster resolve hands infer (v2.compiler.resolve ResolvedTree
+// unavailable_providers): each module with the reason its own resolve refused at the head of its chain.
+type ClaimRefusedProvider {
+  module: QualifiedName
+  reason: Symbol
+}
+
+fn claim_closure_refused(modules: List<ClaimLoweredModule>) -> Outcome<List<ClaimRefusedProvider>> {
+  bind_outcome(o: claim_closure(modules: modules), f: fn(c) {
+    outcome_accepted(value: list_map(xs: c.refused, f: fn(r) { ClaimRefusedProvider { module: r.module, reason: r.refusal.head.reason } }))
   })
 }

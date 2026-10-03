@@ -13,6 +13,7 @@ import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic {
   Some,
+  Diagnostic, Unavailable, UserInputBoundary, diagnostics_singleton, node_locus,
   diagnostics_has_reason, Accepted, NodeLocus, Outcome, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, symbol_eq }
@@ -63,13 +64,16 @@ import v2.test.lens_common.resolve_fixture {
   claim_lowered_minted,
   claim_lowered_path,
   claim_lowered_record,
+  ClaimRefusedProvider,
   claim_closure_declarations,
+  claim_closure_refused,
   claim_lowered_symbol_index,
   claim_resolve_context,
   claim_resolve_lowered
 }
-import v2.compiler.resolve { BoundAtRoot, resolve_dotted_path_reading }
+import v2.compiler.resolve { BoundAtRoot, ClosureProviderRefusal, resolve_dotted_path_reading }
 import v2.std.node_query { construct_node }
+import v2.std.algebra { contains }
 
 // WHERE A FIELD PROJECTION STOPS TODAY, measured stage by stage rather than asserted. The normalized
 // shape exists and is documented as a declared frontier: v2.std.node_query field_projection_node
@@ -152,6 +156,7 @@ type FpsReading {
   infer_refused_receiver_unavailable: Bool
   infer_refused_declares_no_fields: Bool
   infer_refused_field_not_declared: Bool
+  infer_refusal_carries_unbound_cause: Bool
   projection_grounded: Optional<Bool>
   projection_type: Optional<Node>
 }
@@ -166,6 +171,7 @@ fn fps_reading_of(o: Outcome<ResolvedTree>) -> FpsReading {
       infer_refused_receiver_unavailable: false,
       infer_refused_declares_no_fields: false,
       infer_refused_field_not_declared: false,
+      infer_refusal_carries_unbound_cause: false,
       projection_grounded: optional_absent(),
       projection_type: optional_absent()
     }
@@ -187,6 +193,7 @@ fn fps_reading_of_inferred(carries: Bool, inferred: Outcome<ObligatedInferredTre
       infer_refused_receiver_unavailable: diagnostics_has_reason(d: Some { diagnostics: r }, reason: ^infer_reason_projection_receiver_declaration_unavailable),
       infer_refused_declares_no_fields: diagnostics_has_reason(d: Some { diagnostics: r }, reason: ^infer_reason_projection_receiver_declares_no_fields),
       infer_refused_field_not_declared: diagnostics_has_reason(d: Some { diagnostics: r }, reason: ^infer_reason_field_not_declared_on_receiver),
+      infer_refusal_carries_unbound_cause: diagnostics_has_reason(d: Some { diagnostics: r }, reason: ^resolve_reason_unbound_symbol),
       projection_grounded: optional_absent(),
       projection_type: optional_absent()
     }
@@ -198,6 +205,7 @@ fn fps_reading_of_inferred(carries: Bool, inferred: Outcome<ObligatedInferredTre
       infer_refused_receiver_unavailable: false,
       infer_refused_declares_no_fields: false,
       infer_refused_field_not_declared: false,
+      infer_refusal_carries_unbound_cause: false,
       projection_grounded: fps_grounding_of(facts: fps_projection_facts_in(inferred: tree)),
       projection_type: fps_type_of(facts: fps_projection_facts_in(inferred: tree))
     }
@@ -260,8 +268,13 @@ fn fps_box_ref() -> Node {
 }
 
 fn fps_supplied_reading(records: List<ClaimRecord>, receiver: Node, codomain: Node, field: Symbol) -> FpsReading {
+  fps_supplied_reading_with(records: records, unavailable: [], receiver: receiver, codomain: codomain, field: field)
+}
+
+fn fps_supplied_reading_with(records: List<ClaimRecord>, unavailable: List<ClosureProviderRefusal>, receiver: Node, codomain: Node, field: Symbol) -> FpsReading {
   fps_reading_of(o: outcome_accepted(value: claim_resolved_projection_tree(
     records: records,
+    unavailable: unavailable,
     fn_path: [^p, ^f],
     fn_name: ^f,
     param: ClaimParam { name: ^b, type_node: receiver },
@@ -778,7 +791,7 @@ fn fps_qualified_path_reads_as_the_declaration() -> Bool {
         pending: None
       ) {
         Rejected { diagnostics: _ } => false
-        Accepted { value: read, diagnostics: _ } => declaration_reference_path_optional(node: read) == optional_present(value: [^a, ^b, ^c, ^Box])
+        Accepted { value: read, diagnostics: _ } => declaration_reference_path_optional(node: read.node) == optional_present(value: [^a, ^b, ^c, ^Box])
       }
   }
 }
@@ -943,14 +956,36 @@ fn fps_lowered_broken_provider() -> ClaimLoweredModule {
   )
 }
 
+// AND THE CLOSURE REPORTS WHY: the dropped provider is on the refused roster resolve hands infer, refused at
+// its unresolvable body -- exactly the roster entry the infer half below is handed.
+fn fps_broken_provider_is_refused_as_named() -> Bool {
+  match claim_closure_refused(modules: [fps_lowered_broken_provider()]) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: refused, diagnostics: _ } =>
+      contains(xs: refused, item: ClaimRefusedProvider { module: [^q], reason: ^resolve_reason_unbound_symbol }, eq: fn(a, b) { (a.module == b.module) && (a.reason == b.reason) })
+  }
+}
+
 test fn fps_an_unresolvable_provider_drops_from_the_closure_index_holds() -> Bool {
-  fps_closure_lacks(modules: [fps_lowered_broken_provider()], path: [^q, ^Leg])
+  fps_closure_lacks(modules: [fps_lowered_broken_provider()], path: [^q, ^Leg]) && fps_broken_provider_is_refused_as_named()
+}
+
+// THE NAMED ROSTER ENTRY: provider q, refused as unbound at its body.
+fn fps_broken_provider_refusal() -> ClosureProviderRefusal {
+  ClosureProviderRefusal {
+    module: [^q],
+    refusal: diagnostics_singleton(d: Diagnostic {
+      reason: ^resolve_reason_unbound_symbol,
+      at: node_locus(node: claim_minted_atom(identity: ^no_such_name_anywhere, n: 32)),
+      correction: Unavailable { reason: UserInputBoundary }
+    })
+  }
 }
 
 // THE INFER HALF: the same projection with the record ABSENT from the index -- exactly what the resolve half
 // shows the closure leaves.
 fn fps_unresolvable_provider_reading() -> FpsReading {
-  fps_supplied_reading(records: [], receiver: declaration_reference_node(qn: [^q, ^Leg], occurrence_id: claim_minted(n: 43)), codomain: fps_int(n: 2), field: ^target)
+  fps_supplied_reading_with(records: [], unavailable: [fps_broken_provider_refusal()], receiver: declaration_reference_node(qn: [^q, ^Leg], occurrence_id: claim_minted(n: 43)), codomain: fps_int(n: 2), field: ^target)
 }
 
 // Both reason fields are set only on an infer REFUSAL of a resolved program, so an accepted or
@@ -958,6 +993,7 @@ fn fps_unresolvable_provider_reading() -> FpsReading {
 test fn fps_an_unresolvable_provider_leaves_its_declaration_unavailable_holds() -> Bool {
   fps_unresolvable_provider_reading().infer_refused_receiver_unavailable
     && !fps_unresolvable_provider_reading().infer_refused_declares_no_fields
+    && fps_unresolvable_provider_reading().infer_refusal_carries_unbound_cause
 }
 
 // (4) AND A RECEIVER THAT GENUINELY DECLARES NO FIELDS STILL SAYS SO. The split is only honest if the OTHER

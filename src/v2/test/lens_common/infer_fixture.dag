@@ -2,7 +2,7 @@ module v2.test.lens_common.infer_fixture
 import v2.std.optional { optional_absent }
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.resolve { ClosureProviderRefusal, ResolvedTree }
 import v2.std.symbol_index { empty_symbol_index }
 import v2.compiler.infer { DerivedGrounding, InferredFacts, InferredTree, infer_facts_lookup_miss_diagnostic }
 import v2.std.cardinality { RankingComponent, TerminationProof }
@@ -246,7 +246,9 @@ fn claim_resolved_call_tree(
 // the body is v2.std.node_query field_projection_node over the parameter reference resolve mints
 // (v2.std.qualified_name parameter_reference_node). resolved_declarations carries each supplied record at its
 // path, the function at its path and the parameter at the function's path extended by its name. A record that
-// is NOT supplied is absent from the index, which is the state a provider dropped from the closure leaves.
+// is NOT supplied is absent from the index, which is the state a provider dropped from the closure leaves;
+// `unavailable` is the refused-provider roster resolve hands infer beside it (ResolvedTree
+// unavailable_providers), the cause infer reports ahead of such a miss.
 type ClaimRecord {
   path: QualifiedName
   fields: List<ClaimParam>
@@ -263,6 +265,7 @@ fn claim_record_declaration(r: ClaimRecord) -> Node {
 
 fn claim_resolved_projection_tree(
   records: List<ClaimRecord>,
+  unavailable: List<ClosureProviderRefusal>,
   fn_path: QualifiedName,
   fn_name: Symbol,
   param: ClaimParam,
@@ -294,7 +297,7 @@ fn claim_resolved_projection_tree(
       params: [param]
     ),
     lexical_bindings: empty_map(),
-    unavailable_providers: []
+    unavailable_providers: unavailable
   }
 }
 
