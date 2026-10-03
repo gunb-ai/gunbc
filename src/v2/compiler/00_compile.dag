@@ -3362,6 +3362,7 @@ fn native_module_resolve_verdict(
                     root: resolved,
                     symbol_index: shared.symbol_index,
                     closure_declarations: closure.declarations,
+                    unavailable_providers: closure.refused,
                     lexical: lexical
                   )
                 },
