@@ -84,7 +84,14 @@ Each obligation writes its own receipt, a `std.temporal_effect` `EffectStepRecei
   3. `belt_tick_for_instance` reduced to launch admission plus discovery, with the inline passes deleted in the same change (a replacement migration, §3; delete first);
   4. the belt timer removed from deployment membership.
 
-## Open questions, raised before the large edit
+## Rulings (bold-bee-114, 2026-10-03)
 
-- **Q1.** Is there a home for a durable obligation, meaning its identity, its outstanding standing and its receipt? None exists in `std/`. The candidate is a small `std.obligation` built on `std.temporal_effect` receipts and `std.durable_exclusive_hold`. The alternative is to key everything on the existing attempt receipts with no new carrier. My recommendation: no new std carrier. "Outstanding" is derived from the attempt's evidence authorities, which already exist, so a separate obligation row would be a second authority for the same fact.
-- **Q2.** Is `ExecStopPost=` on the worker transient unit an admissible event source, or must events go through the roadmap event log (`gunbc.roadmap_event_log`)? My recommendation: the unit hook appends an `AttemptWorkerExited` event to the event log, and the log's consumer invokes the edge. That keeps the event log the one authority on what happened.
+- **Q1: no `std.obligation` carrier.** An obligation is outstanding when the attempt's own durable evidence says so. The discover pass computes that, and a queue entry is just `(kind, attempt identity)`.
+- **Q2: the exit hook appends an event and does not invoke work directly.** The event is durable before any work starts. It does not go to `gunbc.roadmap_event_log`, which is the issue event authority: it pushes a git commit with a compare-and-set per event, and it is the history the requester reads. `gunbc.fabric_event_log` does not fit either. Appending there needs a head read and a compare-and-set put through the fabric storage client, and the log is ordered as a chain rather than create-only per key. The hook may not run the gunbc interpreter, because that would cost a typecheck on every exit.
+
+### The attempt-event spool (proposed minimal store)
+
+- **Home.** An instance-local spool directory, homed in `gunbc.host_layout` beside the publication spool. It follows the same precedent: two consumers, and `gunbc.live_deploy.emit` creates the directory with the ownership it needs.
+- **Hook.** `ExecStopPost=/bin/sh -c 'set -C; printf ... > <spool>/%n.$INVOCATION_ID.exit'`. noclobber makes the write create-only per `(unit, invocation id)`, so a repeated hook is a harmless no-op. The entry carries `EXIT_CODE`, `EXIT_STATUS` and `SERVICE_RESULT`. The argv is minted in `.dag` beside the existing `systemd_run_property` rows.
+- **Trigger.** A systemd `.path` unit (`DirectoryNotEmpty=<spool>`) in deployment membership starts the edge service. This trigger is an event, not a timer. The edge decodes each entry and runs `Capture` and `Verify` for that attempt while holding that attempt's exclusive hold.
+- **Consumption.** An entry is moved to `done/` only after its obligation's receipt exists. If the edge crashes, the entry stays and is picked up by the next activation or by discovery.
