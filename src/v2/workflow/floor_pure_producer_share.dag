@@ -654,6 +654,9 @@ import v2.std.collection { List }
 // THE IF-ARM-POSITION ROW IS THE SAME GROUND AT FOUR SPECIMENS: v2.test.claim.body_lowering.if_arm_position
 // iap_verdicts tokenizes, parses and normalizes four inline modules and stores four Bools. Its first floor
 // run (37073686904) refused all four claims over the enrolment margin, at 353k-687k eval steps each.
+// THE ARROW-LAMBDA BLOCK-BODY ROW IS THE SAME GROUND AT FIVE SPECIMENS: v2.test.claim.body_lowering.arrow_lambda_block_body
+// alb_verdicts normalizes five inline modules and stores five Bools; each would otherwise be over the floor's
+// new-witness enrolment margin (the required floor's claim_eval_step_budget_for_identity).
 // THE XL-2 REIFY-OPERAND ROW: v2.test.claim.body_lowering.reify_operand_refusal ror_verdicts tokenizes
 // and parses two inline modules and reifies two supplied bodies over each; the stored value is four
 // verdicts (no Node, no closure), portable for the same reason cav_outcomes is.
@@ -802,6 +805,11 @@ import v2.std.collection { List }
 // PreparedGrammar is one nullary producer, and the refusal-arm counts over the live grammar are
 // another. A PreparedGrammar is the value dag_prepared_grammar already serves; the census is a record
 // of two Ints. Both WARM: one grammar preparation is more than one claim's budget.
+// THE value_base_projection PROGRAMS ARE ASSEMBLED ONCE EACH. gunbc#13053's floor refused its four rows
+// ENROLMENT-MARGIN-REFUSED (re-derive: that run's lines): each assembled a one-module source through
+// tpb_assemble and inspected one Bool. The rows now read three nullary producers, one per program -- the
+// call-projection program's producer serving two rows -- whose values are a record of two Bools and two
+// Bools. WARM: one assembly is more than one claim's budget.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.parameter_reference.pr_program_parameter_paths",
   "v2.test.claim.parameter_reference.pr_program_grounding",
@@ -904,6 +912,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.wildcard_arm_resolve.wc_outcomes",
   "v2.test.claim.namespace_xl0.else_arm_nested_if.eam_outcomes",
   "v2.test.claim.body_lowering.if_arm_position.iap_verdicts",
+  "v2.test.claim.body_lowering.arrow_lambda_block_body.alb_verdicts",
   "v2.test.cli.v2_native_cli.cli_probe_trailing_outcome",
   "v2.test.emit.closure_emit_arrow_body_refusal.arrow_body_probe_verdict",
   "v2.test.emit.closure_emit_arrow_body_refusal.arrow_body_mixed_probe_verdict",
@@ -1431,7 +1440,10 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.declaration_graft_assemble.declaration_graft_record_type_only_assembled",
   "v2.test.claim.declaration_graft_assemble.declaration_graft_flag_and_rec_assembled",
   "v2.test.claim.declaration_graft_assemble.declaration_graft_where_alias_undeclared_carrier_assembled",
-  "v2.test.claim.body_cast_node.bcn_refinement_of_refinement_as_its_carrier"
+  "v2.test.claim.body_cast_node.bcn_refinement_of_refinement_as_its_carrier",
+  "v2.test.claim.value_base_projection.vbp_call_projection_reading",
+  "v2.test.claim.value_base_projection.vbp_field_spelled_like_a_param_keeps_field",
+  "v2.test.claim.value_base_projection.vbp_undeclared_field_is_carried"
 ]
 
 // grammar_relation_row_for_emitted HAS NOW BEEN MEASURED ON THE THIRD CONJUNCT, AND IT PASSES.

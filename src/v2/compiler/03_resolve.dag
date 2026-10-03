@@ -177,6 +177,8 @@ import v2.std.node {
 import v2.std.type_binder { GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names }
 import v2.std.node_query {
   binder_node_edge,
+  field_projection_edge_field_optional,
+  field_projection_optional,
   binder_node_parts,
   declared_field_from_edge,
   member_edge_type_node,
@@ -3223,9 +3225,13 @@ fn resolve_node_walk_entered(
               resolve_record_field_edge(ctx: ctx, e: e, record: record)
             })
           NotAConstruct =>
-            match try_resolve_qualified_name_node(ctx: ctx, n: n) {
-              Present { value: outcome } => resolve_walk_of_outcome(o: outcome)
-              Absent => resolve_children_homogeneous_scope(ctx: ctx, n: n)
+            match field_projection_optional(n: n) {
+              Present { value: _ } => resolve_value_projection_walk(ctx: ctx, n: n)
+              Absent =>
+                match try_resolve_qualified_name_node(ctx: ctx, n: n) {
+                  Present { value: outcome } => resolve_walk_of_outcome(o: outcome)
+                  Absent => resolve_children_homogeneous_scope(ctx: ctx, n: n)
+                }
             }
         }
       }
@@ -3522,6 +3528,22 @@ fn arrow_domain_has_named_bindings(n: Node) -> Bool {
     TypeNode { connective: Arrow } => arrow_domain_binds_a_name(children: n.children)
     _ => false
   }
+}
+
+// A PROJECTION OFF A VALUE RESOLVES ITS BASE AND NOT ITS FIELD. Body lowering builds
+// v2.std.node_query field_projection_node over a base that is already a value -- a call result
+// (`diagnostics_fatal(d: d).reason`), a cast, a construct -- where a bound-name head instead stays a
+// spine for resolve_bound_head_projection. Walked as an ordinary Conj, the FIELD atom was resolved as a
+// free name and refused unbound (or bound to an unrelated declaration of the same spelling); a field is
+// not a reference -- whether the base's type declares it is infer's judgement over the receiver's type,
+// exactly as for the bound-head projection resolve builds itself.
+fn resolve_value_projection_walk(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
+  child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
+    match field_projection_edge_field_optional(e: e) {
+      Present { value: _ } => child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None, lexical: [] })
+      Absent => child_walk_step(w: acc, e: e, r: resolve_child_edge(ctx: ctx, e: e))
+    }
+  }))
 }
 
 fn resolve_children_homogeneous_scope(
