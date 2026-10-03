@@ -33,7 +33,6 @@ import extdeps.realization.reconcile_in_process {
   parse_cache_id,
   typed_module_cache_id,
 }
-import extdeps.realization.resolved_graph { resolved_graph_cache_facts, resolved_graph_cache_id }
 import extdeps.realization.materialization_store_local { materialization_store_local_facts }
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
@@ -129,7 +128,6 @@ data sccache_local: CacheInterfaceCatalogFacts = sccache_local_facts
 data buildbuddy_cas: CacheInterfaceCatalogFacts = buildbuddy_cas_facts
 data cargo_target_dir: CacheInterfaceCatalogFacts = cargo_target_dir_facts
 data rustup_toolchain_store: CacheInterfaceCatalogFacts = rustup_toolchain_store_facts
-data resolved_graph_cache: CacheInterfaceCatalogFacts = resolved_graph_cache_facts
 data parse_table_memo: CacheInterfaceCatalogFacts = parse_table_memo_facts
 data compile_stage_memo: CacheInterfaceCatalogFacts = compile_stage_memo_facts
 
@@ -141,7 +139,6 @@ data cache_catalog: List<CacheInterfaceCatalogFacts> = [
   rustup_toolchain_store,
   parse_cache_facts,
   typed_module_cache_facts,
-  resolved_graph_cache,
   parse_table_memo,
   compile_stage_memo_facts,
   materialization_store_local_facts,
@@ -160,7 +157,6 @@ data cache_layer_default_order: List<CacheInterfaceId> = [
   typed_module_cache_id,
   cargo_target_dir_id,
   sccache_local_id,
-  resolved_graph_cache_id,
   rustup_toolchain_store_id,
   buildbuddy_cas_id,
   gha_actions_cache_id,

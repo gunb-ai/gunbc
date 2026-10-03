@@ -1,6 +1,7 @@
 module v2.compiler.native_test_vocabulary
 
-import std.algebra { list_snoc_item }
+import std.algebra { FreeMonoid, list_snoc_item }
+import v2.std.algebra { fold_list }
 import v2.std.diagnostic {
   Diagnostic,
   Locus,
@@ -184,3 +185,26 @@ type NativeTestFileRefusal {
   fatal_reason: Symbol
 }
 
+
+// AN ACCEPTED FILE'S ADVISORIES, COUNTED RATHER THAN DROPPED. An Accepted front-end outcome may
+// carry non-fatal diagnostics (parse residue, body lowering, infer, the accumulator-copy lens), and
+// they are prepended to any later refusal of the same file. The context fold used to match them
+// away as `diagnostics: _`, so an accepted file's advisories were visible only when something
+// downstream refused, and only as the head of that refusal's chain. Each accepted file with any
+// advisory is one row here, carrying every advisory reason in chain order: the reasons are the
+// identities, and the count is their length -- never a separate number that could disagree. The
+// chain is non-empty BY CONSTRUCTION (head plus tail, the shape of NonEmptyDiagnostics it is read
+// from), so a row with no advisory has no constructor rather than a reader that must refuse it.
+type NativeTestFileAdvisories {
+  path: Symbol
+  head: Symbol
+  tail: FreeMonoid<Symbol>
+}
+
+fn native_test_file_advisories(path: Symbol, d: NonEmptyDiagnostics) -> NativeTestFileAdvisories {
+  NativeTestFileAdvisories {
+    path: path,
+    head: d.head.reason,
+    tail: fold_list(xs: d.tail, empty: [], cons: fn(acc, x) { list_snoc_item(xs: acc, item: x.reason) })
+  }
+}

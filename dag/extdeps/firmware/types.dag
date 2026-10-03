@@ -2,7 +2,7 @@ module extdeps.firmware.types
 
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size }
-import std.types { EpochMs, NonEmptyStr, List, list_length }
+import std.types { Bool, EpochMs, NonEmptyStr, List, list_length }
 import v2.std.optional { Present, Absent }
 import extdeps.crypto.hash { Digest }
 import extdeps.boards.types { BaseboardModel }
@@ -67,17 +67,31 @@ fn firmware_semantic_version(
 // only during host boot and owns DRAM training. A single "firmware version"
 // field cannot express "BMC 3.22.00 and BIOS 3.10" and that is exactly the
 // state srv4 is in.
+//
+// ScpFirmware AND MainboardCpld ARE THE OTHER TWO SUBJECTS ON AN AMPERE ALTRA BOARD (2026-10-02, the
+// Mt. Collins delivery on Ampere ticket #7426). The SCP (system control processor) image is a separate
+// signed artifact from the BIOS -- altra_scp_signed_2.10.20230126.hpm beside
+// collins_aptiov_atf_signed_2.10c_0ACOD014.hpm -- flashed by its own SOP and reported by its own
+// version line, and the mainboard CPLD is a programmable-logic image with its own release note. Each
+// is independently versioned and independently flashed, which is this type's whole admission test.
 type FirmwareTarget
   = BmcController
   | HostBios
+  | ScpFirmware
+  | MainboardCpld
 
 // How a release artifact is applied. The distinction is load-bearing rather
 // than cosmetic: the OpenBMC web-UI tar is pushed to the BMC's UpdateService
 // over the network, while the Instant Flash ROM is applied from host firmware
 // setup and is unreachable while a host fails to POST.
+//
+// PicmgHpmImage is an image packaged as a PICMG HPM.1 upgrade file (extdeps.standards.picmg_hpm1):
+// uploaded to and activated by the BMC over IPMI with the host powered off, so like OpenBmcWebUiTar it
+// passes through the BMC and unlike InstantFlashRom it needs no host that can POST.
 type FirmwareImageKind
   = OpenBmcWebUiTar
   | InstantFlashRom
+  | PicmgHpmImage
 
 // A vendor release, cited. image_digest is Optional because a digest this
 // repository has not COMPUTED must not be authored: an unverified hex would
