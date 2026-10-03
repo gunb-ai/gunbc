@@ -14,7 +14,7 @@ import gunbc.roadmap.roadmap_alignment {
   AlignmentChain, AlignmentChainCyclic,
   AlignmentChainLink,
   AlignmentChained, AlignmentChainUnrooted, AlignmentChainRowUndeclared,
-  alignment_chain, alignment_chain_for,
+  alignment_chain, alignment_chain_for, alignment_chain_in, alignment_index,
   AlignmentLevel,
   TaskContractLevel, ProjectIntentLevel, RootPrinciplesLevel,
   AlignmentResolvedChain,
@@ -749,9 +749,14 @@ fn dispatchable_node_ids() -> List<String> {
     |> map(n => n.node as String)
 }
 
+// One index over the declared rows, built once: for a declared id alignment_chain_for resolves over
+// exactly these rows at this fuel, so each chain is the one dispatch would derive.
 test fn every_dispatchable_node_reaches_the_admitted_root() -> Bool {
+  let nodes = declared_roadmap_nodes()
+  let index = alignment_index(nodes: nodes)
+  let fuel = count(nodes) + 1
   fold(dispatchable_node_ids(), init: true, f: fn(ok, id) {
-    ok && match alignment_chain_for(node_id: id) {
+    ok && match alignment_chain_in(node_id: id, index: index, fuel: fuel) {
       AlignmentChained { task: _, projects: _, root: _ } => true
       _ => false
     }

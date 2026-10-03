@@ -1,0 +1,147 @@
+module extdeps.iw
+
+import std.types { NonEmptyStr, String, List, Int }
+import std.algebra { trim }
+import v2.std.optional { Present, Absent }
+import v2.std.algebra { filter }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+// iw, the nl80211 configuration utility for Linux wireless devices. Its own upstream (kernel.org,
+// maintained with the Linux wireless tree), so it owns its module (DESIGN §3).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "wireless.docs.kernel.org/en/latest/en/users/documentation/iw.html"
+  }
+}
+
+data iw_manual_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git.kernel.org/pub/scm/linux/kernel/git/jberg/iw.git/tree/iw.8"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.iw",
+      decl_name: "IwPowerSave",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [iw_manual_authority]
+}
+
+data iw_binary_name: NonEmptyStr = "iw" as NonEmptyStr
+
+// `iw dev <devname> set power_save <on|off>` / `iw dev <devname> get power_save`. The getter
+// answers one line, "Power save: on" or "Power save: off" (iw power.c print_power_save_handler).
+type IwPowerSave = IwPowerSaveOn | IwPowerSaveOff
+
+fn iw_power_save_word(v: IwPowerSave) -> String {
+  match v {
+    IwPowerSaveOn => "on"
+    IwPowerSaveOff => "off"
+  }
+}
+
+type IwPowerSaveRead
+  = IwPowerSaveReadValue { value: IwPowerSave }
+  | IwPowerSaveUnreadable { text: String }
+
+data iw_power_save_getter_prefix: String = "Power save: "
+
+fn iw_power_save_of_getter(stdout: String) -> IwPowerSaveRead {
+  let t = trim(s: stdout)
+  if t == join([iw_power_save_getter_prefix, iw_power_save_word(v: IwPowerSaveOn)], "") {
+    IwPowerSaveReadValue { value: IwPowerSaveOn }
+  } else if t == join([iw_power_save_getter_prefix, iw_power_save_word(v: IwPowerSaveOff)], "") {
+    IwPowerSaveReadValue { value: IwPowerSaveOff }
+  } else {
+    IwPowerSaveUnreadable { text: t }
+  }
+}
+
+fn iw_power_save_get_argv(interface: NonEmptyStr) -> List<String> {
+  [iw_binary_name as String, "dev", interface as String, "get", "power_save"]
+}
+
+fn iw_power_save_set_argv(interface: NonEmptyStr, value: IwPowerSave) -> List<String> {
+  [iw_binary_name as String, "dev", interface as String, "set", "power_save", iw_power_save_word(v: value)]
+}
+
+// `iw dev <devname> link` prints the station's association. Associated, the first line is
+// "Connected to <bssid> (on <devname>)" followed by tab-indented "key: value" lines, among them
+// "freq: <MHz>" (newer iw prints a fractional part, "5180.0") and "signal: <n> dBm". Not
+// associated, the whole answer is "Not connected.". Anything else, or an associated answer
+// missing either field, is UNREADABLE: a missing signal is not a signal of zero.
+type IwLinkRead
+  = IwLinkConnected { bssid: NonEmptyStr, freq_mhz: Int, signal_dbm: Int }
+  | IwLinkNotConnected
+  | IwLinkUnreadable { text: String }
+
+fn iw_link_argv(interface: NonEmptyStr) -> List<String> {
+  [iw_binary_name as String, "dev", interface as String, "link"]
+}
+
+fn iw_link_field(lines: List<String>, key: String) -> String? {
+  let prefix = join([key, ": "], "")
+  match first(filter(lines, l => starts_with(s: trim(s: l), prefix: prefix))) {
+    Absent => none
+    Present { value: l } => {
+      let t = trim(s: l)
+      Present { value: trim(s: substring(s: t, start: length(prefix), end: length(t))) }
+    }
+  }
+}
+
+fn iw_link_leading_int(word: String) -> Int? {
+  match first(split(s: word, delimiter: ".")) {
+    Absent => none
+    Present { value: w } => parse_int(s: w)
+  }
+}
+
+fn iw_link_of_stdout(stdout: String) -> IwLinkRead {
+  let t = trim(s: stdout)
+  let connected_prefix = "Connected to "
+  if t == "Not connected." {
+    IwLinkNotConnected
+  } else if !starts_with(s: t, prefix: connected_prefix) {
+    IwLinkUnreadable { text: t }
+  } else {
+    let lines = split(s: t, delimiter: "\n")
+    let head = match first(lines) { Present { value: h } => h  Absent => "" }
+    let bssid = match first(split(s: substring(s: head, start: length(connected_prefix), end: length(head)), delimiter: " ")) {
+      Present { value: b } => b
+      Absent => ""
+    }
+    let freq = match iw_link_field(lines: lines, key: "freq") {
+      Absent => none
+      Present { value: f } => iw_link_leading_int(word: f)
+    }
+    let signal = match iw_link_field(lines: lines, key: "signal") {
+      Absent => none
+      Present { value: s } => match first(split(s: s, delimiter: " ")) {
+        Absent => none
+        Present { value: w } => parse_int(s: w)
+      }
+    }
+    if bssid == "" {
+      IwLinkUnreadable { text: t }
+    } else {
+      match freq {
+        Absent => IwLinkUnreadable { text: t }
+        Present { value: mhz } =>
+          match signal {
+            Absent => IwLinkUnreadable { text: t }
+            Present { value: dbm } => IwLinkConnected { bssid: bssid as NonEmptyStr, freq_mhz: mhz, signal_dbm: dbm }
+          }
+      }
+    }
+  }
+}

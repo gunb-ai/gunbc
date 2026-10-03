@@ -77,7 +77,11 @@ type RequestAuthenticationEvidence
 fn request_authentication_evidence_of_standing(standing: SessionCookieStanding) -> RequestAuthenticationEvidence {
   match standing {
     SessionCookieValid { session } => GoogleOidcSession { session }
-    _ => SessionStandingInvalid { standing }
+    SessionCookieExpired { session: _, observed_at: _ } => SessionStandingInvalid { standing }
+    SessionCookieAbsent => SessionStandingInvalid { standing }
+    SessionCookieUnknown { session_id: _ } => SessionStandingInvalid { standing }
+    SessionCookieUnread { detail: _ } => SessionStandingInvalid { standing }
+    SessionCookieMalformed { detail: _ } => SessionStandingInvalid { standing }
   }
 }
 
@@ -380,7 +384,14 @@ fn deployment_path_decision(
   } else {
     match security.access_path {
       AccessPathTailnetProxy { transport_observation: _, route_readback: _ } => Permit
-      _ =>
+      AccessPathDirectHttps =>
+        write_refused(
+          route_path: route_path,
+          action: action,
+          security: security,
+          cause: AccessContextAbsent { context: "this deployment requires the tailnet access path for writes" },
+        )
+      AccessPathLocalDev =>
         write_refused(
           route_path: route_path,
           action: action,
@@ -511,6 +522,7 @@ fn authenticated_viewer_label(evidence: RequestAuthenticationEvidence) -> String
 fn tailnet_transport_observation(security: RequestSecurityContext<RequestAuthenticationEvidence>) -> TailnetIdentity {
   match security.access_path {
     AccessPathTailnetProxy { transport_observation: obs, route_readback: _ } => obs
-    _ => TailnetIdentityAbsent
+    AccessPathDirectHttps => TailnetIdentityAbsent
+    AccessPathLocalDev => TailnetIdentityAbsent
   }
 }

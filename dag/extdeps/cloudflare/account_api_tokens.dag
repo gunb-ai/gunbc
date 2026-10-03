@@ -1,4 +1,5 @@
 module extdeps.cloudflare.account_api_tokens
+import std.resources { Network }
 
 // THE DECLARING MODULE IS NAMED, NOT A MODULE THAT MERELY MENTIONS THE SPELLING. std.types does not
 // declare String -- std.string_type does (type String = FreeMonoid<Char>) -- so importing it from
@@ -435,6 +436,7 @@ service cloudflare.AccountTokens {
   }
 
   operation ListPermissionGroupsRaw {
+    requires Network
     input {
       auth_token: Secret
       account_id: String
@@ -456,6 +458,7 @@ service cloudflare.AccountTokens {
   }
 
   operation ListPermissionGroups {
+    requires Network
     input {
       auth_token: Secret
       account_id: String
@@ -478,6 +481,7 @@ service cloudflare.AccountTokens {
   }
 
   operation Create {
+    requires Network
     input {
       auth_token: Secret
       account_id: String
@@ -515,6 +519,7 @@ service cloudflare.AccountTokens {
   }
 
   operation List {
+    requires Network
     input {
       auth_token: Secret
       account_id: String
@@ -537,6 +542,7 @@ service cloudflare.AccountTokens {
   }
 
   operation Delete {
+    requires Network
     input {
       auth_token: Secret
       account_id: String

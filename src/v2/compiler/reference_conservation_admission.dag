@@ -70,9 +70,7 @@ import extdeps.communication.medium { Lossless, Medium }
 // that consumes it (gunbc#12221 changed both shapes that were pinned there without a row here: the
 // if-arm argument is now conserved, and a block's later statement now REFUSES located, so both are
 // restated in that module -- as a conserved control and as a refused-not-accepted control).
-type KnownDropShape
-  = WhereRefinementPredicate
-  | StatementLetBinder
+type KnownDropShape = | StatementLetBinder
 
 // EACH SHAPE IS A DECLARED, BOUNDED DROP, NOT A STANDING ALLOWANCE. The match is exhaustive, so a
 // shape cannot enter without naming, as declaration references, the lowering authority whose repair
@@ -94,10 +92,6 @@ data known_drop_shape_pin_coverage: CitationIndexCoverage = OutsideDeclIndexTest
 
 fn known_drop_shape_restoration_trigger(shape: KnownDropShape) -> DropRestorationTrigger {
   match shape {
-    WhereRefinementPredicate => DropRestorationTrigger {
-      retired_by: DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_where_predicate_atom", field: WholeDeclaration },
-      pinned_by: DeclarationRef { module_path: "v2.test.claim.namespace_xl0.reference_conservation", decl_name: "the_where_refinement_predicate_is_reported_dropped_holds", field: WholeDeclaration }
-    }
     StatementLetBinder => DropRestorationTrigger {
       retired_by: DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_stmt_spine", field: WholeDeclaration },
       pinned_by: DeclarationRef { module_path: "v2.test.claim.namespace_xl0.reference_conservation", decl_name: "a_statement_let_binder_is_reported_dropped_holds", field: WholeDeclaration }
@@ -168,26 +162,16 @@ fn context_contains(context: FreeMonoid<Symbol>, production: Symbol) -> Bool {
 
 fn dropped_reference_shape(row: DroppedReference) -> Optional<KnownDropShape> {
   let c = row.atom.context
-  match context_contains(context: c, production: ^dag_surface_where_refinement_clause) {
-    true => optional_present(value: WhereRefinementPredicate)
-    false =>
-      match context_contains(context: c, production: ^dag_surface_let_expr) {
-        true => optional_present(value: StatementLetBinder)
-        false => optional_absent()
-      }
+  match context_contains(context: c, production: ^dag_surface_let_expr) {
+    true => optional_present(value: StatementLetBinder)
+    false => optional_absent()
   }
 }
 
 fn known_drop_shape_eq(a: KnownDropShape, b: KnownDropShape) -> Bool {
   match a {
-    WhereRefinementPredicate =>
-      match b {
-        WhereRefinementPredicate => true
-        StatementLetBinder => false
-      }
     StatementLetBinder =>
       match b {
-        WhereRefinementPredicate => false
         StatementLetBinder => true
       }
   }

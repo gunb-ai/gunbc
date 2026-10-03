@@ -2,7 +2,8 @@ module extdeps.browser
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.types { Bool, FilePath, Int, String }
+import std.types { Bool, FilePath, Int, String, brand }
+import std.resources { Network }
 // NON-PRECEDENT — DO NOT COPY THIS MODULE'S SHAPE FOR NEW BROWSER-PRODUCT MODELING (operator
 // verdict on gunbc#7556; DESIGN §3 'External upstream decomposition'). This module conflates three
 // independently governed things into one authority: the Playwright automation interface (its anchor
@@ -36,12 +37,14 @@ type Element        = String where brand("Element")
 
 service browser.Context {
   operation Launch {
+    requires Network
     input { headless: String = "false", profile_path: FilePath }
     output { context: BrowserContext from "stdout" }
     transport shell { argv: ["playwright-runner", "launch", "--headless", "{headless}", "--profile", "{profile_path}"] }
   }
 
   operation Close {
+    requires opaque
     input { context: BrowserContext }
     output {}
     transport shell { argv: ["playwright-runner", "close", "{context}"] }
@@ -51,6 +54,7 @@ service browser.Context {
 service browser.Page {
 
   operation Goto {
+    requires Network
 
     input { url: String, wait_until: String = "domcontentloaded" }
     output { final_url: String from "stdout" }
@@ -58,6 +62,7 @@ service browser.Page {
   }
 
   operation CurrentUrl {
+    requires Network
 
     input {}
     output { url: String from "stdout" }
@@ -65,54 +70,63 @@ service browser.Page {
   }
 
   operation Title {
+    requires Network
     input {}
     output { title: String from "stdout" }
     transport shell { argv: ["playwright-runner", "title"] }
   }
 
   operation WaitForSelector {
+    requires opaque
     input { selector: String, timeout_ms: Int = 30000 }
     output { found: String from "stdout" }
     transport shell { argv: ["playwright-runner", "wait-for", "{selector}", "--timeout", "{timeout_ms}"] }
   }
 
   operation QueryAll {
+    requires opaque
     input { selector: String }
     output { count: String from "stdout" }
     transport shell { argv: ["playwright-runner", "query-all", "{selector}"] }
   }
 
   operation Click {
+    requires opaque
     input { selector: String }
     output {}
     transport shell { argv: ["playwright-runner", "click", "{selector}"] }
   }
 
   operation Fill {
+    requires opaque
     input { selector: String, text: String }
     output {}
     transport shell { argv: ["playwright-runner", "fill", "{selector}", "{text}"] }
   }
 
   operation Evaluate {
+    requires opaque
     input { expression: String }
     output { result: String from "stdout" }
     transport shell { argv: ["playwright-runner", "evaluate", "{expression}"] }
   }
 
   operation UploadFile {
+    requires opaque
     input { selector: String, path: FilePath }
     output {}
     transport shell { argv: ["playwright-runner", "upload", "{selector}", "{path}"] }
   }
 
   operation Screenshot {
+    requires opaque
     input { path: FilePath }
     output {}
     transport shell { argv: ["playwright-runner", "screenshot", "{path}"] }
   }
 
   operation Wait {
+    requires opaque
     input { ms: Int }
     output {}
     transport shell { argv: ["playwright-runner", "wait", "{ms}"] }
@@ -122,18 +136,21 @@ service browser.Page {
 service browser.Element {
 
   operation IsVisible {
+    requires opaque
     input { selector: String }
     output { visible: String from "stdout" }
     transport shell { argv: ["playwright-runner", "is-visible", "{selector}"] }
   }
 
   operation InnerText {
+    requires opaque
     input { selector: String }
     output { text: String from "stdout" }
     transport shell { argv: ["playwright-runner", "inner-text", "{selector}"] }
   }
 
   operation EvaluateOn {
+    requires opaque
     input { selector: String, expression: String }
     output { result: String from "stdout" }
     transport shell { argv: ["playwright-runner", "evaluate-on", "{selector}", "{expression}"] }

@@ -10,7 +10,6 @@ fn serve_seam_probe(method: String, path: String, body: String) -> ServeWireResp
     status: 200,
     content_type_label: "text/plain; charset=utf-8",
     body: join(["probe method=", method, " path=", path, " body=", body], ""),
-    headers: [],
   }
 }
 
@@ -28,6 +27,5 @@ fn serve_budget_breach_probe(method: String, path: String, body: String, release
     status: 200,
     content_type_label: "text/plain; charset=utf-8",
     body: join(["burned method=", method, " path=", path, " body=", body, " rev=", release_revision, " value=", to_string(serve_budget_burn(n: 200000000))], ""),
-    headers: [],
   }
 }

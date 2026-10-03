@@ -9,6 +9,7 @@ import std.occurrence_identity {
   OccurrenceCategory,
   OccurrenceId,
   OccurrenceMinted,
+  OccurrencePending,
   OccurrenceProjected,
   OccurrenceRole,
   OccurrenceSynthetic,
@@ -290,7 +291,8 @@ fn production_holds_name_terminal(expr: GrammarExpr) -> Bool {
     repeat: fn(a) { a },
     expect: fn(a, _reason) { a },
     refuse_on_match: fn(a, _reason) { a },
-    after_line_break: fn(a) { a }
+    after_line_break: fn(a) { a },
+    not_predicate: fn(_a) { false }
   })
 }
 
@@ -358,12 +360,15 @@ fn name_production_table_admission(root: GrammarRoot, rows: List<NameProductionR
 // that could disagree. `not_yet_read` counts nodes of NameRoleNotYetRead productions by production.
 // `unminted` counts names a reader returned whose token carries no minted occurrence -- nothing to
 // key them by, so counted rather than dropped. `reader_refused` counts, per production, nodes whose
-// decoder refused or which carried no captured child: a binder the walk could not read.
+// decoder refused or which carried no captured child: a binder the walk could not read. `derived`
+// counts names whose atom is a projected (or still pending) member of a lowered image: it has an
+// authored cause, so it is neither unminted nor a refused read.
 type OccurrenceRoles {
   roles: FreeMonoid<AtomOccurrenceRole>
   not_yet_read: Map<Symbol, Int>
   reader_refused: Map<Symbol, Int>
   unminted: Int
+  derived: Int
 }
 
 type OccurrenceRoleOutcome
@@ -371,7 +376,7 @@ type OccurrenceRoleOutcome
   | OccurrenceRoleTableRefused { unlisted: List<Symbol>, unknown: List<Symbol>, unkeyed: List<Symbol> }
 
 fn occurrence_roles_empty() -> OccurrenceRoles {
-  OccurrenceRoles { roles: Empty, not_yet_read: empty_map(), reader_refused: empty_map(), unminted: 0 }
+  OccurrenceRoles { roles: Empty, not_yet_read: empty_map(), reader_refused: empty_map(), unminted: 0, derived: 0 }
 }
 
 fn count_symbol(m: Map<Symbol, Int>, key: Symbol) -> Map<Symbol, Int> {
@@ -388,10 +393,12 @@ fn record_name(acc: OccurrenceRoles, atom: Node, role: OccurrenceRole, category:
         roles: list_snoc_item(xs: acc.roles, item: AtomOccurrenceRole { occurrence: id, role: role, category: category }),
         not_yet_read: acc.not_yet_read,
         reader_refused: acc.reader_refused,
-        unminted: acc.unminted
+        unminted: acc.unminted,
+        derived: acc.derived
       }
-    OccurrenceProjected { id: _, caused_by: _ } => OccurrenceRoles { roles: acc.roles, not_yet_read: acc.not_yet_read, reader_refused: acc.reader_refused, unminted: acc.unminted + 1 }
-    OccurrenceSynthetic => OccurrenceRoles { roles: acc.roles, not_yet_read: acc.not_yet_read, reader_refused: acc.reader_refused, unminted: acc.unminted + 1 }
+    OccurrenceProjected { id: _, caused_by: _ } => OccurrenceRoles { roles: acc.roles, not_yet_read: acc.not_yet_read, reader_refused: acc.reader_refused, unminted: acc.unminted, derived: acc.derived + 1 }
+    OccurrencePending { caused_by: _ } => OccurrenceRoles { roles: acc.roles, not_yet_read: acc.not_yet_read, reader_refused: acc.reader_refused, unminted: acc.unminted, derived: acc.derived + 1 }
+    OccurrenceSynthetic => OccurrenceRoles { roles: acc.roles, not_yet_read: acc.not_yet_read, reader_refused: acc.reader_refused, unminted: acc.unminted + 1, derived: acc.derived }
   }
 }
 
@@ -403,7 +410,7 @@ fn roles_at_production(acc: OccurrenceRoles, node: Node, emitted: Symbol, by_emi
         NamesAreReferences => acc
         NamesAreImportChannel => acc
         NamesAreMarkers => acc
-        NameRoleNotYetRead => OccurrenceRoles { roles: acc.roles, not_yet_read: count_symbol(m: acc.not_yet_read, key: emitted), reader_refused: acc.reader_refused, unminted: acc.unminted }
+        NameRoleNotYetRead => OccurrenceRoles { roles: acc.roles, not_yet_read: count_symbol(m: acc.not_yet_read, key: emitted), reader_refused: acc.reader_refused, unminted: acc.unminted, derived: acc.derived }
         NameRoleRead { role: role, category: category, reader: reader } =>
           match parse_production_captured_child_optional(node: node) {
             Absent => roles_count_refused(acc: acc, emitted: emitted)
@@ -420,7 +427,7 @@ fn roles_at_production(acc: OccurrenceRoles, node: Node, emitted: Symbol, by_emi
 }
 
 fn roles_count_refused(acc: OccurrenceRoles, emitted: Symbol) -> OccurrenceRoles {
-  OccurrenceRoles { roles: acc.roles, not_yet_read: acc.not_yet_read, reader_refused: count_symbol(m: acc.reader_refused, key: emitted), unminted: acc.unminted }
+  OccurrenceRoles { roles: acc.roles, not_yet_read: acc.not_yet_read, reader_refused: count_symbol(m: acc.reader_refused, key: emitted), unminted: acc.unminted, derived: acc.derived }
 }
 
 // THE ACCUMULATOR IS THREADED, NEVER APPENDED (DESIGN section 6, bare minimum cost).

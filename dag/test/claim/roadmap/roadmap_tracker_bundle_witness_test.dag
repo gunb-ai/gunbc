@@ -9,7 +9,6 @@ import gunbc.auth.session { AuthenticatedSession, AuthMethodGoogleOidc, SessionC
 import gunbc.principal_projection { PrincipalRef, fabric_workflow_principal, principal_ref_label }
 import gunbc.roadmap.roadmap_event_log { EventPrincipalAuthenticated, LegacyEmailPrincipal, event_principal_label }
 import gunbc.roadmap_inline_assignment { inline_assignment_choices, inline_assignment_context_body }
-import extdeps.http.server { ServeResponseHeaderNoStore, serve_response_header_wire }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -60,5 +59,4 @@ test fn assignment_context_carries_session_proof_and_revision_without_email_iden
     && string_contains(s: body, pattern: "Me")
     && string_contains(s: body, pattern: "unverified identity")
     && string_contains(s: body, pattern: "\"disabled\": true")
-    && serve_response_header_wire(header: ServeResponseHeaderNoStore) == "Cache-Control: no-store"
 }
