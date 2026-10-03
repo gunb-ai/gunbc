@@ -272,6 +272,14 @@ impl<'a> CallSiteDemandObserver<'a> {
             ..
         } = call.expr_data.as_ref()
         {
+            // A call through a function VALUE has no static target: its callee is whatever the
+            // value is at run time, so the site is unresolved (and `target()` has no arm for it).
+            if matches!(
+                semantics.as_ref(),
+                crate::v1_std_core::CallSemantics::FunctionValueCallSemantics
+            ) {
+                return None;
+            }
             match semantics.target().as_ref() {
                 CallTargetIdentity::SourceDeclarationCall {
                     owner_module_path,

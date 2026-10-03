@@ -110,6 +110,9 @@ struct Ledger {
     /// Hits that found no recorded fill. Never silently dropped: a nonzero count means a cache
     /// was filled by a path this module does not observe, so its rows understate the sharing.
     unattributed_hits: u64,
+    /// The same hits by identity: (frame tag, phase, cache, key) -> count. The aggregate above
+    /// stays the sum of these; this is what lets a reader disposition each one.
+    unattributed_by_key: BTreeMap<(&'static str, String, &'static str, String), u64>,
 }
 
 thread_local! {
@@ -177,8 +180,18 @@ pub(crate) fn record_fill(cache: &'static str, key: &str, nanos: u64) {
 pub(crate) fn record_hit(cache: &'static str, key: &str) {
     let Some(claim) = current_claim() else {
         // A hit outside the fold consumes the fill but is not a witness's benefit, so it is not
-        // a consumer. It is still not nothing: counting it keeps the hit total honest.
-        LEDGER.with(|l| l.borrow_mut().unattributed_hits += 1);
+        // a consumer. It is still not nothing: counting it keeps the hit total honest, and the
+        // per-key row says which identity preparation read, under which seam.
+        let phase = crate::cli_run::required_floor_runner::floor_seam_current()
+            .unwrap_or_else(|| "<no-seam>".to_string());
+        LEDGER.with(|l| {
+            let mut ledger = l.borrow_mut();
+            ledger.unattributed_hits += 1;
+            *ledger
+                .unattributed_by_key
+                .entry(("outside-fold", phase, cache, key.to_string()))
+                .or_default() += 1;
+        });
         return;
     };
     LEDGER.with(|l| {
@@ -193,7 +206,18 @@ pub(crate) fn record_hit(cache: &'static str, key: &str) {
                     fill.consumers.insert(claim);
                 }
             }
-            None => ledger.unattributed_hits += 1,
+            None => {
+                ledger.unattributed_hits += 1;
+                *ledger
+                    .unattributed_by_key
+                    .entry((
+                        "in-claim-without-fill",
+                        "claim".to_string(),
+                        cache,
+                        key.to_string(),
+                    ))
+                    .or_default() += 1;
+            }
         }
     });
 }
@@ -267,6 +291,20 @@ pub(crate) fn render_shared_fill_total_text_mirror(
     format!(
         "[floor-shared-fill] TOTAL fills={fills} fill_ms={fill_ms} \
          shared_fill_ms={shared_fill_ms} unattributed_hits={unattributed_hits}"
+    )
+}
+
+/// Mirror of `gunbc.observation_ci_render` `ci_shared_fill_unattributed_text`.
+pub(crate) fn render_shared_fill_unattributed_text_mirror(
+    frame: &str,
+    phase: &str,
+    cache: &str,
+    key: &str,
+    hits: u64,
+) -> String {
+    format!(
+        "[floor-shared-fill-unattributed] frame={frame} phase={phase} cache={cache} key={key} \
+         hits={hits}"
     )
 }
 
@@ -344,6 +382,12 @@ pub(crate) fn report() -> String {
                 ));
                 out.push('\n');
             }
+        }
+        for ((frame, phase, cache, key), hits) in &ledger.unattributed_by_key {
+            out.push_str(&render_shared_fill_unattributed_text_mirror(
+                frame, phase, cache, key, *hits,
+            ));
+            out.push('\n');
         }
         out.push_str(&render_shared_fill_total_text_mirror(
             fills_total,
@@ -624,6 +668,29 @@ mod tests {
             text.contains("unattributed_hits=1"),
             "a cache filled by an unobserved path must say so rather than read as unshared: \
              {text}"
+        );
+        // ...and by identity, so it can be dispositioned rather than read as an aggregate.
+        assert!(
+            text.contains(
+                "[floor-shared-fill-unattributed] frame=in-claim-without-fill phase=claim \
+                 cache=never_filled_here key=k hits=1"
+            ),
+            "the in-claim hit must be named by key: {text}"
+        );
+    }
+
+    // THE OTHER FRAME: a hit outside any claim is named as such, so preparation's own reads are
+    // distinguishable from a claim reading a fill the ledger did not observe.
+    #[test]
+    fn a_hit_outside_the_fold_is_named_by_key_and_frame() {
+        reset();
+        record_hit("cross_claim_pure_share", "warm_read");
+        let text = report();
+        assert!(
+            text.contains("frame=outside-fold")
+                && text.contains("cache=cross_claim_pure_share key=warm_read hits=1")
+                && text.contains("unattributed_hits=1"),
+            "an outside-fold hit must be named by frame and key: {text}"
         );
     }
 }
