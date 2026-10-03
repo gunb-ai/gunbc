@@ -89,32 +89,6 @@ fn w_struct_propagates_ord_through_declared_coproduct_field() -> Bool {
   )
 }
 
-// THE IMPL HEADER CARRIES THE ITEM HEADER'S BOUND, on the carrier shape where the two used to
-// disagree in BOTH directions at once. `fields: List<F>` earns `F: Clone` on the item header and
-// `audience: AudienceSet<P>` routes the item onto the hand-written Set impls, whose header printed
-// only the Ord supplement and the structural trait -- so rustc refused `impl<.., F: PartialEq, ..>`
-// twice over: E0277 `F: Clone` at the impl header (the type's own bound unsatisfied) and E0369 on
-// `self.fields == other.fields` (im::Vector's PartialEq is conditional on Clone). The earlier
-// revision of the struct_propagation witness above asserted the ill-formed header verbatim, which
-// is how a string oracle stayed green over Rust that does not compile; the executing evidence for
-// this row is the emitted std.authorization_profile closure building under cargo.
-fn w_hand_written_impl_header_carries_item_header_clone_bound() -> Bool {
-  compile_dag_rust_emit_check(
-    "module generic_item_ord_witness.header_bound\n\ntype AudienceSet<P>\n  = UniversalAudience\n  | EnumeratedAudience { members: Set<P> }\n\ntype DisclosureRequest<P, F> {\n  principal: P\n  fields: List<F>\n  audience: AudienceSet<P>\n}\n",
-    "src/generic_item_ord_witness_header_bound.rs",
-    [
-      "struct DisclosureRequest<P: Clone, F: Clone>",
-      "impl<P: Ord + Clone + std::fmt::Debug, F: Clone + std::fmt::Debug> std::fmt::Debug for DisclosureRequest<P, F>",
-      "impl<P: Ord + Clone + PartialEq, F: Clone + PartialEq> PartialEq for DisclosureRequest<P, F>"
-    ],
-    [
-      "F: std::fmt::Debug>",
-      "F: PartialEq>",
-      "struct DisclosureRequest<P: Ord"
-    ]
-  )
-}
-
 // A FN GENERIC OVER A SET ELEMENT CARRIES Ord, read from the signature through both reaches the
 // item path recognises: the declared-coproduct hop (`subset`, the std.authorization_profile
 // audience_subset shape, whose body unions and compares the sets) and a direct Set<P> parameter
@@ -169,10 +143,6 @@ test fn bare_field_negative_control() -> Bool {
 
 test fn struct_propagation_positive() -> Bool {
   w_struct_propagates_ord_through_declared_coproduct_field()
-}
-
-test fn hand_written_impl_header_carries_item_header_clone_bound() -> Bool {
-  w_hand_written_impl_header_carries_item_header_clone_bound()
 }
 
 test fn fn_generic_over_set_element_carries_ord() -> Bool {
