@@ -23,6 +23,8 @@ fn parent_node() -> RoadmapNode {
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
+    parent: none,
+    centering: none,
   }
 }
 
@@ -36,6 +38,8 @@ fn roadmap_emit_child_node() -> RoadmapNode {
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
+    parent: none,
+    centering: none,
   }
 }
 
@@ -49,6 +53,8 @@ fn signed_child_node() -> RoadmapNode {
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: SignedOff { by: "operator", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true },
+    parent: none,
+    centering: none,
   }
 }
 
@@ -121,6 +127,8 @@ fn superseded_child_node() -> RoadmapNode {
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
+    parent: none,
+    centering: none,
   }
 }
 
