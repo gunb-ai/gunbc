@@ -163,9 +163,60 @@ So the BMC and silicon leaves it needs move first.
 | **4b** | **Census boot image chain**: the 7 `mtcollins1_census_*` modules. Toolchain and QEMU modules are executor-host operations, so they are keyed by executor host, not managed host. | the `mtcollins1_census_*` procedure roots | After 4a. |
 | **4c** | **Boot federation standing**: `ManagedHostBootFederationStanding` replaces `gunbc.auth.mtcollins1_boot_federation*`, live names kept as the `mtcollins1` binding (ruling b). | `mtcollins1_boot_*` federation decls | After 0. Independent of 4a/4b. |
 | **4d** | **Boot run, dry realization, diagnostic bundle**: the vertical's root. Unit observations it reads today (`mtcollins1_memory_census_observation`, `mtcollins1_access_observation`) become row reads or parameters, so the dependency direction is procedure ← unit. | `mtcollins1_boot_run`, `_boot_dry_realization`, `_boot_diagnostic_bundle` | After 1, 4a, 4b, 4c. Likely split run/dry and bundle at dispatch. |
+| **O** | **Arrival convergence** (operator requirement, 2026-10-03): one host-generic convergence from factory state to the boot run, first subject `mtjade1`. See its own section below. | the caller-supplied password path into the reset and boot wrappers; the supplied `BmcSecureStanding` in the firmware convergence; the static row membership of `managed_hosts()` | After 4c. Before 4d, so the generic boot run is entered from it. The live rotation on mtjade1 needs operator sign-off. |
 | **5** | **Remaining BMC-stack observations**: fan observe, UI bundle observe, KVM observer, SOL notice, served-UI catalog, BMC fan, which the boot does not need. | those `mtcollins1_` procedure roots | After 3. |
 | **6** | **Platform**: physical orientation, DIMM connector and platform observation become logic over the baseboard read through `ManagedHost.access`. The Mt. Collins figure stays in `extdeps.ampere.mt_collins_*`. | the board bindings in those modules | After #13025 (it edits `mtcollins1_physical_orientation`). |
 | **7** | **Workflow modes**, per ruling (a). | the 8 `mtcollins1_*` literals and their steps in `gunbc.fleet_converge_workflow` and its projection; `mtcollins-canary.yml` dispositioned in the same change | Last. Operator sign-off on names first. |
+
+### Cut O — arrival convergence (plan delta, 2026-10-03)
+
+**Requirement** (operator, via eager-gull-22). Boot is to be entered from onboarding, starting at **factory state**. Today's boot run assumes `BmcSecured` already holds. The cut is one host-generic convergence. `mtcollins1` enters at its satisfied state and every step is a Noop. `mtjade1` enters at factory: MegaRAC at 192.168.1.246, factory `admin`/`admin`, BMC clock reading the year 2000.
+
+**Vocabulary: the existing arrival phases, no parallel one.** `gunbc.machine_intake_phase` `ArrivalPhase` already orders `AccessDiscover`, `IdentityBindProvisional`, `PriorLifeBoundary`, `BmcSecure`, `BootDeliveryEstablish`, and so on. The convergence is a fold over those phases.
+- **Module name:** proposed `gunbc.machine_intake_arrival_converge`. I am deliberately not using "onboarding" in the name, because `gunbc.bmc_onboarding` is quarantined legacy (ruling 2026-08-29) and one spelling for two contracts is a §3 meaning fork.
+- **No import of the quarantined module.** The existing quarantine witness keeps holding.
+
+**Each step is ensure-style** over `gunbc.ensure` (`EnsureObservation`, `ensure_decide`, `ensure_reconcile`): observe, decide Noop / Apply / Refuse, then an independent readback. The convergence chooses nothing (§3d). The route and the authorization pattern are selected before it and passed in.
+
+| Step (phase) | Goal, read back independently | Apply | mtcollins1 today | mtjade1 today |
+|---|---|---|---|---|
+| First contact (`AccessDiscover`) | BMC family discriminated and access observed from committed captures | read-only probes | satisfied | family landed in #13065; access observation still owed |
+| Unit identity (`IdentityBindProvisional`) | `bind_unit_key` binds a unit key from a board-serial observation, giving a `MachineIntakeSubject` | read the FRU over the BMC (read-only) | satisfied | **refused: `BoardSerialAbsent`**. No FRU read is captured, so this step is on the path before `BmcSecure`, because `BmcSecureStanding` carries the subject. |
+| `BmcSecure` | `derive_bmc_secure` yields `BmcSecured`: the managed credential is accepted **and** the published factory credential is refused on every LAN member of the channel census (the existing conjunction, not restated) | create the managed account and store its secret under the unit's `SecretRef`. This is the missing effectful producer of `BmcCredentialRotationObservation`. | satisfied (but see finding 3) | factory |
+| Managed secret materialized | the credential the effects use is fetched from `ManagedCredentialReference.secret` by `gunbc.auth.secret_ref_credential` `fetch_secret_ref_credential`; no caller-supplied password path | the fetch | **not satisfied**: wrappers take a caller path (`mtcollins1_managed_secret_fetch_frontier`) | n/a until secured |
+| `ManagedHost` binding (cut 0) | `managed_host_binding` returns `ManagedHostBound` | none; it is a join | satisfied | not a row |
+| Boot run (`BootDeliveryEstablish` onward) | the existing boot acceptance | the boot run, entered only with the bound, materialized credential | — | — |
+
+**Findings from reading the slice (§6b). These change what the cut must build.**
+
+1. **The rotation route authority refuses the family both units belong to.** `gunbc.bmc_implementation_dispatch` `rotation_route_for_family(AmiMegaRac)` is `RotationRouteUnavailable`. Its note says "no Redfish service root" and "no executed user-management operation". Both statements are now contradicted by committed evidence:
+   - mtcollins1's rotation was **executed** over the IPMI user route (`artifacts/bmc/mtcollins1-bmc-user3-route-2026-09-13.txt`, consumed by `mtcollins1_bmc_secure_observation` as `RotationApplied`).
+   - mtjade1's MegaRAC **does** serve Redfish (`GET /redfish/v1/Managers/Self` is the committed capture #13065 discriminated the family from).
+
+   So the earliest unjustified boundary is the route table, not the missing actuator. "MegaRAC" is not one access surface, and a route keyed by family alone answers wrongly for both units. Cut O first corrects that authority: the route is selected over the surfaces the controller was **observed** to serve, and the IPMI user-management route becomes an arm backed by its executed evidence. An arm exists only where an executed request is committed. That is the module's own admission rule and it stays.
+2. **`rotation_route_consumption_frontier` is retired by this cut.** Its trigger is exactly "the effectful rotation actuator derives the rotation by calling `rotation_application_for_route` on the family read from the controller, rather than receiving it as a supplied argument".
+3. **mtcollins1's "secured" state needs a re-read, not an assumption.** The 2026-09-13 route artifact says of itself that the published factory credential was **not** retired at that time. The 2026-10-02 BMC reflash then erased user 3 and re-enabled factory `admin`/`admin` (`credential_effect_of(BmcController)`). So whether mtcollins1 enters `BmcSecure` as Noop is a fact for the convergence's own observation to establish from current readback. This plan does not assert it. This is the same re-entry the operator asked for: the firmware-reflash credential reset re-enters **this** `BmcSecure` step.
+4. **Firmware re-entry.** `gunbc.fleet.mtcollins_firmware_converge` `BmcCredentialReestablishment.ipmi` is today a **supplied** `BmcSecureStanding`. After cut O it is the result of this convergence's `BmcSecure` step, so there is one path, not two.
+5. **`managed_hosts()` membership becomes derived.** Today the mtcollins1 row is present when its secure standing is `Present`. Cut O keeps that shape and makes it the general rule: a unit becomes a managed host when its arrival convergence reaches the binding. mtjade1 joins by converging, not by edit, which discharges the trigger stated in "The root seam".
+6. **The BMC clock at year 2000 is a hazard to measure, not to fix silently.** `bmc_secure` orders the two readbacks after `applied_at`, so any timestamp sourced from the controller would order wrongly. Cut O states which clock every `EpochMs` in the step comes from (the observing host, via `gunbc.clock_read`) and refuses a controller-sourced time. Setting the BMC clock is a write. It is out of scope unless the operator asks for it.
+
+**Privileged effect.** The rotation is classified by executing `gunbc.auth.authorization_pattern_selection` `select_authorization_pattern` over its real attributes (frequency, reversibility, surface, identity binding, reach), and it gets its row in `gunbc.auth.privileged_effect_census`. The pattern is whatever the selection returns. It is not chosen here.
+
+**What the PR lands, and what it does not.**
+- **Lands:**
+  - the route authority correction (finding 1);
+  - the convergence;
+  - its **dry** realization against the modeled controller (`gunbc.bmc_model` `BmcWorld`), with every Noop / Apply / Refuse arm exercised;
+  - the wet realization as code;
+  - the secret materialization with its first consumers (the reset run and the boot entry).
+- **Does not do:** the live rotation on mtjade1. That is the wet receipt, and it runs only on operator sign-off.
+- **Frontier:** the remaining password-path wrappers (media attach, KVM, SOL, fan, UI bundle) cut over in cuts 3, 4a, 4d and 5 as each becomes host-generic. `mtcollins1_managed_secret_fetch_frontier` is retired when the last one refuses a caller-supplied path, and not before.
+- **Workflow surface:** a new fleet-converge mode for the wet run is a new mode, so it needs operator sign-off like cut 7. Until then the wet realization has no workflow entry.
+
+**Decisions I need before dispatch.**
+- (i) The module name (`gunbc.machine_intake_arrival_converge`, avoiding the quarantined "onboarding" spelling). Mine to take unless you object.
+- (ii) Whether a read-only FRU read of mtjade1 with the factory credential is covered by the standing "do not touch hardware" constraint. The unit-identity step needs it and it writes nothing. I'd treat it as needing the same operator sign-off as the rotation, and land the step dry.
+- (iii) Whether finding 3 changes the order. If mtcollins1 is in fact back on factory credentials, its own re-securing is the first wet subject, and it is a unit the operator has already authorized this route on.
 
 ### Terminal receipt owed by every cut (review item 5)
 
