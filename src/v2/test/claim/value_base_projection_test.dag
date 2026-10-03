@@ -8,6 +8,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { ComputationNode, Node, Symbol, Transform, node_subtree_nodes }
 import v2.std.node_query { field_projection_optional }
+import v2.std.qualified_name { declaration_reference_path_optional, parameter_reference_path_optional, qualified_name_to_dotted_string }
 import v2.std.optional { Absent, Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -51,25 +52,65 @@ fn vbp_has_value_projection_of(o: Outcome<ResolvedTree>, field: Symbol) -> Bool 
 // its producer.
 type VbpCallProjectionReading {
   keeps_field: Bool
-  infers: Bool
+  base_resolved_exactly: Bool
+  accepted_through_the_frontier: Bool
 }
 
 fn vbp_call_projection_reading() -> VbpCallProjectionReading {
   let assembled = tpb_assemble(src: vbp_call_projection)
   VbpCallProjectionReading {
     keeps_field: vbp_has_value_projection_of(o: assembled, field: ^reason),
-    infers: match vbp_infer_assembled(o: assembled) {
-      Accepted { value: _, diagnostics: _ } => true
+    base_resolved_exactly: vbp_base_resolved_exactly(o: assembled),
+    accepted_through_the_frontier: match vbp_infer_assembled(o: assembled) {
+      Accepted { value: _, diagnostics: d } => diagnostics_has_reason(d: d, reason: ^infer_grounding_not_derived)
       Rejected { diagnostics: _ } => false
     }
   }
+}
+
+// THE BASE IS RESOLVED, EXACTLY, read through the production readers: the projection's base is the call whose
+// operator is the declaration reference p.mk (v2.std.qualified_name declaration_reference_path_optional) and
+// whose argument is the parameter reference p.r.x (parameter_reference_path_optional). A walk that kept the
+// field but left the base VERBATIM -- bare atoms `mk` and `x` -- fails here while control (1) still holds.
+fn vbp_base_resolved_exactly(o: Outcome<ResolvedTree>) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: tree.root), init: false, f: fn(acc, n) {
+        acc || match field_projection_optional(n: n) {
+          Present { value: projection } =>
+            projection.field == ^reason
+              && vbp_subtree_has_declaration_path(root: projection.base, dotted: "p.mk")
+              && vbp_subtree_has_parameter_path(root: projection.base, dotted: "p.r.x")
+          Absent => false
+        }
+      })
+  }
+}
+
+fn vbp_subtree_has_declaration_path(root: Node, dotted: String) -> Bool {
+  fold(node_subtree_nodes(root: root), init: false, f: fn(acc, n) {
+    acc || match declaration_reference_path_optional(node: n) {
+      Present { value: path } => qualified_name_to_dotted_string(qn: path) == dotted
+      Absent => false
+    }
+  })
+}
+
+fn vbp_subtree_has_parameter_path(root: Node, dotted: String) -> Bool {
+  fold(node_subtree_nodes(root: root), init: false, f: fn(acc, n) {
+    acc || match parameter_reference_path_optional(node: n) {
+      Present { value: path } => qualified_name_to_dotted_string(qn: path) == dotted
+      Absent => false
+    }
+  })
 }
 
 fn vbp_field_spelled_like_a_param_keeps_field() -> Bool {
   vbp_has_value_projection_of(o: tpb_assemble(src: vbp_field_spelled_like_a_param), field: ^reason)
 }
 
-fn vbp_undeclared_field_is_counted() -> Bool {
+fn vbp_undeclared_field_is_carried() -> Bool {
   match vbp_infer_assembled(o: tpb_assemble(src: vbp_undeclared_field)) {
     Accepted { value: _, diagnostics: d } => diagnostics_has_reason(d: d, reason: ^infer_grounding_not_derived)
     Rejected { diagnostics: _ } => false
@@ -98,16 +139,27 @@ fn vbp_infer_assembled(o: Outcome<ResolvedTree>) -> Outcome<Bool> {
   }
 }
 
-// (3) THE PROJECTION INFERS.
-test fn vbp_call_result_projection_infers() -> Bool {
-  vbp_call_projection_reading().infers
+// (1b) THE BASE IS RESOLVED EXACTLY: the call's operator is the declaration reference p.mk and its argument the
+// parameter reference p.r.x. RED under the mutation that keeps the field but leaves the base verbatim.
+test fn vbp_value_base_is_resolved_exactly() -> Bool {
+  vbp_call_projection_reading().base_resolved_exactly
 }
 
-// (4) THE RESIDUE IS COUNTED, NOT ADMITTED: an undeclared field off a call result is accepted only because
-// v2 infer derives no application result type, so the receiver is underived and the projection lands on the
-// counted infer_grounding_not_derived frontier -- never typed. Its row is
+// (3) THE PROJECTION IS ACCEPTED THROUGH THE FRONTIER, NOT JUDGED: `mk(x: x)` has no derived result type in v2
+// infer (gunbc.recurring_failure_mode application_result_type_not_derived_in_v2_infer), so the field is NOT
+// checked against D here -- the program is accepted with the infer_grounding_not_derived frontier entry carried
+// on the direct infer outcome. This claims only that; it does not claim infer judges the field.
+test fn vbp_call_result_projection_is_accepted_through_the_frontier() -> Bool {
+  vbp_call_projection_reading().accepted_through_the_frontier
+}
+
+// (4) THE RESIDUE IS CARRIED, NOT ADMITTED: an undeclared field off a call result is accepted only because
+// v2 infer derives no application result type, so the receiver is underived and the projection carries the
+// infer_grounding_not_derived frontier entry on the DIRECT infer outcome -- never typed. It is not yet counted on
+// the native route: program_assembly, the 00_compile native fold and reference_conservation drop advisories on
+// accepted outcomes. Its row is
 // gunbc.recurring_failure_mode application_result_type_not_derived_in_v2_infer; when application results
 // are typed, this flips to a refusal at the field and is inverted into its control.
-test fn vbp_undeclared_field_off_a_call_result_is_on_the_counted_frontier() -> Bool {
-  vbp_undeclared_field_is_counted()
+test fn vbp_undeclared_field_off_a_call_result_is_carried_on_the_direct_infer_outcome() -> Bool {
+  vbp_undeclared_field_is_carried()
 }
