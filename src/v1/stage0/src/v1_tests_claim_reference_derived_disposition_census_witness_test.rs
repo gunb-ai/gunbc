@@ -18,8 +18,6 @@ pub use crate::v1_compiler_emit_rust::{
     reference_derived_disposition_name, reference_derived_row_diagnostics,
 };
 pub use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
-use crate::v1_compiler_infer_emit_info::TypeRepr::EnumRepr;
-pub use crate::v1_compiler_infer_emit_info::{TypeRepr, TypeSummary};
 use crate::v1_compiler_infer_items::ItemKind::FnItem;
 pub use crate::v1_compiler_infer_items::{ItemInfo, ItemKind};
 use crate::v1_rt;
@@ -27,7 +25,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::ErrorNode;
 use crate::v1_std_core::LeafOwner::*;
 pub use crate::v1_std_core::{diagnostic_to_message, is_error_diagnostic, no_span};
-pub use crate::v1_std_core::{FieldSummary, LeafOwner, NewlineIndex};
+pub use crate::v1_std_core::{LeafOwner, NewlineIndex};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -91,7 +89,6 @@ pub fn fixture_disposition(
                 Rc::new(vec![]),
                 v1_rt::rc_empty_map::<String, Rc<LeafOwner>>(),
             ),
-            v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
             v1_rt::rc_empty_map::<String, String>(),
             false,
         ),
@@ -132,7 +129,6 @@ pub fn cross_module_candidate_with_export_proof_survives() -> bool {
             Rc::new(vec![]),
             v1_rt::rc_empty_map::<String, Rc<LeafOwner>>(),
         ),
-        v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
         v1_rt::rc_empty_map::<String, String>(),
         false,
     ) == Rc::new(ReferenceDerivedCandidateDisposition::CandidateSurvived {
@@ -219,27 +215,6 @@ pub fn variant_arm_red_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn fixture_variant_type_summaries() -> Rc<HashMap<String, Rc<TypeSummary>>> {
-    v1_rt::rc_map_insert(
-        v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
-        "E".to_string(),
-        Rc::new(TypeSummary {
-            name: "E".to_string(),
-            repr: Rc::new(TypeRepr::EnumRepr { unit_only: true }),
-            field_summaries: v1_rt::rc_empty_map::<String, Rc<FieldSummary>>(),
-            field_type_map: v1_rt::rc_empty_map::<String, String>(),
-            field_import_surface_names: Rc::new(vec![]),
-            variant_name_set: v1_rt::rc_map_insert(
-                v1_rt::rc_empty_map::<String, bool>(),
-                "V".to_string(),
-                true,
-            ),
-            generic_param_names: Rc::new(vec![]),
-            has_fn_fields: false,
-        }),
-    )
-}
-
 pub fn known_variant_is_delegated_to_its_parent_not_registry_absent() -> bool {
     (crate::v1_compiler_emit_rust::reference_derived_candidate_disposition(
         "V".to_string(),
@@ -253,7 +228,6 @@ pub fn known_variant_is_delegated_to_its_parent_not_registry_absent() -> bool {
             Rc::new(vec![]),
             v1_rt::rc_empty_map::<String, Rc<LeafOwner>>(),
         ),
-        fixture_variant_type_summaries(),
         v1_rt::rc_map_insert(
             v1_rt::rc_empty_map::<String, String>(),
             "V".to_string(),
@@ -270,31 +244,10 @@ pub fn known_variant_is_delegated_to_its_parent_not_registry_absent() -> bool {
 pub fn ambiguous_parent_red_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "THE REACHABLE HALF of the unresolved-parent arm, and the reason it is not merely a tidier name. derive_variant_to_enum inserts the EMPTY STRING as the parent when one variant name appears in two enums, so the lookup answers Present with a parent naming nothing. Without this arm that produced CandidateVariantDelegatedToParent { parent_enum: \"\" } -- a delegation to no one, wearing the payload that was supposed to make delegation honest. This fixture authors the collision directly and is RED against the arm-less form.".to_string()
+            "THE REACHABLE HALF of the unresolved-parent arm, and the reason it is not merely a tidier name. derive_variant_to_enum inserts the EMPTY STRING as the parent when one variant name appears in two enums, so the lookup answers Present with a parent naming nothing. Without this arm that produced CandidateVariantDelegatedToParent { parent_enum: \"\" } -- a delegation to no one, wearing the payload that was supposed to make delegation honest. The fixture below authors the collision through the sentinel itself, a variant_to_enum entry whose parent is the empty string -- the one map membership and parent are both read from -- and is RED against the arm-less form.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
-}
-
-pub fn fixture_colliding_variant_type_summaries() -> Rc<HashMap<String, Rc<TypeSummary>>> {
-    v1_rt::rc_map_insert(
-        fixture_variant_type_summaries(),
-        "F".to_string(),
-        Rc::new(TypeSummary {
-            name: "F".to_string(),
-            repr: Rc::new(TypeRepr::EnumRepr { unit_only: true }),
-            field_summaries: v1_rt::rc_empty_map::<String, Rc<FieldSummary>>(),
-            field_type_map: v1_rt::rc_empty_map::<String, String>(),
-            field_import_surface_names: Rc::new(vec![]),
-            variant_name_set: v1_rt::rc_map_insert(
-                v1_rt::rc_empty_map::<String, bool>(),
-                "V".to_string(),
-                true,
-            ),
-            generic_param_names: Rc::new(vec![]),
-            has_fn_fields: false,
-        }),
-    )
 }
 
 pub fn a_variant_whose_parent_is_ambiguous_is_not_delegated_to_nothing() -> bool {
@@ -310,7 +263,6 @@ pub fn a_variant_whose_parent_is_ambiguous_is_not_delegated_to_nothing() -> bool
             Rc::new(vec![]),
             v1_rt::rc_empty_map::<String, Rc<LeafOwner>>(),
         ),
-        fixture_colliding_variant_type_summaries(),
         v1_rt::rc_map_insert(
             v1_rt::rc_empty_map::<String, String>(),
             "V".to_string(),
@@ -334,7 +286,6 @@ pub fn a_known_variant_spelling_in_a_type_position_takes_the_registry_arm() -> b
                 Rc::new(vec![]),
                 v1_rt::rc_empty_map::<String, Rc<LeafOwner>>(),
             ),
-            fixture_variant_type_summaries(),
             v1_rt::rc_map_insert(
                 v1_rt::rc_empty_map::<String, String>(),
                 "V".to_string(),
@@ -365,7 +316,6 @@ pub fn non_variant_name_still_answers_registry_absent() -> bool {
                 Rc::new(vec![]),
                 v1_rt::rc_empty_map::<String, Rc<LeafOwner>>(),
             ),
-            fixture_variant_type_summaries(),
             v1_rt::rc_map_insert(
                 v1_rt::rc_empty_map::<String, String>(),
                 "V".to_string(),

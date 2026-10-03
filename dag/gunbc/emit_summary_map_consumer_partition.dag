@@ -121,13 +121,6 @@ data emit_summary_map_consumers: List<SummaryMapConsumer> = [
     lookup_expression_count: 1,
   },
   {
-    site: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "is_known_variant"),
-    keys_on: "nothing -- it scans every summary asking whether ANY enum has this variant spelling",
-    ask: NoKeyWholeMapScan { what_is_scanned: "map_values(type_summaries), testing each variant_name_set for the name" },
-    use: TerminalAtSite { what_is_decided: "a Bool, deliberately quantified over the whole closure -- so the more collisions the map holds, the more often it answers true" },
-    lookup_expression_count: 1,
-  },
-  {
     site: decl_ref(module_path: "v1.compiler.infer", decl_name: "enum_variant_shape_sets_for_item"),
     keys_on: "authored_name_at of the item being folded",
     ask: NodeHeldAtAsk { holder_expression: "item -- the declaration Node itself, together with its own module's source_indices" },
@@ -363,10 +356,12 @@ fn partition_repaired_by_rekey_alone() -> List<SummaryMapConsumer> {
 // List<String>, so identity there changes an ELEMENT TYPE rather than a field type -- a different
 // and larger shape of change than the other three.
 //
-// SECOND, is_known_variant is the sharpest row on the roster: it quantifies over the whole closure
-// deliberately, so it answers true MORE OFTEN the more collisions the map holds. That is not a
-// lookup bug, it is an instrument that inverts under load -- its confidence rises exactly as its
-// input degrades.
+// SECOND, is_known_variant WAS the sharpest row on the roster and is no longer a reader of the map:
+// it now answers from derive_variant_to_enum's key set, a lookup rather than a scan of every summary.
+// The inversion did not leave with the scan. That key set is still quantified over the whole closure,
+// so the predicate still answers true MORE OFTEN the more collisions the map holds -- not a lookup
+// bug but an instrument that inverts under load, its confidence rising exactly as its input degrades.
+// Its guard row below keeps that finding; its consumer row left because the map read did.
 //
 // THIRD, emit_typed_record_lit reaching rust_zero_value is not merely unkeyed but UNKEYABLE without
 // a signature change, which is what makes that row a PREREQUISITE for its consumer rather than a
@@ -810,7 +805,7 @@ data emit_summary_map_guard_rows: List<GuardRow> = [
   },
   {
     site: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "is_known_variant"),
-    trigger_preservation: FailsHere { what_merged_the_input: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "add_emit_item_summary"), what_is_lost: "it quantifies over every summary, so a merged entry does not merely mislead it -- it makes the quantifier answer true MORE often as the input degrades" },
+    trigger_preservation: FailsHere { what_merged_the_input: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "add_emit_item_summary"), what_is_lost: "it reads derive_variant_to_enum's key set, which is quantified over every enum summary, so a merged entry does not merely mislead it -- it makes the answer true MORE often as the input degrades" },
     refusal: NotAGuard { what_it_does_instead: "it answers a Bool and never refuses" },
     return_type_can_express_the_answer: false,
   },

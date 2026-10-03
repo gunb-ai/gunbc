@@ -340,13 +340,17 @@ fn derive_variant_to_enum(type_summaries: Map<String, TypeSummary>) -> Map<Strin
   )
 }
 
-fn is_known_variant(type_summaries: Map<String, TypeSummary>, name: String) -> Bool {
-  map_values(type_summaries) |> any(summary =>
-    match summary.repr {
-      EnumRepr { unit_only: _ } => emit_map_has(m: summary.variant_name_set, key: name)
-      _ => false
-    }
-  )
+// WHETHER ANY ENUM IN THE CLOSURE DECLARES THIS VARIANT SPELLING, read from the key set
+// derive_variant_to_enum already builds from the same summaries: its keys are exactly every
+// variant_name_set key of every EnumRepr summary, and every EmitGraphInfo carries it beside
+// type_summaries (build_emit_graph_info derives it from built.type_summaries; every other
+// constructor copies both fields from one base). This used to rescan map_values(type_summaries) on
+// every question, rebuilding per call a set its predecessor had already stored, and in a profile of
+// the v2.compiler.compile emission that rescan was the largest cost of the emit phase. Taking the
+// derived map rather than the summaries keeps the pairing in the call shape: a caller can only hand
+// this the key set the carrier derived.
+fn is_known_variant(variant_to_enum: Map<String, String>, name: String) -> Bool {
+  map_contains_key(variant_to_enum, name)
 }
 
 fn variant_belongs_to_enum(type_summaries: Map<String, TypeSummary>, variant_name: String, enum_name: String) -> Bool {
