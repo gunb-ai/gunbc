@@ -19,7 +19,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed, CatalogCasContentEncoding }
 import std.types { String, Bool, Int, List, NonEmptyStr }
-import std.content_hash { ContentHash, content_hash_of_value }
+import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
   ReleasedNever,
@@ -479,14 +479,25 @@ fn local_store_artifact_store(budget: ByteSize, index: LocalStoreIndex) -> Artif
 }
 
 // Back from the fold: each surviving row keeps its name, found through the key it was given.
+// Each name is hashed ONCE into a key -> name map, and each surviving row finds its name by one
+// lookup -- never by re-hashing every name per row (a quadratic fold, DESIGN section 6).
+fn local_store_name_by_key(names: List<String>) -> Map<String, String> {
+  fold(names, init: empty_map(), f: (m, n) => map_insert(m, serialize_content_hash(hash: local_store_row_key(name: n)) as String, n))
+}
+
 fn local_store_index_of(store: ArtifactStore, names: List<String>) -> LocalStoreIndex {
+  let by_key = local_store_name_by_key(names: names)
   LocalStoreIndex {
     next_ordinal: store.next_ordinal,
-    rows: store.rows |> fold(init: [], f: (acc, row) => match names |> filter(n => local_store_row_key(name: n) == row.key) |> first {
+    rows: store.rows |> fold(init: [], f: (acc, row) => match map_get(by_key, serialize_content_hash(hash: row.key) as String) {
       Absent => acc
       Present { value: n } => acc |> list_push(LocalStoreIndexRow { name: n, bytes: row.artifact_bytes, ordinal: row.last_use_ordinal })
     })
   }
+}
+
+fn local_store_name_set(names: List<String>) -> Set<String> {
+  fold(names, init: empty_set(), f: (acc, n) => set_insert(acc, n))
 }
 
 fn local_store_index_retention() -> CasSlotRetention? {
@@ -581,7 +592,8 @@ fn local_store_reserve(root: MaterializationStoreRoot, family: ArtifactKindId, n
                     StorePutAdmitted { store: packed, evicted: _ } => {
                       let names = concat(index.rows |> map(r => r.name), [name])
                       let next_index = local_store_index_of(store: packed, names: names)
-                      let evicted = index.rows |> filter(r => !(next_index.rows |> any(k => k.name == r.name))) |> map(r => r.name)
+                      let kept = local_store_name_set(names: next_index.rows |> map(k => k.name))
+                      let evicted = index.rows |> filter(r => !set_contains(kept, r.name)) |> map(r => r.name)
                       match local_store_write_index(root_path: root_path, family: family, expected: expected, index: next_index) {
                         LocalStoreIndexWritten { reclamation: rc } => LocalStoreReserved { evicted: evicted, reclamation: rc }
                         LocalStoreIndexLostRace => local_store_reserve(root: root, family: family, name: name, bytes: bytes, attempt: attempt + 1)
@@ -648,8 +660,9 @@ fn local_store_sweep(root: MaterializationStoreRoot) -> LocalStoreSweep {
       match local_store_indexed_names(root: root) {
         Absent => LocalStoreSweepUnavailable { cause: "a family's occupancy index could not be read, so no object is swept" }
         Present { value: indexed } => {
+          let indexed_set = local_store_name_set(names: indexed)
           let orphans = filesystem_listing_entry_names(listing: listed)
-            |> filter(n => local_store_is_object_name(name: n) && !(indexed |> any(i => i == n)))
+            |> filter(n => local_store_is_object_name(name: n) && !set_contains(indexed_set, n))
           let attempts = orphans |> map(n => LocalStoreDeleteAttempt { name: n, success: Filesystem.Delete(path: store_path(root_path: root_path, name: n)).success })
           LocalStoreSwept { removed: attempts |> filter(t => t.success) |> map(t => t.name), delete_refused: attempts |> filter(t => !t.success) |> map(t => t.name) }
         }
@@ -674,7 +687,8 @@ fn local_store_record_recency(root: MaterializationStoreRoot, family: ArtifactKi
     LocalStoreIndexUnavailable { cause: c } => LocalStoreRecencyLost { family: family, cause: c }
     LocalStoreIndexAt { index: index, expected: expected } => {
       let names = index.rows |> map(r => r.name)
-      let hits = served |> filter(n => names |> any(k => k == n))
+      let held = local_store_name_set(names: names)
+      let hits = served |> filter(n => set_contains(held, n))
       if count(hits) == 0 { LocalStoreRecencyNothingToRecord { family: family } } else {
         let bumped = fold(hits, init: local_store_artifact_store(budget: byte_size(count: 0), index: index), f: (st, n) => match store_get(store: st, key: local_store_row_key(name: n)) {
           StoreHit { store: s2, row: _ } => s2
