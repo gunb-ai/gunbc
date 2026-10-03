@@ -290,33 +290,53 @@ These were settled while building slice A and through its side-chat reviews. Eac
 
 ## 12. Slice B: the attempt receipt's live inputs (plan, for review before code)
 
-Slice B fills the `AttemptConfigurationReceipt` fields that slice A records as `NotRecorded` (decided Q4). The boot run takes its host as a `ManagedHost` / `ManagedHostBinding` (`gunbc.managed_host`), not as mtcollins1 constants; cut 4d of the managed-host untangle will re-root the rest of the run.
+Slice B fills the `AttemptConfigurationReceipt` fields that slice A records as `NotRecorded` (decided Q4). The boot run takes its host as a `ManagedHost` / `ManagedHostBinding` (`gunbc.managed_host`), not as mtcollins1 constants; cut 4d of the managed-host untangle will re-root the rest of the run. Code waits on Q6 and this section's approval.
 
-**The fields and their routes:**
+**Two records, each minted only by its checks.**
 
-| Field | Route | Standing |
-|---|---|---|
-| expected topology | the receipt's own row (operator-authored) | `ExpectedSockets { sockets, source }` |
-| requested stimulus | the receipt (operator-authored) | `StimulusRequested` |
-| applied stimulus | a human inspection after the physical change | `StimulusAppliedByReceipt` |
-| CPU / DIMM population | the human inspection, plus a pre-power-on Redfish read | `PopulationOperatorAttested`; `PopulationConflicted` when the two disagree; a Redfish-only reading is `PopulationLiveObserved { source }`, and `source` says it is the BMC's view, possibly cached from the last POST |
-| firmware | a new pre-power-on `hpm check` read through `extdeps.bmc.ipmi` (none exists on main; `gunbc.fleet.mtcollins_firmware_converge` only renders a dry argv), plus the SMpro version word where it answers | `FirmwareReadBeforeActuation { rows }` |
+```
+AttemptConfigurationPlan (sole constructor) {
+  subject: ManagedHost, attempt: AttemptPlanId,
+  expected: ExpectedTopology, requested: StimulusRequest,   // expected and requested are stated ONCE, here
+  fixed_at: ObserverTimestamp,
+}
+AttemptInspectionReceipt (sole constructor) {
+  plan: AttemptConfigurationPlan,
+  applied: StimulusApplication, cpus: PopulationReading<SocketCpuRow>, dimms: PopulationReading<SlotRow>,
+  completed_at: ObserverTimestamp, evidence: ReceiptEvidence, witnessed_by: NonEmptyStr,
+}
+ReceiptEvidence { path, digest: Sha256FileDigest, commit }   // the committed file the run read
+```
 
-**The operator-attested route**, following the existing pattern (`std.human_intervention` `HumanIntervention` with `DischargedAt` citing a typed witness record, as `gunbc.fleet.mtcollins_firmware_converge` `AcPowerCycleWitness` does):
-- The inspection is a `HumanIntervention` step (a physical change has no API surface, so it is `HumanSurfaceOnly`).
-- Its witness is a typed record: `AttemptInspectionReceipt { host, requested, applied, cpus, dimms, completed_at, witnessed_by }`.
+The run mints an `AttemptInspectionReceipt` only after every check passes, and each failed check refuses as its own typed cause:
+- the file's digest matches what was read;
+- the subject is the host this run's `ManagedHostBinding` bound;
+- the attempt is the plan the dispatch input named;
+- the plan's identity is the one the receipt carries;
+- the ordering holds: `fixed_at` before `completed_at` before the power write.
 
-**Delivery (Q5, decided: committed file named by one dispatch input).** A workflow-authored request is not evidence that the change was made, so the receipt has to reach the run as data the operator produced:
-- **Proposed:** the operator commits the receipt as a JSON file under `artifacts/receipts/` (reviewed, versioned, attributable through the commit). The fleet-converge dispatch gains one input, `attempt_receipt`, naming that file. The boot run reads the file from its checkout and parses it with a fail-closed typed reader, and the file's digest goes into the receipt's provenance.
-- **Alternative:** the JSON goes in the dispatch input itself. That is less reviewable, and the text box is the only provenance.
-- An absent or refused receipt leaves every field `NotRecorded` or refused with its cause. The boot never proceeds on a guessed configuration.
+The pre-power-on firmware readback is bound to the same plan (`FirmwareReadBeforeActuation { plan, rows }`), so a readback from another attempt cannot fill this one. A receipt that is absent or refused leaves the fields `NotRecorded` or refused with their cause. The boot never proceeds on a guessed configuration.
 
-**Ordering.** The receipt is frozen before the power write: the inspection receipt is read, the pre-power-on reads are taken, then actuation runs. A `Conflicted` field is an open question, never resolved by preference.
+**The operator-attested route** follows `std.human_intervention`:
+- The inspection is a `HumanIntervention` step with `HumanSurfaceOnly`, because a physical change has no API.
+- Its `DischargedAt { evidence }` cites the evidence PRODUCER: the fail-closed reader that mints `AttemptInspectionReceipt` from the committed file, a `DeclarationRef` to that function. It does not cite a flag or a boolean standing.
 
-**Question for the operator.** Adding a dispatch input changes the fleet-converge workflow surface. The plan reads Q4 as covering it; confirm, or route it to the operator.
+**The pre-power-on Redfish population read is not live by default.** A controller reading taken before power-on may be the BMC's cache from the last POST, so it is `PopulationControllerReading { freshness: FreshnessEstablished | CachePossible, rows }`:
+- It can corroborate the inspection or conflict with it. A conflict is `PopulationConflicted`, an open question, never resolved by preference.
+- Only `FreshnessEstablished` counts as a live reading. Nothing on main establishes that freshness today, so today's reading is `CachePossible`.
+
+**Field routes.**
+
+| Field | Route |
+|---|---|
+| expected topology and requested stimulus | the plan, stated once |
+| applied stimulus and population | the inspection receipt; the controller reading only corroborates or conflicts |
+| firmware | a new pre-power-on `hpm check` read through `extdeps.bmc.ipmi` (none exists on main; `gunbc.fleet.mtcollins_firmware_converge` only renders a dry argv), plus the SMpro version word where it answers, both bound to the plan |
+
+**Delivery (Q5, decided by eager-gull-22 on 2026-10-03).** The plan and the inspection receipt are committed JSON under `artifacts/receipts/`, reviewed and versioned like any change. eager-gull-22 authors them from what the operator reports about the physical change. One fleet-converge dispatch input names the receipt file, and the boot run reads it from the checkout with the fail-closed typed reader above. Inline JSON in a dispatch input is refused because it is not reviewable. Adding that input is Q6, which is open.
 
 ## 11. Questions
 
 Q1 and Q2 were decided by the side chat on `75f0bd113c` and are encoded in §1, §3 and §5. Q3 (delete `secondary_checkpoints`) and Q4 (add the receipt inputs, as slice B) were decided during slice A (§10a). Open:
-- **Q5 (decided):** the receipt is committed JSON under `artifacts/receipts/`. It is read from the checkout by a fail-closed typed reader, and its digest is recorded. One dispatch input names the file. Inline JSON in a dispatch input is refused because it is not reviewable.
-- **Q6 (decided):** covered by Q4. An input on the existing mode is neither a new mode nor a new job.
+- **Q5 (decided by eager-gull-22, 2026-10-03):** the plan and the inspection receipt are committed JSON under `artifacts/receipts/`, read from the checkout by a fail-closed typed reader that records the file's digest. One dispatch input names the file. Inline JSON in a dispatch input is refused.
+- **Q6 (open, with the operator):** adding that dispatch input to the fleet-converge workflow surface.
