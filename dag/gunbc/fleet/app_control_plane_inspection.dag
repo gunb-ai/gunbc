@@ -177,10 +177,6 @@ fn decode_hook_url(raw: NonEmptyStr) -> HookUrlDecode {
   }
 }
 
-fn hook_url_scheme_refused(raw: NonEmptyStr) -> HookUrlDecode {
-  HookUrlRefused { reason: concat("app hook config url scheme is not http(s): ", raw as String) as NonEmptyStr }
-}
-
 // ---------------------------------------------------------------------------------------------
 // R2: PRESENCE MUST ITSELF BE ESTABLISHED, NOT INFERRED FROM A KEY EXISTING.
 //

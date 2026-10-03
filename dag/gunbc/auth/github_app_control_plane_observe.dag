@@ -154,23 +154,6 @@ fn control_plane_unreached(
   )
 }
 
-fn installation_not_attempted_state(
-  app: DeclaredGitHubApp,
-  custody: SignerCustody,
-  registration: ObservedAppRegistration,
-  required: List<GitHubAppPermission>,
-  reason: NonEmptyStr,
-) -> GitHubAppControlPlaneState {
-  app_control_plane_state(
-    app: app,
-    custody: custody,
-    registration: registration,
-    observed: InstallationReadbackUnavailable { cause: InstallationReadbackNotAttempted },
-    required: required,
-    reason: reason,
-  )
-}
-
 fn observe_github_app_control_plane(
   app: DeclaredGitHubApp,
   key: JwsSigningKeyRef,
