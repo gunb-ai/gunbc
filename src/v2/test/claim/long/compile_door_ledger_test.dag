@@ -2,50 +2,30 @@ module v2.test.long.compile_door_ledger
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// PR-2 ledger receipt: the door_real_module_probe frontier receipts re-pinned THROUGH the AuditOnly
-// ledger machinery — one typed counted row per subject path, shared module-graph census, per-row
-// import closure fed into the door ingest, aggregated into the cause histogram (the burn-down
-// list). Two DISTINCT correctly-attributed frontier causes over one real affected set:
-// std.determinism reds at parse_grammar_choice_overlap_residue (the packaged parse() fork the
-// admission pre-parse uses — determinism.dag's DeterminismAxis coproduct, added by #6551
-// Determinism Phase A, trips the known grammar-choice-overlap residue that parse() rejects and
-// parse_production tolerates; MigrationOwned, dissolves with the packaged/parse_production
-// reconciliation); std.error_primitives and std.bit both red at resolve_reason_unbound_symbol
-// (generics / shared self-host critical path). resolve_ambiguous_export zeroed by the
-// NamespaceOnlyY default (#6546 subject admit_named_exports skip). FRONTIER MOVE (2026-07-14):
-// determinism previously redded at fact_density_hollow_alias_locus (a lens cause); #6551's
-// coproduct moved its refusal EARLIER to the packaged-parse fork, so it no longer reaches the lens
-// — the fact_density lens frontier is now covered by crisp-newt-633's dedicated fact_density
-// witnesses, not here. This receipt tracks the real current frontier (specific causes, still
-// discriminating), not a broadened pass.
-
-// HONEST frontier finding (DESIGN 5, no fail-open receipt): the ledger's import-closure feeding is
-// WIRED (door_ledger feeds import_closure into the door ingest) and structurally exercised —
-// modules reach the door's deep resolve/infer/lens stages. std.bit now clears the migration-owned
-// resolve_ambiguous_export cause and reds later at resolve_reason_unbound_symbol (generics),
-// demonstrating the admission path reaches resolve beyond subject admission. A load-bearing
-// closure-feeding receipt where a peer's exports decide the outcome remains staged for phase-3
-// import-as-reference migration.
+// THE REAL DOOR ROUTE, ONE SUBJECT, END TO END (advisories step 2, DESIGN section 3's witness rule).
+// The mixed-set histogram this module used to pin over three real subjects is now a SUPPLIED-CHAIN
+// claim at the ledger's own boundary: v2.test.claim.advisories.fatal_first_readers
+// door_ledger_histogram_counts_each_refusals_fatal_holds supplies the three refusal chains those
+// subjects produce and asserts the fatal-cause histogram (red when door_refused_row reads the head).
+// The real run of all three, recorded on gunbc.recurring_failure_mode
+// restoration_promise_names_a_route_that_does_not_exist with its head sha, found determinism at
+// resolve_reason_unbound_symbol and error_primitives and bit at member_not_a_binder. This claim is
+// that boundary's inhabitance pairing: the real door path (module graph facts, import closure,
+// compile) reaches the ledger for one real subject, and the ROUTE is asserted -- the row is refused,
+// at the subject's fatal cause, and that cause is owned. The former residue pin is gone: the ledger
+// counts fatal causes, so an advisory head is never a row's reason.
 
 data ledger_pool_roots: List<String> = ["dag", "src/v2"]
 
-data affected_set_paths: List<String> = [
-  "dag/std/determinism.dag",
-  "dag/std/error_primitives.dag",
-  "dag/std/bit.dag"
-]
+data single_subject_path: String = "dag/std/bit.dag"
 
-fn affected_rows() -> List<DoorLedgerRow> {
-  door_ledger(paths: affected_set_paths, pool_roots: ledger_pool_roots)
+fn single_subject_rows() -> List<DoorLedgerRow> {
+  door_ledger(paths: [single_subject_path], pool_roots: ledger_pool_roots)
 }
 
-test fn ledger_cause_histogram_over_mixed_affected_set() -> Bool {
-  let rows = affected_rows()
-  ledger_refused_count(rows: rows) == 3
-    && ledger_all_compiled(rows: rows) == false
+test fn real_door_route_refuses_one_subject_at_its_owned_fatal_cause() -> Bool {
+  let rows = single_subject_rows()
+  ledger_refused_count(rows: rows) == 1
     && all_refused_causes_attributed(rows: rows) == true
-    && ledger_cause_count(rows: rows, reason: ^parse_grammar_choice_overlap_residue) == 1
-    && ledger_cause_count(rows: rows, reason: ^resolve_reason_unbound_symbol) == 2
-    && ledger_cause_count(rows: rows, reason: ^resolve_ambiguous_export) == 0
-    && ledger_cause_count(rows: rows, reason: ^fact_density_hollow_alias_locus) == 0
+    && ledger_cause_count(rows: rows, reason: ^member_not_a_binder) == 1
 }
