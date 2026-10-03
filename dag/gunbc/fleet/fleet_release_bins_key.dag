@@ -1176,6 +1176,103 @@ fn release_bins_consumer_statements(product: ReleaseBinsProduct) -> List<Node> {
   )
 }
 
+// ── THE CANONICAL PRODUCT FOR A SOURCE TREE ────────────────────────────────────────────────────
+//
+// A CONSUMER ASKS FOR "THE CANONICAL PRODUCT OF THIS TREE", NOT "WHAT I WOULD BUILD HERE". The request
+// key above names one build exactly -- toolchain, linker, libc and the keyed build environment are all
+// preimage lines -- so a consumer on another runner, in another workflow, computes a different key
+// for the same tree and would never hit. What hw boot and fleet-desired need is the product the
+// canonical producer made for the tree they hold, verified before it runs. So the fabric cache
+// ADDRESSES a product by (kind, source closure) only: derivable by any job from its own checkout
+// before gunbc exists (std.materialization_provider's invariant: derived, never passed in). The full
+// request preimage still travels INSIDE the pack as its provenance; the canonical publisher verifies
+// it against the candidate it promotes, and every consumer verifies the pack's kind and source
+// closure against its own checkout and every member against the manifest before anything executes.
+// One canonical publisher per landed tree is what makes (kind, tree) name one pack.
+data release_bins_canonical_address_name: String = "canonical.address"
+data release_bins_canonical_address_env: String = "FABRIC_BLOB_KEY_HEX"
+
+fn release_bins_canonical_address_statements(product: ReleaseBinsProduct) -> List<Node> {
+  seq(parts: [
+    [root_statement()],
+    source_closure_statements(),
+    [
+      bash_build_with_redir_to_file(
+        inner: cmd(ws: [lit(t: "printf"), lit(t: "kind=%s\\nsource_closure=%s\\n"), lit(t: product.kind), var(n: "SOURCE_CLOSURE")]),
+        path: temp(file: release_bins_canonical_address_name),
+      ),
+    ],
+    digest_of(name: "CANONICAL_ADDRESS", path: temp(file: release_bins_canonical_address_name)),
+    [
+      cmd(ws: [lit(t: "echo"), words(ws: [lit(t: "canonical address "), var(n: "CANONICAL_ADDRESS"), lit(t: " for "), lit(t: product.kind), lit(t: " over "), var(n: "SOURCE_CLOSURE")])]),
+      append_line(file_var: "GITHUB_ENV", line: words(ws: [lit(t: join([release_bins_canonical_address_env, "="], "")), var(n: "CANONICAL_ADDRESS")])),
+    ],
+  ])
+}
+
+// THE PACK IS ONE OBJECT: its three entry files wrapped in one uncompressed tar, so a reader never
+// sees a manifest without its archive (std.fabric_blob: one address, one whole publication).
+data release_bins_pack_object_name: String = "pack.tar"
+
+fn release_bins_pack_object_statements() -> List<Node> {
+  [
+    root_statement(),
+    stage_statement(),
+    cmd(ws: concat([lit(t: "tar"), lit(t: "-cf"), temp(file: release_bins_pack_object_name), lit(t: "-C"), var(n: "STAGE")], map(entry_files(), f => lit(t: f)))),
+  ]
+}
+
+// THE CANONICAL CONSUMER. The object at $FABRIC_BLOB_OUT is unwrapped into an isolated directory only
+// if its listing is exactly the three entry files; the preimage must name this product's kind and
+// this checkout's source closure; then the pack is verified member by member exactly as every other
+// consumer verifies it, and only then are the binaries promoted.
+data release_bins_canonical_dir: String = "canonical-pack"
+
+fn canonical(file: String) -> Node { temp(file: join([release_bins_canonical_dir, "/", file], "")) }
+
+fn release_bins_canonical_consumer_statements(product: ReleaseBinsProduct) -> List<Node> {
+  seq(parts: [
+    [
+      root_statement(),
+      bash_build_with_redir_to_file(inner: cmdl(ls: ["printf", "%s", fold(entry_files(), init: "", f: (acc, n) => join([acc, n, "\n"], ""))]), path: temp(file: "pack-object.expected")),
+      produce_to(file: "pack-object.listing", command: cmd(ws: [lit(t: "tar"), lit(t: "-tf"), var(n: "FABRIC_BLOB_OUT")])),
+      or_refuse(check: cmd(ws: [lit(t: "cmp"), lit(t: "-s"), temp(file: "pack-object.listing"), temp(file: "pack-object.expected")]), r: PackListingNotRoster { site: ConsumerSite }),
+      cmd(ws: [lit(t: "rm"), lit(t: "-rf"), temp(file: release_bins_canonical_dir)]),
+      cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), temp(file: release_bins_canonical_dir)]),
+      cmd(ws: [lit(t: "tar"), lit(t: "-xf"), var(n: "FABRIC_BLOB_OUT"), lit(t: "-C"), temp(file: release_bins_canonical_dir), lit(t: "--no-same-owner")]),
+      or_refuse(
+        check: cmd(ws: [lit(t: "grep"), lit(t: "-qxF"), lit(t: join(["kind=", product.kind], "")), canonical(file: release_bins_preimage_name)]),
+        r: ConsumerPreimageKeyMismatch,
+      ),
+    ],
+    source_closure_statements(),
+    [
+      or_refuse(
+        check: cmd(ws: [lit(t: "grep"), lit(t: "-qxF"), words(ws: [lit(t: "source_closure="), var(n: "SOURCE_CLOSURE")]), canonical(file: release_bins_preimage_name)]),
+        r: ConsumerSourceTreeMismatch,
+      ),
+    ],
+    release_bins_verify_pack(
+      site: ConsumerSite,
+      archive: canonical(file: ci_release_bins_archive_name),
+      manifest: canonical(file: release_bins_manifest_name),
+      dir: temp(file: "canonical-check"),
+      product: product,
+    ),
+    [
+      cmd(ws: concat(
+        [rooted(file: "target/release/claim_executor"), lit(t: "--verify-build-artifacts")],
+        map(product.roster, m => rooted(file: join(["target/release/", m], ""))),
+      )),
+      cmd(ws: [lit(t: "echo"), lit(t: join(["release-bins: canonical ", product.kind, " pack verified and promoted"], ""))]),
+    ],
+  ])
+}
+
+fn release_bins_canonical_address_script_for(product: ReleaseBinsProduct) -> String { release_bins_script_text(outcome: release_bins_emitted(statements: release_bins_canonical_address_statements(product: product))) }
+fn release_bins_pack_object_script() -> String { release_bins_script_text(outcome: release_bins_emitted(statements: release_bins_pack_object_statements())) }
+fn release_bins_canonical_consumer_script_for(product: ReleaseBinsProduct) -> String { release_bins_script_text(outcome: release_bins_emitted(statements: release_bins_canonical_consumer_statements(product: product))) }
+
 // THE EMITTED SCRIPTS, and the one admission the workflow generation consumes: if the fold refuses any
 // of them, gunbc.fleet_converge_workflow refuses to emit the workflow rather than emitting a step with
 // no script.
