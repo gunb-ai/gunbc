@@ -51,7 +51,8 @@ fn anchor_is_straddle(a: ClaimAnchorKey, modeled: Symbol, native: Symbol) -> Boo
   match a {
     GeneratedClaimAnchor { generated_anchor: GeneratedCrossRepresentationEquality { modeled_coproduct: mc, native_realization: nr } } =>
       (mc == modeled) && (nr == native)
-    _ => false
+    GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { coproduct_type: _, omitted_variant: _ } } => false
+    ManualClaimAnchor { manual_anchor: _ } => false
   }
 }
 

@@ -173,7 +173,10 @@ fn logical_qualified_name_from_module(module_name: String, name: String) -> Stri
 fn decl_facts_is_fn_like(kind: ItemKind) -> Bool {
   match kind {
     FnItem => true
-    _ => false
+    TypeItem => false
+    DataItem => false
+    ServiceItem => false
+    OtherItem => false
   }
 }
 
