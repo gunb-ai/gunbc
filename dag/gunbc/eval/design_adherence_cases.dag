@@ -20,6 +20,10 @@ fn sha1(hex: String) -> GitObjectId {
 
 data spark_deforking_cut4_task: NonEmptyStr = "Deforking cut 4 of the GLM/V4.1 calibration program. Put the V4.1 arm behind the same memory wall GLM uses (plan_arm_launch_under_memory_fit) instead of its own path, and derive each bounded experiment's runtime bound from that launch's own facts -- its VLLM_ENGINE_READY_TIMEOUT_S (unset means vLLM's upstream default, cited; set twice or not an integer is refused) and its sequence ceiling -- rather than from GLM's engine-ready figure. Render each bounded-experiment unit's RuntimeMaxSec from that derivation." as NonEmptyStr
 
+data spark_deforking_cut4b_task: NonEmptyStr = "Deforking cut 4b of the GLM/V4.1 calibration program, behaviour-preserving for GLM. The KV roster census in arm_memory_fit must take the checkpoint's expected roster rather than GLM's hybrid shape: model an expected KV roster (expected layout groups -- kind and layer count, the KPool interval, a minimum group count -- and expected allocation-plan censuses, each carrying its own message), make the roster and plan checkers generic over it, and have the cache-fit verdicts and frontier take a roster. Derive GLM's roster from its hybrid shape with the same counts and messages the witnesses pin. V4.1 has no roster yet." as NonEmptyStr
+
+data spark_deforking_cut5_task: NonEmptyStr = "Deforking cut 5 of the GLM/V4.1 calibration program: one promotion step for every serving subject, bound to the exact subject. Model a serving promotion standing over five receipts -- execution compatibility, all-rank memory fit, resolved-layout cache fit, quality on the agentic acceptance set, and workload calibration on the real trace -- each bound to the serving subject key. Quality and calibration compare against the incumbent on the same set and trace. Missing receipts admit a bounded measurement serve and are all named; a refused fit refuses. Hold the thresholds in a promotion policy. Normal serving in plan_arm_launch_under_memory_fit additionally requires the promotion standing; V4.1's capacity report projects into the shared workload calibration receipt." as NonEmptyStr
+
 data design_adherence_cases: List<EvalCase> = [
 
   EvalCase {
@@ -72,6 +76,84 @@ data design_adherence_cases: List<EvalCase> = [
       },
     },
     design_checks: [],
+  },
+
+  EvalCase {
+    identity: "spark-calibration-trace-digest-key" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12984),
+    finding: DashboardReview { review_id: 74216 },
+    frozen_base: sha1(hex: "8eadfe24f3e728b7cabd0db10abce55e3651feed"),
+    reference_fix: sha1(hex: "38c43c0da608986c0486a73c094f1c7a9d465ebd"),
+    task: spark_deforking_cut5_task,
+    touched_entries: [
+      "dag/gunbc/spark/serving_promotion.dag" as FilePath,
+      "dag/gunbc/spark/v41_capacity_measurement.dag" as FilePath,
+    ],
+    discriminator: DiscriminatingCheck {
+      criterion: "conformance-identity" as NonEmptyStr,
+      statement: "a calibration compared against the incumbent on a different trace is refused, the trace being keyed by a std.content_hash ContentHash" as NonEmptyStr,
+      check: ClaimHolds {
+        witness: FromReferenceFix { path: "dag/test/claim/spark/serving_promotion_witness_test.dag" as FilePath },
+        functions: ["w_calibration_on_a_different_trace_is_not_compared" as NonEmptyStr],
+      },
+    },
+    design_checks: [
+      DesignCheck {
+        criterion: "conformance-identity" as NonEmptyStr,
+        statement: "the trace key is not an unqualified string and is not compared as one" as NonEmptyStr,
+        method: MechanicallyGraded { check: PatternAbsent {
+          pattern: "trace_digest: NonEmptyStr|trace_digest as String" as NonEmptyStr,
+          paths: ["dag/gunbc/spark" as FilePath],
+        } },
+      },
+    ],
+  },
+
+  EvalCase {
+    identity: "spark-kpool-interval-unit" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12991),
+    finding: DashboardReview { review_id: 74218 },
+    frozen_base: sha1(hex: "cca01ea31a64650d9c52951a2bb700878663a6f2"),
+    reference_fix: sha1(hex: "4d4f651929c679ba86d007e00d4ac9824a045ce2"),
+    task: spark_deforking_cut4b_task,
+    touched_entries: ["dag/gunbc/spark/arm_memory_fit.dag" as FilePath],
+    discriminator: DiscriminatingCheck {
+      criterion: "minimize-redundancy" as NonEmptyStr,
+      statement: "the expected KPool interval is a std.measure TokenCount, as its engine-side sibling is, not a bare Nat" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "ExpectKPoolInterval \\{ tokens: Nat" as NonEmptyStr,
+        paths: ["dag/gunbc/spark/arm_memory_fit.dag" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+
+  EvalCase {
+    identity: "spark-kv-roster-consistency-flag" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12991),
+    finding: DashboardReview { review_id: 74218 },
+    frozen_base: sha1(hex: "cca01ea31a64650d9c52951a2bb700878663a6f2"),
+    reference_fix: sha1(hex: "4d4f651929c679ba86d007e00d4ac9824a045ce2"),
+    task: spark_deforking_cut4b_task,
+    touched_entries: ["dag/gunbc/spark/arm_memory_fit.dag" as FilePath],
+    discriminator: DiscriminatingCheck {
+      criterion: "fail-closed" as NonEmptyStr,
+      statement: "an inconsistent shape derives no roster: consistency is not a Bool field a roster carries and a consumer must remember to test" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "consistent: Bool" as NonEmptyStr,
+        paths: ["dag/gunbc/spark/arm_memory_fit.dag" as FilePath],
+      },
+    },
+    design_checks: [
+      DesignCheck {
+        criterion: "fail-closed" as NonEmptyStr,
+        statement: "no roster consumer branches on a consistency flag" as NonEmptyStr,
+        method: MechanicallyGraded { check: PatternAbsent {
+          pattern: "roster\\.consistent" as NonEmptyStr,
+          paths: ["dag/gunbc/spark" as FilePath],
+        } },
+      },
+    ],
   },
 
 ]

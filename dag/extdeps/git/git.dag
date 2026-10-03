@@ -1856,6 +1856,12 @@ fn shape_git_rev_parse_argv(repo: FilePath, target: GitRef) -> List<String> {
   ["-C", repo as String, "rev-parse", target as String]
 }
 
+// git-worktree(1). AddDetachedInRepo is `add --detach`: a linked worktree at a commit with no
+// branch, the form a reader of a frozen revision wants -- naming a branch would create one the caller
+// then has to remove. RemoveForceInRepo discards a linked worktree with any modification in it, which
+// is what its creator intends for a scratch checkout and nothing else. The repository is a parameter
+// on both for the same reason RevParseInRepo's is: which repository a caller means is the caller's
+// fact, never the process's working directory.
 service git.Worktree {
   operation Add {
     requires opaque
@@ -1872,10 +1878,6 @@ service git.Worktree {
     }
   }
 
-  // git-worktree(1) `add --detach`: a linked worktree at a commit with no branch, the form a reader
-  // of a frozen revision wants -- naming a branch would create one the caller then has to remove.
-  // The repository is a parameter for the same reason RevParseInRepo's is: which repository a
-  // caller means is the caller's fact, never the process's working directory.
   operation AddDetachedInRepo {
     requires opaque
     input { repo: FilePath, path: FilePath, commit: GitRef }
@@ -1886,8 +1888,6 @@ service git.Worktree {
     transport shell { argv: ["git", "-C", "{repo}", "worktree", "add", "--detach", "{path}", "{commit}"] }
   }
 
-  // git-worktree(1) `remove --force`: the linked worktree is discarded with any modification in it,
-  // which is what its creator intends for a scratch checkout and nothing else.
   operation RemoveForceInRepo {
     requires opaque
     input { repo: FilePath, path: FilePath }

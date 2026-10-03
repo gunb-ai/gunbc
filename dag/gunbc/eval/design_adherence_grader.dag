@@ -159,7 +159,7 @@ fn is_source_dag(p: FilePath) -> Bool {
 // did not hold: the floor stopped before reaching it, and an unobserved gate is not a passed one.
 fn line_with(text: String, marker: String) -> String? {
   fold(split(s: text, delimiter: "\n"), init: Absent, f: fn(acc, l) {
-    if string_contains(s: l, pattern: marker) { Present { value: l } } else { acc }
+    match string_contains(s: l, pattern: marker) { true => Present { value: l }  false => acc }
   })
 }
 
@@ -247,19 +247,16 @@ fn distinct_paths(paths: List<FilePath>) -> List<FilePath> {
 fn place_witness(ws: EvalWorkspace, c: EvalCase, tree: String, w: WitnessPlacement) -> String? {
   match w {
     FromReferenceFix { path } =>
-      if git.Core.RestoreBlobTo(ref: hex(oid: c.reference_fix) as GitRef, path: path, work_tree: tree as FilePath).success { Present { value: path as String } } else { Absent }
+      match git.Core.RestoreBlobTo(ref: hex(oid: c.reference_fix) as GitRef, path: path, work_tree: tree as FilePath).success { true => Present { value: path as String }  false => Absent }
     FromEvalStore { stored_at, placed_at } => place_stored_witness(ws: ws, tree: tree, stored_at: stored_at, placed_at: placed_at)
   }
 }
 
 fn place_stored_witness(ws: EvalWorkspace, tree: String, stored_at: FilePath, placed_at: FilePath) -> String? {
   let r = Filesystem.Read(path: join([ws.repo, "/", stored_at as String], ""))
-  if !r.success {
-    Absent
-  } else if Filesystem.Write(path: join([tree, "/", placed_at as String], ""), content: r.content).success {
-    Present { value: placed_at as String }
-  } else {
-    Absent
+  match r.success && Filesystem.Write(path: join([tree, "/", placed_at as String], ""), content: r.content).success {
+    true => Present { value: placed_at as String }
+    false => Absent
   }
 }
 
@@ -279,23 +276,31 @@ fn grep_one(oid: GitObjectId, pattern: NonEmptyStr, path: FilePath) -> GrepReadi
   GrepReading { exit_code: g.exit_code, matches: g.matches, stderr: g.stderr }
 }
 
+fn grep_refused(reads: List<GrepReading>) -> Bool {
+  count(filter(reads, g => g.exit_code != 0 && g.exit_code != 1)) > 0
+}
+
+fn grep_refusal_text(reads: List<GrepReading>) -> String {
+  concat("git grep refused: ", join(map(reads, g => g.stderr), " "))
+}
+
 fn grep_verdict_absent(reads: List<GrepReading>) -> String? {
-  if count(filter(reads, g => g.exit_code != 0 && g.exit_code != 1)) > 0 {
-    Present { value: concat("git grep refused: ", join(map(reads, g => g.stderr), " ")) }
-  } else if count(filter(reads, g => g.exit_code == 0)) > 0 {
-    Present { value: concat("pattern present: ", tail_lines(text: join(map(reads, g => g.matches), "\n"), n: 4)) }
-  } else {
-    Absent
+  match grep_refused(reads: reads) {
+    true => Present { value: grep_refusal_text(reads: reads) }
+    false => match count(filter(reads, g => g.exit_code == 0)) > 0 {
+      true => Present { value: concat("pattern present: ", tail_lines(text: join(map(reads, g => g.matches), "\n"), n: 4)) }
+      false => Absent
+    }
   }
 }
 
 fn grep_verdict_present(pattern: NonEmptyStr, reads: List<GrepReading>) -> String? {
-  if count(filter(reads, g => g.exit_code != 0 && g.exit_code != 1)) > 0 {
-    Present { value: concat("git grep refused: ", join(map(reads, g => g.stderr), " ")) }
-  } else if count(filter(reads, g => g.exit_code == 0)) == 0 {
-    Present { value: concat("pattern absent: ", pattern as String) }
-  } else {
-    Absent
+  match grep_refused(reads: reads) {
+    true => Present { value: grep_refusal_text(reads: reads) }
+    false => match count(filter(reads, g => g.exit_code == 0)) == 0 {
+      true => Present { value: concat("pattern absent: ", pattern as String) }
+      false => Absent
+    }
   }
 }
 
@@ -304,10 +309,9 @@ fn claim_failure(tree: String, bins: String, entry: String, functions: List<NonE
     "--source-root", "dag", "--source-root", "src/v2", "--entry", entry,
     "--functions", join(map(functions, f => f as String), ","),
   ])
-  if r.exit_code == 0 && count(filter(functions, f => !string_contains(s: r.stdout, pattern: concat("PASS ", f as String)))) == 0 {
-    Absent
-  } else {
-    Present { value: tail_lines(text: concat(r.stdout, r.stderr), n: 8) }
+  match r.exit_code == 0 && count(filter(functions, f => !string_contains(s: r.stdout, pattern: concat("PASS ", f as String)))) == 0 {
+    true => Absent
+    false => Present { value: tail_lines(text: concat(r.stdout, r.stderr), n: 8) }
   }
 }
 
