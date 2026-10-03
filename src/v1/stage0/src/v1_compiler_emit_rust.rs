@@ -162,8 +162,8 @@ use crate::v1_compiler_emit::FileResultChannel::{
     FileChanSuccess,
 };
 use crate::v1_compiler_emit::FileVerb::{
-    FileDelete, FileList, FileRead, FileWrite, FileWriteCreateNew, FileWriteCreateNewWithMode,
-    FileWriteOwnerOnly,
+    FileDelete, FileLinkCreateNew, FileList, FileRead, FileWrite, FileWriteCreateNew,
+    FileWriteCreateNewWithMode, FileWriteOwnerOnly,
 };
 use crate::v1_compiler_emit::ShellEmissionRefusal::ShellChannelNotRealizedByTarget;
 use crate::v1_compiler_emit::ShellResultChannel::{
@@ -38375,6 +38375,7 @@ pub fn file_verb_action_expr(verb: FileVerb) -> String {
         FileVerb::FileWriteOwnerOnly => file_write_owner_only_expr(),
         FileVerb::FileWriteCreateNew => file_write_create_new_expr(),
         FileVerb::FileWriteCreateNewWithMode => file_write_create_new_with_mode_expr(),
+        FileVerb::FileLinkCreateNew => file_link_create_new_expr(),
         FileVerb::FileDelete => file_delete_match_expr(),
         FileVerb::FileList => file_list_match_expr(),
     }
@@ -38516,7 +38517,7 @@ pub fn file_empty_path_guard() -> String {
 pub fn file_io_error_kind_fn() -> String {
     thread_local! {
         static CACHED: String = {
-            "let file_io_error_kind = |host_err: &std::io::Error| -> String {\n    match host_err.kind() {\n        std::io::ErrorKind::NotFound => \"not_found\",\n        std::io::ErrorKind::AlreadyExists => \"already_exists\",\n        std::io::ErrorKind::PermissionDenied => \"permission_denied\",\n        std::io::ErrorKind::NotADirectory => \"not_a_directory\",\n        _ => \"other\",\n    }\n    .to_string()\n};".to_string()
+            "let file_io_error_kind = |host_err: &std::io::Error| -> String {\n    match host_err.kind() {\n        std::io::ErrorKind::NotFound => \"not_found\",\n        std::io::ErrorKind::AlreadyExists => \"already_exists\",\n        std::io::ErrorKind::PermissionDenied => \"permission_denied\",\n        std::io::ErrorKind::NotADirectory => \"not_a_directory\",\n        std::io::ErrorKind::CrossesDevices => \"cross_device\",\n        _ => \"other\",\n    }\n    .to_string()\n};".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -38571,6 +38572,15 @@ pub fn file_write_create_new_expr() -> String {
     thread_local! {
         static CACHED: String = {
             "{\n    let payload_bytes = content.len() as i64;\n    match v1_rt::gunbc_file_write_create_new(&file_path, content.as_bytes(), None) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64, file_io_error_kind(&create_new_err)),\n    }\n};".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn file_link_create_new_expr() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "match v1_rt::gunbc_file_link_create_new(&source, &file_path) {\n    Ok(()) => (true, String::new(), String::new(), 0i64, String::new()),\n    Err(link_err) => (false, String::new(), format!(\"{}\", link_err), 0i64, file_io_error_kind(&link_err)),\n};".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
