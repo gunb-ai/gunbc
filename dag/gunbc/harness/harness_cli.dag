@@ -470,22 +470,27 @@ fn harness_model_request_inputs(role: String, shape: HarnessWireShape, system_pr
 // arrives: an opaque content identity over the proxied request's answer-changing parts, never the
 // bytes. Without it every proxied request was one Work, distinguished only by attempt -- the
 // Demand standing in for the Work. An empty identity is refused, not defaulted.
-fn harness_place_cli(request: String, actor: String, attempt: String, receipt: String) -> ProcessExit {
+// THE ACTOR IS NOT A CALLER ARGUMENT. The acquisition's actor is what the serving front door compares
+// with the authenticated caller (gunbc.serving.serving_front_door front_door_admit_held), so a
+// free-text actor would let placement record whatever identity the door is then asked to trust. The
+// actor is the principal placement acts for, and the permit names the same principal.
+fn harness_place_cli(request: String, attempt: String, receipt: String) -> ProcessExit {
   if request == "" {
     harness_backend_refusal_exit(detail: "place: the normalized request identity is empty; the router must normalize the request before asking for placement (gunbc.serving.router_realization NormaliseRequestToDemand)")
   } else {
-    harness_place_for(request: request, actor: actor, attempt: attempt, receipt: receipt)
+    harness_place_for(request: request, attempt: attempt, receipt: receipt)
   }
 }
 
-fn harness_place_for(request: String, actor: String, attempt: String, receipt: String) -> ProcessExit {
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: InteractiveQualitySensitive, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: ["place", request], actor: actor as NonEmptyStr, attempt: attempt as NonEmptyStr, policy: harness_seat_policy)
+fn harness_place_for(request: String, attempt: String, receipt: String) -> ProcessExit {
+  let caller = fabric_service_principal()
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: InteractiveQualitySensitive, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: ["place", request], actor: principal_ref_label(p: caller) as NonEmptyStr, attempt: attempt as NonEmptyStr, policy: harness_seat_policy)
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
     HarnessSeatBound { url, grant, partition, ceiling: bound_ceiling, group_wire, launch, store: _, model: bound_model, unit: _, class: bound_class } => {
       let capability = harness_release_capability(partition: partition, ceiling: bound_ceiling, grant: grant)
-      let claims = serving_seat_permit_claims(launch: launch, group_wire: group_wire, partition: partition, class: bound_class, grant: grant, caller: fabric_service_principal(), work: attempt as NonEmptyStr)
+      let claims = serving_seat_permit_claims(launch: launch, group_wire: group_wire, partition: partition, class: bound_class, grant: grant, caller: caller, work: attempt as NonEmptyStr)
       match mint_serving_seat_permit(claims: claims) {
         SeatPermitNotMinted { detail: why } => harness_place_receipt_failed(binding: binding, cause: join(["the seat was granted but no front-door permit could be minted for it: ", why], ""))
         SeatPermitMinted { permit: permit } => harness_place_receipt(binding: binding, url: url, group_wire: group_wire, bound_model: bound_model, launch: launch, capability: capability, grant: grant, permit: permit, receipt: receipt)

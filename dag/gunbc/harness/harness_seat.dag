@@ -1,6 +1,7 @@
 module gunbc.harness.harness_seat
 
 import product.placement_supply { HostIdentity }
+import std.decimal { decimal_digits_from }
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat, nat_range_inclusive, nat_min }
 import std.measure { Measure, Count, One, money_amount_micro, second, measure_count }
@@ -147,12 +148,22 @@ import gunbc.serving.serving_availability {
 // is running. Nothing produces that arm today -- both routes carry a CeilingByDeclaredPolicy row. When something does, the ceiling moves with an OBSERVATION and there is no edit and no
 // author to bump anything -- at which point a derived suffix is the only mechanism that can hold, and
 // having it already in place is what stops that landing from silently reinterpreting live history.
+// WHICH GROUP A SEAT PARTITION BELONGS TO, decided against the one spelling above rather than by a
+// consumer taking a prefix of its own: every class's partition for a group begins with this stem.
+fn harness_seat_partition_stem(group: FabricGroup) -> String {
+  join(["group-", fabric_group_wire(g: group) as String, "-"], "")
+}
+
+fn harness_seat_partition_is_for_group(partition: PartitionId, group: FabricGroup) -> Bool {
+  starts_with(s: partition as String, prefix: harness_seat_partition_stem(group: group))
+}
+
 fn harness_seat_partition(group: FabricGroup, class: ServingCoTenancyClass, ceiling: Nat) -> PartitionId {
   match class {
     InteractiveQualitySensitive =>
-      join(["group-", fabric_group_wire(g: group) as String, "-quality-seat-v1"], "") as PartitionId
+      join([harness_seat_partition_stem(group: group), "quality-seat-v1"], "") as PartitionId
     BatchQualityTolerant =>
-      join(["group-", fabric_group_wire(g: group) as String, "-tolerant-seat-c", to_string(ceiling), "-v1"], "") as PartitionId
+      join([harness_seat_partition_stem(group: group), "tolerant-seat-c", to_string(ceiling), "-v1"], "") as PartitionId
   }
 }
 
@@ -1063,6 +1074,50 @@ fn harness_candidate_for_key(candidates: List<HarnessCandidate>, key: NonEmptySt
 // refuses -- minting one against an unread head would be a reference that cannot be shown unique.
 fn harness_seat_reference(attempt: NonEmptyStr, offer_key: NonEmptyStr, now: EpochSecs, round: Nat, head: NonEmptyStr) -> NonEmptyStr {
   join([attempt as String, "@", to_string(now), "#", to_string(round), "/", offer_key as String, "^", head as String], "") as NonEmptyStr
+}
+
+// THE INVERSE OF harness_seat_reference, AS A DECISION RATHER THAN A PARSE. A front door holding a
+// permit knows which attempt and which launch the seat is CLAIMED for; the ledger holds the reference
+// placement actually recorded. This answers whether that reference was minted by
+// harness_seat_reference for exactly that attempt and that offer key -- the grammar is
+// `attempt "@" digits "#" digits "/" offer_key "^" head` with head non-empty and free of "^", and
+// with the attempt given as a prefix the decoding is unique: the stamp is digits up to the first
+// "/", so the offer key begins exactly there whatever separators the attempt or key contain.
+// It lives beside the minting function so that a change to one spelling breaks the other here.
+fn harness_seat_reference_names(reference: NonEmptyStr, attempt: NonEmptyStr, offer_key: NonEmptyStr) -> Bool {
+  let r = reference as String
+  let p = join([attempt as String, "@"], "")
+  if !starts_with(s: r, prefix: p) {
+    false
+  } else {
+    let rest = substring(s: r, start: string_length(s: p), end: string_length(s: r))
+    match first_index_of(s: rest, ch: "/", i: 0) {
+      Absent => false
+      Present { value: k } => {
+        let stamp = substring(s: rest, start: 0, end: k)
+        let tail = substring(s: rest, start: k + 1, end: string_length(s: rest))
+        let key_prefix = join([offer_key as String, "^"], "")
+        harness_reference_stamp_is_well_formed(stamp: stamp)
+          && starts_with(s: tail, prefix: key_prefix)
+          && string_length(s: tail) > string_length(s: key_prefix)
+          && !string_contains(s: substring(s: tail, start: string_length(s: key_prefix), end: string_length(s: tail)), pattern: "^")
+      }
+    }
+  }
+}
+
+fn first_index_of(s: String, ch: String, i: Int) -> Int? {
+  if i >= string_length(s: s) { none } else if char_at(s: s, pos: i) == ch { Present { value: i } } else { first_index_of(s: s, ch: ch, i: i + 1) }
+}
+
+fn harness_reference_stamp_is_well_formed(stamp: String) -> Bool {
+  match first_index_of(s: stamp, ch: "#", i: 0) {
+    Absent => false
+    Present { value: h } =>
+      h > 0 && h + 1 < string_length(s: stamp)
+        && decimal_digits_from(s: substring(s: stamp, start: 0, end: h), i: 0)
+        && decimal_digits_from(s: substring(s: stamp, start: h + 1, end: string_length(s: stamp)), i: 0)
+  }
 }
 
 fn harness_head_word(head: HeadExpectation) -> NonEmptyStr {

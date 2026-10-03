@@ -26,6 +26,7 @@ import gunbc.fabric_event_log { PartitionRead, PartitionReadOk, PartitionReadRef
 import gunbc.serving.turn_admission { ServingCoTenancyClass, serving_co_tenancy_class_wire }
 import gunbc.spark.vllm_endpoint_process_launch { VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
+import gunbc.harness.harness_seat { harness_seat_partition_is_for_group, harness_seat_reference_names }
 
 // ── THE SECOND DOOR, AND WHY AUTHENTICATION ALONE DOES NOT CLOSE IT ──────────────────────────
 //
@@ -52,9 +53,10 @@ import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
 //
 // CUSTODY. With HMAC the verifier's key is the issuer's key (extdeps.crypto.mac
 // symmetric_verification_is_issuance_note), so the key belongs to the placement authority and the
-// door, never to a sender. The ledger read is what keeps a key holder from minting a permit for a
-// seat nobody holds: a permit whose reference was never admitted, or was admitted by a different
-// event, refuses whatever its tag says. The key itself is a fleet credential; its issuance, rotation
+// door, never to a sender. The LEDGER is the authority and the MAC is integrity for the claims: a key
+// holder who mints a permit for a seat that was never admitted, or for another caller's live seat, or
+// for a seat taken for other work or another launch, is refused on what placement recorded
+// (front_door_admit_held), whatever the tag says. The key itself is a fleet credential; its issuance, rotation
 // and revocation drill belong to the managed-identity row credential-lifecycle-revocation, and this
 // module consumes it, it does not issue it.
 
@@ -205,14 +207,24 @@ type FrontDoorIdentity {
 // name. Released and never-admitted are different incidents: the first is a caller reusing a finished
 // seat, the second a permit for a seat that never existed (a key holder minting outside placement).
 type SeatGrantCurrency
-  = SeatGrantHeld
+  = SeatGrantHeld { actor: NonEmptyStr, recorded_at: EpochSecs, term_seconds: Nat }
   | SeatGrantReleased { reason: NonEmptyStr }
   | SeatGrantNeverAdmitted
   | SeatGrantAdmittedByAnother { admitted_by: EventId }
   | SeatGrantUnread { detail: String }
 
+// THE ACQUISITION AS THE LEDGER RECORDED IT: which event admitted the reference, who appended it, when,
+// and for what term. These -- not the permit's claims -- are what the door decides currency, caller and
+// expiry on.
+type SeatLedgerAcquisition {
+  id: EventId
+  actor: NonEmptyStr
+  recorded_at: EpochSecs
+  term_seconds: Nat
+}
+
 type SeatLedgerScan {
-  admitted_by: EventId?
+  admitted_by: SeatLedgerAcquisition?
   released: NonEmptyStr?
 }
 
@@ -225,11 +237,14 @@ fn seat_grant_currency_of(walk: ChainWalk<PoolEvent>, reference: NonEmptyStr, gr
     ChainWalked { oldest_first: xs } => {
       let scan = fold(xs, init: SeatLedgerScan { admitted_by: none, released: none }, f: (acc, env) =>
         match env.event.payload {
-          PoolAcquired { reference: r, amount: _, term_seconds: _ } =>
+          PoolAcquired { reference: r, amount: _, term_seconds: term } =>
             if (r as String) == (reference as String) {
               match acc.admitted_by {
                 Present { value: _ } => acc
-                Absent => SeatLedgerScan { admitted_by: Present { value: env.id }, released: acc.released }
+                Absent => SeatLedgerScan {
+                  admitted_by: Present { value: SeatLedgerAcquisition { id: env.id, actor: env.event.actor, recorded_at: env.event.recorded_at, term_seconds: term } },
+                  released: acc.released,
+                }
               }
             } else { acc }
           PoolReleased { reference: r, reason: why } =>
@@ -241,13 +256,13 @@ fn seat_grant_currency_of(walk: ChainWalk<PoolEvent>, reference: NonEmptyStr, gr
         })
       match scan.admitted_by {
         Absent => SeatGrantNeverAdmitted
-        Present { value: e } =>
-          if (e as String) != (grant as String) {
-            SeatGrantAdmittedByAnother { admitted_by: e }
+        Present { value: a } =>
+          if (a.id as String) != (grant as String) {
+            SeatGrantAdmittedByAnother { admitted_by: a.id }
           } else {
             match scan.released {
               Present { value: why } => SeatGrantReleased { reason: why }
-              Absent => SeatGrantHeld
+              Absent => SeatGrantHeld { actor: a.actor, recorded_at: a.recorded_at, term_seconds: a.term_seconds }
             }
           }
       }
@@ -301,6 +316,10 @@ type FrontDoorRefusal
   | DoorSeatNeverAdmitted
   | DoorSeatAdmittedByAnother { admitted_by: EventId }
   | DoorSeatLedgerUnread { detail: String }
+  | DoorPermitPartitionNotThisGroup { partition: PartitionId, door_group: NonEmptyStr }
+  | DoorSeatHeldByAnotherCaller { ledger_actor: NonEmptyStr, caller: PrincipalRef }
+  | DoorSeatNotForThisWorkOrLaunch { reference: NonEmptyStr }
+  | DoorSeatLeaseExpired { ledger_expires_at: EpochSecs, observed_at: EpochSecs }
 
 // THE VERDICT HAS ONE FORWARDING ARM AND IT CARRIES THE AUTHENTICATED CLAIMS, so the forwarder
 // attributes the request to its grant (product.capacity.lease: every effect under a lease is
@@ -327,6 +346,10 @@ fn front_door_refusal_wire(r: FrontDoorRefusal) -> NonEmptyStr {
     DoorSeatNeverAdmitted => "seat-never-admitted" as NonEmptyStr
     DoorSeatAdmittedByAnother { admitted_by: _ } => "seat-admitted-by-another" as NonEmptyStr
     DoorSeatLedgerUnread { detail: _ } => "seat-ledger-unread" as NonEmptyStr
+    DoorPermitPartitionNotThisGroup { partition: _, door_group: _ } => "permit-partition-not-this-group" as NonEmptyStr
+    DoorSeatHeldByAnotherCaller { ledger_actor: _, caller: _ } => "seat-held-by-another-caller" as NonEmptyStr
+    DoorSeatNotForThisWorkOrLaunch { reference: _ } => "seat-not-for-this-work-or-launch" as NonEmptyStr
+    DoorSeatLeaseExpired { ledger_expires_at: _, observed_at: _ } => "seat-lease-expired" as NonEmptyStr
   }
 }
 
@@ -348,6 +371,10 @@ fn front_door_refusal_detail(r: FrontDoorRefusal) -> String {
     DoorSeatNeverAdmitted => "no acquisition of the permit's reference appears in its partition"
     DoorSeatAdmittedByAnother { admitted_by: e } => join(["the permit's reference was admitted by ", e as String, ", not by the grant it names"], "")
     DoorSeatLedgerUnread { detail: d } => join(["the seat ledger could not be read, so currency is unestablished: ", d], "")
+    DoorPermitPartitionNotThisGroup { partition: p, door_group: g } => join(["the permit names partition ", p as String, ", which is not a seat partition of ", g as String], "")
+    DoorSeatHeldByAnotherCaller { ledger_actor: a, caller: c } => join(["the seat was acquired by ", a as String, " and is presented by ", principal_ref_label(p: c)], "")
+    DoorSeatNotForThisWorkOrLaunch { reference: r } => join(["the ledger reference ", r as String, " was not minted for the permit's work against this door's launch"], "")
+    DoorSeatLeaseExpired { ledger_expires_at: x, observed_at: o } => join(["the seat's recorded lease term ended at ", to_string(x), "; the door observed ", to_string(o)], "")
   }
 }
 
@@ -436,14 +463,48 @@ fn front_door_admit_authenticated(
     door_refuse(cause: DoorPermitExpired { expires_at: c.expires_at, observed_at: observed_at })
   } else if !principal_ref_eq(a: c.caller, b: caller) {
     door_refuse(cause: DoorPermitForAnotherCaller { permit_caller: c.caller, caller: caller })
+  } else if !harness_seat_partition_is_for_group(partition: c.partition, group: door.group) {
+    door_refuse(cause: DoorPermitPartitionNotThisGroup { partition: c.partition, door_group: door_group })
   } else {
     match ledger(c.partition, c.reference, c.grant) {
-      SeatGrantHeld => FrontDoorForward { claims: c }
+      SeatGrantHeld { actor: a, recorded_at: at, term_seconds: term } =>
+        front_door_admit_held(caller: caller, claims: c, door_launch: door_launch, ledger_actor: a, recorded_at: at, term_seconds: term, observed_at: observed_at)
       SeatGrantReleased { reason: why } => door_refuse(cause: DoorSeatReleased { reason: why })
       SeatGrantNeverAdmitted => door_refuse(cause: DoorSeatNeverAdmitted)
       SeatGrantAdmittedByAnother { admitted_by: e } => door_refuse(cause: DoorSeatAdmittedByAnother { admitted_by: e })
       SeatGrantUnread { detail: d } => door_refuse(cause: DoorSeatLedgerUnread { detail: d })
     }
+  }
+}
+
+// THE LEDGER IS THE AUTHORITY; THE PERMIT ONLY NAMES WHICH ENTRY TO READ. Everything a forwarded request
+// rides on is decided here against what placement RECORDED, so a holder of the permit key who never took
+// a seat has nothing to present (never admitted), and one presenting someone else's live seat is refused
+// on the recorded actor, the recorded attempt or the recorded launch:
+//   caller -- the acquisition's actor must be the authenticated principal; placement records the
+//             principal it acts for as the actor (gunbc.harness.harness_cli harness_place_for).
+//   work and launch -- the recorded reference must be exactly harness_seat_reference over the permit's
+//             work and THIS door's launch key (gunbc.harness.harness_seat harness_seat_reference_names).
+//   expiry -- the recorded acquisition instant plus its recorded term, not the permit's expires_at.
+// The permit's own claims were checked first only so a mismatch refuses before the ledger is read.
+fn front_door_admit_held(
+  caller: PrincipalRef,
+  claims: ServingSeatPermitClaims,
+  door_launch: NonEmptyStr,
+  ledger_actor: NonEmptyStr,
+  recorded_at: EpochSecs,
+  term_seconds: Nat,
+  observed_at: EpochSecs,
+) -> FrontDoorVerdict {
+  let ledger_expires_at = recorded_at + term_seconds
+  if (ledger_actor as String) != principal_ref_label(p: caller) {
+    door_refuse(cause: DoorSeatHeldByAnotherCaller { ledger_actor: ledger_actor, caller: caller })
+  } else if !harness_seat_reference_names(reference: claims.reference, attempt: claims.work, offer_key: door_launch) {
+    door_refuse(cause: DoorSeatNotForThisWorkOrLaunch { reference: claims.reference })
+  } else if ledger_expires_at <= observed_at {
+    door_refuse(cause: DoorSeatLeaseExpired { ledger_expires_at: ledger_expires_at, observed_at: observed_at })
+  } else {
+    FrontDoorForward { claims: claims }
   }
 }
 

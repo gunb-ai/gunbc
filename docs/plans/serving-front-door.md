@@ -23,7 +23,7 @@ Item 3 of [dogfood-route-manual-interventions](dogfood-route-manual-intervention
   It has exactly one forwarding arm, and that arm requires both axes. `front_door_access_decision` projects the verdict onto `std.access` `AccessDecision`. This is a stated departure from building the verdict out of `decision_meet`: `decision_meet` erases which axis refused, and the counter needs that.
 - **Counting.** `front_door_tally` keeps one count per refusal wire, plus the number of forwarded requests.
 - **Router contract.** `gunbc.serving.router_realization` gains the forbidden arm `ForwardWithoutPermit`.
-- **Witnesses** are in `test.claim.serving.serving_front_door_witness_test`. The RED-first case is a valid caller with no grant: it is refused and counted. A grant for another group, a grant for another launch, an expired grant, a released seat, a seat that was never admitted, rewritten claims and an unauthenticated caller all refuse. The positive control forwards. A mutation run weakened the expiry boundary and the counter, and the matching claims went red.
+- **Witnesses** are in `test.claim.serving.serving_front_door_witness_test`. The RED-first case is a valid caller with no grant: it is refused and counted. A grant for another group, a grant for another launch, an expired grant, a released seat, a seat that was never admitted, rewritten claims and an unauthenticated caller all refuse. The positive control forwards. A mutation run weakened the expiry boundary and the counter, and the matching claims went red. A second mutation disabled the ledger-actor and ledger-term checks, and their two reds failed.
 
 ## Proposal A: the forwarding realization (NOT applied; needs bold-bee-114's go)
 
@@ -50,7 +50,14 @@ This is converged through the existing `gunbc.spark` serving deployment authorit
 ## Credential: the permit key
 
 - **Key id:** `serving-seat-permit-2026-10` (HMAC-SHA-256). With HMAC, the verifying key is also the issuing key, so custody is the boundary. The key must not reach a sender.
-- **Today's custody gap, stated:** `harness_place_cli` runs in the *caller's* process, so whoever runs placement holds the key. The ledger read limits what a key holder can forge: a permit for a seat that was never admitted, or was admitted by a different event, refuses. But a key holder could still mint a permit for a seat it does hold with a longer term. Closing that needs placement to run as a service that holds the key. It is listed here as the residual risk.
+- **The ledger is the authority; the MAC only protects the claims.** `front_door_admit_held` forwards only when everything it reads from what placement *recorded* holds, not from the permit:
+  1. The reference was acquired, by the permit's grant event, in the named partition, and has not been released.
+  2. The acquisition's recorded actor equals the authenticated caller. `harness_place_for` now records the principal it acts for as the actor, and no longer takes a free-text actor argument.
+  3. The recorded reference decodes, through `harness_seat_reference_names` (the inverse of `harness_seat_reference`), to exactly the permit's work and **this door's** launch key, and the partition is one of the door's group's partitions.
+  4. The recorded acquisition time plus its recorded term is still in the future.
+
+  So a holder of the real key cannot get through by minting. A permit for a grant that doesn't exist, for another caller's live seat, for other work, for another launch, or with a stretched expiry each refuses (witnessed, with a mutation control).
+- **What check 2 can tell apart today.** The authentication layer has exactly one service principal (`principal:gunbc/workflows/fabric`). So check 2 distinguishes a human session from the service, and one human from another, but not one service sender from another. Every service caller that passes authentication *and* holds the permit key passes check 2 for any service-held seat. Splitting that needs per-sender service principals, which is credential issuance and belongs to the managed-identity row (#13068). This change does not fork it. Until then, the permit key must reach only the placement authority and the door.
 - **Issuance, rotation and revocation drill:** owned by `credential-lifecycle-revocation` (gunb-ai/gunbc#13068, the managed-identity row). This key is registered there as a member that row must cover. This change issues no credential.
 
 ## Migration note: what the existing senders must change (stays manual)
