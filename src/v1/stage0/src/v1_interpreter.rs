@@ -20600,7 +20600,7 @@ fn eval_emit_host_run_transport_builtin(
 /// observation/apply helpers when the self-emitted transport consumes the modeled
 /// ResolvedBuildContext and the dispatcher-change, environment-change, and cold/warm
 /// agreement witnesses remain green without them.
-/// Durable re-root (realization-side config, GUNBC_RESOLVED_GRAPH_CACHE_DIR precedent): the
+/// Durable re-root (realization-side config): the
 /// root is WHERE the cache lives, never WHAT identifies an artifact — the content-hash path
 /// component stays the key. Opt-in; only the declared /tmp/gunbc_ scratch prefix
 /// (std.emit_on_demand root authority) is rebased, so an arbitrary caller path never silently

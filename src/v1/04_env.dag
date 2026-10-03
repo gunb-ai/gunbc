@@ -1084,10 +1084,10 @@ fn lookup_type(env: TypeEnv, ident: Int) -> Node? {
 // cycle -- had to re-derive the same question inside declaration_provenance_of. So the ruling's
 // "exists once" was true of the name and false of the fact. The body that stood here inlined
 // `concat("<kernel:", name, ">")`, reproducing kernel_span's output by hand, which made it a second
-// authority for the span FORMAT as well; the relocated declaration asks kernel_span instead. Both
-// consumers this module used to supply -- the infer-side rewire guard
-// (ancestry_binding_is_kernel_identity) and the emit-side use-line decision -- now import it from
-// v1.std.core directly, so they cite the authority's real home rather than this waypoint. The
+// authority for the span FORMAT as well; the relocated declaration asks kernel_span instead. This
+// module used to supply two consumers. The infer-side rewire guard (ancestry_binding_is_kernel_identity)
+// is deleted along with the import-str identity rewire it guarded. The emit-side use-line decision now
+// imports it from v1.std.core directly, citing the authority's real home rather than this waypoint. The
 // emitter's additional condition -- that the kernel node is a host-realized structureless scalar
 // (NoConnective, zero children), which excludes structural kernels like Bool = True | False whose
 // use-line IS the path to the realization -- is unchanged: a SEPARATE fact composed beside this

@@ -7,7 +7,19 @@ import extdeps.shell
 import extdeps.gunbc
 import extdeps.git
 import extdeps.git.inspect
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemFileObservation,
+  FilesystemFileAbsent,
+  FilesystemFileRead,
+  FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree,
+  FilesystemFileSubjectRefused,
+  FilesystemReadSucceeded,
+  FilesystemReadRefused,
+  filesystem_read_outcome,
+}
+import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import tools.host_prelude {
   witness_bin,
   witness_bin_ensure_built_typed,
@@ -145,10 +157,24 @@ type ReferenceRealizationPolicyStanding
 // from a body the author wrote). Those are indistinguishable in the artifact and they are different
 // subjects, so the source declaration is read for this and only this. A source file that cannot be
 // located refuses rather than defaulting to either answer.
+//
+// AND UNLOCATABLE HAS TWO MEANINGS THAT ONE ARM USED TO CARRY. `DeclarationSourceUnresolved` answered
+// both "we looked at every candidate spelling and none holds the declaration" (an established
+// absence, one listing at a time) and "a candidate could not be looked at at all" (the listing or
+// the read was refused -- could-not-look), which is the same conflation filesystem_file_observation
+// exists to close everywhere else. The candidate scan now
+// runs through filesystem_file_observation: the unresolved arm is reachable only from candidates
+// whose parent listing SUCCEEDED and did not name the file (or whose content, read, does not declare
+// the name), and any could-not-look shape surfaces as DeclarationSourceUnreadable with the path and
+// the host's cause. A resolved candidate still wins over a recorded fault -- the fault names a
+// different candidate spelling, and a file that was actually read and declares the name answers the
+// question -- so the census's happy path is unchanged and only the terminal all-unresolved case
+// gained the distinction.
 type DeclarationBodyStanding
   = DeclaredOpaque
   | DeclaredWithBody
   | DeclarationSourceUnresolved { attempted: String }
+  | DeclarationSourceUnreadable { path: String, cause: String }
 
 // The declaration scan's own state. It exists because the body question cannot be answered from the
 // declaration line alone: a line ending after the name is undecided until the following non-blank
@@ -165,6 +191,19 @@ type OpaqueSubjectRow {
   name: String
   standing: DeclarationBodyStanding
 }
+
+// THE CANDIDATE FOLD'S CARRIER, so the wet reader stays one small function and the policy over what
+// the candidates reported is pure and claimable. `unobserved` holds the FIRST could-not-look
+// candidate in candidate order; a later fault does not displace it -- one fault is enough to answer
+// "could the absence have been established at all", and `attempted` still names every candidate.
+type UnobservedDeclarationCandidate {
+  path: String
+  cause: String
+}
+
+type DeclarationCandidateScan
+  = DeclarationScanResolved { standing: DeclarationBodyStanding }
+  | DeclarationScanUnresolved { attempted: String, unobserved: UnobservedDeclarationCandidate? }
 
 // ---------------------------------------------------------------------------------------------
 
@@ -714,27 +753,97 @@ fn declaration_body_standing_in(content: String, name: String) -> DeclarationBod
   }
 }
 
-fn declaration_body_standing(source_module: String, name: String, roots: List<String>) -> DeclarationBodyStanding {
-  let candidates = module_candidate_paths(source_module: source_module, roots: roots)
-  fold(
-    candidates,
-    init: DeclarationSourceUnresolved { attempted: join(candidates, " ") },
-    f: (acc, path) =>
-      match acc {
-        DeclaredOpaque => acc
-        DeclaredWithBody => acc
-        DeclarationSourceUnresolved { attempted: a } =>
-          let read = Filesystem.Read(path: path)
-          if !read.success {
-            acc
-          } else {
-            match declaration_body_standing_in(content: read.content, name: name) {
-              Present { value: v } => v
-              Absent => acc
-            }
+// THE CANDIDATE FOLD'S ONE WET READ, and the pure policy over what it reported. The wet read is one
+// call into the shared composition -- gunbc.filesystem_file_observe
+// filesystem_file_observation_of_path, per candidate path; this module owns no raw filesystem call
+// for the candidate fold -- and the observation is ONE fact per candidate: the listing decides
+// presence, the read supplies content only for a listed file. Because the composition is shared,
+// the fold below cannot sequence the two channels differently from any other consumer of the
+// transport.
+
+// THE FOLD STEP IS TOTAL OVER THE OBSERVATION, which is what makes the policy claimable: the witness
+// suite constructs each transport shape and holds the rules -- resolved wins, an established absence
+// keeps the search unresolved, the first could-not-look is recorded and the search continues -- over
+// constructed values, without touching a host filesystem. `attempted` rides through unchanged so the
+// terminal arm still names every candidate spelling.
+fn declaration_candidate_scan_then_with(
+  acc: DeclarationCandidateScan,
+  o: FilesystemFileObservation,
+  name: String,
+  path: String,
+) -> DeclarationCandidateScan {
+  match acc {
+    DeclarationScanResolved { standing: _ } => acc
+    DeclarationScanUnresolved { attempted: a, unobserved: u } =>
+      match o {
+        FilesystemFileRead { path: _, content: c } =>
+          match declaration_body_standing_in(content: c, name: name) {
+            Present { value: v } => DeclarationScanResolved { standing: v }
+            Absent => DeclarationScanUnresolved { attempted: a, unobserved: u }
+          }
+        FilesystemFileAbsent(_) => DeclarationScanUnresolved { attempted: a, unobserved: u }
+        FilesystemFileIndeterminate { cause: c } =>
+          DeclarationScanUnresolved {
+            attempted: a,
+            unobserved: first_unobserved_candidate(u: u, path: path, cause: c),
+          }
+        FilesystemFileObservationsDisagree { path: p, cause: c } =>
+          DeclarationScanUnresolved {
+            attempted: a,
+            unobserved: first_unobserved_candidate(u: u, path: p, cause: c),
+          }
+        FilesystemFileSubjectRefused { directory: d, name: n, cause: c } =>
+          DeclarationScanUnresolved {
+            attempted: a,
+            unobserved: first_unobserved_candidate(
+              u: u,
+              path: join([d, n], "/"),
+              cause: c,
+            ),
           }
       }
+  }
+}
+
+fn first_unobserved_candidate(
+  u: UnobservedDeclarationCandidate?,
+  path: String,
+  cause: String,
+) -> UnobservedDeclarationCandidate? {
+  match u {
+    Present { value: _ } => u
+    Absent => Present { value: UnobservedDeclarationCandidate { path: path, cause: cause } }
+  }
+}
+
+// THE TERMINAL DECODE IS ALSO PURE AND CLAIMABLE: a resolved scan answers; an unresolved scan with
+// a recorded could-not-look refuses as unreadable; only a scan whose every candidate was looked at
+// and found absent (or read without declaring the name) answers unresolved.
+fn declaration_standing_from_scan(scan: DeclarationCandidateScan) -> DeclarationBodyStanding {
+  match scan {
+    DeclarationScanResolved { standing: s } => s
+    DeclarationScanUnresolved { attempted: a, unobserved: u } =>
+      match u {
+        Present { value: bad } => DeclarationSourceUnreadable { path: bad.path, cause: bad.cause }
+        Absent => DeclarationSourceUnresolved { attempted: a }
+      }
+  }
+}
+
+fn declaration_body_standing(source_module: String, name: String, roots: List<String>) -> DeclarationBodyStanding {
+  let candidates = module_candidate_paths(source_module: source_module, roots: roots)
+  let scan = fold(
+    candidates,
+    init: DeclarationScanUnresolved { attempted: join(candidates, " "), unobserved: none },
+    f: (acc, path) =>
+      declaration_candidate_scan_then_with(
+        acc: acc,
+        o: filesystem_file_observation_of_path(path: path),
+        name: name,
+        path: path,
+      )
   )
+  declaration_standing_from_scan(scan: scan)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -753,20 +862,28 @@ type EmittedTreeRead
   = EmittedTreeFiles { files: List<EmittedFile> }
   | EmittedTreeUnreadable { cause: String }
 
+// THE FOLD'S READ IS THE INTERFACE'S COPRODUCT, NOT A BRANCH ON `success`. The read's scalar
+// channels are folded through filesystem_read_outcome rather than branched on directly, so this
+// site consumes the modeled result like every converted consumer of the transport.
 fn emitted_tree_read_then(acc: EmittedTreeRead, path: String) -> EmittedTreeRead {
   match acc {
     EmittedTreeUnreadable { cause: c } => EmittedTreeUnreadable { cause: c }
     EmittedTreeFiles { files: so_far } =>
       let read = Filesystem.Read(path: path)
-      if !read.success {
-        EmittedTreeUnreadable {
-          cause: concat(
-            "an emitted file could not be read, so the subject is incomplete and any population over the rest would be a fraction reported as a whole: ",
-            concat(path, concat(" — ", read.error))
-          )
-        }
-      } else {
-        EmittedTreeFiles { files: list_push(so_far, read_emitted_file(path: path, content: read.content)) }
+      match filesystem_read_outcome(
+        content: read.content,
+        success: read.success,
+        error: read.error,
+      ) {
+        FilesystemReadRefused { error: e } =>
+          EmittedTreeUnreadable {
+            cause: concat(
+              "an emitted file could not be read, so the subject is incomplete and any population over the rest would be a fraction reported as a whole: ",
+              concat(path, concat(" — ", e))
+            )
+          }
+        FilesystemReadSucceeded { content: c } =>
+          EmittedTreeFiles { files: list_push(so_far, read_emitted_file(path: path, content: c)) }
       }
   }
 }
@@ -1075,6 +1192,8 @@ fn standing_text(s: DeclarationBodyStanding) -> String {
     DeclaredOpaque => "opaque"
     DeclaredWithBody => "has-body"
     DeclarationSourceUnresolved { attempted: a } => concat("source-unresolved(", concat(a, ")"))
+    DeclarationSourceUnreadable { path: p, cause: c } =>
+      concat("source-unreadable(", concat(p, concat(": ", concat(c, ")"))))
   }
 }
 
