@@ -26,8 +26,8 @@ import gunbc.machine_intake_bmc_secure {
 }
 import gunbc.machine_intake_phase { DevelopmentAndTest, intake_qualification_policy }
 import gunbc.machine_intake_mtcollins1_power_on_account {
-  PowerOnAccount, PowerOnEvidence, AttemptConfigurationReceipt, ConsoleRead, HandoffPoweredOn, SelEventsNotRead, WatchdogUnobserved,
-  StimulusRequestNotRecorded, StimulusApplicationNotRecorded, PopulationNotRecorded, FirmwareReadbacksNotRecorded,
+  PowerOnAccount, PowerOnEvidence, AttemptConfigurationReceipt, ConsoleRead, HandoffPoweredOn, SelEventsRead, WatchdogUnobserved,
+  ExpectedSockets, StimulusRequestNotRecorded, StimulusApplicationNotRecorded, PopulationNotRecorded, FirmwareReadbacksNotRecorded,
   FirmwareSetBootReadback, RestartedRepeatedly, mtcollins1_power_on_account, firmware_set_boot_readback,
 }
 import extdeps.crypto.hash { sha256_digest }
@@ -41,6 +41,8 @@ import gunbc.machine_intake_ampere_socket_console_observation { ampere_socket_co
 import gunbc.machine_intake_linux_boot_console_observation { linux_boot_console_observation }
 import gunbc.machine_intake_kernel_module_decompression_observation { kernel_module_decompression_observation }
 import gunbc.machine_intake_host_capture_envelope { HostCaptureLiveStream, host_capture_lines }
+import gunbc.machine_intake_pre_os_bringup_verdict { SelWindowEvent, BootRestart }
+import extdeps.bmc.ipmi_sel { SystemRestart }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { SelSnapshotReading, SelSnapshotRead, SelSnapshotNotTaken }
 import gunbc.machine_intake_mtcollins1_socket1_investigation_observation {
   MtCollins1SocketCpu, ProductionPart, mtcollins1_socket_cpus, mtcollins1_cpu_report_2026_09_23,
@@ -927,11 +929,18 @@ test fn whole_set_grounded_asks_for_the_boot_readback() -> Bool {
 // excerpt sha256 edbcaabead8194544201251f9a8a5eb26ba3dfbb8da1caec9627487f260d153d.
 data step1_last_two_cycles: String = "NOTICE:  DRAM FW version 220414\r\nCP: 0ff00900\r\nMEMC param:\r\n  mcu_enable_mask = 00000001 [default: 000000ff]\r\nMCU param:\r\n  ecc_en = 00000002 [default: 00000001]\r\nDRAM populated DIMMs:\r\n  SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK    \r\nCP: 3ff00100\r\nCP: 3ff00200\r\nCP: 00f01902\r\nCP: 0ff00a00\r\nCP: 0ff00b01\r\nCP: 00f01901\r\nCP: 00f01904\r\nCP: 00f02901\r\nCP: 00f01905\r\nCP: 00f02902\r\nCP: 00f02903\r\nCP: 00f02904\r\nCP: 00f01907\r\nCP: 00f01906\r\nCP: 00f01908\r\nCP: 00f01909\r\nCP: 0ff00b02\r\nCP: 0ff00c00\r\nCP: 3ff00300\r\nCP: 00001a02\r\nCP: 00001a03\r\nCP: 00001a04\r\nCP: 00001a05\r\nCP: 00f01a07\r\nCP: 00001a09\r\nCP: 00001a0a\r\nNOTICE:  DRAM FW version 220414\r\nCP: 0ff00900\r\nMEMC param:\r\n  mcu_enable_mask = 00000001 [default: 000000ff]\r\nMCU param:\r\n  ecc_en = 00000002 [default: 00000001]\r\nDRAM populated DIMMs:\r\n  SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK    \r\nCP: 3ff00100\r\nCP: 3ff00200\r\nCP: 00f01902\r\nCP: 0ff00a00\r\nCP: 0ff00b01\r\nCP: 00f01901\r\nCP: 00f01904\r\nCP: 00f02901\r\nCP: 00f01905\r\nCP: 00f02902\r\nCP: 00f02903\r\nCP: 00f02904\r\nCP: 00f01907\r\nCP: 00f01906\r\nCP: 00f01908\r\nCP: 00f01909\r\nCP: 0ff00b02\r\nCP: 0ff00c00\r\nCP: 3ff00300\r\nCP: 00001a02\r\nCP: 00001a03\r\nCP: 00001a04\r\nCP: 00001a05\r\nCP: 00f01a07\r\nCP: 00001a09\r\nCP: 00001a0a\r\n"
 
-fn account_over(lines: List<String>) -> PowerOnAccount {
+// Two real "System Restart" rows of the step-1 loop (sel-after.txt, rows 37 and 3b), as the SEL reader
+// types them: the typed reset evidence that opens the cycles after the power-on.
+data loop_restarts: List<SelWindowEvent> = [
+  SelWindowEvent { record_id: 55, bmc_clock_rendering: "10/02/2026 07:32:27 PM UTC", kind: BootRestart { offset: SystemRestart } },
+  SelWindowEvent { record_id: 59, bmc_clock_rendering: "10/02/2026 07:32:52 PM UTC", kind: BootRestart { offset: SystemRestart } },
+]
+
+fn account_over(lines: List<String>, restarts: List<SelWindowEvent>) -> PowerOnAccount {
   let digest = Sha256FileDigest { digest: sha256_digest(hex: "6f33812ce2af74aacf9deba90931aa9144b1ba974532ae9e890b90a57c5900c1") }
   mtcollins1_power_on_account(e: PowerOnEvidence {
     configuration: AttemptConfigurationReceipt {
-      subject: "mtcollins1", attempt: "witness", expected_sockets: [0, 1],
+      subject: "mtcollins1", attempt: "witness", expected: ExpectedSockets { sockets: [0, 1], source: "witness" },
       requested: StimulusRequestNotRecorded { reason: "witness" }, applied: StimulusApplicationNotRecorded { reason: "witness" },
       cpus: PopulationNotRecorded { reason: "witness" }, dimms: PopulationNotRecorded { reason: "witness" }, firmware: FirmwareReadbacksNotRecorded { reason: "witness" },
     },
@@ -942,7 +951,7 @@ fn account_over(lines: List<String>) -> PowerOnAccount {
       milestones: mtcollins1_console_milestones(lines: lines), sockets: ampere_socket_console_observation(lines: lines),
       loader: grub_console_report(lines: lines), linux: linux_boot_console_observation(lines: lines), modules: kernel_module_decompression_observation(lines: lines),
     },
-    sel: SelEventsNotRead, watchdog: WatchdogUnobserved { reason: "witness" }, bmc_anomalies: [], census_ended: false, coverage: [],
+    sel: SelEventsRead { events: restarts }, watchdog: WatchdogUnobserved { reason: "witness" }, bmc_anomalies: [], census_ended: false, coverage: [],
   })
 }
 
@@ -950,14 +959,14 @@ data uefi_cycle: List<String> = ["NOTICE:  DRAM FW version 220414", "CP: 0ff0090
 
 data dram_only_cycle: List<String> = ["NOTICE:  DRAM FW version 220414", "CP: 0ff00900", "CP: 00001a0a"]
 
-fn readback_over(lines: List<String>) -> FirmwareSetBootReadback? {
-  Present { value: firmware_set_boot_readback(a: account_over(lines: lines)) }
+fn readback_over(lines: List<String>, restarts: List<SelWindowEvent>) -> FirmwareSetBootReadback? {
+  Present { value: firmware_set_boot_readback(a: account_over(lines: lines, restarts: restarts)) }
 }
 
 // The set converges on UEFI, and the converged verdict NAMES the SCP readback as grounded through the
 // uncited SMpro decode -- it is never promoted to an unqualified observation.
 test fn whole_set_reaching_uefi_converges_naming_the_uncited_scp_decode() -> Bool {
-  match run_booted(w: shape(power_off: true), records: whole_set(), boot: readback_over(lines: uefi_cycle)) {
+  match run_booted(w: shape(power_off: true), records: whole_set(), boot: readback_over(lines: uefi_cycle, restarts: [])) {
     FirmwareBaselineConverged { uncited_readbacks: u } =>
       list_length(u) == 1 && any(u, x => (x.target == ScpFirmware))
     _ => false
@@ -967,7 +976,7 @@ test fn whole_set_reaching_uefi_converges_naming_the_uncited_scp_decode() -> Boo
 // RED, the 2026-10-03 loop, derived from its capture: the set did not reach UEFI and the host restarted
 // repeatedly, so convergence refuses with the account's own ending.
 test fn the_2026_10_03_loop_after_the_set_refuses_with_the_derived_ending() -> Bool {
-  match refusal_of(verdict: run_booted(w: shape(power_off: true), records: whole_set(), boot: readback_over(lines: host_capture_lines(capture: HostCaptureLiveStream { text: step1_last_two_cycles })))) {
+  match refusal_of(verdict: run_booted(w: shape(power_off: true), records: whole_set(), boot: readback_over(lines: host_capture_lines(capture: HostCaptureLiveStream { text: step1_last_two_cycles }), restarts: loop_restarts.take(n: 1)))) {
     Present { value: c } => match c { BootProgressLostAfterFirmwareSet { ending: e, last_relation: _ } => (match e { RestartedRepeatedly { cycles: n, last_cycle_ended_after: _, cadence: _, console_errors: k, sel_restarts: _, watchdog: _, reset_cause: _ } => n == 2 && k == 0 _ => false }) _ => false }
     Absent => false
   }
@@ -976,7 +985,7 @@ test fn the_2026_10_03_loop_after_the_set_refuses_with_the_derived_ending() -> B
 // RED: reaching UEFI is a milestone, not an ending. UEFI in cycle 1 and then a loop that never got as far
 // again is not a converged boot.
 test fn uefi_then_a_restart_loop_refuses() -> Bool {
-  match refusal_of(verdict: run_booted(w: shape(power_off: true), records: whole_set(), boot: readback_over(lines: concat(uefi_cycle, concat(dram_only_cycle, dram_only_cycle))))) {
+  match refusal_of(verdict: run_booted(w: shape(power_off: true), records: whole_set(), boot: readback_over(lines: concat(uefi_cycle, concat(dram_only_cycle, dram_only_cycle)), restarts: loop_restarts))) {
     Present { value: c } => match c { BootReachedUefiThenRestartedRepeatedly { cycle: k, ending: _ } => k == 1 _ => false }
     Absent => false
   }

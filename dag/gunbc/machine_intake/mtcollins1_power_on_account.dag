@@ -1,10 +1,11 @@
 module gunbc.machine_intake_mtcollins1_power_on_account
 
+import v2.std.algebra { any, filter }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_to_nat }
 import v2.std.optional { Present }
-import extdeps.tools.sha256sum { Sha256FileDigest }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
 import extdeps.ampere.scp_diagnostic {
   AmpereBootStatus, NotStarted, Started, Completed, Failed,
 }
@@ -24,7 +25,7 @@ import gunbc.machine_intake_pre_os_bringup_verdict {
   SelWindowEvent, BootRestart, FirmwareProgressRecord, OemTimestamped, OtherStandardEvent,
   FirmwareConsoleReport, NoTerminalStated, UndecodedErrorCodesOnly, FirmwareErrorStatementUnrecognized, TrainingRefusedByFirmware,
 }
-import gunbc.machine_intake_mtcollins1_smpro_observation { SmproProbeOutcome, SmproSocketRecords, SmproRecordSet, smpro_socket_word, smpro_outcome_word, mtcollins1_smpro_socket_records }
+import gunbc.machine_intake_mtcollins1_smpro_observation { SmproProbeOutcome, SmproSocketRecords, SmproRecordSet, smpro_socket_word, smpro_outcome_word, mtcollins1_smpro_socket_records, outcome_socket }
 import extdeps.ampere.smpro_internal_error {
   SmproInternalRecord, SmproProcessor, SmproProcessorSmpro, SmproProcessorPmpro,
   SmproRecordGate, PendingAndDecoded, NotPending, GpiUnavailable, PendingWithClearOrMissingType, TypePresentWithoutPending,
@@ -42,7 +43,8 @@ import gunbc.machine_intake_ampere_checkpoint_console_observation {
   ampere_checkpoint_relation_text, ampere_checkpoint_last_token,
 }
 import gunbc.machine_intake_mtcollins1_console_milestone_observation {
-  ConsoleMilestone, ConsoleMilestoneObservation, ConsoleMilestoneSighting,
+  ConsoleMilestone, ConsoleMilestoneObservation, ConsoleMilestoneSighting, ConsoleFailureLine, ConsoleFailureSighting,
+  FirmwareErrorStatementLine, GrubFailureLine, InitrdLoadFailureLine, KernelPanicLine, ModuleDecompressionRefusalLine,
   DramFirmwareBannerObserved, FirmwareSummaryObserved, UefiConsolePromptObserved, UefiShellObserved, GrubBannerObserved, EfiStubLineObserved, KernelBannerObserved,
   console_milestone_name, console_milestone_sighting_text,
 }
@@ -124,10 +126,17 @@ type FirmwareReadbacks
   = FirmwareReadBeforeActuation { rows: List<FirmwareReadbackRow> }
   | FirmwareReadbacksNotRecorded { reason: NonEmptyStr }
 
+// THE EXPECTED TOPOLOGY THIS ATTEMPT IS JUDGED AGAINST, recorded for the attempt or not at all: a
+// historical census row is not an expectation of this attempt, so with nothing recorded no topology
+// degradation is minted and the question stays open (law 6).
+type ExpectedTopology
+  = ExpectedSockets { sockets: List<Int>, source: NonEmptyStr }
+  | ExpectedTopologyNotRecorded { reason: NonEmptyStr }
+
 type AttemptConfigurationReceipt {
   subject: NonEmptyStr
   attempt: NonEmptyStr
-  expected_sockets: List<Int>
+  expected: ExpectedTopology
   requested: StimulusRequest
   applied: StimulusApplication
   cpus: PopulationReading<SocketCpuRow>
@@ -142,6 +151,7 @@ type Carrier
   = SolConsole
   | KvmScreen
   | SmproRegisters
+  | SmproErrorRegisters
   | SystemEventLog
   | SensorTable
   | ChassisPower
@@ -249,22 +259,33 @@ type SocketProgressAccount {
   reading: SocketProgressReading
 }
 
+// ONLY TYPED POWER-ON OR RESET EVIDENCE OPENS A CYCLE. A console banner proves the DRAM firmware
+// printed, not that a cycle began; a banner with no boundary is an unbound span and an open question.
 type CycleBoundary
   = OpenedByPowerOn
+  | OpenedBySelPowerUp { record: SelWindowEvent }
   | OpenedBySelRestart { record: SelWindowEvent }
-  | OpenedByConsoleBannerOnly
-  | OpenedByProgressEvidenceOnly
 
 type ConsoleSpanBinding
   = SpanBound { span: Int }
   | NoConsoleSpan
   | SpanBindingAmbiguous
 
+// A MILESTONE WITH ITS PROVENANCE: the sighting, the digest of the capture it was read from, and the
+// reader that read it, so one line from two differently digested captures stays two facts.
+data mtcollins1_console_milestone_reader: NonEmptyStr = "gunbc.machine_intake_mtcollins1_console_milestone_observation mtcollins1_console_milestones"
+
+type MilestoneEvidence {
+  sighting: ConsoleMilestoneSighting
+  capture: Sha256FileDigest
+  reader: NonEmptyStr
+}
+
 type BootCycleAccount {
   index: Int
   boundary: CycleBoundary
   console: ConsoleSpanBinding
-  milestones: List<ConsoleMilestoneSighting>
+  milestones: List<MilestoneEvidence>
   ended_after: AmpereCheckpointRelation?
 }
 
@@ -278,9 +299,20 @@ type DecodedBootError
   | KernelPanic { reason: NonEmptyStr }
   | KernelModuleRefused { observation: KernelModuleDecompressionObservation }
 
+// A STATED FAILURE WITH ITS CYCLE, when the evidence binds it to one: a console failure line located
+// in a bound span. SMpro and SEL failures are read per pass and per window, never per cycle, so their
+// cycle is absent -- and an error without a cycle is history; it never chooses the ending.
 type LocatedError {
+  cycle: Int?
   subject: PowerOnSubject
   error: DecodedBootError
+}
+
+type SmproWarningAccount {
+  socket: Int
+  processor: SmproProcessor
+  pass: NonEmptyStr
+  record: SmproInternalRecord
 }
 
 type Degradation
@@ -319,11 +351,12 @@ type HostEnding
       watchdog: BmcWatchdogDisposition,
       reset_cause: ResetCauseObservation,
     }
-  | StoppedWithoutRestart { last_milestone: ConsoleMilestoneSighting?, ended_after: AmpereCheckpointRelation?, console_errors: Int, restarts_before: Int }
+  | StoppedWithoutRestart { last_milestone: MilestoneEvidence?, ended_after: AmpereCheckpointRelation?, console_errors: Int, restarts_before: Int }
   | HostEndingNotEstablished
 
 type ConfigurationField
-  = ConfiguredStimulus
+  = ConfiguredExpectedTopology
+  | ConfiguredStimulus
   | ConfiguredCpuPopulation
   | ConfiguredDimmPopulation
   | ConfiguredFirmware
@@ -353,6 +386,7 @@ type PowerOnAccount {
   ending: HostEnding
   degradations: List<Degradation>
   errors: List<LocatedError>
+  warnings: List<SmproWarningAccount>
   anomalies: List<PlacedAnomaly>
   coverage: List<CarrierCoverage>
   open: List<OpenQuestion>
@@ -385,7 +419,7 @@ fn progress_failed(p: SmproBootProgress) -> Bool {
 fn smpro_failures(progress: List<SocketProgressAccount>) -> List<LocatedError> {
   flat_map(progress, p => match p.reading {
     ProgressRead { cur_bootstage_word: c, bootstage_word: r, progress: g } =>
-      if progress_failed(p: g) { [LocatedError { subject: SocketSubject { socket: p.socket }, error: SmproReportedFailure { socket: p.socket, pass: p.pass, cur_bootstage_word: c, bootstage_word: r } }] } else { [] }
+      if progress_failed(p: g) { [LocatedError { cycle: none, subject: SocketSubject { socket: p.socket }, error: SmproReportedFailure { socket: p.socket, pass: p.pass, cur_bootstage_word: c, bootstage_word: r } }] } else { [] }
     ProgressNotRead { reason: _ } => []
   })
 }
@@ -452,13 +486,19 @@ type SocketRecordsAccount {
   records: SmproSocketRecords
 }
 
+// THE SOCKETS A PASS PROBED, from its own outcomes: the probe plan's targets, never an expectation.
+fn pass_sockets(p: SmproPassEvidence) -> List<Int> {
+  let none_yet: List<Int> = []
+  fold(map(p.outcomes, o => outcome_socket(o: o)), init: none_yet, f: (acc, k) => if any(acc, j => j == k) { acc } else { concat(acc, [k]) })
+}
+
 fn socket_records(e: PowerOnEvidence) -> List<SocketRecordsAccount> {
-  flat_map(e.smpro, p => map(e.configuration.expected_sockets, k => SocketRecordsAccount { pass: p.label, records: mtcollins1_smpro_socket_records(outcomes: p.outcomes, socket: k) }))
+  flat_map(e.smpro, p => map(pass_sockets(p: p), k => SocketRecordsAccount { pass: p.label, records: mtcollins1_smpro_socket_records(outcomes: p.outcomes, socket: k) }))
 }
 
 fn record_set_stated(pass: NonEmptyStr, socket: Int, processor: SmproProcessor, rs: SmproRecordSet) -> List<LocatedError> {
   match rs.gate {
-    PendingAndDecoded { error: e, warning: _ } => match e { Present { value: r } => [LocatedError { subject: SocketSubject { socket: socket }, error: SmproRecordStated { socket: socket, processor: processor, pass: pass, record: r } }] Absent => [] }
+    PendingAndDecoded { error: e, warning: _ } => match e { Present { value: r } => [LocatedError { cycle: none, subject: SocketSubject { socket: socket }, error: SmproRecordStated { socket: socket, processor: processor, pass: pass, record: r } }] Absent => [] }
     _ => []
   }
 }
@@ -472,6 +512,19 @@ fn record_set_anomalies(pass: NonEmptyStr, socket: Int, processor: SmproProcesso
     PendingAndDecoded { error: _, warning: _ } => []
     NotPending => []
   }
+}
+
+// A PENDING WARNING IS KEPT AS A TYPED WARNING, beside or without a pending error.
+fn record_set_warnings(pass: NonEmptyStr, socket: Int, processor: SmproProcessor, rs: SmproRecordSet) -> List<SmproWarningAccount> {
+  match rs.gate {
+    PendingAndDecoded { error: _, warning: w } => match w { Present { value: r } => [SmproWarningAccount { socket: socket, processor: processor, pass: pass, record: r }] Absent => [] }
+    _ => []
+  }
+}
+
+fn record_warnings(records: List<SocketRecordsAccount>) -> List<SmproWarningAccount> {
+  flat_map(records, r => concat(record_set_warnings(pass: r.pass, socket: r.records.socket, processor: SmproProcessorSmpro, rs: r.records.smpro),
+    record_set_warnings(pass: r.pass, socket: r.records.socket, processor: SmproProcessorPmpro, rs: r.records.pmpro)))
 }
 
 fn record_errors(records: List<SocketRecordsAccount>) -> List<LocatedError> {
@@ -529,6 +582,20 @@ fn console_spans(e: PowerOnEvidence) -> List<AmpereCheckpointSpan> {
   }
 }
 
+fn console_capture(e: PowerOnEvidence) -> Sha256FileDigest {
+  match e.console {
+    ConsoleRead { capture: d, firmware: _, firmware_error_lines: _, dram: _, checkpoints: _, relations: _, milestones: _, sockets: _, loader: _, linux: _, modules: _ } => d
+    ConsoleNotRead => Sha256FileDigestUnavailable { path: "console", reason: "the console was not read" }
+  }
+}
+
+fn console_failure_sightings(e: PowerOnEvidence) -> List<ConsoleFailureSighting> {
+  match e.console {
+    ConsoleNotRead => []
+    ConsoleRead { capture: _, firmware: _, firmware_error_lines: _, dram: _, checkpoints: _, relations: _, milestones: m, sockets: _, loader: _, linux: _, modules: _ } => m.failures
+  }
+}
+
 fn console_sightings(e: PowerOnEvidence) -> List<ConsoleMilestoneSighting> {
   match e.console {
     ConsoleNotRead => []
@@ -557,89 +624,122 @@ fn banner_spans(e: PowerOnEvidence) -> List<AmpereCheckpointSpan> {
   filter(console_spans(e: e), s => s.opened_by_banner)
 }
 
+// THE FIRST CYCLE opens on the confirmed power-on, or failing that on a SEL "Initiated by power up"
+// record; the two are one boundary, never two. Every later cycle opens on a SEL restart record.
+// Observed caveat (step 1, 2026-10-03): this MegaRAC can log the first boot after a chassis power-on
+// as "System Restart"; that counts one cycle more than the boots the console shows, and the account
+// then reports the spans unbound rather than guessing which record opened which span.
+fn sel_power_up_records(e: PowerOnEvidence) -> List<SelWindowEvent> {
+  match e.sel {
+    SelEventsNotRead => []
+    SelEventsRead { events: es } => filter(es, ev => match ev.kind { BootRestart { offset: o } => !is_restart_boundary(o: o) _ => false })
+  }
+}
+
+fn cycle_boundaries(e: PowerOnEvidence) -> List<CycleBoundary> {
+  let first = match e.handoff {
+    HandoffPoweredOn => [OpenedByPowerOn]
+    HandoffNotConfirmed { reason: _ } => match sel_power_up_records(e: e).first() { Present { value: r } => [OpenedBySelPowerUp { record: r }] Absent => [] }
+  }
+  concat(first, map(sel_restart_records(e: e), r => OpenedBySelRestart { record: r }))
+}
+
+fn cycle_count(e: PowerOnEvidence) -> Int {
+  count(cycle_boundaries(e: e))
+}
+
+// Console spans bind to cycles in order only when there is one banner span per cycle; otherwise no
+// span is bound and the mismatch is an open question.
+fn spans_bind_in_order(e: PowerOnEvidence) -> Bool {
+  count(banner_spans(e: e)) == cycle_count(e: e) && cycle_count(e: e) > 0
+}
+
+// The cycle a console span belongs to, when spans bind: the pre-banner span goes with cycle 1.
+fn cycle_of_span(e: PowerOnEvidence, span: Int) -> Int? {
+  if !spans_bind_in_order(e: e) { none } else {
+    let banners = banner_spans(e: e)
+    match filter(banners, b => b.index == span).first() {
+      Present { value: b } => Present { value: count(filter(banners, x => x.index < b.index)) + 1 }
+      Absent => if any(console_spans(e: e), x => x.index == span && !x.opened_by_banner) { Present { value: 1 } } else { none }
+    }
+  }
+}
+
+fn milestone_evidence(e: PowerOnEvidence, m: ConsoleMilestoneSighting) -> MilestoneEvidence {
+  MilestoneEvidence { sighting: m, capture: console_capture(e: e), reader: mtcollins1_console_milestone_reader }
+}
+
+fn cycle_account(e: PowerOnEvidence, index: Int, boundary: CycleBoundary) -> BootCycleAccount {
+  let bound = spans_bind_in_order(e: e)
+  let span = if bound { banner_spans(e: e).skip(n: index - 1).first() } else { none }
+  BootCycleAccount {
+    index: index,
+    boundary: boundary,
+    console: match span { Present { value: s } => SpanBound { span: s.index } Absent => if count(banner_spans(e: e)) == 0 { NoConsoleSpan } else { SpanBindingAmbiguous } },
+    milestones: map(filter(console_sightings(e: e), m => match cycle_of_span(e: e, span: m.span) { Present { value: c } => c == index Absent => false }), m => milestone_evidence(e: e, m: m)),
+    ended_after: match span { Present { value: s } => relation_for_span(e: e, span: s.index) Absent => none },
+  }
+}
+
+fn cycles_of(e: PowerOnEvidence) -> List<BootCycleAccount> {
+  let none_yet: List<BootCycleAccount> = []
+  fold(cycle_boundaries(e: e), init: none_yet, f: (acc, b) => concat(acc, [cycle_account(e: e, index: count(acc) + 1, boundary: b)]))
+}
+
 fn host_evidence_seen(e: PowerOnEvidence, progress: List<SocketProgressAccount>) -> Bool {
   any_progress_read(progress: progress) || count(console_sightings(e: e)) > 0 || count(console_spans(e: e)) > 0 || e.census_ended
 }
 
-fn cycle_count(e: PowerOnEvidence, progress: List<SocketProgressAccount>) -> Int {
-  let opened = (match e.handoff { HandoffPoweredOn => 1 HandoffNotConfirmed { reason: _ } => 0 }) + count(sel_restart_records(e: e))
-  let floor = if host_evidence_seen(e: e, progress: progress) { 1 } else { 0 }
-  max_int(a: max_int(a: opened, b: count(banner_spans(e: e))), b: floor)
-}
 
-fn spans_bind_in_order(e: PowerOnEvidence, progress: List<SocketProgressAccount>) -> Bool {
-  count(banner_spans(e: e)) == cycle_count(e: e, progress: progress)
-}
 
-fn boundary_of(e: PowerOnEvidence, index: Int) -> CycleBoundary {
-  let powered = match e.handoff { HandoffPoweredOn => true HandoffNotConfirmed { reason: _ } => false }
-  let restarts = sel_restart_records(e: e)
-  if powered && index == 1 { OpenedByPowerOn }
-  else {
-    let k = if powered { index - 2 } else { index - 1 }
-    match restarts.skip(n: k).first() {
-      Present { value: r } => OpenedBySelRestart { record: r }
-      Absent => if index <= count(banner_spans(e: e)) { OpenedByConsoleBannerOnly } else { OpenedByProgressEvidenceOnly }
-    }
-  }
-}
 
-fn cycle_account(e: PowerOnEvidence, progress: List<SocketProgressAccount>, index: Int) -> BootCycleAccount {
-  let banners = banner_spans(e: e)
-  if !spans_bind_in_order(e: e, progress: progress) {
-    let none_seen: List<ConsoleMilestoneSighting> = []
-    BootCycleAccount { index: index, boundary: boundary_of(e: e, index: index), console: if count(banners) == 0 { NoConsoleSpan } else { SpanBindingAmbiguous }, milestones: none_seen, ended_after: none }
-  } else {
-    match banners.skip(n: index - 1).first() {
-      Absent => {
-        let none_seen: List<ConsoleMilestoneSighting> = []
-        BootCycleAccount { index: index, boundary: boundary_of(e: e, index: index), console: NoConsoleSpan, milestones: none_seen, ended_after: none }
-      }
-      Present { value: span } => {
-        let spans_here = if index == 1 { filter(console_spans(e: e), s => !s.opened_by_banner || s.index == span.index) } else { [span] }
-        let ids = map(spans_here, s => s.index)
-        BootCycleAccount {
-          index: index,
-          boundary: boundary_of(e: e, index: index),
-          console: SpanBound { span: span.index },
-          milestones: filter(console_sightings(e: e), m => any(ids, i => i == m.span)),
-          ended_after: relation_for_span(e: e, span: span.index),
-        }
-      }
-    }
-  }
-}
 
 // THE CYCLE INDICES 1..n, derived from the boundary evidence itself: every source that can open a
 // cycle contributes one seed, plus one for the progress-only floor, so the seeds are never fewer than
 // the cycles and no cycle is cut off by a fixed bound.
-fn cycle_indices(e: PowerOnEvidence, n: Int) -> List<Int> {
-  let seeds = concat(map(sel_restart_records(e: e), r => 0), concat(map(console_spans(e: e), s => 0), [0, 0]))
-  let none_yet: List<Int> = []
-  filter(fold(seeds, init: none_yet, f: (acc, x) => concat(acc, [count(acc) + 1])), i => i <= n)
-}
 
-fn cycles_of(e: PowerOnEvidence, progress: List<SocketProgressAccount>) -> List<BootCycleAccount> {
-  map(cycle_indices(e: e, n: cycle_count(e: e, progress: progress)), i => cycle_account(e: e, progress: progress, index: i))
-}
 
 // ── STATED FAILURES FROM THE CONSOLE ────────────────────────────────────────────────────────────
 // The whole-capture console readers do not locate a statement in a span, so these errors carry their
 // subject and no cycle.
+fn failure_kind_matches(kind: ConsoleFailureLine, err: DecodedBootError) -> Bool {
+  match err {
+    FirmwareStatement { report: _ } => match kind { FirmwareErrorStatementLine => true _ => false }
+    BootLoaderFailed { errors: _ } => match kind { GrubFailureLine => true _ => false }
+    InitrdLoadFailedByStub { status: _ } => match kind { InitrdLoadFailureLine => true _ => false }
+    KernelPanic { reason: _ } => match kind { KernelPanicLine => true _ => false }
+    KernelModuleRefused { observation: _ } => match kind { ModuleDecompressionRefusalLine => true _ => false }
+    _ => false
+  }
+}
+
+// The cycle a console error belongs to: the bound cycle of the span its first failure line was
+// printed in. Unbound when the spans do not bind or no matching line was located.
+fn locate_console_error(e: PowerOnEvidence, x: LocatedError) -> LocatedError {
+  LocatedError { cycle: match filter(console_failure_sightings(e: e), f => failure_kind_matches(kind: f.kind, err: x.error)).first() {
+      Absent => none
+      Present { value: f } => cycle_of_span(e: e, span: f.span)
+    }, subject: x.subject, error: x.error }
+}
+
 fn console_errors(e: PowerOnEvidence) -> List<LocatedError> {
+  map(console_errors_unlocated(e: e), x => locate_console_error(e: e, x: x))
+}
+
+fn console_errors_unlocated(e: PowerOnEvidence) -> List<LocatedError> {
   match e.console {
     ConsoleNotRead => []
     ConsoleRead { capture: _, firmware: f, firmware_error_lines: _, dram: _, checkpoints: _, relations: _, milestones: _, sockets: _, loader: g, linux: l, modules: m } =>
       concat(match f {
         NoTerminalStated => []
-        UndecodedErrorCodesOnly { err_lines: _ } => [LocatedError { subject: DramFirmware, error: FirmwareStatement { report: f } }]
-        FirmwareErrorStatementUnrecognized { statement: _ } => [LocatedError { subject: DramFirmware, error: FirmwareStatement { report: f } }]
-        TrainingRefusedByFirmware { statement: _, locus: _ } => [LocatedError { subject: DramFirmware, error: FirmwareStatement { report: f } }]
+        UndecodedErrorCodesOnly { err_lines: _ } => [LocatedError { cycle: none, subject: DramFirmware, error: FirmwareStatement { report: f } }]
+        FirmwareErrorStatementUnrecognized { statement: _ } => [LocatedError { cycle: none, subject: DramFirmware, error: FirmwareStatement { report: f } }]
+        TrainingRefusedByFirmware { statement: _, locus: _ } => [LocatedError { cycle: none, subject: DramFirmware, error: FirmwareStatement { report: f } }]
       },
-      concat(match g { GrubBootFailed { errors: es } => [LocatedError { subject: BootLoader, error: BootLoaderFailed { errors: es } }] _ => [] },
-      concat(match l.initrd { InitrdLoadFailed { status: s, line: _ } => [LocatedError { subject: KernelStub, error: InitrdLoadFailedByStub { status: s } }] InitrdFailureNotPrinted => [] },
-      concat(match l.panic { KernelPanicked { reason: r } => [LocatedError { subject: Kernel, error: KernelPanic { reason: r } }] KernelPanicNotPrinted => [] },
-        match m { RefusalRecorded { refusals: _, unparsed_refusal_records: _, insert_failures: _, unparsed_insert_records: _, identity: _ } => [LocatedError { subject: Kernel, error: KernelModuleRefused { observation: m } }] NoRefusalRecorded { insert_failures: _, unparsed_insert_records: _ } => [] }))))
+      concat(match g { GrubBootFailed { errors: es } => [LocatedError { cycle: none, subject: BootLoader, error: BootLoaderFailed { errors: es } }] _ => [] },
+      concat(match l.initrd { InitrdLoadFailed { status: s, line: _ } => [LocatedError { cycle: none, subject: KernelStub, error: InitrdLoadFailedByStub { status: s } }] InitrdFailureNotPrinted => [] },
+      concat(match l.panic { KernelPanicked { reason: r } => [LocatedError { cycle: none, subject: Kernel, error: KernelPanic { reason: r } }] KernelPanicNotPrinted => [] },
+        match m { RefusalRecorded { refusals: _, unparsed_refusal_records: _, insert_failures: _, unparsed_insert_records: _, identity: _ } => [LocatedError { cycle: none, subject: Kernel, error: KernelModuleRefused { observation: m } }] NoRefusalRecorded { insert_failures: _, unparsed_insert_records: _ } => [] }))))
   }
 }
 
@@ -647,7 +747,7 @@ fn sel_faults(e: PowerOnEvidence) -> List<LocatedError> {
   match e.sel {
     SelEventsNotRead => []
     SelEventsRead { events: es } => flat_map(es, ev => match ev.kind {
-      FirmwareProgressRecord { offset: o } => match o { FirmwareError => [LocatedError { subject: Uefi, error: SelFirmwareFault { event: ev } }] FirmwareHang => [LocatedError { subject: Uefi, error: SelFirmwareFault { event: ev } }] FirmwareProgress { progress_rendering: _ } => [] }
+      FirmwareProgressRecord { offset: o } => match o { FirmwareError => [LocatedError { cycle: none, subject: Uefi, error: SelFirmwareFault { event: ev } }] FirmwareHang => [LocatedError { cycle: none, subject: Uefi, error: SelFirmwareFault { event: ev } }] FirmwareProgress { progress_rendering: _ } => [] }
       _ => []
     })
   }
@@ -674,29 +774,31 @@ fn last_cycle(cycles: List<BootCycleAccount>) -> BootCycleAccount? {
   cycles.last()
 }
 
-fn furthest_milestone(c: BootCycleAccount) -> ConsoleMilestoneSighting? {
-  let start: ConsoleMilestoneSighting? = none
+fn furthest_milestone(c: BootCycleAccount) -> MilestoneEvidence? {
+  let start: MilestoneEvidence? = none
   fold(c.milestones, init: start, f: (acc, m) => match acc {
     Absent => Present { value: m }
-    Present { value: b } => if milestone_rank(m: m.milestone) >= milestone_rank(m: b.milestone) { Present { value: m } } else { Present { value: b } }
+    Present { value: b } => if milestone_rank(m: m.sighting.milestone) >= milestone_rank(m: b.sighting.milestone) { Present { value: m } } else { Present { value: b } }
   })
 }
 
-// WHICH STATED FAILURE ENDS THE ATTEMPT. A failure is overtaken when the last cycle got further than
-// its subject (the old firmware's failed first cycle followed by a second that reached UEFI); of the
-// failures not overtaken, the FURTHEST along socket 0's path is where the attempt stopped, and every
-// earlier one stays in `errors` as what led there (run 37069907299: the stub's initrd EFI_LOAD_ERROR,
-// then the kernel's panic -- the attempt stopped at the panic).
+// WHICH STATED FAILURE ENDS THE ATTEMPT. Only a failure located in the LAST cycle may: an earlier
+// cycle's failure, and an unbound one (SMpro, SEL, or a console line whose span is not bound), is
+// history kept in `errors`. Within the last cycle a failure the cycle got past is overtaken, and of the
+// rest the FURTHEST along socket 0's path is where the attempt stopped (run 37069907299: the stub's
+// initrd EFI_LOAD_ERROR, then the kernel's panic -- the attempt stopped at the panic).
 fn ending_failure(errors: List<LocatedError>, cycles: List<BootCycleAccount>) -> LocatedError? {
-  let reach = match last_cycle(cycles: cycles) {
-    Absent => 0 - 1
-    Present { value: c } => match furthest_milestone(c: c) { Absent => 0 - 1 Present { value: m } => milestone_rank(m: m.milestone) }
+  match last_cycle(cycles: cycles) {
+    Absent => none
+    Present { value: c } => {
+      let reach = match furthest_milestone(c: c) { Absent => 0 - 1 Present { value: m } => milestone_rank(m: m.sighting.milestone) }
+      let start: LocatedError? = none
+      fold(filter(errors, x => (match x.cycle { Present { value: k } => k == c.index Absent => false }) && subject_rank(s: x.subject) >= reach), init: start, f: (acc, x) => match acc {
+        Absent => Present { value: x }
+        Present { value: b } => if subject_rank(s: x.subject) > subject_rank(s: b.subject) { Present { value: x } } else { Present { value: b } }
+      })
+    }
   }
-  let start: LocatedError? = none
-  fold(filter(errors, x => subject_rank(s: x.subject) >= reach), init: start, f: (acc, x) => match acc {
-    Absent => Present { value: x }
-    Present { value: b } => if subject_rank(s: x.subject) > subject_rank(s: b.subject) { Present { value: x } } else { Present { value: b } }
-  })
 }
 
 fn console_error_lines(e: PowerOnEvidence) -> Int {
@@ -708,7 +810,7 @@ fn console_error_lines(e: PowerOnEvidence) -> Int {
 
 // HOW FAR A CYCLE GOT, by its furthest console milestone: -1 when it printed none.
 fn cycle_reach(c: BootCycleAccount) -> Int {
-  match furthest_milestone(c: c) { Absent => 0 - 1 Present { value: m } => milestone_rank(m: m.milestone) }
+  match furthest_milestone(c: c) { Absent => 0 - 1 Present { value: m } => milestone_rank(m: m.sighting.milestone) }
 }
 
 // A LOOP, NOT A RETRY THAT WENT ON: the attempt restarted, and its last cycle got no further than an
@@ -759,15 +861,20 @@ fn summary_active(e: PowerOnEvidence) -> Int? {
 }
 
 fn degradations_of(e: PowerOnEvidence, join: MtCollins1SecondaryJoinOutcome) -> List<Degradation> {
-  let expected = count(e.configuration.expected_sockets)
-  let below = match summary_active(e: e) { Present { value: n } => if n < expected { [ActiveSocketsBelowExpected { active: n, expected: expected }] } else { [] } Absent => [] }
-  let joined = if expected < 2 { [] } else { match join { SecondaryJoined { inter_socket_links_reported: _ } => [] _ => [SocketNotJoined { outcome: join }] } }
-  let untrained = match e.console {
-    ConsoleNotRead => []
-    ConsoleRead { capture: _, firmware: _, firmware_error_lines: _, dram: d, checkpoints: _, relations: _, milestones: _, sockets: _, loader: _, linux: _, modules: _ } =>
-      map(ampere_dram_untrained_sockets(observation: d, expected_sockets: e.configuration.expected_sockets), k => DramSocketUntrained { socket: k })
+  match expected_sockets(c: e.configuration) {
+    Absent => []
+    Present { value: ks } => {
+      let expected = count(ks)
+      let below = match summary_active(e: e) { Present { value: n } => if n < expected { [ActiveSocketsBelowExpected { active: n, expected: expected }] } else { [] } Absent => [] }
+      let joined = if expected < 2 { [] } else { match join { SecondaryJoined { inter_socket_links_reported: _ } => [] _ => [SocketNotJoined { outcome: join }] } }
+      let untrained = match e.console {
+        ConsoleNotRead => []
+        ConsoleRead { capture: _, firmware: _, firmware_error_lines: _, dram: d, checkpoints: _, relations: _, milestones: _, sockets: _, loader: _, linux: _, modules: _ } =>
+          map(ampere_dram_untrained_sockets(observation: d, expected_sockets: ks), k => DramSocketUntrained { socket: k })
+      }
+      concat(below, concat(joined, untrained))
+    }
   }
-  concat(below, concat(joined, untrained))
 }
 
 fn bmc_anomaly_subject(a: BmcAnomaly) -> PowerOnSubject {
@@ -795,11 +902,16 @@ fn anomalies_of(e: PowerOnEvidence) -> List<PlacedAnomaly> {
 }
 
 // ── OPEN QUESTIONS ──────────────────────────────────────────────────────────────────────────────
+fn expected_sockets(c: AttemptConfigurationReceipt) -> List<Int>? {
+  match c.expected { ExpectedSockets { sockets: ks, source: _ } => Present { value: ks } ExpectedTopologyNotRecorded { reason: _ } => none }
+}
+
 fn configuration_questions(c: AttemptConfigurationReceipt) -> List<OpenQuestion> {
+  concat(match c.expected { ExpectedSockets { sockets: _, source: _ } => [] ExpectedTopologyNotRecorded { reason: _ } => [OpenQuestion { subject: SecondaryJoin, question: ConfigurationNotRecorded { field: ConfiguredExpectedTopology } }] },
   concat(match c.applied { StimulusAppliedByReceipt { receipt: _, attested_by: _ } => [] StimulusApplicationNotRecorded { reason: _ } => [OpenQuestion { subject: PlatformBmc, question: ConfigurationNotRecorded { field: ConfiguredStimulus } }] },
   concat(population_question(r: c.cpus, field: ConfiguredCpuPopulation),
   concat(population_question(r: c.dimms, field: ConfiguredDimmPopulation),
-    match c.firmware { FirmwareReadBeforeActuation { rows: _ } => [] FirmwareReadbacksNotRecorded { reason: _ } => [OpenQuestion { subject: PlatformBmc, question: ConfigurationNotRecorded { field: ConfiguredFirmware } }] })))
+    match c.firmware { FirmwareReadBeforeActuation { rows: _ } => [] FirmwareReadbacksNotRecorded { reason: _ } => [OpenQuestion { subject: PlatformBmc, question: ConfigurationNotRecorded { field: ConfiguredFirmware } }] }))))
 }
 
 fn population_question<T>(r: PopulationReading<T>, field: ConfigurationField) -> List<OpenQuestion> {
@@ -813,7 +925,7 @@ fn population_question<T>(r: PopulationReading<T>, field: ConfigurationField) ->
 
 fn carrier_subject(c: Carrier) -> PowerOnSubject {
   match c {
-    SolConsole => DramFirmware KvmScreen => Uefi SmproRegisters => SocketSubject { socket: 0 } SystemEventLog => PlatformBmc
+    SolConsole => DramFirmware KvmScreen => Uefi SmproRegisters => SocketSubject { socket: 0 } SmproErrorRegisters => SocketSubject { socket: 0 } SystemEventLog => PlatformBmc
     SensorTable => PlatformChassisPower ChassisPower => PlatformChassisPower RedfishInventory => PlatformBmc VirtualMedia => BootLoader HostCaptureMarkers => Census
   }
 }
@@ -840,15 +952,15 @@ fn ending_questions(ending: HostEnding) -> List<OpenQuestion> {
   }
 }
 
-fn binding_questions(e: PowerOnEvidence, progress: List<SocketProgressAccount>) -> List<OpenQuestion> {
+fn binding_questions(e: PowerOnEvidence) -> List<OpenQuestion> {
   let b = count(banner_spans(e: e))
-  if b == 0 || spans_bind_in_order(e: e, progress: progress) { [] } else { [OpenQuestion { subject: DramFirmware, question: ConsoleSpansUnbound { spans: b, cycles: cycle_count(e: e, progress: progress) } }] }
+  if b == 0 || spans_bind_in_order(e: e) { [] } else { [OpenQuestion { subject: DramFirmware, question: ConsoleSpansUnbound { spans: b, cycles: cycle_count(e: e) } }] }
 }
 
 // ── THE ONE FOLD ────────────────────────────────────────────────────────────────────────────────
 fn mtcollins1_power_on_account(e: PowerOnEvidence) -> PowerOnAccount {
-  let progress = flat_map(e.smpro, p => map(e.configuration.expected_sockets, k => socket_progress(pass: p, socket: k)))
-  let cycles = cycles_of(e: e, progress: progress)
+  let progress = flat_map(e.smpro, p => map(pass_sockets(p: p), k => socket_progress(pass: p, socket: k)))
+  let cycles = cycles_of(e: e)
   let records = socket_records(e: e)
   let errors = concat(console_errors(e: e), concat(smpro_failures(progress: progress), concat(record_errors(records: records), sel_faults(e: e))))
   let anomalies = concat(anomalies_of(e: e), record_anomalies(records: records))
@@ -862,9 +974,10 @@ fn mtcollins1_power_on_account(e: PowerOnEvidence) -> PowerOnAccount {
     ending: ending,
     degradations: concat(degradations_of(e: e, join: join), record_degradations(errors: errors)),
     errors: errors,
+    warnings: record_warnings(records: records),
     anomalies: anomalies,
     coverage: e.coverage,
-    open: concat(configuration_questions(c: e.configuration), concat(coverage_questions(coverage: e.coverage), concat(refused_pair_questions(progress: progress), concat(ungated_questions(anomalies: anomalies), concat(binding_questions(e: e, progress: progress), ending_questions(ending: ending)))))),
+    open: concat(configuration_questions(c: e.configuration), concat(coverage_questions(coverage: e.coverage), concat(refused_pair_questions(progress: progress), concat(ungated_questions(anomalies: anomalies), concat(binding_questions(e: e), ending_questions(ending: ending)))))),
   }
 }
 
@@ -873,7 +986,7 @@ fn mtcollins1_power_on_account(e: PowerOnEvidence) -> PowerOnAccount {
 // of the ending alone. A UEFI milestone in any cycle grounds the set, and the session ending and the
 // account travel with it, so reaching UEFI cannot hide a later repeated-reset ending.
 type FirmwareSetBootReadback
-  = BootReachedUefiAfterSet { cycle: Int, milestone: ConsoleMilestoneSighting, ending: HostEnding, degradations: List<Degradation>, account: PowerOnAccount }
+  = BootReachedUefiAfterSet { cycle: Int, milestone: MilestoneEvidence, ending: HostEnding, degradations: List<Degradation>, account: PowerOnAccount }
   | BootProgressLostAfterSet { ending: HostEnding, last_relation: AmpereCheckpointRelation?, account: PowerOnAccount }
   | BootReadbackUnobservable { account: PowerOnAccount }
 
@@ -882,12 +995,12 @@ fn is_uefi_milestone(m: ConsoleMilestone) -> Bool {
 }
 
 fn first_uefi_sighting(cycles: List<BootCycleAccount>) -> BootCycleAccount? {
-  filter(cycles, c => any(c.milestones, m => is_uefi_milestone(m: m.milestone))).first()
+  filter(cycles, c => any(c.milestones, m => is_uefi_milestone(m: m.sighting.milestone))).first()
 }
 
 fn firmware_set_boot_readback(a: PowerOnAccount) -> FirmwareSetBootReadback {
   match first_uefi_sighting(cycles: a.cycles) {
-    Present { value: c } => match filter(c.milestones, m => is_uefi_milestone(m: m.milestone)).first() {
+    Present { value: c } => match filter(c.milestones, m => is_uefi_milestone(m: m.sighting.milestone)).first() {
       Present { value: m } => BootReachedUefiAfterSet { cycle: c.index, milestone: m, ending: a.ending, degradations: a.degradations, account: a }
       Absent => BootReadbackUnobservable { account: a }
     }
@@ -912,7 +1025,7 @@ fn subject_text(s: PowerOnSubject) -> String {
 
 fn carrier_text(c: Carrier) -> String {
   match c {
-    SolConsole => "SOL console" KvmScreen => "KVM screen" SmproRegisters => "SMpro registers" SystemEventLog => "SEL"
+    SolConsole => "SOL console" KvmScreen => "KVM screen" SmproRegisters => "SMpro boot-stage registers" SmproErrorRegisters => "SMpro/PMpro error-record registers" SystemEventLog => "SEL"
     SensorTable => "sensor table" ChassisPower => "chassis power" RedfishInventory => "Redfish inventory" VirtualMedia => "virtual media" HostCaptureMarkers => "host-capture markers"
   }
 }
@@ -959,6 +1072,10 @@ fn degradation_text(d: Degradation) -> String {
   }
 }
 
+fn warning_text(w: SmproWarningAccount) -> String {
+  concat("socket ", to_string(w.socket), " ", processor_text(p: w.processor), " pending warning (", w.pass as String, " pass): ", smpro_internal_record_text(r: w.record))
+}
+
 fn processor_text(p: SmproProcessor) -> String {
   match p { SmproProcessorSmpro => "SMpro" SmproProcessorPmpro => "PMpro" }
 }
@@ -991,16 +1108,15 @@ fn anomaly_text(a: PlacedAnomaly) -> String {
 fn boundary_text(b: CycleBoundary) -> String {
   match b {
     OpenedByPowerOn => "opened by the confirmed power-on"
-    OpenedBySelRestart { record: r } => concat("opened by SEL record ", to_string(r.record_id))
-    OpenedByConsoleBannerOnly => "opened by a DRAM firmware banner (no power or SEL boundary read for it)"
-    OpenedByProgressEvidenceOnly => "opened by progress evidence alone"
+    OpenedBySelPowerUp { record: r } => concat("opened by SEL power-up record ", to_string(r.record_id))
+    OpenedBySelRestart { record: r } => concat("opened by SEL restart record ", to_string(r.record_id))
   }
 }
 
 fn cycle_text(c: BootCycleAccount) -> String {
   concat("cycle ", to_string(c.index), ", ", boundary_text(b: c.boundary), "; console: ",
     match c.console { SpanBound { span: k } => concat("span ", to_string(k)) NoConsoleSpan => "no console span" SpanBindingAmbiguous => "spans not bound (counts disagree)" },
-    if count(c.milestones) == 0 { "; no milestone" } else { concat("; milestones: ", join(map(c.milestones, m => console_milestone_name(m: m.milestone)), ", ")) },
+    if count(c.milestones) == 0 { "; no milestone" } else { concat("; milestones: ", join(map(c.milestones, m => console_milestone_name(m: m.sighting.milestone)), ", ")) },
     match c.ended_after { Absent => "" Present { value: r } => concat("\n    ", ampere_checkpoint_relation_text(r: r)) })
 }
 
@@ -1021,7 +1137,7 @@ fn host_ending_text(e: HostEnding) -> String {
         "; last cycle ", match r { Absent => "printed no checkpoint token" Present { value: rel } => concat("ended after token ", rel.last.digits as String) },
         "; ", to_string(k), " console error line(s); ", to_string(x), " SEL restart record(s); ", watchdog_text(w: w), "; reset cause ", reset_cause_text(r: rc))
     StoppedWithoutRestart { last_milestone: m, ended_after: r, console_errors: k, restarts_before: n } =>
-      concat(if n == 0 { "one cycle, no restart observed" } else { concat("the last of ", to_string(n + 1), " cycles went further than the earlier ones and was not followed by a restart") }, "; furthest milestone: ", match m { Absent => "none" Present { value: s } => console_milestone_name(m: s.milestone) },
+      concat(if n == 0 { "one cycle, no restart observed" } else { concat("the last of ", to_string(n + 1), " cycles went further than the earlier ones and was not followed by a restart") }, "; furthest milestone: ", match m { Absent => "none" Present { value: s } => console_milestone_name(m: s.sighting.milestone) },
         match r { Absent => "" Present { value: rel } => concat("; ended after token ", rel.last.digits as String) }, "; ", to_string(k), " console error line(s)")
     HostEndingNotEstablished => "how the host's attempt ended is not established by the host evidence read"
   }
@@ -1043,7 +1159,7 @@ fn open_question_text(q: OpenQuestion) -> String {
 }
 
 fn configuration_field_text(f: ConfigurationField) -> String {
-  match f { ConfiguredStimulus => "the applied stimulus" ConfiguredCpuPopulation => "the CPU population" ConfiguredDimmPopulation => "the DIMM population" ConfiguredFirmware => "the firmware readback" }
+  match f { ConfiguredExpectedTopology => "the expected topology" ConfiguredStimulus => "the applied stimulus" ConfiguredCpuPopulation => "the CPU population" ConfiguredDimmPopulation => "the DIMM population" ConfiguredFirmware => "the firmware readback" }
 }
 
 fn carrier_standing_text(s: CarrierStanding) -> String {
@@ -1065,6 +1181,8 @@ fn mtcollins1_power_on_account_text(a: PowerOnAccount) -> String {
     if count(a.degradations) == 0 { "none" } else { join(map(a.degradations, d => degradation_text(d: d)), "\n") },
     "-- stated errors --",
     if count(a.errors) == 0 { "none" } else { join(map(a.errors, x => concat(subject_text(s: x.subject), ": ", decoded_error_text(err: x.error))), "\n") },
+    "-- pending warnings (SMpro/PMpro) --",
+    if count(a.warnings) == 0 { "none" } else { join(map(a.warnings, w => warning_text(w: w)), "\n") },
     "-- anomalies --",
     if count(a.anomalies) == 0 { "none" } else { join(map(a.anomalies, x => anomaly_text(a: x)), "\n") },
     "-- coverage --",
@@ -1074,9 +1192,11 @@ fn mtcollins1_power_on_account_text(a: PowerOnAccount) -> String {
   ], "\n")
 }
 
-// What a one-line refusal reason carries: the ending, then every stated error, degradation and anomaly.
+// What a one-line refusal reason carries: the ending, then every stated error, degradation, warning and
+// anomaly, then every open question -- what we could not establish is as much the account as what we did.
 fn mtcollins1_power_on_account_notes(a: PowerOnAccount) -> List<String> {
   concat([concat("ending: ", host_ending_text(e: a.ending))],
     concat(map(a.errors, x => concat(subject_text(s: x.subject), ": ", decoded_error_text(err: x.error))),
-    concat(map(a.degradations, d => degradation_text(d: d)), map(a.anomalies, x => anomaly_text(a: x)))))
+    concat(map(a.degradations, d => degradation_text(d: d)), concat(map(a.warnings, w => warning_text(w: w)), concat(map(a.anomalies, x => anomaly_text(a: x)),
+      map(a.open, q => concat("open: ", open_question_text(q: q))))))))
 }

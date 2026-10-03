@@ -1,32 +1,38 @@
 module test.claim.machine_intake.mtcollins1_power_on_account_witness_test
 
+import v2.std.algebra { any }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import v2.std.optional { Present }
 import extdeps.crypto.hash { sha256_digest }
-import extdeps.tools.sha256sum { Sha256FileDigest }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
 import extdeps.bootloader.grub { grub_console_report }
 import extdeps.ampere.smpro_register { smpro_manufacturer_id_reg, smpro_cur_bootstage_reg, smpro_bootstage_reg, smpro_gpi_ras_err_reg,
   smpro_err_pmpro_type_reg, smpro_err_pmpro_info_lo_reg, smpro_err_pmpro_info_hi_reg, smpro_err_pmpro_data_lo_reg, smpro_err_pmpro_data_hi_reg,
   smpro_warn_pmpro_info_lo_reg, smpro_warn_pmpro_info_hi_reg, SmproRegister, SmproBootProgressRefused }
 import gunbc.machine_intake_mtcollins1_smpro_observation { SmproProbeRaw, SmproProbeOutcome, smpro_probe_outcome }
+import extdeps.bmc.ipmi_sel { InitiatedByPowerUp, SystemRestart }
+import gunbc.machine_intake_pre_os_bringup_verdict { SelWindowEvent, BootRestart }
 import gunbc.machine_intake_pre_os_bringup_verdict { firmware_console_report }
 import gunbc.machine_intake_ampere_dram_console_observation { ampere_dram_console_observation }
 import gunbc.machine_intake_ampere_checkpoint_console_observation {
   AmpereCheckpointRelation, AmpereCheckpointToken, ReferenceContinues, ampere_checkpoint_console_observation,
 }
-import gunbc.machine_intake_mtcollins1_console_milestone_observation { mtcollins1_console_milestones, UefiConsolePromptObserved, FirmwareSummaryObserved }
+import gunbc.machine_intake_mtcollins1_console_milestone_observation { mtcollins1_console_milestones, UefiConsolePromptObserved, UefiShellObserved, FirmwareSummaryObserved }
 import gunbc.machine_intake_ampere_socket_console_observation { ampere_socket_console_observation }
 import gunbc.machine_intake_linux_boot_console_observation { linux_boot_console_observation, EfiLoadError }
 import gunbc.machine_intake_kernel_module_decompression_observation { kernel_module_decompression_observation }
 import gunbc.machine_intake_mtcollins1_power_on_account {
   PowerOnAccount, PowerOnEvidence, AttemptConfigurationReceipt, ConsoleEvidence, ConsoleRead, ConsoleNotRead, SmproPassEvidence,
-  HandoffPoweredOn, HandoffNotConfirmed, SelEventsNotRead, WatchdogUnobserved,
+  HandoffPoweredOn, HandoffNotConfirmed, SelEventsRead, SelEventsNotRead, WatchdogUnobserved,
+  ExpectedSockets, ExpectedTopologyNotRecorded, ConfiguredExpectedTopology, ConsoleSpansUnbound, OpenedBySelRestart, SpanBindingAmbiguous,
+  MilestoneEvidence, SmproWarningAccount,
   StimulusRequestNotRecorded, StimulusApplicationNotRecorded, PopulationNotRecorded, PopulationOperatorAttested, FirmwareReadbacksNotRecorded, SlotRow,
   CarrierCoverage, SolConsole, CarrierReadEmpty,
   ReachedCensus, StoppedWithStatedFailure, RestartedRepeatedly, StoppedWithoutRestart, HostEndingNotEstablished,
   ResetCauseUnobserved, CadenceCounted, OpenedByPowerOn, NoConsoleSpan, SpanBound,
   KernelStub, Kernel, KernelPanic, SecondaryJoin, InitrdLoadFailedByStub, PendingErrorRecord, SocketNotJoined, ActiveSocketsBelowExpected,
+  ExpectedTopology, SmproRecordStated,
   RetryStatePersistence, ResetCauseNotPubliclyReadable, CheckpointMeaningNotPubliclyModeled, SmproPairRefused,
   ConfigurationNotRecorded, ConfiguredDimmPopulation, CarrierNotRead,
   BootReachedUefiAfterSet, BootProgressLostAfterSet, ProgressRead,
@@ -86,7 +92,7 @@ fn console_of(lines: List<String>, relations: List<AmpereCheckpointRelation>) ->
 
 fn receipt() -> AttemptConfigurationReceipt {
   AttemptConfigurationReceipt {
-    subject: "mtcollins1", attempt: "witness", expected_sockets: [0, 1],
+    subject: "mtcollins1", attempt: "witness", expected: ExpectedSockets { sockets: [0, 1], source: "witness: both sockets expected" },
     requested: StimulusRequestNotRecorded { reason: "witness" }, applied: StimulusApplicationNotRecorded { reason: "witness" },
     cpus: PopulationNotRecorded { reason: "witness" }, dimms: PopulationNotRecorded { reason: "witness" }, firmware: FirmwareReadbacksNotRecorded { reason: "witness" },
   }
@@ -117,16 +123,31 @@ fn ccix_pass() -> List<SmproPassEvidence> {
   ] }]
 }
 
+// REAL SEL ROWS, re-typed as the reader types them (gunbc.machine_intake_pre_os_bringup_verdict
+// SelWindowEvent). Run 37069907299's own window (artifact mtcollins1-boot-diagnostics.txt, sha256
+// 5d11c12a4bb1d9eda3b7b0c5568e46b91f57b93d68507f1e3e6f6969cc3946f6): c26 "Initiated by power up" then
+// c2b "System Restart" -- the power-on and the one restart before its second DRAM pass. Step 1's
+// sel-after.txt (branch mtcollins1-captures-2026-10-03) row 3b, one "System Restart" of the loop.
+data run_37069907299_power_up: SelWindowEvent = SelWindowEvent { record_id: 3110, bmc_clock_rendering: "10/02/2026 06:13:25 PM UTC", kind: BootRestart { offset: InitiatedByPowerUp } }
+
+data run_37069907299_restart: SelWindowEvent = SelWindowEvent { record_id: 3115, bmc_clock_rendering: "10/02/2026 06:14:09 PM UTC", kind: BootRestart { offset: SystemRestart } }
+
+data step1_restart: SelWindowEvent = SelWindowEvent { record_id: 59, bmc_clock_rendering: "10/02/2026 07:32:52 PM UTC", kind: BootRestart { offset: SystemRestart } }
+
 fn evidence(console: ConsoleEvidence, smpro: List<SmproPassEvidence>, census_ended: Bool) -> PowerOnEvidence {
+  evidence_with(console: console, smpro: smpro, census_ended: census_ended, sel: [])
+}
+
+fn evidence_with(console: ConsoleEvidence, smpro: List<SmproPassEvidence>, census_ended: Bool, sel: List<SelWindowEvent>) -> PowerOnEvidence {
   PowerOnEvidence {
-    configuration: receipt(), handoff: HandoffPoweredOn, smpro: smpro, console: console, sel: SelEventsNotRead,
+    configuration: receipt(), handoff: HandoffPoweredOn, smpro: smpro, console: console, sel: SelEventsRead { events: sel },
     watchdog: WatchdogUnobserved { reason: "witness" }, bmc_anomalies: [], census_ended: census_ended, coverage: [],
   }
 }
 
 fn step1_account() -> PowerOnAccount {
   let lines = lines_of(text: step1_last_two_cycles)
-  mtcollins1_power_on_account(e: evidence(console: console_of(lines: lines, relations: [step1_relation(span: 1)]), smpro: loop_pass(), census_ended: false))
+  mtcollins1_power_on_account(e: evidence_with(console: console_of(lines: lines, relations: [step1_relation(span: 1)]), smpro: loop_pass(), census_ended: false, sel: [step1_restart]))
 }
 
 // ── THE NEW-FIRMWARE LOOP ─────────────────────────────────────────────────────────────────────
@@ -160,7 +181,7 @@ test fn socket_ones_refused_pair_is_an_open_question_on_the_join() -> Bool {
 test fn a_different_last_token_changes_only_the_relation() -> Bool {
   let lines = lines_of(text: step1_last_two_cycles)
   let other = AmpereCheckpointRelation { span: 1, capture: no_digest, last: AmpereCheckpointToken { digits: "00001a09" }, reference_path: "r", reference_digest: no_digest, reference_firmware: "f", reference_configuration: "c", continuation: ReferenceContinues { next: AmpereCheckpointToken { digits: "00001a0a" }, remaining: 1, occurrences: 1 } }
-  match mtcollins1_power_on_account(e: evidence(console: console_of(lines: lines, relations: [other]), smpro: loop_pass(), census_ended: false)).ending {
+  match mtcollins1_power_on_account(e: evidence_with(console: console_of(lines: lines, relations: [other]), smpro: loop_pass(), census_ended: false, sel: [step1_restart])).ending {
     RestartedRepeatedly { cycles: n, last_cycle_ended_after: r, cadence: _, console_errors: _, sel_restarts: _, watchdog: _, reset_cause: _ } =>
       n == 2 && (match r { Present { value: rel } => (rel.last.digits as String) == "00001a09" Absent => false })
     _ => false
@@ -171,14 +192,14 @@ test fn a_different_last_token_changes_only_the_relation() -> Bool {
 
 fn old_firmware_account(census_ended: Bool) -> PowerOnAccount {
   let lines = concat(lines_of(text: run_37069907299_firmware), concat(lines_of(text: run_37069907299_loader_and_stub), lines_of(text: run_37069907299_panic)))
-  mtcollins1_power_on_account(e: evidence(console: console_of(lines: lines, relations: []), smpro: [], census_ended: census_ended))
+  mtcollins1_power_on_account(e: evidence_with(console: console_of(lines: lines, relations: []), smpro: [], census_ended: census_ended, sel: [run_37069907299_power_up, run_37069907299_restart]))
 }
 
 test fn the_old_firmware_first_cycle_stops_and_the_second_reaches_uefi() -> Bool {
   let a = old_firmware_account(census_ended: false)
   count(a.cycles) == 2
-    && (match a.cycles.first() { Present { value: c } => !any(c.milestones, m => match m.milestone { FirmwareSummaryObserved => true _ => false }) Absent => false })
-    && (match a.cycles.last() { Present { value: c } => any(c.milestones, m => match m.milestone { FirmwareSummaryObserved => true _ => false }) Absent => false })
+    && (match a.cycles.first() { Present { value: c } => !any(c.milestones, m => match m.sighting.milestone { FirmwareSummaryObserved => true _ => false }) Absent => false })
+    && (match a.cycles.last() { Present { value: c } => any(c.milestones, m => match m.sighting.milestone { FirmwareSummaryObserved => true _ => false }) Absent => false })
 }
 
 // The stub's initrd failure led to the kernel's panic: the attempt stopped at the panic, and the
@@ -246,7 +267,7 @@ test fn an_unrecorded_dimm_population_is_an_open_question_and_an_attested_one_is
   let unrecorded = mtcollins1_power_on_account(e: evidence(console: console_of(lines: lines, relations: []), smpro: [], census_ended: false))
   let r = receipt()
   let attested = mtcollins1_power_on_account(e: PowerOnEvidence {
-    configuration: AttemptConfigurationReceipt { subject: r.subject, attempt: r.attempt, expected_sockets: r.expected_sockets, requested: r.requested, applied: r.applied, cpus: r.cpus,
+    configuration: AttemptConfigurationReceipt { subject: r.subject, attempt: r.attempt, expected: r.expected, requested: r.requested, applied: r.applied, cpus: r.cpus,
       dimms: PopulationOperatorAttested { rows: [SlotRow { label: "J1", populated: true }, SlotRow { label: "J17", populated: true }], receipt: "witness inspection" }, firmware: r.firmware },
     handoff: HandoffPoweredOn, smpro: [], console: console_of(lines: lines, relations: []), sel: SelEventsNotRead,
     watchdog: WatchdogUnobserved { reason: "witness" }, bmc_anomalies: [], census_ended: false, coverage: [],
@@ -259,4 +280,96 @@ test fn the_rendering_names_the_ending_and_the_open_questions() -> Bool {
   let t = mtcollins1_power_on_account_text(a: step1_account())
   contains(t, "restarted repeatedly: 2 cycle(s)") && contains(t, "ended after token 00001a0a")
     && contains(t, "does any failsafe or retry state survive the reset?")
+}
+
+// ── GAP 1: ONLY TYPED POWER-ON OR RESET EVIDENCE OPENS A CYCLE ───────────────────────────────
+
+test fn two_banners_without_a_reset_are_one_cycle_with_unbound_spans() -> Bool {
+  let a = mtcollins1_power_on_account(e: evidence(console: console_of(lines: lines_of(text: step1_last_two_cycles), relations: []), smpro: [], census_ended: false))
+  count(a.cycles) == 1
+    && (match a.cycles.first() { Present { value: c } => (match c.console { SpanBindingAmbiguous => true _ => false }) Absent => false })
+    && any(a.open, q => match q.question { ConsoleSpansUnbound { spans: n, cycles: k } => n == 2 && k == 1 _ => false })
+    && (match a.ending { RestartedRepeatedly { cycles: _, last_cycle_ended_after: _, cadence: _, console_errors: _, sel_restarts: _, watchdog: _, reset_cause: _ } => false _ => true })
+}
+
+test fn the_same_console_plus_one_typed_reset_is_two_bound_cycles() -> Bool {
+  let a = mtcollins1_power_on_account(e: evidence_with(console: console_of(lines: lines_of(text: step1_last_two_cycles), relations: []), smpro: [], census_ended: false, sel: [step1_restart]))
+  count(a.cycles) == 2
+    && (match a.cycles.last() { Present { value: c } => (match c.boundary { OpenedBySelRestart { record: r } => r.record_id == 59 _ => false }) Absent => false })
+    && !any(a.open, q => match q.question { ConsoleSpansUnbound { spans: _, cycles: _ } => true _ => false })
+}
+
+// A power-up record and the confirmed power-on are ONE boundary.
+test fn a_power_up_record_does_not_add_a_cycle_to_the_power_on() -> Bool {
+  count(old_firmware_account(census_ended: false).cycles) == 2
+}
+
+// ── GAP 2: AN UNRECORDED TOPOLOGY MINTS NO TOPOLOGY DEGRADATION ──────────────────────────────
+
+fn with_expected(e: PowerOnEvidence, expected: ExpectedTopology) -> PowerOnEvidence {
+  let c = e.configuration
+  PowerOnEvidence {
+    configuration: AttemptConfigurationReceipt { subject: c.subject, attempt: c.attempt, expected: expected, requested: c.requested, applied: c.applied, cpus: c.cpus, dimms: c.dimms, firmware: c.firmware },
+    handoff: e.handoff, smpro: e.smpro, console: e.console, sel: e.sel, watchdog: e.watchdog, bmc_anomalies: e.bmc_anomalies, census_ended: e.census_ended, coverage: e.coverage,
+  }
+}
+
+test fn one_active_socket_with_no_recorded_topology_is_questions_only() -> Bool {
+  let a = mtcollins1_power_on_account(e: with_expected(e: evidence(console: console_of(lines: lines_of(text: run_37069907299_firmware), relations: []), smpro: [], census_ended: true), expected: ExpectedTopologyNotRecorded { reason: "witness" }))
+  count(a.degradations) == 0
+    && any(a.open, q => match q.question { ConfigurationNotRecorded { field: f } => (match f { ConfiguredExpectedTopology => true _ => false }) _ => false })
+}
+
+test fn a_receipt_expecting_one_socket_is_not_degraded_by_one_active_socket() -> Bool {
+  let a = mtcollins1_power_on_account(e: with_expected(e: evidence(console: console_of(lines: lines_of(text: run_37069907299_firmware), relations: []), smpro: [], census_ended: true), expected: ExpectedSockets { sockets: [0], source: "witness: socket-1 CPU removed" }))
+  !any(a.degradations, d => match d { ActiveSocketsBelowExpected { active: _, expected: _ } => true SocketNotJoined { outcome: _ } => true _ => false })
+}
+
+// ── GAP 3: AN EARLIER CYCLE'S FAILURE IS HISTORY, NOT THE ENDING ─────────────────────────────
+
+test fn a_cycle_one_panic_then_a_reset_and_a_stable_uefi_shell_is_not_ended_by_the_panic() -> Bool {
+  let lines = concat(["NOTICE:  DRAM FW version 210525", "CP: 0ff00900"], concat(lines_of(text: run_37069907299_panic), ["NOTICE:  DRAM FW version 220414", "CP: 0ff00900", "UEFI Interactive Shell v2.2"]))
+  let a = mtcollins1_power_on_account(e: evidence_with(console: console_of(lines: lines, relations: []), smpro: [], census_ended: false, sel: [step1_restart]))
+  (match a.ending { StoppedWithoutRestart { last_milestone: m, ended_after: _, console_errors: _, restarts_before: n } => n == 1 && (match m { Present { value: x } => (match x.sighting.milestone { UefiShellObserved => true _ => false }) Absent => false }) _ => false })
+    && any(a.errors, x => (match x.error { KernelPanic { reason: _ } => true _ => false }) && (match x.cycle { Present { value: k } => k == 1 Absent => false }))
+}
+
+// ── GAP 4: A PENDING WARNING SURVIVES ─────────────────────────────────────────────────────────
+
+test fn a_pending_warning_without_an_error_is_kept() -> Bool {
+  let pass = [SmproPassEvidence { label: "census", outcomes: [
+    raw(socket: 0, reg: smpro_manufacturer_id_reg, stdout: "cd 3a"), raw(socket: 0, reg: smpro_gpi_ras_err_reg, stdout: "00 02"),
+    raw(socket: 0, reg: smpro_err_pmpro_type_reg, stdout: "00 01"), raw(socket: 0, reg: smpro_err_pmpro_info_hi_reg, stdout: "00 00"),
+    raw(socket: 0, reg: smpro_err_pmpro_info_lo_reg, stdout: "00 00"), raw(socket: 0, reg: smpro_err_pmpro_data_hi_reg, stdout: "00 00"),
+    raw(socket: 0, reg: smpro_err_pmpro_data_lo_reg, stdout: "00 00"), raw(socket: 0, reg: smpro_warn_pmpro_info_hi_reg, stdout: "22 44"),
+    raw(socket: 0, reg: smpro_warn_pmpro_info_lo_reg, stdout: "00 74"),
+  ] }]
+  let a = mtcollins1_power_on_account(e: evidence(console: ConsoleNotRead, smpro: pass, census_ended: false))
+  count(a.warnings) == 1 && !any(a.errors, x => match x.error { SmproRecordStated { socket: _, processor: _, pass: _, record: _ } => true _ => false })
+}
+
+// ── GAP 5: A MILESTONE CARRIES ITS CAPTURE AND ITS READER ────────────────────────────────────
+
+test fn the_same_line_from_two_captures_stays_two_facts() -> Bool {
+  let lines = concat(["NOTICE:  DRAM FW version 220414"], ["UEFI Interactive Shell v2.2"])
+  let other = Sha256FileDigest { digest: sha256_digest(hex: "1e0c4bc3ab7f635f5522c23832e6d5db33d7c3b07e9467cea1f9814167bd0de8") }
+  let c1 = console_of(lines: lines, relations: [])
+  let c2 = match c1 {
+    ConsoleRead { capture: _, firmware: f, firmware_error_lines: e, dram: d, checkpoints: k, relations: r, milestones: m, sockets: o, loader: g, linux: l, modules: x } =>
+      ConsoleRead { capture: other, firmware: f, firmware_error_lines: e, dram: d, checkpoints: k, relations: r, milestones: m, sockets: o, loader: g, linux: l, modules: x }
+    ConsoleNotRead => ConsoleNotRead
+  }
+  let m1 = flat_map(mtcollins1_power_on_account(e: evidence(console: c1, smpro: [], census_ended: false)).cycles, c => c.milestones)
+  let m2 = flat_map(mtcollins1_power_on_account(e: evidence(console: c2, smpro: [], census_ended: false)).cycles, c => c.milestones)
+  match m1.last() {
+    Present { value: a } => match m2.last() {
+      Present { value: b } => (a.sighting.line as String) == (b.sighting.line as String) && digest_hex(d: a.capture) != digest_hex(d: b.capture) && contains(a.reader as String, "mtcollins1_console_milestones")
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
+fn digest_hex(d: Sha256FileDigest) -> String {
+  match d { Sha256FileDigest { digest: x } => x.hex as String Sha256FileDigestUnavailable { path: _, reason: r } => r }
 }

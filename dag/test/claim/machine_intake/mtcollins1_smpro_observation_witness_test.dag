@@ -23,7 +23,7 @@ import extdeps.ampere.smpro_register { SmproRegister, SmproBootProgressRead, Smp
 import gunbc.machine_intake_mtcollins1_power_on_account {
   PowerOnAccount, PowerOnEvidence, AttemptConfigurationReceipt, SmproPassEvidence, SocketProgressAccount,
   HandoffPoweredOn, ConsoleNotRead, SelEventsNotRead, WatchdogUnobserved,
-  StimulusRequestNotRecorded, StimulusApplicationNotRecorded, PopulationNotRecorded, FirmwareReadbacksNotRecorded,
+  ExpectedSockets, StimulusRequestNotRecorded, StimulusApplicationNotRecorded, PopulationNotRecorded, FirmwareReadbacksNotRecorded,
   ProgressRead, ProgressNotRead, SmproReportedFailure, SmproPairRefused,
   mtcollins1_power_on_account,
 }
@@ -132,7 +132,7 @@ fn socket_reads_at(socket: Int, current: String, bootstage: String) -> List<Smpr
 // receipt is supplied with nothing recorded, so the claims say nothing about configuration.
 fn receipt() -> AttemptConfigurationReceipt {
   AttemptConfigurationReceipt {
-    subject: "mtcollins1", attempt: "witness", expected_sockets: [0, 1],
+    subject: "mtcollins1", attempt: "witness", expected: ExpectedSockets { sockets: [0, 1], source: "witness" },
     requested: StimulusRequestNotRecorded { reason: "witness" }, applied: StimulusApplicationNotRecorded { reason: "witness" },
     cpus: PopulationNotRecorded { reason: "witness" }, dimms: PopulationNotRecorded { reason: "witness" }, firmware: FirmwareReadbacksNotRecorded { reason: "witness" },
   }

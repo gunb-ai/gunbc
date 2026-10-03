@@ -3,9 +3,11 @@ module gunbc.machine_intake_mtcollins1_console_milestone_observation
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
 import v2.std.optional { Present }
-import extdeps.bootloader.grub { grub_console_banner_prefix }
-import extdeps.linux.efi_stub { linux_efi_stub_line_prefix }
-import extdeps.linux.boot_console { linux_banner_prefix }
+import extdeps.bootloader.grub { grub_console_banner_prefix, grub_failed_default_and_fallback, grub_error_prefix }
+import extdeps.linux.module_decompress { linux_module_zstd_decompress_failed_stem }
+import gunbc.machine_intake_pre_os_bringup_verdict { is_firmware_error_line, is_firmware_err_code_line }
+import extdeps.linux.efi_stub { linux_efi_stub_line_prefix, linux_efi_stub_initrd_load_failed_prefix }
+import extdeps.linux.boot_console { linux_banner_prefix, linux_kernel_panic_prefix, linux_kernel_panic_end_marker }
 import gunbc.machine_intake_ampere_dram_console_observation { ampere_dram_fw_version_marker, ampere_dram_console_line }
 import gunbc.machine_intake_ampere_socket_console_observation { ampere_summary_rc_marker }
 import gunbc.machine_intake_ampere_checkpoint_console_observation { AmpereCheckpointFold, AmpereCheckpointSpan, checkpoint_fold_step, empty_span }
@@ -61,8 +63,35 @@ type ConsoleMilestoneSighting {
 // gunbc.machine_intake_ampere_checkpoint_console_observation checkpoint_fold_step itself and reads
 // the span index it is in after each line, so a milestone and a checkpoint token in one span are in
 // one span by construction, whatever rule that reader uses for the span before the first banner.
+// WHERE A STATED FAILURE WAS PRINTED. The whole-capture readers (pre_os firmware statements, GRUB, the
+// EFI stub, the kernel, module decompression) decide WHAT a failure is; this reader records only the
+// LINE and SPAN each kind was first printed on, using those modules' own markers and predicates, so
+// the power-on account can bind the failure to a cycle. A failure line is never a milestone.
+type ConsoleFailureLine
+  = FirmwareErrorStatementLine
+  | GrubFailureLine
+  | InitrdLoadFailureLine
+  | KernelPanicLine
+  | ModuleDecompressionRefusalLine
+
+type ConsoleFailureSighting {
+  kind: ConsoleFailureLine
+  line_index: Int
+  span: Int
+}
+
 type ConsoleMilestoneObservation {
   sightings: List<ConsoleMilestoneSighting>
+  failures: List<ConsoleFailureSighting>
+}
+
+fn failure_kind_of(line: String) -> ConsoleFailureLine? {
+  if is_firmware_error_line(line: line) || is_firmware_err_code_line(line: line) { Present { value: FirmwareErrorStatementLine } }
+  else if string_contains(s: line, pattern: grub_failed_default_and_fallback as String) || starts_with(s: line, prefix: grub_error_prefix as String) { Present { value: GrubFailureLine } }
+  else if string_contains(s: line, pattern: linux_efi_stub_initrd_load_failed_prefix as String) { Present { value: InitrdLoadFailureLine } }
+  else if string_contains(s: line, pattern: linux_kernel_panic_prefix as String) && !string_contains(s: line, pattern: linux_kernel_panic_end_marker as String) { Present { value: KernelPanicLine } }
+  else if string_contains(s: line, pattern: linux_module_zstd_decompress_failed_stem as String) { Present { value: ModuleDecompressionRefusalLine } }
+  else { none }
 }
 
 fn milestone_marker_of(line: String) -> ConsoleMilestoneSighting? {
@@ -85,21 +114,29 @@ type MilestoneFold {
   index: Int
   spans: AmpereCheckpointFold
   sightings: List<ConsoleMilestoneSighting>
+  failures: List<ConsoleFailureSighting>
 }
 
 fn milestone_fold_step(acc: MilestoneFold, raw: String) -> MilestoneFold {
   let spans = checkpoint_fold_step(acc: acc.spans, raw: raw)
-  let seen = match milestone_marker_of(line: trim(ampere_dram_console_line(raw: raw))) {
+  let line = trim(ampere_dram_console_line(raw: raw))
+  let seen = match milestone_marker_of(line: line) {
     Absent => acc.sightings
     Present { value: s } => concat(acc.sightings, [ConsoleMilestoneSighting { milestone: s.milestone, line: s.line, marker: s.marker, line_index: acc.index, span: spans.current.index }])
   }
-  MilestoneFold { index: acc.index + 1, spans: spans, sightings: seen }
+  let failed = match failure_kind_of(line: line) {
+    Absent => acc.failures
+    Present { value: k } => concat(acc.failures, [ConsoleFailureSighting { kind: k, line_index: acc.index, span: spans.current.index }])
+  }
+  MilestoneFold { index: acc.index + 1, spans: spans, sightings: seen, failures: failed }
 }
 
 fn mtcollins1_console_milestones(lines: List<String>) -> ConsoleMilestoneObservation {
   let none_seen: List<ConsoleMilestoneSighting> = []
+  let none_failed: List<ConsoleFailureSighting> = []
   let none_closed: List<AmpereCheckpointSpan> = []
-  ConsoleMilestoneObservation { sightings: fold(lines, init: MilestoneFold { index: 0, spans: AmpereCheckpointFold { closed: none_closed, current: empty_span(index: 0, opened_by_banner: false) }, sightings: none_seen }, f: (acc, l) => milestone_fold_step(acc: acc, raw: l)).sightings }
+  let done = fold(lines, init: MilestoneFold { index: 0, spans: AmpereCheckpointFold { closed: none_closed, current: empty_span(index: 0, opened_by_banner: false) }, sightings: none_seen, failures: none_failed }, f: (acc, l) => milestone_fold_step(acc: acc, raw: l))
+  ConsoleMilestoneObservation { sightings: done.sightings, failures: done.failures }
 }
 
 fn console_milestone_name(m: ConsoleMilestone) -> String {

@@ -29,7 +29,7 @@ import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   SdrCacheDumped, SdrCacheUnread, SdrCacheNotTaken, SensorsRead, SensorsNotTaken, SmproProbed, SmproNotTaken,
   BmcUnreachable, BmcTimeout, BmcAuthRefused, BmcHttpRefused, BmcSessionUnestablished,
   bmc_curl_read_cause, bmc_ipmitool_read_cause, inventory_not_taken,
-  mtcollins1_boot_findings, harness_finding_text, mtcollins1_boot_bundle_text, mtcollins1_boot_outcome_with_findings,
+  mtcollins1_boot_findings, harness_finding_text, processor_anomalies, mtcollins1_attempt_configuration_receipt, mtcollins1_boot_bundle_text, mtcollins1_boot_outcome_with_findings,
   mtcollins1_boot_console_reading, ReferenceCaptureRead, ConsoleRetained, ConsoleNotRetained, ConsoleExceedsBound, mtcollins1_boot_console_bound,
   AttemptRunId, AttemptIdentityUnavailable, BmcDeadlineReached, BmcCollectionIncomplete,
   CollectionComplete, CollectionRefused, redfish_collection_assembly, redfish_budget_refusal, member_not_reached,
@@ -42,9 +42,9 @@ import gunbc.actions_run_binding { ActionsVariablePresent, ActionsVariableAbsent
 import gunbc.machine_intake_pre_os_bringup_verdict { TrainingRefusedByFirmware }
 import std.measure { byte_size, byte_size_count, second_count }
 import extdeps.bmc.ipmi_sdr { sdr_decode_lines }
-import extdeps.ampere.smpro_register { smpro_manufacturer_id_reg, smpro_bootstage_reg, smpro_cur_bootstage_reg }
+import extdeps.ampere.smpro_register { smpro_manufacturer_id_reg, smpro_bootstage_reg, smpro_cur_bootstage_reg, smpro_gpi_ras_err_reg, smpro_err_pmpro_type_reg }
 import gunbc.machine_intake_mtcollins1_smpro_observation { SmproProbeRaw, smpro_probe_outcome, mtcollins1_smpro_read_order }
-import gunbc.machine_intake_mtcollins1_power_on_account { RestartedRepeatedly, mtcollins1_power_on_account_notes }
+import gunbc.machine_intake_mtcollins1_power_on_account { AttemptConfigurationReceipt, ExpectedSockets, ProcessorsListedBelowSockets, StoppedWithoutRestart, SmproErrorRegisters, SmproRegisters, CarrierRead, CarrierRefused, CarrierPartial, mtcollins1_power_on_account_notes }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -343,8 +343,18 @@ test fn the_render_keeps_raw_records_beside_the_decode_and_counts_oem_opaque() -
 
 // ── DECISIVE INVENTORY FINDINGS ──────────────────────────────────────────────────────────────
 
-test fn a_missing_processor_member_is_a_finding_against_the_census() -> Bool {
-  any_contains(xs: found(bundle: bundle_socket1_absent()), pattern: "BMC lists 1 Processor member(s); 2 socket(s) expected")
+// A SHORTFALL IS JUDGED AGAINST THE ATTEMPT'S RECEIPT, never the historical census (law 6). With the
+// production receipt (nothing recorded) none is minted and the open question says so; a receipt that
+// does expect two sockets finds the one listed processor short.
+test fn with_no_recorded_topology_a_missing_processor_is_a_question_not_a_shortfall() -> Bool {
+  let f = found(bundle: bundle_socket1_absent())
+  !any_contains(xs: f, pattern: "Processor member(s);") && any_contains(xs: f, pattern: "the expected topology was not recorded for this attempt")
+}
+
+test fn a_receipt_expecting_two_sockets_finds_one_listed_processor_short() -> Bool {
+  let r = mtcollins1_attempt_configuration_receipt(attempt: AttemptRunId { run_id: "witness" })
+  let expecting = AttemptConfigurationReceipt { subject: r.subject, attempt: r.attempt, expected: ExpectedSockets { sockets: [0, 1], source: "witness" }, requested: r.requested, applied: r.applied, cpus: r.cpus, dimms: r.dimms, firmware: r.firmware }
+  any(processor_anomalies(processors: MembersRead { members: processors_socket0_only() }, receipt: expecting), a => match a { ProcessorsListedBelowSockets { listed: l, expected: x } => l == 1 && x == 2 _ => false })
 }
 
 test fn socket1_absent_slots_are_named_by_socket() -> Bool {
@@ -353,7 +363,7 @@ test fn socket1_absent_slots_are_named_by_socket() -> Bool {
 
 test fn the_findings_reach_the_one_line_refusal() -> Bool {
   match mtcollins1_boot_outcome_with_findings(outcome: exit_failure(reason: "mtcollins1 boot: host qualification REFUSED"), findings: mtcollins1_boot_findings(bundle: bundle_socket1_absent())) {
-    ExitFailure { code: _, reason: r } => contains(r, "mtcollins1 boot: host qualification REFUSED | power-on account: ") && contains(r, "2 socket(s) expected")
+    ExitFailure { code: _, reason: r } => contains(r, "mtcollins1 boot: host qualification REFUSED | power-on account: ") && contains(r, "socket-1 Memory member(s) State=Absent")
     ExitSuccess => false
   }
 }
@@ -520,7 +530,7 @@ test fn an_empty_dram_socket_in_the_console_reaches_the_refusal() -> Bool {
     screen: no_screen(),
   }
   match mtcollins1_boot_outcome_with_findings(outcome: exit_failure(reason: "mtcollins1 boot: host qualification REFUSED"), findings: mtcollins1_boot_findings(bundle: bundle)) {
-    ExitFailure { code: _, reason: r } => contains(r, "the closed DRAM roster lists no DIMM on socket 1") && !contains(r, "mcu_enable_mask")
+    ExitFailure { code: _, reason: r } => contains(r, "the expected topology was not recorded for this attempt") && !contains(r, "the closed DRAM roster lists no DIMM") && !contains(r, "mcu_enable_mask")
     ExitSuccess => false
   }
 }
@@ -562,7 +572,7 @@ test fn a_one_socket_firmware_summary_reaches_the_refusal() -> Bool {
   let bundle = MtCollins1BootDiagnosticBundle { attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors, smpro: b.smpro, inventory: b.inventory,
     console: mtcollins1_boot_console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 400), capture: capture, read_ok: true, read_error: "", capture_digest: unread_digest, reference: no_reference), run: no_run(), screen: no_screen() }
   let text = mtcollins1_boot_bundle_text(bundle: bundle)
-  any_contains(found(bundle: bundle), "firmware boot summary: 1 active socket(s), 2 expected")
+  any_contains(found(bundle: bundle), "the expected topology was not recorded for this attempt") && !any_contains(found(bundle: bundle), "active socket(s), 2 expected")
     && contains(text, "GHES 2 severity=info dword0=000003ce -> socket 0 PMPRO FW subtype 3")
     && contains(text, "against the two-socket reference boot artifacts/bmc/mtcollins1-hw-census-sol.log: UNREAD: not supplied")
 }
@@ -850,23 +860,51 @@ test fn power_off_after_the_census_end_marker_is_expected_not_a_finding() -> Boo
 
 // ── INHABITANCE: THE POWER-ON ACCOUNT OVER THE REAL ROUTE ────────────────────────────────────────
 // The account's own claims supply their evidence (mtcollins1_power_on_account_witness_test). This one
-// runs the production route end to end -- the bundle's console reading over real bytes, its span and
-// relation derivation, its evidence assembly, the account -- and asserts the ROUTE: two cycles from two
-// banner spans, the last ending after the token the console reader read, a relation only that route
-// derives.
-// branch mtcollins1-captures-2026-10-03, mtcollins1/step1-j1j17-20261003T042447Z/sol.raw
-// (sha256 6f33812ce2af74aacf9deba90931aa9144b1ba974532ae9e890b90a57c5900c1), lines 138-205;
-// excerpt sha256 edbcaabead8194544201251f9a8a5eb26ba3dfbb8da1caec9627487f260d153d.
-data step1_last_two_cycles: String = "NOTICE:  DRAM FW version 220414\r\nCP: 0ff00900\r\nMEMC param:\r\n  mcu_enable_mask = 00000001 [default: 000000ff]\r\nMCU param:\r\n  ecc_en = 00000002 [default: 00000001]\r\nDRAM populated DIMMs:\r\n  SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK    \r\nCP: 3ff00100\r\nCP: 3ff00200\r\nCP: 00f01902\r\nCP: 0ff00a00\r\nCP: 0ff00b01\r\nCP: 00f01901\r\nCP: 00f01904\r\nCP: 00f02901\r\nCP: 00f01905\r\nCP: 00f02902\r\nCP: 00f02903\r\nCP: 00f02904\r\nCP: 00f01907\r\nCP: 00f01906\r\nCP: 00f01908\r\nCP: 00f01909\r\nCP: 0ff00b02\r\nCP: 0ff00c00\r\nCP: 3ff00300\r\nCP: 00001a02\r\nCP: 00001a03\r\nCP: 00001a04\r\nCP: 00001a05\r\nCP: 00f01a07\r\nCP: 00001a09\r\nCP: 00001a0a\r\nNOTICE:  DRAM FW version 220414\r\nCP: 0ff00900\r\nMEMC param:\r\n  mcu_enable_mask = 00000001 [default: 000000ff]\r\nMCU param:\r\n  ecc_en = 00000002 [default: 00000001]\r\nDRAM populated DIMMs:\r\n  SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK    \r\nCP: 3ff00100\r\nCP: 3ff00200\r\nCP: 00f01902\r\nCP: 0ff00a00\r\nCP: 0ff00b01\r\nCP: 00f01901\r\nCP: 00f01904\r\nCP: 00f02901\r\nCP: 00f01905\r\nCP: 00f02902\r\nCP: 00f02903\r\nCP: 00f02904\r\nCP: 00f01907\r\nCP: 00f01906\r\nCP: 00f01908\r\nCP: 00f01909\r\nCP: 0ff00b02\r\nCP: 0ff00c00\r\nCP: 3ff00300\r\nCP: 00001a02\r\nCP: 00001a03\r\nCP: 00001a04\r\nCP: 00001a05\r\nCP: 00f01a07\r\nCP: 00001a09\r\nCP: 00001a0a\r\n"
+// runs the production route end to end on ONE real attempt, run 37069907299 -- the bundle's console
+// reading over its SOL bytes, its SEL snapshots through the real SEL reader, the bundle's evidence
+// assembly, the account -- and asserts the ROUTE: two cycles opened by the window's own typed records
+// (c26 "Initiated by power up", c2b "System Restart"), the two DRAM spans bound to them, the first
+// cycle ending after the token the console reader read and the second going on to the summary.
+// run 37069907299, artifact mtcollins1-boot-receipts, file mtcollins1-boot-diagnostics.txt (sha256
+// 5d11c12a4bb1d9eda3b7b0c5568e46b91f57b93d68507f1e3e6f6969cc3946f6): the raw `sel elist` rows as the
+// bundle rendered them, before lines 3133-3135 (excerpt sha256 f17b4783cbe06412610b564848d9609469e2f44158dabbe304e3a3c81ee807d1) and after lines 6240-6251
+// (excerpt sha256 f0a028e0bea44ec0b86f6fb9d3d9a16e64bacb44cbc7004991806dd0c8d1dced).
+data run_37069907299_sel_before: String = " c20 | 10/02/2026 | 05:58:34 PM UTC | Power Supply PSU2_Status | Presence detected | Asserted\n c21 | 10/02/2026 | 05:58:34 PM UTC | Power Supply PSU2_Status | Power Supply AC lost | Asserted\n c22 | 10/02/2026 | 05:59:24 PM UTC | System Firmwares Boot_Progress | System boot initiated | Asserted\n"
 
-test fn the_real_console_route_reaches_the_account_as_a_loop_ending_after_00001a0a() -> Bool {
+data run_37069907299_sel_after: String = " c20 | 10/02/2026 | 05:58:34 PM UTC | Power Supply PSU2_Status | Presence detected | Asserted\n c21 | 10/02/2026 | 05:58:34 PM UTC | Power Supply PSU2_Status | Power Supply AC lost | Asserted\n c22 | 10/02/2026 | 05:59:24 PM UTC | System Firmwares Boot_Progress | System boot initiated | Asserted\n c23 | 10/02/2026 | 06:12:19 PM UTC | Session Audit SOL_Status |  | Asserted\n c24 | 10/02/2026 | 06:13:16 PM UTC | Power Unit ChassisPwrStatus | Soft-power control failure | Asserted\n c25 | 10/02/2026 | 06:13:23 PM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted\n c26 | 10/02/2026 | 06:13:25 PM UTC | System Boot Initiated Sys_Boot_Restart | Initiated by power up | Asserted\n c27 | 10/02/2026 | 06:13:25 PM UTC | Power Unit ChassisPwrStatus | Power cycle | Asserted\n c28 | 10/02/2026 | 06:13:43 PM UTC | OEM record c0 | 00cd3a | caee7114ffff\n c29 | 10/02/2026 | 06:13:44 PM UTC | OEM record c0 | 00cd3a | caeef114ffff\n c2a | 10/02/2026 | 06:14:08 PM UTC | OEM record c0 | 00cd3a | caee7114ffff\n c2b | 10/02/2026 | 06:14:09 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted\n"
+
+// the same run's mtcollins1-boot-sol.capture (sha256
+// bfddc9ff3856bbdba500ee6b03571634a5b080588796c18c1b007ecc16361bf9), lines 1-115; excerpt sha256 4fed2ee92d07ff4d6a34d28395c95ef13cf7a7ff03a2ed6598758398ba28c33d.
+data run_37069907299_firmware: String = "[SOL Session operational.  Use ~? for help]\nCheckpoint B4\r\n\0NOTICE:  DRAM FW version 210525\r\nCP: 0ff00900\r\nMEMC param:\r\n  mcu_enable_mask = 00000001 [default: 000000ff]\r\nMCU param:\r\n  ecc_en = 00000002 [default: 00000001]\r\nDRAM populated DIMMs:\r\n  SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK    \r\nCP: 3ff00100\r\nCP: 3ff00200\r\nCP: 00f01902\r\nCP: 0ff00a00\r\nCP: 0ff00b01\r\nCP: 00f01901\r\nCP: 00f01904\r\nCP: 00f02901\r\nCP: 00f01905\r\nCP: 00f02902\r\nCP: 00f02903\r\nCP: 00f02904\r\nCP: 00f01907\r\nCP: 00f01906\r\nCP: 00f01908\r\nCP: 00f01909\r\nCP: 0ff00b02\r\nCP: 0ff00c00\r\nCP: 3ff00300\r\nCP: 00001a02\r\nCP: 00001a03\r\nCP: 00001a04\r\nCP: 00001a05\r\nCP: 00f01a07\r\nCP: 00001a09\r\nCP: 00001a0a\r\nNOTICE:  DRAM FW version 210525\r\nCP: 0ff00900\r\nMEMC param:\r\n  mcu_enable_mask = 00000001 [default: 000000ff]\r\nMCU param:\r\n  ecc_en = 00000002 [default: 00000001]\r\nDRAM populated DIMMs:\r\n  SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK    \r\nCP: 3ff00100\r\nCP: 3ff00200\r\nCP: 00f01902\r\nCP: 0ff00a00\r\nCP: 0ff00b01\r\nCP: 00f01901\r\nCP: 00f01904\r\nCP: 00f02901\r\nCP: 00f01905\r\nCP: 00f02902\r\nCP: 00f02903\r\nCP: 00f02904\r\nCP: 00f01907\r\nCP: 00f01906\r\nCP: 00f01908\r\nCP: 00f01909\r\nCP: 0ff00b02\r\nCP: 0ff00c00\r\nCP: 3ff00300\r\nCP: 00001a02\r\nCP: 00001a03\r\nCP: 00001a04\r\nCP: 00001a05\r\nCP: 00f01a07\r\nCP: 00001a09\r\nCP: 00001a0a\r\nCP: 00001a0b\r\nCP: 00001a0c\r\nCP: 00001a0c\r\nCP: 3ff00400\r\nCP: 0ff01000\r\nCP: 0ff01101\r\nDRAM ECC Initialization: [6] [ ==>                  ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [12] [ ===>                 ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [18] [ ====>                ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [25] [ ======>              ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [31] [ =======>             ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [37] [ ========>            ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [43] [ =========>           ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [50] [ ===========>         ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [56] [ ============>        ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [62] [ =============>       ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [68] [ ==============>      ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [75] [ ================>    ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [81] [ =================>   ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [87] [ ==================>  ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [93] [ ===================> ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [100] [ ==================== ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\r\nCP: 0ff01200\r\nCP: 3ff00800\r\nDRAM memory regions:\r\n  Node[0] Region[0]: 0x000080000000 - 0x0000bfffffff \r\n  Node[0] Region[1]: 0x080000000000 - 0x08007fffffff \r\n  Node[0] Region[2]: 0x0800c0000000 - 0x0803ffffffff \r\nDRAM: 16GB DDR4 2666 SYMBOL ECC\r\nCheckpoint 2F\r\nCheckpoint 2E\r\nCheckpoint 31\r\nCheckpoint 32\r\nUEFI RC version: 1.08\r\nSCP FW version    : 1.08\r\nSCP FW build date : 20210825\r\nFailsafe status                 : 0\r\nReset status                    : 3\r\nCPU info\r\n    CPU ID                      : 413FD0C1\r\n    CPU Clock                   : 2800 MHz\r\n    Number of active sockets    : 1\r\n    Number of active cores      : 80\r\n    Socket[0]: Core voltage     : 1065\r\n    Socket[0]: SCU ProductID    : A10001\r\n    Socket[0]: Max cores        : 80\r\n    Socket[0]: Warranty         : 0\r\n    Socket[0]: Subnuma          : 0\r\n    Socket[0]: RC disable mask  : 0\r\n    Socket[0]: AVS enabled      : 1\r\n    Socket[0]: AVS voltage      : 1027\r\nSOC info\r\n    DDR Frequency               : 2666 MHz\r\n    Socket[0]: Soc voltage      : 750\r\n    Socket[0]: DIMM1 voltage    : 1235\r\n    Socket[0]: DIMM2 voltage    : 1235\r\n    PCP Clock                   : 1550 MHz\r\n    SOC Clock                   : 2000 MHz\r\n    SYS Clock                   : 400 MHz\r\n    AHB Clock                   : 200 MHz\r\n"
+
+test fn the_real_route_binds_two_dram_spans_to_two_typed_cycles() -> Bool {
   let b = bundle_bmc_silent()
-  let bundle = MtCollins1BootDiagnosticBundle { attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors, smpro: b.smpro, inventory: b.inventory,
-    console: mtcollins1_boot_console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 1260), capture: step1_last_two_cycles, read_ok: true, read_error: "", capture_digest: unread_digest, reference: no_reference),
+  let bundle = MtCollins1BootDiagnosticBundle { attempt: AttemptRunId { run_id: "37069907299" }, outcome: b.outcome,
+    sel_before: SelSnapshotRead { raw: run_37069907299_sel_before, at: "2026-10-02T22:12:06Z" }, sel_after: SelSnapshotRead { raw: run_37069907299_sel_after, at: "2026-10-02T22:21:30Z" },
+    sdr_cache: b.sdr_cache, sensors: b.sensors, smpro: b.smpro, inventory: b.inventory,
+    console: mtcollins1_boot_console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 4423), capture: run_37069907299_firmware, read_ok: true, read_error: "", capture_digest: unread_digest, reference: no_reference),
     run: no_run(), screen: no_screen() }
-  match mtcollins1_boot_findings(bundle: bundle).account.ending {
-    RestartedRepeatedly { cycles: n, last_cycle_ended_after: r, cadence: _, console_errors: k, sel_restarts: _, watchdog: _, reset_cause: _ } =>
-      n == 2 && k == 0 && (match r { Present { value: rel } => (rel.last.digits as String) == "00001a0a" Absent => false })
-    _ => false
-  }
+  let a = mtcollins1_boot_findings(bundle: bundle).account
+  count(a.cycles) == 2
+    && (match a.cycles.first() { Present { value: c } => (match c.ended_after { Present { value: r } => (r.last.digits as String) == "00001a0a" Absent => false }) Absent => false })
+    && (match a.ending { StoppedWithoutRestart { last_milestone: _, ended_after: _, console_errors: _, restarts_before: n } => n == 1 _ => false })
+}
+
+// GAP 4: THE ERROR-RECORD REGISTERS ARE THEIR OWN CARRIER. CUR/BOOTSTAGE read while GPI_RAS_ERR and the
+// record words refused is a read progress carrier and a refused or partial error-record carrier.
+test fn refused_error_registers_beside_a_read_stage_pair_are_their_own_coverage_gap() -> Bool {
+  let b = bundle_socket1_absent()
+  let nak = "Unable to send RAW command (channel=0x0 netfn=0x6 lun=0x0 cmd=0x52 rsp=0x83): Unknown (0x83)"
+  let outcomes = [
+    smpro_probe_outcome(raw: smpro_raw(socket: 0, register: smpro_manufacturer_id_reg.name, exit_code: 0, stdout: "cd 3a", stderr: "")),
+    smpro_probe_outcome(raw: smpro_raw(socket: 0, register: smpro_cur_bootstage_reg.name, exit_code: 0, stdout: "00 02", stderr: "")),
+    smpro_probe_outcome(raw: smpro_raw(socket: 0, register: smpro_bootstage_reg.name, exit_code: 0, stdout: "02 01", stderr: "")),
+    smpro_probe_outcome(raw: smpro_raw(socket: 0, register: smpro_gpi_ras_err_reg.name, exit_code: 1, stdout: "", stderr: nak)),
+    smpro_probe_outcome(raw: smpro_raw(socket: 0, register: smpro_err_pmpro_type_reg.name, exit_code: 1, stdout: "", stderr: nak)),
+  ]
+  let bundle = MtCollins1BootDiagnosticBundle { attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors,
+    smpro: SmproProbed { outcomes: outcomes }, inventory: b.inventory, console: b.console, run: no_run(), screen: no_screen() }
+  let cov = mtcollins1_boot_findings(bundle: bundle).account.coverage
+  any(cov, c => (match c.carrier { SmproRegisters => true _ => false }) && (match c.standing { CarrierRead => true _ => false }))
+    && any(cov, c => (match c.carrier { SmproErrorRegisters => true _ => false }) && (match c.standing { CarrierRefused { cause: _ } => true CarrierPartial { detail: _ } => true _ => false }))
 }

@@ -21,8 +21,10 @@ import extdeps.bmc.ipmi_sel { FirmwareError, FirmwareHang, FirmwareProgress }
 import extdeps.bmc.ipmi_sdr { SdrLineResult, sdr_decode_lines }
 import gunbc.machine_intake_mtcollins1_smpro_observation {
   SmproProbeOutcome, SmproWordRead, SmproControllerRefused, SmproTransportFailed, SmproResponseMalformed,
-  mtcollins1_smpro_probe_count, mtcollins1_smpro_dossier_text, mtcollins1_smpro_targets, mtcollins1_smpro_socket_stage,
+  mtcollins1_smpro_probe_count, mtcollins1_smpro_dossier_text, mtcollins1_smpro_targets,
+  mtcollins1_smpro_socket_records, smpro_socket_word, smpro_outcome_word, smpro_outcome_text,
 }
+import extdeps.ampere.smpro_register { smpro_gpi_ras_err_reg }
 import gunbc.machine_intake_mtcollins1_bmc_sensor_observation { mtcollins1_sensor_table_text, mtcollins1_sensor_anomalies }
 import extdeps.bmc.redfish_memory_inventory {
   RedfishMemoryMember, RedfishProcessorMember, RedfishResourceStatus, RedfishMemoryLocation,
@@ -60,10 +62,11 @@ import extdeps.bootloader.grub { GrubConsoleReport, GrubNothingStated, GrubBanne
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
 import gunbc.machine_intake_mtcollins1_power_on_account {
   PowerOnAccount, PowerOnEvidence, AttemptConfigurationReceipt, BmcAnomaly, ConsoleEvidence, ConsoleRead, ConsoleNotRead, SmproPassEvidence,
-  Carrier, SolConsole, KvmScreen, SmproRegisters, SystemEventLog, SensorTable, ChassisPower, RedfishInventory, VirtualMedia, HostCaptureMarkers,
+  Carrier, SolConsole, KvmScreen, SmproRegisters, SmproErrorRegisters, SystemEventLog, SensorTable, ChassisPower, RedfishInventory, VirtualMedia, HostCaptureMarkers,
   CarrierCoverage, CarrierStanding, CarrierRead, CarrierReadEmpty, CarrierPartial, CarrierRefused, CarrierNotTaken,
   PowerOnHandoff, HandoffPoweredOn, HandoffNotConfirmed, SelEvidence, SelEventsRead, SelEventsNotRead,
-  WatchdogUnobserved, StimulusRequestNotRecorded, StimulusApplicationNotRecorded, PopulationNotRecorded, FirmwareReadbacksNotRecorded,
+  WatchdogUnobserved, ExpectedSockets, ExpectedTopologyNotRecorded, StimulusRequestNotRecorded,
+  PopulationLiveObserved, PopulationOperatorAttested, PopulationConflicted, SlotRow, StimulusApplicationNotRecorded, PopulationNotRecorded, FirmwareReadbacksNotRecorded,
   ProcessorsListedBelowSockets, ProcessorNotNominal, MemoryListedBelowSlots, MemoryAbsentOnSocket, MemoryNotNominal, SelHardwareEvent,
   mtcollins1_power_on_account, mtcollins1_power_on_account_text, mtcollins1_power_on_account_notes,
 }
@@ -1207,11 +1210,17 @@ fn processor_socket_suffix(p: RedfishProcessorMember) -> String {
   match p.socket { Present { value: s } => concat(" (Socket ", s, ")") Absent => "" }
 }
 
-fn processor_anomalies(processors: MembersReading<RedfishProcessorMember>) -> List<BmcAnomaly> {
+// A SHORTFALL IS JUDGED ONLY AGAINST THIS ATTEMPT'S RECEIPT (law 6): the historical census is no
+// expectation of this attempt, so with no recorded topology or population no shortfall is minted --
+// the receipt's own open question says what could not be judged. What the BMC states about a member
+// itself (not nominal, absent) needs no expectation and stays.
+fn processor_anomalies(processors: MembersReading<RedfishProcessorMember>, receipt: AttemptConfigurationReceipt) -> List<BmcAnomaly> {
   match processors {
     MembersRead { members: ps } => {
-      let expected = mtcollins1_census_socket_count()
-      let short = if count(ps) < expected { [ProcessorsListedBelowSockets { listed: count(ps), expected: expected }] } else { [] }
+      let short = match receipt.expected {
+        ExpectedSockets { sockets: ks, source: _ } => if count(ps) < count(ks) { [ProcessorsListedBelowSockets { listed: count(ps), expected: count(ks) }] } else { [] }
+        ExpectedTopologyNotRecorded { reason: _ } => []
+      }
       concat(short, map(filter(ps, p => state_is_down(state: p.status.state) || health_is_bad(health: p.status.health)), p => ProcessorNotNominal { member: p }))
     }
     MembersUnread { cause: _ } => []
@@ -1219,11 +1228,15 @@ fn processor_anomalies(processors: MembersReading<RedfishProcessorMember>) -> Li
   }
 }
 
-fn memory_anomalies(memory: MembersReading<RedfishMemoryMember>) -> List<BmcAnomaly> {
+fn memory_anomalies(memory: MembersReading<RedfishMemoryMember>, receipt: AttemptConfigurationReceipt) -> List<BmcAnomaly> {
   match memory {
     MembersRead { members: ms } => {
-      let slots = count(mtcollins1_slots)
-      let short = if count(ms) < slots { [MemoryListedBelowSlots { listed: count(ms), slots: slots }] } else { [] }
+      let short = match receipt.dimms {
+        PopulationLiveObserved { rows: rs, source: _ } => populated_short(listed: count(ms), rows: rs)
+        PopulationOperatorAttested { rows: rs, receipt: _ } => populated_short(listed: count(ms), rows: rs)
+        PopulationConflicted { readings: _ } => []
+        PopulationNotRecorded { reason: _ } => []
+      }
       let sockets = distinct_ints(xs: map(ms, m => memory_socket_key(m: m)))
       let bad = map(filter(ms, m => (state_is_down(state: m.status.state) && !state_is_absent(state: m.status.state)) || health_is_bad(health: m.status.health)), m => MemoryNotNominal { member: m })
       concat(short, concat(flat_map(sockets, k => socket_absent_anomaly(ms: ms, socket: k)), bad))
@@ -1231,6 +1244,11 @@ fn memory_anomalies(memory: MembersReading<RedfishMemoryMember>) -> List<BmcAnom
     MembersUnread { cause: _ } => []
     MembersNotTaken { reason: _ } => []
   }
+}
+
+fn populated_short(listed: Int, rows: List<SlotRow>) -> List<BmcAnomaly> {
+  let populated = count(filter(rows, r => r.populated))
+  if listed < populated { [MemoryListedBelowSlots { listed: listed, slots: populated }] } else { [] }
 }
 
 fn sel_hardware_anomalies(delta: SelDeltaReading) -> List<BmcAnomaly> {
@@ -1397,6 +1415,28 @@ fn smpro_coverage(readings: List<SmproReading>) -> CarrierStanding {
   else { CarrierNotTaken { reason: "no SMpro pass was taken" } }
 }
 
+// THE ERROR-RECORD REGISTERS, covered apart from the boot-stage pair (#13058): a pass whose CUR and
+// BOOTSTAGE read while GPI_RAS_ERR or a record word refused is a gap in THIS carrier, not in progress.
+fn record_gaps(os: List<SmproProbeOutcome>, socket: Int) -> List<String> {
+  let r = mtcollins1_smpro_socket_records(outcomes: os, socket: socket)
+  let gpi = match smpro_socket_word(outcomes: os, socket: socket, register: smpro_gpi_ras_err_reg.name) {
+    Absent => [concat("socket ", to_string(socket), " GPI_RAS_ERR was not probed")]
+    Present { value: o } => match smpro_outcome_word(o: o) { Present { value: _ } => [] Absent => [concat("socket ", to_string(socket), " GPI_RAS_ERR ", smpro_outcome_text(o: o))] }
+  }
+  concat(gpi, concat(match r.smpro.missing { Present { value: m } => [concat("socket ", to_string(socket), " SMpro records: ", m)] Absent => [] },
+    match r.pmpro.missing { Present { value: m } => [concat("socket ", to_string(socket), " PMpro records: ", m)] Absent => [] }))
+}
+
+fn smpro_error_coverage(readings: List<SmproReading>) -> CarrierStanding {
+  let passes = flat_map(readings, r => match r { SmproProbed { outcomes: os } => [os] SmproNotTaken { reason: _ } => [] })
+  let gaps = flat_map(passes, os => flat_map(mtcollins1_smpro_targets, t => record_gaps(os: os, socket: t.socket)))
+  let wanted = count(passes) * count(mtcollins1_smpro_targets) * 3
+  if count(passes) == 0 { CarrierNotTaken { reason: "no SMpro pass was taken" } }
+  else if count(gaps) == 0 { CarrierRead }
+  else if count(gaps) >= wanted { CarrierRefused { cause: (match gaps.first() { Present { value: g } => g Absent => "every error-record read failed" }) as NonEmptyStr } }
+  else { CarrierPartial { detail: join(gaps, "; ") as NonEmptyStr } }
+}
+
 fn sel_coverage(delta: SelDeltaReading) -> CarrierStanding {
   match delta {
     SelDeltaDecoded { delta: _ } => CarrierRead
@@ -1453,6 +1493,7 @@ fn mtcollins1_boot_coverage(bundle: MtCollins1BootDiagnosticBundle) -> List<Carr
     CarrierCoverage { carrier: SolConsole, standing: console_coverage(c: bundle.console) },
     CarrierCoverage { carrier: KvmScreen, standing: kvm_coverage(rec: bundle.screen) },
     CarrierCoverage { carrier: SmproRegisters, standing: smpro_coverage(readings: [bundle.run.smpro_power_on, bundle.run.smpro_census, bundle.smpro]) },
+    CarrierCoverage { carrier: SmproErrorRegisters, standing: smpro_error_coverage(readings: [bundle.run.smpro_power_on, bundle.run.smpro_census, bundle.smpro]) },
     CarrierCoverage { carrier: SystemEventLog, standing: sel_coverage(delta: delta) },
     CarrierCoverage { carrier: SensorTable, standing: sensor_coverage(s: bundle.sensors) },
     CarrierCoverage { carrier: ChassisPower, standing: chassis_coverage(p: bundle.run.power_after) },
@@ -1463,11 +1504,10 @@ fn mtcollins1_boot_coverage(bundle: MtCollins1BootDiagnosticBundle) -> List<Carr
 }
 
 // THE ATTEMPT CONFIGURATION RECEIPT THIS RUN CAN FREEZE TODAY. The fleet-converge boot takes no
-// stimulus, population or pre-actuation firmware receipt yet, so those fields are NotRecorded with
-// that reason and every question needing them is open; the historical census and orientation rows
-// are deliberately NOT used (they map topology, never current occupancy). The expected sockets are
-// the board's topology policy (gunbc.machine_intake_mtcollins1_boot_milestone mtcollins1_socket_count,
-// read through the census slot rows' socket set). DECLARED FRONTIER: the receipt's live inputs land
+// stimulus, population, expected-topology or pre-actuation firmware receipt yet, so those fields are
+// NotRecorded with that reason and every question needing them is open; the historical census and
+// orientation rows are deliberately NOT used (they map topology, never current occupancy, and are no
+// expectation of THIS attempt), so no topology degradation is minted from them. DECLARED FRONTIER: the receipt's live inputs land
 // with the boot workflow's stimulus-receipt input (docs/plans/power-on-sequence-model.md section 10);
 // until then the account says what it cannot judge rather than judging it.
 data mtcollins1_receipt_input_frontier: NonEmptyStr = "the fleet-converge boot takes no stimulus, population or pre-actuation firmware receipt yet"
@@ -1476,7 +1516,7 @@ fn mtcollins1_attempt_configuration_receipt(attempt: AttemptIdentityReading) -> 
   AttemptConfigurationReceipt {
     subject: "mtcollins1",
     attempt: attempt_identity_text(a: attempt) as NonEmptyStr,
-    expected_sockets: mtcollins1_census_sockets(),
+    expected: ExpectedTopologyNotRecorded { reason: mtcollins1_receipt_input_frontier },
     requested: StimulusRequestNotRecorded { reason: mtcollins1_receipt_input_frontier },
     applied: StimulusApplicationNotRecorded { reason: mtcollins1_receipt_input_frontier },
     cpus: PopulationNotRecorded { reason: mtcollins1_receipt_input_frontier },
@@ -1487,14 +1527,15 @@ fn mtcollins1_attempt_configuration_receipt(attempt: AttemptIdentityReading) -> 
 
 fn mtcollins1_boot_evidence(bundle: MtCollins1BootDiagnosticBundle) -> PowerOnEvidence {
   let delta = sel_delta_reading(before: bundle.sel_before, after: bundle.sel_after)
+  let receipt = mtcollins1_attempt_configuration_receipt(attempt: bundle.attempt)
   PowerOnEvidence {
-    configuration: mtcollins1_attempt_configuration_receipt(attempt: bundle.attempt),
+    configuration: receipt,
     handoff: handoff_standing(h: bundle.run.handoff_media),
     smpro: concat(smpro_pass(label: "power-on", s: bundle.run.smpro_power_on), concat(smpro_pass(label: "census", s: bundle.run.smpro_census), smpro_pass(label: "after the attempt", s: bundle.smpro))),
     console: console_evidence(c: bundle.console),
     sel: sel_evidence(delta: delta),
     watchdog: WatchdogUnobserved { reason: "the boot run does not read the BMC's IPMI watchdog" },
-    bmc_anomalies: concat(processor_anomalies(processors: bundle.inventory.processors), concat(memory_anomalies(memory: bundle.inventory.memory), concat(sensor_anomalies(s: bundle.sensors), sel_hardware_anomalies(delta: delta)))),
+    bmc_anomalies: concat(processor_anomalies(processors: bundle.inventory.processors, receipt: receipt), concat(memory_anomalies(memory: bundle.inventory.memory, receipt: receipt), concat(sensor_anomalies(s: bundle.sensors), sel_hardware_anomalies(delta: delta)))),
     census_ended: bundle.run.census_ended,
     coverage: mtcollins1_boot_coverage(bundle: bundle),
   }

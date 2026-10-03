@@ -25,7 +25,7 @@ import gunbc.machine_intake_mtcollins1_smpro_observation {
 import gunbc.machine_intake_mtcollins1_power_on_account {
   PowerOnAccount, PowerOnEvidence, AttemptConfigurationReceipt, SmproPassEvidence,
   HandoffPoweredOn, ConsoleNotRead, SelEventsNotRead, WatchdogUnobserved,
-  StimulusRequestNotRecorded, StimulusApplicationNotRecorded, PopulationNotRecorded, FirmwareReadbacksNotRecorded,
+  ExpectedSockets, StimulusRequestNotRecorded, StimulusApplicationNotRecorded, PopulationNotRecorded, FirmwareReadbacksNotRecorded,
   SmproRecordStated, PendingErrorRecord, RecordUngated, UngatedRecordUnexplained,
   mtcollins1_power_on_account, mtcollins1_power_on_account_notes,
 }
@@ -239,7 +239,7 @@ fn pmpro_words(socket: Int, info_hi: String) -> List<SmproProbeOutcome> {
 fn account_of(outcomes: List<SmproProbeOutcome>) -> PowerOnAccount {
   mtcollins1_power_on_account(e: PowerOnEvidence {
     configuration: AttemptConfigurationReceipt {
-      subject: "mtcollins1", attempt: "witness", expected_sockets: [0, 1],
+      subject: "mtcollins1", attempt: "witness", expected: ExpectedSockets { sockets: [0, 1], source: "witness" },
       requested: StimulusRequestNotRecorded { reason: "witness" }, applied: StimulusApplicationNotRecorded { reason: "witness" },
       cpus: PopulationNotRecorded { reason: "witness" }, dimms: PopulationNotRecorded { reason: "witness" }, firmware: FirmwareReadbacksNotRecorded { reason: "witness" },
     },
