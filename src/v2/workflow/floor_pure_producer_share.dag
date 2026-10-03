@@ -201,10 +201,20 @@ fn closed_demand_ladder_verdict(identity: String, claims: List<String>) -> Ladde
   )
 }
 
+// WHY A ROW IS ADMITTED. `SharedByDeclaredDemand` is the reuse obligation: two or more declared
+// claims demand the identity. `SingleClaimFillDebt` is NOT sharing and is named so it cannot be
+// read as sharing: one declared claim demands the identity, that claim is an ACTIVE member of
+// `floor_single_claim_fill_debt`, and admitting the identity nets the claim's own fixture fill from
+// its budget -- a cost transfer exposed per claim (DESIGN section 5's honest arm), never a silent one.
+type ShareBasis
+  = SharedByDeclaredDemand
+  | SingleClaimFillDebt { claim: String }
+
 type DerivedShareRow {
   producer: String
   argument_preimage: String
   identity: String
+  basis: ShareBasis
   claims: Int
   sites: List<String>
 }
@@ -268,7 +278,8 @@ fn closed_demand_decline(
   claims: List<String>,
   planned_claims: Int,
   refused_names: List<String>,
-  carried_names: List<String>
+  carried_names: List<String>,
+  debt: List<SingleClaimFillDebtModule>
 ) -> List<ShareDerivationDecline> {
   if identity_permits_share(ci: identity) == false {
     [IdentityGradeNotShareable]
@@ -278,6 +289,8 @@ fn closed_demand_decline(
     [RefusedByMeasurement]
   } else if any(xs: carried_names, predicate: fn(c) { c == producer }) {
     [CarriedInputProducer]
+  } else if length(xs: sole_active_debt_claim(claims: claims, debt: debt)) == 1 {
+    []
   } else {
     ladder_decline(verdict: closed_demand_ladder_verdict(
       identity: share_ladder_identity(producer: producer, argument_preimage: argument_preimage),
@@ -286,15 +299,35 @@ fn closed_demand_decline(
   }
 }
 
+// The identity's sole demanding claim, when there is exactly one and it is an ACTIVE debt member;
+// empty otherwise. A list so the caller reads "none" without an optional.
+fn sole_active_debt_claim(claims: List<String>, debt: List<SingleClaimFillDebtModule>) -> List<String> {
+  if length(xs: claims) == 1 {
+    filter(xs: claims, predicate: fn(c) { fill_debt_claim_is_active(claim: c, debt: debt) })
+  } else {
+    []
+  }
+}
+
+fn share_basis_of(claims: List<String>, debt: List<SingleClaimFillDebtModule>) -> ShareBasis {
+  let sole = sole_active_debt_claim(claims: claims, debt: debt)
+  if length(xs: sole) == 1 {
+    SingleClaimFillDebt { claim: join(sole, "") }
+  } else {
+    SharedByDeclaredDemand
+  }
+}
+
 fn derived_share_rows_for(
   observation: CallSiteDemandObservation,
   refused_names: List<String>,
-  carried_names: List<String>
+  carried_names: List<String>,
+  debt: List<SingleClaimFillDebtModule>
 ) -> List<DerivedShareRow> {
   match observation {
     ClosedCallSiteDemand { producer: p, argument_preimage: a, identity: i, claims: c, planned_claims: n, sites: s } =>
-      if length(xs: closed_demand_decline(producer: p, argument_preimage: a, identity: i, claims: c, planned_claims: n, refused_names: refused_names, carried_names: carried_names)) == 0 {
-        [DerivedShareRow { producer: p, argument_preimage: a, identity: share_ladder_identity(producer: p, argument_preimage: a), claims: length(xs: c), sites: s }]
+      if length(xs: closed_demand_decline(producer: p, argument_preimage: a, identity: i, claims: c, planned_claims: n, refused_names: refused_names, carried_names: carried_names, debt: debt)) == 0 {
+        [DerivedShareRow { producer: p, argument_preimage: a, identity: share_ladder_identity(producer: p, argument_preimage: a), basis: share_basis_of(claims: c, debt: debt), claims: length(xs: c), sites: s }]
       } else {
         []
       }
@@ -305,12 +338,13 @@ fn derived_share_rows_for(
 fn declined_share_rows_for(
   observation: CallSiteDemandObservation,
   refused_names: List<String>,
-  carried_names: List<String>
+  carried_names: List<String>,
+  debt: List<SingleClaimFillDebtModule>
 ) -> List<DeclinedShareRow> {
   match observation {
     ClosedCallSiteDemand { producer: p, argument_preimage: a, identity: i, claims: c, planned_claims: n, sites: _ } =>
       list_map(
-        xs: closed_demand_decline(producer: p, argument_preimage: a, identity: i, claims: c, planned_claims: n, refused_names: refused_names, carried_names: carried_names),
+        xs: closed_demand_decline(producer: p, argument_preimage: a, identity: i, claims: c, planned_claims: n, refused_names: refused_names, carried_names: carried_names, debt: debt),
         f: fn(d) { DeclinedShareRow { producer: p, argument_preimage: a, decline: d } }
       )
     UnadmissibleCallSiteDemand { cause: _, claims: _, sites: _ } => []
@@ -330,13 +364,14 @@ fn unadmissible_counts_for(observation: CallSiteDemandObservation) -> List<Unadm
 fn derive_cross_claim_share(
   observations: List<CallSiteDemandObservation>,
   refused: List<RefusedShareCandidate>,
-  carried: List<CarriedInputWarmRow>
+  carried: List<CarriedInputWarmRow>,
+  debt: List<SingleClaimFillDebtModule>
 ) -> CrossClaimShareDerivation {
   let refused_names = refused_share_producers(refused: refused)
   let carried_names = carried_input_warm_producers(rows: carried)
   CrossClaimShareDerivation {
-    admitted: list_flat_map(xs: observations, f: fn(o) { derived_share_rows_for(observation: o, refused_names: refused_names, carried_names: carried_names) }),
-    declined: list_flat_map(xs: observations, f: fn(o) { declined_share_rows_for(observation: o, refused_names: refused_names, carried_names: carried_names) }),
+    admitted: list_flat_map(xs: observations, f: fn(o) { derived_share_rows_for(observation: o, refused_names: refused_names, carried_names: carried_names, debt: debt) }),
+    declined: list_flat_map(xs: observations, f: fn(o) { declined_share_rows_for(observation: o, refused_names: refused_names, carried_names: carried_names, debt: debt) }),
     unadmissible: list_flat_map(xs: observations, f: fn(o) { unadmissible_counts_for(observation: o) }),
   }
 }
@@ -367,7 +402,8 @@ fn floor_cross_claim_share_derivation(
   derive_cross_claim_share(
     observations: observations,
     refused: floor_cross_claim_refused_candidates,
-    carried: floor_cross_claim_carried_input_warm_rows
+    carried: floor_cross_claim_carried_input_warm_rows,
+    debt: floor_single_claim_fill_debt
   )
 }
 
@@ -393,6 +429,780 @@ fn cross_claim_share_derivation_reconciles(
 fn derived_share_producers(derivation: CrossClaimShareDerivation) -> List<String> {
   list_map(xs: derivation.admitted, f: fn(row) { row.producer })
 }
+
+// ── SINGLE-CLAIM FILL DEBT: A CLAIM'S OWN FIXTURE COST, NETTED FROM ITS BUDGET, NAMED PER CLAIM ──
+//
+// WHAT THIS IS, AND WHY IT IS NOT SHARING. Most rows of the deleted hand roster were never shared:
+// each named a fixture producer exactly ONE declared claim demands, and warming it in preparation
+// moved that claim's own cost outside its budget. That is a cost transfer, and DESIGN section 5
+// admits only two honest arms for one: absorb it, or expose it as a separately named contract.
+// Withholding the claims would have dropped their verdicts from the floor (rejected: a safety
+// regression bought to make a cost figure look honest); holding the derivation until every owning
+// module restructures would have stalled the general repair. So the transfer is EXPOSED: a claim
+// listed here keeps running, its single-claim fixture identities are admitted to the tier so its
+// own fill is netted from its budget, and every such admission is reported with basis
+// SingleClaimFillDebt naming the claim (sharp-raven-357 ruling A, 2026-10-03).
+//
+// A MONOTONE DEBT CONTRACT (DESIGN section 5), AT IDENTITY GRAIN. The set is closed: membership is
+// by claim identity (module plus claim), the fill identities it covers are DERIVED from the run's
+// observation (the closed identities whose only declared demander is that claim) rather than
+// authored, and the seed joins the two by identity each run -- an ACTIVE member the run observes
+// with no single-claim identity left to bill is STALE and refuses (it was restructured, or its
+// fixture became shared, and the row must say which). A member leaves only by a typed disposition;
+// a member is added only with a declared source. No count is asserted anywhere.
+//
+// THE TRIGGER, PER MODULE: the DESIGN section 3 witness rule -- the module supplies each claim's
+// judged subject at the interface the claim inspects and keeps ONE inhabitance claim on the real
+// front-end path -- after which its claims fit their budget unaided and retire as
+// RestructuredPerWitnessRule.
+type FillDebtDisposition
+  = RestructuredPerWitnessRule
+  | BecameSharedByDemand
+  | ClaimDeleted
+
+type FillDebtStanding
+  = ActiveFillDebt
+  | RetiredFillDebt { disposition: FillDebtDisposition }
+
+type SingleClaimFillDebtClaim {
+  claim: String
+  standing: FillDebtStanding
+}
+
+type SingleClaimFillDebtModule {
+  module: String
+  claims: List<SingleClaimFillDebtClaim>
+}
+
+fn fill_debt_standing_is_active(standing: FillDebtStanding) -> Bool {
+  match standing {
+    ActiveFillDebt => true
+    RetiredFillDebt { disposition: _ } => false
+  }
+}
+
+// Whether a claim identity (`<module>.<claim>`) is an active member. The module row is found
+// first, so the check costs the module population plus one module's claims, not the whole set.
+fn fill_debt_claim_is_active(claim: String, debt: List<SingleClaimFillDebtModule>) -> Bool {
+  any(xs: debt, predicate: fn(m) {
+    claim.starts_with(concat(m.module, ".")) && any(xs: m.claims, predicate: fn(c) {
+      fill_debt_standing_is_active(standing: c.standing) && concat(m.module, concat(".", c.claim)) == claim
+    })
+  })
+}
+
+// The active members as claim identities, for the seed's identity join.
+fn fill_debt_active_claims(debt: List<SingleClaimFillDebtModule>) -> List<String> {
+  list_flat_map(xs: debt, f: fn(m) {
+    list_map(
+      xs: filter(xs: m.claims, predicate: fn(c) { fill_debt_standing_is_active(standing: c.standing) }),
+      f: fn(c) { concat(m.module, concat(".", c.claim)) }
+    )
+  })
+}
+
+fn floor_single_claim_fill_debt_active_claims() -> List<String> {
+  fill_debt_active_claims(debt: floor_single_claim_fill_debt)
+}
+
+// GENERATED ONCE, NOT HAND-AUTHORED, and marked so: the population is every claim that completed
+// over the new-witness eval-step budget only with the hand roster deleted, read from the planning
+// probe pair that planned every test declaration in the roster-row modules at one revision (PR
+// dispatch 37131459602 against main dispatch 37131472056 with the same edits), together with the
+// claims this change had first withheld as cost debt (floor runs 37096345499 and 37121610250).
+// Re-derive with that probe; do not extend by hand.
+data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.anonymous_param_binder",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "apb_body_reference_to_an_anonymous_slot_refuses_located", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "apb_slot_label_is_the_position_in_its_own_binder_list", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "apb_two_anonymous_slots_are_accepted_as_distinct_binders", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.binder_default_judgment",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "a_default_does_not_see_a_sibling_parameter_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_default_in_a_generic_coproduct_payload_refuses_until_modeled_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_default_sees_an_outer_value_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_default_that_does_not_inhabit_its_binder_type_refuses", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_default_that_inhabits_its_binder_type_infers", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_generic_default_refuses_until_modeled_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_type_parameter_spelling_is_not_a_default_value_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.body_cast_node",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "bcn_call_argument_cast_carries_its_target", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bcn_call_operand_cast_carries_its_target", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bcn_cast_into_a_refinement_refuses_at_infer", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bcn_cast_out_of_a_refinement_to_its_declared_carrier_widens", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bcn_generic_target_binds_the_type_parameter", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bcn_identity_cast_into_a_refinement_admits", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bcn_if_arm_cast_carries_its_target", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bcn_infer_admits_int_to_int", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bcn_infer_refuses_int_to_bool", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bcn_let_in_value_cast_carries_its_target", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bcn_let_value_cast_carries_its_target", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bcn_match_arm_cast_carries_its_target", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bcn_refinement_of_a_refinement_widens_one_step", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bcn_tail_cast_carries_its_target", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bcn_undeclared_target_refuses_at_q", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bcn_value_binder_does_not_answer_the_target", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.body_let_annotation",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "bla_ambiguous_imported_int_refuses_rather_than_defaulting_to_the_kernel", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bla_ambiguous_kernel_declarations_bind_the_kernel_type", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bla_concrete_annotation_is_carried", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bla_generic_annotation_binds_the_type_parameter", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bla_host_text_value_at_structural_string_is_never_matched", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bla_imported_user_int_refuses_rather_than_binding_the_kernel_int", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bla_infer_admits_int_sum_ascribed_int", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bla_infer_refuses_int_sum_ascribed_bool", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bla_module_declared_bool_shadows_the_kernel_bool", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bla_module_declared_int_shadows_the_kernel_int", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bla_optional_at_a_required_let_refuses_as_a_return_and_a_field_do", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bla_refinement_inhabits_its_declared_carrier_at_a_let_a_return_and_a_field", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bla_refinement_of_a_refinement_widens_one_step_at_a_let_a_return_and_a_field", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bla_reordered_annotation_keeps_the_initializer_outside_its_binder", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bla_sibling_refinement_refuses_at_a_let_a_return_and_a_field", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bla_single_tree_module_declared_int_and_bool_bind_the_local_declaration", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bla_single_tree_undeclared_int_binds_the_kernel_type", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bla_string_literal_ascribed_int_refuses", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bla_symbol_literal_ascribed_int_refuses_at_the_annotation", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bla_type_parameter_in_value_position_refuses_located", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bla_unknown_unimported_type_name_still_refuses", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bla_value_binder_does_not_answer_the_annotation", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.body_lowering.anonymous_record",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "ar_a_binder_field_type_is_not_substituted_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "ar_a_call_argument_has_no_expected_type_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "ar_a_coproduct_expectation_is_not_a_record_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "ar_a_non_renaming_alias_refuses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "ar_a_quoted_key_takes_the_string_key_production_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "ar_an_alias_cycle_refuses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "ar_headless_literals_equal_their_headed_form_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "ar_infer_verdict_is_the_headed_forms_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "ar_list_elements_elaborate_under_the_list_head_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "ar_pure_renaming_aliases_elaborate_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.body_lowering.declaration_structure_preserved",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "where_refinement_clause_interior_is_not_retained_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.body_lowering.enclosing_expression_structure",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "a_call_with_a_match_argument_lowers_as_the_call_over_every_argument", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "an_operand_beside_a_match_lowers_as_the_operator_over_both_operands", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "the_body_walker_lowers_a_call_with_a_match_argument_as_the_call_over_every_argument", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "the_body_walker_lowers_an_operand_beside_a_match_as_the_operator_over_both_operands", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.body_lowering.function_value_body_route",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "a_curried_function_typed_return_emits_impl_fn_over_box_dyn_fn", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_fn_returning_fn_emits_impl_fn_with_a_move_closure", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.body_lowering.map_literal",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "ml_a_call_argument_has_no_expected_type_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "ml_a_duplicate_key_refuses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "ml_a_key_of_the_wrong_kind_refuses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "ml_a_mixed_key_brace_refuses_at_lowering_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "ml_a_name_keyed_brace_under_a_map_refuses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "ml_an_escaped_and_a_raw_key_are_one_key_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "ml_an_int_key_under_a_string_map_refuses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "ml_distinct_keys_are_accepted_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "ml_headless_literal_equals_the_headed_introduction_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "ml_infer_refuses_an_elaborated_value_mismatch_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.body_lowering.plain_type_decl_lowering",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "a_plain_alias_declares_no_members_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_plain_alias_lowers_to_the_alias_wrapper_with_no_binders_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_plain_coproduct_lowers_to_its_named_alternatives_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_plain_payload_single_variant_stays_a_member_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.body_lowering.qualified_construct",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "qc_a_type_tag_refuses_as_not_a_constructor_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "qc_dropping_the_qualifier_unbinds_the_constructor_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "qc_dropping_the_record_body_is_not_a_construct_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "qc_same_leaf_in_two_modules_binds_two_declarations_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.body_lowering.single_arm_match",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "three_arm_match_keeps_every_arm_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "zero_arm_match_still_refuses_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.body_lowering.statement_let_bind",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "single_statement_body_unchanged_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "statement_let_chain_lowers_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "statement_let_then_reference_lowers_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "typed_statement_let_lowers_with_its_annotation_carried_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "unbound_statement_prefix_refuses_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.body_lowering_block_body_call",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "body_lowering_block_body_call_reaches_arrow_body", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "body_lowering_block_call_parses_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.body_lowering_qualified_path",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "body_lowering_qualified_value_reaches_arrow_body_whole", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.body_type_annotation_refusal",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "btar_if_arm_fn_literal_is_not_erased", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "btar_let_annotation_refuses", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "btar_unannotated_let_accepts", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.callexec.declaration_reference_eval",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "cref_a_named_call_with_an_argument_executes_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "cref_a_zero_argument_named_call_executes_to_its_callee_value_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "cref_an_unresolved_callee_does_not_execute_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "cref_argument_dependent_execution_reaches_the_callee_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "cref_the_bool_pair_separates_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "cref_the_identity_callee_never_answers_the_other_argument_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.coercion.identity_cast_emission_route",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "a_cast_with_no_witness_refuses_before_realization_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "an_admitted_identity_cast_emits_through_the_closure_route_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.compiler.infer_expected_type_record_instantiation_witness_test",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "etr_a_nested_construct_typed_only_by_its_context_is_decided_at_its_declared_return_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "etr_a_phantom_binder_is_fixed_by_the_declared_type_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.compiler.infer_optional_at_required_witness_test",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "oar_an_optional_at_a_required_record_field_refuses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "oar_an_optional_returned_at_a_declared_int_refuses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "oar_the_lift_is_still_accepted_on_the_route_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "rcf_a_bool_declared_field_value_of_the_wrong_type_refuses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "rcf_a_construct_is_its_declared_record_at_a_declared_type_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "rcf_a_cross_module_records_field_value_is_counted_not_judged_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "rcf_a_cross_module_records_missing_field_refuses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "rcf_a_generic_record_at_its_instantiation_is_accepted_and_decided_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "rcf_a_generic_records_second_field_must_inhabit_the_instance_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "rcf_a_missing_field_refuses_and_is_named_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "rcf_a_nested_construct_at_a_record_declared_field_is_accepted_and_decided_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "rcf_a_pattern_naming_a_subset_of_fields_is_not_a_missing_field_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "rcf_an_undeclared_field_refuses_and_is_named_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "rcf_inhabiting_field_values_are_accepted_and_decided_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.compiler.kernel_value_type_roster_witness_test",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "kvr_a_declared_bool_return_holding_an_int_refuses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "kvr_a_named_calls_bool_formal_is_counted_not_judged_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.declaration_graft_assemble",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "declaration_graft_alias_spelled_as_emitted_identity_survives_flatten", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "declaration_graft_alias_spelled_as_production_name_survives_flatten", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "declaration_graft_coproduct_beside_record_names_both", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "declaration_graft_fn_only_accepts", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "declaration_graft_record_construct_accepts", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "declaration_graft_record_type_only_accepts_and_is_named", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "declaration_graft_where_alias_over_an_undeclared_carrier_refuses", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.declared_parameter_order",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "dpo_an_order_label_does_not_bind_to_a_name_in_scope", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "dpo_eleven_anonymous_slots_bind_in_declared_order", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "dpo_parameter_order_distinguishes_function_types", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.emit.module_member_emission",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "a_bare_literal_body_emits_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_bare_parameter_body_emits_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_bodyless_member_refuses_under_its_own_reason_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_bool_signature_is_spelled_by_its_realization_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_coproduct_beside_a_function_emits_both_in_source_order_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_declared_type_in_a_signature_keeps_its_name_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_generic_member_refuses_under_its_own_reason_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_payload_single_variant_emits_as_a_one_arm_enum_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_record_beside_a_function_emits_as_a_struct_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_record_with_a_where_labelled_field_is_still_a_record_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_refinement_with_a_lowered_carrier_emits_a_transparent_alias_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_where_refinement_emits_its_transparent_alias_on_the_production_route_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "an_alias_member_refuses_under_its_own_reason_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.field_projection.field_projection_stages",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "fps_a_cross_module_record_projection_infers_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "fps_a_multi_root_ingest_does_not_itself_break_retrieval_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "fps_a_qualified_declaration_path_resolves_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "fps_a_root_bound_data_value_is_not_yet_projectable_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "fps_a_same_module_record_projection_infers_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "fps_a_scalar_receiver_still_declares_no_fields_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "fps_an_absent_field_does_not_infer_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "fps_an_unresolvable_provider_leaves_its_declaration_unavailable_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "fps_the_int_field_grounds_as_an_int_parameter_does_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "fps_two_fields_of_different_types_ground_differently_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.machine_shape_construction_wall",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "gate_green_machine_shape_record_literal_in_its_home", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "gate_red_machine_shape_record_literal_outside_its_home", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.match_arm_binder_frame",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "mab_binder_does_not_leak_to_a_sibling_arm", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "mab_binder_spelling_a_non_payload_declared_in_two_modules_binds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "mab_binder_spelling_a_record_data_row_binds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "mab_binder_spelling_a_sibling_module_binds_the_arm", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "mab_binder_spelling_a_variant_declared_in_two_modules_refuses", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "mab_binder_spelling_a_where_alias_binds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "mab_declared_constructor_in_a_pattern_stays_a_declaration_reference", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "mab_fresh_binder_binds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "mab_misspelled_tag_refuses", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "mab_nested_braced_and_shorthand_binders_bind", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "mab_outer_test_code_name_still_refuses_without_a_binder", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "mab_shadowing_binder_binds_the_arm", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "mab_unbound_name_in_arm_body_refuses", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "mab_unimported_constructor_in_a_pattern_refuses_rather_than_binding", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "mab_unshadowed_binder_atom_survives", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "mab_where_alias_is_not_a_record", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.match_binder.match_binder_typing",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "mbt_a_binder_hiding_a_same_named_parameter_refuses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "mbt_an_underived_arm_body_is_a_counted_frontier_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "mbt_the_sevens_call_scrutinee_is_a_counted_frontier_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.named_argument_binding",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "nab_malformed_named_mixes_refuse_at_lowering", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "nab_reordering_named_actuals_preserves_identity", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.namespace_xl0.cross_module_reference_resolution",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "a_binder_shadowing_a_root_segment_projects_from_the_binder_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_cross_module_reference_to_a_data_declaration_resolves_to_its_declaring_path_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_cross_module_reference_to_a_declared_fn_resolves_to_its_declaring_path_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_cross_module_reference_to_an_undeclared_name_refuses_unbound", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_local_receiver_method_call_never_accepts_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_re_export_resolves_to_the_home_not_the_relay_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_receiver_with_no_such_child_never_accepts_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_same_module_reference_resolves_on_the_production_route_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_selectively_imported_type_in_parameter_position_resolves_to_its_declaring_path_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "an_unimported_type_in_parameter_position_refuses_unbound", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "two_import_bound_same_leaf_targets_resolve_to_distinct_declaring_paths_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "two_same_leaf_targets_in_different_modules_resolve_to_distinct_declaring_paths_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.namespace_xl0.list_literal_value_lowering",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "std_algebra_own_list_literals_bind_to_its_own_qualified_names", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "std_algebra_without_freemonoid_refuses_its_own_list_literal_at_resolve", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.namespace_xl0.reference_conservation",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "a_block_with_a_second_statement_is_refused_not_accepted_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_list_literal_call_argument_conserves_every_element_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_named_argument_label_is_conserved_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_repeated_spelling_with_one_copy_dropped_is_exactly_one_row_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_statement_let_binder_is_reported_dropped_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_string_literal_is_conserved_by_its_value_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "caret_symbol_payloads_are_conserved_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "dotted_spine_segments_keep_their_own_occurrence_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "the_if_arm_call_argument_is_conserved_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "the_infix_right_operand_is_conserved_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "the_third_match_arm_is_conserved_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "the_where_refinement_predicates_are_conserved_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "two_anonymous_parameter_slots_are_conserved_by_minted_identity_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.namespace_xl0.reference_conservation_accepted_drops",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "a_binary_operand_beside_a_match_is_conserved_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_binary_operand_beside_an_if_is_conserved_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_call_argument_beside_a_match_valued_argument_is_conserved_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_data_initializer_match_scrutinee_is_conserved_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_map_literal_value_is_conserved_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_qualified_constructor_literal_value_is_conserved_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_record_field_beside_a_match_valued_field_is_conserved_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_statement_after_a_let_in_a_match_arm_is_conserved_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "the_same_match_as_a_fn_body_conserves_its_scrutinee_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.namespace_xl0.reference_conservation_admission",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "a_conserving_body_lowering_member_is_observed_conserved_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_dropping_body_lowering_member_is_observed_dropped_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_field_projection_on_a_call_result_in_an_operand_is_admitted_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "an_operator_expression_call_argument_is_admitted_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "an_operator_expression_in_an_if_arm_is_admitted_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "explaining_one_of_two_same_spelled_drops_leaves_the_other_refused_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.namespace_xl0.reference_conservation_census",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "a_share_under_the_floor_takes_six_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "the_rule_takes_its_quota_at_the_floor_indices_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.normalize.operation_modifier",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "an_operations_modifiers_lower_onto_its_contract_edges_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.normalize.resource_declaration_lowering",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "a_default_tail_lowers_onto_its_binder_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.normalize.service_realization_lowering",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "a_config_only_realization_is_held_off_the_full_route_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "an_unrealizable_realization_refuses_located_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "the_realization_facts_lower_into_the_sibling_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "the_siblings_of_a_shared_prefix_merge_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.normalize.service_spine",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "a_merged_namespace_body_grants_no_scope_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_namespace_body_and_a_declaration_of_one_name_refuse_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_service_declared_twice_refuses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_service_namespace_does_not_bind_bare_on_the_resolve_route_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_service_namespace_is_a_lookup_boundary_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "an_imported_service_resolves_through_the_import_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "two_services_under_one_prefix_reach_distinct_operation_paths_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.parameter_reference",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "pr_let_shadowing_a_parameter_refuses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "pr_ordinary_named_call_deficit_still_refuses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "pr_parameter_grounds_through_the_index_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.parse.admit_callers_trailing_comma",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "a_trailing_comma_in_admit_callers_parses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "an_admit_callers_list_without_a_trailing_comma_parses_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.parse.data_keyword_as_value",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "the_data_keyword_as_a_value_normalizes_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.parse.default_value",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "a_record_field_default_lowers_onto_its_binder_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_service_io_default_lowers_onto_its_binder_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.parse.expression_bodied_continuation",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "cont_braced_fn_decl_survives_normalize_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "cont_expression_bodied_fn_decl_survives_normalize_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "cont_expression_bodied_literal_fn_decl_survives_normalize_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.parse.parameter_refinement",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "an_unrefined_parameter_still_normalizes_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.parse.pattern_and_let_sugar",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "a_bare_assignment_lowers_identically_to_let_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_generic_pattern_refuses_at_its_generic_params_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_pattern_lowers_to_the_identical_tree_as_its_fn_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_pattern_with_a_uses_clause_still_refuses_at_the_clause_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_pattern_with_an_expression_body_refuses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "node_colon_lowers_identically_to_let_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "node_eq_lowers_identically_to_let_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.parse.record_field_tail",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "a_record_field_with_a_default_parses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_record_without_a_tail_still_normalizes_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.parse.where_clause_required_comma",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "a_service_after_a_refined_alias_parses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "comma_separated_predicates_still_parse_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.provenance.loaded_carrier_receipts",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "a_record_through_the_located_pool_is_a_declared_payload_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.reference_evidence.declaration_reference_evidence",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "dre_a_named_call_to_a_bool_fn_is_grounded_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "dre_a_same_leaf_reference_gets_its_own_declarations_contract_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "dre_an_imported_reference_grounds_through_the_closure_index_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "dre_an_invalid_argument_call_does_not_ground_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "dre_an_unresolved_signature_does_not_ground_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.self_host.closure_emission",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "a_closure_member_whose_body_does_not_lower_refuses_the_emission_at_its_cause_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "two_files_declaring_one_module_refuse_the_emission_at_the_census_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.self_host.rust_module_emission_population",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "population_two_declaration_module_collects_two", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "population_two_declaration_module_refuses_whole_on_unwired_target", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.text_string_importer_census",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "tsic_every_window_predicate_matches_the_real_parse", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tsic_real_raw_parse_route_reaches_the_classifier", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tsic_rosters_are_derived_from_the_text_module_walk", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tsil_a_declined_module_is_a_named_unresolved_gap", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tsil_aliases_are_chased_to_their_declaring_module", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tsil_population_module_decides_the_bare_string", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.type_param_binder_frame",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "tpb_emitter_refuses_a_generic_arrow", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tpb_every_declared_type_param_is_a_binder", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tpb_generic_alias_carries_its_binders", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tpb_generic_alias_param_shadowing_a_visible_name_refuses", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tpb_generic_alias_to_an_instantiation_lowers", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tpb_generic_alias_undeclared_rhs_refuses", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tpb_generic_nullary_coproduct_classifies_as_nullary", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tpb_generic_single_variant_after_separator_is_a_coproduct", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tpb_non_generic_fn_carries_no_type_params", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tpb_non_generic_type_decl_carries_no_type_params", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tpb_plain_single_alias_is_not_a_coproduct", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tpb_plain_single_variant_after_separator_is_a_coproduct", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tpb_same_spelling_in_two_declarations_does_not_alias", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tpb_type_decl_param_does_not_leak_to_a_sibling", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tpb_type_decl_param_shadowing_a_visible_name_refuses", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tpb_type_param_does_not_leak_to_a_sibling_declaration", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tpb_type_param_in_value_position_refuses", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tpb_type_param_shadowing_a_visible_name_refuses", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tpb_undeclared_type_name_still_refuses", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.value_base_projection",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "vbp_a_param_spelled_like_the_field_is_not_captured", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "vbp_undeclared_field_off_a_call_result_is_carried_on_the_direct_infer_outcome", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.where_predicate_binding",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "wpb_declared_predicate_binds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "wpb_labelled_arguments_and_marker_bind", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "wpb_second_predicate_is_bound", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "wpb_unbound_predicate_refuses", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.execution.data_decl_lowering_grounding",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "fn_eq_body_is_the_literal_not_its_digits_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.execution.infer_declaration_formation",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "a_coproduct_with_a_fielded_alternative_forms_a_sum_and_grounds_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_payloadless_coproduct_forms_a_sum_and_grounds_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.long.emit_host_classical_not_ingested_equals_eval",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "ingested_classical_not_staging_swapped_emit_accepts_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.long.pick_ingested_structural_lowering",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "pick2_ingested_pick_false_executes_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "pick2_ingested_pick_true_executes_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "pick2_ingested_swapped_arms_red_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "pick_ingested_pick_false_executes_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "pick_ingested_pick_true_executes_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "pick_ingested_swapped_arms_red_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.manual.body_lowering_projection_call",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "body_lowering_projection_lowers_to_transform", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.parse.block_expr_as_binary_operand_parse",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "a_bare_if_still_lowers_to_the_branch_itself_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_bare_match_still_lowers_to_the_match_itself_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bare_if_still_parses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "bare_match_still_parses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "if_heading_a_binary_chain_parses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "match_heading_a_binary_chain_parses_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.parse.closure_parse_batch_two",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "admit_callers_clause_normalizes_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "an_early_return_guard_parses_and_lowers_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "declaration_named_node_projection_is_kept_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "ordinary_declaration_is_kept_once_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "two_declarations_named_node_projection_normalize_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "braced_pattern_binder_still_normalizes_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "leading_pipe_multiline_coproduct_parses_and_normalizes_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "leading_pipe_normalizes_to_the_same_alternatives_as_without_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "positional_pattern_binder_normalizes_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "positional_payload_variants_parse_and_normalize_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "positional_payload_without_leading_pipe_with_construction_normalizes_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "positional_wildcard_pattern_still_normalizes_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.parse.match_arm_statement_body_parse",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "a_match_arm_statement_body_is_stamped_and_stops_at_the_next_arm_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.parse.variant_field_lowering",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "vf_braced_pattern_binds_named_field", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "vf_braced_variant_declares_named_field", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "vf_content_hash_declarations_and_positional_match_normalize", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "vf_distinct_payloads_normalize_distinct", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "vf_positional_construction_carries_its_operand", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "vf_positional_pattern_binds_field_zero", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "vf_record_construction_is_the_construct_shape", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "vf_record_declaration_is_named_with_declared_fields", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "vf_shadowing_binder_is_carried_on_the_arm", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "vf_shorthand_pattern_binds_field_to_its_own_name", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "vf_single_fielded_variant_is_a_sum", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "vf_two_positional_binders_refuse", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "vf_wildcard_pattern_keeps_its_field", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.provenance.occurrence_file_attribution",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "native_route_threads_the_occurrence_mark_across_files_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "refused_assembly_still_locates_the_files_it_parsed_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.self_host.stage0_production_target",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "stage0_production_target_emits_boundary_compatible_source_holds", standing: ActiveFillDebt }
+    ]
+  }
+]
 
 // ── REFUSED CANDIDATES: THE ROWS THIS ROSTER MEASURED AND TURNED DOWN ─────────────────────
 //

@@ -15,6 +15,9 @@ import v2.workflow.floor_pure_producer_share {
   CrossClaimShareDerivation, DeclinedShareRow,
   ShareDerivationDecline, DemandedByOneClaim, ReachedByNoPlannedClaim, IdentityGradeNotShareable, RefusedByMeasurement, CarriedInputProducer,
   LadderOwesNoCarry,
+  ShareBasis, SharedByDeclaredDemand, SingleClaimFillDebt,
+  SingleClaimFillDebtModule, SingleClaimFillDebtClaim, ActiveFillDebt, RetiredFillDebt, RestructuredPerWitnessRule,
+  fill_debt_active_claims,
   derive_cross_claim_share, floor_cross_claim_share_derivation,
   cross_claim_share_derivation_reconciles, derived_share_producers
 }
@@ -83,8 +86,37 @@ data probe_carried: List<CarriedInputWarmRow> = [
   }
 ]
 
+// One active and one retired member of a fixture debt set, in one module.
+data probe_debt: List<SingleClaimFillDebtModule> = [
+  SingleClaimFillDebtModule {
+    module: "v2.test.debt",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "owes_its_fixture", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "was_restructured", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } }
+    ]
+  }
+]
+
+fn probe_single_claim(producer: String, claim: String) -> CallSiteDemandObservation {
+  ClosedCallSiteDemand {
+    producer: producer,
+    argument_preimage: "()",
+    identity: probe_identity(),
+    claims: [claim],
+    planned_claims: 1,
+    sites: ["v2/test/debt.dag:10-40"]
+  }
+}
+
+fn basis_tag(basis: ShareBasis) -> String {
+  match basis {
+    SharedByDeclaredDemand => "shared"
+    SingleClaimFillDebt { claim: c } => concat("debt:", c)
+  }
+}
+
 fn probe_derive(observations: List<CallSiteDemandObservation>) -> CrossClaimShareDerivation {
-  derive_cross_claim_share(observations: observations, refused: probe_refused, carried: probe_carried)
+  derive_cross_claim_share(observations: observations, refused: probe_refused, carried: probe_carried, debt: probe_debt)
 }
 
 fn decline_tag(decline: ShareDerivationDecline) -> String {
@@ -142,6 +174,50 @@ test fn declared_demand_no_planned_claim_reaches_is_declined_and_named() -> Bool
   ])
   (length(xs: d.admitted) == 0)
     && declined_as(d: d, producer: "v2.probe.n7.probe_unplanned", decline: ReachedByNoPlannedClaim)
+}
+
+// SINGLE-CLAIM FILL DEBT IS EXPOSED, NEVER READ AS SHARING. The triple varies only the sole
+// claim's standing in the debt set: an ACTIVE member's fixture identity is admitted and its basis
+// NAMES the claim; a RETIRED member's and a non-member's are declined as one-claim demand. A fold
+// that admitted every one-claim identity passes the first and reds the other two.
+test fn an_active_debt_members_fixture_is_admitted_and_names_its_claim() -> Bool {
+  let d = probe_derive(observations: [probe_single_claim(producer: "v2.test.debt.fixture_a", claim: "v2.test.debt.owes_its_fixture")])
+  (length(xs: d.admitted) == 1)
+    && any(xs: d.admitted, predicate: fn(row) { basis_tag(basis: row.basis) == "debt:v2.test.debt.owes_its_fixture" })
+}
+
+test fn a_retired_debt_members_fixture_is_declined_as_one_claim_demand() -> Bool {
+  let d = probe_derive(observations: [probe_single_claim(producer: "v2.test.debt.fixture_b", claim: "v2.test.debt.was_restructured")])
+  (length(xs: d.admitted) == 0)
+    && declined_as(d: d, producer: "v2.test.debt.fixture_b", decline: DemandedByOneClaim)
+}
+
+test fn a_non_members_fixture_is_declined_as_one_claim_demand() -> Bool {
+  let d = probe_derive(observations: [probe_single_claim(producer: "v2.test.debt.fixture_c", claim: "v2.test.debt.never_listed")])
+  (length(xs: d.admitted) == 0)
+    && declined_as(d: d, producer: "v2.test.debt.fixture_c", decline: DemandedByOneClaim)
+}
+
+// A shared identity keeps the sharing basis even when one of its demanders is a debt member.
+test fn a_shared_identity_is_based_on_demand_not_debt() -> Bool {
+  let d = probe_derive(observations: [
+    ClosedCallSiteDemand {
+      producer: "v2.test.debt.shared_fixture",
+      argument_preimage: "()",
+      identity: probe_identity(),
+      claims: ["v2.test.debt.owes_its_fixture", "v2.test.debt.another"],
+      planned_claims: 2,
+      sites: ["v2/test/debt.dag:50-60"]
+    }
+  ])
+  (length(xs: d.admitted) == 1)
+    && any(xs: d.admitted, predicate: fn(row) { basis_tag(basis: row.basis) == "shared" })
+}
+
+// The active-claim projection the seed joins against lists active members only.
+test fn only_active_members_are_projected_for_the_identity_join() -> Bool {
+  let active = fill_debt_active_claims(debt: probe_debt)
+  (length(xs: active) == 1) && any(xs: active, predicate: fn(c) { c == "v2.test.debt.owes_its_fixture" })
 }
 
 // A MEASURED REFUSAL OUTRANKS DEMAND. The producer is demanded by many claims and still declined,

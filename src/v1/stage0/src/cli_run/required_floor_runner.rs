@@ -6921,6 +6921,8 @@ pub(crate) fn derive_and_install_cross_claim_share(
     let mut nodes = Vec::new();
     let mut sites: std::collections::HashSet<(String, i64, i64)> = std::collections::HashSet::new();
     let mut admitted_qualified = Vec::new();
+    let mut billed_debt_claims: std::collections::BTreeSet<String> =
+        std::collections::BTreeSet::new();
     for row in &admitted {
         let Value::Record { fields: r, .. } = row else {
             return Err(malformed("an admitted row is not a DerivedShareRow record"));
@@ -6956,9 +6958,27 @@ pub(crate) fn derive_and_install_cross_claim_share(
             };
             sites.insert(key);
         }
+        // WHY the row is admitted, printed so a single-claim fill debt is never read as sharing.
+        let basis = match ctx.field(r, "basis") {
+            Some(Value::Variant {
+                variant_name,
+                fields: b,
+                ..
+            }) => {
+                let variant = ctx.resolve(*variant_name);
+                if variant == "SingleClaimFillDebt" {
+                    let claim = text_of(b, "claim")?;
+                    billed_debt_claims.insert(claim.clone());
+                    format!("SingleClaimFillDebt:{claim}")
+                } else {
+                    variant
+                }
+            }
+            _ => return Err(malformed("an admitted row has no `basis` variant")),
+        };
         eprintln!(
-            "[cross-claim-share-admitted] producer={producer} claims={claims_n} sites={} \
-             argument_preimage={preimage}",
+            "[cross-claim-share-admitted] producer={producer} basis={basis} claims={claims_n} \
+             sites={} argument_preimage={preimage}",
             row_sites.len()
         );
         admitted_qualified.push(producer);
@@ -7012,6 +7032,61 @@ pub(crate) fn derive_and_install_cross_claim_share(
             .join(","),
         unadmissible_rendered.join(",")
     );
+    // THE DEBT CONTRACT'S IDENTITY JOIN (v2.workflow.floor_pure_producer_share
+    // floor_single_claim_fill_debt, a monotone debt set): every ACTIVE member this run PLANS must
+    // have at least one single-claim fixture identity admitted on its behalf. A planned member with
+    // none is STALE -- it was restructured, or its fixture became shared, or its cost is not a
+    // closed fixture at all -- and a stale row would keep asserting a transfer that no longer
+    // happens, so it stops the line and names the remedy.
+    let active_debt = match v1_interpreter::run_in_context(
+        ctx,
+        &format!("{MODULE}.floor_single_claim_fill_debt_active_claims"),
+        false,
+    ) {
+        Ok(v) => v1_interpreter::list_value_items(ctx, &v)
+            .ok_or_else(|| malformed("floor_single_claim_fill_debt_active_claims is not a list"))?,
+        Err(e) => {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=SingleClaimFillDebtUnreadable -- \
+                 floor_single_claim_fill_debt_active_claims did not evaluate: {e}"
+            ))
+        }
+    };
+    let planned_identities: std::collections::HashSet<String> = claims
+        .iter()
+        .map(|c| format!("{}.{}", c.module_path, c.function))
+        .collect();
+    let mut active_planned = 0usize;
+    let mut stale_debt: Vec<String> = Vec::new();
+    for member in &active_debt {
+        let Value::Str(member) = member else {
+            return Err(malformed("a fill-debt member is not a String"));
+        };
+        let member = member.to_string();
+        if planned_identities.contains(&member) {
+            active_planned += 1;
+            if !billed_debt_claims.contains(&member) {
+                stale_debt.push(member);
+            }
+        }
+    }
+    eprintln!(
+        "[floor-phase] phase=single-claim-fill-debt state=completed active_members={} \
+         planned_members={active_planned} billed_members={} stale_members={}",
+        active_debt.len(),
+        billed_debt_claims.len(),
+        stale_debt.len()
+    );
+    if !stale_debt.is_empty() {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=SingleClaimFillDebtStale members=[{}] -- each is an ACTIVE \
+             member of v2.workflow.floor_pure_producer_share floor_single_claim_fill_debt that this \
+             run plans, and no single-claim fixture identity was admitted for it, so the row asserts \
+             a cost transfer that no longer happens. Retire the row with its typed disposition \
+             (RestructuredPerWitnessRule, BecameSharedByDemand or ClaimDeleted).",
+            stale_debt.join(",")
+        ));
+    }
     v1_interpreter::install_cross_claim_derived_share(nodes, sites);
     PURE_PRODUCER_SHARE_ROSTER.with(|r| {
         if let Some(roster) = r.borrow_mut().as_mut() {
