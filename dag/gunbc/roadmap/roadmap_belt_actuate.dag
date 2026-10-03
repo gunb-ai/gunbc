@@ -576,7 +576,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // Slice 2b actuation: the belt DECISION (gunbc.roadmap_belt.belt_reconcile) is CLOSED against the
 // host by three single-authorities — the actuator's HostExecArgv argv model
@@ -5070,16 +5070,26 @@ fn belt_verification_selection_observe(
   )
 }
 
-// THE SHARED-COMPUTATION READER (bold-bee-114's DogfoodRouteReceipt). For one attempt and the head
-// it is verifying, it follows the belt's own published selection to the exact verification receipt
-// and returns what that receipt says ran as shared computation. The observation is closed: Observed
-// carries every compute citation the receipt holds (one per claim validation); Absent is positive --
-// no selection published, no receipt at the selected address, or a receipt with no compute
-// execution; Refused is anything that could not be read or decoded, and never collapses to Absent.
+// THE SHARED-COMPUTATION READER. For one attempt and the head it is verifying, it follows the belt's
+// own published selection to the exact verification receipt and returns what that receipt says ran as
+// shared computation. The observation is closed: Observed carries every compute citation the receipt
+// holds (one per claim validation); Absent is POSITIVE and says which of three absences was
+// established; Refused is anything that could not be read or decoded, carrying the observation's own
+// refusal text, and never collapses to Absent.
+type SharedComputationAbsence
+  = NoVerificationSelectionPublished
+  | SelectedReceiptNotWritten
+  | ReceiptRecordsNoSharedComputation
+
 type SharedComputationObservation
   = SharedComputationObserved { head_sha: String, window_identity: Fnv1a64Structural, citations: List<SharedComputationCitation> }
-  | SharedComputationAbsent { reason: String }
+  | SharedComputationAbsent { absence: SharedComputationAbsence }
   | SharedComputationRefused { cause: String }
+
+// DECLARED FRONTIER (DESIGN section 3c): this reader's consumer is the dogfood route's
+// shared-computation stage, gunbc.roadmap_dogfood_route DogfoodRouteReceipt (gunbc#13077), which is not
+// on this change's base.
+data shared_computation_reader_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: gunbc.roadmap_dogfood_route (gunbc#13077) reads its shared-computation stage by calling gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt for the attempt and head it receipts. SUFFICIENT FOR: the reader's three arms reach the DogfoodRouteReceipt on the production route; retired by that landing and nothing else." as NonEmptyStr)
 
 fn shared_computation_observe_for_attempt(
   instance: HostDashboardInstance,
@@ -5090,7 +5100,7 @@ fn shared_computation_observe_for_attempt(
   let attempt_dir = dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt.attempt_key)
   let verification_dir = dispatch_attempt_verification_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt.attempt_key)
   match current_verification_selection_observe(attempt_dir: attempt_dir, verification_dir: verification_dir, head_sha: head_sha) {
-    SelectionAbsent => SharedComputationAbsent { reason: "no verification selection is published for this head" }
+    SelectionAbsent => SharedComputationAbsent { absence: NoVerificationSelectionPublished }
     SelectionUnaddressable { cause } => SharedComputationRefused { cause: cause }
     SelectionUnreadable { cause } => SharedComputationRefused { cause: cause }
     SelectionMalformed { cause } => SharedComputationRefused { cause: cause }
@@ -5100,7 +5110,7 @@ fn shared_computation_observe_for_attempt(
         verification_dir: verification_dir,
         receipt_basename: exact_verification_receipt_basename(head_sha: head as String, window_identity_hex: git_diff_window_identity_hex(identity: window_identity)),
       ) {
-        ExactVerificationReceiptAbsent => SharedComputationAbsent { reason: "the selected verification receipt has not been written" }
+        ExactVerificationReceiptAbsent => SharedComputationAbsent { absence: SelectedReceiptNotWritten }
         ExactVerificationReceiptUnreadable { detail } => SharedComputationRefused { cause: detail }
         ExactVerificationReceiptPresent { text } =>
           match verification_receipt_decode(receipt: text) {
@@ -5111,7 +5121,7 @@ fn shared_computation_observe_for_attempt(
                 Absent => acc
               })
               if count(citations) == 0 {
-                SharedComputationAbsent { reason: "the selected verification receipt records no shared computation" }
+                SharedComputationAbsent { absence: ReceiptRecordsNoSharedComputation }
               } else {
                 SharedComputationObserved { head_sha: head as String, window_identity: window_identity, citations: citations }
               }
