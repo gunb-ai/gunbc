@@ -1,5 +1,5 @@
 module v2.extdeps.languages.dag
-import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
 import v2.std.model_core { bool_model_core }
 import v2.std.language_model { LanguageModel }
 
@@ -5052,6 +5052,20 @@ fn dag_arrow_domain_conj_node() -> Node {
   }
 }
 
+// AN OPERAND THAT NAMES A PARAMETER IS A LEXICAL REFERENCE, and resolve records its binding by the
+// reference's own occurrence (v2.compiler.resolve resolve_lexical_reference), refusing a synthetic
+// one as resolve_reason_lexical_reference_unkeyed. So the fixture's two operands carry MINTED
+// occurrences, as normalize's output would, at distinct ids by position (left 1, right 2): the
+// swapped variant swaps the names, not the ids. Content hash does not read occurrence ids, so every
+// hash-keyed reader of these fixtures is unchanged.
+fn dag_fixture_operand_reference_node(binding: Symbol, occurrence: Int) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: binding } },
+    children: [],
+    occurrence_id: OccurrenceMinted { id: OccurrenceId { value: occurrence } }
+  }
+}
+
 fn dag_binary_body_node(operator: Node, left_binding: Symbol, right_binding: Symbol) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
@@ -5059,11 +5073,11 @@ fn dag_binary_body_node(operator: Node, left_binding: Symbol, right_binding: Sym
       Edge { label: Positional, target: operator },
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: left_binding)
+        target: dag_fixture_operand_reference_node(binding: left_binding, occurrence: 1)
       },
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: right_binding)
+        target: dag_fixture_operand_reference_node(binding: right_binding, occurrence: 2)
       }
     ],
     occurrence_id: OccurrenceSynthetic
