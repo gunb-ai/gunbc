@@ -25,9 +25,13 @@ import std.cache_interface {
   RejectedHit,
   Reuse,
   Recompute,
+  Refuse,
   SubjectAbsent,
+  InvalidationFired,
   HitRefused,
   ContentDigestMismatch,
+  BackendUnavailable,
+  FreshnessExpired,
   Written,
   WriteSkippedIdempotent,
   WriteRejected,
@@ -67,6 +71,7 @@ test fn witness_verified_hit_reuses() -> Bool {
   match realize_route(lookup: Hit { receipt: r }) {
     Reuse { receipt: _ } => true
     Recompute { reason: _ } => false
+    Refuse { reason: _ } => false
   }
 }
 
@@ -77,16 +82,27 @@ test fn witness_miss_recomputes() -> Bool {
   }
 }
 
-test fn witness_refused_hit_never_reused() -> Bool {
+// A corrupt hit is neither reused nor recomputed over: recomputing would build a correct value
+// and leave the corrupt store unreported, the absorbing fallback DESIGN 5 forbids.
+test fn witness_corrupt_hit_refuses_never_recomputes() -> Bool {
   match realize_route(lookup: RejectedHit { reason: ContentDigestMismatch }) {
-    Recompute { reason: _ } => true
-    Reuse { receipt: _ } => false
+    Refuse { reason: HitRefused { reason: ContentDigestMismatch } } => true
+    _ => false
   }
 }
 
-test fn witness_refused_hit_surfaces_reason() -> Bool {
-  match realize_route(lookup: RejectedHit { reason: ContentDigestMismatch }) {
-    Recompute { reason: HitRefused { reason: ContentDigestMismatch } } => true
+// An unreachable backend is not absence: the lookup established nothing, so it refuses.
+test fn witness_unavailable_backend_refuses_never_recomputes() -> Bool {
+  match realize_route(lookup: RejectedHit { reason: BackendUnavailable }) {
+    Refuse { reason: HitRefused { reason: BackendUnavailable } } => true
+    _ => false
+  }
+}
+
+// The one rejection that licenses recomputation: the key's own declared invalidation fired.
+test fn witness_expired_freshness_recomputes() -> Bool {
+  match realize_route(lookup: RejectedHit { reason: FreshnessExpired }) {
+    Recompute { reason: InvalidationFired } => true
     _ => false
   }
 }
