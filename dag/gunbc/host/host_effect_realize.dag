@@ -3560,6 +3560,39 @@ fn run_shell_transport(script: RetainedShellScript, transport: HostEffectTranspo
   }
 }
 
+// ONE MAPPING FOR BOTH TRANSPORT RUNNERS. run_argv_over_host_effect_transport and
+// run_argv_stdin_over_host_effect_transport differ only in which typed call carries the leg; what an
+// outcome becomes is the same for both: the wall's refusal becomes a failed observation whose stdout
+// carries the admission's own text (plus this edge's "before any ssh leg" prefix, so the red names
+// the broken wall rather than a connection error), and a converged result becomes the process's exit
+// status and streams. ShellExecObserved has no refusal-shaped state, so a refusal IS an observation
+// here -- the mapping is where the admission's verdict and the transport's carrier meet, and it is
+// written once so the two arms cannot drift.
+fn typed_argv_outcome_to_shell_exec(typed: TypedArgvExecOutcome) -> ShellExecObserved {
+  match typed {
+    TypedArgvExecRefused { reason: why } =>
+      ShellExecObserved {
+        exit_code: 1,
+        success: false,
+        stdout: join(
+          [
+            "host_effect_apply: the portable-word wall refused the typed argv before any ssh leg: ",
+            why,
+          ],
+          "",
+        ),
+        stderr: "",
+      }
+    TypedArgvExecConverged { result: result } =>
+      ShellExecObserved {
+        exit_code: result.exit_code,
+        success: result.exit_code == 0,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      }
+  }
+}
+
 // THE HOST-EFFECT TRANSPORT TAKES TYPED ARGV. This is run_shell_transport's typed sibling: an
 // ArgvCommand already built by cited extdeps builders, run over the same HostEffectTransport arms.
 // LocalShell runs shell.Exec.RunArgv -- the program word and the argument words as DISTINCT
@@ -3597,31 +3630,8 @@ fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffe
         stderr: result.stderr,
       }
     }
-    SshShell { ssh_host: h } => {
-      let typed = typed_argv_exec_over_ssh(host: h, argv: argv_words(command: command))
-      match typed {
-        TypedArgvExecRefused { reason: why } =>
-          ShellExecObserved {
-            exit_code: 1,
-            success: false,
-            stdout: join(
-              [
-                "host_effect_apply: the portable-word wall refused the typed argv before any ssh leg: ",
-                why,
-              ],
-              "",
-            ),
-            stderr: "",
-          }
-        TypedArgvExecConverged { result: result } =>
-          ShellExecObserved {
-            exit_code: result.exit_code,
-            success: result.exit_code == 0,
-            stdout: result.stdout,
-            stderr: result.stderr,
-          }
-      }
-    }
+    SshShell { ssh_host: h } =>
+      typed_argv_outcome_to_shell_exec(typed: typed_argv_exec_over_ssh(host: h, argv: argv_words(command: command)))
     FleetSsh { target: t, context: _ } =>
       ShellExecObserved {
         exit_code: 1,
@@ -3666,31 +3676,12 @@ fn run_argv_stdin_over_host_effect_transport(command: ArgvCommand, stdin_payload
         stderr: result.stderr,
       }
     }
-    SshShell { ssh_host: h } => {
-      let typed = typed_argv_exec_over_ssh_with_stdin(host: h, argv: argv_words(command: command), stdin_payload: stdin_payload)
-      match typed {
-        TypedArgvExecRefused { reason: why } =>
-          ShellExecObserved {
-            exit_code: 1,
-            success: false,
-            stdout: join(
-              [
-                "host_effect_apply: the portable-word wall refused the typed argv before any ssh leg: ",
-                why,
-              ],
-              "",
-            ),
-            stderr: "",
-          }
-        TypedArgvExecConverged { result: result } =>
-          ShellExecObserved {
-            exit_code: result.exit_code,
-            success: result.exit_code == 0,
-            stdout: result.stdout,
-            stderr: result.stderr,
-          }
-      }
-    }
+    SshShell { ssh_host: h } =>
+      typed_argv_outcome_to_shell_exec(typed: typed_argv_exec_over_ssh_with_stdin(
+        host: h,
+        argv: argv_words(command: command),
+        stdin_payload: stdin_payload,
+      ))
     FleetSsh { target: t, context: _ } =>
       ShellExecObserved {
         exit_code: 1,
@@ -5540,6 +5531,11 @@ fn compile_pool_sizing_for_host(node: ComputeHost, placement: CompilePoolPlaceme
 // provision_observes_before_it_acts_note records from srv3 -- and the whole point is that the pre-state and
 // the post-state can differ. Convergence is claimed only when the second admission answers
 // EnsureCompilePoolAlreadyConverged, which is the same predicate the preflight uses to skip the write.
+// The write arm is the one arm whose failure can leave PARTIAL state behind: dd receiving unit bytes
+// on stdin can write some bytes and still exit nonzero, and the staged sibling then survives until
+// some later install moves it. So the write-failure arm is not an exception to the discard pair the
+// other failure arms run -- cleanup is attempted before reporting, and the discard's own exit status
+// rides in the reason, so a failed discard is visible rather than silent.
 fn compile_pool_slice_install_step(
   node: ComputeHost,
   slice_unit: NonEmptyStr,
@@ -5567,12 +5563,6 @@ fn compile_pool_slice_install_step(
         transport: transport,
       )
       if written.success == false {
-        // The stage write failed, but failure is not idempotence: dd may have written PARTIAL bytes
-        // before failing, and a stale stage file survives until the next step's install moves it
-        // out from under us. The discard pair below runs on every other failure arm of this fold;
-        // the write arm is not an exception -- cleanup is attempted before reporting, and its exit
-        // status rides in the reason so the report shows the attempt (a failed discard is not
-        // silent either, it is just not the headline).
         let discarded = run_argv_over_host_effect_transport(command: discard, transport: transport)
         NotConverged {
           reason: join(

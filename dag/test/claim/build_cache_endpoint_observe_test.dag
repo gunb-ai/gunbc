@@ -837,10 +837,10 @@ test fn witness_local_shell_stdin_transport_hands_the_program_exactly_once() -> 
 // name under .invalid (RFC 2606: guaranteed unresolvable) to document that no leg is meant to run:
 // were the routing back to the raw op, these witnesses would attempt a real ssh leg to that name and
 // fail WITHOUT the refusal text -- red either way, but the marker names which wall broke.
+// printf's format is allowlist-clean on purpose (`x`, no % conversion): the wall names the FIRST
+// offending token, and a format like "%s" would be named instead of the re-interpretable word,
+// which would make this witness's token assertion pin the wrong word.
 test fn witness_ssh_shell_transport_refuses_a_shell_reinterpreted_word_before_any_ssh_leg() -> Bool {
-  // printf's format is allowlist-clean on purpose (`x`, no % conversion): the wall names the FIRST
-  // offending token, and a format like "%s" would be named instead of the re-interpretable word,
-  // which would make this witness's token assertion pin the wrong word.
   let observed = run_argv_over_host_effect_transport(
     command: printf_command(format: "x", values: ["a;b"]),
     transport: SshShell { ssh_host: "compile-pool-transport-wall-witness.invalid" as NonEmptyStr },
@@ -851,9 +851,9 @@ test fn witness_ssh_shell_transport_refuses_a_shell_reinterpreted_word_before_an
     && string_contains(s: observed.stdout, pattern: "a;b")
 }
 
+// Same first-offender discipline as the non-stdin witness: format clean, so the named token is
+// the space-carrying word itself.
 test fn witness_ssh_shell_stdin_transport_refuses_a_shell_reinterpreted_word_before_any_ssh_leg() -> Bool {
-  // Same first-offender discipline as the non-stdin witness: format clean, so the named token is
-  // the space-carrying word itself.
   let observed = run_argv_stdin_over_host_effect_transport(
     command: printf_command(format: "x", values: ["a b"]),
     stdin_payload: "unused: the refusal precedes the leg, so nothing consumes it",
