@@ -15,7 +15,7 @@ import gunbc.spark.model_snapshot_acquisition { ModelSnapshotDesired, ModelSnaps
 import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, SnapshotAcquisitionExecutor, ContainerizedCli, spark_materialize_member, SparkMaterialized, SparkMaterializeUnpinned, SparkMaterializeRefused, spark_remote_run, RemoteRan, RemoteUnreachable }
 import gunbc.spark.vllm_runtime_image_build { SparkBuildHostWork, with_spark_build_host, SparkBuildHostRefused, SparkBuildHostRan, VllmImageDistributionSubject }
 import extdeps.container.oci.digest { render_oci_content_digest_wire }
-import extdeps.docker.cli { docker_image_inspect_id_from_stdout, DockerImageInspectId, DockerImageInspectIdUnreadable }
+import extdeps.docker.cli { docker_image_inspect_names_no_such_image, docker_image_inspect_id_from_stdout, DockerImageInspectId, DockerImageInspectIdUnreadable }
 
 // ── ONE ENTRY FOR MATERIALIZING A SERVING CHECKPOINT ON A HOST OF ITS GROUP (deforking cut 8c) ──────
 //
@@ -69,8 +69,10 @@ fn held_image_hub_cli_executor(ctx: SparkMaterializeContext, image: VllmImageDis
   match spark_remote_run(ctx: ctx, argv: ["docker", "image", "inspect", image.tag as String]) {
     RemoteUnreachable { cause: c } => HeldImageExecutorRefused { cause: join(["the image inspect leg did not run: ", c], "") }
     RemoteRan { exit_code: code, stdout: out, stderr: err } =>
-      if code != 0 {
-        HeldImageExecutorRefused { cause: join(["the executor image ", image.tag as String, " is not held on ", ctx.host as String, " (docker image inspect exited ", to_string(code), ": ", err, "); it is never pulled"], "") }
+      if code != 0 && docker_image_inspect_names_no_such_image(stderr: err) {
+        HeldImageExecutorRefused { cause: join(["the executor image ", image.tag as String, " is not held on ", ctx.host as String, " (", err, "); it is never pulled"], "") }
+      } else if code != 0 {
+        HeldImageExecutorRefused { cause: join(["the executor image could not be read on ", ctx.host as String, ", so whether it is held is unknown (docker image inspect exited ", to_string(code), ": ", err, ")"], "") }
       } else {
         match docker_image_inspect_id_from_stdout(stdout: out) {
           DockerImageInspectIdUnreadable { cause: c } => HeldImageExecutorRefused { cause: join(["the executor image's Id is unreadable: ", c], "") }
