@@ -1114,14 +1114,6 @@ fn is_discovery_corpus_advisory_typecheck_diagnostic(d: CompilerDiagnostic) -> B
   }
 }
 
-fn is_discovery_corpus_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
-  match diagnostic_disposition(d: d).gate {
-    GateBlocking => true
-    GateAdvisoryTypecheck => false
-    GateRenderedUncounted { reason: _ } => false
-  }
-}
-
 fn make_error_node(diagnostic: CompilerDiagnostic, module_name: String) -> ErrorNode {
   ErrorNode { diagnostic: diagnostic, module_name: module_name }
 }

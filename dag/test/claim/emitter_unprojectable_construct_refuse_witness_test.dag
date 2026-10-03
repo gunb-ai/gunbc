@@ -11,8 +11,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // taught: an expression legal in value position is projected the same way in a branch condition.
 // These claims assert the emitted file carries the guard's own body (the filter's push) and the
 // spelling that selects each arm, which a truncated or withheld module cannot. Compilation and
-// execution of the same shapes, both arms each, is
-// src/v1/stage0/tests/filter_in_branch_condition_emitted_rust.rs.
+// execution of the same shapes, both arms each, is gunbc.instruments.native_emission_controls
+// filter_in_branch_condition_cases (gunbc test //gunbc/instruments:native-emission-controls).
 
 data filter_in_guard_source: String = "module fx.filter_guard\nimport std.types { List, Bool, Int }\nfn f(xs: List<Int>) -> Int {\n  if (xs |> filter(x => x > 0) |> count) > 0 {\n    1\n  } else {\n    0\n  }\n}\n"
 
