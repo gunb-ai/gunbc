@@ -482,7 +482,7 @@ fn ci_fleet_wif_auth_step() -> Step {
 }
 
 // ONE AUTH STEP SHAPE, THE IDENTITY A PARAMETER. A job federating through its own dedicated pool
-// (gunbc.auth.mtcollins1_boot_federation) binds its own provider and account; the step id stays
+// (gunbc.auth.managed_host_boot_federation) binds its own provider and account; the step id stays
 // wif_auth so every consumer's ${{ steps.wif_auth.outputs.access_token }} reads the job's identity.
 fn ci_wif_auth_step_for(name: String, provider_resource: String, service_account: String) -> Step {
   UsesStep {

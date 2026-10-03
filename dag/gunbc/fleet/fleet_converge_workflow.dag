@@ -110,9 +110,11 @@ import gunbc.auth.gcp_iam_converge_federation { gcp_iam_converge_environment, gc
 import gunbc.auth.gcp_iam_converge { iam_observe_service_account, iam_converge_service_account, iam_converge_token_lifetime }
 import gunbc.auth.gcp_iam_converge_run { gcp_iam_converge_step_timeout_minutes, iam_converge_token_env, gcp_iam_converge_approved_output }
 import gunbc.auth.approval_broker_endpoint { approval_broker_host_identity }
-import gunbc.auth.mtcollins1_boot_federation {
-  mtcollins1_boot_environment, mtcollins1_boot_wif_provider_resource, mtcollins1_boot_service_account,
+import gunbc.auth.managed_host_boot_federation {
+  ManagedHostBootFederationStanding, BootFederationProvisioned, BootFederationUnprovisioned,
+  boot_federation_for, boot_federation_provider_resource,
 }
+import gunbc.fleet_intent_network { operator_host_mtcollins1 }
 import gunbc.auth.ci_app_key_rotation {
   app_key_version_env_name,
   app_key_verify_record_env_name,
@@ -3594,7 +3596,7 @@ fn fleet_converge_consumer_prelude_steps() -> List<Step> {
 // ── THE MT. COLLINS BOOT JOB (operator ruling 2026-09-23) ───────────────────────────────────
 // The boot is its own job because its identity is: OIDC tokens are minted per job, and the boot
 // federates through a dedicated pool whose provider pins this workflow file at main, a
-// workflow_dispatch on main, and the job's `environment` (gunbc.auth.mtcollins1_boot_federation).
+// workflow_dispatch on main, and the job's `environment` (gunbc.auth.managed_host_boot_federation).
 // A step inside the shared converge job could only present the shared job's token, which the
 // repo-wide provider admits for every job in the repository. It consumes the fleet key because the
 // census medium readback on srv2 runs over fleet ssh; the dedicated account holds a pinned cell for
@@ -3604,6 +3606,43 @@ data fleet_converge_shared_job_if: String = join([
   " && github.event.inputs.mode != '", fleet_converge_workflow_mode_wire(mode: GcpIamConverge), "'",
   " && github.event.inputs.mode != '", fleet_converge_workflow_mode_wire(mode: NamecheapObserve), "'",
 ], "")
+
+// THE MODE IS MT. COLLINS UNIT 1'S BOOT (its recut is cut 7 of docs/plans/managed-host-untangle.md),
+// so the job reads that pair's ADMITTED federation and nothing else. An unprovisioned standing
+// refuses the whole emission (fleet_converge_yml_after_toolchain_admission) before any job is
+// serialized; the REFUSED strings in the job's unprovisioned arm are therefore never emitted, exactly
+// like fleet_converge_job_needs's absent-edge arm.
+data fleet_converge_mtcollins1_boot_federation: ManagedHostBootFederationStanding = boot_federation_for(host: operator_host_mtcollins1)
+
+data fleet_converge_boot_federation_unprovisioned_refusal: String = "REFUSED gunbc.fleet_converge_workflow: the mtcollins1_boot mode's host has no admitted boot federation (gunbc.auth.managed_host_boot_federation boot_federation_for), so its job has no provider, service account or environment to federate through. No workflow yaml was emitted."
+
+fn fleet_converge_mtcollins1_boot_provider_resource() -> String {
+  match fleet_converge_mtcollins1_boot_federation {
+    BootFederationProvisioned { federation: f } => boot_federation_provider_resource(f: f)
+    BootFederationUnprovisioned { host: _, cause: _ } => fleet_converge_boot_federation_unprovisioned_refusal
+  }
+}
+
+fn fleet_converge_mtcollins1_boot_service_account() -> String {
+  match fleet_converge_mtcollins1_boot_federation {
+    BootFederationProvisioned { federation: f } => f.names.service_account as String
+    BootFederationUnprovisioned { host: _, cause: _ } => fleet_converge_boot_federation_unprovisioned_refusal
+  }
+}
+
+fn fleet_converge_mtcollins1_boot_environment() -> String {
+  match fleet_converge_mtcollins1_boot_federation {
+    BootFederationProvisioned { federation: f } => f.names.environment as String
+    BootFederationUnprovisioned { host: _, cause: _ } => fleet_converge_boot_federation_unprovisioned_refusal
+  }
+}
+
+fn fleet_converge_boot_federation_admitted() -> Bool {
+  match fleet_converge_mtcollins1_boot_federation {
+    BootFederationProvisioned { federation: _ } => true
+    BootFederationUnprovisioned { host: _, cause: _ } => false
+  }
+}
 
 // THE RUNNER AND THE CONCURRENCY DOMAIN ARE FIXED TO THE STORE HOST, never read from the dispatch's
 // `host` input (side-chat review 5286225278): runs-on names srv1's labels as literals derived from
@@ -3635,8 +3674,8 @@ fn fleet_converge_mtcollins1_boot_steps_around(fleet_key_step: Step, boot_step: 
     fleet_converge_mtcollins1_boot_admit_step(),
     ci_wif_auth_step_for(
       name: "WIF auth (OIDC -> dedicated mtcollins1-boot pool -> mtcollins1-boot SA, access token only)",
-      provider_resource: mtcollins1_boot_wif_provider_resource(),
-      service_account: mtcollins1_boot_service_account as String,
+      provider_resource: fleet_converge_mtcollins1_boot_provider_resource(),
+      service_account: fleet_converge_mtcollins1_boot_service_account(),
     ),
     fleet_key_step,
     boot_step,
@@ -3654,7 +3693,7 @@ fn fleet_converge_mtcollins1_boot_job() -> Job {
     id: fleet_converge_mode_job_id(mode: MtCollins1Boot) as String,
     name: none,
     runner: fleet_converge_mtcollins1_boot_runner(),
-    environment: Present { value: mtcollins1_boot_environment as String },
+    environment: Present { value: fleet_converge_mtcollins1_boot_environment() },
     steps: fleet_converge_mtcollins1_boot_steps(),
     needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: MtCollins1Boot)),
     env: none,
@@ -4384,6 +4423,8 @@ fn fleet_converge_yml_after_toolchain_admission() -> FleetConvergeYamlGeneration
         FleetConvergeYamlGenerationRefused {
           reason: "REFUSED gunbc.fleet_converge_workflow: the reset observer assignment admitted no pairing at all, so the reset_observer choice input would carry zero options -- a mode nobody can select. gunbc.host_reset_return reset_dispatch_pairings is supposed to refuse both routes to this state (an empty subject roster, and a subject with no admissible peer); reaching here means a third route exists and it is silent.",
         }
+      } else if !fleet_converge_boot_federation_admitted() {
+        FleetConvergeYamlGenerationRefused { reason: fleet_converge_boot_federation_unprovisioned_refusal }
       } else if !release_bins_scripts_admitted() {
         FleetConvergeYamlGenerationRefused {
           reason: "REFUSED gunbc.fleet_converge_workflow: v2.workflow.bash_emit refused a release-bins runner (gunbc.fleet_release_bins_key), so no workflow is emitted rather than a step with no script",
