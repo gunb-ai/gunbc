@@ -283,22 +283,25 @@ fn scp_version_of_smpro_word(word: Int) -> FirmwareSemanticVersion {
 
 // A readback and the standing of the decode that produced it. hpm check is a component-properties read
 // under PICMG HPM.1, so its decode is cited to that standard.
+// observed_at is when the route was read: it closes the step (step_closed_at) and orders the readback
+// after the AC cycle it must follow.
 type VersionReadback {
   reading: EnsureObservation<FirmwareSemanticVersion>
   decode: CitedFigureStanding
+  observed_at: EpochMs
 }
 
-fn hpm_check_readback(reading: EnsureObservation<FirmwareSemanticVersion>) -> VersionReadback {
-  VersionReadback { reading: reading, decode: CitedToAuthority { authority: extdeps_external_authority_anchor } }
+fn hpm_check_readback(reading: EnsureObservation<FirmwareSemanticVersion>, observed_at: EpochMs) -> VersionReadback {
+  VersionReadback { reading: reading, decode: CitedToAuthority { authority: extdeps_external_authority_anchor }, observed_at: observed_at }
 }
 
 // The SCP readback, from the SMpro probe the boot diagnostics already realize: a word read is a version
 // under the uncited decode, and every other outcome is an inaccessible observation carrying the probe's
 // own text, never a guess.
-fn scp_readback_of(o: SmproProbeOutcome) -> VersionReadback {
+fn scp_readback_of(o: SmproProbeOutcome, observed_at: EpochMs) -> VersionReadback {
   match smpro_outcome_word(o: o) {
-    Present { value: w } => VersionReadback { reading: EnsureObserved { evidence: scp_version_of_smpro_word(word: w) }, decode: scp_smpro_version_decode_standing }
-    Absent => VersionReadback { reading: EnsureInaccessible { reason: smpro_outcome_text(o: o) }, decode: scp_smpro_version_decode_standing }
+    Present { value: w } => VersionReadback { reading: EnsureObserved { evidence: scp_version_of_smpro_word(word: w) }, decode: scp_smpro_version_decode_standing, observed_at: observed_at }
+    Absent => VersionReadback { reading: EnsureInaccessible { reason: smpro_outcome_text(o: o) }, decode: scp_smpro_version_decode_standing, observed_at: observed_at }
   }
 }
 
@@ -343,6 +346,9 @@ type SelCapture {
 // THE WORLD IS ONE ATTEMPT ON ONE CONTROLLER. subject and endpoint name it; managed is the credential in
 // force when the attempt opened (its epoch is what a BMC flash invalidates); opened_at bounds every
 // observation the attempt may rely on, so a SEL or power reading from an earlier attempt is stale.
+// installed, cpus and rollback_images are the attempt's OPENING evidence and stay the same on every
+// re-entry: installed is each step's `before`, and the whole-set pre-flight re-reads all three however
+// many steps have been recorded.
 type MtCollinsFirmwareWorld {
   subject: MachineIntakeSubject
   endpoint: BmcControllerEndpoint
@@ -362,9 +368,11 @@ type MtCollinsFirmwareWorld {
 
 // The witnessed AC power cycle. It is an operator-attested record: the substrate cannot see a power
 // cord, which is why selecting HumanOnlyStep was the honest answer. ac_off is what the
-// operator observed, and the vendor minimum is checked against it.
+// operator observed, and the vendor minimum is checked against it. completed_at is when AC was restored:
+// it must follow the flash, and the readback must follow it.
 type AcPowerCycleWitness {
   ac_off: Second
+  completed_at: EpochMs
   witnessed_by: NonEmptyStr
 }
 
@@ -445,11 +453,16 @@ type FirmwareConvergenceRefusal
   | HostNotPoweredOffWhenFlashed { target: FirmwareTarget }
   | PreFlashPowerReadingOutsideAttempt { target: FirmwareTarget, observed_at: EpochMs }
   | StepStartedBeforePredecessorCompleted { target: FirmwareTarget, predecessor: FirmwareTarget }
+  | StepStartedBeforePredecessorClosed { target: FirmwareTarget, predecessor: FirmwareTarget, predecessor_closed_at: EpochMs }
+  | AcCycleWitnessPrecedesFlash { target: FirmwareTarget, flash_completed_at: EpochMs, completed_at: EpochMs }
+  | ReadbackPrecedesAcCycle { target: FirmwareTarget, ac_completed_at: EpochMs, observed_at: EpochMs }
   | FlashCompletedBeforeItStarted { target: FirmwareTarget }
   | DuplicateRecord { target: FirmwareTarget }
   | DuplicateInstalledReading { target: FirmwareTarget }
   | DuplicateRollbackReading { target: FirmwareTarget }
   | CpuInventoryIncomplete { observed: Int, expected: Int }
+  | CpuSocketOutOfRange { socket: Nat, socket_count: Int }
+  | CpuSocketReadTwice { socket: Nat }
   | SelSnapshotNotTakenBeforeStep { target: FirmwareTarget, reason: NonEmptyStr }
   | BootOutcomeUnobservable { reason: NonEmptyStr }
 
@@ -667,13 +680,65 @@ fn execution_refusal(t: FirmwareTarget, world: MtCollinsFirmwareWorld, rec: Flas
   }
 }
 
+fn later_of(a: EpochMs, b: EpochMs) -> EpochMs {
+  if a > b { a } else { b }
+}
+
+// WHEN A STEP CLOSED (review on 76e6f8c). A step is not over when its flash completes: the factory
+// credential window stays open until the LAST piece of re-establishment evidence, and the step itself
+// until its AC cycle and readback. credential_closed_at is the latest of the flash completion, the
+// standing's latest admitted probe, the rights receipt and the remote-media receipt; step_closed_at adds
+// the AC cycle and the readback. Evidence not recorded contributes nothing -- the walk has already
+// stopped on such a predecessor before any successor is examined.
+fn credential_closed_at(rec: FlashStepRecord) -> EpochMs {
+  match rec.credential_after {
+    Absent => rec.flash_completed_at
+    Present { value: re } =>
+      later_of(a: later_of(a: ipmi_probed_at(rec: rec, re: re), b: re.rights.observed_at), b: re.remote_media.observed_at)
+  }
+}
+
+fn ipmi_probed_at(rec: FlashStepRecord, re: BmcCredentialReestablishment) -> EpochMs {
+  match re.ipmi.outcome {
+    BmcSecureRefused { cause: _ } => rec.flash_completed_at
+    BmcSecured { endpoint: _, reference: _, evidence: _, latest_admitted_probe_at: probed, published_credential: _ } => later_of(a: rec.flash_completed_at, b: probed)
+  }
+}
+
+fn step_closed_at(rec: FlashStepRecord) -> EpochMs {
+  let ac = match rec.ac_cycle {
+    Absent => rec.flash_completed_at
+    Present { value: w } => w.completed_at
+  }
+  let read = match rec.readback {
+    Absent => rec.flash_completed_at
+    Present { value: rb } => rb.observed_at
+  }
+  later_of(a: credential_closed_at(rec: rec), b: later_of(a: ac, b: read))
+}
+
+// A successor must START after its predecessor CLOSED. A start inside the predecessor's credential
+// window refuses as that window even when the re-establishment succeeded later: evidence recorded
+// afterwards cannot move the flash out of the interval in which only the factory credential worked.
 fn predecessor_refusal(t: FirmwareTarget, rec: FlashStepRecord, predecessor: FlashStepRecord?) -> FirmwareConvergenceRefusal? {
   match predecessor {
     Absent => Absent
     Present { value: p } =>
       match rec.flash_started_at < p.flash_completed_at {
         true => Present { value: StepStartedBeforePredecessorCompleted { target: t, predecessor: p.target } }
-        false => Absent
+        false =>
+          match rec.flash_started_at <= credential_closed_at(rec: p) {
+            true =>
+              match credential_effect_of(t: p.target) {
+                InvalidatesBmcCredential { observed: _ } => Present { value: StepDuringFactoryCredentialWindow { attempted: t, window_opened_by: p.target } }
+                PreservesBmcCredential => Present { value: StepStartedBeforePredecessorClosed { target: t, predecessor: p.target, predecessor_closed_at: step_closed_at(rec: p) } }
+              }
+            false =>
+              match rec.flash_started_at <= step_closed_at(rec: p) {
+                true => Present { value: StepStartedBeforePredecessorClosed { target: t, predecessor: p.target, predecessor_closed_at: step_closed_at(rec: p) } }
+                false => Absent
+              }
+          }
       }
   }
 }
@@ -742,10 +807,15 @@ fn executed_step_verdict(
                   Present { value: w } =>
                     if second_count(s: w.ac_off) < second_count(s: mt_collins_minimum_ac_off) {
                       Present { value: refused(cause: AcPowerCycleTooShort { target: t, observed: w.ac_off, minimum: mt_collins_minimum_ac_off }) }
+                    } else if w.completed_at <= rec.flash_completed_at {
+                      Present { value: refused(cause: AcCycleWitnessPrecedesFlash { target: t, flash_completed_at: rec.flash_completed_at, completed_at: w.completed_at }) }
                     } else {
                       match rec.readback {
                         Absent => Present { value: refused(cause: ReadbackMismatch { target: t, reason: "no readback was recorded after the AC power cycle" }) }
                         Present { value: after } =>
+                          match after.observed_at <= w.completed_at {
+                            true => Present { value: refused(cause: ReadbackPrecedesAcCycle { target: t, ac_completed_at: w.completed_at, observed_at: after.observed_at }) }
+                            false =>
                           match classify_reconciled(r: ensure_reconcile(
                             policy: EnsureMayApply,
                             before: before,
@@ -760,6 +830,7 @@ fn executed_step_verdict(
                             EffectConverged { converged: _ } => Absent
                             EffectNotConverged { reason: why, attempt: _ } =>
                               Present { value: refused(cause: ReadbackMismatch { target: t, reason: why }) }
+                          }
                           }
                       }
                     }
@@ -816,6 +887,12 @@ fn pending_step_verdict(
 // The four steps are one set, so what would stop step four stops step one: if the BIOS rollback image is
 // missing, the BMC step is not due either. Missing evidence is never success -- an empty or short CPU
 // inventory refuses, and a duplicated installed or rollback reading refuses rather than taking the first.
+//
+// IT IS RE-READ ON EVERY ENTRY, RECORDS OR NOT (review on 76e6f8c). The pre-flight is a fact about the
+// attempt's opening evidence, so a recorded flash does not discharge it: a target whose opening reading
+// is not the baseline needs its rollback image and stated silicon whether its step is still pending or
+// already recorded. Gating either check on "no record yet" let a history of four records converge over
+// an empty CPU inventory and no retained image.
 fn count_installed(world: MtCollinsFirmwareWorld, t: FirmwareTarget) -> Int {
   list_length(filter(world.installed, i => (i.target == t)))
 }
@@ -828,36 +905,56 @@ fn count_records(records: List<FlashStepRecord>, t: FirmwareTarget) -> Int {
   list_length(filter(records, r => (r.target == t)))
 }
 
-fn silicon_refusal(world: MtCollinsFirmwareWorld) -> FirmwareConvergenceRefusal? {
-  if list_length(world.cpus) != (mtcollins1_socket_count as Int) {
-    Present { value: CpuInventoryIncomplete { observed: list_length(world.cpus), expected: mtcollins1_socket_count as Int } }
-  } else {
-    match (filter(world.cpus, c => !silicon_stated(statement: mt_collins_0acod_silicon_support, cpu: c))).first() {
-      Present { value: cpu } => Present { value: CpuSiliconSupportUnstated { socket: cpu.socket, bios_family: mt_collins_0acod_silicon_support.bios_family } }
-      Absent => Absent
-    }
+// THE INVENTORY IS ONE ROW PER SOCKET, NOT A ROW COUNT (review on 76e6f8c). Sockets are 0 up to the
+// socket count: a row naming a socket outside that range refuses, a socket named twice refuses, and --
+// with neither -- a count short of the socket count means a socket is missing. Two rows both naming
+// socket 0 are therefore not a complete inventory of a two-socket board.
+fn cpu_inventory_refusal(world: MtCollinsFirmwareWorld) -> FirmwareConvergenceRefusal? {
+  let expected = mtcollins1_socket_count as Int
+  match (filter(world.cpus, c => (c.socket as Int) >= expected)).first() {
+    Present { value: c } => Present { value: CpuSocketOutOfRange { socket: c.socket, socket_count: expected } }
+    Absent =>
+      match (filter(world.cpus, c => list_length(filter(world.cpus, x => (x.socket as Int) == (c.socket as Int))) > 1)).first() {
+        Present { value: c } => Present { value: CpuSocketReadTwice { socket: c.socket } }
+        Absent =>
+          match list_length(world.cpus) == expected {
+            true => Absent
+            false => Present { value: CpuInventoryIncomplete { observed: list_length(world.cpus), expected: expected } }
+          }
+      }
   }
 }
 
-// One target's admissibility for the set: one installed reading, one record at most, and -- if it still
-// needs a flash -- exactly one retained rollback image of the version installed now.
+fn silicon_refusal(world: MtCollinsFirmwareWorld) -> FirmwareConvergenceRefusal? {
+  match cpu_inventory_refusal(world: world) {
+    Present { value: c } => Present { value: c }
+    Absent =>
+      match (filter(world.cpus, c => !silicon_stated(statement: mt_collins_0acod_silicon_support, cpu: c))).first() {
+        Present { value: cpu } => Present { value: CpuSiliconSupportUnstated { socket: cpu.socket, bios_family: mt_collins_0acod_silicon_support.bios_family } }
+        Absent => Absent
+      }
+  }
+}
+
+// One target's admissibility for the set: one installed reading, one record at most, and -- if its
+// opening reading is not the baseline, flashed already or not -- exactly one retained rollback image of
+// that opening version.
 fn target_preflight_refusal(b: FirmwareBaseline, world: MtCollinsFirmwareWorld, records: List<FlashStepRecord>, t: FirmwareTarget) -> FirmwareConvergenceRefusal? {
   match count_installed(world: world, t: t) > 1 {
     true => Present { value: DuplicateInstalledReading { target: t } }
     false =>
-  match count_records(records: records, t: t) {
-    0 =>
-    match baseline_release_for(b: b, t: t) {
-      Absent => Absent
-      Present { value: rel } =>
-        match reading_satisfies(reading: installed_reading(world: world, t: t), desired: rel.version) {
-          true => Absent
-          false => rollback_refusal(world: world, t: t)
-        }
-    }
-    1 => Absent
-    _ => Present { value: DuplicateRecord { target: t } }
-  }
+      match count_records(records: records, t: t) > 1 {
+        true => Present { value: DuplicateRecord { target: t } }
+        false =>
+          match baseline_release_for(b: b, t: t) {
+            Absent => Absent
+            Present { value: rel } =>
+              match reading_satisfies(reading: installed_reading(world: world, t: t), desired: rel.version) {
+                true => Absent
+                false => rollback_refusal(world: world, t: t)
+              }
+          }
+      }
   }
 }
 
@@ -880,7 +977,8 @@ fn rollback_refusal(world: MtCollinsFirmwareWorld, t: FirmwareTarget) -> Firmwar
   }
 }
 
-// Silicon is checked only while some step remains: a host already at its baseline has nothing to flash.
+// Silicon is checked whenever the set has, or had, a step: a host whose opening readings are all at the
+// baseline has nothing to flash, and that -- never the presence of records -- is the only exemption.
 fn set_preflight_refusal(b: FirmwareBaseline, world: MtCollinsFirmwareWorld, records: List<FlashStepRecord>) -> FirmwareConvergenceRefusal? {
   match fold(mt_collins_vendor_upgrade_order, init: Absent, f: (acc, t) =>
     match acc {
@@ -889,16 +987,16 @@ fn set_preflight_refusal(b: FirmwareBaseline, world: MtCollinsFirmwareWorld, rec
     }) {
     Present { value: c } => Present { value: c }
     Absent =>
-      match set_needs_a_step(b: b, world: world, records: records) {
+      match set_needs_a_step(b: b, world: world) {
         true => silicon_refusal(world: world)
         false => Absent
       }
   }
 }
 
-fn set_needs_a_step(b: FirmwareBaseline, world: MtCollinsFirmwareWorld, records: List<FlashStepRecord>) -> Bool {
+fn set_needs_a_step(b: FirmwareBaseline, world: MtCollinsFirmwareWorld) -> Bool {
   any(mt_collins_vendor_upgrade_order, t =>
-    count_records(records: records, t: t) == 0 && match baseline_release_for(b: b, t: t) {
+    match baseline_release_for(b: b, t: t) {
       Absent => false
       Present { value: rel } => !reading_satisfies(reading: installed_reading(world: world, t: t), desired: rel.version)
     })

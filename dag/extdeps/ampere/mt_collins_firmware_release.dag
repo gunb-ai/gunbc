@@ -34,7 +34,7 @@ import extdeps.uri { Uri, Https }
 // BIOS release note states "BIOS Version : 0ACOD 0.14.0" for build 0ACOD014, so 0.14.0 is the vendor's
 // own projection -- and it DISCARDS THE FAMILY LETTER: mtcollins1 shipped with 0ACOC017, which projects
 // to 0.17.0 and so orders ABOVE 0ACOD014. Ordering on BIOS triples across families is meaningless; the
-// convergence compares them for equality only. The MB CPLD release is "Revision : V06", carried as 0.6.0; that projection is ours,
+// convergence compares them for equality only. The MB CPLD release is "Revision : V06", carried as 6.0.0; that projection is ours,
 // stated here so a readback parser has one place to agree with -- and BMC 0.45.3 reports that CPLD as
 // "4.00 00000000", so no parser agrees with it yet.
 data mt_collins_firmware_delivery_authority: ExternalAuthority = ExternalAuthority {
