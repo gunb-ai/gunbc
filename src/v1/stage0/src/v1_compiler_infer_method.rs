@@ -9,6 +9,7 @@ use crate::std_algebra::AlgebraTypeTemplate::{
 use crate::std_algebra::ContainerSource::{Named, SameAsReceiver};
 pub use crate::std_algebra::{
     algebra_templates_for_profile, all_algebra_profiles, free_monoid_scalar_templates,
+    kernel_algebra_profile,
 };
 pub use crate::std_algebra::{
     AlgebraFieldTemplate, AlgebraProfile, AlgebraTypeTemplate, ContainerSource,
@@ -2065,6 +2066,48 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
             };
         }
     CACHED.with(|c: &Rc<HashMap<String, Rc<BuiltinSignature>>>| c.clone())
+}
+
+pub fn is_empty_map_constructor(name: String) -> bool {
+    (name.clone() == "empty_map".to_string())
+}
+
+pub fn is_empty_set_constructor(name: String) -> bool {
+    (name.clone() == "empty_set".to_string())
+}
+
+pub fn is_kernel_method_name(name: String) -> bool {
+    {
+        let mut __found = false;
+        for profile in Rc::new(v1_rt::map_values(&kernel_algebra_profile()))
+            .iter()
+            .cloned()
+        {
+            if {
+                let mut __found = false;
+                for t in crate::std_algebra::algebra_templates_for_profile(profile.clone())
+                    .iter()
+                    .cloned()
+                {
+                    if (t.name.clone() == name.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn bare_call_has_non_declaration_binding(name: String) -> bool {
+    (((is_empty_map_constructor(name.clone()) || is_empty_set_constructor(name.clone()))
+        || (builtin_signature(name.clone()) != std::option::Option::None))
+        || is_kernel_method_name(name.clone()))
 }
 
 pub fn builtin_signature(name: String) -> Option<Rc<BuiltinSignature>> {
