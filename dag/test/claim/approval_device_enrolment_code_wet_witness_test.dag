@@ -2,7 +2,7 @@ module test.claim.approval_device_enrolment_code_wet_witness_test
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, Timestamp, Int }
-import gunbc.auth.approval_device_routes {
+import gunbc.auth.approval_device_enrolment_code {
   issue_and_deliver_enrolment_code_until, EnrolmentCodeIssued, EnrolmentCodeIssuanceRefused, DeliveryRefused,
   mint_enrolment_code,
 }

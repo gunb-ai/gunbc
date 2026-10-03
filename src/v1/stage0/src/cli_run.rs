@@ -101,9 +101,10 @@ mod serve_budget_refusal;
 pub use emitted_crate_workspace_host::{run_emitted_crate_workspace, EmittedCrateWorkspaceHeld};
 pub use native_lane_runner::{
     emitted_build_not_clean_cause, run_native_claim_program, run_required_v2_native, run_self_host,
-    run_v2_demand_census, run_v2_native_census, run_v2_native_cli, run_v2_native_frontier,
-    NativeCensusRun, NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination,
-    NativeRouteOutcome, SelfHostHeld, V2NativeCliHeld,
+    run_type_declaration_use_census_runs, run_v2_demand_census, run_v2_native_census,
+    run_v2_native_cli, run_v2_native_frontier, CensusInferRun, NativeCensusRun,
+    NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination, NativeRouteOutcome,
+    SelfHostHeld, TypeDeclarationUseRuns, V2NativeCliHeld,
 };
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
@@ -42206,84 +42207,6 @@ pub fn clear_floor_prepared_authority() {
     crate::v1_interpreter::clear_cross_claim_pure_memos();
 }
 
-/// Measurement harness (`floor_prepared_toll_receipt` bin): print reclaimed wall time per item.
-pub fn run_floor_prepared_toll_receipt() {
-    let source_roots = vec!["dag".to_string(), "src/v2".to_string()];
-    let exclusions = floor_prepared_subject_exclusions();
-    let index = build_module_index(&source_roots);
-    let mut inventory = Vec::with_capacity(index.len());
-    for (module_path, sf) in index.iter() {
-        if prepared_subject_exclusion_row_for(&sf.path, module_path, &exclusions).is_some() {
-            continue;
-        }
-        inventory.push(PreparedSourceView {
-            module_path: module_path.clone(),
-            source: sf.clone(),
-        });
-    }
-    let ws = workspace_root();
-    let pool_roots: Vec<String> = witness_layer_roots()
-        .iter()
-        .map(|r| ws.join(r).to_string_lossy().into_owned())
-        .collect();
-
-    eprintln!(
-        "[floor-toll-receipt] inventory_modules={} pool_roots={}",
-        inventory.len(),
-        pool_roots.len()
-    );
-
-    let (disk_ms, inv_modules) = crate::coproduct_reflection::pool_decl_parse_wall_ms(
-        &pool_roots,
-        &[crate::v1_compiler_infer_items::ItemKind::TypeItem],
-        None,
-    )
-    .expect("disk parse");
-    let (inventory_ms, _) = crate::coproduct_reflection::pool_decl_parse_wall_ms(
-        &pool_roots,
-        &[crate::v1_compiler_infer_items::ItemKind::TypeItem],
-        Some(&inventory),
-    )
-    .expect("inventory parse");
-    let item1_reclaimed = disk_ms.saturating_sub(inventory_ms);
-    eprintln!(
-        "[floor-toll-receipt] item1_pool_type_decl_parse disk_ms={} inventory_ms={} modules={} reclaimed_ms={}",
-        disk_ms, inventory_ms, inv_modules, item1_reclaimed
-    );
-
-    clear_floor_prepared_authority();
-    let languages_disk_ms = languages_decl_records_disk_scan_wall_ms();
-    let languages_inventory_ms = languages_decl_records_inventory_wall_ms(&inventory);
-    let item4_reclaimed = languages_disk_ms.saturating_sub(languages_inventory_ms);
-    eprintln!(
-        "[floor-toll-receipt] item4_languages_census disk_ms={} inventory_ms={} reclaimed_ms={}",
-        languages_disk_ms, languages_inventory_ms, item4_reclaimed
-    );
-
-    let _floor_prepared_guard = register_floor_prepared_authority_guard(inventory);
-
-    let sample_source = "module cuartifact_ok\n\nimport std.types { NonEmptyStr, String }\n\ntype UnitId = NonEmptyStr where brand(\"UnitId\")\n\ntype Unit {\n  id: UnitId\n}\n\nfn consistent() -> Unit {\n  Unit { id: \"unit-a\" as UnitId }\n}\n";
-    let file_path = "src/cuartifact_ok.rs";
-    let includes = vec!["fn consistent".to_string()];
-    let excludes: Vec<String> = vec![];
-    let cold_started = std::time::Instant::now();
-    let first = compile_dag_rust_emit_check(sample_source, file_path, &includes, &excludes);
-    let cold_ms = cold_started.elapsed().as_millis();
-    let warm_started = std::time::Instant::now();
-    let second = compile_dag_rust_emit_check(sample_source, file_path, &includes, &excludes);
-    let warm_ms = warm_started.elapsed().as_millis();
-    let item3_reclaimed = cold_ms.saturating_sub(warm_ms);
-    eprintln!(
-        "[floor-toll-receipt] item3_compile_dag_rust_emit_check cold_ms={} warm_ms={} first={first:?} second={second:?} reclaimed_ms={}",
-        cold_ms, warm_ms, item3_reclaimed
-    );
-
-    eprintln!(
-        "[floor-toll-receipt] summary item1_reclaimed_ms={} item4_reclaimed_ms={} item3_compile_reclaimed_ms={}",
-        item1_reclaimed, item4_reclaimed, item3_reclaimed
-    );
-}
-
 fn register_floor_prepared_authority_guard(
     inventory: Vec<PreparedSourceView>,
 ) -> FloorPreparedAuthorityGuard {
@@ -46323,14 +46246,14 @@ pub use emitted_closure_compile_host::{
 #[cfg(test)]
 pub(crate) use emitted_closure_compile_host::{
     fixture_arm_diagnostic_lines, fixture_closure_attributed_diagnostic,
-    fixture_closure_attributed_line, fixture_closure_reached_rustc, fixture_closure_rustc_verdict,
-    fixture_closure_summary, fixture_discrimination_passed, fixture_discrimination_report,
-    run_append_concat_form_discrimination, run_argv_word_list_splice_discrimination,
-    run_empty_map_turbofish_discrimination, run_fixture_closure_discrimination,
-    run_function_value_adapter_discrimination, run_local_true_false_coproduct_discrimination,
-    run_native_bool_variant_discrimination, run_nested_refinement_cast_discrimination,
-    run_phantom_marker_identity_discrimination, run_shell_projection_arity_discrimination,
-    FixtureClosureOutcome,
+    fixture_closure_attributed_line, fixture_closure_compiled, fixture_closure_reached_rustc,
+    fixture_closure_rustc_verdict, fixture_closure_summary, fixture_discrimination_passed,
+    fixture_discrimination_report, run_append_concat_form_discrimination,
+    run_argv_word_list_splice_discrimination, run_empty_map_turbofish_discrimination,
+    run_fixture_closure_discrimination, run_function_value_adapter_discrimination,
+    run_local_true_false_coproduct_discrimination, run_native_bool_variant_discrimination,
+    run_nested_refinement_cast_discrimination, run_phantom_marker_identity_discrimination,
+    run_shell_projection_arity_discrimination, FixtureClosureOutcome,
 };
 
 /// The authority's own declared module path, for consumers outside this module.
