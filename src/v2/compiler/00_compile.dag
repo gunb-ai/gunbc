@@ -42,6 +42,7 @@ import v2.compiler.emit { emit }
 import v2.compiler.eval { eval, eval_node, eval_default_interpretation, inputs_root_only }
 import v2.compiler.infer { InferredTree }
 import v2.compiler.name_resolve {
+  resolution_context_namespace,
   closure_declarations_demand,
   Admission,
   ResolutionSubject,
@@ -51,7 +52,7 @@ import v2.compiler.name_resolve {
   resolve_in_context,
   resolve_with_admission
 }
-import std.occurrence_identity { OccurrenceIdAllocator, occurrence_id_allocator_initial }
+import std.occurrence_identity { OccurrenceIdAllocator, occurrence_id_allocator_initial, scoped_occurrence_allocator }
 import v2.std.dependency { DataDependsOn, DependencyRelation }
 import v2.std.demand_engine {
   DemandAdmitted,
@@ -94,6 +95,7 @@ import std.cache_identity {
 import std.materialization_ladder { DemandNature }
 import v2.compiler.program_assembly {
   program_assembly_ingest_scope_outcome,
+  program_assembly_phase_tokenize,
   program_assembly_read_to_normalized_root_seeded,
   assemble_program_from_ingest,
   program_assembly_fold_ingest,
@@ -107,7 +109,9 @@ import v2.compiler.source_authority {
   source_root_set_from_ingest
 }
 import v2.compiler.native_test_vocabulary {
+  NativeTestFileAdvisories,
   NativeTestFileRefusal,
+  native_test_file_advisories,
   NativeTestObservation,
   NativeTestPassed,
   NativeTestRefused,
@@ -122,10 +126,29 @@ import v2.compiler.native_test_vocabulary {
   native_test_refused_after,
   native_test_refused_located
 }
-import v2.compiler.normalize { normalize }
+import v2.compiler.normalize { normalize, normalize_scoped }
+import v2.compiler.dependency_demand { FunctionFact, OperationFact }
+import v2.compiler.dependency_demand_census {
+  AuthoredRowReading,
+  AuthoredTypeUnresolved,
+  AuthoredUsesFunction,
+  DemandCensusAuthoredReading,
+  DemandCensusModuleStanding,
+  DemandCensusReport,
+  DemandModuleResolveRefused,
+  DemandModuleResolved,
+  demand_census_authored_readings,
+  demand_census_exit,
+  demand_census_lines,
+  demand_census_module_facts,
+  demand_census_report,
+  demand_census_strip
+}
 import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_import_bindings }
-import v2.compiler.parse { parse, prepare_grammar, PreparedGrammar }
+import v2.compiler.parse { parse, parse_module_prepared_seeded, prepare_grammar, PreparedGrammar }
 import v2.compiler.resolve {
+  ResolveContext,
+  resolve_ctx_init,
   ObservationComplete,
   ObservationIncomplete,
   ObservationCompleteness,
@@ -1301,6 +1324,7 @@ fn compile_ingest_staging(source: Medium<String>, target: TargetModel) -> Outcom
 type NativeTestContext {
   resolution: Outcome<ResolutionContext>
   file_refusals: FreeMonoid<NativeTestFileRefusal>
+  accepted_file_advisories: FreeMonoid<NativeTestFileAdvisories>
 }
 
 type NativeTestPreparedModule {
@@ -1323,6 +1347,7 @@ type NativeTestContextFoldState {
   roots: FreeMonoid<NormalizedTree>
   index: SourceRootIndex
   file_refusals: FreeMonoid<NativeTestFileRefusal>
+  accepted_file_advisories: FreeMonoid<NativeTestFileAdvisories>
   alloc: OccurrenceIdAllocator
 }
 
@@ -1394,9 +1419,10 @@ fn native_test_context_absorb(
           xs: state.file_refusals,
           item: native_test_file_refusal(path: read.compilation_unit, module: native_refused_file_module(content: read.source.carried), d: d)
         ),
+        accepted_file_advisories: state.accepted_file_advisories,
         alloc: alloc
       }
-    Accepted { value: root, diagnostics: _ } =>
+    Accepted { value: root, diagnostics: advisories } =>
       match qualified_name_from_module_node(root: root.root) {
         Rejected { diagnostics: d } =>
           NativeTestContextFoldState {
@@ -1406,6 +1432,7 @@ fn native_test_context_absorb(
               xs: state.file_refusals,
               item: native_test_file_refusal(path: read.compilation_unit, module: native_refused_file_module(content: read.source.carried), d: d)
             ),
+            accepted_file_advisories: state.accepted_file_advisories,
             alloc: alloc
           }
         Accepted { value: qn, diagnostics: _ } =>
@@ -1413,9 +1440,27 @@ fn native_test_context_absorb(
             roots: list_snoc_item(xs: state.roots, item: root),
             index: source_root_index_insert(index: state.index, module: qn, root: read.source_root),
             file_refusals: state.file_refusals,
+            accepted_file_advisories: native_test_accepted_advisories_absorb(
+              rows: state.accepted_file_advisories,
+              path: read.compilation_unit,
+              advisories: advisories
+            ),
             alloc: alloc
           }
       }
+  }
+}
+
+// The module-name projection is a pure read of the accepted root and mints no advisory of its own;
+// the file's advisories are the front end's, on `root_outcome`.
+fn native_test_accepted_advisories_absorb(
+  rows: FreeMonoid<NativeTestFileAdvisories>,
+  path: Symbol,
+  advisories: Diagnostics
+) -> FreeMonoid<NativeTestFileAdvisories> {
+  match advisories {
+    None => rows
+    Some { diagnostics: d } => list_snoc_item(xs: rows, item: native_test_file_advisories(path: path, d: d))
   }
 }
 
@@ -1477,6 +1522,7 @@ fn native_test_context_state_empty() -> NativeTestContextFoldState {
     roots: Empty,
     index: source_root_index_empty(),
     file_refusals: Empty,
+    accepted_file_advisories: Empty,
     alloc: occurrence_id_allocator_initial()
   }
 }
@@ -1494,7 +1540,8 @@ fn native_test_context_finish(
       active_roots: source_root_set_from_ingest(ingest: ingest),
       policy: v2.std.resolution_policy.default_name_resolution_policy()
     ),
-    file_refusals: state.file_refusals
+    file_refusals: state.file_refusals,
+    accepted_file_advisories: state.accepted_file_advisories
   }
 }
 
@@ -1537,7 +1584,8 @@ fn native_test_context_from_ingest(ingest: SourceRootIngest) -> Outcome<NativeTe
 fn native_test_context_with_resolution(context: NativeTestContext, resolution: Outcome<ResolutionContext>) -> NativeTestContext {
   NativeTestContext {
     resolution: resolution,
-    file_refusals: context.file_refusals
+    file_refusals: context.file_refusals,
+    accepted_file_advisories: context.accepted_file_advisories
   }
 }
 
@@ -2085,6 +2133,7 @@ type NativeLaneUniverse {
 type NativeDriverVerb
   = NativeDriverCensus { source_roots: FreeMonoid<String> }
   | NativeDriverCensusResolve { source_roots: FreeMonoid<String> }
+  | NativeDriverDemandCensus { source_roots: FreeMonoid<String> }
   | NativeDriverAdjudicate { facts_path: String, pattern: TargetPattern, source_roots: FreeMonoid<String> }
 
 type NativeDriverPlan
@@ -2095,9 +2144,11 @@ data native_driver_verb_census: String = "census"
 
 data native_driver_verb_census_resolve: String = "census-resolve"
 
+data native_driver_verb_demand_census: String = "demand-census"
+
 data native_driver_verb_adjudicate: String = "adjudicate"
 
-data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> <target-pattern> <source-root>... | census <source-root>... | census-resolve <source-root>..."
+data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> <target-pattern> <source-root>... | census <source-root>... | census-resolve <source-root>... | demand-census <source-root>..."
 
 data native_driver_adjudicate_needs_facts: String = "REFUSED: adjudicate takes a host facts file before the source roots"
 
@@ -2122,6 +2173,7 @@ type NativeDriverParseState
   = DriverSeekVerb
   | DriverCensusRoots { roots: FreeMonoid<String> }
   | DriverCensusResolveRoots { roots: FreeMonoid<String> }
+  | DriverDemandCensusRoots { roots: FreeMonoid<String> }
   | DriverAdjudicateSeekFacts
   | DriverAdjudicateSeekPattern { facts_path: String }
   | DriverAdjudicateRoots { facts_path: String, pattern: TargetPattern, roots: FreeMonoid<String> }
@@ -2130,7 +2182,7 @@ type NativeDriverParseState
 fn native_driver_unknown_verb_detail(word: String) -> String {
   concat(
     concat("REFUSED: unknown mode ", word),
-    " -- expected adjudicate, census or census-resolve"
+    " -- expected adjudicate, census, census-resolve or demand-census"
   )
 }
 
@@ -2146,6 +2198,8 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
         DriverCensusRoots { roots: [] }
       } else if word == native_driver_verb_census_resolve {
         DriverCensusResolveRoots { roots: [] }
+      } else if word == native_driver_verb_demand_census {
+        DriverDemandCensusRoots { roots: [] }
       } else if word == native_driver_verb_adjudicate {
         DriverAdjudicateSeekFacts
       } else {
@@ -2158,6 +2212,8 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
       DriverCensusRoots { roots: list_snoc_item(xs: roots, item: word) }
     DriverCensusResolveRoots { roots: roots } =>
       DriverCensusResolveRoots { roots: list_snoc_item(xs: roots, item: word) }
+    DriverDemandCensusRoots { roots: roots } =>
+      DriverDemandCensusRoots { roots: list_snoc_item(xs: roots, item: word) }
     DriverAdjudicateSeekFacts =>
       DriverAdjudicateSeekPattern { facts_path: word }
     DriverAdjudicateSeekPattern { facts_path: facts_path } =>
@@ -2200,6 +2256,8 @@ fn native_driver_parse_finish(state: NativeDriverParseState) -> NativeDriverPlan
       NativeDriverPlanned { verb: NativeDriverCensus { source_roots: roots } }
     DriverCensusResolveRoots { roots: roots } =>
       NativeDriverPlanned { verb: NativeDriverCensusResolve { source_roots: roots } }
+    DriverDemandCensusRoots { roots: roots } =>
+      NativeDriverPlanned { verb: NativeDriverDemandCensus { source_roots: roots } }
     DriverAdjudicateSeekPattern { facts_path: _ } =>
       NativeDriverPlanRefused {
         reason: ^native_driver_adjudicate_without_pattern,
@@ -2229,6 +2287,7 @@ fn native_driver_plan_source_roots(plan: NativeDriverPlan) -> FreeMonoid<String>
       match verb {
         NativeDriverCensus { source_roots: roots } => roots
         NativeDriverCensusResolve { source_roots: roots } => roots
+        NativeDriverDemandCensus { source_roots: roots } => roots
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: roots } => roots
       }
   }
@@ -3308,6 +3367,7 @@ fn native_module_resolve_verdict(
                     root: resolved,
                     symbol_index: shared.symbol_index,
                     closure_declarations: closure.declarations,
+                    unavailable_providers: closure.refused,
                     lexical: lexical
                   )
                 },
@@ -3506,6 +3566,198 @@ fn native_lane_identity_row(
 // those facts bundle four per-file scans, one of which is the floor's discovery fold, and a census
 // asks for none of them but the module header. Over the whole tree that bundle is paid 6k times to
 // read one line each time. This reuses the same module-name authority the facts record reuses.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// D13 DEPENDENCY-DEMAND CENSUS: THE WHOLE-CLOSURE ROUTE (`demand-census`)
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// WHY A FRONT END OF ITS OWN, ENTERED PHASE BY PHASE. Production lowering refuses every fn with a
+// `uses` clause, and native_test_context_absorb drops a refused file from the roots and the source
+// root index -- so in the production context a uses fn's module is absent, and so are the
+// operations and fns it declares. A census that stripped one module at a time would read every edge
+// into such a module as outside the closure. So this route folds the whole ingest once with the
+// clause elided (v2.compiler.dependency_demand_census demand_census_strip, between parse and
+// normalize) and absorbs each root through the SAME native_test_context_absorb the production fold
+// uses: the only difference from native_test_context_fold_step is the strip, which is why that step
+// is entered phase by phase here rather than through program_assembly_read_to_normalized_root_seeded.
+//
+// THE CONTEXT NEVER LEAVES THIS ROUTE. native_demand_census_report returns a DemandCensusReport --
+// rows of authored rows, derived demand and verdicts -- and no tree, context or prepared module, so
+// nothing the elided front end produced can reach infer, eval or emission. Its one caller is the
+// emitted driver's `demand-census` verb, run by `gunbc test //gunbc/instruments:dependency-demand-census`.
+
+type NativeDemandCensusFoldState {
+  context: NativeTestContextFoldState
+  authored: List<AuthoredUsesFunction>
+  file_refused: List<AuthoredUsesFunction>
+  unreadable: Int
+}
+
+fn native_demand_census_snoc_all(xs: List<AuthoredUsesFunction>, ys: List<AuthoredUsesFunction>) -> List<AuthoredUsesFunction> {
+  fold_list(xs: ys, empty: xs, cons: fn(acc, y) { list_snoc_item(xs: acc, item: y) })
+}
+
+fn native_demand_census_read(
+  state: NativeDemandCensusFoldState,
+  read: DagSourceReadWitness,
+  front: NativeTestFrontEnd,
+  scope: Fnv1a64Structural
+) -> NativeDemandCensusFoldState {
+  let module_qn = match native_refused_file_module(content: read.source.carried) {
+    Present { value: qn } => qn
+    Absent => Empty
+  }
+  match bind_outcome(
+    o: program_assembly_phase_tokenize(read: read, lm: front.lm),
+    f: fn(tokens) {
+      parse_module_prepared_seeded(tokens: tokens, prepared: front.prepared, validation_residue: front.residue, seed: state.context.alloc)
+    }
+  ) {
+    Rejected { diagnostics: d } =>
+      NativeDemandCensusFoldState {
+        context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: state.context.alloc),
+        authored: state.authored,
+        file_refused: state.file_refused,
+        unreadable: state.unreadable + 1
+      }
+    Accepted { value: artifact, diagnostics: _ } =>
+      let stripped = demand_census_strip(tree: artifact.tree, owner: module_qn)
+      match normalize_scoped(parse_tree: stripped.tree, allocator: scoped_occurrence_allocator(alloc: artifact.alloc, scope: scope)) {
+        Rejected { diagnostics: d } =>
+          NativeDemandCensusFoldState {
+            context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: artifact.alloc),
+            authored: state.authored,
+            file_refused: native_demand_census_snoc_all(xs: state.file_refused, ys: stripped.authored),
+            unreadable: state.unreadable
+          }
+        Accepted { value: scoped, diagnostics: _ } =>
+          NativeDemandCensusFoldState {
+            context: native_test_context_absorb(state: state.context, read: read, root_outcome: outcome_accepted(value: scoped.tree), alloc: scoped.allocator.alloc),
+            authored: native_demand_census_snoc_all(xs: state.authored, ys: stripped.authored),
+            file_refused: state.file_refused,
+            unreadable: state.unreadable
+          }
+      }
+  }
+}
+
+type NativeDemandCensusWalk {
+  context: NativeTestContext
+  functions: List<FunctionFact>
+  operations: List<OperationFact>
+  audited: List<QualifiedName>
+  standings: List<DemandCensusModuleStanding>
+}
+
+// The module's root scope, as resolution itself built it for the module just resolved: the namespace
+// provider answers from its cache, so this produces no second namespace.
+fn native_demand_census_module_ctx(context: NativeTestContext, module_qn: QualifiedName) -> Optional<ResolveContext> {
+  match context.resolution {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: shared, diagnostics: validate_diag } =>
+      match resolution_context_namespace(shared: shared, validate_diag: validate_diag, admission: native_test_module_admission(module: module_qn)).admitted {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: admitted, diagnostics: _ } =>
+          optional_present(value: resolve_ctx_init(namespace: admitted.namespace, lm: shared.lm, policy: shared.policy))
+      }
+  }
+}
+
+fn native_demand_census_readings(context: NativeTestContext, module_qn: QualifiedName, authored: AuthoredUsesFunction) -> List<AuthoredRowReading> {
+  match native_demand_census_module_ctx(context: context, module_qn: module_qn) {
+    Present { value: ctx } => demand_census_authored_readings(ctx: ctx, authored: authored)
+    Absent => fold_list(xs: authored.types, empty: Empty, cons: fn(acc, t) { list_snoc_item(xs: acc, item: AuthoredTypeUnresolved) })
+  }
+}
+
+fn native_demand_census_module(w: NativeDemandCensusWalk, root: NormalizedTree, authored: List<AuthoredUsesFunction>) -> NativeDemandCensusWalk {
+  match qualified_name_from_module_node(root: root.root) {
+    Rejected { diagnostics: _ } => w
+    Accepted { value: module_qn, diagnostics: _ } =>
+      let mine = fold_list(xs: authored, empty: Empty, cons: fn(acc, a) { if a.owner == module_qn { list_snoc_item(xs: acc, item: a) } else { acc } })
+      let step = native_test_resolve_module(context: w.context, module: module_qn)
+      match step.resolved {
+        Rejected { diagnostics: _ } =>
+          NativeDemandCensusWalk {
+            context: step.context,
+            functions: w.functions,
+            operations: w.operations,
+            audited: w.audited,
+            standings: list_snoc_item(xs: w.standings, item: DemandModuleResolveRefused { authored: mine })
+          }
+        Accepted { value: resolved, diagnostics: _ } =>
+          let facts = demand_census_module_facts(resolved: resolved, module_qn: module_qn)
+          NativeDemandCensusWalk {
+            context: step.context,
+            functions: fold_list(xs: facts.functions, empty: w.functions, cons: fn(acc, f) { list_snoc_item(xs: acc, item: f) }),
+            operations: fold_list(xs: facts.operations, empty: w.operations, cons: fn(acc, o) { list_snoc_item(xs: acc, item: o) }),
+            audited: fold_list(xs: facts.audited, empty: w.audited, cons: fn(acc, a) { list_snoc_item(xs: acc, item: a) }),
+            standings: list_snoc_item(xs: w.standings, item: DemandModuleResolved {
+              readings: fold_list(xs: mine, empty: Empty, cons: fn(acc, a) {
+                list_snoc_item(xs: acc, item: DemandCensusAuthoredReading {
+                  authored: a,
+                  readings: native_demand_census_readings(context: step.context, module_qn: module_qn, authored: a)
+                })
+              })
+            })
+          }
+      }
+  }
+}
+
+fn native_demand_census_report(ingest: SourceRootIngest) -> Outcome<DemandCensusReport> {
+  bind_outcome(o: native_test_front_end_prepare(), f: fn(front) {
+    bind_outcome(o: program_assembly_ingest_scope_outcome(ingest: ingest), f: fn(scope) {
+      let folded = fold_list(
+        xs: ingest,
+        empty: NativeDemandCensusFoldState { context: native_test_context_state_empty(), authored: Empty, file_refused: Empty, unreadable: 0 },
+        cons: fn(state, read) { native_demand_census_read(state: state, read: read, front: front, scope: scope) }
+      )
+      let walked = fold_list(
+        xs: folded.context.roots,
+        empty: NativeDemandCensusWalk {
+          context: native_test_context_finish(state: folded.context, front: front, ingest: ingest),
+          functions: Empty,
+          operations: Empty,
+          audited: Empty,
+          standings: Empty
+        },
+        cons: fn(w, root) { native_demand_census_module(w: w, root: root, authored: folded.authored) }
+      )
+      outcome_accepted(value: demand_census_report(
+        uses_functions: length(xs: folded.authored) + length(xs: folded.file_refused),
+        functions: walked.functions,
+        operations: walked.operations,
+        audited: walked.audited,
+        standings: walked.standings,
+        file_refused: folded.file_refused,
+        file_refusals: length(xs: folded.context.file_refusals),
+        unreadable_files: folded.unreadable
+      ))
+    })
+  })
+}
+
+// THE VERB'S WHOLE ANSWER: the lines to print and the exit, decided by
+// v2.compiler.dependency_demand_census demand_census_exit -- held (0), a census whose rows do not account
+// for every uses fn read (1), or no observation (2): a read refused before authorship, or a context that
+// would not build, whose diagnostics are the line.
+type NativeDemandCensusOutput {
+  lines: List<String>
+  exit: Int
+}
+
+fn native_demand_census_output(ingest: SourceRootIngest) -> NativeDemandCensusOutput {
+  match native_demand_census_report(ingest: ingest) {
+    Rejected { diagnostics: d } =>
+      NativeDemandCensusOutput { lines: [concat("[demand-census] no observation: ", symbol_lexeme(sym: d.head.reason))], exit: 2 }
+    Accepted { value: report, diagnostics: _ } =>
+      NativeDemandCensusOutput {
+        lines: demand_census_lines(r: report),
+        exit: demand_census_exit(r: report)
+      }
+  }
+}
+
 type NativeCensusModule {
   module: String
   path: Symbol
@@ -3639,6 +3891,120 @@ fn native_census_residual_rows(
         }
       }
     )
+  )
+}
+
+// THE CENSUS IS GROUPED BY THE CAUSE THAT FIRED, NEVER BY THE ONE THAT CAME FIRST. A refusal's
+// diagnostic list PREPENDS the advisories that were pending when the refusal fired
+// (rejected_with_pending), so its head is whatever advisory was queued first -- on the dag grammar
+// that is the overlap-residue advisory every file carries -- and grouping by it files every refusal
+// under one advisory that refused nothing. v2.std.diagnostic diagnostics_fatal is the one authority
+// for which element fired: a file refusal already carries its answer as `fatal_reason`
+// (native_test_file_refusal), and a resolve chain is asked the same question here. The head stays on
+// the member as `head_reason` so the reader still sees what rode along; it is a field, not a key.
+// BOTH POPULATIONS LAND IN ONE GROUPING because they are one question -- what refused, and where --
+// asked at two stages, and the stage is a field on the member rather than a second roster.
+type NativeCensusCauseStage
+  = NativeCensusCauseFrontEnd
+  | NativeCensusCauseResolve
+
+type NativeCensusCauseMember {
+  stage: NativeCensusCauseStage
+  path: Symbol
+  module: Optional<QualifiedName>
+  head_reason: Symbol
+}
+
+type NativeCensusCauseGroup {
+  fatal_reason: Symbol
+  members: FreeMonoid<NativeCensusCauseMember>
+}
+
+// KEYED BY THE FATAL REASON, ORDERED BY FIRST APPEARANCE. Members are prepended per group and each
+// group is reversed once when read, so adding a member costs one lookup and one cons rather than a
+// walk of its group -- the quadratic append DESIGN section 6 fixes regardless of n.
+type NativeCensusCauseGroups {
+  order: FreeMonoid<Symbol>
+  by_reason: Map<Symbol, FreeMonoid<NativeCensusCauseMember>>
+}
+
+fn native_census_cause_groups_empty() -> NativeCensusCauseGroups {
+  NativeCensusCauseGroups { order: Empty, by_reason: empty_map() }
+}
+
+fn native_census_cause_groups_add(
+  groups: NativeCensusCauseGroups,
+  fatal_reason: Symbol,
+  member: NativeCensusCauseMember
+) -> NativeCensusCauseGroups {
+  match map_lookup(groups.by_reason, fatal_reason) {
+    Absent =>
+      NativeCensusCauseGroups {
+        order: Cons { head: fatal_reason, tail: groups.order },
+        by_reason: map_insert(groups.by_reason, fatal_reason, Cons { head: member, tail: Empty })
+      }
+    Present { value: members } =>
+      NativeCensusCauseGroups {
+        order: groups.order,
+        by_reason: map_insert(groups.by_reason, fatal_reason, Cons { head: member, tail: members })
+      }
+  }
+}
+
+fn native_census_cause_groups_add_file_refusal(
+  groups: NativeCensusCauseGroups,
+  refusal: NativeTestFileRefusal
+) -> NativeCensusCauseGroups {
+  native_census_cause_groups_add(
+    groups: groups,
+    fatal_reason: refusal.fatal_reason,
+    member: NativeCensusCauseMember {
+      stage: NativeCensusCauseFrontEnd,
+      path: refusal.path,
+      module: refusal.module,
+      head_reason: refusal.head_reason
+    }
+  )
+}
+
+fn native_census_cause_groups_add_residual(
+  groups: NativeCensusCauseGroups,
+  row: NativeCensusResidualRow
+) -> NativeCensusCauseGroups {
+  native_census_cause_groups_add(
+    groups: groups,
+    fatal_reason: diagnostics_fatal_reason(d: row.chain),
+    member: NativeCensusCauseMember {
+      stage: NativeCensusCauseResolve,
+      path: row.path,
+      module: optional_present(value: qualified_name_from_dotted_string(dotted: row.module)),
+      head_reason: row.chain.head.reason
+    }
+  )
+}
+
+fn native_census_cause_groups_from_file_refusals(refusals: FreeMonoid<NativeTestFileRefusal>) -> NativeCensusCauseGroups {
+  fold_list(
+    xs: refusals,
+    empty: native_census_cause_groups_empty(),
+    cons: fn(acc, r) { native_census_cause_groups_add_file_refusal(groups: acc, refusal: r) }
+  )
+}
+
+// `order` IS NEWEST-FIRST, so consing each group onto the accumulator while walking it yields
+// first-appearance order in one pass: no snoc onto a cons list, and no reverse of the order
+// (review 74382; DESIGN section 6 bare minimum cost).
+fn native_census_cause_group_rows(groups: NativeCensusCauseGroups) -> List<NativeCensusCauseGroup> {
+  fold_list(
+    xs: groups.order,
+    empty: Empty,
+    cons: fn(acc, reason) {
+      match map_lookup(groups.by_reason, reason) {
+        Absent => acc
+        Present { value: members } =>
+          Cons { head: NativeCensusCauseGroup { fatal_reason: reason, members: list_reverse(xs: members) }, tail: acc }
+      }
+    }
   )
 }
 

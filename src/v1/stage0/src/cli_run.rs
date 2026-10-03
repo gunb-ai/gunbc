@@ -75,12 +75,12 @@ use crate::v1_std_core::{
     build_newline_index, byte_to_line_col, diagnostic_to_message, diagnostic_to_span,
     empty_intern_table, empty_node_list, expr_call_func_at, expr_method_name_at, expr_var_name_at,
     field_access_base, field_access_field_at, field_init_node_name_at, field_init_node_value,
-    has_child_named, inferred_to_node, intern, is_discovery_corpus_blocking_diagnostic,
-    is_error_diagnostic, is_interpreter_blocking_diagnostic, let_binding_name_at, let_value,
-    make_error_node, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
-    module_items, no_span, param_node_name_at, param_node_type_expr, Cardinality,
-    CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable,
-    LeafOwner, MatchPattern, NewlineIndex, Node,
+    has_child_named, inferred_to_node, intern, is_error_diagnostic,
+    is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, make_error_node,
+    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span,
+    param_node_name_at, param_node_type_expr, Cardinality, CompilerDiagnostic, Connective,
+    ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable, LeafOwner, MatchPattern,
+    NewlineIndex, Node,
 };
 use serde::Serialize;
 
@@ -101,8 +101,9 @@ mod serve_budget_refusal;
 pub use emitted_crate_workspace_host::{run_emitted_crate_workspace, EmittedCrateWorkspaceHeld};
 pub use native_lane_runner::{
     emitted_build_not_clean_cause, run_native_claim_program, run_required_v2_native, run_self_host,
-    run_v2_native_cli, run_v2_native_frontier, NativeClaimProgramRun, NativeFrontierRun,
-    NativeMemberTermination, NativeRouteOutcome, SelfHostHeld, V2NativeCliHeld,
+    run_v2_demand_census, run_v2_native_census, run_v2_native_cli, run_v2_native_frontier,
+    NativeCensusRun, NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination,
+    NativeRouteOutcome, SelfHostHeld, V2NativeCliHeld,
 };
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
@@ -123,16 +124,6 @@ pub use required_lane_resolution_census::{
 
 pub fn required_lane_judged_module_identities_for_ci() -> Vec<String> {
     entry_resolve::required_lane_judged_module_identities()
-}
-
-pub fn required_lane_cross_process_content_judged_module_identities_for_ci() -> Vec<String> {
-    // The weaker column still has content provenance: `subject_digest_for_closure` keys the
-    // artifact by closure-content digest plus compiler-transform digest, and disk lookup verifies
-    // both the request key and stored semantic digest. It does not prove judgment by this run.
-    // Required CI does not arm `GUNBC_RESOLVED_GRAPH_CACHE_DIR`, so this split has no reachable
-    // nonempty arm there today: its expected empty column must be read beside the in-run column,
-    // and its presence is not evidence that disk provenance has been exercised.
-    entry_resolve::required_lane_cross_process_content_judged_module_identities()
 }
 
 /// Module identities admitted by the same source-root ingestion used by compilation.
@@ -204,7 +195,6 @@ pub(crate) use test_migration::*;
 // and a second acquisition of the corpus to answer a second question is the cost-shape defect
 // DESIGN §6 names.
 pub(crate) mod floor_discovery_snapshot;
-pub(crate) mod materialization_provider_consumer;
 #[path = "namespace_baseline.rs"]
 pub mod namespace_baseline;
 #[path = "phase_profile.rs"]
@@ -245,30 +235,13 @@ pub use floor_discovery_snapshot::{
     request_identity_digest, verify_floor_discovery_terminal_for_coordinator,
     FloorDiscoveryConsumerRole,
 };
-#[doc(hidden)]
-pub use materialization_provider_consumer::{
-    materialization_provider_ctx_build_count_for_test, provider_ctx_reentrancy_refusal_for_test,
-    reset_materialization_provider_ctx_for_test, resolve_closure_request_key_from_digests,
-    resolved_graph_parts_semantic_digest, serve_resolved_graph_stored_disk_probe,
-    serve_resolved_graph_stored_disk_probe_for_test, ResolvedGraphProviderOutcome,
-    OUTPUT_COMPILE_CLEAN_DIAGNOSTIC_UNION,
-};
 pub use phase_profile::{set_phase, FloorPhase, PhaseProfile};
 
-use crate::resolved_graph_cache::{
-    resolved_graph_cache_root_from_env, subject_digest_for_closure, transform_content_digest,
-    CacheRejectReason, CachedResolvedGraph,
-};
+use crate::closure_identity::{subject_digest_for_closure, transform_content_digest};
 use crate::std_content_hash::fnv1a64_structural_hex_digest;
 use crate::std_interface_summary::{module_key, typed_module_key};
 use crate::std_keyed_roster::{keyed_roster_build, KeyedRosterBuild};
 use crate::std_keyed_row::KeyedRow;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ResolveTypecheckGate {
-    Strict,
-    DiscoveryCorpusAdvisory,
-}
 
 #[cfg(test)]
 mod generated_cli_dispatch_allocator_integration_tests {
@@ -328,13 +301,6 @@ mod generated_cli_dispatch_allocator_integration_tests {
             1,
             "shifted executor must be used at the retained-host call site: {emitted}"
         );
-    }
-}
-
-fn is_resolve_typecheck_blocking(d: Rc<CompilerDiagnostic>, gate: ResolveTypecheckGate) -> bool {
-    match gate {
-        ResolveTypecheckGate::Strict => is_interpreter_blocking_diagnostic(d),
-        ResolveTypecheckGate::DiscoveryCorpusAdvisory => is_discovery_corpus_blocking_diagnostic(d),
     }
 }
 
@@ -757,7 +723,6 @@ fn project_roadmap_acceptance_event_history_from_authority_text_inner(
     let (graph, source_indices, compile_clean_diags) = match resolved_graph_from_sources_with_index(
         &index,
         sources,
-        ResolveTypecheckGate::Strict,
         &entry_file,
         ResolvedGraphMemoShare::Ephemeral,
     ) {
@@ -4256,7 +4221,7 @@ pub fn observe_declared_import_closure_symbol_binding(
 
 thread_local! {
     static COMPILE_DAG_RUST_EMIT_CHECK_MEMO: std::cell::RefCell<
-        std::collections::HashMap<String, bool>,
+        std::collections::HashMap<String, Result<bool, FixtureRenderRefusal>>,
     > = std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
@@ -6924,7 +6889,6 @@ import pur.common { shared_double }\n\nfn beta_use(x: Int) -> Int {\n  shared_do
         let first = super::resolved_graph_from_sources_with_index(
             &index,
             corpus.sources.clone(),
-            super::ResolveTypecheckGate::Strict,
             "ephemeral-warm",
             super::ResolvedGraphMemoShare::Ephemeral,
         )
@@ -6937,7 +6901,6 @@ import pur.common { shared_double }\n\nfn beta_use(x: Int) -> Int {\n  shared_do
         let second = super::resolved_graph_from_sources_with_index(
             &index,
             corpus.sources.clone(),
-            super::ResolveTypecheckGate::Strict,
             "memoize-serve",
             super::ResolvedGraphMemoShare::Memoize,
         )
@@ -6970,7 +6933,6 @@ import pur.common { shared_double }\n\nfn beta_use(x: Int) -> Int {\n  shared_do
         let resolved = super::resolved_graph_from_sources_with_index(
             &index,
             corpus.sources.clone(),
-            super::ResolveTypecheckGate::Strict,
             "memoize-after-erasing",
             super::ResolvedGraphMemoShare::Memoize,
         )
@@ -7241,8 +7203,8 @@ fn runtime_data_dependency_touched_via_carrier_closure(
 #[cfg(test)]
 mod live_read_carrier_home_roster_drift_gate_tests {
     use super::{
-        build_multi_entry_index, make_eval_context, resolve_entry_with_index_for_discovery_corpus,
-        workspace_root, LIVE_READ_CARRIER_HOME_MODULES_V0,
+        build_multi_entry_index, make_eval_context, resolve_entry_with_index, workspace_root,
+        LIVE_READ_CARRIER_HOME_MODULES_V0,
     };
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     use std::collections::HashSet;
@@ -7267,9 +7229,8 @@ mod live_read_carrier_home_roster_drift_gate_tests {
     fn dag_carrier_home_modules() -> HashSet<String> {
         std::env::set_current_dir(workspace_root()).expect("chdir workspace");
         let index = build_multi_entry_index(&["dag".to_string(), "src/v2".to_string()]);
-        let (graph, indices) =
-            resolve_entry_with_index_for_discovery_corpus(&index, LIVE_READ_ENTRY)
-                .unwrap_or_else(|e| panic!("resolve {LIVE_READ_ENTRY}: {e}"));
+        let (graph, indices) = resolve_entry_with_index(&index, LIVE_READ_ENTRY)
+            .unwrap_or_else(|e| panic!("resolve {LIVE_READ_ENTRY}: {e}"));
         let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
         let val = v1_interpreter::with_active_context(&ctx, || {
             v1_interpreter::eval_data_item_value(&ctx, "live_read_carrier_homes_v0")
@@ -7425,7 +7386,7 @@ fn resolve_discovery_entry_for_corpus_row(
     let closure_subject = subject_digest_for_closure(&sources);
     let resolve_started = std::time::Instant::now();
     set_phase(FloorPhase::Resolve, entry_path);
-    let (graph, source_indices) = resolve_entry_with_index_for_discovery_corpus(index, entry_path)
+    let (graph, source_indices) = resolve_entry_with_index(index, entry_path)
         .map_err(|msg| format!("resolve failed for {entry_path}: {msg}"))?;
     let resolve_nanos = resolve_started.elapsed().as_nanos();
     // Same thread, immediately after the resolve that filled it: this entry's split.
@@ -7460,7 +7421,7 @@ fn resolve_discovery_entry_for_corpus_row(
 /// `resolve_entry_with_parse_cache` starts from — so equality with the post-resolve union
 /// (`collect_typed_module_names` over what resolve loaded) holds by construction WITHOUT
 /// resolving: no parse, no typecheck, nothing installed into `resolved_graph_memo`. The #6938
-/// form ran the full `resolve_entry_with_index_for_discovery_corpus` per entry, so every floor
+/// form ran the full `resolve_entry_with_index` per entry, so every floor
 /// run resolved the ENTIRE roster on the width-1 pump thread and retained every resolved graph
 /// in the uncapped memo (~17 GB scoped runs became ~38 GB whole-corpus retention — the
 /// 2026-07-21 exit-137 floor kills). On a completed width-1 run this equals
@@ -11793,6 +11754,9 @@ pub enum WitnessRuntimeCause {
     ShellOutputLimitExceeded,
     ShellSpawnRefused,
     CallContractMismatch,
+    /// A fixture compile instrument refused to answer (`FixtureRenderRefusal`): the read path
+    /// was not emitted by a clean compile, or the closure held no fixture module.
+    FixtureRenderRefused,
     /// An admitted cross-claim producer was the active subject when the unchanged CPU safety
     /// ceiling fired. The token makes the prospective-fill population countable without
     /// treating first-touch order as intrinsic claim cost.
@@ -11833,6 +11797,7 @@ impl WitnessRuntimeCause {
             WitnessRuntimeCause::ShellSpawnRefused => "shell-spawn-refused",
             WitnessRuntimeCause::CallContractMismatch => "call-contract-mismatch",
             WitnessRuntimeCause::FillBudgetExceeded => "fill-budget-exceeded",
+            WitnessRuntimeCause::FixtureRenderRefused => "fixture-render-refused",
             WitnessRuntimeCause::MappedOutcomeEscaped => "mapped-outcome-escaped",
         }
     }
@@ -11873,6 +11838,7 @@ impl WitnessRuntimeCause {
             E::ShellSpawnRefused { .. } => WitnessRuntimeCause::ShellSpawnRefused,
             E::CallContractMismatch { .. } => WitnessRuntimeCause::CallContractMismatch,
             E::FillBudgetExceeded { .. } => WitnessRuntimeCause::FillBudgetExceeded,
+            E::FixtureRenderRefused { .. } => WitnessRuntimeCause::FixtureRenderRefused,
             // The five that should never arrive. See the type comment.
             E::HostToolUnresolved { .. }
             | E::HermeticHostEffectRefused { .. }
@@ -12691,40 +12657,6 @@ pub fn exceeds_completed_cost_line(
     }
 }
 
-pub(crate) fn cross_process_provider_routing_suppressed() -> bool {
-    CROSS_PROCESS_PROVIDER_ROUTING_SUPPRESSED.with(|c| c.get() > 0)
-}
-
-/// Count of resolved-graph stores skipped because the provider-bootstrap window was
-/// open. The skip is bounded (only the provider's own closure resolves inside that
-/// window) and observable, so the deficit can never be masked by silence.
-static PROVIDER_BOOTSTRAP_STORE_SKIPS: std::sync::atomic::AtomicUsize =
-    std::sync::atomic::AtomicUsize::new(0);
-
-fn record_provider_bootstrap_store_skip() {
-    PROVIDER_BOOTSTRAP_STORE_SKIPS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-}
-
-pub(crate) fn with_cross_process_provider_routing_suppressed<F, R>(f: F) -> R
-where
-    F: FnOnce() -> R,
-{
-    struct Guard;
-    impl Drop for Guard {
-        fn drop(&mut self) {
-            CROSS_PROCESS_PROVIDER_ROUTING_SUPPRESSED.with(|c| {
-                c.set(c.get().saturating_sub(1));
-            });
-        }
-    }
-
-    CROSS_PROCESS_PROVIDER_ROUTING_SUPPRESSED.with(|c| {
-        c.set(c.get().saturating_add(1));
-    });
-    let _guard = Guard;
-    f()
-}
-
 /// Test-only: drop the process-shared index slots so the NEXT compile in this process is COLD.
 ///
 /// This exists so `cached == cold` can be asserted by EXECUTION rather than by reading the cache
@@ -12912,7 +12844,7 @@ pub fn build_live_read_selection_manifest(
 ) -> Result<LiveReadSelectionManifest, String> {
     let source_roots = &index.source_roots;
     let (graph, indices) =
-        resolve_entry_with_index_for_discovery_corpus(index, LIVE_READ_CLASSIFICATION_ENTRY)
+        resolve_entry_with_index(index, LIVE_READ_CLASSIFICATION_ENTRY)
             .map_err(|e| {
                 format!(
                     "LIVE-READ MANIFEST REFUSAL cause=LensEntryUnresolved entry={LIVE_READ_CLASSIFICATION_ENTRY} \
@@ -13073,10 +13005,9 @@ fn variant_parts(
 mod live_read_selection_manifest_producer_tests {
     use super::{
         build_live_read_selection_manifest, build_multi_entry_index,
-        decode_live_read_selection_row, make_eval_context,
-        resolve_entry_with_index_for_discovery_corpus, workspace_root, LiveReadCarrier,
-        LiveReadClassification, LiveReadPathPattern, LiveReadSelectionRequest,
-        LiveReadSelectionRow, LIVE_READ_CLASSIFICATION_ENTRY,
+        decode_live_read_selection_row, make_eval_context, resolve_entry_with_index,
+        workspace_root, LiveReadCarrier, LiveReadClassification, LiveReadPathPattern,
+        LiveReadSelectionRequest, LiveReadSelectionRow, LIVE_READ_CLASSIFICATION_ENTRY,
     };
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     use std::rc::Rc;
@@ -13240,9 +13171,8 @@ mod live_read_selection_manifest_producer_tests {
     fn ctx_for_decoding() -> v1_interpreter::InterpContext {
         enter_workspace();
         let index = build_multi_entry_index(&source_roots());
-        let (graph, indices) =
-            resolve_entry_with_index_for_discovery_corpus(&index, LIVE_READ_CLASSIFICATION_ENTRY)
-                .unwrap_or_else(|e| panic!("resolve lens: {e}"));
+        let (graph, indices) = resolve_entry_with_index(&index, LIVE_READ_CLASSIFICATION_ENTRY)
+            .unwrap_or_else(|e| panic!("resolve lens: {e}"));
         make_eval_context(&graph, indices, ExecutionMode::Wet)
     }
 
@@ -13599,14 +13529,10 @@ pub struct MultiEntryIndex {
     /// this one value; the file's bytes and the pool's module names are fixed for the index's life.
     parsed_references:
         RefCell<HashMap<String, Result<Rc<entry_resolve::ParsedFileReferences>, &'static str>>>,
-    // Per-process subject-digest → resolved-graph share, the ReferenceTier in
-    // front of the cross-process store (materialization-ladder tier ordering:
-    // the share serves repeats, the store serves the process's FIRST touch of a
-    // subject, and a store hit is INSTALLED here so every later demand takes the
-    // reference). Always populated on first assembly — not gated on
-    // GUNBC_RESOLVED_GRAPH_CACHE_DIR (the disk tier is opt-in separately).
-    // Without the install-back, N same-subject resolves each retained an independent
-    // graph — the reconcile_assembly per-entry rerun receipt (resolve-split #6535).
+    // Per-process subject-digest → resolved-graph share, the ReferenceTier and the only
+    // tier of the resolved graph: it serves same-subject repeats within the process and is
+    // populated on first assembly. Without it, N same-subject resolves each retained an
+    // independent graph — the reconcile_assembly per-entry rerun receipt (resolve-split #6535).
     resolved_graph_memo: RefCell<
         HashMap<
             String,
@@ -13617,10 +13543,6 @@ pub struct MultiEntryIndex {
             ),
         >,
     >,
-    /// Subjects whose current `resolved_graph_memo` value was installed from the on-disk
-    /// cross-process store rather than computed by this process. Kept alongside the memo so a
-    /// reference hit cannot erase the provenance distinction.
-    resolved_graph_memo_cross_process_subjects: RefCell<std::collections::HashSet<String>>,
     /// Schedule-derived per-module retention bookkeeping (v1-run-stability M2 — the
     /// retention keystone). Armed at the start of a private-index (`cross_worker_store
     /// == None`) discovery run from the schedule's per-entry closures, driven per
@@ -13709,10 +13631,6 @@ pub fn entry_closure_sources_len_for_test(index: &MultiEntryIndex) -> usize {
 #[cfg(any(test, feature = "interp_test_witness"))]
 pub fn clear_resolved_graph_memo_for_test(index: &MultiEntryIndex) {
     index.resolved_graph_memo.borrow_mut().clear();
-    index
-        .resolved_graph_memo_cross_process_subjects
-        .borrow_mut()
-        .clear();
 }
 
 /// Install a schedule retention armed over `per_entry` with an EXPLICIT eviction switch,
@@ -13896,13 +13814,7 @@ pub fn drop_private_term_for_test(index: &MultiEntryIndex, term: &str) -> bool {
         "bare_reference_admission" => index.bare_reference_admission.borrow_mut().clear(),
         "entry_closure_sources" => index.entry_closure_sources.borrow_mut().clear(),
         "both_closure_edges" => *index.both_closure_edges.borrow_mut() = None,
-        "resolved_graph_memo" => {
-            index.resolved_graph_memo.borrow_mut().clear();
-            index
-                .resolved_graph_memo_cross_process_subjects
-                .borrow_mut()
-                .clear();
-        }
+        "resolved_graph_memo" => index.resolved_graph_memo.borrow_mut().clear(),
         "intern_table" => {
             *index.intern_table.borrow_mut() = crate::v1_std_core::empty_intern_table();
         }
@@ -14146,7 +14058,7 @@ fn shared_caches_write<'a>(
 ///   its import. The interface hash is the Inc-B `ModuleInterface.summary.interface_hash`
 ///   (v0 fingerprint; its declared-weak grain and upgrade trigger live at
 ///   `src/v1/04_infer.dag` the `interface_signature_fingerprint_v0_note` annotation).
-/// - Compiler identity is `resolved_graph_cache::transform_content_digest` — the same
+/// - Compiler identity is `closure_identity::transform_content_digest` — the same
 ///   single authority the resolved-graph subject digest consumes (§3: one concept, one
 ///   authority; a seed rebuild invalidates both stores through one term).
 fn closure_path_to_authored_name_map<'a>(
@@ -14198,8 +14110,8 @@ fn note_interface_hash(
 //
 // Authority is the modeled carrier `dag/gunbc/executor_schedule_retention.dag`; the
 // consts below MIRROR it and `schedule_retention_policy_matches_modeled_authority`
-// (this module's tests) reds on drift — the `extdeps.realization.resolved_graph`
-// `SizeBounded`-cap lockstep pattern applied to a policy instead of a number.
+// (this module's tests) reds on drift — an exact modeled-authority lockstep applied to a
+// policy instead of a number.
 //
 // Correctness license (why evicting typed state can never yield a wrong verdict):
 // the typed-module cache is CONTENT-keyed, so a later entry that reaches an evicted
@@ -14798,17 +14710,11 @@ fn index_schedule_entry_completed(
     // retain EVERYTHING — graphs included — so it faithfully reproduces pre-M2 peak
     // retention (D0.4). Before this the pole understated peak by silently freeing graphs.
     let graph_evicted = match subject {
-        Some(subj) if evict_enabled => {
-            index
-                .resolved_graph_memo_cross_process_subjects
-                .borrow_mut()
-                .remove(subj);
-            index
-                .resolved_graph_memo
-                .borrow_mut()
-                .remove(subj)
-                .is_some()
-        }
+        Some(subj) if evict_enabled => index
+            .resolved_graph_memo
+            .borrow_mut()
+            .remove(subj)
+            .is_some(),
         _ => false,
     };
     let (sched_releases, sched_evictions, retention_unknown, graph_evictions) = {
@@ -15627,14 +15533,6 @@ fn emit_floor_drain_receipt(
             .unwrap_or_else(|| "unreadable".into()),
         typed_module_cache_cap(index),
     );
-    // The ladder's RetentionUnobserved refusal is discharged by an OBSERVATION,
-    // not by a declaration, so the persistent tier reports its live occupancy
-    // beside its throughput on the same receipt the floor already emits. Absent
-    // when the tier is not armed: a run that never opened a store must not
-    // print a zero that reads as an empty one.
-    if let Some(line) = shared_typecheck_store::persistent_typed_store_receipt_line() {
-        eprintln!("{line}");
-    }
 }
 
 /// Enforce the host-budget-derived entry cap on the private typed cache. Evictions
@@ -15679,72 +15577,9 @@ fn index_get_typed(
 ) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
     let Some(store) = index.cross_worker_store.as_ref() else {
         shared_typecheck_store::record_private_store_fallback();
-        if let Some(hit) = index.typed_module_cache.borrow().get(typed_key).cloned() {
-            return Ok(Some(hit));
-        }
-        return persist_get_typed(index, typed_key);
+        return Ok(index.typed_module_cache.borrow().get(typed_key).cloned());
     };
-    match shared_get_typed(store, typed_key)? {
-        Some(hit) => Ok(Some(hit)),
-        None => persist_get_typed(index, typed_key),
-    }
-}
-
-/// The host-persisted tier behind both in-process tiers
-/// (`gunbc.floor_materialization` `host_persisted_typecheck_store`). A hit here
-/// is served BEFORE `collect_parent_envs` and the typecheck compute at the one
-/// call site above, which is the expensive production computation this tier
-/// exists to skip; it is not a byte load placed after the work has been done.
-///
-/// A decode failure on a verified entry is a REFUSAL, not a miss: the entry
-/// passed the store's own magic/version/length/key verification, so a payload
-/// the transport cannot read is codec drift and the line stops here rather than
-/// widening into a silent recompute (DESIGN section 5). Absence, rejection at
-/// verification and IO failure are already counted misses inside the store.
-fn persist_get_typed(
-    index: &MultiEntryIndex,
-    typed_key: &str,
-) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
-    let Some(store) = shared_typecheck_store::persistent_typed_store_for(&index.source_roots)?
-    else {
-        return Ok(None);
-    };
-    let Some(payload) = store.get(typed_key) else {
-        return Ok(None);
-    };
-    let decoded = SharedTypecheckCaches::decode_typed_snapshot(payload.as_slice()).map_err(|e| {
-        format!(
-            "persistent typed store refused: entry for key '{typed_key}' verified against its              header but its payload did not decode ({e}) -- this is codec drift between the              store format version and the transport, not a cache miss"
-        )
-    })?;
-    // Readmit into the in-process tier so the repeat within this process is a
-    // reference, not a second disk read.
-    if index.cross_worker_store.is_none() {
-        index
-            .typed_module_cache
-            .borrow_mut()
-            .insert(typed_key.to_string(), decoded.clone());
-        enforce_typed_cache_entry_cap(index);
-    }
-    Ok(Some(decoded))
-}
-
-/// Write-through to the host-persisted tier. Publication failures (IO, ceiling
-/// reached) are counted inside the store and never fail the run: this tier is
-/// an optimization over a pure computation, so an unavailable store costs time
-/// and can never change a verdict.
-fn persist_put_typed(
-    index: &MultiEntryIndex,
-    typed_key: &str,
-    result: &Rc<v1_compiler_infer::TypecheckModuleResult>,
-) -> Result<(), String> {
-    let Some(store) = shared_typecheck_store::persistent_typed_store_for(&index.source_roots)?
-    else {
-        return Ok(());
-    };
-    let bytes = SharedTypecheckCaches::encode_typed_snapshot(result)?;
-    store.put(typed_key, bytes.as_slice());
-    Ok(())
+    shared_get_typed(store, typed_key)
 }
 
 fn check_index_module_source_identity(
@@ -15840,7 +15675,6 @@ fn index_insert_typed(
 ) -> Result<Rc<v1_compiler_infer::TypecheckModuleResult>, String> {
     let Some(store) = index.cross_worker_store.as_ref() else {
         shared_typecheck_store::record_private_store_fallback();
-        persist_put_typed(index, &typed_key, &result)?;
         index
             .typed_module_cache
             .borrow_mut()
@@ -15848,7 +15682,6 @@ fn index_insert_typed(
         enforce_typed_cache_entry_cap(index);
         return Ok(result);
     };
-    persist_put_typed(index, &typed_key, &result)?;
     if let Some(bytes) = {
         let caches = shared_caches_read(store)?;
         caches.clone_typed_bytes(&typed_key)
@@ -15995,12 +15828,10 @@ pub struct ResolveStageNanos {
     /// `expand_transitive_services` (monotone fixpoint over every bodied item, under a bound
     /// derived from the registry rather than a chosen pass count).
     pub assembly_services: u128,
-    /// The three `rewire_*` passes (type-env parents, import-str identity, func-env parents).
+    /// The two `rewire_*` passes (type-env parents, func-env parents).
     pub assembly_rewire: u128,
     /// `rewire_type_env_parent_links` alone.
     pub assembly_rewire_type_env: u128,
-    /// `rewire_type_env_import_str_binding_identity` alone.
-    pub assembly_rewire_import_str: u128,
     /// `rewire_func_env_parent_links` alone.
     pub assembly_rewire_func_env: u128,
     /// `corpus_has_v1_seed_source_indices` + `build_emit_graph_info`.
@@ -16135,7 +15966,6 @@ impl ResolveStageNanos {
         self.assembly_services += other.assembly_services;
         self.assembly_rewire += other.assembly_rewire;
         self.assembly_rewire_type_env += other.assembly_rewire_type_env;
-        self.assembly_rewire_import_str += other.assembly_rewire_import_str;
         self.assembly_rewire_func_env += other.assembly_rewire_func_env;
         self.assembly_emit_info += other.assembly_emit_info;
         self.load_reference_scan += other.load_reference_scan;
@@ -16196,7 +16026,6 @@ impl ResolveStageNanos {
             + self.assembly_registry
             + self.assembly_services
             + self.assembly_rewire_type_env
-            + self.assembly_rewire_import_str
             + self.assembly_rewire_func_env
             + self.assembly_emit_info
     }
@@ -16221,7 +16050,6 @@ impl ResolveStageNanos {
             + self.assembly_registry
             + self.assembly_services
             + self.assembly_rewire_type_env
-            + self.assembly_rewire_import_str
             + self.assembly_rewire_func_env
             + self.assembly_emit_info
     }
@@ -16253,7 +16081,6 @@ thread_local! {
             assembly_services: 0,
             assembly_rewire: 0,
             assembly_rewire_type_env: 0,
-            assembly_rewire_import_str: 0,
             assembly_rewire_func_env: 0,
             assembly_emit_info: 0,
             load_reference_scan: 0,
@@ -16655,10 +16482,6 @@ pub fn exclusive_cost_partition_from(
             nanos: st.assembly_rewire_type_env,
         },
         CostPartitionRow {
-            name: "assembly_rewire_import_str",
-            nanos: st.assembly_rewire_import_str,
-        },
-        CostPartitionRow {
             name: "assembly_rewire_func_env",
             nanos: st.assembly_rewire_func_env,
         },
@@ -17033,96 +16856,6 @@ pub(crate) enum ResolvedGraphMemoShare {
     Ephemeral,
 }
 
-fn provider_integrity_refusal_message(outcome: ResolvedGraphProviderOutcome) -> Option<String> {
-    match outcome {
-        ResolvedGraphProviderOutcome::RefusedWrongArtifact => {
-            Some("resolved-graph-cache provider refused disk hit: wrong artifact key".to_string())
-        }
-        ResolvedGraphProviderOutcome::RefusedKindMismatch => {
-            Some("resolved-graph-cache provider refused disk hit: kind mismatch".to_string())
-        }
-        ResolvedGraphProviderOutcome::RefusedWrongContent => {
-            Some("resolved-graph-cache provider refused disk hit: wrong content".to_string())
-        }
-        ResolvedGraphProviderOutcome::RefusedCrossFamilyContentHash => {
-            Some(
-                "resolved-graph-cache provider refused disk hit: cross-family content hash at fnv1a64 seam"
-                    .to_string(),
-            )
-        }
-        ResolvedGraphProviderOutcome::RefusedUnqualifiedPersistedFormat => {
-            Some(
-                "resolved-graph-cache provider refused disk hit: unqualified persisted format"
-                    .to_string(),
-            )
-        }
-        ResolvedGraphProviderOutcome::LookupUnclassified { label } => Some(format!(
-            "resolved-graph-cache provider refused disk hit: {label}"
-        )),
-        ResolvedGraphProviderOutcome::Miss => {
-            Some("resolved-graph-cache provider refused disk hit: probe miss".to_string())
-        }
-        ResolvedGraphProviderOutcome::RefusedIncomplete { missing } => Some(format!(
-            "resolved-graph-cache provider refused disk hit: incomplete artifact (missing: {})",
-            missing.join(", ")
-        )),
-        ResolvedGraphProviderOutcome::Hit => None,
-    }
-}
-
-#[doc(hidden)]
-pub fn provider_integrity_refusal_message_for_test(
-    outcome: ResolvedGraphProviderOutcome,
-) -> Option<String> {
-    provider_integrity_refusal_message(outcome)
-}
-
-fn install_cross_process_materialization_hit(
-    index: &MultiEntryIndex,
-    subject: &str,
-    cached: CachedResolvedGraph,
-    memo_share: ResolvedGraphMemoShare,
-) -> (
-    Rc<v1_compiler_compile::ResolvedGraph>,
-    Rc<HashMap<String, Rc<NewlineIndex>>>,
-    Rc<im::Vector<Rc<ErrorNode>>>,
-) {
-    if memo_share == ResolvedGraphMemoShare::Memoize {
-        index
-            .resolved_graph_memo_cross_process_subjects
-            .borrow_mut()
-            .insert(subject.to_string());
-        index.resolved_graph_memo.borrow_mut().insert(
-            subject.to_string(),
-            (
-                cached.graph.clone(),
-                cached.source_indices.clone(),
-                cached.compile_clean_diags.clone(),
-            ),
-        );
-    }
-    (
-        cached.graph,
-        cached.source_indices,
-        cached.compile_clean_diags,
-    )
-}
-
-fn cross_process_cache_integrity_refusal(reason: CacheRejectReason) -> String {
-    match reason {
-        CacheRejectReason::ContentDigestMismatch => {
-            "resolved-graph-cache refused poisoned artifact: content digest mismatch".to_string()
-        }
-        CacheRejectReason::BackendKeyMalformed => {
-            "resolved-graph-cache refused artifact: backend key malformed".to_string()
-        }
-        CacheRejectReason::PartDecodeFailure => {
-            "resolved-graph-cache refused artifact: part decode failure after hash verification"
-                .to_string()
-        }
-    }
-}
-
 fn join_via_index_stage_refusal(
     annotation_diags: &im::Vector<Rc<ErrorNode>>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -17417,14 +17150,6 @@ fn finish_resolved_graph_assembly(
     let modules =
         v1_compiler_infer::rewire_type_env_parent_links(modules.clone(), source_indices.clone());
     resolve_stage_slot_add(|s| s.assembly_rewire_type_env += rewire_started.elapsed().as_nanos());
-    let rewire2_started = std::time::Instant::now();
-    let modules = v1_compiler_infer::rewire_type_env_import_str_binding_identity(
-        modules.clone(),
-        source_indices.clone(),
-    );
-    resolve_stage_slot_add(|s| {
-        s.assembly_rewire_import_str += rewire2_started.elapsed().as_nanos()
-    });
     let rewire3_started = std::time::Instant::now();
     let modules =
         v1_compiler_infer::rewire_func_env_parent_links(modules.clone(), source_indices.clone());
@@ -19660,8 +19385,7 @@ pub fn precompute_whole_tree_published_mock_keys(
     }
     let t2e = std::time::Instant::now();
     let source_count = all_sources.len();
-    let (graph, source_indices) =
-        resolved_graph_from_sources(all_sources, ResolveTypecheckGate::Strict)?;
+    let (graph, source_indices) = resolved_graph_from_sources(all_sources)?;
     eprintln!(
         "[floor-phase] phase=closure-strict-resolve state=completed wall_ms={} sources={}",
         t2e.elapsed().as_millis(),
@@ -21918,7 +21642,6 @@ pub fn handle_serve(
     let (graph, source_indices, compile_clean_diags) = match resolved_graph_from_sources_with_index(
         &index,
         sources,
-        ResolveTypecheckGate::Strict,
         &entry_file,
         ResolvedGraphMemoShare::Memoize,
     ) {
@@ -23975,8 +23698,7 @@ pub fn discover_owned_data_decls(
         let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
             group.sources.into_iter().map(|(_, v)| v).collect();
         sources.sort_by(|a, b| a.path.cmp(&b.path));
-        let (graph, source_indices) =
-            resolved_graph_from_sources(sources, ResolveTypecheckGate::DiscoveryCorpusAdvisory)?;
+        let (graph, source_indices) = resolved_graph_from_sources(sources)?;
         let si: HashMap<String, Rc<NewlineIndex>> = source_indices
             .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
@@ -27855,8 +27577,8 @@ pub(crate) fn apply_effect_reach_derived_reads_live_tree(
 #[cfg(test)]
 mod effect_reach_host_sink_markers_drift_gate_tests {
     use super::{
-        build_multi_entry_index, make_eval_context, resolve_entry_with_index_for_discovery_corpus,
-        workspace_root, EFFECT_REACH_HOST_SINK_MARKERS,
+        build_multi_entry_index, make_eval_context, resolve_entry_with_index, workspace_root,
+        EFFECT_REACH_HOST_SINK_MARKERS,
     };
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     use std::collections::HashSet;
@@ -27866,9 +27588,8 @@ mod effect_reach_host_sink_markers_drift_gate_tests {
     fn dag_host_sink_callee_symbols() -> HashSet<String> {
         std::env::set_current_dir(workspace_root()).expect("chdir workspace");
         let index = build_multi_entry_index(&["dag".to_string(), "src/v2".to_string()]);
-        let (graph, indices) =
-            resolve_entry_with_index_for_discovery_corpus(&index, EFFECT_REACH_STD_ENTRY)
-                .unwrap_or_else(|e| panic!("resolve {EFFECT_REACH_STD_ENTRY}: {e}"));
+        let (graph, indices) = resolve_entry_with_index(&index, EFFECT_REACH_STD_ENTRY)
+            .unwrap_or_else(|e| panic!("resolve {EFFECT_REACH_STD_ENTRY}: {e}"));
         let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
         let val = v1_interpreter::with_active_context(&ctx, || {
             v1_interpreter::eval_data_item_value(&ctx, "effect_reach_host_sink_callee_symbols_v0")
@@ -29657,9 +29378,8 @@ mod module_grain_affected_equivalence_tests {
         import_resolution_facts_call_count_for_test, make_eval_context,
         module_declaration_facts_call_count_for_test, module_graph_facts_build_count_for_test,
         peak_rss_vhwm_bytes, reset_import_resolution_facts_call_counts_for_test,
-        reset_module_graph_facts_build_count_for_test, resolve_entry_with_index,
-        resolve_entry_with_index_for_discovery_corpus, workspace_root, ModuleGraphFactsLive,
-        MultiEntryIndex,
+        reset_module_graph_facts_build_count_for_test, resolve_entry_with_index, workspace_root,
+        ModuleGraphFactsLive, MultiEntryIndex,
     };
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     use std::collections::HashSet;
@@ -29840,9 +29560,8 @@ mod module_grain_affected_equivalence_tests {
             declared.len()
         );
         let t_mg = Instant::now();
-        let (mg_graph, mg_indices) =
-            resolve_entry_with_index_for_discovery_corpus(&index, MODULE_GRAPH_ENTRY)
-                .expect("module_graph.dag resolves as an interpreter entry");
+        let (mg_graph, mg_indices) = resolve_entry_with_index(&index, MODULE_GRAPH_ENTRY)
+            .expect("module_graph.dag resolves as an interpreter entry");
         let dag_ctx = make_eval_context(&mg_graph, mg_indices, ExecutionMode::Wet);
         eprintln!(
             "[module-grain] module_graph.dag resolved in {:?}",
@@ -30048,7 +29767,7 @@ mod module_grain_affected_equivalence_tests {
         let rel_roots = pool_roots_rel();
         let index = build_multi_entry_index(&roots);
         let (mg_graph, mg_indices) =
-            resolve_entry_with_index_for_discovery_corpus(&index, &abs(&ws, MODULE_GRAPH_ENTRY))
+            resolve_entry_with_index(&index, &abs(&ws, MODULE_GRAPH_ENTRY))
                 .expect("module_graph.dag resolves as an interpreter entry");
         let dag_ctx = make_eval_context(&mg_graph, mg_indices, ExecutionMode::Wet);
 
@@ -34844,8 +34563,8 @@ mod reference_edge_producer_tests {
     fn reference_edge_dag_host_producer_divergence_control() {
         use super::{
             build_multi_entry_index, import_resolution_facts, make_eval_context,
-            reference_edges_as_import_facts, reference_resolution_facts,
-            resolve_entry_with_index_for_discovery_corpus, workspace_root,
+            reference_edges_as_import_facts, reference_resolution_facts, resolve_entry_with_index,
+            workspace_root,
         };
         use crate::v1_interpreter::{self, ExecutionMode};
 
@@ -34897,9 +34616,8 @@ mod reference_edge_producer_tests {
             pool[0].clone(),
         ];
         let index = build_multi_entry_index(&index_roots);
-        let (graph, indices) =
-            resolve_entry_with_index_for_discovery_corpus(&index, &module_graph_entry)
-                .expect("module_graph.dag resolves");
+        let (graph, indices) = resolve_entry_with_index(&index, &module_graph_entry)
+            .expect("module_graph.dag resolves");
         let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
         let args = [
             (Some("pool_roots".to_string()), str_list_value(&pool)),
@@ -41791,18 +41509,17 @@ mod exclusive_cost_partition_law {
 
     #[test]
     fn rewire_sub_rows_are_exclusive_and_total_is_observation_only() {
-        // The three non-overlapping passes enter the partition directly. Their enclosing
+        // The two non-overlapping passes enter the partition directly. Their enclosing
         // timer remains available on the text receipt but cannot become a quoted share.
         let st = ResolveStageNanos {
-            assembly_rewire: 300,
+            assembly_rewire: 150,
             assembly_rewire_type_env: 100,
-            assembly_rewire_import_str: 150,
             assembly_rewire_func_env: 50,
             ..ResolveStageNanos::default()
         };
         let p = exclusive_cost_partition_from(&st, "test_basis", 1_000, 1, 0, Vec::new());
-        assert_eq!(p.sum_exclusive_nanos(), 300);
-        assert_eq!(p.remainder_nanos, 700);
+        assert_eq!(p.sum_exclusive_nanos(), 150);
+        assert_eq!(p.remainder_nanos, 850);
 
         assert_eq!(p.share_of_parent("assembly_rewire"), None);
         assert_eq!(
@@ -41811,14 +41528,14 @@ mod exclusive_cost_partition_law {
                 .filter(|r| r.name.starts_with("assembly_rewire_"))
                 .map(|r| r.nanos)
                 .sum::<u128>(),
-            300
+            150
         );
 
         // The invariant that actually matters, over every inclusive row from every parent:
         // an inclusive row is contained in some other row (exclusive, or another inclusive
         // row -- `load_bare_*` nest under `load_bare_reference_closure`, which nests under
         // `load`), and is therefore already counted there. `sum_exclusive_nanos` above is
-        // 300, not 600, which is the double-count this control exists to catch.
+        // 150, not 300, which is the double-count this control exists to catch.
         let exclusive_names: Vec<&str> = p.exclusive.iter().map(|r| r.name).collect();
         let inclusive_names: Vec<&str> = p.inclusive.iter().map(|r| r.name).collect();
         for row in &p.inclusive {
@@ -42469,7 +42186,7 @@ pub fn run_floor_prepared_toll_receipt() {
     let warm_ms = warm_started.elapsed().as_millis();
     let item3_reclaimed = cold_ms.saturating_sub(warm_ms);
     eprintln!(
-        "[floor-toll-receipt] item3_compile_dag_rust_emit_check cold_ms={} warm_ms={} first={first} second={second} reclaimed_ms={}",
+        "[floor-toll-receipt] item3_compile_dag_rust_emit_check cold_ms={} warm_ms={} first={first:?} second={second:?} reclaimed_ms={}",
         cold_ms, warm_ms, item3_reclaimed
     );
 
@@ -42943,7 +42660,7 @@ pub fn prepare_repository_from_corpus(
         modules_resolved,
         modules_excluded,
     } = subject;
-    let resolved = resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict);
+    let resolved = resolved_graph_from_sources(sources);
     let (graph, source_indices) = resolved.map_err(|e| format!("{subject_statement}\n{e}"))?;
     let graph = prepared_graph_without_typecheck_caches(&graph);
     Ok((

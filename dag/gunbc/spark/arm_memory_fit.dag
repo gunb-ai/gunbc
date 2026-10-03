@@ -643,7 +643,6 @@ fn gb10_pool_bound() -> ArmPoolBound {
 // rounded pool, both deductions open. Absent means unmodelled (no checkpoint row or no
 // derivable intent), unreachable behind serving_arm_admits.
 fn arm_memory_fit_subject_for_launch(
-  checkpoint: ServingCheckpoint,
   runtime: ServingRuntime,
   topology: ServingTopology,
   profile: ServingLaunchProfile,
@@ -652,7 +651,7 @@ fn arm_memory_fit_subject_for_launch(
     ServingCapacityIntentRefused { cause: c } => ArmMemorySubjectRefused { cause: c }
     ServingCapacityIntentAdmitted { intent: intent } =>
       arm_memory_fit_subject(
-        checkpoint: checkpoint,
+        checkpoint: profile.checkpoint,
         runtime: runtime,
         topology: topology,
         intent: intent,
@@ -1427,14 +1426,16 @@ fn arm_memory_fit_experiment_plan(
   policy_profile: ServingLaunchProfile,
   targets: List<ArmMemoryComponent>,
 ) -> ArmMemoryExperimentAdmission {
-  if !profile_joins_intent(intent: workload, p: policy_profile) {
+  if !(policy_profile.checkpoint == checkpoint) {
+    ArmMemoryExperimentRefused { cause: "the experiment's policy profile was derived from another checkpoint's launch policy than the experiment names: the profile carries its policy row's checkpoint, and the plan must be that checkpoint" as NonEmptyStr }
+  } else if !profile_joins_intent(intent: workload, p: policy_profile) {
     ArmMemoryExperimentRefused {
       cause: "the experiment's workload and its policy profile do not join: the experiment would run an engine config other than the one its plan prices" as NonEmptyStr,
     }
   } else if length(targets) == 0 {
     ArmMemoryExperimentRefused { cause: "the experiment names no open obligations as targets: an experiment exists to measure the unknown, and a plan with nothing to measure is a service wearing an experiment's name" as NonEmptyStr }
   } else {
-    match arm_memory_fit_subject_for_launch(checkpoint: checkpoint, runtime: runtime, topology: topology, profile: policy_profile) {
+    match arm_memory_fit_subject_for_launch(runtime: runtime, topology: topology, profile: policy_profile) {
       ArmMemorySubjectRefused { cause: c } => ArmMemoryExperimentRefused { cause: c }
       ArmMemorySubjectReady { subject: subject } => {
         let open_components = arm_memory_subject_open_components(subject: subject)
@@ -1708,7 +1709,6 @@ type MemoryProofSubjectMint
 // intent_for_launch_profile derivation the fit subject mint uses): a subject whose workload axis
 // is a workload the executable cannot be asked for is a subject about another arm.
 fn memory_proof_subject_for_launch(
-  checkpoint: ServingCheckpoint,
   runtime: ServingRuntime,
   topology: ServingTopology,
   profile: ServingLaunchProfile,
@@ -1719,7 +1719,7 @@ fn memory_proof_subject_for_launch(
       MemoryProofSubjectRefused { cause: join(["the proof subject's workload axis does not derive from the executable profile: ", c as String], "") as NonEmptyStr }
     ServingCapacityIntentAdmitted { intent: intent } =>
       MemoryProofSubjectReady { subject: MemoryProofSubject {
-        checkpoint: checkpoint,
+        checkpoint: profile.checkpoint,
         runtime: runtime,
         topology: topology,
         profile: profile,

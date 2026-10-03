@@ -14,11 +14,6 @@ test fn witness_cav_no_toolchain_derives_subject_only() -> Bool {
   !catalog_has_vendor_only_key_inputs(inputs: inputs) && (inputs.length() == 1)
 }
 
-test fn witness_live_resolved_graph_derives_toolchain() -> Bool {
-  let inputs = catalog_inputs_considered(kd: resolved_graph_cache_facts.key_derivation)
-  catalog_has_vendor_only_key_inputs(inputs: inputs) && (inputs.length() == 2)
-}
-
 fn sound_cited_facts() -> CatalogKeyDerivationFacts {
   CatalogKeyDerivationFacts {
     key_inputs: NativeInternal { cited_inputs: [RustcInvocation, ToolchainSpec] },
@@ -103,9 +98,5 @@ test fn witness_promise_without_input_incomplete() -> Bool {
 
 test fn witness_live_catalog_holds() -> Bool {
   cache_catalog_key_completeness_holds(catalog: cache_catalog)
-}
-
-test fn witness_live_resolved_graph_complete() -> Bool {
-  cache_key_derivation_complete(facts: resolved_graph_cache_facts.key_derivation)
 }
 

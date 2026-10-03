@@ -4,6 +4,8 @@ import std.types { Bool, Int, String, NonEmptyStr, CommitSha }
 import v2.std.algebra { filter, any }
 import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.bazel.label { render_label }
+import gunbc.instrument_targets { self_host_behavioral_equivalence_label }
 import tools.self_host_module_behavioral_transport_roster {
   ModuleBehavioralTransportConfig,
   compiler_module_behavioral_transport_roster,
@@ -108,6 +110,16 @@ fn series_sequence_violation(series: List<BehavioralEquivalenceReceipt>) -> List
   walk.violations
 }
 
+// A receipt speaks only for the instrument that takes this series. One carrying any other label --
+// a different instrument's output pasted in, or a hand-written row -- refuses the whole series rather
+// than letting the latest receipt answer for a measurement this instrument never made.
+fn series_instrument_violation(series: List<BehavioralEquivalenceReceipt>) -> List<String> {
+  let expected = render_label(l: self_host_behavioral_equivalence_label())
+  series
+    |> filter(r => (r.instrument as String) != expected)
+    |> map(r => concat(concat(concat("receipt ", to_string(r.sequence)), " names instrument "), r.instrument as String))
+}
+
 type BehavioralSequenceWalk {
   previous: Int
   violations: List<String>
@@ -117,7 +129,7 @@ fn behavioral_equivalence_standing(
   series: List<BehavioralEquivalenceReceipt>,
   roster: List<ModuleBehavioralTransportConfig>
 ) -> BehavioralEquivalenceStanding {
-  match series_sequence_violation(series: series) |> first {
+  match concat(series_sequence_violation(series: series), series_instrument_violation(series: series)) |> first {
     Present { value: v } => BehavioralEquivalenceSeriesInvalid { reason: v as NonEmptyStr }
     Absent => match reverse(series) |> first {
       Absent => BehavioralEquivalenceSeriesEmpty

@@ -6,6 +6,8 @@ import gunbc.seed_growth_admission {
   seed_growth_forward_freeze_policy_note,
   seed_growth_unjustified_additions,
   seed_growth_stale_justifications,
+  seed_growth_stale_declarations,
+  seed_growth_stale_over,
   seed_growth_roster_all_declarations,
   seed_growth_roster_mechanical_checks_holds,
   seed_growth_roster_well_formed_gate_holds
@@ -22,19 +24,45 @@ test fn seed_growth_roster_mechanical_checks_hold() -> Bool {
 
 // THE JOIN IS SPLIT AND THE SPLIT IS THE ASSERTION. Under the single-candidate-set form these two
 // calls were one, so the population that found an unjustified addition was the same one that
-// declared every untouched roster row stale. Here the SAME candidate list goes to both functions
-// and they must answer differently: the rogue is an unjustified addition, and passing it as the live
+// declared every untouched roster row stale. Here the SAME candidate goes to both functions and
+// they must answer differently: the rogue is an unjustified addition, and passing it as the live
 // population makes every real roster row stale rather than none. A reimplementation that collapsed
-// them again reds on the second conjunct.
-test fn seed_growth_join_refuses_unknown_declaration() -> Bool {
-  let rogue = DeclarationRef {
+// them again reds on the second claim. The two answers are independent, so they are two claims
+// rather than one conjunction paying both under one budget (DESIGN section 3, a witness
+// discriminates at one interface).
+fn seed_growth_rogue_declaration() -> DeclarationRef {
+  DeclarationRef {
     module_path: "v1_compiler.cli_run",
     decl_name: "totally_unjustified_hand_rust_symbol",
     field: WholeDeclaration
   }
-  length(xs: seed_growth_unjustified_additions(added: [rogue])) == 1
-    && length(xs: seed_growth_stale_justifications(live_items: [rogue]))
-      == length(xs: seed_growth_roster_all_declarations())
+}
+
+test fn seed_growth_join_refuses_unknown_declaration() -> Bool {
+  length(xs: seed_growth_unjustified_additions(added: [seed_growth_rogue_declaration()])) == 1
+}
+
+// THE ROSTER IS SUPPLIED, THE RELATION IS REAL. Rendering every roster row's display key put the
+// whole-roster form of this claim over the new-witness cost requirement (re-derive:
+// claim_executor --required-floor, its COMPLETED-OVER-COST-REQUIREMENT line), and the assertion
+// inspects none of the keys. The generic relation is discriminated here on a supplied roster; the
+// next claim holds the real binding to the complete roster.
+test fn an_unknown_live_population_reports_every_roster_row_stale() -> Bool {
+  let roster = [
+    DeclarationRef { module_path: "v1_compiler.a", decl_name: "first", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.b", decl_name: "second", field: WholeDeclaration }
+  ]
+  length(xs: seed_growth_stale_over(roster: roster, live_items: [seed_growth_rogue_declaration()])) == 2
+    && length(xs: seed_growth_stale_over(roster: roster, live_items: roster)) == 0
+}
+
+// THE REAL BINDING RANGES OVER THE COMPLETE ROSTER. Against a live population that names no roster
+// row, every row is stale -- so a staleness function bound to an empty roster or any strict subset
+// reds here, which a_live_roster_declaration_is_not_reported_stale cannot detect (an empty binding
+// also reports nothing stale). seed_growth_stale_justifications is this list rendered to keys.
+test fn the_real_staleness_binding_covers_every_roster_row() -> Bool {
+  length(xs: seed_growth_stale_declarations(live_items: [seed_growth_rogue_declaration()]))
+    == length(xs: seed_growth_roster_all_declarations())
 }
 
 // A ROSTER ROW THAT STILL NAMES A LIVE ITEM IS NOT STALE. Without this control the staleness
