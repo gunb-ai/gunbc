@@ -452,8 +452,9 @@ data builtin_function_registry: Map<String, BuiltinSignature> = {
 // structural method of the first argument's kernel profile, the two empty-collection constructors,
 // and the builtin registry. These predicates are the one authority for that name set. The
 // inference arms read them in place of their own literals. The loader's unimported-bare-provider
-// gate reads the union, so it no longer reports a primitive call as an unimported read of a
-// same-spelled declaration that the compiler never binds there (gunbc#12951).
+// gate reads `bare_call_non_declaration_binding` below, so it no longer reports a primitive call as
+// an unimported read of a same-spelled declaration that the compiler never binds there
+// (gunbc#12951).
 fn is_empty_map_constructor(name: String) -> Bool {
   name == "empty_map"
 }
@@ -491,15 +492,6 @@ fn bare_call_non_declaration_binding(name: String) -> NonDeclarationBinding {
     } else {
       if is_kernel_method_name(name: name) { KernelMethodOnly } else { DeclarationOnly }
     }
-  }
-}
-
-fn bare_call_has_non_declaration_binding(name: String) -> Bool {
-  match bare_call_non_declaration_binding(name: name) {
-    DeclarationOnly => false
-    EmptyCollectionConstructor => true
-    BuiltinFunction => true
-    KernelMethodOnly => true
   }
 }
 

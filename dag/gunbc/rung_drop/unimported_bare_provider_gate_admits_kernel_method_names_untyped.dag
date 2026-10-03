@@ -4,9 +4,9 @@ import std.types { NonEmptyStr }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
-// THE DECLARED COVERAGE FRONTIER of the unimported-bare-provider gate's non-declaration predicate
+// THE DECLARED COVERAGE FRONTIER of the unimported-bare-provider gate's non-declaration classification
 // (gunbc#12951, calm-boar-904 ruling 2026-10-03). The gate now admits a bare call name that
-// `v1.compiler.infer_method` `bare_call_has_non_declaration_binding` says the compiler can bind
+// `v1.compiler.infer_method` `bare_call_non_declaration_binding` says the compiler can bind
 // without a declaration. For a builtin or empty-collection constructor that is exact: the compiler
 // binds those by name. For a name admitted ONLY by the kernel-method roster it is an over-admission
 // before typecheck, because the compiler binds the method only when the first argument's inferred

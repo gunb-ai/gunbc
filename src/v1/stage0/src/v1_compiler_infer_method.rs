@@ -2132,15 +2132,6 @@ pub fn bare_call_non_declaration_binding(name: String) -> NonDeclarationBinding 
     }
 }
 
-pub fn bare_call_has_non_declaration_binding(name: String) -> bool {
-    match bare_call_non_declaration_binding(name.clone()) {
-        NonDeclarationBinding::DeclarationOnly => false,
-        NonDeclarationBinding::EmptyCollectionConstructor => true,
-        NonDeclarationBinding::BuiltinFunction => true,
-        NonDeclarationBinding::KernelMethodOnly => true,
-    }
-}
-
 pub fn builtin_signature(name: String) -> Option<Rc<BuiltinSignature>> {
     v1_rt::map_get(&builtin_function_registry(), name.clone())
 }

@@ -18,7 +18,7 @@ module v2.workflow.floor_unimported_bare_provider_debt_roster
 // same claim: the file exists and, re-derived on every run, still does not carry the pair.
 // `BindsWithoutDeclaration`: the pair IS a reference, but the compiler binds it without any
 // declaration (an interpreter builtin, an empty-collection constructor, or a kernel-profile method,
-// per `v1.compiler.infer_method` `bare_call_has_non_declaration_binding`). A same-spelled declaration
+// per `v1.compiler.infer_method` `bare_call_non_declaration_binding`). A same-spelled declaration
 // outside the file's closure was therefore never what the call read. The gate that derived the pair
 // chose a provider by census spelling; it now asks the compiler's predicate first (gunbc#12951).
 // Like `NotAReference`, the READER changed and not the file, and it is held to the same claim.
