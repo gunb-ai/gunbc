@@ -2,7 +2,7 @@ module extdeps.ampere.mt_collins_firmware_release
 
 import std.types { Int, NonEmptyStr, List }
 import std.measure { ByteSize, byte_size, Second, second }
-import extdeps.crypto.hash { Digest, sha256_digest }
+import extdeps.crypto.hash { sha256_digest }
 import v2.std.optional { Present }
 import extdeps.boards.types { AmpereMtCollins }
 import extdeps.firmware.types {
@@ -47,7 +47,7 @@ data mt_collins_bmc_0_45_3_hpm: FirmwareReleaseRow = FirmwareReleaseRow {
   version: firmware_semantic_version(major: 0, minor: 45, patch: 3),
   released_on: 1703635200000,
   image_kind: PicmgHpmImage,
-  image_uri: Uri { scheme: Https, locator: "connect.amperecomputing.com" },
+  image_uri: mt_collins_firmware_delivery_authority.uri,
   image_bytes: byte_size(count: 67109015),
   image_digest: Present { value: sha256_digest(hex: "8efa56a952e4c92c740f1ab22fe964c08bedd094cb82506d6b41a5856a7458c3") },
   release_notes: "MtCollinsBmc0_45_3.hpm, BMC_Release_Note.txt 12/27/2023: Basic Auth on every system interface (CVE-2023-34329, CVE-2023-34330), requiring a BIOS that supports it; Yafuflash unsupported from 0.45.2.",
@@ -61,7 +61,7 @@ data mt_collins_bios_0acod014_hpm: FirmwareReleaseRow = FirmwareReleaseRow {
   version: firmware_semantic_version(major: 0, minor: 14, patch: 0),
   released_on: 1702339200000,
   image_kind: PicmgHpmImage,
-  image_uri: Uri { scheme: Https, locator: "connect.amperecomputing.com" },
+  image_uri: mt_collins_firmware_delivery_authority.uri,
   image_bytes: byte_size(count: 14419791),
   image_digest: Present { value: sha256_digest(hex: "e250802973e2301a8773de8f59163ac5aa36b17ff37f8b19cddcd88f27eecb2e") },
   release_notes: "collins_aptiov_atf_signed_2.10c_0ACOD014.hpm, Mt.Collins-BIOS-0ACOD014-ReleaseNote.txt 2023/12/12: SRP 2.10c; BMC Redfish Basic Auth mode. Note 1: BIOS reference code and SCP versions must match. Note 4: reflash SCP and BIOS when changing CPU.",
@@ -75,7 +75,7 @@ data mt_collins_scp_2_10_hpm: FirmwareReleaseRow = FirmwareReleaseRow {
   version: firmware_semantic_version(major: 2, minor: 10, patch: 0),
   released_on: 1674691200000,
   image_kind: PicmgHpmImage,
-  image_uri: Uri { scheme: Https, locator: "connect.amperecomputing.com" },
+  image_uri: mt_collins_firmware_delivery_authority.uri,
   image_bytes: byte_size(count: 261221),
   image_digest: Present { value: sha256_digest(hex: "75b59a873fe4941d1289791fa799d4b83cdf97f18493ed4024534bcfd0a3d56d") },
   release_notes: "altra_scp_signed_2.10.20230126.hpm, shipped in the r2.10c BIOS bundle beside 0ACOD014.",
@@ -89,7 +89,7 @@ data mt_collins_mb_cpld_v06_hpm: FirmwareReleaseRow = FirmwareReleaseRow {
   version: firmware_semantic_version(major: 6, minor: 0, patch: 0),
   released_on: 1654560000000,
   image_kind: PicmgHpmImage,
-  image_uri: Uri { scheme: Https, locator: "connect.amperecomputing.com" },
+  image_uri: mt_collins_firmware_delivery_authority.uri,
   image_bytes: byte_size(count: 1477347),
   image_digest: Present { value: sha256_digest(hex: "86fea80cab30dc43907966e8762a979bdfa4aa74cd0e88bcb86d9631cc89371e") },
   release_notes: "Mt.Collins_MB_CPLD_v06_20220607.hpm, MB_CPLD_Release Notes_20220607.txt: Mt.Collins MB CPLD (U3), LCMXO3LF-4300C-5BG400C, revision V06, PVT.",
@@ -105,11 +105,12 @@ data mt_collins_mb_cpld_v06_hpm: FirmwareReleaseRow = FirmwareReleaseRow {
 // THE RECOMMENDED ORDER is "1) BMC 2) BIOS 3) SCP 4) MB CPLD". A list, because the order is the fact.
 data mt_collins_vendor_upgrade_order: List<FirmwareTarget> = [BmcController, HostBios, ScpFirmware, MainboardCpld]
 
-// THE PER-STEP CONDITIONS THE BMC, BIOS AND SCP SOPs STATE, read 2026-10-02; the MB CPLD row carries the
-// block size and the AC-cycle activation the manual run used and observed. Each SOP first confirms the host is powered off (`chassis power off`, `chassis status`); each runs
-// `hpm upgrade <file> force` with an upload block size of 30000 for the BMC and MB CPLD and 8196 for
-// BIOS and SCP, and answers a Y/y confirmation; each ends "AC power cycle the system by removing power
-// from the server for at least 10 seconds". The MB CPLD image becomes active only after that AC cycle.
+// THE PER-STEP CONDITIONS THE BMC, BIOS AND SCP SOPs STATE, read 2026-10-02. Each first confirms the
+// host is powered off (`chassis power off`, `chassis status`); each runs `hpm upgrade <file> force` with
+// an upload block size of 30000 for the BMC and 8196 for BIOS and SCP, and answers a Y/y confirmation;
+// each ends "AC power cycle the system by removing power from the server for at least 10 seconds". The
+// MB CPLD step has no row here: its facts were observed on the manual run, not read from a vendor
+// procedure, so its binding lives downstream in gunbc.fleet.mtcollins_firmware_converge.
 //
 // THE SCP SOP'S BANK SELECT IS THE SOP'S INSTRUCTION AND IS NOT CARRIED, because it does not work: the SOP first sends OEM command
 // `raw 0x3c 0x0B` with 0x00 (primary) or 0x02 (secondary), and BMC 0.45.3 REFUSES it with completion
@@ -129,7 +130,6 @@ data mt_collins_hpm_procedures: List<MtCollinsHpmStepProcedure> = [
   MtCollinsHpmStepProcedure { firmware_release: mt_collins_bmc_0_45_3_hpm, upload_block: byte_size(count: 30000) },
   MtCollinsHpmStepProcedure { firmware_release: mt_collins_bios_0acod014_hpm, upload_block: byte_size(count: 8196) },
   MtCollinsHpmStepProcedure { firmware_release: mt_collins_scp_2_10_hpm, upload_block: byte_size(count: 8196) },
-  MtCollinsHpmStepProcedure { firmware_release: mt_collins_mb_cpld_v06_hpm, upload_block: byte_size(count: 30000) },
 ]
 
 // ── WHICH BIOS AND SCP VERSIONS ARE A PAIR. BIOS release note 1: "The BIOS Reference code version and
@@ -152,7 +152,8 @@ data mt_collins_bios_scp_pairs: List<BiosScpPair> = [
 // BIOS which support 'Basic Auth' feature, otherwise Redfish communication between BMC and BIOS will
 // not function." The BIOS that adds it is 0ACOD014 (change list 1). This is an interoperation
 // requirement between two running images, not a flash prerequisite: the BMC flashes fine without it.
-// requires_one_of is a SET OF RELEASES, joined by image digest, never a version bound: BIOS triples do
+// requires_one_of is a SET OF RELEASE ROWS, joined by their own image digests (each row owns its digest),
+// never a version bound: BIOS triples do
 // not order across families (0ACOC017 projects ABOVE 0ACOD014 and lacks Basic Auth), so the only honest
 // question is membership in the releases the vendor states support the feature. A release not in the
 // set -- including any of an unknown family -- does not meet it.
@@ -160,7 +161,7 @@ type InteropRequirement {
   when_target: FirmwareTarget
   at_least: FirmwareSemanticVersion
   requires_target: FirmwareTarget
-  requires_one_of: List<Digest>
+  requires_one_of: List<FirmwareReleaseRow>
   consequence: NonEmptyStr
 }
 
@@ -169,7 +170,7 @@ data mt_collins_interop_requirements: List<InteropRequirement> = [
     when_target: BmcController,
     at_least: firmware_semantic_version(major: 0, minor: 45, patch: 3),
     requires_target: HostBios,
-    requires_one_of: [sha256_digest(hex: "e250802973e2301a8773de8f59163ac5aa36b17ff37f8b19cddcd88f27eecb2e")],
+    requires_one_of: [mt_collins_bios_0acod014_hpm],
     consequence: "Redfish over the BMC-BIOS HTTP-over-USB host interface does not function; WebUI and Redfish lose host inventory.",
   },
 ]

@@ -25,6 +25,7 @@ import extdeps.firmware.types {
 import extdeps.ampere.mt_collins_firmware_release {
   mt_collins_bmc_0_45_3_hpm, mt_collins_bios_0acod014_hpm, mt_collins_scp_2_10_hpm, mt_collins_mb_cpld_v06_hpm,
   mt_collins_bios_scp_pairs, mt_collins_interop_requirements, mt_collins_firmware_delivery_authority,
+  mt_collins_vendor_upgrade_order,
   BiosScpPair, InteropRequirement,
 }
 
@@ -81,17 +82,6 @@ fn bios_scp_is_a_pair(bios: FirmwareSemanticVersion, scp: FirmwareSemanticVersio
   any(mt_collins_bios_scp_pairs, p => firmware_semantic_version_eq(a: p.bios, b: bios) && firmware_semantic_version_eq(a: p.scp, b: scp))
 }
 
-fn baseline_bios_scp_paired(b: FirmwareBaseline) -> Bool {
-  match baseline_version_for(b: b, t: HostBios) {
-    Absent => false
-    Present { value: bios } =>
-      match baseline_version_for(b: b, t: ScpFirmware) {
-        Absent => false
-        Present { value: scp } => bios_scp_is_a_pair(bios: bios, scp: scp)
-      }
-  }
-}
-
 fn interop_requirement_met(b: FirmwareBaseline, req: InteropRequirement) -> Bool {
   match baseline_version_for(b: b, t: req.when_target) {
     Absent => true
@@ -102,7 +92,12 @@ fn interop_requirement_met(b: FirmwareBaseline, req: InteropRequirement) -> Bool
           Present { value: w } =>
             match w.image_digest {
               Absent => false
-              Present { value: d } => any(req.requires_one_of, k => k.hex == d.hex)
+              Present { value: d } =>
+                any(req.requires_one_of, k =>
+                  match k.image_digest {
+                    Absent => false
+                    Present { value: kd } => kd.hex == d.hex
+                  })
             }
         }
       } else {
@@ -111,19 +106,68 @@ fn interop_requirement_met(b: FirmwareBaseline, req: InteropRequirement) -> Bool
   }
 }
 
-fn baseline_bios_scp_present(b: FirmwareBaseline) -> Bool {
-  match baseline_release_for(b: b, t: HostBios) {
-    Absent => false
-    Present { value: _ } =>
-      match baseline_release_for(b: b, t: ScpFirmware) {
-        Absent => false
-        Present { value: _ } => true
+// ── BASELINE ADMISSION: THE ONE AUTHORITY selection and convergence share ─────────────────────────
+// A baseline is admissible exactly when it names every target of the vendor order once, its BIOS and SCP
+// are a shipped pair, and every interop requirement it triggers is met. Selection reads these as its
+// hard-constraint gates and convergence refuses a directly supplied baseline on the same causes, so the
+// wall cannot be bypassed by calling converge_firmware with a baseline that never passed selection.
+type BaselineAdmissionRefusal
+  = BaselineMissingTarget { target: FirmwareTarget }
+  | BaselineDuplicateTarget { target: FirmwareTarget }
+  | BaselineBiosScpUnpaired { bios: FirmwareSemanticVersion, scp: FirmwareSemanticVersion }
+  | BaselineInteropUnmet { when_target: FirmwareTarget, requires_target: FirmwareTarget }
+
+fn baseline_target_refusal(b: FirmwareBaseline) -> BaselineAdmissionRefusal? {
+  fold(mt_collins_vendor_upgrade_order, init: Absent, f: (acc, t) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match list_length(filter(b.releases, r => firmware_target_eq(a: r.target, b: t))) {
+          0 => Present { value: BaselineMissingTarget { target: t } }
+          1 => Absent
+          _ => Present { value: BaselineDuplicateTarget { target: t } }
+        }
+    })
+}
+
+fn baseline_pair_refusal(b: FirmwareBaseline) -> BaselineAdmissionRefusal? {
+  match baseline_version_for(b: b, t: HostBios) {
+    Absent => Present { value: BaselineMissingTarget { target: HostBios } }
+    Present { value: bios } =>
+      match baseline_version_for(b: b, t: ScpFirmware) {
+        Absent => Present { value: BaselineMissingTarget { target: ScpFirmware } }
+        Present { value: scp } =>
+          match bios_scp_is_a_pair(bios: bios, scp: scp) {
+            true => Absent
+            false => Present { value: BaselineBiosScpUnpaired { bios: bios, scp: scp } }
+          }
       }
   }
 }
 
-fn baseline_names_each_target_once(b: FirmwareBaseline) -> Bool {
-  list_length(b.releases) == 4 && baseline_bios_scp_present(b: b) && all(b.releases, r => list_length(filter(b.releases, s => firmware_target_eq(a: s.target, b: r.target))) == 1)
+fn baseline_interop_refusal(b: FirmwareBaseline) -> BaselineAdmissionRefusal? {
+  match (filter(mt_collins_interop_requirements, req => !interop_requirement_met(b: b, req: req))).first() {
+    Absent => Absent
+    Present { value: req } => Present { value: BaselineInteropUnmet { when_target: req.when_target, requires_target: req.requires_target } }
+  }
+}
+
+fn baseline_admission_refusal(b: FirmwareBaseline) -> BaselineAdmissionRefusal? {
+  match baseline_target_refusal(b: b) {
+    Present { value: c } => Present { value: c }
+    Absent =>
+      match baseline_pair_refusal(b: b) {
+        Present { value: c } => Present { value: c }
+        Absent => baseline_interop_refusal(b: b)
+      }
+  }
+}
+
+fn admitted(r: BaselineAdmissionRefusal?) -> Bool {
+  match r {
+    Absent => true
+    Present { value: _ } => false
+  }
 }
 
 // ── The std.decision closure ──────────────────────────────────────────────────────────────────
@@ -161,9 +205,9 @@ fn baseline_entry(b: FirmwareBaseline) -> ParetoEntry {
     identity: b.identity,
     display_label: b.label,
     readings: [
-      reading(axis: ax_bios_scp_paired, v: gate(passes: baseline_bios_scp_paired(b: b))),
-      reading(axis: ax_interop_met, v: gate(passes: all(mt_collins_interop_requirements, req => interop_requirement_met(b: b, req: req)))),
-      reading(axis: ax_every_target_once, v: gate(passes: baseline_names_each_target_once(b: b))),
+      reading(axis: ax_bios_scp_paired, v: gate(passes: admitted(r: baseline_pair_refusal(b: b)))),
+      reading(axis: ax_interop_met, v: gate(passes: admitted(r: baseline_interop_refusal(b: b)))),
+      reading(axis: ax_every_target_once, v: gate(passes: admitted(r: baseline_target_refusal(b: b)))),
     ],
     missing_inputs: [],
   }

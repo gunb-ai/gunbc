@@ -9,8 +9,9 @@ import std.measure { Second, second }
 // so each of those imports it instead of declaring its own spelling.
 //
 // Reaching UEFI is success. The failure seen on mtcollins1 on 2026-10-02/03, after the whole vendor set
-// (BMC 0.45.3, BIOS 0ACOD014, SCP 2.10, MB CPLD V06), is PostDdrProgressLost: POST reached checkpoint
-// 0x00001a0a after DRAM training; then the whole SoC went silent for about 22 s with chassis power still
+// (BMC 0.45.3, BIOS 0ACOD014, SCP 2.10, MB CPLD V06), is PostDdrProgressLost: the last checkpoint the
+// host reported was 0x00001a0a, an opaque code -- no public source states its stage, so none is claimed
+// here; then the whole SoC went silent for about 22 s with chassis power still
 // ON; then the NEXT cycle's start logged CPU0_ACPI_State S5 and System Restart; nothing named the
 // initiator. The BMC's IPMI watchdog was stopped with no action set, so it is not the initiator.
 // 0x1a0a is NOT a normal warm-reset point: the 2026-09-13 two-socket boot went 0x1a0a -> 0x1a0b in one
