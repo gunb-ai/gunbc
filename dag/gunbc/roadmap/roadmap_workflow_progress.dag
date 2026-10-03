@@ -23,7 +23,7 @@ import gunbc.roadmap_dispatch_environment {
 import gunbc.roadmap_provider_events {
   ProviderExecutionState,
   ProviderNotStarted,
-  ProviderStarting,
+  ProviderStarting, ProviderAwaitingSeat,
   ProviderRunning,
   ProviderCompleted,
   ProviderFailed,
@@ -439,6 +439,12 @@ fn provider_workflow_segment(
         kind: AgentWorkflowSegment,
         state: WorkflowSegmentActive,
         detail: activity,
+      }
+    ProviderAwaitingSeat { detail } =>
+      WorkflowSegment {
+        kind: AgentWorkflowSegment,
+        state: WorkflowSegmentActive,
+        detail: join(["waiting for a serving seat -- ", detail], ""),
       }
     ProviderRunning { activity } =>
       WorkflowSegment {

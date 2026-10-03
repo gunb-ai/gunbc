@@ -10,6 +10,7 @@ import extdeps.languages.json.emit { serialize_json }
 import gunbc.roadmap_provider_events {
   ProviderCompleted,
   ProviderRunning,
+  ProviderAwaitingSeat,
   ProviderFailed,
   ProviderEventsRefused,
 }
@@ -855,4 +856,36 @@ test fn a_missing_worktree_refuses_the_workspace_segment() -> Bool {
   segment_state(missing.segments, "workspace") == "refused"
     && segment_state(unseen.segments, "workspace") == "refused"
     && segment_state(present.segments, "workspace") == "complete"
+}
+
+// A WORKER WAITING IN LINE FOR A SEAT IS AN ACTIVE AGENT, AND ITS REASON IS ON THE ROW. The events
+// are the projector's form of the harness's wait announcement; the process is the worker still
+// running its wait. Before the arm the same pair read as a live process with no recognised event --
+// "waiting for first provider event" -- and its exit as "Agent failed" with a spent turn.
+data projected_placement_wait: String = "{\"type\":\"turn.placement_waiting\",\"wait\":3,\"wait_cap\":1440,\"reason\":\"group-b: the engine reports 12 occupant(s) while the seat ledger admitted 0\"}\n"
+
+test fn a_waiting_worker_is_an_active_agent_with_its_reason() -> Bool {
+  let progress = workflow_attempt_progress(evidence: fixture_evidence(
+    events: projected_placement_wait,
+    process: WorkerProcessRunning { command: "gunbc" as NonEmptyStr },
+  ))
+  (match progress.provider {
+    ProviderAwaitingSeat { detail } => string_contains(s: detail, pattern: "seat ledger admitted 0") && string_contains(s: detail, pattern: "wait 3 of 1440")
+    _ => false
+  })
+    && segment_state(progress.segments, "agent") == "active"
+    && segment_state(progress.segments, "submission") == "pending"
+}
+
+// The wait is bounded, and running out of it is still loud: a worker that exits nonzero while
+// waiting is failed, exactly as any exit before a terminal provider event is.
+test fn a_wait_that_ends_in_a_nonzero_exit_is_failed() -> Bool {
+  let progress = workflow_attempt_progress(evidence: fixture_evidence(
+    events: projected_placement_wait,
+    process: WorkerProcessExited { exit_code: 1, last_command: "gunbc" },
+  ))
+  match progress.provider {
+    ProviderFailed { activity: _, detail } => string_contains(s: detail, pattern: "exited 1")
+    _ => false
+  }
 }

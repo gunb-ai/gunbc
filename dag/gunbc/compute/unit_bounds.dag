@@ -2,7 +2,7 @@ module gunbc.compute.unit_bounds
 
 import std.types { String, List }
 import std.nat { Nat }
-import std.measure { Kibibyte, kibibyte_to_byte_size, byte_size_count }
+import std.measure { Kibibyte, kibibyte_to_byte_size, byte_size_count, Millicore, millicore_count }
 import extdeps.systemd.systemd_run { systemd_run_property }
 
 // THE ONE FOLD FROM A CAPACITY GRANT TO THE PROPERTIES OF THE UNIT THAT HOLDS IT. It used to live in
@@ -30,9 +30,18 @@ data compute_kill_mode_value: String = "control-group"
 // not a fact the grant can supply. A unit that needs them takes them as a separately stated bound
 // beside the grant, and a consumer that has none passes `none` -- the compute provider does, so
 // its units are unchanged by this fold moving.
+//
+// THE CPU BOUND IS A MILLICORE, NOT A PERCENT. systemd spells CPUQuota as a percentage of one CPU
+// (100% = one core), which is a rendering: the quantity is a CPU share, std.measure Millicore, and
+// it is converted to systemd's percent exactly once, below, where the property is written
+// (1000 millicores = 100%).
 type UnitProcessBounds {
-  cpu_quota_percent: Nat
+  cpu_quota: Millicore
   tasks_max: Nat
+}
+
+fn unit_cpu_quota_percent(m: Millicore) -> Nat {
+  millicore_count(m: m) / 10
 }
 
 fn compute_grant_unit_properties(granted: Kibibyte, working_directory: String, process_bounds: UnitProcessBounds?) -> List<String> {
@@ -45,7 +54,7 @@ fn compute_grant_unit_properties(granted: Kibibyte, working_directory: String, p
     match process_bounds {
       Absent => []
       Present { value: b } => [
-        systemd_run_property(name: "CPUQuota", value: join([to_string(value: b.cpu_quota_percent), "%"], "")),
+        systemd_run_property(name: "CPUQuota", value: join([to_string(value: unit_cpu_quota_percent(m: b.cpu_quota)), "%"], "")),
         systemd_run_property(name: "TasksMax", value: to_string(value: b.tasks_max)),
       ]
     },

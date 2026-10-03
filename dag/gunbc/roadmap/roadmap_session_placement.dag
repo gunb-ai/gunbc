@@ -3,7 +3,7 @@ module gunbc.roadmap_session_placement
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_to_nat }
-import std.measure { Kibibyte, kibibyte, kibibyte_count }
+import std.measure { Kibibyte, kibibyte, kibibyte_count, millicore }
 import product.capacity.lease { LeaseGrant }
 import product.capacity.event_chain { PartitionId }
 import gunbc.fabric_storage_client { FabricStorageBinding }
@@ -31,7 +31,7 @@ import extdeps.filesystem.filesystem_io {
 import extdeps.languages.json.emit { JsonValue, json_string, json_int, json_array, json_object, json_kv, serialize_json }
 import extdeps.languages.json.parse {
   JsonDocumentParse, JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text,
-  JsonFieldRead, FieldAbsent, FieldRead, FieldMalformed, json_field_string, json_field_int, json_field_string_list,
+  JsonFieldRead, FieldAbsent, FieldRead, FieldMalformed, json_field_string, json_field_int, json_field_nat, json_field_string_list,
 }
 
 // G5 OF THE DOGFOOD ROUTE: THE AGENT SESSION HOLDS A PLACEMENT GRANT AND RUNS INSIDE ITS BOUNDS.
@@ -68,6 +68,12 @@ data session_worker_role: String = "worker"
 // release law is quiescence-required, so an elapsed term frees nothing and the seat returns only by
 // the release session_placement_settle performs when the unit is observed ended. Four hours is the
 // longest worker the belt has run on srv2 with margin.
+// IT IS A Nat OF SECONDS BECAUSE THAT IS THE POOL'S OWN DURATION CARRIER: product.capacity.pool_events
+// SeatRequest.term_seconds and product.capacity.lease LeasePolicy.maximum_duration_seconds are Nat
+// seconds, and gunbc.compute.host_capacity host_capacity_reserve takes the term in that form. A
+// branded std.types Seconds here would be a second representation cast back to Nat at the call --
+// moving the duration onto a typed carrier is a change to the capacity authority's signature, not
+// to this consumer (review 74593).
 data session_placement_term_seconds: Nat = 14400
 
 // THE BOUNDS A GRANT DOES NOT CARRY. product.capacity.pool grants memory only, so CPU and task
@@ -76,7 +82,7 @@ data session_placement_term_seconds: Nat = 14400
 // capped systemd unit plus a lease is sufficient): eight cores and 4096 tasks bound a runaway
 // session without throttling the single `gunbc run` a harness worker is. Falsifiable: a worker unit
 // ending in Result=resources, or a throughput regression attributed to CPUQuota, re-derives them.
-data session_process_bounds: UnitProcessBounds = UnitProcessBounds { cpu_quota_percent: 800, tasks_max: 4096 }
+data session_process_bounds: UnitProcessBounds = UnitProcessBounds { cpu_quota: millicore(count: 8000), tasks_max: 4096 }
 
 // THE SESSION POOL'S SLOTS ARE THE BELT'S WORKER COUNT, derived rather than chosen: the belt already
 // admits at most max_concurrent workers, so a pool of that many ceilings refuses only for memory the
@@ -161,7 +167,7 @@ type SessionPlacementRecord {
   granted_at: Int
   expires_at: Int
   partition: String
-  amount_kib: Int
+  amount: Kibibyte
   class_grant: String
   unit_properties: List<String>
 }
@@ -176,7 +182,7 @@ fn session_placement_record_of(grant: SessionPlacementGrant, unit_properties: Li
     granted_at: grant.lease.granted_at,
     expires_at: grant.lease.expires_at,
     partition: grant.partition as String,
-    amount_kib: kibibyte_count(k: grant.amount),
+    amount: grant.amount,
     class_grant: work_class_grant_wire(g: grant.class_grant),
     unit_properties: unit_properties,
   }
@@ -192,7 +198,7 @@ fn session_placement_record_json(r: SessionPlacementRecord) -> JsonValue {
     json_kv(key: "granted_at", value: json_int(n: r.granted_at)),
     json_kv(key: "expires_at", value: json_int(n: r.expires_at)),
     json_kv(key: "partition", value: json_string(s: r.partition)),
-    json_kv(key: "amount_kib", value: json_int(n: r.amount_kib)),
+    json_kv(key: "amount_kib", value: json_int(n: kibibyte_count(k: r.amount))),
     json_kv(key: "class_grant", value: json_string(s: r.class_grant)),
     json_kv(key: "unit_properties", value: json_array(elements: map(r.unit_properties, p => json_string(s: p)))),
   ])
@@ -288,7 +294,7 @@ fn session_placement_record_decode(doc: JsonValue) -> SessionFieldsAcc {
   let granted_at = json_field_int(obj: doc, key: "granted_at")
   let expires_at = json_field_int(obj: doc, key: "expires_at")
   let partition = json_field_string(obj: doc, key: "partition")
-  let amount_kib = json_field_int(obj: doc, key: "amount_kib")
+  let amount_kib = json_field_nat(obj: doc, key: "amount_kib")
   let class_grant = json_field_string(obj: doc, key: "class_grant")
   let unit_properties = json_field_string_list(obj: doc, key: "unit_properties")
   let causes = filter([
@@ -317,7 +323,7 @@ fn session_placement_record_decode(doc: JsonValue) -> SessionFieldsAcc {
           granted_at: session_int_or(r: granted_at),
           expires_at: session_int_or(r: expires_at),
           partition: session_string_or(r: partition),
-          amount_kib: session_int_or(r: amount_kib),
+          amount: match amount_kib { FieldRead { value } => kibibyte(count: value)  FieldAbsent => kibibyte(count: 0)  FieldMalformed { cause: _ } => kibibyte(count: 0) },
           class_grant: session_string_or(r: class_grant),
           unit_properties: match unit_properties { FieldRead { value } => value  FieldAbsent => []  FieldMalformed { cause: _ } => [] },
         } },

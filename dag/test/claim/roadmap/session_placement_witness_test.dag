@@ -95,7 +95,7 @@ test fn a_written_and_released_placement_reads_back_its_grant_unit_and_release()
       record.grant_identity == "evt-7"
         && record.fence_generation == 7
         && record.partition == "session-memory-srv2"
-        && record.amount_kib == 8388608
+        && kibibyte_count(k: record.amount) == 8388608
         && contains(record.unit_properties, "CPUQuota=800%")
         && match returned { SessionReleased { reason, detail: _ } => reason == "session unit exited 0"  _ => false }
     SessionPlacementAbsent { path: _ } => false

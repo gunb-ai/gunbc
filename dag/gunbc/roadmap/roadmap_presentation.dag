@@ -40,8 +40,7 @@ import gunbc.roadmap_launch_admission {
 }
 import gunbc.roadmap_provider_events {
   provider_execution_activity,
-  ProviderEventsRefused,
-}
+  ProviderEventsRefused, ProviderAwaitingSeat }
 import gunbc.auth.profile_projection { PrincipalProfile }
 import gunbc.roadmap_fleet_components { spark_host_component_paths }
 import gunbc.roadmap_workflow_stage {
@@ -1006,6 +1005,14 @@ fn activity_view_from_progress(progress: WorkflowAttemptProgress) -> ActivityVie
         current_activity: provider_execution_activity(state: progress.provider),
       )
     ProviderStarting { activity: _ } =>
+      activity_view_from_parts(
+        segments: progress.segments,
+        remaining: progress.reconciliation.remaining_count,
+        process: progress.process,
+        throughput: harness_throughput_from_ledger(ledger: progress.rounds),
+        current_activity: provider_execution_activity(state: progress.provider),
+      )
+    ProviderAwaitingSeat { detail: _ } =>
       activity_view_from_parts(
         segments: progress.segments,
         remaining: progress.reconciliation.remaining_count,
