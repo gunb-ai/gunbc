@@ -343,11 +343,11 @@ data local_store_typed_module_budget_policy: ByteSize = byte_size(count: 4294967
 // byte-part realization lands (C1b); until then the budget over-reserves for text-only records, which
 // is the direction a ceiling may err. REVISION TRIGGER: the compute family's own commits measured
 // on the durable root (occupancy index), or a change to compute_pool_slots.
-data local_store_compute_work_record_bytes_measured: Nat = 75796584
+data local_store_compute_work_record_size_measured: ByteSize = byte_size(count: 75796584)
 
 data local_store_compute_work_retained_records: Nat = 2
 
-data local_store_compute_work_budget_policy: ByteSize = byte_size(count: local_store_compute_work_record_bytes_measured * local_store_compute_work_retained_records)
+data local_store_compute_work_budget_policy: ByteSize = byte_size(count: measure_count(m: local_store_compute_work_record_size_measured) * local_store_compute_work_retained_records)
 
 data local_store_durable_family_budgets: List<LocalStoreFamilyBudget> = [
   LocalStoreFamilyBudget { family: typed_module_artifact_kind, budget: local_store_typed_module_budget_policy },
