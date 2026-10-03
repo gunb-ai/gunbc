@@ -1,6 +1,7 @@
 module test.claim.spark.native_experiment_apply_witness_test
 
 import std.types { Bool, String, NonEmptyStr, List }
+import gunbc.spark.glm_group_b_launch { glm_group_b_deployment_env }
 import std.nat { Nat }
 import v2.std.optional { Present, Absent }
 import gunbc.spark.native_experiment_apply {
@@ -59,7 +60,7 @@ fn fx_restoration_plan() -> ArmMemoryExperimentPlan? {
           match arm_memory_fit_experiment_plan(
             checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
             workload: subject.intent, policy_profile: profile,
-            targets: arm_memory_subject_open_components(subject: subject)) {
+            targets: arm_memory_subject_open_components(subject: subject), deployment_env: glm_group_b_deployment_env()) {
             ArmMemoryExperimentAdmitted { plan: p } => Present { value: p }
             ArmMemoryExperimentRefused { cause: _ } => none
           }
@@ -122,7 +123,7 @@ test fn w_the_actuation_refuses_a_plan_that_skips_an_open_obligation() -> Bool {
         ArmMemorySubjectReady { subject: subject } =>
           match arm_memory_fit_experiment_plan(
             checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
-            workload: subject.intent, policy_profile: profile, targets: [ArmGraphCapture, ArmKvCache]) {
+            workload: subject.intent, policy_profile: profile, targets: [ArmGraphCapture, ArmKvCache], deployment_env: glm_group_b_deployment_env()) {
             ArmMemoryExperimentRefused { cause: _ } => false
             ArmMemoryExperimentAdmitted { plan: partial } =>
               match arm_experiment_actuation_admission(
