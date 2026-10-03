@@ -1691,8 +1691,6 @@ fn eval_value_node(
   match interpreter {
     ValueRuntimeInterpreter { interpreter: value } =>
       value.allocate_literal(node, environment)
-    ValueRuntimeInterpreter { interpreter: _ } =>
-      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
     TransformRuntimeInterpreter { interpreter: _ } =>
       outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
     BranchRuntimeInterpreter { interpreter: _ } =>
