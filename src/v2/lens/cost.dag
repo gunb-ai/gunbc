@@ -398,14 +398,6 @@ fn symbolic_max_rhs(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
             }
           }
     LinearCost { variable: _ } =>
-    LogCost { variable: _ } =>
-    PolynomialCost { variable: _, degree: _ } =>
-    PolyLogCost { variable: _, exponent: _ } =>
-    ExponentialCost { variable: _, base: _ } =>
-    FactorialCost { variable: _ } =>
-    SumCost { lhs: _, rhs: _ } =>
-    ProductCost { lhs: _, rhs: _ } =>
-    LinearCost { variable: _ } =>
           if a == b {
             a
           } else {

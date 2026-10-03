@@ -1916,6 +1916,8 @@ fn stopped_with_reason(look: ReadinessLook, cd: CdErrorReading) -> StopReasonRea
     ReadinessNotPresented { configurations: _ } =>
       match cd {
         CdErrorRead { code: CdErrorStopReason { status: st, class: k } } => Present { value: StopReasonReading { status: st, class: k } }
+        CdErrorRead { code: CdErrorNone } => none
+        CdErrorRead { code: CdErrorUncatalogued { wire: _ } } => none
         CdErrorUnread { detail: _ } => none
       }
     ReadinessStarted { row: _ } => none

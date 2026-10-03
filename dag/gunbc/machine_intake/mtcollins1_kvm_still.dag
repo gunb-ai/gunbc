@@ -468,9 +468,8 @@ fn kvm_acquisition_keys(cause: KvmAcquisitionCause) -> List<String> {
   match cause {
     KvmNotConnected => kvm_layout_acquisition_failed.keys.take(n: 4)
     KvmConnectionChangedDuringAcquisition => kvm_layout_acquisition_failed.keys.take(n: 4)
-    KvmNotConnected => kvm_layout_acquisition_failed.keys
-        KvmCanvasUnreadable { detail: _ } => kvm_layout_acquisition_failed.keys
-        KvmAcquisitionOther { cause: _, detail: _ } => kvm_layout_acquisition_failed.keys
+    KvmCanvasUnreadable { detail: _ } => kvm_layout_acquisition_failed.keys
+    KvmAcquisitionOther { cause: _, detail: _ } => kvm_layout_acquisition_failed.keys
   }
 }
 
@@ -751,6 +750,15 @@ type KvmObserverStart
 fn kvm_live_standing(journal: KvmJournalRead, subject: KvmObserverSubject, process: OwnedProcessStanding) -> KvmObserverStanding {
   match journal {
     KvmJournalUnread { cause: c } => KvmObserverJournalUnread { cause: c }
+    KvmJournalText { text: _ } =>
+      match kvm_observer_standing(events: kvm_journal_events_of(read: journal), subject: subject) {
+        KvmObserverEstablished { at: a, host: h, session: s, attempt: t } =>
+          match process {
+            OwnedRunning { pid: _, start_time: _ } => KvmObserverEstablished { at: a, host: h, session: s, attempt: t }
+            other => KvmObserverProcessNotRunning { process: other }
+          }
+        other => other
+      }
     KvmJournalAbsent =>
       match kvm_observer_standing(events: kvm_journal_events_of(read: journal), subject: subject) {
         KvmObserverEstablished { at: a, host: h, session: s, attempt: t } =>
