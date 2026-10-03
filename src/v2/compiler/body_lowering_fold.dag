@@ -3983,18 +3983,22 @@ fn body_lower_body_after_eq_token(captured: Node) -> Optional<Node> {
 // allowlist. A stamped composite or a leaf under it is still read as the parse wrote it. This
 // reading is confined to the reify pass; everywhere else an unstamped, unwrapped composite refuses.
 // The question is asked of the term authority: a parse production or a leaf is read as the parse
-// wrote it; a Lowered term, or a composite body_term_of cannot place, is lowered by position here.
-fn body_lower_reify_interior_is_lowered(node: Node) -> Bool {
+// wrote it, and a Lowered term is kept as lowered. A composite body_term_of cannot place is NOT
+// lowered by position: its refusal is the target's refusal and propagates, typed and located
+// (review 75108; DESIGN section 5, a failure arm refuses, never widens). The deleted allowlist
+// admitted only its listed shapes; reading every unplaceable composite as lowered admitted all.
+fn body_lower_reify_interior_is_lowered(node: Node) -> Outcome<Bool> {
   match body_term_of(node: node) {
-    Accepted { value: RawParse { node: _ }, diagnostics: _ } => false
-    Accepted { value: RawLeaf { node: _ }, diagnostics: _ } => false
-    Accepted { value: Lowered { node: _, shape: _ }, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => true
+    Accepted { value: RawParse { node: _ }, diagnostics: _ } => outcome_accepted(value: false)
+    Accepted { value: RawLeaf { node: _ }, diagnostics: _ } => outcome_accepted(value: false)
+    Accepted { value: Lowered { node: _, shape: _ }, diagnostics: _ } => outcome_accepted(value: true)
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
 
 fn body_lower_reify_operand_read(node: Node) -> Outcome<Node> {
-  if body_lower_reify_interior_is_lowered(node: node) {
+  bind_outcome(o: body_lower_reify_interior_is_lowered(node: node), f: fn(lowered) {
+  if lowered {
     outcome_accepted(value: node)
   } else {
   match body_lower_operand_ref_read(node: node) {
@@ -4011,6 +4015,7 @@ fn body_lower_reify_operand_read(node: Node) -> Outcome<Node> {
       }
   }
   }
+  })
 }
 
 // The head (positional 0) and a Named edge are kept as authored: the named edge is a
@@ -7106,7 +7111,8 @@ fn body_lower_reify_branch_target(node: Node) -> Outcome<Node> {
       match body_lower_literal_bool_atom_optional(node: node) {
         Present { value: reified } => outcome_accepted(value: reified)
         Absent =>
-          if body_lower_reify_interior_is_lowered(node: node) {
+          bind_outcome(o: body_lower_reify_interior_is_lowered(node: node), f: fn(lowered) {
+          if lowered {
             outcome_accepted(value: node)
           } else {
           match body_lower_operand_ref_read(node: node) {
@@ -7120,6 +7126,7 @@ fn body_lower_reify_branch_target(node: Node) -> Outcome<Node> {
               }
           }
           }
+          })
       }
   }
 }
