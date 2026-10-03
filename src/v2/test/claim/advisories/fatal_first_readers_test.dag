@@ -1,13 +1,15 @@
 module v2.test.claim.advisories.fatal_first_readers
 
 import v2.workflow.compile_door_ledger { DoorLedgerRow, DoorRefused, all_refused_causes_attributed, door_refused_row, ledger_cause_count, ledger_refused_count }
-import v2.workflow.realization_attempt { first_located_cause }
+import v2.workflow.realization_attempt { first_located_cause, first_located_file }
 import v2.lens.enforcement.grammar_coverage { ParseRejected, grammar_coverage_stage_rejected }
 import v2.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
   NonEmptyDiagnostics,
+  Textual,
   Unavailable,
+  WholeFile,
   invariant_port_locus
 }
 import v2.std.logic { Bool }
@@ -78,4 +80,35 @@ test fn door_ledger_histogram_counts_each_refusals_fatal_holds() -> Bool {
     && ledger_cause_count(rows: rows, reason: ^member_not_a_binder) == 2
     && ledger_cause_count(rows: rows, reason: ^resolve_reason_unbound_symbol) == 1
     && ledger_cause_count(rows: rows, reason: ^shared_advisory_head) == 0
+}
+
+fn textual_diagnostic(reason: Symbol, file: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: Textual { file: file, extent: WholeFile },
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn port_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: invariant_port_locus(port: ^fatal_first_readers, invariant: reason),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// THE REALIZATION SWEEP'S FILE. A textual fatal names the file; when the fatal names none, the first
+// textual element of the WHOLE chain does, the advisory head included. Two chains share an advisory
+// head located in file A: one has a textual fatal in file B (B wins), and one has a fatal located
+// only by port (A is kept). Searching only the tail loses A and answers "".
+test fn realization_file_is_the_fatals_else_the_chains_first_holds() -> Bool {
+  (first_located_file(ds: NonEmptyDiagnostics {
+      head: textual_diagnostic(reason: ^shared_advisory_head, file: ^file_a),
+      tail: [textual_diagnostic(reason: ^normalize_rejected, file: ^file_b)]
+    }) == "file_b")
+    && (first_located_file(ds: NonEmptyDiagnostics {
+      head: textual_diagnostic(reason: ^shared_advisory_head, file: ^file_a),
+      tail: [port_diagnostic(reason: ^resolve_reason_unbound_symbol)]
+    }) == "file_a")
 }

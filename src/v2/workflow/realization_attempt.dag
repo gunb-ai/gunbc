@@ -89,24 +89,22 @@ fn attempt_refused_at(entry: String, phase: RealizationPhase, cause: Symbol, loc
 }
 
 // The file is the FATAL element's when its locus names one; otherwise the first file any element
-// of the chain names, so a cause located only by port does not lose the file the chain recorded.
-fn first_located_file(ds: NonEmptyDiagnostics) -> String {
-  let head_file = match diagnostics_fatal(d: ds).at {
+// of the WHOLE chain names, head included, so a cause located only by port does not lose the file
+// an advisory ahead of it recorded.
+fn diagnostic_textual_file(d: Diagnostic) -> String {
+  match d.at {
     Textual { file: f, extent: _ } => symbol_lexeme(sym: f)
     _ => ""
   }
-  if head_file != "" {
-    head_file
+}
+
+fn first_located_file(ds: NonEmptyDiagnostics) -> String {
+  let fatal_file = diagnostic_textual_file(d: diagnostics_fatal(d: ds))
+  if fatal_file != "" {
+    fatal_file
   } else {
-    fold_list(xs: ds.tail, empty: "", cons: fn(acc, d) {
-      if acc != "" {
-        acc
-      } else {
-        match d.at {
-          Textual { file: f, extent: _ } => symbol_lexeme(sym: f)
-          _ => ""
-        }
-      }
+    fold_list(xs: ds.tail, empty: diagnostic_textual_file(d: ds.head), cons: fn(acc, d) {
+      if acc != "" { acc } else { diagnostic_textual_file(d: d) }
     })
   }
 }
