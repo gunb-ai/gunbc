@@ -82,7 +82,7 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -503,7 +503,7 @@ fn java_void_declared_inhabitant_node() -> Node {
 }
 
 fn java_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn java_declared_inhabitants_root() -> Node {
@@ -729,7 +729,8 @@ fn java_method_add_lex_rules() -> LexRuleSet {
       java_lex_rule(token_class: ^java_token_rparen, text: ") "),
       java_lex_rule(token_class: ^java_token_comma, text: ", "),
       java_lex_rule(token_class: ^java_token_semicolon, text: ";")
-    ]
+    ],
+    modes: []
   }
 }
 
@@ -801,7 +802,8 @@ fn java_lex_rules() -> LexRuleSet {
     rules: list_append(
       left: java_method_add_lex_rules().rules,
       right: java_extended_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 

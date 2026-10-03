@@ -12,7 +12,7 @@ import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Bind, ComputationNode, Found, Match, Node, Symbol, named_edge_target_lookup, node_subtree_nodes }
+import v2.std.node { Bind, ComputationNode, Found, Match, Node, Symbol, node_subtree_nodes, MatchArmBodyEdge, core_edge_target_lookup }
 import v2.std.node_query { node_positional_child_targets }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
@@ -139,7 +139,7 @@ fn mps_is_bind(n: Node, key: Symbol, value: Symbol, callee: Symbol, arg: Symbol)
 // An arm (body_lowering_fold body_lower_match_arm_wire: a Conj with a Named match_arm_body edge)
 // whose body is that Bind.
 fn mps_is_arm_binding(n: Node, key: Symbol, value: Symbol, callee: Symbol, arg: Symbol) -> Bool {
-  match named_edge_target_lookup(children: n.children, name: ^match_arm_body) {
+  match core_edge_target_lookup(children: n.children, marker: MatchArmBodyEdge) {
     Found { target: body } => mps_is_bind(n: body, key: key, value: value, callee: callee, arg: arg)
     _ => false
   }

@@ -872,6 +872,53 @@ pub(crate) fn cost_debt_changed_witness_ceiling(
     Ok((edit, budget))
 }
 
+/// One file's content at the resolved diff base (`v2.workflow.floor_diff_observe`
+/// `floor_run_base_file_read`): `Ok(None)` when the base does not carry the path, `Err` when the
+/// listing or show refused -- a refusal is never read as an absent or empty file.
+pub(crate) fn floor_base_file_read(path: &str) -> Result<Option<String>, String> {
+    use v1_interpreter::Value;
+    let comparison = floor_diff_comparison_readout()?;
+    let roots = default_source_roots();
+    let entry = "src/v2/workflow/floor_diff_observe.dag";
+    let (graph, indices) = resolve_entry_graph_shared(&roots, entry)
+        .map_err(|e| format!("floor_diff_observe resolve: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let args = [
+        (Some("base".to_string()), str_value(comparison.base())),
+        (Some("path".to_string()), str_value(path)),
+    ];
+    let result =
+        v1_interpreter::run_in_context_with_args(&ctx, "floor_run_base_file_read", &args, false)
+            .map_err(|e| format!("floor_run_base_file_read: {e}"))?;
+    match &result {
+        Value::Variant { variant_name, .. } if ctx.sym_eq(*variant_name, "BaseFileAbsent") => {
+            Ok(None)
+        }
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "BaseFileRead") => match ctx.field(fields, "content") {
+            Some(Value::Str(c)) => Ok(Some(c.to_string())),
+            _ => Err("BaseFileRead missing `content`".to_string()),
+        },
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "BaseFileReadRefused") => {
+            match ctx.field(fields, "reason") {
+                Some(Value::Str(r)) => Err(format!("base read of {path} refused: {r}")),
+                _ => Err(format!("base read of {path} refused (no reason)")),
+            }
+        }
+        other => Err(format!(
+            "floor_run_base_file_read returned an unexpected value: {}",
+            ctx.format_value(other)
+        )),
+    }
+}
+
 /// Names of `test fn` / `test data` declarations at the resolved diff base, per path.
 /// Authority: `v2.workflow.floor_diff_observe` `floor_run_base_test_decl_census`. A refused
 /// census is an observation failure and never becomes an empty map.
@@ -4355,11 +4402,6 @@ pub(crate) fn run_discovery_corpus_with_options_inner(
         }
         other => other,
     };
-    // P4 advisory-first: predict the memory-packed width per witness from its derived
-    // space bound, logged beside the governor — no scheduling change. Gated (opt-in).
-    if std::env::var("GUNBC_REALIZE_ADVISORY").is_ok() {
-        emit_realize_advisory_for_rows(source_roots, &rows);
-    }
     let deferred_rows = if options.explicit_roster_only || scan_dirs.is_empty() {
         Vec::new()
     } else {
@@ -7820,6 +7862,25 @@ pub fn run_required_floor(
             }
         }
     }
+    // A ROW-ONLY ROSTER EDIT names subjects the diff never touched: the typed non-fold-residue
+    // check can only judge a row whose subject module is PREPARED, so the subjects of rows the diff
+    // added or deleted become seeds here (read at the floor's own diff base; an unreadable base
+    // roster refuses, never narrows the scope).
+    let nfr_row_subjects: Vec<crate::cli_run::NonFoldResidueRowSubject> = match &compile_subject {
+        Some(subject)
+            if subject
+                .touched_modules
+                .iter()
+                .any(|m| m == "gunbc.non_fold_residue") =>
+        {
+            crate::cli_run::non_fold_residue_changed_row_subjects().map_err(|e| {
+                format!("REQUIRED-FLOOR REFUSAL cause=NonFoldResidueRosterBaseUnreadable {e}")
+            })?
+        }
+        _ => Vec::new(),
+    };
+    let nfr_row_subject_modules =
+        crate::cli_run::non_fold_residue_row_subject_seeds(&nfr_row_subjects);
     // THE CHECKER IS A DEPENDENCY OF EVERY MODULE IT JUDGES (`v2.workflow.floor_subject_seed`
     // `SeedCheckerSourceChanged`, decided by `checker_subject_rule`). When the diff names a file
     // the running checker was compiled from, every admitted module is seeded into Strict
@@ -7920,6 +7981,7 @@ pub fn run_required_floor(
             .flat_map(|subject| subject.touched_modules.iter().cloned()),
     )
     .chain(interface_consumer_seeds.iter().cloned())
+    .chain(nfr_row_subject_modules.iter().cloned())
     .collect();
     // The strict resolve's graph is attributed by bytes where the floor frees it (entry_resolve
     // `typed_graph_byte_attribution`); armed here so no other resolve caller pays or prints it.
@@ -8270,6 +8332,94 @@ pub fn run_required_floor(
          modules_excluded={} digest={}",
         prepare_ms, prepared.modules_resolved, prepared.modules_excluded, prepared.subject_digest
     );
+    // THE NON-FOLD-RESIDUE ROSTER, TYPED AND DIFF-SCOPED, over the graph just prepared -- no
+    // second compile. Scope: the touched modules and the planned interface consumers, both already
+    // seeds of this subject. A local run with no diff observation evaluates nothing and says so.
+    match &compile_subject {
+        None => eprintln!(
+            "[floor-phase] phase=non-fold-residue-diff state=not-evaluated -- no diff observation \
+             on this run, so no scope"
+        ),
+        Some(subject) => {
+            let scoped: BTreeSet<String> = subject
+                .touched_modules
+                .iter()
+                .chain(interface_consumer_seeds.iter())
+                .chain(nfr_row_subject_modules.iter())
+                .cloned()
+                .collect();
+            let verdict = crate::cli_run::non_fold_residue_diff_verdict(
+                &prepared.graph,
+                &prepared.source_indices,
+                &scoped,
+                &nfr_row_subjects,
+            );
+            eprintln!(
+                "[floor-phase] phase=non-fold-residue-diff state=completed scoped_modules={} \
+                 typed_modules={} wildcard_arms={} residue_sites={} unrostered={} stale={} \
+                 scoped_but_untyped={} undetermined_scrutinees={} residual=gunbc.recurring_failure_mode.non_fold_residue_diff_scope_misses_an_untouched_flip",
+                verdict.scoped_modules,
+                verdict.walk.covered_modules.len(),
+                verdict.walk.facts.len(),
+                verdict.walk.non_fold_residue_sites().len(),
+                verdict.unrostered.len(),
+                verdict.stale.len(),
+                verdict.scoped_but_untyped.len(),
+                verdict.walk.undetermined_sites.len(),
+            );
+            for module in &verdict.scoped_but_untyped {
+                eprintln!(
+                    "[floor-plan] NonFoldResidueScopedModuleUntyped module_path={module} -- in the \
+                     diff scope but not in the prepared graph (excluded or outside the roots, as \
+                     the seed lines above say); its residue is not judged on this run"
+                );
+            }
+            for site in &verdict.walk.undetermined_sites {
+                eprintln!(
+                    "[floor-plan] NonFoldResidueScrutineeTypeUndetermined site={site} -- a wildcard \
+                     arm whose scrutinee carries no resolved inferred type; refuses unless the site \
+                     carries its own roster row"
+                );
+            }
+            if !verdict.unrostered.is_empty()
+                || !verdict.stale.is_empty()
+                || !verdict.undetermined_unrostered.is_empty()
+                || !verdict.row_subjects_untyped.is_empty()
+            {
+                let mut lines: Vec<String> = verdict
+                    .unrostered
+                    .iter()
+                    .map(|s| format!("  unrostered live site: {s}"))
+                    .collect();
+                lines.extend(
+                    verdict
+                        .stale
+                        .iter()
+                        .map(|s| format!("  stale roster entry: {s}")),
+                );
+                lines.extend(verdict.row_subjects_untyped.iter().map(|m| {
+                    format!("  changed roster row's subject not judged at its exact path: {m}")
+                }));
+                lines.extend(
+                    verdict
+                        .undetermined_unrostered
+                        .iter()
+                        .map(|s| format!("  undetermined scrutinee type, no row of its own: {s}")),
+                );
+                return Err(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=NonFoldResidueRosterDiverged unrostered={} \
+                     stale={} undetermined={} -- a wildcard arm whose scrutinee's inferred type is a closed \
+                     coproduct needs its own row (reason + dissolution) in \
+                     gunbc.non_fold_residue non_fold_residue_frontier, and a row whose site no \
+                     longer carries one deletes:\n{}",
+                    verdict.unrostered.len(),
+                    verdict.stale.len(),
+                    verdict.undetermined_unrostered.len(),
+                    lines.join("\n")
+                ));
+            }
+        }
+    }
     // WHERE PREPARATION'S WALL AND POPULATION GO: `compile.reconcile`, measured 2026-08-16.
     //
     // No dump is emitted here, and that is the finding rather than an omission. A

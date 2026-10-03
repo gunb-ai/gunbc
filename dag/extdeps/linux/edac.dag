@@ -43,6 +43,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 service diagnostic.edac.RasMcCtl {
   operation CorrectableCounts {
+    requires none
     input {}
     output { stdout: String from "stdout", success: Bool from "exit_success" }
     readonly

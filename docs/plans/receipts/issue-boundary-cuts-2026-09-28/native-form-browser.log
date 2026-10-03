@@ -1,2 +1,0 @@
-PASS browser_post_control
-PASS native Chromium POST through .dag form decoder

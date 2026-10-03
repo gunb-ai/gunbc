@@ -16,7 +16,7 @@ import v2.std.node {
   ComputationNode,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -46,7 +46,7 @@ fn ulsh_leaf() -> Node {
 fn ulsh_unknown_shape() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: Named { name: ^ulsh_probe_edge }, target: ulsh_leaf() }]
+    children: [Edge { label: Authored { name: ^ulsh_probe_edge }, target: ulsh_leaf() }]
   )
 }
 
@@ -57,7 +57,7 @@ fn ulsh_unknown_over_transform() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^ulsh_probe_edge },
+        label: Authored { name: ^ulsh_probe_edge },
         target: node_synthetic(
           kind: ComputationNode { behavior: Transform },
           children: [Edge { label: Positional, target: ulsh_leaf() }]
@@ -71,8 +71,8 @@ fn ulsh_raw_sequence() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^grammar_sequence_left_node_projection }, target: ulsh_leaf() },
-      Edge { label: Named { name: ^grammar_sequence_right_node_projection }, target: ulsh_leaf() }
+      Edge { label: Authored { name: ^grammar_sequence_left_node_projection }, target: ulsh_leaf() },
+      Edge { label: Authored { name: ^grammar_sequence_right_node_projection }, target: ulsh_leaf() }
     ]
   )
 }

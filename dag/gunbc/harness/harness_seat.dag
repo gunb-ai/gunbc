@@ -19,7 +19,7 @@ import product.capacity.event_chain {
   PartitionId, EventId, HeadAbsent, HeadAt, ChainEvent, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted,
 }
 import product.capacity.pool_events {
-  PoolEvent, PoolAcquired, PoolReleased, SeatRequest, PoolFold, PoolFolded, PoolFoldRefused, pool_fold,
+  PoolEvent, PoolAcquired, PoolSettled, PoolReleased, PoolLapsed, PoolUpstreamObserved, PoolResetObserved, SeatRequest, PoolFold, PoolFolded, PoolFoldRefused, pool_fold,
 }
 import product.capacity.lease { LeasePolicy, LeaseGrant, GrantIdentity, QuiescenceRequired }
 import gunbc.fabric_storage_client { FabricStorageBinding }
@@ -1565,7 +1565,11 @@ fn admitting_event_for(walk: ChainWalk<PoolEvent>, reference: NonEmptyStr) -> Ev
             match env.event.payload {
               PoolAcquired { reference: r, amount: _, term_seconds: _ } =>
                 if (r as String) == (reference as String) { Present { value: env.id } } else { none }
-              _ => none
+              PoolSettled { reference: _, actual: _ } => none
+              PoolReleased { reference: _, reason: _ } => none
+              PoolLapsed => none
+              PoolUpstreamObserved { remaining: _, term_seconds: _ } => none
+              PoolResetObserved { reset_at: _ } => none
             }
         })
   }

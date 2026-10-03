@@ -39,6 +39,7 @@ data openssl_cli_tool: CliTool = CliTool {
 // through a String is a lossy decode the caller could not detect; hex round-trips exactly.
 service openssl.Dgst {
   operation SignSha256Hex {
+    requires none
     input { key_file: NonEmptyStr, signing_input: NonEmptyStr }
     output {
       exit_code: Int from "exit_code"

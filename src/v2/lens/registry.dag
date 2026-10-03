@@ -45,7 +45,6 @@ type LensIdV0
   | MockTotality
   | MetaExecConfinement
   | MutationAdequacy
-  | NonFoldResidue
   | RealizationVocabularyContainment
   | RosterRegistry
   | ScheduleLens
@@ -301,11 +300,6 @@ data lens_registry_v0_mutation_adequacy: LensRegistryEntryV0 = {
   module_path: Bound { path: "v2.lens.mutation_adequacy" }
 }
 
-data lens_registry_v0_non_fold_residue: LensRegistryEntryV0 = {
-  lens_id: NonFoldResidue
-  module_path: Bound { path: "v2.lens.non_fold_residue" }
-}
-
 data lens_registry_v0_realization_vocabulary_containment: LensRegistryEntryV0 = {
   lens_id: RealizationVocabularyContainment
   module_path: Bound { path: "v2.lens.realization_vocabulary_containment" }
@@ -420,7 +414,6 @@ data lens_registry_v0: List<LensRegistryEntryV0> = [
   lens_registry_v0_meta_exec_confinement,
   lens_registry_v0_mock_totality,
   lens_registry_v0_mutation_adequacy,
-  lens_registry_v0_non_fold_residue,
   lens_registry_v0_realization_vocabulary_containment,
   lens_registry_v0_roster_registry,
   lens_registry_v0_schedule_lens,
@@ -613,10 +606,6 @@ fn lens_id_v0_eq(left: LensIdV0, right: LensIdV0) -> Bool {
     }
     MutationAdequacy => match right {
       MutationAdequacy => true
-      _ => false
-    }
-    NonFoldResidue => match right {
-      NonFoldResidue => true
       _ => false
     }
     RealizationVocabularyContainment => match right {

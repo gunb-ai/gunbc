@@ -1,0 +1,71 @@
+module test.claim.instruments.instrument_dispatch_workflow_witness_test
+
+import std.types { Bool, List, String }
+import v2.std.algebra { length }
+import extdeps.github.actions { Step, RunStep, UsesStep }
+import v2.std.optional { Absent, Present }
+import gunbc.instrument_dispatch_workflow {
+  instrument_dispatch_steps, instrument_dispatch_seed_step_name,
+  InstrumentDispatchWorkflowGenerated, InstrumentDispatchWorkflowGenerationRefused,
+  expected_instrument_dispatch_yml, instrument_dispatch_label_options, instrument_dispatch_labels_are_rostered
+}
+
+// THE OPERATOR'S CONDITIONS FOR THE DISPATCH-ONLY INSTRUMENT WORKFLOW, AS THE GENERATED TEXT CARRIES
+// THEM. The drift gate (gunbc.generated_artifact) holds the committed file to this generator; these
+// claims hold the generator to the conditions.
+
+// The input is a closed choice whose every option is a rostered instrument label.
+test fn every_dispatch_option_is_a_rostered_instrument_label_holds() -> Bool {
+  instrument_dispatch_labels_are_rostered() && (length(xs: instrument_dispatch_label_options()) > 0)
+}
+
+fn generated_text() -> String {
+  match expected_instrument_dispatch_yml() {
+    InstrumentDispatchWorkflowGenerated { content: c } => c
+    InstrumentDispatchWorkflowGenerationRefused { reason: _ } => ""
+  }
+}
+
+// workflow_dispatch is the only trigger; the input is a choice; the job is bounded, serialized and
+// read-only; and the receipt is uploaded on every termination.
+test fn the_workflow_is_dispatch_only_bounded_serialized_and_read_only_holds() -> Bool {
+  let t = generated_text()
+  contains(t, "workflow_dispatch:")
+    && !contains(t, "pull_request")
+    && !contains(t, "merge_group")
+    && !contains(t, "schedule")
+    && !contains(t, "push:")
+    && contains(t, "type: choice")
+    && contains(t, "timeout-minutes: 240")
+    && contains(t, "concurrency: instrument-dispatch")
+    && contains(t, "contents: read")
+    && !contains(t, ": write")
+    && contains(t, "instrument-dispatch-receipt")
+    && contains(t, "if: always()")
+}
+
+fn step_name(step: Step) -> String {
+  match step {
+    RunStep { name: n, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match n {
+        Present { value: v } => v
+        Absent => ""
+      }
+    UsesStep { name: n, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match n {
+        Present { value: v } => v
+        Absent => ""
+      }
+  }
+}
+
+// THE RECEIPT'S PRODUCER PRECEDES EVERYTHING THAT CAN FAIL (review of gunbc#12998). Over the job's own
+// step list: the first step is the seed, and the checkout and the build come after it, so a run that dies
+// in the prelude still has a receipt for the always() upload to read.
+test fn the_receipt_is_seeded_before_the_fallible_prelude_holds() -> Bool {
+  let names = map(instrument_dispatch_steps(seed: "", script: ""), s => step_name(step: s))
+  let first = fold(names, init: "", f: fn(acc, n) { if acc == "" { n } else { acc } })
+  (first == instrument_dispatch_seed_step_name)
+    && any(names, n => n == "Checkout")
+    && any(names, n => n == "Build the compiler")
+}
