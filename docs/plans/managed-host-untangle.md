@@ -190,13 +190,27 @@ Each phase yields one result and one receipt. Supporting operations are **nested
 |---|---|---|---|
 | `AccessDiscover` | access observation, firmware family, **and the sealed route standing** (below) | read-only probes | the controller's own clock reading, recorded as an observation and never used for ordering |
 | `IdentityBindProvisional` | the exact `MachineIntakeSubject` (below) and its `HostIdentity` binding | read-only: FRU, firmware versions | subject construction; host allocation lookup |
-| `PriorLifeBoundary` | a baseline cursor over the controller's prior-life record exists for this subject | **read-only arm**: record the baseline cursor, Noop or Apply, clearing nothing. **Archive-and-clear arm**: a write with its own admission and operator sign-off, **not in this cut**. | — |
+| `PriorLifeBoundary` | `LogsArchivedWithBaselineCursor`: the prior-life carriers are archived as content-addressed evidence and a cursor is derived from that archive (below) | **read-only arm**: archive, derive the cursor, clear nothing. **`LogsArchivedAndCleared`**: a write with its own admission and operator sign-off, **not in this cut**. | per-carrier completeness standings |
 | `BmcSecure` | the existing conjunction: the managed credential is accepted **and** the published credential is refused on every LAN member of the channel census | **write**: the typed account action, operator-gated per unit | secret generation, store and exact-version fetch **before** the write (below) |
-| `BootDeliveryEstablish` | the existing boot acceptance | the boot run (O2 only) | managed-host admission (below); materialization of the same secret generation for the boot wrappers |
+| `BootDeliveryEstablish` | **one eligible delivery transport selected from live observations**: a `gunbc.boot_artifact_delivery` `BootDeliveryPlan`, bound to subject, controller and artifact. **This is not the boot run.** | read-only observations; the selection | managed-host admission (below) |
 
 `PriorLifeBoundary` has no implementation today: the phase is declared and nothing produces it. A factory or repaired unit cannot skip it, so O1c builds its read-only arm. That is new work this plan had omitted.
 
-**O1 and O2.** O1 runs the prefix through `BmcSecure` and ends at an admitted managed host. O2 adds `BootDeliveryEstablish` by re-rooting the boot mode, and it lands only after cut 4d has made the boot run host-generic. mtcollins1's wet `BmcSecure` control needs no boot, so it runs at O1.
+**What the `PriorLifeBoundary` read-only arm is** (`docs/plans/machine-intake-design.md` §5: `PriorLifeBoundaryEstablished = LogsArchivedAndCleared | LogsArchivedWithBaselineCursor`). It is an **archive**, not a bare cursor.
+- **Carriers archived**, each as content-addressed evidence with its own completeness standing: the BMC clock, the SEL and event logs, the Redfish log collections, audit and account events, the current boot override, virtual-media state, power state, and a sensor snapshot.
+- **Cursor:** derived **from that archive**.
+- **Nothing is cleared.**
+- **Incomplete archive:** a required carrier that cannot be archived makes the phase refuse, or records a typed gap. It is never silently omitted.
+- **Policy admission:** the design admits this arm "only where platform policy explicitly admits an uncleared append-only boundary". That admission is an authored policy row per platform. It is a decision this cut must state for Mt. Collins and Mt. Jade, not assume.
+- **Control:** only the SEL final record id, with the other carriers absent → not established.
+
+**What `BootDeliveryEstablish` is, and is not.** It is phase 5: a delivery plan or standing. The boot run is not part of it, and establishing it completes no later phase.
+- **O2:** consumes the established delivery to enter the existing boot run.
+- **Controls:**
+  - delivery selected → `BootDeliveryEstablish` established **and `DiagnosticBootAttest` unestablished**;
+  - no `BootDeliveryEstablish` → the boot entry cannot start.
+
+**O1 and O2.** O1 runs the prefix through `BmcSecure` and ends at an admitted managed host. O2 adds `BootDeliveryEstablish` (the delivery standing) and re-roots the boot mode so that the existing boot run is entered only from an established delivery. It lands only after cut 4d has made the boot run host-generic. The boot run itself, and every phase after phase 5, stays what it is. mtcollins1's wet `BmcSecure` control needs no boot, so it runs at O1.
 
 #### The subject (`IdentityBindProvisional`)
 
@@ -226,7 +240,18 @@ So the route is a **sealed standing bound to an endpoint, a firmware build and e
 - **grounded by a cited source for this build** (carries the citation);
 - **ungrounded.**
 
-An Apply over an ungrounded route refuses. mtcollins1's IPMI route does **not** authorize mtjade1. mtjade1's route is ungrounded today, so its `BmcSecure` Apply refuses until an operator-authorized first execution on that controller, or a cited source, grounds one. That first execution is the same operator-gated wet step, and its receipt is what mints the executed arm.
+An ordinary `BmcSecure` Apply consumes **only a grounded standing**. mtcollins1's IPMI route does **not** authorize mtjade1, whose route is ungrounded today.
+
+**Grounding a route is its own effect, not the Apply.** The Apply cannot produce the premise that admits it, so there is a bootstrap with its own authorization:
+
+`RouteUngrounded` → `RouteQualificationCandidate { endpoint, firmware_build, request shape, evidence }` → `RouteGroundedByExecutedRequest { endpoint, firmware_build, request receipt, response receipt }`
+
+- The transition is made by a **separately authorized route-qualification effect**. It is classified as its own privileged effect through `select_authorization_pattern`, and it has its own operator go-ahead per controller.
+- The candidate names the exact request shape and the evidence that makes it worth trying (an observed surface, a public standard's operation). It authorizes nothing by itself.
+- Only the grounded arm enters ordinary `BmcSecure` Apply.
+- **RED:** `RouteUngrounded` + operator approval of the rotation + ordinary Apply → refuse.
+
+This is the MegaRAC rotation operation that the runner-bringup gap analysis lists first. The route standing is keyed by endpoint and build and carries request and response receipts, so the same model serves that backlog's other consumers without a second route vocabulary.
 
 Controls:
 - two `AmiMegaRac` controllers with different observed and executed surfaces produce different route standings;
