@@ -324,13 +324,17 @@ fn gunbc_claim_execution_contract(
   entry: FilePath,
   function: NonEmptyStr,
 ) -> WorkItemExecutionContract {
+  gunbc_claims_execution_contract(entry: entry, functions: [function])
+}
+
+// A node accepted by several claims of one witness module names each as its own validation:
+// a test may not call another test, so a conjunction test cannot stand in for the set.
+fn gunbc_claims_execution_contract(
+  entry: FilePath,
+  functions: List<NonEmptyStr>,
+) -> WorkItemExecutionContract {
   agent_execution_contract(
-    validations: [
-      GunbcClaimValidation {
-        entry: entry,
-        function: function,
-      },
-    ],
+    validations: map(functions, f => GunbcClaimValidation { entry: entry, function: f }),
     extra_capabilities: [],
   )
 }
@@ -567,6 +571,7 @@ fn validation_operation_command(
                 "--entry", closing_contract_authoring_entry as String,
                 "--function", closing_contract_authoring_function as String,
                 "--arg", join(["target=", target as String], ""),
+                "--arg", join(["runner=", realization.executable as String], ""),
                 "--claim-run",
               ],
             ),

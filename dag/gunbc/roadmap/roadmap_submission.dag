@@ -1,0 +1,628 @@
+module gunbc.roadmap.roadmap_submission
+
+import std.types { String, Int, Bool, List, NonEmptyStr }
+import std.content_hash { content_hash_atom }
+import extdeps.languages.json.emit {
+  JsonValue,
+  json_string,
+  json_int,
+  json_object,
+  json_kv,
+  serialize_json,
+}
+import extdeps.languages.json.parse {
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  json_document_gap_text,
+  json_object_unique_member,
+  JsonMemberFound,
+}
+import gunbc.roadmap_provider_events {
+  ProviderExecutionState,
+  ProviderNotStarted,
+  ProviderStarting, ProviderAwaitingSeat,
+  ProviderRunning,
+  ProviderCompleted,
+  ProviderFailed,
+  ProviderBudgetSpent,
+  ProviderEventsRefused,
+}
+import gunbc.roadmap_publish { publication_receipt_member, publication_receipt_int_member, ReceiptMemberRead, ReceiptMemberUnreadable }
+import gunbc.scm.ancestry { RepositoryCommitRef }
+import gunbc.scm.repository_envelope { RepositoryCommit, commit_at_reference }
+import std.minted_identity { MintedId }
+
+// THE SUBMISSION ARTIFACT IS THE WORKER'S ONE DECLARED ACT, AND THIS MODULE IS ITS ONLY AUTHORITY.
+//
+// docs/plans/harness-work-lifecycle.md rule 2: a submission is not a checkpoint. The belt commits a
+// dirty terminal worktree either way, but the two commits mean different things -- a commit swept
+// with no submission is PRESERVATION (the attempt yielded; nothing is ready), and a commit swept
+// with a decodable submission is the CAPTURED CANDIDATE the handoff operation binds. Only the
+// second advances to authoritative verification. Budget exhaustion without this artifact is
+// therefore `Yielded`, never ready, and no belt tick may attach a worker's earlier acknowledgment
+// to a tree the worker did not declare it against.
+//
+// The artifact's name is spelled once here: the belt's reader, the capture freshness judgment, and
+// the worker-facing contract (gunbc.harness.harness_guidance) all project it, so the prompt cannot
+// teach a filename the belt does not read.
+data submission_artifact_name: NonEmptyStr = ".gunbc-submission.json" as NonEmptyStr
+
+// THE SCHEMA IS A WALL RATHER THAN A HINT, on the precedent gunbc.roadmap_publish
+// publication_receipt_schema_v2_note sets: a document whose schema is not exactly this string is
+// refused, so a future shape cannot be silently read as this one with members missing.
+data submission_schema: NonEmptyStr = "roadmap-submission/v1" as NonEmptyStr
+
+// THE CAPTURE CARRIER IS VERSIONED, AND THE VERSIONS ARE BOTH READ. v2 is the shape production
+// has written since the capture record landed: ordinal binding alone, no root locator. v3 adds
+// the root-locator binding (SubmissionCaptureRoot below), and the decoder admits each schema only
+// into the arm that shape can honestly populate -- a v2 document decodes LegacyUnbound and is never
+// read as if it had authenticated its commit, because the one fact the binding carries is exactly
+// the fact a v2 writer never recorded. The bump is for the reader going forward rather than the
+// back: holding the tag at v2 would leave a v3 reader refusing the new records as unknown, or
+// worse, reading a missing member as a legacy arm and integrating a capture it never verified.
+data submission_capture_schema: NonEmptyStr = "roadmap-submission-capture/v2" as NonEmptyStr
+
+data submission_capture_schema_v3: NonEmptyStr = "roadmap-submission-capture/v3" as NonEmptyStr
+
+// THREE READINGS OF "HOW THE TASK ENDED", NOT ONE. `ready` declares a candidate: capture it and
+// judge it. `blocked` and `needs-context` declare that no candidate exists and why -- they end the
+// task truthfully without manufacturing readiness, which is the escape the lifecycle's axiom
+// forbids (a worker may not redefine a code-change task as "analysis completed"). All three are
+// submissions; only `ready` produces a candidate. The distinction is carried rather than collapsed
+// so the capture record preserves WHICH declaration the worker made.
+type SubmissionReadiness
+  = SubmissionReady
+  | SubmissionBlocked
+  | SubmissionNeedsContext
+
+type WorkerSubmission {
+  readiness: SubmissionReadiness
+  explanation: String
+  limitations: String
+}
+
+// WHETHER A SUBMISSION IS A VERIFICATION CANDIDATE, decided once. `ready` is the only declaration
+// that produces a candidate; `blocked` and `needs-context` end the task without one. Every pass that
+// asks "does this captured head advance to verification?" -- the verify pass, the integrate step,
+// the handoff projection -- consumes this classifier rather than re-matching readiness, so the passes
+// cannot disagree about one capture (the 2026-09-29 fork: verify deferred a blocked capture while
+// the integrate step read it as a candidate and failed the publish pass on every tick).
+type SubmissionCandidacy
+  = SubmissionIsCandidate
+  | SubmissionNotCandidate { reason: String }
+
+fn submission_candidacy(submission: WorkerSubmission) -> SubmissionCandidacy {
+  match submission.readiness {
+    SubmissionReady => SubmissionIsCandidate
+    SubmissionBlocked =>
+      SubmissionNotCandidate {
+        reason: join([
+          "the captured submission declares blocked, not ready: ",
+          submission.explanation,
+          " -- no candidate advances to verification",
+        ], ""),
+      }
+    SubmissionNeedsContext =>
+      SubmissionNotCandidate {
+        reason: join([
+          "the captured submission declares needs-context, not ready: ",
+          submission.explanation,
+          " -- no candidate advances to verification",
+        ], ""),
+      }
+  }
+}
+
+fn submission_readiness_key(r: SubmissionReadiness) -> String {
+  match r {
+    SubmissionReady => "ready"
+    SubmissionBlocked => "blocked"
+    SubmissionNeedsContext => "needs-context"
+  }
+}
+
+fn submission_readiness_from_key(key: String) -> SubmissionReadiness? {
+  if key == "ready" {
+    Present { value: SubmissionReady }
+  } else if key == "blocked" {
+    Present { value: SubmissionBlocked }
+  } else if key == "needs-context" {
+    Present { value: SubmissionNeedsContext }
+  } else {
+    none
+  }
+}
+
+fn submission_json(submission: WorkerSubmission) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: submission_schema as String)),
+    json_kv(key: "readiness", value: json_string(s: submission_readiness_key(r: submission.readiness))),
+    json_kv(key: "explanation", value: json_string(s: submission.explanation)),
+    json_kv(key: "limitations", value: json_string(s: submission.limitations)),
+  ])
+}
+
+fn submission_text(submission: WorkerSubmission) -> String {
+  serialize_json(v: submission_json(submission: submission))
+}
+
+type SubmissionDecode
+  = SubmissionDecoded { submission: WorkerSubmission }
+  | SubmissionNotDecodable { reason: String }
+
+fn submission_decode_document(doc: JsonValue) -> SubmissionDecode {
+  match publication_receipt_member(doc: doc, key: "schema") {
+    ReceiptMemberUnreadable { reason: r } => SubmissionNotDecodable { reason: r }
+    ReceiptMemberRead { value: schema } =>
+      if schema != (submission_schema as String) {
+        SubmissionNotDecodable {
+          reason: join(["submission schema is ", schema, ", not ", submission_schema as String], ""),
+        }
+      } else {
+        match publication_receipt_member(doc: doc, key: "readiness") {
+          ReceiptMemberUnreadable { reason: r } => SubmissionNotDecodable { reason: r }
+          ReceiptMemberRead { value: readiness } =>
+            match submission_readiness_from_key(key: readiness) {
+              Absent =>
+                SubmissionNotDecodable {
+                  reason: join(["submission readiness is ", readiness, ", which is not ready, blocked or needs-context"], ""),
+                }
+              Present { value: r } =>
+                match publication_receipt_member(doc: doc, key: "explanation") {
+                  ReceiptMemberUnreadable { reason: e } => SubmissionNotDecodable { reason: e }
+                  ReceiptMemberRead { value: explanation } =>
+                    match publication_receipt_member(doc: doc, key: "limitations") {
+                      ReceiptMemberUnreadable { reason: e } => SubmissionNotDecodable { reason: e }
+                      ReceiptMemberRead { value: limitations } =>
+                        SubmissionDecoded {
+                          submission: WorkerSubmission {
+                            readiness: r,
+                            explanation: explanation,
+                            limitations: limitations,
+                          },
+                        }
+                    }
+                }
+            }
+        }
+      }
+  }
+}
+
+fn submission_decode(text: String) -> SubmissionDecode {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap } =>
+      SubmissionNotDecodable {
+        reason: concat("the submission artifact is ", json_document_gap_text(gap: gap)),
+      }
+    JsonDocumentParsed { value: doc } => submission_decode_document(doc: doc)
+  }
+}
+
+// THE DIGEST IS OVER THE SUBMISSION'S OWN SERIALIZATION, so two byte-identical declarations have one
+// identity. The freshness judgment below keys on it: a belt tick that sweeps the SAME bytes again
+// after they were already captured has not witnessed a new declared act -- the worker's
+// acknowledgment binds to the capture it was captured in, and a later edit inherits nothing.
+fn submission_digest(submission: WorkerSubmission) -> String {
+  content_hash_atom(
+    value: join([submission_schema as String, "|", submission_text(submission: submission)], "") as NonEmptyStr,
+  ).digest as String
+}
+
+// THE CAPTURE RECORD IS THE HANDOFF BINDING. The belt writes it at candidate-commit time, keyed by
+// the head it just created, beside the attempt's other head-grain receipts. It is the whole of what
+// "the acknowledgment binds to THAT capture" means mechanically: verification eligibility for a head
+// is the existence of a decodable capture record at that head's own address, so a later edit (a new
+// head) inherits no prior evidence, and the old head's record is preserved rather than rewritten.
+//
+// THE ROOT-LOCATOR BINDING, the capture's self-authenticating half. A commit's repository-relative
+// ordinal alone is not an identity: minted ordinals are per-envelope counters, so ordinal 1 names
+// one commit in one envelope and a DIFFERENT commit in another, and a capture carried across
+// envelopes (or an envelope rebuilt under a capture) resolves its ordinal to a stranger's commit
+// -- the 2026-09-22 diagnosis's second hole, where a "successful" integrate could have published
+// the wrong candidate's content while every receipt read honest. The locator is the commit root's
+// content identity, recorded at capture time and verified against commits[ordinal].root before any
+// integrate, so a mismatched ordinal refuses typed instead of merging a stranger.
+//
+// LegacyUnbound is the v2 population's honest decoding: those captures recorded no locator, and
+// "recorded no locator" is a different fact from "recorded the wrong locator" -- the first refuses
+// integrate as binding-unverifiable, the second as a mismatch, and neither is ever guessed at.
+// The encoder re-emits each arm under its own schema, so a legacy capture re-serialized by this
+// build stays a legacy capture rather than being silently promoted.
+type SubmissionCaptureRoot
+  = SubmissionCaptureRootBound { locator: String }
+  | SubmissionCaptureRootLegacyUnbound
+
+// TWO IDENTITIES, AND THEIR ROLES DO NOT OVERLAP (owner ruling 2026-09-20: gunbc SCM inside, git at
+// the edge). `head_sha` is the git commit the belt created in the attempt worktree -- the EDGE
+// realization of the captured tree, consumed by the verification checkout and the publication push
+// while those still run on git. `scm_repository` + `scm_commit_ordinal` name the AUTHORITATIVE
+// capture: the commit the belt minted into the project's SCM envelope from the same tree. The
+// capture is addressed by the git head only because the verify gate's receipts already are; the
+// binding that fanin and the delivery obligation read is the SCM one. `scm_root_locator` is that
+// binding's content half: the digest text the envelope's own vocabulary writes for an uncontained
+// commit root, recorded at capture time so a later ordinal resolution can be authenticated
+// instead of trusted.
+type SubmissionCapture {
+  head_sha: String
+  scm_repository: String
+  scm_commit_ordinal: Int
+  scm_root_locator: SubmissionCaptureRoot
+  digest: String
+  submission: WorkerSubmission
+}
+
+fn submission_capture_basename(head_sha: String) -> String {
+  join([head_sha, ".json"], "")
+}
+
+fn submission_capture_json(capture: SubmissionCapture) -> JsonValue {
+  match capture.scm_root_locator {
+    SubmissionCaptureRootBound { locator } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: submission_capture_schema_v3 as String)),
+        json_kv(key: "head_sha", value: json_string(s: capture.head_sha)),
+        json_kv(key: "scm_repository", value: json_string(s: capture.scm_repository)),
+        json_kv(key: "scm_commit_ordinal", value: json_int(n: capture.scm_commit_ordinal)),
+        json_kv(key: "scm_root_locator", value: json_string(s: locator)),
+        json_kv(key: "digest", value: json_string(s: capture.digest)),
+        json_kv(key: "submission", value: submission_json(submission: capture.submission)),
+      ])
+    SubmissionCaptureRootLegacyUnbound =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: submission_capture_schema as String)),
+        json_kv(key: "head_sha", value: json_string(s: capture.head_sha)),
+        json_kv(key: "scm_repository", value: json_string(s: capture.scm_repository)),
+        json_kv(key: "scm_commit_ordinal", value: json_int(n: capture.scm_commit_ordinal)),
+        json_kv(key: "digest", value: json_string(s: capture.digest)),
+        json_kv(key: "submission", value: submission_json(submission: capture.submission)),
+      ])
+  }
+}
+
+fn submission_capture_text(capture: SubmissionCapture) -> String {
+  serialize_json(v: submission_capture_json(capture: capture))
+}
+
+type SubmissionCaptureDecode
+  = CaptureDecoded { capture: SubmissionCapture }
+  | CaptureNotDecodable { reason: String }
+
+// SCHEMA DISPATCH IS THE VERSION CHECK, and each version decodes into the arm its writer could
+// honestly have produced. v3 requires the root locator and binds it; v2 predates the locator and
+// decodes LegacyUnbound -- never Bound-by-default, because an invented locator would authenticate
+// nothing and integrate a capture the envelope cannot vouch for. Anything older or newer refuses
+// with the tag it carried.
+fn submission_capture_decode_document(doc: JsonValue) -> SubmissionCaptureDecode {
+  match publication_receipt_member(doc: doc, key: "schema") {
+    ReceiptMemberUnreadable { reason: r } => CaptureNotDecodable { reason: r }
+    ReceiptMemberRead { value: schema } =>
+      if schema == (submission_capture_schema_v3 as String) {
+        match publication_receipt_member(doc: doc, key: "scm_root_locator") {
+          ReceiptMemberUnreadable { reason: _ } =>
+            CaptureNotDecodable {
+              reason: "capture record scm_root_locator member is absent, duplicated or not a string",
+            }
+          ReceiptMemberRead { value: locator } =>
+            submission_capture_decode_tail(doc: doc, root: SubmissionCaptureRootBound { locator: locator })
+        }
+      } else if schema == (submission_capture_schema as String) {
+        submission_capture_decode_tail(doc: doc, root: SubmissionCaptureRootLegacyUnbound)
+      } else {
+        CaptureNotDecodable {
+          reason: join([
+            "capture schema is ", schema, ", not ", submission_capture_schema_v3 as String,
+            " (or the ", submission_capture_schema as String, " a historical capture carries)",
+          ], ""),
+        }
+      }
+  }
+}
+
+// THE MEMBER TAIL, SHARED BY BOTH SCHEMAS. The binding arrived as a parameter because the schema
+// dispatch already decided it; everything from head_sha down is the carrier both versions carry
+// unchanged.
+fn submission_capture_decode_tail(doc: JsonValue, root: SubmissionCaptureRoot) -> SubmissionCaptureDecode {
+  match publication_receipt_member(doc: doc, key: "head_sha") {
+    ReceiptMemberUnreadable { reason: r } => CaptureNotDecodable { reason: r }
+    ReceiptMemberRead { value: head_sha } =>
+      match publication_receipt_member(doc: doc, key: "scm_repository") {
+        ReceiptMemberUnreadable { reason: r } => CaptureNotDecodable { reason: r }
+        ReceiptMemberRead { value: scm_repository } =>
+          match publication_receipt_int_member(doc: doc, key: "scm_commit_ordinal") {
+            Absent =>
+              CaptureNotDecodable {
+                reason: "capture record scm_commit_ordinal member is absent, duplicated or not an integer",
+              }
+            Present { value: scm_commit_ordinal } =>
+              match publication_receipt_member(doc: doc, key: "digest") {
+                ReceiptMemberUnreadable { reason: r } => CaptureNotDecodable { reason: r }
+                ReceiptMemberRead { value: digest } =>
+                  match json_object_unique_member(v: doc, key: "submission") {
+                    JsonMemberFound { value: submission_doc } =>
+                      match submission_decode_document(doc: submission_doc) {
+                        SubmissionNotDecodable { reason: r } => CaptureNotDecodable { reason: r }
+                        SubmissionDecoded { submission } =>
+                          CaptureDecoded {
+                            capture: SubmissionCapture {
+                              head_sha: head_sha,
+                              scm_repository: scm_repository,
+                              scm_commit_ordinal: scm_commit_ordinal,
+                              scm_root_locator: root,
+                              digest: digest,
+                              submission: submission,
+                            },
+                          }
+                      }
+                    JsonMemberAbsent =>
+                      CaptureNotDecodable {
+                        reason: "capture record submission member is absent or duplicated",
+                      }
+                    JsonMemberDuplicated { count: _ } =>
+                      CaptureNotDecodable {
+                        reason: "capture record submission member is absent or duplicated",
+                      }
+                    JsonMemberNotAnObject =>
+                      CaptureNotDecodable {
+                        reason: "capture record submission member is absent or duplicated",
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn submission_capture_decode(text: String) -> SubmissionCaptureDecode {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap } =>
+      CaptureNotDecodable {
+        reason: concat("the capture record is ", json_document_gap_text(gap: gap)),
+      }
+    JsonDocumentParsed { value: doc } => submission_capture_decode_document(doc: doc)
+  }
+}
+
+// THE CAPTURE->INTEGRATE BINDING, VERIFIED BEFORE FANIN. The ordinal a capture records is a
+// repository-relative counter, not an identity: ordinal 1 resolves to this envelope's first commit
+// and a stranger envelope's first commit with equal confidence, so an integrate that trusted the
+// ordinal alone could merge content the capture never authenticated -- the second structural hole
+// the 2026-09-22 diagnosis named. This gate re-resolves the ordinal against the envelope the
+// integrate actually loaded and compares the commit root's content identity with the locator the
+// capture recorded at capture time:
+//
+//   Absent (no refusal)   the binding holds -- or the envelope no longer carries the commit at all,
+//                         in which case this gate has no subject and the integrate's own
+//                         admissions refuse the missing candidate typed, as they did before the
+//                         binding existed. Passing that refusal through unchanged is deliberate:
+//                         the merge base's unwalkable arm names the damage with the vocabulary
+//                         that owns it.
+//   Mismatch              commits[ordinal].root differs from the recorded locator: the ordinal
+//                         resolved to a different commit. Refuse, carrying BOTH the claimed and the
+//                         actual locator, and never integrate.
+//   Unverifiable          a v2 capture recorded no locator. Refuse with the named cause rather
+//                         than guessing -- a legacy capture is not an authenticated capture.
+//
+// THE LOCATOR TEXT IS THE ENVELOPE'S OWN VOCABULARY: the digest rendering the index writes for an
+// uncontained commit root, compared as text so no second rendering exists beside the codec's.
+type SubmissionCaptureBindingRefusal
+  = CaptureBindingMismatch { claimed: String, actual: String }
+  | CaptureBindingUnverifiable
+
+fn submission_capture_binding_refusal(
+  capture: SubmissionCapture,
+  commits: List<RepositoryCommit>,
+) -> SubmissionCaptureBindingRefusal? {
+  match capture.scm_root_locator {
+    SubmissionCaptureRootLegacyUnbound =>
+      Present { value: CaptureBindingUnverifiable }
+    SubmissionCaptureRootBound { locator } =>
+      match commit_at_reference(
+        commits: commits,
+        reference: RepositoryCommitRef { identity: MintedId { ordinal: capture.scm_commit_ordinal } },
+      ) {
+        Absent => none
+        Present { value: commit } =>
+          let actual = commit.root.locator.digest as String
+          if actual == locator {
+            none
+          } else {
+            Present { value: CaptureBindingMismatch { claimed: locator, actual: actual } }
+          }
+      }
+  }
+}
+
+// WHAT THE BELT OBSERVED IN THE WORKTREE. Absence is established by a successful listing, never by
+// a failed read -- the same rule the publication spool reader carries, and for the same reason: a
+// failed read answers both "not there" and "there but unreadable", and those two worlds have
+// opposite correct actions. The unlistable/unreadable case is not an arm here because it is not a
+// submission fact at all; the belt fails the commit pass on it rather than deciding from ignorance.
+type SubmissionObservation
+  = SubmissionDeclared { submission: WorkerSubmission, digest: String }
+  | SubmissionAbsent
+  | SubmissionUndecodable { reason: String }
+
+// WHAT THE BELT OBSERVED IN THE ATTEMPT'S CAPTURE DIRECTORY for one head.
+type SubmissionCaptureObservation
+  = CaptureForHead { capture: SubmissionCapture }
+  | CaptureAbsent
+  | CaptureUnreadable { reason: String }
+
+// THE CAPTURE FRESHNESS JUDGMENT, pure so a witness reaches every arm. A declaration whose digest
+// no prior capture holds is a new candidate. A declaration byte-identical to one already captured
+// is the SAME act swept again -- re-binding it to the tree a later tick sees is exactly what rule 2
+// forbids, so it is a checkpoint with the binding head named in the note. An absent or undecodable
+// artifact is no declaration at all; an undecodable one is named rather than silently ignored,
+// because the worker believed it had submitted and the note is the only place that belief meets the
+// truth.
+type CandidateDecision
+  = CandidateFresh { submission: WorkerSubmission, digest: String }
+  | CandidateCheckpoint { note: String }
+
+fn submission_candidate_decision(
+  observation: SubmissionObservation,
+  captures: List<SubmissionCapture>,
+) -> CandidateDecision {
+  match observation {
+    SubmissionDeclared { submission, digest } =>
+      match (captures |> filter(c => c.digest == digest)).first() {
+        Present { value: prior } =>
+          CandidateCheckpoint {
+            note: join([
+              "the submission artifact is byte-identical to the declaration already captured at ",
+              prior.head_sha,
+              ": a belt tick may not re-bind a prior acknowledgment to a tree the worker did not declare it against",
+            ], ""),
+          }
+        Absent => CandidateFresh { submission: submission, digest: digest }
+      }
+    SubmissionAbsent =>
+      CandidateCheckpoint {
+        note: "the worker reached a terminal state without a submission artifact, so this commit is preservation only (yielded, not ready)",
+      }
+    SubmissionUndecodable { reason } =>
+      CandidateCheckpoint {
+        note: join([
+          "a submission artifact exists but does not decode (",
+          reason,
+          "), so it is not a declaration and this commit is preservation only",
+        ], ""),
+      }
+  }
+}
+
+// THE EVIDENCE STATES, DISTINCT AND NEVER COLLAPSED (the lifecycle's rule: Ready ≠ Verified ≠
+// Published). Derived fresh from the on-disk evidence on every read, so a restart loses nothing and
+// invents nothing: BlockedOnPublication survives a restart because its whole derivation is the
+// capture record, the verification receipt and the publication receipt, none of which lives in
+// memory. PublicationOwed is the standing between a passed verdict and an observed PR receipt --
+// the obligation is outstanding whether or not the credentialed helper is running, which is what
+// keeps a disabled helper truthful: the state is owed, never discharged.
+type CandidateHandoffState
+  = HandoffAwaitingWorker
+  | HandoffYielded { reason: String }
+  | HandoffEvidenceRefused { reason: String }
+  | HandoffDeclaredBlocked { head_sha: String, readiness: SubmissionReadiness, explanation: String }
+  | HandoffSubmitted { head_sha: String }
+  | HandoffVerificationFailed { head_sha: String, verdict_key: String }
+  | HandoffAwaitingIntegration { head_sha: String }
+  | HandoffBlockedOnIntegration { head_sha: String, cause: String }
+  | HandoffPublicationOwed { head_sha: String }
+  | HandoffBlockedOnPublication { head_sha: String, cause: String }
+  | HandoffPublished { head_sha: String, pr_number: Int, url: String }
+
+// The three standings the handoff fold needs, projected by the caller from the receipt authorities
+// it already reads (verification and publication evidence stay with their own modules; this fold
+// decides over their judgments, never over their bytes).
+type HandoffVerificationStanding
+  = VerificationOutstanding
+  | VerificationPassed
+  | VerificationDidNotPass { verdict_key: String }
+  | VerificationStandingRefused { reason: String }
+
+type HandoffPublicationStanding
+  = PublicationReceiptOwed
+  | PublicationReceiptBound { pr_number: Int, url: String }
+  | PublicationReceiptRefused { cause: String }
+
+// INTEGRATION SITS BETWEEN VERIFIED AND PUBLISHED (owner ruling 2026-09-20: native SCM fanin). A
+// passed candidate is not yet publication-owed: it must first be merged into its project's
+// integration head, and a conflict there is its own typed state -- BlockedOnIntegration -- never
+// a merge failure and never a silent retry. For a standalone task the integration is the same
+// step with a membership of one, so the states never fork between batch and solo delivery.
+type HandoffIntegrationStanding
+  = IntegrationOutstanding
+  | IntegrationComplete
+  | IntegrationBlockedStanding { cause: String }
+
+fn candidate_handoff_state(
+  provider: ProviderExecutionState,
+  capture: SubmissionCaptureObservation,
+  verification: HandoffVerificationStanding,
+  integration: HandoffIntegrationStanding,
+  publication: HandoffPublicationStanding,
+) -> CandidateHandoffState {
+  match provider {
+    ProviderNotStarted => HandoffAwaitingWorker
+    ProviderStarting { activity: _ } => HandoffAwaitingWorker
+    ProviderAwaitingSeat { detail: _ } => HandoffAwaitingWorker
+    ProviderRunning { activity: _ } => HandoffAwaitingWorker
+    ProviderEventsRefused { activity: _, detail: _ } => HandoffAwaitingWorker
+    ProviderCompleted { activity: _ } =>
+      candidate_handoff_state_for_terminal(capture: capture, verification: verification, integration: integration, publication: publication)
+    ProviderFailed { activity: _, detail: _ } =>
+      candidate_handoff_state_for_terminal(capture: capture, verification: verification, integration: integration, publication: publication)
+    ProviderBudgetSpent { activity: _, detail: _ } =>
+      candidate_handoff_state_for_terminal(capture: capture, verification: verification, integration: integration, publication: publication)
+  }
+}
+
+fn candidate_handoff_state_for_terminal(
+  capture: SubmissionCaptureObservation,
+  verification: HandoffVerificationStanding,
+  integration: HandoffIntegrationStanding,
+  publication: HandoffPublicationStanding,
+) -> CandidateHandoffState {
+  match capture {
+    CaptureAbsent =>
+      HandoffYielded {
+        reason: "terminal without a captured submission: the belt's commit was preservation only, and no candidate advances to verification",
+      }
+    CaptureUnreadable { reason } =>
+      HandoffEvidenceRefused {
+        reason: join(["the submission capture for this head cannot be established: ", reason], ""),
+      }
+    CaptureForHead { capture: c } =>
+      match submission_candidacy(submission: c.submission) {
+        SubmissionNotCandidate { reason: _ } =>
+          HandoffDeclaredBlocked {
+            head_sha: c.head_sha,
+            readiness: c.submission.readiness,
+            explanation: c.submission.explanation,
+          }
+        SubmissionIsCandidate =>
+      match verification {
+        VerificationStandingRefused { reason } =>
+          HandoffEvidenceRefused { reason: reason }
+        VerificationOutstanding => HandoffSubmitted { head_sha: c.head_sha }
+        VerificationDidNotPass { verdict_key } =>
+          HandoffVerificationFailed { head_sha: c.head_sha, verdict_key: verdict_key }
+        VerificationPassed =>
+          match integration {
+            IntegrationBlockedStanding { cause } =>
+              HandoffBlockedOnIntegration { head_sha: c.head_sha, cause: cause }
+            IntegrationOutstanding =>
+              HandoffAwaitingIntegration { head_sha: c.head_sha }
+            IntegrationComplete =>
+              match publication {
+                PublicationReceiptBound { pr_number, url } =>
+                  HandoffPublished { head_sha: c.head_sha, pr_number: pr_number, url: url }
+                PublicationReceiptRefused { cause } =>
+                  HandoffBlockedOnPublication { head_sha: c.head_sha, cause: cause }
+                PublicationReceiptOwed =>
+                  HandoffPublicationOwed { head_sha: c.head_sha }
+              }
+          }
+      }
+      }
+  }
+}
+
+fn candidate_handoff_state_key(state: CandidateHandoffState) -> String {
+  match state {
+    HandoffAwaitingWorker => "awaiting-worker"
+    HandoffYielded { reason: _ } => "yielded"
+    HandoffEvidenceRefused { reason: _ } => "evidence-refused"
+    HandoffDeclaredBlocked { head_sha: _, readiness, explanation: _ } =>
+      join(["declared-", submission_readiness_key(r: readiness)], "")
+    HandoffSubmitted { head_sha: _ } => "submitted"
+    HandoffVerificationFailed { head_sha: _, verdict_key: _ } => "verification-failed"
+    HandoffAwaitingIntegration { head_sha: _ } => "awaiting-integration"
+    HandoffBlockedOnIntegration { head_sha: _, cause: _ } => "blocked-on-integration"
+    HandoffPublicationOwed { head_sha: _ } => "publication-owed"
+    HandoffBlockedOnPublication { head_sha: _, cause: _ } => "blocked-on-publication"
+    HandoffPublished { head_sha: _, pr_number: _, url: _ } => "published"
+  }
+}

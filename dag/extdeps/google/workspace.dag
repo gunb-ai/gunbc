@@ -1,6 +1,6 @@
 module extdeps.google.workspace
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, String, Bool, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -31,4 +31,100 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   },
   first_citation: extdeps_external_authority_anchor,
   further_citations: [google_workspace_credentials_citation]
+}
+
+// Reviewed 2026-09-28 against Google's Auth Platform, Admin console and Policy API documentation.
+// API availability is per setting and operation. A directory/user/photo API is not an API for
+// its governing policy. IAM oauthClients is Workforce Identity Federation, not Auth Platform.
+
+type WorkspaceAdminControl
+  = OAuthClientRegistration
+  | OAuthApplicationAudience
+  | OAuthClientAppAccess
+  | ExternalDirectorySharing
+  | ProfilePhotoEditing
+
+type WorkspaceAdminSubject
+  = AuthPlatformClient { project: NonEmptyStr, client: NonEmptyStr }
+  | AuthPlatformAudience { project: NonEmptyStr }
+  | WorkspaceClientAccess { customer: NonEmptyStr, client: NonEmptyStr, org_unit: NonEmptyStr }
+  | WorkspaceDirectorySharing { customer: NonEmptyStr }
+  | WorkspacePhotoEditing { customer: NonEmptyStr, org_unit: NonEmptyStr }
+
+type WorkspaceAppAccess = AppTrusted | AppLimited | AppBlocked | AppSpecificGoogleData { scopes: List<NonEmptyStr> }
+type WorkspaceDirectorySharingPolicy = RequesterBasicProfileOnly | OrganizationDirectoryData
+
+type WorkspaceAdminValue
+  = RegisteredWebClient { redirect_uris: List<NonEmptyStr> }
+  | InternalAudience
+  | ExternalAudience
+  | ClientAccess { access: WorkspaceAppAccess }
+  | DirectorySharing { policy: WorkspaceDirectorySharingPolicy }
+  | PhotoEditing { allowed: Bool }
+
+type WorkspaceAdminReadSurface
+  = ConsoleReadbackRequired { documentation: NonEmptyStr }
+  | PolicyApiReadSupported { setting_type: NonEmptyStr, documentation: NonEmptyStr }
+
+type WorkspaceAdminWriteSurface = ManualConsoleAdministration { documentation: NonEmptyStr }
+
+data workspace_policy_settings_documentation: NonEmptyStr = "https://docs.cloud.google.com/identity/docs/concepts/supported-policy-api-settings"
+data workspace_policy_read_documentation: NonEmptyStr = "https://docs.cloud.google.com/identity/docs/how-to/list-get-policies"
+data workspace_policy_readonly_scope: NonEmptyStr = "https://www.googleapis.com/auth/cloud-identity.policies.readonly"
+data workspace_policy_list_endpoint: NonEmptyStr = "https://cloudidentity.googleapis.com/v1/policies"
+data workspace_policy_reduction_documentation: NonEmptyStr = "https://docs.cloud.google.com/identity/docs/concepts/policy-api-concepts"
+
+fn workspace_admin_control(subject: WorkspaceAdminSubject) -> WorkspaceAdminControl {
+  match subject {
+    AuthPlatformClient { project: _, client: _ } => OAuthClientRegistration
+    AuthPlatformAudience { project: _ } => OAuthApplicationAudience
+    WorkspaceClientAccess { customer: _, client: _, org_unit: _ } => OAuthClientAppAccess
+    WorkspaceDirectorySharing { customer: _ } => ExternalDirectorySharing
+    WorkspacePhotoEditing { customer: _, org_unit: _ } => ProfilePhotoEditing
+  }
+}
+
+fn workspace_admin_value_control(value: WorkspaceAdminValue) -> WorkspaceAdminControl {
+  match value {
+    RegisteredWebClient { redirect_uris: _ } => OAuthClientRegistration
+    InternalAudience => OAuthApplicationAudience
+    ExternalAudience => OAuthApplicationAudience
+    ClientAccess { access: _ } => OAuthClientAppAccess
+    DirectorySharing { policy: _ } => ExternalDirectorySharing
+    PhotoEditing { allowed: _ } => ProfilePhotoEditing
+  }
+}
+
+fn workspace_admin_console_documentation(control: WorkspaceAdminControl) -> NonEmptyStr {
+  match control {
+    OAuthClientRegistration => "https://support.google.com/cloud/answer/15549257"
+    OAuthApplicationAudience => "https://developers.google.com/workspace/guides/configure-oauth-consent"
+    OAuthClientAppAccess => "https://support.google.com/a/answer/7281227"
+    ExternalDirectorySharing => "https://knowledge.workspace.google.com/admin/users/let-third-party-apps-access-directory-data"
+    ProfilePhotoEditing => "https://knowledge.workspace.google.com/admin/users/allow-directory-users-to-change-their-profile-and-photo"
+  }
+}
+
+// No documented supported read for rows 1, 2, 3 or 5 in the reviewed interface inventories.
+// This is a dated interface qualification, not a claim that Google can never expose one.
+fn workspace_admin_read_surface(control: WorkspaceAdminControl) -> WorkspaceAdminReadSurface {
+  match control {
+    ExternalDirectorySharing => PolicyApiReadSupported { setting_type: "directory.external_directory_sharing", documentation: workspace_policy_settings_documentation }
+    OAuthClientRegistration => ConsoleReadbackRequired { documentation: workspace_admin_console_documentation(control: control) }
+    OAuthApplicationAudience => ConsoleReadbackRequired { documentation: workspace_admin_console_documentation(control: control) }
+    OAuthClientAppAccess => ConsoleReadbackRequired { documentation: workspace_admin_console_documentation(control: control) }
+    ProfilePhotoEditing => ConsoleReadbackRequired { documentation: workspace_admin_console_documentation(control: control) }
+  }
+}
+
+fn workspace_admin_write_surface(control: WorkspaceAdminControl) -> WorkspaceAdminWriteSurface {
+  ManualConsoleAdministration { documentation: workspace_admin_console_documentation(control: control) }
+}
+
+// The literal policy enum is distinct from absence/refusal; an omitted/default setting needs
+// the provider's policy reduction/default rules, never an assumption based on a successful login.
+fn workspace_directory_sharing_value(wire: String) -> WorkspaceDirectorySharingPolicy? {
+  if wire == "REQUESTER_BASIC_PROFILE_ONLY" { Present { value: RequesterBasicProfileOnly } }
+  else if wire == "ORGANIZATION_DIRECTORY_DATA" { Present { value: OrganizationDirectoryData } }
+  else { none }
 }
