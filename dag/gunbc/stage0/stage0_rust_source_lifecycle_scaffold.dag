@@ -1,5 +1,6 @@
 module gunbc.stage0_rust_source_lifecycle_scaffold
 
+import std.types { List }
 import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 import gunbc.stage0_cargo_manifest {
   stage0_cargo_bin_paths_observation_ref
@@ -28,7 +29,6 @@ import gunbc.roadmap_model { RoadmapNodeId }
 import v2.compiler.self_host.stage0_crate_layout { hand_maintained_stage0_filenames }
 import v2.std.algebra { any, filter, fold_list, length, list_map }
 import std.algebra { list_snoc_item }
-import v2.std.collection { List }
 import v2.std.text { String }
 import v2.workflow.rust_crate_partition { stage0_partition_crate_rows }
 
