@@ -12,6 +12,7 @@ import v2.compiler.reference_conservation {
   reference_conservation_subject_of_read,
   reference_conservation_of_subject_admitted,
   reference_conservation_report_lines,
+  report_with_advisories,
   OccurrenceRoleTableUnadmitted
 }
 import v2.compiler.source_authority { DagSourceReadWitness }
@@ -561,37 +562,25 @@ test fn the_clean_control_carries_its_accepted_advisories_by_identity_holds() ->
     )
 }
 
-// A NON-RESIDUE ADVISORY IS CARRIED BY ITS OWN IDENTITY. The boundary is the accepted normalized
-// outcome, SUPPLIED here with one body-lowering advisory in place of whatever the real front end
-// attached; the real producer's inhabitance is the claim above. The supplied reason must come
-// back, and the residue must not -- the report reads the outcome it was given, it does not
-// re-derive or invent advisories.
-//
-// THE SUBJECT IS A ONE-ROW MODULE, NOT THE CLEAN CONTROL: this claim's subject is the advisory
-// carry, not conservation, so the smallest accepted tree is the honest input. Re-deriving the
-// clean control's subject cost the claim past the new-witness step budget.
-data supplied_advisory_source: String = "module v2.test.reference_conservation_advisory\n\ndata rc_adv_row: Int = 1\n"
-
-test fn a_supplied_accepted_advisory_reaches_the_report_by_identity_holds() -> Bool {
-  let subject = conservation_subject(id_tail: "advisory", source: supplied_advisory_source)
-  match subject.normalized {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: tree, diagnostics: _ } =>
-      let report = conservation_report_of(subject: ReferenceConservationSubject {
-        path: subject.path,
-        parsed: subject.parsed,
-        normalized: Accepted {
-          value: tree,
-          diagnostics: Some {
-            diagnostics: diagnostics_singleton(d: Diagnostic {
-              reason: ^body_lowering_reason_postfix_suffix_carried,
-              at: invariant_port_locus(port: ^body_lowering_locus_port, invariant: ^body_lowering_reason_postfix_suffix_carried),
-              correction: Unavailable { reason: UserInputBoundary }
-            })
-          }
-        }
+// A NON-RESIDUE ADVISORY IS RENDERED BY ITS OWN IDENTITY. The boundary is the report the census
+// renders, SUPPLIED here as the clean control's real report (shared warm with the claim above)
+// carrying one body-lowering advisory in place of its own; the real accepted arm's inhabitance is
+// the claim above. The supplied reason must be rendered, and the residue the real report carried
+// must not -- the census renders the advisories it was given, it does not re-derive them. Supplying
+// at this interface rather than re-running a front end is DESIGN section 3's witness rule: a
+// re-parse here cost the claim past the floor's new-witness budget and asserted nothing more.
+test fn a_supplied_accepted_advisory_is_rendered_by_identity_holds() -> Bool {
+  let report = report_with_advisories(
+    report: clean_control_report(),
+    advisories: Some {
+      diagnostics: diagnostics_singleton(d: Diagnostic {
+        reason: ^body_lowering_reason_postfix_suffix_carried,
+        at: invariant_port_locus(port: ^body_lowering_locus_port, invariant: ^body_lowering_reason_postfix_suffix_carried),
+        correction: Unavailable { reason: UserInputBoundary }
       })
-      diagnostics_has_reason(d: report.advisories, reason: ^body_lowering_reason_postfix_suffix_carried)
-        && !diagnostics_has_reason(d: report.advisories, reason: ^parse_grammar_choice_overlap_residue)
-  }
+    }
+  )
+  let lines = reference_conservation_report_lines(report: report)
+  any(xs: lines, predicate: fn(line) { line == "advisory " + report.path + " body_lowering_reason_postfix_suffix_carried" })
+    && !any(xs: lines, predicate: fn(line) { line == "advisory " + report.path + " parse_grammar_choice_overlap_residue" })
 }
