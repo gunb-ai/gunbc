@@ -510,8 +510,25 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // probe pair that planned every test declaration in the roster-row modules at one revision (PR
 // dispatch 37131459602 against main dispatch 37131472056 with the same edits), together with the
 // claims this change had first withheld as cost debt (floor runs 37096345499 and 37121610250).
+// Five members were added from the later probe pair 37147337255 against 37147367276, which also
+// planned the modules behind rows main added to the hand roster while this change was open
+// (dependency_demand_census, infer_fold_member_instance, one more kernel_value_type_roster claim).
 // Re-derive with that probe; do not extend by hand.
 data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.compiler.dependency_demand_census",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "production_lowering_of_the_same_fns_still_refuses_at_the_clause_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.compiler.infer_fold_member_instance",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "fmi_fold_member_undeclared_field_refuses", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "fmi_fold_over_records_is_accepted", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "fmi_fold_step_body_not_the_carrier_refuses", standing: ActiveFillDebt }
+    ]
+  },
   SingleClaimFillDebtModule {
     module: "v2.test.claim.anonymous_param_binder",
     claims: [
@@ -741,7 +758,8 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     module: "v2.test.claim.compiler.kernel_value_type_roster_witness_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "kvr_a_declared_bool_return_holding_an_int_refuses_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "kvr_a_named_calls_bool_formal_is_counted_not_judged_holds", standing: ActiveFillDebt }
+      SingleClaimFillDebtClaim { claim: "kvr_a_named_calls_bool_formal_is_counted_not_judged_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "kvr_a_named_calls_bool_formal_holding_an_int_refuses_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
