@@ -88,7 +88,8 @@ no measured installed envelope.
 **Recovered operator setup reports:** Creality PLA, white on printer-01 and black on printer-02,
 reported September 4–5; on October 3 the operator says both setups are identical. These reports are
 retained in `gunbc.fleet.printer_setup_reports`, with source timestamps and a read-only `main`
-projection. The AMS slot-1 report does not name a printer, so it is not assigned to both machines.
+projection. The historical AMS report did not name a printer. The operator explicitly confirmed AMS physical
+slot 1 on both machines on October 3; that now governs the print command.
 Nozzle/plate settings still need reconciliation against retained execution evidence. Recovered files disagree: `print-n/work/gauge_petg.3mf` specifies PETG with
 textured PEI; `printn-slice/gauge_container.3mf` specifies PLA with a cool plate. Preset metadata does not supersede the operator’s filament reports. Do not reuse their machine G-code blindly. Final slicing must also check
 placement including brim/skirt: the longest narrow gauge nearly spans the 180 mm bed. Keep model
@@ -1096,3 +1097,43 @@ and subtask name `gunbc-28a8700489cf908edb9ed59c0aa871fe6903b4d558c3b64de6a7636a
 It reported 4%, 18 minutes remaining, layer 0/15 (preparation), nozzle 176 °C and bed 62 °C.
 This reconciles the unknown MQTT transport result with observed execution of the intended gauge;
 it does not establish completed extrusion or a finished part. No duplicate start was sent.
+
+### Printer-02 recovery retry
+
+The operator subsequently reported printer-02's card working and requested another attempt,
+supplying a fresh one-hour token. The previously stopped after-format attempt had no start claim
+and had sent no printer command. At approximately 22:31 UTC its new signed approval was observed,
+the fresh full-state check admitted the printer, and the holes 4–5 file uploaded successfully.
+AMS physical slot 1 remains selected. MQTT publication is awaiting reconciliation; it is not
+replayed. The earlier FTP-550 attempt and its claim remain separate and retained.
+
+At approximately 22:36 UTC, fresh telemetry confirmed printer-02 RUNNING/error 0 with the
+expected `gunbc-a8f434e80014b6a316d30665b372bd0df3e858a68a2ff04a5fe4f50031d68535.3mf`
+subtask, 38%, layer 0/15, and 8 minutes remaining. The upload/start route now has physical
+execution evidence after the card recovery; this is not a long-term card-health qualification.
+
+The operator reported printer-01 finished the holes 3–4 gauge, both holes line up well,
+and the part was removed / bed cleared. Record C–H as an operator-reported alignment pass,
+without inferring load-bearing qualification. Prepare holes 3–6 (C–B) as printer-01's next gauge.
+
+The operator authorized the next printer-01 print after confirming C–H fit and a clear bed.
+Holes 3–6 (C–B) sliced through the verified Orca entry with the same selected profiles.
+Readback: SHA-256 `fb6d4bd1fcb23c07087b5575e6f5b20619f7ab8da03217828148d84cfcefc09f`,
+15 layers / 3 mm, identity scaling, one plate, valid embedded G-code MD5 and ZIP integrity,
+brim bounds [57.211684, 80.071684, 122.788316, 99.928316] mm, 12m10s / 2.59 g PLA.
+The slicer metadata carries `bed_temperature_too_high_than_filament` at the upstream Generic PLA
+textured-plate setting of 65 °C; this setting matches the successfully printed/aligned prior gauge.
+It is retained as an observed warning, not described as warning-free. The new request binds this
+project digest and a separate holes-3-6 attempt; printer-02's running job is not touched.
+
+The other remaining candidates are also sliced and validated under
+`/home/briansrls/print-prep-2026-10-03/next-batch/` (no start requested for either yet):
+
+| Gauge | SHA-256 | Estimate | PLA |
+|---|---|---|---|
+| 5–2 (L–M) | `607601f18602ae273472654c01b9d34ca1674b7f6f5356c7136a382af41f545b` | 19m34s | 7.10 g |
+| 4–7 (H–R) | `972ec6278c3334e070d4bd31884ce781211454c1c32296652e5f9a6ae4269252` | 13m26s | 3.42 g |
+
+Both passed ZIP/G-code checksum, one-plate, 15-layer/3-mm, identity-transform, A1 mini/PLA/0.4-mm
+profile, and 180-mm bed-bound checks. L–M including brim spans X=1.331684–178.668316 mm; no
+scaling was applied. Both retain the same 65 °C bed-temperature warning described above.
