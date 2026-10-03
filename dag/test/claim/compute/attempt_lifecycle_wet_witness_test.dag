@@ -393,7 +393,10 @@ test fn the_loser_of_a_launch_race_never_reports_that_it_settled_the_slot() -> B
 // the retry route to skip compute_open_attempt, it would reach compute_run_leased and end as a
 // unit's outcome, never as this refusal.
 fn fixture_toolchain() -> WorkToolchainIdentity {
-  work_toolchain_observed(rustc_version: "rustc fixture" as NonEmptyStr, cache_release: "sccache fixture" as NonEmptyStr)
+  work_toolchain_observed(
+    rustc_verbose: "rustc fixture" as NonEmptyStr, target_triple: "fixture-triple" as NonEmptyStr, cargo_version: "cargo fixture" as NonEmptyStr,
+    cache_release: "sccache fixture" as NonEmptyStr, provider_revision: "fixture-provider" as NonEmptyStr,
+  )
 }
 
 test fn the_ceiling_retry_opens_its_own_attempt_and_a_held_slot_refuses_it_before_spawn() -> Bool {

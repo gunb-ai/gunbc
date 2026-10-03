@@ -98,12 +98,12 @@ import std.disposition { Disposition, Terminal }
 import std.measure { ByteSize, byte_size }
 import std.materialization_ladder { DemandNature, PureComputation, IdempotentEffect, FreshEffect }
 // THE SECOND STATED IMPORT DEPARTURE, for the same reason as the generation edge below: the compute
-// work vocabulary (the exact tree, the operation, the sealed toolchain observation) has ONE home,
+// work vocabulary (the exact tree, the operation, the observed execution identity) has ONE home,
 // gunbc.compute.work_request, and restating it here would fork it. That module imports nothing that
 // reaches this one, so the edge is acyclic, which is the import graph's only law (DESIGN section 3).
 import gunbc.compute.work_request {
   WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, WorkToolchainIdentity,
-  work_operation_canonical,
+  CargoRelease, CargoDebug,
 }
 import extdeps.git.object_store { git_object_id_wire_hex }
 
@@ -225,10 +225,12 @@ type ArtifactRequest
 // digest of it, so its key is derived here and nowhere else: gunbc.compute.work_request used to mint
 // a private tagged hash (work_identity) beside this contract's request_key, which is two keys for one
 // computation, and it is deleted. The subject is the git TREE (two commits with one tree are one
-// work); the operation's canonical text and both toolchain readings are declared inputs, so a change
-// in any of them keys apart. The toolchain is a RUNNER-READ input and arrives SEALED
-// (WorkToolchainIdentity is sole_constructor, minted by the provider's observation fold), so no caller
-// can author the reading that keys the work.
+// work); the operation's structural encoding and every execution-identity reading are declared
+// inputs, so a change in any of them keys apart. The execution identity (target triple, the executing rustc and cargo,
+// sccache, the provider's own source revision) is a RUNNER-READ input: observed by the provider, never
+// spelled by a caller. Its construction wall is the seed's sole_constructor/admit_callers today; on the
+// native route both are standing rung drops, so that wall is not yet structural there (see
+// gunbc.compute.work_request WorkToolchainIdentity).
 //
 // demand_nature IS DERIVED FROM THE OPERATION, which is what keeps the ladder honest about
 // recurrence: a build, a compile and a HERMETIC claim run repeat their answer over the same tree and
@@ -666,6 +668,33 @@ fn compute_work_subject_digest(subject: WorkSubject) -> Fnv1a64Structural {
   }
 }
 
+// THE OPERATION'S KEY PREIMAGE IS STRUCTURAL, NOT ITS DISPLAY TEXT (ruling on gunbc#13072, item 1).
+// gunbc.compute.work_request work_operation_canonical joins fields with ':' and ',', so ["a,b"] and ["a", "b"] -- two builds with
+// different commands and outputs -- printed the same; an entry or a function containing ':' collided
+// the same way. Here every field is length-prefixed (std.judgment_contract length_prefixed_encode)
+// under the variant's own tag, and a list carries its count, so the encoding is injective over the
+// typed operation. The display text stays for documents and never reaches a key.
+fn compute_work_operation_preimage(operation: WorkOperation) -> NonEmptyStr {
+  match operation {
+    BuildGunbcBinaries { profile, bins } =>
+      join(concat(
+        [length_prefixed_encode(s: "build"), length_prefixed_encode(s: match profile { CargoRelease => "release"  CargoDebug => "debug" }), length_prefixed_encode(s: to_string(value: count(bins)))],
+        bins |> map(b => length_prefixed_encode(s: b as String))
+      ), "") as NonEmptyStr
+    CompileEntry { entry } =>
+      join([length_prefixed_encode(s: "compile"), length_prefixed_encode(s: entry as String)], "") as NonEmptyStr
+    RunClaims { entry, functions, hermetic, window } =>
+      join([
+        length_prefixed_encode(s: "claims"), length_prefixed_encode(s: entry as String),
+        length_prefixed_encode(s: functions as String), length_prefixed_encode(s: if hermetic { "hermetic" } else { "wet" }),
+        match window {
+          Present { value: w } => join([length_prefixed_encode(s: "window"), length_prefixed_encode(s: w.identity.digest as String)], "")
+          Absent => length_prefixed_encode(s: "no-window")
+        },
+      ], "") as NonEmptyStr
+  }
+}
+
 // The binaries a build materializes are REQUIRED OUTPUTS of its record, one per declared bin, carried
 // as byte parts (extdeps.realization.materialization_store_local LocalStoreStagedPart). The checking
 // operations materialize none.
@@ -697,10 +726,13 @@ fn compute_work_judgment_contract(
       declared_inputs: [
         DeclaredInput {
           ref: "compute_work.operation",
-          digest: content_hash_atom(value: work_operation_canonical(op: operation) as NonEmptyStr)
+          digest: content_hash_atom(value: compute_work_operation_preimage(operation: operation))
         },
-        DeclaredInput { ref: "compute_work.toolchain.rustc_version", digest: content_hash_atom(value: toolchain.rustc_version) },
-        DeclaredInput { ref: "compute_work.toolchain.cache_release", digest: content_hash_atom(value: toolchain.cache_release) }
+        DeclaredInput { ref: "compute_work.execution.rustc_verbose", digest: content_hash_atom(value: toolchain.rustc_verbose) },
+        DeclaredInput { ref: "compute_work.execution.target_triple", digest: content_hash_atom(value: toolchain.target_triple) },
+        DeclaredInput { ref: "compute_work.execution.cargo_version", digest: content_hash_atom(value: toolchain.cargo_version) },
+        DeclaredInput { ref: "compute_work.execution.cache_release", digest: content_hash_atom(value: toolchain.cache_release) },
+        DeclaredInput { ref: "compute_work.execution.provider_revision", digest: content_hash_atom(value: toolchain.provider_revision) }
       ]
     },
     result: ResultContract {
