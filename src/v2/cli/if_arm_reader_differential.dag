@@ -10,6 +10,7 @@ import v2.compiler.body_lowering_fold {
   body_lower_find_captured,
   body_lower_if_expr_capture_optional,
   body_lower_if_row_arms_optional,
+  body_lower_if_row_else_part_optional,
   body_lower_match_spine_left,
   body_lower_match_spine_right,
   body_lower_unwrap_surface_shell
@@ -243,7 +244,7 @@ fn iard_new_then(arms: Optional<IfRowArms>) -> Optional<Node> {
 fn iard_new_else(arms: Optional<IfRowArms>) -> Optional<Node> {
   match arms {
     Absent => optional_absent()
-    Present { value: a } => optional_present(value: a.else_part)
+    Present { value: a } => body_lower_if_row_else_part_optional(slot: a.else_slot)
   }
 }
 
