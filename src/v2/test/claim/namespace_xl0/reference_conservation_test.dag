@@ -566,8 +566,14 @@ test fn the_clean_control_carries_its_accepted_advisories_by_identity_holds() ->
 // attached; the real producer's inhabitance is the claim above. The supplied reason must come
 // back, and the residue must not -- the report reads the outcome it was given, it does not
 // re-derive or invent advisories.
+//
+// THE SUBJECT IS A ONE-ROW MODULE, NOT THE CLEAN CONTROL: this claim's subject is the advisory
+// carry, not conservation, so the smallest accepted tree is the honest input. Re-deriving the
+// clean control's subject cost the claim past the new-witness step budget.
+data supplied_advisory_source: String = "module v2.test.reference_conservation_advisory\n\ndata rc_adv_row: Int = 1\n"
+
 test fn a_supplied_accepted_advisory_reaches_the_report_by_identity_holds() -> Bool {
-  let subject = clean_control_subject()
+  let subject = conservation_subject(id_tail: "advisory", source: supplied_advisory_source)
   match subject.normalized {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
