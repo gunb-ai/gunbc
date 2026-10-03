@@ -92,12 +92,12 @@ use crate::v1_std_core::{
     build_newline_index, byte_to_line_col, diagnostic_to_message, diagnostic_to_span,
     empty_intern_table, empty_node_list, expr_call_func_at, expr_method_name_at, expr_var_name_at,
     field_access_base, field_access_field_at, field_init_node_name_at, field_init_node_value,
-    has_child_named, inferred_to_node, intern, is_discovery_corpus_blocking_diagnostic,
-    is_error_diagnostic, is_interpreter_blocking_diagnostic, let_binding_name_at, let_value,
-    make_error_node, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
-    module_items, no_span, param_node_name_at, param_node_type_expr, Cardinality,
-    CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable,
-    MatchPattern, NewlineIndex, Node,
+    has_child_named, inferred_to_node, intern, is_error_diagnostic,
+    is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, make_error_node,
+    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span,
+    param_node_name_at, param_node_type_expr, Cardinality, CompilerDiagnostic, Connective,
+    ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable, MatchPattern, NewlineIndex,
+    Node,
 };
 use serde::Serialize;
 
@@ -181,7 +181,6 @@ pub(crate) fn floor_compile_clean_emit_ok_via_index(
     let (graph, si, compile_clean_diags) = match resolved_graph_from_sources_with_index(
         &index,
         sources,
-        ResolveTypecheckGate::Strict,
         "floor-compile-clean-gate",
         // Ephemeral: the whole-tree aggregate graph must NOT join the process share tier
         // (D0.1) — it would pin every TypedModule in the tree for the process lifetime.
@@ -1467,7 +1466,7 @@ fn changed_and_enrolled_witness_identities_with_index(
     // That is `check_reachable_only_from_an_entry_point_the_context_never_calls`: check_match
     // exhaustiveness is real at `gunbc compile` and silent on a required floor that never
     // resolved the file. Seeding the authored module pulls its both-closure into
-    // `prepare_repository_closure` (`ResolveTypecheckGate::Strict`), which is the same pass.
+    // `prepare_repository_closure` (the strict resolve), which is the same pass.
     floor_seam("diff-touched-module-seeds");
     let (touched_modules, touched_outside_floor_roots, seeded_pairs) =
         module_seeds_from_touched_entry_files(&root, &edits.touched_entry_files, source_roots)?;
@@ -8104,6 +8103,28 @@ pub fn run_required_floor(
         module_path_index_warm.rss_growth_bytes,
         warmed_modules,
         module_path_index_warm.provenance.render(),
+    );
+    // THE RENDER-SELECTION AGREEMENT RECEIPT (floor repair C1). The fixture instruments
+    // (`compile_dag_rust_emit_check`, `compile_dag_diagnostic_census`) render only the modules
+    // their reader reads (`compile_fixture_rendering_only_what_is_read`). This receipt is the
+    // enrolled control that the narrowing changes no byte the reader reads and no diagnostic,
+    // and the one execution of the full render on this revision. It runs after the module-path
+    // index warm because it reads that index. A mismatch REFUSES the floor; it never warns.
+    let receipt_started = std::time::Instant::now();
+    let receipt_cpu_started = v1_interpreter::thread_cpu_nanos();
+    let receipt_observed = crate::cli_run::render_selection_agreement_receipt()?;
+    for (fixture, wall_ms, full_files, selected_files) in &receipt_observed {
+        eprintln!(
+            "[floor-receipt] receipt=render-selection-agreement fixture={fixture} \
+             wall_ms={wall_ms} full_files={full_files} selected_files={selected_files}"
+        );
+    }
+    eprintln!(
+        "[floor-receipt] receipt=render-selection-agreement state=held fixtures={} cpu_ms={} \
+         wall_ms={}",
+        receipt_observed.len(),
+        v1_interpreter::thread_cpu_nanos().saturating_sub(receipt_cpu_started) / 1_000_000,
+        receipt_started.elapsed().as_millis(),
     );
     // WARM THE SHARED MultiEntryIndex HERE, for the same reason as the module-path index
     // above: otherwise ONE ARBITRARY CLAIM PAYS FOR IT (witness cost class 2).
@@ -17633,9 +17654,8 @@ mod changed_selections_outside_discovery_mirror_tests {
                 .to_string_lossy()
                 .to_string();
             let index = crate::cli_run::process_shared_index(&roots);
-            let (graph, indices) =
-                crate::cli_run::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
-                    .expect("the shared fixture resolves");
+            let (graph, indices) = crate::cli_run::resolve_entry_with_index(&index, &entry)
+                .expect("the shared fixture resolves");
             let ctx = crate::cli_run::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
             let read = |name: &str| {
                 v1_interpreter::with_active_context(&ctx, || {
