@@ -47162,3 +47162,132 @@ mod collect_node_values_depth_tests {
         super::collect_node_values(&value, &ctx, &mut out);
     }
 }
+
+#[cfg(test)]
+mod roster_census_probe {
+    //! PROBE (calm-pike-525, calm-boar-904 ruling): every ActiveDebt row of the unimported-bare-provider
+    //! roster, classified by what the gate and the file's closure say today. A carried; B the
+    //! non-declaration predicate binds it; C a declaration of the name lies inside the closure;
+    //! D the file imports a module no scanned root provides; E none of these. Run --ignored.
+    use super::*;
+
+    fn declares(content: &str, nm: &str) -> bool {
+        content.lines().any(|l| {
+            let l = l.trim_start();
+            let l = l.strip_prefix("pub ").unwrap_or(l);
+            let head = |k: &str| {
+                l.strip_prefix(k).map_or(false, |r| {
+                    r.strip_prefix(nm).map_or(false, |r| {
+                        r.is_empty() || r.starts_with(|c: char| !(c.is_alphanumeric() || c == '_'))
+                    })
+                })
+            };
+            if head("fn ") || head("type ") || head("data ") {
+                return true;
+            }
+            // a coproduct arm: `| Name`, `= Name` at an arm position
+            l.split(|c| c == '|' || c == '=').skip(1).any(|seg| {
+                let s = seg.trim_start();
+                s.strip_prefix(nm).map_or(false, |r| {
+                    r.is_empty() || r.starts_with(|c: char| !(c.is_alphanumeric() || c == '_'))
+                })
+            })
+        })
+    }
+
+    #[test]
+    #[ignore]
+    fn classify_active_rows() {
+        let roots = vec!["dag".to_string(), "src/v2".to_string()];
+        let index = super::process_shared_index(&roots);
+        let roster = std::fs::read_to_string(
+            "src/v2/workflow/floor_unimported_bare_provider_debt_roster.dag",
+        )
+        .unwrap();
+        let mut rows: Vec<(String, String)> = Vec::new();
+        for l in roster.lines() {
+            if !l.contains("standing: ActiveDebt") {
+                continue;
+            }
+            let f = l.split("file: \"").nth(1).and_then(|r| r.split('"').next());
+            let n = l.split("name: \"").nth(1).and_then(|r| r.split('"').next());
+            if let (Some(f), Some(n)) = (f, n) {
+                rows.push((f.to_string(), n.to_string()));
+            }
+        }
+        let by_path: HashMap<String, &Rc<v1_compiler_compile::SourceFile>> = index
+            .source_files
+            .values()
+            .map(|sf| (workspace_relative_repo_path(&sf.path), sf))
+            .collect();
+        let pool_modules: HashSet<String> = index.source_files.keys().cloned().collect();
+        let mut counts: std::collections::BTreeMap<&str, usize> = Default::default();
+        for (file, nm) in &rows {
+            let class: &str = match by_path.get(file.as_str()) {
+                None => "X-absent",
+                Some(sf) => {
+                    let closure: HashSet<String> =
+                        import_closure_live_paths_with_facts(&sf.path, &index.module_graph_facts)
+                            .iter()
+                            .map(|p| workspace_relative_repo_path(p))
+                            .collect();
+                    let mut carried = false;
+                    let mut pred = false;
+                    let _ = visit_bare_reference_providers(
+                        sf,
+                        &index,
+                        |root| closure_name_census(&index, root),
+                        |name, _m, provider| {
+                            if name == nm && provider != file && !closure.contains(provider) {
+                                if crate::v1_compiler_infer_method::bare_call_has_non_declaration_binding(name.to_string()) {
+                                    pred = true;
+                                } else {
+                                    carried = true;
+                                }
+                            }
+                            Ok(())
+                        },
+                    );
+                    if carried {
+                        "A-carried"
+                    } else if pred
+                        || crate::v1_compiler_infer_method::bare_call_has_non_declaration_binding(
+                            nm.to_string(),
+                        )
+                    {
+                        "B-binds-without-declaration"
+                    } else if declares(&sf.content, nm)
+                        || closure.iter().any(|p| {
+                            by_path
+                                .get(p.as_str())
+                                .map_or(false, |o| declares(&o.content, nm))
+                        })
+                    {
+                        "C-declared-in-closure"
+                    } else if sf
+                        .content
+                        .lines()
+                        .filter_map(|l| l.trim_start().strip_prefix("import "))
+                        .any(|r| {
+                            let m = r
+                                .split(|c: char| c.is_whitespace() || c == '{')
+                                .next()
+                                .unwrap_or("");
+                            !m.is_empty() && !pool_modules.contains(m)
+                        })
+                    {
+                        "D-imports-unscanned-module"
+                    } else {
+                        "E-unexplained"
+                    }
+                }
+            };
+            *counts.entry(class).or_default() += 1;
+            eprintln!("[rc-row] {class} {file} {nm}");
+        }
+        eprintln!("[rc-total] active_rows={}", rows.len());
+        for (c, n) in &counts {
+            eprintln!("[rc-class] {c} {n}");
+        }
+    }
+}
