@@ -8104,6 +8104,28 @@ pub fn run_required_floor(
         warmed_modules,
         module_path_index_warm.provenance.render(),
     );
+    // THE RENDER-SELECTION AGREEMENT RECEIPT (floor repair C1). The fixture instruments
+    // (`compile_dag_rust_emit_check`, `compile_dag_diagnostic_census`) render only the modules
+    // their reader reads (`compile_fixture_rendering_only_what_is_read`). This receipt is the
+    // enrolled control that the narrowing changes no byte the reader reads and no diagnostic,
+    // and the one execution of the full render on this revision. It runs after the module-path
+    // index warm because it reads that index. A mismatch REFUSES the floor; it never warns.
+    let receipt_started = std::time::Instant::now();
+    let receipt_cpu_started = v1_interpreter::thread_cpu_nanos();
+    let receipt_observed = crate::cli_run::render_selection_agreement_receipt()?;
+    for (fixture, wall_ms, full_files, selected_files) in &receipt_observed {
+        eprintln!(
+            "[floor-receipt] receipt=render-selection-agreement fixture={fixture} \
+             wall_ms={wall_ms} full_files={full_files} selected_files={selected_files}"
+        );
+    }
+    eprintln!(
+        "[floor-receipt] receipt=render-selection-agreement state=held fixtures={} cpu_ms={} \
+         wall_ms={}",
+        receipt_observed.len(),
+        v1_interpreter::thread_cpu_nanos().saturating_sub(receipt_cpu_started) / 1_000_000,
+        receipt_started.elapsed().as_millis(),
+    );
     // WARM THE SHARED MultiEntryIndex HERE, for the same reason as the module-path index
     // above: otherwise ONE ARBITRARY CLAIM PAYS FOR IT (witness cost class 2).
     //
