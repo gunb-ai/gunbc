@@ -2170,25 +2170,24 @@ fn infer_match_variant_row(
           match infer_match_variant_coverage(rows: arm_rows, scrutinee: scrutinee) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: _, diagnostics: vd } =>
-              match infer_match_variant_arm_types_unified(rows: arm_rows, node: scrutinee.match_node) {
-                Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                Accepted { value: body_type, diagnostics: ud } =>
-                  bind_outcome(
-                    o: inferred_facts_from_derived_type(
-                      node: scrutinee.match_node,
-                      derived_type: body_type,
-                      descent: scrutinee.descent
-                    ),
-                    f: fn(facts) {
-                      Accepted {
-                        value: facts,
-                        diagnostics: diagnostics_merge(
+              match list_at_optional(xs: arm_rows, index: 0) {
+                Absent => outcome_rejected(infer_match_shape_invalid_diagnostic(node: scrutinee.match_node))
+                Present { value: first_row } =>
+                  match infer_match_variant_arm_types_unified_refusal_optional(rows: arm_rows, node: scrutinee.match_node) {
+                    Present { value: r } => outcome_rejected(r)
+                    Absent =>
+                      bind_outcome_accepted(
+                        od: diagnostics_merge(
                           outer: diagnostics_merge(outer: scrutinee.lattice_diagnostics, inner: ad),
-                          inner: diagnostics_merge(outer: vd, inner: ud)
+                          inner: vd
+                        ),
+                        inner: inferred_facts_from_derived_type(
+                          node: scrutinee.match_node,
+                          derived_type: first_row.body_type,
+                          descent: scrutinee.descent
                         )
-                      }
-                    }
-                  )
+                      )
+                  }
               }
           }
       }
@@ -2207,6 +2206,12 @@ type InferMatchVariantArmRow {
   body_type: Node
 }
 
+type InferMatchVariantArmRowsAcc {
+  rows: List<InferMatchVariantArmRow>
+  diagnostics: Diagnostics
+  refused: Optional<Diagnostic>
+}
+
 fn infer_match_variant_arm_rows(
   node: Node,
   arm_targets: List<Node>,
@@ -2217,29 +2222,35 @@ fn infer_match_variant_arm_rows(
   if length(xs: arm_targets) < 1 {
     outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
   } else {
-    fold(
+    let acc = fold(
       arm_targets,
-      init: outcome_accepted(
-        value: [],
-        diagnostics: None
-      ),
+      init: InferMatchVariantArmRowsAcc { rows: Empty, diagnostics: None, refused: optional_absent() },
       f: fn(acc, arm_target) {
-        match acc {
-          Rejected { diagnostics: r } => Rejected { diagnostics: r }
-          Accepted { value: rows, diagnostics: ad } =>
+        match acc.refused {
+          Present { value: _ } => acc
+          Absent =>
             match infer_match_variant_arm_row(
               arm: arm_target,
               scrutinee: scrutinee,
               entries: entries,
               resolved: resolved
             ) {
-              Rejected { diagnostics: r } => Rejected { diagnostics: r }
+              Rejected { diagnostics: r } =>
+                InferMatchVariantArmRowsAcc { rows: acc.rows, diagnostics: acc.diagnostics, refused: optional_present(value: r) }
               Accepted { value: row, diagnostics: rd } =>
-                outcome_accepted(value: list_snoc_item(xs: rows, item: row), diagnostics: diagnostics_merge(outer: ad, inner: rd))
+                InferMatchVariantArmRowsAcc {
+                  rows: list_snoc_item(xs: acc.rows, item: row),
+                  diagnostics: diagnostics_merge(outer: acc.diagnostics, inner: rd),
+                  refused: optional_absent()
+                }
             }
         }
       }
     )
+    match acc.refused {
+      Present { value: r } => outcome_rejected(r)
+      Absent => outcome_accepted(value: acc.rows)
+    }
   }
 }
 
@@ -2271,19 +2282,19 @@ fn infer_match_variant_arm_row(
                       ) {
                         outcome_rejected(infer_match_pattern_not_scrutinee_alternative_diagnostic(node: pat))
                       } else {
-                        match infer_match_variant_pattern_fields_declared(pat: pat, variant_path: scrutinee.variant_path, arm_name: arm_name, resolved: resolved) {
-                          Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                          Accepted { value: _, diagnostics: fd } =>
+                        match infer_match_variant_pattern_fields_refusal_optional(pat: pat, variant_path: scrutinee.variant_path, arm_name: arm_name, resolved: resolved) {
+                          Present { value: r } => outcome_rejected(r)
+                          Absent =>
                             match lookup_inferred_facts_in_entries(entries: entries, key: body_target) {
                               Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: body_target))
                               Present { value: body_facts } =>
                                 match inferred_facts_resolved_type(facts: body_facts) {
                                   Violates { diagnostic: d } => outcome_rejected(d)
                                   Holds { value: body_type } =>
-                                    outcome_accepted(
+                                    Accepted {
                                       value: InferMatchVariantArmRow { arm_name: arm_name, body_type: body_type },
-                                      diagnostics: diagnostics_merge(outer: diagnostics_merge(outer: pd, inner: bd), inner: fd)
-                                    )
+                                      diagnostics: diagnostics_merge(outer: pd, inner: bd)
+                                    }
                                 }
                             }
                         }
@@ -2311,27 +2322,27 @@ fn infer_match_variant_coproduct_names_alternative(coproduct: Node, name: Symbol
 // must name a field the arm declares -- positional "0" and named alike, one grammar
 // (v2.compiler.body_lowering_fold body_lower_field_decl_optional). A field the arm does not declare
 // is refused at the arm row; the arm's fields, and the binders they carry, were typed at resolve.
-fn infer_match_variant_pattern_fields_declared(
+// The first offending field is the refusal; a well-formed pattern returns no refusal.
+fn infer_match_variant_pattern_fields_refusal_optional(
   pat: Node,
   variant_path: QualifiedName,
   arm_name: Symbol,
   resolved: ResolvedTree,
-) -> Outcome<List<Edge>> {
+) -> Optional<Diagnostic> {
   match symbol_index_lookup(index: resolved.symbol_index, qualified_path: qualified_name_snoc(qn: variant_path, segment: arm_name)) {
-    Absent => outcome_rejected(infer_match_pattern_not_scrutinee_alternative_diagnostic(node: pat))
+    Absent => optional_present(value: infer_match_pattern_not_scrutinee_alternative_diagnostic(node: pat))
     Present { value: arm_payload } =>
-      fold(construct_field_edges(n: pat), init: outcome_accepted(value: [], diagnostics: None), f: fn(acc, e) {
+      fold(construct_field_edges(n: pat), init: optional_absent(), f: fn(acc, e) {
         match acc {
-          Rejected { diagnostics: r } => Rejected { diagnostics: r }
-          Accepted { value: fields, diagnostics: ad } =>
+          Present { value: _ } => acc
+          Absent =>
             match e.label {
               Authored { name: field_name } =>
                 match declared_field_named(payload: arm_payload, name: field_name) {
-                  Present { value: _ } =>
-                    outcome_accepted(value: list_snoc_item(xs: fields, item: e), diagnostics: ad)
-                  Absent => outcome_rejected(infer_match_pattern_not_scrutinee_alternative_diagnostic(node: e.target))
+                  Present { value: _ } => optional_absent()
+                  Absent => optional_present(value: infer_match_pattern_not_scrutinee_alternative_diagnostic(node: e.target))
                 }
-              _ => outcome_rejected(infer_match_pattern_not_scrutinee_alternative_diagnostic(node: e.target))
+              _ => optional_present(value: infer_match_pattern_not_scrutinee_alternative_diagnostic(node: e.target))
             }
         }
       })
@@ -2349,7 +2360,7 @@ fn infer_match_variant_coverage(
   scrutinee: InferMatchVariantScrutinee,
 ) -> Outcome<Node> {
   let covered_names = list_map(xs: rows, f: fn(r) { r.arm_name })
-  let covered_children = fold(scrutinee.declared_coproduct.children, init: [], f: fn(acc, e) {
+  let covered_children = fold(scrutinee.declared_coproduct.children, init: Empty, f: fn(acc, e) {
     match e.label {
       Authored { name: n } =>
         if any(xs: covered_names, predicate: fn(c) { c == n }) {
@@ -2375,7 +2386,7 @@ fn infer_match_variant_coverage(
       type_variables: Empty
     }
   ) {
-    Inhabits { homomorphism: _ } => outcome_accepted(value: covered_carrier, diagnostics: None)
+    Inhabits { homomorphism: _ } => outcome_accepted(value: covered_carrier)
     InhabitanceUndecidable { reason: _ } =>
       outcome_rejected(infer_match_non_exhaustive_diagnostic(node: scrutinee.match_node))
     InhabitanceRefused { find_witness_reason: _ } =>
@@ -2383,18 +2394,23 @@ fn infer_match_variant_coverage(
   }
 }
 
-fn infer_match_variant_arm_types_unified(rows: List<InferMatchVariantArmRow>, node: Node) -> Outcome<Node> {
+// THE ARMS' TYPE IS THE FIRST ARM'S, EXACTLY AS THE BOOL ROW UNIFIES ITS TWO: every arm's body
+// type must equal it (infer_branch_type_atoms_equal), and the first disagreement is the refusal.
+fn infer_match_variant_arm_types_unified_refusal_optional(
+  rows: List<InferMatchVariantArmRow>,
+  node: Node,
+) -> Optional<Diagnostic> {
   match list_at_optional(xs: rows, index: 0) {
-    Absent => outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
+    Absent => optional_present(value: infer_match_shape_invalid_diagnostic(node: node))
     Present { value: first } =>
-      fold(rows, init: outcome_accepted(value: first.body_type, diagnostics: None), f: fn(acc, row) {
+      fold(rows, init: optional_absent(), f: fn(acc, row) {
         match acc {
-          Rejected { diagnostics: r } => Rejected { diagnostics: r }
-          Accepted { value: t, diagnostics: ad } =>
-            if infer_branch_type_atoms_equal(a: t, b: row.body_type) {
-              acc
+          Present { value: _ } => acc
+          Absent =>
+            if infer_branch_type_atoms_equal(a: first.body_type, b: row.body_type) {
+              optional_absent()
             } else {
-              outcome_rejected(infer_match_arm_type_mismatch_diagnostic(node: node))
+              optional_present(value: infer_match_arm_type_mismatch_diagnostic(node: node))
             }
         }
       })
@@ -2414,13 +2430,7 @@ fn infer_match_pattern_not_scrutinee_alternative_diagnostic(node: Node) -> Diagn
   Diagnostic {
     reason: ^infer_match_pattern_not_scrutinee_alternative,
     at: node_locus(node: node),
-    correction: Suggested {
-      node: Node {
-        kind: TypeNode { connective: Conj },
-        children: []
-      },
-      because: "pattern names no alternative of the scrutinee's declared coproduct"
-    }
+    correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -3482,6 +3492,7 @@ fn infer_unify_transform_operand_types(
   left_facts: InferredFacts,
   right_node: Node,
   right_facts: InferredFacts,
+  entries: List<InferredFactsEntry>,
   resolved: ResolvedTree,
 ) -> Outcome<Node> {
   match infer_branch_operand_resolved_type_in_tree(node: left_node, facts: left_facts, entries: entries, resolved: resolved) {
@@ -4407,6 +4418,7 @@ fn infer_transform_binary_infix(
                                 left_facts: left_facts,
                                 right_node: right_target,
                                 right_facts: right_facts,
+                                entries: entries,
                                 resolved: resolved
                               ) {
                                 Rejected { diagnostics: r } => Rejected { diagnostics: r }
