@@ -1,5 +1,6 @@
 module v2.workflow.floor_enrolment_margin
 
+import v2.std.algebra { list_reverse }
 import v2.workflow.required_floor { required_floor_per_subject_cpu_line_ms }
 import v2.workflow.floor_cost_debt_admission {
   floor_cost_debt_typed_admitted_identities,
@@ -633,7 +634,7 @@ type EnrolmentMarginRow {
 // cannot red a PR for debt it did not author: the population is the identities THIS change
 // enrols, never the standing corpus.
 fn enrolment_margin_blockers(rows: List<EnrolmentMarginRow>) -> List<EnrolmentMarginBlocker> {
-  reverse(fold(rows, init: [], f: fn(acc, row) {
+  list_reverse(xs: fold(rows, init: [], f: fn(acc, row) {
     if enrolment_margin_standing_blocks(standing: row.standing) {
       concat(
         [EnrolmentMarginBlocker {
