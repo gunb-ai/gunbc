@@ -654,6 +654,9 @@ import v2.std.collection { List }
 // THE IF-ARM-POSITION ROW IS THE SAME GROUND AT FOUR SPECIMENS: v2.test.claim.body_lowering.if_arm_position
 // iap_verdicts tokenizes, parses and normalizes four inline modules and stores four Bools. Its first floor
 // run (37073686904) refused all four claims over the enrolment margin, at 353k-687k eval steps each.
+// THE IF-ARM READER DIFFERENTIAL ROW IS THE SAME GROUND AT THREE SPECIMENS:
+// v2.test.claim.cli.if_arm_reader_differential iard_fixture_censuses tokenizes and parses three inline
+// modules and stores two censuses (counts and rendered rows, no Node), portable for the same reason.
 // THE XL-2 REIFY-OPERAND ROW: v2.test.claim.body_lowering.reify_operand_refusal ror_verdicts tokenizes
 // and parses two inline modules and reifies two supplied bodies over each; the stored value is four
 // verdicts (no Node, no closure), portable for the same reason cav_outcomes is.
@@ -831,6 +834,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.wildcard_arm_resolve.wc_outcomes",
   "v2.test.claim.namespace_xl0.else_arm_nested_if.eam_outcomes",
   "v2.test.claim.body_lowering.if_arm_position.iap_verdicts",
+  "v2.test.claim.cli.if_arm_reader_differential.iard_fixture_censuses",
   "v2.test.cli.v2_native_cli.cli_probe_trailing_outcome",
   "v2.test.emit.closure_emit_arrow_body_refusal.arrow_body_probe_verdict",
   "v2.test.emit.closure_emit_arrow_body_refusal.arrow_body_mixed_probe_verdict",
