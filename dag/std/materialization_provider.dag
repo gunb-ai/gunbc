@@ -244,10 +244,12 @@ type ArtifactRequest
 // operations -- plus ONE BYTE PART PER DECLARED BINARY of a build (compute_work_binary_outputs). Per
 // the materialization authority's ruling (royal-moth-86, 2026-10-03) the binaries are byte parts of
 // this same record in the bounded per-host store, charged to the family's own budget and evicted with
-// the record; cross-host binaries travel through std.fabric_blob, never the local store. DECLARED FRONTIER (DESIGN section 3c): the cutover that serves and commits
-// this family through extdeps.realization.materialization_store_local and deletes the provider's
-// private ComputeLayout store lands on the BOUNDED store (quick-gull-60's C1), never on the unbounded
-// one; until then the family's executing consumer is the provider's identity, which IS this key.
+// the record; cross-host binaries travel through std.fabric_blob, never the local store.
+//
+// CONSUMED BY EXECUTION: gunbc.compute.work_provider_local files every compute request under this
+// key, reads it back through the bounded store (compute_store_read, compute_dependency_read) and
+// commits its outcome and binaries there (compute_store_commit); belt verification reaches it through
+// gunbc.roadmap_belt_actuate belt_run_claim_through_compute.
 type NativeModuleVerdictBundleSubject {
   route_binary_identity: Fnv1a64Structural
   module_identity: Fnv1a64Structural
