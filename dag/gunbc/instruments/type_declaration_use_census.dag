@@ -35,7 +35,7 @@ import v2.std.compilers.target_model {
   canonical_operation_op_add
 }
 import v2.compiler.body_lowering_fold {
-  DeclaredRecord, DeclaredRefinement, DeclaredResource, DeclaredTypeKind,
+  DeclaredRecord, DeclaredRefinement, DeclaredResource, DeclaredTypeKind, declared_resource_names,
   DeclaredTypeModifiers, NominalOpaqueModifier, SoleConstructorModifier, TypeDeclModifier
 }
 import v2.compiler.emit_produced {
@@ -157,14 +157,10 @@ fn tdc_modifiers_of(name: Symbol, modifiers: FreeMonoid<DeclaredTypeModifiers>) 
   })
 }
 
+// "Is this declaration a resource" has one authority: the resource projection of the module's captured
+// kinds (v2.compiler.body_lowering_fold declared_resource_names), the same one symbol_index_fill reads.
 fn tdc_is_resource(name: Symbol, kinds: FreeMonoid<DeclaredTypeKind>) -> Bool {
-  fold_list(xs: kinds, empty: false, cons: fn(acc, k) {
-    match k {
-      DeclaredResource { name: r } => acc || (r == name)
-      DeclaredRecord { name: _ } => acc
-      DeclaredRefinement { name: _ } => acc
-    }
-  })
+  fold_list(xs: declared_resource_names(kinds: kinds), empty: false, cons: fn(acc, r) { acc || (r == name) })
 }
 
 // The form of a declaration's MEMBER (the plain body, or a generic declaration's body inside its
