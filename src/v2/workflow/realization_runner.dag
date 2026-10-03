@@ -20,8 +20,6 @@ import v2.workflow.executor {
   parallel_executor_plan_from_dependencies
 }
 import v2.workflow.scheduler { scheduler_execution_dependencies }
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 type RunnerOrderingResult = RunnerOrderingOnly {}
 
@@ -86,19 +84,13 @@ fn node_keyed_store_node_count<V>(store: NodeKeyedStore<V>) -> Int {
 // construction (each pass either visits a new interned row or empties the frontier — a visited ref
 // is skipped, so even a cyclic row table converges to its reachable set); the Unsettled arm is the
 // typed fail-closed backstop should that bound argument ever be violated, not a reachable state we
-// can construct. Artifact well-formedness itself (interning — at most one row per hash — and
-// acyclicity via child-before-parent row order) is the codec's obligation:
-// node_keyed_graph_rows_interned checks the former, and the hash-consed single-pass decode refuses
-// a forward or missing child ref, which makes an encoded cycle unrepresentable.
-
-data node_keyed_graph_codec_seed_disposition: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "v2.workflow.realization_runner",
-    decl_name: "NodeKeyedGraphArtifact",
-    field: WholeDeclaration
-  }
-}
+// can construct. Artifact well-formedness itself has two halves. Interning -- at most one row per
+// hash -- is checked here by node_keyed_graph_rows_interned. Acyclicity via child-before-parent row
+// order has NO owner today: it was enforced by the hand-Rust codec's hash-consed single-pass decode,
+// which refused a forward or missing child ref, and that decode was deleted on 2026-10-03 (below).
+// The walk's Unsettled arm still refuses rather than looping on a cyclic table, so the gap is a
+// missing construction-time refusal, not an unbounded walk; its owner is whichever realization next
+// decodes this artifact from bytes.
 
 // The model below has NO host realization. A hand-Rust byte codec for NodeKeyedGraphArtifact (trait
 // NodeKeyedGraphEncode, node_keyed_graph_encode/decode/row_facts) lived in
