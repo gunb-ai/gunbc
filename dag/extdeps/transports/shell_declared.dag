@@ -1,0 +1,87 @@
+module extdeps.transports.shell_declared
+
+import std.types { Int, String }
+
+// THE DECLARED VOCABULARY OF THE SHELL TRANSPORT (XL-2 PR3a, moved here in PR3b-i): what an operation
+// AUTHORS for this transport -- its binding fields, the channels its `from "key"` names and its exit-status patterns -- apart from
+// extdeps.transports.shell, which holds the host's runtime configuration and observation. It is its own
+// module so the compiler's realization wall (v2.compiler.service_realization), which body lowering
+// calls, reads it without importing the runtime module's dependencies into the self-emitted compiler.
+
+// WHAT AN OPERATION'S `from "key"` NAMES ON THE SHELL TRANSPORT: one channel of the process result.
+// This is the v2 home of the vocabulary the seed reads as v1.compiler.emit ShellResultChannel and
+// shell_result_channel_of_key, transcribed arm for arm and key for key (aliases included) so the two
+// directions agree while v1 stays frozen; it is not a narrower copy.
+// A STATED CROSS-GENERATION DIVERGENCE, recorded as a dated debt with its executable exit in ONE place:
+// gunbc.recurring_failure_mode vocabulary_held_in_both_the_frozen_seed_and_v2.
+// before XL-2 PR3a had no consumer and lacked exit_code (135 corpus rows), so it was completed rather
+// than kept beside a second list.
+type ShellOutputChannel
+  = Stdout
+  | Stderr
+  | ExitSuccess
+  | ExitCode
+  | StdoutLines
+  | StderrTruncated
+  | StderrTotalBytes
+  | StderrRetainedBytes
+
+// The key an author writes for a channel; `success` and `exists` are the seed's aliases of
+// exit_success and are admitted by shell_output_channel_of_key, never produced here.
+fn shell_output_channel_key(channel: ShellOutputChannel) -> String {
+  match channel {
+    Stdout => "stdout"
+    Stderr => "stderr"
+    ExitSuccess => "exit_success"
+    ExitCode => "exit_code"
+    StdoutLines => "stdout_lines"
+    StderrTruncated => "stderr_truncated"
+    StderrTotalBytes => "stderr_total_bytes"
+    StderrRetainedBytes => "stderr_retained_bytes"
+  }
+}
+
+fn shell_output_channel_of_key(key: String) -> ShellOutputChannel? {
+  if key == "stdout" { Present { value: Stdout } }
+  else if key == "stderr" { Present { value: Stderr } }
+  else if key == "exit_success" || key == "success" || key == "exists" { Present { value: ExitSuccess } }
+  else if key == "exit_code" { Present { value: ExitCode } }
+  else if key == "stdout_lines" { Present { value: StdoutLines } }
+  else if key == "stderr_truncated" { Present { value: StderrTruncated } }
+  else if key == "stderr_total_bytes" { Present { value: StderrTotalBytes } }
+  else if key == "stderr_retained_bytes" { Present { value: StderrRetainedBytes } }
+  else { none }
+}
+
+// WHAT AN OPERATION'S `exit { .. }` ARM MATCHES: the process's exit status (POSIX.1-2017 2.8.2,
+// extdeps.process.posix_exit). An exit status is an integer, never an HTTP status: a `5xx` class has
+// no meaning here and is refused, not coerced. `nonzero` is the seed's spelling for every status but
+// exit_code_success (v1.compiler.emit_rust renders it as the wildcard after the zero arm).
+// Decoded from a lowered exit arm by v2.compiler.service_realization shell_exit_pattern_of, the wall's only
+// reading of a shell status pattern.
+type ShellExitPattern
+  = ShellExitCode { code: Int }
+  | ShellExitNonzero
+
+data shell_exit_nonzero_spelling: String = "nonzero"
+
+// THE FIELDS A `transport shell { .. }` BLOCK DECLARES. This is the operation's DECLARED binding, not
+// ShellTransportConfig: that record is the host's runtime configuration (working directory,
+// environment), which no operation authors. argv is the command line; stdin is the bytes written to
+// the process. Corpus at authoring time: argv 427, stdin 57, nothing else.
+type ShellBindingField
+  = ShellArgv
+  | ShellStdin
+
+fn shell_binding_field_key(field: ShellBindingField) -> String {
+  match field {
+    ShellArgv => "argv"
+    ShellStdin => "stdin"
+  }
+}
+
+fn shell_binding_field_of_key(key: String) -> ShellBindingField? {
+  if key == "argv" { Present { value: ShellArgv } }
+  else if key == "stdin" { Present { value: ShellStdin } }
+  else { none }
+}
