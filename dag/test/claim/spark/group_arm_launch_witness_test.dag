@@ -25,6 +25,7 @@ import gunbc.spark.glm53_arm_staircase {
   glm53_step_dry_plan, glm53_previous_step_incumbent,
 }
 import gunbc.spark.arm_group_launch_dispatch {
+  arm_group_of_word, ArmGroupNamed, ArmGroupWordRefused,
   arm_group_launch_select, ArmGroupLaunchSelected, ArmGroupLaunchSelectionRefused, ArmV41GroupA, ArmGlm53GroupAStep,
 }
 import gunbc.spark.v41_group_a_launch { v41_arm_plan }
@@ -250,4 +251,10 @@ test fn w_the_dispatch_selects_only_from_closed_vocabularies() -> Bool {
     && match arm_group_launch_select(arm: "glm53-group-a", step: "fp8-13", incumbent: "previous-step") { ArmGroupLaunchSelectionRefused { cause: _ } => true  _ => false }
     && match arm_group_launch_select(arm: "glm53-group-a", step: "fp8-12", incumbent: "whatever-runs") { ArmGroupLaunchSelectionRefused { cause: _ } => true  _ => false }
     && match arm_group_launch_select(arm: "glm53-group-b", step: "fp8-12", incumbent: "none") { ArmGroupLaunchSelectionRefused { cause: _ } => true  _ => false }
+}
+
+// THE OBSERVE NEEDS ONLY THE ARM: a GLM observe with no step is admitted, an unknown arm is not.
+test fn w_the_observe_reads_only_the_arm_word() -> Bool {
+  match arm_group_of_word(arm: "glm53-group-a") { ArmGroupNamed { group: _ } => true  ArmGroupWordRefused { cause: _ } => false }
+    && match arm_group_of_word(arm: "glm53-group-b") { ArmGroupNamed { group: _ } => false  ArmGroupWordRefused { cause: _ } => true }
 }

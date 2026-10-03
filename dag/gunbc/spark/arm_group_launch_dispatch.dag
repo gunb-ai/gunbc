@@ -121,22 +121,26 @@ fn arm_group_launch_ci_wet() -> ProcessExit {
   }
 }
 
-fn arm_group_of(c: ArmGroupLaunchChoice) -> FabricGroup {
-  match c {
-    ArmV41GroupA => FabricGroupA
-    ArmGlm53GroupAStep { step: _, incumbent: _ } => FabricGroupA
-  }
+// THE OBSERVE NEEDS ONLY THE ARM'S GROUP, so it parses only the arm word: a step or an incumbent is
+// a launch's input, and an observation that demanded one would ask the operator for a value it never
+// reads.
+type ArmGroupOfWord
+  = ArmGroupNamed { group: FabricGroup }
+  | ArmGroupWordRefused { cause: String }
+
+fn arm_group_of_word(arm: String) -> ArmGroupOfWord {
+  if arm == arm_group_launch_arm_v41 { ArmGroupNamed { group: FabricGroupA } }
+  else if arm == arm_group_launch_arm_glm53 { ArmGroupNamed { group: FabricGroupA } }
+  else { ArmGroupWordRefused { cause: join([arm_group_launch_arm_env as String, "=`", arm, "` is not an arm; the arms are ", join(arm_group_launch_arm_options(), ", ")], "") } }
 }
 
 data arm_group_observe_receipt_path: String = "target/arm-group-observe-receipt.txt"
 
 // THE READ-ONLY OBSERVE ENTRY (mode spark_arm_group_observe): the chosen arm's GROUP, every host's
-// running units, containers and GPU processes with their owning cgroups. Only the arm input is read --
-// the group is the arm's -- so a step or incumbent given beside it is ignored by the observation and
-// still refused for V4.1 by the selection, as everywhere else.
+// running units, containers and GPU processes with their owning cgroups.
 fn arm_group_observe_ci() -> ProcessExit {
-  match arm_group_launch_selection_from_env() {
-    ArmGroupLaunchSelectionRefused { cause: c } => exit_failure(reason: c)
-    ArmGroupLaunchSelected { choice: c } => group_arm_launch_wet(arm: group_arm_occupancy_observe_session(group: arm_group_of(c: c)), receipt_path: arm_group_observe_receipt_path)
+  match arm_group_of_word(arm: env_word(name: arm_group_launch_arm_env)) {
+    ArmGroupWordRefused { cause: c } => exit_failure(reason: c)
+    ArmGroupNamed { group: g } => group_arm_launch_wet(arm: group_arm_occupancy_observe_session(group: g), receipt_path: arm_group_observe_receipt_path)
   }
 }
