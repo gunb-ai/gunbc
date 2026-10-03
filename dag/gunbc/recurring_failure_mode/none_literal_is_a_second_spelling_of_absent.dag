@@ -1,0 +1,27 @@
+module gunbc.recurring_failure_mode.none_literal_is_a_second_spelling_of_absent
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data none_literal_is_a_second_spelling_of_absent: RecurringFailureMode = RecurringFailureMode {
+  identity: "none_literal_is_a_second_spelling_of_absent" as NonEmptyStr,
+
+  receipts: [
+    "**the `none` literal is a second spelling of Absent** (INVALID STATE: a `.dag` expression writes `none` where a `T?` value is expected -- `fn nat_ceil_div(..) -> Nat? { if b == 0 { none } .. }`, `Absent => none`, a record field `cost_shape: none` beside `cost_shape: Present { value: .. }`. The seed's dag grammar lists `none` as a reserved literal keyword lowering to the untyped host null (extdeps.languages.dag.syntax `dag_keyword_literals` maps \"none\" to `LitNull`), and v1.compiler.infer `equality_operand_is_presence_literal` reads it as a presence literal equal to Absent. So one concept, v2.std.optional `Absent`, carries two names: a §3 nickname.",
+
+    "HARM: v2 has no Null carrier, and its grammar does not lex `none` as a literal, so every site is an unbound name. In the N7 closure (the import closure of v2.test.claim.parse.expression_bodied_fn_decl_parse_test) 23 modules refused their own native resolve on it, census root R3 (gunbc#13167). A refusing module drops out of the closure index, so every consumer downstream also stops.",
+
+    "REPAIR (N7 lane, valiant-stag-606): every site in that closure was read as an Optional position and rewritten to `Absent`, with `import v2.std.optional { Absent }` (ruling by calm-boar-904, 2026-10-03). Any site whose expected type is not Optional is a separate finding, to be reported rather than rewritten. Sites outside that closure still spell `none`.",
+
+    "DISTINGUISHING FACTS: the seed accepts the module (LitNull at an Optional position), and v2 native resolve refuses it with resolve_reason_unbound_symbol at the identifier `none`. Rewriting the site to `Absent` with the import clears that refusal and changes no seed behaviour, because the seed already treated the two as one value.",
+
+    "RUNG FOUND AT: mitigatable -- a located refusal, on the v2 route only, and the seed keeps admitting new `none` sites. CEILING: 4. With the keyword gone from the grammar, the nickname has no constructor.",
+
+    "NEXT-RUNG TRIGGER, as the capability: the dag grammar drops the `none` literal -- the keyword-table rows `none` in extdeps.languages.dag.syntax (literal map, reserved words, non-name keywords) are deleted, and the remaining corpus sites are rewritten to `Absent` -- SUFFICIENT THAT no accepted program on either the seed or the v2 route can spell Absent as `none`. Owner of the keyword table: the grammar program (stern-bear-500).",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.std.optional", decl_name: "Optional", field: WholeDeclaration },
+  ],
+}
