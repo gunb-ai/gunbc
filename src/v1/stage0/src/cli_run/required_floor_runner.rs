@@ -1351,7 +1351,7 @@ pub(crate) fn floor_diff_edits_from_line_ranges_reading(
                         .map(|(l, _, _, _)| l - 1)
                         .unwrap_or(i64::MAX)
                 });
-                if *start <= g - 1 && g <= bound {
+                if *start < g && g <= bound {
                     gap_charged.insert(i);
                 }
             }
