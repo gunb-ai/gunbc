@@ -47210,6 +47210,37 @@ mod reconcile_interior_probe {
         phase_cpu::reset();
         let (graph, _si) = super::resolve_entry_graph(&roots, &entry).expect("entry resolves");
         phase_cpu::report("m2");
+        // THE ANSWER DIFFERENTIAL: every module's sorted (name, declaration span) over its ancestry and
+        // own bindings, as one digest. It is equal with and without the pass iff the pass changes no
+        // resolve answer on this route (copies carry the same span; a substituted declaration does not).
+        let answer_digest = {
+            use std::hash::{Hash, Hasher};
+            let mut rows: Vec<String> = Vec::new();
+            for m in graph.modules.iter() {
+                for (layer, map) in [
+                    ("ancestry", &m.type_env.ancestry_str_bindings),
+                    ("own", &m.type_env.str_bindings),
+                ] {
+                    for (name, b) in map.iter() {
+                        rows.push(format!(
+                            "{}|{layer}|{name}|{}:{}:{}",
+                            m.type_env.module_path,
+                            b.resolved.span.file,
+                            b.resolved.span.start,
+                            b.resolved.span.end
+                        ));
+                    }
+                }
+            }
+            rows.sort();
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            rows.hash(&mut h);
+            (rows.len(), h.finish())
+        };
+        eprintln!(
+            "[m2-answers] rows={} digest={:016x}",
+            answer_digest.0, answer_digest.1
+        );
         eprintln!(
             "[m2-done] entry={entry} graph={} heap_in_use_with_graph={} skip={}",
             graph.modules.len(),
