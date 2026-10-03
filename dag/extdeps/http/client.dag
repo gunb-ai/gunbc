@@ -344,7 +344,7 @@ service http.Client {
         "curl",
         "-sS",
         "-o", "/dev/null",
-        "-w", "%{http_code}",
+        "-w", "%\{http_code\}",
         "--connect-timeout", "{connect_seconds}",
         "{url}",
       ]
