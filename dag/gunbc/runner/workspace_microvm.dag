@@ -15,7 +15,7 @@ import std.measure { byte_size_count, gibibyte_to_byte_size }
 import product.fabric.identity { fabric_identity_eq }
 import product.fabric.memory_grant { MemoryGrant, memory_grant_bytes }
 import gunbc.principal_projection { principal_ref_label }
-import gunbc.workspace_allocation { WorkspaceReservation, WorkspaceProfile, workspace_profile_vcpus, workspace_profile_memory, workspace_disk_bytes, workspace_lease_seconds }
+import gunbc.workspace_allocation { WorkspaceReservation, WorkspaceProfile, workspace_profile_vcpus, workspace_profile_memory, workspace_disk_bytes, workspace_lease_bound_seconds }
 import gunbc.build_cache_instance { runner_slot_identity_equal }
 import gunbc.fabric_required_build_cell { RequiredBuildCellSnapshot }
 import gunbc.fabric_cell_converge { fabric_cell_id_for_slot }
@@ -142,7 +142,7 @@ fn bind_workspace_launch_lease(
     WorkspaceLaunchRefused { reason: "workspace lease expiry is not a canonical UTC instant" }
   } else {
     let expires = utc_instant_seconds_after(later: reservation.request.expires_at, earlier: "1970-01-01T00:00:00Z")
-    if now_unix <= 0 || expires <= now_unix || expires - now_unix > workspace_lease_seconds() {
+    if now_unix <= 0 || expires <= now_unix || expires - now_unix > workspace_lease_bound_seconds() {
       WorkspaceLaunchRefused { reason: "workspace lease has expired or exceeds its bounded policy" }
     } else {
       WorkspaceLaunchBound { binding: WorkspaceLaunchBinding {

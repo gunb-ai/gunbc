@@ -2,10 +2,11 @@ module gunbc.workspace_allocation
 
 import std.types { NonEmptyStr, String, Int, Bool, Timestamp }
 import std.nat { Nat }
+import std.nat { Nat }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.measure { ByteSize, byte_size, finite_byte_size, positive_measure_count, hardware_thread_count }
+import std.measure { ByteSize, byte_size, finite_byte_size, positive_measure_count, hardware_thread_count, Minute, minute, minutes_per_hour, minute_to_second, second_count }
 import gunbc.principal_projection { PrincipalRef, principal_ref_label, principal_ref_parse_label }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import product.placement_supply { HostIdentity }
@@ -58,7 +59,10 @@ fn workspace_profile_memory(profile: WorkspaceProfile) -> ByteSize {
 }
 
 fn workspace_disk_bytes() -> ByteSize { byte_size(count: 8589934592) }
-fn workspace_lease_seconds() -> Int { 3600 }
+// The longest lease a workspace request may name: one hour, as a time measure. Callers that
+// compare it against unix-second arithmetic convert through workspace_lease_bound_seconds.
+fn workspace_lease_bound() -> Minute { minute(count: minutes_per_hour()) }
+fn workspace_lease_bound_seconds() -> Nat { second_count(s: minute_to_second(m: workspace_lease_bound())) }
 fn workspace_profile_wire(profile: WorkspaceProfile) -> NonEmptyStr {
   match profile { SmallWorkspace => "2cpu-4gib" LargeWorkspace => "4cpu-8gib" }
 }

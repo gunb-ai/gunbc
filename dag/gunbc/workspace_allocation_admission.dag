@@ -1,7 +1,7 @@
 module gunbc.workspace_allocation_admission
 
 import std.types { NonEmptyStr, String, Timestamp, List }
-import gunbc.workspace_allocation { WorkspaceRequest, workspace_profile_parse, workspace_policy_ref, workspace_lease_seconds }
+import gunbc.workspace_allocation { WorkspaceRequest, workspace_profile_parse, workspace_policy_ref, workspace_lease_bound_seconds }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
 import std.access { AccessDecision, Permit, Deny, AccessActionNotGranted, decision_meet }
 import extdeps.http.server { RequestSecurityContext }
@@ -91,7 +91,7 @@ fn workspace_request_admit(
         Permit =>
           if idempotency_key == "" { WorkspaceRequestPolicyRefused { reason: "idempotency key required" } }
           else if !utc_instant_is_canonical(t: observed_at) || !utc_instant_is_canonical(t: expires_at) { WorkspaceRequestPolicyRefused { reason: "canonical UTC lease instants required" } }
-          else if utc_instant_seconds_after(later: expires_at, earlier: observed_at) <= 0 || utc_instant_seconds_after(later: expires_at, earlier: observed_at) > workspace_lease_seconds() { WorkspaceRequestPolicyRefused { reason: "workspace lease must be positive and at most sixty minutes" } }
+          else if utc_instant_seconds_after(later: expires_at, earlier: observed_at) <= 0 || utc_instant_seconds_after(later: expires_at, earlier: observed_at) > workspace_lease_bound_seconds() { WorkspaceRequestPolicyRefused { reason: "workspace lease must be positive and at most sixty minutes" } }
           else { match workspace_profile_parse(value: profile_wire) {
             Absent => WorkspaceRequestPolicyRefused { reason: "choose a supported workspace profile" }
             Present { value: selected_profile } => WorkspaceRequestAdmitted { request: WorkspaceRequest {
