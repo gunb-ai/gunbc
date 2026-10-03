@@ -302,14 +302,21 @@ test fn a_launch_that_cannot_publish_its_pid_stops_its_child() -> Bool {
   match s { TransportNotServing { cause: c } => match c { TransportPidUnpublished => true  _ => false }  _ => false }
 }
 
-// A TERM-IGNORING CHILD WHOSE RECORD CANNOT BE PUBLISHED, EXECUTED THROUGH THE REAL LAUNCH: the launch
-// escalates to KILL and writes "stopped" only after observing the child gone -- the exit record shows
-// the KILL -- and nothing it started is left running.
+// A TERM-IGNORING CHILD WHOSE RECORD CANNOT BE PUBLISHED, EXECUTED THROUGH THE PRODUCTION LAUNCH SCRIPT
+// (gunbc.owned_process owned_process_launch_script, the exact bytes LaunchOwned hands to bash -c): the
+// launch escalates to KILL and writes "stopped" only after observing the child gone -- the exit record
+// shows the KILL -- and nothing it started is left running.
+// THE CHILD IGNORES TERM FROM BIRTH, inherited from a launcher that ignores it before forking, for the
+// reason given at an_unreadable_process_state_never_skips_the_kill_of_an_unpublished_child: a child
+// that installs the ignore itself can be TERMed first and exit 143, so KILL is never exercised. That
+// disposition cannot be set through the LaunchOwned operation (its launcher argv is the production
+// one), so the script is run directly; the operation itself is still executed for real by
+// a_launch_that_cannot_publish_its_pid_stops_its_child.
 test fn a_term_ignoring_child_with_an_unpublished_record_is_observed_stopped() -> Bool {
   let dir = scratch_dir()
   let pid_path = concat(dir, "/child.pid")
   let _blocker = shell.Mkdir.Parents(path: pid_path as FilePath)
-  let _l = gunbc.owned_process.launch.LaunchOwned(pid_path: pid_path as NonEmptyStr, log_path: concat(dir, "/child.log") as NonEmptyStr, command: ["sh", "-c", "trap '' TERM; exec sleep 37"])
+  let _l = shell.Exec.RunArgv(program: "env", arguments: ["--ignore-signal=TERM", "bash", "-c", owned_process_launch_script, "owned-launch", pid_path, concat(dir, "/child.log"), owned_process_exit_prefix, owned_process_unpublished_line, owned_process_unpublished_survived_line, owned_process_unpublished_unobservable_line, "sleep", "37"])
   let _w = sleep_delay_seconds_second_carrier_projection(duration: second(count: 6))
   let log = read_or_empty(path: concat(dir, "/child.log"))
   let _gone = shell.Remove.RecursiveForce(path: dir)
@@ -324,6 +331,11 @@ test fn a_term_ignoring_child_with_an_unpublished_record_is_observed_stopped() -
 // pre-fix launch an unreadable stat ended the TERM wait and skipped KILL, leaving the TERM-ignoring
 // child running while the log claimed it stopped. The fixture kills its own marked child afterwards,
 // whatever the verdict.
+// THE CHILD IGNORES TERM FROM BIRTH: the disposition is set on the launcher before it forks, and the
+// child inherits it across exec. A child that installs the ignore itself (`sh -c "trap '' TERM; ..."`)
+// is TERM-able until its shell runs the trap, and with publication failing at once the launch's TERM
+// can land first -- the child then exits 143 and the 137 this claim reads is never written
+// (merge-group run 37120556276, observed failed with no change touching this path).
 test fn an_unreadable_process_state_never_skips_the_kill_of_an_unpublished_child() -> Bool {
   let dir = scratch_dir()
   let bin = concat(dir, "/bin")
@@ -333,7 +345,7 @@ test fn an_unreadable_process_state_never_skips_the_kill_of_an_unpublished_child
   let pid_path = concat(dir, "/child.pid")
   let _blocker = shell.Mkdir.Parents(path: pid_path as FilePath)
   let marker = "37.0417"
-  let _l = shell.Exec.RunArgv(program: "env", arguments: [concat("PATH=", concat(bin, ":/usr/bin:/bin")), "bash", "-c", owned_process_launch_script, "owned-launch", pid_path, concat(dir, "/child.log"), owned_process_exit_prefix, owned_process_unpublished_line, owned_process_unpublished_survived_line, owned_process_unpublished_unobservable_line, "sh", "-c", concat("trap '' TERM; exec sleep ", marker)])
+  let _l = shell.Exec.RunArgv(program: "env", arguments: ["--ignore-signal=TERM", concat("PATH=", concat(bin, ":/usr/bin:/bin")), "bash", "-c", owned_process_launch_script, "owned-launch", pid_path, concat(dir, "/child.log"), owned_process_exit_prefix, owned_process_unpublished_line, owned_process_unpublished_survived_line, owned_process_unpublished_unobservable_line, "sleep", marker])
   let _w = sleep_delay_seconds_second_carrier_projection(duration: second(count: 6))
   let log = read_or_empty(path: concat(dir, "/child.log"))
   let survivor = shell.Exec.RunArgv(program: "pgrep", arguments: ["-f", concat("^sleep ", concat(marker, "$"))]).exit_code == 0

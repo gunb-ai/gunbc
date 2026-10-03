@@ -789,6 +789,7 @@ pub mod wt_common;
 #[macro_use]
 pub mod v1_interpreter_dispatch_generated;
 pub mod cli_run;
+pub mod closure_identity;
 pub mod codex_app_server_stdio_session;
 pub mod coproduct_reflection;
 pub mod data_initializer_identity;
@@ -800,7 +801,6 @@ pub mod module_path_index;
 pub mod process_group;
 pub mod recorded_fixture;
 pub mod release_locus_seed_constants_generated;
-pub mod resolved_graph_cache;
 pub mod shared_typecheck_store;
 pub mod std_logic;
 pub mod v1_interpreter;
