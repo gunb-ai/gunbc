@@ -26,7 +26,7 @@ import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node { Authored, Edge, Node, Positional, StructuralLabel, Symbol, is_empty_conj_root, symbol_lexeme }
 import v2.std.optional { Absent, Optional, Present }
-import v2.std.text { String }
+import v2.std.text { String, string_join }
 import std.algebra { list_snoc_item }
 import v2.std.collection { List }
 import v2.std.algebra { length, list_map }
@@ -82,6 +82,10 @@ fn route_of(shell: Node) -> String {
   }
 }
 
+fn route_joined(xs: List<String>) -> String {
+  string_join(fields: xs, separator: ",")
+}
+
 fn route_list(text: String, emitted: Symbol) -> List<String> {
   match route_parse(text: text) {
     Rejected { diagnostics: _ } => []
@@ -94,7 +98,7 @@ data status_route_source: String = "module probe.status_route\n\nservice probe.S
 
 // `404` is the int with no class suffix, `5xx` the int with it, `nonzero` the name arm.
 test fn status_patterns_take_code_class_and_name_routes_holds() -> Bool {
-  route_list(text: status_route_source, emitted: ^dag_surface_status_pattern) == ["bare", "suffixed", "unpaired"]
+  route_joined(xs: route_list(text: status_route_source, emitted: ^dag_surface_status_pattern)) == "bare,suffixed,unpaired"
 }
 
 data field_pattern_route_source: String = "module probe.field_route\n\nfn f(x: P) -> Int {\n  match x {\n    P { v, w: y } => v\n  }\n}\n"
@@ -122,8 +126,8 @@ test fn field_patterns_take_pun_and_suffix_routes_holds() -> Bool {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
       let shells = route_shells(n: tree, emitted: ^dag_surface_field_pattern, acc: [])
-      (list_map(xs: shells, f: fn(s) { route_of(shell: s) }) == ["bare", "suffixed"])
-        && (list_map(xs: shells, f: fn(s) { field_edge_reading(shell: s) }) == ["v->v", "w->y"])
+      (route_joined(xs: list_map(xs: shells, f: fn(s) { route_of(shell: s) })) == "bare,suffixed")
+        && (route_joined(xs: list_map(xs: shells, f: fn(s) { field_edge_reading(shell: s) })) == "v->v,w->y")
   }
 }
 
@@ -150,7 +154,7 @@ test fn typed_params_take_plain_and_default_routes_holds() -> Bool {
               match body_lower_collect_typed_params(sequence_capture: spine) {
                 Rejected { diagnostics: _ } => false
                 Accepted { value: params, diagnostics: _ } =>
-                  list_map(xs: params, f: fn(p) { param_has_default(p: p) }) == ["a", "b=default"]
+                  route_joined(xs: list_map(xs: params, f: fn(p) { param_has_default(p: p) })) == "a,b=default"
               }
           }
       }

@@ -44,7 +44,7 @@ fn test_marker_marks_only(src: String, file: Symbol, name: Symbol) -> Bool {
 fn test_marker_refusal_reason(src: String, file: Symbol) -> String {
   match test_marker_capture_of(src: src, file: file) {
     Accepted { value: _, diagnostics: _ } => "ACCEPTED"
-    Rejected { diagnostics: d } => symbol_lexeme(sym: d.head.reason)
+    Rejected { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal(d: d).reason)
   }
 }
 
