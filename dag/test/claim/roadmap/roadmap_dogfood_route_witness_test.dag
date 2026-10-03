@@ -1,6 +1,15 @@
 module test.claim.roadmap_dogfood_route_witness_test
 
 import std.types { Bool, String, Int, List, NonEmptyStr, CommitSha }
+import std.measure { kibibyte }
+import std.process { ExitSuccess, ExitFailure, exit_failure }
+import gunbc.roadmap_session_placement {
+  SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign,
+  SessionPlacementRecord, SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantForeign,
+  SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseRefused,
+  session_attempt_record, session_placement_schema,
+}
+import gunbc.roadmap_belt_tick_cli { belt_tick_tail_exit }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.github { Repository }
 import gunbc.roadmap_workflow_stage { WorkflowSegmentComplete, WorkflowSegmentPending, WorkflowSegmentFailed }
@@ -19,6 +28,9 @@ import gunbc.roadmap_dogfood_route {
   SubmissionReading, SubmissionEstablished, SubmissionGap,
   ReviewReading, ReviewEstablished, ReviewGap,
   PublicationReading, PublicationEstablished, PublicationGap,
+  PlacementGrantReading, PlacementGrantEstablished, PlacementGrantGap, dogfood_placement_grant_reading,
+  CleanupReading, CleanupEstablished, CleanupGap, dogfood_cleanup_reading,
+  DogfoodStartRecorded, DogfoodStartAlreadyRecorded, DogfoodStartNoCompleteAttempt, DogfoodStartRefused,
   StageGap, StageOwed, StageRefused,
   ProducerPending, DogfoodStageReadings,
   DogfoodRouteReceipt, DogfoodRouteComplete, DogfoodRouteIncomplete,
@@ -136,20 +148,92 @@ test fn no_publication_receipt_yet_is_owed() -> Bool {
   }
 }
 
+// ── THE G5 STAGES, READ FROM THE SESSION PLACEMENT OBSERVATION ──
+//
+// These supply the observation at the dogfood readers' interface. The real producer's shape --
+// session_placement_record_write's bytes read back by session_placement_observe_at as this attempt's
+// grant and release, foreign records refused -- is claimed by
+// test.claim.roadmap.session_placement_witness_test and, over a real store, its wet twin.
+fn placement_record() -> SessionPlacementRecord {
+  SessionPlacementRecord {
+    schema: session_placement_schema, node_id: "n1", attempt_key: "k1", host: "srv2",
+    unit: "gunbc-session-n1-k1", reference: "gunbc-session-n1-k1", grant_identity: "evt-7", fence_generation: 7,
+    granted_at: 1000, expires_at: 15400, partition: "session-memory-srv2", amount: kibibyte(count: 8388608),
+    class_grant: "agent-session", unit_properties: ["MemoryMax=8589934592"],
+  }
+}
+
+fn observed(grant: SessionGrantReading, returned: SessionReleaseObservation) -> SessionPlacementObservation {
+  SessionPlacementObserved {
+    slot: session_attempt_record(node_id: "n1", attempt_key: "k1", granted: kibibyte(count: 8388608), now: 1000),
+    grant: grant,
+    returned: returned,
+  }
+}
+
+fn released() -> SessionReleaseObservation { SessionReleased { reason: "session unit exited 0", detail: "released" } }
+
+fn grant_owed(r: PlacementGrantReading) -> Bool {
+  match r { PlacementGrantGap { gap } => match gap { StageOwed { owed_by: _ } => true  StageRefused { reason: _ } => false }  PlacementGrantEstablished { evidence: _ } => false }
+}
+fn grant_refused(r: PlacementGrantReading) -> Bool {
+  match r { PlacementGrantGap { gap } => match gap { StageRefused { reason: _ } => true  StageOwed { owed_by: _ } => false }  PlacementGrantEstablished { evidence: _ } => false }
+}
+fn cleanup_owed(r: CleanupReading) -> Bool {
+  match r { CleanupGap { gap } => match gap { StageOwed { owed_by: _ } => true  StageRefused { reason: _ } => false }  CleanupEstablished { evidence: _ } => false }
+}
+fn cleanup_refused(r: CleanupReading) -> Bool {
+  match r { CleanupGap { gap } => match gap { StageRefused { reason: _ } => true  StageOwed { owed_by: _ } => false }  CleanupEstablished { evidence: _ } => false }
+}
+
+test fn a_recorded_grant_establishes_placement_with_its_identity_and_fence() -> Bool {
+  match dogfood_placement_grant_reading(p: observed(grant: SessionGrantRecorded { record: placement_record() }, returned: SessionReleaseNotRecorded { path: "/s/x" })) {
+    PlacementGrantEstablished { evidence } => evidence.grant_identity == "evt-7" && evidence.fence_generation == 7 && evidence.host == "srv2" && evidence.unit == "gunbc-session-n1-k1"
+    PlacementGrantGap { gap: _ } => false
+  }
+}
+
+// Absent: no slot, or a slot with no grant written, is owed; foreign or unreadable refuses.
+test fn an_absent_foreign_or_unreadable_placement_is_not_a_grant() -> Bool {
+  grant_owed(r: dogfood_placement_grant_reading(p: SessionPlacementAbsent { unit: "gunbc-session-n1-k1" }))
+    && grant_owed(r: dogfood_placement_grant_reading(p: observed(grant: SessionGrantNotRecorded { path: "/s/r" }, returned: SessionReleaseNotRecorded { path: "/s/x" })))
+    && grant_refused(r: dogfood_placement_grant_reading(p: SessionPlacementForeign { unit: "gunbc-session-n1-k1", detail: "the slot belongs to n2:k2" }))
+    && grant_refused(r: dogfood_placement_grant_reading(p: SessionPlacementUnreadable { unit: "gunbc-session-n1-k1", detail: "torn" }))
+    && grant_refused(r: dogfood_placement_grant_reading(p: observed(grant: SessionGrantForeign { path: "/s/r", detail: "host srv9" }, returned: SessionReleaseNotRecorded { path: "/s/x" })))
+}
+
+test fn a_release_bound_to_the_recorded_grant_establishes_cleanup() -> Bool {
+  match dogfood_cleanup_reading(p: observed(grant: SessionGrantRecorded { record: placement_record() }, returned: released())) {
+    CleanupEstablished { evidence } => evidence.grant_identity == "evt-7" && evidence.fence_generation == 7 && evidence.outcome == "released"
+    CleanupGap { gap: _ } => false
+  }
+}
+
+// A release with no recorded grant binds to no hold; an unreleased hold is owed; a refused release
+// or an unreadable placement refuses.
+test fn cleanup_needs_a_settled_release_of_a_recorded_grant() -> Bool {
+  cleanup_owed(r: dogfood_cleanup_reading(p: observed(grant: SessionGrantNotRecorded { path: "/s/r" }, returned: released())))
+    && cleanup_owed(r: dogfood_cleanup_reading(p: observed(grant: SessionGrantRecorded { record: placement_record() }, returned: SessionReleaseNotRecorded { path: "/s/x" })))
+    && cleanup_owed(r: dogfood_cleanup_reading(p: SessionPlacementAbsent { unit: "gunbc-session-n1-k1" }))
+    && cleanup_refused(r: dogfood_cleanup_reading(p: observed(grant: SessionGrantRecorded { record: placement_record() }, returned: SessionReleaseRefused { reason: "ledger", detail: "ledger refused" })))
+    && cleanup_refused(r: dogfood_cleanup_reading(p: SessionPlacementUnreadable { unit: "gunbc-session-n1-k1", detail: "torn" }))
+}
+
 // ── THE FOLD ──
 
 fn readings_with(s: SubmissionReading, r: ReviewReading, p: PublicationReading) -> DogfoodStageReadings {
+  let placement = observed(grant: SessionGrantRecorded { record: placement_record() }, returned: released())
   DogfoodStageReadings {
     request: ProducerPending { owed_by: "G4" },
     immutable_subject: ProducerPending { owed_by: "G1" },
     shared_computation: ProducerPending { owed_by: "G1" },
-    placement_grant: ProducerPending { owed_by: "G5" },
-    isolated_execution: ProducerPending { owed_by: "G5" },
+    placement_grant: dogfood_placement_grant_reading(p: placement),
+    isolated_execution: ProducerPending { owed_by: "G5 execution observation" },
     durable_result: s,
     metering: ProducerPending { owed_by: "G3" },
     independent_review: r,
     candidate_published: p,
-    cleanup: ProducerPending { owed_by: "G5" },
+    cleanup: dogfood_cleanup_reading(p: placement),
     result_returned: ProducerPending { owed_by: "G4" },
   }
 }
@@ -162,12 +246,12 @@ fn established_three() -> DogfoodStageReadings {
   )
 }
 
-// Every producer that exists today established, and still not complete: the eight stages with no
-// producer are owed, in route order (review before publication, as production runs them).
+// Every producer that exists today established -- submission, review, publication, and G5's grant
+// and release -- and still not complete: the stages with no producer are owed, in route order.
 test fn every_existing_producer_established_is_still_incomplete_with_the_rest_named() -> Bool {
   match dogfood_route_receipt(node_id: "n1", attempt_key: "k1", r: established_three()) {
     DogfoodRouteIncomplete { node_id: _, attempt_key: _, owed, refused } =>
-      wires(stages: owed) == "request,immutable-subject,shared-computation,placement-grant,isolated-execution,metering,cleanup,result-returned"
+      wires(stages: owed) == "request,immutable-subject,shared-computation,isolated-execution,metering,result-returned"
         && length(refused) == 0
     DogfoodRouteComplete { node_id: _, attempt_key: _, submission: _, review: _, publication: _ } => false
   }
@@ -287,7 +371,20 @@ test fn a_candidate_with_no_usable_clock_refuses() -> Bool {
 }
 
 // While any stage has no producer, the recorder answers NoCompleteAttempt without scanning history:
-// the stages it reads are the same record the fold reads.
-test fn the_unproduced_stages_are_the_eight_owed_in_route_order() -> Bool {
-  wires(stages: dogfood_unproduced_stages(u: dogfood_unproduced)) == "request,immutable-subject,shared-computation,placement-grant,isolated-execution,metering,cleanup,result-returned"
+// the stages it reads are the same record the fold reads, and they are exactly the fold's owed set
+// when every existing producer is established (the claim above).
+test fn the_unproduced_stages_are_the_six_owed_in_route_order() -> Bool {
+  wires(stages: dogfood_unproduced_stages(u: dogfood_unproduced)) == "request,immutable-subject,shared-computation,isolated-execution,metering,result-returned"
+}
+
+// ── THE TICK'S TAIL ──
+//
+// The start recorder never stands in front of the served observation: a refusal fails the tick
+// only after the observation is written, and a failed observation write is reported first.
+test fn the_tick_tail_writes_the_observation_and_fails_loudly_only_on_a_refused_start() -> Bool {
+  (match belt_tick_tail_exit(served: ExitSuccess, start: DogfoodStartNoCompleteAttempt) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false })
+    && (match belt_tick_tail_exit(served: ExitSuccess, start: DogfoodStartAlreadyRecorded) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false })
+    && (match belt_tick_tail_exit(served: ExitSuccess, start: DogfoodStartRecorded { receipt: "{}" }) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false })
+    && (match belt_tick_tail_exit(served: ExitSuccess, start: DogfoodStartRefused { reason: "store" }) { ExitSuccess => false  ExitFailure { code: _, reason } => string_contains(s: reason, pattern: "dogfood start receipt") })
+    && (match belt_tick_tail_exit(served: exit_failure(reason: "observation"), start: DogfoodStartRefused { reason: "store" }) { ExitSuccess => false  ExitFailure { code: _, reason } => reason == "observation" })
 }
