@@ -1,6 +1,7 @@
 module v2.test.manual.python_grammar_claim
 
 import v2.compiler.parse {
+  grammar_choice_ambiguity_count,
   grammar_validate_for_parse,
   parse_production_tree,
 }
@@ -49,4 +50,50 @@ fn python_grammar_parse_fixture() -> Outcome<ParseTree> {
           )
       }
   }
+}
+
+// ROUTE CONTROL for the suite production on real python source: a three-statement body
+// (assignment, if, return) lexes with python_lex and parses through python_production_fn_def,
+// so the suite's statement-then-repetition shape is executed past its first statement.
+data python_multi_statement_suite_text: String = "def f(x):\n    y = x + 1\n    if y > 1:\n        return y\n    return x"
+
+// The discriminating red: a suite is one or more statements, so a def whose body is empty refuses.
+data python_empty_suite_text: String = "def f(x):\n    "
+
+fn python_fn_def_parse(text: String) -> Outcome<ParseTree> {
+  let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^python_grammar_claim_test_grammar_contract)
+  match tokenize(text: text, file: ^python_parse_fixture_file, rules: python_lex()) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: stream, diagnostics: _ } =>
+      match grammar_validate_for_parse(root: python_grammar_root(), at: at) {
+        Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+        Accepted { value: validated, diagnostics: _ } =>
+          parse_production_tree(
+            tokens: token_stream_remaining(stream: stream),
+            validated: validated,
+            production_name: ^python_production_fn_def
+          )
+      }
+  }
+}
+
+test fn python_multi_statement_suite_parses() -> Bool {
+  match python_fn_def_parse(text: python_multi_statement_suite_text) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn python_empty_suite_refuses() -> Bool {
+  match python_fn_def_parse(text: python_empty_suite_text) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+// The family's discriminating control: the suite was python's one choice-overlap row
+// (count 1 as `stmt suite | stmt`); restructured, the roster is empty. The parse controls above
+// hold on both shapes because the language did not change -- this claim is what goes red.
+test fn python_grammar_has_no_choice_overlap() -> Bool {
+  grammar_choice_ambiguity_count(root: python_grammar_root()) == 0
 }
