@@ -31,6 +31,74 @@ data spark_deforking_cut4b_task: NonEmptyStr = "Deforking cut 4b of the GLM/V4.1
 
 data spark_deforking_cut5_task: NonEmptyStr = "Deforking cut 5 of the GLM/V4.1 calibration program: one promotion step for every serving subject, bound to the exact subject. Model a serving promotion standing over five receipts -- execution compatibility, all-rank memory fit, resolved-layout cache fit, quality on the agentic acceptance set, and workload calibration on the real trace -- each bound to the serving subject key. Quality and calibration compare against the incumbent on the same set and trace. Missing receipts admit a bounded measurement serve and are all named; a refused fit refuses. Hold the thresholds in a promotion policy. Normal serving in plan_arm_launch_under_memory_fit additionally requires the promotion standing; V4.1's capacity report projects into the shared workload calibration receipt." as NonEmptyStr
 
+// task spark_deforking_cut4_task is already declared in design_adherence_cases.dag
+
+data ntfy_acl_readback_task: NonEmptyStr = "Gate approval-code issuance on a live, bound ntfy ACL readback. Read the running ntfy server over the command runner -- its systemd unit, process stat and command line, binary, version, config, auth file and the `ntfy access` listing -- parse the listing into per-principal grants, and refuse issuance unless every modeled join holds (exact config and auth file, deny-all default, operator and publisher grants as declared, no further admin or wildcard reader). A read that could not be performed refuses, naming it." as NonEmptyStr
+
+data native_app_attest_task: NonEmptyStr = "App Attest native row: an instrument gunbc.instruments.native_app_attest (label //gunbc/instruments:native-app-attest) that executes verify_attestation and verify_assertion natively over Apple's published sample rows, one row per sample, with what each fold owes for that sample (the iOS 14.4 sample owes category-absent for both), plus the REDs: tampered nonce, wrong root, wrong App ID, wrong AAGUID and a non-zero attestation counter." as NonEmptyStr
+
+data closure_census_task: NonEmptyStr = "The gen-two door's census must name every file it could not read, not only the first. In v2.compiler.self_host.closure_emission, closure_ingest records each refused file as a ClosureCensusRefusal (its path and located chain) and continues; emission still refuses while any exist. Carry the census refusals on ClosureEmissionLocated, render them as census_refused: [file, reason, at] JSON, and give v2.cli.compile_cli an arm that writes that set and fails with the located chain." as NonEmptyStr
+
+data occurrence_role_task: NonEmptyStr = "XL-2 LoweringOccurrenceProjection PR3a: a v2 occurrence-role producer, v2.compiler.occurrence_role, that records std.occurrence_identity OccurrenceRole and OccurrenceCategory for the names a production binds or labels, by dispatching to the decoders that already find each name (keyword-then-identifier binders, field-init labels, named-argument labels, field-pattern names). Admit the dispatch table against the grammar in both directions with typed refusals naming an unlisted or unknown production; binder productions whose reader has not landed are listed and counted." as NonEmptyStr
+
+data runner_placement_witness_task: NonEmptyStr = "Fix main: runner_placement_witness_test no longer builds after #12289 made the plan index return an Optional; match the indexed Optional. While there, re-derive the two claims that read live fleet facts so they supply the fleet inputs at the placement interfaces they are about instead of executing the live plan." as NonEmptyStr
+
+data clippy_lane_unit_tests_task: NonEmptyStr = "Put the Rust unit tests back on the merge path as a step of the clippy lane in gunbc.compiler_gate_workflow. The step lands non-required (continue-on-error) so it completes once to be measured. Set the clippy job's own timeout to 60 minutes, a margin over the measured 38m25s job, and keep the rust_unit_tests_off_the_merge_path drop Standing." as NonEmptyStr
+
+data bmc_web_model_task: NonEmptyStr = "bmc_model: MegaRAC web session and KVM stream rows plus a protocol adapter. Model the BMC's web world -- its provisioned account, sessions with CSRF tokens, the KVM stream state and other viewers -- with login and KVM transitions, and an adapter (gunbc.bmc_megarac_web_adapter) that explores the worlds reachable from an initial world to a bounded depth without revisiting a world already seen, and emits the resulting transition table as JSON the transport enforces per request." as NonEmptyStr
+
+data approval_capability_parse_task: NonEmptyStr = "Fabric store per-operation admission fold (PR 4a of d0_store_operation_wall). The store verifies an operator-approved write by a receipt the approval broker mints; as part of this, gunbc.auth.approval_capability's parser for a presented capability must decode its base64url MAC strictly, admitting only the canonical encoding (std.encoding) and refusing anything else, before the MAC is compared." as NonEmptyStr
+
+data census_remaster_task: NonEmptyStr = "Hermetic census remaster: pin the Rock Ridge owner, group and mode of the mapped members through typed xorriso path lists (extdeps.provisioning.ubuntu_seeded_install_media_remaster), and gate the census image on cross-host hermeticity and the stock boot chain, including an -lsl listing readback (gunbc.machine_intake.mtcollins1_census_member_readback) of the mapped seed directory and the boot config on the built ISO." as NonEmptyStr
+
+data program_p_arrow_task: NonEmptyStr = "Program P: one Arrow encoding. Cut every producer of the positional-types Arrow [T1..Tn, U] over to the declared-signature encoding (named-binder domain plus declared-order edge) built through v2.std.arrow_signature declared_signature, including v2.std.decl_index export_signature_declared_facts, which lifts the v1 host seam's named domain through it." as NonEmptyStr
+
+data native_import_refusal_task: NonEmptyStr = "Native prepare must name an import target's ingest refusal instead of only 'unbound'. native_module_resolve_verdict gains NativeModuleResolveImportTargetFileRefused, decided only when resolution already refused: if one of the module's captured import rows targets a module whose file the context refused at ingest, the verdict names that refusal first. NativeTestFileRefusal records the module the refused file declares, read from its header line (native_lane_declared_module_name)." as NonEmptyStr
+
+data lexing_layout_task: NonEmptyStr = "Layout in the v2 lexer: the gap question (is there a line break before this token) currently folds over the whole source per question. Derive a per-token line-break index once per stream, in one walk over source and tokens, carried on StreamLayout by its only constructor, so a layout question is a lookup; a line feed inside a token is not layout. The stream digest must cover layout." as NonEmptyStr
+
+data mq1_function_values_task: NonEmptyStr = "MQ-1: function values in value position (lambdas and fn literals) lower to the generic fn Arrow in v2 body lowering, and a type the author did not write becomes a fresh type parameter." as NonEmptyStr
+data v2_refinement_obligation_task: NonEmptyStr = "v2: add a refinement-obligation carrier (RefinementObligation, an obligated inferred tree carrying root, facts and obligations) and a discharge step between infer and everything downstream; infer returns the obligated form and every infer caller is cut over, root-first." as NonEmptyStr
+data fabric_writer_roster_task: NonEmptyStr = "The fabric served door admits put/advance only for a login in a writer roster derived from the fabric writer-identity observation receipts, and refuses every other writer with a typed refusal." as NonEmptyStr
+data v2_parse_stream_layout_task: NonEmptyStr = "v2 parse, PR1 of 2: the token stream carries its line-break layout, derived once from the source at lexing (TokenStream gains an optional StreamLayout), so a production can ask whether a line break precedes a token; add RefuseOnMatch and AfterLineBreak grammar arms." as NonEmptyStr
+data gcp_iam_converge_task: NonEmptyStr = "GCP IAM changes by convergence plus one operator approval: plan as iam-observe, file one request keyed by the whole-estate diff, redeem it at the approval broker for a short-lived iam-converge access token, re-plan and refuse if the diff moved, apply, and read back under iam-observe. Render the converge workflow steps from the model." as NonEmptyStr
+data v41_engram_touch_counter_task: NonEmptyStr = "V4.1 Engram file-backed lookup: add a distinct-page touch counter (the distinct pages a batch of record-aligned offsets touches) and fetch_rows timing to the per-rank file receipt, with snapshot/reset." as NonEmptyStr
+data v41_engram_differential_task: NonEmptyStr = "Design-B Engram cutover: bind the file-backed lookup in the overlay, derive the launch manifest, and add a differential fleet mode that runs only on a host whose occupancy reading shows it free (no GPU compute process, enough available memory per /proc/meminfo)." as NonEmptyStr
+data rust_unit_tests_clippy_job_task: NonEmptyStr = "Put the Rust unit tests back on the merge path as a non-required step of the clippy job, running inside a hosted-runner memory cgroup like the heal publisher's, under a job timeout sized from a measured run." as NonEmptyStr
+data heal_private_repository_task: NonEmptyStr = "Heal for gunbc-private: parameterise the heal candidate producer and publication over a repository subject, add a second publisher federation pinned to gunbc-private's numeric repository identity (observed 2026-09-27), and correct the gunbai-bot registry rows." as NonEmptyStr
+data host_occupancy_admission_task: NonEmptyStr = "Host admission reads occupancy: take an occupancy reading on the host (systemctl is-active per serving unit, nvidia-smi compute processes, /proc/meminfo) and fold it into an admission verdict, so a held Spark host running its pair worker refuses GPU/memory effects; a failed read refuses." as NonEmptyStr
+data v41_source_converge_task: NonEmptyStr = "V4.1 source converge: move a tree between patch sets by resetting only a tree this converge owns -- owned either by its recorded worktree diff digest or by content (pin plus a declared patch set reproduces the diff); foreign and untracked changes still refuse." as NonEmptyStr
+data floor_scope_references_task: NonEmptyStr = "Floor-scope references: one JSON string authority; qualify cross-module homonyms by containment path. Relocate the forbidden-program fixture out of the dag/ source root and retire its debt rows with a relocation cause naming where the file went; a relocated row whose old path is still under a source root refuses." as NonEmptyStr
+data mtcollins1_kvm_observer_task: NonEmptyStr = "mtcollins1 boot: a held KVM viewer observer retains timestamped, hash-bound screen stills as boot evidence; the owned-process launcher stops its child when the pid cannot be published and journals what it observed." as NonEmptyStr
+
+data machine_intake_census_workload_fit_task: NonEmptyStr = "mtcollins1 census: bind the census workload to the boot milestone's one-socket 16 GiB profile (a bounded 2 x 2 GiB EDAC check for the one-socket milestone; keep the dual-socket 4 x 16 GiB shape for the whole-machine expectation). The workload stage preflights MemAvailable and /dev/shm free on the host, refuses before any write when the workload does not fit, records the exact bytes, and the verdict holds the capture to the profile's declared bytes." as NonEmptyStr
+
+data bmc_megarac_web_rows_task: NonEmptyStr = "BMC model: add MegaRAC web session and KVM stream rows to gunbc.bmc_model (sessions, account, login/connect/logout behaviour) and a protocol adapter that answers the MegaRAC web endpoints from the model, so a witness can drive the web session and KVM flows against the modeled BMC instead of hardware." as NonEmptyStr
+
+data live_deploy_safe_directory_task: NonEmptyStr = "live_deploy: srv1 dashboard_deploy refused at tree publication with 'detected dubious ownership' because the deploy principal does not own the deployed checkout. Make that repair a convergence: derive the git safe.directory grant from the deployment's repo root and deploy principal, add it with git config --global --add safe.directory only when absent, read it back, accept only the exact path (an existing '*' refuses), and run it in the apply fold before the deployment effect plan; when it refuses, the apply reports why." as NonEmptyStr
+
+data xl2_census_occurrence_roles_task: NonEmptyStr = "XL-2 LoweringOccurrenceProjection 3b: the reference-conservation census consumes the occurrence-role producer (binders and labels become typed excluded populations instead of locus-erased), sample paths that no longer exist are reported as typed missing paths, and the census sample pins are repinned." as NonEmptyStr
+
+data self_host_behavioral_receipt_series_task: NonEmptyStr = "Self-host behavioral equivalence as a deliberately taken receipt series: add the receipt carrier and a persisted series, a gunbc test label row as the taker (//gunbc/instruments:self-host-behavioral-equivalence), and bind the interlock so the SelfHostBehavioralEquivalenceReestablished milestone derives its standing from the latest receipt in the series (identity-joined to the behavioral transport roster) instead of being NotDerivable." as NonEmptyStr
+
+data fabric_store_admission_fold_task: NonEmptyStr = "Fabric store per-operation admission fold (d0_store_operation_wall PR 4a): the fabric store admits each write operation through one fold that verifies the operator-approval receipt minted by the approval broker (an approval_capability envelope with the fabric store as audience) against the store receipt key, alongside the existing capability verification, refusing per cause." as NonEmptyStr
+
+data function_value_body_task: NonEmptyStr = "FunctionValueBody: admit a function whose body is a function value -- add the ArrowBodyForm arm, give every reader of the body form a disposition for it, and make the body-lowering route infer such functions (direct and curried) with a typed refusal where the body cannot be inferred." as NonEmptyStr
+
+data refinement_carrier_widening_task: NonEmptyStr = "v2: coercion admits a cast from a refinement to its DECLARED carrier (x as Int from x: Pos, type Pos = Int where positive) as Widened. Add an infer reader that goes from a reference to its refinement declaration by the reference's own path down the containment spine, one reader for this cast and the later literal-into-refinement producer; coercion_cast_crossing takes the source's declared carrier; a non-carrier target refuses with the original mismatch; lower a where-refined head as a type." as NonEmptyStr
+
+data approval_store_receipt_mint_task: NonEmptyStr = "Approval broker mints fabric-store receipts over recorded approvals (d0_store_operation_wall PR 3b): in gunbc.auth.approval_store_receipt, mint a receipt (approval_capability envelope, audience = the fabric store) from a decided approval and its generation-1 filing, refusing per remedy (not filed, pending, denied, another attempt, another revision, no filing, no key); add store-side verification and the POST /approvals/<id>/store-receipt broker answer, authenticated by a submission-key MAC before any read." as NonEmptyStr
+
+data serializer_std_layout_task: NonEmptyStr = "Serializer layout from std.layout: TargetText becomes a flat std.layout document and the EmitLayout token classes carry line breaks and indents; nesting is a grammar occurrence wrapped in std.layout nesting, where a producer may name its own indent unit; Verilog consumes it." as NonEmptyStr
+
+data host_effect_label_residue_task: NonEmptyStr = "Host-effect release and recovery over a lane-supplied observation leg, with docker labels and a memory cap: extdeps.docker.cli gains labels, a ps-by-label filter and --memory/--memory-swap on ephemeral runs; the v41 runtime-image probe labels its container, declares its container residue by that label (and its process residue), runs capped, and claims and releases over the administrator context." as NonEmptyStr
+
+data census_iso_member_readback_task: NonEmptyStr = "mtcollins1 census: read vmlinuz, initrd and grub.cfg out of the pinned stock and census ISOs on srv2 over fleet SSH (a census member readback, grub.cfg as the in-run discriminating control) using xorriso extraction run remotely, plus the module-identity census build input and the kernel-module decompression-refusal observation." as NonEmptyStr
+
+data emit_module_member_fold_task: NonEmptyStr = "v2 emit: every module member has one target realization or one typed refusal. Decide each direct member of a module body once -- a bodied Arrow through the produced-decl rows, a plain Disj coproduct through emit_semantic_type_decl, every other kind its own located refusal -- fold the members in source order refusing on the first unrealized one, and route module emission through that member fold so coproducts emit beside functions." as NonEmptyStr
+
+data arrow_order_edge_admission_task: NonEmptyStr = "A4: a Named-binder Arrow domain without its order edge is ill formed at Node admission. v2.std.node's order-conformance check answers an absent order edge by whether the Arrow's domain binds a name; infer gates its entry on well-formedness as resolve and the assemble root gate already do; migrate the remaining order-less producers; RED and positive controls on all three paths." as NonEmptyStr
+
 data design_adherence_cases: List<EvalCase> = [
 
   EvalCase {
@@ -161,6 +229,943 @@ data design_adherence_cases: List<EvalCase> = [
         } },
       },
     ],
+  },
+
+EvalCase {
+    identity: "spark-runtime-bound-fabricated-one-second" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12979),
+    finding: DashboardReview { review_id: 74098 },
+    frozen_base: sha1(hex: "7556daa35a2b66f9144210a7c84f60054978fb19"),
+    reference_fix: sha1(hex: "5d5fe01b751b138a2a11b7763c40e3ac4779d1a9"),
+    task: spark_deforking_cut4_task,
+    touched_entries: [
+      "dag/gunbc/spark/arm_memory_fit.dag" as FilePath,
+      "dag/gunbc/spark/native_serving_realization.dag" as FilePath,
+    ],
+    discriminator: DiscriminatingCheck {
+      criterion: "fail-closed" as NonEmptyStr,
+      statement: "an underivable experiment runtime bound refuses the unit render with its cause; no failure arm renders an invented RuntimeMaxSec" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "=> \"1\" as NonEmptyStr" as NonEmptyStr,
+        paths: ["dag/gunbc/spark/native_serving_realization.dag" as FilePath],
+      },
+    },
+    design_checks: [
+      DesignCheck {
+        criterion: "fail-closed" as NonEmptyStr,
+        statement: "no failure arm discards the cause of an unreadable ready timeout or max_num_seqs" as NonEmptyStr,
+        method: MechanicallyGraded { check: PatternAbsent {
+          pattern: "Unreadable \\{ cause: _ \\}|NatUnread \\{ cause: _ \\}" as NonEmptyStr,
+          paths: ["dag/gunbc/spark/native_serving_realization.dag" as FilePath],
+        } },
+      },
+    ],
+  },
+
+  EvalCase {
+    identity: "ntfy-access-ends-with-reinvented" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12077),
+    finding: DashboardReview { review_id: 71293 },
+    frozen_base: sha1(hex: "d6d38ef27ddb561f710cad1010965d4378b24462"),
+    reference_fix: sha1(hex: "71aed5348bd3c94befe4e2f3679b592d46872347"),
+    task: ntfy_acl_readback_task,
+    touched_entries: [
+      "dag/extdeps/ntfy/access.dag" as FilePath,
+    ],
+    discriminator: DiscriminatingCheck {
+      criterion: "single-authority" as NonEmptyStr,
+      statement: "the listing parser calls the std ends_with primitive rather than re-implementing it" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "fn [a-z_]*ends_with\\(" as NonEmptyStr,
+        paths: ["dag/extdeps/ntfy/access.dag" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+
+  EvalCase {
+    identity: "command-runner-transport-refusal-exit-code" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12077),
+    finding: DashboardReview { review_id: 70602 },
+    frozen_base: sha1(hex: "ece34edae845feeda8c39c03277efb1b9706057e"),
+    reference_fix: sha1(hex: "e017e484a596539ea45e960ee6c7d4449b81ecf9"),
+    task: ntfy_acl_readback_task,
+    touched_entries: [
+      "dag/gunbc/command_runner.dag" as FilePath,
+    ],
+    discriminator: DiscriminatingCheck {
+      criterion: "fail-closed" as NonEmptyStr,
+      statement: "a command the transport refused to run is a typed ProcessNotSpawned outcome, never a ProcessRan carrying a fabricated exit code" as NonEmptyStr,
+      check: ClaimHolds {
+        witness: FromReferenceFix { path: "dag/test/claim/approval_ntfy_access_readback_witness_test.dag" as FilePath },
+        functions: ["a_transport_refusal_is_a_typed_not_spawned_outcome_never_an_exit_code" as NonEmptyStr],
+      },
+    },
+    design_checks: [],
+  },
+
+  EvalCase {
+    identity: "app-attest-expected-verdict-text" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12251),
+    finding: DashboardReview { review_id: 71337 },
+    frozen_base: sha1(hex: "22a974a888b29219b4daa9c03bae84ad8fa33db2"),
+    reference_fix: sha1(hex: "d5624051b8d020c5533bf4dfa5cda04d3add6b08"),
+    task: native_app_attest_task,
+    touched_entries: [
+      "dag/gunbc/instruments/native_app_attest.dag" as FilePath,
+    ],
+    discriminator: DiscriminatingCheck {
+      criterion: "single-authority" as NonEmptyStr,
+      statement: "what a sample owes is the folds' own typed result (AttestationRefusal / AssertionRefusal), not free text compared to a rendered name" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "expected_[a-z_]*: String" as NonEmptyStr,
+        paths: ["dag/gunbc/instruments/native_app_attest.dag" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+
+  EvalCase {
+    identity: "closure-census-empty-path-sentinel" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12274),
+    finding: DashboardReview { review_id: 71156 },
+    frozen_base: sha1(hex: "6acccb0cff141fb6be6d7e1e6412cfd48122e7bd"),
+    reference_fix: sha1(hex: "c757148eb99abe95844fb2c88de1923fea31a229"),
+    task: closure_census_task,
+    touched_entries: [
+      "src/v2/compiler/self_host/closure_emission.dag" as FilePath,
+    ],
+    discriminator: DiscriminatingCheck {
+      criterion: "fail-closed" as NonEmptyStr,
+      statement: "a grammar-preparation failure is its own arm, not a census refusal row with an empty path standing for 'no file'" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "path: \"\"" as NonEmptyStr,
+        paths: ["src/v2/compiler/self_host/closure_emission.dag" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+
+  EvalCase {
+    identity: "occurrence-role-reader-refusal-dropped" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12317),
+    finding: DashboardReview { review_id: 71392 },
+    frozen_base: sha1(hex: "e4562074ddfae917c201d929fc58fed3f06269d3"),
+    reference_fix: sha1(hex: "f7b5c2362b3878fad239ada2b1a300ed17522b1d"),
+    task: occurrence_role_task,
+    touched_entries: [
+      "src/v2/compiler/occurrence_role.dag" as FilePath,
+    ],
+    discriminator: DiscriminatingCheck {
+      criterion: "fail-closed" as NonEmptyStr,
+      statement: "a decoder refusal while reading a binder is a typed, counted outcome, never silently 'no name here'" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "Rejected \\{ diagnostics: _ \\} => Empty" as NonEmptyStr,
+        paths: ["src/v2/compiler/occurrence_role.dag" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+
+  EvalCase {
+    identity: "runner-placement-dangling-helper" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12335),
+    finding: DashboardReview { review_id: 71473 },
+    frozen_base: sha1(hex: "8dc0729e407e5aa247146834775b5656dce12a09"),
+    reference_fix: sha1(hex: "d13e2d3851e8274338377a40053289e8c6d7b233"),
+    task: runner_placement_witness_task,
+    touched_entries: [
+      "dag/test/claim/runner/runner_placement_witness_test.dag" as FilePath,
+    ],
+    discriminator: DiscriminatingCheck {
+      criterion: "consumption" as NonEmptyStr,
+      statement: "no helper is left in the witness module with no remaining caller" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "fn host_is_derived" as NonEmptyStr,
+        paths: ["dag/test/claim/runner/runner_placement_witness_test.dag" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+
+  EvalCase {
+    identity: "ci-clippy-timeout-bare-int" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12450),
+    finding: DashboardReview { review_id: 71977 },
+    frozen_base: sha1(hex: "1a551d238835fdcb95c319e1d6ab3b8b5a4dd922"),
+    reference_fix: sha1(hex: "538905b95f5d4cc4e298fbde334f5cb4c0a4d293"),
+    task: clippy_lane_unit_tests_task,
+    touched_entries: [
+      "dag/gunbc/witness/compiler_gate_workflow.dag" as FilePath,
+    ],
+    discriminator: DiscriminatingCheck {
+      criterion: "minimize-redundancy" as NonEmptyStr,
+      statement: "the clippy job timeout is a std.measure Minute, projected to the GHA field, not a bare Int" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "^data [a-z_]*clippy[a-z_]*: Int" as NonEmptyStr,
+        paths: ["dag/gunbc/witness/compiler_gate_workflow.dag" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+
+  EvalCase {
+    identity: "bmc-web-world-key-handjoined-string" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12490),
+    finding: DashboardReview { review_id: 72199 },
+    frozen_base: sha1(hex: "0719c9d432946ce21932c2189d72c1704a559c6f"),
+    reference_fix: sha1(hex: "e0bb41ad08d423c9d8d466ef9fae8db6ef1319cc"),
+    task: bmc_web_model_task,
+    touched_entries: [
+      "dag/gunbc/bmc_megarac_web_adapter.dag" as FilePath,
+    ],
+    discriminator: DiscriminatingCheck {
+      criterion: "conformance-identity" as NonEmptyStr,
+      statement: "two worlds are the same exploration state exactly when their complete canonical encodings agree (pending and fired events distinguished), not a hand-joined partial string" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "\"sessions=\"" as NonEmptyStr,
+        paths: ["dag/gunbc/bmc_megarac_web_adapter.dag" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+
+  EvalCase {
+    identity: "bmc-web-account-empty-string-sentinel" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12490),
+    finding: DashboardReview { review_id: 72157 },
+    frozen_base: sha1(hex: "b05378f3c28cc2b98999c7aa67a511a06c96882f"),
+    reference_fix: sha1(hex: "0a023f2303f90511ec9427d8bc0666234d3fda0b"),
+    task: bmc_web_model_task,
+    touched_entries: [
+      "dag/gunbc/bmc_megarac_web_adapter.dag" as FilePath,
+      "dag/gunbc/bmc_model.dag" as FilePath,
+    ],
+    discriminator: DiscriminatingCheck {
+      criterion: "fail-closed" as NonEmptyStr,
+      statement: "an absent web account is absent by construction (Optional), not an empty-username sentinel guarded at login" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "username != \"\"" as NonEmptyStr,
+        paths: ["dag/gunbc/bmc_model.dag" as FilePath],
+      },
+    },
+    design_checks: [
+      DesignCheck {
+        criterion: "fail-closed" as NonEmptyStr,
+        statement: "the untouched world does not construct a placeholder account" as NonEmptyStr,
+        method: MechanicallyGraded { check: PatternAbsent {
+          pattern: "username: \"\"" as NonEmptyStr,
+          paths: ["dag/gunbc/bmc_model.dag" as FilePath],
+        } },
+      },
+    ],
+  },
+
+  EvalCase {
+    identity: "auth-approval-capability-padding-copy" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12537),
+    finding: DashboardReview { review_id: 72901 },
+    frozen_base: sha1(hex: "24b50b9066ee36b4cd64c5b730227ed17e2ceded"),
+    reference_fix: sha1(hex: "46b57df6dddd0b40a0fcda08adbd1a3152e75078"),
+    task: approval_capability_parse_task,
+    touched_entries: [
+      "dag/gunbc/auth/approval_capability.dag" as FilePath,
+      "dag/std/encoding.dag" as FilePath,
+    ],
+    discriminator: DiscriminatingCheck {
+      criterion: "single-authority" as NonEmptyStr,
+      statement: "canonical base64 padding has one authority in std.encoding; the auth module does not restate the padding table" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "fn (padded_at|base64_padding_is_canonical)" as NonEmptyStr,
+        paths: ["dag/gunbc/auth/approval_capability.dag" as FilePath],
+      },
+    },
+    design_checks: [
+      DesignCheck {
+        criterion: "single-authority" as NonEmptyStr,
+        statement: "no auth module hand-reads trailing '=' padding" as NonEmptyStr,
+        method: MechanicallyGraded { check: PatternAbsent {
+          pattern: "char_at\\(s, total - [0-9]\\) == \"=\"" as NonEmptyStr,
+          paths: ["dag/gunbc/auth" as FilePath],
+        } },
+      },
+    ],
+  },
+
+  EvalCase {
+    identity: "census-readback-path-literals" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12594),
+    finding: DashboardReview { review_id: 72497 },
+    frozen_base: sha1(hex: "ea97dd2febfe83a95989657b5cf162926c90a136"),
+    reference_fix: sha1(hex: "e335c643edb91efda1c6358ff432e03a271f1cbb"),
+    task: census_remaster_task,
+    touched_entries: [
+      "dag/extdeps/provisioning/ubuntu_seeded_install_media_remaster.dag" as FilePath,
+      "dag/gunbc/machine_intake/mtcollins1_census_member_readback.dag" as FilePath,
+    ],
+    discriminator: DiscriminatingCheck {
+      criterion: "single-authority" as NonEmptyStr,
+      statement: "the -lsl readback paths derive from the census nocloud dir and the remaster's grub.cfg authority, not re-typed literals" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "= \"/gunbc-census\"|\\[\"/boot/grub/grub.cfg\"\\]" as NonEmptyStr,
+        paths: ["dag/gunbc/machine_intake/mtcollins1_census_member_readback.dag" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+
+  EvalCase {
+    identity: "decl-index-edge-helpers-reminted" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12625),
+    finding: DashboardReview { review_id: 73121 },
+    frozen_base: sha1(hex: "7376a1b08534a003b5e3d7c6e78302489aa72a86"),
+    reference_fix: sha1(hex: "518d24f48024c97851fc23ea81b5f8dd20f22cdd"),
+    task: program_p_arrow_task,
+    touched_entries: [
+      "src/v2/std/arrow_signature.dag" as FilePath,
+      "src/v2/std/decl_index.dag" as FilePath,
+    ],
+    discriminator: DiscriminatingCheck {
+      criterion: "single-authority" as NonEmptyStr,
+      statement: "decl_index consumes v2.std.node all_edges_named / all_edges_positional rather than re-minting edge-label folds" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "fn all_edges_" as NonEmptyStr,
+        paths: ["src/v2/std/decl_index.dag" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+
+  EvalCase {
+    identity: "native-refused-module-dotted-string" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12702),
+    finding: DashboardReview { review_id: 72864 },
+    frozen_base: sha1(hex: "cd9b18c0234ecfd55f8d814b299116fe095a4e60"),
+    reference_fix: sha1(hex: "7c86562ed6e64eccd692171115ecaede5690e84e"),
+    task: native_import_refusal_task,
+    touched_entries: [
+      "src/v2/compiler/00_compile.dag" as FilePath,
+      "src/v2/compiler/native_test_vocabulary.dag" as FilePath,
+    ],
+    discriminator: DiscriminatingCheck {
+      criterion: "conformance-identity" as NonEmptyStr,
+      statement: "the refused file's module is a QualifiedName compared as one, not a dotted String compared by rendering" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "module: Optional<String>" as NonEmptyStr,
+        paths: ["src/v2/compiler/native_test_vocabulary.dag" as FilePath],
+      },
+    },
+    design_checks: [
+      DesignCheck {
+        criterion: "conformance-identity" as NonEmptyStr,
+        statement: "import targets are not matched by rendering a qualified name to a dotted string" as NonEmptyStr,
+        method: MechanicallyGraded { check: PatternAbsent {
+          pattern: "qualified_name_to_dotted_string\\(" as NonEmptyStr,
+          paths: ["src/v2/compiler/00_compile.dag" as FilePath],
+        } },
+      },
+    ],
+  },
+
+  EvalCase {
+    identity: "lexing-stream-layout-two-representations" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12773),
+    finding: DashboardReview { review_id: 73282 },
+    frozen_base: sha1(hex: "66b9ff1dd1567b98dcdef866c63636ccba7a83cc"),
+    reference_fix: sha1(hex: "f7888e65eb4a5edbd4a48c8eaefa1e653dab6b02"),
+    task: lexing_layout_task,
+    touched_entries: [
+      "src/v2/compiler/02_parse.dag" as FilePath,
+      "src/v2/std/compilers/lexing.dag" as FilePath,
+    ],
+    discriminator: DiscriminatingCheck {
+      criterion: "single-authority" as NonEmptyStr,
+      statement: "StreamLayout holds the line-break-preceded token set once, with no Bool-valued map whose false entry would be meaningless" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "Map<Int, Bool>" as NonEmptyStr,
+        paths: ["src/v2/std/compilers/lexing.dag" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+
+EvalCase {
+    identity: "v2-fresh-type-variable-recogniser-dangling" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12210),
+    finding: DashboardReview { review_id: 71732 },
+    frozen_base: sha1(hex: "b88af223da1bc9b30ae19086e1c69d74b5457344"),
+    reference_fix: sha1(hex: "d539148285433adf2a3487f9d4c552747a357960"),
+    task: mq1_function_values_task,
+    touched_entries: [
+      "src/v2/std/anonymous_binder.dag" as FilePath,
+    ],
+    discriminator: DiscriminatingCheck {
+      criterion: "consumption" as NonEmptyStr,
+      statement: "no recogniser for fresh type variables is declared that nothing calls" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "^fn is_fresh_type_variable\\(" as NonEmptyStr,
+        paths: ["src/v2/std/anonymous_binder.dag" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+  EvalCase {
+    identity: "v2-obligated-tree-accessors-dangling" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12375),
+    finding: DashboardReview { review_id: 71653 },
+    frozen_base: sha1(hex: "eefd9170898d62bde0cc3fbcec289d7f3d884f1f"),
+    reference_fix: sha1(hex: "6d4becad7a9357137c943f4a142768217247cef7"),
+    task: v2_refinement_obligation_task,
+    touched_entries: [
+      "src/v2/compiler/inferred_tree.dag" as FilePath,
+      "src/v2/compiler/refinement_discharge.dag" as FilePath,
+    ],
+    discriminator: DiscriminatingCheck {
+      criterion: "consumption" as NonEmptyStr,
+      statement: "the obligated inferred tree gains no accessor functions nothing calls; readers read its fields" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "^fn obligated_inferred_(root|facts|obligations)\\(" as NonEmptyStr,
+        paths: ["src/v2/compiler/inferred_tree.dag" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+  EvalCase {
+    identity: "fabric-served-writer-admission-wrapper-dangling" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12451),
+    finding: DashboardReview { review_id: 71915 },
+    frozen_base: sha1(hex: "52f3da6bdfae29a8852de1be560e482096662b4b"),
+    reference_fix: sha1(hex: "5fa60e86a9771d4b93a0343ee16e2b0208f8504a"),
+    task: fabric_writer_roster_task,
+    touched_entries: [
+      "dag/gunbc/fabric/fabric_writer_roster.dag" as FilePath,
+    ],
+    discriminator: DiscriminatingCheck {
+      criterion: "consumption" as NonEmptyStr,
+      statement: "no convenience admission wrapper over the derived roster is declared without a caller" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "^fn fabric_served_writer_admission\\(" as NonEmptyStr,
+        paths: ["dag/gunbc/fabric/fabric_writer_roster.dag" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+  EvalCase {
+    identity: "v2-token-stream-source-accessor-dangling" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12773),
+    finding: DashboardReview { review_id: 73234 },
+    frozen_base: sha1(hex: "dcc31bb9421767c866d1860cc8fb727a369a90af"),
+    reference_fix: sha1(hex: "a30b62f0fc1842f902daac5ef60661d5184acab9"),
+    task: v2_parse_stream_layout_task,
+    touched_entries: [
+      "src/v2/std/compilers/lexing.dag" as FilePath,
+    ],
+    discriminator: DiscriminatingCheck {
+      criterion: "consumption" as NonEmptyStr,
+      statement: "the token stream gains no source accessor that nothing calls" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "^fn token_stream_source\\(" as NonEmptyStr,
+        paths: ["src/v2/std/compilers/lexing.dag" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+  EvalCase {
+    identity: "auth-iam-token-lifetime-unit" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12292),
+    finding: DashboardReview { review_id: 71379 },
+    frozen_base: sha1(hex: "77e76e4644b6064143d43f6861c394ebabbbb430"),
+    reference_fix: sha1(hex: "ce681ac663587c7da50e3b2580d5f5cbde50dd5f"),
+    task: gcp_iam_converge_task,
+    touched_entries: [
+      "dag/gunbc/auth/gcp_iam_converge.dag" as FilePath,
+      "dag/gunbc/fleet/fleet_converge_workflow.dag" as FilePath,
+    ],
+    discriminator: DiscriminatingCheck {
+      criterion: "minimize-redundancy" as NonEmptyStr,
+      statement: "the iam-converge token lifetime is a std.measure Second, not a bare Int named in seconds" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "^data [a-z0-9_]*(lifetime|seconds)[a-z0-9_]*: (Int|Nat)" as NonEmptyStr,
+        paths: ["dag/gunbc/auth/gcp_iam_converge.dag" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+  EvalCase {
+    identity: "spark-engram-touched-pages-byte-units" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12330),
+    finding: DashboardReview { review_id: 71455 },
+    frozen_base: sha1(hex: "a280ca756ef1e6aa6638414a55424b3b0c30f3c1"),
+    reference_fix: sha1(hex: "2392eb2e800ddcc27659d37d4d23aa25e7367251"),
+    task: v41_engram_touch_counter_task,
+    touched_entries: [
+      "dag/gunbc/spark/v41_engram_file_backed.dag" as FilePath,
+    ],
+    discriminator: DiscriminatingCheck {
+      criterion: "minimize-redundancy" as NonEmptyStr,
+      statement: "the record and page sizes v41_touched_pages takes are ByteSize, as its offsets are, not bare Nat" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "fn v41_touched_pages\\(.*(record|page): Nat" as NonEmptyStr,
+        paths: ["dag/gunbc/spark/v41_engram_file_backed.dag" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+  EvalCase {
+    identity: "spark-engram-min-available-memory-unit" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12359),
+    finding: DashboardReview { review_id: 71575 },
+    frozen_base: sha1(hex: "c242b03d13316487e979d280ec69cc58253ef785"),
+    reference_fix: sha1(hex: "88ee4413acc9135063031249845655062202e787"),
+    task: v41_engram_differential_task,
+    touched_entries: [
+      "dag/gunbc/spark/v41_engram_differential_run.dag" as FilePath,
+    ],
+    discriminator: DiscriminatingCheck {
+      criterion: "minimize-redundancy" as NonEmptyStr,
+      statement: "the differential's minimum available memory is a std.measure ByteSize, not a bare Nat whose unit lives in a _kib suffix" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "^data [a-z0-9_]*(available|kib)[a-z0-9_]*: (Nat|Int)" as NonEmptyStr,
+        paths: ["dag/gunbc/spark/v41_engram_differential_run.dag" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+  EvalCase {
+    identity: "ci-cgroup-memory-bound-unit" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12450),
+    finding: DashboardReview { review_id: 71958 },
+    frozen_base: sha1(hex: "a0da5bbf56cceb40a7e383963866ef6fd2b3c44b"),
+    reference_fix: sha1(hex: "1a551d238835fdcb95c319e1d6ab3b8b5a4dd922"),
+    task: rust_unit_tests_clippy_job_task,
+    touched_entries: [
+      "dag/gunbc/ci/ci_spec.dag" as FilePath,
+      "dag/gunbc/witness/compiler_gate_workflow.dag" as FilePath,
+    ],
+    discriminator: DiscriminatingCheck {
+      criterion: "minimize-redundancy" as NonEmptyStr,
+      statement: "the hosted-runner cgroup memory bound is a std.measure carrier, not a bare Int named in bytes" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "^data [a-z0-9_]*memory[a-z0-9_]*: (Int|Nat)" as NonEmptyStr,
+        paths: ["dag/gunbc/ci/ci_spec.dag" as FilePath, "dag/gunbc/witness/compiler_gate_workflow.dag" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+  EvalCase {
+    identity: "repository-owner-id-literal-twice" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12445),
+    finding: DashboardReview { review_id: 71926 },
+    frozen_base: sha1(hex: "baf3f496ddd1b72c4784b0bdf2fa5e51e1558f7c"),
+    reference_fix: sha1(hex: "165d6a15b87dafdee5108e46cb417abb3b221df3"),
+    task: heal_private_repository_task,
+    touched_entries: [
+      "dag/gunbc/repository.dag" as FilePath,
+    ],
+    discriminator: DiscriminatingCheck {
+      criterion: "single-authority" as NonEmptyStr,
+      statement: "the owner's numeric id is one declared fact the repository identities consume, not a literal repeated per repository" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "owner_id: [0-9]+" as NonEmptyStr,
+        paths: ["dag/gunbc/repository.dag" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+  EvalCase {
+    identity: "compute-systemd-state-string-reparse" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12351),
+    finding: DashboardReview { review_id: 71643 },
+    frozen_base: sha1(hex: "a69030d56bcb4f208140bf04132cb30aad3eef27"),
+    reference_fix: sha1(hex: "318639d5f6a93bc63d900af52b5ace58ac271906"),
+    task: host_occupancy_admission_task,
+    touched_entries: [
+      "dag/gunbc/compute/host_occupancy.dag" as FilePath,
+    ],
+    discriminator: DiscriminatingCheck {
+      criterion: "single-authority" as NonEmptyStr,
+      statement: "unit state is read through the extdeps.systemd active-state model, not by comparing state strings" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "state == \"(active|inactive|failed|activating)\"" as NonEmptyStr,
+        paths: ["dag/gunbc/compute/host_occupancy.dag" as FilePath],
+      },
+    },
+    design_checks: [
+      DesignCheck {
+        criterion: "fail-closed" as NonEmptyStr,
+        statement: "a unit state the systemd model does not know refuses as unread rather than counting as vacant" as NonEmptyStr,
+        method: MechanicallyGraded { check: ClaimHolds {
+          witness: FromReferenceFix { path: "dag/test/claim/spark/host_occupancy_admission_witness_test.dag" as FilePath },
+          functions: ["an_unmodeled_unit_state_refuses_as_unread" as NonEmptyStr],
+        } },
+      },
+    ],
+  },
+  EvalCase {
+    identity: "spark-ownership-probe-refusal-text" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12336),
+    finding: DashboardReview { review_id: 71478 },
+    frozen_base: sha1(hex: "aac6b209138057a0c27d0757d4f3f2e1b80cebc2"),
+    reference_fix: sha1(hex: "6e754d40fc81d765e3b3d56aff82f550b7de6225"),
+    task: v41_source_converge_task,
+    touched_entries: [
+      "dag/gunbc/spark/v41_source_patch_converge.dag" as FilePath,
+    ],
+    discriminator: DiscriminatingCheck {
+      criterion: "single-authority" as NonEmptyStr,
+      statement: "the ownership probe decides on the decision's structure, never by matching text in a refusal reason" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "\\.contains\\(\"not ours" as NonEmptyStr,
+        paths: ["dag/gunbc/spark/v41_source_patch_converge.dag" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+  EvalCase {
+    identity: "floor-relocated-bool-beside-cause" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12613),
+    finding: DashboardReview { review_id: 72726 },
+    frozen_base: sha1(hex: "52e7466c7f6806687edba1c6679bfa2e963b7cf2"),
+    reference_fix: sha1(hex: "4214112ca18d9a9f8c9cd36588f5e73664237efa"),
+    task: floor_scope_references_task,
+    touched_entries: [
+      "src/v2/workflow/floor_unimported_bare_provider_debt.dag" as FilePath,
+      "src/v2/workflow/floor_unimported_bare_provider_debt_roster.dag" as FilePath,
+    ],
+    discriminator: DiscriminatingCheck {
+      criterion: "fail-closed" as NonEmptyStr,
+      statement: "the row view carries its standing coproduct; relocation is matched on the retirement cause, not a Bool flag derived from it" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "relocated: Bool" as NonEmptyStr,
+        paths: ["src/v2/workflow" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+  EvalCase {
+    identity: "instruments-app-attest-refusal-wildcard" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12251),
+    finding: DashboardReview { review_id: 71337 },
+    frozen_base: sha1(hex: "22a974a888b29219b4daa9c03bae84ad8fa33db2"),
+    reference_fix: sha1(hex: "d5624051b8d020c5533bf4dfa5cda04d3add6b08"),
+    task: native_app_attest_task,
+    touched_entries: [
+      "dag/gunbc/instruments/native_app_attest.dag" as FilePath,
+    ],
+    discriminator: DiscriminatingCheck {
+      criterion: "fail-closed" as NonEmptyStr,
+      statement: "refusal naming is exhaustive: no wildcard arm folds unlisted refusal variants into one name" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "_ => \"other\"" as NonEmptyStr,
+        paths: ["dag/gunbc/instruments/native_app_attest.dag" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+  EvalCase {
+    identity: "owned-process-journal-lines-respelled" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12492),
+    finding: DashboardReview { review_id: 73076 },
+    frozen_base: sha1(hex: "434f812848aa685a220cb96398215d590edfce87"),
+    reference_fix: sha1(hex: "5c01ca914ff4064b866f82d5c52a9551969bea61"),
+    task: mtcollins1_kvm_observer_task,
+    touched_entries: [
+      "dag/gunbc/owned_process.dag" as FilePath,
+    ],
+    discriminator: DiscriminatingCheck {
+      criterion: "single-authority" as NonEmptyStr,
+      statement: "the launch script receives the journal lines from their declared rows instead of re-spelling them" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "launch_script: String = .*(exited status=|pid not published)" as NonEmptyStr,
+        paths: ["dag/gunbc/owned_process.dag" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+
+EvalCase {
+    identity: "spark-calibration-goodput-rate-unit" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12984),
+    finding: DashboardReview { review_id: 74153 },
+    frozen_base: sha1(hex: "34d5a41b60c6d63808b79df5486310589e76ca9a"),
+    reference_fix: sha1(hex: "6c382d3d83626b4fedc8509b24c7e105e3fcbed8"),
+    task: spark_deforking_cut5_task,
+    touched_entries: ["dag/gunbc/spark/serving_promotion.dag" as FilePath, "dag/gunbc/spark/v41_capacity_measurement.dag" as FilePath],
+    discriminator: DiscriminatingCheck {
+      criterion: "minimize-redundancy" as NonEmptyStr,
+      statement: "the calibration goodput is not a per-hour rate on a bare Nat whose unit lives only in its field name; the count and its std.measure observation window are carried" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "per_hour[a-z_]*: Nat" as NonEmptyStr,
+        paths: ["dag/gunbc/spark" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+
+  EvalCase {
+    identity: "machine-intake-workload-bytes-not-strings" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12362),
+    finding: DashboardReview { review_id: 71569 },
+    frozen_base: sha1(hex: "fd8c7cdb661bab0f991dc66c06489d00b04817d0"),
+    reference_fix: sha1(hex: "0a552e67ad60fb09bd6b182d7ab65b8a64f028a7"),
+    task: machine_intake_census_workload_fit_task,
+    touched_entries: ["dag/gunbc/machine_intake/host_capture_envelope.dag" as FilePath, "dag/gunbc/machine_intake/mtcollins1_boot_run.dag" as FilePath],
+    discriminator: DiscriminatingCheck {
+      criterion: "minimize-redundancy" as NonEmptyStr,
+      statement: "workload byte quantities in refusal arms are std.measure ByteSize (with unreported as its own arm), not String fields" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "_bytes: String" as NonEmptyStr,
+        paths: ["dag/gunbc/machine_intake/mtcollins1_boot_run.dag" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+
+  EvalCase {
+    identity: "bmc-megarac-status-is-http-status" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12490),
+    finding: DashboardReview { review_id: 72176 },
+    frozen_base: sha1(hex: "3d1f7f437df05364f198ea0ef7a8f7c577d10d8c"),
+    reference_fix: sha1(hex: "3efc333677347941b6edb6f55994db60c10bb320"),
+    task: bmc_megarac_web_rows_task,
+    touched_entries: ["dag/gunbc/bmc_megarac_web_adapter.dag" as FilePath],
+    discriminator: DiscriminatingCheck {
+      criterion: "minimize-redundancy" as NonEmptyStr,
+      statement: "the adapter's HTTP status is the std.types HttpStatus refinement, not a bare Int" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "status: Int" as NonEmptyStr,
+        paths: ["dag/gunbc/bmc_megarac_web_adapter.dag" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+
+  EvalCase {
+    identity: "live-deploy-safe-directory-reason-no-empty-default" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12242),
+    finding: DashboardReview { review_id: 70980 },
+    frozen_base: sha1(hex: "725896bc7de4e00eb246b16c90208a185423e013"),
+    reference_fix: sha1(hex: "a6f9a3c293d0700b167b60b0c753e27dabb06848"),
+    task: live_deploy_safe_directory_task,
+    touched_entries: ["dag/extdeps/exec/command.dag" as FilePath, "dag/extdeps/git/git.dag" as FilePath, "dag/gunbc/live_deploy/apply.dag" as FilePath, "dag/gunbc/live_deploy/checkout_safe_directory.dag" as FilePath],
+    discriminator: DiscriminatingCheck {
+      criterion: "fail-closed" as NonEmptyStr,
+      statement: "the safe-directory refusal reason is built from the refusal's own fields; no arm fabricates an empty-string reason for a non-refusal" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "=> \"\"" as NonEmptyStr,
+        paths: ["dag/gunbc/live_deploy/checkout_safe_directory.dag" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+
+  EvalCase {
+    identity: "xl2-census-read-refusal-not-missing" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12334),
+    finding: DashboardReview { review_id: 71731 },
+    frozen_base: sha1(hex: "bbf5f49b10015ac963a7d48adaa93a771273509b"),
+    reference_fix: sha1(hex: "a5a3a4d2ce1b8f68d263fbe98443087d8dd72ead"),
+    task: xl2_census_occurrence_roles_task,
+    touched_entries: ["src/v2/compiler/reference_conservation_census.dag" as FilePath],
+    discriminator: DiscriminatingCheck {
+      criterion: "fail-closed" as NonEmptyStr,
+      statement: "a sample path whose read is refused is not reported as missing with its cause discarded; unreadable stays distinct from absent" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "FilesystemReadRefused \\{ error: _ \\} => SamplePathMissing" as NonEmptyStr,
+        paths: ["src/v2/compiler" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+
+  EvalCase {
+    identity: "self-host-empty-receipt-series-not-outstanding" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12446),
+    finding: DashboardReview { review_id: 71899 },
+    frozen_base: sha1(hex: "d6aee26200b81603017ababee9e6d9ed0a9690f9"),
+    reference_fix: sha1(hex: "ce9af1752ff156b258bb19aa1c2ef8a7ce46b902"),
+    task: self_host_behavioral_receipt_series_task,
+    touched_entries: ["dag/gunbc/compiler_frontend_program_status.dag" as FilePath],
+    discriminator: DiscriminatingCheck {
+      criterion: "fail-closed" as NonEmptyStr,
+      statement: "an empty behavioral-equivalence receipt series derives NotDerivable, not an Outstanding standing as if equivalence had been measured and failed" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "SeriesEmpty => standing_from_evidence" as NonEmptyStr,
+        paths: ["dag/gunbc/compiler_frontend_program_status.dag" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+
+  EvalCase {
+    identity: "auth-capability-mac-bound-to-own-claims" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12537),
+    finding: DashboardReview { review_id: 72612 },
+    frozen_base: sha1(hex: "7c88b75c1ff10084ced457573a6fd2d112c91b47"),
+    reference_fix: sha1(hex: "38ebca800699edb0f931a613e9663f7dc9856e9f"),
+    task: fabric_store_admission_fold_task,
+    touched_entries: ["dag/gunbc/auth/approval_capability.dag" as FilePath, "dag/gunbc/auth/approval_store_receipt.dag" as FilePath],
+    discriminator: DiscriminatingCheck {
+      criterion: "fail-closed" as NonEmptyStr,
+      statement: "capability verification derives the MAC-signed message from the capability's own claims; no public entry accepts a caller-supplied presented message" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "fn verify_capability_presented" as NonEmptyStr,
+        paths: ["dag/gunbc/auth" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+
+  EvalCase {
+    identity: "v2-no-debug-scratch-modules" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12283),
+    finding: DashboardReview { review_id: 71316 },
+    frozen_base: sha1(hex: "4836e69583246a7373e32299629da7bdc9b350b9"),
+    reference_fix: sha1(hex: "3b4400fb493886bdcbd97dbc6b669e6b9456de9f"),
+    task: function_value_body_task,
+    touched_entries: [],
+    discriminator: DiscriminatingCheck {
+      criterion: "consumption" as NonEmptyStr,
+      statement: "no debugging probe module that nothing imports is committed into the production source root" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "^module " as NonEmptyStr,
+        paths: ["src/v2/zz_debug" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+
+  EvalCase {
+    identity: "v2-refinement-declaration-no-unread-path" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12407),
+    finding: DashboardReview { review_id: 71764 },
+    frozen_base: sha1(hex: "946ee79c889e4471b406d1c6b44513f86dc0e43c"),
+    reference_fix: sha1(hex: "415fdb7bc2cbbb13b0fac32654912b98ac43c900"),
+    task: refinement_carrier_widening_task,
+    touched_entries: ["src/v2/compiler/04_infer.dag" as FilePath],
+    discriminator: DiscriminatingCheck {
+      criterion: "consumption" as NonEmptyStr,
+      statement: "RefinementDeclaration carries no path field that no consumer reads" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "^  path: QualifiedName$" as NonEmptyStr,
+        paths: ["src/v2/compiler/04_infer.dag" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+
+  EvalCase {
+    identity: "auth-store-receipt-no-uncalled-issuer" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12517),
+    finding: DashboardReview { review_id: 72419 },
+    frozen_base: sha1(hex: "f9be5621acaf6be7fea9320e2d109633ca8e0ded"),
+    reference_fix: sha1(hex: "29a8abeb3aa1fad73add1398ba1b7876f5e8706f"),
+    task: approval_store_receipt_mint_task,
+    touched_entries: ["dag/gunbc/auth/approval_store_receipt.dag" as FilePath],
+    discriminator: DiscriminatingCheck {
+      criterion: "consumption" as NonEmptyStr,
+      statement: "no uncalled issue_store_receipt wrapper restates the reads the production route performs" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "fn issue_store_receipt\\(" as NonEmptyStr,
+        paths: ["dag/gunbc/auth" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+
+  EvalCase {
+    identity: "std-layout-one-nest-constructor" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12318),
+    finding: DashboardReview { review_id: 71442 },
+    frozen_base: sha1(hex: "96db3ec626b49e17b6e5ff79e2f4f1b492862b1c"),
+    reference_fix: sha1(hex: "e05e7f74d15f7612a1840721abd8891b309336ff"),
+    task: serializer_std_layout_task,
+    touched_entries: ["dag/std/layout.dag" as FilePath, "src/v2/std/compilers/target_model.dag" as FilePath],
+    discriminator: DiscriminatingCheck {
+      criterion: "single-authority" as NonEmptyStr,
+      statement: "std.layout has one nesting constructor whose indent is either protocol levels or a spelled unit, not a second DocNestBy constructor beside DocNest" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "DocNestBy" as NonEmptyStr,
+        paths: ["dag/std" as FilePath, "src/v2/std" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+
+  EvalCase {
+    identity: "spark-probe-residue-label-from-encoder" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12350),
+    finding: DashboardReview { review_id: 71557 },
+    frozen_base: sha1(hex: "5c46919e90dfc4c04ac40dd1aa2a31389146ae87"),
+    reference_fix: sha1(hex: "9337a1fdfe22b6425995abcf192882ed2fd9a470"),
+    task: host_effect_label_residue_task,
+    touched_entries: ["dag/gunbc/spark/host_effect_quiescence.dag" as FilePath, "dag/gunbc/spark/v41_runtime_image_probe.dag" as FilePath],
+    discriminator: DiscriminatingCheck {
+      criterion: "single-authority" as NonEmptyStr,
+      statement: "the residue process pattern is the label's wire form from docker_label_wire, not a hand-written key=value literal" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "process_pattern: \"[^\"]*=" as NonEmptyStr,
+        paths: ["dag/gunbc/spark" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+
+  EvalCase {
+    identity: "xorriso-extract-one-argv-shape" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12487),
+    finding: DashboardReview { review_id: 72051 },
+    frozen_base: sha1(hex: "60f2b8b799a60c3a8cdb918900e5a72e9a0a7223"),
+    reference_fix: sha1(hex: "f0350b0cab831639fa3d242b69426cc7d056d017"),
+    task: census_iso_member_readback_task,
+    touched_entries: ["dag/extdeps/tools/xorriso.dag" as FilePath, "dag/gunbc/machine_intake/mtcollins1_census_member_readback.dag" as FilePath],
+    discriminator: DiscriminatingCheck {
+      criterion: "single-authority" as NonEmptyStr,
+      statement: "the xorriso extract argv is declared once, not as both a shell-transport operation and a hand-copied ArgvCommand" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "operation ExtractPathBestEffort" as NonEmptyStr,
+        paths: ["dag/extdeps/tools/xorriso.dag" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+
+  EvalCase {
+    identity: "emit-one-module-member-route" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12623),
+    finding: DashboardReview { review_id: 72631 },
+    frozen_base: sha1(hex: "7cb7d1f741b3a01a25569ed1c65ed83de6cc6840"),
+    reference_fix: sha1(hex: "9f7790ea2dbd24e7a4ca37a76e1c27740615d127"),
+    task: emit_module_member_fold_task,
+    touched_entries: ["dag/gunbc/recurring_failure_mode/closure_emit_renders_an_arrow_without_its_body.dag" as FilePath, "src/v2/compiler/emit_produced.dag" as FilePath, "src/v2/compiler/self_host/candidate_generation.dag" as FilePath],
+    discriminator: DiscriminatingCheck {
+      criterion: "single-authority" as NonEmptyStr,
+      statement: "the self-host candidate path emits modules through the same member fold as the closure-emit path, not through the old arrow-only collector" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "produced_decl_conjs_in_tree" as NonEmptyStr,
+        paths: ["src/v2/compiler/self_host/candidate_generation.dag" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+
+  EvalCase {
+    identity: "v2-arrow-domain-binds-one-authority" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12770),
+    finding: DashboardReview { review_id: 73181 },
+    frozen_base: sha1(hex: "43a7d9e8a19539ec411dac8e9108b5058ad4644f"),
+    reference_fix: sha1(hex: "95a9cdd6bfa130bb87ad682759e1e96e21685350"),
+    task: arrow_order_edge_admission_task,
+    touched_entries: ["src/v2/compiler/03_resolve.dag" as FilePath, "src/v2/std/node.dag" as FilePath],
+    discriminator: DiscriminatingCheck {
+      criterion: "single-authority" as NonEmptyStr,
+      statement: "whether an Arrow's domain binds a name is answered once; resolve does not keep its own domain_root_has_named_bindings fold beside the v2.std.node one" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "fn domain_root_has_named_bindings" as NonEmptyStr,
+        paths: ["src/v2" as FilePath],
+      },
+    },
+    design_checks: [],
   },
 
 ]
