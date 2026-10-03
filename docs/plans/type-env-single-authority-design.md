@@ -859,3 +859,16 @@ trace marks in `04_infer.dag`.
   - **P1:** the shared index costs the same cold and warm.
   - **P2:** the whole warm delta is loaded inside the warm RESOLVE step, and it survives dropping the entry's graph. So it is state the warm resolve route retains for the process lifetime.
   - **Next (pin `ede7021`, P3/P4 pre-registered):** the typed-store counters, to tell breadth (decoding far beyond the entry closure) from per-decode expansion.
+- **Counters run (pin `ede7021`, neat-boar-16): P4 HIT; P3 FALSIFIED on breadth, true on bytes.**
+  - The warm route reads only TWO store entries, but they are near whole-pool size.
+  - Cold encodes are corpus-sized per module.
+- **Structural reading (from the code; not yet measured):**
+  - `TypecheckModuleResult` → `TypedModule.type_env: Rc<TypeEnv>` (and `interface.env`) → `TypeEnv.parents: Rc<Vec<Rc<TypeEnv>>>`, and all of it derives `serde::Serialize`.
+  - serde writes an `Rc` by value, so ONE module's typed snapshot serializes every ancestor's environment again, with no sharing. Decoding rebuilds them unshared.
+  - This is the same class as the identity rewire: structural sharing lost at a copy boundary, here serialization.
+- **Earliest unjustified boundary (proposed):** the snapshot's grain.
+  - A module-grain record should carry its parents as module identities, resolved at decode against environments already decoded, not as their contents.
+- **Discriminator, pre-registered before any repair:**
+  - Per-module encoded bytes grow with the size of the module's import closure, approaching proportionality.
+  - A module with no imports encodes small.
+  - If encoded size is flat in closure size, this reading is falsified.
