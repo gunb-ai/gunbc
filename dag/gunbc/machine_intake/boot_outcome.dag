@@ -3,10 +3,11 @@ module gunbc.machine_intake_boot_outcome
 import std.types { Bool, Int, NonEmptyStr }
 import std.measure { Second, second }
 
-// WHAT ONE BOOT SHOWED, classified once for every reader: the firmware convergence's post-set readback
-// (gunbc.fleet.mtcollins_firmware_converge), the boot run, and the mtcollins1 socket-1 investigation. A
-// fact about a boot lives at the boot-observation layer, beside gunbc.machine_intake_mtcollins1_boot_milestone,
-// so each of those imports it instead of declaring its own spelling.
+// WHAT ONE BOOT SHOWED, at the boot-observation layer beside gunbc.machine_intake_mtcollins1_boot_milestone.
+// Its one consumer today is the firmware convergence's post-set readback (gunbc.fleet.mtcollins_firmware_converge
+// boot_verdict). The boot run and the socket-1 investigation do NOT import it yet: that join is a declared
+// later change, #13071 slice A, which replaces this vocabulary atomically (ruling R1 on #13041) rather than
+// leaving a second boot-outcome spelling beside it.
 //
 // Reaching UEFI is success. The failure seen on mtcollins1 on 2026-10-02/03, after the whole vendor set
 // (BMC 0.45.3, BIOS 0ACOD014, SCP 2.10, MB CPLD V06), is PostDdrProgressLost: the last checkpoint the
