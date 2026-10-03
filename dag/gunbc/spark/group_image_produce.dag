@@ -155,14 +155,48 @@ fn distribution_source_reading(h: ProducedImageHeld, candidate: HostIdentity) ->
   }
 }
 
-fn distribution_source_for(h: ProducedImageHeld, target: HostIdentity) -> DistributionSource {
-  fold(distribution_source_candidates(h: h, target: target), init: NoAdmissibleDistributionSource { causes: [] as List<String> }, f: (acc, c) =>
+// EVERY CANDIDATE WHOSE READBACK MATCHES, in order, with the causes of those that did not.
+type DistributionSources {
+  admitted: List<HostIdentity>
+  causes: List<String>
+}
+
+fn distribution_sources_for(h: ProducedImageHeld, target: HostIdentity) -> DistributionSources {
+  fold(distribution_source_candidates(h: h, target: target), init: DistributionSources { admitted: [] as List<HostIdentity>, causes: [] as List<String> }, f: (acc, c) =>
+    match distribution_source_reading(h: h, candidate: c) {
+      DistributionSourceAdmitted { host: s, reading: _ } => DistributionSources { admitted: concat(acc.admitted, [s]), causes: acc.causes }
+      NoAdmissibleDistributionSource { causes: now } => DistributionSources { admitted: acc.admitted, causes: concat(acc.causes, now) }
+    })
+}
+
+// A SOURCE MUST ALSO BE CLAIMABLE. Its save into the blob root is a host effect, so the source is used only
+// when its host-effect claim lands; a source still held by another live effect (a stale claim that has not
+// been read quiescent, for instance) is passed over for the next matching host, and its cause is kept.
+type DistributionAttempt
+  = DistributionNotYet { causes: List<String> }
+  | DistributionRan { exit: ProcessExit }
+
+fn distribute_from_claimed_source(h: ProducedImageHeld, source: HostIdentity, target_host: HostIdentity, receipt_path: String) -> ProcessExit {
+  if host_identity_eq(a: target_host, b: source) {
+    produced_image_distribute_to(source: source, target_host: target_host, h: h, receipt_path: receipt_path)
+  } else {
+    with_image_distribution_claim(host: target_host, h: h, run: fn() { produced_image_distribute_to(source: source, target_host: target_host, h: h, receipt_path: receipt_path) })
+  }
+}
+
+fn distribute_from_first_claimable(h: ProducedImageHeld, target_host: HostIdentity, sources: List<HostIdentity>, receipt_path: String) -> DistributionAttempt {
+  fold(sources, init: DistributionNotYet { causes: [] as List<String> }, f: (acc, source) =>
     match acc {
-      DistributionSourceAdmitted { host: _, reading: _ } => acc
-      NoAdmissibleDistributionSource { causes: before } =>
-        match distribution_source_reading(h: h, candidate: c) {
-          DistributionSourceAdmitted { host: s, reading: r } => DistributionSourceAdmitted { host: s, reading: r }
-          NoAdmissibleDistributionSource { causes: now } => NoAdmissibleDistributionSource { causes: concat(before, now) }
+      DistributionRan { exit: _ } => acc
+      DistributionNotYet { causes: before } =>
+        match admit_host_held_by_subject(raw: source, subject: PairServingUnitOn { group: h.group }) {
+          Present { value: why } => DistributionNotYet { causes: concat(before, [join([source as String, ": ", why], "")]) }
+          Absent =>
+            match claim_host_effect_live(host: source, term: image_distribution_host_effect_term, purpose: image_distribution_host_purpose, residue: image_distribution_residue(h: h)) {
+              HostEffectClaimNotLanded { cause: why } => DistributionNotYet { causes: concat(before, [join([source as String, ": ", why as String], "")]) }
+              HostEffectClaimLanded { handle: handle } =>
+                DistributionRan { exit: release_host_effect_live(handle: Present { value: handle }, exit: distribute_from_claimed_source(h: h, source: source, target_host: target_host, receipt_path: receipt_path)) }
+            }
         }
     })
 }
@@ -207,21 +241,17 @@ fn produced_image_distribute_wet(h: ProducedImageHeld, receipt_path: String) -> 
     SparkConvergeTargetSingle { host: target_host } =>
       match admit_host_held_by_subject(raw: target_host, subject: PairServingUnitOn { group: h.group }) {
         Present { value: why } => exit_failure(reason: why)
-        Absent =>
-          match distribution_source_for(h: h, target: target_host) {
-            NoAdmissibleDistributionSource { causes: c } =>
-              exit_failure(reason: join(["no group host reads back ", render_oci_content_digest_wire(d: h.subject.config), " under ", h.subject.tag as String, ", so nothing is a source:\n  ", join(c, "\n  ")], ""))
-            DistributionSourceAdmitted { host: source, reading: _ } =>
-              match admit_host_held_by_subject(raw: source, subject: PairServingUnitOn { group: h.group }) {
-                Present { value: why } => exit_failure(reason: why)
-                Absent =>
-                  with_image_distribution_claim(host: source, h: h, run: fn() {
-                    if host_identity_eq(a: target_host, b: source) {
-                      produced_image_distribute_to(source: source, target_host: target_host, h: h, receipt_path: receipt_path)
-                    } else {
-                      with_image_distribution_claim(host: target_host, h: h, run: fn() { produced_image_distribute_to(source: source, target_host: target_host, h: h, receipt_path: receipt_path) })
-                    }
-                  })
+        Absent => {
+              let found = distribution_sources_for(h: h, target: target_host)
+              let srcs = found.admitted
+              let rc = found.causes
+              if length(srcs) == 0 {
+                exit_failure(reason: join(["no group host reads back ", render_oci_content_digest_wire(d: h.subject.config), " under ", h.subject.tag as String, ", so nothing is a source:\n  ", join(rc, "\n  ")], ""))
+              } else {
+                match distribute_from_first_claimable(h: h, target_host: target_host, sources: srcs, receipt_path: receipt_path) {
+                  DistributionRan { exit: e } => e
+                  DistributionNotYet { causes: cc } => exit_failure(reason: join(["every host that reads back the digest is held by another effect, so none could be claimed as the source:\n  ", join(cc, "\n  ")], ""))
+                }
               }
           }
       }
