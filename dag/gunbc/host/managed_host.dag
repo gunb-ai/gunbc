@@ -1,6 +1,7 @@
 module gunbc.managed_host
 
 import std.types { List, NonEmptyStr, String }
+import std.decl_ref { decl_ref }
 import product.placement_supply { HostIdentity }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObservationStanding, BmcAccessObserved, BmcAccessUnobserved }
@@ -15,7 +16,10 @@ import gunbc.machine_intake_mtcollins1_maintenance_hold { mtcollins1_unit_hold_k
 // procedure takes instead of a unit's constants (docs/plans/managed-host-untangle.md, cut 0). It is
 // not an executor fleet host: gunbc.fleet_runner_connectivity fleet_hosts() means "commits runner
 // slots", and a managed host commits none. Every value in a row is imported from the unit's own
-// layer-1 modules, never re-spelled. The intake subject is not a field: secure.subject is the one
+// layer-1 modules, never re-spelled. ManagedHost is sole_constructor: the host identity is joined to
+// its secure standing (and so to the intake subject that standing sealed) only here, so no other
+// module can author a row pairing one host's name with another unit's secured standing. The intake
+// subject is not a field: secure.subject is the one
 // home of it, and a second copy could disagree with the standing it was derived beside.
 //
 // access and capability_row are the pair gunbc.machine_intake_oob_boot_handoff
@@ -24,7 +28,7 @@ import gunbc.machine_intake_mtcollins1_maintenance_hold { mtcollins1_unit_hold_k
 // through the profile it bound, and the trigger is the first production producer of that standing.
 // No such producer exists yet (bind_bmc_access_context has no production caller and there is no
 // profile catalog), so a bound context cannot be executed for any host and is not hand-built here.
-type ManagedHost {
+type ManagedHost sole_constructor {
   host: HostIdentity
   access: BmcAccessObservationStanding
   capability_row: BmcFirmwareReleaseCapabilityRow
@@ -46,12 +50,14 @@ type ResetUnitHold
 // account from here and never pairs a secured account with some other row's access. The secured
 // subject reaches the row's host through that controller: no carrier binds a MachineIntakeSubject to
 // a HostIdentity directly, so the join is held at controller grain, which is the grain the write uses.
-type ManagedHostBinding {
+type ManagedHostBinding sole_constructor {
   host: ManagedHost
   observation: BmcAccessObservation
   account: NonEmptyStr
 }
 
+// ManagedHostBinding is sole_constructor, so managed_host_binding is its only mint: a binding cannot
+// be authored around the endpoint check.
 type ManagedHostBindingStanding
   = ManagedHostBound { binding: ManagedHostBinding }
   | ManagedHostAccessUnobserved { endpoint: BmcControllerEndpoint }
@@ -91,4 +97,23 @@ fn managed_hosts() -> List<ManagedHost> {
         },
       ]
   }
+}
+
+// THE ONE OTHER WAY TO MINT A ROW, ADMITTED ONLY TO THE WITNESSES THAT NEED A CROSS-WIRED ONE. The
+// reds in test.claim.managed_host_witness re-point a real row's access at another controller, or
+// rename a real row to a host with no reset selection, to show the binding and the admission refuse
+// them; they cannot do that without a constructor, and admit_callers keeps every other caller out.
+fn managed_host_fixture(
+  host: HostIdentity,
+  access: BmcAccessObservationStanding,
+  capability_row: BmcFirmwareReleaseCapabilityRow,
+  secure: BmcSecureStanding,
+  unit_hold: ResetUnitHold,
+) -> ManagedHost
+  admit_callers: [
+    decl_ref(module_path: "test.claim.managed_host_witness", decl_name: "w_a_secured_account_beside_another_controllers_access_is_not_bound_or_rostered"),
+    decl_ref(module_path: "test.claim.managed_host_witness", decl_name: "w_a_capable_host_with_no_reset_selection_is_absent_from_the_roster"),
+  ]
+{
+  ManagedHost { host: host, access: access, capability_row: capability_row, secure: secure, unit_hold: unit_hold }
 }

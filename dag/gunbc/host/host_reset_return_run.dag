@@ -4,6 +4,7 @@ import gunbc.machine_intake_mtcollins1_maintenance_hold {
   UnitHoldProof, UnitHeld, UnitHoldRefused, unit_hold_acquire, unit_hold_release, unit_hold_proof_refusal,
   unit_hold_store_root, host_reset_owner,
 }
+import std.decl_ref { decl_ref }
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.nat { Nat, nat_range_inclusive }
 import std.measure { Second, second }
@@ -488,6 +489,9 @@ fn host_reset_return_issue_and_watch(
   password_file: NonEmptyStr,
   issued_at: EpochMs,
 ) -> ResetAttemptMint
+  admit_callers: [
+    decl_ref(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_attempt"),
+  ]
 {
   match reset_unit_hold_gate(candidate: candidate, proof: proof) {
     Present { value: why } =>

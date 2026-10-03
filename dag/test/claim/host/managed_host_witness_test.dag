@@ -6,7 +6,7 @@ import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved }
 import gunbc.fleet_intent_network { operator_host_mtcollins1 }
 import gunbc.managed_host {
-  ManagedHost,
+  managed_host_fixture,
   ManagedHostAccessUnobserved,
   ManagedHostBound,
   ManagedHostEndpointMismatch,
@@ -81,13 +81,7 @@ test fn w_a_secured_account_beside_another_controllers_access_is_not_bound_or_ro
     let crossed = match h.access {
       BmcAccessUnobserved { endpoint: _ } => h
       BmcAccessObserved { observation: o } =>
-        ManagedHost {
-          host: h.host,
-          access: BmcAccessObserved { observation: observation_at(o: o, host: "fixture-other-bmc") },
-          capability_row: h.capability_row,
-          secure: h.secure,
-          unit_hold: h.unit_hold,
-        }
+        managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_at(o: o, host: "fixture-other-bmc") }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold)
     }
     let mismatched = match managed_host_binding(host: crossed) {
       ManagedHostEndpointMismatch { observed: ob, secured: _ } => (ob.host as String) == "fixture-other-bmc"
@@ -104,13 +98,7 @@ test fn w_a_secured_account_beside_another_controllers_access_is_not_bound_or_ro
 // selection-less and the roster over both hosts is exactly mtcollins1.
 test fn w_a_capable_host_with_no_reset_selection_is_absent_from_the_roster() -> Bool {
   managed_hosts() |> all(h => {
-    let unselected = ManagedHost {
-      host: "fixture-unselected-host",
-      access: h.access,
-      capability_row: h.capability_row,
-      secure: h.secure,
-      unit_hold: h.unit_hold,
-    }
+    let unselected = managed_host_fixture(host: "fixture-unselected-host", access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold)
     let bound = match managed_host_binding(host: unselected) {
       ManagedHostBound { binding: _ } => true
       ManagedHostAccessUnobserved { endpoint: _ } => false

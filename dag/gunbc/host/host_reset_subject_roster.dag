@@ -39,8 +39,9 @@ import gunbc.fleet_runner_connectivity { fleet_hosts }
 // gunbc.machine_intake_oob_boot_handoff runs before it writes anything to a controller -- admits the
 // observation against its capability row. The admitted subject carries the binding and the
 // selection, and the run reads both from it, so a roster member can never fail dispatch for want of
-// a fact the roster did not check.
-type AdmittedResetSubject {
+// a fact the roster did not check. AdmittedResetSubject is sole_constructor, so admit_reset_subject is
+// its only mint and no module can hand the run a subject that skipped this admission.
+type AdmittedResetSubject sole_constructor {
   binding: ManagedHostBinding
   boot_selection: IpmiBootSelection
 }
