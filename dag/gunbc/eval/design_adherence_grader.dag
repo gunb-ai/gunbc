@@ -95,7 +95,7 @@ type Preparation
   | CandidateSeedBroken { detail: String }
 
 fn commit_present(ws: EvalWorkspace, oid: GitObjectId) -> Bool {
-  git.Core.RevParseInRepo(repo: ws.repo as FilePath, target: concat(hex(oid: oid), "^{commit}") as GitRef).exit_code == 0
+  git.Core.RevParseInRepo(repo: ws.repo as FilePath, target: concat(hex(oid: oid), "^0") as GitRef).exit_code == 0
 }
 
 fn ensure_commit(ws: EvalWorkspace, c: EvalCase, oid: GitObjectId) -> Bool {
