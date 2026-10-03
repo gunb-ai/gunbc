@@ -47176,6 +47176,7 @@ mod bare_call_predicate_census {
                         } else {
                             "kernel-method-only"
                         };
+                        eprintln!("[bcp-row] {why} {file} {name} {provider}");
                         suppressed
                             .entry((why, name.to_string()))
                             .or_default()
