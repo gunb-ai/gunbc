@@ -883,7 +883,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "bash_program_real_claims_matches_golden_holds"
     ]
   },
-  FrozenPathDeferral { entry: "src/v2/test/claim/long/compile_door_ledger_test.dag", functions: ["real_door_route_refuses_one_subject_at_its_owned_fatal_cause"] },
+  FrozenPathDeferral { entry: "src/v2/test/claim/long/compile_door_ledger_test.dag", functions: ["ledger_cause_histogram_over_mixed_affected_set"] },
   FrozenPathDeferral {
     entry: "src/v2/test/claim/long/compiler_frontier_probe_entry_test.dag",
     functions: [
