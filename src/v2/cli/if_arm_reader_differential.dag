@@ -26,7 +26,7 @@ import v2.extdeps.languages.dag {
   parse_production_captured_child_optional,
   parse_production_emitted_identity_optional
 }
-import v2.std.algebra { fold_list, length, list_reverse }
+import v2.std.algebra { fold_list, list_reverse }
 import v2.std.diagnostic { Accepted, Diagnostics, NonEmptyDiagnostics, Rejected, Textual, NodeLocus, SourcePortLocus, InvariantPortLocus, DeclarationLocus, ByteRange, WholeFile, bind_outcome, diagnostics_fatal_reason }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.integer { integer_int_to_decimal_string }
@@ -324,9 +324,13 @@ fn iard_sites(tree: Node) -> FreeMonoid<IardSite> {
 // --- location ---
 
 // A NODE'S LOCATION, AS THE SPAN INDEX RESOLVES IT (v2.std.provenance is the one authority for
-// following a derived occurrence to its source). The line is derived from the byte start over the
-// file's own text; the byte range is carried beside it so a reader can check the derivation.
-fn iard_location(node: Node, spans: SpanIndex, source: String) -> String {
+// following a derived occurrence to its source): the file's byte range, in the UTF-8 octets the
+// tokenizer counts (v2.compiler.tokenize lexeme_utf8_octet_count). NO LINE IS DERIVED HERE. No
+// line-from-octet reader exists in the corpus, and deriving one with `substring` is wrong: the
+// emitted substring indexes Unicode scalars, so every multibyte character before a site moved the
+// line it reported (calm-boar-904, review of gunbc#13051). The byte range is the authority; a reader
+// converts it to a line with a byte-aware tool.
+fn iard_location(node: Node, spans: SpanIndex) -> String {
   match node_occurrence_id_optional(node: node) {
     Absent => "<no occurrence>"
     Present { value: id } =>
@@ -337,10 +341,7 @@ fn iard_location(node: Node, spans: SpanIndex, source: String) -> String {
             Textual { file: _, extent: e } =>
               match e {
                 ByteRange { start: s, end: en } =>
-                  concat(
-                    concat("line=", integer_int_to_decimal_string(value: iard_line_of(source: source, offset: s))),
-                    concat(" bytes=", concat(integer_int_to_decimal_string(value: s), concat("..", integer_int_to_decimal_string(value: en))))
-                  )
+                  concat("bytes=", concat(integer_int_to_decimal_string(value: s), concat("..", integer_int_to_decimal_string(value: en))))
                 WholeFile => "<whole file>"
               }
             NodeLocus { anchor: _ } => "<non-textual locus>"
@@ -352,14 +353,10 @@ fn iard_location(node: Node, spans: SpanIndex, source: String) -> String {
   }
 }
 
-fn iard_line_of(source: String, offset: Int) -> Int {
-  length(xs: split(s: substring(s: source, start: 0, end: offset), delimiter: "\n"))
-}
-
 // --- the per-file and whole-ingest census ---
 
 type IardFileOutcome
-  = IardFileRead { path: String, source: String, spans: SpanIndex, sites: FreeMonoid<IardSite> }
+  = IardFileRead { path: String, spans: SpanIndex, sites: FreeMonoid<IardSite> }
   | IardFileRefused { path: String, reason: Symbol }
 
 fn iard_file(prepared: PreparedGrammar, residue: Diagnostics, read: DagSourceReadWitness) -> IardFileOutcome {
@@ -372,7 +369,6 @@ fn iard_file(prepared: PreparedGrammar, residue: Diagnostics, read: DagSourceRea
     Accepted { value: artifact, diagnostics: _ } =>
       IardFileRead {
         path: read.artifact.file_path,
-        source: read.source.carried,
         spans: artifact.span_index,
         sites: iard_sites(tree: artifact.tree)
       }
@@ -401,13 +397,13 @@ fn iard_arm_label(c: IardArmComparison) -> String {
   }
 }
 
-fn iard_arm_detail(c: IardArmComparison, spans: SpanIndex, source: String) -> String {
+fn iard_arm_detail(c: IardArmComparison, spans: SpanIndex) -> String {
   match c {
     IardArmDiffer { old: o, new: n } =>
-      concat(concat(" old_at=[", concat(iard_location(node: o, spans: spans, source: source), "]")),
-             concat(" new_at=[", concat(iard_location(node: n, spans: spans, source: source), "]")))
-    IardArmOldOnly { old: o } => concat(" old_at=[", concat(iard_location(node: o, spans: spans, source: source), "]"))
-    IardArmNewOnly { new: n } => concat(" new_at=[", concat(iard_location(node: n, spans: spans, source: source), "]"))
+      concat(concat(" old_at=[", concat(iard_location(node: o, spans: spans), "]")),
+             concat(" new_at=[", concat(iard_location(node: n, spans: spans), "]")))
+    IardArmOldOnly { old: o } => concat(" old_at=[", concat(iard_location(node: o, spans: spans), "]"))
+    IardArmNewOnly { new: n } => concat(" new_at=[", concat(iard_location(node: n, spans: spans), "]"))
     IardArmAgree => ""
     IardArmBothAbsent => ""
     IardArmUnidentified => ""
@@ -417,14 +413,14 @@ fn iard_arm_detail(c: IardArmComparison, spans: SpanIndex, source: String) -> St
 // ONE ROW PER (SITE, ARM) WHERE THE READERS DISAGREE. An arm where both agree, or both are absent,
 // writes nothing; every other comparison -- including one that could not be identified -- is a row,
 // because a census that dropped what it could not compare would undercount silently.
-fn iard_arm_row(path: String, site: IardSite, arm: String, c: IardArmComparison, spans: SpanIndex, source: String) -> String {
+fn iard_arm_row(path: String, site: IardSite, arm: String, c: IardArmComparison, spans: SpanIndex) -> String {
   concat(
     concat("if_arm_differs file=", path),
     concat(
       concat(" decl=", site.declaration),
       concat(
-        concat(" at=[", concat(iard_location(node: site.shell, spans: spans, source: source), "]")),
-        concat(concat(" arm=", arm), concat(concat(" ", iard_arm_label(c: c)), concat(iard_arm_detail(c: c, spans: spans, source: source), "\n")))
+        concat(" at=[", concat(iard_location(node: site.shell, spans: spans), "]")),
+        concat(concat(" arm=", arm), concat(concat(" ", iard_arm_label(c: c)), concat(iard_arm_detail(c: c, spans: spans), "\n")))
       )
     )
   )
@@ -440,11 +436,11 @@ type IardTally {
   sites_differing: Int
 }
 
-fn iard_tally_site(t: IardTally, path: String, spans: SpanIndex, source: String, site: IardSite) -> IardTally {
+fn iard_tally_site(t: IardTally, path: String, spans: SpanIndex, site: IardSite) -> IardTally {
   let e = iard_arm_differs(c: site.else_arm)
   let h = iard_arm_differs(c: site.then_arm)
-  let with_then = if h { concat(t.text, iard_arm_row(path: path, site: site, arm: "then", c: site.then_arm, spans: spans, source: source)) } else { t.text }
-  let with_else = if e { concat(with_then, iard_arm_row(path: path, site: site, arm: "else", c: site.else_arm, spans: spans, source: source)) } else { with_then }
+  let with_then = if h { concat(t.text, iard_arm_row(path: path, site: site, arm: "then", c: site.then_arm, spans: spans)) } else { t.text }
+  let with_else = if e { concat(with_then, iard_arm_row(path: path, site: site, arm: "else", c: site.else_arm, spans: spans)) } else { with_then }
   IardTally {
     text: with_else,
     files_read: t.files_read,
@@ -468,7 +464,7 @@ fn iard_tally_file(t: IardTally, outcome: IardFileOutcome) -> IardTally {
         then_differs: t.then_differs,
         sites_differing: t.sites_differing
       }
-    IardFileRead { path: p, source: src, spans: spans, sites: sites } =>
+    IardFileRead { path: p, spans: spans, sites: sites } =>
       let counted = IardTally {
         text: t.text,
         files_read: t.files_read + 1,
@@ -479,7 +475,7 @@ fn iard_tally_file(t: IardTally, outcome: IardFileOutcome) -> IardTally {
         sites_differing: t.sites_differing
       }
       fold_list(xs: sites, empty: counted, cons: fn(acc, s) {
-        iard_tally_site(t: acc, path: p, spans: spans, source: src, site: s)
+        iard_tally_site(t: acc, path: p, spans: spans, site: s)
       })
   }
 }

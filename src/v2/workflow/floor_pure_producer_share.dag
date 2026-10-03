@@ -655,9 +655,9 @@ import v2.std.collection { List }
 // iap_verdicts tokenizes, parses and normalizes four inline modules and stores four Bools. Unshared,
 // each claim frame paid its own tokenize -> parse -> normalize, over the required floor's new-witness
 // enrolment margin (v2.workflow.required_floor claim_eval_step_budget_for_identity).
-// THE IF-ARM READER DIFFERENTIAL ROW IS THE SAME GROUND AT THREE SPECIMENS:
-// v2.test.claim.cli.if_arm_reader_differential iard_fixture_censuses tokenizes and parses three inline
-// modules and stores two censuses (counts and rendered rows, no Node), portable for the same reason.
+// THE IF-ARM READER DIFFERENTIAL ROW IS THE SAME GROUND AT FOUR SPECIMENS:
+// v2.test.claim.cli.if_arm_reader_differential iard_fixture_censuses tokenizes and parses four inline
+// modules and stores three censuses (counts and rendered rows, no Node), portable for the same reason.
 // THE XL-2 REIFY-OPERAND ROW: v2.test.claim.body_lowering.reify_operand_refusal ror_verdicts tokenizes
 // and parses two inline modules and reifies two supplied bodies over each; the stored value is four
 // verdicts (no Node, no closure), portable for the same reason cav_outcomes is.
