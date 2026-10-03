@@ -8,8 +8,8 @@ import extdeps.shell
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { env_prefixed_command, LocalExec }
-import extdeps.tools.mosquitto_sub { mosquitto_report_command }
-import extdeps.printing.bambu_lab_lan_protocol { bambu_report_topic, bambu_lan_mqtt_endpoint, bambu_lan_mqtt_user }
+import extdeps.tools.mosquitto_rr { mosquitto_snapshot_command }
+import extdeps.printing.bambu_lab_lan_protocol { bambu_status_snapshot_payload, bambu_request_topic, bambu_report_topic, bambu_lan_mqtt_endpoint, bambu_lan_mqtt_user }
 import gunbc.command_runner { run_shell_command_capture }
 import gunbc.fleet_asset_identity { PhysicalAssetIdentity, printer_01, printer_02 }
 import gunbc.fleet.printer_workflow_run { select_printer, PrinterSelected, PrinterSelectionRefused }
@@ -24,12 +24,12 @@ import extdeps.cloud.gcp.secret_manager { sm_version_id_is_number }
 import gunbc.auth.access_token_source { AccessTokenSource, OperatorSuppliedToken, read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable }
 import gunbc.auth.secret_ref_credential { fetch_secret_ref_credential, SecretCredentialReady }
 import gunbc.auth.mosquitto_options_binding {
-  place_mosquitto_sub_options_privately, MosquittoOptionsPlaced,
+  place_mosquitto_rr_options_privately, MosquittoOptionsPlaced,
   MosquittoOptionsRefused, MosquittoOptionsRefusedResidueRemains,
   shred_mosquitto_options_binding, mosquitto_options_env,
 }
 
-// Read-only subscriber. Topic/endpoint/credential all join through the same fleet identity.
+// Read-only status request/response. Topic/endpoint/credential all join through the same fleet identity.
 // It observes current state, not causality or an acknowledgement of a particular start.
 fn report(printer: PhysicalAssetIdentity, version: NonEmptyStr, token_source: AccessTokenSource) -> ProcessOutcome {
   if !sm_version_id_is_number(version: version as String) { return ProcessRefused { exit_code: 1, stderr: "Report requires an exact credential version" } }
@@ -53,12 +53,12 @@ fn report_with_credential(serial: NonEmptyStr, address: NonEmptyStr, credential:
     CaBundleRefused { cause: c } => ProcessRefused { exit_code: 1, stderr: c as String }
     CaBundleRefusedResidueRemains { cause: c } => ProcessRefused { exit_code: 1, stderr: c as String }
     CaBundlePinned { bundle: bundle, workspace: workspace } => {
-      let result = match place_mosquitto_sub_options_privately(login: bambu_lan_mqtt_user, password: credential) {
+      let result = match place_mosquitto_rr_options_privately(login: bambu_lan_mqtt_user, password: credential) {
         MosquittoOptionsRefused { cause: c } => ProcessRefused { exit_code: 1, stderr: c as String }
         MosquittoOptionsRefusedResidueRemains { cause: c } => ProcessRefused { exit_code: 1, stderr: c as String }
         MosquittoOptionsPlaced { binding: b } => {
-          let outcome = run_shell_command_capture(command: env_prefixed_command(bindings: mosquitto_options_env(binding: b), command: mosquitto_report_command(
-            endpoint: bambu_lan_mqtt_endpoint(host: address), topic: bambu_report_topic(serial: serial), ca_bundle: pinned_ca_bundle_path(bundle: bundle))), transport: LocalExec)
+          let outcome = run_shell_command_capture(command: env_prefixed_command(bindings: mosquitto_options_env(binding: b), command: mosquitto_snapshot_command(
+            endpoint: bambu_lan_mqtt_endpoint(host: address), topic: bambu_report_topic(serial: serial), request_topic: bambu_request_topic(serial: serial), payload: bambu_status_snapshot_payload(), ca_bundle: pinned_ca_bundle_path(bundle: bundle))), transport: LocalExec)
           if shred_mosquitto_options_binding(binding: b) { outcome }
           else { ProcessRefused { exit_code: 1, stderr: "Printer report credential cleanup failed" } }
         }

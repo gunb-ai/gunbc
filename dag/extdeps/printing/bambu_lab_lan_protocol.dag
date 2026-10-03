@@ -204,3 +204,12 @@ data bambu_printer_ca_bundle_source: ExternalAuthority = ExternalAuthority {
 data bambu_printer_ca_bundle_sha256: NonEmptyStr = "36f2bcee347ec7adce719b5fd350099591a4d3d0ec4e039c7019890d78e152a0"
 
 data bambu_ca_measured_fingerprint_sha256: NonEmptyStr = "030BCA81CECE18B7EFF3CFD2B75D09D3EFCA893BC069609E37FA04257FE4D840"
+
+fn bambu_status_snapshot_payload() -> String {
+  serialize_json(v: json_object(members: [json_kv(key: "pushing", value: json_object(members: [
+    json_kv(key: "command", value: json_string(s: "pushall")),
+    json_kv(key: "sequence_id", value: json_string(s: "0")),
+    json_kv(key: "version", value: json_int(n: 1)),
+    json_kv(key: "push_target", value: json_int(n: 1)),
+  ]))]))
+}

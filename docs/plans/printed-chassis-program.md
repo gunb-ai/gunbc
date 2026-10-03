@@ -1069,3 +1069,13 @@ but FTPS upload returned curl exit 25 / server 550 before MQTT start. Its durabl
 is retained; there is no automatic replay. Printer-01's approved attempt received a partial
 temperature-only report and correctly refused before upload. The observer now allows up to
 eight fresh messages to obtain state and error together, without inventing missing fields.
+
+The operator confirmed that printer-02 recovered and appeared functional after formatting.
+A separate after-format attempt retains the original failed upload marker and requests new
+approval. No MQTT start had been sent in the failed attempt. Status observation now subscribes
+before publishing a read-only `pushing.pushall` snapshot request with Mosquitto request/response;
+it still requires an explicit complete state/error report and cleans the private credential files.
+
+Correction at 22:12 UTC: the operator reports printer-02 still shows SD card “error” in
+settings despite clearing print_error. Stop its after-format attempt before actuation and
+prioritize printer-01. A zero print_error is not proof of usable storage.

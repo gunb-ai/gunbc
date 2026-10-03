@@ -1,5 +1,7 @@
 module gunbc.auth.mosquitto_options_binding
 
+import extdeps.tools.mosquitto_rr { mosquitto_rr_options_file_name }
+
 import extdeps.tools.mosquitto_sub { mosquitto_sub_options_file_name }
 
 import std.types { NonEmptyStr, String, Bool, Secret, FilePath, List }
@@ -133,6 +135,19 @@ fn place_mosquitto_sub_options_privately(login: NonEmptyStr, password: Secret) -
     MosquittoOptionsPlaced { binding: b } => {
       let source = join([b.dir as String, "/", mosquitto_pub_options_file_name as String], "")
       let target = join([b.dir as String, "/", mosquitto_sub_options_file_name as String], "")
+      if shell.Copy.File(source: source as FilePath, destination: target as FilePath).success {
+        MosquittoOptionsPlaced { binding: b }
+      } else { mosquitto_options_write_refusal(removed_after_failure: shred_mosquitto_options_binding(binding: b)) }
+    }
+    other => other
+  }
+}
+
+fn place_mosquitto_rr_options_privately(login: NonEmptyStr, password: Secret) -> MosquittoOptionsPlacement {
+  match place_mosquitto_options_privately(login: login, password: password) {
+    MosquittoOptionsPlaced { binding: b } => {
+      let source = join([b.dir as String, "/", mosquitto_pub_options_file_name as String], "")
+      let target = join([b.dir as String, "/", mosquitto_rr_options_file_name as String], "")
       if shell.Copy.File(source: source as FilePath, destination: target as FilePath).success {
         MosquittoOptionsPlaced { binding: b }
       } else { mosquitto_options_write_refusal(removed_after_failure: shred_mosquitto_options_binding(binding: b)) }
