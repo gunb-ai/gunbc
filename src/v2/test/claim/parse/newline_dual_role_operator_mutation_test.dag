@@ -95,6 +95,7 @@ fn is_newline_refusal(reason: ParseRefusalReason) -> Bool {
     DataValueMissingAfterEq => false
     LayoutUnknownWithoutSource => false
     KeywordAsPathSegment => false
+    LetInExpressionDropped => false
   }
 }
 

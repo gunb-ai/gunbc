@@ -20,7 +20,7 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.parse_refusal_reason { DataValueMissingAfterEq, FnExpressionBodyMissingAfterEq, KeywordAsPathSegment, NewlineBeforeDualRoleOperator, ParseRefusalReason }
+import v2.std.parse_refusal_reason { DataValueMissingAfterEq, FnExpressionBodyMissingAfterEq, KeywordAsPathSegment, LetInExpressionDropped, NewlineBeforeDualRoleOperator, ParseRefusalReason }
 import v2.std.grammar {
   GrammarEmitClassTerminal,
   GrammarEmitLexemeTerminal,
@@ -1242,25 +1242,21 @@ fn dag_grammar_stmt_expr() -> GrammarExpr {
   )
 }
 
+// A LET IS A STATEMENT, AND ITS VALUE ENDS THE LET. The expression form `let x = e in body` was
+// dropped (statement `let` only, per the 2026-10-02 zero-ambiguity decisions): offered beside the
+// statement form, the two shared `let name = value` and the choice picked by order. A value
+// followed by `in` therefore refuses here, by name and at the `in` (LetInExpressionDropped), rather
+// than as tokens left over; the guard is a not-predicate, so it captures nothing and a statement
+// let's tree is unchanged.
+fn dag_grammar_let_in_refusal_expr() -> GrammarExpr {
+  grammar_expr_not_predicate(
+    element: grammar_expr_refuse_on_match(element: dag_grammar_terminal(token_class: ^dag_token_kw_in), reason: LetInExpressionDropped)
+  )
+}
+
 fn dag_grammar_let_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
-      left: dag_grammar_terminal(token_class: ^dag_token_kw_let),
-      right: dag_grammar_sequence(
-        left: dag_grammar_binding_name_terminal(),
-        right: dag_grammar_sequence(
-          left: dag_grammar_terminal(token_class: ^dag_token_eq),
-          right: dag_grammar_sequence(
-            left: dag_grammar_nonterminal(production: ^dag_production_expr),
-            right: dag_grammar_sequence(
-              left: dag_grammar_terminal(token_class: ^dag_token_kw_in),
-              right: dag_grammar_nonterminal(production: ^dag_production_expr)
-            )
-          )
-        )
-      )
-    ),
-    right: dag_grammar_choice(
       left: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_kw_let),
         right: dag_grammar_sequence(
@@ -1283,8 +1279,9 @@ fn dag_grammar_let_expr() -> GrammarExpr {
           )
         )
       ),
-      right: dag_grammar_let_sugar_expr()
-    )
+      right: dag_grammar_let_in_refusal_expr()
+    ),
+    right: dag_grammar_let_sugar_expr()
   )
 }
 
