@@ -610,11 +610,11 @@ fn local_store_delete_names(root_path: String, names: List<String>) -> List<Stri
 // other file are never touched, nothing is recursed into, and an index that cannot be read stops the
 // sweep (nothing is deleted on a guess).
 
+// LocalStoreSweepNotRun: the pure open decision never touches the filesystem, so it reports the
+// sweep as not run; the effectful local_store_open runs it once the marker has opened the store.
 type LocalStoreSweep
   = LocalStoreSwept { removed: List<String>, delete_refused: List<String> }
   | LocalStoreSweepUnavailable { cause: String }
-  // The pure open decision never touches the filesystem, so it reports the sweep as not run; the
-  // effectful local_store_open runs it once the marker has opened the store.
   | LocalStoreSweepNotRun
 
 fn local_store_is_object_name(name: String) -> Bool {
