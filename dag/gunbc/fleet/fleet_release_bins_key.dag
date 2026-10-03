@@ -1214,6 +1214,15 @@ fn release_bins_canonical_address_statements(product: ReleaseBinsProduct) -> Lis
 // sees a manifest without its archive (std.fabric_blob: one address, one whole publication).
 data release_bins_pack_object_name: String = "pack.tar"
 
+// THE CANDIDATE HAND-OFF: the merge-queue floor uploads the compiler pair's pack object under this
+// artifact name, and fleet-desired downloads it by the same row. One spelling for both ends.
+data compiler_pair_candidate_artifact_name: String = "compiler-pair-candidate"
+data compiler_pair_candidate_retention_days: Int = 1
+
+fn release_bins_pack_object_path_expression() -> String {
+  join(["${{ runner.temp }}/", release_bins_pack_object_name], "")
+}
+
 fn release_bins_pack_object_statements() -> List<Node> {
   [
     root_statement(),
