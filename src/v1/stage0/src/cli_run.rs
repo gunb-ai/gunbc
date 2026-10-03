@@ -47128,3 +47128,70 @@ mod collect_node_values_depth_tests {
         super::collect_node_values(&value, &ctx, &mut out);
     }
 }
+
+#[cfg(test)]
+mod bare_call_predicate_census {
+    //! MEASUREMENT (calm-pike-525): what `bare_call_has_non_declaration_binding` admits, over the
+    //! real pool (dag + src/v2). It reports the rows the unimported-bare-provider gate now suppresses,
+    //! split by WHY the name is admitted: a builtin or empty-collection constructor (the compiler binds
+    //! these by name) or ONLY the kernel-method roster (the compiler binds a method only when the
+    //! receiver's inferred type has that profile, so a call on another receiver is the over-admission
+    //! risk). Run with --ignored.
+    use super::*;
+
+    #[test]
+    #[ignore]
+    fn suppressed_rows_over_the_real_pool() {
+        use crate::v1_compiler_infer_method as m;
+        let roots = vec!["dag".to_string(), "src/v2".to_string()];
+        let index = super::process_shared_index(&roots);
+        let mut files = 0usize;
+        let mut suppressed: std::collections::BTreeMap<(&'static str, String), Vec<String>> =
+            Default::default();
+        for (_module, sf) in index.source_files.iter() {
+            if !source_declares_import_lines(&sf.content) {
+                continue;
+            }
+            files += 1;
+            let file = workspace_relative_repo_path(&sf.path);
+            let closure: HashSet<String> =
+                import_closure_live_paths_with_facts(&sf.path, &index.module_graph_facts)
+                    .iter()
+                    .map(|p| workspace_relative_repo_path(p))
+                    .collect();
+            let _ = visit_bare_reference_providers(
+                sf,
+                &index,
+                |root| closure_name_census(&index, root),
+                |name, _module, provider| {
+                    if provider != file
+                        && !closure.contains(provider)
+                        && m::bare_call_has_non_declaration_binding(name.to_string())
+                    {
+                        let why = if m::is_empty_map_constructor(name.to_string())
+                            || m::is_empty_set_constructor(name.to_string())
+                            || m::builtin_signature(name.to_string()).is_some()
+                        {
+                            "builtin"
+                        } else {
+                            "kernel-method-only"
+                        };
+                        suppressed
+                            .entry((why, name.to_string()))
+                            .or_default()
+                            .push(format!("{file} -> {provider}"));
+                    }
+                    Ok(())
+                },
+            );
+        }
+        let total: usize = suppressed.values().map(|v| v.len()).sum();
+        eprintln!("[bcp-census] judged_files={files} suppressed_rows={total}");
+        for ((why, name), sites) in &suppressed {
+            eprintln!("[bcp-name] why={why} name={name} rows={}", sites.len());
+            for s in sites.iter().take(3) {
+                eprintln!("[bcp-site] {why} {name} {s}");
+            }
+        }
+    }
+}
