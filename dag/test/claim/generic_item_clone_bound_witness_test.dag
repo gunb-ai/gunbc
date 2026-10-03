@@ -469,15 +469,16 @@ test fn set_coproduct_hand_written_impls_stay_at_the_bare_header() -> Bool {
 // A GENERIC FN STORED AS A FUNCTION VALUE FORWARDS ITS BOUND TO THE FN THAT STORES IT. Storing
 // `hdr_scope_of` into an arrow field instantiates it at the storing fn's own generic, so the
 // callee's `T: Clone` is owed there -- the std.key_relation key_relation_global shape. The callee's
-// generic is T and the wrapper's is S: inference types the reference with the callee's
-// uninstantiated signature, so a join read from the reference would look for a wrapper generic
-// named T and bound nothing.
+// generic is T, the record's slot is Subject and the wrapper's is S: inference types the reference
+// with the callee's uninstantiated signature, so a join read from the reference would look for a
+// wrapper generic named T, one read from the declaration's field for one named Subject, and
+// either would bound nothing.
 //
 // THE CONVERSE ARMS: K reaches no bounded callee generic and gains no Clone, and hdr_keying_plain
 // stores only the values it was handed -- no generic fn is instantiated -- so its S stays without
 // Clone. Without them, "bound every generic of a fn that builds an arrow record" passes the
 // positive arm. The native half is gunbc.instruments.native_emission_controls (fn_value_* cases).
-data hdr_fn_value_fixture: String = "module probe_hdr_fn_value\n\nimport std.types { String }\n\ntype HdrKeying<S, K> {\n  scope_of: fn(S) -> String\n  key_of: fn(S) -> K\n}\n\nfn hdr_scope_of<T>(_subject: T) -> String {\n  \"global\"\n}\n\nfn hdr_keying<S, K>(key_of: fn(S) -> K) -> HdrKeying<S, K> {\n  HdrKeying { scope_of: hdr_scope_of, key_of: key_of }\n}\n\nfn hdr_keying_plain<S, K>(scope_of: fn(S) -> String, key_of: fn(S) -> K) -> HdrKeying<S, K> {\n  HdrKeying { scope_of: scope_of, key_of: key_of }\n}\n"
+data hdr_fn_value_fixture: String = "module probe_hdr_fn_value\n\nimport std.types { String }\n\ntype HdrKeying<Subject, Key> {\n  scope_of: fn(Subject) -> String\n  key_of: fn(Subject) -> Key\n}\n\nfn hdr_scope_of<T>(_subject: T) -> String {\n  \"global\"\n}\n\nfn hdr_keying<S, K>(key_of: fn(S) -> K) -> HdrKeying<S, K> {\n  HdrKeying { scope_of: hdr_scope_of, key_of: key_of }\n}\n\nfn hdr_keying_plain<S, K>(scope_of: fn(S) -> String, key_of: fn(S) -> K) -> HdrKeying<S, K> {\n  HdrKeying { scope_of: scope_of, key_of: key_of }\n}\n"
 
 fn w_fn_value_stored_generic_fn_forwards_its_clone_bound() -> Bool {
   compile_dag_rust_emit_check(

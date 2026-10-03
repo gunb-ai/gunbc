@@ -97,11 +97,13 @@ fn header_bound_cases() -> List<NativeEmissionCase> {
 // shape of std.key_relation key_relation_global: it stores the generic control_global_scope_of into
 // an arrow field, which instantiates that fn at control_keying's own S. The callee emits
 // `<T: Clone>` and the wrapper emitted `<S: 'static, K: 'static>`, which rustc refuses (E0277,
-// `S: Clone`). The callee's generic is spelled T and the wrapper's S on purpose: a join that read
-// the reference's own type would find the callee's name and bound nothing here.
-type ControlKeying<S, K> {
-  scope_of: fn(S) -> String
-  key_of: fn(S) -> K
+// `S: Clone`). Three spellings on purpose -- the callee's generic is T, the record's slot is
+// Subject, the wrapper's is S -- so a join that read the reference's own type, or the
+// declaration's uninstantiated field, would find a name the wrapper does not have and bound
+// nothing here.
+type ControlKeying<Subject, Key> {
+  scope_of: fn(Subject) -> String
+  key_of: fn(Subject) -> Key
 }
 
 fn control_global_scope_of<T>(_subject: T) -> String {
