@@ -1,6 +1,7 @@
 module test.claim.roadmap_belt_actuate_witness
 
 import gunbc.roadmap_nesting { roadmap_memberships }
+import gunbc.roadmap_belt_actuate { belt_spawn_outcome_with_release }
 
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
 import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
@@ -3277,4 +3278,33 @@ test fn the_publish_pass_failure_names_the_failing_attempt_and_its_detail() -> B
     BeltPassDeferred { reason: _ } => false
     BeltPassRefused { reason: _ } => false
   }
+}
+
+data failed_release_note: String = "session placement refused: the capacity ledger could not be read (release record not written at /state/x.release.json: EACCES)"
+
+fn release_note_carried(o: BeltSpawnOutcome) -> Bool {
+  match belt_spawn_outcome_with_release(outcome: o, release_note: failed_release_note, provider_wire_label: "gunbc-harness", launch: launch_identity_exemplar()) {
+    SpawnFailed { node_id: _, step: _, detail, provider: _, launch: _ } => string_contains(s: detail, pattern: "release record not written")
+    Spawned { node_id: _, session_name: _, provider: _, launch: _ } => false
+    SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => false
+    SpawnNotAdmitted { node_id: _, refusal: _ } => false
+  }
+}
+
+// G5, review 74569: A SPAWN THAT DID NOT HAPPEN AFTER ITS PLACEMENT WAS GRANTED NEVER DROPS THE RELEASE
+// OUTCOME. Every non-spawned arm -- including a SpawnNotAdmitted, which LaunchRefusal cannot carry a
+// note on -- comes back as a SpawnFailed whose detail contains the release note, so a release whose
+// record failed to write is visible (DISCRIMINATING: the note is a failed-write rendering). The
+// positive control: a Spawned outcome is returned unchanged and carries no note.
+test fn a_failed_release_after_placement_is_carried_on_every_non_spawned_arm() -> Bool {
+  let note = failed_release_note
+  let spawned = Spawned { node_id: "a", session_name: "s", provider: "gunbc-harness", launch: launch_identity_exemplar() }
+  release_note_carried(o: not_admitted(r: LaunchNoCapacity { occupied: 3, max_concurrent: 3 }))
+    && release_note_carried(o: SpawnFailed { node_id: "a", step: "harness-unit-start", detail: "exit 1", provider: "gunbc-harness", launch: launch_identity_exemplar() })
+    && match belt_spawn_outcome_with_release(outcome: spawned, release_note: note, provider_wire_label: "gunbc-harness", launch: launch_identity_exemplar()) {
+      Spawned { node_id: _, session_name: _, provider: _, launch: _ } => true
+      SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => false
+      SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => false
+      SpawnNotAdmitted { node_id: _, refusal: _ } => false
+    }
 }
