@@ -110,6 +110,6 @@ fn jade_fan_policy_convergence(family: BmcFirmwareFamilyStanding) -> JadeFanConv
   }
 }
 
-fn jade_current_fan_policy_convergence() -> JadeFanConvergeSelection {
-  jade_fan_policy_convergence(family: mtjade1_firmware_family_standing)
+fn jade_current_fan_policy_convergence() -> JadeFanConvergeSelection uses fs: std.resources.Filesystem {
+  jade_fan_policy_convergence(family: mtjade1_firmware_family_standing())
 }
