@@ -21940,7 +21940,7 @@ pub fn handle_serve(
                                 500,
                                 "text/plain; charset=utf-8",
                                 &format!(
-                                    "handler returned `{}`, not ServeWireResponse {{ status: Int, content_type_label: String, body: String }}\n",
+                                    "handler returned `{}`, not ServeWireResponse {{ status: Int, content_type_label: String, body: String, headers: List<ServeWireHeader> }} with no CR, LF or NUL in a header value\n",
                                     ctx.format_value(&val)
                                 ),
                                 &[],
@@ -22327,29 +22327,48 @@ fn serve_write_response(
     }
 }
 
-/// Read back the .dag handler's ServeWireResponse record. None = wrong shape
-/// (surfaced as a typed 500 by the caller, never a fabricated response). The
-/// headers list carries one complete header line per element, in write order —
-/// a handler that sets no headers produces the same wire shape as before.
-fn serve_response_header_line_admitted(line: &str) -> bool {
-    if line.bytes().any(|b| b == b'\r' || b == b'\n' || b == 0) {
-        return false;
-    }
-    let Some((name, _)) = line.split_once(':') else {
-        return false;
+/// One `.dag` `ServeWireHeader { name, value }` rendered as a header line. The name is the
+/// closed `ServeWireHeaderName` coproduct -- the framing headers this seam writes itself
+/// (Content-Length, Content-Type, Connection) have no constructor there -- and this match is its
+/// RFC 9110 spelling. The value is handler data, so the realization boundary refuses one carrying
+/// CR, LF or NUL rather than writing a split header. None = wrong shape or refused value.
+fn serve_wire_header_line(
+    item: &v1_interpreter::Value,
+    ctx: &v1_interpreter::InterpContext,
+) -> Option<String> {
+    let v1_interpreter::Value::Record { type_name, fields } = item else {
+        return None;
     };
-    !name.is_empty()
-        && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
-        && ![
-            "content-length",
-            "transfer-encoding",
-            "connection",
-            "content-type",
-        ]
-        .iter()
-        .any(|reserved| name.eq_ignore_ascii_case(reserved))
+    if !ctx.sym_eq(*type_name, "ServeWireHeader") {
+        return None;
+    }
+    let name = match ctx.field(fields, "name") {
+        Some(v1_interpreter::Value::Variant { variant_name, .. }) => {
+            if ctx.sym_eq(*variant_name, "WireHeaderLocation") {
+                "Location"
+            } else if ctx.sym_eq(*variant_name, "WireHeaderSetCookie") {
+                "Set-Cookie"
+            } else if ctx.sym_eq(*variant_name, "WireHeaderCacheControl") {
+                "Cache-Control"
+            } else {
+                return None;
+            }
+        }
+        _ => return None,
+    };
+    let value = match ctx.field(fields, "value") {
+        Some(Value::Str(s)) if !s.bytes().any(|b| b == b'\r' || b == b'\n' || b == 0) => {
+            s.to_string()
+        }
+        _ => return None,
+    };
+    Some(format!("{}: {}", name, value))
 }
 
+/// Read back the .dag handler's ServeWireResponse record. None = wrong shape
+/// (surfaced as a typed 500 by the caller, never a fabricated response). The
+/// headers list carries typed `ServeWireHeader`s in write order -- a handler that
+/// sets no headers produces the same wire shape as before.
 fn serve_wire_fields(
     val: &v1_interpreter::Value,
     ctx: &v1_interpreter::InterpContext,
@@ -22375,12 +22394,7 @@ fn serve_wire_fields(
             Some(v1_interpreter::Value::List(items)) => {
                 let mut lines = Vec::with_capacity(items.len());
                 for item in items.iter() {
-                    match item {
-                        Value::Str(s) if serve_response_header_line_admitted(s) => {
-                            lines.push(s.to_string())
-                        }
-                        _ => return None,
-                    }
+                    lines.push(serve_wire_header_line(item, ctx)?);
                 }
                 lines
             }
