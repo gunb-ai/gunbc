@@ -899,10 +899,18 @@ fn dag_grammar_keyword_terminal() -> GrammarExpr {
 // readers take as pair.left -- and no choice row is added beside the name (the overlap roster those
 // productions were cleared to stays at zero).
 //
+// THE BARE `NAME =` SUGAR CARRIES NO GUARD, AND THE REASON IS MEASURED. A statement's alternatives are
+// dispatched by FIRST set, and a not-predicate is transparent to that set, so the let_sugar alternative's
+// first set is the value-name tokens and a statement that begins with a keyword never reaches it: a guard
+// there could not fire (a bare `loop = 1` refuses as parse_g0_tokens_remain at the keyword, measured).
+// It still refuses -- the binder reads the reference production, which admits no other keyword -- but
+// unnamed. NEXT TRIGGER, the capability: FIRST-set computation that sees through a refusal guard, at which
+// point this form takes dag_grammar_value_name_before(follow: `=`) like the others.
+//
 // IT FIRES ONLY WHERE THE KEYWORD CAN ONLY BE A BINDER. RefuseOnMatch stops the whole parse, and a pattern
 // is probed ahead of every match-arm statement and a `node NAME` sugar ahead of an expression statement,
 // so each position names the token that makes the keyword a binder: `:` after a parameter name, `:` or
-// `=` after `node NAME`, `=` after a bare `NAME`, `,` or `}` after a field-pattern binder. After `let`
+// `=` after `node NAME`, `,` or `}` after a field-pattern binder. After `let`
 // nothing else can follow, so that guard is unconditional. `true` and `false` are literal PATTERNS, so the
 // field-pattern guard does not refuse them.
 fn dag_grammar_value_name_keyword_terminal(admit_bool_literals: Bool) -> GrammarExpr {
@@ -1428,7 +1436,7 @@ fn dag_grammar_let_sugar_expr() -> GrammarExpr {
       )
     ),
     right: dag_grammar_sequence(
-      left: dag_grammar_value_name_before(follow: dag_grammar_terminal(token_class: ^dag_token_eq)),
+      left: dag_grammar_primary_name_expr(),
       right: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_eq),
         right: dag_grammar_nonterminal(production: ^dag_production_expr)

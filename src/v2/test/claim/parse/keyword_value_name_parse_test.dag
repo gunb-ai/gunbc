@@ -49,19 +49,30 @@ test fn kvn_let_refuses_at_the_keyword_holds() -> Bool {
   )
 }
 
+data kvn_node_sugar_source: String = "module m.t\nfn f() -> Int {\n  node then = 1\n  0\n}\n"
+
+// a `node NAME =` binder named by a keyword refuses at the keyword: `then` is bytes 34..38 of kvn_node_sugar_source.
+test fn kvn_node_sugar_refuses_at_the_keyword_holds() -> Bool {
+  g_fatal_at(
+    parsed: g_tokenize_parse(text: kvn_node_sugar_source, file: ^probe_kvn_node_sugar),
+    reason: KeywordAsValueName,
+    file: ^probe_kvn_node_sugar,
+    start: 34,
+    end: 38
+  )
+}
+
 data kvn_bare_eq_source: String = "module m.t\nfn f() -> Int {\n  loop = 1\n  0\n}\n"
 
-// a bare NAME = binder named by a keyword refuses at the keyword: `loop` is bytes 29..33 of kvn_bare_eq_source. The keyword heads an
-// expression of its own, which the statement guard excludes before `=`; a clause keyword (`then`) or a declaration head (`type`) would
-// instead end the statement sequence before the binder is reached.
-test fn kvn_bare_eq_refuses_at_the_keyword_holds() -> Bool {
-  g_fatal_at(
-    parsed: g_tokenize_parse(text: kvn_bare_eq_source, file: ^probe_kvn_bare_eq),
-    reason: KeywordAsValueName,
-    file: ^probe_kvn_bare_eq,
-    start: 29,
-    end: 33
-  )
+// A bare `NAME =` binder named by a keyword still REFUSES, but unnamed: statements dispatch by FIRST set and the
+// guard is transparent to it, so the let_sugar alternative is never reached for a keyword (the declared limit on
+// gunbc.recurring_failure_mode seed_admits_a_keyword_as_a_pattern_binder). The claim holds the floor that matters --
+// the keyword is never ACCEPTED as a binder -- and reds if it ever parses.
+test fn kvn_bare_eq_keyword_binder_still_refuses_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_bare_eq_source, file: ^probe_kvn_bare_eq) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
 }
 
 data kvn_pattern_value_source: String = "module m.t\ntype R = R { a: Int }\nfn f(r: R) -> Int {\n  match r {\n    R { a: as } => 0\n  }\n}\n"
