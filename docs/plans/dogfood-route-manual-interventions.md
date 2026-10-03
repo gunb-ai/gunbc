@@ -123,7 +123,7 @@ A practical realization is a short-lived signed request permit minted by success
 
 **Automation owed:** each deployment's explicitly admitted revision is observed and converged into the running deployment, with readiness and member-identity readback.
 
-**Stays manual:** selecting and admitting the revision for that environment.
+**Stays manual:** selecting and admitting the revision for that deployment.
 
 **Home:** generic live-deploy convergence (`gunbc.live_deploy`).
 
@@ -150,9 +150,11 @@ Any slow stage blocks every stage behind it. The module's own note on `belt_obse
 **Not the fix:** stage checkpoints that make the monolithic tick resumable. That preserves the structure that should go.
 
 **Automation owed:** expensive work leaves the tick. Each durable obligation gets its own event-driven ensure and its own effect identity:
-- a worker exit triggers capture and verify;
-- a verify receipt triggers review;
-- a passing review triggers publish.
+- a worker-terminal event triggers capture and submission classification;
+- a captured `SubmissionIsCandidate` triggers authoritative verification;
+- a passing verification receipt triggers review and goal audit, independently;
+- an approved review plus an approved goal audit admits publication;
+- a yielded, blocked or needs-context capture stays visible but does not enter verification.
 
 The anti-entropy pass only discovers and queues a bounded number of outstanding obligations.
 
