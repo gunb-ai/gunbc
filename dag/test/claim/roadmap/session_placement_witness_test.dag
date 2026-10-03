@@ -1,0 +1,170 @@
+module test.claim.roadmap.session_placement_witness_test
+
+import std.types { Bool, String, List, NonEmptyStr }
+import std.measure { kibibyte, kibibyte_count }
+import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
+import product.capacity.event_chain { PartitionId }
+import gunbc.fabric_storage_client { FabricStorageLocalFiles }
+import gunbc.fabric_storage_file_store { fabric_storage_file_root }
+import gunbc.compute.work_class_grant { WorkClassAgentSession, GrantAtCeiling, ClassUnmeasured }
+import gunbc.compute.work_provider_local { compute_layout, compute_unit_properties }
+import gunbc.roadmap_dashboard_instance { srv2_deploy_dashboard_instance }
+import gunbc.roadmap_dispatch_actuator { dispatch_worker_unit_properties }
+import gunbc.worker_lifecycle { WorkerProcessRunning, WorkerProcessExited, WorkerProcessAbsent, WorkerProcessUnobserved }
+import gunbc.roadmap_session_placement {
+  SessionPlacementGrant, session_process_bounds,
+  session_placement_record_of, session_placement_record_json,
+  session_placement_record_basename, session_placement_release_basename,
+  SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable,
+  SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable,
+  session_placement_observation_of,
+  SessionPlacementSettleDecision, SettleRelease, SettleKeep, SettleDone, session_placement_settle_decide,
+}
+import extdeps.filesystem.filesystem_io {
+  FilesystemFileObservation, filesystem_listing_observation, filesystem_read_outcome, filesystem_file_observation,
+}
+import extdeps.languages.json.emit { serialize_json }
+
+// G5 WITNESSES: the reader over planted placement files (the fold the dogfood receipt calls), the
+// release decision over planted process evidence, and the unit properties a grant produces. The
+// inhabitance claim is that the REAL encoder's bytes are what the reader reads -- the record a spawn
+// writes (session_placement_record_of -> session_placement_record_json, the two calls
+// session_placement_record_write makes) decodes to the grant it came from.
+
+data dir: String = "/state"
+data key: String = "feedfacefeedface"
+
+fn planted(name: String, content: String) -> FilesystemFileObservation {
+  filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: dir, success: true, entries: join(["unrelated", name], "\n"), error: ""),
+    name: name,
+    path: join([dir, "/", name], ""),
+    read: filesystem_read_outcome(content: content, success: true, error: ""),
+  )
+}
+
+fn missing(name: String) -> FilesystemFileObservation {
+  filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: dir, success: true, entries: "unrelated", error: ""),
+    name: name,
+    path: join([dir, "/", name], ""),
+    read: filesystem_read_outcome(content: "", success: false, error: "ENOENT"),
+  )
+}
+
+fn fixture_grant() -> SessionPlacementGrant {
+  SessionPlacementGrant {
+    unit: "gunbc-attempt-n-feedfacefeedface.service" as NonEmptyStr,
+    lease: LeaseGrant {
+      reference: "gunbc-attempt-n-feedfacefeedface.service" as NonEmptyStr,
+      fence: LeaseFence { grant: "evt-7" as NonEmptyStr as GrantIdentity, generation: 7 },
+      granted_at: 1000,
+      maximum_duration_seconds: 14400,
+      expires_at: 15400,
+    },
+    partition: "session-memory-srv2" as NonEmptyStr as PartitionId,
+    amount: kibibyte(count: 8388608),
+    class_grant: GrantAtCeiling { class: WorkClassAgentSession, amount: kibibyte(count: 8388608), reason: ClassUnmeasured },
+    store: FabricStorageLocalFiles { root: fabric_storage_file_root(root: "/state/capacity" as NonEmptyStr) },
+  }
+}
+
+fn record_bytes() -> String {
+  serialize_json(v: session_placement_record_json(r: session_placement_record_of(grant: fixture_grant(), unit_properties: ["MemoryMax=8589934592", "CPUQuota=800%", "TasksMax=4096"])))
+}
+
+data release_ok: String = "{\"reference\":\"gunbc-attempt-n-feedfacefeedface.service\",\"outcome\":\"released\",\"reason\":\"session unit exited 0\",\"detail\":\"released\"}"
+
+fn observe(record: FilesystemFileObservation, released: FilesystemFileObservation) -> SessionPlacementObservation {
+  session_placement_observation_of(
+    record_path: join([dir, "/", session_placement_record_basename(attempt_key: key)], ""),
+    record: record,
+    release_path: join([dir, "/", session_placement_release_basename(attempt_key: key)], ""),
+    freed: released,
+  )
+}
+
+fn record_name() -> String { session_placement_record_basename(attempt_key: key) }
+fn release_name() -> String { session_placement_release_basename(attempt_key: key) }
+
+// POSITIVE CONTROL AND INHABITANCE: the real encoder's record, released, reads back as Observed with
+// the grant identity, the amount, the properties applied and the release.
+test fn a_written_and_released_placement_reads_back_its_grant_unit_and_release() -> Bool {
+  match observe(record: planted(name: record_name(), content: record_bytes()), released: planted(name: release_name(), content: release_ok)) {
+    SessionPlacementObserved { record, returned } =>
+      record.grant_identity == "evt-7"
+        && record.fence_generation == 7
+        && record.partition == "session-memory-srv2"
+        && record.amount_kib == 8388608
+        && contains(record.unit_properties, "CPUQuota=800%")
+        && match returned { SessionReleased { reason, detail: _ } => reason == "session unit exited 0"  _ => false }
+    SessionPlacementAbsent { path: _ } => false
+    SessionPlacementUnreadable { path: _, detail: _ } => false
+  }
+}
+
+// DISCRIMINATING RED: an attempt that never held a placement is Absent -- not Observed with blanks,
+// and not Unreadable. And a granted, not-yet-released session says so rather than reading released.
+test fn no_record_is_absent_and_no_release_is_not_recorded() -> Bool {
+  let none_held = match observe(record: missing(name: record_name()), released: missing(name: release_name())) {
+    SessionPlacementAbsent { path: _ } => true
+    SessionPlacementObserved { record: _, returned: _ } => false
+    SessionPlacementUnreadable { path: _, detail: _ } => false
+  }
+  let held = match observe(record: planted(name: record_name(), content: record_bytes()), released: missing(name: release_name())) {
+    SessionPlacementObserved { record: _, returned } => match returned { SessionReleaseNotRecorded { path: _ } => true  _ => false }
+    SessionPlacementAbsent { path: _ } => false
+    SessionPlacementUnreadable { path: _, detail: _ } => false
+  }
+  none_held && held
+}
+
+// DISCRIMINATING RED: a record missing a field refuses (never a zero amount), and a release naming a
+// different reference is not accepted as this grant's release.
+test fn a_malformed_record_or_a_foreign_release_refuses() -> Bool {
+  let malformed = match observe(record: planted(name: record_name(), content: "{\"unit\":\"u\"}"), released: missing(name: release_name())) {
+    SessionPlacementUnreadable { path: _, detail } => string_contains(s: detail, pattern: "is missing")
+    SessionPlacementObserved { record: _, returned: _ } => false
+    SessionPlacementAbsent { path: _ } => false
+  }
+  let foreign = match observe(record: planted(name: record_name(), content: record_bytes()), released: planted(name: release_name(), content: "{\"reference\":\"other\",\"outcome\":\"released\",\"reason\":\"r\",\"detail\":\"d\"}")) {
+    SessionPlacementObserved { record: _, returned } => match returned { SessionReleaseUnreadable { path: _, detail: _ } => true  _ => false }
+    SessionPlacementAbsent { path: _ } => false
+    SessionPlacementUnreadable { path: _, detail: _ } => false
+  }
+  malformed && foreign
+}
+
+fn held_observation() -> SessionPlacementObservation {
+  observe(record: planted(name: record_name(), content: record_bytes()), released: missing(name: release_name()))
+}
+
+fn decides_release(d: SessionPlacementSettleDecision) -> Bool {
+  match d { SettleRelease { record: _, reason: _ } => true  SettleKeep { why: _ } => false  SettleDone { why: _ } => false }
+}
+
+// THE SEAT COMES BACK ONLY WHEN THE UNIT IS OBSERVED ENDED: exited and not-loaded release; running
+// and unobserved keep it (DISCRIMINATING: freeing on doubt would hand a live session's memory away).
+test fn the_seat_is_released_only_when_the_unit_is_observed_ended() -> Bool {
+  decides_release(d: session_placement_settle_decide(observation: held_observation(), process: WorkerProcessExited { exit_code: 0, last_command: "u" }))
+    && decides_release(d: session_placement_settle_decide(observation: held_observation(), process: WorkerProcessAbsent))
+    && !decides_release(d: session_placement_settle_decide(observation: held_observation(), process: WorkerProcessRunning { command: "u" }))
+    && !decides_release(d: session_placement_settle_decide(observation: held_observation(), process: WorkerProcessUnobserved { reason: "systemctl refused" }))
+    && !decides_release(d: session_placement_settle_decide(observation: observe(record: planted(name: record_name(), content: record_bytes()), released: planted(name: release_name(), content: release_ok)), process: WorkerProcessAbsent))
+}
+
+// THE UNIT CARRIES THE GRANT, THROUGH THE SHARED FOLD: MemoryMax is the granted amount (not the
+// instance ceiling), with the session's CPU and task bounds; the compute provider's unit, from the
+// same fold, carries no process bounds.
+test fn the_worker_unit_is_capped_at_its_grant_by_the_compute_fold() -> Bool {
+  let inst = srv2_deploy_dashboard_instance()
+  let props = dispatch_worker_unit_properties(instance: inst, working_directory: "/wt", worker_log_path: "/wt/log", granted: kibibyte(count: 1024), process_bounds: session_process_bounds)
+  let compute = compute_unit_properties(layout: compute_layout(instance: inst, identity_hex: "abc"), granted: kibibyte(count: 1024))
+  contains(props, "MemoryMax=1048576")
+    && contains(props, "CPUQuota=800%")
+    && contains(props, "TasksMax=4096")
+    && contains(props, "KillMode=control-group")
+    && count(filter(props, p => starts_with(s: p, prefix: "MemoryMax="))) == 1
+    && contains(compute, "MemoryMax=1048576")
+    && !any(compute, p => starts_with(s: p, prefix: "CPUQuota="))
+}

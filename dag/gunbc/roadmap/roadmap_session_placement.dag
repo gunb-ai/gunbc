@@ -1,0 +1,499 @@
+module gunbc.roadmap_session_placement
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.nat { Nat }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.measure { Kibibyte, kibibyte, kibibyte_count }
+import product.capacity.lease { LeaseGrant }
+import product.capacity.event_chain { PartitionId }
+import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.compute.host_capacity {
+  HostCapacityPool, AgentSessionPool, host_capacity_reserve, host_capacity_subject,
+  ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused, compute_reservation_wire,
+  ComputeRelease, ComputeReleased, ComputeNothingToRelease, ComputeReleaseRefused, compute_release_on,
+  ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved, compute_capacity_store,
+  compute_memory_ceiling,
+}
+import gunbc.compute.work_class_grant {
+  WorkClassAgentSession, WorkClassGrant, work_class_grant, work_class_grant_rows, work_class_grant_amount, work_class_grant_wire,
+}
+import gunbc.compute.unit_bounds { UnitProcessBounds }
+import gunbc.roadmap_belt { roadmap_belt_default_capacity }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
+import gunbc.worker_lifecycle {
+  WorkerProcessEvidence, WorkerProcessUnobserved, WorkerProcessAbsent, WorkerProcessRunning, WorkerProcessExited,
+}
+import extdeps.filesystem.filesystem_io {
+  Filesystem, FilesystemFileObservation,
+  FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
+  filesystem_listing_observation, filesystem_read_outcome, filesystem_file_observation,
+}
+import extdeps.languages.json.emit { JsonValue, json_string, json_int, json_array, json_object, json_kv, serialize_json }
+import extdeps.languages.json.parse {
+  JsonDocumentParse, JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text,
+  JsonFieldRead, FieldAbsent, FieldRead, FieldMalformed, json_field_string, json_field_int, json_field_string_list,
+}
+
+// G5 OF THE DOGFOOD ROUTE: THE AGENT SESSION HOLDS A PLACEMENT GRANT AND RUNS INSIDE ITS BOUNDS.
+//
+// Before this module the model TURN held a fabric seat (gunbc.harness.harness_seat) while the agent
+// SESSION that issues those turns held nothing: the worker ran as a transient unit whose MemoryMax
+// was the instance's ceiling read straight off the deployment, so no ledger knew the memory was
+// spoken for and nothing refused a session the host could not carry. This module is the session's
+// side of the one capacity authority (DESIGN 3b fabric/compute row): it reserves the session's
+// memory through gunbc.compute.host_capacity -- the same ledger, linearization and quiescence-required
+// release law compute_provide uses -- from the host's AGENT SESSION pool, a partition separate from
+// the build pool so a session never holds the capacity its own builds need (bold-bee-114 ruling
+// 2026-10-03). The amount is gunbc.compute.work_class_grant's answer for WorkClassAgentSession, and
+// the unit's MemoryMax is that amount through gunbc.compute.unit_bounds -- reservation and
+// enforcement are one figure.
+//
+// WHAT IS DURABLE, AND WHY TWO FILES. The grant is written once, before the unit starts; its release
+// is a second fact written later by a different tick. Two files mean neither write rewrites the
+// other's bytes, and a reader can tell "granted, not yet released" from "never granted" by which
+// file exists rather than by a status field someone forgot to update.
+//
+// DECLARED FRONTIER (DESIGN 3c), WITH ITS TRIGGER: reviewer, auditor and supervisor sessions still
+// start unleased at the instance ceiling. They join WorkClassAgentSession once a session grant row
+// (measured session peaks) sizes the class below the ceiling -- at the ceiling, fourteen reviewer
+// lanes per head cannot fit a pool sized to the belt's worker count. Vendor providers (claude, codex,
+// cursor) run in tmux, whose panes escape any unit's cgroup, so they hold no placement until they
+// move into a unit; their attempts read SessionPlacementAbsent, which is the truth.
+
+// THE ROLE SEGMENT OF THE RECORD NAME. Only the worker holds a placement in this change (see the
+// frontier above); a role coproduct lands with the second role rather than as a one-arm type.
+data session_worker_role: String = "worker"
+
+// HOW LONG A SESSION RESERVATION DECLARES IT WILL HOLD. A declaration and not a deadline: the pool's
+// release law is quiescence-required, so an elapsed term frees nothing and the seat returns only by
+// the release session_placement_settle performs when the unit is observed ended. Four hours is the
+// longest worker the belt has run on srv2 with margin.
+data session_placement_term_seconds: Nat = 14400
+
+// THE BOUNDS A GRANT DOES NOT CARRY. product.capacity.pool grants memory only, so CPU and task
+// ceilings are stated beside it rather than pretended to come from it (DESIGN 3b: a divergence with
+// its reason). They are policy budgets for the dogfood capped unit (operator ruling 2026-10-03: a
+// capped systemd unit plus a lease is sufficient): eight cores and 4096 tasks bound a runaway
+// session without throttling the single `gunbc run` a harness worker is. Falsifiable: a worker unit
+// ending in Result=resources, or a throughput regression attributed to CPUQuota, re-derives them.
+data session_process_bounds: UnitProcessBounds = UnitProcessBounds { cpu_quota_percent: 800, tasks_max: 4096 }
+
+// THE SESSION POOL'S SLOTS ARE THE BELT'S WORKER COUNT, derived rather than chosen: the belt already
+// admits at most max_concurrent workers, so a pool of that many ceilings refuses only for memory the
+// machine lacks, never for a count launch admission did not impose.
+fn session_placement_pool() -> HostCapacityPool? {
+  match checked_int_to_nat(n: roadmap_belt_default_capacity.max_concurrent) {
+    Absent => none
+    Present { value: slots } => Present { value: AgentSessionPool { slots: slots } }
+  }
+}
+
+type SessionPlacementGrant {
+  unit: NonEmptyStr
+  lease: LeaseGrant
+  partition: PartitionId
+  amount: Kibibyte
+  class_grant: WorkClassGrant
+  store: FabricStorageBinding
+}
+
+type SessionPlacementAcquisition
+  = SessionPlacementGranted { grant: SessionPlacementGrant }
+  | SessionPlacementRefused { detail: String }
+
+// THE RESERVATION IS KEYED BY THE UNIT NAME, which is per attempt (a content-hash attempt key), so
+// two attempts never share a reference and a retried spawn of the same attempt is refused by the
+// pool as a duplicate reference rather than double-charged.
+fn session_placement_acquire(instance: HostDashboardInstance, unit: NonEmptyStr) -> SessionPlacementAcquisition {
+  match session_placement_pool() {
+    Absent => SessionPlacementRefused { detail: join(["the belt's max_concurrent ", to_string(value: roadmap_belt_default_capacity.max_concurrent), " is not a natural number, so the session pool has no size"], "") }
+    Present { value: pool } => {
+      let class_grant = work_class_grant(class: WorkClassAgentSession, rows: work_class_grant_rows, ceiling: compute_memory_ceiling(instance: instance))
+      match host_capacity_reserve(instance: instance, pool: pool, reference: unit, term_seconds: session_placement_term_seconds, request: work_class_grant_amount(g: class_grant)) {
+        ComputeReserved { grant: g, partition: p, amount: a, store: s } =>
+          SessionPlacementGranted { grant: SessionPlacementGrant { unit: unit, lease: g, partition: p, amount: a, class_grant: class_grant, store: s } }
+        ComputeCapacityFull { wire: w } => SessionPlacementRefused { detail: compute_reservation_wire(r: ComputeCapacityFull { wire: w }) }
+        ComputeHostBelowFloor { requested: rq, available: av } => SessionPlacementRefused { detail: compute_reservation_wire(r: ComputeHostBelowFloor { requested: rq, available: av }) }
+        ComputeReservationRefused { detail: d } => SessionPlacementRefused { detail: compute_reservation_wire(r: ComputeReservationRefused { detail: d }) }
+      }
+    }
+  }
+}
+
+fn session_placement_release(grant: SessionPlacementGrant, reason: NonEmptyStr) -> ComputeRelease {
+  compute_release_on(store: grant.store, partition: grant.partition, appropriation: kibibyte(count: 0), reference: grant.lease.reference, reason: reason)
+}
+
+// ── THE DURABLE RECORD ─────────────────────────────────────────────────────────────────────────
+//
+// It lives in the instance's attempt-state ROOT, named by attempt key and role, rather than inside
+// the per-attempt directory: the dogfood receipt fold addresses an attempt by key alone, and the
+// per-attempt directory's name also carries the node.
+fn session_placement_record_basename(attempt_key: String) -> String {
+  join(["session-placement-", attempt_key, "-", session_worker_role, ".json"], "")
+}
+
+fn session_placement_release_basename(attempt_key: String) -> String {
+  join(["session-placement-", attempt_key, "-", session_worker_role, ".release.json"], "")
+}
+
+fn session_placement_dir(instance: HostDashboardInstance) -> String {
+  dashboard_instance_dispatch_attempt_state_root(instance: instance) as String
+}
+
+fn session_placement_record_path(instance: HostDashboardInstance, attempt_key: String) -> String {
+  join([session_placement_dir(instance: instance), "/", session_placement_record_basename(attempt_key: attempt_key)], "")
+}
+
+fn session_placement_release_path(instance: HostDashboardInstance, attempt_key: String) -> String {
+  join([session_placement_dir(instance: instance), "/", session_placement_release_basename(attempt_key: attempt_key)], "")
+}
+
+// WHAT THE RECORD CARRIES: the grant identity (reference, fence, partition, amount, the class grant
+// that sized it) and the unit properties ACTUALLY passed to systemd-run -- the list the caller built
+// the launcher from, not a re-derivation, so the record and the invocation cannot disagree.
+type SessionPlacementRecord {
+  unit: String
+  role: String
+  reference: String
+  grant_identity: String
+  fence_generation: Int
+  granted_at: Int
+  expires_at: Int
+  partition: String
+  amount_kib: Int
+  class_grant: String
+  unit_properties: List<String>
+}
+
+fn session_placement_record_of(grant: SessionPlacementGrant, unit_properties: List<String>) -> SessionPlacementRecord {
+  SessionPlacementRecord {
+    unit: grant.unit as String,
+    role: session_worker_role,
+    reference: grant.lease.reference as String,
+    grant_identity: grant.lease.fence.grant as String,
+    fence_generation: grant.lease.fence.generation,
+    granted_at: grant.lease.granted_at,
+    expires_at: grant.lease.expires_at,
+    partition: grant.partition as String,
+    amount_kib: kibibyte_count(k: grant.amount),
+    class_grant: work_class_grant_wire(g: grant.class_grant),
+    unit_properties: unit_properties,
+  }
+}
+
+fn session_placement_record_json(r: SessionPlacementRecord) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "unit", value: json_string(s: r.unit)),
+    json_kv(key: "role", value: json_string(s: r.role)),
+    json_kv(key: "reference", value: json_string(s: r.reference)),
+    json_kv(key: "grant_identity", value: json_string(s: r.grant_identity)),
+    json_kv(key: "fence_generation", value: json_int(n: r.fence_generation)),
+    json_kv(key: "granted_at", value: json_int(n: r.granted_at)),
+    json_kv(key: "expires_at", value: json_int(n: r.expires_at)),
+    json_kv(key: "partition", value: json_string(s: r.partition)),
+    json_kv(key: "amount_kib", value: json_int(n: r.amount_kib)),
+    json_kv(key: "class_grant", value: json_string(s: r.class_grant)),
+    json_kv(key: "unit_properties", value: json_array(elements: map(r.unit_properties, p => json_string(s: p)))),
+  ])
+}
+
+type SessionPlacementWrite
+  = SessionPlacementWritten { path: String }
+  | SessionPlacementWriteFailed { path: String, error: String }
+
+fn session_placement_record_write(instance: HostDashboardInstance, attempt_key: String, grant: SessionPlacementGrant, unit_properties: List<String>) -> SessionPlacementWrite {
+  let path = session_placement_record_path(instance: instance, attempt_key: attempt_key)
+  let w = Filesystem.Write(path: path, content: serialize_json(v: session_placement_record_json(r: session_placement_record_of(grant: grant, unit_properties: unit_properties))))
+  if w.success { SessionPlacementWritten { path: path } } else { SessionPlacementWriteFailed { path: path, error: w.error } }
+}
+
+// THE RELEASE RECORD IS THE RELEASE'S OWN ARM, written whatever it was: a refused release is
+// evidence too, and the next settle overwrites it with its retry.
+fn session_release_outcome_wire(r: ComputeRelease) -> String {
+  match r {
+    ComputeReleased { partition: _, reference: _, reason: _ } => "released"
+    ComputeNothingToRelease { detail: _ } => "nothing-to-release"
+    ComputeReleaseRefused { detail: _ } => "refused"
+  }
+}
+
+fn session_release_detail(r: ComputeRelease) -> String {
+  match r {
+    ComputeReleased { partition: p, reference: rf, reason: rs } => join(["released ", rf as String, " on ", p as String, " (", rs as String, ")"], "")
+    ComputeNothingToRelease { detail: d } => d
+    ComputeReleaseRefused { detail: d } => d
+  }
+}
+
+fn session_placement_release_write(instance: HostDashboardInstance, attempt_key: String, reference: String, reason: NonEmptyStr, freed: ComputeRelease) -> SessionPlacementWrite {
+  let path = session_placement_release_path(instance: instance, attempt_key: attempt_key)
+  let w = Filesystem.Write(path: path, content: serialize_json(v: json_object(members: [
+    json_kv(key: "reference", value: json_string(s: reference)),
+    json_kv(key: "outcome", value: json_string(s: session_release_outcome_wire(r: freed))),
+    json_kv(key: "reason", value: json_string(s: reason as String)),
+    json_kv(key: "detail", value: json_string(s: session_release_detail(r: freed))),
+  ])))
+  if w.success { SessionPlacementWritten { path: path } } else { SessionPlacementWriteFailed { path: path, error: w.error } }
+}
+
+// ── THE READER THE DOGFOOD RECEIPT FOLD CALLS ──────────────────────────────────────────────────
+//
+// CLOSED, AND NO ARM IS A DEFAULT. Absence of the grant record is its own arm (the attempt never
+// held a placement -- a vendor tmux attempt, or one spawned before this stage), and an unreadable or
+// malformed record is a different one; neither is folded into the other. The release half has the
+// same discipline: not yet recorded, released, nothing to release, refused, unreadable.
+type SessionReleaseObservation
+  = SessionReleaseNotRecorded { path: String }
+  | SessionReleased { reason: String, detail: String }
+  | SessionReleaseNothingHeld { reason: String, detail: String }
+  | SessionReleaseRefused { reason: String, detail: String }
+  | SessionReleaseUnreadable { path: String, detail: String }
+
+type SessionPlacementObservation
+  = SessionPlacementObserved { record: SessionPlacementRecord, returned: SessionReleaseObservation }
+  | SessionPlacementAbsent { path: String }
+  | SessionPlacementUnreadable { path: String, detail: String }
+
+type SessionFieldsAcc {
+  record: SessionPlacementRecord?
+  cause: String
+}
+
+fn session_field_cause<T>(key: String, r: JsonFieldRead<T>) -> String {
+  match r {
+    FieldAbsent => join([key, " is missing"], "")
+    FieldMalformed { cause } => cause
+    FieldRead { value: _ } => ""
+  }
+}
+
+fn session_string_or(r: JsonFieldRead<String>) -> String {
+  match r { FieldRead { value } => value  FieldAbsent => ""  FieldMalformed { cause: _ } => "" }
+}
+
+fn session_int_or(r: JsonFieldRead<Int>) -> Int {
+  match r { FieldRead { value } => value  FieldAbsent => 0  FieldMalformed { cause: _ } => 0 }
+}
+
+// EVERY FIELD IS REQUIRED. The first missing or malformed one is the refusal; the zero and empty
+// fallbacks above are reached only when that cause is non-empty, so no record is ever built from
+// them.
+fn session_placement_record_decode(doc: JsonValue) -> SessionFieldsAcc {
+  let unit = json_field_string(obj: doc, key: "unit")
+  let role = json_field_string(obj: doc, key: "role")
+  let reference = json_field_string(obj: doc, key: "reference")
+  let grant_identity = json_field_string(obj: doc, key: "grant_identity")
+  let fence_generation = json_field_int(obj: doc, key: "fence_generation")
+  let granted_at = json_field_int(obj: doc, key: "granted_at")
+  let expires_at = json_field_int(obj: doc, key: "expires_at")
+  let partition = json_field_string(obj: doc, key: "partition")
+  let amount_kib = json_field_int(obj: doc, key: "amount_kib")
+  let class_grant = json_field_string(obj: doc, key: "class_grant")
+  let unit_properties = json_field_string_list(obj: doc, key: "unit_properties")
+  let causes = filter([
+    session_field_cause(key: "unit", r: unit),
+    session_field_cause(key: "role", r: role),
+    session_field_cause(key: "reference", r: reference),
+    session_field_cause(key: "grant_identity", r: grant_identity),
+    session_field_cause(key: "fence_generation", r: fence_generation),
+    session_field_cause(key: "granted_at", r: granted_at),
+    session_field_cause(key: "expires_at", r: expires_at),
+    session_field_cause(key: "partition", r: partition),
+    session_field_cause(key: "amount_kib", r: amount_kib),
+    session_field_cause(key: "class_grant", r: class_grant),
+    session_field_cause(key: "unit_properties", r: unit_properties),
+  ], c => c != "")
+  match causes.first() {
+    Present { value: c } => SessionFieldsAcc { record: none, cause: c }
+    Absent =>
+      SessionFieldsAcc {
+        record: Present { value: SessionPlacementRecord {
+          unit: session_string_or(r: unit),
+          role: session_string_or(r: role),
+          reference: session_string_or(r: reference),
+          grant_identity: session_string_or(r: grant_identity),
+          fence_generation: session_int_or(r: fence_generation),
+          granted_at: session_int_or(r: granted_at),
+          expires_at: session_int_or(r: expires_at),
+          partition: session_string_or(r: partition),
+          amount_kib: session_int_or(r: amount_kib),
+          class_grant: session_string_or(r: class_grant),
+          unit_properties: match unit_properties { FieldRead { value } => value  FieldAbsent => []  FieldMalformed { cause: _ } => [] },
+        } },
+        cause: "",
+      }
+  }
+}
+
+fn session_file_observation_cause(o: FilesystemFileObservation) -> String {
+  match o {
+    FilesystemFileAbsent(_) => "absent"
+    FilesystemFileRead { path: _, content: _ } => ""
+    FilesystemFileIndeterminate { cause } => cause
+    FilesystemFileObservationsDisagree { path: _, cause } => cause
+    FilesystemFileSubjectRefused { directory: _, name: _, cause } => cause
+  }
+}
+
+fn session_release_observation_of(path: String, obs: FilesystemFileObservation, reference: String) -> SessionReleaseObservation {
+  match obs {
+    FilesystemFileAbsent(_) => SessionReleaseNotRecorded { path: path }
+    FilesystemFileRead { path: _, content } =>
+      match parse_json_document(s: content) {
+        JsonDocumentUnreadable { gap } => SessionReleaseUnreadable { path: path, detail: json_document_gap_text(gap: gap) }
+        JsonDocumentParsed { value: doc } => {
+          let rf = json_field_string(obj: doc, key: "reference")
+          let outcome = json_field_string(obj: doc, key: "outcome")
+          let reason = json_field_string(obj: doc, key: "reason")
+          let detail = json_field_string(obj: doc, key: "detail")
+          let causes = filter([
+            session_field_cause(key: "reference", r: rf), session_field_cause(key: "outcome", r: outcome),
+            session_field_cause(key: "reason", r: reason), session_field_cause(key: "detail", r: detail),
+          ], c => c != "")
+          match causes.first() {
+            Present { value: c } => SessionReleaseUnreadable { path: path, detail: c }
+            Absent =>
+              if session_string_or(r: rf) != reference {
+                SessionReleaseUnreadable { path: path, detail: join(["the release names reference ", session_string_or(r: rf), " but the grant is ", reference], "") }
+              } else if session_string_or(r: outcome) == "released" {
+                SessionReleased { reason: session_string_or(r: reason), detail: session_string_or(r: detail) }
+              } else if session_string_or(r: outcome) == "nothing-to-release" {
+                SessionReleaseNothingHeld { reason: session_string_or(r: reason), detail: session_string_or(r: detail) }
+              } else if session_string_or(r: outcome) == "refused" {
+                SessionReleaseRefused { reason: session_string_or(r: reason), detail: session_string_or(r: detail) }
+              } else {
+                SessionReleaseUnreadable { path: path, detail: join(["release outcome is not in the closed vocabulary: ", session_string_or(r: outcome)], "") }
+              }
+          }
+        }
+      }
+    FilesystemFileIndeterminate { cause: _ } => SessionReleaseUnreadable { path: path, detail: session_file_observation_cause(o: obs) }
+    FilesystemFileObservationsDisagree { path: _, cause: _ } => SessionReleaseUnreadable { path: path, detail: session_file_observation_cause(o: obs) }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: _ } => SessionReleaseUnreadable { path: path, detail: session_file_observation_cause(o: obs) }
+  }
+}
+
+// THE PURE FOLD, over two file observations the caller made. Witnesses supply planted observations
+// here; session_placement_observe_for_attempt supplies the real ones.
+fn session_placement_observation_of(record_path: String, record: FilesystemFileObservation, release_path: String, freed: FilesystemFileObservation) -> SessionPlacementObservation {
+  match record {
+    FilesystemFileAbsent(_) => SessionPlacementAbsent { path: record_path }
+    FilesystemFileRead { path: _, content } =>
+      match parse_json_document(s: content) {
+        JsonDocumentUnreadable { gap } => SessionPlacementUnreadable { path: record_path, detail: json_document_gap_text(gap: gap) }
+        JsonDocumentParsed { value: doc } => {
+          let decoded = session_placement_record_decode(doc: doc)
+          match decoded.record {
+            Absent => SessionPlacementUnreadable { path: record_path, detail: decoded.cause }
+            Present { value: r } =>
+              SessionPlacementObserved { record: r, returned: session_release_observation_of(path: release_path, obs: freed, reference: r.reference) }
+          }
+        }
+      }
+    FilesystemFileIndeterminate { cause: _ } => SessionPlacementUnreadable { path: record_path, detail: session_file_observation_cause(o: record) }
+    FilesystemFileObservationsDisagree { path: _, cause: _ } => SessionPlacementUnreadable { path: record_path, detail: session_file_observation_cause(o: record) }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: _ } => SessionPlacementUnreadable { path: record_path, detail: session_file_observation_cause(o: record) }
+  }
+}
+
+fn session_placement_file(dir: String, name: String) -> FilesystemFileObservation {
+  let path = join([dir, "/", name], "")
+  let listing = Filesystem.List(path: dir)
+  let read = Filesystem.Read(path: path)
+  filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error),
+    name: name,
+    path: path,
+    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+  )
+}
+
+fn session_placement_observe_role(instance: HostDashboardInstance, attempt_key: String) -> SessionPlacementObservation {
+  let dir = session_placement_dir(instance: instance)
+  session_placement_observation_of(
+    record_path: session_placement_record_path(instance: instance, attempt_key: attempt_key),
+    record: session_placement_file(dir: dir, name: session_placement_record_basename(attempt_key: attempt_key)),
+    release_path: session_placement_release_path(instance: instance, attempt_key: attempt_key),
+    freed: session_placement_file(dir: dir, name: session_placement_release_basename(attempt_key: attempt_key)),
+  )
+}
+
+// THE STAGE READER: the worker session's grant, the unit properties it ran under, and its release.
+fn session_placement_observe_for_attempt(instance: HostDashboardInstance, attempt_key: String) -> SessionPlacementObservation {
+  session_placement_observe_role(instance: instance, attempt_key: attempt_key)
+}
+
+// ── RELEASE ON TEARDOWN ────────────────────────────────────────────────────────────────────────
+//
+// THE SEAT COMES BACK WHEN THE UNIT IS OBSERVED ENDED, AND ONLY THEN. Exited or absent (the manager
+// has no such unit) releases; running keeps the charge; an unobserved process keeps it too, because
+// freeing on doubt would hand a live session's memory to the next spawn. A refused release keeps
+// its record and is retried on the next settle.
+type SessionPlacementSettleDecision
+  = SettleRelease { record: SessionPlacementRecord, reason: NonEmptyStr }
+  | SettleKeep { why: String }
+  | SettleDone { why: String }
+
+fn session_placement_settle_decide(observation: SessionPlacementObservation, process: WorkerProcessEvidence) -> SessionPlacementSettleDecision {
+  match observation {
+    SessionPlacementAbsent { path: _ } => SettleDone { why: "no placement was granted to this session" }
+    SessionPlacementUnreadable { path, detail } => SettleKeep { why: join(["the placement record at ", path, " is unreadable, so the seat it names is kept: ", detail], "") }
+    SessionPlacementObserved { record, returned } =>
+      match returned {
+        SessionReleased { reason: _, detail: _ } => SettleDone { why: "released" }
+        SessionReleaseNothingHeld { reason: _, detail: _ } => SettleDone { why: "the pool held nothing for this session" }
+        SessionReleaseUnreadable { path, detail } => SettleKeep { why: join(["the release record at ", path, " is unreadable: ", detail], "") }
+        SessionReleaseNotRecorded { path: _ } => session_settle_by_process(record: record, process: process)
+        SessionReleaseRefused { reason: _, detail: _ } => session_settle_by_process(record: record, process: process)
+      }
+  }
+}
+
+fn session_settle_by_process(record: SessionPlacementRecord, process: WorkerProcessEvidence) -> SessionPlacementSettleDecision {
+  match process {
+    WorkerProcessExited { exit_code, last_command: _ } => SettleRelease { record: record, reason: join(["session unit exited ", to_string(value: exit_code)], "") as NonEmptyStr }
+    WorkerProcessAbsent => SettleRelease { record: record, reason: "session unit is not loaded" }
+    WorkerProcessRunning { command: _ } => SettleKeep { why: "the session unit is still running" }
+    WorkerProcessUnobserved { reason } => SettleKeep { why: join(["the session unit could not be observed, so its seat is kept: ", reason as String], "") }
+  }
+}
+
+type SessionPlacementSettle
+  = SessionSettleReleased { freed: ComputeRelease, write: SessionPlacementWrite }
+  | SessionSettleKept { why: String }
+  | SessionSettleDone { why: String }
+
+fn session_placement_settle(instance: HostDashboardInstance, attempt_key: String, process: WorkerProcessEvidence) -> SessionPlacementSettle {
+  match session_placement_settle_decide(observation: session_placement_observe_for_attempt(instance: instance, attempt_key: attempt_key), process: process) {
+    SettleDone { why } => SessionSettleDone { why: why }
+    SettleKeep { why } => SessionSettleKept { why: why }
+    SettleRelease { record, reason } => {
+      let freed = session_placement_release_record(instance: instance, record: record, reason: reason)
+      SessionSettleReleased {
+        freed: freed,
+        write: session_placement_release_write(instance: instance, attempt_key: attempt_key, reference: record.reference, reason: reason, freed: freed),
+      }
+    }
+  }
+}
+
+// THE RECORD NAMES ITS PARTITION, AND THE RELEASE REFUSES IF THE HOST'S SESSION PARTITION IS A
+// DIFFERENT ONE -- a record copied between hosts must not release a seat on the wrong ledger.
+fn session_placement_release_record(instance: HostDashboardInstance, record: SessionPlacementRecord, reason: NonEmptyStr) -> ComputeRelease {
+  match session_placement_pool() {
+    Absent => ComputeReleaseRefused { detail: "the session pool has no size, so no ledger can be addressed" }
+    Present { value: pool } =>
+      match host_capacity_subject(instance: instance, pool: pool, request: kibibyte(count: 0)) {
+        ComputeSubjectHostUnresolved { host } => ComputeReleaseRefused { detail: join(["no dashboard instance is declared for host ", host as String], "") }
+        ComputeSubjectResolved { subject } =>
+          if (subject.partition as String) != record.partition {
+            ComputeReleaseRefused { detail: join(["the record names partition ", record.partition, " and this host's session partition is ", subject.partition as String], "") }
+          } else if record.reference == "" {
+            ComputeReleaseRefused { detail: "the record names no reference" }
+          } else {
+            compute_release_on(store: compute_capacity_store(subject: subject), partition: subject.partition, appropriation: kibibyte(count: 0), reference: record.reference as NonEmptyStr, reason: reason)
+          }
+      }
+  }
+}

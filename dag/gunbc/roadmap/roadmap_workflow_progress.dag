@@ -1,6 +1,9 @@
 module gunbc.roadmap_workflow_progress
 
 import std.types { String, Int, Bool, List }
+import extdeps.filesystem.filesystem_io {
+  FilesystemFileObservation, FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
+}
 import extdeps.languages.json.emit {
   JsonValue,
   JsonKeyValue,
@@ -183,11 +186,32 @@ import gunbc.roadmap_workflow_command {
   legacy_attempt_supersedable_detail,
 }
 
+// THE ATTEMPT'S WORKTREE, OBSERVED RATHER THAN INFERRED. The Workspace segment read complete from the
+// modeled state pointer alone, so an attempt whose worktree was gone still showed its workspace done
+// (srv2, 2026-10-02). Its presence is now its own observation: the attempt's directory listed under
+// the worktree root and holding a readable `.git`. Absent is established from a successful listing;
+// anything that could not be looked at is Unobserved, never Absent.
+type AttemptWorktreeObservation
+  = AttemptWorktreePresent { path: String }
+  | AttemptWorktreeAbsent { path: String }
+  | AttemptWorktreeUnobserved { path: String, cause: String }
+
+fn attempt_worktree_observation_of(path: String, marker: FilesystemFileObservation) -> AttemptWorktreeObservation {
+  match marker {
+    FilesystemFileRead { path: _, content: _ } => AttemptWorktreePresent { path: path }
+    FilesystemFileAbsent(_) => AttemptWorktreeAbsent { path: path }
+    FilesystemFileIndeterminate { cause } => AttemptWorktreeUnobserved { path: path, cause: cause }
+    FilesystemFileObservationsDisagree { path: _, cause } => AttemptWorktreeUnobserved { path: path, cause: cause }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause } => AttemptWorktreeUnobserved { path: path, cause: cause }
+  }
+}
+
 type WorkflowAttemptEvidence {
   node_id: String
   attempt_key: String
   branch: String
   modeled_state_present: Bool
+  worktree: AttemptWorktreeObservation
   admission_receipt_readable: Bool
   admission_receipt: String
   spawn_failure_present: Bool
@@ -1043,18 +1067,17 @@ fn workflow_segment_from_evidence(
         },
       }
     WorkspaceWorkflowSegment =>
-      WorkflowSegment {
-        kind: kind,
-        state: if evidence.modeled_state_present {
-          WorkflowSegmentComplete
-        } else {
-          WorkflowSegmentRefused
-        },
-        detail: if evidence.modeled_state_present {
-          "attempt branch and worktree preceded state publication"
-        } else {
-          "legacy branch has no modeled workspace publication receipt"
-        },
+      if !evidence.modeled_state_present {
+        WorkflowSegment { kind: kind, state: WorkflowSegmentRefused, detail: "legacy branch has no modeled workspace publication receipt" }
+      } else {
+        match evidence.worktree {
+          AttemptWorktreePresent { path: _ } =>
+            WorkflowSegment { kind: kind, state: WorkflowSegmentComplete, detail: "attempt branch and worktree preceded state publication, and the worktree is present" }
+          AttemptWorktreeAbsent { path } =>
+            WorkflowSegment { kind: kind, state: WorkflowSegmentRefused, detail: join(["the attempt's worktree is missing at ", path], "") }
+          AttemptWorktreeUnobserved { path, cause } =>
+            WorkflowSegment { kind: kind, state: WorkflowSegmentRefused, detail: join(["the attempt's worktree at ", path, " could not be observed: ", cause], "") }
+        }
       }
     AgentWorkflowSegment =>
       provider_workflow_segment(provider: provider)
