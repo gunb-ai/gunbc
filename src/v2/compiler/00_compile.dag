@@ -4046,8 +4046,14 @@ type NativeCensusCascade
 // `resolve_refused_importers` is the directly observed fact beside it: how many modules' resolve
 // refusals this census attributed to the root. Absent means resolve was not run (the `census` verb),
 // not zero.
+// A REFUSED FILE'S OWN IMPORTS ARE UNREAD (it has no tree), so when any OTHER refused file declares
+// a module it may import the root and hide that edge -- c -> b -> a with a AND b refused loses
+// b -> a, and a would read an exact 0 (review 75118). The count over the edges that WERE read is
+// then a LOWER BOUND, typed as one with the number of refused files whose imports went unread;
+// it is Counted, an exact answer, only when no other refused file could be a hidden importer.
 type NativeCensusClosureFanOut
   = NativeCensusClosureFanOutCounted { modules: Int }
+  | NativeCensusClosureFanOutAtLeast { modules: Int, unread_refused_files: Int }
   | NativeCensusClosureFanOutUnavailable { reason: Symbol }
 
 type NativeCensusCauseMember {
@@ -4069,7 +4075,7 @@ type NativeCensusCauseGroup {
 // neither file-refused nor indexed has imports nobody can read, so the graph is INCOMPLETE and every
 // fan-out over it is refused with that reason -- an undercount would be the silent arm.
 type NativeCensusClosureIndex
-  = NativeCensusClosureIndexRead { importers_of: Map<String, List<String>>, modules: Int }
+  = NativeCensusClosureIndexRead { importers_of: Map<String, List<String>>, modules: Int, refused_modules: Int }
   | NativeCensusClosureIndexUnavailable { reason: Symbol }
 
 type NativeCensusClosureIndexStep {
@@ -4118,7 +4124,16 @@ fn native_census_closure_index(
       if read.unread > 0 {
         NativeCensusClosureIndexUnavailable { reason: ^native_census_closure_import_graph_unread }
       } else {
-        NativeCensusClosureIndexRead { importers_of: read.importers_of, modules: length(xs: modules) }
+        NativeCensusClosureIndexRead {
+          importers_of: read.importers_of,
+          modules: length(xs: modules),
+          refused_modules: fold_list(xs: context.file_refusals, empty: 0, cons: fn(n, r) {
+            match r.module {
+              Absent => n
+              Present { value: _ } => n + 1
+            }
+          })
+        }
       }
   }
 }
@@ -4129,7 +4144,7 @@ fn native_census_closure_index(
 fn native_census_closure_fan_out(index: NativeCensusClosureIndex, root: NativeTestFileRefusal) -> NativeCensusClosureFanOut {
   match index {
     NativeCensusClosureIndexUnavailable { reason: r } => NativeCensusClosureFanOutUnavailable { reason: r }
-    NativeCensusClosureIndexRead { importers_of: importers_of, modules: modules } =>
+    NativeCensusClosureIndexRead { importers_of: importers_of, modules: modules, refused_modules: refused_modules } =>
       match root.module {
         Absent => NativeCensusClosureFanOutUnavailable { reason: ^native_census_closure_root_declares_no_module }
         Present { value: qn } =>
@@ -4145,7 +4160,11 @@ fn native_census_closure_fan_out(index: NativeCensusClosureIndex, root: NativeTe
             Rejected { diagnostics: _ } =>
               NativeCensusClosureFanOutUnavailable { reason: ^native_census_closure_walk_exhausted }
             Accepted { value: reached, diagnostics: _ } =>
-              NativeCensusClosureFanOutCounted { modules: length(xs: reached) - 1 }
+              if refused_modules > 1 {
+                NativeCensusClosureFanOutAtLeast { modules: length(xs: reached) - 1, unread_refused_files: refused_modules - 1 }
+              } else {
+                NativeCensusClosureFanOutCounted { modules: length(xs: reached) - 1 }
+              }
           }
       }
   }
@@ -4366,8 +4385,9 @@ fn native_census_cause_group_rows(groups: NativeCensusCauseGroups) -> List<Nativ
   )
 }
 
-// THE ROOTS, RANKED BY CLOSURE FAN-OUT, highest first; a root whose fan-out is Unavailable ranks
-// after every counted one rather than reading as zero. Same member rows as the groups -- this is an
+// THE ROOTS, RANKED BY CLOSURE FAN-OUT, highest first; a lower bound (AtLeast) ranks by its bound
+// and keeps its arm on the row, and a root whose fan-out is Unavailable ranks after every counted
+// one rather than reading as zero. Same member rows as the groups -- this is an
 // ORDER over them, not a second format. Bucketed by count so ranking is linear in roots plus the
 // largest count, never an insertion sort (DESIGN section 6).
 type NativeCensusRootBuckets {
@@ -4387,15 +4407,10 @@ fn native_census_roots_ranked(rows: List<NativeCensusCauseGroup>) -> List<Native
             match fan_out {
               NativeCensusClosureFanOutUnavailable { reason: _ } =>
                 NativeCensusRootBuckets { by_count: b.by_count, top: b.top, unavailable: Cons { head: m, tail: b.unavailable } }
+              NativeCensusClosureFanOutAtLeast { modules: n, unread_refused_files: _ } =>
+                native_census_root_buckets_add(buckets: b, member: m, count: n)
               NativeCensusClosureFanOutCounted { modules: n } =>
-                NativeCensusRootBuckets {
-                  by_count: map_insert(b.by_count, n, match map_lookup(b.by_count, n) {
-                    Absent => Cons { head: m, tail: Empty }
-                    Present { value: ms } => Cons { head: m, tail: ms }
-                  }),
-                  top: if b.top < n { n } else { b.top },
-                  unavailable: b.unavailable
-                }
+                native_census_root_buckets_add(buckets: b, member: m, count: n)
             }
           NativeCensusCascadeNone => b
           NativeCensusCascadeMemberOf { root: _, root_reason: _ } => b
@@ -4405,6 +4420,17 @@ fn native_census_roots_ranked(rows: List<NativeCensusCauseGroup>) -> List<Native
     }
   )
   native_census_roots_from_buckets(buckets: buckets, count: 0, ranked: list_reverse(xs: buckets.unavailable))
+}
+
+fn native_census_root_buckets_add(buckets: NativeCensusRootBuckets, member: NativeCensusCauseMember, count: Int) -> NativeCensusRootBuckets {
+  NativeCensusRootBuckets {
+    by_count: map_insert(buckets.by_count, count, match map_lookup(buckets.by_count, count) {
+      Absent => Cons { head: member, tail: Empty }
+      Present { value: ms } => Cons { head: member, tail: ms }
+    }),
+    top: if buckets.top < count { count } else { buckets.top },
+    unavailable: buckets.unavailable
+  }
 }
 
 // WALKS THE COUNTS UPWARD, consing each bucket in front, so the highest count ends first. Within a
