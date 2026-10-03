@@ -200,6 +200,7 @@ fn service_directive_exec_start(directives: List<SystemdServiceDirective>) -> St
     Present { value: v } => Present { value: v }
     Absent => match d {
       ExecStart { command: c } => Present { value: c as String }
+      RuntimeMaxSec { duration: _ } => none
       ServiceType { mode: _ } => none
       RemainAfterExit { active: _ } => none
       ExecStartPre { command: _ } => none
@@ -234,6 +235,7 @@ fn service_directive_user(directives: List<SystemdServiceDirective>) -> String? 
     Present { value: v } => Present { value: v }
     Absent => match d {
       ServiceUser { name: n } => Present { value: n as String }
+      RuntimeMaxSec { duration: _ } => none
       ServiceType { mode: _ } => none
       RemainAfterExit { active: _ } => none
       ExecStartPre { command: _ } => none
@@ -268,6 +270,7 @@ fn service_directive_working_directory(directives: List<SystemdServiceDirective>
     Present { value: v } => Present { value: v }
     Absent => match d {
       WorkingDirectory { path: p } => Present { value: p as String }
+      RuntimeMaxSec { duration: _ } => none
       ServiceType { mode: _ } => none
       RemainAfterExit { active: _ } => none
       ExecStartPre { command: _ } => none
