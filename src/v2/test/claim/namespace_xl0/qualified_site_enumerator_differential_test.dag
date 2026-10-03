@@ -31,7 +31,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // cells remain as the collector's regression controls (DESIGN section 4b(4)): each reds if the
 // collector loses its site, and the call cells red if the collector mislocates a site or emits an
 // extra one inside the call.
-data qsd_source: String = "module v2.test.qsd_subject\n\nimport v2.std.logic { Bool }\n\ntype QsdWrapper { fld: v2.test.qsd_provider.QsdFieldType }\n\nfn qsd_param(p: v2.test.qsd_provider.QsdParamType) -> Bool { true }\n\nfn qsd_call() -> Bool { v2.test.qsd_provider.qsd_callee(x: v2.test.qsd_provider.qsd_argument) }\n"
+data qsd_source: String = "module v2.test.qsd_subject\n\nimport std.types { Bool }\n\ntype QsdWrapper { fld: v2.test.qsd_provider.QsdFieldType }\n\nfn qsd_param(p: v2.test.qsd_provider.QsdParamType) -> Bool { true }\n\nfn qsd_call() -> Bool { v2.test.qsd_provider.qsd_callee(x: v2.test.qsd_provider.qsd_argument) }\n"
 
 data qsd_field_spelling: String = "v2.test.qsd_provider.QsdFieldType"
 

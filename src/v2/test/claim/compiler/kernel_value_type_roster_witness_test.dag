@@ -65,11 +65,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // application_argument_does_not_inhabit (kvr_a_named_calls_bool_formal_holding_an_int_refuses_holds).
 // It replaced the pin kvr_a_named_calls_bool_formal_is_counted_not_judged_holds, which held the
 // earlier counted-not-judged state and went red when #12506 landed, as it was written to.
-data kvr_return_bad_source: String = "module v2.test.kvr_return_bad\n\nimport v2.std.logic { Bool }\n\nfn kvr_f(x: Int) -> Bool { 3 }\n"
+data kvr_return_bad_source: String = "module v2.test.kvr_return_bad\n\nimport std.types { Bool }\n\nfn kvr_f(x: Int) -> Bool { 3 }\n"
 
-data kvr_return_good_source: String = "module v2.test.kvr_return_good\n\nimport v2.std.logic { Bool }\n\nfn kvr_f(x: Int) -> Bool { true }\n"
+data kvr_return_good_source: String = "module v2.test.kvr_return_good\n\nimport std.types { Bool }\n\nfn kvr_f(x: Int) -> Bool { true }\n"
 
-data kvr_formal_source: String = "module v2.test.kvr_formal\n\nimport v2.std.logic { Bool }\n\nfn kvr_p(b: Bool) -> Int { 1 }\n\nfn kvr_g(x: Int) -> Int { kvr_p(b: 3) }\n"
+data kvr_formal_source: String = "module v2.test.kvr_formal\n\nimport std.types { Bool }\n\nfn kvr_p(b: Bool) -> Int { 1 }\n\nfn kvr_g(x: Int) -> Int { kvr_p(b: 3) }\n"
 
 data kvr_ingest: SourceRootIngest = [
   rcf_read(source: kvr_return_bad_source, id: ^kvr_return_bad_read, unit: ^kvr_return_bad_cu, path: "src/v2/test/fixture/kernel_value_type_roster/return_bad.dag"),
