@@ -1,0 +1,57 @@
+module test.claim.auth.approved_gcp_access_witness_test
+
+import std.types { Bool, NonEmptyStr }
+import std.content_hash { content_hash_of_value }
+import std.effect_grant { Write, NamespacePosition, ServiceOpTree }
+import std.scoped_authorization { AuthorizationRequest, AuthorizationScope }
+import gunbc.auth.approval_decision_store { request_revision_of }
+import gunbc.auth.approval_request_client { PollApproved, PollStillPending, PollUnreadable }
+import gunbc.auth.approved_gcp_access { approved_gcp_access_from_poll, approved_gcp_access_with_credential, ApprovedGcpAccessReady, ApprovedGcpAccessRefused }
+import gunbc.auth.approval_gate { approval_gate_from_poll, GateAdmitted, GateRefused }
+
+fn fixture_request() -> AuthorizationRequest<NonEmptyStr> {
+  AuthorizationRequest { escalation_id: "fixture-gcp-approval", scopes: [AuthorizationScope {
+    verb: Write, resource: NamespacePosition { tree: ServiceOpTree { service: "secretmanager.googleapis.com" }, path: ["projects", "fixture", "secrets", "fixture"] },
+    action: "fixture.gcp.apply",
+  }], subject: "one exact fixture effect", purpose: "Test one exact fixture effect", attempt: "fixture-attempt-1",
+    intent_hash: content_hash_of_value(value: "fixture-intent"), destructive: false }
+}
+
+test fn witness_pending_unreadable_and_other_intent_withhold_gcp_access() -> Bool {
+  let request = fixture_request()
+  all([PollStillPending, PollUnreadable { detail: "broker down" }, PollApproved { revision: "another-intent", decided_by: "fixture-operator", decided_at: "2026-09-27T12:00:00Z", execute_by: "2026-09-27T12:05:00Z" }], poll =>
+    match approved_gcp_access_from_poll(request: request, poll: poll, observed_at: "2026-09-27T12:01:00Z", token_variable: "GUNBC_TEST_APPROVED_GCP_CREDENTIAL") {
+      ApprovedGcpAccessRefused { reason: _ } => true
+      ApprovedGcpAccessReady { authorization: _, token: _ } => false
+    })
+}
+
+test fn witness_expired_approval_cannot_use_available_workload_credential() -> Bool {
+  let request = fixture_request()
+  match approved_gcp_access_from_poll(request: request,
+    poll: PollApproved { revision: request_revision_of(request: request), decided_by: "fixture-operator", decided_at: "2026-09-27T12:00:00Z", execute_by: "2026-09-27T12:05:00Z" },
+    observed_at: "2026-09-27T12:06:00Z", token_variable: "GUNBC_TEST_APPROVED_GCP_CREDENTIAL") {
+    ApprovedGcpAccessRefused { reason: _ } => true
+    ApprovedGcpAccessReady { authorization: _, token: _ } => false
+  }
+}
+
+// The credential is a SUPPLIED value (DESIGN §3 witness rule): the subject is the join after
+// admission, and the admitted authorization comes from the real gate fold, not a constructed one.
+// The real variable read stays on the refusal claims above through approved_gcp_access_from_poll.
+test fn witness_approval_and_workload_credential_are_both_required() -> Bool {
+  let request = fixture_request()
+  let approved = PollApproved { revision: request_revision_of(request: request), decided_by: "fixture-operator", decided_at: "2026-09-27T12:00:00Z", execute_by: "2026-09-27T12:05:00Z" }
+  match approval_gate_from_poll(poll: approved, request: request, observed_at: "2026-09-27T12:01:00Z") {
+    GateRefused { cause: _ } => false
+    GateAdmitted { authorization } =>
+      match approved_gcp_access_with_credential(authorization: authorization, token_variable: "GUNBC_TEST_APPROVED_GCP_CREDENTIAL", credential: "") {
+        ApprovedGcpAccessReady { authorization: _, token: _ } => false
+        ApprovedGcpAccessRefused { reason: _ } =>
+          match approved_gcp_access_with_credential(authorization: authorization, token_variable: "GUNBC_TEST_APPROVED_GCP_CREDENTIAL", credential: "fixture-workload-credential") {
+            ApprovedGcpAccessReady { authorization: _, token: _ } => true
+            ApprovedGcpAccessRefused { reason: _ } => false
+          }
+      }
+  }
+}
