@@ -22,7 +22,7 @@ import gunbc.spark.pair_serving_authority {
   PairServingGroupAuthority, PairServingActive, ReleasedToFleet, FencedRefusal, PairRealizationUnestablished, pair_serving_committed_hosts,
 }
 import std.scoped_authorization { OperatorGrant, AttemptIdentity, ClaimedBy, authorization_scope_eq, parse_intent_scopes, AuthorizationRequest, authorize, AuthorizationPermitted, AuthorizationRefused }
-import gunbc.spark.pair_serving_d0 { d0_standing_grant_for, d0_binding_text }
+import gunbc.spark.pair_serving_d0 { d0_standing_grant_for, d0_binding_text, d0_binding_text_with, D0AuthorizationBasis, D0BasisBroker, D0BasisStandingGrant }
 import gunbc.spark.pair_serving_d0_door { standing_grant_row_judged, d0_honored_standing_grant, StandingGrantRowOnMain, StandingGrantRowNotOnMain, ExecutedGrantRowRead, ExecutedGrantRowUnread }
 import gunbc.spark.pair_serving_d0 { D0GrantRowApproved, D0GrantRowUnproven, d0_frozen_filing_text_with, parse_d0_frozen_filing }
 import gunbc.auth.standing_operator_grant { group_a_dev_standing_grant, standing_grant_covers, standing_grant_authorization, StandingArmLaunch }
@@ -321,13 +321,15 @@ fn rw_permitted(req: AuthorizationRequest<D0Subject>, issued: String, expires: S
   }
 }
 
+data rw_standing_basis: D0AuthorizationBasis = D0BasisStandingGrant { identity: "group-a-dev-standing-grant-2026-10-03" as NonEmptyStr }
+
 fn rw_two_runs(h: ContentHash, f: fn(String, String) -> Bool) -> Bool {
   let req = rw_release_request(group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), h: h)
   match rw_permitted(req: req, issued: "2026-10-03T05:10:00Z", expires: "2026-10-03T05:40:00Z", at: "2026-10-03T05:11:00Z") {
     Absent => false
     Present { value: first } => match rw_permitted(req: req, issued: "2026-10-03T09:00:00Z", expires: "2026-10-03T09:30:00Z", at: "2026-10-03T09:01:00Z") {
       Absent => false
-      Present { value: later } => f(d0_binding_text(grant: first, claim_generation: 1), d0_binding_text(grant: later, claim_generation: 1))
+      Present { value: later } => f(d0_binding_text_with(grant: first, claim_generation: 1, basis: rw_standing_basis), d0_binding_text_with(grant: later, claim_generation: 1, basis: rw_standing_basis))
     }
   }
 }
@@ -418,4 +420,25 @@ test fn rw_the_frozen_filing_round_trips_its_grant_proof() -> Bool {
   without == "a=b\nexecution_revision=aaaa\n"
     && (match parse_d0_frozen_filing(text: with_proof) { Present { value: f } => match f.grant_proof { D0GrantRowApproved { row_digest: d } => (d as String) == "sha256:aa" && (f.execution_revision as String) == "aaaa"  D0GrantRowUnproven => false }  Absent => false })
     && (match parse_d0_frozen_filing(text: without) { Present { value: f } => match f.grant_proof { D0GrantRowUnproven => true  D0GrantRowApproved { row_digest: _ } => false }  Absent => false })
+}
+
+// PROVENANCE (side-chat review of #13102): the SAME covered release, authorized by the BROKER, keeps broker
+// lifecycle identity and expiry -- two windows are two lifecycles, and no standing-grant term appears. Only an
+// authorization issued from the grant carries the grant's identity. The grant never relabels a broker one.
+test fn rw_a_broker_authorized_covered_release_keeps_broker_identity() -> Bool {
+  rw_with(scenario: fn(h) {
+    let req = rw_release_request(group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), h: h)
+    match rw_permitted(req: req, issued: "2026-10-03T05:10:00Z", expires: "2026-10-03T05:40:00Z", at: "2026-10-03T05:11:00Z") {
+      Absent => false
+      Present { value: first } => match rw_permitted(req: req, issued: "2026-10-03T09:00:00Z", expires: "2026-10-03T09:30:00Z", at: "2026-10-03T09:01:00Z") {
+        Absent => false
+        Present { value: later } => {
+          let b1 = d0_binding_text_with(grant: first, claim_generation: 1, basis: D0BasisBroker)
+          let b2 = d0_binding_text_with(grant: later, claim_generation: 1, basis: D0BasisBroker)
+          b1 != b2 && string_contains(s: b1, pattern: "expires_at=") && !string_contains(s: b1, pattern: "standing_grant=")
+            && b1 == d0_binding_text(grant: first, claim_generation: 1)
+        }
+      }
+    }
+  })
 }
