@@ -190,7 +190,7 @@ test fn witness_memory_limit_absent_routes_to_absent_verdict() -> Bool {
   memory_limit_converge_verdict_for_bytes_value(
     observed: MemoryLimitAbsent,
     bytes_value: to_string(byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)),
-  ) == Absent
+  ) == gunbc.host_converge.VerdictAbsent
 }
 
 test fn witness_cap_effectiveness_projection_matches_runner_slot_type() -> Bool {

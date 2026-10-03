@@ -1,6 +1,6 @@
 module v2.std.nat
+import std.types { List }
 import v2.std.node { Symbol }
-import v2.std.collection { List }
 
 // THE NODE-BOUND LAW ROSTER OF THE NATURALS, AND NOTHING ELSE. This module used to declare a second
 // Nat -- the Peano coproduct -- beside std.nat's semiring alias. There is one Nat now, declared in

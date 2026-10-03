@@ -8,6 +8,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.ampere.scp_diagnostic {
   AmpereBootStage, Smpro, Pmpro, AtfBl1, DdrInitialization, DdrTraining, AtfBl2, AtfBl31, AtfBl32, Uefi, OperatingSystem,
   AmpereBootStatus, NotStarted, Started, Completed, Failed,
+  ampere_smpro_sysfs_abi,
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -24,10 +25,10 @@ data smpro_misc_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data smpro_boot_progress_abi_authority: ExternalAuthority = ExternalAuthority {
+data smpro_errmon_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "github.com/torvalds/linux/blob/995832b2cebe6969d1b42635db698803ee31294d/Documentation/ABI/testing/sysfs-bus-platform-devices-ampere-smpro"
+    locator: "github.com/torvalds/linux/blob/995832b2cebe6969d1b42635db698803ee31294d/drivers/misc/smpro-errmon.c"
   }
 }
 
@@ -40,13 +41,14 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: [smpro_misc_authority, smpro_boot_progress_abi_authority]
+  further_citations: [smpro_misc_authority, ampere_smpro_sysfs_abi, smpro_errmon_authority]
 }
 
 // THE SUBJECT IS THE AMPERE SMpro's I2C REGISTER INTERFACE as Ampere's own Linux drivers use it:
-// smpro-core (the regmap over I2C) and smpro-misc (the boot-progress registers), with the ABI
+// smpro-core (the regmap over I2C), smpro-misc (the boot-progress registers) and smpro-errmon (the
+// internal error, warning and event registers), with the ABI
 // document that states what the boot-progress fields mean. Every name, offset and code below is
-// transcribed from those three files at the pinned commits, under the drivers' own names.
+// transcribed from those four files at the pinned commits, under the drivers' own names.
 //
 // THE PROTOCOL (smpro-core: smpro_regmap_config, smpro_core_read, smpro_regmap_bus). Register
 // addresses are 8 bits and values 16 bits. A read is a two-message transfer: WRITE the register
@@ -141,6 +143,208 @@ data smpro_bootstage_reg: SmproRegister = SmproRegister {
   },
 }
 
+
+// ── the internal error, warning and event registers (smpro-errmon) ────────────────────────────
+
+// WHAT A RAW READ OF THESE DOES. smpro-errmon never clears by reading: every clear is a WRITE the
+// driver issues after it has read. The two TYPE registers are write-one-to-clear --
+// smpro_internal_err_read writes back the error bit it found (BIT(1) or BIT(2)) and
+// smpro_internal_warn_read writes BIT(0) -- and smpro_event_data_read writes a nonzero event value
+// back to its own register ("Clear event after read"). So a reader that only reads is inferred to
+// leave every record in place, while the BMC's own sysfs attributes over the same driver DO clear
+// on read: whatever else polls them can empty the record before this reader sees it.
+data smpro_errmon_read_safety_confirmation: NonEmptyStr = "Ampere's Altra Family SoC BMC Interface Specification sections 5.7 and 5.10 (GPI status, RAS internal error registers) stating the registers' read side-effects"
+
+data smpro_gpi_ras_err_reg: SmproRegister = SmproRegister {
+  name: "GPI_RAS_ERR",
+  offset: 126,
+  read_safety: ReadSafetyCitedInference {
+    driver_use: ReadOnlyInDriver { function: "smpro_internal_err_read" },
+    basis: smpro_errmon_authority,
+    would_confirm: smpro_errmon_read_safety_confirmation,
+  },
+}
+
+data smpro_err_smpro_type_reg: SmproRegister = SmproRegister {
+  name: "ERR_SMPRO_TYPE",
+  offset: 160,
+  read_safety: ReadSafetyCitedInference {
+    driver_use: WrittenBackByDriver { function: "smpro_internal_err_read", write: "regmap_write(ERR_SMPRO_TYPE, <the TYPE bit just read>): write-one-to-clear of the record the read reported" },
+    basis: smpro_errmon_authority,
+    would_confirm: smpro_errmon_read_safety_confirmation,
+  },
+}
+
+data smpro_err_pmpro_type_reg: SmproRegister = SmproRegister {
+  name: "ERR_PMPRO_TYPE",
+  offset: 161,
+  read_safety: ReadSafetyCitedInference {
+    driver_use: WrittenBackByDriver { function: "smpro_internal_err_read", write: "regmap_write(ERR_PMPRO_TYPE, <the TYPE bit just read>): write-one-to-clear of the record the read reported" },
+    basis: smpro_errmon_authority,
+    would_confirm: smpro_errmon_read_safety_confirmation,
+  },
+}
+
+data smpro_err_smpro_info_lo_reg: SmproRegister = SmproRegister {
+  name: "ERR_SMPRO_INFO_LO",
+  offset: 162,
+  read_safety: ReadSafetyCitedInference {
+    driver_use: ReadOnlyInDriver { function: "smpro_internal_err_read" },
+    basis: smpro_errmon_authority,
+    would_confirm: smpro_errmon_read_safety_confirmation,
+  },
+}
+
+data smpro_err_smpro_info_hi_reg: SmproRegister = SmproRegister {
+  name: "ERR_SMPRO_INFO_HI",
+  offset: 163,
+  read_safety: ReadSafetyCitedInference {
+    driver_use: ReadOnlyInDriver { function: "smpro_internal_err_read" },
+    basis: smpro_errmon_authority,
+    would_confirm: smpro_errmon_read_safety_confirmation,
+  },
+}
+
+data smpro_err_smpro_data_lo_reg: SmproRegister = SmproRegister {
+  name: "ERR_SMPRO_DATA_LO",
+  offset: 164,
+  read_safety: ReadSafetyCitedInference {
+    driver_use: ReadOnlyInDriver { function: "smpro_internal_err_read" },
+    basis: smpro_errmon_authority,
+    would_confirm: smpro_errmon_read_safety_confirmation,
+  },
+}
+
+data smpro_err_smpro_data_hi_reg: SmproRegister = SmproRegister {
+  name: "ERR_SMPRO_DATA_HI",
+  offset: 165,
+  read_safety: ReadSafetyCitedInference {
+    driver_use: ReadOnlyInDriver { function: "smpro_internal_err_read" },
+    basis: smpro_errmon_authority,
+    would_confirm: smpro_errmon_read_safety_confirmation,
+  },
+}
+
+data smpro_err_pmpro_info_lo_reg: SmproRegister = SmproRegister {
+  name: "ERR_PMPRO_INFO_LO",
+  offset: 166,
+  read_safety: ReadSafetyCitedInference {
+    driver_use: ReadOnlyInDriver { function: "smpro_internal_err_read" },
+    basis: smpro_errmon_authority,
+    would_confirm: smpro_errmon_read_safety_confirmation,
+  },
+}
+
+data smpro_err_pmpro_info_hi_reg: SmproRegister = SmproRegister {
+  name: "ERR_PMPRO_INFO_HI",
+  offset: 167,
+  read_safety: ReadSafetyCitedInference {
+    driver_use: ReadOnlyInDriver { function: "smpro_internal_err_read" },
+    basis: smpro_errmon_authority,
+    would_confirm: smpro_errmon_read_safety_confirmation,
+  },
+}
+
+data smpro_err_pmpro_data_lo_reg: SmproRegister = SmproRegister {
+  name: "ERR_PMPRO_DATA_LO",
+  offset: 168,
+  read_safety: ReadSafetyCitedInference {
+    driver_use: ReadOnlyInDriver { function: "smpro_internal_err_read" },
+    basis: smpro_errmon_authority,
+    would_confirm: smpro_errmon_read_safety_confirmation,
+  },
+}
+
+data smpro_err_pmpro_data_hi_reg: SmproRegister = SmproRegister {
+  name: "ERR_PMPRO_DATA_HI",
+  offset: 169,
+  read_safety: ReadSafetyCitedInference {
+    driver_use: ReadOnlyInDriver { function: "smpro_internal_err_read" },
+    basis: smpro_errmon_authority,
+    would_confirm: smpro_errmon_read_safety_confirmation,
+  },
+}
+
+data smpro_warn_smpro_info_lo_reg: SmproRegister = SmproRegister {
+  name: "WARN_SMPRO_INFO_LO",
+  offset: 170,
+  read_safety: ReadSafetyCitedInference {
+    driver_use: ReadOnlyInDriver { function: "smpro_internal_warn_read" },
+    basis: smpro_errmon_authority,
+    would_confirm: smpro_errmon_read_safety_confirmation,
+  },
+}
+
+data smpro_warn_smpro_info_hi_reg: SmproRegister = SmproRegister {
+  name: "WARN_SMPRO_INFO_HI",
+  offset: 171,
+  read_safety: ReadSafetyCitedInference {
+    driver_use: ReadOnlyInDriver { function: "smpro_internal_warn_read" },
+    basis: smpro_errmon_authority,
+    would_confirm: smpro_errmon_read_safety_confirmation,
+  },
+}
+
+data smpro_warn_pmpro_info_lo_reg: SmproRegister = SmproRegister {
+  name: "WARN_PMPRO_INFO_LO",
+  offset: 172,
+  read_safety: ReadSafetyCitedInference {
+    driver_use: ReadOnlyInDriver { function: "smpro_internal_warn_read" },
+    basis: smpro_errmon_authority,
+    would_confirm: smpro_errmon_read_safety_confirmation,
+  },
+}
+
+data smpro_warn_pmpro_info_hi_reg: SmproRegister = SmproRegister {
+  name: "WARN_PMPRO_INFO_HI",
+  offset: 173,
+  read_safety: ReadSafetyCitedInference {
+    driver_use: ReadOnlyInDriver { function: "smpro_internal_warn_read" },
+    basis: smpro_errmon_authority,
+    would_confirm: smpro_errmon_read_safety_confirmation,
+  },
+}
+
+data smpro_vrd_warn_fault_event_data_reg: SmproRegister = SmproRegister {
+  name: "VRD_WARN_FAULT_EVENT_DATA",
+  offset: 120,
+  read_safety: ReadSafetyCitedInference {
+    driver_use: WrittenBackByDriver { function: "smpro_event_data_read", write: "regmap_write(VRD_WARN_FAULT_EVENT_DATA, <the nonzero value just read>) to clear the event" },
+    basis: smpro_errmon_authority,
+    would_confirm: smpro_errmon_read_safety_confirmation,
+  },
+}
+
+data smpro_vrd_hot_event_data_reg: SmproRegister = SmproRegister {
+  name: "VRD_HOT_EVENT_DATA",
+  offset: 121,
+  read_safety: ReadSafetyCitedInference {
+    driver_use: WrittenBackByDriver { function: "smpro_event_data_read", write: "regmap_write(VRD_HOT_EVENT_DATA, <the nonzero value just read>) to clear the event" },
+    basis: smpro_errmon_authority,
+    would_confirm: smpro_errmon_read_safety_confirmation,
+  },
+}
+
+data smpro_dimm_hot_event_data_reg: SmproRegister = SmproRegister {
+  name: "DIMM_HOT_EVENT_DATA",
+  offset: 122,
+  read_safety: ReadSafetyCitedInference {
+    driver_use: WrittenBackByDriver { function: "smpro_event_data_read", write: "regmap_write(DIMM_HOT_EVENT_DATA, <the nonzero value just read>) to clear the event" },
+    basis: smpro_errmon_authority,
+    would_confirm: smpro_errmon_read_safety_confirmation,
+  },
+}
+
+data smpro_dimm_2x_refresh_event_data_reg: SmproRegister = SmproRegister {
+  name: "DIMM_2X_REFRESH_EVENT_DATA",
+  offset: 150,
+  read_safety: ReadSafetyCitedInference {
+    driver_use: WrittenBackByDriver { function: "smpro_event_data_read", write: "regmap_write(DIMM_2X_REFRESH_EVENT_DATA, <the nonzero value just read>) to clear the event" },
+    basis: smpro_errmon_authority,
+    would_confirm: smpro_errmon_read_safety_confirmation,
+  },
+}
+
 fn smpro_word(first_byte: Int, second_byte: Int) -> Int {
   first_byte * 256 + second_byte
 }
@@ -192,6 +396,18 @@ fn smpro_bootstage_of(word: Int) -> SmproBootStage {
 // CUR_BOOTSTAGE: boot_progress_show takes cur_stage = reg & 0xff, the value's low byte.
 fn smpro_cur_bootstage_of(word: Int) -> SmproStageReading {
   smpro_stage_of(code: word % 256)
+}
+
+// THE PAIR, READ TOGETHER. boot_progress_show reads CUR_BOOTSTAGE and BOOTSTAGE as one record and
+// returns -EINVAL when the reported stage is ahead of the current one; such a pair is refused here
+// rather than decoded, so no consumer re-derives the byte layout or the rule.
+type SmproBootProgress
+  = SmproBootProgressRead { current: SmproStageReading, reported: SmproBootStage }
+  | SmproBootProgressRefused { cur_bootstage_word: Int, bootstage_word: Int }
+
+fn smpro_boot_progress_of(cur_bootstage_word: Int, bootstage_word: Int) -> SmproBootProgress {
+  if (bootstage_word / 256) % 256 > cur_bootstage_word % 256 { SmproBootProgressRefused { cur_bootstage_word: cur_bootstage_word, bootstage_word: bootstage_word } }
+  else { SmproBootProgressRead { current: smpro_cur_bootstage_of(word: cur_bootstage_word), reported: smpro_bootstage_of(word: bootstage_word) } }
 }
 
 fn smpro_stage_text(r: SmproStageReading) -> String {

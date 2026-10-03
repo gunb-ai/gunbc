@@ -34,11 +34,14 @@ import extdeps.tools.coreutils_stat
 // truncated or split. Multipart and chunked objects are the next rung (fabric-storage step 5); they
 // change how an object is carried, not what an address or a reading is.
 //
-// PLACEMENT, TRANSPORT AND RETENTION ARE NOT FACTS OF THIS MODULE (DESIGN 3). Which bucket and
-// prefix, which credential, how long an object is held: gunbc.fabric.fabric_blob_placement. Over
-// which transport: gunbc.fabric.fabric_blob_r2 for a run that holds gunbc, and the emitted workflow
-// shell for a run that has not built it yet. Both realize the plans below; neither spells the
-// object key, the size bound or the verdicts on its own.
+// PLACEMENT, TRANSPORT AND RETENTION ARE NOT FACTS OF THIS MODULE (DESIGN 3). They belong to its
+// realizations, which spell neither the object key, the size bound nor the verdicts on their own.
+//
+// CONSUMERS (DESIGN 3c). The reading mint, the put plan and the address are exercised by
+// test.claim.std_fabric_blob. FabricBlobPut, FabricBlobGet and fabric_blob_fault_text are consumed by
+// gunbc.fabric.fabric_blob_r2 (put and get over R2), which this module's declared frontier named
+// (gunbc#13080) and which discharges it; the bounded local store's byte parts (C1b) are a second
+// consumer.
 
 type FabricBlobAddress {
   key: Sha256Digest

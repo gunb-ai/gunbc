@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.bind_and_match_binders_not_typed_from_their_dependency_sibling
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data bind_and_match_binders_not_typed_from_their_dependency_sibling: RecurringFailureMode = RecurringFailureMode {
+  identity: "bind_and_match_binders_not_typed_from_their_dependency_sibling" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: two behavior rows bind a name whose type is fixed by a SIBLING child's settled result, and v2.compiler.infer types neither binder from it. An unannotated `let x = e` binds x in the Bind's body, but x's LexicalBinding declares no type (v2.compiler.infer infer_lexical_reference_facts reads binding.declared Absent and leaves the reference underived), although the bound value e is folded in the same row. A match-arm pattern binder is typed by the scrutinee's settled type and the matched variant, and the binder-typing for it is #12641's subject (v2.test.claim.field_projection.field_projection_stages fps_a_match_binder_receiver_is_not_yet_typed_holds records it as not yet inferring). HARM: a projection or application off such a binder stays on the counted frontier or refuses for missing evidence instead of being judged -- loud, never fabricated, but valid programs do not type. This is the same class as gunbc.recurring_failure_mode infer_child_context_cannot_depend_on_a_sibling_result, whose collection-fold case is climbed; these two rows are its remaining population.",
+    "DISTINGUISHING FACTS: the traversal is no longer the obstacle. v2.std.node fold_node_dependent lets a row schedule its dependency child first and derive the dependent child's context from the parent accumulator, and v2.compiler.infer infer_gather_child_context already does so for a fold-realized Loop. What these rows lack is the BINDING SIDE: a Bind's binder carries no type variable for a frame to instantiate (the fold step's member formal does, minted by function-value lowering), and the match-arm binder's relation to the scrutinee is variant-and-field-indexed rather than one member type. So reusing the driver is necessary and not sufficient, and building either row's frame here, without its binder carrier, would be a frame nothing reads (DESIGN section 3c).",
+    "RUNG FOUND AT: mitigatable -- refused or left underived, never wrong. CEILING: structurally guaranteed; both relations are decidable from the sibling's settled type. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: a Bind binder carries its own type position (declared or fresh), and infer_gather_child_context schedules the bound value before the body and instantiates that position from the value's settled type for the body subtree only; and a match-arm binder is instantiated from the scrutinee's settled type through the matched variant's field, scheduled the same way -- SUFFICIENT FOR `let r = n; r.children` and a match-arm binder's projection to type through the one frame, with no second parameter-typing route.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "v2.std.node", decl_name: "fold_node_dependent", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.infer", decl_name: "infer_gather_child_context", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.infer", decl_name: "infer_lexical_reference_facts", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.field_projection.field_projection_stages", decl_name: "fps_a_match_binder_receiver_is_not_yet_typed_holds", field: WholeDeclaration },
+  ],
+}

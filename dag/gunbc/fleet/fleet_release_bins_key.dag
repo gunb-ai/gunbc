@@ -1,6 +1,7 @@
 module gunbc.fleet_release_bins_key
 
 import std.types { String, List, Bool, Int, list_length }
+import std.measure { Second, second, second_count, seconds_per_day }
 import v2.std.node { Node }
 import v2.std.diagnostic { Outcome, Accepted, Rejected, outcome_accepted }
 import v2.workflow.bash_emit { bash_emit_stmts }
@@ -315,6 +316,7 @@ type ReleaseBinsRefusal
   | ConsumerPreimageKeyMismatch
   | ConsumerSourceTreeMismatch
   | BuildDiagnosticsMissing { file: String }
+  | ConsumerProductKindMismatch { kind: String }
 
 fn release_bins_refusal_name(refusal: ReleaseBinsRefusal) -> String {
   match refusal {
@@ -344,6 +346,7 @@ fn release_bins_refusal_name(refusal: ReleaseBinsRefusal) -> String {
     ConsumerPreimageKeyMismatch => "ConsumerPreimageKeyMismatch"
     ConsumerSourceTreeMismatch => "ConsumerSourceTreeMismatch"
     BuildDiagnosticsMissing { file: _ } => "BuildDiagnosticsMissing"
+    ConsumerProductKindMismatch { kind: _ } => "ConsumerProductKindMismatch"
   }
 }
 
@@ -374,6 +377,7 @@ fn release_bins_refusal_message(refusal: ReleaseBinsRefusal) -> String {
     ConsumerFileMissing { file: f } => join(["the release-bins artifact is missing ", f], "")
     ConsumerPreimageKeyMismatch => "the downloaded preimage does not hash to the build job's key"
     ConsumerSourceTreeMismatch => "the pack was keyed on a different source tree than this job's checkout"
+    ConsumerProductKindMismatch { kind: k } => join(["the pack's preimage does not name the product kind ", k, " this consumer asked for; it is another product's pack"], "")
     BuildDiagnosticsMissing { file: f } => join(["the product requires the build log ", f, " as a pack member and the build step left none; a pack without its diagnostics is incomplete, not smaller"], "")
   }
 }
@@ -1217,7 +1221,22 @@ data release_bins_pack_object_name: String = "pack.tar"
 // THE CANDIDATE HAND-OFF: the merge-queue floor uploads the compiler pair's pack object under this
 // artifact name, and fleet-desired downloads it by the same row. One spelling for both ends.
 data compiler_pair_candidate_artifact_name: String = "compiler-pair-candidate"
-data compiler_pair_candidate_retention_days: Int = 1
+
+// THE CANDIDATE'S RETENTION IS A DURATION (std.measure Second), not a day count: fleet-desired runs on
+// the landing it follows, so one day covers it. GitHub's upload-artifact takes whole days, so the
+// emitter converts at that boundary (compiler_pair_candidate_retention_whole_days); the duration is
+// authored as whole days and test.claim.long.fleet_release_bins_key_witness holds that it stays one.
+fn compiler_pair_candidate_retention() -> Second {
+  second(count: 1 * seconds_per_day())
+}
+
+fn compiler_pair_candidate_retention_whole_days() -> Int {
+  (second_count(s: compiler_pair_candidate_retention()) / seconds_per_day()) as Int
+}
+
+fn compiler_pair_candidate_retention_is_whole_days() -> Bool {
+  second_count(s: compiler_pair_candidate_retention()) % seconds_per_day() == 0
+}
 
 fn release_bins_pack_object_path_expression() -> String {
   join(["${{ runner.temp }}/", release_bins_pack_object_name], "")
@@ -1251,7 +1270,7 @@ fn release_bins_canonical_consumer_statements(product: ReleaseBinsProduct) -> Li
       cmd(ws: [lit(t: "tar"), lit(t: "-xf"), var(n: "FABRIC_BLOB_OUT"), lit(t: "-C"), temp(file: release_bins_canonical_dir), lit(t: "--no-same-owner")]),
       or_refuse(
         check: cmd(ws: [lit(t: "grep"), lit(t: "-qxF"), lit(t: join(["kind=", product.kind], "")), canonical(file: release_bins_preimage_name)]),
-        r: ConsumerPreimageKeyMismatch,
+        r: ConsumerProductKindMismatch { kind: product.kind },
       ),
     ],
     source_closure_statements(),
@@ -1281,6 +1300,47 @@ fn release_bins_canonical_consumer_statements(product: ReleaseBinsProduct) -> Li
 fn release_bins_canonical_address_script_for(product: ReleaseBinsProduct) -> String { release_bins_script_text(outcome: release_bins_emitted(statements: release_bins_canonical_address_statements(product: product))) }
 fn release_bins_pack_object_script() -> String { release_bins_script_text(outcome: release_bins_emitted(statements: release_bins_pack_object_statements())) }
 fn release_bins_canonical_consumer_script_for(product: ReleaseBinsProduct) -> String { release_bins_script_text(outcome: release_bins_emitted(statements: release_bins_canonical_consumer_statements(product: product))) }
+
+// ── ONE STEP, TWO PRODUCTS, CHOSEN BY THE DISPATCHED MODE ─────────────────────────────────────
+//
+// A workflow whose modes need different products (gunbc.fleet_converge_workflow
+// fleet_converge_mode_release_product) keeps ONE step per stage -- step ids are job-scoped and the
+// stages' conditions read them -- and renders both products' scripts into it, selected by the
+// dispatched mode. The roster of pair modes is the workflow's, passed in; this module spells no mode.
+// An empty roster renders the sixteen-binary script alone, byte for byte as before.
+data release_bins_mode_env: String = "FLEET_CONVERGE_MODE"
+
+fn release_bins_mode_test_text(pair_modes: List<String>) -> String {
+  join(map(pair_modes, m => join(["[ \"$", "{", release_bins_mode_env, ":-}\" = '", m, "' ]"], "")), " || ")
+}
+
+fn release_bins_mode_dispatch(pair_modes: List<String>, pair_text: String, fleet_text: String) -> String {
+  if pair_modes == [] {
+    fleet_text
+  } else {
+    join(["if ", release_bins_mode_test_text(pair_modes: pair_modes), "; then\n", pair_text, "\nelse\n", fleet_text, "\nfi\n"], "")
+  }
+}
+
+fn release_bins_key_script_dispatch(pair_modes: List<String>) -> String {
+  release_bins_mode_dispatch(pair_modes: pair_modes, pair_text: release_bins_key_script_for(product: compiler_pair_release_product()), fleet_text: release_bins_key_script())
+}
+
+fn release_bins_outcome_script_dispatch(pair_modes: List<String>) -> String {
+  release_bins_mode_dispatch(pair_modes: pair_modes, pair_text: release_bins_outcome_script_for(product: compiler_pair_release_product()), fleet_text: release_bins_outcome_script())
+}
+
+fn release_bins_pack_script_dispatch(pair_modes: List<String>) -> String {
+  release_bins_mode_dispatch(pair_modes: pair_modes, pair_text: release_bins_pack_manifest_script_for(product: compiler_pair_release_product()), fleet_text: release_bins_pack_manifest_script())
+}
+
+fn release_bins_consumer_script_dispatch(pair_modes: List<String>) -> String {
+  release_bins_mode_dispatch(pair_modes: pair_modes, pair_text: release_bins_consumer_key_check_script_for(product: compiler_pair_release_product()), fleet_text: release_bins_consumer_key_check_script())
+}
+
+fn release_bins_build_script_dispatch(pair_modes: List<String>, fleet_build: String) -> String {
+  release_bins_mode_dispatch(pair_modes: pair_modes, pair_text: compiler_pair_release_product().build_line, fleet_text: fleet_build)
+}
 
 // THE EMITTED SCRIPTS, and the one admission the workflow generation consumes: if the fold refuses any
 // of them, gunbc.fleet_converge_workflow refuses to emit the workflow rather than emitting a step with
