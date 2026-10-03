@@ -1,0 +1,30 @@
+module gunbc.fabric_storage_binding
+
+import std.types { String, NonEmptyStr }
+import gunbc.fabric_storage_address { fabric_storage_state_suffix, fabric_storage_route_prefix }
+import gunbc.fabric_storage_placement { fabric_storage_placement, FabricStoragePlacement, FabricStoragePlaced, FabricStorageUnplaced, fabric_storage_door_socket }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageBindingUnplaced, FabricStorageBindingRefused, FabricStorageDoorSocket, FabricStorageServed }
+
+fn fabric_storage_binding_for(placement: FabricStoragePlacement, executor: HostIdentity) -> FabricStorageBinding {
+  match placement {
+    FabricStorageUnplaced => FabricStorageBindingUnplaced
+    FabricStoragePlaced { host: h, store_root: _, endpoint: e } =>
+      if host_identity_eq(a: h, b: executor) {
+        FabricStorageDoorSocket { socket: fabric_storage_door_socket(), route_prefix: fabric_storage_route_prefix as NonEmptyStr }
+      } else { FabricStorageServed { endpoint: e } }
+  }
+}
+
+// Protected service writers retain their signed HTTPS route on every host. The proxy now
+// reaches the same restricted socket, so placed-host writers cannot bypass transport admission.
+// In particular a root controller is not misclassified as a local non-proxy peer: its actual
+// tailnet login must be observed and admitted at the proxy boundary before commissioning.
+fn fabric_state_storage_binding() -> FabricStorageBinding {
+  match fabric_storage_placement() {
+    FabricStorageUnplaced => FabricStorageBindingUnplaced
+    FabricStoragePlaced { host: _, store_root: _, endpoint } => FabricStorageServed {
+      endpoint: concat(endpoint as String, fabric_storage_state_suffix) as NonEmptyStr,
+    }
+  }
+}

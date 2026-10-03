@@ -22,7 +22,7 @@ import v2.workflow.floor_pure_producer_share {
   cross_claim_share_derivation_reconciles, derived_share_producers
 }
 import std.computation_identity { ComputationIdentity, NormalizedIdentical, IdentityUnknown, MissingConcept }
-import v2.std.collection { List }
+import std.types { List }
 import v2.std.algebra { list_map }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

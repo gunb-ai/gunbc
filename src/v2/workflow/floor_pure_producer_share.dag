@@ -1,6 +1,6 @@
 module v2.workflow.floor_pure_producer_share
 
-import v2.std.collection { List }
+import std.types { List }
 import std.computation_identity { ComputationIdentity, identity_permits_share }
 import std.cache_interface {
   ByteCapacity, CapacityBounded, ExactLimit, ProviderRetention, ReleasedAtProviderScopeExit,
@@ -15,7 +15,7 @@ import std.materialization_ladder {
   AcceptedEffectIsTheUse, RefusedNatureConflict
 }
 import std.measure { byte_size }
-import v2.std.algebra { list_flat_map, list_map }
+import v2.std.algebra { any, list_flat_map, list_map }
 
 // THE CROSS-CLAIM PURE-PRODUCER SHARE -- which pure computations the required floor may fill
 // once and serve to every planned claim that demands them.
