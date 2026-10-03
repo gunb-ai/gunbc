@@ -809,6 +809,11 @@ import v2.std.collection { List }
 // production assembly route plus infer. The record fold's producer serves three claims (a record of two Bools and
 // the supplied-tree control's reason); the other three each return one Symbol. WARM: one assembly is more than
 // one claim's budget.
+// THE value_base_projection PROGRAMS ARE ASSEMBLED ONCE EACH. gunbc#13053's floor refused its four rows
+// ENROLMENT-MARGIN-REFUSED (re-derive: that run's lines): each assembled a one-module source through
+// tpb_assemble and inspected one Bool. The rows now read three nullary producers, one per program -- the
+// call-projection program's producer serving two rows -- whose values are a record of two Bools and two
+// Bools. WARM: one assembly is more than one claim's budget.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.parameter_reference.pr_program_parameter_paths",
   "v2.test.claim.parameter_reference.pr_program_grounding",
@@ -1443,7 +1448,10 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.compiler.infer_fold_member_instance.fmi_record_fold_reading",
   "v2.test.claim.compiler.infer_fold_member_instance.fmi_undeclared_field_reason",
   "v2.test.claim.compiler.infer_fold_member_instance.fmi_sum_fold_reason",
-  "v2.test.claim.compiler.infer_fold_member_instance.fmi_body_not_carrier_reason"
+  "v2.test.claim.compiler.infer_fold_member_instance.fmi_body_not_carrier_reason",
+  "v2.test.claim.value_base_projection.vbp_call_projection_reading",
+  "v2.test.claim.value_base_projection.vbp_field_spelled_like_a_param_keeps_field",
+  "v2.test.claim.value_base_projection.vbp_undeclared_field_is_carried"
 ]
 
 // grammar_relation_row_for_emitted HAS NOW BEEN MEASURED ON THE THIRD CONJUNCT, AND IT PASSES.
