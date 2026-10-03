@@ -397,6 +397,7 @@ test fn origin_write_target_refuses_while_the_write_credential_is_unminted() -> 
       },
       write_credential: OriginCredentialUnminted {
         mint_entry: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint_run", decl_name: "run_object_write"),
+        secret_id: "witness-write",
       },
     },
   }

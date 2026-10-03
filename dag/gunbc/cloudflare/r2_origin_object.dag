@@ -162,7 +162,7 @@ fn resolve_origin_target_under(
           OriginTargetRefused { cause: concat("NO BUCKET ALLOCATED FOR ", bucket_purpose_key(purpose: purpose)) as NonEmptyStr }
         R2OriginAllocated { bucket: bucket } =>
           match origin_credential_for(direction: direction, bucket: bucket) {
-            OriginCredentialUnminted { mint_entry: entry } =>
+            OriginCredentialUnminted { mint_entry: entry, secret_id: _ } =>
               OriginTargetRefused {
                 cause: join([
                   "THE ORIGIN'S ", origin_direction_word(direction: direction),
