@@ -1351,7 +1351,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.body_cast_node.bcn_refinement_of_refinement_as_its_carrier",
   "v2.test.claim.value_base_projection.vbp_call_projection_reading",
   "v2.test.claim.value_base_projection.vbp_field_spelled_like_a_param_keeps_field",
-  "v2.test.claim.value_base_projection.vbp_undeclared_field_is_counted"
+  "v2.test.claim.value_base_projection.vbp_undeclared_field_is_carried"
 ]
 
 // grammar_relation_row_for_emitted HAS NOW BEEN MEASURED ON THE THIRD CONJUNCT, AND IT PASSES.
