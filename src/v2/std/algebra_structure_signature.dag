@@ -2,9 +2,10 @@ module v2.std.algebra_structure_signature
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.algebra { algebra_empty_conj }
 import v2.std.arrow_signature { anonymous_signature_arrow }
-import v2.std.node_query { binder_edge }
+import v2.std.node_query { NamedChildFound, binder_edge, binder_node_parts, named_child_lookup }
 import v2.std.logic { bool_node }
-import v2.std.node { Atom, Conj, Disj, Edge, Authored, Node, TypeNode }
+import v2.std.node { Atom, Conj, Disj, Edge, Authored, Node, Symbol, TypeNode, content_hash }
+import v2.std.optional { Absent, Present }
 
 // THE ALGEBRA'S STRUCTURE SIGNATURES AS NODES: each algebraic structure std.algebra declares (magma
 // through boolean algebra, equivalence, the free monoid) projected to the TypeNode its instances
@@ -262,6 +263,45 @@ fn algebra_inhabitance_node(algebra: Node, inhabitant: Node) -> Node {
     ],
     occurrence_id: OccurrenceSynthetic
 }
+}
+
+// WHICH OPERATION FIELDS A STRUCTURE DECLARES, read off the signature this module builds: a structure is a
+// Conj of binder edges, and a binder whose type is itself a structure -- ordered_ring's ^ordered_ring_field_ring,
+// boolean_algebra's ^boolean_algebra_field_bounded_lattice -- composes that structure's fields into its own. An
+// OPERATION's type (an Arrow from algebra_binary_fn_node / algebra_unary_fn_node) and the inhabitant are not
+// structures and are never entered, so a name occurring inside an operation's signature or inside the carrier
+// is not a declared field. This is the one reading of "the structure declares field F"; a consumer asks it
+// rather than searching the node.
+fn algebra_inhabitance_declares_field(inhabitance: Node, field: Symbol) -> Bool {
+  match named_child_lookup(root: inhabitance, name: ^algebra_edge) {
+    NamedChildFound { target: algebra } =>
+      match named_child_lookup(root: inhabitance, name: ^inhabitant_edge) {
+        NamedChildFound { target: inhabitant } => algebra_structure_declares_field(structure: algebra, inhabitant: inhabitant, field: field)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn algebra_structure_declares_field(structure: Node, inhabitant: Node, field: Symbol) -> Bool {
+  match structure.kind {
+    TypeNode { connective: Conj } =>
+      if content_hash(n: structure).digest == content_hash(n: inhabitant).digest {
+        false
+      } else {
+        fold(structure.children, init: false, f: fn(acc, e) {
+          acc || match e.label {
+            Authored { name: name } =>
+              name == field || match binder_node_parts(n: e.target) {
+                Present { value: parts } => algebra_structure_declares_field(structure: parts.type_node, inhabitant: inhabitant, field: field)
+                Absent => false
+              }
+            _ => false
+          }
+        })
+      }
+    _ => false
+  }
 }
 
 fn magma_node(inhabitant: Node) -> Node {
