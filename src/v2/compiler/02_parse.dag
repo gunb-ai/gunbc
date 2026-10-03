@@ -2340,7 +2340,10 @@ fn expr_first_fold_from_prepared(
 // and only when G is a PLAIN guard (lookahead_guard_strings): a finite set of token strings whose PEG
 // success is membership. Where one position of a prefix is a whole token class and G names one word
 // of it, the class is narrowed to the class less that word -- the k=1 shape
-// `!('none' | 'opaque') type_list`. Every undecidable arm -- a cycle without consumption, a missing
+// `!('none' | 'opaque') type_list`. The guard is also carried on the prefixes it heads, and a pair of
+// prefixes is disjoint when one alternative's prefix is covered by the other's guard: the guarded
+// alternative then fails on every input that prefix denotes, however short its own prefix is (the
+// `name: e | !(name :) e` shape, whose positional side can be one token). Every undecidable arm -- a cycle without consumption, a missing
 // production, a guard that is not plain, a guard string longer than the prefix it would cover --
 // answers by subtracting nothing or by LookaheadUnknown, and Unknown keeps the row. So the proof
 // removes rows and never widens: a guard that misses one prefix is the near miss that keeps its row.
@@ -2360,9 +2363,12 @@ type LookaheadKey {
 }
 
 // `complete`: the alternative can END after `keys`, so a following sequence element extends it.
+// `guards`: the strings of the proved-plain not-predicates standing at the prefix's first token. An
+// input that begins with one of them is refused by this alternative, whatever follows.
 type LookaheadPrefix {
   keys: List<LookaheadKey>
   complete: Bool
+  guards: List<List<FirstKey>>
 }
 
 type LookaheadPrefixes
@@ -2376,13 +2382,14 @@ type GuardCoverage
 
 fn lookahead_prefix_keys(p: LookaheadPrefix) -> List<LookaheadKey> { p.keys }
 fn lookahead_prefix_complete(p: LookaheadPrefix) -> Bool { p.complete }
+fn lookahead_prefix_guards(p: LookaheadPrefix) -> List<List<FirstKey>> { p.guards }
 fn lookahead_production_expression(p: GrammarProduction) -> GrammarExpr { p.expression }
 
 fn lookahead_none() -> LookaheadPrefixes { LookaheadKnown { prefixes: std.algebra.Empty } }
 
 fn lookahead_empty_only() -> LookaheadPrefixes {
   LookaheadKnown {
-    prefixes: Cons { head: LookaheadPrefix { keys: std.algebra.Empty, complete: true }, tail: std.algebra.Empty }
+    prefixes: Cons { head: LookaheadPrefix { keys: std.algebra.Empty, complete: true, guards: std.algebra.Empty }, tail: std.algebra.Empty }
   }
 }
 
@@ -2410,7 +2417,8 @@ fn lookahead_token(key: FirstKey, head_keys: Optional<List<FirstKey>>) -> Lookah
       prefixes: Cons {
         head: LookaheadPrefix {
           keys: Cons { head: LookaheadKey { key: key, excluded: std.algebra.Empty }, tail: std.algebra.Empty },
-          complete: true
+          complete: true,
+          guards: std.algebra.Empty
         },
         tail: std.algebra.Empty
       }
@@ -2430,7 +2438,8 @@ fn lookahead_from_first(first: List<FirstKey>, nullable: Bool) -> LookaheadPrefi
         xs: acc,
         item: LookaheadPrefix {
           keys: Cons { head: LookaheadKey { key: k, excluded: std.algebra.Empty }, tail: std.algebra.Empty },
-          complete: false
+          complete: false,
+          guards: std.algebra.Empty
         }
       )
     }
@@ -2526,6 +2535,22 @@ fn lookahead_nonterminal_expand(
   }
 }
 
+fn lookahead_leading_guard(expr: GrammarExpr) -> Optional<GrammarExpr> {
+  match expr {
+    NotPredicate { element: guard } => Present { value: guard }
+    Terminal { token_class: _, stamp: _ } => Absent
+    LiteralTerminal { token_class: _, lexeme: _ } => Absent
+    Nonterminal { production: _ } => Absent
+    Sequence { left: _, right: _ } => Absent
+    Choice { left: _, right: _ } => Absent
+    Optional { element: _ } => Absent
+    Repeat { element: _ } => Absent
+    Expect { element: _, reason: _ } => Absent
+    RefuseOnMatch { element: _, reason: _ } => Absent
+    AfterLineBreak { element: _ } => Absent
+  }
+}
+
 fn lookahead_sequence(
   left: GrammarExpr,
   right: GrammarExpr,
@@ -2534,14 +2559,14 @@ fn lookahead_sequence(
   visiting: List<Symbol>,
   ctx: LookaheadContext
 ) -> LookaheadPrefixes {
-  match left {
-    NotPredicate { element: guard } =>
+  match lookahead_leading_guard(expr: left) {
+    Present { value: guard } =>
       lookahead_subtract_guard(
         prefixes: lookahead_prefixes(expr: right, depth: depth, head_keys: head_keys, visiting: visiting, ctx: ctx),
         guard: guard,
         ctx: ctx
       )
-    _ =>
+    Absent =>
       lookahead_extend(
         prefixes: lookahead_prefixes(expr: left, depth: depth, head_keys: head_keys, visiting: visiting, ctx: ctx),
         right: right,
@@ -2553,7 +2578,7 @@ fn lookahead_sequence(
   }
 }
 
-fn lookahead_prepend(keys: List<LookaheadKey>, prefixes: LookaheadPrefixes) -> LookaheadPrefixes {
+fn lookahead_prepend(keys: List<LookaheadKey>, guards: List<List<FirstKey>>, prefixes: LookaheadPrefixes) -> LookaheadPrefixes {
   match prefixes {
     LookaheadUnknown => LookaheadUnknown
     LookaheadKnown { prefixes: ps } =>
@@ -2566,7 +2591,8 @@ fn lookahead_prepend(keys: List<LookaheadKey>, prefixes: LookaheadPrefixes) -> L
               xs: acc,
               item: LookaheadPrefix {
                 keys: list_append(left: keys, right: lookahead_prefix_keys(p: q)),
-                complete: lookahead_prefix_complete(p: q)
+                complete: lookahead_prefix_complete(p: q),
+                guards: guards
               }
             )
           }
@@ -2575,8 +2601,10 @@ fn lookahead_prepend(keys: List<LookaheadKey>, prefixes: LookaheadPrefixes) -> L
   }
 }
 
-fn lookahead_truncated(keys: List<LookaheadKey>) -> LookaheadPrefixes {
-  LookaheadKnown { prefixes: Cons { head: LookaheadPrefix { keys: keys, complete: false }, tail: std.algebra.Empty } }
+fn lookahead_truncated(prefix: LookaheadPrefix) -> LookaheadPrefixes {
+  LookaheadKnown {
+    prefixes: Cons { head: LookaheadPrefix { keys: prefix.keys, complete: false, guards: prefix.guards }, tail: std.algebra.Empty }
+  }
 }
 
 // Extend each prefix that ended early by the prefixes of what follows. The head restriction and the
@@ -2596,11 +2624,12 @@ fn lookahead_extend_one(
     } else {
       lookahead_prepend(
         keys: prefix.keys,
+        guards: prefix.guards,
         prefixes: lookahead_prefixes(expr: right, depth: depth - used, head_keys: Absent, visiting: std.algebra.Empty, ctx: ctx)
       )
     }
   } else {
-    lookahead_truncated(keys: prefix.keys)
+    lookahead_truncated(prefix: prefix)
   }
 }
 
@@ -2658,10 +2687,11 @@ fn lookahead_repeat_one(prefix: LookaheadPrefix, element: GrammarExpr, depth: In
     if prefix.complete && used < depth {
       lookahead_prepend(
         keys: prefix.keys,
+        guards: prefix.guards,
         prefixes: lookahead_repeat(element: element, depth: depth - used, head_keys: Absent, visiting: std.algebra.Empty, ctx: ctx)
       )
     } else {
-      lookahead_truncated(keys: prefix.keys)
+      lookahead_truncated(prefix: prefix)
     }
   }
 }
@@ -2720,7 +2750,12 @@ fn lookahead_guard_strings(expr: GrammarExpr, visiting: List<Symbol>, ctx: Looka
           Absent => Absent
         }
       }
-    _ => Absent
+    Optional { element: _ } => Absent
+    Repeat { element: _ } => Absent
+    Expect { element: _, reason: _ } => Absent
+    RefuseOnMatch { element: _, reason: _ } => Absent
+    AfterLineBreak { element: _ } => Absent
+    NotPredicate { element: _ } => Absent
   }
 }
 
@@ -2749,7 +2784,13 @@ fn lookahead_guard_token_set(expr: GrammarExpr, visiting: List<Symbol>, ctx: Loo
           Absent => Absent
         }
       }
-    _ => Absent
+    Sequence { left: _, right: _ } => Absent
+    Optional { element: _ } => Absent
+    Repeat { element: _ } => Absent
+    Expect { element: _, reason: _ } => Absent
+    RefuseOnMatch { element: _, reason: _ } => Absent
+    AfterLineBreak { element: _ } => Absent
+    NotPredicate { element: _ } => Absent
   }
 }
 
@@ -2760,14 +2801,34 @@ fn lookahead_subtract_guard(prefixes: LookaheadPrefixes, guard: GrammarExpr, ctx
       match lookahead_guard_strings(expr: guard, visiting: std.algebra.Empty, ctx: ctx) {
         Absent => LookaheadKnown { prefixes: ps }
         Present { value: strings } =>
-          LookaheadKnown {
+          lookahead_attach_guards(
             prefixes: fold_list(
               xs: strings,
               empty: ps,
               cons: fn(acc, g) { lookahead_subtract_string(prefixes: acc, guard: g) }
-            )
-          }
+            ),
+            strings: strings
+          )
       }
+  }
+}
+
+fn lookahead_attach_guards(prefixes: List<LookaheadPrefix>, strings: List<List<FirstKey>>) -> LookaheadPrefixes {
+  LookaheadKnown {
+    prefixes: fold_list(
+      xs: prefixes,
+      empty: std.algebra.Empty,
+      cons: fn(acc, p) {
+        list_snoc_item(
+          xs: acc,
+          item: LookaheadPrefix {
+            keys: lookahead_prefix_keys(p: p),
+            complete: lookahead_prefix_complete(p: p),
+            guards: list_append(left: lookahead_prefix_guards(p: p), right: strings)
+          }
+        )
+      }
+    )
   }
 }
 
@@ -2779,7 +2840,10 @@ fn lookahead_subtract_string(prefixes: List<LookaheadPrefix>, guard: List<FirstK
       match lookahead_guard_coverage(keys: lookahead_prefix_keys(p: p), guard: guard) {
         GuardCoversAll => acc
         GuardCoversButOneWord { keys: narrowed } =>
-          list_snoc_item(xs: acc, item: LookaheadPrefix { keys: narrowed, complete: lookahead_prefix_complete(p: p) })
+          list_snoc_item(
+            xs: acc,
+            item: LookaheadPrefix { keys: narrowed, complete: lookahead_prefix_complete(p: p), guards: lookahead_prefix_guards(p: p) }
+          )
         GuardMisses => list_snoc_item(xs: acc, item: p)
       }
     }
@@ -2894,21 +2958,37 @@ fn lookahead_prefix_keys_overlap(left: List<LookaheadKey>, right: List<Lookahead
   }
 }
 
+// One alternative's prefix is refused by the other's guard when a guard string covers it: every
+// input that begins with the prefix begins with that string. This is the ruling's direction -- the
+// guarded alternative fails on every input the other alternative's prefix denotes -- and it holds
+// whatever length the guarded alternative's own prefix has.
+fn lookahead_prefix_refused_by(prefix: LookaheadPrefix, guards: List<List<FirstKey>>) -> Bool {
+  any(
+    xs: guards,
+    predicate: fn(g) {
+      match lookahead_guard_coverage(keys: lookahead_prefix_keys(p: prefix), guard: g) {
+        GuardCoversAll => true
+        GuardCoversButOneWord { keys: _ } => false
+        GuardMisses => false
+      }
+    }
+  )
+}
+
+fn lookahead_prefix_pair_overlaps(left: LookaheadPrefix, right: LookaheadPrefix) -> Bool {
+  !is_empty(xs: lookahead_prefix_keys(p: left))
+    && !is_empty(xs: lookahead_prefix_keys(p: right))
+    && lookahead_prefix_keys_overlap(left: lookahead_prefix_keys(p: left), right: lookahead_prefix_keys(p: right))
+    && !lookahead_prefix_refused_by(prefix: left, guards: lookahead_prefix_guards(p: right))
+    && !lookahead_prefix_refused_by(prefix: right, guards: lookahead_prefix_guards(p: left))
+}
+
 // The empty prefix (a nullable alternative) is the both-nullable row's question, not this one's, so
 // it is not compared here -- exactly as the single-token FIRST check never counted it.
 fn lookahead_prefix_sets_overlap(left: List<LookaheadPrefix>, right: List<LookaheadPrefix>) -> Bool {
   any(
     xs: left,
-    predicate: fn(l) {
-      !is_empty(xs: lookahead_prefix_keys(p: l))
-        && any(
-          xs: right,
-          predicate: fn(r) {
-            !is_empty(xs: lookahead_prefix_keys(p: r))
-              && lookahead_prefix_keys_overlap(left: lookahead_prefix_keys(p: l), right: lookahead_prefix_keys(p: r))
-          }
-        )
-    }
+    predicate: fn(l) { any(xs: right, predicate: fn(r) { lookahead_prefix_pair_overlaps(left: l, right: r) }) }
   )
 }
 

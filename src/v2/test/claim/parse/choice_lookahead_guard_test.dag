@@ -81,6 +81,31 @@ test fn non_plain_guard_keeps_the_row() -> Bool {
   clg_rows(guard: clg_seq(left: Optional { element: clg_tok(c: ^clg_a) }, right: clg_tok(c: ^clg_colon))) == 1
 }
 
+// `a : x | !(a :) a b?`: the guarded side can be the one token `a`, shorter than the guard, so
+// no subtraction from its own prefixes can clear the row. The guard covers the OTHER side's `a :`,
+// and that is the proof; the near miss `!(a x)` covers nothing and keeps the row.
+fn clg_short_rows(guard: GrammarExpr) -> Int {
+  grammar_choice_ambiguity_count(
+    root: clg_root(
+      choice: Choice {
+        left: clg_seq(left: clg_named(), right: clg_tok(c: ^clg_x)),
+        right: clg_seq(
+          left: NotPredicate { element: guard },
+          right: clg_seq(left: clg_tok(c: ^clg_a), right: Optional { element: clg_tok(c: ^clg_b) })
+        )
+      }
+    )
+  )
+}
+
+test fn guard_covering_the_other_side_clears_a_short_guarded_side() -> Bool {
+  clg_short_rows(guard: clg_named()) == 0
+}
+
+test fn guard_covering_neither_side_keeps_the_short_row() -> Bool {
+  clg_short_rows(guard: clg_seq(left: clg_tok(c: ^clg_a), right: clg_tok(c: ^clg_x))) == 1
+}
+
 // The k=1 word shape (op_requires): 'none' | 'opaque' | !('none' | 'opaque') ident.
 fn clg_words_guarded(guard: GrammarExpr) -> Int {
   grammar_choice_ambiguity_count(
