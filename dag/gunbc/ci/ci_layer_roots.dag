@@ -960,6 +960,21 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
+    pattern: "login_callback_hold_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "login_transaction_consume_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "fabric_state_namespace_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
     pattern: "pair_serving_authority_log_real_execution_witness_test.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_reason,
@@ -1051,6 +1066,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: excl_manager_unaskable_dissolve},
   WitnessExclusionRow {
     pattern: "attempt_lifecycle_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "session_placement_wet_witness_test.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},

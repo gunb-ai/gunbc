@@ -85,12 +85,12 @@ use crate::v1_std_core::{
     build_newline_index, byte_to_line_col, diagnostic_to_message, diagnostic_to_span,
     empty_intern_table, empty_node_list, expr_call_func_at, expr_method_name_at, expr_var_name_at,
     field_access_base, field_access_field_at, field_init_node_name_at, field_init_node_value,
-    has_child_named, inferred_to_node, intern, is_discovery_corpus_blocking_diagnostic,
-    is_error_diagnostic, is_interpreter_blocking_diagnostic, let_binding_name_at, let_value,
-    make_error_node, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
-    module_items, no_span, param_node_name_at, param_node_type_expr, Cardinality,
-    CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable,
-    MatchPattern, NewlineIndex, Node,
+    has_child_named, inferred_to_node, intern, is_error_diagnostic,
+    is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, make_error_node,
+    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span,
+    param_node_name_at, param_node_type_expr, Cardinality, CompilerDiagnostic, Connective,
+    ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable, MatchPattern, NewlineIndex,
+    Node,
 };
 use serde::Serialize;
 
@@ -123,7 +123,7 @@ pub fn compile_clean_unlisted_import_use_blocks_from_policy() -> Result<bool, St
         .map_err(|e| format!("compile_clean_diagnostic_policy resolve: {e}"))?;
     let sources =
         policy_entry_closure_sources(&roots, &entry, "gunbc.compile_clean_diagnostic_policy")?;
-    let (graph, indices) = resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict)
+    let (graph, indices) = resolved_graph_from_sources(sources)
         .map_err(|e| format!("compile_clean_diagnostic_policy resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
     match v1_interpreter::run_in_context_with_args(
@@ -942,7 +942,7 @@ fn compile_clean_diagnostic_policy_snapshot() -> Result<DiagnosticPolicySnapshot
         }
         census_identity_digest(&parts)
     };
-    let (graph, indices) = resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict)
+    let (graph, indices) = resolved_graph_from_sources(sources)
         .map_err(|e| format!("compile_clean_diagnostic_policy resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
     let unlisted_import_use_blocks = match v1_interpreter::run_in_context_with_args(
