@@ -23,6 +23,7 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
+  NonEmptyDiagnostics,
   NodeLocus,
   Outcome,
   Rejected
@@ -34,7 +35,9 @@ import v2.std.node {
   Symbol,
   symbol_eq,
   Conj,
+  Authored,
   Edge,
+  Positional,
   Node,
   NodeFold,
   TypeNode,
@@ -43,12 +46,15 @@ import v2.std.node {
   fold_node
 }
 import v2.std.node_query { node_positional_child_targets }
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.qualified_name { declaration_reference_node }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.collection { List, list_at_optional }
 import v2.std.integer { Int, integer_signed_i32_le_bytes_to_int }
 
 import v2.std.runtime { RuntimePrimitive, RuntimeValue }
-import v2.std.algebra { fold_list }
+import v2.std.algebra { contains, fold_list, list_map }
 import v2.std.qualified_name {
   parameter_reference_node, qualified_name_last_segment,
   declaration_reference_path_optional,
@@ -99,17 +105,6 @@ fn cref_assemble(src: String) -> Outcome<ResolvedTree> {
 // empty environment and would refuse for a reason that is not this subject.
 fn cref_source() -> Outcome<ResolvedTree> {
   cref_assemble(src: "module p\n\nfn callee(only_arg: Int) -> Int {\n  only_arg\n}\n\nfn consumer() -> Int {\n  callee(only_arg: 3)\n}\n")
-}
-
-fn cref_inferred() -> Optional<InferredTree> {
-  match cref_source() {
-    Rejected { diagnostics: _ } => optional_absent()
-    Accepted { value: resolved, diagnostics: _ } =>
-      match infer(tree: resolved) {
-        Rejected { diagnostics: _ } => optional_absent()
-        Accepted { value: inferred, diagnostics: _ } => optional_present(value: inferred)
-      }
-  }
 }
 
 // THE CALL IS SELECTED BY ITS CALLEE'S FULL DECLARING PATH, THROUGH THE PRODUCTION READER. What stood
@@ -214,38 +209,8 @@ fn cref_diagnostic_node_optional(d: Diagnostic) -> Optional<Node> {
   }
 }
 
-fn cref_eval_of_the_call() -> Optional<Outcome<RuntimeValue>> {
-  match cref_inferred() {
-    Absent => optional_absent()
-    Present { value: inferred } =>
-      match cref_the_call_to(root: inferred.root, name: ^callee) {
-        Absent => optional_absent()
-        Present { value: call } =>
-          optional_present(
-            value: eval(
-              tree: inferred,
-              interpretation: v2_evaluator_interpretation(),
-              inputs: inputs_root_only(root: call)
-            )
-          )
-      }
-  }
-}
-
-fn cref_zero_arg_source() -> Outcome<ResolvedTree> {
-  cref_assemble(src: "module p\n\nfn callee() -> Int {\n  7\n}\n\nfn consumer() -> Int {\n  callee()\n}\n")
-}
-
-fn cref_one_arg_constant_body_source() -> Outcome<ResolvedTree> {
-  cref_assemble(src: "module p\n\nfn callee(only_arg: Int) -> Int {\n  7\n}\n\nfn consumer() -> Int {\n  callee(only_arg: 3)\n}\n")
-}
-
 fn cref_bool_pair_source() -> Outcome<ResolvedTree> {
   cref_assemble(src: "module p\n\nfn truth(only_arg: Int) -> Bool {\n  true\n}\n\nfn consumer() -> Bool {\n  truth(only_arg: 3)\n}\n")
-}
-
-fn cref_unresolved_callee_source() -> Outcome<ResolvedTree> {
-  cref_assemble(src: "module p\n\nfn consumer() -> Int {\n  absent_callee(only_arg: 3)\n}\n")
 }
 
 fn cref_inferred_of(o: Outcome<ResolvedTree>) -> Optional<InferredTree> {
@@ -339,36 +304,101 @@ fn cref_reading_of_outcome(declaration_carried: Bool, outcome: Outcome<RuntimeVa
   }
 }
 
-fn cref_source_reading() -> CrefReading {
-  cref_reading(o: cref_source(), name: ^callee)
+// ONE PROGRAM, ONE FRONT END, ONE INFER, READ BY EVERY POSITIVE ROW. Each callee shape this file
+// executes is declared ONCE in one module beside the consumer that calls it, so the whole set pays one
+// assemble -> resolve -> infer instead of one per shape. DESIGN section 2's master move, measured: lowering
+// costs ~150-220k eval steps PER FILE with no fixed part (gunbc#12506's floor measured each fixture here at
+// 250-335k), so seven single-shape modules were seven copies of the same front end, and the 72.3k
+// new-witness margin refused every row that owned one alone.
+//
+// EACH CALL IS LOCATED INSIDE ITS OWN CONSUMER, AND BY ITS CALLEE'S FULL PATH. A module that declares seven
+// callees makes a whole-root search ambiguous by construction -- the identity callee is called TWICE, from
+// three_consumer and eight_consumer -- so the locator first takes the consumer declaration by name and only
+// then requires exactly one call to the callee path inside it. That is stricter than the per-module locator
+// it replaces, which could not tell two calls of one callee apart at all.
+//
+// NOTHING IS SUPPLIED: cref_program_reading runs the real path, and the floor serves it to every row that
+// reads it (v2.workflow.floor_pure_producer_share, shared by declared demand). The reading carries decided,
+// portable values only. Each row keeps its own red: the rows read DIFFERENT calls, each with its own
+// distinguishing value (7 from a constant body, 3 and 8 from the identity, the Bool pair's distinct bytes),
+// so a regression in one callee shape reds exactly the row that names it.
+data cref_program_text: String = "module p\n\nfn callee(only_arg: Int) -> Int {\n  only_arg\n}\n\nfn consumer() -> Int {\n  callee(only_arg: 3)\n}\n\nfn zero_callee() -> Int {\n  7\n}\n\nfn zero_consumer() -> Int {\n  zero_callee()\n}\n\nfn constant_callee(only_arg: Int) -> Int {\n  7\n}\n\nfn constant_consumer() -> Int {\n  constant_callee(only_arg: 3)\n}\n\nfn truth(only_arg: Int) -> Bool {\n  true\n}\n\nfn truth_consumer() -> Bool {\n  truth(only_arg: 3)\n}\n\nfn falsity(only_arg: Int) -> Bool {\n  false\n}\n\nfn falsity_consumer() -> Bool {\n  falsity(only_arg: 3)\n}\n\nfn identity(only_arg: Int) -> Int {\n  only_arg\n}\n\nfn three_consumer() -> Int {\n  identity(only_arg: 3)\n}\n\nfn eight_consumer() -> Int {\n  identity(only_arg: 8)\n}\n"
+
+type CrefProgramReading {
+  parameter_bodied: CrefReading
+  zero_argument: CrefReading
+  constant_body: CrefReading
+  truth: CrefReading
+  falsity: CrefReading
+  identity_three: CrefReading
+  identity_eight: CrefReading
 }
 
-fn cref_zero_arg_reading() -> CrefReading {
-  cref_reading(o: cref_zero_arg_source(), name: ^callee)
+fn cref_unfound() -> CrefReading {
+  CrefReading { call_found: false, declaration_carried: false, executed: false, int_result: optional_absent(), result_bytes: optional_absent() }
 }
 
-fn cref_one_arg_constant_body_reading() -> CrefReading {
-  cref_reading(o: cref_one_arg_constant_body_source(), name: ^callee)
+// The consumer declaration by name, then exactly one call to the callee's full path inside it. The module
+// root is not a Conj keyed by declaration name, so the declaration is the target of the first edge
+// authored with the consumer's name, wherever the module encoding places it; the consumer names are
+// unique in cref_program_text, and a call that is not inside that declaration cannot be selected.
+fn cref_declaration_named(n: Node, name: Symbol) -> Optional<Node> {
+  fold(n.children, init: optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match e.label {
+          Authored { name: k } =>
+            if k == name { optional_present(value: e.target) } else { cref_declaration_named(n: e.target, name: name) }
+          _ => cref_declaration_named(n: e.target, name: name)
+        }
+    }
+  })
 }
 
-fn cref_bool_pair_reading() -> CrefReading {
-  cref_reading(o: cref_bool_pair_source(), name: ^truth)
+fn cref_the_call_in(root: Node, consumer: Symbol, callee: Symbol) -> Optional<Node> {
+  match cref_declaration_named(n: root, name: consumer) {
+    Absent => optional_absent()
+    Present { value: declaration } => cref_the_call_to(root: declaration, name: callee)
+  }
 }
 
-fn cref_bool_false_reading() -> CrefReading {
-  cref_reading(o: cref_bool_false_source(), name: ^falsity)
+fn cref_reading_in(inferred: InferredTree, consumer: Symbol, callee: Symbol) -> CrefReading {
+  match cref_the_call_in(root: inferred.root, consumer: consumer, callee: callee) {
+    Absent => cref_unfound()
+    Present { value: call } =>
+      cref_reading_of_outcome(
+        declaration_carried: cref_call_carries_declaration(inferred: inferred, call: call),
+        outcome: eval(
+          tree: inferred,
+          interpretation: v2_evaluator_interpretation(),
+          inputs: inputs_root_only(root: call)
+        )
+      )
+  }
 }
 
-fn cref_unresolved_callee_reading() -> CrefReading {
-  cref_reading(o: cref_unresolved_callee_source(), name: ^callee)
-}
-
-fn cref_identity_three_reading() -> CrefReading {
-  cref_reading(o: cref_identity_source(lex: "3"), name: ^identity)
-}
-
-fn cref_identity_eight_reading() -> CrefReading {
-  cref_reading(o: cref_identity_source(lex: "8"), name: ^identity)
+fn cref_program_reading() -> CrefProgramReading {
+  match cref_inferred_of(o: cref_assemble(src: cref_program_text)) {
+    Absent => CrefProgramReading {
+      parameter_bodied: cref_unfound(),
+      zero_argument: cref_unfound(),
+      constant_body: cref_unfound(),
+      truth: cref_unfound(),
+      falsity: cref_unfound(),
+      identity_three: cref_unfound(),
+      identity_eight: cref_unfound()
+    }
+    Present { value: inferred } => CrefProgramReading {
+      parameter_bodied: cref_reading_in(inferred: inferred, consumer: ^consumer, callee: ^callee),
+      zero_argument: cref_reading_in(inferred: inferred, consumer: ^zero_consumer, callee: ^zero_callee),
+      constant_body: cref_reading_in(inferred: inferred, consumer: ^constant_consumer, callee: ^constant_callee),
+      truth: cref_reading_in(inferred: inferred, consumer: ^truth_consumer, callee: ^truth),
+      falsity: cref_reading_in(inferred: inferred, consumer: ^falsity_consumer, callee: ^falsity),
+      identity_three: cref_reading_in(inferred: inferred, consumer: ^three_consumer, callee: ^identity),
+      identity_eight: cref_reading_in(inferred: inferred, consumer: ^eight_consumer, callee: ^identity)
+    }
+  }
 }
 
 // ONE READER FOR "WHAT INT DID THIS CALL PRODUCE". cref_executes_to asks it a question and the exact
@@ -396,7 +426,7 @@ fn cref_refusal_reason_is(o: Outcome<ResolvedTree>, wanted: Symbol, name: Symbol
 // THE FIXTURE'S OWN POSITIVE CONTROL, so a red below is a statement about eval and not about an
 // assembly that stopped producing a call. Without it every claim here could pass vacuously.
 test fn cref_the_fixture_yields_a_reference_callee_call_holds() -> Bool {
-  cref_source_reading().call_found
+  cref_program_reading().parameter_bodied.call_found
 }
 
 // THE DENOTATION REACHES EVAL. Infer records the declaration the guarded index lookup returned, and
@@ -404,20 +434,20 @@ test fn cref_the_fixture_yields_a_reference_callee_call_holds() -> Bool {
 // not only through the execution claims: if this goes red, the reds below are explained by a missing
 // denotation rather than by the dispatch.
 test fn cref_the_reference_facts_carry_their_declaration_holds() -> Bool {
-  cref_source_reading().declaration_carried
+  cref_program_reading().parameter_bodied.declaration_carried
 }
 
 // A NAMED CALL EXECUTES, AND EXECUTES TO ITS CALLEE'S VALUE. The value is asserted rather than mere
 // acceptance: any Int-returning path would satisfy "Accepted" while proving nothing about WHICH
 // declaration ran, and 7 is written only in the callee's body.
 test fn cref_a_zero_argument_named_call_executes_to_its_callee_value_holds() -> Bool {
-  cref_executes_to(r: cref_zero_arg_reading(), n: 7)
+  cref_executes_to(r: cref_program_reading().zero_argument, n: 7)
 }
 
 // THE SAME WITH AN ARGUMENT SUPPLIED, which is a separate fact from the zero-argument case because
 // the argument edge is a separate child of the call.
 test fn cref_a_named_call_with_an_argument_executes_holds() -> Bool {
-  cref_executes_to(r: cref_one_arg_constant_body_reading(), n: 7)
+  cref_executes_to(r: cref_program_reading().constant_body, n: 7)
 }
 
 // PARAMETER BINDING IS NOT YET DEMONSTRATED, AND THIS IS THE CLAIM THAT WOULD DEMONSTRATE IT. Both
@@ -433,7 +463,7 @@ test fn cref_a_named_call_with_an_argument_executes_holds() -> Bool {
 // already did, and infer_declaration_reference_facts reads the declaration from
 // v2.compiler.resolve ResolvedTree resolved_declarations rather than the authored symbol_index.
 test fn cref_a_parameter_bodied_callee_executes_holds() -> Bool {
-  cref_source_reading().executed
+  cref_program_reading().parameter_bodied.executed
 }
 
 // A BOOL-RETURNING CALL STILL REFUSES, AND IT IS A DIFFERENT BOUNDARY FROM THE PARAMETER BODY. This
@@ -445,23 +475,20 @@ test fn cref_a_parameter_bodied_callee_executes_holds() -> Bool {
 // typing fell to the frontier. Reading the RESOLVED declaration answers it, and the same repair is why
 // the Int rows above never separated from this one on their own.
 test fn cref_a_bool_returning_call_executes_holds() -> Bool {
-  cref_bool_pair_reading().executed
+  cref_program_reading().truth.executed
 }
 
 // THE DISCRIMINATING NEGATIVE FOR THE DISPATCH: a callee naming no declaration must refuse rather
 // than execute, fabricate a value, or be looked up as a primitive under a name it does not have.
 // Without this, the repair could have admitted any Conj as a callee and still looked green.
 test fn cref_an_unresolved_callee_does_not_execute_holds() -> Bool {
-  !cref_unresolved_callee_reading().executed
+  contains(xs: cref_unbound_callee_route(), item: ^cref_route_eval_refused, eq: fn(a, b) { a == b })
 }
 
 // AN ARGUMENT-DEPENDENT CALLEE: its body IS its parameter, so its result cannot be produced without
 // consuming the supplied argument. Two different arguments are supplied because ONE would not
 // discriminate -- a callee returning a constant that happened to equal the argument would satisfy a
 // single case.
-fn cref_identity_source(lex: String) -> Outcome<ResolvedTree> {
-  cref_assemble(src: "module p\n\nfn identity(only_arg: Int) -> Int {\n  only_arg\n}\n\nfn consumer() -> Int {\n  identity(only_arg: " + lex + ")\n}\n")
-}
 
 // THE CALL'S RESULT AS AN INT, OR NOTHING. The two identity rows below each assert an EXACT result for
 // ONE argument, so each pays one front-end run where the pair previously paid two apiece: the two
@@ -503,7 +530,7 @@ fn cref_value_int_optional(v: RuntimeValue) -> Optional<Int> {
 // for the other's argument. Asserting the EXACT magnitude is what makes each row carry that on its
 // own: a callee answering any constant fails the row whose argument it does not equal.
 test fn cref_argument_dependent_execution_reaches_the_callee_holds() -> Bool {
-  cref_executes_to(r: cref_identity_three_reading(), n: 3)
+  cref_executes_to(r: cref_program_reading().identity_three, n: 3)
 }
 
 // AND THE SAME CALLEE MUST NOT ANSWER A DIFFERENT ARGUMENT'S VALUE once it executes. THE VACUITY THIS
@@ -517,16 +544,13 @@ test fn cref_argument_dependent_execution_reaches_the_callee_holds() -> Bool {
 // run: the callee executes to 8 and therefore does not answer 3. The negation is carried by the
 // exactness rather than by a second run against the other magnitude.
 test fn cref_the_identity_callee_never_answers_the_other_argument_holds() -> Bool {
-  cref_executes_to(r: cref_identity_eight_reading(), n: 8)
+  cref_executes_to(r: cref_program_reading().identity_eight, n: 8)
 }
 
 // THE BOOL PAIR'S DISTINCT OUTCOMES, the same shape one type further on. A true-returning and a
 // false-returning callee must produce DIFFERENT runtime answers; a repair that made both execute to
 // the same value would satisfy "executes" and destroy the distinction the pair exists for. Enrolled as
 // the refusal it is today, with the comparison written and executed.
-fn cref_bool_false_source() -> Outcome<ResolvedTree> {
-  cref_assemble(src: "module p\n\nfn falsity(only_arg: Int) -> Bool {\n  false\n}\n\nfn consumer() -> Bool {\n  falsity(only_arg: 3)\n}\n")
-}
 
 // FLIPPED: THE PAIR SEPARATES. Two callees differing only in their constant Bool body now execute and
 // produce DIFFERENT values. Execution is asserted on both sides before inequality is read, because two
@@ -545,7 +569,7 @@ fn cref_bool_false_source() -> Outcome<ResolvedTree> {
 // is worth recording because the reverse inference is the tempting one: a row that LOOKS like it calls
 // the front end four times is not evidence that it does, and only the instrument decides.
 test fn cref_the_bool_pair_separates_holds() -> Bool {
-  cref_results_differ(a: cref_bool_pair_reading(), b: cref_bool_false_reading())
+  cref_results_differ(a: cref_program_reading().truth, b: cref_program_reading().falsity)
 }
 
 // THE PRIMITIVE BYTES OF A CALL'S RESULT, for the one claim whose property is that two calls produce
@@ -650,5 +674,41 @@ test fn cref_a_parameter_reference_with_no_binding_refuses_holds() -> Bool {
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: ds } => symbol_eq(a: ds.head.reason, b: ^eval_rejected_parameter_reference_unbound)
+  }
+}
+
+fn cref_unbound_call() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge { label: Positional, target: declaration_reference_node(qn: [^p, ^absent_callee], occurrence_id: OccurrenceSynthetic) }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn cref_reason_list(head: Symbol, ds: NonEmptyDiagnostics) -> List<Symbol> {
+  Cons { head: head, tail: Cons { head: ds.head.reason, tail: list_map(xs: ds.tail, f: fn(d) { d.reason }) } }
+}
+
+fn cref_unbound_callee_route() -> List<Symbol> {
+  match infer(tree: claim_resolved_tree_without_declarations(root: cref_unbound_call())) {
+    Rejected { diagnostics: ds } => cref_reason_list(head: ^cref_route_infer_refused, ds: ds)
+    Accepted { value: _, diagnostics: _ } =>
+      match cref_supplied_inferred() {
+        Absent => [^cref_route_infer_refused]
+        Present { value: inferred } =>
+          match eval(tree: inferred, interpretation: v2_evaluator_interpretation(), inputs: inputs_root_only(root: inferred.root)) {
+            Rejected { diagnostics: ds } => cref_reason_list(head: ^cref_route_eval_refused, ds: ds)
+            Accepted { value: _, diagnostics: _ } => [^cref_route_executed]
+          }
+      }
+  }
+}
+
+fn cref_supplied_inferred() -> Optional<InferredTree> {
+  match infer(tree: claim_resolved_tree_without_declarations(root: cref_unbound_call())) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: inferred, diagnostics: _ } => optional_present(value: inferred)
   }
 }
