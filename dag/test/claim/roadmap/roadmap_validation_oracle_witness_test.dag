@@ -18,6 +18,7 @@ import std.content_hash {
 import extdeps.pin { CrossFamilyIdentityIncomparable }
 import gunbc.git_diff_change_window { git_diff_window_absent_identity }
 import gunbc.roadmap_workflow_progress {
+  AttemptWorktreePresent,
   WorkflowAttemptEvidence,
   workflow_attempt_progress,
 }
@@ -842,6 +843,7 @@ fn verify_lamp_evidence(receipt: String) -> WorkflowAttemptEvidence {
     attempt_key: "feedfacefeedface",
     branch: "dispatch/v1-emitter-fixed-point-afeedfacefeedface",
     modeled_state_present: true,
+    worktree: AttemptWorktreePresent { path: "/wt/fixture" },
     admission_receipt_readable: true,
     admission_receipt: "{\"schema\": \"roadmap-dispatch-environment/v1\", \"status\": \"admitted\"}",
     spawn_failure_present: false,
