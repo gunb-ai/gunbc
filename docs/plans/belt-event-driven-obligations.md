@@ -1,6 +1,6 @@
 # Belt demotion: event-driven attempt obligations
 
-Status: plan. This is the design for items #6 and #4 of [dogfood-route-manual-interventions](dogfood-route-manual-interventions.md), written before the implementation. Owned by the `factory-dogfood-route` lane (gunbc#13077).
+Status: plan. This is the design for items #6 and #4 of [dogfood-route-manual-interventions](dogfood-route-manual-interventions.md), written before the implementation. The model's homes are the factory controller, which owns wake-ups and event delivery, and the factory attempt lifecycle. Any roadmap rows land under those homes. `factory-dogfood-route` (gunbc#13077) only consumes their receipts and carries a gating edge on them.
 
 ## The defect, re-derived (DESIGN §6b)
 
@@ -21,7 +21,11 @@ An obligation is `(kind, subject)`:
 - `kind` is one of `Capture`, `Verify`, `Review`, `Publish`, `ResultReturn` (#13075), `PlacementSettle` (#13074), `DogfoodStartRecord` (#13077), `LaunchAdmission`, and `ServedObservation`.
 - `subject` is the attempt identity (`gunbc.roadmap.roadmap_attempt_occurrence`) for per-attempt kinds, the frontier revision for `LaunchAdmission`, and the instance for `ServedObservation`.
 
-The effect identity is derived from that pair and is never minted fresh. Re-running an obligation therefore re-observes its subject and decides Noop. "Publish attempt X" means "ensure attempt X has exactly one PR".
+The effect identity is derived from that pair and is never minted fresh. Re-running an obligation therefore re-observes its subject and decides Noop. Publish is the one obligation whose effect subject is not the attempt. There is one PR per logical work item (the roadmap node W). A later attempt updates that PR and does not open a second one.
+
+- The attempt identity keys the publication operation and its receipt. It never keys the PR.
+- So the ensure is "work item W has exactly one PR, at attempt A's head", idempotent per (W, A).
+- After an uncertain remote success, the obligation observes W's PR before it creates one.
 
 ### Each obligation is one ensure (convergence, DESIGN §3d)
 
@@ -72,7 +76,10 @@ Each obligation writes its own receipt, a `std.temporal_effect` `EffectStepRecei
 
 1. **Item #6.** Fixture: two attempts, A and B. A's verify is held, its hold is taken and it is running. B has a passing review. Invoking `Publish(B)` and `ServedObservation` completes both, and neither one observes or awaits A. Today that is impossible, because publish runs inside the same function after every verify.
 2. **Item #4.** With no belt timer in deployment membership, a worker unit's exit hook invokes `Capture` and `Verify` for exactly that attempt. The control fails if `ExecStopPost=` is removed from the minted unit.
-3. **Idempotence.** Invoking `Publish(X)` twice yields Noop the second time, decided from the observed PR rather than a local flag.
+3. **Idempotence and PR identity.**
+   - Invoking `Publish(W, A)` twice yields Noop the second time. The Noop is decided from the observed PR, not a local flag.
+   - `Publish(W, A2)` after `Publish(W, A1)` updates W's one PR to A2's head. It does not create a second PR.
+   - When a create succeeded remotely but left no receipt, the next invocation observes the existing PR and does not create another.
 
 ## Sequencing with the open PRs
 
