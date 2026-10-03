@@ -30,6 +30,10 @@ import gunbc.roadmap_belt_actuate {
   IntegrationCoreDeferred, IntegrationCoreUnreadable, IntegrationCoreBlocked, IntegrationCoreIntegrated,
 }
 import gunbc.roadmap_served_observation { served_observation_observe_and_write_for_instance }
+import gunbc.roadmap_dogfood_route {
+  dogfood_start_record_for_instance,
+  DogfoodStartRecorded, DogfoodStartAlreadyRecorded, DogfoodStartNoCompleteAttempt, DogfoodStartRefused,
+}
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.languages.json.emit { json_array }
 import gunbc.roadmap.roadmap_review_function { review_report_json }
@@ -100,7 +104,13 @@ fn belt_run_once_cli_in(spawn_workdir: String) -> ProcessExit {
             r,
           ], ""))
         BeltPassRecorded =>
-          belt_served_observation_exit(instance: instance, observed_at: observed_at)
+          match dogfood_start_record_for_instance(instance: instance) {
+            DogfoodStartRefused { reason: r } =>
+              exit_failure(reason: join(["dogfood start receipt could not be recorded: ", r], ""))
+            DogfoodStartRecorded { receipt: _ } => belt_served_observation_exit(instance: instance, observed_at: observed_at)
+            DogfoodStartAlreadyRecorded => belt_served_observation_exit(instance: instance, observed_at: observed_at)
+            DogfoodStartNoCompleteAttempt => belt_served_observation_exit(instance: instance, observed_at: observed_at)
+          }
         BeltPassDeferred { reason: r } =>
           exit_failure(reason: join(["belt tick receipt write returned deferred: ", r], ""))
         BeltPassRefused { reason: r } =>

@@ -5182,11 +5182,11 @@ fn belt_verification_receipt_source(
   }
 }
 
-fn belt_workflow_progress_for_attempt_ref(
+fn belt_workflow_attempt_evidence_for_ref(
   instance: HostDashboardInstance,
   panes: BeltAttemptPanes,
   attempt: DispatchAttemptRef,
-) -> WorkflowAttemptProgress {
+) -> WorkflowAttemptEvidence {
   let key_read = Filesystem.Read(
     path: dispatch_current_attempt_key_path_for_instance(
       instance: instance,
@@ -5194,7 +5194,7 @@ fn belt_workflow_progress_for_attempt_ref(
     ),
   )
   if !key_read.success || trim(key_read.content) == "" {
-    workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
+    WorkflowAttemptEvidence {
       node_id: attempt.node_id,
       attempt_key: attempt.attempt_key,
       branch: attempt.branch,
@@ -5232,7 +5232,7 @@ fn belt_workflow_progress_for_attempt_ref(
       },
       review: review_report_absent(reason: "this attempt has no modeled state pointer, so neither its attempt key nor its head is established"),
       goal_audit: [],
-    })
+    }
   } else {
     let current_key = trim(key_read.content)
     let node_id = attempt.node_id as gunbc.roadmap_model.RoadmapNodeId
@@ -5373,7 +5373,7 @@ fn belt_workflow_progress_for_attempt_ref(
           head_sha: revision as String,
         )
     }
-    workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
+    WorkflowAttemptEvidence {
       node_id: attempt.node_id,
       attempt_key: current_key,
       branch: dispatch_branch_name(
@@ -5417,7 +5417,37 @@ fn belt_workflow_progress_for_attempt_ref(
       integration: integration_receipt,
       review: review_evidence,
       goal_audit: audit_evidence,
-    })
+    }
+  }
+}
+
+// THE ATTEMPT'S TYPED EVIDENCE AND ITS PROGRESS ARE ONE READ. The evidence (submission capture,
+// verification and publication receipt sources, review report, ...) is the record set the
+// progress projection reduces to segments; exposing it lets a consumer that needs the typed
+// records (gunbc.roadmap_dogfood_route) read the same observation instead of re-reading the files.
+fn belt_workflow_progress_for_attempt_ref(
+  instance: HostDashboardInstance,
+  panes: BeltAttemptPanes,
+  attempt: DispatchAttemptRef,
+) -> WorkflowAttemptProgress {
+  workflow_attempt_progress(evidence: belt_workflow_attempt_evidence_for_ref(instance: instance, panes: panes, attempt: attempt))
+}
+
+type BeltWorkflowAttemptEvidences
+  = WorkflowAttemptEvidencesObserved { evidences: List<WorkflowAttemptEvidence> }
+  | WorkflowAttemptEvidencesRefused { reason: String }
+
+// The current attempt of every node, as typed evidence -- the same population and the same reads
+// as belt_workflow_attempts_observe_scoped over all nodes, before the progress reduction.
+fn belt_workflow_attempt_evidences_observe_for_instance(instance: HostDashboardInstance) -> BeltWorkflowAttemptEvidences {
+  match belt_attempts_observe_for_instance(instance: instance) {
+    AttemptsRefused { reason } => WorkflowAttemptEvidencesRefused { reason: reason }
+    AttemptsObserved { attempts } => {
+      let panes = belt_attempt_panes_observe_for_instance(instance: instance)
+      WorkflowAttemptEvidencesObserved {
+        evidences: map(dispatch_attempt_ref_first_per_node(attempts: attempts), attempt => belt_workflow_attempt_evidence_for_ref(instance: instance, panes: panes, attempt: attempt)),
+      }
+    }
   }
 }
 

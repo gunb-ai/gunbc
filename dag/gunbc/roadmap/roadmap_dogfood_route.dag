@@ -1,26 +1,50 @@
 module gunbc.roadmap_dogfood_route
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.durable_compare_and_set {
+  ExpectSlotAbsent, CasCommitted, CasPreconditionFailed, CasStoreRefused,
+  CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent,
+}
+import gunbc.durable_cas_file_store {
+  DefaultAccessCreateOnly, admit_cas_attempt_for_derived_payload, file_compare_and_set, observe_cas_slot_state,
+  DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
+}
+import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string, json_int }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable,
+  json_field_string, FieldRead, FieldAbsent, FieldMalformed,
+}
 import gunbc.roadmap_workflow_stage {
-  WorkflowSegment, workflow_segment_of_kind,
-  SubmissionWorkflowSegment, PublicationWorkflowSegment, ReviewWorkflowSegment,
   WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete, WorkflowSegmentFailed,
   WorkflowSegmentRefused, WorkflowSegmentStopped,
 }
-import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
+import gunbc.roadmap_workflow_progress { WorkflowAttemptEvidence }
+import gunbc.roadmap.roadmap_submission { SubmissionCaptureObservation, CaptureForHead, CaptureAbsent, CaptureUnreadable }
+import gunbc.roadmap.roadmap_review_function { ReviewReport }
+import gunbc.roadmap_publish {
+  PublicationSubjectObservation, PublicationSubjectObserved, PublicationSubjectUnobserved,
+  publication_evidence_for, EvidenceForSubject, EvidenceAbsent, EvidenceUnreadable, EvidenceForAnotherSubject,
+  ReceiptBound, ReceiptHeadDiverged, ReceiptBindingAmbiguous, ReceiptRemoteBranchAtHeadWithoutPullRequest,
+  ReceiptRemoteBranchHeadDiverged, ReceiptRemoteBranchBindingAmbiguous, ReceiptBranchNotPublished, ReceiptObservationRefused,
+}
 import gunbc.roadmap_dashboard_instance { HostDashboardInstance, srv2_deploy_dashboard_instance }
 import gunbc.roadmap_belt_actuate {
-  BeltWorkflowAttempts, WorkflowAttemptsObserved, WorkflowAttemptsRefused,
-  belt_workflow_attempts_observe_for_instance,
+  BeltWorkflowAttemptEvidences, WorkflowAttemptEvidencesObserved, WorkflowAttemptEvidencesRefused,
+  belt_workflow_attempt_evidences_observe_for_instance, belt_tick_observed_at,
 }
 
 // THE DOGFOOD ROUTE, AS ONE ACCEPTANCE CASE (operator ruling 2026-10-03). A request enters the
-// factory and leaves as an independently reviewed, published candidate, and every stage between is
-// established from a durable record the real route wrote for ONE attempt -- each stage from its OWN
-// record, never two stages from one -- and never from the route being described. The first attempt
-// whose receipt is DogfoodRouteComplete is the dogfood start receipt; attempts operated by hand
-// before the route existed do not qualify, because their records cannot establish the stages that
-// had no producer.
+// factory and leaves as an independently reviewed, published candidate. Every stage is established
+// by its OWN typed record, read from the same evidence observation the dashboard reduces (gunbc.
+// roadmap_belt_actuate belt_workflow_attempt_evidence_for_ref), and the first attempt to complete
+// is recorded once, durably, as the dogfood start receipt.
+//
+// THE ROUTE IS DECLARED IN PRODUCTION ORDER. The belt reviews a head after verification and
+// publishes it only when the review (and goal audit) approved that head (belt_review_admission
+// beside belt_publish_gate), so review precedes publication, and that is the order here. The
+// causal binding is the head: the submission, the review and the publication receipt all speak of
+// the attempt's one worktree head, and the publication evidence is admitted only when its receipt's
+// expected head IS the captured submission's head.
 type DogfoodStage
   = DogfoodRequest
   | DogfoodImmutableSubject
@@ -29,10 +53,10 @@ type DogfoodStage
   | DogfoodIsolatedExecution
   | DogfoodDurableResult
   | DogfoodMetering
+  | DogfoodIndependentReview
+  | DogfoodCandidatePublished
   | DogfoodCleanup
   | DogfoodResultReturned
-  | DogfoodCandidatePublished
-  | DogfoodIndependentReview
 
 fn dogfood_stage_wire(stage: DogfoodStage) -> String {
   match stage {
@@ -43,111 +67,190 @@ fn dogfood_stage_wire(stage: DogfoodStage) -> String {
     DogfoodIsolatedExecution => "isolated-execution"
     DogfoodDurableResult => "durable-result"
     DogfoodMetering => "metering"
+    DogfoodIndependentReview => "independent-review"
+    DogfoodCandidatePublished => "candidate-published"
     DogfoodCleanup => "cleanup"
     DogfoodResultReturned => "result-returned"
-    DogfoodCandidatePublished => "candidate-published"
-    DogfoodIndependentReview => "independent-review"
   }
 }
 
-// THREE READINGS, AND ONLY ONE OF THEM COUNTS. Established carries the evidence that established
-// the stage; Owed is a stage the attempt has not reached or that no producer yet writes, naming
-// what owes it; Refused is a stage whose record exists and says the stage did not hold.
-type DogfoodStageReading
-  = StageEstablished { evidence: String }
-  | StageOwed { owed_by: String }
-  | StageRefused { reason: String }
-
-// ONE FIELD PER STAGE, so a reading set with a stage missing or read twice has no constructor
-// (DESIGN §4b, structurally impossible) -- there is no identity join to check and no stage
-// equality to write.
-type DogfoodStageReadings {
-  request: DogfoodStageReading
-  immutable_subject: DogfoodStageReading
-  shared_computation: DogfoodStageReading
-  placement_grant: DogfoodStageReading
-  isolated_execution: DogfoodStageReading
-  durable_result: DogfoodStageReading
-  metering: DogfoodStageReading
-  cleanup: DogfoodStageReading
-  result_returned: DogfoodStageReading
-  candidate_published: DogfoodStageReading
-  independent_review: DogfoodStageReading
+// ── STAGE-SPECIFIC EVIDENCE ─────────────────────────────────────────────────────────────────────
+//
+// Each established stage carries its own evidence type, constructible only here and only from the
+// producer's decoded record, so one record cannot stand for two stages: a review report cannot be
+// placed where the submission goes, and no caller can mint evidence from prose.
+type SubmissionEvidence sole_constructor {
+  attempt_key: String
+  head_sha: String
+  digest: String
 }
 
+type ReviewEvidence sole_constructor {
+  subject: String
+  plan_revision: String
+}
+
+type PublicationEvidence sole_constructor {
+  head_sha: String
+  pr_number: Int
+  url: String
+}
+
+type StageGap
+  = StageOwed { owed_by: String }
+  | StageRefused { reason: String }
+
+type SubmissionReading
+  = SubmissionEstablished { evidence: SubmissionEvidence }
+  | SubmissionGap { gap: StageGap }
+
+type ReviewReading
+  = ReviewEstablished { evidence: ReviewEvidence }
+  | ReviewGap { gap: StageGap }
+
+type PublicationReading
+  = PublicationEstablished { evidence: PublicationEvidence }
+  | PublicationGap { gap: StageGap }
+
+// A STAGE WITH NO PRODUCER YET HAS NO ESTABLISHED ARM AT ALL. When its producer lands it gains its
+// own evidence type and reading, exactly as the three above; until then nothing can claim it.
+type ProducerPendingReading
+  = ProducerPending { owed_by: String }
+
+// ONE FIELD PER STAGE, each of its own reading type.
+type DogfoodStageReadings {
+  request: ProducerPendingReading
+  immutable_subject: ProducerPendingReading
+  shared_computation: ProducerPendingReading
+  placement_grant: ProducerPendingReading
+  isolated_execution: ProducerPendingReading
+  durable_result: SubmissionReading
+  metering: ProducerPendingReading
+  independent_review: ReviewReading
+  candidate_published: PublicationReading
+  cleanup: ProducerPendingReading
+  result_returned: ProducerPendingReading
+}
+
+// COMPLETE CARRIES THE EVIDENCE, NOT A FLAG. The arm is built only by dogfood_route_receipt, and only
+// when every stage is established -- which, while eight stages have no producer, it cannot be.
 type DogfoodRouteReceipt
-  = DogfoodRouteComplete { attempt_key: String, readings: DogfoodStageReadings }
-  | DogfoodRouteIncomplete { attempt_key: String, owed: List<DogfoodStage>, refused: List<DogfoodStage>, readings: DogfoodStageReadings }
+  = DogfoodRouteComplete { node_id: String, attempt_key: String, submission: SubmissionEvidence, review: ReviewEvidence, publication: PublicationEvidence }
+  | DogfoodRouteIncomplete { node_id: String, attempt_key: String, owed: List<DogfoodStage>, refused: List<DogfoodStage> }
 
 type DogfoodStageGaps {
   owed: List<DogfoodStage>
   refused: List<DogfoodStage>
 }
 
-fn dogfood_stage_gap(acc: DogfoodStageGaps, stage: DogfoodStage, reading: DogfoodStageReading) -> DogfoodStageGaps {
-  match reading {
-    StageEstablished { evidence: _ } => acc
+fn dogfood_gap(acc: DogfoodStageGaps, stage: DogfoodStage, gap: StageGap) -> DogfoodStageGaps {
+  match gap {
     StageOwed { owed_by: _ } => DogfoodStageGaps { owed: concat(acc.owed, [stage]), refused: acc.refused }
     StageRefused { reason: _ } => DogfoodStageGaps { owed: acc.owed, refused: concat(acc.refused, [stage]) }
   }
 }
 
-// The gaps in route order, one step per stage.
-fn dogfood_stage_gaps(r: DogfoodStageReadings) -> DogfoodStageGaps {
-  let g0 = DogfoodStageGaps { owed: [], refused: [] }
-  let g1 = dogfood_stage_gap(acc: g0, stage: DogfoodRequest, reading: r.request)
-  let g2 = dogfood_stage_gap(acc: g1, stage: DogfoodImmutableSubject, reading: r.immutable_subject)
-  let g3 = dogfood_stage_gap(acc: g2, stage: DogfoodSharedComputation, reading: r.shared_computation)
-  let g4 = dogfood_stage_gap(acc: g3, stage: DogfoodPlacementGrant, reading: r.placement_grant)
-  let g5 = dogfood_stage_gap(acc: g4, stage: DogfoodIsolatedExecution, reading: r.isolated_execution)
-  let g6 = dogfood_stage_gap(acc: g5, stage: DogfoodDurableResult, reading: r.durable_result)
-  let g7 = dogfood_stage_gap(acc: g6, stage: DogfoodMetering, reading: r.metering)
-  let g8 = dogfood_stage_gap(acc: g7, stage: DogfoodCleanup, reading: r.cleanup)
-  let g9 = dogfood_stage_gap(acc: g8, stage: DogfoodResultReturned, reading: r.result_returned)
-  let g10 = dogfood_stage_gap(acc: g9, stage: DogfoodCandidatePublished, reading: r.candidate_published)
-  dogfood_stage_gap(acc: g10, stage: DogfoodIndependentReview, reading: r.independent_review)
-}
-
-fn dogfood_route_receipt(attempt_key: String, readings: DogfoodStageReadings) -> DogfoodRouteReceipt {
-  let gaps = dogfood_stage_gaps(r: readings)
-  if length(gaps.owed) == 0 && length(gaps.refused) == 0 {
-    DogfoodRouteComplete { attempt_key: attempt_key, readings: readings }
-  } else {
-    DogfoodRouteIncomplete { attempt_key: attempt_key, owed: gaps.owed, refused: gaps.refused, readings: readings }
+fn dogfood_pending(acc: DogfoodStageGaps, stage: DogfoodStage, r: ProducerPendingReading) -> DogfoodStageGaps {
+  match r {
+    ProducerPending { owed_by: _ } => DogfoodStageGaps { owed: concat(acc.owed, [stage]), refused: acc.refused }
   }
 }
 
-// ── READING THE STAGES THE ROUTE ALREADY RECORDS ────────────────────────────────────────────────
-//
-// A stage with its own durable record today is read off that record's workflow segment, selected by
-// gunbc.roadmap_workflow_stage workflow_segment_of_kind -- the same projection the dashboard and the
-// continuation decision read, so this adds no second reader. Durable result is the SUBMISSION
-// segment: the worker's candidate captured and committed at the head, which is the attempt's
-// result, not verification's verdict on it. Complete establishes; Pending or
-// Active is owed by the attempt itself (not reached yet); Failed, Refused or Stopped is the record
-// saying the stage did not hold. An absent segment is a record defect and refuses.
-fn dogfood_reading_from_segment(segment: WorkflowSegment?) -> DogfoodStageReading {
-  match segment {
-    Absent => StageRefused { reason: "the attempt's workflow projection carries no segment for this stage" }
-    Present { value: s } =>
-      match s.state {
-        WorkflowSegmentComplete => StageEstablished { evidence: s.detail }
-        WorkflowSegmentPending => StageOwed { owed_by: join(["the attempt has not reached this stage: ", s.detail], "") }
-        WorkflowSegmentActive => StageOwed { owed_by: join(["the attempt is in this stage: ", s.detail], "") }
-        WorkflowSegmentFailed => StageRefused { reason: s.detail }
-        WorkflowSegmentRefused => StageRefused { reason: s.detail }
-        WorkflowSegmentStopped => StageRefused { reason: s.detail }
+fn dogfood_route_receipt(node_id: String, attempt_key: String, r: DogfoodStageReadings) -> DogfoodRouteReceipt {
+  let g0 = DogfoodStageGaps { owed: [], refused: [] }
+  let g1 = dogfood_pending(acc: g0, stage: DogfoodRequest, r: r.request)
+  let g2 = dogfood_pending(acc: g1, stage: DogfoodImmutableSubject, r: r.immutable_subject)
+  let g3 = dogfood_pending(acc: g2, stage: DogfoodSharedComputation, r: r.shared_computation)
+  let g4 = dogfood_pending(acc: g3, stage: DogfoodPlacementGrant, r: r.placement_grant)
+  let g5 = dogfood_pending(acc: g4, stage: DogfoodIsolatedExecution, r: r.isolated_execution)
+  let g6 = match r.durable_result {
+    SubmissionEstablished { evidence: _ } => g5
+    SubmissionGap { gap } => dogfood_gap(acc: g5, stage: DogfoodDurableResult, gap: gap)
+  }
+  let g7 = dogfood_pending(acc: g6, stage: DogfoodMetering, r: r.metering)
+  let g8 = match r.independent_review {
+    ReviewEstablished { evidence: _ } => g7
+    ReviewGap { gap } => dogfood_gap(acc: g7, stage: DogfoodIndependentReview, gap: gap)
+  }
+  let g9 = match r.candidate_published {
+    PublicationEstablished { evidence: _ } => g8
+    PublicationGap { gap } => dogfood_gap(acc: g8, stage: DogfoodCandidatePublished, gap: gap)
+  }
+  let g10 = dogfood_pending(acc: g9, stage: DogfoodCleanup, r: r.cleanup)
+  let gaps = dogfood_pending(acc: g10, stage: DogfoodResultReturned, r: r.result_returned)
+  if length(gaps.owed) == 0 && length(gaps.refused) == 0 {
+    match r.durable_result {
+      SubmissionGap { gap: _ } => DogfoodRouteIncomplete { node_id: node_id, attempt_key: attempt_key, owed: gaps.owed, refused: gaps.refused }
+      SubmissionEstablished { evidence: s } =>
+        match r.independent_review {
+          ReviewGap { gap: _ } => DogfoodRouteIncomplete { node_id: node_id, attempt_key: attempt_key, owed: gaps.owed, refused: gaps.refused }
+          ReviewEstablished { evidence: v } =>
+            match r.candidate_published {
+              PublicationGap { gap: _ } => DogfoodRouteIncomplete { node_id: node_id, attempt_key: attempt_key, owed: gaps.owed, refused: gaps.refused }
+              PublicationEstablished { evidence: p } => DogfoodRouteComplete { node_id: node_id, attempt_key: attempt_key, submission: s, review: v, publication: p }
+            }
+        }
+    }
+  } else {
+    DogfoodRouteIncomplete { node_id: node_id, attempt_key: attempt_key, owed: gaps.owed, refused: gaps.refused }
+  }
+}
+
+// ── READING EACH STAGE FROM ITS OWN RECORD ──────────────────────────────────────────────────────
+
+fn dogfood_submission_reading(attempt_key: String, capture: SubmissionCaptureObservation) -> SubmissionReading {
+  match capture {
+    CaptureForHead { capture: c } =>
+      SubmissionEstablished { evidence: SubmissionEvidence { attempt_key: attempt_key, head_sha: c.head_sha, digest: c.digest } }
+    CaptureAbsent => SubmissionGap { gap: StageOwed { owed_by: "the worker has not captured a submission at its head" } }
+    CaptureUnreadable { reason } => SubmissionGap { gap: StageRefused { reason: reason } }
+  }
+}
+
+// THE REVIEW NAMES ITS SUBJECT AS node@head (gunbc.roadmap.roadmap_review_function review_subject_id),
+// computed in the same evidence read as the submission capture from the same worktree head, so the
+// subject recorded here is the submission's head.
+fn dogfood_review_reading(node_id: String, head_sha: String, report: ReviewReport) -> ReviewReading {
+  match report.reconciliation.state {
+    WorkflowSegmentComplete => ReviewEstablished { evidence: ReviewEvidence { subject: join([node_id, "@", head_sha], ""), plan_revision: report.plan_revision } }
+    WorkflowSegmentPending => ReviewGap { gap: StageOwed { owed_by: join(["review has not run on this head: ", report.reconciliation.detail], "") } }
+    WorkflowSegmentActive => ReviewGap { gap: StageOwed { owed_by: join(["review is running on this head: ", report.reconciliation.detail], "") } }
+    WorkflowSegmentFailed => ReviewGap { gap: StageRefused { reason: report.reconciliation.detail } }
+    WorkflowSegmentRefused => ReviewGap { gap: StageRefused { reason: report.reconciliation.detail } }
+    WorkflowSegmentStopped => ReviewGap { gap: StageRefused { reason: report.reconciliation.detail } }
+  }
+}
+
+// PUBLICATION IS ADMITTED ONLY ON A RECEIPT FOR THIS SUBJECT whose expected head is the captured
+// submission's head and whose outcome binds a pull request at that head.
+fn dogfood_publication_reading(head_sha: String, subject: PublicationSubjectObservation, evidence_source: gunbc.roadmap_publish.PublicationReceiptSource) -> PublicationReading {
+  match subject {
+    PublicationSubjectUnobserved { reason } => PublicationGap { gap: StageOwed { owed_by: reason } }
+    PublicationSubjectObserved { subject: s } =>
+      if (s.expected_head as String) != head_sha {
+        PublicationGap { gap: StageRefused { reason: join(["the publication subject's head ", s.expected_head as String, " is not the captured submission's head ", head_sha], "") } }
+      } else {
+        match publication_evidence_for(expected: s, source: evidence_source) {
+          EvidenceAbsent => PublicationGap { gap: StageOwed { owed_by: "no publication receipt for this head yet" } }
+          EvidenceUnreadable { reason } => PublicationGap { gap: StageRefused { reason: reason } }
+          EvidenceForAnotherSubject { field, expected: _, found: _ } => PublicationGap { gap: StageRefused { reason: join(["the publication receipt is for another subject (", field as String, ")"], "") } }
+          EvidenceForSubject { receipt } =>
+            match receipt.outcome {
+              ReceiptBound { pr_number, url, draft: _ } => PublicationEstablished { evidence: PublicationEvidence { head_sha: head_sha, pr_number: pr_number, url: url as String } }
+              ReceiptHeadDiverged { pr_number: _, pr_head: _, url: _ } => PublicationGap { gap: StageRefused { reason: "the pull request's head diverged from the submission's head" } }
+              ReceiptBindingAmbiguous { pr_numbers: _ } => PublicationGap { gap: StageRefused { reason: "more than one pull request binds the branch" } }
+              ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha: _ } => PublicationGap { gap: StageOwed { owed_by: "the branch is pushed at the head but no pull request exists yet" } }
+              ReceiptRemoteBranchHeadDiverged { remote_head: _ } => PublicationGap { gap: StageRefused { reason: "the remote branch head diverged from the submission's head" } }
+              ReceiptRemoteBranchBindingAmbiguous { refs_matched: _ } => PublicationGap { gap: StageRefused { reason: "the remote branch binding is ambiguous" } }
+              ReceiptBranchNotPublished { remote_branches_seen: _ } => PublicationGap { gap: StageOwed { owed_by: "the branch is not published yet" } }
+              ReceiptObservationRefused { detail } => PublicationGap { gap: StageRefused { reason: detail } }
+            }
+        }
       }
   }
 }
 
-// THE STAGES WITH NO RECORD OF THEIR OWN YET, each owed by the change that will write it. When a
-// producer lands, its arm becomes a read of its record and the owed text is deleted -- the receipt
-// never establishes a stage on a promise, nor on another stage's record. Request is not the
-// dispatch environment's admission (that records a host's readiness, not who asked for what): it is
-// the Claimed event that assigned the issue, joined to the attempt. Immutable subject is not a
-// green verification (that records a verdict, not that the subject was fixed): it is the exact tree
-// the shared computation was keyed on.
+// THE STAGES WITH NO RECORD OF THEIR OWN YET, each owed by the change that will write it.
 data dogfood_owed_request: String = "G4: the Claimed event that assigned the issue, joined to this attempt with its requester (gunbc.roadmap.roadmap_result_returned carries the join)"
 
 data dogfood_owed_immutable_subject: String = "G1 cutover: the verified head's exact tree that the shared computation's request key was derived from"
@@ -164,42 +267,143 @@ data dogfood_owed_cleanup: String = "G5: release evidence for the session lease 
 
 data dogfood_owed_result_returned: String = "G4: a typed result event on the issue returns the outcome to the requester"
 
-fn dogfood_route_readings(progress: WorkflowAttemptProgress) -> DogfoodStageReadings {
+fn dogfood_route_readings(e: WorkflowAttemptEvidence) -> DogfoodStageReadings {
+  let submission = dogfood_submission_reading(attempt_key: e.attempt_key, capture: e.submission_capture)
+  let head = match submission {
+    SubmissionEstablished { evidence: s } => s.head_sha
+    SubmissionGap { gap: _ } => ""
+  }
   DogfoodStageReadings {
-    request: StageOwed { owed_by: dogfood_owed_request },
-    immutable_subject: StageOwed { owed_by: dogfood_owed_immutable_subject },
-    shared_computation: StageOwed { owed_by: dogfood_owed_shared_computation },
-    placement_grant: StageOwed { owed_by: dogfood_owed_placement_grant },
-    isolated_execution: StageOwed { owed_by: dogfood_owed_isolated_execution },
-    durable_result: dogfood_reading_from_segment(segment: workflow_segment_of_kind(segments: progress.segments, kind: SubmissionWorkflowSegment)),
-    metering: StageOwed { owed_by: dogfood_owed_metering },
-    cleanup: StageOwed { owed_by: dogfood_owed_cleanup },
-    result_returned: StageOwed { owed_by: dogfood_owed_result_returned },
-    candidate_published: dogfood_reading_from_segment(segment: workflow_segment_of_kind(segments: progress.segments, kind: PublicationWorkflowSegment)),
-    independent_review: dogfood_reading_from_segment(segment: workflow_segment_of_kind(segments: progress.segments, kind: ReviewWorkflowSegment)),
+    request: ProducerPending { owed_by: dogfood_owed_request },
+    immutable_subject: ProducerPending { owed_by: dogfood_owed_immutable_subject },
+    shared_computation: ProducerPending { owed_by: dogfood_owed_shared_computation },
+    placement_grant: ProducerPending { owed_by: dogfood_owed_placement_grant },
+    isolated_execution: ProducerPending { owed_by: dogfood_owed_isolated_execution },
+    durable_result: submission,
+    metering: ProducerPending { owed_by: dogfood_owed_metering },
+    independent_review: if head == "" { ReviewGap { gap: StageOwed { owed_by: "no captured submission, so no head to review" } } } else { dogfood_review_reading(node_id: e.node_id, head_sha: head, report: e.review) },
+    candidate_published: if head == "" { PublicationGap { gap: StageOwed { owed_by: "no captured submission, so no head to publish" } } } else { dogfood_publication_reading(head_sha: head, subject: e.publication_subject, evidence_source: e.publication_source) },
+    cleanup: ProducerPending { owed_by: dogfood_owed_cleanup },
+    result_returned: ProducerPending { owed_by: dogfood_owed_result_returned },
   }
 }
 
-fn dogfood_route_receipt_for_progress(progress: WorkflowAttemptProgress) -> DogfoodRouteReceipt {
-  dogfood_route_receipt(attempt_key: progress.attempt_key, readings: dogfood_route_readings(progress: progress))
+fn dogfood_route_receipt_for_evidence(e: WorkflowAttemptEvidence) -> DogfoodRouteReceipt {
+  dogfood_route_receipt(node_id: e.node_id, attempt_key: e.attempt_key, r: dogfood_route_readings(e: e))
 }
 
-// ── THE ACCEPTANCE CASE, ON THE REAL ROUTE ──────────────────────────────────────────────────────
+// ── THE START RECEIPT: FIRST ONLY, DURABLE ──────────────────────────────────────────────────────
 //
-// The roadmap row's execution contract. It reads every attempt the srv2 deployment instance has
-// published and holds when at least one folds to DogfoodRouteComplete. It is a plain function
-// rather than a floor witness on purpose: its subject is a deployment's durable attempt records,
-// which a CI runner does not have, so on the floor it could only ever be red for the wrong reason.
-// The belt runs it on srv2 against the instance it describes. An observation the route cannot read
-// is not a pass.
+// The receipt that starts the dogfood clock is written ONCE, create-only, through the durable
+// compare-and-set store (gunbc.durable_cas_file_store file_compare_and_set, ExpectSlotAbsent): the
+// first complete attempt to be recorded stays the start forever, and a later or newer attempt --
+// complete or not -- cannot move it. It is produced by the belt tick right after its own passes:
+// the candidate-published stage is written BY that tick's publish pass, so the completing attempt is
+// necessarily the node's current attempt when the tick observes it, and nothing can supersede it
+// between completing and being recorded. Two attempts completing in one tick are taken in the
+// observation's own order -- git for-each-ref's refname order over refs/heads/dispatch/ -- so the
+// choice is deterministic.
+data dogfood_start_receipt_key: NonEmptyStr = "dogfood-start-receipt" as NonEmptyStr
+
+data dogfood_start_receipt_schema: String = "dogfood-start-receipt/v1"
+
+fn dogfood_start_store_root(instance: HostDashboardInstance) -> NonEmptyStr {
+  join([instance.instance_root as String, "/dogfood-start"], "") as NonEmptyStr
+}
+
+fn dogfood_start_receipt_wire(c: DogfoodRouteReceipt, established_at: String) -> String? {
+  match c {
+    DogfoodRouteIncomplete { node_id: _, attempt_key: _, owed: _, refused: _ } => none
+    DogfoodRouteComplete { node_id, attempt_key, submission, review, publication } =>
+      Present { value: serialize_json(v: json_object([
+        json_kv(key: "schema", value: json_string(s: dogfood_start_receipt_schema)),
+        json_kv(key: "node_id", value: json_string(s: node_id)),
+        json_kv(key: "attempt_key", value: json_string(s: attempt_key)),
+        json_kv(key: "head_sha", value: json_string(s: submission.head_sha)),
+        json_kv(key: "submission_digest", value: json_string(s: submission.digest)),
+        json_kv(key: "review_subject", value: json_string(s: review.subject)),
+        json_kv(key: "review_plan_revision", value: json_string(s: review.plan_revision)),
+        json_kv(key: "pr_number", value: json_int(n: publication.pr_number)),
+        json_kv(key: "pr_url", value: json_string(s: publication.url)),
+        json_kv(key: "established_at", value: json_string(s: established_at)),
+      ])) }
+  }
+}
+
+// The first complete receipt in observation order.
+fn dogfood_first_complete(receipts: List<DogfoodRouteReceipt>) -> DogfoodRouteReceipt? {
+  fold(receipts, init: none, f: (acc, r) => match acc {
+    Present { value: _ } => acc
+    Absent =>
+      match r {
+        DogfoodRouteIncomplete { node_id: _, attempt_key: _, owed: _, refused: _ } => none
+        DogfoodRouteComplete { node_id: _, attempt_key: _, submission: _, review: _, publication: _ } => Present { value: r }
+      }
+  })
+}
+
+type DogfoodStartRecord
+  = DogfoodStartRecorded { receipt: String }
+  | DogfoodStartAlreadyRecorded
+  | DogfoodStartNoCompleteAttempt
+  | DogfoodStartRefused { reason: String }
+
+fn dogfood_start_record_for_instance(instance: HostDashboardInstance) -> DogfoodStartRecord {
+  match belt_workflow_attempt_evidences_observe_for_instance(instance: instance) {
+    WorkflowAttemptEvidencesRefused { reason } => DogfoodStartRefused { reason: reason }
+    WorkflowAttemptEvidencesObserved { evidences } =>
+      match dogfood_first_complete(receipts: map(evidences, e => dogfood_route_receipt_for_evidence(e: e))) {
+        Absent => DogfoodStartNoCompleteAttempt
+        Present { value: first } => {
+          let at = belt_tick_observed_at()
+          match dogfood_start_receipt_wire(c: first, established_at: at) {
+            Absent => DogfoodStartNoCompleteAttempt
+            Present { value: wire } =>
+              match admit_cas_attempt_for_derived_payload(key: dogfood_start_receipt_key, expected: ExpectSlotAbsent, proposed: wire as NonEmptyStr) {
+                DerivedPayloadKeyNotSlotAddressable { key: _ } => DogfoodStartRefused { reason: "the start receipt key is not slot-addressable" }
+                DerivedPayloadAdmitted { verified } =>
+                  match file_compare_and_set(root: dogfood_start_store_root(instance: instance), publication: DefaultAccessCreateOnly, verified: verified) {
+                    CasCommitted { committed: _ } => DogfoodStartRecorded { receipt: wire }
+                    CasPreconditionFailed { expected: _, observed: _ } => DogfoodStartAlreadyRecorded
+                    CasStoreRefused { cause: _ } => DogfoodStartRefused { reason: "the start receipt store refused the create-only write" }
+                  }
+              }
+          }
+        }
+      }
+  }
+}
+
+// ── THE ACCEPTANCE CASE ─────────────────────────────────────────────────────────────────────────
+//
+// The roadmap row's execution contract READS the start receipt; it does not recompute a current
+// state. It holds exactly when the slot holds a receipt of this schema naming an attempt. It is a
+// plain function rather than a floor witness: its subject is a deployment's durable store, which a
+// CI runner does not have. An unreadable slot is not a pass.
+fn dogfood_start_receipt_names_an_attempt(payload: String) -> Bool {
+  match parse_json_document(s: payload) {
+    JsonDocumentUnreadable { gap: _ } => false
+    JsonDocumentParsed { value: v } =>
+      (match json_field_string(obj: v, key: "schema") {
+        FieldRead { value: s } => s == dogfood_start_receipt_schema
+        FieldAbsent => false
+        FieldMalformed { cause: _ } => false
+      }) && (match json_field_string(obj: v, key: "attempt_key") {
+        FieldRead { value: k } => k != ""
+        FieldAbsent => false
+        FieldMalformed { cause: _ } => false
+      })
+  }
+}
+
 fn dogfood_route_acceptance_holds_on(instance: HostDashboardInstance) -> Bool {
-  match belt_workflow_attempts_observe_for_instance(instance: instance) {
-    WorkflowAttemptsRefused { reason: _ } => false
-    WorkflowAttemptsObserved { attempts } =>
-      length(filter(attempts, p => match dogfood_route_receipt_for_progress(progress: p) {
-        DogfoodRouteComplete { attempt_key: _, readings: _ } => true
-        DogfoodRouteIncomplete { attempt_key: _, owed: _, refused: _, readings: _ } => false
-      })) > 0
+  match observe_cas_slot_state(root: dogfood_start_store_root(instance: instance), key: dogfood_start_receipt_key) {
+    CasObservedUnreadable { cause: _ } => false
+    CasObservedReadable { readable } =>
+      match readable {
+        CasReadableAbsent => false
+        CasReadablePresent { version } => dogfood_start_receipt_names_an_attempt(payload: version.value as String)
+      }
   }
 }
 
