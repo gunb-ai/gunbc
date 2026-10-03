@@ -335,6 +335,12 @@ test fn mbt_match_is_not_yet_typed_at_the_binder_arm_holds() -> Bool {
 //
 // The refusal is asserted BY REASON, not merely as "did not type": a row satisfied by any refusal would
 // stay green if the shadowing gate were deleted and the module broke for an unrelated cause.
+//
+// IT STAYS A DECLARED PREPARATION-FILL DEBT ROW (v2.workflow.floor_pure_producer_share floor_single_claim_fill_debt,
+// operator ruling on gunbc#12506's restructure): it is the SOLE real-route execution of the binder-hiding
+// refusal, and it cannot be supplied without losing the integration control. Accepting programs reach resolve's
+// gate and are admitted, so deleting resolve's call to admit_value_binders reds only a REFUSING real program;
+// and a refusing program shares nothing, because resolve stops at its first refusal.
 data mbt_hiding_src: String = mbt_decls + "fn g(artifact: Int, h: Outcome<ParseArtifact>, fallback: ParseArtifact) -> ParseTree {\n  match h {\n" + mbt_arms + "  }\n}\n"
 
 fn mbt_hiding_reading() -> MbtReading { mbp_reading(src: mbt_hiding_src) }
