@@ -1,6 +1,7 @@
 module tools.prose_row_introduction_gate
 
 import std.types { GitRef, List, String }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.filesystem.filesystem_io
 import extdeps.git { ThreeDot }

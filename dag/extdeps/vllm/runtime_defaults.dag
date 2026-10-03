@@ -9,6 +9,8 @@ import extdeps.vllm.engine_args {
   VllmMemoryRequest, VllmPrefixCachingRequest, PrefixCachingOmitted, PrefixCachingExplicit,
   VllmSchedulerAdmissionRequest, VllmFullInputAdmissionRequest, FullInputAdmissionOmitted, FullInputAdmissionExplicit,
   KvWatermarkOmitted, KvWatermarkExplicit, vllm_scheduler_admission_defect,
+  VllmIndexerKvDtype, VllmIndexerKvDtypeRequest, IndexerKvDtypeOmitted, IndexerKvDtypeExplicit,
+  IndexerKvAuto, IndexerKvBf16, IndexerKvFp8, IndexerKvMxfp4, IndexerKvNvfp4, vllm_indexer_kv_dtype_wire,
 }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -239,6 +241,7 @@ type VllmConfigField
   | EnablePrefixCachingField
   | SchedulerReserveFullIslField
   | SchedulerWatermarkField
+  | IndexerKvDtypeField
 
 fn vllm_config_field_declaration(f: VllmConfigField) -> NonEmptyStr {
   match f {
@@ -247,6 +250,7 @@ fn vllm_config_field_declaration(f: VllmConfigField) -> NonEmptyStr {
     EnablePrefixCachingField => "CacheConfig.enable_prefix_caching" as NonEmptyStr
     SchedulerReserveFullIslField => "SchedulerConfig.scheduler_reserve_full_isl" as NonEmptyStr
     SchedulerWatermarkField => "SchedulerConfig.watermark" as NonEmptyStr
+    IndexerKvDtypeField => "AttentionConfig.indexer_kv_dtype" as NonEmptyStr
   }
 }
 
@@ -624,5 +628,72 @@ fn resolve_full_input_admission(request: VllmFullInputAdmissionRequest, rev: Mod
         enabled: defaults_scheduler_reserve_full_isl(r: rev),
         origin: ExpectedFromClaimedSourceRevision { source_revision: defaults_source_revision(r: rev), field: SchedulerReserveFullIslField },
       }
+  }
+}
+
+// ── THE INDEXER KV DTYPE, PER REVISION ───────────────────────────────────────────────────────────
+//
+// EACH REVISION SAYS ITS OWN, read from its own vllm/config/attention.py (2026-10-02):
+//   8d09804   IndexerKVDType = Literal["auto", "bf16", "fp8", "mxfp4", "nvfp4"], default "auto"
+//   487ecf187 IndexerKVDType = Literal["bf16", "fp8", "mxfp4", "nvfp4"], default "bf16" (no "auto")
+//   1967a5627 no indexer_kv_dtype field; only the boolean use_fp4_indexer_cache
+// "auto" is a MODEL-dependent default (fp8 for the DeepSeek sparse indexer), so resolving it to a
+// concrete dtype is a capability question about the model, not a fact this revision table can answer;
+// the resolution below therefore reports "auto" as auto, with its origin.
+type VllmIndexerKvSupport
+  = IndexerKvFieldDeclared { default_dtype: VllmIndexerKvDtype, accepted: List<VllmIndexerKvDtype> }
+  | IndexerKvFieldAbsentAtRevision
+
+fn defaults_indexer_kv_dtype(r: ModelledVllmDefaultsRevision) -> VllmIndexerKvSupport {
+  match r {
+    Vllm487ecf187 => IndexerKvFieldDeclared { default_dtype: IndexerKvBf16, accepted: [IndexerKvBf16, IndexerKvFp8, IndexerKvMxfp4, IndexerKvNvfp4] }
+    Vllm1967a5627 => IndexerKvFieldAbsentAtRevision
+    Vllm8d09804 => IndexerKvFieldDeclared { default_dtype: IndexerKvAuto, accepted: [IndexerKvAuto, IndexerKvBf16, IndexerKvFp8, IndexerKvMxfp4, IndexerKvNvfp4] }
+  }
+}
+
+type ResolvedVllmIndexerKvDtype
+  = IndexerKvDtypeResolved { dtype: VllmIndexerKvDtype, origin: VllmResolutionOrigin }
+  | IndexerKvDtypeNotARevisionField { origin: VllmResolutionOrigin }
+  | IndexerKvDtypeUnresolvable { cause: NonEmptyStr }
+
+fn resolve_vllm_indexer_kv_dtype(request: VllmIndexerKvDtypeRequest, defaults: VllmDefaultsResolution) -> ResolvedVllmIndexerKvDtype {
+  match defaults {
+    VllmDefaultsUnestablished { revision: r } =>
+      IndexerKvDtypeUnresolvable { cause: join([
+        "revision ", r.full_revision as String,
+        " is not modelled, so whether it declares an indexer KV dtype, and with which default, is unestablished",
+      ], "") as NonEmptyStr }
+    VllmDefaultsKnown { revision: rev } => {
+      let source = defaults_source_revision(r: rev)
+      match defaults_indexer_kv_dtype(r: rev) {
+        IndexerKvFieldAbsentAtRevision =>
+          match request {
+            IndexerKvDtypeExplicit { dtype: _ } => IndexerKvDtypeUnresolvable { cause: join([
+              "an indexer KV dtype is requested but revision ", source.full_revision as String,
+              " declares no AttentionConfig.indexer_kv_dtype, so the argument is not one this engine accepts",
+            ], "") as NonEmptyStr }
+            IndexerKvDtypeOmitted => IndexerKvDtypeNotARevisionField {
+              origin: ExpectedFromClaimedSourceRevision { source_revision: source, field: IndexerKvDtypeField },
+            }
+          }
+        IndexerKvFieldDeclared { default_dtype: d, accepted: acc } =>
+          match request {
+            IndexerKvDtypeOmitted => IndexerKvDtypeResolved {
+              dtype: d,
+              origin: ExpectedFromClaimedSourceRevision { source_revision: source, field: IndexerKvDtypeField },
+            }
+            IndexerKvDtypeExplicit { dtype: x } =>
+              if count(filter(acc, a => (vllm_indexer_kv_dtype_wire(d: a) as String) == (vllm_indexer_kv_dtype_wire(d: x) as String))) == 0 {
+                IndexerKvDtypeUnresolvable { cause: join([
+                  "indexer KV dtype ", vllm_indexer_kv_dtype_wire(d: x) as String, " is not in revision ",
+                  source.full_revision as String, "'s IndexerKVDType",
+                ], "") as NonEmptyStr }
+              } else {
+                IndexerKvDtypeResolved { dtype: x, origin: ExplicitArgument { field: IndexerKvDtypeField } }
+              }
+          }
+      }
+    }
   }
 }
