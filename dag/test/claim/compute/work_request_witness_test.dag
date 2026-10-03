@@ -34,7 +34,10 @@ import std.materialization_provider {
   ManifestDecoded, ManifestKindUndeclared, ManifestPartUndeclared, ManifestPartRepeated, LegacyIncompleteArtifact,
 }
 import std.measure { byte_size }
-import gunbc.compute.work_provider_local { compute_work_identity }
+import gunbc.compute.work_provider_local {
+  compute_work_identity, compute_operation_admission, compute_toolchain_decide, ToolchainObserved, ToolchainObservationRefused,
+  ComputeExecOk, ComputeExecFailed,
+}
 import gunbc.compute.work_request {
   WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoRelease, CargoDebug,
   WorkToolchainIdentity, work_toolchain_observed, work_default_build, work_declared_outputs,
@@ -50,8 +53,24 @@ fn tree(hex: String) -> WorkSubject {
   }
 }
 
-fn tc(rustc: String) -> WorkToolchainIdentity {
-  work_toolchain_observed(rustc_version: rustc as NonEmptyStr, cache_release: "sccache 0.15.0" as NonEmptyStr)
+// The one fixture mint, admitted by name. Every axis is a parameter so each can be varied alone.
+fn tc_axes(rustc: String, triple: String, cargo: String, cache: String, provider: String) -> WorkToolchainIdentity {
+  tc(rustc: rustc, triple: triple, cargo: cargo, cache: cache, provider: provider)
+}
+
+fn tc(rustc: String, triple: String, cargo: String, cache: String, provider: String) -> WorkToolchainIdentity {
+  work_toolchain_observed(
+    rustc_verbose: rustc as NonEmptyStr, target_triple: triple as NonEmptyStr, cargo_version: cargo as NonEmptyStr,
+    cache_release: cache as NonEmptyStr, provider_revision: provider as NonEmptyStr,
+  )
+}
+
+fn tc_default(rustc: String) -> WorkToolchainIdentity {
+  tc(rustc: rustc, triple: "aarch64-unknown-linux-gnu", cargo: "cargo 1.90.0", cache: "sccache 0.15.0", provider: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+}
+
+fn key_with(subject: WorkSubject, op: WorkOperation, toolchain: WorkToolchainIdentity) -> String {
+  serialize_content_hash(hash: request_key(req: ComputeWorkRequest { subject: subject, operation: op, toolchain: toolchain })) as String
 }
 
 data tree_a: String = "1111111111111111111111111111111111111111"
@@ -77,8 +96,55 @@ test fn identical_requests_share_an_identity_and_every_difference_separates_them
     && base.length() == 16
 }
 
+// THE KEY IS INJECTIVE OVER THE TYPED OPERATION AND COVERS EVERY EXECUTION AXIS (ruling on
+// gunbc#13072, items 1 and 4). Each pair below is two different computations that a delimiter-joined
+// preimage, or a key missing an axis, collapsed into one -- and one request then received the other's
+// result. Each must key apart on its own.
+test fn colliding_display_text_and_every_execution_axis_key_apart() -> Bool {
+  let subject = tree(hex: tree_a)
+  let t = tc_default(rustc: "rustc 1.90.0")
+  let one_bin = BuildGunbcBinaries { profile: CargoRelease, bins: ["a,b" as NonEmptyStr] }
+  let two_bins = BuildGunbcBinaries { profile: CargoRelease, bins: ["a" as NonEmptyStr, "b" as NonEmptyStr] }
+  let colon_entry = RunClaims { entry: "a:b" as FilePath, functions: "c" as NonEmptyStr, hermetic: true }
+  let colon_functions = RunClaims { entry: "a" as FilePath, functions: "b:c" as NonEmptyStr, hermetic: true }
+  let base = key_with(subject: subject, op: work_default_build(), toolchain: t)
+  key_with(subject: subject, op: one_bin, toolchain: t) != key_with(subject: subject, op: two_bins, toolchain: t)
+    && key_with(subject: subject, op: colon_entry, toolchain: t) != key_with(subject: subject, op: colon_functions, toolchain: t)
+    && base != key_with(subject: subject, op: work_default_build(), toolchain: tc_axes(rustc: "rustc 1.90.0", triple: "aarch64-unknown-linux-gnu", cargo: "cargo 1.90.0", cache: "sccache 0.16.0", provider: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+    && base != key_with(subject: subject, op: work_default_build(), toolchain: tc_axes(rustc: "rustc 1.90.0", triple: "x86_64-unknown-linux-gnu", cargo: "cargo 1.90.0", cache: "sccache 0.15.0", provider: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+    && base != key_with(subject: subject, op: work_default_build(), toolchain: tc_axes(rustc: "rustc 1.90.0", triple: "aarch64-unknown-linux-gnu", cargo: "cargo 1.91.0", cache: "sccache 0.15.0", provider: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+    && base != key_with(subject: subject, op: work_default_build(), toolchain: tc_axes(rustc: "rustc 1.90.0", triple: "aarch64-unknown-linux-gnu", cargo: "cargo 1.90.0", cache: "sccache 0.15.0", provider: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"))
+}
+
+// A WET CLAIM RUN IS REFUSED BEFORE ANYTHING IS OBSERVED OR RUN (ruling item 2). RED against a provider
+// that serves it under the request key, where a repeat would attach to the first run's outcome.
+test fn a_wet_claim_run_is_refused_and_a_hermetic_one_is_admitted() -> Bool {
+  (match compute_operation_admission(op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: false }) { Present { value: _ } => true  Absent => false })
+    && (match compute_operation_admission(op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true }) { Present { value: _ } => false  Absent => true })
+    && (match compute_operation_admission(op: work_default_build()) { Present { value: _ } => false  Absent => true })
+}
+
+// THE EXECUTION IDENTITY IS READ, NEVER DEFAULTED. The triple comes from rustc's own `host:` line, and
+// a report without one refuses rather than keying the work on an unobserved platform.
+test fn the_execution_identity_reads_the_host_triple_and_refuses_without_one() -> Bool {
+  let verbose = "rustc 1.90.0 (abc 2025-01-01)\nbinary: rustc\nhost: aarch64-unknown-linux-gnu\nrelease: 1.90.0\n"
+  let ok = ComputeExecOk { stdout: "x", stderr: "" }
+  (match compute_toolchain_decide(rustc: ComputeExecOk { stdout: verbose, stderr: "" }, cargo: ok, cache: ok, provider: ok) {
+    ToolchainObserved { toolchain } => (toolchain.target_triple as String) == "aarch64-unknown-linux-gnu"
+    ToolchainObservationRefused { detail: _ } => false
+  })
+    && (match compute_toolchain_decide(rustc: ComputeExecOk { stdout: "rustc 1.90.0\n", stderr: "" }, cargo: ok, cache: ok, provider: ok) {
+      ToolchainObserved { toolchain: _ } => false
+      ToolchainObservationRefused { detail } => string_contains(s: detail, pattern: "host")
+    })
+    && (match compute_toolchain_decide(rustc: ComputeExecOk { stdout: verbose, stderr: "" }, cargo: ok, cache: ok, provider: ComputeExecFailed { exit_code: 128, stdout: "", stderr: "no such path" }) {
+      ToolchainObserved { toolchain: _ } => false
+      ToolchainObservationRefused { detail } => string_contains(s: detail, pattern: "provider")
+    })
+}
+
 fn req(subject: WorkSubject, op: WorkOperation, rustc: String) -> ArtifactRequest {
-  ComputeWorkRequest { subject: subject, operation: op, toolchain: tc(rustc: rustc) }
+  ComputeWorkRequest { subject: subject, operation: op, toolchain: tc_default(rustc: rustc) }
 }
 
 fn key(subject: WorkSubject, op: WorkOperation, rustc: String) -> String {
@@ -90,9 +156,9 @@ fn key(subject: WorkSubject, op: WorkOperation, rustc: String) -> String {
 test fn the_provider_identity_is_the_materialization_request_key() -> Bool {
   let subject = tree(hex: tree_a)
   let claims = RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true }
-  compute_work_identity(subject: subject, op: work_default_build(), toolchain: tc(rustc: "rustc 1.90.0"))
+  compute_work_identity(subject: subject, op: work_default_build(), toolchain: tc_default(rustc: "rustc 1.90.0"))
       == key(subject: subject, op: work_default_build(), rustc: "rustc 1.90.0")
-    && compute_work_identity(subject: subject, op: claims, toolchain: tc(rustc: "rustc 1.90.0"))
+    && compute_work_identity(subject: subject, op: claims, toolchain: tc_default(rustc: "rustc 1.90.0"))
       == key(subject: subject, op: claims, rustc: "rustc 1.90.0")
 }
 
