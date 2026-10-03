@@ -2142,20 +2142,29 @@ pub(crate) struct RenderSelectionAgreementFixture {
 
 /// THE PINNED CONTROL FIXTURES for floor repair C1, kept minimal so the receipt costs seconds.
 /// The two importing fixtures import two leaf `std` modules that have no imports of their own
-/// (`std.magnitude`, `std.error_primitives`). Reading one of them leaves the other unrendered,
-/// which is the narrowing. One reads the fixture's own module, one reads a module the fixture
+/// (`std.logic`, `std.error_primitives`). Reading one of them leaves the other unrendered,
+/// which is the narrowing.
+///
+/// THESE SOURCES ARE CORPUS CONSUMERS THAT NO IMPORT SCAN SEES. They are strings handed to the
+/// live module index, so a change that retires a module they import breaks the receipt and is
+/// told nothing. That happened once: gunbc#12846 retired `std.magnitude`, the receipt's first
+/// choice, and the floor refused on main+PR with `unresolved import`. That refusal is the
+/// receipt working: a fixture whose world moved stops the line rather than passing on some other
+/// mechanism (DESIGN §3). The two modules are chosen so that retiring them is a visible
+/// cascade: `std.logic` is imported across the corpus, and `std.error_primitives` by
+/// `std.algebra`. They are not chosen for being small. One reads the fixture's own module, one reads a module the fixture
 /// IMPORTS (the read-path arm of [`fixture_render_selection`]), and one is import-free (the red).
 pub(crate) const RENDER_SELECTION_AGREEMENT_FIXTURES: &[RenderSelectionAgreementFixture] = &[
     RenderSelectionAgreementFixture {
         name: "reads_fixture_module",
-        source: "module rsa_own\n\nimport std.magnitude { Magnitude }\nimport std.error_primitives { DivError }\n\nfn rsa_pick(m: Magnitude, e: DivError) -> DivError {\n  e\n}\n",
+        source: "module rsa_own\n\nimport std.logic { Classical }\nimport std.error_primitives { DivError }\n\nfn rsa_pick(c: Classical, e: DivError) -> DivError {\n  e\n}\n",
         read_path: "src/rsa_own.rs",
         narrows: true,
     },
     RenderSelectionAgreementFixture {
         name: "reads_imported_module",
-        source: "module rsa_importer\n\nimport std.magnitude { Magnitude }\nimport std.error_primitives { DivError }\n\nfn rsa_pick(m: Magnitude, e: DivError) -> DivError {\n  e\n}\n",
-        read_path: "src/std_magnitude.rs",
+        source: "module rsa_importer\n\nimport std.logic { Classical }\nimport std.error_primitives { DivError }\n\nfn rsa_pick(c: Classical, e: DivError) -> DivError {\n  e\n}\n",
+        read_path: "src/std_logic.rs",
         narrows: true,
     },
     RenderSelectionAgreementFixture {
@@ -2219,10 +2228,16 @@ pub(crate) fn render_selection_agreement_receipt(
                 .map(|f| f.content.clone())
         };
         let Some(full_bytes) = read(&full) else {
+            let diagnostics: Vec<String> = full
+                .diagnostics
+                .iter()
+                .map(|d| diagnostic_to_message(d.diagnostic.clone()))
+                .collect();
             return Err(refuse(format!(
-                "the full render did not emit the read path ({} files, {} diagnostics)",
+                "the full render did not emit the read path ({} files, {} diagnostics: {})",
                 full.files.len(),
-                full.diagnostics.len()
+                full.diagnostics.len(),
+                diagnostics.join(" | ")
             )));
         };
         let Some(selected_bytes) = read(&selected) else {
