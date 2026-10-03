@@ -1930,7 +1930,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       line: ticket(t: level_fields(
           headline: "Fabric bring-up: our own fleet, its storage and the VM service on it, each observed rather than assumed",
           boundary: "Container for the fabric (operator ruling 2026-10-03: the VM service and fabric storage are both members of the fabric bring-up). Allocation, placement and serving follow the fabric/compute conformance domain (DESIGN §3b); storage follows the materialization/realization domain. Host bring-up itself stays operator-driven.",
-          approach: "Two member projects: vm-service (the end-of-year VM service) and fabric-storage (internal fabric state, a workload's durable volume, and customer-provided storage). The private year-end plan carries the dates; this node carries the decomposition.",
+          approach: "Two member projects: vm-service (the end-of-year VM service) and fabric-storage (internal fabric state, a workload's checkpointed workspace, and customer-provided storage). The private year-end plan carries the dates; this node carries the decomposition.",
           red_control: "A member whose parent walk does not reach this node through vm-service or fabric-storage is not a fabric row. Work gated on the fabric (the SCM rows, by edge) does not dispatch until this node is accepted.",
           displaced_cost: "With the VM service as a top-level project and storage parentless, the largest fabric risk had no place on the public roadmap and the service read as independent of the fabric it runs on.",
           handback: "Per member project: its acceptance receipts, named by their instruments."
@@ -1943,14 +1943,14 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       owner: "fleet",
       carriers: carrier(path: "dag/std/artifact_store.dag"),
       line: ticket(t: level_fields(
-          headline: "Fabric storage: internal fabric state, durable workload volumes and customer-provided storage",
+          headline: "Fabric storage: internal fabric state, checkpointed workspaces and customer-provided storage",
           boundary: "DRAFT (operator ruling 2026-10-02, \"we can make a fabric parent - it's ongoing work for a while\"): a standing program, not one narrow proof. Members are the storage rows of the private year-end plan as they move onto this tree.",
           approach: "DRAFT: members join as the private StorageFabric rows are projected onto the public tree.",
           red_control: "Not ready: this program carries no dispatch facts and has no members yet.",
           displaced_cost: "Storage was the largest fabric risk with no public parent, so none of its promises could be ordered or seen beside the VM service.",
           handback: "DRAFT: per member, its acceptance receipt."
         )),
-      parent: in_project(project: "fabric-bringup", contribution: "The fabric's state, workload volumes and customer storage are what make a VM service durable rather than volatile."),
+      parent: in_project(project: "fabric-bringup", contribution: "The fabric's state, checkpointed workspaces and customer storage are what make a VM service recoverable rather than volatile."),
     ),
     roadmap_node(
       identity: "rn_HARNESS0RECURSIVE0ALIGN0A",
