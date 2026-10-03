@@ -1,5 +1,7 @@
 module gunbc.spark.pair_serving_d0_door
 
+import gunbc.auth.standing_operator_grant { StandingOperatorGrant, group_a_dev_standing_grant, standing_grant_covers, standing_grant_authorization, StandingD0ReleaseToFleet }
+
 import std.types { String, Bool, Int, NonEmptyStr, List, Timestamp, EpochSecs }
 import std.measure { Second, second, second_count, Minute, minute }
 import v2.std.optional { Present, Absent }
@@ -22,7 +24,7 @@ import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, obse
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, parse_fabric_group, fabric_group_hosts, fabric_group_wire }
 import gunbc.spark.pair_serving_authority_log { current_pair_serving_authority }
 import gunbc.spark.pair_serving_d0 {
-  D0Subject, d0_dispatch, d0_store_write_wall_standing,
+  D0Subject, D0SuspendForSuccessor, D0ReleaseToFleet, d0_dispatch, d0_store_write_wall_standing,
   d0_read_filing, D0FilingAbsent, D0FilingAt, D0FilingUnreadable,
   d0_freeze_filing, D0FilingFrozen, D0FilingAlreadyHeld, D0FilingFreezeRefused,
   d0_read_claim, D0ClaimAbsent, D0ClaimAt, D0ClaimUnreadable,
@@ -175,12 +177,41 @@ fn d0_absent_claim_step(read: ApprovalStandingRead, request: AuthorizationReques
   }
 }
 
+// A STANDING OPERATOR GRANT ANSWERS FOR EXACTLY THE REQUESTS IT COVERS (gunbc.auth.standing_operator_grant):
+// a release-to-fleet of the grant's group whose subject hosts are all the grant's. For such a request the
+// door admits the grant minted over that exact request, in place of filing with the broker and polling --
+// on a first run and on a rerun alike, since the ruling, unlike a broker decision, is not consumed by the
+// lifecycle that first used it; the durable claim still decides whether a rerun may continue. Every other
+// request -- a suspension, another group, a host outside the grant -- files and polls as before.
+data d0_standing_grants: List<StandingOperatorGrant> = [group_a_dev_standing_grant]
+
+fn d0_standing_grant_for(request: AuthorizationRequest<D0Subject>) -> StandingOperatorGrant? {
+  match request.subject.operation {
+    D0SuspendForSuccessor { successor: _, cleanup: _, term: _ } => none
+    D0ReleaseToFleet { cause: _, approval: _ } =>
+      first(filter(d0_standing_grants, g => standing_grant_covers(g: g, group: request.subject.group, effect: StandingD0ReleaseToFleet, hosts: request.subject.hosts)))
+  }
+}
+
 fn d0_gate(store: FabricStorageBinding, kind: D0RunKind, transaction: NonEmptyStr, expires: Timestamp, issued: Timestamp) -> D0DoorGate
 {
   match kind {
     D0RunRefused { reason: r } => D0DoorRefused { reason: r }
-    D0FirstRun { request: request } => d0_file_and_poll(request: request, issued: issued, expires: expires)
-    D0Rerun { request: request } => {
+    D0FirstRun { request: request } =>
+      match d0_standing_grant_for(request: request) {
+        Present { value: g } => D0DoorAdmitted { authorization: standing_grant_authorization(g: g, request: request, issued: issued, expires: expires) }
+        Absent => d0_file_and_poll(request: request, issued: issued, expires: expires)
+      }
+    D0Rerun { request: request } =>
+      match d0_standing_grant_for(request: request) {
+        Present { value: g } => D0DoorAdmitted { authorization: standing_grant_authorization(g: g, request: request, issued: issued, expires: expires) }
+        Absent => d0_gate_rerun_by_broker(store: store, request: request, transaction: transaction, expires: expires, issued: issued)
+      }
+  }
+}
+
+fn d0_gate_rerun_by_broker(store: FabricStorageBinding, request: AuthorizationRequest<D0Subject>, transaction: NonEmptyStr, expires: Timestamp, issued: Timestamp) -> D0DoorGate
+{
       let claim = d0_read_claim(store: store, escalation_id: request.escalation_id)
       match claim {
         D0ClaimAbsent =>
@@ -201,8 +232,6 @@ fn d0_gate(store: FabricStorageBinding, kind: D0RunKind, transaction: NonEmptySt
               }
           }
       }
-    }
-  }
 }
 
 fn d0_poll(request: AuthorizationRequest<D0Subject>, expires: Timestamp) -> D0DoorGate
