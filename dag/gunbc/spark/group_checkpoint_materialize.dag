@@ -1,6 +1,6 @@
 module gunbc.spark.group_checkpoint_materialize
 
-import std.types { String, NonEmptyStr, Bool, List }
+import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import v2.std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -9,13 +9,15 @@ import gunbc.fleet_multi_principal_probe { spark_converge_target_selection, Spar
 import gunbc.artifact_acquisition { AcquisitionOutcome, AcquisitionAlreadyPresent, AcquisitionFetched, AcquisitionRefused, acquisition_refusal_text }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_hosts }
 import product.placement_supply { HostIdentity, host_identity_eq }
-import gunbc.spark.snapshot_rail_replica { replicate_snapshot_over_rail, SnapshotReplicated, SnapshotReplicaRefused }
+import gunbc.spark.snapshot_rail_replica { replicate_snapshot_over_rail, SnapshotReplicated, SnapshotReplicaRefused, snapshot_hub_paths }
+import std.measure { gibibyte_count }
+import std.algebra { trim }
 import gunbc.artifact_acquisition { AcquisitionVerified, AcquisitionAbsent, AcquisitionDigestMismatch, AcquisitionProbeFailed }
 import gunbc.spark.serving_subject { PairServingUnitOn }
 import gunbc.spark.host_commitment { admit_host_held_by_subject }
 import gunbc.spark.serving_arm { ServingCheckpoint, serving_checkpoint_row, serving_checkpoint_wire }
-import gunbc.spark.model_snapshot_acquisition { ModelSnapshotDesired, ModelSnapshotPinned, SnapshotSeed, LocalDirectoryPlacement, HubCachePlacement, model_snapshot_completion_check_argv, model_snapshot_subject_for, spark_hub_cache_root }
-import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, SnapshotAcquisitionExecutor, ContainerizedCli, spark_materialize_member, SparkMaterialized, SparkMaterializeUnpinned, SparkMaterializeRefused, spark_remote_run, RemoteRan, RemoteUnreachable, spark_snapshot_verify_observation, spark_transfer_cancel, SparkTransferCancel, TransferCancelled, TransferCancelledNothingRunning, TransferCancelRefused }
+import gunbc.spark.model_snapshot_acquisition { ModelSnapshotDesired, ModelSnapshotPinned, ModelSnapshotUnpinned, SnapshotPlacement, SnapshotSeed, LocalDirectoryPlacement, HubCachePlacement, model_snapshot_completion_check_argv, model_snapshot_subject_for, spark_hub_cache_root }
+import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, SnapshotAcquisitionExecutor, containerized_hub_cli_for, ContainerizedHubCliBuilt, ContainerizedHubCliRefused, spark_materialize_member, SparkMaterialized, SparkMaterializeUnpinned, SparkMaterializeRefused, spark_remote_run, RemoteRan, RemoteUnreachable, spark_snapshot_verify_observation, spark_transfer_cancel, SparkTransferCancel, TransferCancelled, TransferCancelledNothingRunning, TransferCancelRefused }
 import gunbc.spark.vllm_runtime_image_build { SparkBuildHostWork, with_spark_build_host, SparkBuildHostRefused, SparkBuildHostRan, VllmImageDistributionSubject }
 import extdeps.container.oci.digest { render_oci_content_digest_wire }
 import extdeps.docker.cli { docker_image_inspect_names_no_such_image, docker_image_inspect_id_from_stdout, DockerImageInspectId, DockerImageInspectIdUnreadable }
@@ -56,6 +58,13 @@ type HeldImageExecutor
   = HeldImageExecutorRead { executor: SnapshotAcquisitionExecutor, receipt: String }
   | HeldImageExecutorRefused { cause: String }
 
+fn snapshot_placement_of(snapshot: ModelSnapshotDesired) -> SnapshotPlacement {
+  match snapshot {
+    ModelSnapshotPinned { identity: _, repo: _, revision: _, placement: pl, revision_provenance: _ } => pl
+    ModelSnapshotUnpinned { identity: _, repo: _, cause: _ } => HubCachePlacement { cache_root: spark_hub_cache_root }
+  }
+}
+
 fn checkpoint_host_path(c: ServingCheckpoint) -> NonEmptyStr? {
   match serving_checkpoint_row(c: c) {
     Absent => none
@@ -67,7 +76,7 @@ fn checkpoint_host_path(c: ServingCheckpoint) -> NonEmptyStr? {
   }
 }
 
-fn held_image_hub_cli_executor(ctx: SparkMaterializeContext, image: VllmImageDistributionSubject, host_path: NonEmptyStr) -> HeldImageExecutor {
+fn held_image_hub_cli_executor(ctx: SparkMaterializeContext, image: VllmImageDistributionSubject, placement: SnapshotPlacement) -> HeldImageExecutor {
   let want = render_oci_content_digest_wire(d: image.config)
   match spark_remote_run(ctx: ctx, argv: ["docker", "image", "inspect", image.tag as String]) {
     RemoteUnreachable { cause: c } => HeldImageExecutorRefused { cause: join(["the image inspect leg did not run: ", c], "") }
@@ -89,9 +98,12 @@ fn held_image_hub_cli_executor(ctx: SparkMaterializeContext, image: VllmImageDis
                   if c2 != 0 || !starts_with(s: path, prefix: "/") || string_contains(s: path, pattern: "\n") {
                     HeldImageExecutorRefused { cause: join(["the image ", want, " answered no Hub CLI path (exit ", to_string(c2), ", stdout `", path, "`, stderr `", e2, "`)"], "") }
                   } else {
-                    HeldImageExecutorRead {
-                      executor: ContainerizedCli { image: image.tag, cli_path: path as NonEmptyStr, host_path: host_path, container_path: "/out" as NonEmptyStr },
-                      receipt: join(["executor image ", image.tag as String, " held as ", want, "; its Hub CLI read inside it at ", path, "\n"], ""),
+                    match containerized_hub_cli_for(image: image.tag, cli_path: path as NonEmptyStr, placement: placement, container_path: "/out" as NonEmptyStr) {
+                      ContainerizedHubCliRefused { cause: why } => HeldImageExecutorRefused { cause: why as String }
+                      ContainerizedHubCliBuilt { executor: e } => HeldImageExecutorRead {
+                        executor: e,
+                        receipt: join(["executor image ", image.tag as String, " held as ", want, "; its Hub CLI read inside it at ", path, "\n"], ""),
+                      }
                     }
                   }
               }
@@ -153,7 +165,7 @@ fn acquisition_converged(o: AcquisitionOutcome) -> Bool {
 // through its own cancel path (gunbc.spark.model_snapshot_materialize spark_transfer_cancel). The target's
 // result is admitted by the same verify the Hub path ends with.
 fn checkpoint_verify_with(ctx: SparkMaterializeContext, image: VllmImageDistributionSubject, host_path: NonEmptyStr, snapshot: ModelSnapshotDesired) -> CheckpointVerifyReading {
-  match held_image_hub_cli_executor(ctx: ctx, image: image, host_path: host_path) {
+  match held_image_hub_cli_executor(ctx: ctx, image: image, placement: snapshot_placement_of(snapshot: snapshot)) {
     HeldImageExecutorRefused { cause: c } => CheckpointVerifyUnread { cause: c }
     HeldImageExecutorRead { executor: e, receipt: _ } =>
       match spark_snapshot_verify_observation(ctx: with_executor_ctx(ctx: ctx, executor: e), verify: model_snapshot_completion_check_argv(snapshot: snapshot)) {
@@ -262,15 +274,57 @@ fn checkpoint_acquire(m: CheckpointMaterialization, ctx: SparkMaterializeContext
   SparkBuildHostWork { receipt: join([note, w.receipt], ""), converged: w.converged }
 }
 
+// THE BYTES ARE ON THE HOST, NOT WHERE THE CLI HAPPENED TO PUT THEM (valiant-crab-775, 2026-10-03). A verify
+// run in the same container as the fetch can agree with a fetch that never reached the host (both used the
+// container's default cache), so after a converged acquisition the HOST's repo directory is measured by
+// `du` and must hold at least 95% of the checkpoint's recorded weight (the row's weight_gib, which is
+// rounded); anything less refuses, naming both figures.
+fn checkpoint_landed_on_host(ctx: SparkMaterializeContext, m: CheckpointMaterialization, snapshot: ModelSnapshotDesired) -> String? {
+  match serving_checkpoint_row(c: m.checkpoint) {
+    Absent => Present { value: "the checkpoint has no row, so its expected size is unknown" }
+    Present { value: row } =>
+      match snapshot_hub_paths(snapshot: snapshot) {
+        Absent => none
+        Present { value: paths } =>
+          match spark_remote_run(ctx: ctx, argv: ["du", "-sbL", paths.repo_dir as String]) {
+            RemoteUnreachable { cause: c } => Present { value: join(["the host's checkpoint size could not be read: ", c], "") }
+            RemoteRan { exit_code: code, stdout: out, stderr: err } =>
+              if code != 0 { Present { value: join(["du exited ", to_string(code), ": ", err], "") } } else {
+                match first(split(s: out, delimiter: "\t")) {
+                  Absent => Present { value: "du printed no size" }
+                  Present { value: word } =>
+                    match parse_int(s: trim(s: word)) {
+                      Absent => Present { value: join(["du printed `", word, "`, not a size"], "") }
+                      Present { value: bytes } => {
+                        let floor = (gibibyte_count(g: row.weight_gib) as Int) * 1020054732
+                        if bytes < floor { Present { value: join(["the host path ", paths.repo_dir as String, " holds ", to_string(bytes), " bytes, under the ", to_string(floor), " a landed checkpoint of ", to_string(gibibyte_count(g: row.weight_gib) as Int), " GiB holds; the fetch did not land on the host"], "") } }
+                        else { none }
+                      }
+                    }
+                }
+              }
+          }
+      }
+  }
+}
+
 // THE SEED: no group host verifies this snapshot yet, so this host fetches it from the Hub.
 fn checkpoint_seed_from_hub(m: CheckpointMaterialization, ctx: SparkMaterializeContext, host_path: NonEmptyStr, snapshot: ModelSnapshotDesired) -> SparkBuildHostWork {
-  match held_image_hub_cli_executor(ctx: ctx, image: m.image, host_path: host_path) {
+  match held_image_hub_cli_executor(ctx: ctx, image: m.image, placement: snapshot_placement_of(snapshot: snapshot)) {
     HeldImageExecutorRefused { cause: c } => SparkBuildHostWork { receipt: join(["REFUSED: ", c, "\n"], ""), converged: false }
     HeldImageExecutorRead { executor: executor, receipt: r } =>
       match spark_materialize_member(ctx: with_executor_ctx(ctx: ctx, executor: executor), role: SnapshotSeed, snapshot: snapshot) {
         SparkMaterializeRefused { host: _, cause: c } => SparkBuildHostWork { receipt: join([r, "no group peer verifies this snapshot, so this host seeds from the Hub\nREFUSED: ", c as String, "\n"], ""), converged: false }
         SparkMaterializeUnpinned { host: _ } => SparkBuildHostWork { receipt: join([r, "REFUSED: the snapshot carries no pinned revision\n"], ""), converged: false }
-        SparkMaterialized { host: _, outcome: o } => SparkBuildHostWork { receipt: join([r, "no group peer verifies this snapshot, so this host seeds from the Hub\n", acquisition_outcome_line(o: o)], ""), converged: acquisition_converged(o: o) }
+        SparkMaterialized { host: _, outcome: o } =>
+          if !acquisition_converged(o: o) {
+            SparkBuildHostWork { receipt: join([r, "no group peer verifies this snapshot, so this host seeds from the Hub\n", acquisition_outcome_line(o: o)], ""), converged: false }
+          } else {
+            match checkpoint_landed_on_host(ctx: ctx, m: m, snapshot: snapshot) {
+              Present { value: why } => SparkBuildHostWork { receipt: join([r, acquisition_outcome_line(o: o), "REFUSED: ", why, "\n"], ""), converged: false }
+              Absent => SparkBuildHostWork { receipt: join([r, "no group peer verifies this snapshot, so this host seeds from the Hub\n", acquisition_outcome_line(o: o)], ""), converged: true }
+            }
+          }
       }
   }
 }

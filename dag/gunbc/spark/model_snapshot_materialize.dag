@@ -1,8 +1,9 @@
 module gunbc.spark.model_snapshot_materialize
 
+import extdeps.huggingface.hub { HubCacheEnvironment, hub_cache_root_for, hub_cache_environment_words, hub_cache_environment_unset }
 import std.types { String, Bool, List, NonEmptyStr, Secret, Int }
 import std.nat { Nat }
-import std.content_hash { content_hash_atom }
+import std.content_hash { content_hash_atom, content_hash_of_value, serialize_content_hash }
 import product.placement_supply { HostIdentity }
 import std.algebra { trim }
 import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
@@ -31,6 +32,7 @@ import gunbc.artifact_acquisition {
 import gunbc.spark.model_snapshot_acquisition {
   ModelSnapshotDesired, ModelSnapshotRole, SnapshotSeed, SnapshotReplicaOf,
   model_snapshot_subject_for, model_snapshot_completion_check_argv, spark_hub_cache_root,
+  SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement,
 }
 
 // THE SPARK SIDE OF ACQUISITION, RUN AS THE TYPED FOLD RATHER THAN AS RENDERED SHELL.
@@ -128,12 +130,66 @@ fn shell_command_line(argv: List<String>) -> String {
 // landed. The path is now carried per executor.
 type SnapshotAcquisitionExecutor
   = HostCli
-  | ContainerizedCli {
-      image: NonEmptyStr
-      cli_path: NonEmptyStr
-      host_path: NonEmptyStr
-      container_path: NonEmptyStr
-    }
+  | ContainerizedCli { cli: ContainerizedHubCli }
+
+// THE CONTAINERISED CLI CARRIES THE ENVIRONMENT THAT DECIDES WHERE IT WRITES, AND IT CAN ONLY BE BUILT
+// AGREEING WITH ITS PLACEMENT (operator ruling, 2026-10-03). The Hub CLI resolves its cache from its own
+// environment and HOME (extdeps.huggingface.hub hub_cache_root_for); inside a container with no cache
+// variables that is the container's /root/.cache, which --rm deletes, so a Hub-cache fetch "converged" while
+// nothing reached the host. The executor that owns the mount is therefore the one that sets the cache: for a
+// Hub-cache placement it sets HF_HUB_CACHE to the container side of the mount it declares, and the record is
+// sealed (sole_constructor) behind containerized_hub_cli, which REFUSES to build one whose resolved cache root
+// is not that mount. A wrap that writes anywhere but the placement has no constructor.
+type ContainerizedHubCli sole_constructor {
+  image: NonEmptyStr
+  cli_path: NonEmptyStr
+  host_path: NonEmptyStr
+  container_path: NonEmptyStr
+  container_home: NonEmptyStr
+  cache_env: HubCacheEnvironment
+}
+
+data containerized_cli_home: NonEmptyStr = "/root" as NonEmptyStr
+
+type ContainerizedHubCliStanding
+  = ContainerizedHubCliBuilt { executor: SnapshotAcquisitionExecutor }
+  | ContainerizedHubCliRefused { cause: NonEmptyStr }
+
+// THE CACHE ROOT A CONTAINERISED CLI WOULD WRITE TO, for a given environment: the one fold every check and
+// witness asks.
+fn containerized_cache_root(cache_env: HubCacheEnvironment) -> NonEmptyStr {
+  hub_cache_root_for(env: cache_env, executing_home: containerized_cli_home)
+}
+
+// THE ONE CONSTRUCTOR. For a Hub-cache placement the mount's host side is the placement's cache root and the
+// environment points the CLI at the mount's container side; for a local-directory placement the command names
+// its own --local-dir (translated across the mount), and no cache variable is set. The resolved cache root is
+// then checked against the placement, so the refusal is at render, before any command exists.
+fn containerized_hub_cli(image: NonEmptyStr, cli_path: NonEmptyStr, placement: SnapshotPlacement, container_path: NonEmptyStr, cache_env: HubCacheEnvironment) -> ContainerizedHubCliStanding {
+  match placement {
+    HubCachePlacement { cache_root: root } =>
+      if (containerized_cache_root(cache_env: cache_env) as String) != (container_path as String) {
+        ContainerizedHubCliRefused { cause: join(["the containerised Hub CLI would write to ", containerized_cache_root(cache_env: cache_env) as String, " inside the container, not the mount ", container_path as String, " of the placement's cache ", root as String, "; its fetch would be deleted with the container"], "") as NonEmptyStr }
+      } else {
+        ContainerizedHubCliBuilt { executor: ContainerizedCli { cli: ContainerizedHubCli { image: image, cli_path: cli_path, host_path: root, container_path: container_path, container_home: containerized_cli_home, cache_env: cache_env } } }
+      }
+    LocalDirectoryPlacement { host_path: p } =>
+      ContainerizedHubCliBuilt { executor: ContainerizedCli { cli: ContainerizedHubCli { image: image, cli_path: cli_path, host_path: p, container_path: container_path, container_home: containerized_cli_home, cache_env: cache_env } } }
+  }
+}
+
+// THE ENVIRONMENT A PLACEMENT NEEDS FROM ITS CONTAINER: the mount's container side as HF_HUB_CACHE for a Hub
+// cache; nothing for a local directory.
+fn placement_cache_env(placement: SnapshotPlacement, container_path: NonEmptyStr) -> HubCacheEnvironment {
+  match placement {
+    HubCachePlacement { cache_root: _ } => HubCacheEnvironment { hf_hub_cache: Present { value: container_path }, hf_home: none, xdg_cache_home: none }
+    LocalDirectoryPlacement { host_path: _ } => hub_cache_environment_unset
+  }
+}
+
+fn containerized_hub_cli_for(image: NonEmptyStr, cli_path: NonEmptyStr, placement: SnapshotPlacement, container_path: NonEmptyStr) -> ContainerizedHubCliStanding {
+  containerized_hub_cli(image: image, cli_path: cli_path, placement: placement, container_path: container_path, cache_env: placement_cache_env(placement: placement, container_path: container_path))
+}
 
 // THE EXECUTOR DOES NOT ADD PRIVILEGE OF ITS OWN. Every remote leg already runs under `sudo -S`
 // (see spark_remote_run), so wrapping `sudo` here too would nest it -- and a second privilege
@@ -152,15 +208,16 @@ type SnapshotAcquisitionExecutor
 fn executor_wrap(executor: SnapshotAcquisitionExecutor, argv: List<String>) -> List<String> {
   match executor {
     HostCli => with_execution_sentinel(argv: argv)
-    ContainerizedCli { image: img, cli_path: cli, host_path: hp, container_path: cp } =>
-      ["docker", "run", "--rm",
-       "-v", join([hp as String, ":", cp as String], ""),
-       "--entrypoint", "sh", img as String,
-       "-c", sentinel_command_line(argv: translate_mounted_paths(
-         host_path: hp, container_path: cp,
-         argv: concat([cli as String], argv.skip(n: 1)),
-       )),
-      ]
+    ContainerizedCli { cli: c } =>
+      concat(concat(
+        ["docker", "run", "--rm", "-v", join([c.host_path as String, ":", c.container_path as String], "")],
+        flat_map(hub_cache_environment_words(env: c.cache_env), w => ["-e", w])),
+        ["--entrypoint", "sh", c.image as String,
+         "-c", sentinel_command_line(argv: translate_mounted_paths(
+           host_path: c.host_path, container_path: c.container_path,
+           argv: concat([c.cli_path as String], argv.skip(n: 1)),
+         )),
+        ])
   }
 }
 
@@ -587,7 +644,7 @@ fn spark_transfer_start_argv(ctx: SparkMaterializeContext, subject: AcquisitionS
     concat([
       "systemd-run",
       join(["--unit=", spark_transfer_unit_for(subject: subject) as String], ""),
-      join(["--description=", spark_transfer_unit_description(subject: subject)], ""),
+      join(["--description=", spark_transfer_unit_description(subject: subject), " ", spark_transfer_command_tag(executor: ctx.executor, argv: argv)], ""),
     ], concat(spark_transfer_restart_properties, ["--"])),
     executor_wrap(executor: ctx.executor, argv: argv),
   )) {
@@ -662,10 +719,51 @@ fn spark_transfer_wait_then_poll(ctx: SparkMaterializeContext, subject: Acquisit
 // A BUDGET-EXHAUSTED TRANSFER IS REFUSED WITHOUT BEING KILLED, and the refusal says so. The unit is
 // left running; re-running apply reattaches to it. Killing it would throw away hours of progress to
 // report a cleaner state.
+// A RUNNING TRANSFER IS REATTACHED ONLY WHEN IT RUNS THIS ACQUISITION'S COMMAND (2026-10-03). The unit name
+// is derived from the subject, so a transfer started by an EARLIER revision of the command -- the one that
+// wrote to the container's default cache and landed nothing -- would otherwise be supervised as though it
+// were this run's. The unit's description must carry this run's command digest (spark_transfer_command_tag); a different
+// command is stopped through the transfer's own cancel path and started afresh, and an unread description is
+// unreachable, never a match.
+type SparkTransferCommand
+  = TransferCommandMatches
+  | TransferCommandDiffers
+  | TransferCommandUnread
+
+// THE COMMAND'S DIGEST RIDES IN THE UNIT'S DESCRIPTION, which systemd prints verbatim, unlike ExecStart,
+// whose argv it re-quotes.
+fn spark_transfer_command_tag(executor: SnapshotAcquisitionExecutor, argv: List<String>) -> String {
+  join(["cmd=", serialize_content_hash(hash: content_hash_of_value(value: join(executor_wrap(executor: executor, argv: argv), "\n") as NonEmptyStr)) as String], "")
+}
+
+fn spark_transfer_runs_command(ctx: SparkMaterializeContext, subject: AcquisitionSubject, origin: AcquisitionSource) -> SparkTransferCommand {
+  match origin.locator {
+    SourceUrl { url: _ } => TransferCommandDiffers
+    SourceArgv { argv: a } =>
+      match spark_remote_run(ctx: ctx, argv: ["systemctl", "show", spark_transfer_unit_for(subject: subject) as String, "--property=Description", "--value"]) {
+        RemoteUnreachable { cause: _ } => TransferCommandUnread
+        RemoteRan { exit_code: code, stdout: out, stderr: _ } =>
+          if code != 0 { TransferCommandUnread }
+          else if string_contains(s: out, pattern: spark_transfer_command_tag(executor: ctx.executor, argv: a)) { TransferCommandMatches }
+          else { TransferCommandDiffers }
+      }
+  }
+}
+
 fn spark_snapshot_attempt(ctx: SparkMaterializeContext, verify: List<String>, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
   match spark_transfer_state(ctx: ctx, subject: subject) {
     TransferStateUnreadable { cause: _ } => AttemptUnreachable
-    TransferRunning => spark_snapshot_after_transfer(ctx: ctx, verify: verify, subject: subject, origin: origin)
+    TransferRunning =>
+      match spark_transfer_runs_command(ctx: ctx, subject: subject, origin: origin) {
+        TransferCommandMatches => spark_snapshot_after_transfer(ctx: ctx, verify: verify, subject: subject, origin: origin)
+        TransferCommandUnread => AttemptUnreachable
+        TransferCommandDiffers =>
+          match spark_transfer_cancel(ctx: ctx, subject: subject) {
+            TransferCancelRefused { cause: _ } => AttemptUnreachable
+            TransferCancelled => if !spark_transfer_clear(ctx: ctx, subject: subject) { AttemptUnreachable } else { spark_snapshot_start_and_supervise(ctx: ctx, verify: verify, subject: subject, origin: origin) }
+            TransferCancelledNothingRunning => spark_snapshot_start_and_supervise(ctx: ctx, verify: verify, subject: subject, origin: origin)
+          }
+      }
     TransferExitedClean =>
       if !spark_transfer_clear(ctx: ctx, subject: subject) {
         AttemptUnreachable
