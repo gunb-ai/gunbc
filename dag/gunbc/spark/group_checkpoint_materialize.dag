@@ -243,15 +243,23 @@ fn checkpoint_materialize_work(m: CheckpointMaterialization, ctx: SparkMateriali
         Present { value: host_path } =>
           match checkpoint_verify_with(ctx: ctx, image: m.image, host_path: host_path, snapshot: snapshot) {
             CheckpointVerified => SparkBuildHostWork { receipt: "ALREADY PRESENT and verified on this host; nothing moved\n", converged: true }
-            CheckpointVerifyUnread { cause: c } => SparkBuildHostWork { receipt: join(["REFUSED: this host's own verify could not be read: ", c, "\n"], ""), converged: false }
-            CheckpointVerifyFailed { cause: _ } =>
-              match checkpoint_admissible_peer(m: m, target: ctx.host, host_path: host_path, snapshot: snapshot) {
-                Present { value: peer } => checkpoint_replicate_from(m: m, peer: peer, tctx: ctx, host_path: host_path, snapshot: snapshot)
-                Absent => checkpoint_seed_from_hub(m: m, ctx: ctx, host_path: host_path, snapshot: snapshot)
-              }
+            CheckpointVerifyUnread { cause: c } => checkpoint_acquire(m: m, ctx: ctx, host_path: host_path, snapshot: snapshot, note: join(["this host's own verify was not a pass (", c, "), so the snapshot is acquired; the acquisition re-observes it with its own typed verdicts\n"], ""))
+            CheckpointVerifyFailed { cause: c } => checkpoint_acquire(m: m, ctx: ctx, host_path: host_path, snapshot: snapshot, note: "")
           }
       }
   }
+}
+
+// NOT VERIFIED HERE: a verified peer replicates over the rail, else this host seeds from the Hub. An
+// unreadable own-verify (a partial snapshot mid-transfer reads that way) is not a pass and not evidence of
+// absence, so it goes the same way: the acquisition that follows observes the snapshot again under its own
+// typed verdicts, and the receipt says why it ran.
+fn checkpoint_acquire(m: CheckpointMaterialization, ctx: SparkMaterializeContext, host_path: NonEmptyStr, snapshot: ModelSnapshotDesired, note: String) -> SparkBuildHostWork {
+  let w = match checkpoint_admissible_peer(m: m, target: ctx.host, host_path: host_path, snapshot: snapshot) {
+    Present { value: peer } => checkpoint_replicate_from(m: m, peer: peer, tctx: ctx, host_path: host_path, snapshot: snapshot)
+    Absent => checkpoint_seed_from_hub(m: m, ctx: ctx, host_path: host_path, snapshot: snapshot)
+  }
+  SparkBuildHostWork { receipt: join([note, w.receipt], ""), converged: w.converged }
 }
 
 // THE SEED: no group host verifies this snapshot yet, so this host fetches it from the Hub.
