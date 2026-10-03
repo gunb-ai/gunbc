@@ -1,6 +1,5 @@
 module gunbc.recurring_failure_mode.carrier_by_spelling
 
-import std.coercion { unicode_scalar_unfold }
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.recurring_failure_mode { RecurringFailureMode }
@@ -17,7 +16,7 @@ data carrier_by_spelling: RecurringFailureMode = RecurringFailureMode {
 
     "THE SPECIMEN, measured on the `v2.compiler.compile` / `00_compile` closure rather than on a fixture: `gunbc.self_host_compile_phase_frontier` `receipt_2_66765317_raw_error_diagnostic_identities` carries the parse.rs pair `src/v2_compiler_parse.rs` E0282 `type annotations needed` and E0308 `mismatched types`, together with the rest of that census's fifteen identities (lexing, qualified_name, target_model, dag/python/typescript language modules, interpreter `row_key`).",
 
-    "THE FIFTEEN HAND CONVERSIONS are `285b02eed2944331574330282fc49165a805b75e` (`Clear the remaining XL-N closure errors at source: carrier conversions at the boundaries`): each site converted at a construction or operation boundary -- `unicode_scalar_unfold(s: )` ingress, host-carrier `string_length` / `char_at` instead of routing through structural `string_is_empty`, nested `concat` instead of a method on the host token -- so the emitted crate went cargo-clean.",
+    "THE FIFTEEN HAND CONVERSIONS are `285b02eed2944331574330282fc49165a805b75e` (`Clear the remaining XL-N closure errors at source: carrier conversions at the boundaries`): each site converted at a construction or operation boundary -- `chars()` ingress, host-carrier `string_length` / `char_at` instead of routing through structural `string_is_empty`, nested `concat` instead of a method on the host token -- so the emitted crate went cargo-clean.",
 
     "Those conversions are a WORKAROUND POPULATION, not a climb: they leave the competing bindings writable, and the next module that imports `v2.std.text` `\{ String \}` and spells a bare `String` repeats the class. Filed beside `unmarked_workaround` rather than as a specimen of it, because the conversions DID mark their dissolve-on in the frontier receipt; the class they paper over is the binding, not the missing marker.",
 

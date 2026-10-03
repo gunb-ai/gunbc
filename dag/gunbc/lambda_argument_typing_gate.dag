@@ -1,6 +1,5 @@
 module gunbc.lambda_argument_typing_gate
 
-import std.coercion { unicode_scalar_unfold }
 import std.types { Bool, Int, List, String }
 import std.decl_ref {
   CitableThroughDeclIndex,
@@ -156,7 +155,7 @@ data lambda_typing_gate_departed_sites: List<LambdaTypingGateSiteDeparture> = [
       rustc_code: "E0282",
       rustc_help_annotates: "ch (the element)",
     },
-    deleted_by: "gunbc#11401 C1/C1b: the token-stream digest hashes a lexeme through its interned symbol; the fold_list over unicode_scalar_unfold(s: s:) that carried this closure no longer exists. That is a deletion of the position, not a repair of the String declaration-site alias cause, which the tokenize row still carries.",
+    deleted_by: "gunbc#11401 C1/C1b: the token-stream digest hashes a lexeme through its interned symbol; the fold_list over chars(s:) that carried this closure no longer exists. That is a deletion of the position, not a repair of the String declaration-site alias cause, which the tokenize row still carries.",
   },
 ]
 
