@@ -1,7 +1,7 @@
 module v2.test.claim.floor_non_verdict_admission_test
 
+import std.types { List }
 import v2.std.algebra { Cons, Empty, length }
-import v2.std.collection { List }
 import v2.std.text { String }
 import v2.std.logic { Bool }
 import v2.workflow.floor_non_verdict_admission {
