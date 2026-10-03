@@ -607,6 +607,12 @@ fn local_store_reserve(root: MaterializationStoreRoot, family: ArtifactKindId, n
 
 // Evicted objects are deleted after the index stops naming them; a delete the host refuses leaves an
 // object no index names, which the next open's sweep removes, and is reported in the commit receipt.
+// One delete, observed once, so a receipt splits its results instead of searching for them.
+type LocalStoreDeleteAttempt {
+  name: String
+  success: Bool
+}
+
 fn local_store_delete_names(root_path: String, names: List<String>) -> List<String> {
   names |> filter(n => !Filesystem.Delete(path: store_path(root_path: root_path, name: n)).success)
 }
@@ -676,8 +682,8 @@ fn local_store_sweep(root: MaterializationStoreRoot) -> LocalStoreSweep {
         Present { value: indexed } => {
           let orphans = filesystem_listing_entry_names(listing: listed)
             |> filter(n => local_store_is_object_name(name: n) && !(indexed |> any(i => i == n || local_store_is_part_of(name: n, record: i))))
-          let refused = local_store_delete_names(root_path: root_path, names: orphans)
-          LocalStoreSwept { removed: orphans |> filter(n => !(refused |> any(r => r == n))), delete_refused: refused }
+          let attempts = orphans |> map(n => LocalStoreDeleteAttempt { name: n, success: Filesystem.Delete(path: store_path(root_path: root_path, name: n)).success })
+          LocalStoreSwept { removed: attempts |> filter(t => t.success) |> map(t => t.name), delete_refused: attempts |> filter(t => !t.success) |> map(t => t.name) }
         }
       }
   }
