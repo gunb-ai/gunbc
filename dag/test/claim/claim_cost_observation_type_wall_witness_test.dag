@@ -53,7 +53,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // control stayed green, so the refusal is this wall firing and not the probe breaking.
 fn censored_population_refuses_to_compile() -> Bool {
   !compile_dag_rust_emit_check(
-    "module fixture.cost_censored\nimport v2.std.collection { List }\nimport v2.workflow.claim_cost_observation { RightCensoredCost, RemedyPartition, remedy_partition }\nfn size(xs: List<RightCensoredCost>) -> RemedyPartition { remedy_partition(exact: xs) }\n",
+    "module fixture.cost_censored\nimport std.types { List }\nimport v2.workflow.claim_cost_observation { RightCensoredCost, RemedyPartition, remedy_partition }\nfn size(xs: List<RightCensoredCost>) -> RemedyPartition { remedy_partition(exact: xs) }\n",
     "src/fixture_cost_censored.rs",
     [],
     []
@@ -69,7 +69,7 @@ fn censored_population_refuses_to_compile() -> Bool {
 // about the wall.
 fn exact_population_compiles() -> Bool {
   compile_dag_rust_emit_check(
-    "module fixture.cost_exact\nimport v2.std.collection { List }\nimport v2.workflow.claim_cost_observation { ExactCompletionCost, RemedyPartition, remedy_partition }\nfn size(xs: List<ExactCompletionCost>) -> RemedyPartition { remedy_partition(exact: xs) }\n",
+    "module fixture.cost_exact\nimport std.types { List }\nimport v2.workflow.claim_cost_observation { ExactCompletionCost, RemedyPartition, remedy_partition }\nfn size(xs: List<ExactCompletionCost>) -> RemedyPartition { remedy_partition(exact: xs) }\n",
     "src/fixture_cost_exact.rs",
     [],
     []
