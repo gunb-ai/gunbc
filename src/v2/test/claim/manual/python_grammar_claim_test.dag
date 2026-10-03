@@ -3,7 +3,9 @@ module v2.test.manual.python_grammar_claim
 import v2.compiler.parse {
   grammar_choice_ambiguity_count,
   grammar_validate_for_parse,
+  parse_module_prepared,
   parse_production_tree,
+  prepare_grammar,
 }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.python {
@@ -13,7 +15,7 @@ import v2.extdeps.languages.python {
 }
 import v2.std.compilers.lexing { token_stream_remaining }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, invariant_port_locus }
-import v2.std.grammar { ParseTree }
+import v2.std.grammar { ModeledGrammar, ParseTree }
 import v2.std.logic { Bool }
 
 test fn python_grammar_validates_fixture() -> Bool {
@@ -61,19 +63,21 @@ data python_multi_statement_suite_text: String = "def f(x):\n    y = x\n    retu
 // The discriminating red: a suite is one or more statements, so a def whose body is empty refuses.
 data python_empty_suite_text: String = "def f(x):\n    "
 
+// Through the prepared door: prepare_grammar validates AND analyzes the grammar once, and the
+// module parse starts at the grammar's start production, python_production_fn_def. (Validating
+// with grammar_validate_for_parse and then calling parse_production_tree computes the FIRST
+// analysis twice, which is what put this control over its floor budget.)
 fn python_fn_def_parse(text: String) -> Outcome<ParseTree> {
-  let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^python_grammar_claim_test_grammar_contract)
-  match tokenize(text: text, file: ^python_parse_fixture_file, rules: python_lex()) {
+  match prepare_grammar(grammar: ModeledGrammar { root: python_grammar_root() }) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-    Accepted { value: stream, diagnostics: _ } =>
-      match grammar_validate_for_parse(root: python_grammar_root(), at: at) {
+    Accepted { value: prepared, diagnostics: residue } =>
+      match tokenize(text: text, file: ^python_parse_fixture_file, rules: python_lex()) {
         Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-        Accepted { value: validated, diagnostics: _ } =>
-          parse_production_tree(
-            tokens: token_stream_remaining(stream: stream),
-            validated: validated,
-            production_name: ^python_production_fn_def
-          )
+        Accepted { value: stream, diagnostics: _ } =>
+          match parse_module_prepared(tokens: stream, prepared: prepared, validation_residue: residue) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }
+          }
       }
   }
 }
