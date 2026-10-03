@@ -3622,6 +3622,120 @@ fn native_census_residual_rows(
   )
 }
 
+// THE CENSUS IS GROUPED BY THE CAUSE THAT FIRED, NEVER BY THE ONE THAT CAME FIRST. A refusal's
+// diagnostic list PREPENDS the advisories that were pending when the refusal fired
+// (rejected_with_pending), so its head is whatever advisory was queued first -- on the dag grammar
+// that is the overlap-residue advisory every file carries -- and grouping by it files every refusal
+// under one advisory that refused nothing. v2.std.diagnostic diagnostics_fatal is the one authority
+// for which element fired: a file refusal already carries its answer as `fatal_reason`
+// (native_test_file_refusal), and a resolve chain is asked the same question here. The head stays on
+// the member as `head_reason` so the reader still sees what rode along; it is a field, not a key.
+// BOTH POPULATIONS LAND IN ONE GROUPING because they are one question -- what refused, and where --
+// asked at two stages, and the stage is a field on the member rather than a second roster.
+type NativeCensusCauseStage
+  = NativeCensusCauseFrontEnd
+  | NativeCensusCauseResolve
+
+type NativeCensusCauseMember {
+  stage: NativeCensusCauseStage
+  path: Symbol
+  module: Optional<QualifiedName>
+  head_reason: Symbol
+}
+
+type NativeCensusCauseGroup {
+  fatal_reason: Symbol
+  members: FreeMonoid<NativeCensusCauseMember>
+}
+
+// KEYED BY THE FATAL REASON, ORDERED BY FIRST APPEARANCE. Members are prepended per group and each
+// group is reversed once when read, so adding a member costs one lookup and one cons rather than a
+// walk of its group -- the quadratic append DESIGN section 6 fixes regardless of n.
+type NativeCensusCauseGroups {
+  order: FreeMonoid<Symbol>
+  by_reason: Map<Symbol, FreeMonoid<NativeCensusCauseMember>>
+}
+
+fn native_census_cause_groups_empty() -> NativeCensusCauseGroups {
+  NativeCensusCauseGroups { order: Empty, by_reason: empty_map() }
+}
+
+fn native_census_cause_groups_add(
+  groups: NativeCensusCauseGroups,
+  fatal_reason: Symbol,
+  member: NativeCensusCauseMember
+) -> NativeCensusCauseGroups {
+  match map_lookup(groups.by_reason, fatal_reason) {
+    Absent =>
+      NativeCensusCauseGroups {
+        order: Cons { head: fatal_reason, tail: groups.order },
+        by_reason: map_insert(groups.by_reason, fatal_reason, Cons { head: member, tail: Empty })
+      }
+    Present { value: members } =>
+      NativeCensusCauseGroups {
+        order: groups.order,
+        by_reason: map_insert(groups.by_reason, fatal_reason, Cons { head: member, tail: members })
+      }
+  }
+}
+
+fn native_census_cause_groups_add_file_refusal(
+  groups: NativeCensusCauseGroups,
+  refusal: NativeTestFileRefusal
+) -> NativeCensusCauseGroups {
+  native_census_cause_groups_add(
+    groups: groups,
+    fatal_reason: refusal.fatal_reason,
+    member: NativeCensusCauseMember {
+      stage: NativeCensusCauseFrontEnd,
+      path: refusal.path,
+      module: refusal.module,
+      head_reason: refusal.head_reason
+    }
+  )
+}
+
+fn native_census_cause_groups_add_residual(
+  groups: NativeCensusCauseGroups,
+  row: NativeCensusResidualRow
+) -> NativeCensusCauseGroups {
+  native_census_cause_groups_add(
+    groups: groups,
+    fatal_reason: diagnostics_fatal_reason(d: row.chain),
+    member: NativeCensusCauseMember {
+      stage: NativeCensusCauseResolve,
+      path: row.path,
+      module: optional_present(value: qualified_name_from_dotted_string(dotted: row.module)),
+      head_reason: row.chain.head.reason
+    }
+  )
+}
+
+fn native_census_cause_groups_from_file_refusals(refusals: FreeMonoid<NativeTestFileRefusal>) -> NativeCensusCauseGroups {
+  fold_list(
+    xs: refusals,
+    empty: native_census_cause_groups_empty(),
+    cons: fn(acc, r) { native_census_cause_groups_add_file_refusal(groups: acc, refusal: r) }
+  )
+}
+
+// `order` IS NEWEST-FIRST, so consing each group onto the accumulator while walking it yields
+// first-appearance order in one pass: no snoc onto a cons list, and no reverse of the order
+// (review 74382; DESIGN section 6 bare minimum cost).
+fn native_census_cause_group_rows(groups: NativeCensusCauseGroups) -> List<NativeCensusCauseGroup> {
+  fold_list(
+    xs: groups.order,
+    empty: Empty,
+    cons: fn(acc, reason) {
+      match map_lookup(groups.by_reason, reason) {
+        Absent => acc
+        Present { value: members } =>
+          Cons { head: NativeCensusCauseGroup { fatal_reason: reason, members: list_reverse(xs: members) }, tail: acc }
+      }
+    }
+  )
+}
+
 // THE LIVE-VERDICT CONTROLS, EXECUTED BY THE SAME ROUTE AS EVERY MEMBER. They sit outside the
 // universe prefix, so discovery enrols nothing for them and the authority's own declaration is
 // what names them; a verdict is Absent exactly when the route could not produce one, which is the
