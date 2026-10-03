@@ -1,7 +1,6 @@
 module extdeps.dpkg
 
 import std.types { NonEmptyStr, Bool, List, Int, Unit }
-import std.string_type { String }
 import std.algebra { Cons, Empty, trim }
 
 import extdeps.external_authority { ExternalAuthority }
