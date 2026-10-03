@@ -127,7 +127,9 @@ A practical realization is a short-lived signed request permit minted by success
 
 **Home:** generic live-deploy convergence (`gunbc.live_deploy`).
 
-**Owed a decision:** what triggers a converge, and which instance the model calls production. The naming decides which host a wrong-instance mistake reaches. The belt-tick module records one such near miss: a tick ran `git worktree add` into srv1's production tree.
+**Operator ruling (2026-10-03): converges are triggered manually today, and automated later.** Until they are automated, the manual trigger is one retry-safe action, the converge entry point, never a hand-run sequence of steps. Running it twice against a converged host is a Noop. The deployment hand-placed on srv2 for #13066 is the case this rules out: the admitted revision goes onto the host through the converge, not around it.
+
+**Still owed a decision:** which instance the model calls production. The naming decides which host a wrong-instance mistake reaches. The belt-tick module records one such near miss: a tick ran `git worktree add` into srv1's production tree.
 
 **RED first:** admit a revision for srv2. Convergence brings the running deployment to it and reads it back. A running revision that differs from the admitted one is reported as drift.
 
