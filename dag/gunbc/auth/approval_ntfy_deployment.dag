@@ -18,6 +18,7 @@ import gunbc.executor_privileged_operation {
 import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path }
 import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerAllGroupTraverse }
 import gunbc.fleet_intent_network { fleet_intent_network, operator_host_srv1 }
+import gunbc.fleet_tailnet { tailnet_base_url_from }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_version_resource }
 import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
 import extdeps.ietf.http_semantics { POST }
@@ -422,54 +423,8 @@ fn approval_ntfy_human_burden() -> ProvisioningHumanBurden {
 // worth keeping on its own: it exists to carry approval requests to a phone, and with no requests
 // it carries nothing.
 
-// THE ADDRESS IS JOINED FROM THE AUTHORITIES THAT ALREADY OWN ITS PARTS, not spelled as one
-// literal. An earlier revision wrote "https://srv1.tailecbe08.ts.net:8443" here, which re-minted
-// two facts the corpus owns elsewhere -- the tailnet domain at gunbc.fleet_intent_network
-// `fleet_intent_network.tailnet_domain`, and srv1's identity at `operator_host_srv1`. Relocating
-// the binding out of extdeps fixed the LAYER; it left the DUPLICATION, which is §3's nicknaming
-// under a different roof. Renaming the tailnet or the host would have left this string stale while
-// every modeled consumer moved.
-//
-// The address a CLIENT dials is a different fact from the address the SERVER listens on
-// (approval_ntfy_listen_address, held to loopback by policy); tailscale serve is what joins them,
-// and each is asserted for its own job.
-//
-// THE ABSENT ARM FAILS LOUD RATHER THAN PLAUSIBLY. tailnet_domain is Optional, and the service
-// config's `endpoint` cannot carry an Optional -- so a deployment whose tailnet domain is
-// undeclared has no address, and the honest encoding of that is a host in the RFC 2606 `.invalid`
-// TLD, which is guaranteed never to resolve. That is a structural failure, not an absorbing
-// fallback: it cannot succeed, cannot widen, and cannot be mistaken for a working endpoint. The
-// arm is witnessed so it is not merely asserted.
-//
-// ONE COMPOSITION FOR EVERY SERVICE TAILSCALE SERVE PUBLISHES ON srv1: the port is the parameter,
-// because that is the only fact that differs between the ntfy address and the roadmap server's
-// (which the approval links point at, gunbc.auth.approval_request_submission). Absent means the
-// default TLS port and no `:port` suffix, which is how tailscale serve renders the 443 listener.
-// THE HOST IS ITS OWN FACT, read by a client that composes the URL itself: the approvals app sets
-// scheme, host and path on URLComponents separately (gunbc.approve_ios_swift_wire ServerConfig), so
-// it needs the bare host and not the base URL. The base URL below is built FROM this, so the two
-// cannot disagree.
-fn srv1_tailnet_host_from(domain: NonEmptyStr?) -> NonEmptyStr {
-  match domain {
-    Present { value: d } => join([operator_host_srv1 as String, ".", d as String], "") as NonEmptyStr
-    Absent => "tailnet-domain-undeclared.invalid" as NonEmptyStr
-  }
-}
-
-fn srv1_tailnet_base_url_from(domain: NonEmptyStr?, port: Port?) -> NonEmptyStr {
-  match domain {
-    Present { value: _ } =>
-      join([
-        "https://",
-        srv1_tailnet_host_from(domain: domain) as String,
-        match port { Present { value: p } => concat(":", to_string(p))  Absent => "" },
-      ], "") as NonEmptyStr
-    Absent => join(["https://", srv1_tailnet_host_from(domain: domain) as String], "") as NonEmptyStr
-  }
-}
-
 fn approval_ntfy_base_url_from(domain: NonEmptyStr?) -> NonEmptyStr {
-  srv1_tailnet_base_url_from(domain: domain, port: Present { value: approval_ntfy_serve_port })
+  tailnet_base_url_from(host: operator_host_srv1 as NonEmptyStr, domain: domain, port: Present { value: approval_ntfy_serve_port })
 }
 
 // The TLS port tailscale serve publishes on, distinct from the loopback port ntfy binds. srv1's
