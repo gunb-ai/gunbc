@@ -7718,6 +7718,12 @@ fn function_type_params_have_collision(type_params: List<Node>) -> Bool {
 // that answers it and both surfaces read the same list. Splitting `has_fn_fields` without this
 // would have put the two out of step: the header would gain a WF bound the impl header did not,
 // which does not compile.
+//
+// EVERY hand-written impl for the item reads this list, not only GroupCompletion's: the
+// FreeMonoid and Set supplemental Debug/PartialEq impls (v1.compiler.trait_derive_emit
+// v1_freemonoid_impl_type_params / v1_set_impl_type_params) take it as a parameter and union it
+// under the trait's own requirement. They used to render from the trait requirement alone, which
+// is the out-of-step state this note describes, reached through a second door.
 fn emit_item_header_clone_param_names(
   item: Node,
   item_name: String,
@@ -7756,47 +7762,17 @@ fn emit_type_params_from_clone_param_names(
   }
 }
 
-fn emit_item_type_params_with_clone_bounds(item_name: String, params: List<Node>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
-  let generic_param_names = params |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
-  let clone_param_names = v1_item_clone_bounded_param_names(
-    item_name: item_name,
-    generic_param_names: generic_param_names,
-    bounds: emit_info.clone_bounded_type_params
-  )
-  if (clone_param_names |> count) > 0 {
-    v1_emit_type_params_with_clone_bounds(params: params, clone_param_names: clone_param_names, source_indices: source_indices)
-  } else {
-    emit_type_params(params: params, source_indices: source_indices)
-  }
-}
-
-// The SINGLE well-formedness fact the GroupCompletion supplemental impls need, read from the same
-// record `emit_item_type_params_with_clone_bounds` reads (`clone_bounded_type_params`) rather than
-// re-derived beside it. Rust REQUIRES an impl's generics to satisfy the type's own bounds, so
-// `struct S<M: Clone>` with `impl<M> Neg for S<M>` cannot compile: the item header and the impl
-// header are ONE decision rendered twice, which makes single authority the construction answer
-// here rather than a style preference.
-//
-// What crosses into `extdeps.languages.rust.emit` is this Bool — a compiler fact about the
-// carrier's declaration. The SPELLING (`Clone`, the trait paths, the where-clauses) stays in
-// extdeps, so the §3 duty is intact. It is deliberately NOT routed through
-// `spelling.where_bounds`: that field carries the OP's own requirement (a fact about `Neg`/`Add`),
-// and the carrier bound is a fact about `GroupCompletion` — merging them would recreate the fused
-// flag this change exists to split, and the two have different lifetimes (a new op row changes
-// where_bounds and never changes the carrier's WF bound).
+// THE GroupCompletion SUPPLEMENTAL IMPLS READ THE SAME DECISION. What crosses into
+// `extdeps.languages.rust.emit` is one Bool derived from the header list at the capability table
+// (`v1_emit_struct_from_capability_table`) -- a compiler fact about the carrier's declaration. The
+// SPELLING (`Clone`, the trait paths, the where-clauses) stays in extdeps, so the §3 duty is
+// intact. It is deliberately NOT routed through `spelling.where_bounds`: that field carries the
+// OP's own requirement (a fact about `Neg`/`Add`), and the carrier bound is a fact about
+// `GroupCompletion` -- merging them would recreate the fused flag that split exists to remove.
 //
 // KNOWN ASYMMETRY, named rather than fixed here: the item header is rendered compiler-side
-// (`emit_item_type_params_with_clone_bounds`) while the impl header is rendered in extdeps, so the
-// tree answers "where does a Rust bound get spelled" two different ways. Out of scope for this
-// change.
-fn v1_carrier_param_needs_clone_bound(item_name: String, generic_param_names: List<String>, emit_info: EmitGraphInfo) -> Bool {
-  (v1_item_clone_bounded_param_names(
-    item_name: item_name,
-    generic_param_names: generic_param_names,
-    bounds: emit_info.clone_bounded_type_params
-  ) |> count) > 0
-}
-
+// (`emit_type_params_from_clone_param_names`) while the GroupCompletion impl header is rendered in
+// extdeps, so the tree answers "where does a Rust bound get spelled" two different ways.
 fn emit_item_clone_bound_refusal(item: Node, item_name: String, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
   if (item.params |> count) == 0 {
     ""
@@ -7815,7 +7791,7 @@ fn emit_item_clone_bound_refusal(item: Node, item_name: String, emit_info: EmitG
 }
 
 // Struct header bareness is keyed on the FIELD-DERIVED property, not on `impl_bodies` being
-// nonempty. `emit_item_type_params_with_clone_bounds` reads `clone_bounded_type_params`, the
+// nonempty. `emit_item_header_clone_param_names` reads `clone_bounded_type_params`, the
 // WELL-FORMEDNESS fixpoint — "does NAMING G<A..> require P: Clone" — which is exactly "does some
 // field's type require this parameter to carry a bound".
 //
@@ -7893,19 +7869,6 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
     )
     let sealed = item_seals_construction(item: item)
     let deserialize_forbidden = item_forbids_deserialize(item: item, emit_info: emit_info, source_indices: env.source_indices)
-    let capability_surface = v1_emit_struct_from_capability_table(
-      module_path: env.module_path,
-      name: item_text,
-      children: item.children,
-      shared_types: shared_types,
-      has_fn_fields: has_fn_fields,
-      map_key_required: set_contains(emit_info.map_key_required_type_names, item_text),
-      generic_param_names: item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices)),
-      source_indices: env.source_indices,
-      carrier_param_needs_clone: (header_clone_param_names |> count) > 0,
-      deserialize_forbidden: deserialize_forbidden,
-      type_decl_items: emit_info.type_decl_items
-    )
     let type_params = emit_type_params_from_clone_param_names(
       params: item.params,
       clone_param_names: header_clone_param_names,
@@ -7913,7 +7876,7 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
     )
     let generic_param_names = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
     let clone_bound_refusal = emit_item_clone_bound_refusal(item: item, item_name: item_text, emit_info: emit_info, source_indices: env.source_indices)
-    let struct_text = emit_struct_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, sealed: sealed, deserialize_forbidden: deserialize_forbidden, env: env, emit_info: emit_info)
+    let struct_text = emit_struct_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, sealed: sealed, deserialize_forbidden: deserialize_forbidden, env: env, emit_info: emit_info)
     if clone_bound_refusal == "" { struct_text } else { concat(clone_bound_refusal, "\n", struct_text) }
   } else if is_host_optional_carrier_alias(name: item_text) {
     let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
@@ -7940,10 +7903,22 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
     } else {
       concat(policy_validation, "\n", rename_validations)
     }
-    let type_params = emit_item_type_params_with_clone_bounds(item_name: item_text, params: item.params, emit_info: emit_info, source_indices: env.source_indices)
     let generic_param_names = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
+    let header_clone_param_names = emit_item_header_clone_param_names(
+      item: item,
+      item_name: item_text,
+      has_fn_fields: false,
+      generic_param_names: generic_param_names,
+      emit_info: emit_info,
+      source_indices: env.source_indices
+    )
+    let type_params = emit_type_params_from_clone_param_names(
+      params: item.params,
+      clone_param_names: header_clone_param_names,
+      source_indices: env.source_indices
+    )
     let clone_bound_refusal = emit_item_clone_bound_refusal(item: item, item_name: item_text, emit_info: emit_info, source_indices: env.source_indices)
-    let enum_text = emit_enum_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_policy: serde_policy, emit_info: emit_info)
+    let enum_text = emit_enum_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_policy: serde_policy, emit_info: emit_info)
     let validations = if clone_bound_refusal == "" {
       validations
     } else if validations == "" {
@@ -8051,7 +8026,7 @@ fn emit_sealed_struct_accessors(name: String, type_params: String, generic_param
   concat("\nimpl", type_params, " ", name, type_application_params, " {\n", fns_str, "\n}")
 }
 
-fn emit_struct_from_children(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, sealed: Bool, deserialize_forbidden: Bool, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
+fn emit_struct_from_children(name: String, type_params: String, generic_param_names: List<String>, header_clone_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, sealed: Bool, deserialize_forbidden: Bool, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   let has_fn_fields = type_has_fn_fields(name: name, emit_info: emit_info)
   let surface = v1_emit_struct_from_capability_table(
     module_path: env.module_path,
@@ -8062,11 +8037,7 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
     map_key_required: set_contains(emit_info.map_key_required_type_names, name),
     generic_param_names: generic_param_names,
     source_indices: env.source_indices,
-    carrier_param_needs_clone: v1_carrier_param_needs_clone_bound(
-      item_name: name,
-      generic_param_names: generic_param_names,
-      emit_info: emit_info
-    ),
+    header_clone_param_names: header_clone_param_names,
     deserialize_forbidden: deserialize_forbidden,
     type_decl_items: emit_info.type_decl_items
   )
@@ -8258,7 +8229,7 @@ fn enum_derives(name: String, children: List<Node>, has_fn_fields: Bool, deseria
 // in this scope" -- trading one error for another rather than removing it. The derive decision
 // and the attribute decision are therefore one decision with two renderings, and both read the
 // same has_fn_fields here rather than deriving it twice.
-fn emit_enum_from_children(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, serde_policy: RustEnumWireSerde, emit_info: EmitGraphInfo) -> String {
+fn emit_enum_from_children(name: String, type_params: String, generic_param_names: List<String>, header_clone_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, serde_policy: RustEnumWireSerde, emit_info: EmitGraphInfo) -> String {
   let has_fn_fields = type_has_fn_fields(name: name, emit_info: emit_info)
   let deserialize_forbidden = members_forbid_deserialize(name: name, members: member_type_nodes(is_product: false, children: children), emit_info: emit_info, source_indices: env.source_indices)
   let derives = enum_derives(name: name, children: children, has_fn_fields: has_fn_fields, deserialize_forbidden: deserialize_forbidden, generic_param_names: generic_param_names, emit_info: emit_info, source_indices: env.source_indices)
@@ -8270,7 +8241,7 @@ fn emit_enum_from_children(name: String, type_params: String, generic_param_name
   let tag_line = if effective_serde_policy.enum_attr == "" { "" } else { concat(effective_serde_policy.enum_attr, "\n") }
   let enum_def = concat(derives, "\n", tag_line, rust_visibility_prefix(), rust_items().enum_keyword, " ", name, type_params, " {\n", variants_str, "\n}")
   let accessor_impl = emit_enum_shared_accessors(name: name, type_params: type_params, generic_param_names: generic_param_names, children: children, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info)
-  let supplemental = v1_emit_enum_supplemental_impls(module_path: env.module_path, name: name, children: children, generic_param_names: generic_param_names, source_indices: env.source_indices)
+  let supplemental = v1_emit_enum_supplemental_impls(module_path: env.module_path, name: name, children: children, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, source_indices: env.source_indices)
   let with_accessors = if accessor_impl == "" { enum_def } else { concat(enum_def, "\n", accessor_impl) }
   if supplemental == "" { with_accessors } else { concat(with_accessors, supplemental) }
 }
