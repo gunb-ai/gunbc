@@ -85,14 +85,17 @@ import gunbc.ci_spec { ci_release_build_line, ci_release_bins_archive_name }
 // that consumed it. A reuse prints ReleaseBinsReuseReceipt joining all three plus the producing cache
 // entry; it never prints a build receipt, because nothing was built.
 //
-// A STATED DEPARTURE FROM std.materialization_provider (DESIGN section 3b, keys row). The contract's
-// NativeCompilerArtifactRequest carries the same axes as in-model Hash digests, and the model cannot
-// evaluate those here: the axis VALUES exist only on the runner, before any gunbc binary exists to
-// fold them (the hit path must not need one). So the realization reads each axis value and addresses
-// the preimage with the family the contract admits for CrossRunScope. What is persisted is the
-// executable pack and its manifest; build diagnostics are not persisted, so this is not yet a
-// provider_serve-complete artifact of that family, and joining it to that request family is the
-// trigger that retires this departure.
+// WHERE THIS STANDS AGAINST std.materialization_provider (DESIGN section 3b, keys row). The axis
+// VALUES exist only on the runner, before any gunbc binary exists to fold them (the hit path must
+// not need one), so the realization reads each one. Under that contract's invariant -- derive, never
+// pass in -- a runner fact is admissible as an OBSERVATION (its source 3) exactly when a declared
+// procedure takes it and nothing else can mint it. The reads below ARE declared procedures, one per
+// axis in generation_axes order, so the key is derived rather than asserted; what is not yet true is
+// that the readings are SEALED (a typed reading only its procedure can produce, shared by this shell
+// emission and any in-model consumer), and the persisted pack carries no build diagnostics. Those
+// two gaps, not the runner origin of the values, are why this is not yet a provider-served artifact
+// of a request family; RepositoryBuildArtifactRequest over sealed axis observations, with
+// diagnostics in the pack, is the trigger that retires this note.
 //
 // TRUST, stated at the grain it holds. actions/cache is UNSIGNED: whoever can write an entry can put
 // any bytes under any key. The ADMITTED PRODUCER is therefore defined by who can write, not by what
