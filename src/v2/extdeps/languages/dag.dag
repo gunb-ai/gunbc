@@ -1,11 +1,12 @@
 module v2.extdeps.languages.dag
+import std.types { List }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
-import v2.std.model_core { bool_model_core }
+import v2.std.model_core { AlgebraInhabitanceDecl, bool_model_core }
+import v2.std.algebra_structure_signature { boolean_algebra_node, ordered_ring_node }
 import v2.std.language_model { LanguageModel }
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured, TargetEmitHostRuntimeRow }
 import v2.std.collection {
-  List,
   PointwisePower,
   Map,
   empty_map,
@@ -97,6 +98,8 @@ import v2.std.compilers.lexing {
   TriviaRule,
   WhitespaceChar,
   lex_rule_set_insert_token_classes,
+  lex_rule_set_matching_rules,
+  lex_rule_token_class_optional,
   lex_rule_set_token_class_map,
   lex_rule_set_keyword_class_member,
   lex_rule_set_token_class_member,
@@ -179,7 +182,7 @@ import v2.std.compilers.target_model {
   TargetValueExpressionProjection,
   grammar_relation_row_attach_bodied_scaffold,
   target_operator_realizations_catalog_node,
-  value_expr_projection_bundle_node, target_model_emit_transforms_empty,
+  value_expr_projection_bundle_node, EmitSpellingWrap, TokenClassEmitTransform,
   Prepend,
   BlockEvaluationMode,
   ValueProducing,
@@ -221,7 +224,7 @@ import v2.std.integer {
 import v2.std.text { String }
 import extdeps.numeric.base16 { base16_digit_rows }
 import std.unicode.types { unicode_scalar }
-import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_from_node, qualified_name_snoc }
+import v2.std.qualified_name { QualifiedName, declaration_reference_node, qualified_name_from_dotted_string, qualified_name_from_node, qualified_name_snoc }
 import v2.std.namespace_alias { AliasBindingRow }
 import v2.extdeps.languages.fidelity {
   DeclaredNormalized,
@@ -679,6 +682,25 @@ fn dag_lex_rules() -> LexRuleSet {
 
 fn dag_lex() -> LexRules {
   ModeledLexRules { root: dag_lex_rules() }
+}
+
+// EVERY dag TOKEN CLASS IS WRITTEN WITH ONE SPACE AFTER IT. Whitespace is trivia in dag_lex_rules, so
+// a space after a token cannot change the tree read back; its absence can. Two adjacent word tokens
+// lex as one identifier ("let" "x" -> "letx"), and two adjacent punctuation tokens can spell a third
+// (">" "=" -> ">=", "/" "/" opens an annotation), so no token class is exempt. The rows are derived
+// from the lex rule set, the one authority for which token classes exist, in the shape the other
+// targets declare their separation in (v2.extdeps.languages.verilog verilog_emit_layout_transforms).
+fn dag_token_class_emit_transforms() -> Map<Symbol, TokenClassEmitTransform> {
+  fold_list(
+    xs: lex_rule_set_matching_rules(rules: dag_lex_rules()),
+    empty: empty_map(),
+    cons: fn(acc, rule) {
+      match lex_rule_token_class_optional(rule: rule) {
+        Present { value: c } => map_insert(m: acc, key: c, value: EmitSpellingWrap { prefix: "", suffix: " " })
+        Absent => acc
+      }
+    }
+  )
 }
 
 fn dag_grammar_atom(id: Symbol) -> Node {
@@ -1292,9 +1314,13 @@ fn dag_grammar_stmt_seq_expr() -> GrammarExpr {
   dag_grammar_repeat(element: dag_grammar_nonterminal(production: ^dag_production_stmt))
 }
 
-// AN EXPRESSION STATEMENT NEVER BEGINS WITH A LET SPELLING. `name =` and `node name` head the two
-// let_sugar forms (dag_grammar_let_sugar_expr) and begin no expression, so the expression
-// alternative is guarded by exactly those heads: the two alternatives are disjoint by construction
+// AN EXPRESSION STATEMENT NEVER BEGINS WITH A LET SPELLING. `name =` and `node name :` / `node name =`
+// head the two let_sugar forms (dag_grammar_let_sugar_expr) and begin no expression, so the
+// expression alternative is guarded by exactly those heads. The node head is all three tokens:
+// a bare `node` statement followed on the next line by a statement that begins with a name (the
+// next match arm, an `if`) begins `node name` too, and it is an expression; a two-token guard
+// refused it while the sugar, lacking its `:` / `=`, refused it as well. So the guard is read at
+// depth three: the two alternatives are disjoint by construction
 // and the choice-overlap proof reads the guard. The guard captures nothing; the statement's tree is
 // the expression's.
 fn dag_grammar_let_sugar_head_expr() -> GrammarExpr {
@@ -1305,7 +1331,13 @@ fn dag_grammar_let_sugar_head_expr() -> GrammarExpr {
     ),
     right: dag_grammar_sequence(
       left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "node")),
-      right: dag_grammar_binding_name_terminal()
+      right: dag_grammar_sequence(
+        left: dag_grammar_binding_name_terminal(),
+        right: dag_grammar_choice(
+          left: dag_grammar_terminal(token_class: ^dag_token_colon),
+          right: dag_grammar_terminal(token_class: ^dag_token_eq)
+        )
+      )
     )
   )
 }
@@ -2085,6 +2117,49 @@ fn dag_grammar_field_pattern_expr() -> GrammarExpr {
             right: dag_grammar_nonterminal(production: ^dag_production_pattern)
           )
         )
+      )
+    )
+  )
+}
+
+// ONE `if`, ITS HEAD READ ONCE. `if cond` is shared by the two forms, so it is the production's
+// prefix and the forms are the choice after it: `then` begins the expression form, a block the
+// block form, so the next token decides (they were two alternatives repeating the head, an overlap
+// no bounded lookahead decides).
+//
+// THE BLOCK FORM'S `else` IS OPTIONAL, and an `if` without one has no value. That is a fact about
+// the value category, not an ambiguity deferred past the parser: the parse is unique either way
+// (operator ruling 2026-10-03, for this case only). At statement position, where no value is owed,
+// an else-less `if` whose block ends in a return is the early-return guard
+// (v2.compiler.body_lowering_fold body_lower_admitted_guard_optional); wherever a value is required
+// it refuses at lowering, typed and located, as body_lowering_reason_else_less_if_unlowered. A tree
+// with an else is the one the two-form grammar built: a present optional and a choice each pass
+// their element through.
+fn dag_grammar_if_else_tail_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_terminal(token_class: ^dag_token_kw_else),
+    right: dag_grammar_choice(
+      left: dag_grammar_nonterminal(production: ^dag_production_if_expr),
+      right: dag_grammar_nonterminal(production: ^dag_production_fn_body)
+    )
+  )
+}
+
+fn dag_grammar_if_block_form_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_nonterminal(production: ^dag_production_fn_body),
+    right: dag_grammar_optional(element: dag_grammar_if_else_tail_expr())
+  )
+}
+
+fn dag_grammar_if_then_form_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_terminal(token_class: ^dag_token_kw_then),
+    right: dag_grammar_sequence(
+      left: dag_grammar_nonterminal(production: ^dag_production_expr),
+      right: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: ^dag_token_kw_else),
+        right: dag_grammar_nonterminal(production: ^dag_production_expr)
       )
     )
   )
@@ -4113,7 +4188,7 @@ fn dag_target_model_with_fidelity_quotient(quotient: Node) -> TargetModel {
     bundle: dag_target_model_bundle_with_fidelity_quotient(quotient: quotient),
     lex: dag_lex(),
     binding_spellings: dag_binding_spellings(),
-    token_class_emit_transforms: target_model_emit_transforms_empty,
+    token_class_emit_transforms: dag_token_class_emit_transforms(),
     authority_source_text: dag_source_text,
     runtime_row: target_emit_host_runtime_row_unconfigured
   }
@@ -4534,6 +4609,43 @@ data dag_kernel_value_type_roster: List<KernelValueType> = [
     foreign_declaration: ForeignDeclarationRefuses
   }
 ]
+
+// THE DAG LANGUAGE'S PRIMITIVES IN THE STRUCTURE-SIGNATURE WORLD, as every other language model states its
+// own (v2.extdeps.languages.rust rust_integer_algebra_inhabitance, rust_bool_algebra_inhabitance; swift,
+// java, lean, cpp, python likewise): the kernel Int inhabits the ordered ring and the kernel Bool the boolean
+// algebra, each over its kernel value-type node from dag_kernel_value_type_roster. An operator names its field
+// in THIS vocabulary (v2.std.compilers.target_model canonical_operation_op_add is ^ring_field_add, op_or is
+// ^lattice_field_join), so a reader asking whether a type carries an operator's field asks these rows.
+// THE FACT IS NOT RESTATED: each row's WITNESS is a reference to the std value that already IS the
+// inhabitance -- v2.std.integer int_ordered_ring: OrderedRing<Int> and v2.std.logic bool_boolean_algebra:
+// BooleanAlgebra<Bool> -- the same way v2.extdeps.languages.cpp cpp_bool_grounding cites the latter. That the
+// std.algebra record (add/mul/join) and the signature node (^ring_field_add, ..) are two representations of one
+// structure with no declared mapping is gunbc.recurring_failure_mode
+// algebra_structure_has_two_representations_with_no_declared_mapping, not resolved here.
+// CONSUMER: the v2 infer algebra-operator arm (v2.compiler.infer infer_algebra_field_result_type: the Bool join
+// and Int add through one route), landing in gunbc#13060, stacked on this change; until it lands these rows are a
+// declared frontier read only by v2.test.claim.dag_algebra_inhabitance.
+fn dag_int_algebra_inhabitance() -> AlgebraInhabitanceDecl {
+  let inhabitant = integer_int_type_node()
+  AlgebraInhabitanceDecl {
+    algebra: ordered_ring_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "v2.std.integer.int_ordered_ring"), occurrence_id: OccurrenceSynthetic)
+  }
+}
+
+fn dag_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
+  let inhabitant = bool_node()
+  AlgebraInhabitanceDecl {
+    algebra: boolean_algebra_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "v2.std.logic.bool_boolean_algebra"), occurrence_id: OccurrenceSynthetic)
+  }
+}
+
+fn dag_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  [dag_int_algebra_inhabitance(), dag_bool_algebra_inhabitance()]
+}
 
 fn dag_kernel_value_type_binding(row: KernelValueType) -> Optional<Symbol> {
   match row.value_type.kind {
@@ -6217,7 +6329,7 @@ fn dag_bodied_fn_target_model(
         bundle: dag_bodied_fn_target_model_bundle_node(spec: spec),
         lex: dag_lex(),
         binding_spellings: dag_binding_spellings(),
-        token_class_emit_transforms: target_model_emit_transforms_empty,
+        token_class_emit_transforms: dag_token_class_emit_transforms(),
         authority_source_text: spec.authority_source_text,
         runtime_row: row
       }
@@ -6227,7 +6339,7 @@ fn dag_bodied_fn_target_model(
         bundle: dag_bodied_fn_target_model_bundle_node(spec: spec),
         lex: dag_lex(),
         binding_spellings: dag_binding_spellings(),
-        token_class_emit_transforms: target_model_emit_transforms_empty,
+        token_class_emit_transforms: dag_token_class_emit_transforms(),
         authority_source_text: spec.authority_source_text,
         runtime_row: target_emit_host_runtime_row_unconfigured
       }
@@ -6558,7 +6670,7 @@ fn dag_target_model() -> TargetModel {
     bundle: dag_target_model_node(),
     lex: dag_lex(),
     binding_spellings: dag_binding_spellings(),
-    token_class_emit_transforms: target_model_emit_transforms_empty,
+    token_class_emit_transforms: dag_token_class_emit_transforms(),
     authority_source_text: dag_source_text,
     runtime_row: target_emit_host_runtime_row_unconfigured
   }

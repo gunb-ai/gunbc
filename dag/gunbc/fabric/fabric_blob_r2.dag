@@ -1,0 +1,141 @@
+module gunbc.fabric.fabric_blob_r2
+
+import std.types { String, NonEmptyStr, Bool, FilePath }
+import extdeps.cloudflare.r2 { R2S3Endpoint, R2ObjectLocator }
+import gunbc.auth.access_token_source { AccessTokenSource }
+import gunbc.cloudflare.r2_origin {
+  CloudflareAccountAllocated, CloudflareAccountUnallocated, fleet_cloudflare_account_standing,
+  R2OriginAllocated, R2OriginUnallocated, R2OriginStanding,
+  OriginCredentialStanding, OriginCredentialPinned, OriginCredentialUnminted, OriginCredentialMintEntryUnbuilt,
+  FabricCacheBlobs, bucket_purpose_origin_standing, bucket_purpose_admission, origin_admission_is_create_only,
+}
+import gunbc.cloudflare.r2_staged_transfer {
+  R2TransferTarget,
+  R2Put, R2ObjectStored, R2ObjectAlreadyPresent, R2PutRefused, R2PutOutcomeUnknown,
+  WriteCredentialCustody, WriteCredentialShredded,
+  r2_put_staged_file,
+  R2FetchStaged, R2FetchObjectAbsent, R2FetchUnavailable,
+  r2_fetch_into_staging,
+}
+import std.fabric_blob {
+  FabricBlobAddress, FabricBlobReading, FabricBlobPut, FabricBlobGet,
+  FabricBlobStored, FabricBlobOccupied, FabricBlobPutRefused, FabricBlobPutOutcomeUnknown, FabricBlobPutRefusedTooLarge,
+  FabricBlobFetched, FabricBlobAbsent, FabricBlobGetUnavailable,
+  FabricBlobStoreUnreachable, FabricBlobStoreRefused, FabricBlobUnauthorized,
+  FabricBlobRead, FabricBlobReadRefused,
+  FabricBlobPutPlan, FabricBlobPutAdmitted, FabricBlobPutTooLarge,
+  read_staged_fabric_blob, fabric_blob_reading_path, fabric_blob_put_plan,
+}
+import gunbc.fabric.fabric_blob_placement { fabric_cache_blob_key, fabric_cache_object_bound }
+
+// THE FABRIC CACHE'S BLOBS OVER R2, IN PROCESS: std.fabric_blob's put and get bound to the cache-blob
+// placement (gunbc.cloudflare.r2_origin FabricCacheBlobs) and carried by gunbc.cloudflare.
+// r2_staged_transfer, the transfer the durable origin uses too. It adds what is the blob plane's:
+// the object key an address derives (gunbc.fabric.fabric_blob_placement), the direction's
+// credential, the size bound, and the reading every fetched byte is minted into. It never mints an
+// OriginReading -- that carrier is the durable origin's alone.
+//
+// THE PUT IS CREATE-ONLY BY THE PURPOSE'S ADMISSION. An occupied address answers Occupied, never
+// Stored: whether the occupant holds the same bytes is a READ, which the publisher performs.
+
+type CacheBlobDirection
+  = CacheBlobRead
+  | CacheBlobWrite
+
+type CacheBlobTarget
+  = CacheBlobTargetReady { target: R2TransferTarget }
+  | CacheBlobTargetRefused { cause: NonEmptyStr }
+
+fn cache_blob_credential(direction: CacheBlobDirection, read: OriginCredentialStanding, write: OriginCredentialStanding) -> OriginCredentialStanding {
+  match direction {
+    CacheBlobRead => read
+    CacheBlobWrite => write
+  }
+}
+
+// PURE OVER THE STANDING, so every refusal arm is reachable from a supplied value.
+fn resolve_cache_blob_target_under(direction: CacheBlobDirection, key: NonEmptyStr, standing: R2OriginStanding) -> CacheBlobTarget {
+  match fleet_cloudflare_account_standing() {
+    CloudflareAccountUnallocated { company: _, intervention: intervention } =>
+      CacheBlobTargetRefused { cause: concat("NO CLOUDFLARE ACCOUNT ID: ", intervention.instruction as String) as NonEmptyStr }
+    CloudflareAccountAllocated { company: _, account_id: account_id } =>
+      match standing {
+        R2OriginUnallocated { purpose: _ } => CacheBlobTargetRefused { cause: "NO BUCKET ALLOCATED FOR THE FABRIC CACHE" }
+        R2OriginAllocated { bucket: bucket } =>
+          match cache_blob_credential(direction: direction, read: bucket.read_credential, write: bucket.write_credential) {
+            OriginCredentialUnminted { mint_entry: entry, secret_id: secret_id } =>
+              CacheBlobTargetRefused { cause: join(["THE FABRIC CACHE CREDENTIAL IS NOT MINTED: run ", entry.module_path as String, " ", entry.decl_name as String, " and pin the version it stores under ", secret_id as String, " in gunbc.cloudflare.r2_origin"], "") as NonEmptyStr }
+            OriginCredentialMintEntryUnbuilt { secret_id: secret_id } =>
+              CacheBlobTargetRefused { cause: concat("THE FABRIC CACHE CREDENTIAL HAS NO MINT ENTRY: nothing mints ", secret_id as String) as NonEmptyStr }
+            OriginCredentialPinned { access_key_id: access_key_id, token_value: token_value } =>
+              CacheBlobTargetReady {
+                target: R2TransferTarget {
+                  locator: R2ObjectLocator {
+                    endpoint: R2S3Endpoint { account_id: account_id as String, jurisdiction: bucket.jurisdiction },
+                    bucket_name: bucket.bucket_name,
+                    key: key,
+                  },
+                  access_key_id: access_key_id,
+                  token_value: token_value,
+                  create_only: origin_admission_is_create_only(admission: bucket_purpose_admission(purpose: bucket.purpose)),
+                }
+              }
+          }
+      }
+  }
+}
+
+fn resolve_cache_blob_target(direction: CacheBlobDirection, key: NonEmptyStr) -> CacheBlobTarget {
+  resolve_cache_blob_target_under(direction: direction, key: key, standing: bucket_purpose_origin_standing(purpose: FabricCacheBlobs {}))
+}
+
+// THE PUT'S WHOLE ANSWER: the blob plane's verdict and the write credential's custody, two facts.
+type CacheBlobPut {
+  verdict: FabricBlobPut
+  credential: WriteCredentialCustody
+}
+
+fn cache_blob_put_of(address: FabricBlobAddress, put: R2Put) -> CacheBlobPut {
+  CacheBlobPut {
+    verdict: match put.verdict {
+      R2ObjectStored => FabricBlobStored { address: address }
+      R2ObjectAlreadyPresent => FabricBlobOccupied { address: address }
+      R2PutRefused { cause: cause } => FabricBlobPutRefused { address: address, fault: FabricBlobStoreRefused { cause: cause } }
+      R2PutOutcomeUnknown { cause: cause } => FabricBlobPutOutcomeUnknown { address: address, cause: cause }
+    },
+    credential: put.credential,
+  }
+}
+
+// THE PUT: the plan first (an object over the bound never reaches the network), then the target.
+fn put_cache_blob(address: FabricBlobAddress, reading: FabricBlobReading, token_source: AccessTokenSource) -> CacheBlobPut {
+  match fabric_blob_put_plan(address: address, reading: reading, bound: fabric_cache_object_bound()) {
+    FabricBlobPutTooLarge { address: a, size: size, bound: bound } =>
+      CacheBlobPut { verdict: FabricBlobPutRefusedTooLarge { address: a, size: size, bound: bound }, credential: WriteCredentialShredded }
+    FabricBlobPutAdmitted { address: a, reading: r } =>
+      match resolve_cache_blob_target(direction: CacheBlobWrite, key: fabric_cache_blob_key(address: a)) {
+        CacheBlobTargetRefused { cause: cause } =>
+          CacheBlobPut { verdict: FabricBlobPutRefused { address: a, fault: FabricBlobUnauthorized { cause: cause } }, credential: WriteCredentialShredded }
+        CacheBlobTargetReady { target: target } =>
+          cache_blob_put_of(address: a, put: r2_put_staged_file(target: target, local_path: fabric_blob_reading_path(reading: r) as FilePath, token_source: token_source))
+      }
+  }
+}
+
+// THE GET. The transfer stages the bytes in a directory it minted; they are read there and returned
+// with their reading. What the bytes MEAN is the consumer's to verify (a build pack's manifest).
+fn get_cache_blob(address: FabricBlobAddress, token_source: AccessTokenSource) -> FabricBlobGet {
+  match resolve_cache_blob_target(direction: CacheBlobRead, key: fabric_cache_blob_key(address: address)) {
+    CacheBlobTargetRefused { cause: cause } => FabricBlobGetUnavailable { address: address, fault: FabricBlobUnauthorized { cause: cause } }
+    CacheBlobTargetReady { target: target } =>
+      match r2_fetch_into_staging(target: target, token_source: token_source) {
+        R2FetchObjectAbsent => FabricBlobAbsent { address: address }
+        R2FetchUnavailable { cause: cause } => FabricBlobGetUnavailable { address: address, fault: FabricBlobStoreUnreachable { cause: cause } }
+        R2FetchStaged { staged_path: p } =>
+          match read_staged_fabric_blob(path: p) {
+            FabricBlobReadRefused { fault: fault } => FabricBlobGetUnavailable { address: address, fault: fault }
+            FabricBlobRead { reading: reading } => FabricBlobFetched { address: address, reading: reading }
+          }
+      }
+  }
+}
