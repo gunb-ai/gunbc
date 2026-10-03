@@ -51,7 +51,6 @@ data derived_share_single_claim_fixtures_withheld: RungDrop = RungDrop {
       "v2.test.claim.machine_shape_construction_wall.gate_green_machine_shape_record_literal_in_its_home (eval_steps=180783 at planning probe 37121610250)",
       "v2.test.claim.match_arm_binder_frame.mab_unimported_constructor_in_a_pattern_refuses_rather_than_binding (eval_steps=377459 at planning probe 37121610250)",
       "v2.test.claim.named_argument_binding.nab_malformed_named_mixes_refuse_at_lowering (eval_steps=356677 at planning probe 37121610250)",
-      "v2.test.claim.namespace_xl0.reference_conservation.a_string_literal_is_conserved_by_its_value_holds (eval_steps=244093 at planning probe 37121610250)",
       "v2.test.claim.namespace_xl0.reference_conservation_accepted_drops.the_same_match_as_a_fn_body_conserves_its_scrutinee_holds (eval_steps=517942 at planning probe 37121610250)",
       "v2.test.claim.namespace_xl0.reference_conservation_admission.a_field_projection_on_a_call_result_in_an_operand_is_admitted_holds (eval_steps=390189 at planning probe 37121610250)",
       "v2.test.claim.normalize.service_spine.an_imported_service_resolves_through_the_import_holds (eval_steps=297034 at planning probe 37121610250)",
