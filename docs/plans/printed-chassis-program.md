@@ -1143,7 +1143,7 @@ scaling was applied. Both retain the same 65 °C bed-temperature warning describ
 The operator requested stopping further gauge printing and moving toward chassis/rack parts.
 Do not enqueue the prepared 5–2 or 4–7 gauges. A fresh snapshot already confirmed the newly
 started printer-01 3–6 job RUNNING/error 0 with its exact digest filename and 12 minutes remaining;
-clarification is pending on whether to cancel that active print or let it finish.
+the operator explicitly chose to let that active print finish. No cancellation is requested.
 The operator expects the remaining positions to be accurate; retain that as an expectation, not
 a measured fit result. 1–3 and 3–4 have reported alignment passes.
 
