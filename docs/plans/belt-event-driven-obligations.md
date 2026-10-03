@@ -92,6 +92,10 @@ Each obligation writes its own receipt, a `std.temporal_effect` `EffectStepRecei
 ### The attempt-event spool (proposed minimal store)
 
 - **Home.** An instance-local spool directory, homed in `gunbc.host_layout` beside the publication spool. It follows the same precedent: two consumers, and `gunbc.live_deploy.emit` creates the directory with the ownership it needs.
-- **Hook.** `ExecStopPost=/bin/sh -c 'set -C; printf ... > <spool>/%n.$INVOCATION_ID.exit'`. noclobber makes the write create-only per `(unit, invocation id)`, so a repeated hook is a harmless no-op. The entry carries `EXIT_CODE`, `EXIT_STATUS` and `SERVICE_RESULT`. The argv is minted in `.dag` beside the existing `systemd_run_property` rows.
+- **Hook.** The hook is a typed argv command with no shell: `ExecStopPost=/usr/bin/mkdir <spool>/%n.${INVOCATION_ID}.${SERVICE_RESULT}.${EXIT_CODE}.${EXIT_STATUS}`. It is minted in `.dag` as an `ArgvCommand` beside the `systemd_run_property` rows.
+  - systemd expands `%n` and `${VAR}` in Exec argv, and it sets `INVOCATION_ID`, `SERVICE_RESULT`, `EXIT_CODE` and `EXIT_STATUS` for `ExecStopPost`. The extdeps model cites systemd.exec(5) and systemd.service(5) for these.
+  - `mkdir` is atomic and create-only, so a repeated hook fails harmlessly.
+  - The entry's name carries the exit facts. Anything that does not fit in a name, the edge reads from systemd or the journal by unit and invocation id. The hook never writes it.
+  - Shell control text in a minted command is ruled out, because that is the class the shell-typed-invocation project is deleting.
 - **Trigger.** A systemd `.path` unit (`DirectoryNotEmpty=<spool>`) in deployment membership starts the edge service. This trigger is an event, not a timer. The edge decodes each entry and runs `Capture` and `Verify` for that attempt while holding that attempt's exclusive hold.
 - **Consumption.** An entry is moved to `done/` only after its obligation's receipt exists. If the edge crashes, the entry stays and is picked up by the next activation or by discovery.
