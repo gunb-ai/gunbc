@@ -417,8 +417,6 @@ fn last_secondary_words(progress: List<SocketProgressAccount>) -> List<Int> {
   }
 }
 
-// The reading's secondary_checkpoints are supplied EMPTY: ruling R2 forbids classifying an opaque
-// checkpoint token by socket in public, so no token is offered as socket 1's.
 fn join_outcome(e: PowerOnEvidence, attempt: NonEmptyStr, progress: List<SocketProgressAccount>) -> MtCollins1SecondaryJoinOutcome {
   match e.console {
     ConsoleNotRead => SecondaryJoinUnclassified { reason: "the console was not read, so no firmware summary is available" }
@@ -430,12 +428,10 @@ fn join_outcome(e: PowerOnEvidence, attempt: NonEmptyStr, progress: List<SocketP
           Absent => SecondaryJoinUnclassified { reason: "the firmware boot summary's active-socket count is negative" }
           Present { value: active } => {
             let words = last_secondary_words(progress: progress)
-            let none_checkpoints: List<NonEmptyStr> = []
             secondary_join_outcome(reading: MtCollins1SecondaryJoinReading {
               run: attempt, capture_sha256: digest_label(d: d), smpro_artifact_sha256: none,
               active_sockets: active,
               inter_socket_connection_lines: map(s.inter_socket_links, l => l.value),
-              secondary_checkpoints: none_checkpoints,
               secondary_cur_bootstage_word: words.first(),
               secondary_bootstage_word: words.skip(n: 1).first(),
             })
@@ -949,7 +945,7 @@ fn decoded_error_text(err: DecodedBootError) -> String {
 fn join_text(j: MtCollins1SecondaryJoinOutcome) -> String {
   match j {
     SecondaryJoined { inter_socket_links_reported: l } => concat("joined", if l { ", inter-socket links reported" } else { ", NO inter-socket link line" })
-    SecondaryJoinTimeout { secondary_last_stage: p, inter_socket_links_reported: _, secondary_host_checkpoints: _ } => concat("did NOT join (socket 0 went on alone); socket 1 SMpro: ", progress_text(p: p))
+    SecondaryJoinTimeout { secondary_last_stage: p, inter_socket_links_reported: _ } => concat("did NOT join (socket 0 went on alone); socket 1 SMpro: ", progress_text(p: p))
     SecondaryJoinUnclassified { reason: r } => concat("unclassified: ", r as String)
   }
 }
