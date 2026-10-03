@@ -565,14 +565,6 @@ fn scm_object_kind(object: ScmObject) -> ScmObjectKind {
   }
 }
 
-fn scm_object_kind_eq(left: ScmObjectKind, right: ScmObjectKind) -> Bool {
-  match left {
-    SemanticNodeKind => match right { SemanticNodeKind => true AuthoredSourceKind => false CorpusManifestKind => false }
-    AuthoredSourceKind => match right { SemanticNodeKind => false AuthoredSourceKind => true CorpusManifestKind => false }
-    CorpusManifestKind => match right { SemanticNodeKind => false AuthoredSourceKind => false CorpusManifestKind => true }
-  }
-}
-
 // THE INDEXED STORE'S ONE CONSTRUCTOR: nothing resident, every persisted object rostered. The roster
 // is handed in already decoded and digest-validated (gunbc.scm.repository_envelope
 // decode_object_roster); this module seals the carrier, it does not re-read the document.
@@ -622,7 +614,7 @@ fn store_admit_materialized(store: ObjectStore, object: ScmObject) -> Materializ
   match store_rostered_lookup(store: store, identity: identity) {
     Absent => MaterializedNotRostered { identity: identity }
     Present { value: entry } =>
-      if !scm_object_kind_eq(left: entry.kind, right: scm_object_kind(object: object)) {
+      if entry.kind != scm_object_kind(object: object) {
         MaterializedKindDisagrees { identity: identity, rostered: entry.kind, found: scm_object_kind(object: object) }
       } else {
         match insert_admission(store: store, object: object) {
