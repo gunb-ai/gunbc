@@ -6,7 +6,7 @@ import v2.std.model_core {
   model_core_primitive_fact_axis_is_core,
   model_core_primitive_fact_axis_is_surface
 }
-import v2.std.node { Conj, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node, node_rebuild, well_formed }
+import v2.std.node { Conj, Edge, Authored, Node, NodeFold, Positional, Symbol, TypeNode, fold_node, node_rebuild, well_formed, StructuralLabel }
 
 fn project_to_core_axis_is_core(name: Symbol) -> Bool {
   model_core_primitive_fact_axis_is_core(axis: name)
@@ -23,7 +23,7 @@ fn project_to_core_init(n: Node) -> Node {
 fn project_to_core_step(acc: Node, edge: Edge, child: Node) -> Node {
   let projected_target = if count(edge.target.children) == 0 { edge.target } else { child }
   match edge.label {
-    Named { name: edge_name } =>
+    Authored { name: edge_name } =>
       if project_to_core_axis_is_surface(name: edge_name) {
         acc
       } else {
@@ -35,6 +35,14 @@ fn project_to_core_step(acc: Node, edge: Edge, child: Node) -> Node {
           )
         )
       }
+    StructuralLabel { label: _ } =>
+      node_rebuild(
+        n: acc,
+        children: list_snoc_item(
+          xs: acc.children,
+          item: Edge { label: edge.label, target: projected_target }
+        )
+      )
     Positional =>
       node_rebuild(
         n: acc,
@@ -63,12 +71,13 @@ fn project_to_core_has_core_fact_init(_: Node) -> Bool {
 
 fn project_to_core_has_core_fact_step(acc: Bool, edge: Edge, child: Bool) -> Bool {
   match edge.label {
-    Named { name: edge_name } =>
+    Authored { name: edge_name } =>
       if project_to_core_axis_is_surface(name: edge_name) {
         acc
       } else {
         acc || child || project_to_core_axis_is_core(name: edge_name)
       }
+    StructuralLabel { label: _ } => acc || child
     Positional => acc || child
   }
 }

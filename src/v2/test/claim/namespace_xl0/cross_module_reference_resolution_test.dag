@@ -518,19 +518,33 @@ test fn a_cross_module_reference_to_a_data_declaration_resolves_to_its_declaring
 // header records as a defect. So this claim now asserts through infer, which is what "never accepts"
 // was always about: the assertion still forbids ACCEPTANCE, and it is strictly harder to satisfy than
 // before, because a program that resolved and then inferred clean would now fail it.
-fn xl0r_infers(o: Outcome<ResolvedTree>) -> Bool {
+// THE REASON INFER DECIDES, read once per fixture in a nullary producer the floor serves WARM
+// (v2.workflow.floor_pure_producer_share): resolve is already a warm producer, and infer over it is past one
+// claim's new-witness budget. A refusal at resolve answers ^xl0r_resolve_refused and an acceptance
+// ^xl0r_infer_accepted, so neither can be read as the infer refusal the rows pin.
+fn xl0r_infer_reason(o: Outcome<ResolvedTree>) -> Symbol {
   match o {
-    Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => ^xl0r_resolve_refused
     Accepted { value: resolved, diagnostics: _ } =>
       match infer(tree: resolved) {
-        Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => ^xl0r_infer_accepted
+        Rejected { diagnostics: d } => xl0r_last_reason(d: d)
       }
   }
 }
 
+fn xl0r_field_access_infer_reason() -> Symbol {
+  xl0r_infer_reason(o: xl0r_resolved_field_access_consumer())
+}
+
+fn xl0r_method_call_infer_reason() -> Symbol {
+  xl0r_infer_reason(o: xl0r_resolved_method_call_consumer())
+}
+
+// PINNED TO THE CONTRACT, NOT TO "SOME REFUSAL": the receiver's established type (Bool) is not a record
+// declaration, so infer refuses the projection as declaring no fields. A refusal for any other cause reds it.
 test fn a_receiver_with_no_such_child_never_accepts_holds() -> Bool {
-  !xl0r_infers(o: xl0r_resolved_field_access_consumer())
+  xl0r_field_access_infer_reason() == ^infer_reason_projection_receiver_declares_no_fields
 }
 
 // THE CALL FORM OF THE LOCAL-RECEIVER ROW, ENROLLED ON gunbc#11683 (review 68231 asked for it by
@@ -549,7 +563,7 @@ test fn a_receiver_with_no_such_child_never_accepts_holds() -> Bool {
 // infer refuses it for the same reason as the bare form -- `Bool` declares no fields. What the row is
 // FOR is that a method call on a local receiver is not silently admitted, and that is what it now says.
 test fn a_local_receiver_method_call_never_accepts_holds() -> Bool {
-  !xl0r_infers(o: xl0r_resolved_method_call_consumer())
+  xl0r_method_call_infer_reason() == ^infer_reason_projection_receiver_declares_no_fields
 }
 
 // THE COLLISION THE ABSOLUTE ARM ADMITTED, NOW REFUSED (review 67651 on gunbc#11582). A parameter

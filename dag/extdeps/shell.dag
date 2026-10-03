@@ -1,7 +1,6 @@
 module extdeps.shell
 
 import std.types { FilePath, NonEmptyStr, Secret, List, Unit }
-import std.string_type { String }
 import extdeps.external_authority { ExternalAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.uri { Uri, Https }
@@ -56,6 +55,7 @@ data find_pipe_shell_emit_dissolution_trigger: DissolutionCondition = unbound_di
 
 service shell.Find {
   operation ListDirs {
+    requires none
     input { path: FilePath, max_depth: Int = 1, min_depth: Int = 1 }
     output { dirs: List<FilePath> from "stdout_lines" }
     readonly
@@ -67,6 +67,7 @@ service shell.Find {
   }
 
   operation FilesAndSymlinksWithMode {
+    requires none
     input { root: FilePath }
     output {
       success: Bool from "exit_success"
@@ -88,6 +89,7 @@ service shell.Find {
   }
 
   operation Files {
+    requires none
     input { workdir: FilePath, root: FilePath, name_glob: String }
     output {
       success: Bool from "exit_success"
@@ -103,6 +105,7 @@ service shell.Find {
   }
 
   operation SocketInodeHolders {
+    requires none
     input { inode: NonEmptyStr }
     output {
       success: Bool from "exit_success"
@@ -120,6 +123,7 @@ service shell.Find {
   }
 
   operation FilesByNameSorted {
+    requires none
     input { root: FilePath, name_glob: NonEmptyStr }
     output {
       success: Bool from "exit_success"
@@ -143,6 +147,7 @@ service shell.Find {
 
 service shell.Env {
   operation Get {
+    requires none
     input { name: NonEmptyStr }
     output { value: String? from "stdout" }
     readonly
@@ -181,6 +186,7 @@ service shell.Env {
 
 service shell.PosixCommandV {
   operation Check {
+    requires none
     input { command: NonEmptyStr }
     output { exists: Bool from "exit_success", path: FilePath? from "stdout" }
     readonly
@@ -204,6 +210,7 @@ fn posix_command_v_check_argv(command: NonEmptyStr) -> List<String> {
 // mode digits and gets its own operation rather than being parsed out of them.
 service shell.Test {
   operation IsExecutable {
+    requires none
     input { path: FilePath }
     output { executable: Bool from "exit_success" }
     readonly
@@ -215,6 +222,7 @@ service shell.Test {
   }
 
   operation IsNonEmpty {
+    requires none
     input { path: FilePath }
     output { nonempty: Bool from "exit_success" }
     readonly
@@ -226,6 +234,7 @@ service shell.Test {
   }
 
   operation IsFile {
+    requires none
     input { path: FilePath }
     output { is_file: Bool from "exit_success" }
     readonly
@@ -237,6 +246,7 @@ service shell.Test {
   }
 
   operation IsDirectory {
+    requires none
     input { path: FilePath }
     output { is_directory: Bool from "exit_success" }
     readonly
@@ -248,6 +258,7 @@ service shell.Test {
   }
 
   operation IsSticky {
+    requires none
     input { path: FilePath }
     output { is_sticky: Bool from "exit_success" }
     readonly
@@ -259,6 +270,7 @@ service shell.Test {
   }
 
   operation IsWritable {
+    requires none
     input { path: FilePath }
     output { writable: Bool from "exit_success" }
     readonly
@@ -283,6 +295,7 @@ fn shell_test_is_executable_argv(path: FilePath) -> List<String> {
 // that the location it named is the location it got.
 service shell.Path {
   operation Canonical {
+    requires none
     input { path: FilePath }
     output {
       success: Bool from "exit_success"
@@ -300,6 +313,7 @@ service shell.Path {
 
 service shell.Id {
   operation UserId {
+    requires none
     input {}
     output {
       success: Bool from "exit_success"
@@ -315,6 +329,7 @@ service shell.Id {
   }
 
   operation UserName {
+    requires none
     input {}
     output {
       success: Bool from "exit_success"
@@ -332,6 +347,7 @@ service shell.Id {
 
 service shell.Uname {
   operation KernelName {
+    requires none
     input {}
     output { name: String from "stdout", success: Bool from "exit_success" }
     transport shell { argv: ["uname", "-s"] }
@@ -342,6 +358,7 @@ service shell.Uname {
   }
 
   operation Machine {
+    requires none
     input {}
     output { machine: String from "stdout", success: Bool from "exit_success" }
     transport shell { argv: ["uname", "-m"] }
@@ -354,6 +371,7 @@ service shell.Uname {
 
 service shell.Mktemp {
   operation FileInDirectory {
+    requires none
     input { dir: FilePath }
     output { path: FilePath from "stdout", success: Bool from "exit_success" }
     transport shell { argv: ["mktemp", "-p", "{dir}"] }
@@ -364,6 +382,7 @@ service shell.Mktemp {
   }
 
   operation Dir {
+    requires none
     input {}
     output { path: FilePath from "stdout", success: Bool from "exit_success" }
     transport shell { argv: ["mktemp", "-d"] }
@@ -374,6 +393,7 @@ service shell.Mktemp {
   }
 
   operation DirWithTemplate {
+    requires none
     input { template: FilePath }
     output { path: FilePath from "stdout", success: Bool from "exit_success" }
     transport shell { argv: ["mktemp", "-d", "{template}"] }
@@ -392,6 +412,7 @@ service shell.Mktemp {
 // name never exists at a wider one and no second pathname operation is needed to narrow it.
 service shell.Mkdir {
   operation NewOwnerOnly {
+    requires none
     input { path: FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["mkdir", "-m", "0700", "--", "{path}"] }
@@ -402,6 +423,7 @@ service shell.Mkdir {
   }
 
   operation Parents {
+    requires none
     input { path: FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["mkdir", "-p", "{path}"] }
@@ -414,6 +436,7 @@ service shell.Mkdir {
 
 service shell.Link {
   operation Hard {
+    requires none
     input { source: FilePath, destination: FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["ln", "{source}", "{destination}"] }
@@ -426,6 +449,7 @@ service shell.Link {
 
 service shell.Remove {
   operation FileForce {
+    requires none
     input { path: FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["rm", "-f", "{path}"] }
@@ -436,6 +460,7 @@ service shell.Remove {
   }
 
   operation RecursiveForce {
+    requires none
     input { path: FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["rm", "-rf", "{path}"] }
@@ -446,6 +471,7 @@ service shell.Remove {
   }
 
   operation EmptyDirectory {
+    requires none
     input { path: FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["rmdir", "{path}"] }
@@ -472,6 +498,7 @@ service shell.Remove {
 // comparison was available.
 service shell.Stat {
   operation ModeOf {
+    requires none
     input { path: FilePath }
     output {
       success: Bool from "exit_success"
@@ -487,6 +514,7 @@ service shell.Stat {
   }
 
   operation OwnerOf {
+    requires none
     input { path: FilePath }
     output {
       success: Bool from "exit_success"
@@ -504,6 +532,7 @@ service shell.Stat {
 
 service shell.Move {
   operation File {
+    requires none
     input { source: FilePath, destination: FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["mv", "{source}", "{destination}"] }
@@ -514,6 +543,7 @@ service shell.Move {
   }
 
   operation NoReplaceDirectory {
+    requires none
     input { source: FilePath, destination: FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["mv", "-T", "{source}", "{destination}"] }
@@ -526,6 +556,7 @@ service shell.Move {
 
 service shell.Chmod {
   operation OwnerOnlyDirectory {
+    requires none
     input { path: FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["chmod", "0700", "{path}"] }
@@ -536,6 +567,7 @@ service shell.Chmod {
   }
 
   operation WorldWritableDirectory {
+    requires none
     input { path: FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["chmod", "0777", "{path}"] }
@@ -546,6 +578,7 @@ service shell.Chmod {
   }
 
   operation OwnerReadWriteFile {
+    requires none
     input { path: FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["chmod", "0600", "{path}"] }
@@ -556,6 +589,7 @@ service shell.Chmod {
   }
 
   operation RecursiveWritable {
+    requires none
     input { path: FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["chmod", "-R", "u+w", "{path}"] }
@@ -566,6 +600,7 @@ service shell.Chmod {
   }
 
   operation RecursiveReadOnly {
+    requires none
     input { path: FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["chmod", "-R", "a-w", "{path}"] }
@@ -578,6 +613,7 @@ service shell.Chmod {
 
 service shell.Copy {
   operation File {
+    requires none
     input { source: FilePath, destination: FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["cp", "{source}", "{destination}"] }
@@ -588,6 +624,7 @@ service shell.Copy {
   }
 
   operation Recursive {
+    requires none
     input { source: FilePath, destination: FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["cp", "-r", "{source}", "{destination}"] }

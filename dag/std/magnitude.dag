@@ -1,3 +1,0 @@
-module std.magnitude
-
-type Magnitude

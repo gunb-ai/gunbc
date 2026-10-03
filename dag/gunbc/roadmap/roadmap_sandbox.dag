@@ -1,13 +1,15 @@
 module gunbc.roadmap_sandbox
 
-import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, NodeInProgress }
+import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, NodeInProgress, EventPrincipalAuthenticated }
+import gunbc.principal_projection { fabric_workflow_principal }
 import std.types { Int, String, Bool, List, NonEmptyStr }
 import gunbc.harness.harness_throughput {
   HarnessRoundLedger, RoundsUnobserved, HarnessThroughput, ThroughputUnobserved }
 import gunbc.harness.harness_throughput { RoundObservation, RoundsObserved }
 import std.markup { Fragment, Element, FragmentText, RawNode, Attribute, attr }
 import gunbc.site.markup { txt, el, el_class, el_attrs }
-import gunbc.roadmap_page { roadmap_header, render_work_row, node_li_attributes, workspace_entries_ul, round_strip_nodes }
+import gunbc.roadmap_page { roadmap_header, render_task_row, node_li_attributes, workspace_entries_ul, round_strip_nodes }
+import gunbc.roadmap.roadmap_project { membership_index }
 import gunbc.roadmap_presentation {
   WorkRowView, ActivityView, NoDisclosure,
   OpenLifecycle, SchedulingReady,
@@ -409,7 +411,10 @@ fn fixture_specimen_view(node_id: String, activity: ActivityView, rounds: Harnes
     disclosure: NoDisclosure,
     rounds: rounds,
     worker_alive: worker_alive,
+    assignment: none,
     standing: standing,
+    attempt_stale: false,
+    profiles: [],
   }
 }
 
@@ -419,7 +424,7 @@ fn fixture_active_view() -> WorkRowView {
     remaining: 4,
     process: WorkerProcessExited { exit_code: 0, last_command: "codex" },
     throughput: ThroughputUnobserved { reason: "sandbox fixture models no provider event stream" as NonEmptyStr },
-    current_activity: "Worked for 6m 34s"), worker_alive: true, standing: Present { value: NodeInProgress { by: "session-a" as NonEmptyStr, last_note: "wiring the fold" as NonEmptyStr } })
+    current_activity: "Worked for 6m 34s"), worker_alive: true, standing: Present { value: NodeInProgress { by: EventPrincipalAuthenticated { ref: fabric_workflow_principal }, last_note: "wiring the fold" as NonEmptyStr } })
 }
 
 fn fixture_refused_view() -> WorkRowView {
@@ -438,7 +443,7 @@ fn fixture_row_li(view: WorkRowView) -> Fragment {
   Element {
     tag: "li",
     attributes: node_li_attributes(view: view),
-    children: render_work_row(view: view),
+    children: render_task_row(view: view, observation: ObservationsNominal),
   }
 }
 
@@ -487,7 +492,10 @@ fn fixture_ready_view(node_id: String, headline: String) -> WorkRowView {
     disclosure: NoDisclosure,
     rounds: RoundsUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
     worker_alive: false,
+    assignment: none,
     standing: none,
+    attempt_stale: false,
+    profiles: [],
   }
 }
 
@@ -515,14 +523,20 @@ fn fixture_family_rows() -> List<WorkRowView> {
   ]
 }
 
+// The fixture frame is its own universe: its rows are sandbox fixtures no declared project names, so
+// the hierarchy reads an empty membership relation rather than the authority's (which named none of
+// them and was read only through a parameter default).
 fn family_fixture_frame(label: String, cls: String) -> Fragment {
   el_class("div", join(["fixture-frame ", cls], ""), [
     el_class("h3", "group-label", [ txt(label) ]),
     workspace_entries_ul(
       entries: band_entries(
         rows: fixture_family_rows(),
+        all_rows: fixture_family_rows(),
+        edges: [],
         families: [fixture_family_decl()],
         members: fixture_family_members(),
+        memberships: membership_index(memberships: []),
       ),
       observation: ObservationsNominal,
     ),
@@ -558,13 +572,41 @@ fn instrument_labs_section() -> Fragment {
 }
 
 fn sandbox_page() -> Fragment {
+  sandbox_page_with_stylesheet(stylesheet: sandbox_css())
+}
+
+// The supplied-stylesheet seam: the sandbox page fold with only the head's style text handed in, so
+// a claim about the gallery or the live instances does not pay for a stylesheet it never reads.
+// sandbox_page passes sandbox_css(); a claim about the stylesheet reads sandbox_css directly.
+fn sandbox_page_with_stylesheet(stylesheet: String) -> Fragment {
+  sandbox_page_with(stylesheet: stylesheet, sections: sandbox_sections())
+}
+
+// The sandbox's sections, in page order: the register at every depth, then every component in
+// every state.
+fn sandbox_sections() -> List<Fragment> {
+  [
+    round_strip_lab_section(),
+    instrument_labs_section(),
+    roles_section(),
+    scales_section(),
+    gallery_section(),
+    live_section(),
+    work_row_fixture_section(),
+    family_fixture_section(),
+  ]
+}
+
+// The page fold over supplied sections: the header, the auditioner bar, the sections and the client
+// asset. A claim about one section reads it through this fold without building the other seven.
+fn sandbox_page_with(stylesheet: String, sections: List<Fragment>) -> Fragment {
   Element {
     tag: "html",
     attributes: [],
     children: [
       el("head", [
         Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
-        el("style", [ txt(sandbox_css()) ]),
+        el("style", [ txt(stylesheet) ]),
         el("title", [ txt("gunbc — sandbox") ]),
       ]),
       el("body", [
@@ -575,16 +617,7 @@ fn sandbox_page() -> Fragment {
               attr(name: "type", value: "button" ),
             ], []) ],
           map(workspace_band_paints(), p => band_chip(key: p.key)))),
-        el_class("main", "sandbox", [
-          round_strip_lab_section(),
-          instrument_labs_section(),
-          roles_section(),
-          scales_section(),
-          gallery_section(),
-          live_section(),
-          work_row_fixture_section(),
-          family_fixture_section(),
-        ]),
+        el_class("main", "sandbox", sections),
         Element {
           tag: "script",
           attributes: [

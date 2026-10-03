@@ -6,7 +6,6 @@ import std.types { NonEmptyStr, List, Bool, Int, Unit }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size }
 import std.algebra { trim }
-import std.string_type { String }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -220,6 +219,7 @@ fn systemd_run_transient_wait_unit_argv(unit: NonEmptyStr, properties: List<Syst
 // annotation names its subject instead of relying on adjacency.)
 service systemd.SystemdRun {
   operation RunTransient {
+    requires opaque
     input { unit: NonEmptyStr, property_argv: List<String>, command_argv: List<String> }
     output {
       success: Bool from "exit_success"
@@ -238,6 +238,7 @@ service systemd.SystemdRun {
 
 
   operation RunTransientRetained {
+    requires opaque
     input { unit: NonEmptyStr, property_argv: List<String>, command_argv: List<String> }
     output {
       success: Bool from "exit_success"
@@ -255,6 +256,7 @@ service systemd.SystemdRun {
   }
 
   operation RunTransientAndWait {
+    requires opaque
     input { unit: NonEmptyStr, property_argv: List<String>, command_argv: List<String> }
     output {
       exit_code: Int from "exit_code"

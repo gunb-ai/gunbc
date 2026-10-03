@@ -2,7 +2,7 @@ module v2.test.claim.match_binder.match_binder_typing
 
 import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.infer { infer, inferred_facts_resolved_type }
-import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_last_segment }
+import v2.std.qualified_name { declaration_reference_path_optional, lexical_reference_label_optional, qualified_name_last_segment }
 import v2.std.witness { Holds, Violates }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
@@ -12,7 +12,7 @@ import extdeps.communication.medium { Lossless, Medium }
 import std.algebra { Cons, Empty }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, None, Outcome, Rejected, Some }
+import v2.std.diagnostic { Accepted, Diagnostics, NonEmptyDiagnostics, None, Outcome, Rejected, Some, node_locus }
 import v2.std.algebra { contains, list_map }
 import v2.std.node {
   Atom,
@@ -22,15 +22,16 @@ import v2.std.node {
   Edge,
   Instantiation,
   Match,
-  Named,
+  Authored,
+  MatchArmBodyEdge,
+  MatchArmPatternEdge,
   Node,
   Positional,
   Symbol,
   TypeNode,
-  match_arm_body,
-  match_arm_pattern
+  core_edge_label
 }
-import v2.std.node_query { construct_node }
+import v2.std.node_query { binder_node, construct_node, field_projection_optional }
 import v2.std.symbol_index {
   SymbolIndex,
   empty_symbol_index,
@@ -45,7 +46,7 @@ import v2.compiler.infer {
   inferred_facts_grounding_derived,
   inferred_facts_not_derived
 }
-import v2.compiler.inferred_tree { InferredFacts, InferredFactsEntry }
+import v2.compiler.inferred_tree { InferredFacts, InferredFactsEntry, ObligatedInferredTree }
 import v2.std.algebra { list_append }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.collection { List, empty_map }
@@ -122,50 +123,150 @@ fn mbp_type_name(t: Node) -> Symbol {
   }
 }
 
-fn mbp_fact_of(src: String, pick: fn(Node) -> Optional<Node>) -> Symbol {
-  match mbp_assemble(src: src) {
-    Rejected { diagnostics: r } => r.head.reason
-    Accepted { value: resolved, diagnostics: _ } =>
-      match infer(tree: resolved) {
-        Rejected { diagnostics: r } => mbp_last(xs: mbp_reasons(r: r))
-        Accepted { value: inferred, diagnostics: _ } =>
-          match pick(resolved.root) {
-            Absent => ^mbp_subject_absent
-            Present { value: subject } =>
-              match inferred.facts.lookup(subject) {
-                Absent => ^mbp_no_facts
-                Present { value: facts } =>
-                  match inferred_facts_resolved_type(facts: facts) {
-                    Violates { diagnostic: _ } => ^mbp_underived
-                    Holds { value: t } => mbp_type_name(t: t)
-                  }
-              }
-          }
+// THE ARM BODY'S PROJECTION OFF THE BINDER: the field projection whose base reads `artifact` and whose
+// field is `tree`. Picked by its route, not by spelling: the pattern's own binder is a
+// lexical reference labelled `artifact` too, and the first atom spelled `artifact` is the marker's payload,
+// which carries no facts at all.
+fn mbp_binder_projection(n: Node) -> Optional<Node> {
+  match field_projection_optional(n: n) {
+    Present { value: proj } =>
+      if (proj.field == ^tree) && (mbp_binder_name_of(n: proj.base) == optional_present(value: ^artifact)) {
+        optional_present(value: n)
+      } else {
+        mbp_binder_projection_in_children(n: n)
+      }
+    Absent => mbp_binder_projection_in_children(n: n)
+  }
+}
+
+// The name a projection base reads: a lexical reference's label, or the canonical atom a lexically bound
+// projection head keeps (v2.compiler.resolve resolve_projection_base -- its declared frontier is that the
+// projection route carries no lexical entries, so a Lexical head stays the atom).
+fn mbp_binder_name_of(n: Node) -> Optional<Symbol> {
+  match lexical_reference_label_optional(node: n) {
+    Present { value: label } => optional_present(value: label)
+    Absent =>
+      match n.kind {
+        TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+        TypeNode { connective: _ } => optional_absent()
+        ComputationNode { behavior: _ } => optional_absent()
       }
   }
 }
 
-fn mbp_all_reasons(src: String) -> List<Symbol> {
+fn mbp_binder_projection_in_children(n: Node) -> Optional<Node> {
+  fold(n.children, init: Absent, f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => mbp_binder_projection(n: e.target)
+    }
+  })
+}
+
+fn mbp_binder_projection_base(n: Node) -> Optional<Node> {
+  match mbp_binder_projection(n: n) {
+    Absent => optional_absent()
+    Present { value: proj_node } =>
+      match field_projection_optional(n: proj_node) {
+        Present { value: proj } => optional_present(value: proj.base)
+        Absent => optional_absent()
+      }
+  }
+}
+
+// WHAT ONE FIXTURE PROGRAM ESTABLISHES, decided once over ONE assemble and ONE infer. Every source-route
+// row below used to re-assemble and re-infer its program inside each helper it called -- up to three
+// front ends per row, and five rows over four programs. gunbc#12506's required floor refused all five as
+// enrolment_measured_over_margin, so each program is now read by one nullary `mbt_*_reading` producer,
+// enrolled WARM in v2.workflow.floor_pure_producer_share, and the rows read the decided values. The
+// producer IS the source route (assemble -> resolve -> infer on authored text), so every row keeps its
+// exact-route assertion; what is no longer paid per row is re-executing it.
+//
+// The fields keep the readers' exact failure arms. `reasons` is the whole chain in order: a resolve or
+// infer refusal's reasons, or `^infers` followed by an accepted inference's advisories. A FACT field is
+// the picked node's resolved type name on an accepted inference, ^mbp_subject_absent / ^mbp_no_facts /
+// ^mbp_underived where the route stops, or the refusal's reason (the head at resolve, the last at infer).
+// `arm_body_underived_at_binder_projection` holds only on an accepted inference whose advisories carry
+// infer_match_arm_body_type_underived AT THE BINDER PROJECTION'S OWN LOCUS -- the reason reported anywhere
+// else in the module does not satisfy it.
+type MbtReading {
+  reasons: List<Symbol>
+  binder_base_fact: Symbol
+  match_fact: Symbol
+  arm_body_underived_at_binder_projection: Bool
+}
+
+fn mbp_reading(src: String) -> MbtReading {
   match mbp_assemble(src: src) {
-    Rejected { diagnostics: r } => mbp_reasons(r: r)
+    Rejected { diagnostics: r } => MbtReading {
+      reasons: mbp_reasons(r: r),
+      binder_base_fact: r.head.reason,
+      match_fact: r.head.reason,
+      arm_body_underived_at_binder_projection: false
+    }
     Accepted { value: resolved, diagnostics: _ } =>
       match infer(tree: resolved) {
-        Rejected { diagnostics: r } => mbp_reasons(r: r)
-        Accepted { value: _, diagnostics: d } =>
-          match d {
+        Rejected { diagnostics: r } => MbtReading {
+          reasons: mbp_reasons(r: r),
+          binder_base_fact: mbp_last(xs: mbp_reasons(r: r)),
+          match_fact: mbp_last(xs: mbp_reasons(r: r)),
+          arm_body_underived_at_binder_projection: false
+        }
+        Accepted { value: inferred, diagnostics: d } => MbtReading {
+          reasons: match d {
             None => [^infers]
             Some { diagnostics: r } => Cons { head: ^infers, tail: mbp_reasons(r: r) }
+          },
+          binder_base_fact: mbp_fact_in(inferred: inferred, subject: mbp_binder_projection_base(n: resolved.root)),
+          match_fact: mbp_fact_in(inferred: inferred, subject: mbp_find_match(n: resolved.root)),
+          arm_body_underived_at_binder_projection: mbp_reported_at(
+            d: d,
+            reason: ^infer_match_arm_body_type_underived,
+            at: mbp_binder_projection(n: resolved.root)
+          )
+        }
+      }
+  }
+}
+
+fn mbp_fact_in(inferred: ObligatedInferredTree, subject: Optional<Node>) -> Symbol {
+  match subject {
+    Absent => ^mbp_subject_absent
+    Present { value: s } =>
+      match inferred.facts.lookup(s) {
+        Absent => ^mbp_no_facts
+        Present { value: facts } =>
+          match inferred_facts_resolved_type(facts: facts) {
+            Violates { diagnostic: _ } => ^mbp_underived
+            Holds { value: t } => mbp_type_name(t: t)
           }
       }
   }
 }
 
-fn mbp_reports(src: String, reason: Symbol) -> Bool {
-  contains(xs: mbp_all_reasons(src: src), item: reason, eq: fn(a, b) { a == b })
+fn mbp_reported_at(d: Diagnostics, reason: Symbol, at: Optional<Node>) -> Bool {
+  match at {
+    Absent => false
+    Present { value: n } =>
+      match d {
+        None => false
+        Some { diagnostics: r } =>
+          ((r.head.reason == reason) && (r.head.at == node_locus(node: n)))
+            || contains(
+              xs: list_map(xs: r.tail, f: fn(x) { (x.reason == reason) && (x.at == node_locus(node: n)) }),
+              item: true,
+              eq: fn(a, b) { a == b }
+            )
+      }
+  }
 }
 
-fn mbp_infers(src: String) -> Bool {
-  match mbp_all_reasons(src: src) {
+fn mbp_reports(reading: MbtReading, reason: Symbol) -> Bool {
+  contains(xs: reading.reasons, item: reason, eq: fn(a, b) { a == b })
+}
+
+fn mbp_infers(reading: MbtReading) -> Bool {
+  match reading.reasons {
     Cons { head: h, tail: _ } => h == ^infers
     Empty => false
   }
@@ -186,11 +287,22 @@ data mbt_arms: String = "    Rejected { diagnostics: r } => fallback.tree\n    A
 
 data mbt_positive_src: String = mbt_with_match(scrutinee_type: "Outcome<ParseArtifact>", arms: mbt_arms)
 
+// THE WARM PRODUCERS, one per fixture program; each is listed in floor_cross_claim_pure_producers_warm.
+fn mbt_positive_reading() -> MbtReading { mbp_reading(src: mbt_positive_src) }
+
 // (1) THE BINDER IS TYPED ParseArtifact FROM Outcome<ParseArtifact>'s Accepted.value -- the argument
 // the scrutinee's type supplies at the declaration's binder T, not T itself and not the field's
 // authored spelling.
-test fn mbt_binder_is_typed_parse_artifact_from_accepted_value_holds() -> Bool {
-  mbp_fact_of(src: mbt_positive_src, pick: fn(root) { mbp_find_atom(n: root, id: ^artifact) }) == ^ParseArtifact
+// DECLARED RUNG DROP (gunbc.rung_drop match_arm_binder_typing_lost_to_lexical_carrier): the binder is NOT
+// typed today, and this row pins exactly HOW it is not, so it flips back -- to `== ^ParseArtifact` -- when
+// match-arm binder typing reaches the lexical-binding carrier (N7-3). The binder's use in the arm body is the
+// lexical reference resolve minted (v2.compiler.resolve resolve_lexical_reference), whose recorded binding
+// declares no type, so infer leaves it underived (v2.compiler.infer infer_lexical_reference_facts), and the
+// arm body `artifact.tree` is reported at ITS OWN LOCUS as infer_match_arm_body_type_underived. Both halves are
+// required: a program refused for an unrelated cause, or an underived binder reported somewhere else, reds it.
+test fn mbt_binder_is_not_yet_typed_and_its_arm_body_is_reported_holds() -> Bool {
+  (mbt_positive_reading().binder_base_fact == ^mbp_underived)
+    && mbt_positive_reading().arm_body_underived_at_binder_projection
 }
 
 // AND THE MATCH IS TYPED BY ITS ARMS: each arm projects `tree` off a ParseArtifact -- one bound by
@@ -199,8 +311,12 @@ test fn mbt_binder_is_typed_parse_artifact_from_accepted_value_holds() -> Bool {
 // (v2.compiler.infer infer_field_projection_facts), which is not the resolved reference a parameter
 // annotated `ParseTree` carries, so a projection arm beside a parameter arm compares two spellings of
 // one type. That is the projection's typing boundary, reported to its owning lane, not this match's.
-test fn mbt_match_is_typed_parse_tree_holds() -> Bool {
-  mbp_fact_of(src: mbt_positive_src, pick: fn(root) { mbp_find_match(n: root) }) == ^ParseTree
+// DECLARED RUNG DROP, as above: the match is accepted at the frontier and NOT typed, because the arm that
+// projects off the binder is underived at the binder projection's locus. Flips back to `== ^ParseTree`
+// with the same trigger.
+test fn mbt_match_is_not_yet_typed_at_the_binder_arm_holds() -> Bool {
+  (mbt_positive_reading().match_fact == ^mbp_underived)
+    && mbt_positive_reading().arm_body_underived_at_binder_projection
 }
 
 // REVERSED BY RULING: A BINDER MAY NOT HIDE A VISIBLE VALUE BINDING, SO THIS REFUSES. This row asserted
@@ -220,11 +336,12 @@ test fn mbt_match_is_typed_parse_tree_holds() -> Bool {
 //
 // The refusal is asserted BY REASON, not merely as "did not type": a row satisfied by any refusal would
 // stay green if the shadowing gate were deleted and the module broke for an unrelated cause.
+data mbt_hiding_src: String = mbt_decls + "fn g(artifact: Int, h: Outcome<ParseArtifact>, fallback: ParseArtifact) -> ParseTree {\n  match h {\n" + mbt_arms + "  }\n}\n"
+
+fn mbt_hiding_reading() -> MbtReading { mbp_reading(src: mbt_hiding_src) }
+
 test fn mbt_a_binder_hiding_a_same_named_parameter_refuses_holds() -> Bool {
-  mbp_reports(
-    src: mbt_decls + "fn g(artifact: Int, h: Outcome<ParseArtifact>, fallback: ParseArtifact) -> ParseTree {\n  match h {\n" + mbt_arms + "  }\n}\n",
-    reason: ^resolve_reason_binder_hides_visible_value
-  )
+  mbp_reports(reading: mbt_hiding_reading(), reason: ^resolve_reason_binder_hides_visible_value)
 }
 
 // (2) REFUSALS, EACH DISCRIMINATING: the same match with one pattern edit, so the positive control
@@ -324,9 +441,11 @@ data mbt_seven_src: String = mbt_decls + "fn parse_module_prepared(tokens: Int) 
 //
 // THE SUPPLIED ROW BESIDE IT reads the same arm's RESULT CONTRACT at one interface, so the two are a
 // pair rather than a duplicate: this row says the arm is reached, that one says what the arm returns.
+fn mbt_seven_reading() -> MbtReading { mbp_reading(src: mbt_seven_src) }
+
 test fn mbt_the_sevens_call_scrutinee_is_a_counted_frontier_holds() -> Bool {
-  mbp_infers(src: mbt_seven_src)
-    && mbp_reports(src: mbt_seven_src, reason: ^infer_match_scrutinee_type_underived)
+  mbp_infers(reading: mbt_seven_reading())
+    && mbp_reports(reading: mbt_seven_reading(), reason: ^infer_match_scrutinee_type_underived)
 }
 
 // WHAT THE FRONTIER ARM RETURNS, at infer_match_coproduct's own interface: an underived scrutinee is
@@ -355,16 +474,20 @@ fn mbt_underived_scrutinee_entry() -> List<InferredFactsEntry> {
   }
 }
 
-// AN ARM BODY WHOSE TYPE IS NOT DERIVED IS COUNTED, NOT GUESSED. The scrutinee here IS typed, so the
+// AN ARM BODY WHOSE TYPE IS NOT DERIVED IS COUNTED, NOT GUESSED. (Its binder conjunct is under the same
+// declared rung drop as the rows above: it asserts the binder's use is underived today, and flips back to
+// `== ^ParseArtifact` with them.) The scrutinee here IS typed, so the
 // patterns are checked and the binder is typed; the bodies rebuild an Outcome from a constructor,
 // which this stage does not type, so the match is accepted at the frontier with one located
 // infer_match_arm_body_type_underived per such body -- and the binder beneath it is still typed.
 data mbt_constructor_body_src: String = mbt_with_match(scrutinee_type: "Outcome<ParseArtifact>", arms: "    Rejected { diagnostics: r } => Rejected { diagnostics: r }\n    Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }\n")
 
+fn mbt_constructor_body_reading() -> MbtReading { mbp_reading(src: mbt_constructor_body_src) }
+
 test fn mbt_an_underived_arm_body_is_a_counted_frontier_holds() -> Bool {
-  mbp_infers(src: mbt_constructor_body_src)
-    && mbp_reports(src: mbt_constructor_body_src, reason: ^infer_match_arm_body_type_underived)
-    && (mbp_fact_of(src: mbt_constructor_body_src, pick: fn(root) { mbp_find_atom(n: root, id: ^artifact) }) == ^ParseArtifact)
+  mbp_infers(reading: mbt_constructor_body_reading())
+    && mbp_reports(reading: mbt_constructor_body_reading(), reason: ^infer_match_arm_body_type_underived)
+    && (mbt_constructor_body_reading().binder_base_fact == ^mbp_underived)
 }
 
 // THE MATCH-TYPING BOUNDARY, READ AT ONE INTERFACE WITH SUPPLIED INPUTS. Every refusal row below used
@@ -407,8 +530,15 @@ fn mbt_conj(fields: List<Edge>) -> Node {
   Node { kind: TypeNode { connective: Conj }, children: fields, occurrence_id: OccurrenceSynthetic }
 }
 
+// A DECLARED field, as lowering writes one: the Authored edge targets a binder node carrying the type
+// (v2.std.node_query binder_node), which is what declared_field_from_edge reads. Pattern fields stay
+// mbt_named: a pattern binds an atom, it does not declare a field.
+fn mbt_field(name: Symbol, type_node: Node) -> Edge {
+  Edge { label: Authored { name: name }, target: binder_node(type_node: type_node, default: optional_absent()) }
+}
+
 fn mbt_named(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn mbt_pos(target: Node) -> Edge {
@@ -427,14 +557,14 @@ fn mbt_outcome_declaration() -> Node {
       mbt_named(
         name: ^Accepted,
         target: mbt_conj(fields: [
-          mbt_named(name: ^value, target: mbt_atom(s: ^T)),
-          mbt_named(name: ^diagnostics, target: mbt_ref(segs: [^p, ^Diagnostics]))
+          mbt_field(name: ^value, type_node: mbt_atom(s: ^T)),
+          mbt_field(name: ^diagnostics, type_node: mbt_ref(segs: [^p, ^Diagnostics]))
         ])
       ),
       mbt_named(
         name: ^Rejected,
         target: mbt_conj(fields: [
-          mbt_named(name: ^diagnostics, target: mbt_ref(segs: [^p, ^NonEmptyDiagnostics]))
+          mbt_field(name: ^diagnostics, type_node: mbt_ref(segs: [^p, ^NonEmptyDiagnostics]))
         ])
       )
     ],
@@ -446,7 +576,7 @@ fn mbt_outcome_declaration() -> Node {
 // Disj. It is in the index for two reasons: it is the type argument the binder must receive, and it is
 // the non-coproduct scrutinee the refusal row needs.
 fn mbt_parse_artifact_declaration() -> Node {
-  mbt_conj(fields: [mbt_named(name: ^tree, target: mbt_ref(segs: [^p, ^ParseTree]))])
+  mbt_conj(fields: [mbt_field(name: ^tree, type_node: mbt_ref(segs: [^p, ^ParseTree]))])
 }
 
 fn mbt_index() -> SymbolIndex {
@@ -517,8 +647,8 @@ fn mbt_entry(node: Node, ty: Node) -> List<InferredFactsEntry> {
 
 fn mbt_arm(pattern: Node, body: Node) -> Node {
   mbt_conj(fields: [
-    mbt_named(name: match_arm_pattern, target: pattern),
-    mbt_named(name: match_arm_body, target: body)
+    Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: pattern },
+    Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: body }
   ])
 }
 

@@ -76,7 +76,7 @@ data occurrence_identity_consumer_red_debts: List<OccurrenceIdentityConsumerRedD
   OccurrenceIdentityConsumerRedDebt {
     id: "inferred-target-anchor-identity",
     required_receipt: "An inferred target projection remains anchored to the exact authored occurrence instead of a rebuilt shell Node, spelling, or SourceSpan.",
-    owner: "namespace-canonical-binding",
+    owner: "declaration-identity-switchover",
     dissolution: unbound_dissolution(description: "DISSOLVE-ON: the inferred-target anchor RED executes through the production sidecar consumer; delete this row in the same PR."),
   },
   OccurrenceIdentityConsumerRedDebt {

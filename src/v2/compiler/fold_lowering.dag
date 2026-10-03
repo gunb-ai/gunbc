@@ -46,7 +46,7 @@ import v2.std.node {
   Conj,
   Edge,
   Loop,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -54,7 +54,12 @@ import v2.std.node {
   content_hash,
   is_empty_conj_root,
   node_synthetic,
-  symbol_intern_lexeme
+  symbol_intern_lexeme,
+  LoopBoundEdge,
+  LoopCarrierEdge,
+  LoopDomainEdge,
+  LoopRealizedDeclarationEdge,
+  core_edge_label,
 }
 import v2.std.anonymous_binder { fresh_fold_carrier }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -804,10 +809,10 @@ fn fold_recurrence_encoding(operands: FoldCallOperands) -> Node {
       kind: ComputationNode { behavior: Loop },
       children: [
         Edge { label: Positional, target: operands.step },
-        Edge { label: Named { name: ^loop_domain_edge }, target: operands.collection },
-        Edge { label: Named { name: ^loop_carrier_edge }, target: fold_carrier_binder_atom(binder: slot) },
-        Edge { label: Named { name: ^loop_bound_edge }, target: fold_iteration_measure_atom() },
-        Edge { label: Named { name: ^loop_realized_declaration_edge }, target: operands.head }
+        Edge { label: core_edge_label(marker: LoopDomainEdge), target: operands.collection },
+        Edge { label: core_edge_label(marker: LoopCarrierEdge), target: fold_carrier_binder_atom(binder: slot) },
+        Edge { label: core_edge_label(marker: LoopBoundEdge), target: fold_iteration_measure_atom() },
+        Edge { label: core_edge_label(marker: LoopRealizedDeclarationEdge), target: operands.head }
       ]
     )
   )

@@ -1,5 +1,8 @@
 module v2.extdeps.languages.rust_test
 
+import v2.extdeps.languages.rust_native_driver { RustEmitHostFamilyMember, rust_family_main_suffix }
+import v2.std.node { ArrowBodyEdge, core_edge_label, Authored, StructuralLabel }
+
 import std.algebra { Cons, Empty }
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -223,7 +226,8 @@ fn rust_pick_lex_rules() -> LexRuleSet {
         right: rust_pick_additional_lex_rules()
       ),
       right: rust_value_expression_family_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 
@@ -326,7 +330,7 @@ fn rust_sgb_target_model_bundle_core() -> Node {
 }
 
 fn rust_sgb_lex() -> LexRules {
-  ModeledLexRules { root: LexRuleSet { rules: [] } }
+  ModeledLexRules { root: LexRuleSet { rules: [], modes: [] } }
 }
 
 fn rust_sgb_binding_spellings() -> Map<Symbol, String> {
@@ -493,7 +497,8 @@ fn rust_match_lex_rules() -> LexRuleSet {
         right: rust_match_additional_lex_rules()
       ),
       right: rust_value_expression_family_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 
@@ -513,7 +518,8 @@ fn rust_call_lex_rules() -> LexRuleSet {
     rules: list_append(
       left: rust_fn_add_lex_rules().rules,
       right: rust_call_closure_additional_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 
@@ -840,7 +846,8 @@ fn rust_loop_lex_rules() -> LexRuleSet {
     rules: list_append(
       left: rust_fn_add_lex_rules().rules,
       right: rust_loop_additional_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 
@@ -1090,7 +1097,7 @@ fn rust_classical_not_target_model_bundle_core() -> Node {
       init: Empty,
       f: fn(acc, edge) {
         match edge.label {
-          Named { name: n } =>
+          Authored { name: n } =>
             if n == ^target_model_edge_translation_rules {
               list_snoc_item(
                 xs: acc,
@@ -1102,6 +1109,7 @@ fn rust_classical_not_target_model_bundle_core() -> Node {
             } else {
               list_snoc_item(xs: acc, item: edge)
             }
+          StructuralLabel { label: _ } => list_snoc_item(xs: acc, item: edge)
           Positional => list_snoc_item(xs: acc, item: edge)
         }
       }
@@ -1536,7 +1544,8 @@ fn rust_variant_construct_lex_rules() -> LexRuleSet {
     rules: list_append(
       left: rust_fn_add_lex_rules().rules,
       right: rust_variant_construct_additional_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 
@@ -1806,7 +1815,8 @@ fn rust_logic_complement_lex_rules() -> LexRuleSet {
     rules: list_append(
       left: rust_fn_add_lex_rules().rules,
       right: rust_logic_complement_additional_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 
@@ -2035,7 +2045,8 @@ fn rust_bool_fn_lex() -> LexRules {
       rules: list_append(
         left: rust_fn_add_lex_rules().rules,
         right: rust_bool_fn_additional_lex_rules()
-      )
+      ),
+      modes: []
     }
   }
 }
@@ -2271,51 +2282,6 @@ fn rust_logic_join_target_model_staging() -> TargetModel {
     host_identity_sym: ^rust_host_transport_logic_join_identity,
     main_suffix: rust_logic_join_emit_host_main_suffix
   )
-}
-
-// Family-grain dispatcher (std.emit_on_demand witness_family_build_grain_ruling): ONE crate per
-// witness family — the family main is DERIVED from member arm rows (member_id -> i32 result
-// expression), never a hand-written N+1th main. Member selection is a run-time argv parameter
-// (cargo's `--` separator is this transport's convention, owned here); the derived match is
-// fail-closed — an unknown member id exits 2, a refused run, never fabricated octets.
-
-type RustEmitHostFamilyMember {
-  member_id: String,
-  result_expression: String
-}
-
-data rust_family_main_open: String = "\n\nfn main() { let member: String = std::env::args().nth(1).unwrap_or_default(); let d: i32 = match member.as_str() {\n"
-
-data rust_family_main_close: String = "    _ => std::process::exit(2),\n  }; let bytes = [0u8, (d & 0xff) as u8, ((d >> 8) & 0xff) as u8, ((d >> 16) & 0xff) as u8, ((d >> 24) & 0xff) as u8]; let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes); }\n"
-
-fn rust_family_dispatch_arm(member: RustEmitHostFamilyMember) -> String {
-  concat("    \"", member.member_id, "\" => ", member.result_expression, ",\n")
-}
-
-fn rust_family_dispatch_arms(members: List<RustEmitHostFamilyMember>) -> String {
-  fold_list(
-    xs: members,
-    empty: "",
-    cons: fn(acc, member) {
-      concat(acc, rust_family_dispatch_arm(member: member))
-    }
-  )
-}
-
-fn rust_family_main_suffix(
-  prelude: String,
-  members: List<RustEmitHostFamilyMember>
-) -> String {
-  concat(
-    prelude,
-    rust_family_main_open,
-    rust_family_dispatch_arms(members: members),
-    rust_family_main_close
-  )
-}
-
-fn rust_family_member_run_args(member_id: String) -> List<String> {
-  ["--", member_id]
 }
 
 data rust_logic_family_prelude: String = "\n\nuse Bool::*;\n\nenum Bool { True, False }"
@@ -3404,7 +3370,8 @@ fn rust_literal_emit_lex_rules() -> LexRuleSet {
         rust_lex_rule(token_class: ^rust_lit_char_a, text: "'a'"),
         rust_lex_rule(token_class: ^rust_lit_char_b, text: "'b'")
       ]
-    )
+    ),
+    modes: []
   }
 }
 
@@ -3474,7 +3441,7 @@ fn rust_arrow_with_body_node(
         label: Positional,
         target: rust_type_atom_node(identity: return_type_binding)
       },
-      Edge { label: Named { name: ^arrow_body_edge }, target: body }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -3608,7 +3575,7 @@ fn rust_bind_literal_target_model_bundle() -> Node {
       init: Empty,
       f: fn(acc, edge) {
         match edge.label {
-          Named { name: n } =>
+          Authored { name: n } =>
             if n == ^target_model_edge_translation_rules {
               list_snoc_item(
                 xs: acc,
@@ -3620,6 +3587,7 @@ fn rust_bind_literal_target_model_bundle() -> Node {
             } else {
               list_snoc_item(xs: acc, item: edge)
             }
+          StructuralLabel { label: _ } => list_snoc_item(xs: acc, item: edge)
           Positional => list_snoc_item(xs: acc, item: edge)
         }
       }
@@ -3753,7 +3721,8 @@ fn rust_emit_directive_lex() -> LexRules {
       rules: [
         rust_lex_rule(token_class: ^rust_token_macro_eprintln_open, text: "eprintln!("),
         rust_lex_rule(token_class: ^rust_token_rparen, text: ")")
-      ]
+      ],
+      modes: []
     }
   }
 }
@@ -3858,7 +3827,8 @@ fn rust_type_alias_decl_structural_lex_rules() -> LexRuleSet {
       rust_lex_rule(token_class: ^rust_token_type_alias_eq, text: " = "),
       rust_lex_rule(token_class: ^rust_token_semicolon, text: ";"),
       rust_ident_lex_rule()
-    ]
+    ],
+    modes: []
   }
 }
 
@@ -4334,4 +4304,9 @@ fn rust_sg2_type_expression_projection_target_model() -> TargetModel {
     authority_source_text: rust_sg2_type_alias_text,
     runtime_row: target_emit_host_runtime_row_unconfigured
   }
+}
+
+// Preserve the existing native-runner entry while sharing its argument contract.
+fn rust_family_member_run_args(member_id: String) -> List<String> {
+  v2.extdeps.languages.rust_native_driver.rust_family_member_run_args(member_id: member_id)
 }

@@ -1,0 +1,89 @@
+module test.claim.roadmap.roadmap_node_fixture
+
+import std.types { String, Int, List, Bool, NonEmptyStr }
+import gunbc.roadmap_model {
+  RoadmapNode, RoadmapNodeIdentity, NodeParent, AdmittedRoot, PrsMerged, ManualAcceptance, Dispatchable,
+}
+import gunbc.roadmap_status {
+  RoadmapItem, AuthoredLine, DerivableLine, SupersededLine, TicketLine, TicketFields,
+  Signoff, SignedOff, RedControlEvidence, HandbackEvidence,
+}
+import gunbc.roadmap_authority { roadmap_node }
+import gunbc.roadmap_launch_canary { roadmap_launch_canary_execution_contract }
+
+// FIXTURE CONSTRUCTORS FOR ROADMAP WITNESSES, built on the one production constructor
+// (gunbc.roadmap_authority roadmap_node). Production has a single node constructor with optional
+// dispatch facts; witnesses that plant many rows name the shapes they plant here instead of
+// repeating every field. Two families, and the difference is the readiness they plant:
+// - the unbound shapes (fx_authored, fx_ticket_row, fx_superseded) supply no dispatch facts, so the
+//   readiness predicate reads them NOT READY on every fact;
+// - the bound shapes (fx_authored_wi, fx_derivable_wi, fx_ticket_wi) plant a COMPLETE node -- a root
+//   of its own fixture graph, centered, bound to the canary's closing contract -- so its readiness
+//   is decided only by what the witness varies around it (its prerequisites, its lifecycle).
+
+fn fx_complete_parent() -> NodeParent? {
+  Present { value: AdmittedRoot }
+}
+
+fn fx_plan() -> NonEmptyStr? {
+  Present { value: "fixture centering plan" as NonEmptyStr }
+}
+
+fn fx_authored(identity: String, id: String, done: Bool, content: String) -> RoadmapNode {
+  roadmap_node(identity: identity, id: id, owner: "", carriers: [], line: AuthoredLine { done: done, content: content })
+}
+
+fn fx_authored_wi(identity: String, id: String, done: Bool, content: String, repo: String) -> RoadmapNode {
+  roadmap_node(identity: identity, id: id, owner: "", carriers: [],
+    line: AuthoredLine { done: done, content: content },
+    dispatch: Present { value: Dispatchable { repo: repo, acceptance: ManualAcceptance } },
+    execution: Present { value: roadmap_launch_canary_execution_contract() },
+    parent: fx_complete_parent(), centering: fx_plan())
+}
+
+fn fx_derivable(identity: String, id: String, prs: List<Int>, title: String, description: String) -> RoadmapNode {
+  roadmap_node(identity: identity, id: id, owner: "", carriers: [], line: DerivableLine { prs: prs, title: title, description: description })
+}
+
+fn fx_derivable_wi(identity: String, id: String, prs: List<Int>, title: String, description: String, repo: String) -> RoadmapNode {
+  roadmap_node(identity: identity, id: id, owner: "", carriers: [],
+    line: DerivableLine { prs: prs, title: title, description: description },
+    dispatch: Present { value: Dispatchable { repo: repo, acceptance: PrsMerged } },
+    execution: Present { value: roadmap_launch_canary_execution_contract() },
+    parent: fx_complete_parent(), centering: fx_plan())
+}
+
+fn fx_ticket_row(identity: String, id: String, done: Bool, t: TicketFields) -> RoadmapNode {
+  roadmap_node(identity: identity, id: id, owner: "", carriers: [], line: TicketLine { done: done, ticket: t })
+}
+
+fn fx_ticket_wi(identity: String, id: String, done: Bool, t: TicketFields, repo: String) -> RoadmapNode {
+  roadmap_node(identity: identity, id: id, owner: "", carriers: [],
+    line: TicketLine { done: done, ticket: t },
+    dispatch: Present { value: Dispatchable { repo: repo, acceptance: ManualAcceptance } },
+    execution: Present { value: roadmap_launch_canary_execution_contract() },
+    parent: fx_complete_parent(), centering: fx_plan())
+}
+
+fn fx_superseded(identity: String, id: String, by: String, content: String) -> RoadmapNode {
+  roadmap_node(identity: identity, id: id, owner: "", carriers: [], line: SupersededLine { by: by, content: content })
+}
+
+fn fx_signed(by: String, works: RedControlEvidence, scope_equivalent: HandbackEvidence, as_expected: Bool) -> Signoff {
+  SignedOff { by: by, works: works, scope_equivalent: scope_equivalent, as_expected: as_expected }
+}
+
+fn fx_sign(rn: RoadmapNode, s: Signoff) -> RoadmapNode {
+  RoadmapNode {
+    identity: rn.identity,
+    node: rn.node,
+    line: rn.line,
+    carriers: rn.carriers,
+    dispatch: rn.dispatch,
+    execution: rn.execution,
+    owner: rn.owner,
+    signoff: s,
+    parent: rn.parent,
+    centering: rn.centering,
+  }
+}

@@ -1,5 +1,6 @@
 module v1.compiler.parse
 
+import std.target_representation { VariantParentBeforeInference }
 import v1.std.core { Unmarked, TestMarked,
   module_node, import_node,
   Node, InferredNode, Resolved, CompilerError, TypeVariable,
@@ -1320,7 +1321,7 @@ fn occurrence_allocator_after_match_pattern(
 ) -> OccurrenceIdAllocator {
   match pattern {
     Present { value: Bind { declaration: declaration } } => occurrence_allocator_after_node(alloc: alloc, node: declaration)
-    Present { value: VariantPattern { name: _, parent_enum: _, field_bindings: bindings } } => occurrence_allocator_after_node_list(alloc: alloc, nodes: bindings)
+    Present { value: VariantPattern { name: _, parent_enum: _, field_bindings: bindings, parent_identity: _ } } => occurrence_allocator_after_node_list(alloc: alloc, nodes: bindings)
     Present { value: LitPattern { value: _ } } => alloc
     Present { value: Wildcard } => alloc
     Absent => alloc
@@ -1472,6 +1473,7 @@ fn stamp_parsed_pattern(
         name: name,
         parent_enum: parent_enum,
         field_bindings: field_bindings,
+        parent_identity: parent_identity,
       },
     } =>
       let stamped = stamp_parsed_node_list(
@@ -1486,6 +1488,7 @@ fn stamp_parsed_pattern(
             name: name,
             parent_enum: parent_enum,
             field_bindings: stamped.nodes,
+            parent_identity: parent_identity,
           },
         },
         ctx: stamped.ctx,
@@ -6041,7 +6044,7 @@ fn parse_variant_pattern(tokens: TokenStream, ctx: ParseContext, name: String) -
     if has_err(err: r.err) { return PatternResult { pattern: Wildcard, tokens: r.tokens, ctx: r.ctx, err: r.err } }
     let r2 = expect(tokens: skip_newlines(tokens: r.tokens), expected: ExpectRBrace)
     if has_err(err: r2.err) { return PatternResult { pattern: Wildcard, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
-    PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: r.field_bindings }, tokens: r2.tokens, ctx: r.ctx, err: none }
+    PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: r.field_bindings, parent_identity: VariantParentBeforeInference }, tokens: r2.tokens, ctx: r.ctx, err: none }
   } else if tok_is_lparen(tok: token_stream_first(stream: tokens)) {
     let r = parse_pattern(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx)
     if has_err(err: r.err) { return PatternResult { pattern: Wildcard, tokens: r.tokens, ctx: r.ctx, err: r.err } }
@@ -6049,9 +6052,9 @@ fn parse_variant_pattern(tokens: TokenStream, ctx: ParseContext, name: String) -
     if has_err(err: r2.err) { return PatternResult { pattern: Wildcard, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
     let minted = mint_parsed_node_identity(ctx: r.ctx)
     let fb = make_field_binding_node(occurrence_identity: minted.identity, field_name: "0", binding: r.pattern, span: span, name_span: kernel_span(name: "0"))
-    PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: [fb] }, tokens: r2.tokens, ctx: minted.ctx, err: none }
+    PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: [fb], parent_identity: VariantParentBeforeInference }, tokens: r2.tokens, ctx: minted.ctx, err: none }
   } else {
-    PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: [] }, tokens: tokens, ctx: ctx, err: none }
+    PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: [], parent_identity: VariantParentBeforeInference }, tokens: tokens, ctx: ctx, err: none }
   }
 }
 
