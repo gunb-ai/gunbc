@@ -24,6 +24,7 @@ import gunbc.roadmap_dogfood_route {
   DogfoodRouteReceipt, DogfoodRouteComplete, DogfoodRouteIncomplete,
   dogfood_route_receipt, dogfood_submission_reading, dogfood_review_reading, dogfood_publication_reading,
   dogfood_start_receipt_wire, dogfood_start_receipt_decode, StartReceiptDecoded, StartReceiptInvalid,
+  dogfood_start_step, StartNoCandidate, StartClockRefused, StartTimestamp, dogfood_unproduced, dogfood_unproduced_stages,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -250,4 +251,43 @@ test fn a_decoded_receipt_round_trips_through_the_encoder() -> Bool {
           }
       }
   }
+}
+
+// ── THE RECORDER'S ORDER ──
+//
+// Candidate discovery precedes the clock: with no candidate the answer is NoCandidate whatever the
+// clock says; with a candidate, an unavailable or non-canonical clock refuses and only a canonical
+// instant timestamps.
+test fn no_candidate_is_no_candidate_whatever_the_clock() -> Bool {
+  (match dogfood_start_step(candidate: none, clock: none) {
+    StartNoCandidate => true
+    StartClockRefused { reason: _ } => false
+    StartTimestamp { candidate: _, at: _ } => false
+  }) && (match dogfood_start_step(candidate: none, clock: Present { value: "2026-10-03T07:00:00Z" as NonEmptyStr }) {
+    StartNoCandidate => true
+    StartClockRefused { reason: _ } => false
+    StartTimestamp { candidate: _, at: _ } => false
+  })
+}
+
+test fn a_candidate_with_no_usable_clock_refuses() -> Bool {
+  (match dogfood_start_step(candidate: Present { value: "k1" }, clock: none) {
+    StartClockRefused { reason: _ } => true
+    StartNoCandidate => false
+    StartTimestamp { candidate: _, at: _ } => false
+  }) && (match dogfood_start_step(candidate: Present { value: "k1" }, clock: Present { value: "clock observation refused" as NonEmptyStr }) {
+    StartClockRefused { reason: _ } => true
+    StartNoCandidate => false
+    StartTimestamp { candidate: _, at: _ } => false
+  }) && (match dogfood_start_step(candidate: Present { value: "k1" }, clock: Present { value: "2026-10-03T07:00:00Z" as NonEmptyStr }) {
+    StartTimestamp { candidate, at } => candidate == "k1" && (at as String) == "2026-10-03T07:00:00Z"
+    StartNoCandidate => false
+    StartClockRefused { reason: _ } => false
+  })
+}
+
+// While any stage has no producer, the recorder answers NoCompleteAttempt without scanning history:
+// the stages it reads are the same record the fold reads.
+test fn the_unproduced_stages_are_the_eight_owed_in_route_order() -> Bool {
+  wires(stages: dogfood_unproduced_stages(u: dogfood_unproduced)) == "request,immutable-subject,shared-computation,placement-grant,isolated-execution,metering,cleanup,result-returned"
 }

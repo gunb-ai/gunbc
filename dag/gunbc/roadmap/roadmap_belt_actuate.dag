@@ -19,6 +19,7 @@ import gunbc.roadmap.roadmap_review_function {
 }
 import gunbc.roadmap.roadmap_review_criteria { ReviewCriterion }
 import gunbc.roadmap.roadmap_goal_audit_role { goal_audit_criterion_key, goal_audit_approved, goal_audit_reconcile, goal_audit_brief }
+import gunbc.roadmap_dispatch_actuator { dispatch_events_projection_argv_at, dispatch_current_attempt_events_path_for_instance }
 import gunbc.roadmap_dispatch_actuator {
   dispatch_attempt_review_dir_for_instance, dispatch_attempt_review_verdict_path_for_instance, dispatch_attempt_review_verdict_basename,
   dispatch_review_unit_name, dispatch_review_unit_argv,
@@ -4842,11 +4843,18 @@ fn belt_provider_event_projection_observe_for_instance(
   instance: HostDashboardInstance,
   node_id: gunbc.roadmap_model.RoadmapNodeId,
 ) -> ProviderEventProjectionObservation {
+  belt_provider_event_projection_observe_at(
+    instance: instance,
+    events_path: dispatch_current_attempt_events_path_for_instance(instance: instance, node_id: node_id),
+  )
+}
+
+fn belt_provider_event_projection_observe_at(
+  instance: HostDashboardInstance,
+  events_path: String,
+) -> ProviderEventProjectionObservation {
   match belt_exec(
-    cmd: dispatch_current_attempt_events_projection_argv_for_instance(
-      instance: instance,
-      node_id: node_id,
-    ),
+    cmd: dispatch_events_projection_argv_at(instance: instance, events_path: events_path),
     workdir: instance.repo_root as String,
   ) {
     ExecOk { stdout } =>
@@ -5241,7 +5249,11 @@ fn belt_workflow_attempt_evidence_for_ref(
 // THE EVIDENCE OF ONE NAMED ATTEMPT. belt_workflow_attempt_evidence_for_ref resolves the node's
 // CURRENT attempt through its state pointer and then reads it here; a reader of attempt HISTORY
 // (gunbc.roadmap_dogfood_route) names the attempt by its own key and reads it here directly, so
-// both read one evidence builder.
+// both read one evidence builder. EVERY attempt-varying read below is addressed by the supplied key
+// (admission, provider events, spawn failure, worktree, submission, verification, publication,
+// review, integration) -- never through a dispatch_current_attempt_* projection, which would mix the
+// node's current attempt into a historical one. The validation summary is the node's execution
+// contract, a node fact, not an attempt fact.
 fn belt_workflow_attempt_evidence_for_key(
   instance: HostDashboardInstance,
   panes: BeltAttemptPanes,
@@ -5250,20 +5262,14 @@ fn belt_workflow_attempt_evidence_for_key(
 ) -> WorkflowAttemptEvidence {
   let node_id = attempt.node_id as gunbc.roadmap_model.RoadmapNodeId
   let admission = Filesystem.Read(
-    path: dispatch_current_attempt_admission_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-    ),
+    path: dispatch_attempt_admission_path_for_instance(instance: instance, node_id: node_id, attempt_key: current_key),
   )
-  let events = belt_provider_event_projection_observe_for_instance(
+  let events = belt_provider_event_projection_observe_at(
     instance: instance,
-    node_id: node_id,
+    events_path: dispatch_attempt_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: current_key),
   )
   let spawn_failure = Filesystem.Read(
-    path: dispatch_current_attempt_spawn_failure_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-    ),
+    path: dispatch_attempt_spawn_failure_path_for_instance(instance: instance, node_id: node_id, attempt_key: current_key),
   )
   let branch = dispatch_branch_name(
     node_id: node_id,

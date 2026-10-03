@@ -271,6 +271,44 @@ data dogfood_owed_cleanup: String = "G5: release evidence for the session lease 
 
 data dogfood_owed_result_returned: String = "G4: a typed result event on the issue returns the outcome to the requester"
 
+// THE STAGES WITH NO PRODUCER, as one constant record: the fold reads them from here, and the
+// recorder asks the same record whether completion is still structurally impossible, so no flag is
+// kept beside it. As each producer lands, its field leaves this record (and gains its own reading
+// type above); when the record is empty the recorder's history scan begins to run.
+type DogfoodUnproduced {
+  request: ProducerPendingReading
+  immutable_subject: ProducerPendingReading
+  shared_computation: ProducerPendingReading
+  placement_grant: ProducerPendingReading
+  isolated_execution: ProducerPendingReading
+  metering: ProducerPendingReading
+  cleanup: ProducerPendingReading
+  result_returned: ProducerPendingReading
+}
+
+data dogfood_unproduced: DogfoodUnproduced = DogfoodUnproduced {
+  request: ProducerPending { owed_by: dogfood_owed_request },
+  immutable_subject: ProducerPending { owed_by: dogfood_owed_immutable_subject },
+  shared_computation: ProducerPending { owed_by: dogfood_owed_shared_computation },
+  placement_grant: ProducerPending { owed_by: dogfood_owed_placement_grant },
+  isolated_execution: ProducerPending { owed_by: dogfood_owed_isolated_execution },
+  metering: ProducerPending { owed_by: dogfood_owed_metering },
+  cleanup: ProducerPending { owed_by: dogfood_owed_cleanup },
+  result_returned: ProducerPending { owed_by: dogfood_owed_result_returned },
+}
+
+fn dogfood_unproduced_stages(u: DogfoodUnproduced) -> List<DogfoodStage> {
+  let g0 = DogfoodStageGaps { owed: [], refused: [] }
+  let g1 = dogfood_pending(acc: g0, stage: DogfoodRequest, r: u.request)
+  let g2 = dogfood_pending(acc: g1, stage: DogfoodImmutableSubject, r: u.immutable_subject)
+  let g3 = dogfood_pending(acc: g2, stage: DogfoodSharedComputation, r: u.shared_computation)
+  let g4 = dogfood_pending(acc: g3, stage: DogfoodPlacementGrant, r: u.placement_grant)
+  let g5 = dogfood_pending(acc: g4, stage: DogfoodIsolatedExecution, r: u.isolated_execution)
+  let g6 = dogfood_pending(acc: g5, stage: DogfoodMetering, r: u.metering)
+  let g7 = dogfood_pending(acc: g6, stage: DogfoodCleanup, r: u.cleanup)
+  dogfood_pending(acc: g7, stage: DogfoodResultReturned, r: u.result_returned).owed
+}
+
 fn dogfood_route_readings(e: WorkflowAttemptEvidence) -> DogfoodStageReadings {
   let submission = dogfood_submission_reading(attempt_key: e.attempt_key, capture: e.submission_capture)
   let head = match submission {
@@ -278,17 +316,17 @@ fn dogfood_route_readings(e: WorkflowAttemptEvidence) -> DogfoodStageReadings {
     SubmissionGap { gap: _ } => ""
   }
   DogfoodStageReadings {
-    request: ProducerPending { owed_by: dogfood_owed_request },
-    immutable_subject: ProducerPending { owed_by: dogfood_owed_immutable_subject },
-    shared_computation: ProducerPending { owed_by: dogfood_owed_shared_computation },
-    placement_grant: ProducerPending { owed_by: dogfood_owed_placement_grant },
-    isolated_execution: ProducerPending { owed_by: dogfood_owed_isolated_execution },
+    request: dogfood_unproduced.request,
+    immutable_subject: dogfood_unproduced.immutable_subject,
+    shared_computation: dogfood_unproduced.shared_computation,
+    placement_grant: dogfood_unproduced.placement_grant,
+    isolated_execution: dogfood_unproduced.isolated_execution,
     durable_result: submission,
-    metering: ProducerPending { owed_by: dogfood_owed_metering },
+    metering: dogfood_unproduced.metering,
     independent_review: if head == "" { ReviewGap { gap: StageOwed { owed_by: "no captured submission, so no head to review" } } } else { dogfood_review_reading(node_id: e.node_id, head_sha: head, report: e.review) },
     candidate_published: if head == "" { PublicationGap { gap: StageOwed { owed_by: "no captured submission, so no head to publish" } } } else { dogfood_publication_reading(head_sha: head, subject: e.publication_subject, evidence_source: e.publication_source) },
-    cleanup: ProducerPending { owed_by: dogfood_owed_cleanup },
-    result_returned: ProducerPending { owed_by: dogfood_owed_result_returned },
+    cleanup: dogfood_unproduced.cleanup,
+    result_returned: dogfood_unproduced.result_returned,
   }
 }
 
@@ -298,8 +336,8 @@ fn dogfood_route_receipt_for_evidence(e: WorkflowAttemptEvidence) -> DogfoodRout
 
 // ── THE START RECEIPT: ONE MINT, VALIDATED JOINS, FIRST RECORDED ONLY ────────────────────────────
 //
-// WHAT "FIRST" MEANS, stated so it is not mistaken for more: the start receipt is the FIRST COMPLETE
-// ATTEMPT OBSERVED BY A SUCCESSFUL RECORDER. The recorder runs in every belt tick until a receipt
+// WHAT "FIRST" MEANS, stated so it is not mistaken for more: the start receipt is the first complete
+// attempt, selected in refname order, by the first SUCCESSFUL RECORDER to observe one. The recorder runs in every belt tick until a receipt
 // exists, and each run scans the instance's whole durable attempt history (every dispatch ref, read
 // by its own attempt key -- gunbc.roadmap_belt_actuate
 // belt_workflow_attempt_history_evidences_observe_for_instance), so a completed attempt is found
@@ -380,12 +418,41 @@ fn dogfood_start_candidate(e: WorkflowAttemptEvidence, established_at: Rfc3339Ti
   }
 }
 
-// The first candidate in observation order.
-fn dogfood_first_candidate(evidences: List<WorkflowAttemptEvidence>, established_at: Rfc3339Timestamp) -> DogfoodStartReceipt? {
+// THE FIRST COMPLETE ATTEMPT in observation order, found WITHOUT a time: candidate discovery comes
+// before the clock is consulted, so an unavailable clock can only refuse timestamping a candidate
+// that exists, never a tick with nothing to record.
+fn dogfood_first_complete_evidence(evidences: List<WorkflowAttemptEvidence>) -> WorkflowAttemptEvidence? {
   fold(evidences, init: none, f: (acc, e) => match acc {
     Present { value: _ } => acc
-    Absent => dogfood_start_candidate(e: e, established_at: established_at)
+    Absent =>
+      match dogfood_route_receipt_for_evidence(e: e) {
+        DogfoodRouteComplete { node_id: _, attempt_key: _, submission: _, review: _, publication: _ } => Present { value: e }
+        DogfoodRouteIncomplete { node_id: _, attempt_key: _, owed: _, refused: _ } => none
+      }
   })
+}
+
+// THE ORDER OF THE RECORDER'S TWO QUESTIONS, pure so both arms are witnessed: no candidate is
+// NoCandidate whatever the clock says; a candidate with no usable clock refuses.
+type DogfoodStartStep<C>
+  = StartNoCandidate
+  | StartClockRefused { reason: String }
+  | StartTimestamp { candidate: C, at: Rfc3339Timestamp }
+
+fn dogfood_start_step<C>(candidate: C?, clock: NonEmptyStr?) -> DogfoodStartStep<C> {
+  match candidate {
+    Absent => StartNoCandidate
+    Present { value: c } =>
+      match clock {
+        Absent => StartClockRefused { reason: "the clock could not be read, so no start time can be established" }
+        Present { value: now } =>
+          if rfc3339_is_canonically_spelled(value: (now as String) as Rfc3339Timestamp) {
+            StartTimestamp { candidate: c, at: (now as String) as Rfc3339Timestamp }
+          } else {
+            StartClockRefused { reason: join(["the clock reading is not a canonical RFC 3339 UTC instant: ", now as String], "") }
+          }
+      }
+  }
 }
 
 fn dogfood_start_receipt_wire(r: DogfoodStartReceipt) -> String? {
@@ -474,17 +541,21 @@ fn dogfood_start_record_for_instance(instance: HostDashboardInstance) -> Dogfood
             StartReceiptInvalid { reason } => DogfoodStartRefused { reason: join(["the recorded start receipt is invalid and cannot be rewritten: ", reason], "") }
           }
         CasReadableAbsent =>
-          match clock_now_probed_at() {
-            Absent => DogfoodStartRefused { reason: "the clock could not be read, so no start time can be established" }
-            Present { value: now } =>
-              if !rfc3339_is_canonically_spelled(value: (now as String) as Rfc3339Timestamp) {
-                DogfoodStartRefused { reason: join(["the clock reading is not a canonical RFC 3339 UTC instant: ", now as String], "") }
-              } else {
-                match belt_workflow_attempt_history_evidences_observe_for_instance(instance: instance) {
-                  WorkflowAttemptEvidencesRefused { reason } => DogfoodStartRefused { reason: reason }
-                  WorkflowAttemptEvidencesObserved { evidences } =>
-                    match dogfood_first_candidate(evidences: evidences, established_at: (now as String) as Rfc3339Timestamp) {
-                      Absent => DogfoodStartNoCompleteAttempt
+          if length(dogfood_unproduced_stages(u: dogfood_unproduced)) > 0 {
+            DogfoodStartNoCompleteAttempt
+          } else {
+            match belt_workflow_attempt_history_evidences_observe_for_instance(instance: instance) {
+              WorkflowAttemptEvidencesRefused { reason } => DogfoodStartRefused { reason: reason }
+              WorkflowAttemptEvidencesObserved { evidences } =>
+                match dogfood_first_complete_evidence(evidences: evidences) {
+                  Absent => DogfoodStartNoCompleteAttempt
+                  Present { value: found } =>
+                match dogfood_start_step(candidate: Present { value: found }, clock: clock_now_probed_at()) {
+                  StartNoCandidate => DogfoodStartNoCompleteAttempt
+                  StartClockRefused { reason } => DogfoodStartRefused { reason: reason }
+                  StartTimestamp { candidate, at } =>
+                    match dogfood_start_candidate(e: candidate, established_at: at) {
+                      Absent => DogfoodStartRefused { reason: "the complete attempt failed its own join validation" }
                       Present { value: first } =>
                         match dogfood_start_receipt_wire(r: first) {
                           Absent => DogfoodStartRefused { reason: "the start candidate failed its own join validation" }
@@ -494,14 +565,23 @@ fn dogfood_start_record_for_instance(instance: HostDashboardInstance) -> Dogfood
                               DerivedPayloadAdmitted { verified } =>
                                 match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: verified) {
                                   CasCommitted { committed: _ } => DogfoodStartRecorded { receipt: wire }
-                                  CasPreconditionFailed { expected: _, observed: _ } => DogfoodStartAlreadyRecorded
+                                  CasPreconditionFailed { expected: _, observed } =>
+                                    match observed {
+                                      CasReadableAbsent => DogfoodStartRefused { reason: "the create-only write was refused yet the slot reads absent" }
+                                      CasReadablePresent { version } =>
+                                        match dogfood_start_receipt_decode(payload: version.value as String) {
+                                          StartReceiptDecoded { receipt: _ } => DogfoodStartAlreadyRecorded
+                                          StartReceiptInvalid { reason } => DogfoodStartRefused { reason: join(["a concurrent writer left an invalid start receipt: ", reason], "") }
+                                        }
+                                    }
                                   CasStoreRefused { cause: _ } => DogfoodStartRefused { reason: "the start receipt store refused the create-only write" }
                                 }
                             }
                         }
                     }
                 }
-              }
+                }
+            }
           }
       }
   }
