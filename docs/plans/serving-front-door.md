@@ -53,7 +53,7 @@ This is converged through the existing `gunbc.spark` serving deployment authorit
 - **The ledger is the authority; the MAC only protects the claims.** `front_door_admit_held` forwards only when everything it reads from what placement *recorded* holds, not from the permit:
   1. The reference was acquired, by the permit's grant event, in the named partition, and has not been released.
   2. The acquisition's recorded actor equals the authenticated caller. `harness_place_for` now records the principal it acts for as the actor, and no longer takes a free-text actor argument.
-  3. The recorded reference decodes, through `harness_seat_reference_names` (the inverse of `harness_seat_reference`), to exactly the permit's work and **this door's** launch key, and the partition is one of the door's group's partitions.
+  3. The seat is a structured record (`gunbc.harness.harness_seat` `HarnessSeatReference`: attempt, offer key = launch, stamp, round, head). The permit carries the record, and its offer key must equal this door's launch key. The ledger entry is found by the record's exact rendering (`harness_seat_reference_wire`), which is injective by construction because the free-text parts are length-prefixed. Nothing parses a rendering back apart (review 74943). The partition must be one of the door's group's partitions.
   4. The recorded acquisition time plus its recorded term is still in the future.
 
   So a holder of the real key cannot get through by minting. A permit for a grant that doesn't exist, for another caller's live seat, for other work, for another launch, or with a stretched expiry each refuses (witnessed, with a mutation control).

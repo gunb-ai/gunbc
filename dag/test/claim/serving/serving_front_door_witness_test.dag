@@ -9,7 +9,7 @@ import gunbc.auth.request_authentication {
   fabric_service_principal,
 }
 import gunbc.principal_projection { PrincipalRef, principal_ref_label }
-import gunbc.harness.harness_seat { harness_seat_partition, harness_seat_reference, harness_seat_reference_names }
+import gunbc.harness.harness_seat { HarnessSeatReference, harness_seat_partition, harness_seat_reference_record, harness_seat_reference_wire }
 import product.capacity.lease { LeaseGrant, LeasePolicy, QuiescenceRequired, lease_grant, lease_fence_of }
 import product.capacity.event_chain { PartitionId, EventId, ChainEnvelope, ChainEvent, ChainWalk, ChainWalked }
 import product.capacity.pool_events { PoolEvent, PoolAcquired, PoolReleased }
@@ -20,7 +20,7 @@ import gunbc.serving.serving_front_door {
   ServingSeatPermit, ServingSeatPermitClaims, FrontDoorIdentity, FrontDoorVerdict, FrontDoorForward, FrontDoorRefused,
   FrontDoorRefusal, DoorCallerUnauthenticated, DoorPermitAbsent, DoorPermitMacRefused, DoorPermitForAnotherGroup,
   DoorPermitForAnotherLaunch, DoorPermitExpired, DoorSeatReleased, DoorSeatNeverAdmitted, SeatPermitIssued,
-  DoorSeatHeldByAnotherCaller, DoorSeatNotForThisWorkOrLaunch, DoorSeatLeaseExpired, DoorPermitPartitionNotThisGroup,
+  DoorSeatHeldByAnotherCaller, DoorSeatLeaseExpired, DoorPermitPartitionNotThisGroup,
   SeatGrantCurrency, FrontDoorTally,
   serving_seat_permit_claims, serving_seat_permit_signing_input, issue_serving_seat_permit, serving_seat_permit_key_id,
   seat_grant_currency_of, front_door_admit, front_door_tally, front_door_tally_empty, front_door_refused_count,
@@ -58,11 +58,17 @@ data group_a_launch: VllmEndpointProcessLaunch = vllm_endpoint_process_launch(
   group: FabricGroupA, endpoint: "http://192.168.1.232:30000" as NonEmptyStr, process_start_field: "launch-1" as NonEmptyStr,
 )
 
-// THE REFERENCES ARE MINTED BY PLACEMENT'S OWN FUNCTION, so the decoder the door uses is exercised
-// against the spelling the ledger really carries.
-data witness_reference: NonEmptyStr = harness_seat_reference(attempt: witness_attempt, offer_key: vllm_endpoint_process_launch_key(launch: group_b_launch), now: 1000, round: 1, head: "empty" as NonEmptyStr)
-data relaunch_reference: NonEmptyStr = harness_seat_reference(attempt: witness_attempt, offer_key: vllm_endpoint_process_launch_key(launch: group_b_relaunch), now: 1000, round: 1, head: "empty" as NonEmptyStr)
-data other_attempt_reference: NonEmptyStr = harness_seat_reference(attempt: "attempt-8" as NonEmptyStr, offer_key: vllm_endpoint_process_launch_key(launch: group_b_launch), now: 1000, round: 1, head: "empty" as NonEmptyStr)
+// THE SEATS ARE PLACEMENT'S OWN RECORDS, and the ledger strings are their renderings through the one
+// function placement appends with -- so the door's exact-rendering lookup is exercised against the
+// spelling the ledger really carries.
+fn seat_for(attempt: NonEmptyStr, launch: VllmEndpointProcessLaunch) -> HarnessSeatReference {
+  harness_seat_reference_record(attempt: attempt, offer_key: vllm_endpoint_process_launch_key(launch: launch), now: 1000, round: 1, head: "empty" as NonEmptyStr)
+}
+data witness_seat: HarnessSeatReference = seat_for(attempt: witness_attempt, launch: group_b_launch)
+data relaunch_seat: HarnessSeatReference = seat_for(attempt: witness_attempt, launch: group_b_relaunch)
+data other_attempt_seat: HarnessSeatReference = seat_for(attempt: "attempt-8" as NonEmptyStr, launch: group_b_launch)
+data witness_reference: NonEmptyStr = harness_seat_reference_wire(r: witness_seat)
+data relaunch_reference: NonEmptyStr = harness_seat_reference_wire(r: relaunch_seat)
 
 data service_actor: NonEmptyStr = principal_ref_label(p: fabric_service_principal()) as NonEmptyStr
 data other_actor: NonEmptyStr = "principal:gunbc/workflows/ac-dialogue" as NonEmptyStr
@@ -82,18 +88,18 @@ data service_caller: RequestAuthenticationEvidence = FabricServiceEvidence {
 
 fn claims_on(launch: VllmEndpointProcessLaunch, group_wire: String) -> ServingSeatPermitClaims {
   serving_seat_permit_claims(
-    launch: launch, group_wire: group_wire, partition: witness_partition, class: InteractiveQualitySensitive,
-    grant: witness_grant, caller: fabric_service_principal(), work: witness_attempt,
+    group_wire: group_wire, partition: witness_partition, class: InteractiveQualitySensitive,
+    seat: seat_for(attempt: witness_attempt, launch: launch), grant: witness_grant, caller: fabric_service_principal(),
   )
 }
 
 // A KEY HOLDER'S FORGERY: claims written by hand and signed with the REAL key. Every field is the
 // forger's choice; only the ledger can refuse it.
-fn forged(reference: NonEmptyStr, work: NonEmptyStr, partition: PartitionId, expires_at: EpochSecs) -> ServingSeatPermit? {
+fn forged(seat: HarnessSeatReference, partition: PartitionId, expires_at: EpochSecs) -> ServingSeatPermit? {
   let c = claims_on(launch: group_b_launch, group_wire: "group-b")
   permit_of(claims: ServingSeatPermitClaims {
-    protocol: c.protocol, launch: c.launch, group: c.group, partition: partition, class: c.class,
-    reference: reference, grant: c.grant, generation: c.generation, caller: c.caller, work: work,
+    protocol: c.protocol, group: c.group, partition: partition, class: c.class,
+    seat: seat, grant: c.grant, generation: c.generation, caller: c.caller,
     granted_at: c.granted_at, expires_at: expires_at, key_id: c.key_id,
   })
 }
@@ -188,7 +194,7 @@ test fn a_permit_observed_at_its_lease_expiry_is_refused() -> Bool {
 
 test fn a_current_permit_for_this_door_presented_by_its_caller_is_forwarded() -> Bool {
   match door_verdict(evidence: service_caller, presented: good_permit(), at: witness_granted_at + witness_term - 1, history: held_history) {
-    FrontDoorForward { claims: c } => (c.reference as String) == (witness_reference as String)
+    FrontDoorForward { claims: c } => (harness_seat_reference_wire(r: c.seat) as String) == (witness_reference as String)
     FrontDoorRefused { cause: _ } => false
   }
 }
@@ -225,8 +231,8 @@ test fn a_permit_whose_claims_were_rewritten_after_signing_is_refused_by_the_mac
       let c = p.claims
       let widened = ServingSeatPermit {
         claims: ServingSeatPermitClaims {
-          protocol: c.protocol, launch: c.launch, group: c.group, partition: c.partition, class: c.class,
-          reference: c.reference, grant: c.grant, generation: c.generation, caller: c.caller, work: c.work,
+          protocol: c.protocol, group: c.group, partition: c.partition, class: c.class,
+          seat: c.seat, grant: c.grant, generation: c.generation, caller: c.caller,
           granted_at: c.granted_at, expires_at: c.expires_at + 86400, key_id: c.key_id,
         },
         tag_hex: p.tag_hex,
@@ -257,7 +263,7 @@ test fn the_tally_keeps_each_refusal_cause_separately_and_counts_forwards_apart(
 // ── The ledger is the authority: a holder of the real key cannot mint its way through ────────
 
 test fn a_permit_signed_with_the_real_key_for_a_grant_that_does_not_exist_is_refused() -> Bool {
-  match door_verdict(evidence: service_caller, presented: forged(reference: other_attempt_reference, work: "attempt-8" as NonEmptyStr, partition: witness_partition, expires_at: 1600), at: 1100, history: held_history) {
+  match door_verdict(evidence: service_caller, presented: forged(seat: other_attempt_seat, partition: witness_partition, expires_at: 1600), at: 1100, history: held_history) {
     FrontDoorRefused { cause: DoorSeatNeverAdmitted } => true
     _ => false
   }
@@ -270,40 +276,39 @@ test fn a_permit_for_another_callers_live_grant_is_refused_on_the_recorded_actor
   }
 }
 
-test fn a_permit_claiming_this_launch_for_a_seat_taken_against_another_launch_is_refused() -> Bool {
-  match door_verdict(evidence: service_caller, presented: forged(reference: relaunch_reference, work: witness_attempt, partition: witness_partition, expires_at: 1600), at: 1100, history: acquired_by(actor: service_actor, reference: relaunch_reference)) {
-    FrontDoorRefused { cause: DoorSeatNotForThisWorkOrLaunch { reference: _ } } => true
+test fn a_permit_whose_seat_names_another_launch_is_refused_before_the_ledger() -> Bool {
+  match door_verdict(evidence: service_caller, presented: forged(seat: relaunch_seat, partition: witness_partition, expires_at: 1600), at: 1100, history: acquired_by(actor: service_actor, reference: relaunch_reference)) {
+    FrontDoorRefused { cause: DoorPermitForAnotherLaunch { permit_launch: _, door_launch: _ } } => true
     _ => false
   }
 }
 
-test fn a_permit_naming_other_work_than_the_seat_was_taken_for_is_refused() -> Bool {
-  match door_verdict(evidence: service_caller, presented: forged(reference: witness_reference, work: "attempt-8" as NonEmptyStr, partition: witness_partition, expires_at: 1600), at: 1100, history: held_history) {
-    FrontDoorRefused { cause: DoorSeatNotForThisWorkOrLaunch { reference: _ } } => true
+test fn a_permit_claiming_this_launch_for_a_seat_taken_against_another_launch_is_refused() -> Bool {
+  match door_verdict(evidence: service_caller, presented: forged(seat: witness_seat, partition: witness_partition, expires_at: 1600), at: 1100, history: acquired_by(actor: service_actor, reference: relaunch_reference)) {
+    FrontDoorRefused { cause: DoorSeatNeverAdmitted } => true
     _ => false
   }
 }
 
 test fn a_permit_that_extends_its_own_expiry_is_refused_on_the_recorded_term() -> Bool {
-  match door_verdict(evidence: service_caller, presented: forged(reference: witness_reference, work: witness_attempt, partition: witness_partition, expires_at: 99999), at: 1700, history: held_history) {
+  match door_verdict(evidence: service_caller, presented: forged(seat: witness_seat, partition: witness_partition, expires_at: 99999), at: 1700, history: held_history) {
     FrontDoorRefused { cause: DoorSeatLeaseExpired { ledger_expires_at: _, observed_at: _ } } => true
     _ => false
   }
 }
 
 test fn a_permit_naming_another_groups_partition_is_refused() -> Bool {
-  match door_verdict(evidence: service_caller, presented: forged(reference: witness_reference, work: witness_attempt, partition: group_a_partition, expires_at: 1600), at: 1100, history: held_history) {
+  match door_verdict(evidence: service_caller, presented: forged(seat: witness_seat, partition: group_a_partition, expires_at: 1600), at: 1100, history: held_history) {
     FrontDoorRefused { cause: DoorPermitPartitionNotThisGroup { partition: _, door_group: _ } } => true
     _ => false
   }
 }
 
-// THE DECODER THE DOOR TRUSTS, against the minting function it inverts.
-test fn the_recorded_reference_decodes_to_exactly_its_attempt_and_launch() -> Bool {
-  let key = vllm_endpoint_process_launch_key(launch: group_b_launch)
-  harness_seat_reference_names(reference: witness_reference, attempt: witness_attempt, offer_key: key)
-    && !harness_seat_reference_names(reference: witness_reference, attempt: "attempt" as NonEmptyStr, offer_key: key)
-    && !harness_seat_reference_names(reference: witness_reference, attempt: "attempt-7@1000#1/group-b" as NonEmptyStr, offer_key: key)
-    && !harness_seat_reference_names(reference: relaunch_reference, attempt: witness_attempt, offer_key: key)
-    && !harness_seat_reference_names(reference: other_attempt_reference, attempt: witness_attempt, offer_key: key)
+// THE LOOKUP IS SOUND ONLY IF THE RENDERING IS INJECTIVE. These two records render to one string under
+// a plain join of their parts -- the attempt swallows the next record's stamp and the offer key the
+// rest -- and to two strings here, so a permit cannot name one seat while its rendering finds another.
+test fn two_seat_records_that_collide_under_a_plain_join_render_apart() -> Bool {
+  let swallowing = harness_seat_reference_record(attempt: "a@1#1/k" as NonEmptyStr, offer_key: "x" as NonEmptyStr, now: 5, round: 1, head: "h" as NonEmptyStr)
+  let honest = harness_seat_reference_record(attempt: "a" as NonEmptyStr, offer_key: "k@5#1/x" as NonEmptyStr, now: 1, round: 1, head: "h" as NonEmptyStr)
+  (harness_seat_reference_wire(r: swallowing) as String) != (harness_seat_reference_wire(r: honest) as String)
 }

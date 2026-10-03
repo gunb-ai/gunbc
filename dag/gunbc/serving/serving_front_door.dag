@@ -26,7 +26,7 @@ import gunbc.fabric_event_log { PartitionRead, PartitionReadOk, PartitionReadRef
 import gunbc.serving.turn_admission { ServingCoTenancyClass, serving_co_tenancy_class_wire }
 import gunbc.spark.vllm_endpoint_process_launch { VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
-import gunbc.harness.harness_seat { harness_seat_partition_is_for_group, harness_seat_reference_names }
+import gunbc.harness.harness_seat { HarnessSeatReference, harness_seat_partition_is_for_group, harness_seat_reference_wire }
 
 // ── THE SECOND DOOR, AND WHY AUTHENTICATION ALONE DOES NOT CLOSE IT ──────────────────────────
 //
@@ -71,17 +71,18 @@ data serving_seat_permit_key_path: NonEmptyStr = "/etc/gunbc/serving-seat-permit
 // one reading and acted on under another.
 data serving_seat_permit_header: NonEmptyStr = "x-gunbc-seat-permit" as NonEmptyStr
 
+// THE SEAT IS THE STRUCTURED ACQUISITION REFERENCE (gunbc.harness.harness_seat HarnessSeatReference):
+// its attempt is the work identity and its offer key is the launch, so neither is a second field
+// beside it. The ledger entry the door reads is found by rendering it, never by parsing a rendering.
 type ServingSeatPermitClaims {
   protocol: NonEmptyStr
-  launch: NonEmptyStr
   group: NonEmptyStr
   partition: PartitionId
   class: ServingCoTenancyClass
-  reference: NonEmptyStr
+  seat: HarnessSeatReference
   grant: GrantIdentity
   generation: Nat
   caller: PrincipalRef
-  work: NonEmptyStr
   granted_at: EpochSecs
   expires_at: EpochSecs
   key_id: MacKeyId
@@ -92,28 +93,25 @@ type ServingSeatPermit {
   tag_hex: NonEmptyStr
 }
 
-// THE CLAIMS ARE PROJECTED FROM THE GRANT, NEVER AUTHORED BESIDE IT. The caller supplies only who it
-// is and which work this is; every other field is the binding's own.
+// THE CLAIMS ARE PROJECTED FROM THE BINDING, NEVER AUTHORED BESIDE IT. The caller supplies only who it
+// is; every other field is the binding's own.
 fn serving_seat_permit_claims(
-  launch: VllmEndpointProcessLaunch,
   group_wire: String,
   partition: PartitionId,
   class: ServingCoTenancyClass,
+  seat: HarnessSeatReference,
   grant: LeaseGrant,
   caller: PrincipalRef,
-  work: NonEmptyStr,
 ) -> ServingSeatPermitClaims {
   ServingSeatPermitClaims {
     protocol: serving_seat_permit_protocol,
-    launch: vllm_endpoint_process_launch_key(launch: launch),
     group: group_wire as NonEmptyStr,
     partition: partition,
     class: class,
-    reference: grant.reference,
+    seat: seat,
     grant: grant.fence.grant,
     generation: grant.fence.generation,
     caller: caller,
-    work: work,
     granted_at: grant.granted_at,
     expires_at: grant.expires_at,
     key_id: serving_seat_permit_key_id,
@@ -127,15 +125,13 @@ fn serving_seat_permit_signing_input(c: ServingSeatPermitClaims) -> NonEmptyStr 
   join(
     [
       serving_seat_permit_protocol as String,
-      c.launch as String,
       c.group as String,
       c.partition as String,
       serving_co_tenancy_class_wire(c: c.class) as String,
-      c.reference as String,
+      harness_seat_reference_wire(r: c.seat) as String,
       c.grant as String,
       to_string(c.generation),
       principal_ref_label(p: c.caller),
-      c.work as String,
       to_string(c.granted_at),
       to_string(c.expires_at),
       c.key_id as String,
@@ -318,7 +314,6 @@ type FrontDoorRefusal
   | DoorSeatLedgerUnread { detail: String }
   | DoorPermitPartitionNotThisGroup { partition: PartitionId, door_group: NonEmptyStr }
   | DoorSeatHeldByAnotherCaller { ledger_actor: NonEmptyStr, caller: PrincipalRef }
-  | DoorSeatNotForThisWorkOrLaunch { reference: NonEmptyStr }
   | DoorSeatLeaseExpired { ledger_expires_at: EpochSecs, observed_at: EpochSecs }
 
 // THE VERDICT HAS ONE FORWARDING ARM AND IT CARRIES THE AUTHENTICATED CLAIMS, so the forwarder
@@ -348,7 +343,6 @@ fn front_door_refusal_wire(r: FrontDoorRefusal) -> NonEmptyStr {
     DoorSeatLedgerUnread { detail: _ } => "seat-ledger-unread" as NonEmptyStr
     DoorPermitPartitionNotThisGroup { partition: _, door_group: _ } => "permit-partition-not-this-group" as NonEmptyStr
     DoorSeatHeldByAnotherCaller { ledger_actor: _, caller: _ } => "seat-held-by-another-caller" as NonEmptyStr
-    DoorSeatNotForThisWorkOrLaunch { reference: _ } => "seat-not-for-this-work-or-launch" as NonEmptyStr
     DoorSeatLeaseExpired { ledger_expires_at: _, observed_at: _ } => "seat-lease-expired" as NonEmptyStr
   }
 }
@@ -373,7 +367,6 @@ fn front_door_refusal_detail(r: FrontDoorRefusal) -> String {
     DoorSeatLedgerUnread { detail: d } => join(["the seat ledger could not be read, so currency is unestablished: ", d], "")
     DoorPermitPartitionNotThisGroup { partition: p, door_group: g } => join(["the permit names partition ", p as String, ", which is not a seat partition of ", g as String], "")
     DoorSeatHeldByAnotherCaller { ledger_actor: a, caller: c } => join(["the seat was acquired by ", a as String, " and is presented by ", principal_ref_label(p: c)], "")
-    DoorSeatNotForThisWorkOrLaunch { reference: r } => join(["the ledger reference ", r as String, " was not minted for the permit's work against this door's launch"], "")
     DoorSeatLeaseExpired { ledger_expires_at: x, observed_at: o } => join(["the seat's recorded lease term ended at ", to_string(x), "; the door observed ", to_string(o)], "")
   }
 }
@@ -455,8 +448,8 @@ fn front_door_admit_authenticated(
     door_refuse(cause: DoorPermitProtocolUnknown { declared: c.protocol })
   } else if (c.group as String) != (door_group as String) {
     door_refuse(cause: DoorPermitForAnotherGroup { permit_group: c.group, door_group: door_group })
-  } else if (c.launch as String) != (door_launch as String) {
-    door_refuse(cause: DoorPermitForAnotherLaunch { permit_launch: c.launch, door_launch: door_launch })
+  } else if (c.seat.offer_key as String) != (door_launch as String) {
+    door_refuse(cause: DoorPermitForAnotherLaunch { permit_launch: c.seat.offer_key, door_launch: door_launch })
   } else if observed_at < c.granted_at {
     door_refuse(cause: DoorPermitNotYetValid { granted_at: c.granted_at, observed_at: observed_at })
   } else if c.expires_at <= observed_at {
@@ -466,9 +459,9 @@ fn front_door_admit_authenticated(
   } else if !harness_seat_partition_is_for_group(partition: c.partition, group: door.group) {
     door_refuse(cause: DoorPermitPartitionNotThisGroup { partition: c.partition, door_group: door_group })
   } else {
-    match ledger(c.partition, c.reference, c.grant) {
+    match ledger(c.partition, harness_seat_reference_wire(r: c.seat), c.grant) {
       SeatGrantHeld { actor: a, recorded_at: at, term_seconds: term } =>
-        front_door_admit_held(caller: caller, claims: c, door_launch: door_launch, ledger_actor: a, recorded_at: at, term_seconds: term, observed_at: observed_at)
+        front_door_admit_held(caller: caller, claims: c, ledger_actor: a, recorded_at: at, term_seconds: term, observed_at: observed_at)
       SeatGrantReleased { reason: why } => door_refuse(cause: DoorSeatReleased { reason: why })
       SeatGrantNeverAdmitted => door_refuse(cause: DoorSeatNeverAdmitted)
       SeatGrantAdmittedByAnother { admitted_by: e } => door_refuse(cause: DoorSeatAdmittedByAnother { admitted_by: e })
@@ -483,14 +476,15 @@ fn front_door_admit_authenticated(
 // on the recorded actor, the recorded attempt or the recorded launch:
 //   caller -- the acquisition's actor must be the authenticated principal; placement records the
 //             principal it acts for as the actor (gunbc.harness.harness_cli harness_place_for).
-//   work and launch -- the recorded reference must be exactly harness_seat_reference over the permit's
-//             work and THIS door's launch key (gunbc.harness.harness_seat harness_seat_reference_names).
+//   work and launch -- the entry is looked up by the exact rendering of the permit's structured seat
+//             reference, whose offer key was already required to be THIS door's launch; the rendering
+//             is injective (gunbc.harness.harness_seat harness_seat_reference_wire), so a held entry
+//             under it was acquired for exactly that attempt against exactly that launch.
 //   expiry -- the recorded acquisition instant plus its recorded term, not the permit's expires_at.
 // The permit's own claims were checked first only so a mismatch refuses before the ledger is read.
 fn front_door_admit_held(
   caller: PrincipalRef,
   claims: ServingSeatPermitClaims,
-  door_launch: NonEmptyStr,
   ledger_actor: NonEmptyStr,
   recorded_at: EpochSecs,
   term_seconds: Nat,
@@ -499,8 +493,6 @@ fn front_door_admit_held(
   let ledger_expires_at = recorded_at + term_seconds
   if (ledger_actor as String) != principal_ref_label(p: caller) {
     door_refuse(cause: DoorSeatHeldByAnotherCaller { ledger_actor: ledger_actor, caller: caller })
-  } else if !harness_seat_reference_names(reference: claims.reference, attempt: claims.work, offer_key: door_launch) {
-    door_refuse(cause: DoorSeatNotForThisWorkOrLaunch { reference: claims.reference })
   } else if ledger_expires_at <= observed_at {
     door_refuse(cause: DoorSeatLeaseExpired { ledger_expires_at: ledger_expires_at, observed_at: observed_at })
   } else {
