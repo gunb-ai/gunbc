@@ -4150,10 +4150,6 @@ fn belt_spawn_tally(outcomes: List<BeltSpawnOutcome>) -> BeltSpawnTally {
   })
 }
 
-fn belt_spawn_tally_not_admitted(acc: BeltSpawnTally) -> BeltSpawnTally {
-  BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
-}
-
 fn belt_tick_spawn_ok_count(t: BeltTickResult) -> Int { belt_spawn_tally(outcomes: t.spawn_outcomes).spawned }
 fn belt_tick_spawn_failed_count(t: BeltTickResult) -> Int { belt_spawn_tally(outcomes: t.spawn_outcomes).failed }
 fn belt_tick_spawn_not_admitted_count(t: BeltTickResult) -> Int { belt_spawn_tally(outcomes: t.spawn_outcomes).not_admitted }
