@@ -722,7 +722,11 @@ fn unit_hold_acquire_on_store_host(executor: UnitHoldStoreExecutor, owner: Durab
         DeadHolderRecovered { dead_holder: _, evidence: _ } =>
           unit_hold_minted(subject: subject, outcome: file_hold_acquire(root: unit_hold_store_root, slot_key: subject.key, requested_owner: owner))
       }
-    _ => unit_hold_minted(subject: subject, outcome: outcome)
+    FileHoldAcquired { slot_key: _, owner: _, generation: _ } => unit_hold_minted(subject: subject, outcome: outcome)
+    FileHoldAcquireLost { slot_key: _ } => unit_hold_minted(subject: subject, outcome: outcome)
+    FileHoldAcquireStoreUnavailable { slot_key: _, cause: _ } => unit_hold_minted(subject: subject, outcome: outcome)
+    FileHoldSlotUndecodable { slot_key: _, generation: _, detail: _ } => unit_hold_minted(subject: subject, outcome: outcome)
+    FileHoldKeyNotSlotAddressable { slot_key: _ } => unit_hold_minted(subject: subject, outcome: outcome)
   }
 }
 
