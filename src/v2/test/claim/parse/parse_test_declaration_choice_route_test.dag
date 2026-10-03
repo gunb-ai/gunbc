@@ -29,7 +29,7 @@ import v2.std.node { Authored, Edge, Node, Positional, StructuralLabel, Symbol, 
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.text { String }
 import std.algebra { list_snoc_item }
-import v2.std.collection { List }
+import std.types { List }
 import v2.std.algebra { length, list_map }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

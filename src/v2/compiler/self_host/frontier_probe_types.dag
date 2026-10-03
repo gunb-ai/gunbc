@@ -30,9 +30,8 @@ import std.content_hash {
   content_hash_combine_structural,
   content_hash_validate_lower_hex_length
 }
-import std.types { CommitSha, GitRef }
+import std.types { CommitSha, GitRef, List }
 import v2.std.algebra { fold_list }
-import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.diagnostic { DeclarationLocus, Extent, InvariantPortLocus, Locus, NodeLocus, SourcePortLocus, Textual }
