@@ -22,6 +22,7 @@ import v2.std.compilers.target_model {
   render_target_text,
   target_model_emit_transforms_empty
 }
+import std.algebra { list_append }
 import v2.std.algebra { list_map }
 import v2.std.collection { Map, empty_map, map_insert }
 import v2.std.diagnostic { Accepted, Rejected }
@@ -149,14 +150,108 @@ fn trt_count(root: Node, production: Symbol) -> Int {
   fold(root.children, init: here, f: fn(acc, e) { acc + trt_count(root: e.target, production: production) })
 }
 
-// THE NESTED BIND'S TEXT READS BACK AS THE TOKEN SEQUENCE EMITTED, class for class. This claim stops
-// at that boundary on purpose: parsing these tokens is a second subject, already claimed over the
-// same emitter output by v2.test.emit.dag_bind_let_block_scoped, and that parse alone exceeds a new
-// witness's eval-step budget (measured on the floor at this PR). The text -> lex -> parse path is
-// run for real, once, by the mixed-expression claim below.
-test fn nested_bind_text_reads_back_as_the_same_tokens() -> Bool {
-  trt_read_classes(text: trt_text(tokens: trt_nested_bind(), transforms: dag_token_class_emit_transforms()))
-    == trt_emitted_classes(tokens: trt_nested_bind())
+fn trt_count_below(root: Node, production: Symbol) -> Int {
+  fold(root.children, init: 0, f: fn(acc, e) { acc + trt_count(root: e.target, production: production) })
+}
+
+// A let with exactly one let under it.
+fn trt_has_nested_let(root: Node) -> Bool {
+  if trt_is(node: root, production: ^dag_surface_let_expr) && trt_count_below(root: root, production: ^dag_surface_let_expr) == 1 {
+    true
+  } else {
+    fold(root.children, init: false, f: fn(found, e) { found || trt_has_nested_let(root: e.target) })
+  }
+}
+
+fn trt_fixed(classes: List<Symbol>) -> List<ConcreteSyntaxToken> {
+  list_map(xs: classes, f: fn(c) { trt_fixed_one(token_class: c) })
+}
+
+fn trt_fixed_one(token_class: Symbol) -> ConcreteSyntaxToken { FixedToken { token_class: token_class } }
+
+// One Bind `{ let x = (a) { body } }` from the real emitter, with the given body.
+fn trt_bind_with_body(body: List<ConcreteSyntaxToken>) -> List<ConcreteSyntaxToken> {
+  bind_let_value_producing_tokens(
+    projection: dag_value_expression_projection(),
+    key_tokens: trt_ident(binding: ^dag_binding_bind_x),
+    value_tokens: trt_ident(binding: ^dag_binding_pick_lit_one),
+    body_tokens: body
+  )
+}
+
+// THE TEXT-GRAIN ROUND TRIP OF ONE EMITTED TOKEN SEQUENCE: rendered with the dag target's rows, the
+// text lexes back to the emitted token classes in order (the join: any merge or split of tokens
+// fails here), and those lexed tokens parse at `expr` to ONE tree holding exactly `lets` bindings.
+// `let_under_let` is the tree's shape: a Bind in the VALUE group sits under the outer let node, a
+// Bind in the BODY block does not (the block follows the let as its own statement). The let count is
+// asked only AFTER the join, never instead of it: the unseparated text has the same count.
+fn trt_bind_text_round_trips(tokens: List<ConcreteSyntaxToken>, lets: Int, let_under_let: Bool) -> Bool {
+  let read = trt_lex(text: trt_text(tokens: tokens, transforms: dag_token_class_emit_transforms()))
+  trt_token_classes(tokens: read) == trt_emitted_classes(tokens: tokens)
+    && match trt_parse(tokens: read) {
+      Present { value: tree } =>
+        trt_count(root: tree, production: ^dag_surface_let_expr) == lets && trt_has_nested_let(root: tree) == let_under_let
+      Absent => false
+    }
+}
+
+fn trt_mixed_text_round_trips() -> Bool {
+  let read = trt_lex(text: trt_text(tokens: trt_mixed(), transforms: dag_token_class_emit_transforms()))
+  trt_token_classes(tokens: read) == trt_emitted_classes(tokens: trt_mixed())
+    && match trt_parse(tokens: read) {
+      Present { value: tree } => trt_count(root: tree, production: ^dag_surface_if_expr) == 1
+      Absent => false
+    }
+}
+
+// THE SIX TEXT ROUND TRIPS, ONE RENDER, ONE LEX AND ONE PARSE EACH. Nullary and pure, enrolled WARM
+// in v2.workflow.floor_pure_producer_share: one expression parse is at or past a new witness's
+// eval-step budget (this PR's first floor run: 67k for the conditional, 122k for the nested Bind,
+// against 72.3k), so each text is round-tripped once at preparation and every claim reads its Bool.
+type TrtVerdicts {
+  bare_body: Bool
+  empty_literal_body: Bool
+  minus_body: Bool
+  bind_body: Bool
+  bind_value: Bool
+  mixed: Bool
+}
+
+fn trt_verdicts() -> TrtVerdicts {
+  TrtVerdicts {
+    bare_body: trt_bind_text_round_trips(tokens: trt_bind_with_body(body: trt_ident(binding: ^dag_binding_bind_x)), lets: 1, let_under_let: false),
+    empty_literal_body: trt_bind_text_round_trips(tokens: trt_bind_with_body(body: trt_fixed(classes: [^dag_token_lbrace, ^dag_token_rbrace])), lets: 1, let_under_let: false),
+    minus_body: trt_bind_text_round_trips(
+      tokens: trt_bind_with_body(body: list_append(left: trt_fixed(classes: [^dag_token_minus]), right: trt_ident(binding: ^dag_binding_bind_x))),
+      lets: 1,
+      let_under_let: false
+    ),
+    bind_body: trt_bind_text_round_trips(tokens: trt_bind_with_body(body: trt_bind(value: trt_ident(binding: ^dag_binding_pick_lit_one))), lets: 2, let_under_let: false),
+    bind_value: trt_bind_text_round_trips(tokens: trt_nested_bind(), lets: 2, let_under_let: true),
+    mixed: trt_mixed_text_round_trips()
+  }
+}
+
+// THE BLOCK-SCOPED BIND `{ let k = (v) { b } }`, AT TEXT GRAIN, for each body the emitter may be
+// handed: a bare name, an empty brace literal, a `-`-led expression, and a Bind.
+test fn a_bind_with_a_bare_name_body_round_trips_as_text() -> Bool {
+  trt_verdicts().bare_body
+}
+
+test fn a_bind_with_an_empty_brace_literal_body_round_trips_as_text() -> Bool {
+  trt_verdicts().empty_literal_body
+}
+
+test fn a_bind_with_a_minus_led_body_round_trips_as_text() -> Bool {
+  trt_verdicts().minus_body
+}
+
+test fn a_bind_with_a_bind_body_round_trips_as_text() -> Bool {
+  trt_verdicts().bind_body
+}
+
+test fn a_bind_with_a_bind_value_round_trips_as_text() -> Bool {
+  trt_verdicts().bind_value
 }
 
 // THE RED, KEPT: the same tokens with no transform rows are the rendering the dag target had, and
@@ -168,13 +263,8 @@ test fn nested_bind_text_without_separation_reads_back_as_other_tokens() -> Bool
     != trt_emitted_classes(tokens: trt_nested_bind())
 }
 
-test fn mixed_expression_text_reads_back_as_the_same_tokens_and_one_conditional() -> Bool {
-  let read = trt_lex(text: trt_text(tokens: trt_mixed(), transforms: dag_token_class_emit_transforms()))
-  trt_token_classes(tokens: read) == trt_emitted_classes(tokens: trt_mixed())
-    && match trt_parse(tokens: read) {
-      Present { value: tree } => trt_count(root: tree, production: ^dag_surface_if_expr) == 1
-      Absent => false
-    }
+test fn mixed_expression_text_round_trips() -> Bool {
+  trt_verdicts().mixed
 }
 
 // THE CLASS, at its cheapest specimen: unseparated, the six tokens are ONE identifier, which is a
