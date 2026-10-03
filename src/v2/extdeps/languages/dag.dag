@@ -1225,6 +1225,24 @@ fn dag_grammar_else_less_if_stmt_expr() -> GrammarExpr {
   )
 }
 
+// AN EXPRESSION STATEMENT NEVER BEGINS WITH A LET SPELLING. `name =` and `node name` head the two
+// let_sugar forms (dag_grammar_let_sugar_expr) and begin no expression, so the expression
+// alternative is guarded by exactly those heads: the two alternatives are disjoint by construction
+// and the choice-overlap proof reads the guard. The guard captures nothing; the statement's tree is
+// the expression's.
+fn dag_grammar_let_sugar_head_expr() -> GrammarExpr {
+  dag_grammar_choice(
+    left: dag_grammar_sequence(
+      left: dag_grammar_binding_name_terminal(),
+      right: dag_grammar_terminal(token_class: ^dag_token_eq)
+    ),
+    right: dag_grammar_sequence(
+      left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "node")),
+      right: dag_grammar_binding_name_terminal()
+    )
+  )
+}
+
 fn dag_grammar_stmt_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
@@ -1234,7 +1252,10 @@ fn dag_grammar_stmt_expr() -> GrammarExpr {
     right: dag_grammar_choice(
       left: dag_grammar_nonterminal(production: ^dag_production_let_expr),
       right: dag_grammar_choice(
-        left: dag_grammar_nonterminal(production: ^dag_production_expr),
+        left: dag_grammar_sequence(
+          left: grammar_expr_not_predicate(element: dag_grammar_let_sugar_head_expr()),
+          right: dag_grammar_nonterminal(production: ^dag_production_expr)
+        ),
         right: dag_grammar_nonterminal(production: ^dag_production_else_less_if_stmt)
       )
     )
@@ -1347,6 +1368,17 @@ fn dag_grammar_let_sugar_expr() -> GrammarExpr {
 // Evidence: `v2.test.parse.block_expr_as_binary_operand_parse` -- two arms red before this reorder
 // (a `match` and an `if` heading a binary chain), three controls green on both sides (each block
 // form standing alone, and an operand that was never block-shaped).
+// A BINARY EXPRESSION NEVER BEGINS `name =>`: that head is the one-parameter arrow lambda's, and
+// the guard says so where the two alternatives meet, so they are disjoint on a name by
+// construction. The parenthesised lambda head is not separable at bounded lookahead from a grouped
+// expression; it is restructured with dag_grammar_arrow_lambda_expr, not guarded here.
+fn dag_grammar_arrow_lambda_name_head_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_ident_or_type_decl_modifier_name(),
+    right: dag_grammar_terminal(token_class: ^dag_token_fat_arrow)
+  )
+}
+
 fn dag_grammar_expr_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_nonterminal(production: ^dag_production_fn_literal),
@@ -1354,7 +1386,10 @@ fn dag_grammar_expr_expr() -> GrammarExpr {
       left: dag_grammar_nonterminal(production: ^dag_production_block_expr),
       right: dag_grammar_choice(
         left: dag_grammar_nonterminal(production: ^dag_production_arrow_lambda),
-        right: dag_grammar_nonterminal(production: ^dag_production_binary_expr)
+        right: dag_grammar_sequence(
+          left: grammar_expr_not_predicate(element: dag_grammar_arrow_lambda_name_head_expr()),
+          right: dag_grammar_nonterminal(production: ^dag_production_binary_expr)
+        )
       )
     )
   )
@@ -1725,6 +1760,18 @@ fn dag_grammar_block_expr_expr() -> GrammarExpr {
   dag_grammar_nonterminal(production: ^dag_production_fn_body)
 }
 
+// A NAMED ARGUMENT AND A POSITIONAL ONE ARE DISJOINT BY CONSTRUCTION. Both can begin with a name;
+// only the named one continues `name :`. The positional alternative is guarded by the not-predicate
+// over exactly that head, so it refuses every input the named one denotes, and the choice-overlap
+// proof (v2.compiler.parse lookahead_alternatives_overlap) reads the guard and clears the row. The
+// guard captures nothing, so the positional argument's tree is the expression's, as before.
+fn dag_grammar_arg_named_head_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_binding_name_terminal(),
+    right: dag_grammar_terminal(token_class: ^dag_token_colon)
+  )
+}
+
 fn dag_grammar_arg_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
@@ -1734,7 +1781,10 @@ fn dag_grammar_arg_expr() -> GrammarExpr {
         right: dag_grammar_nonterminal(production: ^dag_production_expr)
       )
     ),
-    right: dag_grammar_nonterminal(production: ^dag_production_expr)
+    right: dag_grammar_sequence(
+      left: grammar_expr_not_predicate(element: dag_grammar_arg_named_head_expr()),
+      right: dag_grammar_nonterminal(production: ^dag_production_expr)
+    )
   )
 }
 
