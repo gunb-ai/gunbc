@@ -23,7 +23,7 @@ import test.claim.fabric.provider_use_fixture { fixture_route, fixture_admitted_
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.durable_exclusive_hold_file_store { HoldPayloadDecoded, HoldPayloadUndecodable, decode_hold_slot_payload, hold_slot_payload }
 import gunbc.fabric_control_plane {
-  CellReserved, ReservationLost, fabric_hold_owner, fabric_money_reservation_ref,
+  CellReserved, ReservationLost, NoCellAdmissible, fabric_hold_owner, fabric_money_reservation_ref,
 }
 import gunbc.executor_privileged_operation { SystemdStartUnit, executor_privileged_operation_sudoers_command }
 import gunbc.runner_host_deploy { RunnerHostDeploy, gunbc_ci_github_app }
@@ -41,8 +41,10 @@ import gunbc.runner_microvm_slot_reserve {
   ShakedownRosterBound, ShakedownOfferIsNotTheCell, bind_shakedown_roster,
   microvm_slot_reserve_admitted, cell_reservation_text, shakedown_broker_subject_text,
   microvm_shakedown_candidate_field, microvm_shakedown_route_facts, microvm_shakedown_sanctions,
-  microvm_shakedown_scope,
+  microvm_shakedown_scope, microvm_shakedown_broker_decide, ShakedownBrokerDecided,
 }
+import gunbc.fabric_executor_class { CapacityClassRefused }
+import product.fabric.work { ControlPlaneCapacity, CustomerExecutableCapacity }
 import std.decl_ref { declaration_ref_eq }
 import std.content_hash { as_content_hash_structural, content_hash_atom }
 import product.fabric.provider_route { CompliancePostureRevision, PermittedJurisdictionsEnumerated }
@@ -294,6 +296,25 @@ test fn a_superseding_posture_revision_leaves_the_shakedown_sanction_stale() -> 
   }
   match admit_provider_use(roster: microvm_shakedown_sanctions(), facts: microvm_shakedown_route_facts(), active: superseding, scope: microvm_shakedown_scope(slot: slot()), offer: microvm_shakedown_offer(slot: slot()).id, decision_receipt: fleet_ci_posture_ref()) {
     ProviderUseDenied { decision: _, cause: PostureRevisionStale { evaluated: _, active: _ } } => true
+    _ => false
+  }
+}
+
+// The real CI broker must refuse the workspace-designated cell before consulting a hold store.
+// A storage failure is not an acceptable substitute for the capacity-purpose refusal.
+test fn workspace_transfer_blocks_the_production_ci_broker_before_reservation() -> Bool {
+  let selected = slot()
+  let field = microvm_shakedown_candidate_field(slot: selected)
+  field.admitted.count() == 1 && match microvm_shakedown_broker_decide(
+    root: "/__workspace_purpose_test_has_no_hold_store__" as NonEmptyStr,
+    slot: selected, field: field,
+  ) {
+    ShakedownBrokerDecided { reservation: NoCellAdmissible { considered: _, refused: refusals } } =>
+      refusals.count() == 1 && match refusals.first() {
+        Present { value: CapacityClassRefused { executor: cell, required: ControlPlaneCapacity, sanctioned: CustomerExecutableCapacity } } =>
+          (cell as String) == "srv1-13"
+        _ => false
+      }
     _ => false
   }
 }

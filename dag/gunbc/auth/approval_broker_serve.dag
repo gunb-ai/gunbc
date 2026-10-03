@@ -191,6 +191,7 @@ fn broker_text_response(status: HttpStatus, content_type: MediaType, body: Strin
     status: status,
     content_type: content_type,
     body: approval_broker_marked_body(content_type: content_type, body: body, m: marker, process: process),
+    headers: [],
   }
 }
 

@@ -1,0 +1,167 @@
+module gunbc.workspace_gateway_store
+
+import std.decl_ref { decl_ref }
+
+import std.types { String, NonEmptyStr, Timestamp, Bool }
+import std.durable_compare_and_set { CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent, CasCommitted, CasPreconditionFailed, CasStoreRefused }
+import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field_string, FieldRead, FieldAbsent, FieldMalformed }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.durable_cas_fabric_storage { fabric_storage_observe_cas_slot, fabric_storage_compare_and_set }
+import gunbc.durable_cas_file_store { admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable }
+import gunbc.workspace_gateway_admission { WorkspaceGatewayEvidence, workspace_gateway_evidence_json, workspace_gateway_evidence_decode, workspace_gateway_refusal }
+import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
+
+type WorkspaceGatewayRead
+  = WorkspaceGatewayEvidenceRead { evidence: WorkspaceGatewayEvidence }
+  | WorkspaceGatewayEvidenceUnavailable { reason: NonEmptyStr }
+
+fn workspace_gateway_state_key(slot: RunnerSlotIdentity) -> NonEmptyStr {
+  concat("workspace-gateway-", runner_slot_instance_name(slot: slot) as String) as NonEmptyStr
+}
+
+// Refused refreshes retain their own clock and slot subject. They are not fabricated SSH
+// process observations and cannot be read as forwarding permission.
+type WorkspaceGatewayStored { observed_at: Timestamp, reading: WorkspaceGatewayRead }
+
+fn workspace_gateway_stored_decode(slot: RunnerSlotIdentity, wire: NonEmptyStr) -> WorkspaceGatewayStored? {
+  match parse_json_document(s: wire as String) {
+    JsonDocumentUnreadable { gap: _ } => none
+    JsonDocumentParsed { value: doc } => match json_field_string(obj: doc, key: "refresh_refusal") {
+      FieldRead { value: reason } => if reason == "" { none } else {
+        match json_field_string(obj: doc, key: "slot") {
+          FieldRead { value: named } => if named != (runner_slot_instance_name(slot: slot) as String) { none } else {
+            match json_field_string(obj: doc, key: "observed_at") {
+              FieldRead { value: at } => if !utc_instant_is_canonical(t: at) { none } else {
+                Present { value: WorkspaceGatewayStored { observed_at: at,
+                  reading: WorkspaceGatewayEvidenceUnavailable { reason: reason as NonEmptyStr } } }
+              }
+              FieldAbsent => none
+              FieldMalformed { cause: _ } => none
+            }
+          }
+          FieldAbsent => none
+          FieldMalformed { cause: _ } => none
+        }
+      }
+      FieldAbsent => match workspace_gateway_evidence_decode(slot: slot, doc: doc) {
+        Absent => none
+        Present { value: decoded } => Present { value: WorkspaceGatewayStored {
+          observed_at: decoded.observed_at, reading: WorkspaceGatewayEvidenceRead { evidence: decoded } } }
+      }
+      FieldMalformed { cause: _ } => none
+    }
+  }
+}
+
+fn workspace_gateway_decode_wire(slot: RunnerSlotIdentity, wire: NonEmptyStr) -> WorkspaceGatewayRead {
+  match workspace_gateway_stored_decode(slot: slot, wire: wire) {
+    Absent => WorkspaceGatewayEvidenceUnavailable { reason: "gateway observation subject or receipt is unreadable" }
+    Present { value: decoded } => decoded.reading
+  }
+}
+
+// Use the protected state binding, supplied by the convergence reader. The root controller
+// reads this record; it never borrows/copies the operator's agent or private key.
+fn workspace_read_gateway_evidence(store: FabricStorageBinding, slot: RunnerSlotIdentity) -> WorkspaceGatewayRead {
+  match fabric_storage_observe_cas_slot(store: store, key: workspace_gateway_state_key(slot: slot)) {
+    CasObservedReadable { readable: CasReadablePresent { version: stored } } => workspace_gateway_decode_wire(slot: slot, wire: stored.value)
+    CasObservedReadable { readable: CasReadableAbsent } => WorkspaceGatewayEvidenceUnavailable { reason: "operator-context gateway forwarding observation is absent" }
+    CasObservedUnreadable { cause: _ } => WorkspaceGatewayEvidenceUnavailable { reason: "gateway observation store is unreadable" }
+  }
+}
+
+fn workspace_publish_gateway_at(store: FabricStorageBinding, slot: RunnerSlotIdentity, expected: CasExpectation, wire: NonEmptyStr) -> WorkspaceGatewayRead
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_gateway_store", decl_name: "workspace_publish_gateway_document")]
+{
+  match admit_cas_attempt_for_derived_payload(key: workspace_gateway_state_key(slot: slot), expected: expected, proposed: wire) {
+    DerivedPayloadKeyNotSlotAddressable { key: _ } => WorkspaceGatewayEvidenceUnavailable { reason: "gateway observation key is not addressable" }
+    DerivedPayloadAdmitted { verified: proposed } => match fabric_storage_compare_and_set(store: store, verified: proposed) {
+      CasCommitted { committed: _ } => workspace_read_gateway_evidence(store: store, slot: slot)
+      CasPreconditionFailed { expected: _, observed: _ } => WorkspaceGatewayEvidenceUnavailable { reason: "gateway observation changed concurrently; reread before publishing" }
+      CasStoreRefused { cause: _ } => WorkspaceGatewayEvidenceUnavailable { reason: "gateway observation publication refused" }
+    }
+  }
+}
+
+// Both positive observations and explicit refresh refusals obey the same monotonic publication.
+// At equal time a refusal may withdraw a positive; a positive never erases a same-tick refusal.
+fn workspace_gateway_observation_supersedes(prior: WorkspaceGatewayStored, next: WorkspaceGatewayStored) -> Bool {
+  let elapsed = utc_instant_seconds_after(later: next.observed_at, earlier: prior.observed_at)
+  elapsed > 0 || (elapsed == 0 && (match prior.reading {
+    WorkspaceGatewayEvidenceRead { evidence: _ } => match next.reading {
+      WorkspaceGatewayEvidenceUnavailable { reason: _ } => true
+      WorkspaceGatewayEvidenceRead { evidence: _ } => false
+    }
+    WorkspaceGatewayEvidenceUnavailable { reason: _ } => false
+  }))
+}
+
+fn workspace_publish_gateway_document(store: FabricStorageBinding, slot: RunnerSlotIdentity, wire: NonEmptyStr) -> WorkspaceGatewayRead
+  admit_callers: [
+    decl_ref(module_path: "gunbc.workspace_gateway_store", decl_name: "workspace_publish_gateway_evidence"),
+    decl_ref(module_path: "gunbc.workspace_gateway_store", decl_name: "workspace_publish_gateway_refusal"),
+  ]
+{
+  match workspace_gateway_stored_decode(slot: slot, wire: wire) {
+    Absent => WorkspaceGatewayEvidenceUnavailable { reason: "gateway observation does not bind this slot" }
+    Present { value: next } => match fabric_storage_observe_cas_slot(store: store, key: workspace_gateway_state_key(slot: slot)) {
+      CasObservedUnreadable { cause: _ } => WorkspaceGatewayEvidenceUnavailable { reason: "gateway observation store is unreadable" }
+      CasObservedReadable { readable: CasReadableAbsent } => workspace_publish_gateway_at(store: store, slot: slot, expected: ExpectSlotAbsent, wire: wire)
+      CasObservedReadable { readable: CasReadablePresent { version: prior } } => match workspace_gateway_stored_decode(slot: slot, wire: prior.value) {
+        Absent => WorkspaceGatewayEvidenceUnavailable { reason: "current gateway observation is unreadable" }
+        Present { value: old } => if prior.value == wire { old.reading }
+        else if !workspace_gateway_observation_supersedes(prior: old, next: next) {
+          WorkspaceGatewayEvidenceUnavailable { reason: "non-newer gateway observation cannot replace current evidence" }
+        } else { workspace_publish_gateway_at(store: store, slot: slot, expected: ExpectSlotGeneration { generation: prior.generation }, wire: wire) }
+      }
+    }
+  }
+}
+
+fn workspace_publish_gateway_evidence(store: FabricStorageBinding, slot: RunnerSlotIdentity, evidence: WorkspaceGatewayEvidence) -> WorkspaceGatewayRead
+  admit_callers: [
+    decl_ref(module_path: "gunbc.workspace_gateway_observer", decl_name: "workspace_refresh_gateway_wet"),
+    decl_ref(module_path: "test.claim.workspace_gateway_refresh_witness_test", decl_name: "gateway_refresh_cycle"),
+  ]
+{
+  workspace_publish_gateway_document(store: store, slot: slot,
+    wire: serialize_json(v: workspace_gateway_evidence_json(evidence: evidence)) as NonEmptyStr)
+}
+
+fn workspace_publish_gateway_refusal(store: FabricStorageBinding, slot: RunnerSlotIdentity,
+  reason: NonEmptyStr, observed_at: Timestamp) -> WorkspaceGatewayRead
+  admit_callers: [
+    decl_ref(module_path: "gunbc.workspace_gateway_observer", decl_name: "workspace_refresh_gateway_wet"),
+    decl_ref(module_path: "test.claim.workspace_gateway_refresh_witness_test", decl_name: "gateway_refresh_cycle"),
+  ]
+{
+  workspace_publish_gateway_document(store: store, slot: slot, wire: serialize_json(v: json_object(members: [
+    json_kv(key: "slot", value: json_string(s: runner_slot_instance_name(slot: slot) as String)),
+    json_kv(key: "refresh_refusal", value: json_string(s: reason as String)),
+    json_kv(key: "observed_at", value: json_string(s: observed_at)),
+  ])) as NonEmptyStr)
+}
+
+fn workspace_current_gateway_refusal(store: FabricStorageBinding, slot: RunnerSlotIdentity, now: Timestamp) -> NonEmptyStr? {
+  match workspace_read_gateway_evidence(store: store, slot: slot) {
+    WorkspaceGatewayEvidenceUnavailable { reason: detail } => Present { value: detail }
+    WorkspaceGatewayEvidenceRead { evidence: observed } => workspace_gateway_refusal(slot: slot, evidence: observed, now: now)
+  }
+}
+
+
+type WorkspaceGatewayConnectionRead
+  = WorkspaceGatewayReady { known_host: NonEmptyStr }
+  | WorkspaceGatewayUnavailable { reason: NonEmptyStr }
+
+fn workspace_current_gateway_connection(store: FabricStorageBinding, slot: RunnerSlotIdentity, now: Timestamp) -> WorkspaceGatewayConnectionRead {
+  match workspace_read_gateway_evidence(store: store, slot: slot) {
+    WorkspaceGatewayEvidenceUnavailable { reason: detail } => WorkspaceGatewayUnavailable { reason: detail }
+    WorkspaceGatewayEvidenceRead { evidence: observed } => match workspace_gateway_refusal(slot: slot, evidence: observed, now: now) {
+      Present { value: detail } => WorkspaceGatewayUnavailable { reason: detail }
+      Absent => WorkspaceGatewayReady { known_host: observed.known_host }
+    }
+  }
+}

@@ -23,7 +23,7 @@ import gunbc.host_convergence_protocol {
   HostEffectDomainProjection,
   inspect_via_host_effect_projection,
 }
-import gunbc.live_deploy.candidate { CandidateRelease }
+import gunbc.live_deploy.candidate_identity { CandidateRelease }
 import gunbc.live_deploy.desired {
   DesiredDeployment,
   DesiredRosterRefusal,

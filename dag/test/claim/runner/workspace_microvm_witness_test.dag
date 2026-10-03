@@ -1,0 +1,92 @@
+module test.claim.runner.workspace_microvm_witness_test
+
+import std.types { Bool, String, NonEmptyStr }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import product.placement_supply { HostIdentity }
+import gunbc.runner_microvm_attempt { microvm_attempt, MicroVmAttemptAccepted }
+import gunbc.runner_microvm_lifecycle { AttemptIdentity, in_flight_attempt_of_identity }
+import gunbc.runner_microvm_cell_readiness { WorkspaceWorkload, in_flight_attempt_same }
+import gunbc.runner_microvm_cell_readiness_store { encode_attempt, decode_attempt, DecodeOk }
+import gunbc.workspace_gateway { WorkspaceGateway }
+import gunbc.workspace_microvm_access { WorkspaceConnectionReady, WorkspaceConnectionUnavailable, workspace_connection_from_observations }
+import gunbc.runner_microvm_network { runner_slot_network }
+import extdeps.network.ipv4 { render_ipv4_address }
+import gunbc.workspace_microvm { workspace_public_key, WorkspacePublicKeyRefused, workspace_machine_config }
+import gunbc.workspace_guest_image { workspace_guest_bootstrap_script }
+import gunbc.workspace_allocation { SmallWorkspace, LargeWorkspace, workspace_memory_grant }
+import gunbc.fabric_memory_grant_policy { MemoryGrantIssued }
+import product.fabric.identity { FabricIdentity, WorkKey, ExecutionAttemptKey }
+import test.claim.workspace_allocation_witness_test { supplied_workspace_request }
+
+fn workspace_test_identity() -> AttemptIdentity? {
+  match microvm_attempt(slot: RunnerSlotIdentity { host: "srv1" as HostIdentity, slot_index: 7 }, attempt_id: "workspace-test") {
+    MicroVmAttemptAccepted { attempt: a } => Present { value: AttemptIdentity {
+      attempt: a, allocation_generation: 4, invocation_id: "controller-test",
+      workload: WorkspaceWorkload { bootstrap_identity: "workspace-test", image_identity: "image-test", lease_expires_unix: 1790553600 },
+      credential_device_path: "/srv/gunbc/test/jail/root/bootstrap.bin",
+    } }
+    _ => none
+  }
+}
+
+fn test_gateway(identity: AttemptIdentity) -> WorkspaceGateway {
+  WorkspaceGateway { slot: identity.attempt.slot, host_account: "test-user", tailnet_name: "srv1.test.ts.net" }
+}
+
+fn test_console(bootstrap: String) -> String {
+  join(["journal: gunbc-workspace-identity=", bootstrap, "\njournal: gunbc-workspace-host-key=ssh-ed25519 AAAATEST fixture\n"], "")
+}
+
+fn test_scan(identity: AttemptIdentity, key: String) -> String {
+  join([render_ipv4_address(addr: runner_slot_network(slot: identity.attempt.slot).guest_address) as String, " ssh-ed25519 ", key, "\n"], "")
+}
+
+test fn workspace_readiness_requires_bootstrap_and_live_ssh_key() -> Bool {
+  match workspace_test_identity() {
+    Absent => false
+    Present { value: id } => match workspace_connection_from_observations(identity: id, gateway: test_gateway(identity: id), systemd_invocation: "systemd-test", gateway_known_host: "srv1.test.ts.net ssh-ed25519 AAAAGATEWAY", console: test_console(bootstrap: "workspace-test"), scanned_keys: test_scan(identity: id, key: "AAAATEST")) {
+      WorkspaceConnectionReady { connection: c } => c.identity.allocation_generation == 4 && (c.host_key as String) == "ssh-ed25519 AAAATEST"
+      _ => false
+    }
+  }
+}
+
+test fn workspace_readiness_refuses_old_guest_at_reused_address() -> Bool {
+  match workspace_test_identity() {
+    Absent => false
+    Present { value: id } => match workspace_connection_from_observations(identity: id, gateway: test_gateway(identity: id), systemd_invocation: "systemd-test", gateway_known_host: "srv1.test.ts.net ssh-ed25519 AAAAGATEWAY", console: test_console(bootstrap: "workspace-test"), scanned_keys: test_scan(identity: id, key: "AAAAPREVIOUS")) {
+      WorkspaceConnectionUnavailable { reason: _ } => true
+      _ => false
+    }
+  }
+}
+
+test fn workspace_readiness_refuses_foreign_bootstrap() -> Bool {
+  match workspace_test_identity() {
+    Absent => false
+    Present { value: id } => match workspace_connection_from_observations(identity: id, gateway: test_gateway(identity: id), systemd_invocation: "systemd-test", gateway_known_host: "srv1.test.ts.net ssh-ed25519 AAAAGATEWAY", console: test_console(bootstrap: "previous-allocation"), scanned_keys: test_scan(identity: id, key: "AAAATEST")) {
+      WorkspaceConnectionUnavailable { reason: _ } => true
+      _ => false
+    }
+  }
+}
+
+test fn workspace_public_key_refuses_options_and_record_injection() -> Bool {
+  let options = match workspace_public_key(reference: "key", text: "command=bad ssh-ed25519 AAAATEST") { WorkspacePublicKeyRefused => true _ => false }
+  let lines = match workspace_public_key(reference: "key", text: "ssh-ed25519 AAAATEST\nssh-ed25519 OTHER") { WorkspacePublicKeyRefused => true _ => false }
+  options && lines && !string_contains(s: workspace_guest_bootstrap_script(), pattern: "jitconfig")
+}
+
+test fn workspace_production_machine_config_consumes_committed_grant() -> Bool {
+  match workspace_memory_grant(request: supplied_workspace_request(profile: SmallWorkspace), work: FabricIdentity { principal: "test", key: "work" as WorkKey }, attempt: FabricIdentity { principal: "test", key: "attempt" as ExecutionAttemptKey }) {
+    MemoryGrantIssued { grant: small } => match workspace_memory_grant(request: supplied_workspace_request(profile: LargeWorkspace), work: FabricIdentity { principal: "test", key: "work" as WorkKey }, attempt: FabricIdentity { principal: "test", key: "attempt" as ExecutionAttemptKey }) {
+      MemoryGrantIssued { grant: large } => {
+        let s = workspace_machine_config(profile: SmallWorkspace, grant: small)
+        let l = workspace_machine_config(profile: LargeWorkspace, grant: large)
+        s.mem_size_mib == 4096 && s.vcpu_count == 2 && l.mem_size_mib == 8192 && l.vcpu_count == 4
+      }
+      _ => false
+    }
+    _ => false
+  }
+}

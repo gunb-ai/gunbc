@@ -1,0 +1,113 @@
+module gunbc.workspace_acquisition_invocation
+
+import extdeps.systemd.systemctl
+
+import std.types { String, NonEmptyStr, Bool }
+import std.algebra { trim }
+import std.resources { Filesystem }
+import std.decl_ref { decl_ref }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
+import std.durable_compare_and_set { ExpectSlotAbsent, CasCommitted, CasObservedReadable, CasReadablePresent }
+import gunbc.durable_cas_fabric_storage { fabric_storage_compare_and_set, fabric_storage_observe_cas_slot }
+import gunbc.durable_cas_file_store { admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted }
+import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.workspace_reservation_record { WorkspaceReservationPlan, workspace_reservation_plan_json, workspace_reservation_plan_reservation }
+import gunbc.runner_microvm_slot_unit_identity { microvm_slot_unit_instance_name }
+import gunbc.build_cache_instance { runner_slot_instance_name }
+import extdeps.systemd { InvocationIDProperty, MainPID, systemd_unit_property_wire }
+import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
+
+// The environment identifier is accepted only when the manager identifies this interpreter as
+// the selected controller's MainPID. An inherited or caller-supplied identifier is insufficient.
+fn workspace_current_acquisition_invocation(plan: WorkspaceReservationPlan) -> String?
+  uses fs: Filesystem
+{
+  let reservation = workspace_reservation_plan_reservation(plan: plan)
+  let unit = microvm_slot_unit_instance_name(slot_instance: runner_slot_instance_name(slot: reservation.slot))
+  let before = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: InvocationIDProperty))
+  let main = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: MainPID))
+  let own = Filesystem.Read(path: "/proc/self/stat")
+  let after = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: InvocationIDProperty))
+  if !before.success || !main.success || !own.success || !after.success { none }
+  else { match shell.Env.Get(name: "INVOCATION_ID" as NonEmptyStr).value {
+    Absent => none
+    Present { value: actual } => match split(s: own.content, delimiter: " ").first() {
+      Absent => none
+      Present { value: pid } => if trim(s: actual) != "" && trim(s: before.value) == trim(s: actual)
+        && trim(s: after.value) == trim(s: actual) && trim(s: main.value) == pid && pid != "0" {
+        Present { value: trim(s: actual) }
+      } else { none }
+    }
+  } }
+}
+
+// One immutable actor record per exact reservation plan precedes the hold effect. A restart
+// may observe the hold, but cannot impersonate the old actor or repeat a possibly queued CAS.
+fn workspace_acquisition_actor_admits(store: FabricStorageBinding, plan: WorkspaceReservationPlan) -> Bool
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_allocation_acquisition", decl_name: "workspace_apply_recorded_plan")]
+{
+  match workspace_current_acquisition_invocation(plan: plan) {
+    Absent => false
+    Present { value: invocation } => {
+      let plan_wire = serialize_json(v: workspace_reservation_plan_json(plan: plan))
+      let key = concat("workspace-acquisition-actor-", serialize_content_hash(hash: content_hash_of_value(value: plan_wire as NonEmptyStr)) as String) as NonEmptyStr
+      let wire = serialize_json(v: json_object(members: [json_kv(key: "plan", value: json_string(s: plan_wire)), json_kv(key: "invocation", value: json_string(s: invocation))])) as NonEmptyStr
+      match admit_cas_attempt_for_derived_payload(key: key, expected: ExpectSlotAbsent, proposed: wire) {
+        DerivedPayloadAdmitted { verified: proposed } => match fabric_storage_compare_and_set(store: store, verified: proposed) {
+          CasCommitted { committed: _ } => true
+          other => match fabric_storage_observe_cas_slot(store: store, key: key) {
+            CasObservedReadable { readable: CasReadablePresent { version: recorded } } => recorded.value == wire
+            other => false
+          }
+        }
+        other => false
+      }
+    }
+  }
+}
+
+// Winning against actor election proves no admitted actor can ever issue this plan's hold effect.
+// An existing actor, unreadable journal, or any other value retains the acquisition obligation.
+fn workspace_cancel_unelected_actor(store: FabricStorageBinding, plan: WorkspaceReservationPlan) -> Bool
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_allocation_acquisition", decl_name: "workspace_settle_unelected_retirement")]
+{
+  let plan_wire = serialize_json(v: workspace_reservation_plan_json(plan: plan))
+  let key = concat("workspace-acquisition-actor-", serialize_content_hash(hash: content_hash_of_value(value: plan_wire as NonEmptyStr)) as String) as NonEmptyStr
+  let tombstone = serialize_json(v: json_object(members: [json_kv(key: "plan", value: json_string(s: plan_wire)), json_kv(key: "cancelled_before_actor", value: json_string(s: "true"))])) as NonEmptyStr
+  if !workspace_actor_protocol_observed(store: store, plan: plan) { false }
+  else { match admit_cas_attempt_for_derived_payload(key: key, expected: ExpectSlotAbsent, proposed: tombstone) {
+    DerivedPayloadAdmitted { verified: proposed } => match fabric_storage_compare_and_set(store: store, verified: proposed) {
+      CasCommitted { committed: _ } => true
+      other => match fabric_storage_observe_cas_slot(store: store, key: key) {
+        CasObservedReadable { readable: CasReadablePresent { version: recorded } } => recorded.value == tombstone
+        other => false
+      }
+    }
+    other => false
+  } }
+}
+
+fn workspace_acquisition_protocol_key(plan: WorkspaceReservationPlan) -> NonEmptyStr {
+  concat("workspace-acquisition-protocol-", serialize_content_hash(hash: content_hash_of_value(value: serialize_json(v: workspace_reservation_plan_json(plan: plan)) as NonEmptyStr)) as String) as NonEmptyStr
+}
+
+// Legacy Acquiring rows predate actor election. Only a new Recorded transition may install this
+// marker, before its owner CAS, so absence of a legacy journal never becomes proof of no effect.
+fn workspace_establish_actor_protocol(store: FabricStorageBinding, plan: WorkspaceReservationPlan) -> Bool
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_allocation_acquisition", decl_name: "workspace_begin_acquisition")]
+{
+  match admit_cas_attempt_for_derived_payload(key: workspace_acquisition_protocol_key(plan: plan), expected: ExpectSlotAbsent, proposed: "actor-journal/1" as NonEmptyStr) {
+    DerivedPayloadAdmitted { verified: proposed } => match fabric_storage_compare_and_set(store: store, verified: proposed) {
+      CasCommitted { committed: _ } => true
+      other => workspace_actor_protocol_observed(store: store, plan: plan)
+    }
+    other => false
+  }
+}
+
+fn workspace_actor_protocol_observed(store: FabricStorageBinding, plan: WorkspaceReservationPlan) -> Bool {
+  match fabric_storage_observe_cas_slot(store: store, key: workspace_acquisition_protocol_key(plan: plan)) {
+    CasObservedReadable { readable: CasReadablePresent { version: recorded } } => recorded.value == "actor-journal/1"
+    other => false
+  }
+}

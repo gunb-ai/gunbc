@@ -1,0 +1,524 @@
+module gunbc.workspace_allocation_store
+
+
+import gunbc.clock_read { clock_now_probed_at }
+import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_before }
+import gunbc.fabric_storage_client { FabricStorageBinding }
+import std.types { String, NonEmptyStr, Bool, Int, List, Timestamp }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
+import std.decl_ref { decl_ref }
+import std.durable_compare_and_set { CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent, CasCommitted, CasPreconditionFailed, CasStoreRefused }
+import gunbc.durable_cas_fabric_storage { fabric_storage_observe_cas_slot, fabric_storage_compare_and_set }
+import gunbc.durable_cas_file_store { admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable }
+import gunbc.principal_projection { PrincipalRef, principal_ref_eq, principal_ref_label }
+import extdeps.languages.json.emit { JsonValue, JsonArray, JsonNull, JsonString, json_object, json_array, json_kv, json_string, serialize_json }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field, json_field_string, json_object_unique_member, JsonMemberFound, FieldRead, FieldAbsent, FieldMalformed }
+import gunbc.workspace_reservation_record { WorkspaceReservationPlan, workspace_reservation_plan_json, workspace_reservation_plan_from_json, workspace_reservation_plan_request, workspace_reservation_plan_reservation }
+import gunbc.workspace_allocation { WorkspaceRequest, WorkspaceReservation, workspace_request_json, workspace_request_from_json, workspace_reservation_json, workspace_reservation_from_json }
+
+// One CAS head per owner serializes admission against release and preserves every idempotency key.
+// A digest only locates the owner; every decoded request is checked against the full principal.
+// Cleanup uncertainty remains outstanding. Neither lease expiry nor a stopped VMM frees quota.
+type WorkspacePhase = WorkspaceRecorded | WorkspaceAcquiring | WorkspaceReserved | WorkspaceRunning | WorkspaceTerminationRequested | WorkspaceCleanupUncertain | WorkspaceReleased
+
+type WorkspaceDesired = WorkspaceWanted | WorkspaceRetired
+
+type WorkspaceAllocation {
+  recorded_at: Timestamp
+  retired_at: Timestamp
+  desired: WorkspaceDesired
+  request: WorkspaceRequest
+  plan: WorkspaceReservationPlan?
+  reservation: WorkspaceReservation?
+  phase: WorkspacePhase
+  connection: String
+  observed_at: Timestamp
+  reason: String
+}
+
+type WorkspaceOwnerSnapshot {
+  owner: PrincipalRef
+  expected: CasExpectation
+  allocations: List<WorkspaceAllocation>
+}
+
+type WorkspaceStoreRead = WorkspaceStoreReadOk { snapshot: WorkspaceOwnerSnapshot } | WorkspaceStoreUnreadable { reason: String }
+type WorkspaceStoreWrite = WorkspaceStoreWritten { allocation: WorkspaceAllocation } | WorkspaceStoreConflict | WorkspaceStoreWriteRefused { reason: String }
+type WorkspaceCreateDecision = WorkspaceCreateNew { allocation: WorkspaceAllocation } | WorkspaceCreateReplay { allocation: WorkspaceAllocation } | WorkspaceCreateRefused { reason: String }
+
+fn workspace_owner_key(owner: PrincipalRef) -> NonEmptyStr {
+  join(["workspace-owner-", serialize_content_hash(hash: content_hash_of_value(value: principal_ref_label(p: owner) as NonEmptyStr)) as String], "") as NonEmptyStr
+}
+
+fn workspace_phase_wire(phase: WorkspacePhase) -> String {
+  match phase {
+    WorkspaceRecorded => "recorded"
+    WorkspaceAcquiring => "acquiring"
+    WorkspaceReserved => "reserved"
+    WorkspaceRunning => "running"
+    WorkspaceTerminationRequested => "termination-requested"
+    WorkspaceCleanupUncertain => "cleanup-uncertain"
+    WorkspaceReleased => "released"
+  }
+}
+
+fn workspace_phase_parse(wire: String) -> WorkspacePhase? {
+  if wire == "recorded" { Present { value: WorkspaceRecorded } }
+  else if wire == "acquiring" { Present { value: WorkspaceAcquiring } }
+  else if wire == "reserved" { Present { value: WorkspaceReserved } }
+  else if wire == "running" { Present { value: WorkspaceRunning } }
+  else if wire == "termination-requested" { Present { value: WorkspaceTerminationRequested } }
+  else if wire == "cleanup-uncertain" { Present { value: WorkspaceCleanupUncertain } }
+  else if wire == "released" { Present { value: WorkspaceReleased } }
+  else { none }
+}
+
+fn workspace_allocation_json(allocation: WorkspaceAllocation) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "recorded_at", value: json_string(s: allocation.recorded_at)),
+    json_kv(key: "retired_at", value: json_string(s: allocation.retired_at)),
+    json_kv(key: "desired", value: json_string(s: if allocation.desired == WorkspaceWanted { "wanted" } else { "retired" })),
+    json_kv(key: "request", value: workspace_request_json(request: allocation.request)),
+    json_kv(key: "plan", value: match allocation.plan { Present { value: p } => workspace_reservation_plan_json(plan: p) Absent => JsonNull }),
+    json_kv(key: "reservation", value: match allocation.reservation { Present { value: r } => workspace_reservation_json(reservation: r) Absent => JsonNull }),
+    json_kv(key: "phase", value: json_string(s: workspace_phase_wire(phase: allocation.phase))),
+    json_kv(key: "connection", value: json_string(s: allocation.connection)),
+    json_kv(key: "observed_at", value: json_string(s: allocation.observed_at)),
+    json_kv(key: "reason", value: json_string(s: allocation.reason)),
+  ])
+}
+
+fn workspace_allocation_decode(value: JsonValue) -> WorkspaceAllocation? {
+  match json_field(obj: value, key: "request") {
+    FieldRead { value: req } => match workspace_request_from_json(value: req) {
+      Present { value: request } => match json_field_string(obj: value, key: "desired") {
+        FieldRead { value: "wanted" } => workspace_allocation_decode_plan(value: value, request: request, desired: WorkspaceWanted)
+        FieldRead { value: "retired" } => workspace_allocation_decode_plan(value: value, request: request, desired: WorkspaceRetired)
+        other => none
+      }
+      Absent => none
+    }
+    other => none
+  }
+}
+
+fn workspace_allocation_decode_plan(value: JsonValue, request: WorkspaceRequest, desired: WorkspaceDesired) -> WorkspaceAllocation? {
+  match json_object_unique_member(v: value, key: "plan") {
+    JsonMemberFound { value: JsonNull } => workspace_allocation_decode_state(value: value, request: request, desired: desired, plan: none)
+    JsonMemberFound { value: p } => match workspace_reservation_plan_from_json(value: p) {
+      Absent => none
+      Present { value: plan } => if serialize_json(v: workspace_request_json(request: request)) == serialize_json(v: workspace_request_json(request: workspace_reservation_plan_request(plan: plan))) {
+        workspace_allocation_decode_state(value: value, request: request, desired: desired, plan: Present { value: plan })
+      } else { none }
+    }
+    other => none
+  }
+}
+
+fn workspace_allocation_decode_state(value: JsonValue, request: WorkspaceRequest, desired: WorkspaceDesired, plan: WorkspaceReservationPlan?) -> WorkspaceAllocation? {
+  match json_field_string(obj: value, key: "recorded_at") {
+    FieldAbsent => workspace_allocation_decode_fields(value: value, request: request, desired: desired, plan: plan, recorded_at: "")
+    FieldRead { value: submitted } => if submitted == "" || utc_instant_is_canonical(t: submitted) {
+      workspace_allocation_decode_fields(value: value, request: request, desired: desired, plan: plan, recorded_at: submitted)
+    } else { none }
+    other => none
+  }
+}
+
+fn workspace_allocation_decode_fields(value: JsonValue, request: WorkspaceRequest, desired: WorkspaceDesired, plan: WorkspaceReservationPlan?, recorded_at: Timestamp) -> WorkspaceAllocation? {
+  match json_field_string(obj: value, key: "retired_at") {
+    FieldAbsent => workspace_allocation_decode_phase_fields(value: value, request: request, desired: desired, plan: plan, recorded_at: recorded_at, retired_at: "")
+    FieldRead { value: retired } => if retired == "" || utc_instant_is_canonical(t: retired) {
+      workspace_allocation_decode_phase_fields(value: value, request: request, desired: desired, plan: plan, recorded_at: recorded_at, retired_at: retired)
+    } else { none }
+    other => none
+  }
+}
+
+fn workspace_allocation_decode_phase_fields(value: JsonValue, request: WorkspaceRequest, desired: WorkspaceDesired, plan: WorkspaceReservationPlan?, recorded_at: Timestamp, retired_at: Timestamp) -> WorkspaceAllocation? {
+  match json_field_string(obj: value, key: "phase") {
+    FieldRead { value: p } => match workspace_phase_parse(wire: p) {
+      Present { value: selected_phase } => match json_field_string(obj: value, key: "connection") {
+        FieldRead { value: connection } => match json_field_string(obj: value, key: "observed_at") {
+          FieldRead { value: observed } => match json_field_string(obj: value, key: "reason") {
+            FieldRead { value: reason } => match json_object_unique_member(v: value, key: "reservation") {
+              JsonMemberFound { value: JsonNull } => if selected_phase == WorkspaceRecorded || selected_phase == WorkspaceAcquiring || selected_phase == WorkspaceTerminationRequested || selected_phase == WorkspaceReleased {
+                Present { value: WorkspaceAllocation { retired_at: retired_at, recorded_at: recorded_at, plan: plan, desired: desired, request: request, reservation: none, phase: selected_phase, connection: connection, observed_at: observed, reason: reason } }
+              } else { none }
+              JsonMemberFound { value: r } => match workspace_reservation_from_json(value: r) {
+                Present { value: reservation } => if serialize_json(v: workspace_request_json(request: reservation.request)) == serialize_json(v: workspace_request_json(request: request)) {
+                  Present { value: WorkspaceAllocation { retired_at: retired_at, recorded_at: recorded_at, plan: plan, desired: desired, request: request, reservation: Present { value: reservation }, phase: selected_phase, connection: connection, observed_at: observed, reason: reason } }
+                } else { none }
+                Absent => none
+              }
+              other => none
+            }
+            other => none
+          }
+          other => none
+        }
+        other => none
+      }
+      Absent => none
+    }
+    other => none
+  }
+}
+
+fn workspace_decode_ledger(value: JsonValue, owner: PrincipalRef) -> List<WorkspaceAllocation>? {
+  match value {
+    JsonArray { elements: rows } => fold(rows, init: Present { value: [] as List<WorkspaceAllocation> } as List<WorkspaceAllocation>?, f: (acc, row) => match acc {
+      Absent => none
+      Present { value: prior } => match workspace_allocation_decode(value: row) {
+        Absent => none
+        Present { value: allocation } => if principal_ref_eq(a: owner, b: allocation.request.owner)
+          && workspace_allocation_coherent(allocation: allocation)
+          && count(filter(prior, p => p.request.idempotency_key == allocation.request.idempotency_key)) == 0
+          && (allocation.phase == WorkspaceReleased || count(filter(prior, p => p.phase != WorkspaceReleased)) == 0) {
+          Present { value: concat(prior, [allocation]) }
+        } else { none }
+      }
+    })
+    other => none
+  }
+}
+
+fn workspace_allocation_coherent(allocation: WorkspaceAllocation) -> Bool {
+  let has_reservation = match allocation.reservation { Present { value: _ } => true Absent => false }
+  let has_plan = match allocation.plan { Present { value: _ } => true Absent => false }
+  (allocation.recorded_at == "" || utc_instant_is_canonical(t: allocation.recorded_at))
+    && (allocation.retired_at == "" || (utc_instant_is_canonical(t: allocation.retired_at) && allocation.desired == WorkspaceRetired))
+    && (allocation.phase != WorkspaceAcquiring || has_plan)
+    && (allocation.phase != WorkspaceReleased || allocation.desired == WorkspaceRetired)
+    && (allocation.phase != WorkspaceTerminationRequested || allocation.desired == WorkspaceRetired)
+    && (allocation.phase != WorkspaceRunning || (has_reservation && allocation.desired == WorkspaceWanted))
+    && (allocation.connection == "" || (allocation.phase == WorkspaceRunning && allocation.desired == WorkspaceWanted))
+    && workspace_reservation_matches_plan(plan: allocation.plan, reservation: allocation.reservation)
+}
+
+fn workspace_reservation_matches_plan(plan: WorkspaceReservationPlan?, reservation: WorkspaceReservation?) -> Bool {
+  match reservation {
+    Absent => true
+    Present { value: held } => match plan {
+      Absent => false
+      Present { value: planned } => serialize_json(v: workspace_reservation_json(reservation: held)) == serialize_json(v: workspace_reservation_json(reservation: workspace_reservation_plan_reservation(plan: planned)))
+    }
+  }
+}
+
+fn workspace_read_owner(store: FabricStorageBinding, owner: PrincipalRef) -> WorkspaceStoreRead {
+  match fabric_storage_observe_cas_slot(store: store, key: workspace_owner_key(owner: owner)) {
+    CasObservedUnreadable { cause: _ } => WorkspaceStoreUnreadable { reason: "allocation store could not be read" }
+    CasObservedReadable { readable: CasReadableAbsent } => WorkspaceStoreReadOk { snapshot: WorkspaceOwnerSnapshot { owner: owner, expected: ExpectSlotAbsent, allocations: [] } }
+    CasObservedReadable { readable: CasReadablePresent { version: version } } => match parse_json_document(s: version.value as String) {
+      JsonDocumentUnreadable { gap: _ } => WorkspaceStoreUnreadable { reason: "allocation store contains unreadable JSON" }
+      JsonDocumentParsed { value: value } => match workspace_decode_ledger(value: value, owner: owner) {
+        Absent => WorkspaceStoreUnreadable { reason: "allocation ledger is malformed or belongs to a different principal" }
+        Present { value: rows } => WorkspaceStoreReadOk { snapshot: WorkspaceOwnerSnapshot { owner: owner, expected: ExpectSlotGeneration { generation: version.generation }, allocations: rows } }
+      }
+    }
+  }
+}
+
+fn workspace_create_decision(snapshot: WorkspaceOwnerSnapshot, request: WorkspaceRequest) -> WorkspaceCreateDecision {
+  workspace_create_decision_at(snapshot: snapshot, request: request, observed_at: "")
+}
+
+fn workspace_create_decision_at(snapshot: WorkspaceOwnerSnapshot, request: WorkspaceRequest, observed_at: Timestamp) -> WorkspaceCreateDecision {
+  if !principal_ref_eq(a: snapshot.owner, b: request.owner) {
+    WorkspaceCreateRefused { reason: "request owner does not match the admitted owner" }
+  } else {
+    match filter(snapshot.allocations, a => a.request.idempotency_key == request.idempotency_key).first() {
+      Present { value: existing } => if serialize_json(v: workspace_request_json(request: existing.request)) == serialize_json(v: workspace_request_json(request: request)) {
+        WorkspaceCreateReplay { allocation: existing }
+      } else { WorkspaceCreateRefused { reason: "idempotency key already names different request parameters" } }
+      Absent => if count(filter(snapshot.allocations, a => a.phase != WorkspaceReleased)) > 0 {
+        WorkspaceCreateRefused { reason: "an allocation is still outstanding, including any cleanup obligation" }
+      } else {
+        WorkspaceCreateNew { allocation: WorkspaceAllocation { retired_at: "", recorded_at: observed_at, plan: none, desired: WorkspaceWanted, request: request, reservation: none, phase: WorkspaceRecorded, connection: "", observed_at: "", reason: "Request recorded" } }
+      }
+    }
+  }
+}
+
+// Mutation consumes an observed generation. A concurrent release or observation wins or refuses;
+// callers reread and reapply their semantic transition rather than replaying a stale snapshot.
+fn workspace_write_allocation(store: FabricStorageBinding, snapshot: WorkspaceOwnerSnapshot, allocation: WorkspaceAllocation) -> WorkspaceStoreWrite
+  admit_callers: [
+    decl_ref(module_path: "gunbc.workspace_allocation_store", decl_name: "workspace_record_request_observed"),
+    decl_ref(module_path: "gunbc.workspace_allocation_store", decl_name: "workspace_request_release_at"),
+    decl_ref(module_path: "gunbc.workspace_allocation_store", decl_name: "workspace_record_reservation"),
+    decl_ref(module_path: "gunbc.workspace_allocation_store", decl_name: "workspace_record_plan"),
+    decl_ref(module_path: "gunbc.workspace_allocation_store", decl_name: "workspace_settle_unplanned_retirement"),
+    decl_ref(module_path: "gunbc.workspace_allocation_store", decl_name: "workspace_settle_unstarted_retirement"),
+    decl_ref(module_path: "gunbc.workspace_allocation_acquisition", decl_name: "workspace_begin_acquisition"),
+    decl_ref(module_path: "gunbc.workspace_allocation_store", decl_name: "workspace_record_preparation_wait"),
+    decl_ref(module_path: "gunbc.workspace_allocation_lease", decl_name: "workspace_record_expiry"),
+    decl_ref(module_path: "gunbc.workspace_allocation_lifecycle", decl_name: "workspace_publish_released_record"),
+    decl_ref(module_path: "gunbc.workspace_allocation_lifecycle", decl_name: "workspace_publish_cleanup_uncertain"),
+    decl_ref(module_path: "gunbc.workspace_allocation_wait", decl_name: "workspace_await_observed_at"),
+    decl_ref(module_path: "gunbc.workspace_allocation_wait", decl_name: "workspace_stop_desired"),
+  ]
+{
+  if !workspace_write_transition_admits(snapshot: snapshot, allocation: allocation) {
+    WorkspaceStoreWriteRefused { reason: "allocation mutation changes immutable request, exceeds owner quota, or revives a retired incarnation" }
+  } else {
+    workspace_commit_owner_transition(store: store, snapshot: snapshot, allocation: allocation)
+  }
+}
+
+fn workspace_commit_owner_transition(store: FabricStorageBinding, snapshot: WorkspaceOwnerSnapshot, allocation: WorkspaceAllocation) -> WorkspaceStoreWrite
+  admit_callers: [
+    decl_ref(module_path: "gunbc.workspace_allocation_store", decl_name: "workspace_write_allocation"),
+    decl_ref(module_path: "gunbc.workspace_allocation_acquisition", decl_name: "workspace_settle_unelected_retirement"),
+  ]
+{
+    let rows = concat(filter(snapshot.allocations, a => a.request.idempotency_key != allocation.request.idempotency_key), [allocation])
+    let proposed = serialize_json(v: json_array(elements: map(rows, a => workspace_allocation_json(allocation: a)))) as NonEmptyStr
+    match admit_cas_attempt_for_derived_payload(key: workspace_owner_key(owner: snapshot.owner), expected: snapshot.expected, proposed: proposed) {
+      DerivedPayloadKeyNotSlotAddressable { key: _ } => WorkspaceStoreWriteRefused { reason: "derived owner key is not addressable" }
+      DerivedPayloadAdmitted { verified: verified } => match fabric_storage_compare_and_set(store: store, verified: verified) {
+        CasCommitted { committed: _ } => WorkspaceStoreWritten { allocation: allocation }
+        CasPreconditionFailed { expected: _, observed: _ } => WorkspaceStoreConflict
+        CasStoreRefused { cause: _ } => WorkspaceStoreWriteRefused { reason: "allocation state publication refused" }
+      }
+    }
+}
+
+fn workspace_write_transition_admits(snapshot: WorkspaceOwnerSnapshot, allocation: WorkspaceAllocation) -> Bool {
+  if !principal_ref_eq(a: snapshot.owner, b: allocation.request.owner) { false }
+  else if !workspace_allocation_coherent(allocation: allocation) { false }
+  else if allocation.connection != "" && (allocation.desired != WorkspaceWanted || allocation.phase != WorkspaceRunning) { false }
+  else {
+    match filter(snapshot.allocations, a => a.request.idempotency_key == allocation.request.idempotency_key).first() {
+      Absent => allocation.desired == WorkspaceWanted && allocation.phase == WorkspaceRecorded
+        && (match allocation.plan { Absent => true Present { value: _ } => false })
+        && count(filter(snapshot.allocations, a => a.phase != WorkspaceReleased)) == 0
+      Present { value: prior } =>
+        serialize_json(v: workspace_request_json(request: prior.request)) == serialize_json(v: workspace_request_json(request: allocation.request))
+        && prior.recorded_at == allocation.recorded_at
+        && (prior.desired != WorkspaceRetired || prior.retired_at == allocation.retired_at)
+        && (prior.desired != WorkspaceRetired || allocation.desired == WorkspaceRetired)
+        && (prior.phase != WorkspaceAcquiring || allocation.phase == WorkspaceAcquiring || (match allocation.reservation { Present { value: _ } => true Absent => false }))
+        && workspace_plan_transition_admits(prior: prior.plan, proposed: allocation.plan, retired: prior.desired == WorkspaceRetired)
+        && workspace_reservation_transition_admits(prior: prior.reservation, proposed: allocation.reservation)
+        && (prior.phase != WorkspaceReleased || serialize_json(v: workspace_allocation_json(allocation: prior)) == serialize_json(v: workspace_allocation_json(allocation: allocation)))
+    }
+  }
+}
+
+fn workspace_reservation_transition_admits(prior: WorkspaceReservation?, proposed: WorkspaceReservation?) -> Bool {
+  match prior {
+    Absent => true
+    Present { value: held } => match proposed {
+      Absent => false
+      Present { value: next } => serialize_json(v: workspace_reservation_json(reservation: held)) == serialize_json(v: workspace_reservation_json(reservation: next))
+    }
+  }
+}
+
+fn workspace_plan_transition_admits(prior: WorkspaceReservationPlan?, proposed: WorkspaceReservationPlan?, retired: Bool) -> Bool {
+  match prior {
+    Absent => if retired { match proposed { Absent => true Present { value: _ } => false } } else { true }
+    Present { value: held } => match proposed {
+      Absent => false
+      Present { value: next } => serialize_json(v: workspace_reservation_plan_json(plan: held)) == serialize_json(v: workspace_reservation_plan_json(plan: next))
+    }
+  }
+}
+
+fn workspace_record_request(store: FabricStorageBinding, request: WorkspaceRequest) -> WorkspaceStoreWrite {
+  workspace_record_request_at(store: store, request: request, observed_at: "")
+}
+
+fn workspace_record_request_at(store: FabricStorageBinding, request: WorkspaceRequest, observed_at: Timestamp) -> WorkspaceStoreWrite {
+  if observed_at != "" && !utc_instant_is_canonical(t: observed_at) { WorkspaceStoreWriteRefused { reason: "request recording clock is not canonical UTC" } }
+  else { workspace_record_request_observed(store: store, request: request, observed_at: observed_at) }
+}
+
+fn workspace_record_request_observed(store: FabricStorageBinding, request: WorkspaceRequest, observed_at: Timestamp) -> WorkspaceStoreWrite {
+  match workspace_read_owner(store: store, owner: request.owner) {
+    WorkspaceStoreUnreadable { reason: reason } => WorkspaceStoreWriteRefused { reason: reason }
+    WorkspaceStoreReadOk { snapshot: snapshot } => match workspace_create_decision_at(snapshot: snapshot, request: request, observed_at: observed_at) {
+      WorkspaceCreateRefused { reason: reason } => WorkspaceStoreWriteRefused { reason: reason }
+      WorkspaceCreateReplay { allocation: allocation } => WorkspaceStoreWritten { allocation: allocation }
+      WorkspaceCreateNew { allocation: allocation } => workspace_write_allocation(store: store, snapshot: snapshot, allocation: allocation)
+    }
+  }
+}
+
+// Release addresses the owner's original request and its exact reservation incarnation. Desired
+// retirement clears the advertised endpoint in the same CAS before any host action can follow.
+fn workspace_retired(allocation: WorkspaceAllocation, reason: String) -> WorkspaceAllocation {
+  workspace_retired_at(allocation: allocation, reason: reason, observed_at: "")
+}
+
+fn workspace_retired_at(allocation: WorkspaceAllocation, reason: String, observed_at: Timestamp) -> WorkspaceAllocation {
+  WorkspaceAllocation { retired_at: if (allocation.desired == WorkspaceRetired) { allocation.retired_at } else { observed_at }, recorded_at: allocation.recorded_at,
+    plan: allocation.plan,
+    desired: WorkspaceRetired,
+    request: allocation.request,
+    reservation: allocation.reservation,
+    phase: if (allocation.phase == WorkspaceReleased) { WorkspaceReleased } else if (allocation.phase == WorkspaceAcquiring) { WorkspaceAcquiring } else { WorkspaceTerminationRequested },
+    connection: "",
+    observed_at: allocation.observed_at,
+    reason: reason,
+  }
+}
+
+fn workspace_request_release(store: FabricStorageBinding, owner: PrincipalRef, idempotency_key: NonEmptyStr, expected_generation: Int) -> WorkspaceStoreWrite {
+  workspace_request_release_at(store: store, owner: owner, idempotency_key: idempotency_key, expected_generation: expected_generation, observed_at: "")
+}
+
+fn workspace_request_release_at(store: FabricStorageBinding, owner: PrincipalRef, idempotency_key: NonEmptyStr, expected_generation: Int, observed_at: Timestamp) -> WorkspaceStoreWrite {
+  match workspace_read_owner(store: store, owner: owner) {
+    WorkspaceStoreUnreadable { reason: reason } => WorkspaceStoreWriteRefused { reason: reason }
+    WorkspaceStoreReadOk { snapshot: snapshot } => match filter(snapshot.allocations, a => a.request.idempotency_key == idempotency_key).first() {
+      Absent => WorkspaceStoreWriteRefused { reason: "allocation not found for authenticated owner" }
+      Present { value: allocation } => {
+        let generation = match allocation.reservation { Present { value: r } => r.generation Absent => 0 }
+        if generation != expected_generation {
+          WorkspaceStoreWriteRefused { reason: "release names a different reservation generation" }
+        } else if allocation.desired == WorkspaceRetired {
+          WorkspaceStoreWritten { allocation: allocation }
+        } else {
+          workspace_write_allocation(store: store, snapshot: snapshot, allocation: workspace_retired_at(allocation: allocation, reason: "Owner requested release", observed_at: observed_at))
+        }
+      }
+    }
+  }
+}
+
+// Called by the convergence apply receipt consumer, including recovery of a hold whose first
+// publication was lost. The original owner request must already exist and must match exactly.
+fn workspace_record_reservation(store: FabricStorageBinding, reservation: WorkspaceReservation, observed_at: Timestamp) -> WorkspaceStoreWrite {
+  match workspace_read_owner(store: store, owner: reservation.request.owner) {
+    WorkspaceStoreUnreadable { reason: reason } => WorkspaceStoreWriteRefused { reason: reason }
+    WorkspaceStoreReadOk { snapshot: snapshot } => match filter(snapshot.allocations, a => a.request.idempotency_key == reservation.request.idempotency_key).first() {
+      Absent => WorkspaceStoreWriteRefused { reason: "reservation has no durable admitted request" }
+      Present { value: allocation } => if serialize_json(v: workspace_request_json(request: allocation.request)) != serialize_json(v: workspace_request_json(request: reservation.request)) {
+        WorkspaceStoreWriteRefused { reason: "reservation belongs to different request parameters" }
+      } else {
+        match allocation.reservation {
+          Present { value: existing } => if serialize_json(v: workspace_reservation_json(reservation: existing)) == serialize_json(v: workspace_reservation_json(reservation: reservation)) {
+            WorkspaceStoreWritten { allocation: allocation }
+          } else { WorkspaceStoreWriteRefused { reason: "request already has another reservation; recovery must not allocate twice" } }
+          Absent => workspace_write_allocation(store: store, snapshot: snapshot, allocation: WorkspaceAllocation { retired_at: allocation.retired_at, recorded_at: allocation.recorded_at,
+            plan: allocation.plan,
+            desired: allocation.desired,
+            request: allocation.request,
+            reservation: Present { value: reservation },
+            phase: if allocation.desired == WorkspaceRetired { WorkspaceTerminationRequested } else { WorkspaceReserved },
+            connection: "",
+            observed_at: observed_at,
+            reason: if allocation.desired == WorkspaceRetired { "Reservation recovered after retirement; cleanup required" } else { "Host and slot reservation recorded" },
+          })
+        }
+      }
+    }
+  }
+}
+
+// Selection becomes durable before acquisition. Once published the plan cannot be changed or
+// removed; recovery addresses that same cell, even if release raced the first apply.
+fn workspace_record_plan(store: FabricStorageBinding, plan: WorkspaceReservationPlan) -> WorkspaceStoreWrite {
+  let request = workspace_reservation_plan_request(plan: plan)
+  match workspace_read_owner(store: store, owner: request.owner) {
+    WorkspaceStoreUnreadable { reason: reason } => WorkspaceStoreWriteRefused { reason: reason }
+    WorkspaceStoreReadOk { snapshot: snapshot } => match filter(snapshot.allocations, a => a.request.idempotency_key == request.idempotency_key).first() {
+      Absent => WorkspaceStoreWriteRefused { reason: "reservation plan has no durable admitted request" }
+      Present { value: allocation } => if serialize_json(v: workspace_request_json(request: allocation.request)) != serialize_json(v: workspace_request_json(request: request)) {
+        WorkspaceStoreWriteRefused { reason: "reservation plan belongs to different request parameters" }
+      } else {
+        match allocation.plan {
+          Present { value: existing } => if serialize_json(v: workspace_reservation_plan_json(plan: existing)) == serialize_json(v: workspace_reservation_plan_json(plan: plan)) {
+            WorkspaceStoreWritten { allocation: allocation }
+          } else { WorkspaceStoreWriteRefused { reason: "request already has another reservation plan; no reselection is allowed" } }
+          Absent => if allocation.desired == WorkspaceRetired { WorkspaceStoreWriteRefused { reason: "retired request cannot acquire a new reservation plan" } }
+          else {
+            workspace_write_allocation(store: store, snapshot: snapshot, allocation: WorkspaceAllocation { retired_at: allocation.retired_at, recorded_at: allocation.recorded_at,
+              plan: Present { value: plan }, desired: allocation.desired, request: allocation.request,
+              reservation: allocation.reservation, phase: allocation.phase, connection: allocation.connection,
+              observed_at: allocation.observed_at, reason: "Selected reservation plan recorded before acquisition",
+            })
+          }
+        }
+      }
+    }
+  }
+}
+
+// This CAS races safely with begin_acquisition: only one can consume the observed owner version.
+// No local free-slot read substitutes for the absence of a durable acquisition obligation.
+fn workspace_settle_unstarted_retirement(store: FabricStorageBinding, owner: PrincipalRef, idempotency_key: NonEmptyStr, observed_at: Timestamp) -> WorkspaceStoreWrite {
+  match workspace_read_owner(store: store, owner: owner) {
+    WorkspaceStoreUnreadable { reason: detail } => WorkspaceStoreWriteRefused { reason: detail }
+    WorkspaceStoreReadOk { snapshot: observed } => match filter(observed.allocations, a => a.request.idempotency_key == idempotency_key).first() {
+      Absent => WorkspaceStoreWriteRefused { reason: "allocation request is absent" }
+      Present { value: allocation } => if (allocation.phase == WorkspaceReleased) { WorkspaceStoreWritten { allocation: allocation } }
+      else if (allocation.desired != WorkspaceRetired || allocation.phase != WorkspaceTerminationRequested) {
+        WorkspaceStoreWriteRefused { reason: "allocation may have an outstanding acquisition obligation" }
+      } else { match allocation.reservation {
+        Present { value: _ } => WorkspaceStoreWriteRefused { reason: "allocation has a reservation requiring sanitation" }
+        Absent => workspace_write_allocation(store: store, snapshot: observed, allocation: WorkspaceAllocation { retired_at: allocation.retired_at, recorded_at: allocation.recorded_at,
+          desired: WorkspaceRetired, request: allocation.request, plan: allocation.plan, reservation: none,
+          phase: WorkspaceReleased, connection: "", observed_at: observed_at, reason: "Retired before any acquisition obligation was admitted",
+        })
+      } }
+    }
+  }
+}
+
+// No acquisition can precede a committed plan, and a retired request cannot acquire a plan.
+// This CAS therefore settles a cancellation before placement without claiming any host cleanup.
+// A racing plan publication makes the CAS lose; the next pass observes that plan and recovers it.
+fn workspace_settle_unplanned_retirement(store: FabricStorageBinding, owner: PrincipalRef, idempotency_key: NonEmptyStr, observed_at: Timestamp) -> WorkspaceStoreWrite {
+  match workspace_read_owner(store: store, owner: owner) {
+    WorkspaceStoreUnreadable { reason: reason } => WorkspaceStoreWriteRefused { reason: reason }
+    WorkspaceStoreReadOk { snapshot: snapshot } => match filter(snapshot.allocations, a => a.request.idempotency_key == idempotency_key).first() {
+      Absent => WorkspaceStoreWriteRefused { reason: "allocation not found for owner" }
+      Present { value: allocation } => if allocation.desired != WorkspaceRetired {
+        WorkspaceStoreWriteRefused { reason: "allocation has not been retired" }
+      } else if (allocation.phase == WorkspaceReleased) { WorkspaceStoreWritten { allocation: allocation } }
+      else {
+        match allocation.plan {
+          Present { value: _ } => WorkspaceStoreWriteRefused { reason: "a prepared target must be recovered under the convergence lease" }
+          Absent => match allocation.reservation {
+            Present { value: _ } => WorkspaceStoreWriteRefused { reason: "reservation requires observed cleanup" }
+            Absent => workspace_write_allocation(store: store, snapshot: snapshot, allocation: WorkspaceAllocation { retired_at: allocation.retired_at, recorded_at: allocation.recorded_at,
+              plan: none, reservation: none, desired: WorkspaceRetired, request: allocation.request,
+              phase: WorkspaceReleased, connection: "", observed_at: observed_at,
+              reason: "Request retired before any reservation plan or acquisition",
+            })
+          }
+        }
+      }
+    }
+  }
+}
+
+// A waiting preparation is owner-visible without manufacturing a VM readiness observation.
+// Once another actor prepares, retires or acquires the request, this transition must lose.
+fn workspace_record_preparation_wait(store: FabricStorageBinding, request: WorkspaceRequest,
+  reason: String) -> WorkspaceStoreWrite {
+  match workspace_read_owner(store: store, owner: request.owner) {
+    WorkspaceStoreUnreadable { reason: detail } => WorkspaceStoreWriteRefused { reason: detail }
+    WorkspaceStoreReadOk { snapshot: snapshot } => match filter(snapshot.allocations,
+      allocation => allocation.request.idempotency_key == request.idempotency_key).first() {
+      Absent => WorkspaceStoreWriteRefused { reason: "preparation request is absent" }
+      Present { value: allocation } => if (allocation.request != request || allocation.desired != WorkspaceWanted
+        || allocation.phase != WorkspaceRecorded) {
+        WorkspaceStoreConflict
+      } else { match allocation.plan {
+        Present { value: _ } => WorkspaceStoreConflict
+        Absent => if allocation.reason == reason { WorkspaceStoreWritten { allocation: allocation } }
+        else { workspace_write_allocation(store: store, snapshot: snapshot, allocation: WorkspaceAllocation {
+          recorded_at: allocation.recorded_at, retired_at: allocation.retired_at, desired: allocation.desired,
+          request: allocation.request, plan: allocation.plan, reservation: allocation.reservation,
+          phase: allocation.phase, connection: allocation.connection, observed_at: allocation.observed_at,
+          reason: reason,
+        }) }
+      } }
+    }
+  }
+}
