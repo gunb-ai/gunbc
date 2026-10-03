@@ -1,5 +1,6 @@
 module v2.std.template
 
+import std.types { List }
 import v2.std.algebra { list_flat_map }
 
 // ONE literal-or-hole sequence, parameterized by what a hole is. A string that interpolates is a
