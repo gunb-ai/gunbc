@@ -2429,9 +2429,13 @@ fn unimported_bare_provider_standing_refusals(
     let mut carried: Vec<String> = Vec::new();
     let mut route_carried: Vec<String> = Vec::new();
     let mut hints: HashMap<String, String> = HashMap::new();
+    let (mut suppressed_builtin, mut suppressed_kernel_method_only) = (0usize, 0usize);
     for path in &checked {
         let sf = &lookup[path.as_str()];
-        for v in unimported_bare_providers(sf, index)? {
+        let judgment = unimported_bare_provider_judgment(sf, index)?;
+        suppressed_builtin += judgment.suppressed_builtin;
+        suppressed_kernel_method_only += judgment.suppressed_kernel_method_only;
+        for v in judgment.rows {
             let id = head.identity(&v.file, &v.name)?;
             hints.insert(
                 id.clone(),
@@ -2447,6 +2451,15 @@ fn unimported_bare_provider_standing_refusals(
             carried.push(id);
         }
     }
+    // THE DECLARED COVERAGE FRONTIER (`gunbc.rung_drop`
+    // `unimported_bare_provider_gate_admits_kernel_method_names_untyped`): counted on every run over
+    // the files this run judged, so growth in the kernel-method-only population is visible.
+    eprintln!(
+        "[floor-phase] phase=unimported-bare-provider-frontier judged_files={} \
+         suppressed_builtin={suppressed_builtin} \
+         suppressed_kernel_method_only={suppressed_kernel_method_only}",
+        checked.len()
+    );
     let strings = |xs: Vec<String>| list_value_from_vec(xs.iter().map(str_value).collect());
     let verdict = head.refusals(
         "unimported_bare_provider_roster_standing",
