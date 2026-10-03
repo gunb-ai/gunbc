@@ -703,14 +703,12 @@ fn whole_population_escalation_receipt(escalation: WholePopulationEscalation) ->
 // THE IDENTITY PRODUCERS THIS MODULE BINDS TO RATHER THAN MINTS (DESIGN section 3 -- cite the
 // symbol, and section 2 -- a fresh authority for an existing concept is a failed decomposition).
 // `FloorWitnessRow.input_digest` is the closure subject digest already produced by
-// `v1_compiler.resolved_graph_cache subject_digest_for_closure`, reached per entry by
+// `v1_compiler.closure_identity subject_digest_for_closure`, reached per entry by
 // `v1_compiler.cli_run closure_subject_for_entry`; the per-row work key that joins a digest to a
-// witness function is `v1_compiler.resolved_graph_cache witness_work_subject_key`. Its declared
-// cache carrier is `extdeps.realization.resolved_graph`, whose subject digest content-addresses
+// witness function is `v1_compiler.closure_identity witness_work_subject_key`. The subject digest content-addresses
 // the closure content AND the resolve transform -- which is what makes conjunct 5 an identity
 // rather than an assumption. This module coins no digest of its own, and a future producer that
 // needs one is a defect in that producer, not a row here.
-data floor_row_digest_producer: String = "v1_compiler.resolved_graph_cache subject_digest_for_closure"
+data floor_row_digest_producer: String = "v1_compiler.closure_identity subject_digest_for_closure"
 data floor_row_entry_producer: String = "v1_compiler.cli_run closure_subject_for_entry"
-data floor_row_work_key_producer: String = "v1_compiler.resolved_graph_cache witness_work_subject_key"
-data floor_row_digest_cache_carrier: String = "extdeps.realization.resolved_graph"
+data floor_row_work_key_producer: String = "v1_compiler.closure_identity witness_work_subject_key"
