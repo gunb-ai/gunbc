@@ -1,0 +1,231 @@
+module gunbc.roadmap_dogfood_route
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import gunbc.roadmap_workflow_stage {
+  WorkflowSegment, WorkflowSegmentKind, WorkflowSegmentState,
+  EnvironmentWorkflowSegment, WorkspaceWorkflowSegment, AgentWorkflowSegment, SubmissionWorkflowSegment,
+  VerificationWorkflowSegment, PublicationWorkflowSegment, ReviewWorkflowSegment, GoalAuditWorkflowSegment,
+  WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete, WorkflowSegmentFailed,
+  WorkflowSegmentRefused, WorkflowSegmentStopped,
+}
+import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, srv2_deploy_dashboard_instance }
+import gunbc.roadmap_belt_actuate {
+  BeltWorkflowAttempts, WorkflowAttemptsObserved, WorkflowAttemptsRefused,
+  belt_workflow_attempts_observe_for_instance,
+}
+
+// THE DOGFOOD ROUTE, AS ONE ACCEPTANCE CASE (operator ruling 2026-10-03). A request enters the
+// factory and leaves as an independently reviewed, published candidate, and every stage between is
+// established from the durable records the real route wrote for ONE attempt -- never from the route
+// being described. The first attempt whose receipt is DogfoodRouteComplete is the dogfood start
+// receipt; attempts operated by hand before the route existed do not qualify, because their
+// records cannot establish the stages that had no producer.
+//
+// The stage order is the route's order. Each stage is read from the evidence that already owns it
+// (gunbc.roadmap_workflow_progress segments) or is OWED by the change that will produce it -- a
+// typed gap naming its producer, never a pass by default.
+type DogfoodStage
+  = DogfoodRequest
+  | DogfoodImmutableSubject
+  | DogfoodSharedComputation
+  | DogfoodPlacementGrant
+  | DogfoodIsolatedExecution
+  | DogfoodDurableResult
+  | DogfoodMetering
+  | DogfoodCleanup
+  | DogfoodResultReturned
+  | DogfoodCandidatePublished
+  | DogfoodIndependentReview
+
+data dogfood_route_stages: List<DogfoodStage> = [
+  DogfoodRequest,
+  DogfoodImmutableSubject,
+  DogfoodSharedComputation,
+  DogfoodPlacementGrant,
+  DogfoodIsolatedExecution,
+  DogfoodDurableResult,
+  DogfoodMetering,
+  DogfoodCleanup,
+  DogfoodResultReturned,
+  DogfoodCandidatePublished,
+  DogfoodIndependentReview,
+]
+
+fn dogfood_stage_wire(stage: DogfoodStage) -> String {
+  match stage {
+    DogfoodRequest => "request"
+    DogfoodImmutableSubject => "immutable-subject"
+    DogfoodSharedComputation => "shared-computation"
+    DogfoodPlacementGrant => "placement-grant"
+    DogfoodIsolatedExecution => "isolated-execution"
+    DogfoodDurableResult => "durable-result"
+    DogfoodMetering => "metering"
+    DogfoodCleanup => "cleanup"
+    DogfoodResultReturned => "result-returned"
+    DogfoodCandidatePublished => "candidate-published"
+    DogfoodIndependentReview => "independent-review"
+  }
+}
+
+// THREE READINGS, AND ONLY ONE OF THEM COUNTS. Established carries the evidence that established
+// the stage; Owed is a stage the attempt has not reached or that no producer yet writes, naming
+// what owes it; Refused is a stage whose record exists and says the stage did not hold.
+type DogfoodStageReading
+  = StageEstablished { stage: DogfoodStage, evidence: String }
+  | StageOwed { stage: DogfoodStage, owed_by: String }
+  | StageRefused { stage: DogfoodStage, reason: String }
+
+// COMPLETENESS IS AN IDENTITY JOIN, NOT A COUNT (DESIGN §5). A reading set with a stage missing or
+// read twice is malformed and says which, rather than being judged on whichever reading came
+// first; only a well-formed set is judged, and it is Complete only when every stage is Established.
+type DogfoodRouteReceipt
+  = DogfoodRouteComplete { attempt_key: String, readings: List<DogfoodStageReading> }
+  | DogfoodRouteIncomplete { attempt_key: String, owed: List<DogfoodStage>, refused: List<DogfoodStage>, readings: List<DogfoodStageReading> }
+  | DogfoodRouteReadingsMalformed { attempt_key: String, missing: List<DogfoodStage>, duplicated: List<DogfoodStage> }
+
+fn dogfood_reading_stage(r: DogfoodStageReading) -> DogfoodStage {
+  match r {
+    StageEstablished { stage, evidence: _ } => stage
+    StageOwed { stage, owed_by: _ } => stage
+    StageRefused { stage, reason: _ } => stage
+  }
+}
+
+fn dogfood_readings_of(readings: List<DogfoodStageReading>, stage: DogfoodStage) -> Int {
+  fold(readings, init: 0, f: (n, r) =>
+    if dogfood_stage_wire(stage: dogfood_reading_stage(r: r)) == dogfood_stage_wire(stage: stage) { n + 1 } else { n })
+}
+
+fn dogfood_route_receipt(attempt_key: String, readings: List<DogfoodStageReading>) -> DogfoodRouteReceipt {
+  let missing = filter(dogfood_route_stages, s => dogfood_readings_of(readings: readings, stage: s) == 0)
+  let duplicated = filter(dogfood_route_stages, s => dogfood_readings_of(readings: readings, stage: s) > 1)
+  if length(missing) > 0 || length(duplicated) > 0 || length(readings) != length(dogfood_route_stages) {
+    DogfoodRouteReadingsMalformed { attempt_key: attempt_key, missing: missing, duplicated: duplicated }
+  } else {
+    let owed = fold(readings, init: [], f: (acc, r) => match r {
+      StageOwed { stage, owed_by: _ } => concat(acc, [stage])
+      StageEstablished { stage: _, evidence: _ } => acc
+      StageRefused { stage: _, reason: _ } => acc
+    })
+    let refused = fold(readings, init: [], f: (acc, r) => match r {
+      StageRefused { stage, reason: _ } => concat(acc, [stage])
+      StageEstablished { stage: _, evidence: _ } => acc
+      StageOwed { stage: _, owed_by: _ } => acc
+    })
+    if length(owed) == 0 && length(refused) == 0 {
+      DogfoodRouteComplete { attempt_key: attempt_key, readings: readings }
+    } else {
+      DogfoodRouteIncomplete { attempt_key: attempt_key, owed: owed, refused: refused, readings: readings }
+    }
+  }
+}
+
+// ── READING THE STAGES THE ROUTE ALREADY RECORDS ────────────────────────────────────────────────
+//
+// A stage with a producer today is read off the attempt's own workflow segment, the same projection
+// the dashboard and the continuation decision read, so this adds no second reader of the records.
+// Complete establishes; Pending or Active is owed by the attempt itself (not reached yet); Failed,
+// Refused or Stopped is the record saying the stage did not hold.
+fn dogfood_segment_of(progress: WorkflowAttemptProgress, kind: WorkflowSegmentKind) -> WorkflowSegment? {
+  fold(progress.segments, init: none, f: (acc, s) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => if dogfood_segment_kind_eq(a: s.kind, b: kind) { Present { value: s } } else { none }
+  })
+}
+
+fn dogfood_segment_kind_ordinal(k: WorkflowSegmentKind) -> Int {
+  match k {
+    EnvironmentWorkflowSegment => 0
+    WorkspaceWorkflowSegment => 1
+    AgentWorkflowSegment => 2
+    SubmissionWorkflowSegment => 3
+    VerificationWorkflowSegment => 4
+    PublicationWorkflowSegment => 5
+    ReviewWorkflowSegment => 6
+    GoalAuditWorkflowSegment => 7
+  }
+}
+
+fn dogfood_segment_kind_eq(a: WorkflowSegmentKind, b: WorkflowSegmentKind) -> Bool {
+  dogfood_segment_kind_ordinal(k: a) == dogfood_segment_kind_ordinal(k: b)
+}
+
+fn dogfood_reading_from_segment(stage: DogfoodStage, segment: WorkflowSegment?) -> DogfoodStageReading {
+  match segment {
+    Absent => StageRefused { stage: stage, reason: "the attempt's workflow projection carries no segment for this stage" }
+    Present { value: s } =>
+      match s.state {
+        WorkflowSegmentComplete => StageEstablished { stage: stage, evidence: s.detail }
+        WorkflowSegmentPending => StageOwed { stage: stage, owed_by: join(["the attempt has not reached this stage: ", s.detail], "") }
+        WorkflowSegmentActive => StageOwed { stage: stage, owed_by: join(["the attempt is in this stage: ", s.detail], "") }
+        WorkflowSegmentFailed => StageRefused { stage: stage, reason: s.detail }
+        WorkflowSegmentRefused => StageRefused { stage: stage, reason: s.detail }
+        WorkflowSegmentStopped => StageRefused { stage: stage, reason: s.detail }
+      }
+  }
+}
+
+// THE STAGES NO PRODUCER WRITES YET, each owed by the change that will write it (the dogfood
+// vertical's G1..G5, dispatched 2026-10-03). When a producer lands, its arm here becomes a read of
+// its record and the owed text is deleted -- the receipt never establishes a stage on a promise.
+data dogfood_owed_shared_computation: String = "G1: belt verify runs through the materialization provider (compute request family), citing the derived request key and the verified head's exact tree"
+
+data dogfood_owed_placement_grant: String = "G5: the agent session acquires a capacity lease before spawn"
+
+data dogfood_owed_isolated_execution: String = "G5: the agent session runs in a systemd unit capped from its grant"
+
+data dogfood_owed_metering: String = "G3: a per-attempt metering record totals tokens, seat seconds and compute"
+
+data dogfood_owed_cleanup: String = "G5: release evidence for the session lease and every seat the attempt held"
+
+data dogfood_owed_result_returned: String = "G4: a typed result event on the issue returns the outcome to the requester"
+
+fn dogfood_route_readings(progress: WorkflowAttemptProgress) -> List<DogfoodStageReading> {
+  let verification = dogfood_segment_of(progress: progress, kind: VerificationWorkflowSegment)
+  [
+    dogfood_reading_from_segment(stage: DogfoodRequest, segment: dogfood_segment_of(progress: progress, kind: EnvironmentWorkflowSegment)),
+    dogfood_reading_from_segment(stage: DogfoodImmutableSubject, segment: verification),
+    StageOwed { stage: DogfoodSharedComputation, owed_by: dogfood_owed_shared_computation },
+    StageOwed { stage: DogfoodPlacementGrant, owed_by: dogfood_owed_placement_grant },
+    StageOwed { stage: DogfoodIsolatedExecution, owed_by: dogfood_owed_isolated_execution },
+    dogfood_reading_from_segment(stage: DogfoodDurableResult, segment: verification),
+    StageOwed { stage: DogfoodMetering, owed_by: dogfood_owed_metering },
+    StageOwed { stage: DogfoodCleanup, owed_by: dogfood_owed_cleanup },
+    StageOwed { stage: DogfoodResultReturned, owed_by: dogfood_owed_result_returned },
+    dogfood_reading_from_segment(stage: DogfoodCandidatePublished, segment: dogfood_segment_of(progress: progress, kind: PublicationWorkflowSegment)),
+    dogfood_reading_from_segment(stage: DogfoodIndependentReview, segment: dogfood_segment_of(progress: progress, kind: ReviewWorkflowSegment)),
+  ]
+}
+
+fn dogfood_route_receipt_for_progress(progress: WorkflowAttemptProgress) -> DogfoodRouteReceipt {
+  dogfood_route_receipt(attempt_key: progress.attempt_key, readings: dogfood_route_readings(progress: progress))
+}
+
+fn dogfood_route_is_complete(receipt: DogfoodRouteReceipt) -> Bool {
+  match receipt {
+    DogfoodRouteComplete { attempt_key: _, readings: _ } => true
+    DogfoodRouteIncomplete { attempt_key: _, owed: _, refused: _, readings: _ } => false
+    DogfoodRouteReadingsMalformed { attempt_key: _, missing: _, duplicated: _ } => false
+  }
+}
+
+// ── THE ACCEPTANCE CASE, ON THE REAL ROUTE ──────────────────────────────────────────────────────
+//
+// The roadmap row's execution contract. It reads every attempt the srv2 deployment instance has
+// published and holds when at least one folds to DogfoodRouteComplete. It is a plain function
+// rather than a floor witness on purpose: its subject is a deployment's durable attempt records,
+// which a CI runner does not have, so on the floor it could only ever be red for the wrong reason.
+// The belt runs it on srv2 against the instance it describes. An observation the route cannot read
+// is not a pass.
+fn dogfood_route_acceptance_holds_on(instance: HostDashboardInstance) -> Bool {
+  match belt_workflow_attempts_observe_for_instance(instance: instance) {
+    WorkflowAttemptsRefused { reason: _ } => false
+    WorkflowAttemptsObserved { attempts } =>
+      length(filter(attempts, p => dogfood_route_is_complete(receipt: dogfood_route_receipt_for_progress(progress: p)))) > 0
+  }
+}
+
+fn dogfood_route_acceptance_holds() -> Bool {
+  dogfood_route_acceptance_holds_on(instance: srv2_deploy_dashboard_instance())
+}
