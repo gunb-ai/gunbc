@@ -9,6 +9,9 @@ module v2.std.compilers.lowered_shape
 // one of these arms as a constant the producer writes, and a reader matches the term
 // (v2.compiler.body_lowering_fold body_term_of) instead of classifying the node. The arms name the
 // producer family that built the value, so a refusal can say whose output it was.
+// It sits in its own module, below v2.std.node, because the seal on the Lowered wrapper's edge
+// carries it (v2.std.node BodyTermLoweredSeal): the seal holds the closed shape itself, so no
+// symbol round-trip, roster list or unknown-shape arm exists to drift from this declaration.
 type LoweredShape
   = LoweredOperatorExpression
   | LoweredFunctionValue
@@ -28,7 +31,3 @@ type LoweredShape
   | LoweredServiceDeclaration
   | LoweredResourceDeclaration
   | LoweredOperand
-
-// IT SITS BELOW v2.std.node because the seal on the Lowered wrapper's edge carries it
-// (v2.std.node BodyTermLoweredSeal): the seal holds the closed shape itself, so no symbol
-// round-trip, roster list or unknown-shape arm exists to drift from this declaration.
