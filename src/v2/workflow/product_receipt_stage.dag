@@ -104,7 +104,9 @@ import v2.workflow.product_receipt {
 import tools.emitted_crate_harness_manifest {
   derive_harness_manifest_in_place,
   HarnessManifestDerived,
-  EmittedManifestUnreadable,
+  EmittedManifestNotUsable,
+  EmittedManifestAbsent,
+  EmittedManifestUnobservable,
   HarnessManifestWriteFailed,
   ProbeLibTarget,
   SeedLinked
@@ -289,6 +291,7 @@ fn stage_cause_belongs_to_read(cause: BoundaryRefusalCause) -> Bool {
     EmittedHardRefusalsPresent { count: _ } => false
     AssemblyRefused => false
     EmittedCargoManifestUnreadable => false
+    EmittedCargoManifestUnobservable { cause: _ } => false
     CargoManifestWriteFailed => false
     CargoBuildFailed => false
   }
@@ -511,8 +514,12 @@ fn product_receipt_cargo_tail(
     target: ProbeLibTarget,
     linkage: SeedLinked { root: root }
   ) {
-    EmittedManifestUnreadable { path: _ } =>
+    EmittedManifestNotUsable { path: _ } =>
       product_receipt_manifest_refused(b5: b5, assembled_identity: assembled_identity, cause: EmittedCargoManifestUnreadable)
+    EmittedManifestAbsent { path: _, established: _ } =>
+      product_receipt_manifest_refused(b5: b5, assembled_identity: assembled_identity, cause: EmittedCargoManifestUnreadable)
+    EmittedManifestUnobservable { path: _, cause: cause } =>
+      product_receipt_manifest_refused(b5: b5, assembled_identity: assembled_identity, cause: EmittedCargoManifestUnobservable { cause: cause })
     HarnessManifestWriteFailed { path: _ } =>
       product_receipt_manifest_refused(b5: b5, assembled_identity: assembled_identity, cause: CargoManifestWriteFailed)
     HarnessManifestDerived { content: cargo_manifest_text } => {
