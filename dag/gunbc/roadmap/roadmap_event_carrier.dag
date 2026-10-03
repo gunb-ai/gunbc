@@ -5,7 +5,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import std.algebra { trim }
 import std.content_hash { content_hash_of_value }
 import std.durable_compare_and_set { CasGeneration, CasReadableSlot, CasReadableAbsent, CasReadablePresent, CasSlotVersion, ExpectSlotAbsent, ExpectSlotGeneration, cas_expectation_admits }
-import gunbc.roadmap.roadmap_event_log { roadmap_event_chain }
+import gunbc.roadmap.roadmap_event_log { roadmap_event_chain, roadmap_event_admitted_after }
 import extdeps.shell
 import gunbc.roadmap.roadmap_event_log { roadmap_event_heads, roadmap_node_standing_key, roadmap_issue_state }
 import gunbc.output_policy { OutcomeIsData }
@@ -244,7 +244,9 @@ fn roadmap_event_append_private(layout: RoadmapEventCarrierLayout, event: Roadma
         } else { match roadmap_events_read_synced(layout: layout, node: event.node) {
           EventsReadRefused { node: _, step, reason } => EventAppendRefused { id: env.id, step: step, reason: reason }
           EventsRead { node: _, envelopes } => if any(envelopes, existing => existing.id == env.id) { EventAlreadyPresent { id: env.id } }
-            else if !roadmap_event_parent_admitted(event: event, envelopes: envelopes) {
+            else if !roadmap_event_admitted_after(envs: envelopes, event: event) {
+              EventAppendRefused { id: env.id, step: "result-duplicate", reason: "this attempt already has its one final result on the issue's history; a second result is not admitted" }
+            } else if !roadmap_event_parent_admitted(event: event, envelopes: envelopes) {
               EventAppendRefused { id: env.id, step: "revision-conflict", reason: "expected issue revision does not match the committed issue head" }
             } else { roadmap_event_publish_private(layout: layout, env: env, operation: operation, receipt_path: receipt_path, expected_commit: trim(revision)) }
         } }
