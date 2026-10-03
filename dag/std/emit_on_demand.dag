@@ -228,7 +228,7 @@ data interpreter_base_surviving_roles: List<InterpreterSurvivingRole> = [
   },
   InterpreterSurvivingRole {
     id: "terminal-bootstrap-kernel",
-    purpose: "claim_executor host physics (pinned HAND roster — recorded_fixture, resolved_graph_cache)",
+    purpose: "claim_executor host physics (pinned HAND roster — recorded_fixture, closure_identity)",
     dissolution: unbound_dissolution(description: "v1_quarantine — seed crates frozen as bootstrap artifact only")
   }
 ]

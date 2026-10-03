@@ -83,9 +83,18 @@ data host_budget_source_authority_disposition: Disposition = Terminal {
 // the reason and is NOT a source at all — it is the refusal, and no consumer may turn it into a
 // number.
 
+// THE LEGACY-HIERARCHY ARM IS AN ENFORCED LIMIT, read through its own authority
+// (extdeps.linux.cgroup_v1_memory cgroup_v1_hierarchical_memory_limit). On a cgroup-v1 host the
+// unified hierarchy carries no memory controller, so no memory.high or memory.max exists at any depth
+// and this module previously answered HostBudgetUnreadable for a process that IS bounded. The v1
+// hierarchical_memory_limit is the kernel's minimum of memory.limit_in_bytes over the cgroup and every
+// ancestor -- the OOM line, so it bounds this process exactly as memory.max does. The v1 soft limit is
+// deliberately not a source: it is reclaim priority under global pressure, not a throttle on this
+// process and not a cap.
 type HostBudgetSource
   = BudgetSourceCgroupMemoryHigh { cgroup_dir: NonEmptyStr }
   | BudgetSourceCgroupMemoryMax { cgroup_dir: NonEmptyStr }
+  | BudgetSourceCgroupV1HierarchicalMemoryLimit { cgroup_dir: NonEmptyStr }
   | BudgetSourceDarwinPhysicalMemory
 
 type HostBudgetObservation = HostBudgetObserved { source: HostBudgetSource, bytes: ByteSize }
@@ -151,6 +160,7 @@ fn host_budget_source_is_degraded(s: HostBudgetSource) -> Bool {
   match s {
     BudgetSourceCgroupMemoryHigh { cgroup_dir: _ } => false
     BudgetSourceCgroupMemoryMax { cgroup_dir: _ } => false
+    BudgetSourceCgroupV1HierarchicalMemoryLimit { cgroup_dir: _ } => false
     BudgetSourceDarwinPhysicalMemory => true
   }
 }
@@ -161,6 +171,7 @@ fn host_budget_source_bounds_this_process(s: HostBudgetSource) -> Bool {
   match s {
     BudgetSourceCgroupMemoryHigh { cgroup_dir: _ } => false
     BudgetSourceCgroupMemoryMax { cgroup_dir: _ } => true
+    BudgetSourceCgroupV1HierarchicalMemoryLimit { cgroup_dir: _ } => true
     BudgetSourceDarwinPhysicalMemory => false
   }
 }
@@ -215,6 +226,7 @@ fn host_budget_source_reads_procfs(s: HostBudgetSource) -> Bool {
   match s {
     BudgetSourceCgroupMemoryHigh { cgroup_dir: _ } => true
     BudgetSourceCgroupMemoryMax { cgroup_dir: _ } => true
+    BudgetSourceCgroupV1HierarchicalMemoryLimit { cgroup_dir: _ } => true
     BudgetSourceDarwinPhysicalMemory => false
   }
 }
@@ -225,6 +237,8 @@ fn host_budget_source_label(s: HostBudgetSource) -> NonEmptyStr {
       concat("cgroup memory.high (", concat(d as String, ")")) as NonEmptyStr
     BudgetSourceCgroupMemoryMax { cgroup_dir: d } =>
       concat("cgroup memory.max (", concat(d as String, ")")) as NonEmptyStr
+    BudgetSourceCgroupV1HierarchicalMemoryLimit { cgroup_dir: d } =>
+      concat("cgroup v1 memory.stat hierarchical_memory_limit (", concat(d as String, ")")) as NonEmptyStr
     BudgetSourceDarwinPhysicalMemory => "sysctl hw.memsize"
   }
 }
@@ -318,6 +332,15 @@ fn kernel_budget_sourcing_static_source(g: KernelBudgetSourcing) -> HostBudgetSo
 // nobody had measured, and it is that use, not the constant, that is deleted. A declared constant
 // may bound a refusal; it may not stand in for a reading.
 
+// THE CGROUP-v1 ARM JOINS THIS SAME DECLARED MIRROR rather than opening a second one. The seed's
+// memory_governor CgroupV1HierarchicalMemoryLimit arm, CgroupV1MemoryLimitValue,
+// cgroup_v1_hierarchical_limit_from_stat and cgroup_v1_unlimited_bytes hand-realize
+// BudgetSourceCgroupV1HierarchicalMemoryLimit here and extdeps.linux.cgroup_v1_memory's parse, under
+// the bootstrap constraint stated in the note below: the budget bounds the resolve, so it is read
+// before any .dag value exists. The mirror keeps the model's three states (limited / unlimited /
+// unparseable) so a failed read never becomes an absent limit, and it dissolves at the same trigger
+// as the v2 arms. Until that trigger the .dag parse is consumed by its witness only; its production
+// consumer is the stage0 emission this disposition binds, not a hand-call from the seed.
 data host_budget_source_seed_mirror_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
