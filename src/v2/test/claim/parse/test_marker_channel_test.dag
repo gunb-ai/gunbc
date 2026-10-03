@@ -44,7 +44,7 @@ fn test_marker_marks_only(src: String, file: Symbol, name: Symbol) -> Bool {
 fn test_marker_refusal_reason(src: String, file: Symbol) -> String {
   match test_marker_capture_of(src: src, file: file) {
     Accepted { value: _, diagnostics: _ } => "ACCEPTED"
-    Rejected { diagnostics: d } => symbol_lexeme(sym: d.head.reason)
+    Rejected { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal(d: d).reason)
   }
 }
 
@@ -213,10 +213,12 @@ test fn plain_fn_is_not_captured_holds() -> Bool {
 }
 
 // STANDING RED: an identifier in marker position that is not `test` is refused, never recorded as a
-// marker and never skipped.
+// marker and never skipped. The marker is the grammar's exact word `test`
+// (v2.extdeps.languages.dag dag_grammar_test_fn_decl_expr), so the refusal is the parse's own, at the
+// category (DeclarationMarkerNotTest), not a reader's spelling check after it.
 test fn non_test_marker_is_refused_holds() -> Bool {
   test_marker_refusal_reason(src: non_test_marker_source, file: ^test_marker_non_test_subject)
-    == "test_marker_reason_marker_not_test"
+    == "parse_declaration_marker_not_test"
 }
 
 // THE 4c EQUALITY: the marker contributes nothing to lowering. The marked shell lowers to exactly
