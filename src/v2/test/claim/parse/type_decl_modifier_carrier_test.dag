@@ -114,7 +114,11 @@ test fn modifier_spelling_as_the_name_is_not_a_modifier_holds() -> Bool {
   tdm_observed(src: "module m\ntype sole_constructor = Int\n") == "none"
 }
 
-// THE PAIRING CLAIM: the real normalize route carries the row onto NormalizedTree, by name.
+// THE PAIRING CLAIM: the real normalize route carries the row onto NormalizedTree, by name. Its
+// fixture is BODYLESS (`type T nominal_opaque`, lowered through v2.std.type_binder type_opaque_wrapper)
+// because what it exercises is the capture's wiring into normalize, not body lowering: an alias
+// right-hand side put the claim over the floor's new-witness eval-step budget with nothing to show for
+// it, while the per-shape reads above cover alias, record and generic slots at the reader's interface.
 fn tdm_normalized_rows(src: String) -> FreeMonoid<DeclaredTypeModifiers> {
   match bind_outcome(o: tdm_parse(src: src), f: fn(tree) { normalize(parse_tree: tree) }) {
     Rejected { diagnostics: _ } => Empty
@@ -123,7 +127,7 @@ fn tdm_normalized_rows(src: String) -> FreeMonoid<DeclaredTypeModifiers> {
 }
 
 test fn normalize_carries_the_modifier_row_onto_the_tree_holds() -> Bool {
-  match tdm_normalized_rows(src: "module m\ntype T nominal_opaque = Int\n") {
+  match tdm_normalized_rows(src: "module m\ntype T nominal_opaque\n") {
     Cons { head: row, tail: rest } =>
       match rest {
         Empty => tdm_row_text(row: row) == "T nominal_opaque"
