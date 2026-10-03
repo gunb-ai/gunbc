@@ -4533,6 +4533,236 @@ pub(crate) fn typed_module_class_exclusive_bytes(
     })
 }
 
+/// PROBE (calm-pike-525, type_env PR-2 memory gate): one field of the type environment, or of its
+/// cache, by what REMOVING it from the whole graph would free. The class reader above drops a whole
+/// `TypeEnv`; this asks the question PR-2's re-scope decision turns on. Do the part-(b) and part-(c)
+/// unions that still live inside the environment hold enough exclusive bytes to reach the gate?
+///
+/// A field cannot be read by unwrapping one module's environment. `TypeEnv.parents` holds other
+/// modules' environments, and `interface.env` / `interface.cache` hold a second environment and cache.
+/// So the reading BLANKS the chosen fields in every environment and cache reachable from the graph
+/// (memoized by pointer, so a shared environment is rebuilt once), swaps the rebuilt ones in, and
+/// reads what dropping the originals frees. Every other field keeps its original `Rc`, so it stays held.
+/// Each blanked map is watched through a `Weak`. One still alive after the drop is held by something
+/// outside the graph, and is COUNTED as `retained` rather than assumed freed, so an undercount
+/// announces itself. An empty set is the control: it pays only for rebuilding the structs.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum EnvField {
+    AncestryStrBindings,
+    RecursiveTypes,
+    RecursiveTypeSet,
+    InductiveFields,
+    SourceVisibleNames,
+    CacheDepsMap,
+    CacheStrBindings,
+    CacheCycleSetStr,
+    CacheVariantLocals,
+}
+
+impl EnvField {
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            EnvField::AncestryStrBindings => "env.ancestry_str_bindings",
+            EnvField::RecursiveTypes => "env.recursive_types",
+            EnvField::RecursiveTypeSet => "env.recursive_type_set",
+            EnvField::InductiveFields => "env.inductive_fields",
+            EnvField::SourceVisibleNames => "env.source_visible_names",
+            EnvField::CacheDepsMap => "cache.deps_map",
+            EnvField::CacheStrBindings => "cache.str_bindings",
+            EnvField::CacheCycleSetStr => "cache.cycle_set_str",
+            EnvField::CacheVariantLocals => "cache.variant_locals",
+        }
+    }
+}
+
+pub(crate) struct FieldBytesReading {
+    pub modules: usize,
+    pub environments: usize,
+    pub caches: usize,
+    pub in_use_all: u64,
+    pub in_use_after: u64,
+    pub retained: usize,
+}
+
+pub(crate) fn type_env_field_exclusive_bytes(
+    graph: Rc<v1_compiler_compile::ResolvedGraph>,
+    fields: &[EnvField],
+) -> Result<FieldBytesReading, String> {
+    use crate::v1_compiler_infer_env::{TypeEnv, TypeEnvCache};
+    use crate::v1_compiler_infer_items::{ModuleInterface, TypedModule};
+    use std::collections::HashMap as StdMap;
+    use std::rc::Weak;
+
+    let graph = Rc::try_unwrap(graph)
+        .map_err(|g| format!("the graph has {} other owner(s)", Rc::strong_count(&g) - 1))?;
+    let modules = Rc::try_unwrap(graph.modules).map_err(|m| {
+        format!(
+            "the module list has {} other owner(s)",
+            Rc::strong_count(&m) - 1
+        )
+    })?;
+    let has = |f: EnvField| fields.contains(&f);
+
+    let in_use_all = floor_heap_in_use().ok_or("no allocator reading on this target")?;
+
+    let mut env_memo: StdMap<*const TypeEnv, Rc<TypeEnv>> = StdMap::new();
+    let mut cache_memo: StdMap<*const TypeEnvCache, Rc<TypeEnvCache>> = StdMap::new();
+    let mut watched: Vec<Weak<dyn std::any::Any>> = Vec::new();
+
+    fn watch<T: 'static>(w: &mut Vec<Weak<dyn std::any::Any>>, rc: &Rc<T>) {
+        let any: Rc<dyn std::any::Any> = rc.clone();
+        w.push(Rc::downgrade(&any));
+    }
+
+    // Iterative rebuild of an environment and its parents, deepest first, so an import chain of any
+    // depth needs no recursion.
+    fn rebuild_env(
+        root: &Rc<TypeEnv>,
+        has: &dyn Fn(EnvField) -> bool,
+        memo: &mut StdMap<*const TypeEnv, Rc<TypeEnv>>,
+        watched: &mut Vec<Weak<dyn std::any::Any>>,
+    ) -> Rc<TypeEnv> {
+        let mut stack: Vec<(Rc<TypeEnv>, bool)> = vec![(root.clone(), false)];
+        while let Some((env, expanded)) = stack.pop() {
+            let key = Rc::as_ptr(&env);
+            if memo.contains_key(&key) {
+                continue;
+            }
+            if !expanded {
+                stack.push((env.clone(), true));
+                for p in env.parents.iter() {
+                    if !memo.contains_key(&Rc::as_ptr(p)) {
+                        stack.push((p.clone(), false));
+                    }
+                }
+                continue;
+            }
+            let parents: Vec<Rc<TypeEnv>> = env
+                .parents
+                .iter()
+                .map(|p| {
+                    memo.get(&Rc::as_ptr(p))
+                        .cloned()
+                        .unwrap_or_else(|| p.clone())
+                })
+                .collect();
+            let mut next = (*env).clone();
+            next.parents = Rc::new(parents.into_iter().collect());
+            if has(EnvField::AncestryStrBindings) {
+                if !env.ancestry_str_bindings.is_empty() {
+                    watch(watched, &env.ancestry_str_bindings);
+                }
+                next.ancestry_str_bindings = crate::v1_rt::rc_empty_map();
+            }
+            if has(EnvField::RecursiveTypes) {
+                if !env.recursive_types.is_empty() {
+                    watch(watched, &env.recursive_types);
+                }
+                next.recursive_types = Rc::new(Default::default());
+            }
+            if has(EnvField::RecursiveTypeSet) {
+                if !env.recursive_type_set.is_empty() {
+                    watch(watched, &env.recursive_type_set);
+                }
+                next.recursive_type_set = crate::v1_rt::rc_empty_map();
+            }
+            if has(EnvField::InductiveFields) {
+                if !env.inductive_fields.is_empty() {
+                    watch(watched, &env.inductive_fields);
+                }
+                next.inductive_fields = crate::v1_rt::rc_empty_map();
+            }
+            if has(EnvField::SourceVisibleNames) {
+                if !env.source_visible_names.is_empty() {
+                    watch(watched, &env.source_visible_names);
+                }
+                next.source_visible_names = crate::v1_rt::rc_empty_map();
+            }
+            memo.insert(key, Rc::new(next));
+        }
+        memo.get(&Rc::as_ptr(root))
+            .cloned()
+            .expect("the root was rebuilt")
+    }
+
+    fn rebuild_cache(
+        cache: &Rc<TypeEnvCache>,
+        has: &dyn Fn(EnvField) -> bool,
+        memo: &mut StdMap<*const TypeEnvCache, Rc<TypeEnvCache>>,
+        watched: &mut Vec<Weak<dyn std::any::Any>>,
+    ) -> Rc<TypeEnvCache> {
+        if let Some(done) = memo.get(&Rc::as_ptr(cache)) {
+            return done.clone();
+        }
+        let mut next = (**cache).clone();
+        if has(EnvField::CacheDepsMap) {
+            if !cache.deps_map.is_empty() {
+                watch(watched, &cache.deps_map);
+            }
+            next.deps_map = crate::v1_rt::rc_empty_map();
+        }
+        if has(EnvField::CacheStrBindings) {
+            if !cache.str_bindings.is_empty() {
+                watch(watched, &cache.str_bindings);
+            }
+            next.str_bindings = crate::v1_rt::rc_empty_map();
+        }
+        if has(EnvField::CacheCycleSetStr) {
+            if !cache.cycle_set_str.is_empty() {
+                watch(watched, &cache.cycle_set_str);
+            }
+            next.cycle_set_str = crate::v1_rt::rc_empty_map();
+        }
+        if has(EnvField::CacheVariantLocals) {
+            if !cache.variant_locals.is_empty() {
+                watch(watched, &cache.variant_locals);
+            }
+            next.variant_locals = crate::v1_rt::rc_empty_map();
+        }
+        let rc = Rc::new(next);
+        memo.insert(Rc::as_ptr(cache), rc.clone());
+        rc
+    }
+
+    let mut rebuilt: Vec<Rc<TypedModule>> = Vec::with_capacity(modules.len());
+    for m in modules.iter() {
+        let type_env = rebuild_env(&m.type_env, &has, &mut env_memo, &mut watched);
+        let interface_env = rebuild_env(&m.interface.env, &has, &mut env_memo, &mut watched);
+        let type_env_cache = rebuild_cache(&m.type_env_cache, &has, &mut cache_memo, &mut watched);
+        let interface_cache =
+            rebuild_cache(&m.interface.cache, &has, &mut cache_memo, &mut watched);
+        rebuilt.push(Rc::new(TypedModule {
+            type_env,
+            type_env_cache,
+            interface: Rc::new(ModuleInterface {
+                summary: m.interface.summary.clone(),
+                env: interface_env,
+                cache: interface_cache,
+            }),
+            ..(**m).clone()
+        }));
+    }
+    let environments = env_memo.len();
+    let caches = cache_memo.len();
+    drop(env_memo);
+    drop(cache_memo);
+    let module_count = modules.len();
+    drop(modules);
+    let in_use_after = floor_heap_in_use().ok_or("no allocator reading on this target")?;
+    let retained = watched.iter().filter(|w| w.upgrade().is_some()).count();
+    drop(rebuilt);
+    drop(graph.item_registry);
+    drop(graph.diagnostics);
+    Ok(FieldBytesReading {
+        modules: module_count,
+        environments,
+        caches,
+        in_use_all,
+        in_use_after,
+        retained,
+    })
+}
+
 /// THE STRICT REFUSAL COUNTS ONLY WHAT BLOCKS, AND NAMES THE MODULE. One fixture carries exactly one
 /// blocking diagnostic and one advisory (a call through a function value, reported as a lower-bound
 /// effect summary with non-error severity). The refusal must head its list with

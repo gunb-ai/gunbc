@@ -47232,3 +47232,92 @@ mod collect_node_values_depth_tests {
         super::collect_node_values(&value, &ctx, &mut out);
     }
 }
+
+#[cfg(test)]
+mod pr2_type_env_field_bytes_probe {
+    //! PROBE (calm-pike-525): the field-grain leave-out that decides PR-2's re-scope against its memory
+    //! gate. Subject: the floor's nominal prepared subject, compiled as its strict prepare compiles it.
+    //! It is the subject `typed-graph-exclusive-bytes-floor-subject` reads, so the two readings compose.
+    //! One fresh resolve per set, because a blanked field cannot be restored. Run with --ignored.
+    use super::entry_resolve::EnvField as F;
+
+    fn floor_subject_graph() -> Rc<v1_compiler_compile::ResolvedGraph> {
+        let roots = vec!["dag".to_string(), "src/v2".to_string()];
+        let corpus = super::read_source_corpus_once(&roots);
+        let gate_entry_index = super::build_multi_entry_index(&roots);
+        let seeds = super::required_floor_runner::required_floor_nominal_subject_seeds_from_corpus(
+            &corpus,
+            &gate_entry_index,
+        )
+        .expect("nominal floor seeds");
+        let module_seeds =
+            super::required_floor_runner::required_floor_nominal_closure_module_seeds(
+                &seeds.required_gate_authored_modules,
+                &seeds.local_repo_wet_schedule_rows,
+            );
+        let subject = super::assemble_prepared_subject_from_corpus(
+            &corpus,
+            &super::required_floor_runner::floor_prepared_subject_exclusions(),
+            Some((
+                &gate_entry_index,
+                &seeds.required_gate_prefixes,
+                &module_seeds,
+            )),
+        )
+        .expect("floor subject assembles");
+        drop(gate_entry_index);
+        let result = v1_compiler_compile::compile_to_resolved(Rc::new(subject.sources.into()));
+        Rc::try_unwrap(result)
+            .ok()
+            .and_then(|r| r.graph)
+            .expect("the strict resolve produced a graph with one owner")
+    }
+
+    use super::*;
+
+    #[test]
+    #[ignore]
+    fn type_env_field_exclusive_bytes_at_the_floor_subject() {
+        let a = [F::AncestryStrBindings, F::CacheStrBindings];
+        let b_env = [F::RecursiveTypes, F::RecursiveTypeSet, F::InductiveFields];
+        let b_cache = [F::CacheDepsMap, F::CacheCycleSetStr, F::CacheVariantLocals];
+        let c = [F::SourceVisibleNames];
+        let join = |parts: &[&[F]]| {
+            parts
+                .iter()
+                .flat_map(|p| p.iter().copied())
+                .collect::<Vec<F>>()
+        };
+        let sets: Vec<(&str, Vec<F>)> = vec![
+            ("control", vec![]),
+            ("env.ancestry_str_bindings", vec![F::AncestryStrBindings]),
+            ("cache.str_bindings", vec![F::CacheStrBindings]),
+            ("env.recursive_types", vec![F::RecursiveTypes]),
+            ("env.recursive_type_set", vec![F::RecursiveTypeSet]),
+            ("env.inductive_fields", vec![F::InductiveFields]),
+            ("env.source_visible_names", vec![F::SourceVisibleNames]),
+            ("cache.deps_map", vec![F::CacheDepsMap]),
+            ("cache.cycle_set_str", vec![F::CacheCycleSetStr]),
+            ("cache.variant_locals", vec![F::CacheVariantLocals]),
+            ("JOINT a", join(&[&a])),
+            ("JOINT b+c env-only", join(&[&b_env, &c])),
+            ("JOINT b+c with cache", join(&[&b_env, &b_cache, &c])),
+            ("JOINT a+b+c", join(&[&a, &b_env, &b_cache, &c])),
+        ];
+        for (label, set) in &sets {
+            let graph = floor_subject_graph();
+            let r = super::entry_resolve::type_env_field_exclusive_bytes(graph, set)
+                .unwrap_or_else(|e| panic!("{label}: unattributable: {e}"));
+            eprintln!(
+                "[field-bytes] set={label:?} freed={} in_use_all={} in_use_after={} retained={} modules={} environments={} caches={}",
+                r.in_use_all as i128 - r.in_use_after as i128,
+                r.in_use_all,
+                r.in_use_after,
+                r.retained,
+                r.modules,
+                r.environments,
+                r.caches
+            );
+        }
+    }
+}
