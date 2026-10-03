@@ -124,6 +124,7 @@ type BoundaryRefusalCause
   | EmitterRejected { causes: List<DiagnosticCauseTally> }
   | EmittedHardRefusalsPresent { count: Int }
   | AssemblyRefused
+  | EmittedCargoManifestUnreadable
   | CargoManifestWriteFailed
   | CargoBuildFailed
 
@@ -228,6 +229,7 @@ fn boundary_refusal_cause_label(cause: BoundaryRefusalCause) -> String {
     EmittedHardRefusalsPresent { count: count } =>
       concat("emitted hard refusals present: ", to_string(count))
     AssemblyRefused => "seed-linked assembly refused"
+    EmittedCargoManifestUnreadable => "the candidate carries no emitted Cargo manifest to derive from"
     CargoManifestWriteFailed => "authority Cargo manifest write failed"
     CargoBuildFailed => "cargo did not complete with zero errors"
   }

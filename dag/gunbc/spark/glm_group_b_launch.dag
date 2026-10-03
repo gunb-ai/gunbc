@@ -125,7 +125,7 @@ fn glm_group_b_deployment_env() -> List<DockerEnvAssignment> {
 //
 // THE PROFILE IS THE RESTORATION INTENT'S DERIVATION, NOT AN AUTHORED ROW. The executable profile
 // is gunbc.spark.group_b_serving_capacity group_b_restoration_executable: the declared seat
-// population (262144 tokens x the experiment subject's seats) put through profile_for_intent, which
+// population (262144 tokens x the experiment subject's seats) put through profile_for_envelope (at the floor envelope), which
 // is the same value gunbc.spark.arm_memory_fit prices and the experiment plan plans on. The authored
 // sixteen-sequence row (gunbc.spark.serving_arm glm_native_concurrent_profile) is the configuration
 // whose units crash-looped from 2026-09-18, and a launch that rendered it beside a proof priced on
