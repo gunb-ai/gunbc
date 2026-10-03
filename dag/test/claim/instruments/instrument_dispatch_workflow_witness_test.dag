@@ -10,6 +10,7 @@ import gunbc.instrument_dispatch_workflow {
   expected_instrument_dispatch_yml, instrument_dispatch_label_options, instrument_dispatch_labels_are_rostered,
   InstrumentDispatchMemoryDemand, instrument_dispatch_memory_demands, instrument_dispatch_memory_demands_fit,
   instrument_dispatch_memory_demands_fit_selected_target, instrument_dispatch_memory_demands_are_dispatchable,
+  instrument_dispatch_whole_tree_memory_demand,
 }
 import gunbc.instrument_targets { dependency_demand_census_label, v2_native_census_label }
 import extdeps.bazel.label { render_label }
@@ -68,7 +69,7 @@ fn step_name(step: Step) -> String {
 // step list: the first step is the seed, and the checkout and the build come after it, so a run that dies
 // in the prelude still has a receipt for the always() upload to read.
 test fn the_receipt_is_seeded_before_the_fallible_prelude_holds() -> Bool {
-  let names = map(instrument_dispatch_steps(seed: "", script: ""), s => step_name(step: s))
+  let names = map(instrument_dispatch_steps(seed: "", guard: "", script: ""), s => step_name(step: s))
   let first = fold(names, init: "", f: fn(acc, n) { if acc == "" { n } else { acc } })
   (first == instrument_dispatch_seed_step_name)
     && any(names, n => n == "Checkout")
@@ -104,13 +105,13 @@ test fn a_memory_demand_above_the_target_budget_does_not_fit_holds() -> Bool {
 // and the guard runs before the checkout so an under-provisioned runner spends nothing.
 test fn the_memory_guard_is_label_bound_and_precedes_the_prelude_holds() -> Bool {
   let t = generated_text()
-  let names = map(instrument_dispatch_steps(seed: "", script: ""), s => step_name(step: s))
+  let names = map(instrument_dispatch_steps(seed: "", guard: "", script: ""), s => step_name(step: s))
   let guard = concat("Require the declared memory for ", render_label(l: v2_native_census_label()))
   let before_checkout = fold(names, init: "searching", f: fn(acc, n) {
     if acc != "searching" { acc } else { if n == guard { "guard-first" } else { if n == "Checkout" { "checkout-first" } else { acc } } }
   })
   contains(t, concat(concat("inputs.label == '", render_label(l: v2_native_census_label())), "'"))
-    && contains(t, "need=21474836480")
+    && contains(t, concat("REQUIRED_MEMORY_BYTES: ", to_string(byte_size_count(b: instrument_dispatch_whole_tree_memory_demand))))
     && contains(t, "InstrumentMemoryBudgetUnmet")
     && (before_checkout == "guard-first")
 }
