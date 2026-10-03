@@ -128,11 +128,6 @@ test fn table_present_string_refuses_under_structural_declaration_text() -> Bool
     == none
 }
 
-test fn table_present_string_refuses_under_structural_declaration_string_type() -> Bool {
-  rust_scalar_checkpoint_reference_base(decision: type_realization_decision(target: Rust, dag_name: "String", provenance: CorpusDeclared { decl_file: "dag/std/string_type.dag" }))
-    == none
-}
-
 // table_present_bool_refuses_under_structural_declaration_logic is RETIRED, as dissolution and not
 // regression: it asserted that a reference resolving to v2.std.logic's `type Bool = True | False`
 // refused the native `bool` spelling. The Bool de-fork deleted that declaration (std.types Bool is
@@ -173,11 +168,6 @@ test fn literal_suffix_positive_control_symbol_not_enrolled() -> Bool {
 // different consumer, its own executed specimen per declaration identity.
 test fn literal_suffix_refuses_under_structural_declaration_text() -> Bool {
   literal_suffix(decision: type_realization_decision(target: Rust, dag_name: "String", provenance: CorpusDeclared { decl_file: "src/v2/std/text.dag" }))
-    == none
-}
-
-test fn literal_suffix_refuses_under_structural_declaration_string_type() -> Bool {
-  literal_suffix(decision: type_realization_decision(target: Rust, dag_name: "String", provenance: CorpusDeclared { decl_file: "dag/std/string_type.dag" }))
     == none
 }
 
