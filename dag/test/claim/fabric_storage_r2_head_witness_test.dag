@@ -1,0 +1,118 @@
+module test.claim.fabric_storage_r2_head
+
+import std.types { String, NonEmptyStr, Int, Bool }
+import v2.std.optional { Present, Absent }
+import std.fabric_storage {
+  FabricObject, FabricObjectRef, fabric_object_ref_of, fabric_object_ref_eq,
+  FabricHeadAbsent, FabricHeadAt, ExpectHeadAbsent, ExpectHeadAt,
+  FabricHeadObserved, FabricHeadReadRefused,
+  FabricHeadAdvanced, FabricHeadMoved, FabricHeadAdvanceRefused,
+}
+import extdeps.object_storage { ObjectEntityTag, PutIfAbsent, PutIfMatch }
+import extdeps.external_authority { TranscribedUncited, CitedToAuthority }
+import gunbc.cloudflare.r2_staged_transfer {
+  R2FetchStaged, R2FetchObjectAbsent, R2FetchUnavailable,
+  R2ObjectStored, R2ObjectAlreadyPresent, R2ObjectTagMoved, R2PutOutcomeUnknown,
+}
+import gunbc.fabric_storage_r2_head {
+  r2_head_body, r2_head_body_reading,
+  R2HeadObservedAbsent, R2HeadObservedAt, R2HeadObservedRefused, r2_head_observed_of,
+  R2HeadAdvanceMoved, R2HeadAdvancePut, r2_head_advance_plan,
+  r2_head_advance_of, r2_head_cas_standing,
+}
+
+// Supplied values at the head realization's own interface: what R2 answered (the fetch, the body,
+// the put verdict) is constructed here. The live path is r2_head_advance against a durable bucket,
+// whose discriminating run is the concurrent If-Match probe r2_head_cas_standing names.
+
+fn obj(body: NonEmptyStr) -> FabricObjectRef { fabric_object_ref_of(object: FabricObject { links: [], body: body }) }
+fn tag(v: NonEmptyStr) -> ObjectEntityTag { ObjectEntityTag { value: v } }
+
+test fn the_head_body_round_trips_in_the_fabric_wire_words() -> Bool {
+  let at = FabricHeadAt { object: obj(body: "a"), generation: 3 }
+  let back = match r2_head_body_reading(text: concat(r2_head_body(reading: at) as String, "\n")) {
+    Present { value: FabricHeadAt { object: o, generation: g } } => fabric_object_ref_eq(a: o, b: obj(body: "a")) && g == 3
+    other => false
+  }
+  let foreign = match r2_head_body_reading(text: "something else at x 1") { Absent => true  Present { value: _ } => false }
+  back && foreign
+}
+
+test fn a_present_head_needs_its_tag_and_a_well_formed_body() -> Bool {
+  let body = r2_head_body(reading: FabricHeadAt { object: obj(body: "a"), generation: 1 }) as String
+  let at = match r2_head_observed_of(fetch: R2FetchStaged { staged_path: "/s/head", tag: Present { value: tag(v: "\"e1\"") } }, body: Present { value: body }) {
+    R2HeadObservedAt { reading: _, tag: t } => (t.value as String) == "\"e1\""
+    other => false
+  }
+  let untagged = match r2_head_observed_of(fetch: R2FetchStaged { staged_path: "/s/head", tag: none }, body: Present { value: body }) {
+    R2HeadObservedRefused { read: FabricHeadReadRefused { fault: _ } } => true
+    other => false
+  }
+  let garbled = match r2_head_observed_of(fetch: R2FetchStaged { staged_path: "/s/head", tag: Present { value: tag(v: "\"e1\"") } }, body: Present { value: "garbage" }) {
+    R2HeadObservedRefused { read: _ } => true
+    other => false
+  }
+  let absent = match r2_head_observed_of(fetch: R2FetchObjectAbsent, body: none) { R2HeadObservedAbsent => true  other => false }
+  let down = match r2_head_observed_of(fetch: R2FetchUnavailable { cause: "no route" }, body: none) { R2HeadObservedRefused { read: _ } => true  other => false }
+  at && untagged && garbled && absent && down
+}
+
+test fn the_plan_creates_if_absent_replaces_by_tag_and_writes_nothing_on_a_mismatch() -> Bool {
+  let a = obj(body: "a")
+  let b = obj(body: "b")
+  let observed_a = R2HeadObservedAt { reading: FabricHeadAt { object: a, generation: 4 }, tag: tag(v: "\"t4\"") }
+  let create = match r2_head_advance_plan(expected: ExpectHeadAbsent, observed: R2HeadObservedAbsent, to: a) {
+    R2HeadAdvancePut { successor: FabricHeadAt { object: _, generation: g }, precondition: PutIfAbsent } => g == 1
+    other => false
+  }
+  let replace = match r2_head_advance_plan(expected: ExpectHeadAt { object: a }, observed: observed_a, to: b) {
+    R2HeadAdvancePut { successor: FabricHeadAt { object: o, generation: g }, precondition: PutIfMatch { tag: t } } =>
+      fabric_object_ref_eq(a: o, b: b) && g == 5 && (t.value as String) == "\"t4\""
+    other => false
+  }
+  let stale = match r2_head_advance_plan(expected: ExpectHeadAt { object: b }, observed: observed_a, to: b) {
+    R2HeadAdvanceMoved { advance: FabricHeadMoved { expected: _, observed: FabricHeadAt { object: o, generation: _ } } } => fabric_object_ref_eq(a: o, b: a)
+    other => false
+  }
+  let expected_absent_but_present = match r2_head_advance_plan(expected: ExpectHeadAbsent, observed: observed_a, to: b) {
+    R2HeadAdvanceMoved { advance: FabricHeadMoved { expected: _, observed: _ } } => true
+    other => false
+  }
+  create && replace && stale && expected_absent_but_present
+}
+
+// A 412 IS THE LOST RACE, ANSWERED WITH THE FRESH READING; AN UNKNOWN OUTCOME IS NEITHER ADVANCED NOR
+// MOVED -- it refuses, because the put may have committed.
+test fn the_put_verdict_becomes_the_head_outcome() -> Bool {
+  let a = obj(body: "a")
+  let b = obj(body: "b")
+  let succ = FabricHeadAt { object: b, generation: 5 }
+  let fresh = FabricHeadObserved { reading: FabricHeadAt { object: obj(body: "c"), generation: 5 } }
+  let advanced = match r2_head_advance_of(expected: ExpectHeadAt { object: a }, successor: succ, verdict: R2ObjectStored { tag: none }, reread: fresh) {
+    FabricHeadAdvanced { object: o, generation: g } => fabric_object_ref_eq(a: o, b: b) && g == 5
+    other => false
+  }
+  let moved = match r2_head_advance_of(expected: ExpectHeadAt { object: a }, successor: succ, verdict: R2ObjectTagMoved, reread: fresh) {
+    FabricHeadMoved { expected: _, observed: FabricHeadAt { object: o, generation: _ } } => fabric_object_ref_eq(a: o, b: obj(body: "c"))
+    other => false
+  }
+  let created_lost = match r2_head_advance_of(expected: ExpectHeadAbsent, successor: succ, verdict: R2ObjectAlreadyPresent, reread: fresh) {
+    FabricHeadMoved { expected: _, observed: _ } => true
+    other => false
+  }
+  let unknown = match r2_head_advance_of(expected: ExpectHeadAt { object: a }, successor: succ, verdict: R2PutOutcomeUnknown { cause: "timeout" }, reread: fresh) {
+    FabricHeadAdvanceRefused { fault: _ } => true
+    other => false
+  }
+  advanced && moved && created_lost && unknown
+}
+
+// THE CAS IS A TYPED BET UNTIL THE CONCURRENT PROBE RUNS: the realization reads its standing from the
+// R2 extdeps row and that row is TranscribedUncited. When the probe is receipted and the row is cited,
+// this control is the one that must be revisited, by design.
+test fn the_r2_cas_is_not_yet_a_cited_linearization_point() -> Bool {
+  match r2_head_cas_standing() {
+    TranscribedUncited { read_obligation: _ } => true
+    CitedToAuthority { authority: _ } => false
+  }
+}

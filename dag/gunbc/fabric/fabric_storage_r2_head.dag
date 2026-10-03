@@ -1,0 +1,235 @@
+module gunbc.fabric_storage_r2_head
+
+import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
+import v2.std.optional { Present, Absent }
+import std.algebra { trim }
+import std.durable_compare_and_set {
+  CasGeneration, cas_generation_first, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted,
+  CasSlotObservationRefused, CasGenerationPublicationRefused, CasGenerationSpaceExhausted,
+  CasUnreadableMalformed, CasUnreadableReadRefused,
+}
+import std.fabric_storage {
+  FabricObjectRef, FabricHeadReading, FabricHeadAbsent, FabricHeadAt,
+  FabricHeadExpectation, ExpectHeadAbsent, ExpectHeadAt, fabric_head_admits,
+  FabricHeadRead, FabricHeadObserved, FabricHeadReadRefused,
+  FabricHeadAdvance, FabricHeadAdvanced, FabricHeadMoved, FabricHeadAdvanceRefused,
+  FabricStoreUnreachable, FabricStoreRefused,
+}
+import extdeps.object_storage { ObjectEntityTag, ObjectPutPrecondition, PutIfAbsent, PutIfMatch }
+import extdeps.tools.curl { ReportStatusAndEntityTag }
+import extdeps.external_authority { CitedFigureStanding }
+import extdeps.cloudflare.r2 { r2_conditional_put_linearizability }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.shell
+import gunbc.auth.access_token_source { AccessTokenSource }
+import gunbc.cloudflare.r2_staged_transfer {
+  R2TransferTarget, R2Put, R2PutVerdict, R2ObjectStored, R2ObjectAlreadyPresent, R2ObjectTagMoved, R2PutRefused, R2PutOutcomeUnknown,
+  R2Fetch, R2FetchStaged, R2FetchObjectAbsent, R2FetchUnavailable,
+  WriteCredentialCustody, WriteCredentialShredded,
+  r2_put_staged_file, r2_fetch_into_staging,
+}
+import gunbc.fabric_storage_wire { reading_words, decode_reading }
+
+// A std.fabric_storage HEAD WHOSE LINEARIZATION POINT IS AN R2 OBJECT (docs/plans/fabric-storage.md
+// step 4B). One head is one R2 object; its body is the head reading in the fabric wire's own words
+// (gunbc.fabric.fabric_storage_wire reading_words), so the R2 head and the served file store spell a
+// head one way. The compare-and-set is R2's conditional PutObject (extdeps.cloudflare.r2
+// r2_put_object_conditional_citation): a writer reads the head and its entity tag, compares the
+// object it built on (fabric_head_admits, the interface's own comparison), and puts the successor
+// generation with If-Match on that tag -- or with If-None-Match: * when it expects the head absent.
+// A 412 is the lost race, answered as FabricHeadMoved with a fresh reading, never as a fault.
+//
+// WHAT THIS IS NOT: an object store. A head names an object some realization holds; this module does
+// not verify that the object exists (std.fabric_storage's "never published over a hole"), so it is
+// the HEAD half of an R2 realization and the composed realization -- objects and heads behind one
+// binding -- owes that check by putting the object before advancing. Its consumer is that composition
+// and the workspace commit path (std.checkpointed_workspace), named as the frontier in the PR.
+//
+// THE CAS IS ONLY AS STRONG AS R2's CONDITIONAL PUT. Cloudflare documents If-Match and If-None-Match
+// on PutObject and strong read-after-write consistency; it does not document that two concurrent
+// If-Match puts on one tag cannot both succeed. That is a bet, typed as one: the discriminating
+// probe is two writers racing one tag against the live bucket, exactly one of which must see 412,
+// and until it has run this module's consumers may not cite it as a linearization point
+// (r2_conditional_put_linearizability in extdeps.cloudflare.r2).
+
+// THE STANDING THIS REALIZATION'S CAS RESTS ON, read by its consumers rather than restated: a
+// TranscribedUncited answer refuses to be cited as a linearization point (see the module head).
+fn r2_head_cas_standing() -> CitedFigureStanding {
+  r2_conditional_put_linearizability
+}
+
+data r2_head_body_prefix: String = "fabric_storage.r2_head"
+
+fn r2_head_body(reading: FabricHeadReading) -> NonEmptyStr {
+  join([r2_head_body_prefix, " ", join(reading_words(reading: reading), " ")], "") as NonEmptyStr
+}
+
+fn r2_head_body_reading(text: String) -> FabricHeadReading? {
+  let ws = split(s: trim(s: text), delimiter: " ")
+  match first(ws) {
+    Present { value: p } => if p == r2_head_body_prefix { decode_reading(ws: ws, i: 1) } else { none }
+    Absent => none
+  }
+}
+
+// What one read of the head object established: the reading, and the tag the next put must match.
+// An absent object is FabricHeadAbsent with no tag; the next put is create-only.
+type R2HeadObserved
+  = R2HeadObservedAbsent
+  | R2HeadObservedAt { reading: FabricHeadReading, tag: ObjectEntityTag }
+  | R2HeadObservedRefused { read: FabricHeadRead }
+
+fn r2_head_observed_reading(observed: R2HeadObserved) -> FabricHeadRead {
+  match observed {
+    R2HeadObservedAbsent => FabricHeadObserved { reading: FabricHeadAbsent }
+    R2HeadObservedAt { reading: r, tag: _ } => FabricHeadObserved { reading: r }
+    R2HeadObservedRefused { read: rr } => rr
+  }
+}
+
+// THE FETCHED BODY AND TAG, CLASSIFIED. Pure, so every arm is reachable from a fixture. A present head
+// object with no entity tag cannot be compared-and-set, and a body that is not a head reading is not
+// this protocol; both refuse, never default.
+fn r2_head_observed_of(fetch: R2Fetch, body: String?) -> R2HeadObserved {
+  match fetch {
+    R2FetchObjectAbsent => R2HeadObservedAbsent
+    R2FetchUnavailable { cause: c } => R2HeadObservedRefused { read: FabricHeadReadRefused { fault: FabricStoreUnreachable { detail: c } } }
+    R2FetchStaged { staged_path: _, tag: tag } =>
+      match body {
+        Absent => R2HeadObservedRefused { read: FabricHeadReadRefused { fault: FabricStoreRefused { cause: CasSlotObservationRefused { cause: CasUnreadableReadRefused { detail: "the staged head object could not be read" } } } } }
+        Present { value: text } =>
+          match r2_head_body_reading(text: text) {
+            Absent => R2HeadObservedRefused { read: FabricHeadReadRefused { fault: FabricStoreRefused { cause: CasSlotObservationRefused { cause: CasUnreadableMalformed { detail: "the head object's body is not a fabric head reading" } } } } }
+            Present { value: FabricHeadAbsent } => R2HeadObservedRefused { read: FabricHeadReadRefused { fault: FabricStoreRefused { cause: CasSlotObservationRefused { cause: CasUnreadableMalformed { detail: "a present head object reads as absent" } } } } }
+            Present { value: reading } =>
+              match tag {
+                Present { value: t } => R2HeadObservedAt { reading: reading, tag: t }
+                Absent => R2HeadObservedRefused { read: FabricHeadReadRefused { fault: FabricStoreRefused { cause: CasSlotObservationRefused { cause: CasUnreadableReadRefused { detail: "the store returned the head object without an entity tag, so it cannot be compared-and-set" } } } } }
+              }
+          }
+      }
+  }
+}
+
+// THE ADVANCE PLAN, PURE: from what was observed and what the writer expects, either the moved
+// outcome (nothing is written), or the successor reading to put under its precondition.
+type R2HeadAdvancePlan
+  = R2HeadAdvanceMoved { advance: FabricHeadAdvance }
+  | R2HeadAdvancePut { successor: FabricHeadReading, precondition: ObjectPutPrecondition }
+
+fn r2_head_advance_plan(expected: FabricHeadExpectation, observed: R2HeadObserved, to: FabricObjectRef) -> R2HeadAdvancePlan {
+  match observed {
+    R2HeadObservedRefused { read: FabricHeadReadRefused { fault: f } } => R2HeadAdvanceMoved { advance: FabricHeadAdvanceRefused { fault: f } }
+    R2HeadObservedRefused { read: FabricHeadObserved { reading: _ } } => R2HeadAdvanceMoved { advance: FabricHeadAdvanceRefused { fault: FabricStoreRefused { cause: CasGenerationPublicationRefused { detail: "an observation was classified refused while carrying a reading" } } } }
+    R2HeadObservedAbsent =>
+      if fabric_head_admits(expected: expected, observed: FabricHeadAbsent) {
+        R2HeadAdvancePut { successor: FabricHeadAt { object: to, generation: cas_generation_first() }, precondition: PutIfAbsent }
+      } else {
+        R2HeadAdvanceMoved { advance: FabricHeadMoved { expected: expected, observed: FabricHeadAbsent } }
+      }
+    R2HeadObservedAt { reading: r, tag: t } =>
+      if fabric_head_admits(expected: expected, observed: r) {
+        match r {
+          FabricHeadAbsent => R2HeadAdvanceMoved { advance: FabricHeadMoved { expected: expected, observed: r } }
+          FabricHeadAt { object: _, generation: g } =>
+            match cas_generation_successor(g: g) {
+              CasSuccessorExhausted { head: h } => R2HeadAdvanceMoved { advance: FabricHeadAdvanceRefused { fault: FabricStoreRefused { cause: CasGenerationSpaceExhausted { head: h } } } }
+              CasSuccessorGeneration { generation: n } => R2HeadAdvancePut { successor: FabricHeadAt { object: to, generation: n }, precondition: PutIfMatch { tag: t } }
+            }
+        }
+      } else {
+        R2HeadAdvanceMoved { advance: FabricHeadMoved { expected: expected, observed: r } }
+      }
+  }
+}
+
+// THE PUT'S VERDICT AS THE HEAD'S OUTCOME. Stored is advanced; a 412 under either precondition is the
+// lost race, whose observed side the caller supplies from a fresh read; refused is a store refusal.
+// OUTCOME UNKNOWN IS NOT ADVANCED AND NOT MOVED: the put may have committed, so it refuses with the
+// cause, and the caller's next read decides (a head reading its own successor is its own commit).
+fn r2_head_advance_of(expected: FabricHeadExpectation, successor: FabricHeadReading, verdict: R2PutVerdict, reread: FabricHeadRead) -> FabricHeadAdvance {
+  match verdict {
+    R2ObjectStored { tag: _ } =>
+      match successor {
+        FabricHeadAt { object: o, generation: g } => FabricHeadAdvanced { object: o, generation: g }
+        FabricHeadAbsent => FabricHeadAdvanceRefused { fault: FabricStoreRefused { cause: CasGenerationPublicationRefused { detail: "a head cannot be advanced to absent" } } }
+      }
+    R2ObjectAlreadyPresent => r2_head_lost_race(expected: expected, reread: reread)
+    R2ObjectTagMoved => r2_head_lost_race(expected: expected, reread: reread)
+    R2PutRefused { cause: c } => FabricHeadAdvanceRefused { fault: FabricStoreRefused { cause: CasGenerationPublicationRefused { detail: c } } }
+    R2PutOutcomeUnknown { cause: c } => FabricHeadAdvanceRefused { fault: FabricStoreUnreachable { detail: c } }
+  }
+}
+
+fn r2_head_lost_race(expected: FabricHeadExpectation, reread: FabricHeadRead) -> FabricHeadAdvance {
+  match reread {
+    FabricHeadObserved { reading: r } => FabricHeadMoved { expected: expected, observed: r }
+    FabricHeadReadRefused { fault: f } => FabricHeadAdvanceRefused { fault: f }
+  }
+}
+
+// ── EFFECTS ────────────────────────────────────────────────────────────────────────────────────
+//
+// The targets are resolved by the head's PLACEMENT owner (a durable bucket purpose, never the cache
+// bucket, whose lifecycle expires objects); this module chooses no bucket. Both must report the
+// entity tag (ReportStatusAndEntityTag); the write target's precondition is replaced per advance.
+
+fn r2_head_observe(read_target: R2TransferTarget, token_source: AccessTokenSource) -> R2HeadObserved {
+  let fetch = r2_fetch_into_staging(target: R2TransferTarget { locator: read_target.locator, access_key_id: read_target.access_key_id, token_value: read_target.token_value, precondition: read_target.precondition, report: ReportStatusAndEntityTag }, token_source: token_source)
+  match fetch {
+    R2FetchStaged { staged_path: p, tag: _ } => {
+      let read = Filesystem.Read(path: p as String)
+      r2_head_observed_of(fetch: fetch, body: if read.success { Present { value: read.content } } else { none })
+    }
+    R2FetchObjectAbsent => r2_head_observed_of(fetch: fetch, body: none)
+    R2FetchUnavailable { cause: _ } => r2_head_observed_of(fetch: fetch, body: none)
+  }
+}
+
+fn r2_head_read(read_target: R2TransferTarget, token_source: AccessTokenSource) -> FabricHeadRead {
+  r2_head_observed_reading(observed: r2_head_observe(read_target: read_target, token_source: token_source))
+}
+
+// THE ADVANCE AND THE WRITE CREDENTIAL'S CUSTODY, TWO FACTS (gunbc.cloudflare.r2_staged_transfer
+// WriteCredentialCustody): a head that advanced while its credential could not be shredded has
+// still advanced, and demoting that to a refusal would hide a committed head from its writer.
+type R2HeadAdvanceResult {
+  advance: FabricHeadAdvance
+  credential: WriteCredentialCustody
+}
+
+fn r2_head_unwritten(advance: FabricHeadAdvance) -> R2HeadAdvanceResult {
+  R2HeadAdvanceResult { advance: advance, credential: WriteCredentialShredded }
+}
+
+fn r2_head_advance(read_target: R2TransferTarget, write_target: R2TransferTarget, expected: FabricHeadExpectation, to: FabricObjectRef, token_source: AccessTokenSource) -> R2HeadAdvanceResult {
+  match r2_head_advance_plan(expected: expected, observed: r2_head_observe(read_target: read_target, token_source: token_source), to: to) {
+    R2HeadAdvanceMoved { advance: a } => r2_head_unwritten(advance: a)
+    R2HeadAdvancePut { successor: s, precondition: pre } => {
+      let staging = shell.Mktemp.Dir()
+      if staging.success == false {
+        r2_head_unwritten(advance: FabricHeadAdvanceRefused { fault: FabricStoreRefused { cause: CasGenerationPublicationRefused { detail: "no private directory could be minted to stage the head body; nothing was put" } } })
+      } else {
+        let path = join([staging.path as String, "/head"], "")
+        let w = Filesystem.Write(path: path, content: r2_head_body(reading: s) as String)
+        if w.success == false {
+          r2_head_unwritten(advance: FabricHeadAdvanceRefused { fault: FabricStoreRefused { cause: CasGenerationPublicationRefused { detail: concat("the head body could not be staged: ", w.error) as NonEmptyStr } } })
+        } else {
+          let put = r2_put_staged_file(
+            target: R2TransferTarget { locator: write_target.locator, access_key_id: write_target.access_key_id, token_value: write_target.token_value, precondition: pre, report: ReportStatusAndEntityTag },
+            local_path: path as FilePath,
+            token_source: token_source,
+          )
+          R2HeadAdvanceResult {
+            advance: r2_head_advance_of(expected: expected, successor: s, verdict: put.verdict, reread: match put.verdict {
+              R2ObjectAlreadyPresent => r2_head_read(read_target: read_target, token_source: token_source)
+              R2ObjectTagMoved => r2_head_read(read_target: read_target, token_source: token_source)
+              other => FabricHeadObserved { reading: s }
+            }),
+            credential: put.credential,
+          }
+        }
+      }
+    }
+  }
+}

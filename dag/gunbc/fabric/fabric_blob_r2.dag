@@ -1,5 +1,6 @@
 module gunbc.fabric.fabric_blob_r2
 
+import extdeps.tools.curl { ReportStatus }
 import std.types { String, NonEmptyStr, Bool, FilePath }
 import extdeps.cloudflare.r2 { R2S3Endpoint, R2ObjectLocator }
 import gunbc.auth.access_token_source { AccessTokenSource }
@@ -7,11 +8,11 @@ import gunbc.cloudflare.r2_origin {
   CloudflareAccountAllocated, CloudflareAccountUnallocated, fleet_cloudflare_account_standing,
   R2OriginAllocated, R2OriginUnallocated, R2OriginStanding,
   OriginCredentialStanding, OriginCredentialPinned, OriginCredentialUnminted, OriginCredentialMintEntryUnbuilt,
-  FabricCacheBlobs, bucket_purpose_origin_standing, bucket_purpose_admission, origin_admission_is_create_only,
+  FabricCacheBlobs, bucket_purpose_origin_standing, bucket_purpose_admission, origin_admission_put_precondition,
 }
 import gunbc.cloudflare.r2_staged_transfer {
   R2TransferTarget,
-  R2Put, R2ObjectStored, R2ObjectAlreadyPresent, R2PutRefused, R2PutOutcomeUnknown,
+  R2Put, R2ObjectStored, R2ObjectAlreadyPresent, R2ObjectTagMoved, R2PutRefused, R2PutOutcomeUnknown,
   WriteCredentialCustody, WriteCredentialShredded,
   r2_put_staged_file,
   R2FetchStaged, R2FetchObjectAbsent, R2FetchUnavailable,
@@ -77,7 +78,8 @@ fn resolve_cache_blob_target_under(direction: CacheBlobDirection, key: NonEmptyS
                   },
                   access_key_id: access_key_id,
                   token_value: token_value,
-                  create_only: origin_admission_is_create_only(admission: bucket_purpose_admission(purpose: bucket.purpose)),
+                  precondition: origin_admission_put_precondition(admission: bucket_purpose_admission(purpose: bucket.purpose)),
+                  report: ReportStatus,
                 }
               }
           }
@@ -98,8 +100,9 @@ type CacheBlobPut {
 fn cache_blob_put_of(address: FabricBlobAddress, put: R2Put) -> CacheBlobPut {
   CacheBlobPut {
     verdict: match put.verdict {
-      R2ObjectStored => FabricBlobStored { address: address }
+      R2ObjectStored { tag: _ } => FabricBlobStored { address: address }
       R2ObjectAlreadyPresent => FabricBlobOccupied { address: address }
+      R2ObjectTagMoved => FabricBlobPutRefused { address: address, fault: FabricBlobStoreRefused { cause: "the store answered that an If-Match precondition failed; a blob put is create-only and never sends one" } }
       R2PutRefused { cause: cause } => FabricBlobPutRefused { address: address, fault: FabricBlobStoreRefused { cause: cause } }
       R2PutOutcomeUnknown { cause: cause } => FabricBlobPutOutcomeUnknown { address: address, cause: cause }
     },
@@ -131,7 +134,7 @@ fn get_cache_blob(address: FabricBlobAddress, token_source: AccessTokenSource) -
       match r2_fetch_into_staging(target: target, token_source: token_source) {
         R2FetchObjectAbsent => FabricBlobAbsent { address: address }
         R2FetchUnavailable { cause: cause } => FabricBlobGetUnavailable { address: address, fault: FabricBlobStoreUnreachable { cause: cause } }
-        R2FetchStaged { staged_path: p } =>
+        R2FetchStaged { staged_path: p, tag: _ } =>
           match read_staged_fabric_blob(path: p) {
             FabricBlobReadRefused { fault: fault } => FabricBlobGetUnavailable { address: address, fault: fault }
             FabricBlobRead { reading: reading } => FabricBlobFetched { address: address, reading: reading }
