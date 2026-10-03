@@ -127,6 +127,7 @@ test fn w_a_managed_host_with_no_unit_hold_is_refused_and_has_no_store() -> Bool
 // RED: A HELD HOST WITH NO DECLARED REASON VARIABLE. The real row under a name
 // gunbc.host_maintenance_hold_reason has no variable for is admitted to the hold and refused for
 // maintenance, naming the host; no variable name is derived from the label.
+// Three rows naming one store host yield that host once (unit_hold_store_hosts_of).
 test fn w_a_held_host_with_no_reason_variable_is_refused_for_maintenance() -> Bool {
   managed_hosts() |> all(h => {
     let unnamed = managed_host_fixture(host: "fixture-no-reason-host", access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold)
@@ -140,7 +141,10 @@ test fn w_a_held_host_with_no_reason_variable_is_refused_for_maintenance() -> Bo
       MaintenanceHoldAdmitted { hold: _ } => false
       MaintenanceHoldHostRefused { admission: _ } => false
     }
+    let shared = unit_hold_store_hosts_of(hosts: [unnamed, h, unnamed])
     held && maintenance
+      && count(shared) == 1
+      && shared |> all(x => (x as String) == (operator_host_srv1 as String))
   }) && count(managed_hosts()) == 1
 }
 
