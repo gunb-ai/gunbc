@@ -27,6 +27,7 @@ import v2.compiler.inferred_tree {
   ObligatedInferredTree,
   NodeGrounding
 }
+import v2.std.algebra_structure_signature { algebra_inhabitance_declares_field }
 import v2.extdeps.languages.dag {
   dag_algebra_inhabitance_decls,
   DagCanonicalBoolLiteral,
@@ -1828,14 +1829,14 @@ fn infer_loop_iteration(
   }
 }
 
-// First behavior-specific Transform derivation (v2-inferred-tree-completeness): binary infix Int
-// add derives the unified Int type as the expression result — the add_probe body vertical. Operator
-// recognition accepts dag_token_plus pre-resolve and the canonical add operation wire post-resolve
-// (03_resolve.resolve_transform_operator_child). Every reached Transform awaits the transform row
-// so application-argument inhabitance runs; add-shape result derivation is selected inside
-// infer_gather_transform_row_on_entries, and non-add Transforms stay GroundingNotDerived as the
-// application's result type after the inhabitance judgment. dissolve-on: general operator/operand
-// typing table subsumes the add-only result rule.
+// Binary algebra-operator derivation (v2-inferred-tree-completeness): a binary infix Transform whose
+// operator is an algebra primitive derives its result through the operand type's structure, by the one
+// route below (infer_binary_algebra_field, infer_algebra_field_result_type) -- `+` and `||` alike, with no
+// per-operator or per-type arm. Operator recognition accepts dag_token_plus pre-resolve and the canonical
+// operation wire post-resolve (03_resolve.resolve_transform_operator_child). Every reached Transform awaits
+// the transform row so application-argument inhabitance runs; this derivation is selected inside
+// infer_gather_transform_row_on_entries, and a Transform that is not a binary algebra primitive stays
+// GroundingNotDerived as the application's result type after the inhabitance judgment.
 
 // A BINARY ALGEBRA OPERATOR NAMES ONE FIELD OF A STRUCTURE, and the field is the whole of what it says: the
 // lowered operator is a canonical-operation wire (v2.std.compilers.target_model canonical_operation_from_wire_node)
@@ -1865,18 +1866,21 @@ fn infer_canonical_operation_field(operation: CanonicalOperation) -> Optional<Sy
 }
 
 // THE OPERAND TYPE CARRIES THE FIELD WHEN ITS LANGUAGE MODEL SAYS SO: the type's row in
-// v2.extdeps.languages.dag dag_algebra_inhabitance_decls inhabits a structure whose signature declares the
-// field. The binary field's codomain is the inhabitant itself (v2.std.algebra_structure_signature
-// algebra_binary_fn_node: domain T, T, codomain T), so the result is the operand type. This replaces the
-// Int-only arm that hard-coded `+` over ^dag_binding_type_int: Int add now derives through Int's ordered-ring
-// row, and Bool join through Bool's boolean-algebra row, by one route; a type with no row carrying the field
-// (Bool `+`, Int `||`) is refused as an operand mismatch exactly as a non-Int `+` was.
+// v2.extdeps.languages.dag dag_algebra_inhabitance_decls inhabits a structure that DECLARES the field, read
+// through v2.std.algebra_structure_signature algebra_inhabitance_declares_field (the structure's binders and
+// the sub-structures it composes -- never a name found inside an operation's signature). The result is the
+// operand type because every binary algebra primitive these structures carry is closed on the carrier: a
+// lattice join is algebra_binary_fn_node(domain: T, T, codomain: T), and ring add is the operation of the
+// abelian group the ring composes. This replaces the Int-only arm that hard-coded `+` over
+// ^dag_binding_type_int: Int add derives through Int's ordered-ring row and Bool join through Bool's
+// boolean-algebra row, by one route; a type with no row declaring the field (Bool `+`, Int `||`) is refused as
+// an operand mismatch exactly as a non-Int `+` was.
 fn infer_algebra_field_result_type(operand_type: Node, field: Symbol) -> Optional<Node> {
   fold(dag_algebra_inhabitance_decls(), init: optional_absent(), f: fn(acc, decl) {
     match acc {
       Present { value: _ } => acc
       Absent =>
-        if infer_branch_type_atoms_equal(a: decl.inhabitant, b: operand_type) && infer_signature_declares_field(algebra: decl.algebra, field: field) {
+        if infer_branch_type_atoms_equal(a: decl.inhabitant, b: operand_type) && algebra_inhabitance_declares_field(inhabitance: decl.algebra, field: field) {
           optional_present(value: operand_type)
         } else {
           optional_absent()
@@ -1885,16 +1889,6 @@ fn infer_algebra_field_result_type(operand_type: Node, field: Symbol) -> Optiona
   })
 }
 
-fn infer_signature_declares_field(algebra: Node, field: Symbol) -> Bool {
-  fold(node_subtree_nodes(root: algebra), init: false, f: fn(acc, n) {
-    acc || fold(n.children, init: false, f: fn(inner, e) {
-      inner || match e.label {
-        Authored { name: name } => name == field
-        _ => false
-      }
-    })
-  })
-}
 
 fn infer_transform_is_binary_infix_algebra_shape(node: Node) -> Bool {
   let positional_targets = node_positional_child_targets(node: node)
