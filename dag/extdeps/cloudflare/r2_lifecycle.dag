@@ -1,7 +1,8 @@
 module extdeps.cloudflare.r2_lifecycle
 import std.resources { Network }
 
-import std.types { NonEmptyStr, String, List, Secret, Int, Bool, Json }
+import std.types { NonEmptyStr, List, Secret, Int, Bool, Json }
+import std.string_type { String }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { skip }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
