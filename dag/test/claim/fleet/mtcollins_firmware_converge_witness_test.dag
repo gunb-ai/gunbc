@@ -62,6 +62,8 @@ import gunbc.fleet.mtcollins_firmware_converge {
   ImageDigestMismatch, HpmUpgradeRefused, BmcNotAnsweringAfterFlash, AcPowerCycleTooShort, ReadbackMismatch,
   HostNotPoweredOffWhenFlashed, SelSnapshotStale, SelSnapshotMissingFromExecutedStep,
   StepStartedBeforePredecessorCompleted, DuplicateInstalledReading, CpuInventoryIncomplete,
+  StepStartedBeforePredecessorClosed, AcCycleWitnessPrecedesFlash, ReadbackPrecedesAcCycle,
+  CpuSocketOutOfRange, CpuSocketReadTwice,
   converge_firmware, dry_realize,
   RollbackImageReading, RollbackImageRetained, RollbackImageUnavailable,
   FirmwareSelSnapshotDue, CpuSiliconSupportUnstated, NoRollbackImageRetained, RollbackImageNotTheInstalledVersion,
@@ -84,22 +86,34 @@ fn reading(t: FirmwareTarget, version: FirmwareSemanticVersion) -> InstalledVers
 }
 
 // ── The attempt's timeline (supplied) ───────────────────────────────────────────────────────────
-// The attempt opens, the SEL is read, the host is seen off, then the four steps run in order. Every
-// time is before mtcollins1's recorded post-rotation probes (1789258777000 on), so a standing derived
-// from them is evidence AFTER these flashes.
+// The attempt opens, the SEL is read, the host is seen off, then the four steps run in order. The BMC
+// flash is before mtcollins1's recorded post-rotation probes (1789258777000 to 1789270962000), so a
+// standing derived from them is evidence AFTER that flash; its AC cycle and readback follow the probes,
+// and the three later steps start only after the BMC step has closed.
 data opened_at: EpochMs = 1789000000000
 data sel_read_at: EpochMs = 1789000100000
 
 fn flash_start(t: FirmwareTarget) -> EpochMs {
   match t {
     BmcController => 1789000200000
-    HostBios => 1789000400000
-    ScpFirmware => 1789000600000
-    MainboardCpld => 1789000800000
+    HostBios => 1789400000000
+    ScpFirmware => 1789400200000
+    MainboardCpld => 1789400400000
   }
 }
 
 fn flash_end(t: FirmwareTarget) -> EpochMs { flash_start(t: t) + 100000 }
+
+fn ac_done(t: FirmwareTarget) -> EpochMs {
+  match t {
+    BmcController => 1789310000000
+    HostBios => flash_end(t: t) + 20000
+    ScpFirmware => flash_end(t: t) + 20000
+    MainboardCpld => flash_end(t: t) + 20000
+  }
+}
+
+fn read_back_at(t: FirmwareTarget) -> EpochMs { ac_done(t: t) + 20000 }
 
 // The pre-update versions are mtcollins1's as observed on 2026-10-02 before the manual run (session
 // eager-gull-22): hpm check APP 0.32, console BIOS 0ACOC017 (projected 0.17.0, which ORDERS ABOVE the
@@ -213,9 +227,11 @@ fn digest_of(r: FirmwareReleaseRow) -> Digest {
   }
 }
 
-fn good_ac_cycle() -> AcPowerCycleWitness? {
-  Present { value: AcPowerCycleWitness { ac_off: second(count: 15), witnessed_by: "operator" } }
+fn ac_cycle_at(at: EpochMs) -> AcPowerCycleWitness? {
+  Present { value: AcPowerCycleWitness { ac_off: second(count: 15), completed_at: at, witnessed_by: "operator" } }
 }
+
+fn good_ac_cycle(t: FirmwareTarget) -> AcPowerCycleWitness? { ac_cycle_at(at: ac_done(t: t)) }
 
 // ── Re-established credentials, MINTED BY THE REAL PRODUCER ────────────────────────────────────────
 // The standing is sealed, so the only way to hand the fold one is derive_bmc_secure. The inputs are
@@ -304,13 +320,17 @@ fn pre_flash(t: FirmwareTarget, off: Bool, sel: PreFlashSel) -> PreFlashReceipt 
 
 fn bmc_sel() -> PreFlashSel { SelCaptured { capture: sel_read_capture(at: sel_read_at) } }
 
-fn readback_for(t: FirmwareTarget, version: FirmwareSemanticVersion) -> VersionReadback? {
+fn readback_at(t: FirmwareTarget, version: FirmwareSemanticVersion, at: EpochMs) -> VersionReadback? {
   match t {
-    ScpFirmware => Present { value: scp_readback_of(o: SmproWordRead { raw: smpro_raw(), word: version.minor * 256 + version.major }) }
-    BmcController => Present { value: hpm_check_readback(reading: EnsureObserved { evidence: version }) }
-    HostBios => Present { value: hpm_check_readback(reading: EnsureObserved { evidence: version }) }
-    MainboardCpld => Present { value: hpm_check_readback(reading: EnsureObserved { evidence: version }) }
+    ScpFirmware => Present { value: scp_readback_of(o: SmproWordRead { raw: smpro_raw(), word: version.minor * 256 + version.major }, observed_at: at) }
+    BmcController => Present { value: hpm_check_readback(reading: EnsureObserved { evidence: version }, observed_at: at) }
+    HostBios => Present { value: hpm_check_readback(reading: EnsureObserved { evidence: version }, observed_at: at) }
+    MainboardCpld => Present { value: hpm_check_readback(reading: EnsureObserved { evidence: version }, observed_at: at) }
   }
+}
+
+fn readback_for(t: FirmwareTarget, version: FirmwareSemanticVersion) -> VersionReadback? {
+  readback_at(t: t, version: version, at: read_back_at(t: t))
 }
 
 type RecordShape {
@@ -343,7 +363,7 @@ fn bmc_shape() -> RecordShape {
     completed_at: flash_end(t: BmcController),
     digest: digest_of(r: mt_collins_bmc_0_45_3_hpm),
     credential: good_credential(),
-    ac: good_ac_cycle(),
+    ac: good_ac_cycle(t: BmcController),
     readback: v(major: 0, minor: 45, patch: 3),
   }
 }
@@ -361,7 +381,7 @@ fn step_good(t: FirmwareTarget, r: FirmwareReleaseRow) -> FlashStepRecord {
     completed_at: flash_end(t: t),
     digest: digest_of(r: r),
     credential: Absent,
-    ac: good_ac_cycle(),
+    ac: good_ac_cycle(t: t),
     readback: r.version,
   })
 }
@@ -536,7 +556,7 @@ fn bmc_variant(digest: Digest, ac: AcPowerCycleWitness?, readback: FirmwareSeman
 }
 
 test fn wrong_digest_refuses() -> Bool {
-  match refusal_of(verdict: run(w: shape(power_off: true), records: [bmc_variant(digest: wrong_digest, ac: good_ac_cycle(), readback: v(major: 0, minor: 45, patch: 3))])) {
+  match refusal_of(verdict: run(w: shape(power_off: true), records: [bmc_variant(digest: wrong_digest, ac: good_ac_cycle(t: BmcController), readback: v(major: 0, minor: 45, patch: 3))])) {
     Present { value: c } => match c { ImageDigestMismatch { target: _, expected: _, sent: _ } => true  _ => false }
     Absent => false
   }
@@ -554,7 +574,7 @@ test fn out_of_order_step_refuses() -> Bool {
 }
 
 test fn readback_mismatch_refuses() -> Bool {
-  match refusal_of(verdict: run(w: shape(power_off: true), records: [bmc_variant(digest: digest_of(r: mt_collins_bmc_0_45_3_hpm), ac: good_ac_cycle(), readback: v(major: 0, minor: 32, patch: 0))])) {
+  match refusal_of(verdict: run(w: shape(power_off: true), records: [bmc_variant(digest: digest_of(r: mt_collins_bmc_0_45_3_hpm), ac: good_ac_cycle(t: BmcController), readback: v(major: 0, minor: 32, patch: 0))])) {
     Present { value: c } => match c { ReadbackMismatch { target: _, reason: _ } => true  _ => false }
     Absent => false
   }
@@ -586,7 +606,7 @@ test fn bmc_silent_after_flash_refuses() -> Bool {
 }
 
 test fn short_ac_cycle_refuses() -> Bool {
-  match refusal_of(verdict: run(w: shape(power_off: true), records: [bmc_variant(digest: digest_of(r: mt_collins_bmc_0_45_3_hpm), ac: Present { value: AcPowerCycleWitness { ac_off: second(count: 3), witnessed_by: "operator" } }, readback: v(major: 0, minor: 45, patch: 3))])) {
+  match refusal_of(verdict: run(w: shape(power_off: true), records: [bmc_variant(digest: digest_of(r: mt_collins_bmc_0_45_3_hpm), ac: Present { value: AcPowerCycleWitness { ac_off: second(count: 3), completed_at: ac_done(t: BmcController), witnessed_by: "operator" } }, readback: v(major: 0, minor: 45, patch: 3))])) {
     Present { value: c } => match c { AcPowerCycleTooShort { target: _, observed: s, minimum: m } => second_count(s: s) == 3 && second_count(s: m) == 10  _ => false }
     Absent => false
   }
@@ -624,7 +644,7 @@ test fn executed_bmc_step_without_a_sel_snapshot_refuses() -> Bool {
 test fn step_started_before_its_predecessor_completed_refuses() -> Bool {
   let early = record(t: HostBios, r: RecordShape {
     pre: PreFlashReceipt { host_power: HostPoweredOff, power_observed_at: opened_at + 1, sel: SelNotRequired },
-    completed_at: flash_end(t: HostBios), digest: digest_of(r: mt_collins_bios_0acod014_hpm), credential: Absent, ac: good_ac_cycle(), readback: v(major: 0, minor: 14, patch: 0),
+    completed_at: flash_end(t: HostBios), digest: digest_of(r: mt_collins_bios_0acod014_hpm), credential: Absent, ac: good_ac_cycle(t: HostBios), readback: v(major: 0, minor: 14, patch: 0),
   })
   let bios_early = FlashStepRecord {
     target: HostBios, pre_flash: early.pre_flash, flash_started_at: flash_start(t: BmcController) + 1, flash_completed_at: early.flash_completed_at,
@@ -651,6 +671,59 @@ test fn bmc_flash_opens_the_factory_credential_window() -> Bool {
 test fn step_inside_the_factory_credential_window_refuses() -> Bool {
   match refusal_of(verdict: run(w: shape(power_off: true), records: [bmc_with_credential(c: Absent), step_good(t: HostBios, r: mt_collins_bios_0acod014_hpm)])) {
     Present { value: c } => match c { StepDuringFactoryCredentialWindow { attempted: a, window_opened_by: _ } => (a == HostBios)  _ => false }
+    Absent => false
+  }
+}
+
+// A copy of `r` whose flash ran from `started` to `started + 100000`, with its AC cycle and readback after.
+fn restarted(r: FlashStepRecord, started: EpochMs) -> FlashStepRecord {
+  FlashStepRecord {
+    target: r.target,
+    pre_flash: PreFlashReceipt { host_power: r.pre_flash.host_power, power_observed_at: started - 10000, sel: r.pre_flash.sel },
+    flash_started_at: started, flash_completed_at: started + 100000,
+    sent_image_digest: r.sent_image_digest, upgrade: r.upgrade, bmc_after: r.bmc_after, credential_after: r.credential_after,
+    ac_cycle: ac_cycle_at(at: started + 120000), readback: readback_at(t: r.target, version: mt_collins_bios_0acod014_hpm.version, at: started + 140000),
+  }
+}
+
+// RED (review on 76e6f8c): the window cannot be backfilled. BIOS starts after the BMC flash completed
+// but BEFORE the re-establishment probes, and the re-establishment succeeds later. The BMC record is
+// fully grounded, and the BIOS flash still ran while only the factory credential worked.
+test fn step_before_a_later_successful_restoration_refuses_as_the_window() -> Bool {
+  let bios = restarted(r: step_good(t: HostBios, r: mt_collins_bios_0acod014_hpm), started: flash_end(t: BmcController) + 50000)
+  match refusal_of(verdict: run(w: shape(power_off: true), records: [bmc_good(), bios])) {
+    Present { value: c } => match c { StepDuringFactoryCredentialWindow { attempted: a, window_opened_by: o } => (a == HostBios) && (o == BmcController)  _ => false }
+    Absent => false
+  }
+}
+
+// RED: after the credential is back but before the BMC step's AC cycle and readback, the step is still open.
+test fn step_before_the_predecessor_ac_cycle_and_readback_refuses() -> Bool {
+  let bios = restarted(r: step_good(t: HostBios, r: mt_collins_bios_0acod014_hpm), started: ac_done(t: BmcController) - 5000000)
+  match refusal_of(verdict: run(w: shape(power_off: true), records: [bmc_good(), bios])) {
+    Present { value: c } => match c { StepStartedBeforePredecessorClosed { target: t, predecessor: p, predecessor_closed_at: at } => (t == HostBios) && (p == BmcController) && at == read_back_at(t: BmcController)  _ => false }
+    Absent => false
+  }
+}
+
+// CONTROL for the two REDs above: the same rebuilt BIOS record, started after the BMC step closed, grounds.
+test fn step_after_the_predecessor_closed_advances() -> Bool {
+  let bios = restarted(r: step_good(t: HostBios, r: mt_collins_bios_0acod014_hpm), started: read_back_at(t: BmcController) + 50000)
+  is_due(verdict: run(w: shape(power_off: true), records: [bmc_good(), bios]), t: ScpFirmware)
+}
+
+// RED: an AC cycle witnessed before the flash completed is not the cycle after it.
+test fn ac_cycle_witnessed_before_the_flash_completed_refuses() -> Bool {
+  match refusal_of(verdict: run(w: shape(power_off: true), records: [bmc_variant(digest: digest_of(r: mt_collins_bmc_0_45_3_hpm), ac: ac_cycle_at(at: flash_end(t: BmcController) - 1), readback: v(major: 0, minor: 45, patch: 3))])) {
+    Present { value: c } => match c { AcCycleWitnessPrecedesFlash { target: t, flash_completed_at: _, completed_at: _ } => (t == BmcController)  _ => false }
+    Absent => false
+  }
+}
+
+// RED: a readback taken before the AC cycle read the image the cycle had not yet activated.
+test fn readback_before_the_ac_cycle_refuses() -> Bool {
+  match refusal_of(verdict: run(w: shape(power_off: true), records: [bmc_variant(digest: digest_of(r: mt_collins_bmc_0_45_3_hpm), ac: ac_cycle_at(at: read_back_at(t: BmcController) + 1), readback: v(major: 0, minor: 45, patch: 3))])) {
+    Present { value: c } => match c { ReadbackPrecedesAcCycle { target: t, ac_completed_at: _, observed_at: at } => (t == BmcController) && at == read_back_at(t: BmcController)  _ => false }
     Absent => false
   }
 }
@@ -907,6 +980,53 @@ test fn empty_cpu_inventory_refuses_preflight() -> Bool {
   }
 }
 
+// RED (review on 76e6f8c): the pre-flight does not drop out once records exist. Four grounded records
+// over an empty CPU inventory, or over no retained image, refuse exactly as the fresh host does.
+test fn whole_set_recorded_over_an_empty_cpu_inventory_refuses() -> Bool {
+  match refusal_of(verdict: run(w: shape_pre(cpus: [], rollbacks: all_rollbacks_kept(), installed: installed_before), records: whole_set())) {
+    Present { value: c } => match c { CpuInventoryIncomplete { observed: o, expected: e } => o == 0 && e == 2  _ => false }
+    Absent => false
+  }
+}
+
+test fn whole_set_recorded_with_no_rollback_images_refuses() -> Bool {
+  match refusal_of(verdict: run(w: shape_pre(cpus: production_cpus(), rollbacks: [], installed: installed_before), records: whole_set())) {
+    Present { value: c } => match c { NoRollbackImageRetained { target: t, reason: _ } => (t == BmcController)  _ => false }
+    Absent => false
+  }
+}
+
+fn socket_0_cpu() -> MtCollins1SocketCpu {
+  MtCollins1SocketCpu { socket: 0, issue: ProductionPart, provenance: "supplied", report: mtcollins1_cpu_report_2026_09_23 }
+}
+
+fn socket_2_cpu() -> MtCollins1SocketCpu {
+  MtCollins1SocketCpu { socket: 2, issue: ProductionPart, provenance: "supplied", report: mtcollins1_cpu_report_2026_09_23 }
+}
+
+// RED (review on 76e6f8c): completeness is one row per socket. Two supported rows both naming socket 0
+// have the right count and say nothing about socket 1.
+test fn two_cpu_rows_naming_socket_0_refuse() -> Bool {
+  match refusal_of(verdict: run(w: shape_pre(cpus: [socket_0_cpu(), socket_0_cpu()], rollbacks: all_rollbacks_kept(), installed: installed_before), records: [])) {
+    Present { value: c } => match c { CpuSocketReadTwice { socket: s } => s == 0  _ => false }
+    Absent => false
+  }
+}
+
+test fn cpu_row_for_a_socket_the_board_lacks_refuses() -> Bool {
+  match refusal_of(verdict: run(w: shape_pre(cpus: [socket_0_cpu(), socket_2_cpu()], rollbacks: all_rollbacks_kept(), installed: installed_before), records: [])) {
+    Present { value: c } => match c { CpuSocketOutOfRange { socket: s, socket_count: n } => s == 2 && n == 2  _ => false }
+    Absent => false
+  }
+}
+
+test fn cpu_inventory_missing_socket_1_refuses() -> Bool {
+  match refusal_of(verdict: run(w: shape_pre(cpus: [socket_0_cpu()], rollbacks: all_rollbacks_kept(), installed: installed_before), records: [])) {
+    Present { value: c } => match c { CpuInventoryIncomplete { observed: o, expected: e } => o == 1 && e == 2  _ => false }
+    Absent => false
+  }
+}
+
 // RED (fact 7, whole set): no 0ACOC017 image was kept, so the BMC step -- the FIRST one -- is not due.
 test fn no_bios_rollback_means_the_bmc_step_is_not_due() -> Bool {
   let rollbacks = [
@@ -959,13 +1079,13 @@ fn decode_uncited(rb: VersionReadback) -> Bool {
 }
 
 test fn scp_readback_decodes_the_smpro_words_as_an_uncited_bet() -> Bool {
-  let before = scp_readback_of(o: SmproWordRead { raw: smpro_raw(), word: 2049 })
-  let after = scp_readback_of(o: SmproWordRead { raw: smpro_raw(), word: 2562 })
+  let before = scp_readback_of(o: SmproWordRead { raw: smpro_raw(), word: 2049 }, observed_at: opened_at)
+  let after = scp_readback_of(o: SmproWordRead { raw: smpro_raw(), word: 2562 }, observed_at: read_back_at(t: ScpFirmware))
   observed_is(rb: before, major: 1, minor: 8) && observed_is(rb: after, major: 2, minor: 10) && decode_uncited(rb: after)
 }
 
 test fn scp_readback_unsent_is_not_a_version() -> Bool {
-  match scp_readback_of(o: SmproNotSent { socket: 0, register: "SCP_VERSION", reason: "control read failed" }).reading {
+  match scp_readback_of(o: SmproNotSent { socket: 0, register: "SCP_VERSION", reason: "control read failed" }, observed_at: read_back_at(t: ScpFirmware)).reading {
     EnsureObserved { evidence: _ } => false
     _ => true
   }
