@@ -358,6 +358,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("native-materialization-store-closure"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/native_materialization_store_closure.dag",
+            },
+        ),
+        (
             instrument_label("evaluation-store-address-exact-head"),
             TargetProducer::EvaluationStoreAddressExactHead,
         ),
