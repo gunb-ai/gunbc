@@ -120,15 +120,13 @@ fn ampere_checkpoint_last_word(c: AmpereCheckpointCycle) -> AmpereCheckpointWord
 // reference's last cycle; where it occurs, the reference's next word and the count of words it
 // printed after it are what a reader may cite ("the reference continued for N more checkpoints").
 // The FIRST occurrence is used: a word the reference printed more than once is reported with its
-// occurrences, so the choice is visible rather than silent. A reference that could not be read is
-// its own arm, never a reference that printed nothing; the caller that read it constructs it.
+// occurrences, so the choice is visible rather than silent.
 type AmpereCheckpointReferenceComparison
   = CheckpointReferenceContinues { last: AmpereCheckpointWord, next: AmpereCheckpointWord, remaining: Int, occurrences: Int }
   | CheckpointReferenceEndsThere { last: AmpereCheckpointWord }
   | CheckpointLastWordNotInReference { last: AmpereCheckpointWord }
   | CheckpointSubjectHasNoWord
   | CheckpointReferenceHasNoWord
-  | CheckpointReferenceUnread { detail: String }
 
 type WordSearch {
   at: Int
@@ -185,6 +183,5 @@ fn ampere_checkpoint_reference_comparison_text(c: AmpereCheckpointReferenceCompa
     CheckpointLastWordNotInReference { last: l } => concat("the reference never printed ", l.digits as String)
     CheckpointSubjectHasNoWord => "no subject word to compare"
     CheckpointReferenceHasNoWord => "the reference printed no checkpoint"
-    CheckpointReferenceUnread { detail: d } => concat("the reference capture is UNREAD: ", d)
   }
 }
