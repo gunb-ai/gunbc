@@ -105,13 +105,12 @@ test fn identical_requests_share_an_identity_and_every_difference_separates_them
 // THE KEY IS INJECTIVE OVER THE TYPED OPERATION AND COVERS EVERY EXECUTION AXIS (ruling on
 // gunbc#13072, items 1 and 4). Each pair below is two different computations that a delimiter-joined
 // preimage, or a key missing an axis, collapsed into one -- and one request then received the other's
-// result. Each must key apart on its own.
+// result. Each must key apart on its own. The ruling's ["a,b"] / ["a", "b"] pair is now unwritable: a
+// bin is a GunbcBinary variant, never a name; what remains to show is that distinct closed bin lists
+// key apart under the length-prefixed encoding, including a list and its prefix.
 test fn colliding_display_text_and_every_execution_axis_key_apart() -> Bool {
   let subject = tree(hex: tree_a)
   let t = tc_default(rustc: "rustc 1.90.0")
-  // The ruling's ["a,b"] / ["a", "b"] pair is now unwritable: a bin is a GunbcBinary variant, never a
-  // name. What remains to show is that distinct closed bin lists key apart under the length-prefixed
-  // encoding, including a list and its prefix.
   let one_bin = BuildGunbcBinaries { profile: CargoRelease, bins: [ClaimBatchRunner] }
   let two_bins = BuildGunbcBinaries { profile: CargoRelease, bins: [GunbcDriver, ClaimBatchRunner] }
   let colon_entry = RunClaims { entry: "a:b" as FilePath, functions: "c" as NonEmptyStr, hermetic: true, window: none }

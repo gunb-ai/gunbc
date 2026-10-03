@@ -84,6 +84,7 @@ import std.materialization_object {
   StoreCommitManifestUninterpretable, StoreCommitContractRefused, StoreCommitPublishRefused, StoreCommitReadBackRefused,
   StoreCommitStoreFamilyRefused, StoreCommitResultContentConflict, StoreCommitResultHashFamilyIncomparable,
   StoreCommitResultIdentityUnverifiable, StoreCommitBudgetUndeclared, StoreCommitDidNotFit, StoreCommitOccupancyUnavailable,
+  StoreCommitCleanupOutstanding, StoreCommitEvictedDuringPublish,
   StoreFault, store_lookup_payload,
 }
 import extdeps.realization.materialization_store_local {
@@ -1926,6 +1927,8 @@ fn compute_store_commit_refusal_detail(r: StoreCommitRefusal) -> String {
     StoreCommitResultIdentityUnverifiable { cause } => join(["result identity unverifiable: ", cause], "")
     StoreCommitBudgetUndeclared { family } => join(["no budget is declared for family ", family as String], "")
     StoreCommitDidNotFit { artifact_bytes: a, budget: b } => join(["the record (", to_string(value: byte_size_count(b: a)), " bytes) exceeds the family budget (", to_string(value: byte_size_count(b: b)), " bytes)"], "")
+    StoreCommitCleanupOutstanding { artifact_bytes: a, budget: b, undeleted: u } => join(["the record (", to_string(value: byte_size_count(b: a)), " bytes) does not fit the family budget (", to_string(value: byte_size_count(b: b)), " bytes) while ", to_string(value: byte_size_count(b: u)), " bytes of evicted entries are still undeleted"], "")
+    StoreCommitEvictedDuringPublish { name, removed } => join(["the record ", name, " was evicted while it was being published", if removed { " and removed" } else { " and is still on disk" }], "")
     StoreCommitOccupancyUnavailable { cause } => join(["occupancy record unavailable: ", cause], "")
   }
 }
