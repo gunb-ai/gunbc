@@ -30,6 +30,7 @@ import gunbc.cloudflare.r2_origin {
   OriginCredentialUnminted,
   OriginCredentialMintEntryUnbuilt,
   DigestKeyedBootArtifacts,
+  KeyAddressedCacheBlobs,
   bucket_purpose_admission,
   FabricCommitManifestsAndContentAddressedOutputs,
   fabric_boot_origin_read_secret_id,
@@ -212,6 +213,7 @@ test fn boot_origin_credentials_are_disjoint_and_have_no_mint_entry() -> Bool {
         && match bucket_purpose_admission(purpose: b.purpose) {
              FabricCommitManifestsAndContentAddressedOutputs {} => false
              DigestKeyedBootArtifacts {} => true
+             KeyAddressedCacheBlobs {} => false
            }
         && match b.read_credential {
              OriginCredentialPinned { access_key_id: _, token_value: _ } => false
