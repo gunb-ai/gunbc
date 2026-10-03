@@ -85,7 +85,7 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -342,7 +342,7 @@ fn kotlin_atom(id: Symbol) -> Node {
 }
 
 fn kotlin_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn kotlin_int_width_node(width: KotlinIntWidth) -> Node {
@@ -1572,7 +1572,8 @@ fn kotlin_lex_rules() -> LexRuleSet {
       kotlin_lex_rule(token_class: ^kotlin_token_colon, text: ":"),
       kotlin_lex_rule(token_class: ^kotlin_token_dot, text: "."),
       kotlin_lex_rule(token_class: ^kotlin_token_semicolon, text: ";")
-    ]
+    ],
+    modes: []
   }
 }
 

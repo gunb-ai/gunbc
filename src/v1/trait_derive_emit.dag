@@ -1931,7 +1931,7 @@ fn v1_type_expr_wf_needs_clone_param(
 // emitter has no native realization for it and renders its declared structure. `type Hash =
 // Fnv1a64Structural` in v2.std.node has no checkpoint row, so its RHS is the walk's one field type
 // expression and the map-key fixpoint reaches Fnv1a64Structural. `type Int =
-// AbelianGroup<GroupCompletion<Nat>>` and `type Nat = CommutativeSemiring<Magnitude>` DO have
+// AbelianGroup<GroupCompletion<Nat>>` and std.nat's `type Nat = Zero | Succ { prev: Nat }` DO have
 // checkpoint rows (they realize as i64), so lookup_checkpoint returns Present and the arm below
 // contributes nothing for them -- the measured false positive (AbelianGroup/CommutativeSemiring at
 // map-key position) that sank the earlier attempt never recurs, because the gate is keyed on

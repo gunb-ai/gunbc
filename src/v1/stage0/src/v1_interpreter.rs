@@ -489,6 +489,14 @@ fn variant_arm_is_declared_in_coproduct(
     false
 }
 
+fn kernel_raw_payload_constructor(name: &str, parent: Option<&String>) -> bool {
+    match name.rsplit('.').next().unwrap_or(name) {
+        "Present" | "Absent" | "Some" | "None" => parent_enum_is(parent, "Optional"),
+        "Holds" | "Violates" => parent_enum_is(parent, "Witness"),
+        _ => false,
+    }
+}
+
 fn parent_enum_is(parent: Option<&String>, expected_last: &str) -> bool {
     parent.is_some_and(|p| qualified_last_segment(p.clone()) == expected_last)
 }
@@ -1258,6 +1266,14 @@ pub enum InterpError {
         at: String,
         found: String,
     },
+    /// A variant occurrence of a natively realized coproduct (std.types Bool over the host `bool`)
+    /// whose realization could not be decided -- its owning coproduct was not recovered, or the
+    /// row set refused -- so it is refused rather than matched or constructed by its arm NAME.
+    /// The decision is `v1.compiler.coercion` `rust_variant_value_realization`, the same one the
+    /// Rust emitter consumes.
+    VariantRealizationRefused {
+        detail: String,
+    },
     /// A REST response value did not inhabit the coproduct its declared output type names.
     /// Raised by `decode_json_by_declared_type`; see `RestResponseDecodeRefusal`.
     RestResponseUndecodable {
@@ -1495,6 +1511,9 @@ impl fmt::Display for InterpError {
             }
             InterpError::StringRealizationStraddle { detail } => {
                 write!(f, "string realization straddle: {}", detail)
+            }
+            InterpError::VariantRealizationRefused { detail } => {
+                write!(f, "{}", detail)
             }
             InterpError::PoolRootContributesNothing {
                 caller,
@@ -5306,6 +5325,11 @@ pub struct InterpContext {
     // eval goes straight to env.lookup(sym), materializing the String only on the registry slow path.
     var_sym_cache: std::cell::RefCell<HashMap<usize, Symbol>>,
     var_sym_cache_keepalive: std::cell::RefCell<Vec<Rc<Node>>>,
+    /// A refusal raised inside `match_pattern` (which answers match / no-match as an `Option`),
+    /// taken by the one caller that owns the match and turned into
+    /// `InterpError::VariantRealizationRefused` -- so an undecidable native arm stops the match
+    /// instead of falling through to the next arm.
+    variant_realization_refusal: std::cell::RefCell<Option<String>>,
     // Same chokepoint, ExprCall callee name: eval_call re-sliced the callee name from its source
     // span (expr_call_func_at -> authored_name_at) on every call. Memoize the decoded name per
     // call node — keyed by node pointer, kept alive via call_func_name_cache_keepalive as above.
@@ -5739,6 +5763,7 @@ impl InterpContext {
             param_name_cache_keepalive: std::cell::RefCell::new(Vec::new()),
             var_sym_cache: std::cell::RefCell::new(HashMap::new()),
             var_sym_cache_keepalive: std::cell::RefCell::new(Vec::new()),
+            variant_realization_refusal: std::cell::RefCell::new(None),
             call_func_name_cache: std::cell::RefCell::new(HashMap::new()),
             call_func_name_cache_keepalive: std::cell::RefCell::new(Vec::new()),
             cast_kernel_cache: std::cell::RefCell::new(HashMap::new()),
@@ -6938,14 +6963,26 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
     match (*node.expr_data).clone() {
         ExprData::ExprLiteral { value } => eval_literal(&value),
 
-        // An elaborated literal (std.literal_elaboration) evaluates as the kernel value: this
-        // interpreter realizes the structural destinations natively by its own grounding
-        // (Zero/Succ as Int per #5428, v2.std.logic Bool as bool), so the image of the literal
-        // under that grounding IS the literal, and evaluating the constructor tree instead would
-        // route a natively-realized Bool through variant patterns that have no runtime form here.
-        // The structural image is consumed by emission, which is where the destination is
-        // structural; the emitted-bytes witnesses exercise that path.
-        ExprData::ExprElaboratedLiteral { value, .. } => eval_literal(&value),
+        // An elaborated literal (std.literal_elaboration) carries its image under the declared
+        // homomorphism as its one child. A Peano unfolding's destination is STRUCTURAL on every
+        // route -- a carrier that realizes as the kernel integer has a KernelGrounding row instead
+        // and never reaches this arm, because v1.compiler.infer ground_kernel_views folds it to a
+        // plain literal -- so its value here is the constructor image, the same tree emission
+        // renders. The other two unfoldings keep the kernel value: this interpreter realizes
+        // v2.std.logic Bool as bool and text as the host string, so their image under that
+        // grounding IS the literal.
+        ExprData::ExprElaboratedLiteral { value, elaboration } => {
+            match (
+                &*elaboration.homomorphism.producer,
+                node.children.iter().next(),
+            ) {
+                (
+                    crate::std_literal_elaboration::LiteralUnfolding::PeanoUnfold { .. },
+                    Some(image),
+                ) => eval_expr(image, env, ctx),
+                _ => eval_literal(&value),
+            }
+        }
 
         ExprData::ExprVar { binding_kind } => eval_var(node, binding_kind.as_deref(), env, ctx),
 
@@ -7098,7 +7135,25 @@ fn eval_var(
         }
     };
 
-    if let Some(VarBindingKind::VariantValueBinding { parent_enum }) = binding_kind {
+    if let Some(VarBindingKind::VariantValueBinding {
+        parent_enum,
+        parent_identity,
+    }) = binding_kind
+    {
+        let arm_spelling = ctx.resolve(sym);
+        let arm = arm_spelling.rsplit('.').next().unwrap_or(&arm_spelling);
+        match native_variant_reading(parent_identity, arm) {
+            NativeVariantReading::HostBool(b) => return Ok(Value::Bool(b)),
+            NativeVariantReading::Structural => {}
+            NativeVariantReading::Refused(detail) => {
+                // A value construction refuses only for an arm a native row could have claimed;
+                // an unrecovered owner whose arm no row mentions is structural, as in emission.
+                if crate::v1_compiler_coercion::rust_variant_arm_is_bound_somewhere(arm.to_string())
+                {
+                    return Err(InterpError::VariantRealizationRefused { detail });
+                }
+            }
+        }
         // Bounded residual: Nat's intentional native representation is still selected by the
         // arm lexeme because the seed binding carrier lacks exact owner declaration identity.
         // The executable shorthand test and GuaranteeStall keep that silent-wrongness path
@@ -7896,6 +7951,38 @@ fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
         None => None,
     };
     let absent_arm_index = crate::v1_compiler_infer::match_unguarded_absent_arm_index(arms.clone());
+    // A host integer has no constructors here. A carrier realized as the kernel integer
+    // (std.literal_elaboration KernelGrounding) has every constructor pattern folded to integer
+    // form by v1.compiler.infer ground_kernel_views before this tree is evaluated, so a
+    // constructor arm over an integer subject means that fold did not run on it. No arm could
+    // match and a later wildcard would take the value silently, so this refuses, located.
+    if let Value::Int(_) = &scrutinee_val {
+        if let Some(name) = arms
+            .iter()
+            .find_map(|arm| match &*arm_pattern(arm.clone()) {
+                // The optional and witness carriers ARE matched against a raw integer payload
+                // (their value-or-Null representation), so their constructors are not this case.
+                // The exemption is keyed on the pattern's PARENT carrier, the same key match_pattern's
+                // raw-unwrap arms use to accept such a payload, so it admits exactly the patterns those
+                // arms answer; a user coproduct with a variant spelled Some or Holds still refuses
+                // (review 73985). A DeclarationRef on the pattern is the next rung; see the seed-growth
+                // row gunbc.kernel_grounding_interpreter_seed_growth.
+                MatchPattern::VariantPattern {
+                    name, parent_enum, ..
+                } if !kernel_raw_payload_constructor(name, parent_enum.as_ref()) => {
+                    Some(name.to_string())
+                }
+                _ => None,
+            })
+        {
+            return Err(InterpError::TypeError {
+                msg: format!(
+                    "match at {}:{}: the constructor pattern `{}` is matched against a host integer; a kernel-grounded carrier's patterns are folded to integers before evaluation (v1.compiler.infer ground_kernel_views), and this one was not",
+                    node.span.file, node.span.start, name
+                ),
+            });
+        }
+    }
 
     for (arm_index, arm) in arms.iter().enumerate() {
         let pattern = arm_pattern(arm.clone());
@@ -7915,7 +8002,11 @@ fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
         } else {
             scrutinee_val.clone()
         };
-        if let Some(bindings) = match_pattern(&pattern, &arm_value, ctx) {
+        let matched = match_pattern(&pattern, &arm_value, ctx);
+        if let Some(detail) = ctx.variant_realization_refusal.borrow_mut().take() {
+            return Err(InterpError::VariantRealizationRefused { detail });
+        }
+        if let Some(bindings) = matched {
             let arm_env = Env::extend(env, bindings);
             // A guard is part of the arm's admission, evaluated in the arm's bindings: a false
             // guard falls through to the next arm, exactly as the emitted `pat if guard =>` does.
@@ -8991,6 +9082,41 @@ fn try_witness_evaluation_dispatch(
     }
 }
 
+/// THE INTERPRETER'S HALF OF THE NATIVE-VARIANT LOWERING. The interpreter is a Rust-hosted
+/// realization whose `Value::Bool` holds a Rust `bool`, so it asks the SAME identity-keyed decision
+/// the Rust emitter asks (`v1.compiler.coercion` `rust_variant_value_realization`, over
+/// `gunbc.rust_source_type_bindings` `rust_source_variant_value_rows`) and reads the row's value
+/// with Rust's own `bool` parse -- the projection of that row onto this host, not a second table.
+enum NativeVariantReading {
+    HostBool(bool),
+    Structural,
+    Refused(String),
+}
+
+fn native_variant_reading(
+    parent: &Rc<crate::std_target_representation::VariantParentIdentity>,
+    arm: &str,
+) -> NativeVariantReading {
+    use crate::std_target_representation::VariantValueRealization as R;
+    let r = crate::v1_compiler_coercion::rust_variant_value_realization(
+        parent.clone(),
+        arm.to_string(),
+    );
+    match &*r {
+        R::VariantRealizesAsTargetValue { value_spelling } => match value_spelling.parse::<bool>() {
+            Ok(b) => NativeVariantReading::HostBool(b),
+            Err(_) => NativeVariantReading::Refused(format!(
+                "variant realization: arm `{arm}` realizes as the target value `{value_spelling}`, which the interpreter's host bool cannot hold"
+            )),
+        },
+        R::VariantRealizesStructurally => NativeVariantReading::Structural,
+        _ => NativeVariantReading::Refused(
+            crate::std_target_representation::variant_value_realization_refusal_message(r.clone())
+                .unwrap_or_else(|| format!("variant realization: arm `{arm}` was refused")),
+        ),
+    }
+}
+
 fn match_pattern(
     pattern: &MatchPattern,
     value: &Value,
@@ -9019,14 +9145,36 @@ fn match_pattern(
                 name,
                 parent_enum,
                 field_bindings,
+                parent_identity,
             } => {
+                // A variant pattern against a HOST bool is a native arm or nothing: the identity
+                // inference carried decides which value it denotes, and an undecidable one refuses.
+                // Variant values (a module-local coproduct whose arms happen to be spelled True/False)
+                // never reach this branch and keep their structural match below.
+                if let Value::Bool(held) = value {
+                    let arm = name.rsplit('.').next().unwrap_or(name);
+                    return match native_variant_reading(parent_identity, arm) {
+                        NativeVariantReading::HostBool(b) => {
+                            if *held == b {
+                                Some(HashMap::new())
+                            } else {
+                                None
+                            }
+                        }
+                        NativeVariantReading::Structural => None,
+                        NativeVariantReading::Refused(detail) => {
+                            *ctx.variant_realization_refusal.borrow_mut() = Some(detail);
+                            None
+                        }
+                    };
+                }
                 // A qualified pattern spelling (`module.Variant`) resolves the arm name to its
                 // containment path, but values are constructed with the bare last segment (the
                 // short-name normalization at value construction). Every name-vs-literal
                 // reconciliation below — native Int/Str/List coproducts, Optional/Witness raw
                 // (value-or-Null) unwraps — compares that short segment, as the `Value::Variant`
-                // arm's fallback does; otherwise a qualified `Zero`/`Succ` (Nat grounded to native
-                // Int), `Empty`/`Cons`, or `Present`/`Absent` pattern misses and the match falls
+                // arm's fallback does; otherwise a qualified `Empty`/`Cons` or
+                // `Present`/`Absent` pattern misses and the match falls
                 // through non-exhaustive.
                 let name_last = name.rsplit('.').next().unwrap_or(name);
                 // Kernel-optional / witness raw representation (value-or-Null): the `_ if
@@ -9270,39 +9418,6 @@ fn match_pattern(
                     // deliberately unhandled (no corpus site exercises it, #5-scoped deferral) — an
                     // unmatched pattern name falls through to `_ => None` below, refusing rather
                     // than fabricating a (pos, neg) pair.
-                    Value::Int(n) if name_last == "Zero" || name_last == "Succ" => {
-                        match name_last {
-                            "Zero" => {
-                                if *n == 0 {
-                                    Some(HashMap::new())
-                                } else {
-                                    None
-                                }
-                            }
-                            "Succ" => {
-                                if *n <= 0 {
-                                    None
-                                } else {
-                                    let mut bindings = HashMap::new();
-                                    for fb in field_bindings.iter() {
-                                        let field_name = field_binding_name_at(
-                                            fb.clone(),
-                                            ctx.source_indices.clone(),
-                                        );
-                                        let fb_pat = field_binding_pattern(fb.clone());
-                                        let field_val = match field_name.as_str() {
-                                            "prev" => Value::Int(n - 1),
-                                            _ => return None,
-                                        };
-                                        let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
-                                        bindings.extend(sub_bindings);
-                                    }
-                                    Some(bindings)
-                                }
-                            }
-                            _ => None,
-                        }
-                    }
                     Value::Null
                         if name_last == "Violates"
                             && parent_enum_is(parent_enum.as_ref(), "Witness") =>
@@ -11756,13 +11871,6 @@ fn eval_record_lit(
     fields.sort_unstable_by_key(|(k, _)| k.0);
 
     if let Some(pe) = parent_enum {
-        if type_name == "Succ" {
-            if let Some(Value::Int(p)) = fields_get(&fields, ctx.sym("prev")) {
-                if *p >= 0 {
-                    return Ok(Value::Int(p + 1));
-                }
-            }
-        }
         Ok(Value::Variant {
             type_name: ctx.sym(pe),
             variant_name: ctx.sym(type_name.rsplit('.').next().unwrap_or(&type_name)),
