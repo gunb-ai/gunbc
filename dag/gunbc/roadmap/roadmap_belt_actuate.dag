@@ -239,6 +239,7 @@ import gunbc.roadmap_dispatch_environment {
   dispatch_environment_admission_json,
 }
 import gunbc.roadmap_execution_contract {
+  AttemptStateDirectoryCapability,
   EnvironmentBindingCapability,
   GitWorkspaceCapability,
   GunbcClaimRunnerCapability,
@@ -509,10 +510,11 @@ import std.content_hash {
   as_content_hash_structural,
 }
 import gunbc.roadmap_session_placement {
-  SessionPlacementGrant, session_placement_acquire, SessionPlacementGranted, SessionPlacementRefused,
+  SessionPlacementGrant, SessionPlacementStores, SessionStoresResolution, SessionStoresResolved, SessionStoresUnresolved, session_placement_stores,
+  session_placement_acquire, SessionPlacementGranted, SessionPlacementRefused,
+  session_placement_begin_launch, SessionLaunchAdmitted, SessionLaunchRefused, session_placement_abandon,
   session_process_bounds, session_placement_record_write, SessionPlacementWritten, SessionPlacementWriteFailed,
-  session_placement_release, session_placement_release_write, session_release_outcome_wire, session_release_detail,
-  session_placement_settle, SessionPlacementSettle,
+  session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire,
 }
 import gunbc.roadmap_workflow_progress {
   AttemptWorktreeObservation, AttemptWorktreePresent, AttemptWorktreeAbsent, AttemptWorktreeUnobserved, attempt_worktree_observation_of,
@@ -1296,7 +1298,7 @@ fn belt_session_container_create(
   instance: HostDashboardInstance,
   attempt_key: String,
   container: DispatchSessionContainer,
-  placement: SessionPlacementGrant?,
+  placement: BeltHeldPlacement?,
   workdir: String,
 ) -> BeltExecStepsOutcome {
   match container {
@@ -1315,16 +1317,20 @@ fn belt_session_container_create(
             step: "session-placement",
             detail: "the worker unit was reached with no placement grant; belt_session_placement_for_container acquires one for every unit container, so this refuses rather than starting the unit at the instance ceiling",
           }
-        Present { value: grant } => {
-          let properties = dispatch_worker_unit_properties_for_plan(instance: instance, plan: plan, granted: grant.amount, process_bounds: session_process_bounds)
-          match session_placement_record_write(instance: instance, attempt_key: attempt_key, grant: grant, unit_properties: properties) {
+        Present { value: held } => {
+          let properties = dispatch_worker_unit_properties_for_plan(instance: instance, plan: plan, granted: held.grant.amount, process_bounds: session_process_bounds)
+          match session_placement_record_write(stores: held.stores, host: instance.host_identity as String, grant: held.grant, unit_properties: properties) {
             SessionPlacementWriteFailed { path, error } =>
               ExecStepFailed { step: "session-placement-record", detail: join(["the placement record could not be written at ", path, ": ", error], "") }
             SessionPlacementWritten { path: _ } =>
-              belt_exec_steps(
-                steps: [BeltExecStep { step: "harness-unit-start", command: dispatch_worker_unit_run(instance: instance, plan: plan, granted: grant.amount, process_bounds: session_process_bounds) }],
-                workdir: workdir,
-              )
+              match session_placement_begin_launch(stores: held.stores, grant: held.grant) {
+                SessionLaunchRefused { detail } => ExecStepFailed { step: "session-launch-gate", detail: detail }
+                SessionLaunchAdmitted { grant: launched } =>
+                  belt_exec_steps(
+                    steps: [BeltExecStep { step: "harness-unit-start", command: dispatch_worker_unit_run(instance: instance, plan: plan, granted: launched.amount, process_bounds: session_process_bounds) }],
+                    workdir: workdir,
+                  )
+              }
           }
         }
       }
@@ -1333,38 +1339,85 @@ fn belt_session_container_create(
 
 // G5: A UNIT CONTAINER ACQUIRES ITS PLACEMENT BEFORE ANY HOST STEP RUNS, so a refusal leaves no
 // worktree, no attempt state and no current pointer behind -- it is a launch refusal
-// (LaunchNoPlacementGrant), not a spawn that failed halfway. A tmux container holds no placement:
-// its panes escape any unit's cgroup, which is gunbc.roadmap_session_placement's declared frontier.
+// (LaunchNoPlacementGrant), not a spawn that failed halfway. The session slot it opens first is what
+// makes every later crash recoverable (gunbc.roadmap_session_placement). A tmux container holds no
+// placement: its panes escape any unit's cgroup, which is that module's declared frontier.
+type BeltHeldPlacement {
+  grant: SessionPlacementGrant
+  stores: SessionPlacementStores
+}
+
 type BeltSessionPlacement
-  = BeltPlacementHeld { grant: SessionPlacementGrant }
+  = BeltPlacementHeld { held: BeltHeldPlacement }
   | BeltPlacementNotHeld
   | BeltPlacementRefused { detail: String }
 
-fn belt_session_placement_for_container(instance: HostDashboardInstance, container: DispatchSessionContainer) -> BeltSessionPlacement {
+fn belt_session_placement_for_container(instance: HostDashboardInstance, node_id: String, attempt_key: String, container: DispatchSessionContainer) -> BeltSessionPlacement {
   match container {
     TmuxSessionContainer { spawn: _, default_shell: _, remain_on_exit: _, event_pipe: _, provider_start: _ } => BeltPlacementNotHeld
-    SystemdUnitContainer { plan } =>
-      match session_placement_acquire(instance: instance, unit: plan.unit) {
-        SessionPlacementGranted { grant } => BeltPlacementHeld { grant: grant }
-        SessionPlacementRefused { detail } => BeltPlacementRefused { detail: detail }
+    SystemdUnitContainer { plan: _ } =>
+      match session_placement_stores(instance: instance) {
+        SessionStoresUnresolved { detail } => BeltPlacementRefused { detail: detail }
+        SessionStoresResolved { stores } =>
+          match belt_session_slots_ensure(instance: instance, stores: stores) {
+            Present { value: why } => BeltPlacementRefused { detail: why }
+            Absent =>
+              match session_placement_acquire(instance: instance, stores: stores, node_id: node_id, attempt_key: attempt_key) {
+                SessionPlacementGranted { grant } => BeltPlacementHeld { held: BeltHeldPlacement { grant: grant, stores: stores } }
+                SessionPlacementRefused { detail } => BeltPlacementRefused { detail: detail }
+              }
+          }
       }
   }
 }
 
-// A GRANT TAKEN FOR A SPAWN THAT DID NOT HAPPEN IS RETURNED AT ONCE, whatever step failed. The
-// release and its record are carried into the failure detail, so a release that itself failed is
-// visible beside the spawn failure rather than leaving a silently charged seat. A SpawnNotAdmitted
-// cannot carry that detail (LaunchRefusal has no slot for it), and belt_spawn_admitted never returns
-// one -- admission was decided before the grant -- so that arm is re-expressed as a SpawnFailed
-// that names the refusal AND the release, rather than discarding the release outcome (review 74569).
-fn belt_spawn_release_unless_spawned(instance: HostDashboardInstance, attempt_key: String, grant: SessionPlacementGrant, provider_wire_label: String, launch: LaunchIdentity, outcome: BeltSpawnOutcome) -> BeltSpawnOutcome {
+// THE SLOT STORE IS CREATED BY THE SAME CAPABILITY THAT CREATES ATTEMPT STATE, before the settlement
+// pass reads it and before any slot is opened in it, so "the store is missing" never has to be told
+// apart from "the store could not be listed" by reading an error string. Present carries the refusal.
+fn belt_session_slots_ensure(instance: HostDashboardInstance, stores: SessionPlacementStores) -> String? {
+  match belt_exec(
+    cmd: host_exec_argv(
+      program: dispatch_capability_program(environment: instance.execution_environment, cap: AttemptStateDirectoryCapability),
+      args: ["-d", "-m", "0700", stores.slots_root as String],
+    ),
+    workdir: belt_observe_workdir as String,
+  ) {
+    ExecOk { stdout: _ } => none
+    ExecFailed { program, exit_code, stderr } => Present { value: join(["the session slot store ", stores.slots_root as String, " could not be created (", program, " exit ", to_string(exit_code), "): ", stderr], "") }
+    ExecRefused { program, reason } => Present { value: join(["the session slot store ", stores.slots_root as String, " could not be created (", program, "): ", reason], "") }
+  }
+}
+
+// G5 SETTLEMENT IS ITS OWN PASS, ORDERED BEFORE EVERY NEW ACQUISITION (ruling on #13074, findings 1
+// and 2). It starts from the session slot store, not from the workflow ledger or from anything a
+// spawn meant to do, so it finds a grant whose spawning process died at any point -- and the tick's
+// spawn pass is computed inside an exhaustive match on its result, so the settlement is on the
+// returned computation's dependency path rather than an unused binding.
+fn belt_session_settlement_pass(instance: HostDashboardInstance) -> SessionSettlePass {
+  match session_placement_stores(instance: instance) {
+    SessionStoresUnresolved { detail } => SessionSettlePassRefused { detail: detail }
+    SessionStoresResolved { stores } =>
+      match belt_session_slots_ensure(instance: instance, stores: stores) {
+        Present { value: why } => SessionSettlePassRefused { detail: why }
+        Absent => session_placement_settle_pass(instance: instance, stores: stores)
+      }
+  }
+}
+
+// A GRANT TAKEN FOR A SPAWN THAT DID NOT HAPPEN IS RETURNED AT ONCE, whatever step failed: the slot is
+// closed, the seat released and the release recorded (session_placement_abandon), and that sentence
+// is carried into the failure detail. A SpawnNotAdmitted cannot carry it (LaunchRefusal has no slot
+// for it), and belt_spawn_admitted never returns one -- admission was decided before the grant -- so
+// that arm is re-expressed as a SpawnFailed naming the refusal AND the release (review 74569). A
+// process that dies before returning here is the settlement pass's to resolve, from the slot.
+fn belt_spawn_release_unless_spawned(held: BeltHeldPlacement, provider_wire_label: String, launch: LaunchIdentity, outcome: BeltSpawnOutcome) -> BeltSpawnOutcome {
   match outcome {
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } => outcome
     SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => outcome
     SpawnNotAdmitted { node_id: _, refusal: _ } =>
-      belt_spawn_outcome_with_release(outcome: outcome, release_note: belt_spawn_release_note(instance: instance, attempt_key: attempt_key, grant: grant), provider_wire_label: provider_wire_label, launch: launch)
+      belt_spawn_outcome_with_release(outcome: outcome, release_note: session_placement_abandon(stores: held.stores, grant: held.grant, reason: "spawn did not complete"), provider_wire_label: provider_wire_label, launch: launch)
     SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } =>
-      belt_spawn_outcome_with_release(outcome: outcome, release_note: belt_spawn_release_note(instance: instance, attempt_key: attempt_key, grant: grant), provider_wire_label: provider_wire_label, launch: launch)
+      belt_spawn_outcome_with_release(outcome: outcome, release_note: session_placement_abandon(stores: held.stores, grant: held.grant, reason: "spawn did not complete"), provider_wire_label: provider_wire_label, launch: launch)
   }
 }
 
@@ -1385,19 +1438,6 @@ fn belt_spawn_outcome_with_release(outcome: BeltSpawnOutcome, release_note: Stri
     SpawnFailed { node_id, step, detail, provider, launch: l } =>
       SpawnFailed { node_id: node_id, step: step, detail: join([detail, "; ", release_note], ""), provider: provider, launch: l }
   }
-}
-
-fn belt_spawn_release_note(instance: HostDashboardInstance, attempt_key: String, grant: SessionPlacementGrant) -> String {
-  let reason = "spawn did not complete" as NonEmptyStr
-  let freed = session_placement_release(grant: grant, reason: reason)
-  let write = session_placement_release_write(instance: instance, attempt_key: attempt_key, reference: grant.lease.reference as String, reason: reason, freed: freed)
-  join([
-    "session placement ", session_release_outcome_wire(r: freed), ": ", session_release_detail(r: freed),
-    match write {
-      SessionPlacementWritten { path: _ } => ""
-      SessionPlacementWriteFailed { path, error } => join([" (release record not written at ", path, ": ", error, ")"], "")
-    },
-  ], "")
 }
 
 // LAUNCH ESTABLISHES THE WORKTREE IT CLAIMS. `git worktree add` exiting zero was taken as the
@@ -2747,19 +2787,17 @@ fn belt_actuate_spawn_with_origin(
             attempt_identity: dispatch_worker_attempt_identity(node_id: node.node as String, attempt_key: attempt_key),
             fingerprint: alignment_chain_fingerprint(chain: chain),
           }
-  match belt_session_placement_for_container(instance: instance, container: cmds.session_container) {
+  match belt_session_placement_for_container(instance: instance, node_id: node.node as String, attempt_key: attempt_key, container: cmds.session_container) {
     BeltPlacementRefused { detail } =>
       SpawnNotAdmitted { node_id: node.node as String, refusal: LaunchNoPlacementGrant { detail: detail } }
     BeltPlacementNotHeld =>
       belt_spawn_admitted(instance: instance, node: node, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, attempt_key: attempt_key, session_name: session_name, origin: origin, cmds: cmds, binding: binding, placement: none)
-    BeltPlacementHeld { grant } =>
+    BeltPlacementHeld { held } =>
       belt_spawn_release_unless_spawned(
-        instance: instance,
-        attempt_key: attempt_key,
-        grant: grant,
+        held: held,
         provider_wire_label: provider_wire_label,
         launch: launch,
-        outcome: belt_spawn_admitted(instance: instance, node: node, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, attempt_key: attempt_key, session_name: session_name, origin: origin, cmds: cmds, binding: binding, placement: Present { value: grant }),
+        outcome: belt_spawn_admitted(instance: instance, node: node, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, attempt_key: attempt_key, session_name: session_name, origin: origin, cmds: cmds, binding: binding, placement: Present { value: held }),
       )
   }
   }
@@ -2782,7 +2820,7 @@ fn belt_spawn_admitted(
   origin: AttemptOrigin,
   cmds: DispatchSpawnCommands,
   binding: AlignmentBinding,
-  placement: SessionPlacementGrant?,
+  placement: BeltHeldPlacement?,
 ) -> BeltSpawnOutcome {
   match belt_exec_steps(
     steps: [
@@ -4128,7 +4166,11 @@ fn belt_tick_for_instance(
       ObserveRefused { reason: _ } => []
     },
   )
-  let spawn_outcomes = belt_tick_spawn_decided(decisions: pass.decisions, workdir: spawn_workdir)
+  let spawn_outcomes = belt_tick_spawn_after_settlement(
+    settled: belt_session_settlement_pass(instance: instance),
+    decisions: pass.decisions,
+    workdir: spawn_workdir,
+  )
   let teardown_outcomes = pass.teardowns |> map(m => belt_actuate_teardown_member(m: m))
   match belt_tick_wholesale_of(standing: standing) {
     TickPassesWithheld { refusal } =>
@@ -4220,6 +4262,35 @@ fn belt_tick_admit(
     }
   })
   folded.decisions
+}
+
+// THE SPAWNS OF A TICK ARE COMPUTED INSIDE AN EXHAUSTIVE MATCH ON THAT TICK'S SESSION SETTLEMENT,
+// so no acquisition runs until every stranded session seat on this host has been read and, where its
+// unit has ended or its pre-launch window has passed, returned. A settlement that could not run
+// WITHHOLDS this tick's launches as typed LaunchNoPlacementGrant refusals naming why -- the store
+// that recovers stranded seats is the one new seats would be recorded in, so acquiring past an
+// unreadable store would add holds no later pass could be shown to reach. Visible in the tick
+// receipt; a retry next tick succeeds once the store reads.
+fn belt_launch_member_node_id(m: DispatchMember) -> String {
+  match m {
+    DesiredMember { node_id, node: _ } => node_id
+    ObservedMember { node_id, session: _ } => node_id
+  }
+}
+
+fn belt_tick_spawn_after_settlement(settled: SessionSettlePass, decisions: List<BeltLaunchDecision>, workdir: String) -> List<BeltSpawnOutcome> {
+  match settled {
+    SessionSettlePassRan { settlements: _ } => belt_tick_spawn_decided(decisions: decisions, workdir: workdir)
+    SessionSettlePassRefused { detail } =>
+      decisions |> map(d => match d {
+        BeltLaunchWithheld { node_id, refusal } => SpawnNotAdmitted { node_id: node_id, refusal: refusal }
+        BeltLaunchDecided { member, launch: _ } =>
+          SpawnNotAdmitted {
+            node_id: belt_launch_member_node_id(m: member),
+            refusal: LaunchNoPlacementGrant { detail: session_settle_pass_wire(p: SessionSettlePassRefused { detail: detail }) },
+          }
+      })
+  }
 }
 
 fn belt_tick_spawn_decided(decisions: List<BeltLaunchDecision>, workdir: String) -> List<BeltSpawnOutcome> {
@@ -6796,26 +6867,10 @@ fn belt_commit_outcome_persist(
   }
 }
 
-// G5 TEARDOWN: EVERY ATTEMPT THE COMMIT PASS VISITS SETTLES ITS SESSION PLACEMENT FIRST. The pass
-// already visits each ledger attempt every tick, and the worker unit's own observation decides the
-// release (gunbc.roadmap_session_placement session_placement_settle_decide): an ended unit returns
-// its seat and writes the release record the dogfood reader reads; a running or unobservable one
-// keeps it. The settle's outcome is durable in that record, which is why it is not also threaded
-// into the commit outcome -- a second copy of one fact.
-fn belt_settle_session_placement(instance: HostDashboardInstance, progress: WorkflowAttemptProgress) -> SessionPlacementSettle {
-  let unit = dispatch_attempt_unit_name(node_id: progress.node_id, attempt_key: progress.attempt_key)
-  session_placement_settle(
-    instance: instance,
-    attempt_key: progress.attempt_key,
-    process: worker_process_from_attempt_unit(observation: attempt_unit_observation(unit: unit), unit: unit),
-  )
-}
-
 fn belt_commit_attempt_for_instance(
   instance: HostDashboardInstance,
   progress: WorkflowAttemptProgress,
 ) -> BeltCommitOutcome {
-  let _settled = if trim(s: progress.attempt_key) == "" { none } else { Present { value: belt_settle_session_placement(instance: instance, progress: progress) } }
   belt_commit_outcome_persist(
     instance: instance,
     node_id: progress.node_id,
