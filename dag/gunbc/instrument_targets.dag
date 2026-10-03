@@ -241,6 +241,22 @@ fn v2_native_frontier_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "v2-native-frontier" } }
 }
 
+// THE NATIVE CENSUS INSTRUMENT: the emitted compiler's `census-resolve` verb over the self-host
+// corpus, every front-end and resolve refusal GROUPED BY THE FATAL REASON
+// (v2.compiler.compile native_census_cause_groups_add) with the head kept as a member field. It is
+// THE route to that census: the binary's `census` / `census-resolve` verbs remain only as this row's
+// realization and are not a second documented peer route, which is the --self-host precedent this
+// file states for `//gunbc/instruments:self-host` (DESIGN section 3, Building & checks).
+// IT IS A REPORT, AND ITS VERDICT SAYS ONLY THAT: a census that completed is held, and a run that
+// printed no complete terminal is the subject unreached. It has NO did-not-hold arm on purpose. A
+// partition check (members summed over groups == rows reported) was tried and withdrawn in review
+// 74324: every row reaches a group through the same call that counts it, so its red was not
+// authorable in a real run -- a decoration by DESIGN section 4b. The grouping's discriminating red
+// lives where it is authorable, in v2.test.claim.native_census.whole_tree_census_resolve.
+fn v2_native_census_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "v2-native-census" } }
+}
+
 // THE EMITTED CLOSURE AS A MULTI-CRATE WORKSPACE (Pkg7e). The seed emits `v2.compiler.compile`'s
 // closure, `v2.workflow.emitted_crate_workspace` `emitted_workspace_plan` partitions it into crate
 // rows from the derived module DAG, the emission's returned edges and the transitive unit
@@ -491,6 +507,10 @@ fn native_materialization_store_closure_binding() -> TargetBinding {
   TargetBinding { target: native_materialization_store_closure_label() producer: NativeClaimProgramProducer { entry: native_materialization_store_closure_entry() } }
 }
 
+fn v2_native_census_binding() -> TargetBinding {
+  TargetBinding { target: v2_native_census_label() producer: V2NativeCensusProducer {} }
+}
+
 fn v2_native_frontier_binding() -> TargetBinding {
   TargetBinding { target: v2_native_frontier_label() producer: V2NativeFrontierProducer {} }
 }
@@ -631,7 +651,7 @@ fn instrument_targets() -> List<Label> {
   [
     heads_reading_differential_label(), behavioral_receipt_plan_label(),
     behavioral_receipt_census_label(), behavioral_receipt_selftest_label(),
-    compile_clean_diagnostic_census_label(), self_host_label(), v2_native_cli_label(), v2_native_frontier_label(),
+    compile_clean_diagnostic_census_label(), self_host_label(), v2_native_cli_label(), v2_native_frontier_label(), v2_native_census_label(),
     evaluation_store_address_exact_head_label(), primitive_egress_census_label(),
     primitive_egress_census_v2_label(), primitive_egress_census_dag_label(),
     primitive_egress_census_seed_label(), floor_memory_qualification_label(), typed_graph_exclusive_bytes_label(), typed_graph_exclusive_bytes_floor_subject_label(),
@@ -647,7 +667,7 @@ fn instrument_bindings() -> List<TargetBinding> {
   [
     heads_reading_differential_binding(), behavioral_receipt_plan_binding(),
     behavioral_receipt_census_binding(), behavioral_receipt_selftest_binding(),
-    compile_clean_diagnostic_census_binding(), self_host_binding(), v2_native_cli_binding(), v2_native_frontier_binding(),
+    compile_clean_diagnostic_census_binding(), self_host_binding(), v2_native_cli_binding(), v2_native_frontier_binding(), v2_native_census_binding(),
     evaluation_store_address_exact_head_binding(), primitive_egress_census_binding(),
     primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(),
     primitive_egress_census_seed_binding(), floor_memory_qualification_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
