@@ -11,7 +11,8 @@ import std.fabric_storage {
   FabricHeadExpectation, ExpectHeadAbsent, ExpectHeadAt,
   FabricHeadReading, FabricHeadAbsent, FabricHeadAt, fabric_object_ref_eq,
   FabricHeadAdvance, FabricHeadAdvanced, FabricHeadMoved, FabricHeadAdvanceRefused,
-  FabricStorageFault,
+  FabricStorageFault, fabric_object_ref_of,
+  fabric_object_verified, FabricObjectVerified, FabricObjectVerificationFailed,
 }
 
 // THE CHECKPOINTED WORKSPACE: ONE PERSISTENT SURFACE, COMMITTED BY REVISION, FENCED BY EPOCH.
@@ -96,54 +97,131 @@ fn workspace_entry_line(entry: WorkspaceEntry) -> String {
         fabric_blob_object_name(address: entry.chunk) as String, " ", to_string(measure_count(m: entry.size)), ";"], "")
 }
 
-// The canonical body: kind, workspace, epoch, then every entry length-prefixed in order, so no two
+// The canonical body: kind, length-prefixed workspace, epoch, then every entry length-prefixed in order, so no two
 // distinct entries share a body.
 fn workspace_head_entry_object(entry: WorkspaceHeadEntry) -> FabricObject {
   match entry {
     WorkspaceRevision { writer: w, parent: p, entries: es } => FabricObject {
       links: workspace_parent_links(parent: p),
-      body: join(["workspace.revision;", w.workspace as String, ";epoch=", to_string(w.epoch), ";",
+      body: join(["workspace.revision;W", to_string(length(w.workspace as String)), ":", w.workspace as String, ";epoch=", to_string(w.epoch), ";",
                   fold(es, init: "", f: (acc, e) => join([acc, workspace_entry_line(entry: e)], ""))], "") as NonEmptyStr,
     }
     WorkspaceFence { writer: w, parent: p } => FabricObject {
       links: workspace_parent_links(parent: p),
-      body: join(["workspace.fence;", w.workspace as String, ";epoch=", to_string(w.epoch), ";"], "") as NonEmptyStr,
+      body: join(["workspace.fence;W", to_string(length(w.workspace as String)), ":", w.workspace as String, ";epoch=", to_string(w.epoch), ";"], "") as NonEmptyStr,
     }
   }
 }
 
-// AN ENTRY TOGETHER WITH THE REF IT WAS READ UNDER, one value, so an entry without its ref (or a ref
-// without its entry) has no representation. The decoded closure read (std.fabric_storage
-// FabricClosureRead, newest first) maps onto it one-to-one.
-type WorkspaceStoredEntry {
+// AN ENTRY TOGETHER WITH THE REF IT WAS READ UNDER, AND THE ONLY WAY TO BUILD ONE IS FROM STORED BYTES
+// THAT ENCODE IT. sole_constructor confines construction to workspace_stored_entry_of, which takes
+// what the store returned (std.fabric_storage fabric_object_verified, the same pairing wall
+// FabricAddressedObject closes) and admits a decoded entry only if THAT entry's canonical object is
+// those stored bytes. So a stored entry pairing R1's ref with any other entry has no constructor:
+// the entry is re-encoded and compared, never trusted (DESIGN 5: construction over validation).
+type WorkspaceStoredEntry sole_constructor {
   ref: FabricObjectRef
   entry: WorkspaceHeadEntry
 }
 
-// WHAT A WRITER ASKS THE HEAD FOR: the object to put, and the expectation to advance under. The
-// expectation is the head entry the writer built on -- absent only for the first revision of a new
-// workspace -- so the epoch fence above is the expectation itself. The writer must also never BUILD
-// on an entry of a later epoch: rebuilding on a fence would make the fence the expectation and the
-// advance would succeed, so a built-on entry whose epoch exceeds the new entry's is refused here,
-// before any put.
-type WorkspaceAdvancePlan {
+type WorkspaceStoredEntryAdmission
+  = WorkspaceStoredEntryAdmitted { stored: WorkspaceStoredEntry }
+  | WorkspaceStoredBytesCorrupt { fault: FabricStorageFault }
+  | WorkspaceStoredEntryMismatch { ref: FabricObjectRef }
+
+fn workspace_stored_entry_of(asked: FabricObjectRef, content: FabricObject, decoded: WorkspaceHeadEntry) -> WorkspaceStoredEntryAdmission {
+  match fabric_object_verified(asked: asked, content: content) {
+    FabricObjectVerificationFailed { fault: f } => WorkspaceStoredBytesCorrupt { fault: f }
+    FabricObjectVerified { stored: st } =>
+      if fabric_object_ref_eq(a: fabric_object_ref_of(object: workspace_head_entry_object(entry: decoded)), b: st.object) {
+        WorkspaceStoredEntryAdmitted { stored: WorkspaceStoredEntry { ref: st.object, entry: decoded } }
+      } else {
+        WorkspaceStoredEntryMismatch { ref: st.object }
+      }
+  }
+}
+
+fn workspace_stored_entry_ref(stored: WorkspaceStoredEntry) -> FabricObjectRef { stored.ref }
+fn workspace_stored_entry_entry(stored: WorkspaceStoredEntry) -> WorkspaceHeadEntry { stored.entry }
+
+// WHAT A WRITER ASKS THE HEAD FOR, DERIVED FROM ONE FACT. The entry's parent link and the head
+// expectation are the same fact -- the stored entry the change builds on -- so both are derived from
+// it here and neither is a caller's parameter: parent := built_on.ref, expected := ExpectHeadAt
+// (built_on.ref), and for the first entry of a workspace both derive from absence (no parent,
+// ExpectHeadAbsent). The plan also carries the head NAME derived from the writer's workspace, so a
+// plan cannot be pointed at another workspace's head. sole_constructor confines all of it to
+// workspace_advance_plan; a fence with an absent or foreign parent over an expectation of R1 -- the
+// state that would sever R1 from the closure -- has no constructor.
+type WorkspaceChange
+  = WorkspaceCommitRevision { entries: List<WorkspaceEntry> }
+  | WorkspacePublishFence
+
+type WorkspaceAdvancePlan sole_constructor {
+  head: NonEmptyStr
   object: FabricObject
   expected: FabricHeadExpectation
 }
 
+fn workspace_plan_head(plan: WorkspaceAdvancePlan) -> NonEmptyStr { plan.head }
+fn workspace_plan_object(plan: WorkspaceAdvancePlan) -> FabricObject { plan.object }
+fn workspace_plan_expected(plan: WorkspaceAdvancePlan) -> FabricHeadExpectation { plan.expected }
+
+// A writer may not build on a later epoch (rebuilding on a fence would make the fence its
+// expectation and the advance would succeed), may not build on another workspace's entry, and a
+// fence must carry an epoch later than the entry it fences, or it revokes nothing.
 type WorkspaceAdvanceDecision
   = WorkspaceAdvancePlanned { plan: WorkspaceAdvancePlan }
   | WorkspaceAdvanceStaleEpoch { writer_epoch: Int, current_epoch: Int }
+  | WorkspaceAdvanceForeignWorkspace { writer: NonEmptyStr, built_on: NonEmptyStr }
+  | WorkspaceFenceNotLater { fence_epoch: Int, current_epoch: Int }
 
-fn workspace_advance_plan(entry: WorkspaceHeadEntry, built_on: WorkspaceStoredEntry?) -> WorkspaceAdvanceDecision {
+fn workspace_head_entry_workspace(entry: WorkspaceHeadEntry) -> NonEmptyStr {
+  match entry {
+    WorkspaceRevision { writer: w, parent: _, entries: _ } => w.workspace
+    WorkspaceFence { writer: w, parent: _ } => w.workspace
+  }
+}
+
+fn workspace_entry_of_change(writer: WorkspaceWriterEpoch, change: WorkspaceChange, parent: FabricObjectRef?) -> WorkspaceHeadEntry {
+  match change {
+    WorkspaceCommitRevision { entries: es } => WorkspaceRevision { writer: writer, parent: parent, entries: es }
+    WorkspacePublishFence => WorkspaceFence { writer: writer, parent: parent }
+  }
+}
+
+fn workspace_planned(writer: WorkspaceWriterEpoch, change: WorkspaceChange, parent: FabricObjectRef?, expected: FabricHeadExpectation) -> WorkspaceAdvanceDecision {
+  WorkspaceAdvancePlanned {
+    plan: WorkspaceAdvancePlan {
+      head: workspace_head_name(workspace: writer.workspace),
+      object: workspace_head_entry_object(entry: workspace_entry_of_change(writer: writer, change: change, parent: parent)),
+      expected: expected,
+    }
+  }
+}
+
+fn workspace_advance_plan(writer: WorkspaceWriterEpoch, change: WorkspaceChange, built_on: WorkspaceStoredEntry?) -> WorkspaceAdvanceDecision {
   match built_on {
-    Absent => WorkspaceAdvancePlanned { plan: WorkspaceAdvancePlan { object: workspace_head_entry_object(entry: entry), expected: ExpectHeadAbsent } }
-    Present { value: b } =>
-      if workspace_head_entry_epoch(entry: b.entry) > workspace_head_entry_epoch(entry: entry) {
-        WorkspaceAdvanceStaleEpoch { writer_epoch: workspace_head_entry_epoch(entry: entry), current_epoch: workspace_head_entry_epoch(entry: b.entry) }
+    Absent => workspace_planned(writer: writer, change: change, parent: none, expected: ExpectHeadAbsent)
+    Present { value: b } => {
+      let current = workspace_head_entry_epoch(entry: b.entry)
+      let owner = workspace_head_entry_workspace(entry: b.entry)
+      if (owner as String) != (writer.workspace as String) {
+        WorkspaceAdvanceForeignWorkspace { writer: writer.workspace, built_on: owner }
+      } else if current > writer.epoch {
+        WorkspaceAdvanceStaleEpoch { writer_epoch: writer.epoch, current_epoch: current }
       } else {
-        WorkspaceAdvancePlanned { plan: WorkspaceAdvancePlan { object: workspace_head_entry_object(entry: entry), expected: ExpectHeadAt { object: b.ref } } }
+        match change {
+          WorkspacePublishFence =>
+            if writer.epoch > current {
+              workspace_planned(writer: writer, change: change, parent: Present { value: b.ref }, expected: ExpectHeadAt { object: b.ref })
+            } else {
+              WorkspaceFenceNotLater { fence_epoch: writer.epoch, current_epoch: current }
+            }
+          WorkspaceCommitRevision { entries: _ } =>
+            workspace_planned(writer: writer, change: change, parent: Present { value: b.ref }, expected: ExpectHeadAt { object: b.ref })
+        }
       }
+    }
   }
 }
 
@@ -307,15 +385,58 @@ type DeclaredStorageOutage {
   oldest_uncommitted_write_at: ObservationInstant
 }
 
+// ── THE CHECKPOINT PATH, OBSERVED ──────────────────────────────────────────────────────────────
+//
+// Whether the checkpoint path can keep coverage is an OBSERVATION of commit attempts, not something
+// an age implies. It is maintaining coverage until an attempt fails; from the first failed attempt it
+// is unavailable, with that failure and when it was observed, until a commit succeeds; once the
+// outage is declared it stays declared until a commit succeeds. A lost race or a stale epoch says
+// nothing about the path (the store answered), so neither moves it.
+type WorkspaceCheckpointFailure
+  = CheckpointCommitRefused { fault: FabricStorageFault }
+  | CheckpointHeadUndecoded { observed: FabricHeadReading }
+
+type WorkspaceCheckpointPath
+  = CheckpointPathMaintainingCoverage
+  | CheckpointPathUnavailable { failure: WorkspaceCheckpointFailure, observed_at: ObservationInstant }
+  | CheckpointPathOutageDeclared { outage: DeclaredStorageOutage }
+
+fn workspace_checkpoint_path_failed(path: WorkspaceCheckpointPath, failure: WorkspaceCheckpointFailure, at: ObservationInstant) -> WorkspaceCheckpointPath {
+  match path {
+    CheckpointPathMaintainingCoverage => CheckpointPathUnavailable { failure: failure, observed_at: at }
+    CheckpointPathUnavailable { failure: f, observed_at: t } => CheckpointPathUnavailable { failure: f, observed_at: t }
+    CheckpointPathOutageDeclared { outage: o } => CheckpointPathOutageDeclared { outage: o }
+  }
+}
+
+fn workspace_checkpoint_path_after_commit(path: WorkspaceCheckpointPath, commit: WorkspaceCommit, at: ObservationInstant) -> WorkspaceCheckpointPath {
+  match commit {
+    WorkspaceCommitted { revision: _ } => CheckpointPathMaintainingCoverage
+    WorkspaceCommitFailed { fault: f } => workspace_checkpoint_path_failed(path: path, failure: CheckpointCommitRefused { fault: f }, at: at)
+    WorkspaceCommitObservedUndecoded { observed: o } => workspace_checkpoint_path_failed(path: path, failure: CheckpointHeadUndecoded { observed: o }, at: at)
+    WorkspaceCommitRaced { observed: _ } => path
+    WorkspaceCommitStaleEpoch { writer_epoch: _, current_epoch: _ } => path
+  }
+}
+
 // A standing whose age cannot be computed (WorkspaceCoverageUndecidable) admits no write: the caller
-// cannot show the pending write is younger than the deadline, so it refuses as the outage would.
+// cannot show the pending write is younger than the deadline, so it refuses as the outage would. A
+// declared outage stands until a commit clears it, whatever the age.
 type WorkspaceWriteStanding
   = WorkspaceWritable
   | WorkspaceCommitDue { age: Nanosecond }
   | WorkspaceStorageOutage { outage: DeclaredStorageOutage }
   | WorkspaceCoverageUndecidable { order: InstantOrder }
 
-fn workspace_write_standing(policy: WorkspaceDurabilityPolicy, workspace: NonEmptyStr, coverage: WorkspaceCoverage, now: ObservationInstant) -> WorkspaceWriteStanding {
+fn workspace_write_standing(policy: WorkspaceDurabilityPolicy, workspace: NonEmptyStr, coverage: WorkspaceCoverage, path: WorkspaceCheckpointPath, now: ObservationInstant) -> WorkspaceWriteStanding {
+  match path {
+    CheckpointPathOutageDeclared { outage: o } => WorkspaceStorageOutage { outage: o }
+    CheckpointPathMaintainingCoverage => workspace_standing_by_age(policy: policy, workspace: workspace, coverage: coverage, now: now)
+    CheckpointPathUnavailable { failure: _, observed_at: _ } => workspace_standing_by_age(policy: policy, workspace: workspace, coverage: coverage, now: now)
+  }
+}
+
+fn workspace_standing_by_age(policy: WorkspaceDurabilityPolicy, workspace: NonEmptyStr, coverage: WorkspaceCoverage, now: ObservationInstant) -> WorkspaceWriteStanding {
   match coverage {
     WorkspaceClean => WorkspaceWritable
     WorkspaceDirty { oldest_uncommitted_write_at: t } =>
@@ -334,39 +455,45 @@ fn workspace_write_standing(policy: WorkspaceDurabilityPolicy, workspace: NonEmp
 // ── LOSS OF THE VOLATILE COPY: ORDINARY RECOVERY OR THE NAMED COMPOUND FAILURE ─────────────────
 //
 // Losing the host, drive or rack loses the working copy. Restoring the last committed revision is
-// the ORDINARY recovery when every write it loses is younger than the window. Losing the sole copy
-// while coverage could not be kept -- during a declared outage, or with a pending write already past
-// the window before one was entered -- is the COMPOUND FAILURE: outside the ordinary guarantee,
-// typed and receipted with its billing disposition (failure-billing-semantics), never reported as an
-// ordinary recovery. A loss whose age cannot be computed is not classified as either: it is its own
-// arm, receipted for investigation, because claiming "within window" without an age is the
-// fabricated plausible answer DESIGN 5 forbids.
+// the ORDINARY recovery when the checkpoint path was maintaining coverage: every write it loses is
+// younger than the outage deadline, and so younger than the window. Losing the sole copy of pending
+// writes while the checkpoint path COULD NOT keep coverage is the COMPOUND FAILURE of the contract,
+// in its two named forms: during a declared outage, or after an observed checkpoint failure and
+// before the outage was declared. It is typed and receipted with its billing disposition
+// (failure-billing-semantics), never reported as an ordinary recovery. A clean workspace loses
+// nothing pending, whatever the path. A loss whose age cannot be computed is its own arm, because
+// "within window" without an age is the fabricated plausible answer DESIGN 5 forbids.
 type WorkspaceCompoundCause
   = LostDuringDeclaredOutage { outage: DeclaredStorageOutage }
-  | CoverageLapsedBeforeOutage { oldest_uncommitted_write_age: Nanosecond, window: Nanosecond }
+  | LostAfterCheckpointPathFailureBeforeOutage { failure: WorkspaceCheckpointFailure, failed_at: ObservationInstant, oldest_uncommitted_write_age: Nanosecond }
 
 type WorkspaceLoss
   = WorkspaceLossWithinWindow { uncovered_age: Nanosecond }
   | WorkspaceCompoundFailure { cause: WorkspaceCompoundCause }
   | WorkspaceLossUnclassifiable { order: InstantOrder }
 
-fn workspace_loss_classify(policy: WorkspaceDurabilityPolicy, standing: WorkspaceWriteStanding, coverage: WorkspaceCoverage, lost_at: ObservationInstant) -> WorkspaceLoss {
-  match standing {
-    WorkspaceStorageOutage { outage: o } => WorkspaceCompoundFailure { cause: LostDuringDeclaredOutage { outage: o } }
-    WorkspaceCoverageUndecidable { order: o } => WorkspaceLossUnclassifiable { order: o }
-    WorkspaceWritable => workspace_loss_by_age(policy: policy, coverage: coverage, lost_at: lost_at)
-    WorkspaceCommitDue { age: _ } => workspace_loss_by_age(policy: policy, coverage: coverage, lost_at: lost_at)
+fn workspace_loss_classify(policy: WorkspaceDurabilityPolicy, workspace: NonEmptyStr, coverage: WorkspaceCoverage, path: WorkspaceCheckpointPath, lost_at: ObservationInstant) -> WorkspaceLoss {
+  match coverage {
+    WorkspaceClean => WorkspaceLossWithinWindow { uncovered_age: nanosecond(count: 0) }
+    WorkspaceDirty { oldest_uncommitted_write_at: _ } =>
+      match workspace_write_standing(policy: policy, workspace: workspace, coverage: coverage, path: path, now: lost_at) {
+        WorkspaceStorageOutage { outage: o } => WorkspaceCompoundFailure { cause: LostDuringDeclaredOutage { outage: o } }
+        WorkspaceCoverageUndecidable { order: o } => WorkspaceLossUnclassifiable { order: o }
+        WorkspaceWritable => workspace_loss_on_path(coverage: coverage, path: path, lost_at: lost_at)
+        WorkspaceCommitDue { age: _ } => workspace_loss_on_path(coverage: coverage, path: path, lost_at: lost_at)
+      }
   }
 }
 
-fn workspace_loss_by_age(policy: WorkspaceDurabilityPolicy, coverage: WorkspaceCoverage, lost_at: ObservationInstant) -> WorkspaceLoss {
+fn workspace_loss_on_path(coverage: WorkspaceCoverage, path: WorkspaceCheckpointPath, lost_at: ObservationInstant) -> WorkspaceLoss {
   match oldest_uncommitted_write_age(coverage: coverage, now: lost_at) {
     WorkspaceAgeUndefined { order: o } => WorkspaceLossUnclassifiable { order: o }
     WorkspaceAgeOf { age: a } =>
-      if at_least(span: a, bound: policy.window) {
-        WorkspaceCompoundFailure { cause: CoverageLapsedBeforeOutage { oldest_uncommitted_write_age: a, window: policy.window } }
-      } else {
-        WorkspaceLossWithinWindow { uncovered_age: a }
+      match path {
+        CheckpointPathMaintainingCoverage => WorkspaceLossWithinWindow { uncovered_age: a }
+        CheckpointPathUnavailable { failure: f, observed_at: t } =>
+          WorkspaceCompoundFailure { cause: LostAfterCheckpointPathFailureBeforeOutage { failure: f, failed_at: t, oldest_uncommitted_write_age: a } }
+        CheckpointPathOutageDeclared { outage: o } => WorkspaceCompoundFailure { cause: LostDuringDeclaredOutage { outage: o } }
       }
   }
 }
