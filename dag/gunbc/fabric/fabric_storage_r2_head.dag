@@ -17,8 +17,8 @@ import std.fabric_storage {
 }
 import extdeps.object_storage { ObjectEntityTag, ObjectPutPrecondition, PutIfAbsent, PutIfMatch }
 import extdeps.tools.curl { ReportStatusAndEntityTag }
-import extdeps.external_authority { CitedFigureStanding }
-import extdeps.cloudflare.r2 { r2_conditional_put_linearizability }
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited }
+import extdeps.cloudflare.r2 { r2_conditional_put_linearizability, r2_put_object_conditional_standing }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
 import gunbc.auth.access_token_source { AccessTokenSource }
@@ -34,7 +34,7 @@ import gunbc.fabric_storage_wire { reading_words, decode_reading }
 // step 4B). One head is one R2 object; its body is the head reading in the fabric wire's own words
 // (gunbc.fabric.fabric_storage_wire reading_words), so the R2 head and the served file store spell a
 // head one way. The compare-and-set is R2's conditional PutObject (extdeps.cloudflare.r2
-// r2_put_object_conditional_citation): a writer reads the head and its entity tag, compares the
+// r2_put_object_conditional_standing): a writer reads the head and its entity tag, compares the
 // object it built on (fabric_head_admits, the interface's own comparison), and puts the successor
 // generation with If-Match on that tag -- or with If-None-Match: * when it expects the head absent.
 // A 412 is the lost race, answered as FabricHeadMoved with a fresh reading, never as a fault.
@@ -52,10 +52,28 @@ import gunbc.fabric_storage_wire { reading_words, decode_reading }
 // and until it has run this module's consumers may not cite it as a linearization point
 // (r2_conditional_put_linearizability in extdeps.cloudflare.r2).
 
-// THE STANDING THIS REALIZATION'S CAS RESTS ON, read by its consumers rather than restated: a
-// TranscribedUncited answer refuses to be cited as a linearization point (see the module head).
-fn r2_head_cas_standing() -> CitedFigureStanding {
-  r2_conditional_put_linearizability
+// THE GROUND THIS REALIZATION'S CAS RESTS ON, read by its consumers rather than restated: that R2
+// supports If-Match / If-None-Match on PutObject is cited to the S3 API page; that two concurrent
+// conditional puts on one tag cannot both succeed is still a bet. A consumer may cite this realization
+// as a linearization point only when BOTH are CitedToAuthority (see the module head).
+type R2HeadCasGround {
+  conditional_headers: CitedFigureStanding
+  linearizability: CitedFigureStanding
+}
+
+fn r2_head_cas_ground() -> R2HeadCasGround {
+  R2HeadCasGround { conditional_headers: r2_put_object_conditional_standing, linearizability: r2_conditional_put_linearizability }
+}
+
+fn r2_head_is_cited_linearization_point(ground: R2HeadCasGround) -> Bool {
+  match ground.conditional_headers {
+    TranscribedUncited { read_obligation: _ } => false
+    CitedToAuthority { authority: _ } =>
+      match ground.linearizability {
+        TranscribedUncited { read_obligation: _ } => false
+        CitedToAuthority { authority: _ } => true
+      }
+  }
 }
 
 data r2_head_body_prefix: String = "fabric_storage.r2_head"
