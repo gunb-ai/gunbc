@@ -21,6 +21,7 @@ import gunbc.host_layout {
   srv1_dispatch_attempt_state_root,
   srv1_codex_bundled_executable,
 }
+import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap_dashboard_instance {
   fleet_admitted_revision_source,
   HostDashboardInstance,
@@ -517,6 +518,7 @@ fn witness_synthetic_layout() -> GunbcHostLayout {
 
 fn witness_synthetic_instance() -> HostDashboardInstance {
   isolated_dashboard_instance(
+    deployment: deployment_id(name: "witness-synthetic" as NonEmptyStr),
     instance_id: "witness-synthetic" as NonEmptyStr,
     layout: witness_synthetic_layout(),
     root: "/witness/root" as FilePath,
@@ -755,6 +757,7 @@ fn witness_production_slot(
 ) -> HostDashboardInstance {
   let binary = dashboard_instance_child(root: root, child: "bin/gunbc")
   HostDashboardInstance {
+    deployment: deployment_id(name: instance_id),
     instance_id: instance_id,
     host_identity: host_identity,
     provision_parent_root: "/opt" as FilePath,
@@ -936,6 +939,7 @@ fn witness_endpoint_instance(
   listen_port: Port,
 ) -> HostDashboardInstance {
   isolated_dashboard_instance(
+    deployment: deployment_id(name: instance_id),
     instance_id: instance_id,
     layout: layout,
     root: dashboard_instance_child(
@@ -1068,6 +1072,7 @@ test fn declared_dashboard_instance_set_is_the_lookup_authority() -> Bool {
 
 fn outside_instance_at(root: FilePath) -> HostDashboardInstance {
   isolated_dashboard_instance(
+    deployment: deployment_id(name: "outside-repository-candidate" as NonEmptyStr),
     instance_id: "outside-repository-candidate" as NonEmptyStr,
     layout: srv1_host_layout(),
     root: root,
@@ -1112,6 +1117,7 @@ test fn an_outside_instance_on_a_public_root_is_refused() -> Bool {
 fn outside_instance_claiming_live_id_on_live_footprint() -> HostDashboardInstance {
   let live = srv1_live_dashboard_instance()
   HostDashboardInstance {
+    deployment: live.deployment,
     instance_id: live.instance_id,
     host_identity: live.host_identity,
     provision_parent_root: live.provision_parent_root,
