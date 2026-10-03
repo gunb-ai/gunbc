@@ -630,9 +630,9 @@ test fn dre_an_invalid_argument_call_does_not_ground_holds() -> Bool {
 fn dre_imported_reference_source() -> Outcome<ResolvedTree> {
   assemble_program_from_ingest(
     ingest: Cons {
-      head: dre_file(src: "module m.lib\n\nfn helper(only_arg: Int) -> Int {\n  only_arg\n}\n", id: ^dre_imported_lib_cu),
+      head: dre_file(src: "module m.lib\n\nfn helper(only_arg: Int) -> Int {\n  only_arg\n}\n\ntype Leg {\n  target: Int\n}\n", id: ^dre_imported_lib_cu),
       tail: Cons {
-        head: dre_file(src: "module m.app\n\nimport m.lib { helper }\n\nfn consumer(y: Int) -> Int {\n  helper(only_arg: y)\n}\n", id: ^dre_imported_app_cu),
+        head: dre_file(src: "module m.app\n\nimport m.lib { helper }\n\nfn consumer(y: Int) -> Int {\n  helper(only_arg: y)\n}\n\nfn read(l: m.lib.Leg) -> Int {\n  l.target\n}\n", id: ^dre_imported_app_cu),
         tail: Empty
       }
     },
@@ -673,8 +673,39 @@ fn dre_imported_reference_reading() -> DreReading {
   dre_reading(o: dre_imported_reference_source(), wanted: ^helper)
 }
 
+// THE SOLE REAL TWO-MODULE ROUTE, AND IT ASSERTS THE ROUTE (operator ruling on this lane). Every other
+// cross-module row in this repository's witness lanes for gunbc#12506 is now supplied at one narrow resolve
+// function -- v2.compiler.resolve resolve_dotted_path_reading for a qualified declaration path, and
+// v2.compiler.name_resolve closure_declarations_demand for what the closure index carries -- and this row is
+// the one place authored text reaches both through the whole front end. So beside the grounded call it
+// asserts that its real program PASSED THROUGH each:
+//   * the qualified parameter type `m.lib.Leg` resolved to a DECLARATION REFERENCE to m.lib.Leg (the
+//     declaration arm of resolve_dotted_path_reading; a projection reading would mint no such reference);
+//   * the resolved-declaration index carries m.lib.Leg, a declaration of a module that is not the subject,
+//     which only the closure index supplies -- and it carries it EQUAL, provenance aside, to the record
+//     v2.test.lens_common.infer_fixture claim_record_declaration builds. That is the constructor every supplied
+//     record in the split rows is built with, so this is where the named shapes are bound, once, to what real
+//     resolve produces from authored source.
+// It is a declared preparation-fill debt row (v2.workflow.floor_pure_producer_share), because a real
+// two-module front end is inherently over the margin and this row is its only execution.
+fn dre_imported_route_passes_both_narrow_functions() -> Bool {
+  match dre_imported_reference_source() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: real, diagnostics: _ } =>
+      (dre_single_use_path(root: real.root, wanted: ^Leg) == optional_present(value: [^m, ^lib, ^Leg]))
+        && match symbol_index_lookup(index: real.resolved_declarations, qualified_path: [^m, ^lib, ^Leg]) {
+          Absent => false
+          Present { value: indexed } =>
+            infer_type_equal_ignoring_provenance(
+              a: indexed,
+              b: claim_record_declaration(r: ClaimRecord { path: [^m, ^lib, ^Leg], fields: [ClaimParam { name: ^target, type_node: dre_int_type() }], site: 40 })
+            )
+        }
+  }
+}
+
 test fn dre_an_imported_reference_grounds_through_the_closure_index_holds() -> Bool {
-  dre_imported_reference_reading().call_grounded
+  dre_imported_reference_reading().call_grounded && dre_imported_route_passes_both_narrow_functions()
 }
 
 // THE ASYMMETRY THE TWO REFUSAL ROWS ABOVE DEPEND ON, MEASURED RATHER THAN ASSERTED. A declared `Int`
