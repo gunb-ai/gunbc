@@ -717,6 +717,11 @@ fn store_lookup_decide_present(
 // an unbudgeted family never borrows another's -- and an artifact larger than its family's whole
 // budget refuses before any eviction (store_put's fit test), so it can never empty the store to make
 // room for itself. An occupancy record that cannot be read refuses rather than reading as empty.
+// Bytes an eviction could not yet delete stay CHARGED against the family's budget: an artifact that
+// fits the budget but not the budget less those bytes refuses as cleanup outstanding, so a host that
+// keeps refusing deletes stops the store's writes instead of letting disk grow past the ceiling. A
+// writer whose own object was evicted between its reservation and its publish refuses as evicted
+// during publish, and says whether it removed what it published (if not, those bytes are charged).
 type StoreCommitRefusal
   = StoreCommitManifestUninterpretable { decode: ManifestDecode }
   | StoreCommitContractRefused { binding: RequestArtifactBinding }
@@ -728,6 +733,8 @@ type StoreCommitRefusal
   | StoreCommitResultIdentityUnverifiable { cause: String }
   | StoreCommitBudgetUndeclared { family: ArtifactKindId }
   | StoreCommitDidNotFit { artifact_bytes: ByteSize, budget: ByteSize }
+  | StoreCommitCleanupOutstanding { artifact_bytes: ByteSize, budget: ByteSize, undeleted: ByteSize }
+  | StoreCommitEvictedDuringPublish { name: String, removed: Bool }
   | StoreCommitOccupancyUnavailable { cause: String }
 
 type StoreCommit
@@ -970,6 +977,8 @@ fn store_commit_refusal_tag(c: StoreCommit) -> String {
       StoreCommitResultIdentityUnverifiable { cause: _ } => "result_identity_unverifiable"
       StoreCommitBudgetUndeclared { family: _ } => "budget_undeclared"
       StoreCommitDidNotFit { artifact_bytes: _, budget: _ } => "did_not_fit"
+      StoreCommitCleanupOutstanding { artifact_bytes: _, budget: _, undeleted: _ } => "cleanup_outstanding"
+      StoreCommitEvictedDuringPublish { name: _, removed: _ } => "evicted_during_publish"
       StoreCommitOccupancyUnavailable { cause: _ } => "occupancy_unavailable"
     }
   )

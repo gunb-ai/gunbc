@@ -37,6 +37,8 @@ import extdeps.realization.materialization_store_local {
   local_store_record_recency, local_store_is_object_name, local_store_object_bytes, local_store_family_budget,
   local_store_host_ceiling_bytes, local_store_typed_module_budget_policy,
   LocalStoreStagedPart, LocalStorePartsLookup, local_store_lookup_parts, local_store_part_name,
+  local_store_reserve_prepared, local_store_publish_reserved, LocalStoreReservation, LocalStoreReserved,
+  LocalStoreReservationRefused,
 }
 import std.fabric_blob { fabric_blob_reading_path }
 import std.cache_identity { native_module_verdict_bundle_artifact_kind }
@@ -117,6 +119,13 @@ fn object_path(root_path: String, req: ArtifactRequest) -> String {
   match evaluation_store_admitted_address(admission: evaluation_store_address(req: req)) {
     Absent => ""
     Present { value: addr } => store_path(root_path: root_path, name: store_object_name(address: addr))
+  }
+}
+
+fn object_name(req: ArtifactRequest) -> String {
+  match evaluation_store_admitted_address(admission: evaluation_store_address(req: req)) {
+    Absent => ""
+    Present { value: addr } => store_object_name(address: addr)
   }
 }
 
@@ -467,7 +476,7 @@ test fn an_open_sweeps_an_object_no_index_names_by_real_execution() -> Bool {
     Absent => false
     Present { value: store } => {
       let kept = local_store_commit(root: root, store: store, req: bundle_req(module: "kept"), payloads: verdicts(text: "kept pass"), parts: [])
-      let orphan = "00000000000000000000orphan.materialization.v1"
+      let orphan = object_name(req: bundle_req(module: "orphan"))
       let planted = Filesystem.WriteCreateNew(path: store_path(root_path: root_path, name: orphan), content: "residue")
       let swept = match local_store_open(root: root) {
         LocalStoreOpened { root: _, store: _, durability: _, sweep: sw } => match sw {
@@ -645,7 +654,7 @@ test fn an_open_sweeps_an_orphan_part_and_keeps_an_indexed_records_part_by_real_
     Absent => false
     Present { value: store } => {
       let c = local_store_commit(root: root, store: store, req: bundle_req(module: "k"), payloads: diagnostics_only(), parts: verdict_part(root_path: root_path, name: "staging-k", bytes: "exe-bytes-k"))
-      let orphan = "00000000000000000000orphan.materialization.v3.part.module_test_verdicts"
+      let orphan = concat(object_name(req: bundle_req(module: "orphan")), concat(".part.", output_module_test_verdicts as String))
       let planted = Filesystem.WriteCreateNew(path: store_path(root_path: root_path, name: orphan), content: "residue")
       let reopened = local_store_open(root: root)
       commit_tag(c: c.commit) == "committed" && planted.success
@@ -656,4 +665,133 @@ test fn an_open_sweeps_an_orphan_part_and_keeps_an_indexed_records_part_by_real_
   }
   let removed = shell.Remove.RecursiveForce(path: root_path)
   verdict && removed.success
+}
+
+// Two artifacts that each fit the 4096-byte witness family alone and do not fit together.
+fn half_budget_verdicts(module: String) -> List<ArtifactPayload> {
+  verdicts(text: concat(module, repeat_string(s: " pass", n: 150)))
+}
+
+fn root_object_names(root_path: String) -> List<String> {
+  let listing = Filesystem.List(path: root_path)
+  match filesystem_listing_observation(directory: root_path, success: listing.success, entries: listing.entries, error: listing.error) {
+    FilesystemDirectoryListed(listed) => filesystem_listing_entry_names(listing: listed) |> filter(n => local_store_is_object_name(name: n))
+    FilesystemDirectoryListingRefused { directory: _, error: _ } => ["<unlisted>"]
+    FilesystemDirectorySubjectRefused { directory: _, cause: _ } => ["<unlisted>"]
+  }
+}
+
+// THE RACE, INTERLEAVED BY HAND: A reserves X and pauses; B reserves Y, which evicts X (X was never
+// published, so B's delete finds nothing), and publishes Y; A resumes and publishes X. Without the
+// post-publish re-read X would land on disk with no index naming it (2 objects, over budget). With it,
+// A finds its row gone, removes what it published and refuses as evicted during publish: the root
+// holds exactly Y, within budget, and Y still serves.
+test fn a_writer_evicted_between_reservation_and_publish_refuses_and_leaves_nothing_by_real_execution() -> Bool {
+  let root_path = fresh_root_path()
+  let root = WitnessScratchRoot { root: root_path }
+  let budget = bundle_family_budget_bytes(root: root)
+  let verdict = match opened(root: root) {
+    Absent => false
+    Present { value: store } => {
+      let rx = bundle_req(module: "x")
+      let px = store_commit_prepare(req: rx, payloads: half_budget_verdicts(module: "x"), blobs: [])
+      let reserved_x = local_store_reserve_prepared(root: root, req: rx, prepared: px, part_bytes: 0)
+      let x_reserved = match reserved_x {
+        LocalStoreReserved { evicted: _, retired: _, reclamation: _ } => true
+        LocalStoreReservationRefused { refusal: _ } => false
+      }
+      let cy = local_store_commit(root: root, store: store, req: bundle_req(module: "y"), payloads: half_budget_verdicts(module: "y"), parts: [])
+      let cx = local_store_publish_reserved(root: root, store: store, req: rx, prepared: px, reservation: reserved_x, parts: [], blobs: [])
+      let names = root_object_names(root_path: root_path)
+      x_reserved
+        && commit_tag(c: cy.commit) == "committed" && cy.evicted |> any(n => n == object_name(req: rx))
+        && commit_tag(c: cx.commit) == "evicted_during_publish"
+        && !Filesystem.Read(path: object_path(root_path: root_path, req: rx)).success
+        && count(names) == 1 && names |> all(n => n == object_name(req: bundle_req(module: "y")))
+        && root_object_bytes(root_path: root_path) <= budget
+        && store_lookup_is_hit(l: local_store_lookup(root: root, store: store, req: bundle_req(module: "y")))
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  verdict && removed.success
+}
+
+// A DELETE THE HOST KEEPS REFUSING STOPS THE WRITES; IT NEVER GROWS THE DISK. X is committed, then its
+// file is replaced by a directory, which Filesystem.Delete (a file delete) refuses on every attempt.
+// Y's reservation evicts X, the delete is refused, and Y is NOT published (cleanup outstanding). A
+// later Z refuses at reservation too, because X's bytes are still charged. Once the obstruction is
+// gone, the next reservation confirms X gone and Z commits. Disk stays within budget at every step.
+test fn a_persistently_refused_eviction_delete_stays_charged_and_stops_writes_by_real_execution() -> Bool {
+  let root_path = fresh_root_path()
+  let root = WitnessScratchRoot { root: root_path }
+  let budget = bundle_family_budget_bytes(root: root)
+  let verdict = match opened(root: root) {
+    Absent => false
+    Present { value: store } => {
+      let rx = bundle_req(module: "x")
+      let cx = local_store_commit(root: root, store: store, req: rx, payloads: half_budget_verdicts(module: "x"), parts: [])
+      let x_path = object_path(root_path: root_path, req: rx)
+      let unlinked = Filesystem.Delete(path: x_path).success
+      let blocked = shell.Mkdir.NewOwnerOnly(path: x_path).success
+      let cy = local_store_commit(root: root, store: store, req: bundle_req(module: "y"), payloads: half_budget_verdicts(module: "y"), parts: [])
+      let y_within = root_object_bytes(root_path: root_path) <= budget
+      let cz_refused = local_store_commit(root: root, store: store, req: bundle_req(module: "z"), payloads: half_budget_verdicts(module: "z"), parts: [])
+      let cleared = shell.Remove.RecursiveForce(path: x_path).success
+      let cz = local_store_commit(root: root, store: store, req: bundle_req(module: "z"), payloads: half_budget_verdicts(module: "z"), parts: [])
+      commit_tag(c: cx.commit) == "committed" && unlinked && blocked
+        && commit_tag(c: cy.commit) == "cleanup_outstanding"
+        && cy.eviction_delete_refused |> any(n => n == object_name(req: rx))
+        && store_lookup_is_miss(l: local_store_lookup(root: root, store: store, req: bundle_req(module: "y")))
+        && y_within
+        && commit_tag(c: cz_refused.commit) == "cleanup_outstanding"
+        && cleared
+        && commit_tag(c: cz.commit) == "committed"
+        && cz.retired |> any(n => n == object_name(req: rx))
+        && root_object_bytes(root_path: root_path) <= budget
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  verdict && removed.success
+}
+
+// THE DELETION AUTHORITY IS THE EXACT NAME RELATION. A traversal name and a foreign file that merely
+// contains ".materialization." are not object names: the sweep leaves the foreign file alone, and an
+// index row naming a traversal is a corrupt index that refuses, so it can never authorize a delete.
+test fn only_canonical_object_names_are_indexed_or_swept_by_real_execution() -> Bool {
+  let root_path = fresh_root_path()
+  let root = WitnessScratchRoot { root: root_path }
+  let canonical = object_name(req: bundle_req(module: "c"))
+  let names_judged = local_store_is_object_name(name: canonical)
+    && !local_store_is_object_name(name: concat("../", canonical))
+    && !local_store_is_object_name(name: "notes.materialization.v3")
+    && !local_store_is_object_name(name: concat(canonical, ".bak"))
+    && !local_store_is_object_name(name: concat("x", canonical))
+  let verdict = match opened(root: root) {
+    Absent => false
+    Present { value: store } => {
+      let first = local_store_commit(root: root, store: store, req: bundle_req(module: "c"), payloads: verdicts(text: "c pass"), parts: [])
+      let foreign = "notes.materialization.txt"
+      let planted = Filesystem.WriteCreateNew(path: store_path(root_path: root_path, name: foreign), content: "not the store's").success
+      let swept_alone = match local_store_open(root: root) {
+        LocalStoreOpened { root: _, store: _, durability: _, sweep: sw } => match sw {
+          LocalStoreSwept { removed: r, delete_refused: _ } => !(r |> any(n => n == foreign))
+          LocalStoreSweepUnavailable { cause: _ } => false
+          LocalStoreSweepNotRun => false
+        }
+        LocalStoreUnavailable { root_path: _, cause: _ } => false
+      }
+      let slot = store_path(root_path: root_path, name: concat(local_store_index_key(family: native_module_verdict_bundle_artifact_kind) as String, ".1"))
+      let traversal_row = Filesystem.Write(path: slot, content: concat("gunbc-store-occupancy v2\nnext 2\n../outside", ".materialization.v3 10 1")).success
+      let refused = match local_store_read_index(root_path: root_path, family: native_module_verdict_bundle_artifact_kind) {
+        LocalStoreIndexUnavailable { cause: _ } => true
+        LocalStoreIndexAt { index: _, expected: _ } => false
+      }
+      commit_tag(c: first.commit) == "committed" && planted && swept_alone
+        && store_lookup_is_hit(l: local_store_lookup(root: root, store: store, req: bundle_req(module: "c")))
+        && Filesystem.Read(path: store_path(root_path: root_path, name: foreign)).success
+        && traversal_row && refused
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  names_judged && verdict && removed.success
 }

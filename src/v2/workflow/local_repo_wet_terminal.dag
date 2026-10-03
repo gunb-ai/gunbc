@@ -1931,6 +1931,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.materialization_store_local_wet_witness", function: "a_writer_evicted_between_reservation_and_publish_refuses_and_leaves_nothing_by_real_execution" },
+      entry: "dag/test/claim/materialization_store_local_wet_witness_test.dag",
+      function: "a_writer_evicted_between_reservation_and_publish_refuses_and_leaves_nothing_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.materialization_store_local_wet_witness", function: "a_persistently_refused_eviction_delete_stays_charged_and_stops_writes_by_real_execution" },
+      entry: "dag/test/claim/materialization_store_local_wet_witness_test.dag",
+      function: "a_persistently_refused_eviction_delete_stays_charged_and_stops_writes_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.materialization_store_local_wet_witness", function: "only_canonical_object_names_are_indexed_or_swept_by_real_execution" },
+      entry: "dag/test/claim/materialization_store_local_wet_witness_test.dag",
+      function: "only_canonical_object_names_are_indexed_or_swept_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.pre_os_capture_replay_witness", function: "w_early_exit_refuses_absence_on_real_bytes" },
       entry: "dag/test/claim/machine_intake/pre_os_capture_replay_witness_test.dag",
       function: "w_early_exit_refuses_absence_on_real_bytes",
