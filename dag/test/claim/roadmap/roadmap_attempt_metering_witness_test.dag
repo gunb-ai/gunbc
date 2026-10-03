@@ -1,0 +1,160 @@
+module test.claim.roadmap.roadmap_attempt_metering_witness_test
+
+import std.types { Bool, Int, List, String, NonEmptyStr }
+import product.capacity.event_chain { ChainEnvelope, ChainEvent, EventId, PartitionId, ChainWalked, ChainBudgetExhausted }
+import product.capacity.pool_events { PoolEvent, PoolAcquired, PoolReleased, PoolSettled }
+import std.measure { token_count }
+import extdeps.clock { ClockUnixMillisObserved }
+import gunbc.harness.harness_turn { harness_event_round_usage }
+import gunbc.harness.harness_seat_pointer {
+  HarnessSeatPointer, HarnessSeatPointerDecoded, HarnessSeatPointerUndecodable, harness_seat_pointer_decode, harness_seat_pointer_json,
+}
+import gunbc.roadmap_attempt_metering {
+  MeteredWorker, MeteredReviewer, MeteredAuditor, RoleTokens, RoleTokensObserved, RoleStreamAbsent, RoleStreamRefused,
+  SeatHeld, SeatHeldObserved, SeatStillHeld, SeatRefused, SeatPointerAbsent,
+  AttemptMeteringRecord, ComputeNotAttributable, compute_not_attributable_reason,
+  MeteringTotal, MeteringTotalObserved, MeteringTotalIncomplete, metering_token_total, metering_seat_seconds_total,
+  AttemptMeteringObservation, MeteringObserved, MeteringRefused, MeteringNotYetWritten,
+  role_tokens_from_events, seat_held_from_events, seat_held_from_walk, attempt_metering_json, metering_observe_from_text,
+}
+
+// PLANTED FIXTURES with hand-computed answers. The worker stream carries two clocked rounds
+// (in 10+20=30, out 100+200=300); the reviewer stream one round (in 5, out 7). The seat ledger
+// acquires "w-seat" at 1000 and releases it at 1042 (42 s held), interleaved with another seat's
+// events that must not be attributed to this one.
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+fn worker_stream() -> String {
+  join([
+    "{\"type\":\"turn.started\"}",
+    "{\"type\":\"round.usage\",\"step\":1,\"input_tokens\":10,\"output_tokens\":100,\"epoch_ms\":1000}",
+    "{\"type\":\"round.usage\",\"step\":2,\"input_tokens\":20,\"output_tokens\":200,\"epoch_ms\":3000}",
+  ], "\n")
+}
+
+fn reviewer_stream() -> String {
+  "{\"type\":\"round.usage\",\"step\":1,\"input_tokens\":5,\"output_tokens\":7,\"epoch_ms\":9000}"
+}
+
+// The discriminating RED: a round whose output_tokens is unreadable. A fold that defaulted the
+// member would total 100 output tokens; the metering must refuse instead.
+fn worker_stream_with_unreadable_round() -> String {
+  join([
+    "{\"type\":\"round.usage\",\"step\":1,\"input_tokens\":10,\"output_tokens\":100,\"epoch_ms\":1000}",
+    "{\"type\":\"round.usage\",\"step\":2,\"input_tokens\":20,\"output_tokens\":\"many\",\"epoch_ms\":3000}",
+  ], "\n")
+}
+
+fn env(id: String, at: Int, payload: PoolEvent) -> ChainEnvelope<PoolEvent> {
+  ChainEnvelope { id: id as NonEmptyStr as EventId, event: ChainEvent {
+    partition: "group-b-tolerant-seat-c4-v1" as NonEmptyStr as PartitionId,
+    parent: none, recorded_at: at, actor: "worker:/w" as NonEmptyStr, payload: payload,
+  } }
+}
+
+fn pointer() -> HarnessSeatPointer {
+  HarnessSeatPointer { partition: "group-b-tolerant-seat-c4-v1" as NonEmptyStr as PartitionId, reference: "w-seat" as NonEmptyStr }
+}
+
+fn ledger() -> List<ChainEnvelope<PoolEvent>> {
+  [
+    env(id: "e1", at: 990, payload: PoolAcquired { reference: "other" as NonEmptyStr, amount: 1, term_seconds: 300 }),
+    env(id: "e2", at: 1000, payload: PoolAcquired { reference: "w-seat" as NonEmptyStr, amount: 1, term_seconds: 300 }),
+    env(id: "e3", at: 1010, payload: PoolReleased { reference: "other" as NonEmptyStr, reason: "done" as NonEmptyStr }),
+    env(id: "e4", at: 1042, payload: PoolReleased { reference: "w-seat" as NonEmptyStr, reason: "completed" as NonEmptyStr }),
+  ]
+}
+
+fn record() -> AttemptMeteringRecord {
+  AttemptMeteringRecord {
+    node_id: "node-x",
+    attempt_key: "7",
+    metered_at: 2000,
+    roles: [
+      role_tokens_from_events(role: MeteredWorker, body: worker_stream()),
+      role_tokens_from_events(role: MeteredReviewer { criterion: "conformance" as NonEmptyStr }, body: reviewer_stream()),
+      RoleStreamAbsent { role: MeteredAuditor },
+    ],
+    seats: [seat_held_from_events(role: MeteredWorker, pointer: pointer(), oldest_first: ledger())],
+    compute: ComputeNotAttributable { reason: compute_not_attributable_reason },
+  }
+}
+
+// POSITIVE CONTROL: tokens total across roles; an absent role contributes nothing and is not a gap.
+test fn tokens_total_across_every_role_that_ran() -> Bool {
+  (match metering_token_total(record: record(), output: false) { MeteringTotalObserved { value: v } => v == 35, _ => false })
+    && (match metering_token_total(record: record(), output: true) { MeteringTotalObserved { value: v } => v == 307, _ => false })
+}
+
+// DISCRIMINATING RED: one unreadable round makes that role refuse, and the attempt total is
+// incomplete -- never the 100 tokens a defaulting fold would report.
+test fn an_unreadable_round_refuses_rather_than_totalling_short() -> Bool {
+  let bad = role_tokens_from_events(role: MeteredWorker, body: worker_stream_with_unreadable_round())
+  (match bad { RoleStreamRefused { role: _, cause: _ } => true, _ => false })
+    && (match metering_token_total(record: AttemptMeteringRecord {
+          node_id: "node-x", attempt_key: "7", metered_at: 2000, roles: [bad], seats: [],
+          compute: ComputeNotAttributable { reason: compute_not_attributable_reason },
+        }, output: true) { MeteringTotalIncomplete { cause: _ } => true, _ => false })
+}
+
+test fn the_seat_interval_is_its_own_grant_to_release_on_the_ledger() -> Bool {
+  (match seat_held_from_events(role: MeteredWorker, pointer: pointer(), oldest_first: ledger()) {
+    SeatHeldObserved { role: _, pointer: _, granted_at: g, released_at: r, held_seconds: h } => g == 1000 && r == 1042 && h == 42
+    _ => false
+  })
+    && (match metering_seat_seconds_total(record: record()) { MeteringTotalObserved { value: v } => v == 42, _ => false })
+}
+
+test fn an_unreleased_or_unreadable_seat_is_not_a_zero() -> Bool {
+  (match seat_held_from_events(role: MeteredWorker, pointer: pointer(), oldest_first: [env(id: "e2", at: 1000, payload: PoolAcquired { reference: "w-seat" as NonEmptyStr, amount: 1, term_seconds: 300 })]) {
+    SeatStillHeld { role: _, pointer: _, granted_at: g } => g == 1000
+    _ => false
+  })
+    && (match seat_held_from_walk(role: MeteredWorker, pointer: pointer(), walk: ChainBudgetExhausted { at: "e9" as NonEmptyStr as EventId }) {
+      SeatRefused { role: _, cause: _ } => true
+      _ => false
+    })
+    && (match metering_seat_seconds_total(record: AttemptMeteringRecord {
+          node_id: "node-x", attempt_key: "7", metered_at: 2000, roles: [],
+          seats: [SeatPointerAbsent { role: MeteredWorker }],
+          compute: ComputeNotAttributable { reason: compute_not_attributable_reason },
+        }) { MeteringTotalIncomplete { cause: _ } => true, _ => false })
+}
+
+test fn the_seat_pointer_the_harness_writes_is_the_one_the_metering_reads() -> Bool {
+  match harness_seat_pointer_decode(raw: harness_seat_pointer_json(pointer: pointer())) {
+    HarnessSeatPointerDecoded { pointer: p } => (p.reference as String) == "w-seat" && (p.partition as String) == "group-b-tolerant-seat-c4-v1"
+    HarnessSeatPointerUndecodable { cause: _ } => false
+  }
+}
+
+// The record the writer serializes is the record the reader returns, and the reader refuses a
+// record that names a different attempt than the path it was read from.
+test fn the_reader_returns_the_written_record_for_its_own_attempt_only() -> Bool {
+  let raw = attempt_metering_json(record: record())
+  (match metering_observe_from_text(node_id: "node-x", attempt_key: "7", raw: raw) {
+    MeteringObserved { record: r } =>
+      r.metered_at == 2000
+        && (match metering_token_total(record: r, output: true) { MeteringTotalObserved { value: v } => v == 307, _ => false })
+        && (match metering_seat_seconds_total(record: r) { MeteringTotalObserved { value: v } => v == 42, _ => false })
+    _ => false
+  })
+    && (match metering_observe_from_text(node_id: "node-x", attempt_key: "8", raw: raw) { MeteringRefused { cause: _ } => true, _ => false })
+    && (match metering_observe_from_text(node_id: "node-x", attempt_key: "7", raw: "{\"schema\":\"other\"}") { MeteringRefused { cause: _ } => true, _ => false })
+}
+
+// THE REAL PRODUCER ROUTE: the stream is written by gunbc.harness.harness_turn
+// harness_event_round_usage, the function the harness calls each round. If that writer's shape
+// drifts from what the metering reads, this claim goes red where the planted fixtures above would
+// stay green.
+fn real_round(step: Int, i: Int, o: Int, ms: Int) -> String {
+  harness_event_round_usage(step: step, input_tokens: token_count(count: i), output_tokens: token_count(count: o), clock: ClockUnixMillisObserved { millis: ms }, tool_calls: 1, files_changed: none)
+}
+
+test fn the_harness_round_writer_is_what_the_metering_totals() -> Bool {
+  let body = join([real_round(step: 1, i: 11, o: 13, ms: 1000), real_round(step: 2, i: 17, o: 19, ms: 2000)], "\n")
+  match role_tokens_from_events(role: MeteredWorker, body: body) {
+    RoleTokensObserved { role: _, rounds: n, input_tokens: i, output_tokens: o } => n == 2 && i == 28 && o == 32
+    _ => false
+  }
+}

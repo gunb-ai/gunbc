@@ -1,0 +1,708 @@
+module gunbc.roadmap_attempt_metering
+
+import std.types { Bool, Int, List, NonEmptyStr, String, EpochSecs }
+import std.algebra { trim }
+import extdeps.languages.json.emit {
+  JsonValue, JsonString, JsonArray, JsonKeyValue, json_kv, json_int, json_string, json_object, json_array, serialize_json,
+}
+import extdeps.languages.json.parse {
+  JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
+  parse_json_document, json_object_unique_member,
+}
+import extdeps.filesystem.filesystem_io {
+  Filesystem, FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree,
+  FilesystemFileSubjectRefused, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
+  filesystem_file_observation, filesystem_listing_observation, filesystem_read_outcome, filesystem_listing_entry_names,
+}
+import gunbc.harness.harness_wire { IntRead, harness_member_int, harness_int_read_gap }
+import gunbc.harness.harness_throughput {
+  HarnessRoundLedger, RoundsObserved, RoundsUnobserved, harness_round_ledger_from_events,
+}
+import product.capacity.event_chain {
+  PartitionId, ChainEnvelope, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted,
+}
+import product.capacity.pool_events {
+  PoolEvent, PoolAcquired, PoolSettled, PoolReleased, PoolLapsed, PoolUpstreamObserved, PoolResetObserved,
+}
+import gunbc.fabric_event_log {
+  PartitionReadOk, PartitionReadRefused, event_log_read_partition, event_log_read_budget, event_log_refusal_wire,
+}
+import gunbc.fabric_event_log_host { HostStoreResolved, HostStoreRefused, event_log_store_for_host, now_epoch_seconds }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.harness.harness_seat_pointer {
+  HarnessSeatPointer, HarnessSeatPointerDecode, HarnessSeatPointerDecoded, HarnessSeatPointerUndecodable, harness_seat_pointer_decode, harness_seat_pointer_path,
+}
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.roadmap_dispatch_actuator {
+  dispatch_attempt_state_path_for_instance, dispatch_attempt_events_path_for_instance,
+  dispatch_attempt_review_dir_for_instance, dispatch_attempt_audit_dir_for_instance,
+  dispatch_attempt_supervisor_dir_for_instance,
+}
+
+// ONE PER-ATTEMPT METERING RECORD (dogfood stage G3). The usage receipt the corpus already carries,
+// gunbc.runner.runner_usage_receipt RunnerUsageReceipt, meters ONE microVM: configured vCPUs times
+// a jailer-launch-to-VMM-reap interval, beside a capacity-held interval, read from four instants on
+// one monotonic clock. An attempt on the belt is not one VM: it is N harness processes (worker,
+// reviewer per criterion, auditor, supervisor), each holding its own serving seat on the fabric
+// ledger and each reporting model tokens, which RunnerUsageReceipt has no field for. So this record
+// DIVERGES (DESIGN §3b) and keeps only what transfers: an interval is a difference of two observed
+// instants that refuses when reversed, and a missing meter is a typed refusal, never a zero. The
+// seat interval is read from the ledger's own recorded_at stamps (whole epoch seconds), the same
+// role metering_intervals gives capacity-held time. No price, credit or rounding enters here.
+
+// ── roles ─────────────────────────────────────────────────────────────────────────────────────
+type MeteredRole
+  = MeteredWorker
+  | MeteredReviewer { criterion: NonEmptyStr }
+  | MeteredAuditor
+  | MeteredSupervisor
+
+fn metered_role_wire(role: MeteredRole) -> String {
+  match role {
+    MeteredWorker => "worker"
+    MeteredReviewer { criterion: c } => join(["reviewer:", c as String], "")
+    MeteredAuditor => "auditor"
+    MeteredSupervisor => "supervisor"
+  }
+}
+
+type MeteredRoleDecode
+  = MeteredRoleDecoded { role: MeteredRole }
+  | MeteredRoleUndecodable { wire: String }
+
+fn metered_role_decode(wire: String) -> MeteredRoleDecode {
+  if wire == "worker" {
+    MeteredRoleDecoded { role: MeteredWorker }
+  } else if wire == "auditor" {
+    MeteredRoleDecoded { role: MeteredAuditor }
+  } else if wire == "supervisor" {
+    MeteredRoleDecoded { role: MeteredSupervisor }
+  } else if starts_with(s: wire, prefix: "reviewer:") && length(s: wire) > 9 {
+    MeteredRoleDecoded { role: MeteredReviewer { criterion: substring(s: wire, start: 9, end: length(s: wire)) as NonEmptyStr } }
+  } else {
+    MeteredRoleUndecodable { wire: wire }
+  }
+}
+
+// ── tokens: one role's provider-events stream ─────────────────────────────────────────────────
+// The stream is read through gunbc.harness.harness_throughput harness_round_ledger_from_events,
+// the one decoder of round.usage, which refuses the whole stream on any unreadable row. A role
+// whose stream does not exist never ran (RoleStreamAbsent); a stream that exists but yields no
+// clocked round refuses with the ledger's cause rather than reading as zero tokens.
+type RoleTokens
+  = RoleTokensObserved { role: MeteredRole, rounds: Int, input_tokens: Int, output_tokens: Int }
+  | RoleStreamAbsent { role: MeteredRole }
+  | RoleStreamRefused { role: MeteredRole, cause: String }
+
+fn role_tokens_from_ledger(role: MeteredRole, ledger: HarnessRoundLedger) -> RoleTokens {
+  match ledger {
+    RoundsUnobserved { reason: r } => RoleStreamRefused { role: role, cause: r as String }
+    RoundsObserved { rounds: rs } =>
+      RoleTokensObserved {
+        role: role,
+        rounds: list_length(items: rs),
+        input_tokens: fold(rs, init: 0, f: (acc, r) => acc + r.input_tokens),
+        output_tokens: fold(rs, init: 0, f: (acc, r) => acc + r.output_tokens),
+      }
+  }
+}
+
+fn role_tokens_from_events(role: MeteredRole, body: String) -> RoleTokens {
+  role_tokens_from_ledger(role: role, ledger: harness_round_ledger_from_events(body: body))
+}
+
+// ── seats: one role's grant -> release interval on the fabric ledger ──────────────────────────
+// The harness names the seat it bound in a pointer file beside its events stream
+// (harness_seat_pointer_path); the pointer carries identity only. Both instants come from the
+// ledger's own events for that reference: PoolAcquired.recorded_at and PoolReleased.recorded_at.
+type SeatHeld
+  = SeatHeldObserved { role: MeteredRole, pointer: HarnessSeatPointer, granted_at: EpochSecs, released_at: EpochSecs, held_seconds: Int }
+  | SeatPointerAbsent { role: MeteredRole }
+  | SeatStillHeld { role: MeteredRole, pointer: HarnessSeatPointer, granted_at: EpochSecs }
+  | SeatRefused { role: MeteredRole, cause: String }
+
+type SeatInstants {
+  acquired: List<EpochSecs>
+  released: List<EpochSecs>
+}
+
+// A reference acquired twice, or released twice, is a ledger this fold does not understand; it
+// refuses rather than choosing one instant.
+fn seat_held_from_events(role: MeteredRole, pointer: HarnessSeatPointer, oldest_first: List<ChainEnvelope<PoolEvent>>) -> SeatHeld {
+  let seat_ref = pointer.reference as String
+  let s = fold(oldest_first, init: SeatInstants { acquired: [] as List<EpochSecs>, released: [] as List<EpochSecs> }, f: (acc, env) =>
+    match env.event.payload {
+      PoolAcquired { reference: r, amount: _, term_seconds: _ } =>
+        if (r as String) == seat_ref { SeatInstants { acquired: concat(acc.acquired, [env.event.recorded_at]), released: acc.released } } else { acc }
+      PoolReleased { reference: r, reason: _ } =>
+        if (r as String) == seat_ref { SeatInstants { acquired: acc.acquired, released: concat(acc.released, [env.event.recorded_at]) } } else { acc }
+      PoolSettled { reference: _, actual: _ } => acc
+      PoolLapsed => acc
+      PoolUpstreamObserved { remaining: _, term_seconds: _ } => acc
+      PoolResetObserved { reset_at: _ } => acc
+    })
+  let na = list_length(items: s.acquired)
+  let nr = list_length(items: s.released)
+  if na == 0 {
+    SeatRefused { role: role, cause: join(["the ledger carries no acquisition for seat ", seat_ref], "") }
+  } else if na > 1 {
+    SeatRefused { role: role, cause: join(["the ledger acquires seat ", seat_ref, " more than once"], "") }
+  } else if nr > 1 {
+    SeatRefused { role: role, cause: join(["the ledger releases seat ", seat_ref, " more than once"], "") }
+  } else {
+    let g = fold(s.acquired, init: 0, f: (_a, x) => x)
+    if nr == 0 {
+      SeatStillHeld { role: role, pointer: pointer, granted_at: g }
+    } else {
+      let r = fold(s.released, init: 0, f: (_a, x) => x)
+      if r < g {
+        SeatRefused { role: role, cause: join(["seat ", seat_ref, " was released before it was acquired"], "") }
+      } else {
+        SeatHeldObserved { role: role, pointer: pointer, granted_at: g, released_at: r, held_seconds: r - g }
+      }
+    }
+  }
+}
+
+fn seat_held_from_walk(role: MeteredRole, pointer: HarnessSeatPointer, walk: ChainWalk<PoolEvent>) -> SeatHeld {
+  match walk {
+    ChainWalked { oldest_first: es } => seat_held_from_events(role: role, pointer: pointer, oldest_first: es)
+    ChainIncomplete { missing: m, newest_first_so_far: _ } =>
+      SeatRefused { role: role, cause: join(["the seat partition chain is incomplete at ", m as String], "") }
+    ChainBudgetExhausted { at: a } =>
+      SeatRefused { role: role, cause: join(["the seat partition chain exceeded its read budget at ", a as String], "") }
+  }
+}
+
+// ── compute ───────────────────────────────────────────────────────────────────────────────────
+// gunbc.compute outcome records are keyed by work identity, and nothing yet links an attempt to the
+// work it caused, so the compute share is a typed absence, never zero. FRONTIER: the Observed arm
+// (compute seconds, memory peak) lands with dogfood G1, which introduces that attempt->work link.
+type ComputeUsage
+  = ComputeNotAttributable { reason: NonEmptyStr }
+
+data compute_not_attributable_reason: NonEmptyStr = "no record links this attempt to compute work identities; gunbc.compute outcome records are keyed by work identity only" as NonEmptyStr
+
+// ── the record ────────────────────────────────────────────────────────────────────────────────
+// Totals are derived from the per-role rows (metering_*_total), never stored beside them.
+type AttemptMeteringRecord {
+  node_id: String
+  attempt_key: String
+  metered_at: EpochSecs
+  roles: List<RoleTokens>
+  seats: List<SeatHeld>
+  compute: ComputeUsage
+}
+
+type MeteringTotal
+  = MeteringTotalObserved { value: Int }
+  | MeteringTotalIncomplete { cause: String }
+
+fn metering_token_total(record: AttemptMeteringRecord, output: Bool) -> MeteringTotal {
+  fold(record.roles, init: MeteringTotalObserved { value: 0 }, f: (acc, r) =>
+    match acc {
+      MeteringTotalIncomplete { cause: _ } => acc
+      MeteringTotalObserved { value: v } =>
+        match r {
+          RoleTokensObserved { role: _, rounds: _, input_tokens: i, output_tokens: o } =>
+            MeteringTotalObserved { value: v + (if output { o } else { i }) }
+          RoleStreamAbsent { role: _ } => acc
+          RoleStreamRefused { role: ro, cause: c } =>
+            MeteringTotalIncomplete { cause: join([metered_role_wire(role: ro), ": ", c], "") }
+        }
+    })
+}
+
+fn metering_seat_seconds_total(record: AttemptMeteringRecord) -> MeteringTotal {
+  fold(record.seats, init: MeteringTotalObserved { value: 0 }, f: (acc, s) =>
+    match acc {
+      MeteringTotalIncomplete { cause: _ } => acc
+      MeteringTotalObserved { value: v } =>
+        match s {
+          SeatHeldObserved { role: _, pointer: _, granted_at: _, released_at: _, held_seconds: h } =>
+            MeteringTotalObserved { value: v + h }
+          SeatPointerAbsent { role: ro } =>
+            MeteringTotalIncomplete { cause: join([metered_role_wire(role: ro), ": no seat pointer was written"], "") }
+          SeatStillHeld { role: ro, pointer: _, granted_at: _ } =>
+            MeteringTotalIncomplete { cause: join([metered_role_wire(role: ro), ": the seat is not yet released"], "") }
+          SeatRefused { role: ro, cause: c } =>
+            MeteringTotalIncomplete { cause: join([metered_role_wire(role: ro), ": ", c], "") }
+        }
+    })
+}
+
+// ── codec ─────────────────────────────────────────────────────────────────────────────────────
+data attempt_metering_schema: String = "gunbc-attempt-metering/v1"
+data attempt_metering_basename: String = "metering.json"
+
+fn role_tokens_json(r: RoleTokens) -> JsonValue {
+  match r {
+    RoleTokensObserved { role: ro, rounds: n, input_tokens: i, output_tokens: o } => json_object(members: [
+      json_kv(key: "role", value: json_string(s: metered_role_wire(role: ro))),
+      json_kv(key: "state", value: json_string(s: "observed")),
+      json_kv(key: "rounds", value: json_int(n: n)),
+      json_kv(key: "input_tokens", value: json_int(n: i)),
+      json_kv(key: "output_tokens", value: json_int(n: o)),
+    ])
+    RoleStreamAbsent { role: ro } => json_object(members: [
+      json_kv(key: "role", value: json_string(s: metered_role_wire(role: ro))),
+      json_kv(key: "state", value: json_string(s: "absent")),
+    ])
+    RoleStreamRefused { role: ro, cause: c } => json_object(members: [
+      json_kv(key: "role", value: json_string(s: metered_role_wire(role: ro))),
+      json_kv(key: "state", value: json_string(s: "refused")),
+      json_kv(key: "cause", value: json_string(s: c)),
+    ])
+  }
+}
+
+fn seat_held_json(s: SeatHeld) -> JsonValue {
+  match s {
+    SeatHeldObserved { role: ro, pointer: p, granted_at: g, released_at: r, held_seconds: _ } => json_object(members: [
+      json_kv(key: "role", value: json_string(s: metered_role_wire(role: ro))),
+      json_kv(key: "state", value: json_string(s: "released")),
+      json_kv(key: "partition", value: json_string(s: p.partition as String)),
+      json_kv(key: "reference", value: json_string(s: p.reference as String)),
+      json_kv(key: "granted_at", value: json_int(n: g)),
+      json_kv(key: "released_at", value: json_int(n: r)),
+    ])
+    SeatPointerAbsent { role: ro } => json_object(members: [
+      json_kv(key: "role", value: json_string(s: metered_role_wire(role: ro))),
+      json_kv(key: "state", value: json_string(s: "pointer-absent")),
+    ])
+    SeatStillHeld { role: ro, pointer: p, granted_at: g } => json_object(members: [
+      json_kv(key: "role", value: json_string(s: metered_role_wire(role: ro))),
+      json_kv(key: "state", value: json_string(s: "held")),
+      json_kv(key: "partition", value: json_string(s: p.partition as String)),
+      json_kv(key: "reference", value: json_string(s: p.reference as String)),
+      json_kv(key: "granted_at", value: json_int(n: g)),
+    ])
+    SeatRefused { role: ro, cause: c } => json_object(members: [
+      json_kv(key: "role", value: json_string(s: metered_role_wire(role: ro))),
+      json_kv(key: "state", value: json_string(s: "refused")),
+      json_kv(key: "cause", value: json_string(s: c)),
+    ])
+  }
+}
+
+fn compute_usage_json(c: ComputeUsage) -> JsonValue {
+  match c {
+    ComputeNotAttributable { reason: r } => json_object(members: [
+      json_kv(key: "state", value: json_string(s: "not-attributable")),
+      json_kv(key: "reason", value: json_string(s: r as String)),
+    ])
+  }
+}
+
+fn attempt_metering_json(record: AttemptMeteringRecord) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "schema", value: json_string(s: attempt_metering_schema)),
+    json_kv(key: "node_id", value: json_string(s: record.node_id)),
+    json_kv(key: "attempt_key", value: json_string(s: record.attempt_key)),
+    json_kv(key: "metered_at", value: json_int(n: record.metered_at)),
+    json_kv(key: "roles", value: json_array(elements: map(record.roles, r => role_tokens_json(r: r)))),
+    json_kv(key: "seats", value: json_array(elements: map(record.seats, s => seat_held_json(s: s)))),
+    json_kv(key: "compute", value: compute_usage_json(c: record.compute)),
+  ]))
+}
+
+type MemberTextRead
+  = MemberText { value: String }
+  | MemberTextGap { cause: String }
+
+fn metering_member_text(doc: JsonValue, key: String) -> MemberTextRead {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonString { value: s } => if trim(s) == "" { MemberTextGap { cause: join(["'", key, "' is empty"], "") } } else { MemberText { value: s } }
+        _ => MemberTextGap { cause: join(["'", key, "' is not a string"], "") }
+      }
+    JsonMemberAbsent => MemberTextGap { cause: join(["'", key, "' is missing"], "") }
+    JsonMemberDuplicated { count: _ } => MemberTextGap { cause: join(["'", key, "' is duplicated"], "") }
+    JsonMemberNotAnObject => MemberTextGap { cause: "is not a JSON object" }
+  }
+}
+
+type MemberIntRead
+  = MemberInt { value: Int }
+  | MemberIntGap { cause: String }
+
+fn metering_member_int(doc: JsonValue, key: String) -> MemberIntRead {
+  match harness_member_int(doc: doc, key: key) {
+    IntRead { value: n } => MemberInt { value: n }
+    other => MemberIntGap { cause: harness_int_read_gap(key: key, read: other) }
+  }
+}
+
+type MemberArrayRead
+  = MemberArray { elements: List<JsonValue> }
+  | MemberArrayGap { cause: String }
+
+fn metering_member_array(doc: JsonValue, key: String) -> MemberArrayRead {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonArray { elements: es } => MemberArray { elements: es }
+        _ => MemberArrayGap { cause: join(["'", key, "' is not an array"], "") }
+      }
+    JsonMemberAbsent => MemberArrayGap { cause: join(["'", key, "' is missing"], "") }
+    JsonMemberDuplicated { count: _ } => MemberArrayGap { cause: join(["'", key, "' is duplicated"], "") }
+    JsonMemberNotAnObject => MemberArrayGap { cause: "is not a JSON object" }
+  }
+}
+
+type RowDecode<T>
+  = RowDecoded { row: T }
+  | RowUndecodable { cause: String }
+
+fn role_tokens_decode(v: JsonValue) -> RowDecode<RoleTokens> {
+  match metering_member_text(doc: v, key: "role") {
+    MemberTextGap { cause: c } => RowUndecodable { cause: join(["a role row ", c], "") }
+    MemberText { value: wire } =>
+      match metered_role_decode(wire: wire) {
+        MeteredRoleUndecodable { wire: w } => RowUndecodable { cause: join(["unknown metered role ", w], "") }
+        MeteredRoleDecoded { role: ro } =>
+          match metering_member_text(doc: v, key: "state") {
+            MemberTextGap { cause: c } => RowUndecodable { cause: join(["a role row ", c], "") }
+            MemberText { value: st } =>
+              if st == "absent" {
+                RowDecoded { row: RoleStreamAbsent { role: ro } }
+              } else if st == "refused" {
+                match metering_member_text(doc: v, key: "cause") {
+                  MemberTextGap { cause: c } => RowUndecodable { cause: join(["a refused role row ", c], "") }
+                  MemberText { value: c } => RowDecoded { row: RoleStreamRefused { role: ro, cause: c } }
+                }
+              } else if st == "observed" {
+                match metering_member_int(doc: v, key: "rounds") {
+                  MemberIntGap { cause: c } => RowUndecodable { cause: c }
+                  MemberInt { value: n } =>
+                    match metering_member_int(doc: v, key: "input_tokens") {
+                      MemberIntGap { cause: c } => RowUndecodable { cause: c }
+                      MemberInt { value: i } =>
+                        match metering_member_int(doc: v, key: "output_tokens") {
+                          MemberIntGap { cause: c } => RowUndecodable { cause: c }
+                          MemberInt { value: o } =>
+                            RowDecoded { row: RoleTokensObserved { role: ro, rounds: n, input_tokens: i, output_tokens: o } }
+                        }
+                    }
+                }
+              } else {
+                RowUndecodable { cause: join(["unknown role row state ", st], "") }
+              }
+          }
+      }
+  }
+}
+
+fn seat_pointer_members_decode(v: JsonValue) -> HarnessSeatPointerDecode {
+  match metering_member_text(doc: v, key: "partition") {
+    MemberTextGap { cause: c } => HarnessSeatPointerUndecodable { cause: join(["a seat row ", c], "") }
+    MemberText { value: p } =>
+      match metering_member_text(doc: v, key: "reference") {
+        MemberTextGap { cause: c } => HarnessSeatPointerUndecodable { cause: join(["a seat row ", c], "") }
+        MemberText { value: r } => HarnessSeatPointerDecoded { pointer: HarnessSeatPointer { partition: p as NonEmptyStr as PartitionId, reference: r as NonEmptyStr } }
+      }
+  }
+}
+
+fn seat_held_decode(v: JsonValue) -> RowDecode<SeatHeld> {
+  match metering_member_text(doc: v, key: "role") {
+    MemberTextGap { cause: c } => RowUndecodable { cause: join(["a seat row ", c], "") }
+    MemberText { value: wire } =>
+      match metered_role_decode(wire: wire) {
+        MeteredRoleUndecodable { wire: w } => RowUndecodable { cause: join(["unknown metered role ", w], "") }
+        MeteredRoleDecoded { role: ro } =>
+          match metering_member_text(doc: v, key: "state") {
+            MemberTextGap { cause: c } => RowUndecodable { cause: join(["a seat row ", c], "") }
+            MemberText { value: st } =>
+              if st == "pointer-absent" {
+                RowDecoded { row: SeatPointerAbsent { role: ro } }
+              } else if st == "refused" {
+                match metering_member_text(doc: v, key: "cause") {
+                  MemberTextGap { cause: c } => RowUndecodable { cause: join(["a refused seat row ", c], "") }
+                  MemberText { value: c } => RowDecoded { row: SeatRefused { role: ro, cause: c } }
+                }
+              } else if st == "held" || st == "released" {
+                match seat_pointer_members_decode(v: v) {
+                  HarnessSeatPointerUndecodable { cause: c } => RowUndecodable { cause: c }
+                  HarnessSeatPointerDecoded { pointer: p } =>
+                    match metering_member_int(doc: v, key: "granted_at") {
+                      MemberIntGap { cause: c } => RowUndecodable { cause: c }
+                      MemberInt { value: g } =>
+                        if st == "held" {
+                          RowDecoded { row: SeatStillHeld { role: ro, pointer: p, granted_at: g } }
+                        } else {
+                          match metering_member_int(doc: v, key: "released_at") {
+                            MemberIntGap { cause: c } => RowUndecodable { cause: c }
+                            MemberInt { value: r } =>
+                              if r < g {
+                                RowUndecodable { cause: "a seat row is released before it was granted" }
+                              } else {
+                                RowDecoded { row: SeatHeldObserved { role: ro, pointer: p, granted_at: g, released_at: r, held_seconds: r - g } }
+                              }
+                          }
+                        }
+                    }
+                }
+              } else {
+                RowUndecodable { cause: join(["unknown seat row state ", st], "") }
+              }
+          }
+      }
+  }
+}
+
+fn rows_decode<T>(elements: List<JsonValue>, decode: fn(JsonValue) -> RowDecode<T>) -> RowDecode<List<T>> {
+  fold(elements, init: RowDecoded { row: [] as List<T> }, f: (acc, e) =>
+    match acc {
+      RowUndecodable { cause: _ } => acc
+      RowDecoded { row: xs } =>
+        match decode(e) {
+          RowUndecodable { cause: c } => RowUndecodable { cause: c }
+          RowDecoded { row: x } => RowDecoded { row: concat(xs, [x]) }
+        }
+    })
+}
+
+fn compute_usage_decode(doc: JsonValue) -> RowDecode<ComputeUsage> {
+  match json_object_unique_member(v: doc, key: "compute") {
+    JsonMemberFound { value: v } =>
+      match metering_member_text(doc: v, key: "state") {
+        MemberTextGap { cause: c } => RowUndecodable { cause: join(["the compute row ", c], "") }
+        MemberText { value: st } =>
+          if st == "not-attributable" {
+            match metering_member_text(doc: v, key: "reason") {
+              MemberTextGap { cause: c } => RowUndecodable { cause: join(["the compute row ", c], "") }
+              MemberText { value: r } => RowDecoded { row: ComputeNotAttributable { reason: r as NonEmptyStr } }
+            }
+          } else {
+            RowUndecodable { cause: join(["unknown compute state ", st], "") }
+          }
+      }
+    _ => RowUndecodable { cause: "the 'compute' member is missing or duplicated" }
+  }
+}
+
+fn attempt_metering_decode(raw: String) -> RowDecode<AttemptMeteringRecord> {
+  match parse_json_document(s: raw) {
+    JsonDocumentUnreadable { gap: _ } => RowUndecodable { cause: "the metering record is not a JSON document" }
+    JsonDocumentParsed { value: doc } =>
+      match metering_member_text(doc: doc, key: "schema") {
+        MemberTextGap { cause: c } => RowUndecodable { cause: join(["the metering record ", c], "") }
+        MemberText { value: schema } =>
+          if schema != attempt_metering_schema {
+            RowUndecodable { cause: join(["unknown metering schema ", schema], "") }
+          } else {
+            match metering_member_text(doc: doc, key: "node_id") {
+              MemberTextGap { cause: c } => RowUndecodable { cause: join(["the metering record ", c], "") }
+              MemberText { value: node } =>
+                match metering_member_text(doc: doc, key: "attempt_key") {
+                  MemberTextGap { cause: c } => RowUndecodable { cause: join(["the metering record ", c], "") }
+                  MemberText { value: key } =>
+                    match metering_member_int(doc: doc, key: "metered_at") {
+                      MemberIntGap { cause: c } => RowUndecodable { cause: c }
+                      MemberInt { value: at } =>
+                        match metering_member_array(doc: doc, key: "roles") {
+                          MemberArrayGap { cause: c } => RowUndecodable { cause: c }
+                          MemberArray { elements: role_rows } =>
+                            match metering_member_array(doc: doc, key: "seats") {
+                              MemberArrayGap { cause: c } => RowUndecodable { cause: c }
+                              MemberArray { elements: seat_rows } =>
+                                match rows_decode(elements: role_rows, decode: fn(v) { role_tokens_decode(v: v) }) {
+                                  RowUndecodable { cause: c } => RowUndecodable { cause: c }
+                                  RowDecoded { row: roles } =>
+                                    match rows_decode(elements: seat_rows, decode: fn(v) { seat_held_decode(v: v) }) {
+                                      RowUndecodable { cause: c } => RowUndecodable { cause: c }
+                                      RowDecoded { row: seats } =>
+                                        match compute_usage_decode(doc: doc) {
+                                          RowUndecodable { cause: c } => RowUndecodable { cause: c }
+                                          RowDecoded { row: compute } =>
+                                            RowDecoded { row: AttemptMeteringRecord {
+                                              node_id: node, attempt_key: key, metered_at: at,
+                                              roles: roles, seats: seats, compute: compute,
+                                            } }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+          }
+      }
+  }
+}
+
+// ── the reader the dogfood receipt fold calls ─────────────────────────────────────────────────
+type AttemptMeteringObservation
+  = MeteringObserved { record: AttemptMeteringRecord }
+  | MeteringNotYetWritten
+  | MeteringRefused { cause: String }
+
+fn attempt_metering_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String {
+  join([dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", attempt_metering_basename], "")
+}
+
+// Pure over the file body: the record at this attempt's path must name this attempt.
+fn metering_observe_from_text(node_id: String, attempt_key: String, raw: String) -> AttemptMeteringObservation {
+  match attempt_metering_decode(raw: raw) {
+    RowUndecodable { cause: c } => MeteringRefused { cause: c }
+    RowDecoded { row: r } =>
+      if r.node_id != node_id || r.attempt_key != attempt_key {
+        MeteringRefused { cause: join(["the metering record at this attempt's path names ", r.node_id, "-a", r.attempt_key], "") }
+      } else {
+        MeteringObserved { record: r }
+      }
+  }
+}
+
+fn metering_observe_for_attempt(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> AttemptMeteringObservation {
+  let dir = dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  let path = attempt_metering_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  let listing = Filesystem.List(path: dir)
+  let read = Filesystem.Read(path: path)
+  match filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error),
+    name: attempt_metering_basename,
+    path: path,
+    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+  ) {
+    FilesystemFileAbsent(_) => MeteringNotYetWritten
+    FilesystemFileRead { path: _, content: c } => metering_observe_from_text(node_id: node_id as String, attempt_key: attempt_key, raw: c)
+    FilesystemFileIndeterminate { cause: c } => MeteringRefused { cause: c }
+    FilesystemFileObservationsDisagree { path: _, cause: c } => MeteringRefused { cause: c }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: c } => MeteringRefused { cause: c }
+  }
+}
+
+// ── the writer the belt tick calls once the attempt's worker is terminal ──────────────────────
+// Rewritten on every tick after that point: reviewer, auditor and supervisor run after the worker,
+// and a seat may release after the tick that first saw the worker terminal. metered_at says when.
+type OptionalFileRead
+  = OptionalFileContent { content: String }
+  | OptionalFileAbsent
+  | OptionalFileRefused { cause: String }
+
+fn metering_read_beside(dir: String, name: String) -> OptionalFileRead {
+  let path = join([dir, "/", name], "")
+  let listing = Filesystem.List(path: dir)
+  let read = Filesystem.Read(path: path)
+  match filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error),
+    name: name,
+    path: path,
+    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+  ) {
+    FilesystemFileAbsent(_) => OptionalFileAbsent
+    FilesystemFileRead { path: _, content: c } => OptionalFileContent { content: c }
+    FilesystemFileIndeterminate { cause: c } => OptionalFileRefused { cause: c }
+    FilesystemFileObservationsDisagree { path: _, cause: c } => OptionalFileRefused { cause: c }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: c } => OptionalFileRefused { cause: c }
+  }
+}
+
+type RoleStream {
+  role: MeteredRole
+  dir: String
+  events_name: String
+}
+
+fn metering_role_tokens_read(s: RoleStream) -> RoleTokens {
+  match metering_read_beside(dir: s.dir, name: s.events_name) {
+    OptionalFileAbsent => RoleStreamAbsent { role: s.role }
+    OptionalFileRefused { cause: c } => RoleStreamRefused { role: s.role, cause: c }
+    OptionalFileContent { content: body } => role_tokens_from_events(role: s.role, body: body)
+  }
+}
+
+fn metering_role_seat_read(instance: HostDashboardInstance, s: RoleStream) -> SeatHeld {
+  match metering_read_beside(dir: s.dir, name: s.events_name) {
+    OptionalFileAbsent => SeatPointerAbsent { role: s.role }
+    _ =>
+      match metering_read_beside(dir: s.dir, name: harness_seat_pointer_path(events_path: s.events_name)) {
+        OptionalFileAbsent => SeatPointerAbsent { role: s.role }
+        OptionalFileRefused { cause: c } => SeatRefused { role: s.role, cause: c }
+        OptionalFileContent { content: raw } =>
+          match harness_seat_pointer_decode(raw: raw) {
+            HarnessSeatPointerUndecodable { cause: c } => SeatRefused { role: s.role, cause: c }
+            HarnessSeatPointerDecoded { pointer: p } =>
+              match event_log_store_for_host(short_hostname: instance.host_identity as String) {
+                HostStoreRefused { detail: d } => SeatRefused { role: s.role, cause: d }
+                HostStoreResolved { store: store, executor: _ } =>
+                  match event_log_read_partition(store: store, partition: p.partition, budget: event_log_read_budget()) {
+                    PartitionReadRefused { cause: c } => SeatRefused { role: s.role, cause: event_log_refusal_wire(cause: c) }
+                    PartitionReadOk { head: _, walk: w } => seat_held_from_walk(role: s.role, pointer: p, walk: w)
+                  }
+              }
+          }
+      }
+  }
+}
+
+data provider_events_basename: String = "provider-events.jsonl"
+data review_events_suffix: String = ".provider-events.jsonl"
+
+// Reviewer streams are discovered from the review directory: one per criterion that ran.
+fn metering_role_streams(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> List<RoleStream> {
+  let attempt_dir = dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  let review_dir = dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  let listing = Filesystem.List(path: review_dir)
+  let reviewers = match filesystem_listing_observation(directory: review_dir, success: listing.success, entries: listing.entries, error: listing.error) {
+    FilesystemDirectoryListed(l) =>
+      flat_map(filesystem_listing_entry_names(listing: l), n =>
+        if ends_with(s: n, suffix: review_events_suffix) && length(s: n) > length(s: review_events_suffix) {
+          [RoleStream {
+            role: MeteredReviewer { criterion: substring(s: n, start: 0, end: length(s: n) - length(s: review_events_suffix)) as NonEmptyStr },
+            dir: review_dir,
+            events_name: n,
+          }]
+        } else { [] })
+    FilesystemDirectoryListingRefused { directory: _, error: _ } => [] as List<RoleStream>
+    FilesystemDirectorySubjectRefused { directory: _, cause: _ } => [] as List<RoleStream>
+  }
+  concat(concat([RoleStream { role: MeteredWorker, dir: attempt_dir, events_name: provider_events_basename }], reviewers), [
+    RoleStream { role: MeteredAuditor, dir: dispatch_attempt_audit_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), events_name: provider_events_basename },
+    RoleStream { role: MeteredSupervisor, dir: dispatch_attempt_supervisor_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), events_name: provider_events_basename },
+  ])
+}
+
+type MeteringPersist
+  = MeteringPersisted { path: String }
+  | MeteringNotDue
+  | MeteringPersistRefused { cause: String }
+
+fn metering_record_for_attempt(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, metered_at: EpochSecs) -> AttemptMeteringRecord {
+  let streams = metering_role_streams(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  AttemptMeteringRecord {
+    node_id: node_id as String,
+    attempt_key: attempt_key,
+    metered_at: metered_at,
+    roles: map(streams, s => metering_role_tokens_read(s: s)),
+    seats: flat_map(streams, s =>
+      match metering_role_seat_read(instance: instance, s: s) {
+        SeatPointerAbsent { role: _ } =>
+          match metering_role_tokens_read(s: s) {
+            RoleStreamAbsent { role: _ } => [] as List<SeatHeld>
+            _ => [SeatPointerAbsent { role: s.role }]
+          }
+        h => [h]
+      }),
+    compute: ComputeNotAttributable { reason: compute_not_attributable_reason },
+  }
+}
+
+fn metering_persist_for_attempt(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> MeteringPersist {
+  if trim(attempt_key) == "" {
+    MeteringPersistRefused { cause: "the attempt carries no key, so no attempt-state path names it" }
+  } else {
+    match now_epoch_seconds() {
+      Absent => MeteringPersistRefused { cause: "the clock could not be read as epoch seconds" }
+      Present { value: now } => {
+        let path = attempt_metering_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+        let written = Filesystem.Write(path: path, content: attempt_metering_json(record: metering_record_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key, metered_at: now)))
+        if written.success { MeteringPersisted { path: path } } else { MeteringPersistRefused { cause: written.error } }
+      }
+    }
+  }
+}
