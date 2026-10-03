@@ -2438,8 +2438,11 @@ fn dag_grammar_keyword_expr(lexeme: String) -> GrammarExpr {
 // operation's demand is decided by runtime values (a generic exec), so a caller's demand is Undecided;
 // `requires R, ..` names the resources. The two words are their own productions because a literal
 // terminal stamps its token CLASS, not its word, so only the production's emitted identity can say
-// which word was written; an exact word is chosen over the any-identifier type list, so a resource
-// cannot be named `none` or `opaque`.
+// which word was written. The type list is GUARDED by a not-predicate over the two words, so a
+// resource cannot be named `none` or `opaque` BY CONSTRUCTION rather than by trying the words first:
+// the list's first position is an identifier other than those two, disjoint from both word arms
+// (operator zero_ambiguity_ruling 2026-10-02; v2.compiler.parse proves the guard covers the word
+// arms' prefixes, gunbc#13036).
 fn dag_grammar_op_requires_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "requires")),
@@ -2447,7 +2450,15 @@ fn dag_grammar_op_requires_expr() -> GrammarExpr {
       left: dag_grammar_nonterminal(production: ^dag_production_op_requires_none),
       right: dag_grammar_choice(
         left: dag_grammar_nonterminal(production: ^dag_production_op_requires_opaque),
-        right: dag_grammar_comma_list_expr(item: dag_grammar_nonterminal(production: ^dag_production_type_expr))
+        right: dag_grammar_sequence(
+          left: grammar_expr_not_predicate(
+            element: dag_grammar_choice(
+              left: dag_grammar_keyword_expr(lexeme: "none"),
+              right: dag_grammar_keyword_expr(lexeme: "opaque")
+            )
+          ),
+          right: dag_grammar_comma_list_expr(item: dag_grammar_nonterminal(production: ^dag_production_type_expr))
+        )
       )
     )
   )
