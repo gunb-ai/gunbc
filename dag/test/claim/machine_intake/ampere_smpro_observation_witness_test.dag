@@ -301,7 +301,7 @@ test fn a_second_site_derives_its_plan_bytes_count_and_dossier() -> Bool {
     Present { value: s } => {
       let plan = smpro_pass_plan(site: s)
       let os = smpro_pass_sequenced(plan: plan, read: (t, reg, n) => scripted_read(t: t, reg: reg, n: n))
-      let d = smpro_pass_dossier_text(obs: smpro_pass_observation_fixture(host: "fixture-jade", site: s, outcomes: os))
+      let d = smpro_pass_dossier_text(obs: observed_at(site: s, outcomes: os))
       plan.control_socket == 1
         && (match plan.probes.first() { Present { value: p } => p.target.socket == 1 && p.register.offset == smpro_manufacturer_id_reg.offset Absent => false })
         && smpro_pass_probe_count(site: s) == 3 * count(smpro_pass_read_order) && count(os) == 3 * count(smpro_pass_read_order)
