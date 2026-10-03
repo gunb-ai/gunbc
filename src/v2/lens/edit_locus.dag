@@ -1,6 +1,13 @@
 module v2.lens.edit_locus
 
+import v2.compiler.inferred_tree { InferredTree }
+import v2.lens.affected_set { AffectedSetReading, affected_set_reading }
+import v2.lens.common.construction_justification { ConstructionJustification }
 import v2.std.algebra { length }
+import v2.std.artifact { NodeArtifactProvenance }
+import v2.std.diagnostic { Diagnostic, ExternalContractUnknown, Unavailable, node_locus }
+import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
+import v2.std.witness { Violates }
 
 type RepoPath = String
 
