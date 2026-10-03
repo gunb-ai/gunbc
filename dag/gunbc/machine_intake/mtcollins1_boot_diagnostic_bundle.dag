@@ -67,8 +67,8 @@ import gunbc.machine_intake_mtcollins1_power_on_account {
   PowerOnHandoff, HandoffPoweredOn, HandoffNotConfirmed, SelEvidence, SelEventsRead, SelEventsNotRead,
   WatchdogUnobserved, ExpectedSockets, ExpectedTopologyNotRecorded, StimulusRequestNotRecorded,
   PopulationLiveObserved, PopulationOperatorAttested, PopulationConflicted, SlotRow, StimulusApplicationNotRecorded, PopulationNotRecorded, FirmwareReadbacksNotRecorded,
-  ProcessorsListedBelowSockets, ProcessorNotNominal, ProcessorAbsentOnExpectedSocket, MemoryListedBelowSlots, MemoryAbsentOnSocket, MemoryNotNominal, SelHardwareEvent,
-  mtcollins1_power_on_account, mtcollins1_power_on_account_text, mtcollins1_power_on_account_notes,
+  ProcessorMissingOnExpectedSocket, ProcessorSocketDuplicated, ProcessorSocketUnreadable, ProcessorNotNominal, ProcessorAbsentOnExpectedSocket, MemoryBelowRecordedPopulation, MemoryNotNominal, SelHardwareEvent,
+  mtcollins1_power_on_account, mtcollins1_power_on_account_text, mtcollins1_power_on_account_notes, SpanConsoleReading, span_console_readings,
 }
 import gunbc.machine_intake_ampere_socket_console_observation {
   AmpereSocketConsoleObservation, AmpereSummaryObserved, AmpereSummaryNotPrinted, AmpereSocketReferenceComparison,
@@ -381,7 +381,7 @@ type InventoryReading {
 // those bytes would under-count multi-byte console output. The size is taken before the content is
 // read, so a capture over the bound is reported without being loaded.
 type ConsoleReading
-  = ConsoleRetained { path: NonEmptyStr, size: ByteSize, lines: Int, firmware: FirmwareConsoleReport, firmware_error_lines: Int, capture_digest: Sha256FileDigest, dram: AmpereDramConsoleObservation, checkpoints: AmpereCheckpointConsoleObservation, checkpoint_relations: List<AmpereCheckpointRelation>, milestones: ConsoleMilestoneObservation, sockets: AmpereSocketConsoleObservation, against_reference: AmpereSocketReferenceComparison, loader: GrubConsoleReport, linux: LinuxBootConsoleObservation, modules: KernelModuleDecompressionObservation, nvparam: NvParamConsoleObservation }
+  = ConsoleRetained { path: NonEmptyStr, size: ByteSize, lines: Int, firmware: FirmwareConsoleReport, firmware_error_lines: Int, capture_digest: Sha256FileDigest, dram: AmpereDramConsoleObservation, checkpoints: AmpereCheckpointConsoleObservation, checkpoint_relations: List<AmpereCheckpointRelation>, milestones: ConsoleMilestoneObservation, sockets: AmpereSocketConsoleObservation, against_reference: AmpereSocketReferenceComparison, loader: GrubConsoleReport, linux: LinuxBootConsoleObservation, modules: KernelModuleDecompressionObservation, nvparam: NvParamConsoleObservation, span_readings: List<SpanConsoleReading> }
   | ConsoleExceedsBound { path: NonEmptyStr, size: ByteSize, bound: ByteSize }
   | ConsoleNotRetained { path: NonEmptyStr }
   | ConsoleUnread { path: NonEmptyStr, detail: String }
@@ -1196,17 +1196,6 @@ fn state_is_absent(state: RedfishResourceState) -> Bool {
   }
 }
 
-// ABSENCE IS JUDGED AGAINST THE RECEIPT'S POPULATION (law 6): an absent member on a socket is an
-// anomaly only when the receipt records more populated slots on that socket than the BMC shows present.
-// An explicitly unpopulated slot reading Absent is the expected state; with no recorded population,
-// absence judges nothing.
-fn socket_absent_anomaly(ms: List<RedfishMemoryMember>, socket: Int, rows: List<SlotRow>) -> List<BmcAnomaly> {
-  let on = filter(ms, m => memory_socket_key(m: m) == socket)
-  let absent = count(filter(on, m => state_is_absent(state: m.status.state)))
-  let populated = count(filter(rows, r => r.socket == socket && r.populated))
-  if absent == 0 || socket < 0 || count(on) - absent >= populated { [] } else { [MemoryAbsentOnSocket { socket: socket, absent: absent, members: count(on) }] }
-}
-
 fn recorded_slot_rows(receipt: AttemptConfigurationReceipt) -> List<SlotRow>? {
   match receipt.dimms {
     PopulationLiveObserved { rows: rs, source: _ } => Present { value: rs }
@@ -1239,51 +1228,56 @@ fn processor_socket_suffix(p: RedfishProcessorMember) -> String {
   match p.socket { Present { value: s } => concat(" (Socket ", s, ")") Absent => "" }
 }
 
-// A SHORTFALL IS JUDGED ONLY AGAINST THIS ATTEMPT'S RECEIPT (law 6): the historical census is no
-// expectation of this attempt, so with no recorded topology or population no shortfall is minted --
-// the receipt's own open question says what could not be judged. What the BMC states about a member
-// itself (not nominal, absent) needs no expectation and stays.
+// COMPLETENESS IS JUDGED PER EXPECTED SOCKET, never by a count: for each socket the receipt expects,
+// exactly one Processor member names it (none is Missing, two or more is Duplicated); a member whose
+// socket the BMC renders unreadably is its own anomaly. With no recorded topology none of these is
+// judged (law 6). What the BMC states about a member's health stays unconditional.
 fn processor_anomalies(processors: MembersReading<RedfishProcessorMember>, receipt: AttemptConfigurationReceipt) -> List<BmcAnomaly> {
   match processors {
     MembersRead { members: ps } => {
-      let short = match receipt.expected {
-        ExpectedSockets { sockets: ks, source: _ } => if count(ps) < count(ks) { [ProcessorsListedBelowSockets { listed: count(ps), expected: count(ks) }] } else { [] }
-        ExpectedTopologyNotRecorded { reason: _ } => []
-      }
       let unhealthy = map(filter(ps, p => health_is_bad(health: p.status.health) || (state_is_down(state: p.status.state) && !state_is_absent(state: p.status.state))), p => ProcessorNotNominal { member: p })
-      let absent = flat_map(filter(ps, p => state_is_absent(state: p.status.state) && !health_is_bad(health: p.status.health)), p => match processor_socket_number(p: p) {
+      let per_socket = match expected_socket_list(receipt: receipt) {
         Absent => []
-        Present { value: k } => match expected_socket_list(receipt: receipt) { Present { value: ks } => if any(ks, j => j == k) { [ProcessorAbsentOnExpectedSocket { member: p, socket: k }] } else { [] } Absent => [] }
-      })
-      concat(short, concat(unhealthy, absent))
+        Present { value: ks } => concat(
+          flat_map(ks, k => {
+            let on = filter(ps, p => match processor_socket_number(p: p) { Present { value: n } => n == k Absent => false })
+            if count(on) == 0 { [ProcessorMissingOnExpectedSocket { socket: k }] }
+            else if count(on) > 1 { [ProcessorSocketDuplicated { socket: k, members: on }] }
+            else { flat_map(on, p => if state_is_absent(state: p.status.state) && !health_is_bad(health: p.status.health) { [ProcessorAbsentOnExpectedSocket { member: p, socket: k }] } else { [] }) }
+          }),
+          map(filter(ps, p => match processor_socket_number(p: p) { Present { value: _ } => false Absent => true }), p => ProcessorSocketUnreadable { member: p }))
+      }
+      concat(unhealthy, per_socket)
     }
     MembersUnread { cause: _ } => []
     MembersNotTaken { reason: _ } => []
   }
 }
 
+// PER SOCKET, OVER THE UNION OF THE SOCKETS THE RECEIPT RECORDS POPULATED AND THE SOCKETS THE BMC
+// LISTS: a socket whose present members are fewer than the receipt's populated slots on it is an
+// anomaly, including a socket the collection never mentions. With no recorded population nothing is
+// judged (law 6). What the BMC states about a member's health stays unconditional.
 fn memory_anomalies(memory: MembersReading<RedfishMemoryMember>, receipt: AttemptConfigurationReceipt) -> List<BmcAnomaly> {
   match memory {
     MembersRead { members: ms } => {
-      let short = match receipt.dimms {
-        PopulationLiveObserved { rows: rs, source: _ } => populated_short(listed: count(ms), rows: rs)
-        PopulationOperatorAttested { rows: rs, receipt: _ } => populated_short(listed: count(ms), rows: rs)
-        PopulationConflicted { readings: _ } => []
-        PopulationNotRecorded { reason: _ } => []
-      }
-      let sockets = distinct_ints(xs: map(ms, m => memory_socket_key(m: m)))
       let bad = map(filter(ms, m => (state_is_down(state: m.status.state) && !state_is_absent(state: m.status.state)) || health_is_bad(health: m.status.health)), m => MemoryNotNominal { member: m })
-      let absent = match recorded_slot_rows(receipt: receipt) { Present { value: rows } => flat_map(sockets, k => socket_absent_anomaly(ms: ms, socket: k, rows: rows)) Absent => [] }
-      concat(short, concat(absent, bad))
+      let below = match recorded_slot_rows(receipt: receipt) {
+        Absent => []
+        Present { value: rows } => {
+          let sockets = distinct_ints(xs: concat(map(filter(rows, r => r.populated), r => r.socket), filter(map(ms, m => memory_socket_key(m: m)), k => k >= 0)))
+          flat_map(sockets, k => {
+            let present = count(filter(ms, m => memory_socket_key(m: m) == k && !state_is_absent(state: m.status.state)))
+            let populated = count(filter(rows, r => r.socket == k && r.populated))
+            if present < populated { [MemoryBelowRecordedPopulation { socket: k, present: present, populated: populated }] } else { [] }
+          })
+        }
+      }
+      concat(below, bad)
     }
     MembersUnread { cause: _ } => []
     MembersNotTaken { reason: _ } => []
   }
-}
-
-fn populated_short(listed: Int, rows: List<SlotRow>) -> List<BmcAnomaly> {
-  let populated = count(filter(rows, r => r.populated))
-  if listed < populated { [MemoryListedBelowSlots { listed: listed, slots: populated }] } else { [] }
 }
 
 fn sel_hardware_anomalies(delta: SelDeltaReading) -> List<BmcAnomaly> {
@@ -1407,8 +1401,8 @@ fn handoff_standing(h: MtCollins1HandoffMedia) -> PowerOnHandoff {
 
 fn console_evidence(c: ConsoleReading) -> ConsoleEvidence {
   match c {
-    ConsoleRetained { path: _, size: _, lines: _, firmware: f, firmware_error_lines: e, capture_digest: dg, dram: d, checkpoints: cp, checkpoint_relations: rs, milestones: ms, sockets: o, against_reference: _, loader: g, linux: l, modules: m, nvparam: _ } =>
-      ConsoleRead { capture: dg, firmware: f, firmware_error_lines: e, dram: d, checkpoints: cp, relations: rs, milestones: ms, sockets: o, loader: g, linux: l, modules: m }
+    ConsoleRetained { path: _, size: _, lines: _, firmware: f, firmware_error_lines: e, capture_digest: dg, dram: d, checkpoints: cp, checkpoint_relations: rs, milestones: ms, sockets: o, against_reference: _, loader: g, linux: l, modules: m, nvparam: _, span_readings: sr } =>
+      ConsoleRead { capture: dg, firmware: f, firmware_error_lines: e, dram: d, checkpoints: cp, relations: rs, milestones: ms, sockets: o, loader: g, linux: l, modules: m, span_readings: sr }
     ConsoleExceedsBound { path: _, size: _, bound: _ } => ConsoleNotRead
     ConsoleNotRetained { path: _ } => ConsoleNotRead
     ConsoleUnread { path: _, detail: _ } => ConsoleNotRead
@@ -1427,7 +1421,7 @@ fn sel_evidence(delta: SelDeltaReading) -> SelEvidence {
 // ── COVERAGE: one standing per carrier, never a host statement ─────────────────────────────────
 fn console_coverage(c: ConsoleReading) -> CarrierStanding {
   match c {
-    ConsoleRetained { path: _, size: _, lines: n, firmware: _, firmware_error_lines: _, capture_digest: _, dram: _, checkpoints: _, checkpoint_relations: _, milestones: _, sockets: _, against_reference: _, loader: _, linux: _, modules: _, nvparam: _ } =>
+    ConsoleRetained { path: _, size: _, lines: n, firmware: _, firmware_error_lines: _, capture_digest: _, dram: _, checkpoints: _, checkpoint_relations: _, milestones: _, sockets: _, against_reference: _, loader: _, linux: _, modules: _, nvparam: _, span_readings: _ } =>
       if n == 0 { CarrierReadEmpty } else { CarrierRead }
     ConsoleExceedsBound { path: p, size: _, bound: _ } => CarrierPartial { detail: concat("capture ", p as String, " is over the byte bound and was not read") as NonEmptyStr }
     ConsoleNotRetained { path: p } => CarrierNotTaken { reason: concat("capture ", p as String, " is not retained with this artifact") as NonEmptyStr }
@@ -1760,7 +1754,7 @@ fn grub_report_text(report: GrubConsoleReport) -> String {
 
 fn console_text(c: ConsoleReading) -> String {
   match c {
-    ConsoleRetained { path: p, size: b, lines: n, firmware: f, firmware_error_lines: e, capture_digest: _, dram: d, checkpoints: cp, checkpoint_relations: rs, milestones: ms, sockets: o, against_reference: cmp, loader: g, linux: l, modules: m, nvparam: nv } =>
+    ConsoleRetained { path: p, size: b, lines: n, firmware: f, firmware_error_lines: e, capture_digest: _, dram: d, checkpoints: cp, checkpoint_relations: rs, milestones: ms, sockets: o, against_reference: cmp, loader: g, linux: l, modules: m, nvparam: nv, span_readings: _ } =>
       concat("capture ", p as String, " retained in this artifact: ", to_string(byte_size_count(b: b)), " bytes (stat), ", to_string(n), " line(s), within the ", to_string(byte_size_count(b: mtcollins1_boot_console_bound)), "-byte bound; ", firmware_report_text(report: f), "; ", to_string(e), " firmware error line(s)\n", ampere_dram_console_text(observation: d, expected_sockets: mtcollins1_census_sockets()), "\n-- checkpoints --\n", ampere_checkpoint_console_text(o: cp), "\n", if count(rs) == 0 { "no checkpoint relation" } else { join(map(rs, r => ampere_checkpoint_relation_text(r: r)), "\n") }, "\n-- milestones --\n", if count(ms.sightings) == 0 { "none" } else { join(map(ms.sightings, x => console_milestone_sighting_text(s: x)), "\n") }, "\n", ampere_socket_console_text(o: o), ampere_socket_reference_comparison_text(c: cmp), "\n-- loader and linux --\n", grub_report_text(report: g), "\n", linux_boot_console_text(o: l), "\n", kernel_module_decompression_text(o: m), "\n", ampere_nvparam_console_text(o: nv))
     ConsoleExceedsBound { path: p, size: b, bound: bound } =>
       concat("capture ", p as String, " is ", to_string(byte_size_count(b: b)), " bytes (stat), OVER the ", to_string(byte_size_count(b: bound)), "-byte bound; the collector does not truncate, so the artifact carries it whole")
@@ -2494,6 +2488,7 @@ fn mtcollins1_boot_console_reading(path: String, size: ByteSize, capture: String
       linux: linux_boot_console_observation(lines: lines),
       modules: kernel_module_decompression_observation(lines: lines),
       nvparam: ampere_nvparam_console_observation(lines: lines),
+      span_readings: span_console_readings(lines: lines),
     }
   }
 }

@@ -6,7 +6,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import v2.std.optional { Present }
 import extdeps.crypto.hash { sha256_digest }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
-import extdeps.bootloader.grub { grub_console_report }
+import extdeps.bootloader.grub { grub_console_report, grub_error_text }
 import extdeps.ampere.smpro_register { smpro_manufacturer_id_reg, smpro_cur_bootstage_reg, smpro_bootstage_reg, smpro_gpi_ras_err_reg,
   smpro_err_pmpro_type_reg, smpro_err_pmpro_info_lo_reg, smpro_err_pmpro_info_hi_reg, smpro_err_pmpro_data_lo_reg, smpro_err_pmpro_data_hi_reg,
   smpro_warn_pmpro_info_lo_reg, smpro_warn_pmpro_info_hi_reg, SmproRegister, SmproBootProgressRefused }
@@ -32,11 +32,11 @@ import gunbc.machine_intake_mtcollins1_power_on_account {
   ReachedCensus, StoppedWithStatedFailure, RestartedRepeatedly, StoppedWithoutRestart, HostEndingNotEstablished,
   ResetCauseUnobserved, CadenceCounted, OpenedByPowerOn, NoConsoleSpan, SpanBound,
   KernelStub, Kernel, KernelPanic, SecondaryJoin, InitrdLoadFailedByStub, PendingErrorRecord, SocketNotJoined, ActiveSocketsBelowExpected,
-  ExpectedTopology, SmproRecordStated,
+  ExpectedTopology, SmproRecordStated, BoundaryAmbiguous,
   RetryStatePersistence, ResetCauseNotPubliclyReadable, CheckpointMeaningNotPubliclyModeled, SmproPairRefused,
   ConfigurationNotRecorded, ConfiguredDimmPopulation, CarrierNotRead,
-  BootReachedUefiAfterSet, BootProgressLostAfterSet, ProgressRead,
-  mtcollins1_power_on_account, mtcollins1_power_on_account_text, firmware_set_boot_readback,
+  BootReachedUefiAfterSet, BootProgressLostAfterSet, ProgressRead, BootLoaderFailed, FirmwareStatement, PowerOnCorroboration, DistinctRestart,
+  mtcollins1_power_on_account, span_console_readings, mtcollins1_power_on_account_text, firmware_set_boot_readback,
 }
 import gunbc.machine_intake_host_capture_envelope { HostCaptureLiveStream, host_capture_lines }
 
@@ -86,7 +86,7 @@ fn console_of(lines: List<String>, relations: List<AmpereCheckpointRelation>) ->
     capture: no_digest, firmware: firmware_console_report(lines: lines), firmware_error_lines: 0,
     dram: ampere_dram_console_observation(lines: lines), checkpoints: ampere_checkpoint_console_observation(lines: lines), relations: relations,
     milestones: mtcollins1_console_milestones(lines: lines), sockets: ampere_socket_console_observation(lines: lines),
-    loader: grub_console_report(lines: lines), linux: linux_boot_console_observation(lines: lines), modules: kernel_module_decompression_observation(lines: lines),
+    loader: grub_console_report(lines: lines), linux: linux_boot_console_observation(lines: lines), modules: kernel_module_decompression_observation(lines: lines), span_readings: span_console_readings(lines: lines),
   }
 }
 
@@ -363,8 +363,8 @@ test fn the_same_line_from_two_captures_stays_two_facts() -> Bool {
   let other = Sha256FileDigest { digest: sha256_digest(hex: "1e0c4bc3ab7f635f5522c23832e6d5db33d7c3b07e9467cea1f9814167bd0de8") }
   let c1 = console_of(lines: lines, relations: [])
   let c2 = match c1 {
-    ConsoleRead { capture: _, firmware: f, firmware_error_lines: e, dram: d, checkpoints: k, relations: r, milestones: m, sockets: o, loader: g, linux: l, modules: x } =>
-      ConsoleRead { capture: other, firmware: f, firmware_error_lines: e, dram: d, checkpoints: k, relations: r, milestones: m, sockets: o, loader: g, linux: l, modules: x }
+    ConsoleRead { capture: _, firmware: f, firmware_error_lines: e, dram: d, checkpoints: k, relations: r, milestones: m, sockets: o, loader: g, linux: l, modules: x, span_readings: sr } =>
+      ConsoleRead { capture: other, firmware: f, firmware_error_lines: e, dram: d, checkpoints: k, relations: r, milestones: m, sockets: o, loader: g, linux: l, modules: x, span_readings: sr }
     ConsoleNotRead => ConsoleNotRead
   }
   let m1 = flat_map(mtcollins1_power_on_account(e: evidence(console: c1, smpro: [], census_ended: false)).cycles, c => c.milestones)
@@ -401,4 +401,48 @@ test fn two_panics_in_two_cycles_are_two_errors_and_the_second_ends_the_attempt(
   any(a.errors, x => (match x.error { KernelPanic { reason: r } => (r as String) == "first" _ => false }) && (match x.cycle { Present { value: k } => k == 1 Absent => false }))
     && any(a.errors, x => (match x.error { KernelPanic { reason: r } => (r as String) == "second" _ => false }) && (match x.cycle { Present { value: k } => k == 2 Absent => false }))
     && (match a.ending { StoppedWithStatedFailure { subject: _, error: e } => (match e { KernelPanic { reason: r } => (r as String) == "second" _ => false }) _ => false })
+}
+
+// ── ONE ERROR PER OCCURRENCE FOR WHOLE-SPAN STATEMENTS TOO (side-chat review of c7beccad) ───────
+
+data grub_failed_line: String = "Failed to boot both default and fallback entries."
+
+test fn a_grub_failure_in_each_of_two_cycles_is_two_errors_and_the_second_ends() -> Bool {
+  let lines = ["NOTICE:  DRAM FW version 220414", "GNU GRUB  version 2.12", "error: no such device: first.", grub_failed_line, "NOTICE:  DRAM FW version 220414", "GNU GRUB  version 2.12", "error: no such device: second.", grub_failed_line]
+  let a = mtcollins1_power_on_account(e: evidence_with(console: console_of(lines: lines, relations: []), smpro: [], census_ended: false, sel: step1_restarts))
+  let grub = filter(a.errors, x => match x.error { BootLoaderFailed { errors: _ } => true _ => false })
+  count(grub) == 2
+    && any(grub, x => match x.cycle { Present { value: k } => k == 1 Absent => false })
+    && any(grub, x => match x.cycle { Present { value: k } => k == 2 Absent => false })
+    && (match a.ending { StoppedWithStatedFailure { subject: _, error: e } => (match e { BootLoaderFailed { errors: es } => any(es, g => contains(grub_error_text(error: g), "second")) _ => false }) _ => false })
+}
+
+test fn a_firmware_statement_in_each_of_two_cycles_is_two_errors() -> Bool {
+  let lines = ["NOTICE:  DRAM FW version 220414", "ERROR: Non-identical DIMM mixture NOT supported!", "NOTICE:  DRAM FW version 220414", "ERROR: Non-identical DIMM mixture NOT supported!"]
+  let a = mtcollins1_power_on_account(e: evidence_with(console: console_of(lines: lines, relations: []), smpro: [], census_ended: false, sel: step1_restarts))
+  let fw = filter(a.errors, x => match x.error { FirmwareStatement { report: _ } => true _ => false })
+  count(fw) == 2 && any(fw, x => match x.cycle { Present { value: k } => k == 1 Absent => false }) && any(fw, x => match x.cycle { Present { value: k } => k == 2 Absent => false })
+}
+
+// ── THE SEL FOLD IS ORDERED, WITHOUT LOOK-AHEAD ──────────────────────────────────────────────
+
+data second_power_up: SelWindowEvent = SelWindowEvent { record_id: 3200, bmc_clock_rendering: "witness", kind: BootRestart { offset: InitiatedByPowerUp } }
+
+fn boundary_kinds(sel: List<SelWindowEvent>) -> List<String> {
+  map(mtcollins1_power_on_account(e: evidence_with(console: ConsoleNotRead, smpro: [], census_ended: false, sel: sel)).boundaries, b => match b {
+    PowerOnCorroboration { record: r } => concat("corroborates ", to_string(r.record_id))
+    DistinctRestart { record: r } => concat("distinct ", to_string(r.record_id))
+    BoundaryAmbiguous { record: r, reason: _ } => concat("ambiguous ", to_string(r.record_id))
+  })
+}
+
+test fn a_later_record_never_changes_how_a_prefix_was_classified() -> Bool {
+  let prefix = boundary_kinds(sel: [step1_first_restart])
+  let longer = boundary_kinds(sel: [step1_first_restart, second_power_up])
+  prefix == longer.take(n: count(prefix)) && prefix == ["ambiguous 55"]
+}
+
+test fn a_power_on_and_two_ordered_power_ups_are_an_initial_cycle_and_one_later_cycle() -> Bool {
+  let a = mtcollins1_power_on_account(e: evidence_with(console: ConsoleNotRead, smpro: [], census_ended: false, sel: [run_37069907299_power_up, second_power_up]))
+  count(a.cycles) == 2 && boundary_kinds(sel: [run_37069907299_power_up, second_power_up]) == ["corroborates 3110", "distinct 3200"]
 }

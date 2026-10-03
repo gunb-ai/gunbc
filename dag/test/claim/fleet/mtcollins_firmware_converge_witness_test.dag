@@ -28,7 +28,7 @@ import gunbc.machine_intake_phase { DevelopmentAndTest, intake_qualification_pol
 import gunbc.machine_intake_mtcollins1_power_on_account {
   PowerOnAccount, PowerOnEvidence, AttemptConfigurationReceipt, ConsoleRead, HandoffPoweredOn, SelEventsRead, WatchdogUnobserved,
   ExpectedSockets, StimulusRequestNotRecorded, StimulusApplicationNotRecorded, PopulationNotRecorded, FirmwareReadbacksNotRecorded,
-  FirmwareSetBootReadback, RestartedRepeatedly, mtcollins1_power_on_account, firmware_set_boot_readback,
+  FirmwareSetBootReadback, RestartedRepeatedly, mtcollins1_power_on_account, firmware_set_boot_readback, span_console_readings,
 }
 import extdeps.crypto.hash { sha256_digest }
 import extdeps.tools.sha256sum { Sha256FileDigest }
@@ -951,7 +951,7 @@ fn account_over(lines: List<String>, restarts: List<SelWindowEvent>) -> PowerOnA
       capture: digest, firmware: firmware_console_report(lines: lines), firmware_error_lines: 0,
       dram: ampere_dram_console_observation(lines: lines), checkpoints: ampere_checkpoint_console_observation(lines: lines), relations: [],
       milestones: mtcollins1_console_milestones(lines: lines), sockets: ampere_socket_console_observation(lines: lines),
-      loader: grub_console_report(lines: lines), linux: linux_boot_console_observation(lines: lines), modules: kernel_module_decompression_observation(lines: lines),
+      loader: grub_console_report(lines: lines), linux: linux_boot_console_observation(lines: lines), modules: kernel_module_decompression_observation(lines: lines), span_readings: span_console_readings(lines: lines),
     },
     sel: SelEventsRead { events: restarts }, watchdog: WatchdogUnobserved { reason: "witness" }, bmc_anomalies: [], census_ended: false, coverage: [],
   })

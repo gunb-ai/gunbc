@@ -116,6 +116,36 @@ fn ampere_checkpoint_console_observation(lines: List<String>) -> AmpereCheckpoin
   AmpereCheckpointConsoleObservation { spans: if keep { concat(done.closed, [done.current]) } else { done.closed } }
 }
 
+// THE CONSOLE'S LINES, GROUPED BY THE SPAN THEY FALL IN, by this module's own fold: an owning reader
+// run over one span's lines reports what THAT span printed, so a statement printed in two spans is two
+// statements, each in its own span (the power-on account binds spans to cycles).
+type AmpereConsoleSpanLines {
+  span: Int
+  lines: List<String>
+}
+
+type SpanLinesFold {
+  spans: AmpereCheckpointFold
+  groups: List<AmpereConsoleSpanLines>
+}
+
+fn span_lines_step(acc: SpanLinesFold, raw: String) -> SpanLinesFold {
+  let spans = checkpoint_fold_step(acc: acc.spans, raw: raw)
+  let k = spans.current.index
+  let none_lines: List<String> = []
+  let groups = match acc.groups.last() {
+    Present { value: g } => if g.span == k { concat(acc.groups.take(n: count(acc.groups) - 1), [AmpereConsoleSpanLines { span: k, lines: concat(g.lines, [raw]) }]) } else { concat(acc.groups, [AmpereConsoleSpanLines { span: k, lines: concat(none_lines, [raw]) }]) }
+    Absent => [AmpereConsoleSpanLines { span: k, lines: concat(none_lines, [raw]) }]
+  }
+  SpanLinesFold { spans: spans, groups: groups }
+}
+
+fn ampere_console_span_lines(lines: List<String>) -> List<AmpereConsoleSpanLines> {
+  let none_closed: List<AmpereCheckpointSpan> = []
+  let none_groups: List<AmpereConsoleSpanLines> = []
+  fold(lines, init: SpanLinesFold { spans: AmpereCheckpointFold { closed: none_closed, current: empty_span(index: 0, opened_by_banner: false) }, groups: none_groups }, f: (acc, l) => span_lines_step(acc: acc, raw: l)).groups
+}
+
 fn ampere_checkpoint_last_token(s: AmpereCheckpointSpan) -> AmpereCheckpointToken? {
   s.tokens.last()
 }
