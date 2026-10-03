@@ -57,7 +57,7 @@ import v2.std.model_core {
   ModelCoreFactAxisSurfaceSpelling,
   ModelCoreFactAxisWidth
 }
-import v2.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v2.std.node { Arrow, Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode }
 import v2.extdeps.cpp_abi { CppTargetProfile }
 import v2.std.text { String }
 
@@ -192,7 +192,7 @@ fn cpp_atom(id: Symbol) -> Node {
 }
 
 fn cpp_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn cpp_signed_integer_spelling_node(spelling: CppSignedIntegerSurfaceSpelling) -> Node {
@@ -1193,7 +1193,7 @@ fn cpp_lex_rules() -> List<LexRule> {
 }
 
 fn cpp_lex() -> LexRules {
-  ModeledLexRules { root: LexRuleSet { rules: cpp_lex_rules() } }
+  ModeledLexRules { root: LexRuleSet { rules: cpp_lex_rules(), modes: [] } }
 }
 
 data cpp_bool_grounding: BooleanAlgebra<v2.std.logic.Bool> = bool_boolean_algebra

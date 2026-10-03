@@ -2,7 +2,9 @@ module v1.compiler.emit_rust
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration }
-import std.target_representation { ResolvedExactBinding, ExactBindingAbsent, ExactBindingAmbiguous, ExactSourceIdentityUnavailable }
+import std.target_representation { ResolvedExactBinding, ExactBindingAbsent, ExactBindingAmbiguous, ExactSourceIdentityUnavailable,
+  VariantParentIdentity, VariantParentUnrecovered, VariantParentBeforeInference, VariantRealizesAsTargetValue, VariantRealizesStructurally, VariantTargetValueUnbound,
+  VariantTargetValueAmbiguous, VariantParentIdentityUnavailable, variant_value_realization_refusal_message }
 import extdeps.languages.rust.representation { rust_exact_type_checkpoint }
 import std.repair_input_origin {
   repair_input_origin_candidates,
@@ -148,7 +150,8 @@ import v1.compiler.coercion {
   coerce_primitive_type, is_copy, target_callable, rust_lookup_exact_binding,
   declaration_realizes_natively_on_rust, type_reference_realization, declaration_realization,
   type_realization_decision, realized_checkpoint, realization_host_numeric_spelling,
-  realization_is_host_numeric, provenance_declares_structurally
+  realization_is_host_numeric, provenance_declares_structurally, target_checkpoints,
+  rust_variant_value_realization, rust_variant_arm_is_bound_somewhere
 }
 import std.coercion {
   TypeDeclarationProvenance, CorpusDeclared, KernelMinted, DeclarationIdentityAbsent,
@@ -189,7 +192,8 @@ import std.operator_realization {
   OperandDemand, DemandsBothOperands, DemandsRightOnlyWhenLeftIs, DemandsRightOnlyWhenLeftIsAbsent,
   operator_realization_for, operator_realization_refusal_message, operand_demand, binop_label
 }
-import gunbc.structural_realization_bindings { structural_ordering_rows, structural_connective_rows }
+import gunbc.structural_realization_bindings { structural_ordering_rows, structural_connective_rows, kernel_grounding_rows }
+import std.literal_elaboration { KernelIntLiteral, kernel_grounding_for, KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous }
 import v1.compiler.infer_types {
   resolved_type, normalize_access_type_node, for_each_element_type_node,
   child_type_node, emit_map_has,
@@ -4321,7 +4325,7 @@ fn collect_items_field_import_surface_names(surface_names: List<String>, emit_in
 // than guessing an enum (the candidate set may under-propose; it must never fabricate).
 fn collect_pattern_ref_names(pattern: MatchPattern, type_summaries: Map<String, TypeSummary>) -> List<String> {
   match pattern {
-    VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
+    VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs, parent_identity: _ } =>
       let own = match pattern_parent_enum(name: qualified_last_segment(name: n), parent_enum: parent_enum, scrut_type: "", type_summaries: type_summaries) {
         Present { value: parent } => if parent == "" { [] } else { [parent] }
         Absent => []
@@ -4410,7 +4414,7 @@ fn emit_scrutinee_type_name(scrutinee: Node, source_indices: Map<String, Newline
 
 fn collect_pattern_rc_prelude_parent_enums(pattern: MatchPattern, scrut_type: String, type_summaries: Map<String, TypeSummary>) -> List<String> {
   match pattern {
-    VariantPattern { name: n, parent_enum: parent_enum, field_bindings: _ } =>
+    VariantPattern { name: n, parent_enum: parent_enum, field_bindings: _, parent_identity: _ } =>
       let bare_n = qualified_last_segment(name: n)
       match pattern_parent_enum(name: bare_n, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: type_summaries) {
         Present { value: parent } => if parent != "" { [parent] } else { [] }
@@ -4422,7 +4426,7 @@ fn collect_pattern_rc_prelude_parent_enums(pattern: MatchPattern, scrut_type: St
 
 fn collect_rc_pattern_prelude_parent_enums(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, scrut_type: String, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> List<String> {
   match pattern {
-    VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
+    VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs, parent_identity: _ } =>
       let bare_n = qualified_last_segment(name: n)
       if is_optional_variant_name(name: bare_n) && is_optional_parent(parent_enum: parent_enum) {
         if fbs |> count == 1 {
@@ -5615,7 +5619,8 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     else { concat("\n", uncovered_svc_imports |> join(separator: "\n")) }
   let local_enum_uses = typed_module.items
     |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item)
-      && !is_grounded_coproduct_native_alias(name: authored_name(env: scope.type_env, node: item)))
+      && !is_grounded_coproduct_native_alias(name: authored_name(env: scope.type_env, node: item))
+      && rust_kernel_grounded_type_decl(module_name: scope.module_name, item_text: authored_name(env: scope.type_env, node: item)) == none)
     |> map(item => concat("use self::", authored_name(env: scope.type_env, node: item), "::*;"))
   let local_coproduct_names = typed_module.items
     |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item))
@@ -6764,11 +6769,24 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
   rust_use_lines_text(lines: emit_specific_import_use_lines(import_module: import_module, mod_name: mod_name, filtered_names: filtered_names, type_position_names: type_position_names, emit_info: emit_info, registry: registry, local_names: local_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index, module_env: module_env))
 }
 
+// AN IMPORTED CONSTRUCTOR OF A KERNEL-GROUNDED CARRIER NAMES NOTHING IN THE EMITTED MODULE. The
+// carrier's declaration emits as the kernel integer's spelling and its constructors were folded to
+// integers before emission, so `import std.nat { Zero, Succ }` has no Rust item to bring into
+// scope: a use line for it would name a variant of a type alias. Decided on the constructor's
+// parent declaration in the imported module, by identity.
+fn import_name_is_kernel_grounded_constructor(name: String, import_module: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> Bool {
+  match find_variant_parent_in_module(variant_name: name, module_name: import_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
+    Present { value: parent } => rust_kernel_grounded_type_decl(module_name: import_module, item_text: parent) != none
+    Absent => false
+  }
+}
+
 fn emit_specific_import_use_lines(import_module: String, mod_name: String, filtered_names: List<String>, type_position_names: List<String>, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, module_env: TypeEnv?) -> List<RustUseLine> {
   let type_summaries = emit_info.type_summaries
   let deduped_names = unique_strings(items: filtered_names
     |> filter(n => local_names |> all(ln => ln != n))
-    |> filter(n => !import_name_resolves_to_host_realized_kernel_scalar(name: n, module_env: module_env)))
+    |> filter(n => !import_name_resolves_to_host_realized_kernel_scalar(name: n, module_env: module_env))
+    |> filter(n => !import_name_is_kernel_grounded_constructor(name: n, import_module: import_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)))
   let marker_type_names = unique_strings(items: deduped_names |> filter(n =>
     (type_position_names |> any(name => name == n)) &&
     match module_env {
@@ -6938,7 +6956,8 @@ fn emit_specific_import_use_lines(import_module: String, mod_name: String, filte
     let final_imported_enums = top_level |> filter(n => import_module_enums |> any(e => e == n))
     let wildcard_enum_lines = final_imported_enums
       |> filter(en => parent_list |> any(p => p == en) == false
-        && !is_grounded_coproduct_native_alias(name: en))
+        && !is_grounded_coproduct_native_alias(name: en)
+        && rust_kernel_grounded_type_decl(module_name: import_module, item_text: en) == none)
       |> map(en => RustUseLine { target_module: mod_name, text: concat("use crate::", mod_name, "::", en, "::*;") })
     concat(main_lines, variant_lines, wildcard_enum_lines)
   }
@@ -7411,6 +7430,28 @@ fn emit_non_empty_wrappers() -> String {
   concat(vec_wrapper, "\n\n", set_wrapper)
 }
 
+// THE DECLARATION OF A KERNEL-GROUNDED CARRIER (std.literal_elaboration KernelGrounding) IS THE
+// KERNEL INTEGER'S OWN SPELLING, never an enum of its constructors. The carrier is declared
+// inductively and realized as the integer its constructors denote; v1.compiler.infer
+// ground_kernel_views has already folded every constructor and constructor pattern out of the
+// bodies this module emits, so an enum here would be a type no emitted expression constructs and
+// every emitted signature contradicts. Keyed on the declaration itself -- this module and this
+// name -- so a declaration of the same shape or spelling elsewhere emits its own structure. The
+// spelling is the Rust target's Int checkpoint, the one row that says what the kernel integer is
+// on this target; an absent row refuses rather than guessing a token.
+fn rust_kernel_grounded_type_decl(module_name: String, item_text: String) -> String? {
+  match kernel_grounding_for(rows: kernel_grounding_rows, source_kind: KernelIntLiteral, carrier: decl_ref(module_path: module_name, decl_name: item_text)) {
+    KernelGroundingAbsent => none
+    KernelGroundingAmbiguous { row_count: _ } =>
+      Present { value: emit_rust_compile_error_item(message: concat("kernel grounding: ", module_name, ".", item_text, " has more than one gunbc.structural_realization_bindings kernel_grounding_rows row")) }
+    KernelGroundingFound { row: _ } =>
+      match target_checkpoints(target: Rust) |> filter(cp => cp.dag_name == "Int") |> first {
+        Present { value: cp } => Present { value: concat(rust_visibility_prefix(), "type ", item_text, " = ", cp.grounding_type, ";") }
+        Absent => Present { value: emit_rust_compile_error_item(message: concat("kernel grounding: the Rust target declares no Int checkpoint to realize ", module_name, ".", item_text, " as")) }
+      }
+  }
+}
+
 // EXHAUSTIVE ON THE ITEM KIND. The chain that stood here decided WHICH KIND of item it was
 // looking at from which of the item's optional fields happened to be absent, and its residual arm
 // was the only stop it had. The kind is now read from v1.std.core Node.module_item_kind, stamped by
@@ -7426,7 +7467,11 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
   match item.module_item_kind {
     ModuleItemTypeDeclaration =>
       if is_type_def_item(item: item) {
-        emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: data_items, module_items: module_items, imports: imports)
+        match rust_kernel_grounded_type_decl(module_name: module_name, item_text: item_text) {
+          Present { value: grounded_decl } => grounded_decl
+          Absent =>
+            emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: data_items, module_items: module_items, imports: imports)
+        }
       } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
 
         if (item.params |> count) == 0 && (rust_opaque_kernel_alias_type_eligible(name: item_text) || rust_opaque_declaration_has_exact_row(module_path: module_name, name: item_text)) {
@@ -8215,7 +8260,7 @@ fn enum_derives(name: String, children: List<Node>, has_fn_fields: Bool, deseria
 // same has_fn_fields here rather than deriving it twice.
 fn emit_enum_from_children(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, serde_policy: RustEnumWireSerde, emit_info: EmitGraphInfo) -> String {
   let has_fn_fields = type_has_fn_fields(name: name, emit_info: emit_info)
-  let deserialize_forbidden = enum_variant_payloads_forbid_deserialize(name: name, children: children, emit_info: emit_info, source_indices: env.source_indices)
+  let deserialize_forbidden = members_forbid_deserialize(name: name, members: member_type_nodes(is_product: false, children: children), emit_info: emit_info, source_indices: env.source_indices)
   let derives = enum_derives(name: name, children: children, has_fn_fields: has_fn_fields, deserialize_forbidden: deserialize_forbidden, generic_param_names: generic_param_names, emit_info: emit_info, source_indices: env.source_indices)
   let effective_serde_policy = if has_fn_fields {
     rust_serde_policy(enum_attr: "", rename_prefix: none, rename_suffix: none, rename_style: none)
@@ -9784,7 +9829,7 @@ fn collect_field_binding_string_guards(field_bindings: List<Node>, path_prefix: 
 
 fn collect_pattern_string_guards(pattern: MatchPattern, path_prefix: List<String>, source_indices: Map<String, NewlineIndex>) -> String {
   match pattern {
-    VariantPattern { name: n, parent_enum: parent, field_bindings: fbs } =>
+    VariantPattern { name: n, parent_enum: parent, field_bindings: fbs, parent_identity: _ } =>
       if n == "Present" && parent == Present { value: "Optional" } && fbs |> count == 1 {
         match fbs |> first {
           Present { value: fb } =>
@@ -9851,8 +9896,12 @@ fn emit_pattern(pattern: MatchPattern, path_prefix: List<String>, shared_types: 
   match pattern {
     Bind { declaration: declaration } => emit_ident(name: declaration.name, target: Rust)
     LitPattern { value: v } => rust_literal_for_pattern(value: v)
-    VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
+    VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs, parent_identity: identity } =>
+      match rust_native_variant_spelling(parent: identity, leaf_name: qualified_last_segment(name: n)) {
+        Present { value: native } => native
+        Absent =>
       emit_variant_pattern(name: n, parent_enum: parent_enum, field_bindings: fbs, path_prefix: path_prefix, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
+      }
     Wildcard => "_"
   }
 }
@@ -10166,7 +10215,7 @@ fn field_needs_rc_ref(field_name: String, rc_analysis: RcPatternAnalysis) -> Boo
 // `AdmitExportsFold`, four record sites). The record is decided by the same shared set.
 fn analyze_rc_pattern(pattern: MatchPattern, scrut_type: String, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> RcPatternAnalysis {
   match pattern {
-    VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
+    VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs, parent_identity: _ } =>
       let bare_n = qualified_last_segment(name: n)
       if is_optional_variant_name(name: bare_n) && is_optional_parent(parent_enum: parent_enum) {
         if fbs |> count == 1 {
@@ -10214,7 +10263,7 @@ fn analyze_rc_pattern(pattern: MatchPattern, scrut_type: String, shared_types: S
 
 fn box_bound_fields_for_pattern(pattern: MatchPattern, shared_types: Set<String>, emit_info: EmitGraphInfo, scope: InferScope) -> List<String> {
   match pattern {
-    VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
+    VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs, parent_identity: _ } =>
       let bare_n = qualified_last_segment(name: n)
       if is_optional_variant_name(name: bare_n) && is_optional_parent(parent_enum: parent_enum) {
         []
@@ -10287,8 +10336,12 @@ fn emit_pattern_rc_aware(pattern: MatchPattern, path_prefix: List<String>, rc_an
   match pattern {
     Bind { declaration: declaration } => emit_ident(name: declaration.name, target: Rust)
     LitPattern { value: v } => rust_literal_for_pattern(value: v)
-    VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
+    VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs, parent_identity: identity } =>
+      match rust_native_variant_spelling(parent: identity, leaf_name: qualified_last_segment(name: n)) {
+        Present { value: native } => native
+        Absent =>
       emit_variant_pattern_rc_aware(name: n, parent_enum: parent_enum, field_bindings: fbs, path_prefix: path_prefix, rc_analysis: rc_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
+      }
     Wildcard => "_"
   }
 }
@@ -10423,7 +10476,7 @@ fn resolved_variant_pattern_shape_for(name: String, parent_enum: String?, scrut_
 
 fn collect_pattern_rc_variant_guards(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   match pattern {
-    VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
+    VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs, parent_identity: _ } =>
       let bare_n = qualified_last_segment(name: n)
       if is_optional_variant_name(name: bare_n) && is_optional_parent(parent_enum: parent_enum) {
         if fbs |> count == 1 {
@@ -10450,7 +10503,7 @@ fn collect_pattern_rc_variant_guards(pattern: MatchPattern, rc_analysis: RcPatte
             if match_pattern_is_irrefutable(pattern: fb_pat) { [] }
             else {
               match fb_pat {
-                VariantPattern { name: inner_n, parent_enum: inner_parent, field_bindings: _ } =>
+                VariantPattern { name: inner_n, parent_enum: inner_parent, field_bindings: _, parent_identity: _ } =>
                   let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: "", shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
                   let inner_guard = collect_pattern_rc_variant_guards(pattern: fb_pat, rc_analysis: inner_analysis, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
                   if inner_guard == "" {
@@ -10482,7 +10535,7 @@ fn rust_as_ref_let_is_irrefutable(pattern: MatchPattern, emit_info: EmitGraphInf
   if match_pattern_is_irrefutable(pattern: pattern) { true }
   else {
     match pattern {
-      VariantPattern { name: n, parent_enum: parent, field_bindings: _ } =>
+      VariantPattern { name: n, parent_enum: parent, field_bindings: _, parent_identity: _ } =>
         let resolved = pattern_parent_enum(name: qualified_last_segment(name: n), parent_enum: parent, scrut_type: "", type_summaries: emit_info.type_summaries)
         match resolved {
           Present { value: enum_name } =>
@@ -10499,7 +10552,7 @@ fn rust_as_ref_let_is_irrefutable(pattern: MatchPattern, emit_info: EmitGraphInf
 
 fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   match pattern {
-    VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
+    VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs, parent_identity: _ } =>
       let bare_n = qualified_last_segment(name: n)
       if is_optional_variant_name(name: bare_n) && is_optional_parent(parent_enum: parent_enum) {
         if fbs |> count == 1 {
@@ -10582,9 +10635,57 @@ fn explicit_record_struct_name(type_name: String?, inferred_node: Node, shared_t
 
 fn is_simple_type_node(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool { is_rust_value_type(n: n, source_indices: source_indices) }
 
+// A VARIANT OF A NATIVELY REALIZED COPRODUCT IS SPELLED AS THE TARGET VALUE ITS ROW NAMES, in value
+// and in pattern position alike (std.types Bool's True/False over Rust `bool` are `true`/`false`).
+// Present answers the whole spelling for the occurrence -- the target value, or a located
+// compile_error! refusal; Absent means the occurrence renders its own enum path as before. The
+// decision is v1.compiler.coercion rust_variant_value_realization over the identity inference
+// carried; see rust_variant_arm_is_bound_somewhere for why an unidentified occurrence refuses only
+// when its arm is one a row binds.
+fn rust_native_variant_spelling(parent: VariantParentIdentity, leaf_name: String) -> String? {
+  match parent {
+    VariantParentBeforeInference =>
+      Present { value: emit_rust_compile_error_expr(message: concat("variant realization: `", leaf_name, "` reached emission without inference having read which coproduct it belongs to (VariantParentBeforeInference); an unread occurrence is refused rather than rendered as either the native value or its enum path")) }
+    _ => rust_native_variant_spelling_of_read(parent: parent, leaf_name: leaf_name)
+  }
+}
+
+// An occurrence inference has read: Identified, or Unrecovered with its cause.
+fn rust_native_variant_spelling_of_read(parent: VariantParentIdentity, leaf_name: String) -> String? {
+  let r = rust_variant_value_realization(parent: parent, variant: leaf_name)
+  match r {
+    VariantRealizesAsTargetValue { value_spelling: s } => Present { value: s as String }
+    VariantRealizesStructurally => none
+    VariantParentIdentityUnavailable { cause: _ } =>
+      if rust_variant_arm_is_bound_somewhere(variant: leaf_name) {
+        match variant_value_realization_refusal_message(r: r) {
+          Present { value: m } => Present { value: emit_rust_compile_error_expr(message: m) }
+          Absent => none
+        }
+      } else { none }
+    VariantTargetValueUnbound { parent: _, variant: _ } =>
+      match variant_value_realization_refusal_message(r: r) {
+        Present { value: m } => Present { value: emit_rust_compile_error_expr(message: m) }
+        Absent => none
+      }
+    VariantTargetValueAmbiguous { parent: _, variant: _, candidate_count: _ } =>
+      match variant_value_realization_refusal_message(r: r) {
+        Present { value: m } => Present { value: emit_rust_compile_error_expr(message: m) }
+        Absent => none
+      }
+  }
+}
+
+fn rust_native_variant_spelling_of_binding(binding_kind: VarBindingKind?, leaf_name: String) -> String? {
+  match binding_kind {
+    Present { value: VariantValueBinding { parent_enum: _, parent_identity: identity } } => rust_native_variant_spelling(parent: identity, leaf_name: leaf_name)
+    _ => none
+  }
+}
+
 fn variant_parent_from_binding_kind(binding_kind: VarBindingKind?) -> String? {
   match binding_kind {
-    Present { value: VariantValueBinding { parent_enum: parent_enum } } => Present { value: parent_enum }
+    Present { value: VariantValueBinding { parent_enum: parent_enum, parent_identity: _ } } => Present { value: parent_enum }
     _ => none
   }
 }
@@ -10742,6 +10843,12 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
   let variant_parent = effective_variant_parent(name: resolved_name, binding_kind: binding_kind, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices)
   if (leaf_name == "none" || leaf_name == "None") && variant_parent == none { emit_none_keyword_for_resolved_type(resolved_type: resolved_type) }
   else if leaf_name == "true" || leaf_name == "false" { emit_keyword(key: leaf_name, target: Rust) }
+  else if rust_native_variant_spelling_of_binding(binding_kind: binding_kind, leaf_name: leaf_name) != none {
+    match rust_native_variant_spelling_of_binding(binding_kind: binding_kind, leaf_name: leaf_name) {
+      Present { value: s } => s
+      Absent => ""
+    }
+  }
   else {
 
     let moves_by_value = set_contains(emit_info.movable, resolved_name)
@@ -10807,6 +10914,9 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
       if (leaf_name == "none" || leaf_name == "None") && variant_parent == none { emit_none_keyword_for_resolved_type(resolved_type: texpr.inferred) }
       else if leaf_name == "true" || leaf_name == "false" { emit_keyword(key: leaf_name, target: Rust) }
       else {
+        match rust_native_variant_spelling_of_binding(binding_kind: binding_kind, leaf_name: leaf_name) {
+          Present { value: native } => native
+          Absent =>
         match variant_parent {
           Present { value: enum_name } =>
             if freemonoid_empty_from_variant_parent(leaf_name: leaf_name, enum_name: enum_name) {
@@ -10837,6 +10947,7 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
               ItemNotFound =>
                 emit_value_ref_ident(name: resolved_name, self_module: scope.module_name, registry: registry, emit_info: emit_info)
             }
+        }
         }
       }
     _ => emit_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
@@ -10887,8 +10998,8 @@ fn type_expr_reaches_sealed_carrier(n: Node, emit_info: EmitGraphInfo, source_in
           true
         } else {
           let next_seen = map_insert(seen, name, true)
-          decl.children |> any(child =>
-            type_expr_reaches_sealed_carrier(n: child_type_node(ch: child), emit_info: emit_info, source_indices: source_indices, seen: next_seen)
+          decl_member_type_nodes(decl: decl) |> any(member =>
+            type_expr_reaches_sealed_carrier(n: member, emit_info: emit_info, source_indices: source_indices, seen: next_seen)
           )
         }
       Absent => false
@@ -10896,10 +11007,29 @@ fn type_expr_reaches_sealed_carrier(n: Node, emit_info: EmitGraphInfo, source_in
   }
 }
 
-fn decl_children_forbid_deserialize(name: String, children: List<Node>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> Bool {
+// THE MEMBER TYPES OF A DECLARATION, read the same way at every depth. A product's members are its
+// fields; a coproduct's are its variants' payload fields. The walk once read a LOOKED-UP coproduct's
+// children as if they were fields, and child_type_node resolves a variant to the coproduct itself --
+// already in the seen-set -- so a seal two coproducts deep was never reached: v2.std.node's
+// EdgeLabel -> StructuralEdgeLabel -> CoreEdgeLabel -> BodyTermLoweredSeal kept a derived Deserialize
+// on every container and the emitted crate refused E0277. The top-level enum entry read variants
+// correctly, so the defect was the two readings disagreeing; one reader closes it.
+fn member_type_nodes(is_product: Bool, children: List<Node>) -> List<Node> {
+  if is_product {
+    children |> map(field => child_type_node(ch: field))
+  } else {
+    children |> flat_map(variant => variant.children |> map(field => child_type_node(ch: field)))
+  }
+}
+
+fn decl_member_type_nodes(decl: Node) -> List<Node> {
+  member_type_nodes(is_product: is_product_type(n: decl), children: decl.children)
+}
+
+fn members_forbid_deserialize(name: String, members: List<Node>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> Bool {
   let seen = map_insert(empty_map(), qualified_last_segment(name: name), true)
-  children |> any(child =>
-    type_expr_reaches_sealed_carrier(n: child_type_node(ch: child), emit_info: emit_info, source_indices: source_indices, seen: seen)
+  members |> any(member =>
+    type_expr_reaches_sealed_carrier(n: member, emit_info: emit_info, source_indices: source_indices, seen: seen)
   )
 }
 
@@ -10907,17 +11037,8 @@ fn item_forbids_deserialize(item: Node, emit_info: EmitGraphInfo, source_indices
   if item_seals_construction(item: item) {
     true
   } else {
-    decl_children_forbid_deserialize(name: authored_name_at(source_indices: source_indices, node: item), children: item.children, emit_info: emit_info, source_indices: source_indices)
+    members_forbid_deserialize(name: authored_name_at(source_indices: source_indices, node: item), members: decl_member_type_nodes(decl: item), emit_info: emit_info, source_indices: source_indices)
   }
-}
-
-fn enum_variant_payloads_forbid_deserialize(name: String, children: List<Node>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> Bool {
-  let seen = map_insert(empty_map(), qualified_last_segment(name: name), true)
-  children |> any(variant =>
-    variant.children |> any(field =>
-      type_expr_reaches_sealed_carrier(n: child_type_node(ch: field), emit_info: emit_info, source_indices: source_indices, seen: seen)
-    )
-  )
 }
 
 // A sealed record's fields are private in the emitted crate, so a stored-field read
@@ -11627,7 +11748,7 @@ fn emit_rust_expr_bin_op(expr: Node, registry: Map<String, ItemInfo>, scope: Inf
 fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, fuel: Int) -> String {
   match texpr.expr_data {
     ExprUnaryOp { op: Neg } =>
-      if expr_realizes_as_refusing_int(e: texpr, source_indices: scope.type_env.source_indices) {
+      if expr_realizes_as_refusing_int(e: texpr, env: scope.type_env) {
         concat(rust_refusing_int_negation_helper, "(", emit_typed_expr(texpr: unaryop_operand(texpr: texpr), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: fuel - 1), ")")
       } else {
         emit_typed_expr_shared(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: fuel)
@@ -13117,14 +13238,14 @@ fn emit_typed_first_arg(args: List<Node>, registry: Map<String, ItemInfo>, scope
 
 fn freemonoid_match_arm_for(arms: List<Node>, variant: String) -> Node? {
   arms |> filter(arm => match arm_pattern(n: arm) {
-    VariantPattern { name: n, parent_enum: _, field_bindings: _ } => qualified_last_segment(name: n) == variant
+    VariantPattern { name: n, parent_enum: _, field_bindings: _, parent_identity: _ } => qualified_last_segment(name: n) == variant
     _ => false
   }) |> first
 }
 
 fn arm_resolved_parent_enum(arm: Node, scrut_type: String, type_summaries: Map<String, TypeSummary>) -> String? {
   match arm_pattern(n: arm) {
-    VariantPattern { name: n, parent_enum: pe, field_bindings: _ } =>
+    VariantPattern { name: n, parent_enum: pe, field_bindings: _, parent_identity: _ } =>
       pattern_parent_enum(name: qualified_last_segment(name: n), parent_enum: pe, scrut_type: scrut_type, type_summaries: type_summaries)
     _ => none
   }
@@ -13279,7 +13400,7 @@ fn fm_head_bind_name(p: MatchPattern) -> String? {
     Wildcard => Present { value: "_" }
     Bind { declaration: d } => Present { value: d.name }
     LitPattern { value: _ } => none
-    VariantPattern { name: _, parent_enum: _, field_bindings: _ } => none
+    VariantPattern { name: _, parent_enum: _, field_bindings: _, parent_identity: _ } => none
   }
 }
 
@@ -13299,7 +13420,7 @@ fn fm_analyze_pattern(pattern: MatchPattern, si: Map<String, NewlineIndex>, fuel
       Wildcard => FmSpine { exact: false, len: 0, head_binds: [], tail_bind: "_" }
       Bind { declaration: d } => FmSpine { exact: false, len: 0, head_binds: [], tail_bind: d.name }
       LitPattern { value: _ } => FmUnsupportedArm { cause: FmLiteralAgainstList }
-      VariantPattern { name: n, parent_enum: _, field_bindings: fbs } =>
+      VariantPattern { name: n, parent_enum: _, field_bindings: fbs, parent_identity: _ } =>
         let bare = qualified_last_segment(name: n)
         if bare == "Empty" {
           FmSpine { exact: true, len: 0, head_binds: [], tail_bind: "" }
@@ -13576,7 +13697,7 @@ fn ungroupable_arm_plan(variant: String, pat_str: String) -> RcGroupedArmPlan {
 
 fn rc_arm_plain_bindings(pattern: MatchPattern, ref_field: String, source_indices: Map<String, NewlineIndex>) -> List<RcPlainFieldBinding> {
   match pattern {
-    VariantPattern { name: _, parent_enum: _, field_bindings: fbs } =>
+    VariantPattern { name: _, parent_enum: _, field_bindings: fbs, parent_identity: _ } =>
       fbs |> flat_map(fb =>
         let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
         if fb_name == ref_field { [] }
@@ -13593,7 +13714,7 @@ fn rc_arm_plain_bindings(pattern: MatchPattern, ref_field: String, source_indice
 
 fn rc_arm_has_refutable_plain_field(pattern: MatchPattern, ref_field: String, source_indices: Map<String, NewlineIndex>) -> Bool {
   match pattern {
-    VariantPattern { name: _, parent_enum: _, field_bindings: fbs } =>
+    VariantPattern { name: _, parent_enum: _, field_bindings: fbs, parent_identity: _ } =>
       fbs |> any(fb =>
         field_binding_name_at(n: fb, source_indices: source_indices) != ref_field
           && !match_pattern_is_irrefutable(pattern: field_binding_pattern(n: fb))
@@ -13639,7 +13760,7 @@ fn rc_group_representative(entries: List<RcGroupedArmEntry>, variant: String) ->
 
 fn variant_pattern_field_binding_named(pattern: MatchPattern, field_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
   match pattern {
-    VariantPattern { name: _, parent_enum: _, field_bindings: fbs } =>
+    VariantPattern { name: _, parent_enum: _, field_bindings: fbs, parent_identity: _ } =>
       fbs |> filter(fb => field_binding_name_at(n: fb, source_indices: source_indices) == field_name) |> first
     _ => none
   }
@@ -13647,7 +13768,7 @@ fn variant_pattern_field_binding_named(pattern: MatchPattern, field_name: String
 
 fn variant_pattern_bare_name(pattern: MatchPattern) -> String {
   match pattern {
-    VariantPattern { name: n, parent_enum: _, field_bindings: _ } => qualified_last_segment(name: n)
+    VariantPattern { name: n, parent_enum: _, field_bindings: _, parent_identity: _ } => qualified_last_segment(name: n)
     _ => ""
   }
 }
@@ -14909,7 +15030,7 @@ fn emit_rust_host_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, left: Node
       } else {
         match rust_refusing_int_operator_helper(op: op) {
           Present { value: helper } =>
-            if expr_realizes_as_refusing_int(e: left, source_indices: scope.type_env.source_indices) {
+            if expr_realizes_as_refusing_int(e: left, env: scope.type_env) {
               concat(helper, "(", l_str, ", ", r_str, ")")
             } else {
               concat("(", l_str, " ", op_str, " ", r_str, ")")
@@ -14926,16 +15047,39 @@ fn emit_rust_host_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, left: Node
 // primitive is routed through the refusing helpers (extdeps.languages.rust.emit
 // rust_refusing_int_operator_helper); f64 keeps its IEEE infix operators, which is also what the
 // interpreter's float arm computes.
-fn expr_realizes_as_refusing_int(e: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+// A KERNEL-GROUNDED CARRIER (std.nat Nat) is declared inductively, so its type reference has no
+// checkpoint of its own; it realizes as the Int checkpoint (rust_kernel_grounded_type_decl spells
+// its declaration from that row), and its operators are therefore that primitive's operators. The
+// carrier is identified by declaration, never by spelling,
+// so a user type spelled Nat that is not the bound declaration stays structural. The key is the
+// DeclarationRef the type reference carries (Node.declaration), the same key
+// rust_kernel_grounded_type_decl uses. Measured on the Nat de-fork: a Nat operand's reference carries
+// decl std.nat::Nat and provenance dag/std/nat.dag, yet the spelling-keyed decision above returns no
+// checkpoint for it, so without this arm `k * k` emitted the wrapping infix token.
+fn expr_realizes_as_refusing_int(e: Node, env: TypeEnv) -> Bool {
   match e.inferred {
     Present { value: Resolved { node: rt } } =>
       if rt.return_cardinality == CardOptional {
         false
       } else {
         let normed = normalize_access_type_node(n: rt)
-        match realized_checkpoint(decision: type_reference_realization(n: normed, dag_name: authored_name_at(source_indices: source_indices, node: normed), target: Rust)) {
+        let name = authored_name_at(source_indices: env.source_indices, node: normed)
+        match realized_checkpoint(decision: type_reference_realization(n: normed, dag_name: name, target: Rust)) {
           Present { value: cp } => cp.target_type == rust_refusing_int_target_type
-          Absent => false
+          Absent =>
+            match normed.declaration {
+              Present { value: d } =>
+                match kernel_grounding_for(rows: kernel_grounding_rows, source_kind: KernelIntLiteral, carrier: d) {
+                  KernelGroundingFound { row: _ } =>
+                    match target_checkpoints(target: Rust) |> filter(cp => cp.dag_name == "Int") |> first {
+                      Present { value: cp } => cp.grounding_type == rust_refusing_int_target_type
+                      Absent => false
+                    }
+                  KernelGroundingAbsent => false
+                  KernelGroundingAmbiguous { row_count: _ } => false
+                }
+              Absent => false
+            }
         }
       }
     _ => false

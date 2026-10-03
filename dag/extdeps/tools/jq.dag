@@ -244,7 +244,8 @@ fn jq_cli_lex_rules() -> ModeledLexRules {
           token_class: jq_option_token_class(option: JqCliOptionArgJson),
           pattern: LiteralPattern { text: jq_option_canonical_spelling(option: JqCliOptionArgJson) }
         },
-      ]
+      ],
+      modes: []
     }
   }
 }

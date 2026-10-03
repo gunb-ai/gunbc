@@ -63,7 +63,7 @@ import v2.std.node {
 }
 import v2.std.witness { Holds, Witness }
 import v2.std.node_reflection { coproduct_arm_keys }
-import v2.lens.application { AncestorFrame, AncestorWalk, collect_ancestor_frames, find_child_by_name, subterm_at, substitute_at }
+import v2.lens.application { AncestorFrame, AncestorWalk, collect_ancestor_frames, find_child_by_name, subterm_at, substitute_at, find_child_by_label }
 
 type Dag = Node
 
@@ -1131,7 +1131,7 @@ fn canonical_changed_dimension_receipt(dag: Dag, edit: Edit) -> ChangedDimension
 }
 
 fn canonical_ancestor_frame_dependencies(frame: AncestorFrame) -> FrontierReceipt {
-  match find_child_by_name(root: frame.ancestor, name: frame.step) {
+  match find_child_by_label(root: frame.ancestor, label: frame.step) {
     Accepted { value: child, diagnostics: _ } =>
       FrontierProduced {
         dependencies: [

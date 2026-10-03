@@ -320,6 +320,30 @@ data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
     identity: "v2.test.claim_pipeline.translate.spine_translate_accepts_rust_add_inferred_tree" as NonEmptyStr,
     deleted_in: "gunbc#11591: after the lower_stage witness was repointed at the supplied rust_emit_small_add_translate_target, this claim made the identical translate call on the identical inputs and asserted strictly less (Accepted, without well_formed) -- DESIGN section 3, two claims making the same call on the same input where one assertion implies the other. Its subject survives whole in v2.test.compiler.pipeline.lower_stage.pipeline_lower_add_fixture_relationship_green; the production-model inhabitance stays with v2.test.claim.translate_underived_refusal translate_accepts_derived_corpus_module_holds" as NonEmptyStr,
   },
+  WitnessDeleted {
+    identity: "v2.test.claim.realize_advisory_soundness_test.witness_exact_bound_is_sound" as NonEmptyStr,
+    deleted_in: "Advisories 5.4: v2.workflow.realize_advisory_soundness judged pairs from the GUNBC_REALIZE_ADVISORY logger, which no run sets and whose feeding runs were cut; the law, its test module and the logger are deleted together" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.realize_advisory_soundness_test.witness_exceedance_is_unsound" as NonEmptyStr,
+    deleted_in: "Advisories 5.4: v2.workflow.realize_advisory_soundness judged pairs from the GUNBC_REALIZE_ADVISORY logger, which no run sets and whose feeding runs were cut; the law, its test module and the logger are deleted together" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.realize_advisory_soundness_test.witness_sound_bound_carries_margin" as NonEmptyStr,
+    deleted_in: "Advisories 5.4: v2.workflow.realize_advisory_soundness judged pairs from the GUNBC_REALIZE_ADVISORY logger, which no run sets and whose feeding runs were cut; the law, its test module and the logger are deleted together" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.realize_advisory_soundness_test.witness_unknown_bound_is_not_sound" as NonEmptyStr,
+    deleted_in: "Advisories 5.4: v2.workflow.realize_advisory_soundness judged pairs from the GUNBC_REALIZE_ADVISORY logger, which no run sets and whose feeding runs were cut; the law, its test module and the logger are deleted together" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.realize_advisory_soundness_test.witness_window_green_when_all_sound" as NonEmptyStr,
+    deleted_in: "Advisories 5.4: v2.workflow.realize_advisory_soundness judged pairs from the GUNBC_REALIZE_ADVISORY logger, which no run sets and whose feeding runs were cut; the law, its test module and the logger are deleted together" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.realize_advisory_soundness_test.witness_window_reds_on_one_unsound" as NonEmptyStr,
+    deleted_in: "Advisories 5.4: v2.workflow.realize_advisory_soundness judged pairs from the GUNBC_REALIZE_ADVISORY logger, which no run sets and whose feeding runs were cut; the law, its test module and the logger are deleted together" as NonEmptyStr
+  },
 ]
 
 fn floor_grandfathered_chunk_000() -> List<String> {

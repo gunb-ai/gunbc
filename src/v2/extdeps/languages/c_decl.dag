@@ -30,7 +30,7 @@ import v2.std.integer { Int }
 import v2.std.node {
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Symbol,
   TypeNode,
@@ -92,7 +92,7 @@ fn c_stage1_type_decl_frontier_deferred_count() -> Int {
 }
 
 fn c_decl_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn c_decl_shape_productions() -> List<FormalProduction> {

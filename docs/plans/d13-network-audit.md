@@ -167,3 +167,33 @@ A `requires` clause states what a sandbox must GRANT, so the fail-closed directi
 - git object reads: add `git --no-lazy-fetch` (git 2.44+) to the read operations, then move them to `requires none`.
 - `extdeps.browser`: bring the runner's CLI into the repository (or cite its option surface) and terminate options before positionals; the selector operations then fall to the live-page Network rule.
 - `http.Client.PostStdinWithinUnixSocket`: put `--` before `{url}` and type the url to the socket's authority.
+
+## Product-layer operations outside `dag/extdeps` (same rule)
+
+These 14 services in `dag/gunbc` had no clause; an absent clause is Undecided, so every caller would refuse. Verdicts:
+
+| verdict → clause | reason | operations |
+|---|---|---|
+| Network → `requires Network` | rest to `approval_ntfy_endpoint` (`https://ntfy.sh` or the tailnet HTTPS base), not a unix socket or loopback | `gunbc.auth.approval_ntfy_deployment` `ntfy.Publish.PublishMessage` |
+| OpaqueDemand → `requires opaque` | runtime program: argv[0] is the caller-supplied `bin_path` | `gunbc.cli_services` `gunbc.Cli.Run`, `claim_executor.Executor.VerifyBuildArtifacts` |
+| OpaqueDemand → `requires opaque` | runtime program: the script runs the caller-supplied `{ipmitool}` path (lanplus to `{bmc_host}`) | `gunbc.machine_intake.sol_hold` `ActivateHeld` |
+| OpaqueDemand → `requires opaque` | runtime program: launches the caller-supplied `command` argv | `gunbc.owned_process` `launch.LaunchOwned` |
+| NotNetwork → `requires none` | local only: reads the pid record, checks `/proc`, `kill`s the recorded pid | `gunbc.machine_intake.sol_hold` `ReleaseHeld` |
+| NotNetwork → `requires none` | no transport: a pure fold over its inputs | `gunbc.code_change_workflow` `ClassifyGithubPrTerminalAnchor`, `DecideTransition`; `gunbc.pr_digests` `ExtractAttachedUrls`, `RenderPrSummaryLine`, `JudgeMergeReadiness`, `ClassifyRestFallback`; `gunbc.review_verdict` `Parse`, `Tally` |
+
+## Deliberately undeclared test fixtures
+
+These test and fixture operations carry no `requires` clause on purpose. Each exists to exercise a transport, argv or governance mechanism, and no test of theirs reads a demand, so none needs a clause today. A fixture gains one when a test first needs it. The list is the population at this writing; read the current one by scanning for `operation` blocks without `requires` outside `dag/extdeps` and `dag/gunbc`.
+
+- `dag/test/claim/m4_governed_service_witness.dag`: `GovernedProbe` `Allowed`, `Forbidden`
+- `dag/test/claim/reconstruction_door_fixture_probe.dag`: `DoorProbe.Fetch`
+- `dag/test/claim/reconstruction_door_rest_probe.dag`: `DoorProbeRest.Fetch`
+- `dag/test/claim/shell_spawn_refused_real_execution_witness_test.dag`: `test.ShellSpawnProbe.Observed`
+- `dag/test/fixture/argv_executable_position_probe.dag`: `ArgvExecutablePositionProbe` `SmuggleExecutable`, `LiteralExecutable`
+- `dag/test/fixture/m4_universal_governed_probe.dag`: `GovernedUniversalProbe` `Allowed`, `Forbidden`
+- `dag/test/fixture/rest_exchange_replay_probe.dag`: `test.RestReplay` `Observe`, `RootArray`, `RootFile`, `RootPage`, `WorkflowRunsPage`, `WifProvidersPage`, `WifPool`, `WorkflowRunsPageLegacy`, `RootUncontracted`, `Sibling`, `OptionalObserve`, `Legacy`
+- `fixtures/atomic_materialization/subject.dag`: `AtomicFixture.Read`
+- `fixtures/bare_service_provider/provider.dag`: `fixture.BareServiceEcho.Say`
+- `fixtures/fixture_closure_rustc/argv_word_list_splice_probe.dag`: `fixture.WordListTransport` `InteriorList`, `TrailingList`, `TwoListsOneArgv`, `SingleWordOnly`
+- `fixtures/fixture_closure_rustc/shell_multi_field_projection_probe.dag`: `fixture.MultiFieldProjection.TwoFieldExitSuccess`
+- `fixtures/fixture_closure_rustc/shell_single_field_projection_probe.dag`: `fixture.SingleFieldProjection.OneFieldExitSuccess`

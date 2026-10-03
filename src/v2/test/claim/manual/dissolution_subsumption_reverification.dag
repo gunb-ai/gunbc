@@ -52,7 +52,7 @@ import v2.std.node {
   Conj,
   Edge,
   Hash,
-  Named,
+  Authored,
   Node,
   Symbol,
   TypeNode,
@@ -154,19 +154,19 @@ fn subsumption_receipt_node(row: DissolutionSubsumption) -> Node {
         kind: ComputationNode { behavior: Value },
         children: [
           Edge {
-            label: Named { name: ^subsumption_root_fix_edge },
+            label: Authored { name: ^subsumption_root_fix_edge },
             target: subsumption_symbol_node(s: row.root_fix.id)
           },
           Edge {
-            label: Named { name: ^subsumption_first_leaf_edge },
+            label: Authored { name: ^subsumption_first_leaf_edge },
             target: subsumption_template_leaf_node(row: row)
           },
           Edge {
-            label: Named { name: ^subsumption_second_leaf_edge },
+            label: Authored { name: ^subsumption_second_leaf_edge },
             target: subsumption_name_dispatch_leaf_node(row: row)
           },
           Edge {
-            label: Named { name: ^subsumption_mechanical_claim_edge },
+            label: Authored { name: ^subsumption_mechanical_claim_edge },
             target: subsumption_symbol_node(s: claim.id)
           }
         ],
@@ -182,19 +182,19 @@ fn expected_rust_language_model_emit_receipt_node() -> Node {
     kind: ComputationNode { behavior: Value },
     children: [
       Edge {
-        label: Named { name: ^subsumption_root_fix_edge },
+        label: Authored { name: ^subsumption_root_fix_edge },
         target: subsumption_symbol_node(s: ^rust_language_model_emit_root_fix)
       },
       Edge {
-        label: Named { name: ^subsumption_first_leaf_edge },
+        label: Authored { name: ^subsumption_first_leaf_edge },
         target: subsumption_symbol_node(s: ^emit_rust_template_leaf_fix)
       },
       Edge {
-        label: Named { name: ^subsumption_second_leaf_edge },
+        label: Authored { name: ^subsumption_second_leaf_edge },
         target: subsumption_symbol_node(s: ^emit_rust_name_dispatch_leaf_fix)
       },
       Edge {
-        label: Named { name: ^subsumption_mechanical_claim_edge },
+        label: Authored { name: ^subsumption_mechanical_claim_edge },
         target: subsumption_symbol_node(s: ^rust_language_model_emit_mechanical_reverification_claim)
       }
     ],

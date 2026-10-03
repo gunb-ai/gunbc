@@ -8,6 +8,7 @@ import gunbc.cli_invoke {
 
 service gunbc.Cli {
   operation Run {
+    requires opaque
     input {
       workdir: FilePath
       bin_path: FilePath
@@ -46,6 +47,7 @@ service gunbc.Cli {
 
 service claim_executor.Executor {
   operation VerifyBuildArtifacts {
+    requires opaque
     input { workdir: FilePath, bin_path: FilePath, artifact_paths: List<String> }
     output {
       success: Bool from "exit_success"

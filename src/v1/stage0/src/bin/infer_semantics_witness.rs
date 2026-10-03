@@ -413,6 +413,9 @@ fn variant_arm(name: &str) -> Rc<Node> {
             name: name.to_string(),
             parent_enum: None,
             field_bindings: Rc::new(vec![]),
+            parent_identity: Rc::new(
+                v1_compiler::std_target_representation::VariantParentIdentity::VariantParentBeforeInference,
+            ),
         }),
         None,
         unit_expr(),
@@ -955,6 +958,9 @@ fn optional_present_absent_patterns_keep_canonical_names() {
             name: "Present".to_string(),
             parent_enum: None,
             field_bindings: Rc::new(vec![]),
+            parent_identity: Rc::new(
+                v1_compiler::std_target_representation::VariantParentIdentity::VariantParentBeforeInference,
+            ),
         }),
         subject.clone(),
         zero_span(),
@@ -965,6 +971,9 @@ fn optional_present_absent_patterns_keep_canonical_names() {
             name: "Absent".to_string(),
             parent_enum: None,
             field_bindings: Rc::new(vec![]),
+            parent_identity: Rc::new(
+                v1_compiler::std_target_representation::VariantParentIdentity::VariantParentBeforeInference,
+            ),
         }),
         subject,
         zero_span(),
@@ -1113,6 +1122,9 @@ fn real_optional_coproduct_preserves_present_absent_pattern_names() {
             name: "Present".to_string(),
             parent_enum: None,
             field_bindings: Rc::new(vec![]),
+            parent_identity: Rc::new(
+                v1_compiler::std_target_representation::VariantParentIdentity::VariantParentBeforeInference,
+            ),
         }),
         subject,
         zero_span(),

@@ -1,5 +1,7 @@
 module v2.lens.unit_modeling
 
+import v2.std.node { Authored, StructuralLabel }
+
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
 
@@ -92,7 +94,7 @@ fn type_is_flat_scalar(target: Node) -> Bool {
 
 fn field_unit_violation(carrier: Node, edge: Edge) -> Optional<Diagnostic> {
   match edge.label {
-    Named { name: nm } =>
+    Authored { name: nm } =>
       match member_edge_type_node(e: edge) {
         Absent => optional_present(value: member_not_a_binder_diagnostic(e: edge))
         Present { value: t } =>
@@ -106,6 +108,7 @@ fn field_unit_violation(carrier: Node, edge: Edge) -> Optional<Diagnostic> {
             optional_absent()
           }
       }
+    StructuralLabel { label: _ } => optional_absent()
     Positional => optional_absent()
   }
 }

@@ -21,7 +21,7 @@ import v2.std.node {
   Conj,
   Edge,
   EdgeLabel,
-  Named,
+  Authored,
   Symbol,
   ComputationNode,
   Behavior,
@@ -97,7 +97,7 @@ fn atom_node(identity: Symbol) -> Node {
 }
 
 fn named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn program_a() -> Node {

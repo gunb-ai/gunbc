@@ -92,6 +92,36 @@ fn w_plain_record_keeps_deserialize() -> Bool {
   )
 }
 
+// THE SEAL REACHES THROUGH NESTED COPRODUCTS. A seal held two coproducts deep (Outer's variant
+// carries Inner, whose variant carries Sealed) must drop Deserialize from both containers: deriving
+// it on Outer mints a Sealed through serde_json with no mint call, the one-level forge one level
+// further out. The walk once read a looked-up coproduct's variants as fields and stopped at the
+// coproduct's own name, so Outer kept the derive (v2.std.node EdgeLabel -> StructuralEdgeLabel ->
+// CoreEdgeLabel -> BodyTermLoweredSeal refused E0277 in the emitted crate). The plain pair beside it
+// is the control: the same shape over an Int must keep Deserialize, or the pattern below matches
+// nothing and the red is vacuous.
+fn nested_seal_fixture_source() -> String {
+  "module solector_nested_seal\n\ntype Sealed sole_constructor { admitted: Int }\n\ntype Inner\n  = Wrap { s: Sealed }\n  | Bare\n\ntype Outer\n  = Hold { i: Inner }\n  | Vacant\n\ntype PlainInner\n  = PlainWrap { n: Int }\n  | PlainBare\n\ntype PlainOuter\n  = PlainHold { i: PlainInner }\n  | PlainVacant\n\nfn mint(v: Int) -> Sealed {\n  Sealed { admitted: v }\n}\n"
+}
+
+fn w_nested_coproduct_over_a_seal_drops_deserialize() -> Bool {
+  compile_dag_rust_emit_check(
+    nested_seal_fixture_source(),
+    "src/solector_nested_seal.rs",
+    ["pub enum Outer {", "pub enum Inner {"],
+    ["serde::Deserialize)]\n#[serde(tag = \"_variant\")]\npub enum Outer {", "serde::Deserialize)]\n#[serde(tag = \"_variant\")]\npub enum Inner {"]
+  )
+}
+
+fn w_nested_plain_coproduct_keeps_deserialize() -> Bool {
+  compile_dag_rust_emit_check(
+    nested_seal_fixture_source(),
+    "src/solector_nested_seal.rs",
+    ["serde::Deserialize)]\n#[serde(tag = \"_variant\")]\npub enum PlainOuter {", "serde::Deserialize)]\n#[serde(tag = \"_variant\")]\npub enum PlainInner {"],
+    []
+  )
+}
+
 test fn sealed_record_field_is_private() -> Bool {
   w_sealed_record_field_is_private()
 }
@@ -118,4 +148,12 @@ test fn plain_record_keeps_public_field() -> Bool {
 
 test fn plain_record_keeps_deserialize() -> Bool {
   w_plain_record_keeps_deserialize()
+}
+
+test fn nested_coproduct_over_a_seal_drops_deserialize() -> Bool {
+  w_nested_coproduct_over_a_seal_drops_deserialize()
+}
+
+test fn nested_plain_coproduct_keeps_deserialize() -> Bool {
+  w_nested_plain_coproduct_keeps_deserialize()
 }

@@ -61,6 +61,7 @@ import v2.std.node {
   Symbol,
   fold_node,
   symbol_lexeme,
+  Authored, StructuralLabel,
 }
 import v2.std.text { String, string_eq }
 
@@ -196,8 +197,9 @@ fn path_literal_from_lexeme(
 fn positional_child_targets(node: Node) -> List<Node> {
   fold(node.children, init: empty_node_list, f: fn(acc, e) {
     match e.label {
+      StructuralLabel { label: _ } => acc
       Positional => list_snoc_item(xs: acc, item: e.target)
-      Named { name: _ } => acc
+      Authored { name: _ } => acc
     }
   })
 }

@@ -52,6 +52,7 @@ data owned_process_launch_script: String = "pf=\"$1\"; lg=\"$2\"; ep=\"$3\"; ug=
 
 service gunbc.owned_process.launch {
   operation LaunchOwned {
+    requires opaque
     input { pid_path: NonEmptyStr, log_path: NonEmptyStr, command: List<String> }
     output { stdout: String from "stdout", transport_stderr: String from "stderr", success: Bool from "exit_success" }
     transport shell {
