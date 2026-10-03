@@ -78,22 +78,22 @@ fn alb_verdicts() -> AlbVerdicts {
   }
 }
 
-test fn fold_step_arrow_block_body_lowers_holds() -> Bool {
+test fn fold_step_arrow_block_body_lowers_holds() -> Bool  {
   alb_verdicts().fold_step_arrow_block
 }
 
-test fn fold_step_arrow_block_with_let_and_record_lowers_holds() -> Bool {
+test fn fold_step_arrow_block_with_let_and_record_lowers_holds() -> Bool  {
   alb_verdicts().fold_step_arrow_block_let_record
 }
 
-test fn value_position_arrow_block_body_lowers_holds() -> Bool {
+test fn value_position_arrow_block_body_lowers_holds() -> Bool  {
   alb_verdicts().value_arrow_block
 }
 
-test fn fold_step_fn_literal_block_control_holds() -> Bool {
+test fn fold_step_fn_literal_block_control_holds() -> Bool  {
   alb_verdicts().fold_step_fn_literal_block
 }
 
-test fn fold_step_arrow_expression_body_control_holds() -> Bool {
+test fn fold_step_arrow_expression_body_control_holds() -> Bool  {
   alb_verdicts().fold_step_arrow_expr
 }

@@ -264,7 +264,7 @@ fn vpw_is_unbound_at(v: VpwVerdict, spelling: Symbol) -> Bool {
   }
 }
 
-test fn an_undeclared_name_inside_a_call_scrutinee_refuses_at_resolve_at_its_atom() -> Bool {
+test fn an_undeclared_name_inside_a_call_scrutinee_refuses_at_resolve_at_its_atom() -> Bool  {
   match vpw_outcomes() {
     VpwOutcomesDecided { match_call: v, match_declared: _, arg_lambda: _, arg_call: _, lambda_undeclared: _, fn_literal_in_arm: _, fv_nest: _ } =>
       vpw_is_unbound_at(v: v, spelling: ^vpw_undeclared_scrutinee)
@@ -272,7 +272,7 @@ test fn an_undeclared_name_inside_a_call_scrutinee_refuses_at_resolve_at_its_ato
   }
 }
 
-test fn a_match_on_a_call_with_declared_names_resolves() -> Bool {
+test fn a_match_on_a_call_with_declared_names_resolves() -> Bool  {
   match vpw_outcomes() {
     VpwOutcomesDecided { match_call: _, match_declared: v, arg_lambda: _, arg_call: _, lambda_undeclared: _, fn_literal_in_arm: _, fv_nest: _ } =>
       vpw_is_resolved(v: v)
@@ -280,7 +280,7 @@ test fn a_match_on_a_call_with_declared_names_resolves() -> Bool {
   }
 }
 
-test fn a_lambda_argument_whose_body_uses_its_parameter_resolves() -> Bool {
+test fn a_lambda_argument_whose_body_uses_its_parameter_resolves() -> Bool  {
   match vpw_outcomes() {
     VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: v, arg_call: _, lambda_undeclared: _, fn_literal_in_arm: _, fv_nest: _ } =>
       vpw_is_resolved(v: v)
@@ -288,7 +288,7 @@ test fn a_lambda_argument_whose_body_uses_its_parameter_resolves() -> Bool {
   }
 }
 
-test fn an_undeclared_name_inside_a_lambda_argument_body_refuses_at_resolve_at_its_atom() -> Bool {
+test fn an_undeclared_name_inside_a_lambda_argument_body_refuses_at_resolve_at_its_atom() -> Bool  {
   match vpw_outcomes() {
     VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: _, arg_call: _, lambda_undeclared: v, fn_literal_in_arm: _, fv_nest: _ } =>
       vpw_is_unbound_at(v: v, spelling: ^vpw_undeclared_lambda_body)
@@ -296,7 +296,7 @@ test fn an_undeclared_name_inside_a_lambda_argument_body_refuses_at_resolve_at_i
   }
 }
 
-test fn an_undeclared_name_inside_a_call_argument_refuses_at_resolve_at_its_atom() -> Bool {
+test fn an_undeclared_name_inside_a_call_argument_refuses_at_resolve_at_its_atom() -> Bool  {
   match vpw_outcomes() {
     VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: _, arg_call: v, lambda_undeclared: _, fn_literal_in_arm: _, fv_nest: _ } =>
       vpw_is_unbound_at(v: v, spelling: ^vpw_undeclared_argument)
@@ -440,11 +440,11 @@ fn vpw_any_node(shape: VpwShape) -> Bool {
   })
 }
 
-test fn a_call_argument_lowers_to_the_authored_nested_call_with_arity_one() -> Bool {
+test fn a_call_argument_lowers_to_the_authored_nested_call_with_arity_one() -> Bool  {
   vpw_any_node(shape: VpwNestedCall { callee: ^vpw_id, inner: ^vpw_undeclared_argument })
 }
 
-test fn a_call_scrutinee_lowers_whole_to_the_authored_call() -> Bool {
+test fn a_call_scrutinee_lowers_whole_to_the_authored_call() -> Bool  {
   vpw_any_node(shape: VpwSingleCall { callee: ^vpw_id, inner: ^vpw_undeclared_scrutinee })
 }
 
@@ -507,11 +507,11 @@ fn vpw_lambda_argument_shape(n: Node, callee: Symbol, binder: Symbol) -> Bool {
     })
 }
 
-test fn a_lambda_argument_lowers_to_an_arrow_binding_its_parameter_for_its_body() -> Bool {
+test fn a_lambda_argument_lowers_to_an_arrow_binding_its_parameter_for_its_body() -> Bool  {
   vpw_any_node(shape: VpwLambdaArgument { callee: ^vpw_apply, binder: ^x })
 }
 
-test fn a_fn_literal_argument_lowers_to_the_same_arrow_as_a_lambda() -> Bool {
+test fn a_fn_literal_argument_lowers_to_the_same_arrow_as_a_lambda() -> Bool  {
   vpw_any_node(shape: VpwLambdaArgument { callee: ^vpw_apply_literal, binder: ^x })
 }
 
@@ -543,11 +543,11 @@ fn vpw_fn_literal_block_argument_shape(n: Node, callee: Symbol, binder: Symbol) 
     })
 }
 
-test fn a_fn_literal_argument_with_a_let_block_body_lowers_its_body_as_a_named_fn_does() -> Bool {
+test fn a_fn_literal_argument_with_a_let_block_body_lowers_its_body_as_a_named_fn_does() -> Bool  {
   vpw_any_node(shape: VpwFnLiteralBlockArgument { callee: ^vpw_apply_block, binder: ^x })
 }
 
-test fn a_fn_literal_in_a_match_arm_binds_its_parameter_for_its_match_body() -> Bool {
+test fn a_fn_literal_in_a_match_arm_binds_its_parameter_for_its_match_body() -> Bool  {
   match vpw_outcomes() {
     VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: _, arg_call: _, lambda_undeclared: _, fn_literal_in_arm: v, fv_nest: _ } =>
       vpw_is_resolved(v: v)
@@ -584,13 +584,13 @@ fn vpw_any_function_value_binding(binder: Symbol) -> Bool {
   })
 }
 
-test fn a_fn_literal_record_field_with_a_single_atom_body_lowers_unfolded() -> Bool {
+test fn a_fn_literal_record_field_with_a_single_atom_body_lowers_unfolded() -> Bool  {
   vpw_any_function_value_using(binder: ^t)
 }
 
 // The shape ingest refuses as a whole if the record-construct-bodied literal's Arrow fails the
 // post-normalize well-formedness gate, so this claim is also that gate's control.
-test fn a_fn_literal_record_field_with_a_record_construct_body_lowers_well_formed() -> Bool {
+test fn a_fn_literal_record_field_with_a_record_construct_body_lowers_well_formed() -> Bool  {
   vpw_any_function_value_binding(binder: ^l)
 }
 
@@ -618,7 +618,7 @@ fn vpw_two_distinct_type_binders(n: Node, callee: Symbol) -> Bool {
     && fold_list(xs: vpw_operands(n: n), empty: true, cons: fn(acc, a) { acc && vpw_binds_x_in_own_frame(a: a) })
 }
 
-test fn two_lambdas_with_one_parameter_name_each_carry_their_own_fresh_type_parameter() -> Bool {
+test fn two_lambdas_with_one_parameter_name_each_carry_their_own_fresh_type_parameter() -> Bool  {
   fold_list(xs: vpw_roots(), empty: false, cons: fn(acc, r) {
     acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(a, n) {
       a || vpw_two_distinct_type_binders(n: n, callee: ^vpw_apply_two)
@@ -638,7 +638,7 @@ fn vpw_is_let_bound_arrow(n: Node) -> Bool {
   }
 }
 
-test fn a_let_bound_fn_literal_lowers_whole_with_its_authored_return_type() -> Bool {
+test fn a_let_bound_fn_literal_lowers_whole_with_its_authored_return_type() -> Bool  {
   fold_list(xs: vpw_roots(), empty: false, cons: fn(acc, r) {
     acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(a, n) { a || vpw_is_let_bound_arrow(n: n) })
   })
@@ -671,7 +671,7 @@ fn vpw_is_two_step_projection_of_call(n: Node) -> Bool {
   }
 }
 
-test fn a_field_projection_on_a_call_result_in_an_operand_lowers_whole() -> Bool {
+test fn a_field_projection_on_a_call_result_in_an_operand_lowers_whole() -> Bool  {
   fold_list(xs: vpw_roots(), empty: false, cons: fn(acc, r) {
     acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(a, n) {
       a || vpw_is_projection_of_call(n: n, field: ^sites, callee: ^vpw_demand)
@@ -679,7 +679,7 @@ test fn a_field_projection_on_a_call_result_in_an_operand_lowers_whole() -> Bool
   })
 }
 
-test fn a_two_step_projection_on_a_call_result_lowers_every_step() -> Bool {
+test fn a_two_step_projection_on_a_call_result_lowers_every_step() -> Bool  {
   fold_list(xs: vpw_roots(), empty: false, cons: fn(acc, r) {
     acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(a, n) {
       a || vpw_is_two_step_projection_of_call(n: n)
@@ -699,7 +699,7 @@ fn vpw_is_two_wildcard_arrow(n: Node) -> Bool {
   })
 }
 
-test fn a_fn_literal_with_two_wildcard_parameters_lowers_well_formed() -> Bool {
+test fn a_fn_literal_with_two_wildcard_parameters_lowers_well_formed() -> Bool  {
   fold_list(xs: vpw_roots(), empty: false, cons: fn(acc, r) {
     acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(a, n) { a || vpw_is_two_wildcard_arrow(n: n) })
   })
@@ -732,7 +732,7 @@ fn vpw_any_nested_distinct() -> Bool {
 
 // `fn(x) { let g = fn(x) { x }  g }`: the nested literal reuses `x`, and its fresh variables are not
 // the outer's. A mutation naming them by depth-free label alone (both `x`) reds it.
-test fn a_nested_fn_literal_reusing_its_parameter_name_mints_distinct_type_variables() -> Bool {
+test fn a_nested_fn_literal_reusing_its_parameter_name_mints_distinct_type_variables() -> Bool  {
   vpw_any_nested_distinct()
 }
 
@@ -769,13 +769,13 @@ fn vpw_pair_disjoint(xs: List<Node>) -> Bool {
 
 // `pair(x => x, x => x)`: two sibling lambdas with one parameter name mint distinct variables. A
 // mutation naming them by nesting depth alone (both depth 1) reds it.
-test fn sibling_lambdas_with_one_parameter_name_mint_distinct_type_variables() -> Bool {
+test fn sibling_lambdas_with_one_parameter_name_mint_distinct_type_variables() -> Bool  {
   vpw_pair_disjoint(xs: vpw_all_function_value_args(callee: ^vpw_pair))
 }
 
 // The same lambda at the same position in two declarations: EQUAL content hash, which covers its
 // type-parameter list. This is the property that rules an occurrence out of the name.
-test fn the_same_lambda_at_two_sites_has_equal_type_variables_and_content_hash() -> Bool {
+test fn the_same_lambda_at_two_sites_has_equal_type_variables_and_content_hash() -> Bool  {
   let sites = vpw_all_function_value_args(callee: ^vpw_site)
   (length(xs: sites) == 2) && (match list_at_optional(xs: sites, index: 0) {
     Present { value: f } =>
@@ -788,7 +788,7 @@ test fn the_same_lambda_at_two_sites_has_equal_type_variables_and_content_hash()
 }
 
 // The nested module RESOLVES: a nested literal's fresh variables are not a shadow of the outer's.
-test fn a_nested_fn_literal_resolves_without_a_type_parameter_shadow_refusal() -> Bool {
+test fn a_nested_fn_literal_resolves_without_a_type_parameter_shadow_refusal() -> Bool  {
   match vpw_outcomes() {
     VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: _, arg_call: _, lambda_undeclared: _, fn_literal_in_arm: _, fv_nest: v } =>
       vpw_is_resolved(v: v)
@@ -819,7 +819,7 @@ fn vpw_declares_order(n: Node, first: Symbol, second: Symbol) -> Bool {
   })
 }
 
-test fn a_positionally_bound_lambda_reads_its_declared_order_from_the_order_edge() -> Bool {
+test fn a_positionally_bound_lambda_reads_its_declared_order_from_the_order_edge() -> Bool  {
   fold_list(xs: vpw_roots(), empty: false, cons: fn(acc, r) {
     acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(a, n) { a || vpw_declares_order(n: n, first: ^y, second: ^x) })
   })

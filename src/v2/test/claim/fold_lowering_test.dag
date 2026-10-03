@@ -37,7 +37,7 @@ fn outside_the_family(head: Symbol) -> Bool {
 // The family is one roster with a realization per member: `fold` is the collection OPERATION
 // (std.algebra collection_fold_shape), the other three are corpus declarations, and anything else
 // is outside it.
-test fn fold_family_head_recognizes_fold_variants() -> Bool {
+test fn fold_family_head_recognizes_fold_variants() -> Bool  {
   realizes_roster_operation(head: ^fold)
     && realizes_corpus_declaration(head: ^fold_list)
     && realizes_corpus_declaration(head: ^fold_list_right)
@@ -144,18 +144,18 @@ fn fold_snippet_identities() -> List<Symbol> {
   }
 }
 
-test fn fold_probe_ingest_is_accepted() -> Bool {
+test fn fold_probe_ingest_is_accepted() -> Bool  {
   match ingest(source_text: fold_snippet, file: ^fold_probe_file) {
     Absent => false
     Present { value: _ } => true
   }
 }
 
-test fn fold_callee_name_survives_parse() -> Bool {
+test fn fold_callee_name_survives_parse() -> Bool  {
   symbol_in(needle: ^fold, xs: fold_snippet_identities())
 }
 
-test fn fold_collection_name_survives_parse() -> Bool {
+test fn fold_collection_name_survives_parse() -> Bool  {
   symbol_in(needle: ^xs, xs: fold_snippet_identities())
 }
 
@@ -229,7 +229,7 @@ fn with_duplicate_carrier_edge(n: Node, binder: Node) -> Node {
 // bypassed and some other symbol appears), and it is NOT the authored binder (so the row fails if the
 // constructor goes back to borrowing `acc`). A row asserting only the first would still pass if the mint
 // were keyed on the authored name.
-test fn lowered_loop_carrier_is_a_generated_slot_not_the_authored_binder() -> Bool {
+test fn lowered_loop_carrier_is_a_generated_slot_not_the_authored_binder() -> Bool  {
   match lowered_fixture_loop() {
     Absent => false
     Present { value: lp } =>
@@ -245,7 +245,7 @@ test fn lowered_loop_carrier_is_a_generated_slot_not_the_authored_binder() -> Bo
   }
 }
 
-test fn duplicate_carrier_edge_is_malformed() -> Bool {
+test fn duplicate_carrier_edge_is_malformed() -> Bool  {
   match lowered_fixture_loop() {
     Absent => false
     Present { value: lp } =>
@@ -337,15 +337,15 @@ fn fabricates_no_loop(source_text: String, file: Symbol) -> Bool {
 // passes a step by name, v2.std.node calls fold_node with an algebra record
 // that is never a step fn at all. Neither is malformed and this stage cannot
 // establish that either way, because that read is the callee's declaration.
-test fn named_step_fold_is_step_form_unresolved() -> Bool {
+test fn named_step_fold_is_step_form_unresolved() -> Bool  {
   is_step_form_unresolved(source_text: named_step_fold_snippet, file: ^named_step_probe_file)
 }
 
-test fn algebra_carrying_fold_is_step_form_unresolved() -> Bool {
+test fn algebra_carrying_fold_is_step_form_unresolved() -> Bool  {
   is_step_form_unresolved(source_text: algebra_fold_snippet, file: ^algebra_probe_file)
 }
 
-test fn bodyless_fold_is_step_form_unresolved() -> Bool {
+test fn bodyless_fold_is_step_form_unresolved() -> Bool  {
   is_step_form_unresolved(source_text: bodyless_fold_snippet, file: ^bodyless_probe_file)
 }
 
@@ -396,7 +396,7 @@ fn paramless_step_fold_is_step_shape_invalid_verdict() -> Bool {
 // `is_step_shape_invalid` are TOTAL matches over all four variants -- true for
 // the named one, false for the other three -- so each of the four snippets
 // keeps a claim that goes red if it starts selecting a different variant.
-test fn paramless_step_fold_refuses_no_loop_fabricated() -> Bool {
+test fn paramless_step_fold_refuses_no_loop_fabricated() -> Bool  {
   fabricates_no_loop(source_text: paramless_step_fold_snippet, file: ^paramless_step_probe_file)
 }
 
@@ -420,12 +420,12 @@ fn well_formed_fold_lowers_through_the_split() -> Bool {
   }
 }
 
-test fn well_formed_fold_still_lowers_through_the_split() -> Bool {
+test fn well_formed_fold_still_lowers_through_the_split() -> Bool  {
   flp_outcomes().well_formed_still_lowers
 }
 
 // A NON-FOLD CALL IS STILL NOT-A-FOLD, not swept into the new arm. Read off flp_outcomes below.
-test fn non_fold_call_is_not_a_fold_disposition() -> Bool {
+test fn non_fold_call_is_not_a_fold_disposition() -> Bool  {
   flp_outcomes().non_fold_is_not_a_fold
 }
 
@@ -545,7 +545,7 @@ fn flp_outcomes() -> FlpOutcomes {
   }
 }
 
-test fn positional_fold_step_lowers_to_the_named_forms_loop() -> Bool {
+test fn positional_fold_step_lowers_to_the_named_forms_loop() -> Bool  {
   flp_outcomes().positional_matches_named
 }
 
@@ -553,30 +553,30 @@ test fn positional_fold_step_lowers_to_the_named_forms_loop() -> Bool {
 // position is still a callee-resolution fact this stage does not have, so it
 // stays the counted unresolved state -- the positional reading must not widen
 // into accepting whatever sits in the slot.
-test fn positional_named_step_fold_is_step_form_unresolved() -> Bool {
+test fn positional_named_step_fold_is_step_form_unresolved() -> Bool  {
   flp_outcomes().positional_named_step_unresolved
 }
 
-test fn fold_call_lowers_to_terminating_loop() -> Bool {
+test fn fold_call_lowers_to_terminating_loop() -> Bool  {
   flp_outcomes().lowers_to_terminating_loop
 }
 
-test fn non_fold_call_refuses() -> Bool {
+test fn non_fold_call_refuses() -> Bool  {
   flp_outcomes().non_fold_refuses
 }
 
-test fn bodyless_fold_call_refuses_no_loop_fabricated() -> Bool {
+test fn bodyless_fold_call_refuses_no_loop_fabricated() -> Bool  {
   flp_outcomes().bodyless_refuses_no_loop
 }
 
-test fn paramless_step_fold_is_step_shape_invalid() -> Bool {
+test fn paramless_step_fold_is_step_shape_invalid() -> Bool  {
   flp_outcomes().paramless_step_shape_invalid
 }
 
-test fn named_collection_fold_lowers() -> Bool {
+test fn named_collection_fold_lowers() -> Bool  {
   flp_outcomes().named_collection_lowers
 }
 
-test fn positional_collection_fold_list_lowers() -> Bool {
+test fn positional_collection_fold_list_lowers() -> Bool  {
   flp_outcomes().positional_collection_fold_list_lowers
 }

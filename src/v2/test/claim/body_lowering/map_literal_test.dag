@@ -215,30 +215,30 @@ fn ml_accepts(o: Outcome<ResolvedTree>) -> Bool {
 
 // Control 1: the headless literal elaborates to exactly the introduction the headed call spells --
 // one of it, equal by content.
-test fn ml_headless_literal_equals_the_headed_introduction_holds() -> Bool {
+test fn ml_headless_literal_equals_the_headed_introduction_holds() -> Bool  {
   let headed = ml_introduction_hashes(o: ml_resolved_headed())
   (length(xs: headed) == 1) && (headed == ml_introduction_hashes(o: ml_resolved_headless()))
 }
 
 // Control 2: a repeated key refuses at resolve, never last-wins.
-test fn ml_a_duplicate_key_refuses_holds() -> Bool {
+test fn ml_a_duplicate_key_refuses_holds() -> Bool  {
   ml_refuses_with(o: ml_resolved_duplicate(), reason: ^resolve_anonymous_map_duplicate_key)
 }
 
 // Control 2b: the key law compares DECODED text, so an escape and the scalar it stands for collide.
-test fn ml_an_escaped_and_a_raw_key_are_one_key_holds() -> Bool {
+test fn ml_an_escaped_and_a_raw_key_are_one_key_holds() -> Bool  {
   ml_refuses_with(o: ml_resolved_escape_duplicate(), reason: ^resolve_anonymous_map_duplicate_key)
 }
 
 // Control 3: distinct keys are accepted and elaborate.
-test fn ml_distinct_keys_are_accepted_holds() -> Bool {
+test fn ml_distinct_keys_are_accepted_holds() -> Bool  {
   length(xs: ml_introduction_hashes(o: ml_resolved_distinct())) == 1
 }
 
 // The key law itself, as a value: the FIRST repeat, with both occurrences. The mutation this
 // discriminates is a law that always answers Distinct -- the fold's last-wins absorbing the repeat --
 // under which this and control 2 go red together.
-test fn ml_the_key_law_names_both_occurrences_holds() -> Bool {
+test fn ml_the_key_law_names_both_occurrences_holds() -> Bool  {
   match map_introduction_duplicate_key(keys: ["a", "b", "a", "b"]) {
     MapIntroductionKeyRepeated { first_index: f, second_index: s } => (f == 0) && (s == 2)
     MapIntroductionKeysDistinct => false
@@ -250,34 +250,34 @@ test fn ml_the_key_law_names_both_occurrences_holds() -> Bool {
 }
 
 // Control 5: K is not the type a string literal denotes, so the key refuses where it is written.
-test fn ml_a_key_of_the_wrong_kind_refuses_holds() -> Bool {
+test fn ml_a_key_of_the_wrong_kind_refuses_holds() -> Bool  {
   ml_refuses_with(o: ml_resolved_key_kind(), reason: ^resolve_anonymous_map_key_kind_mismatch)
 }
 
-test fn ml_a_name_keyed_brace_under_a_map_refuses_holds() -> Bool {
+test fn ml_a_name_keyed_brace_under_a_map_refuses_holds() -> Bool  {
   ml_refuses_with(o: ml_resolved_name_key(), reason: ^resolve_anonymous_map_name_key)
 }
 
 // Control 8: the expectation does not leak into a call argument.
-test fn ml_a_call_argument_has_no_expected_type_holds() -> Bool {
+test fn ml_a_call_argument_has_no_expected_type_holds() -> Bool  {
   ml_refuses_with(o: ml_resolved_call_argument(), reason: ^resolve_anonymous_map_no_expected_type)
 }
 
 // Control 7: resolve's choice is not proof. The Int value elaborates (resolve accepts it) and
 // infer then refuses it against V = Bool.
-test fn ml_infer_refuses_an_elaborated_value_mismatch_holds() -> Bool {
+test fn ml_infer_refuses_an_elaborated_value_mismatch_holds() -> Bool  {
   ml_accepts(o: ml_resolved_value_mismatch()) && (ml_infer_verdict_value_mismatch() == false)
 }
 
 // Control 7's positive half: a well-typed elaborated map infers. Measured with #12760 merged: this
 // is red for the HEADED spelling too (map_from_entries(entries: [MapIntroductionEntry { .. }]) under
 // Map<String, Bool> does not infer), so the gap is infer's, not the arm's; its row says so.
-test fn ml_an_elaborated_map_infers_holds() -> Bool {
+test fn ml_an_elaborated_map_infers_holds() -> Bool  {
   ml_infer_verdict_headless()
 }
 
 // The same-module specimen infers (see ml_samemod_source).
-test fn ml_a_same_module_generic_entry_construct_infers_holds() -> Bool {
+test fn ml_a_same_module_generic_entry_construct_infers_holds() -> Bool  {
   ml_infer_verdict_samemod()
 }
 
@@ -294,12 +294,12 @@ fn ml_infers(o: Outcome<ResolvedTree>) -> Bool {
 
 // An Int key under Map<String, V> is refused somewhere on the route -- at lowering or at resolve --
 // and never elaborates. Were String collapsed onto Int, this is the claim that would go red.
-test fn ml_an_int_key_under_a_string_map_refuses_holds() -> Bool {
+test fn ml_an_int_key_under_a_string_map_refuses_holds() -> Bool  {
   ml_int_key_verdict_refused()
 }
 
 // Lowering refuses a brace no key-kind choice could type, at the first item of the minority kind.
-test fn ml_a_mixed_key_brace_refuses_at_lowering_holds() -> Bool {
+test fn ml_a_mixed_key_brace_refuses_at_lowering_holds() -> Bool  {
   match ml_mixed_normalized() {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_brace_key_kind_mismatch

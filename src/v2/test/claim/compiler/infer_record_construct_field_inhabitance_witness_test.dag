@@ -232,14 +232,14 @@ fn rcf_names_type(correction_node: Node, name: Symbol, expected: Node) -> Bool {
 }
 
 // THE DISCRIMINATING RED, the row's specimen: `n` declares Int and holds a Bool.
-test fn rcf_a_field_value_of_the_wrong_type_refuses_holds() -> Bool {
+test fn rcf_a_field_value_of_the_wrong_type_refuses_holds() -> Bool  {
   rcf_refuses_with(resolved: rcf_resolved_bad(), reason: ^record_field_value_does_not_inhabit)
 }
 
 // THE REFUSAL IS TYPED AND LOCATED, AND IT NAMES ALL FOUR FACTS: it sits at the value `true`, and its
 // correction carries the record (the construct's resolved constructor reference), the field under
 // its own name with the type the record declares for it, and the type the value produced.
-test fn rcf_the_refusal_names_the_record_the_field_and_both_types_holds() -> Bool {
+test fn rcf_the_refusal_names_the_record_the_field_and_both_types_holds() -> Bool  {
   match rcf_refusal(resolved: rcf_resolved_bad(), reason: ^record_field_value_does_not_inhabit) {
     Absent => false
     Present { value: d } =>
@@ -312,25 +312,25 @@ fn rcf_member_accepted_and_decided(resolved: Outcome<ResolvedTree>, member: Symb
 
 // THE POSITIVE CONTROL, one term from the red, and DECIDED rather than waved through: the construct
 // derived its declared record and the data initializer was judged at its declared type.
-test fn rcf_inhabiting_field_values_are_accepted_and_decided_holds() -> Bool {
+test fn rcf_inhabiting_field_values_are_accepted_and_decided_holds() -> Bool  {
   rcf_member_accepted_and_decided(resolved: rcf_resolved_good(), member: ^ar_good)
 }
 
 // The generic record at its instantiation: `Bx { v: 1, w: 2 }` is a Bx<Int> and is decided at a
 // declared Bx<Int>.
-test fn rcf_a_generic_record_at_its_instantiation_is_accepted_and_decided_holds() -> Bool {
+test fn rcf_a_generic_record_at_its_instantiation_is_accepted_and_decided_holds() -> Bool  {
   rcf_member_accepted_and_decided(resolved: rcf_resolved_generic_good(), member: ^bx_good)
 }
 
 // A field declared as a record of the subject module is judged too: `inner: ArB` holding an ArB
 // construct is decided, so the nominal refusal below is not a refusal of every nested construct.
-test fn rcf_a_nested_construct_at_a_record_declared_field_is_accepted_and_decided_holds() -> Bool {
+test fn rcf_a_nested_construct_at_a_record_declared_field_is_accepted_and_decided_holds() -> Bool  {
   rcf_member_accepted_and_decided(resolved: rcf_resolved_nested_good(), member: ^ar_outer)
 }
 
 // A declared field the construct leaves out refuses, at the construct, naming the record and the
 // missing field with its declared type.
-test fn rcf_a_missing_field_refuses_and_is_named_holds() -> Bool {
+test fn rcf_a_missing_field_refuses_and_is_named_holds() -> Bool  {
   match rcf_refusal(resolved: rcf_resolved_missing(), reason: ^record_construct_field_missing) {
     Absent => false
     Present { value: d } =>
@@ -344,7 +344,7 @@ test fn rcf_a_missing_field_refuses_and_is_named_holds() -> Bool {
 }
 
 // A field the record does not declare refuses, at the value supplied for it.
-test fn rcf_an_undeclared_field_refuses_and_is_named_holds() -> Bool {
+test fn rcf_an_undeclared_field_refuses_and_is_named_holds() -> Bool  {
   match rcf_refusal(resolved: rcf_resolved_unknown(), reason: ^record_construct_field_not_declared) {
     Absent => false
     Present { value: d } =>
@@ -362,7 +362,7 @@ test fn rcf_an_undeclared_field_refuses_and_is_named_holds() -> Bool {
 
 // GENERIC INSTANTIATION IS THE APPLICATION'S: the first field value at `T` instantiates it for this
 // construct and the second must inhabit that instance. `v: 1` fixes T = Int, so `w: true` refuses.
-test fn rcf_a_generic_records_second_field_must_inhabit_the_instance_holds() -> Bool {
+test fn rcf_a_generic_records_second_field_must_inhabit_the_instance_holds() -> Bool  {
   rcf_refuses_with(resolved: rcf_resolved_generic_bad(), reason: ^record_field_value_does_not_inhabit)
 }
 
@@ -370,7 +370,7 @@ test fn rcf_a_generic_records_second_field_must_inhabit_the_instance_holds() -> 
 // `data ar_other: ArB = ArA { n: 1 }` refuses although ArA and ArB declare the same field. This is
 // the declared-return judgment (a data initializer is a nullary Arrow's body); before record
 // introduction the body's type was not derived and the case was not decided.
-test fn rcf_a_construct_is_its_declared_record_at_a_declared_type_holds() -> Bool {
+test fn rcf_a_construct_is_its_declared_record_at_a_declared_type_holds() -> Bool  {
   rcf_refuses_with(resolved: rcf_resolved_other(), reason: ^arrow_body_does_not_inhabit_declared_return)
 }
 
@@ -379,20 +379,20 @@ test fn rcf_a_construct_is_its_declared_record_at_a_declared_type_holds() -> Boo
 // with a counted obligation, because resolve bound a declared Bool to one symbol and the
 // binding->denotation join denoted another; this claim was pinned to that state and is rewritten
 // here to the refusal, as its note said it would be.
-test fn rcf_a_bool_declared_field_value_of_the_wrong_type_refuses_holds() -> Bool {
+test fn rcf_a_bool_declared_field_value_of_the_wrong_type_refuses_holds() -> Bool  {
   rcf_refuses_with(resolved: rcf_resolved_bool_field(), reason: ^record_field_value_does_not_inhabit)
 }
 
 // THE CROSS-MODULE STATE, PINNED AS IT IS. The field SET of a record declared in another module is
 // checked: a missing field refuses.
-test fn rcf_a_cross_module_records_missing_field_refuses_holds() -> Bool {
+test fn rcf_a_cross_module_records_missing_field_refuses_holds() -> Bool  {
   rcf_refuses_with(resolved: rcf_resolved_far_missing(), reason: ^record_construct_field_missing)
 }
 
 // Its field VALUES are counted, not judged: the specimen's mismatch against a record declared in
 // another module is accepted with a counted UndecidableFormalUnresolved. This claim goes red when
 // infer reads a resolved declaration across modules, and is then rewritten to assert the refusal.
-test fn rcf_a_cross_module_records_field_value_is_counted_not_judged_holds() -> Bool {
+test fn rcf_a_cross_module_records_field_value_is_counted_not_judged_holds() -> Bool  {
   match rcf_verdict(resolved: rcf_resolved_far_value()) {
     RcfInferAccepted { diagnostics: ds } => diagnostics_has_reason(d: ds, reason: ^inhabitance_undecidable_formal_unresolved)
     RcfInferRefused { diagnostics: _ } => false
@@ -402,7 +402,7 @@ test fn rcf_a_cross_module_records_field_value_is_counted_not_judged_holds() -> 
 
 // A PATTERN IS NOT A CONSTRUCTION. `ArB { n: x }` in a match arm names one of ArB's two fields, and
 // is never refused as a construct missing `m`.
-test fn rcf_a_pattern_naming_a_subset_of_fields_is_not_a_missing_field_holds() -> Bool {
+test fn rcf_a_pattern_naming_a_subset_of_fields_is_not_a_missing_field_holds() -> Bool  {
   match rcf_verdict(resolved: rcf_resolved_pattern()) {
     RcfResolveRefused => false
     RcfInferAccepted { diagnostics: ds } => !diagnostics_has_reason(d: ds, reason: ^record_construct_field_missing)

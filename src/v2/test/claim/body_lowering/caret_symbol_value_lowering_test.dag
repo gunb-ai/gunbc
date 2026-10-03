@@ -250,63 +250,63 @@ fn has_operand_pair(v: CaretLoweringVerdict, left: Symbol, sym: Symbol) -> Bool 
   rows_hold_pair(rows: v.operand_rows, left: left, sym: sym)
 }
 
-test fn a_caret_symbol_if_condition_pair_lowers_to_two_different_payloads() -> Bool {
+test fn a_caret_symbol_if_condition_pair_lowers_to_two_different_payloads() -> Bool  {
   lowers_to(v: csv_verdicts().if_condition, payloads: [^ordering_predicate_is_less, ^ordering_predicate_is_less_or_equal])
     && has_operand_pair(v: csv_verdicts().if_condition, left: ^id, sym: ^ordering_predicate_is_less)
     && has_operand_pair(v: csv_verdicts().if_condition, left: ^id, sym: ^ordering_predicate_is_less_or_equal)
 }
 
-test fn an_int_literal_if_condition_still_normalizes() -> Bool {
+test fn an_int_literal_if_condition_still_normalizes() -> Bool  {
   lowers_to(v: csv_verdicts().int_control, payloads: [])
 }
 
-test fn a_bare_caret_operand_lowers_with_its_left_operand_first() -> Bool {
+test fn a_bare_caret_operand_lowers_with_its_left_operand_first() -> Bool  {
   lowers_to(v: csv_verdicts().bare_operand, payloads: [^grammar_free_name_slot])
     && has_operand_pair(v: csv_verdicts().bare_operand, left: ^binding, sym: ^grammar_free_name_slot)
 }
 
-test fn a_caret_symbol_disjunction_lowers_every_operand_in_order() -> Bool {
+test fn a_caret_symbol_disjunction_lowers_every_operand_in_order() -> Bool  {
   lowers_to(v: csv_verdicts().keep_edge, payloads: [^target_model_edge_atom_realizations, ^target_model_edge_signature_realizations])
     && has_operand_pair(v: csv_verdicts().keep_edge, left: ^n, sym: ^target_model_edge_atom_realizations)
     && has_operand_pair(v: csv_verdicts().keep_edge, left: ^n, sym: ^target_model_edge_signature_realizations)
 }
 
-test fn a_caret_symbol_named_argument_lowers_to_its_symbol() -> Bool {
+test fn a_caret_symbol_named_argument_lowers_to_its_symbol() -> Bool  {
   lowers_to(v: csv_verdicts().named_argument, payloads: [^pos_named_argument])
 }
 
-test fn a_caret_symbol_positional_argument_lowers_to_its_symbol() -> Bool {
+test fn a_caret_symbol_positional_argument_lowers_to_its_symbol() -> Bool  {
   lowers_to(v: csv_verdicts().positional_argument, payloads: [^pos_positional_argument])
 }
 
-test fn a_caret_symbol_let_value_lowers_to_its_symbol() -> Bool {
+test fn a_caret_symbol_let_value_lowers_to_its_symbol() -> Bool  {
   lowers_to(v: csv_verdicts().let_value, payloads: [^pos_let_value])
 }
 
-test fn a_caret_symbol_whole_body_lowers_to_its_symbol() -> Bool {
+test fn a_caret_symbol_whole_body_lowers_to_its_symbol() -> Bool  {
   lowers_to(v: csv_verdicts().whole_body, payloads: [^pos_whole_body])
 }
 
-test fn a_caret_symbol_data_initializer_lowers_to_its_symbol() -> Bool {
+test fn a_caret_symbol_data_initializer_lowers_to_its_symbol() -> Bool  {
   lowers_to(v: csv_verdicts().data_initializer, payloads: [^pos_data_initializer])
 }
 
-test fn a_caret_symbol_field_initializer_lowers_to_its_symbol() -> Bool {
+test fn a_caret_symbol_field_initializer_lowers_to_its_symbol() -> Bool  {
   lowers_to(v: csv_verdicts().field_initializer, payloads: [^pos_field_initializer])
 }
 
-test fn a_caret_symbol_match_arm_body_lowers_to_its_symbol() -> Bool {
+test fn a_caret_symbol_match_arm_body_lowers_to_its_symbol() -> Bool  {
   lowers_to(v: csv_verdicts().match_arm_body, payloads: [^pos_match_arm_body, ^pos_match_arm_body_two])
 }
 
-test fn a_caret_symbol_match_scrutinee_lowers_to_its_symbol() -> Bool {
+test fn a_caret_symbol_match_scrutinee_lowers_to_its_symbol() -> Bool  {
   lowers_to(v: csv_verdicts().match_scrutinee, payloads: [^pos_match_scrutinee])
 }
 
-test fn a_caret_symbol_if_branch_value_lowers_to_its_symbol() -> Bool {
+test fn a_caret_symbol_if_branch_value_lowers_to_its_symbol() -> Bool  {
   lowers_to(v: csv_verdicts().if_branch_value, payloads: [^pos_if_branch_value, ^pos_if_branch_value_two])
 }
 
-test fn a_caret_symbol_list_item_lowers_to_its_symbol() -> Bool {
+test fn a_caret_symbol_list_item_lowers_to_its_symbol() -> Bool  {
   lowers_to(v: csv_verdicts().list_item, payloads: [^pos_list_item])
 }

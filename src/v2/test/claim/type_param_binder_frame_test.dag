@@ -174,7 +174,7 @@ fn tpb_non_generic() -> Outcome<ResolvedTree> {
 
 // (1) `T` binds to the declaration's binder: the fn resolves, and its Arrow carries `T` as a
 // type-parameter binder. RED ON MAIN (refused unbound).
-test fn tpb_generic_param_binds_to_its_binder() -> Bool {
+test fn tpb_generic_param_binds_to_its_binder() -> Bool  {
   tpb_accepts(o: tpb_identity())
     && tpb_type_param_rosters(o: tpb_identity()) == [[^T]]
 }
@@ -182,39 +182,39 @@ test fn tpb_generic_param_binds_to_its_binder() -> Bool {
 // (2) NO SHADOWING: a type parameter spelled like a visible declaration refuses, located at the
 // binder, rather than binding the declaration (main) or silently shadowing it. RED ON MAIN
 // (Accepted, `T` bound to `type T = Int`).
-test fn tpb_type_param_shadowing_a_visible_name_refuses() -> Bool {
+test fn tpb_type_param_shadowing_a_visible_name_refuses() -> Bool  {
   tpb_refuses_with(o: tpb_colliding(), reason: ^resolve_reason_type_parameter_shadows_visible_name)
 }
 
 // (3) `T` does not leak outside its declaration: a sibling fn naming it is unbound. (1) is the
 // control that the refusal is h's and not f's.
-test fn tpb_type_param_does_not_leak_to_a_sibling_declaration() -> Bool {
+test fn tpb_type_param_does_not_leak_to_a_sibling_declaration() -> Bool  {
   tpb_refuses_with(o: tpb_used_outside(), reason: ^resolve_reason_unbound_symbol)
 }
 
 // (4) Two generic fns spelling the same `T` each bind their own: both resolve, each Arrow
 // carries its own binder, and -- the discriminating half -- one fn's `T` does not answer inside
 // a sibling that declares a different name.
-test fn tpb_same_spelling_in_two_declarations_does_not_alias() -> Bool {
+test fn tpb_same_spelling_in_two_declarations_does_not_alias() -> Bool  {
   tpb_accepts(o: tpb_same_name_twice())
     && tpb_type_param_rosters(o: tpb_same_name_twice()) == [[^T], [^T]]
     && tpb_refuses_with(o: tpb_sibling_binder_leak(), reason: ^resolve_reason_unbound_symbol)
 }
 
 // (5) Every declared parameter is a binder, in declaration order.
-test fn tpb_every_declared_type_param_is_a_binder() -> Bool {
+test fn tpb_every_declared_type_param_is_a_binder() -> Bool  {
   tpb_accepts(o: tpb_two_params())
     && tpb_type_param_rosters(o: tpb_two_params()) == [[^A, ^B]]
 }
 
 // (6) An undeclared type name inside a generic fn still refuses: the frame binds exactly the
 // declared parameters.
-test fn tpb_undeclared_type_name_still_refuses() -> Bool {
+test fn tpb_undeclared_type_name_still_refuses() -> Bool  {
   tpb_refuses_with(o: tpb_undeclared_type_name(), reason: ^resolve_reason_unbound_symbol)
 }
 
 // (7) A fn declaring no type parameters carries no type-parameter edge.
-test fn tpb_non_generic_fn_carries_no_type_params() -> Bool {
+test fn tpb_non_generic_fn_carries_no_type_params() -> Bool  {
   tpb_accepts(o: tpb_non_generic()) && tpb_type_param_rosters(o: tpb_non_generic()) == []
 }
 
@@ -226,7 +226,7 @@ fn tpb_type_param_as_value() -> Outcome<ResolvedTree> {
 // (v2.compiler.resolve ResolveContext type_scope), which only type positions consult, so `T` in a
 // body value position refuses -- with its own reason, not as an unknown name. Measured: with the
 // lexical frame widened over the body this specimen was ACCEPTED, the widening this row keeps out.
-test fn tpb_type_param_in_value_position_refuses() -> Bool {
+test fn tpb_type_param_in_value_position_refuses() -> Bool  {
   tpb_refuses_with(o: tpb_type_param_as_value(), reason: ^resolve_reason_type_parameter_in_value_position)
 }
 
@@ -234,7 +234,7 @@ test fn tpb_type_param_in_value_position_refuses() -> Bool {
 //
 // (8) THE PRODUCTION ROUTE: the lowered, resolved generic fn is admitted by infer -- the
 // type-parameter edge does not wedge the Arrow's derivation.
-test fn tpb_infer_admits_the_resolved_generic_fn() -> Bool {
+test fn tpb_infer_admits_the_resolved_generic_fn() -> Bool  {
   match tpb_identity() {
     Rejected { diagnostics: _ } => false
     Accepted { value: root, diagnostics: _ } =>
@@ -292,13 +292,13 @@ fn tpb_true() -> Node {
 }
 
 // The supplied Arrow is one v2.std.node well_formed admits: the carrier's own wall.
-test fn tpb_generic_arrow_is_well_formed() -> Bool {
+test fn tpb_generic_arrow_is_well_formed() -> Bool  {
   well_formed(n: tpb_generic_arrow(type_params: [^T], formals: [tpb_formal(name: ^x, declared: ^T)]))
 }
 
 // (9) An argument at a type-variable formal instantiates it. RED ON MAIN: judged as the ordinary
 // declared type `T`, the Int argument refused application_argument_does_not_inhabit.
-test fn tpb_argument_at_a_type_variable_instantiates_it() -> Bool {
+test fn tpb_argument_at_a_type_variable_instantiates_it() -> Bool  {
   match infer(tree: claim_resolved_tree_without_declarations(root: tpb_apply(
     arrow: tpb_generic_arrow(type_params: [^T], formals: [tpb_formal(name: ^x, declared: ^T)]),
     args: [dag_int_literal_fixture_one()]
@@ -310,7 +310,7 @@ test fn tpb_argument_at_a_type_variable_instantiates_it() -> Bool {
 
 // (10) A type variable is ONE type per application: `f<T>(x: T, y: T)` applied to an Int and a
 // Bool refuses at the second argument. Without it, (9) could be green by admitting anything.
-test fn tpb_second_occurrence_must_inhabit_the_instance() -> Bool {
+test fn tpb_second_occurrence_must_inhabit_the_instance() -> Bool  {
   match infer(tree: claim_resolved_tree_without_declarations(root: tpb_apply(
     arrow: tpb_generic_arrow(type_params: [^T], formals: [tpb_formal(name: ^x, declared: ^T), tpb_formal(name: ^y, declared: ^T)]),
     args: [dag_int_literal_fixture_one(), tpb_true()]
@@ -322,7 +322,7 @@ test fn tpb_second_occurrence_must_inhabit_the_instance() -> Bool {
 }
 
 // (11) Distinct binders do not alias: `f<T, U>(x: T, y: U)` admits an Int and a Bool.
-test fn tpb_distinct_type_variables_do_not_alias() -> Bool {
+test fn tpb_distinct_type_variables_do_not_alias() -> Bool  {
   match infer(tree: claim_resolved_tree_without_declarations(root: tpb_apply(
     arrow: tpb_generic_arrow(type_params: [^T, ^U], formals: [tpb_formal(name: ^x, declared: ^T), tpb_formal(name: ^y, declared: ^U)]),
     args: [dag_int_literal_fixture_one(), tpb_true()]
@@ -340,7 +340,7 @@ test fn tpb_distinct_type_variables_do_not_alias() -> Bool {
 // "never refused for the spelling and never admitted silently". So `T` no longer refuses the Int as
 // the structural atom `T`; the evidence that it was not taken as a type variable is that it was
 // judged at all -- an instantiated variable carries no undecidable advisory (the twin below).
-test fn tpb_undeclared_t_is_not_a_type_variable() -> Bool {
+test fn tpb_undeclared_t_is_not_a_type_variable() -> Bool  {
   match infer(tree: claim_resolved_tree_without_declarations(root: tpb_apply(
     arrow: tpb_generic_arrow(type_params: [^U], formals: [tpb_formal(name: ^x, declared: ^T)]),
     args: [dag_int_literal_fixture_one()]
@@ -353,7 +353,7 @@ test fn tpb_undeclared_t_is_not_a_type_variable() -> Bool {
 
 // THE TWIN THAT MAKES (12) DISCRIMINATE: the same application with `T` declared as the callee's type
 // parameter instantiates it from the Int argument and carries no undecidable-formal advisory.
-test fn tpb_declared_t_is_instantiated_not_judged_unresolved() -> Bool {
+test fn tpb_declared_t_is_instantiated_not_judged_unresolved() -> Bool  {
   match infer(tree: claim_resolved_tree_without_declarations(root: tpb_apply(
     arrow: tpb_generic_arrow(type_params: [^T], formals: [tpb_formal(name: ^x, declared: ^T)]),
     args: [dag_int_literal_fixture_one()]
@@ -407,7 +407,7 @@ fn tpb_emitted_add_generic() -> Outcome<Medium<String>> {
   }
 }
 
-test fn tpb_emitter_refuses_a_generic_arrow() -> Bool {
+test fn tpb_emitter_refuses_a_generic_arrow() -> Bool  {
   let twin_emits = match tpb_emitted_add_twin() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -470,37 +470,37 @@ fn tpb_type_decl_non_generic() -> Outcome<ResolvedTree> {
 }
 
 // (14) A coproduct's `T` binds to its declaration's binder, carried on the member.
-test fn tpb_type_decl_coproduct_param_binds_to_its_binder() -> Bool {
+test fn tpb_type_decl_coproduct_param_binds_to_its_binder() -> Bool  {
   tpb_accepts(o: tpb_type_decl_coproduct())
     && tpb_member_type_param_rosters(o: tpb_type_decl_coproduct()) == [[^T]]
 }
 
 // (15) NO SHADOWING, for type declarations as for fns: `type Box<T>` beside `type T = Int` refuses at
 // the binder rather than binding `T` to that type. RED BEFORE: Accepted, `T` bound to `type T = Int`.
-test fn tpb_type_decl_param_shadowing_a_visible_name_refuses() -> Bool {
+test fn tpb_type_decl_param_shadowing_a_visible_name_refuses() -> Bool  {
   tpb_refuses_with(o: tpb_type_decl_coproduct_colliding(), reason: ^resolve_reason_type_parameter_shadows_visible_name)
 }
 
 // (16) A record keeps its `<T>`: the rehome carries the binder instead of dropping it.
-test fn tpb_type_decl_record_keeps_its_type_params() -> Bool {
+test fn tpb_type_decl_record_keeps_its_type_params() -> Bool  {
   tpb_accepts(o: tpb_type_decl_record())
     && tpb_member_type_param_rosters(o: tpb_type_decl_record()) == [[^T]]
 }
 
 // (17) Every declared parameter of a type declaration is a binder, in declaration order.
-test fn tpb_type_decl_every_param_is_a_binder() -> Bool {
+test fn tpb_type_decl_every_param_is_a_binder() -> Bool  {
   tpb_accepts(o: tpb_type_decl_record_two())
     && tpb_member_type_param_rosters(o: tpb_type_decl_record_two()) == [[^A, ^B]]
 }
 
 // (18) A type declaration's `T` does not leak to a sibling declaration. Green before VACUOUSLY (Box
 // refused too), so it discriminates only beside (14).
-test fn tpb_type_decl_param_does_not_leak_to_a_sibling() -> Bool {
+test fn tpb_type_decl_param_does_not_leak_to_a_sibling() -> Bool  {
   tpb_refuses_with(o: tpb_type_decl_leak(), reason: ^resolve_reason_unbound_symbol)
 }
 
 // (19) A type declaration declaring no parameters carries no binder edge.
-test fn tpb_non_generic_type_decl_carries_no_type_params() -> Bool {
+test fn tpb_non_generic_type_decl_carries_no_type_params() -> Bool  {
   tpb_accepts(o: tpb_type_decl_non_generic())
     && tpb_member_type_param_rosters(o: tpb_type_decl_non_generic()) == []
 }
@@ -548,7 +548,7 @@ fn tpb_type_decl_emit_generic() -> Outcome<Node> {
   translate_type_expression_project(node: tpb_box_member(with_params: true), target: rust_target_model(), projection: rust_type_expression_projection())
 }
 
-test fn tpb_translator_refuses_a_generic_type_decl_member() -> Bool {
+test fn tpb_translator_refuses_a_generic_type_decl_member() -> Bool  {
   let accepted = match tpb_type_decl_emit_twin() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -607,20 +607,20 @@ fn tpb_arm_labels(members: List<Node>) -> List<Symbol> {
 
 // (21) A generic record's declared fields are its authored fields only -- by construction now: the
 // binders sit beside the member, never among its children.
-test fn tpb_generic_record_fields_are_authored_fields_only() -> Bool {
+test fn tpb_generic_record_fields_are_authored_fields_only() -> Bool  {
   tpb_field_names(members: tpb_generic_member(o: tpb_type_decl_record())) == [^f]
     && tpb_field_names(members: tpb_generic_member(o: tpb_type_decl_record_two())) == [^left, ^right]
 }
 
 // (22) A generic coproduct's arms are its authored variants only.
-test fn tpb_generic_coproduct_arms_are_authored_variants_only() -> Bool {
+test fn tpb_generic_coproduct_arms_are_authored_variants_only() -> Bool  {
   tpb_arm_labels(members: tpb_generic_member(o: tpb_type_decl_coproduct())) == [^Full, ^Empty]
 }
 
 // (23) A BINDER AMONG A MEMBER'S CHILDREN IS UNWRITABLE, not filtered: the mixed-in shape is refused
 // by the conformance resolve checks beside well_formed (v2.std.type_binder
 // type_binder_labels_conform), and the wrapper the lowering writes conforms.
-test fn tpb_binder_mixed_into_a_member_is_refused() -> Bool {
+test fn tpb_binder_mixed_into_a_member_is_refused() -> Bool  {
   !type_binder_labels_conform(root: tpb_box_member_mixed())
     && type_binder_labels_conform(root: tpb_box_member(with_params: true))
     && type_binder_labels_conform(root: tpb_box_member(with_params: false))
@@ -652,7 +652,7 @@ fn tpb_semantic_emit_generic_reason() -> Symbol {
 
 // (24) The semantic-decl emitter refuses a member carrying binders BEFORE projecting its variants,
 // with the translator's exact reason; its twin without the edge emits.
-test fn tpb_semantic_decl_emitter_refuses_a_generic_member() -> Bool {
+test fn tpb_semantic_decl_emitter_refuses_a_generic_member() -> Bool  {
   tpb_semantic_emit_twin()
     && tpb_semantic_emit_generic_reason() == ^translate_reason_generic_type_decl_not_rendered
 }
@@ -737,7 +737,7 @@ fn tpb_generic_view_tags(o: Outcome<ResolvedTree>) -> List<Symbol> {
 // variant is a one-variant coproduct in v1, so carrying it as an alias would change its meaning.
 
 // (25) A generic alias carries its binders in the alias wrapper and lowers.
-test fn tpb_generic_alias_carries_its_binders() -> Bool {
+test fn tpb_generic_alias_carries_its_binders() -> Bool  {
   tpb_accepts(o: tpb_type_decl_generic_alias())
     && tpb_member_type_param_rosters(o: tpb_type_decl_generic_alias()) == [[^T]]
     && tpb_generic_view_tags(o: tpb_type_decl_generic_alias()) == [^view_generic_alias]
@@ -745,7 +745,7 @@ test fn tpb_generic_alias_carries_its_binders() -> Bool {
 
 // (25b) An alias to an instantiation of a generic coproduct: both declarations carry their binders,
 // each read through its own view arm.
-test fn tpb_generic_alias_to_an_instantiation_lowers() -> Bool {
+test fn tpb_generic_alias_to_an_instantiation_lowers() -> Bool  {
   tpb_accepts(o: tpb_type_decl_generic_alias_instantiation())
     && tpb_member_type_param_rosters(o: tpb_type_decl_generic_alias_instantiation()) == [[^A], [^T]]
     && tpb_generic_view_tags(o: tpb_type_decl_generic_alias_instantiation()) == [^view_generic_member, ^view_generic_alias]
@@ -754,18 +754,18 @@ test fn tpb_generic_alias_to_an_instantiation_lowers() -> Bool {
 // (25c) THE ALIAS'S `T` IS ITS BINDER: beside `type T = Int` the binder refuses as a shadow rather than
 // the right-hand side binding to that type -- the resolve frame opens over the alias wrapper as it
 // does over a member.
-test fn tpb_generic_alias_param_shadowing_a_visible_name_refuses() -> Bool {
+test fn tpb_generic_alias_param_shadowing_a_visible_name_refuses() -> Bool  {
   tpb_refuses_with(o: tpb_type_decl_generic_alias_colliding(), reason: ^resolve_reason_type_parameter_shadows_visible_name)
 }
 
 // (26) An undeclared name on an alias's right-hand side still refuses unbound: carrying the alias makes
 // its right-hand side resolvable, not accepted.
-test fn tpb_generic_alias_undeclared_rhs_refuses() -> Bool {
+test fn tpb_generic_alias_undeclared_rhs_refuses() -> Bool  {
   tpb_refuses_with(o: tpb_type_decl_generic_alias_undeclared(), reason: ^resolve_reason_unbound_symbol)
 }
 
 // (27) A bodyless generic carries its binders alone, in the opaque wrapper.
-test fn tpb_generic_opaque_carries_its_binders() -> Bool {
+test fn tpb_generic_opaque_carries_its_binders() -> Bool  {
   tpb_accepts(o: tpb_type_decl_generic_opaque())
     && tpb_member_type_param_rosters(o: tpb_type_decl_generic_opaque()) == [[^bits]]
     && tpb_generic_view_tags(o: tpb_type_decl_generic_opaque()) == [^view_generic_opaque]
@@ -777,16 +777,16 @@ test fn tpb_generic_opaque_carries_its_binders() -> Bool {
 // form lowered as an ALIAS under this change's first cut (measured) and refused uncarried on main;
 // the plain form lowered to an alias shell naming `Only`, and no one-arm Disj existed (28b). (28c) is
 // the twin without the separator, an alias before and after, so the coproduct is the separator's.
-test fn tpb_generic_single_variant_after_separator_is_a_coproduct() -> Bool {
+test fn tpb_generic_single_variant_after_separator_is_a_coproduct() -> Bool  {
   tpb_accepts(o: tpb_type_decl_generic_single_variant_after_separator())
     && tpb_generic_view_tags(o: tpb_type_decl_generic_single_variant_after_separator()) == [^view_generic_member]
 }
 
-test fn tpb_plain_single_variant_after_separator_is_a_coproduct() -> Bool {
+test fn tpb_plain_single_variant_after_separator_is_a_coproduct() -> Bool  {
   tpb_has_one_arm_disj(o: tpb_type_decl_plain_single_variant_after_separator(), label: ^Only)
 }
 
-test fn tpb_plain_single_alias_is_not_a_coproduct() -> Bool {
+test fn tpb_plain_single_alias_is_not_a_coproduct() -> Bool  {
   tpb_accepts(o: tpb_type_decl_plain_single_alias())
     && !tpb_has_one_arm_disj(o: tpb_type_decl_plain_single_alias(), label: ^Int)
 }
@@ -801,7 +801,7 @@ fn tpb_index_descends(target: Node) -> Bool {
 // (29) THE INDEX DECLARES NO MEMBER UNDER AN ALIAS OR A BODYLESS GENERIC -- it binds the name to the
 // wrapper, which keeps the binders -- and does descend into a member wrapper's member
 // (v2.compiler.symbol_index_fill symbol_index_declared), over supplied wrappers.
-test fn tpb_index_declares_no_member_under_an_alias() -> Bool {
+test fn tpb_index_declares_no_member_under_an_alias() -> Bool  {
   let alias = type_alias_wrapper(binders: tpb_t_binders(), aliased: dag_type_atom_node(identity: ^T))
   !tpb_index_descends(target: alias)
     && (symbol_index_declared(target: alias).bound == alias)
@@ -813,7 +813,7 @@ test fn tpb_index_declares_no_member_under_an_alias() -> Bool {
 // <type-parameters> beside an unrelated Named edge is PlainTypeDecl to v2.std.type_binder
 // type_decl_view, and a plain node may carry no marker, so type_binder_labels_conform refuses it; its
 // twin, the alias wrapper built by its one producer, conforms.
-test fn tpb_wrapper_with_no_view_arm_is_refused() -> Bool {
+test fn tpb_wrapper_with_no_view_arm_is_refused() -> Bool  {
   let stray = node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
@@ -844,7 +844,7 @@ fn tpb_member_is_nullary_enum(m: Node) -> Bool {
 // member. Its own discriminating control: with only coproduct_variant_shape restored to its raw
 // fold, the binder Conj reads as a payload-bearing variant and this row is red, which changes the
 // Rust derive.
-test fn tpb_generic_nullary_coproduct_classifies_as_nullary() -> Bool {
+test fn tpb_generic_nullary_coproduct_classifies_as_nullary() -> Bool  {
   count(tpb_generic_member(o: tpb_type_decl_nullary_tag())) == 1
     && fold(tpb_generic_member(o: tpb_type_decl_nullary_tag()), init: true, f: fn(acc, m) { acc && tpb_member_is_nullary_enum(m: m) })
 }

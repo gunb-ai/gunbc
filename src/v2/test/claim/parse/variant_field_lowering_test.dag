@@ -197,7 +197,7 @@ fn vf_field_count(payload: Node) -> Int {
 data vf_positional_sum: String = "module m.t\n\ntype C = A(Int) | B\n"
 
 // `type C = A(Int) | B`: A declares exactly one Required field "0" of type Int; B is nullary.
-test fn vf_positional_variant_declares_one_required_field_zero() -> Bool {
+test fn vf_positional_variant_declares_one_required_field_zero() -> Bool  {
   match vf_arm_payload_of(o: vfs_normalized_13(), type_lexeme: "C", arm_lexeme: "A") {
     Absent => false
     Present { value: payload } =>
@@ -209,7 +209,7 @@ test fn vf_positional_variant_declares_one_required_field_zero() -> Bool {
   }
 }
 
-test fn vf_bare_variant_is_nullary() -> Bool {
+test fn vf_bare_variant_is_nullary() -> Bool  {
   match vf_arm_payload_of(o: vfs_normalized_13(), type_lexeme: "C", arm_lexeme: "B") {
     Absent => false
     Present { value: payload } => (match payload.kind {
@@ -220,7 +220,7 @@ test fn vf_bare_variant_is_nullary() -> Bool {
 }
 
 // The braced spelling declares the SAME kind of field, through the same stage.
-test fn vf_braced_variant_declares_named_field() -> Bool {
+test fn vf_braced_variant_declares_named_field() -> Bool  {
   match vf_arm_payload_of(o: vfs_normalized_0(), type_lexeme: "C", arm_lexeme: "A") {
     Absent => false
     Present { value: payload } =>
@@ -234,7 +234,7 @@ test fn vf_braced_variant_declares_named_field() -> Bool {
 
 // A record declaration is a Named member whose payload declares its fields: Required `v`,
 // Optional `w` (a Cardinality node over Int), and `xs` typed by an Instantiation of List over Int.
-test fn vf_record_declaration_is_named_with_declared_fields() -> Bool {
+test fn vf_record_declaration_is_named_with_declared_fields() -> Bool  {
   match vfs_normalized_1() {
     Rejected { diagnostics: _ } => false
     Accepted { value: nt, diagnostics: _ } =>
@@ -278,14 +278,14 @@ test fn vf_record_declaration_is_named_with_declared_fields() -> Bool {
 
 // The seed's sum rule: one alternative with a payload is a coproduct; one bare alternative is an
 // alias and keeps its reference to the type it names.
-test fn vf_single_fielded_variant_is_a_sum() -> Bool {
+test fn vf_single_fielded_variant_is_a_sum() -> Bool  {
   match vf_arm_payload_of(o: vfs_normalized_2(), type_lexeme: "F", arm_lexeme: "Bar") {
     Absent => false
     Present { value: payload } => vf_field_count(payload: payload) == 1
   }
 }
 
-test fn vf_bare_alias_is_not_a_sum() -> Bool {
+test fn vf_bare_alias_is_not_a_sum() -> Bool  {
   match vfs_normalized_3() {
     Rejected { diagnostics: _ } => false
     Accepted { value: nt, diagnostics: _ } =>
@@ -322,7 +322,7 @@ fn vf_fn_body_of(o: Outcome<NormalizedTree>, fn_lexeme: String) -> Optional<Node
 // positional operand is x -- the one operand the declared field list [0] receives, the way the
 // seed's infer_variant_constructor_call joins them. That the argument is CARRIED is this control's
 // point: on the route before this change `A(x)` lowered to Transform(A) with x dropped.
-test fn vf_positional_construction_carries_its_operand() -> Bool {
+test fn vf_positional_construction_carries_its_operand() -> Bool  {
   match vf_fn_body_of(o: vfs_normalized_4(), fn_lexeme: "wrap") {
     Absent => false
     Present { value: body } =>
@@ -338,7 +338,7 @@ test fn vf_positional_construction_carries_its_operand() -> Bool {
 }
 
 // A record construction is the construct shape: the marked tag edge -> the authored path R, then field v -> x.
-test fn vf_record_construction_is_the_construct_shape() -> Bool {
+test fn vf_record_construction_is_the_construct_shape() -> Bool  {
   match vf_fn_body_of(o: vfs_normalized_5(), fn_lexeme: "mk") {
     Absent => false
     Present { value: body } =>
@@ -395,21 +395,21 @@ data vf_positional_unwrap: String = "module m.t\n\ntype C = A(Int) | B\n\nfn unw
 // THE MATCH BINDS FROM FIELD "0": the arm pattern is the construct A with field 0 -> x, so the
 // binder the body names reaches the resolver instead of vanishing (and instead of the typed
 // refusal gunbc#11998 stood in its place, now retired).
-test fn vf_positional_pattern_binds_field_zero() -> Bool {
+test fn vf_positional_pattern_binds_field_zero() -> Bool  {
   match vf_first_arm_pattern_of(o: vfs_normalized_14(), fn_lexeme: "unwrap") {
     Absent => false
     Present { value: pat } => vf_pattern_binds(pat: pat, tag: "A", field: "0", binder: "x")
   }
 }
 
-test fn vf_braced_pattern_binds_named_field() -> Bool {
+test fn vf_braced_pattern_binds_named_field() -> Bool  {
   match vf_first_arm_pattern_of(o: vfs_normalized_6(), fn_lexeme: "unwrap") {
     Absent => false
     Present { value: pat } => vf_pattern_binds(pat: pat, tag: "A", field: "v", binder: "x")
   }
 }
 
-test fn vf_shorthand_pattern_binds_field_to_its_own_name() -> Bool {
+test fn vf_shorthand_pattern_binds_field_to_its_own_name() -> Bool  {
   match vf_first_arm_pattern_of(o: vfs_normalized_7(), fn_lexeme: "unwrap") {
     Absent => false
     Present { value: pat } => vf_pattern_binds(pat: pat, tag: "A", field: "v", binder: "v")
@@ -419,7 +419,7 @@ test fn vf_shorthand_pattern_binds_field_to_its_own_name() -> Bool {
 // A wildcard payload is the same construct with the wildcard form in field 0 -- nothing is
 // dropped. Since gunbc#12597 an authored `_` lowers to its own unauthorable form, so the field is
 // read through the one recogniser, v2.std.node_query is_wildcard_pattern, not an atom spelled `_`.
-test fn vf_wildcard_pattern_keeps_its_field() -> Bool {
+test fn vf_wildcard_pattern_keeps_its_field() -> Bool  {
   match vf_first_arm_pattern_of(o: vfs_normalized_8(), fn_lexeme: "tag") {
     Absent => false
     Present { value: pat } =>
@@ -439,7 +439,7 @@ test fn vf_wildcard_pattern_keeps_its_field() -> Bool {
 // Named edge, so a match-arm scope frame has exactly what it needs to bind the body's x to the
 // arm. That the body's x then RESOLVES to the arm's binder and not the parameter is the
 // resolver's fact, asserted by v2.test.claim.match_arm_binder_frame over resolve_match_node_walk.
-test fn vf_shadowing_binder_is_carried_on_the_arm() -> Bool {
+test fn vf_shadowing_binder_is_carried_on_the_arm() -> Bool  {
   (match vf_first_arm_pattern_of(o: vfs_normalized_16(), fn_lexeme: "pick") {
     Absent => false
     Present { value: pat } => vf_pattern_binds(pat: pat, tag: "A", field: "0", binder: "x")
@@ -464,7 +464,7 @@ test fn vf_shadowing_binder_is_carried_on_the_arm() -> Bool {
 
 // DISTINCT PAYLOADS STAY DISTINCT: constructions differing only in the payload normalize to
 // different provenance-free trees, so the payload is carried, not summarized by the constructor.
-test fn vf_distinct_payloads_normalize_distinct() -> Bool {
+test fn vf_distinct_payloads_normalize_distinct() -> Bool  {
   match vfs_normalized_9() {
     Rejected { diagnostics: _ } => false
     Accepted { value: left, diagnostics: _ } =>
@@ -478,14 +478,14 @@ test fn vf_distinct_payloads_normalize_distinct() -> Bool {
 
 // REFUSALS, LOCATED. Positional arity is one, as in the seed's parse_variant_pattern; a where
 // clause beside a payload is a spelling the seed never reaches.
-test fn vf_two_positional_binders_refuse() -> Bool {
+test fn vf_two_positional_binders_refuse() -> Bool  {
   vf_refuses_with(
     o: vfs_normalized_11(),
     reason: ^body_lowering_reason_pattern_unlowered
   )
 }
 
-test fn vf_where_beside_payload_refuses() -> Bool {
+test fn vf_where_beside_payload_refuses() -> Bool  {
   vf_refuses_with(
     o: vfs_normalized_12(),
     reason: ^body_lowering_reason_field_decl_unlowered
@@ -495,7 +495,7 @@ test fn vf_where_beside_payload_refuses() -> Bool {
 // std.content_hash's own declarations and its positional match, verbatim: the module the native
 // workload stopped on. This is the seed-run half of that receipt; the native run is on the PR.
 
-test fn vf_content_hash_declarations_and_positional_match_normalize() -> Bool {
+test fn vf_content_hash_declarations_and_positional_match_normalize() -> Bool  {
   match vfs_normalized_15() {
     Rejected { diagnostics: _ } => false
     Accepted { value: nt, diagnostics: _ } =>
@@ -534,7 +534,7 @@ fn vfs_stream_0() -> TokenStream {
   ])
 }
 
-test fn vfs_fidelity_0() -> Bool {
+test fn vfs_fidelity_0() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\ntype C = A { v: Int } | B\n",
     file: ^variant_field_probe,
@@ -570,7 +570,7 @@ fn vfs_stream_1() -> TokenStream {
   ])
 }
 
-test fn vfs_fidelity_1() -> Bool {
+test fn vfs_fidelity_1() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\ntype R { v: Int, w: Int?, xs: List<Int> }\n",
     file: ^variant_field_probe,
@@ -596,7 +596,7 @@ fn vfs_stream_2() -> TokenStream {
   ])
 }
 
-test fn vfs_fidelity_2() -> Bool {
+test fn vfs_fidelity_2() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\ntype F = Bar { n: Int }\n",
     file: ^variant_field_probe,
@@ -617,7 +617,7 @@ fn vfs_stream_3() -> TokenStream {
   ])
 }
 
-test fn vfs_fidelity_3() -> Bool {
+test fn vfs_fidelity_3() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\ntype T = String\n",
     file: ^variant_field_probe,
@@ -658,7 +658,7 @@ fn vfs_stream_4() -> TokenStream {
   ])
 }
 
-test fn vfs_fidelity_4() -> Bool {
+test fn vfs_fidelity_4() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\ntype C = A(Int) | B\n\nfn wrap(x: Int) -> C {\n  A(x)\n}\n",
     file: ^variant_field_probe,
@@ -699,7 +699,7 @@ fn vfs_stream_5() -> TokenStream {
   ])
 }
 
-test fn vfs_fidelity_5() -> Bool {
+test fn vfs_fidelity_5() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\ntype R { v: Int }\n\nfn mk(x: Int) -> R {\n  R { v: x }\n}\n",
     file: ^variant_field_probe,
@@ -753,7 +753,7 @@ fn vfs_stream_6() -> TokenStream {
   ])
 }
 
-test fn vfs_fidelity_6() -> Bool {
+test fn vfs_fidelity_6() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\ntype C = A { v: Int } | B\n\nfn unwrap(c: C) -> Int {\n  match c {\n    A { v: x } => x\n    B => 0\n  }\n}\n",
     file: ^variant_field_probe,
@@ -805,7 +805,7 @@ fn vfs_stream_7() -> TokenStream {
   ])
 }
 
-test fn vfs_fidelity_7() -> Bool {
+test fn vfs_fidelity_7() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\ntype C = A { v: Int } | B\n\nfn unwrap(c: C) -> Int {\n  match c {\n    A { v } => v\n    B => 0\n  }\n}\n",
     file: ^variant_field_probe,
@@ -855,7 +855,7 @@ fn vfs_stream_8() -> TokenStream {
   ])
 }
 
-test fn vfs_fidelity_8() -> Bool {
+test fn vfs_fidelity_8() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\ntype C = A(Int) | B\n\nfn tag(c: C) -> Int {\n  match c {\n    A(_) => 1\n    B => 0\n  }\n}\n",
     file: ^variant_field_probe,
@@ -893,7 +893,7 @@ fn vfs_stream_9() -> TokenStream {
   ])
 }
 
-test fn vfs_fidelity_9() -> Bool {
+test fn vfs_fidelity_9() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\ntype C = A(Int) | B\n\nfn one() -> C { A(1) }\n",
     file: ^variant_field_probe,
@@ -931,7 +931,7 @@ fn vfs_stream_10() -> TokenStream {
   ])
 }
 
-test fn vfs_fidelity_10() -> Bool {
+test fn vfs_fidelity_10() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\ntype C = A(Int) | B\n\nfn one() -> C { A(2) }\n",
     file: ^variant_field_probe,
@@ -983,7 +983,7 @@ fn vfs_stream_11() -> TokenStream {
   ])
 }
 
-test fn vfs_fidelity_11() -> Bool {
+test fn vfs_fidelity_11() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\ntype C = A(Int) | B\n\nfn unwrap(c: C) -> Int {\n  match c {\n    A(x, y) => x\n    B => 0\n  }\n}\n",
     file: ^variant_field_probe,
@@ -1013,7 +1013,7 @@ fn vfs_stream_12() -> TokenStream {
   ])
 }
 
-test fn vfs_fidelity_12() -> Bool {
+test fn vfs_fidelity_12() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\ntype C = A where non_empty { v: Int } | B\n",
     file: ^variant_field_probe,
@@ -1039,7 +1039,7 @@ fn vfs_stream_13() -> TokenStream {
   ])
 }
 
-test fn vfs_fidelity_13() -> Bool {
+test fn vfs_fidelity_13() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\ntype C = A(Int) | B\n",
     file: ^variant_field_probe,
@@ -1089,7 +1089,7 @@ fn vfs_stream_14() -> TokenStream {
   ])
 }
 
-test fn vfs_fidelity_14() -> Bool {
+test fn vfs_fidelity_14() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\ntype C = A(Int) | B\n\nfn unwrap(c: C) -> Int {\n  match c {\n    A(x) => x\n    B => 0\n  }\n}\n",
     file: ^variant_field_probe,
@@ -1146,7 +1146,7 @@ fn vfs_stream_15() -> TokenStream {
   ])
 }
 
-test fn vfs_fidelity_15() -> Bool {
+test fn vfs_fidelity_15() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module std.content_hash\n\ntype ContentHash =\n  | Fnv1a64(Fnv1a64Structural)\n  | Sha256Hash(Sha256Digest)\n\nfn compare_content_hash(left: ContentHash) -> ContentHashComparison {\n  match left {\n    Fnv1a64(left_structural) => ContentHashEqual\n    Sha256Hash(left_digest) => ContentHashDifferent\n  }\n}\n",
     file: ^variant_field_probe,
@@ -1200,7 +1200,7 @@ fn vfs_stream_16() -> TokenStream {
   ])
 }
 
-test fn vfs_fidelity_16() -> Bool {
+test fn vfs_fidelity_16() -> Bool  {
   supplied_stream_matches_tokenize(
     text: "module m.t\n\ntype C = A(Int) | B\n\nfn pick(x: Int, c: C) -> Int {\n  match c {\n    A(x) => x\n    B => x\n  }\n}\n",
     file: ^variant_field_probe,

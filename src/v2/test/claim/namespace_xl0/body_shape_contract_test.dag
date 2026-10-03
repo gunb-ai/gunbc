@@ -191,7 +191,7 @@ fn is_leaf_of(n: Node, arg: Symbol) -> Bool {
 
 // CONTROL: the call view admits the real lowered call. If this reds, every row below that reads a
 // call through the view is uninformative.
-test fn body_shape_call_control_holds() -> Bool {
+test fn body_shape_call_control_holds() -> Bool  {
   match body_of(name: ^mq_call) {
     Absent => false
     Present { value: body } => is_leaf_of(n: body, arg: ^v)
@@ -200,7 +200,7 @@ test fn body_shape_call_control_holds() -> Bool {
 
 // MATCH: the WHOLE scrutinee `leaf(v)` -- not its callee alone, which is what a first-atom read
 // leaves -- then exactly two arms in authored order, each pattern paired with its own body.
-test fn body_shape_match_scrutinee_is_the_whole_call_holds() -> Bool {
+test fn body_shape_match_scrutinee_is_the_whole_call_holds() -> Bool  {
   match body_of(name: ^mq_match) {
     Absent => false
     Present { value: body } =>
@@ -218,7 +218,7 @@ fn arm_is(arms: List<MatchArmView>, index: Int, pattern: Symbol, body: Symbol) -
   }
 }
 
-test fn body_shape_match_arms_are_all_present_and_paired_holds() -> Bool {
+test fn body_shape_match_arms_are_all_present_and_paired_holds() -> Bool  {
   match body_of(name: ^mq_match) {
     Absent => false
     Present { value: body } =>
@@ -234,7 +234,7 @@ test fn body_shape_match_arms_are_all_present_and_paired_holds() -> Bool {
 
 // OPERATOR: `a && b || c` is `||` over (`&&` over (a, b), c) -- every operand, in authored order,
 // each at its authored atom. A reader that stops at the first operand of a sequence answers `a`.
-test fn body_shape_infix_operands_are_whole_and_ordered_holds() -> Bool {
+test fn body_shape_infix_operands_are_whole_and_ordered_holds() -> Bool  {
   match body_of(name: ^mq_infix) {
     Absent => false
     Present { value: body } =>
@@ -258,7 +258,7 @@ test fn body_shape_infix_operands_are_whole_and_ordered_holds() -> Bool {
   }
 }
 
-test fn body_shape_prefix_operand_is_whole_holds() -> Bool {
+test fn body_shape_prefix_operand_is_whole_holds() -> Bool  {
   match body_of(name: ^mq_prefix) {
     Absent => false
     Present { value: body } =>
@@ -270,7 +270,7 @@ test fn body_shape_prefix_operand_is_whole_holds() -> Bool {
 }
 
 // BIND: key `x`, value the whole call `leaf(a)`, body the authored `x`.
-test fn body_shape_bind_is_key_value_body_holds() -> Bool {
+test fn body_shape_bind_is_key_value_body_holds() -> Bool  {
   match body_of(name: ^mq_bind) {
     Absent => false
     Present { value: body } =>
@@ -284,7 +284,7 @@ test fn body_shape_bind_is_key_value_body_holds() -> Bool {
 
 // BIND, NAMED ARGUMENT: `let x = named(e: a)` binds the WHOLE call -- callee `named`, one argument,
 // the authored `a` -- not the bare callee atom a first-atom read of the value leaves.
-test fn body_shape_bind_value_is_the_whole_named_argument_call_holds() -> Bool {
+test fn body_shape_bind_value_is_the_whole_named_argument_call_holds() -> Bool  {
   match body_of(name: ^mq_bind_named) {
     Absent => false
     Present { value: body } =>
@@ -303,7 +303,7 @@ test fn body_shape_bind_value_is_the_whole_named_argument_call_holds() -> Bool {
 }
 
 // BRANCH: condition `a`, then `b`, else the whole call `leaf(b)`.
-test fn body_shape_branch_is_condition_then_else_holds() -> Bool {
+test fn body_shape_branch_is_condition_then_else_holds() -> Bool  {
   match body_of(name: ^mq_branch) {
     Absent => false
     Present { value: body } =>
@@ -320,7 +320,7 @@ test fn body_shape_branch_is_condition_then_else_holds() -> Bool {
 // CONTROLS OVER THE SAME REAL TREE: an operator is NotCall and a match is NotOperator -- the honest
 // "not this" arms, distinct from a refusal -- and the Outcome views refuse a body of another
 // behavior, so the greens above are admissions and not a view that accepts anything.
-test fn body_shape_views_refuse_the_wrong_shape_holds() -> Bool {
+test fn body_shape_views_refuse_the_wrong_shape_holds() -> Bool  {
   match body_of(name: ^mq_match) {
     Absent => false
     Present { value: m } =>
