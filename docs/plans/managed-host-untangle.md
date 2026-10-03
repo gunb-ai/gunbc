@@ -15,7 +15,7 @@ This is an import census over every `.dag` module under `dag/` and `src/v2/`, no
 - **Gate**: transitive import closure from `v2.workflow.required_floor` `required_gate_prefixes`.
 - **Constants**: the `mtcollins|mt_collins|MtCollins` symbols each module imports from another module. These are the unit/platform constants it depends on.
 
-The script is reproducible from this description: walk the roots, parse `^module` and `^import`, then take the closures. It is not committed because this is a one-off census for one migration, not an instrument (§6).
+The full receipt and method are under **Instrument** below.
 
 ### Findings that shape the plan
 
@@ -72,63 +72,120 @@ The script is reproducible from this description: walk the roots, parse `^module
 
 7. **`.github/workflows/fleet-converge.yml` is a projection.** Its authority is `gunbc.fleet_converge_workflow` (271 references, 4,446 lines). It carries 8 `mtcollins1_*` mode literals in conditions and about 30 `mtcollins1_*` step/job identifiers. Renaming any mode needs operator sign-off.
 
-## The root seam
+## The root seam (revised after the #13046 review)
 
-**The record is named by DFS of existing vocabulary.** The concept is "a host this fleet drives through its baseboard controller". The corpus already says *managed* for that relation (`gunbc.host_reset_subject_roster` contrasts it with "executor fleet host"). There is no `ManagedHost` type, and no near-synonym among the `Managed*` types (all of them are credential, directory or AC-actuation concepts). The proposal:
+**Name.** The name was chosen by DFS of existing vocabulary. The corpus already says *managed* for "a host this fleet drives through its baseboard controller" (`gunbc.host_reset_subject_roster` contrasts it with "executor fleet host"). No `ManagedHost` type exists, and none of the existing `Managed*` types is the same concept.
+
+**The record is a projection over standings that already exist, not a new bundle.** Two joined authorities already cover most of it:
+
+- `gunbc.machine_intake_access` `BoundBmcAccessContextStanding` binds the `MachineIntakeSubject`, endpoint, observed identity (which includes baseboard and BMC family), capability row, profile, observation and evidence manifest.
+- `gunbc.machine_intake_bmc_secure` `BmcSecureStanding` / `ManagedCredentialReference` carry the secured account, role, `SecretRef` and credential epoch.
+
+Restating any of that as loose `baseboard` / `bmc_stack` / `credential` fields would be a second authority and would lose the capability row that `reset_subject_admission` needs. So:
 
 ```
-module gunbc.managed_host            // workflow layer: which hosts, and with what
+module gunbc.managed_host
 type ManagedHost {
-  host: HostIdentity                 // gunbc.fleet_intent_network (sole naming authority)
-  baseboard: BaseboardModel          // extdeps.boards.types — PLATFORM
-  silicon: CpuSilicon                // see cut 1: extdeps.ampere's processor family row, not a string
-  bmc_stack: BmcFirmwareFamilyStanding   // machine_intake bmc_firmware_family_discriminator; FamilyUnobserved is a legal row
-  access: BmcAccessObservationStanding   // carries the endpoint when observed; Unobserved for mtjade1
-  credential: ManagedCredentialStanding  // SecretRef when on the accessor roster; else the reserved-locus standing mtjade1 already carries
-  unit_hold: ResetUnitHold               // moved here from host_reset_subject_roster
+  host: HostIdentity                       // gunbc.fleet_intent_network, the sole naming authority
+  subject: MachineIntakeSubject            // explicit host <-> intake-subject binding
+  access: BoundBmcAccessContextStanding    // endpoint, identity (baseboard, BMC family), capability row
+  secure: BmcSecureStanding                // managed credential: account, role, SecretRef, epoch
+  unit_hold: ResetUnitHold                 // moved here from host_reset_subject_roster
 }
-fn managed_hosts() -> List<ManagedHost>    // rows: mtcollins1, mtjade1
+fn managed_hosts() -> List<ManagedHost>
 ```
 
-The design rules:
+Rules for the record:
 
-- **Every field is a standing, never a bare value.** That lets `mtjade1` be a row today without fabricating an endpoint, a credential or a BMC family. Procedures refuse a host whose needed standing is unobserved, as a typed refusal at the procedure (§5), never by defaulting to Mt. Collins.
-- **The row values are imported, not re-spelled.** The `mtcollins1` row imports `mtcollins1_access_observation`, `mtcollins1_bmc_gunbc_secret_ref`, and the rest. Those unit facts stay unit-named in layer 1, which is correct: they are observations of one machine.
-- **`ResetSubjectCandidate` dissolves into it.** `gunbc.host_reset_subject_roster` becomes a filter over `managed_hosts()` and keeps the same admission fold. The reset-specific `boot_selection` goes back to the reset arm, where it is policy (§3: policy is a workflow fact).
-- **The seam assumes no BMC stack.** MegaRAC-only procedures (KVM still, UI bundle, served UI, virtual media) take a `ManagedHost` and refuse unless `bmc_stack` is the MegaRAC arm. Mt. Jade's are refused until its family is observed.
+- **Baseboard and BMC family are read through `access`, never stored beside it.** A procedure that needs MegaRAC matches the bound identity and refuses otherwise.
+- **The silicon field arrives in cut 1** as a standing authored there, not as a placeholder in cut 0.
+- **Cut 0 has exactly one row, `mtcollins1`.** Its `subject` and `secure` come from `gunbc.machine_intake_mtcollins1_bmc_secure_observation` (`mtcollins1_intake_subject`, `mtcollins1_bmc_secure_standing`). Its `access` is produced by executing the existing binding fold (`gunbc.machine_intake_access`) over `mtcollins1_access_observation` and the profile catalog, never hand-built. If that fold does not bind mtcollins1 today, cut 0 stops and reports: that is a finding, not something to route around.
+- **`mtjade1` gets no row yet.** It has no `MachineIntakeSubject` (its unit key is refused), no endpoint, no family and no hold decision. Fabricating any of them to populate a row is the §5 defect the review named.
+- **mtjade1's absence is the honest standing.** Every procedure refuses a host that is not in `managed_hosts()`.
+- **mtjade1 joins on a trigger, not by edit.** It becomes a row the day first contact authors its subject and access context standing (`gunbc.machine_intake_jade_first_contact_frontier`) and a hold decision is made. That is the trigger, and it is not a cut of this program.
+- **`ResetSubjectCandidate` dissolves.** `gunbc.host_reset_subject_roster` becomes a filter over `managed_hosts()` with the same admission fold, and `boot_selection` returns to the reset arm as reset policy.
 
-## Ordered cut list
+**Operation-keyed policy is not host identity** (ruling (b), 2026-10-03). The boot federation is policy for the pair (managed host, operation):
 
-Each cut moves **one** authority, root-first. The rules for every cut:
+```
+ManagedHostBootFederationStanding {host, operation, pool, provider, service_account, environment, claim_pins, secret_grants}
+```
 
-- The new home is written, then every consumer named in the census is cut over, and then the `mtcollins1_*` root is deleted **in the same PR**.
-- No re-export, no alias module, no `mtcollins1_*` wrapper over the generic function.
-- Witnesses move with their subject.
-- Cuts 1–4 (silicon and fleet procedure) come before 5–6 (BMC stack, platform), as the brief requires.
+- `mtcollins1` is bound to the existing live names (`github-mtcollins1-boot` pool and provider, the `mtcollins1-boot` service account and GitHub environment, and the grants), which are not renamed.
+- Any other host is explicitly unprovisioned, and the generic job refuses it.
+- None of these ids appear on `ManagedHost`.
 
-| # | Cut (one authority) | Root deleted | Consumers to cut over (census) | Size | Sequencing |
-|---|---|---|---|---|---|
-| **0** | **Seam**: add `gunbc.managed_host` `ManagedHost` plus rows `mtcollins1`, `mtjade1`; add `operator_host_mtjade1` to `gunbc.fleet_intent_network`; dissolve `ResetSubjectCandidate` into it. | `host_reset_subject_roster` `reset_subject_candidates` and its unit imports | `gunbc.host_reset_return_run`, `gunbc.fleet_converge_workflow` (reads the roster; projection unchanged), reset witnesses | medium / small | Now. Touches none of #13041 / #13025's files. `fleet_intent_network` is in the gate: adding a row is additive. |
-| **1** | **Silicon**: Ampere-generic decoding (SMpro/PMpro register reads, boot stages, `CP:` codes, CCIX errors) moves out of `gunbc.machine_intake_mtcollins1_smpro_observation` into `extdeps.ampere.*` (`smpro_register`, plus the existing `gunbc.machine_intake_ampere_{dram,socket}_console_observation`). The unit module keeps only mtcollins1's readings. Adds the `CpuSilicon` row the seam names. | the generic decoders inside `mtcollins1_smpro_observation` | 6 importers of `mtcollins1_smpro_observation` (see table) | medium / medium | **After #13025 merges** (it edits `smpro_register`, `mtcollins1_smpro_observation`, `mtcollins1_physical_orientation`) **and after cool-ant-760's SMpro/PMpro error-record decoder lands** in `extdeps.ampere.smpro_register`. Coordinate with cool-ant-760 before dispatch. Public-tree rule: only upstream-published or our own observed facts; nothing from the SCP UM or CHANGELOG.txt. |
-| **2** | **Fleet procedure — maintenance hold**: `gunbc.machine_intake_mtcollins1_maintenance_hold` becomes host-generic, with key and store host read from `ManagedHost.unit_hold`. | `mtcollins1_unit_hold_key`, `mtcollins1_unit_hold_store_host`, `mtcollins1_maintenance_hold_{take,release}` | 13 importers (table); `fleet_converge_workflow` step names. The env var `GUNBC_MTCOLLINS1_MAINTENANCE_REASON` is a workflow surface, so ask before renaming. | medium / medium | After 0. |
-| **3** | **Fleet procedure — boot subject**: `MtCollins1BootSubject` and its feeders (authorization, admission, artifact, milestone, phase timing, image fetch, actuate, handoff probe) become `BootSubject` over a `ManagedHost`. | `mtcollins1_boot_subject*`, `mtcollins1_cdrom_selection`, `mtcollins1_boot_export_dir`, `mtcollins1_endpoint` *as a procedure input* | authorization 13, artifact 9, milestone 7, actuate 6, phase timing 5, admission 3 (table) | high / large | After 0, 2. **After #13025** (it edits the phase-timing and diagnostic-bundle witnesses). |
-| **4** | **Fleet procedure — boot run, dry realization, diagnostic bundle, census boot image (7), federation**: the large modules re-key on the `BootSubject` from cut 3. | `gunbc.machine_intake_mtcollins1_boot_run` (2,734 lines), `_boot_dry_realization`, `_boot_diagnostic_bundle` (2,204), `_census_*` (7), `gunbc.auth.mtcollins1_boot_federation*` | per table | high / large; **split into 4a run+dry, 4b diagnostic bundle, 4c census image, 4d federation** | After 3. **4d only after the operator rules**: the WIF pool/provider/service-account IDs (`github-mtcollins1-boot`, `mtcollins1-boot@…`) are live GCP resources. The proposal keeps them as the `mtcollins1` row's data and generalizes only the module, so nothing is renamed outward. |
-| **5** | **BMC stack**: MegaRAC-specific procedure modules move under `gunbc.machine_intake_megarac_*`, take a `ManagedHost`, and refuse a non-MegaRAC `bmc_stack`. Affected: KVM still/observer, UI bundle observe, served-UI catalog, SOL notice, virtual-media attach (`mtcollins1_media_attach` is the MegaRAC half of boot media), fan observe, BMC secure. | the `mtcollins1_` names of those modules | per table (`mtcollins1_kvm_still` 12, …) | medium / large | After 3–4. |
-| **6** | **Platform**: physical orientation, DIMM connector, platform/sensor observation and power policy become logic over `ManagedHost.baseboard`. The Mt. Collins figure stays in `extdeps.ampere.mt_collins_*`, and a Mt. Jade figure is a later extdeps row from its published guide. | `mtcollins1_physical_orientation`'s board binding, `mtcollins1_dimm_connector_observation`, `mtcollins1_platform_observation`, `mtcollins1_bmc_sensor_observation` | per table | medium / medium | After #13025 (it edits `mtcollins1_physical_orientation`). |
-| **7** | **Workflow modes**: `gunbc.fleet_converge_workflow`'s 8 `mtcollins1_*` modes become host-parameterized modes, for example `managed_host_boot` with a host choice drawn from `managed_hosts()`. | the `mtcollins1_*` mode literals | the generated `.github/workflows/fleet-converge.yml`, `mtcollins-canary.yml` | medium / medium | **Needs operator sign-off on names and job shape before dispatch.** Last, so no mode is renamed until it has a generic procedure behind it. |
+## Rulings recorded (operator, via eager-gull-22 side-chat review, 2026-10-03)
 
-**What stays unit-named (layer 1), deliberately.** These are observations of one machine and are correct as they are:
-- memory census, 32-DIMM bring-up, socket-1 investigation, sixteen-module restore
-- ConnectX-4 Lx and expansion observations
-- spare-screen and memory predictions
-- `mtcollins_memory_change` / `_3ds_` / `_placement`
-- `mt_collins_dimm_physical_identity` (unit DIMM serial bindings)
-- the `mtcollins1_*` rung drops
-- the receipts under `gunbc.runner.*`
+- **(a)** The fleet-converge mode recut is approved in principle as the **last** cut: one atomic transition, no aliases, the eight old literals deleted in the same change.
+  - Do **not** overload the existing `host` input, which is the executor host. Add a distinct managed-subject input and keep the executor axis.
+  - Names are derived after cuts 2–6 expose the axes. Census-QEMU modes are executor-toolchain operations, census image publish/readback are artifact operations, and boot/fan/UI/KVM are managed-host operations.
+  - The final names still need operator sign-off.
+- **(b)** Keep the live GCP IAM names. Model them as the operation-keyed standing above.
 
-Recurring-failure-mode rows and probe docs that only *mention* the unit are receipts and do not move (layer R).
+## Ordered cut list (re-cut vertically)
 
-**In-flight PRs.** #13041 (wise-ibex-474) adds `dag/gunbc/fleet/mtcollins_firmware_{baseline,converge}`. Those are new mtcollins-named fleet procedure modules. Recommendation: they land as they are and rebase onto `ManagedHost` in cut 2/3's wake, or they consume `ManagedHost` directly if cut 0 lands first. I'll tell wise-ibex-474 once cut 0 merges. Cut 0 touches none of either PR's files.
+**The governing rule** (review item 3): *a module may not acquire a generic name while its answer is still transitively fixed to mtcollins1.* Each cut therefore moves a module only after everything it transitively imports from the `mtcollins1` population is either already generic or is a layer-1 unit observation that the generic module now receives as a **parameter** or reads off the `ManagedHost` row.
+
+The boot vertical is large. Its transitive closure from `gunbc.machine_intake_mtcollins1_boot_run` reaches 50 census modules, including:
+- the layer-1 `mtcollins1_memory_census_observation`;
+- the layer-3 `mtcollins1_smpro_observation`;
+- the layer-4 `mtcollins1_kvm_still`, `mtcollins1_bmc_sensor_observation` and `mtcollins1_bmc_secure_observation`.
+
+So the BMC and silicon leaves it needs move first.
+
+| # | Cut (one authority) | Root deleted | Sequencing |
+|---|---|---|---|
+| **0** | **Seam**: `gunbc.managed_host` as above, `mtcollins1` row only; dissolve `ResetSubjectCandidate`. | `reset_subject_candidates`, and the roster's direct `mtcollins1_*` imports | Now. Disjoint from #13025 and #13041. |
+| **1** | **Silicon**: Ampere-generic SMpro/PMpro, boot-stage, `CP:` and CCIX decoding moves out of `mtcollins1_smpro_observation` into `extdeps.ampere.*`, next to the existing `ampere_{dram,socket}_console_observation`. Adds the silicon standing to `ManagedHost`. | the generic decoders inside the unit module | After #13025, and after cool-ant-760's error-record decoder lands. Public-tree rule: no SCP UM, no CHANGELOG.txt, nothing disassembled. |
+| **2** | **Maintenance hold**: host-generic over `ManagedHost.unit_hold`. | `mtcollins1_unit_hold_*`, `mtcollins1_maintenance_hold_{take,release}` | After 0. The env var `GUNBC_MTCOLLINS1_MAINTENANCE_REASON` is a workflow surface: keep it until cut 7. |
+| **3** | **Boot-critical BMC leaves**: `mtcollins1_kvm_still`, `mtcollins1_media_attach` (the MegaRAC virtual-media half), `mtcollins1_bmc_sensor_observation`, and the secured-account projection of `mtcollins1_bmc_secure_observation`. These become MegaRAC-scoped modules that take a `ManagedHost` and refuse a non-MegaRAC bound identity. The unit's own readings stay unit-named. | those modules' `mtcollins1_` procedure roots | After 0. |
+| **4a** | **Boot subject leaves**: artifact, image fetch, milestone, phase timing, admission, authorization, actuate. `MtCollins1BootSubject` becomes a boot subject over `ManagedHost`. | `MtCollins1BootSubject`, `mtcollins1_boot_subject*`, `mtcollins1_cdrom_selection`, `mtcollins1_boot_export_dir` as procedure inputs | After 2, 3, and #13025 (it edits the phase-timing witness). |
+| **4b** | **Census boot image chain**: the 7 `mtcollins1_census_*` modules. Toolchain and QEMU modules are executor-host operations, so they are keyed by executor host, not managed host. | the `mtcollins1_census_*` procedure roots | After 4a. |
+| **4c** | **Boot federation standing**: `ManagedHostBootFederationStanding` replaces `gunbc.auth.mtcollins1_boot_federation*`, live names kept as the `mtcollins1` binding (ruling b). | `mtcollins1_boot_*` federation decls | After 0. Independent of 4a/4b. |
+| **4d** | **Boot run, dry realization, diagnostic bundle**: the vertical's root. Unit observations it reads today (`mtcollins1_memory_census_observation`, `mtcollins1_access_observation`) become row reads or parameters, so the dependency direction is procedure ← unit. | `mtcollins1_boot_run`, `_boot_dry_realization`, `_boot_diagnostic_bundle` | After 1, 4a, 4b, 4c. Likely split run/dry and bundle at dispatch. |
+| **5** | **Remaining BMC-stack observations**: fan observe, UI bundle observe, KVM observer, SOL notice, served-UI catalog, BMC fan, which the boot does not need. | those `mtcollins1_` procedure roots | After 3. |
+| **6** | **Platform**: physical orientation, DIMM connector and platform observation become logic over the baseboard read through `ManagedHost.access`. The Mt. Collins figure stays in `extdeps.ampere.mt_collins_*`. | the board bindings in those modules | After #13025 (it edits `mtcollins1_physical_orientation`). |
+| **7** | **Workflow modes**, per ruling (a). | the 8 `mtcollins1_*` literals and their steps in `gunbc.fleet_converge_workflow` and its projection; `mtcollins-canary.yml` dispositioned in the same change | Last. Operator sign-off on names first. |
+
+### Terminal receipt owed by every cut (review item 5)
+
+These modules are outside the required gate, so a green required run proves nothing about them. Each PR's description carries all of the following:
+
+1. **Consumer witnesses, run by name.** The cut's complete consumer roster, recomputed at the PR head with the instrument below (not copied from this receipt). Each named witness is executed with `gunbc run` against the head, with binary path and build sha printed.
+2. **A same-path RED.** On the acceptance path the cut's witness actually runs, remove the binding the cut introduced (the `ManagedHost` row, the standing arm, the parameter) and show the named witness refusing. Then restore it and show it accepted. A RED reached by a different route does not count.
+3. **A corpus sweep.** `git grep` at the head for every deleted module name and symbol, across `.dag`, `.rs`, `.yml`, `docs/` and `artifacts/`. Every remaining hit is classified with the dispositions in the non-import census below.
+4. **No aliases.** No module re-exports, wraps or renames-through the deleted root, and no `mtcollins1_*` function is a one-line call into the generic one.
+
+## Non-import census (review item 4)
+
+These occurrences do not refuse through an import edge, so the import census above cannot see them. They are measured at `26e99a9c7f` and dispositioned by surface. **migrate** means the owning cut changes it. **receipt** means it is deliberately unit-named and stays. **residue** means it is historical prose and stays as written.
+
+| Surface | Population | Disposition |
+|---|---|---|
+| `.github/workflows/fleet-converge.yml` (projection of `gunbc.fleet_converge_workflow`) | 118 occurrences: 8 mode literals and about 30 step/job ids | **migrate**, cut 7 only, regenerated from the authority. Never hand-edited. |
+| `.github/workflows/mtcollins-canary.yml` | a hand-authored scaffold by its own header; `runs-on: [self-hosted, mtcollins]` | **migrate or retire** in cut 7, and only with the operator's ruling. The runner label is a live registration (`gunbc.runner_registration_labels`). |
+| `"mtcollins1_*"` string literals in `.dag` (mode names, step ids, effect rows) | 34 files. The largest are `gunbc.fleet_converge_workflow` (26), `gunbc.auth.privileged_effect_census` (11), `gunbc.ci_spec` (11), `mtcollins1_boot_run` (10), `mtcollins1_memory_census_observation` (10) | **migrate** in the cut that owns the named step. The privileged-effect rows follow cut 4c and 7. Unit-observation literals are **receipts**. |
+| Entry-path strings `"dag/gunbc/machine_intake/mtcollins…"` in `.dag` | `gunbc.non_fold_residue` (45), `gunbc.ci_spec` (11), `v2.workflow.floor_unimported_bare_provider_debt_roster` (4), and 5 single occurrences | **migrate**: every cut that moves a file updates these rows in the same PR. Each is a path a deletion does not refuse. |
+| `artifacts/bmc/mtcollins1-*` (17 files) | captured evidence; paths cited by unit observations | **receipt**: never renamed, because the content hashes bind the path. |
+| `docs/probes/mtcollins*` (12), `docs/rung-drops/*` (1), `docs/design-rung-drops.md` | dated observations and declared drops | **receipt**. |
+| `docs/plans/*` (14 files other than this one), `docs/recovered/*`, `ROADMAP.md` (2) | dated plans; the roadmap goal "Bring Mt. Collins unit 1 into service" is correctly unit-named | **residue / receipt**. Not edited by these cuts. |
+| `src/v1/stage0/src/cli_run.rs` (1) | a comment | **residue**. |
+
+Exact token `mtcollins1_boot`: 19 files at `26e99a9c7f`, all inside the populations above.
+
+## Instrument
+
+The import census in [managed-host-untangle-census.tsv](managed-host-untangle-census.tsv) is the receipt. It lists every module with its layer, path, required-gate membership, imported unit symbols, and its **complete** importer list. The method:
+
+1. Walk `dag/` and `src/v2/` for `.dag` files.
+2. Read each `^module` and each `^import <name>`.
+3. The population is the modules whose name or text matches `mtcollins` (case-insensitive).
+4. Importers are the reverse import edges.
+5. Gate membership is the transitive import closure from the modules matching `v2.workflow.required_floor` `required_gate_prefixes`.
+6. Imported unit symbols are the names inside each module's `import … { … }` lists that match `mtcollins|mt_collins|MtCollins`.
+
+Each cut recomputes its own root's roster at its head this way. The table below is a reading aid. It truncates consumer lists, and the TSV does not.
 
 ## Census
 
@@ -136,7 +193,7 @@ The layer is assigned per module from its subject.
 - **R** = mentions the unit only in prose or receipts.
 - **W** = witness.
 
-Consumers list production importers by name, truncated after six with a count, plus the number of witness importers. The full lists are reproducible with the instrument above.
+Consumers list production importers by name, truncated after six with a count, plus the number of witness importers. **The complete lists are in the TSV.**
 
 ### Layer 3 — silicon (3 modules)
 
