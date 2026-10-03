@@ -166,18 +166,18 @@ data design_adherence_cases: List<EvalCase> = [
     ],
     discriminator: DiscriminatingCheck {
       criterion: "conformance-identity" as NonEmptyStr,
-      statement: "a calibration compared against the incumbent on a different trace is refused, the trace being keyed by a std.content_hash ContentHash" as NonEmptyStr,
-      check: ClaimHolds {
-        witness: FromReferenceFix { path: "dag/test/claim/spark/serving_promotion_witness_test.dag" as FilePath },
-        functions: ["w_calibration_on_a_different_trace_is_not_compared" as NonEmptyStr],
+      statement: "the calibration trace is keyed by a std.content_hash ContentHash, not an unqualified string" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "trace_digest: NonEmptyStr" as NonEmptyStr,
+        paths: ["dag/gunbc/spark" as FilePath],
       },
     },
     design_checks: [
       DesignCheck {
         criterion: "conformance-identity" as NonEmptyStr,
-        statement: "the trace key is not an unqualified string and is not compared as one" as NonEmptyStr,
+        statement: "two trace keys are compared as keys, not as raw strings" as NonEmptyStr,
         method: MechanicallyGraded { check: PatternAbsent {
-          pattern: "trace_digest: NonEmptyStr|trace_digest as String" as NonEmptyStr,
+          pattern: "trace_digest as String" as NonEmptyStr,
           paths: ["dag/gunbc/spark" as FilePath],
         } },
       },
