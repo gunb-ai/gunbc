@@ -764,6 +764,7 @@ pub fn expand_transitive_services(
     modules: Rc<Vec<Rc<TypedModule>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 ) -> Rc<ServiceEffectAnalysis> {
+    let _phase_cpu_guard = crate::phase_cpu::guard("expand_transitive_services");
     {
         let module_callees = build_module_callees(modules.clone());
         let unresolved = v1_rt::concat(

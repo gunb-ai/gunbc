@@ -310,6 +310,7 @@ pub fn item_kind(item: Rc<Node>) -> ItemKind {
 pub fn leaf_owner_modules_from_registry(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 ) -> Rc<HashMap<String, Rc<LeafOwner>>> {
+    let _phase_cpu_guard = crate::phase_cpu::guard("leaf_owner_modules_from_registry");
     Rc::new(v1_rt::map_keys(&registry)).iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<LeafOwner>>(),
         |acc: Rc<HashMap<String, Rc<LeafOwner>>>, key: String| match v1_rt::map_get(

@@ -47096,3 +47096,60 @@ mod collect_node_values_depth_tests {
         super::collect_node_values(&value, &ctx, &mut out);
     }
 }
+
+#[cfg(test)]
+mod reconcile_interior_probe {
+    //! PROBE (calm-pike-525): attributes `compile.reconcile`'s interior at the floor's nominal prepared
+    //! subject, compiled exactly as the floor's strict prepare compiles it (`compile_to_resolved`).
+    //! Each reconcile operation carries a `phase_cpu` guard. The top-level operations put their
+    //! outermost entry and exit on an `[op-timeline]` (wall, RSS, thread CPU), and `realize_module`
+    //! puts every 250th exit there, so the runner comment's four wall/RSS regions get owners.
+    //! Run with --ignored.
+    use super::*;
+
+    #[test]
+    #[ignore]
+    fn reconcile_interior_at_the_floor_subject() {
+        use v1_stage0_v1_infer::phase_cpu;
+        phase_cpu::mark("probe-start");
+        let roots = vec!["dag".to_string(), "src/v2".to_string()];
+        let corpus = super::read_source_corpus_once(&roots);
+        let gate_entry_index = super::build_multi_entry_index(&roots);
+        let seeds = super::required_floor_runner::required_floor_nominal_subject_seeds_from_corpus(
+            &corpus,
+            &gate_entry_index,
+        )
+        .expect("nominal floor seeds");
+        let module_seeds =
+            super::required_floor_runner::required_floor_nominal_closure_module_seeds(
+                &seeds.required_gate_authored_modules,
+                &seeds.local_repo_wet_schedule_rows,
+            );
+        let subject = super::assemble_prepared_subject_from_corpus(
+            &corpus,
+            &super::required_floor_runner::floor_prepared_subject_exclusions(),
+            Some((
+                &gate_entry_index,
+                &seeds.required_gate_prefixes,
+                &module_seeds,
+            )),
+        )
+        .expect("floor subject assembles");
+        drop(gate_entry_index);
+        eprintln!(
+            "[reconcile-probe-subject] modules={}",
+            subject.sources.len()
+        );
+        phase_cpu::reset();
+        phase_cpu::mark("compile-start");
+        let result = v1_compiler_compile::compile_to_resolved(Rc::new(subject.sources.into()));
+        phase_cpu::mark("compile-done");
+        phase_cpu::report("compile");
+        eprintln!(
+            "[reconcile-probe-done] graph={} diagnostics={} maxrss_kb={}",
+            result.graph.as_ref().map(|g| g.modules.len()).unwrap_or(0),
+            result.diagnostics.len(),
+            phase_cpu::maxrss_kb()
+        );
+    }
+}

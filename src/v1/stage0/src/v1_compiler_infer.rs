@@ -25637,6 +25637,7 @@ pub fn build_symbol_index_census(
     modules: Rc<Vec<Rc<ResolvedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<SymbolIndex> {
+    let _phase_cpu_guard = crate::phase_cpu::guard("build_symbol_index_census");
     {
         let raw = build_symbol_index_census_raw(modules.clone(), source_indices.clone());
         census_with_resolved_fn_sigs(raw.clone(), source_indices.clone())
@@ -25680,6 +25681,7 @@ pub fn build_symbol_index_qualified_fill(
     modules: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<SymbolIndex> {
+    let _phase_cpu_guard = crate::phase_cpu::guard("build_symbol_index_qualified_fill");
     {
         let raw = modules.iter().cloned().fold(
             crate::v1_compiler_infer_env::empty_symbol_index(),
@@ -25953,6 +25955,7 @@ pub fn build_type_env(
     intern_table: Rc<InternTable>,
     symbol_index: Rc<SymbolIndex>,
 ) -> Rc<BuildTypeEnvResult> {
+    let _phase_cpu_guard = crate::phase_cpu::guard("build_type_env");
     {
         let source_indices = Rc::new(v1_rt::map_keys(&kernel_type_set()))
             .iter()
@@ -27766,6 +27769,7 @@ pub fn build_global_bare_variant_locals(
     global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    let _phase_cpu_guard = crate::phase_cpu::guard("build_global_bare_variant_locals");
     Rc::new(v1_rt::map_keys(&global_bare)).iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
         |acc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| match v1_rt::map_get(
@@ -29792,6 +29796,7 @@ pub fn typecheck_module(
     symbol_index: Rc<SymbolIndex>,
     global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<TypecheckModuleResult> {
+    let _phase_cpu_guard = crate::phase_cpu::guard("typecheck_module");
     {
         let env_result = build_type_env(
             resolved.clone(),
@@ -30832,6 +30837,7 @@ pub fn typecheck_with_census_extra(
     census_fill_modules: Rc<Vec<Rc<Node>>>,
     census_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<TypedGraph> {
+    let _phase_cpu_guard = crate::phase_cpu::guard("typecheck_with_census_extra");
     {
         let intern_table = seed_kernel_intern_table(intern_table.clone());
         let resolved_by_name = graph.modules.clone().iter().cloned().fold(
@@ -30951,6 +30957,7 @@ pub fn realize_module(
     symbol_index: Rc<SymbolIndex>,
     global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<RealizeState> {
+    let _phase_cpu_guard = crate::phase_cpu::guard("realize_module");
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match v1_rt::map_get(&state.module_index.clone(), name.clone()) {
             Some(_) => state,
@@ -31277,6 +31284,7 @@ pub fn rewire_type_env_import_str_binding_identity(
     modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypedModule>>> {
+    let _phase_cpu_guard = crate::phase_cpu::guard("rewire_type_env_import_str_binding_identity");
     {
         let export_indexes = build_export_indexes(modules.clone(), source_indices.clone());
         let type_name_index = export_indexes.by_name.clone();
@@ -31666,6 +31674,7 @@ pub fn rewire_type_env_parent_links(
     modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypedModule>>> {
+    let _phase_cpu_guard = crate::phase_cpu::guard("rewire_type_env_parent_links");
     {
         let index = modules.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
@@ -31785,6 +31794,7 @@ pub fn rewire_func_env_parent_links(
     modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypedModule>>> {
+    let _phase_cpu_guard = crate::phase_cpu::guard("rewire_func_env_parent_links");
     {
         let index = modules.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
@@ -31873,6 +31883,7 @@ pub fn reconcile_with_census_extra(
     census_fill_modules: Rc<Vec<Rc<Node>>>,
     census_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<ResolvedGraph> {
+    let _phase_cpu_guard = crate::phase_cpu::guard("reconcile_with_census_extra");
     {
         let typed = typecheck_with_census_extra(
             graph.clone(),
