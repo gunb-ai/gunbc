@@ -50,8 +50,8 @@ import v2.std.model_core {
   ModelCoreFactAxisSurfaceSpelling,
   ModelCoreFactAxisWidth
 }
-import v2.std.nat { Nat }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import std.nat { Nat }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode }
 
 type FloatKind
   = HalfFloat
@@ -69,9 +69,9 @@ type LlvmType
   | MetadataType
   | IntegerType { bits: NonZeroNat }
   | FloatingType { kind: FloatKind }
-  | PointerType { address_space: v2.std.nat.Nat }
+  | PointerType { address_space: std.nat.Nat }
   | VectorType { element: LlvmType, count: NonZeroNat, scalable: VectorScaling }
-  | ArrayType { element: LlvmType, count: v2.std.nat.Nat }
+  | ArrayType { element: LlvmType, count: std.nat.Nat }
   | StructType { fields: List<LlvmType>, packed: StructPacking }
   | FunctionType { result: LlvmType, params: List<LlvmType>, var_arg: VarArg }
   | NamedType { name: Symbol }
@@ -627,19 +627,19 @@ fn llvm_integer_facts_node(facts: LlvmIntegerPrimitiveFacts) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
+        label: Authored { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
         target: llvm_inhabitant_atom(id: facts.surface_spelling)
       },
       Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisWidth {}) },
+        label: Authored { name: discriminant(v: ModelCoreFactAxisWidth {}) },
         target: llvm_integer_bits_node(bits: facts.bits)
       },
       Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
+        label: Authored { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
         target: llvm_inhabitant_atom(id: ^llvm_repr_sign_agnostic_integer)
       },
       Edge {
-        label: Named { name: ^llvm_facts_field_std_projection },
+        label: Authored { name: ^llvm_facts_field_std_projection },
         target: llvm_inhabitant_atom(id: facts.std_projection)
       }
     ],
@@ -652,15 +652,15 @@ fn llvm_float_facts_node(facts: LlvmFloatPrimitiveFacts) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
+        label: Authored { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
         target: llvm_inhabitant_atom(id: facts.surface_spelling)
       },
       Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
+        label: Authored { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
         target: llvm_float_kind_node(kind: facts.kind)
       },
       Edge {
-        label: Named { name: ^llvm_facts_field_std_projection },
+        label: Authored { name: ^llvm_facts_field_std_projection },
         target: llvm_inhabitant_atom(id: facts.std_projection)
       }
     ],
@@ -787,7 +787,8 @@ fn llvm_lex() -> LexRules {
         llvm_lex_token(token_class: ^llvm_token_rparen, pattern: LiteralPattern { text: ")" }),
         llvm_lex_token(token_class: ^llvm_token_lbrace, pattern: LiteralPattern { text: "{" }),
         llvm_lex_token(token_class: ^llvm_token_rbrace, pattern: LiteralPattern { text: "}" })
-      ]
+      ],
+      modes: []
     }
   }
 }

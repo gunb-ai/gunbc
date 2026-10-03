@@ -50,7 +50,7 @@ fn wall_call(callee: Symbol) -> Node {
 fn wall_member(name: Symbol, body: Node) -> Edge {
   let signature = declared_signature(params: [], source: body)
   Edge {
-    label: Named { name: name },
+    label: Authored { name: name },
     target: Node {
       kind: TypeNode { connective: Arrow },
       children: [
@@ -58,7 +58,7 @@ fn wall_member(name: Symbol, body: Node) -> Edge {
         Edge { label: Positional, target: wall_atom(identity: ^Bool) },
         Edge { label: Positional, target: wall_atom(identity: ^Bool) },
         signature.order,
-        Edge { label: Named { name: ^arrow_body_edge }, target: body }
+        Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body }
       ],
       occurrence_id: OccurrenceSynthetic
     }
@@ -72,7 +72,7 @@ fn wall_member_returning_its_param(name: Symbol, param: Symbol) -> Edge {
     source: wall_atom(identity: param)
   )
   Edge {
-    label: Named { name: name },
+    label: Authored { name: name },
     target: Node {
       kind: TypeNode { connective: Arrow },
       children: [
@@ -80,7 +80,7 @@ fn wall_member_returning_its_param(name: Symbol, param: Symbol) -> Edge {
         Edge { label: Positional, target: wall_atom(identity: ^Bool) },
         Edge { label: Positional, target: wall_atom(identity: ^Bool) },
         signature.order,
-        Edge { label: Named { name: ^arrow_body_edge }, target: wall_atom(identity: param) }
+        Edge { label: core_edge_label(marker: ArrowBodyEdge), target: wall_atom(identity: param) }
       ],
       occurrence_id: OccurrenceSynthetic
     }
@@ -93,20 +93,20 @@ fn wall_member_returning_its_param(name: Symbol, param: Symbol) -> Edge {
 // gunbc#11694), then the members.
 fn wall_module_body(members: List<Edge>) -> Node {
   wall_conj(children: concat(
-    [Edge { label: Named { name: ^grammar_production_identity_node_projection }, target: namespace_graft_module_body_marker_node() }],
+    [Edge { label: Authored { name: ^grammar_production_identity_node_projection }, target: namespace_graft_module_body_marker_node() }],
     members
   ))
 }
 
 fn wall_module_root(leaf_segment: Symbol, members: List<Edge>) -> Node {
   wall_conj(children: [
-    Edge { label: Named { name: ^grammar_production_identity_node_projection }, target: wall_atom(identity: ^dag_surface_module) },
+    Edge { label: Authored { name: ^grammar_production_identity_node_projection }, target: wall_atom(identity: ^dag_surface_module) },
     Edge {
-      label: Named { name: ^grammar_production_captured_node_projection },
+      label: Authored { name: ^grammar_production_captured_node_projection },
       target: wall_conj(children: [
         Edge {
-          label: Named { name: ^wall },
-          target: wall_conj(children: [Edge { label: Named { name: leaf_segment }, target: wall_module_body(members: members) }])
+          label: Authored { name: ^wall },
+          target: wall_conj(children: [Edge { label: Authored { name: leaf_segment }, target: wall_module_body(members: members) }])
         }
       ])
     }
@@ -120,7 +120,7 @@ fn wall_channel(marked: List<Symbol>) -> TestMarkerChannel {
 }
 
 fn wall_tree(root: Node, marked: List<Symbol>) -> Outcome<NormalizedTree> {
-  admit_normalized_tree(import_bindings: no_import_bindings(), type_declaration_kinds: no_type_declaration_kinds(), root: root, test_markers: wall_channel(marked: marked), diagnostics: None)
+  admit_normalized_tree(import_bindings: no_import_bindings(), type_declaration_kinds: no_type_declaration_kinds(), type_declaration_modifiers: no_type_declaration_modifiers(), root: root, test_markers: wall_channel(marked: marked), diagnostics: None)
 }
 
 // THE PEER'S NAMES ARE BOUND, BECAUSE UNDER THE CANDIDATE RULE THAT IS THE ONLY WAY TO REACH THEM.
@@ -152,6 +152,7 @@ fn wall_tree_importing_peer(root: Node, marked: List<Symbol>) -> Outcome<Normali
   admit_normalized_tree(
     import_bindings: wall_peer_import_bindings(),
     type_declaration_kinds: no_type_declaration_kinds(),
+    type_declaration_modifiers: no_type_declaration_modifiers(),
     root: root,
     test_markers: wall_channel(marked: marked),
     diagnostics: None

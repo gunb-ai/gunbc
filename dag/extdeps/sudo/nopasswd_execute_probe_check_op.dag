@@ -1,7 +1,6 @@
 module extdeps.sudo.nopasswd_execute_probe_check_op
 
 import std.types { NonEmptyStr, Bool, Int, List, Unit }
-import std.string_type { String }
 import extdeps.sudo.nopasswd_execute_probe {
   SudoNopasswdExecuteProbeShape,
   SudoNopasswdGrantListProbeShape,
@@ -110,6 +109,7 @@ fn sudo_nopasswd_grant_list_shell_condition(probe: SudoNopasswdGrantListProbeSha
 
 service sudo.NopasswdExecuteProbe {
   operation Check {
+    requires opaque
     input { probe: SudoNopasswdExecuteProbeShape }
     output { success: Bool from "exit_success" }
     readonly
@@ -129,6 +129,7 @@ service sudo.NopasswdExecuteProbe {
 
 service sudo.NopasswdGrantList {
   operation Read {
+    requires none
     input {}
     output {
       exit_code: Int from "exit_code"

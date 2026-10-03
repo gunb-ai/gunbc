@@ -1,7 +1,6 @@
 module extdeps.nvidia.system_management_interface
 
 import std.types { NonEmptyStr, Bool, Int, List, Unit }
-import std.string_type { String }
 import std.nat { Nat }
 import std.measure { Mebibyte, mebibyte }
 import std.algebra { trim }
@@ -29,6 +28,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // consumer must not read the presence of a process as weightless because its figure was withheld.
 service nvidia_smi.Smi {
   operation QueryComputeApps {
+    requires none
     input {}
     output {
       value: String from "stdout"

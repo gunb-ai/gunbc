@@ -1,7 +1,6 @@
 module extdeps.shell.exec
 
 import std.types { Int, Bool, NonEmptyStr, Unit }
-import std.string_type { String }
 import v2.std.compilers.cli_surface { ProcessArgvExpansion }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -132,6 +131,7 @@ data shell_exec_transport_ceiling_authority: ByteSize = host_exec_arg_max_strlen
 
 service shell.Exec {
   operation Run {
+    requires opaque
     input { script: TransportScript }
 
     output {
@@ -152,6 +152,7 @@ service shell.Exec {
   }
 
   operation RunArgv {
+    requires opaque
     input { program: NonEmptyStr, arguments: ProcessArgvExpansion }
 
     output {
@@ -170,6 +171,7 @@ service shell.Exec {
     }
   }
   operation RunArgvStdin {
+    requires opaque
     input { program: NonEmptyStr, arguments: ProcessArgvExpansion, stdin_payload: String }
 
     output {
@@ -190,6 +192,7 @@ service shell.Exec {
   }
 
   operation RunArgvOutcome {
+    requires opaque
     input { program: NonEmptyStr, arguments: ProcessArgvExpansion }
 
     output {
@@ -210,6 +213,7 @@ service shell.Exec {
   }
 
   operation Check {
+    requires opaque
     input { command: TransportScript }
     output { exists: Bool from "exit_success" }
     readonly

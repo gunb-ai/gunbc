@@ -97,6 +97,7 @@ import v2.std.runtime {
 }
 import v2.std.node {
   symbol_intern_lexeme,
+  StructuralLabel,
   positional_edges,
   ArrowBodyForm,
   Behavior,
@@ -106,7 +107,7 @@ import v2.std.node {
   Edge,
   Hash,
   Loop,
-  Named,
+  Authored,
   Node,
   NodeFold,
   Positional,
@@ -1504,7 +1505,8 @@ fn eval_bind_arrow_params(
 fn eval_domain_has_named_binder(domain: Node) -> Bool {
   fold(domain.children, init: false, f: fn(acc, e) {
     match e.label {
-      Named { name: _ } => true
+      StructuralLabel { label: _ } => acc
+      Authored { name: _ } => true
       Positional => acc
     }
   })
@@ -1640,8 +1642,9 @@ fn eval_transform_has_callee_reference(node: Node) -> Bool {
       ) {
         Accepted { value: e0, diagnostics: _ } =>
           match e0.label {
+            StructuralLabel { label: _ } => false
             Positional => eval_node_is_callee_reference(node: e0.target)
-            Named { name: _ } => false
+            Authored { name: _ } => false
           }
         Rejected { diagnostics: _ } => false
       }

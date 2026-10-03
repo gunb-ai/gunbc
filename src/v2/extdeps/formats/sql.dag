@@ -29,9 +29,9 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.nat { Nat }
+import std.nat { Nat }
 import v2.std.cardinality { NonZeroNat }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode }
 import v2.std.model_core {
   PrimitiveFactBundle,
   ModelCoreFactAxisEncoding,
@@ -56,7 +56,7 @@ type SqlDataType
   | SqlTypeBigInt
   | SqlTypeReal
   | SqlTypeDoublePrecision
-  | SqlTypeNumeric { precision: NonZeroNat, scale: v2.std.nat.Nat }
+  | SqlTypeNumeric { precision: NonZeroNat, scale: std.nat.Nat }
   | SqlTypeCharacter { length: NonZeroNat }
   | SqlTypeCharacterVarying { length: NonZeroNat }
   | SqlTypeCharacterLargeObject

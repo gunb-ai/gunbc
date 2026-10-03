@@ -9746,7 +9746,28 @@ fn visit_bare_reference_providers(
         .iter()
         .map(String::as_str)
         .filter(|h| !candidates.names.contains(*h))
-        .filter(|h| v1_rt::map_get(&census.services, (*h).to_string()).is_none())
+        .filter(|h| {
+            // A namespace head need not itself be a service key: github.Api.Get
+            // resolves through github.Api. Keep the bare obligation if ANY use of
+            // that head has no service prefix, including a separate member access.
+            let prefix = format!("{h}.");
+            let mut chains = candidates
+                .dotted_chains
+                .iter()
+                .filter(|chain| chain.starts_with(&prefix))
+                .peekable();
+            chains.peek().is_none()
+                || chains.any(|chain| {
+                    let mut key = String::new();
+                    !chain.split('.').any(|segment| {
+                        if !key.is_empty() {
+                            key.push('.');
+                        }
+                        key.push_str(segment);
+                        v1_rt::map_get(&census.services, key.clone()).is_some()
+                    })
+                })
+        })
         .map(|h| h.to_string())
         .collect();
     let all_names: Vec<(String, bool)> = candidates
@@ -10267,6 +10288,52 @@ mod closure_edge_demand_tests {
         );
     }
 
+    #[test]
+    fn qualified_service_prefix_does_not_pull_an_unrelated_bare_helper() {
+        let service = "module svc.api\nservice github.Api {\n operation Get {\n input { id: Int }\n output { id: Int from \"id\" }\n readonly\n transport rest { method: GET, path: \"/x\" }\n }\n}\n";
+        let helper = "module helper\nfn github(value: Int) -> Int { value }\n";
+        for (extra, should_pull_helper) in [
+            ("", false),
+            ("fn bare() -> Int { github(value: 1) }\n", true),
+            ("fn member() -> Int { github.other }\n", true),
+        ] {
+            let consumer = format!(
+                "module svc.consumer\nimport svc.api\nfn run() -> Int {{ github.Api.Get(id: 1) }}\n{extra}"
+            );
+            let fixture = Fixture::new(&[
+                ("api.dag", service),
+                ("helper.dag", helper),
+                ("consumer.dag", &consumer),
+            ]);
+            let index = fixture.index();
+            let found =
+                unimported_bare_providers(&index.source_files["svc.consumer"], &index).unwrap();
+            assert_eq!(
+                found
+                    .iter()
+                    .any(|row| row.name == "github" && row.provider_module == "helper"),
+                should_pull_helper,
+                "extra={extra:?}: {found:?}"
+            );
+        }
+        // Resolving the service prefix must still demand the service's own import.
+        let fixture = Fixture::new(&[
+            ("api.dag", service),
+            ("helper.dag", helper),
+            ("other.dag", "module other\ndata value: Int = 1\n"),
+            ("consumer.dag", "module svc.consumer\nimport other { value }\nfn run() -> Int { github.Api.Get(id: 1) }\n"),
+        ]);
+        let index = fixture.index();
+        let found = unimported_bare_providers(&index.source_files["svc.consumer"], &index).unwrap();
+        assert!(
+            found
+                .iter()
+                .any(|row| row.name == "github.Api" && row.provider_module == "svc.api"),
+            "{found:?}"
+        );
+        assert!(!found.iter().any(|row| row.name == "github"), "{found:?}");
+    }
+
     /// THE ORIGINAL NON-CLOSURE AMBIGUITY SPECIMEN, KEPT, with its entry-local outcome paired with
     /// the mandatory global refusal (#12419 decision 5857893764). An entry whose closure never
     /// reaches the ambiguous consumer is admitted; the whole-pool demand -- the required floor's
@@ -10449,6 +10516,11 @@ mod closure_edge_demand_tests {
                 .is_some_and(|f| f.contains("bypassed")),
             "a judgment of OTHER roots is not a judgment of these"
         );
+        // The twin is a separate qualification subject, not a second resident
+        // production pool. Preserve the cross-root bypass check above, then end
+        // the bad subject's index lifetime before evaluating the clean subject.
+        drop(index);
+        reset_process_shared_index_for_test();
         let ok = run_required_bare_reference_admission(&twin_roots).unwrap();
         assert!(ok.contains("judged=2 pool=2"), "{ok}");
         assert_eq!(
@@ -10757,6 +10829,64 @@ mod closure_edge_demand_tests {
     }
 
     #[test]
+    fn entry_preparation_covers_the_closure_union_and_leaves_refusals_to_their_entry() {
+        let fixture = Fixture::new(&[
+            (
+                "a.dag",
+                "module entry_a\nimport chain.provider { first }\nfn main() -> Int { first() }\n",
+            ),
+            ("b.dag", "module entry_b\nfn main() -> Int { next() }\n"),
+            (
+                "provider.dag",
+                "module chain.provider\nfn first() -> Int { next() }\n",
+            ),
+            ("tail.dag", "module chain.tail\nfn next() -> Int { 1 }\n"),
+            (
+                "unrelated.dag",
+                "module unrelated\nfn unused() -> Int { 1 }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let entry = |file: &str| fixture.0.join(file).to_string_lossy().into_owned();
+        let entries = [entry("a.dag"), entry("b.dag"), entry("absent.dag")];
+        let warm = warm_bare_reference_edge_index_for_entries(&index, &entries).unwrap();
+        assert!(matches!(
+            warm.observation.provenance,
+            SharedBuildProvenance::BuiltByPreparation
+        ));
+        assert_eq!(
+            (warm.entries, warm.entries_refused, warm.pool_files),
+            (3, 1, 5)
+        );
+        let rows: BTreeSet<_> = index
+            .both_closure_edges
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .ref_out
+            .keys()
+            .cloned()
+            .collect();
+        let union: BTreeSet<_> = entries[..2]
+            .iter()
+            .flat_map(|e| load_sources_for_entry_with_pool(&index, e).unwrap())
+            .map(|s| workspace_relative_repo_path(&s.path))
+            .collect();
+        assert_eq!(rows, union);
+        assert_eq!(warm.observation.source_files, 4);
+        assert!(!rows.iter().any(|file| file.ends_with("unrelated.dag")));
+        // The refused entry still refuses at its owner.
+        assert!(load_sources_for_entry_with_pool(&index, &entries[2]).is_err());
+        assert!(matches!(
+            warm_bare_reference_edge_index_for_entries(&index, &entries[..2])
+                .unwrap()
+                .observation
+                .provenance,
+            SharedBuildProvenance::AlreadyWarmOnEntry { .. }
+        ));
+    }
+
+    #[test]
     fn decomposition_releases_production_name_censuses_and_admission() {
         let fixture = Fixture::new(&[(
             "entry.dag",
@@ -11003,6 +11133,93 @@ pub fn warm_bare_reference_edge_index(
         source_files: index.source_files.len(),
         bare_eligible: edges.bare_scan_eligible.len(),
         provenance,
+    })
+}
+
+/// The preparation of a run whose subject is a NAMED SET OF ENTRIES, not the tree.
+pub struct EntryClosureEdgeWarm {
+    /// `source_files` is the edge rows the index holds after this preparation -- the union of the
+    /// requested entries' closures -- which is the same quantity the whole-pool warm reports (there
+    /// every pool file has a row, so the two readings coincide exactly when the subject is the tree).
+    pub observation: SharedBuildObservation,
+    pub entries: usize,
+    /// Entries whose loader refused. The refusal is NOT answered here: the entry's own resolve
+    /// reaches the same loader, refuses identically, and reports it against that entry.
+    pub entries_refused: usize,
+    pub pool_files: usize,
+}
+
+/// Edge-index preparation for an entry-subject run: the per-file judgment
+/// (`build_both_closure_edge_index`) demanded over the union of the requested entries' closures,
+/// through the same loader fixpoint each entry's resolve runs (`load_sources_for_entry_with_pool`).
+///
+/// `warm_bare_reference_edge_index` asks the whole-pool question because the floor's claims
+/// collectively consume the pool. A run over named entries has no such consumer: every row outside
+/// the closure union is produced for nobody (DESIGN §2 -- authored duplication of nothing, so it is
+/// deleted, not cached). The preparation still exists, at this narrower subject, for the reason the
+/// whole-pool one does: the shared rows are attributed to the run rather than to whichever entry
+/// resolves first.
+pub fn warm_bare_reference_edge_index_for_entries(
+    index: &MultiEntryIndex,
+    entries: &[String],
+) -> Result<EntryClosureEdgeWarm, String> {
+    let provenance = if !entries.is_empty()
+        && entries.iter().all(|entry| {
+            index
+                .entry_closure_sources
+                .borrow()
+                .contains_key(&workspace_relative_entry_path(entry))
+        }) {
+        SharedBuildProvenance::AlreadyWarmOnEntry {
+            triggered_by: "a-site-ahead-of-entry-preparation",
+        }
+    } else {
+        SharedBuildProvenance::BuiltByPreparation
+    };
+    let rss_before = current_rss_bytes().unwrap_or(0);
+    let cpu_before = v1_interpreter::thread_cpu_nanos();
+    let wall_before = std::time::Instant::now();
+    let mut entries_refused = 0usize;
+    for entry in entries {
+        if load_sources_for_entry_with_pool(index, entry).is_err() {
+            entries_refused += 1;
+        }
+    }
+    let edges = index.both_closure_edges.borrow().clone();
+    let (source_files, bare_eligible) = match &edges {
+        Some(edges) => {
+            // The same reconciliation demand the whole-pool preparation keeps, over the roots the
+            // demanded rows actually reach.
+            let roots: BTreeSet<_> = edges
+                .bare_scan_eligible
+                .iter()
+                .filter_map(|file| source_tree_root_of(&index.source_roots, file))
+                .collect();
+            for root in roots {
+                tree_bare_census_for_root(index, &root)?;
+            }
+            (edges.ref_out.len(), edges.bare_scan_eligible.len())
+        }
+        None => (0, 0),
+    };
+    let wall_ms = wall_before.elapsed().as_millis() as u64;
+    let cpu_ms =
+        ((v1_interpreter::thread_cpu_nanos().saturating_sub(cpu_before)) / 1_000_000) as u64;
+    let rss_growth_bytes = current_rss_bytes()
+        .unwrap_or(rss_before)
+        .saturating_sub(rss_before);
+    Ok(EntryClosureEdgeWarm {
+        observation: SharedBuildObservation {
+            cpu_ms,
+            wall_ms,
+            rss_growth_bytes,
+            source_files,
+            bare_eligible,
+            provenance,
+        },
+        entries: entries.len(),
+        entries_refused,
+        pool_files: index.source_files.len(),
     })
 }
 
@@ -11558,6 +11775,7 @@ pub enum WitnessRuntimeCause {
     TypeError,
     CrossRepresentationEquality,
     StringRealizationStraddle,
+    VariantRealizationRefused,
     PoolRootContributesNothing,
     PatternMatchFailure,
     /// A REST response value did not inhabit its declared coproduct (see
@@ -11596,6 +11814,7 @@ impl WitnessRuntimeCause {
             WitnessRuntimeCause::TypeError => "type-error",
             WitnessRuntimeCause::CrossRepresentationEquality => "cross-representation-equality",
             WitnessRuntimeCause::StringRealizationStraddle => "string-realization-straddle",
+            WitnessRuntimeCause::VariantRealizationRefused => "variant-realization-refused",
             WitnessRuntimeCause::PoolRootContributesNothing => "pool-root-contributes-nothing",
             WitnessRuntimeCause::PatternMatchFailure => "pattern-match-failure",
             WitnessRuntimeCause::RestResponseUndecodable => "rest-response-undecodable",
@@ -11632,6 +11851,7 @@ impl WitnessRuntimeCause {
                 WitnessRuntimeCause::CrossRepresentationEquality
             }
             E::StringRealizationStraddle { .. } => WitnessRuntimeCause::StringRealizationStraddle,
+            E::VariantRealizationRefused { .. } => WitnessRuntimeCause::VariantRealizationRefused,
             E::PoolRootContributesNothing { .. } => WitnessRuntimeCause::PoolRootContributesNothing,
             E::PatternMatchFailure { .. } => WitnessRuntimeCause::PatternMatchFailure,
             // A non-Bool guard is a type error at a located site; the variant carries the location,
@@ -28063,142 +28283,6 @@ fn entry_touches_rerun_frontier(
     Ok(!saw_claim)
 }
 
-/// P4 advisory-first (witness-realization plan): marshal an `Option<i64>` into the
-/// `.dag` `Int?` (Optional) `Value` the modeled `realize_advisory` expects.
-fn realize_advisory_optional_int(
-    ctx: &v1_interpreter::InterpContext,
-    v: Option<i64>,
-) -> v1_interpreter::Value {
-    use std::rc::Rc;
-    use v1_interpreter::Value;
-    match v {
-        Some(n) => Value::Variant {
-            type_name: ctx.sym("Optional"),
-            variant_name: ctx.sym("Present"),
-            fields: Rc::new(vec![(ctx.sym("value"), Value::Int(n))]),
-        },
-        None => Value::Variant {
-            type_name: ctx.sym("Optional"),
-            variant_name: ctx.sym("Absent"),
-            fields: Rc::new(vec![]),
-        },
-    }
-}
-
-/// P4 advisory-first: for each discovery witness, DERIVE its space bound
-/// (`ComplexityReport.function_space_bytes` at an empty size-env — a closed
-/// witness has no free size-vars) and log the memory-packed width `std.realize_pack`
-/// would schedule, alongside the live `MemoryGovernor` admission. This changes NO
-/// scheduling — it proves the derived bounds are sound on the real corpus before
-/// the governor is demoted (§5). The packing LAW stays modeled: `realize_advisory`
-/// is interpreted through the bridge, never reimplemented in Rust (§2). Gated by
-/// `GUNBC_REALIZE_ADVISORY`.
-pub fn emit_realize_advisory_for_rows(source_roots: &[String], rows: &[DiscoveryRow]) {
-    use v1_interpreter::Value;
-    // The witness graphs don't import std.realize_pack, so interpret the law in its
-    // own ctx, built once.
-    let realize_ctx = match resolve_entry_graph(source_roots, "dag/std/realize_pack.dag") {
-        Ok((g, idx)) => make_eval_context(&g, idx, v1_interpreter::ExecutionMode::Hermetic),
-        Err(e) => {
-            eprintln!("[realize-advisory] disabled: cannot load std.realize_pack: {e}");
-            return;
-        }
-    };
-    // Host planning ceiling: the SAME single authority the MemoryGovernor schedules against.
-    // It is the minimum of an optional env request and observed cgroup lines; an env-only
-    // declaration is unverified and unreadable to consumers. Unreadable -> the
-    // modeled law refuses (BudgetRefused), never a fabricated width.
-    let (budget_opt, budget_source) = crate::memory_governor::read_host_budget_bytes();
-    let budget_bytes: Option<i64> = budget_opt.map(|b| b as i64);
-    let independence: i64 = std::thread::available_parallelism()
-        .map(|n| n.get() as i64)
-        .unwrap_or(1);
-    // Group by entry so each entry resolves + analyzes once.
-    let mut by_entry: std::collections::BTreeMap<String, Vec<String>> =
-        std::collections::BTreeMap::new();
-    for r in rows {
-        by_entry
-            .entry(r.entry.clone())
-            .or_default()
-            .push(r.function.clone());
-    }
-    let (mut derivable, mut unknown) = (0usize, 0usize);
-    for (entry, functions) in &by_entry {
-        let (graph, source_indices) = match resolve_entry_graph(source_roots, entry) {
-            Ok(p) => p,
-            Err(_) => continue,
-        };
-        let report =
-            v1_compiler_compile::run_complexity_analysis(graph.clone(), source_indices.clone());
-        for function in functions {
-            let derived: Option<i64> = report.function_space_bytes.get(function).copied();
-            if derived.is_some() {
-                derivable += 1;
-            } else {
-                unknown += 1;
-            }
-            let args = vec![
-                (
-                    Some("derived_bytes".to_string()),
-                    realize_advisory_optional_int(&realize_ctx, derived),
-                ),
-                (
-                    Some("budget_bytes".to_string()),
-                    realize_advisory_optional_int(&realize_ctx, budget_bytes),
-                ),
-                (
-                    Some("independence_width".to_string()),
-                    Value::Int(independence),
-                ),
-            ];
-            match v1_interpreter::run_in_context_with_args(
-                &realize_ctx,
-                "realize_advisory",
-                &args,
-                false,
-            ) {
-                Ok(Value::Record { ref fields, .. }) => {
-                    let width = match realize_ctx.field(&fields, "width") {
-                        Some(Value::Int(w)) => *w,
-                        _ => -1,
-                    };
-                    let verdict = match realize_ctx.field(&fields, "verdict") {
-                        Some(Value::Str(s)) => s.to_string(),
-                        _ => String::new(),
-                    };
-                    let db = derived
-                        .map(|d| d.to_string())
-                        .unwrap_or_else(|| "unknown".to_string());
-                    let bb = budget_bytes
-                        .map(|b| b.to_string())
-                        .unwrap_or_else(|| "unreadable".to_string());
-                    eprintln!(
-                        "[realize-advisory] entry={entry} fn={function} derived_bytes={db} \
-                         budget={bb} independence={independence} predicted_width={width} verdict={verdict}"
-                    );
-                }
-                Ok(_) => eprintln!(
-                    "[realize-advisory] entry={entry} fn={function} — bridge returned non-record"
-                ),
-                Err(e) => {
-                    eprintln!("[realize-advisory] entry={entry} fn={function} — bridge error: {e}")
-                }
-            }
-        }
-    }
-    eprintln!(
-        "[realize-advisory] summary: {} function(s), {} with a derived bound, \
-         {} unknown (maturation reserve); budget={} source={}",
-        derivable + unknown,
-        derivable,
-        unknown,
-        budget_bytes
-            .map(|b| b.to_string())
-            .unwrap_or_else(|| "unreadable".to_string()),
-        budget_source,
-    );
-}
-
 /// Discovery per-phase wall totals (CI floor endgame D4 — the lever-1 re-diagnosis
 /// instrumentation): process-wide accumulators for the pump's named phases, drained into
 /// the floor resolve receipt as TYPED ROWS (take_discovery_phase_totals_receipt_rows), so
@@ -43875,6 +43959,17 @@ fn claim_scope_for_with_memos(
             };
             let site_file = module.module.span.file.as_str();
             for name in refs.iter() {
+                // A kernel or container spelling binds the substrate, never a declaring module
+                // (`is_substrate_vocabulary`, the one rule every bare-name producer reads), so two
+                // corpus modules declaring `String` do not make a bare `String` contested. This
+                // held by accident while some import in each scope named one of the declarers;
+                // gunbc.rung_drop text_boundary_identity_wall deleted 71 such imports. Not redundant
+                // with the parse fix that carries a service exit arm's type as a type: bare `String`
+                // reads outside exit arms remain (measured: the floor refused gunbc.output_policy at
+                // 4 sites, e.g. extdeps.github.issues, with this skip removed).
+                if is_substrate_vocabulary(name) {
+                    continue;
+                }
                 let Some(claimants) = ambiguous.get(name) else {
                     continue;
                 };
@@ -46427,7 +46522,8 @@ pub(crate) use emitted_closure_compile_host::{
     fixture_closure_summary, fixture_discrimination_passed, fixture_discrimination_report,
     run_append_concat_form_discrimination, run_argv_word_list_splice_discrimination,
     run_empty_map_turbofish_discrimination, run_fixture_closure_discrimination,
-    run_function_value_adapter_discrimination, run_nested_refinement_cast_discrimination,
+    run_function_value_adapter_discrimination, run_local_true_false_coproduct_discrimination,
+    run_native_bool_variant_discrimination, run_nested_refinement_cast_discrimination,
     run_phantom_marker_identity_discrimination, run_shell_projection_arity_discrimination,
     FixtureClosureOutcome,
 };

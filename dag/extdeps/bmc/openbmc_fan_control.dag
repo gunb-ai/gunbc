@@ -137,7 +137,6 @@ import std.measure {
   second_count,
 }
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr }
-import std.string_type { String }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -794,6 +793,7 @@ fn openbmc_execute(
 
 service openbmc.JsonProjection {
   operation ProjectFanConfig {
+    requires none
     input {
       desired_json: String
       path: NonEmptyStr

@@ -14,8 +14,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 //
 // OPEN BY ROW, NOT A CLOSED ENUM. Each category is its own bare type declaration, so a category is
 // added by adding a declaration and its private description row, not by widening a coproduct every
-// match would then have to re-eliminate. std.magnitude Magnitude is the same shape: a nominal
-// identity with no inhabitant, consulted only as a type argument.
+// match would then have to re-eliminate.
 //
 // ONE ROSTER, TWO HALVES (DESIGN 3, agreed with the M2 compliance lane 2026-09-13). The marker is
 // public and type-level; the DESCRIPTION -- what we process under it, where, for what purpose,

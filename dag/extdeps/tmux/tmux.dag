@@ -3,7 +3,6 @@ module extdeps.tmux
 import std.algebra { trim }
 
 import std.types { List, NonEmptyStr, Int, Bool, RenderedTerminalText, Unit }
-import std.string_type { String }
 import std.workspace_artifact { WorkspaceFootprint, WorkspaceArtifact, CitedUpstream, SessionRuntimeState }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -616,6 +615,7 @@ fn shape_tmux_attempt_panes_argv_for(scope: TmuxServerScope) -> List<String> {
 
 service tmux.Session {
   operation New {
+    requires opaque
     input { session_name: String, working_dir: String, inner_argv: List<String> }
     output {
       success: Bool from "exit_success"
@@ -630,6 +630,7 @@ service tmux.Session {
   }
 
   operation List {
+    requires none
     input {}
     output { sessions: String from "stdout" }
     readonly
@@ -641,6 +642,7 @@ service tmux.Session {
   }
 
   operation Kill {
+    requires none
     input { session_name: String }
     output {
       success: Bool from "exit_success"

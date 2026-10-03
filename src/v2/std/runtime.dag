@@ -28,7 +28,7 @@ import v2.std.node {
   Behavior,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Symbol,
   TypeNode,
@@ -124,7 +124,7 @@ fn runtime_value_resolved_type(value: RuntimeValue) -> Node {
 }
 
 fn runtime_value_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn runtime_value_conj_node(children: List<Edge>) -> Node {

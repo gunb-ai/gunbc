@@ -9,7 +9,7 @@ import v2.std.node {
   ComputationNode,
   Edge,
   Loop,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -18,6 +18,10 @@ import v2.std.node {
   content_hash,
   loop_behavior_edges_conform,
   loop_edge_contributes_to_iteration_fold,
+  LoopBoundEdge,
+  LoopCarrierEdge,
+  LoopDomainEdge,
+  core_edge_label,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -45,9 +49,9 @@ fn lde_body() -> Node {
 }
 
 fn lde_body_edge() -> Edge { Edge { label: Positional, target: lde_body() } }
-fn lde_bound_edge() -> Edge { Edge { label: Named { name: ^loop_bound_edge }, target: lde_atom(s: ^lde_measure) } }
-fn lde_domain_edge() -> Edge { Edge { label: Named { name: ^loop_domain_edge }, target: lde_atom(s: ^lde_collection) } }
-fn lde_carrier_edge() -> Edge { Edge { label: Named { name: ^loop_carrier_edge }, target: lde_atom(s: ^lde_acc) } }
+fn lde_bound_edge() -> Edge { Edge { label: core_edge_label(marker: LoopBoundEdge), target: lde_atom(s: ^lde_measure) } }
+fn lde_domain_edge() -> Edge { Edge { label: core_edge_label(marker: LoopDomainEdge), target: lde_atom(s: ^lde_collection) } }
+fn lde_carrier_edge() -> Edge { Edge { label: core_edge_label(marker: LoopCarrierEdge), target: lde_atom(s: ^lde_acc) } }
 
 fn lde_loop(children: List<Edge>) -> Node {
   Node {
@@ -76,7 +80,7 @@ test fn unary_loop_still_conforms_and_unknown_named_edge_still_refuses() -> Bool
   && !loop_behavior_edges_conform(children: [
     lde_body_edge(),
     lde_bound_edge(),
-    Edge { label: Named { name: ^lde_not_a_loop_edge }, target: lde_atom(s: ^lde_collection) }
+    Edge { label: Authored { name: ^lde_not_a_loop_edge }, target: lde_atom(s: ^lde_collection) }
   ])
 }
 

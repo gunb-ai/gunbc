@@ -151,11 +151,17 @@ test fn pr_named_fn_parameter_is_a_parameter_reference_holds() -> Bool {
 // an unrelated cause cannot satisfy it.
 data pr_let_shadowing_source: String = "module p\n\nfn h(x: Int) -> Int {\n  let x = 1\n  x\n}\n"
 
-test fn pr_let_shadowing_a_parameter_refuses_holds() -> Bool {
+// The front end runs once, in a nullary producer the floor serves WARM (v2.workflow.floor_pure_producer_share),
+// and the row reads the decided reason: one front end is more than one claim's budget.
+fn pr_let_shadowing_reason() -> Symbol {
   match pr_assemble(src: pr_let_shadowing_source) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_binder_hides_visible_value
+    Accepted { value: _, diagnostics: _ } => ^pr_accepted
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
   }
+}
+
+test fn pr_let_shadowing_a_parameter_refuses_holds() -> Bool {
+  pr_let_shadowing_reason() == ^resolve_reason_binder_hides_visible_value
 }
 
 // (3) A LAMBDA'S PARAMETER STAYS ON THE LEXICAL ROUTE. Its Arrow is met below k's body, so its frame is
@@ -476,13 +482,19 @@ test fn pr_parameter_grounds_through_the_index_holds() -> Bool {
 // program refused for an unrelated cause cannot satisfy it.
 data pr_named_call_deficit_source: String = "module p\n\nfn g(x: Int) -> Int {\n  x\n}\n\nfn u() -> Int {\n  g()\n}\n"
 
-test fn pr_ordinary_named_call_deficit_still_refuses_holds() -> Bool {
+// Same shape as row (2): one front end and one infer in a nullary WARM producer, read as the decided reason.
+// A refusal at resolve answers ^pr_resolve_refused, never the infer reason, so it cannot satisfy the row.
+fn pr_named_call_deficit_reason() -> Symbol {
   match pr_assemble(src: pr_named_call_deficit_source) {
-    Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => ^pr_resolve_refused
     Accepted { value: resolved, diagnostics: _ } =>
       match infer_and_discharge(tree: resolved) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^application_positional_deficit
+        Accepted { value: _, diagnostics: _ } => ^pr_accepted
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
       }
   }
+}
+
+test fn pr_ordinary_named_call_deficit_still_refuses_holds() -> Bool {
+  pr_named_call_deficit_reason() == ^application_positional_deficit
 }

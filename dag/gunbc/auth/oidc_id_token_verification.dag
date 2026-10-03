@@ -1,0 +1,1094 @@
+module gunbc.auth.oidc_id_token_verification
+
+// THE PRODUCTION PRODUCER OF OidcIdTokenSignature — the realization the frontier row in
+// extdeps.auth.oidc named. It dissolves oidc_jwks_verification_frontier by binding the whole
+// signature seam end to end: fetch Google's JWKS with a file cache and a TTL, decode the ID
+// token's compact serialization (base64url + UTF-8 + JSON, all pure), assemble the announced
+// RSA key as an SPKI document, verify the RS256 signature through the openssl realization, and
+// hand the outcome to verify_oidc_id_token as its sole production input.
+//
+// NEVER FAIL OPEN IS THE MODULE'S WHOLE SHAPE: every failure — fetch refused, stale cache,
+// unknown kid, malformed key, unparseable segment, bad signature, missing openssl — lands in
+// OidcIdTokenSignatureRefused with the located cause, and only a real RSA verification over
+// the exact signing input mints OidcIdTokenSignatureVerified. The verified arm therefore names
+// WHICH JWKS key stood behind it (JsonWebKeyRef{issuer, key_id}), the fact RFC 7517 says a
+// verdict carries.
+//
+// THE EVIDENCE BOUNDARY, stated the way extdeps.crypto.signature states its own: everything
+// structural is modeled and checked HERE IN PURE .dag — the compact-serialization split, the
+// base64url/UTF-8/JSON decodes, the alg/kid admission, the RSA key's DER assembly, the
+// signature's length against the modulus — and whether the bound openssl invocation actually
+// performed RSASSA-PKCS1-v1_5 with SHA-256 over those exact bytes is the realization's trust,
+// not this module's. No RSA primitive exists in the extdeps crypto substrate (its signature
+// module is the ECDSA twin, and it too stops at the same seam), so openssl IS the realization,
+// admitted as the one unverified step and named here rather than implied.
+
+import std.types { String, NonEmptyStr, Int, List, FilePath, Email }
+import std.encoding { base64_decode, base64_encode, base64_octets, UrlSafe, Standard, utf8_decode_octets }
+import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused }
+import std.bytes { pure_dag_seam_unreachable_string }
+import std.algebra { trim }
+import extdeps.uri { Uri, Http, Https }
+import extdeps.auth.jwt {
+  NumericDate, NumericDateWholeSeconds, NumericDateFractionalSeconds,
+  JwtStringOrUri, JwtAudience, JwtAudienceSingle, JwtAudienceMultiple,
+  JwtCompactSerialization, jwt_string_or_uri_of_wire,
+  StringOrUriDecoded, StringOrUriRefused,
+}
+import extdeps.auth.oidc {
+  OidcIdTokenClaims, OidcStandardClaims, OidcHostedDomain, OidcAuthMethodReference,
+  OidcIdTokenSignature, OidcIdTokenSignatureVerified, OidcIdTokenSignatureRefused, JsonWebKeyRef,
+  oidc_amr_of_wire, AmrDecoded, AmrRefused,
+}
+import extdeps.auth.jwks {
+  JwkRsaPublicKey, JwksSignatureAlgorithm, JwksAlgRs256,
+  JwksDocumentParse, JwksDocumentParsed, JwksDocumentRefused,
+  JwksKeySelection, JwksKeySelected, JwksKeyNotFound,
+  jwks_document_of_json, jwks_select_key,
+}
+import extdeps.languages.json.emit {
+  JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject,
+  serialize_json, json_object, json_kv, json_string,
+}
+import extdeps.languages.json.parse {
+  parse_json_document, json_field, json_field_string, json_field_bool, json_document_gap_text,
+  JsonDocumentParsed, JsonDocumentUnreadable, FieldAbsent, FieldRead, FieldMalformed,
+}
+import extdeps.http.client
+import extdeps.filesystem.filesystem_io {
+  Filesystem, filesystem_read_outcome, filesystem_listing_observation, filesystem_file_observation,
+}
+import extdeps.gunbc
+import gunbc.output_policy { OutcomeIsData }
+import gunbc.principal_projection { google_oidc_issuer }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_auth_store_root, DashboardAuthJwksCache }
+
+// ── The Google endpoints and cache policy ──────────────────────────────────────────────────────
+// THE GOOGLE REALIZATION FACTS as data rows: the JWKS endpoint this module fetches and the
+// deadline a fetch is willing to wait. The login realization (gunbc.auth.oidc_deployment_config
+// and the serve routes) owns the client/redirect rows; these two are the verification seam's
+// own, kept where the fetch binds them.
+data google_oidc_jwks_uri: NonEmptyStr = "https://www.googleapis.com/oauth2/v3/certs" as NonEmptyStr
+
+data google_oidc_jwks_fetch_max_seconds: NonEmptyStr = "10" as NonEmptyStr
+
+// THE CACHE LIFETIME, one hour: Google's key set rotates on a slow cadence (its Cache-Control
+// advertises a bounded freshness measured in hours), and an hour bounds how long a retired key
+// could still verify to one small fraction of any token's own expiry. The cache is an
+// OPTIMIZATION, never an authority: a stale entry is never read past its TTL, and a fetch that
+// fails with only a stale cache beneath it REFUSES — yesterday's keys are exactly the replay
+// surface a TTL exists to refuse.
+data google_oidc_jwks_cache_ttl_seconds: Int = 3600
+
+// ── The ID token wire decode ───────────────────────────────────────────────────────────────────
+// COMPACT SERIALIZATION PER RFC 7515 section 3.1: three base64url segments joined by dots. The
+// decode proves NOTHING (extdeps.auth.jwt's whole point) — it exists so the signature fold
+// knows WHICH bytes to check and WHICH claims a verified token would carry; the signature
+// decides whether they are true.
+
+type OidcIdTokenWire
+  = OidcIdTokenWireDecoded { claims: OidcIdTokenClaims, header: OidcIdTokenHeader, signing_input: String }
+  | OidcIdTokenWireRefused { reason: String }
+
+// THE HEADER, the two facts the verification reads: the algorithm (admitted only as the
+// enrolled suite — a token announcing another alg refuses rather than being verified by
+// another rule) and the key id the signature answers to.
+type OidcIdTokenHeader {
+  algorithm: JwksSignatureAlgorithm
+  key_id: NonEmptyStr
+}
+
+// THE THREE-SEGMENT SPLIT: exactly three non-empty segments, else the refusal names which
+// structural fact failed. Segments are kept as STRINGS here; the signature segment stays a
+// string until the verify step needs its bytes.
+type JwtSegments
+  = JwtThreeSegments { header: String, payload: String, signature: String }
+  | JwtSegmentsRefused { reason: String }
+
+fn jwt_segments_of_wire(token: JwtCompactSerialization) -> JwtSegments {
+  let parts = split(s: token as String, delimiter: ".")
+  if count(parts) != 3 {
+    JwtSegmentsRefused {
+      reason: join(["an ID token compact serialization carries ", to_string(value: count(parts)), " dot-separated segments, not 3"], ""),
+    }
+  } else {
+    match parts.first() {
+      Absent => JwtSegmentsRefused { reason: "an ID token compact serialization has no header segment" }
+      Present { value: h } =>
+        match parts.skip(n: 1).first() {
+          Absent => JwtSegmentsRefused { reason: "an ID token compact serialization has no payload segment" }
+          Present { value: p } =>
+            match parts.skip(n: 2).first() {
+              Absent => JwtSegmentsRefused { reason: "an ID token compact serialization has no signature segment" }
+              Present { value: s } =>
+                if h == "" || p == "" || s == "" {
+                  JwtSegmentsRefused { reason: "an ID token compact serialization carries an empty segment" }
+                } else {
+                  JwtThreeSegments { header: h, payload: p, signature: s }
+                }
+            }
+        }
+    }
+  }
+}
+
+// THE SEGMENT DECODE, one pure pipeline for both header and payload segments: base64url
+// (RFC 7515 unpadded, the decoder's flush arm) → UTF-8 code points (the strict RFC 3629
+// decoder, so malformed text refuses rather than decoding to replacement characters) → one
+// JSON document. A refusal at any stage keeps the stage's located cause.
+type JwtSegmentJson
+  = JwtSegmentJsonDecoded { value: JsonValue }
+  | JwtSegmentJsonRefused { reason: String }
+
+fn jwt_segment_json(segment: String) -> JwtSegmentJson {
+  match base64_decode(s: segment, variant: UrlSafe) {
+    Absent => JwtSegmentJsonRefused { reason: "a segment is not valid base64url" }
+    Present { value: octets } =>
+      match utf8_decode_octets(octets: octets) {
+        Absent => JwtSegmentJsonRefused { reason: "a segment does not decode as UTF-8" }
+        Present { value: cps } =>
+          match parse_json_document(s: join(map(cps, cp => from_code_point(cp: cp)), "")) {
+            JsonDocumentUnreadable { gap: g } =>
+              JwtSegmentJsonRefused { reason: concat("a segment is not one JSON document: ", json_document_gap_text(gap: g)) }
+            JsonDocumentParsed { value: v } => JwtSegmentJsonDecoded { value: v }
+          }
+      }
+  }
+}
+
+// THE HEADER DECODE: alg must name the enrolled suite and kid must be present and non-empty.
+fn oidc_id_token_header_of_json(value: JsonValue) -> OidcIdTokenHeaderParse {
+  match json_field_string(obj: value, key: "alg") {
+    FieldAbsent => OidcIdTokenHeaderRefused { reason: "the token header has no alg member" }
+    FieldMalformed { cause: c } => OidcIdTokenHeaderRefused { reason: concat("the token header's alg member refused: ", c) }
+    FieldRead { value: alg } =>
+      if alg == "RS256" {
+        match json_field_string(obj: value, key: "kid") {
+          FieldAbsent => OidcIdTokenHeaderRefused { reason: "the token header has no kid member" }
+          FieldMalformed { cause: c } => OidcIdTokenHeaderRefused { reason: concat("the token header's kid member refused: ", c) }
+          FieldRead { value: kid } =>
+            if kid == "" {
+              OidcIdTokenHeaderRefused { reason: "the token header's kid member is empty" }
+            } else {
+              OidcIdTokenHeaderDecoded {
+                header: OidcIdTokenHeader {
+                  algorithm: JwksAlgRs256,
+                  key_id: kid as NonEmptyStr,
+                }
+              }
+            }
+        }
+      } else {
+        OidcIdTokenHeaderRefused { reason: concat("the token header announces alg ", concat(alg, ", not the enrolled RS256")) }
+      }
+  }
+}
+
+type OidcIdTokenHeaderParse
+  = OidcIdTokenHeaderDecoded { header: OidcIdTokenHeader }
+  | OidcIdTokenHeaderRefused { reason: String }
+
+// THE TOTAL WIRE DECODE: segments, header, payload. The payload decode is the claims fold
+// below; the signature segment crosses the fold as a string and is decoded ONLY at the verify
+// step, so a signature-segment syntax error is the verifier's refusal, never a claims fact.
+fn oidc_id_token_wire_decode(token: JwtCompactSerialization) -> OidcIdTokenWire {
+  match jwt_segments_of_wire(token: token) {
+    JwtSegmentsRefused { reason: r } => OidcIdTokenWireRefused { reason: r }
+    JwtThreeSegments { header: h, payload: p, signature: _ } =>
+      match jwt_segment_json(segment: h) {
+        JwtSegmentJsonRefused { reason: r } => OidcIdTokenWireRefused { reason: concat("the token header segment refused: ", r) }
+        JwtSegmentJsonDecoded { value: header_doc } =>
+          match oidc_id_token_header_of_json(value: header_doc) {
+            OidcIdTokenHeaderRefused { reason: r } => OidcIdTokenWireRefused { reason: r }
+            OidcIdTokenHeaderDecoded { header: header } =>
+              match jwt_segment_json(segment: p) {
+                JwtSegmentJsonRefused { reason: r } => OidcIdTokenWireRefused { reason: concat("the token payload segment refused: ", r) }
+                JwtSegmentJsonDecoded { value: payload_doc } =>
+                  match oidc_id_token_claims_of_json(doc: payload_doc) {
+                    OidcIdTokenClaimsRefused { reason: r } => OidcIdTokenWireRefused { reason: r }
+                    OidcIdTokenClaimsDecoded { claims: c } =>
+                      OidcIdTokenWireDecoded {
+                        claims: c,
+                        header: header,
+                        signing_input: join([h, ".", p], ""),
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// ── The claims decode ──────────────────────────────────────────────────────────────────────────
+// OIDC CORE'S REQUIRED CORE lands first — iss, sub, aud, exp, iat are REQUIRED in an ID Token
+// (section 2), so an absent member refuses the whole decode with the member named; everything
+// else is OPTIONAL and each option reads as its own arm. The decode is the RFC's vocabulary
+// read exactly once: iss/sub/azp through the StringOrURI decoder, aud through the wire union
+// (string OR array, never normalized away), exp/iat/auth_time through the NumericDate fold
+// (whole seconds stay whole; a fractional component keeps its digits verbatim and lets the
+// verdict's no-rounding refusal decide), amr through the module's own method-reference
+// decoder. A present-but-malformed OPTIONAL claim refuses the decode rather than being
+// silently dropped — a claim the wire carried is a fact, and a reader that cannot represent it
+// says so.
+
+type OidcIdTokenClaimsParse
+  = OidcIdTokenClaimsDecoded { claims: OidcIdTokenClaims }
+  | OidcIdTokenClaimsRefused { reason: String }
+
+fn oidc_id_token_claims_of_json(doc: JsonValue) -> OidcIdTokenClaimsParse {
+  match oidc_required_string_or_uri(doc: doc, key: "iss") {
+    OidcIdTokenMemberStringRefused { reason: r } => OidcIdTokenClaimsRefused { reason: r }
+    OidcIdTokenMemberStringRead { value: iss } =>
+      match oidc_required_string_or_uri(doc: doc, key: "sub") {
+        OidcIdTokenMemberStringRefused { reason: r } => OidcIdTokenClaimsRefused { reason: r }
+        OidcIdTokenMemberStringRead { value: sub } =>
+          match oidc_required_audience(doc: doc) {
+            OidcIdTokenMemberAudienceRefused { reason: r } => OidcIdTokenClaimsRefused { reason: r }
+            OidcIdTokenMemberAudienceRead { value: aud } =>
+              match oidc_required_numeric_date(doc: doc, key: "exp") {
+                OidcIdTokenMemberNumericDateRefused { reason: r } => OidcIdTokenClaimsRefused { reason: r }
+                OidcIdTokenMemberNumericDateRead { value: exp } =>
+                  match oidc_required_numeric_date(doc: doc, key: "iat") {
+                    OidcIdTokenMemberNumericDateRefused { reason: r } => OidcIdTokenClaimsRefused { reason: r }
+                    OidcIdTokenMemberNumericDateRead { value: iat } =>
+                      oidc_id_token_claims_optional(
+                        doc: doc,
+                        issuer: iss,
+                        subject: sub,
+                        audience: aud,
+                        expires_at: exp,
+                        issued_at: iat,
+                      )
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE MEMBER-READ CARRIERS: one refused/read pair per wire SHAPE, so a caller's match names
+// what it got instead of re-checking a generic result. StringOrURI members decode through the
+// RFC 7519 decoder; a refused spelling refuses the token with the value named.
+type OidcIdTokenMemberString
+  = OidcIdTokenMemberStringRead { value: JwtStringOrUri }
+  | OidcIdTokenMemberStringRefused { reason: String }
+
+fn oidc_required_string_or_uri(doc: JsonValue, key: String) -> OidcIdTokenMemberString {
+  match json_field_string(obj: doc, key: key) {
+    FieldAbsent => OidcIdTokenMemberStringRefused { reason: join(["the token's ", key, " claim is absent, and OIDC Core requires it"], "") }
+    FieldMalformed { cause: c } => OidcIdTokenMemberStringRefused { reason: join(["the token's ", key, " claim refused: ", c], "") }
+    FieldRead { value: raw } =>
+      if raw == "" {
+        OidcIdTokenMemberStringRefused { reason: join(["the token's ", key, " claim is empty"], "") }
+      } else {
+        match jwt_string_or_uri_of_wire(raw: raw as NonEmptyStr) {
+          StringOrUriRefused { raw: bad, reason: why } =>
+            OidcIdTokenMemberStringRefused { reason: join(["the token's ", key, " claim ", bad as String, " refused as StringOrURI: ", why], "") }
+          StringOrUriDecoded { value } => OidcIdTokenMemberStringRead { value: value }
+        }
+      }
+  }
+}
+
+// AUD IS READ THROUGH THE WIRE UNION per RFC 7519 section 4.1.3: one string is the
+// single-audience special case, an array of strings the general case, and anything else —
+// including a mixed array — refuses, because a reader that normalized the union away could not
+// say which form the signature covered.
+type OidcIdTokenMemberAudience
+  = OidcIdTokenMemberAudienceRead { value: JwtAudience }
+  | OidcIdTokenMemberAudienceRefused { reason: String }
+
+fn oidc_required_audience(doc: JsonValue) -> OidcIdTokenMemberAudience {
+  match json_field(obj: doc, key: "aud") {
+    FieldAbsent => OidcIdTokenMemberAudienceRefused { reason: "the token's aud claim is absent, and OIDC Core requires it" }
+    FieldMalformed { cause: c } => OidcIdTokenMemberAudienceRefused { reason: join(["the token's aud claim refused: ", c], "") }
+    FieldRead { value: aud_value } =>
+      match aud_value {
+        JsonString { value: single } => oidc_single_audience(raw: single)
+        JsonArray { elements: elements } => oidc_audience_elements(elements: elements, values: [])
+        JsonNull => OidcIdTokenMemberAudienceRefused { reason: "the token's aud claim is null" }
+        JsonBool { value: _ } => OidcIdTokenMemberAudienceRefused { reason: "the token's aud claim is a bool, not a string or array" }
+        JsonNumber { lexeme: _ } => OidcIdTokenMemberAudienceRefused { reason: "the token's aud claim is a number, not a string or array" }
+        JsonObject { members: _ } => OidcIdTokenMemberAudienceRefused { reason: "the token's aud claim is an object, not a string or array" }
+      }
+  }
+}
+
+fn oidc_single_audience(raw: String) -> OidcIdTokenMemberAudience {
+  if raw == "" {
+    OidcIdTokenMemberAudienceRefused { reason: "the token's aud claim is empty" }
+  } else {
+    match jwt_string_or_uri_of_wire(raw: raw as NonEmptyStr) {
+      StringOrUriRefused { raw: bad, reason: why } =>
+        OidcIdTokenMemberAudienceRefused { reason: join(["the token's aud claim ", bad as String, " refused as StringOrURI: ", why], "") }
+      StringOrUriDecoded { value } => OidcIdTokenMemberAudienceRead { value: JwtAudienceSingle { value: value } }
+    }
+  }
+}
+
+fn oidc_audience_elements(elements: List<JsonValue>, values: List<JwtStringOrUri>) -> OidcIdTokenMemberAudience {
+  match elements.first() {
+    Absent => OidcIdTokenMemberAudienceRead { value: JwtAudienceMultiple { values: values } }
+    Present { value: element } =>
+      match element {
+        JsonString { value: raw } =>
+          if raw == "" {
+            OidcIdTokenMemberAudienceRefused { reason: "the token's aud claim carries an empty entry" }
+          } else {
+            match jwt_string_or_uri_of_wire(raw: raw as NonEmptyStr) {
+              StringOrUriRefused { raw: bad, reason: why } =>
+                OidcIdTokenMemberAudienceRefused { reason: join(["the token's aud claim ", bad as String, " refused as StringOrURI: ", why], "") }
+              StringOrUriDecoded { value } =>
+                oidc_audience_elements(elements: elements.skip(n: 1), values: list_push(values, value))
+            }
+          }
+        JsonNull => OidcIdTokenMemberAudienceRefused { reason: "the token's aud claim carries a null entry" }
+        JsonBool { value: _ } => OidcIdTokenMemberAudienceRefused { reason: "the token's aud claim carries a non-string entry" }
+        JsonNumber { lexeme: _ } => OidcIdTokenMemberAudienceRefused { reason: "the token's aud claim carries a non-string entry" }
+        JsonArray { elements: _ } => OidcIdTokenMemberAudienceRefused { reason: "the token's aud claim carries a nested array entry" }
+        JsonObject { members: _ } => OidcIdTokenMemberAudienceRefused { reason: "the token's aud claim carries an object entry" }
+      }
+  }
+}
+
+// THE NUMERICDATE FOLD: the wire lexeme is read whole-seconds exact, or dotted-fraction with
+// its digits kept verbatim, and any other numeric spelling (an exponent, a bare dot) refuses —
+// the same describe-don't-round discipline extdeps.auth.jwt's carrier exists for. Absent
+// refuses for the required core; the optional reader below answers none instead.
+type OidcIdTokenMemberNumericDate
+  = OidcIdTokenMemberNumericDateRead { value: NumericDate }
+  | OidcIdTokenMemberNumericDateRefused { reason: String }
+
+fn oidc_numeric_date_of_lexeme(lexeme: String) -> NumericDate? {
+  let parts = split(s: lexeme, delimiter: ".")
+  if count(parts) == 1 {
+    match parts.first() {
+      Present { value: whole } =>
+        match parse_int(s: whole) {
+          Present { value: n } => Present { value: NumericDateWholeSeconds { seconds: n } }
+          Absent => none
+        }
+      Absent => none
+    }
+  } else if count(parts) == 2 {
+    match parts.first() {
+      Present { value: whole } =>
+        match parts.skip(n: 1).first() {
+          Present { value: fraction } =>
+            if fraction == "" || !oidc_all_digits(s: fraction, i: 0, len: string_length(s: fraction)) {
+              none
+            } else {
+              match parse_int(s: whole) {
+                Present { value: n } =>
+                  Present {
+                    value: NumericDateFractionalSeconds {
+                      whole_seconds: n,
+                      fractional_digits: fraction as NonEmptyStr,
+                    }
+                  }
+                Absent => none
+              }
+            }
+          Absent => none
+        }
+      Absent => none
+    }
+  } else {
+    none
+  }
+}
+
+fn oidc_all_digits(s: String, i: Int, len: Int) -> Bool {
+  if i >= len {
+    true
+  } else {
+    let cp = code_point(c: char_at(s, i))
+    (cp >= 48 && cp <= 57) && oidc_all_digits(s: s, i: i + 1, len: len)
+  }
+}
+
+fn oidc_required_numeric_date(doc: JsonValue, key: String) -> OidcIdTokenMemberNumericDate {
+  match oidc_optional_numeric_date(doc: doc, key: key) {
+    OidcIdTokenNumericDateAbsent =>
+      OidcIdTokenMemberNumericDateRefused { reason: join(["the token's ", key, " claim is absent, and OIDC Core requires it"], "") }
+    OidcIdTokenNumericDateMalformed { cause: c } =>
+      OidcIdTokenMemberNumericDateRefused { reason: join(["the token's ", key, " claim refused: ", c], "") }
+    OidcIdTokenNumericDateRead { value: v } => OidcIdTokenMemberNumericDateRead { value: v }
+  }
+}
+
+type OidcIdTokenNumericDateRead
+  = OidcIdTokenNumericDateRead { value: NumericDate }
+  | OidcIdTokenNumericDateAbsent
+  | OidcIdTokenNumericDateMalformed { cause: String }
+
+fn oidc_optional_numeric_date(doc: JsonValue, key: String) -> OidcIdTokenNumericDateRead {
+  match json_field(obj: doc, key: key) {
+    FieldAbsent => OidcIdTokenNumericDateAbsent
+    FieldMalformed { cause: c } => OidcIdTokenNumericDateMalformed { cause: c }
+    FieldRead { value: v } =>
+      match v {
+        JsonNumber { lexeme: lexeme } =>
+          match oidc_numeric_date_of_lexeme(lexeme: lexeme) {
+            Absent => OidcIdTokenNumericDateMalformed { cause: join(["the numeric date lexeme \"", lexeme, "\" is not a whole-seconds or dotted-fraction spelling"], "") }
+            Present { value: n } => OidcIdTokenNumericDateRead { value: n }
+          }
+        JsonNull => OidcIdTokenNumericDateAbsent
+        JsonBool { value: _ } => OidcIdTokenNumericDateMalformed { cause: join([key, " is a bool where a numeric date was expected"], "") }
+        JsonString { value: _ } => OidcIdTokenNumericDateMalformed { cause: join([key, " is a string where a numeric date was expected"], "") }
+        JsonArray { elements: _ } => OidcIdTokenNumericDateMalformed { cause: join([key, " is an array where a numeric date was expected"], "") }
+        JsonObject { members: _ } => OidcIdTokenNumericDateMalformed { cause: join([key, " is an object where a numeric date was expected"], "") }
+      }
+  }
+}
+
+// THE OPTIONAL TAIL: every section 2 optional and the standard claims, each read as its own
+// arm and every present-but-malformed spelling a refusal with the claim named.
+fn oidc_id_token_claims_optional(
+  doc: JsonValue,
+  issuer: JwtStringOrUri,
+  subject: JwtStringOrUri,
+  audience: JwtAudience,
+  expires_at: NumericDate,
+  issued_at: NumericDate,
+) -> OidcIdTokenClaimsParse {
+  let auth_time = match oidc_optional_numeric_date(doc: doc, key: "auth_time") {
+    OidcIdTokenNumericDateRead { value: v } => Present { value: v }
+    OidcIdTokenNumericDateAbsent => none
+    OidcIdTokenNumericDateMalformed { cause: c } =>
+      return OidcIdTokenClaimsRefused { reason: concat("the token's auth_time claim refused: ", c) }
+  }
+  let nonce = match oidc_optional_nonempty_string(doc: doc, key: "nonce") {
+    OidcIdTokenOptionalStringMalformed { cause: c } =>
+      return OidcIdTokenClaimsRefused { reason: concat("the token's nonce claim refused: ", c) }
+    OidcIdTokenOptionalStringRead { value: v } => v
+  }
+  let acr = match oidc_optional_nonempty_string(doc: doc, key: "acr") {
+    OidcIdTokenOptionalStringMalformed { cause: c } =>
+      return OidcIdTokenClaimsRefused { reason: concat("the token's acr claim refused: ", c) }
+    OidcIdTokenOptionalStringRead { value: v } => v
+  }
+  let session_id = match oidc_optional_nonempty_string(doc: doc, key: "sid") {
+    OidcIdTokenOptionalStringMalformed { cause: c } =>
+      return OidcIdTokenClaimsRefused { reason: concat("the token's sid claim refused: ", c) }
+    OidcIdTokenOptionalStringRead { value: v } => v
+  }
+  let azp = match oidc_optional_string_or_uri(doc: doc, key: "azp") {
+    OidcIdTokenOptionalJwtValueMalformed { cause: c } =>
+      return OidcIdTokenClaimsRefused { reason: concat("the token's azp claim refused: ", c) }
+    OidcIdTokenOptionalJwtValueRead { value: v } => v
+  }
+  let amr = match oidc_optional_amr(doc: doc) {
+    OidcIdTokenOptionalAmrMalformed { cause: c } =>
+      return OidcIdTokenClaimsRefused { reason: concat("the token's amr claim refused: ", c) }
+    OidcIdTokenOptionalAmrRead { value: v } => v
+  }
+  let hosted_domain = match oidc_optional_nonempty_string(doc: doc, key: "hd") {
+    OidcIdTokenOptionalStringMalformed { cause: c } =>
+      return OidcIdTokenClaimsRefused { reason: concat("the token's hd claim refused: ", c) }
+    OidcIdTokenOptionalStringRead { value: v } =>
+      match v {
+        Present { value: d } => Present { value: OidcHostedDomain { domain: d } }
+        Absent => none
+      }
+  }
+  let email = match oidc_optional_string(doc: doc, key: "email") {
+    OidcIdTokenOptionalStringMalformed { cause: c } =>
+      return OidcIdTokenClaimsRefused { reason: concat("the token's email claim refused: ", c) }
+    OidcIdTokenOptionalStringRead { value: v } =>
+      match v {
+        Present { value: e } => Present { value: e as Email }
+        Absent => none
+      }
+  }
+  let email_verified = match json_field_bool(obj: doc, key: "email_verified") {
+    FieldAbsent => none
+    FieldMalformed { cause: c } =>
+      return OidcIdTokenClaimsRefused { reason: concat("the token's email_verified claim refused: ", c) }
+    FieldRead { value: b } => Present { value: b }
+  }
+  let name = match oidc_optional_string(doc: doc, key: "name") {
+    OidcIdTokenOptionalStringMalformed { cause: c } =>
+      return OidcIdTokenClaimsRefused { reason: concat("the token's name claim refused: ", c) }
+    OidcIdTokenOptionalStringRead { value: v } => v
+  }
+  let picture = match oidc_optional_picture(doc: doc) {
+    OidcIdTokenOptionalPictureMalformed { cause: c } =>
+      return OidcIdTokenClaimsRefused { reason: concat("the token's picture claim refused: ", c) }
+    OidcIdTokenOptionalPictureRead { value: v } => v
+  }
+  OidcIdTokenClaimsDecoded {
+    claims: OidcIdTokenClaims {
+      issuer: issuer,
+      subject: subject,
+      audience: audience,
+      expires_at: expires_at,
+      issued_at: issued_at,
+      auth_time: auth_time,
+      nonce: nonce,
+      acr: acr,
+      amr: amr,
+      azp: azp,
+      session_id: session_id,
+      hosted_domain: hosted_domain,
+      standard: OidcStandardClaims {
+        email: email,
+        email_verified: email_verified,
+        name: name,
+        picture: picture,
+      },
+    }
+  }
+}
+
+type OidcIdTokenOptionalString
+  = OidcIdTokenOptionalStringRead { value: NonEmptyStr? }
+  | OidcIdTokenOptionalStringMalformed { cause: String }
+
+fn oidc_optional_string(doc: JsonValue, key: String) -> OidcIdTokenOptionalString {
+  match json_field_string(obj: doc, key: key) {
+    FieldAbsent => OidcIdTokenOptionalStringRead { value: none }
+    FieldMalformed { cause: c } => OidcIdTokenOptionalStringMalformed { cause: c }
+    FieldRead { value: v } => OidcIdTokenOptionalStringRead { value: Present { value: v } }
+  }
+}
+
+fn oidc_optional_nonempty_string(doc: JsonValue, key: String) -> OidcIdTokenOptionalString {
+  match oidc_optional_string(doc: doc, key: key) {
+    OidcIdTokenOptionalStringMalformed { cause: c } => OidcIdTokenOptionalStringMalformed { cause: c }
+    OidcIdTokenOptionalStringRead { value: v } =>
+      match v {
+        Present { value: s } =>
+          if s == "" {
+            OidcIdTokenOptionalStringMalformed { cause: join([key, " is present and empty"], "") }
+          } else {
+            OidcIdTokenOptionalStringRead { value: Present { value: s as NonEmptyStr } }
+          }
+        Absent => OidcIdTokenOptionalStringRead { value: none }
+      }
+  }
+}
+
+type OidcIdTokenOptionalJwtValue
+  = OidcIdTokenOptionalJwtValueRead { value: JwtStringOrUri? }
+  | OidcIdTokenOptionalJwtValueMalformed { cause: String }
+
+fn oidc_optional_string_or_uri(doc: JsonValue, key: String) -> OidcIdTokenOptionalJwtValue {
+  match oidc_optional_string(doc: doc, key: key) {
+    OidcIdTokenOptionalStringMalformed { cause: c } => OidcIdTokenOptionalJwtValueMalformed { cause: c }
+    OidcIdTokenOptionalStringRead { value: v } =>
+      match v {
+        Present { value: s } =>
+          match jwt_string_or_uri_of_wire(raw: s as NonEmptyStr) {
+            StringOrUriRefused { raw: bad, reason: why } =>
+              OidcIdTokenOptionalJwtValueMalformed { cause: join([key, " ", bad as String, " refused as StringOrURI: ", why], "") }
+            StringOrUriDecoded { value: decoded } =>
+              OidcIdTokenOptionalJwtValueRead { value: Present { value: decoded } }
+          }
+        Absent => OidcIdTokenOptionalJwtValueRead { value: none }
+      }
+  }
+}
+
+// AMR rides the module's own decoder (extdeps.auth.oidc.oidc_amr_of_wire): one refused entry
+// refuses the claim, because a method list half-read is a different fact than a list absent.
+type OidcIdTokenOptionalAmr
+  = OidcIdTokenOptionalAmrRead { value: List<OidcAuthMethodReference>? }
+  | OidcIdTokenOptionalAmrMalformed { cause: String }
+
+fn oidc_optional_amr(doc: JsonValue) -> OidcIdTokenOptionalAmr {
+  match json_field(obj: doc, key: "amr") {
+    FieldAbsent => OidcIdTokenOptionalAmrRead { value: none }
+    FieldMalformed { cause: c } => OidcIdTokenOptionalAmrMalformed { cause: c }
+    FieldRead { value: v } =>
+      match v {
+        JsonNull => OidcIdTokenOptionalAmrRead { value: none }
+        JsonArray { elements: elements } => oidc_amr_elements(elements: elements, methods: [])
+        JsonBool { value: _ } => OidcIdTokenOptionalAmrMalformed { cause: "amr is a bool where an array was expected" }
+        JsonNumber { lexeme: _ } => OidcIdTokenOptionalAmrMalformed { cause: "amr is a number where an array was expected" }
+        JsonString { value: _ } => OidcIdTokenOptionalAmrMalformed { cause: "amr is a string where an array was expected" }
+        JsonObject { members: _ } => OidcIdTokenOptionalAmrMalformed { cause: "amr is an object where an array was expected" }
+      }
+  }
+}
+
+fn oidc_amr_elements(elements: List<JsonValue>, methods: List<OidcAuthMethodReference>) -> OidcIdTokenOptionalAmr {
+  match elements.first() {
+    Absent => OidcIdTokenOptionalAmrRead { value: Present { value: methods } }
+    Present { value: element } =>
+      match element {
+        JsonString { value: raw } =>
+          if raw == "" {
+            OidcIdTokenOptionalAmrMalformed { cause: "amr carries an empty entry" }
+          } else {
+            match oidc_amr_of_wire(raw: raw as NonEmptyStr) {
+              AmrDecoded { method: m } => oidc_amr_elements(elements: elements.skip(n: 1), methods: list_push(methods, m))
+              AmrRefused { raw: bad, reason: why } =>
+                OidcIdTokenOptionalAmrMalformed { cause: join(["amr entry ", bad as String, " refused: ", why], "") }
+            }
+          }
+        JsonNull => OidcIdTokenOptionalAmrMalformed { cause: "amr carries a null entry" }
+        JsonBool { value: _ } => OidcIdTokenOptionalAmrMalformed { cause: "amr carries a non-string entry" }
+        JsonNumber { lexeme: _ } => OidcIdTokenOptionalAmrMalformed { cause: "amr carries a non-string entry" }
+        JsonArray { elements: _ } => OidcIdTokenOptionalAmrMalformed { cause: "amr carries a nested array entry" }
+        JsonObject { members: _ } => OidcIdTokenOptionalAmrMalformed { cause: "amr carries an object entry" }
+      }
+  }
+}
+
+// THE PICTURE CLAIM, admitted only as the http/https Uri spellings the deployment renders
+// (the avatar order reads internal profile first anyway). A present picture of another shape
+// REFUSES the decode with the cause named: a display claim the wire carried but this reader
+// cannot represent is a located refusal, never a silently dropped fact and never a login
+// blocker pretending to be data.
+type OidcIdTokenOptionalPicture
+  = OidcIdTokenOptionalPictureRead { value: Uri? }
+  | OidcIdTokenOptionalPictureMalformed { cause: String }
+
+fn oidc_optional_picture(doc: JsonValue) -> OidcIdTokenOptionalPicture {
+  match json_field_string(obj: doc, key: "picture") {
+    FieldAbsent => OidcIdTokenOptionalPictureRead { value: none }
+    FieldMalformed { cause: c } => OidcIdTokenOptionalPictureMalformed { cause: c }
+    FieldRead { value: raw } =>
+      if starts_with(s: raw, prefix: "https://") {
+        OidcIdTokenOptionalPictureRead {
+          value: Present { value: Uri { scheme: Https, locator: substring(s: raw, start: 8, end: string_length(s: raw)) as NonEmptyStr } },
+        }
+      } else if starts_with(s: raw, prefix: "http://") {
+        OidcIdTokenOptionalPictureRead {
+          value: Present { value: Uri { scheme: Http, locator: substring(s: raw, start: 7, end: string_length(s: raw)) as NonEmptyStr } },
+        }
+      } else {
+        OidcIdTokenOptionalPictureMalformed { cause: "the picture claim is present but is not an http/https Uri spelling" }
+      }
+  }
+}
+
+
+// ── The RSA key's SPKI assembly ────────────────────────────────────────────────────────────────
+// JWK n/e ARE UNSIGNED BIG-ENDIAN INTEGERS (RFC 7518 section 6.3.1), and openssl wants a key
+// document, so the seam between them — a DER-encoded SubjectPublicKeyInfo (RFC 5280) — is
+// assembled HERE IN PURE .dag, byte for byte. Every byte of the document is model-computed from
+// the JWK members (nothing about the key's shape is delegated to the realization), which is
+// exactly what keeps the evidence boundary honest: the ONE step this module cannot check is the
+// RSA arithmetic inside openssl's verify, and that step receives bytes whose construction this
+// module owns end to end.
+//
+// DER ITSELF IS ASSEMBLED RATHER THAN TEMPLATED, the lengths included: a 2048-bit modulus
+// carries a 257-byte integer when its high bit is set (the 0x00 guard against sign reading),
+// the inner sequence crosses the 128-byte short-form boundary, and a hand-templated prefix
+// would encode ONE observed key as the definition. The length encoder is the general
+// definite-length form, refusing past 0xFFFF — four thousand bits of RSA fit with room, and a
+// modulus that large is not a key this deployment admits.
+
+type DerOctets
+  = DerOctets { octets: List<UInt8> }
+  | DerRefused { reason: String }
+
+fn der_length_bytes(len: Int) -> DerOctets {
+  if len < 0 {
+    DerRefused { reason: "a DER length is negative" }
+  } else if len < 128 {
+    DerOctets { octets: [len] }
+  } else if len < 256 {
+    DerOctets { octets: [129, len] }
+  } else if len < 65536 {
+    DerOctets { octets: [130, len / 256, len % 256] }
+  } else {
+    DerRefused { reason: "a DER length exceeds the 0xFFFF bound this assembler admits" }
+  }
+}
+
+fn der_tlv(tag: Int, content: List<UInt8>) -> DerOctets {
+  match der_length_bytes(len: count(content)) {
+    DerRefused { reason: r } => DerRefused { reason: r }
+    DerOctets { octets: len_bytes } => DerOctets { octets: concat([tag], concat(len_bytes, content)) }
+  }
+}
+
+// A DER INTEGER IS SIGNED, so a leading byte with its high bit set needs the 0x00 guard — the
+// same fact in both directions: omit it and a valid modulus reads as negative; the guard is
+// structural, decided from the value's own first byte.
+fn der_integer(content: List<UInt8>) -> DerOctets {
+  match content.first() {
+    Absent => DerRefused { reason: "a DER integer is empty" }
+    Present { value: first } =>
+      if first >= 128 {
+        der_tlv(tag: 2, content: concat([0], content))
+      } else {
+        der_tlv(tag: 2, content: content)
+      }
+  }
+}
+
+fn der_sequence(content: List<UInt8>) -> DerOctets {
+  der_tlv(tag: 48, content: content)
+}
+
+fn der_bitstring(content: List<UInt8>) -> DerOctets {
+  der_tlv(tag: 3, content: concat([0], content))
+}
+
+// rsaEncryption'S OID (1.2.840.113549.1.1.1) with the NULL parameters, the one algorithm
+// identifier this deployment assembles — the closed-suite discipline above, at the DER layer.
+fn der_rsa_algorithm_identifier() -> List<UInt8> {
+  [48, 13, 6, 9, 42, 134, 72, 134, 247, 13, 1, 1, 1, 5, 0]
+}
+
+fn der_rs256_public_key(modulus: List<UInt8>, exponent: List<UInt8>) -> DerOctets {
+  match der_integer(content: modulus) {
+    DerRefused { reason: r } => DerRefused { reason: r }
+    DerOctets { octets: n_int } =>
+      match der_integer(content: exponent) {
+        DerRefused { reason: r } => DerRefused { reason: r }
+        DerOctets { octets: e_int } =>
+          match der_sequence(content: concat(n_int, e_int)) {
+            DerRefused { reason: r } => DerRefused { reason: r }
+            DerOctets { octets: rsa_key } =>
+              match der_bitstring(content: rsa_key) {
+                DerRefused { reason: r } => DerRefused { reason: r }
+                DerOctets { octets: key_bits } =>
+                  der_sequence(content: concat(der_rsa_algorithm_identifier(), key_bits))
+              }
+          }
+      }
+  }
+}
+
+// THE JWK → SPKI FOLD: the base64url members decode first (a malformed member is the key's
+// refusal, before any DER is built), and the assembled document is the complete SPKI.
+fn rsa_spki_of_jwk(key: JwkRsaPublicKey) -> DerOctets {
+  match base64_decode(s: key.modulus_b64url as String, variant: UrlSafe) {
+    Absent => DerRefused { reason: "the JWK modulus member is not valid base64url" }
+    Present { value: modulus } =>
+      match base64_decode(s: key.exponent_b64url as String, variant: UrlSafe) {
+        Absent => DerRefused { reason: "the JWK exponent member is not valid base64url" }
+        Present { value: exponent } => der_rs256_public_key(modulus: modulus, exponent: exponent)
+      }
+  }
+}
+
+// THE PEM SPELLING of the SPKI document, the one openssl's -verify accepts on disk.
+fn rsa_public_key_pem(spki: List<UInt8>) -> String {
+  join(
+    [
+      "-----BEGIN PUBLIC KEY-----\n",
+      match base64_octets(values: spki) {
+        QualifiedOctetsReady { value: qualified } => base64_encode(octets: qualified, variant: Standard)
+        QualifiedOctetsRefused { observed: _ } => pure_dag_seam_unreachable_string()
+      },
+      "\n-----END PUBLIC KEY-----\n",
+    ],
+    "",
+  )
+}
+
+// ── The JWKS fetch and cache ───────────────────────────────────────────────────────────────────
+// THE CACHE IS A FILE beside the session store under the instance root, holding the fetched
+// body and the epoch second it was fetched at, owner-only. Freshness is decided from the file
+// against the caller's clock reading — the same bounded-lifetime discipline the session store
+// keeps — and a cache whose write fails is NOT a verification failure: the cache is an
+// optimization over the origin, so the outcome names where the body came from and a failed
+// cache write proceeds on the freshly fetched bytes. The other direction refuses: a fetch that
+// fails with no fresh cache NEVER falls through to a stale entry.
+
+data jwks_cache_file_name: String = "cache.json"
+
+data jwks_cache_schema: String = "gunbc-jwks-cache/v1"
+
+type JwksCacheLayout {
+  dir: FilePath
+  file: String
+}
+
+fn jwks_cache_layout_for_instance(instance: HostDashboardInstance) -> JwksCacheLayout {
+  JwksCacheLayout {
+    dir: dashboard_instance_auth_store_root(instance: instance, store: DashboardAuthJwksCache),
+    file: join([(dashboard_instance_auth_store_root(instance: instance, store: DashboardAuthJwksCache) as String), "/", jwks_cache_file_name], ""),
+  }
+}
+
+type JwksCacheRead
+  = JwksCacheFresh { body: String, fetched_at: Int }
+  | JwksCacheStale { fetched_at: Int }
+  | JwksCacheMiss
+  | JwksCacheUnread { detail: String }
+
+fn jwks_cache_read(layout: JwksCacheLayout, now_epoch: Int) -> JwksCacheRead {
+  let listing_result = Filesystem.List(path: layout.dir as String)
+  let listing = filesystem_listing_observation(
+    directory: layout.dir as String,
+    success: listing_result.success,
+    entries: listing_result.entries,
+    error: listing_result.error,
+  )
+  let read_result = Filesystem.Read(path: layout.file)
+  match filesystem_file_observation(
+    listing: listing,
+    name: jwks_cache_file_name,
+    path: layout.file,
+    read: filesystem_read_outcome(content: read_result.content, success: read_result.success, error: read_result.error),
+  ) {
+    FilesystemFileAbsent(absence) => JwksCacheMiss
+    FilesystemFileIndeterminate { cause: c } => JwksCacheUnread { detail: c }
+    FilesystemFileObservationsDisagree { path: _, cause: c } => JwksCacheUnread { detail: c }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: c } => JwksCacheUnread { detail: c }
+    FilesystemFileRead { path: _, content: c } => jwks_cache_decode(content: c, now_epoch: now_epoch)
+  }
+}
+
+fn jwks_cache_decode(content: String, now_epoch: Int) -> JwksCacheRead {
+  match parse_json_document(s: content) {
+    JsonDocumentUnreadable { gap: _ } => JwksCacheUnread { detail: "the JWKS cache file is not one JSON document" }
+    JsonDocumentParsed { value: doc } =>
+      match json_field_string(obj: doc, key: "fetched_at") {
+        FieldAbsent => JwksCacheUnread { detail: "the JWKS cache file has no fetched_at member" }
+        FieldMalformed { cause: _ } => JwksCacheUnread { detail: "the JWKS cache file's fetched_at member is not a string" }
+        FieldRead { value: fetched_raw } =>
+          match parse_int(s: fetched_raw) {
+            Absent => JwksCacheUnread { detail: "the JWKS cache file's fetched_at member is not an integer" }
+            Present { value: fetched_at } =>
+              if fetched_at > now_epoch {
+                JwksCacheUnread { detail: "the JWKS cache file's fetched_at is in the future; the clock or the cache lies" }
+              } else if now_epoch - fetched_at < google_oidc_jwks_cache_ttl_seconds {
+                match json_field_string(obj: doc, key: "body") {
+                  FieldAbsent => JwksCacheUnread { detail: "the JWKS cache file has no body member" }
+                  FieldMalformed { cause: _ } => JwksCacheUnread { detail: "the JWKS cache file's body member is not a string" }
+                  FieldRead { value: body } => JwksCacheFresh { body: body, fetched_at: fetched_at }
+                }
+              } else {
+                JwksCacheStale { fetched_at: fetched_at }
+              }
+          }
+      }
+  }
+}
+
+// THE RESOLVE: fresh cache answers from the cache; anything else asks the origin ONCE, with
+// the bounded deadline, and a successful body lands in the cache best-effort. Every refusal is
+// typed by STEP — cache-read, fetch, cache-write — and the cache-write step can only annotate
+// the origin outcome, never change it.
+type JwksResolve
+  = JwksResolved { body: String, served_from: JwksServedFrom }
+  | JwksResolveRefused { step: String, reason: String }
+
+type JwksServedFrom
+  = JwksServedFromCache { fetched_at: Int }
+  | JwksServedFromOrigin
+
+fn jwks_document_resolve(layout: JwksCacheLayout, now_epoch: Int) -> JwksResolve {
+  match jwks_cache_read(layout: layout, now_epoch: now_epoch) {
+    JwksCacheFresh { body: b, fetched_at: f } =>
+      JwksResolved { body: b, served_from: JwksServedFromCache { fetched_at: f } }
+    JwksCacheMiss =>
+      jwks_fetch_and_cache(layout: layout, now_epoch: now_epoch)
+    JwksCacheStale { fetched_at: _ } =>
+      jwks_fetch_and_cache(layout: layout, now_epoch: now_epoch)
+    JwksCacheUnread { detail: _ } =>
+      jwks_fetch_and_cache(layout: layout, now_epoch: now_epoch)
+  }
+}
+
+fn jwks_fetch_and_cache(layout: JwksCacheLayout, now_epoch: Int) -> JwksResolve {
+  let got = http.Client.GetWithin(url: google_oidc_jwks_uri, max_seconds: google_oidc_jwks_fetch_max_seconds)
+  if !got.success {
+    JwksResolveRefused { step: "fetch", reason: got.body }
+  } else {
+    match jwks_document_of_json(text: got.body) {
+      JwksDocumentRefused { reason: r } => JwksResolveRefused { step: "parse", reason: r }
+      JwksDocumentParsed { keys: _ } =>
+        let cache_write = Filesystem.WriteOwnerOnly(
+          path: layout.file,
+          content: serialize_json(v: json_object(members: [
+            json_kv(key: "schema", value: json_string(s: jwks_cache_schema)),
+            json_kv(key: "fetched_at", value: json_string(s: to_string(value: now_epoch))),
+            json_kv(key: "body", value: json_string(s: got.body)),
+          ])),
+        )
+        if cache_write.success {
+          JwksResolved { body: got.body, served_from: JwksServedFromOrigin }
+        } else {
+          JwksResolved { body: got.body, served_from: JwksServedFromOrigin }
+        }
+    }
+  }
+}
+
+// ── The RS256 verification through openssl ─────────────────────────────────────────────────────
+// THE ONE UNVERIFIED STEP, named rather than implied: openssl dgst -sha256 -verify checks the
+// signature over the exact signing input (header segment + "." + payload segment, the bytes
+// the signature actually covers per RFC 7515 section 5.2) against the assembled public key.
+// The inputs this module owns — the assembled PEM, the decoded signature octets, the signing
+// input — are model-constructed and length-checked; the RSA arithmetic inside openssl is the
+// realization's trust, the same boundary extdeps.crypto.signature draws for its (still
+// unbound) ECDSA twin.
+
+type Rs256Verification
+  = Rs256SignatureValid
+  | Rs256SignatureInvalid { detail: String }
+  | Rs256VerificationUnrealizable { detail: String }
+
+fn rs256_verify_over_key(
+  spki_pem: String,
+  signing_input: String,
+  signature_b64url: String,
+  scratch_dir: String,
+  verify_id: NonEmptyStr,
+) -> Rs256Verification {
+  match base64_decode(s: signature_b64url, variant: UrlSafe) {
+    Absent => Rs256SignatureInvalid { detail: "the signature segment is not valid base64url" }
+    Present { value: signature_octets } =>
+      if count(signature_octets) == 0 {
+        Rs256SignatureInvalid { detail: "the signature segment decoded to zero octets" }
+      } else {
+      let key_path = join([scratch_dir, "/", "gunbc-jwks-", verify_id as String, "-key.pem"], "")
+      let message_path = join([scratch_dir, "/", "gunbc-jwks-", verify_id as String, "-message.bin"], "")
+      let signature_url_path = join([scratch_dir, "/", "gunbc-jwks-", verify_id as String, "-signature.b64url"], "")
+      let signature_path = join([scratch_dir, "/", "gunbc-jwks-", verify_id as String, "-signature.bin"], "")
+      let rem = string_length(s: signature_b64url) - (string_length(s: signature_b64url) / 4) * 4
+      let pad = if rem == 0 { "" } else if rem == 2 { "==" } else if rem == 3 { "=" } else { "" }
+      let key_write = Filesystem.Write(path: key_path, content: spki_pem)
+      let message_write = Filesystem.Write(path: message_path, content: signing_input)
+      let signature_write = Filesystem.Write(path: signature_url_path, content: join([signature_b64url, pad], ""))
+      if !key_write.success || !message_write.success || !signature_write.success {
+        Rs256VerificationUnrealizable { detail: "the verification scratch files could not be written" }
+      } else {
+        let decode = gunbc.WitnessBin.Run(
+          workdir: scratch_dir as FilePath,
+          bin_path: "sh" as FilePath,
+          args: ["-c", join(["tr -- '-_' '+/' < ", signature_url_path, " | base64 -d > ", signature_path], "")],
+          expect: OutcomeIsData,
+        )
+        if decode.exit_code != 0 {
+          Rs256VerificationUnrealizable { detail: join(["the signature's base64url decode refused: ", trim(decode.stderr)], "") }
+        } else {
+        let result = gunbc.WitnessBin.Run(
+          workdir: scratch_dir as FilePath,
+          bin_path: "openssl" as FilePath,
+          args: ["dgst", "-sha256", "-verify", key_path, "-signature", signature_path, message_path],
+          expect: OutcomeIsData,
+        )
+        if result.exit_code == 0 && trim(result.stdout) == "Verified OK" {
+          Rs256SignatureValid
+        } else {
+          Rs256SignatureInvalid { detail: join(["openssl refused the signature: ", trim(result.stderr)], "") }
+        }
+        }
+      }
+      }
+  }
+}
+
+// (the string_of_octets helper retired 2026-09-27: from_code_point(cp > 127) is a two-byte UTF-8
+// encoding, so its premise — "each octet below 128 becomes itself" — mangles every byte at 128
+// and above; the signature now rides its base64url text to disk and decodes through the shell.)
+
+// ── The producer ───────────────────────────────────────────────────────────────────────────────
+// THE ONE PRODUCTION ENTRY: an instance (store layout), the raw token, the caller's epoch
+// reading, and a fresh random verification id (the entropy draw is the caller's, so this fold
+// owns no randomness). Every arm below is a refusal with its step named — decode, resolve,
+// parse, select, assemble, verify — and the verified arm is minted ONLY from openssl's
+// affirmative answer over the assembled key and the exact signing input.
+fn oidc_id_token_signature_verify(
+  instance: HostDashboardInstance,
+  id_token: JwtCompactSerialization,
+  now_epoch: Int,
+  verify_id: NonEmptyStr,
+) -> OidcIdTokenSignature {
+  match oidc_id_token_wire_decode(token: id_token) {
+    OidcIdTokenWireRefused { reason: r } => OidcIdTokenSignatureRefused { reason: r }
+    OidcIdTokenWireDecoded { claims: c, header: h, signing_input: si } =>
+      let cache_layout = jwks_cache_layout_for_instance(instance: instance)
+      oidc_id_token_signature_of_parts(
+        wire: OidcIdTokenWireDecoded { claims: c, header: h, signing_input: si },
+        resolved: jwks_document_resolve(layout: cache_layout, now_epoch: now_epoch),
+        signature_segment: oidc_id_token_signature_segment(token: id_token),
+        scratch_dir: cache_layout.dir as String,
+        verify_id: verify_id,
+      )
+  }
+}
+
+// THE SIGNATURE SEGMENT, re-derived for the verify step: the wire decode consumed the segments
+// for its own reads and carried the signing input; the signature bytes are decoded only here,
+// at the seam that needs them.
+fn oidc_id_token_signature_segment(token: JwtCompactSerialization) -> String {
+  match jwt_segments_of_wire(token: token) {
+    JwtSegmentsRefused { reason: _ } => ""
+    JwtThreeSegments { header: _, payload: _, signature: sig } => sig
+  }
+}
+
+// THE PARTS FOLD, the producer's decision half separated from its IO: given the decoded wire,
+// the resolved key set, and the signature segment, every sub-refusal maps to
+// OidcIdTokenSignatureRefused with its step named, and the verify step is the one IO arm.
+// Separated so the witness drives the refusal arms — fetch failure, unknown kid, malformed
+// key — without a network, a store, or openssl: never-fail-open is a property of THIS fold,
+// witnessed on the arms that never reach an effect.
+fn oidc_id_token_signature_of_parts(
+  wire: OidcIdTokenWire,
+  resolved: JwksResolve,
+  signature_segment: String,
+  scratch_dir: String,
+  verify_id: NonEmptyStr,
+) -> OidcIdTokenSignature {
+  match wire {
+    OidcIdTokenWireRefused { reason: r } => OidcIdTokenSignatureRefused { reason: r }
+    OidcIdTokenWireDecoded { claims: _, header: header, signing_input: signing_input } =>
+      match resolved {
+        JwksResolveRefused { step: s, reason: r } =>
+          OidcIdTokenSignatureRefused { reason: join(["the JWKS realization refused at ", s, ": ", r], "") }
+        JwksResolved { body: body, served_from: _ } =>
+          match jwks_document_of_json(text: body) {
+            JwksDocumentRefused { reason: r } =>
+              OidcIdTokenSignatureRefused { reason: join(["the resolved JWKS document refused: ", r], "") }
+            JwksDocumentParsed { keys: keys } =>
+              match jwks_select_key(keys: keys, key_id: header.key_id) {
+                JwksKeyNotFound { key_id: kid } =>
+                  OidcIdTokenSignatureRefused {
+                    reason: join(["no JWKS key answers for the token's kid ", kid as String], ""),
+                  }
+                JwksKeySelected { key: key } =>
+                  match rsa_spki_of_jwk(key: key) {
+                    DerRefused { reason: r } =>
+                      OidcIdTokenSignatureRefused { reason: join(["the announced RSA key refused assembly: ", r], "") }
+                    DerOctets { octets: spki } =>
+                      oidc_id_token_signature_of_verification(
+                        key: key,
+                        verification: rs256_verify_over_key(
+                          spki_pem: rsa_public_key_pem(spki: spki),
+                          signing_input: signing_input,
+                          signature_b64url: signature_segment,
+                          scratch_dir: scratch_dir,
+                          verify_id: verify_id,
+                        ),
+                      )
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE VERIFICATION TAIL, pure: openssl's answer becomes an OidcIdTokenSignature and nothing
+// else can — the verified arm names WHICH key stood behind the signature (the JsonWebKeyRef
+// fact), and an invalid signature or an unrealizable realization is a located refusal, so the
+// verified constructor has exactly one production source.
+fn oidc_id_token_signature_of_verification(key: JwkRsaPublicKey, verification: Rs256Verification) -> OidcIdTokenSignature {
+  match verification {
+    Rs256SignatureValid =>
+      OidcIdTokenSignatureVerified {
+        key: JsonWebKeyRef {
+          issuer: JwtUriString {
+            value: google_oidc_issuer,
+            scheme: "https" as NonEmptyStr,
+          },
+          key_id: key.key_id,
+        },
+      }
+    Rs256SignatureInvalid { detail: d } =>
+      OidcIdTokenSignatureRefused { reason: join(["the RS256 signature check refused: ", d], "") }
+    Rs256VerificationUnrealizable { detail: d } =>
+      OidcIdTokenSignatureRefused { reason: join(["the RS256 realization could not run: ", d], "") }
+  }
+}

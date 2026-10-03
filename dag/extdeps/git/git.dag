@@ -7,7 +7,6 @@ import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command, shell_quote }
 import std.measure { Percent, percent }
 import std.types { Bool, CommitSha, Email, FilePath, GitRef, Int, List, NonEmptyStr, Seconds, Timestamp, Unit }
-import std.string_type { String }
 import v2.std.algebra { length, skip }
 import std.resources { Network }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -323,7 +322,7 @@ data git_ls_remote_external_authority_anchor: ExternalAuthority = ExternalAuthor
 // encoding -- so git's ordering here is bytewise, not a collation.
 //
 // THE CONSUMER'S COMPARATOR IS NOT BYTEWISE, AND THE TWO AGREE FOR A REASON THAT IS NOT OBVIOUS.
-// extdeps.git.enumeration validates this order with std.string_type string_is_lexicographically_before,
+// extdeps.git.enumeration validates this order with host String `<`,
 // which compares CODE POINTS. Bytewise and code-point-wise orderings coincide over well-formed UTF-8,
 // because UTF-8 is order-preserving by construction: a code point's encoding sorts, byte for byte, in
 // the same relation as the code point itself. That is a property of the encoding rather than of either
@@ -1099,6 +1098,7 @@ fn git_observe_meta_shell_fragment() -> String {
 // whitespace (a patch ending in blank context lines). Read <dir>/<path> with Filesystem.Read.
 service git.Core {
   operation CurrentBranch {
+    requires none
     input {}
     output { branch: String from "stdout" }
     readonly
@@ -1110,6 +1110,7 @@ service git.Core {
   }
 
   operation RemoteBranches {
+    requires none
     input {}
     output { branches: List<String> from "stdout_lines" }
     readonly
@@ -1121,7 +1122,7 @@ service git.Core {
   }
 
   operation LsRemoteHeads {
-    requires Network
+    requires opaque
     input { remote: String }
     output {
       advertised: List<String> from "stdout_lines"
@@ -1133,6 +1134,7 @@ service git.Core {
   }
 
   operation RemoteUrlIn {
+    requires none
     input { repository_path: String, remote: String }
     output {
       url: String from "stdout"
@@ -1144,6 +1146,7 @@ service git.Core {
   }
 
   operation ForEachRefIn {
+    requires none
     input { repository_path: String }
     output {
       raw: String from "stdout"
@@ -1161,6 +1164,7 @@ service git.Core {
   }
 
   operation WorktreeListIn {
+    requires none
     input { repository_path: String }
     output {
       raw: String from "stdout"
@@ -1174,6 +1178,7 @@ service git.Core {
   }
 
   operation WriteTreeInRepo {
+    requires opaque
     input { repository_path: String }
     output {
       tree: String from "stdout"
@@ -1185,6 +1190,7 @@ service git.Core {
   }
 
   operation CommitTreeInRepo {
+    requires opaque
     input { repository_path: String, commit: GitRef }
     output {
       tree: String from "stdout"
@@ -1196,6 +1202,7 @@ service git.Core {
   }
 
   operation TrackedWorktreeDiffFromInRepo {
+    requires opaque
     input { repository_path: String, treeish: GitRef }
     output {
       paths_nul: String from "stdout"
@@ -1207,6 +1214,7 @@ service git.Core {
   }
 
   operation LsFiles {
+    requires opaque
     input {}
     output { files: List<FilePath> from "stdout_lines" }
     readonly
@@ -1218,6 +1226,7 @@ service git.Core {
   }
 
   operation Diff {
+    requires opaque
     input { base: GitRef, head: GitRef = "HEAD" }
     output { diff: String from "stdout" }
     readonly
@@ -1229,6 +1238,7 @@ service git.Core {
   }
 
   operation DiffNameOnly {
+    requires opaque
     input { base: GitRef, head: GitRef = "HEAD" }
     output {
       paths: List<FilePath> from "stdout_lines"
@@ -1243,6 +1253,7 @@ service git.Core {
   }
 
   operation DiffNameOnlyNoRenames {
+    requires opaque
     input { base: GitRef, head: GitRef = "HEAD" }
     output {
       paths: List<FilePath> from "stdout_lines"
@@ -1258,6 +1269,7 @@ service git.Core {
   }
 
   operation DiffNameOnlyMerge {
+    requires opaque
     input { base: GitRef, head: GitRef = "HEAD" }
     output {
       paths: List<FilePath> from "stdout_lines"
@@ -1272,6 +1284,7 @@ service git.Core {
   }
 
   operation DiffUnified0 {
+    requires opaque
     input { base: GitRef, head: GitRef = "HEAD", range: GitDiffRange }
     output {
       diff: String from "stdout"
@@ -1286,6 +1299,7 @@ service git.Core {
   }
 
   operation DiffNameStatus {
+    requires opaque
     input { base: GitRef, head: GitRef = "HEAD", range: GitDiffRange }
     output {
       raw: String from "stdout"
@@ -1300,6 +1314,7 @@ service git.Core {
   }
 
   operation RevList {
+    requires opaque
     input { since: String }
     output { commits: List<CommitSha> from "stdout_lines" }
     readonly
@@ -1311,6 +1326,7 @@ service git.Core {
   }
 
   operation LogPathCommits {
+    requires Network
     input { path: FilePath }
     output { commits: List<CommitSha> from "stdout_lines" }
     readonly
@@ -1322,6 +1338,7 @@ service git.Core {
   }
 
   operation RevListBefore {
+    requires none
     input { before: String }
     output { base_ref: CommitSha from "stdout" }
     readonly
@@ -1333,6 +1350,7 @@ service git.Core {
   }
 
   operation Show {
+    requires opaque
     input { ref: GitRef, path: FilePath }
     output {
       content: String from "stdout"
@@ -1348,6 +1366,7 @@ service git.Core {
   }
 
   operation RestoreBlobTo {
+    requires opaque
     input { ref: GitRef, path: FilePath, work_tree: FilePath }
     output {
       success: Bool from "exit_success"
@@ -1361,7 +1380,7 @@ service git.Core {
   }
 
   operation FetchNoTags {
-    requires Network
+    requires opaque
     input { remote: String, ref: String, stall_deadline_seconds: Seconds }
     output {
       success: Bool from "exit_success"
@@ -1376,7 +1395,7 @@ service git.Core {
   }
 
   operation FetchPrune {
-    requires Network
+    requires opaque
     input { remote: String }
     output {
       success: Bool from "exit_success"
@@ -1391,6 +1410,7 @@ service git.Core {
   }
 
   operation HeadCommitShort {
+    requires none
     input {}
     output {
       sha: String from "stdout"
@@ -1405,6 +1425,7 @@ service git.Core {
   }
 
   operation ConfigLocalGet {
+    requires none
     input { key: String }
     output {
       success: Bool from "exit_success"
@@ -1421,6 +1442,7 @@ service git.Core {
   }
 
   operation ConfigLocalSet {
+    requires none
     input { key: String, value: String }
     output {
       success: Bool from "exit_success"
@@ -1434,6 +1456,7 @@ service git.Core {
   }
 
   operation ConfigLocalGetInRepo {
+    requires none
     input { repo: FilePath, key: String }
     output {
       success: Bool from "exit_success"
@@ -1450,6 +1473,7 @@ service git.Core {
   }
 
   operation ConfigLocalSetInRepo {
+    requires none
     input { repo: FilePath, key: String, value: String }
     output {
       success: Bool from "exit_success"
@@ -1463,6 +1487,7 @@ service git.Core {
   }
 
   operation InitInRepo {
+    requires none
     input { repo: FilePath }
     output {
       success: Bool from "exit_success"
@@ -1476,6 +1501,7 @@ service git.Core {
   }
 
   operation AddAllInRepo {
+    requires opaque
     input { repo: FilePath }
     output {
       exit_code: Int from "exit_code"
@@ -1485,6 +1511,7 @@ service git.Core {
   }
 
   operation CommitInRepo {
+    requires opaque
     input { repo: FilePath, message: String }
     output {
       exit_code: Int from "exit_code"
@@ -1494,6 +1521,7 @@ service git.Core {
   }
 
   operation CheckoutNewBranchInRepo {
+    requires opaque
     input { repo: FilePath, branch: String }
     output {
       exit_code: Int from "exit_code"
@@ -1503,6 +1531,7 @@ service git.Core {
   }
 
   operation CheckoutNewBranchAtInRepo {
+    requires opaque
     input { repo: FilePath, branch: String, start_point: GitRef }
     output {
       exit_code: Int from "exit_code"
@@ -1512,6 +1541,7 @@ service git.Core {
   }
 
   operation CheckoutBranchInRepo {
+    requires opaque
     input { repo: FilePath, branch: String }
     output {
       exit_code: Int from "exit_code"
@@ -1521,6 +1551,7 @@ service git.Core {
   }
 
   operation MergeNoEditInRepo {
+    requires opaque
     input { repo: FilePath, branch: String }
     output {
       exit_code: Int from "exit_code"
@@ -1531,6 +1562,7 @@ service git.Core {
   }
 
   operation LsFilesUnmergedInRepo {
+    requires opaque
     input { repo: FilePath, path: String }
     output {
       entries: List<String> from "stdout_lines"
@@ -1542,6 +1574,7 @@ service git.Core {
   }
 
   operation LsFilesStageZPathspecInRepo {
+    requires opaque
     input { repo: FilePath, pathspec: String }
     output {
       raw: String from "stdout"
@@ -1557,6 +1590,7 @@ service git.Core {
   }
 
   operation LsFilesStageZInRepo {
+    requires opaque
     input { repo: FilePath }
     output {
       raw: String from "stdout"
@@ -1571,7 +1605,7 @@ service git.Core {
   }
 
   operation LsRemoteRefInRepo {
-    requires Network
+    requires opaque
     input { repo: FilePath, remote: String, ref_name: String }
     output {
       advertised: String from "stdout"
@@ -1583,6 +1617,7 @@ service git.Core {
   }
 
   operation RevParseInRepo {
+    requires opaque
     input { repo: FilePath, target: GitRef }
     output {
       revision: String from "stdout"
@@ -1594,7 +1629,7 @@ service git.Core {
   }
 
   operation FetchForcedRefInRepo {
-    requires Network
+    requires opaque
     input { repo: FilePath, remote: String, refspec: String }
     output {
       exit_code: Int from "exit_code"
@@ -1605,7 +1640,7 @@ service git.Core {
   }
 
   operation FetchForcedRefInRepoTrustingSource {
-    requires Network
+    requires opaque
     input { repo: FilePath, remote: String, refspec: String, upload_pack: String }
     output {
       exit_code: Int from "exit_code"
@@ -1616,7 +1651,7 @@ service git.Core {
   }
 
   operation PushForcedRefInRepo {
-    requires Network
+    requires opaque
     input { repo: FilePath, remote: String, refspec: String }
     output {
       exit_code: Int from "exit_code"
@@ -1627,7 +1662,7 @@ service git.Core {
   }
 
   operation PushRefInRepo {
-    requires Network
+    requires opaque
     input { repo: FilePath, remote: String, refspec: String }
     output {
       exit_code: Int from "exit_code"
@@ -1637,7 +1672,7 @@ service git.Core {
     transport shell { argv: ["git", "-C", "{repo}", "push", "--quiet", "{remote}", "{refspec}"] }
   }
   operation PushRefWithLeaseInRepo {
-    requires Network
+    requires opaque
     input { repo: FilePath, remote: String, refspec: String, lease: String }
     output {
       exit_code: Int from "exit_code"
@@ -1648,6 +1683,7 @@ service git.Core {
   }
 
   operation CatFileBlobInRepo {
+    requires opaque
     input { repo: FilePath, oid: String }
     output {
       content: String from "stdout"
@@ -1662,6 +1698,7 @@ service git.Core {
   }
 
   operation UpdateRefCompareAndSwapInRepo {
+    requires opaque
     input { repo: FilePath, ref: String, new_value: String, expected_old: String }
     output {
       exit_code: Int from "exit_code"
@@ -1674,6 +1711,7 @@ service git.Core {
   }
 
   operation ReflogInRepo {
+    requires opaque
     input { repo: FilePath, ref: String }
     output {
       exit_code: Int from "exit_code"
@@ -1687,6 +1725,7 @@ service git.Core {
   }
 
   operation ListUntrackedInRepo {
+    requires opaque
     input { repo: FilePath }
     output {
       exit_code: Int from "exit_code"
@@ -1700,6 +1739,7 @@ service git.Core {
   }
 
   operation ResetHardInRepo {
+    requires opaque
     input { repo: FilePath, target: String }
     output {
       exit_code: Int from "exit_code"
@@ -1818,6 +1858,7 @@ fn shape_git_rev_parse_argv(repo: FilePath, target: GitRef) -> List<String> {
 
 service git.Worktree {
   operation Add {
+    requires opaque
     input { path: FilePath, branch: NonEmptyStr, remote_ref: GitRef }
     output {
       success: Bool from "exit_success"

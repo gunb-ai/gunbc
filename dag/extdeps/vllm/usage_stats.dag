@@ -4,7 +4,7 @@ import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_1967a5627 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -56,7 +56,9 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 //
 // REVISION-BOUND, like every other reading of this upstream. The roster is what upstream documents
 // at the cited revision; a later revision that adds a field is a different fact, and the binding to
-// vllm_source_revision_read is what makes that decidable instead of a surprise.
+// vllm_source_revision_1967a5627 — the pre-patch reading this roster was documented at, not the
+// live pin the corpus advanced to the patched source on 2026-09-25 — is what makes that decidable
+// instead of a surprise.
 
 // THE TWO CLASSES ARE SEPARATE BECAUSE THEY AUTHORIZE DIFFERENT THINGS. A metadata-only egress can
 // support an admission for a route whose material stays home; an egress carrying any request
@@ -97,22 +99,16 @@ type VllmUsageStatsDisableTerm {
 // no truthiness, no case folding and no "anything non-empty": each of those is a consumer's guess
 // about a reading this module can state.
 //
-// THIS PREDICATE HAS NO CALL SITE TODAY, AND THAT IS A DECLARED FRONTIER RATHER THAN AN OVERSIGHT
-// (DESIGN 3c). Its only consumer was gunbc.spark.first_party_serving spark_lane_disables_usage_stats,
-// which folded it over the environment a container is DECLARED to be created with. That fold was
-// deleted rather than narrowed, because a deciding standing that still consults a declared
-// environment is only postponing the attribution it must not make: agreeing with a declaration does
-// not establish what the process that answered actually does.
-//
-// THE NAMED CONSUMER AND THE TRIGGER. This predicate is what an EFFECTIVE-CONFIGURATION READING
-// feeds -- once a producer can read the environment of the running container and bind it to the
-// offered launch, the assignments it returns are tested here, by upstream's own reading, and the
-// telemetry path resolves. The trigger is that reading, named at gunbc.spark.first_party_serving
-// spark_serving_usage_stats_declared_environment_obligation. It is kept rather than deleted because
-// what it holds is a CITED UPSTREAM READING -- the exact-equality semantics of envs.py, which
-// review 64043 established after a first spelling got the direction wrong in the admitting sense --
-// and re-deriving that from the source a second time is the redundant work DESIGN 2 prices. It is
-// not kept because deleting it would be inconvenient: if the reading never lands, this goes with it.
+// THE NAMED CONSUMER HAS LANDED. This predicate is what an EFFECTIVE-CONFIGURATION READING feeds:
+// gunbc.spark.first_party_serving spark_serving_usage_stats_standing folds the answering container's
+// Config.Env -- carried by the incarnation observation (gunbc.spark.serving_incarnation_observe),
+// bound to the offered launch -- against vllm_usage_stats_reporting's disable_terms through it, so
+// the exact-equality semantics below are executed on every telemetry standing rather than held in
+// reserve. It was kept through the interim -- when its only consumer, the fold over the DECLARED
+// environment, was deleted for postponing the attribution it must not make -- because what it holds
+// is a CITED UPSTREAM READING (the exact-equality semantics of envs.py, which review 64043
+// established after a first spelling got the direction wrong in the admitting sense), and
+// re-deriving that from the source a second time is the redundant work DESIGN 2 prices.
 fn vllm_usage_stats_assignment_disables(term: VllmUsageStatsDisableTerm, name: NonEmptyStr, value: String) -> Bool {
   (name as String) == (term.variable as String) && value == (term.disabling_value as String)
 }
@@ -176,7 +172,7 @@ data vllm_usage_stats_reporting: VllmUsageStatsReporting = VllmUsageStatsReporti
     vllm_usage_stats_do_not_track_term,
   ],
   disable_marker_path: "~/.config/vllm/do_not_track",
-  established_against: vllm_source_revision_read,
+  established_against: vllm_source_revision_1967a5627,
 }
 
 // THE THIRD TERM OF UPSTREAM'S DISJUNCTION IS THE MARKER FILE, carried above as
