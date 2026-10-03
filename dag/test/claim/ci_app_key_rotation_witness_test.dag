@@ -89,6 +89,9 @@ import gunbc.auth.ci_app_key_rotation {
 import extdeps.filesystem.filesystem_io {
   FilesystemFileRead,
   FilesystemFileIndeterminate,
+  FilesystemReadRefused,
+  filesystem_file_observation,
+  filesystem_listing_observation,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -507,9 +510,9 @@ test fn a_readable_mint_record_still_decodes_through_the_read_fold() -> Bool {
 // A record that is not there and a record whose content could not be obtained are two facts, and
 // neither refusal text may claim existence: a failed look does not establish what is on the disk.
 // The Missing and Unreadable refusal arms are constructed here directly; the classifier arm that
-// maps the listing-established absence (FilesystemFileAbsent) onto Missing is the one arm this
-// witness cannot drive from a claim module, because the absence carrier is a sole_constructor of
-// filesystem_io and is not constructible here -- that arm is a one-line match reviewed in the diff.
+// maps the listing-established absence (FilesystemFileAbsent) onto Missing is driven separately
+// through the owner's producers in an_established_absence_of_the_record_refuses_as_missing_...
+// below -- the absence carrier is a sole_constructor of filesystem_io and is never forged here.
 test fn a_missing_record_is_distinct_from_unreadable_and_claims_no_existence() -> Bool {
   let missing = app_key_refusal_text(cause: AppKeyMintObservationMissing { cause: "the record path was supplied but the directory listing establishes absence" as NonEmptyStr })
   let unreadable = app_key_refusal_text(cause: AppKeyMintObservationUnreadable { cause: "permission denied" as NonEmptyStr })
@@ -522,4 +525,25 @@ test fn a_missing_record_is_distinct_from_unreadable_and_claims_no_existence() -
     && ((missing as String) != (unreadable as String))
     && ((missing as String) != (absent as String))
     && ((unreadable as String) != (absent as String))
+}
+
+// MISSING-PATH CONTROL, DRIVEN THROUGH THE OWNER'S PRODUCERS (side-chat finding: constructing the
+// Missing refusal directly exercises only the rendering). A succeeded listing that omits the record
+// name plus a refused read establish the absence inside filesystem_io -- the sole_constructor
+// carrier is produced there, never forged here -- and the full chain must hold: the fold yields
+// FilesystemFileAbsent, the mint classifier maps it to AppKeyMintRecordMissing, the verify
+// classifier maps that to AppKeyMintObservationMissing, and the operator-facing text names the
+// absence and claims no existence.
+test fn an_established_absence_of_the_record_refuses_as_missing_and_claims_no_existence() -> Bool {
+  let listing = filesystem_listing_observation(directory: "/var/lib/gunbc/ci/app-key", success: true, entries: "stale-agent-sock\nnote.txt", error: "unused on success")
+  let observed = filesystem_file_observation(listing: listing, name: "observation.json", path: "/var/lib/gunbc/ci/app-key/observation.json", read: FilesystemReadRefused { error: "permission denied" })
+  match app_key_mint_record_from_observation(observation: observed) {
+    AppKeyMintRecordMissing { cause: c } => {
+      let text = app_key_refusal_text(cause: AppKeyMintObservationMissing { cause: c })
+      contains_text(haystack: text, needle: "no record is there")
+        && !contains_text(haystack: text, needle: "exists")
+    }
+    AppKeyMintRecordDecoded { observation: _ } => false
+    AppKeyMintRecordUnread { cause: _ } => false
+  }
 }
