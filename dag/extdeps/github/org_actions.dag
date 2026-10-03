@@ -3,8 +3,8 @@ module extdeps.github.org_actions
 import std.types { NonEmptyStr, String, Bool, Int, List, Secret }
 import extdeps.github.github { default_api_base }
 import extdeps.github.errors { GitHubErrorShape }
-import extdeps.transports.rest { RestOutcome }
 import std.resources { Network }
+import extdeps.transports.rest { RestResult }
 
 // ORG-LEVEL GITHUB ACTIONS SETTINGS - the upstream surface, cited. These are the org
 // settings that decide whether a repository's workflows can reach the org's self-hosted
@@ -146,7 +146,6 @@ service github.OrgRunnerGroupsRest {
     }
     output {
       result: OrgRunnerGroupListWire
-      outcome: RestOutcome
     }
     readonly
     transport rest {

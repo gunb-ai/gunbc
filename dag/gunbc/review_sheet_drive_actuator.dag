@@ -5,16 +5,17 @@ import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import gunbc.ensure { EnsurePolicy }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
 import extdeps.transports.rest {
+  RestResult,
+  RestAnswered,
+  RestRefused,
   RestExchangeStanding,
   RestReadExchange,
   RestMutationExchange,
-  RestExchangePerformance,
-  RestExchangeSucceeded,
   RestExchangeStatusRefused,
   RestExchangeUnreached,
   RestExchangeUndecodable,
   RestExchangeCommitAmbiguous,
-  classify_rest_outcome,
+  classify_rest_refusal,
 }
 import extdeps.google.drive
 import extdeps.google.drive {
@@ -41,7 +42,7 @@ import gunbc.review_sheet_drive_converge {
 // witnesses deliberately do not execute.
 //
 // WHY A GRANT IS FOLLOWED BY A READ. permissions.create is a mutation, so a lost answer leaves the
-// write in an unknown state -- classify_rest_outcome says so by name, RestExchangeCommitAmbiguous.
+// write in an unknown state -- classify_rest_refusal says so by name, RestExchangeCommitAmbiguous.
 // Retrying would be wrong (a second grant against an existing principal is not a correction) and
 // reporting success would be worse. The recovery is the same ListPermissions the converge already
 // performs: membership is a readable fact, so an ambiguous write is resolved by looking, never by
@@ -57,25 +58,26 @@ fn read_membership(
   drive_id: NonEmptyStr,
   writer: ServiceAccountEmail,
 ) -> DriveMembershipObservation {
-  let read = drive.Permissions.ListPermissions(file_id: drive_id as String)
-  match classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }) {
-    RestExchangeSucceeded => membership_from_permissions(list: read.list, writer: writer)
-    RestExchangeStatusRefused { status, body } =>
-      MembershipUnreadable {
-        reason: join(["permissions.list refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
-      }
-    RestExchangeUnreached { cause } =>
-      MembershipUnreadable {
-        reason: join(["permissions.list never reached Drive: ", cause as String], "") as NonEmptyStr
-      }
-    RestExchangeUndecodable { status, cause } =>
-      MembershipUnreadable {
-        reason: join(["permissions.list answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
-      }
-    RestExchangeCommitAmbiguous { detail } =>
-      MembershipUnreadable {
-        reason: join(["permissions.list reported commit ambiguity, which a read may not: ", detail], "") as NonEmptyStr
-      }
+  match drive.Permissions.ListPermissions(file_id: drive_id as String) {
+    RestAnswered { answer: read } => membership_from_permissions(list: read.list, writer: writer)
+    RestRefused { refusal } => match classify_rest_refusal(standing: RestReadExchange { refusal: refusal }) {
+      RestExchangeStatusRefused { status, body } =>
+        MembershipUnreadable {
+          reason: join(["permissions.list refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+        }
+      RestExchangeUnreached { cause } =>
+        MembershipUnreadable {
+          reason: join(["permissions.list never reached Drive: ", cause as String], "") as NonEmptyStr
+        }
+      RestExchangeUndecodable { status, cause } =>
+        MembershipUnreadable {
+          reason: join(["permissions.list answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+        }
+      RestExchangeCommitAmbiguous { detail } =>
+        MembershipUnreadable {
+          reason: join(["permissions.list reported commit ambiguity, which a read may not: ", detail], "") as NonEmptyStr
+        }
+    }
   }
 }
 
@@ -113,37 +115,38 @@ fn verify_granted_membership(
 fn perform_membership_grant(
   plan: MembershipGrantPlan,
 ) -> MembershipConvergeOutcome {
-  let created = drive.Permissions.CreatePermission(
+  match drive.Permissions.CreatePermission(
     file_id: plan.drive_id as String,
     role: plan.role,
     principal_type: PrincipalUser,
     email_address: plan.writer as String,
-  )
-  match classify_rest_outcome(standing: RestMutationExchange { rest: created.outcome }) {
-    RestExchangeSucceeded =>
+  ) {
+    RestAnswered { answer: created } =>
       verify_granted_membership(
         drive_id: plan.drive_id,
         writer: plan.writer,
         grant_detail: "permissions.create answered success" as NonEmptyStr,
       )
-    RestExchangeCommitAmbiguous { detail } =>
-      verify_granted_membership(
-        drive_id: plan.drive_id,
-        writer: plan.writer,
-        grant_detail: join(["permissions.create left the write ambiguous (", detail, ")"], "") as NonEmptyStr,
-      )
-    RestExchangeStatusRefused { status, body } =>
-      MembershipConvergeRefused {
-        cause: join(["permissions.create refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
-      }
-    RestExchangeUnreached { cause } =>
-      MembershipConvergeRefused {
-        cause: join(["permissions.create never reached Drive: ", cause as String], "") as NonEmptyStr
-      }
-    RestExchangeUndecodable { status, cause } =>
-      MembershipConvergeRefused {
-        cause: join(["permissions.create answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
-      }
+    RestRefused { refusal } => match classify_rest_refusal(standing: RestMutationExchange { refusal: refusal }) {
+      RestExchangeCommitAmbiguous { detail } =>
+        verify_granted_membership(
+          drive_id: plan.drive_id,
+          writer: plan.writer,
+          grant_detail: join(["permissions.create left the write ambiguous (", detail, ")"], "") as NonEmptyStr,
+        )
+      RestExchangeStatusRefused { status, body } =>
+        MembershipConvergeRefused {
+          cause: join(["permissions.create refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+        }
+      RestExchangeUnreached { cause } =>
+        MembershipConvergeRefused {
+          cause: join(["permissions.create never reached Drive: ", cause as String], "") as NonEmptyStr
+        }
+      RestExchangeUndecodable { status, cause } =>
+        MembershipConvergeRefused {
+          cause: join(["permissions.create answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+        }
+    }
   }
 }
 

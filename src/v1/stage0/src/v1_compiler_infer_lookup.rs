@@ -117,6 +117,7 @@ pub struct KnownMethodResolution {
     pub semantics: Option<Rc<MethodSemantics>>,
     pub result_type: Option<Rc<Node>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub rest_operation: bool,
 }
 
 pub fn lookup_in_scope(
@@ -1728,6 +1729,7 @@ pub fn resolve_known_method_node(
                     semantics: Some(semantics.clone()),
                     result_type: Some(mfr.result_type.clone()),
                     diagnostics: tier0.kernel_diagnostics.clone(),
+                    rest_operation: false,
                 })
             }
             std::option::Option::None => {
@@ -1747,11 +1749,13 @@ pub fn resolve_known_method_node(
                         })),
                         result_type: Some(svc_result.result_type.clone()),
                         diagnostics: tier0.kernel_diagnostics.clone(),
+                        rest_operation: svc_result.rest.clone(),
                     }),
                     std::option::Option::None => Rc::new(KnownMethodResolution {
                         semantics: std::option::Option::None,
                         result_type: std::option::Option::None,
                         diagnostics: tier0.kernel_diagnostics.clone(),
+                        rest_operation: false,
                     }),
                 }
             }

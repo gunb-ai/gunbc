@@ -9,7 +9,7 @@ import std.algebra { trim }
 import extdeps.numeric.base16 { base16_encode_lower }
 import extdeps.entropy { Urandom }
 import extdeps.cloud.gcp.secret_manager
-import extdeps.transports.rest { classify_rest_outcome, RestExchangeSucceeded, RestExchangeStatusRefused, RestExchangeCommitAmbiguous, RestExchangeUnreached, RestExchangeUndecodable, RestReadExchange }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, classify_rest_refusal, RestExchangeStatusRefused, RestExchangeCommitAmbiguous, RestExchangeUnreached, RestExchangeUndecodable, RestReadExchange }
 import gunbc.secret_provision { SecretRef, SecretProvisionAttemptIdentity, fleet_secrets_gcp_project }
 import gunbc.secret_provision_actuator {
   observe_secret_container, SecretContainerObserved, SecretContainerAbsent, SecretObservationRefused,
@@ -138,13 +138,15 @@ fn pinned_version_standing(ref: SecretRef, token: Secret) -> PinnedVersionStandi
   if ref.version == "pending" || ref.version == "latest" {
     RefUnpinned
   } else {
-    let seen = gcp.SecretManager.AccessVersion(access_token: token, project_id: ref.project, secret: ref.secret, version: ref.version)
-    match classify_rest_outcome(standing: RestReadExchange { rest: seen.outcome }) {
-      RestExchangeSucceeded => PinnedVersionAccessible { version: ref.version }
-      RestExchangeStatusRefused { status: st, body: b } => PinnedVersionNotAccessible { version: ref.version, detail: concat(to_string(st), concat(" ", b)) }
-      RestExchangeCommitAmbiguous { detail: d } => PinnedVersionNotAccessible { version: ref.version, detail: d as String }
-      RestExchangeUnreached { cause: c } => PinnedVersionNotAccessible { version: ref.version, detail: c as String }
-      RestExchangeUndecodable { status: st, cause: c } => PinnedVersionNotAccessible { version: ref.version, detail: concat(to_string(st), concat(" ", c as String)) }
+    match gcp.SecretManager.AccessVersion(access_token: token, project_id: ref.project, secret: ref.secret, version: ref.version) {
+      RestAnswered { answer: _ } => PinnedVersionAccessible { version: ref.version }
+      RestRefused { refusal } =>
+        match classify_rest_refusal(standing: RestReadExchange { refusal: refusal }) {
+          RestExchangeStatusRefused { status: st, body: b } => PinnedVersionNotAccessible { version: ref.version, detail: concat(to_string(st), concat(" ", b)) }
+          RestExchangeCommitAmbiguous { detail: d } => PinnedVersionNotAccessible { version: ref.version, detail: d as String }
+          RestExchangeUnreached { cause: c } => PinnedVersionNotAccessible { version: ref.version, detail: c as String }
+          RestExchangeUndecodable { status: st, cause: c } => PinnedVersionNotAccessible { version: ref.version, detail: concat(to_string(st), concat(" ", c as String)) }
+        }
     }
   }
 }

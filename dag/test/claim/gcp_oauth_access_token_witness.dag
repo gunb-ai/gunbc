@@ -59,6 +59,7 @@ import gunbc.auth.credentials {
   GcpAdcTokenReady,
   GcpAdcReadRefused,
   GcpAdcDocumentRefused,
+  GcpAdcRefreshRefused,
 }
 
 data witness_adc_path: std.types.FilePath = "/tmp/gunbc_gcp_oauth_witness_adc.json"
@@ -83,18 +84,28 @@ fn adc_outcome_eq(a: GcpAdcTokenOutcome, b: GcpAdcTokenOutcome) -> Bool {
         GcpAdcTokenReady { token: tb } => secret_eq(a: ta, b: tb)
         GcpAdcReadRefused { path: _, cause: _ } => false
         GcpAdcDocumentRefused { path: _, cause: _ } => false
+        GcpAdcRefreshRefused { refusal: _ } => false
       }
     GcpAdcReadRefused { path: pa, cause: ca } =>
       match b {
         GcpAdcReadRefused { path: pb, cause: cb } => pa == pb && ca == cb
         GcpAdcTokenReady { token: _ } => false
         GcpAdcDocumentRefused { path: _, cause: _ } => false
+        GcpAdcRefreshRefused { refusal: _ } => false
       }
     GcpAdcDocumentRefused { path: pa, cause: _ } =>
       match b {
         GcpAdcDocumentRefused { path: pb, cause: _ } => pa == pb
         GcpAdcTokenReady { token: _ } => false
         GcpAdcReadRefused { path: _, cause: _ } => false
+        GcpAdcRefreshRefused { refusal: _ } => false
+      }
+    GcpAdcRefreshRefused { refusal: ra } =>
+      match b {
+        GcpAdcRefreshRefused { refusal: rb } => ra == rb
+        GcpAdcTokenReady { token: _ } => false
+        GcpAdcReadRefused { path: _, cause: _ } => false
+        GcpAdcDocumentRefused { path: _, cause: _ } => false
       }
   }
 }

@@ -108,6 +108,7 @@ import gunbc.roadmap_launch_deployment_receipt {
 import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
 import gunbc.repository { gunbc_repository }
 import extdeps.github.workflow_runs { workflow_run_conclusion_wire_label }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 
 // The one fleet workflow file, named through the generated-artifact authority so the subject and
 // every witness cite the same path.
@@ -458,37 +459,69 @@ fn rlm_routed_base_url() -> String? {
 }
 
 // One predecessor run record, read back from the workflow-runs API by run id (review 5061891290
-// P1-4). A missing conclusion (run not completed) or missing path refuses as its own wire text.
-fn rlm_predecessor_run(run_id: String) -> PredecessorRunProvenance
+// P1-4). A missing conclusion (run not completed) or missing path refuses as its own wire text. A
+// read the API refused is PredecessorRunUnread, which carries no run record at all, so no head or
+// conclusion is reported for a run that was not read.
+type PredecessorRunObservation
+  = PredecessorRunRead { provenance: PredecessorRunProvenance }
+  | PredecessorRunUnread { detail: String }
+
+fn rlm_predecessor_run_refusal_detail(run_id: String, refusal: RestRefusal) -> String {
+  match refusal {
+    RestStatusRefused { status, body } =>
+      join(["workflow-runs API refused the read of run ", run_id, ": HTTP ", to_string(status), ": ", body], "")
+    RestTransportRefused { cause } =>
+      join(["workflow-runs API was not reached for run ", run_id, ": ", cause as String], "")
+    RestBodyUndecodable { status, cause } =>
+      join(["workflow-runs API answered HTTP ", to_string(status), " for run ", run_id, " with a body that did not decode: ", cause as String], "")
+  }
+}
+
+fn rlm_predecessor_run(run_id: String) -> PredecessorRunObservation
 {
-  let got = github.WorkflowRuns.GetRun(
+  match github.WorkflowRuns.GetRun(
     auth_token: "",
     owner: gunbc_repository.owner,
     repo: gunbc_repository.name,
     run_id: run_id,
-  )
-  PredecessorRunProvenance {
-    run_id: run_id,
-    conclusion_wire: (match got.run.conclusion {
-      Present { value: c } => workflow_run_conclusion_wire_label(conclusion: c)
-      Absent => "null (run not completed)"
-    }),
-    head_sha: got.run.head_sha as String,
-    workflow_path: (match got.run.path { Present { value: wp } => wp  Absent => "(path absent from run record)" }),
+  ) {
+    RestRefused { refusal } =>
+      PredecessorRunUnread { detail: rlm_predecessor_run_refusal_detail(run_id: run_id, refusal: refusal) }
+    RestAnswered { answer: got } =>
+      PredecessorRunRead {
+        provenance: PredecessorRunProvenance {
+          run_id: run_id,
+          conclusion_wire: (match got.run.conclusion {
+            Present { value: c } => workflow_run_conclusion_wire_label(conclusion: c)
+            Absent => "null (run not completed)"
+          }),
+          head_sha: got.run.head_sha as String,
+          workflow_path: (match got.run.path { Present { value: wp } => wp  Absent => "(path absent from run record)" }),
+        },
+      }
   }
 }
 
 fn rlm_run_provenance_fact(run: ActionsRunBinding, plan_run_id: String, apply_run_id: String, dashboard_run_id: String) -> RunProvenanceFact
 {
-  let plan_observed = rlm_predecessor_run(run_id: plan_run_id)
-  let apply_observed = rlm_predecessor_run(run_id: apply_run_id)
-  let dashboard_observed = rlm_predecessor_run(run_id: dashboard_run_id)
-  RunProvenanceObserved {
-    receipt_repository: run.repository,
-    plan: plan_observed,
-    apply: apply_observed,
-    dashboard: dashboard_observed,
-    receipt_workflow_ref: (if run_binding_names_workflow_file(binding: run, workflow_path: rlm_workflow_file_path()) { ReceiptWorkflowRefNamesFile } else { ReceiptWorkflowRefForeign { workflow_ref: run.workflow_ref } }),
+  match rlm_predecessor_run(run_id: plan_run_id) {
+    PredecessorRunUnread { detail: d } => RunProvenanceUnobserved { detail: join(["plan: ", d], "") }
+    PredecessorRunRead { provenance: plan_observed } =>
+      match rlm_predecessor_run(run_id: apply_run_id) {
+        PredecessorRunUnread { detail: d } => RunProvenanceUnobserved { detail: join(["apply: ", d], "") }
+        PredecessorRunRead { provenance: apply_observed } =>
+          match rlm_predecessor_run(run_id: dashboard_run_id) {
+            PredecessorRunUnread { detail: d } => RunProvenanceUnobserved { detail: join(["dashboard: ", d], "") }
+            PredecessorRunRead { provenance: dashboard_observed } =>
+              RunProvenanceObserved {
+                receipt_repository: run.repository,
+                plan: plan_observed,
+                apply: apply_observed,
+                dashboard: dashboard_observed,
+                receipt_workflow_ref: (if run_binding_names_workflow_file(binding: run, workflow_path: rlm_workflow_file_path()) { ReceiptWorkflowRefNamesFile } else { ReceiptWorkflowRefForeign { workflow_ref: run.workflow_ref } }),
+              }
+          }
+      }
   }
 }
 

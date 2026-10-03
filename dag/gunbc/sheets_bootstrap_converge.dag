@@ -21,12 +21,14 @@ import extdeps.cloud.gcp.serviceusage
 import extdeps.transports.rest {
   RestReadExchange,
   RestMutationExchange,
-  RestExchangeSucceeded,
   RestExchangeStatusRefused,
   RestExchangeUnreached,
   RestExchangeUndecodable,
   RestExchangeCommitAmbiguous,
-  classify_rest_outcome,
+  classify_rest_refusal,
+  RestResult,
+  RestAnswered,
+  RestRefused,
 }
 import gunbc.gcp_service_enablement {
   service_enablement_from_state_wire,
@@ -86,21 +88,23 @@ fn read_project(
   token: Secret,
   project_id: GcpProjectId,
 ) -> ProjectConvergeObservation {
-  let read = gcp.ResourceManager.GetProject(access_token: token, project_id: project_id)
-  match classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }) {
-    RestExchangeSucceeded => project_observation_from_state(project_id: project_id, state: read.state)
-    RestExchangeStatusRefused { status, body } => project_refusal_is_absence(status: status, body: body)
-    RestExchangeUnreached { cause } =>
-      ProjectUnreadable {
-        reason: join(["projects.get never reached Resource Manager: ", cause as String], "") as NonEmptyStr
-      }
-    RestExchangeUndecodable { status, cause } =>
-      ProjectUnreadable {
-        reason: join(["projects.get answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
-      }
-    RestExchangeCommitAmbiguous { detail } =>
-      ProjectUnreadable {
-        reason: join(["projects.get reported commit ambiguity, which a read may not: ", detail], "") as NonEmptyStr
+  match gcp.ResourceManager.GetProject(access_token: token, project_id: project_id) {
+    RestAnswered { answer: read } => project_observation_from_state(project_id: project_id, state: read.state)
+    RestRefused { refusal } =>
+      match classify_rest_refusal(standing: RestReadExchange { refusal: refusal }) {
+        RestExchangeStatusRefused { status, body } => project_refusal_is_absence(status: status, body: body)
+        RestExchangeUnreached { cause } =>
+          ProjectUnreadable {
+            reason: join(["projects.get never reached Resource Manager: ", cause as String], "") as NonEmptyStr
+          }
+        RestExchangeUndecodable { status, cause } =>
+          ProjectUnreadable {
+            reason: join(["projects.get answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+          }
+        RestExchangeCommitAmbiguous { detail } =>
+          ProjectUnreadable {
+            reason: join(["projects.get reported commit ambiguity, which a read may not: ", detail], "") as NonEmptyStr
+          }
       }
   }
 }
@@ -172,29 +176,31 @@ fn perform_project_create(
   display_name: NonEmptyStr,
   parent: NonEmptyStr,
 ) -> ProjectConvergeOutcome {
-  let created = gcp.ResourceManager.CreateProject(
+  match gcp.ResourceManager.CreateProject(
     access_token: token,
     project_id: project_id,
     display_name: display_name,
     parent: parent,
-  )
-  match classify_rest_outcome(standing: RestMutationExchange { rest: created.outcome }) {
-    RestExchangeSucceeded => ProjectCreateAccepted { operation_name: created.operation_name }
-    RestExchangeStatusRefused { status, body } =>
-      ProjectConvergeRefused {
-        cause: join(["projects.create refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
-      }
-    RestExchangeUnreached { cause } =>
-      ProjectConvergeRefused {
-        cause: join(["projects.create never reached Resource Manager, so the project may or may not be being created: ", cause as String], "") as NonEmptyStr
-      }
-    RestExchangeUndecodable { status, cause } =>
-      ProjectConvergeRefused {
-        cause: join(["projects.create answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
-      }
-    RestExchangeCommitAmbiguous { detail } =>
-      ProjectConvergeRefused {
-        cause: join(["projects.create left the request ambiguous; re-read projects.get before retrying: ", detail], "") as NonEmptyStr
+  ) {
+    RestAnswered { answer: created } => ProjectCreateAccepted { operation_name: created.operation_name }
+    RestRefused { refusal } =>
+      match classify_rest_refusal(standing: RestMutationExchange { refusal: refusal }) {
+        RestExchangeStatusRefused { status, body } =>
+          ProjectConvergeRefused {
+            cause: join(["projects.create refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+          }
+        RestExchangeUnreached { cause } =>
+          ProjectConvergeRefused {
+            cause: join(["projects.create never reached Resource Manager, so the project may or may not be being created: ", cause as String], "") as NonEmptyStr
+          }
+        RestExchangeUndecodable { status, cause } =>
+          ProjectConvergeRefused {
+            cause: join(["projects.create answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+          }
+        RestExchangeCommitAmbiguous { detail } =>
+          ProjectConvergeRefused {
+            cause: join(["projects.create left the request ambiguous; re-read projects.get before retrying: ", detail], "") as NonEmptyStr
+          }
       }
   }
 }
@@ -214,49 +220,51 @@ fn read_service_enablement(
   project_id: GcpProjectId,
   service_id: NonEmptyStr,
 ) -> ServiceEnablementObservation {
-  let read = gcp.ServiceUsage.GetService(
+  match gcp.ServiceUsage.GetService(
     access_token: token,
     project_id: project_id,
     service_id: service_id as String,
-  )
-  match classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }) {
-    RestExchangeSucceeded =>
+  ) {
+    RestAnswered { answer: read } =>
       service_enablement_from_state_wire(project: project_id, service_id: service_id, state_wire: read.state)
-    RestExchangeStatusRefused { status, body } =>
-      ServiceEnablementUnobserved {
-        project: project_id,
-        service_id: service_id,
-        cause: join(
-          ["serviceusage GetService answered ", to_string(status), ": ", body],
-          "",
-        ) as NonEmptyStr,
-      }
-    RestExchangeUnreached { cause } =>
-      ServiceEnablementUnobserved {
-        project: project_id,
-        service_id: service_id,
-        cause: join(
-          ["serviceusage GetService never reached the endpoint: ", cause as String],
-          "",
-        ) as NonEmptyStr,
-      }
-    RestExchangeUndecodable { status, cause } =>
-      ServiceEnablementUnobserved {
-        project: project_id,
-        service_id: service_id,
-        cause: join(
-          ["serviceusage GetService answered ", to_string(status), " with a body this model could not decode: ", cause as String],
-          "",
-        ) as NonEmptyStr,
-      }
-    RestExchangeCommitAmbiguous { detail } =>
-      ServiceEnablementUnobserved {
-        project: project_id,
-        service_id: service_id,
-        cause: join(
-          ["serviceusage GetService is a read and reported an ambiguous commit, which should not arise on a read exchange: ", detail as String],
-          "",
-        ) as NonEmptyStr,
+    RestRefused { refusal } =>
+      match classify_rest_refusal(standing: RestReadExchange { refusal: refusal }) {
+        RestExchangeStatusRefused { status, body } =>
+          ServiceEnablementUnobserved {
+            project: project_id,
+            service_id: service_id,
+            cause: join(
+              ["serviceusage GetService answered ", to_string(status), ": ", body],
+              "",
+            ) as NonEmptyStr,
+          }
+        RestExchangeUnreached { cause } =>
+          ServiceEnablementUnobserved {
+            project: project_id,
+            service_id: service_id,
+            cause: join(
+              ["serviceusage GetService never reached the endpoint: ", cause as String],
+              "",
+            ) as NonEmptyStr,
+          }
+        RestExchangeUndecodable { status, cause } =>
+          ServiceEnablementUnobserved {
+            project: project_id,
+            service_id: service_id,
+            cause: join(
+              ["serviceusage GetService answered ", to_string(status), " with a body this model could not decode: ", cause as String],
+              "",
+            ) as NonEmptyStr,
+          }
+        RestExchangeCommitAmbiguous { detail } =>
+          ServiceEnablementUnobserved {
+            project: project_id,
+            service_id: service_id,
+            cause: join(
+              ["serviceusage GetService is a read and reported an ambiguous commit, which should not arise on a read exchange: ", detail as String],
+              "",
+            ) as NonEmptyStr,
+          }
       }
   }
 }
@@ -319,29 +327,31 @@ fn perform_service_enable(
   project_id: GcpProjectId,
   service_id: NonEmptyStr,
 ) -> ServiceEnableOutcome {
-  let enabled = gcp.ServiceUsage.EnableService(
+  match gcp.ServiceUsage.EnableService(
     access_token: token,
     project_id: project_id,
     service_id: service_id as String,
-  )
-  match classify_rest_outcome(standing: RestMutationExchange { rest: enabled.outcome }) {
-    RestExchangeSucceeded =>
+  ) {
+    RestAnswered { answer: enabled } =>
       ServiceEnableAccepted { service_id: service_id, operation_name: enabled.operation_name }
-    RestExchangeStatusRefused { status, body } =>
-      ServiceEnableRefused {
-        cause: join(["services.enable refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
-      }
-    RestExchangeUnreached { cause } =>
-      ServiceEnableRefused {
-        cause: join(["services.enable never reached serviceusage: ", cause as String], "") as NonEmptyStr
-      }
-    RestExchangeUndecodable { status, cause } =>
-      ServiceEnableRefused {
-        cause: join(["services.enable answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
-      }
-    RestExchangeCommitAmbiguous { detail } =>
-      ServiceEnableRefused {
-        cause: join(["services.enable left the request ambiguous; re-read GetService before retrying: ", detail], "") as NonEmptyStr
+    RestRefused { refusal } =>
+      match classify_rest_refusal(standing: RestMutationExchange { refusal: refusal }) {
+        RestExchangeStatusRefused { status, body } =>
+          ServiceEnableRefused {
+            cause: join(["services.enable refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+          }
+        RestExchangeUnreached { cause } =>
+          ServiceEnableRefused {
+            cause: join(["services.enable never reached serviceusage: ", cause as String], "") as NonEmptyStr
+          }
+        RestExchangeUndecodable { status, cause } =>
+          ServiceEnableRefused {
+            cause: join(["services.enable answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+          }
+        RestExchangeCommitAmbiguous { detail } =>
+          ServiceEnableRefused {
+            cause: join(["services.enable left the request ambiguous; re-read GetService before retrying: ", detail], "") as NonEmptyStr
+          }
       }
   }
 }
@@ -362,26 +372,28 @@ fn read_service_account(
   project_id: GcpProjectId,
   sa_email: ServiceAccountEmail,
 ) -> ServiceAccountObservation {
-  let read = gcp.IamAdmin.GetServiceAccount(
+  match gcp.IamAdmin.GetServiceAccount(
     access_token: token,
     project_id: project_id,
     sa_email: sa_email,
-  )
-  match classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }) {
-    RestExchangeSucceeded => ServiceAccountObserved { email: read.email }
-    RestExchangeStatusRefused { status, body } =>
-      service_account_refusal_is_absence(status: status, body: body)
-    RestExchangeUnreached { cause } =>
-      ServiceAccountUnreadable {
-        reason: join(["serviceAccounts.get never reached IAM: ", cause as String], "") as NonEmptyStr
-      }
-    RestExchangeUndecodable { status, cause } =>
-      ServiceAccountUnreadable {
-        reason: join(["serviceAccounts.get answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
-      }
-    RestExchangeCommitAmbiguous { detail } =>
-      ServiceAccountUnreadable {
-        reason: join(["serviceAccounts.get reported commit ambiguity, which a read may not: ", detail], "") as NonEmptyStr
+  ) {
+    RestAnswered { answer: read } => ServiceAccountObserved { email: read.email }
+    RestRefused { refusal } =>
+      match classify_rest_refusal(standing: RestReadExchange { refusal: refusal }) {
+        RestExchangeStatusRefused { status, body } =>
+          service_account_refusal_is_absence(status: status, body: body)
+        RestExchangeUnreached { cause } =>
+          ServiceAccountUnreadable {
+            reason: join(["serviceAccounts.get never reached IAM: ", cause as String], "") as NonEmptyStr
+          }
+        RestExchangeUndecodable { status, cause } =>
+          ServiceAccountUnreadable {
+            reason: join(["serviceAccounts.get answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+          }
+        RestExchangeCommitAmbiguous { detail } =>
+          ServiceAccountUnreadable {
+            reason: join(["serviceAccounts.get reported commit ambiguity, which a read may not: ", detail], "") as NonEmptyStr
+          }
       }
   }
 }
@@ -434,28 +446,30 @@ fn perform_service_account_create(
   display_name: NonEmptyStr,
   sa_email: ServiceAccountEmail,
 ) -> ServiceAccountConvergeOutcome {
-  let created = gcp.IamAdmin.CreateServiceAccount(
+  match gcp.IamAdmin.CreateServiceAccount(
     access_token: token,
     project_id: project_id,
     account_id: account_id,
     display_name: display_name,
-  )
-  match classify_rest_outcome(standing: RestMutationExchange { rest: created.outcome }) {
-    RestExchangeSucceeded =>
+  ) {
+    RestAnswered { answer: _ } =>
       verify_created_service_account(token: token, project_id: project_id, sa_email: sa_email, detail: "serviceAccounts.create answered success" as NonEmptyStr)
-    RestExchangeCommitAmbiguous { detail } =>
-      verify_created_service_account(token: token, project_id: project_id, sa_email: sa_email, detail: join(["serviceAccounts.create left the write ambiguous (", detail, ")"], "") as NonEmptyStr)
-    RestExchangeStatusRefused { status, body } =>
-      ServiceAccountConvergeRefused {
-        cause: join(["serviceAccounts.create refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
-      }
-    RestExchangeUnreached { cause } =>
-      ServiceAccountConvergeRefused {
-        cause: join(["serviceAccounts.create never reached IAM: ", cause as String], "") as NonEmptyStr
-      }
-    RestExchangeUndecodable { status, cause } =>
-      ServiceAccountConvergeRefused {
-        cause: join(["serviceAccounts.create answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+    RestRefused { refusal } =>
+      match classify_rest_refusal(standing: RestMutationExchange { refusal: refusal }) {
+        RestExchangeCommitAmbiguous { detail } =>
+          verify_created_service_account(token: token, project_id: project_id, sa_email: sa_email, detail: join(["serviceAccounts.create left the write ambiguous (", detail, ")"], "") as NonEmptyStr)
+        RestExchangeStatusRefused { status, body } =>
+          ServiceAccountConvergeRefused {
+            cause: join(["serviceAccounts.create refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+          }
+        RestExchangeUnreached { cause } =>
+          ServiceAccountConvergeRefused {
+            cause: join(["serviceAccounts.create never reached IAM: ", cause as String], "") as NonEmptyStr
+          }
+        RestExchangeUndecodable { status, cause } =>
+          ServiceAccountConvergeRefused {
+            cause: join(["serviceAccounts.create answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+          }
       }
   }
 }

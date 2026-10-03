@@ -23,13 +23,15 @@ import extdeps.languages.json.parse {
   json_field_string,
 }
 import extdeps.transports.rest {
+  RestResult,
+  RestAnswered,
+  RestRefused,
   RestReadExchange,
-  RestExchangeSucceeded,
   RestExchangeStatusRefused,
   RestExchangeUnreached,
   RestExchangeUndecodable,
   RestExchangeCommitAmbiguous,
-  classify_rest_outcome,
+  classify_rest_refusal,
 }
 import extdeps.google.drive
 import gunbc.review_sheet_drive_converge {
@@ -127,44 +129,45 @@ fn legacy_search_evidence(
 fn read_superseded_marker_extent(
   subject: ReviewSheetIdentitySubject,
 ) -> LegacyExtentEvidence uses net: Network {
-  let read = drive.Files.ListFiles(
+  match drive.Files.ListFiles(
     drive_id: subject.drive_id as String,
     query: review_sheet_marker_query(
       marker_field: subject.superseded_marker_field,
       marker_value: subject.marker_value,
     ),
-  )
-  match classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }) {
-    RestExchangeSucceeded =>
+  ) {
+    RestAnswered { answer: read } =>
       legacy_search_evidence(subject: subject, observed: spreadsheet_from_file_list(list: read.list))
-    RestExchangeStatusRefused { status, body } =>
-      legacy_search_evidence(
-        subject: subject,
-        observed: SheetSearchUnreadable {
-          reason: join(["superseded-marker files.list refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
-        },
-      )
-    RestExchangeUnreached { cause } =>
-      legacy_search_evidence(
-        subject: subject,
-        observed: SheetSearchUnreadable {
-          reason: join(["superseded-marker files.list never reached Drive: ", cause as String], "") as NonEmptyStr
-        },
-      )
-    RestExchangeUndecodable { status, cause } =>
-      legacy_search_evidence(
-        subject: subject,
-        observed: SheetSearchUnreadable {
-          reason: join(["superseded-marker files.list answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
-        },
-      )
-    RestExchangeCommitAmbiguous { detail } =>
-      legacy_search_evidence(
-        subject: subject,
-        observed: SheetSearchUnreadable {
-          reason: join(["superseded-marker files.list reported commit ambiguity, which a read may not: ", detail], "") as NonEmptyStr
-        },
-      )
+    RestRefused { refusal } => match classify_rest_refusal(standing: RestReadExchange { refusal: refusal }) {
+      RestExchangeStatusRefused { status, body } =>
+        legacy_search_evidence(
+          subject: subject,
+          observed: SheetSearchUnreadable {
+            reason: join(["superseded-marker files.list refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+          },
+        )
+      RestExchangeUnreached { cause } =>
+        legacy_search_evidence(
+          subject: subject,
+          observed: SheetSearchUnreadable {
+            reason: join(["superseded-marker files.list never reached Drive: ", cause as String], "") as NonEmptyStr
+          },
+        )
+      RestExchangeUndecodable { status, cause } =>
+        legacy_search_evidence(
+          subject: subject,
+          observed: SheetSearchUnreadable {
+            reason: join(["superseded-marker files.list answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+          },
+        )
+      RestExchangeCommitAmbiguous { detail } =>
+        legacy_search_evidence(
+          subject: subject,
+          observed: SheetSearchUnreadable {
+            reason: join(["superseded-marker files.list reported commit ambiguity, which a read may not: ", detail], "") as NonEmptyStr
+          },
+        )
+    }
   }
 }
 
