@@ -2215,18 +2215,28 @@ pub fn install_cross_claim_derived_share<I: IntoIterator<Item = Rc<Node>>>(
     // admitted everywhere, the widening this gate exists to prevent.
     let previous: Vec<usize> =
         CROSS_CLAIM_SITE_GATED.with(|g| g.borrow().iter().copied().collect());
-    CROSS_CLAIM_PURE_ROSTER.with(|r| {
+    // A SITE GATE MAY ONLY NARROW WHAT THE DERIVATION ALONE ADMITS. A producer already admitted
+    // without a gate -- a carried-input producer on the roster, or the built-in `prepare_grammar`
+    // arm admitted by name -- keeps every call site: gating it would withdraw an admission the
+    // derivation never granted, which is how floor probe 37114012751 made 59 claims each
+    // re-prepare the grammar.
+    let gated: Vec<usize> = CROSS_CLAIM_PURE_ROSTER.with(|r| {
         let mut r = r.borrow_mut();
         for ptr in &previous {
             r.remove(ptr);
         }
+        let mut gated = Vec::new();
         for node in &nodes {
-            r.insert(Rc::as_ptr(node) as usize);
+            let ptr = Rc::as_ptr(node) as usize;
+            if node.name == "prepare_grammar" || r.contains(&ptr) {
+                continue;
+            }
+            r.insert(ptr);
+            gated.push(ptr);
         }
+        gated
     });
-    CROSS_CLAIM_SITE_GATED.with(|g| {
-        *g.borrow_mut() = nodes.iter().map(|n| Rc::as_ptr(n) as usize).collect();
-    });
+    CROSS_CLAIM_SITE_GATED.with(|g| *g.borrow_mut() = gated.into_iter().collect());
     CROSS_CLAIM_ADMITTED_SITES.with(|a| *a.borrow_mut() = sites);
     for node in &nodes {
         keep_cross_claim_fn(node);
@@ -3665,6 +3675,43 @@ mod cross_claim_memo_tests {
                 other => panic!("field '{name}' must resolve via fields_get, got {other:?}"),
             }
         }
+    }
+
+    // THE GATE NEVER NARROWS AN EXISTING ADMISSION: a producer admitted ungated before the derived
+    // share is installed (here, by the roster) keeps every call site even when the derivation also
+    // admits it at one site.
+    #[test]
+    fn a_derived_admission_never_gates_a_producer_already_admitted_ungated() {
+        use super::{
+            cross_claim_site_admitted, install_cross_claim_derived_share,
+            install_cross_claim_pure_share_roster,
+        };
+        super::clear_cross_claim_pure_memos();
+        let node_at = |start: i64, end: i64| {
+            make_expr_node(
+                Rc::new(
+                    crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+                ),
+                Rc::new(ExprData::NoExprData),
+                Rc::new(im_vec![]),
+                None,
+                Rc::new(crate::std_types::SourceSpan {
+                    file: "workspace/src/g.dag".to_string(),
+                    start,
+                    end,
+                }),
+            )
+        };
+        let carried = node_at(0, 1);
+        install_cross_claim_pure_share_roster([carried.clone()]);
+        let mut sites = std::collections::HashSet::new();
+        sites.insert(("workspace/src/g.dag".to_string(), 10, 20));
+        install_cross_claim_derived_share([carried.clone()], sites);
+        assert!(
+            cross_claim_site_admitted(&carried, &node_at(50, 60)),
+            "an already-admitted producer keeps a site the derivation did not list"
+        );
+        super::clear_cross_claim_pure_memos();
     }
 
     // THE COST FLOOR IS APPLIED AT RETENTION, TO THE FILL'S OWN STEPS. The pair varies only the
