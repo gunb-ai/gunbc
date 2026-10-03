@@ -74,7 +74,6 @@ import std.materialization_provider {
   admission_is_refused_wrong_artifact_write, admission_is_refused_wrong_content_write,
   completeness_is_complete
 }
-import extdeps.realization.resolved_graph { resolved_graph_cache_id }
 import gunbc.materialization_provider_targets {
   materialization_provider_target_count,
   materialization_provider_targets_contain,
@@ -133,8 +132,8 @@ fn lookup_is_refused_unqualified_persisted_format(l: ProviderLookup) -> Bool {
 // the weakened-roster attack any more; the chained-eviction witness folds the first admission
 // instead of projecting a store from its refusal arms (the deleted admission_store). The v1-shape
 // incomplete artifact (graph+source_indices, no compile-clean diagnostic union) is the modeled form
-// of extdeps.realization.resolved_graph's live disk-hit refuse arm — the contract's first named
-// consumer target.
+// of the v1 resolved-graph disk-hit refuse arm, which was the contract's first named consumer target
+// until that disk tier was deleted on 2026-10-03.
 
 fn witness_compiler() -> DeclaredInput {
   compiler_identity_input(digest: content_hash_atom(value: "compiler-identity-1"))
@@ -683,8 +682,8 @@ test fn red_typecheck_key_tracks_the_authority_when_an_import_changes() -> Bool 
 // impossible; these show omitting is now impossible too. A complete resolved-graph artifact reaches
 // its union through a REQUIRED field, so the v1 shape can no longer be spelled as a
 // ResolvedGraphArtifact at all — it is only expressible as the named LegacyIncompleteArtifact
-// variant, which is exactly the extdeps.realization.resolved_graph disk-hit refuse arm this
-// contract's first consumer target retires. The completeness check is therefore still LIVE rather
+// variant, which is exactly the v1 resolved-graph disk-hit refuse arm (its disk tier deleted on
+// 2026-10-03). The completeness check is therefore still LIVE rather
 // than inert: it is what measures that legacy variant, and the refusal below is reached by
 // execution.
 
@@ -710,9 +709,9 @@ test fn completeness_holds_when_all_required_outputs_are_carried() -> Bool {
   ))
 }
 
-test fn consumer_target_frontier_names_seven_caches_with_typed_binds() -> Bool {
-  (materialization_provider_target_count() == 7)
-    && materialization_provider_targets_contain(id: resolved_graph_cache_id)
+test fn consumer_target_frontier_names_six_caches_with_typed_binds() -> Bool {
+  (materialization_provider_target_count() == 6)
+    && materialization_provider_targets_contain(id: typed_module_cache_id)
     && materialization_provider_targets_all_bound()
 }
 
