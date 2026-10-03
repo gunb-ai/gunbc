@@ -786,7 +786,10 @@ fn checkpoint_cache_bytes_lines(ctx: SparkMaterializeContext) -> String {
   join(map([Glm53NativeFp8, Glm53FlashNvidiaNvfp4], c => match serving_checkpoint_row(c: c) {
     Absent => ""
     Present { value: row } =>
-      observe_leg(ctx: ctx, what: join(["host cache bytes of ", serving_checkpoint_wire(c: c) as String, " (completed files dereferenced; then in-flight partials)"], ""), argv: ["sh", "-c", "du -sbL \"$1\"/snapshots 2>/dev/null; find \"$1\"/blobs -name '*.incomplete' -printf '%s\\n' 2>/dev/null | awk '{s+=$1} END {print s+0, \"bytes in .incomplete\"}'", "sh", hub_repo_cache_directory(cache_root: spark_hub_cache_root, repo: row.repo) as String])
+      join([
+        observe_leg(ctx: ctx, what: join(["completed bytes of ", serving_checkpoint_wire(c: c) as String, " (snapshot dereferenced)"], ""), argv: ["du", "-sbL", join([hub_repo_cache_directory(cache_root: spark_hub_cache_root, repo: row.repo) as String, "/snapshots"], "")]),
+        observe_leg(ctx: ctx, what: join(["in-flight partials of ", serving_checkpoint_wire(c: c) as String, " (bytes per .incomplete file)"], ""), argv: ["find", join([hub_repo_cache_directory(cache_root: spark_hub_cache_root, repo: row.repo) as String, "/blobs"], ""), "-name", "*.incomplete", "-printf", "%s\n"]),
+      ], "")
   }), "")
 }
 
