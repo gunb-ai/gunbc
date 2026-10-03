@@ -1,0 +1,180 @@
+module v2.test.emit.dag_bind_let_block_scoped
+
+import v2.compiler.parse { PreparedModeled, PreparedVoidGrammar, parse_production_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.extdeps.languages.dag {
+  dag_value_expression_projection,
+  parse_production_emitted_identity_optional
+}
+import v2.std.compilers.target_model {
+  BoundToken,
+  FixedToken,
+  ConcreteSyntaxToken,
+  bind_let_value_producing_tokens
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra { list_append }
+import v2.std.compilers.lexing { Token }
+import v2.std.algebra { any, fold_list, length }
+import std.algebra { list_snoc_item }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.optional { Absent, Optional, Present }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A CORE BIND EMITTED THROUGH THE dag TARGET PARSES BACK AS THE SAME BINDS, AT EXPRESSION POSITION.
+// dag declares no separator (v2.std.compilers.target_model TargetBindLetShape, in_token Absent), so a
+// Bind is emitted block-scoped: `{ let k = (v) { b } }`. The control nests one Bind as the VALUE of
+// another -- the hardest position, inside the group -- emits it with the real emitter
+// (bind_let_value_producing_tokens over dag_value_expression_projection), and parses the emitted tokens
+// with the dag grammar as an expression (the `expr` production, where a value is owed). It must parse,
+// hold exactly two let_expr nodes with one inside the other, and carry no `in` token: what the emitter
+// writes is what the grammar reads, one way. The body cases below do the same for a bare name, an
+// empty brace literal, a `-`-led expression and a nested Bind. Each claim pays one parse of its own
+// tokens (DESIGN section 3's witness rule).
+fn dbl_token(binding: Symbol) -> List<ConcreteSyntaxToken> {
+  [BoundToken { token_class: ^dag_token_ident, binding: binding }]
+}
+
+fn dbl_bind(value: List<ConcreteSyntaxToken>) -> List<ConcreteSyntaxToken> {
+  dbl_bind_body(value: value, body: dbl_token(binding: ^dag_binding_bind_x))
+}
+
+fn dbl_bind_body(value: List<ConcreteSyntaxToken>, body: List<ConcreteSyntaxToken>) -> List<ConcreteSyntaxToken> {
+  bind_let_value_producing_tokens(
+    projection: dag_value_expression_projection(),
+    key_tokens: dbl_token(binding: ^dag_binding_bind_x),
+    value_tokens: value,
+    body_tokens: body
+  )
+}
+
+// The emitted TOKENS are parsed as the expression they form (the dag grammar's `expr` production, over
+// the shared prepared grammar): the emitter's product is a token sequence, and rendering it to text
+// is a separate step (see a_single_bind_emits_block_scoped_tokens). So a claim pays for its own
+// tokens and no render, lexer or module around them.
+fn dbl_parse(concrete: List<ConcreteSyntaxToken>) -> Optional<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: prepared, diagnostics: _ } =>
+      match prepared {
+        PreparedVoidGrammar => Absent
+        PreparedModeled { modeled: modeled, materialization: m } =>
+          match parse_production_prepared(
+            tokens: dbl_lexed(concrete: concrete),
+            validated: modeled.validated,
+            analysis: modeled.analysis,
+            production_name: ^dag_production_expr,
+            materialization: m
+          ) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: artifact, diagnostics: _ } => dbl_tree(node: artifact.tree)
+          }
+      }
+  }
+}
+
+// The lexer's token for each emitted token: its class, and for a bound token its spelling.
+fn dbl_lexed(concrete: List<ConcreteSyntaxToken>) -> List<Token> {
+  fold_list(xs: concrete, empty: [], cons: fn(acc, c) {
+    list_snoc_item(xs: acc, item: dbl_lexed_one(token: c, at: length(xs: acc)))
+  })
+}
+
+fn dbl_lexed_one(token: ConcreteSyntaxToken, at: Int) -> Token {
+  match token {
+    FixedToken { token_class: c } => Token { class: c, lexeme: "", file: ^dbl_probe, start: at, end: at + 1 }
+    BoundToken { token_class: c, binding: b } =>
+      Token { class: c, lexeme: dbl_spelling(binding: b), file: ^dbl_probe, start: at, end: at + 1 }
+  }
+}
+
+fn dbl_spelling(binding: Symbol) -> String {
+  if binding == ^dag_binding_bind_x { "x" } else { "a" }
+}
+
+fn dbl_has_in(concrete: List<ConcreteSyntaxToken>) -> Bool {
+  any(xs: concrete, predicate: fn(c) { dbl_class(token: c) == ^dag_token_kw_in })
+}
+
+fn dbl_class(token: ConcreteSyntaxToken) -> Symbol {
+  match token {
+    FixedToken { token_class: c } => c
+    BoundToken { token_class: c, binding: _ } => c
+  }
+}
+
+fn dbl_tree(node: Node) -> Optional<Node> { Present { value: node } }
+
+fn dbl_is_let(node: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } => id == ^dag_surface_let_expr
+    Absent => false
+  }
+}
+
+fn dbl_count_lets(root: Node) -> Int {
+  let here = if dbl_is_let(node: root) { 1 } else { 0 }
+  fold(root.children, init: here, f: fn(acc, e) { acc + dbl_count_lets(root: e.target) })
+}
+
+// A let with another let somewhere under it.
+fn dbl_has_nested_let(root: Node) -> Bool {
+  if dbl_is_let(node: root) && fold(root.children, init: 0, f: fn(acc, e) { acc + dbl_count_lets(root: e.target) }) == 1 {
+    true
+  } else {
+    fold(root.children, init: false, f: fn(found, e) { found || dbl_has_nested_let(root: e.target) })
+  }
+}
+
+fn dbl_reparses_to_two_nested_lets(concrete: List<ConcreteSyntaxToken>) -> Bool {
+  match dbl_parse(concrete: concrete) {
+    Present { value: tree } => dbl_count_lets(root: tree) == 2 && dbl_has_nested_let(root: tree)
+    Absent => false
+  }
+}
+
+// One Bind with the given body, at expression position: it parses, and it holds exactly `lets` let
+// nodes (the binding, plus any the body itself holds) -- the body is read as the body, never
+// absorbed into the value or into a literal.
+fn dbl_body_round_trips(body: List<ConcreteSyntaxToken>, lets: Int) -> Bool {
+  match dbl_parse(concrete: dbl_bind_body(value: dbl_token(binding: ^dag_binding_pick_lit_one), body: body)) {
+    Present { value: tree } => dbl_count_lets(root: tree) == lets
+    Absent => false
+  }
+}
+
+test fn a_bare_identifier_body_round_trips() -> Bool {
+  dbl_body_round_trips(body: dbl_token(binding: ^dag_binding_bind_x), lets: 1)
+}
+
+test fn an_empty_brace_literal_body_round_trips() -> Bool {
+  dbl_body_round_trips(body: [FixedToken { token_class: ^dag_token_lbrace }, FixedToken { token_class: ^dag_token_rbrace }], lets: 1)
+}
+
+test fn a_body_starting_with_minus_round_trips() -> Bool {
+  dbl_body_round_trips(body: list_append(left: [FixedToken { token_class: ^dag_token_minus }], right: dbl_token(binding: ^dag_binding_bind_x)), lets: 1)
+}
+
+test fn a_bind_body_round_trips_nested() -> Bool {
+  dbl_body_round_trips(body: dbl_bind(value: dbl_token(binding: ^dag_binding_pick_lit_one)), lets: 2)
+}
+
+test fn nested_bind_emitted_block_scoped_reparses_to_the_same_binds() -> Bool {
+  let concrete = dbl_bind(value: dbl_bind(value: dbl_token(binding: ^dag_binding_pick_lit_one)))
+  !dbl_has_in(concrete: concrete) && dbl_reparses_to_two_nested_lets(concrete: concrete)
+}
+
+// The token sequence the dag target writes for one Bind, exactly: `{ let k = ( v ) { b } }`. The claims
+// above parse emitted TOKENS; this pins what those tokens are. Text is not the grain here: the dag
+// target's rendering puts no separation between tokens (its lex is dag_lex, with no emit
+// transforms), so a keyword and the name after it render fused -- a defect of dag text rendering that
+// predates this change and is reported on its own, not something a text round trip could check.
+test fn a_single_bind_emits_block_scoped_tokens() -> Bool {
+  map(dbl_bind(value: dbl_token(binding: ^dag_binding_pick_lit_one)), fn(c) { dbl_class(token: c) }) == [
+    ^dag_token_lbrace, ^dag_token_kw_let, ^dag_token_ident, ^dag_token_eq, ^dag_token_lparen, ^dag_token_ident,
+    ^dag_token_rparen, ^dag_token_lbrace, ^dag_token_ident, ^dag_token_rbrace, ^dag_token_rbrace
+  ]
+}

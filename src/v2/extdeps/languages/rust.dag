@@ -144,6 +144,7 @@ import v2.std.compilers.coproduct_variant_shape {
   coproduct_all_variants_nullary
 }
 import v2.std.compilers.target_model {
+  target_bind_let_separator_present,
   IntLiteralDecimal,
   TargetCapabilityKey,
   ProducedDeclSupport,
@@ -1204,7 +1205,7 @@ fn rust_value_expression_projection() -> TargetValueExpressionProjection {
     let_form: TargetBindLetShape {
       let_token: ^rust_token_kw_let,
       assign_token: ^rust_token_equal,
-      in_token: ^rust_token_semicolon
+      in_token: target_bind_let_separator_present(token: ^rust_token_semicolon)
     },
     loop_form: TargetLoopShape { loop_token: ^rust_token_unwired_loop },
     record_construct_form: TargetRecordConstructShape {
