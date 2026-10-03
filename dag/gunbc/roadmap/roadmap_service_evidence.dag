@@ -26,15 +26,17 @@ import gunbc.roadmap_launch_admission {
 // (gunbc.roadmap_dogfood_route, gunbc#13077), which pins this receipt's digest and per-field
 // standing once, when the start is recorded.
 //
-// THE JOIN RULE. This module measures nothing. Every field's source is fixed by ONE authority,
-// service_evidence_field_source: either a reader another module owns (ServiceEvidenceReader, a
-// closed enum naming those readers and nothing else) or a named producer that does not exist yet.
-// An Observed reading carries its reader BY TYPE and the validator refuses any reading whose
-// reader is not the field's declared one, so a field re-measured here has no constructor that the
-// validator admits.
+// THE JOIN RULE, BY CONSTRUCTION (review 74774). This module measures nothing, and the receipt
+// cannot say otherwise. A field is either READER-OWNED (ReaderField: its one reader is
+// reader_field_reader) or has NO PRODUCER YET (UnbuiltField: its owning node is
+// unbuilt_field_owner). The receipt has ONE NAMED SLOT PER READER-OWNED FIELD and none for an
+// unbuilt one, so a field cannot be missing, duplicated or out of order, an unbuilt field has no
+// slot an observed value could be written into, and a slot's reading carries no source -- the
+// source is derived from the slot, so a reading cannot name a reader other than its field's.
+// There is therefore no validator: every receipt that can be written is valid.
 
-// ── THE FIELD ROSTER, exactly the node's list, in its order ──
-type ServiceEvidenceField
+// ── THE FIELDS, partitioned by whether a reader owns them ──
+type ReaderField
   = WorkloadClass
   | ResourceRequest
   | WaitTime
@@ -47,25 +49,35 @@ type ServiceEvidenceField
   | Placement
   | SeatUtilization
   | ArtifactBytes
-  | Egress
   | FailureAttribution
+  | BillableUsage
+
+type UnbuiltField
+  = Egress
   | RecoveryAction
   | OperatorInterventionTime
   | HardwareHealth
-  | BillableUsage
   | BillableCredits
   | WorkspaceRecoveryPoint
   | WorkspaceRecoveryTime
 
+type ServiceEvidenceField
+  = ReaderOwnedField { field: ReaderField }
+  | UnbuiltProducerField { field: UnbuiltField }
+
+fn rf(f: ReaderField) -> ServiceEvidenceField { ReaderOwnedField { field: f } }
+fn uf(f: UnbuiltField) -> ServiceEvidenceField { UnbuiltProducerField { field: f } }
+
+// The node's list, in its order.
 data service_evidence_fields: List<ServiceEvidenceField> = [
-  WorkloadClass, ResourceRequest, WaitTime, ExecutionTime, CompletionTime,
-  CacheHits, CacheMisses, CacheSharedMisses, CacheCorruptHitRefusals,
-  Placement, SeatUtilization, ArtifactBytes, Egress, FailureAttribution, RecoveryAction,
-  OperatorInterventionTime, HardwareHealth, BillableUsage, BillableCredits,
-  WorkspaceRecoveryPoint, WorkspaceRecoveryTime,
+  rf(f: WorkloadClass), rf(f: ResourceRequest), rf(f: WaitTime), rf(f: ExecutionTime), rf(f: CompletionTime),
+  rf(f: CacheHits), rf(f: CacheMisses), rf(f: CacheSharedMisses), rf(f: CacheCorruptHitRefusals),
+  rf(f: Placement), rf(f: SeatUtilization), rf(f: ArtifactBytes), uf(f: Egress),
+  rf(f: FailureAttribution), uf(f: RecoveryAction), uf(f: OperatorInterventionTime), uf(f: HardwareHealth),
+  rf(f: BillableUsage), uf(f: BillableCredits), uf(f: WorkspaceRecoveryPoint), uf(f: WorkspaceRecoveryTime),
 ]
 
-fn service_evidence_field_wire(f: ServiceEvidenceField) -> String {
+fn reader_field_wire(f: ReaderField) -> String {
   match f {
     WorkloadClass => "workload_class"
     ResourceRequest => "resource_request"
@@ -79,19 +91,32 @@ fn service_evidence_field_wire(f: ServiceEvidenceField) -> String {
     Placement => "placement"
     SeatUtilization => "seat_utilization"
     ArtifactBytes => "artifact_bytes"
-    Egress => "egress"
     FailureAttribution => "failure_attribution"
+    BillableUsage => "billable_usage"
+  }
+}
+
+fn unbuilt_field_wire(f: UnbuiltField) -> String {
+  match f {
+    Egress => "egress"
     RecoveryAction => "recovery_action"
     OperatorInterventionTime => "operator_intervention_time"
     HardwareHealth => "hardware_health"
-    BillableUsage => "billable_usage"
     BillableCredits => "billable_credits"
     WorkspaceRecoveryPoint => "workspace_recovery_point"
     WorkspaceRecoveryTime => "workspace_recovery_time"
   }
 }
 
+fn service_evidence_field_wire(f: ServiceEvidenceField) -> String {
+  match f {
+    ReaderOwnedField { field } => reader_field_wire(f: field)
+    UnbuiltProducerField { field } => unbuilt_field_wire(f: field)
+  }
+}
+
 // ── THE READERS THIS RECEIPT MAY CONSUME, and nothing else ──
+// Readers are compared by variant, never by text; the citation below is wire output only.
 type ServiceEvidenceReader
   = MeteringReader
   | SessionPlacementReader
@@ -102,14 +127,14 @@ fn service_evidence_reader_wire(r: ServiceEvidenceReader) -> String {
   match r {
     MeteringReader => "gunbc.roadmap_attempt_metering metering_observe_for_attempt"
     SessionPlacementReader => "gunbc.roadmap_session_placement session_placement_observe_for_attempt"
-    SharedComputationReader => "shared_computation_observe_for_attempt"
+    SharedComputationReader => "gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt"
     ResultReturnedReader => "gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt"
   }
 }
 
 // Whether the reader is on main. A reader not yet landed makes every field it owns Owed naming its
-// pull request; when the PR lands its arm here becomes ReaderLanded and the same change binds the
-// fields' Observed readings in service_evidence_field_reading (one arm per reader).
+// pull request; when the PR lands its arm here becomes ReaderLanded and the same change binds its
+// fields' Observed readings in reader_slot_reading (one arm per reader).
 type ServiceEvidenceReaderStanding
   = ReaderLanded
   | ReaderPending { pr: Int }
@@ -124,144 +149,150 @@ fn service_evidence_reader_standing(r: ServiceEvidenceReader) -> ServiceEvidence
 }
 
 // ── THE ONE SOURCE AUTHORITY PER FIELD ──
-// ProducerUnbuilt names the roadmap node that owns the missing producer; where no other node owns
-// it, the owner is this node, service-evidence-capture, which states the obligation rather than
-// inventing a producer for it.
-type ServiceEvidenceFieldSource
-  = SourceReader { reader: ServiceEvidenceReader }
-  | SourceUnbuilt { owner_node: String }
-
-fn service_evidence_field_source(f: ServiceEvidenceField) -> ServiceEvidenceFieldSource {
+fn reader_field_reader(f: ReaderField) -> ServiceEvidenceReader {
   match f {
-    WorkloadClass => SourceReader { reader: SessionPlacementReader }
-    ResourceRequest => SourceReader { reader: SessionPlacementReader }
-    WaitTime => SourceReader { reader: SessionPlacementReader }
-    ExecutionTime => SourceReader { reader: MeteringReader }
-    CompletionTime => SourceReader { reader: ResultReturnedReader }
-    CacheHits => SourceReader { reader: SharedComputationReader }
-    CacheMisses => SourceReader { reader: SharedComputationReader }
-    CacheSharedMisses => SourceReader { reader: SharedComputationReader }
-    CacheCorruptHitRefusals => SourceReader { reader: SharedComputationReader }
-    Placement => SourceReader { reader: SessionPlacementReader }
-    SeatUtilization => SourceReader { reader: SessionPlacementReader }
-    ArtifactBytes => SourceReader { reader: SharedComputationReader }
-    Egress => SourceUnbuilt { owner_node: "service-evidence-capture" }
-    FailureAttribution => SourceReader { reader: ResultReturnedReader }
-    RecoveryAction => SourceUnbuilt { owner_node: "service-evidence-capture" }
-    OperatorInterventionTime => SourceUnbuilt { owner_node: "service-evidence-capture" }
-    HardwareHealth => SourceUnbuilt { owner_node: "fleet-health-0-live-receipt" }
-    BillableUsage => SourceReader { reader: MeteringReader }
-    BillableCredits => SourceUnbuilt { owner_node: "failure-billing-outcomes" }
-    WorkspaceRecoveryPoint => SourceUnbuilt { owner_node: "fabric-storage" }
-    WorkspaceRecoveryTime => SourceUnbuilt { owner_node: "fabric-storage" }
+    WorkloadClass => SessionPlacementReader
+    ResourceRequest => SessionPlacementReader
+    WaitTime => SessionPlacementReader
+    ExecutionTime => MeteringReader
+    CompletionTime => ResultReturnedReader
+    CacheHits => SharedComputationReader
+    CacheMisses => SharedComputationReader
+    CacheSharedMisses => SharedComputationReader
+    CacheCorruptHitRefusals => SharedComputationReader
+    Placement => SessionPlacementReader
+    SeatUtilization => SessionPlacementReader
+    ArtifactBytes => SharedComputationReader
+    FailureAttribution => ResultReturnedReader
+    BillableUsage => MeteringReader
   }
 }
 
-// ── THE CLOSED PER-FIELD READING. There is no default: unknown is Owed or Refused, never zero. ──
+// The roadmap node that owns a missing producer. Where no other node owns it, the owner is this
+// node, whose later slices build it (it is in scope here, not deferred elsewhere); naming it states
+// the obligation rather than inventing a producer.
+fn unbuilt_field_owner(f: UnbuiltField) -> String {
+  match f {
+    Egress => "service-evidence-capture"
+    RecoveryAction => "service-evidence-capture"
+    OperatorInterventionTime => "service-evidence-capture"
+    HardwareHealth => "fleet-health-0-live-receipt"
+    BillableCredits => "failure-billing-outcomes"
+    WorkspaceRecoveryPoint => "fabric-storage"
+    WorkspaceRecoveryTime => "fabric-storage"
+  }
+}
+
+// ── A SLOT'S READING. There is no default: unknown is owed or refused, never zero. ──
+// The reading carries no source and no producer: both are derived from the slot's field.
+type ReaderSlotReading
+  = SlotObserved { value: String }
+  | SlotOwed
+  | SlotRefused { reason: NonEmptyStr }
+
+// The reading for one reader-owned field. Today every reader is pending, so it is owed; each
+// reader's landing replaces its ReaderLanded arm with the bound reading.
+fn reader_slot_reading(f: ReaderField) -> ReaderSlotReading {
+  match service_evidence_reader_standing(r: reader_field_reader(f: f)) {
+    ReaderPending { pr: _ } => SlotOwed
+    ReaderLanded => SlotRefused { reason: join(["the reader ", service_evidence_reader_wire(r: reader_field_reader(f: f)), " is landed but no reading is bound for ", reader_field_wire(f: f)], "") as NonEmptyStr }
+  }
+}
+
+// ── THE RECEIPT: one named slot per reader-owned field ──
+type ServiceEvidenceReceipt {
+  node_id: NonEmptyStr
+  attempt_key: NonEmptyStr
+  workload_class: ReaderSlotReading
+  resource_request: ReaderSlotReading
+  wait_time: ReaderSlotReading
+  execution_time: ReaderSlotReading
+  completion_time: ReaderSlotReading
+  cache_hits: ReaderSlotReading
+  cache_misses: ReaderSlotReading
+  cache_shared_misses: ReaderSlotReading
+  cache_corrupt_hit_refusals: ReaderSlotReading
+  placement: ReaderSlotReading
+  seat_utilization: ReaderSlotReading
+  artifact_bytes: ReaderSlotReading
+  failure_attribution: ReaderSlotReading
+  billable_usage: ReaderSlotReading
+}
+
+fn service_evidence_receipt_slot(r: ServiceEvidenceReceipt, f: ReaderField) -> ReaderSlotReading {
+  match f {
+    WorkloadClass => r.workload_class
+    ResourceRequest => r.resource_request
+    WaitTime => r.wait_time
+    ExecutionTime => r.execution_time
+    CompletionTime => r.completion_time
+    CacheHits => r.cache_hits
+    CacheMisses => r.cache_misses
+    CacheSharedMisses => r.cache_shared_misses
+    CacheCorruptHitRefusals => r.cache_corrupt_hit_refusals
+    Placement => r.placement
+    SeatUtilization => r.seat_utilization
+    ArtifactBytes => r.artifact_bytes
+    FailureAttribution => r.failure_attribution
+    BillableUsage => r.billable_usage
+  }
+}
+
+// THE ONE MINT. The attempt is bound by its launch identity before this is called.
+fn service_evidence_receipt_join(node_id: NonEmptyStr, attempt_key: NonEmptyStr) -> ServiceEvidenceReceipt {
+  ServiceEvidenceReceipt {
+    node_id: node_id,
+    attempt_key: attempt_key,
+    workload_class: reader_slot_reading(f: WorkloadClass),
+    resource_request: reader_slot_reading(f: ResourceRequest),
+    wait_time: reader_slot_reading(f: WaitTime),
+    execution_time: reader_slot_reading(f: ExecutionTime),
+    completion_time: reader_slot_reading(f: CompletionTime),
+    cache_hits: reader_slot_reading(f: CacheHits),
+    cache_misses: reader_slot_reading(f: CacheMisses),
+    cache_shared_misses: reader_slot_reading(f: CacheSharedMisses),
+    cache_corrupt_hit_refusals: reader_slot_reading(f: CacheCorruptHitRefusals),
+    placement: reader_slot_reading(f: Placement),
+    seat_utilization: reader_slot_reading(f: SeatUtilization),
+    artifact_bytes: reader_slot_reading(f: ArtifactBytes),
+    failure_attribution: reader_slot_reading(f: FailureAttribution),
+    billable_usage: reader_slot_reading(f: BillableUsage),
+  }
+}
+
+// ── THE CLOSED PER-FIELD READING, derived for every field of the roster ──
+// Observed{value, source reader} | Owed{producer} | Refused{reason}. The source and the producer
+// are computed from the field, so an Observed reading's reader is always the field's own and an
+// unbuilt field is always owed to its owning node.
 type ServiceEvidenceProducer
   = PendingReader { reader: ServiceEvidenceReader, pr: Int }
+  | LandedReaderUnbound { reader: ServiceEvidenceReader }
   | UnbuiltProducer { owner_node: String }
 
 type ServiceEvidenceReading
   = EvidenceObserved { value: String, source: ServiceEvidenceReader }
   | EvidenceOwed { producer: ServiceEvidenceProducer }
-  | EvidenceRefused { reason: String }
+  | EvidenceRefused { reason: NonEmptyStr }
 
-type ServiceEvidenceFieldReading {
-  field: ServiceEvidenceField
-  reading: ServiceEvidenceReading
-}
-
-// The reading for one field of one attempt. Today every reader is pending, so this is a
-// derivation from the source authority; each reader's landing adds its Observed arm here.
-fn service_evidence_field_reading(f: ServiceEvidenceField) -> ServiceEvidenceReading {
-  match service_evidence_field_source(f: f) {
-    SourceUnbuilt { owner_node } => EvidenceOwed { producer: UnbuiltProducer { owner_node: owner_node } }
-    SourceReader { reader } =>
-      match service_evidence_reader_standing(r: reader) {
-        ReaderPending { pr } => EvidenceOwed { producer: PendingReader { reader: reader, pr: pr } }
-        ReaderLanded => EvidenceRefused { reason: join(["the reader ", service_evidence_reader_wire(r: reader), " is landed but no reading is bound for ", service_evidence_field_wire(f: f)], "") }
-      }
+fn reader_owed_producer(reader: ServiceEvidenceReader) -> ServiceEvidenceProducer {
+  match service_evidence_reader_standing(r: reader) {
+    ReaderPending { pr } => PendingReader { reader: reader, pr: pr }
+    ReaderLanded => LandedReaderUnbound { reader: reader }
   }
 }
 
-// ── THE RECEIPT ──
-// Minted only by service_evidence_receipt_join; the validator below re-checks every join and the
-// wire encoder refuses an invalid receipt, so correctness does not rest on sole_constructor (not
-// yet enforced on the native route -- gunbc.rung_drop
-// g0_type_decl_modifier_parse_without_sealing_property).
-type ServiceEvidenceReceipt sole_constructor {
-  node_id: String
-  attempt_key: String
-  fields: List<ServiceEvidenceFieldReading>
-}
-
-fn service_evidence_reader_eq(a: ServiceEvidenceReader, b: ServiceEvidenceReader) -> Bool {
-  service_evidence_reader_wire(r: a) == service_evidence_reader_wire(r: b)
-}
-
-// A reading's defect against its field's one source authority. Absent is valid.
-fn service_evidence_reading_defect(f: ServiceEvidenceField, reading: ServiceEvidenceReading) -> String? {
-  let name = service_evidence_field_wire(f: f)
-  match reading {
-    EvidenceRefused { reason } =>
-      if reason == "" { Present { value: join([name, " is refused with no reason"], "") } } else { none }
-    EvidenceObserved { value: _, source } =>
-      match service_evidence_field_source(f: f) {
-        SourceUnbuilt { owner_node: _ } => Present { value: join([name, " has no producer, so it cannot be observed (re-measured)"], "") }
-        SourceReader { reader } =>
-          if !service_evidence_reader_eq(a: reader, b: source) {
-            Present { value: join([name, " is observed by ", service_evidence_reader_wire(r: source), ", not its source ", service_evidence_reader_wire(r: reader)], "") }
-          } else { none }
-      }
-    EvidenceOwed { producer } =>
-      match producer {
-        UnbuiltProducer { owner_node: o } =>
-          match service_evidence_field_source(f: f) {
-            SourceReader { reader: _ } => Present { value: join([name, " is owed by an unbuilt producer but its source is a reader"], "") }
-            SourceUnbuilt { owner_node: d } =>
-              if o != d { Present { value: join([name, " is owed by ", o, ", not its owner ", d], "") } } else { none }
-          }
-        PendingReader { reader: r, pr: n } =>
-          match service_evidence_field_source(f: f) {
-            SourceUnbuilt { owner_node: _ } => Present { value: join([name, " is owed by a reader but has no reader source"], "") }
-            SourceReader { reader: d } =>
-              if !service_evidence_reader_eq(a: r, b: d) { Present { value: join([name, " is owed by a reader that is not its source"], "") } }
-              else if n <= 0 { Present { value: join([name, " names no pull request for its pending reader"], "") } }
-              else { none }
-          }
-      }
+fn service_evidence_slot_projection(f: ReaderField, slot: ReaderSlotReading) -> ServiceEvidenceReading {
+  match slot {
+    SlotObserved { value } => EvidenceObserved { value: value, source: reader_field_reader(f: f) }
+    SlotOwed => EvidenceOwed { producer: reader_owed_producer(reader: reader_field_reader(f: f)) }
+    SlotRefused { reason } => EvidenceRefused { reason: reason }
   }
 }
 
-// The joins every receipt must satisfy: a non-empty identity, and the field list is EXACTLY the
-// roster -- one reading per field, in roster order, each valid against its source. Completeness is
-// an identity join over the field identities, never a count (DESIGN §5). Takes the parts rather
-// than the receipt so a witness can supply a defective field list the sole mint never builds.
-fn service_evidence_fields_defect(node_id: String, attempt_key: String, fields: List<ServiceEvidenceFieldReading>) -> String? {
-  if node_id == "" { Present { value: "node_id is empty" } }
-  else if attempt_key == "" { Present { value: "attempt_key is empty" } }
-  else if join(map(fields, r => service_evidence_field_wire(f: r.field)), ",") != join(map(service_evidence_fields, f => service_evidence_field_wire(f: f)), ",") {
-    Present { value: "the field readings are not exactly the roster, one per field in roster order" }
-  } else {
-    fold(fields, init: none, f: (acc, r) => match acc {
-      Present { value: _ } => acc
-      Absent => service_evidence_reading_defect(f: r.field, reading: r.reading)
-    })
-  }
-}
-
-fn service_evidence_receipt_defect(r: ServiceEvidenceReceipt) -> String? {
-  service_evidence_fields_defect(node_id: r.node_id, attempt_key: r.attempt_key, fields: r.fields)
-}
-
-// THE ONE MINT. The attempt is bound by its launch identity (gunbc.roadmap_launch_admission, the
-// record the dispatch actuator writes at launch); the fields are the per-field readings.
-fn service_evidence_receipt_join(node_id: String, attempt_key: String) -> ServiceEvidenceReceipt {
-  ServiceEvidenceReceipt {
-    node_id: node_id,
-    attempt_key: attempt_key,
-    fields: map(service_evidence_fields, f => ServiceEvidenceFieldReading { field: f, reading: service_evidence_field_reading(f: f) }),
+fn service_evidence_reading(r: ServiceEvidenceReceipt, f: ServiceEvidenceField) -> ServiceEvidenceReading {
+  match f {
+    UnbuiltProducerField { field } => EvidenceOwed { producer: UnbuiltProducer { owner_node: unbuilt_field_owner(f: field) } }
+    ReaderOwnedField { field } => service_evidence_slot_projection(f: field, slot: service_evidence_receipt_slot(r: r, f: field))
   }
 }
 
@@ -271,10 +302,13 @@ type ServiceEvidenceObservation
   | ServiceEvidenceAttemptUnlaunched
   | ServiceEvidenceRefused { reason: String }
 
-// Pure over the launch-identity file observation: the record at this attempt's path must decode
-// and name this node, or there is no attempt to join evidence for.
+// Pure over the launch-identity file observation: the identity must be non-empty and the record at
+// this attempt's path must decode and name this node, or there is no attempt to join evidence for.
+// These are the only refusals: every receipt the join builds is valid by construction.
 fn service_evidence_observe_from_launch(node_id: String, attempt_key: String, launch: FilesystemFileObservation) -> ServiceEvidenceObservation {
-  match launch {
+  if node_id == "" { ServiceEvidenceRefused { reason: "node_id is empty" } }
+  else if attempt_key == "" { ServiceEvidenceRefused { reason: "attempt_key is empty" } }
+  else { match launch {
     FilesystemFileAbsent(_) => ServiceEvidenceAttemptUnlaunched
     FilesystemFileIndeterminate { cause } => ServiceEvidenceRefused { reason: cause }
     FilesystemFileObservationsDisagree { path: _, cause } => ServiceEvidenceRefused { reason: cause }
@@ -289,15 +323,11 @@ fn service_evidence_observe_from_launch(node_id: String, attempt_key: String, la
               if launch_identity_node_id_text(id: identity) != node_id {
                 ServiceEvidenceRefused { reason: join(["the launch identity at this attempt's path names node ", launch_identity_node_id_text(id: identity)], "") }
               } else {
-                let r = service_evidence_receipt_join(node_id: node_id, attempt_key: attempt_key)
-                match service_evidence_receipt_defect(r: r) {
-                  Absent => ServiceEvidenceJoined { receipt: r }
-                  Present { value: why } => ServiceEvidenceRefused { reason: why }
-                }
+                ServiceEvidenceJoined { receipt: service_evidence_receipt_join(node_id: node_id as NonEmptyStr, attempt_key: attempt_key as NonEmptyStr) }
               }
           }
       }
-  }
+  } }
 }
 
 fn service_evidence_observe_for_attempt(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> ServiceEvidenceObservation {
@@ -316,6 +346,10 @@ fn service_evidence_producer_json(p: ServiceEvidenceProducer) -> JsonValue {
       json_kv(key: "reader", value: json_string(s: service_evidence_reader_wire(r: reader))),
       json_kv(key: "pr", value: json_int(n: pr)),
     ])
+    LandedReaderUnbound { reader } => json_object([
+      json_kv(key: "kind", value: json_string(s: "landed_reader_unbound")),
+      json_kv(key: "reader", value: json_string(s: service_evidence_reader_wire(r: reader))),
+    ])
     UnbuiltProducer { owner_node } => json_object([
       json_kv(key: "kind", value: json_string(s: "unbuilt_producer")),
       json_kv(key: "owner_node", value: json_string(s: owner_node)),
@@ -323,9 +357,9 @@ fn service_evidence_producer_json(p: ServiceEvidenceProducer) -> JsonValue {
   }
 }
 
-fn service_evidence_reading_json(f: ServiceEvidenceFieldReading) -> JsonValue {
-  let field = json_kv(key: "field", value: json_string(s: service_evidence_field_wire(f: f.field)))
-  match f.reading {
+fn service_evidence_reading_json(f: ServiceEvidenceField, reading: ServiceEvidenceReading) -> JsonValue {
+  let field = json_kv(key: "field", value: json_string(s: service_evidence_field_wire(f: f)))
+  match reading {
     EvidenceObserved { value, source } => json_object([field,
       json_kv(key: "standing", value: json_string(s: "observed")),
       json_kv(key: "value", value: json_string(s: value)),
@@ -337,45 +371,41 @@ fn service_evidence_reading_json(f: ServiceEvidenceFieldReading) -> JsonValue {
     ])
     EvidenceRefused { reason } => json_object([field,
       json_kv(key: "standing", value: json_string(s: "refused")),
-      json_kv(key: "reason", value: json_string(s: reason)),
+      json_kv(key: "reason", value: json_string(s: reason as String)),
     ])
   }
 }
 
 data service_evidence_receipt_schema: String = "service-evidence-receipt/v1"
 
-fn service_evidence_receipt_wire(r: ServiceEvidenceReceipt) -> String? {
-  match service_evidence_receipt_defect(r: r) {
-    Present { value: _ } => none
-    Absent =>
-      Present { value: serialize_json(v: json_object([
-        json_kv(key: "schema", value: json_string(s: service_evidence_receipt_schema)),
-        json_kv(key: "node_id", value: json_string(s: r.node_id)),
-        json_kv(key: "attempt_key", value: json_string(s: r.attempt_key)),
-        json_kv(key: "fields", value: json_array(map(r.fields, f => service_evidence_reading_json(f: f)))),
-      ])) }
-  }
+fn service_evidence_receipt_wire(r: ServiceEvidenceReceipt) -> String {
+  serialize_json(v: json_object([
+    json_kv(key: "schema", value: json_string(s: service_evidence_receipt_schema)),
+    json_kv(key: "node_id", value: json_string(s: r.node_id as String)),
+    json_kv(key: "attempt_key", value: json_string(s: r.attempt_key as String)),
+    json_kv(key: "fields", value: json_array(map(service_evidence_fields, f => service_evidence_reading_json(f: f, reading: service_evidence_reading(r: r, f: f))))),
+  ]))
 }
 
-fn service_evidence_receipt_digest(r: ServiceEvidenceReceipt) -> String? {
-  match service_evidence_receipt_wire(r: r) {
-    Absent => none
-    Present { value: w } => Present { value: wire_content_hash_to_hex(hash: content_hash_of_value(value: w as NonEmptyStr)) }
-  }
+fn service_evidence_receipt_digest(r: ServiceEvidenceReceipt) -> String {
+  wire_content_hash_to_hex(hash: content_hash_of_value(value: service_evidence_receipt_wire(r: r) as NonEmptyStr))
 }
 
 // ── THE NODE'S CLOSING CONTRACT (roadmap node service-evidence-capture) ──
 //
-// The node closes when no field of the receipt is owed: every field's source is a landed reader
-// whose reading is bound here. Missing fields are a set difference over the roster, never a count,
-// so this is RED today with every field owed and greens only when the last one binds. When the
-// first reader binds, a field's reading becomes per attempt, and this predicate is re-authored over
-// the dogfood start receipt's pinned evidence (its consumer, gunbc#13077) in that same change.
+// The node closes when no field is owed or refused: every field is reader-owned and its reader is
+// landed and bound. Missing fields are a set difference over the roster, never a count, so this is
+// RED today and greens only when the last one binds. When the first reader binds, a slot's reading
+// becomes per attempt, and this predicate is re-authored over the dogfood start receipt's pinned
+// evidence (its consumer, gunbc#13077) in that same change.
 fn service_evidence_owed_fields() -> List<ServiceEvidenceField> {
-  filter(service_evidence_fields, f => match service_evidence_field_reading(f: f) {
-    EvidenceObserved { value: _, source: _ } => false
-    EvidenceOwed { producer: _ } => true
-    EvidenceRefused { reason: _ } => true
+  filter(service_evidence_fields, f => match f {
+    UnbuiltProducerField { field: _ } => true
+    ReaderOwnedField { field } => match reader_slot_reading(f: field) {
+      SlotObserved { value: _ } => false
+      SlotOwed => true
+      SlotRefused { reason: _ } => true
+    }
   })
 }
 
