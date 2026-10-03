@@ -177,6 +177,7 @@ fn cascade_single_root_is_a(roots: List<NativeCensusCauseMember>, fan_out: Int, 
         NativeCensusCascadeRoot { closure_fan_out: f, resolve_refused_importers: o } =>
           match f {
             NativeCensusClosureFanOutUnavailable { reason: _ } => false
+            NativeCensusClosureFanOutAtLeast { modules: _, unread_refused_files: _ } => false
             NativeCensusClosureFanOutCounted { modules: n } =>
               n == fan_out && match o {
                 Absent => false
